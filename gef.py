@@ -3375,15 +3375,15 @@ def is_qemu():
 def is_qemu_usermode():
     if is_qemu() == False:
         return False
-    response = gdb.execute('maintenance packet QOffsets', to_string=True, from_tty=False)
-    return "Text=" in response
+    response = gdb.execute('maintenance packet qOffsets', to_string=True, from_tty=False)
+    return 'Text=' in response
 
 
 @lru_cache()
 def is_qemu_system():
     if is_qemu() == False:
         return False
-    response = gdb.execute('maintenance packet QOffsets', to_string=True, from_tty=False)
+    response = gdb.execute('maintenance packet qOffsets', to_string=True, from_tty=False)
     return 'received: ""' in response
 
 
@@ -6665,15 +6665,17 @@ class UnicornEmulateCommand(GenericCommand):
     _syntax_ += "  -o /PATH/TO/SCRIPT.py  writes the persistent Unicorn script into this file.\n"
     _syntax_ += "  -n NB_INSTRUCTION      indicates the number of instructions to execute (mutually exclusive with `-t` and `-g`).\n"
     _syntax_ += "  -g NB_GADGET           indicates the number of gadgets to execute (mutually exclusive with `-t` and `-n`).\n"
+    _syntax_ += "  -v                     displays the registers for each instruction.\n"
+    _syntax_ += "  -q                     quiet execution.\n"
     _syntax_ += "Additional options can be setup via `gef config unicorn-emulate`"
     _aliases_ = ["emulate",]
-    _example_ = "{:s} -f 0x8056770c -n 10 -o /tmp/my-gef-emulation.py".format(_cmdline_)
+    _example_ = "{:s} -n 5 # from $pc to 5 later asm\n".format(_cmdline_)
+    _example_ += "{:s} -g 4 # from $pc to the point where 4 instructions are executed\n".format(_cmdline_)
+    _example_ += "{:s} -f 0x8056770c -t 0x805678a4 -o /tmp/my-gef-emulation.py # from/to specific address with saving script".format(_cmdline_)
     _category_ = "Assemble"
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
-        self.add_setting("verbose", False, "Set unicorn-engine in verbose mode")
-        self.add_setting("show_disassembly", False, "Show every instruction executed")
         return
 
     def pre_load(self):
@@ -6699,27 +6701,43 @@ class UnicornEmulateCommand(GenericCommand):
         start_insn = None
         end_insn = -1
         nb_insn = -1
+        nb_gadget = -1
         to_file = None
         skip_emulation = None
+        verbose = None
+        quiet = None
         try:
-            opts = getopt.getopt(argv, "f:t:n:so:h")[0]
+            opts = getopt.getopt(argv, "f:t:n:g:so:vqh")[0]
             for o, a in opts:
                 if o == "-f":
                     start_insn = int(a, 16)
 
                 elif o == "-t":
                     end_insn = int(a, 16)
-                    self.nb_insn = -1
+                    nb_insn = -1
+                    nb_gadget = -1
 
                 elif o == "-n":
-                    nb_insn = int(a)
                     end_insn = -1
+                    nb_insn = int(a)
+                    nb_gadget = -1
+
+                elif o == "-g":
+                    end_insn = -1
+                    nb_insn = -1
+                    nb_gadget = int(a)
 
                 elif o == "-s":
                     skip_emulation = True
 
                 elif o == "-o":
                     to_file = a
+
+                elif o == "-v":
+                    verbose = True
+
+                elif o == "-q":
+                    quiet = True
 
                 elif o == "-h":
                     self.usage()
@@ -6731,16 +6749,20 @@ class UnicornEmulateCommand(GenericCommand):
         if start_insn is None:
             start_insn = current_arch.pc
 
-        if end_insn < 0 and nb_insn < 0:
-            err("No stop condition (-t|-n) defined.")
+        if end_insn < 0 and nb_insn < 0 and nb_gadget < 0:
+            err("No stop condition (-t|-n|-g) defined.")
             return
 
         if end_insn > 0:
-            self.run_unicorn(start_insn, end_insn, skip_emulation=skip_emulation, to_file=to_file)
+            self.run_unicorn(start_insn, end_insn, skip_emulation=skip_emulation, to_file=to_file, verbose=verbose, nb_gadget=nb_gadget, quiet=quiet)
 
         elif nb_insn > 0:
             end_insn = self.get_unicorn_end_addr(start_insn, nb_insn)
-            self.run_unicorn(start_insn, end_insn, skip_emulation=skip_emulation, to_file=to_file)
+            self.run_unicorn(start_insn, end_insn, skip_emulation=skip_emulation, to_file=to_file, verbose=verbose, nb_gadget=nb_gadget, quiet=quiet)
+
+        elif nb_gadget > 0:
+            end_insn = 0x0
+            self.run_unicorn(start_insn, end_insn, skip_emulation=skip_emulation, to_file=to_file, verbose=verbose, nb_gadget=nb_gadget, quiet=quiet)
 
         else:
             raise Exception("Should never be here")
@@ -6752,7 +6774,9 @@ class UnicornEmulateCommand(GenericCommand):
         return last_insn.address
 
     def run_unicorn(self, start_insn_addr, end_insn_addr, *args, **kwargs):
-        verbose = self.get_setting("verbose") or False
+        verbose = kwargs.get("verbose", False)
+        quiet = kwargs.get("quiet", False)
+        nb_gadget = kwargs.get("nb_gadget", -1)
         skip_emulation = kwargs.get("skip_emulation", False)
         arch, mode = get_unicorn_arch(to_string=True)
         unicorn_registers = get_unicorn_registers(to_string=True)
@@ -6818,7 +6842,10 @@ import capstone, unicorn
 registers = collections.OrderedDict(sorted({{{regs}}}.items(), key=lambda t: t[0]))
 uc = None
 verbose = {verbose}
+quiet = {quiet}
+nb_gadget = {nb_gadget}
 syscall_register = "{syscall_reg}"
+count = 0
 
 def disassemble(code, addr):
     cs = capstone.Cs({cs_arch}, {cs_mode})
@@ -6826,26 +6853,33 @@ def disassemble(code, addr):
         return i
 
 def code_hook(emu, address, size, user_data):
-    code = emu.mem_read(address, size)
-    code_hex = code.hex()
-    insn = disassemble(code, address)
-    print(">>> {{:#x}}: {{:24s}} {{:s}} {{:s}}".format(insn.address, code_hex, insn.mnemonic, insn.op_str))
+    global count
+    if not quiet:
+        code = emu.mem_read(address, size)
+        code_hex = code.hex()
+        insn = disassemble(code, address)
+        if verbose:
+            print_regs(emu, registers)
+        print(">>> {{:d}} {{:#x}}: {{:24s}} {{:s}} {{:s}}".format(count, insn.address, code_hex, insn.mnemonic, insn.op_str))
+    count += 1
+    if 0 <= nb_gadget and count >= nb_gadget:
+        emu.emu_stop()
     return
 
 def mem_invalid_hook(uc, access, address, size, value, user_data):
     if access == unicorn.UC_MEM_WRITE_UNMAPPED:
-        print(" \\-> addr:{{:#x}}: size:{{:#x}} value:{{:#x}}".format(address, size, value))
+        print("  --> Invalid memory access; addr:{{:#x}}, size:{{:#x}}, value:{{:#x}}".format(address, size, value))
     elif access == unicorn.UC_MEM_READ_UNMAPPED:
-        print(" \\-> addr:{{:#x}}: size:{{:#x}}".format(address, size))
+        print("  --> Invalid memory access; addr:{{:#x}}, size:{{:#x}}".format(address, size))
     return
 
 def intr_hook(emu, intno, data):
-    print(" \\-> interrupt={{:d}}".format(intno))
+    print("  --> interrupt={{:d}}".format(intno))
     return
 
 def syscall_hook(emu, user_data):
     sysno = emu.reg_read(registers[syscall_register])
-    print(" \\-> syscall={{:d}}".format(sysno))
+    print("  --> syscall={{:d}} (not emulated)".format(sysno))
     return
 
 def print_regs(emu, regs):
@@ -6861,8 +6895,10 @@ def reset():
 
 {context_block}
 """.format(pythonbin=pythonbin, fname=fname, start=start_insn_addr, end=end_insn_addr,
-           regs=",".join(["'%s': %s" % (k.strip(), unicorn_registers[k]) for k in unicorn_registers]),
+           regs=",".join(["\n    '%s': %s" % (k.strip(), unicorn_registers[k]) for k in unicorn_registers])+"\n",
+           quiet="True" if quiet else "False",
            verbose="True" if verbose else "False",
+           nb_gadget=nb_gadget,
            syscall_reg=current_arch.syscall_register,
            cs_arch=cs_arch, cs_mode=cs_mode,
            ptrsize=current_arch.ptrsize * 2 + 2,  # two hex chars per byte plus "0x" prefix
@@ -6879,7 +6915,10 @@ def reset():
             gregval = get_register(r)
             content += "    emu.reg_write({}, {:#x})\n".format(unicorn_registers[r], gregval)
 
-        vmmap = get_process_maps()
+        if is_qemu_usermode():
+            vmmap = get_process_maps(outer=True)
+        else:
+            vmmap = get_process_maps()
         if not vmmap:
             warn("An error occurred when reading memory map.")
             return
@@ -6901,7 +6940,13 @@ def reset():
             content += "    emu.mem_map({:#x}, {:#x}, {})\n".format(page_start, size, oct(perm.value))
 
             if perm & Permission.READ:
-                code = read_memory(page_start, size)
+                if is_qemu_usermode():
+                    fd = open("/proc/{:d}/mem".format(get_pid()), "rb")
+                    fd.seek(page_start)
+                    code = fd.read(size)
+                    fd.close()
+                else:
+                    code = read_memory(page_start, size)
                 loc = "/tmp/gef-{}-{:#x}.raw".format(fname, page_start)
                 with open(loc, "wb") as f:
                     f.write(bytes(code))
@@ -10532,7 +10577,8 @@ class XAddressInfoCommand(GenericCommand):
             gef_print("Permissions: {}".format(sect.permission))
             gef_print("Pathname: {:s}".format(sect.path))
             gef_print("Offset (from page): {:#x}".format(addr.value-sect.page_start))
-            gef_print("Inode: {:s}".format(sect.inode))
+            if sect.inode:
+                gef_print("Inode: {:s}".format(sect.inode))
 
         if info:
             gef_print("Segment: {:s} ({:s}-{:s})".format(info.name,
@@ -15300,28 +15346,28 @@ class VersionCommand(GenericCommand):
         try:
             capstone = sys.modules['capstone']
             return '.'.join(map(str, capstone.cs_version()))
-        except ImportError:
+        except KeyError:
             return 'not found'
 
     def keystone_version(self):
         try:
             keystone = sys.modules['keystone']
             return '.'.join(map(str, keystone.ks_version()))
-        except ImportError:
+        except KeyError:
             return 'not found'
 
     def unicorn_version(self):
         try:
             unicorn = sys.modules['unicorn']
             return unicorn.__version__
-        except ImportError:
+        except KeyError:
             return 'not found'
 
     def ropper_version(self):
         try:
             ropper = sys.modules['ropper']
             return '.'.join(map(str, ropper.VERSION))
-        except ImportError:
+        except KeyError:
             return 'not found'
 
     def readelf_version(self):
@@ -15566,7 +15612,30 @@ class TlsCommand(GenericCommand):
     _category_ = "Process/State Inspection (Value)"
 
     @staticmethod
+    def getfsgs_qemu_usermode():
+        def slice_unpack(data, n):
+            tmp = [data[i:i+n] for i in range(0, len(data), n)]
+            return list(map(u64 if n == 8 else u32, tmp))
+        vmmap = get_process_maps()
+        for m in vmmap[::-1]:
+            if m.path != "<explored>":
+                continue
+            data = read_memory(m.page_start, m.size)
+            data = slice_unpack(data, current_arch.ptrsize)
+            addr = [x for x in range(m.page_start, m.page_end, current_arch.ptrsize)]
+            assert len(data) == len(addr)
+            for i in range(len(data)-2):
+                if data[i] == addr[i] and data[i+2] == addr[i] and (data[i+5] & 0xff) == 0 and data[i+5] != 0:
+                    return addr[i]
+        return 0
+
+    @staticmethod
     def getfs():
+        if is_qemu_usermode():
+            if is_x86_64():
+                return TlsCommand.getfsgs_qemu_usermode()
+            else:
+                return 0
         PTRACE_ARCH_PRCTL = 30
         ARCH_GET_FS = 0x1003
         pid, lwpid, tid = gdb.selected_thread().ptid
@@ -15579,6 +15648,11 @@ class TlsCommand(GenericCommand):
 
     @staticmethod
     def getgs():
+        if is_qemu_usermode():
+            if is_x86_64():
+                return 0
+            else:
+                return TlsCommand.getfsgs_qemu_usermode()
         PTRACE_ARCH_PRCTL = 30
         ARCH_GET_GS = 0x1004
         pid, lwpid, tid = gdb.selected_thread().ptid
