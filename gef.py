@@ -23746,9 +23746,20 @@ class ExecNextCommand(GenericCommand):
 
 @register_command
 class ExecUntilCommand(GenericCommand):
-    """Execute until next call/jmp/syscall/ret/mem-access/specific-keyword operation."""
+    """Execute until next call/jmp/syscall/ret/mem-access/specific-keyword instruction."""
     _cmdline_ = "exec-until"
-    _syntax_ = "{:s} [-h] call|jmp|syscall|ret|memaccess|keyword [, ...] [--print-insn]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] call|jmp|syscall|ret|memaccess|keyword|keyword-re|cond [ARGS] [--print-insn] [--skip-lib]".format(_cmdline_)
+    _example_ = ""
+    _example_ += "{:s} call # execute until call instruction\n".format(_cmdline_)
+    _example_ += "{:s} jmp # execute until jmp instruction\n".format(_cmdline_)
+    _example_ += "{:s} syscall # execute until syscall instruction\n".format(_cmdline_)
+    _example_ += "{:s} ret # execute until ret instruction\n".format(_cmdline_)
+    _example_ += "{:s} memaccess # execute until '[' is included by the instruction\n".format(_cmdline_)
+    _example_ += "{:s} keyword \"push\" \"pop\" # execute until specific keyword is included by the instruction\n".format(_cmdline_)
+    _example_ += "{:s} keyword-re \"call +r[ab]x\" # execute until specific keyword (regex)\n".format(_cmdline_)
+    _example_ += "{:s} cond \"$rax==0xdeadbeef && $rbx==0xcafebabe\" # execute until specific condition is filled\n".format(_cmdline_)
+    _example_ += "THIS FEATURE IS TOO SLOW.\n"
+    _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Start/Stop"
 
     def __init__(self, *args, **kwargs):
@@ -23781,19 +23792,34 @@ class ExecUntilCommand(GenericCommand):
         return
 
     def is_target_insn(self, insn):
-        if "call" in self.pattern and current_arch.is_call(insn):
+        if "call" in self.mode and current_arch.is_call(insn):
             return True
-        if "jmp" in self.pattern and current_arch.is_jump(insn):
+        if "jmp" in self.mode and current_arch.is_jump(insn):
             return True
-        if "syscall" in self.pattern and current_arch.is_syscall(insn):
+        if "syscall" in self.mode and current_arch.is_syscall(insn):
             return True
-        if "ret" in self.pattern and current_arch.is_ret(insn):
+        if "ret" in self.mode and current_arch.is_ret(insn):
             return True
-        if "memaccess" in self.pattern and "[" in str(insn):
+        if "memaccess" in self.mode and "[" in str(insn):
             return True
-        if "keyword" in self.pattern and any([k in str(insn) for k in self.keyword]):
-            return True
+        if "keyword" in self.mode:
+            if any([k in str(insn) for k in self.keyword]):
+                return True
+        if "keyword-re" in self.mode:
+            if any([re.search(k, str(insn)) for k in self.keyword]):
+                return True
+        if "cond" in self.mode:
+            try:
+                v = gdb.parse_and_eval(self.condition)
+            except gdb.error:
+                return False
+            if not v in [0x0, 0x1]:
+                self.err = "condition result should be True or False"
+                return True
+            if v:
+                return True
         return False
+
 
     def get_breakpoint_list(self):
         lines = gdb.execute("info breakpoints", to_string=True).splitlines()
@@ -23821,38 +23847,51 @@ class ExecUntilCommand(GenericCommand):
         bp_list = self.get_breakpoint_list()
         gef_on_stop_unhook(hook_stop_handler)
         self.close_stdout_stderr()
-        inf_loop_detected = False
+        self.err = None
 
         prev_addr = -1
         try:
             count = 0
             while True:
-
+                # progress
                 if not self.print_insn and count % 100 == 0:
                     self.force_write_stdout([b"\r|", b"\r/", b"\r-", b"\r\\"][count//100 % 4])
 
+                # backup
                 prev_prev_addr = prev_addr
                 prev_addr = current_arch.pc
-                gdb.execute("stepi")
+
+                # execute 1 instruction
+                insn = gef_current_instruction(current_arch.pc)
+                if self.skip_lib and "@plt>" in str(insn):
+                    gdb.execute("nexti")
+                else:
+                    gdb.execute("stepi")
+
+                # check breakpoint
+                insn = gef_current_instruction(current_arch.pc)
                 if current_arch.pc in bp_list:
                     break
 
-                insn = gef_current_instruction(current_arch.pc)
-
+                # $pc is not changed
                 if prev_prev_addr == prev_addr == current_arch.pc: # for faster, repeat insn is skip
+                    # infinity self loop
                     if current_arch.is_call(insn) or current_arch.is_jump(insn) or current_arch.is_ret(insn):
-                        inf_loop_detected = True
+                        self.err = "Detected infinity loop prev_addr"
                         break
+                    # maybe rep prefix
                     next_addr = gdb_get_nth_next_instruction_address(current_arch.pc, 2)
                     gdb.execute("until *{:#x}".format(next_addr))
+                    # recheck
                     if prev_prev_addr == prev_addr == current_arch.pc:
-                        inf_loop_detected = True
+                        self.err = "Detected infinity loop prev_addr"
                         break
                     insn = gef_current_instruction(current_arch.pc)
 
                 if self.print_insn:
                     self.force_write_stdout((str(insn) + "\n").encode())
 
+                # found and break
                 if self.is_target_insn(insn):
                     if not self.print_insn:
                         self.force_write_stdout(b"\r \r")
@@ -23865,9 +23904,9 @@ class ExecUntilCommand(GenericCommand):
 
         finally:
             self.revert_stdout_stderr() # anytime needed
-            gef_on_stop_hook(hook_stop_handler)
-            if inf_loop_detected:
-                err("Detected infinity loop prev_addr")
+            gef_on_stop_hook(hook_stop_handler) # anytime needed
+            if self.err:
+                err(self.err)
             else:
                 gdb.execute("context")
         return
@@ -23880,9 +23919,14 @@ class ExecUntilCommand(GenericCommand):
 
 @register_command
 class ExecUntilCallCommand(ExecUntilCommand):
-    """Execute until next call operation (alias: next-call)."""
+    """Execute until next call instruction (alias: next-call)."""
     _cmdline_ = "exec-until call"
-    _syntax_ = "{:s} [-h] [jmp|syscall|ret|memaccess] [, ...] [--print-insn]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [jmp|syscall|ret|memaccess] [--print-insn] [--skip-lib]".format(_cmdline_)
+    _example_ = ""
+    _example_ += "{:s} # execute until call instruction\n".format(_cmdline_)
+    _example_ += "{:s} jmp syscall ret memaccess # execute until call/jmp/syscall/ret/memaccess instruction\n".format(_cmdline_)
+    _example_ += "THIS FEATURE IS TOO SLOW.\n"
+    _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Start/Stop"
     _aliases_ = ["next-call",]
 
@@ -23901,21 +23945,31 @@ class ExecUntilCallCommand(ExecUntilCommand):
             argv.remove("--print-insn")
             self.print_insn = True
 
+        self.skip_lib = False
+        if "--skip-lib" in argv:
+            argv.remove("--skip-lib")
+            self.skip_lib = True
+
         for arg in argv:
             if not arg in ["call", "ret", "jmp", "syscall", "memaccess"]:
                 self.usage()
                 return
 
-        self.pattern = ["call"] + argv
+        self.mode = ["call"] + argv
         self.exec_next()
         return
 
 
 @register_command
 class ExecUntilJumpCommand(ExecUntilCommand):
-    """Execute until next jmp operation (alias: next-jmp)."""
+    """Execute until next jmp instruction (alias: next-jmp)."""
     _cmdline_ = "exec-until jmp"
-    _syntax_ = "{:s} [-h] [call|syscall|ret|memaccess] [, ...] [--print-insn]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [call|syscall|ret|memaccess] [--print-insn] [--skip-lib]".format(_cmdline_)
+    _example_ = ""
+    _example_ += "{:s} # execute until jmp instruction\n".format(_cmdline_)
+    _example_ += "{:s} call syscall ret memaccess # execute until jmp/call/syscall/ret/memaccess instruction\n".format(_cmdline_)
+    _example_ += "THIS FEATURE IS TOO SLOW.\n"
+    _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Start/Stop"
     _aliases_ = ["next-jmp",]
 
@@ -23934,21 +23988,31 @@ class ExecUntilJumpCommand(ExecUntilCommand):
             argv.remove("--print-insn")
             self.print_insn = True
 
+        self.skip_lib = False
+        if "--skip-lib" in argv:
+            argv.remove("--skip-lib")
+            self.skip_lib = True
+
         for arg in argv:
             if not arg in ["call", "ret", "jmp", "syscall", "memaccess"]:
                 self.usage()
                 return
 
-        self.pattern = ["jmp"] + argv
+        self.mode = ["jmp"] + argv
         self.exec_next()
         return
 
 
 @register_command
 class ExecUntilSyscallCommand(ExecUntilCommand):
-    """Execute until next syscall operation (alias: next-syscall)."""
+    """Execute until next syscall instruction (alias: next-syscall)."""
     _cmdline_ = "exec-until syscall"
-    _syntax_ = "{:s} [-h] [call|jmp|ret|memaccess] [, ...] [--print-insn]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [call|jmp|ret|memaccess] [--print-insn] [--skip-lib]".format(_cmdline_)
+    _example_ = ""
+    _example_ += "{:s} # execute until syscall instruction\n".format(_cmdline_)
+    _example_ += "{:s} call jmp ret memaccess # execute until syscall/call/jmp/ret/memaccess instruction\n".format(_cmdline_)
+    _example_ += "THIS FEATURE IS TOO SLOW.\n"
+    _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Start/Stop"
     _aliases_ = ["next-syscall",]
 
@@ -23967,21 +24031,31 @@ class ExecUntilSyscallCommand(ExecUntilCommand):
             argv.remove("--print-insn")
             self.print_insn = True
 
+        self.skip_lib = False
+        if "--skip-lib" in argv:
+            argv.remove("--skip-lib")
+            self.skip_lib = True
+
         for arg in argv:
             if not arg in ["call", "ret", "jmp", "syscall", "memaccess"]:
                 self.usage()
                 return
 
-        self.pattern = ["syscall"] + argv
+        self.mode = ["syscall"] + argv
         self.exec_next()
         return
 
 
 @register_command
 class ExecUntilRetCommand(ExecUntilCommand):
-    """Execute until next ret operation (alias: next-ret)."""
+    """Execute until next ret instruction (alias: next-ret)."""
     _cmdline_ = "exec-until ret"
-    _syntax_ = "{:s} [-h] [call|jmp|syscall|memaccess] [, ...] [--print-insn]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [call|jmp|syscall|memaccess] [--print-insn] [--skip-lib]".format(_cmdline_)
+    _example_ = ""
+    _example_ += "{:s} # execute until ret instruction\n".format(_cmdline_)
+    _example_ += "{:s} call jmp syscall memaccess # execute until ret/call/jmp/syscall/memaccess instruction\n".format(_cmdline_)
+    _example_ += "THIS FEATURE IS TOO SLOW.\n"
+    _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Start/Stop"
     _aliases_ = ["next-ret",]
 
@@ -24000,23 +24074,33 @@ class ExecUntilRetCommand(ExecUntilCommand):
             argv.remove("--print-insn")
             self.print_insn = True
 
+        self.skip_lib = False
+        if "--skip-lib" in argv:
+            argv.remove("--skip-lib")
+            self.skip_lib = True
+
         for arg in argv:
             if not arg in ["call", "ret", "jmp", "syscall", "memaccess"]:
                 self.usage()
                 return
 
-        self.pattern = ["ret"] + argv
+        self.mode = ["ret"] + argv
         self.exec_next()
         return
 
 
 @register_command
 class ExecUntilMemaccessCommand(ExecUntilCommand):
-    """Execute until next mem-access operation (alias: next-mem-access)."""
-    _cmdline_ = "exec-until mem"
-    _syntax_ = "{:s} [-h] [call|jmp|syscall|ret] [, ...] [--print-insn]".format(_cmdline_)
+    """Execute until next mem-access instruction (alias: next-mem)."""
+    _cmdline_ = "exec-until memaccess"
+    _syntax_ = "{:s} [-h] [call|jmp|syscall|ret] [--print-insn] [--skip-lib]".format(_cmdline_)
+    _example_ = ""
+    _example_ += "{:s} # execute until '[' is included by the instruction\n".format(_cmdline_)
+    _example_ += "{:s} call jmp syscall ret # execute until memaccess/call/jmp/syscall/ret instruction\n".format(_cmdline_)
+    _example_ += "THIS FEATURE IS TOO SLOW.\n"
+    _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Start/Stop"
-    _aliases_ = ["next-mem-access",]
+    _aliases_ = ["next-mem",]
 
     def __init__(self, *args, **kwargs):
         super().__init__(complete=gdb.COMPLETE_NONE)
@@ -24033,21 +24117,30 @@ class ExecUntilMemaccessCommand(ExecUntilCommand):
             argv.remove("--print-insn")
             self.print_insn = True
 
+        self.skip_lib = False
+        if "--skip-lib" in argv:
+            argv.remove("--skip-lib")
+            self.skip_lib = True
+
         for arg in argv:
             if not arg in ["call", "ret", "jmp", "syscall", "memaccess"]:
                 self.usage()
                 return
 
-        self.pattern = ["memaccess"] + argv
+        self.mode = ["memaccess"] + argv
         self.exec_next()
         return
 
 
 @register_command
 class ExecUntilKeywordCommand(ExecUntilCommand):
-    """Execute until next specific keyword operation (alias: next-keyword)."""
+    """Execute until specific keyword instruction (alias: next-keyword)."""
     _cmdline_ = "exec-until keyword"
-    _syntax_ = "{:s} [-h] KEYWORD [KEYWORD ...] [--print-insn]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] KEYWORD [KEYWORD ...] [--print-insn] [--skip-lib]".format(_cmdline_)
+    _example_ = ""
+    _example_ += "{:s} keyword \"push\" \"pop\" # execute until specific keyword is included by the instruction\n".format(_cmdline_)
+    _example_ += "THIS FEATURE IS TOO SLOW.\n"
+    _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Start/Stop"
     _aliases_ = ["next-keyword",]
 
@@ -24066,12 +24159,106 @@ class ExecUntilKeywordCommand(ExecUntilCommand):
             argv.remove("--print-insn")
             self.print_insn = True
 
+        self.skip_lib = False
+        if "--skip-lib" in argv:
+            argv.remove("--skip-lib")
+            self.skip_lib = True
+
         if len(argv) == 0:
             self.usage()
             return
 
-        self.pattern = ["keyword"]
+        self.mode = ["keyword"]
         self.keyword = argv
+        self.exec_next()
+        return
+
+
+@register_command
+class ExecUntilKeywordReCommand(ExecUntilCommand):
+    """Execute until specific keyword instruction (alias: next-keyword-re)."""
+    _cmdline_ = "exec-until keyword-re"
+    _syntax_ = "{:s} [-h] KEYWORD [KEYWORD ...] [--print-insn] [--skip-lib]".format(_cmdline_)
+    _example_ = ""
+    _example_ += "{:s} keyword-re \"call +r[ab]x\" # execute until specific keyword (regex)\n".format(_cmdline_)
+    _example_ += "THIS FEATURE IS TOO SLOW.\n"
+    _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
+    _category_ = "Start/Stop"
+    _aliases_ = ["next-keyword-re",]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(complete=gdb.COMPLETE_NONE)
+        return
+
+    @only_if_gdb_running
+    def do_invoke(self, argv):
+        if "-h" in argv:
+            self.usage()
+            return
+
+        self.print_insn = False
+        if "--print-insn" in argv:
+            argv.remove("--print-insn")
+            self.print_insn = True
+
+        self.skip_lib = False
+        if "--skip-lib" in argv:
+            argv.remove("--skip-lib")
+            self.skip_lib = True
+
+        if len(argv) == 0:
+            self.usage()
+            return
+
+        self.mode = ["keyword-re"]
+        self.keyword = argv
+        self.exec_next()
+        return
+
+
+@register_command
+class ExecUntilCondCommand(ExecUntilCommand):
+    """Execute until specific condition is filled (alias: next-cond)."""
+    _cmdline_ = "exec-until cond"
+    _syntax_ = "{:s} [-h] CONDITION [--print-insn] [--skip-lib]".format(_cmdline_)
+    _category_ = "Start/Stop"
+    _example_ = ""
+    _example_ += "{:s} \"$rax==0xdeadbeef && $rbx==0xcafebabe\" # execute until specific condition is filled\n".format(_cmdline_)
+    _example_ += "{:s} \"$rax==0x123 && *(long*)$rbx==0x4\" # multiple condition and memory access is supported\n".format(_cmdline_)
+    _example_ += "THIS FEATURE IS TOO SLOW.\n"
+    _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
+    _aliases_ = ["next-cond",]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(complete=gdb.COMPLETE_NONE)
+        return
+
+    @only_if_gdb_running
+    def do_invoke(self, argv):
+        if "-h" in argv:
+            self.usage()
+            return
+
+        self.print_insn = False
+        if "--print-insn" in argv:
+            argv.remove("--print-insn")
+            self.print_insn = True
+
+        self.skip_lib = False
+        if "--skip-lib" in argv:
+            argv.remove("--skip-lib")
+            self.skip_lib = True
+
+        if len(argv) == 0:
+            self.usage()
+            return
+
+        if re.search(r"[^><!=]=[^=]", argv[0]):
+            err("Should not use `=` since it will be replace register/memory value. Use `==`.")
+            return
+
+        self.mode = ["cond"]
+        self.condition = argv[0]
         self.exec_next()
         return
 

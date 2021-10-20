@@ -194,7 +194,7 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / Debian 
 * `xset`: sets the value to xmm/ymm register simply.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xset.png)
 * `exec-until`: executes until specific operation.
-    * Supported on x64/x86/ARM64/ARM for call/jmp/syscall/ret/mem-access/specific-keyword.
+    * Supported on x64/x86/ARM64/ARM for call/jmp/syscall/ret/memory-access/specific-keyword/specific-keyword-regex/specific-condition.
     * Please note that this command temporarily closes stdin and stderr on gdb.
 * `exec-next`: executes until next address.
     * This is useful for the operation with `rep` prefix.
