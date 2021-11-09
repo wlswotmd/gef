@@ -20807,6 +20807,256 @@ class XphysAddrCommand(GenericCommand):
 
 
 @register_command
+class CpuidCommand(GenericCommand):
+    """Get cpuid result."""
+    _cmdline_ = "cpuid"
+    _syntax_ = "{:s}".format(_cmdline_)
+    _category_ = "Process/State Inspection (Register)"
+
+    def write_val(self, addr, val):
+        if is_qemu_usermode():
+            fd = open("/proc/{:d}/mem".format(get_pid()), "wb")
+            fd.seek(addr)
+            if is_64bit():
+                fd.write(p64(val))
+            else:
+                fd.write(p32(val))
+            fd.close()
+        else:
+            gdb.execute("set *(void**){:#x} = {:#x}".format(addr, val), to_string=True)
+        return
+
+    def get_state(self):
+        d = {}
+        d["pc"] = get_register("$pc")
+        d["code"] = read_int_from_memory(d["pc"])
+        if is_x86_64():
+            d["rax"] = get_register("$rax")
+            d["rbx"] = get_register("$rbx")
+            d["rdx"] = get_register("$rdx")
+            d["rcx"] = get_register("$rcx")
+        else:
+            d["eax"] = get_register("$eax")
+            d["ebx"] = get_register("$ebx")
+            d["edx"] = get_register("$edx")
+            d["ecx"] = get_register("$ecx")
+        return d
+
+    def revert_state(self, d):
+        self.write_val(d["pc"], d["code"])
+        gdb.execute("set $pc = {:#x}".format(d["pc"]), to_string=True)
+        if is_x86_64():
+            gdb.execute("set $rax = {:#x}".format(d["rax"]), to_string=True)
+            gdb.execute("set $rbx = {:#x}".format(d["rbx"]), to_string=True)
+            gdb.execute("set $rdx = {:#x}".format(d["rdx"]), to_string=True)
+            gdb.execute("set $rcx = {:#x}".format(d["rcx"]), to_string=True)
+        else:
+            gdb.execute("set $eax = {:#x}".format(d["eax"]), to_string=True)
+            gdb.execute("set $ebx = {:#x}".format(d["ebx"]), to_string=True)
+            gdb.execute("set $edx = {:#x}".format(d["edx"]), to_string=True)
+            gdb.execute("set $ecx = {:#x}".format(d["ecx"]), to_string=True)
+        return
+
+    def close_stdout(self):
+        self.stdout = 1
+        self.stdout_bak = os.dup(self.stdout)
+        f = open("/dev/null")
+        os.dup2(f.fileno(), self.stdout)
+        f.close()
+        return
+
+    def revert_stdout(self):
+        os.dup2(self.stdout_bak, self.stdout)
+        os.close(self.stdout_bak)
+        return
+
+    def execute_cpuid(self, num):
+        gef_on_stop_unhook(hook_stop_handler)
+        d = self.get_state()
+        self.write_val(d["pc"], 0xa20f) # cpuid
+        if is_x86_64():
+            gdb.execute("set $rax = {:#x}".format(num), to_string=True)
+        else:
+            gdb.execute("set $eax = {:#x}".format(num), to_string=True)
+        self.close_stdout()
+        gdb.execute("stepi", to_string=True)
+        self.revert_stdout()
+        eax = get_register("$eax") & 0xffffffff
+        ebx = get_register("$ebx") & 0xffffffff
+        ecx = get_register("$ecx") & 0xffffffff
+        edx = get_register("$edx") & 0xffffffff
+        self.revert_state(d)
+        gef_on_stop_hook(hook_stop_handler)
+        return eax, ebx, ecx, edx
+
+    def show_cpuid(self):
+        c = lambda x, msg: Color.colorify(msg, "white bold") if x else msg
+
+        eax, ebx, ecx, edx = self.execute_cpuid(0)
+        valid_max_cpuid = min(eax, 0x20)
+        vid = (p32(ebx) + p32(edx) + p32(ecx)).decode("utf-8")
+        info("cpuid (eax={:#x})".format(0))
+        gef_print("    eax={:#x}, ebx={:#x}, ecx={:#x}, edx={:#x}".format(eax, ebx, ecx, edx))
+        gef_print("    eax: Maximum Input Value for Basic CPUID Information")
+        gef_print("    ebx+edx+ecx: Vendor ID; (={:s})".format(repr(vid)))
+
+        if valid_max_cpuid < 1:
+            return
+
+        eax, ebx, ecx, edx = self.execute_cpuid(1)
+        info("cpuid (eax={:#x})".format(1))
+        gef_print("    eax={:#x}, ebx={:#x}, ecx={:#x}, edx={:#x}".format(eax, ebx, ecx, edx))
+        gef_print("    eax: Version Information: Type, Family, Model, and Stepping ID")
+        gef_print("    ebx: Additional Information: Brand Index, CLFLUSH line size,")
+        gef_print("         Maximum number of addressable IDs for logical processors in this physical package, Initial APIC ID")
+        gef_print("    edx,ecx: Feature Information")
+        gef_print(c((edx >>  0) & 1, "       EDX  0: FPU (Floating Point Unit On-Chip)"))
+        gef_print(c((edx >>  1) & 1, "       EDX  1: VME (Virtual 8086 Mode Enhancements)"))
+        gef_print(c((edx >>  2) & 1, "       EDX  2: DE (Debugging Extensions)"))
+        gef_print(c((edx >>  3) & 1, "       EDX  3: PSE (Page Size Extension)"))
+        gef_print(c((edx >>  4) & 1, "       EDX  4: TSC (Time Stamp Counter)"))
+        gef_print(c((edx >>  5) & 1, "       EDX  5: MSR (Model Specific Registers RDMSR and WRMSR Instructions)"))
+        gef_print(c((edx >>  6) & 1, "       EDX  6: PAE (Physical Address Extension)"))
+        gef_print(c((edx >>  7) & 1, "       EDX  7: MCE (Machine Check Exception)"))
+        gef_print(c((edx >>  8) & 1, "       EDX  8: CX8 (CMPXCHG8B Instruction)"))
+        gef_print(c((edx >>  9) & 1, "       EDX  9: APIC (APIC On-Chip)"))
+        gef_print(c((edx >> 10) & 1, "       EDX 10: Reserved"))
+        gef_print(c((edx >> 11) & 1, "       EDX 11: SEP (SYSENTER and SYSEXIT Instructions)"))
+        gef_print(c((edx >> 12) & 1, "       EDX 12: MTRR (Memory Type Range Registers)"))
+        gef_print(c((edx >> 13) & 1, "       EDX 13: PGE (Page Global Bit)"))
+        gef_print(c((edx >> 14) & 1, "       EDX 14: MCA (Machine Check Architecture)"))
+        gef_print(c((edx >> 15) & 1, "       EDX 15: CMOV (Conditional Move Instructions)"))
+        gef_print(c((edx >> 16) & 1, "       EDX 16: PAT (Page Attribute Table)"))
+        gef_print(c((edx >> 17) & 1, "       EDX 17: PSE-36 (36-Bit Page Size Extension)"))
+        gef_print(c((edx >> 18) & 1, "       EDX 18: PSN (Processor Serial Number)"))
+        gef_print(c((edx >> 19) & 1, "       EDX 19: CLFSH (CLFLUSH Instruction)"))
+        gef_print(c((edx >> 20) & 1, "       EDX 20: Reserved"))
+        gef_print(c((edx >> 21) & 1, "       EDX 21: DS (Debug Store)"))
+        gef_print(c((edx >> 22) & 1, "       EDX 22: ACPI (Thermal Monitor and Software Controlled Clock Facilities)"))
+        gef_print(c((edx >> 23) & 1, "       EDX 23: MMX (Intel MMX Technology)"))
+        gef_print(c((edx >> 24) & 1, "       EDX 24: FXSR (FXSAVE and FXRSTOR Instructions)"))
+        gef_print(c((edx >> 25) & 1, "       EDX 25: SSE"))
+        gef_print(c((edx >> 26) & 1, "       EDX 26: SSE2"))
+        gef_print(c((edx >> 27) & 1, "       EDX 27: SS (Self Snoop)"))
+        gef_print(c((edx >> 28) & 1, "       EDX 28: HTT (Max APIC IDs reserved field is Valid)"))
+        gef_print(c((edx >> 29) & 1, "       EDX 29: TM (Thermal Monitor)"))
+        gef_print(c((edx >> 30) & 1, "       EDX 30: Reserved"))
+        gef_print(c((edx >> 31) & 1, "       EDX 31: PBE (Pending Break Enable)"))
+
+        gef_print(c((ecx >>  0) & 1, "       ECX  0: SSE3 (Streaming SIMD Extensions 3)"))
+        gef_print(c((ecx >>  1) & 1, "       ECX  1: PCLMULQDQ (PCLMULQDQ Instruction)"))
+        gef_print(c((ecx >>  2) & 1, "       ECX  2: DTES64 (64-bit DS Area)"))
+        gef_print(c((ecx >>  3) & 1, "       ECX  3: MONITOR (MONITOR/MWAIT Instruction)"))
+        gef_print(c((ecx >>  4) & 1, "       ECX  4: DS-CPL (CPL Qualified Debug Store)"))
+        gef_print(c((ecx >>  5) & 1, "       ECX  5: VMX (Intel VT (Virtual Machine Extensions))"))
+        gef_print(c((ecx >>  6) & 1, "       ECX  6: SMX (Safer Mode Extensions)"))
+        gef_print(c((ecx >>  7) & 1, "       ECX  7: EIST (Enhanced Intel SpeedStep technology)"))
+        gef_print(c((ecx >>  8) & 1, "       ECX  8: TM2 (Thermal Monitor 2)"))
+        gef_print(c((ecx >>  9) & 1, "       ECX  9: SSSE3 (Supplemental Streaming SIMD Extensions 3)"))
+        gef_print(c((ecx >> 10) & 1, "       ECX 10: CNXT-ID (L1 Context ID)"))
+        gef_print(c((ecx >> 11) & 1, "       ECX 11: SDBG (IA32_DEBUG_INTERFACE MSR for silicon debug)"))
+        gef_print(c((ecx >> 12) & 1, "       ECX 12: FMA (FMA extensions using YMM state)"))
+        gef_print(c((ecx >> 13) & 1, "       ECX 13: CMPXCHG16B (CMPXCHG16B Instruction)"))
+        gef_print(c((ecx >> 14) & 1, "       ECX 14: xTPR (xTPR Update Control)"))
+        gef_print(c((ecx >> 15) & 1, "       ECX 15: PDCM (Perfmon and Debug Capability)"))
+        gef_print(c((ecx >> 16) & 1, "       ECX 16: Reserved"))
+        gef_print(c((ecx >> 17) & 1, "       ECX 17: PCID (Process-context Identifiers)"))
+        gef_print(c((ecx >> 18) & 1, "       ECX 18: DCA (Direct Cache Access)"))
+        gef_print(c((ecx >> 19) & 1, "       ECX 19: SSE4_1 (Streaming SIMD Extensions 4.1)"))
+        gef_print(c((ecx >> 20) & 1, "       ECX 20: SSE4_2 (Streaming SIMD Extensions 4.2)"))
+        gef_print(c((ecx >> 21) & 1, "       ECX 21: x2APIC"))
+        gef_print(c((ecx >> 22) & 1, "       ECX 22: MOVBE (MOVBE Instruction)"))
+        gef_print(c((ecx >> 23) & 1, "       ECX 23: POPCNT (POPCNT Instruction)"))
+        gef_print(c((ecx >> 24) & 1, "       ECX 24: TSC-Deadline"))
+        gef_print(c((ecx >> 25) & 1, "       ECX 25: AESNI (AESNI Instruction)"))
+        gef_print(c((ecx >> 26) & 1, "       ECX 26: XSAVE"))
+        gef_print(c((ecx >> 27) & 1, "       ECX 27: OSXSAVE"))
+        gef_print(c((ecx >> 28) & 1, "       ECX 28: AVX (Intel Advanced Vector Extensions)"))
+        gef_print(c((ecx >> 29) & 1, "       ECX 29: F16C (16-bit floating-point conversion instructions)"))
+        gef_print(c((ecx >> 30) & 1, "       ECX 30: RDRAND (RDRAND Instruction)"))
+        gef_print(c((ecx >> 31) & 1, "       ECX 31: Not Used"))
+
+        if valid_max_cpuid < 2:
+            return
+
+        eax, ebx, ecx, edx = self.execute_cpuid(2)
+        info("cpuid (eax={:#x})".format(2))
+        gef_print("    eax={:#x}, ebx={:#x}, ecx={:#x}, edx={:#x}".format(eax, ebx, ecx, edx))
+        gef_print("    eax,ebx,ecx,edx: Cache and TLB Information")
+
+        if valid_max_cpuid < 3:
+            return
+
+        eax, ebx, ecx, edx = self.execute_cpuid(3)
+        info("cpuid (eax={:#x})".format(3))
+        gef_print("    eax={:#x}, ebx={:#x}, ecx={:#x}, edx={:#x}".format(eax, ebx, ecx, edx))
+        gef_print("    eax,ebx: Reserved")
+        gef_print("    ecx,edx: Processor Serial Number")
+
+        if valid_max_cpuid < 4:
+            return
+
+        for i in range(4, valid_max_cpuid + 1):
+            eax, ebx, ecx, edx = self.execute_cpuid(i)
+            if eax == ebx == ecx == edx == 0:
+                continue
+            info("cpuid (eax={:#x})".format(i))
+            gef_print("    eax={:#x}, ebx={:#x}, ecx={:#x}, edx={:#x}".format(eax, ebx, ecx, edx))
+        return
+
+    def show_cpuid_extra(self):
+        eax, ebx, ecx, edx = self.execute_cpuid(0x80000000)
+        valid_max_cpuid_extended = eax
+        info("cpuid (eax={:#x})".format(0x80000000))
+        gef_print("    eax={:#x}, ebx={:#x}, ecx={:#x}, edx={:#x}".format(eax, ebx, ecx, edx))
+        gef_print("    eax: Maximum Input Value for Extended Function CPUID Information.")
+        gef_print("    ebx,ecx,edx: Reserved")
+
+        if valid_max_cpuid_extended < 0x80000001:
+            return
+
+        eax, ebx, ecx, edx = self.execute_cpuid(0x80000001)
+        info("cpuid (eax={:#x})".format(0x80000001))
+        gef_print("    eax={:#x}, ebx={:#x}, ecx={:#x}, edx={:#x}".format(eax, ebx, ecx, edx))
+        gef_print("    eax, ebx: Reserved")
+        gef_print("    ecx, edx: Extended Processor Signature and Feature Bits")
+
+        if valid_max_cpuid_extended < 0x80000004:
+            return
+
+        for i in range(0x80000002, 0x80000005):
+            eax, ebx, ecx, edx = self.execute_cpuid(i)
+            vid = (p32(eax) + p32(ebx) + p32(ecx) + p32(edx)).decode("utf-8")
+            info("cpuid (eax={:#x})".format(i))
+            gef_print("    eax={:#x}, ebx={:#x}, ecx={:#x}, edx={:#x}".format(eax, ebx, ecx, edx))
+            gef_print("    eax+ebx+ecx+edx: Processor Brand String; (={:s})".format(repr(vid)))
+
+        for i in range(0x80000005, valid_max_cpuid_extended + 1):
+            eax, ebx, ecx, edx = self.execute_cpuid(i)
+            if eax == ebx == ecx == edx == 0:
+                continue
+            info("cpuid (eax={:#x})".format(i))
+            gef_print("    eax={:#x}, ebx={:#x}, ecx={:#x}, edx={:#x}".format(eax, ebx, ecx, edx))
+
+        return
+
+    @only_if_gdb_running
+    def do_invoke(self, argv):
+        if "-h" in argv:
+            argv.remove("-h")
+            self.help(argv)
+            return
+
+        if not is_x86():
+            err("Unsupported")
+            return
+
+        self.show_cpuid()
+        self.show_cpuid_extra()
+        return
+
+
+@register_command
 class MsrCommand(GenericCommand):
     """Get MSR via kernel."""
     _cmdline_ = "msr"

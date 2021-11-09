@@ -157,6 +157,8 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / Debian 
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/edit-flags-arm64.png)
 * `unicorn-emulate`: is improved.
     * It reads and writes correctly to the address pointed to by `$fs`/`$gs`.
+    * It supports a new mode to stop after executing N instructions.
+    * It supports execution under qemu-usermode partially (It is unable to emulate TLS if TLS is not initialized).
 * `ropper`: is improved.
     * It does not reset autocomplete settings after calling imported ropper.
 * `hexdump`: is improved.
@@ -228,6 +230,8 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / Debian 
 * `ls`/`cat`: invokes `ls`/`cat` directly.
 * `constgrep`: invokes `grep` under `/usr/include`.
 * `rp`: invokes `rp++` with commonly used options.
+* `cpuid`: show the result of cpuid(eax=0,1,2...).
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/cpuid.png)
 
 ### Other
 * Replace the unicode character to ASCII.
