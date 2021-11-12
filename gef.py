@@ -580,7 +580,17 @@ class Elf:
         # shdr
         self.shdrs = []
         for i in range(self.e_shnum):
-            self.shdrs.append(Shdr(self, self.e_shoff + self.e_shentsize * i))
+            try:
+                self.shdrs.append(Shdr(self, self.e_shoff + self.e_shentsize * i))
+            except:
+                # Perspective failure. Probably it occurs when parsing ELF loaded into memory.
+                # Even if the ELF is loaded, the section header is not loaded. Therefore, it is ignored.
+                self.shdrs = []
+                break
+        else:
+            # The existence of multiple SHT_NULLs is assumed to be abnormal, and an error is raised.
+            if sum([x.sh_type == Shdr.SHT_NULL for x in self.shdrs]) > 1:
+                self.shdrs = []
 
         if self.fd is not None:
             self.fd.close()
@@ -1926,7 +1936,7 @@ def get_entry_point():
     for line in gdb.execute("info target", to_string=True).split("\n"):
         if "Entry point:" in line:
             return int(line.strip().split(" ")[-1], 16)
-    for line in gdb.execute("elfinfo", to_string=True).split("\n"):
+    for line in gdb.execute("elf-info", to_string=True).split("\n"):
         if "Entry point" in line:
             return int(line.strip().split(" ")[-1], 16)
     return None
@@ -8398,7 +8408,6 @@ class ElfInfoCommand(GenericCommand):
     _syntax_ = "{:s} [-h] [-r] [FILE|ADDRESS]".format(_cmdline_)
     _example_ = "{:s} /bin/ls".format(_cmdline_)
     _category_ = "Process/State Inspection (ELF)"
-    _aliases_ = ["elfinfo",]
 
     def __init__(self, *args, **kwargs):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
@@ -8597,27 +8606,30 @@ class ElfInfoCommand(GenericCommand):
         }
 
         gef_print(Color.colorify("Section Header", "yellow bold"))
-        fmt = "  [{:>2s}] {:20s} {:>15s} {:>10s} {:>10s} {:>8s} {:>8s} {:5s} {:4s} {:4s} {:>8s}"
-        gef_print(fmt.format("#", "Name", "Type", "Address", "Offset", "Size", "EntSiz", "Flags", "Link", "Info", "Align"))
-        for i, s in enumerate(elf.shdrs):
-            sh_type = stype[s.sh_type] if s.sh_type in stype else "UNKNOWN"
-            sh_flags = ""
-            if s.sh_flags & Shdr.SHF_WRITE:            sh_flags += "W"
-            if s.sh_flags & Shdr.SHF_ALLOC:            sh_flags += "A"
-            if s.sh_flags & Shdr.SHF_EXECINSTR:        sh_flags += "X"
-            if s.sh_flags & Shdr.SHF_MERGE:            sh_flags += "M"
-            if s.sh_flags & Shdr.SHF_STRINGS:          sh_flags += "S"
-            if s.sh_flags & Shdr.SHF_INFO_LINK:        sh_flags += "I"
-            if s.sh_flags & Shdr.SHF_LINK_ORDER:       sh_flags += "L"
-            if s.sh_flags & Shdr.SHF_OS_NONCONFORMING: sh_flags += "O"
-            if s.sh_flags & Shdr.SHF_GROUP:            sh_flags += "G"
-            if s.sh_flags & Shdr.SHF_TLS:              sh_flags += "T"
-            if s.sh_flags & Shdr.SHF_EXCLUDE:          sh_flags += "E"
-            if s.sh_flags & Shdr.SHF_COMPRESSED:       sh_flags += "C"
+        if not elf.shdrs:
+            gef_print("Not loaded")
+        else:
+            fmt = "  [{:>2s}] {:20s} {:>15s} {:>10s} {:>10s} {:>8s} {:>8s} {:5s} {:4s} {:4s} {:>8s}"
+            gef_print(fmt.format("#", "Name", "Type", "Address", "Offset", "Size", "EntSiz", "Flags", "Link", "Info", "Align"))
+            for i, s in enumerate(elf.shdrs):
+                sh_type = stype[s.sh_type] if s.sh_type in stype else "UNKNOWN"
+                sh_flags = ""
+                if s.sh_flags & Shdr.SHF_WRITE:            sh_flags += "W"
+                if s.sh_flags & Shdr.SHF_ALLOC:            sh_flags += "A"
+                if s.sh_flags & Shdr.SHF_EXECINSTR:        sh_flags += "X"
+                if s.sh_flags & Shdr.SHF_MERGE:            sh_flags += "M"
+                if s.sh_flags & Shdr.SHF_STRINGS:          sh_flags += "S"
+                if s.sh_flags & Shdr.SHF_INFO_LINK:        sh_flags += "I"
+                if s.sh_flags & Shdr.SHF_LINK_ORDER:       sh_flags += "L"
+                if s.sh_flags & Shdr.SHF_OS_NONCONFORMING: sh_flags += "O"
+                if s.sh_flags & Shdr.SHF_GROUP:            sh_flags += "G"
+                if s.sh_flags & Shdr.SHF_TLS:              sh_flags += "T"
+                if s.sh_flags & Shdr.SHF_EXCLUDE:          sh_flags += "E"
+                if s.sh_flags & Shdr.SHF_COMPRESSED:       sh_flags += "C"
 
-            fmt = "  [{:2d}] {:20s} {:>15s} {:#10x} {:#10x} {:#8x} {:#8x} {:5s} {:#4x} {:#4x} {:#8x}"
-            gef_print(fmt.format(i, s.sh_name, sh_type, s.sh_addr, s.sh_offset, s.sh_size,
-                                 s.sh_entsize, sh_flags, s.sh_link, s.sh_info, s.sh_addralign))
+                fmt = "  [{:2d}] {:20s} {:>15s} {:#10x} {:#10x} {:#8x} {:#8x} {:5s} {:#4x} {:#4x} {:#8x}"
+                gef_print(fmt.format(i, s.sh_name, sh_type, s.sh_addr, s.sh_offset, s.sh_size,
+                                     s.sh_entsize, sh_flags, s.sh_link, s.sh_info, s.sh_addralign))
         return
 
 
