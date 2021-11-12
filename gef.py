@@ -11785,6 +11785,7 @@ class SyscallArgsCommand(GenericCommand):
                 [0x1bd, 'landlock_add_rule', ['const int ruleset_fd', 'const enum landlock_rule_type rule_type', 'const void *const rule_attr', 'const __u32 flags']],
                 [0x1be, 'landlock_restrict_self', ['const int ruleset_fd', 'const __u32 flags']],
                 [0x1bf, 'memfd_secret', ['unsigned int, flags']],
+                [0x1c0, 'process_mrelease', ['int pidfd', 'unsigned int flags']],
             ]
             syscall_list += [ # x32
                 [0x40000200, 'rt_sigaction', ['int sig', 'const struct compat_sigaction *act', 'struct compat_sigaction *oact', 'compat_size_t sigsetsize']], # compat
@@ -12280,6 +12281,7 @@ class SyscallArgsCommand(GenericCommand):
                 [0x1bd, 'landlock_add_rule', ['const int ruleset_fd', 'const enum landlock_rule_type rule_type', 'const void *const rule_attr', 'const __u32 flags']],
                 [0x1be, 'landlock_restrict_self', ['const int ruleset_fd', 'const __u32 flags']],
                 [0x1bf, 'memfd_secret', ['unsigned int, flags']],
+                [0x1c0, 'process_mrelease', ['int pidfd', 'unsigned int flags']],
             ]
 
         elif is_x86_32() and not self.is_emulated32():
@@ -12732,6 +12734,7 @@ class SyscallArgsCommand(GenericCommand):
                 [0x1bd, 'landlock_add_rule', ['const int ruleset_fd', 'const enum landlock_rule_type rule_type', 'const void *const rule_attr', 'const __u32 flags']],
                 [0x1be, 'landlock_restrict_self', ['const int ruleset_fd', 'const __u32 flags']],
                 [0x1bf, 'memfd_secret', ['unsigned int, flags']],
+                [0x1c0, 'process_mrelease', ['int pidfd', 'unsigned int flags']],
             ]
 
         elif is_arm64():
@@ -13046,6 +13049,7 @@ class SyscallArgsCommand(GenericCommand):
                 [0x1bd, 'landlock_add_rule', ['const int ruleset_fd', 'const enum landlock_rule_type rule_type', 'const void *const rule_attr', 'const __u32 flags']],
                 [0x1be, 'landlock_restrict_self', ['const int ruleset_fd', 'const __u32 flags']],
                 [0x1bf, 'memfd_secret', ['unsigned int, flags']],
+                [0x1c0, 'process_mrelease', ['int pidfd', 'unsigned int flags']],
             ]
 
         elif is_arm32() and self.is_emulated32():
@@ -13501,6 +13505,7 @@ class SyscallArgsCommand(GenericCommand):
                 [0x1bd, 'landlock_add_rule', ['const int ruleset_fd', 'const enum landlock_rule_type rule_type', 'const void *const rule_attr', 'const __u32 flags']],
                 [0x1be, 'landlock_restrict_self', ['const int ruleset_fd', 'const __u32 flags']],
                 [0x1bf, 'memfd_secret', ['unsigned int, flags']],
+                [0x1c0, 'process_mrelease', ['int pidfd', 'unsigned int flags']],
                 [0xf0002, 'cacheflush', ['unsigned long start', 'unsigned long end', 'int flags']], # arch/arm/kernel/traps.c
                 [0xf0005, 'set_tls', ['unsigned long val']], # arch/arm/kernel/traps.c
             ]
@@ -13961,6 +13966,7 @@ class SyscallArgsCommand(GenericCommand):
                 [0x1bd, 'landlock_add_rule', ['const int ruleset_fd', 'const enum landlock_rule_type rule_type', 'const void *const rule_attr', 'const __u32 flags']],
                 [0x1be, 'landlock_restrict_self', ['const int ruleset_fd', 'const __u32 flags']],
                 [0x1bf, 'memfd_secret', ['unsigned int, flags']],
+                [0x1c0, 'process_mrelease', ['int pidfd', 'unsigned int flags']],
                 [0xf0001, 'breakpoint', []], # arch/arm/kernel/traps.c
                 [0xf0002, 'cacheflush', ['unsigned long start', 'unsigned long end', 'int flags']], # arch/arm/kernel/traps.c
                 [0xf0003, 'usr26', []], # arch/arm/kernel/traps.c
