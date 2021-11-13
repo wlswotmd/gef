@@ -4845,9 +4845,11 @@ class FormatStringBreakpoint(gdb.Breakpoint):
             content = read_cstring_from_memory(addr.value)
             name = addr.info.name if addr.info else addr.section.path
             msg.append(Color.colorify("Format string helper", "yellow bold"))
-            msg.append("Possible insecure format string: {:s}('{:s}' {:s} {:#x}: '{:s}')".format(self.location, ptr, RIGHT_ARROW, addr.value, content))
-            msg.append("Reason: Call to '{:s}()' with format string argument in position "
-                       "#{:d} is in page {:#x} ({:s}) that has write permission".format(self.location, self.num_args, addr.section.page_start, name))
+            m = "Possible insecure format string: {:s}('{:s}' {:s} {:#x}: '{:s}')"
+            msg.append(m.format(self.location, ptr, RIGHT_ARROW, addr.value, content))
+            m = "Reason: Call to '{:s}()' with format string argument in position "
+            m += "#{:d} is in page {:#x} ({:s}) that has write permission"
+            msg.append(m.format(self.location, self.num_args, addr.section.page_start, name))
             push_context_message("warn", "\n".join(msg))
             return True
         return False
@@ -8199,7 +8201,7 @@ class RpCommand(GenericCommand):
 class AssembleCommand(GenericCommand):
     """Inline code assemble. Architecture can be set in GEF runtime config (default x86-64). """
     _cmdline_ = "asm"
-    _syntax_ = "{:s} [-h] [-a ARCH] [-m MODE] [-e] [-s] [-l LOCATION] instruction;[instruction;...instruction;])\n".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [-a ARCH] [-m MODE] [-e] [-s] [-l LOCATION] instruction;[instruction;...instruction;]\n".format(_cmdline_)
     _syntax_ += "  -a ARCH      specify the architecture\n"
     _syntax_ += "  -a MODE      specify the mode\n"
     _syntax_ += "  -e           use big-endian\n"
@@ -8224,7 +8226,7 @@ class AssembleCommand(GenericCommand):
     _example_ += '{:s} -a SPARC -m SPARC32    "add %g1, %g2, %g3"\n'.format(_cmdline_)
     _example_ += '{:s} -a SPARC -m SPARC32 -e "add %g1, %g2, %g3"\n'.format(_cmdline_)
     _example_ += '{:s} -a SPARC -m SPARC64 -e "add %g1, %g2, %g3"\n'.format(_cmdline_)
-    _example_ += '{:s} -a SYSTEMZ -e "a %r0, 4095(%r15,%r1)"\n'.format(_cmdline_)
+    _example_ += '{:s} -a SYSTEMZ -e "a %r0, 4095(%r15,%r1)"'.format(_cmdline_)
     _category_ = "Assemble"
 
     def __init__(self, *args, **kwargs):
@@ -8271,6 +8273,7 @@ class AssembleCommand(GenericCommand):
             return
 
         if not args:
+            self.usage()
             return
 
         if (arch_s, mode_s) == (None, None):
@@ -8298,7 +8301,7 @@ class AssembleCommand(GenericCommand):
             endian_s = "big" if big_endian else "little"
 
         insns = " ".join(args)
-        insns = [x.strip() for x in insns.split(";") if x is not None]
+        insns = [x.strip() for x in insns.split(";") if x is not None and x.strip() != ""]
 
         arch_mode_s = ":".join([str(arch_s), str(mode_s)])
         info("Assembling {} instruction{} for {} ({} endian)".format(len(insns), "s" if len(insns)>1 else "", arch_mode_s, endian_s))
@@ -8330,6 +8333,120 @@ class AssembleCommand(GenericCommand):
             l = len(raw)
             info("Overwriting {:d} bytes at {:s}".format(l, format_address(overwrite_location)))
             write_memory(overwrite_location, raw, l)
+        return
+
+
+@register_command
+class DisassembleCommand(GenericCommand):
+    """Inline code disassemble. Architecture can be set in GEF runtime config (default x86-64). """
+    _cmdline_ = "dasm"
+    _syntax_ = "{:s} [-h] [-a ARCH] [-m MODE] [-e] hex-byte-code\n".format(_cmdline_)
+    _syntax_ += "  -a ARCH      specify the architecture\n"
+    _syntax_ += "  -a MODE      specify the mode\n"
+    _syntax_ += "  -e           use big-endian"
+    _example_ = "\n"
+    _example_ += '{:s} -a X86 -m 64 "488b00 48ffc0"\n'.format(_cmdline_)
+    _example_ += '{:s} -a X86 -m 32 "8b00 40"\n'.format(_cmdline_)
+    _example_ += '{:s} -a X86 -m 16 "8b00 40"\n'.format(_cmdline_)
+    _example_ += '{:s} -a ARM -m ARM    "031042e0"\n'.format(_cmdline_)
+    _example_ += '{:s} -a ARM -m ARM -e "e0421003"\n'.format(_cmdline_)
+    _example_ += '{:s} -a ARM -m THUMB  "f024"\n'.format(_cmdline_)
+    _example_ += '{:s} -a ARM64 -m ARM  "e10b40b9"\n'.format(_cmdline_)
+    _example_ += '{:s} -a MIPS -m MIPS32    "2448c700"\n'.format(_cmdline_)
+    _example_ += '{:s} -a MIPS -m MIPS32 -e "00c74824"\n'.format(_cmdline_)
+    _example_ += '{:s} -a MIPS -m MIPS64    "2448c700"\n'.format(_cmdline_)
+    _example_ += '{:s} -a MIPS -m MIPS64 -e "00c74824"\n'.format(_cmdline_)
+    _example_ += '{:s} -a PPC -m 32 -e "7c221a14"\n'.format(_cmdline_)
+    _example_ += '{:s} -a PPC -m 64    "141a227c"\n'.format(_cmdline_)
+    _example_ += '{:s} -a PPC -m 64 -e "7c221a14"\n'.format(_cmdline_)
+    _example_ += '{:s} -a SPARC -m V9    "02400086"\n'.format(_cmdline_)
+    _example_ += '{:s} -a SPARC -m V9 -e "86004002"'.format(_cmdline_)
+    _category_ = "Assemble"
+
+    def __init__(self):
+        super().__init__(complete=gdb.COMPLETE_LOCATION)
+        self.valid_arch_modes = {
+            "ARM" : ["ARM", "THUMB"],
+            "ARM64" : [],
+            "MIPS" : ["MIPS32", "MIPS64"],
+            "PPC" : ["PPC32", "PPC64"],
+            "SPARC" : ["SPARC32"],
+            "X86" : ["16", "32", "64"],
+        }
+        return
+
+    def pre_load(self):
+        try:
+            __import__("capstone")
+        except ImportError:
+            msg = "Missing `capstone` package for Python. Install with `pip install capstone`."
+            raise ImportWarning(msg)
+        return
+
+    def do_invoke(self, argv):
+        arch_s, mode_s, big_endian = None, None, False
+        try:
+            opts, args = getopt.getopt(argv, "a:m:eh")
+            for o, a in opts:
+                if o == "-a":
+                    arch_s = a.upper()
+                if o == "-m":
+                    mode_s = a.upper()
+                if o == "-e":
+                    big_endian = True
+                if o == "-h":
+                    self.usage()
+                    return
+        except:
+            self.usage()
+            return
+
+        if not args:
+            self.usage()
+            return
+
+        if (arch_s, mode_s) == (None, None):
+            if is_alive():
+                if is_arm64():
+                    arch_s, mode_s = current_arch.arch, 0
+                else:
+                    arch_s, mode_s = current_arch.arch, current_arch.mode
+                endian_s = "big" if is_big_endian() else "little"
+                arch, mode = get_capstone_arch(arch=arch_s, mode=mode_s, endian=is_big_endian())
+            else:
+                # if not alive, defaults to x86-64
+                arch_s = "X86"
+                mode_s = "64"
+                endian_s = "little"
+                arch, mode = get_capstone_arch(arch=arch_s, mode=mode_s, endian=False)
+        elif not arch_s:
+            err("An architecture (-a) must be provided")
+            return
+        elif not arch_s in ["SPARC"] and not mode_s:
+            err("A mode (-m) must be provided")
+            return
+        else:
+            arch, mode = get_capstone_arch(arch=arch_s, mode=mode_s, endian=big_endian)
+            endian_s = "big" if big_endian else "little"
+
+        insns = " ".join(args)
+        insns = insns.replace(" ", "").replace("\t", "")
+        try:
+            insns = binascii.unhexlify(insns)
+        except:
+            err("Invalid format")
+            return
+
+        arch_mode_s = ":".join([str(arch_s), str(mode_s)])
+        info("Disassembling {} bytes for {} ({} endian)".format(len(insns), arch_mode_s, endian_s))
+
+        capstone = sys.modules["capstone"]
+        cs = capstone.Cs(arch, mode)
+        cs.detail = True
+
+        for insn in cs.disasm(insns, 0x0):
+            b = binascii.hexlify(insn.bytes).decode("utf-8")
+            gef_print("{:>#6x}:\t{:<10s}\t{:s}\t{:s}".format(insn.address, b, insn.mnemonic, insn.op_str))
         return
 
 
@@ -8885,7 +9002,8 @@ class ContextCommand(GenericCommand):
 
         trail_len = len(m) + 6
         title = ""
-        title += Color.colorify("{:{padd}<{width}} ".format("", width=max(self.tty_columns - trail_len, 0), padd=HORIZONTAL_LINE), line_color)
+        width = max(self.tty_columns - trail_len, 0)
+        title += Color.colorify("{:{padd}<{width}} ".format("", width=width, padd=HORIZONTAL_LINE), line_color)
         title += Color.colorify(m, msg_color)
         title += Color.colorify(" {:{padd}<4}".format("", padd=HORIZONTAL_LINE), line_color)
         gef_print(title)
@@ -9489,7 +9607,8 @@ class ContextCommand(GenericCommand):
                 if name:
                     frame_args = gdb.FrameDecorator.FrameDecorator(current_frame).frame_args() or []
                     m = Color.greenify(name)
-                    m += "({})".format(", ".join(["{}={!s}".format(Color.yellowify(x.sym), x.sym.value(current_frame)) for x in frame_args]))
+                    fargs = ["{}={!s}".format(Color.yellowify(x.sym), x.sym.value(current_frame)) for x in frame_args]
+                    m += "({})".format(", ".join(fargs))
                     items.append(m)
                 else:
                     try:
@@ -9498,8 +9617,8 @@ class ContextCommand(GenericCommand):
                         break
                     items.append(Color.redify("{} {}".format(insn.mnemonic, ", ".join(insn.operands))))
 
-                gef_print("[{}] {}".format(Color.colorify("#{}".format(level), "bold green" if current_frame == orig_frame else "bold pink"),
-                                           RIGHT_ARROW.join(items)))
+                idx = Color.colorify("#{}".format(level), "bold green" if current_frame == orig_frame else "bold pink")
+                gef_print("[{}] {}".format(idx, RIGHT_ARROW.join(items)))
                 current_frame = current_frame.older()
                 level += 1
                 nb_backtrace -= 1
@@ -10165,7 +10284,8 @@ def dereference_from(addr):
                 except:
                     start = addr.value & ~(gef_getpagesize()-1)
                     end = start + gef_getpagesize()
-                    err("Receive ignoring packets during access {:#x}. Add {:#x}-{:#x} to blacklist addresses".format(addr.value,start,end))
+                    err("Receive ignoring packets during access at {:#x}.".format(addr.value))
+                    err("Add {:#x}-{:#x} to blacklist addresses".format(start, end))
                     new_blacklist = blacklist + [[addr.value, addr.value + gef_getpagesize()]]
                     set_gef_setting("dereference.blacklist", new_blacklist, str, "dereference blacklist to avoid timeout")
                     gdb.execute("gef save")
@@ -10265,7 +10385,8 @@ class DereferenceCommand(GenericCommand):
             except:
                 pass
         addr_l_color = Color.colorify(addr_l, base_address_color)
-        l += "{:s}{:s}+{:#06x}({:03d}): {:{ma}s}".format(addr_l_color, VERTICAL_LINE, offset, offset//memalign, link, ma=(memalign*2 + 2))
+        ma = memalign * 2 + 2
+        l += "{:s}{:s}+{:#06x}({:03d}): {:{ma}s}".format(addr_l_color, VERTICAL_LINE, offset, offset//memalign, link, ma=ma)
 
         # retaddr info
         try:
@@ -10450,7 +10571,8 @@ class VMMapCommand(GenericCommand):
         color = get_gef_setting("theme.table_heading")
 
         headers = ["Start", "End", "Size", "Offset", "Perm", "Path"]
-        gef_print(Color.colorify("{:<{w}s}{:<{w}s}{:<{w}s}{:<{w}s}{:<4s} {:s}".format(*headers, w=get_memory_alignment()*2+3), color))
+        w = get_memory_alignment() * 2 + 3
+        gef_print(Color.colorify("{:<{w}s}{:<{w}s}{:<{w}s}{:<{w}s}{:<4s} {:s}".format(*headers, w=w), color))
 
         for entry in vmmap:
             if not argv:
@@ -10592,21 +10714,21 @@ class XAddressInfoCommand(GenericCommand):
         info = addr.info
 
         if sect:
-            gef_print("Page: {:s} {:s} {:s} (size={:#x})".format(format_address(sect.page_start),
-                                                                 RIGHT_ARROW,
-                                                                 format_address(sect.page_end),
-                                                                 sect.page_end-sect.page_start))
+            page_start = format_address(sect.page_start)
+            page_end = format_address(sect.page_end)
+            page_size = sect.page_end - sect.page_start
+            gef_print("Page: {:s} {:s} {:s} (size={:#x})".format(page_start, RIGHT_ARROW, page_end, page_size))
             gef_print("Permissions: {}".format(sect.permission))
             gef_print("Pathname: {:s}".format(sect.path))
-            gef_print("Offset (from page): {:#x}".format(addr.value-sect.page_start))
+            gef_print("Offset (from page): {:#x}".format(addr.value - sect.page_start))
             if sect.inode:
                 gef_print("Inode: {:s}".format(sect.inode))
 
         if info:
-            gef_print("Segment: {:s} ({:s}-{:s})".format(info.name,
-                                                         format_address(info.zone_start),
-                                                         format_address(info.zone_end)))
-            gef_print("Offset (from segment): {:#x}".format(addr.value-info.zone_start))
+            zone_start = format_address(info.zone_start)
+            zone_end = format_address(info.zone_end)
+            gef_print("Segment: {:s} ({:s}-{:s})".format(info.name, zone_start, zone_end))
+            gef_print("Offset (from segment): {:#x}".format(addr.value - info.zone_start))
 
         sym = gdb_get_location_from_symbol(address)
         if sym:
@@ -11085,7 +11207,9 @@ class GotCommand(GenericCommand):
         # retrieve plt address
         plts = self.get_plt_addresses(objdump, filename)
 
-        gef_print("GOT protection: {} | GOT functions: {} ".format(Color.boldify(relro_status), Color.boldify("{}".format(len(jmpslots)))))
+        got_protection = Color.boldify(relro_status)
+        got_functions = Color.boldify("{}".format(len(jmpslots)))
+        gef_print("GOT protection: {} | GOT functions: {} ".format(got_protection, got_functions))
 
         for line in sorted(jmpslots):
             address, _, _, _, name = line.split()[:5]
@@ -11114,11 +11238,11 @@ class GotCommand(GenericCommand):
             if name.split("@")[0] in plts:
                 plt = plts[name.split("@")[0]]
                 if pie:
-                    line += "PLT:{:#x}(+{:#x}) ".format(plt + base_address, plt)
+                    line += "PLT:{:#x}(+{:#x}); ".format(plt + base_address, plt)
                 else:
-                    line += "PLT:{:#x} ".format(plt)
+                    line += "PLT:{:#x}; ".format(plt)
             else:
-                line += "PLT:Not Found "
+                line += "PLT:Not Found; "
             if pie:
                 line += "GOT:{:#x}(+{:#x}) ".format(address_val, address_val - base_address)
             else:

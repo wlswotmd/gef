@@ -232,6 +232,8 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / Debian 
 * `rp`: invokes `rp++` with commonly used options.
 * `cpuid`: show the result of cpuid(eax=0,1,2...).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/cpuid.png)
+* `dasm`: disassembles the code by capstone.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dasm.png)
 
 ### Other
 * Replace the unicode character to ASCII.
