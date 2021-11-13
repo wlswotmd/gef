@@ -42,7 +42,11 @@ def download_binary(channel):
   if r:
     commit = r[0]
     print("[*] commit hash: {:s}".format(commit))
-    print("[*] src: https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/partition_root.h;drc={:s}".format(commit))
+    print("[*] struct base::PartitionRoot              https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/partition_root.h;drc={:s}".format(commit))
+    print("[*] struct base::internal::PartitionBucket: https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/partition_bucket.h;drc={:s}".format(commit))
+    print("[*] struct PartitionSuperPageExtentEntry:   https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/partition_page.h;drc={:s}".format(commit))
+    print("[*] struct PartitionDirectMapExtent:        https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/partition_direct_map_extent.h;drc={:s}".format(commit))
+    print("[*] struct SlotSpanMetadata:                https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/partition_page.h;drc={:s}".format(commit))
 
   print()
   return
