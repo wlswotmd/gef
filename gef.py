@@ -3363,7 +3363,11 @@ def get_register_for_selected_frame(selected_frame_id, regname):
 
 
 def get_path_from_info_proc():
-    for x in gdb.execute("info proc", to_string=True).splitlines():
+    try:
+        response = gdb.execute("info proc", to_string=True)
+    except:
+        return None
+    for x in response.splitlines():
         if x.startswith("exe = "):
             return x.split(" = ")[1].replace("'", "")
     return None
@@ -8447,6 +8451,155 @@ class DisassembleCommand(GenericCommand):
         for insn in cs.disasm(insns, 0x0):
             b = binascii.hexlify(insn.bytes).decode("utf-8")
             gef_print("{:>#6x}:\t{:<10s}\t{:s}\t{:s}".format(insn.address, b, insn.mnemonic, insn.op_str))
+        return
+
+
+@register_command
+class AsmListCommand(GenericCommand):
+    """List up N-bytes instructions. Architecture can be set in GEF runtime config (default x86-64). """
+    _cmdline_ = "asm-list"
+    _syntax_ = "{:s} [-h] [-a ARCH] [-m MODE] [-e] N\n".format(_cmdline_)
+    _syntax_ += "  -a ARCH      specify the architecture\n"
+    _syntax_ += "  -a MODE      specify the mode\n"
+    _syntax_ += "  -e           use big-endian"
+    _example_ = "\n"
+    _example_ += '{:s} -a X86 -m 64 4\n'.format(_cmdline_)
+    _example_ += '{:s} -a X86 -m 32 4\n'.format(_cmdline_)
+    _example_ += '{:s} -a X86 -m 16 4\n'.format(_cmdline_)
+    _example_ += '{:s} -a ARM -m ARM    4\n'.format(_cmdline_)
+    _example_ += '{:s} -a ARM -m ARM -e 4\n'.format(_cmdline_)
+    _example_ += '{:s} -a ARM -m THUMB  4\n'.format(_cmdline_)
+    _example_ += '{:s} -a ARM64 -m ARM  4\n'.format(_cmdline_)
+    _example_ += '{:s} -a MIPS -m MIPS32    4\n'.format(_cmdline_)
+    _example_ += '{:s} -a MIPS -m MIPS32 -e 4\n'.format(_cmdline_)
+    _example_ += '{:s} -a MIPS -m MIPS64    4\n'.format(_cmdline_)
+    _example_ += '{:s} -a MIPS -m MIPS64 -e 4\n'.format(_cmdline_)
+    _example_ += '{:s} -a PPC -m 32 -e 4\n'.format(_cmdline_)
+    _example_ += '{:s} -a PPC -m 64    4\n'.format(_cmdline_)
+    _example_ += '{:s} -a PPC -m 64 -e 4\n'.format(_cmdline_)
+    _example_ += '{:s} -a SPARC -m V9    4\n'.format(_cmdline_)
+    _example_ += '{:s} -a SPARC -m V9 -e 4'.format(_cmdline_)
+    _category_ = "Assemble"
+
+    def __init__(self):
+        super().__init__(complete=gdb.COMPLETE_LOCATION)
+        self.valid_arch_modes = {
+            "ARM" : ["ARM", "THUMB"],
+            "ARM64" : [],
+            "MIPS" : ["MIPS32", "MIPS64"],
+            "PPC" : ["PPC32", "PPC64"],
+            "SPARC" : ["SPARC32"],
+            "X86" : ["16", "32", "64"],
+        }
+        return
+
+    def pre_load(self):
+        try:
+            __import__("capstone")
+        except ImportError:
+            msg = "Missing `capstone` package for Python. Install with `pip install capstone`."
+            raise ImportWarning(msg)
+        return
+
+    def do_invoke(self, argv):
+        arch_s, mode_s, big_endian = None, None, False
+        try:
+            opts, args = getopt.getopt(argv, "a:m:eh")
+            for o, a in opts:
+                if o == "-a":
+                    arch_s = a.upper()
+                if o == "-m":
+                    mode_s = a.upper()
+                if o == "-e":
+                    big_endian = True
+                if o == "-h":
+                    self.usage()
+                    return
+        except:
+            self.usage()
+            return
+
+        if not args:
+            self.usage()
+            return
+
+        if (arch_s, mode_s) == (None, None):
+            if is_alive():
+                if is_arm64():
+                    arch_s, mode_s = current_arch.arch, 0
+                else:
+                    arch_s, mode_s = current_arch.arch, current_arch.mode
+                endian_s = "big" if is_big_endian() else "little"
+                arch, mode = get_capstone_arch(arch=arch_s, mode=mode_s, endian=is_big_endian())
+            else:
+                # if not alive, defaults to x86-64
+                arch_s = "X86"
+                mode_s = "64"
+                endian_s = "little"
+                arch, mode = get_capstone_arch(arch=arch_s, mode=mode_s, endian=False)
+        elif not arch_s:
+            err("An architecture (-a) must be provided")
+            return
+        elif not arch_s in ["SPARC"] and not mode_s:
+            err("A mode (-m) must be provided")
+            return
+        else:
+            arch, mode = get_capstone_arch(arch=arch_s, mode=mode_s, endian=big_endian)
+            endian_s = "big" if big_endian else "little"
+
+        N = int(args[0])
+        if N <= 0:
+            err("Too small")
+            return
+        if N > 4:
+            err("Too large")
+            return
+
+        arch_mode_s = ":".join([str(arch_s), str(mode_s)])
+        info("Listing up {} bytes instructions for {} ({} endian)".format(N, arch_mode_s, endian_s))
+        info("You can press Ctrl+C for stoppping in the middle.")
+
+        capstone = sys.modules["capstone"]
+        cs = capstone.Cs(arch, mode)
+        cs.detail = True
+
+        charset = bytes(range(256))
+        seen = set()
+        found = []
+        whole = 256**N
+
+        try:
+            for i, bytecode in enumerate(itertools.product(charset, repeat=N)):
+                insns = list(cs.disasm(bytes(bytecode[::-1]), 0x0))
+
+                if len(insns) == 1:
+                    insn = insns[0]
+                    if len(insn.bytes) == N:
+                        op_str = insn.op_str
+                        op_str = re.sub(r"\b(-?\d+)\b", r"0x\1", op_str)
+                        op_str = re.sub(r"0x[0-9a-f]+", "CONST", op_str)
+                        if op_str in seen:
+                            continue
+                        seen.add(op_str)
+                        b = binascii.hexlify(insn.bytes).decode("utf-8")
+                        found.append([b, insn])
+                
+                msg = "\r{:#x}/{:#x} ({:.2f}%); found:{:d}".format(i, whole, i/whole*100, len(found))
+                sys.stdout.write(msg)
+                sys.stdout.flush()
+            gef_print("")
+        except KeyboardInterrupt:
+            gef_print("\nStopped because detecting Ctrl+C.")
+
+        text = ""
+        for b, insn in sorted(found):
+            text += "{:<10s}\t{:s}\t{:s}\n".format(b, insn.mnemonic, insn.op_str)
+        text = text.rstrip()
+        gef_print(text)
+
+        fd, fname = tempfile.mkstemp(dir="/tmp", suffix=".txt")
+        os.fdopen(fd, "w").write(text)
+        gef_print("The result is stored to {:s}".format(fname))
         return
 
 
