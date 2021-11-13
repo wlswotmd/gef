@@ -30,7 +30,7 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / Debian 
     * It is the result of `info registers` with filtering general registers.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/sysreg.png)
 * `msr`: prints MSR (Model Specific Registers) values by embedding/executing dynamic assembly.
-    * Supported on x64/x86.
+    * Supported on x64/x86 without `-enable-kvm`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/msr.png)
 * `pagewalk`: prints pagetables from scanning of physical memory.
     * x64 (Supported: PML5T/PML4T)

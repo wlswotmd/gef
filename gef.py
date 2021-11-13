@@ -3100,7 +3100,17 @@ class MIPS(Architecture):
 
 def write_memory(address, buffer, length=0x10):
     """Write `buffer` at address `address`."""
-    return gdb.selected_inferior().write_memory(address, buffer, length)
+    if is_qemu_usermode():
+        fd = open("/proc/{:d}/mem".format(get_pid()), "wb")
+        fd.seek(address)
+        if is_64bit():
+            fd.write(buffer[:length])
+        else:
+            fd.write(buffer[:length])
+        fd.close()
+    else:
+        gdb.selected_inferior().write_memory(address, buffer, length)
+    return
 
 @lru_cache()
 def read_memory(addr, length=0x10):
@@ -8187,7 +8197,7 @@ class RpCommand(GenericCommand):
 
 @register_command
 class AssembleCommand(GenericCommand):
-    """Inline code assemble. Architecture can be set in GEF runtime config (default x86-32). """
+    """Inline code assemble. Architecture can be set in GEF runtime config (default x86-64). """
     _cmdline_ = "asm"
     _syntax_ = "{:s} [-h] [-a ARCH] [-m MODE] [-e] [-s] [-l LOCATION] instruction;[instruction;...instruction;])\n".format(_cmdline_)
     _syntax_ += "  -a ARCH      specify the architecture\n"
@@ -8197,9 +8207,9 @@ class AssembleCommand(GenericCommand):
     _syntax_ += "  -l LOCATION  write to memory address"
     # for updates, see https://github.com/keystone-engine/keystone/blob/master/include/keystone/keystone.h
     _example_ = "\n"
-    _example_ += '{:s} -a X86 -m 64 "nop ; nop ; inc rax ; int3"\n'.format(_cmdline_)
-    _example_ += '{:s} -a X86 -m 32 "nop ; nop ; inc eax ; int3"\n'.format(_cmdline_)
-    _example_ += '{:s} -a X86 -m 16 "nop ; nop ; inc ax ; int3"\n'.format(_cmdline_)
+    _example_ += '{:s} -a X86 -m 64 "mov rax, qword ptr [rax] ; inc rax ;"\n'.format(_cmdline_)
+    _example_ += '{:s} -a X86 -m 32 "mov eax, dword ptr [eax] ; inc eax ;"\n'.format(_cmdline_)
+    _example_ += '{:s} -a X86 -m 16 "mov ax, word ptr [ax] ; inc ax"\n'.format(_cmdline_)
     _example_ += '{:s} -a ARM -m ARM    "sub r1, r2, r3"\n'.format(_cmdline_)
     _example_ += '{:s} -a ARM -m ARM -e "sub r1, r2, r3"\n'.format(_cmdline_)
     _example_ += '{:s} -a ARM -m THUMB  "movs r4, #0xf0"\n'.format(_cmdline_)
@@ -8272,9 +8282,9 @@ class AssembleCommand(GenericCommand):
                 endian_s = "big" if is_big_endian() else "little"
                 arch, mode = get_keystone_arch(arch=arch_s, mode=mode_s, endian=is_big_endian())
             else:
-                # if not alive, defaults to x86-32
+                # if not alive, defaults to x86-64
                 arch_s = "X86"
-                mode_s = "32"
+                mode_s = "64"
                 endian_s = "little"
                 arch, mode = get_keystone_arch(arch=arch_s, mode=mode_s, endian=False)
         elif not arch_s:
@@ -20811,25 +20821,16 @@ class CpuidCommand(GenericCommand):
     """Get cpuid result."""
     _cmdline_ = "cpuid"
     _syntax_ = "{:s}".format(_cmdline_)
+    _example_ = ""
+    _example_ += "{:s}\n".format(_cmdline_)
+    _example_ += "\n"
+    _example_ += "DISABLE `-enbale-kvm` option for qemu-system; This command will be aborted if the option is set"
     _category_ = "Process/State Inspection (Register)"
 
-    def write_val(self, addr, val):
-        if is_qemu_usermode():
-            fd = open("/proc/{:d}/mem".format(get_pid()), "wb")
-            fd.seek(addr)
-            if is_64bit():
-                fd.write(p64(val))
-            else:
-                fd.write(p32(val))
-            fd.close()
-        else:
-            gdb.execute("set *(void**){:#x} = {:#x}".format(addr, val), to_string=True)
-        return
-
-    def get_state(self):
+    def get_state(self, code_len):
         d = {}
         d["pc"] = get_register("$pc")
-        d["code"] = read_int_from_memory(d["pc"])
+        d["code"] = read_memory(d["pc"], code_len)
         if is_x86_64():
             d["rax"] = get_register("$rax")
             d["rbx"] = get_register("$rbx")
@@ -20843,7 +20844,7 @@ class CpuidCommand(GenericCommand):
         return d
 
     def revert_state(self, d):
-        self.write_val(d["pc"], d["code"])
+        write_memory(d["pc"], d["code"], len(d["code"]))
         gdb.execute("set $pc = {:#x}".format(d["pc"]), to_string=True)
         if is_x86_64():
             gdb.execute("set $rax = {:#x}".format(d["rax"]), to_string=True)
@@ -20871,13 +20872,15 @@ class CpuidCommand(GenericCommand):
         return
 
     def execute_cpuid(self, num):
+        code = b"\xeb\xfe\x0f\xa2" # inf-loop (to stop another thread); cpuid
         gef_on_stop_unhook(hook_stop_handler)
-        d = self.get_state()
-        self.write_val(d["pc"], 0xa20f) # cpuid
+        d = self.get_state(len(code))
+        write_memory(d["pc"], code, len(code))
         if is_x86_64():
             gdb.execute("set $rax = {:#x}".format(num), to_string=True)
         else:
             gdb.execute("set $eax = {:#x}".format(num), to_string=True)
+        gdb.execute("set $pc = {:#x}".format(d["pc"]+2), to_string=True) # skip "\xeb\xfe"
         self.close_stdout()
         gdb.execute("stepi", to_string=True)
         self.revert_stdout()
@@ -21060,8 +21063,14 @@ class CpuidCommand(GenericCommand):
 class MsrCommand(GenericCommand):
     """Get MSR via kernel."""
     _cmdline_ = "msr"
-    _syntax_ = "{:s} [-h] MSR_VALUE|MSR_NAME".format(_cmdline_)
-    _example_ = "{:s} 0xc0000080".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [-l] MSR_VALUE|MSR_NAME".format(_cmdline_)
+    _example_ = ""
+    _example_ += "{:s} 0xc0000080 # rcx value\n".format(_cmdline_)
+    _example_ += "{:s} MSR_EFER # another valid format\n".format(_cmdline_)
+    _example_ += "{:s} -l # list known MSR const values\n".format(_cmdline_)
+    _example_ += "{:s} -l MSR_EFER MSR_GS_BASE MSR_FS_BASE # show specific MSR const value\n".format(_cmdline_)
+    _example_ += "\n"
+    _example_ += "DISABLE `-enbale-kvm` option for qemu-system; This command will be aborted if the option is set"
     _category_ = "Process/State Inspection (Register)"
 
     msr_table = [
@@ -21544,8 +21553,7 @@ class MsrCommand(GenericCommand):
                 return name
         return "Unknown"
 
-    def help(self, filt):
-        self.usage()
+    def print_const_table(self, filt):
         gef_print(titlify("MSR const table"))
         gef_print(Color.colorify("{:34s}: {:10s} : {:s}".format("Name", "Value", "Description"), "bold yellow"))
         for name, val, desc in self.msr_table:
@@ -21571,14 +21579,10 @@ class MsrCommand(GenericCommand):
             out = out[5:]
         return "0b" + out[1:]
 
-    def write_val(self, addr, val):
-        gdb.execute("set *(void**){:#x} = {:#x}".format(addr, val), to_string=True)
-        return
-
-    def get_state(self):
+    def get_state(self, code_len):
         d = {}
         d["pc"] = get_register("$pc")
-        d["code"] = read_int_from_memory(d["pc"])
+        d["code"] = read_memory(d["pc"], code_len)
         if is_x86_64():
             d["rax"] = get_register("$rax")
             d["rdx"] = get_register("$rdx")
@@ -21590,7 +21594,7 @@ class MsrCommand(GenericCommand):
         return d
 
     def revert_state(self, d):
-        self.write_val(d["pc"], d["code"])
+        write_memory(d["pc"], d["code"], len(d["code"]))
         gdb.execute("set $pc = {:#x}".format(d["pc"]), to_string=True)
         if is_x86_64():
             gdb.execute("set $rax = {:#x}".format(d["rax"]), to_string=True)
@@ -21616,13 +21620,15 @@ class MsrCommand(GenericCommand):
         return
 
     def read_msr_core(self, num):
+        code = b"\xeb\xfe\x0f\x32" # inf-loop (to stop another thread); rdmsr
         gef_on_stop_unhook(hook_stop_handler)
-        d = self.get_state()
-        self.write_val(d["pc"], 0x320f) # rdmsr
+        d = self.get_state(len(code))
+        write_memory(d["pc"], code, len(code))
         if is_x86_64():
             gdb.execute("set $rcx = {:#x}".format(num), to_string=True)
         else:
             gdb.execute("set $ecx = {:#x}".format(num), to_string=True)
+        gdb.execute("set $pc = {:#x}".format(d["pc"]+2), to_string=True) # skip "\xeb\xfe"
         self.close_stdout()
         gdb.execute("stepi", to_string=True)
         self.revert_stdout()
@@ -21641,9 +21647,13 @@ class MsrCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
-        if "-h" in argv:
-            argv.remove("-h")
-            self.help(argv)
+        if "-h" in argv or not argv:
+            self.usage()
+            return
+
+        if "-l" in argv:
+            argv.remove("-l")
+            self.print_const_table(argv)
             return
 
         if not is_qemu_system():
@@ -21654,17 +21664,13 @@ class MsrCommand(GenericCommand):
             err("Unsupported")
             return
 
-        if not argv:
-            self.help([])
-            return
-
         # search const table
         num = self.lookup_name2val(argv[0])
         if num is None:
             try:
                 num = int(argv[0], 16)
             except:
-                self.help(argv)
+                self.usage()
                 return
         self.read_msr(num)
         return
