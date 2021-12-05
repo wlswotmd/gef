@@ -18995,11 +18995,12 @@ class PartitionAllocDumpStableCommand(GenericCommand):
             const bool is_thread_safe = thread_safe;
             bool allow_aligned_alloc;
             bool allow_cookie;
-            bool allow_ref_count;
-            //bool use_lazy_commit = false;
-            //bool never_used_lazy_commit = true;
-            //uint32_t extras_size;
-            //uint32_t extras_offset;
+            bool brp_enabled_;
+            bool use_configurable_pool;
+            //static constexpr bool use_lazy_commit = false;
+            //static constexpr bool never_used_lazy_commit = true;
+            //static constexpr uint32_t extras_size = 0;
+            //static constexpr uint32_t extras_offset = 0;
             uint8_t padding[64];
             internal::MaybeSpinLock<thread_safe> lock_;
             Bucket buckets[kNumBuckets] = {};
@@ -19011,14 +19012,19 @@ class PartitionAllocDumpStableCommand(GenericCommand):
             std::atomic<size_t> total_size_of_direct_mapped_pages{0};
             size_t total_size_of_allocated_bytes GUARDED_BY(lock_) = 0;
             size_t max_size_of_allocated_bytes GUARDED_BY(lock_) = 0;
+            std::atomic<uint64_t> syscall_count{};
+            std::atomic<uint64_t> syscall_total_time_ns{};
+            std::atomic<size_t> total_size_of_brp_quarantined_bytes{0};
+            std::atomic<size_t> total_count_of_brp_quarantined_slots{0};
+            size_t empty_slot_spans_dirty_bytes GUARDED_BY(lock_) = 0;
             char* next_super_page = nullptr;
             char* next_partition_page = nullptr;
             char* next_partition_page_end = nullptr;
             SuperPageExtentEntry* current_extent = nullptr;
             SuperPageExtentEntry* first_extent = nullptr;
             DirectMapExtent* direct_map_list GUARDED_BY(lock_) = nullptr;
-            SlotSpan* global_empty_slot_span_ring[kMaxFreeableSpans] = {};
-            int16_t global_empty_slot_span_ring_index = 0;
+            SlotSpan* global_empty_slot_span_ring[kMaxFreeableSpans] GUARDED_BY(lock_) = {};
+            int16_t global_empty_slot_span_ring_index GUARDED_BY(lock_) = 0;
             uintptr_t inverted_self = 0;
             std::atomic<int> thread_caches_being_constructed_{0};
         }
@@ -19031,8 +19037,8 @@ class PartitionAllocDumpStableCommand(GenericCommand):
         root["is_thread_safe"] = (x >> 24) & 0xff 
         root["allow_aligned_alloc"] = (x >> 32) & 0xff 
         root["allow_cookie"] = (x >> 40) & 0xff 
-        root["allow_ref_count"] = (x >> 48) & 0xff 
-        #root["use_lazy_commit"] = (x >> 56) & 0xff 
+        root["brp_enabled_"] = (x >> 48) & 0xff 
+        root["use_configurable_pool"] = (x >> 56) & 0xff 
 
         root["padding"] = read_memory(current, 64)
         current += 64
@@ -19073,6 +19079,17 @@ class PartitionAllocDumpStableCommand(GenericCommand):
         current += ptrsize
         root["max_size_of_allocated_bytes"] = read_int_from_memory(current)
         current += ptrsize
+        root["syscall_count"] = read_int_from_memory(current)
+        current += ptrsize
+        root["syscall_total_time_ns"] = read_int_from_memory(current)
+        current += ptrsize
+        root["total_size_of_brp_quarantined_bytes"] = u32(read_memory(current, 4))
+        current += 4
+        root["total_count_of_brp_quarantined_slots"] = u32(read_memory(current, 4))
+        current += 4
+        root["empty_slot_spans_dirty_bytes"] = u32(read_memory(current, 4))
+        current += 4
+        current += 4 # with pad
         root["next_super_page"] = read_int_from_memory(current)
         current += ptrsize
         root["next_partition_page"] = read_int_from_memory(current)
@@ -19202,11 +19219,12 @@ class PartitionAllocDumpStableCommand(GenericCommand):
         struct SlotSpanMetadata {
           PartitionFreelistEntry* freelist_head = nullptr;
           SlotSpanMetadata<thread_safe>* next_slot_span = nullptr;
-          PartitionBucket<thread_safe>* const bucket;
+          PartitionBucket<thread_safe>* const bucket = nullptr;
           int16_t num_allocated_slots = 0;
           uint16_t num_unprovisioned_slots = 0;
-          int8_t empty_cache_index = 0;
-          const bool can_store_raw_size;
+          int16_t empty_cache_index : 8;
+          uint16_t can_store_raw_size : 1;
+          uint16_t unused : (16 - 8 - 1);
         }
         """
         slot_span["freelist_head"] = read_int_from_memory(current)
@@ -19219,10 +19237,11 @@ class PartitionAllocDumpStableCommand(GenericCommand):
         current += 2
         slot_span["num_unprovisioned_slots"] = u16(read_memory(current, 2))
         current += 2
-        slot_span["empty_cache_index"] = u8(read_memory(current, 1))
-        current += 1
-        slot_span["can_store_raw_size"] = u8(read_memory(current, 1))
-        current += 1
+        x = u16(read_memory(current, 2))
+        slot_span["empty_cache_index"] = (x >> 0) & 0xff
+        slot_span["can_store_raw_size"] = (x >> 8) & 1
+        slot_span["unused"] = (x >> 9) & 0x7f
+        current += 2
         return slot_span, current
 
     def print_root(self, root):
@@ -19233,7 +19252,8 @@ class PartitionAllocDumpStableCommand(GenericCommand):
         gef_print("const bool is_thread_safe:                             {:#x}".format(root["is_thread_safe"]))
         gef_print("bool allow_aligned_alloc:                              {:#x}".format(root["allow_aligned_alloc"]))
         gef_print("bool allow_cookie:                                     {:#x}".format(root["allow_cookie"]))
-        gef_print("bool allow_ref_count:                                  {:#x}".format(root["allow_ref_count"]))
+        gef_print("bool brp_enabled_:                                     {:#x}".format(root["brp_enabled_"]))
+        gef_print("bool use_configurable_pool:                            {:#x}".format(root["use_configurable_pool"]))
         gef_print("uint8_t padding[64]:                                   ...")
         gef_print("internal::MaybeSpinLock:                               {:#x}".format(root["lock_"]))
         gef_print("Bucket buckets[{:3d}]:".format(len(root["buckets"])))
@@ -19251,10 +19271,16 @@ class PartitionAllocDumpStableCommand(GenericCommand):
         gef_print("std::atomic<size_t> total_size_of_direct_mapped_pages: {:#x}".format(root["total_size_of_direct_mapped_pages"]))
         gef_print("size_t total_size_of_allocated_bytes:                  {:#x}".format(root["total_size_of_allocated_bytes"]))
         gef_print("size_t max_size_of_allocated_bytes:                    {:#x}".format(root["max_size_of_allocated_bytes"]))
+        gef_print("std::atomic<uint64_t> syscall_count:                   {:#x}".format(root["syscall_count"]))
+        gef_print("std::atomic<uint64_t> syscall_total_time_ns:           {:#x}".format(root["syscall_total_time_ns"]))
+        gef_print("std::atomic<size_t> total_size_of_brp_quarantined_bytes:{:#x}".format(root["total_size_of_brp_quarantined_bytes"]))
+        gef_print("std::atomic<size_t> total_count_of_brp_quarantined_slots:{:#x}".format(root["total_count_of_brp_quarantined_slots"]))
+        gef_print("size_t empty_slot_spans_dirty_bytes:                   {:#x}".format(root["empty_slot_spans_dirty_bytes"]))
         gef_print("char* next_super_page:                                 {:#x}".format(root["next_super_page"]))
         gef_print("char* next_partition_page:                             {:#x}".format(root["next_partition_page"]))
         gef_print("char* next_partition_page_end:                         {:#x}".format(root["next_partition_page_end"]))
         gef_print("SuperPageExtentEntry* current_extent:                  {:#x}".format(root["current_extent"]))
+        self.print_extent_list(root["current_extent"])
         gef_print("SuperPageExtentEntry* first_extent:                    {:#x}".format(root["first_extent"]))
         self.print_extent_list(root["first_extent"])
         gef_print("DirectMapExtent* direct_map_list:                      {:#x}".format(root["direct_map_list"]))
@@ -19501,251 +19527,6 @@ class PartitionAllocDumpBetaCommand(PartitionAllocDumpStableCommand):
             //static constexpr bool never_used_lazy_commit = true;
             //static constexpr uint32_t extras_size = 0;
             //static constexpr uint32_t extras_offset = 0;
-            uint8_t padding[64];
-            internal::MaybeSpinLock<thread_safe> lock_;
-            Bucket buckets[kNumBuckets] = {};
-            Bucket sentinel_bucket; 
-            bool initialized = false;
-            std::atomic<size_t> total_size_of_committed_pages{0};
-            std::atomic<size_t> max_size_of_committed_pages{0};
-            std::atomic<size_t> total_size_of_super_pages{0};
-            std::atomic<size_t> total_size_of_direct_mapped_pages{0};
-            size_t total_size_of_allocated_bytes GUARDED_BY(lock_) = 0;
-            size_t max_size_of_allocated_bytes GUARDED_BY(lock_) = 0;
-            std::atomic<uint64_t> syscall_count{};
-            std::atomic<uint64_t> syscall_total_time_ns{};
-            std::atomic<size_t> total_size_of_brp_quarantined_bytes{0};
-            std::atomic<size_t> total_count_of_brp_quarantined_slots{0};
-            size_t empty_slot_spans_dirty_bytes GUARDED_BY(lock_) = 0;
-            char* next_super_page = nullptr;
-            char* next_partition_page = nullptr;
-            char* next_partition_page_end = nullptr;
-            SuperPageExtentEntry* current_extent = nullptr;
-            SuperPageExtentEntry* first_extent = nullptr;
-            DirectMapExtent* direct_map_list GUARDED_BY(lock_) = nullptr;
-            SlotSpan* global_empty_slot_span_ring[kMaxFreeableSpans] GUARDED_BY(lock_) = {};
-            int16_t global_empty_slot_span_ring_index GUARDED_BY(lock_) = 0;
-            uintptr_t inverted_self = 0;
-            std::atomic<int> thread_caches_being_constructed_{0};
-        }
-        """
-        x = u64(read_memory(current, 8))
-        current += 8
-        root["quarantine_mode"] = (x >> 0) & 0xff
-        root["scan_mode"] = (x >> 8) & 0xff
-        root["with_thread_cache"] = (x >> 16) & 0xff
-        root["is_thread_safe"] = (x >> 24) & 0xff 
-        root["allow_aligned_alloc"] = (x >> 32) & 0xff 
-        root["allow_cookie"] = (x >> 40) & 0xff 
-        root["brp_enabled_"] = (x >> 48) & 0xff 
-        root["use_configurable_pool"] = (x >> 56) & 0xff 
-
-        root["padding"] = read_memory(current, 64)
-        current += 64
-
-        root["lock_"] = read_int_from_memory(current)
-        current += ptrsize
-
-        # for 32bit, there is 2 patterns because aligned or packed
-        if is_32bit():
-            if self.align_pad is None:
-                x = read_int_from_memory(current)
-                if x == 0:
-                    self.align_pad = True
-                else:
-                    self.align_pad = False
-            if self.align_pad:
-                current += ptrsize
-
-        root["buckets"] = []
-        while True:
-            if read_int_from_memory(current) == 1: # search initialized
-                break
-            bucket, current = self.read_bucket(current)
-            root["buckets"].append(bucket)
-        root["sentinel_bucket"] = root["buckets"].pop()
-
-        root["initialized"] = read_int_from_memory(current) & 0xff
-        current += ptrsize # with pad
-        root["total_size_of_committed_pages"] = read_int_from_memory(current)
-        current += ptrsize
-        root["max_size_of_committed_pages"] = read_int_from_memory(current)
-        current += ptrsize
-        root["total_size_of_super_pages"] = read_int_from_memory(current)
-        current += ptrsize
-        root["total_size_of_direct_mapped_pages"] = read_int_from_memory(current)
-        current += ptrsize
-        root["total_size_of_allocated_bytes"] = read_int_from_memory(current)
-        current += ptrsize
-        root["max_size_of_allocated_bytes"] = read_int_from_memory(current)
-        current += ptrsize
-        root["syscall_count"] = read_int_from_memory(current)
-        current += ptrsize
-        root["syscall_total_time_ns"] = read_int_from_memory(current)
-        current += ptrsize
-        root["total_size_of_brp_quarantined_bytes"] = u32(read_memory(current, 4))
-        current += 4
-        root["total_count_of_brp_quarantined_slots"] = u32(read_memory(current, 4))
-        current += 4
-        root["empty_slot_spans_dirty_bytes"] = u32(read_memory(current, 4))
-        current += 4
-        current += 4 # with pad
-        root["next_super_page"] = read_int_from_memory(current)
-        current += ptrsize
-        root["next_partition_page"] = read_int_from_memory(current)
-        current += ptrsize
-        root["next_partition_page_end"] = read_int_from_memory(current)
-        current += ptrsize
-        root["current_extent"] = read_int_from_memory(current)
-        current += ptrsize
-        root["first_extent"] = read_int_from_memory(current)
-        current += ptrsize
-        root["direct_map_list"] = read_int_from_memory(current)
-        current += ptrsize
-
-        root["global_empty_slot_span_ring"] = []
-        inv = root["addr"] ^ ((1 << (current_arch.ptrsize * 8)) - 1)
-        while True:
-            if read_int_from_memory(current + ptrsize) == inv: # search inverted_self
-                break
-            x = read_int_from_memory(current)
-            current += ptrsize
-            root["global_empty_slot_span_ring"].append(x)
-
-        root["global_empty_slot_span_ring_index"] = u16(read_memory(current, 2))
-        current += ptrsize # with pad
-        root["inverted_self"] = read_int_from_memory(current)
-        current += ptrsize
-        root["thread_caches_being_constructed_"] = u32(read_memory(current, 4))
-        current += 4
-        return root, current
-
-    def read_slot_span(self, addr):
-        ptrsize = current_arch.ptrsize
-        slot_span = {}
-        slot_span["addr"] = current = addr
-        slot_span["super_page_addr"] = (slot_span["addr"] & ~(DEFAULT_PAGE_SIZE-1)) - DEFAULT_PAGE_SIZE
-        slot_span["partition_page_index"] = (slot_span["addr"] & (DEFAULT_PAGE_SIZE-1)) // 0x20
-        slot_span["partition_page_start"] = slot_span["super_page_addr"] + slot_span["partition_page_index"] * DEFAULT_PAGE_SIZE * 4
-        """
-        https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/partition_page.h
-        struct SlotSpanMetadata {
-          PartitionFreelistEntry* freelist_head = nullptr;
-          SlotSpanMetadata<thread_safe>* next_slot_span = nullptr;
-          PartitionBucket<thread_safe>* const bucket = nullptr;
-          int16_t num_allocated_slots = 0;
-          uint16_t num_unprovisioned_slots = 0;
-          int16_t empty_cache_index : 8;
-          uint16_t can_store_raw_size : 1;
-          uint16_t unused : (16 - 8 - 1);
-        }
-        """
-        slot_span["freelist_head"] = read_int_from_memory(current)
-        current += ptrsize
-        slot_span["next_slot_span"] = read_int_from_memory(current)
-        current += ptrsize
-        slot_span["bucket"] = read_int_from_memory(current)
-        current += ptrsize
-        slot_span["num_allocated_slots"] = u16(read_memory(current, 2))
-        current += 2
-        slot_span["num_unprovisioned_slots"] = u16(read_memory(current, 2))
-        current += 2
-        x = u16(read_memory(current, 2))
-        slot_span["empty_cache_index"] = (x >> 0) & 0xff
-        slot_span["can_store_raw_size"] = (x >> 8) & 1
-        slot_span["unused"] = (x >> 9) & 0x7f
-        current += 2
-        return slot_span, current
-
-    def print_root(self, root):
-        gef_print(titlify("*{} @ {:#x}".format(root["name"], root["addr"])))
-        gef_print("uint8_t quarantine_mode:                               {:#x}".format(root["quarantine_mode"]))
-        gef_print("uint8_t scan_mode:                                     {:#x}".format(root["scan_mode"]))
-        gef_print("bool with_thread_cache:                                {:#x}".format(root["with_thread_cache"]))
-        gef_print("const bool is_thread_safe:                             {:#x}".format(root["is_thread_safe"]))
-        gef_print("bool allow_aligned_alloc:                              {:#x}".format(root["allow_aligned_alloc"]))
-        gef_print("bool allow_cookie:                                     {:#x}".format(root["allow_cookie"]))
-        gef_print("bool brp_enabled_:                                     {:#x}".format(root["brp_enabled_"]))
-        gef_print("bool use_configurable_pool:                            {:#x}".format(root["use_configurable_pool"]))
-        gef_print("uint8_t padding[64]:                                   ...")
-        gef_print("internal::MaybeSpinLock:                               {:#x}".format(root["lock_"]))
-        gef_print("Bucket buckets[{:3d}]:".format(len(root["buckets"])))
-        for idx, bucket in enumerate(root["buckets"]):
-            self.print_bucket(bucket, root, idx)
-        if self.verbose:
-            gef_print("Bucket sentinel_bucket:")
-            self.print_bucket(root["sentinel_bucket"], root)
-        else:
-            gef_print("Bucket sentinel_bucket:                                ...")
-        gef_print("bool initialized:                                      {:#x}".format(root["initialized"]))
-        gef_print("std::atomic<size_t> total_size_of_committed_pages:     {:#x}".format(root["total_size_of_committed_pages"]))
-        gef_print("std::atomic<size_t> max_size_of_committed_pages:       {:#x}".format(root["max_size_of_committed_pages"]))
-        gef_print("std::atomic<size_t> total_size_of_super_pages:         {:#x}".format(root["total_size_of_super_pages"]))
-        gef_print("std::atomic<size_t> total_size_of_direct_mapped_pages: {:#x}".format(root["total_size_of_direct_mapped_pages"]))
-        gef_print("size_t total_size_of_allocated_bytes:                  {:#x}".format(root["total_size_of_allocated_bytes"]))
-        gef_print("size_t max_size_of_allocated_bytes:                    {:#x}".format(root["max_size_of_allocated_bytes"]))
-        gef_print("std::atomic<uint64_t> syscall_count:                   {:#x}".format(root["syscall_count"]))
-        gef_print("std::atomic<uint64_t> syscall_total_time_ns:           {:#x}".format(root["syscall_total_time_ns"]))
-        gef_print("std::atomic<size_t> total_size_of_brp_quarantined_bytes:{:#x}".format(root["total_size_of_brp_quarantined_bytes"]))
-        gef_print("std::atomic<size_t> total_count_of_brp_quarantined_slots:{:#x}".format(root["total_count_of_brp_quarantined_slots"]))
-        gef_print("size_t empty_slot_spans_dirty_bytes:                   {:#x}".format(root["empty_slot_spans_dirty_bytes"]))
-        gef_print("char* next_super_page:                                 {:#x}".format(root["next_super_page"]))
-        gef_print("char* next_partition_page:                             {:#x}".format(root["next_partition_page"]))
-        gef_print("char* next_partition_page_end:                         {:#x}".format(root["next_partition_page_end"]))
-        gef_print("SuperPageExtentEntry* current_extent:                  {:#x}".format(root["current_extent"]))
-        gef_print("SuperPageExtentEntry* first_extent:                    {:#x}".format(root["first_extent"]))
-        self.print_extent_list(root["first_extent"])
-        gef_print("DirectMapExtent* direct_map_list:                      {:#x}".format(root["direct_map_list"]))
-        self.print_direct_map_list(root["direct_map_list"], root)
-        ring_len = len(root["global_empty_slot_span_ring"])
-        if self.verbose:
-            gef_print("SlotSpan* global_empty_slot_span_ring[{:2d}]:".format(ring_len))
-            for i in range(len(root["global_empty_slot_span_ring"])):
-                x = root["global_empty_slot_span_ring"][i]
-                gef_print("    global_empty_slot_span_ring[{:2d}]:                       {:#x}".format(i, x))
-        else:
-            gef_print("SlotSpan* global_empty_slot_span_ring[{:2d}]:             ...".format(ring_len))
-        gef_print("int16_t global_empty_slot_span_ring_index:             {:#x}".format(root["global_empty_slot_span_ring_index"]))
-        inv = root["inverted_self"]
-        inv_inv = inv ^ ((1 << (current_arch.ptrsize * 8)) - 1)
-        gef_print("uintptr_t inverted_self:                               {:#x} (=~{:#x})".format(inv, inv_inv))
-        gef_print("std::atomic<int> thread_caches_being_constructed_:     {:#x}".format(root["thread_caches_being_constructed_"]))
-        return
-
-
-@register_command
-class PartitionAllocDumpDevCommand(PartitionAllocDumpBetaCommand):
-    """PartitionAlloc freelist viewer for chromium dev (supported x64/x86/ARM64/ARM only)."""
-    _cmdline_ = "partition-alloc-dump-dev"
-    _syntax_ = "{:s} [-h] fast_malloc|array_buffer|buffer|layout|all [-v]".format(_cmdline_)
-    _example_ = "\n"
-    _example_ += "{:s} array_buffer # walk from array_buffer_root_\n".format(_cmdline_)
-    _example_ += "{:s} ab # same above (fm, ab, b and l are valid)\n".format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "THIS FEATURE IS EXPERIMENTAL AND HEURISTIC.\n"
-    _example_ += "Chromium mainline is too fast to develop. So if parse is failed, you need fix this gef.py."
-    _category_ = "Heap"
-
-    def read_root(self, addr, name):
-        ptrsize = current_arch.ptrsize
-        root = {}
-        root["name"] = name
-        root["addr"] = current = read_int_from_memory(addr)
-        """
-        https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/partition_root.h
-        struct base::PartitionRoot {
-            uint8_t quarantine_mode = QuarantineMode::kAlwaysDisabled;
-            uint8_t scan_mode = ScanMode::kDisabled;
-            bool with_thread_cache = false;
-            const bool is_thread_safe = thread_safe;
-            bool allow_aligned_alloc;
-            bool allow_cookie;
-            bool brp_enabled_;
-            bool use_configurable_pool;
-            //static constexpr bool use_lazy_commit = false;
-            //static constexpr bool never_used_lazy_commit = true;
-            //static constexpr uint32_t extras_size = 0;
-            //static constexpr uint32_t extras_offset = 0;
             uint8_t padding[64-7];
             internal::MaybeLock<thread_safe> lock_;
             Bucket buckets[kNumBuckets] = {};
@@ -19904,6 +19685,7 @@ class PartitionAllocDumpDevCommand(PartitionAllocDumpBetaCommand):
         gef_print("char* next_partition_page:                             {:#x}".format(root["next_partition_page"]))
         gef_print("char* next_partition_page_end:                         {:#x}".format(root["next_partition_page_end"]))
         gef_print("SuperPageExtentEntry* current_extent:                  {:#x}".format(root["current_extent"]))
+        self.print_extent_list(root["current_extent"])
         gef_print("SuperPageExtentEntry* first_extent:                    {:#x}".format(root["first_extent"]))
         self.print_extent_list(root["first_extent"])
         gef_print("DirectMapExtent* direct_map_list:                      {:#x}".format(root["direct_map_list"]))
@@ -19922,6 +19704,59 @@ class PartitionAllocDumpDevCommand(PartitionAllocDumpBetaCommand):
         gef_print("uintptr_t inverted_self:                               {:#x} (=~{:#x})".format(inv, inv_inv))
         gef_print("std::atomic<int> thread_caches_being_constructed_:     {:#x}".format(root["thread_caches_being_constructed_"]))
         return
+
+
+@register_command
+class PartitionAllocDumpDevCommand(PartitionAllocDumpBetaCommand):
+    """PartitionAlloc freelist viewer for chromium dev (supported x64/x86/ARM64/ARM only)."""
+    _cmdline_ = "partition-alloc-dump-dev"
+    _syntax_ = "{:s} [-h] fast_malloc|array_buffer|buffer|layout|all [-v]".format(_cmdline_)
+    _example_ = "\n"
+    _example_ += "{:s} array_buffer # walk from array_buffer_root_\n".format(_cmdline_)
+    _example_ += "{:s} ab # same above (fm, ab, b and l are valid)\n".format(_cmdline_)
+    _example_ += "\n"
+    _example_ += "THIS FEATURE IS EXPERIMENTAL AND HEURISTIC.\n"
+    _example_ += "Chromium mainline is too fast to develop. So if parse is failed, you need fix this gef.py."
+    _category_ = "Heap"
+
+    def read_slot_span(self, addr):
+        ptrsize = current_arch.ptrsize
+        slot_span = {}
+        slot_span["addr"] = current = addr
+        slot_span["super_page_addr"] = (slot_span["addr"] & ~(DEFAULT_PAGE_SIZE-1)) - DEFAULT_PAGE_SIZE
+        slot_span["partition_page_index"] = (slot_span["addr"] & (DEFAULT_PAGE_SIZE-1)) // 0x20
+        slot_span["partition_page_start"] = slot_span["super_page_addr"] + slot_span["partition_page_index"] * DEFAULT_PAGE_SIZE * 4
+        """
+        https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/partition_page.h
+        struct SlotSpanMetadata {
+          PartitionFreelistEntry* freelist_head = nullptr;
+          SlotSpanMetadata<thread_safe>* next_slot_span = nullptr;
+          PartitionBucket<thread_safe>* const bucket = nullptr;
+          int16_t num_allocated_slots = 0;
+          uint16_t num_unprovisioned_slots = 0;
+          int16_t empty_cache_index : 8;
+          uint16_t can_store_raw_size : 1;
+          uint16_t freelist_is_sorted : 1;
+          uint16_t unused : (16 - 8 - 1 - 1);
+        }
+        """
+        slot_span["freelist_head"] = read_int_from_memory(current)
+        current += ptrsize
+        slot_span["next_slot_span"] = read_int_from_memory(current)
+        current += ptrsize
+        slot_span["bucket"] = read_int_from_memory(current)
+        current += ptrsize
+        slot_span["num_allocated_slots"] = u16(read_memory(current, 2))
+        current += 2
+        slot_span["num_unprovisioned_slots"] = u16(read_memory(current, 2))
+        current += 2
+        x = u16(read_memory(current, 2))
+        slot_span["empty_cache_index"] = (x >> 0) & 0xff
+        slot_span["can_store_raw_size"] = (x >> 8) & 1
+        slot_span["freelist_is_sorted"] = (x >> 9) & 1
+        slot_span["unused"] = (x >> 10) & 0x3f
+        current += 2
+        return slot_span, current
 
 
 @register_command

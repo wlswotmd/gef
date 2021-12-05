@@ -70,18 +70,18 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / Debian 
 * `partition-alloc-dump-stable`: dumps partition-alloc free-list (heuristic).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/partition-alloc-dump.png)
     * This command is reserved for the implementation of latest stable version of chromium.
-        * Currently tested: v95.0.4638.0 / 919982 / 417fd548e6cd0c16902a53a65775fbbfbe3b35ef
-        * https://commondatastorage.googleapis.com/chromium-browser-snapshots/index.html?prefix=Linux_x64/919982/
+        * Currently tested: v96.0.4664.0 / 929511 / 4b098751a646f3b3f97353b559ff9fb762d52e31
+        * https://commondatastorage.googleapis.com/chromium-browser-snapshots/index.html?prefix=Linux_x64/929511/
     * Supported on x64 only (maybe it works on x86/ARM/ARM64, but not tested).
     * It will try heuristic search if binary has no symbol.
 * `partition-alloc-dump-beta`: dumps partition-alloc free-list (heuristic).
     * This command is reserved for the implementation of latest beta version of chromium.
-        * Currently tested: v96.0.4664.0 / 929511 / 4b098751a646f3b3f97353b559ff9fb762d52e31
-        * https://commondatastorage.googleapis.com/chromium-browser-snapshots/index.html?prefix=Linux_x64/929511/
-* `partition-alloc-dump-dev`: dumps partition-alloc free-list (heuristic).
-    * This command is reserved for the implementation of latest dev version of chromium.
         * Currently tested: v97.0.4692.0 / 938549 / 0d57ded1a6d727c6845bdfc841a910338605fa27
         * https://commondatastorage.googleapis.com/chromium-browser-snapshots/index.html?prefix=Linux_x64/938549/
+* `partition-alloc-dump-dev`: dumps partition-alloc free-list (heuristic).
+    * This command is reserved for the implementation of latest dev version of chromium.
+        * Currently tested: v98.0.4736.0 / 945825 / d64549a6f8e6d0493f2cf37b35e4966ff4ba32b8
+        * https://commondatastorage.googleapis.com/chromium-browser-snapshots/index.html?prefix=Linux_x64/945825/
 * `partition-alloc-dump-old1`: dumps partition-alloc free-list (heuristic).
     * For the implementation in 2021 Jul (tested on `Google CTF 2021 - fullchain`).
     * Not maintained for a while.
