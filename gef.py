@@ -10688,8 +10688,10 @@ class VMMapCommand(GenericCommand):
     """Display a comprehensive layout of the virtual memory mapping. If a filter argument, GEF will
     filter out the mapping whose pathname do not match that filter."""
     _cmdline_ = "vmmap"
-    _syntax_ = "{:s} [--outer] [FILTER]".format(_cmdline_)
-    _example_ = "{:s} libc".format(_cmdline_)
+    _syntax_ = "{:s} [--outer] [-v] [FILTER]".format(_cmdline_)
+    _example_ = "{:s} libc # print entry only `libc`".format(_cmdline_)
+    _example_ += "{:s} --outer # show qemu-user memory map; only valid in qemu-user mode".format(_cmdline_)
+    _example_ += "{:s} -v # show register info".format(_cmdline_)
     _category_ = "Process/State Inspection (Process)"
 
     @only_if_gdb_running
@@ -10707,6 +10709,11 @@ class VMMapCommand(GenericCommand):
             else:
                 err("Unsupported")
                 return
+
+        self.verbose = False
+        if "-v" in argv:
+            argv.remove("-v")
+            self.verbose = True
 
         vmmap = get_process_maps(outer)
         if not vmmap:
@@ -10764,6 +10771,18 @@ class VMMapCommand(GenericCommand):
 
         l.append(Color.colorify(entry.path, line_color))
         line = " ".join(l)
+
+        # register info
+        if self.verbose:
+            register_hints = []
+            for regname in current_arch.all_registers:
+                regvalue = get_register(regname)
+                if entry.page_start <= regvalue < entry.page_end:
+                    register_hints.append(regname)
+            if register_hints:
+                m = " {:s} {:s}".format(LEFT_ARROW, ", ".join(list(register_hints)))
+                registers_color = get_gef_setting("theme.dereference_register_value")
+                line += Color.colorify(m, registers_color)
 
         gef_print(line)
         return
