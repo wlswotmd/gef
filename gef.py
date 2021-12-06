@@ -23806,12 +23806,13 @@ class PagewalkX64Command(PagewalkCommand):
         # for printing it, we will pagewalk manually.
         res = gdb.execute("monitor info registers", to_string=True)
         cr3 = int(re.search(r"CR3=(\S+)", res).group(1), 16)
+        base = (cr3 >> 12) << 12
         cr4 = int(re.search(r"CR4=(\S+)", res).group(1), 16)
         info("cr3: {:#018x}".format(cr3))
         info("cr4: {:#018x}".format(cr4))
 
         self.PTE = []
-        self.TABLES = [(0, cr3, ())] # va, base, upper_flags
+        self.TABLES = [(0, base, ())] # va, base, upper_flags
         if is_x86_64():
             if (cr4 >> 12) & 1: # PML5T check
                 # 64bit 5-level(4KB): 9,9,9,9,9,12
