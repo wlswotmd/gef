@@ -16341,35 +16341,38 @@ class MemoryCompareCommand(GenericCommand):
         diff_found = False
         asterisk = True
         for pos in range(0, self.size, 16):
-            f1d8 = from1data[pos : pos+16]
-            f2d8 = from2data[pos : pos+16]
-            if f1d8 == f2d8:
+            f1_bin = from1data[pos : pos+16]
+            f2_bin = from2data[pos : pos+16]
+            if f1_bin == f2_bin:
                 if asterisk == False:
                     gef_print("*")
                     asterisk = True
                 continue
 
+            addr1 = self.from1 + pos
+            addr2 = self.from2 + pos
+
             diff_found = True
             asterisk = False
-            bf1 = []
-            bf2 = []
-            bfa1 = []
-            bfa2 = []
-            for i in range(min(len(f1d8), 16)):
-                if f1d8[i] == f2d8[i]:
-                    bf1.append("{:02x}".format(f1d8[i]))
-                    bf2.append("{:02x}".format(f2d8[i]))
-                    bfa1.append(chr(f1d8[i]) if 0x20 <= f1d8[i] < 0x7f else ".")
-                    bfa2.append(chr(f2d8[i]) if 0x20 <= f2d8[i] < 0x7f else ".")
+            f1_hex = []
+            f2_hex = []
+            f1_ascii = []
+            f2_ascii = []
+            for i in range(min(len(f1_bin), 16)):
+                if f1_bin[i] == f2_bin[i]:
+                    color_func = lambda x:x
                 else:
-                    bf1.append(Color.boldify("{:02x}".format(f1d8[i])))
-                    bf2.append(Color.boldify("{:02x}".format(f2d8[i])))
-                    bfa1.append(Color.boldify(chr(f1d8[i]) if 0x20 <= f1d8[i] < 0x7f else "."))
-                    bfa2.append(Color.boldify(chr(f2d8[i]) if 0x20 <= f2d8[i] < 0x7f else "."))
-            fmt = "{:#018x}: {:s} | {:s}"
-            msg1 = fmt.format(self.from1+pos, ' '.join(bf1), ''.join(bfa1))
-            msg2 = fmt.format(self.from2+pos, ' '.join(bf2), ''.join(bfa2))
-            gef_print(msg1 + " | " + msg2)
+                    color_func = Color.boldify
+                f1_hex.append(color_func("{:02x}".format(f1_bin[i])))
+                f2_hex.append(color_func("{:02x}".format(f2_bin[i])))
+                f1_ascii.append(color_func(chr(f1_bin[i]) if 0x20 <= f1_bin[i] < 0x7f else "."))
+                f2_ascii.append(color_func(chr(f2_bin[i]) if 0x20 <= f2_bin[i] < 0x7f else "."))
+            f1_hex_s = ' '.join(f1_hex) + " " * ((16 - len(f1_hex))*3)
+            f2_hex_s = ' '.join(f2_hex) + " " * ((16 - len(f2_hex))*3)
+            f1_ascii_s = ''.join(f1_ascii) + " " * (16 - len(f1_ascii))
+            f2_ascii_s = ''.join(f2_ascii) + " " * (16 - len(f2_ascii))
+            msg = "{:#018x}: {:s} | {:s} | {:#018x}: {:s} | {:s} |".format(addr1, f1_hex_s, f1_ascii_s, addr2, f2_hex_s, f2_ascii_s)
+            gef_print(msg)
 
         if diff_found == False:
             info("Not found diff")
@@ -16430,6 +16433,9 @@ class MemoryCompareCommand(GenericCommand):
         except:
             self.usage()
             return
+
+        if self.size == 0:
+            info("The size is zero, maybe wrong.")
 
         self.memcmp()
         return
