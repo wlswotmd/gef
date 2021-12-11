@@ -17996,8 +17996,11 @@ class KsymaddrRemoteCommand(GenericCommand):
             pos += 1 # skip first zero
             while True:
                 if self.RO_REGION_u32[pos] == 0 or self.RO_REGION_u32[pos] & 0xff000000 > 0:
-                    while pos % 2: # need align
-                        pos += 1
+                    if self.RO_REGION_u32[pos-1] * 2 < self.RO_REGION_u32[pos]:
+                        pos &= ~1
+                    else:
+                        while pos % 2: # need align
+                            pos += 1
                     self.kallsyms_token_table_addr = self.krobase + pos * 4
                     break
                 pos += 1
