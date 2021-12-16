@@ -26330,6 +26330,8 @@ class AddSymbolTemporaryCommand(GenericCommand):
             elf = get_elf_headers(f"{fname}.debug")
             for s in elf.shdrs:
                 section_name = s.sh_name
+                if section_name == "": # null, skip
+                    continue
                 if section_name == ".text": # .text is needed, don't remove
                     continue
                 if section_name == ".interp": # broken if removed
@@ -26337,6 +26339,8 @@ class AddSymbolTemporaryCommand(GenericCommand):
                 if section_name == ".rela.dyn": # cannot removed
                     continue
                 if section_name == ".dynamic": # cannot removed
+                    continue
+                if section_name == ".bss": # broken if removed
                     continue
                 os.system(f"{objcopy} --remove-section={section_name} {fname}.debug 2>/dev/null")
             cache["fname"] = fname + ".debug"
