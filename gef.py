@@ -11654,43 +11654,61 @@ class HeapAnalysisCommand(GenericCommand):
 
 
 @register_command
-class SyscallArgsCommand(GenericCommand):
-    """Gets the syscall name and arguments based on the register values in the current state."""
-    _cmdline_ = "syscall-args"
-    _syntax_ = _cmdline_
-    _category_ = "Debugging Support"
-
-    def __init__(self):
-        super().__init__()
-        return
-
-    def is_emulated32(self):
-        if is_qemu_usermode():
-            return True
-
-        if is_qemu_system():
-            # corner case (ex: using qemu-system-x86_64, but process is executed as 32bit mode)
-            # is not able to be detected
-            return True
-
-        for m in get_process_maps():
-            # native x86:
-            # 0xbffdf000 0xc0000000 0x021000 0x000000 rw- [stack]
-            # emulated x86 on x86_64
-            # 0xfffdd000 0xffffe000 0x021000 0x000000 rw- [stack]
-            # native arm:
-            # 0xbefdf000 0xbf000000 0x021000 0x000000 rw- [stack]
-            # emulated arm on aarch64
-            # 0xfffcf000 0xffff0000 0x021000 0x000000 rw- [stack]
-            if m.path == "[stack]":
-                return (m.page_start >> 28) == 0xf
-        else:
-            return False # by default it considers on native
+class SyscallSearchCommand(GenericCommand):
+    """Search the syscall number"""
+    _cmdline_ = "syscall-search"
+    _syntax_ = "{:s} [-h] [-v] SYSCALL_NAME_REGEX_SEARCH_PATTERN".format(_cmdline_)
+    _category_ = "Search"
 
     @only_if_gdb_running
     def do_invoke(self, argv):
-        color = get_gef_setting("theme.table_heading")
+        if len(argv) == 0 or argv[0] == "-h":
+            self.usage()
+            return
 
+        verbose = False
+        if "-v" in argv:
+            verbose = True
+            argv.remove("-v")
+
+        if len(argv) != 1:
+            self.usage()
+            return
+
+        color = get_gef_setting("theme.table_heading")
+        if verbose:
+            headers = ["NR", "Name", "Parameter"]
+            gef_print(Color.colorify("{:<25} {:<20} {}".format(*headers), color))
+        else:
+            headers = ["NR", "Name"]
+            gef_print(Color.colorify("{:<25} {:<20}".format(*headers), color))
+
+        syscall_table = SyscallArgsCommand.get_syscall_table()
+        for num, entry in syscall_table.items():
+            if re.search(argv[0], entry.name):
+                nr = "{:d} (=0x{:x})".format(num, num)
+                if verbose:
+                    param = ('\n'+" "*47).join(["{}: {}".format(i, param.param) for i, param in enumerate(entry.params, start=1)])
+                else:
+                    param = ""
+                gef_print("{:<25} {:<20} {}".format(nr, entry.name, param))
+        return
+
+
+@register_command
+class SyscallArgsCommand(GenericCommand):
+    """Gets the syscall name and arguments based on the register values in the current state."""
+    _cmdline_ = "syscall-args"
+    _syntax_ = "{:s} [-h] [SYSCALL_NUM]".format(_cmdline_)
+    _category_ = "Debugging Support"
+
+    @only_if_gdb_running
+    def do_invoke(self, argv):
+        if argv[0] == "-h":
+            self.usage()
+            return
+
+        color = get_gef_setting("theme.table_heading")
         syscall_table = self.get_syscall_table()
 
         if len(argv) == 1:
@@ -11727,7 +11745,31 @@ class SyscallArgsCommand(GenericCommand):
             gef_print(line)
         return
 
-    def get_syscall_table(self):
+    @staticmethod
+    def get_syscall_table():
+        def is_emulated32():
+            if is_qemu_usermode():
+                return True
+
+            if is_qemu_system():
+                # corner case (ex: using qemu-system-x86_64, but process is executed as 32bit mode)
+                # is not able to be detected
+                return True
+
+            for m in get_process_maps():
+                # native x86:
+                # 0xbffdf000 0xc0000000 0x021000 0x000000 rw- [stack]
+                # emulated x86 on x86_64
+                # 0xfffdd000 0xffffe000 0x021000 0x000000 rw- [stack]
+                # native arm:
+                # 0xbefdf000 0xbf000000 0x021000 0x000000 rw- [stack]
+                # emulated arm on aarch64
+                # 0xfffcf000 0xffff0000 0x021000 0x000000 rw- [stack]
+                if m.path == "[stack]":
+                    return (m.page_start >> 28) == 0xf
+            else:
+                return False # by default it considers on native
+
         Entry = collections.namedtuple('Entry', 'name params')
         Param = collections.namedtuple('Param', 'reg param')
 
@@ -12149,7 +12191,7 @@ class SyscallArgsCommand(GenericCommand):
                     continue
                 syscall_list += [[s[0]+0x40000000, s[1], s[2]]]
 
-        elif is_x86_32() and self.is_emulated32():
+        elif is_x86_32() and is_emulated32():
             register_list = ["$ebx", "$ecx", "$edx", "$esi", "$edi", "$ebp"]
             # arch/x86/include/asm/unistd.h
             # arch/x86/include/uapi/asm/unistd.h
@@ -12602,7 +12644,7 @@ class SyscallArgsCommand(GenericCommand):
                 [0x1c0, 'process_mrelease', ['int pidfd', 'unsigned int flags']],
             ]
 
-        elif is_x86_32() and not self.is_emulated32():
+        elif is_x86_32() and not is_emulated32():
             register_list = ["$ebx", "$ecx", "$edx", "$esi", "$edi", "$ebp"]
             # arch/x86/include/asm/unistd.h
             # arch/x86/include/uapi/asm/unistd.h
@@ -13370,7 +13412,7 @@ class SyscallArgsCommand(GenericCommand):
                 [0x1c0, 'process_mrelease', ['int pidfd', 'unsigned int flags']],
             ]
 
-        elif is_arm32() and self.is_emulated32():
+        elif is_arm32() and is_emulated32():
             register_list = ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6"]
             # arch/arm64/include/asm/unistd.h
             # arch/arm64/include/asm/unistd32.h
@@ -13828,7 +13870,7 @@ class SyscallArgsCommand(GenericCommand):
                 [0xf0005, 'set_tls', ['unsigned long val']], # arch/arm/kernel/traps.c
             ]
 
-        elif is_arm32() and not self.is_emulated32():
+        elif is_arm32() and not is_emulated32():
             register_list = ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6"]
             # arch/arm/include/asm/unistd.h
             # arch/arm/include/generated/uapi/asm/unistd-common.h

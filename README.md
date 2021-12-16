@@ -236,12 +236,14 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / Debian 
 * `ls`/`cat`: invokes `ls`/`cat` directly.
 * `constgrep`: invokes `grep` under `/usr/include`.
 * `rp`: invokes `rp++` with commonly used options.
-* `cpuid`: show the result of cpuid(eax=0,1,2...).
+* `cpuid`: shows the result of cpuid(eax=0,1,2...).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/cpuid.png)
 * `dasm`: disassembles the code by capstone.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dasm.png)
 * `asm-list`: lists up N-bytes instructions. (1 <= N <= 4)
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/asm-list.png)
+* `syscall-search`: searches system call by regex.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/syscall-search.png)
 
 ### Other
 * Replace the unicode character to ASCII.
