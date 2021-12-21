@@ -23535,6 +23535,10 @@ class PagewalkCommand(GenericCommand):
             lines = filtered_lines
             info("PT Entry (filterd by keyword): {:d}".format(len(lines)))
 
+        # sort by phys
+        if self.sort_by_phys:
+            lines = sorted(lines, key=lambda x: x.split()[1])
+
         # check how many result
         if lines == []:
             info("Nothing to display")
@@ -23562,6 +23566,11 @@ class PagewalkCommand(GenericCommand):
         if "--print-all" in argv:
             self.print_all = True
             argv.remove("--print-all")
+
+        self.sort_by_phys = False
+        if "--sort-by-phys" in argv:
+            self.sort_by_phys = True
+            argv.remove("--sort-by-phys")
 
         self.filter = []
         while "--filter" in argv:
@@ -23597,13 +23606,14 @@ class PagewalkCommand(GenericCommand):
 class PagewalkX64Command(PagewalkCommand):
     """Dump pagetable for x64/x86 using qemu-monitor."""
     _cmdline_ = "pagewalk x64"
-    _syntax_ = "{:s} [-h] [--print-each-level] [--print-flags] [--print-all] [--filter PCRE_PATTERN] [--range ADDRESS]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [--print-each-level] [--print-flags] [--print-all] [--filter PCRE_PATTERN] [--range ADDRESS] [--sort-by-phys]".format(_cmdline_)
     _example_ = "\n"
     _example_ += "{:s} --print-each-level # show all level pagetable\n".format(_cmdline_)
     _example_ += "{:s} --print-flags      # show lower bits of address used as flag\n".format(_cmdline_)
     _example_ += "{:s} --print-all        # do not merge similar/consecutive address\n".format(_cmdline_)
     _example_ += "{:s} --filter '0xabc'   # grep by PCRE pattern\n".format(_cmdline_)
-    _example_ += "{:s} --range '0xabc'    # filter by map included specific address".format(_cmdline_)
+    _example_ += "{:s} --range '0xabc'    # filter by map included specific address\n".format(_cmdline_)
+    _example_ += "{:s} --sort-by-phys     # sort by physical address".format(_cmdline_)
     _aliases_ = ["pagewalk x86",]
     _category_ = "Process/State Inspection (Physical Memory)"
 
@@ -23944,13 +23954,14 @@ class PagewalkX64Command(PagewalkCommand):
 class PagewalkArmCommand(PagewalkCommand):
     """Dump pagetable for ARM (Cortex-A only) using qemu-monitor."""
     _cmdline_ = "pagewalk arm"
-    _syntax_ = "{:s} [-h] [--print-each-level] [--print-flags] [--print-all] [--filter PCRE_PATTERN] [--range ADDRESS]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [--print-each-level] [--print-flags] [--print-all] [--filter PCRE_PATTERN] [--range ADDRESS] [--sort-by-phys]".format(_cmdline_)
     _example_ = "\n"
     _example_ += "{:s} --print-each-level # show all level pagetable\n".format(_cmdline_)
     _example_ += "{:s} --print-flags      # show lower bits of address used as flag\n".format(_cmdline_)
     _example_ += "{:s} --print-all        # do not merge similar/consecutive address\n".format(_cmdline_)
     _example_ += "{:s} --filter '0xabc'   # grep by PCRE pattern\n".format(_cmdline_)
     _example_ += "{:s} --range '0xabc'    # filter by map included specific address\n".format(_cmdline_)
+    _example_ += "{:s} --sort-by-phys     # sort by physical address\n".format(_cmdline_)
     _example_ += "PL2 pagewalk is unsupported"
     _category_ = "Process/State Inspection (Physical Memory)"
 
@@ -24429,13 +24440,14 @@ class PagewalkArmCommand(PagewalkCommand):
 class PagewalkArm64Command(PagewalkCommand):
     """Dump pagetable for ARM64 using qemu-monitor."""
     _cmdline_ = "pagewalk arm64"
-    _syntax_ = "{:s} [-h] [TARGET_EL] [--print-each-level] [--print-flags] [--print-all] [--filter PCRE_PATTERN] [--range ADDRESS]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [TARGET_EL] [--print-each-level] [--print-flags] [--print-all] [--filter PCRE_PATTERN] [--range ADDRESS] [--sort-by-phys]".format(_cmdline_)
     _example_ = "\n"
     _example_ += "{:s} --print-each-level # for current EL, show all level pagetable\n".format(_cmdline_)
     _example_ += "{:s} 1 --print-flags    # for EL1+0, show lower bits of address used as flag\n".format(_cmdline_)
     _example_ += "{:s} 2 --print-all      # for EL2, do not merge similar/consecutive address\n".format(_cmdline_)
     _example_ += "{:s} --filter '0xabc'   # for current EL, grep by PCRE pattern\n".format(_cmdline_)
-    _example_ += "{:s} --range '0xabc'    # for current EL, filter by map included specific address".format(_cmdline_)
+    _example_ += "{:s} --range '0xabc'    # for current EL, filter by map included specific address\n".format(_cmdline_)
+    _example_ += "{:s} --sort-by-phys     # sort by physical address".format(_cmdline_)
     _category_ = "Process/State Inspection (Physical Memory)"
 
     def __init__(self, *args, **kwargs):
