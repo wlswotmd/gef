@@ -51,9 +51,15 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / Debian 
     * Supported on x64/x86/ARM64/ARM.
     * Supported on both kASLR is enabled or not.
     * Unsupported: to resolve no-function address when kernel built as `CONFIG_KALLSYMS_ALL=n`.
+    * This command is faster than `vmlinux-to-elf`, but it fails to parse depending on the in-memory layout.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksymaddr-remote.png)
-* `ksymaddr-remote-apply`: applies kallsyms informations obtained with `ksymaddr-remote` to gdb.
+* `ksymaddr-remote-apply`: applies kallsyms informations obtained by `ksymaddr-remote` to gdb.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksymaddr-remote-apply.png)
+* `ksymaddr-remote-apply2`: applies kallsyms informations obtained by `vmlinux-to-elf` to gdb.
+    * Very slow, but probably more accurate than my implementation.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksymaddr-remote-apply2a.png)
+    * Once you get symboled vmlinux file, you can reuse and apply it automatically even after rebooting qemu-system.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksymaddr-remote-apply2b.png)
 * `slab`: dumps slab free-list (heuristic).
     * Original code: https://github.com/PaoloMonti42/salt
     * Supported on x64/x86/ARM64/ARM + SLUB.

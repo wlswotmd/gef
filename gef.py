@@ -17028,14 +17028,41 @@ class SlabCommand(GenericCommand):
 
     def __init__(self, *args, **kwargs):
         super().__init__(complete=gdb.COMPLETE_NONE)
+        self.once = False
+        self.symboled = None
         return
 
     def get_ksymaddr(self, sym):
-        try:
-            res = gdb.execute("ksymaddr-remote --silent --exact {:s}".format(sym), to_string=True)
-            return int(res.split()[0], 16)
-        except:
-            return None
+        if self.symboled is None:
+            try:
+                if is_64bit():
+                    parse_address("startup_64")
+                elif is_32bit():
+                    parase_address("startup_32")
+                else:
+                    raise
+                self.symboled = True
+            except:
+                self.symboled = False
+
+        # use available symbol
+        if self.symboled == True:
+            try:
+                return parse_address(sym)
+            except:
+                return None
+
+        # use ksymaddr-remote
+        else:
+            if not self.once:
+                gdb.execute("ksymaddr-remote DUMMY")
+                self.once = True
+
+            try:
+                res = gdb.execute("ksymaddr-remote --silent --exact {:s}".format(sym), to_string=True)
+                return int(res.split()[0], 16)
+            except:
+                return None
 
     def get_per_cpu_offset(self):
         # plan 1 (directly)
@@ -17052,9 +17079,13 @@ class SlabCommand(GenericCommand):
                     m = re.search(r"[DQ]WORD PTR \[.*([-+]0x\S+)\]", line)
                     if m:
                         if is_64bit():
-                            return int(m.group(1), 16) & 0xffffffffffffffff
+                            v = int(m.group(1), 16) & 0xffffffffffffffff
+                            if v != 0:
+                                return v
                         else:
-                            return int(m.group(1), 16) & 0xffffffff
+                            v = int(m.group(1), 16) & 0xffffffff
+                            if v != 0:
+                                return v
             elif is_arm64():
                 base = None
                 for line in res.splitlines():
@@ -17164,8 +17195,6 @@ class SlabCommand(GenericCommand):
         return None
 
     def init_offset(self):
-        gdb.execute("ksymaddr-remote DUMMY")
-
         # resolve __per_cpu_offset
         self.__per_cpu_offset = self.get_per_cpu_offset()
         if self.__per_cpu_offset is None:
@@ -17663,8 +17692,8 @@ class KsymaddrRemoteCommand(GenericCommand):
             return True
 
     def get_kernel_base(self):
-        self.kbse = None
-        self.kbse_size = None
+        self.kbase = None
+        self.kbase_size = None
 
         for vaddr, size, perm in self.maps:
             if perm == "R-X" and size >= 0x100000:
@@ -17696,8 +17725,8 @@ class KsymaddrRemoteCommand(GenericCommand):
                             ro = [ro[0], ro[1] + size] # merge contiguous region
             return ro
 
-        self.krobse = None
-        self.krobse_size = None
+        self.krobase = None
+        self.krobase_size = None
 
         res = search_perm("R--")
         if res is None:
@@ -18307,6 +18336,186 @@ class KsymaddrRemoteCommand(GenericCommand):
             return
         self.resolve_kallsyms()
         self.print_kallsyms(argv)
+        return
+
+
+@register_command
+class KsymaddrRemoteApply2Command(GenericCommand):
+    """Apply symbol from kallsyms in memory using vmlinux-to-elf (too slow but more accurate)"""
+    _cmdline_ = "ksymaddr-remote-apply2"
+    _syntax_ = "{:s} [--reparse]".format(_cmdline_)
+    _category_ = "Misc"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(complete=gdb.COMPLETE_NONE)
+        self.maps = None
+        self.kallsyms = []
+        return
+
+    def get_maps(self):
+        if self.maps:
+            return True
+
+        self.maps = []
+        info("Wait for memory scan")
+
+        res = gdb.execute("pagewalk", to_string=True)
+        res = sorted(set(res.splitlines()))
+        res = list(filter(lambda line: line.endswith("]"), res))
+        res = list(filter(lambda line: not "*" in line, res))
+
+        if is_x86():
+            for line in res:
+                line = line.split()
+                if line[6] != "KERN":
+                    continue
+                vaddr = int(line[0].split("-")[0], 16)
+                size = int(line[2], 16)
+                perm = line[5][1:]
+                self.maps.append([vaddr, size, perm])
+
+        elif is_arm32():
+            for line in res:
+                line = line.split()
+                if line[5] != "[PL0/---":
+                    continue
+                vaddr = int(line[0].split("-")[0], 16)
+                size = int(line[2], 16)
+                perm = line[6][4:7]
+                self.maps.append([vaddr, size, perm])
+
+        elif is_arm64():
+            for line in res:
+                line = line.split()
+                if line[5] != "[EL0/---":
+                    continue
+                vaddr = int(line[0].split("-")[0], 16)
+                size = int(line[2], 16)
+                perm = line[6][4:7]
+                self.maps.append([vaddr, size, perm])
+
+        if self.maps == []:
+            if is_x86():
+                warn("Make sure you are in ring0 (=kernel mode)")
+            elif is_arm32():
+                warn("Make sure you are in supervisor mode (=kernel mode)")
+                warn("Make sure qemu 3.x or higher")
+            elif is_arm64():
+                warn("Make sure you are in EL1 (=kernel mode)")
+                warn("Make sure qemu 3.x or higher")
+            return None
+        else:
+            return True
+
+    def get_kernel_base(self):
+        self.kbase = None
+        self.kbase_size = None
+
+        for vaddr, size, perm in self.maps:
+            if perm == "R-X" and size >= 0x100000:
+                self.kbase = vaddr
+                self.kbase_size = size
+                return
+        # not found, maybe old kernel
+        for vaddr, size, perm in self.maps:
+            if perm == "RWX" and size >= 0x100000:
+                self.kbase = vaddr
+                self.kbase_size = size
+                return
+        return
+
+    def get_kernel_rodata_base(self):
+        def search_perm(target_perm):
+            found = False
+            ro = None
+            for vaddr, size, perm in self.maps:
+                if found == False:
+                    if vaddr == self.kbase: # search kernel base
+                        found = True
+                    continue
+                if found == True:
+                    if perm == target_perm: # bss is next to kernel base
+                        if ro is None:
+                            ro = [vaddr, size]
+                        elif ro[0] + ro[1] == vaddr:
+                            ro = [ro[0], ro[1] + size] # merge contiguous region
+            return ro
+
+        self.krobase = None
+        self.krobase_size = None
+
+        res = search_perm("R--")
+        if res is None:
+            res = search_perm("R-X")
+            if res is None:
+                res = search_perm("RWX") # old kernel
+                if res is None:
+                    return
+
+        self.krobase = res[0]
+        self.krobase_size = res[1]
+        return
+
+    def process(self):
+        DUMPED_MEM_FILE = "/tmp/gef-dump-memory.raw"
+        SYMBOLED_VMLINUX_FILE = "/tmp/gef-dump-memory.elf"
+
+        # get kernel memory maps
+        if self.get_maps() is None:
+            return None
+        # get kernel base
+        self.get_kernel_base()
+        if self.kbase is None:
+            return None
+        # get kernel ro_base
+        self.get_kernel_rodata_base()
+        if self.krobase is None:
+            return None
+
+        gef_print("kernel base:   {:#x} ({:#x} bytes)".format(self.kbase, self.kbase_size))
+        gef_print("kernel rodata: {:#x} ({:#x} bytes)".format(self.krobase, self.krobase_size))
+
+        if self.reparse or not os.path.exists(DUMPED_MEM_FILE):
+            info("Dumping memory")
+            gdb.execute("dump memory {} {:#x} {:#x}".format(DUMPED_MEM_FILE, self.kbase, self.krobase + self.krobase_size), to_string=True)
+            gef_print("Dumped to {}".format(DUMPED_MEM_FILE))
+
+            info("Execute `vmlinux-to-elf {} {}`".format(DUMPED_MEM_FILE, SYMBOLED_VMLINUX_FILE))
+            os.system("vmlinux-to-elf {} {}".format(DUMPED_MEM_FILE, SYMBOLED_VMLINUX_FILE))
+        else:
+            info("Reuse symboled vmlinux at {}".format(SYMBOLED_VMLINUX_FILE))
+
+        info("Adding symbol")
+        gdb.execute("add-symbol-file {} -s .kernel {:#x} -s .bss {:#x}".format(SYMBOLED_VMLINUX_FILE, self.kbase, self.krobase + self.krobase_size))
+        info("Added")
+        return
+
+    @only_if_gdb_running
+    def do_invoke(self, argv):
+        if not is_qemu_system():
+            err("Unsupported")
+            return
+
+        if not (is_x86() or is_arm32() or is_arm64()):
+            err("Unsupported")
+            return
+
+        try:
+            readelf = which("vmlinux-to-elf")
+        except FileNotFoundError as e:
+            err("{}".format(e))
+            return
+
+        self.reparse = False
+        if "--reparse" in argv:
+            self.reparse = True
+            argv.remove("--reparse")
+
+        if argv:
+            self.usage()
+            return
+
+        self.process()
         return
 
 
