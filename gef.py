@@ -299,29 +299,52 @@ class Color:
     }
 
     @staticmethod
-    def redify(msg):       return Color.colorify(msg, "red")
+    def redify(msg):
+        return Color.colorify(msg, "red")
+
     @staticmethod
-    def greenify(msg):     return Color.colorify(msg, "green")
+    def greenify(msg):
+        return Color.colorify(msg, "green")
+
     @staticmethod
-    def blueify(msg):      return Color.colorify(msg, "blue")
+    def blueify(msg):
+        return Color.colorify(msg, "blue")
+
     @staticmethod
-    def yellowify(msg):    return Color.colorify(msg, "yellow")
+    def yellowify(msg):
+        return Color.colorify(msg, "yellow")
+
     @staticmethod
-    def grayify(msg):      return Color.colorify(msg, "gray")
+    def grayify(msg):
+        return Color.colorify(msg, "gray")
+
     @staticmethod
-    def light_grayify(msg):return Color.colorify(msg, "light_gray")
+    def light_grayify(msg):
+        return Color.colorify(msg, "light_gray")
+
     @staticmethod
-    def pinkify(msg):      return Color.colorify(msg, "pink")
+    def pinkify(msg):
+        return Color.colorify(msg, "pink")
+
     @staticmethod
-    def cyanify(msg):      return Color.colorify(msg, "cyan")
+    def cyanify(msg):
+        return Color.colorify(msg, "cyan")
+
     @staticmethod
-    def boldify(msg):      return Color.colorify(msg, "bold")
+    def boldify(msg):
+        return Color.colorify(msg, "bold")
+
     @staticmethod
-    def underlinify(msg):  return Color.colorify(msg, "underline")
+    def underlinify(msg):
+        return Color.colorify(msg, "underline")
+
     @staticmethod
-    def highlightify(msg): return Color.colorify(msg, "highlight")
+    def highlightify(msg):
+        return Color.colorify(msg, "highlight")
+
     @staticmethod
-    def blinkify(msg):     return Color.colorify(msg, "blink")
+    def blinkify(msg):
+        return Color.colorify(msg, "blink")
 
     @staticmethod
     def colorify(text, attrs):
@@ -856,7 +879,7 @@ def search_for_main_arena():
     if is_x86():
         addr = align_address_to_size(malloc_hook_addr + current_arch.ptrsize, 0x20)
     elif is_arch(Elf.AARCH64) or is_arch(Elf.ARM):
-        addr = malloc_hook_addr - current_arch.ptrsize*2 - MallocStateStruct("*0").struct_size
+        addr = malloc_hook_addr - current_arch.ptrsize * 2 - MallocStateStruct("*0").struct_size
     else:
         raise OSError("Cannot find main_arena for {}".format(current_arch.arch))
 
@@ -1017,8 +1040,9 @@ class GlibcArena:
     def addr(self):
         return self.__addr
 
+    # arena aligned_size
     @property
-    def size(self): # arena aligned_size
+    def size(self):
         if current_arch.ptrsize == 4:
           aligned_size = (self.__size + 7) & ~0b111
         else:
@@ -1075,13 +1099,8 @@ class GlibcArena:
         if self.heap_base is None:
             return {}
 
-        tcache_perthread_struct = self.heap_base + 0x10
         chunks_all = {}
         for i in range(self.TCACHE_MAX_BINS):
-            if get_libc_version() < (2, 30):
-                count = ord(read_memory(tcache_perthread_struct + i, 1))
-            else:
-                count = u16(read_memory(tcache_perthread_struct + 2 * i, 2))
             chunk = self.tcachebin(i)
             chunks = set()
             while True:
@@ -3709,7 +3728,7 @@ def get_explored_regions():
     """Return sections from auxv exploring"""
     def is_exist_page(addr):
         try:
-            v = read_memory(addr, 1)
+            _ = read_memory(addr, 1)
             return True
         except:
             return False
@@ -3746,14 +3765,14 @@ def get_explored_regions():
             region_end += gef_getpagesize()
         return region_start, region_end
 
-    def in_regions(addr):
+    def is_in_regions(addr):
         for rg in regions:
             if rg.page_start <= addr < rg.page_end:
                 return True
         return False
 
     def add_regions(addr, label, perm="rwx"):
-        if in_regions(addr):
+        if is_in_regions(addr):
             return
         start, end = get_region_start_end(addr)
         if start is None:
@@ -6819,118 +6838,105 @@ class UnicornEmulateCommand(GenericCommand):
         else:
             tmp_fd, tmp_filename = tempfile.mkstemp(suffix=".py", prefix="gef-uc-")
 
-        if is_x86():
-            # need to handle segmentation (and pagination) via MSR
-            emulate_segmentation_block = """
-# from https://github.com/unicorn-engine/unicorn/blob/master/tests/regress/x86_64_msr.py
-SCRATCH_ADDR = 0xf000
-FSMSR = 0xC0000100
-GSMSR = 0xC0000101
-
-def set_msr(uc, msr, value, scratch=SCRATCH_ADDR):
-    buf = b"\\x0f\\x30" # x86: wrmsr
-    uc.mem_map(scratch, 0x1000)
-    uc.mem_write(scratch, buf)
-    uc.reg_write(unicorn.x86_const.UC_X86_REG_RAX, value & 0xFFFFFFFF)
-    uc.reg_write(unicorn.x86_const.UC_X86_REG_RDX, (value >> 32) & 0xFFFFFFFF)
-    uc.reg_write(unicorn.x86_const.UC_X86_REG_RCX, msr & 0xFFFFFFFF)
-    uc.emu_start(scratch, scratch+len(buf), count=1)
-    uc.mem_unmap(scratch, 0x1000)
-    return
-
-def set_gs(uc, addr):
-    return set_msr(uc, GSMSR, addr)
-
-def set_fs(uc, addr):
-    return set_msr(uc, FSMSR, addr)
-"""
-
-            context_segmentation_block = """
-    set_fs(emu, {FS:#x})
-    set_gs(emu, {GS:#x})
-""".format(FS=TlsCommand.getfs() if is_x86_64() else 0,
-           GS=TlsCommand.getgs() if is_x86_32() else 0)
-
         pythonbin = which("python3")
 
-        content = """#!{pythonbin} -i
-#
-# Emulation script for "{fname}" from {start:#x} to {end:#x}
-#
-# Powered by gef, unicorn-engine, and capstone-engine
-#
-# @_hugsy_
-#
-from __future__ import print_function
-import collections
-import capstone, unicorn
+        content  = "#!{pythonbin} -i\n".format(pythonbin=pythonbin)
+        content += "#\n"
+        content += "# Emulation script for \"{fname}\" from {start:#x} to {end:#x}\n".format(fname=fname, start=start_insn_addr, end=end_insn_addr)
+        content += "#\n"
+        content += "# Powered by gef, unicorn-engine, and capstone-engine\n"
+        content += "#\n"
+        content += "# @_hugsy_\n"
+        content += "#\n"
+        content += "from __future__ import print_function\n"
+        content += "import collections\n"
+        content += "import capstone, unicorn\n"
+        content += "\n"
 
-registers = collections.OrderedDict(sorted({{{regs}}}.items(), key=lambda t: t[0]))
-uc = None
-verbose = {verbose}
-quiet = {quiet}
-nb_gadget = {nb_gadget}
-syscall_register = "{syscall_reg}"
-count = 0
+        content += "registers = collections.OrderedDict(sorted({{{regs}}}.items(), key=lambda t: t[0]))\n".format(
+            regs=",".join(["\n    '%s': %s" % (k.strip(), unicorn_registers[k]) for k in unicorn_registers])+"\n"
+        )
+        content += "uc = None\n"
+        content += "verbose = {verbose}\n".format(verbose=str(verbose))
+        content += "quiet = {quiet}\n".format(quiet=str(quiet))
+        content += "nb_gadget = {nb_gadget}\n".format(nb_gadget=nb_gadget)
+        content += "syscall_register = '{syscall_reg}'\n".format(syscall_reg=current_arch.syscall_register)
+        content += "count = 0\n"
+        content += "\n"
+        content += "def disassemble(code, addr):\n"
+        content += "    cs = capstone.Cs({cs_arch}, {cs_mode})\n".format(cs_arch=cs_arch, cs_mode=cs_mode)
+        content += "    for i in cs.disasm(code, addr):\n"
+        content += "        return i\n"
+        content += "\n"
+        content += "def code_hook(emu, address, size, user_data):\n"
+        content += "    global count\n"
+        content += "    if not quiet:\n"
+        content += "        code = emu.mem_read(address, size)\n"
+        content += "        code_hex = code.hex()\n"
+        content += "        insn = disassemble(code, address)\n"
+        content += "        if verbose:\n"
+        content += "            print_regs(emu, registers)\n"
+        content += "        print('>>> {:d} {:#x}: {:24s} {:s} {:s}'.format(count, insn.address, code_hex, insn.mnemonic, insn.op_str))\n"
+        content += "    count += 1\n"
+        content += "    if 0 <= nb_gadget and count >= nb_gadget:\n"
+        content += "        emu.emu_stop()\n"
+        content += "    return\n"
+        content += "\n"
+        content += "def mem_invalid_hook(uc, access, address, size, value, user_data):\n"
+        content += "    if access == unicorn.UC_MEM_WRITE_UNMAPPED:\n"
+        content += "        print('  --> Invalid memory access; addr:{:#x}, size:{:#x}, value:{:#x}'.format(address, size, value))\n"
+        content += "    elif access == unicorn.UC_MEM_READ_UNMAPPED:\n"
+        content += "        print('  --> Invalid memory access; addr:{:#x}, size:{:#x}'.format(address, size))\n"
+        content += "    return\n"
+        content += "\n"
+        content += "def intr_hook(emu, intno, data):\n"
+        content += "    print('  --> interrupt={:d}'.format(intno))\n"
+        content += "    return\n"
+        content += "\n"
+        content += "def syscall_hook(emu, user_data):\n"
+        content += "    sysno = emu.reg_read(registers[syscall_register])\n"
+        content += "    print('  --> syscall={:d} (not emulated)'.format(sysno))\n"
+        content += "    return\n"
+        content += "\n"
+        content += "def print_regs(emu, regs):\n"
+        content += "    for i, r in enumerate(regs):\n"
+        content += "        print('{{:7s}} = {{:#0{ptrsize}x}}  '.format(r, emu.reg_read(regs[r])), end='')\n".format(ptrsize=current_arch.ptrsize * 2 + 2)
+        content += "        if (i % 4 == 3) or (i == len(regs)-1): print('')\n"
+        content += "    return\n"
 
-def disassemble(code, addr):
-    cs = capstone.Cs({cs_arch}, {cs_mode})
-    for i in cs.disasm(code, addr):
-        return i
+        if is_x86():
+            # need to handle segmentation (and pagination) via MSR
+            content += "\n"
+            content += "# from https://github.com/unicorn-engine/unicorn/blob/master/tests/regress/x86_64_msr.py\n"
+            content += "SCRATCH_ADDR = 0xf000\n"
+            content += "FSMSR = 0xC0000100\n"
+            content += "GSMSR = 0xC0000101\n"
+            content += "\n"
+            content += "def set_msr(uc, msr, value, scratch=SCRATCH_ADDR):\n"
+            content += "    buf = b'\\x0f\\x30' # x86: wrmsr\n"
+            content += "    uc.mem_map(scratch, 0x1000)\n"
+            content += "    uc.mem_write(scratch, buf)\n"
+            content += "    uc.reg_write(unicorn.x86_const.UC_X86_REG_RAX, value & 0xFFFFFFFF)\n"
+            content += "    uc.reg_write(unicorn.x86_const.UC_X86_REG_RDX, (value >> 32) & 0xFFFFFFFF)\n"
+            content += "    uc.reg_write(unicorn.x86_const.UC_X86_REG_RCX, msr & 0xFFFFFFFF)\n"
+            content += "    uc.emu_start(scratch, scratch+len(buf), count=1)\n"
+            content += "    uc.mem_unmap(scratch, 0x1000)\n"
+            content += "    return\n"
+            content += "\n"
+            content += "def set_gs(uc, addr):\n"
+            content += "    return set_msr(uc, GSMSR, addr)\n"
+            content += "\n"
+            content += "def set_fs(uc, addr):\n"
+            content += "    return set_msr(uc, FSMSR, addr)\n"
 
-def code_hook(emu, address, size, user_data):
-    global count
-    if not quiet:
-        code = emu.mem_read(address, size)
-        code_hex = code.hex()
-        insn = disassemble(code, address)
-        if verbose:
-            print_regs(emu, registers)
-        print(">>> {{:d}} {{:#x}}: {{:24s}} {{:s}} {{:s}}".format(count, insn.address, code_hex, insn.mnemonic, insn.op_str))
-    count += 1
-    if 0 <= nb_gadget and count >= nb_gadget:
-        emu.emu_stop()
-    return
+        content += "\n"
+        content += "def reset():\n"
+        content += "    emu = unicorn.Uc({arch}, {mode})\n".format(arch=arch, mode=mode)
 
-def mem_invalid_hook(uc, access, address, size, value, user_data):
-    if access == unicorn.UC_MEM_WRITE_UNMAPPED:
-        print("  --> Invalid memory access; addr:{{:#x}}, size:{{:#x}}, value:{{:#x}}".format(address, size, value))
-    elif access == unicorn.UC_MEM_READ_UNMAPPED:
-        print("  --> Invalid memory access; addr:{{:#x}}, size:{{:#x}}".format(address, size))
-    return
-
-def intr_hook(emu, intno, data):
-    print("  --> interrupt={{:d}}".format(intno))
-    return
-
-def syscall_hook(emu, user_data):
-    sysno = emu.reg_read(registers[syscall_register])
-    print("  --> syscall={{:d}} (not emulated)".format(sysno))
-    return
-
-def print_regs(emu, regs):
-    for i, r in enumerate(regs):
-        print("{{:7s}} = {{:#0{ptrsize}x}}  ".format(r, emu.reg_read(regs[r])), end="")
-        if (i % 4 == 3) or (i == len(regs)-1): print("")
-    return
-
-{emu_block}
-
-def reset():
-    emu = unicorn.Uc({arch}, {mode})
-
-{context_block}
-""".format(pythonbin=pythonbin, fname=fname, start=start_insn_addr, end=end_insn_addr,
-           regs=",".join(["\n    '%s': %s" % (k.strip(), unicorn_registers[k]) for k in unicorn_registers])+"\n",
-           quiet="True" if quiet else "False",
-           verbose="True" if verbose else "False",
-           nb_gadget=nb_gadget,
-           syscall_reg=current_arch.syscall_register,
-           cs_arch=cs_arch, cs_mode=cs_mode,
-           ptrsize=current_arch.ptrsize * 2 + 2,  # two hex chars per byte plus "0x" prefix
-           emu_block=emulate_segmentation_block if is_x86() else "",
-           arch=arch, mode=mode,
-           context_block=context_segmentation_block if is_x86() else "")
+        if is_x86():
+            content += "\n"
+            content += "    set_fs(emu, {FS:#x})\n".format(FS=TlsCommand.getfs() if is_x86_64() else 0)
+            content += "    set_gs(emu, {GS:#x})\n".format(GS=TlsCommand.getgs() if is_x86_32() else 0)
 
         if verbose:
             info("Duplicating registers")
@@ -6940,6 +6946,7 @@ def reset():
             if is_x86_32() and r == "$gs": continue
             gregval = get_register(r)
             content += "    emu.reg_write({}, {:#x})\n".format(unicorn_registers[r], gregval)
+        content += "\n"
 
         if is_qemu_usermode():
             vmmap = get_process_maps(outer=True)
@@ -6988,29 +6995,28 @@ def reset():
             content += "    emu.hook_add(unicorn.UC_HOOK_MEM_READ_UNMAPPED | unicorn.UC_HOOK_MEM_WRITE_UNMAPPED, mem_invalid_hook)\n"
         content += "    return emu\n"
 
-        content += """
-def emulate(emu, start_addr, end_addr):
-    print("========================= Initial registers =========================")
-    print_regs(emu, registers)
-
-    try:
-        print("========================= Starting emulation =========================")
-        emu.emu_start(start_addr, end_addr)
-    except Exception as e:
-        emu.emu_stop()
-        print("========================= Emulation failed =========================")
-        print("[!] Error: {{}}".format(e))
-
-    print("========================= Final registers =========================")
-    print_regs(emu, registers)
-    return
-
-
-uc = reset()
-emulate(uc, {start:#x}, {end:#x})
-
-# unicorn-engine script generated by gef
-""".format(start=start_insn_addr, end=end_insn_addr)
+        content += "\n"
+        content += "def emulate(emu, start_addr, end_addr):\n"
+        content += "    print('========================= Initial registers =========================')\n"
+        content += "    print_regs(emu, registers)\n"
+        content += "\n"
+        content += "    try:\n"
+        content += "        print('========================= Starting emulation =========================')\n"
+        content += "        emu.emu_start(start_addr, end_addr)\n"
+        content += "    except Exception as e:\n"
+        content += "        emu.emu_stop()\n"
+        content += "        print('========================= Emulation failed =========================')\n"
+        content += "        print('[!] Error: {{}}'.format(e))\n"
+        content += "\n"
+        content += "    print('========================= Final registers =========================')\n"
+        content += "    print_regs(emu, registers)\n"
+        content += "    return\n"
+        content += "\n"
+        content += "\n"
+        content += "uc = reset()\n"
+        content += "emulate(uc, {start:#x}, {end:#x})\n".format(start=start_insn_addr, end=end_insn_addr)
+        content += "\n"
+        content += "# unicorn-engine script generated by gef\n"
 
         os.write(tmp_fd, gef_pybytes(content))
         os.close(tmp_fd)
@@ -8203,7 +8209,7 @@ class RpCommand(GenericCommand):
 
 @register_command
 class AssembleCommand(GenericCommand):
-    """Inline code assemble. Architecture can be set in GEF runtime config (default x86-64). """
+    """Inline code assemble by keystone. Architecture can be set in GEF runtime config (default x86-64). """
     _cmdline_ = "asm"
     _syntax_ = "{:s} [-h] [-a ARCH] [-m MODE] [-e] [-s] [-l LOCATION] instruction;[instruction;...instruction;]\n".format(_cmdline_)
     _syntax_ += "  -a ARCH      specify the architecture\n"
@@ -8342,7 +8348,7 @@ class AssembleCommand(GenericCommand):
 
 @register_command
 class DisassembleCommand(GenericCommand):
-    """Inline code disassemble. Architecture can be set in GEF runtime config (default x86-64). """
+    """Inline code disassemble by capstone. Architecture can be set in GEF runtime config (default x86-64). """
     _cmdline_ = "dasm"
     _syntax_ = "{:s} [-h] [-a ARCH] [-m MODE] [-e] hex-byte-code\n".format(_cmdline_)
     _syntax_ += "  -a ARCH      specify the architecture\n"
@@ -8456,7 +8462,7 @@ class DisassembleCommand(GenericCommand):
 
 @register_command
 class AsmListCommand(GenericCommand):
-    """List up N-bytes instructions. Architecture can be set in GEF runtime config (default x86-64). """
+    """List up N-bytes instructions by capstone. Architecture can be set in GEF runtime config (default x86-64). """
     _cmdline_ = "asm-list"
     _syntax_ = "{:s} [-h] [-a ARCH] [-m MODE] [-e] N\n".format(_cmdline_)
     _syntax_ += "  -a ARCH      specify the architecture\n"
@@ -10280,7 +10286,7 @@ class PatchCommand(GenericCommand):
                 err("Switch to physmem-mode is failed")
                 return
 
-        addr = align_address(parse_address(args.location))
+        addr = align_address(parse_address(location))
         size, fcode = self.SUPPORTED_SIZES[fmt]
 
         d = "<" if is_little_endian() else ">"
@@ -23606,13 +23612,13 @@ class PagewalkCommand(GenericCommand):
 class PagewalkX64Command(PagewalkCommand):
     """Dump pagetable for x64/x86 using qemu-monitor."""
     _cmdline_ = "pagewalk x64"
-    _syntax_ = "{:s} [-h] [--print-each-level] [--print-flags] [--print-all] [--filter PCRE_PATTERN] [--range ADDRESS] [--sort-by-phys]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [--print-each-level] [--print-flags] [--print-all] [--filter REGEX_PATTERN] [--range ADDRESS] [--sort-by-phys]".format(_cmdline_)
     _example_ = "\n"
     _example_ += "{:s} --print-each-level # show all level pagetable\n".format(_cmdline_)
     _example_ += "{:s} --print-flags      # show lower bits of address used as flag\n".format(_cmdline_)
     _example_ += "{:s} --print-all        # do not merge similar/consecutive address\n".format(_cmdline_)
-    _example_ += "{:s} --filter '0xabc'   # grep by PCRE pattern\n".format(_cmdline_)
-    _example_ += "{:s} --range '0xabc'    # filter by map included specific address\n".format(_cmdline_)
+    _example_ += "{:s} --filter '0xabc'   # grep by REGEX pattern\n".format(_cmdline_)
+    _example_ += "{:s} --range '0x7fff00' # filter by map included specific address\n".format(_cmdline_)
     _example_ += "{:s} --sort-by-phys     # sort by physical address".format(_cmdline_)
     _aliases_ = ["pagewalk x86",]
     _category_ = "Process/State Inspection (Physical Memory)"
@@ -23954,13 +23960,13 @@ class PagewalkX64Command(PagewalkCommand):
 class PagewalkArmCommand(PagewalkCommand):
     """Dump pagetable for ARM (Cortex-A only) using qemu-monitor."""
     _cmdline_ = "pagewalk arm"
-    _syntax_ = "{:s} [-h] [--print-each-level] [--print-flags] [--print-all] [--filter PCRE_PATTERN] [--range ADDRESS] [--sort-by-phys]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [--print-each-level] [--print-flags] [--print-all] [--filter REGEX_PATTERN] [--range ADDRESS] [--sort-by-phys]".format(_cmdline_)
     _example_ = "\n"
     _example_ += "{:s} --print-each-level # show all level pagetable\n".format(_cmdline_)
     _example_ += "{:s} --print-flags      # show lower bits of address used as flag\n".format(_cmdline_)
     _example_ += "{:s} --print-all        # do not merge similar/consecutive address\n".format(_cmdline_)
-    _example_ += "{:s} --filter '0xabc'   # grep by PCRE pattern\n".format(_cmdline_)
-    _example_ += "{:s} --range '0xabc'    # filter by map included specific address\n".format(_cmdline_)
+    _example_ += "{:s} --filter '0xabc'   # grep by REGEX pattern\n".format(_cmdline_)
+    _example_ += "{:s} --range '0x7fff00' # filter by map included specific address\n".format(_cmdline_)
     _example_ += "{:s} --sort-by-phys     # sort by physical address\n".format(_cmdline_)
     _example_ += "PL2 pagewalk is unsupported"
     _category_ = "Process/State Inspection (Physical Memory)"
@@ -24440,13 +24446,13 @@ class PagewalkArmCommand(PagewalkCommand):
 class PagewalkArm64Command(PagewalkCommand):
     """Dump pagetable for ARM64 using qemu-monitor."""
     _cmdline_ = "pagewalk arm64"
-    _syntax_ = "{:s} [-h] [TARGET_EL] [--print-each-level] [--print-flags] [--print-all] [--filter PCRE_PATTERN] [--range ADDRESS] [--sort-by-phys]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [TARGET_EL] [--print-each-level] [--print-flags] [--print-all] [--filter REGEX_PATTERN] [--range ADDRESS] [--sort-by-phys]".format(_cmdline_)
     _example_ = "\n"
     _example_ += "{:s} --print-each-level # for current EL, show all level pagetable\n".format(_cmdline_)
     _example_ += "{:s} 1 --print-flags    # for EL1+0, show lower bits of address used as flag\n".format(_cmdline_)
     _example_ += "{:s} 2 --print-all      # for EL2, do not merge similar/consecutive address\n".format(_cmdline_)
-    _example_ += "{:s} --filter '0xabc'   # for current EL, grep by PCRE pattern\n".format(_cmdline_)
-    _example_ += "{:s} --range '0xabc'    # for current EL, filter by map included specific address\n".format(_cmdline_)
+    _example_ += "{:s} --filter '0xabc'   # for current EL, grep by REGEX pattern\n".format(_cmdline_)
+    _example_ += "{:s} --range '0x7fff00' # for current EL, filter by map included specific address\n".format(_cmdline_)
     _example_ += "{:s} --sort-by-phys     # sort by physical address".format(_cmdline_)
     _category_ = "Process/State Inspection (Physical Memory)"
 
@@ -25509,6 +25515,7 @@ class ExecUntilCallCommand(ExecUntilCommand):
     _example_ = ""
     _example_ += "{:s} # execute until call instruction\n".format(_cmdline_)
     _example_ += "{:s} jmp syscall ret memaccess # execute until call/jmp/syscall/ret/memaccess instruction\n".format(_cmdline_)
+    _example_ += "\n"
     _example_ += "THIS FEATURE IS TOO SLOW.\n"
     _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Start/Stop"
@@ -25552,6 +25559,7 @@ class ExecUntilJumpCommand(ExecUntilCommand):
     _example_ = ""
     _example_ += "{:s} # execute until jmp instruction\n".format(_cmdline_)
     _example_ += "{:s} call syscall ret memaccess # execute until jmp/call/syscall/ret/memaccess instruction\n".format(_cmdline_)
+    _example_ += "\n"
     _example_ += "THIS FEATURE IS TOO SLOW.\n"
     _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Start/Stop"
@@ -25595,6 +25603,7 @@ class ExecUntilSyscallCommand(ExecUntilCommand):
     _example_ = ""
     _example_ += "{:s} # execute until syscall instruction\n".format(_cmdline_)
     _example_ += "{:s} call jmp ret memaccess # execute until syscall/call/jmp/ret/memaccess instruction\n".format(_cmdline_)
+    _example_ += "\n"
     _example_ += "THIS FEATURE IS TOO SLOW.\n"
     _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Start/Stop"
@@ -25638,6 +25647,7 @@ class ExecUntilRetCommand(ExecUntilCommand):
     _example_ = ""
     _example_ += "{:s} # execute until ret instruction\n".format(_cmdline_)
     _example_ += "{:s} call jmp syscall memaccess # execute until ret/call/jmp/syscall/memaccess instruction\n".format(_cmdline_)
+    _example_ += "\n"
     _example_ += "THIS FEATURE IS TOO SLOW.\n"
     _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Start/Stop"
@@ -25681,6 +25691,7 @@ class ExecUntilMemaccessCommand(ExecUntilCommand):
     _example_ = ""
     _example_ += "{:s} # execute until '[' is included by the instruction\n".format(_cmdline_)
     _example_ += "{:s} call jmp syscall ret # execute until memaccess/call/jmp/syscall/ret instruction\n".format(_cmdline_)
+    _example_ += "\n"
     _example_ += "THIS FEATURE IS TOO SLOW.\n"
     _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Start/Stop"
@@ -25723,6 +25734,7 @@ class ExecUntilKeywordCommand(ExecUntilCommand):
     _syntax_ = "{:s} [-h] KEYWORD [KEYWORD ...] [--print-insn] [--skip-lib]".format(_cmdline_)
     _example_ = ""
     _example_ += "{:s} keyword \"push\" \"pop\" # execute until specific keyword is included by the instruction\n".format(_cmdline_)
+    _example_ += "\n"
     _example_ += "THIS FEATURE IS TOO SLOW.\n"
     _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Start/Stop"
@@ -25765,6 +25777,7 @@ class ExecUntilKeywordReCommand(ExecUntilCommand):
     _syntax_ = "{:s} [-h] KEYWORD [KEYWORD ...] [--print-insn] [--skip-lib]".format(_cmdline_)
     _example_ = ""
     _example_ += "{:s} keyword-re \"call +r[ab]x\" # execute until specific keyword (regex)\n".format(_cmdline_)
+    _example_ += "\n"
     _example_ += "THIS FEATURE IS TOO SLOW.\n"
     _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Start/Stop"
@@ -25809,6 +25822,7 @@ class ExecUntilCondCommand(ExecUntilCommand):
     _example_ = ""
     _example_ += "{:s} \"$rax==0xdeadbeef && $rbx==0xcafebabe\" # execute until specific condition is filled\n".format(_cmdline_)
     _example_ += "{:s} \"$rax==0x123 && *(long*)$rbx==0x4\" # multiple condition and memory access is supported\n".format(_cmdline_)
+    _example_ += "\n"
     _example_ += "THIS FEATURE IS TOO SLOW.\n"
     _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _aliases_ = ["next-cond",]
