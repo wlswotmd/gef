@@ -15818,6 +15818,9 @@ class AuxvCommand(GenericCommand):
             elif k in ["AT_EXECFN", "AT_PLATFORM"]:
                 s = read_cstring_from_memory(v)
                 gef_print("[{:#4x}] {:16s} {:#x}{:s}{}".format(num, k+":", v, RIGHT_ARROW, Color.yellowify(repr(s))))
+            elif k in ["AT_RANDOM"]:
+                s = read_int_from_memory(v)
+                gef_print("[{:#4x}] {:16s} {:#x}{:s}{:#x}".format(num, k+":", v, RIGHT_ARROW, s))
             else:
                 gef_print("[{:#4x}] {:16s} {:#x}".format(num, k+":", v))
         return
