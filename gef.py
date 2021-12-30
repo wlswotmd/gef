@@ -8091,18 +8091,18 @@ class RopperCommand(GenericCommand):
 class RpCommand(GenericCommand):
     """Exec `rp++`."""
     _cmdline_ = "rp"
-    _syntax_ = "{:s} bin|libc|FILENAME [-f|--filter REGEXP] [...]".format(_cmdline_)
+    _syntax_ = "{:s} bin|libc|FILENAME [-f|--filter REGEXP] [-r|--rop ROP_N] [--no-print] [...]".format(_cmdline_)
     _category_ = "Exploit Development"
     _example_ = "\n"
     _example_ += "{:s} bin -f 'pop r[abcd]x'\n".format(_cmdline_)
     _example_ += "{:s} libc -f '(xchg|mov) [re]sp, \\\\w+' -f 'ret'".format(_cmdline_)
 
     def exec_rp(self):
-        self.out = "rop_{}.txt".format(os.path.basename(self.path))
-        if os.path.exists(self.out):
-            return
-        gef_print(titlify(f"{self.rp} --file={self.path} --rop=3 --unique > {self.out}"))
-        os.system(f"{self.rp} --file={self.path} --rop=3 --unique > {self.out}")
+        self.out = "rop{}_{}.txt".format(self.ropN, os.path.basename(self.path))
+        cmd = f"{self.rp} --file={self.path} --rop={self.ropN} --unique > {self.out}"
+        gef_print(titlify(cmd))
+        if not os.path.exists(self.out):
+            os.system(cmd)
         return
 
     def apply_filter(self):
@@ -8138,18 +8138,16 @@ class RpCommand(GenericCommand):
             err("Unsupported")
             return
 
-        if is_x86_64():
+        if is_x86():
             try:
                 self.rp = which("rp-lin-x64")
-            except FileNotFoundError as e:
-                err("{}".format(e))
-                return
-        elif is_x86_32():
-            try:
-                self.rp = which("rp-lin-x86")
-            except FileNotFoundError as e:
-                err("{}".format(e))
-                return
+            except FileNotFoundError as e1:
+                try:
+                    self.rp = which("rp-lin-x86")
+                except FileNotFoundError as e2:
+                    err("{}".format(e1))
+                    err("{}".format(e2))
+                    return
         else:
             err("Unsupported")
             return
@@ -8158,6 +8156,20 @@ class RpCommand(GenericCommand):
             self.less = which("less")
         except FileNotFoundError as e:
             err("{}".format(e))
+            return
+
+        try:
+            self.ropN = 3
+            while "-r" in argv:
+                idx = argv.index("-r")
+                self.ropN = int(argv[idx + 1])
+                argv = argv[:idx] + argv[idx+2:]
+            while "--rop" in argv:
+                idx = argv.index("--rop")
+                self.ropN = int(argv[idx + 1])
+                argv = argv[:idx] + argv[idx+2:]
+        except:
+            self.usage()
             return
 
         try:
@@ -8175,6 +8187,11 @@ class RpCommand(GenericCommand):
         except:
             self.usage()
             return
+
+        self.do_print = True
+        if "--no-print" in argv:
+            self.do_print = False
+            argv.remove("--no-print")
 
         if len(argv) != 1:
             self.usage()
@@ -8202,8 +8219,9 @@ class RpCommand(GenericCommand):
         self.exec_rp()
         tmp_path = self.apply_filter()
         if tmp_path is not None:
-            os.system(f"{self.less} -R {tmp_path}")
-            os.unlink(tmp_path)
+            if self.do_print:
+                os.system(f"{self.less} -R {tmp_path}")
+                os.unlink(tmp_path)
         return
 
 
