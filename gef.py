@@ -82,6 +82,7 @@ import traceback
 import configparser
 import psutil
 import math
+import json
 
 from functools import lru_cache
 from io import StringIO
@@ -8475,6 +8476,257 @@ class DisassembleCommand(GenericCommand):
         for insn in cs.disasm(insns, 0x0):
             b = binascii.hexlify(insn.bytes).decode("utf-8")
             gef_print("{:>#6x}:\t{:<10s}\t{:s}\t{:s}".format(insn.address, b, insn.mnemonic, insn.op_str))
+        return
+
+
+@register_command
+class AsmList2Command(GenericCommand):
+    """List up general instructions by capstone.(x64/x86 only) """
+    _cmdline_ = "asm-list2"
+    _syntax_ = "{:s}".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [-a ARCH] [-m MODE] [-e] [-n NBYTE] [-f INCLUDE] [-v EXCLUDE] [-s]\n".format(_cmdline_)
+    _syntax_ += "  -a ARCH      specify the architecture\n"
+    _syntax_ += "  -a MODE      specify the mode\n"
+    _syntax_ += "  -e           use big-endian (for future update)\n"
+    _syntax_ += "  -s           use simple mode; exclude x87 fpu, SSE, etc.\n"
+    _syntax_ += "  -n NBYE      filter by asm byte length\n"
+    _syntax_ += "  -f INCLUDE   filter by string\n"
+    _syntax_ += "  -v EXCLUDE   filter by string"
+    _example_ = "\n"
+    _example_ += '{:s} -a X86 -m 64\n'.format(_cmdline_)
+    _example_ += '{:s} -a X86 -m 32\n'.format(_cmdline_)
+    _example_ += '{:s} -a X86 -m 16\n'.format(_cmdline_)
+    _example_ += '  F0 (LOCK prefix) is ignored\n'
+    _example_ += '  F2/F3 (REPNE/REP prefix) are ignored\n'
+    _example_ += '  2E/36/3E/26/64/65 (CS/SS/DS/ES/FS/GS override prefix) are ignored\n'
+    _example_ += '  2E/3E (branch hint prefix) are ignored\n'
+    _example_ += '  66 (operand size prefix) is included\n'
+    _example_ += '  67 (address size prefix) is ignored\n'
+    _example_ += '  40-4F (REX prefix) are ignored\n'
+    _example_ += '  C4/C5 (VEX prefix) are ignored\n'
+    _example_ += '  8F (XOP prefix) is ignored\n'
+    _example_ += '  62 (EVEX prefix) is ignored'
+    _category_ = "Assemble"
+
+    def __init__(self):
+        super().__init__(complete=gdb.COMPLETE_LOCATION)
+        self.valid_arch_modes = {
+            "X86" : ["16", "32", "64"],
+        }
+        return
+
+    def pre_load(self):
+        try:
+            __import__("capstone")
+        except ImportError:
+            msg = "Missing `capstone` package for Python. Install with `pip install capstone`."
+            raise ImportWarning(msg)
+        return
+
+    def listup_x86(self, arch, mode):
+        DISP64 = "1122334455667788"
+        DISP32 = "11223344"
+        DISP16 = "1122"
+        DISP8  = "11"
+
+        @lru_cache()
+        def get_typical_bytecodes_modrm(_reg):
+            bytecodes = []
+            for (mod, reg, rm) in itertools.product([0b00, 0b01, 0b10, 0b11], _reg, [0b000]):
+                modrm = "%02X" % ((mod << 6) | (reg << 3) | rm)
+                if mod == 0b00:
+                    if rm == 0b101: # special case; [REG + disp32]
+                        bytecode = modrm + DISP32
+                    elif rm == 0b100: # use sib; [INDEX * SCALE + BASE]
+                        for sib in filter(lambda x:x&0b111 != 0b101, range(256)):
+                            bytecode = modrm + "%02X" % sib
+                    else: # [REG]
+                        bytecode = modrm
+                elif mod == 0b01:
+                    if rm == 0b100: # use sib; [INDEX * SCALE + BASE + disp8]
+                        bytecode = []
+                        for sib in filter(lambda x:x&0b111 != 0b101, range(256)):
+                            b = modrm + ("%02X" % sib) + DISP8
+                            bytecode.append(b)
+                    else: # [REG + disp8]
+                        bytecode = modrm + DISP8
+                elif mod == 0b10:
+                    if rm == 0b100: # use sib; [INDEX * SCALE + BASE + disp32]
+                        bytecode = []
+                        for sib in filter(lambda x:x&0b111 != 0b101, range(256)):
+                            b = modrm + ("%02X" % sib) + DISP32
+                            bytecode.append(b)
+                    else: # [REG + disp32]
+                        bytecode = modrm + DISP32
+                elif mod == 0b11: # REG
+                    bytecode = modrm
+                bytecodes.append(bytecode)
+            return bytecodes
+
+        @lru_cache()
+        def get_typical_bytecodes(opcodes):
+            bytecodes = []
+            for i, operand in enumerate(opcodes.split()):
+                if operand in ["ib", "cb"]:
+                    bytecode = [DISP8]
+                elif operand in ["iw", "cw"]:
+                    bytecode = [DISP16]
+                elif operand in ["id", "cd"]:
+                    bytecode = [DISP32]
+                elif operand in ["iq"]:
+                    bytecode = [DISP64]
+                elif operand in ["/0", "/1", "/2", "/3", "/4", "/5", "/6", "/7"]:
+                    bytecode = get_typical_bytecodes_modrm(tuple([int(operand[1])]))
+                elif operand == "/r":
+                    bytecode = get_typical_bytecodes_modrm(tuple([0]))
+                elif operand.endswith(("+r", "+i")):
+                    b = int(operand.split("+")[0], 16)
+                    bytecode = ["%02X" % (b + x) for x in range(8)]
+                else:
+                    bytecode = [operand]
+                bytecodes.append(bytecode)
+            return [''.join(b) for b in itertools.product(*bytecodes)]
+
+        # download defines
+        url = 'https://raw.githubusercontent.com/bata24/gef/dev/asmdb/x86data.js'
+        x86 = http_get(url)
+        x86 = x86.split(b"// ${JSON:BEGIN}")[1].split(b"// ${JSON:END}")[0]
+        x86 = json.loads(x86)
+
+        x86_insns = x86["instructions"]
+        # [opcode_str, unused, unused, opcodes, attr]
+        x86_insns.append(["icebp", "", "", "F1", "Undocumented"])
+        x86_insns.append(["salc", "", "", "D6", "Undocumented"])
+        #x86_insns.append(["umov", "", "", "0F 10 /r", "Undocumented"]) # used by another opcode
+        #x86_insns.append(["umov", "", "", "0F 11 /r", "Undocumented"]) # used by another opcode
+        #x86_insns.append(["umov", "", "", "0F 12 /r", "Undocumented"]) # used by another opcode
+        #x86_insns.append(["umov", "", "", "0F 13 /r", "Undocumented"]) # used by another opcode
+        #x86_insns.append(["loadall", "", "", "0F 05", "Undocumented"]) # used by another opcode
+        #x86_insns.append(["loadall", "", "", "0F 07", "Undocumented"]) # used by another opcode
+        #x86_insns.append(["xbts", "", "", "0F A6", "Undocumented"]) # removed now
+        #x86_insns.append(["ibts", "", "", "0F A7", "Undocumented"]) # removed now
+
+        capstone = sys.modules["capstone"]
+        cs = capstone.Cs(arch, mode)
+        valid_patterns = []
+        seen_patterns = []
+        for insn in x86_insns:
+            opcode_str = insn[0].split("/")[0]
+            opcodes = insn[3]
+            attr = insn[4].split()
+
+            # filter ignore prefix pattern
+            if "REX.W" in opcodes.split():
+                continue
+            if "VEX" in opcodes.split()[0].split("."):
+                continue
+            if "EVEX" in opcodes.split()[0].split("."):
+                continue
+            if "XOP" in opcodes.split()[0].split("."):
+                continue
+
+            # ex: "FF /2" -> ["FF10", "FF5011", ...]
+            bytecodes = get_typical_bytecodes(opcodes)
+
+            # check it is valid or not
+            for hex_code in bytecodes:
+                # dup check
+                if hex_code in seen_patterns:
+                    continue
+                # disasm
+                code = bytes.fromhex(hex_code)
+                try:
+                    asm = cs.disasm(code, 0).__next__()
+                except:
+                    continue
+                opstr = asm.mnemonic + " " + asm.op_str
+                # add
+                valid_patterns.append([hex_code, opstr, opcodes, attr])
+                seen_patterns.append(hex_code)
+        return valid_patterns
+
+    def do_invoke(self, argv):
+        arch_s, mode_s, big_endian = None, None, False
+        nbyte = None
+        filter_include = []
+        filter_exclude = []
+        try:
+            opts, args = getopt.getopt(argv, "a:m:n:f:v:eh")
+            for o, a in opts:
+                if o == "-a":
+                    arch_s = a.upper()
+                if o == "-m":
+                    mode_s = a.upper()
+                if o == "-e":
+                    big_endian = True
+                if o == "-n":
+                    nbyte = int(a)
+                if o == "-f":
+                    filter_include.append(a)
+                if o == "-v":
+                    filter_exclude.append(a)
+                if o == "-h":
+                    self.usage()
+                    return
+        except:
+            self.usage()
+            return
+
+        if (arch_s, mode_s) == (None, None):
+            if is_alive():
+                if is_arm64():
+                    arch_s, mode_s = current_arch.arch, 0
+                else:
+                    arch_s, mode_s = current_arch.arch, current_arch.mode
+                endian_s = "big" if is_big_endian() else "little"
+                arch, mode = get_capstone_arch(arch=arch_s, mode=mode_s, endian=is_big_endian())
+            else:
+                # if not alive, defaults to x86-64
+                arch_s = "X86"
+                mode_s = "64"
+                endian_s = "little"
+                arch, mode = get_capstone_arch(arch=arch_s, mode=mode_s, endian=False)
+        elif not arch_s:
+            err("An architecture (-a) must be provided")
+            return
+        elif not mode_s:
+            err("A mode (-m) must be provided")
+            return
+        else:
+            arch, mode = get_capstone_arch(arch=arch_s, mode=mode_s, endian=big_endian)
+            endian_s = "big" if big_endian else "little"
+
+        # list up bytecode pattern
+        if arch_s == "X86":
+            patterns = self.listup_x86(arch, mode)
+        else:
+            err("Unsupported")
+            return
+
+        # filter and print
+        legend = "{:22s} {:60s} {:22s} {}\n".format("Hex code", "Assembly code", "Opcode", "Attributes")
+        text = Color.colorify(legend, "bold yellow")
+        for hex_code, opstr, opcodes, attr in patterns:
+            # byte length filter
+            if nbyte is not None and nbyte * 2 != len(hex_code):
+                continue
+
+            # keyword filter
+            line = "{:22s} {:60s} {:22s} {}".format(hex_code, opstr, opcodes, attr)
+            if any([f not in line for f in filter_include]):
+                continue
+            if any([f in line for f in filter_exclude]):
+                continue
+
+            # not filtered
+            text += line + "\n"
+
+        gef_print(text.rstrip())
+
+        # save to file
+        fd, fname = tempfile.mkstemp(dir="/tmp", suffix=".txt")
+        os.fdopen(fd, "w").write(text)
+        gef_print("The result is stored to {:s}".format(fname))
         return
 
 

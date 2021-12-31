@@ -248,6 +248,9 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / Debian 
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dasm.png)
 * `asm-list`: lists up N-bytes instructions. (1 <= N <= 4)
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/asm-list.png)
+* `asm-list2`: lists up instructions. (only x86/x64)
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/asm-list2.png)
+    * This command uses x86data.js from https://github.com/asmjit/asmdb
 * `syscall-search`: searches system call by regex.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/syscall-search.png)
 
