@@ -11938,7 +11938,7 @@ class SyscallSearchCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
-        if len(argv) == 0 or argv[0] == "-h":
+        if "-h" in argv:
             self.usage()
             return
 
@@ -11980,7 +11980,7 @@ class SyscallArgsCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
-        if argv[0] == "-h":
+        if "-h" in argv:
             self.usage()
             return
 
