@@ -17908,12 +17908,10 @@ class KsymaddrRemoteCommand(GenericCommand):
                 break
         return
 
-    def get_maps(self):
-        if self.maps:
-            return True
-
-        self.maps = []
-        if not self.silent:
+    @staticmethod
+    def get_maps(silent=False):
+        maps = []
+        if not silent:
             info("Wait for memory scan")
 
         res = gdb.execute("pagewalk", to_string=True)
@@ -17929,7 +17927,7 @@ class KsymaddrRemoteCommand(GenericCommand):
                 vaddr = int(line[0].split("-")[0], 16)
                 size = int(line[2], 16)
                 perm = line[5][1:]
-                self.maps.append([vaddr, size, perm])
+                maps.append([vaddr, size, perm])
 
         elif is_arm32():
             for line in res:
@@ -17939,7 +17937,7 @@ class KsymaddrRemoteCommand(GenericCommand):
                 vaddr = int(line[0].split("-")[0], 16)
                 size = int(line[2], 16)
                 perm = line[6][4:7]
-                self.maps.append([vaddr, size, perm])
+                maps.append([vaddr, size, perm])
 
         elif is_arm64():
             for line in res:
@@ -17949,9 +17947,9 @@ class KsymaddrRemoteCommand(GenericCommand):
                 vaddr = int(line[0].split("-")[0], 16)
                 size = int(line[2], 16)
                 perm = line[6][4:7]
-                self.maps.append([vaddr, size, perm])
+                maps.append([vaddr, size, perm])
 
-        if self.maps == []:
+        if maps == []:
             if is_x86():
                 warn("Make sure you are in ring0 (=kernel mode)")
             elif is_arm32():
@@ -17962,32 +17960,27 @@ class KsymaddrRemoteCommand(GenericCommand):
                 warn("Make sure qemu 3.x or higher")
             return None
         else:
-            return True
+            return maps
 
-    def get_kernel_base(self):
-        self.kbase = None
-        self.kbase_size = None
-
-        for vaddr, size, perm in self.maps:
+    @staticmethod
+    def get_kernel_base(maps):
+        for vaddr, size, perm in maps:
             if perm == "R-X" and size >= 0x100000:
-                self.kbase = vaddr
-                self.kbase_size = size
-                return
+                return vaddr, size
         # not found, maybe old kernel
-        for vaddr, size, perm in self.maps:
+        for vaddr, size, perm in maps:
             if perm == "RWX" and size >= 0x100000:
-                self.kbase = vaddr
-                self.kbase_size = size
-                return
-        return
+                return vaddr, size
+        return None, None
 
-    def get_kernel_rodata_base(self):
+    @staticmethod
+    def get_kernel_rodata_base(maps, kbase):
         def search_perm(target_perm):
             found = False
             ro = None
-            for vaddr, size, perm in self.maps:
+            for vaddr, size, perm in maps:
                 if found == False:
-                    if vaddr == self.kbase: # search kernel base
+                    if vaddr == kbase: # search kernel base
                         found = True
                     continue
                 if found == True:
@@ -17998,32 +17991,49 @@ class KsymaddrRemoteCommand(GenericCommand):
                             ro = [ro[0], ro[1] + size] # merge contiguous region
             return ro
 
-        self.krobase = None
-        self.krobase_size = None
-
         res = search_perm("R--")
         if res is None:
             res = search_perm("R-X")
             if res is None:
                 res = search_perm("RWX") # old kernel
                 if res is None:
-                    return
+                    return None, None
 
-        self.krobase = res[0]
-        self.krobase_size = res[1]
-        return
+        return res[0], res[1]
 
+    # Initialize variables in different ways, depending on the situation.
+    #
+    # The variables need to find are as follows.
+    # 1. kallsyms_relative_base
+    # 2. kallsyms_num_syms
+    # 3. kallsyms_names
+    # 4. CONFIG_KALLSYMS_ABSOLUTE_PERCPU is enabled or not
+    # 5. kallsyms_offsets
+    # 6. kallsyms_markers
+    # 7. kallsyms_token_table
+    # 8. kallsyms_token_index
+    #
+    # The method for searching the above variables is different for 64bit / 32bit.
+    # It also depends on whether each variable in memory has a large padding (called sparse) or not (called normal).
+    #
+    # Variables to use
+    #   self.kbase:         address of kernel .text
+    #   self.krobase:       address of kernel .rodata
+    #   self.RO_REGION:     data of .rodata; bytes([0xef, 0xbe, 0xad, 0xde...]) 
+    #   self.RO_REGION_u32: data of .rodata; [0xdeadbeef, ...]
+    #   self.RO_REGION_u64: data of .rodata; [0x00000000deadbeef, ...]
+
+    # 32bit is very complicated. 64bit is simple
     def initialize32_kallsyms_relative_base(self):
         # 1. find kbase from rodata
         if is_x86_32():
-            self.kallsyms_relative_base = self.kbase
-            for i, val in enumerate(self.RO_REGION_u32[::-1]):
-                # found multiple but choice last
+            for i, val in enumerate(self.RO_REGION_u32[::-1]): # use backward search because if found multiple then select the last one
                 if val == self.kbase:
                     pos = len(self.RO_REGION_u32) - i - 1
                     # found contiguous, go prev as possilbe
                     while self.RO_REGION_u32[pos] == self.RO_REGION_u32[pos-1]:
                         pos -= 1
+                    self.kallsyms_relative_base = self.kbase
                     self.kallsyms_relative_base_off = pos
                     self.kallsyms_relative_base_addr = self.krobase + self.kallsyms_relative_base_off * 4
                     return
@@ -18039,18 +18049,18 @@ class KsymaddrRemoteCommand(GenericCommand):
                 except:
                     pass
             # ARM has specific relative_base (pattern 2)
+            # override RO_REGION by .text, bacause to equate .text with .robase
             self.RO_REGION = read_memory(self.kbase, self.kbase_size)
             self.RO_REGION_u32 = [u32(self.RO_REGION[i:i+4]) for i in range(0, len(self.RO_REGION), 4)]
-            for i, val in enumerate(self.RO_REGION_u32[::-1]):
-                # found multiple but choice last
+            for i, val in enumerate(self.RO_REGION_u32[::-1]): # use backward search because if found multiple then select the last one
                 if val == self.kbase + 0x8400 :
                     pos = len(self.RO_REGION_u32) - i - 1
                     # found contiguous, go prev as possilbe
                     while self.RO_REGION_u32[pos] == self.RO_REGION_u32[pos-1]:
                         pos -= 1
+                    self.kallsyms_relative_base = self.kbase + 0x8400
                     self.kallsyms_relative_base_off = pos
                     self.kallsyms_relative_base_addr = self.kbase + self.kallsyms_relative_base_off * 4
-                    self.kallsyms_relative_base = self.kbase + 0x8400
                     self.krobase = self.kbase
                     self.krobase_size = self.kbase_size
                     return
@@ -18404,11 +18414,11 @@ class KsymaddrRemoteCommand(GenericCommand):
         if self.kallsyms_relative_base_off is None:
             return None
 
-        if self.RO_REGION_u32[self.kallsyms_relative_base_off + 1] == self.RO_REGION_u32[self.kallsyms_relative_base_off]:
-            self.initialize32_kallsyms_num_syms_2()
+        if self.RO_REGION_u32[self.kallsyms_relative_base_off + 1] == self.RO_REGION_u32[self.kallsyms_relative_base_off]: # rare case
+            self.initialize32_kallsyms_num_syms_2() # common to sparse and normal
             # do not use kallsyms_relative_base, use absolute value
             self.kallsyms_relative_base = None
-            if self.RO_REGION_u32[self.kallsyms_num_syms_off + 1] == 0: # sparse mode
+            if self.RO_REGION_u32[self.kallsyms_num_syms_off + 1] == 0: # sparse mode (rare case)
                 if self.meta: info("not exist relative_base, sparse")
                 # all variables placed as 16 bytes aligned
                 self.initialize32_sparse_kallsyms_names()
@@ -18417,7 +18427,7 @@ class KsymaddrRemoteCommand(GenericCommand):
                 self.initialize32_sparse_kallsyms_markers()
                 self.initialize32_sparse_kallsyms_token_table()
                 self.initialize32_sparse_kallsyms_token_index()
-            else:
+            else: # normal mode (rare case)
                 if self.meta: info("not exist relative_base, normal")
                 self.initialize32_normal_kallsyms_names()
                 self.initialize32_normal_CONFIG_KALLSYMS_ABSOLUTE_PERCPU()
@@ -18435,7 +18445,7 @@ class KsymaddrRemoteCommand(GenericCommand):
             self.initialize32_sparse_kallsyms_markers()
             self.initialize32_sparse_kallsyms_token_table()
             self.initialize32_sparse_kallsyms_token_index()
-        else:
+        else: # normal mode
             if self.meta: info("exist relative_base, normal")
             self.initialize32_normal_kallsyms_num_syms()
             self.initialize32_normal_kallsyms_names()
@@ -18452,11 +18462,11 @@ class KsymaddrRemoteCommand(GenericCommand):
         self.RO_REGION_u32 = [u32(self.RO_REGION[i:i+4]) for i in range(0, len(self.RO_REGION), 4)]
         self.initialize64_kallsyms_relative_base()
 
-        if self.RO_REGION_u64[self.kallsyms_relative_base_off + 1] == self.RO_REGION_u64[self.kallsyms_relative_base_off]:
-            self.initialize64_kallsyms_num_syms_2()
+        if self.RO_REGION_u64[self.kallsyms_relative_base_off + 1] == self.RO_REGION_u64[self.kallsyms_relative_base_off]: # rare case
+            self.initialize64_kallsyms_num_syms_2() # common to sparse and normal
             # do not use kallsyms_relative_base, use absolute value
             self.kallsyms_relative_base = None
-            if self.RO_REGION_u64[self.kallsyms_num_syms_off + 1] == 0: # sparse mode
+            if self.RO_REGION_u64[self.kallsyms_num_syms_off + 1] == 0: # sparse mode (rare case)
                 if self.meta: info("not exist relative_base, sparse")
                 # all variables placed as 256 bytes aligned
                 self.initialize64_sparse_kallsyms_names()
@@ -18465,7 +18475,7 @@ class KsymaddrRemoteCommand(GenericCommand):
                 self.initialize64_sparse_kallsyms_markers()
                 self.initialize64_sparse_kallsyms_token_table()
                 self.initialize64_sparse_kallsyms_token_index()
-            else:
+            else: # normal mode (rare case)
                 if self.meta: info("not exist relative_base, normal")
                 self.initialize64_normal_kallsyms_names()
                 self.initialize64_normal_CONFIG_KALLSYMS_ABSOLUTE_PERCPU()
@@ -18483,7 +18493,7 @@ class KsymaddrRemoteCommand(GenericCommand):
             self.initialize64_sparse_kallsyms_markers()
             self.initialize64_sparse_kallsyms_token_table()
             self.initialize64_sparse_kallsyms_token_index()
-        else:
+        else: # normal mode
             if self.meta: info("exist relative_base, normal")
             self.initialize64_normal_kallsyms_num_syms()
             self.initialize64_normal_kallsyms_names()
@@ -18519,14 +18529,15 @@ class KsymaddrRemoteCommand(GenericCommand):
             self.print_meta()
             return True
         # get kernel memory maps
-        if self.get_maps() is None:
+        self.maps = self.get_maps(self.silent)
+        if self.maps is None:
             return None
         # get kernel base
-        self.get_kernel_base()
+        self.kbase, self.kbase_size = self.get_kernel_base(self.maps)
         if self.kbase is None:
             return None
         # get kernel ro_base
-        self.get_kernel_rodata_base()
+        self.krobase, self.krobase_size = self.get_kernel_rodata_base(self.maps, self.kbase)
         if self.krobase is None:
             return None
         # resolve some address
@@ -18625,123 +18636,20 @@ class KsymaddrRemoteApply2Command(GenericCommand):
         self.kallsyms = []
         return
 
-    def get_maps(self):
-        if self.maps:
-            return True
-
-        self.maps = []
-        info("Wait for memory scan")
-
-        res = gdb.execute("pagewalk", to_string=True)
-        res = sorted(set(res.splitlines()))
-        res = list(filter(lambda line: line.endswith("]"), res))
-        res = list(filter(lambda line: not "*" in line, res))
-
-        if is_x86():
-            for line in res:
-                line = line.split()
-                if line[6] != "KERN":
-                    continue
-                vaddr = int(line[0].split("-")[0], 16)
-                size = int(line[2], 16)
-                perm = line[5][1:]
-                self.maps.append([vaddr, size, perm])
-
-        elif is_arm32():
-            for line in res:
-                line = line.split()
-                if line[5] != "[PL0/---":
-                    continue
-                vaddr = int(line[0].split("-")[0], 16)
-                size = int(line[2], 16)
-                perm = line[6][4:7]
-                self.maps.append([vaddr, size, perm])
-
-        elif is_arm64():
-            for line in res:
-                line = line.split()
-                if line[5] != "[EL0/---":
-                    continue
-                vaddr = int(line[0].split("-")[0], 16)
-                size = int(line[2], 16)
-                perm = line[6][4:7]
-                self.maps.append([vaddr, size, perm])
-
-        if self.maps == []:
-            if is_x86():
-                warn("Make sure you are in ring0 (=kernel mode)")
-            elif is_arm32():
-                warn("Make sure you are in supervisor mode (=kernel mode)")
-                warn("Make sure qemu 3.x or higher")
-            elif is_arm64():
-                warn("Make sure you are in EL1 (=kernel mode)")
-                warn("Make sure qemu 3.x or higher")
-            return None
-        else:
-            return True
-
-    def get_kernel_base(self):
-        self.kbase = None
-        self.kbase_size = None
-
-        for vaddr, size, perm in self.maps:
-            if perm == "R-X" and size >= 0x100000:
-                self.kbase = vaddr
-                self.kbase_size = size
-                return
-        # not found, maybe old kernel
-        for vaddr, size, perm in self.maps:
-            if perm == "RWX" and size >= 0x100000:
-                self.kbase = vaddr
-                self.kbase_size = size
-                return
-        return
-
-    def get_kernel_rodata_base(self):
-        def search_perm(target_perm):
-            found = False
-            ro = None
-            for vaddr, size, perm in self.maps:
-                if found == False:
-                    if vaddr == self.kbase: # search kernel base
-                        found = True
-                    continue
-                if found == True:
-                    if perm == target_perm: # bss is next to kernel base
-                        if ro is None:
-                            ro = [vaddr, size]
-                        elif ro[0] + ro[1] == vaddr:
-                            ro = [ro[0], ro[1] + size] # merge contiguous region
-            return ro
-
-        self.krobase = None
-        self.krobase_size = None
-
-        res = search_perm("R--")
-        if res is None:
-            res = search_perm("R-X")
-            if res is None:
-                res = search_perm("RWX") # old kernel
-                if res is None:
-                    return
-
-        self.krobase = res[0]
-        self.krobase_size = res[1]
-        return
-
     def process(self):
         DUMPED_MEM_FILE = "/tmp/gef-dump-memory.raw"
         SYMBOLED_VMLINUX_FILE = "/tmp/gef-dump-memory.elf"
 
         # get kernel memory maps
-        if self.get_maps() is None:
+        self.maps = KsymaddrRemoteCommand.get_maps()
+        if self.maps is None:
             return None
         # get kernel base
-        self.get_kernel_base()
+        self.kbase, self.kbase_size = KsymaddrRemoteCommand.get_kernel_base(self.maps)
         if self.kbase is None:
             return None
         # get kernel ro_base
-        self.get_kernel_rodata_base()
+        self.krobase, self.krobase_size = KsymaddrRemoteCommand.get_kernel_rodata_base(self.maps, self.kbase)
         if self.krobase is None:
             return None
 
