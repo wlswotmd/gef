@@ -86,8 +86,8 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / Debian 
         * https://commondatastorage.googleapis.com/chromium-browser-snapshots/index.html?prefix=Linux_x64/938549/
 * `partition-alloc-dump-dev`: dumps partition-alloc free-list (heuristic).
     * This command is reserved for the implementation of latest dev version of chromium.
-        * Currently tested: v98.0.4736.0 / 945825 / d64549a6f8e6d0493f2cf37b35e4966ff4ba32b8
-        * https://commondatastorage.googleapis.com/chromium-browser-snapshots/index.html?prefix=Linux_x64/945825/
+        * Currently tested: v98.0.4758.0 / 950363 / 3901a681b68f1fccac743014163ad518eb88082b
+        * https://commondatastorage.googleapis.com/chromium-browser-snapshots/index.html?prefix=Linux_x64/950363/
 * `partition-alloc-dump-old1`: dumps partition-alloc free-list (heuristic).
     * For the implementation in 2021 Jul (tested on `Google CTF 2021 - fullchain`).
     * Not maintained for a while.
