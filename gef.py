@@ -15091,8 +15091,8 @@ class OneGadgetCommand(GenericCommand):
 
         try:
             one_gadget = which("one_gadget")
-            gef_print(titlify(f"{one_gadget} {libc.path} -l 1"))
-            os.system(f"{one_gadget} {libc.path} -l 1")
+            gef_print(titlify(f"{one_gadget} '{libc.path}' -l 1"))
+            os.system(f"{one_gadget} '{libc.path}' -l 1")
         except:
             err("Missing `one_gadget`, install with: `gem install one_gadget`.")
         return
@@ -15112,8 +15112,8 @@ class SeccompCommand(GenericCommand):
         path = get_filepath()
         try:
             seccomp = which("seccomp-tools")
-            gef_print(titlify(f"{seccomp} dump {path}"))
-            os.system(f"{seccomp} dump {path}")
+            gef_print(titlify(f"{seccomp} dump '{path}'"))
+            os.system(f"{seccomp} dump '{path}'")
         except:
             err("Missing `seccomp-tools`, install with: `gem install seccomp-tools`.")
         return
@@ -18752,8 +18752,8 @@ class KsymaddrRemoteApply2Command(GenericCommand):
             gdb.execute("dump memory {} {:#x} {:#x}".format(DUMPED_MEM_FILE, self.kbase, self.krobase + self.krobase_size), to_string=True)
             gef_print("Dumped to {}".format(DUMPED_MEM_FILE))
 
-            info("Execute `vmlinux-to-elf {} {}`".format(DUMPED_MEM_FILE, SYMBOLED_VMLINUX_FILE))
-            os.system("vmlinux-to-elf {} {}".format(DUMPED_MEM_FILE, SYMBOLED_VMLINUX_FILE))
+            info("Execute `vmlinux-to-elf '{}' '{}'`".format(DUMPED_MEM_FILE, SYMBOLED_VMLINUX_FILE))
+            os.system("vmlinux-to-elf '{}' '{}'".format(DUMPED_MEM_FILE, SYMBOLED_VMLINUX_FILE))
         else:
             info("Reuse symboled vmlinux at {}".format(SYMBOLED_VMLINUX_FILE))
 
@@ -27073,11 +27073,11 @@ class AddSymbolTemporaryCommand(GenericCommand):
             # create light ELF
             fd, fname = tempfile.mkstemp(dir="/tmp", suffix=".c")
             os.fdopen(fd, "w").write("int main() {}")
-            os.system(f"{gcc} {fname} -no-pie -o {fname}.debug")
+            os.system(f"{gcc} '{fname}' -no-pie -o '{fname}.debug'")
             os.unlink(f"{fname}")
             # delete unneeded section for faster
-            os.system(f"{objcopy} --only-keep-debug {fname}.debug")
-            os.system(f"{objcopy} --strip-all {fname}.debug")
+            os.system(f"{objcopy} --only-keep-debug '{fname}.debug'")
+            os.system(f"{objcopy} --strip-all '{fname}.debug'")
             elf = get_elf_headers(f"{fname}.debug")
             for s in elf.shdrs:
                 section_name = s.sh_name
@@ -27093,14 +27093,14 @@ class AddSymbolTemporaryCommand(GenericCommand):
                     continue
                 if section_name == ".bss": # broken if removed
                     continue
-                os.system(f"{objcopy} --remove-section={section_name} {fname}.debug 2>/dev/null")
+                os.system(f"{objcopy} --remove-section='{section_name}' '{fname}.debug' 2>/dev/null")
             cache["fname"] = fname + ".debug"
             cache["data"] = open(cache["fname"], "rb").read()
             return cache["fname"]
 
         def apply_symbol(fname, cmd_string_arr, text_base):
             cmd_string = ' '.join(cmd_string_arr)
-            os.system(f"{objcopy} {cmd_string} {fname}")
+            os.system(f"{objcopy} {cmd_string} '{fname}'")
             gdb.execute(f"add-symbol-file {fname} {text_base:#x}", to_string=True)
             os.unlink(fname)
             return
@@ -27153,8 +27153,13 @@ class AddSymbolTemporaryCommand(GenericCommand):
         if len(argv) != 2:
             self.usage()
             return
-        function_name = argv[0]
-        function_addr = int(gdb.parse_and_eval(argv[1]))
+
+        try:
+            function_name = argv[0]
+            function_addr = int(gdb.parse_and_eval(argv[1]))
+        except:
+            self.usage()
+            return
 
         if is_32bit() and function_addr > 0xffffffff:
             err("function address must be 0xffffffff or less")
