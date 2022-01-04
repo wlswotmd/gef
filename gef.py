@@ -815,12 +815,79 @@ class Instruction:
             opcodes_text = opcodes_text[:opcodes_len * 2 - 2] + ".."
 
         location = self.smartify_text(self.location)
+        if not location:
+            location = "<NO_SYMBOL>"
         operands = self.smartify_text(", ".join(self.operands))
-        fmt = "{:#10x} {:{:d}}   {:20}   {:6} {:s}"
-        return fmt.format(self.address, opcodes_text, opcodes_len * 2, location, self.mnemonic, operands)
+
+        # resolve symbol
+        sym = ""
+
+        # ex: call 0xXXXX
+        if sym == "" and (is_x86_32() or is_x86_64() or is_arm64()) and len(self.operands) > 0:
+            try:
+                reference_addr = self.operands[-1].replace("#", "")
+                ret = gdb_get_location_from_symbol(int(reference_addr, 0))
+                if ret is None:
+                    sym = ""
+                elif ret[1] == 0:
+                    sym = "<{}>".format(ret[0])
+                else:
+                    sym = "<{}+{:#x}>".format(ret[0], ret[1])
+            except:
+                pass
+
+        # ex: lea rax, [rip + 0xXXXX]
+        if sym == "" and is_x86_64() and len(self.operands) > 0:
+            try:
+                m = re.match(r"\[rip \+ (0x\w+)\]", self.operands[-1])
+                reference_addr = self.address + len(self.opcodes) + int(m.group(1), 0)
+                ret = gdb_get_location_from_symbol(reference_addr)
+                if ret is None:
+                    sym = ""
+                elif ret[1] == 0:
+                    sym = "# {:#x} <{}>".format(reference_addr, ret[0])
+                else:
+                    sym = "# {:#x} <{}+{:#x}>".format(reference_addr, ret[0], ret[1])
+            except:
+                pass
+
+        # ex: b #0xXXXX
+        if sym == "" and is_arm32() and len(self.operands) > 0:
+            try:
+                m = re.match(r"#(\w+)", self.operands[-1])
+                ret = gdb_get_location_from_symbol(int(m.group(1), 0))
+                if ret is None:
+                    sym = ""
+                elif ret[1] == 0:
+                    sym = "<{}>".format(ret[0])
+                else:
+                    sym = "<{}+{:#x}>".format(ret[0], ret[1])
+            except:
+                pass
+
+        # ex: ldr r0, [pc, #0xXXXX]
+        if sym == "" and is_arm32() and len(self.operands) > 1:
+            try:
+                m = re.match(r"\[pc,#(\w+)\]", ','.join(self.operands[-2:]))
+                reference_addr = self.address + len(self.opcodes) + int(m.group(1), 0)
+                ret = gdb_get_location_from_symbol(reference_addr)
+                if ret is None:
+                    sym = ""
+                elif ret[1] == 0:
+                    sym = "; {:#x} <{}>".format(reference_addr, ret[0])
+                else:
+                    sym = "; {:#x} <{}+{:#x}>".format(reference_addr, ret[0], ret[1])
+            except:
+                pass
+
+        # formatting
+        fmt = "{:#10x} {:{:d}}   {:20}   {:6} {:s} {:s}"
+        return fmt.format(self.address, opcodes_text, opcodes_len * 2, location, self.mnemonic, operands, sym)
 
     def __str__(self):
         location = self.smartify_text(self.location)
+        if not location:
+            location = "<NO_SYMBOL>"
         operands = self.smartify_text(", ".join(self.operands))
         fmt = "{:#10x} {:20} {:6} {:s}"
         return fmt.format(self.address, location, self.mnemonic, operands)
