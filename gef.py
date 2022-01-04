@@ -2159,10 +2159,13 @@ class RISCV(Architecture):
 
     def get_ra(self, insn, frame):
         ra = None
-        if self.is_ret(insn):
-            ra = get_register("$ra")
-        elif frame.older():
-            ra = frame.older().pc()
+        try:
+            if self.is_ret(insn):
+                ra = get_register("$ra")
+            elif frame.older():
+                ra = frame.older().pc()
+        except:
+            pass
         return ra
 
 
@@ -2326,17 +2329,20 @@ class ARM(Architecture):
 
     def get_ra(self, insn, frame):
         ra = None
-        if self.is_ret(insn):
-            # If it's a pop, we have to peek into the stack, otherwise use lr
-            if insn.mnemonic == "pop":
-                ra_addr = current_arch.sp + (len(insn.operands)-1) * get_memory_alignment()
-                ra = to_unsigned_long(dereference(ra_addr))
-            elif insn.mnemonic == "ldr":
-                return to_unsigned_long(dereference(current_arch.sp))
-            else: # 'bx lr' or 'add pc, lr, #0'
-                return get_register("$lr")
-        elif frame.older():
-            ra = frame.older().pc()
+        try:
+            if self.is_ret(insn):
+                # If it's a pop, we have to peek into the stack, otherwise use lr
+                if insn.mnemonic == "pop":
+                    ra_addr = current_arch.sp + (len(insn.operands)-1) * get_memory_alignment()
+                    ra = to_unsigned_long(dereference(ra_addr))
+                elif insn.mnemonic == "ldr":
+                    return to_unsigned_long(dereference(current_arch.sp))
+                else: # 'bx lr' or 'add pc, lr, #0'
+                    return get_register("$lr")
+            elif frame.older():
+                ra = frame.older().pc()
+        except:
+            pass
         return ra
 
     @classmethod
@@ -2576,10 +2582,13 @@ class X86(Architecture):
 
     def get_ra(self, insn, frame):
         ra = None
-        if self.is_ret(insn):
-            ra = to_unsigned_long(dereference(current_arch.sp))
-        if frame.older():
-            ra = frame.older().pc()
+        try:
+            if self.is_ret(insn):
+                ra = to_unsigned_long(dereference(current_arch.sp))
+            if frame.older():
+                ra = frame.older().pc()
+        except:
+            pass
         return ra
 
     @classmethod
@@ -2765,10 +2774,13 @@ class PowerPC(Architecture):
 
     def get_ra(self, insn, frame):
         ra = None
-        if self.is_ret(insn):
-            ra = get_register("$lr")
-        elif frame.older():
-            ra = frame.older().pc()
+        try:
+            if self.is_ret(insn):
+                ra = get_register("$lr")
+            elif frame.older():
+                ra = frame.older().pc()
+        except:
+            pass
         return ra
 
     @classmethod
@@ -2909,10 +2921,13 @@ class SPARC(Architecture):
 
     def get_ra(self, insn, frame):
         ra = None
-        if self.is_ret(insn):
-            ra = get_register("$o7")
-        elif frame.older():
-            ra = frame.older().pc()
+        try:
+            if self.is_ret(insn):
+                ra = get_register("$o7")
+            elif frame.older():
+                ra = frame.older().pc()
+        except:
+            pass
         return ra
 
     @classmethod
@@ -3095,10 +3110,13 @@ class MIPS(Architecture):
 
     def get_ra(self, insn, frame):
         ra = None
-        if self.is_ret(insn):
-            ra = get_register("$ra")
-        elif frame.older():
-            ra = frame.older().pc()
+        try:
+            if self.is_ret(insn):
+                ra = get_register("$ra")
+            elif frame.older():
+                ra = frame.older().pc()
+        except:
+            pass
         return ra
 
     @classmethod
