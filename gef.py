@@ -4705,10 +4705,10 @@ def gef_get_auxiliary_values():
         tmp = line.split()
         _type = tmp[1]
         if _type in ("AT_PLATFORM", "AT_EXECFN"):
-            idx = line[:-1].rfind('"') - 1
-            tmp = line[:idx].split()
-
-        res[_type] = int(tmp[-1], base=0)
+            m = re.match("^.+?(0x[0-9a-f]+)", line)
+            res[_type] = int(m.group(1), base=0)
+        else:
+            res[_type] = int(tmp[-1], base=0)
     return res
 
 
