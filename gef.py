@@ -8118,7 +8118,7 @@ class RpCommand(GenericCommand):
 
     def exec_rp(self):
         self.out = "rop{}_{}.txt".format(self.ropN, os.path.basename(self.path))
-        cmd = f"{self.rp} --file={self.path} --rop={self.ropN} --unique > {self.out}"
+        cmd = f"{self.rp} --file='{self.path}' --rop={self.ropN} --unique > {self.out}"
         gef_print(titlify(cmd))
         if not os.path.exists(self.out):
             os.system(cmd)
