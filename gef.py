@@ -9047,7 +9047,10 @@ class ElfInfoCommand(GenericCommand):
     show information about the current ELF being debugged."""
     _cmdline_ = "elf-info"
     _syntax_ = "{:s} [-h] [-r] [FILE|ADDRESS]".format(_cmdline_)
-    _example_ = "{:s} /bin/ls".format(_cmdline_)
+    _example_ =  "{:s}                # parse binary itself\n".format(_cmdline_)
+    _example_ += "{:s} /bin/ls        # parse binary specified\n".format(_cmdline_)
+    _example_ += "{:s} 0x555555554000 # parse memory\n".format(_cmdline_)
+    _example_ += "{:s} -r /bin/ls     # show `readelf -a FILE | less`".format(_cmdline_)
     _category_ = "Process/State Inspection (ELF)"
 
     def __init__(self, *args, **kwargs):
@@ -9118,7 +9121,7 @@ class ElfInfoCommand(GenericCommand):
                 self.usage()
                 return
             if use_readelf:
-                os.system("readelf -a {:s} | less".format(filename))
+                os.system("readelf -a '{:s}' | less".format(filename))
                 return
             elf = get_elf_headers(filename)
 
@@ -9126,9 +9129,12 @@ class ElfInfoCommand(GenericCommand):
             filename = argv[0]
             if os.path.exists(filename):
                 if use_readelf:
-                    os.system("readelf -a {:s} | less".format(filename))
+                    os.system("readelf -a '{:s}' | less".format(filename))
                     return
                 elf = get_elf_headers(filename)
+            elif use_readelf:
+                self.usage()
+                return
             else:
                 try:
                     addr = int(argv[0], 0)
