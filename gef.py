@@ -12024,10 +12024,16 @@ class HeapAnalysisCommand(GenericCommand):
 class SyscallSearchCommand(GenericCommand):
     """Search the syscall number"""
     _cmdline_ = "syscall-search"
-    _syntax_ = "{:s} [-h] [-v] SYSCALL_NAME_REGEX_SEARCH_PATTERN".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [-v] [-a ARCH] [-m MODE] SYSCALL_NAME_REGEX_SEARCH_PATTERN".format(_cmdline_)
+    _example_ = "\n"
+    _example_ += '{:s} -a X86 -m 64  "^writev?" # amd64\n'.format(_cmdline_)
+    _example_ += '{:s} -a X86 -m 32  "^writev?" # i386 on amd64\n'.format(_cmdline_)
+    _example_ += '{:s} -a X86 -m N32 "^writev?" # i386 native\n'.format(_cmdline_)
+    _example_ += '{:s} -a ARM64      "^writev?" # arm64\n'.format(_cmdline_)
+    _example_ += '{:s} -a ARM -m 32  "^writev?" # arm32 on arm64\n'.format(_cmdline_)
+    _example_ += '{:s} -a ARM -m N32 "^writev?" # arm32 native'.format(_cmdline_)
     _category_ = "Search"
 
-    @only_if_gdb_running
     def do_invoke(self, argv):
         if "-h" in argv:
             self.usage()
@@ -12038,7 +12044,25 @@ class SyscallSearchCommand(GenericCommand):
             verbose = True
             argv.remove("-v")
 
+        arch = None
+        if "-a" in argv:
+            idx = argv.index("-a")
+            arch = argv[idx + 1]
+            argv = argv[:idx] + argv[idx+2:]
+
+        mode = None
+        if "-m" in argv:
+            idx = argv.index("-m")
+            mode = argv[idx + 1]
+            argv = argv[:idx] + argv[idx+2:]
+
         if len(argv) != 1:
+            self.usage()
+            return
+
+        try:
+            syscall_table = SyscallArgsCommand.get_syscall_table(arch, mode)
+        except:
             self.usage()
             return
 
@@ -12050,7 +12074,6 @@ class SyscallSearchCommand(GenericCommand):
             headers = ["NR", "Name"]
             gef_print(Color.colorify("{:<25} {:<20}".format(*headers), color))
 
-        syscall_table = SyscallArgsCommand.get_syscall_table()
         for num, entry in syscall_table.items():
             if re.search(argv[0], entry.name):
                 nr = "{:d} (=0x{:x})".format(num, num)
@@ -12113,7 +12136,7 @@ class SyscallArgsCommand(GenericCommand):
         return
 
     @staticmethod
-    def get_syscall_table():
+    def get_syscall_table(arch=None, mode=None):
         def is_emulated32():
             if is_qemu_usermode():
                 return True
@@ -12143,7 +12166,7 @@ class SyscallArgsCommand(GenericCommand):
         # The info of arguments type is picked up from kernel source around "SYSCALL_DEFINE*(...) / COMPAT_SYSCALL_DEFINE*(...)",
         # The command I used: cd linux-5.*; ag --cc -A 6 "SYSCALL_DEFINE.*\bFUNCTION_NAME\b"
         # But these are some exceptions (ex: not found), I picked up from the function of syscall implementation, and so on
-        if is_x86_64():
+        if (arch == "X86" and mode == "64") or (arch is None and mode is None and is_x86_64()):
             register_list = ["$rdi", "$rsi", "$rdx", "$r10", "$r8", "$r9"]
             # arch/x86/entry/syscalls/syscall_64.tbl
             # arch/x86/include/asm/unistd.h
@@ -12558,7 +12581,7 @@ class SyscallArgsCommand(GenericCommand):
                     continue
                 syscall_list += [[s[0]+0x40000000, s[1], s[2]]]
 
-        elif is_x86_32() and is_emulated32():
+        elif (arch == "X86" and mode == "32") or (arch is None and mode is None and is_x86_32() and is_emulated32()):
             register_list = ["$ebx", "$ecx", "$edx", "$esi", "$edi", "$ebp"]
             # arch/x86/include/asm/unistd.h
             # arch/x86/include/uapi/asm/unistd.h
@@ -13011,7 +13034,7 @@ class SyscallArgsCommand(GenericCommand):
                 [0x1c0, 'process_mrelease', ['int pidfd', 'unsigned int flags']],
             ]
 
-        elif is_x86_32() and not is_emulated32():
+        elif (arch == "X86" and mode == "N32") or (arch is None and mode is None and is_x86_32() and not is_emulated32()):
             register_list = ["$ebx", "$ecx", "$edx", "$esi", "$edi", "$ebp"]
             # arch/x86/include/asm/unistd.h
             # arch/x86/include/uapi/asm/unistd.h
@@ -13464,7 +13487,7 @@ class SyscallArgsCommand(GenericCommand):
                 [0x1c0, 'process_mrelease', ['int pidfd', 'unsigned int flags']],
             ]
 
-        elif is_arm64():
+        elif (arch == "ARM64") or (arch is None and is_arm64()):
             register_list = ["$x0", "$x1", "$x2", "$x3", "$x4", "$x5"]
             # arch/arm64/include/asm/unistd.h
             # arch/arm64/include/uapi/asm/unistd.h
@@ -13779,7 +13802,7 @@ class SyscallArgsCommand(GenericCommand):
                 [0x1c0, 'process_mrelease', ['int pidfd', 'unsigned int flags']],
             ]
 
-        elif is_arm32() and is_emulated32():
+        elif (arch == "ARM" and mode == "32") or (arch is None and mode is None and is_arm32() and is_emulated32()):
             register_list = ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6"]
             # arch/arm64/include/asm/unistd.h
             # arch/arm64/include/asm/unistd32.h
@@ -14237,7 +14260,7 @@ class SyscallArgsCommand(GenericCommand):
                 [0xf0005, 'set_tls', ['unsigned long val']], # arch/arm/kernel/traps.c
             ]
 
-        elif is_arm32() and not is_emulated32():
+        elif (arch == "ARM" and mode == "N32") or (arch is None and mode is None and is_arm32() and not is_emulated32()):
             register_list = ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6"]
             # arch/arm/include/asm/unistd.h
             # arch/arm/include/generated/uapi/asm/unistd-common.h
