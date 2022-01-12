@@ -8317,7 +8317,7 @@ class AssembleCommand(GenericCommand):
     _cmdline_ = "asm"
     _syntax_ = "{:s} [-h] [-a ARCH] [-m MODE] [-e] [-s] [-l LOCATION] instruction;[instruction;...instruction;]\n".format(_cmdline_)
     _syntax_ += "  -a ARCH      specify the architecture\n"
-    _syntax_ += "  -a MODE      specify the mode\n"
+    _syntax_ += "  -m MODE      specify the mode\n"
     _syntax_ += "  -e           use big-endian\n"
     _syntax_ += "  -s           output like shellcode style\n"
     _syntax_ += "  -l LOCATION  write to memory address"
@@ -8456,7 +8456,7 @@ class DisassembleCommand(GenericCommand):
     _cmdline_ = "dasm"
     _syntax_ = "{:s} [-h] [-a ARCH] [-m MODE] [-e] hex-byte-code\n".format(_cmdline_)
     _syntax_ += "  -a ARCH      specify the architecture\n"
-    _syntax_ += "  -a MODE      specify the mode\n"
+    _syntax_ += "  -m MODE      specify the mode\n"
     _syntax_ += "  -e           use big-endian"
     _example_ = "\n"
     _example_ += '{:s} -a X86 -m 64 "488b00 48ffc0"\n'.format(_cmdline_)
@@ -8571,7 +8571,7 @@ class AsmList2Command(GenericCommand):
     _syntax_ = "{:s}".format(_cmdline_)
     _syntax_ = "{:s} [-h] [-a ARCH] [-m MODE] [-e] [-n NBYTE] [-f INCLUDE] [-v EXCLUDE] [-s]\n".format(_cmdline_)
     _syntax_ += "  -a ARCH      specify the architecture\n"
-    _syntax_ += "  -a MODE      specify the mode\n"
+    _syntax_ += "  -m MODE      specify the mode\n"
     _syntax_ += "  -e           use big-endian (for future update)\n"
     _syntax_ += "  -s           use simple mode; exclude x87 fpu, SSE, etc.\n"
     _syntax_ += "  -n NBYE      filter by asm byte length\n"
@@ -8821,7 +8821,7 @@ class AsmListCommand(GenericCommand):
     _cmdline_ = "asm-list"
     _syntax_ = "{:s} [-h] [-a ARCH] [-m MODE] [-e] N\n".format(_cmdline_)
     _syntax_ += "  -a ARCH      specify the architecture\n"
-    _syntax_ += "  -a MODE      specify the mode\n"
+    _syntax_ += "  -m MODE      specify the mode\n"
     _syntax_ += "  -e           use big-endian"
     _example_ = "\n"
     _example_ += '{:s} -a X86 -m 64 4\n'.format(_cmdline_)
