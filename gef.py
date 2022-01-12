@@ -17897,7 +17897,7 @@ class KsymaddrRemoteCommand(GenericCommand):
     """Solve kernel symbols from kallsyms table using kenrel memory scanning.
     See: kernel/kallsyms.c"""
     _cmdline_ = "ksymaddr-remote"
-    _syntax_ = "{:s} [-h] KEYWORD|--print-all [--head N] [--silent] [--exact]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] KEYWORD|--print-all [--head N] [--silent] [--exact] [--meta]".format(_cmdline_)
     _example_ = "\n"
     _example_ += "{:s} --print-all # print all symbols found\n".format(_cmdline_)
     _example_ += "{:s} cred --head 30 # print symbols included \"cred\" with only first 30 hit\n".format(_cmdline_)
@@ -18448,7 +18448,7 @@ class KsymaddrRemoteCommand(GenericCommand):
             while True:
                 if self.RO_REGION_u32[pos] == 0 or self.RO_REGION_u32[pos] & 0xff000000 > 0:
                     if self.RO_REGION_u32[pos-1] * 2 < self.RO_REGION_u32[pos]:
-                        pos &= ~1
+                        pos = (pos - 1) & ~1
                     else:
                         while pos % 2: # need align
                             pos += 1
@@ -18602,15 +18602,23 @@ class KsymaddrRemoteCommand(GenericCommand):
                 info("kernel_robase:          {:#x}".format(self.krobase)) # to saerch kallsyms_*
                 if self.kallsyms_relative_base:
                     info("kallsyms_relative_base: {:#x}: {:#x}".format(self.kallsyms_relative_base_addr, self.kallsyms_relative_base))
+                    info("kallsyms_num_syms:      {:#x}: {:#x}".format(self.kallsyms_num_syms_addr, self.kallsyms_num_syms))
+                    gdb.execute("x/4x{} {}".format(["w", "g"][is_64bit()], self.kallsyms_relative_base_addr))
                 else:
                     info("kallsyms_relative_base: None")
-                info("kallsyms_num_syms:      {:#x}: {:#x}".format(self.kallsyms_num_syms_addr, self.kallsyms_num_syms))
+                    info("kallsyms_num_syms:      {:#x}: {:#x}".format(self.kallsyms_num_syms_addr, self.kallsyms_num_syms))
+                    gdb.execute("x/4x{} {}".format(["w", "g"][is_64bit()], self.kallsyms_num_syms_addr))
                 info("kallsyms_names          {:#x}".format(self.kallsyms_names_addr)) # to lookup symbol
+                gdb.execute("x/8x{} {}".format(["w", "g"][is_64bit()], self.kallsyms_names_addr - 0x10))
                 info("CONFIG_KALLSYMS_ABSOLUTE_PERCPU: {:d}".format(self.CONFIG_KALLSYMS_ABSOLUTE_PERCPU)) # to calculate address
                 info("kallsyms_offsets:       {:#x}".format(self.kallsyms_offsets_addr)) # to lookup symbol
+                gdb.execute("x/8x{} {}".format(["w", "g"][is_64bit()], self.kallsyms_offsets_addr - 0x10))
                 info("kallsyms_markers:       {:#x}".format(self.kallsyms_markers_addr)) # to search kallsyms_*
+                gdb.execute("x/8x{} {}".format(["w", "g"][is_64bit()], self.kallsyms_markers_addr - 0x10))
                 info("kallsyms_token_table:   {:#x}".format(self.kallsyms_token_table_addr)) # to calculate address
+                gdb.execute("x/8x{} {}".format(["w", "g"][is_64bit()], self.kallsyms_token_table_addr - 0x10))
                 info("kallsyms_token_index:   {:#x}".format(self.kallsyms_token_index_addr)) # to calculate address
+                gdb.execute("x/8x{} {}".format(["w", "g"][is_64bit()], self.kallsyms_token_index_addr - 0x10))
             except:
                 pass
         return
