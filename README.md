@@ -242,6 +242,7 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / Debian 
 * `ls`/`cat`: invokes `ls`/`cat` directly.
 * `constgrep`: invokes `grep` under `/usr/include`.
 * `rp`: invokes `rp++` with commonly used options.
+    * Supports both rp++ v1 and v2.
 * `cpuid`: shows the result of cpuid(eax=0,1,2...).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/cpuid.png)
 * `dasm`: disassembles the code by capstone.
