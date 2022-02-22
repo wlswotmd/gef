@@ -10882,7 +10882,7 @@ class DereferenceCommand(GenericCommand):
         return
 
     @staticmethod
-    def pprint_dereferenced(addr, off):
+    def pprint_dereferenced(addr, idx):
         base_address_color = get_gef_setting("theme.dereference_base_address")
         registers_color = get_gef_setting("theme.dereference_register_value")
         max_recursion = get_gef_setting("dereference.max_recursion") or 4
@@ -10890,20 +10890,42 @@ class DereferenceCommand(GenericCommand):
         sep = " {:s} ".format(RIGHT_ARROW)
         memalign = current_arch.ptrsize
 
-        offset = off * memalign
+        offset = idx * memalign
         current_address = align_address(addr + offset)
         addrs = dereference_from(current_address)
         if len(addrs) == 1: # cannot access this area
             raise
-        l = ""
-        addr_l = format_address(int(addrs[0], 16))
-        link = sep.join(addrs[1:])
+
+        def get_symbol(addr):
+            addr = re.sub(r"\x1B\[([0-9]{1,2}(;[0-9]{1,2})*)?m", "", addr) # remove color
+            try:
+                ret = gdb_get_location_from_symbol(int(addr, 16))
+            except:
+                return ""
+            if ret is None:
+                return ""
+            sym_name, sym_offset = ret[0], ret[1]
+            sym_name = Instruction.smartify_text(sym_name)
+            if sym_offset == 0:
+                return " <{}>".format(sym_name)
+            else:
+                return " <{}+{}>".format(sym_name, sym_offset)
+
+        # create address link list
+        addrs_with_sym = [addr + get_symbol(addr) for addr in addrs[1:]]
+        link = sep.join(addrs_with_sym)
+
+        # add "..."
         if max_recursion <= len(addrs) and not addrs[-1].endswith("]"):
             try:
                 if len(dereference_from(int(addrs[-1],16))) > 1:
                     link += sep + "..."
             except:
                 pass
+
+        # craete line of one entry
+        l = ""
+        addr_l = format_address(int(addrs[0], 16))
         addr_l_color = Color.colorify(addr_l, base_address_color)
         ma = memalign * 2 + 2
         l += "{:s}{:s}+{:#06x}({:03d}): {:{ma}s}".format(addr_l_color, VERTICAL_LINE, offset, offset//memalign, link, ma=ma)
