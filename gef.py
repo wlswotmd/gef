@@ -11574,7 +11574,9 @@ class ChecksecCommand(GenericCommand):
     - RelRO
     - Glibc Stack Canaries
     - Fortify Source
-    - Intel CET"""
+    - Intel CET
+    - System ASLR
+    - GDB ASLR setting"""
     _cmdline_ = "checksec"
     _syntax_ = "{:s} [FILENAME]".format(_cmdline_)
     _example_ = "{:s} /bin/ls".format(_cmdline_)
@@ -11586,7 +11588,7 @@ class ChecksecCommand(GenericCommand):
 
     def do_invoke(self, argv):
         if is_qemu_system():
-            err("Unsupported")
+            self.print_security_properties_qemu_system()
             return
 
         try:
@@ -11621,26 +11623,78 @@ class ChecksecCommand(GenericCommand):
 
     def print_security_properties(self, filename):
         sec = checksec(filename)
+
+        # Canary,NX,Fortify,CET
         for prop in sec:
             if prop in ("Partial RelRO", "Full RelRO"): continue
             val = sec[prop]
-            msg = Color.greenify(Color.boldify(TICK)) if val is True else Color.redify(Color.boldify(CROSS))
+            msg = Color.greenify(Color.boldify("Enabled")) if val is True else Color.redify(Color.boldify("Disabled"))
             if val and prop == "Canary" and is_alive():
                 res = gef_read_canary()
                 if not res:
-                    msg += "(Could not get the canary value)"
+                    msg += " (Could not get the canary value)"
                 else:
                     canary = res[0]
-                    msg += "(value: {:#x})".format(canary)
+                    msg += " (value: {:#x})".format(canary)
 
             gef_print("{:<30s}: {:s}".format(prop, msg))
 
+        # RELRO
         if sec["Full RelRO"]:
             gef_print("{:<30s}: {:s}".format("RelRO", Color.greenify("Full")))
         elif sec["Partial RelRO"]:
             gef_print("{:<30s}: {:s}".format("RelRO", Color.yellowify("Partial")))
         else:
-            gef_print("{:<30s}: {:s}".format("RelRO", Color.redify(Color.boldify(CROSS))))
+            gef_print("{:<30s}: {:s}".format("RelRO", Color.redify(Color.boldify("No"))))
+
+        # System-ASLR
+        if not is_remote_debug() or is_remote_but_same_host():
+            try:
+                system_aslr = int(open("/proc/sys/kernel/randomize_va_space").read())
+                if system_aslr == 0:
+                    gef_print("{:<30s}: {:s} (randomize_va_space: 0)".format("System ASLR", Color.redify(Color.boldify("Disabled"))))
+                elif system_aslr == 1:
+                    gef_print("{:<30s}: {:s} (randomize_va_space: 1)".format("System ASLR", Color.greenify(Color.boldify("Enabled"))))
+                elif system_aslr == 2:
+                    gef_print("{:<30s}: {:s} (randomize_va_space: 2)".format("System ASLR", Color.greenify(Color.boldify("Enabled"))))
+            except:
+                gef_print("{:<30s}: {:s} (randomize_va_space: error)".format("System-ASLR", Color.grayify(Color.boldify("Unknown"))))
+        else:
+            gef_print("{:<30s}: {:s} (attached remote process)".format("System-ASLR", Color.grayify(Color.boldify("Unknown"))))
+
+        # attached or not
+        ret = gdb.execute("info files", to_string=True)
+        if "Using the running image of child Thread" in ret:
+            # gdb ASLR
+            ret = gdb.execute("show disable-randomization", to_string=True)
+            if "virtual address space is on." in ret:
+                gef_print("{:<30s}: {:s} (disable-randomization: on)".format("GDB ASLR setting", Color.redify(Color.boldify("Disabled"))))
+            elif "virtual address space is off." in ret:
+                gef_print("{:<30s}: {:s} (disable-randomization: off)".format("GDB ASLR setting", Color.greenify(Color.boldify("Enabled"))))
+            else:
+                gef_print("{:<30s}: {:s}".format("GDB ASLR setting", Color.grayify(Color.boldify("Unknown"))))
+        elif "Using the running image of attached process" in ret:
+            gef_print("{:<30s}: {:s} (attached process)".format("GDB ASLR setting", Color.grayify(Color.boldify("Ignored"))))
+        elif "Debugging a target over a serial line." in ret:
+            gef_print("{:<30s}: {:s} (attached process)".format("GDB ASLR setting", Color.grayify(Color.boldify("Ignored"))))
+        return
+
+    def print_security_properties_qemu_system(self):
+        if not is_x86_64():
+            return
+        ret = gdb.execute("qreg -v", to_string=True)
+        flag = False
+        for line in ret.splitlines():
+            if "CR0 (Control Register 0)" in line:
+                flag = True
+            if "CR1 (Control Register 1)" in line:
+                flag = False
+            if "CR4 (Control Register 4)" in line:
+                flag = True
+            if "DR0-DR3 (Debug Address Register 0-3)" in line:
+                flag = False
+            if flag:
+                print(line)
         return
 
 
