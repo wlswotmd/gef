@@ -145,6 +145,7 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / Debian 
     * It prints if there are canary and ret-addr on the target area.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/telescope.png)
     * It supports blacklist address features (to avoid dying when touching the address mapped to the serial device).
+    * It also shows the symbol if available.
 * `procinfo`: is improved.
     * It prints some additional informations.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/procinfo.png)

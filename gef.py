@@ -15102,6 +15102,7 @@ class MagicCommand(GenericCommand):
         self.resolve_and_print("__realloc_hook", libc)
         self.resolve_and_print("__memalign_hook", libc)
         self.resolve_and_print("__after_morecore_hook", libc)
+        self.resolve_and_print("_dl_open_hook", libc)
         self.resolve_and_print("global_max_fast", libc)
         self.resolve_and_print("malloc", libc)
         self.resolve_and_print("free", libc)
