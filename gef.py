@@ -17443,17 +17443,51 @@ class SlabCommand(GenericCommand):
     _example_ += "2. get address of `slab_caches`\n"
     _example_ += "3. parse member of `kmem_cache`\n"
     _example_ += "4. walk slub\n"
-    _example_ += "THIS FEATURE IS EXPERIMENTAL AND HEURISTIC."
+    _example_ += "THIS FEATURE IS EXPERIMENTAL AND HEURISTIC.\n"
+    _example_ += "\n"
+    _example_ += "Simplified SLUB structure:\n"
+    _example_ += "                         +-kmem_cache-+         +-kmem_cache-+   +-kmem_cache-+\n"
+    _example_ += "                         | cpu_slab   |---+     | cpu_slab   |   | cpu_slab   |\n"
+    _example_ += "                         | obj_size   |   |     | obj_size   |   | obj_size   |\n"
+    _example_ += "                         | offset     |---|-+   | offset     |   | offset     |\n"
+    _example_ += "       +-slab_caches-+   | name       |   | |   | name       |   | name       |\n"
+    _example_ += " ...<->| list_head   |<->| list_head  |<------->| list_head  |<->| list_head  |<-> ...\n"
+    _example_ += "       +-------------+   | random     |   | |   | random     |   | random     |\n"
+    _example_ += "                         +------------+   | |   +------------+   +------------+\n"
+    _example_ += "                                          | |\n"
+    _example_ += "    +-__per_cpu_offset-+                  | |\n"
+    _example_ += "    | cpu0_offset      |---+--------------+ |\n"
+    _example_ += "    | cpu1_offset      |   |                |\n"
+    _example_ += "    | cpu2_offset      |   |        +-------+\n"
+    _example_ += "    | ...              |   |        |\n"
+    _example_ += "    +------------------+   |        |\n"
+    _example_ += "                           |        |\n"
+    _example_ += "      +--------------------+        |\n"
+    _example_ += "      |                             |\n"
+    _example_ += "      |                 +-chunk--------+  +-chunk--------+  +-chunk--------+\n"
+    _example_ += "      |                 | ^         |  |  | ^            |  | ^            |\n"
+    _example_ += "      v                 | |offset <-+  |  | |offset      |  | |offset      |\n"
+    _example_ += "    +-kmem_cache_cpu-+  | v            |  | v            |  | v            |\n"
+    _example_ += "    | freelist       |->| next         |->| next         |->| next         |->NULL\n"
+    _example_ += "    |                |  |              |  |              |  |              |\n"
+    _example_ += "    +----------------+  +--------------+  +--------------+  +--------------+\n"
+    _example_ += "                        * next has 3 patterns.\n"
+    _example_ += "                          1. next\n"
+    _example_ += "                          2. xor(next, random)\n"
+    _example_ += "                          3. xor(byteswap(next), random)"
     _category_ = "Misc"
 
     """
     struct kmem_cache {
-        struct kmem_cache_cpu *cpu_slab;
-        slab_flags_t flags;
+        struct kmem_cache_cpu *cpu_slab;         // In fact, the offset value, not the pointer
+        slab_flags_t flags;                      // unsigned int (+ padding 4 byte)
         unsigned long min_partial;
         unsigned int size;
         unsigned int object_size;
-        struct reciprocal_value reciprocal_size; // if kernel >= 5.9-rc1
+        struct reciprocal_value {                //
+	    u32 m;                               //
+	    u8 sh1, sh2;                         // (+ padding 2 byte)
+        } reciprocal_size;                       // if kernel >= 5.9-rc1
         unsigned int offset;
         unsigned int cpu_partial;                // if CONFIG_SLUB_CPU_PARTIAL=y
         struct kmem_cache_order_objects oo;
@@ -17686,7 +17720,7 @@ class SlabCommand(GenericCommand):
         else:
             info("slab_caches: {:#x}".format(self.slab_caches))
 
-        # offsetof(kmem_cache,list)
+        # offsetof(kmem_cache, list)
         current = list_next = read_int_from_memory(self.slab_caches)
         for off in range(0, 0x70, current_arch.ptrsize): # backward search for the start of `struct kmem_cache`
             val = read_int_from_memory(current - off)
@@ -17718,21 +17752,21 @@ class SlabCommand(GenericCommand):
         self.kmem_cache_offset_list = off
         info("offsetof(kmem_cache, list): {:#x}".format(self.kmem_cache_offset_list))
 
-        # offsetof(kmem_cache,name)
+        # offsetof(kmem_cache, name)
         self.kmem_cache_offset_name = self.kmem_cache_offset_list - current_arch.ptrsize
         info("offsetof(kmem_cache, name): {:#x}".format(self.kmem_cache_offset_name))
 
-        # offsetof(kmem_cache,offset)
+        # offsetof(kmem_cache, offset)
         top = list_next - self.kmem_cache_offset_list
         objsize = u32(read_memory(top + current_arch.ptrsize*3+4, 4))
         maybe_recip = u32(read_memory(top + current_arch.ptrsize*3+4+4, 4))
-        if objsize < maybe_recip:
+        if objsize < maybe_recip or (maybe_recip % 8) != 0:
             self.kmem_cache_offset_offset = current_arch.ptrsize*3+4+4 + current_arch.ptrsize
         else:
             self.kmem_cache_offset_offset = current_arch.ptrsize*3+4+4
         info("offsetof(kmem_cache, offset): {:#x}".format(self.kmem_cache_offset_offset))
 
-        # offsetof(kmem_cache,random)
+        # offsetof(kmem_cache, random)
         if self.no_xor:
             self.kmem_cache_offset_random = None
         else:
@@ -17775,15 +17809,15 @@ class SlabCommand(GenericCommand):
                 info("offsetof(kmem_cache, random): Not found")
                 self.kmem_cache_offset_random = None # maybe CONFIG_SLAB_FREELIST_HARDENED=n
 
-        # offsetof(kmem_cache,cpu_slab)
+        # offsetof(kmem_cache, cpu_slab)
         self.kmem_cache_offset_cpu_slab = 0
-        # offsetof(kmem_cache,object_size)
+        # offsetof(kmem_cache, object_size)
         self.kmem_cache_offset_object_size = current_arch.ptrsize*3+4
-        # offsetof(kmem_cache_cpu,freelist)
+        # offsetof(kmem_cache_cpu, freelist)
         self.kmem_cache_cpu_offset_freelist = 0
         return True
 
-    def get_next(self, addr, point_to_base=True):
+    def get_next_kmem_cache(self, addr, point_to_base=True):
         if point_to_base:
             addr += self.kmem_cache_offset_list
         return read_int_from_memory(addr) - self.kmem_cache_offset_list
@@ -17804,13 +17838,13 @@ class SlabCommand(GenericCommand):
         else:
             return read_int_from_memory(addr + self.kmem_cache_offset_random)
 
-    def get_cpu_slab(self, addr, cpu):
-        cpu_slab_offset = read_int_from_memory(addr + self.kmem_cache_offset_cpu_slab)
-        cpu_slab = cpu_slab_offset + self.cpu_offset[cpu]
+    def get_kmem_cache_cpu(self, addr, cpu):
+        cpu_slab = read_int_from_memory(addr + self.kmem_cache_offset_cpu_slab)
+        kmem_cache_cpu = cpu_slab + self.cpu_offset[cpu]
         if is_64bit():
-            return cpu_slab & 0xffffffffffffffff
+            return kmem_cache_cpu & 0xffffffffffffffff
         else:
-            return cpu_slab & 0xffffffff
+            return kmem_cache_cpu & 0xffffffff
 
     def get_freelist(self, addr):
         return read_int_from_memory(addr + self.kmem_cache_cpu_offset_freelist)
@@ -17849,21 +17883,21 @@ class SlabCommand(GenericCommand):
         return chunk
 
     def walk_caches(self, cpu):
-        nxt = self.get_next(self.slab_caches, point_to_base=False)
-        self.parsed_caches = [{'name': 'slab_caches', 'next': nxt}]
+        current_kmem_cache = self.get_next_kmem_cache(self.slab_caches, point_to_base=False)
+        self.parsed_caches = [{'name': 'slab_caches', 'next': current_kmem_cache}]
         self.swap = None
 
-        while nxt + self.kmem_cache_offset_list != self.slab_caches:
+        while current_kmem_cache + self.kmem_cache_offset_list != self.slab_caches:
             new_cache = {}
             # parse member
-            new_cache['address'] = nxt
-            new_cache['objsize'] = objsize = self.get_objsize(nxt)
-            new_cache['offset'] = offset = self.get_offset(nxt)
-            new_cache['name'] = name = self.get_name(nxt)
-            new_cache['random'] = self.get_random(nxt)
+            new_cache['address'] = current_kmem_cache
+            new_cache['objsize'] = objsize = self.get_objsize(current_kmem_cache)
+            new_cache['offset'] = offset = self.get_offset(current_kmem_cache)
+            new_cache['name'] = name = self.get_name(current_kmem_cache)
+            new_cache['random'] = self.get_random(current_kmem_cache)
             # parse free_list
-            new_cache['cpu_slab'] = cpu_slab = self.get_cpu_slab(nxt, cpu)
-            chunk = self.get_freelist(cpu_slab)
+            new_cache['kmem_cache_cpu'] = kmem_cache_cpu = self.get_kmem_cache_cpu(current_kmem_cache, cpu)
+            chunk = self.get_freelist(kmem_cache_cpu)
             new_cache['freelist'] = [chunk]
             while chunk:
                 try:
@@ -17875,14 +17909,14 @@ class SlabCommand(GenericCommand):
                 if self.kmem_cache_offset_random is not None: # fix if randomized
                     chunk = self.pointer_xor(addr, chunk, new_cache)
                 if chunk % 8:
-                    new_cache['freelist'].append("{:#x}: {:s}".format(free, Color.colorify("Corrupted (Not aligned)", "bold yellow")))
+                    new_cache['freelist'].append("{:#x}: {:s}".format(chunk, Color.colorify("Corrupted (Not aligned)", "bold yellow")))
                     break
                 if chunk in new_cache['freelist']:
-                    new_cache['freelist'].append("{:#x}: {:s}".format(free, Color.colorify("Corrupted (Loop detected)", "bold yellow")))
+                    new_cache['freelist'].append("{:#x}: {:s}".format(chunk, Color.colorify("Corrupted (Loop detected)", "bold yellow")))
                     break
                 new_cache['freelist'].append(chunk)
             # goto next
-            new_cache['next'] = nxt = self.get_next(nxt)
+            new_cache['next'] = current_kmem_cache = self.get_next_kmem_cache(current_kmem_cache)
             self.parsed_caches.append(new_cache)
         return
 
@@ -17901,14 +17935,14 @@ class SlabCommand(GenericCommand):
                 continue
             gef_print(' |   name: {:s}'.format(c['name']))
             gef_print(' |   kmem_cache: {:#x}'.format(c['address']))
-            gef_print(' |   kmem_cache_cpu (cpu{:d}): {:#x}'.format(cpu, c['cpu_slab']))
+            gef_print(' |   kmem_cache_cpu (cpu{:d}): {:#x}'.format(cpu, c['kmem_cache_cpu']))
             gef_print(' |   offset (offset to next pointer in chunk): {:#x}'.format(c['offset']))
             gef_print(' |   objsize: {:s}'.format(Color.colorify("{:#x}".format(c['objsize']), "bold pink")))
             if c['random']:
                 if self.no_xor == False and self.swap == True:
-                    gef_print(' |   random (xor key): {:#x} ^ byteswap(address of chunk->fd)'.format(c['random']))
+                    gef_print(' |   random (xor key): {:#x} ^ byteswap(address of chunk->next)'.format(c['random']))
                 else:
-                    gef_print(' |   random (xor key): {:#x} ^ address of chunk->fd'.format(c['random']))
+                    gef_print(' |   random (xor key): {:#x} ^ address of chunk->next'.format(c['random']))
             if len(c['freelist']) > 0:
                 if isinstance(c['freelist'][0], str):
                     gef_print(' |   freelist:   {:s}'.format(c['freelist'][0]))
@@ -17971,8 +18005,7 @@ class SlabCommand(GenericCommand):
             self.cpuN = None
             while "--cpu" in argv:
                 idx = argv.index("--cpu")
-                cpuN = argv[idx + 1]
-                self.cpuN = int(cpuN)
+                self.cpuN = int(argv[idx + 1])
                 argv = argv[:idx] + argv[idx+2:]
         except:
             self.usage()
