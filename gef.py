@@ -8177,25 +8177,26 @@ class RopperCommand(GenericCommand):
 class RpCommand(GenericCommand):
     """Exec `rp++`."""
     _cmdline_ = "rp"
-    _syntax_ = "{:s} bin|libc|FILENAME [-f|--filter REGEXP] [-r|--rop ROP_N] [--no-print] [...]".format(_cmdline_)
+    _syntax_ = "{:s} bin|libc|FILENAME|kernel [-f|--filter REGEXP] [-r|--rop ROP_N] [--no-print] [...]".format(_cmdline_)
     _category_ = "Exploit Development"
     _example_ = "\n"
     _example_ += "{:s} bin -f 'pop r[abcd]x'\n".format(_cmdline_)
-    _example_ += "{:s} libc -f '(xchg|mov) [re]sp, \\\\w+' -f 'ret'".format(_cmdline_)
+    _example_ += "{:s} libc -f '(xchg|mov) [re]sp, \\\\w+' -f 'ret'\n".format(_cmdline_)
+    _example_ += "{:s} kernel # under qemu-system only".format(_cmdline_)
 
-    def exec_rp(self):
-        self.out = "rop{}_{}.txt".format(self.ropN, os.path.basename(self.path))
-        cmd = f"{self.rp} --file='{self.path}' --rop={self.ropN} --unique > {self.out}"
+    def exec_rp(self, ropN):
+        out = "rop{}_{}.txt".format(ropN, os.path.basename(self.path))
+        cmd = f"{self.rp} --file='{self.path}' --rop={ropN} --unique > {out}"
         gef_print(titlify(cmd))
-        if not os.path.exists(self.out):
+        if not os.path.exists(out):
             os.system(cmd)
-        return
+        return out
 
-    def apply_filter(self):
-        if not os.path.exists(self.out):
-            err(f"{self.out} is not found")
+    def apply_filter(self, out, filter_patterns, base_address):
+        if not os.path.exists(out):
+            err(f"{out} is not found")
             return
-        lines = open(self.out, "r").read()
+        lines = open(out, "r").read()
 
         _, tmp_path = tempfile.mkstemp()
         fp = open(tmp_path, "w")
@@ -8203,7 +8204,7 @@ class RpCommand(GenericCommand):
             line = re.sub(r"\x1B\[([0-9]{1,2}(;[0-9]{1,2})*)?m", "", line) # remove color
 
             match = True
-            for pat in self.filter:
+            for pat in filter_patterns:
                 if not re.search(pat, line):
                     match = False
                     break
@@ -8211,7 +8212,9 @@ class RpCommand(GenericCommand):
             if match:
                 if line.startswith("0x"):
                     x = line.split(":")
-                    x = Color.redify(x[0]) + ":" + ':'.join(x[1:]) # repaint color
+                    addr, gadget = int(x[0], 16), ':'.join(x[1:])
+                    addr -= base_address # fix address
+                    x = Color.redify("{:#08x}".format(addr)) + ":" + ':'.join(x[1:]) # repaint color
                 else:
                     x = line
                 fp.write(x + "\n")
@@ -8220,10 +8223,6 @@ class RpCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
-
         if is_x86():
             try:
                 self.rp = which("rp-lin-x64")
@@ -8239,75 +8238,95 @@ class RpCommand(GenericCommand):
             return
 
         try:
-            self.less = which("less")
+            less = which("less")
         except FileNotFoundError as e:
             err("{}".format(e))
             return
 
         try:
-            self.ropN = 3
+            ropN = 3
             while "-r" in argv:
                 idx = argv.index("-r")
-                self.ropN = int(argv[idx + 1])
+                ropN = int(argv[idx + 1])
                 argv = argv[:idx] + argv[idx+2:]
             while "--rop" in argv:
                 idx = argv.index("--rop")
-                self.ropN = int(argv[idx + 1])
+                ropN = int(argv[idx + 1])
                 argv = argv[:idx] + argv[idx+2:]
         except:
             self.usage()
             return
 
         try:
-            self.filter = []
+            filter_patterns = []
             while "-f" in argv:
                 idx = argv.index("-f")
                 pattern = argv[idx + 1]
-                self.filter.append(pattern)
+                filter_patterns.append(pattern)
                 argv = argv[:idx] + argv[idx+2:]
             while "--filter" in argv:
                 idx = argv.index("--filter")
                 pattern = argv[idx + 1]
-                self.filter.append(pattern)
+                filter_patterns.append(pattern)
                 argv = argv[:idx] + argv[idx+2:]
         except:
             self.usage()
             return
 
-        self.do_print = True
+        do_print = True
         if "--no-print" in argv:
-            self.do_print = False
+            do_print = False
             argv.remove("--no-print")
 
         if len(argv) != 1:
             self.usage()
             return
 
-        if argv[0] == "libc":
-            libc = process_lookup_path_by_list(("libc-2.", "libc.so.6"))
-            if libc is None:
-                err("libc is not found")
+        if is_qemu_system():
+            if argv[0] == "kernel":
+                # dump kernel then apply vmlinux-to-elf
+                dump_mem_file = "gef_dump_memory.raw"
+                self.path = symboled_vmlinux_file = "gef-dump-memory.elf"
+                addrs = KsymaddrRemoteApply2Command().dump_kernel_elf(dump_mem_file, symboled_vmlinux_file)
+                if addrs is None:
+                    err("Failed to get symboled ELF")
+                    return
+                base_address = addrs["kbase"]
+            else:
+                self.usage()
                 return
-            self.path = libc.path
-        elif argv[0] == "bin":
-            binary = get_filepath()
-            if binary is None:
-                err("binary is not found")
-                return
-            self.path = binary
-
         else:
-            if not os.path.exists(argv[0]):
-                err("{} is not found".format(argv[0]))
-                return
-            self.path = argv[0]
+            if argv[0] == "libc":
+                libc = process_lookup_path_by_list(("libc-2.", "libc.so.6"))
+                if libc is None:
+                    err("libc is not found")
+                    return
+                self.path = libc.path
+            elif argv[0] == "bin":
+                binary = get_filepath()
+                if binary is None:
+                    err("binary is not found")
+                    return
+                self.path = binary
+            else:
+                if not os.path.exists(argv[0]):
+                    err("{} is not found".format(argv[0]))
+                    return
+                self.path = argv[0]
+            base_address = 0
 
-        self.exec_rp()
-        tmp_path = self.apply_filter()
-        if tmp_path is not None:
-            if self.do_print:
-                os.system(f"{self.less} -R {tmp_path}")
-                os.unlink(tmp_path)
+        # invoke rp++
+        out = self.exec_rp(ropN)
+
+        # filtering
+        tmp_path = self.apply_filter(out, filter_patterns, base_address)
+        if tmp_path is None:
+            return
+
+        # print
+        if do_print:
+            os.system(f"{less} -R {tmp_path}")
+            os.unlink(tmp_path)
         return
 
 
@@ -18866,48 +18885,95 @@ class KsymaddrRemoteApply2Command(GenericCommand):
     """Apply symbol from kallsyms in memory using vmlinux-to-elf (too slow but more accurate)"""
     _cmdline_ = "ksymaddr-remote-apply2"
     _syntax_ = "{:s} [--reparse]".format(_cmdline_)
+    _aliases_ = ["vmlinux-to-elf-apply",]
     _category_ = "Misc"
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(complete=gdb.COMPLETE_NONE)
-        self.maps = None
-        self.kallsyms = []
-        return
-
-    def process(self):
-        DUMPED_MEM_FILE = "/tmp/gef-dump-memory.raw"
-        SYMBOLED_VMLINUX_FILE = "/tmp/gef-dump-memory.elf"
-
-        # get kernel memory maps
-        self.maps = KsymaddrRemoteCommand.get_maps()
-        if self.maps is None:
-            return None
-        # get kernel base
-        self.kbase, self.kbase_size = KsymaddrRemoteCommand.get_kernel_base(self.maps)
-        if self.kbase is None:
-            return None
-        # get kernel ro_base
-        self.krobase, self.krobase_size = KsymaddrRemoteCommand.get_kernel_rodata_base(self.maps, self.kbase)
-        if self.krobase is None:
+    @staticmethod
+    def dump_kernel_elf(dumped_mem_file, symboled_vmlinux_file, force=False):
+        """Dump the kernel from the memory, then apply vmlinux-to-elf to create symboled ELF"""
+        # check
+        try:
+            vmlinux2elf = which("vmlinux-to-elf")
+        except FileNotFoundError as e:
+            err("{}".format(e))
             return None
 
-        gef_print("kernel base:   {:#x} ({:#x} bytes)".format(self.kbase, self.kbase_size))
-        gef_print("kernel rodata: {:#x} ({:#x} bytes)".format(self.krobase, self.krobase_size))
+        # resolve kbase, krobase
+        maps = KsymaddrRemoteCommand.get_maps() # [vaddr, size, perm]
+        if maps is None:
+            return None
+        kbase, kbase_size = KsymaddrRemoteCommand.get_kernel_base(maps)
+        if kbase is None:
+            return None
+        krobase, krobase_size = KsymaddrRemoteCommand.get_kernel_rodata_base(maps, kbase)
+        if krobase is None:
+            return None
 
-        if self.reparse or not os.path.exists(DUMPED_MEM_FILE):
+        gef_print("kernel base:   {:#x} ({:#x} bytes)".format(kbase, kbase_size))
+        gef_print("kernel rodata: {:#x} ({:#x} bytes)".format(krobase, krobase_size))
+        gef_print("kernel bss:    {:#x}".format(krobase + krobase_size))
+
+        addrs = {}
+        addrs['kbase'] = kbase
+        addrs['kbase_size'] = kbase_size
+        addrs['krobase'] = krobase
+        addrs['krobase_size'] = krobase_size
+        addrs['bss'] = krobase + krobase_size
+        addrs['maps'] = maps
+
+        # resolve area
+        area = []
+        for addr in addrs['maps']:
+            if addr[0] < addrs['kbase']:
+                continue
+            if addr[0] >= addrs['bss']:
+                continue
+            area.append([addr[0], addr[0]+addr[1]])
+        if area == []:
+            return None
+
+        # dumpe memory
+        if force or (not os.path.exists(dumped_mem_file) and not os.path.exists(symboled_vmlinux_file)):
+            # remove old file
+            if os.path.exists(dumped_mem_file):
+                info("Remove old {}".format(dumped_mem_file))
+                os.unlink(dumped_mem_file)
+
+            # dump
             info("Dumping memory")
-            gdb.execute("dump memory {} {:#x} {:#x}".format(DUMPED_MEM_FILE, self.kbase, self.krobase + self.krobase_size), to_string=True)
-            gef_print("Dumped to {}".format(DUMPED_MEM_FILE))
-
-            info("Execute `vmlinux-to-elf '{}' '{}'`".format(DUMPED_MEM_FILE, SYMBOLED_VMLINUX_FILE))
-            os.system("vmlinux-to-elf '{}' '{}'".format(DUMPED_MEM_FILE, SYMBOLED_VMLINUX_FILE))
+            for i, (start_addr, end_addr) in enumerate(area):
+                if i == 0:
+                    gef_print("Dumping area:     {:#x} - {:#x}".format(start_addr, end_addr))
+                    gdb.execute("dump memory {} {:#x} {:#x}".format(dumped_mem_file, start_addr, end_addr), to_string=True)
+                else:
+                    size_diff = start_addr - old_end_addr
+                    if size_diff:
+                        gef_print("Non-mapping area: {:#x} - {:#x} (ZERO fill)".format(old_end_addr, start_addr))
+                        open(dumped_mem_file, "a").write("\0" * size_diff)
+                    gef_print("Dumping area:     {:#x} - {:#x}".format(start_addr, end_addr))
+                    gdb.execute("append memory {} {:#x} {:#x}".format(dumped_mem_file, start_addr, end_addr), to_string=True)
+                old_end_addr = end_addr
+            gef_print("Dumped to {}".format(dumped_mem_file))
         else:
-            info("Reuse symboled vmlinux at {}".format(SYMBOLED_VMLINUX_FILE))
+            # reuse by default
+            pass
 
-        info("Adding symbol")
-        gdb.execute("add-symbol-file {} -s .kernel {:#x} -s .bss {:#x}".format(SYMBOLED_VMLINUX_FILE, self.kbase, self.krobase + self.krobase_size))
-        info("Added")
-        return
+        # apply vmlinux-to-elf
+        if force or not os.path.exists(symboled_vmlinux_file):
+            info("Execute `{} '{}' '{}'`".format(vmlinux2elf, dumped_mem_file, symboled_vmlinux_file))
+            os.system("{} '{}' '{}'".format(vmlinux2elf, dumped_mem_file, symboled_vmlinux_file))
+        else:
+            # reuse by default
+            pass
+
+        # Error
+        if not os.path.exists(symboled_vmlinux_file):
+            return None
+        if os.path.getsize(symboled_vmlinux_file) == 0:
+            return None
+
+        # Success
+        return addrs
 
     @only_if_gdb_running
     def do_invoke(self, argv):
@@ -18919,22 +18985,26 @@ class KsymaddrRemoteApply2Command(GenericCommand):
             err("Unsupported")
             return
 
-        try:
-            readelf = which("vmlinux-to-elf")
-        except FileNotFoundError as e:
-            err("{}".format(e))
-            return
-
-        self.reparse = False
+        force_reparse = False
         if "--reparse" in argv:
-            self.reparse = True
+            force_reparse = True
             argv.remove("--reparse")
 
         if argv:
             self.usage()
             return
 
-        self.process()
+        DUMPED_MEM_FILE = "/tmp/gef-dump-memory.raw"
+        SYMBOLED_VMLINUX_FILE = "/tmp/gef-dump-memory.elf"
+        addrs = self.dump_kernel_elf(DUMPED_MEM_FILE, SYMBOLED_VMLINUX_FILE, force=force_reparse)
+        if addrs is None:
+            err("Failed to create kernel ELF")
+            return
+
+        # load symbol
+        info("Adding symbol")
+        gdb.execute("add-symbol-file {} -s .kernel {:#x} -s .bss {:#x}".format(SYMBOLED_VMLINUX_FILE, addrs['kbase'], addrs['bss']))
+        info("Added")
         return
 
 
