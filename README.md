@@ -177,6 +177,8 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / Debian 
 * `hexdump`: is improved.
     * It supports physical memory if under qemu-system.
     * It will retry with adjusting read size when failed reading memory.
+    * By default, the same line is omitted.
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hexdump.png)
 * `patch`: is improved.
     * It supports physical memory if under qemu-system.
 * `search-pattern`: is improved.
