@@ -12612,6 +12612,7 @@ class SyscallArgsCommand(GenericCommand):
                 [0x1be, 'landlock_restrict_self', ['const int ruleset_fd', 'const __u32 flags']],
                 [0x1bf, 'memfd_secret', ['unsigned int, flags']],
                 [0x1c0, 'process_mrelease', ['int pidfd', 'unsigned int flags']],
+                [0x1c1, 'futex_waitv', ['struct futex_waitv *waiters', 'unsigned int nr_futexes', 'unsigned int flags', 'struct __kernel_timespec *timeout', 'clockid_t clockid']],
             ]
             syscall_list += [ # x32
                 [0x40000200, 'rt_sigaction', ['int sig', 'const struct compat_sigaction *act', 'struct compat_sigaction *oact', 'compat_size_t sigsetsize']], # compat
@@ -13108,6 +13109,7 @@ class SyscallArgsCommand(GenericCommand):
                 [0x1be, 'landlock_restrict_self', ['const int ruleset_fd', 'const __u32 flags']],
                 [0x1bf, 'memfd_secret', ['unsigned int, flags']],
                 [0x1c0, 'process_mrelease', ['int pidfd', 'unsigned int flags']],
+                [0x1c1, 'futex_waitv', ['struct futex_waitv *waiters', 'unsigned int nr_futexes', 'unsigned int flags', 'struct __kernel_timespec *timeout', 'clockid_t clockid']],
             ]
 
         elif (arch == "X86" and mode == "N32") or (arch is None and mode is None and is_x86_32() and not is_emulated32()):
@@ -13561,6 +13563,7 @@ class SyscallArgsCommand(GenericCommand):
                 [0x1be, 'landlock_restrict_self', ['const int ruleset_fd', 'const __u32 flags']],
                 [0x1bf, 'memfd_secret', ['unsigned int, flags']],
                 [0x1c0, 'process_mrelease', ['int pidfd', 'unsigned int flags']],
+                [0x1c1, 'futex_waitv', ['struct futex_waitv *waiters', 'unsigned int nr_futexes', 'unsigned int flags', 'struct __kernel_timespec *timeout', 'clockid_t clockid']],
             ]
 
         elif (arch == "ARM64") or (arch is None and is_arm64()):
@@ -13876,6 +13879,7 @@ class SyscallArgsCommand(GenericCommand):
                 [0x1be, 'landlock_restrict_self', ['const int ruleset_fd', 'const __u32 flags']],
                 [0x1bf, 'memfd_secret', ['unsigned int, flags']],
                 [0x1c0, 'process_mrelease', ['int pidfd', 'unsigned int flags']],
+                [0x1c1, 'futex_waitv', ['struct futex_waitv *waiters', 'unsigned int nr_futexes', 'unsigned int flags', 'struct __kernel_timespec *timeout', 'clockid_t clockid']],
             ]
 
         elif (arch == "ARM" and mode == "32") or (arch is None and mode is None and is_arm32() and is_emulated32()):
@@ -14332,6 +14336,7 @@ class SyscallArgsCommand(GenericCommand):
                 [0x1be, 'landlock_restrict_self', ['const int ruleset_fd', 'const __u32 flags']],
                 [0x1bf, 'memfd_secret', ['unsigned int, flags']],
                 [0x1c0, 'process_mrelease', ['int pidfd', 'unsigned int flags']],
+                [0x1c1, 'futex_waitv', ['struct futex_waitv *waiters', 'unsigned int nr_futexes', 'unsigned int flags', 'struct __kernel_timespec *timeout', 'clockid_t clockid']],
                 [0xf0002, 'cacheflush', ['unsigned long start', 'unsigned long end', 'int flags']], # arch/arm/kernel/traps.c
                 [0xf0005, 'set_tls', ['unsigned long val']], # arch/arm/kernel/traps.c
             ]
@@ -14793,6 +14798,7 @@ class SyscallArgsCommand(GenericCommand):
                 [0x1be, 'landlock_restrict_self', ['const int ruleset_fd', 'const __u32 flags']],
                 [0x1bf, 'memfd_secret', ['unsigned int, flags']],
                 [0x1c0, 'process_mrelease', ['int pidfd', 'unsigned int flags']],
+                [0x1c1, 'futex_waitv', ['struct futex_waitv *waiters', 'unsigned int nr_futexes', 'unsigned int flags', 'struct __kernel_timespec *timeout', 'clockid_t clockid']],
                 [0xf0001, 'breakpoint', []], # arch/arm/kernel/traps.c
                 [0xf0002, 'cacheflush', ['unsigned long start', 'unsigned long end', 'int flags']], # arch/arm/kernel/traps.c
                 [0xf0003, 'usr26', []], # arch/arm/kernel/traps.c
