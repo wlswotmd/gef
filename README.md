@@ -181,6 +181,8 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / Debian 
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hexdump.png)
 * `patch`: is improved.
     * It supports physical memory if under qemu-system.
+    * Added a new mode: `patch pattern`.
+    * Added a new option to write repeatedly up to the specified length for `patch string`.
 * `search-pattern`: is improved.
     * It supports when under qemu-system (in short, it works without `/proc/self/maps`)
     * It supports aligned search.

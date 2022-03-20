@@ -10494,9 +10494,9 @@ class HexdumpByteCommand(HexdumpCommand):
 class PatchCommand(GenericCommand):
     """Write specified values to the specified address."""
     _cmdline_ = "patch"
-    _syntax_ = ("\n"
-                "{0:s} [-h] qword|dword|word|byte [--phys] LOCATION VALUES\n"
-                "{0:s} [-h] string [--phys] LOCATION \"double-escaped string\"".format(_cmdline_))
+    _syntax_ = "{:s} [-h] qword|dword|word|byte [--phys] LOCATION VALUES\n".format(_cmdline_)
+    _syntax_ += "{:s} [-h] string [--phys] LOCATION \"double-escaped string\" [LENGTH]\n".format(_cmdline_)
+    _syntax_ += "{:s} [-h] pattern [--phys] LOCATION LENGTH".format(_cmdline_)
     _category_ = "State Modification"
     SUPPORTED_SIZES = {
         "qword": (8, "Q"),
@@ -10622,8 +10622,67 @@ class PatchByteCommand(PatchCommand):
 class PatchStringCommand(PatchCommand):
     """Write specified string to the specified memory location pointed by ADDRESS."""
     _cmdline_ = "patch string"
-    _syntax_ = "{:s} [-h] [--phys] ADDRESS \"double backslash-escaped string\"".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [--phys] ADDRESS \"double backslash-escaped string\" [LENGTH]".format(_cmdline_)
     _example_ = "{:s} $sp \"GEFROCKS\"".format(_cmdline_)
+    _category_ = "State Modification"
+
+    @only_if_gdb_running
+    def do_invoke(self, argv):
+        if "-h" in argv:
+            self.usage()
+            return
+
+        self.phys = False
+        if "--phys" in argv:
+            if not self.is_supported_physmode():
+                err("Unsupported. Check qemu version (at least: 4.1.0-rc0~, recommend: 5.x~)")
+                return
+            self.phys = True
+            argv.remove("--phys")
+
+        length = None
+        if len(argv) == 3:
+            length = int(argv[-1], 0)
+            argv = argv[:-1]
+
+        argc = len(argv)
+        if argc != 2:
+            self.usage()
+            return
+
+        if self.phys:
+            if self.enable_phys() == False:
+                err("Switch to physmem-mode is failed")
+                return
+
+        location, s = argv[0:2]
+        addr = align_address(parse_address(location))
+
+        try:
+            s = codecs.escape_decode(s)[0]
+        except binascii.Error:
+            gef_print("Could not decode '\\xXX' encoded string \"{}\"".format(s))
+            return
+
+        if length:
+            s = s * (length // len(s) + 1)
+            s = s[:length]
+
+        write_memory(addr, s, len(s))
+
+        if self.phys:
+            if self.disable_phys() == False:
+                err("Switch to virtmem-mode is failed")
+                return
+        return
+
+
+@register_command
+class PatchPatternCommand(PatchCommand):
+    """Write pattern string to the specified memory location pointed by ADDRESS."""
+    _cmdline_ = "patch pattern"
+    _syntax_ = "{:s} [-h] [--phys] ADDRESS LENGTH".format(_cmdline_)
+    _example_ = "{:s} $sp 128".format(_cmdline_)
     _category_ = "State Modification"
 
     @only_if_gdb_running
@@ -10650,14 +10709,9 @@ class PatchStringCommand(PatchCommand):
                 err("Switch to physmem-mode is failed")
                 return
 
-        location, s = argv[0:2]
+        location, length = argv[0:2]
         addr = align_address(parse_address(location))
-
-        try:
-            s = codecs.escape_decode(s)[0]
-        except binascii.Error:
-            gef_print("Could not decode '\\xXX' encoded string \"{}\"".format(s))
-            return
+        s = gef_pystring(generate_cyclic_pattern(int(length, 0)))
 
         write_memory(addr, s, len(s))
 
