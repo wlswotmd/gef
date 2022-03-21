@@ -17485,41 +17485,20 @@ class SlabCommand(GenericCommand):
 
     def __init__(self, *args, **kwargs):
         super().__init__(complete=gdb.COMPLETE_NONE)
-        self.once = False
-        self.symboled = None
         return
 
     def get_ksymaddr(self, sym):
-        if self.symboled is None:
-            try:
-                if is_64bit():
-                    parse_address("startup_64")
-                elif is_32bit():
-                    parase_address("startup_32")
-                else:
-                    raise
-                self.symboled = True
-            except:
-                self.symboled = False
-
         # use available symbol
-        if self.symboled == True:
-            try:
-                return parse_address(sym)
-            except:
-                return None
-
+        try:
+            return parse_address(sym)
+        except:
+            pass
         # use ksymaddr-remote
-        else:
-            if not self.once:
-                gdb.execute("ksymaddr-remote DUMMY")
-                self.once = True
-
-            try:
-                res = gdb.execute("ksymaddr-remote --silent --exact {:s}".format(sym), to_string=True)
-                return int(res.split()[0], 16)
-            except:
-                return None
+        try:
+            res = gdb.execute("ksymaddr-remote --silent --exact {:s}".format(sym), to_string=True)
+            return int(res.split()[0], 16)
+        except:
+            return None
 
     def get_per_cpu_offset(self):
         # plan 1 (directly)
@@ -26259,6 +26238,114 @@ class ExecUntilCondCommand(ExecUntilCommand):
         self.mode = "cond"
         self.condition = argv[0]
         self.exec_next()
+        return
+
+
+class ThunkBreakpoint(gdb.Breakpoint):
+    """Create a breakpoint to print caller address for thunk function"""
+    def __init__(self, loc, sym, reg, maps):
+        super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=False)
+        self.loc = loc
+        self.sym = sym
+        self.reg = reg
+        self.maps = maps
+        self.seen = []
+        return
+
+    def search_perm(self, target):
+        for m in self.maps:
+            addr, size, perm = m
+            if addr <= target < addr+size:
+                return perm
+        return "?"
+
+    def stop(self):
+        return_address = gdb.selected_frame().older().pc()
+        caller_address = gdb_get_nth_previous_instruction_address(return_address, 1)
+        target_address = get_register(self.reg)
+
+        # duplicate, check
+        if (caller_address, target_address) in self.seen:
+            return False # continue
+        else:
+            self.seen.append((caller_address, target_address))
+
+        # get caller address, symbol
+        ret = gdb_get_location_from_symbol(caller_address)
+        if ret is None:
+            caller_symbol = "<NO_SYMBOL>"
+        elif ret[1] == 0:
+            caller_symbol = "<{}>".format(ret[0])
+        else:
+            caller_symbol = "<{}+{:#x}>".format(ret[0], ret[1])
+
+        # get callee address, symbol
+        ret = gdb_get_location_from_symbol(target_address)
+        if ret is None:
+            target_symbol = "<NO_SYMBOL>"
+        elif ret[1] == 0:
+            target_symbol = "<{}>".format(ret[0])
+        else:
+            target_symbol = "<{}+{:#x}>".format(ret[0], ret[1])
+
+        # print information
+        info("{:#x} {:s} -> {:#x} <{:s}> -> {:#x} {:s}".format(caller_address, caller_symbol, self.loc, self.sym, target_address, target_symbol))
+        # print preferred register condition
+        for reg in current_arch.gpr_registers:
+            reg_value = get_register(reg)
+            try:
+                mem_value = read_int_from_memory(reg_value) 
+            except:
+                continue
+            if mem_value == target_address:
+                perm = self.search_perm(reg_value)
+                info("    {:s}: {:#x} ({:s})  ->  {:#x}".format(reg, reg_value, perm, mem_value))
+        return False # continue
+
+
+@register_command
+class ThunkHunterCommand(GenericCommand):
+    """Collects and displays the thunk addresses that are called automatically.
+    If this address comes from RW area, this is useful for getting RIP.(x64/x86 only)"""
+    _cmdline_ = "thunk-hunter"
+    _syntax_ = "{:s} [-h]".format(_cmdline_)
+    _category_ = "Start/Stop"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(complete=gdb.COMPLETE_NONE)
+        return
+
+    def get_ksymaddr(self, sym):
+        # use available symbol
+        try:
+            return parse_address(sym)
+        except:
+            pass
+        # use ksymaddr-remote
+        try:
+            res = gdb.execute("ksymaddr-remote --silent --exact {:s}".format(sym), to_string=True)
+            return int(res.split()[0], 16)
+        except:
+            return None
+
+    @only_if_gdb_running
+    def do_invoke(self, argv):
+        if not is_qemu_system():
+            err("Unsupported")
+            return
+        if not is_x86():
+            err("Unsupported")
+            return
+
+        maps = KsymaddrRemoteCommand.get_maps() # [vaddr, size, perm]
+        info("Resolving thunk funcftion addresses")
+        for reg in current_arch.gpr_registers:
+            sym = "__x86_indirect_thunk_{}".format(reg.replace("$", ""))
+            addr = self.get_ksymaddr(sym)
+            if addr is None:
+                continue
+            ThunkBreakpoint(addr, sym, reg, maps)
+        info("Do `continue`. If NO_SYMBOL is in the result, try `vmlinux-to-elf-apply`")
         return
 
 

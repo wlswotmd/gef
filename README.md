@@ -68,6 +68,9 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / Debian 
     * Supported on both `CONFIG_SLAB_FREELIST_HARDENED` is `y` or `n`.
     * Supported on both the vmlinux symbol exists or not.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slab.png)
+* `thunk-hunter`: collects and displays the thunk addresses that are called automatically (x64/x86 only).
+    * If this address comes from RW area, this is useful for getting RIP.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/thunk-hunter.png)
 * `uefi-ovmf-info`: displays addresses of some important structures in each boot phase of UEFI when OVMF is used (heuristic).
     * Supported on x64 only.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/uefi-ovmf-info.png)
