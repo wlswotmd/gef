@@ -26281,20 +26281,30 @@ class ExecUntilCommand(GenericCommand):
         return
 
     def is_target_insn(self, insn):
-        if self.mode == "call" and current_arch.is_call(insn):
-            return True
-        if self.mode == "jmp" and current_arch.is_jump(insn):
-            return True
-        if self.mode == "syscall" and current_arch.is_syscall(insn):
-            return True
-        if self.mode == "ret" and current_arch.is_ret(insn):
-            return True
-        if self.mode == "memaccess" and "[" in str(insn):
-            return True
-        if self.mode == "keyword":
-            if any([re.search(k, str(insn)) for k in self.keyword]):
-                return True
-        if self.mode == "cond":
+        if self.mode == "call":
+            return current_arch.is_call(insn)
+        elif self.mode == "jmp":
+            return current_arch.is_jump(insn)
+        elif self.mode == "indirect-branch":
+            if current_arch.is_call(insn) or current_arch.is_jump(insn):
+                if "[" in str(insn):
+                    return True
+                for reg in current_arch.gpr_registers:
+                    if reg.replace("$", "") in str(insn):
+                        return True
+            return False
+        elif self.mode == "syscall":
+            return current_arch.is_syscall(insn)
+        elif self.mode == "ret":
+            return current_arch.is_ret(insn)
+        elif self.mode == "memaccess":
+            return "[" in str(insn)
+        elif self.mode == "keyword":
+            for k in self.keyword:
+                if re.search(k, str(insn)):
+                    return True
+            return False
+        elif self.mode == "cond":
             try:
                 v = gdb.parse_and_eval(self.condition)
             except gdb.error:
@@ -26482,6 +26492,52 @@ class ExecUntilJumpCommand(ExecUntilCommand):
             return
 
         self.mode = "jmp"
+        self.exec_next()
+        return
+
+
+@register_command
+class ExecUntilIndirectBranchCommand(ExecUntilCommand):
+    """Execute until next indirect call/jmp instruction (x86/x64 only) (alias: next-indirect-branch)."""
+    _cmdline_ = "exec-until indirect-branch"
+    _syntax_ = "{:s} [-h] [--print-insn] [--skip-lib]".format(_cmdline_)
+    _example_ = ""
+    _example_ += "{:s} # execute until indirect branch instruction\n".format(_cmdline_)
+    _example_ += "\n"
+    _example_ += "THIS FEATURE IS TOO SLOW.\n"
+    _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
+    _category_ = "Start/Stop"
+    _aliases_ = ["next-indirect-branch",]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(complete=gdb.COMPLETE_NONE)
+        return
+
+    @only_if_gdb_running
+    def do_invoke(self, argv):
+        if "-h" in argv:
+            self.usage()
+            return
+
+        if not is_x86():
+            err("Unsupported")
+            return
+
+        self.print_insn = False
+        if "--print-insn" in argv:
+            argv.remove("--print-insn")
+            self.print_insn = True
+
+        self.skip_lib = False
+        if "--skip-lib" in argv:
+            argv.remove("--skip-lib")
+            self.skip_lib = True
+
+        if argv:
+            self.usage()
+            return
+
+        self.mode = "indirect-branch"
         self.exec_next()
         return
 

@@ -210,6 +210,7 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / Debian 
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xset.png)
 * `exec-until`: executes until specific operation.
     * Supported on x64/x86/ARM64/ARM for call/jmp/syscall/ret/memory-access/specific-keyword-regex/specific-condition.
+    * Supported on x64/x86 for indirect-branch.
     * Please note that this command temporarily closes stdin and stderr on gdb.
 * `exec-next`: executes until next address.
     * This is useful for the operation with `rep` prefix.
