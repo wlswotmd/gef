@@ -3217,7 +3217,7 @@ def write_memory(address, buffer, length=0x10):
         gdb.selected_inferior().write_memory(address, buffer, length)
     return
 
-@lru_cache()
+
 def read_memory(addr, length=0x10):
     """Return a `length` long byte array with the copy of the process memory at `addr`."""
     return gdb.selected_inferior().read_memory(addr, length).tobytes()
@@ -3254,27 +3254,37 @@ def read_ascii_string(address):
 
 
 def read_physmem(paddr, size):
-    prev_mode = get_mmu_mode()
-    if prev_mode: # fast path
-        try:
-            if enable_phys(prev_mode) == False:
-                raise
-            out = read_memory(paddr, size)
-            disable_phys(prev_mode)
-            return out
-        except:
-            disable_phys(prev_mode)
-            # fall through to slow path
-    # slow path (< qemu 4.1.0-rc0)
-    res = gdb.execute("monitor xp/{:d}xb {:#x}".format(size, paddr), to_string=True)
-    out = b""
-    for line in res.splitlines():
-        data = line.split()[1:]
-        out += bytes(map(lambda x: int(x,16), data))
+    def fast_path(paddr, size):
+        out = read_memory(paddr, size)
+        return out
+
+    def slow_path(paddr, size): # < qemu 4.1.0-rc0
+        res = gdb.execute("monitor xp/{:d}xb {:#x}".format(size, paddr), to_string=True)
+        out = b""
+        for line in res.splitlines():
+            data = line.split()[1:]
+            out += bytes(map(lambda x: int(x,16), data))
+        return out
+
+    if not is_supported_physmode():
+        return slow_path(paddr, size)
+
+    try:
+        orig_mode = get_current_mmu_mode()
+        if orig_mode == "virt":
+            enable_phys()
+        out = fast_path(paddr, size)
+        if orig_mode == "virt":
+            disable_phys()
+    except:
+        if orig_mode == "virt":
+            disable_phys()
+        # fall through to slow path
+        out = slow_path(paddr, size)
     return out
 
 
-def get_mmu_mode():
+def get_current_mmu_mode():
     response = gdb.execute('maintenance packet qqemu.PhyMemMode', to_string=True, from_tty=False)
     if 'received: "0"' in response:
         return "virt"
@@ -3284,22 +3294,18 @@ def get_mmu_mode():
         return False
 
 
-def enable_phys(prev_mode):
-    if prev_mode == "phys":
-        return True
+def is_supported_physmode():
+    return get_current_mmu_mode() in ["virt", "phys"]
+
+
+def enable_phys():
     response = gdb.execute('maintenance packet Qqemu.PhyMemMode:1', to_string=True, from_tty=False)
-    if not 'received: "OK"' in response:
-        return False
     response = gdb.execute('maintenance packet qqemu.PhyMemMode', to_string=True, from_tty=False)
     return 'received: "1"' in response
 
 
-def disable_phys(prev_mode):
-    if prev_mode == "phys":
-        return True
+def disable_phys():
     response = gdb.execute('maintenance packet Qqemu.PhyMemMode:0', to_string=True, from_tty=False)
-    if not 'received: "OK"' in response:
-        return False
     response = gdb.execute('maintenance packet qqemu.PhyMemMode', to_string=True, from_tty=False)
     return 'received: "0"' in response
 
@@ -10287,12 +10293,12 @@ class HexdumpCommand(GenericCommand):
         reverse = False
         full = False
 
-        self.phys = False
+        self.phys_mode = False
         if "--phys" in argv:
             if not is_qemu_system():
                 err("Unsupported")
                 return
-            self.phys = True
+            self.phys_mode = True
             argv.remove("--phys")
 
         try:
@@ -10372,7 +10378,7 @@ class HexdumpCommand(GenericCommand):
             return None
 
         try:
-            if self.phys:
+            if self.phys_mode:
                 mem = read_physmem(read_from, read_len)
             else:
                 mem = read_memory(read_from, read_len)
@@ -10384,7 +10390,7 @@ class HexdumpCommand(GenericCommand):
         read_end &= ~(gef_getpagesize() - 1)
         while read_end - read_from > 0:
             try:
-                if self.phys:
+                if self.phys_mode:
                     mem = read_physmem(read_from, read_end - read_from)
                 else:
                     mem = read_memory(read_from, read_end - read_from)
@@ -10418,7 +10424,7 @@ class HexdumpCommand(GenericCommand):
             sym = gdb_get_location_from_symbol(cur_addr)
             sym = "<{:s}+{:04x}> ".format(*sym) if sym else ""
             try:
-                if self.phys:
+                if self.phys_mode:
                     mem = read_physmem(cur_addr, l)
                 else:
                     mem = read_memory(cur_addr, l)
@@ -10522,11 +10528,11 @@ class PatchCommand(GenericCommand):
             return
 
         if "--phys" in argv:
-            prev_mode = get_mmu_mode()
-            if prev_mode == False:
+            if not is_supported_physmode():
                 err("Unsupported. Check qemu version (at least: 4.1.0-rc0~, recommend: 5.x~)")
                 return
             phys_mode = True
+            orig_mode = get_current_mmu_mode()
             argv.remove("--phys")
 
         argc = len(argv)
@@ -10541,9 +10547,8 @@ class PatchCommand(GenericCommand):
             return
 
         if phys_mode:
-            if enable_phys(prev_mode) == False:
-                err("Switch to physmem-mode is failed")
-                return
+            if orig_mode == "virt":
+                enable_phys()
 
         addr = align_address(parse_address(location))
         size, fcode = self.SUPPORTED_SIZES[fmt]
@@ -10556,9 +10561,8 @@ class PatchCommand(GenericCommand):
             addr += size
 
         if phys_mode:
-            if disable_phys(prev_mode) == False:
-                err("Switch to virtmem-mode is failed")
-                return
+            if orig_mode == "virt":
+                disable_phys()
         return
 
 
@@ -10632,12 +10636,13 @@ class PatchStringCommand(PatchCommand):
             self.usage()
             return
 
-        self.phys = False
+        phys_mode = False
         if "--phys" in argv:
-            if not self.is_supported_physmode():
+            if not is_supported_physmode():
                 err("Unsupported. Check qemu version (at least: 4.1.0-rc0~, recommend: 5.x~)")
                 return
-            self.phys = True
+            phys_mode = True
+            orig_mode = get_current_mmu_mode()
             argv.remove("--phys")
 
         length = None
@@ -10650,10 +10655,9 @@ class PatchStringCommand(PatchCommand):
             self.usage()
             return
 
-        if self.phys:
-            if self.enable_phys() == False:
-                err("Switch to physmem-mode is failed")
-                return
+        if phys_mode:
+            if orig_mode == "virt":
+                enable_phys()
 
         location, s = argv[0:2]
         addr = align_address(parse_address(location))
@@ -10670,10 +10674,9 @@ class PatchStringCommand(PatchCommand):
 
         write_memory(addr, s, len(s))
 
-        if self.phys:
-            if self.disable_phys() == False:
-                err("Switch to virtmem-mode is failed")
-                return
+        if phys_mode:
+            if orig_mode == "virt":
+                disable_phys()
         return
 
 
@@ -10691,12 +10694,13 @@ class PatchPatternCommand(PatchCommand):
             self.usage()
             return
 
-        self.phys = False
+        phys_mode = False
         if "--phys" in argv:
-            if not self.is_supported_physmode():
+            if not is_supported_physmode():
                 err("Unsupported. Check qemu version (at least: 4.1.0-rc0~, recommend: 5.x~)")
                 return
-            self.phys = True
+            phys_mode = True
+            orig_mode = get_current_mmu_mode()
             argv.remove("--phys")
 
         argc = len(argv)
@@ -10704,10 +10708,9 @@ class PatchPatternCommand(PatchCommand):
             self.usage()
             return
 
-        if self.phys:
-            if self.enable_phys() == False:
-                err("Switch to physmem-mode is failed")
-                return
+        if phys_mode:
+            if orig_mode == "virt":
+                enable_phys()
 
         location, length = argv[0:2]
         addr = align_address(parse_address(location))
@@ -10715,10 +10718,9 @@ class PatchPatternCommand(PatchCommand):
 
         write_memory(addr, s, len(s))
 
-        if self.phys:
-            if self.disable_phys() == False:
-                err("Switch to virtmem-mode is failed")
-                return
+        if phys_mode:
+            if orig_mode == "virt":
+                disable_phys()
         return
 
 
@@ -16927,7 +16929,7 @@ class IsMemoryZeroCommand(GenericCommand):
         while current < end:
             read_size = min(end - current, 0x1000)
             try:
-                if self.phys:
+                if self.phys_mode:
                     data = read_physmem(current, read_size)
                 else:
                     data = read_memory(current, read_size)
@@ -16955,17 +16957,16 @@ class IsMemoryZeroCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
-        if "--phys" in argv and not is_qemu_system():
-            err("Unsupported")
-            return
-
         if "-h" in argv:
             self.usage()
             return
 
-        self.phys = False
+        self.phys_mode = False
         if "--phys" in argv:
-            self.phys = True
+            if not is_qemu_system():
+                err("Unsupported")
+                return
+            self.phys_mode = True
             argv.remove("--phys")
 
         if len(argv) < 2:
