@@ -796,21 +796,29 @@ class Shdr:
 class Instruction:
     """GEF representation of a CPU instruction."""
     def __init__(self, address, location, mnemo, operands, opcodes):
+        # example:
+        #   address: 0x55555555a7d0
+        #   location: "" or "<main+0>"
+        #   mnemo: "lea"
+        #   operands: ['rcx', '[rip+0x11ee5]        # 0x55555556c69a']
+        #   opcodes: b'H\x8d\r\xe5\x1e\x01\x00'
         self.address, self.location, self.mnemonic, self.operands, self.opcodes = address, location, mnemo, operands, opcodes
         return
 
     # Allow formatting an instruction with {:o} to show opcodes.
     # The number of bytes to display can be configured, e.g. {:4o} to only show 4 bytes of the opcodes
     def __format__(self, format_spec):
-        if len(format_spec) == 0 or format_spec[-1] != "o":
+        if len(format_spec) == 0 or format_spec[-1] != "o":  # format_spec example: "4o"
             return str(self)
 
-        if format_spec == "o":
+        if format_spec == "o": # no specifed length
             opcodes_len = len(self.opcodes)
         else:
             opcodes_len = int(format_spec[:-1])
 
-        opcodes_text = "".join("{:02x}".format(b) for b in self.opcodes[:opcodes_len])
+        opcodes_text = "".join("{:02x}".format(b) for b in self.opcodes) # "488d0de51e0100"
+        # ex1: spec:"4o", opcodes:01020304   -> 01020304
+        # ex2: spec:"4o", opcodes:0102030405 -> 010203..
         if opcodes_len < len(self.opcodes):
             opcodes_text = opcodes_text[:opcodes_len * 2 - 2] + ".."
 
