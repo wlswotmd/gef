@@ -22689,7 +22689,7 @@ class CpuidCommand(GenericCommand):
     def do_invoke(self, argv):
         if "-h" in argv:
             argv.remove("-h")
-            self.help(argv)
+            self.usage()
             return
 
         if not is_x86():
