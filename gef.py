@@ -19440,10 +19440,10 @@ class TcmallocDumpOldCommand(TcmallocDumpCommand):
 class PartitionAllocDumpStableCommand(GenericCommand):
     """PartitionAlloc freelist viewer for chromium stable (supported x64/x86/ARM64/ARM only)."""
     _cmdline_ = "partition-alloc-dump-stable"
-    _syntax_ = "{:s} [-h] fast_malloc|array_buffer|buffer|layout|all [-v]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] fast_malloc|array_buffer|buffer|all [-v]".format(_cmdline_)
     _example_ = "\n"
     _example_ += "{:s} array_buffer # walk from array_buffer_root_\n".format(_cmdline_)
-    _example_ += "{:s} ab # same above (fm, ab, b and l are valid)\n".format(_cmdline_)
+    _example_ += "{:s} ab # same above (fm, ab and b are valid)\n".format(_cmdline_)
     _example_ += "\n"
     _example_ += "THIS FEATURE IS EXPERIMENTAL AND HEURISTIC.\n"
     _example_ += "Chromium mainline is too fast to develop. So if parse is failed, you need fix this gef.py."
@@ -19533,7 +19533,9 @@ class PartitionAllocDumpStableCommand(GenericCommand):
 
     @lru_cache()
     def get_roots_heuristic(self):
-        """searches for array_buffer_root_, buffer_root_, layout_root_ and fast_malloc_root_"""
+        """searches for fast_malloc_root, array_buffer_root_ and buffer_root_"""
+        # the pointers to each root are in the RW area.
+        # first, we list up the RW area.
         filepath = get_filepath()
         if is_64bit():
             codebase = get_section_base_address(filepath)
@@ -19546,78 +19548,83 @@ class PartitionAllocDumpStableCommand(GenericCommand):
             chromium_rw_maps = [p for p in get_process_maps() if p.permission.value == Permission.READ | Permission.WRITE]
             chromium_rw_maps = [p for p in chromium_rw_maps if p.page_start < heapbase and p.path != filepath]
         
+        def n_gram(target, n):
+            for idx in range(len(target) - n + 1):
+                yield target[idx:idx + n]
+
+        # Check the RW area
         roots = []
         for maps in chromium_rw_maps:
+            # explode to each qword (if 64 bit arch) or dword(if 32 bit arch)
             datas = self.slice_unpack(read_memory(maps.page_start, maps.size), current_arch.ptrsize)
             addrs = [x for x in range(maps.page_start, maps.page_end, current_arch.ptrsize)]
 
             """
-            #if !BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC)
+            https://source.chromium.org/chromium/chromium/src/+/main:third_party/blink/renderer/platform/wtf/allocator/partitions.cc
             base::ThreadSafePartitionRoot* Partitions::fast_malloc_root_ = nullptr;
-            #endif
             base::ThreadSafePartitionRoot* Partitions::array_buffer_root_ = nullptr;
             base::ThreadSafePartitionRoot* Partitions::buffer_root_ = nullptr;
-            base::ThreadUnsafePartitionRoot* Partitions::layout_root_ = nullptr;
 
-            0x56335cf5aab8 <WTF::Partitions::array_buffer_root_>:   0x000056335cf5aad8      0x000056335cf5b618
-            0x56335cf5aac8 <WTF::Partitions::layout_root_>: 0x000056335cf5c158      0x0000000100000101
-            0x56335cf5aad8 <WTF::Partitions::InitializeOnce()::array_buffer_allocator>:     0x0100010001000001      0x0000000000000000
+            0x564883728440 <WTF::Partitions::fast_malloc_root_>:    0x0000000000000000
+            0x564883728448 <WTF::Partitions::array_buffer_root_>:   0x000056488372a380 
+            0x564883728450 <WTF::Partitions::buffer_root_>: 0x0000564883729400
+            0x564883728458 <guard variable for WTF::Partitions::Initialize()::initialized>: 0x0000000100000101
+            ...
+            0x55c7e358d480 <WTF::Partitions::InitializeOnce()::fast_malloc_allocator>:      0x0000000000000000
+            ...
+            0x55c7e358e400 <WTF::Partitions::InitializeOnce()::buffer_allocator>:   0x0000000100000001 
+            ...
+            0x55c7e358f380 <WTF::Partitions::InitializeArrayBufferPartition()::array_buffer_allocator>:     0x0000000100000001
             """
-            for i in range(len(addrs)-4):
-                if (datas[i] & mask) != (addrs[i] & mask): # maybe it points near
+            # check consecutive quadruples
+            for addr, data in zip(n_gram(addrs, 4), n_gram(datas, 4)):
+                # root pointer address and root address are close (at least, these addresses are similar. see above example)
+                if data[0] != 0 and (addr[0] & mask) != (data[0] & mask): # fast_malloc_root may be zero
                     continue
-                if (datas[i] & 0x7) != 0: # maybe it is aligned
+                if (addr[1] & mask) != (data[1] & mask): # array_buffer_root_ is must be non-zero
                     continue
-
-                root_size1 = datas[i+1] - datas[i] # array_buffer_root_ ~ buffer_root_
-                root_size2 = datas[i+2] - datas[i+1] # buffer_root_ ~ layout_root_
-                diff3 = datas[i+3] - datas[i+2] # layout_root_ ~ xxx
-
-                # sizeof(root) is all same
-                if root_size1 != root_size2:
+                if (addr[2] & mask) != (data[2] & mask): # buffer_root_ is must be non-zero
                     continue
-
-                if root_size1 < 0x100:
+                # they should be aligned
+                if data[0] & 0x7:
                     continue
-
-                # below layout_root_ is not a pointer, the difference is very large negative number
+                if data[1] & 0x7:
+                    continue
+                if data[2] & 0x7:
+                    continue
+                # initialized must be bool 0x01
+                if (data[3] & 0xff) != 0x01:
+                    continue
+                # check root size
+                buffer_root_size = data[1] - data[2]
+                if buffer_root_size < 0x300:
+                    continue
+                if buffer_root_size > 0x2000:
+                    continue
+                # check root struct.
                 """
-                [False positive example 1]
-                candidate: array_buffer_root_   0x55697ba9c9c0 (root_object_size:0x530)
-                candidate: buffer_root_         0x55697ba9c9c8 (root_object_size:0x530)
-                candidate: layout_root_         0x55697ba9c9d0 (root_object_size:-0x1150) <---- small negative number
-
-                [False positive example 2]
-                candidate: array_buffer_root_   0x55697ba9ce90 (root_object_size:0xcb0)
-                candidate: buffer_root_         0x55697ba9ce98 (root_object_size:0xcb0)
-                candidate: layout_root_         0x55697ba9cea0 (root_object_size:0x940) <---- positive number, 
-              
-                [Correct]
-                candidate: array_buffer_root_   0x55697bc3fab8 (root_object_size:0xb40)
-                candidate: buffer_root_         0x55697bc3fac0 (root_object_size:0xb40)
-                candidate: layout_root_         0x55697bc3fac8 (root_object_size:-0x55687bc41057) <---- large negative number
+                The first 64 bytes of root are mostly 0 due to padding considering the cache line.
+                This is same both 64-bit and 32bit.
+                0x55719118e380: 0x0000000100000001      0x0000000000000000     <--- here may be used
+                0x55719118e390: 0x0000000000000000      0x0000000000000000     <--- here may be used
+                0x55719118e3a0: 0x0000000000000000      0x0000000000000000     <--- hare may be not used
+                0x55719118e3b0: 0x0000000000000000      0x0000000000000000     <--- here may be not used
                 """
-                # this value is chosen because considering 32bit arch
-                if is_64bit() and -0xffffffff < diff3:
+                array_buffer_root_first64 = read_memory(data[1], 64)
+                if array_buffer_root_first64[32:] != b"\0"*32:
                     continue
-                elif is_32bit() and -0xffffff < diff3:
+                buffer_root_first64 = read_memory(data[2], 64)
+                if buffer_root_first64[32:] != b"\0"*32:
                     continue
-
-                if i > 0 and datas[i] - datas[i-1] == root_size1: # fast_malloc_root_ exists
-                    root_candidate = [
-                        ["fast_malloc_root_", addrs[i-1],datas[i] - datas[i-1]],
-                        ["array_buffer_root_", addrs[i], root_size1],
-                        ["buffer_root_", addrs[i+1], root_size2],
-                        ["layout_root_", addrs[i+2], diff3],
-                    ]
-                else: # fast_malloc_root_ does not exist
-                    root_candidate = [
-                        ["array_buffer_root_", addrs[i], root_size1],
-                        ["buffer_root_", addrs[i+1], root_size2],
-                        ["layout_root_", addrs[i+2], diff3],
-                    ]
+                # add candidate
+                root_candidate = [
+                    ["fast_malloc_root_",  addr[0]],
+                    ["array_buffer_root_", addr[1]],
+                    ["buffer_root_",       addr[2]],
+                ]
                 roots.append(root_candidate)
 
+        # debug print
         if len(roots) == 0:
             err("roots were not found. try check code")
             return []
@@ -19626,13 +19633,13 @@ class PartitionAllocDumpStableCommand(GenericCommand):
             root = roots[0]
             for r in root:
                 info("found: {:s}: {:#x}".format(r[0], r[1]))
-            return roots[0]
+            return roots[0] # [["fast_...", addr], ["array...", addr], ["buffer...", addr]]
 
         else:
             err("candidates for root are found in multiple places. try check code")
             for root in roots:
                 for r in root:
-                    gef_print("  candidate: {:20s} {:#x} (root_object_size:{:#x})".format(r[0], r[1], r[2]))
+                    gef_print("  candidate: {:20s} {:#x}".format(r[0], r[1]))
                 gef_print()
             return []
 
@@ -19641,18 +19648,18 @@ class PartitionAllocDumpStableCommand(GenericCommand):
         def get_root(root_string):
             try:
                 root_addr = parse_address("&'WTF::Partitions::{:s}'".format(root_string))
-                return [[root_string, root_addr, None]]
+                return [[root_string, root_addr]]
             except:
                 return []
     
         roots = []
         # try from symbols
-        for root_string in ["fast_malloc_root_", "array_buffer_root_", "buffer_root_", "layout_root_"]:
+        for root_string in ["fast_malloc_root_", "array_buffer_root_", "buffer_root_"]:
             roots += get_root(root_string)
         # maybe no symbols, try heuristic
         if len(roots) == 0:
             info("Symbol is not found. It will use heuristic search")
-            roots += self.get_roots_heuristic()
+            roots = self.get_roots_heuristic()
         # retry checking
         if len(roots) == 0:
             info("Symbol is not found.")
@@ -19697,22 +19704,24 @@ class PartitionAllocDumpStableCommand(GenericCommand):
         """
         https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/partition_root.h
         struct base::PartitionRoot {
-            uint8_t quarantine_mode = QuarantineMode::kAlwaysDisabled;
-            uint8_t scan_mode = ScanMode::kDisabled;
-            bool with_thread_cache = false;
-            const bool is_thread_safe = thread_safe;
-            bool allow_aligned_alloc;
-            bool allow_cookie;
-            bool brp_enabled_;
-            bool use_configurable_pool;
-            //static constexpr bool use_lazy_commit = false;
-            //static constexpr bool never_used_lazy_commit = true;
-            //static constexpr uint32_t extras_size = 0;
-            //static constexpr uint32_t extras_offset = 0;
-            uint8_t padding[64];
-            internal::MaybeSpinLock<thread_safe> lock_;
+            union {
+                struct {
+                    QuarantineMode quarantine_mode; // uint8_t
+                    ScanMode scan_mode;             // uint8_t
+                    bool with_thread_cache = false;
+                    //bool with_denser_bucket_distribution = false; // v100.x ~
+                    bool allow_aligned_alloc;
+                    bool allow_cookie;
+                    bool brp_enabled_;
+                    bool use_configurable_pool;
+                    //uint32_t extras_size;
+                    //uint32_t extras_offset;
+                }
+                uint8_t one_cacheline[kPartitionCachelineSize]; // 64 bytes
+            }
+            ::partition_alloc::Lock lock_;  // 8 bytes
             Bucket buckets[kNumBuckets] = {};
-            Bucket sentinel_bucket; 
+            Bucket sentinel_bucket{};
             bool initialized = false;
             std::atomic<size_t> total_size_of_committed_pages{0};
             std::atomic<size_t> max_size_of_committed_pages{0};
@@ -19725,34 +19734,26 @@ class PartitionAllocDumpStableCommand(GenericCommand):
             std::atomic<size_t> total_size_of_brp_quarantined_bytes{0};
             std::atomic<size_t> total_count_of_brp_quarantined_slots{0};
             size_t empty_slot_spans_dirty_bytes GUARDED_BY(lock_) = 0;
-            char* next_super_page = nullptr;
-            char* next_partition_page = nullptr;
-            char* next_partition_page_end = nullptr;
+            int max_empty_slot_spans_dirty_bytes_shift = 3;
+            uintptr_t next_super_page = 0;
+            uintptr_t next_partition_page = 0;
+            uintptr_t next_partition_page_end = 0;
             SuperPageExtentEntry* current_extent = nullptr;
             SuperPageExtentEntry* first_extent = nullptr;
             DirectMapExtent* direct_map_list GUARDED_BY(lock_) = nullptr;
             SlotSpan* global_empty_slot_span_ring[kMaxFreeableSpans] GUARDED_BY(lock_) = {};
             int16_t global_empty_slot_span_ring_index GUARDED_BY(lock_) = 0;
+            int16_t global_empty_slot_span_ring_size GUARDED_BY(lock_) = kDefaultEmptySlotSpanRingSize;
             uintptr_t inverted_self = 0;
             std::atomic<int> thread_caches_being_constructed_{0};
+            bool quarantine_always_for_testing = false;
         }
         """
         x = u64(read_memory(current, 8))
+        current += 64 # sizeof(union {...})
+
+        root["lock_"] = u64(read_memory(current, 8))
         current += 8
-        root["quarantine_mode"] = (x >> 0) & 0xff
-        root["scan_mode"] = (x >> 8) & 0xff
-        root["with_thread_cache"] = (x >> 16) & 0xff
-        root["is_thread_safe"] = (x >> 24) & 0xff 
-        root["allow_aligned_alloc"] = (x >> 32) & 0xff 
-        root["allow_cookie"] = (x >> 40) & 0xff 
-        root["brp_enabled_"] = (x >> 48) & 0xff 
-        root["use_configurable_pool"] = (x >> 56) & 0xff 
-
-        root["padding"] = read_memory(current, 64)
-        current += 64
-
-        root["lock_"] = read_int_from_memory(current)
-        current += ptrsize
 
         # for 32bit, there is 2 patterns because aligned or packed
         if is_32bit():
@@ -19767,7 +19768,7 @@ class PartitionAllocDumpStableCommand(GenericCommand):
 
         root["buckets"] = []
         while True:
-            if read_int_from_memory(current) == 1: # search initialized
+            if read_int_from_memory(current) == 1: # search `bool initialized`
                 break
             bucket, current = self.read_bucket(current)
             root["buckets"].append(bucket)
@@ -19797,7 +19798,8 @@ class PartitionAllocDumpStableCommand(GenericCommand):
         current += 4
         root["empty_slot_spans_dirty_bytes"] = u32(read_memory(current, 4))
         current += 4
-        current += 4 # with pad
+        root["max_empty_slot_spans_dirty_bytes_shift"] = u32(read_memory(current, 4))
+        current += 4
         root["next_super_page"] = read_int_from_memory(current)
         current += ptrsize
         root["next_partition_page"] = read_int_from_memory(current)
@@ -19814,17 +19816,21 @@ class PartitionAllocDumpStableCommand(GenericCommand):
         root["global_empty_slot_span_ring"] = []
         inv = root["addr"] ^ ((1 << (current_arch.ptrsize * 8)) - 1)
         while True:
-            if read_int_from_memory(current + ptrsize) == inv: # search inverted_self
+            if read_int_from_memory(current + ptrsize) == inv: # search `inverted_self`
                 break
             x = read_int_from_memory(current)
             current += ptrsize
             root["global_empty_slot_span_ring"].append(x)
 
         root["global_empty_slot_span_ring_index"] = u16(read_memory(current, 2))
-        current += ptrsize # with pad
+        current += 2
+        root["global_empty_slot_span_ring_size"] = u16(read_memory(current, 2))
+        current += ptrsize - 2 # with pad
         root["inverted_self"] = read_int_from_memory(current)
         current += ptrsize
         root["thread_caches_being_constructed_"] = u32(read_memory(current, 4))
+        current += 4
+        root["quarantine_always_for_testing"] = u32(read_memory(current, 4)) & 0xff
         current += 4
         return root, current
 
@@ -19928,11 +19934,15 @@ class PartitionAllocDumpStableCommand(GenericCommand):
           PartitionFreelistEntry* freelist_head = nullptr;
           SlotSpanMetadata<thread_safe>* next_slot_span = nullptr;
           PartitionBucket<thread_safe>* const bucket = nullptr;
-          int16_t num_allocated_slots = 0;
-          uint16_t num_unprovisioned_slots = 0;
-          int16_t empty_cache_index : 8;
-          uint16_t can_store_raw_size : 1;
-          uint16_t unused : (16 - 8 - 1);
+          uint32_t marked_full : 1
+          uint32_t num_allocated_slots : kMaxSlotsPerSlotSpanBits; // 13 bits
+          uint32_t num_unprovisioned_slots : kMaxSlotsPerSlotSpanBits; // 13 bits
+          const uint32_t can_store_raw_size_ : 1;
+          uint32_t freelist_is_sorted_ : 1;
+          uint32_t unused1_ : (32 - 1 - 2 * kMaxSlotsPerSlotSpanBits - 1 - 1); // 3 bits
+          uint16_t in_empty_cache_ : 1;
+          uint16_t empty_cache_index_ : kEmptyCacheIndexBits; // 7 bits
+          uint16_t unused2_ : (16 - 1 - kEmptyCacheIndexBits); // 8 bits
         }
         """
         slot_span["freelist_head"] = read_int_from_memory(current)
@@ -19941,29 +19951,25 @@ class PartitionAllocDumpStableCommand(GenericCommand):
         current += ptrsize
         slot_span["bucket"] = read_int_from_memory(current)
         current += ptrsize
-        slot_span["num_allocated_slots"] = u16(read_memory(current, 2))
-        current += 2
-        slot_span["num_unprovisioned_slots"] = u16(read_memory(current, 2))
-        current += 2
+        x = u32(read_memory(current, 4))
+        current += 4
+        slot_span["marked_full"] = (x >> 0) & 1
+        slot_span["num_allocated_slots"] = (x >> 1) & 0x1fff
+        slot_span["num_unprovisioned_slots"] = (x >> 14) & 0x1fff
+        slot_span["can_store_raw_size_"] = (x >> 27) & 1
+        slot_span["freelist_is_sorted_"] = (x >> 28) & 1
+        slot_span["unused1_"] = (x >> 29) & 0x7
         x = u16(read_memory(current, 2))
-        slot_span["empty_cache_index"] = (x >> 0) & 0xff
-        slot_span["can_store_raw_size"] = (x >> 8) & 1
-        slot_span["unused"] = (x >> 9) & 0x7f
         current += 2
+        slot_span["in_empty_cache_"] = (x >> 0) & 1
+        slot_span["empty_cache_index_"] = (x >> 1) & 0x7f
+        slot_span["unused2_"] = (x >> 8) & 0xff
         return slot_span, current
 
     def print_root(self, root):
         gef_print(titlify("*{} @ {:#x}".format(root["name"], root["addr"])))
-        gef_print("uint8_t quarantine_mode:                               {:#x}".format(root["quarantine_mode"]))
-        gef_print("uint8_t scan_mode:                                     {:#x}".format(root["scan_mode"]))
-        gef_print("bool with_thread_cache:                                {:#x}".format(root["with_thread_cache"]))
-        gef_print("const bool is_thread_safe:                             {:#x}".format(root["is_thread_safe"]))
-        gef_print("bool allow_aligned_alloc:                              {:#x}".format(root["allow_aligned_alloc"]))
-        gef_print("bool allow_cookie:                                     {:#x}".format(root["allow_cookie"]))
-        gef_print("bool brp_enabled_:                                     {:#x}".format(root["brp_enabled_"]))
-        gef_print("bool use_configurable_pool:                            {:#x}".format(root["use_configurable_pool"]))
-        gef_print("uint8_t padding[64]:                                   ...")
-        gef_print("internal::MaybeSpinLock:                               {:#x}".format(root["lock_"]))
+        gef_print("uint8_t one_cacheline[64]:                             ...")
+        gef_print("::partition_alloc::Lock lock_;                         {:#x}".format(root["lock_"]))
         gef_print("Bucket buckets[{:3d}]:".format(len(root["buckets"])))
         for idx, bucket in enumerate(root["buckets"]):
             self.print_bucket(bucket, root, idx)
@@ -19984,9 +19990,10 @@ class PartitionAllocDumpStableCommand(GenericCommand):
         gef_print("std::atomic<size_t> total_size_of_brp_quarantined_bytes:{:#x}".format(root["total_size_of_brp_quarantined_bytes"]))
         gef_print("std::atomic<size_t> total_count_of_brp_quarantined_slots:{:#x}".format(root["total_count_of_brp_quarantined_slots"]))
         gef_print("size_t empty_slot_spans_dirty_bytes:                   {:#x}".format(root["empty_slot_spans_dirty_bytes"]))
-        gef_print("char* next_super_page:                                 {:#x}".format(root["next_super_page"]))
-        gef_print("char* next_partition_page:                             {:#x}".format(root["next_partition_page"]))
-        gef_print("char* next_partition_page_end:                         {:#x}".format(root["next_partition_page_end"]))
+        gef_print("int max_empty_slot_spans_dirty_bytes_shift:            {:#x}".format(root["max_empty_slot_spans_dirty_bytes_shift"]))
+        gef_print("uintptr_t next_super_page:                             {:#x}".format(root["next_super_page"]))
+        gef_print("uintptr_t next_partition_page:                         {:#x}".format(root["next_partition_page"]))
+        gef_print("uintptr_t next_partition_page_end:                     {:#x}".format(root["next_partition_page_end"]))
         gef_print("SuperPageExtentEntry* current_extent:                  {:#x}".format(root["current_extent"]))
         self.print_extent_list(root["current_extent"])
         gef_print("SuperPageExtentEntry* first_extent:                    {:#x}".format(root["first_extent"]))
@@ -20002,10 +20009,12 @@ class PartitionAllocDumpStableCommand(GenericCommand):
         else:
             gef_print("SlotSpan* global_empty_slot_span_ring[{:2d}]:             ...".format(ring_len))
         gef_print("int16_t global_empty_slot_span_ring_index:             {:#x}".format(root["global_empty_slot_span_ring_index"]))
+        gef_print("int16_t global_empty_slot_span_ring_size:              {:#x}".format(root["global_empty_slot_span_ring_size"]))
         inv = root["inverted_self"]
         inv_inv = inv ^ ((1 << (current_arch.ptrsize * 8)) - 1)
         gef_print("uintptr_t inverted_self:                               {:#x} (=~{:#x})".format(inv, inv_inv))
         gef_print("std::atomic<int> thread_caches_being_constructed_:     {:#x}".format(root["thread_caches_being_constructed_"]))
+        gef_print("bool quarantine_always_for_testing:                    {:#x}".format(root["quarantine_always_for_testing"]))
         return
 
     def print_extent_list(self, head):
@@ -20013,14 +20022,13 @@ class PartitionAllocDumpStableCommand(GenericCommand):
             current = head
             while current:
                 extent, _ = self.read_extent(current)
-                text = "    -> extent @{:<#14x}: ".format(extent["addr"])
-                text += "root:{:<#14x} ".format(extent["root"])
+                gef_print("    -> extent @{:<#14x}".format(extent["addr"]))
+                gef_print("           root:{:<#14x} ".format(extent["root"]))
                 super_page_info = "{:<#14x} - {:<#14x}".format(extent["super_page_base"], extent["super_page_end"])
-                text += "super_page:" + Color.colorify(super_page_info, "yellow bold")
-                text += " (total 0x200000(2MB) * {:d} pages) ".format(extent["number_of_consecutive_super_pages"])
-                text += "non_empty_slot_spans:{:d} ".format(extent["number_of_nonempty_slot_spans"])
-                text += "next:{:<#14x}".format(extent["next"])
-                gef_print(text)
+                page_info = "(total 0x200000(2MB) * {:d} pages)".format(extent["number_of_consecutive_super_pages"])
+                gef_print("           super_page:{:s} {:s}".format(Color.colorify(super_page_info, "yellow bold"), page_info))
+                gef_print("           non_empty_slot_spans:{:d} ".format(extent["number_of_nonempty_slot_spans"]))
+                gef_print("           next:{:<#14x}".format(extent["next"]))
                 current = extent["next"]
         except:
             err("Corrupted?")
@@ -20031,15 +20039,13 @@ class PartitionAllocDumpStableCommand(GenericCommand):
             current = head
             while current:
                 direct_map, _ = self.read_direct_map(current)
-                text = "    -> direct_map @{:<#14x}: ".format(direct_map["addr"])
-                text += "next_extent:{:<#14x} ".format(direct_map["next_extent"])
-                text += "prev_extent:{:<#14x} ".format(direct_map["prev_extent"])
-                text += "bucket:{:<#14x} ".format(direct_map["bucket"])
-                text += "reservation_size:{:#x}".format(direct_map["reservation_size"])
-                text += "padding_for_alignment:{:#x}".format(direct_map["padding_for_alignment"])
-                gef_print(text)
+                gef_print("    -> direct_map @{:<#14x}: ".format(direct_map["addr"]))
+                gef_print("           next_extent:{:<#14x} ".format(direct_map["next_extent"]))
+                gef_print("           prev_extent:{:<#14x} ".format(direct_map["prev_extent"]))
+                gef_print("           bucket:{:<#14x} ".format(direct_map["bucket"]))
+                gef_print("           reservation_size:{:#x}".format(direct_map["reservation_size"]))
+                gef_print("           padding_for_alignment:{:#x}".format(direct_map["padding_for_alignment"]))
                 bucket, _ = self.read_bucket(direct_map["bucket"])
-                bugcheck(bucket)
                 self.print_bucket(bucket, root)
                 current = direct_map["next_extent"]
         except:
@@ -20057,15 +20063,12 @@ class PartitionAllocDumpStableCommand(GenericCommand):
 
         slot_size = Color.colorify("{:#7x}".format(bucket["slot_size"]), "bold pink")
         if idx is not None:
-            text = "    buckets[{:3d}](slot_size:{:s}) @{:<#14x}".format(idx, slot_size, bucket["addr"])
+            gef_print("    buckets[{:3d}](slot_size:{:s}) @{:<#14x}".format(idx, slot_size, bucket["addr"]))
         else:
-            text = "    bucket(slot_size:{:s}) @{:<#14x}".format(slot_size, bucket["addr"])
-        gef_print(text)
-        text = "        "
-        text += "num_system_pages_per_slot_span:{:<#4x} ".format(bucket["num_system_pages_per_slot_span"])
-        text += "num_full_slot_spans:{:<#4x} ".format(bucket["num_full_slot_spans"])
-        text += "slot_size_reciprocal:{:#x}".format(bucket["slot_size_reciprocal"])
-        gef_print(text)
+            gef_print("    bucket(slot_size:{:s}) @{:<#14x}".format(slot_size, bucket["addr"]))
+        gef_print("        num_system_pages_per_slot_span:{:<#4x} ".format(bucket["num_system_pages_per_slot_span"]))
+        gef_print("        num_full_slot_spans:{:<#4x} ".format(bucket["num_full_slot_spans"]))
+        gef_print("        slot_size_reciprocal:{:#x}".format(bucket["slot_size_reciprocal"]))
 
         if self.verbose:
             target_list = ["active_slot_spans_head", "empty_slot_spans_head", "decommitted_slot_spans_head"]
@@ -20074,11 +20077,14 @@ class PartitionAllocDumpStableCommand(GenericCommand):
 
         for key in target_list:
             head = bucket[key]
+            # sentinel can be ignored, so skip
             if not self.verbose and (head in sentinel + [0x0]):
                 continue
             if head in sentinel:
+                # print sentinel (verbose)
                 gef_print("        {:s}:sentinel_pages".format(Color.colorify(key, "bold cyan underline")))
             else:
+                # default
                 gef_print("        {:s}:{:<#14x}".format(Color.colorify(key, "bold cyan underline"), head))
             self.print_slot_span(head, bucket)
         return
@@ -20092,21 +20098,18 @@ class PartitionAllocDumpStableCommand(GenericCommand):
                 err("Corrupted?")
                 break
             text_fmt = "            -> slot_span @{:<#14x} (#{:3d} of super_page @{:<#14x})"
-            text = text_fmt.format(slot_span["addr"], slot_span["partition_page_index"], slot_span["super_page_addr"])
-            gef_print(text)
-            text = "                "
-            text += "next_slot_span:{:<#14x} ".format(slot_span["next_slot_span"])
+            gef_print(text_fmt.format(slot_span["addr"], slot_span["partition_page_index"], slot_span["super_page_addr"]))
+            gef_print("                   next_slot_span:{:<#14x} ".format(slot_span["next_slot_span"]))
             page_start = slot_span["partition_page_start"]
             page_end = slot_span["partition_page_start"] + bucket["num_system_pages_per_slot_span"] * DEFAULT_PAGE_SIZE
-            text += "slot_span_area:{:#x}-{:#x} ".format(page_start, page_end)
-            text += "num_allocated_slots:{:#x}".format(slot_span["num_allocated_slots"])
-            gef_print(text)
+            gef_print("                   slot_span_area:{:#x}-{:#x} ".format(page_start, page_end))
+            gef_print("                   num_allocated_slots:{:#x}".format(slot_span["num_allocated_slots"]))
             self.print_freelist(slot_span["freelist_head"], bucket, slot_span)
             current = slot_span["next_slot_span"]
         return
 
     def print_freelist(self, head, bucket, slot_span):
-        gef_print("                freelist_head:{:<#14x} ".format(head))
+        gef_print("                   freelist_head:{:<#14x} ".format(head))
 
         slot_size = bucket["slot_size"]
         page_start = slot_span["partition_page_start"]
@@ -20120,7 +20123,7 @@ class PartitionAllocDumpStableCommand(GenericCommand):
             if cnt % 7 == 0:
                 if cnt > 0:
                     text += "\n"
-                text += " "*20
+                text += " "*23
 
             if chunk in seen:
                 text += Color.colorify("-> {:<#14x} (loop) ".format(chunk), "red bold")
@@ -20174,12 +20177,12 @@ class PartitionAllocDumpStableCommand(GenericCommand):
             self.usage()
             return
 
-        if not argv[0] in ["fast_malloc", "fm", "array_buffer", "ab", "buffer", "b", "layout", "l", "all"]:
+        if not argv[0] in ["fast_malloc", "fm", "array_buffer", "ab", "buffer", "b", "all"]:
             self.usage()
             return
         target = argv[0]
 
-        for name, addr, _ in self.get_roots():
+        for name, addr in self.get_roots():
             ok = False
             if target == "all":
                 ok = True
@@ -20189,14 +20192,13 @@ class PartitionAllocDumpStableCommand(GenericCommand):
                 ok = True
             elif target in ["buffer", "b"] and name == "buffer_root_":
                 ok = True
-            elif target in ["layout", "l"] and name == "layout_root_":
-                ok = True
 
             if ok:
                 try:
                     root, _ = self.read_root(addr, name)
                 except:
-                    err("Parse error {:s}: @ {:#x}".format(name, addr))
+                    mem_value = read_int_from_memory(addr)
+                    err("Parse error {:s}: @ {:#x} -> {:#x}".format(name, addr, mem_value))
                     continue
                 self.print_root(root)
         return
@@ -20206,467 +20208,32 @@ class PartitionAllocDumpStableCommand(GenericCommand):
 class PartitionAllocDumpBetaCommand(PartitionAllocDumpStableCommand):
     """PartitionAlloc freelist viewer for chromium beta (supported x64/x86/ARM64/ARM only)."""
     _cmdline_ = "partition-alloc-dump-beta"
-    _syntax_ = "{:s} [-h] fast_malloc|array_buffer|buffer|layout|all [-v]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] fast_malloc|array_buffer|buffer|all [-v]".format(_cmdline_)
     _example_ = "\n"
     _example_ += "{:s} array_buffer # walk from array_buffer_root_\n".format(_cmdline_)
-    _example_ += "{:s} ab # same above (fm, ab, b and l are valid)\n".format(_cmdline_)
+    _example_ += "{:s} ab # same above (fm, ab and b are valid)\n".format(_cmdline_)
     _example_ += "\n"
     _example_ += "THIS FEATURE IS EXPERIMENTAL AND HEURISTIC.\n"
     _example_ += "Chromium mainline is too fast to develop. So if parse is failed, you need fix this gef.py."
     _category_ = "Heap"
 
-    def read_root(self, addr, name):
-        ptrsize = current_arch.ptrsize
-        root = {}
-        root["name"] = name
-        root["addr"] = current = read_int_from_memory(addr)
-        """
-        https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/partition_root.h
-        struct base::PartitionRoot {
-            uint8_t quarantine_mode = QuarantineMode::kAlwaysDisabled;
-            uint8_t scan_mode = ScanMode::kDisabled;
-            bool with_thread_cache = false;
-            const bool is_thread_safe = thread_safe;
-            bool allow_aligned_alloc;
-            bool allow_cookie;
-            bool brp_enabled_;
-            bool use_configurable_pool;
-            //static constexpr bool use_lazy_commit = false;
-            //static constexpr bool never_used_lazy_commit = true;
-            //static constexpr uint32_t extras_size = 0;
-            //static constexpr uint32_t extras_offset = 0;
-            uint8_t padding[64-7];
-            internal::MaybeLock<thread_safe> lock_;
-            Bucket buckets[kNumBuckets] = {};
-            Bucket sentinel_bucket; 
-            bool initialized = false;
-            std::atomic<size_t> total_size_of_committed_pages{0};
-            std::atomic<size_t> max_size_of_committed_pages{0};
-            std::atomic<size_t> total_size_of_super_pages{0};
-            std::atomic<size_t> total_size_of_direct_mapped_pages{0};
-            size_t total_size_of_allocated_bytes GUARDED_BY(lock_) = 0;
-            size_t max_size_of_allocated_bytes GUARDED_BY(lock_) = 0;
-            std::atomic<uint64_t> syscall_count{};
-            std::atomic<uint64_t> syscall_total_time_ns{};
-            std::atomic<size_t> total_size_of_brp_quarantined_bytes{0};
-            std::atomic<size_t> total_count_of_brp_quarantined_slots{0};
-            size_t empty_slot_spans_dirty_bytes GUARDED_BY(lock_) = 0;
-            int max_empty_slot_spans_dirty_bytes_shift = 3;
-            char* next_super_page = nullptr;
-            char* next_partition_page = nullptr;
-            char* next_partition_page_end = nullptr;
-            SuperPageExtentEntry* current_extent = nullptr;
-            SuperPageExtentEntry* first_extent = nullptr;
-            DirectMapExtent* direct_map_list GUARDED_BY(lock_) = nullptr;
-            SlotSpan* global_empty_slot_span_ring[kMaxFreeableSpans] GUARDED_BY(lock_) = {};
-            int16_t global_empty_slot_span_ring_index GUARDED_BY(lock_) = 0;
-            uintptr_t inverted_self = 0;
-            std::atomic<int> thread_caches_being_constructed_{0};
-        }
-        """
-        x = u64(read_memory(current, 8))
-        current += 8
-        root["quarantine_mode"] = (x >> 0) & 0xff
-        root["scan_mode"] = (x >> 8) & 0xff
-        root["with_thread_cache"] = (x >> 16) & 0xff
-        root["is_thread_safe"] = (x >> 24) & 0xff 
-        root["allow_aligned_alloc"] = (x >> 32) & 0xff 
-        root["allow_cookie"] = (x >> 40) & 0xff 
-        root["brp_enabled_"] = (x >> 48) & 0xff 
-        root["use_configurable_pool"] = (x >> 56) & 0xff 
-
-        root["padding"] = read_memory(current, 64-7)
-        current += 64-7
-
-        root["lock_"] = u64(read_memory(current, 7) + b"\x00")
-        current += 7
-
-        # for 32bit, there is 2 patterns because aligned or packed
-        if is_32bit():
-            if self.align_pad is None:
-                x = read_int_from_memory(current)
-                if x == 0:
-                    self.align_pad = True
-                else:
-                    self.align_pad = False
-            if self.align_pad:
-                current += ptrsize
-
-        root["buckets"] = []
-        while True:
-            if read_int_from_memory(current) == 1: # search initialized
-                break
-            bucket, current = self.read_bucket(current)
-            root["buckets"].append(bucket)
-        root["sentinel_bucket"] = root["buckets"].pop()
-
-        root["initialized"] = read_int_from_memory(current) & 0xff
-        current += ptrsize # with pad
-        root["total_size_of_committed_pages"] = read_int_from_memory(current)
-        current += ptrsize
-        root["max_size_of_committed_pages"] = read_int_from_memory(current)
-        current += ptrsize
-        root["total_size_of_super_pages"] = read_int_from_memory(current)
-        current += ptrsize
-        root["total_size_of_direct_mapped_pages"] = read_int_from_memory(current)
-        current += ptrsize
-        root["total_size_of_allocated_bytes"] = read_int_from_memory(current)
-        current += ptrsize
-        root["max_size_of_allocated_bytes"] = read_int_from_memory(current)
-        current += ptrsize
-        root["syscall_count"] = read_int_from_memory(current)
-        current += ptrsize
-        root["syscall_total_time_ns"] = read_int_from_memory(current)
-        current += ptrsize
-        root["total_size_of_brp_quarantined_bytes"] = u32(read_memory(current, 4))
-        current += 4
-        root["total_count_of_brp_quarantined_slots"] = u32(read_memory(current, 4))
-        current += 4
-        root["empty_slot_spans_dirty_bytes"] = u32(read_memory(current, 4))
-        current += 4
-        root["max_empty_slot_spans_dirty_bytes_shift"] = u32(read_memory(current, 4))
-        current += 4
-        root["next_super_page"] = read_int_from_memory(current)
-        current += ptrsize
-        root["next_partition_page"] = read_int_from_memory(current)
-        current += ptrsize
-        root["next_partition_page_end"] = read_int_from_memory(current)
-        current += ptrsize
-        root["current_extent"] = read_int_from_memory(current)
-        current += ptrsize
-        root["first_extent"] = read_int_from_memory(current)
-        current += ptrsize
-        root["direct_map_list"] = read_int_from_memory(current)
-        current += ptrsize
-
-        root["global_empty_slot_span_ring"] = []
-        inv = root["addr"] ^ ((1 << (current_arch.ptrsize * 8)) - 1)
-        while True:
-            if read_int_from_memory(current + ptrsize) == inv: # search inverted_self
-                break
-            x = read_int_from_memory(current)
-            current += ptrsize
-            root["global_empty_slot_span_ring"].append(x)
-
-        root["global_empty_slot_span_ring_index"] = u16(read_memory(current, 2))
-        current += ptrsize # with pad
-        root["inverted_self"] = read_int_from_memory(current)
-        current += ptrsize
-        root["thread_caches_being_constructed_"] = u32(read_memory(current, 4))
-        current += 4
-        return root, current
-
-    def print_root(self, root):
-        gef_print(titlify("*{} @ {:#x}".format(root["name"], root["addr"])))
-        gef_print("uint8_t quarantine_mode:                               {:#x}".format(root["quarantine_mode"]))
-        gef_print("uint8_t scan_mode:                                     {:#x}".format(root["scan_mode"]))
-        gef_print("bool with_thread_cache:                                {:#x}".format(root["with_thread_cache"]))
-        gef_print("const bool is_thread_safe:                             {:#x}".format(root["is_thread_safe"]))
-        gef_print("bool allow_aligned_alloc:                              {:#x}".format(root["allow_aligned_alloc"]))
-        gef_print("bool allow_cookie:                                     {:#x}".format(root["allow_cookie"]))
-        gef_print("bool brp_enabled_:                                     {:#x}".format(root["brp_enabled_"]))
-        gef_print("bool use_configurable_pool:                            {:#x}".format(root["use_configurable_pool"]))
-        gef_print("uint8_t padding[64-7]:                                 ...")
-        gef_print("internal::MaybeSpinLock:                               {:#x}".format(root["lock_"]))
-        gef_print("Bucket buckets[{:3d}]:".format(len(root["buckets"])))
-        for idx, bucket in enumerate(root["buckets"]):
-            self.print_bucket(bucket, root, idx)
-        if self.verbose:
-            gef_print("Bucket sentinel_bucket:")
-            self.print_bucket(root["sentinel_bucket"], root)
-        else:
-            gef_print("Bucket sentinel_bucket:                                ...")
-        gef_print("bool initialized:                                      {:#x}".format(root["initialized"]))
-        gef_print("std::atomic<size_t> total_size_of_committed_pages:     {:#x}".format(root["total_size_of_committed_pages"]))
-        gef_print("std::atomic<size_t> max_size_of_committed_pages:       {:#x}".format(root["max_size_of_committed_pages"]))
-        gef_print("std::atomic<size_t> total_size_of_super_pages:         {:#x}".format(root["total_size_of_super_pages"]))
-        gef_print("std::atomic<size_t> total_size_of_direct_mapped_pages: {:#x}".format(root["total_size_of_direct_mapped_pages"]))
-        gef_print("size_t total_size_of_allocated_bytes:                  {:#x}".format(root["total_size_of_allocated_bytes"]))
-        gef_print("size_t max_size_of_allocated_bytes:                    {:#x}".format(root["max_size_of_allocated_bytes"]))
-        gef_print("std::atomic<uint64_t> syscall_count:                   {:#x}".format(root["syscall_count"]))
-        gef_print("std::atomic<uint64_t> syscall_total_time_ns:           {:#x}".format(root["syscall_total_time_ns"]))
-        gef_print("std::atomic<size_t> total_size_of_brp_quarantined_bytes:{:#x}".format(root["total_size_of_brp_quarantined_bytes"]))
-        gef_print("std::atomic<size_t> total_count_of_brp_quarantined_slots:{:#x}".format(root["total_count_of_brp_quarantined_slots"]))
-        gef_print("size_t empty_slot_spans_dirty_bytes:                   {:#x}".format(root["empty_slot_spans_dirty_bytes"]))
-        gef_print("int max_empty_slot_spans_dirty_bytes_shift:            {:#x}".format(root["max_empty_slot_spans_dirty_bytes_shift"]))
-        gef_print("char* next_super_page:                                 {:#x}".format(root["next_super_page"]))
-        gef_print("char* next_partition_page:                             {:#x}".format(root["next_partition_page"]))
-        gef_print("char* next_partition_page_end:                         {:#x}".format(root["next_partition_page_end"]))
-        gef_print("SuperPageExtentEntry* current_extent:                  {:#x}".format(root["current_extent"]))
-        self.print_extent_list(root["current_extent"])
-        gef_print("SuperPageExtentEntry* first_extent:                    {:#x}".format(root["first_extent"]))
-        self.print_extent_list(root["first_extent"])
-        gef_print("DirectMapExtent* direct_map_list:                      {:#x}".format(root["direct_map_list"]))
-        self.print_direct_map_list(root["direct_map_list"], root)
-        ring_len = len(root["global_empty_slot_span_ring"])
-        if self.verbose:
-            gef_print("SlotSpan* global_empty_slot_span_ring[{:2d}]:".format(ring_len))
-            for i in range(len(root["global_empty_slot_span_ring"])):
-                x = root["global_empty_slot_span_ring"][i]
-                gef_print("    global_empty_slot_span_ring[{:2d}]:                       {:#x}".format(i, x))
-        else:
-            gef_print("SlotSpan* global_empty_slot_span_ring[{:2d}]:             ...".format(ring_len))
-        gef_print("int16_t global_empty_slot_span_ring_index:             {:#x}".format(root["global_empty_slot_span_ring_index"]))
-        inv = root["inverted_self"]
-        inv_inv = inv ^ ((1 << (current_arch.ptrsize * 8)) - 1)
-        gef_print("uintptr_t inverted_self:                               {:#x} (=~{:#x})".format(inv, inv_inv))
-        gef_print("std::atomic<int> thread_caches_being_constructed_:     {:#x}".format(root["thread_caches_being_constructed_"]))
-        return
+    # No diffs affecting this command
 
 
 @register_command
 class PartitionAllocDumpDevCommand(PartitionAllocDumpBetaCommand):
     """PartitionAlloc freelist viewer for chromium dev (supported x64/x86/ARM64/ARM only)."""
     _cmdline_ = "partition-alloc-dump-dev"
-    _syntax_ = "{:s} [-h] fast_malloc|array_buffer|buffer|layout|all [-v]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] fast_malloc|array_buffer|buffer|all [-v]".format(_cmdline_)
     _example_ = "\n"
     _example_ += "{:s} array_buffer # walk from array_buffer_root_\n".format(_cmdline_)
-    _example_ += "{:s} ab # same above (fm, ab, b and l are valid)\n".format(_cmdline_)
+    _example_ += "{:s} ab # same above (fm, ab and b are valid)\n".format(_cmdline_)
     _example_ += "\n"
     _example_ += "THIS FEATURE IS EXPERIMENTAL AND HEURISTIC.\n"
     _example_ += "Chromium mainline is too fast to develop. So if parse is failed, you need fix this gef.py."
     _category_ = "Heap"
 
-    def read_root(self, addr, name):
-        ptrsize = current_arch.ptrsize
-        root = {}
-        root["name"] = name
-        root["addr"] = current = read_int_from_memory(addr)
-        """
-        https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/partition_root.h
-        struct base::PartitionRoot {
-            uint8_t quarantine_mode = QuarantineMode::kAlwaysDisabled;
-            uint8_t scan_mode = ScanMode::kDisabled;
-            bool with_thread_cache = false;
-            const bool is_thread_safe = thread_safe;
-            bool allow_aligned_alloc;
-            bool allow_cookie;
-            bool brp_enabled_;
-            bool use_configurable_pool;
-            //static constexpr bool use_lazy_commit = false;
-            //static constexpr bool never_used_lazy_commit = true;
-            //static constexpr uint32_t extras_size = 0;
-            //static constexpr uint32_t extras_offset = 0;
-            uint8_t padding[64-7];
-            internal::MaybeLock<thread_safe> lock_;
-            Bucket buckets[kNumBuckets] = {};
-            Bucket sentinel_bucket; 
-            bool initialized = false;
-            std::atomic<size_t> total_size_of_committed_pages{0};
-            std::atomic<size_t> max_size_of_committed_pages{0};
-            std::atomic<size_t> total_size_of_super_pages{0};
-            std::atomic<size_t> total_size_of_direct_mapped_pages{0};
-            size_t total_size_of_allocated_bytes GUARDED_BY(lock_) = 0;
-            size_t max_size_of_allocated_bytes GUARDED_BY(lock_) = 0;
-            std::atomic<uint64_t> syscall_count{};
-            std::atomic<uint64_t> syscall_total_time_ns{};
-            std::atomic<size_t> total_size_of_brp_quarantined_bytes{0};
-            std::atomic<size_t> total_count_of_brp_quarantined_slots{0};
-            size_t empty_slot_spans_dirty_bytes GUARDED_BY(lock_) = 0;
-            int max_empty_slot_spans_dirty_bytes_shift = 3;
-            char* next_super_page = nullptr;
-            char* next_partition_page = nullptr;
-            char* next_partition_page_end = nullptr;
-            SuperPageExtentEntry* current_extent = nullptr;
-            SuperPageExtentEntry* first_extent = nullptr;
-            DirectMapExtent* direct_map_list GUARDED_BY(lock_) = nullptr;
-            SlotSpan* global_empty_slot_span_ring[kMaxFreeableSpans] GUARDED_BY(lock_) = {};
-            int16_t global_empty_slot_span_ring_index GUARDED_BY(lock_) = 0;
-            uintptr_t inverted_self = 0;
-            std::atomic<int> thread_caches_being_constructed_{0};
-            bool quarantine_always_for_testing = false;
-        }
-        """
-        x = u64(read_memory(current, 8))
-        current += 8
-        root["quarantine_mode"] = (x >> 0) & 0xff
-        root["scan_mode"] = (x >> 8) & 0xff
-        root["with_thread_cache"] = (x >> 16) & 0xff
-        root["is_thread_safe"] = (x >> 24) & 0xff 
-        root["allow_aligned_alloc"] = (x >> 32) & 0xff 
-        root["allow_cookie"] = (x >> 40) & 0xff 
-        root["brp_enabled_"] = (x >> 48) & 0xff 
-        root["use_configurable_pool"] = (x >> 56) & 0xff 
-
-        root["padding"] = read_memory(current, 64-7)
-        current += 64-7
-
-        root["lock_"] = u64(read_memory(current, 7) + b"\x00")
-        current += 7
-
-        # for 32bit, there is 2 patterns because aligned or packed
-        if is_32bit():
-            if self.align_pad is None:
-                x = read_int_from_memory(current)
-                if x == 0:
-                    self.align_pad = True
-                else:
-                    self.align_pad = False
-            if self.align_pad:
-                current += ptrsize
-
-        root["buckets"] = []
-        while True:
-            if read_int_from_memory(current) == 1: # search initialized
-                break
-            bucket, current = self.read_bucket(current)
-            root["buckets"].append(bucket)
-        root["sentinel_bucket"] = root["buckets"].pop()
-
-        root["initialized"] = read_int_from_memory(current) & 0xff
-        current += ptrsize # with pad
-        root["total_size_of_committed_pages"] = read_int_from_memory(current)
-        current += ptrsize
-        root["max_size_of_committed_pages"] = read_int_from_memory(current)
-        current += ptrsize
-        root["total_size_of_super_pages"] = read_int_from_memory(current)
-        current += ptrsize
-        root["total_size_of_direct_mapped_pages"] = read_int_from_memory(current)
-        current += ptrsize
-        root["total_size_of_allocated_bytes"] = read_int_from_memory(current)
-        current += ptrsize
-        root["max_size_of_allocated_bytes"] = read_int_from_memory(current)
-        current += ptrsize
-        root["syscall_count"] = read_int_from_memory(current)
-        current += ptrsize
-        root["syscall_total_time_ns"] = read_int_from_memory(current)
-        current += ptrsize
-        root["total_size_of_brp_quarantined_bytes"] = u32(read_memory(current, 4))
-        current += 4
-        root["total_count_of_brp_quarantined_slots"] = u32(read_memory(current, 4))
-        current += 4
-        root["empty_slot_spans_dirty_bytes"] = u32(read_memory(current, 4))
-        current += 4
-        root["max_empty_slot_spans_dirty_bytes_shift"] = u32(read_memory(current, 4))
-        current += 4
-        root["next_super_page"] = read_int_from_memory(current)
-        current += ptrsize
-        root["next_partition_page"] = read_int_from_memory(current)
-        current += ptrsize
-        root["next_partition_page_end"] = read_int_from_memory(current)
-        current += ptrsize
-        root["current_extent"] = read_int_from_memory(current)
-        current += ptrsize
-        root["first_extent"] = read_int_from_memory(current)
-        current += ptrsize
-        root["direct_map_list"] = read_int_from_memory(current)
-        current += ptrsize
-
-        root["global_empty_slot_span_ring"] = []
-        inv = root["addr"] ^ ((1 << (current_arch.ptrsize * 8)) - 1)
-        while True:
-            if read_int_from_memory(current + ptrsize) == inv: # search inverted_self
-                break
-            x = read_int_from_memory(current)
-            current += ptrsize
-            root["global_empty_slot_span_ring"].append(x)
-
-        root["global_empty_slot_span_ring_index"] = u16(read_memory(current, 2))
-        current += ptrsize # with pad
-        root["inverted_self"] = read_int_from_memory(current)
-        current += ptrsize
-        root["thread_caches_being_constructed_"] = u32(read_memory(current, 4))
-        current += 4
-        root["quarantine_always_for_testing"] = u32(read_memory(current, 4)) & 0xff
-        current += 4
-        return root, current
-
-    def print_root(self, root):
-        gef_print(titlify("*{} @ {:#x}".format(root["name"], root["addr"])))
-        gef_print("uint8_t quarantine_mode:                               {:#x}".format(root["quarantine_mode"]))
-        gef_print("uint8_t scan_mode:                                     {:#x}".format(root["scan_mode"]))
-        gef_print("bool with_thread_cache:                                {:#x}".format(root["with_thread_cache"]))
-        gef_print("const bool is_thread_safe:                             {:#x}".format(root["is_thread_safe"]))
-        gef_print("bool allow_aligned_alloc:                              {:#x}".format(root["allow_aligned_alloc"]))
-        gef_print("bool allow_cookie:                                     {:#x}".format(root["allow_cookie"]))
-        gef_print("bool brp_enabled_:                                     {:#x}".format(root["brp_enabled_"]))
-        gef_print("bool use_configurable_pool:                            {:#x}".format(root["use_configurable_pool"]))
-        gef_print("uint8_t padding[64-7]:                                 ...")
-        gef_print("internal::MaybeSpinLock:                               {:#x}".format(root["lock_"]))
-        gef_print("Bucket buckets[{:3d}]:".format(len(root["buckets"])))
-        for idx, bucket in enumerate(root["buckets"]):
-            self.print_bucket(bucket, root, idx)
-        if self.verbose:
-            gef_print("Bucket sentinel_bucket:")
-            self.print_bucket(root["sentinel_bucket"], root)
-        else:
-            gef_print("Bucket sentinel_bucket:                                ...")
-        gef_print("bool initialized:                                      {:#x}".format(root["initialized"]))
-        gef_print("std::atomic<size_t> total_size_of_committed_pages:     {:#x}".format(root["total_size_of_committed_pages"]))
-        gef_print("std::atomic<size_t> max_size_of_committed_pages:       {:#x}".format(root["max_size_of_committed_pages"]))
-        gef_print("std::atomic<size_t> total_size_of_super_pages:         {:#x}".format(root["total_size_of_super_pages"]))
-        gef_print("std::atomic<size_t> total_size_of_direct_mapped_pages: {:#x}".format(root["total_size_of_direct_mapped_pages"]))
-        gef_print("size_t total_size_of_allocated_bytes:                  {:#x}".format(root["total_size_of_allocated_bytes"]))
-        gef_print("size_t max_size_of_allocated_bytes:                    {:#x}".format(root["max_size_of_allocated_bytes"]))
-        gef_print("std::atomic<uint64_t> syscall_count:                   {:#x}".format(root["syscall_count"]))
-        gef_print("std::atomic<uint64_t> syscall_total_time_ns:           {:#x}".format(root["syscall_total_time_ns"]))
-        gef_print("std::atomic<size_t> total_size_of_brp_quarantined_bytes:{:#x}".format(root["total_size_of_brp_quarantined_bytes"]))
-        gef_print("std::atomic<size_t> total_count_of_brp_quarantined_slots:{:#x}".format(root["total_count_of_brp_quarantined_slots"]))
-        gef_print("size_t empty_slot_spans_dirty_bytes:                   {:#x}".format(root["empty_slot_spans_dirty_bytes"]))
-        gef_print("int max_empty_slot_spans_dirty_bytes_shift:            {:#x}".format(root["max_empty_slot_spans_dirty_bytes_shift"]))
-        gef_print("char* next_super_page:                                 {:#x}".format(root["next_super_page"]))
-        gef_print("char* next_partition_page:                             {:#x}".format(root["next_partition_page"]))
-        gef_print("char* next_partition_page_end:                         {:#x}".format(root["next_partition_page_end"]))
-        gef_print("SuperPageExtentEntry* current_extent:                  {:#x}".format(root["current_extent"]))
-        self.print_extent_list(root["current_extent"])
-        gef_print("SuperPageExtentEntry* first_extent:                    {:#x}".format(root["first_extent"]))
-        self.print_extent_list(root["first_extent"])
-        gef_print("DirectMapExtent* direct_map_list:                      {:#x}".format(root["direct_map_list"]))
-        self.print_direct_map_list(root["direct_map_list"], root)
-        ring_len = len(root["global_empty_slot_span_ring"])
-        if self.verbose:
-            gef_print("SlotSpan* global_empty_slot_span_ring[{:2d}]:".format(ring_len))
-            for i in range(len(root["global_empty_slot_span_ring"])):
-                x = root["global_empty_slot_span_ring"][i]
-                gef_print("    global_empty_slot_span_ring[{:2d}]:                       {:#x}".format(i, x))
-        else:
-            gef_print("SlotSpan* global_empty_slot_span_ring[{:2d}]:             ...".format(ring_len))
-        gef_print("int16_t global_empty_slot_span_ring_index:             {:#x}".format(root["global_empty_slot_span_ring_index"]))
-        inv = root["inverted_self"]
-        inv_inv = inv ^ ((1 << (current_arch.ptrsize * 8)) - 1)
-        gef_print("uintptr_t inverted_self:                               {:#x} (=~{:#x})".format(inv, inv_inv))
-        gef_print("std::atomic<int> thread_caches_being_constructed_:     {:#x}".format(root["thread_caches_being_constructed_"]))
-        gef_print("bool quarantine_always_for_testing:                    {:#x}".format(root["quarantine_always_for_testing"]))
-        return
-
-    def read_slot_span(self, addr):
-        ptrsize = current_arch.ptrsize
-        slot_span = {}
-        slot_span["addr"] = current = addr
-        slot_span["super_page_addr"] = (slot_span["addr"] & ~(DEFAULT_PAGE_SIZE-1)) - DEFAULT_PAGE_SIZE
-        slot_span["partition_page_index"] = (slot_span["addr"] & (DEFAULT_PAGE_SIZE-1)) // 0x20
-        slot_span["partition_page_start"] = slot_span["super_page_addr"] + slot_span["partition_page_index"] * DEFAULT_PAGE_SIZE * 4
-        """
-        https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/partition_page.h
-        struct SlotSpanMetadata {
-          PartitionFreelistEntry* freelist_head = nullptr;
-          SlotSpanMetadata<thread_safe>* next_slot_span = nullptr;
-          PartitionBucket<thread_safe>* const bucket = nullptr;
-          int16_t num_allocated_slots = 0;
-          uint16_t num_unprovisioned_slots = 0;
-          int16_t empty_cache_index : 8;
-          uint16_t can_store_raw_size : 1;
-          uint16_t freelist_is_sorted : 1;
-          uint16_t unused : (16 - 8 - 1 - 1);
-        }
-        """
-        slot_span["freelist_head"] = read_int_from_memory(current)
-        current += ptrsize
-        slot_span["next_slot_span"] = read_int_from_memory(current)
-        current += ptrsize
-        slot_span["bucket"] = read_int_from_memory(current)
-        current += ptrsize
-        slot_span["num_allocated_slots"] = u16(read_memory(current, 2))
-        current += 2
-        slot_span["num_unprovisioned_slots"] = u16(read_memory(current, 2))
-        current += 2
-        x = u16(read_memory(current, 2))
-        slot_span["empty_cache_index"] = (x >> 0) & 0xff
-        slot_span["can_store_raw_size"] = (x >> 8) & 1
-        slot_span["freelist_is_sorted"] = (x >> 9) & 1
-        slot_span["unused"] = (x >> 10) & 0x3f
-        current += 2
-        return slot_span, current
+    # No diffs affecting this command
 
 
 @register_command

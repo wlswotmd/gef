@@ -48,12 +48,22 @@ def download_binary(channel):
     print("[*] struct PartitionDirectMapExtent:        https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/partition_direct_map_extent.h;drc={:s}".format(commit))
     print("[*] struct SlotSpanMetadata:                https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/partition_page.h;drc={:s}".format(commit))
 
+    print("[*] v{:s}.x / {:d} / {:s}".format(current_version.split(".")[0], pos, commit))
+
   print()
   return
 
 if __name__ == '__main__':
-  for channel in ["stable", "beta", "dev"]:
-    download_binary(channel)
+  if len(sys.argv) >= 1:
+    for channel in sys.argv[1:]:
+      if channel in ["stable", "beta", "dev"]:
+        download_binary(channel)
+      else:
+        print("channel is stable, beta, or dev")
+        exit()
+  else:
+    for channel in ["stable", "beta", "dev"]:
+      download_binary(channel)
   print("[*] done")
   print()
   print()
