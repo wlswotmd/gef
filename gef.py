@@ -18924,7 +18924,12 @@ class KsymaddrRemoteApply2Command(GenericCommand):
 
         # load symbol
         info("Adding symbol")
-        gdb.execute("add-symbol-file {} -s .kernel {:#x} -s .bss {:#x}".format(SYMBOLED_VMLINUX_FILE, addrs['kbase'], addrs['bss']))
+        # Prior to gdb 8.x, add-symbol-file command requires a .text address
+        #   gdb 9.x: Usage: add-symbol-file FILE [-readnow | -readnever] [-o OFF] [ADDR] [-s SECT-NAME SECT-ADDR]...
+        #   gdb 8.x: Usage: add-symbol-file FILE ADDR [-readnow | -readnever | -s SECT-NAME SECT-ADDR]...
+        # But the created ELF has no .text, only a .kernel
+        # Applying an empty symbol has no effect, so tentatively specify the same address as the .kernel.
+        gdb.execute("add-symbol-file {} {:#x} -s .kernel {:#x} -s .bss {:#x}".format(SYMBOLED_VMLINUX_FILE, addrs['kbase'], addrs['kbase'], addrs['bss']))
         info("Added")
         return
 
