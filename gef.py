@@ -26249,6 +26249,69 @@ class ExecUntilCondCommand(ExecUntilCommand):
         return
 
 
+class CallUsermodehelperSetupBreakpoint(gdb.Breakpoint):
+    """Create a breakpoint to print argv information at call_usermodehelper_setup"""
+    def __init__(self, loc):
+        super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=False)
+        return
+
+    def stop(self):
+        ptr1, addr1 = current_arch.get_ith_parameter(0)
+        ptr2, addr2 = current_arch.get_ith_parameter(1)
+        path = read_cstring_from_memory(addr1)
+        argv = []
+        while True:
+            string_addr = read_int_from_memory(addr2)
+            if string_addr == 0:
+                break
+            string = read_cstring_from_memory(string_addr)
+            argv.append(string)
+            addr2 += current_arch.ptrsize
+        gef_print("{:s}: {:#x} -> '{:s}'".format(ptr1, addr1, path))
+        gef_print("{:s}: {:#x} -> '{:s}'".format(ptr2, addr2, ' '.join(argv)))
+        return False # continue
+
+
+@register_command
+class UsermodehelperHunterCommand(GenericCommand):
+    """Collects and displays information that is executed by call_usermodehelper_setup"""
+    _cmdline_ = "usermodehelper-hunter"
+    _syntax_ = "{:s} [-h]".format(_cmdline_)
+    _category_ = "Start/Stop"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(complete=gdb.COMPLETE_NONE)
+        return
+
+    def get_ksymaddr(self, sym):
+        # use available symbol
+        try:
+            return parse_address(sym)
+        except:
+            pass
+        # use ksymaddr-remote
+        try:
+            res = gdb.execute("ksymaddr-remote --silent --exact {:s}".format(sym), to_string=True)
+            return int(res.split()[0], 16)
+        except:
+            return None
+
+    @only_if_gdb_running
+    def do_invoke(self, argv):
+        if not is_qemu_system():
+            err("Unsupported")
+            return
+
+        info("Resolving the funcftion addresses")
+        addr = self.get_ksymaddr("call_usermodehelper_setup")
+        if addr is None:
+            err("Not found call_usermodehelper_setup")
+            return
+        CallUsermodehelperSetupBreakpoint(addr)
+        info("Do `continue`. If failed, try `vmlinux-to-elf-apply`")
+        return
+
+
 class ThunkBreakpoint(gdb.Breakpoint):
     """Create a breakpoint to print caller address for thunk function"""
     def __init__(self, loc, sym, reg, maps):
