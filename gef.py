@@ -11648,7 +11648,7 @@ class ChecksecCommand(GenericCommand):
 
         # attached or not
         ret = gdb.execute("info files", to_string=True)
-        if "Using the running image of child Thread" in ret:
+        if "Using the running image of child Thread" in ret or "Using the running image of child process" in ret:
             # gdb ASLR
             ret = gdb.execute("show disable-randomization", to_string=True)
             if "virtual address space is on." in ret:
@@ -24056,22 +24056,22 @@ class PagewalkX64Command(PagewalkCommand):
 
     def pagewalk_parse_flags(self, m, upper_flags, more=False, more_force=False):
         flags = set(upper_flags)
-        if ((m >> 1) & 0b1) == 0:
+        if ((m >> 1) & 1) == 0:
             flags.add("NORW")
-        if ((m >> 2) & 0b1) == 0:
+        if ((m >> 2) & 1) == 0:
             flags.add("NOUS")
-        if ((m >> 63) & 0b1) == 1:
+        if ((m >> 63) & 1) == 1:
             flags.add("XD")
 
         if more:
-            if ((m >> 7) & 0b1) == 1:
+            if ((m >> 7) & 1) == 1:
                 flags.add("PS")
-                if ((m >> 5) & 0b1) == 1:
+                if ((m >> 5) & 1) == 1:
                     flags.add("A")
             else:
-                if ((m >> 6) & 0b1) == 1:
+                if ((m >> 6) & 1) == 1:
                     flags.add("D")
-                if ((m >> 8) & 0b1) == 1:
+                if ((m >> 8) & 1) == 1:
                     flags.add("G")
 
         if more_force:
@@ -24118,7 +24118,7 @@ class PagewalkX64Command(PagewalkCommand):
             mem = self.read_physmem(base, 2**self.bits["PML5T_BITS"] * self.bits["ENTRY_SIZE"])
             for i, m in enumerate(self.slice_unpack(mem, self.bits["ENTRY_SIZE"])):
                 COUNT += 1
-                if not m & 1: # present flag
+                if (m & 1) == 0: # present flag
                     INVALID += 1
                     continue
 
@@ -24142,7 +24142,7 @@ class PagewalkX64Command(PagewalkCommand):
             mem = self.read_physmem(base, 2**self.bits["PML4T_BITS"] * self.bits["ENTRY_SIZE"])
             for i, m in enumerate(self.slice_unpack(mem, self.bits["ENTRY_SIZE"])):
                 COUNT += 1
-                if not m & 1: # present flag
+                if (m & 1) == 0: # present flag
                     INVALID += 1
                     continue
 
@@ -24166,7 +24166,7 @@ class PagewalkX64Command(PagewalkCommand):
             mem = self.read_physmem(base, 2**self.bits["PDPT_BITS"] * self.bits["ENTRY_SIZE"])
             for i, m in enumerate(self.slice_unpack(mem, self.bits["ENTRY_SIZE"])):
                 COUNT += 1
-                if not m & 1: # present flag
+                if (m & 1) == 0: # present flag
                     INVALID += 1
                     continue
 
@@ -24176,7 +24176,7 @@ class PagewalkX64Command(PagewalkCommand):
                 else:
                     flags = self.pagewalk_parse_flags(m, upper_flags, more=True)
 
-                if (m >> 7) & 0b1 == 1:
+                if ((m >> 7) & 1) == 1:
                     PTE.append([new_va, m, 0x40000000, 1, flags]) # 1GB page
                 else:
                     PDPE.append([new_va, m & 0xffffffffff000, flags])
@@ -24199,13 +24199,13 @@ class PagewalkX64Command(PagewalkCommand):
             mem = self.read_physmem(base, 2**self.bits["PDT_BITS"] * self.bits["ENTRY_SIZE"])
             for i, m in enumerate(self.slice_unpack(mem, self.bits["ENTRY_SIZE"])):
                 COUNT += 1
-                if not m & 1: # present flag
+                if (m & 1) == 0: # present flag
                     INVALID += 1
                     continue
 
                 new_va = self.get_newva(va, i, level=2)
                 flags = self.pagewalk_parse_flags(m, upper_flags, more=True)
-                if (m >> 7) & 0b1 == 1:
+                if ((m >> 7) & 1) == 1:
                     if self.PAE:
                         PTE.append([new_va, m, 0x200000, 1, flags]) # 2MB page
                     else:
@@ -24236,7 +24236,7 @@ class PagewalkX64Command(PagewalkCommand):
             mem = self.read_physmem(base, 2**self.bits["PT_BITS"] * self.bits["ENTRY_SIZE"])
             for i, m in enumerate(self.slice_unpack(mem, self.bits["ENTRY_SIZE"])):
                 COUNT += 1
-                if not m & 1: # present flag
+                if (m & 1) == 0 : # present flag
                     INVALID += 1
                     continue
 
@@ -24261,10 +24261,16 @@ class PagewalkX64Command(PagewalkCommand):
         # for printing it, we will pagewalk manually.
         res = gdb.execute("monitor info registers", to_string=True)
         cr3 = int(re.search(r"CR3=(\S+)", res).group(1), 16)
-        base = (cr3 >> 12) << 12
         cr4 = int(re.search(r"CR4=(\S+)", res).group(1), 16)
         info("cr3: {:#018x}".format(cr3))
         info("cr4: {:#018x}".format(cr4))
+
+        if is_x86_64(): # 64bit
+            base = (cr3 >> 12) << 12
+        elif ((cr4 >> 5) & 1) == 1: # 32bit PAE
+            base = (cr3 >> 5) << 5
+        else: # 32bit non-PAE
+            base = (cr3 >> 12) << 12
 
         self.PTE = []
         self.TABLES = [(0, base, ())] # va, base, upper_flags
