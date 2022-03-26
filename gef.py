@@ -16116,7 +16116,6 @@ class ByteswapCommand(GenericCommand):
 @register_command
 class VersionCommand(GenericCommand):
     """Display GEF version info."""
-
     _cmdline_ = "version"
     _syntax_ = "{:s}".format(_cmdline_)
     _example_ = "{:s}".format(_cmdline_)
@@ -16203,7 +16202,19 @@ class VersionCommand(GenericCommand):
         except IOError:
             return 'not found'
 
+    def qemu_version(self):
+        return gdb.execute('monitor info version', to_string=True).strip()
+
+    def kernel_version(self):
+        try:
+            command = which("uname")
+            res = gef_execute_external([command, "-a"], as_list=True)
+            return res[0]
+        except IOError:
+            return 'not found'
+
     def do_invoke(self, argv):
+        gef_print("Kernel:        \t{:s}".format(self.kernel_version()))
         gef_print("GEF:           \t{:s}".format(self.gef_version()))
         gef_print("Gdb:           \t{:s}".format(self.gdb_version()))
         gef_print("Python:        \t{:s}".format(self.python_version()))
@@ -16215,6 +16226,58 @@ class VersionCommand(GenericCommand):
         gef_print("objdump:       \t{:s}".format(self.objdump_version()))
         gef_print("seccomp-tools: \t{:s}".format(self.seccomp_tools_version()))
         gef_print("one_gadget:    \t{:s}".format(self.one_gadget_version()))
+        if is_qemu_system():
+            gef_print("qemu:          \t{:s}".format(self.qemu_version()))
+        return
+
+
+@register_command
+class KernelVersionCommand(GenericCommand):
+    """Display kernel version string under qemu-system."""
+    _cmdline_ = "kversion"
+    _syntax_ = "{:s}".format(_cmdline_)
+    _example_ = "{:s}".format(_cmdline_)
+    _category_ = "Process/State Inspection (Process)"
+
+    def kernel_version(self):
+        maps = KsymaddrRemoteCommand.get_maps() # [vaddr, size, perm]
+        if maps is None:
+            return None
+        kbase, kbase_size = KsymaddrRemoteCommand.get_kernel_base(maps)
+        if kbase is None:
+            return None
+        krobase, krobase_size = KsymaddrRemoteCommand.get_kernel_rodata_base(maps, kbase)
+        if krobase is None:
+            return None
+        kbss = krobase + krobase_size
+
+        # resolve area
+        area = []
+        for addr in maps:
+            if addr[0] < kbase:
+                continue
+            if addr[0] >= kbss:
+                continue
+            area.append([addr[0], addr[0]+addr[1]])
+        if area == []:
+            return None
+
+        for start, end in area:
+            data = read_memory(start, end-start)
+            data = ''.join([chr(x) for x in data])
+            r = re.findall("(Linux version (?:\d+\.[\d.]*\d)[ -~]+)", data)
+            if not r:
+                continue
+            kernel_version_string = r[0]
+            idx = data.find(kernel_version_string)
+            return start + idx, kernel_version_string
+        return "Unknown"
+
+    def do_invoke(self, argv):
+        if not is_qemu_system():
+            err("Unsupported")
+        addr, kernel_version_string = self.kernel_version()
+        gef_print("{:#x}: {:s}".format(addr, kernel_version_string))
         return
 
 
