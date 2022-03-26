@@ -22,6 +22,8 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / Debian 
 
 ### qemu-system cooperation
 * It works with qemu-system installed via apt, but qemu-6.x is recommended.
+    * Start qemu with the `-s` option and listen on `localhost:1234`.
+    * Attach with `gdb-multiarch -ex 'target remote localhost:1234'`.
 * `qreg`: prints register values from qemu-monitor (allows to get like `$cs` even under qemu 2.x).
     * It is shortcut for `monitor info registers`.
     * It also prints the details of the each bit of the system register when x64/x86.
@@ -76,6 +78,10 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / Debian 
 * `uefi-ovmf-info`: displays addresses of some important structures in each boot phase of UEFI when OVMF is used (heuristic).
     * Supported on x64 only.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/uefi-ovmf-info.png)
+* `kversion`: displays the debugged kernel version.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kversion.png)
+* `syscall-table-view`: prints system call table (x64/x86 only).
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/syscall-table-view.png)
 
 ### Heap dump features
 * `partition-alloc-dump-stable`: dumps partition-alloc free-list (heuristic).

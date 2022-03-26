@@ -4551,6 +4551,19 @@ def parse_address(address):
     return to_unsigned_long(gdb.parse_and_eval(address))
 
 
+def get_ksymaddr(sym):
+    # use available symbol
+    try:
+        return parse_address(sym)
+    except:
+        pass
+    # use ksymaddr-remote
+    try:
+        res = gdb.execute("ksymaddr-remote --silent --exact {:s}".format(sym), to_string=True)
+        return int(res.split()[0], 16)
+    except:
+        return None
+
 def is_in_x86_kernel(address):
     address = align_address(address)
     memalign = get_memory_alignment(in_bits=True) - 1
@@ -6759,7 +6772,7 @@ class ChangePermissionCommand(GenericCommand):
             err("Invalid address")
             return
 
-        loc = int(loc)
+        loc = to_unsigned_long(loc)
         sect = process_lookup_address(loc)
         if sect is None:
             err("Unmapped address")
@@ -10957,7 +10970,7 @@ class DereferenceCommand(GenericCommand):
             err("Invalid address")
             return
 
-        addr = int(addr)
+        addr = to_unsigned_long(addr)
 
         if get_gef_setting("context.grow_stack_down") is True:
             from_insnum = nb * (self.repeat_count + 1) - 1
@@ -11511,7 +11524,7 @@ class PatternSearchCommand(GenericCommand):
         # 1. check if it's a symbol (like "$sp" or "0x1337")
         symbol = safe_parse_and_eval(pattern)
         if symbol:
-            addr = int(symbol)
+            addr = to_unsigned_long(symbol)
             dereferenced_value = dereference(addr)
             # 1-bis. try to dereference
             if dereferenced_value:
@@ -11529,6 +11542,8 @@ class PatternSearchCommand(GenericCommand):
             pattern_be = gef_pybytes(pattern)
             pattern_le = gef_pybytes(pattern[::-1])
 
+        pattern_be = pattern_be.strip(b"\0")
+        pattern_le = pattern_le.strip(b"\0")
 
         cyclic_pattern = generate_cyclic_pattern(size)
         found = False
@@ -16282,6 +16297,89 @@ class KernelVersionCommand(GenericCommand):
 
 
 @register_command
+class SyscallTableViewCommand(GenericCommand):
+    """Display sys_call_table entries under qemu-system. (x86/x64 only)"""
+    _cmdline_ = "syscall-table-view"
+    _syntax_ = "{:s}".format(_cmdline_)
+    _example_ = "{:s}".format(_cmdline_)
+    _category_ = "Process/State Inspection (Process)"
+
+    def get_sys_call_table(self):
+        # plan 1 (directly)
+        sys_call_table = get_ksymaddr("sys_call_table")
+        if sys_call_table:
+            return sys_call_table
+
+        if is_x86_64():
+            # plan 2 (v4.6-rc1~)
+            do_syscall_64 = get_ksymaddr("do_syscall_64")
+            res = gdb.execute("x/30i {:#x}".format(do_syscall_64), to_string=True)
+            for line in res.splitlines():
+                m = re.search(r"[DQ]WORD PTR \[.*\*8([-+]0x\S+)\]", line)
+                if m:
+                    v = int(m.group(1), 16) & 0xffffffffffffffff
+                    if v != 0:
+                        return v
+        elif is_x86_32():
+            # plan 2 (v4.6-rc1~)
+            do_int80_syscall_32 = get_ksymaddr("do_int80_syscall_32")
+            res = gdb.execute("x/20i {:#x}".format(do_int80_syscall_32), to_string=True)
+            for line in res.splitlines():
+                m = re.search(r"\[eax\*4([+-]0x\S+)\]", line)
+                if m:
+                    v = int(m.group(1), 16) & 0xffffffff
+                    if v != 0:
+                        return v
+        return None
+
+    def syscall_table_view(self):
+        sys_call_table_addr = self.get_sys_call_table()
+        if sys_call_table_addr is None:
+            err("Not found symbol")
+            return
+        # scan
+        i = 0
+        seen = {}
+        table = []
+        while True:
+            addr = sys_call_table_addr + i * current_arch.ptrsize
+            syscall_function_addr = read_int_from_memory(addr)
+            if syscall_function_addr % 0x10: # should be aligned
+                break
+            try:
+                read_int_from_memory(syscall_function_addr) # if entry is valid, no error
+            except:
+                break
+            ret = gdb_get_location_from_symbol(syscall_function_addr)
+            if ret is None:
+                symbol = "<NO_SYMBOL>"
+            elif ret[1] == 0:
+                symbol = "<{}>".format(ret[0])
+            else:
+                symbol = "<{}+{:#x}>".format(ret[0], ret[1])
+            seen[syscall_function_addr] = seen.get(syscall_function_addr, 0) + 1
+            table.append([i, addr, syscall_function_addr, symbol])
+            i += 1
+        # print
+        for i, addr, syscall_function_addr, symbol in table:
+            if seen[syscall_function_addr] == 1: # valid entry
+                gef_print("[{:03d}] {:#x}: {:x} {:s}".format(i, addr, syscall_function_addr, symbol))
+            else: # invalid entry
+                gef_print("[{:03d}] {:#x}: ".format(i, addr) + Color.grayify("{:#x} {:s}".format(syscall_function_addr, symbol)))
+        return
+
+    def do_invoke(self, argv):
+        if not is_qemu_system():
+            err("Unsupported")
+            return
+        if not is_x86():
+            err("Unsupported")
+            return
+        self.syscall_table_view()
+        return
+
+
+@register_command
 class AuxvCommand(GenericCommand):
     """Show ELF auxiliary vectors."""
     _cmdline_ = "auxv"
@@ -17558,27 +17656,14 @@ class SlabCommand(GenericCommand):
         super().__init__(complete=gdb.COMPLETE_NONE)
         return
 
-    def get_ksymaddr(self, sym):
-        # use available symbol
-        try:
-            return parse_address(sym)
-        except:
-            pass
-        # use ksymaddr-remote
-        try:
-            res = gdb.execute("ksymaddr-remote --silent --exact {:s}".format(sym), to_string=True)
-            return int(res.split()[0], 16)
-        except:
-            return None
-
     def get_per_cpu_offset(self):
         # plan 1 (directly)
-        __per_cpu_offset = self.get_ksymaddr("__per_cpu_offset")
+        __per_cpu_offset = get_ksymaddr("__per_cpu_offset")
         if __per_cpu_offset:
             return __per_cpu_offset
 
         # plan 2
-        nr_iowait_cpu = self.get_ksymaddr("nr_iowait_cpu")
+        nr_iowait_cpu = get_ksymaddr("nr_iowait_cpu")
         if nr_iowait_cpu:
             res = gdb.execute("x/10i {:#x}".format(nr_iowait_cpu), to_string=True)
             if is_x86():
@@ -17619,12 +17704,12 @@ class SlabCommand(GenericCommand):
 
     def get_slab_caches(self):
         # plan 1 (directly)
-        slab_caches = self.get_ksymaddr("slab_caches")
+        slab_caches = get_ksymaddr("slab_caches")
         if slab_caches:
             return slab_caches
 
         # plan 2 (available v4.9-rc1 or later)
-        slub_cpu_dead = self.get_ksymaddr("slub_cpu_dead")
+        slub_cpu_dead = get_ksymaddr("slub_cpu_dead")
         if slub_cpu_dead:
             res = gdb.execute("x/20i {:#x}".format(slub_cpu_dead), to_string=True)
             if is_x86():
@@ -17666,7 +17751,7 @@ class SlabCommand(GenericCommand):
                             return base + (int(m.group(1), 16) << 16)
 
         # plan 3 (available v4.10.17 or before)
-        memcg_update_all_caches = self.get_ksymaddr("memcg_update_all_caches")
+        memcg_update_all_caches = get_ksymaddr("memcg_update_all_caches")
         if memcg_update_all_caches:
             res = gdb.execute("x/20i {:#x}".format(memcg_update_all_caches), to_string=True)
             if is_x86():
@@ -23395,7 +23480,7 @@ class MsrCommand(GenericCommand):
         edx = get_register("$edx")
         self.revert_state(d)
         gef_on_stop_hook(hook_stop_handler)
-        return (edx << 32) | eax
+        return ((edx << 32) | eax) & 0xffffffffffffffff
 
     def read_msr(self, num):
         val = self.read_msr_core(num)
@@ -26357,19 +26442,6 @@ class UsermodehelperHunterCommand(GenericCommand):
         super().__init__(complete=gdb.COMPLETE_NONE)
         return
 
-    def get_ksymaddr(self, sym):
-        # use available symbol
-        try:
-            return parse_address(sym)
-        except:
-            pass
-        # use ksymaddr-remote
-        try:
-            res = gdb.execute("ksymaddr-remote --silent --exact {:s}".format(sym), to_string=True)
-            return int(res.split()[0], 16)
-        except:
-            return None
-
     @only_if_gdb_running
     def do_invoke(self, argv):
         if not is_qemu_system():
@@ -26377,7 +26449,7 @@ class UsermodehelperHunterCommand(GenericCommand):
             return
 
         info("Resolving the funcftion addresses")
-        addr = self.get_ksymaddr("call_usermodehelper_setup")
+        addr = get_ksymaddr("call_usermodehelper_setup")
         if addr is None:
             err("Not found call_usermodehelper_setup")
             return
@@ -26460,19 +26532,6 @@ class ThunkHunterCommand(GenericCommand):
         super().__init__(complete=gdb.COMPLETE_NONE)
         return
 
-    def get_ksymaddr(self, sym):
-        # use available symbol
-        try:
-            return parse_address(sym)
-        except:
-            pass
-        # use ksymaddr-remote
-        try:
-            res = gdb.execute("ksymaddr-remote --silent --exact {:s}".format(sym), to_string=True)
-            return int(res.split()[0], 16)
-        except:
-            return None
-
     @only_if_gdb_running
     def do_invoke(self, argv):
         if not is_qemu_system():
@@ -26486,7 +26545,7 @@ class ThunkHunterCommand(GenericCommand):
         info("Resolving thunk funcftion addresses")
         for reg in current_arch.gpr_registers:
             sym = "__x86_indirect_thunk_{}".format(reg.replace("$", ""))
-            addr = self.get_ksymaddr(sym)
+            addr = get_ksymaddr(sym)
             if addr is None:
                 continue
             ThunkBreakpoint(addr, sym, reg, maps)
