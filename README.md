@@ -115,7 +115,6 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / Debian 
 * `musl-dump`: dumps musl-libc unused chunks (heuristic).
     * Supported on x64/x86, based on musl-libc v1.2.2.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/musl-dump.png)
-    * Not maintained for a while.
 
 ### Other improved features
 * Glibc heap commands are improved.

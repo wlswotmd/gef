@@ -16022,7 +16022,7 @@ class ExtractHeapAddrCommand(GenericCommand):
 
     def print_source(self):
         s = ""
-        s += "def reveal(fd)\n"
+        s += "def reveal(fd):\n"
         s += "    L = fd >> 36\n"
         s += "    for i in range(3):\n"
         s += "        temp = (fd >> (36-(i+1)*8)) & 0xff\n"
@@ -21693,17 +21693,141 @@ class PartitionAllocDumpOld2Command(GenericCommand):
 
 @register_command
 class MuslDumpCommand(GenericCommand):
-    """musl heap reusable chunks viewer (supported on x64/x86, based on musl libc v1.2.2).
+    """musl heap reusable chunks viewer (supported on x64/x86, based on musl libc v1.2.2; src/malloc/mallocng).
     See https://h-noson.hatenablog.jp/entry/2021/05/03/161933#-177pts-mooosl"""
     _cmdline_ = "musl-dump"
-    _syntax_ = "{:s} ctx|unused [-v]".format(_cmdline_)
+    _syntax_ = "{:s} ctx|unused [-v] [-a ACTIVE_IDX]".format(_cmdline_)
     _category_ = "Heap"
+
+    def get_malloc_context_heuristic(self):
+        try:
+            # search malloc
+            malloc = parse_address("malloc")
+            info("malloc: {:#x}".format(malloc))
+
+            # search __libc_malloc_impl
+            """
+            [pattern 1]
+               0x7ffff7d7dde0 <malloc>:     jmp    0x7ffff7d8ece2 <__libc_malloc_impl>
+
+            [pattern 2]
+               0x7ffff7f71650 <malloc>:     endbr64 
+               0x7ffff7f71654 <malloc+4>:   jmp    0x7ffff7f72ff0
+
+            [pattern 3]
+               0xf7f78bf0 <malloc>: jmp    0xf7f8bc3c
+            """
+            res = gdb.execute("x/10i {:#x}".format(malloc), to_string=True)
+            for line in res.splitlines():
+                m = re.search(r"jmp\s*(0x\w+)", line)
+                if not m:
+                    continue
+                __libc_malloc_impl = int(m.group(1), 16)
+                break
+            info("__libc_malloc_impl: {:#x}".format(__libc_malloc_impl))
+
+            # search __malloc_alloc_meta
+            """
+            [pattern 1]
+               0x7ffff7d8ed0a <__libc_malloc_impl+40>:      call   0x7ffff7d88dc1 <__errno_location>
+               0x7ffff7d8ed34 <__libc_malloc_impl+82>:      call   0x7ffff7da0c3b <mmap64>
+               0x7ffff7d8ed48 <__libc_malloc_impl+102>:     call   0x7ffff7d8e36b <wrlock>
+               0x7ffff7d8ed4d <__libc_malloc_impl+107>:     call   0x7ffff7d8e382 <step_seq>
+               0x7ffff7d8ed52 <__libc_malloc_impl+112>:     call   0x7ffff7d8e45a <__malloc_alloc_meta>
+
+            [pattern 2]
+               0x7ffff7f7303b:      call   0x7ffff7f8a640 <mmap64>
+               0x7ffff7f73074:      call   0x7ffff7f72290
+
+            [pattern 3]
+               0xf7f8bc40:  call   0xf7f7cf84
+               0xf7f8bc67:  call   0xf7f84e85 <__errno_location>
+               0xf7f8bc88:  call   0xf7f9cd53 <mmap64>
+               0xf7f8bc9b:  call   0xf7f8b3aa
+               0xf7f8bca0:  call   0xf7f8b3d2
+               0xf7f8bca5:  call   0xf7f8b439
+            """
+            __malloc_alloc_meta_candidate = []
+            res = gdb.execute("x/100i {:#x}".format(__libc_malloc_impl), to_string=True)
+            for line in res.splitlines():
+                m = re.search(r"call\s*(0x\w+)", line)
+                if not m:
+                    continue
+                addr = int(m.group(1), 16)
+                __malloc_alloc_meta_candidate.append(addr)
+
+            # search __malloc_context
+            """
+            [patttern 1]
+               0x7ffff7d8e45a <__malloc_alloc_meta>:        push   r12
+               0x7ffff7d8e45c <__malloc_alloc_meta+2>:      push   rbp
+               0x7ffff7d8e45d <__malloc_alloc_meta+3>:      push   rbx
+               0x7ffff7d8e45e <__malloc_alloc_meta+4>:      sub    rsp,0x10
+               0x7ffff7d8e462 <__malloc_alloc_meta+8>:      cmp    DWORD PTR [rip+0x26d67f],0x0        # 0x7ffff7ffbae8 <__malloc_context+8>
+
+            [patttern 2]
+               0x7ffff7f72290:      endbr64 
+               0x7ffff7f72294:      push   r12
+               0x7ffff7f72296:      push   rbp
+               0x7ffff7f72297:      push   rbx
+               0x7ffff7f72298:      sub    rsp,0x10
+               0x7ffff7f7229c:      mov    rax,QWORD PTR fs:0x28
+               0x7ffff7f722a5:      mov    QWORD PTR [rsp+0x8],rax
+               0x7ffff7f722aa:      xor    eax,eax
+               0x7ffff7f722ac:      mov    eax,DWORD PTR [rip+0x89816]        # 0x7ffff7ffbac8
+               0x7ffff7f722b2:      test   eax,eax
+
+            [pattern 3]
+               0xf7f8b439:  push   ebp
+               0xf7f8b43a:  push   edi
+               0xf7f8b43b:  push   esi
+               0xf7f8b43c:  push   ebx
+               0xf7f8b43d:  call   0xf7f7cf84
+               0xf7f8b442:  add    ebx,0x6fbbe       # libc_bss_base
+               0xf7f8b448:  sub    esp,0x1c
+               0xf7f8b44b:  cmp    DWORD PTR [ebx+0x708],0x0
+            """
+            for cand in __malloc_alloc_meta_candidate:
+                info("alloc_meta (candidate): {:#x}".format(cand))
+                res = gdb.execute("x/10i {:#x}".format(cand), to_string=True)
+                for line in res.splitlines():
+                    if is_x86_64():
+                        m = re.search(r"DWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
+                        if not m:
+                            continue
+                        __malloc_context_init_done = int(m.group(1), 16)
+                    else:
+                        m = re.search(r"DWORD PTR \[e[abcd]x\+(0x\w+)\]", line)
+                        if not m:
+                            continue
+                        __malloc_context_init_done_offset = int(m.group(1), 16)
+                        rw_maps = [p for p in get_process_maps() if p.permission.value == Permission.READ | Permission.WRITE]
+                        rw_maps = [p for p in rw_maps if "libc.so" in p.path]
+                        libc_bss_base = rw_maps[0].page_start
+                        __malloc_context_init_done = libc_bss_base + __malloc_context_init_done_offset
+                    # check
+                    value = u32(read_memory(__malloc_context_init_done, 4))
+                    if value not in [0, 1]: # init_done is 1 or 0
+                        continue
+                    # found
+                    info("__malloc_context.init_done: {:#x}".format(__malloc_context_init_done))
+                    __malloc_context = __malloc_context_init_done - current_arch.ptrsize
+                    x = read_int_from_memory(__malloc_context)
+                    if x == gef_getpagesize():
+                        __malloc_context -= current_arch.ptrsize
+                    info("__malloc_context: {:#x}".format(__malloc_context))
+                    return __malloc_context
+            return None
+        except:
+            err("Not found &__malloc_context")
+            return None
 
     def get_malloc_context(self):
         try:
             return parse_address("&__malloc_context")
         except:
-            return None
+            info("Symbol is not found. It will use heuristic search")
+            return self.get_malloc_context_heuristic()
 
     @lru_cache()
     def class_to_size(self, cl):
@@ -21725,8 +21849,10 @@ class MuslDumpCommand(GenericCommand):
 
     def read_ctx(self):
         ptrsize = current_arch.ptrsize
-        self.ctx = {}
-        self.ctx["addr"] = current = self.get_malloc_context()
+        ctx = {}
+        ctx["addr"] = current = self.get_malloc_context()
+        if current is None:
+            return None
         """
         struct malloc_context {
             uint64_t secret;
@@ -21751,78 +21877,78 @@ class MuslDumpCommand(GenericCommand):
             uintptr_t brk;
         };
         """
-        self.ctx["secret"] = u64(read_memory(current, 8))
+        ctx["secret"] = u64(read_memory(current, 8))
         current += 8
         x = read_int_from_memory(current)
         if x == gef_getpagesize():
-            self.ctx["pagesize"] = x
+            ctx["pagesize"] = x
             current += ptrsize
         else:
-            self.ctx["pagesize"] = None
+            ctx["pagesize"] = None
 
-        self.ctx["init_done"] = u32(read_memory(current, 4))
+        ctx["init_done"] = u32(read_memory(current, 4))
         current += 4
-        self.ctx["mmap_counter"] = u32(read_memory(current, 4))
+        ctx["mmap_counter"] = u32(read_memory(current, 4))
         current += 4
-        self.ctx["free_meta_head"] = read_int_from_memory(current)
+        ctx["free_meta_head"] = read_int_from_memory(current)
         current += ptrsize
-        self.ctx["avail_meta"] = read_int_from_memory(current)
+        ctx["avail_meta"] = read_int_from_memory(current)
         current += ptrsize
-        self.ctx["avail_meta_count"] = read_int_from_memory(current)
+        ctx["avail_meta_count"] = read_int_from_memory(current)
         current += ptrsize
-        self.ctx["avail_meta_area_count"] = read_int_from_memory(current)
+        ctx["avail_meta_area_count"] = read_int_from_memory(current)
         current += ptrsize
-        self.ctx["alloc_shift"] = read_int_from_memory(current)
+        ctx["alloc_shift"] = read_int_from_memory(current)
         current += ptrsize
-        self.ctx["meta_area_head"] = read_int_from_memory(current)
+        ctx["meta_area_head"] = read_int_from_memory(current)
         current += ptrsize
-        self.ctx["meta_area_tail"] = read_int_from_memory(current)
+        ctx["meta_area_tail"] = read_int_from_memory(current)
         current += ptrsize
-        self.ctx["avail_meta_areas"] = read_int_from_memory(current)
+        ctx["avail_meta_areas"] = read_int_from_memory(current)
         current += ptrsize
-        self.ctx["active"] = []
+        ctx["active"] = []
         for i in range(48):
-            self.ctx["active"].append(read_int_from_memory(current))
+            ctx["active"].append(read_int_from_memory(current))
             current += ptrsize
-        self.ctx["usage_by_class"] = []
+        ctx["usage_by_class"] = []
         for i in range(48):
-            self.ctx["usage_by_class"].append(read_int_from_memory(current))
+            ctx["usage_by_class"].append(read_int_from_memory(current))
             current += ptrsize
-        self.ctx["unmap_seq"] = read_memory(current, 32)
+        ctx["unmap_seq"] = read_memory(current, 32)
         current += 32
-        self.ctx["bounces"] = read_memory(current, 32)
+        ctx["bounces"] = read_memory(current, 32)
         current += 32
-        self.ctx["seq"] = ord(read_memory(current, 1))
+        ctx["seq"] = ord(read_memory(current, 1))
         current += ptrsize # with padding
-        self.ctx["brk"] = read_int_from_memory(current)
+        ctx["brk"] = read_int_from_memory(current)
         current += ptrsize
-        return
+        return ctx
 
-    def print_ctx(self):
-        gef_print(titlify("__malloc_context: {:#x}".format(self.ctx["addr"])))
-        gef_print("  uint64_t secret:                    {:#x}".format(self.ctx["secret"]))
-        if self.ctx["pagesize"]:
-            gef_print("  size_t pagesize:                    {:#x}".format(self.ctx["pagesize"]))
-        gef_print("  int init_done:                      {:#x}".format(self.ctx["init_done"]))
-        gef_print("  unsigned int mmap_counter:          {:#x}".format(self.ctx["mmap_counter"]))
-        gef_print("  struct meta* free_meta_head:        {:#x}".format(self.ctx["free_meta_head"]))
-        gef_print("  struct meta* avail_meta:            {:#x}".format(self.ctx["avail_meta"]))
-        gef_print("  size_t avail_meta_count:            {:#x}".format(self.ctx["avail_meta_count"]))
-        gef_print("  size_t avail_meta_area_count:       {:#x}".format(self.ctx["avail_meta_area_count"]))
-        gef_print("  size_t alloc_shift:                 {:#x}".format(self.ctx["alloc_shift"]))
-        gef_print("  struct meta_area* meta_area_head:   {:#x}".format(self.ctx["meta_area_head"]))
-        gef_print("  struct meta_area* meta_area_tail:   {:#x}".format(self.ctx["meta_area_tail"]))
-        gef_print("  unsigned char* avail_meta_areas:    {:#x}".format(self.ctx["avail_meta_areas"]))
+    def print_ctx(self, ctx):
+        gef_print(titlify("__malloc_context: {:#x}".format(ctx["addr"])))
+        gef_print("  uint64_t secret:                    {:#x}".format(ctx["secret"]))
+        if ctx["pagesize"]:
+            gef_print("  size_t pagesize:                    {:#x}".format(ctx["pagesize"]))
+        gef_print("  int init_done:                      {:#x}".format(ctx["init_done"]))
+        gef_print("  unsigned int mmap_counter:          {:#x}".format(ctx["mmap_counter"]))
+        gef_print("  struct meta* free_meta_head:        {:#x}".format(ctx["free_meta_head"]))
+        gef_print("  struct meta* avail_meta:            {:#x}".format(ctx["avail_meta"]))
+        gef_print("  size_t avail_meta_count:            {:#x}".format(ctx["avail_meta_count"]))
+        gef_print("  size_t avail_meta_area_count:       {:#x}".format(ctx["avail_meta_area_count"]))
+        gef_print("  size_t alloc_shift:                 {:#x}".format(ctx["alloc_shift"]))
+        gef_print("  struct meta_area* meta_area_head:   {:#x}".format(ctx["meta_area_head"]))
+        gef_print("  struct meta_area* meta_area_tail:   {:#x}".format(ctx["meta_area_tail"]))
+        gef_print("  unsigned char* avail_meta_areas:    {:#x}".format(ctx["avail_meta_areas"]))
         gef_print("  struct meta* active[48]:")
         for i in range(48):
-            gef_print("     active[{:2d}] (for chunk_size={:#7x}):     {:#x}".format(i, self.class_to_size(i), self.ctx["active"][i]))
+            gef_print("     active[{:2d}] (for chunk_size={:#7x}):     {:#x}".format(i, self.class_to_size(i), ctx["active"][i]))
         gef_print("  size_t usage_by_class[48]:")
         for i in range(48):
-            gef_print("     usage_by_class[{:2d}]:                     {:#x}".format(i, self.ctx["usage_by_class"][i]))
-        gef_print("  uint8_t unmap_seq[32]:              {}".format(' '.join(["%02x" % x for x in self.ctx["unmap_seq"]])))
-        gef_print("  uint8_t bounces[32]:                {}".format(' '.join(["%02x" % x for x in self.ctx["bounces"]])))
-        gef_print("  uint8_t seq:                        {:#x}".format(self.ctx["seq"]))
-        gef_print("  uintptr_t brk:                      {:#x}".format(self.ctx["brk"]))
+            gef_print("     usage_by_class[{:2d}]:                     {:#x}".format(i, ctx["usage_by_class"][i]))
+        gef_print("  uint8_t unmap_seq[32]:              {}".format(' '.join(["%02x" % x for x in ctx["unmap_seq"]])))
+        gef_print("  uint8_t bounces[32]:                {}".format(' '.join(["%02x" % x for x in ctx["bounces"]])))
+        gef_print("  uint8_t seq:                        {:#x}".format(ctx["seq"]))
+        gef_print("  uintptr_t brk:                      {:#x}".format(ctx["brk"]))
         return
 
     def read_meta(self, addr):
@@ -21956,12 +22082,12 @@ class MuslDumpCommand(GenericCommand):
         # print
         dump = dump.rstrip()
         if state == "Used":
-            gef_print(Color.grayify(dump))
-        else:
             gef_print(dump)
+        else:
+            gef_print(Color.grayify(dump))
         return
 
-    def print_meta(self):
+    def print_meta(self, ctx):
         gef_print(Color.colorify("Legend for `Unused chunks list`: A:Avail F:Freed U:Used", "yellow"))
         gef_print(Color.colorify("  1. Search most right 'A' and return it", "yellow"))
         gef_print(Color.colorify("  2. Search most right 'F' and return it", "yellow"))
@@ -21969,7 +22095,9 @@ class MuslDumpCommand(GenericCommand):
 
         # iterate __malloc_context.active
         for idx in range(48):
-            current = self.ctx["active"][idx]
+            if self.active_idx and idx != self.active_idx:
+                continue
+            current = ctx["active"][idx]
             if current == 0:
                 continue
 
@@ -22015,15 +22143,23 @@ class MuslDumpCommand(GenericCommand):
             self.verbose = True
             argv.remove("-v")
 
+        self.active_idx = False
+        while "-a" in argv:
+            idx = argv.index("-a")
+            self.active_idx = int(argv[idx + 1])
+            argv = argv[:idx] + argv[idx+2:]
+
         if not argv:
             self.usage()
             return
 
-        self.read_ctx()
+        ctx = self.read_ctx()
+        if ctx is None:
+            return
         if argv[0] == "ctx":
-            self.print_ctx()
+            self.print_ctx(ctx)
         elif argv[0] == "unused":
-            self.print_meta()
+            self.print_meta(ctx)
         return
 
 
