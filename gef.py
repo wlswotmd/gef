@@ -16275,6 +16275,36 @@ class VersionCommand(GenericCommand):
 
 
 @register_command
+class KernelbaseCommand(GenericCommand):
+    """Show kernel base address."""
+    _cmdline_ = "kbase"
+    _syntax_ = _cmdline_
+    _category_ = "Process/State Inspection (Value)"
+
+    @only_if_gdb_running
+    def do_invoke(self, argv):
+        if not is_qemu_system():
+            err("Unsupported")
+            return
+        # resolve kbase, krobase
+        maps = KsymaddrRemoteCommand.get_maps() # [vaddr, size, perm]
+        if maps is None:
+            return None
+        kbase, kbase_size = KsymaddrRemoteCommand.get_kernel_base(maps)
+        if kbase is None:
+            return None
+        krobase, krobase_size = KsymaddrRemoteCommand.get_kernel_rodata_base(maps, kbase)
+        if krobase is None:
+            return None
+
+        gef_print(titlify("Kernel base (heuristic)"))
+        gef_print("kernel text:   {:#x} ({:#x} bytes)".format(kbase, kbase_size))
+        gef_print("kernel rodata: {:#x} ({:#x} bytes)".format(krobase, krobase_size))
+        gef_print("kernel data:   {:#x}".format(krobase + krobase_size))
+        return
+
+
+@register_command
 class KernelVersionCommand(GenericCommand):
     """Display kernel version string under qemu-system."""
     _cmdline_ = "kversion"
@@ -16292,14 +16322,14 @@ class KernelVersionCommand(GenericCommand):
         krobase, krobase_size = KsymaddrRemoteCommand.get_kernel_rodata_base(maps, kbase)
         if krobase is None:
             return None
-        kbss = krobase + krobase_size
+        kdata = krobase + krobase_size
 
         # resolve area
         area = []
         for addr in maps:
             if addr[0] < kbase:
                 continue
-            if addr[0] >= kbss:
+            if addr[0] >= kdata:
                 continue
             area.append([addr[0], addr[0]+addr[1]])
         if area == []:
@@ -18333,7 +18363,7 @@ class KsymaddrRemoteCommand(GenericCommand):
                         found = True
                     continue
                 if found == True:
-                    if perm == target_perm: # bss is next to kernel base
+                    if perm == target_perm: # kernel data is next to kernel base
                         if ro is None:
                             ro = [vaddr, size]
                         elif ro[0] + ro[1] == vaddr:
@@ -18385,6 +18415,23 @@ class KsymaddrRemoteCommand(GenericCommand):
                     self.kallsyms_relative_base = self.kbase
                     self.kallsyms_relative_base_off = pos
                     self.kallsyms_relative_base_addr = self.krobase + self.kallsyms_relative_base_off * 4
+                    return
+
+            # i386 has specific relative_base (pattern 2)
+            # override RO_REGION by .text, bacause to equate .text with .robase
+            self.RO_REGION = read_memory(self.kbase, self.kbase_size)
+            self.RO_REGION_u32 = [u32(self.RO_REGION[i:i+4]) for i in range(0, len(self.RO_REGION), 4)]
+            for i, val in enumerate(self.RO_REGION_u32[::-1]): # use backward search because if found multiple then select the last one
+                if val == self.kbase:
+                    pos = len(self.RO_REGION_u32) - i - 1
+                    # found contiguous, go prev as possilbe
+                    while self.RO_REGION_u32[pos] == self.RO_REGION_u32[pos-1]:
+                        pos -= 1
+                    self.kallsyms_relative_base = self.kbase
+                    self.kallsyms_relative_base_off = pos
+                    self.kallsyms_relative_base_addr = self.kbase + self.kallsyms_relative_base_off * 4
+                    self.krobase = self.kbase
+                    self.krobase_size = self.kbase_size
                     return
 
         elif is_arm32():
@@ -18981,11 +19028,10 @@ class KsymaddrRemoteCommand(GenericCommand):
 
 
 @register_command
-class KsymaddrRemoteApply2Command(GenericCommand):
+class VmlinuxToElfApplyCommand(GenericCommand):
     """Apply symbol from kallsyms in memory using vmlinux-to-elf (too slow but more accurate)"""
-    _cmdline_ = "ksymaddr-remote-apply2"
+    _cmdline_ = "vmlinux-to-elf-apply"
     _syntax_ = "{:s} [--reparse]".format(_cmdline_)
-    _aliases_ = ["vmlinux-to-elf-apply",]
     _category_ = "Misc"
 
     @staticmethod
@@ -19011,14 +19057,14 @@ class KsymaddrRemoteApply2Command(GenericCommand):
 
         gef_print("kernel base:   {:#x} ({:#x} bytes)".format(kbase, kbase_size))
         gef_print("kernel rodata: {:#x} ({:#x} bytes)".format(krobase, krobase_size))
-        gef_print("kernel bss:    {:#x}".format(krobase + krobase_size))
+        gef_print("kernel data:    {:#x}".format(krobase + krobase_size))
 
         addrs = {}
         addrs['kbase'] = kbase
         addrs['kbase_size'] = kbase_size
         addrs['krobase'] = krobase
         addrs['krobase_size'] = krobase_size
-        addrs['bss'] = krobase + krobase_size
+        addrs['kdata'] = krobase + krobase_size
         addrs['maps'] = maps
 
         # resolve area
@@ -19026,7 +19072,7 @@ class KsymaddrRemoteApply2Command(GenericCommand):
         for addr in addrs['maps']:
             if addr[0] < addrs['kbase']:
                 continue
-            if addr[0] >= addrs['bss']:
+            if addr[0] >= addrs['kdata']:
                 continue
             area.append([addr[0], addr[0]+addr[1]])
         if area == []:
@@ -19108,7 +19154,11 @@ class KsymaddrRemoteApply2Command(GenericCommand):
         #   gdb 8.x: Usage: add-symbol-file FILE ADDR [-readnow | -readnever | -s SECT-NAME SECT-ADDR]...
         # But the created ELF has no .text, only a .kernel
         # Applying an empty symbol has no effect, so tentatively specify the same address as the .kernel.
-        gdb.execute("add-symbol-file {} {:#x} -s .kernel {:#x} -s .bss {:#x}".format(SYMBOLED_VMLINUX_FILE, addrs['kbase'], addrs['kbase'], addrs['bss']))
+
+        # Also vmlinux-to-elf create 2 sections that are .kernel and .bss, but not .data.
+        # Because we use dumped raw memory instead of bzImage, vmlinux-to-elf can't guess the section name correctly.
+        # The guessed RW-address is .data, but use this as the .bss address, as vmlinux-to-elf names it .bss.
+        gdb.execute("add-symbol-file {} {:#x} -s .kernel {:#x} -s .bss {:#x}".format(SYMBOLED_VMLINUX_FILE, addrs['kbase'], addrs['kbase'], addrs['kdata']))
         info("Added")
         return
 

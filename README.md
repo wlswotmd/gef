@@ -57,11 +57,11 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / Debian 
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksymaddr-remote.png)
 * `ksymaddr-remote-apply`: applies kallsyms informations obtained by `ksymaddr-remote` to gdb.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksymaddr-remote-apply.png)
-* `ksymaddr-remote-apply2`: applies kallsyms informations obtained by `vmlinux-to-elf` to gdb.
+* `vmlinux-to-elf-apply`: applies kallsyms informations obtained by `vmlinux-to-elf` to gdb.
     * Very slow, but probably more accurate than my implementation.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksymaddr-remote-apply2a.png)
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmlinux-to-elf-apply1.png)
     * Once you get symboled vmlinux file, you can reuse and apply it automatically even after rebooting qemu-system.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksymaddr-remote-apply2b.png)
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmlinux-to-elf-apply2.png)
 * `slab`: dumps slab free-list (heuristic).
     * Original code: https://github.com/PaoloMonti42/salt
     * Supported on x64/x86/ARM64/ARM + SLUB.
@@ -78,6 +78,8 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / Debian 
 * `uefi-ovmf-info`: displays addresses of some important structures in each boot phase of UEFI when OVMF is used (heuristic).
     * Supported on x64 only.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/uefi-ovmf-info.png)
+* `kbase`: prints kernel base address.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kbase.png)
 * `kversion`: displays the debugged kernel version.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kversion.png)
 * `syscall-table-view`: prints system call table (x64/x86 only).
