@@ -17563,7 +17563,7 @@ class SlabCommand(GenericCommand):
     _syntax_ = "{:s} [-h] [SLAB_CACHE_NAME] [--cpu N] [--no-xor] [--list]".format(_cmdline_)
     _example_ = "{:s} kmalloc-256 # dump kmalloc-256 from all cpus\n".format(_cmdline_)
     _example_ += "{:s} kmalloc-256 --cpu 1 # dump kmalloc-256 from cpu 1\n".format(_cmdline_)
-    _example_ += "{:s} kmalloc-256 --no-xor # skip xor to chunk->fd\n".format(_cmdline_)
+    _example_ += "{:s} kmalloc-256 --no-xor # skip xor to chunk->next\n".format(_cmdline_)
     _example_ += "{:s} --list # list up slab cache names\n".format(_cmdline_)
     _example_ += "\n"
     _example_ += "Search flow:\n"
@@ -18077,8 +18077,11 @@ class SlabCommand(GenericCommand):
                 self.walk_caches(i)
                 self.dump_caches(targets, i)
         else:
-            self.walk_caches(self.cpuN)
-            self.dump_caches(targets, self.cpuN)
+            if len(self.cpu_offset) > self.cpuN:
+                self.walk_caches(self.cpuN)
+                self.dump_caches(targets, self.cpuN)
+            else:
+                err("CPU number is invalid (valid range:{:d}-{:d})".format(0, len(self.cpu_offset)-1))
         return
 
     @only_if_gdb_running
