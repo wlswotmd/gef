@@ -1896,28 +1896,55 @@ def capstone_disassemble(location, nb_insn, **kwargs):
     arch, mode = get_capstone_arch(arch=kwargs.get("arch", None), mode=kwargs.get("mode", None), endian=kwargs.get("endian", None))
     cs = capstone.Cs(arch, mode)
     cs.detail = True
-
-    page_start = align_address_to_page(location)
-    offset = location - page_start
-    pc = current_arch.pc
-
     skip = int(kwargs.get("skip", 0))
-    nb_prev = int(kwargs.get("nb_prev", 0))
-    if nb_prev > 0:
-        location = gdb_get_nth_previous_instruction_address(pc, nb_prev)
-        nb_insn += nb_prev
 
-    code = kwargs.get("code", read_memory(location, gef_getpagesize() - offset - 1))
-    code = bytes(code)
+    if "code" in kwargs:
+        code = kwargs["code"].replace(" ", "")
+        code = binascii.unhexlify(code)
+        for insn in cs.disasm(code, 0):
+            if skip:
+                skip -= 1
+                continue
+            nb_insn -= 1
+            yield Instruction(insn.address, "", insn.mnemonic, [] + insn.op_str.split(", "), insn.bytes)
+            if nb_insn == 0:
+                break
+        return
+    else:
+        pc = current_arch.pc
+        nb_prev = int(kwargs.get("nb_prev", 0))
+        if nb_prev > 0:
+            location = gdb_get_nth_previous_instruction_address(pc, nb_prev)
+            nb_insn += nb_prev
 
-    for insn in cs.disasm(code, location):
-        if skip:
-            skip -= 1
-            continue
-        nb_insn -= 1
-        yield cs_insn_to_gef_insn(insn)
-        if nb_insn == 0:
-            break
+        # split raeding by page_size
+        used_bytes = 0
+        code = b""
+        page_start = align_address_to_page(location)
+        offset = location - page_start
+        read_addr = location
+        read_size = gef_getpagesize() - offset
+        while True:
+            try:
+                read_data = read_memory(read_addr, read_size)
+            except:
+                err("Memory read error at {:#x}-{:#x}".format(read_addr, read_addr+read_size))
+                return
+            code += bytes(read_data)
+            for insn in cs.disasm(code, location):
+                if skip:
+                    skip -= 1
+                    continue
+                nb_insn -= 1
+                used_bytes += len(insn.bytes)
+                yield cs_insn_to_gef_insn(insn)
+                if nb_insn == 0:
+                    return
+            code = code[used_bytes:] # There may be instructions placed across page boundaries.
+            location += used_bytes
+            used_bytes = 0
+            read_addr += read_size # 1st loop is the offset size. 2nd~ loops are the page size.
+            read_size = gef_getpagesize()
     return
 
 
@@ -7268,7 +7295,8 @@ class CapstoneDisassembleCommand(GenericCommand):
     _example_ = "\n"
     _example_ += "{:s} $pc length=50 # dump from $pc up to 50 lines later\n".format(_cmdline_)
     _example_ += "{:s} $pc length=50 OPCODES # show opcodes\n".format(_cmdline_)
-    _example_ += "{:s} $pc length=50 OPCODES arch=ARM mode=ARM # specify arch and mode".format(_cmdline_)
+    _example_ += "{:s} $pc length=50 OPCODES arch=ARM mode=ARM # specify arch and mode\n".format(_cmdline_)
+    _example_ += "{:s} OPCODES code=\"9090\" # disassemble specific byte patterns ".format(_cmdline_)
     _category_ = "Assemble"
 
     def pre_load(self):
@@ -7346,7 +7374,7 @@ class CapstoneDisassembleCommand(GenericCommand):
 
                 gef_print(msg)
         except gdb.error:
-            err("Memory read error")
+            pass
         return
 
     def capstone_analyze_pc(self, insn, nb_insn):
