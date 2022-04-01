@@ -4420,7 +4420,7 @@ def set_arch(arch=None, default=None):
     Return the selected arch, or raise an OSError."""
     arches = {
         "ARM": ARM, Elf.ARM: ARM, "ARMV2": ARM, "ARMV3": ARM, "ARMV3M": ARM, "ARMV4": ARM,
-        "ARMV4T":ARM, "ARMV5":ARM, "ARMV5T":ARM, "ARMV5TE":ARM,
+        "ARMV4T":ARM, "ARMV5":ARM, "ARMV5T":ARM, "ARMV5TE":ARM, "ARMV6":ARM, "ARMV7": ARM,
         "AARCH64": AARCH64, "ARM64": AARCH64, Elf.AARCH64: AARCH64,
         "X86": X86, Elf.X86_32: X86, "I386": X86, "I386:INTEL": X86, "I8086": X86,
         "X64": X86_64, "AMD64": X86_64,
@@ -8237,7 +8237,7 @@ class RpCommand(GenericCommand):
     _example_ = "\n"
     _example_ += "{:s} bin -f 'pop r[abcd]x'\n".format(_cmdline_)
     _example_ += "{:s} libc -f '(xchg|mov) [re]sp, \\\\w+' -f 'ret'\n".format(_cmdline_)
-    _example_ += "{:s} kernel # under qemu-system only".format(_cmdline_)
+    _example_ += "{:s} kernel # under qemu-system (x86/x64) only".format(_cmdline_)
 
     def exec_rp(self, ropN):
         out = "rop{}_{}.txt".format(ropN, os.path.basename(self.path))
@@ -16281,26 +16281,149 @@ class KernelbaseCommand(GenericCommand):
     _syntax_ = _cmdline_
     _category_ = "Process/State Inspection (Value)"
 
+    @staticmethod
+    def get_maps(silent=False):
+        maps = []
+        if not silent:
+            info("Wait for memory scan")
+
+        res = gdb.execute("pagewalk", to_string=True)
+        res = sorted(set(res.splitlines()))
+        res = list(filter(lambda line: line.endswith("]"), res))
+        res = list(filter(lambda line: not "*" in line, res))
+
+        if is_x86():
+            for line in res:
+                line = line.split()
+                if line[6] != "KERN":
+                    continue
+                vaddr = int(line[0].split("-")[0], 16)
+                size = int(line[2], 16)
+                perm = line[5][1:]
+                maps.append([vaddr, size, perm])
+
+        elif is_arm32():
+            for line in res:
+                line = line.split()
+                if line[5] != "[PL0/---":
+                    continue
+                vaddr = int(line[0].split("-")[0], 16)
+                size = int(line[2], 16)
+                perm = line[6][4:7]
+                maps.append([vaddr, size, perm])
+
+        elif is_arm64():
+            for line in res:
+                line = line.split()
+                if line[5] != "[EL0/---":
+                    continue
+                vaddr = int(line[0].split("-")[0], 16)
+                size = int(line[2], 16)
+                perm = line[6][4:7]
+                maps.append([vaddr, size, perm])
+
+        if maps == []:
+            if is_x86():
+                warn("Make sure you are in ring0 (=kernel mode)")
+            elif is_arm32():
+                warn("Make sure you are in supervisor mode (=kernel mode)")
+                warn("Make sure qemu 3.x or higher")
+            elif is_arm64():
+                warn("Make sure you are in EL1 (=kernel mode)")
+                warn("Make sure qemu 3.x or higher")
+            return None
+        else:
+            return maps
+
+    @staticmethod
+    def get_kernel_base(maps):
+        for vaddr, size, perm in maps:
+            if perm == "R-X" and size >= 0x100000:
+                return vaddr, size
+        # not found, maybe old kernel
+        for vaddr, size, perm in maps:
+            if perm == "RWX" and size >= 0x100000:
+                return vaddr, size
+        return None, None
+
+    @staticmethod
+    def get_kernel_rodata_base(maps, kbase):
+        def search_perm(target_perm):
+            found = False
+            ro = None
+            for vaddr, size, perm in maps:
+                if found == False:
+                    if vaddr == kbase: # search kernel base
+                        found = True
+                    continue
+                if found == True:
+                    if perm == target_perm: # kernel data is next to kernel base
+                        if ro is None:
+                            ro = [vaddr, size]
+                        elif ro[0] + ro[1] == vaddr:
+                            ro = [ro[0], ro[1] + size] # merge contiguous region
+            return ro
+
+        res = search_perm("R--")
+        if res is None:
+            res = search_perm("R-X")
+            if res is None:
+                res = search_perm("RWX") # old kernel
+                if res is None:
+                    return None, None
+
+        return res[0], res[1]
+
+    @staticmethod
+    def get_kernel_rwdata_base(maps, krobase):
+        def search_perm(target_perm):
+            found = False
+            ro = None
+            for vaddr, size, perm in maps:
+                if found == False:
+                    if vaddr == krobase: # search kernel rodata base
+                        found = True
+                    continue
+                if found == True:
+                    if perm == target_perm: # kernel data is next to kernel base
+                        if ro is None:
+                            ro = [vaddr, size]
+                        elif ro[0] + ro[1] == vaddr:
+                            ro = [ro[0], ro[1] + size] # merge contiguous region
+            return ro
+
+        res = search_perm("RW-")
+        if res is None:
+            res = search_perm("RWX") # old kernel
+            if res is None:
+                return None, None
+
+        return res[0], res[1]
+
     @only_if_gdb_running
     def do_invoke(self, argv):
         if not is_qemu_system():
             err("Unsupported")
             return
+
         # resolve kbase, krobase
-        maps = KsymaddrRemoteCommand.get_maps() # [vaddr, size, perm]
+        maps = self.get_maps() # [vaddr, size, perm]
         if maps is None:
             return None
-        kbase, kbase_size = KsymaddrRemoteCommand.get_kernel_base(maps)
+        kbase, kbase_size = self.get_kernel_base(maps)
         if kbase is None:
             return None
-        krobase, krobase_size = KsymaddrRemoteCommand.get_kernel_rodata_base(maps, kbase)
+        krobase, krobase_size = self.get_kernel_rodata_base(maps, kbase)
         if krobase is None:
+            return None
+        krwbase, krwbase_size = self.get_kernel_rwdata_base(maps, krobase)
+        if krwbase is None:
             return None
 
         gef_print(titlify("Kernel base (heuristic)"))
         gef_print("kernel text:   {:#x} ({:#x} bytes)".format(kbase, kbase_size))
         gef_print("kernel rodata: {:#x} ({:#x} bytes)".format(krobase, krobase_size))
-        gef_print("kernel data:   {:#x}".format(krobase + krobase_size))
+        gef_print("kernel data:   {:#x} ({:#x} bytes)".format(krwbase, krwbase_size))
         return
 
 
@@ -16313,23 +16436,25 @@ class KernelVersionCommand(GenericCommand):
     _category_ = "Process/State Inspection (Process)"
 
     def kernel_version(self):
-        maps = KsymaddrRemoteCommand.get_maps() # [vaddr, size, perm]
+        maps = KernelbaseCommand.get_maps() # [vaddr, size, perm]
         if maps is None:
             return None
-        kbase, kbase_size = KsymaddrRemoteCommand.get_kernel_base(maps)
+        kbase, kbase_size = KernelbaseCommand.get_kernel_base(maps)
         if kbase is None:
             return None
-        krobase, krobase_size = KsymaddrRemoteCommand.get_kernel_rodata_base(maps, kbase)
+        krobase, krobase_size = KernelbaseCommand.get_kernel_rodata_base(maps, kbase)
         if krobase is None:
             return None
-        kdata = krobase + krobase_size
+        krwbase, krwbase_size = KernelbaseCommand.get_kernel_rwdata_base(maps, krobase)
+        if krwbase is None:
+            return None
 
         # resolve area
         area = []
         for addr in maps:
             if addr[0] < kbase:
                 continue
-            if addr[0] >= kdata:
+            if addr[0] >= krwbase:
                 continue
             area.append([addr[0], addr[0]+addr[1]])
         if area == []:
@@ -16356,7 +16481,7 @@ class KernelVersionCommand(GenericCommand):
 
 @register_command
 class SyscallTableViewCommand(GenericCommand):
-    """Display sys_call_table entries under qemu-system. (x86/x64 only)"""
+    """Display sys_call_table entries under qemu-system."""
     _cmdline_ = "syscall-table-view"
     _syntax_ = "{:s}".format(_cmdline_)
     _example_ = "{:s}".format(_cmdline_)
@@ -16371,23 +16496,58 @@ class SyscallTableViewCommand(GenericCommand):
         if is_x86_64():
             # plan 2 (v4.6-rc1~)
             do_syscall_64 = get_ksymaddr("do_syscall_64")
-            res = gdb.execute("x/30i {:#x}".format(do_syscall_64), to_string=True)
-            for line in res.splitlines():
-                m = re.search(r"[DQ]WORD PTR \[.*\*8([-+]0x\S+)\]", line)
-                if m:
-                    v = int(m.group(1), 16) & 0xffffffffffffffff
-                    if v != 0:
-                        return v
+            if do_syscall_64:
+                res = gdb.execute("x/30i {:#x}".format(do_syscall_64), to_string=True)
+                for line in res.splitlines():
+                    m = re.search(r"[DQ]WORD PTR \[.*\*8([-+]0x\S+)\]", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffffffffffff
+                        if v != 0:
+                            return v
         elif is_x86_32():
             # plan 2 (v4.6-rc1~)
             do_int80_syscall_32 = get_ksymaddr("do_int80_syscall_32")
-            res = gdb.execute("x/20i {:#x}".format(do_int80_syscall_32), to_string=True)
-            for line in res.splitlines():
-                m = re.search(r"\[eax\*4([+-]0x\S+)\]", line)
-                if m:
-                    v = int(m.group(1), 16) & 0xffffffff
-                    if v != 0:
-                        return v
+            if do_int80_syscall_32
+                res = gdb.execute("x/20i {:#x}".format(do_int80_syscall_32), to_string=True)
+                for line in res.splitlines():
+                    m = re.search(r"\[eax\*4([+-]0x\S+)\]", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffff
+                        if v != 0:
+                            return v
+        elif is_arm32():
+            # plan 2 is nothing
+            # because `sys_call_table` symbol is embeded in .text area
+            pass
+        elif is_arm64():
+            # plan 2 (v4.19-rc1~)
+            el0_svc_handler = get_ksymaddr("el0_svc_handler")
+            if el0_svc_handler:
+                res = gdb.execute("x/20i {:#x}".format(el0_svc_handler), to_string=True)
+                base = None
+                for line in res.splitlines():
+                    if base is None:
+                        m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
+                        if m:
+                            base = int(m.group(1), 16)
+                    else:
+                        m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
+                        if m:
+                            return base + int(m.group(1), 16)
+            # plan 3 (v3.7-rc1~)
+            el0_svc = get_ksymaddr("el0_svc")
+            if el0_svc:
+                res = gdb.execute("x/20i {:#x}".format(el0_svc), to_string=True)
+                base = None
+                for line in res.splitlines():
+                    if base is None:
+                        m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
+                        if m:
+                            base = int(m.group(1), 16) 
+                    else:
+                        m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
+                        if m:
+                            return base + int(m.group(1), 16)
         return None
 
     def syscall_table_view(self):
@@ -16402,7 +16562,9 @@ class SyscallTableViewCommand(GenericCommand):
         while True:
             addr = sys_call_table_addr + i * current_arch.ptrsize
             syscall_function_addr = read_int_from_memory(addr)
-            if syscall_function_addr % 0x10: # should be aligned
+            if is_x86() and syscall_function_addr % 0x10: # should be aligned
+                break
+            elif (is_arm32() or is_arm64()) and syscall_function_addr % current_arch.ptrsize: # should be aligned
                 break
             try:
                 read_int_from_memory(syscall_function_addr) # if entry is valid, no error
@@ -16430,7 +16592,7 @@ class SyscallTableViewCommand(GenericCommand):
         if not is_qemu_system():
             err("Unsupported")
             return
-        if not is_x86():
+        if not is_x86() and not is_arm32() and not is_arm64():
             err("Unsupported")
             return
         self.syscall_table_view()
@@ -18287,99 +18449,6 @@ class KsymaddrRemoteCommand(GenericCommand):
                 break
         return
 
-    @staticmethod
-    def get_maps(silent=False):
-        maps = []
-        if not silent:
-            info("Wait for memory scan")
-
-        res = gdb.execute("pagewalk", to_string=True)
-        res = sorted(set(res.splitlines()))
-        res = list(filter(lambda line: line.endswith("]"), res))
-        res = list(filter(lambda line: not "*" in line, res))
-
-        if is_x86():
-            for line in res:
-                line = line.split()
-                if line[6] != "KERN":
-                    continue
-                vaddr = int(line[0].split("-")[0], 16)
-                size = int(line[2], 16)
-                perm = line[5][1:]
-                maps.append([vaddr, size, perm])
-
-        elif is_arm32():
-            for line in res:
-                line = line.split()
-                if line[5] != "[PL0/---":
-                    continue
-                vaddr = int(line[0].split("-")[0], 16)
-                size = int(line[2], 16)
-                perm = line[6][4:7]
-                maps.append([vaddr, size, perm])
-
-        elif is_arm64():
-            for line in res:
-                line = line.split()
-                if line[5] != "[EL0/---":
-                    continue
-                vaddr = int(line[0].split("-")[0], 16)
-                size = int(line[2], 16)
-                perm = line[6][4:7]
-                maps.append([vaddr, size, perm])
-
-        if maps == []:
-            if is_x86():
-                warn("Make sure you are in ring0 (=kernel mode)")
-            elif is_arm32():
-                warn("Make sure you are in supervisor mode (=kernel mode)")
-                warn("Make sure qemu 3.x or higher")
-            elif is_arm64():
-                warn("Make sure you are in EL1 (=kernel mode)")
-                warn("Make sure qemu 3.x or higher")
-            return None
-        else:
-            return maps
-
-    @staticmethod
-    def get_kernel_base(maps):
-        for vaddr, size, perm in maps:
-            if perm == "R-X" and size >= 0x100000:
-                return vaddr, size
-        # not found, maybe old kernel
-        for vaddr, size, perm in maps:
-            if perm == "RWX" and size >= 0x100000:
-                return vaddr, size
-        return None, None
-
-    @staticmethod
-    def get_kernel_rodata_base(maps, kbase):
-        def search_perm(target_perm):
-            found = False
-            ro = None
-            for vaddr, size, perm in maps:
-                if found == False:
-                    if vaddr == kbase: # search kernel base
-                        found = True
-                    continue
-                if found == True:
-                    if perm == target_perm: # kernel data is next to kernel base
-                        if ro is None:
-                            ro = [vaddr, size]
-                        elif ro[0] + ro[1] == vaddr:
-                            ro = [ro[0], ro[1] + size] # merge contiguous region
-            return ro
-
-        res = search_perm("R--")
-        if res is None:
-            res = search_perm("R-X")
-            if res is None:
-                res = search_perm("RWX") # old kernel
-                if res is None:
-                    return None, None
-
-        return res[0], res[1]
-
     # Initialize variables in different ways, depending on the situation.
     #
     # The variables need to find are as follows.
@@ -18419,6 +18488,8 @@ class KsymaddrRemoteCommand(GenericCommand):
 
             # i386 has specific relative_base (pattern 2)
             # override RO_REGION by .text, bacause to equate .text with .robase
+            if self.meta:
+                info("Equivalent .text and .rodata")
             self.RO_REGION = read_memory(self.kbase, self.kbase_size)
             self.RO_REGION_u32 = [u32(self.RO_REGION[i:i+4]) for i in range(0, len(self.RO_REGION), 4)]
             for i, val in enumerate(self.RO_REGION_u32[::-1]): # use backward search because if found multiple then select the last one
@@ -18438,14 +18509,19 @@ class KsymaddrRemoteCommand(GenericCommand):
             # ARM has specific relative_base
             for i in range(4):
                 try:
-                    self.kallsyms_relative_base = self.kbase - (0x100000*i + 0xf8000)
+                    kbase_diff = -(0x100000*i + 0xf8000)
+                    self.kallsyms_relative_base = self.kbase + kbase_diff
                     self.kallsyms_relative_base_off = self.RO_REGION_u32.index(self.kallsyms_relative_base)
                     self.kallsyms_relative_base_addr = self.krobase + self.kallsyms_relative_base_off * 4
+                    if self.meta:
+                        info("kbase difference is {:#x}".format(kbase_diff))
                     return
                 except:
                     pass
             # ARM has specific relative_base (pattern 2)
             # override RO_REGION by .text, bacause to equate .text with .robase
+            if self.meta:
+                info("Equivalent .text and .rodata")
             self.RO_REGION = read_memory(self.kbase, self.kbase_size)
             self.RO_REGION_u32 = [u32(self.RO_REGION[i:i+4]) for i in range(0, len(self.RO_REGION), 4)]
             for i, val in enumerate(self.RO_REGION_u32[::-1]): # use backward search because if found multiple then select the last one
@@ -18594,7 +18670,7 @@ class KsymaddrRemoteCommand(GenericCommand):
             0xcc7c3f10:     0x66006f66      0x5f656572      0x65735f00      0x656d0074
             0xcc7c3f20:     0x6474006d      0x005f7200      0x74006354      0x63005f6f
             """
-            if v == 0 or v & 0xff000000 > 0 or (self.RO_REGION_u32[pos-1] > 0 and self.RO_REGION_u32[pos-1]*4 < v) :
+            if v == 0 or (v & 0xff000000) > 0 or (self.RO_REGION_u32[pos-1] > 0 and self.RO_REGION_u32[pos-1]*4 < v) :
                 self.kallsyms_token_table_addr = self.krobase + pos * 4 # need not align
                 break
             pos += 1
@@ -18742,21 +18818,54 @@ class KsymaddrRemoteCommand(GenericCommand):
         # 3. align
         pos = self.kallsyms_markers_off
         if self.RO_REGION_u32[pos] == 0 and self.RO_REGION_u32[pos+1] == 0: # u64 mode
+            if self.meta:
+                info("u64 mode at initialize64_normal_kallsyms_token_table")
+            """
+                0xffffffff987aaf80:     0x0000000000086329      0x000000000008724d
+                0xffffffff987aaf90:     0x3131323038656565 *    0x6572007365725f00
+                0xffffffff987aafa0:     0x65735f0074736967      0x6c6261005f360074
+                0xffffffff987aafb0:     0x656565006c660065      0x2e00656b00647400
+            """
             pos = pos//2 + 1 # skip first zero
             while True:
-                if self.RO_REGION_u64[pos] == 0 or self.RO_REGION_u64[pos] & 0xffffffffff000000 > 0:
+                if self.RO_REGION_u64[pos] == 0 or (self.RO_REGION_u64[pos] & 0xffffffffff000000) > 0:
                     self.kallsyms_token_table_addr = self.krobase + pos * 8
                     break
                 pos += 1
         else: # u32 mode
+            if self.meta:
+                info("u32 mode at initialize64_normal_kallsyms_token_table")
+            """
+            [pattern 1 krce]
+                0xffffffffbd101840:     0x000595e8      0x0005a026      0x0005a966      0x00000000
+                0xffffffffbd101850:     0x00686361 *    0x00706572      0x63007674      0x00636568
+                0xffffffffbd101860:     0x7465735f      0x34367800      0x0079735f      0x00343678
+                0xffffffffbd101870:     0x00726f63      0x66006354      0x6900726f      0x74005f63
+            [pattern 2 poe]
+                0xffffffff9a866400:     0x0010c631      0x0010d091      0x0010db64      0x0010e677
+                0xffffffff9a866410:     0x0010f0f2      0x00000000      0x00646e61 *    0x61727474
+                0xffffffff9a866420:     0x005f6563      0x69676572      0x72657473      0x6f74005f
+                0xffffffff9a866430:     0x332e005f      0x6e696600      0x74786500      0x78005f34
+            [pattern 3 own buildroot]
+                0xffffffff9d0e9dd0:     0x000506f3      0x00051205      0x00051dfc      0x000529fc
+                0xffffffff9d0e9de0:     0x0005354d      0x00053fdc      0x00054a51      0x000554e1
+                0xffffffff9d0e9df0:     0x6c006563 *    0x62740061      0x00767400      0x7465735f
+                0xffffffff9d0e9e00:     0x666e6900      0x676e6900      0x006c6f00      0x00726f66
+            [pattern 4 kone_gadget]
+                0xffffffff81cfbff0:     0x00056381      0x00056f2b      0x00057a59      0x00058451
+                0xffffffff81cfc000:     0x00058ebd      0x0005994f      0x00686361 *    0x7465735f
+                0xffffffff81cfc010:     0x65686300      0x6f630063      0x76740072      0x70657200
+                0xffffffff81cfc020:     0x726f6600      0x34367800      0x0079735f      0x00343678
+            """
             pos += 1 # skip first zero
+            pos += 2 # we want to use (pos, pos-1, pos-2), so avoid bug
             while True:
-                if self.RO_REGION_u32[pos] == 0 or self.RO_REGION_u32[pos] & 0xff000000 > 0:
-                    if self.RO_REGION_u32[pos-1] * 2 < self.RO_REGION_u32[pos]:
-                        pos = (pos - 1) & ~1
-                    else:
-                        while pos % 2: # need align
-                            pos += 1
+                if self.RO_REGION_u32[pos] == 0: # pattern 1, 2
+                    self.kallsyms_token_table_addr = self.krobase + (pos+1) * 4
+                    break
+                diff1 = self.RO_REGION_u32[pos-1] - self.RO_REGION_u32[pos-2]
+                diff2 = self.RO_REGION_u32[pos-0] - self.RO_REGION_u32[pos-1]
+                if diff1 * 100 < diff2: # pattern 3, 4
                     self.kallsyms_token_table_addr = self.krobase + pos * 4
                     break
                 pos += 1
@@ -18815,7 +18924,7 @@ class KsymaddrRemoteCommand(GenericCommand):
             # do not use kallsyms_relative_base, use absolute value
             self.kallsyms_relative_base = None
             if self.RO_REGION_u32[self.kallsyms_num_syms_off + 1] == 0: # sparse mode (rare case)
-                if self.meta: info("not exist relative_base, sparse")
+                if self.meta: info("not exist relative_base. treat as sparse mode (rare case)")
                 # all variables placed as 16 bytes aligned
                 self.initialize32_sparse_kallsyms_names()
                 self.initialize32_sparse_CONFIG_KALLSYMS_ABSOLUTE_PERCPU()
@@ -18824,7 +18933,7 @@ class KsymaddrRemoteCommand(GenericCommand):
                 self.initialize32_sparse_kallsyms_token_table()
                 self.initialize32_sparse_kallsyms_token_index()
             else: # normal mode (rare case)
-                if self.meta: info("not exist relative_base, normal")
+                if self.meta: info("not exist relative_base, treat as normal mode (rare case)")
                 self.initialize32_normal_kallsyms_names()
                 self.initialize32_normal_CONFIG_KALLSYMS_ABSOLUTE_PERCPU()
                 self.initialize32_normal_kallsyms_offsets()
@@ -18832,7 +18941,7 @@ class KsymaddrRemoteCommand(GenericCommand):
                 self.initialize32_normal_kallsyms_token_table()
                 self.initialize32_normal_kallsyms_token_index()
         elif self.RO_REGION_u32[self.kallsyms_relative_base_off + 1] == 0: # sparse mode
-            if self.meta: info("exist relative_base, sparse")
+            if self.meta: info("exist relative_base, treat as sparse mode")
             # all variables placed as 16 bytes aligned
             self.initialize32_sparse_kallsyms_num_syms()
             self.initialize32_sparse_kallsyms_names()
@@ -18842,7 +18951,7 @@ class KsymaddrRemoteCommand(GenericCommand):
             self.initialize32_sparse_kallsyms_token_table()
             self.initialize32_sparse_kallsyms_token_index()
         else: # normal mode
-            if self.meta: info("exist relative_base, normal")
+            if self.meta: info("exist relative_base, treat as normal mode")
             self.initialize32_normal_kallsyms_num_syms()
             self.initialize32_normal_kallsyms_names()
             self.initialize32_normal_CONFIG_KALLSYMS_ABSOLUTE_PERCPU()
@@ -18863,7 +18972,7 @@ class KsymaddrRemoteCommand(GenericCommand):
             # do not use kallsyms_relative_base, use absolute value
             self.kallsyms_relative_base = None
             if self.RO_REGION_u64[self.kallsyms_num_syms_off + 1] == 0: # sparse mode (rare case)
-                if self.meta: info("not exist relative_base, sparse")
+                if self.meta: info("not exist relative_base, treat as sparse mode (rare case)")
                 # all variables placed as 256 bytes aligned
                 self.initialize64_sparse_kallsyms_names()
                 self.initialize64_sparse_CONFIG_KALLSYMS_ABSOLUTE_PERCPU()
@@ -18872,7 +18981,7 @@ class KsymaddrRemoteCommand(GenericCommand):
                 self.initialize64_sparse_kallsyms_token_table()
                 self.initialize64_sparse_kallsyms_token_index()
             else: # normal mode (rare case)
-                if self.meta: info("not exist relative_base, normal")
+                if self.meta: info("not exist relative_base, treat as normal mode (rare case)")
                 self.initialize64_normal_kallsyms_names()
                 self.initialize64_normal_CONFIG_KALLSYMS_ABSOLUTE_PERCPU()
                 self.initialize64_normal_kallsyms_offsets()
@@ -18880,7 +18989,7 @@ class KsymaddrRemoteCommand(GenericCommand):
                 self.initialize64_normal_kallsyms_token_table()
                 self.initialize64_normal_kallsyms_token_index()
         elif self.RO_REGION_u64[self.kallsyms_relative_base_off + 1] == 0: # sparse mode
-            if self.meta: info("exist relative_base, sparse")
+            if self.meta: info("exist relative_base, treat as sparse mode")
             # all variables placed as 256 bytes aligned
             self.initialize64_sparse_kallsyms_num_syms()
             self.initialize64_sparse_kallsyms_names()
@@ -18890,7 +18999,7 @@ class KsymaddrRemoteCommand(GenericCommand):
             self.initialize64_sparse_kallsyms_token_table()
             self.initialize64_sparse_kallsyms_token_index()
         else: # normal mode
-            if self.meta: info("exist relative_base, normal")
+            if self.meta: info("exist relative_base, treat as normal mode")
             self.initialize64_normal_kallsyms_num_syms()
             self.initialize64_normal_kallsyms_names()
             self.initialize64_normal_CONFIG_KALLSYMS_ABSOLUTE_PERCPU()
@@ -18933,15 +19042,15 @@ class KsymaddrRemoteCommand(GenericCommand):
             self.print_meta()
             return True
         # get kernel memory maps
-        self.maps = self.get_maps(self.silent)
+        self.maps = KernelbaseCommand.get_maps(self.silent)
         if self.maps is None:
             return None
         # get kernel base
-        self.kbase, self.kbase_size = self.get_kernel_base(self.maps)
+        self.kbase, self.kbase_size = KernelbaseCommand.get_kernel_base(self.maps)
         if self.kbase is None:
             return None
         # get kernel ro_base
-        self.krobase, self.krobase_size = self.get_kernel_rodata_base(self.maps, self.kbase)
+        self.krobase, self.krobase_size = KernelbaseCommand.get_kernel_rodata_base(self.maps, self.kbase)
         if self.krobase is None:
             return None
         # resolve some address
@@ -19045,26 +19154,34 @@ class VmlinuxToElfApplyCommand(GenericCommand):
             return None
 
         # resolve kbase, krobase
-        maps = KsymaddrRemoteCommand.get_maps() # [vaddr, size, perm]
+        maps = KernelbaseCommand.get_maps() # [vaddr, size, perm]
         if maps is None:
+            err("maps is None")
             return None
-        kbase, kbase_size = KsymaddrRemoteCommand.get_kernel_base(maps)
+        kbase, kbase_size = KernelbaseCommand.get_kernel_base(maps)
         if kbase is None:
+            err("kbase is None")
             return None
-        krobase, krobase_size = KsymaddrRemoteCommand.get_kernel_rodata_base(maps, kbase)
+        krobase, krobase_size = KernelbaseCommand.get_kernel_rodata_base(maps, kbase)
         if krobase is None:
+            err("krobase is None")
+            return None
+        krwbase, krwbase_size = KernelbaseCommand.get_kernel_rwdata_base(maps, krobase)
+        if krwbase is None:
+            err("krwbase is None")
             return None
 
         gef_print("kernel base:   {:#x} ({:#x} bytes)".format(kbase, kbase_size))
         gef_print("kernel rodata: {:#x} ({:#x} bytes)".format(krobase, krobase_size))
-        gef_print("kernel data:    {:#x}".format(krobase + krobase_size))
+        gef_print("kernel data:   {:#x} ({:#x} bytes)".format(krwbase, krwbase_size))
 
         addrs = {}
         addrs['kbase'] = kbase
         addrs['kbase_size'] = kbase_size
         addrs['krobase'] = krobase
         addrs['krobase_size'] = krobase_size
-        addrs['kdata'] = krobase + krobase_size
+        addrs['krwbase'] = krwbase
+        addrs['krwbase_size'] = krwbase_size
         addrs['maps'] = maps
 
         # resolve area
@@ -19072,10 +19189,11 @@ class VmlinuxToElfApplyCommand(GenericCommand):
         for addr in addrs['maps']:
             if addr[0] < addrs['kbase']:
                 continue
-            if addr[0] >= addrs['kdata']:
+            if addr[0] >= addrs['krwbase']:
                 continue
             area.append([addr[0], addr[0]+addr[1]])
         if area == []:
+            err("area is blank")
             return None
 
         # dumpe memory
@@ -19106,8 +19224,8 @@ class VmlinuxToElfApplyCommand(GenericCommand):
 
         # apply vmlinux-to-elf
         if force or not os.path.exists(symboled_vmlinux_file):
-            info("Execute `{} '{}' '{}'`".format(vmlinux2elf, dumped_mem_file, symboled_vmlinux_file))
-            os.system("{} '{}' '{}'".format(vmlinux2elf, dumped_mem_file, symboled_vmlinux_file))
+            info("Execute `{} '{}' '{}' --base-address={:#x}`".format(vmlinux2elf, dumped_mem_file, symboled_vmlinux_file, addrs["kbase"]))
+            os.system("{} '{}' '{}' --base-address={:#x}".format(vmlinux2elf, dumped_mem_file, symboled_vmlinux_file, addrs["kbase"]))
         else:
             # reuse by default
             pass
@@ -19158,7 +19276,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
         # Also vmlinux-to-elf create 2 sections that are .kernel and .bss, but not .data.
         # Because we use dumped raw memory instead of bzImage, vmlinux-to-elf can't guess the section name correctly.
         # The guessed RW-address is .data, but use this as the .bss address, as vmlinux-to-elf names it .bss.
-        gdb.execute("add-symbol-file {} {:#x} -s .kernel {:#x} -s .bss {:#x}".format(SYMBOLED_VMLINUX_FILE, addrs['kbase'], addrs['kbase'], addrs['kdata']))
+        gdb.execute("add-symbol-file {} {:#x} -s .kernel {:#x} -s .bss {:#x}".format(SYMBOLED_VMLINUX_FILE, addrs['kbase'], addrs['kbase'], addrs['krwbase']))
         info("Added")
         return
 
@@ -24162,9 +24280,19 @@ class PagewalkCommand(GenericCommand):
             raise
 
     # merge pages that points same phys page
+    # for example, there are 16 pages,
+    #    virt:0xffffffff11107000 -> phys:0xabcd000
+    #    virt:0xffffffff11117000 -> phys;0xabcd000
+    #    virt:0xffffffff11127000 -> phys;0xabcd000
+    #    ...
+    #    virt:0xffffffff111d7000 -> phys;0xabcd000
+    #    virt:0xffffffff111e7000 -> phys;0xabcd000
+    #    virt:0xffffffff111f7000 -> phys;0xabcd000
+    # they will be merged by "*".
+    #    virt:"0xffffffff111*7000" -> phys:0xabcd000
     def merge1(self):
         tmp = {}
-        for entry in self.mappings:
+        for entry in self.mappings: # [va, pa_with_flags, page_size, count, flags]
             va, other = entry[0], tuple(entry[1:])
             if not other in tmp:
                 tmp[other] = []
@@ -24204,7 +24332,7 @@ class PagewalkCommand(GenericCommand):
     def merge2(self):
         merged_mappings = []
         prev = None
-        for now in self.mappings:
+        for now in self.mappings: # [va, pa_with_flags, page_size, count, flags]
 
             # specific case
             if "*" in now[0]:
@@ -24214,11 +24342,12 @@ class PagewalkCommand(GenericCommand):
                 prev = None
                 continue
 
-            # first case
+            # first loop case
             if prev is None:
                 prev = now
                 continue
 
+            # TODO: merge with pa, not pa_with_flags
             now_va = int(now[0], 16) if isinstance(now[0], str) else now[0]
             prev_va = int(prev[0], 16) if isinstance(prev[0], str) else prev[0]
             now_pa = int(now[1], 16) if isinstance(now[1], str) else now[1]
@@ -24227,9 +24356,11 @@ class PagewalkCommand(GenericCommand):
             # check consecutiveness
             if prev_va + prev[2]*prev[3] == now_va: # va consecutiveness
                 if prev_pa + prev[2]*prev[3] == now_pa: # pa consecutiveness
-                    if prev[4:] == now[4:]: # additional flags equivalence
-                        prev[3] += 1 # cnt
-                        continue
+                    if prev[2] == now[2]: # page_size equivalence
+                        if prev[4:] == now[4:]: # additional flags equivalence
+                            # ok, they are consecutive
+                            prev[3] += 1 # page count
+                            continue
 
             merged_mappings += [prev]
             prev = now
@@ -24424,7 +24555,7 @@ class PagewalkX64Command(PagewalkCommand):
             text =  "{:016x}-{:016x}  {:016x}-{:016x}  {:<#11x} {:<#10x} {:<5d} [{:s}]".format(va, vend, pa, pend, size*cnt, size, cnt, flags)
         return text
 
-    def pagewalk_parse_flags(self, m, upper_flags, more=False, more_force=False):
+    def pagewalk_parse_flags(self, m, upper_flags, forPDPE=False, forPDE=False, forPTE=False):
         flags = set(upper_flags)
         if ((m >> 1) & 1) == 0:
             flags.add("NORW")
@@ -24433,7 +24564,7 @@ class PagewalkX64Command(PagewalkCommand):
         if ((m >> 63) & 1) == 1:
             flags.add("XD")
 
-        if more:
+        if forPDPE or forPDE:
             if ((m >> 7) & 1) == 1:
                 flags.add("PS")
                 if ((m >> 5) & 1) == 1:
@@ -24444,7 +24575,7 @@ class PagewalkX64Command(PagewalkCommand):
                 if ((m >> 8) & 1) == 1:
                     flags.add("G")
 
-        if more_force:
+        if forPTE:
             if ((m >> 5) & 0b1) == 1:
                 flags.add("A")
             if ((m >> 6) & 0b1) == 1:
@@ -24544,7 +24675,7 @@ class PagewalkX64Command(PagewalkCommand):
                 if is_x86_32() and self.PAE:
                     flags = upper_flags
                 else:
-                    flags = self.pagewalk_parse_flags(m, upper_flags, more=True)
+                    flags = self.pagewalk_parse_flags(m, upper_flags, forPDPE=True)
 
                 if ((m >> 7) & 1) == 1:
                     PTE.append([new_va, m, 0x40000000, 1, flags]) # 1GB page
@@ -24574,7 +24705,7 @@ class PagewalkX64Command(PagewalkCommand):
                     continue
 
                 new_va = self.get_newva(va, i, level=2)
-                flags = self.pagewalk_parse_flags(m, upper_flags, more=True)
+                flags = self.pagewalk_parse_flags(m, upper_flags, forPDE=True)
                 if ((m >> 7) & 1) == 1:
                     if self.PAE:
                         PTE.append([new_va, m, 0x200000, 1, flags]) # 2MB page
@@ -24611,7 +24742,7 @@ class PagewalkX64Command(PagewalkCommand):
                     continue
 
                 new_va = self.get_newva(va, i, level=1)
-                flags = self.pagewalk_parse_flags(m, upper_flags, more_force=True)
+                flags = self.pagewalk_parse_flags(m, upper_flags, forPTE=True)
 
                 PTE.append([new_va, m, 0x1000, 1, flags]) # 4KB page
 
@@ -26758,7 +26889,7 @@ class ThunkHunterCommand(GenericCommand):
             err("Unsupported")
             return
 
-        maps = KsymaddrRemoteCommand.get_maps() # [vaddr, size, perm]
+        maps = KernelbaseCommand.get_maps() # [vaddr, size, perm]
         info("Resolving thunk funcftion addresses")
         for reg in current_arch.gpr_registers:
             sym = "__x86_indirect_thunk_{}".format(reg.replace("$", ""))
