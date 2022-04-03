@@ -16507,7 +16507,7 @@ class SyscallTableViewCommand(GenericCommand):
         elif is_x86_32():
             # plan 2 (v4.6-rc1~)
             do_int80_syscall_32 = get_ksymaddr("do_int80_syscall_32")
-            if do_int80_syscall_32
+            if do_int80_syscall_32:
                 res = gdb.execute("x/20i {:#x}".format(do_int80_syscall_32), to_string=True)
                 for line in res.splitlines():
                     m = re.search(r"\[eax\*4([+-]0x\S+)\]", line)
@@ -24263,7 +24263,7 @@ class PagewalkCommand(GenericCommand):
         super().__init__(prefix=True, complete=gdb.COMPLETE_NONE)
         return
 
-    def read_physmem(self, paddr, size=8):
+    def read_physmem_cache(self, paddr, size=8):
         if "{:#x}_{:d}".format(paddr, size) in self.cache:
             return self.cache["{:#x}_{:d}".format(paddr, size)]
         out = read_physmem(paddr, size)
@@ -24281,23 +24281,25 @@ class PagewalkCommand(GenericCommand):
 
     # merge pages that points same phys page
     # for example, there are 16 pages,
-    #    virt:0xffffffff11107000 -> phys:0xabcd000
-    #    virt:0xffffffff11117000 -> phys;0xabcd000
-    #    virt:0xffffffff11127000 -> phys;0xabcd000
+    #    virt: 0xffffffff11107000  -> phys:0xabcd000
+    #    virt: 0xffffffff11117000  -> phys;0xabcd000
+    #    virt: 0xffffffff11127000  -> phys;0xabcd000
     #    ...
-    #    virt:0xffffffff111d7000 -> phys;0xabcd000
-    #    virt:0xffffffff111e7000 -> phys;0xabcd000
-    #    virt:0xffffffff111f7000 -> phys;0xabcd000
-    # they will be merged by "*".
+    #    virt: 0xffffffff111d7000  -> phys;0xabcd000
+    #    virt: 0xffffffff111e7000  -> phys;0xabcd000
+    #    virt: 0xffffffff111f7000  -> phys;0xabcd000
+    # they will be merged by "*". type is changed from int to string.
     #    virt:"0xffffffff111*7000" -> phys:0xabcd000
     def merge1(self):
+        # group entries that refer to the same phys page
         tmp = {}
-        for entry in self.mappings: # [va, pa_with_flags, page_size, count, flags]
+        for entry in self.mappings: # [virt_addr, phys_addr, page_size, page_count, flags]
             va, other = entry[0], tuple(entry[1:])
             if not other in tmp:
                 tmp[other] = []
             tmp[other].append("{:016x}".format(va))
 
+        # merge if possible
         merged_mappings = []
         for other, va_array in tmp.items():
             if len(va_array) < 16:
@@ -24325,6 +24327,8 @@ class PagewalkCommand(GenericCommand):
 
             for q in queue:
                 merged_mappings.append([q] + list(other))
+
+        # done
         self.mappings = sorted(merged_mappings)
         return
 
@@ -24332,7 +24336,7 @@ class PagewalkCommand(GenericCommand):
     def merge2(self):
         merged_mappings = []
         prev = None
-        for now in self.mappings: # [va, pa_with_flags, page_size, count, flags]
+        for now in self.mappings: # [virt_addr_string, phys_addr, page_size, page_count, flags]
 
             # specific case
             if "*" in now[0]:
@@ -24347,20 +24351,34 @@ class PagewalkCommand(GenericCommand):
                 prev = now
                 continue
 
-            # TODO: merge with pa, not pa_with_flags
             now_va = int(now[0], 16) if isinstance(now[0], str) else now[0]
             prev_va = int(prev[0], 16) if isinstance(prev[0], str) else prev[0]
             now_pa = int(now[1], 16) if isinstance(now[1], str) else now[1]
             prev_pa = int(prev[1], 16) if isinstance(prev[1], str) else prev[1]
+            now_size = now[2]
+            prev_size = prev[2]
+            now_cnt = now[3]
+            prev_cnt = prev[3]
+            now_flags = now[4]
+            prev_flags = prev[4]
 
             # check consecutiveness
-            if prev_va + prev[2]*prev[3] == now_va: # va consecutiveness
-                if prev_pa + prev[2]*prev[3] == now_pa: # pa consecutiveness
-                    if prev[2] == now[2]: # page_size equivalence
-                        if prev[4:] == now[4:]: # additional flags equivalence
-                            # ok, they are consecutive
-                            prev[3] += 1 # page count
-                            continue
+            if self.simple:
+                if prev_va + prev_size == now_va: # va consecutiveness
+                    if prev_flags == now_flags: # flags equivalence
+                        # ok, they are consecutive (at least virt_addr)
+                        prev[2] += now[2]
+                        # For simple mode, page_size is ignored.
+                        # so we use entry[2] as total_size instead of page_size.
+                        continue
+            else:
+                if prev_va + prev_size * prev_cnt == now_va: # va consecutiveness
+                    if prev_pa + prev_size * prev_cnt == now_pa: # pa consecutiveness
+                        if prev_size == now_size: # page_size equivalence
+                            if prev_flags == now_flags: # flags equivalence
+                                # ok, they are consecutive
+                                prev[3] += 1 # prev_page_cnt update
+                                continue
 
             merged_mappings += [prev]
             prev = now
@@ -24396,6 +24414,28 @@ class PagewalkCommand(GenericCommand):
         legend = ["Virtual address start-end", "Physical address start-end", "Total size", "Page size", "Count", "Flags"]
         return "{:33s}  {:33s}  {:11s} {:10s} {:5s} {:s}".format(*legend)
 
+    def format_entry(self, entry):
+        va, pa, size, cnt, flags = entry
+        if isinstance(va, str) and "*" in va:
+            vend = "{:016x}".format(int(va.replace("*", "0"), 16) + size * cnt)
+            for pos in [x.span() for x in re.finditer(r'\*', va)]:
+                vend = vend[:pos[0]] + "*" + vend[pos[1]:]
+            pend = pa + size * cnt
+            if self.simple:
+                text = "{:16s}-{:16s}  {:33s}  {:<#11x} {:<10s} {:<5s} [{:s}]".format(va, vend, "-", size, "-", "-", flags)
+            else:
+                text = "{:16s}-{:16s}  {:016x}-{:016x}  {:<#11x} {:<#10x} {:<5d} [{:s}]".format(va, vend, pa, pend, size*cnt, size, cnt, flags)
+        else:
+            if isinstance(va, str):
+                va = int(va, 16)
+            vend = va + size * cnt
+            pend = pa + size * cnt
+            if self.simple:
+                text = "{:016x}-{:016x}  {:33s}  {:<#11x} {:<10s} {:<5s} [{:s}]".format(va, vend, "-", size, "-", "-", flags)
+            else:
+                text = "{:016x}-{:016x}  {:016x}-{:016x}  {:<#11x} {:<#10x} {:<5d} [{:s}]".format(va, vend, pa, pend, size*cnt, size, cnt, flags)
+        return text
+
     def print_page(self):
         if len(self.mappings) == 0:
             warn("No virtual mappings found")
@@ -24404,7 +24444,9 @@ class PagewalkCommand(GenericCommand):
         self.mappings = sorted(self.mappings)
 
         # merging
-        if not self.print_all:
+        if self.no_merge:
+            pass
+        else:
             self.merge1()
             info("PT Entry (merged similar pages that refer the same physpage): {:d}".format(len(self.mappings)))
             self.merge2()
@@ -24418,7 +24460,8 @@ class PagewalkCommand(GenericCommand):
         # create output
         lines = []
         for entry_info in self.mappings:
-            lines.append(self.format_entry(entry_info))
+            line = self.format_entry(entry_info)
+            lines.append(line)
 
         # filter by keyword
         if self.filter != []:
@@ -24452,20 +24495,20 @@ class PagewalkCommand(GenericCommand):
             self.print_each_level = True
             argv.remove("--print-each-level")
 
-        self.print_flags = False
-        if "--print-flags" in argv:
-            self.print_flags = True
-            argv.remove("--print-flags")
-
-        self.print_all = False
-        if "--print-all" in argv:
-            self.print_all = True
-            argv.remove("--print-all")
+        self.no_merge = False
+        if "--no-merge" in argv:
+            self.no_merge = True
+            argv.remove("--no-merge")
 
         self.sort_by_phys = False
         if "--sort-by-phys" in argv:
             self.sort_by_phys = True
             argv.remove("--sort-by-phys")
+
+        self.simple = False
+        if "--simple" in argv:
+            self.simple = True
+            argv.remove("--simple")
 
         self.filter = []
         while "--filter" in argv:
@@ -24480,6 +24523,8 @@ class PagewalkCommand(GenericCommand):
             range_addr = int(argv[idx + 1], 16)
             self.range.append(range_addr)
             argv = argv[:idx] + argv[idx+2:]
+
+        self.cache = {}
         return argv
 
     @only_if_gdb_running
@@ -24501,34 +24546,32 @@ class PagewalkCommand(GenericCommand):
 class PagewalkX64Command(PagewalkCommand):
     """Dump pagetable for x64/x86 using qemu-monitor."""
     _cmdline_ = "pagewalk x64"
-    _syntax_ = "{:s} [-h] [--print-each-level] [--print-flags] [--print-all] [--filter REGEX_PATTERN] [--range ADDRESS] [--sort-by-phys]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [--print-each-level] [--no-merge] [--filter REGEX_PATTERN] [--range ADDRESS] [--sort-by-phys] [--simple]".format(_cmdline_)
     _example_ = "\n"
     _example_ += "{:s} --print-each-level # show all level pagetable\n".format(_cmdline_)
-    _example_ += "{:s} --print-flags      # show lower bits of address used as flag\n".format(_cmdline_)
-    _example_ += "{:s} --print-all        # do not merge similar/consecutive address\n".format(_cmdline_)
+    _example_ += "{:s} --no-merge         # do not merge similar/consecutive address\n".format(_cmdline_)
     _example_ += "{:s} --filter '0xabc'   # grep by REGEX pattern\n".format(_cmdline_)
     _example_ += "{:s} --range '0x7fff00' # filter by map included specific address\n".format(_cmdline_)
-    _example_ += "{:s} --sort-by-phys     # sort by physical address".format(_cmdline_)
+    _example_ += "{:s} --sort-by-phys     # sort by physical address\n".format(_cmdline_)
+    _example_ += "{:s} --simple           # merge with ignoring physical address consecutivness".format(_cmdline_)
     _aliases_ = ["pagewalk x86",]
     _category_ = "Process/State Inspection (Physical Memory)"
 
     def __init__(self, *args, **kwargs):
         super().__init__(complete=gdb.COMPLETE_NONE)
-        self.cache = {}
         return
 
-    def format_entry(self, entry):
-        va, pa, size, cnt, flag_info = entry
+    def format_flags(self, flag_info):
         flags = []
-        if "NORW" in flag_info and "XD" in flag_info:
+        if "NO_RW" in flag_info and "XD" in flag_info:
             flags += ["R--"]
-        elif "NORW" in flag_info and not "XD" in flag_info:
+        elif "NO_RW" in flag_info and not "XD" in flag_info:
             flags += ["R-X"]
-        elif not "NORW" in flag_info and "XD" in flag_info:
+        elif not "NO_RW" in flag_info and "XD" in flag_info:
             flags += ["RW-"]
-        elif not "NORW" in flag_info and not "XD" in flag_info:
+        elif not "NO_RW" in flag_info and not "XD" in flag_info:
             flags += ["RWX"]
-        if "NOUS" in flag_info:
+        if "NO_US" in flag_info:
             flags += ["KERN"]
         else:
             flags += ["USER"]
@@ -24538,96 +24581,51 @@ class PagewalkX64Command(PagewalkCommand):
             flags += ["DIRTY"]
         if "G" in flag_info:
             flags += ["GLOBAL"]
-        if not self.print_flags:
-            pa &= 0xffffffffff000
-        flags = ' '.join(flags)
-        if isinstance(va, str) and "*" in va:
-            vend = "{:016x}".format(int(va.replace("*", "0"), 16) + size * cnt)
-            for pos in [x.span() for x in re.finditer(r'\*', va)]:
-                vend = vend[:pos[0]] + "*" + vend[pos[1]:]
-            pend = pa + size * cnt
-            text = "{:16s}-{:16s}  {:016x}-{:016x}  {:<#11x} {:<#10x} {:<5d} [{:s}]".format(va, vend, pa, pend, size*cnt, size, cnt, flags)
-        else:
-            if isinstance(va, str):
-                va = int(va, 16)
-            vend = va + size * cnt
-            pend = pa + size * cnt
-            text =  "{:016x}-{:016x}  {:016x}-{:016x}  {:<#11x} {:<#10x} {:<5d} [{:s}]".format(va, vend, pa, pend, size*cnt, size, cnt, flags)
-        return text
-
-    def pagewalk_parse_flags(self, m, upper_flags, forPDPE=False, forPDE=False, forPTE=False):
-        flags = set(upper_flags)
-        if ((m >> 1) & 1) == 0:
-            flags.add("NORW")
-        if ((m >> 2) & 1) == 0:
-            flags.add("NOUS")
-        if ((m >> 63) & 1) == 1:
-            flags.add("XD")
-
-        if forPDPE or forPDE:
-            if ((m >> 7) & 1) == 1:
-                flags.add("PS")
-                if ((m >> 5) & 1) == 1:
-                    flags.add("A")
-            else:
-                if ((m >> 6) & 1) == 1:
-                    flags.add("D")
-                if ((m >> 8) & 1) == 1:
-                    flags.add("G")
-
-        if forPTE:
-            if ((m >> 5) & 0b1) == 1:
-                flags.add("A")
-            if ((m >> 6) & 0b1) == 1:
-                flags.add("D")
-            if ((m >> 8) & 0b1) == 1:
-                flags.add("G")
-
-        flags = tuple(sorted(flags))
-        return flags
-
-    def print_entry(self, addr, entry, new_va, flags):
-        if self.print_each_level:
-            gef_print("{:#018x}: {:#018x} (virt:{:#018x}) {:s}".format(addr, entry, new_va, '.'.join(flags)))
-        return
-
-    def get_newva(self, va, i, level):
-        if level == 5:
-            b = self.bits["PML4T_BITS"] + self.bits["PDPT_BITS"] + self.bits["PDT_BITS"] + self.bits["PT_BITS"] + self.bits["OFFSET"]
-            sign_ext = 0xfe00000000000000 if (i >> (self.bits["PML5T_BITS"]-1)) & 1 else 0
-            new_va = sign_ext | (i << b)
-        elif level == 4:
-            b = self.bits["PDPT_BITS"] + self.bits["PDT_BITS"] + self.bits["PT_BITS"] + self.bits["OFFSET"]
-            if "PML5T_BITS" in self.bits:
-                new_va = va + (i << b)
-            else:
-                sign_ext = 0xffff000000000000 if (i >> (self.bits["PML4T_BITS"]-1)) & 1 else 0
-                new_va = sign_ext | (i << b)
-        elif level == 3:
-            new_va = va + (i << (self.bits["PDT_BITS"] + self.bits["PT_BITS"] + self.bits["OFFSET"]))
-        elif level == 2:
-            new_va = va + (i << (self.bits["PT_BITS"] + self.bits["OFFSET"]))
-        elif level == 1:
-            new_va = va + (i << self.bits["OFFSET"])
-        return new_va
+        return ' '.join(flags)
 
     def pagewalk_PML5T(self):
         gef_print(titlify("PML5E: Page Map Level 5 Entry"))
         PML5E = []
         COUNT = 0; INVALID = 0
-        for va, base, upper_flags in self.TABLES:
-            mem = self.read_physmem(base, 2**self.bits["PML5T_BITS"] * self.bits["ENTRY_SIZE"])
-            for i, m in enumerate(self.slice_unpack(mem, self.bits["ENTRY_SIZE"])):
-                COUNT += 1
-                if (m & 1) == 0: # present flag
+        for va_base, table_base, parent_flags in self.TABLES:
+            entries = self.read_physmem_cache(table_base, 2**self.bits["PML5T_BITS"] * self.bits["ENTRY_SIZE"])
+            entries = self.slice_unpack(entries, self.bits["ENTRY_SIZE"])
+            COUNT += len(entries)
+            for i, entry in enumerate(entries):
+                # present flag
+                if (entry & 1) == 0:
                     INVALID += 1
                     continue
 
-                new_va = self.get_newva(0x0, i, level=5)
-                flags = self.pagewalk_parse_flags(m, upper_flags)
+                # calc virtual address
+                b = self.bits["PML4T_BITS"] + self.bits["PDPT_BITS"] + self.bits["PDT_BITS"] + self.bits["PT_BITS"] + self.bits["OFFSET"]
+                sign_ext = 0xfe00000000000000 if ((i >> (self.bits["PML5T_BITS"]-1)) & 1) else 0
+                new_va = va_base + (sign_ext | (i << b))
 
-                PML5E.append([new_va, m & 0xffffffffff000, flags])
-                self.print_entry(base + i*self.bits["ENTRY_SIZE"], m, new_va, flags)
+                # calc flags
+                flags = parent_flags.copy()
+                if ((entry >> 1) & 1) == 0: flags.append("NO_RW")
+                if ((entry >> 2) & 1) == 0: flags.append("NO_US")
+                if ((entry >> 5) & 1) == 1: flags.append("A")
+                if ((entry >> 63) & 1) == 1: flags.append("XD")
+
+                # calc next table (drop the flag bits)
+                next_level_table = entry & 0x000ffffffffff000
+
+                # make entry
+                PML5E.append([new_va, next_level_table, flags])
+
+                # dump
+                if self.print_each_level:
+                    addr = table_base + i * self.bits["ENTRY_SIZE"]
+                    line = "{:#018x}: {:#018x} (virt:{:#018x}) {:s}".format(addr, entry, new_va, ' '.join(flags))
+                    if self.filter == []:
+                        gef_print(line)
+                    else:
+                        for filt in self.filter:
+                            if re.search(filt, line):
+                                gef_print(line)
+                                break
 
         info("Number of entries: {:d}".format(COUNT))
         info("PML5 Entry: {:d}".format(len(PML5E)))
@@ -24639,19 +24637,48 @@ class PagewalkX64Command(PagewalkCommand):
         gef_print(titlify("PML4E: Page Map Level 4 Entry"))
         PML4E = []
         COUNT = 0; INVALID = 0
-        for va, base, upper_flags in self.TABLES:
-            mem = self.read_physmem(base, 2**self.bits["PML4T_BITS"] * self.bits["ENTRY_SIZE"])
-            for i, m in enumerate(self.slice_unpack(mem, self.bits["ENTRY_SIZE"])):
-                COUNT += 1
-                if (m & 1) == 0: # present flag
+        for va_base, table_base, parent_flags in self.TABLES:
+            entries = self.read_physmem_cache(table_base, 2**self.bits["PML4T_BITS"] * self.bits["ENTRY_SIZE"])
+            entries = self.slice_unpack(entries, self.bits["ENTRY_SIZE"])
+            COUNT += len(entries)
+            for i, entry in enumerate(entries):
+                # present flag
+                if (entry & 1) == 0:
                     INVALID += 1
                     continue
 
-                new_va = self.get_newva(va, i, level=4)
-                flags = self.pagewalk_parse_flags(m, upper_flags)
+                # calc virtual address
+                b = self.bits["PDPT_BITS"] + self.bits["PDT_BITS"] + self.bits["PT_BITS"] + self.bits["OFFSET"]
+                if "PML5T_BITS" in self.bits:
+                    new_va = va_base + (i << b)
+                else:
+                    sign_ext = 0xffff000000000000 if ((i >> (self.bits["PML4T_BITS"]-1)) & 1) else 0
+                    new_va = va_base + (sign_ext | (i << b))
 
-                PML4E.append([new_va, m & 0xffffffffff000, flags])
-                self.print_entry(base + i*self.bits["ENTRY_SIZE"], m, new_va, flags)
+                # calc flags
+                flags = parent_flags.copy()
+                if ((entry >> 1) & 1) == 0: flags.append("NO_RW")
+                if ((entry >> 2) & 1) == 0: flags.append("NO_US")
+                if ((entry >> 5) & 1) == 1: flags.append("A")
+                if ((entry >> 63) & 1) == 1: flags.append("XD")
+
+                # calc next table (drop the flag bits)
+                next_level_table = entry & 0x000ffffffffff000
+
+                # make entry
+                PML4E.append([new_va, next_level_table, flags])
+
+                # dump
+                if self.print_each_level:
+                    addr = table_base + i * self.bits["ENTRY_SIZE"]
+                    line = "{:#018x}: {:#018x} (virt:{:#018x}) {:s}".format(addr, entry, new_va, ' '.join(flags))
+                    if self.filter == []:
+                        gef_print(line)
+                    else:
+                        for filt in self.filter:
+                            if re.search(filt, line):
+                                gef_print(line)
+                                break
 
         info("Number of entries: {:d}".format(COUNT))
         info("PML4 Entry: {:d}".format(len(PML4E)))
@@ -24661,68 +24688,141 @@ class PagewalkX64Command(PagewalkCommand):
 
     def pagewalk_PDPT(self):
         gef_print(titlify("PDPE: Page Directory Pointer Entry"))
-        PDPE = []; PTE = []
+
+        def is_set_PS(entry):
+            return ((entry >> 7) & 1) == 1
+
+        PDPTE = []; PTE = []
         COUNT = 0; INVALID = 0
-        for va, base, upper_flags in self.TABLES:
-            mem = self.read_physmem(base, 2**self.bits["PDPT_BITS"] * self.bits["ENTRY_SIZE"])
-            for i, m in enumerate(self.slice_unpack(mem, self.bits["ENTRY_SIZE"])):
-                COUNT += 1
-                if (m & 1) == 0: # present flag
+        for va_base, table_base, parent_flags in self.TABLES:
+            entries = self.read_physmem_cache(table_base, 2**self.bits["PDPT_BITS"] * self.bits["ENTRY_SIZE"])
+            entries = self.slice_unpack(entries, self.bits["ENTRY_SIZE"])
+            COUNT += len(entries)
+            for i, entry in enumerate(entries):
+                # present flag
+                if (entry & 1) == 0:
                     INVALID += 1
                     continue
 
-                new_va = self.get_newva(va, i, level=3)
-                if is_x86_32() and self.PAE:
-                    flags = upper_flags
-                else:
-                    flags = self.pagewalk_parse_flags(m, upper_flags, forPDPE=True)
+                # calc virtual address
+                new_va = va_base + (i << (self.bits["PDT_BITS"] + self.bits["PT_BITS"] + self.bits["OFFSET"]))
 
-                if ((m >> 7) & 1) == 1:
-                    PTE.append([new_va, m, 0x40000000, 1, flags]) # 1GB page
-                else:
-                    PDPE.append([new_va, m & 0xffffffffff000, flags])
+                # calc flags
+                flags = parent_flags.copy()
+                if is_x86_64():
+                    if ((entry >> 1) & 1) == 0: flags.append("NO_RW")
+                    if ((entry >> 2) & 1) == 0: flags.append("NO_US")
+                    if ((entry >> 5) & 1) == 1: flags.append("A")
+                    if is_set_PS(entry) and ((entry >> 6) & 1) == 1: flags.append("D")
+                    if is_set_PS(entry) and ((entry >> 8) & 1) == 1: flags.append("G")
+                    if ((entry >> 63) & 1) == 1: flags.append("XD")
+                else: # x86_32 and PAE
+                    pass
 
-                self.print_entry(base + i*self.bits["ENTRY_SIZE"], m, new_va, flags)
+                # calc next table (drop the flag bits)
+                if is_x86_64() and is_set_PS(entry):
+                    next_level_table = entry & 0x000fffffffffe000
+                else:
+                    next_level_table = entry & 0x000ffffffffff000
+
+                # make entry
+                if is_set_PS(entry):
+                    virt_addr = new_va
+                    phys_addr = next_level_table
+                    page_size = 1 * 1024 * 1024 * 1024
+                    page_count = 1
+                    PTE.append([virt_addr, phys_addr, page_size, page_count, self.format_flags(flags)])
+                else:
+                    PDPTE.append([new_va, next_level_table, flags])
+
+                # dump
+                if self.print_each_level:
+                    addr = table_base + i * self.bits["ENTRY_SIZE"]
+                    line = "{:#018x}: {:#018x} (virt:{:#018x}) {:s}".format(addr, entry, new_va, ' '.join(flags))
+                    if self.filter == []:
+                        gef_print(line)
+                    else:
+                        for filt in self.filter:
+                            if re.search(filt, line):
+                                gef_print(line)
+                                break
 
         info("Number of entries: {:d}".format(COUNT))
-        info("PDP Entry: {:d}".format(len(PDPE)))
+        info("PDPT Entry: {:d}".format(len(PDPTE)))
         info("PT Entry (1GB): {:d}".format(len(PTE)))
         info("Invalid entries: {:d}".format(INVALID))
-        self.TABLES = PDPE
+        self.TABLES = PDPTE
         self.PTE += PTE
         return
 
     def pagewalk_PDT(self):
         gef_print(titlify("PDE: Page Directory Entry"))
+
+        def is_set_PS(entry):
+            return ((entry >> 7) & 1) == 1
+
         PDE = []; PTE = []
         COUNT = 0; INVALID = 0
-        for va, base, upper_flags in self.TABLES:
-            mem = self.read_physmem(base, 2**self.bits["PDT_BITS"] * self.bits["ENTRY_SIZE"])
-            for i, m in enumerate(self.slice_unpack(mem, self.bits["ENTRY_SIZE"])):
-                COUNT += 1
-                if (m & 1) == 0: # present flag
+        for va_base, table_base, parent_flags in self.TABLES:
+            entries = self.read_physmem_cache(table_base, 2**self.bits["PDT_BITS"] * self.bits["ENTRY_SIZE"])
+            entries = self.slice_unpack(entries, self.bits["ENTRY_SIZE"])
+            COUNT += len(entries)
+            for i, entry in enumerate(entries):
+                # present flag
+                if (entry & 1) == 0:
                     INVALID += 1
                     continue
 
-                new_va = self.get_newva(va, i, level=2)
-                flags = self.pagewalk_parse_flags(m, upper_flags, forPDE=True)
-                if ((m >> 7) & 1) == 1:
-                    if self.PAE:
-                        PTE.append([new_va, m, 0x200000, 1, flags]) # 2MB page
-                    else:
-                        PTE.append([new_va, m, 0x400000, 1, flags]) # 4MB page
-                else:
-                    PDE.append([new_va, m & 0xffffffffff000, flags])
+                # calc virtual address
+                new_va = va_base + (i << (self.bits["PT_BITS"] + self.bits["OFFSET"]))
 
-                self.print_entry(base + i*self.bits["ENTRY_SIZE"], m, new_va, flags)
+                # calc flags
+                flags = parent_flags.copy()
+                if ((entry >> 1) & 1) == 0: flags.append("NO_RW")
+                if ((entry >> 2) & 1) == 0: flags.append("NO_US")
+                if ((entry >> 5) & 1) == 1: flags.append("A")
+                if is_set_PS(entry) and ((entry >> 6) & 1) == 1: flags.append("D")
+                if is_set_PS(entry) and ((entry >> 8) & 1) == 1: flags.append("G")
+                if self.PAE and ((entry >> 63) & 1) == 1: flags.append("XD")
+
+                # calc next table (drop the flag bits)
+                if is_x86_64() and is_set_PS(entry):
+                    next_level_table = entry & 0x000fffffffffe000
+                elif is_x86_32() and is_set_PS(entry):
+                    high = (entry >> 13) & 0xf
+                    low = (entry >> 22) & 0x3ff
+                    next_level_table = (high << 10) | low
+                else:
+                    next_level_table = entry & 0x000ffffffffff000
+
+                # make entry
+                if is_set_PS(entry):
+                    virt_addr = new_va
+                    phys_addr = next_level_table
+                    if self.PAE:
+                        page_size = 2 * 1024 * 1024
+                    else:
+                        page_size = 4 * 1024 * 1024
+                    page_count = 1
+                    PTE.append([virt_addr, phys_addr, page_size, page_count, self.format_flags(flags)])
+                else:
+                    PDE.append([new_va, next_level_table, flags])
+
+                # dump
+                if self.print_each_level:
+                    addr = table_base + i * self.bits["ENTRY_SIZE"]
+                    line = "{:#018x}: {:#018x} (virt:{:#018x}) {:s}".format(addr, entry, new_va, ' '.join(flags))
+                    if self.filter == []:
+                        gef_print(line)
+                    else:
+                        for filt in self.filter:
+                            if re.search(filt, line):
+                                gef_print(line)
+                                break
 
         info("Number of entries: {:d}".format(COUNT))
-        if self.PAE:
-            info("PD Entry: {:d}".format(len(PDE)))
-            info("PT Entry (2MB): {:d}".format(len(PTE)))
-        else:
-            info("PD Entry: {:d}".format(len(PDE)))
-            info("PT Entry (4MB): {:d}".format(len(PTE)))
+        info("PD Entry: {:d}".format(len(PDE)))
+        info("PT Entry ({:d}MB): {:d}".format(2 if self.PAE else 4, len(PTE)))
         info("Invalid entries: {:d}".format(INVALID))
         self.TABLES = PDE
         self.PTE += PTE
@@ -24733,22 +24833,51 @@ class PagewalkX64Command(PagewalkCommand):
         seen = set()
         PTE = []
         COUNT = 0; INVALID = 0
-        for va, base, upper_flags in self.TABLES:
-            mem = self.read_physmem(base, 2**self.bits["PT_BITS"] * self.bits["ENTRY_SIZE"])
-            for i, m in enumerate(self.slice_unpack(mem, self.bits["ENTRY_SIZE"])):
-                COUNT += 1
-                if (m & 1) == 0 : # present flag
+        for va_base, table_base, parent_flags in self.TABLES:
+            entries = self.read_physmem_cache(table_base, 2**self.bits["PT_BITS"] * self.bits["ENTRY_SIZE"])
+            entries = self.slice_unpack(entries, self.bits["ENTRY_SIZE"])
+            COUNT += len(entries)
+            for i, entry in enumerate(entries):
+                # present flag
+                if (entry & 1) == 0:
                     INVALID += 1
                     continue
 
-                new_va = self.get_newva(va, i, level=1)
-                flags = self.pagewalk_parse_flags(m, upper_flags, forPTE=True)
+                # calc virtual address
+                virt_addr = va_base + (i << self.bits["OFFSET"])
 
-                PTE.append([new_va, m, 0x1000, 1, flags]) # 4KB page
+                # calc flags
+                flags = parent_flags.copy()
+                if ((entry >> 1) & 1) == 0: flags.append("NO_RW")
+                if ((entry >> 2) & 1) == 0: flags.append("NO_US")
+                if ((entry >> 5) & 1) == 1: flags.append("A")
+                if ((entry >> 6) & 1) == 1: flags.append("D")
+                if ((entry >> 8) & 1) == 1: flags.append("G")
+                if self.PAE and ((entry >> 63) & 1) == 1: flags.append("XD")
 
-                addr = base + i*self.bits["ENTRY_SIZE"]
-                if not addr in seen:
-                    self.print_entry(addr, m, new_va, flags)
+                # calc physical addr (drop the flag bits)
+                phys_addr = entry & 0x000ffffffffff000
+
+                # make entry
+                page_size = 4 * 1024
+                page_count = 1
+                PTE.append([virt_addr, phys_addr, page_size, page_count, self.format_flags(flags)])
+
+                # dump
+                if self.print_each_level:
+                    addr = table_base + i * self.bits["ENTRY_SIZE"]
+                    # On x86_64, multiple virtual addresses can point to the same physical address.
+                    # References to the same page are often repeated 65536 times, and it is useless to display all of them, so they are omitted.
+                    if addr in seen:
+                        continue
+                    line = "{:#018x}: {:#018x} (virt:{:#018x}) {:s}".format(addr, entry, virt_addr, ' '.join(flags))
+                    if self.filter == []:
+                        gef_print(line)
+                    else:
+                        for filt in self.filter:
+                            if re.search(filt, line):
+                                gef_print(line)
+                                break
                     seen.add(addr)
 
         info("Number of entries: {:d}".format(COUNT))
@@ -24766,15 +24895,23 @@ class PagewalkX64Command(PagewalkCommand):
         info("cr3: {:#018x}".format(cr3))
         info("cr4: {:#018x}".format(cr4))
 
-        if is_x86_64(): # 64bit
-            base = (cr3 >> 12) << 12
-        elif ((cr4 >> 5) & 1) == 1: # 32bit PAE
-            base = (cr3 >> 5) << 5
-        else: # 32bit non-PAE
-            base = (cr3 >> 12) << 12
+        # virtual address base
+        va_base = 0
 
+        # pagewalk base is from CR3 register
+        if is_x86_64(): # 64bit
+            pagewalk_base = (cr3 >> 12) << 12
+        elif ((cr4 >> 5) & 1) == 1: # 32bit PAE
+            pagewalk_base = (cr3 >> 5) << 5
+        else: # 32bit non-PAE
+            pagewalk_base = (cr3 >> 12) << 12
+
+        # we ignore PWT and PCD flags.
+        flags = []
+
+        # do pagewalk
         self.PTE = []
-        self.TABLES = [(0, base, ())] # va, base, upper_flags
+        self.TABLES = [(va_base, pagewalk_base, flags)]
         if is_x86_64():
             if (cr4 >> 12) & 1: # PML5T check
                 # 64bit 5-level(4KB): 9,9,9,9,9,12
@@ -24855,181 +24992,337 @@ class PagewalkX64Command(PagewalkCommand):
 class PagewalkArmCommand(PagewalkCommand):
     """Dump pagetable for ARM (Cortex-A only) using qemu-monitor."""
     _cmdline_ = "pagewalk arm"
-    _syntax_ = "{:s} [-h] [--print-each-level] [--print-flags] [--print-all] [--filter REGEX_PATTERN] [--range ADDRESS] [--sort-by-phys]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [--print-each-level] [--no-merge] [--filter REGEX_PATTERN] [--range ADDRESS] [--sort-by-phys] [--simple]".format(_cmdline_)
     _example_ = "\n"
     _example_ += "{:s} --print-each-level # show all level pagetable\n".format(_cmdline_)
-    _example_ += "{:s} --print-flags      # show lower bits of address used as flag\n".format(_cmdline_)
-    _example_ += "{:s} --print-all        # do not merge similar/consecutive address\n".format(_cmdline_)
+    _example_ += "{:s} --no-merge         # do not merge similar/consecutive address\n".format(_cmdline_)
     _example_ += "{:s} --filter '0xabc'   # grep by REGEX pattern\n".format(_cmdline_)
     _example_ += "{:s} --range '0x7fff00' # filter by map included specific address\n".format(_cmdline_)
     _example_ += "{:s} --sort-by-phys     # sort by physical address\n".format(_cmdline_)
+    _example_ += "{:s} --simple           # merge with ignoring physical address consecutivness\n".format(_cmdline_)
     _example_ += "PL2 pagewalk is unsupported"
     _category_ = "Process/State Inspection (Physical Memory)"
 
     def __init__(self, *args, **kwargs):
         super().__init__(complete=gdb.COMPLETE_NONE)
-        self.cache = {}
         return
 
-    def format_entry(self, entry):
-        va, pa, size, cnt, is_short, upper_table_flags = entry
+    def format_flags_short(self, flag_info):
         flags = []
-        if is_short:
-            if size == 0x4000: # short large
-                XN = (pa >> 15) & 1
-                PhyAddr = pa & 0xffff0000
-                AP = (((pa >> 9) & 1) << 2) + ((pa >> 4) & 0b11)
-                PXN, NS = upper_table_flags
-            elif size == 0x1000: # short small
-                XN = (pa >> 0) & 1
-                PhyAddr = pa & 0xfffff000
-                AP = (((pa >> 9) & 1) << 2) + ((pa >> 4) & 0b11)
-                PXN, NS = upper_table_flags
-            elif size == 0x1000000: # short supersection
-                PXN = pa & 1
-                XN = (pa >> 4) & 1
-                NS = (pa >> 19) & 1
-                AP = (((pa >> 15) & 1) << 2) + ((pa >> 10) & 0b11)
-                PhyAddr = pa & 0xff000000         # PA[31:24]
-                PhyAddr += (pa & 0x00f0000) << 12 # PA[35:32]
-                PhyAddr += (pa & 0x00001e0) << 31 # PA[39:36]
-            elif size == 0x100000: # short section
-                PXN = pa & 1
-                XN = (pa >> 4) & 1
-                NS = (pa >> 19) & 1
-                AP = (((pa >> 15) & 1) << 2) + ((pa >> 10) & 0b11)
-                PhyAddr = pa & 0xfff00000
-            if not self.AFE:
-                # AP[2:0] access permissions model
-                if AP == 0b000:
-                    flags += ['PL0/---'] if XN else ['PL0/---']
-                    flags += ['PL1/---'] if self.PXN and PXN else ['PL1/---']
-                elif AP == 0b001:
-                    flags += ['PL0/---'] if XN else ['PL0/---']
-                    flags += ['PL1/RW-'] if self.PXN and PXN else ['PL1/RWX']
-                elif AP == 0b010:
-                    flags += ['PL0/R--'] if XN else ['PL0/R-X']
-                    flags += ['PL1/RW-'] if self.PXN and PXN else ['PL1/RWX']
-                elif AP == 0b011:
-                    flags += ['PL0/RW-'] if XN else ['PL0/RWX']
-                    flags += ['PL1/RW-'] if self.PXN and PXN else ['PL1/RWX']
-                elif AP == 0b101:
-                    flags += ['PL0/---'] if XN else ['PL0/---']
-                    flags += ['PL1/R--'] if self.PXN and PXN else ['PL1/R-X']
-                elif AP == 0b110:
-                    flags += ['PL0/R--'] if XN else ['PL0/R-X']
-                    flags += ['PL1/R--'] if self.PXN and PXN else ['PL1/R-X']
-                elif AP == 0b111:
-                    flags += ['PL0/R--'] if XN else ['PL0/R-X']
-                    flags += ['PL1/R--'] if self.PXN and PXN else ['PL1/R-X']
-            else:
-                # AP[2:1] access permissions model
-                AP >>= 1
-                if AP == 0b00:
-                    flags += ['PL0/---'] if XN else ['PL0/---']
-                    flags += ['PL1/RW-'] if self.PXN and PXN else ['PL1/RWX']
-                elif AP == 0b01:
-                    flags += ['PL0/RW-'] if XN else ['PL0/RWX']
-                    flags += ['PL1/RW-'] if self.PXN and PXN else ['PL1/RWX']
-                elif AP == 0b10:
-                    flags += ['PL0/---'] if XN else ['PL0/---']
-                    flags += ['PL1/R--'] if self.PXN and PXN else ['PL1/R-X']
-                elif AP == 0b11:
-                    flags += ['PL0/R--'] if XN else ['PL0/R-X']
-                    flags += ['PL1/R--'] if self.PXN and PXN else ['PL1/R-X']
-        else: # is long
-            # upper_tables_flags: [pxn, xn, ap, ns]
-            if upper_table_flags and upper_table_flags[0] == 1:
-                PXN = 1
-            else:
-                PXN = (pa >> 53) & 1
-            if upper_table_flags and upper_table_flags[1] == 1:
-                XN = 1
-            else:
-                XN = (pa >> 54) & 1
-            if not upper_table_flags:
-                AP = (pa >> 6) & 0b11
-            elif upper_table_flags[2] == 0b00:
-                AP = (pa >> 6) & 0b11
-            elif upper_table_flags[2] == 0b01:
-                AP = ((pa >> 6) & 0b11) & 0b10
-            elif upper_table_flags[2] == 0b10:
-                AP = ((pa >> 6) & 0b11) | 0b10
-            elif upper_table_flags[2] == 0b11:
-                AP = 0b10
-            if upper_table_flags and upper_table_flags[3] == 1:
-                NS = 1
-            else:
-                NS = (pa >> 5) & 1
-            if size == 0x40000000: # long 1GB
-                PhyAddr = pa & 0xffc0000000
-            elif size == 0x200000: # long 2MB
-                PhyAddr = pa & 0xffffe00000
-            elif size == 0x1000: # long 4KB
-                PhyAddr = pa & 0xfffffff000
-            # AP[2:1] access permissions model
-            if AP == 0b00:
-                flags += ['PL0/---'] if XN else ['PL0/---']
-                flags += ['PL1/RW-'] if self.PXN and PXN else ['PL1/RWX']
-            elif AP == 0b01:
-                flags += ['PL0/RW-'] if XN else ['PL0/RWX']
-                flags += ['PL1/RW-'] if self.PXN and PXN else ['PL1/RWX']
-            elif AP == 0b10:
-                flags += ['PL0/---'] if XN else ['PL0/---']
-                flags += ['PL1/R--'] if self.PXN and PXN else ['PL1/R-X']
-            elif AP == 0b11:
-                flags += ['PL0/R--'] if XN else ['PL0/R-X']
-                flags += ['PL1/R--'] if self.PXN and PXN else ['PL1/R-X']
+
+        XN = "XN" in flag_info
+        PXN = "PXN" in flag_info
+        PXN &= self.PXN
+
+        # AP[2:0] access permissions model
+        if "AP=000" in flag_info:
+            if XN == False and PXN == False:
+                flags += ['PL0/---', "PL1/---"] # 
+            elif XN == False and PXN == True:
+                flags += ['PL0/---', "PL1/---"] # PXN
+            elif XN == True and PXN == False:
+                flags += ['PL0/---', "PL1/---"] # XN
+            elif XN == True and PXN == True:
+                flags += ['PL0/---', "PL1/---"] # XN, PXN
+        elif "AP=001" in flag_info:
+            if XN == False and PXN == False:
+                flags += ['PL0/---', "PL1/RWX"] # 
+            elif XN == False and PXN == True:
+                flags += ['PL0/---', "PL1/RW-"] # PXN
+            elif XN == True and PXN == False:
+                flags += ['PL0/---', "PL1/RW-"] # XN
+            elif XN == True and PXN == True:
+                flags += ['PL0/---', "PL1/RW-"] # XN, PXN
+        elif "AP=010" in flag_info:
+            if XN == False and PXN == False:
+                flags += ['PL0/R-X', "PL1/RWX"] # 
+            elif XN == False and PXN == True:
+                flags += ['PL0/R-X', "PL1/RW-"] # PXN
+            elif XN == True and PXN == False:
+                flags += ['PL0/R--', "PL1/RW-"] # XN
+            elif XN == True and PXN == True:
+                flags += ['PL0/R--', "PL1/RW-"] # XN, PXN
+        elif "AP=011" in flag_info:
+            if XN == False and PXN == False:
+                flags += ['PL0/RWX', "PL1/RWX"] # 
+            elif XN == False and PXN == True:
+                flags += ['PL0/RWX', "PL1/RW-"] # PXN
+            elif XN == True and PXN == False:
+                flags += ['PL0/RW-', "PL1/RW-"] # XN
+            elif XN == True and PXN == True:
+                flags += ['PL0/RW-', "PL1/RW-"] # XN, PXN
+        elif "AP=100" in flag_info:
+            flags += ['PL0/???', "PL1/???"] # undefined (reserved)
+        elif "AP=101" in flag_info:
+            if XN == False and PXN == False:
+                flags += ['PL0/---', "PL1/R-X"] # 
+            elif XN == False and PXN == True:
+                flags += ['PL0/---', "PL1/R--"] # PXN
+            elif XN == True and PXN == False:
+                flags += ['PL0/---', "PL1/R--"] # XN
+            elif XN == True and PXN == True:
+                flags += ['PL0/---', "PL1/R--"] # XN, PXN
+        elif "AP=110" in flag_info: # deprecated
+            if XN == False and PXN == False:
+                flags += ['PL0/R-X', "PL1/R-X"] # 
+            elif XN == False and PXN == True:
+                flags += ['PL0/R-X', "PL1/R--"] # PXN
+            elif XN == True and PXN == False:
+                flags += ['PL0/R--', "PL1/R--"] # XN
+            elif XN == True and PXN == True:
+                flags += ['PL0/R--', "PL1/R--"] # XN, PXN
+        elif "AP=111" in flag_info:
+            if XN == False and PXN == False:
+                flags += ['PL0/R-X', "PL1/R-X"] # 
+            elif XN == False and PXN == True:
+                flags += ['PL0/R-X', "PL1/R--"] # PXN
+            elif XN == True and PXN == False:
+                flags += ['PL0/R--', "PL1/R--"] # XN
+            elif XN == True and PXN == True:
+                flags += ['PL0/R--', "PL1/R--"] # XN, PXN
+        # AP[2:1] access permissions model
+        elif "AP=00" in flag_info:
+            if XN == False and PXN == False:
+                flags += ['PL0/---', "PL1/RWX"] # 
+            elif XN == False and PXN == True:
+                flags += ['PL0/---', "PL1/RW-"] # PXN
+            elif XN == True and PXN == False:
+                flags += ['PL0/---', "PL1/RW-"] # XN
+            elif XN == True and PXN == True:
+                flags += ['PL0/---', "PL1/RW-"] # XN, PXN
+        elif "AP=01" in flag_info:
+            if XN == False and PXN == False:
+                flags += ['PL0/RWX', "PL1/RWX"] # 
+            elif XN == False and PXN == True:
+                flags += ['PL0/RWX', "PL1/RW-"] # PXN
+            elif XN == True and PXN == False:
+                flags += ['PL0/RW-', "PL1/RW-"] # XN
+            elif XN == True and PXN == True:
+                flags += ['PL0/RW-', "PL1/RW-"] # XN, PXN
+        elif "AP=10" in flag_info:
+            if XN == False and PXN == False:
+                flags += ['PL0/---', "PL1/R-X"] # 
+            elif XN == False and PXN == True:
+                flags += ['PL0/---', "PL1/R--"] # PXN
+            elif XN == True and PXN == False:
+                flags += ['PL0/---', "PL1/R--"] # XN
+            elif XN == True and PXN == True:
+                flags += ['PL0/---', "PL1/R--"] # XN, PXN
+        elif "AP=11" in flag_info:
+            if XN == False and PXN == False:
+                flags += ['PL0/R-X', "PL1/R-X"] # 
+            elif XN == False and PXN == True:
+                flags += ['PL0/R-X', "PL1/R--"] # PXN
+            elif XN == True and PXN == False:
+                flags += ['PL0/R--', "PL1/R--"] # XN
+            elif XN == True and PXN == True:
+                flags += ['PL0/R--', "PL1/R--"] # XN, PXN
+
+        if "NS" in flag_info:
+            flags += ['NS']
+        # short description has no `AF` bit
+        if "nG" not in flag_info:
+            flags += ["GLOBAL"]
+        return ' '.join(flags)
+
+    def format_flags_long(self, flag_info):
+        flags = []
+
+        # AP/APTable parsing
+        if "AP=00" in flag_info:
+            disable_write_access = 0
+            enable_unpriv_access = 0
+        elif "AP=01" in flag_info:
+            disable_write_access = 0
+            enable_unpriv_access = 1
+        elif "AP=10" in flag_info:
+            disable_write_access = 1
+            enable_unpriv_access = 0
+        elif "AP=11" in flag_info:
+            disable_write_access = 1
+            enable_unpriv_access = 1
+        if "APTable2=00" in flag_info:
+            pass
+        elif "APTable2=01" in flag_info:
+            enable_unpriv_access &= 0
+        elif "APTable2=10" in flag_info:
+            disable_write_access |= 1
+        elif "APTable2=11" in flag_info:
+            disable_write_access |= 1
+            enable_unpriv_access &= 0
+        if "APTable1=00" in flag_info:
+            pass
+        elif "APTable1=01" in flag_info:
+            enable_unpriv_access &= 0
+        elif "APTable1=10" in flag_info:
+            disable_write_access |= 1
+        elif "APTable1=11" in flag_info:
+            disable_write_access |= 1
+            enable_unpriv_access &= 0
+        AP = (disable_write_access << 1) | enable_unpriv_access
+
+        # XN/XNTable, PXN/PXNTable, NS/NSTable parsing
+        XN = "XN" in flag_info
+        XN |= "XNTable2" in flag_info
+        XN |= "XNTable1" in flag_info
+        PXN = "PXN" in flag_info
+        PXN |= "PXNTable2" in flag_info
+        PXN |= "PXNTable1" in flag_info
+        PXN &= self.PXN
+        NS = "NS" in flag_info
+        NS |= "NSTable2" in flag_info
+        NS |= "NSTable1" in flag_info
+
+        # AP[2:1] access permissions model
+        if AP == 0b00:
+            if XN == False and PXN == False:
+                flags += ['PL0/---', "PL1/RWX"] # 
+            elif XN == False and PXN == True:
+                flags += ['PL0/---', "PL1/RW-"] # PXN
+            elif XN == True and PXN == False:
+                flags += ['PL0/---', "PL1/RW-"] # XN
+            elif XN == True and PXN == True:
+                flags += ['PL0/---', "PL1/RW-"] # XN, PXN
+        elif AP == 0b01:
+            if XN == False and PXN == False:
+                flags += ['PL0/RWX', "PL1/RWX"] # 
+            elif XN == False and PXN == True:
+                flags += ['PL0/RWX', "PL1/RW-"] # PXN
+            elif XN == True and PXN == False:
+                flags += ['PL0/RW-', "PL1/RW-"] # XN
+            elif XN == True and PXN == True:
+                flags += ['PL0/RW-', "PL1/RW-"] # XN, PXN
+        elif AP == 0b10:
+            if XN == False and PXN == False:
+                flags += ['PL0/---', "PL1/R-X"] # 
+            elif XN == False and PXN == True:
+                flags += ['PL0/---', "PL1/R--"] # PXN
+            elif XN == True and PXN == False:
+                flags += ['PL0/---', "PL1/R--"] # XN
+            elif XN == True and PXN == True:
+                flags += ['PL0/---', "PL1/R--"] # XN, PXN
+        elif AP == 0b11:
+            if XN == False and PXN == False:
+                flags += ['PL0/R-X', "PL1/R-X"] # 
+            elif XN == False and PXN == True:
+                flags += ['PL0/R-X', "PL1/R--"] # PXN
+            elif XN == True and PXN == False:
+                flags += ['PL0/R--', "PL1/R--"] # XN
+            elif XN == True and PXN == True:
+                flags += ['PL0/R--', "PL1/R--"] # XN, PXN
 
         if NS:
             flags += ['NS']
+        if "AF" in flag_info:
+            flags += ['ACCESSED']
+        if "nG" not in flag_info:
+            flags += ["GLOBAL"]
+        return ' '.join(flags)
 
-        flags = " ".join(flags)
-        pa = pa if self.print_flags else PhyAddr
-
-        if isinstance(va, str) and "*" in va:
-            vend = "{:016x}".format(int(va.replace("*", "0"), 16) + size * cnt)
-            for pos in [x.span() for x in re.finditer(r'\*', va)]:
-                vend = vend[:pos[0]] + "*" + vend[pos[1]:]
-            pend = pa + size * cnt
-            text = "{:16s}-{:16s}  {:016x}-{:016x}  {:<#11x} {:<#10x} {:<5d} [{:s}]".format(va, vend, pa, pend, size*cnt, size, cnt, flags)
-        else:
-            if isinstance(va, str):
-                va = int(va, 16)
-            vend = va + size * cnt
-            pend = pa + size * cnt
-            text = "{:016x}-{:016x}  {:016x}-{:016x}  {:<#11x} {:<#10x} {:<5d} [{:s}]".format(va, vend, pa, pend, size*cnt, size, cnt, flags)
-        return text
-
-    def print_entry(self, addr, entry, new_va):
-        if self.print_each_level:
-            gef_print("{:#018x}: {:#018x} (virt:{:#018x})".format(addr, entry, new_va))
-        return
-
-    def do_pagewalk_short(self, table_base, pt_va_base=0):
+    def do_pagewalk_short(self, table_base, va_base=0):
         self.mappings = []
-        IS_SHORT = True
+
+        def has_next_level(entry):
+            return (entry & 0b11) == 0b01
+        def is_section(entry):
+            return (entry & 0b11) in [0b10, 0b11] and ((entry >> 18) & 1) == 0
+        def is_super_section(entry):
+            return (entry & 0b11) in [0b10, 0b11] and ((entry >> 18) & 1) == 1
+        def is_large_page(entry):
+            return (entry & 0b11) == 0b01
+        def is_small_page(entry):
+            return (entry & 0b11) in [0b10, 0b11]
 
         # 1st level parse
         gef_print(titlify("LEVEL 1"))
         LEVEL1 = []; SECTION = []; SUPER_SECTION = []
         COUNT = 0; INVALID = 0
-        entries = self.read_physmem(table_base, 4 * (2**(12-self.N)))
-        for i, entry in enumerate(self.slice_unpack(entries, 4)):
-            COUNT += 1
+        entries = self.read_physmem_cache(table_base, 4 * (2**(12-self.N)))
+        entries = self.slice_unpack(entries, 4)
+        COUNT += len(entries)
+        for i, entry in enumerate(entries):
+            # present flag
             if (entry & 0b11) == 0b00:
                 INVALID += 1
                 continue
 
-            new_va = pt_va_base | (i << 20)
-            self.print_entry(table_base + i*4, entry, new_va)
+            # calc virtual address
+            new_va = va_base + (i << 20)
 
-            if (entry & 0b11) == 0b01:
-                LEVEL1.append([new_va, entry])
-            elif (entry & 0b11) >= 0b10 and ((entry >> 18) & 1) == 0:
-                SECTION.append([new_va, entry, 0x100000, 1, IS_SHORT, ()]) # va, pa, size, cnt, is_short, upper_table_flags
-            elif (entry & 0b11) >= 0b10 and ((entry >> 18) & 1) == 1:
-                SUPER_SECTION.append([new_va, entry, 0x1000000, 1, IS_SHORT, ()])
+            # calc flags
+            flags = []
+            if has_next_level(entry):
+                if ((entry >> 2) & 1) == 1: flags.append("PXN")
+                if ((entry >> 3) & 1) == 1: flags.append("NS")
+                flags.append("domain={:#x}".format((entry >> 5) & 0b1111))
+            elif is_section(entry):
+                if ((entry >> 0) & 1) == 1: flags.append("PXN")
+                if ((entry >> 2) & 1) == 1: flags.append("B")
+                if ((entry >> 3) & 1) == 1: flags.append("C")
+                if ((entry >> 4) & 1) == 1: flags.append("XN")
+                flags.append("domain={:#x}".format((entry >> 5) & 0b1111))
+                ap = (((entry >> 15) & 1) << 2) + ((entry >> 10) & 0b11)
+                if self.AFE: # AP[2:1] access permissions model
+                    flags.append("AP={:02b}".format(ap >> 1))
+                else: # AP[2:0] access permissions model
+                    flags.append("AP={:03b}".format(ap))
+                flags.append("TEX={:#x}".format((entry >> 12) & 0b111))
+                if ((entry >> 16) & 1) == 1: flags.append("S")
+                if ((entry >> 17) & 1) == 1: flags.append("nG")
+                if ((entry >> 19) & 1) == 1: flags.append("NS")
+            elif is_super_section(entry):
+                if ((entry >> 0) & 1) == 1: flags.append("PXN")
+                if ((entry >> 2) & 1) == 1: flags.append("B")
+                if ((entry >> 3) & 1) == 1: flags.append("C")
+                if ((entry >> 4) & 1) == 1: flags.append("XN")
+                ap = (((entry >> 15) & 1) << 2) + ((entry >> 10) & 0b11)
+                if self.AFE: # AP[2:1] access permissions model
+                    flags.append("AP={:02b}".format(ap >> 1))
+                else: # AP[2:0] access permissions model
+                    flags.append("AP={:03b}".format(ap))
+                flags.append("TEX={:#x}".format((entry >> 12) & 0b111))
+                if ((entry >> 16) & 1) == 1: flags.append("S")
+                if ((entry >> 17) & 1) == 1: flags.append("nG")
+                if ((entry >> 19) & 1) == 1: flags.append("NS")
+
+            # calc next table (drop the flag bits)
+            if has_next_level(entry):
+                next_level_table = entry & 0xfffffc00
+            elif is_section(entry):
+                next_level_table = entry & 0xfff00000
+            elif is_super_section(entry):
+                next_level_table = entry & 0xff000000         # PA[31:24]
+                next_level_table += (entry & 0x00f0000) << 12 # PA[35:32]
+                next_level_table += (entry & 0x00001e0) << 31 # PA[39:36]
+
+            # make entry
+            if has_next_level(entry):
+                LEVEL1.append([new_va, next_level_table, flags])
+            elif is_section(entry):
+                virt_addr = new_va
+                phys_addr = next_level_table
+                page_size = 1 * 1024 * 1024
+                page_count = 1
+                SECTION.append([virt_addr, phys_addr, page_size, page_count, self.format_flags_short(flags)])
+            elif is_super_section(entry):
+                virt_addr = new_va
+                phys_addr = next_level_table
+                page_size = 16 * 1024 * 1024
+                page_count = 1
+                SUPER_SECTION.append([virt_addr, phys_addr, page_size, page_count, self.format_flags_short(flags)])
+
+            # dump
+            if self.print_each_level:
+                addr = table_base + i * 4
+                line = "{:#018x}: {:#018x} (virt:{:#018x}) {:s}".format(addr, entry, new_va, ' '.join(flags))
+                if self.filter == []:
+                    gef_print(line)
+                else:
+                    for filt in self.filter:
+                        if re.search(filt, line):
+                            gef_print(line)
+                            break
+
         info("Number of entries: {:d}".format(COUNT))
         info("Level 1 Entry: {:d}".format(len(LEVEL1)))
         info("PT Entry (supersection; 16MB): {:d}".format(len(SUPER_SECTION)))
@@ -25041,28 +25334,76 @@ class PagewalkArmCommand(PagewalkCommand):
         gef_print(titlify("LEVEL 2"))
         LARGE = []; SMALL = []
         COUNT = 0; INVALID = 0
-        for va, table_base in LEVEL1:
-            pxn = (table_base >> 2) & 1
-            ns = (table_base >> 3) & 1
-            table_base = table_base & 0xfffffc00 # table mask
-
-            entries = self.read_physmem(table_base, 4 * (2**8))
-            for i, entry in enumerate(self.slice_unpack(entries, 4)):
-                COUNT += 1
+        for va_base, table_base, parent_flags in LEVEL1:
+            entries = self.read_physmem_cache(table_base, 4 * (2**8))
+            entries = self.slice_unpack(entries, 4)
+            COUNT += len(entries)
+            for i, entry in enumerate(entries):
+                # present flag
                 if (entry & 0b11) == 0b00:
                     INVALID += 1
                     continue
 
-                new_va = va | (i << 12)
-                self.print_entry(table_base + i*4, entry, new_va)
+                # calc virtual address
+                virt_addr = va_base + (i << 12)
 
-                if (entry & 0b11) == 0b01:
-                    LARGE.append([new_va, entry, 0x4000, 1, IS_SHORT, (pxn, ns)]) # 16KB large page
-                elif (entry & 0b11) >= 0b10:
-                    SMALL.append([new_va, entry, 0x1000, 1, IS_SHORT, (pxn, ns)]) # 4KB small page
+                # calc flags
+                flags = parent_flags.copy()
+                if is_large_page(entry):
+                    if ((entry >> 2) & 1) == 1: flags.append("B")
+                    if ((entry >> 3) & 1) == 1: flags.append("C")
+                    ap = (((entry >> 9) & 1) << 2) + ((entry >> 4) & 0b11)
+                    if self.AFE: # AP[2:1] access permissions model
+                        flags.append("AP={:02b}".format(ap >> 1))
+                    else: # AP[2:0] access permissions model
+                        flags.append("AP={:03b}".format(ap))
+                    if ((entry >> 10) & 1) == 1: flags.append("S")
+                    if ((entry >> 11) & 1) == 1: flags.append("nG")
+                    flags.append("TEX={:#x}".format((entry >> 12) & 0b111))
+                    if ((entry >> 15) & 1) == 1: flags.append("XN")
+                elif is_small_page(entry):
+                    if ((entry >> 0) & 1) == 1: flags.append("XN")
+                    if ((entry >> 2) & 1) == 1: flags.append("B")
+                    if ((entry >> 3) & 1) == 1: flags.append("C")
+                    ap = (((entry >> 9) & 1) << 2) + ((entry >> 4) & 0b11)
+                    if self.AFE: # AP[2:1] access permissions model
+                        flags.append("AP={:02b}".format(ap >> 1))
+                    else: # AP[2:0] access permissions model
+                        flags.append("AP={:03b}".format(ap))
+                    flags.append("TEX={:#x}".format((entry >> 6) & 0b111))
+                    if ((entry >> 10) & 1) == 1: flags.append("S")
+                    if ((entry >> 11) & 1) == 1: flags.append("nG")
+
+                # calc physical addr (drop the flag bits)
+                if is_large_page(entry):
+                    phys_addr = entry & 0xffff0000
+                elif is_small_page(entry):
+                    phys_addr = entry & 0xfffff000
+
+                # make entry
+                if is_large_page(entry):
+                    page_size = 64 * 1024
+                    page_count = 1
+                    LARGE.append([virt_addr, phys_addr, page_size, page_count, self.format_flags_short(flags)])
+                elif is_small_page(entry):
+                    page_size = 4 * 1024
+                    page_count = 1
+                    SMALL.append([virt_addr, phys_addr, page_size, page_count, self.format_flags_short(flags)])
+
+                # dump
+                if self.print_each_level:
+                    addr = table_base + i * 4
+                    line = "{:#018x}: {:#018x} (virt:{:#018x}) {:s}".format(addr, entry, virt_addr, ' '.join(flags))
+                    if self.filter == []:
+                        gef_print(line)
+                    else:
+                        for filt in self.filter:
+                            if re.search(filt, line):
+                                gef_print(line)
+                                break
 
         info("Number of entries: {:d}".format(COUNT))
-        info("PT Entry (large; 16KB): {:d}".format(len(LARGE)))
+        info("PT Entry (large; 64KB): {:d}".format(len(LARGE)))
         info("PT Entry (small; 4KB): {:d}".format(len(SMALL)))
         info("Invalid entries: {:d}".format(INVALID))
         self.mappings += LARGE + SMALL
@@ -25072,46 +25413,79 @@ class PagewalkArmCommand(PagewalkCommand):
         self.mappings = sorted(self.mappings)
         return
 
-    def do_pagewalk_long_parse_upper_flags(self, table_base, flags):
-        pxn = flags[0] | ((table_base >> 59) & 1)
-        xn = flags[1] | ((table_base >> 60) & 1)
-        if flags[2] == 0b00:
-            ap = (table_base >> 61) & 0b11
-        elif flags[2] == 0b01:
-            ap = ((table_base >> 61) & 0b11) & 0b10
-        elif flags[2] == 0b10:
-            ap = ((table_base >> 61) & 0b11) | 0b10
-        elif flags[2] == 0b11:
-            ap = 0b10
-        ns = flags[3] | ((table_base >> 63) & 1)
-        return pxn, xn, ap, ns
-
-    def do_pagewalk_long_mask_tables(self, table_base):
-        return table_base & 0xfffffff000
-
-    def do_pagewalk_long(self, table_base, pt_va_base=0):
+    def do_pagewalk_long(self, table_base, va_base=0):
         self.mappings = []
-        IS_SHORT = False
+
+        def has_next_level(entry):
+            return (entry & 0b11) == 0b11
+        def is_1GB_page(entry):
+            return (entry & 0b11) == 0b01
+        def is_2MB_page(entry):
+            return (entry & 0b11) == 0b01
 
         gef_print(titlify("LEVEL 1"))
         if self.N < 2:
             # 1st level parse
             LEVEL1 = []; GB = []
             COUNT = 0; INVALID = 0
-            entries = self.read_physmem(table_base, 8 * (2**2))
-            for i, entry in enumerate(self.slice_unpack(entries, 8)):
-                COUNT += 1
-                if entry & 1 == 0:
+            entries = self.read_physmem_cache(table_base, 8 * (2**2))
+            entries = self.slice_unpack(entries, 8)
+            COUNT += len(entries)
+            for i, entry in enumerate(entries):
+                # present flag
+                if (entry & 1) == 0:
                     INVALID += 1
                     continue
 
-                new_va = pt_va_base | (i << 30)
-                self.print_entry(table_base + i*8, entry, new_va)
+                # calc virtual address
+                new_va = va_base | (i << 30)
 
-                if (entry & 0b11) == 0b01:
-                    GB.append([new_va, entry, 0x40000000, 1, IS_SHORT, ()]) # 1GB page
-                elif (entry & 0b11) == 0b11:
-                    LEVEL1.append([new_va, entry, (0,0,0,0)]) # lazy parse for upper_flag
+                # calc flags
+                flags = []
+                if has_next_level(entry):
+                    if ((entry >> 59) & 1) == 1: flags.append("PXNTable1")
+                    if ((entry >> 60) & 1) == 1: flags.append("XNTable1")
+                    flags.append("APTable1={:02b}".format((entry >> 61) & 0b11))
+                    if ((entry >> 63) & 1) == 1: flags.append("NSTable1")
+                elif is_1GB_page(entry):
+                    flags.append("AttrIndx={:03b}".format((entry >> 2) & 0b111))
+                    if ((entry >> 5) & 1) == 1: flags.append("NS")
+                    flags.append("AP={:02b}".format((entry >> 6) & 0b11))
+                    flags.append("SH={:02b}".format((entry >> 8) & 0b11))
+                    if ((entry >> 10) & 1) == 1: flags.append("AF")
+                    if ((entry >> 11) & 1) == 1: flags.append("nG")
+                    if ((entry >> 52) & 1) == 1: flags.append("Contiguous")
+                    if ((entry >> 53) & 1) == 1: flags.append("PXN")
+                    if ((entry >> 54) & 1) == 1: flags.append("XN")
+
+                # calc next table (drop the flag bits)
+                if has_next_level(entry):
+                    next_level_table = entry & 0x000000fffffff000
+                elif is_1GB_page(entry):
+                    next_level_table = entry & 0x000000ffc0000000
+
+                # make entry
+                if has_next_level(entry):
+                    LEVEL1.append([new_va, next_level_table, flags])
+                elif is_1GB_page(entry):
+                    virt_addr = new_va
+                    phys_addr = next_level_table
+                    page_size = 1 * 1024 * 1024 * 1024
+                    page_count = 1
+                    GB.append([virt_addr, phys_addr, page_size, page_count, self.format_flags_long(flags)])
+
+                # dump
+                if self.print_each_level:
+                    addr = table_base + i * 8
+                    line = "{:#018x}: {:#018x} (virt:{:#018x}) {:s}".format(addr, entry, new_va, ' '.join(flags))
+                    if self.filter == []:
+                        gef_print(line)
+                    else:
+                        for filt in self.filter:
+                            if re.search(filt, line):
+                                gef_print(line)
+                                break
+
             info("Number of entries: {:d}".format(COUNT))
             info("Level 1 Entry: {:d}".format(len(LEVEL1)))
             info("PT Entry (1GB): {:d}".format(len(GB)))
@@ -25119,30 +25493,71 @@ class PagewalkArmCommand(PagewalkCommand):
             self.mappings += GB
         else:
             info("LEVEL 1 is skipped")
-            LEVEL1 = [[pt_va_base, table_base, (0,0,0,0)]]
+            flags = []
+            LEVEL1 = [[va_base, table_base, flags]]
 
         # 2nd level parse
         gef_print(titlify("LEVEL 2"))
         LEVEL2 = []; MB = []
         COUNT = 0; INVALID = 0
-        for va, table_base, upper_flags in LEVEL1:
-            upper_flags = self.do_pagewalk_long_parse_upper_flags(table_base, upper_flags)
-            table_base = self.do_pagewalk_long_mask_tables(table_base)
-
-            entries = self.read_physmem(table_base, 8 * (2**9))
-            for i, entry in enumerate(self.slice_unpack(entries, 8)):
-                COUNT += 1
+        for va_base, table_base, parent_flags in LEVEL1:
+            entries = self.read_physmem_cache(table_base, 8 * (2**9))
+            entries = self.slice_unpack(entries, 8)
+            COUNT += len(entries)
+            for i, entry in enumerate(entries):
+                # present flag
                 if (entry & 1) == 0:
                     INVALID += 1
                     continue
 
-                new_va = va | (i << 21)
-                self.print_entry(table_base + i*8, entry, new_va)
+                # calc virtual address
+                new_va = va_base | (i << 21)
 
-                if (entry & 0b11) == 0b01:
-                    MB.append([new_va, entry, 0x200000, 1, IS_SHORT, upper_flags]) # 2MB page
-                elif (entry & 0b11) == 0b11:
-                    LEVEL2.append([new_va, entry, upper_flags])
+                # calc flags
+                flags = parent_flags.copy()
+                if has_next_level(entry):
+                    if ((entry >> 59) & 1) == 1: flags.append("PXNTable2")
+                    if ((entry >> 60) & 1) == 1: flags.append("XNTable2")
+                    flags.append("APTable2={:02b}".format((entry >> 61) & 0b11))
+                    if ((entry >> 63) & 1) == 1: flags.append("NSTable2")
+                elif is_2MB_page(entry):
+                    flags.append("AttrIndx={:03b}".format((entry >> 2) & 0b111))
+                    if ((entry >> 5) & 1) == 1: flags.append("NS")
+                    flags.append("AP={:02b}".format((entry >> 6) & 0b11))
+                    flags.append("SH={:02b}".format((entry >> 8) & 0b11))
+                    if ((entry >> 10) & 1) == 1: flags.append("AF")
+                    if ((entry >> 11) & 1) == 1: flags.append("nG")
+                    if ((entry >> 52) & 1) == 1: flags.append("Contiguous")
+                    if ((entry >> 53) & 1) == 1: flags.append("PXN")
+                    if ((entry >> 54) & 1) == 1: flags.append("XN")
+
+                # calc next table (drop the flag bits)
+                if has_next_level(entry):
+                    next_level_table = entry & 0x000000fffffff000
+                elif is_2MB_page(entry):
+                    next_level_table = entry & 0x000000ffffe00000
+
+                # make entry
+                if has_next_level(entry):
+                    LEVEL2.append([new_va, next_level_table, flags])
+                elif is_2MB_page(entry):
+                    virt_addr = new_va
+                    phys_addr = next_level_table
+                    page_size = 2 * 1024 * 1024
+                    page_count = 1
+                    MB.append([virt_addr, phys_addr, page_size, page_count, self.format_flags_long(flags)])
+
+                # dump
+                if self.print_each_level:
+                    addr = table_base + i * 8
+                    line = "{:#018x}: {:#018x} (virt:{:#018x}) {:s}".format(addr, entry, new_va, ' '.join(flags))
+                    if self.filter == []:
+                        gef_print(line)
+                    else:
+                        for filt in self.filter:
+                            if re.search(filt, line):
+                                gef_print(line)
+                                break
 
         info("Number of entries: {:d}".format(COUNT))
         info("Level 2 Entry: {:d}".format(len(LEVEL2)))
@@ -25154,21 +25569,47 @@ class PagewalkArmCommand(PagewalkCommand):
         gef_print(titlify("LEVEL 3"))
         KB = []
         COUNT = 0; INVALID = 0
-        for va, table_base, upper_flags in LEVEL2:
-            upper_flags = self.do_pagewalk_long_parse_upper_flags(table_base, upper_flags)
-            table_base = self.do_pagewalk_long_mask_tables(table_base)
-
-            entries = self.read_physmem(table_base, 8 * (2**9))
-            for i, entry in enumerate(self.slice_unpack(entries, 8)):
-                COUNT += 1
+        for va_base, table_base, parent_flags in LEVEL2:
+            entries = self.read_physmem_cache(table_base, 8 * (2**9))
+            entries = self.slice_unpack(entries, 8)
+            COUNT += len(entries)
+            for i, entry in enumerate(entries):
+                # present flag
                 if (entry & 0b11) != 0b11:
                     INVALID += 1
                     continue
 
-                new_va = va | (i << 12)
-                self.print_entry(table_base + i*8, entry, new_va)
+                # calc virtual address
+                virt_addr = va_base | (i << 12)
 
-                KB.append([new_va, entry, 0x1000, 1, IS_SHORT, upper_flags]) # 4KB page
+                # calc flags
+                flags = parent_flags.copy()
+                flags.append("AttrIndx={:03b}".format((entry >> 2) & 0b111))
+                if ((entry >> 5) & 1) == 1: flags.append("NS")
+                flags.append("AP={:02b}".format((entry >> 6) & 0b11))
+                flags.append("SH={:02b}".format((entry >> 8) & 0b11))
+                if ((entry >> 10) & 1) == 1: flags.append("AF")
+                if ((entry >> 11) & 1) == 1: flags.append("nG")
+                if ((entry >> 52) & 1) == 1: flags.append("Contiguous")
+                if ((entry >> 53) & 1) == 1: flags.append("PXN")
+                if ((entry >> 54) & 1) == 1: flags.append("XN")
+
+                # calc physical addr (drop the flag bits)
+                phys_addr = entry & 0x000000fffffff000
+
+                # make entry
+                page_size = 4 * 1024
+                page_count = 1
+                KB.append([virt_addr, phys_addr, page_size, page_count, self.format_flags_long(flags)])
+
+                # dump
+                if self.print_each_level:
+                    addr = table_base + i * 8
+                    line = "{:#018x}: {:#018x} (virt:{:#018x}) {:s}".format(addr, entry, virt_addr, ' '.join(flags))
+                    for filt in self.filter:
+                        if re.search(filt, line):
+                            gef_print(line)
+                            break
 
         info("Number of entries: {:d}".format(COUNT))
         info("PT Entry (4KB): {:d}".format(len(KB)))
@@ -25188,6 +25629,7 @@ class PagewalkArmCommand(PagewalkCommand):
         TTBR0_EL1 = int(gdb.parse_and_eval('$TTBR0_EL1{}'.format(suffix)))
         TTBR1_EL1 = int(gdb.parse_and_eval('$TTBR1_EL1{}'.format(suffix)))
 
+        # pagewalk TTBR0_EL1
         self.N = TTBCR & 0b111
         ml = 14 - self.N
         pl0base = ((TTBR0_EL1 & ((1<<32)-1)) >> ml) << ml
@@ -25196,6 +25638,7 @@ class PagewalkArmCommand(PagewalkCommand):
         self.do_pagewalk_short(pl0base)
         self.print_page()
 
+        # pagewalk TTBR1_EL1
         gef_print(titlify("$TTBR1_EL1{}".format(suffix)))
         pl1_vabase = {0:None, 1:0x80000000, 2:0x40000000, 3:0x20000000, 4:0x10000000, 5:0x08000000, 6:0x04000000, 7:0x02000000}[self.N]
         pl1base = ((TTBR1_EL1 & ((1<<32)-1)) >> ml) << ml
@@ -25218,6 +25661,7 @@ class PagewalkArmCommand(PagewalkCommand):
         TTBR0_EL1 = int(gdb.parse_and_eval('$TTBR0_EL1{}'.format(suffix)))
         TTBR1_EL1 = int(gdb.parse_and_eval('$TTBR1_EL1{}'.format(suffix)))
 
+        # pagewalk TTBR0_EL1
         T0SZ = TTBCR & 0b111
         T1SZ = (TTBCR >> 16) & 0b111
         self.N = T0SZ
@@ -25227,6 +25671,7 @@ class PagewalkArmCommand(PagewalkCommand):
         self.do_pagewalk_long(pl0base)
         self.print_page()
 
+        # pagewalk TTBR1_EL1
         gef_print(titlify("$TTBR1_EL1{}".format(suffix)))
         if T0SZ != 0 or T1SZ != 0:
             self.N = T1SZ
@@ -25268,14 +25713,14 @@ class PagewalkArmCommand(PagewalkCommand):
         except:
             self.AFE = False
 
-        # check enabled 2 stage translation
+        # check enabled 2 stage translation (TODO)
         try:
             HCR_EL2 = int(gdb.parse_and_eval('$HCR_EL2{}'.format(suffix)))
             self.EL2VM = (HCR_EL2 & 1) == 1
         except:
             self.EL2VM = False
 
-        # check enabled EL2 translation
+        # check enabled EL2 translation (TODO)
         try:
             SCTLR_EL2 = int(gdb.parse_and_eval('$SCTLR_EL2{}'.format(suffix)))
             self.EL2 = (SCTLR_EL2 & 1) == 1
@@ -25339,24 +25784,31 @@ class PagewalkArmCommand(PagewalkCommand):
 
 @register_command
 class PagewalkArm64Command(PagewalkCommand):
-    """Dump pagetable for ARM64 using qemu-monitor."""
+    """Dump pagetable for ARM64 using qemu-monitor (for ARMv8.3)."""
     _cmdline_ = "pagewalk arm64"
-    _syntax_ = "{:s} [-h] [TARGET_EL] [--print-each-level] [--print-flags] [--print-all] [--filter REGEX_PATTERN] [--range ADDRESS] [--sort-by-phys]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [TARGET_EL] [--print-each-level] [--no-merge] [--filter REGEX_PATTERN] [--range ADDRESS] [--sort-by-phys] [--simple]".format(_cmdline_)
     _example_ = "\n"
     _example_ += "{:s} --print-each-level # for current EL, show all level pagetable\n".format(_cmdline_)
-    _example_ += "{:s} 1 --print-flags    # for EL1+0, show lower bits of address used as flag\n".format(_cmdline_)
-    _example_ += "{:s} 2 --print-all      # for EL2, do not merge similar/consecutive address\n".format(_cmdline_)
-    _example_ += "{:s} --filter '0xabc'   # for current EL, grep by REGEX pattern\n".format(_cmdline_)
+    _example_ += "{:s} 1 --no-merge       # for EL1+0, do not merge similar/consecutive address\n".format(_cmdline_)
+    _example_ += "{:s} 2 --filter '0xabc' # for EL2, grep by REGEX pattern\n".format(_cmdline_)
     _example_ += "{:s} --range '0x7fff00' # for current EL, filter by map included specific address\n".format(_cmdline_)
-    _example_ += "{:s} --sort-by-phys     # sort by physical address".format(_cmdline_)
+    _example_ += "{:s} --sort-by-phys     # sort by physical address\n".format(_cmdline_)
+    _example_ += "{:s} --simple           # merge with ignoring physical address consecutivness".format(_cmdline_)
     _category_ = "Process/State Inspection (Physical Memory)"
 
     def __init__(self, *args, **kwargs):
         super().__init__(complete=gdb.COMPLETE_NONE)
-        self.cache = {}
         return
 
-    def read_mem_w(self, addr, size=8):
+    def read_mem_wrapper(self, addr, size=8):
+        """
+        When pagewalking EL0/EL1 of the guest OS, gdb pagewalks the physical memory according to $TTBR0_ELx.
+        However, even if you try to read the physical memory, access to the address will fail
+        because it is actually an intermediate physical memory.
+        Therefore, in order to perform a pagewalk of EL0/EL1, EL2 mapping information is required.
+        This function is for reading from physical memory with that in mind.
+        """
+
         if self.EL3 and self.TargetEL == 3:
             return read_memory(addr, size)
 
@@ -25364,10 +25816,10 @@ class PagewalkArm64Command(PagewalkCommand):
         if self.EL2VM and self.TargetEL == 1 and self.el2_mappings:
             def search_pa(addr):
                 for entry_info in self.el2_mappings:
-                    va, entry, sz, cnt, _ = entry_info
+                    va, entry, sz, cnt, flags = entry_info
                     if isinstance(va, str):
                         va = int(va, 16)
-                    pa = entry & 0xfffffffff000
+                    pa = entry & 0x0000fffffffff000
                     if va <= addr < va + sz:
                         offset = addr - va
                         return pa + offset, sz - offset
@@ -25376,192 +25828,243 @@ class PagewalkArm64Command(PagewalkCommand):
             out = b""
             while size > 0:
                 paddr, available_sz = search_pa(addr)
-                out += self.read_physmem(paddr, min([size, available_sz]))
+                out += self.read_physmem_cache(paddr, min([size, available_sz]))
                 size -= min(size, available_sz)
             return out
 
         # direct physmem read
         else:
-            return self.read_physmem(addr, size)
+            return self.read_physmem_cache(addr, size)
 
-    def format_entry(self, entry):
-        va, pa, size, cnt, upper_table_flags = entry
-
-        if size in [0x1000, 0x200000, 0x40000000]: # granule_bits = 12
-            PhyAddr = pa & 0xfffffffff000
-        elif size in [0x4000, 0x2000000]: # granule_bits = 14
-            PhyAddr = pa & 0xffffffffc000
-        elif size in [0x10000, 0x20000000, 0x40000000000]: # granule_bits = 16
-            if self.FEAT_LPA:
-                PhyAddr = (pa & 0xffffffff0000) | ((pa & 0xf000) << 36)
-            else:
-                PhyAddr = pa & 0xffffffff0000
-
+    def format_flags_stage2(self, flag_info):
         flags = []
-        if self.TargetEL == 2: # EL2 page table or not
-            # stage2 do not use upper_table_flags
-            XN = (pa >> 53) & 0b11
-            S2AP = (pa >> 6) & 0b11
-            A = (pa >> 10) & 0b1
 
-            if S2AP == 0:
-                if XN == 0:
-                    flags += ['EL0/---', 'EL1/---']
-                elif XN == 1:
-                    flags += ['EL0/---', 'EL1/---'] # PXN
-                elif XN == 2:
-                    flags += ['EL0/---', 'EL1/---'] # PXN UXN
-                elif XN == 3:
-                    flags += ['EL0/---', 'EL1/---'] # UXN
-            elif S2AP == 1:
-                if XN == 0:
+        XN1 = "XN1" in flag_info
+        XN0 = "XN0" in flag_info
+        if "S2AP=00" in flag_info:
+            if XN1 == False and XN0 == False:
+                flags += ['EL0/---', 'EL1/---']
+            elif XN1 == False and XN0 == True:
+                flags += ['EL0/---', 'EL1/---']
+            elif XN1 == True and XN0 == False:
+                flags += ['EL0/---', 'EL1/---']
+            elif XN1 == True and XN0 == True:
+                flags += ['EL0/---', 'EL1/---']
+        elif "S2AP=01" in flag_info:
+            if XN1 == False and XN0 == False:
+                flags += ['EL0/R-X', 'EL1/R-X']
+            elif XN1 == False and XN0 == True:
+                flags += ['EL0/R-X', 'EL1/R--']
+            elif XN1 == True and XN0 == False:
+                flags += ['EL0/R--', 'EL1/R--']
+            elif XN1 == True and XN0 == True:
+                flags += ['EL0/R--', 'EL1/R-X']
+        elif "S2AP=10" in flag_info:
+            if XN1 == False and XN0 == False:
+                flags += ['EL0/-W-', 'EL1/-W-']
+            elif XN1 == False and XN0 == True:
+                flags += ['EL0/-W-', 'EL1/-W-']
+            elif XN1 == True and XN0 == False:
+                flags += ['EL0/-W-', 'EL1/-W-']
+            elif XN1 == True and XN0 == True:
+                flags += ['EL0/-W-', 'EL1/-W-']
+        elif "S2AP=11" in flag_info:
+            if XN1 == False and XN0 == False:
+                flags += ['EL0/RWX', 'EL1/RWX']
+            elif XN1 == False and XN0 == True:
+                flags += ['EL0/RWX', 'EL1/RW-']
+            elif XN1 == True and XN0 == False:
+                flags += ['EL0/RW-', 'EL1/RW-']
+            elif XN1 == True and XN0 == True:
+                flags += ['EL0/RW-', 'EL1/RWX']
+        if "AF" in flag_info:
+            flags += ['ACCESSED']
+        if "DBM" in flag_info:
+            flags += ['DIRTY']
+        # stage2 has no `nG` bit
+        return ' '.join(flags)
+
+    def format_flags(self, flag_info):
+        flags = []
+
+        # AP/APTable parsing
+        if "AP=00" in flag_info:
+            disable_write_access = 0
+            enable_unpriv_access = 0
+        elif "AP=01" in flag_info: # EL0/EL1 only
+            disable_write_access = 0
+            enable_unpriv_access = 1
+        elif "AP=10" in flag_info:
+            disable_write_access = 1
+            enable_unpriv_access = 0
+        elif "AP=11" in flag_info: # EL0/EL1 only
+            disable_write_access = 1
+            enable_unpriv_access = 1
+        if "APTable2=00" in flag_info:
+            pass
+        elif "APTable2=01" in flag_info: # EL0/EL1 only
+            enable_unpriv_access &= 0
+        elif "APTable2=10" in flag_info:
+            disable_write_access |= 1
+        elif "APTable2=11" in flag_info: # EL0/EL1 only
+            disable_write_access |= 1
+            enable_unpriv_access &= 0
+        if "APTable1=00" in flag_info:
+            pass
+        elif "APTable1=01" in flag_info: # EL0/EL1 only
+            enable_unpriv_access &= 0
+        elif "APTable1=10" in flag_info:
+            disable_write_access |= 1
+        elif "APTable1=11" in flag_info: # EL0/EL1 only
+            disable_write_access |= 1
+            enable_unpriv_access &= 0
+        if "APTable0=00" in flag_info:
+            pass
+        elif "APTable0=01" in flag_info: # EL0/EL1 only
+            enable_unpriv_access &= 0
+        elif "APTable0=10" in flag_info:
+            disable_write_access |= 1
+        elif "APTable0=11" in flag_info: # EL0/EL1 only
+            disable_write_access |= 1
+            enable_unpriv_access &= 0
+
+        # UXN/UXNTable, XN/XNTable, PXN/PXNTable, NS/NSTable parsing
+        UXN = "UXN" in flag_info
+        UXN |= "UXNTable2" in flag_info
+        UXN |= "UXNTable1" in flag_info
+        UXN |= "UXNTable0" in flag_info
+        XN = "XN" in flag_info
+        XN |= "XNTable2" in flag_info
+        XN |= "XNTable1" in flag_info
+        XN |= "XNTable0" in flag_info
+        PXN = "PXN" in flag_info
+        PXN |= "PXNTable2" in flag_info
+        PXN |= "PXNTable1" in flag_info
+        PXN |= "PXNTable0" in flag_info
+        NS = "NS" in flag_info
+        NS |= "NSTable2" in flag_info
+        NS |= "NSTable1" in flag_info
+        NS |= "NSTable0" in flag_info
+
+        if self.TargetEL == 1:
+            if UXN == False and PXN == False:
+                if disable_write_access == 0 and enable_unpriv_access == 0:
+                    if not self.EL1_WXN:
+                        flags += ['EL0/--X', 'EL1/RWX']
+                    else:
+                        flags += ['EL0/--X', 'EL1/RW-']
+                elif disable_write_access == 0 and enable_unpriv_access == 1:
+                    if not self.EL1_WXN:
+                        flags += ['EL0/RWX', 'EL1/RW-']
+                    else:
+                        flags += ['EL0/RW-', 'EL1/RW-']
+                elif disable_write_access == 1 and enable_unpriv_access == 0:
+                    flags += ['EL0/--X', 'EL1/R-X']
+                elif disable_write_access == 1 and enable_unpriv_access == 1:
                     flags += ['EL0/R-X', 'EL1/R-X']
-                elif XN == 1:
-                    flags += ['EL0/R-X', 'EL1/R--'] # PXN
-                elif XN == 2:
-                    flags += ['EL0/R--', 'EL1/R--'] # PXN UXN
-                elif XN == 3:
-                    flags += ['EL0/R--', 'EL1/R-X'] # UXN
-            elif S2AP == 2:
-                if XN == 0:
-                    flags += ['EL0/-W-', 'EL1/-W-']
-                elif XN == 1:
-                    flags += ['EL0/-W-', 'EL1/-W-'] # PXN
-                elif XN == 2:
-                    flags += ['EL0/-W-', 'EL1/-W-'] # PXN UXN
-                elif XN == 3:
-                    flags += ['EL0/-W-', 'EL1/-W-'] # UXN
-            elif S2AP == 3:
-                if XN == 0:
-                    flags += ['EL0/RWX', 'EL1/RWX']
-                elif XN == 1:
-                    flags += ['EL0/RWX', 'EL1/RW-'] # PXN
-                elif XN == 2:
-                    flags += ['EL0/RW-', 'EL1/RW-'] # PXN UXN
-                elif XN == 3:
-                    flags += ['EL0/RW-', 'EL1/RWX'] # UXN
-            if not A:
-                flags += ['!ACC']
+            elif UXN == False and PXN == True:
+                if disable_write_access == 0 and enable_unpriv_access == 0:
+                    flags += ['EL0/--X', 'EL1/RW-']
+                elif disable_write_access == 0 and enable_unpriv_access == 1:
+                    if not self.EL1_WXN:
+                        flags += ['EL0/RWX', 'EL1/RW-']
+                    else:
+                        flags += ['EL0/RW-', 'EL1/RW-']
+                elif disable_write_access == 1 and enable_unpriv_access == 0:
+                    flags += ['EL0/--X', 'EL1/R--']
+                elif disable_write_access == 1 and enable_unpriv_access == 1:
+                    flags += ['EL0/R-X', 'EL1/R--']
+            elif UXN == True and PXN == False:
+                if disable_write_access == 0 and enable_unpriv_access == 0:
+                    if not self.EL1_WXN:
+                        flags += ['EL0/---', 'EL1/RWX']
+                    else:
+                        flags += ['EL0/---', 'EL1/RW-']
+                elif disable_write_access == 0 and enable_unpriv_access == 1:
+                    flags += ['EL0/RW-', 'EL1/RW-']
+                elif disable_write_access == 1 and enable_unpriv_access == 0:
+                    flags += ['EL0/---', 'EL1/R-X']
+                elif disable_write_access == 1 and enable_unpriv_access == 1:
+                    flags += ['EL0/R--', 'EL1/R-X']
+            elif UXN == True and PXN == True:
+                if disable_write_access == 0 and enable_unpriv_access == 0:
+                    flags += ['EL0/---', 'EL1/RW-']
+                elif disable_write_access == 0 and enable_unpriv_access == 1:
+                    flags += ['EL0/RW-', 'EL1/RW-']
+                elif disable_write_access == 1 and enable_unpriv_access == 0:
+                    flags += ['EL0/---', 'EL1/R--']
+                elif disable_write_access == 1 and enable_unpriv_access == 1:
+                    flags += ['EL0/R--', 'EL1/R--']
+        elif self.TargetEL == 2:
+            if XN == False:
+                if disable_write_access == 0:
+                    if not self.EL2_WXN:
+                        flags += ['EL2/RWX']
+                    else:
+                        flags += ['EL2/RW-']
+                elif disable_write_access == 1:
+                    flags += ['EL2/R-X']
+            elif XN == True:
+                if disable_write_access == 0:
+                    flags += ['EL2/RW-']
+                elif disable_write_access == 1:
+                    flags += ['EL2/R--']
+        elif self.TargetEL == 3:
+            if XN == False:
+                if disable_write_access == 0:
+                    if not self.EL3_WXN:
+                        flags += ['EL3/RWX']
+                    else:
+                        flags += ['EL3/RW-']
+                elif disable_write_access == 1:
+                    flags += ['EL3/R-X']
+            elif XN == True:
+                if disable_write_access == 0:
+                    flags += ['EL3/RW-']
+                elif disable_write_access == 1:
+                    flags += ['EL3/R--']
+        if NS:
+            flags += ['NS']
+        if "AF" in flag_info:
+            flags += ['ACCESSED']
+        if "DBM" in flag_info:
+            flags += ['DIRTY']
+        if "nG" not in flag_info:
+            flags += ["GLOBAL"]
+        return ' '.join(flags)
 
-        else: # not EL2
-            if upper_table_flags and upper_table_flags[0] == 1:
-                PXN = 1
-            else:
-                PXN = (pa >> 53) & 1
-            if upper_table_flags and upper_table_flags[1] == 1:
-                XN = 1
-            else:
-                XN = (pa >> 54) & 1
-            if not upper_table_flags:
-                AP = (pa >> 6) & 0b11
-            elif upper_table_flags[2] == 0b00:
-                AP = (pa >> 6) & 0b11
-            elif upper_table_flags[2] == 0b01:
-                AP = ((pa >> 6) & 0b11) & 0b10
-            elif upper_table_flags[2] == 0b10:
-                AP = ((pa >> 6) & 0b11) | 0b10
-            elif upper_table_flags[2] == 0b11:
-                AP = 0b10
-            if upper_table_flags and upper_table_flags[3] == 1:
-                NS = 1
-            else:
-                NS = (pa >> 5) & 1
+    """
+     Stage1                   |     Stage2
+    -------------------------------------------------------
+    +----------------------+  |   +----------------------+
+    | Guest OS table       | -|-> | Virtualization table |
+    +----------------------+  |   +----------------------+
+      TTBR0_EL1, TTBR1_EL1    |     VTTBR0_EL2
+                              |
+    +----------------------+  |
+    | Hypervisor table     |  |
+    +----------------------+  |
+      TTBR0_EL2               |
+                              |
+    +----------------------+  |
+    | Secure monitor table |  |
+    +----------------------+  |
+      TTBR0_EL3               |
 
-            A = (pa >> 10) & 0b1
 
-            if AP == 0:
-                if XN == 0 and PXN == 0:
-                    flags += ['EL0/---', 'EL1/RWX'] #
-                elif XN == 0 and PXN == 1:
-                    flags += ['EL0/---', 'EL1/RW-'] # PXN
-                elif XN == 1 and PXN == 0:
-                    flags += ['EL0/---', 'EL1/RWX'] # UXN
-                elif XN == 1 and PXN == 1:
-                    flags += ['EL0/---', 'EL1/RW-'] # PXN UXN
-            elif AP == 1:
-                if XN == 0 and PXN == 0:
-                    flags += ['EL0/RWX', 'EL1/RWX'] #
-                elif XN == 0 and PXN == 1:
-                    flags += ['EL0/RWX', 'EL1/RW-'] # PXN
-                elif XN == 1 and PXN == 0:
-                    flags += ['EL0/RW-', 'EL1/RWX'] # UXN
-                elif XN == 1 and PXN == 1:
-                    flags += ['EL0/RW-', 'EL1/RW-'] # PXN UXN
-            elif AP == 2:
-                if XN == 0 and PXN == 0:
-                    flags += ['EL0/---', 'EL1/R-X'] #
-                elif XN == 0 and PXN == 1:
-                    flags += ['EL0/---', 'EL1/R--'] # PXN
-                elif XN == 1 and PXN == 0:
-                    flags += ['EL0/---', 'EL1/R-X'] # UXN
-                elif XN == 1 and PXN == 1:
-                    flags += ['EL0/---', 'EL1/R--'] # PXN UXN
-            elif AP == 3:
-                if XN == 0 and PXN == 0:
-                    flags += ['EL0/R-X', 'EL1/R-X'] #
-                elif XN == 0 and PXN == 1:
-                    flags += ['EL0/R-X', 'EL1/R--'] # PXN
-                elif XN == 1 and PXN == 0:
-                    flags += ['EL0/R--', 'EL1/R-X'] # UXN
-                elif XN == 1 and PXN == 1:
-                    flags += ['EL0/R--', 'EL1/R--'] # PXN UXN
-            if NS:
-                flags += ['NS']
-            if not A:
-                flags += ['!ACC']
-
-        flags = " ".join(flags)
-        pa = pa if self.print_flags else PhyAddr
-
-        if isinstance(va, str) and "*" in va:
-            vend = "{:016x}".format(int(va.replace("*", "0"), 16) + size * cnt)
-            for pos in [x.span() for x in re.finditer(r'\*', va)]:
-                vend = vend[:pos[0]] + "*" + vend[pos[1]:]
-            pend = pa + size * cnt
-            text = "{:16s}-{:16s}  {:016x}-{:016x}  {:<#11x} {:<#10x} {:<5d} [{:s}]".format(va, vend, pa, pend, size*cnt, size, cnt, flags)
-        else:
-            if isinstance(va, str):
-                va = int(va, 16)
-            vend = va + size * cnt
-            pend = pa + size * cnt
-            text= "{:016x}-{:016x}  {:016x}-{:016x}  {:<#11x} {:<#10x} {:<5d} [{:s}]".format(va, vend, pa, pend, size*cnt, size, cnt, flags)
-        return text
-
-    def print_entry(self, addr, entry, new_va):
-        if self.print_each_level:
-            gef_print("{:#018x}: {:#018x} (virt:{:#018x})".format(addr, entry, new_va))
-        return
-
-    def do_pagewalk_parse_upper_flags(self, table_base, flags):
-        pxn = flags[0] | ((table_base >> 59) & 1)
-        xn = flags[1] | ((table_base >> 60) & 1)
-        if flags[2] == 0b00:
-            ap = (table_base >> 61) & 0b11
-        elif flags[2] == 0b01:
-            ap = ((table_base >> 61) & 0b11) & 0b10
-        elif flags[2] == 0b10:
-            ap = ((table_base >> 61) & 0b11) | 0b10
-        elif flags[2] == 0b11:
-            ap = 0b10
-        ns = flags[3] | ((table_base >> 63) & 1)
-        return pxn, xn, ap, ns
-
-    def do_pagewalk_mask_tables(self, table_base):
-        if self.FEAT_LPA:
-            table_base = (table_base & 0xffffffff0000) | ((table_base & 0xf000) << 36)
-        else:
-            table_base &= 0xfffffffff000
-        return table_base
-
-    def do_pagewalk_get_entries_per_table(self, BIT_RANGE, add16=False):
-        entries_per_table = 2 ** (BIT_RANGE[1] - BIT_RANGE[0])
-        if add16:
-            entries_per_table += 16
-        if not self.silent:
-            info("Entries per table: {:d}".format(entries_per_table))
-        return entries_per_table
-
-    def do_pagewalk(self, table_base, granule_bits, region_start, region_end, start_level = 0):
+      TargetEL=1              |    TargetEL=2              |    TargetEL=3
+    ---------------------------------------------------------------------------------
+    +----------------------+  |  +----------------------+  |  +----------------------+
+    | Guest OS table       |  |  | Virtualization table |  |  | Secure monitor table |
+    +----------------------+  |  +----------------------+  |  +----------------------+
+      TTBR0_EL1, TTBR1_EL1    |    VTTBR0_EL2              |    TTBR0_EL3
+                              |                            |
+                              |  +----------------------+  |
+                              |  | Hypervisor table     |  |
+                              |  +----------------------+  |
+                              |    TTBR0_EL2               |
+    """
+    def do_pagewalk(self, table_base, granule_bits, region_start, region_end, start_level=0, is_stage2=False):
         self.mappings = []
 
         region_bits = int(math.log2(region_end - region_start))
@@ -25592,30 +26095,79 @@ class PagewalkArm64Command(PagewalkCommand):
                 err("Unsupported granule_bits")
             return
 
-        TABLE_BASE = [[region_start, table_base, (0,0,0,0)]]
+        def get_entries_per_table(BIT_RANGE, add16=False):
+            entries_per_table = 2 ** (BIT_RANGE[1] - BIT_RANGE[0])
+            if add16:
+                entries_per_table += 16
+            if not self.silent:
+                info("Entries per table: {:d}".format(entries_per_table))
+            return entries_per_table
+
+        def has_next_level(entry): # for Level0, 1, 2 but not Level3
+            return (entry & 0b11) == 0b11
+
+        flags = []
+        TABLE_BASE = [[region_start, table_base, flags]]
 
         # level 0 parse
         if not self.silent:
             gef_print(titlify("LEVEL 0"))
         if LEVEL0_BIT_RANGE is not None and start_level == 0:
-            entries_per_table = self.do_pagewalk_get_entries_per_table(LEVEL0_BIT_RANGE)
+            entries_per_table = get_entries_per_table(LEVEL0_BIT_RANGE)
             LEVEL0 = []
             COUNT = 0; INVALID = 0
-            for va, table_base, flags in TABLE_BASE:
-                table_base = self.do_pagewalk_mask_tables(table_base)
-
-                entries = self.read_mem_w(table_base, 8 * entries_per_table)
-                for i, entry in enumerate(self.slice_unpack(entries, 8)):
-                    COUNT += 1
+            for va_base, table_base, parent_flags in TABLE_BASE:
+                entries = self.read_mem_wrapper(table_base, 8 * entries_per_table)
+                entries = self.slice_unpack(entries, 8)
+                COUNT += len(entries)
+                for i, entry in enumerate(entries):
+                    # present flag
                     if entry & 1 == 0:
                         INVALID += 1
                         continue
 
-                    new_va = va | (i << LEVEL0_BIT_RANGE[0])
-                    self.print_entry(table_base + i*8, entry, new_va)
+                    # calc virtual address
+                    new_va = va_base + (i << LEVEL0_BIT_RANGE[0])
 
-                    if (entry & 0b11) == 0b11:
-                        LEVEL0.append([new_va, entry, flags])
+                    # calc flags
+                    flags = parent_flags.copy()
+                    if has_next_level(entry):
+                        if is_stage2:
+                            pass
+                        elif self.TargetEL == 1:
+                            if ((entry >> 59) & 1) == 1: flags.append("PXNTable0")
+                            if ((entry >> 60) & 1) == 1: flags.append("UXNTable0")
+                            flags.append("APTable0={:02b}".format((entry >> 61) & 0b11))
+                            if ((entry >> 63) & 1) == 1: flags.append("NSTable0")
+                        else: # TargetEL == 2,3
+                            if ((entry >> 60) & 1) == 1: flags.append("XNTable0") # Use XNTable, not UXNTable # PXNTable is undefined
+                            flags.append("APTable0={:02b}".format((entry >> 61) & 0b11 & 0b10)) # APTable[0] must be 0
+                            if ((entry >> 63) & 1) == 1: flags.append("NSTable0")
+                    else:
+                        # maybe undefined (at ARMv8.3)
+                        raise
+
+                    # calc next table (drop the flag bits)
+                    if self.FEAT_LPA:
+                        next_level_table = (entry & 0x0000ffffffff0000) | ((entry & 0xf000) << 36)
+                    else:
+                        next_level_table = entry & 0x0000fffffffff000
+
+                    # make entry
+                    LEVEL0.append([new_va, next_level_table, flags])
+
+                    # dump
+                    if self.print_each_level:
+                        addr = table_base + i * 8
+                        line = "{:#018x}: {:#018x} (virt:{:#018x}) {:s}".format(addr, entry, new_va, ' '.join(flags))
+                        if self.filter == []:
+                            gef_print(line)
+                        else:
+                            for filt in self.filter:
+                                if re.search(filt, line):
+                                    gef_print(line)
+                                    break
+
                 if not self.silent:
                     info("Number of entries: {:d}".format(COUNT))
                     info("Level 0 Entry: {:d}".format(len(LEVEL0)))
@@ -25629,30 +26181,103 @@ class PagewalkArm64Command(PagewalkCommand):
         if not self.silent:
             gef_print(titlify("LEVEL 1"))
         if LEVEL1_BIT_RANGE is not None and start_level <= 1:
-            entries_per_table = self.do_pagewalk_get_entries_per_table(LEVEL1_BIT_RANGE, start_level==1)
+            entries_per_table = get_entries_per_table(LEVEL1_BIT_RANGE, start_level==1)
             LEVEL1 = []; GB1 = []; TB4 = []
             COUNT = 0; INVALID = 0
-            for va, table_base, upper_flags in LEVEL0:
-                upper_flags = self.do_pagewalk_parse_upper_flags(table_base, upper_flags)
-                table_base = self.do_pagewalk_mask_tables(table_base)
-
-                entries = self.read_mem_w(table_base, 8 * entries_per_table)
-                for i, entry in enumerate(self.slice_unpack(entries, 8)):
-                    COUNT += 1
+            for va_base, table_base, parent_flags in LEVEL0:
+                entries = self.read_mem_wrapper(table_base, 8 * entries_per_table)
+                entries = self.slice_unpack(entries, 8)
+                COUNT += len(entries)
+                for i, entry in enumerate(entries):
+                    # present flag
                     if entry & 1 == 0:
                         INVALID += 1
                         continue
 
-                    new_va = va | (i << LEVEL1_BIT_RANGE[0])
-                    self.print_entry(table_base + i*8, entry, new_va)
+                    # calc virtual address
+                    new_va = va_base + (i << LEVEL1_BIT_RANGE[0])
 
-                    if (entry & 0b11) == 0b01:
+                    # calc flags
+                    flags = parent_flags.copy()
+                    if has_next_level(entry):
+                        if is_stage2:
+                            pass
+                        elif self.TargetEL == 1:
+                            if ((entry >> 59) & 1) == 1: flags.append("PXNTable1")
+                            if ((entry >> 60) & 1) == 1: flags.append("UXNTable1")
+                            flags.append("APTable1={:02b}".format((entry >> 61) & 0b11))
+                            if ((entry >> 63) & 1) == 1: flags.append("NSTable1")
+                        else: # TargetEL == 2,3
+                            if ((entry >> 60) & 1) == 1: flags.append("XNTable1") # Use XNTable, not UXNTable # PXNTable is undefined
+                            flags.append("APTable1={:02b}".format((entry >> 61) & 0b11 & 0b10)) # APTable[0] must be 0
+                            if ((entry >> 63) & 1) == 1: flags.append("NSTable1")
+                    else:
+                        if is_stage2:
+                            flags.append("MemAttr={:#x}".format((entry >> 2) & 0b1111))
+                            flags.append("S2AP={:02b}".format((entry >> 6) & 0b11))
+                            flags.append("SH={:02b}".format((entry >> 8) & 0b11))
+                            if ((entry >> 10) & 1) == 1: flags.append("AF")
+                            if ((entry >> 51) & 1) == 1: flags.append("DBM")
+                            if ((entry >> 52) & 1) == 1: flags.append("Contiguous")
+                            flags.append("XN={:02b}".format((entry >> 53) & 0b11)) # Use XN, not UXN
+                            flags.append("PBHA={:#x}".format((entry >> 59) & 0b1111))
+                        elif self.TargetEL == 1:
+                            flags.append("AttrIndx={:03b}".format((entry >> 2) & 0b111))
+                            if ((entry >> 5) & 1) == 1: flags.append("NS")
+                            flags.append("AP={:02b}".format((entry >> 6) & 0b11))
+                            flags.append("SH={:02b}".format((entry >> 8) & 0b11))
+                            if ((entry >> 10) & 1) == 1: flags.append("AF")
+                            if ((entry >> 11) & 1) == 1: flags.append("nG")
+                            if ((entry >> 51) & 1) == 1: flags.append("DBM")
+                            if ((entry >> 52) & 1) == 1: flags.append("Contiguous")
+                            if ((entry >> 53) & 1) == 1: flags.append("PXN")
+                            if ((entry >> 54) & 1) == 1: flags.append("UXN")
+                            flags.append("PBHA={:#x}".format((entry >> 59) & 0b1111))
+                        else: # TargetEL == 2,3
+                            flags.append("AttrIndx={:03b}".format((entry >> 2) & 0b111))
+                            if ((entry >> 5) & 1) == 1: flags.append("NS")
+                            flags.append("AP={:02b}".format((entry >> 6) & 0b11 & 0b10)) # AP[0] must be 0
+                            flags.append("SH={:02b}".format((entry >> 8) & 0b11))
+                            if ((entry >> 10) & 1) == 1: flags.append("AF")
+                            if ((entry >> 11) & 1) == 1: flags.append("nG")
+                            if ((entry >> 51) & 1) == 1: flags.append("DBM")
+                            if ((entry >> 52) & 1) == 1: flags.append("Contiguous")
+                            if ((entry >> 54) & 1) == 1: flags.append("XN") # Use XN, not UXN # PXN is undefined
+                            flags.append("PBHA={:#x}".format((entry >> 59) & 0b1111))
+
+                    # calc next table (drop the flag bits)
+                    if self.FEAT_LPA:
+                        next_level_table = (entry & 0x0000ffffffff0000) | ((entry & 0xf000) << 36)
+                    else:
+                        next_level_table = entry & 0x0000fffffffff000
+
+                    # make entry
+                    if has_next_level(entry):
+                        LEVEL1.append([new_va, next_level_table, flags])
+                    else:
+                        virt_addr = new_va
+                        phys_addr = next_level_table
+                        page_count = 1
+                        flag_string = self.format_flags_stage2(flags) if is_stage2 else self.format_flags(flags)
                         if granule_bits == 16:
-                            TB4.append([new_va, entry, 0x40000000000, 1, upper_flags]) # 4TB page
+                            page_size = 4 * 1024 * 1024 * 1024 * 1024
+                            TB4.append([virt_addr, phys_addr, page_size, page_count, flag_string])
+                        elif granule_bits == 12:
+                            page_size = 1 * 1024 * 1024 * 1024
+                            GB1.append([virt_addr, phys_addr, page_size, page_count, flag_string])
+
+                    # dump
+                    if self.print_each_level:
+                        addr = table_base + i * 8
+                        line = "{:#018x}: {:#018x} (virt:{:#018x}) {:s}".format(addr, entry, new_va, ' '.join(flags))
+                        if self.filter == []:
+                            gef_print(line)
                         else:
-                            GB1.append([new_va, entry, 0x40000000, 1, upper_flags]) # 1GB page
-                    elif (entry & 0b11) == 0b11:
-                        LEVEL1.append([new_va, entry, upper_flags])
+                            for filt in self.filter:
+                                if re.search(filt, line):
+                                    gef_print(line)
+                                    break
+
             if not self.silent:
                 info("Number of entries: {:d}".format(COUNT))
                 info("Level 1 Entry: {:d}".format(len(LEVEL1)))
@@ -25669,32 +26294,106 @@ class PagewalkArm64Command(PagewalkCommand):
         if not self.silent:
             gef_print(titlify("LEVEL 2"))
         if LEVEL2_BIT_RANGE is not None and start_level <= 2:
-            entries_per_table = self.do_pagewalk_get_entries_per_table(LEVEL2_BIT_RANGE, start_level==2)
+            entries_per_table = get_entries_per_table(LEVEL2_BIT_RANGE, start_level==2)
             LEVEL2 = []; MB2 = []; MB32 = []; MB512 = []
             COUNT = 0; INVALID = 0
-            for va, table_base, upper_flags in LEVEL1:
-                upper_flags = self.do_pagewalk_parse_upper_flags(table_base, upper_flags)
-                table_base = self.do_pagewalk_mask_tables(table_base)
-
-                entries = self.read_mem_w(table_base, 8 * entries_per_table)
-                for i, entry in enumerate(self.slice_unpack(entries, 8)):
-                    COUNT += 1
+            for va_base, table_base, parent_flags in LEVEL1:
+                entries = self.read_mem_wrapper(table_base, 8 * entries_per_table)
+                entries = self.slice_unpack(entries, 8)
+                COUNT += len(entries)
+                for i, entry in enumerate(entries):
+                    # present flag
                     if entry & 1 == 0:
                         INVALID += 1
                         continue
 
-                    new_va = va | (i << LEVEL2_BIT_RANGE[0])
-                    self.print_entry(table_base + i*8, entry, new_va)
+                    # calc virtual address
+                    new_va = va_base + (i << LEVEL2_BIT_RANGE[0])
 
-                    if (entry & 0b11) == 0b01:
-                        if granule_bits == 12:
-                            MB2.append([new_va, entry, 0x200000, 1, upper_flags]) # 2MB page
+                    # calc flags
+                    flags = parent_flags.copy()
+                    if has_next_level(entry):
+                        if is_stage2:
+                            pass
+                        elif self.TargetEL == 1:
+                            if ((entry >> 59) & 1) == 1: flags.append("PXNTable2")
+                            if ((entry >> 60) & 1) == 1: flags.append("UXNTable2")
+                            flags.append("APTable2={:02b}".format((entry >> 61) & 0b11))
+                            if ((entry >> 63) & 1) == 1: flags.append("NSTable2")
+                        else: # TargetEL == 2,3
+                            if ((entry >> 60) & 1) == 1: flags.append("XNTable2") # Use XNTable, not UXNTable # PXNTable is undefined
+                            flags.append("APTable2={:02b}".format((entry >> 61) & 0b11 & 0b10)) # APTable[0] must be 0
+                            if ((entry >> 63) & 1) == 1: flags.append("NSTable2")
+                    else:
+                        if is_stage2:
+                            flags.append("MemAttr={:#x}".format((entry >> 2) & 0b1111))
+                            flags.append("S2AP={:02b}".format((entry >> 6) & 0b11))
+                            flags.append("SH={:02b}".format((entry >> 8) & 0b11))
+                            if ((entry >> 10) & 1) == 1: flags.append("AF")
+                            if ((entry >> 51) & 1) == 1: flags.append("DBM")
+                            if ((entry >> 52) & 1) == 1: flags.append("Contiguous")
+                            flags.append("XN={:02b}".format((entry >> 53) & 0b11)) # Use XN, not UXN
+                            flags.append("PBHA={:#x}".format((entry >> 59) & 0b1111))
+                        elif self.TargetEL == 1:
+                            flags.append("AttrIndx={:03b}".format((entry >> 2) & 0b111))
+                            if ((entry >> 5) & 1) == 1: flags.append("NS")
+                            flags.append("AP={:02b}".format((entry >> 6) & 0b11))
+                            flags.append("SH={:02b}".format((entry >> 8) & 0b11))
+                            if ((entry >> 10) & 1) == 1: flags.append("AF")
+                            if ((entry >> 11) & 1) == 1: flags.append("nG")
+                            if ((entry >> 51) & 1) == 1: flags.append("DBM")
+                            if ((entry >> 52) & 1) == 1: flags.append("Contiguous")
+                            if ((entry >> 53) & 1) == 1: flags.append("PXN")
+                            if ((entry >> 54) & 1) == 1: flags.append("UXN")
+                            flags.append("PBHA={:#x}".format((entry >> 59) & 0b1111))
+                        else: # TargetEL == 2,3
+                            flags.append("AttrIndx={:03b}".format((entry >> 2) & 0b111))
+                            if ((entry >> 5) & 1) == 1: flags.append("NS")
+                            flags.append("AP={:02b}".format((entry >> 6) & 0b11 & 0b10)) # AP[0] must be 0
+                            flags.append("SH={:02b}".format((entry >> 8) & 0b11))
+                            if ((entry >> 10) & 1) == 1: flags.append("AF")
+                            if ((entry >> 11) & 1) == 1: flags.append("nG")
+                            if ((entry >> 51) & 1) == 1: flags.append("DBM")
+                            if ((entry >> 52) & 1) == 1: flags.append("Contiguous")
+                            if ((entry >> 54) & 1) == 1: flags.append("XN") # Use XN, not UXN # PXN is undefined
+                            flags.append("PBHA={:#x}".format((entry >> 59) & 0b1111))
+
+                    # calc next table (drop the flag bits)
+                    if self.FEAT_LPA:
+                        next_level_table = (entry & 0x0000ffffffff0000) | ((entry & 0xf000) << 36)
+                    else:
+                        next_level_table = entry & 0x0000fffffffff000
+
+                    # make entry
+                    if has_next_level(entry):
+                        LEVEL2.append([new_va, next_level_table, flags])
+                    else:
+                        virt_addr = new_va
+                        phys_addr = next_level_table
+                        page_count = 1
+                        flag_string = self.format_flags_stage2(flags) if is_stage2 else self.format_flags(flags)
+                        if granule_bits == 16:
+                            page_size = 512 * 1024 * 1024
+                            MB512.append([virt_addr, phys_addr, page_size, page_count, flag_string])
                         elif granule_bits == 14:
-                            MB32.append([new_va, entry, 0x2000000, 1, upper_flags]) # 32MB page
-                        elif granule_bits == 16:
-                            MB512.append([new_va, entry, 0x20000000, 1, upper_flags]) # 512MB page
-                    elif (entry & 0b11) == 0b11:
-                        LEVEL2.append([new_va, entry, upper_flags])
+                            page_size = 32 * 1024 * 1024
+                            MB32.append([virt_addr, phys_addr, page_size, page_count, flag_string])
+                        elif granule_bits == 12:
+                            page_size = 2 * 1024 * 1024
+                            MB2.append([virt_addr, phys_addr, page_size, page_count, flag_string])
+
+                    # dump
+                    if self.print_each_level:
+                        addr = table_base + i * 8
+                        line = "{:#018x}: {:#018x} (virt:{:#018x}) {:s}".format(addr, entry, new_va, ' '.join(flags))
+                        if self.filter == []:
+                            gef_print(line)
+                        else:
+                            for filt in self.filter:
+                                if re.search(filt, line):
+                                    gef_print(line)
+                                    break
+
             if not self.silent:
                 info("Number of entries: {:d}".format(COUNT))
                 info("Level 2 Entry: {:d}".format(len(LEVEL2)))
@@ -25712,30 +26411,97 @@ class PagewalkArm64Command(PagewalkCommand):
         if not self.silent:
             gef_print(titlify("LEVEL 3"))
         if LEVEL3_BIT_RANGE is not None and start_level <= 3:
-            entries_per_table = self.do_pagewalk_get_entries_per_table(LEVEL3_BIT_RANGE, start_level==3)
+            entries_per_table = get_entries_per_table(LEVEL3_BIT_RANGE, start_level==3)
             KB4 = []; KB16 = []; KB64 = []
             COUNT = 0; INVALID = 0
-            for va, table_base, upper_flags in LEVEL2:
-                upper_flags = self.do_pagewalk_parse_upper_flags(table_base, upper_flags)
-                table_base = self.do_pagewalk_mask_tables(table_base)
-
-                entries = self.read_mem_w(table_base, 8 * entries_per_table)
-                for i, entry in enumerate(self.slice_unpack(entries, 8)):
-                    COUNT += 1
+            for va_base, table_base, parent_flags in LEVEL2:
+                entries = self.read_mem_wrapper(table_base, 8 * entries_per_table)
+                entries = self.slice_unpack(entries, 8)
+                COUNT += len(entries)
+                for i, entry in enumerate(entries):
+                    # present flag
                     if entry & 1 == 0:
                         INVALID += 1
                         continue
 
-                    new_va = va | (i << LEVEL3_BIT_RANGE[0])
-                    self.print_entry(table_base + i*8, entry, new_va)
+                    # calc virtual address
+                    virt_addr = va_base + (i << LEVEL3_BIT_RANGE[0])
 
+                    # calc flags
+                    flags = parent_flags.copy()
                     if (entry & 0b11) == 0b11:
-                        if granule_bits == 12:
-                            KB4.append([new_va, entry, 0x1000, 1, upper_flags]) # 4KB page
-                        elif granule_bits == 14:
-                            KB16.append([new_va, entry, 0x4000, 1, upper_flags]) # 16KB page
-                        elif granule_bits == 16:
-                            KB64.append([new_va, entry, 0x10000, 1, upper_flags]) # 64KB page
+                        if is_stage2:
+                            flags.append("MemAttr={:#x}".format((entry >> 2) & 0b1111))
+                            flags.append("S2AP={:02b}".format((entry >> 6) & 0b11))
+                            flags.append("SH={:02b}".format((entry >> 8) & 0b11))
+                            if ((entry >> 10) & 1) == 1: flags.append("AF")
+                            if ((entry >> 51) & 1) == 1: flags.append("DBM")
+                            if ((entry >> 52) & 1) == 1: flags.append("Contiguous")
+                            flags.append("XN={:02b}".format((entry >> 53) & 0b11)) # Use XN, not UXN
+                            flags.append("PBHA={:#x}".format((entry >> 59) & 0b1111))
+                        elif self.TargetEL == 1:
+                            flags.append("AttrIndx={:03b}".format((entry >> 2) & 0b111))
+                            if ((entry >> 5) & 1) == 1: flags.append("NS")
+                            flags.append("AP={:02b}".format((entry >> 6) & 0b11))
+                            flags.append("SH={:02b}".format((entry >> 8) & 0b11))
+                            if ((entry >> 10) & 1) == 1: flags.append("AF")
+                            if ((entry >> 11) & 1) == 1: flags.append("nG")
+                            if ((entry >> 51) & 1) == 1: flags.append("DBM")
+                            if ((entry >> 52) & 1) == 1: flags.append("Contiguous")
+                            if ((entry >> 53) & 1) == 1: flags.append("PXN")
+                            if ((entry >> 54) & 1) == 1: flags.append("UXN")
+                            flags.append("PBHA={:#x}".format((entry >> 59) & 0b1111))
+                        else: # TargetEL == 2,3
+                            flags.append("AttrIndx={:03b}".format((entry >> 2) & 0b111))
+                            if ((entry >> 5) & 1) == 1: flags.append("NS")
+                            flags.append("AP={:02b}".format((entry >> 6) & 0b11 & 0b10)) # AP[0] must be 0
+                            flags.append("SH={:02b}".format((entry >> 8) & 0b11))
+                            if ((entry >> 10) & 1) == 1: flags.append("AF")
+                            if ((entry >> 11) & 1) == 1: flags.append("nG")
+                            if ((entry >> 51) & 1) == 1: flags.append("DBM")
+                            if ((entry >> 52) & 1) == 1: flags.append("Contiguous")
+                            if ((entry >> 54) & 1) == 1: flags.append("XN") # Use XN, not UXN # PXN is undefined
+                            flags.append("PBHA={:#x}".format((entry >> 59) & 0b1111))
+                    else:
+                        # maybe undefined (at ARMv8.3)
+                        raise
+
+                    # calc physical addr (drop the flag bits)
+                    if granule_bits == 12:
+                        phys_addr = entry & 0x0000fffffffff000
+                    elif granule_bits == 14:
+                        phys_addr = entry & 0x0000ffffffffc000
+                    elif granule_bits == 16:
+                        if self.FEAT_LPA:
+                            phys_addr = (entry & 0x0000ffffffff0000) | ((entry & 0xf000) << 36)
+                        else:
+                            phys_addr = entry & 0x0000ffffffff0000
+
+                    # make entry
+                    page_count = 1
+                    flag_string = self.format_flags_stage2(flags) if is_stage2 else self.format_flags(flags)
+                    if granule_bits == 16:
+                        page_size = 64 * 1024
+                        KB64.append([virt_addr, phys_addr, page_size, page_count, flag_string])
+                    elif granule_bits == 14:
+                        page_size = 16 * 1024
+                        KB16.append([virt_addr, phys_addr, page_size, page_count, flag_string])
+                    elif granule_bits == 12:
+                        page_size = 4 * 1024
+                        KB4.append([virt_addr, phys_addr, page_size, page_count, flag_string])
+
+                    # dump
+                    if self.print_each_level:
+                        addr = table_base + i * 8
+                        line = "{:#018x}: {:#018x} (virt:{:#018x}) {:s}".format(addr, entry, virt_addr, ' '.join(flags))
+                        if self.filter == []:
+                            gef_print(line)
+                        else:
+                            for filt in self.filter:
+                                if re.search(filt, line):
+                                    gef_print(line)
+                                    break
+
             if not self.silent:
                 info("Number of entries: {:d}".format(COUNT))
                 info("PT Entry (4KB): {:d}".format(len(KB4)))
@@ -25867,7 +26633,7 @@ class PagewalkArm64Command(PagewalkCommand):
             info('EL2 Starting Level: {:d}'.format(SL0))
             info('EL2 Region Max: {:#018x}'.format(2**(64-T0SZ)-1))
             info('EL2 Page Size: {:d}KB (per page)'.format(2**TG0_BITS >> 10))
-        self.do_pagewalk(VTTBR_EL2 & 0xfffffffffffe, TG0_BITS, 0, 2**(64-T0SZ), start_level = SL0)
+        self.do_pagewalk(VTTBR_EL2 & 0xfffffffffffe, TG0_BITS, 0, 2**(64-T0SZ), start_level=SL0, is_stage2=True)
         if not self.silent:
             self.print_page()
         return
@@ -25937,8 +26703,10 @@ class PagewalkArm64Command(PagewalkCommand):
             except:
                 SCTLR_EL1 = int(gdb.parse_and_eval('$SCTLR'))
             self.EL1 = (SCTLR_EL1 & 1) == 1
+            self.EL1_WXN = ((SCTLR_EL1 >> 19) & 1) == 1
         except:
             self.EL1 = False
+            self.EL1_WXN = False
 
         # check enabled 2 stage translation
         try:
@@ -25951,15 +26719,19 @@ class PagewalkArm64Command(PagewalkCommand):
         try:
             SCTLR_EL2 = int(gdb.parse_and_eval('$SCTLR_EL2'))
             self.EL2 = (SCTLR_EL2 & 1) == 1
+            self.EL2_WXN = ((SCTLR_EL2 >> 19) & 1) == 1
         except:
             self.EL2 = False
+            self.EL2_WXN = False
 
         # check enabled EL3 translation
         try:
             SCTLR_EL3 = int(gdb.parse_and_eval('$SCTLR_EL3'))
             self.EL3 = (SCTLR_EL3 & 1) == 1
+            self.EL3_WXN = ((SCTLR_EL3 >> 19) & 1) == 1
         except:
             self.EL3 = False
+            self.EL3_WXN = False
 
         # check support 52 bit physical address, or not (=48 bit)
         try:

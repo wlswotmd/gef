@@ -40,6 +40,7 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / Debian 
     * x86 (Supported: PAE/Non-PAE)
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-x86.png)
     * ARM64 (Supported: EL0/EL1/EL2/VEL2/EL3)
+        * ARM v8.3 base.
         * 32bit mode is NOT supported.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm64.png)
     * ARM (Cortex-A only, LPAE/Non-LPAE, PL0/PL1)
