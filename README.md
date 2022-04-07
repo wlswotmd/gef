@@ -260,6 +260,7 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / Debian 
 * `onegadget`: invokes `one_gadget`.
 * `ls`/`cat`: invokes `ls`/`cat` directly.
 * `constgrep`: invokes `grep` under `/usr/include`.
+* `time`: measures the time of the GDB command.
 * `rp`: invokes `rp++` with commonly used options.
     * Supports both rp++ v1 and v2.
 * `cpuid`: shows the result of cpuid(eax=0,1,2...).

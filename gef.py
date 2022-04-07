@@ -1967,7 +1967,7 @@ def gef_execute_gdb_script(commands):
     return
 
 
-@lru_cache(32)
+@lru_cache()
 def checksec(filename):
     """Check the security property of the ELF binary. The following properties are:
     - Canary
@@ -17597,6 +17597,32 @@ class VisualHeapCommand(GenericCommand):
         self.top = int(self.arena.top) if self.arena else None
 
         return self.print_heap()
+
+
+@register_command
+class TimeCommand(GenericCommand):
+    """Measures the time of the GDB command."""
+    _cmdline_ = "time"
+    _syntax_ = "{:s} GDB_CMD [, ARG]".format(_cmdline_)
+    _category_ = "Misc"
+
+    def do_invoke(self, argv):
+        start_time_real = time.perf_counter()
+        start_time_proc = time.process_time()
+        cmd = ' '.join(argv)
+        gef_print(titlify(cmd))
+        try:
+            gdb.execute(cmd)
+        except:
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            gef_print(exc_value)
+            return
+        end_time_real = time.perf_counter()
+        end_time_proc = time.process_time()
+        gef_print(titlify("time elapsed"))
+        gef_print("Real: {:.3f} ms".format(end_time_real - start_time_real))
+        gef_print("CPU:  {:.3f} ms".format(end_time_proc - start_time_proc))
+        return
 
 
 @register_command
