@@ -959,7 +959,7 @@ def search_for_main_arena():
     else:
         raise OSError("Cannot find main_arena for {}".format(current_arch.arch))
 
-    __gef_default_main_arena__ = "*0x{:x}".format(addr)
+    __gef_default_main_arena__ = "*{:#x}".format(addr)
     return addr
 
 
@@ -2515,12 +2515,12 @@ class AARCH64(ARM):
             "str x1, [sp, -16]!",
             "str x2, [sp, -16]!",
             "mov x8, {:d}".format(_NR_mprotect),
-            "movz x0, 0x{:x}".format(addr & 0xFFFF),
-            "movk x0, 0x{:x}, lsl 16".format((addr >> 16) & 0xFFFF),
-            "movk x0, 0x{:x}, lsl 32".format((addr >> 32) & 0xFFFF),
-            "movk x0, 0x{:x}, lsl 48".format((addr >> 48) & 0xFFFF),
-            "movz x1, 0x{:x}".format(size & 0xFFFF),
-            "movk x1, 0x{:x}, lsl 16".format((size >> 16) & 0xFFFF),
+            "movz x0, {:#x}".format(addr & 0xFFFF),
+            "movk x0, {:#x}, lsl 16".format((addr >> 16) & 0xFFFF),
+            "movk x0, {:#x}, lsl 32".format((addr >> 32) & 0xFFFF),
+            "movk x0, {:#x}, lsl 48".format((addr >> 48) & 0xFFFF),
+            "movz x1, {:#x}".format(size & 0xFFFF),
+            "movk x1, {:#x}, lsl 16".format((size >> 16) & 0xFFFF),
             "mov x2, {:d}".format(perm),
             "svc 0",
             "ldr x2, [sp], 16",
@@ -8027,7 +8027,7 @@ class DetailRegistersCommand(GenericCommand):
             # Special (e.g. segment) registers go on their own line
             if regname in current_arch.special_registers:
                 special_line += "{}: ".format(Color.colorify(regname, color))
-                special_line += "0x{:04x} ".format(get_register(regname))
+                special_line += "{:#04x} ".format(get_register(regname))
                 continue
 
             line = "{}: ".format(Color.colorify(padreg, color))
@@ -10158,9 +10158,9 @@ class ContextCommand(GenericCommand):
             sz, fmt = opt[0:2]
             self.context_title("memory:{:#x}".format(address))
             if fmt == "pointers":
-                gdb.execute("dereference 0x{address:x} L{size:d}".format(address=address, size=sz,))
+                gdb.execute("dereference {address:#x} L{size:d}".format(address=address, size=sz,))
             else:
-                gdb.execute("hexdump {fmt:s} 0x{address:x} {size:d}".format(address=address, size=sz, fmt=fmt,))
+                gdb.execute("hexdump {fmt:s} {address:#x} {size:d}".format(address=address, size=sz, fmt=fmt,))
         return
 
     @classmethod
@@ -12157,7 +12157,7 @@ class SyscallSearchCommand(GenericCommand):
 
         for num, entry in syscall_table.items():
             if re.search(argv[0], entry.name):
-                nr = "{:d} (=0x{:x})".format(num, num)
+                nr = "{:d} (={:#x})".format(num, num)
                 if verbose:
                     param = ('\n'+" "*47).join(["{}: {}".format(i, param.param) for i, param in enumerate(entry.params, start=1)])
                 else:
@@ -12203,11 +12203,11 @@ class SyscallArgsCommand(GenericCommand):
 
         headers = ["Parameter", "Register", "Value"]
         info(Color.colorify("{:<20} {:<20} {}".format(*headers), color))
-        gef_print("    {:<20} {:<20} 0x{:x}".format("_NR", current_arch.syscall_register, reg_value))
+        gef_print("    {:<20} {:<20} {:#x}".format("_NR", current_arch.syscall_register, reg_value))
 
         param_names = [re.split(r" |\*", p)[-1] for p in parameters]
         for name, register, value in zip(param_names, registers, values):
-            line = "    {:<20} {:<20} 0x{:x}".format(name, register, value)
+            line = "    {:<20} {:<20} {:#x}".format(name, register, value)
             addrs = dereference_from(value)
             if len(addrs) > 1:
                 sep = " {:s} ".format(RIGHT_ARROW)
@@ -16366,7 +16366,7 @@ class KernelbaseCommand(GenericCommand):
 
         res = search_perm("R--")
         if res is None:
-            res = search_perm("R-X")
+            res = search_perm("R-X") # old kernel
             if res is None:
                 res = search_perm("RWX") # old kernel
                 if res is None:
@@ -16378,7 +16378,7 @@ class KernelbaseCommand(GenericCommand):
     def get_kernel_rwdata_base(maps, krobase):
         def search_perm(target_perm):
             found = False
-            ro = None
+            rw = None
             for vaddr, size, perm in maps:
                 if found == False:
                     if vaddr == krobase: # search kernel rodata base
@@ -16386,11 +16386,11 @@ class KernelbaseCommand(GenericCommand):
                     continue
                 if found == True:
                     if perm == target_perm: # kernel data is next to kernel base
-                        if ro is None:
-                            ro = [vaddr, size]
-                        elif ro[0] + ro[1] == vaddr:
-                            ro = [ro[0], ro[1] + size] # merge contiguous region
-            return ro
+                        if rw is None:
+                            rw = [vaddr, size]
+                        elif rw[0] + rw[1] == vaddr:
+                            rw = [rw[0], rw[1] + size] # merge contiguous region
+            return rw
 
         res = search_perm("RW-")
         if res is None:
@@ -17859,8 +17859,8 @@ class SlabCommand(GenericCommand):
         unsigned int size;
         unsigned int object_size;
         struct reciprocal_value {                //
-	    u32 m;                               //
-	    u8 sh1, sh2;                         // (+ padding 2 byte)
+            u32 m;                               //
+            u8 sh1, sh2;                         // (+ padding 2 byte)
         } reciprocal_size;                       // if kernel >= 5.9-rc1
         unsigned int offset;
         unsigned int cpu_partial;                // if CONFIG_SLUB_CPU_PARTIAL=y
@@ -27570,10 +27570,10 @@ class CallUsermodehelperSetupBreakpoint(gdb.Breakpoint):
             if string_addr == 0:
                 break
             string = read_cstring_from_memory(string_addr)
-            argv.append(string)
+            argv.append("'{:s}'".format(string))
             addr2 += current_arch.ptrsize
         gef_print("{:s}: {:#x} -> '{:s}'".format(ptr1, addr1, path))
-        gef_print("{:s}: {:#x} -> '{:s}'".format(ptr2, addr2, ' '.join(argv)))
+        gef_print("{:s}: {:#x} -> [{:s}]".format(ptr2, addr2, ','.join(argv)))
         return False # continue
 
 
@@ -28425,7 +28425,7 @@ class PeekPointersCommand(GenericCommand):
                 elif len(name)==0:
                     name = get_filename()
                 addr_pos = addr.value + off * current_arch.ptrsize
-                ok("Found at 0x{:x} to 0x{:x} {:s} ('{:s}', perm: {:s})".format(addr_pos, addr_value, sym, name, str(addr.section.permission)))
+                ok("Found at {:#x} to {:#x} {:s} ('{:s}', perm: {:s})".format(addr_pos, addr_value, sym, name, str(addr.section.permission)))
                 if unique:
                     del sections[i]
                 break

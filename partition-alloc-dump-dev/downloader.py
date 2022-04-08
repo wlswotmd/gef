@@ -54,7 +54,7 @@ def download_binary(channel):
   return
 
 if __name__ == '__main__':
-  if len(sys.argv) >= 1:
+  if len(sys.argv) > 1:
     for channel in sys.argv[1:]:
       if channel in ["stable", "beta", "dev"]:
         download_binary(channel)
