@@ -10998,7 +10998,11 @@ class DereferenceCommand(GenericCommand):
             err("Invalid address")
             return
 
-        addr = to_unsigned_long(addr)
+        try:
+            addr = to_unsigned_long(addr)
+        except:
+            err("Invalid address")
+            return
 
         if get_gef_setting("context.grow_stack_down") is True:
             from_insnum = nb * (self.repeat_count + 1) - 1
