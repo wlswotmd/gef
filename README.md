@@ -83,6 +83,8 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / Debian 
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kbase.png)
 * `kversion`: displays the debugged kernel version.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kversion.png)
+* `kcmdline`: displays the debugged kernel startup cmdline.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kcmdline.png)
 * `syscall-table-view`: prints system call table (x64/x86/ARM64/ARM only).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/syscall-table-view.png)
 

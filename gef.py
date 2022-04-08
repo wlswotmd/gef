@@ -16465,13 +16465,92 @@ class KernelVersionCommand(GenericCommand):
             kernel_version_string = r[0]
             idx = data.find(kernel_version_string)
             return start + idx, kernel_version_string
-        return "Unknown"
+        return None
 
     def do_invoke(self, argv):
         if not is_qemu_system():
             err("Unsupported")
-        addr, kernel_version_string = self.kernel_version()
+            return
+        ret = self.kernel_version()
+        if ret is None:
+            err("Parse failed")
+            return
+        addr, kernel_version_string = ret
         gef_print("{:#x}: {:s}".format(addr, kernel_version_string))
+        return
+
+
+@register_command
+class KernelCmdlineCommand(GenericCommand):
+    """Display kernel cmdline string under qemu-system."""
+    _cmdline_ = "kcmdline"
+    _syntax_ = "{:s}".format(_cmdline_)
+    _example_ = "{:s}".format(_cmdline_)
+    _category_ = "Qemu-system Cooperation"
+
+    def get_saved_command_line(self):
+        cmdline_proc_show = get_ksymaddr("cmdline_proc_show")
+        if cmdline_proc_show:
+            res = gdb.execute("x/10i {:#x}".format(cmdline_proc_show), to_string=True)
+            if is_x86_64():
+                for line in res.splitlines():
+                    m = re.search(r"QWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffffffffffff
+                        if v != 0:
+                            return v
+            elif is_x86_32():
+                for line in res.splitlines():
+                    m = re.search(r"DWORD PTR ds:(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffff
+                        if v != 0:
+                            return v
+            elif is_arm64():
+                base = None
+                for line in res.splitlines():
+                    if base is None:
+                        m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
+                        if m:
+                            base = int(m.group(1), 16)
+                    else:
+                        m = re.search(r"ldr\s+\S+,\s*\[\S+,\s*#(\d+)\]", line)
+                        if m:
+                            return base + int(m.group(1), 0)
+            elif is_arm32():
+                base = None
+                for line in res.splitlines():
+                    if base is None:
+                        m = re.search(r"movw.*;\s*(0x\S+)", line)
+                        if m:
+                            base = int(m.group(1), 16)
+                    else:
+                        m = re.search(r"movt.*;\s*(0x\S+)", line)
+                        if m:
+                            return base + (int(m.group(1), 16) << 16)
+        return None
+
+    def kernel_cmdline(self):
+        saved_command_line = self.get_saved_command_line()
+        if saved_command_line is None:
+            return None
+        try:
+            ptr = read_int_from_memory(saved_command_line)
+            cmdline = read_cstring_from_memory(ptr)
+            return ptr, cmdline
+        except:
+            return None
+
+    def do_invoke(self, argv):
+        if not is_qemu_system():
+            err("Unsupported")
+            return
+        ret = self.kernel_cmdline()
+        if ret is None:
+            err("Parse failed")
+            return
+        addr, kernel_cmdline_string = ret
+        gef_print("{:#x}: '{:s}'".format(addr, kernel_cmdline_string))
         return
 
 
