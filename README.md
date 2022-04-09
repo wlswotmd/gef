@@ -157,6 +157,7 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / Debian 
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/context-memory-access.png)
     * It supports smart symbol printing for cpp function.
         * ex: `std::map<int, std::map<int, int>>` will be replaced by `std::map<...>`.
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/smart-cpp-function-name.png)
         * command: `gef config context.smart_cpp_function_name true` or `smart-cpp-function-name` (later is used to toggle).
 * `telescope`: is improved.
     * It prints ordinal numbers as well as offsets.
@@ -188,8 +189,9 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / Debian 
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/edit-flags-arm64.png)
 * `unicorn-emulate`: is improved.
     * It reads and writes correctly to the address pointed to by `$fs`/`$gs`.
-    * It supports a new mode to stop after executing N instructions.
+    * It supports a new mode to stop after executing N instructions (`-g`).
     * It supports execution under qemu-usermode partially (It is unable to emulate TLS if TLS is not initialized).
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/unicorn-emulate.png)
 * `ropper`: is improved.
     * It does not reset autocomplete settings after calling imported ropper.
 * `hexdump`: is improved.
@@ -201,6 +203,7 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / Debian 
     * It supports physical memory if under qemu-system.
     * Added a new mode: `patch pattern`.
     * Added a new option to write repeatedly up to the specified length for `patch string`.
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/patch.png)
 * `search-pattern`: is improved.
     * It supports when under qemu-system (in short, it works without `/proc/self/maps`)
     * It supports aligned search.
@@ -212,8 +215,8 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / Debian 
 * `pid`: prints pid.
 * `filename`: prints filename.
 * `auxv`: pretty prints ELF auxiliary vector.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/auxv.png)
     * Supported also under qemu-user (heuristic).
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/auxv.png)
 * `argv`: pretty prints argv.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/argv.png)
 * `envp`: pretty prints envp.
@@ -234,6 +237,7 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / Debian 
     * Supported on x64/x86/ARM64/ARM for call/jmp/syscall/ret/memory-access/specific-keyword-regex/specific-condition.
     * Supported on x64/x86 for indirect-branch.
     * Please note that this command temporarily closes stdin and stderr on gdb.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/exec-until.png)
 * `exec-next`: executes until next address.
     * This is useful for the operation with `rep` prefix.
 * `add-symbol-temporary`: adds symbol information from command-line.
@@ -254,18 +258,20 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / Debian 
 * `pdisas`: is a shortcut for `cs-dis $pc LENGTH=50 OPCODES`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pdisas.png)
 * `ii`: is a shortcut for `x/50i $pc`.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ii.png)
     * It prints the value if memory access operation.
-    * tips: gef has 3 types to print instructions. `context`(only a few lines), `pdisas`(50 lines) and `ii`(50 lines).
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ii.png)
 * `version`: shows software version that gef used.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/version.png)
 * `follow`: changes `follow-fork-mode` setting.
 * `smart-cpp-function-name`: toggles `context.smart_cpp_function_name` setting.
-* `seccomp-tools`: invokes `seccomp-tools`.
+* `seccomp`: invokes `seccomp-tools`.
 * `onegadget`: invokes `one_gadget`.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/onegadget.png)
 * `ls`/`cat`: invokes `ls`/`cat` directly.
 * `constgrep`: invokes `grep` under `/usr/include`.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/constgrep.png)
 * `time`: measures the time of the GDB command.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/time.png)
 * `rp`: invokes `rp++` with commonly used options.
     * Supports both rp++ v1 and v2.
 * `cpuid`: shows the result of cpuid(eax=0,1,2...).

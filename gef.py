@@ -17850,8 +17850,8 @@ class TimeCommand(GenericCommand):
         end_time_real = time.perf_counter()
         end_time_proc = time.process_time()
         gef_print(titlify("time elapsed"))
-        gef_print("Real: {:.3f} ms".format(end_time_real - start_time_real))
-        gef_print("CPU:  {:.3f} ms".format(end_time_proc - start_time_proc))
+        gef_print("Real: {:.3f} s".format(end_time_real - start_time_real))
+        gef_print("CPU:  {:.3f} s".format(end_time_proc - start_time_proc))
         return
 
 
@@ -19331,8 +19331,6 @@ class KsymaddrRemoteCommand(GenericCommand):
             self.kallsyms_token_table = [ u8(r[i:i+1]) for i in range(0, len(r), 1)] # 8bit
             r = self.RO_REGION[self.kallsyms_token_index_addr - self.krobase:][:0x100*2] # fixed table size
             self.kallsyms_token_index = [u16(r[i:i+2]) for i in range(0, len(r), 2)] # 16bit
-            if not self.silent:
-                info("An initialize is done")
             self.initialized = True
         # finish
         self.print_meta()
