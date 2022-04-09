@@ -16555,6 +16555,161 @@ class KernelCmdlineCommand(GenericCommand):
 
 
 @register_command
+class KernelPsCommand(GenericCommand):
+    """Display process list under qemu-system."""
+    _cmdline_ = "kps"
+    _syntax_ = "{:s}".format(_cmdline_)
+    _example_ = "{:s}".format(_cmdline_)
+    _category_ = "Qemu-system Cooperation"
+
+    def get_init_task(self):
+        # plan 1 (directly)
+        init_task = get_ksymaddr("init_task")
+        if init_task:
+            return init_task
+        # plan 2
+        return None
+
+    def get_task_list(self):
+        init_task = self.get_init_task()
+        if init_task is None:
+            err("Not found symbol")
+            return None
+
+        # search init_task->tasks
+        for i in range(0x100):
+            offset_tasks = i * current_arch.ptrsize
+            pos = init_task + offset_tasks
+            value_list = [pos]
+            # validating candidate offset
+            while True:
+                # read check
+                try:
+                    pos = read_int_from_memory(pos)
+                except:  # memory read error
+                    found = False
+                    break
+                # list validate
+                if pos in value_list[1:]: # incomplete infinity loop detected
+                    found = False
+                    break
+                if pos == value_list[0] and len(value_list) == 1: # self reference
+                    found = False
+                    break
+                if pos == value_list[0] and len(value_list) > 1: # maybe link list
+                    found = True
+                    break
+                value_list.append(pos)
+            if found:
+                info("offsetof(task_struct, tasks): {:#x}".format(offset_tasks))
+                return [x - offset_tasks for x in value_list]
+        err("Not found init_task->tasks")
+        return None
+
+    def get_offset_comm(self, task_addrs):
+        for i in range(0x100):
+            offset_comm = i * current_arch.ptrsize
+            if all([is_ascii_string(task + offset_comm) for task in task_addrs]):
+                info("offsetof(task_struct, comm): {:#x}".format(offset_comm))
+                return offset_comm
+        err("Not found task->comm[TASK_CMM_LEN]")
+        return None
+
+    def get_offset_cred(self, task_addrs, offset_comm):
+        """
+        struct task_struct {
+        ...
+            const struct cred __rcu        *real_cred;    // These may point to the same address
+            const struct cred __rcu        *cred;         // These may point to the same address
+        #ifdef CONFIG_KEYS
+            struct key                     *cached_requested_key;
+        #endif
+            char                           comm[TASK_COMM_LEN];
+        """
+        # backward search from `comm`
+        for i in range(0x100):
+            offset_cred = offset_comm - ((i+1) * current_arch.ptrsize)
+            for task in task_addrs:
+                val1 = read_int_from_memory(task + offset_cred)
+                val2 = read_int_from_memory(task + offset_cred - current_arch.ptrsize)
+                if val1 == val2 and val1 != 0:
+                    info("offsetof(task_struct, cred): {:#x}".format(offset_cred))
+                    return offset_cred
+        err("Not found task->cred")
+        return None
+
+    def get_offset_uid(self, init_task_cred_ptr):
+        """
+        struct cred {
+            atomic_t    usage;
+        #ifdef CONFIG_DEBUG_CREDENTIALS
+            atomic_t    subscribers;    /* number of processes subscribed */
+            void        *put_addr;
+            unsigned    magic;
+        #endif
+            kuid_t        uid;         /* real UID of the task */
+            kgid_t        gid;         /* real GID of the task */
+            kuid_t        suid;        /* saved UID of the task */
+            kgid_t        sgid;        /* saved GID of the task */
+            kuid_t        euid;        /* effective UID of the task */
+            kgid_t        egid;        /* effective GID of the task */
+            kuid_t        fsuid;       /* UID for VFS ops */
+            kgid_t        fsgid;       /* GID for VFS ops */
+            unsigned    securebits;    /* SUID-less security management */
+            kernel_cap_t    cap_inheritable; /* caps our children can inherit */
+            kernel_cap_t    cap_permitted;    /* caps we're permitted */
+
+        [Example x64]
+            0xffffffff820460c0:     0x0000000000000004      0x0000000000000000
+            0xffffffff820460d0:     0x0000000000000000      0x0000000000000000
+            0xffffffff820460e0:     0x0000000000000000      0x0000000000000000
+            0xffffffff820460f0:     0x0000003fffffffff      0x0000003fffffffff
+            0xffffffff82046100:     0x0000003fffffffff      0x0000000000000000
+            0xffffffff82046110:     0x0000000000000000      0x0000000000000000
+        """
+        init_task_cred = read_int_from_memory(init_task_cred_ptr)
+        uid_gid_size = 4 * 8 # uid_t:4byte. len([uid,gid,suid,sgid,euid,egid,fsuid,fsgid]) == 8
+        offset_uid = 4
+        ret = read_memory(init_task_cred + offset_uid, uid_gid_size)
+        if ret == b"\0"*uid_gid_size:
+            pass
+        else:
+            offset_uid += 4 + current_arch.ptrsize + 4
+        info("offsetof(cred, uid): {:#x}".format(offset_uid))
+        return offset_uid
+
+    def do_invoke(self, argv):
+        if not is_qemu_system():
+            err("Unsupported")
+            return
+
+        task_addrs = self.get_task_list()
+        if task_addrs is None:
+            return
+
+        offset_comm = self.get_offset_comm(task_addrs)
+        if offset_comm is None:
+            return
+
+        offset_cred = self.get_offset_cred(task_addrs, offset_comm)
+        if offset_cred is None:
+            return
+
+        offset_uid = self.get_offset_uid(task_addrs[0] + offset_cred)
+        if offset_uid is None:
+            return
+
+        legend = ("{:<18s}: {:<16s} {:<18s} {}".format("task", "task->comm", "task->cred", ["uid","gid","suid","sgid","euid","egid","fsuid","fsgid"]))
+        gef_print(Color.colorify(legend, "yellow bold"))
+        for task in task_addrs:
+            comm_string = read_cstring_from_memory(task + offset_comm)
+            cred = read_int_from_memory(task + offset_cred)
+            uids = [u32(read_memory(cred + offset_uid + j * 4, 4)) for j in range(8)]
+            gef_print("{:#018x}: {:<16s} {:#018x} {}".format(task, comm_string, cred, uids))
+        return
+
+
+@register_command
 class SyscallTableViewCommand(GenericCommand):
     """Display sys_call_table entries under qemu-system."""
     _cmdline_ = "syscall-table-view"
