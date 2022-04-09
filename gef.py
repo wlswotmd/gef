@@ -19452,6 +19452,20 @@ class VmlinuxToElfApplyCommand(GenericCommand):
             err("area is blank")
             return None
 
+        # check if it can be reused
+        if not force and os.path.exists(symboled_vmlinux_file):
+            data = open(symboled_vmlinux_file, "rb").read()
+            data = ''.join([chr(x) for x in data])
+            r1 = re.findall(r"(Linux version (?:\d+\.[\d.]*\d)[ -~]+)", data)
+
+            data = read_memory(addrs["krobase"], addrs["krobase_size"])
+            data = ''.join([chr(x) for x in data])
+            r2 = re.findall(r"(Linux version (?:\d+\.[\d.]*\d)[ -~]+)", data)
+
+            if r1 and r2 and r1[0] != r2[0]:
+                info("Run vmlinux-to-elf again because the kernel version is different")
+                force = True
+
         # dumpe memory
         if force or (not os.path.exists(dumped_mem_file) and not os.path.exists(symboled_vmlinux_file)):
             # remove old file
