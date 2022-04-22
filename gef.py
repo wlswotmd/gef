@@ -567,6 +567,7 @@ class Elf:
             if not os.access(elf, os.R_OK):
                 err("'{0}' not found/readable".format(elf))
                 err("Failed to get file debug information, most of gef features will not work")
+                self.e_magic = None
                 return
             self.fd = open(elf, "rb")
             self.addr = None
@@ -1970,52 +1971,129 @@ def gef_execute_gdb_script(commands):
 @lru_cache()
 def checksec(filename):
     """Check the security property of the ELF binary. The following properties are:
+    - Static
+    - Stripped
     - Canary
     - NX
     - PIE
+    - RELRO
     - Fortify
-    - Partial/Full RelRO
-    - Intel CET.
+    - Intel CET
+    - RPATH/RUNPATH
+    - Clang CFI/SafeStack
     Return a dict() with the different keys mentioned above, and the boolean
     associated whether the protection was found."""
     if is_macho(filename):
         return {
+            "Static": False,
+            "Stripped": False,
             "Canary": False,
             "NX": False,
             "PIE": False,
+            "Partial RELRO": False,
             "Fortify": False,
-            "Partial RelRO": False,
             "Intel CET": False,
+            "RPATH": False,
+            "RUNPATH": False,
+            "Clang CFI": False,
+            "Clang SafeStack": False,
         }
 
     try:
         readelf = which("readelf")
+        objdump = which("objdump")
     except FileNotFoundError as e:
         err("{}".format(e))
         return
 
+    cache = {}
     def __check_security_property(opt, filename, pattern):
-        cmd = [readelf,]
-        cmd += opt.split()
-        cmd += [filename,]
-        lines = gef_execute_external(cmd, as_list=True)
+        if (opt, filename) in cache:
+            lines = cache[(opt, filename)]
+        else:
+            cmd = [readelf,]
+            cmd += opt.split()
+            cmd += [filename,]
+            lines = gef_execute_external(cmd, as_list=True)
+            cache[(opt, filename)] = lines
         for line in lines:
             if re.search(pattern, line):
                 return True
         return False
 
     results = collections.OrderedDict()
-    results["Canary"] = __check_security_property("-s", filename, r"__stack_chk_fail") is True
+    # Static
+    results["Static"] = is_static()
+    # Stripped
+    results["Stripped"] = is_stripped()
+    # Canary
+    if not is_stripped():
+        results["Canary"] = __check_security_property("-rs", filename, r"__stack_chk_fail") is True
+        if not results["Canary"]:
+            results["Canary"] = __check_security_property("-rs", filename, r"__stack_chk_guard") is True # for non-x86
+        if not results["Canary"]:
+            results["Canary"] = __check_security_property("-rs", filename, r"__intel_security_cookie") is True # for intel compiler
+    else:
+        results["Canary"] = None # it means unknown
+        if is_x86_64():
+            proc = subprocess.Popen([objdump, "-d", filename], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            for i in range(0x10000):
+                if b"%fs:0x28" in proc.stdout.readline():
+                    results["Canary"] = True
+                    break
+            proc.kill()
+        elif is_x86_32():
+            proc = subprocess.Popen([objdump, "-d", filename], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            for i in range(0x10000):
+                if b"%gs:0x14" in proc.stdout.readline():
+                    results["Canary"] = True
+                    break
+            proc.kill()
+    # NX
     has_gnu_stack = __check_security_property("-W -l", filename, r"GNU_STACK") is True
     if has_gnu_stack:
         results["NX"] = __check_security_property("-W -l", filename, r"GNU_STACK.*RWE") is False
     else:
         results["NX"] = False
+    # PIE
     results["PIE"] = __check_security_property("-h", filename, r":.*EXEC") is False
-    results["Fortify"] = __check_security_property("-s", filename, r"_chk@GLIBC") is True
-    results["Partial RelRO"] = __check_security_property("-l", filename, r"GNU_RELRO") is True
-    results["Full RelRO"] = results["Partial RelRO"] and __check_security_property("-d", filename, r"BIND_NOW") is True
-    results["Intel CET"] = __check_security_property("-S", filename, r".plt.sec") is True
+    # RELRO
+    results["Partial RELRO"] = __check_security_property("-l", filename, r"GNU_RELRO") is True
+    results["Full RELRO"] = results["Partial RELRO"] and __check_security_property("-d", filename, r"BIND_NOW") is True
+    # Fortify
+    if is_stripped():
+        results["Fortify"] = None # it means unknown
+    elif is_static():
+        results["Fortify"] = __check_security_property("-rs", filename, r"__mem(cpy|move)_chk") is True
+    else:
+        results["Fortify"] = __check_security_property("-rs", filename, r"_chk@GLIBC") is True
+    # CET
+    if not is_x86():
+        results["Intel CET"] = False
+    elif not is_stripped() and not is_static():
+        results["Intel CET"] = __check_security_property("-S", filename, r"\.plt\.sec") is True
+    else: # static or stripped
+        objdump = which("objdump")
+        cmd = [objdump, "-d", "-j", ".plt", filename] # check only .plt section for speed up
+        out = gef_execute_external(cmd, as_list=True)
+        results["Intel CET"] = False
+        for line in out:
+            line = line.strip()
+            if not line: continue
+            if is_x86_64() and line.endswith("endbr64"):
+                results["Intel CET"] = True
+                break
+            elif is_x86_32() and line.endswith("endbr32"):
+                results["Intel CET"] = True
+                break
+    # RPATH
+    results["RPATH"] = __check_security_property("-d", filename, r"\(RPATH\)") is True
+    # RUNPATH
+    results["RUNPATH"] = __check_security_property("-d", filename, r"\(RUNPATH\)") is True
+    # Clang CFI (detected only when `-fno-sanitize-trap=all`)
+    results["Clang CFI"] = __check_security_property("-s", filename, r"__ubsan_handle_cfi_") is True
+    # Clang SafeStack
+    results["Clang SafeStack"] = __check_security_property("-s", filename, r"__safestack_init") is True
     return results
 
 
@@ -4408,8 +4486,29 @@ def is_arm64():
 
 @lru_cache()
 def is_arch(arch):
+    """Checks if current target is specific architecture"""
     elf = current_elf or get_elf_headers()
     return elf and elf.e_machine == arch
+
+
+@lru_cache()
+def is_static(filename=None):
+    if filename is None:
+        filename = get_filepath()
+    file_bin = which("file")
+    cmd = [file_bin, filename]
+    out = gef_execute_external(cmd)
+    return "statically linked" in out
+
+
+@lru_cache()
+def is_stripped(filename=None):
+    if filename is None:
+        filename = get_filepath()
+    file_bin = which("file")
+    cmd = [file_bin, filename]
+    out = gef_execute_external(cmd)
+    return not ("not stripped" in out)
 
 
 def set_arch(arch=None, default=None):
@@ -11599,7 +11698,7 @@ class PatternSearchCommand(GenericCommand):
 @register_command
 class ChecksecCommand(GenericCommand):
     """Checksec the security properties of the current executable or passed as argument. The
-    command checks for the following protections: PIE, NX, RelRO, Canaries, Fortify, CET, ASLR"""
+    command checks for the following protections: Canary, NX, PIE, RELRO, Fortify, CET, RPATH, RUNPATH, ASLR"""
     _cmdline_ = "checksec"
     _syntax_ = "{:s} [FILENAME]".format(_cmdline_)
     _example_ = "{:s} /bin/ls".format(_cmdline_)
@@ -11645,30 +11744,82 @@ class ChecksecCommand(GenericCommand):
         return
 
     def print_security_properties(self, filename):
+
+        def get_colored_msg(val):
+            if val is True:
+                msg = Color.greenify(Color.boldify("Enabled"))
+            elif val is False:
+                msg = Color.redify(Color.boldify("Disabled"))
+            elif val is None:
+                msg = Color.grayify(Color.boldify("Unknown"))
+            return msg
+
         sec = checksec(filename)
 
-        # Canary,NX,Fortify,CET
-        for prop in sec:
-            if prop in ("Partial RelRO", "Full RelRO"): continue
-            val = sec[prop]
-            msg = Color.greenify(Color.boldify("Enabled")) if val is True else Color.redify(Color.boldify("Disabled"))
-            if val and prop == "Canary" and is_alive():
-                res = gef_read_canary()
-                if not res:
-                    msg += " (Could not get the canary value)"
-                else:
-                    canary = res[0]
-                    msg += " (value: {:#x})".format(canary)
+        # Static
+        if sec["Static"]:
+            gef_print("{:<30s}: {:s}".format("Static/Dynamic", "Static"))
+        else:
+            gef_print("{:<30s}: {:s}".format("Static/Dynamic", "Dynamic"))
 
-            gef_print("{:<30s}: {:s}".format(prop, msg))
+        # Stripped
+        if sec["Stripped"]:
+            gef_print("{:<30s}: {:s}".format("Stripped", Color.greenify(Color.boldify("Yes"))))
+        else:
+            gef_print("{:<30s}: {:s}".format("Stripped", Color.redify(Color.boldify("No")) + " (The symbol remains)"))
+
+        # Canary
+        msg = get_colored_msg(sec["Canary"])
+        if sec["Canary"] is True and is_alive():
+            res = gef_read_canary()
+            if not res:
+                msg += " (Could not get the canary value)"
+            else:
+                msg += " (value: {:#x})".format(res[0])
+        gef_print("{:<30s}: {:s}".format("Canary", msg))
+
+        # NX
+        gef_print("{:<30s}: {:s}".format("NX", get_colored_msg(sec["NX"])))
+
+        # PIE
+        gef_print("{:<30s}: {:s}".format("PIE", get_colored_msg(sec["PIE"])))
 
         # RELRO
-        if sec["Full RelRO"]:
-            gef_print("{:<30s}: {:s}".format("RelRO", Color.greenify("Full")))
-        elif sec["Partial RelRO"]:
-            gef_print("{:<30s}: {:s}".format("RelRO", Color.yellowify("Partial")))
+        if sec["Full RELRO"]:
+            gef_print("{:<30s}: {:s}".format("RELRO", Color.greenify("Full RELRO")))
+        elif sec["Partial RELRO"]:
+            gef_print("{:<30s}: {:s}".format("RELRO", Color.yellowify("Partial RELRO")))
         else:
-            gef_print("{:<30s}: {:s}".format("RelRO", Color.redify(Color.boldify("No"))))
+            gef_print("{:<30s}: {:s}".format("RELRO", Color.redify(Color.boldify("No RELRO"))))
+
+        # Fortify
+        if sec["Fortify"]:
+            gef_print("{:<30s}: {:s}".format("Fortify", Color.greenify("Found")))
+        else:
+            gef_print("{:<30s}: {:s}".format("Fortify", Color.redify(Color.boldify("Not Found"))))
+
+        # CET
+        gef_print("{:<30s}: {:s}".format("Intel CET", get_colored_msg(sec["Intel CET"])))
+
+        # RPATH
+        if not sec["RPATH"]:
+            gef_print("{:<30s}: {:s}".format("RPATH", Color.greenify(Color.boldify("Not Found"))))
+        else:
+            gef_print("{:<30s}: {:s}".format("RPATH", Color.redify(Color.boldify("Found"))))
+
+        # RUNPATH
+        if not sec["RUNPATH"]:
+            gef_print("{:<30s}: {:s}".format("RUNPATH", Color.greenify(Color.boldify("Not Found"))))
+        else:
+            gef_print("{:<30s}: {:s}".format("RUNPATH", Color.redify(Color.boldify("Found"))))
+
+        # Clang CFI
+        if sec["Clang CFI"]:
+            gef_print("{:<30s}: {:s}".format("Clang CFI", get_colored_msg(sec["Clang CFI"])))
+
+        # Clang SafeStack
+        if sec["Clang SafeStack"]:
+            gef_print("{:<30s}: {:s}".format("Clang SafeStack", get_colored_msg(sec["Clang SafeStack"])))
 
         # System-ASLR
         if not is_remote_debug() or is_remote_but_same_host():
@@ -11806,16 +11957,16 @@ class GotCommand(GenericCommand):
 
         # get the checksec output.
         checksec_status = checksec(filename)
-        full_relro = checksec_status["Full RelRO"]
+        full_relro = checksec_status["Full RELRO"]
         pie = checksec_status["PIE"] # if pie we will have offset instead of abs address.
 
-        relro_status = "Full RelRO"
+        relro_status = "Full RELRO"
         if not full_relro:
-            relro_status = "Partial RelRO"
-            partial_relro = checksec_status["Partial RelRO"]
+            relro_status = "Partial RELRO"
+            partial_relro = checksec_status["Partial RELRO"]
 
             if not partial_relro:
-                relro_status = "No RelRO"
+                relro_status = "No RELRO"
 
         # retrieve jump slots using readelf
         jmpslots = self.get_jmp_slots(readelf, filename)
@@ -16699,7 +16850,8 @@ class KernelPsCommand(GenericCommand):
         if offset_uid is None:
             return
 
-        legend = ("{:<18s}: {:<16s} {:<18s} {}".format("task", "task->comm", "task->cred", ["uid","gid","suid","sgid","euid","egid","fsuid","fsgid"]))
+        ids_str = ','.join(["uid","gid","suid","sgid","euid","egid","fsuid","fsgid"])
+        legend = ("{:<18s}: {:<16s} {:<18s} [{}]".format("task", "task->comm", "task->cred", ids_str))
         gef_print(Color.colorify(legend, "yellow bold"))
         for task in task_addrs:
             comm_string = read_cstring_from_memory(task + offset_comm)

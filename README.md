@@ -173,7 +173,14 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / Debian 
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/elf-info.png)
     * It supports parsing from memory.
 * `checksec`: is improved.
+    * It prints whether Static or Dynamic.
+    * It prints whether Stripped or not.
+    * It detects canary against static stripped binary.
     * It prints whether Intel CET is enabled or not.
+    * It prints whether RPATH/RUNPATH is set or not.
+    * It prints if Clang CFI/SafeStack is used or not.
+    * It prints whether System-ASLR is enabled or not.
+    * It prints whether GDB ASLR setting is enabled or not.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/checksec.png)
 * `got`: improved.
     * It prints not only GOT address but also PLT address.
