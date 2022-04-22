@@ -292,6 +292,8 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / Debian 
     * This command uses x86data.js from https://github.com/asmjit/asmdb
 * `syscall-search`: searches system call by regex.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/syscall-search.png)
+* `dwarf-exception-handler`: dumps the DWARF exception handler informations.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dwarf-exception-handler.png)
 
 ### Other
 * Replace the unicode character to ASCII.

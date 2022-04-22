@@ -572,10 +572,12 @@ class Elf:
             self.fd = open(elf, "rb")
             self.addr = None
             self.pos = 0
+            self.filename = elf
         elif isinstance(elf, int):
             self.fd = None
             self.addr = elf
             self.pos = 0
+            self.filename = None
         else:
             raise
 
@@ -9324,6 +9326,1727 @@ class ElfInfoCommand(GenericCommand):
 
 
 @register_command
+class DwarfExceptionHandlerInfoCommand(GenericCommand):
+    """Dump the DWARF exception handler informations"""
+    _cmdline_ = "dwarf-exception-handler"
+    _syntax_ = "{:s} [-f FILENAME] [-x]".format(_cmdline_)
+    _category_ = "Process Information"
+    _example_ = "{:s} # parse loaded binary\n".format(_cmdline_)
+    _example_ += "{:s} -f /path/to/binary # parse specific binary\n".format(_cmdline_)
+    _example_ += "{:s} -x # with hexdump\n".format(_cmdline_)
+    _example_ += "\n"
+    _example_ += "Simplified DWARF Exception structure:\n"
+    _example_ += "\n"
+    _example_ += "libgcc_s.so.1 bss area                ELF Program Header (for .eh_frame_hdr)\n"
+    _example_ += "+--------------------------+      +-->+----------------+\n"
+    _example_ += "| ...                      |      |   | p_type         |\n"
+    _example_ += "| frame_hdr_cache_head     |---+  |   | p_flags        |\n"
+    _example_ += "+-frame_hdr_cache----------+ <-+  |   | p_offset       |\n"
+    _example_ += "| pc_low                   |      |   | p_vaddr        |----+\n"
+    _example_ += "| pc_high                  |      |   | p_paddr        |    |\n"
+    _example_ += "| load_base                |      |   | p_filesz       |    |\n"
+    _example_ += "| p_eh_frame_hdr           |------+   | p_memsz        |    |\n"
+    _example_ += "| p_dynamic                |          | p_align        |    |\n"
+    _example_ += "| link                     |---+      +----------------+    |\n"
+    _example_ += "+-frame_hdr_cache----------+ <-+                            |\n"
+    _example_ += "| pc_low                   |                                |\n"
+    _example_ += "| pc_high                  |                                |\n"
+    _example_ += "| load_base                |                                |\n"
+    _example_ += "| p_eh_frame_hdr           |                                |\n"
+    _example_ += "| p_dynamic                |                                |\n"
+    _example_ += "| link                     |                                |\n"
+    _example_ += "+--------------------------+                                |\n"
+    _example_ += "The frame_hdr_cache_head and frame_hdr_cache are            |\n"
+    _example_ += "initialized the first time they are called.                 |\n"
+    _example_ += "                                                            |\n"
+    _example_ += "                              +-----------------------------+\n"
+    _example_ += "                              |\n"
+    _example_ += ".eh_frame_hdr                 |      .eh_frame                                               .gcc_except_table          \n"
+    _example_ += "+-------------------------+ <-+  +-> +-CIE---------------------+ <-+                     +-> +-LSDA--------------------+\n"
+    _example_ += "| version                 |      |   | length                  |   |                     |   | lpstart_enc             |\n"
+    _example_ += "| eh_frame_ptr_enc        |      |   | cie_id (=0)             |   |                     |   | ttype_enc               |\n"
+    _example_ += "| fde_count_enc           |      |   | version                 |   |                     |   | ttype_off               |\n"
+    _example_ += "| table_enc               |      |   | augmentation_string     |   |                     |   | call_site_encoding      |\n"
+    _example_ += "| eh_frame_ptr            |------+   | code_alignment_factor   |   |                     |   | call_site_table_len     |\n"
+    _example_ += "| fde_count               |          | data_alignment_factor   |   |                     |   |+-CallSite--------------+|\n"
+    _example_ += "| Table[0] initial_loc    |          | return_address_register |   |                     |   || call_site_start       || try_start\n"
+    _example_ += "| Table[0] fde            |---+      | augmentation_len        |   |                     |   || call_site_length      || try_end\n"
+    _example_ += "| Table[1] initial_loc    |   |      | augmentation_data[0]    |   |                     |   || landing_pad           || catch_start\n"
+    _example_ += "| Table[1] fde            |   |      | ...                     |---(augmentation=='P')-+ |   || action                ||---+\n"
+    _example_ += "| ...                     |   |      | ...                     |   |                   | |   |+-CallSite--------------+|   |\n"
+    _example_ += "| Table[N] initial_loc    |   |      | augmentation_data[N]    |   |                   | |   || ...                   ||   |\n"
+    _example_ += "| Table[N] fde            |   |      | program                 |   |                   | |   |+-ActionTable-----------+| <-+\n"
+    _example_ += "+-------------------------+   +----> +-FDE---------------------+   |                   | |   || ar_filter             ||---+\n"
+    _example_ += "                                     | length                  |   |                   | |   || ar_disp               ||   |\n"
+    _example_ += "                                     | cie_pointer (!=0)       |---+                   | |   |+-ActionTable-----------+|   |\n"
+    _example_ += "                                     | pc_begin                | try_catch_base        | |   || ...                   ||   |\n"
+    _example_ += "                                     | pc_range                |                       | |   |+-TTypeTable------------+|   |\n"
+    _example_ += "                                     | augmentation_len        |                       | |   || ...(stored upwards)   ||   |\n"
+    _example_ += "                                     | augmentation_data[0]    |                       | |   |+-TTypeTable------------+| <-+\n"
+    _example_ += "                                     | ...                     |---(augmentation=='L')-|-+   || ttype                 ||---> type_info\n"
+    _example_ += "                                     | augmentation_data[N]    |                       |     |+-----------------------+|\n"
+    _example_ += "                                     | program                 |                       |     +-LSDA--------------------+\n"
+    _example_ += "                                     +-CIE---------------------+                       |     | ...                     |\n"
+    _example_ += "                                     | ...                     |                       |     +-------------------------+\n"
+    _example_ += "                                     +-FDE---------------------+                       |\n"
+    _example_ += "                                     | ...                     |                       |\n"
+    _example_ += "                                     +-------------------------+                       |\n"
+    _example_ += "                                                                                       +----> personality_routine"
+
+    # FDE data encoding
+    DW_EH_PE_ptr = 0x00
+    DW_EH_PE_uleb128 = 0x01
+    DW_EH_PE_udata2 = 0x02
+    DW_EH_PE_udata4 = 0x03
+    DW_EH_PE_udata8 = 0x04
+    DW_EH_PE_signed = 0x08
+    DW_EH_PE_sleb128 = 0x09
+    DW_EH_PE_sdata2 = 0x0a
+    DW_EH_PE_sdata4 = 0x0b
+    DW_EH_PE_sdata8 = 0x0c
+    # FDE flags
+    DW_EH_PE_absptr = 0x00
+    DW_EH_PE_pcrel = 0x10
+    DW_EH_PE_textrel = 0x20
+    DW_EH_PE_datarel = 0x30
+    DW_EH_PE_funcrel = 0x40
+    DW_EH_PE_aligned = 0x50
+    DW_EH_PE_indirect = 0x80
+    DW_EH_PE_omit = 0xff
+
+    def format_entry(self, sec, entries):
+        out = []
+        out.append(titlify(sec["name"]))
+
+        # hexdump
+        if self.hexdump:
+            out.append(hexdump(sec["data"], show_symbol=False, base=sec["offset"]))
+
+        # print details
+        legend = "[{:<8}|+{:<6}] {:<23s} {:<30s}: {:<18s}  |  {:s}".format("FileOff", "Offset", "Raw bytes", "Name", "Value", "Extra Information")
+        out.append(Color.colorify(legend, "bold yellow"))
+
+        for entry in entries:
+            if len(entry) == 1:
+                out.append("[!] "+ entry[0])
+
+            elif len(entry) == 3: # separation
+                pos, name, extra = entry
+                if extra:
+                    extra_s = "  |  {:s}".format(extra)
+                else:
+                    extra_s = ""
+                out.append(titlify("[{:#06x}] {:4s}{:s}".format(pos, name, extra), color="red", msg_color="red"))
+
+            elif len(entry) == 5: # data
+                pos, raw_data, name, value, extra = entry
+
+                pos_s = "[{:#08x}|+{:#06x}]".format(sec["offset"] + pos, pos)
+
+                if raw_data is None:
+                    raw_data_s = ""
+                elif isinstance(raw_data, int):
+                    raw_data_s = "{:02x}".format(raw_data)
+                elif isinstance(raw_data, bytes):
+                    raw_data_s = ' '.join(["{:02x}".format(x) for x in raw_data])
+                else:
+                    raise
+
+                if isinstance(value, str):
+                    value_s = value
+                elif isinstance(value, int):
+                    value_s = "{:#018x}".format(value)
+                elif isinstance(value, list):
+                    value_s = ' '.join(["{:#018x}".format(x) for x in value])
+
+                if value is not None:
+                    out.append("{:s} {:<23s} {:<30s}: {:<18s}  |  {:s}".format(pos_s, raw_data_s, name, value_s, extra))
+                else:
+                    out.append("{:s} {:<23s} {:<50s}  |  {:s}".format(pos_s, raw_data_s, name, extra))
+        return out
+
+    def get_uleb128(self, data, pos):
+        acc = 0
+        i = 0
+        while True:
+            if i == 10:
+                return pos, 0xffffffffffffffff
+            pos, b = self.read_1ubyte(data, pos)
+            acc |= (b & 0x7f) << (i * 7)
+            if (b & 0x80) == 0:
+                return pos, acc
+            i += 1
+
+    def get_sleb128(self, data, pos):
+        orig_pos = pos
+        pos, acc = self.get_uleb128(data, pos)
+        length = pos - orig_pos
+        sleb_sign_mask = 1 << (length * 7 - 1)
+        if (acc & sleb_sign_mask) == 0:
+            return pos, acc
+        else:
+            sleb_value_mask = sleb_sign_mask - 1
+            sleb_value = acc & sleb_value_mask
+            bit_len = len("{:b}".format(sleb_value))
+            real_sign_mask = 1 << bit_len
+            real_value_mask = real_sign_mask - 1
+            return pos, -1 * (((~sleb_value) & real_value_mask) + 1)
+
+    def read_1ubyte(self, data, pos):
+        acc = data[pos]
+        return pos + 1, acc
+
+    def read_1sbyte(self, data, pos):
+        def pB(a): return struct.pack("<B",a&0xff)
+        def ub(a): return struct.unpack("<b",a)[0]
+        def u2i(a): return ub(pB(a))
+        acc = data[pos]
+        return pos + 1, u2i(acc)
+
+    def read_2ubyte(self, data, pos):
+        acc = (data[pos+1] << 8) | data[pos]
+        return pos + 2, acc
+
+    def read_2sbyte(self, data, pos):
+        def pH(a): return struct.pack("<H",a&0xffff)
+        def uh(a): return struct.unpack("<h",a)[0]
+        def u2i(a): return uh(pH(a))
+        acc = (data[pos+1] << 8) | data[pos]
+        return pos + 2, u2i(acc)
+
+    def read_4ubyte(self, data, pos):
+        acc = (data[pos+3] << 24) | (data[pos+2] << 16) | (data[pos+1] << 8) | data[pos]
+        return pos + 4, acc
+
+    def read_4sbyte(self, data, pos):
+        def pI(a): return struct.pack("<I",a&0xffffffff)
+        def ui(a): return struct.unpack("<i",a)[0]
+        def u2i(a): return ui(pI(a))
+        acc = (data[pos+3] << 24) | (data[pos+2] << 16) | (data[pos+1] << 8) | data[pos]
+        return pos + 4, u2i(acc)
+
+    def read_8ubyte(self, data, pos):
+        acc = (data[pos+7] << 56) | (data[pos+6] << 48) | (data[pos+5] << 40) | (data[pos+4] << 32)
+        acc |= (data[pos+3] << 24) | (data[pos+2] << 16) | (data[pos+1] << 8) | data[pos]
+        return pos + 8, acc
+
+    def read_8sbyte(self, data, pos):
+        def pQ(a): return struct.pack("<Q",a&0xffffffffffffffff)
+        def uq(a): return struct.unpack("<q",a)[0]
+        def u2i(a): return uq(pQ(a))
+        acc = (data[pos+7] << 56) | (data[pos+6] << 48) | (data[pos+5] << 40) | (data[pos+4] << 32)
+        acc |= (data[pos+3] << 24) | (data[pos+2] << 16) | (data[pos+1] << 8) | data[pos]
+        return pos + 8, u2i(acc)
+
+    def read_encoded(self, encoding, data, pos):
+        if (encoding & 0xf) == self.DW_EH_PE_ptr:
+            if self.elf.e_class == Elf.ELF_32_BITS:
+                pos, res = self.read_4ubyte(data, pos)
+            else:
+                pos, res = self.read_8ubyte(data, pos)
+        elif (encoding & 0xf) == self.DW_EH_PE_uleb128:
+            pos, res = self.get_uleb128(data, pos)
+        elif (encoding & 0xf) == self.DW_EH_PE_sleb128:
+            pos, res = self.get_sleb128(data, pos)
+        elif (encoding & 0xf) == self.DW_EH_PE_udata2:
+            pos, res = self.read_2ubyte(data, pos)
+        elif (encoding & 0xf) == self.DW_EH_PE_udata4:
+            pos, res = self.read_4ubyte(data, pos)
+        elif (encoding & 0xf) == self.DW_EH_PE_udata8:
+            pos, res = self.read_8ubyte(data, pos)
+        elif (encoding & 0xf) == self.DW_EH_PE_sdata2:
+            pos, res = self.read_2sbyte(data, pos)
+        elif (encoding & 0xf) == self.DW_EH_PE_sdata4:
+            pos, res = self.read_4sbyte(data, pos)
+        elif (encoding & 0xf) == self.DW_EH_PE_sdata8:
+            pos, res = self.read_8sbyte(data, pos)
+        else:
+            raise
+        return pos, res
+
+    def get_encoding_str(self, fde_encoding):
+        if fde_encoding == self.DW_EH_PE_omit:
+            return "omit"
+        s = []
+        if (fde_encoding & 0xf) == self.DW_EH_PE_ptr:
+            s.append("ptr")
+        elif (fde_encoding & 0xf) == self.DW_EH_PE_uleb128:
+            s.append("uleb128")
+        elif (fde_encoding & 0xf) == self.DW_EH_PE_sleb128:
+            s.append("sleb128")
+        elif (fde_encoding & 0xf) == self.DW_EH_PE_udata2:
+            s.append("udata2")
+        elif (fde_encoding & 0xf) == self.DW_EH_PE_sdata2:
+            s.append("sdata2")
+        elif (fde_encoding & 0xf) == self.DW_EH_PE_udata4:
+            s.append("udata4")
+        elif (fde_encoding & 0xf) == self.DW_EH_PE_sdata4:
+            s.append("sdata4")
+        elif (fde_encoding & 0xf) == self.DW_EH_PE_udata8:
+            s.append("udata8")
+        elif (fde_encoding & 0xf) == self.DW_EH_PE_sdata8:
+            s.append("sdata8")
+        if (fde_encoding & 0x70) == self.DW_EH_PE_absptr:
+            s.append("absptr")
+        elif (fde_encoding & 0x70) == self.DW_EH_PE_pcrel:
+            s.append("pcrel")
+        elif (fde_encoding & 0x70) == self.DW_EH_PE_textrel:
+            s.append("textrel")
+        elif (fde_encoding & 0x70) == self.DW_EH_PE_datarel:
+            s.append("datarel")
+        elif (fde_encoding & 0x70) == self.DW_EH_PE_funcrel:
+            s.append("funcrel")
+        elif (fde_encoding & 0x70) == self.DW_EH_PE_aligned:
+            s.append("aligned")
+        if (fde_encoding & 0x80) == self.DW_EH_PE_indirect:
+            s.append("indirect")
+        return ','.join(s)
+
+    def encoded_ptr_size(self, encoding, ptr_size):
+        if (encoding & 0xf) == self.DW_EH_PE_ptr:
+            return ptr_size
+        elif (encoding & 0xf) in [self.DW_EH_PE_udata2, self.DW_EH_PE_sdata2]:
+            return 2
+        elif (encoding & 0xf) in [self.DW_EH_PE_udata4, self.DW_EH_PE_sdata4]:
+            return 4
+        elif (encoding & 0xf) in [self.DW_EH_PE_udata8, self.DW_EH_PE_sdata8]:
+            return 8
+        elif encoding == self.DW_EH_PE_omit:
+            return 0
+        err("Unsupported pointer encoding: {:#x}, assuming pointer size of {:d}.".format(encoding, ptr_size))
+        return 0
+
+    def parse_eh_frame_hdr(self, eh_frame_hdr):
+        section_addr = eh_frame_hdr["offset"]
+        data = eh_frame_hdr["data"]
+        shdr = [s for s in self.elf.shdrs if s.sh_name == ".eh_frame_hdr"][0]
+        load_base = [phdr for phdr in self.elf.phdrs if phdr.p_type == Phdr.PT_LOAD][0].p_vaddr
+
+        entries = []
+        pos = 0
+
+        try:
+            new_pos, version = self.read_1ubyte(data, pos)
+            entries.append([pos, data[pos:new_pos], "version", version, ""])
+            pos = new_pos
+
+            new_pos, eh_frame_ptr_enc = self.read_1ubyte(data, pos)
+            encoding_str = self.get_encoding_str(eh_frame_ptr_enc)
+            entries.append([pos, data[pos:new_pos], "eh_frame_ptr_enc", eh_frame_ptr_enc, "encoding: {:s}".format(encoding_str)])
+            pos = new_pos
+
+            new_pos, fde_count_enc = self.read_1ubyte(data, pos)
+            encoding_str = self.get_encoding_str(fde_count_enc)
+            entries.append([pos, data[pos:new_pos], "fde_count_enc", fde_count_enc, "encoding: {:s}".format(encoding_str)])
+            pos = new_pos
+
+            new_pos, table_enc = self.read_1ubyte(data, pos)
+            encoding_str = self.get_encoding_str(table_enc)
+            entries.append([pos, data[pos:new_pos], "table_enc", table_enc, "encoding: {:s}".format(encoding_str)])
+            pos = new_pos
+
+            eh_frame_ptr = 0
+            if eh_frame_ptr_enc != self.DW_EH_PE_omit:
+                new_pos, eh_frame_ptr = self.read_encoded(eh_frame_ptr_enc, data, pos)
+                if (eh_frame_ptr_enc & 0x70) == self.DW_EH_PE_pcrel:
+                    elf_offset = shdr.sh_offset + 4 + eh_frame_ptr
+                    if self.is_pie:
+                        extra_s = "vma: $codebase+{:#x}".format(load_base + elf_offset)
+                    else:
+                        extra_s = "vma: {:#x}".format(load_base + elf_offset)
+                    entries.append([pos, data[pos:new_pos], "eh_frame_ptr", elf_offset, extra_s])
+                else:
+                    entries.append([pos, data[pos:new_pos], "eh_frame_ptr", eh_frame_ptr, ""])
+                pos = new_pos
+
+            fde_count = 0
+            if fde_count_enc != self.DW_EH_PE_omit:
+                new_pos, fde_count = self.read_encoded(fde_count_enc, data, pos)
+                entries.append([pos, data[pos:new_pos], "fde_count", fde_count, ""])
+                pos = new_pos
+
+            table_cnt = 0
+            if table_enc == (self.DW_EH_PE_datarel | self.DW_EH_PE_sdata4):
+                while fde_count and data[pos:]:
+                    entries.append([pos, "Table[{:4d}]".format(table_cnt), ""])
+
+                    new_pos, initial_loc = self.read_4sbyte(data, pos)
+                    initial_offset = shdr.sh_offset + initial_loc
+                    if self.is_pie:
+                        extra_s = "vma: $codebase+{:#x}".format(load_base + initial_offset)
+                    else:
+                        extra_s = "vma: {:#x}".format(load_base + initial_offset)
+                    entries.append([pos, data[pos:new_pos], "initial_loc", initial_offset, extra_s])
+                    pos = new_pos
+
+                    new_pos, fde_offset = self.read_4sbyte(data, pos)
+                    fde_offset_adjusted = fde_offset - (eh_frame_ptr + 4)
+                    if self.is_pie:
+                        extra_s = "vma: $codebase+{:#x}".format(load_base + shdr.sh_offset + fde_offset)
+                    else:
+                        extra_s = "vma: {:#x}".format(load_base + shdr.sh_offset + fde_offset)
+                    entries.append([pos, data[pos:new_pos], "fde", fde_offset_adjusted, extra_s])
+                    pos = new_pos
+
+                    table_cnt += 1
+        except:
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            entries.append(["Parse Error\n{}".format(exc_value)])
+        return entries
+
+    def parse_eh_frame(self, eh_frame):
+        section_addr = eh_frame["offset"]
+        data = eh_frame["data"]
+        shdr = [s for s in self.elf.shdrs if s.sh_name == ".eh_frame"][0]
+        load_base = [phdr for phdr in self.elf.phdrs if phdr.p_type == Phdr.PT_LOAD][0].p_vaddr
+
+        cies = []
+        entries = []
+        pos = 0
+
+        try:
+            while data[pos:]:
+                offset = pos
+                tmp_entries = []
+
+                # parse length
+                new_pos, unit_length = self.read_4ubyte(data, pos)
+                length = 4 # default
+                tmp_entries.append([pos, data[pos:new_pos], "length", unit_length, ""])
+                pos = new_pos
+                if unit_length == 0xffffffff:
+                    new_pos, unit_length = self.read_8ubyte(data, pos)
+                    length = 8
+                    tmp_entries.append([pos, data[pos:new_pos], "extended_length", unit_length, ""])
+                    pos = new_pos
+                if unit_length == 0:
+                    entries.append([offset, "Zero terminator", ""])
+                    entries += tmp_entries
+                    tmp_entries = []
+                    continue
+
+                ptr_size = 4 if self.elf.e_class == Elf.ELF_32_BITS else 8
+                start = pos # use later
+                cie_end = pos + unit_length
+
+                # parse cie_id / cie_pointer
+                if length == 4:
+                    new_pos, cie_id = self.read_4ubyte(data, pos)
+                else:
+                    new_pos, cie_id = self.read_8ubyte(data, pos)
+                if cie_id == 0:
+                    tmp_entries.append([pos, data[pos:new_pos], "cie_id", cie_id, "type: CIE"])
+                else:
+                    extra_s = "type: FDE, Associated_CIE: {:#x}(={:#x}-{:#x})".format(start-cie_id, start, cie_id)
+                    tmp_entries.append([pos, data[pos:new_pos], "cie_pointer", cie_id, extra_s])
+                pos = new_pos
+
+                version = 2
+                fde_encoding = 0
+                lsda_encoding = 0
+                initial_location = 0
+                vma_base = 0
+
+                if cie_id == 0:  # CIE parsing
+                    entries.append([offset, "CIE", ""])
+                    entries += tmp_entries
+                    tmp_entries = []
+
+                    # parse version
+                    new_pos, version = self.read_1ubyte(data, pos)
+                    entries.append([pos, data[pos:new_pos], "version", version, ""])
+                    pos = new_pos
+
+                    # parse augmentation string
+                    orig_pos = pos
+                    augmentation = ""
+                    while data[pos]:
+                        augmentation += chr(data[pos])
+                        pos += 1
+                    pos += 1 # skip NUL
+                    entries.append([orig_pos, data[orig_pos:pos], "augmentation_string", '"{:s}"'.format(augmentation), ""])
+
+                    # parse ptr_size, segment_size
+                    segment_size = 0
+                    if version >= 4:
+                        new_pos, ptr_size = self.raed_1ubyte(data, pos)
+                        entries.append([pos, data[pos:new_pos], "ptr_size", ptr_size, ""])
+                        pos = new_pos
+                        new_pos, segment_size = self.read_1ubyte(data, pos)
+                        entries.append([pos, data[pos:new_pos], "segment_size", segment_size, ""])
+                        pos = new_pos
+
+                    # parse code/data alignment factor
+                    new_pos, code_alignment_factor = self.get_uleb128(data, pos)
+                    entries.append([pos, data[pos:new_pos], "code_alignment_factor", code_alignment_factor, ""])
+                    pos = new_pos
+                    new_pos, data_alignment_factor = self.get_sleb128(data, pos)
+                    entries.append([pos, data[pos:new_pos], "data_alignment_factor", data_alignment_factor, ""])
+                    pos = new_pos
+
+                    # parse augmentation data
+                    if augmentation == "eh":
+                        if self.elf.e_class == Elf.ELF_32_BITS:
+                            new_pos, adjust = self.read_4ubyte(data, pos)
+                        else:
+                            new_pos, adjust = self.read_8ubyte(data, pos)
+                        entries.append([pos, data[pos:new_pos], "eh_data", adjust, ""])
+                        pos = new_pos
+
+                    if version == 1:
+                        new_pos, return_address_register = self.read_1ubyte(data, pos)
+                        entries.append([pos, data[pos:new_pos], "return_address_register", return_address_register, ""])
+                        pos = new_pos
+                    else:
+                        new_pos, return_address_register = self.get_uleb128(data, pos)
+                        entries.append([pos, data[pos:new_pos], "return_address_register", return_address_register, ""])
+                        pos = new_pos
+
+                    if augmentation[0] == "z":
+                        new_pos, augmentation_len = self.get_uleb128(data, pos)
+                        entries.append([pos, data[pos:new_pos], "augmentation_len", augmentation_len, ""])
+                        pos = new_pos
+
+                        for cp in augmentation[1:]:
+                            if cp == "R":
+                                new_pos, fde_encoding = self.read_1ubyte(data, pos)
+                                encoding_str = self.get_encoding_str(fde_encoding)
+                                entries.append([pos, data[pos:new_pos], "augmentation_data(R)", fde_encoding, "FDE address encoding: {:s}".format(encoding_str)])
+                                pos = new_pos
+                            elif cp == "L":
+                                new_pos, lsda_encoding = self.read_1ubyte(data, pos)
+                                encoding_str = self.get_encoding_str(lsda_encoding)
+                                entries.append([pos, data[pos:new_pos], "augmentation_data(L)", lsda_encoding, "LSDA pointer encoding: {:s}".format(encoding_str)])
+                                pos = new_pos
+                            elif cp == "P":
+                                new_pos, p_encoding = self.read_1ubyte(data, pos)
+                                encoding_str = self.get_encoding_str(p_encoding)
+                                entries.append([pos, data[pos:new_pos], "augmentation_data(P)", p_encoding, "Personality pointer encoding: {:s}".format(encoding_str)])
+                                pos = new_pos
+                                new_pos, p_addr= self.read_encoded(p_encoding, data, pos)
+                                if (p_encoding & 0x70) == self.DW_EH_PE_pcrel:
+                                    p_addr += shdr.sh_offset + pos
+                                    if self.is_pie:
+                                        extra_s = "Personality pointer address: $codebase+{:#x}".format(load_base + p_addr)
+                                    else:
+                                        extra_s = "Personality pointer address: {:#x}".format(load_base + p_addr)
+                                else:
+                                    extra_s = "Personality pointer address"
+                                entries.append([pos, data[pos:new_pos], "augmentation_data(P)", p_addr, extra_s])
+                                pos = new_pos
+                            else: # unknown
+                                new_pos, x = self.read_1ubyte(data, pos)
+                                entries.append([pos, data[pos:new_pos], "augmentation_data({:s})".format(cp), x, ""])
+                                pos = new_pos
+                    if ptr_size == 4 or ptr_size == 8:
+                        cie = {}
+                        cie["cie_offset"] = offset
+                        cie["augmentation"] = augmentation
+                        cie["fde_encoding"] = fde_encoding
+                        cie["lsda_encoding"] = lsda_encoding
+                        cie["address_size"] = ptr_size
+                        cie["code_alignment_factor"] = code_alignment_factor
+                        cie["data_alignment_factor"] = data_alignment_factor
+                        cies.append(cie)
+
+                else: # FDE parsing
+                    cie = [x for x in cies if start - cie_id == x["cie_offset"]][0]
+
+                    entries.append([offset, "FDE", ""])
+                    entries += tmp_entries # unit_length, cie_pointer
+                    tmp_entries = []
+
+                    ptr_size = self.encoded_ptr_size(cie["fde_encoding"], cie["address_size"])
+                    base = pos
+
+                    # parse pc_begin
+                    if ptr_size == 4:
+                        new_pos, initial_location = self.read_4ubyte(data, pos)
+                    elif ptr_size == 8:
+                        new_pos, initial_location = self.read_8ubyte(data, pos)
+                    if (cie["fde_encoding"] & 0x70) == self.DW_EH_PE_pcrel:
+                        vma_base = shdr.sh_offset + base + initial_location
+                        if ptr_size == 4:
+                            vma_base &= 0xffffffff
+                        elif ptr_size == 8:
+                            vma_base &= 0xffffffffffffffff
+                        if self.is_pie:
+                            extra_s = "pc_begin vma: $codebase+{:#x}".format(load_base + vma_base)
+                        else:
+                            extra_s = "pc_begin vma: {:#x}".format(load_base + vma_base)
+                        entries.append([pos, data[pos:new_pos], "pc_begin", vma_base, extra_s])
+                    else:
+                        entries.append([pos, data[pos:new_pos], "pc_begin", initial_location, ""])
+                    pos = new_pos
+
+                    # parse pc_range
+                    if ptr_size == 4:
+                        new_pos, pc_range = self.read_4ubyte(data, pos)
+                    elif ptr_size == 8:
+                        new_pos, pc_range = self.read_8ubyte(data, pos)
+                    if (cie["fde_encoding"] & 0x70) == self.DW_EH_PE_pcrel:
+                        end_off = vma_base + pc_range
+                    else:
+                        end_off = initial_location + pc_range
+                    if ptr_size == 4:
+                        end_off &= 0xffffffff
+                    elif ptr_size == 8:
+                        end_off &= 0xffffffffffffffff
+                    if self.is_pie:
+                        extra_s = "pc_end vma: $codebase+{:#x}".format(load_base + end_off)
+                    else:
+                        extra_s = "pc_end vma: {:#x}".format(load_base + end_off)
+                    entries.append([pos, data[pos:new_pos], "pc_range", pc_range, extra_s])
+                    pos = new_pos
+
+                    # parse augmentation
+                    if cie["augmentation"][0] == "z":
+                        new_pos, augmentation_len = self.get_uleb128(data, pos)
+                        entries.append([pos, data[pos:new_pos], "augmentation_len", augmentation_len, ""])
+                        pos = new_pos
+
+                        aug_end = pos + augmentation_len
+                        if augmentation_len:
+                            for cp in cie["augmentation"][1:]:
+                                if cp == "L":
+                                    new_pos, lsda_pointer = self.read_encoded(cie["lsda_encoding"], data, pos)
+                                    if (cie["lsda_encoding"] & 0x70) == self.DW_EH_PE_pcrel:
+                                        lsda_pointer += shdr.sh_offset + pos
+                                        if self.is_pie:
+                                            extra_s = "LSDA pointer vma: $codebase+{:#x}".format(load_base + lsda_pointer)
+                                        else:
+                                            extra_s = "LSDA pointer vma: {:#x}".format(load_base + lsda_pointer)
+                                        entries.append([pos, data[pos:new_pos], "augmentation_data(L)", lsda_pointer, extra_s])
+                                    else:
+                                        entries.append([pos, data[pos:new_pos], "augmentation_data(L)", lsda_pointer, "LSDA pointer"])
+                                    pos = new_pos
+                            if pos < aug_end:
+                                entries.append([pos, data[pos:aug_end], "?", "", ""])
+                            pos = aug_end
+
+                # common
+                entries += self.parse_cfa_program(data, pos, cie_end, vma_base, version, cie)
+                pos = cie_end
+        except:
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            entries.append(["Parse Error\n{}".format(exc_value)])
+        return entries
+
+    DW_CFA_advance_loc = 0x40
+    DW_CFA_offset = 0x80
+    DW_CFA_restore = 0xc0
+    DW_CFA_nop = 0x00
+    DW_CFA_set_loc = 0x01
+    DW_CFA_advance_loc1 = 0x02
+    DW_CFA_advance_loc2 = 0x03
+    DW_CFA_advance_loc4 = 0x04
+    DW_CFA_offset_extended = 0x05
+    DW_CFA_restore_extended = 0x06
+    DW_CFA_undefined = 0x07
+    DW_CFA_same_value = 0x08
+    DW_CFA_register = 0x09
+    DW_CFA_remember_state = 0x0a
+    DW_CFA_restore_state = 0x0b
+    DW_CFA_def_cfa = 0x0c
+    DW_CFA_def_cfa_register = 0x0d
+    DW_CFA_def_cfa_offset = 0x0e
+    DW_CFA_def_cfa_expression = 0x0f
+    DW_CFA_expression = 0x10
+    DW_CFA_offset_extended_sf = 0x11
+    DW_CFA_def_cfa_sf = 0x12
+    DW_CFA_def_cfa_offset_sf = 0x13
+    DW_CFA_val_offset = 0x14
+    DW_CFA_val_offset_sf = 0x15
+    DW_CFA_val_expression = 0x16
+    DW_CFA_low_user = 0x1c
+    DW_CFA_MIPS_advance_loc8 = 0x1d
+    DW_CFA_GNU_window_save = 0x2d
+    DW_CFA_AARCH64_negate_ra_state = 0x2d # dup
+    DW_CFA_GNU_args_size = 0x2e
+    DW_CFA_GNU_negative_offset_extended = 0x2f
+    DW_CFA_high_user = 0x3f
+
+    def get_register_name(self, reg):
+        if self.elf.e_machine == Elf.X86_64:
+            REG_LIST = [
+                "rax", "rdx", "rcx", "rbx", "rsi", "rdi", "rbp", "rsp",
+                "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
+                "rip", "xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6",
+                "xmm7", "xmm8", "xmm9", "xmm10", "xmm11", "xmm12", "xmm13", "xmm14",
+                "xmm15", "st0", "st1", "st2", "st3", "st4", "st5", "st6", "st7",
+                "mm0", "mm1", "mm2", "mm3", "mm4", "mm5", "mm6", "mm7",
+                "rflags", "es", "cs", "ss", "ds", "fs", "gs", "???",
+                "???", "fs.base", "gs.base", "???", "???", "tr", "ldtr", "mxcsr",
+                "fcw", "fsw",
+            ]
+        elif self.elf.e_machine == Elf.X86_32:
+            REG_LIST = [
+                "eax", "ecx", "edx", "rbx", "esp", "ebp", "esi", "edi",
+                "eip", "eflags", "trapno", "st0", "st1", "st2", "st3", "st4",
+                "st5", "st6", "st7", "???", "???", "xmm0", "xmm1", "xmm2",
+                "xmm3", "xmm4", "xmm5", "xmm6", "xmm7", "mm0", "mm1", "mm2",
+                "mm3", "mm4", "mm5", "mm6", "mm7", "fctrl", "fstat", "mxcsr",
+                "es", "cs", "ss", "ds", "fs", "gs",
+            ]
+        elif self.elf.e_machine == Elf.ARM:
+            REG_LIST = [
+                "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7",
+                "r8", "r9", "r10", "r11", "r12", "sp", "lr", "pc",
+                "f0", "f1", "f2", "f3", "f4", "f5", "f6", "f7",
+            ] + ["???"]*40 + [
+                "s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7",
+                "s8", "s9", "s10", "s11", "s12", "s13", "s14", "s15",
+                "s16", "s17", "s18", "s19", "s20", "s21", "s22", "s23",
+                "s24", "s25", "s26", "s27", "s28", "s29", "s30", "s31",
+                "f0", "f1", "f2", "f3", "f4", "f5", "f6", "f7",
+                "wcgr0", "wcgr1", "wcgr2", "wcgr3", "wcgr4", "wcgr5", "wcgr6", "wcgr7",
+                "wr0", "wr1", "wr2", "wr3", "wr4", "wr5", "wr6", "wr7",
+                "wr8", "wr9", "wr10", "wr11", "wr12", "wr13", "wr14", "wr15",
+                "spsr", "spsr_fiq", "spsr_irq", "spsr_abt", "spsr_und", "spsr_svc",
+            ] + ["???"]*10 + [
+                "r8_usr", "r9_usr", "r10_usr", "r11_usr", "r12_usr", "r13_usr", "r14_usr", "r8_fiq",
+                "r9_fiq", "r10_fiq", "r11_fiq", "r12_fiq", "r13_fiq", "r14_fiq", "r13_irq", "r14_irq",
+                "r13_abt", "r14_abt", "r13_und", "r14_und", "r13_svc", "r14_svc",
+            ] + ["???"]*26 + [
+                "wc0", "wc1", "wc2", "wc3", "wc4", "wc5", "wc6", "wc7",
+            ]
+        elif self.elf.e_machine == Elf.AARCH64:
+            REG_LIST = [
+                "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7",
+                "x8", "x9", "x10", "x11", "x12", "x13", "x14", "x15",
+                "x16", "x17", "x18", "x19", "x20", "x21", "x22", "x23",
+                "x24", "x25", "x26", "x27", "x28", "x29", "x30", "sp",
+                "???", "elr",
+            ] + ["???"]*30 + [
+                "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7",
+                "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15",
+                "v16", "v17", "v18", "v19", "v20", "v21", "v22", "v23",
+                "v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31",
+            ]
+        else:
+            # other arch is unimplemented
+            return "r{:d}".format(reg)
+
+        if reg < len(REG_LIST):
+            return REG_LIST[reg]
+        return "???"
+
+    def parse_cfa_program(self, data, pos, pos_end, vma_base, version, cie):
+        encoding = cie["fde_encoding"]
+        ptr_size = cie["address_size"]
+        code_align = cie["code_alignment_factor"]
+        data_align = cie["data_alignment_factor"]
+        pc = vma_base
+        indent = " "*4
+
+        entries = []
+        entries.append([pos, b"", "program", None, ""])
+        try:
+            while pos < pos_end:
+                new_pos, opcode = self.read_1ubyte(data, pos)
+
+                if opcode < self.DW_CFA_advance_loc:
+                    if opcode == self.DW_CFA_nop:
+                        entries.append([pos, data[pos:new_pos], indent+"nop", None, ""])
+                    elif opcode == self.DW_CFA_set_loc:
+                        new_pos, op1 = self.read_encoded(encoding, data, new_pos)
+                        pc = vma_base + op1
+                        entries.append([pos, data[pos:new_pos], indent+"set_loc {:#x} to {:#x}".format(op1, pc), None, ""])
+                    elif opcode == self.DW_CFA_advance_loc1:
+                        op1 = data[new_pos]
+                        new_pos += 1
+                        pc += op1 * code_align
+                        entries.append([pos, data[pos:new_pos], indent+"advance_loc1 {:#x} to {:#x}".format(op1, pc), None, ""])
+                    elif opcode == self.DW_CFA_advance_loc2:
+                        new_pos, op1 = self.read_2ubyte(data, new_pos)
+                        pc += op1 * code_align
+                        entries.append([pos, data[pos:new_pos], indent+"advance_loc2 {:#x} to {:#x}".format(op1, pc), None, ""])
+                    elif opcode == self.DW_CFA_advance_loc4:
+                        new_pos, op1 = self.read_4ubyte(data, new_pos)
+                        pc += op1 * code_align
+                        entries.append([pos, data[pos:new_pos], indent+"advance_loc4 {:#x} to {:#x}".format(op1, pc), None, ""])
+                    elif opcode == self.DW_CFA_offset_extended:
+                        new_pos, op1 = self.get_uleb128(data, new_pos)
+                        new_pos, op2 = self.get_uleb128(data, new_pos)
+                        regname = self.get_register_name(op1)
+                        entries.append([pos, data[pos:new_pos], indent+"offset_extended r{:d} ({:s}) at cfa{:+#x}".format(op1, regname, ep2 * data_align), None, ""])
+                    elif opcode == self.DW_CFA_restore_extended:
+                        new_pos, op1 = self.get_uleb128(data, new_pos)
+                        regname = self.get_register_name(op1)
+                        entries.append([pos, data[pos:new_pos], indent+"restore_extended r{:d} ({:s})".fomart(op1, regname), None, ""])
+                    elif opcode == self.DW_CFA_undefined:
+                        new_pos, op1 = self.get_uleb128(data, new_pos)
+                        regname = self.get_register_name(op1)
+                        entries.append([pos, data[pos:new_pos], indent+"undefined r{:d} ({:s})".format(op1, regname), None, ""])
+                    elif opcode == self.DW_CFA_same_value:
+                        new_pos, op1 = self.get_uleb128(data, new_pos)
+                        regname = self.get_register_name(op1)
+                        entries.append([pos, data[pos:new_pos], indent+"same_value r{:d} ({:s})".format(op1, regname), None, ""])
+                    elif opcode == self.DW_CFA_register:
+                        new_pos, op1 = self.get_uleb128(data, new_pos)
+                        new_pos, op2 = self.get_uleb128(data, new_pos)
+                        regname1 = self.get_register_name(op1)
+                        regname2 = self.get_register_name(op2)
+                        entries.append([pos, data[pos:new_pos], indent+"register r{:d} ({:s}) in r{:d} ({:s})".format(op1, op2, regname1, regname2), None, ""])
+                    elif opcode == self.DW_CFA_remember_state:
+                        entries.append([pos, data[pos:new_pos], indent+"remember_state", None, ""])
+                    elif opcode == self.DW_CFA_restore_state:
+                        entries.append([pos, data[pos:new_pos], indent+"restore_state", None, ""])
+                    elif opcode == self.DW_CFA_def_cfa:
+                        new_pos, op1 = self.get_uleb128(data, new_pos)
+                        new_pos, op2 = self.get_uleb128(data, new_pos)
+                        regname = self.get_register_name(op1)
+                        entries.append([pos, data[pos:new_pos], indent+"def_cfa r{:d} ({:s}) at offset {:#x}".format(op1, regname, op2), None, ""])
+                    elif opcode == self.DW_CFA_def_cfa_register:
+                        new_pos, op1 = self.get_uleb128(data, new_pos)
+                        regname = self.get_register_name(op1)
+                        entries.append([pos, data[pos:new_pos], indent+"def_cfa_register r{:d} ({:s})".format(op1, regname), None, ""])
+                    elif opcode == self.DW_CFA_def_cfa_offset:
+                        new_pos, op1 = self.get_uleb128(data, new_pos)
+                        entries.append([pos, data[pos:new_pos], indent+"def_cfa_offset {:#x}".format(op1), None, ""])
+                    elif opcode == self.DW_CFA_def_cfa_expression:
+                        new_pos, op1 = self.get_uleb128(data, new_pos)
+                        entries.append([pos, data[pos:new_pos], indent+"def_cfa_expression {:#x}".format(op1), None, ""])
+                        entries += self.parse_ops(version, ptr_size, op1, data, new_pos)
+                        new_pos += op1
+                    elif opcode == self.DW_CFA_expression:
+                        new_pos, op1 = self.get_uleb128(data, new_pos)
+                        new_pos, op2 = self.get_uleb128(data, new_pos)
+                        regname = self.get_register_name(op1)
+                        entries.append([pos, data[pos:new_pos], indent+"expression r{:d} ({:s})".format(op1, regname), None, ""])
+                        entries += self.parse_ops(version, ptr_size, op2, data, new_pos)
+                        new_pos += op2
+                    elif opcode == self.DW_CFA_offset_extended_sf:
+                        new_pos, op1 = self.get_uleb128(data, new_pos)
+                        new_pos, op2 = self.get_uleb128(data, new_pos)
+                        regname = self.get_register_name(op1)
+                        entries.append([pos, data[pos:new_pos], indent+"offset_extended_sf r{:d} ({:s}) at cfa{:+#x}".format(op1, regname, op2 * data_align), None, ""])
+                    elif opcode == self.DW_CFA_def_cfa_sf:
+                        new_pos, op1 = self.get_uleb128(data, new_pos)
+                        new_pos, op2 = self.get_uleb128(data, new_pos)
+                        regname = self.get_register_name(op1)
+                        entries.append([pos, data[pos:new_pos], indent+"def_cfa_sf r{:d} ({:s}) at offset {:#x}".format(op1, regname, op2 * data_align), None, ""])
+                    elif opcode == self.DW_CFA_def_cfa_offset_sf:
+                        new_pos, op1 = self.get_uleb128(data, new_pos)
+                        entries.append([pos, data[pos:new_pos], indent+"def_cfa_offset_sf {:#x}".format(op1 * data_align), None, ""])
+                    elif opcode == self.DW_CFA_val_offset:
+                        new_pos, op1 = self.get_uleb128(data, new_pos)
+                        new_pos, op2 = self.get_uleb128(data, new_pos)
+                        entries.append([pos, data[pos:new_pos], indent+"val_offset {:#x} at offset {:#x}".format(op1, op2 * data_align), None, ""])
+                    elif opcode == self.DW_CFA_val_offset_sf:
+                        new_pos, op1 = self.get_uleb128(data, new_pos)
+                        new_pos, op2 = self.get_uleb128(data, new_pos)
+                        entries.append([pos, data[pos:new_pos], indent+"val_offset_sf {:#x} at offset {:#x}".format(op1, op2 * data_align), None, ""])
+                    elif opcode == self.DW_CFA_val_expression:
+                        new_pos, op1 = self.get_uleb128(data, new_pos)
+                        new_pos, op2 = self.get_uleb128(data, new_pos)
+                        regname = self.get_register_name(op1)
+                        entries.append([pos, data[pos:new_pos], indent+"val_expression r{:d} ({:s})".format(op1, regname), None, ""])
+                        entries += self.parse_ops(version, ptr_size, op2, data, new_pos)
+                        new_pos += op2
+                    elif opcode == self.DW_CFA_MIPS_advance_loc8:
+                        new_pos, op1 = self.read_8ubyte(data, new_pos)
+                        pc += op1 * code_align
+                        entries.append([pos, data[pos:new_pos], indent+"MIPS_advance_loc8 {:#x} to {:#x}".format(op1, pc), None, ""])
+                    elif opcode == self.DW_CFA_GNU_window_save:
+                        if self.elf.e_machine == Elf.AARCH64:
+                            entries.append([pos, data[pos:new_pos], indent+"AARCH64_negate_ra_state", None, ""])
+                        else:
+                            entries.append([pos, data[pos:new_pos], indent+"GNU_window_save", None, ""])
+                    elif opcode == self.DW_CFA_GNU_args_size:
+                        new_pos, op1 = self.get_uleb128(data, new_pos)
+                        entries.append([pos, data[pos:new_pos], indent+"args_size {:#x}".format(op1), None, ""])
+                    else:
+                        entries.append([pos, data[pos:new_pos], indent+"??? {:#x}".format(opcode), None, ""])
+                elif opcode < self.DW_CFA_offset:
+                    op1 = opcode & 0x3f
+                    pc += op1 * code_align 
+                    entries.append([pos, data[pos:new_pos], indent+"advance_loc {:d} to {:#x}".format(op1, pc), None, ""])
+                elif opcode < self.DW_CFA_restore:
+                    op1 = opcode & 0x3f
+                    new_pos, op2 = self.get_uleb128(data, new_pos)
+                    regname = self.get_register_name(op1)
+                    entries.append([pos, data[pos:new_pos], indent+"offset r{:d} ({:s}) at cfa{:+#x}".format(op1, regname, op2 * data_align), None, ""])
+                else:
+                    op1 = opcode & 0x3f
+                    regname = self.get_register_name(op1)
+                    entries.append([pos, data[pos:new_pos], indent+"restore r{:d}".format(op1), None, ""])
+                pos = new_pos
+        except:
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            entries.append(["Parse Error\n{}".format(exc_value)])
+        return entries
+
+    DW_OP_addr = 0x03                 # Constant address
+    DW_OP_deref = 0x06
+    DW_OP_const1u = 0x08              # Unsigned 1-byte constant
+    DW_OP_const1s = 0x09              # Signed 1-byte constant
+    DW_OP_const2u = 0x0a              # Unsigned 2-byte constant
+    DW_OP_const2s = 0x0b              # Signed 2-byte constant
+    DW_OP_const4u = 0x0c              # Unsigned 4-byte constant
+    DW_OP_const4s = 0x0d              # Signed 4-byte constant
+    DW_OP_const8u = 0x0e              # Unsigned 8-byte constant
+    DW_OP_const8s = 0x0f              # Signed 8-byte constant
+    DW_OP_constu = 0x10               # Unsigned LEB128 constant
+    DW_OP_consts = 0x11               # Signed LEB128 constant
+    DW_OP_dup = 0x12
+    DW_OP_drop = 0x13
+    DW_OP_over = 0x14
+    DW_OP_pick = 0x15                 # 1-byte stack index
+    DW_OP_swap = 0x16
+    DW_OP_rot = 0x17
+    DW_OP_xderef = 0x18
+    DW_OP_abs = 0x19
+    DW_OP_and = 0x1a
+    DW_OP_div = 0x1b
+    DW_OP_minus = 0x1c
+    DW_OP_mod = 0x1d
+    DW_OP_mul = 0x1e
+    DW_OP_neg = 0x1f
+    DW_OP_not = 0x20
+    DW_OP_or = 0x21
+    DW_OP_plus = 0x22
+    DW_OP_plus_uconst = 0x23          # Unsigned LEB128 addend
+    DW_OP_shl = 0x24
+    DW_OP_shr = 0x25
+    DW_OP_shra = 0x26
+    DW_OP_xor = 0x27
+    DW_OP_bra = 0x28                  # Signed 2-byte constant
+    DW_OP_eq = 0x29
+    DW_OP_ge = 0x2a
+    DW_OP_gt = 0x2b
+    DW_OP_le = 0x2c
+    DW_OP_lt = 0x2d
+    DW_OP_ne = 0x2e
+    DW_OP_skip = 0x2f                 # Signed 2-byte constant
+    DW_OP_lit0 = 0x30                 # Literal 0
+    DW_OP_lit1 = 0x31                 # Literal 1
+    DW_OP_lit2 = 0x32                 # Literal 2
+    DW_OP_lit3 = 0x33                 # Literal 3
+    DW_OP_lit4 = 0x34                 # Literal 4
+    DW_OP_lit5 = 0x35                 # Literal 5
+    DW_OP_lit6 = 0x36                 # Literal 6
+    DW_OP_lit7 = 0x37                 # Literal 7
+    DW_OP_lit8 = 0x38                 # Literal 8
+    DW_OP_lit9 = 0x39                 # Literal 9
+    DW_OP_lit10 = 0x3a                # Literal 10
+    DW_OP_lit11 = 0x3b                # Literal 11
+    DW_OP_lit12 = 0x3c                # Literal 12
+    DW_OP_lit13 = 0x3d                # Literal 13
+    DW_OP_lit14 = 0x3e                # Literal 14
+    DW_OP_lit15 = 0x3f                # Literal 15
+    DW_OP_lit16 = 0x40                # Literal 16
+    DW_OP_lit17 = 0x41                # Literal 17
+    DW_OP_lit18 = 0x42                # Literal 18
+    DW_OP_lit19 = 0x43                # Literal 19
+    DW_OP_lit20 = 0x44                # Literal 20
+    DW_OP_lit21 = 0x45                # Literal 21
+    DW_OP_lit22 = 0x46                # Literal 22
+    DW_OP_lit23 = 0x47                # Literal 23
+    DW_OP_lit24 = 0x48                # Literal 24
+    DW_OP_lit25 = 0x49                # Literal 25
+    DW_OP_lit26 = 0x4a                # Literal 26
+    DW_OP_lit27 = 0x4b                # Literal 27
+    DW_OP_lit28 = 0x4c                # Literal 28
+    DW_OP_lit29 = 0x4d                # Literal 29
+    DW_OP_lit30 = 0x4e                # Literal 30
+    DW_OP_lit31 = 0x4f                # Literal 31
+    DW_OP_reg0 = 0x50                 # Register 0
+    DW_OP_reg1 = 0x51                 # Register 1
+    DW_OP_reg2 = 0x52                 # Register 2
+    DW_OP_reg3 = 0x53                 # Register 3
+    DW_OP_reg4 = 0x54                 # Register 4
+    DW_OP_reg5 = 0x55                 # Register 5
+    DW_OP_reg6 = 0x56                 # Register 6
+    DW_OP_reg7 = 0x57                 # Register 7
+    DW_OP_reg8 = 0x58                 # Register 8
+    DW_OP_reg9 = 0x59                 # Register 9
+    DW_OP_reg10 = 0x5a                # Register 10
+    DW_OP_reg11 = 0x5b                # Register 11
+    DW_OP_reg12 = 0x5c                # Register 12
+    DW_OP_reg13 = 0x5d                # Register 13
+    DW_OP_reg14 = 0x5e                # Register 14
+    DW_OP_reg15 = 0x5f                # Register 15
+    DW_OP_reg16 = 0x60                # Register 16
+    DW_OP_reg17 = 0x61                # Register 17
+    DW_OP_reg18 = 0x62                # Register 18
+    DW_OP_reg19 = 0x63                # Register 19
+    DW_OP_reg20 = 0x64                # Register 20
+    DW_OP_reg21 = 0x65                # Register 21
+    DW_OP_reg22 = 0x66                # Register 22
+    DW_OP_reg23 = 0x67                # Register 24
+    DW_OP_reg24 = 0x68                # Register 24
+    DW_OP_reg25 = 0x69                # Register 25
+    DW_OP_reg26 = 0x6a                # Register 26
+    DW_OP_reg27 = 0x6b                # Register 27
+    DW_OP_reg28 = 0x6c                # Register 28
+    DW_OP_reg29 = 0x6d                # Register 29
+    DW_OP_reg30 = 0x6e                # Register 30
+    DW_OP_reg31 = 0x6f                # Register 31
+    DW_OP_breg0 = 0x70                # Base register 0
+    DW_OP_breg1 = 0x71                # Base register 1
+    DW_OP_breg2 = 0x72                # Base register 2
+    DW_OP_breg3 = 0x73                # Base register 3
+    DW_OP_breg4 = 0x74                # Base register 4
+    DW_OP_breg5 = 0x75                # Base register 5
+    DW_OP_breg6 = 0x76                # Base register 6
+    DW_OP_breg7 = 0x77                # Base register 7
+    DW_OP_breg8 = 0x78                # Base register 8
+    DW_OP_breg9 = 0x79                # Base register 9
+    DW_OP_breg10 = 0x7a               # Base register 10
+    DW_OP_breg11 = 0x7b               # Base register 11
+    DW_OP_breg12 = 0x7c               # Base register 12
+    DW_OP_breg13 = 0x7d               # Base register 13
+    DW_OP_breg14 = 0x7e               # Base register 14
+    DW_OP_breg15 = 0x7f               # Base register 15
+    DW_OP_breg16 = 0x80               # Base register 16
+    DW_OP_breg17 = 0x81               # Base register 17
+    DW_OP_breg18 = 0x82               # Base register 18
+    DW_OP_breg19 = 0x83               # Base register 19
+    DW_OP_breg20 = 0x84               # Base register 20
+    DW_OP_breg21 = 0x85               # Base register 21
+    DW_OP_breg22 = 0x86               # Base register 22
+    DW_OP_breg23 = 0x87               # Base register 23
+    DW_OP_breg24 = 0x88               # Base register 24
+    DW_OP_breg25 = 0x89               # Base register 25
+    DW_OP_breg26 = 0x8a               # Base register 26
+    DW_OP_breg27 = 0x8b               # Base register 27
+    DW_OP_breg28 = 0x8c               # Base register 28
+    DW_OP_breg29 = 0x8d               # Base register 29
+    DW_OP_breg30 = 0x8e               # Base register 30
+    DW_OP_breg31 = 0x8f               # Base register 31
+    DW_OP_regx = 0x90                 # Unsigned LEB128 register
+    DW_OP_fbreg = 0x91                # Signed LEB128 offset
+    DW_OP_bregx = 0x92                # ULEB128 register followed by SLEB128 off
+    DW_OP_piece = 0x93                # ULEB128 size of piece addressed
+    DW_OP_deref_size = 0x94           # 1-byte size of data retrieved
+    DW_OP_xderef_size = 0x95          # 1-byte size of data retrieved
+    DW_OP_nop = 0x96
+    DW_OP_push_object_address = 0x97
+    DW_OP_call2 = 0x98
+    DW_OP_call4 = 0x99
+    DW_OP_call_ref = 0x9a
+    DW_OP_form_tls_address = 0x9b     # TLS offset to address in current thread
+    DW_OP_call_frame_cfa = 0x9c       # CFA as determined by CFI
+    DW_OP_bit_piece = 0x9d            # ULEB128 size and ULEB128 offset in bits
+    DW_OP_implicit_value = 0x9e       # DW_FORM_block follows opcode
+    DW_OP_stack_value = 0x9f          # No operands, special like DW_OP_piece
+    #
+    DW_OP_implicit_pointer = 0xa0
+    DW_OP_addrx = 0xa1
+    DW_OP_constx = 0xa2
+    DW_OP_entry_value = 0xa3
+    DW_OP_const_type = 0xa4
+    DW_OP_regval_type = 0xa5
+    DW_OP_deref_type = 0xa6
+    DW_OP_xderef_type = 0xa7
+    DW_OP_convert = 0xa8
+    DW_OP_reinterpret = 0xa9
+    # GNU extensions
+    DW_OP_GNU_push_tls_address = 0xe0
+    DW_OP_GNU_uninit = 0xf0
+    DW_OP_GNU_encoded_addr = 0xf1
+    DW_OP_GNU_implicit_pointer = 0xf2
+    DW_OP_GNU_entry_value = 0xf3
+    DW_OP_GNU_const_type = 0xf4
+    DW_OP_GNU_regval_type = 0xf5
+    DW_OP_GNU_deref_type = 0xf6
+    DW_OP_GNU_convert = 0xf7
+    DW_OP_GNU_reinterpret = 0xf9
+    DW_OP_GNU_parameter_ref = 0xfa
+    # GNU Debug Fission extensions
+    DW_OP_GNU_addr_index = 0xfb
+    DW_OP_GNU_const_index = 0xfc
+    DW_OP_GNU_variable_value = 0xfd
+    DW_OP_lo_user = 0xe0              # Implementation-defined range start
+    DW_OP_hi_user = 0xff              # Implementation-defined range end
+
+    def dwarf_locexpr_opcode_string(self, code):
+        DWARF_ONE_KNOWN_DW_OP = {
+            self.DW_OP_GNU_addr_index: "GNU_addr_index",
+            self.DW_OP_GNU_const_index: "GNU_const_index",
+            self.DW_OP_GNU_const_type: "GNU_const_type",
+            self.DW_OP_GNU_convert: "GNU_convert",
+            self.DW_OP_GNU_deref_type: "GNU_deref_type",
+            self.DW_OP_GNU_encoded_addr: "GNU_encoded_addr",
+            self.DW_OP_GNU_entry_value: "GNU_entry_value",
+            self.DW_OP_GNU_implicit_pointer: "GNU_implicit_pointer",
+            self.DW_OP_GNU_parameter_ref: "GNU_parameter_ref",
+            self.DW_OP_GNU_push_tls_address: "GNU_push_tls_address",
+            self.DW_OP_GNU_regval_type: "GNU_regval_type",
+            self.DW_OP_GNU_reinterpret: "GNU_reinterpret",
+            self.DW_OP_GNU_uninit: "GNU_uninit",
+            self.DW_OP_GNU_variable_value: "GNU_variable_value",
+            self.DW_OP_abs: "abs",
+            self.DW_OP_addr: "addr",
+            self.DW_OP_addrx: "addrx",
+            self.DW_OP_and: "and",
+            self.DW_OP_bit_piece: "bit_piece",
+            self.DW_OP_bra: "bra",
+            self.DW_OP_breg0: "breg0",
+            self.DW_OP_breg1: "breg1",
+            self.DW_OP_breg2: "breg2",
+            self.DW_OP_breg3: "breg3",
+            self.DW_OP_breg4: "breg4",
+            self.DW_OP_breg5: "breg5",
+            self.DW_OP_breg6: "breg6",
+            self.DW_OP_breg7: "breg7",
+            self.DW_OP_breg8: "breg8",
+            self.DW_OP_breg9: "breg9",
+            self.DW_OP_breg10: "breg10",
+            self.DW_OP_breg11: "breg11",
+            self.DW_OP_breg12: "breg12",
+            self.DW_OP_breg13: "breg13",
+            self.DW_OP_breg14: "breg14",
+            self.DW_OP_breg15: "breg15",
+            self.DW_OP_breg16: "breg16",
+            self.DW_OP_breg17: "breg17",
+            self.DW_OP_breg18: "breg18",
+            self.DW_OP_breg19: "breg19",
+            self.DW_OP_breg20: "breg20",
+            self.DW_OP_breg21: "breg21",
+            self.DW_OP_breg22: "breg22",
+            self.DW_OP_breg23: "breg23",
+            self.DW_OP_breg24: "breg24",
+            self.DW_OP_breg25: "breg25",
+            self.DW_OP_breg26: "breg26",
+            self.DW_OP_breg27: "breg27",
+            self.DW_OP_breg28: "breg28",
+            self.DW_OP_breg29: "breg29",
+            self.DW_OP_breg30: "breg30",
+            self.DW_OP_breg31: "breg31",
+            self.DW_OP_bregx: "bregx",
+            self.DW_OP_call2: "call2",
+            self.DW_OP_call4: "call4",
+            self.DW_OP_call_frame_cfa: "call_frame_cfa",
+            self.DW_OP_call_ref: "call_ref",
+            self.DW_OP_const1s: "const1s",
+            self.DW_OP_const1u: "const1u",
+            self.DW_OP_const2s: "const2s",
+            self.DW_OP_const2u: "const2u",
+            self.DW_OP_const4s: "const4s",
+            self.DW_OP_const4u: "const4u",
+            self.DW_OP_const8s: "const8s",
+            self.DW_OP_const8u: "const8u",
+            self.DW_OP_const_type: "const_type",
+            self.DW_OP_consts: "consts",
+            self.DW_OP_constu: "constu",
+            self.DW_OP_constx: "constx",
+            self.DW_OP_convert: "convert",
+            self.DW_OP_deref: "deref",
+            self.DW_OP_deref_size: "deref_size",
+            self.DW_OP_deref_type: "deref_type",
+            self.DW_OP_div: "div",
+            self.DW_OP_drop: "drop",
+            self.DW_OP_dup: "dup",
+            self.DW_OP_entry_value: "entry_value",
+            self.DW_OP_eq: "eq",
+            self.DW_OP_fbreg: "fbreg",
+            self.DW_OP_form_tls_address: "form_tls_address",
+            self.DW_OP_ge: "ge",
+            self.DW_OP_gt: "gt",
+            self.DW_OP_implicit_pointer: "implicit_pointer",
+            self.DW_OP_implicit_value: "implicit_value",
+            self.DW_OP_le: "le",
+            self.DW_OP_lit0: "lit0",
+            self.DW_OP_lit1: "lit1",
+            self.DW_OP_lit2: "lit2",
+            self.DW_OP_lit3: "lit3",
+            self.DW_OP_lit4: "lit4",
+            self.DW_OP_lit5: "lit5",
+            self.DW_OP_lit6: "lit6",
+            self.DW_OP_lit7: "lit7",
+            self.DW_OP_lit8: "lit8",
+            self.DW_OP_lit9: "lit9",
+            self.DW_OP_lit10: "lit10",
+            self.DW_OP_lit11: "lit11",
+            self.DW_OP_lit12: "lit12",
+            self.DW_OP_lit13: "lit13",
+            self.DW_OP_lit14: "lit14",
+            self.DW_OP_lit15: "lit15",
+            self.DW_OP_lit16: "lit16",
+            self.DW_OP_lit17: "lit17",
+            self.DW_OP_lit18: "lit18",
+            self.DW_OP_lit19: "lit19",
+            self.DW_OP_lit20: "lit20",
+            self.DW_OP_lit21: "lit21",
+            self.DW_OP_lit22: "lit22",
+            self.DW_OP_lit23: "lit23",
+            self.DW_OP_lit24: "lit24",
+            self.DW_OP_lit25: "lit25",
+            self.DW_OP_lit26: "lit26",
+            self.DW_OP_lit27: "lit27",
+            self.DW_OP_lit28: "lit28",
+            self.DW_OP_lit29: "lit29",
+            self.DW_OP_lit30: "lit30",
+            self.DW_OP_lit31: "lit31",
+            self.DW_OP_lt: "lt",
+            self.DW_OP_minus: "minus",
+            self.DW_OP_mod: "mod",
+            self.DW_OP_mul: "mul",
+            self.DW_OP_ne: "ne",
+            self.DW_OP_neg: "neg",
+            self.DW_OP_nop: "nop",
+            self.DW_OP_not: "not",
+            self.DW_OP_or: "or",
+            self.DW_OP_over: "over",
+            self.DW_OP_pick: "pick",
+            self.DW_OP_piece: "piece",
+            self.DW_OP_plus: "plus",
+            self.DW_OP_plus_uconst: "plus_uconst",
+            self.DW_OP_push_object_address: "push_object_address",
+            self.DW_OP_reg0: "reg0",
+            self.DW_OP_reg1: "reg1",
+            self.DW_OP_reg2: "reg2",
+            self.DW_OP_reg3: "reg3",
+            self.DW_OP_reg4: "reg4",
+            self.DW_OP_reg5: "reg5",
+            self.DW_OP_reg6: "reg6",
+            self.DW_OP_reg7: "reg7",
+            self.DW_OP_reg8: "reg8",
+            self.DW_OP_reg9: "reg9",
+            self.DW_OP_reg10: "reg10",
+            self.DW_OP_reg11: "reg11",
+            self.DW_OP_reg12: "reg12",
+            self.DW_OP_reg13: "reg13",
+            self.DW_OP_reg14: "reg14",
+            self.DW_OP_reg15: "reg15",
+            self.DW_OP_reg16: "reg16",
+            self.DW_OP_reg17: "reg17",
+            self.DW_OP_reg18: "reg18",
+            self.DW_OP_reg19: "reg19",
+            self.DW_OP_reg20: "reg20",
+            self.DW_OP_reg21: "reg21",
+            self.DW_OP_reg22: "reg22",
+            self.DW_OP_reg23: "reg23",
+            self.DW_OP_reg24: "reg24",
+            self.DW_OP_reg25: "reg25",
+            self.DW_OP_reg26: "reg26",
+            self.DW_OP_reg27: "reg27",
+            self.DW_OP_reg28: "reg28",
+            self.DW_OP_reg29: "reg29",
+            self.DW_OP_reg30: "reg30",
+            self.DW_OP_reg31: "reg31",
+            self.DW_OP_regval_type: "regval_type",
+            self.DW_OP_regx: "regx",
+            self.DW_OP_reinterpret: "reinterpret",
+            self.DW_OP_rot: "rot",
+            self.DW_OP_shl: "shl",
+            self.DW_OP_shr: "shr",
+            self.DW_OP_shra: "shra",
+            self.DW_OP_skip: "skip",
+            self.DW_OP_stack_value: "stack_value",
+            self.DW_OP_swap: "swap",
+            self.DW_OP_xderef: "xderef",
+            self.DW_OP_xderef_size: "xderef_size",
+            self.DW_OP_xderef_type: "xderef_type",
+            self.DW_OP_xor: "xor",
+        }
+        if code in DWARF_ONE_KNOWN_DW_OP:
+            return DWARF_ONE_KNOWN_DW_OP[code] 
+        elif code >= self.DW_OP_lo_user:
+            return "lo_user+{:#x}".format(code - self.DW_OP_lo_user)
+        else:
+            return "??? ({:#x})".format(code)
+
+    def parse_ops(self, vers, addrsize, length, data, pos, indent_n=0):
+        indent = " " * ((indent_n + 2)*4)
+        entries = []
+        ref_size = addrsize if vers < 3 else 0
+
+        if length == 0:
+            entries.append([pos, b"", indent+"(empty)", None, ""])
+            return entries
+
+        offset = 0
+        try:
+            while length:
+                new_pos, op = self.read_1ubyte(data, pos)
+                op_name = self.dwarf_locexpr_opcode_string(op)
+
+                if op in [self.DW_OP_addr]:
+                    if addrsize == 4:
+                        new_pos, d = self.read_4ubyte(data, new_pos)
+                    elif addrsize == 8:
+                        new_pos, d = self.read_8ubyte(data, new_pos)
+                    extra_s = "push {:#x}".format(d)
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
+                elif op in [self.DW_OP_call_ref, self.DW_OP_GNU_variable_value]:
+                    if ref_size == 4:
+                        new_pos, d = self.read_4ubyte(data, new_pos)
+                    else:
+                        new_pos, d = self.read_8ubyte(data, new_pos)
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, ""])
+                elif op in [self.DW_OP_deref]:
+                    extra_s = "pop; push *({:s}*)popped_value".format({4:"uint",8:"ulong"}[addrsize])
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s}".format(offset, op_name), None, extra_s])
+                elif op in [self.DW_OP_xderef]:
+                    extra_s = "pop; pop; push *({:s}*)(popped_value2_as_segment:popped_value1)".format({4:"uint",8:"ulong"}[addrsize])
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s}".format(offset, op_name), None, extra_s])
+                elif op in [self.DW_OP_deref_size]:
+                    new_pos, d = self.read_1ubyte(data, new_pos)
+                    extra_s = "pop; push *({:s}*)popped_value".format({1:"uchar",2:"ushort",4:"uint",8:"ulong"}[d])
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
+                elif op in [self.DW_OP_xderef_size]:
+                    new_pos, d = self.read_1ubyte(data, new_pos)
+                    extra_s = "pop; pop; push *({:s}*)(popped_value2_as_segment:popped_value1)".format({1:"uchar",2:"ushort",4:"uint",8:"ulong"}[d])
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
+                elif op in [self.DW_OP_pick]:
+                    new_pos, d = self.read_1ubyte(data, new_pos)
+                    extra_s = "push stack[{:d}]".format(d)
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
+                elif op in [self.DW_OP_const1u]:
+                    new_pos, d = self.read_1ubyte(data, new_pos)
+                    extra_s = "push {:#x}".format(d)
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
+                elif op in [self.DW_OP_const2u]:
+                    new_pos, d = self.read_2ubyte(data, new_pos)
+                    extra_s = "push {:#x}".format(d)
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
+                elif op in [self.DW_OP_const4u]:
+                    new_pos, d = self.read_4ubyte(data, new_pos)
+                    extra_s = "push {:#x}".format(d)
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
+                elif op in [self.DW_OP_const8u]:
+                    new_pos, d = self.read_8ubyte(data, new_pos)
+                    extra_s = "push {:#x}".format(d)
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
+                elif op in [self.DW_OP_const1s]:
+                    new_pos, d = self.read_1sbyte(data, new_pos)
+                    extra_s = "push {:#x}".format(d)
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
+                elif op in [self.DW_OP_const2u]:
+                    new_pos, d = self.read_2sbyte(data, new_pos)
+                    extra_s = "push {:#x}".format(d)
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
+                elif op in [self.DW_OP_const4s]:
+                    new_pos, d = self.read_4sbyte(data, new_pos)
+                    extra_s = "push {:#x}".format(d)
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
+                elif op in [self.DW_OP_const8s]:
+                    new_pos, d = self.read_8sbyte(data, new_pos)
+                    extra_s = "push {:#x}".format(d)
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
+                elif op in [self.DW_OP_piece, self.DW_OP_regx, self.DW_OP_plus_uconst]:
+                    new_pos, d = self.get_uleb128(data, new_pos)
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, ""])
+                elif op in [self.DW_OP_constu]:
+                    new_pos, d = self.get_uleb128(data, new_pos)
+                    extra_s = "push {:#x}".format(d)
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
+                elif op in [self.DW_OP_consts]:
+                    new_pos, d = self.get_sleb128(data, new_pos)
+                    extra_s = "push {:#x}".format(d)
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
+                elif op in [self.DW_OP_addrx, self.DW_OP_GNU_addr_index, self.DW_OP_constx, self.DW_OP_GNU_const_index]:
+                    new_pos, d = self.get_uleb128(data, new_pos)
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} [{:#x}]".format(offset, op_name, d), None, ""])
+                elif op in [self.DW_OP_bit_piece]:
+                    new_pos, d1 = self.get_uleb128(data, new_pos)
+                    new_pos, d2 = self.get_uleb128(data, new_pos)
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x},{:#x}".format(offset, op_name, d1, d2), None, ""])
+                elif op in [self.DW_OP_lit0, self.DW_OP_lit1, self.DW_OP_lit2, self.DW_OP_lit3, self.DW_OP_lit4,
+                            self.DW_OP_lit5, self.DW_OP_lit6, self.DW_OP_lit7, self.DW_OP_lit8, self.DW_OP_lit9,
+                            self.DW_OP_lit10, self.DW_OP_lit11, self.DW_OP_lit12, self.DW_OP_lit13, self.DW_OP_lit14,
+                            self.DW_OP_lit15, self.DW_OP_lit16, self.DW_OP_lit17, self.DW_OP_lit18, self.DW_OP_lit19,
+                            self.DW_OP_lit20, self.DW_OP_lit21, self.DW_OP_lit22, self.DW_OP_lit23, self.DW_OP_lit24,
+                            self.DW_OP_lit25, self.DW_OP_lit26, self.DW_OP_lit27, self.DW_OP_lit28, self.DW_OP_lit29,
+                            self.DW_OP_lit30, self.DW_OP_lit31]:
+                    extra_s = "push {:#x}".format(op - 0x30)
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s}".format(offset, op_name), None, extra_s])
+                elif op in [self.DW_OP_reg0, self.DW_OP_reg1, self.DW_OP_reg2, self.DW_OP_reg3, self.DW_OP_reg4,
+                            self.DW_OP_reg5, self.DW_OP_reg6, self.DW_OP_reg7, self.DW_OP_reg8, self.DW_OP_reg9,
+                            self.DW_OP_reg10, self.DW_OP_reg11, self.DW_OP_reg12, self.DW_OP_reg13, self.DW_OP_reg14,
+                            self.DW_OP_reg15, self.DW_OP_reg16, self.DW_OP_reg17, self.DW_OP_reg18, self.DW_OP_reg19,
+                            self.DW_OP_reg20, self.DW_OP_reg21, self.DW_OP_reg22, self.DW_OP_reg23, self.DW_OP_reg24,
+                            self.DW_OP_reg25, self.DW_OP_reg26, self.DW_OP_reg27, self.DW_OP_reg28, self.DW_OP_reg29,
+                            self.DW_OP_reg30, self.DW_OP_reg31]:
+                    regname = self.get_register_name(op - 0x50)
+                    extra_s = "push {:s}".format(regname)
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s}".format(offset, op_name), None, extra_s])
+                elif op in [self.DW_OP_breg0, self.DW_OP_breg1, self.DW_OP_breg2, self.DW_OP_breg3, self.DW_OP_breg4,
+                            self.DW_OP_breg5, self.DW_OP_breg6, self.DW_OP_breg7, self.DW_OP_breg8, self.DW_OP_breg9,
+                            self.DW_OP_breg10, self.DW_OP_breg11, self.DW_OP_breg12, self.DW_OP_breg13, self.DW_OP_breg14,
+                            self.DW_OP_breg15, self.DW_OP_breg16, self.DW_OP_breg17, self.DW_OP_breg18, self.DW_OP_breg19,
+                            self.DW_OP_breg20, self.DW_OP_breg21, self.DW_OP_breg22, self.DW_OP_breg23, self.DW_OP_breg24,
+                            self.DW_OP_breg25, self.DW_OP_breg26, self.DW_OP_breg27, self.DW_OP_breg28, self.DW_OP_breg29,
+                            self.DW_OP_breg30, self.DW_OP_breg31]:
+                    new_pos, d = self.get_sleb128(data, new_pos)
+                    regname = self.get_register_name(op-0x70)
+                    extra_s = "push {:s}{:+#x}".format(regname, d)
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
+                elif op in [self.DW_OP_fbreg]:
+                    new_pos, d = self.get_sleb128(data, new_pos)
+                    regname = "push frame_base{:*#x}".format(d)
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
+                elif op in [self.DW_OP_bregx]:
+                    new_pos, d1 = self.get_uleb128(data, new_pos)
+                    new_pos, d2 = self.get_sleb128(data, new_pos)
+                    regname = self.get_register_name(d1)
+                    extra_s = "push {:s}{:+#x}".format(regname, d2)
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x},{:#x}".format(offset, op_name, d1, d2), None, extra_s])
+                elif op in [self.DW_OP_call2]:
+                    new_pos, d = self.read_2ubyte(data, new_pos)
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} [{:#x}]".format(offset, op_name, d), None, ""])
+                elif op in [self.DW_OP_call4]:
+                    new_pos, d = self.read_4ubyte(data, new_pos)
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} [{:#x}]".format(offset, op_name, d), None, ""])
+                elif op in [self.DW_OP_bra]:
+                    new_pos, d = self.read_2sbyte(data, new_pos)
+                    d += offset + 3
+                    extra_s = "pop; jmp to [{:#x}] if popped_value != 0".format(d)
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} [{:#x}]".format(offset, op_name, d), None, extra_s])
+                elif op in [self.DW_OP_skip]:
+                    new_pos, d = self.read_2sbyte(data, new_pos)
+                    d += offset + 3
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} [{:#x}]".format(offset, op_name, d), None, ""])
+                elif op in [self.DW_OP_implicit_value]:
+                    new_pos, d = self.get_uleb128(data, new_pos)
+                    block_s = ' '.join(["{:02x}".format(x) for x in data[new_pos:new_pos+d]])
+                    new_pos += d
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:s}".format(offset, op_name, block_s), None, ""])
+                elif op in [self.DW_OP_implicit_pointer, self.DW_OP_GNU_implicit_pointer]:
+                    if ref_size == 4:
+                        new_pos, d1 = self.read_4ubyte(data, new_pos)
+                    elif ref_size == 8:
+                        new_pos, d1 = self.read_8ubyte(data, new_pos)
+                    new_pos, d2 = self.get_sleb128(data, new_pos)
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} [{:#x}] {:+#x}".format(offset, op_name, d1, d2), None, ""])
+                elif op in [self.DW_OP_entry_value, self.DW_OP_GNU_entry_value]:
+                    new_pos, d = self.get_uleb128(data, new_pos)
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s}".format(offset, op_name), None, ""])
+                    entries += self.parse_ops(vers, addrsize, d, data, new_pos, indent=indent+1)
+                    new_pos += d
+                elif op in [self.DW_OP_const_type, self.DW_OP_GNU_const_type]:
+                    new_pos, d1 = self.get_uleb128(data, new_pos)
+                    new_pos, d2 = self.read_1ubyte(data, new_pos)
+                    block_s = ' '.join(["{:02x}".format(x) for x in data[new_pos:new_pos+d2]])
+                    new_pos += d2
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} [{:#x}] {:s}".format(offset, op_name, d1, block_s), None, ""])
+                elif op in [self.DW_OP_regval_type, self.DW_OP_GNU_regval_type]:
+                    new_pos, d1 = self.get_uleb128(data, new_pos)
+                    new_pos, d2 = self.get_uleb128(data, new_pos)
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x} [{:#x}]".format(offset, op_name, d1, d2), None, ""])
+                elif op in [self.DW_OP_deref_type, self.DW_OP_GNU_deref_type]:
+                    new_pos, d1 = self.read_1ubyte(data, new_pos)
+                    new_pos, d2 = self.get_uleb128(data, new_pos)
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x} [{:#x}]".format(offset, op_name, d1, d2), None, ""])
+                elif op in [self.DW_OP_xderef_type]:
+                    new_pos, d1 = self.read_1ubyte(data, new_pos)
+                    new_pos, d2 = self.get_uleb128(data, new_pos)
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x} [{:#x}]".format(offset, op_name, d1, d2), None, ""])
+                elif op in [self.DW_OP_convert, self.DW_OP_GNU_convert, self.DW_OP_reinterpret, self.DW_OP_GNU_reinterpret]:
+                    new_pos, d = self.get_uleb128(data, new_pos)
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} [{:#x}]".format(offset, op_name, d), None, ""])
+                elif op in [self.DW_OP_GNU_parameter_ref]:
+                    new_pos, d = self.read_4ubyte(data, new_pos)
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} [{:#x}]".format(offset, op_name, d), None, ""])
+                elif op in [self.DW_OP_drop]:
+                    extra_s = "pop"
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s}".format(offset, op_name), None, extra_s])
+                elif op in [self.DW_OP_dup]:
+                    extra_s = "push stack[0]"
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s}".format(offset, op_name), None, extra_s])
+                elif op in [self.DW_OP_over]:
+                    extra_s = "push stack[1]"
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s}".format(offset, op_name), None, extra_s])
+                elif op in [self.DW_OP_swap]:
+                    extra_s = "stack[0],stack[1] = stack[1],stack[0]"
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s}".format(offset, op_name), None, extra_s])
+                elif op in [self.DW_OP_rot]:
+                    extra_s = "stack[0],stack[1],stack[2] = stack[1],stack[2],stack[0]"
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s}".format(offset, op_name), None, extra_s])
+                else:
+                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s}".format(offset, op_name), None, ""])
+                length -= new_pos - pos
+                offset += new_pos - pos
+                pos = new_pos
+        except:
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            entries.append(["Parse Error\n{}".format(exc_value)])
+        return entries
+
+    def parse_gcc_except_table(self, gcc_except_table, eh_frame_entries):
+        def get_lsda_info(eh_frame_entries):
+            dic = {}
+            is_fde = False
+            for entry in eh_frame_entries:
+                if len(entry) != 5:
+                    continue
+                pos, raw_data, name, value, extra = entry
+                if name == "cie_pointer":
+                    is_fde = True
+                    continue
+                if name == "cie_id":
+                    is_fde = False
+                    continue
+                if is_fde:
+                    if name == "pc_begin":
+                        pc_begin = value
+                        continue
+                    if name != "augmentation_data(L)":
+                        continue
+                    dic[value - load_base] = pc_begin + load_base
+            return dic
+
+        section_base = gcc_except_table["offset"]
+        data = gcc_except_table["data"]
+        shdr = [s for s in self.elf.shdrs if s.sh_name == ".gcc_except_table"][0]
+        load_base = [phdr for phdr in self.elf.phdrs if phdr.p_type == Phdr.PT_LOAD][0].p_vaddr
+        ptr_size = 4 if self.elf.e_class == Elf.ELF_32_BITS else 8
+        lsda_pos_info = get_lsda_info(eh_frame_entries)
+
+        entries = []
+        pos = 0
+        lsda_table_cnt = 0
+
+        try:
+            lsda_pos_padding = 0
+            while data[pos:]:
+                # search LSDA start address
+                if (section_base + pos) not in lsda_pos_info:
+                    lsda_pos_padding += 1
+                    pos += 1
+                    continue
+
+                # Found
+                if lsda_pos_padding:
+                    entries.append([pos-lsda_pos_padding, "Padding", ""])
+                    entries.append([pos-lsda_pos_padding, data[pos-lsda_pos_padding:pos], "padding", "", ""])
+                    lsda_pos_padding = 0
+
+                entries.append([pos, "LSDA Table[{:4d}]".format(lsda_table_cnt), ""])
+                lpstart = lsda_pos_info[section_base + pos]
+
+                # parse lpstart_encoding
+                new_pos, lpstart_encoding = self.read_1ubyte(data, pos)
+                encoding_str = self.get_encoding_str(lpstart_encoding)
+                entries.append([pos, data[pos:new_pos], "landing_pad_start_encoding", lpstart_encoding, "encoding: {:s}".format(encoding_str)])
+                pos = new_pos
+
+                # parse lpstart
+                if lpstart_encoding != self.DW_EH_PE_omit:
+                    new_pos, lpstart = self.read_encoded(lpstart_encoding, data, pos) # overwrite lpstart
+                    entries.append([pos, data[pos:new_pos], "landing_pad_start", lpstart, ""])
+                    pos = new_pos
+
+                # parse ttype_encoding
+                new_pos, ttype_encoding = self.read_1ubyte(data, pos)
+                encoding_str = self.get_encoding_str(ttype_encoding)
+                entries.append([pos, data[pos:new_pos], "ttype_encoding", ttype_encoding, "encoding: {:s}".format(encoding_str)])
+                pos = new_pos
+
+                # parse ttype_base_offset
+                ttype_base = None
+                if ttype_encoding != self.DW_EH_PE_omit:
+                    new_pos, ttype_base_offset = self.get_uleb128(data, pos)
+                    ttype_base = new_pos + ttype_base_offset
+                    entries.append([pos, data[pos:new_pos], "ttype_base_offset", ttype_base_offset, "ttype_base: {:#x}".format(ttype_base)])
+                    pos = new_pos
+
+                # parse call_site_encoding
+                new_pos, call_site_encoding = self.read_1ubyte(data, pos)
+                encoding_str = self.get_encoding_str(call_site_encoding)
+                entries.append([pos, data[pos:new_pos], "call_site_encoding", call_site_encoding, "encoding: {:s}".format(encoding_str)])
+                pos = new_pos
+
+                # parse call_site_table_len
+                new_pos, call_site_table_len = self.get_uleb128(data, pos)
+                entries.append([pos, data[pos:new_pos], "call_site_table_len", call_site_table_len, ""])
+                pos = new_pos
+
+                # parse call_site_table 
+                action_table_pos = pos + call_site_table_len
+                table_cnt = 0
+                max_action = 0
+                while pos < action_table_pos:
+                    entries.append([pos, "Call site table[{:4d}]".format(table_cnt), ""])
+
+                    new_pos, call_site_start = self.read_encoded(call_site_encoding, data, pos)
+                    if self.is_pie:
+                        extra_s = "try-start vma: $codebase+{:#x}".format(lpstart + call_site_start)
+                    else:
+                        extra_s = "try-start vma: {:#x}".format(lpstart + call_site_start)
+                    entries.append([pos, data[pos:new_pos], "call_site_start", call_site_start, extra_s])
+                    pos = new_pos
+
+                    new_pos, call_site_length = self.read_encoded(call_site_encoding, data, pos)
+                    if self.is_pie:
+                        extra_s = "try-end vma: $codebase+{:#x}".format(lpstart + call_site_start + call_site_length)
+                    else:
+                        extra_s = "try-end vma: {:#x}".format(lpstart + call_site_start + call_site_length)
+                    entries.append([pos, data[pos:new_pos], "call_site_length", call_site_length, extra_s])
+                    pos = new_pos
+
+                    new_pos, call_site_lpad = self.read_encoded(call_site_encoding, data, pos)
+                    if call_site_lpad == 0:
+                        extra_s = ""
+                    elif self.is_pie:
+                        extra_s = "catch vma: $codebase+{:#x}".format(lpstart + call_site_lpad)
+                    else:
+                        extra_s = "catch vma: {:#x}".format(lpstart + call_site_lpad)
+                    entries.append([pos, data[pos:new_pos], "landing_pad", call_site_lpad, extra_s])
+                    pos = new_pos
+
+                    new_pos, action = self.get_uleb128(data, pos)
+                    max_action = max(action, max_action)
+                    if action == 0:
+                        extra_s = "no action"
+                    else:
+                        extra_s = "action: {:#x}".format(action_table_pos + action - 1)
+                    entries.append([pos, data[pos:new_pos], "action", action, extra_s])
+                    pos = new_pos
+
+                    table_cnt += 1
+
+                # parse action_table 
+                max_ar_filter = 0
+                table_cnt = 0
+                if max_action:
+                    action_table_end_pos = action_table_pos + max_action + 1
+                    while pos < action_table_end_pos:
+                        entries.append([pos, "Action table[{:4d}]".format(table_cnt), ""])
+
+                        new_pos, ar_filter = self.get_sleb128(data, pos)
+                        if ar_filter == 0:
+                            extra_s = "cleanup"
+                        else:
+                            enc_size = self.encoded_ptr_size(ttype_encoding, ptr_size)
+                            extra_s = "catch typeinfo: {:#x}".format(ttype_base - ar_filter * enc_size)
+                        entries.append([pos, data[pos:new_pos], "action_record_filter", ar_filter, extra_s])
+                        max_ar_filter = max(ar_filter, max_ar_filter)
+                        pos = new_pos
+
+                        new_pos, ar_disp = self.get_sleb128(data, pos)
+                        if ar_disp & 1:
+                            extra_s = "-> Action Table[{:4d}]".format(table_cnt + (ar_disp + 1)//2)
+                        elif ar_disp:
+                            extra_s = "-> ???"
+                        else:
+                            extra_s = "list end"
+                        entries.append([pos, data[pos:new_pos], "action_record_next", ar_disp, extra_s])
+                        pos = new_pos
+
+                        table_cnt += 1
+
+                # parse ttype_table
+                if max_ar_filter > 0 and ttype_base is not None:
+                    enc_size = self.encoded_ptr_size(ttype_encoding, ptr_size)
+                    new_pos = ttype_base - max_ar_filter * enc_size
+                    if pos != new_pos:
+                        entries.append([pos, "Padding", ""])
+                        entries.append([pos, data[pos:new_pos], "padding", "", ""])
+                        pos = new_pos
+                    current_ar_filter = max_ar_filter
+                    while pos < ttype_base:
+                        entries.append([pos, "TType table[{:4d}]".format(current_ar_filter), ""])
+                        new_pos, ttype = self.read_encoded(ttype_encoding, data, pos)
+                        if (ttype_encoding & 0x70) == self.DW_EH_PE_pcrel:
+                            ttype_pointer = shdr.sh_offset + pos + ttype
+                            if ttype:
+                                if self.is_pie:
+                                    extra_s = "TType pointer vma: $codebase+{:#x}".format(load_base + ttype_pointer)
+                                else:
+                                    extra_s = "TType pointer vma: {:#x}".format(load_base + ttype_pointer)
+                            else:
+                                extra_s = ""
+                            entries.append([pos, data[pos:new_pos], "ttype", ttype, extra_s])
+                        else:
+                            entries.append([pos, data[pos:new_pos], "ttype", ttype, "TType pointer"])
+                        pos = new_pos
+                        current_ar_filter -= 1
+                if ttype_base is not None:
+                    entries.append([ttype_base, "TType table base (Stored upwards)", ""])
+
+                # next LSDA
+                if ttype_base is None:
+                    pass
+                else:
+                    pos = ttype_base
+                lsda_table_cnt +=1
+        except:
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            entries.append(["Parse Error\n{}".format(exc_value)])
+        return entries
+
+    def read_section(self, section_name):
+        for s in self.elf.shdrs:
+            if s.sh_name != section_name:
+                continue
+            f = open(self.elf.filename, "rb")
+            f.seek(s.sh_offset)
+            data = f.read(s.sh_size)
+            f.close()
+            info("Found {} section".format(section_name))
+            return {"name": section_name, "offset": s.sh_offset, "data": data}
+        err("Not found {} section".format(section_name))
+        return None
+
+    @only_if_not_qemu_system
+    def do_invoke(self, argv):
+        if "-h" in argv:
+            self.usage()
+            return
+
+        try:
+            less = which("less")
+        except FileNotFoundError as e:
+            err("{}".format(e))
+            return
+
+        # with hexdump or not
+        if "-x" in argv:
+            idx = argv.index("-x")
+            self.hexdump = True
+            argv = argv[:idx] + argv[idx+1:]
+        else:
+            self.hexdump = False
+
+        # read file
+        if "-f" in argv:
+            idx = argv.index("-f")
+            filename = argv[idx+1]
+            argv = argv[:idx] + argv[idx+2:]
+        else:
+            filename = get_filepath()
+        if not os.path.exists(filename):
+            err("{} is not found".format(filename))
+            return
+        self.elf = get_elf_headers(filename)
+        self.is_pie = is_pie(filename)
+        if not self.elf.is_valid():
+            err("Elf parsing error")
+            return
+
+        # read section
+        eh_frame_hdr = self.read_section(".eh_frame_hdr")
+        if eh_frame_hdr is None:
+            return
+        eh_frame = self.read_section(".eh_frame")
+        if eh_frame is None:
+            return
+        gcc_except_table = self.read_section(".gcc_except_table")
+        if gcc_except_table is None:
+            return
+
+        # parse section
+        out = []
+        eh_frame_hdr_entries = self.parse_eh_frame_hdr(eh_frame_hdr)
+        out += self.format_entry(eh_frame_hdr, eh_frame_hdr_entries)
+        eh_frame_entries = self.parse_eh_frame(eh_frame)
+        out += self.format_entry(eh_frame, eh_frame_entries)
+        gcc_except_table_entries = self.parse_gcc_except_table(gcc_except_table, eh_frame_entries)
+        out += self.format_entry(gcc_except_table, gcc_except_table_entries)
+
+        # print
+        _, tmp_path = tempfile.mkstemp()
+        open(tmp_path, "w").write('\n'.join(out))
+        os.system(f"{less} -R {tmp_path}")
+        os.unlink(tmp_path)
+        return
+
+
+@register_command
 class EntryPointBreakCommand(GenericCommand):
     """Tries to find best entry point and sets a temporary breakpoint on it. The command will test for
     well-known symbols for entry points, such as `main`, `_main`, `__libc_start_main`, etc. defined by
@@ -10452,7 +12175,7 @@ class HexdumpCommand(GenericCommand):
         valid_formats = ["byte", "word", "dword", "qword"]
         read_len = None
         reverse = False
-        full = False
+        full_mode = False
 
         self.phys_mode = False
         if "--phys" in argv:
@@ -10475,7 +12198,7 @@ class HexdumpCommand(GenericCommand):
                     reverse = True
                     continue
                 if "full" == arg_lower:
-                    full = True
+                    full_mode = True
                     continue
                 if target:
                     if read_len:
@@ -10498,41 +12221,45 @@ class HexdumpCommand(GenericCommand):
             read_len = 0x100 if fmt == "byte" else 0x10
 
         if fmt == "byte":
-            read_from += self.repeat_count * read_len
-            mem = self._read_memory(read_from, read_len)
-            if mem is None:
-                err("cannot access memory")
-                return
-            lines_unmerged = hexdump(mem, base=read_from).splitlines()
-
-            if not full:
-                # merge
-                lines = []
-                keep_asterisk = False
-                for line in lines_unmerged:
-                    if lines == []:
-                        lines.append(line)
-                        continue
-                    if lines[-1].split("    ")[1] == line.split("    ")[1]:
-                        if not keep_asterisk:
-                            keep_asterisk = True
-                    else:
-                        if keep_asterisk:
-                            lines.append("*")
-                            keep_asterisk = False
-                        lines.append(line)
-                if keep_asterisk:
-                    lines.append("*")
-            else:
-                lines = lines_unmerged
+            lines = self._hexdump_byte(read_from, read_len, full_mode)
         else:
-            lines = self._hexdump(read_from, read_len, fmt, self.repeat_count * read_len)
+            lines = self._hexdump(read_from, read_len, fmt)
 
         if reverse:
             lines.reverse()
 
-        gef_print("\n".join(lines))
+        if lines:
+            gef_print("\n".join(lines))
         return
+
+    def _hexdump_byte(self, read_from, read_len, full):
+        read_from += self.repeat_count * read_len
+        mem = self._read_memory(read_from, read_len)
+        if mem is None:
+            err("cannot access memory")
+            return []
+        lines_unmerged = hexdump(mem, show_symbol=False, base=read_from).splitlines()
+        if full:
+            return lines_unmerged
+
+        # merge
+        lines = []
+        keep_asterisk = False
+        for line in lines_unmerged:
+            if lines == []:
+                lines.append(line)
+                continue
+            if lines[-1].split("    ")[1] == line.split("    ")[1]:
+                if not keep_asterisk:
+                    keep_asterisk = True
+            else:
+                if keep_asterisk:
+                    lines.append("*")
+                    keep_asterisk = False
+                lines.append(line)
+        if keep_asterisk:
+            lines.append("*")
+        return lines
 
     def _read_memory(self, read_from, read_len):
         if read_len > 0x1000000: # Too large
@@ -10561,7 +12288,9 @@ class HexdumpCommand(GenericCommand):
             read_end -= gef_getpagesize()
         return None
 
-    def _hexdump(self, start_addr, length, arrange_as, offset=0):
+    def _hexdump(self, start_addr, length, arrange_as):
+        offset = self.repeat_count * length
+
         endianness = endian_str()
 
         base_address_color = get_gef_setting("theme.dereference_base_address")
