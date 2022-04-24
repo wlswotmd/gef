@@ -24893,6 +24893,22 @@ class PagewalkCommand(GenericCommand):
             gef_print(line)
         return
 
+    def is_not_trace_target(self, va_start, va_end):
+        if self.trace == []:
+            return False
+        for tr in self.trace:
+            if va_start <= tr and tr < va_end:
+                return False
+        return True
+
+    def is_not_filter_target(self, line):
+        if self.filter == []:
+            return False
+        for filt in self.filter:
+            if re.search(filt, line):
+                return False
+        return True
+
     def parse_common_args(self, argv):
         self.print_each_level = False
         if "--print-each-level" in argv:
@@ -24928,6 +24944,15 @@ class PagewalkCommand(GenericCommand):
             self.range.append(range_addr)
             argv = argv[:idx] + argv[idx+2:]
 
+        self.trace = []
+        while "--trace" in argv:
+            idx = argv.index("--trace")
+            trace_addr = int(argv[idx + 1], 16)
+            self.trace.append(trace_addr)
+            self.range.append(trace_addr) # append
+            argv = argv[:idx] + argv[idx+2:]
+            self.print_each_level = True # overwrite
+
         self.cache = {}
         return argv
 
@@ -24950,14 +24975,15 @@ class PagewalkCommand(GenericCommand):
 class PagewalkX64Command(PagewalkCommand):
     """Dump pagetable for x64/x86 using qemu-monitor."""
     _cmdline_ = "pagewalk x64"
-    _syntax_ = "{:s} [-h] [--print-each-level] [--no-merge] [--filter REGEX_PATTERN] [--range ADDRESS] [--sort-by-phys] [--simple]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [--print-each-level] [--no-merge] [--filter REGEX_PATTERN] [--range ADDRESS] [--sort-by-phys] [--simple] [--trace ADDRESS]".format(_cmdline_)
     _example_ = "\n"
-    _example_ += "{:s} --print-each-level # show all level pagetable\n".format(_cmdline_)
+    _example_ += "{:s} --print-each-level # show all level pagetables\n".format(_cmdline_)
     _example_ += "{:s} --no-merge         # do not merge similar/consecutive address\n".format(_cmdline_)
     _example_ += "{:s} --filter '0xabc'   # grep by REGEX pattern\n".format(_cmdline_)
     _example_ += "{:s} --range '0x7fff00' # filter by map included specific address\n".format(_cmdline_)
     _example_ += "{:s} --sort-by-phys     # sort by physical address\n".format(_cmdline_)
-    _example_ += "{:s} --simple           # merge with ignoring physical address consecutivness".format(_cmdline_)
+    _example_ += "{:s} --simple           # merge with ignoring physical address consecutivness\n".format(_cmdline_)
+    _example_ += "{:s} --trace '0x7fff00' # show all level pagetables only associated specific address".format(_cmdline_)
     _aliases_ = ["pagewalk x86",]
     _category_ = "Qemu-system Cooperation"
 
@@ -25005,6 +25031,7 @@ class PagewalkX64Command(PagewalkCommand):
                 b = self.bits["PML4T_BITS"] + self.bits["PDPT_BITS"] + self.bits["PDT_BITS"] + self.bits["PT_BITS"] + self.bits["OFFSET"]
                 sign_ext = 0xfe00000000000000 if ((i >> (self.bits["PML5T_BITS"]-1)) & 1) else 0
                 new_va = va_base + (sign_ext | (i << b))
+                new_va_end = new_va + (1 << b)
 
                 # calc flags
                 flags = parent_flags.copy()
@@ -25021,15 +25048,13 @@ class PagewalkX64Command(PagewalkCommand):
 
                 # dump
                 if self.print_each_level:
+                    if self.is_not_trace_target(new_va, new_va_end):
+                        continue
                     addr = table_base + i * self.bits["ENTRY_SIZE"]
-                    line = "{:#018x}: {:#018x} (virt:{:#018x}) {:s}".format(addr, entry, new_va, ' '.join(flags))
-                    if self.filter == []:
-                        gef_print(line)
-                    else:
-                        for filt in self.filter:
-                            if re.search(filt, line):
-                                gef_print(line)
-                                break
+                    line = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x}) {:s}".format(addr, entry, new_va, new_va_end, ' '.join(flags))
+                    if self.is_not_filter_target(line):
+                        conitnue
+                    gef_print(line)
 
         info("Number of entries: {:d}".format(COUNT))
         info("PML5 Entry: {:d}".format(len(PML5E)))
@@ -25055,9 +25080,11 @@ class PagewalkX64Command(PagewalkCommand):
                 b = self.bits["PDPT_BITS"] + self.bits["PDT_BITS"] + self.bits["PT_BITS"] + self.bits["OFFSET"]
                 if "PML5T_BITS" in self.bits:
                     new_va = va_base + (i << b)
+                    new_va_end = new_va + (1 << b)
                 else:
                     sign_ext = 0xffff000000000000 if ((i >> (self.bits["PML4T_BITS"]-1)) & 1) else 0
                     new_va = va_base + (sign_ext | (i << b))
+                    new_va_end = new_va + (1 << b)
 
                 # calc flags
                 flags = parent_flags.copy()
@@ -25074,15 +25101,13 @@ class PagewalkX64Command(PagewalkCommand):
 
                 # dump
                 if self.print_each_level:
+                    if self.is_not_trace_target(new_va, new_va_end):
+                        continue
                     addr = table_base + i * self.bits["ENTRY_SIZE"]
-                    line = "{:#018x}: {:#018x} (virt:{:#018x}) {:s}".format(addr, entry, new_va, ' '.join(flags))
-                    if self.filter == []:
-                        gef_print(line)
-                    else:
-                        for filt in self.filter:
-                            if re.search(filt, line):
-                                gef_print(line)
-                                break
+                    line = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x}) {:s}".format(addr, entry, new_va, new_va_end, ' '.join(flags))
+                    if self.is_not_filter_target(line):
+                        conitnue
+                    gef_print(line)
 
         info("Number of entries: {:d}".format(COUNT))
         info("PML4 Entry: {:d}".format(len(PML4E)))
@@ -25110,6 +25135,7 @@ class PagewalkX64Command(PagewalkCommand):
 
                 # calc virtual address
                 new_va = va_base + (i << (self.bits["PDT_BITS"] + self.bits["PT_BITS"] + self.bits["OFFSET"]))
+                new_va_end = new_va + (1 << (self.bits["PDT_BITS"] + self.bits["PT_BITS"] + self.bits["OFFSET"]))
 
                 # calc flags
                 flags = parent_flags.copy()
@@ -25141,15 +25167,13 @@ class PagewalkX64Command(PagewalkCommand):
 
                 # dump
                 if self.print_each_level:
+                    if self.is_not_trace_target(new_va, new_va_end):
+                        continue
                     addr = table_base + i * self.bits["ENTRY_SIZE"]
-                    line = "{:#018x}: {:#018x} (virt:{:#018x}) {:s}".format(addr, entry, new_va, ' '.join(flags))
-                    if self.filter == []:
-                        gef_print(line)
-                    else:
-                        for filt in self.filter:
-                            if re.search(filt, line):
-                                gef_print(line)
-                                break
+                    line = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x}) {:s}".format(addr, entry, new_va, new_va_end, ' '.join(flags))
+                    if self.is_not_filter_target(line):
+                        conitnue
+                    gef_print(line)
 
         info("Number of entries: {:d}".format(COUNT))
         info("PDPT Entry: {:d}".format(len(PDPTE)))
@@ -25179,6 +25203,7 @@ class PagewalkX64Command(PagewalkCommand):
 
                 # calc virtual address
                 new_va = va_base + (i << (self.bits["PT_BITS"] + self.bits["OFFSET"]))
+                new_va_end = new_va + (1 << (self.bits["PT_BITS"] + self.bits["OFFSET"]))
 
                 # calc flags
                 flags = parent_flags.copy()
@@ -25214,15 +25239,13 @@ class PagewalkX64Command(PagewalkCommand):
 
                 # dump
                 if self.print_each_level:
+                    if self.is_not_trace_target(new_va, new_va_end):
+                        continue
                     addr = table_base + i * self.bits["ENTRY_SIZE"]
-                    line = "{:#018x}: {:#018x} (virt:{:#018x}) {:s}".format(addr, entry, new_va, ' '.join(flags))
-                    if self.filter == []:
-                        gef_print(line)
-                    else:
-                        for filt in self.filter:
-                            if re.search(filt, line):
-                                gef_print(line)
-                                break
+                    line = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x}) {:s}".format(addr, entry, new_va, new_va_end, ' '.join(flags))
+                    if self.is_not_filter_target(line):
+                        conitnue
+                    gef_print(line)
 
         info("Number of entries: {:d}".format(COUNT))
         info("PD Entry: {:d}".format(len(PDE)))
@@ -25234,7 +25257,6 @@ class PagewalkX64Command(PagewalkCommand):
 
     def pagewalk_PT(self):
         gef_print(titlify("PTE: Page Table Entry"))
-        seen = set()
         PTE = []
         COUNT = 0; INVALID = 0
         for va_base, table_base, parent_flags in self.TABLES:
@@ -25249,6 +25271,7 @@ class PagewalkX64Command(PagewalkCommand):
 
                 # calc virtual address
                 virt_addr = va_base + (i << self.bits["OFFSET"])
+                virt_addr_end = virt_addr + (1 << self.bits["OFFSET"])
 
                 # calc flags
                 flags = parent_flags.copy()
@@ -25269,20 +25292,13 @@ class PagewalkX64Command(PagewalkCommand):
 
                 # dump
                 if self.print_each_level:
-                    addr = table_base + i * self.bits["ENTRY_SIZE"]
-                    # On x86_64, multiple virtual addresses can point to the same physical address.
-                    # References to the same page are often repeated 65536 times, and it is useless to display all of them, so they are omitted.
-                    if addr in seen:
+                    if self.is_not_trace_target(virt_addr, virt_addr_end):
                         continue
-                    line = "{:#018x}: {:#018x} (virt:{:#018x}) {:s}".format(addr, entry, virt_addr, ' '.join(flags))
-                    if self.filter == []:
-                        gef_print(line)
-                    else:
-                        for filt in self.filter:
-                            if re.search(filt, line):
-                                gef_print(line)
-                                break
-                    seen.add(addr)
+                    addr = table_base + i * self.bits["ENTRY_SIZE"]
+                    line = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x}) {:s}".format(addr, entry, virt_addr, virt_addr_end, ' '.join(flags))
+                    if self.is_not_filter_target(line):
+                        conitnue
+                    gef_print(line)
 
         info("Number of entries: {:d}".format(COUNT))
         info("PT Entry (4KB): {:d}".format(len(PTE)))
@@ -25394,14 +25410,15 @@ class PagewalkX64Command(PagewalkCommand):
 class PagewalkArmCommand(PagewalkCommand):
     """Dump pagetable for ARM (Cortex-A only) using qemu-monitor."""
     _cmdline_ = "pagewalk arm"
-    _syntax_ = "{:s} [-h] [--print-each-level] [--no-merge] [--filter REGEX_PATTERN] [--range ADDRESS] [--sort-by-phys] [--simple]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [--print-each-level] [--no-merge] [--filter REGEX_PATTERN] [--range ADDRESS] [--sort-by-phys] [--simple] [--trace ADDRESS]".format(_cmdline_)
     _example_ = "\n"
-    _example_ += "{:s} --print-each-level # show all level pagetable\n".format(_cmdline_)
+    _example_ += "{:s} --print-each-level # show all level pagetables\n".format(_cmdline_)
     _example_ += "{:s} --no-merge         # do not merge similar/consecutive address\n".format(_cmdline_)
     _example_ += "{:s} --filter '0xabc'   # grep by REGEX pattern\n".format(_cmdline_)
     _example_ += "{:s} --range '0x7fff00' # filter by map included specific address\n".format(_cmdline_)
     _example_ += "{:s} --sort-by-phys     # sort by physical address\n".format(_cmdline_)
     _example_ += "{:s} --simple           # merge with ignoring physical address consecutivness\n".format(_cmdline_)
+    _example_ += "{:s} --trace '0x7fff00' # show all level pagetables only associated specific address\n".format(_cmdline_)
     _example_ += "PL2 pagewalk is unsupported"
     _category_ = "Qemu-system Cooperation"
 
@@ -25650,6 +25667,7 @@ class PagewalkArmCommand(PagewalkCommand):
 
             # calc virtual address
             new_va = va_base + (i << 20)
+            new_va_end = new_va + (1 << 20)
 
             # calc flags
             flags = []
@@ -25715,15 +25733,13 @@ class PagewalkArmCommand(PagewalkCommand):
 
             # dump
             if self.print_each_level:
+                if self.is_not_trace_target(new_va, new_va_end):
+                    continue
                 addr = table_base + i * 4
-                line = "{:#018x}: {:#018x} (virt:{:#018x}) {:s}".format(addr, entry, new_va, ' '.join(flags))
-                if self.filter == []:
-                    gef_print(line)
-                else:
-                    for filt in self.filter:
-                        if re.search(filt, line):
-                            gef_print(line)
-                            break
+                line = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x}) {:s}".format(addr, entry, new_va, new_va_end, ' '.join(flags))
+                if self.is_not_filter_target(line):
+                    conitnue
+                gef_print(line)
 
         info("Number of entries: {:d}".format(COUNT))
         info("Level 1 Entry: {:d}".format(len(LEVEL1)))
@@ -25748,6 +25764,7 @@ class PagewalkArmCommand(PagewalkCommand):
 
                 # calc virtual address
                 virt_addr = va_base + (i << 12)
+                virt_addr_end = virt_addr + (1 << 12)
 
                 # calc flags
                 flags = parent_flags.copy()
@@ -25794,15 +25811,13 @@ class PagewalkArmCommand(PagewalkCommand):
 
                 # dump
                 if self.print_each_level:
+                    if self.is_not_trace_target(virt_addr, virt_addr_end):
+                        continue
                     addr = table_base + i * 4
-                    line = "{:#018x}: {:#018x} (virt:{:#018x}) {:s}".format(addr, entry, virt_addr, ' '.join(flags))
-                    if self.filter == []:
-                        gef_print(line)
-                    else:
-                        for filt in self.filter:
-                            if re.search(filt, line):
-                                gef_print(line)
-                                break
+                    line = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x}) {:s}".format(addr, entry, virt_addr, virt_addr_end, ' '.join(flags))
+                    if self.is_not_filter_target(line):
+                        conitnue
+                    gef_print(line)
 
         info("Number of entries: {:d}".format(COUNT))
         info("PT Entry (large; 64KB): {:d}".format(len(LARGE)))
@@ -25841,6 +25856,7 @@ class PagewalkArmCommand(PagewalkCommand):
 
                 # calc virtual address
                 new_va = va_base | (i << 30)
+                new_va_end = new_va + (1 << 30)
 
                 # calc flags
                 flags = []
@@ -25878,15 +25894,13 @@ class PagewalkArmCommand(PagewalkCommand):
 
                 # dump
                 if self.print_each_level:
+                    if self.is_not_trace_target(new_va, new_va_end):
+                        continue
                     addr = table_base + i * 8
-                    line = "{:#018x}: {:#018x} (virt:{:#018x}) {:s}".format(addr, entry, new_va, ' '.join(flags))
-                    if self.filter == []:
-                        gef_print(line)
-                    else:
-                        for filt in self.filter:
-                            if re.search(filt, line):
-                                gef_print(line)
-                                break
+                    line = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x}) {:s}".format(addr, entry, new_va, new_va_end, ' '.join(flags))
+                    if self.is_not_filter_target(line):
+                        conitnue
+                    gef_print(line)
 
             info("Number of entries: {:d}".format(COUNT))
             info("Level 1 Entry: {:d}".format(len(LEVEL1)))
@@ -25914,6 +25928,7 @@ class PagewalkArmCommand(PagewalkCommand):
 
                 # calc virtual address
                 new_va = va_base | (i << 21)
+                new_va_end = new_va + (1 << 21)
 
                 # calc flags
                 flags = parent_flags.copy()
@@ -25951,15 +25966,13 @@ class PagewalkArmCommand(PagewalkCommand):
 
                 # dump
                 if self.print_each_level:
+                    if self.is_not_trace_target(new_va, new_va_end):
+                        continue
                     addr = table_base + i * 8
-                    line = "{:#018x}: {:#018x} (virt:{:#018x}) {:s}".format(addr, entry, new_va, ' '.join(flags))
-                    if self.filter == []:
-                        gef_print(line)
-                    else:
-                        for filt in self.filter:
-                            if re.search(filt, line):
-                                gef_print(line)
-                                break
+                    line = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x}) {:s}".format(addr, entry, new_va, new_va_end, ' '.join(flags))
+                    if self.is_not_filter_target(line):
+                        conitnue
+                    gef_print(line)
 
         info("Number of entries: {:d}".format(COUNT))
         info("Level 2 Entry: {:d}".format(len(LEVEL2)))
@@ -25983,6 +25996,7 @@ class PagewalkArmCommand(PagewalkCommand):
 
                 # calc virtual address
                 virt_addr = va_base | (i << 12)
+                virt_addr_end = virt_addr + (1 << 12)
 
                 # calc flags
                 flags = parent_flags.copy()
@@ -26006,12 +26020,13 @@ class PagewalkArmCommand(PagewalkCommand):
 
                 # dump
                 if self.print_each_level:
+                    if self.is_not_trace_target(virt_addr, virt_addr_end):
+                        continue
                     addr = table_base + i * 8
-                    line = "{:#018x}: {:#018x} (virt:{:#018x}) {:s}".format(addr, entry, virt_addr, ' '.join(flags))
-                    for filt in self.filter:
-                        if re.search(filt, line):
-                            gef_print(line)
-                            break
+                    line = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x}) {:s}".format(addr, entry, virt_addr, virt_addr_end, ' '.join(flags))
+                    if self.is_not_filter_target(line):
+                        conitnue
+                    gef_print(line)
 
         info("Number of entries: {:d}".format(COUNT))
         info("PT Entry (4KB): {:d}".format(len(KB)))
@@ -26185,14 +26200,15 @@ class PagewalkArmCommand(PagewalkCommand):
 class PagewalkArm64Command(PagewalkCommand):
     """Dump pagetable for ARM64 using qemu-monitor (for ARMv8.3)."""
     _cmdline_ = "pagewalk arm64"
-    _syntax_ = "{:s} [-h] [TARGET_EL] [--print-each-level] [--no-merge] [--filter REGEX_PATTERN] [--range ADDRESS] [--sort-by-phys] [--simple]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [TARGET_EL] [--print-each-level] [--no-merge] [--filter REGEX_PATTERN] [--range ADDRESS] [--sort-by-phys] [--simple] [--trace ADDRESS]".format(_cmdline_)
     _example_ = "\n"
-    _example_ += "{:s} --print-each-level # for current EL, show all level pagetable\n".format(_cmdline_)
+    _example_ += "{:s} --print-each-level # for current EL, show all level pagetables\n".format(_cmdline_)
     _example_ += "{:s} 1 --no-merge       # for EL1+0, do not merge similar/consecutive address\n".format(_cmdline_)
     _example_ += "{:s} 2 --filter '0xabc' # for EL2, grep by REGEX pattern\n".format(_cmdline_)
     _example_ += "{:s} --range '0x7fff00' # for current EL, filter by map included specific address\n".format(_cmdline_)
-    _example_ += "{:s} --sort-by-phys     # sort by physical address\n".format(_cmdline_)
-    _example_ += "{:s} --simple           # merge with ignoring physical address consecutivness".format(_cmdline_)
+    _example_ += "{:s} --sort-by-phys     # for current EL, sort by physical address\n".format(_cmdline_)
+    _example_ += "{:s} --simple           # for current EL, merge with ignoring physical address consecutivness\n".format(_cmdline_)
+    _example_ += "{:s} --trace '0x7fff00' # for current EL, show all level pagetables only associated specific address".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
 
     def __init__(self, *args, **kwargs):
@@ -26527,6 +26543,7 @@ class PagewalkArm64Command(PagewalkCommand):
 
                     # calc virtual address
                     new_va = va_base + (i << LEVEL0_BIT_RANGE[0])
+                    new_va_end = new_va + (1 << LEVEL0_BIT_RANGE[0])
 
                     # calc flags
                     flags = parent_flags.copy()
@@ -26557,15 +26574,13 @@ class PagewalkArm64Command(PagewalkCommand):
 
                     # dump
                     if self.print_each_level:
+                        if self.is_not_trace_target(new_va, new_va_end):
+                            continue
                         addr = table_base + i * 8
-                        line = "{:#018x}: {:#018x} (virt:{:#018x}) {:s}".format(addr, entry, new_va, ' '.join(flags))
-                        if self.filter == []:
-                            gef_print(line)
-                        else:
-                            for filt in self.filter:
-                                if re.search(filt, line):
-                                    gef_print(line)
-                                    break
+                        line = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x}) {:s}".format(addr, entry, new_va, new_va_end, ' '.join(flags))
+                        if self.is_not_filter_target(line):
+                            conitnue
+                        gef_print(line)
 
                 if not self.silent:
                     info("Number of entries: {:d}".format(COUNT))
@@ -26595,6 +26610,7 @@ class PagewalkArm64Command(PagewalkCommand):
 
                     # calc virtual address
                     new_va = va_base + (i << LEVEL1_BIT_RANGE[0])
+                    new_va_end = new_va + (1 << LEVEL1_BIT_RANGE[0])
 
                     # calc flags
                     flags = parent_flags.copy()
@@ -26667,15 +26683,13 @@ class PagewalkArm64Command(PagewalkCommand):
 
                     # dump
                     if self.print_each_level:
+                        if self.is_not_trace_target(new_va, new_va_end):
+                            continue
                         addr = table_base + i * 8
-                        line = "{:#018x}: {:#018x} (virt:{:#018x}) {:s}".format(addr, entry, new_va, ' '.join(flags))
-                        if self.filter == []:
-                            gef_print(line)
-                        else:
-                            for filt in self.filter:
-                                if re.search(filt, line):
-                                    gef_print(line)
-                                    break
+                        line = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x}) {:s}".format(addr, entry, new_va, new_va_end, ' '.join(flags))
+                        if self.is_not_filter_target(line):
+                            conitnue
+                        gef_print(line)
 
             if not self.silent:
                 info("Number of entries: {:d}".format(COUNT))
@@ -26708,6 +26722,7 @@ class PagewalkArm64Command(PagewalkCommand):
 
                     # calc virtual address
                     new_va = va_base + (i << LEVEL2_BIT_RANGE[0])
+                    new_va_end = new_va + (1 << LEVEL2_BIT_RANGE[0])
 
                     # calc flags
                     flags = parent_flags.copy()
@@ -26783,15 +26798,13 @@ class PagewalkArm64Command(PagewalkCommand):
 
                     # dump
                     if self.print_each_level:
+                        if self.is_not_trace_target(new_va, new_va_end):
+                            continue
                         addr = table_base + i * 8
-                        line = "{:#018x}: {:#018x} (virt:{:#018x}) {:s}".format(addr, entry, new_va, ' '.join(flags))
-                        if self.filter == []:
-                            gef_print(line)
-                        else:
-                            for filt in self.filter:
-                                if re.search(filt, line):
-                                    gef_print(line)
-                                    break
+                        line = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x}) {:s}".format(addr, entry, new_va, new_va_end, ' '.join(flags))
+                        if self.is_not_filter_target(line):
+                            conitnue
+                        gef_print(line)
 
             if not self.silent:
                 info("Number of entries: {:d}".format(COUNT))
@@ -26825,6 +26838,7 @@ class PagewalkArm64Command(PagewalkCommand):
 
                     # calc virtual address
                     virt_addr = va_base + (i << LEVEL3_BIT_RANGE[0])
+                    virt_addr_end = virt_addr + (1 << LEVEL3_BIT_RANGE[0])
 
                     # calc flags
                     flags = parent_flags.copy()
@@ -26891,15 +26905,13 @@ class PagewalkArm64Command(PagewalkCommand):
 
                     # dump
                     if self.print_each_level:
+                        if self.is_not_trace_target(virt_addr, virt_addr_end):
+                            continue
                         addr = table_base + i * 8
-                        line = "{:#018x}: {:#018x} (virt:{:#018x}) {:s}".format(addr, entry, virt_addr, ' '.join(flags))
-                        if self.filter == []:
-                            gef_print(line)
-                        else:
-                            for filt in self.filter:
-                                if re.search(filt, line):
-                                    gef_print(line)
-                                    break
+                        line = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x}) {:s}".format(addr, entry, virt_addr, virt_addr_end, ' '.join(flags))
+                        if self.is_not_filter_target(line):
+                            conitnue
+                        gef_print(line)
 
             if not self.silent:
                 info("Number of entries: {:d}".format(COUNT))
