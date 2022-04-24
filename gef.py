@@ -3506,6 +3506,32 @@ def only_if_gdb_target_local(f):
     return wrapper
 
 
+def only_if_qemu_system(f):
+    """Decorator wrapper to check if GDB is connected to qemu-system."""
+
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        if is_qemu_system():
+            return f(*args, **kwargs)
+        else:
+            warn("This command can work under qemu-system only.")
+
+    return wrapper
+
+
+def only_if_not_qemu_system(f):
+    """Decorator wrapper to check if GDB is connected to qemu-system."""
+
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        if not is_qemu_system():
+            return f(*args, **kwargs)
+        else:
+            warn("This command cannot work under qemu-system.")
+
+    return wrapper
+
+
 def experimental_feature(f):
     """Decorator to add a warning when a feature is experimental."""
 
@@ -3513,6 +3539,19 @@ def experimental_feature(f):
     def wrapper(*args, **kwargs):
         warn("This feature is under development, expect bugs and unstability...")
         return f(*args, **kwargs)
+
+    return wrapper
+
+
+def only_if_x86_32_64_or_arm_32_64(f):
+    """Decorator wrapper to check if the archtecture is x86/x86-64/ARM/AArch64."""
+
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        if is_x86() or is_arm() or is_arm64():
+            return f(*args, **kwargs)
+        else:
+            warn("This command cannot work under this architecture.")
 
     return wrapper
 
@@ -5647,7 +5686,6 @@ class PrintFormatCommand(GenericCommand):
         p.wait()
         return True
 
-    @only_if_gdb_running
     def do_invoke(self, argv):
         """Default value for print-format command."""
         lang = "py"
@@ -5695,7 +5733,12 @@ class PrintFormatCommand(GenericCommand):
         out = ""
 
         for address in range(start_addr, end_addr, size):
-            value = struct.unpack(bf, read_memory(address, size))[0]
+            try:
+                mem = read_memory(address, size)
+            except gdb.error:
+                err("Memory read error")
+                return None
+            value = struct.unpack(bf, mem)[0]
             data += [value]
         sdata = ", ".join(map(hex, data))
 
@@ -5796,11 +5839,8 @@ class CanaryCommand(GenericCommand):
     _category_ = "Process Information"
 
     @only_if_gdb_running
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
-
         self.dont_repeat()
 
         filepath = get_filepath()
@@ -5863,6 +5903,7 @@ class PidCommand(GenericCommand):
 
     @only_if_gdb_running
     @only_if_gdb_target_local
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
         pid = get_pid()
         if pid is None:
@@ -5880,6 +5921,7 @@ class GetFileCommand(GenericCommand):
     _category_ = "Process Information"
 
     @only_if_gdb_target_local
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
         gef_print(repr(gdb.current_progspace().filename))
         return
@@ -5900,10 +5942,8 @@ class ProcessStatusCommand(GenericCommand):
 
     @only_if_gdb_running
     @only_if_gdb_target_local
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
         gef_print(titlify("Process information"))
         self.show_info_proc()
         self.show_info_proc2()
@@ -6280,6 +6320,7 @@ class ChangeFdCommand(GenericCommand):
 
     @only_if_gdb_running
     @only_if_gdb_target_local
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
         if len(argv) != 2:
             self.usage()
@@ -6359,6 +6400,7 @@ class ScanSectionCommand(GenericCommand):
     _category_ = "Show/Modify Memory"
 
     @only_if_gdb_running
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
         if len(argv) != 2:
             self.usage()
@@ -6639,6 +6681,7 @@ class FlagsCommand(GenericCommand):
     _example_ += "{0:s} -v # print verbose".format(_cmdline_)
     _category_ = "Show/Modify Register"
 
+    @only_if_gdb_running
     def do_invoke(self, argv):
         if "-h" in argv:
             self.usage()
@@ -6878,11 +6921,8 @@ class ChangePermissionCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
-
         if len(argv) not in (1, 2):
             err("Incorrect syntax")
             self.usage()
@@ -6977,11 +7017,8 @@ class UnicornEmulateCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
-
         start_insn = None
         end_insn = -1
         nb_insn = -1
@@ -7092,7 +7129,7 @@ class UnicornEmulateCommand(GenericCommand):
         content += "import capstone, unicorn\n"
         content += "\n"
 
-        content += "registers = collections.OrderedDict(sorted({{{regs}}}.items(), key=lambda t: t[0]))\n".format(
+        content += "registers = collections.OrderedDict({{{regs}}})\n".format(
             regs=",".join(["\n    '%s': %s" % (k.strip(), unicorn_registers[k]) for k in unicorn_registers])+"\n"
         )
         content += "uc = None\n"
@@ -7267,7 +7304,10 @@ class UnicornEmulateCommand(GenericCommand):
         if skip_emulation:
             return
 
-        ok("Starting emulation: {:#x} {} {:#x}".format(start_insn_addr, RIGHT_ARROW, end_insn_addr))
+        if nb_gadget == -1:
+            ok("Starting emulation: {:#x} {} {:#x}".format(start_insn_addr, RIGHT_ARROW, end_insn_addr))
+        else:
+            ok("Starting emulation: {:#x} {} after {:d} instructions are executed".format(start_insn_addr, RIGHT_ARROW, nb_gadget))
 
         pythonbin = which("python3")
         try:
@@ -7300,6 +7340,7 @@ class NopCommand(GenericCommand):
         next_insn = gef_instruction_n(addr, 2)
         return next_insn.address - cur_insn.address
 
+    @only_if_gdb_running
     def do_invoke(self, argv):
         try:
             opts, args = getopt.getopt(argv, "b:h")
@@ -7326,7 +7367,6 @@ class NopCommand(GenericCommand):
         self.nop_bytes(loc, num_bytes)
         return
 
-    @only_if_gdb_running
     def nop_bytes(self, loc, num_bytes):
         if num_bytes == 0:
             size = self.get_insn_size(loc)
@@ -7509,10 +7549,8 @@ class GlibcHeapCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
         self.usage()
         return
 
@@ -7526,11 +7564,8 @@ class GlibcHeapArenaCommand(GenericCommand):
     _category_ = "Heap"
 
     @only_if_gdb_running
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
-
         try:
             arena = GlibcArena(__gef_default_main_arena__)
         except gdb.error:
@@ -7562,11 +7597,8 @@ class GlibcHeapChunkCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
-
         if not argv:
             err("Missing chunk address")
             self.usage()
@@ -7595,11 +7627,8 @@ class GlibcHeapChunksCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
-
         # parse arena
         if "-a" in argv:
             idx = argv.index("-a")
@@ -7692,11 +7721,8 @@ class GlibcHeapBinsCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
-
         # parse arena
         arena_addr = None
         if "-a" in argv:
@@ -7769,11 +7795,8 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
-
         verbose = False
         if "-v" in argv:
             verbose = True
@@ -7850,11 +7873,8 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
-
         verbose = False
         if "-v" in argv:
             verbose = True # no effect
@@ -7924,11 +7944,8 @@ class GlibcHeapUnsortedBinsCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
-
         verbose = False
         if "-v" in argv:
             verbose = True
@@ -7962,11 +7979,8 @@ class GlibcHeapSmallBinsCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
-
         verbose = False
         if "-v" in argv:
             verbose = True
@@ -8005,11 +8019,8 @@ class GlibcHeapLargeBinsCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
-
         verbose = False
         if "-v" in argv:
             verbose = True
@@ -8044,11 +8055,8 @@ class SolveKernelSymbolCommand(GenericCommand):
     _example_ = "{:s} prepare_creds".format(_cmdline_)
     _category_ = "Misc"
 
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported. Use `ksymaddr-remote`")
-            return
-
         if len(argv) != 1:
             self.usage()
             return
@@ -8299,11 +8307,8 @@ class RopperCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
-
         ropper = sys.modules["ropper"]
         if "--file" not in argv:
             path = get_filepath()
@@ -8439,9 +8444,9 @@ class RpCommand(GenericCommand):
         if is_qemu_system():
             if argv[0] == "kernel":
                 # dump kernel then apply vmlinux-to-elf
-                dump_mem_file = "gef_dump_memory.raw"
-                self.path = symboled_vmlinux_file = "gef-dump-memory.elf"
-                addrs = KsymaddrRemoteApply2Command().dump_kernel_elf(dump_mem_file, symboled_vmlinux_file)
+                dump_mem_file = "/tmp/gef-dump-memory.raw"
+                self.path = symboled_vmlinux_file = "/tmp/gef-dump-memory.elf"
+                addrs = VmlinuxToElfApplyCommand().dump_kernel_elf(dump_mem_file, symboled_vmlinux_file)
                 if addrs is None:
                     err("Failed to get symboled ELF")
                     return
@@ -9004,11 +9009,8 @@ class ProcessListingCommand(GenericCommand):
         self.add_setting("ps_command", "{:s} auxww".format(ps), "`ps` command to get process information")
         return
 
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
-
         do_attach = False
         smart_scan = False
 
@@ -9082,10 +9084,6 @@ class ElfInfoCommand(GenericCommand):
         return
 
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
-
         # http://www.sco.com/developers/gabi/latest/ch4.eheader.html
         classes = {
             Elf.ELF_32_BITS   : "32-bit",
@@ -9140,6 +9138,10 @@ class ElfInfoCommand(GenericCommand):
             use_readelf = True
 
         if argv == []:
+            if is_qemu_system():
+                err("Argument-less calls are unsupported under qemu-system.")
+                return
+
             filename = get_filepath()
             if filename is None:
                 self.usage()
@@ -9228,12 +9230,12 @@ class ElfInfoCommand(GenericCommand):
         }
 
         gef_print(Color.colorify("Program Header", "yellow bold"))
-        fmt = "  [{:>2s}] {:12s} {:>8s} {:>10s} {:>10s} {:>8s} {:>8s} {:5s} {:>8s}"
+        fmt = "  [{:>2s}] {:12s} {:>10s} {:>10s} {:>10s} {:>10s} {:>10s} {:5s} {:>8s}"
         gef_print(fmt.format("#", "Type", "Offset", "Virtaddr", "Physaddr", "FileSiz", "MemSiz", "Flags", "Align"))
         for i, p in enumerate(elf.phdrs):
             p_type = ptype[p.p_type] if p.p_type in ptype else "UNKNOWN"
             p_flags = pflags[p.p_flags] if p.p_flags in pflags else "???"
-            fmt = "  [{:2d}] {:12s} {:#8x} {:#10x} {:#10x} {:#8x} {:#8x} {:5s} {:#8x}"
+            fmt = "  [{:2d}] {:12s} {:#10x} {:#10x} {:#10x} {:#10x} {:#10x} {:5s} {:#8x}"
             gef_print(fmt.format(i, p_type, p.p_offset, p.p_vaddr, p.p_paddr, p.p_filesz, p.p_memsz, p_flags, p.p_align))
 
         stype = {
@@ -9280,7 +9282,7 @@ class ElfInfoCommand(GenericCommand):
         if not elf.shdrs:
             gef_print("Not loaded")
         else:
-            fmt = "  [{:>2s}] {:20s} {:>15s} {:>10s} {:>10s} {:>8s} {:>8s} {:5s} {:4s} {:4s} {:>8s}"
+            fmt = "  [{:>2s}] {:20s} {:>15s} {:>10s} {:>10s} {:>10s} {:>10s} {:5s} {:4s} {:4s} {:>8s}"
             gef_print(fmt.format("#", "Name", "Type", "Address", "Offset", "Size", "EntSiz", "Flags", "Link", "Info", "Align"))
             for i, s in enumerate(elf.shdrs):
                 sh_type = stype[s.sh_type] if s.sh_type in stype else "UNKNOWN"
@@ -9298,7 +9300,7 @@ class ElfInfoCommand(GenericCommand):
                 if s.sh_flags & Shdr.SHF_EXCLUDE:          sh_flags += "E"
                 if s.sh_flags & Shdr.SHF_COMPRESSED:       sh_flags += "C"
 
-                fmt = "  [{:2d}] {:20s} {:>15s} {:#10x} {:#10x} {:#8x} {:#8x} {:5s} {:#4x} {:#4x} {:#8x}"
+                fmt = "  [{:2d}] {:20s} {:>15s} {:#10x} {:#10x} {:#10x} {:#10x} {:5s} {:#4x} {:#4x} {:#8x}"
                 gef_print(fmt.format(i, s.sh_name, sh_type, s.sh_addr, s.sh_offset, s.sh_size,
                                      s.sh_entsize, sh_flags, s.sh_link, s.sh_info, s.sh_addralign))
         return
@@ -9319,11 +9321,8 @@ class EntryPointBreakCommand(GenericCommand):
         self.add_setting("entrypoint_symbols", "main _main __libc_start_main __uClibc_main start _start", "Possible symbols for entry points")
         return
 
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
-
         fpath = get_filepath()
         if fpath is None:
             warn("No executable to debug, use `file` to load a binary")
@@ -9403,11 +9402,8 @@ class NamedBreakpointCommand(GenericCommand):
         super().__init__()
         return
 
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
-
         if not argv:
             err("Missing name for breakpoint")
             self.usage()
@@ -11131,11 +11127,8 @@ class ASLRCommand(GenericCommand):
     _syntax_ = "{:s} (on|off)".format(_cmdline_)
     _category_ = "Process Information"
 
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
-
         argc = len(argv)
 
         if argc == 0:
@@ -11351,11 +11344,8 @@ class XAddressInfoCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_not_qemu_system
     def do_invoke (self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
-
         if not argv:
             err ("At least one valid address must be specified")
             self.usage()
@@ -11420,6 +11410,7 @@ class XorMemoryCommand(GenericCommand):
         super().__init__(prefix=True)
         return
 
+    @only_if_gdb_running
     def do_invoke(self, argv):
         self.usage()
         return
@@ -11915,11 +11906,9 @@ class GotCommand(GenericCommand):
         return self.plts
 
     @only_if_gdb_running
+    @only_if_gdb_target_local
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
-
         try:
             readelf = which("readelf")
         except IOError:
@@ -12169,12 +12158,9 @@ class HeapAnalysisCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_not_qemu_system
     @experimental_feature
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
-
         if not argv:
             self.setup()
             return
@@ -15060,11 +15046,8 @@ class FollowCommand(GenericCommand):
     _syntax_ = "{:s} (child|parent)".format(_cmdline_)
     _category_ = "Misc"
 
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
-
         argc = len(argv)
 
         if argc == 0:
@@ -15099,10 +15082,9 @@ class CodebaseCommand(GenericCommand):
     _category_ = "Process Information"
 
     @only_if_gdb_running
+    @only_if_gdb_target_local
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
         codebase = get_section_base_address(get_filepath())
         if codebase is None:
             gef_print("codebase not found")
@@ -15125,10 +15107,9 @@ class HeapbaseCommand(GenericCommand):
     _category_ = "Process Information"
 
     @only_if_gdb_running
+    @only_if_gdb_target_local
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
         heap = HeapBaseFunction.heap_base()
         if heap is None:
             gef_print("heap not found")
@@ -15148,10 +15129,9 @@ class LibcCommand(GenericCommand):
     _category_ = "Process Information"
 
     @only_if_gdb_running
+    @only_if_gdb_target_local
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
         libc = get_section_base_address_by_list(("libc-2.", "libc.so.6"))
         if libc is None:
             err("libc is not found")
@@ -15188,10 +15168,9 @@ class LdCommand(GenericCommand):
     _category_ = "Process Information"
 
     @only_if_gdb_running
+    @only_if_gdb_target_local
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
         ld = get_section_base_address_by_list(("ld-2.", "ld-linux-"))
         if ld is None:
             gef_print("ld not found")
@@ -15241,10 +15220,9 @@ class MagicCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_gdb_target_local
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
         libc = get_section_base_address_by_list(("libc-2.", "libc.so.6"))
         ld = get_section_base_address_by_list(("ld-2.", "ld-linux-"))
         if libc is None or ld is None:
@@ -15338,10 +15316,9 @@ class OneGadgetCommand(GenericCommand):
     _category_ = "Exploit Development"
 
     @only_if_gdb_running
+    @only_if_gdb_target_local
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
         libc = process_lookup_path_by_list(("libc-2.", "libc.so.6"))
         if libc is None:
             err("libc is not found")
@@ -15363,10 +15340,10 @@ class SeccompCommand(GenericCommand):
     _syntax_ = _cmdline_
     _category_ = "Exploit Development"
 
+    @only_if_gdb_running
+    @only_if_gdb_target_local
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
         path = get_filepath()
         try:
             seccomp = which("seccomp-tools")
@@ -15949,11 +15926,8 @@ class FpuCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_x86_32_64_or_arm_32_64
     def do_invoke(self, argv):
-        if not (is_x86() or is_arm32() or is_arm64()):
-            err("Unsupported")
-            return
-
         if "-h" in argv:
             self.usage()
             return
@@ -16179,6 +16153,7 @@ class ExtractHeapAddrCommand(GenericCommand):
         gef_print(s)
         return
 
+    @only_if_gdb_running
     def do_invoke(self, argv):
         if not argv:
             self.usage()
@@ -16201,10 +16176,11 @@ class U2dCommand(GenericCommand):
     _cmdline_ = "u2d"
     _syntax_ = "{:s} [-h] [hex|double]".format(_cmdline_)
     _aliases_ = ["d2u",]
-    _example_ = "\n{:s} 0xdeadbeef".format(_cmdline_)
-    _example_ += "\n{:s} 0.12345".format(_cmdline_)
-    _example_ += "\n{:s} 1.2345e-1".format(_cmdline_)
-    _example_ += "\n * only ~64bit supported (Unsupported 80bit, 128bit)"
+    _example_ = "\n"
+    _example_ += "{:s} 0xdeadbeef\n".format(_cmdline_)
+    _example_ += "{:s} 0.12345\n".format(_cmdline_)
+    _example_ += "{:s} 1.2345e-1\n".format(_cmdline_)
+    _example_ += " * only ~64bit supported (Unsupported 80bit, 128bit)"
     _category_ = "Misc"
 
     def pQ(self, a):
@@ -16227,16 +16203,16 @@ class U2dCommand(GenericCommand):
 
     def translate_from_float(self, n):
         gef_print(Color.cyanify("double -> ull (reinterpret_cast)"))
-        gef_print("  {:.20f} ({:.20e}) --d2ull-> {:#018x}".format(n, n, self.d2u(n)))
+        gef_print("  {:.20e} ---> {:#018x}".format(n, self.d2u(n)))
         return
 
     def translate_from_int(self, n):
         gef_print(Color.cyanify("ull -> double (reinterpret_cast)"))
-        gef_print("  {:#018x} --ull2d-> {:.20f} ({:.20e})".format(n, self.u2d(n), self.u2d(n)))
+        gef_print("  {:#018x} ---> {:.20e}".format(n, self.u2d(n)))
         gef_print(Color.cyanify("ull -> double (static_cast)"))
-        gef_print("  {:#018x} --ull2d-> {:#018x} [{:f} (={:#018x})]".format(n, self.d2u(float(n)), float(n), int(float(n))))
+        gef_print("  {:#018x} ---> {:#018x}".format(n, self.d2u(float(n))))
         gef_print(Color.cyanify("double -> ull (static_cast)"))
-        gef_print("  {:#018x} --d2ull-> {:#018x})".format(n, int(self.u2d(n))))
+        gef_print("  {:#018x} ---> {:#018x}".format(n, int(self.u2d(n))))
         return
 
     def do_invoke(self, argv):
@@ -16548,11 +16524,8 @@ class KernelbaseCommand(GenericCommand):
         return res[0], res[1]
 
     @only_if_gdb_running
+    @only_if_qemu_system
     def do_invoke(self, argv):
-        if not is_qemu_system():
-            err("Unsupported")
-            return
-
         # resolve kbase, krobase
         maps = self.get_maps() # [vaddr, size, perm]
         if maps is None:
@@ -16618,10 +16591,9 @@ class KernelVersionCommand(GenericCommand):
             return start + idx, kernel_version_string
         return None
 
+    @only_if_gdb_running
+    @only_if_qemu_system
     def do_invoke(self, argv):
-        if not is_qemu_system():
-            err("Unsupported")
-            return
         ret = self.kernel_version()
         if ret is None:
             err("Parse failed")
@@ -16692,10 +16664,9 @@ class KernelCmdlineCommand(GenericCommand):
         except:
             return None
 
+    @only_if_gdb_running
+    @only_if_qemu_system
     def do_invoke(self, argv):
-        if not is_qemu_system():
-            err("Unsupported")
-            return
         ret = self.kernel_cmdline()
         if ret is None:
             err("Parse failed")
@@ -16829,11 +16800,9 @@ class KernelPsCommand(GenericCommand):
         info("offsetof(cred, uid): {:#x}".format(offset_uid))
         return offset_uid
 
+    @only_if_gdb_running
+    @only_if_qemu_system
     def do_invoke(self, argv):
-        if not is_qemu_system():
-            err("Unsupported")
-            return
-
         task_addrs = self.get_task_list()
         if task_addrs is None:
             return
@@ -16970,13 +16939,10 @@ class SyscallTableViewCommand(GenericCommand):
                 gef_print("[{:03d}] {:#x}: ".format(i, addr) + Color.grayify("{:#x} {:s}".format(syscall_function_addr, symbol)))
         return
 
+    @only_if_gdb_running
+    @only_if_qemu_system
+    @only_if_x86_32_64_or_arm_32_64
     def do_invoke(self, argv):
-        if not is_qemu_system():
-            err("Unsupported")
-            return
-        if not is_x86() and not is_arm32() and not is_arm64():
-            err("Unsupported")
-            return
         self.syscall_table_view()
         return
 
@@ -16989,11 +16955,8 @@ class AuxvCommand(GenericCommand):
     _category_ = "Process Information"
 
     @only_if_gdb_running
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
-
         auxval = gef_get_auxiliary_values()
         if not auxval:
             return None
@@ -17058,11 +17021,8 @@ class ArgvCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
-
         verbose = (argv and argv[0] == "-v")
 
         paddr1 = self.get_address_from_symbol("&_dl_argv")
@@ -17128,11 +17088,8 @@ class EnvpCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
-
         if "-h" in argv:
             self.usage()
             return
@@ -17231,11 +17188,9 @@ class TlsCommand(GenericCommand):
         return value.contents.value or 0
 
     @only_if_gdb_running
+    @only_if_gdb_target_local
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
-
         if not is_x86():
             err("Unsupported")
             return
@@ -17800,11 +17755,8 @@ class FindFakeFastCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
-
         if "-h" in argv:
             self.usage()
             return
@@ -17917,11 +17869,8 @@ class VisualHeapCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
-
         if argv and "-h" in argv:
             self.usage()
             return
@@ -18713,15 +18662,9 @@ class SlabCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_qemu_system
+    @only_if_x86_32_64_or_arm_32_64
     def do_invoke(self, argv):
-        if not is_qemu_system():
-            err("Unsupported")
-            return
-
-        if not (is_x86_64() or is_x86_32() or is_arm64() or is_arm32()):
-            err("Unsupported")
-            return
-
         if "-h" in argv:
             self.usage()
             return
@@ -18841,20 +18784,24 @@ class KsymaddrRemoteCommand(GenericCommand):
             fmt = "{:#010x} {:s} {:s}"
         else:
             fmt = "{:#018x} {:s} {:s}"
-        for i, (addr, string, typ) in enumerate(self.kallsyms):
+        print_count = 0
+        for addr, string, typ in self.kallsyms:
+            if print_count == self.head:
+                break
             if self.print_all:
                 gef_print(fmt.format(addr, typ, string))
+                print_count += 1
             else:
                 for k in keywords:
                     text = fmt.format(addr, typ, string)
                     if self.exact and k == string:
                         gef_print(text)
+                        print_count += 1
                         break
                     elif not self.exact and k in text:
                         gef_print(text)
+                        print_count += 1
                         break
-            if i == self.head:
-                break
         return
 
     # Initialize variables in different ways, depending on the situation.
@@ -19489,15 +19436,9 @@ class KsymaddrRemoteCommand(GenericCommand):
         return True if res else False
 
     @only_if_gdb_running
+    @only_if_qemu_system
+    @only_if_x86_32_64_or_arm_32_64
     def do_invoke(self, argv):
-        if not is_qemu_system():
-            err("Unsupported")
-            return
-
-        if not (is_x86() or is_arm32() or is_arm64()):
-            err("Unsupported")
-            return
-
         if not argv:
             self.usage()
             return
@@ -19660,15 +19601,9 @@ class VmlinuxToElfApplyCommand(GenericCommand):
         return addrs
 
     @only_if_gdb_running
+    @only_if_qemu_system
+    @only_if_x86_32_64_or_arm_32_64
     def do_invoke(self, argv):
-        if not is_qemu_system():
-            err("Unsupported")
-            return
-
-        if not (is_x86() or is_arm32() or is_arm64()):
-            err("Unsupported")
-            return
-
         force_reparse = False
         if "--reparse" in argv:
             force_reparse = True
@@ -19950,11 +19885,8 @@ class TcmallocDumpCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
-
         if not self.initialized:
             self.usage()
             return
@@ -20911,15 +20843,9 @@ class PartitionAllocDumpStableCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_not_qemu_system
+    @only_if_x86_32_64_or_arm_32_64
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
-
-        if not is_x86_64() and not is_x86_32() and not is_arm64() and not is_arm32():
-            err("Unsupported")
-            return
-
         if is_32bit():
             self.align_pad = None
 
@@ -21640,15 +21566,9 @@ class PartitionAllocDumpOld1Command(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_not_qemu_system
+    @only_if_x86_32_64_or_arm_32_64
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
-
-        if not is_x86_64() and not is_x86_32() and not is_arm64() and not is_arm32():
-            err("Unsupported")
-            return
-
         if is_32bit():
             self.align_pad = None
 
@@ -22233,11 +22153,8 @@ class PartitionAllocDumpOld2Command(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
-        if is_qemu_system():
-            err("Unsupported")
-            return
-
         if not is_x86_64():
             err("Unsupported")
             return
@@ -22765,12 +22682,10 @@ class XphysAddrCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_qemu_system
     def do_invoke(self, argv):
         if "-h" in argv:
             self.usage()
-            return
-        if not is_qemu_system():
-            err("Supported only under qemu-system")
             return
         self.dump_physmem(argv)
         return
@@ -24245,6 +24160,7 @@ class MsrCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_qemu_system
     def do_invoke(self, argv):
         if "-h" in argv or not argv:
             self.usage()
@@ -24253,10 +24169,6 @@ class MsrCommand(GenericCommand):
         if "-l" in argv:
             argv.remove("-l")
             self.print_const_table(argv)
-            return
-
-        if not is_qemu_system():
-            err("Supported only under qemu-system")
             return
 
         if not is_x86():
@@ -24653,13 +24565,10 @@ class QemuRegistersCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_qemu_system
     def do_invoke(self, argv):
         if "-h" in argv:
             self.usage()
-            return
-
-        if not is_qemu_system():
-            err("Supported only under qemu-system")
             return
 
         self.add_info = False
@@ -24948,6 +24857,8 @@ class PagewalkCommand(GenericCommand):
         return argv
 
     @only_if_gdb_running
+    @only_if_gdb_running
+    @only_if_x86_32_64_or_arm_32_64
     def do_invoke(self, argv):
         if is_x86_32():
             gdb.execute("pagewalk x86 {}".format(' '.join(argv)))
@@ -24957,8 +24868,6 @@ class PagewalkCommand(GenericCommand):
             gdb.execute("pagewalk arm {}".format(' '.join(argv)))
         elif is_arm64():
             gdb.execute("pagewalk arm64 {}".format(' '.join(argv)))
-        else:
-            self.usage()
         return
 
 
@@ -25384,13 +25293,11 @@ class PagewalkX64Command(PagewalkCommand):
         self.print_page()
         return
 
+    @only_if_gdb_running
+    @only_if_qemu_system
     def do_invoke(self, argv):
         if "-h" in argv:
             self.usage()
-            return
-
-        if not is_qemu_system():
-            err("Supported only under qemu-system")
             return
 
         if not is_x86():
@@ -26178,13 +26085,10 @@ class PagewalkArmCommand(PagewalkCommand):
         return
 
     @only_if_gdb_running
+    @only_if_qemu_system
     def do_invoke(self, argv):
         if "-h" in argv:
             self.usage()
-            return
-
-        if not is_qemu_system():
-            err("Supported only under qemu-system")
             return
 
         if not is_arm32():
@@ -27216,13 +27120,10 @@ class PagewalkArm64Command(PagewalkCommand):
         return
 
     @only_if_gdb_running
+    @only_if_qemu_system
     def do_invoke(self, argv):
         if "-h" in argv:
             self.usage()
-            return
-
-        if not is_qemu_system():
-            err("Supported only under qemu-system")
             return
 
         if not is_arm64():
@@ -27296,14 +27197,12 @@ class SwitchELCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_qemu_system
     def do_invoke(self, argv):
         if "-h" in argv:
             self.usage()
             return
         if not is_arm64():
-            err("Unsupported")
-            return
-        if not is_qemu_system():
             err("Unsupported")
             return
         if argv:
@@ -27983,11 +27882,8 @@ class UsermodehelperHunterCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_qemu_system
     def do_invoke(self, argv):
-        if not is_qemu_system():
-            err("Unsupported")
-            return
-
         info("Resolving the funcftion addresses")
         addr = get_ksymaddr("call_usermodehelper_setup")
         if addr is None:
@@ -28073,10 +27969,8 @@ class ThunkHunterCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_qemu_system
     def do_invoke(self, argv):
-        if not is_qemu_system():
-            err("Unsupported")
-            return
         if not is_x86():
             err("Unsupported")
             return
@@ -28575,6 +28469,7 @@ class UefiOvmfInfoCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_qemu_system
     def do_invoke(self, argv):
         if not is_x86_64():
             err("Unsupported")
@@ -28731,10 +28626,8 @@ class KsymaddrRemoteApplyCommand(GenericCommand):
     _category_ = "Qemu-system Cooperation"
 
     @only_if_gdb_running
+    @only_if_qemu_system
     def do_invoke(self, argv):
-        if not is_qemu_system():
-            err("Unsupported")
-            return
         info("Wait for memory scan")
         res = gdb.execute("ksymaddr-remote --print-all", to_string=True)
         function_info = []
@@ -28767,6 +28660,7 @@ class PeekPointersCommand(GenericCommand):
     _category_ = "Show/Modify Memory"
 
     @only_if_gdb_running
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
         argc = len(argv)
         if argc not in (1, 2, 3):
@@ -28926,6 +28820,7 @@ class XRefTelescopeCommand(SearchPatternCommand):
         self.xref_telescope_(pattern, depth, "")
 
     @only_if_gdb_running
+    @only_if_not_qemu_system
     def do_invoke(self, argv):
         argc = len(argv)
         if argc < 1:
