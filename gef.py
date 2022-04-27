@@ -27332,6 +27332,7 @@ class ExecNextCommand(GenericCommand):
     @only_if_gdb_running
     def do_invoke(self, argv):
         next_addr = gdb_get_nth_next_instruction_address(current_arch.pc, 2)
+        # `until` command has a bug(?) because sometimes fail. we use `tbreak` and `continue` instead of `until`.
         gdb.execute("tbreak *{:#x}".format(next_addr))
         gdb.execute("continue")
         return
@@ -27478,8 +27479,7 @@ class ExecUntilCommand(GenericCommand):
                         self.err = "Detected infinity loop prev_addr"
                         break
                     # maybe rep prefix
-                    next_addr = gdb_get_nth_next_instruction_address(current_arch.pc, 2)
-                    gdb.execute("until *{:#x}".format(next_addr))
+                    gdb.execute("exec-next")
                     # recheck
                     if prev_prev_addr == prev_addr == current_arch.pc:
                         self.err = "Detected infinity loop prev_addr"
@@ -27490,10 +27490,11 @@ class ExecUntilCommand(GenericCommand):
                     self.force_write_stdout((str(insn) + "\n").encode())
 
                 # found and break
-                if self.is_target_insn(insn):
-                    if not self.print_insn:
-                        self.force_write_stdout(b"\r \r")
-                    break
+                if current_arch.pc not in self.filter:
+                    if self.is_target_insn(insn):
+                        if not self.print_insn:
+                            self.force_write_stdout(b"\r \r")
+                        break
 
                 count += 1
 
@@ -27511,7 +27512,32 @@ class ExecUntilCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
-        self.usage()
+        if "-h" in argv:
+            self.usage()
+            return
+
+        self.print_insn = False
+        if "--print-insn" in argv:
+            argv.remove("--print-insn")
+            self.print_insn = True
+
+        self.skip_lib = False
+        if "--skip-lib" in argv:
+            argv.remove("--skip-lib")
+            self.skip_lib = True
+
+        self.filter = []
+        while "-v" in argv:
+            idx = argv.index("-v")
+            filter_address = int(argv[idx + 1], 16)
+            self.filter.append(filter_address)
+            argv = argv[:idx] + argv[idx+2:]
+
+        if argv:
+            self.usage()
+            return
+
+        self.exec_next()
         return
 
 
@@ -27530,30 +27556,7 @@ class ExecUntilCallCommand(ExecUntilCommand):
 
     def __init__(self, *args, **kwargs):
         super().__init__(complete=gdb.COMPLETE_NONE)
-        return
-
-    @only_if_gdb_running
-    def do_invoke(self, argv):
-        if "-h" in argv:
-            self.usage()
-            return
-
-        self.print_insn = False
-        if "--print-insn" in argv:
-            argv.remove("--print-insn")
-            self.print_insn = True
-
-        self.skip_lib = False
-        if "--skip-lib" in argv:
-            argv.remove("--skip-lib")
-            self.skip_lib = True
-
-        if argv:
-            self.usage()
-            return
-
         self.mode = "call"
-        self.exec_next()
         return
 
 
@@ -27572,30 +27575,7 @@ class ExecUntilJumpCommand(ExecUntilCommand):
 
     def __init__(self, *args, **kwargs):
         super().__init__(complete=gdb.COMPLETE_NONE)
-        return
-
-    @only_if_gdb_running
-    def do_invoke(self, argv):
-        if "-h" in argv:
-            self.usage()
-            return
-
-        self.print_insn = False
-        if "--print-insn" in argv:
-            argv.remove("--print-insn")
-            self.print_insn = True
-
-        self.skip_lib = False
-        if "--skip-lib" in argv:
-            argv.remove("--skip-lib")
-            self.skip_lib = True
-
-        if argv:
-            self.usage()
-            return
-
         self.mode = "jmp"
-        self.exec_next()
         return
 
 
@@ -27614,6 +27594,7 @@ class ExecUntilIndirectBranchCommand(ExecUntilCommand):
 
     def __init__(self, *args, **kwargs):
         super().__init__(complete=gdb.COMPLETE_NONE)
+        self.mode = "indirect-branch"
         return
 
     @only_if_gdb_running
@@ -27636,11 +27617,17 @@ class ExecUntilIndirectBranchCommand(ExecUntilCommand):
             argv.remove("--skip-lib")
             self.skip_lib = True
 
+        self.filter = []
+        while "-v" in argv:
+            idx = argv.index("-v")
+            filter_address = int(argv[idx + 1], 16)
+            self.filter.append(filter_address)
+            argv = argv[:idx] + argv[idx+2:]
+
         if argv:
             self.usage()
             return
 
-        self.mode = "indirect-branch"
         self.exec_next()
         return
 
@@ -27660,30 +27647,7 @@ class ExecUntilSyscallCommand(ExecUntilCommand):
 
     def __init__(self, *args, **kwargs):
         super().__init__(complete=gdb.COMPLETE_NONE)
-        return
-
-    @only_if_gdb_running
-    def do_invoke(self, argv):
-        if "-h" in argv:
-            self.usage()
-            return
-
-        self.print_insn = False
-        if "--print-insn" in argv:
-            argv.remove("--print-insn")
-            self.print_insn = True
-
-        self.skip_lib = False
-        if "--skip-lib" in argv:
-            argv.remove("--skip-lib")
-            self.skip_lib = True
-
-        if argv:
-            self.usage()
-            return
-
         self.mode = "syscall"
-        self.exec_next()
         return
 
 
@@ -27702,30 +27666,7 @@ class ExecUntilRetCommand(ExecUntilCommand):
 
     def __init__(self, *args, **kwargs):
         super().__init__(complete=gdb.COMPLETE_NONE)
-        return
-
-    @only_if_gdb_running
-    def do_invoke(self, argv):
-        if "-h" in argv:
-            self.usage()
-            return
-
-        self.print_insn = False
-        if "--print-insn" in argv:
-            argv.remove("--print-insn")
-            self.print_insn = True
-
-        self.skip_lib = False
-        if "--skip-lib" in argv:
-            argv.remove("--skip-lib")
-            self.skip_lib = True
-
-        if argv:
-            self.usage()
-            return
-
         self.mode = "ret"
-        self.exec_next()
         return
 
 
@@ -27744,30 +27685,7 @@ class ExecUntilMemaccessCommand(ExecUntilCommand):
 
     def __init__(self, *args, **kwargs):
         super().__init__(complete=gdb.COMPLETE_NONE)
-        return
-
-    @only_if_gdb_running
-    def do_invoke(self, argv):
-        if "-h" in argv:
-            self.usage()
-            return
-
-        self.print_insn = False
-        if "--print-insn" in argv:
-            argv.remove("--print-insn")
-            self.print_insn = True
-
-        self.skip_lib = False
-        if "--skip-lib" in argv:
-            argv.remove("--skip-lib")
-            self.skip_lib = True
-
-        if argv:
-            self.usage()
-            return
-
         self.mode = "memaccess"
-        self.exec_next()
         return
 
 
@@ -27788,6 +27706,7 @@ class ExecUntilKeywordReCommand(ExecUntilCommand):
 
     def __init__(self, *args, **kwargs):
         super().__init__(complete=gdb.COMPLETE_NONE)
+        self.mode = "keyword"
         return
 
     @only_if_gdb_running
@@ -27806,11 +27725,17 @@ class ExecUntilKeywordReCommand(ExecUntilCommand):
             argv.remove("--skip-lib")
             self.skip_lib = True
 
+        self.filter = []
+        while "-v" in argv:
+            idx = argv.index("-v")
+            filter_address = int(argv[idx + 1], 16)
+            self.filter.append(filter_address)
+            argv = argv[:idx] + argv[idx+2:]
+
         if len(argv) == 0:
             self.usage()
             return
 
-        self.mode = "keyword"
         self.keyword = argv
         self.exec_next()
         return
@@ -27824,6 +27749,7 @@ class ExecUntilCondCommand(ExecUntilCommand):
     _example_ = ""
     _example_ += "{:s} \"$rax==0xdeadbeef && $rbx==0xcafebabe\" # execute until specific condition is filled\n".format(_cmdline_)
     _example_ += "{:s} \"$rax==0x123 && *(long*)$rbx==0x4\" # multiple condition and memory access is supported\n".format(_cmdline_)
+    _example_ += "{:s} \"$ALL_REG==0x1234\" # is replaced with a comparison for all registers. ex: `($rax==0x1234||$rbx==0x1234||...)`\n".format(_cmdline_)
     _example_ += "\n"
     _example_ += "THIS FEATURE IS TOO SLOW.\n"
     _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
@@ -27832,6 +27758,7 @@ class ExecUntilCondCommand(ExecUntilCommand):
 
     def __init__(self, *args, **kwargs):
         super().__init__(complete=gdb.COMPLETE_NONE)
+        self.mode = "cond"
         return
 
     @only_if_gdb_running
@@ -27850,16 +27777,32 @@ class ExecUntilCondCommand(ExecUntilCommand):
             argv.remove("--skip-lib")
             self.skip_lib = True
 
+        self.filter = []
+        while "-v" in argv:
+            idx = argv.index("-v")
+            filter_address = int(argv[idx + 1], 16)
+            self.filter.append(filter_address)
+            argv = argv[:idx] + argv[idx+2:]
+
         if len(argv) == 0:
             self.usage()
             return
 
-        if re.search(r"[^><!=]=[^=]", argv[0]):
+        condition = argv[0]
+        if re.search(r"[^><!=]=[^=]", condition):
             err("Should not use `=` since it will be replace register/memory value. Use `==`.")
             return
 
-        self.mode = "cond"
-        self.condition = argv[0]
+        match = re.search(r"\$ALL_REG==(\w+)", condition)
+        if match:
+            value = match.groups()[0]
+            replace_cond = []
+            for regname in current_arch.all_registers:
+                replace_cond.append("{:s}=={:s}".format(regname, value))
+            replace_string = "(" + "||".join(replace_cond) + ")"
+            condition = re.sub(r"\$ALL_REG==(\w+)", replace_string, condition)
+
+        self.condition = condition
         self.exec_next()
         return
 
