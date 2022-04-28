@@ -16254,11 +16254,69 @@ class U2dCommand(GenericCommand):
 
 
 @register_command
+class PackCommand(GenericCommand):
+    """Translate integer -> string."""
+    _cmdline_ = "pack"
+    _syntax_ = "{:s} [-h] value".format(_cmdline_)
+    _example_ = "{:s} 0xdeadbeef".format(_cmdline_)
+    _category_ = "Misc"
+
+    def do_invoke(self, argv):
+        if len(argv) == 0:
+            self.usage()
+            return
+
+        if "-h" in argv:
+            self.usage()
+            return
+
+        try:
+            value = int(argv[0], 0)
+        except:
+            self.usage()
+            return
+        gef_print("pack8:  {}".format(p8(value & 0xff)))
+        gef_print("pack16: {}".format(p16(value & 0xffff)))
+        gef_print("pack32: {}".format(p32(value & 0xffffffff)))
+        gef_print("pack64: {}".format(p64(value & 0xffffffffffffffff)))
+        return
+
+
+@register_command
+class UnpackCommand(GenericCommand):
+    """Translate string -> integer"""
+    _cmdline_ = "unpack"
+    _syntax_ = "{:s} [-h] \"double-escaped string\"".format(_cmdline_)
+    _example_ = "{:s} \"\\\\x41\\\\x42\\\\x43\\\\x44\"".format(_cmdline_)
+    _category_ = "Misc"
+
+    def do_invoke(self, argv):
+        if len(argv) == 0:
+            self.usage()
+            return
+
+        if "-h" in argv:
+            self.usage()
+            return
+
+        try:
+            value = codecs.escape_decode(argv[0])[0] + b"\0"*7
+        except binascii.Error:
+            gef_print("Could not decode '\\xXX' encoded string \"{}\"".format(argv[0]))
+            return
+        gef_print("unpack8:  {:#x}".format(u8(value[:1])))
+        gef_print("unpack16: {:#x}".format(u16(value[:2])))
+        gef_print("unpack32: {:#x}".format(u32(value[:4])))
+        gef_print("unpack64: {:#x}".format(u64(value[:8])))
+        return
+
+
+@register_command
 class ByteswapCommand(GenericCommand):
     """Translate endian (little-endian <-> big-endian)."""
     _cmdline_ = "byteswap"
-    _example_ = "{:s} 0xdeadbeef".format(_cmdline_)
     _syntax_ = "{:s} [-h] value".format(_cmdline_)
+    _example_ = "{:s} 0xdeadbeef".format(_cmdline_)
     _category_ = "Misc"
 
     def do_invoke(self, argv):

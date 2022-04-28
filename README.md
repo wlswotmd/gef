@@ -253,6 +253,8 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / Debian 
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/errno.png)
 * `u2d`: is cast/transformation u64 <-> double.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/u2d.png)
+* `pack`,`unpack`: is transformation int <-> bytes.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pack.png)
 * `hash-memory`: calculations hash.
     * Supported: md5, sha1, sha224, sha256, sha384, sha512, crc16, crc32, crc64.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hash-memory.png)
