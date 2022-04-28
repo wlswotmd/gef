@@ -8151,10 +8151,27 @@ class DetailRegistersCommand(GenericCommand):
                 line += format_address_spaces(value)
             addrs = dereference_from(value)
 
+            def get_symbol(addr):
+                addr = re.sub(r"\x1B\[([0-9]{1,2}(;[0-9]{1,2})*)?m", "", addr) # remove color
+                try:
+                    ret = gdb_get_location_from_symbol(int(addr, 16))
+                except:
+                    return ""
+                if ret is None:
+                    return ""
+                sym_name, sym_offset = ret[0], ret[1]
+                sym_name = Instruction.smartify_text(sym_name)
+                if sym_offset == 0:
+                    return " <{}>".format(sym_name)
+                else:
+                    return " <{}+{}>".format(sym_name, sym_offset)
+
+
             if len(addrs) > 1:
                 sep = " {:s} ".format(RIGHT_ARROW)
                 line += sep
-                line += sep.join(addrs[1:])
+                addrs_with_sym = [addr + get_symbol(addr) for addr in addrs[1:]]
+                line += sep.join(addrs_with_sym)
             if max_recursion <= len(addrs) and not addrs[-1].endswith("]"):
                 try:
                     if len(dereference_from(int(addrs[-1],16))) > 1:
