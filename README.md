@@ -296,6 +296,12 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/syscall-search.png)
 * `dwarf-exception-handler`: dumps the DWARF exception handler informations.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dwarf-exception-handler.png)
+* `dynamic`: dumps the DYNAMIC area.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dynamic.png)
+* `linkmap`: dumps linkmap with iterating.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/linkmap.png)
+* `ret2dl-hint`: show the structure used by ret2dl as hint.
+* `srop-hint`: show the code for srop as hint.
 
 ### Other
 * Replace the unicode character to ASCII.

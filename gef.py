@@ -13640,6 +13640,603 @@ class ChecksecCommand(GenericCommand):
 
 
 @register_command
+class SropHintCommand(GenericCommand):
+    """Hint for sigreturn oriented programming."""
+    _cmdline_ = "srop-hint"
+    _syntax_ = "{:s}".format(_cmdline_)
+    _category_ = "Exploit Development"
+
+    def do_invoke(self, argv):
+        s = "\n"
+        if is_x86_64():
+            s += 'exp  = struct.pack("<Q", syscall)    # rax = 15 (rt_sigreturn)\n'
+            s += 'exp += struct.pack("<Q", 0xcafebabe) # rt_sigframe.pretcode\n'
+            s += 'exp += struct.pack("<Q", 0x0)        # rt_sigframe.uc.uc_flags\n'
+            s += 'exp += struct.pack("<Q", 0x0)        # rt_sigframe.uc.uc_link\n'
+            s += 'exp += struct.pack("<Q", 0x0)        # rt_sigframe.uc.uc_stack.ss_sp\n'
+            s += 'exp += struct.pack("<I", 0x0)        # rt_sigframe.uc.uc_stack.ss_flags\n'
+            s += 'exp += struct.pack("<I", 0x0)        # rt_sigframe.uc.uc_stack.ss_size\n'
+            s += 'exp += struct.pack("<Q", 0x08)       # rt_sigframe.uc.uc_mcontext.r8\n'
+            s += 'exp += struct.pack("<Q", 0x09)       # rt_sigframe.uc.uc_mcontext.r9\n'
+            s += 'exp += struct.pack("<Q", 0x0a)       # rt_sigframe.uc.uc_mcontext.r10\n'
+            s += 'exp += struct.pack("<Q", 0x0b)       # rt_sigframe.uc.uc_mcontext.r11\n'
+            s += 'exp += struct.pack("<Q", 0x0c)       # rt_sigframe.uc.uc_mcontext.r12\n'
+            s += 'exp += struct.pack("<Q", 0x0d)       # rt_sigframe.uc.uc_mcontext.r13\n'
+            s += 'exp += struct.pack("<Q", 0x0e)       # rt_sigframe.uc.uc_mcontext.r14\n'
+            s += 'exp += struct.pack("<Q", 0x0f)       # rt_sigframe.uc.uc_mcontext.r15\n'
+            s += 'exp += struct.pack("<Q", 0x07)       # rt_sigframe.uc.uc_mcontext.rdi\n'
+            s += 'exp += struct.pack("<Q", 0x06)       # rt_sigframe.uc.uc_mcontext.rsi\n'
+            s += 'exp += struct.pack("<Q", 0x05)       # rt_sigframe.uc.uc_mcontext.rbp\n'
+            s += 'exp += struct.pack("<Q", 0x02)       # rt_sigframe.uc.uc_mcontext.rbx\n'
+            s += 'exp += struct.pack("<Q", 0x04)       # rt_sigframe.uc.uc_mcontext.rdx\n'
+            s += 'exp += struct.pack("<Q", 0x01)       # rt_sigframe.uc.uc_mcontext.rax\n'
+            s += 'exp += struct.pack("<Q", 0x03)       # rt_sigframe.uc.uc_mcontext.rcx\n'
+            s += 'exp += struct.pack("<Q", 0xdeadface) # rt_sigframe.uc.uc_mcontext.rsp\n'
+            s += 'exp += struct.pack("<Q", 0xdeadbeef) # rt_sigframe.uc.uc_mcontext.rip\n'
+            s += 'exp += struct.pack("<Q", 0x00)       # rt_sigframe.uc.uc_mcontext.rflags\n'
+            s += 'exp += struct.pack("<H", 0x33)       # rt_sigframe.uc.uc_mcontext.cs\n'
+            s += 'exp += struct.pack("<H", 0x00)       # rt_sigframe.uc.uc_mcontext.gs\n'
+            s += 'exp += struct.pack("<H", 0x00)       # rt_sigframe.uc.uc_mcontext.fs\n'
+            s += 'exp += struct.pack("<H", 0x00)       # rt_sigframe.uc.uc_mcontext.__pad0\n'
+            s += 'exp += struct.pack("<Q", 0x0)        # rt_sigframe.uc.uc_mcontext.err\n'
+            s += 'exp += struct.pack("<Q", 0x0)        # rt_sigframe.uc.uc_mcontext.trapno\n'
+            s += 'exp += struct.pack("<Q", 0x0)        # rt_sigframe.uc.uc_mcontext.oldmask\n'
+            s += 'exp += struct.pack("<Q", 0x0)        # rt_sigframe.uc.uc_mcontext.cr2\n'
+            s += 'exp += struct.pack("<Q", 0x0)        # rt_sigframe.uc.uc_mcontext.fpstate # fpu/xmm are not restored if NULL\n'
+            s += 'exp += struct.pack("<Q", 0x0)        # rt_sigframe.uc.uc_mcontext.reserved[8]\n'
+            s += 'exp += struct.pack("<Q", 0x0)        # rt_sigframe.uc.uc_sigmask\n'
+            s += 'exp += struct.pack("<Q", 0x0)        # rt_sigframe.info\n'
+        elif is_x86_32():
+            s += 'exp  = struct.pack("<I", syscall)    # eax = 119 (sigreturn)\n'
+            s += 'exp += struct.pack("<I", 0x0)        # sigframe.sc.gs\n'
+            s += 'exp += struct.pack("<I", 0x0)        # sigframe.sc.fs\n'
+            s += 'exp += struct.pack("<I", 0x0)        # sigframe.sc.es\n'
+            s += 'exp += struct.pack("<I", 0x0)        # sigframe.sc.ds\n'
+            s += 'exp += struct.pack("<I", 0x7)        # sigframe.sc.edi\n'
+            s += 'exp += struct.pack("<I", 0x6)        # sigframe.sc.esi\n'
+            s += 'exp += struct.pack("<I", 0x5)        # sigframe.sc.ebp\n'
+            s += 'exp += struct.pack("<I", 0xdeadface) # sigframe.sc.esp\n'
+            s += 'exp += struct.pack("<I", 0x2)        # sigframe.sc.ebx\n'
+            s += 'exp += struct.pack("<I", 0x4)        # sigframe.sc.edx\n'
+            s += 'exp += struct.pack("<I", 0x3)        # sigframe.sc.ecx\n'
+            s += 'exp += struct.pack("<I", 0x1)        # sigframe.sc.eax\n'
+            s += 'exp += struct.pack("<I", 0x0)        # sigframe.sc.trapno\n'
+            s += 'exp += struct.pack("<I", 0x0)        # sigframe.sc.err\n'
+            s += 'exp += struct.pack("<I", 0xdeadbeef) # sigframe.sc.eip\n'
+            s += 'exp += struct.pack("<I", 0x23)       # sigframe.sc.cs # use 0x73 if 32bit native machine\n'
+            s += 'exp += struct.pack("<I", 0x0)        # sigframe.sc.eflags\n'
+            s += 'exp += struct.pack("<I", 0x0)        # sigframe.sc.esp_at_signal\n'
+            s += 'exp += struct.pack("<I", 0x2b)       # sigframe.sc.ss # use 0x7b if 32bit native machine\n'
+            s += 'exp += struct.pack("<I", 0x0)        # sigframe.sc.fpstate # fpu/xmm are not restored if NULL\n'
+            s += 'exp += struct.pack("<I", 0x0)        # sigframe.sc.oldmask\n'
+            s += 'exp += struct.pack("<I", 0x0)        # sigframe.sc.cr2\n'
+            s += '\n'
+        elif is_arm32():
+            s += 'exp += struct.pack("<I", pop_r7_pc)  # pop {r7, pc};\n'
+            s += 'exp += struct.pack("<I", 119)        # r7 = 119 (sigreturn)\n'
+            s += 'exp += struct.pack("<I", call_svc)   #\n'
+            s += 'exp += struct.pack("<I", 0x0)        # sigframe.uc.uc_flags\n'
+            s += 'exp += struct.pack("<I", 0x0)        # sigframe.uc.uc_link\n'
+            s += 'exp += struct.pack("<I", 0x0)        # sigframe.uc.uc_stack.ss_sp\n'
+            s += 'exp += struct.pack("<I", 0x0)        # sigframe.uc.uc_stack.ss_flags\n'
+            s += 'exp += struct.pack("<I", 0x0)        # sigframe.uc.uc_stack.ss_size\n'
+            s += 'exp += struct.pack("<I", 0x0)        # sigframe.uc.uc_mcontext.trapno\n'
+            s += 'exp += struct.pack("<I", 0x0)        # sigframe.uc.uc_mcontext.error_code\n'
+            s += 'exp += struct.pack("<I", 0x0)        # sigframe.uc.uc_mcontext.oldmask\n'
+            s += 'exp += struct.pack("<I", 0x00)       # sigframe.uc.uc_mcontext.arm_r0\n'
+            s += 'exp += struct.pack("<I", 0x01)       # sigframe.uc.uc_mcontext.arm_r1\n'
+            s += 'exp += struct.pack("<I", 0x02)       # sigframe.uc.uc_mcontext.arm_r2\n'
+            s += 'exp += struct.pack("<I", 0x03)       # sigframe.uc.uc_mcontext.arm_r3\n'
+            s += 'exp += struct.pack("<I", 0x04)       # sigframe.uc.uc_mcontext.arm_r4\n'
+            s += 'exp += struct.pack("<I", 0x05)       # sigframe.uc.uc_mcontext.arm_r5\n'
+            s += 'exp += struct.pack("<I", 0x06)       # sigframe.uc.uc_mcontext.arm_r6\n'
+            s += 'exp += struct.pack("<I", 0x07)       # sigframe.uc.uc_mcontext.arm_r7\n'
+            s += 'exp += struct.pack("<I", 0x08)       # sigframe.uc.uc_mcontext.arm_r8\n'
+            s += 'exp += struct.pack("<I", 0x09)       # sigframe.uc.uc_mcontext.arm_r9\n'
+            s += 'exp += struct.pack("<I", 0x0a)       # sigframe.uc.uc_mcontext.arm_r10\n'
+            s += 'exp += struct.pack("<I", 0x0b)       # sigframe.uc.uc_mcontext.arm_fp\n'
+            s += 'exp += struct.pack("<I", 0x0c)       # sigframe.uc.uc_mcontext.arm_ip\n'
+            s += 'exp += struct.pack("<I", 0xdeadface) # sigframe.uc.uc_mcontext.arm_sp\n'
+            s += 'exp += struct.pack("<I", 0x0d)       # sigframe.uc.uc_mcontext.arm_lr\n'
+            s += 'exp += struct.pack("<I", 0xdeadbeef) # sigframe.uc.uc_mcontext.arm_pc\n'
+            s += 'exp += struct.pack("<I", 0x0)        # sigframe.uc.uc_mcontext.arm_cpsr\n'
+            s += 'exp += struct.pack("<I", 0x0)        # sigframe.uc.uc_mcontext.fault_address\n'
+            s += 'exp += struct.pack("<I", 0x0)        # sigframe.uc.uc_sigmask\n'
+        elif is_arm64():
+            s += 'exp += struct.pack("<Q", ldp_x8_x9)  # ldp x8, x9, [sp], #16; ret x9;\n'
+            s += 'exp += struct.pack("<Q", 139)        # x8 = 139\n'
+            s += 'exp += struct.pack("<Q", call_svc)   # \n'
+            s += 'exp += struct.pack("<I", 0x0)*32     # rt_sigframe.info\n'
+            s += 'exp += struct.pack("<Q", 0x0)        # rt_sigframe.uc.uc_flags\n'
+            s += 'exp += struct.pack("<Q", 0x0)        # rt_sigframe.uc.uc_link\n'
+            s += 'exp += struct.pack("<Q", 0x0)        # rt_sigframe.uc.uc_stack.ss_sp\n'
+            s += 'exp += struct.pack("<Q", 0x0)        # rt_sigframe.uc.uc_stack.ss_flags\n'
+            s += 'exp += struct.pack("<Q", 0x0)        # rt_sigframe.uc.uc_stack.ss_size\n'
+            s += 'exp += struct.pack("<Q", 0x0)        # rt_sigframe.uc.uc_stack.__unused\n'
+            s += 'exp += struct.pack("<Q", 0x0)        # rt_sigframe.uc.uc_sigmask\n'
+            s += 'exp += struct.pack("<B", 0x0)*120    # rt_sigframe.uc.__unused[120]\n'
+            s += 'exp += struct.pack("<Q", 0x0)        # rt_sigframe.uc.uc_mcontext.fault_address\n'
+            s += 'exp += struct.pack("<Q", 0x00)       # rt_sigframe.uc.uc_mcontext.regs[31].x0\n'
+            s += 'exp += struct.pack("<Q", 0x01)       # rt_sigframe.uc.uc_mcontext.regs[31].x1\n'
+            s += 'exp += struct.pack("<Q", 0x02)       # rt_sigframe.uc.uc_mcontext.regs[31].x2\n'
+            s += 'exp += struct.pack("<Q", 0x03)       # rt_sigframe.uc.uc_mcontext.regs[31].x3\n'
+            s += 'exp += struct.pack("<Q", 0x04)       # rt_sigframe.uc.uc_mcontext.regs[31].x4\n'
+            s += 'exp += struct.pack("<Q", 0x05)       # rt_sigframe.uc.uc_mcontext.regs[31].x5\n'
+            s += 'exp += struct.pack("<Q", 0x06)       # rt_sigframe.uc.uc_mcontext.regs[31].x6\n'
+            s += 'exp += struct.pack("<Q", 0x07)       # rt_sigframe.uc.uc_mcontext.regs[31].x7\n'
+            s += 'exp += struct.pack("<Q", 0x08)       # rt_sigframe.uc.uc_mcontext.regs[31].x8\n'
+            s += 'exp += struct.pack("<Q", 0x09)       # rt_sigframe.uc.uc_mcontext.regs[31].x9\n'
+            s += 'exp += struct.pack("<Q", 0x0a)       # rt_sigframe.uc.uc_mcontext.regs[31].x10\n'
+            s += 'exp += struct.pack("<Q", 0x0b)       # rt_sigframe.uc.uc_mcontext.regs[31].x11\n'
+            s += 'exp += struct.pack("<Q", 0x0c)       # rt_sigframe.uc.uc_mcontext.regs[31].x12\n'
+            s += 'exp += struct.pack("<Q", 0x0d)       # rt_sigframe.uc.uc_mcontext.regs[31].x13\n'
+            s += 'exp += struct.pack("<Q", 0x0e)       # rt_sigframe.uc.uc_mcontext.regs[31].x14\n'
+            s += 'exp += struct.pack("<Q", 0x0f)       # rt_sigframe.uc.uc_mcontext.regs[31].x15\n'
+            s += 'exp += struct.pack("<Q", 0x10)       # rt_sigframe.uc.uc_mcontext.regs[31].x16\n'
+            s += 'exp += struct.pack("<Q", 0x11)       # rt_sigframe.uc.uc_mcontext.regs[31].x17\n'
+            s += 'exp += struct.pack("<Q", 0x12)       # rt_sigframe.uc.uc_mcontext.regs[31].x18\n'
+            s += 'exp += struct.pack("<Q", 0x13)       # rt_sigframe.uc.uc_mcontext.regs[31].x19\n'
+            s += 'exp += struct.pack("<Q", 0x14)       # rt_sigframe.uc.uc_mcontext.regs[31].x20\n'
+            s += 'exp += struct.pack("<Q", 0x15)       # rt_sigframe.uc.uc_mcontext.regs[31].x21\n'
+            s += 'exp += struct.pack("<Q", 0x16)       # rt_sigframe.uc.uc_mcontext.regs[31].x22\n'
+            s += 'exp += struct.pack("<Q", 0x17)       # rt_sigframe.uc.uc_mcontext.regs[31].x23\n'
+            s += 'exp += struct.pack("<Q", 0x18)       # rt_sigframe.uc.uc_mcontext.regs[31].x24\n'
+            s += 'exp += struct.pack("<Q", 0x19)       # rt_sigframe.uc.uc_mcontext.regs[31].x25\n'
+            s += 'exp += struct.pack("<Q", 0x1a)       # rt_sigframe.uc.uc_mcontext.regs[31].x26\n'
+            s += 'exp += struct.pack("<Q", 0x1b)       # rt_sigframe.uc.uc_mcontext.regs[31].x27\n'
+            s += 'exp += struct.pack("<Q", 0x1c)       # rt_sigframe.uc.uc_mcontext.regs[31].x28\n'
+            s += 'exp += struct.pack("<Q", 0x1d)       # rt_sigframe.uc.uc_mcontext.regs[31].x29\n'
+            s += 'exp += struct.pack("<Q", 0x1e)       # rt_sigframe.uc.uc_mcontext.regs[31].x30\n'
+            s += 'exp += struct.pack("<Q", 0xdeadface) # rt_sigframe.uc.uc_mcontext.sp\n'
+            s += 'exp += struct.pack("<Q", 0xdeadbeef) # rt_sigframe.uc.uc_mcontext.pc\n'
+            s += 'exp += struct.pack("<Q", 0x00)       # rt_sigframe.uc.uc_mcontext.pstate\n'
+        gef_print(s.rstrip())
+        return
+
+
+@register_command
+class Ret2dlHintCommand(GenericCommand):
+    """Hint for ret2dl."""
+    _cmdline_ = "ret2dl-hint"
+    _syntax_ = "{:s}".format(_cmdline_)
+    _category_ = "Exploit Development"
+
+    def do_invoke(self, argv):
+        s  = "\n"
+        s += "  +---.got/.got.plt @ itself-------+\n"
+        s += "  | GOT[0]: _DYNAMIC               |\n"
+        s += "  | GOT[1]: link_map               |\n"
+        s += "  | GOT[2]: _dl_runtime_resolve@ld |\n"
+        s += "  | GOT[3]: func1                  |\n"
+        s += "  | GOT[4]: func2                  |\n"
+        s += "  | GOT[5]: func3                  |\n"
+        s += "  | ...                            |\n"
+        s += "  +--------------------------------+\n"
+        s += "\n"
+        s += "If `link_map` and `_dl_runtime_resolve` are non-zero, just use them.\n"
+        s += "If they are zero, you have to resolve them from DT_DEBUG entry of _DYNAMIC.\n"
+        s += "\n"
+        s += "  +---_DYNAMIC @ itself------+     +---> +---r_debug--------+\n"
+        s += "  | QWORD tag                |     |     | QWORD r_version  |\n"
+        s += "  | QWORD value              |     |     | QWORD link_map   | <-- HERE\n"
+        s += "  +--------------------------+     |     | QWORD r_brk      |\n"
+        s += "  | ...                      |     |     | QWORD r_ldbase   |\n"
+        s += "  +--------------------------+     |     +------------------+\n"
+        s += "  | QWORD tag(0x15:DT_DEBUG) |     |\n"
+        s += "  | QWORD value              |-----+\n"
+        s += "  +--------------------------+\n"
+        s += "\n"
+        s += "  (binary itself)              (libc.so)                    (ld-linux.so)\n"
+        s += "  +---link_map---+     +-----> +---link_map---+     +-----> +---link_map---+\n"
+        s += "  | QWORD l_addr |     |       | QWORD l_addr |     |       | QWORD l_addr |\n"
+        s += "  | QWORD l_name |     |       | QWORD l_name |     |       | QWORD l_name |\n"
+        s += "  | QWORD l_ld   |     |       | QWORD l_ld   |---+ |       | QWORD l_ld   |\n"
+        s += "  | QWORD l_next |-----+       | QWORD l_next |---|-+       | QWORD l_next |\n"
+        s += "  | QWORD l_prev |             | QWORD l_prev |   |         | QWORD l_prev |\n"
+        s += "  +--------------+             +--------------+   |         +--------------+\n"
+        s += "                                                  |\n"
+        s += "        +-----------------------------------------+\n"
+        s += "        |\n"
+        s += "        +--> +---_DYNAMIC @ libc--------+     +---> +---.got/.got.plt @ libc---------+\n"
+        s += "             | QWORD tag                |     |     | GOT[0]: _DYNAMIC               |\n"
+        s += "             | QWORD value              |     |     | GOT[1]: link_map               |\n"
+        s += "             +--------------------------+     |     | GOT[2]: _dl_runtime_resolve@ld | <-- HERE\n"
+        s += "             | ...                      |     |     | GOT[3]: func1                  |\n"
+        s += "             +--------------------------+     |     | GOT[4]: func2                  |\n"
+        s += "             | QWORD tag(0x3:DT_PLTGOT) |     |     | GOT[5]: func3                  |\n"
+        s += "             | QWORD value              |-----+     | ...                            |\n"
+        s += "             +--------------------------+           +--------------------------------+\n"
+        s += "\n"
+        s += "\n"
+        s += "  _dl_runtime_resolve@.plt.got(link_map, reloc_arg)\n"
+        s += "    -> _dl_fix_up@ld(link_map, reloc_arg)\n"
+        s += "                                   |\n"
+        s += "                                   |\n"
+        if is_32bit():
+            s = s.replace("QWORD", "DWORD")
+            s += "  +-------reloc_arg as offset------+\n"
+            s += "  |\n"
+            s += "  |      +---.rel.plt-----------------------+                           +---.dynsym----------+          +---.dynstr-------+\n"
+            s += "  |      | DWORD r_offset                   |                           | DWORD st_name      |          | char[] symbol   |\n"
+            s += "  |      | DWORD r_info                     |                           | DWORD st_value     |     +--->| char[] symbol   |\n"
+            s += "  |      +----------------------------------+                           | DWORD st_size      |     |    | char[] symbol   |\n"
+            s += "  +----> | DWORD r_offset(=writable area)   |   (r_info>>8) * 0x18      | BYTE  st_info      |     |    | char[] symbol   |\n"
+            s += "         | DWORD r_info(=(dynsym_idx<<8)|7) |-------------+             | BYTE  st_other     |     |    | ...             |\n"
+            s += "         +----------------------------------+             |             | WORD  st_shndx     |     |    +-----------------+\n"
+            s += "         | ...                              |             +------------>+--------------------+     |\n"
+            s += "         +----------------------------------+                           | DWORD st_name      |-----+\n"
+            s += "                                                                        | DWORD st_value     |\n"
+            s += "                                                                        | DWORD st_size      |\n"
+            s += "                                                                        | BYTE  st_info      |\n"
+            s += "                                                                        | BYTE  st_other(=0) |\n"
+            s += "                                                                        | WORD  st_shndx     |\n"
+            s += "                                                                        +--------------------+\n"
+            s += "                                                                        | ...                |\n"
+            s += "                                                                        +--------------------+\n"
+        else:
+            s += "  +---reloc_arg * 0x18 as offset---+\n"
+            s += "  |\n"
+            s += "  |      +---.rela.plt----------------------+                           +---.dynsym----------+          +---.dynstr-------+\n"
+            s += "  |      | QWORD r_offset                   |                           | DWORD st_name      |          | char[] symbol   |\n"
+            s += "  |      | QWORD r_info                     |                           | BYTE  st_info      |     +--->| char[] symbol   |\n"
+            s += "  |      | QWORD r_addend                   |                           | BYTE  st_other     |     |    | char[] symbol   |\n"
+            s += "  +----> +----------------------------------+                           | WORD  st_shndx     |     |    | char[] symbol   |\n"
+            s += "         | QWORD r_offset(=writable area)   |   (r_info>>32) * 0x18     | QWORD st_value     |     |    | ...             |\n"
+            s += "         | QWORD r_info(=(dynsym_idx<<32)|7)|-------------+             | QWORD st_size      |     |    +-----------------+\n"
+            s += "         | QWORD r_addend                   |             +------------>+--------------------+     |\n"
+            s += "         +----------------------------------+                           | DWORD st_name      |-----+\n"
+            s += "         | ...                              |                           | BYTE  st_info      |\n"
+            s += "         +----------------------------------+                           | BYTE  st_other(=0) |\n"
+            s += "                                                                        | WORD  st_shndx     |\n"
+            s += "                                                                        | QWORD st_value     |\n"
+            s += "                                                                        | QWORD st_size      |\n"
+            s += "                                                                        +--------------------+\n"
+            s += "                                                                        | ...                |\n"
+            s += "                                                                        +--------------------+\n"
+        s += "\n"
+        s += "Use `dynamic` and `linkmap` to display the structure.\n"
+        gef_print(s.rstrip())
+        return
+
+
+@register_command
+class LinkmapCommand(GenericCommand):
+    """Dump link_map with iterating."""
+    _cmdline_ = "linkmap"
+    _syntax_ = "{:s} [-h] [-a LINK_MAP_ADDRESS]".format(_cmdline_)
+    _example_ = "{:s} # dump itself\n".format(_cmdline_)
+    _example_ += "{:s} -a 0x00007ffff7ffe190 # dump specific address".format(_cmdline_)
+    _category_ = "Process Information"
+
+    def dump_linkmap(self, link_map):
+        section = process_lookup_address(link_map)
+        info("link_map: {:#x}".format(link_map))
+        info("map: {:#x}-{:#x} ({:s})".format(section.page_start, section.page_end, str(section.permission)))
+
+        current = link_map
+        while True:
+            addr = current
+            l_addr = read_int_from_memory(current)
+            current += current_arch.ptrsize
+            l_name = read_int_from_memory(current)
+            name = read_cstring_from_memory(l_name)
+            current += current_arch.ptrsize
+            l_ld = read_int_from_memory(current)
+            current += current_arch.ptrsize
+            l_next = read_int_from_memory(current)
+            current += current_arch.ptrsize
+            l_prev = read_int_from_memory(current)
+            current += current_arch.ptrsize
+
+            if not name:
+                name = "(binary itself)"
+            gef_print(titlify(name))
+            if is_32bit():
+                gef_print("{:#010x}:  {:#010x} {:#010x}  |  load_address, name".format(addr, l_addr, l_name))
+                gef_print("{:#010x}:  {:#010x} {:#010x}  |  dynamic, next".format(addr + current_arch.ptrsize*2, l_ld, l_next))
+                gef_print("{:#010x}:  {:#010x} {:10s}  |  prev".format(addr + current_arch.ptrsize*4, l_prev, ""))
+            else:
+                gef_print("{:#018x}:  {:#018x} {:#018x}  |  load_address, name".format(addr, l_addr, l_name))
+                gef_print("{:#018x}:  {:#018x} {:#018x}  |  dynamic, next".format(addr + current_arch.ptrsize*2, l_ld, l_next))
+                gef_print("{:#018x}:  {:#018x} {:18s}  |  prev".format(addr + current_arch.ptrsize*4, l_prev, ""))
+
+            if l_next == 0:
+                break
+            current = l_next
+        return
+
+    @staticmethod
+    def get_linkmap(filename):
+        info("filename: {:s}".format(filename))
+        elf = Elf(filename)
+        sec = checksec(filename)
+
+        try:
+            got = [s for s in elf.shdrs if s.sh_name == ".got.plt"][0].sh_addr
+        except:
+            got = [s for s in elf.shdrs if s.sh_name == ".got"][0].sh_addr
+        if sec["PIE"]:
+            load_base = get_section_base_address(filename)
+            got += load_base
+
+        link_map_org = link_map = read_int_from_memory(got + current_arch.ptrsize)
+        if link_map:
+            if sec["PIE"]:
+                link_map += load_base
+                info("GOT[1]: {:#x} -> {:#x} ({:#x})".format(got + current_arch.ptrsize, link_map_org, link_map))
+            else:
+                info("GOT[1]: {:#x} -> {:#x}".format(got + current_arch.ptrsize, link_map))
+        else:
+            # Full-RELRO
+            err("GOT[1]: {:#x} -> {:#x}. Since link_map is 0, we will try to get from DT_DEBUG.".format(got + current_arch.ptrsize, link_map))
+            current = dynamic = DynamicCommand.get_dynamic(filename)
+            while True:
+                tag = read_int_from_memory(current)
+                current += current_arch.ptrsize
+                val = read_int_from_memory(current)
+                current += current_arch.ptrsize
+                if tag not in DynamicCommand.DT_TABLE:
+                    link_map = None
+                    info("Not found link_map")
+                    break
+                if DynamicCommand.DT_TABLE[tag] == "DT_DEBUG":
+                    dt_debug = val
+                    val_addr = current - current_arch.ptrsize
+                    info("_DYNAMIC+{:#x}(=DT_DEBUG): {:#x} -> {:#x}".format(val_addr - dynamic, val_addr, dt_debug))
+                    link_map = read_int_from_memory(dt_debug + current_arch.ptrsize)
+                    info("DT_DEBUG+{:#x}: {:#x} -> {:#x}".format(current_arch.ptrsize, dt_debug + current_arch.ptrsize, link_map))
+                    break
+        return link_map
+
+    @only_if_gdb_running
+    @only_if_gdb_target_local
+    @only_if_not_qemu_system
+    def do_invoke(self, argv):
+        if "-h" in argv:
+            self.usage()
+            return
+
+        filename = None
+        link_map = None
+
+        if "-a" in argv:
+            try:
+                idx = argv.index("-a")
+                link_map = int(argv[idx + 1], 0)
+                argv = argv[:idx] + argv[idx+2:]
+            except:
+                self.usage()
+                return
+        else:
+            filename = get_filepath()
+
+        if filename:
+            if not os.path.exists(filename):
+                err("{:s} is not found.".format(filename))
+                return
+            if is_static(filename):
+                info("The binary is static build. There is no link_map.")
+                return
+            try:
+                link_map = self.get_linkmap(filename)
+            except:
+                err("Failed to get link_map.")
+                return
+
+        if link_map is None:
+            info("link_map is 0.")
+            return
+
+        try:
+            self.dump_linkmap(link_map)
+        except:
+            err("Failed to parse.")
+        return
+
+
+@register_command
+class DynamicCommand(GenericCommand):
+    """Display current status of the _DYNAMIC area."""
+    _cmdline_ = "dynamic"
+    _syntax_ = "{:s} [-h] [-a DYNAMIC_ADDRESS|-f FILENAME]".format(_cmdline_)
+    _example_ = "{:s} # dump itself\n".format(_cmdline_)
+    _example_ += "{:s} -f /lib/x86_64-linux-gnu/libc-2.31.so # dump specific binary\n".format(_cmdline_)
+    _example_ += "{:s} -a 0x403de0 # dump specific address".format(_cmdline_)
+    _category_ = "Process Information"
+
+    DT_TABLE = {
+        0: "DT_NULL",
+        1: "DT_NEEDED",
+        2: "DT_PLTRELSZ",
+        3: "DT_PLTGOT",
+        4: "DT_HASH",
+        5: "DT_STRTAB",
+        6: "DT_SYMTAB",
+        7: "DT_RELA",
+        8: "DT_RELASZ",
+        9: "DT_RELAENT",
+        10: "DT_STRSZ",
+        11: "DT_SYMENT",
+        12: "DT_INIT",
+        13: "DT_FINI",
+        14: "DT_SONAME",
+        15: "DT_RPATH",
+        16: "DT_SYMBOLIC",
+        17: "DT_REL",
+        18: "DT_RELSZ",
+        19: "DT_RELENT",
+        20: "DT_PLTREL",
+        21: "DT_DEBUG",
+        22: "DT_TEXTREL",
+        23: "DT_JMPREL",
+        24: "DT_BIND_NOW",
+        25: "DT_INIT_ARRAY",
+        26: "DT_FINI_ARRAY",
+        27: "DT_INIT_ARRAYSZ",
+        28: "DT_FINI_ARRAYSZ",
+        29: "DT_RUNPATH",
+        30: "DT_FLAGS",
+        #32: "DT_ENCODING", # unspecified
+        32: "DT_PREINIT_ARRAY",
+        33: "DT_PREINIT_ARRAYSZ",
+        34: "DT_SYMTAB_SHNDX",
+        35: "DT_RELRSZ",
+        36: "DT_RELR",
+        37: "DT_RELRENT",
+        #0x6000000d: "DT_LOOS", # unspecified
+        0x6000000e: "DT_SUNW_RTLDINF",
+        0x6000000f: "DT_ANDROID_REL",
+        0x60000010: "DT_ANDROID_RELSZ",
+        0x60000011: "DT_ANDROID_RELA",
+        0x60000012: "DT_ANDROID_RELASZ",
+        0x6fffe000: "DT_ANDROID_RELR",
+        0x6fffe001: "DT_ANDROID_RELRSZ",
+        0x6fffe003: "DT_ANDROID_RELRENT",
+        0x6fffe005: "DT_ANDROID_RELRCOUNT",
+        #0x6ffff000: "DT_HIOS", # unspecified
+        #0x6ffffd00: "DT_VALRNGLO", # unspecified
+        0x6ffffdf5: "DT_GNU_PRELINKED",
+        0x6ffffdf6: "DT_GNU_CONFLICTSZ",
+        0x6ffffdf7: "DT_GNU_LIBLISTSZ",
+        0x6ffffdf8: "DT_CHECKSUM",
+        0x6ffffdf9: "DT_PLTPADSZ",
+        0x6ffffdfa: "DT_MOVEENT",
+        0x6ffffdfb: "DT_MOVESZ",
+        0x6ffffdfc: "DT_FEATURE_1",
+        0x6ffffdfd: "DT_POSFLAG_1",
+        0x6ffffdfe: "DT_SYMINSZ",
+        0x6ffffdff: "DT_SYMINENT",
+        #0x6ffffdff: "DT_VALRNGHI", # unspecified
+        #0x6ffffe00: "DT_ADDRRNGLO", # unspecified
+        0x6ffffef5: "DT_GNU_HASH",
+        0x6ffffef6: "DT_TLSDESC_PLT",
+        0x6ffffef7: "DT_TLSDESC_GOT",
+        0x6ffffef8: "DT_GNU_CONFLICT",
+        0x6ffffef9: "DT_GNU_LIBLIST",
+        0x6ffffefa: "DT_CONFIG",
+        0x6ffffefb: "DT_DEPAUDIT",
+        0x6ffffefc: "DT_AUDIT",
+        0x6ffffefd: "DT_PLTPAD",
+        0x6ffffefe: "DT_MOVETAB",
+        0x6ffffeff: "DT_SYMINFO",
+        #0x6ffffeff: "DT_ADDRRNGHI", # unspecified
+        0x6ffffff0: "DT_VERSYM",
+        0x6ffffff9: "DT_RELACOUNT",
+        0x6ffffffa: "DT_RELCOUNT",
+        0x6ffffffb: "DT_FLAGS_1",
+        0x6ffffffc: "DT_VERDEF",
+        0x6ffffffd: "DT_VERDEFNUM",
+        0x6ffffffe: "DT_VERNEED",
+        0x6fffffff: "DT_VERNEEDNUM",
+        #0x70000000: "DT_LOPROC", # unspecified
+        0x70000001: "DT_SPARC_REGISTER",
+        0x7ffffffd: "DT_AUXILIARY",
+        0x7ffffffe: "DT_USED",
+        0x7fffffff: "DT_FILTER",
+        #0x7fffffff: "DT_HIPROC", # unspecified
+    }
+
+    def dump_dynamic(self, dynamic):
+        section = process_lookup_address(dynamic)
+        info("map: {:#x}-{:#x} ({:s})".format(section.page_start, section.page_end, str(section.permission)))
+
+        current = dynamic
+        while True:
+            addr = current
+            tag = read_int_from_memory(current)
+            current += current_arch.ptrsize
+            val = read_int_from_memory(current)
+            current += current_arch.ptrsize
+
+            if not tag in self.DT_TABLE:
+                break
+
+            if is_32bit():
+                gef_print("{:#010x}:  {:#010x} {:#010x}  |  tag:{:s}".format(addr, tag, val, self.DT_TABLE[tag]))
+            else:
+                gef_print("{:#018x}:  {:#018x} {:#018x}  |  tag:{:s}".format(addr, tag, val, self.DT_TABLE[tag]))
+        return
+
+    @staticmethod
+    def get_dynamic(filename):
+        info("filename: {:s}".format(filename))
+        elf = Elf(filename)
+        sec = checksec(filename)
+
+        try:
+            got = [s for s in elf.shdrs if s.sh_name == ".got.plt"][0].sh_addr
+        except:
+            got = [s for s in elf.shdrs if s.sh_name == ".got"][0].sh_addr
+        if sec["PIE"]:
+            load_base = get_section_base_address(filename)
+            got += load_base
+
+        dynamic_org = dynamic = read_int_from_memory(got)
+        if sec["PIE"]:
+            dynamic += load_base
+            info("GOT[0]: {:#x} -> {:#x} ({:#x})".format(got, dynamic_org, dynamic))
+        else:
+            info("GOT[0]: {:#x} -> {:#x}".format(got, dynamic))
+        return dynamic
+
+    @only_if_gdb_running
+    @only_if_gdb_target_local
+    @only_if_not_qemu_system
+    def do_invoke(self, argv):
+        if "-h" in argv:
+            self.usage()
+            return
+
+        filename = None
+        dynamic = None
+
+        if "-a" in argv:
+            try:
+                idx = argv.index("-a")
+                dynamic = int(argv[idx + 1], 0)
+                argv = argv[:idx] + argv[idx+2:]
+            except:
+                self.usage()
+                return
+        elif "-f" in argv:
+            try:
+                idx = argv.index("-f")
+                filename = argv[idx + 1]
+                argv = argv[:idx] + argv[idx+2:]
+            except:
+                self.usage()
+                return
+        else:
+            filename = get_filepath()
+
+        if filename:
+            if not os.path.exists(filename):
+                err("{:s} is not found.".format(filename))
+                return
+            if is_static(filename):
+                info("The binary is static build. There is no _DYNAMIC.")
+                return
+            if get_section_base_address(filename) is None:
+                err("{:s} is not loeaded.".format(filename))
+                return
+            try:
+                dynamic = self.get_dynamic(filename)
+            except:
+                err("Failed to get _DYNAMIC.")
+                return
+
+        if dynamic is None:
+            info("_DYNAMIC is 0.")
+            return
+
+        try:
+            self.dump_dynamic(dynamic)
+        except:
+            err("Failed to parse.")
+        return
+
+
+@register_command
 class GotCommand(GenericCommand):
     """Display current status of the got/plt inside the process."""
     _cmdline_ = "got"
@@ -16775,6 +17372,10 @@ class SyscallArgsCommand(GenericCommand):
 @lru_cache()
 def get_section_base_address(name):
     section = process_lookup_path(name)
+    if section:
+        return section.page_start
+    # Fail, retry with real path
+    section = process_lookup_path(os.path.realpath(name))
     if section:
         return section.page_start
     return None
