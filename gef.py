@@ -30612,7 +30612,8 @@ class PeekPointersCommand(GenericCommand):
             data = [u32(data[i:i+4]) for i in range(0, len(data), 4)]
 
         for off, addr_value in enumerate(data):
-            if not lookup_address(addr_value):
+            addr_v = lookup_address(addr_value)
+            if not addr_v:
                 continue
 
             for i, section in enumerate(sections):
@@ -30626,7 +30627,7 @@ class PeekPointersCommand(GenericCommand):
                 elif len(name)==0:
                     name = get_filename()
                 addr_pos = addr.value + off * current_arch.ptrsize
-                ok("Found at {:#x} to {:#x} {:s} ('{:s}', perm: {:s})".format(addr_pos, addr_value, sym, name, str(addr.section.permission)))
+                ok("Found at {:#x} to {:#x} {:s} ('{:s}', perm: {:s})".format(addr_pos, addr_value, sym, name, str(addr_v.section.permission)))
                 if unique:
                     del sections[i]
                 break
