@@ -18631,9 +18631,9 @@ class KernelCmdlineCommand(GenericCommand):
 
 
 @register_command
-class KernelPsCommand(GenericCommand):
+class KernelTaskCommand(GenericCommand):
     """Display process list under qemu-system."""
-    _cmdline_ = "kps"
+    _cmdline_ = "ktask"
     _syntax_ = "{:s}".format(_cmdline_)
     _example_ = "{:s}".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
