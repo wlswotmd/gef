@@ -1772,6 +1772,24 @@ def gdb_get_location_from_symbol(address):
     return name, offset
 
 
+def get_symbol(addr):
+    try:
+        if isinstance(addr, str):
+            addr = re.sub(r"\x1B\[([0-9]{1,2}(;[0-9]{1,2})*)?m", "", addr) # remove color
+            addr = int(addr, 16)
+        ret = gdb_get_location_from_symbol(addr)
+    except:
+        return ""
+    if ret is None:
+        return ""
+    sym_name, sym_offset = ret[0], ret[1]
+    sym_name = Instruction.smartify_text(sym_name)
+    if sym_offset == 0:
+        return " <{}>".format(sym_name)
+    else:
+        return " <{}+{:#x}>".format(sym_name, sym_offset)
+
+
 def gdb_disassemble(start_pc, **kwargs):
     """Disassemble instructions from `start_pc` (Integer). Accepts the following named parameters:
     - `end_pc` (Integer) only instructions whose start address fall in the interval from start_pc to end_pc are returned.
@@ -8202,21 +8220,6 @@ class DetailRegistersCommand(GenericCommand):
                 gef_print(line)
                 continue
 
-            def get_symbol(addr):
-                addr = re.sub(r"\x1B\[([0-9]{1,2}(;[0-9]{1,2})*)?m", "", addr) # remove color
-                try:
-                    ret = gdb_get_location_from_symbol(int(addr, 16))
-                except:
-                    return ""
-                if ret is None:
-                    return ""
-                sym_name, sym_offset = ret[0], ret[1]
-                sym_name = Instruction.smartify_text(sym_name)
-                if sym_offset == 0:
-                    return " <{}>".format(sym_name)
-                else:
-                    return " <{}+{:#x}>".format(sym_name, sym_offset)
-
             addr = lookup_address(align_address(int(value)))
             if addr.valid:
                 line += str(addr) + get_symbol(str(addr))
@@ -12708,21 +12711,6 @@ class PatchHistoryCommand(PatchCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
-
-        def get_symbol(addr):
-            try:
-                ret = gdb_get_location_from_symbol(addr)
-            except:
-                return ""
-            if ret is None:
-                return ""
-            sym_name, sym_offset = ret[0], ret[1]
-            sym_name = Instruction.smartify_text(sym_name)
-            if sym_offset == 0:
-                return " <{}>".format(sym_name)
-            else:
-                return " <{}+{:#x}>".format(sym_name, sym_offset)
-
         if self.history:
             for i, hist in enumerate(self.history):
                 b = ' '.join(["{:02x}".format(x) for x in hist["before_data"][:0x10]])
@@ -12747,21 +12735,6 @@ class PatchRevertCommand(PatchCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
-
-        def get_symbol(addr):
-            try:
-                ret = gdb_get_location_from_symbol(addr)
-            except:
-                return ""
-            if ret is None:
-                return ""
-            sym_name, sym_offset = ret[0], ret[1]
-            sym_name = Instruction.smartify_text(sym_name)
-            if sym_offset == 0:
-                return " <{}>".format(sym_name)
-            else:
-                return " <{}+{:#x}>".format(sym_name, sym_offset)
-
         if "-h" in argv:
             self.usage()
             return
@@ -12931,21 +12904,6 @@ class DereferenceCommand(GenericCommand):
         addrs = dereference_from(current_address)
         if len(addrs) == 1: # cannot access this area
             raise
-
-        def get_symbol(addr):
-            addr = re.sub(r"\x1B\[([0-9]{1,2}(;[0-9]{1,2})*)?m", "", addr) # remove color
-            try:
-                ret = gdb_get_location_from_symbol(int(addr, 16))
-            except:
-                return ""
-            if ret is None:
-                return ""
-            sym_name, sym_offset = ret[0], ret[1]
-            sym_name = Instruction.smartify_text(sym_name)
-            if sym_offset == 0:
-                return " <{}>".format(sym_name)
-            else:
-                return " <{}+{:#x}>".format(sym_name, sym_offset)
 
         # create address link list
         addrs_with_sym = [addr + get_symbol(addr) for addr in addrs[1:]]
@@ -14107,8 +14065,9 @@ class LinkmapCommand(GenericCommand):
         return
 
     @staticmethod
-    def get_linkmap(filename):
-        info("filename: {:s}".format(filename))
+    def get_linkmap(filename, silent=False):
+        if not silent:
+            info("filename: {:s}".format(filename))
         elf = Elf(filename)
         sec = checksec(filename)
 
@@ -14124,13 +14083,16 @@ class LinkmapCommand(GenericCommand):
         if link_map:
             if sec["PIE"]:
                 link_map += load_base
-                info("GOT[1]: {:#x} -> {:#x} ({:#x})".format(got + current_arch.ptrsize, link_map_org, link_map))
+                if not silent:
+                    info("GOT[1]: {:#x} -> {:#x} ({:#x})".format(got + current_arch.ptrsize, link_map_org, link_map))
             else:
-                info("GOT[1]: {:#x} -> {:#x}".format(got + current_arch.ptrsize, link_map))
+                if not silent:
+                    info("GOT[1]: {:#x} -> {:#x}".format(got + current_arch.ptrsize, link_map))
         else:
             # Full-RELRO
-            err("GOT[1]: {:#x} -> {:#x}. Since link_map is 0, we will try to get from DT_DEBUG.".format(got + current_arch.ptrsize, link_map))
-            current = dynamic = DynamicCommand.get_dynamic(filename)
+            if not silent:
+                err("GOT[1]: {:#x} -> {:#x}. Since link_map is 0, we will try to get from DT_DEBUG.".format(got + current_arch.ptrsize, link_map))
+            current = dynamic = DynamicCommand.get_dynamic(filename, silent)
             while True:
                 tag = read_int_from_memory(current)
                 current += current_arch.ptrsize
@@ -14138,14 +14100,17 @@ class LinkmapCommand(GenericCommand):
                 current += current_arch.ptrsize
                 if tag not in DynamicCommand.DT_TABLE:
                     link_map = None
-                    info("Not found link_map")
+                    if not silent:
+                        info("Not found link_map")
                     break
                 if DynamicCommand.DT_TABLE[tag] == "DT_DEBUG":
                     dt_debug = val
                     val_addr = current - current_arch.ptrsize
-                    info("_DYNAMIC+{:#x}(=DT_DEBUG): {:#x} -> {:#x}".format(val_addr - dynamic, val_addr, dt_debug))
+                    if not silent:
+                        info("_DYNAMIC+{:#x}(=DT_DEBUG): {:#x} -> {:#x}".format(val_addr - dynamic, val_addr, dt_debug))
                     link_map = read_int_from_memory(dt_debug + current_arch.ptrsize)
-                    info("DT_DEBUG+{:#x}: {:#x} -> {:#x}".format(current_arch.ptrsize, dt_debug + current_arch.ptrsize, link_map))
+                    if not silent:
+                        info("DT_DEBUG+{:#x}: {:#x} -> {:#x}".format(current_arch.ptrsize, dt_debug + current_arch.ptrsize, link_map))
                     break
         return link_map
 
@@ -14319,8 +14284,9 @@ class DynamicCommand(GenericCommand):
         return
 
     @staticmethod
-    def get_dynamic(filename):
-        info("filename: {:s}".format(filename))
+    def get_dynamic(filename, silent=False):
+        if not silent:
+            info("filename: {:s}".format(filename))
         elf = Elf(filename)
         sec = checksec(filename)
 
@@ -14335,9 +14301,11 @@ class DynamicCommand(GenericCommand):
         dynamic_org = dynamic = read_int_from_memory(got)
         if sec["PIE"]:
             dynamic += load_base
-            info("GOT[0]: {:#x} -> {:#x} ({:#x})".format(got, dynamic_org, dynamic))
+            if not silent:
+                info("GOT[0]: {:#x} -> {:#x} ({:#x})".format(got, dynamic_org, dynamic))
         else:
-            info("GOT[0]: {:#x} -> {:#x}".format(got, dynamic))
+            if not silent:
+                info("GOT[0]: {:#x} -> {:#x}".format(got, dynamic))
         return dynamic
 
     @only_if_gdb_running
@@ -14394,6 +14362,268 @@ class DynamicCommand(GenericCommand):
             self.dump_dynamic(dynamic)
         except:
             err("Failed to parse.")
+        return
+
+
+@register_command
+class DestructorDumpCommand(GenericCommand):
+    """Display registered destructor functions."""
+    _cmdline_ = "dtor-dump"
+    _syntax_ = _cmdline_
+    _category_ = "Process Information"
+
+    def ror(self, val, bits, arch_bits):
+        new_val = (val >> bits) | (val << (arch_bits-bits))
+        mask = (1 << arch_bits) - 1
+        return new_val & mask
+
+    def decode_function(self, fn):
+        if is_x86_64():
+            decoded_fn = self.ror(fn, 17, 64) ^ self.cookie
+        elif is_x86_32():
+            decoded_fn = self.ror(fn, 9, 32) ^ self.cookie
+        elif is_arm32() or is_arm64():
+            decoded_fn = fn ^ self.cookie
+        return decoded_fn
+
+    def perm(self, addr):
+        try:
+            return "[{:s}]".format(str(lookup_address(addr).section.permission))
+        except:
+            return "[???]"
+
+    def dump_tls_dtors(self):
+        if not self.tls:
+            err("TLS is not found")
+            return
+
+        if is_x86_64():
+            head_p = self.tls - 0x60
+        elif is_x86_32():
+            head_p = self.tls - 0x3c
+        elif is_arm32():
+            head_p = self.tls + 0x20
+        elif is_arm64():
+            head_p = self.tls + 0x40
+
+        current = head = read_int_from_memory(head_p)
+        if head:
+            gef_print("{:s}: {:#x}{:s}: {:#x}{:s}".format("tls_dtor_list", head_p, self.perm(head_p), head, self.perm(head)))
+        else:
+            gef_print("{:s}: {:#x}{:s}: {:#x}".format("tls_dtor_list", head_p, self.perm(head_p), head))
+        while current:
+            addr = current
+            func = read_int_from_memory(current)
+            current += current_arch.ptrsize
+            obj = read_int_from_memory(current)
+            current += current_arch.ptrsize
+            link_map = read_int_from_memory(current)
+            current += current_arch.ptrsize
+            next_ = read_int_from_memory(current)
+            current += current_arch.ptrsize
+            decoded_fn = self.decode_function(func)
+            sym = get_symbol(decoded_fn)
+            decoded_fn_s = Color.boldify("{:#x}".format(decoded_fn))
+            gef_print("    -> func:     {:#x}{:s}: {:#x} (={:s}{:s})".format(addr, self.perm(addr), func, decoded_fn_s, sym))
+            gef_print("       obj:      {:#x}{:s}: {:#x}".format(addr + current_arch.ptrsize*1, self.perm(addr + current_arch.ptrsize*1), obj))
+            gef_print("       link_map: {:#x}{:s}: {:#x}".format(addr + current_arch.ptrsize*2, self.perm(addr + current_arch.ptrsize*2), link_map))
+            gef_print("       next:     {:#x}{:s}: {:#x}".format(addr + current_arch.ptrsize*3, self.perm(addr + current_arch.ptrsize*3), next_))
+            current = next_
+        return
+
+    def dump_exit_funcs(self, name):
+        try:
+            head_p = parse_address("&"+name)
+        except:
+            err("Not found symbol ({:s})".format(name))
+            return
+
+        current = head = read_int_from_memory(head_p)
+        gef_print("{:s}: {:#x}{:s}: {:#x}{:s}".format(name, head_p, self.perm(head_p), head, self.perm(head)))
+        if not current:
+            return
+
+        next_ = read_int_from_memory(current)
+        current += current_arch.ptrsize
+        idx = read_int_from_memory(current)
+        current += current_arch.ptrsize
+        gef_print("    -> next:  {:#x}{:s}: {:#x}".format(head + current_arch.ptrsize*0, self.perm(head + current_arch.ptrsize*0), next_))
+        gef_print("       idx:   {:#x}{:s}: {:#x}".format(head + current_arch.ptrsize*1, self.perm(head + current_arch.ptrsize*1), idx))
+        for i in range(32):
+            addr = current
+            flavor = read_int_from_memory(current)
+            current += current_arch.ptrsize
+            fn = read_int_from_memory(current)
+            current += current_arch.ptrsize
+            arg = read_int_from_memory(current)
+            current += current_arch.ptrsize
+            dso_handle = read_int_from_memory(current)
+            current += current_arch.ptrsize
+            if fn == arg == dso_handle == 0: # flavor might be non-zero, so skip check
+                break
+            decoded_fn = self.decode_function(fn)
+            sym = get_symbol(decoded_fn)
+            decoded_fn_s = Color.boldify("{:#x}".format(decoded_fn))
+            fns = "       fns[{:d}]:{:#x}{:s}:".format(i, addr, self.perm(addr))
+            gef_print("{} flavor:{:d}".format(fns, flavor))
+            gef_print("{} func:{:#x} (={:s}{:s})".format(" "*len(fns), fn, decoded_fn_s, sym))
+            gef_print("{} arg:{:#x}".format(" "*len(fns), arg))
+            gef_print("{} dso_handle:{:#x}".format(" "*len(fns), dso_handle))
+        return
+
+    def yield_linkmap(self):
+        link_map = LinkmapCommand.get_linkmap(get_filepath(), silent=True)
+        while link_map:
+            dic = {}
+            dic["load_address"] = read_int_from_memory(link_map)
+            name_ptr = read_int_from_memory(link_map + current_arch.ptrsize*1)
+            dic["name"] = dic["name_org"] = read_cstring_from_memory(name_ptr)
+            if dic["name_org"] == "":
+                dic["name"] = "{:s}".format(get_filepath())
+            dic["dynamic"] = read_int_from_memory(link_map + current_arch.ptrsize*2)
+            dic["next"] = read_int_from_memory(link_map + current_arch.ptrsize*3)
+            yield dic
+            link_map = dic["next"]
+
+    def dump_sections_not_array(self, section_name):
+        if not is_static(get_filepath()):
+            for link_map in self.yield_linkmap():
+                if not os.path.exists(link_map["name"]):
+                    continue
+                elf = Elf(link_map["name"])
+                try:
+                    shdr = [s for s in elf.shdrs if s.sh_name == section_name][0]
+                except:
+                    continue
+                if is_pie(link_map["name"]):
+                    addr = shdr.sh_addr + link_map["load_address"]
+                else:
+                    addr = shdr.sh_addr
+                gef_print(link_map["name"])
+                sym = get_symbol(addr)
+                func_s = Color.boldify("{:#x}".format(addr))
+                gef_print("    -> {:s}{:s}".format(func_s, sym))
+        else:
+            elf = Elf(get_filepath())
+            try:
+                shdr = [s for s in elf.shdrs if s.sh_name == section_name][0]
+            except:
+                err("Not found {:s} section".format(section_name))
+                return
+            addr = shdr.sh_addr
+            gef_print(get_filepath())
+            sym = get_symbol(addr)
+            func_s = Color.boldify("{:#x}".format(addr))
+            gef_print("    -> {:s}{:s}".format(func_s, sym))
+        return
+
+    def dump_sections(self, section_name):
+        if not is_static(get_filepath()):
+            for link_map in self.yield_linkmap():
+                if not os.path.exists(link_map["name"]):
+                    continue
+                elf = Elf(link_map["name"])
+                try:
+                    shdr = [s for s in elf.shdrs if s.sh_name == section_name][0]
+                except:
+                    continue
+                entries = []
+                for i in range(shdr.sh_size // current_arch.ptrsize):
+                    if is_pie(link_map["name"]):
+                        addr = shdr.sh_addr + link_map["load_address"] + current_arch.ptrsize * i
+                    else:
+                        addr = shdr.sh_addr + current_arch.ptrsize * i
+                    func = read_int_from_memory(addr)
+                    if is_32bit() and func in [0, 0xffffffff]:
+                        continue
+                    if is_64bit() and func in [0, 0xffffffffffffffff]:
+                        continue
+                    entries.append([addr, func])
+                if not entries:
+                    continue
+                gef_print(link_map["name"])
+                for addr, func in entries:
+                    sym = get_symbol(func)
+                    func_s = Color.boldify("{:#x}".format(func))
+                    gef_print("    -> {:#x}{:s}: {:s}{:s}".format(addr, self.perm(addr), func_s, sym))
+        else:
+            elf = Elf(get_filepath())
+            try:
+                shdr = [s for s in elf.shdrs if s.sh_name == section_name][0]
+            except:
+                err("Not found {:s} section".format(section_name))
+                return
+            entries = []
+            for i in range(shdr.sh_size // current_arch.ptrsize):
+                addr = shdr.sh_addr + current_arch.ptrsize * i
+                func = read_int_from_memory(addr)
+                if is_32bit() and func in [0, 0xffffffff]:
+                    continue
+                if is_64bit() and func in [0, 0xffffffffffffffff]:
+                    continue
+                entries.append([addr, func])
+            if not entries:
+                err("Not found valid entry")
+                return
+            gef_print(get_filepath())
+            for addr, func in entries:
+                sym = get_symbol(func)
+                func_s = Color.boldify("{:#x}".format(func))
+                gef_print("    -> {:#x}{:s}: {:s}{:s}".format(addr, self.perm(addr), func_s, sym))
+        return
+
+    @only_if_gdb_running
+    @only_if_not_qemu_system
+    @only_if_x86_32_64_or_arm_32_64
+    def do_invoke(self, argv):
+        # init
+        if is_x86_64():
+            self.tls = TlsCommand.getfs()
+            self.cookie = read_int_from_memory(self.tls + 0x30)
+        elif is_x86_32():
+            self.tls = TlsCommand.getgs()
+            self.cookie = read_int_from_memory(self.tls + 0x18)
+        elif is_arm32() or is_arm64():
+            if is_arm32():
+                try:
+                    self.tls = parse_address("(unsigned int)__aeabi_read_tp()")
+                except:
+                    err("Not found symbol (__aeabi_read_tp)")
+                    return
+            else:
+                try:
+                    self.tls = get_register("$TPIDR_EL0")
+                except:
+                    err("Fail reading $TPIDR_EL0 register")
+                    return
+            try:
+                cookie_ptr = parse_address("&__pointer_chk_guard_local")
+            except:
+                err("Not found symbol (__pointer_chk_guard_local)")
+                return
+            self.cookie = read_int_from_memory(cookie_ptr)
+
+        # dump
+        gef_print(titlify("tls_dtor_list: registered by __cxa_thread_atexit_impl()"))
+        self.dump_tls_dtors()
+
+        gef_print(titlify("__exit_funcs: registered by atexit(), on_exit()"))
+        self.dump_exit_funcs("__exit_funcs")
+
+        gef_print(titlify("__quick_exit_funcs: registered by at_quick_exit()"))
+        self.dump_exit_funcs("__quick_exit_funcs")
+
+        gef_print(titlify(".fini_array"))
+        self.dump_sections(".fini_array")
+
+        gef_print(titlify(".fini"))
+        self.dump_sections_not_array(".fini")
+
+        gef_print(titlify(".dtors"))
+        self.dump_sections(".dtors")
+
+        gef_print(titlify("__libc_atexit"))
+        self.dump_sections("__libc_atexit")
         return
 
 
@@ -19868,10 +20098,9 @@ class EnvpCommand(GenericCommand):
 
 @register_command
 class TlsCommand(GenericCommand):
-    """Show TLS($gs/$fs) base address."""
+    """Show TLS base address."""
     _cmdline_ = "tls"
     _syntax_ = _cmdline_
-    _aliases_ = ["fsbase","gsbase",]
     _category_ = "Process Information"
 
     @staticmethod
@@ -19899,6 +20128,11 @@ class TlsCommand(GenericCommand):
                 return TlsCommand.getfsgs_qemu_usermode()
             else:
                 return 0
+        # fast path
+        fs = get_register("$fs_base")
+        if fs is not None:
+            return fs
+        # slow path
         PTRACE_ARCH_PRCTL = 30
         ARCH_GET_FS = 0x1003
         pid, lwpid, tid = gdb.selected_thread().ptid
@@ -19916,6 +20150,11 @@ class TlsCommand(GenericCommand):
                 return 0
             else:
                 return TlsCommand.getfsgs_qemu_usermode()
+        # fast path
+        gs = get_register("$gs_base")
+        if gs is not None:
+            return gs
+        # slow path
         PTRACE_ARCH_PRCTL = 30
         ARCH_GET_GS = 0x1004
         pid, lwpid, tid = gdb.selected_thread().ptid
@@ -19929,31 +20168,45 @@ class TlsCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_gdb_target_local
     @only_if_not_qemu_system
+    @only_if_x86_32_64_or_arm_32_64
     def do_invoke(self, argv):
-        if not is_x86():
-            err("Unsupported")
-            return
-
-        fsvalue = self.getfs()
-        gef_print(f"$fsbase = {fsvalue:#x}")
-        gdb.execute(f"set $fsbase = {fsvalue:#x}")
-
-        gsvalue = self.getgs()
-        gef_print(f"$gsbase = {gsvalue:#x}")
-        gdb.execute(f"set $gsbase = {gsvalue:#x}")
-
-        if is_x86_64() and fsvalue:
-            gef_print(titlify("TLS-0x80"))
-            gdb.execute("telescope $fsbase-0x80 16")
-            gef_print(titlify("TLS"))
-            gdb.execute("telescope $fsbase 16")
-            gdb.execute(f"set $tls = $fsbase")
-        elif is_x86_32() and gsvalue:
-            gef_print("TLS-0x40")
-            gdb.execute("telescope $gsbase-0x40 16")
-            gef_print("TLS:")
-            gdb.execute("telescope $gsbase 16")
-            gdb.execute(f"set $tls = $gsbase")
+        if is_x86_64():
+            fsvalue = self.getfs()
+            if fsvalue:
+                gef_print(titlify("TLS-0x80"))
+                gdb.execute("telescope {:#x} 16".format(fsvalue - 0x80))
+                gef_print(titlify("TLS"))
+                gdb.execute("telescope {:#x} 16".format(fsvalue))
+                gef_print("set $tls = {:#x}".format(fsvalue))
+                gdb.execute("set $tls = {:#x}".format(fsvalue))
+        elif is_x86_32():
+            gsvalue = self.getgs()
+            if gsvalue:
+                gef_print(titlify("TLS-0x40"))
+                gdb.execute("telescope {:#x} 16".format(gsvalue - 0x40))
+                gef_print(titlify("TLS"))
+                gdb.execute("telescope {:#x} 16".format(gsvalue))
+                gef_print("set $tls = {:#x}".format(gsvalue))
+                gdb.execute("set $tls = {:#x}".format(gsvalue))
+        elif is_arm32():
+            if not safe_parse_and_eval("__aeabi_read_tp"):
+                err("Not found symbol (__aeabi_read_tp)")
+                return
+            gef_print("p $tls = (unsigned int)__aeabi_read_tp()")
+            tls = gdb.execute("p $tls = (unsigned int)__aeabi_read_tp()", to_string=True)
+            if tls:
+                gef_print(titlify("TLS-0x40"))
+                gdb.execute("telescope $tls-0x40 16")
+                gef_print(titlify("TLS"))
+                gdb.execute("telescope $tls 16")
+        elif is_arm64():
+            gef_print("p $tls = $TPIDR_EL0")
+            tls = gdb.execute("p $tls = $TPIDR_EL0", to_string=True)
+            if tls:
+                gef_print(titlify("TLS-0x80"))
+                gdb.execute("telescope $tls-0x80 16")
+                gef_print(titlify("TLS"))
+                gdb.execute("telescope $tls 16")
         return
 
 

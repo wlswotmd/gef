@@ -230,7 +230,7 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/envp.png)
 * `gdtinfo`: pretty prints GDT sample.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/gdtinfo.png)
-* `tls`: pretty prints `$fs` base / `$gs` base.
+* `tls`: pretty prints TLS area.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/tls.png)
 * `magic`: is useful addresses resolver in gilbc.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/magic.png)
@@ -302,6 +302,8 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/linkmap.png)
 * `ret2dl-hint`: show the structure used by ret2dl as hint.
 * `srop-hint`: show the code for srop as hint.
+* `dtor-dump`: dumps some destructor functions list.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dtor-dump.png)
 
 ### Other
 * Replace the unicode character to ASCII.
