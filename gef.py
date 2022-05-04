@@ -814,21 +814,31 @@ class Instruction:
         if len(format_spec) == 0 or format_spec[-1] != "o":  # format_spec example: "4o"
             return str(self)
 
+        # format opcode
         if format_spec == "o": # no specifed length
             opcodes_len = len(self.opcodes)
         else:
             opcodes_len = int(format_spec[:-1])
-
-        opcodes_text = "".join("{:02x}".format(b) for b in self.opcodes) # "488d0de51e0100"
+        opcodes_text = "".join("{:02x}".format(b) for b in self.opcodes) # ex:"488d0de51e0100"
         # ex1: spec:"4o", opcodes:01020304   -> 01020304
         # ex2: spec:"4o", opcodes:0102030405 -> 010203..
         if opcodes_len < len(self.opcodes):
             opcodes_text = opcodes_text[:opcodes_len * 2 - 2] + ".."
 
+        # format lcoation
         location = self.smartify_text(self.location)
         if not location:
             location = "<NO_SYMBOL>"
+        else:
+            r = re.search(r"<(.+)\+(\d+)>", location)
+            if r:
+                location = "<{}+{:#x}>".format(r.group(1), int(r.group(2)))
+
+        # format operands
         operands = self.smartify_text(", ".join(self.operands))
+        r = re.search(r"(.*?)<(.+)\+(\d+)>(.*?)", operands)
+        if r:
+            operands = "{}<{}+{:#x}>{}".format(r.group(1), r.group(2), int(r.group(3)), r.group(4))
 
         # resolve symbol
         sym = ""
@@ -8159,7 +8169,7 @@ class DetailRegistersCommand(GenericCommand):
                 if sym_offset == 0:
                     return " <{}>".format(sym_name)
                 else:
-                    return " <{}+{}>".format(sym_name, sym_offset)
+                    return " <{}+{:#x}>".format(sym_name, sym_offset)
 
             addr = lookup_address(align_address(int(value)))
             if addr.valid:
@@ -12753,7 +12763,7 @@ class DereferenceCommand(GenericCommand):
             if sym_offset == 0:
                 return " <{}>".format(sym_name)
             else:
-                return " <{}+{}>".format(sym_name, sym_offset)
+                return " <{}+{:#x}>".format(sym_name, sym_offset)
 
         # create address link list
         addrs_with_sym = [addr + get_symbol(addr) for addr in addrs[1:]]
