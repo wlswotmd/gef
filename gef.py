@@ -3410,12 +3410,15 @@ def read_physmem(paddr, size):
 
 
 def get_current_mmu_mode():
-    response = gdb.execute('maintenance packet qqemu.PhyMemMode', to_string=True, from_tty=False)
-    if 'received: "0"' in response:
-        return "virt"
-    elif 'received: "1"' in response:
-        return "phys"
-    else:
+    try:
+        response = gdb.execute('maintenance packet qqemu.PhyMemMode', to_string=True, from_tty=False)
+        if 'received: "0"' in response:
+            return "virt"
+        elif 'received: "1"' in response:
+            return "phys"
+        else:
+            return False
+    except:
         return False
 
 
@@ -12423,7 +12426,9 @@ class PatchCommand(GenericCommand):
     _cmdline_ = "patch"
     _syntax_ = "{:s} [-h] qword|dword|word|byte [--phys] LOCATION VALUES\n".format(_cmdline_)
     _syntax_ += "{:s} [-h] string [--phys] LOCATION \"double-escaped string\" [LENGTH]\n".format(_cmdline_)
-    _syntax_ += "{:s} [-h] pattern [--phys] LOCATION LENGTH".format(_cmdline_)
+    _syntax_ += "{:s} [-h] pattern [--phys] LOCATION LENGTH\n".format(_cmdline_)
+    _syntax_ += "{:s} [-h] history\n".format(_cmdline_)
+    _syntax_ += "{:s} [-h] revert [HISTORY]\n".format(_cmdline_)
     _category_ = "Show/Modify Memory"
     SUPPORTED_SIZES = {
         "qword": (8, "Q"),
@@ -12431,6 +12436,7 @@ class PatchCommand(GenericCommand):
         "word": (2, "H"),
         "byte": (1, "B"),
     }
+    history = []
 
     def __init__(self):
         super().__init__(prefix=True, complete=gdb.COMPLETE_LOCATION)
@@ -12478,7 +12484,10 @@ class PatchCommand(GenericCommand):
         for value in values:
             value = parse_address(value) & ((1 << size * 8) - 1)
             vstr = struct.pack(d + fcode, value)
+            before_data = read_memory(addr, length=size)
             write_memory(addr, vstr, length=size)
+            after_data = read_memory(addr, length=size)
+            self.history.insert(0, {"addr":addr, "before_data":before_data, "after_data":after_data, "physmode":get_current_mmu_mode()})
             addr += size
 
         if phys_mode:
@@ -12593,7 +12602,10 @@ class PatchStringCommand(PatchCommand):
             s = s * (length // len(s) + 1)
             s = s[:length]
 
+        before_data = read_memory(addr, length=len(s))
         write_memory(addr, s, len(s))
+        after_data = read_memory(addr, length=len(s))
+        self.history.insert(0, {"addr":addr, "before_data":before_data, "after_data":after_data, "physmode":get_current_mmu_mode()})
 
         if phys_mode:
             if orig_mode == "virt":
@@ -12637,13 +12649,123 @@ class PatchPatternCommand(PatchCommand):
         addr = align_address(parse_address(location))
         s = gef_pystring(generate_cyclic_pattern(int(length, 0)))
 
+        before_data = read_memory(addr, length=len(s))
         write_memory(addr, s, len(s))
+        after_data = read_memory(addr, length=len(s))
+        self.history.insert(0, {"addr":addr, "before_data":before_data, "after_data":after_data, "physmode":get_current_mmu_mode()})
 
         if phys_mode:
             if orig_mode == "virt":
                 disable_phys()
         return
 
+
+@register_command
+class PatchHistoryCommand(PatchCommand):
+    """Show patch history."""
+    _cmdline_ = "patch history"
+    _syntax_ = _cmdline_
+    _category_ = "Show/Modify Memory"
+
+    @only_if_gdb_running
+    def do_invoke(self, argv):
+
+        def get_symbol(addr):
+            try:
+                ret = gdb_get_location_from_symbol(addr)
+            except:
+                return ""
+            if ret is None:
+                return ""
+            sym_name, sym_offset = ret[0], ret[1]
+            sym_name = Instruction.smartify_text(sym_name)
+            if sym_offset == 0:
+                return " <{}>".format(sym_name)
+            else:
+                return " <{}+{:#x}>".format(sym_name, sym_offset)
+
+        if self.history:
+            for i, hist in enumerate(self.history):
+                b = ' '.join(["{:02x}".format(x) for x in hist["before_data"][:0x10]])
+                if len(hist["before_data"]) > 0x10:
+                    b += "..."
+                a = ' '.join(["{:02x}".format(x) for x in hist["after_data"][:0x10]])
+                if len(hist["after_data"]) > 0x10:
+                    a += "..."
+                sym = get_symbol(hist["addr"])
+                gef_print("[{:d}] {:#x}{:s}: {:s} -> {:s}".format(i, hist["addr"], sym, b, a))
+        else:
+            info("Patch history is empty.")
+        return
+
+
+@register_command
+class PatchRevertCommand(PatchCommand):
+    """Revert patch history."""
+    _cmdline_ = "patch revert"
+    _syntax_ = "{:s} [-h] HISTORY".format(_cmdline_)
+    _category_ = "Show/Modify Memory"
+
+    @only_if_gdb_running
+    def do_invoke(self, argv):
+
+        def get_symbol(addr):
+            try:
+                ret = gdb_get_location_from_symbol(addr)
+            except:
+                return ""
+            if ret is None:
+                return ""
+            sym_name, sym_offset = ret[0], ret[1]
+            sym_name = Instruction.smartify_text(sym_name)
+            if sym_offset == 0:
+                return " <{}>".format(sym_name)
+            else:
+                return " <{}+{:#x}>".format(sym_name, sym_offset)
+
+        if "-h" in argv:
+            self.usage()
+            return
+
+        try:
+            revert_target = int(argv[0])
+        except:
+            self.usage()
+            return
+
+        if not (0 <= revert_target < len(self.history)):
+            err("Invalid target index")
+            return
+
+        revert_count = revert_target + 1
+        while self.history and revert_count > 0:
+            hist = self.history.pop(0)
+            b = ' '.join(["{:02x}".format(x) for x in hist["before_data"][:0x10]])
+            if len(hist["before_data"]) > 0x10:
+                b += "..."
+            a = ' '.join(["{:02x}".format(x) for x in hist["after_data"][:0x10]])
+            if len(hist["after_data"]) > 0x10:
+                a += "..."
+            sym = get_symbol(hist["addr"])
+            info("revert {:#x}{:s}: {:s} -> {:s}".format(hist["addr"], sym, a, b))
+
+            if is_supported_physmode():
+                orig_mode = get_current_mmu_mode()
+                if orig_mode == "virt" and hist["physmode"] == "phys":
+                    enable_phys()
+                elif orig_mode == "phys" and hist["physmode"] == "virt":
+                    disable_phys()
+
+            write_memory(hist["addr"], hist["before_data"], length=len(hist["before_data"]))
+
+            if is_supported_physmode():
+                if orig_mode == "virt" and get_current_mmu_mode() == "phys":
+                    disable_phys()
+                elif orig_mode == "phys" and get_current_mmu_mode() == "virt":
+                    enable_phys()
+
+            revert_count -= 1
+        return
 
 @lru_cache()
 def dereference_from(addr):

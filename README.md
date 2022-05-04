@@ -208,7 +208,7 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hexdump.png)
 * `patch`: is improved.
     * It supports physical memory if under qemu-system.
-    * Added a new mode: `patch pattern`.
+    * Added 3 new modes: `patch pattern`, `patch history` and `patch revert`.
     * Added a new option to write repeatedly up to the specified length for `patch string`.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/patch.png)
 * `search-pattern`: is improved.
