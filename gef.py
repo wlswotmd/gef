@@ -8319,7 +8319,7 @@ class ShellcodeGetCommand(GenericCommand):
 class RopperCommand(GenericCommand):
     """Ropper (http://scoding.de/ropper) plugin."""
     _cmdline_ = "ropper"
-    _syntax_ = "{:s} [ROPPER_OPTIONS]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [ROPPER_OPTIONS]".format(_cmdline_)
     _category_ = "Exploit Development"
 
     def __init__(self):
@@ -8338,11 +8338,22 @@ class RopperCommand(GenericCommand):
     @only_if_not_qemu_system
     def do_invoke(self, argv):
         ropper = sys.modules["ropper"]
+        if "-h" in argv:
+            os.system("ropper --help")
+            os.system("ropper --help-examples")
+            return
+
         if "--file" not in argv:
             path = get_filepath()
-            sect = next(filter(lambda x: x.path == path, get_process_maps()))
+            if path is None:
+                err("Missing info about file. Please set: `file /path/to/target_binary`")
+                return
             argv.append("--file")
             argv.append(path)
+            if is_qemu_usermode():
+                sect = next(filter(lambda x: x.path == "[code]", get_process_maps()))
+            else:
+                sect = next(filter(lambda x: x.path == path, get_process_maps()))
             argv.append("-I")
             argv.append("{:#x}".format(sect.page_start))
 
