@@ -9260,7 +9260,8 @@ class ElfInfoCommand(GenericCommand):
 
         gef_print(titlify("Program Header"))
         fmt = "  [{:>2s}] {:12s} {:>10s} {:>10s} {:>10s} {:>10s} {:>10s} {:5s} {:>8s}"
-        gef_print(fmt.format("#", "Type", "Offset", "Virtaddr", "Physaddr", "FileSiz", "MemSiz", "Flags", "Align"))
+        legend = ["#", "Type", "Offset", "Virtaddr", "Physaddr", "FileSiz", "MemSiz", "Flags", "Align"]
+        gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
         for i, p in enumerate(elf.phdrs):
             p_type = ptype[p.p_type] if p.p_type in ptype else "UNKNOWN"
             p_flags = pflags[p.p_flags] if p.p_flags in pflags else "???"
@@ -9312,7 +9313,8 @@ class ElfInfoCommand(GenericCommand):
             gef_print("Not loaded")
         else:
             fmt = "  [{:>2s}] {:20s} {:>15s} {:>10s} {:>10s} {:>10s} {:>10s} {:5s} {:4s} {:4s} {:>8s}"
-            gef_print(fmt.format("#", "Name", "Type", "Address", "Offset", "Size", "EntSiz", "Flags", "Link", "Info", "Align"))
+            legend = ["#", "Name", "Type", "Address", "Offset", "Size", "EntSiz", "Flags", "Link", "Info", "Align"]
+            gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
             for i, s in enumerate(elf.shdrs):
                 sh_type = stype[s.sh_type] if s.sh_type in stype else "UNKNOWN"
                 sh_flags = ""
