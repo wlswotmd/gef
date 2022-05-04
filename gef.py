@@ -150,7 +150,6 @@ __functions__                          = []
 __aliases__                            = []
 __config__                             = {}
 __watches__                            = {}
-__infos_files__                        = []
 __gef_convenience_vars_index__         = 0
 __context_messages__                   = []
 __heap_allocated_list__                = []
@@ -4100,7 +4099,6 @@ def get_process_maps(outer=False):
         return list(get_info_sections())
 
 
-@lru_cache()
 def get_info_sections():
     """Retrieve the debuggee sections."""
     stream = StringIO(gdb.execute("maintenance info sections", to_string=True))
@@ -4123,14 +4121,10 @@ def get_info_sections():
     return
 
 
-@lru_cache()
 def get_info_files():
     """Retrieve all the files loaded by debuggee."""
     lines = gdb.execute("info files", to_string=True).splitlines()
-
-    if len(lines) < len(__infos_files__):
-        return __infos_files__
-
+    infos_files = []
     for line in lines:
         line = line.strip()
 
@@ -4145,16 +4139,18 @@ def get_info_files():
         addr_end = int(blobs[2], 16)
         section_name = blobs[4]
 
-        if len(blobs) == 7:
+        if "system-supplied DSO" in line:
+            filename = "[vdso]"
+        elif len(blobs) == 7:
             filename = blobs[6]
         else:
             filename = get_filepath()
 
         info = Zone(section_name, addr_start, addr_end, filename)
 
-        __infos_files__.append(info)
+        infos_files.append(info)
 
-    return __infos_files__
+    return infos_files
 
 
 @lru_cache()
