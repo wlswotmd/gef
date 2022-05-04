@@ -83,6 +83,7 @@ import configparser
 import psutil
 import math
 import json
+import timeout
 
 from functools import lru_cache
 from io import StringIO
@@ -4450,11 +4451,18 @@ def keystone_assemble(code, arch, mode, *args, **kwargs):
     code = gef_pybytes(code)
     addr = kwargs.get("addr", 0x1000)
 
+    @timeout.timeout(duration=1)
+    def ks_asm(code, addr):
+        return ks.asm(code, addr)
+
     try:
         ks = keystone.Ks(arch, mode)
-        enc, cnt = ks.asm(code, addr)
+        enc, cnt = ks_asm(code, addr)
     except keystone.KsError as e:
         err("Keystone assembler error: {:s}".format(str(e)))
+        return None
+    except timeout.TimeoutException:
+        err("Keystone assembler timeout error")
         return None
 
     if cnt == 0:

@@ -10,7 +10,7 @@ apt-get update
 apt-get install -y gdb-multiarch python3-pip binutils gcc ruby-dev
 
 echo "[+] pip3"
-pip3 install rpyc psutil crccheck unicorn capstone ropper keystone-engine
+pip3 install rpyc psutil crccheck unicorn capstone ropper keystone-engine py-timeout
 pip3 install --upgrade lz4 zstandard git+https://github.com/clubby789/python-lzo@b4e39df
 pip3 install --upgrade git+https://github.com/marin-m/vmlinux-to-elf
 

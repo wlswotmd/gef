@@ -10,7 +10,7 @@ apt-get update
 apt-get install -y gdb-multiarch python3-pip binutils gcc
 
 echo "[+] pip3"
-pip3 install rpyc psutil
+pip3 install rpyc psutil py-timeout
 
 echo "[+] download gef"
 wget -q https://raw.githubusercontent.com/bata24/gef/dev/gef.py -O /root/.gdbinit-gef.py
