@@ -8956,6 +8956,12 @@ class AsmListCommand(GenericCommand):
         return valid_patterns
 
     def do_invoke(self, argv):
+        try:
+            less = which("less")
+        except FileNotFoundError as e:
+            err("{}".format(e))
+            return
+
         arch_s, mode_s, big_endian = None, None, False
         nbyte = None
         filter_include = []
@@ -9031,12 +9037,10 @@ class AsmListCommand(GenericCommand):
             # not filtered
             text += line + "\n"
 
-        gef_print(text.rstrip())
-
-        # save to file
-        fd, fname = tempfile.mkstemp(dir="/tmp", suffix=".txt")
-        os.fdopen(fd, "w").write(text)
-        gef_print("The result is stored to {:s}".format(fname))
+        _, tmp_path = tempfile.mkstemp()
+        open(tmp_path, "w").write(text.rstrip())
+        os.system(f"{less} -R {tmp_path}")
+        os.unlink(tmp_path)
         return
 
 
