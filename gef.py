@@ -20799,6 +20799,22 @@ class KsymaddrRemoteCommand(GenericCommand):
     def initialize32_kallsyms_relative_base(self):
         # 1. find kbase from rodata
         if is_x86_32():
+            # recent kernel (buildroot:5.4.58, debian11.3:5.10.0-13)
+            for idx, tmp in enumerate(self.RO_REGION_u32[:-1]):
+                if tmp & 0xfff: # should be aligned
+                    continue
+                if (tmp & 0xffff0000) != (self.kbase & 0xffff0000): # holds around kbase
+                    continue
+                if self.RO_REGION_u32[idx + 1] > 0x1ffff: # next address is kallsyms_num_syms. too large number is fail 
+                    continue
+                if 0 < self.RO_REGION_u32[idx + 1] < 0x100 : # next address is kallsyms_num_syms. too small number is fail 
+                    continue
+                self.kallsyms_relative_base = tmp
+                self.kallsyms_relative_base_off = idx
+                self.kallsyms_relative_base_addr = self.krobase + self.kallsyms_relative_base_off * 4
+                return
+
+            # i386 (ooofs:4.4.223)
             for i, val in enumerate(self.RO_REGION_u32[::-1]): # use backward search because if found multiple then select the last one
                 if val == self.kbase:
                     pos = len(self.RO_REGION_u32) - i - 1
@@ -20810,27 +20826,23 @@ class KsymaddrRemoteCommand(GenericCommand):
                     self.kallsyms_relative_base_addr = self.krobase + self.kallsyms_relative_base_off * 4
                     return
 
-            # i386 has specific relative_base (pattern 2)
-            # override RO_REGION by .text, bacause to equate .text with .robase
-            if self.meta:
-                info("Equivalent .text and .rodata")
-            self.RO_REGION = read_memory(self.kbase, self.kbase_size)
-            self.RO_REGION_u32 = [u32(self.RO_REGION[i:i+4]) for i in range(0, len(self.RO_REGION), 4)]
-            for i, val in enumerate(self.RO_REGION_u32[::-1]): # use backward search because if found multiple then select the last one
-                if val == self.kbase:
-                    pos = len(self.RO_REGION_u32) - i - 1
-                    # found contiguous, go prev as possilbe
-                    while self.RO_REGION_u32[pos] == self.RO_REGION_u32[pos-1]:
-                        pos -= 1
-                    self.kallsyms_relative_base = self.kbase
-                    self.kallsyms_relative_base_off = pos
-                    self.kallsyms_relative_base_addr = self.kbase + self.kallsyms_relative_base_off * 4
-                    self.krobase = self.kbase
-                    self.krobase_size = self.kbase_size
-                    return
-
         elif is_arm32():
-            # ARM has specific relative_base
+            # recent kernel (debian 11.3:5.10.0-14)
+            for idx, tmp in enumerate(self.RO_REGION_u32[:-1]):
+                if tmp & 0xfff: # should be aligned
+                    continue
+                if (tmp & 0xffff0000) != (self.kbase & 0xffff0000): # holds around kbase
+                    continue
+                if self.RO_REGION_u32[idx + 1] > 0x1ffff: # next address is kallsyms_num_syms. too large number is fail 
+                    continue
+                if 0 < self.RO_REGION_u32[idx + 1] < 0x100 : # next address is kallsyms_num_syms. too small number is fail 
+                    continue
+                self.kallsyms_relative_base = tmp
+                self.kallsyms_relative_base_off = idx
+                self.kallsyms_relative_base_addr = self.krobase + self.kallsyms_relative_base_off * 4
+                return
+
+            # ARM has specific relative_base (buildroot:5.4.58, debian10.4:4.19.0-9)
             for i in range(4):
                 try:
                     kbase_diff = -(0x100000*i + 0xf8000)
@@ -20842,24 +20854,6 @@ class KsymaddrRemoteCommand(GenericCommand):
                     return
                 except:
                     pass
-            # ARM has specific relative_base (pattern 2)
-            # override RO_REGION by .text, bacause to equate .text with .robase
-            if self.meta:
-                info("Equivalent .text and .rodata")
-            self.RO_REGION = read_memory(self.kbase, self.kbase_size)
-            self.RO_REGION_u32 = [u32(self.RO_REGION[i:i+4]) for i in range(0, len(self.RO_REGION), 4)]
-            for i, val in enumerate(self.RO_REGION_u32[::-1]): # use backward search because if found multiple then select the last one
-                if val == self.kbase + 0x8400 :
-                    pos = len(self.RO_REGION_u32) - i - 1
-                    # found contiguous, go prev as possilbe
-                    while self.RO_REGION_u32[pos] == self.RO_REGION_u32[pos-1]:
-                        pos -= 1
-                    self.kallsyms_relative_base = self.kbase + 0x8400
-                    self.kallsyms_relative_base_off = pos
-                    self.kallsyms_relative_base_addr = self.kbase + self.kallsyms_relative_base_off * 4
-                    self.krobase = self.kbase
-                    self.krobase_size = self.kbase_size
-                    return
 
         # not found
         if not self.silent:
@@ -21016,9 +21010,22 @@ class KsymaddrRemoteCommand(GenericCommand):
 
     def initialize64_kallsyms_relative_base(self):
         # 1. find kbase from rodata
-        self.kallsyms_relative_base = self.kbase
-        self.kallsyms_relative_base_off = self.RO_REGION_u64.index(self.kbase)
-        self.kallsyms_relative_base_addr = self.krobase + self.kallsyms_relative_base_off * 8
+        for idx, tmp in enumerate(self.RO_REGION_u64[:-1]):
+            if tmp & 0xffff: # should be aligned
+                continue
+            if (tmp & 0xfffffffffff00000) != (self.kbase & 0xfffffffffff00000): # holds around kbase
+                continue
+            if self.RO_REGION_u64[idx + 1] > 0x1ffff: # next address is kallsyms_num_syms. too large number is fail
+                continue
+            self.kallsyms_relative_base = tmp
+            self.kallsyms_relative_base_off = idx
+            self.kallsyms_relative_base_addr = self.krobase + self.kallsyms_relative_base_off * 8
+            return
+        if not self.silent:
+            err("Failed to identified kallsyms_relative_base (not found kernel_base in kernel_robase)")
+        self.kallsyms_relative_base = None
+        self.kallsyms_relative_base_off = None
+        self.kallsyms_relative_base_addr = None
         return
 
     def initialize64_sparse_kallsyms_num_syms(self):
@@ -21211,6 +21218,12 @@ class KsymaddrRemoteCommand(GenericCommand):
 
     def initialize32_kallsyms_num_syms_2(self):
         # 1. walk next
+        # because used aboslute value, similar addresses are lined up
+        # 0xc1940888:     0xc1000000      0xc1000000      0xc10000bc      0xc10000cc
+        # 0xc1940898:     0xc10000ed      0xc1000165      0xc10001e7      0xc1000239
+        # ...
+        # 0xc198f0ac:     0xc1e85000      0xc1e95000      0xc1e9b000      0xc1e9b000
+        # 0xc198f0bc:     0x00013a0d <- kallsyms_num_syms_addr
         pos = self.kallsyms_relative_base_off
         while True:
             val = self.RO_REGION_u32[pos]
@@ -21224,6 +21237,7 @@ class KsymaddrRemoteCommand(GenericCommand):
 
     def initialize64_kallsyms_num_syms_2(self):
         # 1. walk next
+        # because used aboslute value, similar addresses are lined up
         pos = self.kallsyms_relative_base_off
         while True:
             val = self.RO_REGION_u64[pos]
@@ -21243,7 +21257,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         if self.kallsyms_relative_base_off is None:
             return None
 
-        if self.RO_REGION_u32[self.kallsyms_relative_base_off + 1] == self.RO_REGION_u32[self.kallsyms_relative_base_off]: # rare case
+        if self.RO_REGION_u32[self.kallsyms_relative_base_off + 1] == self.RO_REGION_u32[self.kallsyms_relative_base_off]: # rare case (maybe no kASLR kernel)
             self.initialize32_kallsyms_num_syms_2() # common to sparse and normal
             # do not use kallsyms_relative_base, use absolute value
             self.kallsyms_relative_base = None
