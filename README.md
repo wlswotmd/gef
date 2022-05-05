@@ -236,10 +236,12 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/magic.png)
 * `libc`/`ld`/`heapbase`/`codebase`: prints each of the base address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/base.png)
-* `mmx`/`sse`/`avx`/`fpu`: pretty prints MMX/SSE/AVX/FPU registers.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/mmx-sse-avx-fpu.png)
-* `xset`: sets the value to xmm/ymm register simply.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xset.png)
+* `fpu`/`mmx`/`sse`/`avx`: pretty prints FPU/MMX/SSE/AVX registers.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/fpu-mmx-sse-avx.png)
+* `xmmset`: sets the value to xmm/ymm register simply.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xmmset.png)
+* `mmxset`: sets the value to mm register simply.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/mmxset.png)
 * `exec-until`: executes until specific operation.
     * Supported on x64/x86/ARM64/ARM for call/jmp/syscall/ret/memory-access/specific-keyword-regex/specific-condition.
     * Supported on x64/x86 for indirect-branch.

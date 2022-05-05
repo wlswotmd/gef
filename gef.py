@@ -17156,31 +17156,92 @@ class SysregCommand(GenericCommand):
 
 
 @register_command
-class XsetCommand(GenericCommand):
-    """Simply set the value to xmm / ymm."""
-    _cmdline_ = "xset"
-    _syntax_ = _cmdline_
+class MmxSetCommand(GenericCommand):
+    """Simply set the value to mm."""
+    _cmdline_ = "mmxset"
+    _syntax_ = "{:s} $mm0=0x1122334455667788".format(_cmdline_)
     _category_ = "Show/Modify Register"
+
+    def get_state(self, code_len):
+        d = {}
+        d["pc"] = get_register("$pc")
+        d["code"] = read_memory(d["pc"], code_len)
+        if is_x86_64():
+            d["rax"] = get_register("$rax")
+        else:
+            d["eax"] = get_register("$eax")
+        return d
+
+    def revert_state(self, d):
+        write_memory(d["pc"], d["code"], len(d["code"]))
+        gdb.execute("set $pc = {:#x}".format(d["pc"]), to_string=True)
+        if is_x86_64():
+            gdb.execute("set $rax = {:#x}".format(d["rax"]), to_string=True)
+        else:
+            gdb.execute("set $eax = {:#x}".format(d["eax"]), to_string=True)
+        return
+
+    def close_stdout(self):
+        self.stdout = 1
+        self.stdout_bak = os.dup(self.stdout)
+        f = open("/dev/null")
+        os.dup2(f.fileno(), self.stdout)
+        f.close()
+        return
+
+    def revert_stdout(self):
+        os.dup2(self.stdout_bak, self.stdout)
+        os.close(self.stdout_bak)
+        return
+
+    def execute_movq_mm(self, value, reg):
+        REG_CODE = {
+            "$mm0": b"\x0f\x6f\x00",
+            "$mm1": b"\x0f\x6f\x08",
+            "$mm2": b"\x0f\x6f\x10",
+            "$mm3": b"\x0f\x6f\x08",
+            "$mm4": b"\x0f\x6f\x20",
+            "$mm5": b"\x0f\x6f\x28",
+            "$mm6": b"\x0f\x6f\x30",
+            "$mm7": b"\x0f\x6f\x38",
+        }
+        code = b"\xeb\xfe" + REG_CODE[reg] + p64(value) # inf-loop (to stop another thread); movq mm0, [rax]; db value
+        gef_on_stop_unhook(hook_stop_handler)
+        d = self.get_state(len(code))
+        write_memory(d["pc"], code, len(code))
+        if is_x86_64():
+            gdb.execute("set $rax = {:#x}".format(d["pc"]+5), to_string=True) # points to p64(value)
+        else:
+            gdb.execute("set $eax = {:#x}".format(d["pc"]+5), to_string=True) # points to p64(value)
+        gdb.execute("set $pc = {:#x}".format(d["pc"]+2), to_string=True) # skip "\xeb\xfe"
+        self.close_stdout()
+        gdb.execute("stepi", to_string=True)
+        self.revert_stdout()
+        self.revert_state(d)
+        gef_on_stop_hook(hook_stop_handler)
+        return
 
     @only_if_gdb_running
     def do_invoke(self, argv):
         if not is_x86():
             err("Unsupported")
             return
-        reg, value = ''.join(argv).split("=")
-        value = int(value, 0)
-        mask = (1<<64) - 1
 
-        if "$xmm" in reg:
-            for i in range(2):
-                v = (value >> (64*i)) & mask
-                gdb.execute(f"set {reg}.v2_int64[{i}]={v:#x}", to_string=True)
-        elif "$ymm" in reg:
-            for i in range(4):
-                v = (value >> (64*i)) & mask
-                gdb.execute(f"set {reg}.v4_int64[{i}]={v:#x}", to_string=True)
-        else:
-            err("Unsupported")
+        # arg parse
+        try:
+            reg, value = ''.join(argv).split("=")
+            value = int(value, 0)
+        except:
+            self.usage()
+            return
+
+        # check register is valid or not
+        if not reg in ["$mm{:d}".format(i) for i in range(8)]:
+            err("Invalid register name")
+            return
+
+        # modify
+        self.execute_movq_mm(value, reg)
         return
 
 
@@ -17189,20 +17250,26 @@ class MmxCommand(GenericCommand):
     """Show MMX registers."""
     _cmdline_ = "mmx"
     _syntax_ = _cmdline_
-    _aliases_ = ["mm",]
     _category_ = "Show/Modify Register"
 
     def print_mmx(self):
-        gef_print(titlify("MMX Register"))
+        gef_print(titlify("MMX Register (from fpu register)"))
         regs = []
+
         for i in range(8):
-            if is_x86_64():
-                regs += [int(gdb.execute(f"p /x $mm{i}", to_string=True).split()[-1], 16)]
-            else:
-                result = gdb.execute(f"p /x $mm{i}", to_string=True)
-                regs += [int([x.strip()[9:].strip(",") for x in result.splitlines() if x.strip().startswith("uint64 = ")][0], 16)]
+            regname = "$st{:d}".format(i)
+            result = gdb.execute(f"info registers $st{i}", to_string=True)
+            r = re.findall(r"\(raw (0x[0-9a-f]+)\)", result)
+            if r:
+                reg = int(r[0], 16) & 0xffffffffffffffff
+                regs.append(reg)
+
+        fstat = get_register("$fstat")
+        top_of_stack = (fstat >> 11) & 0b111
+        regs = regs[-top_of_stack:] + regs[:-top_of_stack] # need rotate. because mmx0 != st(0)
+
         legend = ["Name", "64-bit hex"]
-        gef_print(Color.colorify("{:5s}: {:s}".format(*legend), "bold yellow"))
+        gef_print(Color.colorify("{:5s}: {:s}".format(*legend), get_gef_setting("theme.table_heading")))
         red = lambda x: Color.colorify("{:4s}".format(x), "red bold")
         for i in range(len(regs)):
             regname = "$mm{:d}".format(i)
@@ -17223,6 +17290,48 @@ class MmxCommand(GenericCommand):
 
 
 @register_command
+class XmmSetCommand(GenericCommand):
+    """Simply set the value to xmm / ymm."""
+    _cmdline_ = "xmmset"
+    _syntax_ = "{:s} $ymm0=0x11223344556677889900aabbccddeeff9876543210".format(_cmdline_)
+    _category_ = "Show/Modify Register"
+
+    @only_if_gdb_running
+    def do_invoke(self, argv):
+        if not is_x86():
+            err("Unsupported")
+            return
+
+        # arg parse
+        try:
+            reg, value = ''.join(argv).split("=")
+            value = int(value, 0)
+        except:
+            self.usage()
+            return
+
+        # check register is valid or not
+        try:
+            gdb.execute(f"info register {reg}", to_string=True)
+        except:
+            err("Invalid register name")
+            return
+
+        # modify
+        if "$xmm" in reg:
+            for i in range(2):
+                v = (value >> (64*i)) & ((1<<64) - 1)
+                gdb.execute(f"set {reg}.v2_int64[{i}]={v:#x}", to_string=True)
+        elif "$ymm" in reg:
+            for i in range(4):
+                v = (value >> (64*i)) & ((1<<64) - 1)
+                gdb.execute(f"set {reg}.v4_int64[{i}]={v:#x}", to_string=True)
+        else:
+            err("Unsupported")
+        return
+
+
+@register_command
 class SseCommand(GenericCommand):
     """Show SSE registers."""
     _cmdline_ = "sse"
@@ -17236,10 +17345,13 @@ class SseCommand(GenericCommand):
         # xmm0-15
         regs = []
         for i in range(16 if is_x86_64() else 8):
-            result = gdb.execute(f"p /x $xmm{i}", to_string=True)
-            regs += [int([x.strip()[10:].strip(",") for x in result.splitlines() if x.strip().startswith("uint128 = ")][0], 16)]
+            result = gdb.execute(f"info registers $xmm{i}", to_string=True)
+            r = re.findall(r"uint128 = (0x[0-9a-f]+)", result)
+            if r:
+                reg = int(r[0], 16)
+                regs.append(reg)
         legend = ["Name", "128-bit hex"]
-        gef_print(Color.colorify("{:7s}: {:s}".format(*legend), "bold yellow"))
+        gef_print(Color.colorify("{:7s}: {:s}".format(*legend), get_gef_setting("theme.table_heading")))
         red = lambda x: Color.colorify("{:4s}".format(x), "red bold")
         for i in range(len(regs)):
             if i == 8:
@@ -17274,7 +17386,7 @@ class SseCommand(GenericCommand):
             [1, "DE", "Denormalized Operand Exception", ""],
             [0, "IE", "Invalid Operation Exception", ""],
         ]
-        reg = int(gdb.execute("i r $mxcsr", to_string=True).split()[1],16)
+        reg = int(gdb.execute("info registers $mxcsr", to_string=True).split()[1],16)
         PrintBitInfo("$mxcsr", 32, None, bit_info).print(reg)
         return
 
@@ -17306,20 +17418,20 @@ class AvxCommand(GenericCommand):
 
     def print_avx(self):
         regs = []
-        for i in range(16):
-            result = gdb.execute(f"p /x $ymm{i}", to_string=True).splitlines()
-            for i, y in enumerate(result):
-              if y.strip().startswith("v2_int128 = "):
-                tmp = y + result[i+1]
-                r = re.findall(r"v2_int128 =.+ = ([0-9a-fx]+), .+ = ([0-9a-fx]+)", tmp)
-                if not r:
-                    continue
-                regs += [(int(r[0][1], 16) << 128) + int(r[0][0], 16)]
-                break
+        for i in range(16 if is_x86_64() else 8):
+            try:
+                result = gdb.execute(f"info registers $ymm{i}", to_string=True)
+            except:
+                continue
+            result = result.replace("\n", "")
+            r = re.findall(r"v2_int128 = \{.*?\[0x0\] = (0x[0-9a-f]+),.*?\[0x1\] = (0x[0-9a-f]+).*?\}", result)
+            if r:
+                reg = (int(r[0][1], 16) << 128) + int(r[0][0], 16)
+                regs.append(reg)
         if regs:
             gef_print(titlify("AVX Register"))
             legend = ["Name", "256-bit hex"]
-            gef_print(Color.colorify("{:7s}: {:s}".format(*legend), "bold yellow"))
+            gef_print(Color.colorify("{:7s}: {:s}".format(*legend), get_gef_setting("theme.table_heading")))
             red = lambda x: Color.colorify("{:4s}".format(x), "red bold")
             for i in range(len(regs)):
                 regname = "$ymm{:<2d}".format(i)
@@ -17338,6 +17450,7 @@ class AvxCommand(GenericCommand):
             err("Unsupported")
             return
         self.print_avx()
+        return
 
 
 @register_command
@@ -17347,43 +17460,33 @@ class FpuCommand(GenericCommand):
     _syntax_ = "{:s} [-h] [-v]".format(_cmdline_)
     _category_ = "Show/Modify Register"
 
-    # float
-    def p(self, a):
-        return struct.pack("<I",a&0xffffffff)
-
-    def u(self, a):
-        return struct.unpack("<I",a)[0]
-
-    def pf(self, a):
-        return struct.pack("<f",a)
-
-    def uf(self, a):
-        return struct.unpack("<f",a)[0]
-
     def f2u(self, a):
-        return self.u(self.pf(a))
+        def u(a):
+            return struct.unpack("<I",a)[0]
+        def pf(a):
+            return struct.pack("<f",a)
+        return u(pf(a))
 
     def u2f(self, a):
-        return self.uf(self.p(a))
-
-    # double
-    def pQ(self, a):
-        return struct.pack("<Q",a&0xffffffffffffffff)
-
-    def uQ(self, a):
-        return struct.unpack("<Q",a)[0]
-
-    def pd(self, a):
-        return struct.pack("<d",a)
-
-    def ud(self, a):
-        return struct.unpack("<d",a)[0]
+        def p(a):
+            return struct.pack("<I",a&0xffffffff)
+        def uf(a):
+            return struct.unpack("<f",a)[0]
+        return uf(p(a))
 
     def d2u(self, a):
-        return self.uQ(self.pd(a))
+        def uQ(a):
+            return struct.unpack("<Q",a)[0]
+        def pd(a):
+            return struct.pack("<d",a)
+        return uQ(pd(a))
 
     def u2d(self, a):
-        return self.ud(self.pQ(a))
+        def pQ(a):
+            return struct.pack("<Q",a&0xffffffffffffffff)
+        def ud(a):
+            return struct.unpack("<d",a)[0]
+        return ud(pQ(a))
 
     def d2u80(self, a):
         value = ctypes.c_longdouble(a)
@@ -17409,8 +17512,8 @@ class FpuCommand(GenericCommand):
 
         # s0-s31, d0-d31, q0-q15
         gef_print(titlify("FPU/NEON Data Register"))
-        legend = ["Name","Value", "32-bit hex", "Name", "Value", "64-bit hex", "Name", "128-bit hex"]
-        gef_print(Color.colorify("{:4s}: {:15s} {:10s} | {:4s}: {:28s} {:18s} | {:4s} {:34s}".format(*legend), "bold yellow"))
+        legend = ["Name", "Value", "32-bit hex", "Name", "Value", "64-bit hex", "Name", "128-bit hex"]
+        gef_print(Color.colorify("{:4s}: {:15s} {:10s} | {:4s}: {:28s} {:18s} | {:4s} {:34s}".format(*legend), get_gef_setting("theme.table_heading")))
         for i in range(32):
             regname1 = "$s{:d}".format(i)
             regname2 = "$d{:d}".format(i)
@@ -17446,14 +17549,32 @@ class FpuCommand(GenericCommand):
 
         # st0-7
         gef_print(titlify("FPU Data Register"))
-        legend = ["Name","Value", "80-bit hex(TWORD)", "64-bit hex(QWORD)"]
-        gef_print(Color.colorify("{:s} : {:27s}\t{:22s} {:18s}".format(*legend), "bold yellow"))
+        legend = ["Name", "Value", "80-bit hex(TWORD/XWORD)", "64-bit hex(QWORD)", "32-bit Hex(DWORD)"]
+        gef_print(Color.colorify("{:9s} : {:27s}\t{:24s} {:18s} {:10s}".format(*legend), get_gef_setting("theme.table_heading")))
+
+        fstat = get_register("$fstat")
+        top_of_stack = (fstat >> 11) & 0b111
+        regs = ["mm{:d}".format(i) for i in range(8)]
+        regs = regs[top_of_stack:] + regs[:top_of_stack] # need rotate. because mmx0 != st(0)
+
         for i in range(8):
             regname = "$st{:d}".format(i)
-            reg = float(gdb.execute("i r {}".format(regname), to_string=True).split()[1])
-            u80 = self.d2u80(reg)
-            u = self.d2u(reg)
-            gef_print("{:s} : {:<+.20e}\t{:<#22x} {:<#18x}".format(red(regname), reg, u80, u))
+            result = gdb.execute("info registers {}".format(regname), to_string=True)
+            if "invalid" in result:
+                r = re.findall(r"\(raw (0x[0-9a-f]+)\)", result)
+                u80 = int(r[0], 16)
+                u64 = 0xfff8000000000000 # nan
+                u32 = 0xffc00000 # nan
+                gef_print("{:4s}({:3s}) : {:<27s}\t{:<#24x} {:<#18x} {:<#10x}".format(red(regname), regs[i], "<invalid>", u80, u64, u32))
+            else:
+                reg = float(result.split()[1])
+                u80 = self.d2u80(reg)
+                u64 = self.d2u(reg)
+                u32 = self.f2u(reg)
+                gef_print("{:4s}({:3s}) : {:<+.20e}\t{:<#24x} {:<#18x} {:<#10x}".format(red(regname), regs[i], reg, u80, u64, u32))
+        info('XWORD: Real register value; Used at "fstp xword ptr [rax]".')
+        info('QWORD: Used at "fst/fstp qword ptr [rax]".')
+        info('DWORD: Used at "fst/fstp dword ptr [rax]".')
         return
 
     def print_fpu_arm_other(self):
@@ -17485,7 +17606,7 @@ class FpuCommand(GenericCommand):
             [1, "DZC", "Divide by Zero Cumulative floating-point exception bit", ""],
             [0, "IOC", "Invalid Operation Cumulative floating-point exception bit", ""],
         ]
-        reg = int(gdb.execute("i r $fpscr", to_string=True).split()[1],16)
+        reg = int(gdb.execute("info registers $fpscr", to_string=True).split()[1],16)
         PrintBitInfo("$fpscr", 32, None, bit_info).print(reg)
 
         # fpsid
@@ -17513,7 +17634,7 @@ class FpuCommand(GenericCommand):
                 0x56: "Marvell International Ltd.",
                 0x69: "Intel Corporation",
         }
-        reg = int(gdb.execute("i r $fpsid", to_string=True).split()[1],16)
+        reg = int(gdb.execute("info registers $fpsid", to_string=True).split()[1],16)
         PrintBitInfo("$fpsid", 32, None, bit_info).print(reg)
         gef_print("Implementer code")
         for k, v in impl.items():
@@ -17536,7 +17657,7 @@ class FpuCommand(GenericCommand):
             [1, "DZF", "Divide by Zero trapped exception bit", ""],
             [0, "IOF", "Invalid Operation trapped exception bit", ""],
         ]
-        reg = int(gdb.execute("i r $fpexc", to_string=True).split()[1],16)
+        reg = int(gdb.execute("info registers $fpexc", to_string=True).split()[1],16)
         PrintBitInfo("$fpexc", 32, None, bit_info).print(reg)
         return
 
@@ -17558,7 +17679,7 @@ class FpuCommand(GenericCommand):
             [9, "DZE", "Divide by Zero floating-point Exception trap enable", ""],
             [8, "IOE", "Invalid Operation floating-point Exception trap enable", ""],
         ]
-        reg = int(gdb.execute("i r $fpcr", to_string=True).split()[1],16)
+        reg = int(gdb.execute("info registers $fpcr", to_string=True).split()[1],16)
         PrintBitInfo("$fpcr", 32, None, bit_info).print(reg)
 
         # fpsr
@@ -17576,7 +17697,7 @@ class FpuCommand(GenericCommand):
             [1, "DZC", "Divide by Zero Cumulative floating-point exception bit", ""],
             [0, "IOC", "Invalid Operation Cumulative floating-point exception bit", ""],
         ]
-        reg = int(gdb.execute("i r $fpsr", to_string=True).split()[1],16)
+        reg = int(gdb.execute("info registers $fpsr", to_string=True).split()[1],16)
         PrintBitInfo("$fpsr", 32, None, bit_info).print(reg)
         return
 
@@ -17594,7 +17715,7 @@ class FpuCommand(GenericCommand):
             [1, "DM", "Denormalized Opernd Exception Mask", ""],
             [0, "IM", "Invalid Operation Exception Mask", ""],
         ]
-        reg = int(gdb.execute("i r $fctrl", to_string=True).split()[1],16)
+        reg = int(gdb.execute("info registers $fctrl", to_string=True).split()[1],16)
         PrintBitInfo("$fctrl", 16, None, bit_info).print(reg)
 
         # fstat
@@ -17615,58 +17736,42 @@ class FpuCommand(GenericCommand):
             [1, "DE", "Denormalized Operand Exception", ""],
             [0, "IE", "Invalid Operation Exception", ""],
         ]
-        reg = int(gdb.execute("i r $fstat", to_string=True).split()[1],16)
+        reg = int(gdb.execute("info registers $fstat", to_string=True).split()[1],16)
         PrintBitInfo("$fstat", 16, None, bit_info).print(reg)
 
         # ftag
         gef_print(titlify("FTAG (x87 FPU Tag Word)"))
         bit_info = [
-            [[14,15], "TAG(7)", "TAG 7", "00: Valid, 01: Zero, 10: Invalid/Nan/Inf/Denormal, 11: Blank"],
-            [[12,13], "TAG(6)", "TAG 6", "00: Valid, 01: Zero, 10: Invalid/Nan/Inf/Denormal, 11: Blank"],
-            [[10,11], "TAG(5)", "TAG 5", "00: Valid, 01: Zero, 10: Invalid/Nan/Inf/Denormal, 11: Blank"],
-            [[8,9], "TAG(4)", "TAG 4", "00: Valid, 01: Zero, 10: Invalid/Nan/Inf/Denormal, 11: Blank"],
-            [[6,7], "TAG(3)", "TAG 3", "00: Valid, 01: Zero, 10: Invalid/Nan/Inf/Denormal, 11: Blank"],
-            [[4,5], "TAG(2)", "TAG 2", "00: Valid, 01: Zero, 10: Invalid/Nan/Inf/Denormal, 11: Blank"],
-            [[2,3], "TAG(1)", "TAG 1", "00: Valid, 01: Zero, 10: Invalid/Nan/Inf/Denormal, 11: Blank"],
-            [[0,1], "TAG(0)", "TAG 0", "00: Valid, 01: Zero, 10: Invalid/Nan/Inf/Denormal, 11: Blank"],
+            [[14,15], "TAG(7)", "Reg7 Tag", "00: Valid, 01: Zero, 10: Invalid/Nan/Inf/Denormal, 11: Blank"],
+            [[12,13], "TAG(6)", "Reg6 Tag", "00: Valid, 01: Zero, 10: Invalid/Nan/Inf/Denormal, 11: Blank"],
+            [[10,11], "TAG(5)", "Reg5 Tag", "00: Valid, 01: Zero, 10: Invalid/Nan/Inf/Denormal, 11: Blank"],
+            [[8,9], "TAG(4)", "Reg4 Tag", "00: Valid, 01: Zero, 10: Invalid/Nan/Inf/Denormal, 11: Blank"],
+            [[6,7], "TAG(3)", "Reg3 Tag", "00: Valid, 01: Zero, 10: Invalid/Nan/Inf/Denormal, 11: Blank"],
+            [[4,5], "TAG(2)", "Reg2 Tag", "00: Valid, 01: Zero, 10: Invalid/Nan/Inf/Denormal, 11: Blank"],
+            [[2,3], "TAG(1)", "Reg1 Tag", "00: Valid, 01: Zero, 10: Invalid/Nan/Inf/Denormal, 11: Blank"],
+            [[0,1], "TAG(0)", "Reg0 Tag", "00: Valid, 01: Zero, 10: Invalid/Nan/Inf/Denormal, 11: Blank"],
         ]
-        reg = int(gdb.execute("i r $ftag", to_string=True).split()[1],16)
+        reg = int(gdb.execute("info registers $ftag", to_string=True).split()[1],16)
         PrintBitInfo("$ftag", 16, None, bit_info).print(reg)
         
         # $fiseg, $fioff
         gef_print(titlify("FCS:FIP (x87 FPU Last Instruction Pointer)"))
-        reg = int(gdb.execute("i r $fiseg", to_string=True).split()[1],16)
-        reg = int(gdb.execute("i r $fioff", to_string=True).split()[1],16)
+        reg = int(gdb.execute("info registers $fiseg", to_string=True).split()[1],16)
+        reg = int(gdb.execute("info registers $fioff", to_string=True).split()[1],16)
         PrintBitInfo("$fiseg(FCS)", 16, None, bit_info=[]).print(reg, split=False)
         PrintBitInfo("$fioff(FIP)", 32, None, bit_info=[]).print(reg, split=False)
 
         # $foseg, $fooff
         gef_print(titlify("FDS:FDP (x87 FPU Last Data(Operand) Pointer)"))
-        reg = int(gdb.execute("i r $foseg", to_string=True).split()[1],16)
-        reg = int(gdb.execute("i r $fooff", to_string=True).split()[1],16)
+        reg = int(gdb.execute("info registers $foseg", to_string=True).split()[1],16)
+        reg = int(gdb.execute("info registers $fooff", to_string=True).split()[1],16)
         PrintBitInfo("$foseg(FDS)", 16, None, bit_info=[]).print(reg, split=False)
         PrintBitInfo("$fooff(FDP)", 32, None, bit_info=[]).print(reg, split=False)
 
         # $fop
         gef_print(titlify("FOP (x87 FPU Last Instruction Opcode)"))
-        reg = int(gdb.execute("i r $fop", to_string=True).split()[1],16)
+        reg = int(gdb.execute("info registers $fop", to_string=True).split()[1],16)
         PrintBitInfo("$fop", 11, None, bit_info=[]).print(reg, split=False)
-        return
-
-    def print_fpu(self):
-        if is_x86():
-            self.print_fpu_x86()
-        elif is_arm32() or is_arm64():
-            self.print_fpu_arm()
-        return
-
-    def print_fpu_other(self):
-        if is_x86():
-            self.print_fpu_x86_other()
-        elif is_arm32():
-            self.print_fpu_arm_other()
-        elif is_arm64():
-            self.print_fpu_arm64_other()
         return
 
     @only_if_gdb_running
@@ -17676,9 +17781,18 @@ class FpuCommand(GenericCommand):
             self.usage()
             return
 
-        self.print_fpu()
+        if is_x86():
+            self.print_fpu_x86()
+        elif is_arm32() or is_arm64():
+            self.print_fpu_arm()
+
         if "-v" in argv:
-            self.print_fpu_other()
+            if is_x86():
+                self.print_fpu_x86_other()
+            elif is_arm32():
+                self.print_fpu_arm_other()
+            elif is_arm64():
+                self.print_fpu_arm64_other()
         else:
             info("for fpu other register's flags description, use `-v`")
         return
