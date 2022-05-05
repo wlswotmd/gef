@@ -7583,11 +7583,14 @@ class CapstoneDisassembleCommand(GenericCommand):
             return (is_taken, msg)
 
         if current_arch.is_call(insn):
-            target_address = int(insn.operands[-1].split()[0], 16)
-            msg = []
-            for i, new_insn in enumerate(capstone_disassemble(target_address, nb_insn)):
-                msg.append("   {}  {}".format (DOWN_ARROW if i == 0 else " ", str(new_insn)))
-            return (True, "\n".join(msg))
+            try:
+                target_address = int(insn.operands[-1].split()[0], 16)
+                msg = []
+                for i, new_insn in enumerate(capstone_disassemble(target_address, nb_insn)):
+                    msg.append("   {}  {}".format (DOWN_ARROW if i == 0 else " ", str(new_insn)))
+                return (True, "\n".join(msg))
+            except:
+                pass
 
         return (False, "")
 
