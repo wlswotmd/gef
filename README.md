@@ -18,7 +18,7 @@ rm -f /root/.gdbinit-gef.py /root/.gef.rc
 
 ## Added / Improved features
 
-All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / Debian 10.x.
+All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 / Debian 10.x.
 
 ### qemu-system cooperation
 * It works with qemu-system installed via apt, but qemu-6.x is recommended.
