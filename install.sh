@@ -11,6 +11,8 @@ apt-get install -y gdb-multiarch python3-pip binutils gcc ruby-dev
 
 echo "[+] pip3"
 pip3 install rpyc psutil crccheck unicorn capstone ropper keystone-engine
+pip3 install --upgrade lz4 zstandard git+https://github.com/clubby789/python-lzo@b4e39df
+pip3 install --upgrade git+https://github.com/marin-m/vmlinux-to-elf
 
 echo "[+] install seccomp-tools, one_gadget"
 if [ "x$(which seccomp-tools)" = "x" ]; then
@@ -25,7 +27,7 @@ echo "[+] install rp++"
 if [ "x$(uname -m)" = "xx86_64" ]; then
   if [ "x$(getconf LONG_BIT)" = "x64" ]; then
     if [ "x$(which rp-lin-x64)" = "x" ]; then
-      wget -q https://github.com/0vercl0k/rp/releases/download/v1/rp-lin-x64 -O /usr/local/bin/rp-lin-x64
+      wget -q https://github.com/0vercl0k/rp/releases/download/v2.0.2/rp-lin-x64 -O /usr/local/bin/rp-lin-x64
       chmod +x /usr/local/bin/rp-lin-x64
     fi
   fi
