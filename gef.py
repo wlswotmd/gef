@@ -3550,7 +3550,7 @@ def only_if_x86_32_64_or_arm_32_64(f):
 
     @functools.wraps(f)
     def wrapper(*args, **kwargs):
-        if is_x86() or is_arm() or is_arm64():
+        if is_x86() or is_arm32() or is_arm64():
             return f(*args, **kwargs)
         else:
             warn("This command cannot work under this architecture.")
@@ -8623,7 +8623,7 @@ class AssembleCommand(GenericCommand):
         raw = b""
         for insn in insns:
             res = keystone_assemble(insn, arch, mode, raw=True)
-            if res is None:
+            if not res:
                 gef_print("(Invalid)")
                 continue
 
@@ -24478,7 +24478,7 @@ class XphysAddrCommand(GenericCommand):
     _cmdline_ = "xp"
     _syntax_ = "{:s} [-h] [OPTION] ADDRESS".format(_cmdline_)
     _example_ = "{:s} /16xg 0x11223344".format(_cmdline_)
-    _category_ = "Show/Modify Memory"
+    _category_ = "Qemu-system Cooperation"
 
     def dump_physmem(self, argv):
         result = gdb.execute("monitor xp {:s}".format(' '.join(argv)), to_string=True)
@@ -29643,7 +29643,7 @@ class UsermodehelperHunterCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_qemu_system
     def do_invoke(self, argv):
-        info("Resolving the funcftion addresses")
+        info("Resolving the function addresses")
         addr = get_ksymaddr("call_usermodehelper_setup")
         if addr is None:
             err("Not found call_usermodehelper_setup")
@@ -29735,7 +29735,7 @@ class ThunkHunterCommand(GenericCommand):
             return
 
         maps = KernelbaseCommand.get_maps() # [vaddr, size, perm]
-        info("Resolving thunk funcftion addresses")
+        info("Resolving thunk function addresses")
         for reg in current_arch.gpr_registers:
             sym = "__x86_indirect_thunk_{}".format(reg.replace("$", ""))
             addr = get_ksymaddr(sym)
