@@ -8146,13 +8146,6 @@ class DetailRegistersCommand(GenericCommand):
                 gef_print(line)
                 continue
 
-            addr = lookup_address(align_address(int(value)))
-            if addr.valid:
-                line += str(addr)
-            else:
-                line += format_address_spaces(value)
-            addrs = dereference_from(value)
-
             def get_symbol(addr):
                 addr = re.sub(r"\x1B\[([0-9]{1,2}(;[0-9]{1,2})*)?m", "", addr) # remove color
                 try:
@@ -8168,6 +8161,12 @@ class DetailRegistersCommand(GenericCommand):
                 else:
                     return " <{}+{}>".format(sym_name, sym_offset)
 
+            addr = lookup_address(align_address(int(value)))
+            if addr.valid:
+                line += str(addr) + get_symbol(str(addr))
+            else:
+                line += format_address_spaces(value)
+            addrs = dereference_from(value)
 
             if len(addrs) > 1:
                 sep = " {:s} ".format(RIGHT_ARROW)
