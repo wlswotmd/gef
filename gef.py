@@ -1419,14 +1419,14 @@ class GlibcChunk:
         return "|".join(flags)
 
     def __str__(self):
-        fmt = "{:s}(addr={:#x}, size={:#x}, flags={:s})"
         chunk_c = Color.colorify("Chunk", "yellow bold underline")
-        msg = fmt.format(chunk_c, int(self.address), self.get_chunk_size(), self.flags_as_string())
+        size_c = Color.colorify("{:#x}".format(self.get_chunk_size()), "bold pink")
+        msg = "{:s}(addr={:#x}, size={:s}, flags={:s})".format(chunk_c, int(self.address), size_c, self.flags_as_string())
         return msg
 
     def str_large(self):
-        fmt = "{:s}(addr={:#x}, size={:#x}, flags={:s}, fd_nextsize={:#x}, bk_nextsize={:#x})"
         chunk_c = Color.colorify("Chunk", "yellow bold underline")
+        fmt = "{:s}(addr={:#x}, size={:#x}, flags={:s}, fd_nextsize={:#x}, bk_nextsize={:#x})"
         msg = fmt.format(chunk_c, int(self.address), self.get_chunk_size(), self.flags_as_string(), self.fd_nextsize, self.bk_nextsize)
         return msg
 
@@ -8987,14 +8987,14 @@ class AsmListCommand(GenericCommand):
 
         # filter and print
         legend = "{:22s} {:60s} {:22s} {}\n".format("Hex code", "Assembly code", "Opcode", "Attributes")
-        text = Color.colorify(legend, "bold yellow")
+        text = Color.colorify(legend, get_gef_setting("theme.table_heading"))
         for hex_code, opstr, opcodes, attr in patterns:
             # byte length filter
             if nbyte is not None and nbyte * 2 != len(hex_code):
                 continue
 
             # keyword filter
-            line = "{:22s} {:60s} {:22s} {}".format(hex_code, opstr, opcodes, attr)
+            line = "{:22s} {:60s} {:22s} {}".format(hex_code, opstr, opcodes, ','.join(attr))
             if any([f not in line for f in filter_include]):
                 continue
             if any([f in line for f in filter_exclude]):
@@ -9212,8 +9212,9 @@ class ElfInfoCommand(GenericCommand):
             ("Section Header String Table Index" , "{}".format(elf.e_shstrndx)),
         ]
 
+        gef_print(titlify("ELF Header"))
         for title, content in data:
-            gef_print("{}: {}".format(Color.boldify("{:<34}".format(title)), content))
+            gef_print("{:<34s}: {}".format(title, content))
 
         ptype = {
             Phdr.PT_NULL:         "NULL",
@@ -9248,7 +9249,7 @@ class ElfInfoCommand(GenericCommand):
             Phdr.PF_R|Phdr.PF_W|Phdr.PF_X: "RWX",
         }
 
-        gef_print(Color.colorify("Program Header", "yellow bold"))
+        gef_print(titlify("Program Header"))
         fmt = "  [{:>2s}] {:12s} {:>10s} {:>10s} {:>10s} {:>10s} {:>10s} {:5s} {:>8s}"
         gef_print(fmt.format("#", "Type", "Offset", "Virtaddr", "Physaddr", "FileSiz", "MemSiz", "Flags", "Align"))
         for i, p in enumerate(elf.phdrs):
@@ -9297,7 +9298,7 @@ class ElfInfoCommand(GenericCommand):
             Shdr.SHT_HIUSER:        "HIUSER",
         }
 
-        gef_print(Color.colorify("Section Header", "yellow bold"))
+        gef_print(titlify("Section Header"))
         if not elf.shdrs:
             gef_print("Not loaded")
         else:
@@ -9423,8 +9424,8 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
             out.append(hexdump(sec["data"], show_symbol=False, base=sec["offset"]))
 
         # print details
-        legend = "[{:<8}|+{:<6}] {:<23s} {:<30s}: {:<18s}  |  {:s}".format("FileOff", "Offset", "Raw bytes", "Name", "Value", "Extra Information")
-        out.append(Color.colorify(legend, "bold yellow"))
+        legend = ["FileOff", "Offset", "Raw bytes", "Name", "Value", "Extra Information"]
+        out.append(Color.colorify("[{:<8}|+{:<6}] {:<23s} {:<30s}: {:<18s}  |  {:s}".format(*legend), get_gef_setting("theme.table_heading")))
 
         for entry in entries:
             if len(entry) == 1:
@@ -12963,7 +12964,6 @@ class VMMapCommand(GenericCommand):
             self.show_legend()
 
         color = get_gef_setting("theme.table_heading")
-
         headers = ["Start", "End", "Size", "Offset", "Perm", "Path"]
         w = get_memory_alignment() * 2 + 3
         gef_print(Color.colorify("{:<{w}s}{:<{w}s}{:<{w}s}{:<{w}s}{:<4s} {:s}".format(*headers, w=w), color))
@@ -14026,13 +14026,12 @@ class SyscallSearchCommand(GenericCommand):
             self.usage()
             return
 
-        color = get_gef_setting("theme.table_heading")
         if verbose:
             headers = ["NR", "Name", "Parameter"]
-            gef_print(Color.colorify("{:<25} {:<20} {}".format(*headers), color))
+            gef_print(Color.colorify("{:<25} {:<20} {}".format(*headers), get_gef_setting("theme.table_heading")))
         else:
             headers = ["NR", "Name"]
-            gef_print(Color.colorify("{:<25} {:<20}".format(*headers), color))
+            gef_print(Color.colorify("{:<25} {:<20}".format(*headers), get_gef_setting("theme.table_heading")))
 
         for num, entry in syscall_table.items():
             if re.search(argv[0], entry.name):
@@ -14058,7 +14057,6 @@ class SyscallArgsCommand(GenericCommand):
             self.usage()
             return
 
-        color = get_gef_setting("theme.table_heading")
         syscall_table = self.get_syscall_table()
 
         if len(argv) == 1:
@@ -14081,7 +14079,7 @@ class SyscallArgsCommand(GenericCommand):
         gef_print("    " + Color.colorify("{}({})".format(syscall_entry.name, ", ".join(parameters)), "bold yellow"))
 
         headers = ["Parameter", "Register", "Value"]
-        info(Color.colorify("{:<20} {:<20} {}".format(*headers), color))
+        info(Color.colorify("{:<20} {:<20} {}".format(*headers), get_gef_setting("theme.table_heading")))
         gef_print("    {:<20} {:<20} {:#x}".format("_NR", current_arch.syscall_register, reg_value))
 
         param_names = [re.split(r" |\*", p)[-1] for p in parameters]
@@ -16962,7 +16960,7 @@ class MagicCommand(GenericCommand):
     def legend(self):
         gef_print(titlify("Legend"))
         l = f"{'symbol':40s}: {'base':14s} + {'offset':8s} (={'addr':14s} {'perm':s} ) -> {'val':18s}"
-        gef_print(Color.colorify(l, "yellow bold"))
+        gef_print(Color.colorify(l, get_gef_setting("theme.table_heading")))
         return
 
     @only_if_gdb_running
@@ -18625,7 +18623,7 @@ class KernelPsCommand(GenericCommand):
 
         ids_str = ','.join(["uid","gid","suid","sgid","euid","egid","fsuid","fsgid"])
         legend = ("{:<18s}: {:<16s} {:<18s} [{}]".format("task", "task->comm", "task->cred", ids_str))
-        gef_print(Color.colorify(legend, "yellow bold"))
+        gef_print(Color.colorify(legend, get_gef_setting("theme.table_heading")))
         for task in task_addrs:
             comm_string = read_cstring_from_memory(task + offset_comm)
             cred = read_int_from_memory(task + offset_cred)
@@ -18736,11 +18734,13 @@ class SyscallTableViewCommand(GenericCommand):
             table.append([i, addr, syscall_function_addr, symbol])
             i += 1
         # print
+        legend = ["Index", "Table Address", "Function Address", "Symbol"]
+        gef_print(Color.colorify("{:5s} {:18s}: {:18s} {:s}".format(*legend), get_gef_setting("theme.table_heading")))
         for i, addr, syscall_function_addr, symbol in table:
             if seen[syscall_function_addr] == 1: # valid entry
-                gef_print("[{:03d}] {:#x}: {:x} {:s}".format(i, addr, syscall_function_addr, symbol))
+                gef_print("[{:03d}] {:#018x}: {:#018x} {:s}".format(i, addr, syscall_function_addr, symbol))
             else: # invalid entry
-                gef_print("[{:03d}] {:#x}: ".format(i, addr) + Color.grayify("{:#x} {:s}".format(syscall_function_addr, symbol)))
+                gef_print("[{:03d}] {:#018x}: ".format(i, addr) + Color.grayify("{:#018x} {:s}".format(syscall_function_addr, symbol)))
         return
 
     @only_if_gdb_running
@@ -19186,7 +19186,7 @@ class GdtInfoCommand(GenericCommand):
         registers_color = get_gef_setting("theme.dereference_register_value")
         # print legend
         legend = f"[ #] {'segment name':17} : " + self.segval2str_legend()
-        gef_print(Color.colorify(legend, "bold yellow"))
+        gef_print(Color.colorify(legend, get_gef_setting("theme.table_heading")))
         # regs check
         regs = self.get_segreg_list()
         # parse entry
@@ -24416,7 +24416,7 @@ class MuslDumpCommand(GenericCommand):
             seen = []
             while current not in seen:
                 meta = self.read_meta(current)
-                gef_print("meta @ " + Color.colorify("{:#x}".format(meta["addr"]), "bold yellow"))
+                gef_print("meta @ {:#x}".format(meta["addr"]))
                 text = "  "
                 text += "prev:{:#x} next:{:#x} ".format(meta["prev"], meta["next"])
                 text += Color.colorify("mem:{:#x} ".format(meta["mem"]), "bold cyan")
@@ -25873,7 +25873,8 @@ class MsrCommand(GenericCommand):
 
     def print_const_table(self, filt):
         gef_print(titlify("MSR const table"))
-        gef_print(Color.colorify("{:34s}: {:10s} : {:s}".format("Name", "Value", "Description"), "bold yellow"))
+        legend = ["Name", "Value", "Description"]
+        gef_print(Color.colorify("{:34s}: {:10s} : {:s}".format(*legend), get_gef_setting("theme.table_heading")))
         for name, val, desc in self.msr_table:
             if filt == []:
                 gef_print("{:34s}: {:#010x} : {:s}".format(name, val, desc))
@@ -25959,8 +25960,7 @@ class MsrCommand(GenericCommand):
     def read_msr(self, num):
         val = self.read_msr_core(num)
         name = self.lookup_val2name(num)
-        bold = lambda x: Color.boldify("{:#x}".format(x))
-        gef_print("{:s} ({:s}): {:s} (={:s})".format(Color.boldify(name), bold(num), bold(val), Color.boldify(self.bits_split(val))))
+        gef_print("{:s} ({:#x}): {:#x} (={:s})".format(name, num, val, self.bits_split(val)))
         return
 
     @only_if_gdb_running
@@ -26303,7 +26303,7 @@ class QemuRegistersCommand(GenericCommand):
         gef_print("limit: {:s}: (size of GDT) - 1".format(Color.boldify("{:#x}".format(limit))))
         info("GDT entry")
         regs = GdtInfoCommand.get_segreg_list()
-        gef_print("[ #] {:20s}: ".format("segname") + GdtInfoCommand.segval2str_legend())
+        gef_print(Color.colorify("[ #] {:20s}: ".format("segname") + GdtInfoCommand.segval2str_legend(), get_gef_setting("theme.table_heading")))
         gdtinfo = read_memory(base, limit+1)
         # https://github.com/torvalds/linux/blob/master/arch/x86/include/asm/segment.h
         if is_x86_64():
@@ -26321,16 +26321,16 @@ class QemuRegistersCommand(GenericCommand):
             if reglist:
                 reglist = LEFT_ARROW + reglist
             if is_x86_64() and i == (trseg>>3): # for TSS
-                s = GdtInfoCommand.segval2str(b, value_only=True, color=True)
+                s = GdtInfoCommand.segval2str(b, value_only=True)
                 prev = b
                 reglist = reglist + ", tr" if reglist else LEFT_ARROW + "TR"
             elif is_x86_64() and i == (trseg>>3) + 1: # for TSS
-                s = GdtInfoCommand.segval2str([prev, b], color=True)
+                s = GdtInfoCommand.segval2str([prev, b])
             elif is_x86_32() and i == (trseg>>3): # for TSS
-                s = GdtInfoCommand.segval2str(b, color=True)
+                s = GdtInfoCommand.segval2str(b)
                 reglist = reglist + ", tr" if reglist else LEFT_ARROW + "TR"
             else:
-                s = GdtInfoCommand.segval2str(b, color=True)
+                s = GdtInfoCommand.segval2str(b)
             gef_print("[{:02d}] {:20s}: {:s} {:s}".format(i, segname_info[i], s, Color.colorify(reglist, registers_color)))
         info("more info, use `gdtinfo -v` command, it prints legend of GDT entry")
 
@@ -26617,7 +26617,7 @@ class PagewalkCommand(GenericCommand):
 
         # print
         gef_print(titlify("Memory map"))
-        gef_print(Color.colorify(self.format_legend(), "bold yellow"))
+        gef_print(Color.colorify(self.format_legend(), get_gef_setting("theme.table_heading")))
         for line in lines:
             gef_print(line)
         return
