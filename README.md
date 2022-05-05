@@ -253,7 +253,7 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/add-symbol-temporary.png)
 * `errno`: prints errno list or specific errno.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/errno.png)
-* `u2d`: is cast/transformation u64 <-> double.
+* `u2d`: is cast/transformation u64 <-> double/float.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/u2d.png)
 * `pack`,`unpack`: is transformation int <-> bytes.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pack.png)

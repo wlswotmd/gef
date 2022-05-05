@@ -18030,10 +18030,9 @@ class ExtractHeapAddrCommand(GenericCommand):
 
 @register_command
 class U2dCommand(GenericCommand):
-    """Translate type (unsigned long <-> double)."""
+    """Translate type (unsigned long <-> double/float)."""
     _cmdline_ = "u2d"
     _syntax_ = "{:s} [-h] [hex|double]".format(_cmdline_)
-    _aliases_ = ["d2u",]
     _example_ = "\n"
     _example_ += "{:s} 0xdeadbeef\n".format(_cmdline_)
     _example_ += "{:s} 0.12345\n".format(_cmdline_)
@@ -18041,36 +18040,57 @@ class U2dCommand(GenericCommand):
     _example_ += " * only ~64bit supported (Unsupported 80bit, 128bit)"
     _category_ = "Misc"
 
-    def pQ(self, a):
-        return struct.pack("<Q",a&0xffffffffffffffff)
+    def f2u(self, a):
+        def u(a):
+            return struct.unpack("<I",a)[0]
+        def pf(a):
+            return struct.pack("<f",a)
+        return u(pf(a))
 
-    def uQ(self, a):
-        return struct.unpack("<Q",a)[0]
-
-    def pd(self, a):
-        return struct.pack("<d",a)
-
-    def ud(self, a):
-        return struct.unpack("<d",a)[0]
+    def u2f(self, a):
+        def p(a):
+            return struct.pack("<I",a&0xffffffff)
+        def uf(a):
+            return struct.unpack("<f",a)[0]
+        return uf(p(a))
 
     def d2u(self, a):
-        return self.uQ(self.pd(a))
+        def uQ(a):
+            return struct.unpack("<Q",a)[0]
+        def pd(a):
+            return struct.pack("<d",a)
+        return uQ(pd(a))
 
     def u2d(self, a):
-        return self.ud(self.pQ(a))
+        def pQ(a):
+            return struct.pack("<Q",a&0xffffffffffffffff)
+        def ud(a):
+            return struct.unpack("<d",a)[0]
+        return ud(pQ(a))
 
     def translate_from_float(self, n):
+        gef_print(titlify("double -> unsigned long long"))
         gef_print(Color.cyanify("double -> ull (reinterpret_cast)"))
         gef_print("  {:.20e} ---> {:#018x}".format(n, self.d2u(n)))
+        gef_print(titlify("float -> float"))
+        gef_print(Color.cyanify("float -> uint (reinterpret_cast)"))
+        gef_print("  {:.20e} ---> {:#010x}".format(n, self.f2u(n)))
         return
 
     def translate_from_int(self, n):
+        n &= 0xffffffffffffffff
+        gef_print(titlify("unsigned long long <-> double"))
         gef_print(Color.cyanify("ull -> double (reinterpret_cast)"))
         gef_print("  {:#018x} ---> {:.20e}".format(n, self.u2d(n)))
-        gef_print(Color.cyanify("ull -> double (static_cast)"))
-        gef_print("  {:#018x} ---> {:#018x}".format(n, self.d2u(float(n))))
-        gef_print(Color.cyanify("double -> ull (static_cast)"))
-        gef_print("  {:#018x} ---> {:#018x}".format(n, int(self.u2d(n))))
+        gef_print(Color.cyanify("ull -> double -> ull (static_cast)"))
+        gef_print("  {:#018x} ---> {:#018x} ---> {:#018x}".format(n, self.d2u(float(n)), int(self.u2d(self.d2u(float(n))))))
+
+        n &= 0xffffffff
+        gef_print(titlify("unsigned int <-> float"))
+        gef_print(Color.cyanify("uint -> float (reinterpret_cast)"))
+        gef_print("  {:#010x} ---> {:.20e}".format(n, self.u2f(n)))
+        gef_print(Color.cyanify("uint -> float -> uint (static_cast)"))
+        gef_print("  {:#010x} ---> {:#010x} ---> {:#010x}".format(n, self.f2u(float(n)), int(self.u2f(self.f2u(float(n))))))
         return
 
     def do_invoke(self, argv):
@@ -18091,7 +18111,7 @@ class U2dCommand(GenericCommand):
                 self.translate_from_int(n)
         except:
             self.usage()
-            return
+        return
 
 
 @register_command
