@@ -825,7 +825,7 @@ class Instruction:
         if opcodes_len < len(self.opcodes):
             opcodes_text = opcodes_text[:opcodes_len * 2 - 2] + ".."
 
-        # format lcoation
+        # format location
         location = self.smartify_text(self.location)
         if not location:
             location = "<NO_SYMBOL>"
@@ -4406,7 +4406,6 @@ def get_capstone_arch(arch=None, mode=None, endian=None, to_string=False):
         raise OSError("Capstone not supported for PPC64 yet.")
 
     if is_alive() and is_arch(Elf.POWERPC):
-
         arch = "PPC"
         mode = "32"
         endian = is_big_endian()
@@ -7010,7 +7009,12 @@ class UnicornEmulateCommand(GenericCommand):
     _syntax_ += "  -g NB_GADGET           indicates the number of gadgets to execute (mutually exclusive with `-t` and `-n`).\n"
     _syntax_ += "  -v                     displays the registers for each instruction.\n"
     _syntax_ += "  -q                     quiet execution.\n"
-    _syntax_ += "Additional options can be setup via `gef config unicorn-emulate`"
+    _syntax_ += "Additional options can be setup via `gef config unicorn-emulate`\n"
+    _syntax_ += "\n"
+    _syntax_ += "NOTE\n"
+    _syntax_ += "* unicorn does not support some instructions (ex: xsavec, xrstor, vpbroadcastb, etc)\n"
+    _syntax_ += "* unicorn does not emulate ARM kernel-provided-user-helpers like $pc=0xffff0fe0, 0xffff0fc0, etc.\n"
+    _syntax_ += "  see: https://www.kernel.org/doc/Documentation/arm/kernel_user_helpers.txt\n"
     _aliases_ = ["emulate",]
     _example_ = "{:s} -n 5 # from $pc to 5 later asm\n".format(_cmdline_)
     _example_ += "{:s} -g 4 # from $pc to the point where 4 instructions are executed\n".format(_cmdline_)
@@ -7089,20 +7093,33 @@ class UnicornEmulateCommand(GenericCommand):
         if start_insn is None:
             start_insn = current_arch.pc
 
+        thumb_mode = None
+        if is_arm32():
+            thumb_mode = start_insn & 1
+
         if end_insn < 0 and nb_insn < 0 and nb_gadget < 0:
             err("No stop condition (-t|-n|-g) defined.")
             return
 
+        kwargs = {
+            "skip_emulation": skip_emulation,
+            "to_file": to_file,
+            "verbose": verbose,
+            "nb_gadget": nb_gadget,
+            "quiet": quiet,
+            "thumb_mode": thumb_mode,
+        }
+
         if end_insn > 0:
-            self.run_unicorn(start_insn, end_insn, skip_emulation=skip_emulation, to_file=to_file, verbose=verbose, nb_gadget=nb_gadget, quiet=quiet)
+            self.run_unicorn(start_insn, end_insn, **kwargs)
 
         elif nb_insn > 0:
             end_insn = self.get_unicorn_end_addr(start_insn, nb_insn)
-            self.run_unicorn(start_insn, end_insn, skip_emulation=skip_emulation, to_file=to_file, verbose=verbose, nb_gadget=nb_gadget, quiet=quiet)
+            self.run_unicorn(start_insn, end_insn, **kwargs)
 
         elif nb_gadget > 0:
             end_insn = 0x0
-            self.run_unicorn(start_insn, end_insn, skip_emulation=skip_emulation, to_file=to_file, verbose=verbose, nb_gadget=nb_gadget, quiet=quiet)
+            self.run_unicorn(start_insn, end_insn, **kwargs)
 
         else:
             raise Exception("Should never be here")
@@ -7118,11 +7135,13 @@ class UnicornEmulateCommand(GenericCommand):
         quiet = kwargs.get("quiet", False)
         nb_gadget = kwargs.get("nb_gadget", -1)
         skip_emulation = kwargs.get("skip_emulation", False)
+        to_file = kwargs.get("to_file", None)
+        thumb_mode = kwargs.get("thumb_mode", None)
+
         arch, mode = get_unicorn_arch(to_string=True)
         unicorn_registers = get_unicorn_registers(to_string=True)
         cs_arch, cs_mode = get_capstone_arch(to_string=True)
         fname = str(get_filename())
-        to_file = kwargs.get("to_file", None)
         emulate_segmentation_block = ""
         context_segmentation_block = ""
 
@@ -7146,6 +7165,7 @@ class UnicornEmulateCommand(GenericCommand):
         content += "from __future__ import print_function\n"
         content += "import collections\n"
         content += "import capstone, unicorn\n"
+        content += "import sys, traceback\n"
         content += "\n"
 
         content += "registers = collections.OrderedDict({{{regs}}})\n".format(
@@ -7157,6 +7177,20 @@ class UnicornEmulateCommand(GenericCommand):
         content += "nb_gadget = {nb_gadget}\n".format(nb_gadget=nb_gadget)
         content += "syscall_register = '{syscall_reg}'\n".format(syscall_reg=current_arch.syscall_register)
         content += "count = 0\n"
+        if is_arm32():
+            content += "enable_thumb = {thumb_mode}\n".format(thumb_mode=int(thumb_mode))
+            content += "\n"
+            content += "def thumb_check(emu, insn):\n"
+            content += "    global enable_thumb\n"
+            content += "    if insn.mnemonic in ['blx', 'bx']:\n"
+            content += "        enable_thumb = emu.reg_read(registers['$'+insn.op_str]) & 1\n"
+            content += "    return\n"
+
+            # hack: unicorn handles if thumb or not, but capstone can't. we have to handle it manually for capstone.
+            # since CS_MODE_ARM is 0x0, it can be ignore. we represent status of thumb: CS_MODE_THUMB * (0 or 1).
+            endian = cs_mode.split(" + ")[-1]
+            cs_mode = "capstone.CS_MODE_THUMB * enable_thumb + " + endian
+
         content += "\n"
         content += "def disassemble(code, addr):\n"
         content += "    cs = capstone.Cs({cs_arch}, {cs_mode})\n".format(cs_arch=cs_arch, cs_mode=cs_mode)
@@ -7166,12 +7200,16 @@ class UnicornEmulateCommand(GenericCommand):
         content += "def code_hook(emu, address, size, user_data):\n"
         content += "    global count\n"
         content += "    if not quiet:\n"
-        content += "        code = emu.mem_read(address, size)\n"
-        content += "        code_hex = code.hex()\n"
+        # min() is the workaround since unicorn passes 0xf1f1f1f1 as size if opcode is unsupported.
+        # The execution will be failed, but the information of the error message increases.
+        content += "        code = emu.mem_read(address, min(size, 0x10))\n"
         content += "        insn = disassemble(code, address)\n"
+        content += "        code_hex = code[:insn.size].hex()\n"
         content += "        if verbose:\n"
         content += "            print_regs(emu, registers)\n"
         content += "        print('>>> {:d} {:#x}: {:24s} {:s} {:s}'.format(count, insn.address, code_hex, insn.mnemonic, insn.op_str))\n"
+        if is_arm32():
+            content += "        thumb_check(emu, insn)\n"
         content += "    count += 1\n"
         content += "    if 0 <= nb_gadget and count >= nb_gadget:\n"
         content += "        emu.emu_stop()\n"
@@ -7236,17 +7274,22 @@ class UnicornEmulateCommand(GenericCommand):
         if verbose:
             info("Duplicating registers")
 
+        if is_arm32() or is_arm64():
+            # need first. because other register values may be broken when $cpsr is set
+            gregval = get_register("$cpsr")
+            content += "    emu.reg_write({}, {:#x})\n".format(unicorn_registers["$cpsr"], gregval)
         for r in current_arch.all_registers:
-            if is_x86_64() and r == "$fs": continue
-            if is_x86_32() and r == "$gs": continue
+            if is_x86_64() and r == "$fs":
+                continue
+            if is_x86_32() and r == "$gs":
+                continue
+            if (is_arm32() or is_arm64()) and r == "$cpsr":
+                continue
             gregval = get_register(r)
             content += "    emu.reg_write({}, {:#x})\n".format(unicorn_registers[r], gregval)
         content += "\n"
 
-        if is_qemu_usermode():
-            vmmap = get_process_maps(outer=True)
-        else:
-            vmmap = get_process_maps()
+        vmmap = get_process_maps()
         if not vmmap:
             warn("An error occurred when reading memory map.")
             return
@@ -7268,20 +7311,13 @@ class UnicornEmulateCommand(GenericCommand):
             content += "    emu.mem_map({:#x}, {:#x}, {})\n".format(page_start, size, oct(perm.value))
 
             if perm & Permission.READ:
-                if is_qemu_usermode():
-                    fd = open("/proc/{:d}/mem".format(get_pid()), "rb")
-                    fd.seek(page_start)
-                    code = fd.read(size)
-                    fd.close()
-                else:
-                    code = read_memory(page_start, size)
+                code = read_memory(page_start, size)
                 loc = "/tmp/gef-{}-{:#x}.raw".format(fname, page_start)
                 with open(loc, "wb") as f:
                     f.write(bytes(code))
 
                 content += "    emu.mem_write({:#x}, open('{}', 'rb').read())\n".format(page_start, loc)
                 content += "\n"
-
 
         content += "    emu.hook_add(unicorn.UC_HOOK_CODE, code_hook)\n"
         content += "    emu.hook_add(unicorn.UC_HOOK_INTR, intr_hook)\n"
@@ -7298,10 +7334,10 @@ class UnicornEmulateCommand(GenericCommand):
         content += "    try:\n"
         content += "        print('========================= Starting emulation =========================')\n"
         content += "        emu.emu_start(start_addr, end_addr)\n"
-        content += "    except Exception as e:\n"
+        content += "    except:\n"
         content += "        emu.emu_stop()\n"
         content += "        print('========================= Emulation failed =========================')\n"
-        content += "        print('[!] Error: {{}}'.format(e))\n"
+        content += "        traceback.print_exc(file=sys.stdout)\n"
         content += "\n"
         content += "    print('========================= Final registers =========================')\n"
         content += "    print_regs(emu, registers)\n"
@@ -13243,7 +13279,7 @@ class XAddressInfoCommand(GenericCommand):
 
     @only_if_gdb_running
     @only_if_not_qemu_system
-    def do_invoke (self, argv):
+    def do_invoke(self, argv):
         if not argv:
             err ("At least one valid address must be specified")
             self.usage()
