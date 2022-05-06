@@ -300,8 +300,8 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dynamic.png)
 * `linkmap`: dumps linkmap with iterating.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/linkmap.png)
-* `ret2dl-hint`: show the structure used by ret2dl as hint.
-* `srop-hint`: show the code for srop as hint.
+* `ret2dl-hint`: shows the structure used by ret2dl as hint.
+* `srop-hint`: shows the code for srop as hint.
 * `dtor-dump`: dumps some destructor functions list.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dtor-dump.png)
 

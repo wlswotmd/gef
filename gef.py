@@ -30714,7 +30714,7 @@ class MemoryHashCommand(GenericCommand):
 
 @register_command
 class ExecNextCommand(GenericCommand):
-    """Execute next address for rep prefix."""
+    """Execute until next address. This command is used for rep prefix."""
     _cmdline_ = "exec-next"
     _syntax_ = "{:s}".format(_cmdline_)
     _category_ = "Debugging Support"
