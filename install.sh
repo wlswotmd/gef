@@ -11,8 +11,6 @@ apt-get install -y gdb-multiarch python3-pip binutils gcc ruby-dev
 
 echo "[+] pip3"
 pip3 install rpyc psutil crccheck unicorn capstone ropper keystone-engine py-timeout
-pip3 install --upgrade lz4 zstandard git+https://github.com/clubby789/python-lzo@b4e39df
-pip3 install --upgrade git+https://github.com/marin-m/vmlinux-to-elf
 
 echo "[+] install seccomp-tools, one_gadget"
 if [ "x$(which seccomp-tools)" = "x" ]; then
@@ -40,6 +38,12 @@ if [ "x$(uname -m)" = "xx86_64" ] || [ "x$(uname -m)" = "xi686" ]; then
       chmod +x /usr/local/bin/rp-lin-x86
     fi
   fi
+fi
+
+echo "[+] install vmlinux-to-elf"
+if [ "x$(which vmlinux-to-elf)" = "x" ]; then
+  pip3 install --upgrade lz4 zstandard git+https://github.com/clubby789/python-lzo@b4e39df
+  pip3 install --upgrade git+https://github.com/marin-m/vmlinux-to-elf
 fi
 
 echo "[+] download gef"
