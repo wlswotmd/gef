@@ -5746,6 +5746,7 @@ class GenericCommand(gdb.Command):
 #        super().__init__(complete=gdb.COMPLETE_FILENAME)
 #         return
 #     def do_invoke(self, argv):
+#         self.dont_repeat()
 #         return
 
 
@@ -5805,6 +5806,7 @@ class PrintFormatCommand(GenericCommand):
 
     def do_invoke(self, argv):
         """Default value for print-format command."""
+        self.dont_repeat()
         lang = "py"
         length = 256
         bitlen = 8
@@ -5888,6 +5890,7 @@ class SmartEvalCommand(GenericCommand):
     _category_ = "Misc"
 
     def do_invoke(self, argv):
+        self.dont_repeat()
         argc = len(argv)
         if argc == 1:
             self.evaluate(argv)
@@ -6022,6 +6025,7 @@ class PidCommand(GenericCommand):
     @only_if_gdb_target_local
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
         pid = get_pid()
         if pid is None:
             err("Unsupported")
@@ -6040,6 +6044,7 @@ class GetFileCommand(GenericCommand):
     @only_if_gdb_target_local
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
         gef_print(repr(gdb.current_progspace().filename))
         return
 
@@ -6061,6 +6066,7 @@ class ProcessStatusCommand(GenericCommand):
     @only_if_gdb_target_local
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
         gef_print(titlify("Process information"))
         self.show_info_proc()
         self.show_info_proc2()
@@ -6439,6 +6445,7 @@ class ChangeFdCommand(GenericCommand):
     @only_if_gdb_target_local
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
         if len(argv) != 2:
             self.usage()
             return
@@ -6519,6 +6526,7 @@ class ScanSectionCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
         if len(argv) != 2:
             self.usage()
             return
@@ -6699,6 +6707,8 @@ class SearchPatternCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         self.aligned = None
         if "--aligned" in argv:
             idx = argv.index("--aligned")
@@ -6800,6 +6810,8 @@ class FlagsCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if "-h" in argv:
             self.usage()
             return
@@ -7040,6 +7052,8 @@ class ChangePermissionCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if len(argv) not in (1, 2):
             err("Incorrect syntax")
             self.usage()
@@ -7141,6 +7155,8 @@ class UnicornEmulateCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         start_insn = None
         end_insn = -1
         nb_insn = -1
@@ -7496,6 +7512,8 @@ class NopCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         try:
             opts, args = getopt.getopt(argv, "b:h")
             num_bytes = 0
@@ -7564,6 +7582,8 @@ class StubCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         try:
             opts, args = getopt.getopt(argv, "r:")
             retval = 0
@@ -7623,6 +7643,8 @@ class CapstoneDisassembleCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         location = None
         show_opcodes = False
 
@@ -7708,6 +7730,7 @@ class GlibcHeapCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
         self.usage()
         return
 
@@ -7723,6 +7746,8 @@ class GlibcHeapArenaCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         try:
             arena = GlibcArena(__gef_default_main_arena__)
         except gdb.error:
@@ -7756,6 +7781,8 @@ class GlibcHeapChunkCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if not argv:
             err("Missing chunk address")
             self.usage()
@@ -7786,6 +7813,8 @@ class GlibcHeapChunksCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         # parse arena
         if "-a" in argv:
             idx = argv.index("-a")
@@ -7880,6 +7909,8 @@ class GlibcHeapBinsCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         # parse arena
         arena_addr = None
         if "-a" in argv:
@@ -7954,6 +7985,8 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         verbose = False
         if "-v" in argv:
             verbose = True
@@ -8032,6 +8065,8 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         verbose = False
         if "-v" in argv:
             verbose = True # no effect
@@ -8103,6 +8138,8 @@ class GlibcHeapUnsortedBinsCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         verbose = False
         if "-v" in argv:
             verbose = True
@@ -8138,6 +8175,8 @@ class GlibcHeapSmallBinsCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         verbose = False
         if "-v" in argv:
             verbose = True
@@ -8178,6 +8217,8 @@ class GlibcHeapLargeBinsCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         verbose = False
         if "-v" in argv:
             verbose = True
@@ -8214,6 +8255,8 @@ class SolveKernelSymbolCommand(GenericCommand):
 
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if len(argv) != 1:
             self.usage()
             return
@@ -8249,6 +8292,8 @@ class DetailRegistersCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         unchanged_color = get_gef_setting("theme.registers_register_name")
         changed_color = get_gef_setting("theme.registers_value_changed")
         string_color = get_gef_setting("theme.dereference_string")
@@ -8350,6 +8395,7 @@ class ShellcodeCommand(GenericCommand):
         return
 
     def do_invoke(self, argv):
+        self.dont_repeat()
         err("Missing sub-command (search|get)")
         self.usage()
         return
@@ -8367,6 +8413,7 @@ class ShellcodeSearchCommand(GenericCommand):
     search_url = "{}/api/?s=".format(api_base)
 
     def do_invoke(self, argv):
+        self.dont_repeat()
         if not argv:
             err("Missing pattern to search")
             self.usage()
@@ -8415,6 +8462,8 @@ class ShellcodeGetCommand(GenericCommand):
     get_url = "{}/shellcode/files/shellcode-{{:d}}.php".format(api_base)
 
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if len(argv) != 1:
             err("Missing ID to download")
             self.usage()
@@ -8467,6 +8516,8 @@ class RopperCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         ropper = sys.modules["ropper"]
         if "-h" in argv:
             os.system("ropper --help")
@@ -8551,6 +8602,8 @@ class RpCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if is_x86():
             try:
                 self.rp = which("rp-lin-x64")
@@ -8712,6 +8765,8 @@ class AssembleCommand(GenericCommand):
         return
 
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         arch_s, mode_s, big_endian, as_shellcode, overwrite_location = None, None, False, False, None
         try:
             opts, args = getopt.getopt(argv, "a:m:l:esh")
@@ -8845,6 +8900,8 @@ class DisassembleCommand(GenericCommand):
         return
 
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         arch_s, mode_s, big_endian = None, None, False
         try:
             opts, args = getopt.getopt(argv, "a:m:eh")
@@ -9078,6 +9135,8 @@ class AsmListCommand(GenericCommand):
         return valid_patterns
 
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         try:
             less = which("less")
         except FileNotFoundError as e:
@@ -9184,6 +9243,8 @@ class ProcessListingCommand(GenericCommand):
 
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         do_attach = False
         smart_scan = False
 
@@ -9257,6 +9318,8 @@ class ElfInfoCommand(GenericCommand):
         return
 
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         # http://www.sco.com/developers/gabi/latest/ch4.eheader.html
         classes = {
             Elf.ELF_32_BITS   : "32-bit",
@@ -11141,6 +11204,8 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
 
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if "-h" in argv:
             self.usage()
             return
@@ -11220,6 +11285,8 @@ class EntryPointBreakCommand(GenericCommand):
 
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         fpath = get_filepath()
         if fpath is None:
             warn("No executable to debug, use `file` to load a binary")
@@ -11301,6 +11368,8 @@ class NamedBreakpointCommand(GenericCommand):
 
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if not argv:
             err("Missing name for breakpoint")
             self.usage()
@@ -11390,6 +11459,8 @@ class ContextCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if not self.get_setting("enable") or context_hidden:
             return
 
@@ -12185,6 +12256,7 @@ class MemoryCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
         self.usage()
         return
 
@@ -12203,6 +12275,8 @@ class MemoryWatchCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         global __watches__
 
         if len(argv) not in (1, 2, 3):
@@ -12248,6 +12322,8 @@ class MemoryUnwatchCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         global __watches__
         if not argv:
             self.usage()
@@ -12271,6 +12347,8 @@ class MemoryWatchResetCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         global __watches__
         __watches__.clear()
         ok("Memory watches cleared")
@@ -12286,6 +12364,8 @@ class MemoryWatchListCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         global __watches__
 
         if not __watches__:
@@ -12567,6 +12647,8 @@ class PatchCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if "-h" in argv:
             self.usage()
             return
@@ -12684,6 +12766,8 @@ class PatchStringCommand(PatchCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if "-h" in argv:
             self.usage()
             return
@@ -12745,6 +12829,8 @@ class PatchPatternCommand(PatchCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if "-h" in argv:
             self.usage()
             return
@@ -12791,6 +12877,8 @@ class PatchHistoryCommand(PatchCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if self.history:
             for i, hist in enumerate(self.history):
                 b = ' '.join(["{:02x}".format(x) for x in hist["before_data"][:0x10]])
@@ -12815,6 +12903,8 @@ class PatchRevertCommand(PatchCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if "-h" in argv:
             self.usage()
             return
@@ -12963,6 +13053,7 @@ class DereferenceCommand(GenericCommand):
     _example_ += "{:s} $sp L20 # print 20 lines from $sp\n".format(_cmdline_)
     _example_ += "{:s} $sp 20 # same as above".format(_cmdline_)
     _category_ = "Show/Modify Memory"
+    _repeat_ = True
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
@@ -13105,6 +13196,8 @@ class ASLRCommand(GenericCommand):
 
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         argc = len(argv)
 
         if argc == 0:
@@ -13143,6 +13236,7 @@ class ResetCacheCommand(GenericCommand):
     _category_ = "GEF Maintenance Command"
 
     def do_invoke(self, argv):
+        self.dont_repeat()
         reset_all_caches()
         return
 
@@ -13160,6 +13254,8 @@ class VMMapCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if is_qemu_system():
             info("Redirect to pagewalk")
             gdb.execute("pagewalk {:s} {:s}".format(current_arch.arch.lower(), ' '.join(argv)))
@@ -13287,6 +13383,8 @@ class XFilesCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         color = get_gef_setting("theme.table_heading")
         headers = ["Start", "End", "Name", "File"]
         gef_print(Color.colorify("{:<{w}s}{:<{w}s}{:<21s} {:s}".format(*headers, w=get_memory_alignment()*2+3), color))
@@ -13325,6 +13423,8 @@ class XAddressInfoCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if not argv:
             err ("At least one valid address must be specified")
             self.usage()
@@ -13391,6 +13491,7 @@ class XorMemoryCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
         self.usage()
         return
 
@@ -13406,6 +13507,8 @@ class XorMemoryDisplayCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if len(argv) != 3:
             self.usage()
             return
@@ -13435,6 +13538,8 @@ class XorMemoryPatchCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if len(argv) != 3:
             self.usage()
             return
@@ -13467,6 +13572,8 @@ class TraceRunCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if len(argv) not in (1, 2):
             self.usage()
             return
@@ -13553,6 +13660,7 @@ class PatternCommand(GenericCommand):
         return
 
     def do_invoke(self, argv):
+        self.dont_repeat()
         self.usage()
         return
 
@@ -13569,6 +13677,8 @@ class PatternCreateCommand(GenericCommand):
     _category_ = "Exploit Development"
 
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if len(argv) == 1:
             try:
                 sz = int(argv[0], 0)
@@ -13600,6 +13710,8 @@ class PatternSearchCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         argc = len(argv)
         if argc not in (1, 2):
             self.usage()
@@ -13679,6 +13791,8 @@ class ChecksecCommand(GenericCommand):
         return
 
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if is_qemu_system():
             self.print_security_properties_qemu_system()
             return
@@ -13850,6 +13964,8 @@ class SropHintCommand(GenericCommand):
     _category_ = "Exploit Development"
 
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         s = "\n"
         if is_x86_64():
             s += 'exp  = struct.pack("<Q", syscall)    # rax = 15 (rt_sigreturn)\n'
@@ -14005,6 +14121,8 @@ class Ret2dlHintCommand(GenericCommand):
     _category_ = "Exploit Development"
 
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         s  = "\n"
         s += "  +---.got/.got.plt @ itself-------+\n"
         s += "  | GOT[0]: _DYNAMIC               |\n"
@@ -14202,6 +14320,8 @@ class LinkmapCommand(GenericCommand):
     @only_if_gdb_target_local
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if "-h" in argv:
             self.usage()
             return
@@ -14396,6 +14516,8 @@ class DynamicCommand(GenericCommand):
     @only_if_gdb_target_local
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if "-h" in argv:
             self.usage()
             return
@@ -14660,6 +14782,8 @@ class DestructorDumpCommand(GenericCommand):
     @only_if_not_qemu_system
     @only_if_x86_32_64_or_arm_32_64
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         # init
         if is_x86_64():
             self.tls = TlsCommand.getfs()
@@ -14757,6 +14881,8 @@ class GotCommand(GenericCommand):
     @only_if_gdb_target_local
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         try:
             readelf = which("readelf")
         except IOError:
@@ -14869,6 +14995,7 @@ class HighlightCommand(GenericCommand):
         self.add_setting("regex", False, "Enable regex highlighting")
 
     def do_invoke(self, argv):
+        self.dont_repeat()
         self.usage()
         return
 
@@ -14892,6 +15019,7 @@ class HighlightListCommand(GenericCommand):
         return
 
     def do_invoke(self, argv):
+        self.dont_repeat()
         return self.print_highlight_table()
 
 
@@ -14904,6 +15032,7 @@ class HighlightClearCommand(GenericCommand):
     _category_ = "GEF Maintenance Command"
 
     def do_invoke(self, argv):
+        self.dont_repeat()
         return highlight_table.clear()
 
 
@@ -14917,6 +15046,8 @@ class HighlightAddCommand(GenericCommand):
     _category_ = "GEF Maintenance Command"
 
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if len(argv) < 2:
             self.usage()
             return
@@ -14936,6 +15067,8 @@ class HighlightRemoveCommand(GenericCommand):
     _category_ = "GEF Maintenance Command"
 
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if not argv:
             self.usage()
             return
@@ -14956,6 +15089,8 @@ class FormatStringSearchCommand(GenericCommand):
     _category_ = "Debugging Support"
 
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         dangerous_functions = {
             "printf": 0,
             "sprintf": 1,
@@ -15009,6 +15144,8 @@ class HeapAnalysisCommand(GenericCommand):
     @only_if_not_qemu_system
     @experimental_feature
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if not argv:
             self.setup()
             return
@@ -15097,6 +15234,8 @@ class SyscallSearchCommand(GenericCommand):
     _category_ = "Misc"
 
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if "-h" in argv:
             self.usage()
             return
@@ -15155,6 +15294,8 @@ class SyscallArgsCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if "-h" in argv:
             self.usage()
             return
@@ -17880,6 +18021,7 @@ class SmartCppFunctionNameCommand(GenericCommand):
     _category_ = "Misc"
 
     def do_invoke(self, argv):
+        self.dont_repeat()
         setting = gdb.execute("gef config context.smart_cpp_function_name", to_string=True)
         if "False" in setting:
             gdb.execute("gef config context.smart_cpp_function_name true", to_string=True)
@@ -17898,6 +18040,8 @@ class FollowCommand(GenericCommand):
 
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         argc = len(argv)
 
         if argc == 0:
@@ -17935,6 +18079,8 @@ class CodebaseCommand(GenericCommand):
     @only_if_gdb_target_local
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         codebase = get_section_base_address(get_filepath())
         if codebase is None:
             gef_print("codebase not found")
@@ -17960,6 +18106,8 @@ class HeapbaseCommand(GenericCommand):
     @only_if_gdb_target_local
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         heap = HeapBaseFunction.heap_base()
         if heap is None:
             gef_print("heap not found")
@@ -17982,6 +18130,8 @@ class LibcCommand(GenericCommand):
     @only_if_gdb_target_local
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         libc = get_section_base_address_by_list(("libc-2.", "libc.so.6"))
         if libc is None:
             err("libc is not found")
@@ -18021,6 +18171,8 @@ class LdCommand(GenericCommand):
     @only_if_gdb_target_local
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         ld = get_section_base_address_by_list(("ld-2.", "ld-linux-"))
         if ld is None:
             gef_print("ld not found")
@@ -18073,6 +18225,8 @@ class MagicCommand(GenericCommand):
     @only_if_gdb_target_local
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         libc = get_section_base_address_by_list(("libc-2.", "libc.so.6"))
         ld = get_section_base_address_by_list(("ld-2.", "ld-linux-"))
         if libc is None or ld is None:
@@ -18178,6 +18332,8 @@ class OneGadgetCommand(GenericCommand):
     @only_if_gdb_target_local
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         libc = process_lookup_path_by_list(("libc-2.", "libc.so.6"))
         if libc is None:
             err("libc is not found")
@@ -18203,6 +18359,8 @@ class SeccompCommand(GenericCommand):
     @only_if_gdb_target_local
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         path = get_filepath()
         try:
             seccomp = which("seccomp-tools")
@@ -18263,9 +18421,12 @@ class SysregCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if "-h" in argv:
             self.usage()
             return
+
         self.print_sysreg_compact(argv)
         return
 
@@ -18339,6 +18500,8 @@ class MmxSetCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_x86_32_64
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         # arg parse
         try:
             reg, value = ''.join(argv).split("=")
@@ -18395,6 +18558,7 @@ class MmxCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_x86_32_64
     def do_invoke(self, argv):
+        self.dont_repeat()
         self.print_mmx()
         return
 
@@ -18409,6 +18573,8 @@ class XmmSetCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_x86_32_64
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         # arg parse
         try:
             reg, value = ''.join(argv).split("=")
@@ -18500,6 +18666,8 @@ class SseCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_x86_32_64
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if "-h" in argv:
             self.usage()
             return
@@ -18551,6 +18719,7 @@ class AvxCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_x86_32_64
     def do_invoke(self, argv):
+        self.dont_repeat()
         self.print_avx()
         return
 
@@ -18879,6 +19048,8 @@ class FpuCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_x86_32_64_or_arm_32_64
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if "-h" in argv:
             self.usage()
             return
@@ -19044,6 +19215,8 @@ class ErrnoCommand(GenericCommand):
     }
 
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if "all" in argv:
             for val, es in sorted(self.ERRNO_DICT.items()):
                 gef_print("{:3d} (={:#4x}): {:<15s}: \"{:s}\"".format(val, val, es[0], es[1]))
@@ -19115,15 +19288,20 @@ class ExtractHeapAddrCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if not argv:
             self.usage()
             return
+
         if "-h" in argv:
             self.usage()
             return
+
         if "--source" in argv:
             self.print_source()
             return
+
         ptr = int(argv[0], 16)
         extracted_ptr = self.reveal(ptr)
         gef_print("Protected fd pointer: {:#x} -> Extracted heap address: {:#x} (=fd & ~0xfff)".format(ptr, extracted_ptr))
@@ -19196,6 +19374,8 @@ class U2dCommand(GenericCommand):
         return
 
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if len(argv) == 0:
             self.usage()
             return
@@ -19225,6 +19405,8 @@ class PackCommand(GenericCommand):
     _category_ = "Misc"
 
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if len(argv) == 0:
             self.usage()
             return
@@ -19254,6 +19436,8 @@ class UnpackCommand(GenericCommand):
     _category_ = "Misc"
 
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if len(argv) == 0:
             self.usage()
             return
@@ -19283,6 +19467,8 @@ class ByteswapCommand(GenericCommand):
     _category_ = "Misc"
 
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if len(argv) == 0:
             self.usage()
             return
@@ -19418,6 +19604,8 @@ class VersionCommand(GenericCommand):
             return 'not found'
 
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         gef_print("Kernel:        \t{:s}".format(self.kernel_version()))
         gef_print("GEF:           \t{:s}".format(self.gef_version()))
         gef_print("Gdb:           \t{:s}".format(self.gdb_version()))
@@ -19430,6 +19618,7 @@ class VersionCommand(GenericCommand):
         gef_print("objdump:       \t{:s}".format(self.objdump_version()))
         gef_print("seccomp-tools: \t{:s}".format(self.seccomp_tools_version()))
         gef_print("one_gadget:    \t{:s}".format(self.one_gadget_version()))
+
         if is_qemu_system():
             gef_print("qemu:          \t{:s}".format(self.qemu_version()))
         return
@@ -19564,6 +19753,8 @@ class KernelbaseCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         # resolve kbase, krobase
         maps = self.get_maps() # [vaddr, size, perm]
         if maps is None:
@@ -19632,6 +19823,8 @@ class KernelVersionCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         ret = self.kernel_version()
         if ret is None:
             err("Parse failed")
@@ -19705,6 +19898,8 @@ class KernelCmdlineCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         ret = self.kernel_cmdline()
         if ret is None:
             err("Parse failed")
@@ -19841,6 +20036,8 @@ class KernelTaskCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         task_addrs = self.get_task_list()
         if task_addrs is None:
             return
@@ -19983,6 +20180,7 @@ class SyscallTableViewCommand(GenericCommand):
     @only_if_qemu_system
     @only_if_x86_32_64_or_arm_32_64
     def do_invoke(self, argv):
+        self.dont_repeat()
         self.syscall_table_view()
         return
 
@@ -19997,6 +20195,8 @@ class AuxvCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         auxval = gef_get_auxiliary_values()
         if not auxval:
             return None
@@ -20026,7 +20226,6 @@ class ArgvCommand(GenericCommand):
     """Show argv."""
     _cmdline_ = "argv"
     _syntax_ = "{:s} [-v]".format(_cmdline_)
-    _aliases_ = ["args",]
     _category_ = "Process Information"
 
     def get_address_from_symbol(self, symbol):
@@ -20063,6 +20262,8 @@ class ArgvCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         verbose = (argv and argv[0] == "-v")
 
         paddr1 = self.get_address_from_symbol("&_dl_argv")
@@ -20130,6 +20331,8 @@ class EnvpCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if "-h" in argv:
             self.usage()
             return
@@ -20241,6 +20444,8 @@ class TlsCommand(GenericCommand):
     @only_if_not_qemu_system
     @only_if_x86_32_64_or_arm_32_64
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if is_x86_64():
             fsvalue = self.getfs()
             if fsvalue:
@@ -20576,9 +20781,12 @@ class GdtInfoCommand(GenericCommand):
 
     @only_if_x86_32_64
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if "-h" in argv:
             self.usage()
             return
+
         self.print_flags_info = "-v" in argv
         self.print_gdt()
         info("if qemu-system, use `qreg -v` to confirm real GDT value")
@@ -20661,6 +20869,8 @@ class MemoryCompareCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if "--phys" in argv and not is_qemu_system():
             err("Unsupported")
             return
@@ -20744,6 +20954,8 @@ class IsMemoryZeroCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if "-h" in argv:
             self.usage()
             return
@@ -20818,6 +21030,8 @@ class FindFakeFastCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if "-h" in argv:
             self.usage()
             return
@@ -20932,6 +21146,8 @@ class VisualHeapCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if argv and "-h" in argv:
             self.usage()
             return
@@ -20999,9 +21215,12 @@ class TimeCommand(GenericCommand):
     _category_ = "Misc"
 
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         start_time_real = time.perf_counter()
         start_time_proc = time.process_time()
         cmd = ' '.join(argv)
+
         gef_print(titlify(cmd))
         try:
             gdb.execute(cmd)
@@ -21009,6 +21228,7 @@ class TimeCommand(GenericCommand):
             exc_type, exc_value, exc_traceback = sys.exc_info()
             gef_print(exc_value)
             return
+
         end_time_real = time.perf_counter()
         end_time_proc = time.process_time()
         gef_print(titlify("time elapsed"))
@@ -21025,6 +21245,8 @@ class LsCommand(GenericCommand):
     _category_ = "Misc"
 
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         try:
             ls = which("ls")
         except:
@@ -21048,6 +21270,8 @@ class CatCommand(GenericCommand):
     _category_ = "Misc"
 
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if len(argv) == 0:
             return
         try:
@@ -21074,6 +21298,8 @@ class PdisasCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         try:
             if len(argv) >= 2:
                 length = int(argv[1], 0)
@@ -21137,6 +21363,8 @@ class IiCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         N = 50
         try:
             if len(argv) == 0:
@@ -21177,9 +21405,12 @@ class ConstGrepCommand(GenericCommand):
         return content
 
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if len(argv) == 0:
             self.usage()
             return
+
         srcdir = "/usr/include"
         pattern = re.compile("^#define\s+\S*" + argv[0])
         for cur, dirs, files in os.walk(srcdir):
@@ -21726,6 +21957,8 @@ class SlubDumpCommand(GenericCommand):
     @only_if_qemu_system
     @only_if_x86_32_64_or_arm_32_64
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if "-h" in argv:
             self.usage()
             return
@@ -22514,6 +22747,8 @@ class KsymaddrRemoteCommand(GenericCommand):
     @only_if_qemu_system
     @only_if_x86_32_64_or_arm_32_64
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if not argv:
             self.usage()
             return
@@ -22679,6 +22914,8 @@ class VmlinuxToElfApplyCommand(GenericCommand):
     @only_if_qemu_system
     @only_if_x86_32_64_or_arm_32_64
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         force_reparse = False
         if "--reparse" in argv:
             force_reparse = True
@@ -22962,6 +23199,8 @@ class TcmallocDumpCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if not self.initialized:
             self.usage()
             return
@@ -24172,6 +24411,8 @@ class PartitionAllocDumpStableCommand(GenericCommand):
     @only_if_not_qemu_system
     @only_if_x86_32_64_or_arm_32_64
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if is_32bit():
             self.align_pad = None
 
@@ -25033,6 +25274,8 @@ class PartitionAllocDumpOld1Command(GenericCommand):
     @only_if_not_qemu_system
     @only_if_x86_32_64_or_arm_32_64
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if is_32bit():
             self.align_pad = None
 
@@ -25619,6 +25862,8 @@ class PartitionAllocDumpOld2Command(GenericCommand):
     @only_if_gdb_running
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if not is_x86_64():
             err("Unsupported")
             return
@@ -26104,6 +26349,8 @@ class MuslDumpCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_x86_32_64
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         self.verbose = False
         if "-v" in argv:
             self.verbose = True
@@ -26972,6 +27219,8 @@ class CpuidCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_x86_32_64
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if "-h" in argv:
             argv.remove("-h")
             self.usage()
@@ -27621,6 +27870,8 @@ class MsrCommand(GenericCommand):
     @only_if_qemu_system
     @only_if_x86_32_64
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if "-h" in argv or not argv:
             self.usage()
             return
@@ -28022,6 +28273,8 @@ class QemuRegistersCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if "-h" in argv:
             self.usage()
             return
@@ -28340,6 +28593,7 @@ class PagewalkCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_x86_32_64_or_arm_32_64
     def do_invoke(self, argv):
+        self.dont_repeat()
         if is_x86_32():
             gdb.execute("pagewalk x86 {}".format(' '.join(argv)))
         elif is_x86_64():
@@ -28768,6 +29022,8 @@ class PagewalkX64Command(PagewalkCommand):
     @only_if_qemu_system
     @only_if_x86_32_64
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if "-h" in argv:
             self.usage()
             return
@@ -29554,6 +29810,8 @@ class PagewalkArmCommand(PagewalkCommand):
     @only_if_gdb_running
     @only_if_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if "-h" in argv:
             self.usage()
             return
@@ -30586,6 +30844,8 @@ class PagewalkArm64Command(PagewalkCommand):
     @only_if_gdb_running
     @only_if_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if "-h" in argv:
             self.usage()
             return
@@ -30663,6 +30923,8 @@ class SwitchELCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if "-h" in argv:
             self.usage()
             return
@@ -30715,6 +30977,8 @@ class MemoryHashCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if "-h" in argv:
             self.usage()
             return
@@ -31000,6 +31264,7 @@ class ExecUntilCallCommand(ExecUntilCommand):
     _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _aliases_ = ["next-call",]
     _category_ = "Debugging Support"
+    _repeat_ = True
 
     def __init__(self, *args, **kwargs):
         super().__init__(complete=gdb.COMPLETE_NONE)
@@ -31019,6 +31284,7 @@ class ExecUntilJumpCommand(ExecUntilCommand):
     _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _aliases_ = ["next-jmp",]
     _category_ = "Debugging Support"
+    _repeat_ = True
 
     def __init__(self, *args, **kwargs):
         super().__init__(complete=gdb.COMPLETE_NONE)
@@ -31038,6 +31304,7 @@ class ExecUntilIndirectBranchCommand(ExecUntilCommand):
     _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _aliases_ = ["next-indirect-branch",]
     _category_ = "Debugging Support"
+    _repeat_ = True
 
     def __init__(self, *args, **kwargs):
         super().__init__(complete=gdb.COMPLETE_NONE)
@@ -31088,6 +31355,7 @@ class ExecUntilSyscallCommand(ExecUntilCommand):
     _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _aliases_ = ["next-syscall",]
     _category_ = "Debugging Support"
+    _repeat_ = True
 
     def __init__(self, *args, **kwargs):
         super().__init__(complete=gdb.COMPLETE_NONE)
@@ -31107,6 +31375,7 @@ class ExecUntilRetCommand(ExecUntilCommand):
     _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _aliases_ = ["next-ret",]
     _category_ = "Debugging Support"
+    _repeat_ = True
 
     def __init__(self, *args, **kwargs):
         super().__init__(complete=gdb.COMPLETE_NONE)
@@ -31126,6 +31395,7 @@ class ExecUntilMemaccessCommand(ExecUntilCommand):
     _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _aliases_ = ["next-mem",]
     _category_ = "Debugging Support"
+    _repeat_ = True
 
     def __init__(self, *args, **kwargs):
         super().__init__(complete=gdb.COMPLETE_NONE)
@@ -31147,6 +31417,7 @@ class ExecUntilKeywordReCommand(ExecUntilCommand):
     _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _aliases_ = ["next-keyword",]
     _category_ = "Debugging Support"
+    _repeat_ = True
 
     def __init__(self, *args, **kwargs):
         super().__init__(complete=gdb.COMPLETE_NONE)
@@ -31199,6 +31470,7 @@ class ExecUntilCondCommand(ExecUntilCommand):
     _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _aliases_ = ["next-cond",]
     _category_ = "Debugging Support"
+    _repeat_ = True
 
     def __init__(self, *args, **kwargs):
         super().__init__(complete=gdb.COMPLETE_NONE)
@@ -31288,6 +31560,8 @@ class UsermodehelperHunterCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         info("Resolving the function addresses")
         addr = get_ksymaddr("call_usermodehelper_setup")
         if addr is None:
@@ -31376,6 +31650,8 @@ class ThunkHunterCommand(GenericCommand):
     @only_if_qemu_system
     @only_if_x86_32_64
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         maps = KernelbaseCommand.get_maps() # [vaddr, size, perm]
         info("Resolving thunk function addresses")
         for reg in current_arch.gpr_registers:
@@ -31873,6 +32149,7 @@ class UefiOvmfInfoCommand(GenericCommand):
     @only_if_qemu_system
     @only_if_x86_32_64
     def do_invoke(self, argv):
+        self.dont_repeat()
         gef_print(titlify("SEC (Security) phase variables"))
         gef_print("Unimplemented")
         gef_print(titlify("PEI (Pre EFI Initialization) phase variables"))
@@ -31992,6 +32269,8 @@ class AddSymbolTemporaryCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if len(argv) != 2:
             self.usage()
             return
@@ -32026,6 +32305,8 @@ class KsymaddrRemoteApplyCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         info("Wait for memory scan")
         res = gdb.execute("ksymaddr-remote --print-all", to_string=True)
         function_info = []
@@ -32060,6 +32341,8 @@ class PeekPointersCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         argc = len(argv)
         if argc not in (1, 2, 3):
             self.usage()
@@ -32130,6 +32413,8 @@ class CurrentFrameStackCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         ptrsize = current_arch.ptrsize
         frame = gdb.selected_frame()
 
@@ -32177,7 +32462,6 @@ class XRefTelescopeCommand(SearchPatternCommand):
     _example_ += "{:s} AAAAAAAA\n".format(_cmdline_)
     _example_ += "{:s} 0x555555554000 15".format(_cmdline_)
     _category_ = "Show/Modify Memory"
-    _aliases_ = ["xref",]
 
     def xref_telescope_(self, pattern, depth, tree_heading):
         """Recursively search a pattern within the whole userland memory."""
@@ -32221,6 +32505,8 @@ class XRefTelescopeCommand(SearchPatternCommand):
     @only_if_gdb_running
     @only_if_not_qemu_system
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         argc = len(argv)
         if argc < 1:
             self.usage()
@@ -32254,6 +32540,8 @@ class BytearrayCommand(GenericCommand):
         return
 
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         badchars = ""
         bytesperline = 32
         startval = 0
@@ -32406,6 +32694,8 @@ class BincompareCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         filename = None
         start_addr = None
         size = 0
@@ -32570,6 +32860,8 @@ class FtraceCommand(GenericCommand):
     _category_ = "Debugging Support"
 
     def do_invoke(self, args):
+        self.dont_repeat()
+
         if len(args) < 1:
             self.usage()
             return
@@ -32848,10 +33140,14 @@ class GefCommand(gdb.Command):
             try:
                 self.loaded_commands.append((cmd, class_name, class_name()))
 
+                repeat = False
+                if hasattr(class_name,"_repeat_"):
+                    repeat = getattr(class_name, "_repeat_")
+
                 if hasattr(class_name, "_aliases_"):
                     aliases = getattr(class_name, "_aliases_")
                     for alias in aliases:
-                        GefAlias(alias, cmd)
+                        GefAlias(alias, cmd, repeat=repeat)
 
             except Exception as reason:
                 self.missing_commands[cmd] = reason
@@ -33214,7 +33510,7 @@ class GefRunCommand(gdb.Command):
 
 class GefAlias(gdb.Command):
     """Simple aliasing wrapper because GDB doesn't do what it should."""
-    def __init__(self, alias, command, completer_class=gdb.COMPLETE_NONE, command_class=gdb.COMMAND_NONE):
+    def __init__(self, alias, command, repeat=False, completer_class=gdb.COMPLETE_NONE, command_class=gdb.COMMAND_NONE):
         p = command.split()
         if not p:
             return
@@ -33224,6 +33520,7 @@ class GefAlias(gdb.Command):
 
         self._command = command
         self._alias = alias
+        self._repeat = repeat
         c = command.split()[0]
         r = self.lookup_command(c)
         self.__doc__ = "Alias for '{}'".format(Color.greenify(command))
@@ -33239,6 +33536,8 @@ class GefAlias(gdb.Command):
         return
 
     def invoke(self, args, from_tty):
+        if not self._repeat:
+            self.dont_repeat()
         gdb.execute("{} {}".format(self._command, args), from_tty=from_tty)
         return
 
@@ -33262,6 +33561,7 @@ class AliasesCommand(GenericCommand):
         return
 
     def do_invoke(self, argv):
+        self.dont_repeat()
         self.usage()
         return
 
@@ -33279,6 +33579,7 @@ class AliasesAddCommand(AliasesCommand):
         return
 
     def do_invoke(self, argv):
+        self.dont_repeat()
         if (len(argv) < 2):
             self.usage()
             return
@@ -33298,6 +33599,7 @@ class AliasesRmCommand(AliasesCommand):
         return
 
     def do_invoke(self, argv):
+        self.dont_repeat()
         global __aliases__
         if len(argv) != 1:
             self.usage()
@@ -33324,6 +33626,8 @@ class AliasesListCommand(AliasesCommand):
         return
 
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         ok("Aliases defined:")
         for a in __aliases__:
             gef_print("{:30s} {} {}".format(a._alias, RIGHT_ARROW, a._command))
