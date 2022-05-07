@@ -3363,6 +3363,8 @@ def write_memory(address, buffer, length=0x10):
 
 def read_memory(addr, length=0x10):
     """Return a `length` long byte array with the copy of the process memory at `addr`."""
+    #import inspect
+    #print(' <- '.join([x.function for x in inspect.stack()[1:4]]))
     return gdb.selected_inferior().read_memory(addr, length).tobytes()
 
 
@@ -3561,6 +3563,27 @@ def only_if_not_qemu_system(f):
             return f(*args, **kwargs)
         else:
             warn("This command cannot work under qemu-system.")
+
+    return wrapper
+
+
+def perf_enable(f):
+    """Decorator wrapper to perf.."""
+
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        import cProfile, pstats, io
+        from pstats import SortKey
+        pr = cProfile.Profile()
+        pr.enable()
+        ret = f(*args, **kwargs)
+        pr.disable()
+        s = io.StringIO()
+        sortby = SortKey.CUMULATIVE
+        ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+        ps.print_stats(20)
+        print(s.getvalue())
+        return ret
 
     return wrapper
 
@@ -11336,7 +11359,6 @@ class ContextCommand(GenericCommand):
         for section in current_layout:
             if section[0] == "-":
                 continue
-
             try:
                 self.layout_mapping[section]()
             except gdb.MemoryError as e:
