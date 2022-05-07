@@ -21197,9 +21197,9 @@ class ConstGrepCommand(GenericCommand):
 
 
 @register_command
-class SlabCommand(GenericCommand):
+class SlubDumpCommand(GenericCommand):
     """Dump slab freelist with kenrel memory scanning. Thanks to https://github.com/PaoloMonti42/salt"""
-    _cmdline_ = "slab"
+    _cmdline_ = "slub-dump"
     _syntax_ = "{:s} [-h] [SLAB_CACHE_NAME] [--cpu N] [--no-xor] [--list]".format(_cmdline_)
     _example_ = "{:s} kmalloc-256 # dump kmalloc-256 from all cpus\n".format(_cmdline_)
     _example_ += "{:s} kmalloc-256 --cpu 1 # dump kmalloc-256 from cpu 1\n".format(_cmdline_)

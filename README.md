@@ -63,14 +63,14 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmlinux-to-elf-apply1.png)
     * Once you get symboled vmlinux file, you can reuse and apply it automatically even after rebooting qemu-system.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmlinux-to-elf-apply2.png)
-* `slab`: dumps slab free-list (heuristic).
+* `slub-dump`: dumps slub free-list (heuristic).
     * Original code: https://github.com/PaoloMonti42/salt
     * Supported on x64/x86/ARM64/ARM + SLUB.
     * Unsupported: SLAB, SLOB.
     * Supported on both kASLR is enabled or not.
     * Supported on both `CONFIG_SLAB_FREELIST_HARDENED` is `y` or `n`.
     * Supported on both the vmlinux symbol exists or not.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slab.png)
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slub-dump.png)
 * `thunk-hunter`: collects and displays the thunk addresses that are called automatically (x64/x86 only).
     * If this address comes from RW area, this is useful for getting RIP.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/thunk-hunter.png)
