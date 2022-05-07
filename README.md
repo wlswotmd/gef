@@ -176,7 +176,7 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
     * It prints whether Static or Dynamic.
     * It prints whether Stripped or not.
     * It detects canary against static stripped binary.
-    * It prints whether Intel CET is enabled or not.
+    * It prints whether Intel CET instructions (endbr64/endbr32) is found or not.
     * It prints whether RPATH/RUNPATH is set or not.
     * It prints if Clang CFI/SafeStack is used or not.
     * It prints whether System-ASLR is enabled or not.

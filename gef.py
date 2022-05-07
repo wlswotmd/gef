@@ -2053,11 +2053,11 @@ def checksec(filename):
 
     results = collections.OrderedDict()
     # Static
-    results["Static"] = is_static()
+    results["Static"] = is_static(filename)
     # Stripped
-    results["Stripped"] = is_stripped()
+    results["Stripped"] = is_stripped(filename)
     # Canary
-    if not is_stripped():
+    if not is_stripped(filename):
         results["Canary"] = __check_security_property("-rs", filename, r"__stack_chk_fail") is True
         if not results["Canary"]:
             results["Canary"] = __check_security_property("-rs", filename, r"__stack_chk_guard") is True # for non-x86
@@ -2091,16 +2091,16 @@ def checksec(filename):
     results["Partial RELRO"] = __check_security_property("-l", filename, r"GNU_RELRO") is True
     results["Full RELRO"] = results["Partial RELRO"] and __check_security_property("-d", filename, r"BIND_NOW") is True
     # Fortify
-    if is_stripped():
+    if is_stripped(filename):
         results["Fortify"] = None # it means unknown
-    elif is_static():
+    elif is_static(filename):
         results["Fortify"] = __check_security_property("-rs", filename, r"__mem(cpy|move)_chk") is True
     else:
         results["Fortify"] = __check_security_property("-rs", filename, r"_chk@GLIBC") is True
     # CET
     if not is_x86():
         results["Intel CET"] = False
-    elif not is_stripped() and not is_static():
+    elif not is_stripped(filename) and not is_static(filename):
         results["Intel CET"] = __check_security_property("-S", filename, r"\.plt\.sec") is True
     else: # static or stripped
         objdump = which("objdump")
@@ -11231,6 +11231,9 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
             argv = argv[:idx] + argv[idx+2:]
         else:
             filename = get_filepath()
+            if filename is None:
+                err("No executable/library specified")
+                return
         if not os.path.exists(filename):
             err("{} is not found".format(filename))
             return
@@ -13848,9 +13851,9 @@ class ChecksecCommand(GenericCommand):
 
         # Stripped
         if sec["Stripped"]:
-            gef_print("{:<30s}: {:s}".format("Stripped", Color.greenify(Color.boldify("Yes"))))
+            gef_print("{:<30s}: {:s}".format("Stripped", Color.colorify("Yes", "green bold")))
         else:
-            gef_print("{:<30s}: {:s}".format("Stripped", Color.redify(Color.boldify("No")) + " (The symbol remains)"))
+            gef_print("{:<30s}: {:s}".format("Stripped", Color.colorify("No", "red bold") + " (The symbol remains)"))
 
         # Canary
         msg = get_colored_msg(sec["Canary"])
@@ -13870,32 +13873,35 @@ class ChecksecCommand(GenericCommand):
 
         # RELRO
         if sec["Full RELRO"]:
-            gef_print("{:<30s}: {:s}".format("RELRO", Color.greenify("Full RELRO")))
+            gef_print("{:<30s}: {:s}".format("RELRO", Color.colorify("Full RELRO", "green bold")))
         elif sec["Partial RELRO"]:
-            gef_print("{:<30s}: {:s}".format("RELRO", Color.yellowify("Partial RELRO")))
+            gef_print("{:<30s}: {:s}".format("RELRO", Color.colorify("Partial RELRO", "yellow bold")))
         else:
-            gef_print("{:<30s}: {:s}".format("RELRO", Color.redify(Color.boldify("No RELRO"))))
+            gef_print("{:<30s}: {:s}".format("RELRO", Color.colorify("No RELRO", "red bold")))
 
         # Fortify
         if sec["Fortify"]:
-            gef_print("{:<30s}: {:s}".format("Fortify", Color.greenify("Found")))
+            gef_print("{:<30s}: {:s}".format("Fortify", Color.colorify("Found", "green bold")))
         else:
-            gef_print("{:<30s}: {:s}".format("Fortify", Color.redify(Color.boldify("Not Found"))))
+            gef_print("{:<30s}: {:s}".format("Fortify", Color.colorify("Not Found", "red bold")))
 
         # CET
-        gef_print("{:<30s}: {:s}".format("Intel CET", get_colored_msg(sec["Intel CET"])))
+        if sec["Intel CET"]:
+            gef_print("{:<30s}: {:s}".format("Intel CET", Color.colorify("Found", "green bold") + " (endbr64/endbr32 is found)"))
+        else:
+            gef_print("{:<30s}: {:s}".format("Intel CET", Color.colorify("Not Found", "red bold") + " (endbr64/endbr32 is not found)"))
 
         # RPATH
         if not sec["RPATH"]:
-            gef_print("{:<30s}: {:s}".format("RPATH", Color.greenify(Color.boldify("Not Found"))))
+            gef_print("{:<30s}: {:s}".format("RPATH", Color.colorify("Not Found", "green bold")))
         else:
-            gef_print("{:<30s}: {:s}".format("RPATH", Color.redify(Color.boldify("Found"))))
+            gef_print("{:<30s}: {:s}".format("RPATH", Color.colorify("Found", "red bold")))
 
         # RUNPATH
         if not sec["RUNPATH"]:
-            gef_print("{:<30s}: {:s}".format("RUNPATH", Color.greenify(Color.boldify("Not Found"))))
+            gef_print("{:<30s}: {:s}".format("RUNPATH", Color.colorify("Not Found", "green bold")))
         else:
-            gef_print("{:<30s}: {:s}".format("RUNPATH", Color.redify(Color.boldify("Found"))))
+            gef_print("{:<30s}: {:s}".format("RUNPATH", Color.colorify("Found", "red bold")))
 
         # Clang CFI
         if sec["Clang CFI"]:
@@ -13910,15 +13916,15 @@ class ChecksecCommand(GenericCommand):
             try:
                 system_aslr = int(open("/proc/sys/kernel/randomize_va_space").read())
                 if system_aslr == 0:
-                    gef_print("{:<30s}: {:s} (randomize_va_space: 0)".format("System ASLR", Color.redify(Color.boldify("Disabled"))))
+                    gef_print("{:<30s}: {:s} (randomize_va_space: 0)".format("System ASLR", Color.colorify("Disabled", "red bold")))
                 elif system_aslr == 1:
-                    gef_print("{:<30s}: {:s} (randomize_va_space: 1)".format("System ASLR", Color.greenify(Color.boldify("Enabled"))))
+                    gef_print("{:<30s}: {:s} (randomize_va_space: 1)".format("System ASLR", Color.colorify("Partially Enabled", "yellow bold")))
                 elif system_aslr == 2:
-                    gef_print("{:<30s}: {:s} (randomize_va_space: 2)".format("System ASLR", Color.greenify(Color.boldify("Enabled"))))
+                    gef_print("{:<30s}: {:s} (randomize_va_space: 2)".format("System ASLR", Color.colorify("Enabled", "green bold")))
             except:
-                gef_print("{:<30s}: {:s} (randomize_va_space: error)".format("System-ASLR", Color.grayify(Color.boldify("Unknown"))))
+                gef_print("{:<30s}: {:s} (randomize_va_space: error)".format("System-ASLR", Color.colorify("Unknown", "gray bold")))
         else:
-            gef_print("{:<30s}: {:s} (attached remote process)".format("System-ASLR", Color.grayify(Color.boldify("Unknown"))))
+            gef_print("{:<30s}: {:s} (attached remote process)".format("System-ASLR", Color.colorify("Unknown", "gray bold")))
 
         # attached or not
         ret = gdb.execute("info files", to_string=True)
@@ -13926,15 +13932,15 @@ class ChecksecCommand(GenericCommand):
             # gdb ASLR
             ret = gdb.execute("show disable-randomization", to_string=True)
             if "virtual address space is on." in ret:
-                gef_print("{:<30s}: {:s} (disable-randomization: on)".format("GDB ASLR setting", Color.redify(Color.boldify("Disabled"))))
+                gef_print("{:<30s}: {:s} (disable-randomization: on)".format("GDB ASLR setting", Color.colorify("Disabled", "red bold")))
             elif "virtual address space is off." in ret:
-                gef_print("{:<30s}: {:s} (disable-randomization: off)".format("GDB ASLR setting", Color.greenify(Color.boldify("Enabled"))))
+                gef_print("{:<30s}: {:s} (disable-randomization: off)".format("GDB ASLR setting", Color.colorify("Enabled", "green bold")))
             else:
-                gef_print("{:<30s}: {:s}".format("GDB ASLR setting", Color.grayify(Color.boldify("Unknown"))))
+                gef_print("{:<30s}: {:s}".format("GDB ASLR setting", Color.colorify("Unknown", "gray bold")))
         elif "Using the running image of attached process" in ret:
-            gef_print("{:<30s}: {:s} (attached process)".format("GDB ASLR setting", Color.grayify(Color.boldify("Ignored"))))
+            gef_print("{:<30s}: {:s} (attached process)".format("GDB ASLR setting", Color.colorify("Ignored", "gray bold")))
         elif "Debugging a target over a serial line." in ret:
-            gef_print("{:<30s}: {:s} (attached process)".format("GDB ASLR setting", Color.grayify(Color.boldify("Ignored"))))
+            gef_print("{:<30s}: {:s} (attached process)".format("GDB ASLR setting", Color.colorify("Ignored", "gray bold")))
         return
 
     def print_security_properties_qemu_system(self):
