@@ -3600,6 +3600,19 @@ def experimental_feature(f):
     return wrapper
 
 
+def only_if_x86_32_64(f):
+    """Decorator wrapper to check if the archtecture is x86/x86-64."""
+
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        if is_x86():
+            return f(*args, **kwargs)
+        else:
+            warn("This command cannot work under this architecture.")
+
+    return wrapper
+
+
 def only_if_x86_32_64_or_arm_32_64(f):
     """Decorator wrapper to check if the archtecture is x86/x86-64/ARM/AArch64."""
 
@@ -13811,7 +13824,7 @@ class ChecksecCommand(GenericCommand):
         return
 
     def print_security_properties_qemu_system(self):
-        if not is_x86_64():
+        if not is_x86():
             return
         ret = gdb.execute("qreg -v", to_string=True)
         flag = False
@@ -13825,7 +13838,7 @@ class ChecksecCommand(GenericCommand):
             if "DR0-DR3 (Debug Address Register 0-3)" in line:
                 flag = False
             if flag:
-                print(line)
+                gef_print(line)
         return
 
 
@@ -18324,11 +18337,8 @@ class MmxSetCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_x86_32_64
     def do_invoke(self, argv):
-        if not is_x86():
-            err("Unsupported")
-            return
-
         # arg parse
         try:
             reg, value = ''.join(argv).split("=")
@@ -18383,10 +18393,8 @@ class MmxCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_x86_32_64
     def do_invoke(self, argv):
-        if not is_x86():
-            err("Unsupported")
-            return
         self.print_mmx()
         return
 
@@ -18399,11 +18407,8 @@ class XmmSetCommand(GenericCommand):
     _category_ = "Show/Modify Register"
 
     @only_if_gdb_running
+    @only_if_x86_32_64
     def do_invoke(self, argv):
-        if not is_x86():
-            err("Unsupported")
-            return
-
         # arg parse
         try:
             reg, value = ''.join(argv).split("=")
@@ -18493,11 +18498,8 @@ class SseCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_x86_32_64
     def do_invoke(self, argv):
-        if not is_x86():
-            err("Unsupported")
-            return
-
         if "-h" in argv:
             self.usage()
             return
@@ -18547,10 +18549,8 @@ class AvxCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_x86_32_64
     def do_invoke(self, argv):
-        if not is_x86():
-            err("Unsupported")
-            return
         self.print_avx()
         return
 
@@ -20574,10 +20574,8 @@ class GdtInfoCommand(GenericCommand):
             info("for flags description, use `-v`")
         return
 
+    @only_if_x86_32_64
     def do_invoke(self, argv):
-        if not is_x86():
-            err("Unsupported")
-            return
         if "-h" in argv:
             self.usage()
             return
@@ -26104,11 +26102,8 @@ class MuslDumpCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_x86_32_64
     def do_invoke(self, argv):
-        if not is_x86():
-            err("Unsupported")
-            return
-
         self.verbose = False
         if "-v" in argv:
             self.verbose = True
@@ -26975,14 +26970,11 @@ class CpuidCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @only_if_x86_32_64
     def do_invoke(self, argv):
         if "-h" in argv:
             argv.remove("-h")
             self.usage()
-            return
-
-        if not is_x86():
-            err("Unsupported")
             return
 
         # Basic Information
@@ -27627,6 +27619,7 @@ class MsrCommand(GenericCommand):
 
     @only_if_gdb_running
     @only_if_qemu_system
+    @only_if_x86_32_64
     def do_invoke(self, argv):
         if "-h" in argv or not argv:
             self.usage()
@@ -27635,10 +27628,6 @@ class MsrCommand(GenericCommand):
         if "-l" in argv:
             argv.remove("-l")
             self.print_const_table(argv)
-            return
-
-        if not is_x86():
-            err("Unsupported")
             return
 
         # search const table
@@ -28777,13 +28766,10 @@ class PagewalkX64Command(PagewalkCommand):
 
     @only_if_gdb_running
     @only_if_qemu_system
+    @only_if_x86_32_64
     def do_invoke(self, argv):
         if "-h" in argv:
             self.usage()
-            return
-
-        if not is_x86():
-            err("Unsupported")
             return
 
         try:
@@ -31059,13 +31045,10 @@ class ExecUntilIndirectBranchCommand(ExecUntilCommand):
         return
 
     @only_if_gdb_running
+    @only_if_x86_32_64
     def do_invoke(self, argv):
         if "-h" in argv:
             self.usage()
-            return
-
-        if not is_x86():
-            err("Unsupported")
             return
 
         self.print_insn = False
@@ -31391,11 +31374,8 @@ class ThunkHunterCommand(GenericCommand):
 
     @only_if_gdb_running
     @only_if_qemu_system
+    @only_if_x86_32_64
     def do_invoke(self, argv):
-        if not is_x86():
-            err("Unsupported")
-            return
-
         maps = KernelbaseCommand.get_maps() # [vaddr, size, perm]
         info("Resolving thunk function addresses")
         for reg in current_arch.gpr_registers:
@@ -31891,11 +31871,8 @@ class UefiOvmfInfoCommand(GenericCommand):
 
     @only_if_gdb_running
     @only_if_qemu_system
+    @only_if_x86_32_64
     def do_invoke(self, argv):
-        if not is_x86_64():
-            err("Unsupported")
-            return
-
         gef_print(titlify("SEC (Security) phase variables"))
         gef_print("Unimplemented")
         gef_print(titlify("PEI (Pre EFI Initialization) phase variables"))
