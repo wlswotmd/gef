@@ -20377,6 +20377,116 @@ class EnvpCommand(GenericCommand):
 
 
 @register_command
+class CetStatusCommand(GenericCommand):
+    """Show Intel CET settings."""
+    _cmdline_ = "cet-status"
+    _syntax_ = _cmdline_
+    _category_ = "Process Information"
+
+    def get_state(self, code_len):
+        d = {}
+        d["pc"] = get_register("$pc")
+        d["sp"] = get_register("$sp")
+        d["code"] = read_memory(d["pc"], code_len)
+        d["reg"] = {} 
+        for reg in current_arch.gpr_registers:
+            d["reg"][reg] = get_register(reg)
+        d["stack"] = {}
+        for i in range(3):
+            addr = d["sp"] + current_arch.ptrsize * i
+            d["stack"][addr] = read_memory(addr, current_arch.ptrsize)
+        return d
+
+    def revert_state(self, d):
+        write_memory(d["pc"], d["code"], len(d["code"]))
+        gdb.execute("set $pc = {:#x}".format(d["pc"]), to_string=True)
+        for regname, regvalue in d["reg"].items():
+            gdb.execute("set {:s} = {:#x}".format(regname, regvalue), to_string=True)
+        for addr, value in d["stack"].items():
+            write_memory(addr, value)
+        return
+
+    def close_stdout(self):
+        self.stdout = 1
+        self.stdout_bak = os.dup(self.stdout)
+        f = open("/dev/null")
+        os.dup2(f.fileno(), self.stdout)
+        f.close()
+        return
+
+    def revert_stdout(self):
+        os.dup2(self.stdout_bak, self.stdout)
+        os.close(self.stdout_bak)
+        return
+
+    def get_result(self):
+        r = {}
+        r["ret"] = get_register("$rax" if is_x86_64() else "$eax")
+        r["data"] = []
+        for i in range(3):
+            addr = get_register("$rsi" if is_x86_64() else "$ecx") + current_arch.ptrsize * i
+            v = read_int_from_memory(addr)
+            r["data"].append(v)
+        return r
+
+    def execute_get_cet_status(self):
+        if is_x86_64():
+            code = b"\xeb\xfe\x0f\x05" # inf-loop (to stop another thread); syscall
+        else:
+            code = b"\xeb\xfe\xcd\x80" # inf-loop (to stop another thread); int 0x80
+        gef_on_stop_unhook(hook_stop_handler)
+        d = self.get_state(len(code))
+        write_memory(d["pc"], code, len(code))
+        if is_x86_64():
+            gdb.execute("set $rax = 0x9e", to_string=True) # arch_prctl
+            gdb.execute("set $rdi = 0x3001", to_string=True) # ARCH_CET_STATUS
+            gdb.execute("set $rsi = $rsp", to_string=True) # buffer
+        else:
+            gdb.execute("set $eax = 0x180", to_string=True) # arch_prctl
+            gdb.execute("set $ebx = 0x3001", to_string=True) # ARCH_CET_STATUS
+            gdb.execute("set $ecx = $esp", to_string=True) # buffer
+        gdb.execute("set $pc = {:#x}".format(d["pc"]+2), to_string=True) # skip "\xeb\xfe"
+        self.close_stdout()
+        gdb.execute("stepi", to_string=True)
+        self.revert_stdout()
+        r = self.get_result()
+        self.revert_state(d)
+        gef_on_stop_hook(hook_stop_handler)
+        return r
+
+    @only_if_gdb_running
+    @only_if_not_qemu_system
+    @only_if_x86_32_64
+    def do_invoke(self, argv):
+        self.dont_repeat()
+
+        try:
+            r = self.execute_get_cet_status()
+        except:
+            err("Execute code fails. Memory write feature may not be supported.")
+            return
+
+        if r["ret"] != 0:
+            err("OS does not support CET")
+            return
+
+        gef_print("ShadowStack/IndirectBranchTracking status: {:#x}".format(r["data"][0]))
+        if r["data"][0] & 0b10:
+            msg = Color.colorify("Enabled", "green bold")
+        else:
+            msg = Color.colorify("Disabled", "red bold")
+        gef_print("  ShadowStack: {:s}".format(msg))
+        if r["data"][0] & 0b01:
+            msg = Color.colorify("Enabled", "green bold")
+        else:
+            msg = Color.colorify("Disabled", "red bold")
+        gef_print("  IndirectBrannchTracking: {:s}".format(msg))
+        gef_print("ShadowStack Base Address: {:#x}".format(r["data"][1]))
+        gef_print("ShadowStack Size: {:#x}".format(r["data"][2]))
+        return
+
+
+@register_command
 class TlsCommand(GenericCommand):
     """Show TLS base address."""
     _cmdline_ = "tls"
