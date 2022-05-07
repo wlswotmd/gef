@@ -3579,7 +3579,8 @@ def perf_enable(f):
         ret = f(*args, **kwargs)
         pr.disable()
         s = io.StringIO()
-        sortby = SortKey.CUMULATIVE
+        #sortby = SortKey.CUMULATIVE
+        sortby = SortKey.TIME
         ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
         ps.print_stats(20)
         print(s.getvalue())
@@ -4023,9 +4024,28 @@ def elf_map(addr, objfile=''):
     return sects
 
 
-@lru_cache()
+# get_explored_regions (used qemu-user mode) is too slower,
+# Because it repeats read_memory many times to find the upper and lower bounds of the page.
+# lru_cache() is not effective because it is cleared every time you stepi.
+# Fortunately, memory maps rarely change.
+# I decided to make it a cache mechanism independent of lru_cache and introduce a mechanism to forcibly clear it with vmmap.
+explored_regions = None
+
+
+def clear_explored_regions():
+    global explored_regions
+    explored_regions = None
+    return
+
+
 def get_explored_regions():
     """Return sections from auxv exploring"""
+
+    # return if it is cached
+    global explored_regions
+    if explored_regions:
+        return explored_regions
+
     def is_exist_page(addr):
         try:
             _ = read_memory(addr, 1)
@@ -4120,6 +4140,9 @@ def get_explored_regions():
         add_regions(r.page_end+1, "<explored>", str(r.permission))
 
     regions = sorted(regions, key=lambda x:x.page_start)
+
+    # cache globally
+    explored_regions = regions.copy()
     return regions
 
 
@@ -4922,9 +4945,28 @@ AT_CONSTANTS = {
 }
 
 
-@lru_cache()
+# get_auxiliary_walk (used qemu-user mode) is too slower,
+# Because it repeats read_memory many times to find the auxv value.
+# lru_cache() is not effective because it is cleared every time you stepi.
+# Fortunately, memory maps rarely change.
+# I decided to make it a cache mechanism independent of lru_cache and introduce a mechanism to forcibly clear it with vmmap.
+explored_auxv = {}
+
+
+def clear_explored_auxv():
+    global explored_auxv
+    explored_auxv = {}
+    return
+
+
 def get_auxiliary_walk(offset=0):
     """Find AUXV by walking stack"""
+
+    # return if it is cached
+    global explored_auxv
+    if offset in explored_auxv:
+        return explored_auxv[offset]
+
     addr = get_register("$sp") & ~(DEFAULT_PAGE_SIZE-1)
 
     # check readable or not
@@ -4988,6 +5030,9 @@ def get_auxiliary_walk(offset=0):
         return None
     if "AT_NULL" not in res:
         return None
+
+    # cache_globally
+    explored_auxv[offset] = res.copy()
     return res
 
 
@@ -13120,6 +13165,10 @@ class VMMapCommand(GenericCommand):
         if "-v" in argv:
             argv.remove("-v")
             self.verbose = True
+
+        if is_qemu_usermode():
+            clear_explored_auxv()
+            clear_explored_regions()
 
         vmmap = get_process_maps(outer)
         if not vmmap:
