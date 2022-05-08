@@ -14947,6 +14947,8 @@ class GotCommand(GenericCommand):
         got_functions = Color.boldify("{}".format(len(jmpslots)))
         gef_print("GOT protection: {} | GOT functions: {} ".format(got_protection, got_functions))
 
+        legend = ["PLT", "Offset", "GOT", "Offset", "Symbol -> GOTvalue"]
+        gef_print(Color.colorify("{:>14s} ({:>9s}) {:>14s} ({:>9s}) {:s}".format(*legend), get_gef_setting("theme.table_heading")))
         for line in sorted(jmpslots):
             address, _, _, _, name = line.split()[:5]
 
@@ -14954,36 +14956,41 @@ class GotCommand(GenericCommand):
             if func_names_filter:
                 if not any(map(lambda x: x in name, func_names_filter)):
                     continue
+            got_address = int(address, 16)
 
-            address_val = int(address, 16)
+            # resolve PLT
+            if name.split("@")[0] in plts:
+                plt_address = plts[name.split("@")[0]]
+            else:
+                plt_address = None
 
             # address_val is an offset from the base_address if we have PIE.
             if pie:
-                address_val = base_address + address_val
+                got_address += base_address
+                if plt_address:
+                    plt_address += base_address
+
+            got_offset = got_address - base_address
+            if plt_address:
+                plt_offset = plt_address - base_address
 
             # read the address of the function.
-            got_address = read_int_from_memory(address_val)
+            got_value = read_int_from_memory(got_address)
 
             # for the swag: different colors if the function has been resolved or not.
-            if base_address < got_address < end_address or got_address == 0:
+            if base_address < got_value < end_address or got_value == 0:
                 color = self.get_setting("function_not_resolved") # function hasn't already been resolved
             else:
                 color = self.get_setting("function_resolved") # function has already been resolved
 
-            line = ""
-            if name.split("@")[0] in plts:
-                plt = plts[name.split("@")[0]]
-                if pie:
-                    line += "PLT:{:#x}(+{:#x}); ".format(plt + base_address, plt)
-                else:
-                    line += "PLT:{:#x}; ".format(plt)
+            name_c = Color.colorify(name, color)
+            got_value_c = Color.colorify(hex(got_value), color)
+            if plt_address:
+                fmt = "{:#14x} ({:+#9x}) {:#14x} ({:+#9x}) {:s} {:s} {:s}"
+                line = fmt.format(plt_address, plt_offset, got_address, got_offset, name_c, RIGHT_ARROW, got_value_c)
             else:
-                line += "PLT:Not Found; "
-            if pie:
-                line += "GOT:{:#x}(+{:#x}) ".format(address_val, address_val - base_address)
-            else:
-                line += "GOT:{:#x} ".format(address_val)
-            line += Color.colorify("{} {} {}".format(name, RIGHT_ARROW, hex(got_address)), color)
+                fmt = "{:>14s} {:11s} {:#14x} ({:+#9x}) {:s} {:s} {:s}"
+                line = fmt.format("Not found", "", got_address, got_offset, name_c, RIGHT_ARROW, got_value_c)
             gef_print(line)
         return
 
