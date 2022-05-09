@@ -258,6 +258,8 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pack-unpack.png)
 * `tohex`,`unhex`: is transformation hex <-> bytes.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/tohex-unhex.png)
+* `byteswap`: is transformation little-endian <-> big-endian.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/byteswap.png)
 * `hash-memory`: calculations hash.
     * Supported: md5, sha1, sha224, sha256, sha384, sha512, crc16, crc32, crc64.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hash-memory.png)
@@ -265,8 +267,6 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/memcmp.png)
 * `is-mem-zero`: checks the contents of address range is all 0x00 or 0xff or not.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/is-mem-zero.png)
-* `byteswap`: is transformation little-endian <-> big-endian.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/byteswap.png)
 * `pdisas`: is a shortcut for `cs-dis $pc LENGTH=50 OPCODES`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pdisas.png)
 * `ii`: is a shortcut for `x/50i $pc`.
