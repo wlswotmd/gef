@@ -197,7 +197,6 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
 * `unicorn-emulate`: is improved.
     * It reads and writes correctly to the address pointed to by `$fs`/`$gs`.
     * It supports a new mode to stop after executing N instructions (`-g`).
-    * It supports execution under qemu-usermode partially (It is unable to emulate TLS if TLS is not initialized).
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/unicorn-emulate.png)
 * `ropper`: is improved.
     * It does not reset autocomplete settings after calling imported ropper.

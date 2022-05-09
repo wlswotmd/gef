@@ -1237,7 +1237,7 @@ class GlibcArena:
 
     def bin_list(self, index):
         fw, bk = self.bin(index)
-        if bk==0x00 and fw==0x00:
+        if bk == 0x00 and fw == 0x00:
             return set() # invalid
         head = GlibcChunk(bk, from_base=True).fwd
         if fw == head:
@@ -7301,8 +7301,8 @@ class UnicornEmulateCommand(GenericCommand):
             content += "        enable_thumb = emu.reg_read(registers['$'+insn.op_str]) & 1\n"
             content += "    return\n"
 
-            # hack: unicorn handles if thumb or not, but capstone can't. we have to handle it manually for capstone.
-            # since CS_MODE_ARM is 0x0, it can be ignore. we represent status of thumb: CS_MODE_THUMB * (0 or 1).
+            # hack: unicorn can handle if thumb or not, but capstone can't. we have to handle it manually for capstone.
+            # since CS_MODE_ARM is 0x0, it can be ignored. we represent status of thumb: CS_MODE_THUMB * (0 or 1).
             endian = cs_mode.split(" + ")[-1]
             cs_mode = "capstone.CS_MODE_THUMB * enable_thumb + " + endian
 
@@ -12633,7 +12633,7 @@ class PatchCommand(GenericCommand):
     _syntax_ += "{:s} [-h] string [--phys] LOCATION \"double-escaped string\" [LENGTH]\n".format(_cmdline_)
     _syntax_ += "{:s} [-h] pattern [--phys] LOCATION LENGTH\n".format(_cmdline_)
     _syntax_ += "{:s} [-h] history\n".format(_cmdline_)
-    _syntax_ += "{:s} [-h] revert [HISTORY]\n".format(_cmdline_)
+    _syntax_ += "{:s} [-h] revert [HISTORY]".format(_cmdline_)
     _category_ = "Show/Modify Memory"
     SUPPORTED_SIZES = {
         "qword": (8, "Q"),
@@ -19913,6 +19913,8 @@ class KernelCmdlineCommand(GenericCommand):
     def do_invoke(self, argv):
         self.dont_repeat()
 
+        info("Wait for memory scan")
+
         ret = self.kernel_cmdline()
         if ret is None:
             err("Parse failed")
@@ -19943,6 +19945,7 @@ class KernelTaskCommand(GenericCommand):
         if init_task is None:
             err("Not found symbol")
             return None
+        info("init_task: {:#x}".format(init_task))
 
         # search init_task->tasks
         for i in range(0x100):
@@ -19970,14 +19973,24 @@ class KernelTaskCommand(GenericCommand):
                 value_list.append(pos)
             if found:
                 info("offsetof(task_struct, tasks): {:#x}".format(offset_tasks))
+                info("Number of tasks: {:d}".format(len(value_list)))
                 return [x - offset_tasks for x in value_list]
         err("Not found init_task->tasks")
         return None
 
     def get_offset_comm(self, task_addrs):
-        for i in range(0x100):
+        for i in range(0x200):
             offset_comm = i * current_arch.ptrsize
-            if all([is_ascii_string(task + offset_comm) for task in task_addrs]):
+            valid = True
+            for task in task_addrs:
+                if not is_ascii_string(task + offset_comm):
+                    valid = False
+                    break
+                s = read_cstring_from_memory(task + offset_comm)
+                if len(s) < 2:
+                    valid = False
+                    break
+            if valid:
                 info("offsetof(task_struct, comm): {:#x}".format(offset_comm))
                 return offset_comm
         err("Not found task->comm[TASK_CMM_LEN]")
@@ -20050,6 +20063,8 @@ class KernelTaskCommand(GenericCommand):
     @only_if_qemu_system
     def do_invoke(self, argv):
         self.dont_repeat()
+
+        info("Wait for memory scan")
 
         task_addrs = self.get_task_list()
         if task_addrs is None:
@@ -22049,9 +22064,9 @@ class SlubDumpCommand(GenericCommand):
         return
 
     def dump_names(self):
-        gef_print(Color.colorify("Object Size: Name", "bold yellow"))
-        for c in self.parsed_caches[1:]:
-            gef_print("{:5d} bytes: {:s}".format(c['objsize'], c['name']))
+        gef_print(Color.colorify("Object Size              : Name", get_gef_setting("theme.table_heading")))
+        for c in sorted(self.parsed_caches[1:], key=lambda x:x['name']):
+            gef_print("{:5d} byte ({:#6x} bytes): {:s}".format(c['objsize'], c['objsize'], c['name']))
         return
 
     def slabwalk(self, targets):
@@ -22105,6 +22120,8 @@ class SlubDumpCommand(GenericCommand):
         if "--list" in argv:
             self.listup = True
             argv.remove("--list")
+
+        info("Wait for memory scan")
 
         self.slabwalk(argv)
         return
@@ -32847,7 +32864,7 @@ class BincompareCommand(GenericCommand):
             err("Especified file '{:s}' not exists".format(filename))
             return
 
-        f=open(filename, "rb")
+        f = open(filename, "rb")
         file_data = f.read()
         f.close()
 
@@ -32868,7 +32885,7 @@ class BincompareCommand(GenericCommand):
         cnt = 0
         corrupted = -1
         for eachByte in file_data:
-            hexchar="{:02x}".format(eachByte)
+            hexchar = "{:02x}".format(eachByte)
             if cnt > len(memory_data):
                 result_table.append((hexchar, "--"))
                 corrupted = -1
