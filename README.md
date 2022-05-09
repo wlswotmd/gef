@@ -232,7 +232,8 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
 * `tls`: pretty prints TLS area.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/tls.png)
 * `magic`: is useful addresses resolver in gilbc.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/magic.png)
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/magic1.png)
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/magic2.png)
 * `libc`/`ld`/`heapbase`/`codebase`: prints each of the base address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/base.png)
 * `fpu`/`mmx`/`sse`/`avx`: pretty prints FPU/MMX/SSE/AVX registers.

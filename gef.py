@@ -18211,126 +18211,200 @@ class MagicCommand(GenericCommand):
     _syntax_ = _cmdline_
     _category_ = "Exploit Development"
 
-    def get_permission(self, addr):
-        maps = get_process_maps()
-        for m in maps:
-            if m.page_start <= addr and addr < m.page_end:
-                return str(m.permission)
-        return "???"
+    def resolve_and_print_local(self, sym, base):
+        def get_permission(addr):
+            maps = get_process_maps()
+            for m in maps:
+                if m.page_start <= addr and addr < m.page_end:
+                    return str(m.permission)
+            return "???"
 
-    def resolve_and_print(self, sym, base):
         try:
             addr = int(gdb.parse_and_eval(f"&{sym}"))
-            val = read_int_from_memory(addr)
-            perm = self.get_permission(addr)
-            gef_print(f"{sym:40s}: {base:#14x} + {addr - base:#8x} (={addr:#14x} [{perm:3s}]) -> {val:#18x}")
+            perm = get_permission(addr)
+            if is_ascii_string(addr):
+                val = read_ascii_string(addr)
+                gef_print(f"{sym:42s}: {base:#18x} + {addr - base:#10x} (={addr:#18x} [{perm:3s}]) -> '{val:s}'")
+            else:
+                val = read_int_from_memory(addr)
+                gef_print(f"{sym:42s}: {base:#18x} + {addr - base:#10x} (={addr:#18x} [{perm:3s}]) -> {val:#18x}")
         except:
-            gef_print(f"{sym:40s}: Not found")
+            gef_print(f"{sym:42s}: {'Not found':>18s}")
         return
 
-    def legend(self):
-        gef_print(titlify("Legend"))
-        l = f"{'symbol':40s}: {'base':14s} + {'offset':8s} (={'addr':14s} {'perm':s} ) -> {'val':18s}"
-        gef_print(Color.colorify(l, get_gef_setting("theme.table_heading")))
-        return
-
-    @only_if_gdb_running
-    @only_if_gdb_target_local
-    @only_if_not_qemu_system
-    def do_invoke(self, argv):
-        self.dont_repeat()
-
+    def magic_local(self):
         libc = get_section_base_address_by_list(("libc-2.", "libc.so.6"))
-        ld = get_section_base_address_by_list(("ld-2.", "ld-linux-"))
+        ld = get_section_base_address_by_list(("ld-2.", "ld-linux-", "ld-linux.so.2"))
         if libc is None or ld is None:
             gef_print("libc/ld not found")
             return
 
-        self.legend()
+        gef_print(titlify("Legend"))
+        msg = f"{'symbol':40s}: {'base':14s} + {'offset':8s} (={'addr':14s} {'perm':s} ) -> {'val':18s}"
+        gef_print(Color.colorify(msg, get_gef_setting("theme.table_heading")))
+
         gef_print(titlify("Heap"))
-        self.resolve_and_print("main_arena", libc)
-        self.resolve_and_print("mp_", libc)
-        self.resolve_and_print("__malloc_hook", libc)
-        self.resolve_and_print("__free_hook", libc)
-        self.resolve_and_print("__realloc_hook", libc)
-        self.resolve_and_print("__memalign_hook", libc)
-        self.resolve_and_print("__after_morecore_hook", libc)
-        self.resolve_and_print("_dl_open_hook", libc)
-        self.resolve_and_print("global_max_fast", libc)
-        self.resolve_and_print("malloc", libc)
-        self.resolve_and_print("free", libc)
-        self.resolve_and_print("calloc", libc)
-        self.resolve_and_print("realloc", libc)
+        self.resolve_and_print_local("main_arena", libc)
+        self.resolve_and_print_local("mp_", libc)
+        self.resolve_and_print_local("__malloc_hook", libc)
+        self.resolve_and_print_local("__free_hook", libc)
+        self.resolve_and_print_local("__realloc_hook", libc)
+        self.resolve_and_print_local("__memalign_hook", libc)
+        self.resolve_and_print_local("__after_morecore_hook", libc)
+        self.resolve_and_print_local("_dl_open_hook", libc)
+        self.resolve_and_print_local("global_max_fast", libc)
+        self.resolve_and_print_local("malloc", libc)
+        self.resolve_and_print_local("free", libc)
+        self.resolve_and_print_local("calloc", libc)
+        self.resolve_and_print_local("realloc", libc)
         gef_print(titlify("I/O"))
-        self.resolve_and_print("*stdin", libc)
-        self.resolve_and_print("*stdout", libc)
-        self.resolve_and_print("*stderr", libc)
-        self.resolve_and_print("_IO_list_all", libc)
-        self.resolve_and_print("_IO_file_jumps", libc)
-        self.resolve_and_print("_IO_file_jumps_mmap", libc)
-        self.resolve_and_print("_IO_file_jumps_maybe_mmap", libc)
-        self.resolve_and_print("_IO_wfile_jumps", libc)
-        self.resolve_and_print("_IO_wfile_jumps_mmap", libc)
-        self.resolve_and_print("_IO_wfile_jumps_maybe_mmap", libc)
-        self.resolve_and_print("_IO_old_file_jumps", libc)
-        self.resolve_and_print("_IO_mem_jumps", libc)
-        self.resolve_and_print("_IO_wmem_jumps", libc)
-        self.resolve_and_print("_IO_str_jumps", libc)
-        self.resolve_and_print("_IO_strn_jumps", libc)
-        self.resolve_and_print("_IO_str_chk_jumps", libc)
-        self.resolve_and_print("_IO_wstr_jumps", libc)
-        self.resolve_and_print("_IO_wstrn_jumps", libc)
-        self.resolve_and_print("_IO_streambuf_jumps", libc)
-        self.resolve_and_print("_IO_proc_jumps", libc)
-        self.resolve_and_print("_IO_old_proc_jumps", libc)
-        self.resolve_and_print("_IO_helper_jumps", libc)
-        self.resolve_and_print("_IO_cookie_jumps", libc)
-        self.resolve_and_print("_IO_obstack_jumps", libc)
-        self.resolve_and_print("open", libc)
-        self.resolve_and_print("read", libc)
-        self.resolve_and_print("write", libc)
-        self.resolve_and_print("dup", libc)
-        self.resolve_and_print("dup2", libc)
-        self.resolve_and_print("dup3", libc)
-        self.resolve_and_print("puts", libc)
-        self.resolve_and_print("gets", libc)
-        self.resolve_and_print("fputs", libc)
-        self.resolve_and_print("fgets", libc)
-        self.resolve_and_print("printf", libc)
-        self.resolve_and_print("fprintf", libc)
-        self.resolve_and_print("dprintf", libc)
-        self.resolve_and_print("sprintf", libc)
-        self.resolve_and_print("snprintf", libc)
-        self.resolve_and_print("__printf_chk", libc)
-        self.resolve_and_print("__fprintf_chk", libc)
-        self.resolve_and_print("__dprintf_chk", libc)
-        self.resolve_and_print("__sprintf_chk", libc)
-        self.resolve_and_print("__snprintf_chk", libc)
-        self.resolve_and_print("__printf_function_table", libc)
-        self.resolve_and_print("__printf_arginfo_table", libc)
-        self.resolve_and_print("scanf", libc)
-        self.resolve_and_print("fscanf", libc)
-        self.resolve_and_print("sscanf", libc)
+        self.resolve_and_print_local("*stdin", libc)
+        self.resolve_and_print_local("*stdout", libc)
+        self.resolve_and_print_local("*stderr", libc)
+        self.resolve_and_print_local("_IO_list_all", libc)
+        self.resolve_and_print_local("_IO_file_jumps", libc)
+        self.resolve_and_print_local("_IO_file_jumps_mmap", libc)
+        self.resolve_and_print_local("_IO_file_jumps_maybe_mmap", libc)
+        self.resolve_and_print_local("_IO_wfile_jumps", libc)
+        self.resolve_and_print_local("_IO_wfile_jumps_mmap", libc)
+        self.resolve_and_print_local("_IO_wfile_jumps_maybe_mmap", libc)
+        self.resolve_and_print_local("_IO_old_file_jumps", libc)
+        self.resolve_and_print_local("_IO_mem_jumps", libc)
+        self.resolve_and_print_local("_IO_wmem_jumps", libc)
+        self.resolve_and_print_local("_IO_str_jumps", libc)
+        self.resolve_and_print_local("_IO_strn_jumps", libc)
+        self.resolve_and_print_local("_IO_str_chk_jumps", libc)
+        self.resolve_and_print_local("_IO_wstr_jumps", libc)
+        self.resolve_and_print_local("_IO_wstrn_jumps", libc)
+        self.resolve_and_print_local("_IO_streambuf_jumps", libc)
+        self.resolve_and_print_local("_IO_proc_jumps", libc)
+        self.resolve_and_print_local("_IO_old_proc_jumps", libc)
+        self.resolve_and_print_local("_IO_helper_jumps", libc)
+        self.resolve_and_print_local("_IO_cookie_jumps", libc)
+        self.resolve_and_print_local("_IO_obstack_jumps", libc)
+        self.resolve_and_print_local("open", libc)
+        self.resolve_and_print_local("read", libc)
+        self.resolve_and_print_local("write", libc)
+        self.resolve_and_print_local("dup", libc)
+        self.resolve_and_print_local("dup2", libc)
+        self.resolve_and_print_local("dup3", libc)
+        self.resolve_and_print_local("puts", libc)
+        self.resolve_and_print_local("gets", libc)
+        self.resolve_and_print_local("fputs", libc)
+        self.resolve_and_print_local("fgets", libc)
+        self.resolve_and_print_local("printf", libc)
+        self.resolve_and_print_local("fprintf", libc)
+        self.resolve_and_print_local("dprintf", libc)
+        self.resolve_and_print_local("sprintf", libc)
+        self.resolve_and_print_local("snprintf", libc)
+        self.resolve_and_print_local("__printf_chk", libc)
+        self.resolve_and_print_local("__fprintf_chk", libc)
+        self.resolve_and_print_local("__dprintf_chk", libc)
+        self.resolve_and_print_local("__sprintf_chk", libc)
+        self.resolve_and_print_local("__snprintf_chk", libc)
+        self.resolve_and_print_local("__printf_function_table", libc)
+        self.resolve_and_print_local("__printf_arginfo_table", libc)
+        self.resolve_and_print_local("scanf", libc)
+        self.resolve_and_print_local("fscanf", libc)
+        self.resolve_and_print_local("sscanf", libc)
         gef_print(titlify("Process"))
-        self.resolve_and_print("system", libc)
-        self.resolve_and_print("do_system", libc)
-        self.resolve_and_print("execve", libc)
-        self.resolve_and_print("setcontext", libc)
-        self.resolve_and_print("__libc_start_main", libc)
-        self.resolve_and_print("syscall", libc)
-        self.resolve_and_print("ptrace", libc)
-        self.resolve_and_print("prctl", libc)
+        self.resolve_and_print_local("system", libc)
+        self.resolve_and_print_local("do_system", libc)
+        self.resolve_and_print_local("execve", libc)
+        self.resolve_and_print_local("setcontext", libc)
+        self.resolve_and_print_local("__libc_start_main", libc)
+        self.resolve_and_print_local("syscall", libc)
+        self.resolve_and_print_local("ptrace", libc)
+        self.resolve_and_print_local("prctl", libc)
         gef_print(titlify("Memory"))
-        self.resolve_and_print("mmap", libc)
-        self.resolve_and_print("munmap", libc)
-        self.resolve_and_print("mremap", libc)
-        self.resolve_and_print("mprotect", libc)
+        self.resolve_and_print_local("mmap", libc)
+        self.resolve_and_print_local("munmap", libc)
+        self.resolve_and_print_local("mremap", libc)
+        self.resolve_and_print_local("mprotect", libc)
         gef_print(titlify("Stack"))
-        self.resolve_and_print("__libc_argv", libc)
-        self.resolve_and_print("__environ", libc)
+        self.resolve_and_print_local("__libc_argv", libc)
+        self.resolve_and_print_local("__environ", libc)
         gef_print(titlify("Destructor"))
-        self.resolve_and_print("_rtld_global->_dl_rtld_lock_recursive", ld)
-        self.resolve_and_print("_rtld_global->_dl_rtld_unlock_recursive", ld)
+        self.resolve_and_print_local("_rtld_global->_dl_rtld_lock_recursive", ld)
+        self.resolve_and_print_local("_rtld_global->_dl_rtld_unlock_recursive", ld)
+        return
+
+    def resolve_and_print_qemu_system(self, sym, base, maps):
+        def get_permission(addr, maps):
+            for vaddr, size, perm in maps:
+                if vaddr <= addr and addr < vaddr+size:
+                    return perm
+            return "???"
+
+        try:
+            addr = get_ksymaddr(sym)
+            perm = get_permission(addr, maps)
+            if is_ascii_string(addr):
+                val = read_ascii_string(addr)
+                gef_print(f"{sym:42s}: {base:#18x} + {addr - base:#10x} (={addr:#18x} [{perm:3s}]) -> '{val:s}'")
+            else:
+                val = read_int_from_memory(addr)
+                gef_print(f"{sym:42s}: {base:#18x} + {addr - base:#10x} (={addr:#18x} [{perm:3s}]) -> {val:#18x}")
+        except:
+            gef_print(f"{sym:42s}: {'Not found':>18s}")
+        return
+
+    def magic_qemu_system(self):
+        maps = KernelbaseCommand.get_maps()
+        kbase, kbase_size = KernelbaseCommand.get_kernel_base(maps)
+        get_ksymaddr("DUMMY")
+        gef_print("{:42s}: {:#x} ({:#x} bytes)".format("kernel_base", kbase, kbase_size))
+
+        gef_print(titlify("Legend"))
+        msg = f"{'symbol':42s}: {'base':18s} + {'offset':10s} (={'addr':18s} {'perm':s} ) -> {'val':18s}"
+        gef_print(Color.colorify(msg, get_gef_setting("theme.table_heading")))
+
+        gef_print(titlify("Credential"))
+        self.resolve_and_print_qemu_system("commit_creds", kbase, maps)
+        self.resolve_and_print_qemu_system("prepare_kernel_cred", kbase, maps)
+        gef_print(titlify("Usermode helper"))
+        self.resolve_and_print_qemu_system("call_usermodehelper", kbase, maps)
+        self.resolve_and_print_qemu_system("modprobe_path", kbase, maps)
+        gef_print(titlify("Graceful poweroff helper"))
+        self.resolve_and_print_qemu_system("orderly_poweroff", kbase, maps)
+        self.resolve_and_print_qemu_system("poweroff_cmd", kbase, maps)
+        gef_print(titlify("KPTI exit"))
+        self.resolve_and_print_qemu_system("swapgs_restore_regs_and_return_to_usermode", kbase, maps)
+        gef_print(titlify("Memory protection modifier"))
+        self.resolve_and_print_qemu_system("native_write_cr0", kbase, maps)
+        self.resolve_and_print_qemu_system("native_write_cr4", kbase, maps)
+        self.resolve_and_print_qemu_system("set_memory_rw", kbase, maps)
+        self.resolve_and_print_qemu_system("set_memory_x", kbase, maps)
+        gef_print(titlify("Function pointer table"))
+        self.resolve_and_print_qemu_system("ptmx_fops", kbase, maps)
+        self.resolve_and_print_qemu_system("perf_fops", kbase, maps)
+        self.resolve_and_print_qemu_system("capability_hooks", kbase, maps)
+        self.resolve_and_print_qemu_system("n_tty_ops", kbase, maps)
+        self.resolve_and_print_qemu_system("tty_ldiscs", kbase, maps)
+        gef_print(titlify("Slub"))
+        self.resolve_and_print_qemu_system("__kmalloc", kbase, maps)
+        self.resolve_and_print_qemu_system("kzalloc", kbase, maps)
+        self.resolve_and_print_qemu_system("kfree", kbase, maps)
+        gef_print(titlify("Timer"))
+        self.resolve_and_print_qemu_system("msleep", kbase, maps)
+        self.resolve_and_print_qemu_system("kvm_clock", kbase, maps)
+        self.resolve_and_print_qemu_system("clocksource_tsc", kbase, maps)
+        gef_print(titlify("Others"))
+        self.resolve_and_print_qemu_system("do_fchmodat", kbase, maps)
+        self.resolve_and_print_qemu_system("core_pattern", kbase, maps)
+        self.resolve_and_print_qemu_system("mmap_min_addr", kbase, maps)
+        self.resolve_and_print_qemu_system("_copy_to_user", kbase, maps)
+        self.resolve_and_print_qemu_system("_copy_from_user", kbase, maps)
+        return
+
+    @only_if_gdb_running
+    def do_invoke(self, argv):
+        self.dont_repeat()
+
+        if is_qemu_system():
+            self.magic_qemu_system()
+        else:
+            self.magic_local()
         return
 
 
