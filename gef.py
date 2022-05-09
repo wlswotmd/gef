@@ -18350,6 +18350,7 @@ class MagicCommand(GenericCommand):
         return
 
     def magic_qemu_system(self):
+        info("Wait for memory scan")
         maps = KernelbaseCommand.get_maps()
         kbase, kbase_size = KernelbaseCommand.get_kernel_base(maps)
         get_ksymaddr("DUMMY")
@@ -19782,11 +19783,9 @@ class KernelbaseCommand(GenericCommand):
     _category_ = "Qemu-system Cooperation"
 
     @staticmethod
-    def get_maps(silent=False):
+    @lru_cache()
+    def get_maps():
         maps = []
-        if not silent:
-            info("Wait for memory scan")
-
         res = gdb.execute("pagewalk", to_string=True)
         res = sorted(set(res.splitlines()))
         res = list(filter(lambda line: line.endswith("]"), res))
@@ -19906,6 +19905,7 @@ class KernelbaseCommand(GenericCommand):
         self.dont_repeat()
 
         # resolve kbase, krobase
+        info("Wait for memory scan")
         maps = self.get_maps() # [vaddr, size, perm]
         if maps is None:
             return None
@@ -19935,6 +19935,7 @@ class KernelVersionCommand(GenericCommand):
     _category_ = "Qemu-system Cooperation"
 
     def kernel_version(self):
+        info("Wait for memory scan")
         maps = KernelbaseCommand.get_maps() # [vaddr, size, perm]
         if maps is None:
             return None
@@ -22982,7 +22983,9 @@ class KsymaddrRemoteCommand(GenericCommand):
             self.print_meta()
             return True
         # get kernel memory maps
-        self.maps = KernelbaseCommand.get_maps(self.silent)
+        if not self.silent:
+            info("Wait for memory scan")
+        self.maps = KernelbaseCommand.get_maps()
         if self.maps is None:
             return None
         # get kernel base
@@ -23088,6 +23091,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
             return None
 
         # resolve kbase, krobase
+        info("Wait for memory scan")
         maps = KernelbaseCommand.get_maps() # [vaddr, size, perm]
         if maps is None:
             err("maps is None")
@@ -31929,6 +31933,7 @@ class ThunkHunterCommand(GenericCommand):
     def do_invoke(self, argv):
         self.dont_repeat()
 
+        info("Wait for memory scan")
         maps = KernelbaseCommand.get_maps() # [vaddr, size, perm]
         info("Resolving thunk function addresses")
         for reg in current_arch.gpr_registers:
