@@ -19433,10 +19433,13 @@ class PackCommand(GenericCommand):
         except:
             self.usage()
             return
-        gef_print("pack8:  {}".format(p8(value & 0xff)))
-        gef_print("pack16: {}".format(p16(value & 0xffff)))
-        gef_print("pack32: {}".format(p32(value & 0xffffffff)))
-        gef_print("pack64: {}".format(p64(value & 0xffffffffffffffff)))
+        gef_print("pack8:   {}".format(p8(value & 0xff)))
+        gef_print("pack16:  {}".format(p16(value & 0xffff)))
+        gef_print("pack32:  {}".format(p32(value & 0xffffffff)))
+        gef_print("pack64:  {}".format(p64(value & 0xffffffffffffffff)))
+        low = value & 0xffffffffffffffff
+        high = (value >> 64) & 0xffffffffffffffff
+        gef_print("pack128: {}".format(p64(low) + p64(high)))
         return
 
 
@@ -19460,14 +19463,74 @@ class UnpackCommand(GenericCommand):
             return
 
         try:
-            value = codecs.escape_decode(argv[0])[0] + b"\0"*7
+            value = codecs.escape_decode(argv[0])[0] + b"\0"*16
         except binascii.Error:
             gef_print("Could not decode '\\xXX' encoded string \"{}\"".format(argv[0]))
             return
-        gef_print("unpack8:  {:#x}".format(u8(value[:1])))
-        gef_print("unpack16: {:#x}".format(u16(value[:2])))
-        gef_print("unpack32: {:#x}".format(u32(value[:4])))
-        gef_print("unpack64: {:#x}".format(u64(value[:8])))
+        gef_print("unpack8:   {:#04x}".format(u8(value[:1])))
+        gef_print("unpack16:  {:#06x}".format(u16(value[:2])))
+        gef_print("unpack32:  {:#010x}".format(u32(value[:4])))
+        gef_print("unpack64:  {:#018x}".format(u64(value[:8])))
+        low, high = value[:8], value[8:16]
+        gef_print("unpack128: {:#034x}".format((u64(high) << 64) | u64(low)))
+        return
+
+
+@register_command
+class TohexCommand(GenericCommand):
+    """Translate bytes -> hex"""
+    _cmdline_ = "tohex"
+    _syntax_ = "{:s} [-h] \"double-escaped string\"".format(_cmdline_)
+    _example_ = "{:s} \"\\\\x41\\\\x42\\\\x43\\\\x44\"".format(_cmdline_)
+    _category_ = "Misc"
+
+    def do_invoke(self, argv):
+        self.dont_repeat()
+
+        if len(argv) == 0:
+            self.usage()
+            return
+
+        if "-h" in argv:
+            self.usage()
+            return
+
+        try:
+            value = codecs.escape_decode(argv[0])[0]
+        except binascii.Error:
+            gef_print("Could not decode '\\xXX' encoded string \"{}\"".format(argv[0]))
+            return
+
+        gef_print(binascii.hexlify(value))
+        return
+
+
+@register_command
+class UnhexCommand(GenericCommand):
+    """Translate hex -> bytes"""
+    _cmdline_ = "unhex"
+    _syntax_ = "{:s} [-h] \"double-escaped string\"".format(_cmdline_)
+    _example_ = "{:s} 4141424243434444".format(_cmdline_)
+    _category_ = "Misc"
+
+    def do_invoke(self, argv):
+        self.dont_repeat()
+
+        if len(argv) == 0:
+            self.usage()
+            return
+
+        if "-h" in argv:
+            self.usage()
+            return
+
+        try:
+            value = binascii.unhexlify(argv[0])
+        except binascii.Error:
+            gef_print("Could not unhexlify")
+            return
+
+        gef_print(value)
         return
 
 

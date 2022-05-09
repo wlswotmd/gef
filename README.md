@@ -255,7 +255,9 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
 * `u2d`: is cast/transformation u64 <-> double/float.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/u2d.png)
 * `pack`,`unpack`: is transformation int <-> bytes.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pack.png)
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pack-unpack.png)
+* `tohex`,`unhex`: is transformation hex <-> bytes.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/tohex-unhex.png)
 * `hash-memory`: calculations hash.
     * Supported: md5, sha1, sha224, sha256, sha384, sha512, crc16, crc32, crc64.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hash-memory.png)
