@@ -3255,10 +3255,10 @@ class MIPS(Architecture):
         branch_mnemos = ["beq", "bne", "bgtz", "bgez", "bltz", "blez", "beqz", "bnez",
                          "beql", "bnel", "bgtzl", "bgezl", "bltzl", "blezl",
                          "bgezal", "bgezall", "bltzal", "bltzall",
-                         "bc1f", "bc1fl", "bc1t", "bc1tl", "bc2f", "bc2fl", "bc2t", "bc2tl", 
+                         "bc1f", "bc1fl", "bc1t", "bc1tl", "bc2f", "bc2fl", "bc2t", "bc2tl",
                          "beqc", "beqic", "beqzc",
                          "bnec", "bneic", "bnezc",
-                         "bgec", "bgeic", "bgeiuc", "bgeuc", 
+                         "bgec", "bgeic", "bgeiuc", "bgeuc",
                          "bltc", "bltic", "bltiuc", "bltuc",
                          "bbeqzc", "bbnezc"]
         return insn.mnemonic in branch_mnemos
@@ -4659,8 +4659,8 @@ def set_arch(arch=None, default=None):
         "X64": X86_64, "AMD64": X86_64,
         "X86_64": X86_64, Elf.X86_64: X86_64,
         "X86-64": X86_64, Elf.X86_64: X86_64,
-        "I386:X86_64": X86_64, "I386:X86_64:INTEL": X86_64, "I386:X64_32": X86_64, "I386:X64_32:INTEL": X86_64, 
-        "I386:X86-64": X86_64, "I386:X86-64:INTEL": X86_64, "I386:X64-32": X86_64, "I386:X64-32:INTEL": X86_64, 
+        "I386:X86_64": X86_64, "I386:X86_64:INTEL": X86_64, "I386:X64_32": X86_64, "I386:X64_32:INTEL": X86_64,
+        "I386:X86-64": X86_64, "I386:X86-64:INTEL": X86_64, "I386:X64-32": X86_64, "I386:X64-32:INTEL": X86_64,
         "I386:NACL": X86,
         "I386:X86_64:NACL": X86_64, "I386:X86-64:NACL": X86_64,
         "I386:X64_32:NACL": X86_64, "I386:X64-32:NACL": X86_64,
@@ -7921,7 +7921,7 @@ class GlibcHeapBinsCommand(GenericCommand):
         verbose = ""
         if "-v" in argv:
            verbose = "-v"
-           argv.remove("-v") 
+           argv.remove("-v")
 
         if not argv:
             for bin_t in GlibcHeapBinsCommand._bin_types_:
@@ -10380,7 +10380,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                         entries.append([pos, data[pos:new_pos], indent+"??? {:#x}".format(opcode), None, ""])
                 elif opcode < self.DW_CFA_offset:
                     op1 = opcode & 0x3f
-                    pc += op1 * code_align 
+                    pc += op1 * code_align
                     entries.append([pos, data[pos:new_pos], indent+"advance_loc {:d} to {:#x}".format(op1, pc), None, ""])
                 elif opcode < self.DW_CFA_restore:
                     op1 = opcode & 0x3f
@@ -10763,7 +10763,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
             self.DW_OP_xor: "xor",
         }
         if code in DWARF_ONE_KNOWN_DW_OP:
-            return DWARF_ONE_KNOWN_DW_OP[code] 
+            return DWARF_ONE_KNOWN_DW_OP[code]
         elif code >= self.DW_OP_lo_user:
             return "lo_user+{:#x}".format(code - self.DW_OP_lo_user)
         else:
@@ -11075,7 +11075,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                 entries.append([pos, data[pos:new_pos], "call_site_table_len", call_site_table_len, ""])
                 pos = new_pos
 
-                # parse call_site_table 
+                # parse call_site_table
                 action_table_pos = pos + call_site_table_len
                 table_cnt = 0
                 max_action = 0
@@ -11119,7 +11119,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
 
                     table_cnt += 1
 
-                # parse action_table 
+                # parse action_table
                 max_ar_filter = 0
                 table_cnt = 0
                 if max_action:
@@ -12100,7 +12100,7 @@ class ContextCommand(GenericCommand):
             while current_frame != orig_frame:
                 current_frame = current_frame.older()
                 frames.append(current_frame)
-    
+
             nb_backtrace_before = self.get_setting("nb_lines_backtrace_before")
             level = max(len(frames) - nb_backtrace_before - 1, 0)
             current_frame = frames[level]
@@ -19112,7 +19112,7 @@ class FpuCommand(GenericCommand):
         ]
         reg = int(gdb.execute("info registers $ftag", to_string=True).split()[1],16)
         PrintBitInfo("$ftag", 16, None, bit_info).print(reg)
-        
+
         # $fiseg, $fioff
         gef_print(titlify("FCS:FIP (x87 FPU Last Instruction Pointer)"))
         reg = int(gdb.execute("info registers $fiseg", to_string=True).split()[1],16)
@@ -20295,7 +20295,7 @@ class SyscallTableViewCommand(GenericCommand):
                     if base is None:
                         m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
                         if m:
-                            base = int(m.group(1), 16) 
+                            base = int(m.group(1), 16)
                     else:
                         m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
                         if m:
@@ -20548,7 +20548,7 @@ class CetStatusCommand(GenericCommand):
         d["pc"] = get_register("$pc")
         d["sp"] = get_register("$sp")
         d["code"] = read_memory(d["pc"], code_len)
-        d["reg"] = {} 
+        d["reg"] = {}
         for reg in current_arch.gpr_registers:
             d["reg"][reg] = get_register(reg)
         d["stack"] = {}
@@ -21216,7 +21216,7 @@ class IsMemoryZeroCommand(GenericCommand):
             else:
                 is_zero = False
                 is_ff = False
-            if is_zero == False and is_ff == False: 
+            if is_zero == False and is_ff == False:
                 break
             current += 0x1000
 
@@ -22101,7 +22101,7 @@ class SlubDumpCommand(GenericCommand):
 
         def pattern2(addr, chunk, cache):
             return chunk ^ self.byteswap(addr) ^ cache['random']
-        
+
         shift_bits = 48 if is_64bit() else 24
 
         if self.swap == False:
@@ -22394,7 +22394,7 @@ class KsymaddrRemoteCommand(GenericCommand):
     # Variables to use
     #   self.kbase:         address of kernel .text
     #   self.krobase:       address of kernel .rodata
-    #   self.RO_REGION:     data of .rodata; bytes([0xef, 0xbe, 0xad, 0xde...]) 
+    #   self.RO_REGION:     data of .rodata; bytes([0xef, 0xbe, 0xad, 0xde...])
     #   self.RO_REGION_u32: data of .rodata; [0xdeadbeef, ...]
     #   self.RO_REGION_u64: data of .rodata; [0x00000000deadbeef, ...]
 
@@ -22408,9 +22408,9 @@ class KsymaddrRemoteCommand(GenericCommand):
                     continue
                 if (tmp & 0xffff0000) != (self.kbase & 0xffff0000): # holds around kbase
                     continue
-                if self.RO_REGION_u32[idx + 1] > 0x1ffff: # next address is kallsyms_num_syms. too large number is fail 
+                if self.RO_REGION_u32[idx + 1] > 0x1ffff: # next address is kallsyms_num_syms. too large number is fail
                     continue
-                if 0 < self.RO_REGION_u32[idx + 1] < 0x100 : # next address is kallsyms_num_syms. too small number is fail 
+                if 0 < self.RO_REGION_u32[idx + 1] < 0x100 : # next address is kallsyms_num_syms. too small number is fail
                     continue
                 self.kallsyms_relative_base = tmp
                 self.kallsyms_relative_base_off = idx
@@ -22436,9 +22436,9 @@ class KsymaddrRemoteCommand(GenericCommand):
                     continue
                 if (tmp & 0xffff0000) != (self.kbase & 0xffff0000): # holds around kbase
                     continue
-                if self.RO_REGION_u32[idx + 1] > 0x1ffff: # next address is kallsyms_num_syms. too large number is fail 
+                if self.RO_REGION_u32[idx + 1] > 0x1ffff: # next address is kallsyms_num_syms. too large number is fail
                     continue
-                if 0 < self.RO_REGION_u32[idx + 1] < 0x100 : # next address is kallsyms_num_syms. too small number is fail 
+                if 0 < self.RO_REGION_u32[idx + 1] < 0x100 : # next address is kallsyms_num_syms. too small number is fail
                     continue
                 self.kallsyms_relative_base = tmp
                 self.kallsyms_relative_base_off = idx
@@ -23993,7 +23993,7 @@ class PartitionAllocDumpStableCommand(GenericCommand):
      | ...                  |    +---> +-extent------------+  +-> +-extent------------+  +-> ...
      | next_super_page      |    |     | next              | -+   | next              | -+
      | next_partition_page  |    |     +-------------------+      +-------------------+
-     | ...                  |    |     
+     | ...                  |    |
      | first_extent         | ---+
      | direct_map_list      | -------> +-direct_map_extent-+  +-> +-direct_map_extent-+  +-> ...
      | ...                  |          | bucket            |  |   | bucket            |  |
@@ -24084,7 +24084,7 @@ class PartitionAllocDumpStableCommand(GenericCommand):
             heapbase = HeapBaseFunction.heap_base()
             chromium_rw_maps = [p for p in get_process_maps() if p.permission.value == Permission.READ | Permission.WRITE]
             chromium_rw_maps = [p for p in chromium_rw_maps if p.page_start < heapbase and p.path != filepath]
-        
+
         def n_gram(target, n):
             for idx in range(len(target) - n + 1):
                 yield target[idx:idx + n]
@@ -24103,13 +24103,13 @@ class PartitionAllocDumpStableCommand(GenericCommand):
             base::ThreadSafePartitionRoot* Partitions::buffer_root_ = nullptr;
 
             0x564883728440 <WTF::Partitions::fast_malloc_root_>:    0x0000000000000000
-            0x564883728448 <WTF::Partitions::array_buffer_root_>:   0x000056488372a380 
+            0x564883728448 <WTF::Partitions::array_buffer_root_>:   0x000056488372a380
             0x564883728450 <WTF::Partitions::buffer_root_>: 0x0000564883729400
             0x564883728458 <guard variable for WTF::Partitions::Initialize()::initialized>: 0x0000000100000101
             ...
             0x55c7e358d480 <WTF::Partitions::InitializeOnce()::fast_malloc_allocator>:      0x0000000000000000
             ...
-            0x55c7e358e400 <WTF::Partitions::InitializeOnce()::buffer_allocator>:   0x0000000100000001 
+            0x55c7e358e400 <WTF::Partitions::InitializeOnce()::buffer_allocator>:   0x0000000100000001
             ...
             0x55c7e358f380 <WTF::Partitions::InitializeArrayBufferPartition()::array_buffer_allocator>:     0x0000000100000001
             """
@@ -24188,7 +24188,7 @@ class PartitionAllocDumpStableCommand(GenericCommand):
                 return [[root_string, root_addr]]
             except:
                 return []
-    
+
         roots = []
         # try from symbols
         for root_string in ["fast_malloc_root_", "array_buffer_root_", "buffer_root_"]:
@@ -25011,7 +25011,7 @@ class PartitionAllocDumpOld1Command(GenericCommand):
             heapbase = HeapBaseFunction.heap_base()
             chromium_rw_maps = [p for p in get_process_maps() if p.permission.value == Permission.READ | Permission.WRITE]
             chromium_rw_maps = [p for p in chromium_rw_maps if p.page_start < heapbase and p.path != filepath]
-        
+
         roots = []
         for maps in chromium_rw_maps:
             datas = self.slice_unpack(read_memory(maps.page_start, maps.size), current_arch.ptrsize)
@@ -25082,7 +25082,7 @@ class PartitionAllocDumpOld1Command(GenericCommand):
                 return [[root_string, root_addr]]
             except:
                 return []
-    
+
         roots = []
         # try from symbols
         for root_string in ["fast_malloc_root_", "array_buffer_root_", "buffer_root_", "layout_root_"]:
@@ -25145,7 +25145,7 @@ class PartitionAllocDumpOld1Command(GenericCommand):
             //uint32_t extras_offset;
             internal::MaybeSpinLock<thread_safe> lock_;
             Bucket buckets[kNumBuckets] = {};
-            Bucket sentinel_bucket; 
+            Bucket sentinel_bucket;
             bool initialized = false;
             std::atomic<size_t> total_size_of_committed_pages{0};
             std::atomic<size_t> total_size_of_super_pages{0};
@@ -25165,10 +25165,10 @@ class PartitionAllocDumpOld1Command(GenericCommand):
         x = u64(read_memory(current, 8))
         current += 8
         root["with_thread_cache"] = (x >> 0) & 0xff
-        root["is_thread_safe"] = (x >> 8) & 0xff 
-        root["allow_aligned_alloc"] = (x >> 16) & 0xff 
-        root["allow_cookies"] = (x >> 24) & 0xff 
-        root["allow_ref_count"] = (x >> 32) & 0xff 
+        root["is_thread_safe"] = (x >> 8) & 0xff
+        root["allow_aligned_alloc"] = (x >> 16) & 0xff
+        root["allow_cookies"] = (x >> 24) & 0xff
+        root["allow_ref_count"] = (x >> 32) & 0xff
 
         root["lock_"] = read_int_from_memory(current)
         current += ptrsize
@@ -26206,7 +26206,7 @@ class MuslDumpCommand(GenericCommand):
                0x7ffff7d7dde0 <malloc>:     jmp    0x7ffff7d8ece2 <__libc_malloc_impl>
 
             [pattern 2]
-               0x7ffff7f71650 <malloc>:     endbr64 
+               0x7ffff7f71650 <malloc>:     endbr64
                0x7ffff7f71654 <malloc+4>:   jmp    0x7ffff7f72ff0
 
             [pattern 3]
@@ -26261,7 +26261,7 @@ class MuslDumpCommand(GenericCommand):
                0x7ffff7d8e462 <__malloc_alloc_meta+8>:      cmp    DWORD PTR [rip+0x26d67f],0x0        # 0x7ffff7ffbae8 <__malloc_context+8>
 
             [patttern 2]
-               0x7ffff7f72290:      endbr64 
+               0x7ffff7f72290:      endbr64
                0x7ffff7f72294:      push   r12
                0x7ffff7f72296:      push   rbp
                0x7ffff7f72297:      push   rbx
@@ -26449,7 +26449,7 @@ class MuslDumpCommand(GenericCommand):
     def read_meta(self, addr):
         ptrsize = current_arch.ptrsize
         meta = {}
-        meta["addr"] = current = addr 
+        meta["addr"] = current = addr
         """
         struct meta {
             struct meta *prev;
@@ -28285,7 +28285,7 @@ class PrintBitInfo:
                     val |= (regval & (1 << x)) >> (x-j)
             else:
                 raise
-            
+
             if val:
                 colored_val = Color.colorify(f"{val:>#{max_width_val}x}", "bold")
             else:
@@ -28301,7 +28301,7 @@ class PrintBitInfo:
         self.print_description()
         self.print_bitinfo(regval)
         return
-    
+
 
 @register_command
 class QemuRegistersCommand(GenericCommand):
@@ -29350,7 +29350,7 @@ class PagewalkArmCommand(PagewalkCommand):
         # AP[2:0] access permissions model
         if "AP=000" in flag_info:
             if XN == False and PXN == False:
-                flags += ['PL0/---', "PL1/---"] # 
+                flags += ['PL0/---', "PL1/---"] #
             elif XN == False and PXN == True:
                 flags += ['PL0/---', "PL1/---"] # PXN
             elif XN == True and PXN == False:
@@ -29359,7 +29359,7 @@ class PagewalkArmCommand(PagewalkCommand):
                 flags += ['PL0/---', "PL1/---"] # XN, PXN
         elif "AP=001" in flag_info:
             if XN == False and PXN == False:
-                flags += ['PL0/---', "PL1/RWX"] # 
+                flags += ['PL0/---', "PL1/RWX"] #
             elif XN == False and PXN == True:
                 flags += ['PL0/---', "PL1/RW-"] # PXN
             elif XN == True and PXN == False:
@@ -29368,7 +29368,7 @@ class PagewalkArmCommand(PagewalkCommand):
                 flags += ['PL0/---', "PL1/RW-"] # XN, PXN
         elif "AP=010" in flag_info:
             if XN == False and PXN == False:
-                flags += ['PL0/R-X', "PL1/RWX"] # 
+                flags += ['PL0/R-X', "PL1/RWX"] #
             elif XN == False and PXN == True:
                 flags += ['PL0/R-X', "PL1/RW-"] # PXN
             elif XN == True and PXN == False:
@@ -29377,7 +29377,7 @@ class PagewalkArmCommand(PagewalkCommand):
                 flags += ['PL0/R--', "PL1/RW-"] # XN, PXN
         elif "AP=011" in flag_info:
             if XN == False and PXN == False:
-                flags += ['PL0/RWX', "PL1/RWX"] # 
+                flags += ['PL0/RWX', "PL1/RWX"] #
             elif XN == False and PXN == True:
                 flags += ['PL0/RWX', "PL1/RW-"] # PXN
             elif XN == True and PXN == False:
@@ -29388,7 +29388,7 @@ class PagewalkArmCommand(PagewalkCommand):
             flags += ['PL0/???', "PL1/???"] # undefined (reserved)
         elif "AP=101" in flag_info:
             if XN == False and PXN == False:
-                flags += ['PL0/---', "PL1/R-X"] # 
+                flags += ['PL0/---', "PL1/R-X"] #
             elif XN == False and PXN == True:
                 flags += ['PL0/---', "PL1/R--"] # PXN
             elif XN == True and PXN == False:
@@ -29397,7 +29397,7 @@ class PagewalkArmCommand(PagewalkCommand):
                 flags += ['PL0/---', "PL1/R--"] # XN, PXN
         elif "AP=110" in flag_info: # deprecated
             if XN == False and PXN == False:
-                flags += ['PL0/R-X', "PL1/R-X"] # 
+                flags += ['PL0/R-X', "PL1/R-X"] #
             elif XN == False and PXN == True:
                 flags += ['PL0/R-X', "PL1/R--"] # PXN
             elif XN == True and PXN == False:
@@ -29406,7 +29406,7 @@ class PagewalkArmCommand(PagewalkCommand):
                 flags += ['PL0/R--', "PL1/R--"] # XN, PXN
         elif "AP=111" in flag_info:
             if XN == False and PXN == False:
-                flags += ['PL0/R-X', "PL1/R-X"] # 
+                flags += ['PL0/R-X', "PL1/R-X"] #
             elif XN == False and PXN == True:
                 flags += ['PL0/R-X', "PL1/R--"] # PXN
             elif XN == True and PXN == False:
@@ -29416,7 +29416,7 @@ class PagewalkArmCommand(PagewalkCommand):
         # AP[2:1] access permissions model
         elif "AP=00" in flag_info:
             if XN == False and PXN == False:
-                flags += ['PL0/---', "PL1/RWX"] # 
+                flags += ['PL0/---', "PL1/RWX"] #
             elif XN == False and PXN == True:
                 flags += ['PL0/---', "PL1/RW-"] # PXN
             elif XN == True and PXN == False:
@@ -29425,7 +29425,7 @@ class PagewalkArmCommand(PagewalkCommand):
                 flags += ['PL0/---', "PL1/RW-"] # XN, PXN
         elif "AP=01" in flag_info:
             if XN == False and PXN == False:
-                flags += ['PL0/RWX', "PL1/RWX"] # 
+                flags += ['PL0/RWX', "PL1/RWX"] #
             elif XN == False and PXN == True:
                 flags += ['PL0/RWX', "PL1/RW-"] # PXN
             elif XN == True and PXN == False:
@@ -29434,7 +29434,7 @@ class PagewalkArmCommand(PagewalkCommand):
                 flags += ['PL0/RW-', "PL1/RW-"] # XN, PXN
         elif "AP=10" in flag_info:
             if XN == False and PXN == False:
-                flags += ['PL0/---', "PL1/R-X"] # 
+                flags += ['PL0/---', "PL1/R-X"] #
             elif XN == False and PXN == True:
                 flags += ['PL0/---', "PL1/R--"] # PXN
             elif XN == True and PXN == False:
@@ -29443,7 +29443,7 @@ class PagewalkArmCommand(PagewalkCommand):
                 flags += ['PL0/---', "PL1/R--"] # XN, PXN
         elif "AP=11" in flag_info:
             if XN == False and PXN == False:
-                flags += ['PL0/R-X', "PL1/R-X"] # 
+                flags += ['PL0/R-X', "PL1/R-X"] #
             elif XN == False and PXN == True:
                 flags += ['PL0/R-X', "PL1/R--"] # PXN
             elif XN == True and PXN == False:
@@ -29509,7 +29509,7 @@ class PagewalkArmCommand(PagewalkCommand):
         # AP[2:1] access permissions model
         if AP == 0b00:
             if XN == False and PXN == False:
-                flags += ['PL0/---', "PL1/RWX"] # 
+                flags += ['PL0/---', "PL1/RWX"] #
             elif XN == False and PXN == True:
                 flags += ['PL0/---', "PL1/RW-"] # PXN
             elif XN == True and PXN == False:
@@ -29518,7 +29518,7 @@ class PagewalkArmCommand(PagewalkCommand):
                 flags += ['PL0/---', "PL1/RW-"] # XN, PXN
         elif AP == 0b01:
             if XN == False and PXN == False:
-                flags += ['PL0/RWX', "PL1/RWX"] # 
+                flags += ['PL0/RWX', "PL1/RWX"] #
             elif XN == False and PXN == True:
                 flags += ['PL0/RWX', "PL1/RW-"] # PXN
             elif XN == True and PXN == False:
@@ -29527,7 +29527,7 @@ class PagewalkArmCommand(PagewalkCommand):
                 flags += ['PL0/RW-', "PL1/RW-"] # XN, PXN
         elif AP == 0b10:
             if XN == False and PXN == False:
-                flags += ['PL0/---', "PL1/R-X"] # 
+                flags += ['PL0/---', "PL1/R-X"] #
             elif XN == False and PXN == True:
                 flags += ['PL0/---', "PL1/R--"] # PXN
             elif XN == True and PXN == False:
@@ -29536,7 +29536,7 @@ class PagewalkArmCommand(PagewalkCommand):
                 flags += ['PL0/---', "PL1/R--"] # XN, PXN
         elif AP == 0b11:
             if XN == False and PXN == False:
-                flags += ['PL0/R-X', "PL1/R-X"] # 
+                flags += ['PL0/R-X', "PL1/R-X"] #
             elif XN == False and PXN == True:
                 flags += ['PL0/R-X', "PL1/R--"] # PXN
             elif XN == True and PXN == False:
@@ -31906,7 +31906,7 @@ class ThunkBreakpoint(gdb.Breakpoint):
         for reg in current_arch.gpr_registers:
             reg_value = get_register(reg)
             try:
-                mem_value = read_int_from_memory(reg_value) 
+                mem_value = read_int_from_memory(reg_value)
             except:
                 continue
             if mem_value == target_address:
@@ -31987,7 +31987,7 @@ class UefiOvmfInfoCommand(GenericCommand):
         for size, name in structure:
             unpack = u32 if size == 4 else u64
             d[name] = unpack(read_memory(addr, size))
-            addr += size 
+            addr += size
         return d
 
     @lru_cache()
@@ -32189,7 +32189,7 @@ class UefiOvmfInfoCommand(GenericCommand):
         info("mDxeServices: {:#x}".format(self.mDxeServices["__addr"]))
         for k, v in self.mDxeServices.items():
             if k.startswith("__"):
-                continue 
+                continue
             gef_print("  {:40s}{:#x}".format(k+":",v))
         return
 
@@ -32236,7 +32236,7 @@ class UefiOvmfInfoCommand(GenericCommand):
         info("*gDxeCoreST(=mEfiSystemTable): {:#x}".format(self.mEfiSystemTable["__addr"]))
         for k, v in self.mEfiSystemTable.items():
             if k.startswith("__"):
-                continue 
+                continue
             gef_print("  {:40s}{:#x}".format(k+":",v))
         return
 
@@ -32285,7 +32285,7 @@ class UefiOvmfInfoCommand(GenericCommand):
         info("*gDxeCoreRT(=mEfiRuntimeServicesTable): {:#x}".format(self.mEfiRuntimeServicesTable["__addr"]))
         for k, v in self.mEfiRuntimeServicesTable.items():
             if k.startswith("__"):
-                continue 
+                continue
             gef_print("  {:40s}{:#x}".format(k+":",v))
         return
 
@@ -32534,7 +32534,7 @@ class AddSymbolTemporaryCommand(GenericCommand):
             else:
                 relative_addr = fa - text_base
                 cmd_string_arr.append(f"--add-symbol '{fn}'=.text:{relative_addr:#x},{global_flag},{type_flag}") # higher address needs relative
-                
+
             if i > 1 and i % 1000 == 0:
                 # too long, so let's commit
                 apply_symbol(fname, cmd_string_arr, text_base)
@@ -32575,7 +32575,7 @@ class AddSymbolTemporaryCommand(GenericCommand):
         function_info.append((function_name, function_addr, None))
         self.add_symbol_temp(function_info)
         return
-         
+
 
 @register_command
 class KsymaddrRemoteApplyCommand(GenericCommand):
