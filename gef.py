@@ -8246,43 +8246,6 @@ class GlibcHeapLargeBinsCommand(GenericCommand):
 
 
 @register_command
-class SolveKernelSymbolCommand(GenericCommand):
-    """Solve kernel symbols from kallsyms table with /proc/kallsyms"""
-    _cmdline_ = "ksymaddr"
-    _syntax_ = "{:s} SymbolToSearch".format(_cmdline_)
-    _example_ = "{:s} prepare_creds".format(_cmdline_)
-    _category_ = "Misc"
-
-    @only_if_not_qemu_system
-    def do_invoke(self, argv):
-        self.dont_repeat()
-
-        if len(argv) != 1:
-            self.usage()
-            return
-
-        found = False
-        sym = argv[0]
-        with open("/proc/kallsyms", "r") as f:
-            for line in f:
-                try:
-                    symaddr, symtype, symname = line.strip().split(" ", 3)
-                    symaddr = int(symaddr, 16)
-                    if symname == sym:
-                        ok("Found matching symbol for '{:s}' at {:#x} (type={:s})".format(sym, symaddr, symtype))
-                        found = True
-                    if sym in symname:
-                        warn("Found partial match for '{:s}' at {:#x} (type={:s}): {:s}".format(sym, symaddr, symtype, symname))
-                        found = True
-                except ValueError:
-                    pass
-
-        if not found:
-            err("No match for '{:s}'".format(sym))
-        return
-
-
-@register_command
 class DetailRegistersCommand(GenericCommand):
     """Display full details on one, many or all registers value from current architecture."""
     _cmdline_ = "registers"
