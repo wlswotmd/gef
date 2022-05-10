@@ -4609,13 +4609,19 @@ def is_x86():
 @lru_cache()
 def is_arm32():
     """Checks if current target is an arm-32"""
-    return current_arch.arch == "ARM"
+    try:
+        return current_arch.arch == "ARM"
+    except:
+        return False
 
 
 @lru_cache()
 def is_arm64():
     """Checks if current target is an aarch64"""
-    return current_arch.arch == "ARM64"
+    try:
+        return current_arch.arch == "ARM64"
+    except:
+        return False
 
 
 @lru_cache()
@@ -13929,14 +13935,36 @@ class ChecksecCommand(GenericCommand):
 class SropHintCommand(GenericCommand):
     """Hint for sigreturn oriented programming."""
     _cmdline_ = "srop-hint"
-    _syntax_ = "{:s}".format(_cmdline_)
+    _syntax_ = "{:s} [-a x86|x64|arm|aarch64]".format(_cmdline_)
     _category_ = "Exploit Development"
 
     def do_invoke(self, argv):
         self.dont_repeat()
 
-        s = "\n"
-        if is_x86_64():
+        if "-h" in argv:
+            self.usage()
+            return
+
+        if len(argv) >= 2:
+            if argv[0] == "-a" and argv[1] in ["x86", "x64", "arm", "aarch64"]:
+                mode = argv[1]
+            else:
+                self.usage()
+                return
+        else:
+            if is_x86_64():
+                mode = "x64"
+            elif is_x86_32():
+                mode = "x86"
+            elif is_arm32():
+                mode = "arm"
+            elif is_arm64():
+                mode = "aarch64"
+            else:
+                mode = "x64"
+
+        s = ""
+        if mode == "x64":
             s += 'exp  = struct.pack("<Q", syscall)    # rax = 15 (rt_sigreturn)\n'
             s += 'exp += struct.pack("<Q", 0xcafebabe) # rt_sigframe.pretcode\n'
             s += 'exp += struct.pack("<Q", 0x0)        # rt_sigframe.uc.uc_flags\n'
@@ -13974,7 +14002,7 @@ class SropHintCommand(GenericCommand):
             s += 'exp += struct.pack("<Q", 0x0)        # rt_sigframe.uc.uc_mcontext.reserved[8]\n'
             s += 'exp += struct.pack("<Q", 0x0)        # rt_sigframe.uc.uc_sigmask\n'
             s += 'exp += struct.pack("<Q", 0x0)        # rt_sigframe.info\n'
-        elif is_x86_32():
+        elif mode == "x86":
             s += 'exp  = struct.pack("<I", syscall)    # eax = 119 (sigreturn)\n'
             s += 'exp += struct.pack("<I", 0x0)        # sigframe.sc.gs\n'
             s += 'exp += struct.pack("<I", 0x0)        # sigframe.sc.fs\n'
@@ -13999,7 +14027,7 @@ class SropHintCommand(GenericCommand):
             s += 'exp += struct.pack("<I", 0x0)        # sigframe.sc.oldmask\n'
             s += 'exp += struct.pack("<I", 0x0)        # sigframe.sc.cr2\n'
             s += '\n'
-        elif is_arm32():
+        elif mode == "arm":
             s += 'exp += struct.pack("<I", pop_r7_pc)  # pop {r7, pc};\n'
             s += 'exp += struct.pack("<I", 119)        # r7 = 119 (sigreturn)\n'
             s += 'exp += struct.pack("<I", call_svc)   #\n'
@@ -14030,7 +14058,7 @@ class SropHintCommand(GenericCommand):
             s += 'exp += struct.pack("<I", 0x0)        # sigframe.uc.uc_mcontext.arm_cpsr\n'
             s += 'exp += struct.pack("<I", 0x0)        # sigframe.uc.uc_mcontext.fault_address\n'
             s += 'exp += struct.pack("<I", 0x0)        # sigframe.uc.uc_sigmask\n'
-        elif is_arm64():
+        elif mode == "aarch64":
             s += 'exp += struct.pack("<Q", ldp_x8_x9)  # ldp x8, x9, [sp], #16; ret x9;\n'
             s += 'exp += struct.pack("<Q", 139)        # x8 = 139\n'
             s += 'exp += struct.pack("<Q", call_svc)   # \n'
@@ -14092,7 +14120,7 @@ class Ret2dlHintCommand(GenericCommand):
     def do_invoke(self, argv):
         self.dont_repeat()
 
-        s  = "\n"
+        s  = ""
         s += "  +---.got/.got.plt @ itself-------+\n"
         s += "  | GOT[0]: _DYNAMIC               |\n"
         s += "  | GOT[1]: link_map               |\n"
