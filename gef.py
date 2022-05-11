@@ -11743,8 +11743,12 @@ class ContextCommand(GenericCommand):
                 code_orig, code = code, code.replace("$pc", f"$pc+{codesize*2:#x}")
 
             # print
-            code = code.replace("$", "(long)$")
-            addr = parse_address(code)
+            try:
+                code = code.replace("$", "(long)$")
+                addr = parse_address(code)
+            except:
+                # some binary fails to resolve "(long)"
+                addr = parse_address(code_orig)
             self.context_title(f"memory access: {code_orig} = {addr:#x}")
             gdb.execute(f"telescope {addr:#x} 1")
         return
