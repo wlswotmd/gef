@@ -19814,6 +19814,7 @@ class KernelbaseCommand(GenericCommand):
         res = gdb.execute("pagewalk", to_string=True)
         res = sorted(set(res.splitlines()))
         res = list(filter(lambda line: line.endswith("]"), res))
+        res = list(filter(lambda line: not "[+]" in line, res))
         res = list(filter(lambda line: not "*" in line, res))
 
         if is_x86():
@@ -28755,7 +28756,7 @@ class PagewalkCommand(GenericCommand):
 
     def format_legend(self):
         legend = ["Virtual address start-end", "Physical address start-end", "Total size", "Page size", "Count", "Flags"]
-        return "{:33s}  {:33s}  {:11s} {:10s} {:5s} {:s}".format(*legend)
+        return "{:33s}  {:33s}  {:12s} {:11s} {:6s} {:s}".format(*legend)
 
     def format_entry(self, entry):
         va, pa, size, cnt, flags = entry
@@ -28765,18 +28766,18 @@ class PagewalkCommand(GenericCommand):
                 vend = vend[:pos[0]] + "*" + vend[pos[1]:]
             pend = pa + size * cnt
             if self.simple:
-                text = "{:16s}-{:16s}  {:33s}  {:<#11x} {:<10s} {:<5s} [{:s}]".format(va, vend, "-", size, "-", "-", flags)
+                text = "{:16s}-{:16s}  {:33s}  {:<#12x} {:<11s} {:<6s} [{:s}]".format(va, vend, "-", size, "-", "-", flags)
             else:
-                text = "{:16s}-{:16s}  {:016x}-{:016x}  {:<#11x} {:<#10x} {:<5d} [{:s}]".format(va, vend, pa, pend, size*cnt, size, cnt, flags)
+                text = "{:16s}-{:16s}  {:016x}-{:016x}  {:<#12x} {:<#11x} {:<6d} [{:s}]".format(va, vend, pa, pend, size*cnt, size, cnt, flags)
         else:
             if isinstance(va, str):
                 va = int(va, 16)
             vend = va + size * cnt
             pend = pa + size * cnt
             if self.simple:
-                text = "{:016x}-{:016x}  {:33s}  {:<#11x} {:<10s} {:<5s} [{:s}]".format(va, vend, "-", size, "-", "-", flags)
+                text = "{:016x}-{:016x}  {:33s}  {:<#12x} {:<11s} {:<6s} [{:s}]".format(va, vend, "-", size, "-", "-", flags)
             else:
-                text = "{:016x}-{:016x}  {:016x}-{:016x}  {:<#11x} {:<#10x} {:<5d} [{:s}]".format(va, vend, pa, pend, size*cnt, size, cnt, flags)
+                text = "{:016x}-{:016x}  {:016x}-{:016x}  {:<#12x} {:<#11x} {:<6d} [{:s}]".format(va, vend, pa, pend, size*cnt, size, cnt, flags)
         return text
 
     def print_page(self):
@@ -28891,6 +28892,9 @@ class PagewalkCommand(GenericCommand):
             self.range.append(trace_addr) # append
             argv = argv[:idx] + argv[idx+2:]
             self.print_each_level = True # overwrite
+
+        if argv:
+            raise
 
         self.cache = {}
         return argv
@@ -30069,20 +30073,6 @@ class PagewalkArmCommand(PagewalkCommand):
         except:
             self.AFE = False
 
-        # check enabled 2 stage translation (TODO)
-        try:
-            HCR_EL2 = int(gdb.parse_and_eval('$HCR_EL2{}'.format(suffix)))
-            self.EL2VM = (HCR_EL2 & 1) == 1
-        except:
-            self.EL2VM = False
-
-        # check enabled EL2 translation (TODO)
-        try:
-            SCTLR_EL2 = int(gdb.parse_and_eval('$SCTLR_EL2{}'.format(suffix)))
-            self.EL2 = (SCTLR_EL2 & 1) == 1
-        except:
-            self.EL2 = False
-
         # check enabled LPAE
         try:
             TTBCR = int(gdb.parse_and_eval('$TTBCR{}'.format(suffix)))
@@ -30165,11 +30155,11 @@ class PagewalkArm64Command(PagewalkCommand):
         This function is for reading from physical memory with that in mind.
         """
 
-        if self.EL3 and self.TargetEL == 3:
+        if self.EL3_M and self.TargetEL == 3:
             return read_memory(addr, size)
 
         # translate via EL2 mappings
-        if self.EL2VM and self.TargetEL == 1 and self.el2_mappings:
+        if self.EL2_VM and self.TargetEL == 1 and self.el2_mappings:
             def search_pa(addr):
                 for entry_info in self.el2_mappings:
                     va, entry, sz, cnt, flags = entry_info
@@ -30247,40 +30237,49 @@ class PagewalkArm64Command(PagewalkCommand):
         if "AP=00" in flag_info:
             disable_write_access = 0
             enable_unpriv_access = 0
-        elif "AP=01" in flag_info: # EL0/EL1 only
+        elif "AP=01" in flag_info:
             disable_write_access = 0
             enable_unpriv_access = 1
         elif "AP=10" in flag_info:
             disable_write_access = 1
             enable_unpriv_access = 0
-        elif "AP=11" in flag_info: # EL0/EL1 only
+        elif "AP=11" in flag_info:
             disable_write_access = 1
             enable_unpriv_access = 1
         if "APTable2=00" in flag_info:
             pass
-        elif "APTable2=01" in flag_info: # EL0/EL1 only
+        elif "APTable2=01" in flag_info:
             enable_unpriv_access &= 0
         elif "APTable2=10" in flag_info:
             disable_write_access |= 1
-        elif "APTable2=11" in flag_info: # EL0/EL1 only
+        elif "APTable2=11" in flag_info:
             disable_write_access |= 1
             enable_unpriv_access &= 0
         if "APTable1=00" in flag_info:
             pass
-        elif "APTable1=01" in flag_info: # EL0/EL1 only
+        elif "APTable1=01" in flag_info:
             enable_unpriv_access &= 0
         elif "APTable1=10" in flag_info:
             disable_write_access |= 1
-        elif "APTable1=11" in flag_info: # EL0/EL1 only
+        elif "APTable1=11" in flag_info:
             disable_write_access |= 1
             enable_unpriv_access &= 0
         if "APTable0=00" in flag_info:
             pass
-        elif "APTable0=01" in flag_info: # EL0/EL1 only
+        elif "APTable0=01" in flag_info:
             enable_unpriv_access &= 0
         elif "APTable0=10" in flag_info:
             disable_write_access |= 1
-        elif "APTable0=11" in flag_info: # EL0/EL1 only
+        elif "APTable0=11" in flag_info:
+            disable_write_access |= 1
+            enable_unpriv_access &= 0
+        if "APTable-1=00" in flag_info:
+            pass
+        elif "APTable-1=01" in flag_info:
+            enable_unpriv_access &= 0
+        elif "APTable-1=10" in flag_info:
+            disable_write_access |= 1
+        elif "APTable-1=11" in flag_info:
             disable_write_access |= 1
             enable_unpriv_access &= 0
 
@@ -30289,20 +30288,25 @@ class PagewalkArm64Command(PagewalkCommand):
         UXN |= "UXNTable2" in flag_info
         UXN |= "UXNTable1" in flag_info
         UXN |= "UXNTable0" in flag_info
+        UXN |= "UXNTable-1" in flag_info
         XN = "XN" in flag_info
         XN |= "XNTable2" in flag_info
         XN |= "XNTable1" in flag_info
         XN |= "XNTable0" in flag_info
+        XN |= "XNTable-1" in flag_info
         PXN = "PXN" in flag_info
         PXN |= "PXNTable2" in flag_info
         PXN |= "PXNTable1" in flag_info
         PXN |= "PXNTable0" in flag_info
+        PXN |= "PXNTable-1" in flag_info
         NS = "NS" in flag_info
         NS |= "NSTable2" in flag_info
         NS |= "NSTable1" in flag_info
         NS |= "NSTable0" in flag_info
+        NS |= "NSTable-1" in flag_info
 
         if self.TargetEL == 1:
+            # always support 2VA ranges
             if UXN == False and PXN == False:
                 if disable_write_access == 0 and enable_unpriv_access == 0:
                     if not self.EL1_WXN:
@@ -30352,19 +30356,71 @@ class PagewalkArm64Command(PagewalkCommand):
                 elif disable_write_access == 1 and enable_unpriv_access == 1:
                     flags += ['EL0/R--', 'EL1/R--']
         elif self.TargetEL == 2:
-            if XN == False:
-                if disable_write_access == 0:
-                    if not self.EL2_WXN:
-                        flags += ['EL2/RWX']
-                    else:
+            if self.EL2_M20:
+                # support 2VA ranges if HCR_EL2.{TGE,E2H} == {1,1}
+                if UXN == False and PXN == False:
+                    if disable_write_access == 0 and enable_unpriv_access == 0:
+                        if not self.EL2_WXN:
+                            flags += ['EL0/--X', 'EL2/RWX']
+                        else:
+                            flags += ['EL0/--X', 'EL2/RW-']
+                    elif disable_write_access == 0 and enable_unpriv_access == 1:
+                        if not self.EL2_WXN:
+                            flags += ['EL0/RWX', 'EL2/RW-']
+                        else:
+                            flags += ['EL0/RW-', 'EL2/RW-']
+                    elif disable_write_access == 1 and enable_unpriv_access == 0:
+                        flags += ['EL0/--X', 'EL2/R-X']
+                    elif disable_write_access == 1 and enable_unpriv_access == 1:
+                        flags += ['EL0/R-X', 'EL2/R-X']
+                elif UXN == False and PXN == True:
+                    if disable_write_access == 0 and enable_unpriv_access == 0:
+                        flags += ['EL0/--X', 'EL2/RW-']
+                    elif disable_write_access == 0 and enable_unpriv_access == 1:
+                        if not self.EL2_WXN:
+                            flags += ['EL0/RWX', 'EL2/RW-']
+                        else:
+                            flags += ['EL0/RW-', 'EL2/RW-']
+                    elif disable_write_access == 1 and enable_unpriv_access == 0:
+                        flags += ['EL0/--X', 'EL2/R--']
+                    elif disable_write_access == 1 and enable_unpriv_access == 1:
+                        flags += ['EL0/R-X', 'EL2/R--']
+                elif UXN == True and PXN == False:
+                    if disable_write_access == 0 and enable_unpriv_access == 0:
+                        if not self.EL2_WXN:
+                            flags += ['EL0/---', 'EL2/RWX']
+                        else:
+                            flags += ['EL0/---', 'EL2/RW-']
+                    elif disable_write_access == 0 and enable_unpriv_access == 1:
+                        flags += ['EL0/RW-', 'EL2/RW-']
+                    elif disable_write_access == 1 and enable_unpriv_access == 0:
+                        flags += ['EL0/---', 'EL2/R-X']
+                    elif disable_write_access == 1 and enable_unpriv_access == 1:
+                        flags += ['EL0/R--', 'EL2/R-X']
+                elif UXN == True and PXN == True:
+                    if disable_write_access == 0 and enable_unpriv_access == 0:
+                        flags += ['EL0/---', 'EL2/RW-']
+                    elif disable_write_access == 0 and enable_unpriv_access == 1:
+                        flags += ['EL0/RW-', 'EL2/RW-']
+                    elif disable_write_access == 1 and enable_unpriv_access == 0:
+                        flags += ['EL0/---', 'EL2/R--']
+                    elif disable_write_access == 1 and enable_unpriv_access == 1:
+                        flags += ['EL0/R--', 'EL2/R--']
+            else:
+                # not support 2VA ranges if HCR_EL2.{TGE,E2H} != {1,1}
+                if XN == False:
+                    if disable_write_access == 0:
+                        if not self.EL2_WXN:
+                            flags += ['EL2/RWX']
+                        else:
+                            flags += ['EL2/RW-']
+                    elif disable_write_access == 1:
+                        flags += ['EL2/R-X']
+                elif XN == True:
+                    if disable_write_access == 0:
                         flags += ['EL2/RW-']
-                elif disable_write_access == 1:
-                    flags += ['EL2/R-X']
-            elif XN == True:
-                if disable_write_access == 0:
-                    flags += ['EL2/RW-']
-                elif disable_write_access == 1:
-                    flags += ['EL2/R--']
+                    elif disable_write_access == 1:
+                        flags += ['EL2/R--']
         elif self.TargetEL == 3:
             if XN == False:
                 if disable_write_access == 0:
@@ -30400,12 +30456,13 @@ class PagewalkArm64Command(PagewalkCommand):
     +----------------------+  |
     | Hypervisor table     |  |
     +----------------------+  |
-      TTBR0_EL2               |
+      TTBR0_EL2, TTBR1_EL2    |
                               |
     +----------------------+  |
     | Secure monitor table |  |
     +----------------------+  |
       TTBR0_EL3               |
+                              |
 
 
       TargetEL=1              |    TargetEL=2              |    TargetEL=3
@@ -30418,43 +30475,61 @@ class PagewalkArm64Command(PagewalkCommand):
                               |  +----------------------+  |
                               |  | Hypervisor table     |  |
                               |  +----------------------+  |
-                              |    TTBR0_EL2               |
+                              |    TTBR0_EL2, TTBR1_EL2    |
+                              |                            |
     """
-    def do_pagewalk(self, table_base, granule_bits, region_start, region_end, start_level=0, is_stage2=False):
-        self.mappings = []
-
-        region_bits = int(math.log2(region_end - region_start))
-        if not self.silent:
-            info("region_bits: {:d}".format(region_bits))
-
+    def parse_bit_range(self, granule_bits, region_bits):
         IA_LVA_MAX = 52 if self.FEAT_LVA else 48
-        if granule_bits == 12: # 4KB,2MB,1GB
-            LEVEL0_BIT_RANGE = [39,min(IA_LVA_MAX, region_bits)] if region_bits > 39 else None
-            LEVEL1_BIT_RANGE = [30,min(39, region_bits)] if region_bits > 30 else None
-            LEVEL2_BIT_RANGE = [21,min(30, region_bits)] if region_bits > 21 else None
-            LEVEL3_BIT_RANGE = [12,min(21, region_bits)] if region_bits > 12 else None
-            OFFSET_BIT_RANGE = [ 0,12]
-        elif granule_bits == 14: # 16KB,32MB
-            LEVEL0_BIT_RANGE = [47,min(IA_LVA_MAX, region_bits)] if region_bits > 47 else None
-            LEVEL1_BIT_RANGE = [36,min(47, region_bits)] if region_bits > 36 else None
-            LEVEL2_BIT_RANGE = [25,min(36, region_bits)] if region_bits > 25 else None
-            LEVEL3_BIT_RANGE = [14,min(25, region_bits)] if region_bits > 14 else None
-            OFFSET_BIT_RANGE = [ 0,14]
-        elif granule_bits == 16: # 64KB,512MB,4TB
-            LEVEL0_BIT_RANGE = None
-            LEVEL1_BIT_RANGE = [42,min(IA_LVA_MAX, region_bits)] if region_bits > 42 else None
-            LEVEL2_BIT_RANGE = [29,min(42, region_bits)] if region_bits > 29 else None
-            LEVEL3_BIT_RANGE = [16,min(29, region_bits)] if region_bits > 16 else None
-            OFFSET_BIT_RANGE = [ 0,16]
+        if granule_bits == 12: # 4KB granule
+            self.LEVELM1_BIT_RANGE = [48,min(IA_LVA_MAX, region_bits)] if region_bits > 48 else None # no block descriptor
+            self.LEVEL0_BIT_RANGE = [39,min(48, region_bits)] if region_bits > 39 else None          # 512GB
+            self.LEVEL1_BIT_RANGE = [30,min(39, region_bits)] if region_bits > 30 else None          # 1GB
+            self.LEVEL2_BIT_RANGE = [21,min(30, region_bits)] if region_bits > 21 else None          # 2MB
+            self.LEVEL3_BIT_RANGE = [12,min(21, region_bits)] if region_bits > 12 else None          # 4KB
+            self.OFFSET_BIT_RANGE = [ 0,12]
+        elif granule_bits == 14: # 16KB granule
+            self.LEVELM1_BIT_RANGE = None
+            self.LEVEL0_BIT_RANGE = [47,min(IA_LVA_MAX, region_bits)] if region_bits > 47 else None  # no block descriptor
+            self.LEVEL1_BIT_RANGE = [36,min(47, region_bits)] if region_bits > 36 else None          # 64GB
+            self.LEVEL2_BIT_RANGE = [25,min(36, region_bits)] if region_bits > 25 else None          # 32MB
+            self.LEVEL3_BIT_RANGE = [14,min(25, region_bits)] if region_bits > 14 else None          # 16KB
+            self.OFFSET_BIT_RANGE = [ 0,14]
+        elif granule_bits == 16: # 64KB granule
+            self.LEVELM1_BIT_RANGE = None
+            self.LEVEL0_BIT_RANGE = None
+            self.LEVEL1_BIT_RANGE = [42,min(IA_LVA_MAX, region_bits)] if region_bits > 42 else None  # 4TB
+            self.LEVEL2_BIT_RANGE = [29,min(42, region_bits)] if region_bits > 29 else None          # 512MB
+            self.LEVEL3_BIT_RANGE = [16,min(29, region_bits)] if region_bits > 16 else None          # 64KB
+            self.OFFSET_BIT_RANGE = [ 0,16]
         else:
             if not self.silent:
                 err("Unsupported granule_bits")
             return
 
-        def get_entries_per_table(BIT_RANGE, add16=False):
+        if not self.silent:
+            info("granule_bits: {:d}".format(granule_bits))
+            info("LEVELM1_BIT_RANGE: " + str(self.LEVELM1_BIT_RANGE))
+            info("LEVEL0_BIT_RANGE: " + str(self.LEVEL0_BIT_RANGE))
+            info("LEVEL1_BIT_RANGE: " + str(self.LEVEL1_BIT_RANGE))
+            info("LEVEL2_BIT_RANGE: " + str(self.LEVEL2_BIT_RANGE))
+            info("LEVEL3_BIT_RANGE: " + str(self.LEVEL3_BIT_RANGE))
+            info("OFFSET_BIT_RANGE: " + str(self.OFFSET_BIT_RANGE))
+        return
+
+    def do_pagewalk(self, table_base, granule_bits, region_start, start_level=0, is_stage2=False, is_2VAranges=False):
+        # table_base: The start address of pagewalk
+        # granule_bits: One of [12, 14, 16]; It specifies how to separate the bits used for address translation.
+        # region_start: The base address of translated address
+        # start_level: Only used at stage2. In stage2, the starting level will fluctuate
+        # is_stage2: Affects how the bitfield of each entry is interpreted
+        self.mappings = []
+
+        is_4k_granule = granule_bits == 12
+        is_16k_granule = granule_bits == 14
+        is_64k_granule = granule_bits == 16
+
+        def get_entries_per_table(BIT_RANGE):
             entries_per_table = 2 ** (BIT_RANGE[1] - BIT_RANGE[0])
-            if add16:
-                entries_per_table += 16
             if not self.silent:
                 info("Entries per table: {:d}".format(entries_per_table))
             return entries_per_table
@@ -30465,12 +30540,12 @@ class PagewalkArm64Command(PagewalkCommand):
         flags = []
         TABLE_BASE = [[region_start, table_base, flags]]
 
-        # level 0 parse
+        # level -1 parse for 4KB granule
         if not self.silent:
-            gef_print(titlify("LEVEL 0"))
-        if LEVEL0_BIT_RANGE is not None and start_level == 0:
-            entries_per_table = get_entries_per_table(LEVEL0_BIT_RANGE)
-            LEVEL0 = []
+            gef_print(titlify("LEVEL -1"))
+        if self.LEVELM1_BIT_RANGE is not None and start_level == -1:
+            entries_per_table = get_entries_per_table(self.LEVELM1_BIT_RANGE)
+            LEVELM1 = []
             COUNT = 0; INVALID = 0
             for va_base, table_base, parent_flags in TABLE_BASE:
                 entries = self.read_mem_wrapper(table_base, 8 * entries_per_table)
@@ -30483,35 +30558,40 @@ class PagewalkArm64Command(PagewalkCommand):
                         continue
 
                     # calc virtual address
-                    new_va = va_base + (i << LEVEL0_BIT_RANGE[0])
-                    new_va_end = new_va + (1 << LEVEL0_BIT_RANGE[0])
+                    new_va = va_base + (i << self.LEVELM1_BIT_RANGE[0])
+                    new_va_end = new_va + (1 << self.LEVELM1_BIT_RANGE[0])
 
                     # calc flags
                     flags = parent_flags.copy()
                     if has_next_level(entry):
                         if is_stage2:
                             pass
-                        elif self.TargetEL == 1:
-                            if ((entry >> 59) & 1) == 1: flags.append("PXNTable0")
-                            if ((entry >> 60) & 1) == 1: flags.append("UXNTable0")
-                            flags.append("APTable0={:02b}".format((entry >> 61) & 0b11))
-                            if ((entry >> 63) & 1) == 1: flags.append("NSTable0")
-                        else: # TargetEL == 2,3
-                            if ((entry >> 60) & 1) == 1: flags.append("XNTable0") # Use XNTable, not UXNTable # PXNTable is undefined
-                            flags.append("APTable0={:02b}".format((entry >> 61) & 0b11 & 0b10)) # APTable[0] must be 0
-                            if ((entry >> 63) & 1) == 1: flags.append("NSTable0")
+                        elif is_2VAranges:
+                            if ((entry >> 59) & 1) == 1: flags.append("PXNTable-1")
+                            if ((entry >> 60) & 1) == 1: flags.append("UXNTable-1")
+                            flags.append("APTable-1={:02b}".format((entry >> 61) & 0b11))
+                            if ((entry >> 63) & 1) == 1: flags.append("NSTable-1")
+                        else:
+                            if ((entry >> 60) & 1) == 1: flags.append("XNTable-1") # Use XNTable, not UXNTable # PXNTable is undefined
+                            flags.append("APTable-1={:02b}".format((entry >> 61) & 0b11 & 0b10)) # APTable[0] must be 0
+                            if ((entry >> 63) & 1) == 1: flags.append("NSTable-1")
                     else:
-                        # maybe undefined (at ARMv8.3)
+                        # In ARMv8.7, level -1 has no block descriptors
                         raise
 
-                    # calc next table (drop the flag bits)
-                    if self.FEAT_LPA:
-                        next_level_table = (entry & 0x0000ffffffff0000) | ((entry & 0xf000) << 36)
+                    # calc next table / output phys addr (drop the flag bits)
+                    if has_next_level(entry):
+                        next_level_table = (entry & 0x0003fffffffff000) | (((entry >> 8) & 0b11) << 50)
                     else:
-                        next_level_table = entry & 0x0000fffffffff000
+                        # In ARMv8.7, level -1 has no block descriptors
+                        raise
 
                     # make entry
-                    LEVEL0.append([new_va, next_level_table, flags])
+                    if has_next_level(entry):
+                        LEVELM1.append([new_va, next_level_table, flags])
+                    else:
+                        # In ARMv8.7, level -1 has no block descriptors
+                        raise
 
                     # dump
                     if self.print_each_level:
@@ -30523,21 +30603,140 @@ class PagewalkArm64Command(PagewalkCommand):
                             conitnue
                         gef_print(line)
 
-                if not self.silent:
-                    info("Number of entries: {:d}".format(COUNT))
-                    info("Level 0 Entry: {:d}".format(len(LEVEL0)))
-                    info("Invalid entries: {:d}".format(INVALID))
+            if not self.silent:
+                info("Number of entries: {:d}".format(COUNT))
+                info("Level -1 Entry: {:d}".format(len(LEVELM1)))
+                info("Invalid entries: {:d}".format(INVALID))
+            self.mappings += []
+        else:
+            if not self.silent:
+                info("LEVEL -1 is skipped")
+            LEVELM1 = TABLE_BASE
+
+        # level 0 parse for 4KB/16KB granule
+        if not self.silent:
+            gef_print(titlify("LEVEL 0"))
+        if self.LEVEL0_BIT_RANGE is not None and start_level <= 0:
+            entries_per_table = get_entries_per_table(self.LEVEL0_BIT_RANGE)
+            LEVEL0 = []; GB512 = []
+            COUNT = 0; INVALID = 0
+            for va_base, table_base, parent_flags in LEVELM1:
+                entries = self.read_mem_wrapper(table_base, 8 * entries_per_table)
+                entries = self.slice_unpack(entries, 8)
+                COUNT += len(entries)
+                for i, entry in enumerate(entries):
+                    # present flag
+                    if entry & 1 == 0:
+                        INVALID += 1
+                        continue
+
+                    # calc virtual address
+                    new_va = va_base + (i << self.LEVEL0_BIT_RANGE[0])
+                    new_va_end = new_va + (1 << self.LEVEL0_BIT_RANGE[0])
+
+                    # calc flags
+                    flags = parent_flags.copy()
+                    if has_next_level(entry):
+                        if is_stage2:
+                            pass
+                        elif is_2VAranges:
+                            if ((entry >> 59) & 1) == 1: flags.append("PXNTable0")
+                            if ((entry >> 60) & 1) == 1: flags.append("UXNTable0")
+                            flags.append("APTable0={:02b}".format((entry >> 61) & 0b11))
+                            if ((entry >> 63) & 1) == 1: flags.append("NSTable0")
+                        else:
+                            if ((entry >> 60) & 1) == 1: flags.append("XNTable0") # Use XNTable, not UXNTable # PXNTable is undefined
+                            flags.append("APTable0={:02b}".format((entry >> 61) & 0b11 & 0b10)) # APTable[0] must be 0
+                            if ((entry >> 63) & 1) == 1: flags.append("NSTable0")
+                    else:
+                        if is_stage2:
+                            flags.append("MemAttr={:#x}".format((entry >> 2) & 0b1111))
+                            flags.append("S2AP={:02b}".format((entry >> 6) & 0b11))
+                            flags.append("SH={:02b}".format((entry >> 8) & 0b11))
+                            if ((entry >> 10) & 1) == 1: flags.append("AF")
+                            if ((entry >> 51) & 1) == 1: flags.append("DBM")
+                            if ((entry >> 52) & 1) == 1: flags.append("Contiguous")
+                            flags.append("XN={:02b}".format((entry >> 53) & 0b11)) # Use XN, not UXN
+                            flags.append("PBHA={:#x}".format((entry >> 59) & 0b1111))
+                        elif is_2VA_ranges:
+                            flags.append("AttrIndx={:03b}".format((entry >> 2) & 0b111))
+                            if ((entry >> 5) & 1) == 1: flags.append("NS")
+                            flags.append("AP={:02b}".format((entry >> 6) & 0b11))
+                            flags.append("SH={:02b}".format((entry >> 8) & 0b11))
+                            if ((entry >> 10) & 1) == 1: flags.append("AF")
+                            if ((entry >> 11) & 1) == 1: flags.append("nG")
+                            if ((entry >> 16) & 1) == 1: flags.append("nT")
+                            if ((entry >> 50) & 1) == 1: flags.append("GP")
+                            if ((entry >> 51) & 1) == 1: flags.append("DBM")
+                            if ((entry >> 52) & 1) == 1: flags.append("Contiguous")
+                            if ((entry >> 53) & 1) == 1: flags.append("PXN")
+                            if ((entry >> 54) & 1) == 1: flags.append("UXN")
+                            flags.append("PBHA={:#x}".format((entry >> 59) & 0b1111))
+                        else:
+                            flags.append("AttrIndx={:03b}".format((entry >> 2) & 0b111))
+                            if ((entry >> 5) & 1) == 1: flags.append("NS")
+                            flags.append("AP={:02b}".format((entry >> 6) & 0b11 & 0b10)) # AP[0] must be 0
+                            flags.append("SH={:02b}".format((entry >> 8) & 0b11))
+                            if ((entry >> 10) & 1) == 1: flags.append("AF")
+                            if ((entry >> 11) & 1) == 1: flags.append("nG")
+                            if ((entry >> 16) & 1) == 1: flags.append("nT")
+                            if ((entry >> 50) & 1) == 1: flags.append("GP")
+                            if ((entry >> 51) & 1) == 1: flags.append("DBM")
+                            if ((entry >> 52) & 1) == 1: flags.append("Contiguous")
+                            if ((entry >> 54) & 1) == 1: flags.append("XN") # Use XN, not UXN # PXN is undefined
+                            flags.append("PBHA={:#x}".format((entry >> 59) & 0b1111))
+
+                    # calc next table / output phys addr (drop the flag bits)
+                    if has_next_level(entry):
+                        if self.FEAT_LPA:
+                            next_level_table = (entry & 0x0003fffffffff000) | (((entry >> 8) & 0b11) << 50)
+                        else:
+                            next_level_table = entry & 0x0000fffffffff000
+                    else:
+                        if self.FEAT_LPA:
+                            phys_addr = (entry & 0x0003fffffffe0000) | (((entry >> 8) & 0b11) << 50)
+                        else:
+                            # In ARMv8.7, level 0 + no-FEAT_LPA has no block descriptors
+                            raise
+
+                    # make entry
+                    if has_next_level(entry):
+                        LEVEL0.append([new_va, next_level_table, flags])
+                    else:
+                        virt_addr = new_va
+                        page_count = 1
+                        flag_string = self.format_flags_stage2(flags) if is_stage2 else self.format_flags(flags)
+                        if is_4k_granule:
+                            page_size = 512 * 1024 * 1024 * 1024
+                            GB512.append([virt_addr, phys_addr, page_size, page_count, flag_string])
+
+                    # dump
+                    if self.print_each_level:
+                        if self.is_not_trace_target(new_va, new_va_end):
+                            continue
+                        addr = table_base + i * 8
+                        line = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x}) {:s}".format(addr, entry, new_va, new_va_end, ' '.join(flags))
+                        if self.is_not_filter_target(line):
+                            conitnue
+                        gef_print(line)
+
+            if not self.silent:
+                info("Number of entries: {:d}".format(COUNT))
+                info("Level 0 Entry: {:d}".format(len(LEVEL0)))
+                info("PT Entry (512GB): {:d}".format(len(GB512)))
+                info("Invalid entries: {:d}".format(INVALID))
+            self.mappings += GB512
         else:
             if not self.silent:
                 info("LEVEL 0 is skipped")
             LEVEL0 = TABLE_BASE
 
-        # level 1 parse
+        # level 1 parse for 4KB/16KB/64KB granule
         if not self.silent:
             gef_print(titlify("LEVEL 1"))
-        if LEVEL1_BIT_RANGE is not None and start_level <= 1:
-            entries_per_table = get_entries_per_table(LEVEL1_BIT_RANGE, start_level==1)
-            LEVEL1 = []; GB1 = []; TB4 = []
+        if self.LEVEL1_BIT_RANGE is not None and start_level <= 1:
+            entries_per_table = get_entries_per_table(self.LEVEL1_BIT_RANGE)
+            LEVEL1 = []; GB1 = []; TB4 = []; GB64 = []
             COUNT = 0; INVALID = 0
             for va_base, table_base, parent_flags in LEVEL0:
                 entries = self.read_mem_wrapper(table_base, 8 * entries_per_table)
@@ -30550,20 +30749,20 @@ class PagewalkArm64Command(PagewalkCommand):
                         continue
 
                     # calc virtual address
-                    new_va = va_base + (i << LEVEL1_BIT_RANGE[0])
-                    new_va_end = new_va + (1 << LEVEL1_BIT_RANGE[0])
+                    new_va = va_base + (i << self.LEVEL1_BIT_RANGE[0])
+                    new_va_end = new_va + (1 << self.LEVEL1_BIT_RANGE[0])
 
                     # calc flags
                     flags = parent_flags.copy()
                     if has_next_level(entry):
                         if is_stage2:
                             pass
-                        elif self.TargetEL == 1:
+                        elif is_2VAranges:
                             if ((entry >> 59) & 1) == 1: flags.append("PXNTable1")
                             if ((entry >> 60) & 1) == 1: flags.append("UXNTable1")
                             flags.append("APTable1={:02b}".format((entry >> 61) & 0b11))
                             if ((entry >> 63) & 1) == 1: flags.append("NSTable1")
-                        else: # TargetEL == 2,3
+                        else:
                             if ((entry >> 60) & 1) == 1: flags.append("XNTable1") # Use XNTable, not UXNTable # PXNTable is undefined
                             flags.append("APTable1={:02b}".format((entry >> 61) & 0b11 & 0b10)) # APTable[0] must be 0
                             if ((entry >> 63) & 1) == 1: flags.append("NSTable1")
@@ -30577,50 +30776,68 @@ class PagewalkArm64Command(PagewalkCommand):
                             if ((entry >> 52) & 1) == 1: flags.append("Contiguous")
                             flags.append("XN={:02b}".format((entry >> 53) & 0b11)) # Use XN, not UXN
                             flags.append("PBHA={:#x}".format((entry >> 59) & 0b1111))
-                        elif self.TargetEL == 1:
+                        elif is_2VAranges:
                             flags.append("AttrIndx={:03b}".format((entry >> 2) & 0b111))
                             if ((entry >> 5) & 1) == 1: flags.append("NS")
                             flags.append("AP={:02b}".format((entry >> 6) & 0b11))
                             flags.append("SH={:02b}".format((entry >> 8) & 0b11))
                             if ((entry >> 10) & 1) == 1: flags.append("AF")
                             if ((entry >> 11) & 1) == 1: flags.append("nG")
+                            if ((entry >> 16) & 1) == 1: flags.append("nT")
+                            if ((entry >> 50) & 1) == 1: flags.append("GP")
                             if ((entry >> 51) & 1) == 1: flags.append("DBM")
                             if ((entry >> 52) & 1) == 1: flags.append("Contiguous")
                             if ((entry >> 53) & 1) == 1: flags.append("PXN")
                             if ((entry >> 54) & 1) == 1: flags.append("UXN")
                             flags.append("PBHA={:#x}".format((entry >> 59) & 0b1111))
-                        else: # TargetEL == 2,3
+                        else:
                             flags.append("AttrIndx={:03b}".format((entry >> 2) & 0b111))
                             if ((entry >> 5) & 1) == 1: flags.append("NS")
                             flags.append("AP={:02b}".format((entry >> 6) & 0b11 & 0b10)) # AP[0] must be 0
                             flags.append("SH={:02b}".format((entry >> 8) & 0b11))
                             if ((entry >> 10) & 1) == 1: flags.append("AF")
                             if ((entry >> 11) & 1) == 1: flags.append("nG")
+                            if ((entry >> 16) & 1) == 1: flags.append("nT")
+                            if ((entry >> 50) & 1) == 1: flags.append("GP")
                             if ((entry >> 51) & 1) == 1: flags.append("DBM")
                             if ((entry >> 52) & 1) == 1: flags.append("Contiguous")
                             if ((entry >> 54) & 1) == 1: flags.append("XN") # Use XN, not UXN # PXN is undefined
                             flags.append("PBHA={:#x}".format((entry >> 59) & 0b1111))
 
-                    # calc next table (drop the flag bits)
-                    if self.FEAT_LPA:
-                        next_level_table = (entry & 0x0000ffffffff0000) | ((entry & 0xf000) << 36)
+                    # calc next table / output phys addr (drop the flag bits)
+                    if has_next_level(entry):
+                        if self.FEAT_LPA:
+                            if is_64k_granule:
+                                next_level_table = (entry & 0x0000ffffffff0000) | (((entry >> 12) & 0b1111) << 48)
+                            else:
+                                next_level_table = (entry & 0x0003fffffffff000) | (((entry >> 8) & 0b11) << 50)
+                        else:
+                            next_level_table = entry & 0x0000fffffffff000
                     else:
-                        next_level_table = entry & 0x0000fffffffff000
+                        if self.FEAT_LPA:
+                            if is_64k_granule:
+                                phys_addr = (entry & 0x0000fffffffe0000) | (((entry >> 12) & 0b1111) << 48)
+                            else:
+                                phys_addr = (entry & 0x0003fffffffe0000) | (((entry >> 8) & 0b11) << 50)
+                        else:
+                            phys_addr = entry & 0x0000fffffffe0000
 
                     # make entry
                     if has_next_level(entry):
                         LEVEL1.append([new_va, next_level_table, flags])
                     else:
                         virt_addr = new_va
-                        phys_addr = next_level_table
                         page_count = 1
                         flag_string = self.format_flags_stage2(flags) if is_stage2 else self.format_flags(flags)
-                        if granule_bits == 16:
+                        if is_64k_granule:
                             page_size = 4 * 1024 * 1024 * 1024 * 1024
                             TB4.append([virt_addr, phys_addr, page_size, page_count, flag_string])
-                        elif granule_bits == 12:
+                        elif is_4k_granule:
                             page_size = 1 * 1024 * 1024 * 1024
                             GB1.append([virt_addr, phys_addr, page_size, page_count, flag_string])
+                        elif is_16k_granule:
+                            page_size = 64 * 1024 * 1024 * 1024
+                            GB64.append([virt_addr, phys_addr, page_size, page_count, flag_string])
 
                     # dump
                     if self.print_each_level:
@@ -30636,19 +30853,20 @@ class PagewalkArm64Command(PagewalkCommand):
                 info("Number of entries: {:d}".format(COUNT))
                 info("Level 1 Entry: {:d}".format(len(LEVEL1)))
                 info("PT Entry (1GB): {:d}".format(len(GB1)))
-                info("PT Entry (4GB): {:d}".format(len(TB4)))
+                info("PT Entry (64GB): {:d}".format(len(GB64)))
+                info("PT Entry (4TB): {:d}".format(len(TB4)))
                 info("Invalid entries: {:d}".format(INVALID))
-            self.mappings += GB1 + TB4
+            self.mappings += GB1 + GB64 + TB4
         else:
             if not self.silent:
                 info("LEVEL 1 is skipped")
             LEVEL1 = LEVEL0
 
-        # level 2 parse
+        # level 2 parse for 4KB/16KB/64KB granule
         if not self.silent:
             gef_print(titlify("LEVEL 2"))
-        if LEVEL2_BIT_RANGE is not None and start_level <= 2:
-            entries_per_table = get_entries_per_table(LEVEL2_BIT_RANGE, start_level==2)
+        if self.LEVEL2_BIT_RANGE is not None and start_level <= 2:
+            entries_per_table = get_entries_per_table(self.LEVEL2_BIT_RANGE)
             LEVEL2 = []; MB2 = []; MB32 = []; MB512 = []
             COUNT = 0; INVALID = 0
             for va_base, table_base, parent_flags in LEVEL1:
@@ -30662,20 +30880,20 @@ class PagewalkArm64Command(PagewalkCommand):
                         continue
 
                     # calc virtual address
-                    new_va = va_base + (i << LEVEL2_BIT_RANGE[0])
-                    new_va_end = new_va + (1 << LEVEL2_BIT_RANGE[0])
+                    new_va = va_base + (i << self.LEVEL2_BIT_RANGE[0])
+                    new_va_end = new_va + (1 << self.LEVEL2_BIT_RANGE[0])
 
                     # calc flags
                     flags = parent_flags.copy()
                     if has_next_level(entry):
                         if is_stage2:
                             pass
-                        elif self.TargetEL == 1:
+                        elif is_2VAranges:
                             if ((entry >> 59) & 1) == 1: flags.append("PXNTable2")
                             if ((entry >> 60) & 1) == 1: flags.append("UXNTable2")
                             flags.append("APTable2={:02b}".format((entry >> 61) & 0b11))
                             if ((entry >> 63) & 1) == 1: flags.append("NSTable2")
-                        else: # TargetEL == 2,3
+                        else:
                             if ((entry >> 60) & 1) == 1: flags.append("XNTable2") # Use XNTable, not UXNTable # PXNTable is undefined
                             flags.append("APTable2={:02b}".format((entry >> 61) & 0b11 & 0b10)) # APTable[0] must be 0
                             if ((entry >> 63) & 1) == 1: flags.append("NSTable2")
@@ -30689,51 +30907,66 @@ class PagewalkArm64Command(PagewalkCommand):
                             if ((entry >> 52) & 1) == 1: flags.append("Contiguous")
                             flags.append("XN={:02b}".format((entry >> 53) & 0b11)) # Use XN, not UXN
                             flags.append("PBHA={:#x}".format((entry >> 59) & 0b1111))
-                        elif self.TargetEL == 1:
+                        elif is_2VAranges:
                             flags.append("AttrIndx={:03b}".format((entry >> 2) & 0b111))
                             if ((entry >> 5) & 1) == 1: flags.append("NS")
                             flags.append("AP={:02b}".format((entry >> 6) & 0b11))
                             flags.append("SH={:02b}".format((entry >> 8) & 0b11))
                             if ((entry >> 10) & 1) == 1: flags.append("AF")
                             if ((entry >> 11) & 1) == 1: flags.append("nG")
+                            if ((entry >> 16) & 1) == 1: flags.append("nT")
+                            if ((entry >> 50) & 1) == 1: flags.append("GP")
                             if ((entry >> 51) & 1) == 1: flags.append("DBM")
                             if ((entry >> 52) & 1) == 1: flags.append("Contiguous")
                             if ((entry >> 53) & 1) == 1: flags.append("PXN")
                             if ((entry >> 54) & 1) == 1: flags.append("UXN")
                             flags.append("PBHA={:#x}".format((entry >> 59) & 0b1111))
-                        else: # TargetEL == 2,3
+                        else:
                             flags.append("AttrIndx={:03b}".format((entry >> 2) & 0b111))
                             if ((entry >> 5) & 1) == 1: flags.append("NS")
                             flags.append("AP={:02b}".format((entry >> 6) & 0b11 & 0b10)) # AP[0] must be 0
                             flags.append("SH={:02b}".format((entry >> 8) & 0b11))
                             if ((entry >> 10) & 1) == 1: flags.append("AF")
                             if ((entry >> 11) & 1) == 1: flags.append("nG")
+                            if ((entry >> 16) & 1) == 1: flags.append("nT")
+                            if ((entry >> 50) & 1) == 1: flags.append("GP")
                             if ((entry >> 51) & 1) == 1: flags.append("DBM")
                             if ((entry >> 52) & 1) == 1: flags.append("Contiguous")
                             if ((entry >> 54) & 1) == 1: flags.append("XN") # Use XN, not UXN # PXN is undefined
                             flags.append("PBHA={:#x}".format((entry >> 59) & 0b1111))
 
-                    # calc next table (drop the flag bits)
-                    if self.FEAT_LPA:
-                        next_level_table = (entry & 0x0000ffffffff0000) | ((entry & 0xf000) << 36)
+                    # calc next table / output phys addr (drop the flag bits)
+                    if has_next_level(entry):
+                        if self.FEAT_LPA:
+                            if is_64k_granule:
+                                next_level_table = (entry & 0x0000ffffffff0000) | (((entry >> 12) & 0b1111) << 48)
+                            else:
+                                next_level_table = (entry & 0x0003fffffffff000) | (((entry >> 8) & 0b11) << 50)
+                        else:
+                            next_level_table = entry & 0x0000fffffffff000
                     else:
-                        next_level_table = entry & 0x0000fffffffff000
+                        if self.FEAT_LPA:
+                            if is_64k_granule:
+                                phys_addr = (entry & 0x0000fffffffe0000) | (((entry >> 12) & 0b1111) << 48)
+                            else:
+                                phys_addr = (entry & 0x0003fffffffe0000) | (((entry >> 8) & 0b11) << 50)
+                        else:
+                            phys_addr = entry & 0x0000fffffffe0000
 
                     # make entry
                     if has_next_level(entry):
                         LEVEL2.append([new_va, next_level_table, flags])
                     else:
                         virt_addr = new_va
-                        phys_addr = next_level_table
                         page_count = 1
                         flag_string = self.format_flags_stage2(flags) if is_stage2 else self.format_flags(flags)
-                        if granule_bits == 16:
+                        if is_64k_granule:
                             page_size = 512 * 1024 * 1024
                             MB512.append([virt_addr, phys_addr, page_size, page_count, flag_string])
-                        elif granule_bits == 14:
+                        elif is_16k_granule:
                             page_size = 32 * 1024 * 1024
                             MB32.append([virt_addr, phys_addr, page_size, page_count, flag_string])
-                        elif granule_bits == 12:
+                        elif is_4k_granule:
                             page_size = 2 * 1024 * 1024
                             MB2.append([virt_addr, phys_addr, page_size, page_count, flag_string])
 
@@ -30760,11 +30993,11 @@ class PagewalkArm64Command(PagewalkCommand):
                 info("LEVEL 2 is skipped")
             LEVEL2 = LEVEL1
 
-        # level 3 parse
+        # level 3 parse for 4KB/16KB/64KB granule
         if not self.silent:
             gef_print(titlify("LEVEL 3"))
-        if LEVEL3_BIT_RANGE is not None and start_level <= 3:
-            entries_per_table = get_entries_per_table(LEVEL3_BIT_RANGE, start_level==3)
+        if self.LEVEL3_BIT_RANGE is not None and start_level <= 3:
+            entries_per_table = get_entries_per_table(self.LEVEL3_BIT_RANGE)
             KB4 = []; KB16 = []; KB64 = []
             COUNT = 0; INVALID = 0
             for va_base, table_base, parent_flags in LEVEL2:
@@ -30778,8 +31011,8 @@ class PagewalkArm64Command(PagewalkCommand):
                         continue
 
                     # calc virtual address
-                    virt_addr = va_base + (i << LEVEL3_BIT_RANGE[0])
-                    virt_addr_end = virt_addr + (1 << LEVEL3_BIT_RANGE[0])
+                    virt_addr = va_base + (i << self.LEVEL3_BIT_RANGE[0])
+                    virt_addr_end = virt_addr + (1 << self.LEVEL3_BIT_RANGE[0])
 
                     # calc flags
                     flags = parent_flags.copy()
@@ -30793,54 +31026,64 @@ class PagewalkArm64Command(PagewalkCommand):
                             if ((entry >> 52) & 1) == 1: flags.append("Contiguous")
                             flags.append("XN={:02b}".format((entry >> 53) & 0b11)) # Use XN, not UXN
                             flags.append("PBHA={:#x}".format((entry >> 59) & 0b1111))
-                        elif self.TargetEL == 1:
+                        elif is_2VAranges:
                             flags.append("AttrIndx={:03b}".format((entry >> 2) & 0b111))
                             if ((entry >> 5) & 1) == 1: flags.append("NS")
                             flags.append("AP={:02b}".format((entry >> 6) & 0b11))
                             flags.append("SH={:02b}".format((entry >> 8) & 0b11))
                             if ((entry >> 10) & 1) == 1: flags.append("AF")
                             if ((entry >> 11) & 1) == 1: flags.append("nG")
+                            if ((entry >> 16) & 1) == 1: flags.append("nT")
+                            if ((entry >> 50) & 1) == 1: flags.append("GP")
                             if ((entry >> 51) & 1) == 1: flags.append("DBM")
                             if ((entry >> 52) & 1) == 1: flags.append("Contiguous")
                             if ((entry >> 53) & 1) == 1: flags.append("PXN")
                             if ((entry >> 54) & 1) == 1: flags.append("UXN")
                             flags.append("PBHA={:#x}".format((entry >> 59) & 0b1111))
-                        else: # TargetEL == 2,3
+                        else:
                             flags.append("AttrIndx={:03b}".format((entry >> 2) & 0b111))
                             if ((entry >> 5) & 1) == 1: flags.append("NS")
                             flags.append("AP={:02b}".format((entry >> 6) & 0b11 & 0b10)) # AP[0] must be 0
                             flags.append("SH={:02b}".format((entry >> 8) & 0b11))
                             if ((entry >> 10) & 1) == 1: flags.append("AF")
                             if ((entry >> 11) & 1) == 1: flags.append("nG")
+                            if ((entry >> 16) & 1) == 1: flags.append("nT")
+                            if ((entry >> 50) & 1) == 1: flags.append("GP")
                             if ((entry >> 51) & 1) == 1: flags.append("DBM")
                             if ((entry >> 52) & 1) == 1: flags.append("Contiguous")
                             if ((entry >> 54) & 1) == 1: flags.append("XN") # Use XN, not UXN # PXN is undefined
                             flags.append("PBHA={:#x}".format((entry >> 59) & 0b1111))
                     else:
-                        # maybe undefined (at ARMv8.3)
+                        # In ARMv8.7, level 3 has no table descriptors
                         raise
 
-                    # calc physical addr (drop the flag bits)
-                    if granule_bits == 12:
-                        phys_addr = entry & 0x0000fffffffff000
-                    elif granule_bits == 14:
-                        phys_addr = entry & 0x0000ffffffffc000
-                    elif granule_bits == 16:
+                    # calc next table / output phys addr (drop the flag bits)
+                    if is_4k_granule:
                         if self.FEAT_LPA:
-                            phys_addr = (entry & 0x0000ffffffff0000) | ((entry & 0xf000) << 36)
+                            phys_addr = (entry & 0x0003fffffffff000) | (((entry >> 8) & 0b11) << 50)
+                        else:
+                            phys_addr = entry & 0x0000fffffffff000
+                    elif is_16k_granule:
+                        if self.FEAT_LPA:
+                            phys_addr = (entry & 0x0003ffffffffc000) | (((entry >> 8) & 0b11) << 50)
+                        else:
+                            phys_addr = entry & 0x0000ffffffffc000
+                    elif is_64k_granule:
+                        if self.FEAT_LPA:
+                            phys_addr = (entry & 0x0000ffffffff0000) | (((entry >> 12) & 0b1111) << 48)
                         else:
                             phys_addr = entry & 0x0000ffffffff0000
 
                     # make entry
                     page_count = 1
                     flag_string = self.format_flags_stage2(flags) if is_stage2 else self.format_flags(flags)
-                    if granule_bits == 16:
+                    if is_64k_granule:
                         page_size = 64 * 1024
                         KB64.append([virt_addr, phys_addr, page_size, page_count, flag_string])
-                    elif granule_bits == 14:
+                    elif is_16k_granule:
                         page_size = 16 * 1024
                         KB16.append([virt_addr, phys_addr, page_size, page_count, flag_string])
-                    elif granule_bits == 12:
+                    elif is_4k_granule:
                         page_size = 4 * 1024
                         KB4.append([virt_addr, phys_addr, page_size, page_count, flag_string])
 
@@ -30865,6 +31108,7 @@ class PagewalkArm64Command(PagewalkCommand):
             if not self.silent:
                 info("LEVEL 3 is skipped")
 
+        # Finalize
         if not self.silent:
             gef_print(titlify("Total"))
             info("PT Entry (Total): {:d}".format(len(self.mappings)))
@@ -30905,7 +31149,7 @@ class PagewalkArm64Command(PagewalkCommand):
             info('Moving back to EL%d' % (SavedEL))
         return
 
-    def pagewalk_EL1u(self):
+    def pagewalk_TTBR0_EL1(self):
         gef_print(titlify("$TTBR0_EL1"))
 
         TTBR0_EL1 = int(gdb.parse_and_eval('$TTBR0_EL1'))
@@ -30914,24 +31158,124 @@ class PagewalkArm64Command(PagewalkCommand):
             warn("Maybe unused TTBR0_EL1")
             return
 
-        T0SZ = TCR_EL1 & 0b111111         # Translation 0 Region Size (usermode)
-        TG0 = (TCR_EL1 >> 14) & 0b11      # Translation 0 Granule Size (user)
-        IPS = (TCR_EL1 >> 32) & 0b111     # Intermediate Physical Address Size
+        """ TCR_EL1
+        IPS, bits [34:32]
+            Intermediate Physical Address Size.
+            0b000
+                32 bits, 4GB.
+            0b001
+                36 bits, 64GB.
+            0b010
+                40 bits, 1TB.
+            0b011
+                42 bits, 4TB.
+            0b100
+                44 bits, 16TB.
+            0b101
+                48 bits, 256TB.
+            0b110
+                52 bits, 4PB.
+            All other values are reserved.
+            The reserved values behave in the same way as the 0b101 or 0b110 encoding, but software must not
+            rely on this property as the behavior of the reserved values might change in a future revision of the architecture.
+            If the translation granule is not 64KB and FEAT_LPA2 is not implemented, the value 0b110 is treated as reserved.
+            It is IMPLEMENTATION DEFINED whether an implementation that does not implement FEAT_LPA
+            supports setting the value of 0b110 for the 64KB translation granule size or whether setting this value behaves as the 0b101 encoding.
+            In an implementation that supports 52-bit PAs, if the value of this field is not 0b110 or a value treated as 0b110,
+            then bits[51:48] of every translation table base address for the stage of translation controlled by TCR_EL1 are 0b0000.
+            On a Warm reset, this field resets to an architecturally UNKNOWN value.
+
+        TG0, bits [15:14]
+            Granule size for the TTBR0_EL1.
+            0b00
+                4KB
+            0b01
+                64KB
+            0b10
+                16KB
+            Other values are reserved.
+            If the value is programmed to either a reserved value or a size that has not been implemented, then
+            the hardware will treat the field as if it has been programmed to an IMPLEMENTATION DEFINED
+            choice of the sizes that has been implemented for all purposes other than the value read back from this register.
+            It is IMPLEMENTATION DEFINED whether the value read back is the value programmed or the value that corresponds to the size chosen.
+            On a Warm reset, this field resets to an architecturally UNKNOWN value.
+
+        T0SZ, bits [5:0]
+            The size offset of the memory region addressed by TTBR0_EL1. The region size is 2^(64-T0SZ) bytes.
+            The maximum and minimum possible values for T0SZ depend on the level of translation table and
+            the memory translation granule size, as described in the AArch64 Virtual Memory System Architecture chapter.
+            Note
+                For the 4KB translation granule, if FEAT_LPA2 is implemented and this field is less than 16, the translation table walk begins with a level -1 initial lookup.
+                For the 16KB translation granule, if FEAT_LPA2 is implemented and this field is less than 17, the translation table walk begins with a level 0 initial lookup.
+                On a Warm reset, this field resets to an architecturally UNKNOWN value.
+        """
+        IPS = (TCR_EL1 >> 32) & 0b111
+        TG0 = (TCR_EL1 >> 14) & 0b11
+        T0SZ = TCR_EL1 & 0b111111
         try:
-            TG0_BITS = {0b00: 12, 0b01: 16, 0b10: 14}[TG0]
+            granule_bits = {0b00: 12, 0b01: 16, 0b10: 14}[TG0]
         except:
             err("Unsupported $TCR_EL1.TG0")
             return
+        region_start = 0
+        region_end = region_start + (2 ** (64-T0SZ))
+        region_bits = int(math.log2(region_end - region_start))
+        page_size = 2 ** (granule_bits - 10)
+        intermediate_pa_size = 32 + (IPS * 4)
+
+        """ TTBR0_EL1
+        BADDR[47:1], bits [47:1]
+            Translation table base address:
+            - Bits A[47:x] of the stage 1 translation table base address bits are in register bits[47:x].
+            - Bits A[(x-1):0] of the stage 1 translation table base address are zero.
+            Address bit x is the minimum address bit required to align the translation table to the size of the table.
+            The smallest permitted value of x is 6. The AArch64 Virtual Memory System Architecture chapter describes how x is
+            calculated based on the value of TCR_EL1.T0SZ, the translation stage, and the translation granule size.
+            Note
+                A translation table is required to be aligned to the size of the table. If a table contains fewer than
+                eight entries, it must be aligned on a 64 byte address boundary.
+            If the value of TCR_EL1.IPS is not 0b110, then:
+            - Register bits[(x-1):1] are RES0.
+            - If the implementation supports 52-bit PAs and IPAs, then bits A[51:48] of the stage 1 translation table base address are 0b0000.
+            If FEAT_LPA is implemented and the value of TCR_EL1.IPS is 0b110, then:
+            - Bits A[51:48] of the stage 1 translation table base address bits are in register bits[5:2].
+            - Register bit[1] is RES0.
+            - When x>6, register bits[(x-1):6] are RES0.
+            Note
+                TCR_EL1.IPS==0b110 is permitted when:
+                - FEAT_LPA is implemented and the 64KB translation granule is used.
+                - FEAT_LPA2 is implemented and the 4KB or 16KB translation granule is used.
+                When the value of ID_AA64MMFR0_EL1.PARange indicates that the implementation does not
+                support a 52 bit PA size, if a translation table lookup uses this register when TCR_EL1.IPS is 0b110
+                and the value of register bits[5:2] is nonzero, an Address size fault is generated.
+            If any register bit[47:1] that is defined as RES0 has the value 1 when a translation table walk is done
+            using TTBR0_EL1, then the translation table base address might be misaligned, with effects that are
+            CONSTRAINED UNPREDICTABLE, and must be one of the following:
+            - Bits A[(x-1):0] of the stage 1 translation table base address are treated as if all the bits are zero.
+              The value read back from the corresponding register bits is either the value written to the register or zero.
+            - The result of the calculation of an address for a translation table walk using this register can be corrupted in those bits that are nonzero.
+            On a Warm reset, this field resets to an architecturally UNKNOWN value.
+        """
+        if IPS == 0b110:
+            if self.FEAT_LPA:
+                translation_base_addr = (TTBR0_EL1 & 0xffffffffffc0) | (((TTBR0_EL1 >> 2) & 0b1111) << 48)
+            else:
+                err("Unsupported FEAT_LPA and IPS pair")
+                return
+        else:
+            translation_base_addr = TTBR0_EL1 & 0xfffffffffffe
 
         info('$TTBR0_EL1: {:#x}'.format(TTBR0_EL1))
-        info('Intermediate Physical Address Size: {:d}-bits'.format(32+4*IPS))
-        info('EL1 User Region Max: {:#018x}'.format(2**(64-T0SZ)-1))
-        info('EL1 User Page Size: {:d}KB (per page)'.format(2**TG0_BITS >> 10))
-        self.do_pagewalk(TTBR0_EL1 & 0xfffffffffffe, TG0_BITS, 0, 2**(64-T0SZ))
+        info('Intermediate Physical Address Size: {:d} bits'.format(intermediate_pa_size))
+        info('EL1 User Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end-1, region_bits))
+        info('EL1 User Page Size: {:d}KB (per page)'.format(page_size))
+
+        self.parse_bit_range(granule_bits, region_bits)
+        self.do_pagewalk(translation_base_addr, granule_bits, region_start, is_2VAranges=True)
         self.print_page()
         return
 
-    def pagewalk_EL1k(self):
+    def pagewalk_TTBR1_EL1(self):
         gef_print(titlify("$TTBR1_EL1"))
 
         TTBR1_EL1 = int(gdb.parse_and_eval('$TTBR1_EL1'))
@@ -30940,24 +31284,101 @@ class PagewalkArm64Command(PagewalkCommand):
             warn("Maybe unused TTBR1_EL1")
             return
 
-        T1SZ = (TCR_EL1 >> 16) & 0b111111 # Translation 1 Region Size (kernel)
-        TG1 = (TCR_EL1 >> 30) & 0b11      # Translation 1 Granule Size (kernel)
-        IPS = (TCR_EL1 >> 32) & 0b111     # Intermediate Physical Address Size
+        """ TCR_EL1
+        IPS, bits [34:32]
+            See above.
+
+        TG1, bits [31:30]
+            Granule size for the TTBR1_EL1.
+            0b01
+                16KB.
+            0b10
+                4KB.
+            0b11
+                64KB.
+            Other values are reserved.
+            If the value is programmed to either a reserved value or a size that has not been implemented, then
+            the hardware will treat the field as if it has been programmed to an IMPLEMENTATION DEFINED
+            choice of the sizes that has been implemented for all purposes other than the value read back from this register.
+            It is IMPLEMENTATION DEFINED whether the value read back is the value programmed or the value that corresponds to the size chosen.
+            On a Warm reset, this field resets to an architecturally UNKNOWN value.
+
+        T1SZ, bits [21:16]
+            The size offset of the memory region addressed by TTBR1_EL1. The region size is 2^(64-T1SZ) bytes.
+            The maximum and minimum possible values for T1SZ depend on the level of translation table and
+            the memory translation granule size, as described in the AArch64 Virtual Memory System Architecture chapter.
+            Note
+                For the 4KB translation granule, if FEAT_LPA2 is implemented and this field is less than 16, the translation table walk begins with a level -1 initial lookup.
+                For the 16KB translation granule, if FEAT_LPA2 is implemented and this field is less than 17, the translation table walk begins with a level 0 initial lookup.
+                On a Warm reset, this field resets to an architecturally UNKNOWN value.
+        """
+        IPS = (TCR_EL1 >> 32) & 0b111
+        TG1 = (TCR_EL1 >> 30) & 0b11
+        T1SZ = (TCR_EL1 >> 16) & 0b111111
         try:
-            TG1_BITS = {0b01: 14, 0b10: 12, 0b11: 16}[TG1]
+            granule_bits = {0b01: 14, 0b10: 12, 0b11: 16}[TG1]
         except:
             err("Unsupported $TCR_EL1.TG1")
             return
+        region_end = 2 ** 64
+        region_start = region_end - (2 ** (64-T1SZ))
+        region_bits = int(math.log2(region_end - region_start))
+        page_size = 2 ** (granule_bits - 10)
+        intermediate_pa_size = 32 + (IPS * 4)
+
+        """ TTBR1_EL1
+        BADDR[47:1], bits [47:1]
+            Translation table base address:
+            - Bits A[47:x] of the stage 1 translation table base address bits are in register bits[47:x].
+            - Bits A[(x-1):0] of the stage 1 translation table base address are zero.
+            Address bit x is the minimum address bit required to align the translation table to the size of the table.
+            The smallest permitted value of x is 6. The AArch64 Virtual Memory System Architecture chapter describes how x is
+            calculated based on the value of TCR_EL1.T1SZ, the translation stage, and the translation granule size.
+            Note
+                A translation table is required to be aligned to the size of the table. If a table contains fewer than
+                eight entries, it must be aligned on a 64 byte address boundary.
+            If the value of TCR_EL1.IPS is not 0b110, then:
+            - Register bits[(x-1):1] are RES0.
+            - If the implementation supports 52-bit PAs and IPAs, then bits A[51:48] of the stage 1 translation table base address are 0b0000.
+            If FEAT_LPA is implemented and the value of TCR_EL1.IPS is 0b110, then:
+            - Bits A[51:48] of the stage 1 translation table base address bits are in register bits[5:2].
+            - Register bit[1] is RES0.
+            - When x>6, register bits[(x-1):6] are RES0.
+            Note
+                TCR_EL1.IPS==0b110 is permitted when:
+                - FEAT_LPA is implemented and the 64KB translation granule is used.
+                - FEAT_LPA2 is implemented and the 4KB or 16KB translation granule is used.
+                When the value of ID_AA64MMFR0_EL1.PARange indicates that the implementation does not
+                support a 52 bit PA size, if a translation table lookup uses this register when TCR_EL1.IPS is 0b110
+                and the value of register bits[5:2] is nonzero, an Address size fault is generated.
+            If any register bit[47:1] that is defined as RES0 has the value 1 when a translation table walk is done
+            using TTBR1_EL1, then the translation table base address might be misaligned, with effects that are
+            CONSTRAINED UNPREDICTABLE, and must be one of the following:
+            - Bits A[(x-1):0] of the stage 1 translation table base address are treated as if all the bits are zero.
+              The value read back from the corresponding register bits is either the value written to the register or zero.
+            - The result of the calculation of an address for a translation table walk using this register can be corrupted in those bits that are nonzero.
+            On a Warm reset, this field resets to an architecturally UNKNOWN value.
+        """
+        if IPS == 0b110:
+            if self.FEAT_LPA:
+                translation_base_addr = (TTBR1_EL1 & 0xffffffffffc0) | (((TTBR1_EL1 >> 2) & 0b1111) << 48)
+            else:
+                err("Unsupported FEAT_LPA and IPS pair")
+                return
+        else:
+            translation_base_addr = TTBR1_EL1 & 0xfffffffffffe
 
         info('$TTBR1_EL1: {:#x}'.format(TTBR1_EL1))
-        info('Intermediate Physical Address Size: {:d}-bits'.format(32+4*IPS))
-        info('EL1 Kernel Region Min: {:#018x}'.format(2**64 - 2**(64-T1SZ)))
-        info('EL1 Kernel Page Size: {:d}KB (per page)'.format(2**TG1_BITS >> 10))
-        self.do_pagewalk(TTBR1_EL1 & 0xfffffffffffe, TG1_BITS, 2**64 - 2**(64-T1SZ), 2**64)
+        info('Intermediate Physical Address Size: {:d} bits'.format(intermediate_pa_size))
+        info('EL1 Kernel Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end-1, region_bits))
+        info('EL1 Kernel Page Size: {:d}KB (per page)'.format(page_size))
+
+        self.parse_bit_range(granule_bits, region_bits)
+        self.do_pagewalk(translation_base_addr, granule_bits, region_start, is_2VAranges=True)
         self.print_page()
         return
 
-    def pagewalk_EL2v(self):
+    def pagewalk_VTTBR_EL2(self):
         if not self.silent:
             gef_print(titlify("$VTTBR_EL2"))
 
@@ -30968,29 +31389,250 @@ class PagewalkArm64Command(PagewalkCommand):
                 warn("Maybe unused VTTBR_EL2")
             return
 
-        T0SZ = VTCR_EL2 & 0b111111        # Translation 0 Region Size (hypervisor)
-        PA = (VTCR_EL2 >> 16) & 0b11
+        """ VTCR_EL2
+        SL2, bit [33]
+            When FEAT_LPA2 is implemented:
+                SL2
+                Starting level of the stage 2 translation lookup controlled by VTCR_EL2.
+                If VTCR_EL2.DS == 1, then VTCR_EL2.SL2, in combination with VTCR_EL2.SL0, gives encodings for the stage 2 translation table walk initial lookup level.
+                If VTCR_EL2.DS == 0, then VTCR_EL2.SL2 is RES0.
+                If the translation granule size is not 4KB, then this field is RES0.
+                On a Warm reset, this field resets to an architecturally UNKNOWN value.
+            Otherwise:
+                Reserved, RES0.
+
+        PS, bits [18:16]
+            Physical address Size for the Second Stage of translation.
+            0b000
+                32 bits, 4GB.
+            0b001
+                36 bits, 64GB.
+            0b010
+                40 bits, 1TB.
+            0b011
+                42 bits, 4TB.
+            0b100
+                44 bits, 16TB.
+            0b101
+                48 bits, 256TB.
+            0b110
+                52 bits, 4PB.
+            All other values are reserved.
+            The reserved values behave in the same way as the 0b101 or 0b110 encoding, but software must not
+            rely on this property as the behavior of the reserved values might change in a future revision of the architecture.
+            If the translation granule is not 64KB and FEAT_LPA2 is not implemented, the value 0b110 is treated as reserved.
+            It is IMPLEMENTATION DEFINED whether an implementation that does not implement FEAT_LPA
+            supports setting the value of 0b110 for the 64KB translation granule size or whether setting this value behaves as the 0b101 encoding.
+            In an implementation that supports 52-bit PAs, if the value of this field is not 0b110 or a value treated
+            as 0b110, then bits[51:48] of every translation table base address for the stage of translation controlled by VTCR_EL2 are 0b0000.
+            On a Warm reset, this field resets to an architecturally UNKNOWN value.
+
+        TG0, bits [15:14]
+            Granule size for the VTTBR_EL2.
+            0b00
+                4KB.
+            0b01
+                64KB.
+            0b10
+                16KB.
+            Other values are reserved.
+            If FEAT_GTG is implemented, ID_AA64MMFR0_EL1.{TGran4_2, TGran16_2, TGran64_2} indicate which granule sizes are supported for Level 2 translation.
+            If FEAT_GTG is not implemented, ID_AA64MMFR0_EL1.{TGran4, TGran16, TGran64} indicate which granule sizes are supported.
+            If the value is programmed to either a reserved value or a size that has not been implemented, then
+            the hardware will treat the field as if it has been programmed to an IMPLEMENTATION DEFINED
+            choice of the sizes that has been implemented for all purposes other than the value read back from this register.
+            It is IMPLEMENTATION DEFINED whether the value read back is the value programmed or the value that corresponds to the size chosen.
+            On a Warm reset, this field resets to an architecturally UNKNOWN value.
+
+        SL0, bits [7:6]
+            When FEAT_TTST is implemented:
+                SL0
+                Starting level of the stage 2 translation lookup, controlled by VTCR_EL2. The meaning of this field depends on the value of VTCR_EL2.TG0.
+                0b00
+                    If VTCR_EL2.TG0 is 0b00 (4KB granule):
+                    - If FEAT_LPA2 is not implemented, start at level 2.
+                    - If FEAT_LPA2 is implemented and VTCR_EL2.SL2 is 0b0, start at level 2.
+                    - If FEAT_LPA2 is implemented and VTCR_EL2.SL2 is 0b1, start at level -1.
+                    If VTCR_EL2.TG0 is 0b10 (16KB granule) or 0b01 (64KB granule), start at level 3.
+                0b01
+                    If VTCR_EL2.TG0 is 0b00 (4KB granule):
+                    - If FEAT_LPA2 is not implemented, start at level 1.
+                    - If FEAT_LPA2 is implemented and VTCR_EL2.SL2 is 0b0, start at level 1.
+                    - If FEAT_LPA2 is implemented, the combination of VTCR_EL2.SL0 == 01 and VTCR_EL2.SL2 == 1 is reserved.
+                    If VTCR_EL2.TG0 is 0b10 (16KB granule) or 0b01 (64KB granule), start at level 2.
+                0b10
+                    If VTCR_EL2.TG0 is 0b00 (4KB granule):
+                    - If FEAT_LPA2 is not implemented, start at level 0.
+                    - If FEAT_LPA2 is implemented and VTCR_EL2.SL2 is 0b0, start at level 0.
+                    - If FEAT_LPA2 is implemented, the combination of VTCR_EL2.SL0 == 10 and VTCR_EL2.SL2 == 1 is reserved.
+                    If VTCR_EL2.TG0 is 0b10 (16KB granule) or 0b01 (64KB granule), start at level 1.
+                0b11
+                    If VTCR_EL2.TG0 is 0b00 (4KB granule):
+                    - If FEAT_LPA2 is not implemented, start at level 3.
+                    - If FEAT_LPA2 is implemented and VTCR_EL2.SL2 is 0b0, start at level 3.
+                    - If FEAT_LPA2 is implemented, the combination of VTCR_EL2.SL0 == 11 and VTCR_EL2.SL2 == 1 is reserved.
+                    If VTCR_EL2.TG0 is 0b10 (16KB granule) and FEAT_LPA2 is implemented, start at level 0.
+                If this field is programmed to a value that is not consistent with the programming of VTCR_EL2.T0SZ, then a stage 2 level 0 Translation fault is generated.
+                On a Warm reset, this field resets to an architecturally UNKNOWN value.
+            Otherwise:
+                SL0
+                Starting level of the stage 2 translation lookup, controlled by VTCR_EL2. The meaning of this field depends on the value of VTCR_EL2.TG0.
+                0b00
+                    If VTCR_EL2.TG0 is 0b00 (4KB granule), start at level 2. If VTCR_EL2.TG0 is 0b10 (16KB granule) or 0b01 (64KB granule), start at level 3.
+                0b01
+                    If VTCR_EL2.TG0 is 0b00 (4KB granule), start at level 1. If VTCR_EL2.TG0 is 0b10 (16KB granule) or 0b01 (64KB granule), start at level 2.
+                0b10
+                    If VTCR_EL2.TG0 is 0b00 (4KB granule), start at level 0. If VTCR_EL2.TG0 is 0b10 (16KB granule) or 0b01 (64KB granule), start at level 1.
+                All other values are reserved. If this field is programmed to a reserved value, or to a value that is not
+                consistent with the programming of VTCR_EL2.T0SZ, then a stage 2 level 0 Translation fault is generated.
+                On a Warm reset, this field resets to an architecturally UNKNOWN value.
+
+        T0SZ, bits [5:0]
+            The size offset of the memory region addressed by VTTBR_EL2. The region size is 2(64-T0SZ) bytes.
+            The maximum and minimum possible values for T0SZ depend on the level of translation table and
+            the memory translation granule size, as described in the AArch64 Virtual Memory System Architecture chapter.
+            If this field is programmed to a value that is not consistent with the programming of SL0, then a stage 2 level 0 Translation fault is generated.
+            Note
+                For the 4KB translation granule, if FEAT_LPA2 is implemented and this field is less than 16, the translation table walk begins with a level -1 initial lookup.
+                For the 16KB translation granule, if FEAT_LPA2 is implemented and this field is less than 17, the translation table walk begins with a level 0 initial lookup.
+                On a Warm reset, this field resets to an architecturally UNKNOWN value.
+        """
+        SL2 = (VTCR_EL2 >> 33) & 0b1
+        PS = (VTCR_EL2 >> 16) & 0b11
         TG0 = (VTCR_EL2 >> 14) & 0b11
         SL0 = (VTCR_EL2 >> 6) & 0b11
+        T0SZ = VTCR_EL2 & 0b111111
         try:
-            TG0_BITS = {0b00: 12, 0b01: 16, 0b10: 14}[TG0]
+            granule_bits = {0b00: 12, 0b01: 16, 0b10: 14}[TG0]
         except:
             if not self.silent:
                 err("Unsupported $VTCR_EL2.TG0")
             return
+        region_start = 0
+        region_end = region_start + (2 ** (64-T0SZ))
+        region_bits = int(math.log2(region_end - region_start))
+        page_size = 2 ** (granule_bits - 10)
+        pa_size = 32 + (PS * 4)
+
+        if self.FEAT_TTST:
+            if SL0 == 0b00:
+                if TG0 == 0b00:
+                    if self.FEAT_LPA2 and SL2 == 1:
+                        stage2_start_level = -1
+                    else:
+                        stage2_start_level = 2
+                else:
+                    stage2_start_level = 3
+            elif SL0 == 0b01:
+                if TG0 == 0b00:
+                    if self.FEAT_LPA2 and SL2 == 1:
+                        if not self.silent:
+                            err("Unsupported stage2 start level")
+                        return
+                    else:
+                        stage2_start_level = 1
+                else:
+                    stage2_start_level = 2
+            elif SL0 == 0b10:
+                if TG0 == 0b00:
+                    if self.FEAT_LPA2 and SL2 == 1:
+                        if not self.silent:
+                            err("Unsupported stage2 start level")
+                        return
+                    else:
+                        stage2_start_level = 0
+                else:
+                    stage2_start_level = 1
+            elif SL0 == 0b11:
+                if TG0 == 0b00:
+                    if self.FEAT_LPA2 and SL2 == 1:
+                        if not self.silent:
+                            err("Unsupported stage2 start level")
+                        return
+                    else:
+                        stage2_start_level = 3
+                else:
+                    stage2_start_level = 0
+        else:
+            if SL0 == 0b00:
+                if TG0 == 0b00:
+                    stage2_start_level = 2
+                else:
+                    stage2_start_level = 3
+            elif SL0 == 0b01:
+                if TG0 == 0b00:
+                    stage2_start_level = 1
+                else:
+                    stage2_start_level = 2
+            elif SL0 == 0b10:
+                if TG0 == 0b00:
+                    stage2_start_level = 0
+                else:
+                    stage2_start_level = 1
+            else:
+                if not self.silent:
+                    err("Unsupported stage2 start level")
+                return
+
+        """ VTTBR_EL2
+        BADDR, bits [47:1]
+            Translation table base address, A[47:x] or A[51:x], bits[47:1].
+            Note
+                A translation table must be aligned to the size of the table, except that when using a translation table
+                base address larger than 48 bits the minimum alignment of a table containing fewer than eight entries is 64 bytes.
+            In an implementation that includes FEAT_LPA, if the value of VTCR_EL2.PS is 0b110, then:
+            - Register bits[47:z] hold bits[47:z] of the stage 1 translation table base address, where z is
+            determined as follows:
+                — If x >= 6 then z=x.
+                — Otherwise, z=6.
+            - Register bits[5:2] hold bits[51:48] of the stage 1 translation table base address.
+            - When z>x register bits[(z-1):x] are RES0, and bits[(z-1):x] of the translation table base address are zero.
+            - When x>6 register bits[(x-1):6] are RES0.
+            - Register bit[1] is RES0.
+            - Bits[5:2] of the stage 1 translation table base address are zero.
+            - In an implementation that includes FEAT_TTCNP, bit[0] of the stage 1 translation table base address is zero.
+            Note
+                When the value of ID_AA64MMFR0_EL1.PARange indicates that the implementation does not
+                support a 52 bit PA size, if a translation table lookup uses this register when the Effective value of
+                VTCR_EL2.PS is 0b110 and the value of register bits[5:2] is nonzero, an Address size fault is generated.
+                If the Effective value of VTCR_EL2.PS is not 0b110 then:
+            - Register bits[47:x] hold bits[47:x] of the stage 1 translation table base address.
+            - Register bits[(x-1):1] are RES0.
+            - If the implementation supports 52-bit PAs and IPAs then bits[51:48] of the translation table base addresses used in this stage of translation are 0b0000.
+            If any VTTBR_EL2[47:0] bit that is defined as RES0 has the value 1 when a translation table walk
+            is performed using VTTBR_EL2, then the translation table base address might be misaligned, with
+            effects that are CONSTRAINED UNPREDICTABLE, and must be one of the following:
+            - Bits[x-1:0] of the translation table base address are treated as if all the bits are zero. The value
+            read back from the corresponding register bits is either the value written to the register or zero.
+            - The result of the calculation of an address for a translation table walk using this register can be corrupted in those bits that are nonzero.
+            The AArch64 Virtual Memory System Architecture chapter describes how x is calculated based on
+            the value of VTCR_EL2.T0SZ, the stage of translation, and the translation granule size.
+            On a Warm reset, this field resets to an architecturally UNKNOWN value.
+        """
+        if PS == 0b110:
+            if self.FEAT_LPA:
+                translation_base_addr = (VTTBR_EL2 & 0xffffffffffc0) | (((VTTBR_EL2 >> 2) & 0b1111) << 48)
+            else:
+                if not self.silent:
+                    err("Unsupported FEAT_LPA and PS pair")
+                return
+        else:
+            translation_base_addr = VTTBR_EL2 & 0xfffffffffffe
 
         if not self.silent:
             info('$VTTBR_EL2: {:#x}'.format(VTTBR_EL2))
-            info('Physical Address Size: {:d}-bits'.format(32+4*PA))
+            info('Physical Address Size: {:d} bits'.format(pa_size))
             info('EL2 Starting Level: {:d}'.format(SL0))
-            info('EL2 Region Max: {:#018x}'.format(2**(64-T0SZ)-1))
-            info('EL2 Page Size: {:d}KB (per page)'.format(2**TG0_BITS >> 10))
-        self.do_pagewalk(VTTBR_EL2 & 0xfffffffffffe, TG0_BITS, 0, 2**(64-T0SZ), start_level=SL0, is_stage2=True)
+            info('EL2 Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end-1, region_bits))
+            info('EL2 Page Size: {:d}KB (per page)'.format(page_size))
+
+        self.parse_bit_range(granule_bits, region_bits)
+        self.do_pagewalk(translation_base_addr, granule_bits, region_start, start_level=stage2_start_level, is_stage2=True)
         if not self.silent:
             self.print_page()
         return
 
-    def pagewalk_EL2(self):
+    def pagewalk_TTBR0_EL2(self):
         gef_print(titlify("$TTBR0_EL2"))
 
         TTBR0_EL2 = int(gdb.parse_and_eval('$TTBR0_EL2'))
@@ -30999,24 +31641,279 @@ class PagewalkArm64Command(PagewalkCommand):
             warn("Maybe unused TTBR0_EL2")
             return
 
-        T0SZ = TCR_EL2 & 0b111111        # Translation 0 Region Size (hypervisor)
-        PA = (TCR_EL2 >> 16) & 0b11
+        """ TCR_EL2
+        When HCR_EL2.E2H == 0:
+            PS, bits [18:16]
+                Physical Address Size.
+                0b000
+                    32 bits, 4GB.
+                0b001
+                    36 bits, 64GB.
+                0b010
+                    40 bits, 1TB.
+                0b011
+                    42 bits, 4TB.
+                0b100
+                    44 bits, 16TB.
+                0b101
+                    48 bits, 256TB.
+                0b110
+                    52 bits, 4PB.
+                All other values are reserved.
+                The reserved values behave in the same way as the 0b101 or 0b110 encoding, but software must not
+                rely on this property as the behavior of the reserved values might change in a future revision of the architecture.
+                If the translation granule is not 64KB and FEAT_LPA2 is not implemented, the value 0b110 is treated as reserved.
+                It is IMPLEMENTATION DEFINED whether an implementation that does not implement FEAT_LPA
+                supports setting the value of 0b110 for the 64KB translation granule size or whether setting this value behaves as the 0b101 encoding.
+                In an implementation that supports 52-bit PAs, if the value of this field is not 0b110 or a value treated
+                as 0b110, then bits[51:48] of every translation table base address for the stage of translation controlled by TCR_EL2 are 0b0000.
+                On a Warm reset, this field resets to an architecturally UNKNOWN value.
+        Otherwise:
+            IPS, bits [34:32]
+                Intermediate Physical Address Size.
+                0b000
+                    32 bits, 4GB.
+                0b001
+                    36 bits, 64GB.
+                0b010
+                    40 bits, 1TB.
+                0b011
+                    42 bits, 4TB.
+                0b100
+                    44 bits, 16TB.
+                0b101
+                    48 bits, 256TB.
+                0b110
+                    When FEAT_LPA is implemented 52 bits, 4PB.
+                All other values are reserved.
+                The reserved values behave in the same way as the 0b101 or 0b110 encoding, but software must not
+                rely on this property as the behavior of the reserved values might change in a future revision of the architecture.
+                If the translation granule is not 64KB, the value 0b110 is treated as reserved.
+                It is IMPLEMENTATION DEFINED whether an implementation that does not implement FEAT_LPA
+                supports setting the value of 0b110 for the 64KB translation granule size or whether setting this value behaves as the 0b101 encoding.
+                In an implementation that supports 52-bit PAs, if the value of this field is not 0b110 or a value treated
+                as 0b110, then bits[51:48] of every translation table base address for the stage of translation controlled by TCR_EL2 are 0b0000.
+                On a Warm reset, this field resets to an architecturally UNKNOWN value.
+
+        TG0, bits [15:14]
+            Granule size for the TTBR0_EL2.
+            0b00
+                4KB.
+            0b01
+                64KB.
+            0b10
+                16KB.
+            Other values are reserved.
+            If the value is programmed to either a reserved value or a size that has not been implemented, then
+            the hardware will treat the field as if it has been programmed to an IMPLEMENTATION DEFINED
+            choice of the sizes that has been implemented for all purposes other than the value read back from this register.
+            It is IMPLEMENTATION DEFINED whether the value read back is the value programmed or the value that corresponds to the size chosen.
+            On a Warm reset, this field resets to an architecturally UNKNOWN value.
+
+        T0SZ, bits [5:0]
+            The size offset of the memory region addressed by TTBR0_EL2. The region size is 2^(64-T0SZ) bytes.
+            The maximum and minimum possible values for T0SZ depend on the level of translation table and
+            the memory translation granule size, as described in the AArch64 Virtual Memory System Architecture chapter.
+            Note
+                For the 4KB translation granule, if FEAT_LPA2 is implemented and this field is less than 16, the translation table walk begins with a level -1 initial lookup.
+                For the 16KB translation granule, if FEAT_LPA2 is implemented and this field is less than 17, the translation table walk begins with a level 0 initial lookup.
+                On a Warm reset, this field resets to an architecturally UNKNOWN value.
+        """
+        if self.EL2_E2H:
+            IPS = (TCR_EL2 >> 32) & 0b111
+        else:
+            PS = (TCR_EL2 >> 16) & 0b111
         TG0 = (TCR_EL2 >> 14) & 0b11
+        T0SZ = TCR_EL2 & 0b111111
         try:
-            TG0_BITS = {0b00: 12, 0b01: 16, 0b10: 14}[TG0]
+            granule_bits = {0b00: 12, 0b01: 16, 0b10: 14}[TG0]
         except:
             err("Unsupported $TCR_EL2.TG0")
             return
+        region_start = 0
+        region_end = region_start + (2 ** (64-T0SZ))
+        region_bits = int(math.log2(region_end - region_start))
+        page_size = 2 ** (granule_bits - 10)
+        if self.EL2_E2H:
+            intermediate_pa_size = 32 + (IPS * 4)
+        else:
+            pa_size = 32 + (PS * 4)
+
+        """ TTBR0_EL2
+        BADDR[47:1], bits [47:1]
+            Translation table base address:
+            - Bits A[47:x] of the stage 1 translation table base address bits are in register bits[47:x].
+            - Bits A[(x-1):0] of the stage 1 translation table base address are zero.
+            Address bit x is the minimum address bit required to align the translation table to the size of the table.
+            The smallest permitted value of x is 6. The AArch64 Virtual Memory System Architecture chapter describes how x is
+            calculated based on the value of TCR_EL2.T0SZ, the translation stage, and the translation granule size.
+            Note
+                A translation table is required to be aligned to the size of the table. If a table contains fewer than
+                eight entries, it must be aligned on a 64 byte address boundary.
+            If the value of TCR_EL2.{I}PS is not 0b110, then:
+            - Register bits[(x-1):1] are RES0.
+            - If the implementation supports 52-bit PAs and IPAs, then bits A[51:48] of the stage 1 translation table base address are 0b0000.
+            If FEAT_LPA is implemented and the value of TCR_EL2.{I}PS is 0b110, then:
+            • Bits A[51:48] of the stage 1 translation table base address bits are in register bits[5:2].
+            • Register bit[1] is RES0.
+            • When x>6, register bits[(x-1):6] are RES0.
+            Note
+                The OA size specified by TCR_EL2.{I}PS is determined as follows:
+                - The value of TCR_EL2.PS when the value of HCR_EL2.E2H is 0.
+                - The value of TCR_EL2.IPS when the value of HCR_EL2.E2H is 1.
+                TCR_EL2.{I}PS==0b110 is permitted when:
+                - FEAT_LPA is implemented and the 64KB translation granule is used.
+                - FEAT_LPA2 is implemented and the 4KB or 16KB translation granule is used.
+                When the value of ID_AA64MMFR0_EL1.PARange indicates that the implementation does not
+                support a 52 bit PA size, if a translation table lookup uses this register when TCR_EL2.{I}PS is 0b110
+                and the value of register bits[5:2] is nonzero, an Address size fault is generated.
+            If any register bit[47:1] that is defined as RES0 has the value 1 when a translation table walk is done
+            using TTBR0_EL2, then the translation table base address might be misaligned, with effects that are
+            CONSTRAINED UNPREDICTABLE, and must be one of the following:
+            - Bits A[(x-1):0] of the stage 1 translation table base address are treated as if all the bits are zero.
+              The value read back from the corresponding register bits is either the value written to the register or zero.
+            - The result of the calculation of an address for a translation table walk using this register can be corrupted in those bits that are nonzero.
+            On a Warm reset, this field resets to an architecturally UNKNOWN value.
+        """
+        if not self.EL2_E2H and PS == 0b110:
+            if self.FEAT_LPA:
+                translation_base_addr = (TTBR0_EL2 & 0xffffffffffc0) | (((TTBR0_EL2 >> 2) & 0b1111) << 48)
+            else:
+                err("Unsupported FEAT_LPA and PS pair")
+                return
+        elif self.EL2_E2H and IPS == 0b110:
+            if self.FEAT_LPA:
+                translation_base_addr = (TTBR0_EL2 & 0xffffffffffc0) | (((TTBR0_EL2 >> 2) & 0b1111) << 48)
+            else:
+                err("Unsupported FEAT_LPA and IPS pair")
+                return
+        else:
+            translation_base_addr = TTBR0_EL2 & 0xfffffffffffe
 
         info('$TTBR0_EL2: {:#x}'.format(TTBR0_EL2))
-        info('Physical Address Size: {:d}-bits'.format(32+4*PA))
-        info('EL2 Region Max: {:#018x}'.format(2**(64-T0SZ)-1))
-        info('EL2 Page Size: {:d}KB (per page)'.format(2**TG0_BITS >> 10))
-        self.do_pagewalk(TTBR0_EL2 & 0xfffffffffffe, TG0_BITS, 0, 2**(64-T0SZ))
+        if self.EL2_E2H:
+            info('Intermediate Physical Address Size: {:d} bits'.format(intermediate_pa_size))
+        else:
+            info('Physical Address Size: {:d} bits'.format(pa_size))
+        if self.EL2_M20:
+            info('EL2 User Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end-1, region_bits))
+            info('EL2 USer Page Size: {:d}KB (per page)'.format(page_size))
+        else:
+            info('EL2 Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end-1, region_bits))
+            info('EL2 Page Size: {:d}KB (per page)'.format(page_size))
+
+        self.parse_bit_range(granule_bits, region_bits)
+        self.do_pagewalk(translation_base_addr, granule_bits, region_start, is_2VAranges=self.EL2_M20)
         self.print_page()
         return
 
-    def pagewalk_EL3(self):
+    def pagewalk_TTBR1_EL2(self):
+        gef_print(titlify("$TTBR1_EL2"))
+
+        TTBR1_EL2 = int(gdb.parse_and_eval('$TTBR1_EL2'))
+        TCR_EL2 = int(gdb.parse_and_eval('$TCR_EL2'))
+        if TTBR1_EL2 == 0:
+            warn("Maybe unused TTBR1_EL2")
+            return
+
+        """ TCR_EL2
+        IPS, bits [34:32]
+            See above.
+
+        TG1, bits [31:30]
+            Granule size for the TTBR1_EL2.
+            0b01
+                16KB.
+            0b10
+                4KB.
+            0b11
+                64KB.
+            Other values are reserved.
+            If the value is programmed to either a reserved value, or a size that has not been implemented, then
+            the hardware will treat the field as if it has been programmed to an IMPLEMENTATION DEFINED
+            choice of the sizes that has been implemented for all purposes other than the value read back from this register.
+            It is IMPLEMENTATION DEFINED whether the value read back is the value programmed or the value that corresponds to the size chosen.
+            On a Warm reset, this field resets to an architecturally UNKNOWN value.
+
+        T1SZ, bits [21:16]
+            The size offset of the memory region addressed by TTBR1_EL2. The region size is 2^(64-T1SZ) bytes.
+            The maximum and minimum possible values for T1SZ depend on the level of translation table and
+            the memory translation granule size, as described in the AArch64 Virtual Memory System Architecture chapter.
+            Note
+                For the 4KB translation granule, if FEAT_LPA2 is implemented and this field is less than 16, the translation table walk begins with a level -1 initial lookup.
+                For the 16KB translation granule, if FEAT_LPA2 is implemented and this field is less than 17, the translation table walk begins with a level 0 initial lookup.
+                On a Warm reset, this field resets to an architecturally UNKNOWN value.
+        """
+        IPS = (TCR_EL2 >> 32) & 0b111
+        TG1 = (TCR_EL2 >> 30) & 0b11
+        T1SZ = (TCR_EL2 >> 16) & 0b111111
+        try:
+            granule_bits = {0b01: 14, 0b10: 12, 0b11: 16}[TG1]
+        except:
+            err("Unsupported $TCR_EL2.TG1")
+            return
+        region_end = 2 ** 64
+        region_start = region_end - (2 ** (64-T1SZ))
+        region_bits = int(math.log2(region_end - region_start))
+        page_size = 2 ** (granule_bits - 10)
+        intermediate_pa_size = 32 + (IPS * 4)
+
+        """ TTBR1_EL2
+        BADDR[47:1], bits [47:1]
+            Translation table base address:
+            - Bits A[47:x] of the stage 1 translation table base address bits are in register bits[47:x].
+            - Bits A[(x-1):0] of the stage 1 translation table base address are zero.
+            Address bit x is the minimum address bit required to align the translation table to the size of the table.
+            The smallest permitted value of x is 6. The AArch64 Virtual Memory System Architecture
+            chapter describes how x is calculated based on the value of TCR_EL2.T1SZ, the translation stage, and the translation granule size.
+            Note
+                A translation table is required to be aligned to the size of the table. If a table contains fewer than
+                eight entries, it must be aligned on a 64 byte address boundary
+            If the value of TCR_EL2.{I}PS is not 0b110, then:
+            - Register bits[(x-1):1] are RES0.
+            - If the implementation supports 52-bit PAs and IPAs, then bits A[51:48] of the stage 1 translation table base address are 0b0000.
+            If FEAT_LPA is implemented and the value of TCR_EL2.{I}PS is 0b110, then:
+            - Bits A[51:48] of the stage 1 translation table base address bits are in register bits[5:2].
+            - Register bit[1] is RES0.
+            - When x>6, register bits[(x-1):6] are RES0.
+            Note
+                The OA size specified by TCR_EL2.{I}PS is determined as follows:
+                - The value of TCR_EL2.PS when the value of HCR_EL2.E2H is 0.
+                - The value of TCR_EL2.IPS when the value of HCR_EL2.E2H is 1.
+                TCR_EL2.{I}PS==0b110 is permitted when:
+                - FEAT_LPA is implemented and the 64KB translation granule is used.
+                - FEAT_LPA2 is implemented and the 4KB or 16KB translation granule is used.
+                When the value of ID_AA64MMFR0_EL1.PARange indicates that the implementation does not
+                support a 52 bit PA size, if a translation table lookup uses this register when TCR_EL2.{I}PS is 0b110
+                and the value of register bits[5:2] is nonzero, an Address size fault is generated.
+            If any register bit[47:1] that is defined as RES0 has the value 1 when a translation table walk is done
+            using TTBR1_EL2, then the translation table base address might be misaligned, with effects that are
+            CONSTRAINED UNPREDICTABLE, and must be one of the following:
+            - Bits A[(x-1):0] of the stage 1 translation table base address are treated as if all the bits are zero.
+              The value read back from the corresponding register bits is either the value written to the register or zero.
+            - The result of the calculation of an address for a translation table walk using this register can be corrupted in those bits that are nonzero.
+            On a Warm reset, this field resets to an architecturally UNKNOWN value.
+        """
+        if IPS == 0b110:
+            if self.FEAT_LPA:
+                translation_base_addr = (TTBR1_EL2 & 0xffffffffffc0) | (((TTBR1_EL2 >> 2) & 0b1111) << 48)
+            else:
+                err("Unsupported FEAT_LPA and IPS pair")
+                return
+        else:
+            translation_base_addr = TTBR1_EL2 & 0xfffffffffffe
+
+        info('$TTBR1_EL2: {:#x}'.format(TTBR1_EL2))
+        info('Intermediate Physical Address Size: {:d} bits'.format(intermediate_pa_size))
+        info('EL2 Kernel Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end-1, region_bits))
+        info('EL2 Kernel Page Size: {:d}KB (per page)'.format(page_size))
+
+        self.parse_bit_range(granule_bits, region_bits)
+        self.do_pagewalk(translation_base_addr, granule_bits, region_start, is_2VAranges=self.EL2_M20)
+        self.print_page()
+        return
+
+    def pagewalk_TTBR0_EL3(self):
         gef_print(titlify("$TTBR0_EL3"))
 
         TTBR0_EL3 = int(gdb.parse_and_eval('$TTBR0_EL3'))
@@ -31025,123 +31922,514 @@ class PagewalkArm64Command(PagewalkCommand):
             warn("Maybe unused TTBR0_EL3")
             return
 
-        T0SZ = TCR_EL3 & 0b111111         # Translation 0 Region Size (secure monitor)
-        PA = (TCR_EL3 >> 16) & 0b11
+        """ TCR_EL3
+        PS, bits [18:16]
+            Physical Address Size.
+            0b000
+                32 bits, 4GB.
+            0b001
+                36 bits, 64GB.
+            0b010
+                40 bits, 1TB.
+            0b011
+                42 bits, 4TB.
+            0b100
+                44 bits, 16TB.
+            0b101
+                48 bits, 256TB.
+            0b110
+                52 bits, 4PB.
+            All other values are reserved.
+            The reserved values behave in the same way as the 0b101 or 0b110 encoding, but software must not
+            rely on this property as the behavior of the reserved values might change in a future revision of the architecture.
+            If the translation granule is not 64KB and FEAT_LPA2 is not implemented, the value 0b110 is treated as reserved.
+            It is IMPLEMENTATION DEFINED whether an implementation that does not implement FEAT_LPA
+            supports setting the value of 0b110 for the 64KB translation granule size or whether setting this value behaves as the 0b101 encoding.
+            In an implementation that supports 52-bit PAs, if the value of this field is not 0b110 or a value treated as 0b110,
+            then bits[51:48] of every translation table base address for the stage of translation controlled by TCR_EL3 are 0b0000.
+            On a Warm reset, this field resets to an architecturally UNKNOWN value.
+
+        TG0, bits [15:14]
+            Granule size for the TTBR0_EL3.
+            0b00
+                4KB.
+            0b01
+                64KB.
+            0b10
+                16KB.
+            Other values are reserved.
+            If the value is programmed to either a reserved value or a size that has not been implemented, then
+            the hardware will treat the field as if it has been programmed to an IMPLEMENTATION DEFINED
+            choice of the sizes that has been implemented for all purposes other than the value read back from this register.
+            It is IMPLEMENTATION DEFINED whether the value read back is the value programmed or the value that corresponds to the size chosen.
+            On a Warm reset, this field resets to an architecturally UNKNOWN value.
+
+        T0SZ, bits [5:0]
+            The size offset of the memory region addressed by TTBR0_EL3. The region size is 2^(64-T0SZ) bytes.
+            The maximum and minimum possible values for T0SZ depend on the level of translation table and
+            the memory translation granule size, as described in the AArch64 Virtual Memory System Architecture chapter
+            Note
+                For the 4KB translation granule, if FEAT_LPA2 is implemented and this field is less than 16, the translation table walk begins with a level -1 initial lookup.
+                For the 16KB translation granule, if FEAT_LPA2 is implemented and this field is less than 17, the translation table walk begins with a level 0 initial lookup.
+                On a Warm reset, this field resets to an architecturally UNKNOWN value.
+        """
+        PS = (TCR_EL3 >> 16) & 0b111
         TG0 = (TCR_EL3 >> 14) & 0b11
+        T0SZ = TCR_EL3 & 0b111111
         try:
-            TG0_BITS = {0b00: 12, 0b01: 16, 0b10: 14}[TG0]
+            granule_bits = {0b00: 12, 0b01: 16, 0b10: 14}[TG0]
         except:
             err("Unsupported $TCR_EL3.TG0")
             return
+        region_start = 0
+        region_end = region_start + (2 ** (64-T0SZ))
+        region_bits = int(math.log2(region_end - region_start))
+        page_size = 2 ** (granule_bits - 10)
+        pa_size = 32 + (PS * 4)
+
+        """ TTBR0_EL3
+        BADDR[47:1], bits [47:1]
+            Translation table base address:
+            - Bits A[47:x] of the stage 1 translation table base address bits are in register bits[47:x].
+            - Bits A[(x-1):0] of the stage 1 translation table base address are zero.
+            Address bit x is the minimum address bit required to align the translation table to the size of the table.
+            The smallest permitted value of x is 6. The AArch64 Virtual Memory System Architecture
+            chapter describes how x is calculated based on the value of TCR_EL3.T0SZ, the translation stage, and the translation granule size.
+            Note
+                A translation table is required to be aligned to the size of the table. If a table contains fewer than
+                eight entries, it must be aligned on a 64 byte address boundary.
+            If the value of TCR_EL3.PS is not 0b110, then:
+            - Register bits[(x-1):1] are RES0.
+            - If the implementation supports 52-bit PAs and IPAs, then bits A[51:48] of the stage 1 translation table base address are 0b0000.
+            If FEAT_LPA is implemented and the value of TCR_EL3.PS is 0b110, then:
+            - Bits A[51:48] of the stage 1 translation table base address bits are in register bits[5:2].
+            - Register bit[1] is RES0.
+            - When x>6, register bits[(x-1):6] are RES0.
+            Note
+                TCR_EL3.PS==0b110 is permitted when:
+                - FEAT_LPA is implemented and the 64KB translation granule is used.
+                - FEAT_LPA2 is implemented and the 4KB or 16KB translation granule is used.
+                When the value of ID_AA64MMFR0_EL1.PARange indicates that the implementation does not
+                support a 52 bit PA size, if a translation table lookup uses this register when TCR_EL3.PS is 0b110
+                and the value of register bits[5:2] is nonzero, an Address size fault is generated.
+            If any register bit[47:1] that is defined as RES0 has the value 1 when a translation table walk is done
+            using TTBR0_EL3, then the translation table base address might be misaligned, with effects that are
+            CONSTRAINED UNPREDICTABLE, and must be one of the following:
+            - Bits A[(x-1):0] of the stage 1 translation table base address are treated as if all the bits are zero.
+              The value read back from the corresponding register bits is either the value written to the register or zero.
+            - The result of the calculation of an address for a translation table walk using this register can be corrupted in those bits that are nonzero.
+            On a Warm reset, this field resets to an architecturally UNKNOWN value.
+        """
+        if PS == 0b110:
+            if self.FEAT_LPA:
+                translation_base_addr = (TTBR0_EL3 & 0xffffffffffc0) | (((TTBR0_EL3 >> 2) & 0b1111) << 48)
+            else:
+                err("Unsupported FEAT_LPA and PS pair")
+                return
+        else:
+            translation_base_addr = TTBR0_EL3 & 0xfffffffffffe
 
         info('$TTBR0_EL3: {:#x}'.format(TTBR0_EL3))
-        info('Physical Address Size: {:d}-bits'.format(32+4*PA))
-        info('EL3 Region Max: {:#018x}'.format(2**(64-T0SZ)-1))
-        info('EL3 Page Size: {:d}KB (per page)'.format(2**TG0_BITS >> 10))
-        self.do_pagewalk(TTBR0_EL3 & 0xfffffffffffe, TG0_BITS, 0, 2**(64-T0SZ))
+        info('Physical Address Size: {:d} bits'.format(pa_size))
+        info('EL3 Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end-1, region_bits))
+        info('EL3 Page Size: {:d}KB (per page)'.format(page_size))
+
+        self.parse_bit_range(granule_bits, region_bits)
+        self.do_pagewalk(translation_base_addr, granule_bits, region_start)
         self.print_page()
         return
 
-    def pagewalk(self):
+    def pagewalk_init(self):
         res = gdb.execute("info registers", to_string=True)
         if not "TTBR" in res:
             err("Not found system registers. Check qemu version (at least: 3.x~, recommend: 5.x~).")
             return
 
-        # check enabled EL0/1 translation
+        """ SCTLR_EL1
+        M, bit [0]
+            MMU enable for EL1&0 stage 1 address translation.
+            0b0
+                EL1&0 stage 1 address translation disabled.
+                See the SCTLR_EL1.I field for the behavior of instruction accesses to Normal memory.
+            0b1
+                EL1&0 stage 1 address translation enabled.
+            If the value of HCR_EL2.{DC, TGE} is not {0, 0} then in Non-secure state the PE behaves as if the
+            value of the SCTLR_EL1.M field is 0 for all purposes other than returning the value of a direct read of the field.
+            When FEAT_VHE is implemented, and the value of HCR_EL2.{E2H, TGE} is {1, 1}, this bit has no effect on the PE.
+            On a Warm reset, in a system where the PE resets into EL1, this field resets to 0.
+
+        WXN, bit [19]
+            Write permission implies XN (Execute-never). For the EL1&0 translation regime, this bit can force
+            all memory regions that are writable to be treated as XN. The possible values of this bit are:
+            0b0
+                This control has no effect on memory access permissions.
+            0b1
+                Any region that is writable in the EL1&0 translation regime is forced to XN for accesses from software executing at EL1 or EL0.
+            This bit applies only when SCTLR_EL1.M bit is set.
+            The WXN bit is permitted to be cached in a TLB.
+            When FEAT_VHE is implemented, and the value of HCR_EL2.{E2H, TGE} is {1, 1}, this bit has no effect on the PE.
+            On a Warm reset, in a system where the PE resets into EL1, this field resets to an architecturally UNKNOWN value.
+        """
         try:
             try:
                 SCTLR_EL1 = int(gdb.parse_and_eval('$SCTLR_EL1'))
             except:
                 SCTLR_EL1 = int(gdb.parse_and_eval('$SCTLR'))
-            self.EL1 = (SCTLR_EL1 & 1) == 1
+            self.EL1_M = (SCTLR_EL1 & 1) == 1
             self.EL1_WXN = ((SCTLR_EL1 >> 19) & 1) == 1
         except:
-            self.EL1 = False
+            self.EL1_M = False
             self.EL1_WXN = False
 
-        # check enabled 2 stage translation
+        """ HCR_EL2
+        E2H, bit [34]
+            When FEAT_VHE is implemented:
+                EL2 Host. Enables a configuration where a Host Operating System is running in EL2, and the Host Operating System's applications are running in EL0.
+                0b0
+                    The facilities to support a Host Operating System at EL2 are disabled.
+                0b1
+                    The facilities to support a Host Operating System at EL2 are enabled.
+                For information on the behavior of this bit see Behavior of HCR_EL2.E2H on page D5-2764.
+                This bit is permitted to be cached in a TLB.
+                On a Warm reset, this field resets to an architecturally UNKNOWN value.
+            Otherwise:
+                Reserved, RES0.
+
+        TGE, bit [27]
+            Trap General Exceptions, from EL0.
+            0b0
+                This control has no effect on execution at EL0.
+            0b1
+                When EL2 is not enabled in the current Security state, this control has no effect on execution at EL0.
+                When EL2 is enabled in the current Security state, in all cases:
+                - All exceptions that would be routed to EL1 are routed to EL2.
+                - If EL1 is using AArch64, the SCTLR_EL1.M field is treated as being 0 for all purposes other than returning the result of a direct read of SCTLR_EL1.
+                - If EL1 is using AArch32, the SCTLR.M field is treated as being 0 for all purposes other than returning the result of a direct read of SCTLR.
+                - All virtual interrupts are disabled.
+                - Any IMPLEMENTATION DEFINED mechanisms for signaling virtual interrupts are disabled.
+                - An exception return to EL1 is treated as an illegal exception return.
+                - The MDCR_EL2.{TDRA, TDOSA, TDA, TDE} fields are treated as being 1 for all purposes other than returning the result of a direct read of MDCR_EL2.
+                In addition, when EL2 is enabled in the current Security state, if:
+                - HCR_EL2.E2H is 0, the Effective values of the HCR_EL2.{FMO, IMO, AMO} fields are 1.
+                - HCR_EL2.E2H is 1, the Effective values of the HCR_EL2.{FMO, IMO, AMO} fields are 0.
+                For further information on the behavior of this bit when E2H is 1, see Behavior of HCR_EL2.E2H on page D5-2764.
+            HCR_EL2.TGE must not be cached in a TLB.
+            On a Warm reset, this field resets to an architecturally UNKNOWN value.
+
+        VM, bit [0]
+            Virtualization enable. Enables stage 2 address translation for the EL1&0 translation regime, when
+            EL2 is enabled in the current Security state.
+            0b0
+                EL1&0 stage 2 address translation disabled.
+            0b1
+                EL1&0 stage 2 address translation enabled.
+            When the value of this bit is 1, data cache invalidate instructions executed at EL1 perform a data
+            cache clean and invalidate. For the invalidate by set/way instruction this behavior applies regardless
+            of the value of the HCR_EL2.SWIO bit.
+            This bit is permitted to be cached in a TLB.
+            When FEAT_VHE is implemented, and the value of HCR_EL2.{E2H, TGE} is {1, 1}, this field
+            behaves as 0 for all purposes other than a direct read of the value of this bit.
+            On a Warm reset, this field resets to an architecturally UNKNOWN value.
+        """
         try:
             HCR_EL2 = int(gdb.parse_and_eval('$HCR_EL2'))
-            self.EL2VM = (HCR_EL2 & 1) == 1
+            self.EL2_TGE = ((HCR_EL2 >> 27) & 1) == 1
+            self.EL2_E2H = ((HCR_EL2 >> 34) & 1) == 1
+            self.EL2_M20 = self.EL2_TGE and self.EL2_E2H
+            self.EL2_VM = (HCR_EL2 & 1) == 1
         except:
-            self.EL2VM = False
+            self.EL2_TGE = False
+            self.EL2_E2H = False
+            self.EL2_M20 = False
+            self.EL2_VM = False
 
-        # check enabled EL2 translation
+        """ SCTLR_EL2
+        M, bit [0]
+            MMU enable for EL2 or EL2&0 stage 1 address translation.
+            0b0
+                When HCR_EL2.{E2H, TGE} != {1, 1}, EL2 stage 1 address translation disabled.
+                When HCR_EL2.{E2H, TGE} == {1, 1}, EL2&0 stage 1 address translation disabled.
+                See the SCTLR_EL2.I field for the behavior of instruction accesses to Normal memory.
+            0b1
+                When HCR_EL2.{E2H, TGE} != {1, 1}, EL2 stage 1 address translation enabled.
+                When HCR_EL2.{E2H, TGE} == {1, 1}, EL2&0 stage 1 address translation enabled.
+            On a Warm reset, in a system where the PE resets into EL2, this field resets to 0.
+
+        WXN, bit [19]
+            Write permission implies XN (Execute-never). For the EL2 or EL2&0 translation regime, this bit
+            can force all memory regions that are writable to be treated as XN.
+            0b0
+                This control has no effect on memory access permissions.
+            0b1
+                Any region that is writable in the EL2 or EL2&0 translation regime is forced to XN for
+            accesses from software executing at EL2.
+            This bit applies only when SCTLR_EL2.M bit is set.
+            The WXN bit is permitted to be cached in a TLB.
+            On a Warm reset, in a system where the PE resets into EL2, this field resets to an architecturally UNKNOWN value.
+        """
         try:
             SCTLR_EL2 = int(gdb.parse_and_eval('$SCTLR_EL2'))
-            self.EL2 = (SCTLR_EL2 & 1) == 1
+            self.EL2_M = (SCTLR_EL2 & 1) == 1
             self.EL2_WXN = ((SCTLR_EL2 >> 19) & 1) == 1
         except:
-            self.EL2 = False
+            self.EL2_M = False
             self.EL2_WXN = False
 
-        # check enabled EL3 translation
+        """ SCTLR_EL3
+        M, bit [0]
+            MMU enable for EL3 stage 1 address translation. Possible values of this bit are:
+            0b0
+                EL3 stage 1 address translation disabled.
+                See the SCTLR_EL3.I field for the behavior of instruction accesses to Normal memory.
+            0b1
+                EL3 stage 1 address translation enabled.
+            On a Warm reset, in a system where the PE resets into EL3, this field resets to 0.
+
+        WXN, bit [19]
+            Write permission implies XN (Execute-never). For the EL3 translation regime, this bit can force all
+            memory regions that are writable to be treated as XN. The possible values of this bit are:
+            0b0
+                This control has no effect on memory access permissions.
+            0b1
+                Any region that is writable in the EL3 translation regime is forced to XN for accesses from software executing at EL3.
+            This bit applies only when SCTLR_EL3.M bit is set.
+            The WXN bit is permitted to be cached in a TLB.
+            On a Warm reset, in a system where the PE resets into EL3, this field resets to an architecturally UNKNOWN value.
+        """
         try:
             SCTLR_EL3 = int(gdb.parse_and_eval('$SCTLR_EL3'))
-            self.EL3 = (SCTLR_EL3 & 1) == 1
+            self.EL3_M = (SCTLR_EL3 & 1) == 1
             self.EL3_WXN = ((SCTLR_EL3 >> 19) & 1) == 1
         except:
-            self.EL3 = False
+            self.EL3_M = False
             self.EL3_WXN = False
 
-        # check support 52 bit physical address, or not (=48 bit)
+        """
+        FEAT_LPA, Large PA and IPA support
+            - Allows a larger intermediate physical address (IPA) and PA space of up to 52 bits when using the 64KB translation granule.
+            - Allows a level 1 block size where the block covers a 4TB address range for the 64KB translation granule if the implementation support 52 bits of PA.
+            This is an OPTIONAL feature in Armv8.2 implementations. It is IMPLEMENTATION DEFINED whether it is implemented.
+            This feature is supported in AArch64 state only.
+            The ID_AA64MMFR0_EL1.PARange field identifies the presence of FEAT_LPA.
+
+        FEAT_LPA2, Larger physical address for 4KB and 16KB translation granules
+            - Allows a larger VA space for each translation table base register of up to 52 bits when using the 4KB or 16KB translation granules.
+            - Allows a larger intermediate physical address (IPA) and PA space of up to 52 bits when using the 4KB or 16KB translation granules.
+            - Allows a level 0 block size where the block covers a 512GB address range for the 4KB translation granule if the implementation supports 52 bits of PA.
+            - Allows a level 1 block size where the block covers a 64GB address range for the 16KB translation granule if the implementation supports 52 bits of PA.
+            This feature is supported in AArch64 state only.
+            This feature is OPTIONAL in Armv8.7 implementations. This feature requires implementation of FEAT_LPA and FEAT_LVA.
+            The ID_AA64MMFR0_EL1.{TGRAN4_2, TGRAN16_2, TGRAN4, TGRAN16} fields identify the presence of FEAT_LPA2.
+        """
+
+        """ ID_AA64MMFR0_EL1
+        TGran4_2, bits [43:40]
+            Indicates support for 4KB memory granule size at stage 2. Defined values are:
+            0b0000
+                Support for 4KB granule at stage 2 is identified in the ID_AA64MMFR0_EL1.TGran4 field.
+            0b0001
+                4KB granule not supported at stage 2.
+            0b0010
+                4KB granule supported at stage 2.
+            0b0011
+                When FEAT_LPA2 is implemented 4KB granule at stage 2 supports 52-bit input and output addresses.
+            All other values are reserved.
+            The 0b0000 value is deprecated.
+
+        TGran16_2, bits [35:32]
+            Indicates support for 16KB memory granule size at stage 2. Defined values are:
+            0b0000
+                Support for 16KB granule at stage 2 is identified in the ID_AA64MMFR0_EL1.TGran16 field.
+            0b0001
+                16KB granule not supported at stage 2.
+            0b0010
+                16KB granule supported at stage 2.
+            0b0011
+                When FEAT_LPA2 is implemented 16KB granule at stage 2 supports 52-bit input and output addresses.
+            All other values are reserved.
+            The 0b0000 value is deprecated.
+
+        TGran4, bits [31:28]
+            Indicates support for 4KB memory translation granule size. Defined values are:
+            0b0000
+                4KB granule supported.
+            0b0001
+                When FEAT_LPA2 is implemented 4KB granule supports 52-bit input and output addresses.
+            0b1111
+                4KB granule not supported.
+            All other values are reserved.
+
+        TGran16, bits [23:20]
+            Indicates support for 16KB memory translation granule size. Defined values are:
+            0b0000
+                16KB granule not supported.
+            0b0001
+                16KB granule supported.
+            0b0010
+                When FEAT_LPA2 is implemented 16KB granule supports 52-bit input and output addresses.
+            All other values are reserved.
+
+        PARange, bits [3:0]
+            Physical Address range supported. Defined values are:
+            0b0000
+                32 bits, 4GB.
+            0b0001
+                36 bits, 64GB.
+            0b0010
+                40 bits, 1TB.
+            0b0011
+                42 bits, 4TB.
+            0b0100
+                44 bits, 16TB.
+            0b0101
+                48 bits, 256TB.
+            0b0110
+                52 bits, 4PB.
+            All other values are reserved.
+            The value 0b0110 is permitted only if the implementation includes FEAT_LPA, otherwise it is reserved.
+        """
         try:
             ID_AA64MMFR0_EL1 = int(gdb.parse_and_eval('$ID_AA64MMFR0_EL1'))
+            TGran4_2 = (ID_AA64MMFR0_EL1 >> 40) & 0b1111
+            TGran16_2 = (ID_AA64MMFR0_EL1 >> 32) & 0b1111
+            TGran4 = (ID_AA64MMFR0_EL1 >> 28) & 0b1111
+            TGran16 = (ID_AA64MMFR0_EL1 >> 20) & 0b1111
+            self.FEAT_LPA2 = (TGran4_2 == 0b0011) or (TGran16_2 == 0b0011) or (TGran4 == 0b0001) or (TGran16 == 0b0010)
             self.FEAT_LPA = (ID_AA64MMFR0_EL1 & 0b1111) == 0b0110
         except:
+            self.FEAT_LPA2 = False
             self.FEAT_LPA = False
 
-        # check support PAN
+        """
+        FEAT_PAN, Privileged access never
+            FEAT_PAN adds a bit to PSTATE. When the value of this PAN state bit is 1, any privileged data access from EL1, or EL2
+            when HCR_EL2.E2H is 1, to a virtual memory address that is accessible to data accesses at EL0, generates a Permission fault.
+            This feature is mandatory in Armv8.1 implementations.
+            This feature is supported in both AArch64 and AArch32 states.
+            The following fields identify the presence of FEAT_PAN:
+            - ID_AA64MMFR1_EL1.PAN.
+            - ID_MMFR3_EL1.PAN.
+            - ID_MMFR3.PAN
+        """
+
+        """ ID_AA64MMFR1_EL1
+        PAN, bits [23:20]
+            Privileged Access Never. Indicates support for the PAN bit in PSTATE, SPSR_EL1, SPSR_EL2, SPSR_EL3, and DSPSR_EL0. Defined values are:
+            0b0000
+                PAN not supported.
+            0b0001
+                PAN supported.
+            0b0010
+                PAN supported and AT S1E1RP and AT S1E1WP instructions supported.
+            0b0011
+                PAN supported, AT S1E1RP and AT S1E1WP instructions supported, and SCTLR_EL1.EPAN and SCTLR_EL2.EPAN bits supported.
+            All other values are reserved.
+            FEAT_PAN implements the functionality identified by the value 0b0001.
+            FEAT_PAN2 implements the functionality added by the value 0b0010.
+            FEAT_PAN3 implements the functionality added by the value 0b0011.
+            In Armv8.1, the permitted values are 0b0001 and 0b0011.
+            From Armv8.2, the permitted values are 0b0010 and 0b0011.
+            From Armv8.7, the only permitted value is 0b0011.
+        """
         info("{:s} is supported on all ARMv8".format(Color.boldify("PXN")))
         try:
             ID_AA64MMFR1_EL1 = int(gdb.parse_and_eval('$ID_AA64MMFR1_EL1'))
-            self.PAN = ((ID_AA64MMFR1_EL1 >> 20) & 0b1111) != 0b0000
+            self.FEAT_PAN = ((ID_AA64MMFR1_EL1 >> 20) & 0b1111) != 0b0000
         except:
-            self.PAN = False
-        if self.PAN:
+            self.FEAT_PAN = False
+        if self.FEAT_PAN:
             info("{:s} is supported".format(Color.boldify("PAN")))
         else:
             info("PAN is unsupported")
 
-        # check support 52 bit virtual address, or not (=48 bit)
+        """
+        FEAT_TTST, Small translation tables
+            FEAT_TTST relaxes the lower limit on the size of translation tables, by increasing the maximum
+            permitted value of the T1SZ and T0SZ fields in TCR_EL1, TCR_EL2, TCR_EL3, VTCR_EL2 and VSTCR_EL2.
+            This feature is supported in AArch64 state only.
+            This feature is mandatory if FEAT_SEL2 is implemented.
+            This feature is OPTIONAL if FEAT_SEL2 is not implemented.
+            The ID_AA64MMFR2_EL1.ST field identifies the presence of FEAT_TTST.
+
+        FEAT_LVA, Large VA support
+            FEAT_LVA supports a larger VA space for each translation table base register of up to 52 bits when using the 64KB translation granule.
+            This feature is supported in AArch64 state only.
+            This is an OPTIONAL feature in Armv8.2 implementations. It is IMPLEMENTATION DEFINED whether it is implemented.
+            If FEAT_LVA is implemented, then any implemented trace macrocell must be at least ETMv4.2.
+            The ID_AA64MMFR2_EL1.VARange field identifies the presence of FEAT_LVA.
+        """
+
+        """ ID_AA64MMFR2_EL1
+        ST, bits [31:28]
+            Identifies support for small translation tables. Defined values are:
+            0b0000
+                The maximum value of the TCR_ELx.{T0SZ,T1SZ} and VTCR_EL2.T0SZ fields is 39.
+            0b0001
+                The maximum value of the TCR_ELx.{T0SZ,T1SZ} and VTCR_EL2.T0SZ fields is 48 for 4KB and 16KB granules, and 47 for 64KB granules.
+            All other values are reserved.
+            FEAT_TTST implements the functionality identified by the value 0b0001.
+            If FEAT_SEL2 is implemented, the only permitted value is 0b0001.
+            In an implementation which does not support FEAT_SEL2, the permitted values are 0b0000 and 0b0001.
+
+        VARange, bits [19:16]
+            Indicates support for a larger virtual address. Defined values are:
+            0b0000
+                VMSAv8-64 supports 48-bit VAs.
+            0b0001
+                VMSAv8-64 supports 52-bit VAs when using the 64KB translation granule. The size for other translation granules is not defined by this field.
+            All other values are reserved.
+            FEAT_LVA implements the functionality identified by the value 0b0001.
+            From Armv8.2, the permitted values are 0b0000 and 0b0001.
+        """
         try:
             ID_AA64MMFR2_EL1 = int(gdb.parse_and_eval('$ID_AA64MMFR2_EL1'))
+            self.FEAT_TTST = ((ID_AA64MMFR2_EL1 >> 28) & 0b1111) == 0b0001
             self.FEAT_LVA = ((ID_AA64MMFR2_EL1 >> 16) & 0b1111) == 0b0001
         except:
+            self.FEAT_TTST = False
             self.FEAT_LVA = False
+
+        return
+
+    def pagewalk(self):
+        # parse system registers
+        self.pagewalk_init()
+
+        # TODO implementation for VSTTBR_EL2, VSTCR_EL2 pattern
 
         # do pagewalk
         if self.TargetEL < 1:
             warn('No paging in EL{:d}'.format(self.TargetEL))
             return
         elif self.TargetEL == 1:
-            if self.EL1:
-                if self.EL2VM:
+            if self.EL1_M:
+                if self.EL2_VM:
                     # el2_mapping is needed because read_mem() uses PA, but not IPA
                     self.silent = True
-                    self.pagewalk_EL2v()
+                    self.pagewalk_VTTBR_EL2()
                     if self.mappings:
                         self.el2_mappings = self.mappings
                     self.silent = False
-                self.pagewalk_EL1u()
-                self.pagewalk_EL1k()
+                self.pagewalk_TTBR0_EL1()
+                self.pagewalk_TTBR1_EL1()
             else:
                 info("EL1/0 translation is unused")
         elif self.TargetEL == 2:
-            if self.EL2VM:
-                self.pagewalk_EL2v()
+            if self.EL2_VM:
+                self.pagewalk_VTTBR_EL2()
             else:
                 info("EL2(as stage2) translation is unused")
-            if self.EL2:
-                self.pagewalk_EL2()
+            if self.EL2_M:
+                self.pagewalk_TTBR0_EL2()
+                if self.EL2_M20:
+                    self.pagewalk_TTBR1_EL2()
             else:
                 info("EL2(as stage1) translation is unused")
         elif self.TargetEL == 3:
-            if self.EL3:
+            if self.EL3_M:
                 if not self.switch_el():
                     return
-                self.pagewalk_EL3()
+                self.pagewalk_TTBR0_EL3()
                 self.revert_el()
             else:
                 info("EL3 translation is unused")
