@@ -28733,9 +28733,9 @@ class PagewalkCommand(GenericCommand):
         self.mappings = merged_mappings
         return
 
-    def range_filter(self):
+    def vrange_filter(self):
         filterd_mappings = []
-        for addr in self.range:
+        for addr in self.vrange:
             for mapping in self.mappings:
                 va, _, size, cnt = mapping[:4]
                 if isinstance(va, str) and "*" in va:
@@ -28750,7 +28750,19 @@ class PagewalkCommand(GenericCommand):
                     if va <= addr and addr < va + size * cnt:
                         filterd_mappings.append(mapping)
                         break
+        self.mappings = sorted(filterd_mappings)
+        return
 
+    def prange_filter(self):
+        filterd_mappings = []
+        for addr in self.prange:
+            for mapping in self.mappings:
+                _, pa, size, cnt = mapping[:4]
+                if isinstance(pa, str):
+                    pa = int(pa, 16)
+                if pa <= addr and addr < pa + size * cnt:
+                    filterd_mappings.append(mapping)
+                    break
         self.mappings = sorted(filterd_mappings)
         return
 
@@ -28796,10 +28808,15 @@ class PagewalkCommand(GenericCommand):
             self.merge2()
             info("PT Entry (merged consecutive pages): {:d}".format(len(self.mappings)))
 
-        # filter by address range
-        if self.range != []:
-            self.range_filter()
-            info("PT Entry (filterd by address range): {:d}".format(len(self.mappings)))
+        # filter by virtual address range
+        if self.vrange != []:
+            self.vrange_filter()
+            info("PT Entry (filterd by virtual address range): {:d}".format(len(self.mappings)))
+
+        # filter by physical address range
+        if self.prange != []:
+            self.prange_filter()
+            info("PT Entry (filterd by physical address range): {:d}".format(len(self.mappings)))
 
         # create output
         lines = []
@@ -28877,11 +28894,18 @@ class PagewalkCommand(GenericCommand):
             self.filter.append(pattern)
             argv = argv[:idx] + argv[idx+2:]
 
-        self.range = []
-        while "--range" in argv:
-            idx = argv.index("--range")
-            range_addr = int(argv[idx + 1], 16)
-            self.range.append(range_addr)
+        self.vrange = []
+        while "--vrange" in argv:
+            idx = argv.index("--vrange")
+            vrange_addr = int(argv[idx + 1], 16)
+            self.vrange.append(vrange_addr)
+            argv = argv[:idx] + argv[idx+2:]
+
+        self.prange = []
+        while "--prange" in argv:
+            idx = argv.index("--prange")
+            prange_addr = int(argv[idx + 1], 16)
+            self.prange.append(prange_addr)
             argv = argv[:idx] + argv[idx+2:]
 
         self.trace = []
@@ -28919,15 +28943,16 @@ class PagewalkCommand(GenericCommand):
 class PagewalkX64Command(PagewalkCommand):
     """Dump pagetable for x64/x86 using qemu-monitor."""
     _cmdline_ = "pagewalk x64"
-    _syntax_ = "{:s} [-h] [--print-each-level] [--no-merge] [--filter REGEX_PATTERN] [--range ADDRESS] [--sort-by-phys] [--simple] [--trace ADDRESS]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [--print-each-level] [--no-merge] [--filter REGEX] [--vrange ADDR] [--prange ADDR] [--sort-by-phys] [--simple] [--trace ADDR]".format(_cmdline_)
     _example_ = "\n"
     _example_ += "{:s} --print-each-level # show all level pagetables\n".format(_cmdline_)
     _example_ += "{:s} --no-merge         # do not merge similar/consecutive address\n".format(_cmdline_)
-    _example_ += "{:s} --filter '0xabc'   # grep by REGEX pattern\n".format(_cmdline_)
-    _example_ += "{:s} --range '0x7fff00' # filter by map included specific address\n".format(_cmdline_)
+    _example_ += "{:s} --filter 0xabc     # grep by REGEX pattern\n".format(_cmdline_)
+    _example_ += "{:s} --vrange 0x7fff00  # filter by map included specific virtual address\n".format(_cmdline_)
+    _example_ += "{:s} --prange 0x7fff00  # filter by map included specific physical address\n".format(_cmdline_)
     _example_ += "{:s} --sort-by-phys     # sort by physical address\n".format(_cmdline_)
     _example_ += "{:s} --simple           # merge with ignoring physical address consecutivness\n".format(_cmdline_)
-    _example_ += "{:s} --trace '0x7fff00' # show all level pagetables only associated specific address".format(_cmdline_)
+    _example_ += "{:s} --trace 0x7fff00   # show all level pagetables only associated specific address".format(_cmdline_)
     _aliases_ = ["pagewalk x86",]
     _category_ = "Qemu-system Cooperation"
 
@@ -29353,15 +29378,16 @@ class PagewalkX64Command(PagewalkCommand):
 class PagewalkArmCommand(PagewalkCommand):
     """Dump pagetable for ARM (Cortex-A only) using qemu-monitor."""
     _cmdline_ = "pagewalk arm"
-    _syntax_ = "{:s} [-h] [--print-each-level] [--no-merge] [--filter REGEX_PATTERN] [--range ADDRESS] [--sort-by-phys] [--simple] [--trace ADDRESS]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [--print-each-level] [--no-merge] [--filter REGEX] [--vrange ADDR] [--prange ADDR] [--sort-by-phys] [--simple] [--trace ADDR]".format(_cmdline_)
     _example_ = "\n"
     _example_ += "{:s} --print-each-level # show all level pagetables\n".format(_cmdline_)
     _example_ += "{:s} --no-merge         # do not merge similar/consecutive address\n".format(_cmdline_)
-    _example_ += "{:s} --filter '0xabc'   # grep by REGEX pattern\n".format(_cmdline_)
-    _example_ += "{:s} --range '0x7fff00' # filter by map included specific address\n".format(_cmdline_)
+    _example_ += "{:s} --filter 0xabc     # grep by REGEX pattern\n".format(_cmdline_)
+    _example_ += "{:s} --vrange 0x7fff00  # filter by map included specific virtual address\n".format(_cmdline_)
+    _example_ += "{:s} --prange 0x7fff00  # filter by map included specific physical address\n".format(_cmdline_)
     _example_ += "{:s} --sort-by-phys     # sort by physical address\n".format(_cmdline_)
     _example_ += "{:s} --simple           # merge with ignoring physical address consecutivness\n".format(_cmdline_)
-    _example_ += "{:s} --trace '0x7fff00' # show all level pagetables only associated specific address\n".format(_cmdline_)
+    _example_ += "{:s} --trace 0x7fff00   # show all level pagetables only associated specific address\n".format(_cmdline_)
     _example_ += "PL2 pagewalk is unsupported"
     _category_ = "Qemu-system Cooperation"
 
@@ -30131,15 +30157,16 @@ class PagewalkArmCommand(PagewalkCommand):
 class PagewalkArm64Command(PagewalkCommand):
     """Dump pagetable for ARM64 using qemu-monitor (for ARMv8.3)."""
     _cmdline_ = "pagewalk arm64"
-    _syntax_ = "{:s} [-h] [TARGET_EL] [--print-each-level] [--no-merge] [--filter REGEX_PATTERN] [--range ADDRESS] [--sort-by-phys] [--simple] [--trace ADDRESS]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [TARGET_EL] [--print-each-level] [--no-merge] [--filter REGEX] [--vrange ADDR] [--prange ADDR] [--sort-by-phys] [--simple] [--trace ADDR]".format(_cmdline_)
     _example_ = "\n"
     _example_ += "{:s} --print-each-level # for current EL, show all level pagetables\n".format(_cmdline_)
     _example_ += "{:s} 1 --no-merge       # for EL1+0, do not merge similar/consecutive address\n".format(_cmdline_)
-    _example_ += "{:s} 2 --filter '0xabc' # for EL2, grep by REGEX pattern\n".format(_cmdline_)
-    _example_ += "{:s} --range '0x7fff00' # for current EL, filter by map included specific address\n".format(_cmdline_)
+    _example_ += "{:s} 2 --filter 0xabc   # for EL2, grep by REGEX pattern\n".format(_cmdline_)
+    _example_ += "{:s} --vrange 0x7fff00  # filter by map included specific virtual address\n".format(_cmdline_)
+    _example_ += "{:s} --prange 0x7fff00  # filter by map included specific physical address\n".format(_cmdline_)
     _example_ += "{:s} --sort-by-phys     # for current EL, sort by physical address\n".format(_cmdline_)
     _example_ += "{:s} --simple           # for current EL, merge with ignoring physical address consecutivness\n".format(_cmdline_)
-    _example_ += "{:s} --trace '0x7fff00' # for current EL, show all level pagetables only associated specific address".format(_cmdline_)
+    _example_ += "{:s} --trace 0x7fff00   # for current EL, show all level pagetables only associated specific address".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
 
     def __init__(self, *args, **kwargs):
