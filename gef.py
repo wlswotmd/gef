@@ -6594,7 +6594,7 @@ class SearchPatternCommand(GenericCommand):
     """SearchPatternCommand: search a pattern in memory. If given an hex value (starting with 0x)
     the command will also try to look for upwards cross-references to this address."""
     _cmdline_ = "search-pattern"
-    _syntax_ = "{:s} PATTERN|--hex=PATTERN [little|big] [section] [--aligned N] [-v] [--disable-utf16]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] PATTERN|--hex=PATTERN [little|big] [section] [--aligned N] [-v] [--disable-utf16]".format(_cmdline_)
     _aliases_ = ["find",]
     _example_ = "\n"
     _example_ += "{:s} AAAAAAAA # search 'AAAAAAAA' from whole memory\n".format(_cmdline_)
@@ -6603,12 +6603,17 @@ class SearchPatternCommand(GenericCommand):
     _example_ += "{:s} 0x079ee018 little 0x600000-0x601000 # hex must start by '0x' with ** 0-padding **\n".format(_cmdline_)
     _example_ += "{:s} AAAA little binary # 'binary' means executable mapped area itself (supported only usermode)\n".format(_cmdline_)
     _example_ += "{:s} AAAA little heap --aligned 16 # search with aligned\n".format(_cmdline_)
-    _example_ += "{:s} --hex=\"00 00 00 00\" little stack # another valid format (invalid char is ignored)".format(_cmdline_)
+    _example_ += "{:s} --hex=\"00 00 00 00\" little stack # another valid format (invalid char is ignored)\n".format(_cmdline_)
+    _example_ += "{:s} AAAA -v # verbose output".format(_cmdline_)
     _category_ = "Show/Modify Memory"
 
     def print_section(self, section):
+        if isinstance(section, Address):
+            section = section.section
+
         if section is None:
             return
+
         title = "In "
         if section.path:
             title += "'{}'".format(Color.blueify(section.path))
@@ -6655,6 +6660,7 @@ class SearchPatternCommand(GenericCommand):
         res = gdb.execute("pagewalk", to_string=True)
         res = sorted(set(res.splitlines()))
         res = list(filter(lambda line: line.endswith("]"), res))
+        res = list(filter(lambda line: not "[+]" in line, res))
         res = list(filter(lambda line: not "*" in line, res))
         for line in res:
             if is_x86() and "ACCESSED" not in line:
@@ -6664,14 +6670,14 @@ class SearchPatternCommand(GenericCommand):
             if is_x86():
                 perm = Permission.from_process_maps(lines[5][1:].lower())
             elif is_arm32():
-                perm = line.split("PL1/")[1][:3]
+                perm = line.split("/")[-1][:3]
                 perm = Permission.from_process_maps(perm.lower())
             elif is_arm64():
                 if 0xffff000008010000 <= addr_start < 0xffff000008020000 : # qemu process will be die if touch
                     continue
                 if 0xffff000008030000 <= addr_start < 0xffff000008040000 : # qemu process will be die if touch
                     continue
-                perm = line.split("EL1/")[1][:3]
+                perm = line.split("/")[-1][:3]
                 perm = Permission.from_process_maps(perm.lower())
             yield Section(page_start=addr_start, page_end=addr_end, permission=perm, path="")
 
@@ -6691,16 +6697,17 @@ class SearchPatternCommand(GenericCommand):
                 continue
 
             if self.verbose:
-                self.print_section(section)
+                self.print_section(section) # verbose: always print section before search
 
             start = section.page_start
             end = section.page_end - 1
-            printed = None
+            ret = self.search_pattern_by_address(pattern, start, end) # search
 
-            for loc in self.search_pattern_by_address(pattern, start, end):
-                if not self.verbose and printed is None:
-                    self.print_section(section)
-                    printed = True
+            if ret:
+                if not self.verbose:
+                    self.print_section(section) # default: print section if found
+ 
+            for loc in ret:
                 self.print_loc(loc)
 
             if not is_alive():
@@ -6715,16 +6722,20 @@ class SearchPatternCommand(GenericCommand):
     def do_invoke(self, argv):
         self.dont_repeat()
 
-        self.aligned = None
-        if "--aligned" in argv:
-            idx = argv.index("--aligned")
-            self.aligned = int(argv[idx+1])
-            argv = argv[:idx] + argv[idx+2:]
+        if "-h" in argv:
+            self.usage()
+            return
 
         self.verbose = False
         if "-v" in argv:
             self.verbose = True
             argv.remove("-v")
+
+        self.aligned = None
+        if "--aligned" in argv:
+            idx = argv.index("--aligned")
+            self.aligned = int(argv[idx+1])
+            argv = argv[:idx] + argv[idx+2:]
 
         self.disable_utf16 = False
         if "--disable-utf16" in argv:
@@ -6735,18 +6746,21 @@ class SearchPatternCommand(GenericCommand):
             self.usage()
             return
 
-        argc = len(argv)
-        pattern = argv[0]
-        endian = get_endian()
-        pattern_utf16 = None
-
-        if argc >= 2:
+        # endianness
+        if len(argv) >= 2:
             if argv[1].lower() == "big":
                 endian = Elf.BIG_ENDIAN
             elif argv[1].lower() == "little":
                 endian = Elf.LITTLE_ENDIAN
+            else:
+                self.usage()
+                return
+        else:
+            endian = get_endian()
 
-        if pattern.startswith("--hex="):
+        # pattern replace
+        pattern = argv[0]
+        if pattern.startswith("--hex="): # "--hex=41414141" -> "\x41\x41\x41\x41"
             _pattern = ""
             for c in pattern[6:].lower():
                 if c in '0123456789abcdef':
@@ -6755,47 +6769,63 @@ class SearchPatternCommand(GenericCommand):
                 self.usage()
                 return
             pattern = "".join(["\\x"+_pattern[i:i+2] for i in range(0, len(_pattern), 2)])
-
-        elif is_hex(pattern):
+        elif is_hex(pattern): # "0x41414141" -> "\x41\x41\x41\x41"
             if endian == Elf.BIG_ENDIAN:
                 pattern = "".join(["\\x"+pattern[i:i+2] for i in range(2, len(pattern), 2)])
             else:
                 pattern = "".join(["\\x"+pattern[i:i+2] for i in range(len(pattern) - 2, 0, -2)])
 
-        else:
-            if self.isascii(pattern) and not self.disable_utf16:
-                pattern_utf16 = "".join([x + "\\x00" for x in pattern])
+        # create utf16 pattern
+        pattern_utf16 = None
+        if self.isascii(pattern) and not self.disable_utf16:
+            pattern_utf16 = "".join([x + "\\x00" for x in pattern])
 
-        if argc == 3:
-            info("Searching '{:s}' in {:s}".format(Color.yellowify(pattern), argv[2]))
-
+        if len(argv) == 3:
             if re.match(r"(0x)?[0-9a-fA-F]+-(0x)?[0-9a-fA-F]+", argv[2]):
-                start, end = parse_string_range(argv[2])
+                # specific range -> call search_pattern_by_address directly
+                search_area = argv[2]
+                info("Searching '{:s}' in {:s}".format(Color.yellowify(pattern), search_area))
+                start, end = parse_string_range(search_area)
 
                 loc = lookup_address(start)
                 if loc.valid:
-                    self.print_section(loc.section)
+                    if self.verbose:
+                        self.print_section(loc) # verbose: always print section before search
+                else:
+                    err("Not found valid memory area")
+                    return
 
-                for found_loc in self.search_pattern_by_address(pattern, start, end):
+                ret = self.search_pattern_by_address(pattern, start, end) # search
+
+                if ret and not self.verbose:
+                    self.print_section(loc) # default: print section if found
+
+                for found_loc in ret:
                     self.print_loc(found_loc)
 
                 if pattern_utf16 is not None:
-                    for found_loc in self.search_pattern_by_address(pattern_utf16, start, end):
+                    info("Searching '{:s}' in {:s}".format(Color.yellowify(pattern_utf16), search_area))
+                    ret = self.search_pattern_by_address(pattern_utf16, start, end)
+                    for found_loc in ret:
                         self.print_loc(found_loc)
-
             else:
+                # section name -> call search wrapper
                 section_name = argv[2]
                 if section_name in ["binary", "bin"] and not is_qemu_system():
                     section_name = get_filepath()
 
+                info("Searching '{:s}' in {:s}".format(Color.yellowify(pattern), section_name))
                 self.search_pattern(pattern, section_name)
 
                 if pattern_utf16 is not None:
+                    info("Searching '{:s}' in {:s}".format(Color.yellowify(pattern_utf16), section_name))
                     self.search_pattern(pattern_utf16, section_name)
         else:
+            # whole memory -> call search wrapper
             info("Searching '{:s}' in memory".format(Color.yellowify(pattern)))
             self.search_pattern(pattern, "")
             if pattern_utf16 is not None:
+                info("Searching '{:s}' in memory".format(Color.yellowify(pattern_utf16)))
                 self.search_pattern(pattern_utf16, "")
         return
 
