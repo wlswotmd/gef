@@ -20261,8 +20261,9 @@ class KernelTaskCommand(GenericCommand):
 class SyscallTableViewCommand(GenericCommand):
     """Display sys_call_table entries under qemu-system."""
     _cmdline_ = "syscall-table-view"
-    _syntax_ = "{:s}".format(_cmdline_)
-    _example_ = "{:s}".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [--filter REGEX]".format(_cmdline_)
+    _example_ = "{:s}\n".format(_cmdline_)
+    _example_ += "{:s} --filter write".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
 
     def get_sys_call_table(self):
@@ -20363,9 +20364,15 @@ class SyscallTableViewCommand(GenericCommand):
         gef_print(Color.colorify("{:5s} {:18s}: {:18s} {:s}".format(*legend), get_gef_setting("theme.table_heading")))
         for i, addr, syscall_function_addr, symbol in table:
             if seen[syscall_function_addr] == 1: # valid entry
-                gef_print("[{:03d}] {:#018x}: {:#018x} {:s}".format(i, addr, syscall_function_addr, symbol))
+                msg = "[{:03d}] {:#018x}: {:#018x} {:s}".format(i, addr, syscall_function_addr, symbol)
             else: # invalid entry
-                gef_print("[{:03d}] {:#018x}: ".format(i, addr) + Color.grayify("{:#018x} {:s}".format(syscall_function_addr, symbol)))
+                msg = "[{:03d}] {:#018x}: ".format(i, addr) + Color.grayify("{:#018x} {:s}".format(syscall_function_addr, symbol))
+            if not self.filter:
+                gef_print(msg)
+            else:
+                for filt in self.filter:
+                    if re.search(filt, msg):
+                        gef_print(msg)
         return
 
     @only_if_gdb_running
@@ -20373,6 +20380,22 @@ class SyscallTableViewCommand(GenericCommand):
     @only_if_x86_32_64_or_arm_32_64
     def do_invoke(self, argv):
         self.dont_repeat()
+
+        if "-h" in argv:
+            self.usage()
+            return
+
+        self.filter = []
+        while "--filter" in argv:
+            idx = argv.index("--filter")
+            pattern = argv[idx + 1]
+            self.filter.append(pattern)
+            argv = argv[:idx] + argv[idx+2:]
+
+        if argv:
+            self.usage()
+            return
+
         self.syscall_table_view()
         return
 
