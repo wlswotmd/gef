@@ -23269,12 +23269,9 @@ class VmlinuxToElfApplyCommand(GenericCommand):
         #   gdb 8.x: Usage: add-symbol-file FILE ADDR [-readnow | -readnever | -s SECT-NAME SECT-ADDR]...
         # But the created ELF has no .text, only a .kernel
         # Applying an empty symbol has no effect, so tentatively specify the same address as the .kernel.
-
-        # Also vmlinux-to-elf create 2 sections that are .kernel and .bss, but not .data.
-        # Because we use dumped raw memory instead of bzImage, vmlinux-to-elf can't guess the section name correctly.
-        # The guessed RW-address is .data, but use this as the .bss address, as vmlinux-to-elf names it .bss.
-        gdb.execute("add-symbol-file {} {:#x} -s .kernel {:#x} -s .bss {:#x}".format(SYMBOLED_VMLINUX_FILE, addrs['kbase'], addrs['kbase'], addrs['krwbase']))
-        info("Added")
+        cmd = "add-symbol-file {} {:#x} -s .kernel {:#x}".format(SYMBOLED_VMLINUX_FILE, addrs['kbase'], addrs['kbase'])
+        info(cmd)
+        gdb.execute(cmd)
         return
 
 
