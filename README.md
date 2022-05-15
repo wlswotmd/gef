@@ -321,5 +321,5 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
     * It was updated up to linux kernel 5.16.16 (only x64/x86/ARM64/ARM).
     * Since there are many exceptions at system calls for each architecture, arguments information of system call was picked up manually.
 * Removed some features I don't use.
-    * `ida-interact`, `gef-remote`, `pie`, `pcustom` and `ksymaddr`.
+    * `ida-interact`, `gef-remote`, `pie`, `pcustom`, `ksymaddr`, `shellcode` and `highlight`.
 * Many bugs fix / formatting / made it easy for me to use.

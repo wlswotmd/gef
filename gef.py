@@ -1741,15 +1741,6 @@ def gef_makedirs(path, mode=0o755):
     return abspath
 
 
-@lru_cache()
-def gdb_lookup_symbol(sym):
-    """Fetch the proper symbol or None if not defined."""
-    try:
-        return gdb.decode_line(sym)[1]
-    except gdb.error:
-        return None
-
-
 @lru_cache(maxsize=512)
 def gdb_get_location_from_symbol(address):
     """Retrieve the location of the `address` argument from the symbol table.
@@ -1772,7 +1763,7 @@ def gdb_get_location_from_symbol(address):
     return name, offset
 
 
-def get_symbol(addr):
+def get_symbol_string(addr):
     try:
         if isinstance(addr, str):
             addr = re.sub(r"\x1B\[([0-9]{1,2}(;[0-9]{1,2})*)?m", "", addr) # remove color
@@ -8352,7 +8343,7 @@ class DetailRegistersCommand(GenericCommand):
                 continue
 
             # register value with aligned width
-            sym = get_symbol(value)
+            sym = get_symbol_string(value)
             addr = lookup_address(align_address(int(value)))
             if sym or addr.valid:
                 line += str(addr) + sym # 0x0000000041414141 <foo> # 0-pad colored value with symbol if exists
@@ -8365,7 +8356,7 @@ class DetailRegistersCommand(GenericCommand):
                 sep = " {:s} ".format(RIGHT_ARROW)
                 for addr in addrs[1:]:
                     if isinstance(addr, Address):
-                        line += sep + str(addr) + get_symbol(addr.value)
+                        line += sep + str(addr) + get_symbol_string(addr.value)
                     else:
                         line += sep + addr # actually this is msg
 
@@ -8389,118 +8380,6 @@ class DetailRegistersCommand(GenericCommand):
 
         if special_line:
             gef_print(special_line)
-        return
-
-
-@register_command
-class ShellcodeCommand(GenericCommand):
-    """ShellcodeCommand uses @JonathanSalwan simple-yet-awesome shellcode API to
-    download shellcodes."""
-    _cmdline_ = "shellcode"
-    _syntax_ = "{:s} (search|get)".format(_cmdline_)
-    _category_ = "Exploit Development"
-
-    def __init__(self):
-        super().__init__(prefix=True)
-        return
-
-    def do_invoke(self, argv):
-        self.dont_repeat()
-        err("Missing sub-command (search|get)")
-        self.usage()
-        return
-
-
-@register_command
-class ShellcodeSearchCommand(GenericCommand):
-    """Search pattern in shell-storm's shellcode database."""
-    _cmdline_ = "shellcode search"
-    _syntax_ = "{:s} PATTERN1 PATTERN2".format(_cmdline_)
-    _aliases_ = ["sc-search",]
-    _category_ = "Exploit Development"
-
-    api_base = "http://shell-storm.org"
-    search_url = "{}/api/?s=".format(api_base)
-
-    def do_invoke(self, argv):
-        self.dont_repeat()
-        if not argv:
-            err("Missing pattern to search")
-            self.usage()
-            return
-
-        self.search_shellcode(argv)
-        return
-
-    def search_shellcode(self, search_options):
-        # API : http://shell-storm.org/shellcode/
-        args = "*".join(search_options)
-
-        res = http_get(self.search_url + args)
-        if res is None:
-            err("Could not query search page")
-            return
-
-        ret = gef_pystring(res)
-
-        # format: [author, OS/arch, cmd, id, link]
-        lines = ret.split("\\n")
-        refs = [line.split("::::") for line in lines]
-
-        if refs:
-            info("Showing matching shellcodes")
-            info("\t".join(["Id", "Platform", "Description"]))
-            for ref in refs:
-                try:
-                    _, arch, cmd, sid, _ = ref
-                    gef_print("\t".join([sid, arch, cmd]))
-                except ValueError:
-                    continue
-
-            info("Use `shellcode get <id>` to fetch shellcode")
-        return
-
-@register_command
-class ShellcodeGetCommand(GenericCommand):
-    """Download shellcode from shell-storm's shellcode database."""
-    _cmdline_ = "shellcode get"
-    _syntax_ = "{:s} SHELLCODE_ID".format(_cmdline_)
-    _aliases_ = ["sc-get",]
-    _category_ = "Exploit Development"
-
-    api_base = "http://shell-storm.org"
-    get_url = "{}/shellcode/files/shellcode-{{:d}}.php".format(api_base)
-
-    def do_invoke(self, argv):
-        self.dont_repeat()
-
-        if len(argv) != 1:
-            err("Missing ID to download")
-            self.usage()
-            return
-
-        if not argv[0].isdigit():
-            err("ID is not a number")
-            self.usage()
-            return
-
-        self.get_shellcode(int(argv[0]))
-        return
-
-    def get_shellcode(self, sid):
-        info("Downloading shellcode id={:d}".format(sid))
-        res = http_get(self.get_url.format(sid))
-        if res is None:
-            err("Failed to fetch shellcode #{:d}".format(sid))
-            return
-
-        ok("Downloaded, written to disk...")
-        fd, fname = tempfile.mkstemp(suffix=".txt", prefix="sc-", text=True, dir="/tmp")
-        shellcode = res.splitlines()[7:-11]
-        shellcode = b"\n".join(shellcode).replace(b"&quot;", b'"')
-        os.write(fd, shellcode)
-        os.close(fd)
-        ok("Shellcode written to '{:s}'".format(fname))
         return
 
 
@@ -12904,7 +12783,7 @@ class PatchHistoryCommand(PatchCommand):
                 a = ' '.join(["{:02x}".format(x) for x in hist["after_data"][:0x10]])
                 if len(hist["after_data"]) > 0x10:
                     a += "..."
-                sym = get_symbol(hist["addr"])
+                sym = get_symbol_string(hist["addr"])
                 gef_print("[{:d}] {:#x}{:s}: {:s} -> {:s}".format(i, hist["addr"], sym, b, a))
         else:
             info("Patch history is empty.")
@@ -12945,7 +12824,7 @@ class PatchRevertCommand(PatchCommand):
             a = ' '.join(["{:02x}".format(x) for x in hist["after_data"][:0x10]])
             if len(hist["after_data"]) > 0x10:
                 a += "..."
-            sym = get_symbol(hist["addr"])
+            sym = get_symbol_string(hist["addr"])
             info("revert {:#x}{:s}: {:s} -> {:s}".format(hist["addr"], sym, a, b))
 
             if is_supported_physmode():
@@ -13095,7 +12974,7 @@ class DereferenceCommand(GenericCommand):
             if link:
                 link += sep
             if isinstance(addr, Address):
-                link += str(addr) + get_symbol(addr.value)
+                link += str(addr) + get_symbol_string(addr.value)
             else:
                 link += addr # actually this is msg
 
@@ -14673,7 +14552,7 @@ class DestructorDumpCommand(GenericCommand):
             next_ = read_int_from_memory(current)
             current += current_arch.ptrsize
             decoded_fn = self.decode_function(func)
-            sym = get_symbol(decoded_fn)
+            sym = get_symbol_string(decoded_fn)
             decoded_fn_s = Color.boldify("{:#x}".format(decoded_fn))
             gef_print("    -> func:     {:#x}{:s}: {:#x} (={:s}{:s})".format(addr, self.perm(addr), func, decoded_fn_s, sym))
             gef_print("       obj:      {:#x}{:s}: {:#x}".format(addr + current_arch.ptrsize*1, self.perm(addr + current_arch.ptrsize*1), obj))
@@ -14713,7 +14592,7 @@ class DestructorDumpCommand(GenericCommand):
             if fn == arg == dso_handle == 0: # flavor might be non-zero, so skip check
                 break
             decoded_fn = self.decode_function(fn)
-            sym = get_symbol(decoded_fn)
+            sym = get_symbol_string(decoded_fn)
             decoded_fn_s = Color.boldify("{:#x}".format(decoded_fn))
             fns = "       fns[{:d}]:{:#x}{:s}:".format(i, addr, self.perm(addr))
             gef_print("{} flavor:{:d}".format(fns, flavor))
@@ -14751,7 +14630,7 @@ class DestructorDumpCommand(GenericCommand):
                 else:
                     addr = shdr.sh_addr
                 gef_print(link_map["name"])
-                sym = get_symbol(addr)
+                sym = get_symbol_string(addr)
                 func_s = Color.boldify("{:#x}".format(addr))
                 gef_print("    -> {:s}{:s}".format(func_s, sym))
         else:
@@ -14763,7 +14642,7 @@ class DestructorDumpCommand(GenericCommand):
                 return
             addr = shdr.sh_addr
             gef_print(get_filepath())
-            sym = get_symbol(addr)
+            sym = get_symbol_string(addr)
             func_s = Color.boldify("{:#x}".format(addr))
             gef_print("    -> {:s}{:s}".format(func_s, sym))
         return
@@ -14794,7 +14673,7 @@ class DestructorDumpCommand(GenericCommand):
                     continue
                 gef_print(link_map["name"])
                 for addr, func in entries:
-                    sym = get_symbol(func)
+                    sym = get_symbol_string(func)
                     func_s = Color.boldify("{:#x}".format(func))
                     gef_print("    -> {:#x}{:s}: {:s}{:s}".format(addr, self.perm(addr), func_s, sym))
         else:
@@ -14818,7 +14697,7 @@ class DestructorDumpCommand(GenericCommand):
                 return
             gef_print(get_filepath())
             for addr, func in entries:
-                sym = get_symbol(func)
+                sym = get_symbol_string(func)
                 func_s = Color.boldify("{:#x}".format(func))
                 gef_print("    -> {:#x}{:s}: {:s}{:s}".format(addr, self.perm(addr), func_s, sym))
         return
@@ -15031,101 +14910,6 @@ class GotCommand(GenericCommand):
                 fmt = "{:>14s} {:11s} {:#14x} ({:+#9x}) {:s} {:s} {:s}"
                 line = fmt.format("Not found", "", got_address, got_offset, name_c, RIGHT_ARROW, got_value_c)
             gef_print(line)
-        return
-
-
-@register_command
-class HighlightCommand(GenericCommand):
-    """This command highlights user defined text matches which modifies GEF output universally."""
-    _cmdline_ = "highlight"
-    _syntax_ = "{:s} (add|remove|list|clear)".format(_cmdline_)
-    _aliases_ = ["hl",]
-    _category_ = "GEF Maintenance Command"
-
-    def __init__(self):
-        super().__init__(prefix=True)
-        self.add_setting("regex", False, "Enable regex highlighting")
-
-    def do_invoke(self, argv):
-        self.dont_repeat()
-        self.usage()
-        return
-
-
-@register_command
-class HighlightListCommand(GenericCommand):
-    """Show the current highlight table with matches to colors."""
-    _cmdline_ = "highlight list"
-    _aliases_ = ["highlight ls", "hll",]
-    _syntax_ = _cmdline_
-    _category_ = "GEF Maintenance Command"
-
-    def print_highlight_table(self):
-        if not highlight_table:
-            err("no matches found")
-            return
-
-        left_pad = max(map(len, highlight_table.keys()))
-        for match, color in sorted(highlight_table.items()):
-            gef_print("{} {} {}".format(Color.colorify(match.ljust(left_pad), color), VERTICAL_LINE, Color.colorify(color, color)))
-        return
-
-    def do_invoke(self, argv):
-        self.dont_repeat()
-        return self.print_highlight_table()
-
-
-@register_command
-class HighlightClearCommand(GenericCommand):
-    """Clear the highlight table, remove all matches."""
-    _cmdline_ = "highlight clear"
-    _aliases_ = ["hlc",]
-    _syntax_ = _cmdline_
-    _category_ = "GEF Maintenance Command"
-
-    def do_invoke(self, argv):
-        self.dont_repeat()
-        return highlight_table.clear()
-
-
-@register_command
-class HighlightAddCommand(GenericCommand):
-    """Add a match to the highlight table."""
-    _cmdline_ = "highlight add"
-    _syntax_ = "{:s} MATCH COLOR".format(_cmdline_)
-    _aliases_ = ["highlight set", "hla",]
-    _example_ = "{:s} 41414141 yellow".format(_cmdline_)
-    _category_ = "GEF Maintenance Command"
-
-    def do_invoke(self, argv):
-        self.dont_repeat()
-
-        if len(argv) < 2:
-            self.usage()
-            return
-
-        match, color = argv
-        highlight_table[match] = color
-        return
-
-
-@register_command
-class HighlightRemoveCommand(GenericCommand):
-    """Remove a match in the highlight table."""
-    _cmdline_ = "highlight remove"
-    _syntax_ = "{:s} MATCH".format(_cmdline_)
-    _aliases_ = ["highlight delete", "highlight del", "highlight unset", "highlight rm", "hlr",]
-    _example_ = "{:s} remove 41414141".format(_cmdline_)
-    _category_ = "GEF Maintenance Command"
-
-    def do_invoke(self, argv):
-        self.dont_repeat()
-
-        if not argv:
-            self.usage()
-            return
-
-        highlight_table.pop(argv[0], None)
         return
 
 
