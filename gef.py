@@ -6650,7 +6650,7 @@ class SearchPatternCommand(GenericCommand):
             del mem
         return locations
 
-    def get_process_maps_qemu_system(self):
+    def get_process_maps_qemu_system():
         res = gdb.execute("pagewalk -q", to_string=True)
         res = sorted(set(res.splitlines()))
         res = list(filter(lambda line: line.endswith("]"), res))
@@ -28416,6 +28416,100 @@ class QemuRegistersCommand(GenericCommand):
 
 
 @register_command
+class V2PCommand(GenericCommand):
+    """Transfer from virtual address to physical address."""
+    _cmdline_ = "v2p"
+    _syntax_ = "{:s} [-h] ADDRESS".format(_cmdline_)
+    _category_ = "Qemu-system Cooperation"
+
+    @staticmethod
+    @lru_cache()
+    def get_maps():
+        res = gdb.execute("pagewalk -q --no-merge", to_string=True)
+        res = sorted(set(res.splitlines()))
+        res = list(filter(lambda line: line.endswith("]"), res))
+        res = list(filter(lambda line: not "[+]" in line, res))
+        maps = []
+        for line in res:
+            vrange, prange, *_ = line.split()
+            vstart, vend = [int(x, 16) for x in vrange.split("-")]
+            pstart, pend = [int(x, 16) for x in prange.split("-")]
+            maps.append((vstart, vend, pstart, pend))
+        return maps
+
+    @only_if_gdb_running
+    @only_if_qemu_system
+    @only_if_x86_32_64_or_arm_32_64
+    def do_invoke(self, argv):
+        self.dont_repeat()
+
+        if "-h" in argv:
+            self.usage()
+            return
+
+        if not argv:
+            self.usage()
+            return
+
+        try:
+            addr = int(gdb.parse_and_eval(' '.join(argv)))
+        except:
+            self.usage()
+            return
+
+        maps = self.get_maps()
+        for vstart, vend, pstart, pend in maps:
+            if vstart <= addr < vend:
+                offset = addr - vstart
+                paddr = pstart + offset
+                gef_print("Virt: {:#x} -> Phys: {:#x}".format(addr, paddr))
+        return
+
+
+@register_command
+class P2VCommand(GenericCommand):
+    """Transfer from physical address to virtual address."""
+    _cmdline_ = "p2v"
+    _syntax_ = "{:s} [-h] ADDRESS".format(_cmdline_)
+    _category_ = "Qemu-system Cooperation"
+
+    @only_if_gdb_running
+    @only_if_qemu_system
+    @only_if_x86_32_64_or_arm_32_64
+    def do_invoke(self, argv):
+        self.dont_repeat()
+
+        if "-h" in argv:
+            self.usage()
+            return
+
+        if not argv:
+            self.usage()
+            return
+
+        try:
+            addr = int(gdb.parse_and_eval(' '.join(argv)))
+        except:
+            self.usage()
+            return
+
+        maps = V2PCommand.get_maps()
+        count = 0
+        for vstart, vend, pstart, pend in maps:
+            if pstart <= addr < pend:
+                offset = addr - pstart
+                vaddr = vstart + offset
+                if count < 10:
+                    gef_print("Phys: {:#x} -> Virt: {:#x}".format(addr, vaddr))
+                count += 1
+        if count:
+            gef_print("Total {:d} results are found".format(count))
+        else:
+            gef_print("Not mapped as virt")
+        return
+
+
+@register_command
 class PagewalkCommand(GenericCommand):
     """Get physical memory info via qemu-monitor. Currently, x64, x86, arm and arm64 are supported."""
     _cmdline_ = "pagewalk"
@@ -28754,7 +28848,7 @@ class PagewalkCommand(GenericCommand):
         return argv
 
     @only_if_gdb_running
-    @only_if_gdb_running
+    @only_if_qemu_system
     @only_if_x86_32_64_or_arm_32_64
     def do_invoke(self, argv):
         self.dont_repeat()

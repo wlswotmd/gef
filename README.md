@@ -48,6 +48,8 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm.png)
 * `xp`: is a shortcut for physical memory dump.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xp.png)
+* `v2p`, `p2v`: shows transformation virtual address <-> physical address.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/v2p-p2v.png)
 * `ksymaddr-remote`: prints kallsyms informations from scanning of kernel memory (heuristic).
     * Supported: the symbol of kernel itself.
     * Unsupported: the symbol of kernel modules.
@@ -253,15 +255,15 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/add-symbol-temporary.png)
 * `errno`: prints errno list or specific errno.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/errno.png)
-* `u2d`: is cast/transformation u64 <-> double/float.
+* `u2d`: shows cast/transformation u64 <-> double/float.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/u2d.png)
-* `pack`,`unpack`: is transformation int <-> bytes.
+* `pack`,`unpack`: shows transformation int <-> bytes.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pack-unpack.png)
-* `tohex`,`unhex`: is transformation hex <-> bytes.
+* `tohex`,`unhex`: shows transformation hex <-> bytes.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/tohex-unhex.png)
-* `byteswap`: is transformation little-endian <-> big-endian.
+* `byteswap`: shows transformation little-endian <-> big-endian.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/byteswap.png)
-* `hash-memory`: calculations hash.
+* `hash-memory`: calculates the hash.
     * Supported: md5, sha1, sha224, sha256, sha384, sha512, crc16, crc32, crc64.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hash-memory.png)
 * `memcmp`: compares the contents of address A and B, whether virtual or physical.
