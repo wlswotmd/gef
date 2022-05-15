@@ -320,7 +320,7 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
     * `peek-pointers`, `current-stack-frame`, `xref-telescope`, `bytearray`, `bincompare`, `ftrace` and `v8deref` are moved from gef-extras.
     * This is because a single file is more attractive than ease of maintenance.
 * The system-call table used by `syscall-args` is moved from gef-extras.
-    * It was updated up to linux kernel 5.16.16 (only x64/x86/ARM64/ARM).
+    * It was updated up to linux kernel 5.18-rc6 (only x64/x86/ARM64/ARM).
     * Since there are many exceptions at system calls for each architecture, arguments information of system call was picked up manually.
 * Removed some features I don't use.
     * `ida-interact`, `gef-remote`, `pie`, `pcustom`, `ksymaddr`, `shellcode` and `highlight`.
