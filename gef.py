@@ -34727,21 +34727,20 @@ class GefHelpCommand(gdb.Command):
         doc = "\n                         ".join(doc.split("\n"))
         aliases = " (alias: {:s})".format(", ".join(class_name._aliases_)) if hasattr(class_name, "_aliases_") else ""
         msg = "  {cmd:<23s} -- {help:s}{aliases:s}".format(cmd=cmd, help=Color.greenify(doc), aliases=aliases)
-        cat = class_name._category_ if hasattr(class_name, "_category_") else "Uncategorized"
-        self.docs.append([cat, msg])
+        category = class_name._category_ if hasattr(class_name, "_category_") else "Uncategorized"
+        self.docs.append([category, msg])
         return
 
     def refresh(self):
         """Refresh the documentation."""
-        #self.__doc__ = "\n".join(sorted(self.docs))
         newdoc = ""
-        old_cat = None
-        for cat, msg in sorted(self.docs):
-            if old_cat != cat:
-                newdoc += "[{:s}]\n".format(Color.colorify(cat, "bold yellow"))
-            old_cat = cat
+        old_category = None
+        for category, msg in sorted(self.docs):
+            if old_category != category:
+                newdoc += "[{:s}]\n".format(Color.colorify(category, "bold yellow"))
+            old_category = category
             newdoc += msg + "\n"
-        self.__doc__ = newdoc
+        self.__doc__ = newdoc.rstrip()
         return
 
 
