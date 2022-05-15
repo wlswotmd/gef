@@ -9104,8 +9104,9 @@ class AsmListCommand(GenericCommand):
             return
 
         # filter and print
-        legend = "{:22s} {:60s} {:22s} {}\n".format("Hex code", "Assembly code", "Opcode", "Attributes")
-        text = Color.colorify(legend, get_gef_setting("theme.table_heading"))
+        fmt = "{:22s} {:60s} {:22s} {}\n"
+        legend = ["Hex code", "Assembly code", "Opcode", "Attributes"]
+        text = Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading"))
         for hex_code, opstr, opcodes, attr in patterns:
             # byte length filter
             if nbyte is not None and nbyte * 2 != len(hex_code):
@@ -9546,8 +9547,9 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
             out.append(hexdump(sec["data"], show_symbol=False, base=sec["offset"]))
 
         # print details
+        fmt = "[{:<8}|+{:<6}] {:<23s} {:<30s}: {:<18s}  |  {:s}"
         legend = ["FileOff", "Offset", "Raw bytes", "Name", "Value", "Extra Information"]
-        out.append(Color.colorify("[{:<8}|+{:<6}] {:<23s} {:<30s}: {:<18s}  |  {:s}".format(*legend), get_gef_setting("theme.table_heading")))
+        out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
         for entry in entries:
             if len(entry) == 1:
@@ -14897,8 +14899,9 @@ class GotCommand(GenericCommand):
         got_functions = Color.boldify("{}".format(len(jmpslots)))
         gef_print("GOT protection: {} | GOT functions: {} ".format(got_protection, got_functions))
 
+        fmt = "{:>14s} ({:>9s}) {:>14s} ({:>9s}) {:s}"
         legend = ["PLT", "Offset", "GOT", "Offset", "Symbol -> GOTvalue"]
-        gef_print(Color.colorify("{:>14s} ({:>9s}) {:>14s} ({:>9s}) {:s}".format(*legend), get_gef_setting("theme.table_heading")))
+        gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
         for line in sorted(jmpslots):
             address, _, _, _, name = line.split()[:5]
 
@@ -18486,8 +18489,9 @@ class MmxCommand(GenericCommand):
         top_of_stack = (fstat >> 11) & 0b111
         regs = regs[-top_of_stack:] + regs[:-top_of_stack] # need rotate. because mmx0 != st(0)
 
+        fmt = "{:5s}: {:s}"
         legend = ["Name", "64-bit hex"]
-        gef_print(Color.colorify("{:5s}: {:s}".format(*legend), get_gef_setting("theme.table_heading")))
+        gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
         red = lambda x: Color.colorify("{:4s}".format(x), "red bold")
         for i in range(len(regs)):
             regname = "$mm{:d}".format(i)
@@ -18566,8 +18570,9 @@ class SseCommand(GenericCommand):
             if r:
                 reg = int(r[0], 16)
                 regs.append(reg)
+        fmt = "{:7s}: {:s}"
         legend = ["Name", "128-bit hex"]
-        gef_print(Color.colorify("{:7s}: {:s}".format(*legend), get_gef_setting("theme.table_heading")))
+        gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
         red = lambda x: Color.colorify("{:4s}".format(x), "red bold")
         for i in range(len(regs)):
             if i == 8:
@@ -18645,8 +18650,9 @@ class AvxCommand(GenericCommand):
                 regs.append(reg)
         if regs:
             gef_print(titlify("AVX Register"))
+            fmt = "{:7s}: {:s}"
             legend = ["Name", "256-bit hex"]
-            gef_print(Color.colorify("{:7s}: {:s}".format(*legend), get_gef_setting("theme.table_heading")))
+            gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
             red = lambda x: Color.colorify("{:4s}".format(x), "red bold")
             for i in range(len(regs)):
                 regname = "$ymm{:<2d}".format(i)
@@ -18726,8 +18732,9 @@ class FpuCommand(GenericCommand):
 
         # s0-s31, d0-d31, q0-q15
         gef_print(titlify("FPU/NEON Data Register"))
+        fmt = "{:4s}: {:15s} {:10s} | {:4s}: {:28s} {:18s} | {:4s} {:34s}"
         legend = ["Name", "Value", "32-bit hex", "Name", "Value", "64-bit hex", "Name", "128-bit hex"]
-        gef_print(Color.colorify("{:4s}: {:15s} {:10s} | {:4s}: {:28s} {:18s} | {:4s} {:34s}".format(*legend), get_gef_setting("theme.table_heading")))
+        gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
         for i in range(32):
             regname1 = "$s{:d}".format(i)
             regname2 = "$d{:d}".format(i)
@@ -18763,8 +18770,9 @@ class FpuCommand(GenericCommand):
 
         # st0-7
         gef_print(titlify("FPU Data Register"))
+        fmt = "{:9s} : {:27s}\t{:24s} {:18s} {:10s}"
         legend = ["Name", "Value", "80-bit hex(TWORD/XWORD)", "64-bit hex(QWORD)", "32-bit Hex(DWORD)"]
-        gef_print(Color.colorify("{:9s} : {:27s}\t{:24s} {:18s} {:10s}".format(*legend), get_gef_setting("theme.table_heading")))
+        gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
         fstat = get_register("$fstat")
         top_of_stack = (fstat >> 11) & 0b111
@@ -20283,8 +20291,9 @@ class KernelTaskCommand(GenericCommand):
             return
 
         ids_str = ','.join(["uid","gid","suid","sgid","euid","egid","fsuid","fsgid"])
-        legend = ("{:<18s}: {:<16s} {:<18s} [{}]".format("task", "task->comm", "task->cred", ids_str))
-        gef_print(Color.colorify(legend, get_gef_setting("theme.table_heading")))
+        fmt = "{:<18s}: {:<16s} {:<18s} [{}]"
+        legend = ["task", "task->comm", "task->cred", ids_str]
+        gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
         for task in task_addrs:
             comm_string = read_cstring_from_memory(task + offset_comm)
             cred = read_int_from_memory(task + offset_cred)
@@ -20334,8 +20343,9 @@ class SyscallTableViewCommand(GenericCommand):
             table.append([i, addr, syscall_function_addr, symbol])
             i += 1
         # print
+        fmt = "{:5s} {:18s}: {:18s} {:s}"
         legend = ["Index", "Table Address", "Function Address", "Symbol"]
-        gef_print(Color.colorify("{:5s} {:18s}: {:18s} {:s}".format(*legend), get_gef_setting("theme.table_heading")))
+        gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
         for i, addr, syscall_function_addr, symbol in table:
             if seen[syscall_function_addr] == 1: # valid entry
                 msg = "[{:03d}] {:#018x}: {:#018x} {:s}".format(i, addr, syscall_function_addr, symbol)
@@ -27947,8 +27957,9 @@ class MsrCommand(GenericCommand):
 
     def print_const_table(self, filt):
         gef_print(titlify("MSR const table"))
+        fmt = "{:34s}: {:10s} : {:s}"
         legend = ["Name", "Value", "Description"]
-        gef_print(Color.colorify("{:34s}: {:10s} : {:s}".format(*legend), get_gef_setting("theme.table_heading")))
+        gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
         for name, val, desc in self.msr_table:
             if filt == []:
                 gef_print("{:34s}: {:#010x} : {:s}".format(name, val, desc))
@@ -28724,8 +28735,9 @@ class PagewalkCommand(GenericCommand):
         return
 
     def format_legend(self):
+        fmt = "{:33s}  {:33s}  {:12s} {:11s} {:6s} {:s}"
         legend = ["Virtual address start-end", "Physical address start-end", "Total size", "Page size", "Count", "Flags"]
-        return "{:33s}  {:33s}  {:12s} {:11s} {:6s} {:s}".format(*legend)
+        return fmt.format(*legend)
 
     def format_entry(self, entry):
         va, pa, size, cnt, flags = entry
@@ -33751,9 +33763,9 @@ class UefiOvmfInfoCommand(GenericCommand):
                     string.append(v)
             return ",".join(string)
 
-        legend_fmt = "{:21s} {:10s} {:10s} {:30s} {:s}"
-        legend = legend_fmt.format("Paddr Start-End", "Vaddr", "Size", "Type:TypeName", "Attribute")
-        gef_print(Color.colorify(legend, "bold yellow"))
+        fmt = "{:21s} {:10s} {:10s} {:30s} {:s}"
+        legend = ["Paddr Start-End", "Vaddr", "Size", "Type:TypeName", "Attribute"]
+        gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
         current = self.gMemoryMap["ForwardLink"]
         while current != self.gMemoryMap["__addr"]:
