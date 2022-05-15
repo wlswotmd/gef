@@ -13273,11 +13273,11 @@ class VMMapCommand(GenericCommand):
 class XFilesCommand(GenericCommand):
     """Shows all libraries (and sections) loaded by binary. This command extends the GDB command
     `info files`, by retrieving more information from extra sources, and providing a better
-    display. If an argument FILE is given, the output will grep information related to only that file.
-    If an argument name is also given, the output will grep to the name within FILE."""
+    display with REGEX filtering."""
     _cmdline_ = "xfiles"
-    _syntax_ = "{:s} [FILE [NAME]]".format(_cmdline_)
-    _example_ = "\n{0:s} libc\n{0:s} libc IO_vtables".format(_cmdline_)
+    _syntax_ = "{:s} [REGEX]".format(_cmdline_)
+    _example_ = "{:s} libc\n".format(_cmdline_)
+    _example_ += "{:s} IO_vtables".format(_cmdline_)
     _category_ = "Process Information"
 
     @only_if_gdb_running
@@ -13288,22 +13288,22 @@ class XFilesCommand(GenericCommand):
         headers = ["Start", "End", "Name", "File"]
         gef_print(Color.colorify("{:<{w}s}{:<{w}s}{:<21s} {:s}".format(*headers, w=get_memory_alignment()*2+3), color))
 
-        filter_by_file = argv[0] if argv and argv[0] else None
-        filter_by_name = argv[1] if len(argv) > 1 and argv[1] else None
+        filter_pattern = argv
 
         for xfile in get_info_files():
-            if filter_by_file:
-                if filter_by_file not in xfile.filename:
-                    continue
-                if filter_by_name and filter_by_name not in xfile.name:
-                    continue
-
             l = []
             l.append(format_address(xfile.zone_start))
             l.append(format_address(xfile.zone_end))
             l.append("{:<21s}".format(xfile.name))
             l.append(xfile.filename)
-            gef_print(" ".join(l))
+            l = " ".join(l)
+
+            if not filter_pattern:
+                gef_print(l)
+            else:
+                for filt in filter_pattern:
+                    if re.search(filt, l):
+                        gef_print(l)
         return
 
 
