@@ -6630,9 +6630,10 @@ class SearchPatternCommand(GenericCommand):
     def search_pattern_by_address(self, pattern, start_address, end_address):
         """Search a pattern within a range defined by arguments."""
         pattern = gef_pybytes(pattern)
-        step = 0x400 * gef_getpagesize()
         if is_qemu_system():
             step = gef_getpagesize()
+        else:
+            step = 0x400 * gef_getpagesize()
         locations = []
 
         for chunk_addr in range(start_address, end_address, step):
@@ -6644,7 +6645,8 @@ class SearchPatternCommand(GenericCommand):
             try:
                 mem = read_memory(chunk_addr, chunk_size)
             except:
-                continue
+                # cannot access memory this range. It doesn't make sense to try any more
+                break
 
             for match in re.finditer(pattern, mem):
                 start = chunk_addr + match.start()
@@ -6654,6 +6656,7 @@ class SearchPatternCommand(GenericCommand):
             del mem
         return locations
 
+    @staticmethod
     def get_process_maps_qemu_system():
         res = gdb.execute("pagewalk -q", to_string=True)
         res = sorted(set(res.splitlines()))
@@ -6704,7 +6707,7 @@ class SearchPatternCommand(GenericCommand):
             if ret:
                 if not self.verbose:
                     self.print_section(section) # default: print section if found
- 
+
             for loc in ret:
                 self.print_loc(loc)
 
