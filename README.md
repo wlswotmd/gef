@@ -1,3 +1,8 @@
+## What is this
+This is a fork of [GEF](https://github.com/hugsy/gef).
+However, it is specialized for x86 / x64 / ARM / AArch64, and various features are added.
+We hope you find it useful for CTF players, reversing, exploit development, etc.
+
 ## Install
 
 ```bash
@@ -16,12 +21,15 @@ python3 /root/.gdbinit-gef.py --upgrade
 rm -f /root/.gdbinit-gef.py /root/.gef.rc
 ```
 
+## Dependency
+See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh).
+
 ## Added / Improved features
 
 All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 / Debian 10.x.
 
 ### qemu-system cooperation
-* It works with qemu-system installed via apt, but qemu-6.x is recommended.
+* It works with qemu-system installed via apt, but qemu-6.x or higher is recommended.
     * Start qemu with the `-s` option and listen on `localhost:1234`.
     * Attach with `gdb-multiarch -ex 'target remote localhost:1234'`.
 * `qreg`: prints register values from qemu-monitor (allows to get like `$cs` even under qemu 2.x).
@@ -42,6 +50,8 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
     * ARM64 (Supported: EL1&0-stage1/EL1&0-stage2/EL2&0-stage1/EL2-stage1/EL3-stage1)
         * ARM v8.7 base.
         * 32bit mode is NOT supported.
+        * PAC/MTE are NOT supported.
+        * For stage2 translation, you have to do `pagewalk arm64 1` then `pagewalk arm64 2`.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm64.png)
     * ARM (Cortex-A only, LPAE/Non-LPAE, PL0/PL1)
         * PL2 is NOT supported.
@@ -88,7 +98,6 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
 * `kcmdline`: displays the debugged kernel startup cmdline.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kcmdline.png)
 * `ktask`: displays each task address.
-    * It needs `CONFIG_KALLSYMS_ALL=y`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ktask.png)
 * `syscall-table-view`: prints system call table (x64/x86/ARM64/ARM only).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/syscall-table-view.png)
