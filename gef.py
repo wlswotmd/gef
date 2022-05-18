@@ -18075,7 +18075,7 @@ class MagicCommand(GenericCommand):
     _syntax_ = _cmdline_
     _category_ = "Exploit Development"
 
-    def resolve_and_print_local(self, sym, base):
+    def resolve_and_print(self, sym, base):
         def get_permission(addr):
             maps = get_process_maps()
             for m in maps:
@@ -18088,15 +18088,15 @@ class MagicCommand(GenericCommand):
             perm = get_permission(addr)
             if is_ascii_string(addr):
                 val = read_ascii_string(addr)
-                gef_print(f"{sym:42s}: {base:#18x} + {addr - base:#10x} (={addr:#18x} [{perm:3s}]) -> '{val:s}'")
+                gef_print(f"{sym:42s}: {addr:#18x} [{perm:3s}] ({base:#18x} + {addr - base:#10x}) -> {val:>18s}")
             else:
                 val = read_int_from_memory(addr)
-                gef_print(f"{sym:42s}: {base:#18x} + {addr - base:#10x} (={addr:#18x} [{perm:3s}]) -> {val:#18x}")
+                gef_print(f"{sym:42s}: {addr:#18x} [{perm:3s}] ({base:#18x} + {addr - base:#10x}) -> {val:#18x}")
         except:
             gef_print(f"{sym:42s}: {'Not found':>18s}")
         return
 
-    def magic_local(self):
+    def magic(self):
         libc = get_section_base_address_by_list(("libc-2.", "libc.so.6"))
         ld = get_section_base_address_by_list(("ld-2.", "ld-linux-", "ld-linux.so.2"))
         if libc is None or ld is None:
@@ -18104,116 +18104,129 @@ class MagicCommand(GenericCommand):
             return
 
         gef_print(titlify("Legend"))
-        msg = f"{'symbol':40s}: {'base':14s} + {'offset':8s} (={'addr':14s} {'perm':s} ) -> {'val':18s}"
+        msg = f"{'symbol':42s}: {'addr':>18s} {'perm':5s} ({'base':>18s} + {'offset':>10s}) -> {'val':>18s}"
         gef_print(Color.colorify(msg, get_gef_setting("theme.table_heading")))
 
         gef_print(titlify("Heap"))
-        self.resolve_and_print_local("main_arena", libc)
-        self.resolve_and_print_local("mp_", libc)
-        self.resolve_and_print_local("__malloc_hook", libc)
-        self.resolve_and_print_local("__free_hook", libc)
-        self.resolve_and_print_local("__realloc_hook", libc)
-        self.resolve_and_print_local("__memalign_hook", libc)
-        self.resolve_and_print_local("__after_morecore_hook", libc)
-        self.resolve_and_print_local("_dl_open_hook", libc)
-        self.resolve_and_print_local("global_max_fast", libc)
-        self.resolve_and_print_local("malloc", libc)
-        self.resolve_and_print_local("free", libc)
-        self.resolve_and_print_local("calloc", libc)
-        self.resolve_and_print_local("realloc", libc)
+        self.resolve_and_print("main_arena", libc)
+        self.resolve_and_print("mp_", libc)
+        self.resolve_and_print("__malloc_hook", libc)
+        self.resolve_and_print("__free_hook", libc)
+        self.resolve_and_print("__realloc_hook", libc)
+        self.resolve_and_print("__memalign_hook", libc)
+        self.resolve_and_print("__after_morecore_hook", libc)
+        self.resolve_and_print("_dl_open_hook", libc)
+        self.resolve_and_print("global_max_fast", libc)
+        self.resolve_and_print("malloc", libc)
+        self.resolve_and_print("free", libc)
+        self.resolve_and_print("calloc", libc)
+        self.resolve_and_print("realloc", libc)
         gef_print(titlify("I/O"))
-        self.resolve_and_print_local("*stdin", libc)
-        self.resolve_and_print_local("*stdout", libc)
-        self.resolve_and_print_local("*stderr", libc)
-        self.resolve_and_print_local("_IO_list_all", libc)
-        self.resolve_and_print_local("_IO_file_jumps", libc)
-        self.resolve_and_print_local("_IO_file_jumps_mmap", libc)
-        self.resolve_and_print_local("_IO_file_jumps_maybe_mmap", libc)
-        self.resolve_and_print_local("_IO_wfile_jumps", libc)
-        self.resolve_and_print_local("_IO_wfile_jumps_mmap", libc)
-        self.resolve_and_print_local("_IO_wfile_jumps_maybe_mmap", libc)
-        self.resolve_and_print_local("_IO_old_file_jumps", libc)
-        self.resolve_and_print_local("_IO_mem_jumps", libc)
-        self.resolve_and_print_local("_IO_wmem_jumps", libc)
-        self.resolve_and_print_local("_IO_str_jumps", libc)
-        self.resolve_and_print_local("_IO_strn_jumps", libc)
-        self.resolve_and_print_local("_IO_str_chk_jumps", libc)
-        self.resolve_and_print_local("_IO_wstr_jumps", libc)
-        self.resolve_and_print_local("_IO_wstrn_jumps", libc)
-        self.resolve_and_print_local("_IO_streambuf_jumps", libc)
-        self.resolve_and_print_local("_IO_proc_jumps", libc)
-        self.resolve_and_print_local("_IO_old_proc_jumps", libc)
-        self.resolve_and_print_local("_IO_helper_jumps", libc)
-        self.resolve_and_print_local("_IO_cookie_jumps", libc)
-        self.resolve_and_print_local("_IO_obstack_jumps", libc)
-        self.resolve_and_print_local("open", libc)
-        self.resolve_and_print_local("read", libc)
-        self.resolve_and_print_local("write", libc)
-        self.resolve_and_print_local("dup", libc)
-        self.resolve_and_print_local("dup2", libc)
-        self.resolve_and_print_local("dup3", libc)
-        self.resolve_and_print_local("puts", libc)
-        self.resolve_and_print_local("gets", libc)
-        self.resolve_and_print_local("fputs", libc)
-        self.resolve_and_print_local("fgets", libc)
-        self.resolve_and_print_local("printf", libc)
-        self.resolve_and_print_local("fprintf", libc)
-        self.resolve_and_print_local("dprintf", libc)
-        self.resolve_and_print_local("sprintf", libc)
-        self.resolve_and_print_local("snprintf", libc)
-        self.resolve_and_print_local("__printf_chk", libc)
-        self.resolve_and_print_local("__fprintf_chk", libc)
-        self.resolve_and_print_local("__dprintf_chk", libc)
-        self.resolve_and_print_local("__sprintf_chk", libc)
-        self.resolve_and_print_local("__snprintf_chk", libc)
-        self.resolve_and_print_local("__printf_function_table", libc)
-        self.resolve_and_print_local("__printf_arginfo_table", libc)
-        self.resolve_and_print_local("scanf", libc)
-        self.resolve_and_print_local("fscanf", libc)
-        self.resolve_and_print_local("sscanf", libc)
+        self.resolve_and_print("*stdin", libc)
+        self.resolve_and_print("*stdout", libc)
+        self.resolve_and_print("*stderr", libc)
+        self.resolve_and_print("_IO_list_all", libc)
+        self.resolve_and_print("_IO_file_jumps", libc)
+        self.resolve_and_print("_IO_file_jumps_mmap", libc)
+        self.resolve_and_print("_IO_file_jumps_maybe_mmap", libc)
+        self.resolve_and_print("_IO_wfile_jumps", libc)
+        self.resolve_and_print("_IO_wfile_jumps_mmap", libc)
+        self.resolve_and_print("_IO_wfile_jumps_maybe_mmap", libc)
+        self.resolve_and_print("_IO_old_file_jumps", libc)
+        self.resolve_and_print("_IO_mem_jumps", libc)
+        self.resolve_and_print("_IO_wmem_jumps", libc)
+        self.resolve_and_print("_IO_str_jumps", libc)
+        self.resolve_and_print("_IO_strn_jumps", libc)
+        self.resolve_and_print("_IO_str_chk_jumps", libc)
+        self.resolve_and_print("_IO_wstr_jumps", libc)
+        self.resolve_and_print("_IO_wstrn_jumps", libc)
+        self.resolve_and_print("_IO_streambuf_jumps", libc)
+        self.resolve_and_print("_IO_proc_jumps", libc)
+        self.resolve_and_print("_IO_old_proc_jumps", libc)
+        self.resolve_and_print("_IO_helper_jumps", libc)
+        self.resolve_and_print("_IO_cookie_jumps", libc)
+        self.resolve_and_print("_IO_obstack_jumps", libc)
+        self.resolve_and_print("open", libc)
+        self.resolve_and_print("read", libc)
+        self.resolve_and_print("write", libc)
+        self.resolve_and_print("dup", libc)
+        self.resolve_and_print("dup2", libc)
+        self.resolve_and_print("dup3", libc)
+        self.resolve_and_print("puts", libc)
+        self.resolve_and_print("gets", libc)
+        self.resolve_and_print("fputs", libc)
+        self.resolve_and_print("fgets", libc)
+        self.resolve_and_print("printf", libc)
+        self.resolve_and_print("fprintf", libc)
+        self.resolve_and_print("dprintf", libc)
+        self.resolve_and_print("sprintf", libc)
+        self.resolve_and_print("snprintf", libc)
+        self.resolve_and_print("__printf_chk", libc)
+        self.resolve_and_print("__fprintf_chk", libc)
+        self.resolve_and_print("__dprintf_chk", libc)
+        self.resolve_and_print("__sprintf_chk", libc)
+        self.resolve_and_print("__snprintf_chk", libc)
+        self.resolve_and_print("__printf_function_table", libc)
+        self.resolve_and_print("__printf_arginfo_table", libc)
+        self.resolve_and_print("scanf", libc)
+        self.resolve_and_print("fscanf", libc)
+        self.resolve_and_print("sscanf", libc)
         gef_print(titlify("Process"))
-        self.resolve_and_print_local("system", libc)
-        self.resolve_and_print_local("do_system", libc)
-        self.resolve_and_print_local("execve", libc)
-        self.resolve_and_print_local("setcontext", libc)
-        self.resolve_and_print_local("__libc_start_main", libc)
-        self.resolve_and_print_local("syscall", libc)
-        self.resolve_and_print_local("ptrace", libc)
-        self.resolve_and_print_local("prctl", libc)
+        self.resolve_and_print("system", libc)
+        self.resolve_and_print("do_system", libc)
+        self.resolve_and_print("execve", libc)
+        self.resolve_and_print("setcontext", libc)
+        self.resolve_and_print("__libc_start_main", libc)
+        self.resolve_and_print("syscall", libc)
+        self.resolve_and_print("ptrace", libc)
+        self.resolve_and_print("prctl", libc)
         gef_print(titlify("Memory"))
-        self.resolve_and_print_local("mmap", libc)
-        self.resolve_and_print_local("munmap", libc)
-        self.resolve_and_print_local("mremap", libc)
-        self.resolve_and_print_local("mprotect", libc)
+        self.resolve_and_print("mmap", libc)
+        self.resolve_and_print("munmap", libc)
+        self.resolve_and_print("mremap", libc)
+        self.resolve_and_print("mprotect", libc)
         gef_print(titlify("Stack"))
-        self.resolve_and_print_local("__libc_argv", libc)
-        self.resolve_and_print_local("__environ", libc)
+        self.resolve_and_print("__libc_argv", libc)
+        self.resolve_and_print("__environ", libc)
         gef_print(titlify("Destructor"))
-        self.resolve_and_print_local("_rtld_global->_dl_rtld_lock_recursive", ld)
-        self.resolve_and_print_local("_rtld_global->_dl_rtld_unlock_recursive", ld)
+        self.resolve_and_print("_rtld_global->_dl_rtld_lock_recursive", ld)
+        self.resolve_and_print("_rtld_global->_dl_rtld_unlock_recursive", ld)
         return
 
-    def resolve_and_print_qemu_system(self, sym, base, maps):
+    def resolve_and_print_kernel(self, sym, base, maps, external_func=None):
         def get_permission(addr, maps):
             for vaddr, size, perm in maps:
-                if vaddr <= addr and addr < vaddr+size:
+                if vaddr <= addr and addr < vaddr + size:
                     return perm
             return "???"
 
         try:
-            addr = get_ksymaddr(sym)
+            if external_func:
+                addr = external_func()
+            else:
+                if isinstance(sym, str):
+                    addr = get_ksymaddr(sym)
+                elif isinstance(sym, list):
+                    for s in sym:
+                        addr = get_ksymaddr(s)
+                        if addr:
+                            sym = s
+                            break
+                    else: # Not found
+                        sym = sym[0]
+                        raise # goto Not found/recognized
             perm = get_permission(addr, maps)
             if is_ascii_string(addr):
                 val = read_ascii_string(addr)
-                gef_print(f"{sym:42s}: {base:#18x} + {addr - base:#10x} (={addr:#18x} [{perm:3s}]) -> '{val:s}'")
+                gef_print(f"{sym:42s}: {addr:#18x} [{perm:3s}] ({base:#18x} + {addr - base:#10x}) -> {val:>18s}")
             else:
                 val = read_int_from_memory(addr)
-                gef_print(f"{sym:42s}: {base:#18x} + {addr - base:#10x} (={addr:#18x} [{perm:3s}]) -> {val:#18x}")
+                gef_print(f"{sym:42s}: {addr:#18x} [{perm:3s}] ({base:#18x} + {addr - base:#10x}) -> {val:#18x}")
         except:
-            gef_print(f"{sym:42s}: {'Not found':>18s}")
+            gef_print(f"{sym:42s}: {'Not found/recognized':>18s}")
         return
 
-    def magic_qemu_system(self):
+    def magic_kernel(self):
         info("Wait for memory scan")
         maps = KernelbaseCommand.get_maps()
         kbase, kbase_size = KernelbaseCommand.get_kernel_base(maps)
@@ -18221,45 +18234,75 @@ class MagicCommand(GenericCommand):
         gef_print("{:42s}: {:#x} ({:#x} bytes)".format("kernel_base", kbase, kbase_size))
 
         gef_print(titlify("Legend"))
-        msg = f"{'symbol':42s}: {'base':18s} + {'offset':10s} (={'addr':18s} {'perm':s} ) -> {'val':18s}"
+        msg = f"{'symbol':42s}: {'addr':>18s} {'perm':5s} ({'base':>18s} + {'offset':>10s}) -> {'val':>18s}"
         gef_print(Color.colorify(msg, get_gef_setting("theme.table_heading")))
 
         gef_print(titlify("Credential"))
-        self.resolve_and_print_qemu_system("commit_creds", kbase, maps)
-        self.resolve_and_print_qemu_system("prepare_kernel_cred", kbase, maps)
+        self.resolve_and_print_kernel("commit_creds", kbase, maps)
+        self.resolve_and_print_kernel("prepare_kernel_cred", kbase, maps)
+        self.resolve_and_print_kernel("init_task", kbase, maps, KernelAddressHeuristicFinder.get_init_task)
+        self.resolve_and_print_kernel(["sys_setuid", "__sys_setuid"], kbase, maps)
         gef_print(titlify("Usermode helper"))
-        self.resolve_and_print_qemu_system("call_usermodehelper", kbase, maps)
-        self.resolve_and_print_qemu_system("modprobe_path", kbase, maps)
-        gef_print(titlify("Graceful poweroff helper"))
-        self.resolve_and_print_qemu_system("orderly_poweroff", kbase, maps)
-        self.resolve_and_print_qemu_system("poweroff_cmd", kbase, maps)
-        gef_print(titlify("KPTI exit"))
-        self.resolve_and_print_qemu_system("swapgs_restore_regs_and_return_to_usermode", kbase, maps)
+        self.resolve_and_print_kernel("call_usermodehelper", kbase, maps)
+        self.resolve_and_print_kernel("run_cmd", kbase, maps)
+        self.resolve_and_print_kernel("modprobe_path", kbase, maps, KernelAddressHeuristicFinder.get_modprobe_path)
+        self.resolve_and_print_kernel("orderly_poweroff", kbase, maps)
+        self.resolve_and_print_kernel("poweroff_cmd", kbase, maps, KernelAddressHeuristicFinder.get_poweroff_cmd)
+        self.resolve_and_print_kernel("orderly_reboot", kbase, maps)
+        self.resolve_and_print_kernel("reboot_cmd", kbase, maps, KernelAddressHeuristicFinder.get_reboot_cmd)
+        self.resolve_and_print_kernel("core_pattern", kbase, maps, KernelAddressHeuristicFinder.get_core_pattern)
+        gef_print(titlify("ROP finalizer"))
+        if is_x86():
+            self.resolve_and_print_kernel("swapgs_restore_regs_and_return_to_usermode", kbase, maps)
+        self.resolve_and_print_kernel("msleep", kbase, maps)
         gef_print(titlify("Memory protection modifier"))
-        self.resolve_and_print_qemu_system("native_write_cr0", kbase, maps)
-        self.resolve_and_print_qemu_system("native_write_cr4", kbase, maps)
-        self.resolve_and_print_qemu_system("set_memory_rw", kbase, maps)
-        self.resolve_and_print_qemu_system("set_memory_x", kbase, maps)
+        if is_x86():
+            self.resolve_and_print_kernel("native_write_cr0", kbase, maps)
+            self.resolve_and_print_kernel("native_write_cr4", kbase, maps)
+        self.resolve_and_print_kernel("set_memory_rw", kbase, maps)
+        self.resolve_and_print_kernel("set_memory_x", kbase, maps)
+        gef_print(titlify("Memory patcher"))
+        self.resolve_and_print_kernel("text_poke", kbase, maps)
+        self.resolve_and_print_kernel("memcpy", kbase, maps)
+        self.resolve_and_print_kernel("_copy_to_user", kbase, maps)
+        self.resolve_and_print_kernel("_copy_from_user", kbase, maps)
+        if is_arm64():
+            self.resolve_and_print_kernel("__arch_copy_to_user", kbase, maps)
+            self.resolve_and_print_kernel("__arch_copy_from_user", kbase, maps)
+        gef_print(titlify("Memory remapper"))
+        self.resolve_and_print_kernel(["ioremap", "__ioremap"], kbase, maps)
+        self.resolve_and_print_kernel(["iounmap", "__iounmap"], kbase, maps)
+        self.resolve_and_print_kernel("phys_base", kbase, maps)
+        gef_print(titlify("Function pointer"))
+        self.resolve_and_print_kernel("kvm_clock", kbase, maps)
+        self.resolve_and_print_kernel("clocksource_tsc", kbase, maps)
         gef_print(titlify("Function pointer table"))
-        self.resolve_and_print_qemu_system("ptmx_fops", kbase, maps)
-        self.resolve_and_print_qemu_system("perf_fops", kbase, maps)
-        self.resolve_and_print_qemu_system("capability_hooks", kbase, maps)
-        self.resolve_and_print_qemu_system("n_tty_ops", kbase, maps)
-        self.resolve_and_print_qemu_system("tty_ldiscs", kbase, maps)
-        gef_print(titlify("Slub"))
-        self.resolve_and_print_qemu_system("__kmalloc", kbase, maps)
-        self.resolve_and_print_qemu_system("kzalloc", kbase, maps)
-        self.resolve_and_print_qemu_system("kfree", kbase, maps)
-        gef_print(titlify("Timer"))
-        self.resolve_and_print_qemu_system("msleep", kbase, maps)
-        self.resolve_and_print_qemu_system("kvm_clock", kbase, maps)
-        self.resolve_and_print_qemu_system("clocksource_tsc", kbase, maps)
+        self.resolve_and_print_kernel("ptmx_fops", kbase, maps)
+        self.resolve_and_print_kernel("perf_fops", kbase, maps)
+        self.resolve_and_print_kernel("capability_hooks", kbase, maps)
+        self.resolve_and_print_kernel("n_tty_ops", kbase, maps, KernelAddressHeuristicFinder.get_n_tty_ops)
+        gef_print(titlify("Function pointer table array"))
+        self.resolve_and_print_kernel("tty_ldiscs", kbase, maps, KernelAddressHeuristicFinder.get_tty_ldiscs)
+        gef_print(titlify("SLUB"))
+        self.resolve_and_print_kernel("__kmalloc", kbase, maps)
+        self.resolve_and_print_kernel("kzalloc", kbase, maps)
+        self.resolve_and_print_kernel("kfree", kbase, maps)
+        self.resolve_and_print_kernel("kzfree", kbase, maps)
+        self.resolve_and_print_kernel("slab_caches", kbase, maps, KernelAddressHeuristicFinder.get_slab_caches)
+        gef_print(titlify("Dynamic resolver"))
+        self.resolve_and_print_kernel("kallsyms_lookup_name", kbase, maps)
+        gef_print(titlify("vDSO"))
+        if is_x86():
+            self.resolve_and_print_kernel("vdso_image_64", kbase, maps)
+            self.resolve_and_print_kernel("vdso_image_32", kbase, maps)
+            self.resolve_and_print_kernel("vdso_image_x32", kbase, maps)
+        elif is_arm64():
+            self.resolve_and_print_kernel("vdso_info", kbase, maps, KernelAddressHeuristicFinder.get_vdso_info)
+        elif is_arm32():
+            self.resolve_and_print_kernel("vdso_start", kbase, maps)
         gef_print(titlify("Others"))
-        self.resolve_and_print_qemu_system("do_fchmodat", kbase, maps)
-        self.resolve_and_print_qemu_system("core_pattern", kbase, maps)
-        self.resolve_and_print_qemu_system("mmap_min_addr", kbase, maps)
-        self.resolve_and_print_qemu_system("_copy_to_user", kbase, maps)
-        self.resolve_and_print_qemu_system("_copy_from_user", kbase, maps)
+        self.resolve_and_print_kernel("do_fchmodat", kbase, maps)
+        self.resolve_and_print_kernel("mmap_min_addr", kbase, maps, KernelAddressHeuristicFinder.get_mmap_min_addr)
         return
 
     @only_if_gdb_running
@@ -18267,9 +18310,9 @@ class MagicCommand(GenericCommand):
         self.dont_repeat()
 
         if is_qemu_system():
-            self.magic_qemu_system()
+            self.magic_kernel()
         else:
-            self.magic_local()
+            self.magic()
         return
 
 
@@ -19689,7 +19732,6 @@ class KernelAddressHeuristicFinder:
                         m = re.search(r"movt.*;\s*(0x\S+)", line)
                         if m:
                             return base + (int(m.group(1), 16) << 16)
-        # plan 2
         return None
 
     @staticmethod
@@ -19698,7 +19740,53 @@ class KernelAddressHeuristicFinder:
         init_task = get_ksymaddr("init_task")
         if init_task:
             return init_task
-        # plan 2
+
+        # plan 2 (available v2.6.29.3 or later)
+        chroot_fs_refs = get_ksymaddr("chroot_fs_refs")
+        if chroot_fs_refs:
+            res = gdb.execute("x/30i {:#x}".format(chroot_fs_refs), to_string=True)
+            if is_x86_64():
+                for line in res.splitlines():
+                    m = re.search(r"QWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffffffffffff
+                        if v != 0:
+                            return v
+            elif is_x86_32():
+                for line in res.splitlines():
+                    m = re.search(r"ds:(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffff
+                        if v != 0:
+                            return v
+            elif is_arm64():
+                count = 0
+                base = None
+                for line in res.splitlines():
+                    if base is None:
+                        m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
+                        if m:
+                            base = int(m.group(1), 16)
+                    else:
+                        m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
+                        if m:
+                            addr = base + int(m.group(1), 16) # add 1 time
+                            if count == 1:
+                                return addr # 2nd pair of (adrp + add) is target
+                            else:
+                                base = None
+                                count += 1
+            elif is_arm32():
+                base = None
+                for line in res.splitlines():
+                    if base is None:
+                        m = re.search(r"movw.*;\s*(0x\S+)", line)
+                        if m:
+                            base = int(m.group(1), 16)
+                    else:
+                        m = re.search(r"movt.*;\s*(0x\S+)", line)
+                        if m:
+                            return base + (int(m.group(1), 16) << 16)
         return None
 
     @staticmethod
@@ -19709,7 +19797,7 @@ class KernelAddressHeuristicFinder:
             return sys_call_table
 
         if is_x86_64():
-            # plan 2 (v4.6-rc1~)
+            # plan 2 (available v4.6-rc1 or later)
             do_syscall_64 = get_ksymaddr("do_syscall_64")
             if do_syscall_64:
                 res = gdb.execute("x/30i {:#x}".format(do_syscall_64), to_string=True)
@@ -19720,7 +19808,7 @@ class KernelAddressHeuristicFinder:
                         if v != 0:
                             return v
         elif is_x86_32():
-            # plan 2 (v4.6-rc1~)
+            # plan 2 (available v4.6-rc1 or later)
             do_int80_syscall_32 = get_ksymaddr("do_int80_syscall_32")
             if do_int80_syscall_32:
                 res = gdb.execute("x/20i {:#x}".format(do_int80_syscall_32), to_string=True)
@@ -19735,7 +19823,7 @@ class KernelAddressHeuristicFinder:
             # because `sys_call_table` symbol is embeded in .text area
             pass
         elif is_arm64():
-            # plan 2 (v4.19-rc1~)
+            # plan 2 (available v4.19-rc1 or later)
             el0_svc_handler = get_ksymaddr("el0_svc_handler")
             if el0_svc_handler:
                 res = gdb.execute("x/20i {:#x}".format(el0_svc_handler), to_string=True)
@@ -19749,7 +19837,7 @@ class KernelAddressHeuristicFinder:
                         m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
                         if m:
                             return base + int(m.group(1), 16)
-            # plan 3 (v3.7-rc1~)
+            # plan 3 (available v3.7-rc1 or later)
             el0_svc = get_ksymaddr("el0_svc")
             if el0_svc:
                 res = gdb.execute("x/20i {:#x}".format(el0_svc), to_string=True)
@@ -19843,12 +19931,12 @@ class KernelAddressHeuristicFinder:
                     else:
                         m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
                         if m:
-                            base += int(m.group(1), 16)
+                            addr = base + int(m.group(1), 16) # add 1 time
                             if count == 1:
-                                return base
+                                return addr # 2nd pair of (adrp + add) is target
                             else:
                                 base = None
-                                count = 1
+                                count += 1
             elif is_arm32():
                 base = None
                 for line in res.splitlines():
@@ -19895,6 +19983,440 @@ class KernelAddressHeuristicFinder:
                         m = re.search(r"movt.*;\s*(0x\S+)", line)
                         if m:
                             return base + (int(m.group(1), 16) << 16)
+        return None
+
+    @staticmethod
+    def get_modprobe_path():
+        # plan 1 (directly)
+        modprobe_path = get_ksymaddr("modprobe_path")
+        if modprobe_path:
+            return modprobe_path
+
+        # plan 2 (available v3.11-rc1 or later)
+        request_module = get_ksymaddr("__request_module")
+        if request_module:
+            res = gdb.execute("x/30i {:#x}".format(request_module), to_string=True)
+            if is_x86_64():
+                for line in res.splitlines():
+                    m = re.search(r"BYTE PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffffffffffff
+                        if v != 0:
+                            return v
+            elif is_x86_32():
+                for line in res.splitlines():
+                    m = re.search(r"BYTE PTR ds:(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffff
+                        if v != 0:
+                            return v
+            elif is_arm64():
+                base = None
+                for line in res.splitlines():
+                    if base is None:
+                        m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
+                        if m:
+                            base = int(m.group(1), 16)
+                    else:
+                        m = re.search(r"ldrb\s+\S+,\s*\[\S+,\s*#(\d+)\]", line)
+                        if m:
+                            return base + int(m.group(1), 0)
+            elif is_arm32():
+                addr = 0
+                for line in res.splitlines():
+                    m = re.search(r"movw.*;\s*(0x\S+)", line)
+                    if m:
+                        addr_high = addr & 0xffff0000
+                        addr = addr_high | int(m.group(1), 16)
+                        continue
+                    m = re.search(r"movt.*;\s*(0x\S+)", line)
+                    if m:
+                        addr_low = addr & 0xffff
+                        addr = (int(m.group(1), 16) << 16) | addr_low
+                        continue
+                    if "ldrb" in line:
+                        return addr
+        return None
+
+    @staticmethod
+    def get_poweroff_cmd():
+        # plan 1 (directly)
+        poweroff_cmd = get_ksymaddr("poweroff_cmd")
+        if poweroff_cmd:
+            return poweroff_cmd
+
+        # plan 2 (available v4.1-rc1 or later)
+        poweroff_work_func = get_ksymaddr("poweroff_work_func")
+        if poweroff_work_func:
+            res = gdb.execute("x/20i {:#x}".format(poweroff_work_func), to_string=True)
+            if is_x86_64():
+                for line in res.splitlines():
+                    m = re.search(r"mov\s+rdi\s*,\s*(0x\w+)", line) # search run_cmd
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffffffffffff
+                        if v != 0:
+                            return v
+                for line in res.splitlines():
+                    m = re.search(r"mov\s+rsi\s*,\s*(0x\w+)", line) # search argv_split
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffffffffffff
+                        if v != 0:
+                            return v
+            elif is_x86_32():
+                for line in res.splitlines():
+                    m = re.search(r"mov\s+e[a-d]x\s*,\s*(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffff
+                        if v != 0:
+                            return v
+            elif is_arm64():
+                count = 0
+                for line in res.splitlines():
+                    m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
+                    if m:
+                        base = int(m.group(1), 16)
+                        count = 0
+                        continue
+                    m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\w+)", line)
+                    if m:
+                        base += int(m.group(1), 16) # add 2 times
+                        if count == 1:
+                            return base # 1st pair of (adrp + add + add) is target
+                        count += 1
+            elif is_arm32():
+                addr = 0
+                for line in res.splitlines():
+                    m = re.search(r"ldr.*;\s*(0x\S+)", line)
+                    if m:
+                        addr = int(m.group(1), 16)
+                        try:
+                            return read_int_from_memory(addr)
+                        except:
+                            pass
+        return None
+
+    @staticmethod
+    def get_reboot_cmd():
+        # plan 1 (directly)
+        reboot_cmd = get_ksymaddr("reboot_cmd")
+        if reboot_cmd:
+            return reboot_cmd
+
+        # plan 2 (available v4.1-rc1 or later)
+        reboot_work_func = get_ksymaddr("reboot_work_func")
+        if reboot_work_func:
+            res = gdb.execute("x/10i {:#x}".format(reboot_work_func), to_string=True)
+            if is_x86_64():
+                for line in res.splitlines():
+                    m = re.search(r"mov\s+rdi\s*,\s*(0x\w+)", line) # search run_cmd
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffffffffffff
+                        if v != 0:
+                            return v
+                for line in res.splitlines():
+                    m = re.search(r"mov\s+rsi\s*,\s*(0x\w+)", line) # search argv_split
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffffffffffff
+                        if v != 0:
+                            return v
+            elif is_x86_32():
+                for line in res.splitlines():
+                    m = re.search(r"mov\s+e[a-d]x\s*,\s*(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffff
+                        if v != 0:
+                            return v
+            elif is_arm64():
+                base = None
+                for line in res.splitlines():
+                    if base is None:
+                        m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
+                        if m:
+                            base = int(m.group(1), 16)
+                    else:
+                        m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
+                        if m:
+                            return base + int(m.group(1), 16)
+            elif is_arm32():
+                base = None
+                for line in res.splitlines():
+                    if base is None:
+                        m = re.search(r"movw.*;\s*(0x\S+)", line)
+                        if m:
+                            base = int(m.group(1), 16)
+                    else:
+                        m = re.search(r"movt.*;\s*(0x\S+)", line)
+                        if m:
+                            return base + (int(m.group(1), 16) << 16)
+        return None
+
+    @staticmethod
+    def get_core_pattern():
+        # plan 1 (directly)
+        core_pattern = get_ksymaddr("core_pattern")
+        if core_pattern:
+            return core_pattern
+
+        # plan 2 (available v3.6-rc1 or later)
+        validate_coredump_safety = get_ksymaddr("validate_coredump_safety.part.0")
+        if validate_coredump_safety:
+            res = gdb.execute("x/10i {:#x}".format(validate_coredump_safety), to_string=True)
+            if is_x86_64():
+                for line in res.splitlines():
+                    m = re.search(r"BYTE PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffffffffffff
+                        if v != 0:
+                            return v
+            elif is_x86_32():
+                for line in res.splitlines():
+                    m = re.search(r"BYTE PTR ds:(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffff
+                        if v != 0:
+                            return v
+            elif is_arm64():
+                base = None
+                for line in res.splitlines():
+                    if base is None:
+                        m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
+                        if m:
+                            base = int(m.group(1), 16)
+                    else:
+                        m = re.search(r"ldrb\s+\S+,\s*\[\S+,\s*#(\d+)\]", line)
+                        if m:
+                            return base + int(m.group(1), 0)
+            elif is_arm32():
+                addr = 0
+                for line in res.splitlines():
+                    m = re.search(r"movw.*;\s*(0x\S+)", line)
+                    if m:
+                        addr_high = addr & 0xffff0000
+                        addr = addr_high | int(m.group(1), 16)
+                        continue
+                    m = re.search(r"movt.*;\s*(0x\S+)", line)
+                    if m:
+                        addr_low = addr & 0xffff
+                        addr = (int(m.group(1), 16) << 16) | addr_low
+                        continue
+                    if "ldrb" in line:
+                        return addr
+
+        # plan 3 (available v3.6-rc1 or later)
+        proc_dostring_coredump = get_ksymaddr("proc_dostring_coredump")
+        if proc_dostring_coredump:
+            res = gdb.execute("x/50i {:#x}".format(proc_dostring_coredump), to_string=True)
+            if is_x86_64():
+                for line in res.splitlines():
+                    m = re.search(r"BYTE PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffffffffffff
+                        if v != 0:
+                            return v
+            elif is_x86_32():
+                for line in res.splitlines():
+                    m = re.search(r"BYTE PTR ds:(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffff
+                        if v != 0:
+                            return v
+            elif is_arm64():
+                base = None
+                for line in res.splitlines():
+                    m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
+                    if m:
+                        base = int(m.group(1), 16)
+                        continue
+                    if base:
+                        m = re.search(r"ldrb\s+\S+,\s*\[\S+,\s*#(\d+)\]", line)
+                        if m:
+                            return base + int(m.group(1), 0)
+            elif is_arm32():
+                addr = 0
+                for line in res.splitlines():
+                    m = re.search(r"movw.*;\s*(0x\S+)", line)
+                    if m:
+                        addr_high = addr & 0xffff0000
+                        addr = addr_high | int(m.group(1), 16)
+                        continue
+                    m = re.search(r"movt.*;\s*(0x\S+)", line)
+                    if m:
+                        addr_low = addr & 0xffff
+                        addr = (int(m.group(1), 16) << 16) | addr_low
+                        continue
+                    if "ldrb" in line:
+                        return addr
+        return None
+
+    @staticmethod
+    def get_n_tty_ops():
+        # plan 1 (directly)
+        n_tty_ops = get_ksymaddr("n_tty_ops")
+        if n_tty_ops:
+            return n_tty_ops
+
+        # plan 2 (available v4.6-rc1 or later)
+        n_tty_inherit_ops = get_ksymaddr("n_tty_inherit_ops")
+        if n_tty_inherit_ops:
+            res = gdb.execute("x/20i {:#x}".format(n_tty_inherit_ops), to_string=True)
+            if is_x86_64():
+                for line in res.splitlines():
+                    m = re.search(r"mov\s+r\S+,\s*(0x\S+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffffffffffff
+                        if v != 0:
+                            return v
+            elif is_x86_32():
+                for line in res.splitlines():
+                    m = re.search(r"DWORD PTR \[.*([+-]0x\S+)\]", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffff
+                        if v != 0:
+                            return v
+            elif is_arm64():
+                base = None
+                for line in res.splitlines():
+                    if base is None:
+                        m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
+                        if m:
+                            base = int(m.group(1), 16)
+                    else:
+                        m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
+                        if m:
+                            return base + int(m.group(1), 0)
+            elif is_arm32():
+                base = None
+                for line in res.splitlines():
+                    if base is None:
+                        m = re.search(r"movw.*;\s*(0x\S+)", line)
+                        if m:
+                            base = int(m.group(1), 16)
+                    else:
+                        m = re.search(r"movt.*;\s*(0x\S+)", line)
+                        if m:
+                            return base + (int(m.group(1), 16) << 16)
+        return None
+
+    @staticmethod
+    def get_tty_ldiscs():
+        # plan 1 (directly)
+        tty_ldiscs = get_ksymaddr("tty_ldiscs")
+        if tty_ldiscs:
+            return tty_ldiscs
+
+        # plan 2 (available v2.6.37-rc2 or later)
+        tty_register_ldisc = get_ksymaddr("tty_register_ldisc")
+        if tty_register_ldisc:
+            res = gdb.execute("x/20i {:#x}".format(tty_register_ldisc), to_string=True)
+            if is_x86_64():
+                for line in res.splitlines():
+                    m = re.search(r"QWORD PTR \[.*\*8([-+]0x\S+)\]", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffffffffffff
+                        if v != 0:
+                            return v
+            elif is_x86_32():
+                for line in res.splitlines():
+                    m = re.search(r"DWORD PTR \[.*\*4([+-]0x\S+)\]", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffff
+                        if v != 0:
+                            return v
+            elif is_arm64():
+                base = None
+                for line in res.splitlines():
+                    if base is None:
+                        m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
+                        if m:
+                            base = int(m.group(1), 16)
+                    else:
+                        m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
+                        if m:
+                            return base + int(m.group(1), 0) + 8
+            elif is_arm32():
+                base = None
+                for line in res.splitlines():
+                    if base is None:
+                        m = re.search(r"movw.*;\s*(0x\S+)", line)
+                        if m:
+                            base = int(m.group(1), 16)
+                    else:
+                        m = re.search(r"movt.*;\s*(0x\S+)", line)
+                        if m:
+                            return base + (int(m.group(1), 16) << 16) + 4
+        return None
+
+    @staticmethod
+    def get_mmap_min_addr():
+        # plan 1 (directly)
+        mmap_min_addr = get_ksymaddr("mmap_min_addr")
+        if mmap_min_addr:
+            return mmap_min_addr
+
+        # plan 2 (available v4.19.27 or later)
+        expand_downwards = get_ksymaddr("expand_downwards")
+        if expand_downwards:
+            res = gdb.execute("x/20i {:#x}".format(expand_downwards), to_string=True)
+            if is_x86_64():
+                for line in res.splitlines():
+                    m = re.search(r"QWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffffffffffff
+                        if v != 0:
+                            return v
+            elif is_x86_32():
+                for line in res.splitlines():
+                    m = re.search(r"ds:(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffff
+                        if v != 0:
+                            return v
+            elif is_arm64():
+                base = None
+                for line in res.splitlines():
+                    if base is None:
+                        m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
+                        if m:
+                            base = int(m.group(1), 16)
+                    else:
+                        m = re.search(r"ldr\s+\S+,\s*\[\S+,\s*#(\d+)\]", line)
+                        if m:
+                            return base + int(m.group(1), 0)
+            elif is_arm32():
+                base = None
+                for line in res.splitlines():
+                    if base is None:
+                        m = re.search(r"movw.*;\s*(0x\S+)", line)
+                        if m:
+                            base = int(m.group(1), 16)
+                    else:
+                        m = re.search(r"movt.*;\s*(0x\S+)", line)
+                        if m:
+                            return base + (int(m.group(1), 16) << 16)
+        return None
+
+    @staticmethod
+    def get_vdso_info():
+        # plan 1 (directly)
+        vdso_info = get_ksymaddr("vdso_info")
+        if vdso_info:
+            return vdso_info
+
+        # plan 2 (available v5.3-rc1 or later)
+        if is_arm64():
+            vdso_init = get_ksymaddr("__vdso_init")
+            if vdso_init:
+                res = gdb.execute("x/20i {:#x}".format(vdso_init), to_string=True)
+                base = None
+                for line in res.splitlines():
+                    if base is None:
+                        m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
+                        if m:
+                            base = int(m.group(1), 16)
+                    else:
+                        m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
+                        if m:
+                            return base + int(m.group(1), 0)
         return None
 
 
