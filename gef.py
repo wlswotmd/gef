@@ -28581,7 +28581,6 @@ class MsrCommand(GenericCommand):
         return
 
     @only_if_gdb_running
-    @only_if_qemu_system
     @only_if_x86_32_64
     def do_invoke(self, argv):
         self.dont_repeat()
@@ -28593,6 +28592,11 @@ class MsrCommand(GenericCommand):
         if "-l" in argv:
             argv.remove("-l")
             self.print_const_table(argv)
+            return
+
+        ring = get_register("$cs") & 0b11
+        if ring != 0:
+            err("Ring 0 is needed")
             return
 
         # search const table
