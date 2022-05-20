@@ -22041,7 +22041,11 @@ class VisualHeapCommand(GenericCommand):
         self.largebin_list = self.arena.largebin_list() if self.arena else []
         self.top = int(self.arena.top) if self.arena else None
 
-        return self.print_heap()
+        try:
+            self.print_heap()
+        except:
+            pass
+        return
 
 
 @register_command
