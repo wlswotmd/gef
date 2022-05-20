@@ -1123,7 +1123,14 @@ class GlibcArena:
         return self.__addr
 
     def is_main_arena(self):
-        return self.__name == b"main_arena" or self.__addr == parse_address("&main_arena")
+        try:
+            return self.__name == "main_arena" or self.__addr == parse_address("&main_arena")
+        except:
+            pass
+        try:
+            return self.__addr == search_for_main_arena()
+        except:
+            return None
 
     @property
     def addr(self):
