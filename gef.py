@@ -33422,6 +33422,13 @@ class ExecUntilCommand(GenericCommand):
         except KeyboardInterrupt:
             pass
 
+        except:
+            if is_alive():
+                exc_type, exc_value, exc_traceback = sys.exc_info()
+                self.err = exc_value
+            else:
+                pass
+
         finally:
             self.revert_stdout_stderr() # anytime needed
             gef_on_stop_hook(hook_stop_handler) # anytime needed
@@ -33717,11 +33724,19 @@ class ExecUntilCondCommand(ExecUntilCommand):
         if match:
             value = match.groups()[0]
             replace_cond = []
-            for regname in current_arch.all_registers:
+            if hasattr(current_arch, "gpr_registers"):
+                regs = current_arch.gpr_registers
+            else:
+                regs = current_arch.all_registers
+                if hasattr(current_arch, "flag_register"):
+                    if current_arch.flag_register in regs:
+                        regs.remove(current_arch.flag_register)
+            for regname in regs:
                 replace_cond.append("{:s}=={:s}".format(regname, value))
             replace_string = "(" + "||".join(replace_cond) + ")"
             condition = re.sub(r"\$ALL_REG==(\w+)", replace_string, condition)
 
+        info("Condition: {:s}".format(condition))
         self.condition = condition
         self.exec_next()
         return
