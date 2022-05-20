@@ -94,8 +94,6 @@ RIGHT_ARROW = " -> "
 DOWN_ARROW = "v"
 HORIZONTAL_LINE = "-"
 VERTICAL_LINE = "|"
-CROSS = "NG "
-TICK = "OK "
 BP_GLYPH = "*"
 GEF_PROMPT = "gef> "
 GEF_PROMPT_ON = "\001\033[1;32m\002{0:s}\001\033[0m\002".format(GEF_PROMPT)
@@ -5327,6 +5325,10 @@ class TraceMallocBreakpoint(gdb.Breakpoint):
         return
 
     def stop(self):
+        # The first call to malloc calls malloc twice internally, like malloc-> malloc_hook_ini-> malloc.
+        # You need to prevent the breakpoint from being set twice.
+        if hasattr(self, "retbp") and self.retbp.enabled:
+            return False
         reset_all_caches()
         _, size = current_arch.get_ith_parameter(0)
         self.retbp = TraceMallocRetBreakpoint(size, self.name)
@@ -15002,7 +15004,7 @@ class HeapAnalysisCommand(GenericCommand):
     - Double Free
     - Heap overlap"""
     _cmdline_ = "heap-analysis-helper"
-    _syntax_ = _cmdline_
+    _syntax_ = "{:s} [show]".format(_cmdline_)
     _category_ = "Heap"
 
     def __init__(self, *args, **kwargs):
@@ -15057,13 +15059,15 @@ class HeapAnalysisCommand(GenericCommand):
 
         if __heap_allocated_list__:
             ok("Tracked as in-use chunks:")
-            for addr, sz in __heap_allocated_list__: gef_print("{} malloc({:d}) = {:#x}".format(CROSS, sz, addr))
+            for addr, sz in __heap_allocated_list__:
+                gef_print("{:#x} = malloc({:d})".format(addr, sz))
         else:
             ok("No malloc() chunk tracked")
 
         if __heap_freed_list__:
             ok("Tracked as free-ed chunks:")
-            for addr, sz in __heap_freed_list__: gef_print("{}  free({:d}) = {:#x}".format(TICK, sz, addr))
+            for addr, sz in __heap_freed_list__:
+                gef_print("free({:#x})".format(addr))
         else:
             ok("No free() chunk tracked")
         return

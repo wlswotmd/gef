@@ -319,10 +319,6 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dtor-dump.png)
 
 ### Other
-* Replace the unicode character to ASCII.
-    * I don't want to use double-byte characters.
-    * ex: &#x27a4; to `>`.
-    * ex: &#x2713; to `OK`.
 * The category is introduced in `gef help`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/gef-help.png)
 * Combined into one file (from gef-extra).
