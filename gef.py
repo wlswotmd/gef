@@ -29479,7 +29479,7 @@ class PagewalkX64Command(PagewalkCommand):
     _example_ += "{:s} --sort-by-phys     # sort by physical address\n".format(_cmdline_)
     _example_ += "{:s} --simple           # merge with ignoring physical address consecutivness\n".format(_cmdline_)
     _example_ += "{:s} --trace 0x7fff00   # show all level pagetables only associated specific address\n".format(_cmdline_)
-    _example_ += "{:s} -q                 # show resutl only (quiet)".format(_cmdline_)
+    _example_ += "{:s} -q                 # show result only (quiet)".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
     _aliases_ = ["pagewalk x86",]
 
@@ -29931,7 +29931,7 @@ class PagewalkArmCommand(PagewalkCommand):
     _example_ += "{:s} --sort-by-phys     # sort by physical address\n".format(_cmdline_)
     _example_ += "{:s} --simple           # merge with ignoring physical address consecutivness\n".format(_cmdline_)
     _example_ += "{:s} --trace 0x7fff00   # show all level pagetables only associated specific address\n".format(_cmdline_)
-    _example_ += "{:s} -q                 # show resutl only (quiet)\n".format(_cmdline_)
+    _example_ += "{:s} -q                 # show result only (quiet)\n".format(_cmdline_)
     _example_ += "PL2 pagewalk is unsupported"
     _category_ = "Qemu-system Cooperation"
 
@@ -30737,7 +30737,7 @@ class PagewalkArm64Command(PagewalkCommand):
     _example_ += "{:s} --sort-by-phys     # for current EL, sort by physical address\n".format(_cmdline_)
     _example_ += "{:s} --simple           # for current EL, merge with ignoring physical address consecutivness\n".format(_cmdline_)
     _example_ += "{:s} --trace 0x7fff00   # for current EL, show all level pagetables only associated specific address\n".format(_cmdline_)
-    _example_ += "{:s} -q                 # show resutl only (quiet)".format(_cmdline_)
+    _example_ += "{:s} -q                 # show result only (quiet)".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
 
     def __init__(self, *args, **kwargs):
