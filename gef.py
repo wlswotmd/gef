@@ -1768,16 +1768,16 @@ def gdb_get_location_from_symbol(address):
     return name, offset
 
 
-def get_symbol_string(addr):
+def get_symbol_string(addr, nosymbol_string=""):
     try:
         if isinstance(addr, str):
             addr = re.sub(r"\x1B\[([0-9]{1,2}(;[0-9]{1,2})*)?m", "", addr) # remove color
             addr = int(addr, 16)
         ret = gdb_get_location_from_symbol(addr)
     except:
-        return ""
+        return nosymbol_string
     if ret is None:
-        return ""
+        return nosymbol_string
     sym_name, sym_offset = ret[0], ret[1]
     sym_name = Instruction.smartify_text(sym_name)
     if sym_offset == 0:
@@ -18284,7 +18284,7 @@ class MagicCommand(GenericCommand):
         self.resolve_and_print_kernel(["ioremap", "__ioremap"], kbase, maps)
         self.resolve_and_print_kernel(["iounmap", "__iounmap"], kbase, maps)
         self.resolve_and_print_kernel("phys_base", kbase, maps)
-        gef_print(titlify("Function pointer"))
+        gef_print(titlify("Automatically called function pointer"))
         self.resolve_and_print_kernel("kvm_clock", kbase, maps)
         self.resolve_and_print_kernel("clocksource_tsc", kbase, maps)
         gef_print(titlify("Function pointer table"))
@@ -20871,13 +20871,7 @@ class SyscallTableViewCommand(GenericCommand):
                 read_int_from_memory(syscall_function_addr) # if entry is valid, no error
             except:
                 break
-            ret = gdb_get_location_from_symbol(syscall_function_addr)
-            if ret is None:
-                symbol = "<NO_SYMBOL>"
-            elif ret[1] == 0:
-                symbol = "<{}>".format(ret[0])
-            else:
-                symbol = "<{}+{:#x}>".format(ret[0], ret[1])
+            symbol = get_symbol_string(syscall_function_addr, nosymbol_string=" <NO_SYMBOL>")
             seen[syscall_function_addr] = seen.get(syscall_function_addr, 0) + 1
             table.append([i, addr, syscall_function_addr, symbol])
             i += 1
@@ -20887,9 +20881,9 @@ class SyscallTableViewCommand(GenericCommand):
         gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
         for i, addr, syscall_function_addr, symbol in table:
             if seen[syscall_function_addr] == 1: # valid entry
-                msg = "[{:03d}] {:#018x}: {:#018x} {:s}".format(i, addr, syscall_function_addr, symbol)
+                msg = "[{:03d}] {:#018x}: {:#018x}{:s}".format(i, addr, syscall_function_addr, symbol)
             else: # invalid entry
-                msg = "[{:03d}] {:#018x}: ".format(i, addr) + Color.grayify("{:#018x} {:s}".format(syscall_function_addr, symbol))
+                msg = "[{:03d}] {:#018x}: ".format(i, addr) + Color.grayify("{:#018x}{:s}".format(syscall_function_addr, symbol))
             if not self.filter:
                 gef_print(msg)
             else:
@@ -33821,25 +33815,13 @@ class ThunkBreakpoint(gdb.Breakpoint):
             self.seen.append((caller_address, target_address))
 
         # get caller address, symbol
-        ret = gdb_get_location_from_symbol(caller_address)
-        if ret is None:
-            caller_symbol = "<NO_SYMBOL>"
-        elif ret[1] == 0:
-            caller_symbol = "<{}>".format(ret[0])
-        else:
-            caller_symbol = "<{}+{:#x}>".format(ret[0], ret[1])
+        caller_symbol = get_symbol_string(caller_address, nosymbol_string=" <NO_SYMBOL>")
 
         # get callee address, symbol
-        ret = gdb_get_location_from_symbol(target_address)
-        if ret is None:
-            target_symbol = "<NO_SYMBOL>"
-        elif ret[1] == 0:
-            target_symbol = "<{}>".format(ret[0])
-        else:
-            target_symbol = "<{}+{:#x}>".format(ret[0], ret[1])
+        target_symbol = get_symbol_string(target_address, nosymbol_string=" <NO_SYMBOL>")
 
         # print information
-        info("{:#x} {:s} -> {:#x} <{:s}> -> {:#x} {:s}".format(caller_address, caller_symbol, self.loc, self.sym, target_address, target_symbol))
+        info("{:#x}{:s} -> {:#x} <{:s}> -> {:#x}{:s}".format(caller_address, caller_symbol, self.loc, self.sym, target_address, target_symbol))
         # print preferred register condition
         for reg in current_arch.gpr_registers:
             reg_value = get_register(reg)
@@ -33849,7 +33831,9 @@ class ThunkBreakpoint(gdb.Breakpoint):
                 continue
             if mem_value == target_address:
                 perm = self.search_perm(reg_value)
-                info("    {:s}: {:#x} ({:s})  ->  {:#x}".format(reg, reg_value, perm, mem_value))
+                reg_value_symbol = get_symbol_string(reg_value, nosymbol_string=" <NO_SYMBOL>")
+                mem_value_symbol = get_symbol_string(mem_value, nosymbol_string=" <NO_SYMBOL>")
+                info("    {:s}: {:#x}{:s} ({:s})  ->  {:#x}{:s}".format(reg, reg_value, reg_value_symbol, perm, mem_value, mem_value_symbol))
         return False # continue
 
 
