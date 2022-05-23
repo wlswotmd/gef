@@ -18240,6 +18240,8 @@ class MagicCommand(GenericCommand):
     def magic_kernel(self):
         info("Wait for memory scan")
         maps = KernelbaseCommand.get_maps()
+        if maps is None:
+            return
         kbase, kbase_size = KernelbaseCommand.get_kernel_base(maps)
         get_ksymaddr("DUMMY")
         gef_print("{:42s}: {:#x} ({:#x} bytes)".format("kernel_base", kbase, kbase_size))
@@ -20081,19 +20083,25 @@ class KernelAddressHeuristicFinder:
                         if v != 0:
                             return v
             elif is_arm64():
-                count = 0
+                bases = {}
+                add1time = {}
                 for line in res.splitlines():
-                    m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
+                    m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
                     if m:
-                        base = int(m.group(1), 16)
-                        count = 0
+                        reg = m.group(1)
+                        base = int(m.group(2), 16)
+                        bases[reg] = base
                         continue
-                    m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\w+)", line)
+                    m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
                     if m:
-                        base += int(m.group(1), 16) # add 2 times
-                        if count == 1:
-                            return base # 1st pair of (adrp + add + add) is target
-                        count += 1
+                        dstreg = m.group(1)
+                        srcreg = m.group(2)
+                        v = int(m.group(3), 16)
+                        if srcreg in add1time:
+                            return add1time[srcreg] + v
+                        if srcreg in bases:
+                            add1time[dstreg] = bases[srcreg] + v
+                            continue
             elif is_arm32():
                 addr = 0
                 for line in res.splitlines():
@@ -20279,7 +20287,13 @@ class KernelAddressHeuristicFinder:
                             return v
             elif is_x86_32():
                 for line in res.splitlines():
-                    m = re.search(r"DWORD PTR \[.*([+-]0x\S+)\]", line)
+                    m = re.search(r",\s*DWORD PTR \[.*([+-]0x\S+)\]", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffff
+                        if v != 0:
+                            return v
+                for line in res.splitlines():
+                    m = re.search(r"mov\s+\S+,\s*(0x[0-9a-f]{8})", line)
                     if m:
                         v = int(m.group(1), 16) & 0xffffffff
                         if v != 0:
@@ -29021,7 +29035,10 @@ class V2PCommand(GenericCommand):
     @staticmethod
     @lru_cache()
     def get_maps():
-        res = gdb.execute("pagewalk -q --no-merge", to_string=True)
+        if is_arm64():
+            res = gdb.execute("pagewalk 1 -q --no-merge", to_string=True)
+        else:
+            res = gdb.execute("pagewalk -q --no-merge", to_string=True)
         res = sorted(set(res.splitlines()))
         res = list(filter(lambda line: line.endswith("]"), res))
         res = list(filter(lambda line: not "[+]" in line, res))
@@ -29031,6 +29048,16 @@ class V2PCommand(GenericCommand):
             vstart, vend = [int(x, 16) for x in vrange.split("-")]
             pstart, pend = [int(x, 16) for x in prange.split("-")]
             maps.append((vstart, vend, pstart, pend))
+        if maps == []:
+            if is_x86():
+                warn("Make sure you are in ring0 (=kernel mode)")
+            elif is_arm32():
+                warn("Make sure you are in supervisor mode (=kernel mode)")
+                warn("Make sure qemu 3.x or higher")
+            elif is_arm64():
+                warn("Make sure you are in EL1 (=kernel mode)")
+                warn("Make sure qemu 3.x or higher")
+            return None
         return maps
 
     @only_if_gdb_running
@@ -29054,6 +29081,8 @@ class V2PCommand(GenericCommand):
             return
 
         maps = self.get_maps()
+        if maps is None:
+            return
         for vstart, vend, pstart, pend in maps:
             if vstart <= addr < vend:
                 offset = addr - vstart
@@ -29090,6 +29119,8 @@ class P2VCommand(GenericCommand):
             return
 
         maps = V2PCommand.get_maps()
+        if maps is None:
+            return
         count = 0
         for vstart, vend, pstart, pend in maps:
             if pstart <= addr < pend:
