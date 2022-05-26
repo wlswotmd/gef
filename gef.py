@@ -11948,25 +11948,28 @@ class ContextCommand(GenericCommand):
             bp_prefix = Color.redify(BP_GLYPH) if self.line_has_breakpoint(file_base_name, i + 1, bp_locations) else " "
 
             if i < line_num:
-                gef_print("{}{}".format(bp_prefix, Color.colorify("  {:4d}\t {:s}".format(i + 1, lines[i],), past_lines_color)))
+                past_line = Color.colorify("{:4d}   {:s}".format(i + 1, lines[i]), past_lines_color)
+                gef_print("{:1s}{:2s}{:s}".format(bp_prefix, "", past_line))
 
-            if i == line_num:
-                prefix = "{}{}{:4d}\t ".format(bp_prefix, RIGHT_ARROW[1:], i + 1)
+            elif i == line_num:
+                prefix = "{:1s}{:2s}{:4d}   ".format(bp_prefix, RIGHT_ARROW[1:-1], i + 1)
                 leading = len(lines[i]) - len(lines[i].lstrip())
                 if show_extra_info:
                     extra_info = self.get_pc_context_info(pc, lines[i])
-                    if extra_info:
-                        gef_print("{}{}".format(" "*(len(prefix) + leading), extra_info))
+                    for ext in extra_info:
+                        gef_print("{}// {}".format(" "*(len(prefix) + leading), ext))
                 gef_print(Color.colorify("{}{:s}".format(prefix, lines[i]), cur_line_color))
 
-            if i > line_num:
+            elif i > line_num:
                 try:
-                    gef_print("{}  {:4d}\t {:s}".format(bp_prefix, i + 1, lines[i],))
+                    future_line = "{:4d}   {:s}".format(i + 1, lines[i])
+                    gef_print("{:1s}{:2s}{:s}".format(bp_prefix, "", future_line))
                 except IndexError:
                     break
         return
 
     def get_pc_context_info(self, pc, line):
+        max_recursion = get_gef_setting("dereference.max_recursion") or 4
         try:
             current_block = gdb.block_for_pc(pc)
             if not current_block or not current_block.is_valid(): return ""
@@ -11979,11 +11982,19 @@ class ContextCommand(GenericCommand):
                         if val.type.code in (gdb.TYPE_CODE_PTR, gdb.TYPE_CODE_ARRAY):
                             addr = int(val.address)
                             addrs = dereference_from(addr)
-                            if len(addrs) > 2:
-                                addrs = [addrs[0], "[...]", addrs[-1]]
-
-                            f = " {:s} ".format(RIGHT_ARROW)
-                            val = f.join(addrs)
+                            # dereference
+                            val = str(addrs[0])
+                            sep = " {:s} ".format(RIGHT_ARROW)
+                            for addr in addrs[1:]:
+                                if isinstance(addr, Address):
+                                    val += sep + str(addr) + get_symbol_string(addr.value)
+                                else:
+                                    val += sep + addr # actually this is msg
+                            # add "..." or not
+                            if max_recursion <= len(addrs) and isinstance(addrs[-1], Address):
+                                subseq_addrs = dereference_from(addrs[-1].value)
+                                if len(subseq_addrs) > 1:
+                                    val += sep + "..."
                         elif val.type.code == gdb.TYPE_CODE_INT:
                             val = hex(int(val))
                         else:
@@ -11994,10 +12005,10 @@ class ContextCommand(GenericCommand):
                 current_block = current_block.superblock
 
             if m:
-                return "// " + ", ".join(["{}={}".format(Color.yellowify(a), b) for a, b in m.items()])
+                return ["{}={}".format(Color.yellowify(a), b) for a, b in m.items()]
         except Exception:
             pass
-        return ""
+        return []
 
     def context_trace(self):
         try:
@@ -15213,8 +15224,11 @@ class SyscallArgsCommand(GenericCommand):
             addrs = dereference_from(value)
             if len(addrs) > 1:
                 sep = " {:s} ".format(RIGHT_ARROW)
-                line += sep
-                line += sep.join(addrs[1:])
+                for addr in addrs[1:]:
+                    if isinstance(addr, Address):
+                        line += sep + str(addr) + get_symbol_string(addr.value)
+                    else:
+                        line += sep + addr # actually this is msg
             gef_print(line)
         return
 
