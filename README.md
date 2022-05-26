@@ -219,7 +219,7 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
 * `patch`: is improved.
     * It supports physical memory if under qemu-system.
     * Added 3 new modes: `patch pattern`, `patch history` and `patch revert`.
-    * Added a new option to write repeatedly up to the specified length for `patch string`.
+    * Convert `nop` command to `patch nop` mode.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/patch.png)
 * `search-pattern`: is improved.
     * It supports when under qemu-system (in short, it works without `/proc/self/maps`)

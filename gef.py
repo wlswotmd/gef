@@ -7539,79 +7539,6 @@ class UnicornEmulateCommand(GenericCommand):
 
 
 @register_command
-class NopCommand(GenericCommand):
-    """Patch the instruction(s) pointed by parameters with NOP. Note: this command is architecture aware."""
-    _cmdline_ = "nop"
-    _syntax_ = "{:s} [-h] [-b NUM_BYTES] [LOCATION]\n".format(_cmdline_)
-    _syntax_ += "  LOCATION      address/symbol to patch\n"
-    _syntax_ += "  -b NUM_BYTES  Instead of writing one instruction, patch the specified number of bytes"
-    _example_ = "{:s} $pc".format(_cmdline_)
-    _category_ = "Show/Modify Memory"
-
-    def __init__(self):
-        super().__init__(complete=gdb.COMPLETE_LOCATION)
-        return
-
-    def get_insn_size(self, addr):
-        cur_insn = gef_current_instruction(addr)
-        next_insn = gef_instruction_n(addr, 2)
-        return next_insn.address - cur_insn.address
-
-    @only_if_gdb_running
-    def do_invoke(self, argv):
-        self.dont_repeat()
-
-        try:
-            opts, args = getopt.getopt(argv, "b:h")
-            num_bytes = 0
-            for o, a in opts:
-                if o == "-b":
-                    num_bytes = int(a, 0)
-                elif o == "-h":
-                    self.usage()
-                    return
-        except:
-            self.usage()
-            return
-
-        if args:
-            try:
-                loc = parse_address(args[0])
-            except:
-                self.usage()
-                return
-        else:
-            loc = current_arch.pc
-
-        self.nop_bytes(loc, num_bytes)
-        return
-
-    def nop_bytes(self, loc, num_bytes):
-        if num_bytes == 0:
-            size = self.get_insn_size(loc)
-        else:
-            size = num_bytes
-        nops = current_arch.nop_insn
-
-        if len(nops) > size:
-            m = "Cannot patch instruction at {:#x} (nop_size is:{:d},insn_size is:{:d})".format(loc, len(nops), size)
-            err(m)
-            return
-
-        while len(nops) < size:
-            nops += current_arch.nop_insn
-
-        if len(nops) != size:
-            err("Cannot patch instruction at {:#x} (nop instruction does not evenly fit in requested size)"
-                .format(loc))
-            return
-
-        ok("Patching {:d} bytes from {:s}".format(size, format_address(loc)))
-        write_memory(loc, nops, size)
-        return
-
-
-@register_command
 class StubCommand(GenericCommand):
     """Stub out the specified function. This function is useful when needing to skip one
     function to be called and disrupt your runtime flow (ex. fork)."""
@@ -12565,6 +12492,7 @@ class PatchCommand(GenericCommand):
     _syntax_ = "{:s} [-h] qword|dword|word|byte [--phys] LOCATION VALUES\n".format(_cmdline_)
     _syntax_ += "{:s} [-h] string [--phys] LOCATION \"double-escaped string\" [LENGTH]\n".format(_cmdline_)
     _syntax_ += "{:s} [-h] pattern [--phys] LOCATION LENGTH\n".format(_cmdline_)
+    _syntax_ += "{:s} [-h] nop [--phys] [LOCATION] [-b BYTE_LENGTH|-i INST_COUNT]\n".format(_cmdline_)
     _syntax_ += "{:s} [-h] history\n".format(_cmdline_)
     _syntax_ += "{:s} [-h] revert [HISTORY]".format(_cmdline_)
     _category_ = "Show/Modify Memory"
@@ -12694,9 +12622,9 @@ class PatchByteCommand(PatchCommand):
 
 @register_command
 class PatchStringCommand(PatchCommand):
-    """Write specified string to the specified memory location pointed by ADDRESS."""
+    """Write specified string to the specified memory location pointed by LOCATION."""
     _cmdline_ = "patch string"
-    _syntax_ = '{:s} [-h] [--phys] ADDRESS "double backslash-escaped string" [LENGTH]'.format(_cmdline_)
+    _syntax_ = '{:s} [-h] [--phys] LOCATION "double backslash-escaped string" [LENGTH]'.format(_cmdline_)
     _example_ = '{:s} $sp "GEFROCKS"'.format(_cmdline_)
     _category_ = "Show/Modify Memory"
 
@@ -12757,9 +12685,9 @@ class PatchStringCommand(PatchCommand):
 
 @register_command
 class PatchPatternCommand(PatchCommand):
-    """Write pattern string to the specified memory location pointed by ADDRESS."""
+    """Write pattern string to the specified memory location pointed by LOCATION."""
     _cmdline_ = "patch pattern"
-    _syntax_ = "{:s} [-h] [--phys] ADDRESS LENGTH".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [--phys] LOCATION LENGTH".format(_cmdline_)
     _example_ = "{:s} $sp 128".format(_cmdline_)
     _category_ = "Show/Modify Memory"
 
@@ -12797,6 +12725,108 @@ class PatchPatternCommand(PatchCommand):
         write_memory(addr, s, len(s))
         after_data = read_memory(addr, length=len(s))
         self.history.insert(0, {"addr":addr, "before_data":before_data, "after_data":after_data, "physmode":get_current_mmu_mode()})
+
+        if phys_mode:
+            if orig_mode == "virt":
+                disable_phys()
+        return
+
+
+@register_command
+class PatchNopCommand(PatchCommand):
+    """Patch the instruction(s) pointed by parameters with NOP. Note: this command is architecture aware."""
+    _cmdline_ = "patch nop"
+    _syntax_ = "{:s} [-h] [--phys] [LOCATION] [-b BYTE_LENGTH|-i INST_COUNT]".format(_cmdline_)
+    _example_ = "{:s} $pc -i 2".format(_cmdline_)
+    _category_ = "Show/Modify Memory"
+    _aliases_ = ["nop", ]
+
+    def get_insns_size(self, addr, num_insts):
+        addr_after_n = gef_instruction_n(addr, num_insts)
+        return addr_after_n.address - addr
+
+    def nop_bytes(self, addr, num_bytes):
+        if num_bytes == 0:
+            info("Not patching since num_bytes == 0")
+            return
+
+        nop_op_len = len(current_arch.nop_insn)
+
+        if nop_op_len > num_bytes:
+            err("Cannot patch instruction at {:#x} (nop_size is:{:d},insn_size is:{:d})".format(addr, nop_op_len, num_bytes))
+            return
+
+        count = num_bytes // nop_op_len
+        real_num_bytes = nop_op_len * count
+
+        if real_num_bytes != num_bytes:
+            err("Cannot patch instruction at {:#x} (nop instruction does not evenly fit in requested size)".format(addr))
+            return
+
+        ok("Patching {:d} bytes from {:s}".format(real_num_bytes, format_address(addr)))
+        before_data = read_memory(addr, length=real_num_bytes)
+        write_memory(addr, current_arch.nop_insn * count, real_num_bytes)
+        after_data = read_memory(addr, length=real_num_bytes)
+        self.history.insert(0, {"addr":addr, "before_data":before_data, "after_data":after_data, "physmode":get_current_mmu_mode()})
+        return
+
+    @only_if_gdb_running
+    def do_invoke(self, argv):
+        self.dont_repeat()
+
+        if "-h" in argv:
+            self.usage()
+            return
+
+        phys_mode = False
+        if "--phys" in argv:
+            if not is_supported_physmode():
+                err("Unsupported. Check qemu version (at least: 4.1.0-rc0~, recommend: 5.x~)")
+                return
+            phys_mode = True
+            orig_mode = get_current_mmu_mode()
+            argv.remove("--phys")
+
+        num_bytes = None
+        num_insts = None
+        if "-b" in argv:
+            try:
+                idx = argv.index("-b")
+                num_bytes = int(argv[idx + 1], 0)
+                argv = argv[:idx] + argv[idx+2:]
+            except:
+                self.usage()
+                return
+        elif "-i" in argv:
+            try:
+                idx = argv.index("-i")
+                num_insts = int(argv[idx + 1], 0)
+                argv = argv[:idx] + argv[idx+2:]
+            except:
+                self.usage()
+                return
+        else:
+            num_insts = 1
+
+        if phys_mode:
+            if orig_mode == "virt":
+                enable_phys()
+
+        if argv:
+            try:
+                addr = parse_address(' '.join(argv))
+            except:
+                self.usage()
+                if phys_mode:
+                    if orig_mode == "virt":
+                        disable_phys()
+                return
+        else:
+            addr = current_arch.pc
+
+        if num_insts:
+            num_bytes = self.get_insns_size(addr, num_insts)
+        self.nop_bytes(addr, num_bytes)
 
         if phys_mode:
             if orig_mode == "virt":
@@ -12849,6 +12879,9 @@ class PatchRevertCommand(PatchCommand):
             revert_target = int(argv[0])
         except:
             self.usage()
+            gef_print("")
+            info("Patch history")
+            gdb.execute("patch history")
             return
 
         if not (0 <= revert_target < len(self.history)):
