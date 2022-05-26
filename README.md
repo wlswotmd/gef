@@ -106,8 +106,8 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
 * `partition-alloc-dump-stable`: dumps partition-alloc free-list (heuristic).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/partition-alloc-dump.png)
     * This command is reserved for the implementation of latest stable version of chromium.
-        * Currently tested: v101.x / 982481 / 27de6227ca357da0d57ae2c7b18da170c4651438
-        * https://commondatastorage.googleapis.com/chromium-browser-snapshots/index.html?prefix=Linux_x64/982481/
+        * Currently tested: v102.x / 993115 / 1c0f7c93c8de06acb82d7fbaac7ab31aa57ed37e
+        * https://commondatastorage.googleapis.com/chromium-browser-snapshots/index.html?prefix=Linux_x64/993115/
     * Supported on x64 only (maybe it works on x86/ARM/ARM64, but not tested).
     * It will try heuristic search if binary has no symbol.
 * `partition-alloc-dump-beta`: dumps partition-alloc free-list (heuristic).
@@ -116,8 +116,8 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
         * https://commondatastorage.googleapis.com/chromium-browser-snapshots/index.html?prefix=Linux_x64/993115/
 * `partition-alloc-dump-dev`: dumps partition-alloc free-list (heuristic).
     * This command is reserved for the implementation of latest dev version of chromium.
-        * Currently tested: v103.x / 997158 / 56e9cfac915155c80579a73376793d57d65927fb
-        * https://commondatastorage.googleapis.com/chromium-browser-snapshots/index.html?prefix=Linux_x64/997158/
+        * Currently tested: v103.x / 1003490 / 4f4be3c1f3ff682c9fdd0dbe133ae1bc32761b0a
+        * https://commondatastorage.googleapis.com/chromium-browser-snapshots/index.html?prefix=Linux_x64/1003490/
 * `partition-alloc-dump-old1`: dumps partition-alloc free-list (heuristic).
     * For the implementation in 2021 Jul (tested on `Google CTF 2021 - fullchain`).
     * Not maintained for a while.

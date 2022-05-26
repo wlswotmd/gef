@@ -40,9 +40,11 @@ def download_binary(channel):
   os.makedirs(dirname, exist_ok=True)
   if not os.path.exists(f"{dirname}/chrome-linux-{pos}.zip"):
     url = 'https://www.googleapis.com/download/storage/v1/b/chromium-browser-snapshots/o/Linux_x64%2F{:s}%2Fchrome-linux.zip?&alt=media'.format(pos)
-    subprocess.getoutput(f"wget -O {dirname}/chrome-linux-{pos}.zip '{url}'")
+    cmd = f"wget -O {dirname}/chrome-linux-{pos}.zip '{url}'"
+    print("  Execute: {:s}".format(cmd))
+    subprocess.getoutput(cmd)
   else:
-    print("  already exists, download is skipped")
+    print("  Already exists, download is skipped")
 
   res = subprocess.getoutput(f"curl -L https://crrev.com/{pos}")
   r = re.findall(r"<title>(\S+) .*?</title>", res)

@@ -24720,10 +24720,10 @@ class PartitionAllocDumpStableCommand(GenericCommand):
                     //uint32_t extras_size;
                     //uint32_t extras_offset;
                 }
-                uint8_t one_cacheline[kPartitionCachelineSize]; // 64 bytes
+                uint8_t one_cacheline[internal::kPartitionCachelineSize]; // 64 bytes
             }
             ::partition_alloc::Lock lock_;  // 8 bytes
-            Bucket buckets[kNumBuckets] = {};
+            Bucket buckets[internal::kNumBuckets] = {};
             Bucket sentinel_bucket{};
             bool initialized = false;
             std::atomic<size_t> total_size_of_committed_pages{0};
@@ -24744,12 +24744,14 @@ class PartitionAllocDumpStableCommand(GenericCommand):
             SuperPageExtentEntry* current_extent = nullptr;
             SuperPageExtentEntry* first_extent = nullptr;
             DirectMapExtent* direct_map_list GUARDED_BY(lock_) = nullptr;
-            SlotSpan* global_empty_slot_span_ring[kMaxFreeableSpans] GUARDED_BY(lock_) = {};
+            SlotSpan* global_empty_slot_span_ring[internal::kMaxFreeableSpans] GUARDED_BY(lock_) = {};
             int16_t global_empty_slot_span_ring_index GUARDED_BY(lock_) = 0;
-            int16_t global_empty_slot_span_ring_size GUARDED_BY(lock_) = kDefaultEmptySlotSpanRingSize;
+            int16_t global_empty_slot_span_ring_size GUARDED_BY(lock_) = internal::kDefaultEmptySlotSpanRingSize;
             uintptr_t inverted_self = 0;
             std::atomic<int> thread_caches_being_constructed_{0};
             bool quarantine_always_for_testing = false;
+            #partition_alloc::PartitionTag current_partition_tag = 0; // if ARM MTE is enable
+            #uintptr_t next_tag_bitmap_page = 0; // if ARM MTE is enable
         }
         """
         x = u64(read_memory(current, 8))
@@ -25216,145 +25218,7 @@ class PartitionAllocDumpBetaCommand(PartitionAllocDumpStableCommand):
     _example_ += "Chromium mainline is too fast to develop. So if parse is failed, you need fix this gef.py."
     _category_ = "Chrome"
 
-    def read_root(self, addr, name):
-        ptrsize = current_arch.ptrsize
-        root = {}
-        root["name"] = name
-        root["addr"] = current = read_int_from_memory(addr)
-        """
-        https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/partition_root.h
-        struct base::PartitionRoot {
-            union {
-                struct {
-                    QuarantineMode quarantine_mode; // uint8_t
-                    ScanMode scan_mode;             // uint8_t
-                    bool with_thread_cache = false;
-                    //bool with_denser_bucket_distribution = false; // v100.x ~
-                    bool allow_aligned_alloc;
-                    bool allow_cookie;
-                    bool brp_enabled_;
-                    bool use_configurable_pool;
-                    //uint32_t extras_size;
-                    //uint32_t extras_offset;
-                }
-                uint8_t one_cacheline[internal::kPartitionCachelineSize]; // 64 bytes
-            }
-            ::partition_alloc::Lock lock_;  // 8 bytes
-            Bucket buckets[internal::kNumBuckets] = {};
-            Bucket sentinel_bucket{};
-            bool initialized = false;
-            std::atomic<size_t> total_size_of_committed_pages{0};
-            std::atomic<size_t> max_size_of_committed_pages{0};
-            std::atomic<size_t> total_size_of_super_pages{0};
-            std::atomic<size_t> total_size_of_direct_mapped_pages{0};
-            size_t total_size_of_allocated_bytes GUARDED_BY(lock_) = 0;
-            size_t max_size_of_allocated_bytes GUARDED_BY(lock_) = 0;
-            std::atomic<uint64_t> syscall_count{};
-            std::atomic<uint64_t> syscall_total_time_ns{};
-            std::atomic<size_t> total_size_of_brp_quarantined_bytes{0};
-            std::atomic<size_t> total_count_of_brp_quarantined_slots{0};
-            size_t empty_slot_spans_dirty_bytes GUARDED_BY(lock_) = 0;
-            int max_empty_slot_spans_dirty_bytes_shift = 3;
-            uintptr_t next_super_page = 0;
-            uintptr_t next_partition_page = 0;
-            uintptr_t next_partition_page_end = 0;
-            SuperPageExtentEntry* current_extent = nullptr;
-            SuperPageExtentEntry* first_extent = nullptr;
-            DirectMapExtent* direct_map_list GUARDED_BY(lock_) = nullptr;
-            SlotSpan* global_empty_slot_span_ring[internal::kMaxFreeableSpans] GUARDED_BY(lock_) = {};
-            int16_t global_empty_slot_span_ring_index GUARDED_BY(lock_) = 0;
-            int16_t global_empty_slot_span_ring_size GUARDED_BY(lock_) = internal::kDefaultEmptySlotSpanRingSize;
-            uintptr_t inverted_self = 0;
-            std::atomic<int> thread_caches_being_constructed_{0};
-            bool quarantine_always_for_testing = false;
-            #partition_alloc::PartitionTag current_partition_tag = 0; // if ARM MTE is enable
-            #uintptr_t next_tag_bitmap_page = 0; // if ARM MTE is enable
-        }
-        """
-        x = u64(read_memory(current, 8))
-        current += 64 # sizeof(union {...})
-
-        root["lock_"] = u64(read_memory(current, 8))
-        current += 8
-
-        # for 32bit, there is 2 patterns because aligned or packed
-        if is_32bit():
-            if self.align_pad is None:
-                x = read_int_from_memory(current)
-                if x == 0:
-                    self.align_pad = True
-                else:
-                    self.align_pad = False
-            if self.align_pad:
-                current += ptrsize
-
-        root["buckets"] = []
-        while True:
-            if read_int_from_memory(current) == 1: # search `bool initialized`
-                break
-            bucket, current = self.read_bucket(current)
-            root["buckets"].append(bucket)
-        root["sentinel_bucket"] = root["buckets"].pop()
-
-        root["initialized"] = read_int_from_memory(current) & 0xff
-        current += ptrsize # with pad
-        root["total_size_of_committed_pages"] = read_int_from_memory(current)
-        current += ptrsize
-        root["max_size_of_committed_pages"] = read_int_from_memory(current)
-        current += ptrsize
-        root["total_size_of_super_pages"] = read_int_from_memory(current)
-        current += ptrsize
-        root["total_size_of_direct_mapped_pages"] = read_int_from_memory(current)
-        current += ptrsize
-        root["total_size_of_allocated_bytes"] = read_int_from_memory(current)
-        current += ptrsize
-        root["max_size_of_allocated_bytes"] = read_int_from_memory(current)
-        current += ptrsize
-        root["syscall_count"] = read_int_from_memory(current)
-        current += ptrsize
-        root["syscall_total_time_ns"] = read_int_from_memory(current)
-        current += ptrsize
-        root["total_size_of_brp_quarantined_bytes"] = u32(read_memory(current, 4))
-        current += 4
-        root["total_count_of_brp_quarantined_slots"] = u32(read_memory(current, 4))
-        current += 4
-        root["empty_slot_spans_dirty_bytes"] = u32(read_memory(current, 4))
-        current += 4
-        root["max_empty_slot_spans_dirty_bytes_shift"] = u32(read_memory(current, 4))
-        current += 4
-        root["next_super_page"] = read_int_from_memory(current)
-        current += ptrsize
-        root["next_partition_page"] = read_int_from_memory(current)
-        current += ptrsize
-        root["next_partition_page_end"] = read_int_from_memory(current)
-        current += ptrsize
-        root["current_extent"] = read_int_from_memory(current)
-        current += ptrsize
-        root["first_extent"] = read_int_from_memory(current)
-        current += ptrsize
-        root["direct_map_list"] = read_int_from_memory(current)
-        current += ptrsize
-
-        root["global_empty_slot_span_ring"] = []
-        inv = root["addr"] ^ ((1 << (current_arch.ptrsize * 8)) - 1)
-        while True:
-            if read_int_from_memory(current + ptrsize) == inv: # search `inverted_self`
-                break
-            x = read_int_from_memory(current)
-            current += ptrsize
-            root["global_empty_slot_span_ring"].append(x)
-
-        root["global_empty_slot_span_ring_index"] = u16(read_memory(current, 2))
-        current += 2
-        root["global_empty_slot_span_ring_size"] = u16(read_memory(current, 2))
-        current += ptrsize - 2 # with pad
-        root["inverted_self"] = read_int_from_memory(current)
-        current += ptrsize
-        root["thread_caches_being_constructed_"] = u32(read_memory(current, 4))
-        current += 4
-        root["quarantine_always_for_testing"] = u32(read_memory(current, 4)) & 0xff
-        current += 4
-        return root, current
+    # No diffs affecting this command
 
 
 @register_command
