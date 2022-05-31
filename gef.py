@@ -29486,7 +29486,7 @@ class PagewalkX64Command(PagewalkCommand):
                     addr = table_base + i * self.bits["ENTRY_SIZE"]
                     line = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x}) {:s}".format(addr, entry, new_va, new_va_end, ' '.join(flags))
                     if self.is_not_filter_target(line):
-                        conitnue
+                        continue
                     gef_print(line)
 
         if not self.quiet:
@@ -29541,7 +29541,7 @@ class PagewalkX64Command(PagewalkCommand):
                     addr = table_base + i * self.bits["ENTRY_SIZE"]
                     line = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x}) {:s}".format(addr, entry, new_va, new_va_end, ' '.join(flags))
                     if self.is_not_filter_target(line):
-                        conitnue
+                        continue
                     gef_print(line)
 
         if not self.quiet:
@@ -29609,7 +29609,7 @@ class PagewalkX64Command(PagewalkCommand):
                     addr = table_base + i * self.bits["ENTRY_SIZE"]
                     line = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x}) {:s}".format(addr, entry, new_va, new_va_end, ' '.join(flags))
                     if self.is_not_filter_target(line):
-                        conitnue
+                        continue
                     gef_print(line)
 
         if not self.quiet:
@@ -29683,7 +29683,7 @@ class PagewalkX64Command(PagewalkCommand):
                     addr = table_base + i * self.bits["ENTRY_SIZE"]
                     line = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x}) {:s}".format(addr, entry, new_va, new_va_end, ' '.join(flags))
                     if self.is_not_filter_target(line):
-                        conitnue
+                        continue
                     gef_print(line)
 
         if not self.quiet:
@@ -29738,7 +29738,7 @@ class PagewalkX64Command(PagewalkCommand):
                     addr = table_base + i * self.bits["ENTRY_SIZE"]
                     line = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x}) {:s}".format(addr, entry, virt_addr, virt_addr_end, ' '.join(flags))
                     if self.is_not_filter_target(line):
-                        conitnue
+                        continue
                     gef_print(line)
 
         if not self.quiet:
@@ -30188,7 +30188,7 @@ class PagewalkArmCommand(PagewalkCommand):
                 addr = table_base + i * 4
                 line = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x}) {:s}".format(addr, entry, new_va, new_va_end, ' '.join(flags))
                 if self.is_not_filter_target(line):
-                    conitnue
+                    continue
                 gef_print(line)
 
         if not self.quiet:
@@ -30268,7 +30268,7 @@ class PagewalkArmCommand(PagewalkCommand):
                     addr = table_base + i * 4
                     line = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x}) {:s}".format(addr, entry, virt_addr, virt_addr_end, ' '.join(flags))
                     if self.is_not_filter_target(line):
-                        conitnue
+                        continue
                     gef_print(line)
 
         if not self.quiet:
@@ -30354,7 +30354,7 @@ class PagewalkArmCommand(PagewalkCommand):
                     addr = table_base + i * 8
                     line = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x}) {:s}".format(addr, entry, new_va, new_va_end, ' '.join(flags))
                     if self.is_not_filter_target(line):
-                        conitnue
+                        continue
                     gef_print(line)
 
             if not self.quiet:
@@ -30429,7 +30429,7 @@ class PagewalkArmCommand(PagewalkCommand):
                     addr = table_base + i * 8
                     line = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x}) {:s}".format(addr, entry, new_va, new_va_end, ' '.join(flags))
                     if self.is_not_filter_target(line):
-                        conitnue
+                        continue
                     gef_print(line)
 
         if not self.quiet:
@@ -30485,7 +30485,7 @@ class PagewalkArmCommand(PagewalkCommand):
                     addr = table_base + i * 8
                     line = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x}) {:s}".format(addr, entry, virt_addr, virt_addr_end, ' '.join(flags))
                     if self.is_not_filter_target(line):
-                        conitnue
+                        continue
                     gef_print(line)
 
         if not self.quiet:
@@ -30593,6 +30593,7 @@ class PagewalkArmCommand(PagewalkCommand):
             self.SECURE = (SCR & 0x1) == 0 # NS bit
         except:
             self.SECURE = False
+        info("SECURE: {}".format(self.SECURE))
         suffix = "_S" if self.SECURE else ""
 
         # check AFE
@@ -31134,7 +31135,7 @@ class PagewalkArm64Command(PagewalkCommand):
                         addr = table_base + i * 8
                         line = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x}) {:s}".format(addr, entry, new_va, new_va_end, ' '.join(flags))
                         if self.is_not_filter_target(line):
-                            conitnue
+                            continue
                         gef_print(line)
 
             if not self.silent and not self.quiet:
@@ -31251,7 +31252,7 @@ class PagewalkArm64Command(PagewalkCommand):
                         addr = table_base + i * 8
                         line = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x}) {:s}".format(addr, entry, new_va, new_va_end, ' '.join(flags))
                         if self.is_not_filter_target(line):
-                            conitnue
+                            continue
                         gef_print(line)
 
             if not self.silent and not self.quiet:
@@ -31380,7 +31381,7 @@ class PagewalkArm64Command(PagewalkCommand):
                         addr = table_base + i * 8
                         line = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x}) {:s}".format(addr, entry, new_va, new_va_end, ' '.join(flags))
                         if self.is_not_filter_target(line):
-                            conitnue
+                            continue
                         gef_print(line)
 
             if not self.silent and not self.quiet:
@@ -31511,7 +31512,7 @@ class PagewalkArm64Command(PagewalkCommand):
                         addr = table_base + i * 8
                         line = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x}) {:s}".format(addr, entry, new_va, new_va_end, ' '.join(flags))
                         if self.is_not_filter_target(line):
-                            conitnue
+                            continue
                         gef_print(line)
 
             if not self.silent and not self.quiet:
@@ -31628,7 +31629,7 @@ class PagewalkArm64Command(PagewalkCommand):
                         addr = table_base + i * 8
                         line = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x}) {:s}".format(addr, entry, virt_addr, virt_addr_end, ' '.join(flags))
                         if self.is_not_filter_target(line):
-                            conitnue
+                            continue
                         gef_print(line)
 
             if not self.silent and not self.quiet:
