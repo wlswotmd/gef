@@ -28945,11 +28945,16 @@ class V2PCommand(GenericCommand):
 
     @staticmethod
     @lru_cache()
-    def get_maps():
+    def get_maps(FORCE_PREFIX_S):
         if is_arm64():
             res = gdb.execute("pagewalk 1 -q --no-merge", to_string=True)
         else:
-            res = gdb.execute("pagewalk -q --no-merge", to_string=True)
+            if FORCE_PREFIX_S is None:
+                res = gdb.execute("pagewalk -q --no-merge", to_string=True)
+            elif FORCE_PREFIX_S is True:
+                res = gdb.execute("pagewalk -q --no-merge -S", to_string=True)
+            elif FORCE_PREFIX_S is False:
+                res = gdb.execute("pagewalk -q --no-merge -s", to_string=True)
         res = sorted(set(res.splitlines()))
         res = list(filter(lambda line: line.endswith("]"), res))
         res = list(filter(lambda line: not "[+]" in line, res))
@@ -28985,13 +28990,22 @@ class V2PCommand(GenericCommand):
             self.usage()
             return
 
+        FORCE_PREFIX_S = None
+        if is_arm32():
+            if "-s" in argv:
+                FORCE_PREFIX_S = False
+                argv.remove("-s")
+            elif "-S" in argv:
+                FORCE_PREFIX_S = True
+                argv.remove("-S")
+
         try:
             addr = int(gdb.parse_and_eval(' '.join(argv)))
         except:
             self.usage()
             return
 
-        maps = self.get_maps()
+        maps = self.get_maps(FORCE_PREFIX_S)
         if maps is None:
             return
         for vstart, vend, pstart, pend in maps:
@@ -29023,13 +29037,22 @@ class P2VCommand(GenericCommand):
             self.usage()
             return
 
+        FORCE_PREFIX_S = None
+        if is_arm32():
+            if "-s" in argv:
+                FORCE_PREFIX_S = False
+                argv.remove("-s")
+            elif "-S" in argv:
+                FORCE_PREFIX_S = True
+                argv.remove("-S")
+
         try:
             addr = int(gdb.parse_and_eval(' '.join(argv)))
         except:
             self.usage()
             return
 
-        maps = V2PCommand.get_maps()
+        maps = V2PCommand.get_maps(FORCE_PREFIX_S)
         if maps is None:
             return
         count = 0
@@ -29857,7 +29880,7 @@ class PagewalkX64Command(PagewalkCommand):
 class PagewalkArmCommand(PagewalkCommand):
     """Dump pagetable for ARM (Cortex-A only) using qemu-monitor."""
     _cmdline_ = "pagewalk arm"
-    _syntax_ = "{:s} [-h] [-q] [--print-each-level] [--no-merge] [--filter REGEX] [--vrange ADDR] [--prange ADDR] [--sort-by-phys] [--simple] [--trace ADDR]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [-q] [-S|-s] [--print-each-level] [--no-merge] [--filter REGEX] [--vrange ADDR] [--prange ADDR] [--sort-by-phys] [--simple] [--trace ADDR]".format(_cmdline_)
     _example_ = "\n"
     _example_ += "{:s} --print-each-level # show all level pagetables\n".format(_cmdline_)
     _example_ += "{:s} --no-merge         # do not merge similar/consecutive address\n".format(_cmdline_)
@@ -29868,6 +29891,8 @@ class PagewalkArmCommand(PagewalkCommand):
     _example_ += "{:s} --simple           # merge with ignoring physical address consecutivness\n".format(_cmdline_)
     _example_ += "{:s} --trace 0x7fff00   # show all level pagetables only associated specific address\n".format(_cmdline_)
     _example_ += "{:s} -q                 # show result only (quiet)\n".format(_cmdline_)
+    _example_ += "{:s} -S                 # use TTBRn_ELm_S for parsing start register\n".format(_cmdline_)
+    _example_ += "{:s} -s                 # use TTBRn_ELm for parsing start register\n".format(_cmdline_)
     _example_ += "PL2 pagewalk is unsupported"
     _category_ = "Qemu-system Cooperation"
 
@@ -30501,50 +30526,49 @@ class PagewalkArmCommand(PagewalkCommand):
         return
 
     def pagewalk_short(self):
-        suffix = "_S" if self.SECURE else ""
         if not self.quiet:
-            gef_print(titlify("$TTBR0_EL1{}".format(suffix)))
+            gef_print(titlify("$TTBR0_EL1{}".format(self.suffix)))
 
-        TTBCR = int(gdb.parse_and_eval('$TTBCR{}'.format(suffix)))
-        TTBR0_EL1 = int(gdb.parse_and_eval('$TTBR0_EL1{}'.format(suffix)))
-        TTBR1_EL1 = int(gdb.parse_and_eval('$TTBR1_EL1{}'.format(suffix)))
+        TTBCR = int(gdb.parse_and_eval('$TTBCR{}'.format(self.suffix)))
+        TTBR0_EL1 = int(gdb.parse_and_eval('$TTBR0_EL1{}'.format(self.suffix)))
+        TTBR1_EL1 = int(gdb.parse_and_eval('$TTBR1_EL1{}'.format(self.suffix)))
 
         # pagewalk TTBR0_EL1
         self.N = TTBCR & 0b111
         ml = 14 - self.N
         pl0base = ((TTBR0_EL1 & ((1<<32)-1)) >> ml) << ml
         if not self.quiet:
-            info("$TTBR0_EL1{}: {:#x}".format(suffix, TTBR0_EL1))
+            info("$TTBR0_EL1{}: {:#x}".format(self.suffix, TTBR0_EL1))
+            info("$TTBCR{}: {:#x}".format(self.suffix, TTBCR))
             info("PL0 base: {:#x}".format(pl0base))
         self.do_pagewalk_short(pl0base)
         self.print_page()
 
         # pagewalk TTBR1_EL1
         if not self.quiet:
-            gef_print(titlify("$TTBR1_EL1{}".format(suffix)))
+            gef_print(titlify("$TTBR1_EL1{}".format(self.suffix)))
         pl1_vabase = {0:None, 1:0x80000000, 2:0x40000000, 3:0x20000000, 4:0x10000000, 5:0x08000000, 6:0x04000000, 7:0x02000000}[self.N]
         pl1base = ((TTBR1_EL1 & ((1<<32)-1)) >> ml) << ml
         self.N = 0
         if pl1_vabase is not None:
             if not self.quiet:
-                info("$TTBR1_EL1{}: {:#x}".format(suffix, TTBR1_EL1))
+                info("$TTBR1_EL1{}: {:#x}".format(self.suffix, TTBR1_EL1))
                 info("PL1 base: {:#x}".format(pl1base))
                 info("PL1 va_base: {:#x}".format(pl1_vabase))
             self.do_pagewalk_short(pl1base, pl1_vabase)
             self.print_page()
         else:
             if not self.quiet:
-                info("$TTBR1_EL1{} is unused".format(suffix))
+                info("$TTBR1_EL1{} is unused".format(self.suffix))
         return
 
     def pagewalk_long(self):
-        suffix = "_S" if self.SECURE else ""
         if not self.quiet:
-            gef_print(titlify("$TTBR0_EL1{}".format(suffix)))
+            gef_print(titlify("$TTBR0_EL1{}".format(self.suffix)))
 
-        TTBCR = int(gdb.parse_and_eval('$TTBCR{}'.format(suffix)))
-        TTBR0_EL1 = int(gdb.parse_and_eval('$TTBR0_EL1{}'.format(suffix)))
-        TTBR1_EL1 = int(gdb.parse_and_eval('$TTBR1_EL1{}'.format(suffix)))
+        TTBCR = int(gdb.parse_and_eval('$TTBCR{}'.format(self.suffix)))
+        TTBR0_EL1 = int(gdb.parse_and_eval('$TTBR0_EL1{}'.format(self.suffix)))
+        TTBR1_EL1 = int(gdb.parse_and_eval('$TTBR1_EL1{}'.format(self.suffix)))
 
         # pagewalk TTBR0_EL1
         T0SZ = TTBCR & 0b111
@@ -30552,14 +30576,15 @@ class PagewalkArmCommand(PagewalkCommand):
         self.N = T0SZ
         pl0base = TTBR0_EL1 & ((1<<40)-1)
         if not self.quiet:
-            info("$TTBR0_EL1{}: {:#x}".format(suffix, TTBR0_EL1))
+            info("$TTBR0_EL1{}: {:#x}".format(self.suffix, TTBR0_EL1))
+            info("$TTBCR{}: {:#x}".format(self.suffix, TTBCR))
             info("PL0 base: {:#x}".format(pl0base))
         self.do_pagewalk_long(pl0base)
         self.print_page()
 
         # pagewalk TTBR1_EL1
         if not self.quiet:
-            gef_print(titlify("$TTBR1_EL1{}".format(suffix)))
+            gef_print(titlify("$TTBR1_EL1{}".format(self.suffix)))
         if T0SZ != 0 or T1SZ != 0:
             self.N = T1SZ
             pl1base = TTBR1_EL1 & ((1<<40)-1)
@@ -30568,14 +30593,14 @@ class PagewalkArmCommand(PagewalkCommand):
             else:
                 pl1_vabase = 2**32 - 2**(32-T1SZ)
             if not self.quiet:
-                info("$TTBR1_EL1{}: {:#x}".format(suffix, TTBR1_EL1))
+                info("$TTBR1_EL1{}: {:#x}".format(self.suffix, TTBR1_EL1))
                 info("PL1 base: {:#x}".format(pl1base))
                 info("PL1 va_base: {:#x}".format(pl1_vabase))
             self.do_pagewalk_long(pl1base, pl1_vabase)
             self.print_page()
         else:
             if not self.quiet:
-                info("$TTBR1_EL1{} is unused".format(suffix))
+                info("$TTBR1_EL1{} is unused".format(self.suffix))
         return
 
     def pagewalk(self):
@@ -30585,27 +30610,45 @@ class PagewalkArmCommand(PagewalkCommand):
             return
 
         # check Secure mode
-        try:
+        if self.FORCE_PREFIX_S is None:
+            # auto detect
+            try:
+                try:
+                    SCR = int(gdb.parse_and_eval('$SCR_S'))
+                except:
+                    SCR = int(gdb.parse_and_eval('$SCR'))
+                self.SECURE = (SCR & 0x1) == 0 # NS bit
+            except:
+                self.SECURE = False
+            self.suffix = "_S" if self.SECURE else ""
+        elif self.FORCE_PREFIX_S is True:
+            # use "_S"
             try:
                 SCR = int(gdb.parse_and_eval('$SCR_S'))
+                self.SECURE = (SCR & 0x1) == 0 # NS bit
             except:
+                self.SECURE = False
+            self.suffix = "_S"
+        elif self.FORCE_PREFIX_S is False:
+            # do not use "_S"
+            try:
                 SCR = int(gdb.parse_and_eval('$SCR'))
-            self.SECURE = (SCR & 0x1) == 0 # NS bit
-        except:
-            self.SECURE = False
-        info("SECURE: {}".format(self.SECURE))
-        suffix = "_S" if self.SECURE else ""
+                self.SECURE = (SCR & 0x1) == 0 # NS bit
+            except:
+                self.SECURE = False
+            self.suffix = ""
+        info("Secure world: {}".format(self.SECURE))
 
         # check AFE
         try:
-            SCTLR = int(gdb.parse_and_eval('$SCTLR{}'.format(suffix)))
+            SCTLR = int(gdb.parse_and_eval('$SCTLR{}'.format(self.suffix)))
             self.AFE = ((SCTLR >> 29) & 0x1) == 1
         except:
             self.AFE = False
 
         # check enabled LPAE
         try:
-            TTBCR = int(gdb.parse_and_eval('$TTBCR{}'.format(suffix)))
+            TTBCR = int(gdb.parse_and_eval('$TTBCR{}'.format(self.suffix)))
             self.LPAE = ((TTBCR >> 31) & 0x1) == 1
             self.PTE_SIZE = 8 if self.LPAE else 4
         except:
@@ -30613,7 +30656,7 @@ class PagewalkArmCommand(PagewalkCommand):
 
         # check PXN supported
         try:
-            ID_MMFR0 = int(gdb.parse_and_eval('$ID_MMFR0{}'.format(suffix)))
+            ID_MMFR0 = int(gdb.parse_and_eval('$ID_MMFR0{}'.format(self.suffix)))
             self.PXN = ((ID_MMFR0 >> 2) & 0x1) == 1
         except:
             self.PXN = False
@@ -30648,6 +30691,17 @@ class PagewalkArmCommand(PagewalkCommand):
         if not is_arm32():
             err("Unsupported")
             return
+
+        self.FORCE_PREFIX_S = None
+        if "-S" in argv and "-s" in argv:
+            self.usage()
+            return
+        elif "-S" in argv:
+            self.FORCE_PREFIX_S = True
+            argv.remove("-S")
+        elif "-s" in argv:
+            self.FORCE_PREFIX_S = False
+            argv.remove("-s")
 
         try:
             argv = self.parse_common_args(argv)
