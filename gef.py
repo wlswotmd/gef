@@ -5764,7 +5764,7 @@ class PrintFormatCommand(GenericCommand):
     """Print bytes format in high level languages."""
     _cmdline_ = "print-format"
     _syntax_ = "{:s} [-f FORMAT] [-b BITSIZE] [-l LENGTH] [-c] [-h] LOCATION\n".format(_cmdline_)
-    _syntax_ += "  -f FORMAT   specifies the output format for programming language, avaliable value is py, c, js, asm (default py).\n"
+    _syntax_ += "  -f FORMAT   specifies the output format, avaliable value: py, c, js, asm, hex (default py).\n"
     _syntax_ += "  -b BITSIZE  sepecifies size of bit, avaliable values is 8, 16, 32, 64 (default is 8).\n"
     _syntax_ += "  -l LENGTH   specifies length of array (default is 256).\n"
     _syntax_ += "  -c          The result of data will copied to clipboard\n"
@@ -5820,7 +5820,7 @@ class PrintFormatCommand(GenericCommand):
         length = 256
         bitlen = 8
         copy_to_clipboard = False
-        supported_formats = ["py", "c", "js", "asm"]
+        supported_formats = ["py", "c", "js", "asm", "hex"]
 
         try:
             opts, args = getopt.getopt(argv, "f:l:b:ch")
@@ -5850,6 +5850,10 @@ class PrintFormatCommand(GenericCommand):
             err("Size of bit must be in 8, 16, 32, or 64")
             return
 
+        if lang == "hex" and bitlen != 8:
+            err("hex must be bit == 8")
+            return
+
         if lang not in supported_formats:
             err("Language must be : {}".format(str(supported_formats)))
             return
@@ -5868,16 +5872,30 @@ class PrintFormatCommand(GenericCommand):
                 return None
             value = struct.unpack(bf, mem)[0]
             data += [value]
-        sdata = ", ".join(map(hex, data))
+
+        sdata = ""
+        if lang == "hex":
+            for i, x in enumerate(data):
+                sdata += "{:02x}".format(x)
+                if (i % 16) == 15:
+                    sdata += "\n"
+        else:
+            for i, x in enumerate(data):
+                sdata += "{:#0{}x}, ".format(x, bitlen//4 + 2)
+                if (i % 8) == 7:
+                    sdata += "\n"
+        sdata = sdata.rstrip()
 
         if lang == "py":
-            out = "buf = [{}]".format(sdata)
+            out = "buf = [\n{}\n]".format(sdata)
         elif lang == "c":
-            out = "unsigned {0} buf[{1}] = {{{2}}};".format(self.c_type[bitlen], length, sdata)
+            out = "unsigned {0} buf[{1}] = {{\n{2}\n}};".format(self.c_type[bitlen], length, sdata)
         elif lang == "js":
-            out = "var buf = [{}]".format(sdata)
+            out = "var buf = [\n{}\n]".format(sdata)
         elif lang == "asm":
-            out += "buf {0} {1}".format(self.asm_type[bitlen], sdata)
+            out += "buf {0}\n{1}".format(self.asm_type[bitlen], sdata)
+        elif lang == "hex":
+            out += "{0}".format(sdata)
 
         if copy_to_clipboard:
             if self.clip(bytes(out, "utf-8")):
@@ -28941,7 +28959,7 @@ class QemuRegistersCommand(GenericCommand):
 class V2PCommand(GenericCommand):
     """Transfer from virtual address to physical address."""
     _cmdline_ = "v2p"
-    _syntax_ = "{:s} [-h] ADDRESS".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [-s|-S] ADDRESS".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
 
     @staticmethod
@@ -29021,7 +29039,7 @@ class V2PCommand(GenericCommand):
 class P2VCommand(GenericCommand):
     """Transfer from physical address to virtual address."""
     _cmdline_ = "p2v"
-    _syntax_ = "{:s} [-h] ADDRESS".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [-s|-S] ADDRESS".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
 
     @only_if_gdb_running
