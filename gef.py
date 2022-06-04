@@ -19556,8 +19556,8 @@ class TohexCommand(GenericCommand):
 class UnhexCommand(GenericCommand):
     """Translate hex -> bytes"""
     _cmdline_ = "unhex"
-    _syntax_ = '{:s} [-h] "double-escaped string"'.format(_cmdline_)
-    _example_ = "{:s} 4141424243434444".format(_cmdline_)
+    _syntax_ = '{:s} [-h] "hex string"'.format(_cmdline_)
+    _example_ = "{:s} 41414242 43434444".format(_cmdline_)
     _category_ = "Misc"
 
     def do_invoke(self, argv):
@@ -19571,8 +19571,9 @@ class UnhexCommand(GenericCommand):
             self.usage()
             return
 
+        code = argv[0].replace(" ", "")
         try:
-            value = binascii.unhexlify(argv[0])
+            value = binascii.unhexlify(code)
         except binascii.Error:
             gef_print("Could not unhexlify")
             return
