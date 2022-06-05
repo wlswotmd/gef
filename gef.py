@@ -15312,7 +15312,7 @@ class HeapAnalysisCommand(GenericCommand):
 class SyscallSearchCommand(GenericCommand):
     """Search the syscall number"""
     _cmdline_ = "syscall-search"
-    _syntax_ = "{:s} [-h] [-v] [-a ARCH] [-m MODE] SYSCALL_NAME_REGEX_SEARCH_PATTERN".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [-v] [-a ARCH] [-m MODE] SYSCALL_NAME_REGEX_SEARCH_PATTERN|SYSCALL_NUM".format(_cmdline_)
     _example_ = "\n"
     _example_ += '{:s} -a X86 -m 64  "^writev?" # amd64\n'.format(_cmdline_)
     _example_ += '{:s} -a X86 -m 32  "^writev?" # i386 on amd64\n'.format(_cmdline_)
@@ -15322,6 +15322,39 @@ class SyscallSearchCommand(GenericCommand):
     _example_ += '{:s} -a ARM -m N32 "^writev?" # arm32 native'.format(_cmdline_)
     _category_ = "Misc"
 
+    def print_legend(self):
+        if self.verbose:
+            headers = ["NR", "Name", "Parameter"]
+            gef_print(Color.colorify("{:<25} {:<20} {}".format(*headers), get_gef_setting("theme.table_heading")))
+        else:
+            headers = ["NR", "Name"]
+            gef_print(Color.colorify("{:<25} {:<20}".format(*headers), get_gef_setting("theme.table_heading")))
+        return
+
+    def print_syscall_by_number(self, syscall_table, syscall_num):
+        self.print_legend()
+        for num, entry in syscall_table.items():
+            if num == syscall_num:
+                nr = "{:d} (={:#x})".format(num, num)
+                if self.verbose:
+                    param = ('\n'+" "*47).join(["{}: {}".format(i, param.param) for i, param in enumerate(entry.params, start=1)])
+                else:
+                    param = ""
+                gef_print("{:<25} {:<20} {}".format(nr, entry.name, param))
+        return
+
+    def print_syscall_by_name(self, syscall_table, syscall_name_pattern):
+        self.print_legend()
+        for num, entry in syscall_table.items():
+            if re.search(syscall_name_pattern, entry.name):
+                nr = "{:d} (={:#x})".format(num, num)
+                if self.verbose:
+                    param = ('\n'+" "*47).join(["{}: {}".format(i, param.param) for i, param in enumerate(entry.params, start=1)])
+                else:
+                    param = ""
+                gef_print("{:<25} {:<20} {}".format(nr, entry.name, param))
+        return
+
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -15329,9 +15362,9 @@ class SyscallSearchCommand(GenericCommand):
             self.usage()
             return
 
-        verbose = False
+        self.verbose = False
         if "-v" in argv:
-            verbose = True
+            self.verbose = True
             argv.remove("-v")
 
         arch = None
@@ -15356,21 +15389,17 @@ class SyscallSearchCommand(GenericCommand):
             self.usage()
             return
 
-        if verbose:
-            headers = ["NR", "Name", "Parameter"]
-            gef_print(Color.colorify("{:<25} {:<20} {}".format(*headers), get_gef_setting("theme.table_heading")))
-        else:
-            headers = ["NR", "Name"]
-            gef_print(Color.colorify("{:<25} {:<20}".format(*headers), get_gef_setting("theme.table_heading")))
+        syscall_num = None
+        syscall_name_pattern = None
+        try:
+            syscall_num = int(argv[0], 0)
+        except:
+            syscall_name_pattern = argv[0]
 
-        for num, entry in syscall_table.items():
-            if re.search(argv[0], entry.name):
-                nr = "{:d} (={:#x})".format(num, num)
-                if verbose:
-                    param = ('\n'+" "*47).join(["{}: {}".format(i, param.param) for i, param in enumerate(entry.params, start=1)])
-                else:
-                    param = ""
-                gef_print("{:<25} {:<20} {}".format(nr, entry.name, param))
+        if syscall_num is not None:
+            self.print_syscall_by_number(syscall_table, syscall_num)
+        if syscall_name_pattern is not None:
+            self.print_syscall_by_name(syscall_table, syscall_name_pattern)
         return
 
 
