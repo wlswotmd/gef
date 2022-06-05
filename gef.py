@@ -7712,7 +7712,7 @@ class CapstoneDisassembleCommand(GenericCommand):
 class GlibcHeapCommand(GenericCommand):
     """Base command to get information about the Glibc heap structure."""
     _cmdline_ = "heap"
-    _syntax_ = "{:s} (chunk|chunks|bins|arenas)".format(_cmdline_)
+    _syntax_ = "{:s} (chunk|chunks|bins|arenas|binsize-info)".format(_cmdline_)
     _category_ = "Heap"
 
     def __init__(self):
@@ -7753,8 +7753,153 @@ class GlibcHeapArenaCommand(GenericCommand):
                 break
 
         info("additionally, you can see struct member by following")
-        gef_print("p ((struct malloc_state) ADDRESS)[0]")
-        gef_print("p ((struct _heap_info) ADDRESS)[0]")
+        gef_print("p ((struct malloc_state*) ADDRESS)[0]")
+        gef_print("p ((struct _heap_info*) ADDRESS)[0]")
+        return
+
+
+@register_command
+class GlibcHeapBinSizeInfoCommand(GenericCommand):
+    """Display heap bin size info."""
+    _cmdline_ = "heap binsize-info"
+    _syntax_ = _cmdline_
+    _category_ = "Heap"
+
+    @only_if_gdb_running
+    @only_if_not_qemu_system
+    def do_invoke(self, argv):
+        self.dont_repeat()
+
+        gef_print(titlify("tcache size"))
+        if is_64bit():
+            for i in range(64):
+                gef_print("tcache[{:2d}]: {:#x}".format(i, i*0x10 + 0x20))
+        elif is_32bit():
+            gef_print("MALLOC_ALIGNMENT is changed from libc 2.26,")
+            gef_print("for 32 bit arch, tcache 0x8 align is no longer used.")
+            for i in range(64):
+                gef_print("tcache[{:2d}]: {:#x}".format(i, i*0x10 + 0x10))
+
+        gef_print(titlify("fastbin size"))
+        if is_64bit():
+            for i in range(7):
+                gef_print("fastbins[{:d}]: {:#x}".format(i, i*0x10 + 0x20))
+        elif is_32bit():
+            gef_print("MALLOC_ALIGNMENT is changed from libc 2.26.")
+            gef_print("for 32 bit arch, fastbin exists every 8 bytes, but only used every 16 bytes.")
+            gef_print("fastbins[0]: 0x10")
+            gef_print("fastbins[1]: 0x18 # unused")
+            gef_print("fastbins[2]: 0x20")
+            gef_print("fastbins[3]: 0x28 # unused")
+            gef_print("fastbins[4]: 0x30")
+            gef_print("fastbins[5]: 0x38 # unused")
+            gef_print("fastbins[6]: 0x40")
+
+        gef_print(titlify("unsorted_bin / small_bin / large_bin size"))
+        gef_print("bins[{:3d}]: unsorted_bin".format(0))
+        if is_64bit():
+            for i in range(1, 63):
+                gef_print("bins[{:3d}]: small_bins[{:3d}]: {:#x}".format( i*2, i, (i-1) * 0x10 + 0x20))
+            gef_print("bins[126]: large_bins[ 63]: 0x400 - 0x430")
+            gef_print("bins[128]: large_bins[ 64]: 0x440 - 0x470")
+            gef_print("bins[130]: large_bins[ 65]: 0x480 - 0x4b0")
+            gef_print("bins[132]: large_bins[ 66]: 0x4c0 - 0x4f0")
+            gef_print("bins[134]: large_bins[ 67]: 0x500 - 0x530")
+            gef_print("bins[136]: large_bins[ 68]: 0x540 - 0x570")
+            gef_print("bins[138]: large_bins[ 69]: 0x580 - 0x5b0")
+            gef_print("bins[140]: large_bins[ 70]: 0x5c0 - 0x5f0")
+            gef_print("bins[142]: large_bins[ 71]: 0x600 - 0x630")
+            gef_print("bins[144]: large_bins[ 72]: 0x640 - 0x670")
+            gef_print("bins[146]: large_bins[ 73]: 0x680 - 0x6b0")
+            gef_print("bins[148]: large_bins[ 74]: 0x6c0 - 0x6f0")
+            gef_print("bins[150]: large_bins[ 75]: 0x700 - 0x730")
+            gef_print("bins[152]: large_bins[ 76]: 0x740 - 0x770")
+            gef_print("bins[154]: large_bins[ 77]: 0x780 - 0x7b0")
+            gef_print("bins[156]: large_bins[ 78]: 0x7c0 - 0x7f0")
+            gef_print("bins[158]: large_bins[ 79]: 0x800 - 0x830")
+            gef_print("bins[160]: large_bins[ 80]: 0x840 - 0x870")
+            gef_print("bins[162]: large_bins[ 81]: 0x880 - 0x8b0")
+            gef_print("bins[164]: large_bins[ 82]: 0x8c0 - 0x8f0")
+            gef_print("bins[166]: large_bins[ 83]: 0x900 - 0x930")
+            gef_print("bins[168]: large_bins[ 84]: 0x940 - 0x970")
+            gef_print("bins[170]: large_bins[ 85]: 0x980 - 0x9b0")
+            gef_print("bins[172]: large_bins[ 86]: 0x9c0 - 0x9f0")
+            gef_print("bins[174]: large_bins[ 87]: 0xa00 - 0xa30")
+            gef_print("bins[176]: large_bins[ 88]: 0xa40 - 0xa70")
+            gef_print("bins[178]: large_bins[ 89]: 0xa80 - 0xab0")
+            gef_print("bins[180]: large_bins[ 90]: 0xac0 - 0xaf0")
+            gef_print("bins[182]: large_bins[ 91]: 0xb00 - 0xb30")
+            gef_print("bins[184]: large_bins[ 92]: 0xb40 - 0xb70")
+            gef_print("bins[186]: large_bins[ 93]: 0xb80 - 0xbb0")
+            gef_print("bins[188]: large_bins[ 94]: 0xbc0 - 0xbf0")
+            gef_print("bins[190]: large_bins[ 95]: 0xc00 - 0xc30")
+            gef_print("bins[192]: large_bins[ 96]: 0xc40 - 0xdf0")
+        elif is_32bit():
+            for i in range(1, 63):
+                gef_print("bins[{:3d}]: small_bins[{:3d}]: {:#x}".format( i*2, i, (i-1) * 0x10 + 0x10))
+            gef_print("bins[126]: large_bins[ 63]: 0x3f0")
+            gef_print("bins[128]: large_bins[ 64]: 0x400 - 0x430")
+            gef_print("bins[130]: large_bins[ 65]: 0x440 - 0x470")
+            gef_print("bins[132]: large_bins[ 66]: 0x480 - 0x4b0")
+            gef_print("bins[134]: large_bins[ 67]: 0x4c0 - 0x4f0")
+            gef_print("bins[136]: large_bins[ 68]: 0x500 - 0x530")
+            gef_print("bins[138]: large_bins[ 69]: 0x540 - 0x570")
+            gef_print("bins[140]: large_bins[ 70]: 0x580 - 0x5b0")
+            gef_print("bins[142]: large_bins[ 71]: 0x5c0 - 0x5f0")
+            gef_print("bins[144]: large_bins[ 72]: 0x600 - 0x630")
+            gef_print("bins[146]: large_bins[ 73]: 0x640 - 0x670")
+            gef_print("bins[148]: large_bins[ 74]: 0x680 - 0x6b0")
+            gef_print("bins[150]: large_bins[ 75]: 0x6c0 - 0x6f0")
+            gef_print("bins[152]: large_bins[ 76]: 0x700 - 0x730")
+            gef_print("bins[154]: large_bins[ 77]: 0x740 - 0x770")
+            gef_print("bins[156]: large_bins[ 78]: 0x780 - 0x7b0")
+            gef_print("bins[158]: large_bins[ 79]: 0x7c0 - 0x7f0")
+            gef_print("bins[160]: large_bins[ 80]: 0x800 - 0x830")
+            gef_print("bins[162]: large_bins[ 81]: 0x840 - 0x870")
+            gef_print("bins[164]: large_bins[ 82]: 0x880 - 0x8b0")
+            gef_print("bins[166]: large_bins[ 83]: 0x8c0 - 0x8f0")
+            gef_print("bins[168]: large_bins[ 84]: 0x900 - 0x930")
+            gef_print("bins[170]: large_bins[ 85]: 0x940 - 0x970")
+            gef_print("bins[172]: large_bins[ 86]: 0x980 - 0x9b0")
+            gef_print("bins[174]: large_bins[ 87]: 0x9c0 - 0x9f0")
+            gef_print("bins[176]: large_bins[ 88]: 0xa00 - 0xa30")
+            gef_print("bins[178]: large_bins[ 89]: 0xa40 - 0xa70")
+            gef_print("bins[180]: large_bins[ 90]: 0xa80 - 0xab0")
+            gef_print("bins[182]: large_bins[ 91]: 0xac0 - 0xaf0")
+            gef_print("bins[184]: large_bins[ 92]: 0xb00 - 0xb30")
+            gef_print("bins[186]: large_bins[ 93]: 0xb40 - 0xb70")
+            gef_print("bins[190]: large_bins[ 95]: 0xb80 - 0xbf0")
+            gef_print("bins[192]: large_bins[ 96]: 0xc00 - 0xdf0")
+        gef_print("bins[194]: large_bins[ 97]: 0xe00 - 0xff0")
+        gef_print("bins[196]: large_bins[ 98]: 0x1000 - 0x11f0")
+        gef_print("bins[198]: large_bins[ 99]: 0x1200 - 0x13f0")
+        gef_print("bins[200]: large_bins[100]: 0x1400 - 0x15f0")
+        gef_print("bins[202]: large_bins[101]: 0x1600 - 0x17f0")
+        gef_print("bins[204]: large_bins[102]: 0x1800 - 0x19f0")
+        gef_print("bins[206]: large_bins[103]: 0x1a00 - 0x1bf0")
+        gef_print("bins[208]: large_bins[104]: 0x1c00 - 0x1df0")
+        gef_print("bins[210]: large_bins[105]: 0x1e00 - 0x1ff0")
+        gef_print("bins[212]: large_bins[106]: 0x2000 - 0x21f0")
+        gef_print("bins[214]: large_bins[107]: 0x2200 - 0x23f0")
+        gef_print("bins[216]: large_bins[108]: 0x2400 - 0x25f0")
+        gef_print("bins[218]: large_bins[109]: 0x2600 - 0x27f0")
+        gef_print("bins[220]: large_bins[110]: 0x2800 - 0x29f0")
+        gef_print("bins[222]: large_bins[111]: 0x2a00 - 0x2ff0")
+        gef_print("bins[224]: large_bins[112]: 0x3000 - 0x3ff0")
+        gef_print("bins[226]: large_bins[113]: 0x4000 - 0x4ff0")
+        gef_print("bins[228]: large_bins[114]: 0x5000 - 0x5ff0")
+        gef_print("bins[230]: large_bins[115]: 0x6000 - 0x6ff0")
+        gef_print("bins[232]: large_bins[116]: 0x7000 - 0x7ff0")
+        gef_print("bins[234]: large_bins[117]: 0x8000 - 0x8ff0")
+        gef_print("bins[236]: large_bins[118]: 0x9000 - 0x9ff0")
+        gef_print("bins[238]: large_bins[119]: 0xa000 - 0xfff0")
+        gef_print("bins[240]: large_bins[120]: 0x10000 - 0x17ff0")
+        gef_print("bins[242]: large_bins[121]: 0x18000 - 0x1fff0")
+        gef_print("bins[244]: large_bins[122]: 0x20000 - 0x27ff0")
+        gef_print("bins[246]: large_bins[123]: 0x28000 - 0x3fff0")
+        gef_print("bins[248]: large_bins[124]: 0x40000 - 0x7fff0")
+        gef_print("bins[250]: large_bins[125]:")
+        gef_print("bins[252]: large_bins[126]:")
         return
 
 
