@@ -6,7 +6,7 @@ We hope you find it useful for CTF players, reversing, exploit development, etc.
 ## Install
 
 ```bash
-# Run with root user
+# Run with root user (sudo is NOT recommended)
 wget -q https://raw.githubusercontent.com/bata24/gef/dev/install.sh -O- | sh
 ```
 
@@ -99,6 +99,12 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kcmdline.png)
 * `ktask`: displays each task address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ktask.png)
+* `kmod`: displays each module address.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmod.png)
+* `kcdev`: displays character devices informations.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kcdev.png)
+* `kfops`: displays fops members.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kfops.png)
 * `syscall-table-view`: prints system call table (x64/x86/ARM64/ARM only).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/syscall-table-view.png)
 

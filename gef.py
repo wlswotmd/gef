@@ -20301,6 +20301,207 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    def get_modules():
+        # plan 1 (directly)
+        modules = get_ksymaddr("modules")
+        if modules:
+            return modules
+
+        # plan 2 (available v3.7.5 or later)
+        find_module_all = get_ksymaddr("find_module_all")
+        if find_module_all:
+            res = gdb.execute("x/20i {:#x}".format(find_module_all), to_string=True)
+            if is_x86_64():
+                for line in res.splitlines():
+                    m = re.search(r"QWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffffffffffff
+                        if v != 0:
+                            return v
+            elif is_x86_32():
+                for line in res.splitlines():
+                    m = re.search(r"ds:(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffff
+                        if v != 0:
+                            return v
+            elif is_arm64():
+                bases = {}
+                add1time = {}
+                for line in res.splitlines():
+                    m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        base = int(m.group(2), 16)
+                        bases[reg] = base
+                        continue
+                    m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
+                    if m:
+                        dstreg = m.group(1)
+                        srcreg = m.group(2)
+                        v = int(m.group(3), 16)
+                        if srcreg in bases:
+                            add1time[dstreg] = bases[srcreg] + v
+                            continue
+                    m = re.search(r"ldr\s+\S+,\s*\[(\S+),\s*#(\d+)\]", line)
+                    if m:
+                        srcreg = m.group(1)
+                        v = int(m.group(2), 0)
+                        if srcreg in add1time:
+                            return add1time[srcreg] + v
+            elif is_arm32():
+                bases = {}
+                add1time = {}
+                for line in res.splitlines():
+                    m = re.search(r"movw\s+(\S+),.+;\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        base = int(m.group(2), 16)
+                        bases[reg] = base
+                        continue
+                    m = re.search(r"movt\s+(\S+),.+;\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        v = int(m.group(2), 16) << 16
+                        if reg in bases:
+                            add1time[reg] = bases[reg] + v
+                            continue
+                    m = re.search(r"ldr\s+\S+,\s*\[(\S+),\s*#(\d+)\]", line)
+                    if m:
+                        reg = m.group(1)
+                        v = int(m.group(2), 0)
+                        if reg in add1time:
+                            return add1time[reg] + v
+        return None
+
+    @staticmethod
+    def get_chrdevs():
+        # plan 1 (directly)
+        chrdevs = get_ksymaddr("chrdevs")
+        if chrdevs:
+            return chrdevs
+
+        # plan 2
+        chrdev_show = get_ksymaddr("chrdev_show")
+        if chrdev_show:
+            res = gdb.execute("x/30i {:#x}".format(chrdev_show), to_string=True)
+            if is_x86_64():
+                for line in res.splitlines():
+                    m = re.search(r"QWORD PTR \[.*\*8([-+]0x\S+)\]", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffffffffffff
+                        if v != 0:
+                            return v
+            elif is_x86_32():
+                for line in res.splitlines():
+                    m = re.search(r"\[.*\*4([+-]0x\S+)\]", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffff
+                        if v != 0:
+                            return v
+            elif is_arm64():
+                count = 0
+                base = None
+                for line in res.splitlines():
+                    if base is None:
+                        m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
+                        if m:
+                            base = int(m.group(1), 16)
+                    else:
+                        m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
+                        if m:
+                            addr = base + int(m.group(1), 16) # add 1 time
+                            if count == 1:
+                                return addr # 2nd pair of (adrp + add) is target
+                            else:
+                                base = None
+                                count += 1
+            elif is_arm32():
+                bases = {}
+                add1time = {}
+                for line in res.splitlines():
+                    m = re.search(r"movw\s+(\S+),.+;\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        base = int(m.group(2), 16)
+                        bases[reg] = base
+                        continue
+                    m = re.search(r"movt\s+(\S+),.+;\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        v = int(m.group(2), 16) << 16
+                        if reg in bases:
+                            add1time[reg] = bases[reg] + v
+                            continue
+                    m = re.search(r"ldr\s+\S+,\s*\[(\S+),.*#\d+\]", line)
+                    if m:
+                        reg = m.group(1)
+                        if reg in add1time:
+                            return add1time[reg]
+            return None
+
+    @staticmethod
+    def get_cdev_map():
+        # plan 1 (directly)
+        cdev_map = get_ksymaddr("cdev_map")
+        if cdev_map:
+            return cdev_map
+
+        # plan 2
+        cdev_del = get_ksymaddr("cdev_del")
+        if cdev_del:
+            res = gdb.execute("x/30i {:#x}".format(cdev_del), to_string=True)
+            if is_x86_64():
+                for line in res.splitlines():
+                    m = re.search(r"QWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffffffffffff
+                        if v != 0:
+                            return v
+            elif is_x86_32():
+                for line in res.splitlines():
+                    m = re.search(r"ds:(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffff
+                        if v != 0:
+                            return v
+            elif is_arm64():
+                base = None
+                for line in res.splitlines():
+                    if base is None:
+                        m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
+                        if m:
+                            base = int(m.group(1), 16)
+                    else:
+                        m = re.search(r"ldr\s+\S+,\s*\[\S+,\s*#(\d+)\]", line)
+                        if m:
+                            return base + int(m.group(1), 0)
+            elif is_arm32():
+                bases = {}
+                add1time = {}
+                for line in res.splitlines():
+                    m = re.search(r"movw\s+(\S+),.+;\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        base = int(m.group(2), 16)
+                        bases[reg] = base
+                        continue
+                    m = re.search(r"movt\s+(\S+),.+;\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        v = int(m.group(2), 16) << 16
+                        if reg in bases:
+                            add1time[reg] = bases[reg] + v
+                            continue
+                    m = re.search(r"ldr\s+\S+,\s*\[(\S+),\s*#(\d+)\]", line)
+                    if m:
+                        reg = m.group(1)
+                        v = int(m.group(2), 0)
+                        if reg in add1time:
+                            return add1time[reg] + v
+        return None
+
+    @staticmethod
     def get_sys_call_table():
         # plan 1 (directly)
         sys_call_table = get_ksymaddr("sys_call_table")
@@ -21350,6 +21551,500 @@ class KernelTaskCommand(GenericCommand):
             cred = read_int_from_memory(task + offset_cred)
             uids = [u32(read_memory(cred + offset_uid + j * 4, 4)) for j in range(8)]
             gef_print("{:#018x}: {:<16s} {:#018x} {}".format(task, comm_string, cred, uids))
+        return
+
+@register_command
+class KernelModuleCommand(GenericCommand):
+    """Display module list under qemu-system."""
+    _cmdline_ = "kmod"
+    _syntax_ = "{:s}".format(_cmdline_)
+    _example_ = "{:s}".format(_cmdline_)
+    _category_ = "Qemu-system Cooperation"
+
+    def get_modules_list(self):
+        modules = KernelAddressHeuristicFinder.get_modules()
+        if modules is None:
+            err("Not found symbol")
+            return None
+        info("modules: {:#x}".format(modules))
+
+        module_addrs = []
+        current = modules
+        while True:
+            addr = read_int_from_memory(current)
+            if addr == modules:
+                break
+            module_addrs.append(addr)
+            current = addr
+        return module_addrs
+
+    def get_offset_name(self, module_addrs):
+        for i in range(0x100):
+            offset_name = i * current_arch.ptrsize
+            valid = True
+            for module in module_addrs:
+                if not is_ascii_string(module + offset_name):
+                    valid = False
+                    break
+                s = read_cstring_from_memory(module + offset_name)
+                if len(s) < 2:
+                    valid = False
+                    break
+            if valid:
+                info("offsetof(module, name): {:#x}".format(offset_name))
+                return offset_name
+        err("Not found module->name[MODULE_NAME_LEN]]")
+        return None
+
+    def get_offset_layout(self, module_addrs):
+        """
+            struct module {
+                enum module_state state;
+                /* Member of list of modules */
+                struct list_head list;
+                /* Unique handle for this module */
+                char name[MODULE_NAME_LEN];
+            #ifdef CONFIG_STACKTRACE_BUILD_ID
+                /* Module build ID */
+                unsigned char build_id[BUILD_ID_SIZE_MAX];
+            #endif
+                /* Sysfs stuff. */
+                struct module_kobject mkobj;
+                struct module_attribute *modinfo_attrs;
+                const char *version;
+                const char *srcversion;
+                struct kobject *holders_dir;
+                /* Exported symbols */
+                const struct kernel_symbol *syms;
+                const s32 *crcs;
+                unsigned int num_syms;
+            #ifdef CONFIG_CFI_CLANG
+                cfi_check_fn cfi_check;
+            #endif
+                /* Kernel parameters. */
+            #ifdef CONFIG_SYSFS
+                struct mutex param_lock;
+            #endif
+                struct kernel_param *kp;
+                unsigned int num_kp;
+                /* GPL-only exported symbols. */
+                unsigned int num_gpl_syms;
+                const struct kernel_symbol *gpl_syms;
+                const s32 *gpl_crcs;
+                bool using_gplonly_symbols;
+            #ifdef CONFIG_MODULE_SIG
+                /* Signature was verified. */
+                bool sig_ok;
+            #endif
+                bool async_probe_requested;
+                /* Exception table */
+                unsigned int num_exentries;
+                struct exception_table_entry *extable;
+                /* Startup function. */
+                int (*init)(void);
+                /* Core layout: rbtree is accessed frequently, so keep together. */
+                struct module_layout core_layout __module_layout_align;
+                struct module_layout init_layout;
+                ...
+        }
+
+        struct module_layout {
+            /* The actual code + data. */
+            void *base;
+            /* Total size. */
+            unsigned int size;
+            /* The size of the executable code.  */
+            unsigned int text_size;
+            /* Size of RO section of the module (text+rodata) */
+            unsigned int ro_size;
+            /* Size of RO after init section */
+            unsigned int ro_after_init_size;
+        #ifdef CONFIG_MODULES_TREE_LOOKUP
+            struct mod_tree_node mtn;
+        #endif
+        };
+
+        [Example arm32]
+            gef> x/128xw 0x00000000bf22b084
+            0xbf22b084:     0xbf1bb044      0xc1696530      0x00006773      0x00000000
+            0xbf22b094:     0x00000000      0x00000000      0x00000000      0x00000000
+            0xbf22b0a4:     0x00000000      0x00000000      0x00000000      0x00000000
+            0xbf22b0b4:     0x00000000      0x00000000      0x00000000      0x00000000
+            0xbf22b0c4:     0x00000000      0xc1ec2d00      0xc1a11d80      0xbf1bb08c
+            0xbf22b0d4:     0xc1a11d8c      0xc1a11d80      0xc1628e38      0xc8e0b2c0
+            0xbf22b0e4:     0x00000003      0x00000007      0xbf22b080      0x00000000
+            0xbf22b0f4:     0xc8d4f380      0x00000000      0xc1e47400      0xc8f6d900
+            0xbf22b104:     0xc8f6d080      0xc8004300      0x00000000      0x00000000
+            0xbf22b114:     0x00000000      0x00000000      0x00000000      0x00000000
+            0xbf22b124:     0xbf22b124      0xbf22b124      0xbf22a990      0x00000003
+            0xbf22b134:     0x00000000      0x00000000      0x00000000      0x00000001
+            0xbf22b144:     0x00000000      0x00000000      0x00000000      0x00000000
+            0xbf22b154:     0x00000000      0xbf17e000      0x00000000      0x00000000
+            0xbf22b164:     0x00000000      0x00000000      0x00000000      0x00000000
+            0xbf22b174:     0x00000000      0x00000000      0x00000000      0xbf225000 <- init_layout.base
+            0xbf22b184:     0x00008000      0x00005000      0x00006000      0x00006000
+        """
+        for i in range(300):
+            offset_layout = i * current_arch.ptrsize
+            valid = True
+            for module in module_addrs:
+                # base align check
+                cand_base = read_int_from_memory(module + offset_layout)
+                if cand_base == 0 or cand_base & 0xfff:
+                    valid = False
+                    break
+                # size align check
+                cand_size = u32(read_memory(module + offset_layout + current_arch.ptrsize + 4*0, 4))
+                if cand_size == 0 or cand_size & 0xfff:
+                    valid = False
+                    break
+                # text_size align check
+                cand_text_size = u32(read_memory(module + offset_layout + current_arch.ptrsize + 4*1, 4))
+                if cand_text_size == 0 or cand_text_size & 0xfff:
+                    valid = False
+                    break
+                # ro_size align check
+                cand_ro_size = u32(read_memory(module + offset_layout + current_arch.ptrsize + 4*2, 4))
+                if cand_ro_size == 0 or cand_ro_size & 0xfff:
+                    valid = False
+                    break
+                # ro_after_init_size align check
+                cand_ro_after_init_size = u32(read_memory(module + offset_layout + current_arch.ptrsize + 4*3, 4))
+                if cand_ro_after_init_size == 0 or cand_ro_after_init_size & 0xfff:
+                    valid = False
+                    break
+            if valid:
+                info("offsetof(module, init_layout): {:#x}".format(offset_layout))
+                return offset_layout
+        err("Not found module->init_layout")
+        return None
+
+    @only_if_gdb_running
+    @only_if_qemu_system
+    def do_invoke(self, argv):
+        self.dont_repeat()
+
+        info("Wait for memory scan")
+
+        module_addrs = self.get_modules_list()
+        if module_addrs is None:
+            return
+
+        offset_name = self.get_offset_name(module_addrs)
+        if offset_name is None:
+            return
+
+        offset_layout = self.get_offset_layout(module_addrs)
+        if offset_layout is None:
+            return
+
+        fmt = "{:<18s}: {:<18s} {:<18s} {:<18s}"
+        legend = ["module", "module->name", "base", "size"]
+        gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+        for module in module_addrs:
+            name_string = read_cstring_from_memory(module + offset_name)
+            base = read_int_from_memory(module + offset_layout)
+            size = u32(read_memory(module + offset_layout + 4, 4))
+            gef_print("{:#018x}: {:<18s} {:#018x} {:#018x}".format(module, name_string, base, size))
+        return
+
+
+@register_command
+class KernelCharacterDevicesCommand(GenericCommand):
+    """Display character device list under qemu-system."""
+    _cmdline_ = "kcdev"
+    _syntax_ = "{:s}".format(_cmdline_)
+    _example_ = "{:s}".format(_cmdline_)
+    _category_ = "Qemu-system Cooperation"
+
+    # character device is managed at chrdevs[] and cdev_map.
+    # we use each of them for getting structure information.
+
+    def get_chrdev_list(self): # [chrdev, chrdev, chrdev, ...]
+        """
+        #define CHRDEV_MAJOR_HASH_SIZE 255
+        static struct char_device_struct {
+            struct char_device_struct *next;
+            unsigned int major;
+            unsigned int baseminor;
+            int minorct;
+            char name[64];
+            struct cdev *cdev;		/* will die */
+        } *chrdevs[CHRDEV_MAJOR_HASH_SIZE];
+        """
+        chrdevs = KernelAddressHeuristicFinder.get_chrdevs()
+        if chrdevs is None:
+            err("Not found symbol")
+            return None
+        info("chrdevs: {:#x}".format(chrdevs))
+
+        chrdev_addrs = []
+        for i in range(255):
+            addr = read_int_from_memory(chrdevs + i * current_arch.ptrsize)
+            while addr and addr not in chrdev_addrs:
+                chrdev_addrs.append(addr)
+                addr = read_int_from_memory(addr)
+        return chrdev_addrs
+
+    def get_cdev_list(self): # [[cdev, major, minor], [...] ...]
+        """
+        struct kobj_map {
+            struct probe {
+                struct probe *next;
+                dev_t dev;
+                unsigned long range;
+                struct module *owner;
+                kobj_probe_t *get;
+                int (*lock)(dev_t, void *);
+                void *data;                  // -> cdev
+            } *probes[255];
+            struct mutex *lock;
+        };
+        static struct kobj_map *cdev_map;
+
+        struct cdev {
+            struct kobject kobj;
+            struct module *owner;
+            const struct file_operations *ops;
+            struct list_head list;
+            dev_t dev;
+            unsigned int count;
+        } __randomize_layout;
+
+        struct kobject {
+            const char *name;
+            struct list_head entry;
+            struct kobject *parent;
+            struct kset *kset;
+            const struct kobj_type *ktype;
+            struct kernfs_node *sd; /* sysfs directory entry */
+            struct kref kref;
+        #ifdef CONFIG_DEBUG_KOBJECT_RELEASE
+            struct delayed_work release;
+        #endif
+            unsigned int state_initialized:1;
+            unsigned int state_in_sysfs:1;
+            unsigned int state_add_uevent_sent:1;
+            unsigned int state_remove_uevent_sent:1;
+            unsigned int uevent_suppress:1;
+        };
+        """
+        cdev_map = KernelAddressHeuristicFinder.get_cdev_map()
+        if cdev_map is None:
+            err("Not found symbol")
+            return None
+        info("cdev_map: {:#x}".format(cdev_map))
+
+        try:
+            cdev_map_ = read_int_from_memory(cdev_map)
+            info("*cdev_map: {:#x}".format(cdev_map_))
+        except:
+            err("cdev_map is not initialized")
+            return None
+
+        cdev_addrs = []
+        seen = []
+        for i in range(255):
+            addr = read_int_from_memory(cdev_map_ + i * current_arch.ptrsize)
+            while addr:
+                cdev = read_int_from_memory(addr + 6 * current_arch.ptrsize)
+                dev = u32(read_memory(addr + current_arch.ptrsize, 4))
+                major = dev >> 20
+                minor = dev & ((1<<20) - 1)
+                if cdev and cdev not in seen:
+                    cdev_addrs.append([cdev, major, minor])
+                    seen.append(cdev)
+                addr = read_int_from_memory(addr)
+        return cdev_addrs
+
+    def get_offset_ops(self, cdevs):
+        for i in range(3, 0x20):
+            offset_list = i * current_arch.ptrsize
+            valid = True
+            for cdev in cdevs:
+                pos_next = cdev + offset_list
+                pos_prev = cdev + offset_list + current_arch.ptrsize
+                list_entry_next = [pos_next]
+                list_entry_prev = [pos_prev]
+                while valid:
+                    # read check
+                    try:
+                        pos_next = read_int_from_memory(pos_next)
+                        pos_prev = read_int_from_memory(pos_prev) + current_arch.ptrsize
+                    except: # memory read error
+                        valid = False
+                        break
+                    # list validate
+                    if pos_next in list_entry_next[1:]: # incomplete infinity loop detected
+                        valid = False
+                        break
+                    if pos_prev in list_entry_prev[1:]: # incomplete infinity loop detected
+                        valid = False
+                        break
+                    if pos_next == list_entry_next[0] and pos_prev == list_entry_prev[0]:
+                        break
+                    list_entry_next.append(pos_next)
+                    list_entry_prev.append(pos_prev)
+                if not valid:
+                    break
+            else:
+                # for loop is finished until last element
+                if valid:
+                    offset_ops = offset_list - current_arch.ptrsize
+                    info("offsetof(cdev, ops): {:#x}".format(offset_ops))
+                    return offset_ops
+        err("Not found offsetof(cdev, ops)")
+        return None
+
+    @only_if_gdb_running
+    @only_if_qemu_system
+    def do_invoke(self, argv):
+        self.dont_repeat()
+
+        info("Wait for memory scan")
+
+        chrdev_addrs = self.get_chrdev_list()
+        if chrdev_addrs is None:
+            return
+        cdev_addrs = self.get_cdev_list()
+        if cdev_addrs is None:
+            return
+
+        # merge chrdev (from chrdevs)
+        merged = {}
+        for chrdev in chrdev_addrs:
+            major = u32(read_memory(chrdev + current_arch.ptrsize, 4))
+            minor = u32(read_memory(chrdev + current_arch.ptrsize + 4, 4))
+            name_string = read_cstring_from_memory(chrdev + current_arch.ptrsize + 4*3) or "<None>"
+            off = chrdev + current_arch.ptrsize + 4*3 + 64
+            while off % current_arch.ptrsize: # align
+                off += 1
+            cdev = read_int_from_memory(off)
+            merged[major, minor] = {"chrdev":chrdev, "name":name_string, "cdev":cdev}
+
+        # merge cdev (from cdev_map)
+        for cdev, major, minor in cdev_addrs:
+            kobj = read_int_from_memory(cdev)
+            name_string = read_cstring_from_memory(kobj) or "<None>"
+
+            if (major, minor) in merged:
+                if merged[major, minor]["cdev"] == 0:
+                    merged[major, minor]["cdev"] = cdev
+                if merged[major, minor]["name"] == "<None>":
+                    merged[major, minor]["name"] = name_string
+            else:
+                merged[major, minor] = {"chrdev": 0x0, "name":name_string, "cdev":cdev}
+
+        # add ops info
+        off_ops = self.get_offset_ops([v["cdev"] for k,v in merged.items() if v["cdev"]])
+        if off_ops is None:
+            return
+        for k in merged.keys():
+            if merged[k]["cdev"]:
+                merged[k]["ops"] = read_int_from_memory(merged[k]["cdev"] + off_ops)
+            else:
+                merged[k]["ops"] = 0x0
+            merged[k]["ops_sym"] = get_symbol_string(merged[k]["ops"])
+
+        # add parent info
+        for k in merged.keys():
+            if merged[k]["cdev"]:
+                parent = read_int_from_memory(merged[k]["cdev"] + current_arch.ptrsize * 3)
+                merged[k]["parent"] = parent
+                if parent:
+                    name = read_int_from_memory(parent)
+                    if name:
+                        merged[k]["parent_name"] = read_cstring_from_memory(name) or "<None>"
+                    else:
+                        merged[k]["parent_name"] = "<None>"
+                else:
+                    merged[k]["parent_name"] = "<None>"
+            else:
+                merged[k]["parent"] = 0x0
+                merged[k]["parent_name"] = "<None>"
+
+        # print
+        fmt = "{:<18s}: {:<18s} {:<6s} {:<6s} {:<18s} {:<18s} {:18s} {:<s}"
+        legend = ["chrdev", "name", "major", "minor", "cdev", "cdev->kobj.parent", "parent_name", "cdev->ops"]
+        gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+        for (major, minor), m in sorted(merged.items()):
+            fmt = "{:#018x}: {:<18s} {:6d} {:6d} {:#018x} {:#018x} {:<18s} {:#018x}{:s}"
+            gef_print(fmt.format(m["chrdev"], m["name"], major, minor, m["cdev"], m["parent"], m["parent_name"], m["ops"], m["ops_sym"]))
+        return
+
+
+@register_command
+class KernelFopsCommand(GenericCommand):
+    """Display fops members under qemu-system."""
+    _cmdline_ = "kfops"
+    _syntax_ = "{:s}".format(_cmdline_)
+    _example_ = "{:s}".format(_cmdline_)
+    _category_ = "Qemu-system Cooperation"
+
+    def get_member(self):
+        members = [
+            ["ptr", "owner"],
+            ["func_ptr", "llseek"],
+            ["func_ptr", "read"],
+            ["func_ptr", "write"],
+            ["func_ptr", "read_iter"],
+            ["func_ptr", "write_iter"],
+            ["func_ptr", "iopoll"],
+            ["func_ptr", "iterate"],
+            ["func_ptr", "iterate_shared"],
+            ["func_ptr", "poll"],
+            ["func_ptr", "unlocked_ioctl"],
+            ["func_ptr", "compat_ioctl"],
+            ["func_ptr", "mmap"],
+            ["ulong",    "mmap_supported_flags"],
+            ["func_ptr", "open"],
+            ["func_ptr", "flush"],
+            ["func_ptr", "release"],
+            ["func_ptr", "fsync"],
+            ["func_ptr", "fasync"],
+            ["func_ptr", "lock"],
+            ["func_ptr", "sendpage"],
+            ["func_ptr", "get_unmapped_area"],
+            ["func_ptr", "check_flags"],
+            ["func_ptr", "flock"],
+            ["func_ptr", "splice_write"],
+            ["func_ptr", "splice_read"],
+            ["func_ptr", "setlease"],
+            ["func_ptr", "fallocate"],
+            ["func_ptr", "show_fdinfo"],
+            ["(func_ptr)", "(mmap_capabilities)"], # only exists when CONFIG_MMU
+            ["func_ptr", "copy_file_range"],
+            ["func_ptr", "remap_file_range"],
+            ["func_ptr", "fadvise"],
+        ]
+        return members
+
+    @only_if_gdb_running
+    @only_if_qemu_system
+    def do_invoke(self, argv):
+        self.dont_repeat()
+
+        members = self.get_member()
+
+        if argv:
+            try:
+                addr = int(argv[0], 16)
+                addrs = [read_int_from_memory(addr + current_arch.ptrsize * i) for i in range(len(members))]
+            except:
+                self.usage()
+                return
+            fmt = "[{:3s}] {:<10s} {:<20s} {:s}"
+            legend = ["idx", "type", "name", "value"]
+            gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+            for idx, ((type, name), address) in enumerate(zip(members, addrs)):
+                sym = get_symbol_string(address)
+                gef_print("[{:3d}] {:10s} {:20s} {:#018x}{:s}".format(idx, type, name, address, sym))
+        else:
+            fmt = "[{:3s}] {:<10s} {:<20s}"
+            legend = ["idx", "type", "name"]
+            gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+            for idx, (type, name) in enumerate(members):
+                gef_print("[{:3d}] {:10s} {:20s}".format(idx, type, name))
         return
 
 
