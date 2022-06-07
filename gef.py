@@ -6744,7 +6744,8 @@ class SearchPatternCommand(GenericCommand):
         return
 
     def isascii(self, string):
-        return all([0x20 <= ord(c) < 0x7f for c in string])
+        val = codecs.escape_decode(string)[0]
+        return all([0x20 <= c < 0x7f for c in val])
 
     @only_if_gdb_running
     def do_invoke(self, argv):
@@ -6805,7 +6806,7 @@ class SearchPatternCommand(GenericCommand):
 
         # create utf16 pattern
         pattern_utf16 = None
-        if self.isascii(pattern) and not self.disable_utf16:
+        if not self.disable_utf16 and self.isascii(pattern):
             pattern_utf16 = "".join([x + "\\x00" for x in pattern])
 
         if len(argv) == 3:
