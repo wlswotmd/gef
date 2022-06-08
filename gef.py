@@ -1807,7 +1807,10 @@ def gdb_disassemble(start_pc, **kwargs):
         loc = gdb_get_location_from_symbol(address)
         location = "<{}+{}>".format(*loc) if loc else ""
 
-        opcodes = read_memory(insn["addr"], insn["length"])
+        if is_arm32() and insn["addr"] & 1:
+            opcodes = read_memory(insn["addr"]-1, insn["length"])
+        else:
+            opcodes = read_memory(insn["addr"], insn["length"])
 
         yield Instruction(address, location, mnemo, operands, opcodes)
 
@@ -1950,6 +1953,9 @@ def capstone_disassemble(location, nb_insn, **kwargs):
         page_start = align_address_to_page(location)
         offset = location - page_start
         read_addr = location
+        if is_arm32() and read_addr & 1:
+            read_addr -= 1
+            offset -= 1
         read_size = gef_getpagesize() - offset
         while True:
             try:
@@ -2402,7 +2408,13 @@ class ARM(Architecture):
 
     # http://infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.dui0041c/Caccegih.html
     # return b"\x00\x00\xa0\xe1" # mov r0, r0
-    nop_insn = b"\x01\x10\xa0\xe1" # mov r1, r1
+    @property
+    def nop_insn(self):
+        if self.is_thumb():
+            return b"\x00\xbf" # nop
+        else:
+            return b"\x01\x10\xa0\xe1" # mov r1, r1
+
     return_register = "$r0"
     flags_table = {
         31: "negative",
@@ -12913,6 +12925,9 @@ class PatchNopCommand(PatchCommand):
         if num_bytes == 0:
             info("Not patching since num_bytes == 0")
             return
+
+        if is_arm32() and current_arch.is_thumb() and addr & 1:
+            addr -= 1
 
         nop_op_len = len(current_arch.nop_insn)
 
@@ -33505,7 +33520,10 @@ class ExecNextCommand(GenericCommand):
 
     @only_if_gdb_running
     def do_invoke(self, argv):
-        next_addr = gdb_get_nth_next_instruction_address(current_arch.pc, 2)
+        if is_arm32() or is_arm64():
+            next_addr = gdb_get_nth_next_instruction_address(current_arch.pc, 1)
+        else:
+            next_addr = gdb_get_nth_next_instruction_address(current_arch.pc, 2)
         # `until` command has a bug(?) because sometimes fail. we use `tbreak` and `continue` instead of `until`.
         gdb.execute("tbreak *{:#x}".format(next_addr))
         gdb.execute("continue")
