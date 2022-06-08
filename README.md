@@ -218,8 +218,8 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hexdump.png)
 * `patch`: is improved.
     * It supports physical memory if under qemu-system.
-    * Added 3 new modes: `patch pattern`, `patch history` and `patch revert`.
-    * Convert `nop` command to `patch nop` mode.
+    * Added some new modes: `patch pattern`, `patch history`, `patch revert`, `patch nop`, `patch inf`, `patch trap` and `patch ret`.
+        * `nop` command has been integrated into `patch` command.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/patch.png)
 * `search-pattern`: is improved.
     * It supports when under qemu-system (in short, it works without `/proc/self/maps`)

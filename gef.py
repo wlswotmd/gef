@@ -2206,6 +2206,12 @@ class Architecture:
     @abc.abstractproperty
     def nop_insn(self):                            pass
     @abc.abstractproperty
+    def infloop_insn(self):                        pass
+    @abc.abstractproperty
+    def trap_insn(self):                           pass
+    @abc.abstractproperty
+    def ret_insn(self):                            pass
+    @abc.abstractproperty
     def return_register(self):                     pass
     @abc.abstractproperty
     def flag_register(self):                       pass
@@ -2415,6 +2421,27 @@ class ARM(Architecture):
         else:
             return b"\x01\x10\xa0\xe1" # mov r1, r1
 
+    @property
+    def infloop_insn(self):
+        if self.is_thumb():
+            return b"\xfe\xe7"
+        else:
+            return b"\xfe\xff\xff\xea"
+
+    @property
+    def trap_insn(self):
+        if self.is_thumb():
+            return b"\x00\xbe"
+        else:
+            return b"\x70\x00\x20\xe1"
+
+    @property
+    def ret_insn(self):
+        if self.is_thumb():
+            return b"\xf7\x46"
+        else:
+            return b"\x0e\xf0\xa0\xe1"
+
     return_register = "$r0"
     flags_table = {
         31: "negative",
@@ -2610,6 +2637,11 @@ class AARCH64(ARM):
     syscall_register = "$x8"
     syscall_instructions = ["svc #0x0"]
 
+    nop_insn = b"\x1f\x20\x03\xd5"
+    infloop_insn = b"\x00\x00\x00\x14"
+    trap_insn = b"\x00\x00\x20\xd4"
+    ret_insn = b"\xc0\x03\x5f\xd6"
+
     def is_syscall(self, insn):
         return insn.mnemonic == "svc"
 
@@ -2707,6 +2739,9 @@ class X86(Architecture):
     mode = "32"
 
     nop_insn = b"\x90"
+    infloop_insn = b"\xeb\xfe"
+    trap_insn = b"\xcc"
+    ret_insn = b"\xc3"
     flag_register = "$eflags"
     special_registers = ["$cs", "$ss", "$ds", "$es", "$fs", "$gs", ]
     gpr_registers = ["$eax", "$ebx", "$ecx", "$edx", "$esp", "$ebp", "$esi", "$edi", "$eip", ]
@@ -12685,6 +12720,7 @@ class PatchCommand(GenericCommand):
     _syntax_ += "{:s} [-h] string [--phys] LOCATION \"double-escaped string\" [LENGTH]\n".format(_cmdline_)
     _syntax_ += "{:s} [-h] pattern [--phys] LOCATION LENGTH\n".format(_cmdline_)
     _syntax_ += "{:s} [-h] nop [--phys] [LOCATION] [-b BYTE_LENGTH|-i INST_COUNT]\n".format(_cmdline_)
+    _syntax_ += "{:s} [-h] inf|trap|ret [--phys] [LOCATION]\n".format(_cmdline_)
     _syntax_ += "{:s} [-h] history\n".format(_cmdline_)
     _syntax_ += "{:s} [-h] revert [HISTORY]".format(_cmdline_)
     _category_ = "Show/Modify Memory"
@@ -12937,7 +12973,7 @@ class PatchNopCommand(PatchCommand):
         addr_after_n = gef_instruction_n(addr, num_insts)
         return addr_after_n.address - addr
 
-    def nop_bytes(self, addr, num_bytes):
+    def patch_nop(self, addr, num_bytes):
         if num_bytes == 0:
             info("Not patching since num_bytes == 0")
             return
@@ -13021,7 +13057,190 @@ class PatchNopCommand(PatchCommand):
 
         if num_insts:
             num_bytes = self.get_insns_size(addr, num_insts)
-        self.nop_bytes(addr, num_bytes)
+        self.patch_nop(addr, num_bytes)
+
+        if phys_mode:
+            if orig_mode == "virt":
+                disable_phys()
+        return
+
+
+@register_command
+class PatchInfloopCommand(PatchCommand):
+    """Patch the instruction(s) pointed by parameters with Infinity loop. Note: this command is architecture aware."""
+    _cmdline_ = "patch inf"
+    _syntax_ = "{:s} [-h] [--phys] [LOCATION]".format(_cmdline_)
+    _example_ = "{:s} $pc".format(_cmdline_)
+    _category_ = "Show/Modify Memory"
+
+    def patch_infloop(self, addr):
+        if is_arm32() and current_arch.is_thumb() and addr & 1:
+            addr -= 1
+
+        num_bytes = len(current_arch.infloop_insn)
+        ok("Patching {:d} bytes from {:s}".format(num_bytes, format_address(addr)))
+        before_data = read_memory(addr, length=num_bytes)
+        write_memory(addr, current_arch.infloop_insn, num_bytes)
+        after_data = read_memory(addr, length=num_bytes)
+        self.history.insert(0, {"addr":addr, "before_data":before_data, "after_data":after_data, "physmode":get_current_mmu_mode()})
+        return
+
+    @only_if_gdb_running
+    def do_invoke(self, argv):
+        self.dont_repeat()
+
+        if "-h" in argv:
+            self.usage()
+            return
+
+        phys_mode = False
+        if "--phys" in argv:
+            if not is_supported_physmode():
+                err("Unsupported. Check qemu version (at least: 4.1.0-rc0~, recommend: 5.x~)")
+                return
+            phys_mode = True
+            orig_mode = get_current_mmu_mode()
+            argv.remove("--phys")
+
+        if phys_mode:
+            if orig_mode == "virt":
+                enable_phys()
+
+        if argv:
+            try:
+                addr = parse_address(' '.join(argv))
+            except:
+                self.usage()
+                if phys_mode:
+                    if orig_mode == "virt":
+                        disable_phys()
+                return
+        else:
+            addr = current_arch.pc
+
+        self.patch_infloop(addr)
+
+        if phys_mode:
+            if orig_mode == "virt":
+                disable_phys()
+        return
+
+
+@register_command
+class PatchTrapCommand(PatchCommand):
+    """Patch the instruction(s) pointed by parameters with BKPT. Note: this command is architecture aware."""
+    _cmdline_ = "patch trap"
+    _syntax_ = "{:s} [-h] [--phys] [LOCATION]".format(_cmdline_)
+    _example_ = "{:s} $pc".format(_cmdline_)
+    _category_ = "Show/Modify Memory"
+
+    def patch_trap(self, addr):
+        if is_arm32() and current_arch.is_thumb() and addr & 1:
+            addr -= 1
+
+        num_bytes = len(current_arch.trap_insn)
+        ok("Patching {:d} bytes from {:s}".format(num_bytes, format_address(addr)))
+        before_data = read_memory(addr, length=num_bytes)
+        write_memory(addr, current_arch.trap_insn, num_bytes)
+        after_data = read_memory(addr, length=num_bytes)
+        self.history.insert(0, {"addr":addr, "before_data":before_data, "after_data":after_data, "physmode":get_current_mmu_mode()})
+        return
+
+    @only_if_gdb_running
+    def do_invoke(self, argv):
+        self.dont_repeat()
+
+        if "-h" in argv:
+            self.usage()
+            return
+
+        phys_mode = False
+        if "--phys" in argv:
+            if not is_supported_physmode():
+                err("Unsupported. Check qemu version (at least: 4.1.0-rc0~, recommend: 5.x~)")
+                return
+            phys_mode = True
+            orig_mode = get_current_mmu_mode()
+            argv.remove("--phys")
+
+        if phys_mode:
+            if orig_mode == "virt":
+                enable_phys()
+
+        if argv:
+            try:
+                addr = parse_address(' '.join(argv))
+            except:
+                self.usage()
+                if phys_mode:
+                    if orig_mode == "virt":
+                        disable_phys()
+                return
+        else:
+            addr = current_arch.pc
+
+        self.patch_trap(addr)
+
+        if phys_mode:
+            if orig_mode == "virt":
+                disable_phys()
+        return
+
+
+@register_command
+class PatchRetCommand(PatchCommand):
+    """Patch the instruction(s) pointed by parameters with RET. Note: this command is architecture aware."""
+    _cmdline_ = "patch ret"
+    _syntax_ = "{:s} [-h] [--phys] [LOCATION]".format(_cmdline_)
+    _example_ = "{:s} $pc".format(_cmdline_)
+    _category_ = "Show/Modify Memory"
+
+    def patch_ret(self, addr):
+        if is_arm32() and current_arch.is_thumb() and addr & 1:
+            addr -= 1
+
+        num_bytes = len(current_arch.ret_insn)
+        ok("Patching {:d} bytes from {:s}".format(num_bytes, format_address(addr)))
+        before_data = read_memory(addr, length=num_bytes)
+        write_memory(addr, current_arch.ret_insn, num_bytes)
+        after_data = read_memory(addr, length=num_bytes)
+        self.history.insert(0, {"addr":addr, "before_data":before_data, "after_data":after_data, "physmode":get_current_mmu_mode()})
+        return
+
+    @only_if_gdb_running
+    def do_invoke(self, argv):
+        self.dont_repeat()
+
+        if "-h" in argv:
+            self.usage()
+            return
+
+        phys_mode = False
+        if "--phys" in argv:
+            if not is_supported_physmode():
+                err("Unsupported. Check qemu version (at least: 4.1.0-rc0~, recommend: 5.x~)")
+                return
+            phys_mode = True
+            orig_mode = get_current_mmu_mode()
+            argv.remove("--phys")
+
+        if phys_mode:
+            if orig_mode == "virt":
+                enable_phys()
+
+        if argv:
+            try:
+                addr = parse_address(' '.join(argv))
+            except:
+                self.usage()
+                if phys_mode:
+                    if orig_mode == "virt":
+                        disable_phys()
+                return
+        else:
+            addr = current_arch.pc
+
+        self.patch_ret(addr)
 
         if phys_mode:
             if orig_mode == "virt":
