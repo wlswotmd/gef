@@ -19679,7 +19679,14 @@ class PackCommand(GenericCommand):
         gef_print("pack64:  {}".format(p64(value & 0xffffffffffffffff)))
         low = value & 0xffffffffffffffff
         high = (value >> 64) & 0xffffffffffffffff
-        gef_print("pack128: {}".format(p64(low) + p64(high)))
+        val128 = p64(low) + p64(high)
+        gef_print("pack128: {}".format(val128))
+
+        gef_print("pack8-hex:   {}".format(p8(value & 0xff).hex()))
+        gef_print("pack16-hex:  {}".format(p16(value & 0xffff).hex()))
+        gef_print("pack32-hex:  {}".format(p32(value & 0xffffffff).hex()))
+        gef_print("pack64-hex:  {}".format(p64(value & 0xffffffffffffffff).hex()))
+        gef_print("pack128-hex: {}".format(val128.hex()))
         return
 
 

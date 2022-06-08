@@ -266,7 +266,7 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/errno.png)
 * `u2d`: shows cast/transformation u64 <-> double/float.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/u2d.png)
-* `pack`,`unpack`: shows transformation int <-> bytes.
+* `pack`,`unpack`: shows transformation int <-> bytes/hex.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pack-unpack.png)
 * `tohex`,`unhex`: shows transformation hex <-> bytes.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/tohex-unhex.png)
