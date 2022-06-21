@@ -1931,7 +1931,7 @@ def capstone_disassemble(location, nb_insn, **kwargs):
     if "code" in kwargs:
         code = kwargs["code"].replace(" ", "")
         code = binascii.unhexlify(code)
-        for insn in cs.disasm(code, 0):
+        for insn in cs.disasm(code, location):
             if skip:
                 skip -= 1
                 continue
@@ -3458,6 +3458,22 @@ def read_ascii_string(address):
     return None
 
 
+def read_physmem_secure(paddr, size):
+    pid = get_pid()
+    if pid is None:
+        return None
+    sm_base, sm_size = XSecureMemAddrCommand.get_secure_memory_base_and_size()
+    if sm_base is None or sm_size is None:
+        return None
+    if not (sm_base <= paddr < sm_base+sm_size):
+        return None
+    sm = XSecureMemAddrCommand.get_secure_memory_qemu_map(pid, sm_base, sm_size)
+    if sm is None:
+        return None
+    out = XSecureMemAddrCommand.read_secure_memory(pid, sm, paddr-sm_base, size)
+    return out
+
+
 def read_physmem(paddr, size):
     def fast_path(paddr, size):
         out = read_memory(paddr, size)
@@ -3470,6 +3486,11 @@ def read_physmem(paddr, size):
             data = line.split()[1:]
             out += bytes(map(lambda x: int(x,16), data))
         return out
+
+    if is_arm32() or is_arm64():
+        out = read_physmem_secure(paddr, size)
+        if out:
+            return out
 
     if not is_supported_physmode():
         return slow_path(paddr, size)
@@ -3873,7 +3894,7 @@ def get_pid():
                     return process.pid
         return None
 
-    elif is_qemu_usermode():
+    elif is_qemu_usermode() or is_qemu_system():
         filepath = "qemu"
         gdb_tcp_sess = list(c.raddr for c in psutil.Process().connections())
         if not gdb_tcp_sess:
@@ -3889,9 +3910,6 @@ def get_pid():
             for c in connections:
                 if c.laddr in gdb_tcp_sess:
                     return process.pid
-        return None
-
-    elif is_qemu_system():
         return None
 
     return gdb.selected_inferior().pid
@@ -7760,7 +7778,10 @@ class CapstoneDisassembleCommand(GenericCommand):
             self.help()
             return
 
-        location = location or current_arch.pc
+        if "code" in kwargs:
+            location = 0
+        else:
+            location = location or current_arch.pc
         length = int(kwargs.get("length", get_gef_setting("context.nb_lines_code")))
 
         try:
@@ -28300,6 +28321,447 @@ class XphysAddrCommand(GenericCommand):
 
 
 @register_command
+class XSecureMemAddrCommand(GenericCommand):
+    """Dump secure memory via qemu-system memory map."""
+    _cmdline_ = "xsm"
+    _syntax_ = "{:s} [-h] [-v] /FMT --phys|--off|--virt ADDRESS".format(_cmdline_)
+    _example_ = "\n"
+    _example_ += "{:s} /16xw --phys 0xe11e3d0 # absolute (physical/non-ASLR) address of secure memory\n".format(_cmdline_)
+    _example_ += "{:s} /16xw --off 0x11e3d0 # the offset from secure memory area\n".format(_cmdline_)
+    _example_ += "{:s} /16xw --virt 0x783ae3d0 # secure memory ASLR is supported (only ARMv7)".format(_cmdline_)
+    _category_ = "Qemu-system Cooperation"
+
+    @staticmethod
+    def get_secure_memory_base_and_size(verbose=False):
+        result = gdb.execute("monitor info mtree -f", to_string=True)
+        for line in result.splitlines():
+            m = re.search(r"([0-9a-f]{16})-([0-9a-f]{16}).*virt.secure-ram", line)
+            if m:
+                secure_memory_base = int(m.group(1), 16)
+                secure_memory_size = int(m.group(2), 16) + 1 - secure_memory_base
+                break
+        else:
+            return None, None
+        if verbose:
+            start = secure_memory_base
+            end = secure_memory_base + secure_memory_size
+            info("secure memory base: {:#x}-{:#x} ({:#x} bytes)".format(start, end, secure_memory_size))
+        return secure_memory_base, secure_memory_size
+
+    @staticmethod
+    def get_secure_memory_qemu_map(qemu_system_pid, secure_memory_base, secure_memory_size, verbose=False):
+        # fast path
+        ret = gdb.execute("monitor gpa2hva {:#x}".format(secure_memory_base), to_string=True)
+        r = re.search("is (0x[0-9a-f]+)", ret)
+        if r:
+            secure_memory_page_addr = int(r.group(1), 16)
+            sm = process_lookup_address(secure_memory_page_addr)
+            if sm:
+                if verbose:
+                    info("secure memory page of pid {:d}: {:#x}".format(qemu_system_pid, secure_memory_page_addr))
+                return sm
+
+        # slow path
+        maps = list(get_process_maps_linux("/proc/{:d}/maps".format(qemu_system_pid)))
+        secure_memory_maps = [m for m in maps if m.size == secure_memory_size]
+        if len(secure_memory_maps) == 1:
+            if verbose:
+                secure_memory_page_addr = secure_memory_maps[0].page_start
+                info("secure memory page of pid {:d}: {:#x}".format(qemu_system_pid, secure_memory_page_addr))
+            return secure_memory_maps[0]
+        return None
+
+    @staticmethod
+    def virt2phys(vaddr, verbose=False):
+        maps = V2PCommand.get_maps(FORCE_PREFIX_S=True)
+        if maps is None:
+            return None
+        for vstart, vend, pstart, pend in maps:
+            if vstart <= vaddr < vend:
+                offset = vaddr - vstart
+                paddr = pstart + offset
+                if verbose:
+                    info("virt2phys: {:#x} -> {:#x}".format(vaddr, paddr))
+                return paddr
+        return None
+
+    @staticmethod
+    def read_secure_memory(qemu_system_pid, sm, offset, dump_size, verbose=False):
+        if dump_size > sm.size:
+            dump_size = sm.size
+
+        if verbose:
+            info("target offset: {:#x}".format(offset))
+            info("read address: {:#x}, size:{:#x}".format(sm.page_start + offset, dump_size))
+
+        with open("/proc/{:d}/mem".format(qemu_system_pid), "rb") as fd:
+            try:
+                fd.seek(sm.page_start + offset, 0)
+                data = fd.read(dump_size)
+            except:
+                return None
+        if verbose:
+            info("read size: {:#x}".format(len(data)))
+        return data
+
+    def print_secure_memory_x(self, target, data):
+        slicer = lambda data, n: [data[i:i+n] for i in range(0, len(data), n)]
+        for i, data16 in enumerate(slicer(data, 16)):
+            addr = int(target) + i * 0x10
+            data_units = slicer(data16, self.dump_unit)
+            if self.dump_unit == 1:
+                data_units_hex = ["{:#04x}".format(ord(x)) for x in data_units]
+            elif self.dump_unit == 2:
+                data_units_hex = ["{:#06x}".format(u16(x)) for x in data_units]
+            elif self.dump_unit == 4:
+                data_units_hex = ["{:#010x}".format(u32(x)) for x in data_units]
+            elif self.dump_unit == 8:
+                data_units_hex = ["{:#018x}".format(u64(x)) for x in data_units]
+            gef_print("{:#018x}: {:s}".format(addr, ' '.join(data_units_hex)))
+        return
+
+    def print_secure_memory_i(self, target, data):
+        kwargs = {}
+        kwargs["code"] = data.hex()
+        if is_arm32():
+            kwargs["arch"] = "ARM"
+            if target & 1:
+                kwargs["mode"] = "THUMB"
+            else:
+                kwargs["mode"] = "ARM"
+        elif is_arm64():
+            kwargs["arch"] = "ARM64"
+            kwargs["mode"] = "ARM"
+
+        try:
+            for insn in capstone_disassemble(target, self.dump_count, **kwargs):
+                insn_fmt = "{:12o}"
+                text_insn = insn_fmt.format(insn)
+                msg = "{} {}".format(" "*5, text_insn)
+                gef_print(msg)
+        except gdb.error:
+            pass
+        return
+
+    @only_if_gdb_running
+    @only_if_qemu_system
+    def do_invoke(self, argv):
+        self.dont_repeat()
+
+        if not is_arm32() and not is_arm64():
+            err("Unsupported")
+            return
+
+        if "-h" in argv:
+            self.usage()
+            return
+
+        # arg parse
+        verbose = False
+        if "-v" in argv:
+            verbose = True
+            argv.remove("-v")
+
+        self.dump_type = "x"
+        self.dump_unit = current_arch.ptrsize
+        self.dump_count = 1
+        if argv and argv[0].startswith("/"):
+            m = re.search(r"/(\d*)(\S*)", argv[0])
+            if m:
+                if m.group(1):
+                    self.dump_count = int(m.group(1))
+                for c in m.group(2):
+                    if c in ["x", "i"]:
+                        self.dump_type = c
+                    elif c in ["b", "h", "w", "g"]:
+                        self.dump_unit = {"b":1, "h":2, "w":4, "g":8}[c]
+                    else:
+                        err("Unsupported format: {}".format(c))
+                        return
+            argv = argv[1:]
+
+        if argv and argv[0] in ["--phys", "--off", "--virt"]:
+            addr_type = argv[0]
+            argv = argv[1:]
+        else:
+            self.usage()
+            return
+
+        if addr_type == "--virt" and is_arm64():
+            err("Unsupported (In ARM64, secure memory pagewalk is not possible in the normal world)")
+            return
+
+        try:
+            target = int(gdb.parse_and_eval(''.join(argv)))
+        except:
+            self.usage()
+            return
+
+        # initialize
+        pid = get_pid()
+        if pid is None:
+            err("Not found qemu-system pid")
+            return
+        sm_base, sm_size = self.get_secure_memory_base_and_size(verbose)
+        if sm_base is None or sm_size is None:
+            err("Not found secure memory memory tree (see monitor info mtree -f)")
+            return
+        sm = self.get_secure_memory_qemu_map(pid, sm_base, sm_size, verbose)
+        if sm is None:
+            err("Not found secure memory maps")
+            return
+
+        # dump
+        if addr_type == "--phys":
+            target_offset = target - sm_base
+        elif addr_type == "--off":
+            target_offset = target
+        elif addr_type == "--virt":
+            target_phys = self.virt2phys(target, verbose)
+            if target_phys is None:
+                err("Not found physical address")
+                return
+            if sm_base <= target_phys < sm_base + sm_size:
+                target_offset = target_phys - sm_base
+            else:
+                err("{:#x} is not secure memory".format(target))
+                return
+
+        if self.dump_type == "x":
+            dump_size = self.dump_count * self.dump_unit
+        elif self.dump_type == "i":
+            dump_size = self.dump_count * 4 # ARM opcode is at most 4byte
+            if target_offset & 1:
+                target_offset -= 1
+        data = self.read_secure_memory(pid, sm, target_offset, dump_size, verbose)
+        if data is None:
+            err("Read error")
+            return
+
+        # print
+        if self.dump_type == "x":
+            self.print_secure_memory_x(target, data)
+        elif self.dump_type == "i":
+            self.print_secure_memory_i(target, data)
+        return
+
+
+# The wsm command directly modifies /proc/<PID>/mem of qemu-system.
+# However, even though the memory change was successful, it may not be reflected in the behavior of the code.
+# I don't know the cause, but I'm guessing it's because qemu has an internal cache.
+# Apparently setting a breakpoint ignores this cache, so setting a temporary breakpoint avoids this problem.
+class TemporaryDummyBreakpoint(gdb.Breakpoint):
+    """Create a breakpoint to avoid gdb cache problem"""
+    def __init__(self):
+        super().__init__("*{:#x}".format(0x0), type=gdb.BP_BREAKPOINT, internal=True, temporary=True)
+        return
+
+    def stop(self):
+        return False
+
+
+@register_command
+class WSecureMemAddrCommand(GenericCommand):
+    """Write secure memory via qemu-system memory map."""
+    _cmdline_ = "wsm"
+    _syntax_ = "{:s} [-h] [-v] -b byte|short|dword|qword|string|hex VALUE --phys|--off|--virt ADDRESS".format(_cmdline_)
+    _example_ = "\n"
+    _example_ += "{:s} -b dword 0x41414141 --phys 0xe11e3d0 # absolute (physical/non-ASLR) address of secure memory\n".format(_cmdline_)
+    _example_ += "{:s} -b string \"\\\\x41\\\\x41\\\\x41\\\\x41\" --off 0x11e3d0 # the offset of secure memory\n".format(_cmdline_)
+    _example_ += "{:s} -b hex \"4141 4141\" --off 0x11e3d0 # hex string is supported (invalid character is ignored)\n".format(_cmdline_)
+    _example_ += "{:s} -b byte 0x41 --virt 0x783ae3d0 # secure memory ASLR is supported (only ARMv7)".format(_cmdline_)
+    _category_ = "Qemu-system Cooperation"
+
+    @staticmethod
+    def write_secure_memory(qemu_system_pid, sm, offset, data, verbose=False):
+        write_size = len(data)
+        if write_size > sm.size:
+            write_size = sm.size
+            data = data[:write_size]
+
+        if verbose:
+            info("target offset: {:#x}".format(offset))
+            info("write address: {:#x}, size:{:#x}".format(sm.page_start + offset, write_size))
+
+        with open("/proc/{:d}/mem".format(qemu_system_pid), "r+b") as fd:
+            try:
+                fd.seek(sm.page_start + offset, 0)
+                ret = fd.write(data)
+            except:
+                return None
+        if verbose:
+            info("written size: {:#x}".format(ret))
+
+        # avoid qemu-system caches
+        TemporaryDummyBreakpoint()
+
+        # By default, "context code" uses gdb_disassemble.
+        # However, due to gdb's internal cache, changes to secure memory may not be reflected in the disassembled results.
+        # Therefore, if capstone is available, change it to disassemble by capstone.
+        if get_gef_setting("context.use_capstone") is False:
+            set_gef_setting("context.use_capstone", True)
+        return ret
+
+    @only_if_gdb_running
+    @only_if_qemu_system
+    def do_invoke(self, argv):
+        self.dont_repeat()
+
+        if not is_arm32() and not is_arm64():
+            err("Unsupported")
+            return
+
+        if "-h" in argv:
+            self.usage()
+            return
+
+        # arg parse
+        verbose = False
+        if "-v" in argv:
+            verbose = True
+            argv.remove("-v")
+
+        if len(argv) >= 3 and argv[0] == "-b":
+            try:
+                if argv[1] == "byte":
+                    data = p8(int(argv[2], 0))
+                elif argv[1] == "short":
+                    data = p16(int(argv[2], 0))
+                elif argv[1] == "dword":
+                    data = p32(int(argv[2], 0))
+                elif argv[1] == "qword":
+                    data = p64(int(argv[2], 0))
+                elif argv[1] == "string":
+                    try:
+                        data = codecs.escape_decode(argv[2])[0]
+                    except binascii.Error:
+                        gef_print("Could not decode '\\xXX' encoded string \"{}\"".format(data))
+                        return
+                elif argv[1] == "hex":
+                    _data = ""
+                    for c in argv[2].lower():
+                        if c in '0123456789abcdef':
+                            _data += c
+                    data = bytes.fromhex(_data)
+                else:
+                    self.usage()
+                    return
+                argv = argv[3:]
+            except:
+                self.usage()
+                return
+
+        if argv and argv[0] in ["--phys", "--off", "--virt"]:
+            addr_type = argv[0]
+            argv = argv[1:]
+        else:
+            self.usage()
+            return
+
+        if addr_type == "--virt" and is_arm64():
+            err("Unsupported (In ARM64, secure memory pagewalk is not possible in the normal world)")
+            return
+
+        try:
+            target = int(gdb.parse_and_eval(''.join(argv)))
+        except:
+            self.usage()
+            return
+
+        # initialize
+        pid = get_pid()
+        if pid is None:
+            err("Not found qemu-system pid")
+            return
+        sm_base, sm_size = XSecureMemAddrCommand.get_secure_memory_base_and_size(verbose)
+        if sm_base is None or sm_size is None:
+            err("Not found secure memory memory tree (see monitor info mtree -f)")
+            return
+        sm = XSecureMemAddrCommand.get_secure_memory_qemu_map(pid, sm_base, sm_size, verbose)
+        if sm is None:
+            err("Not found secure memory maps")
+            return
+
+        # write
+        if addr_type == "--phys":
+            target_offset = target - sm_base
+        elif addr_type == "--off":
+            target_offset = target
+        elif addr_type == "--virt":
+            target_phys = XSecureMemAddrCommand.virt2phys(target, verbose)
+            if target_phys is None:
+                err("Not found physical address")
+                return
+            if sm_base <= target_phys < sm_base + sm_size:
+                target_offset = target_phys - sm_base
+            else:
+                err("{:#x} is not secure memory".format(target))
+                return
+        ret = self.write_secure_memory(pid, sm, target_offset, data, verbose)
+        if ret is None:
+            err("Write error")
+            return
+        return
+
+
+@register_command
+class BreakSecureMemAddrCommand(GenericCommand):
+    """Set a breakpoint in virtual memory by specifying the physical memory of the secure world."""
+    _cmdline_ = "bsm"
+    _syntax_ = "{:s} [-h] [-v] PHYS_ADDRESS".format(_cmdline_)
+    _example_ = "{:s} 0xe1008d8".format(_cmdline_)
+    _category_ = "Qemu-system Cooperation"
+
+    @staticmethod
+    def phys2virt(paddr, verbose=False):
+        maps = V2PCommand.get_maps(FORCE_PREFIX_S=True)
+        if maps is None:
+            return None
+        result = []
+        for vstart, vend, pstart, pend in maps:
+            if pstart <= paddr < pend:
+                offset = paddr - pstart
+                vaddr = vstart + offset
+                if verbose:
+                    info("phys2virt: {:#x} -> {:#x}".format(paddr, vaddr))
+                result.append(vaddr)
+        return result
+
+    @only_if_gdb_running
+    @only_if_qemu_system
+    def do_invoke(self, argv):
+        self.dont_repeat()
+
+        if not is_arm32():
+            err("Unsupported")
+            return
+
+        if "-h" in argv:
+            self.usage()
+            return
+
+        # arg parse
+        verbose = False
+        if "-v" in argv:
+            verbose = True
+            argv.remove("-v")
+
+        try:
+            phys_addr = parse_address(' '.join(argv))
+            if verbose:
+                info("phys address: {:#x}".format(phys_addr))
+        except:
+            self.usage()
+            return
+
+        virt_addrs = self.phys2virt(phys_addr, verbose)
+
+        for virt_addr in virt_addrs:
+            gdb.execute("break *{:#x}".format(virt_addr))
+        return
+
+
+@register_command
 class CpuidCommand(GenericCommand):
     """Get cpuid result."""
     _cmdline_ = "cpuid"
@@ -31826,25 +32288,29 @@ class PagewalkArmCommand(PagewalkCommand):
         # pagewalk TTBR0_EL1
         self.N = TTBCR & 0b111
         ml = 14 - self.N
-        pl0base = ((TTBR0_EL1 & ((1<<32)-1)) >> ml) << ml
+        pl0_base = ((TTBR0_EL1 & ((1<<32)-1)) >> ml) << ml
         if not self.quiet:
             info("$TTBR0_EL1{}: {:#x}".format(self.suffix, TTBR0_EL1))
             info("$TTBCR{}: {:#x}".format(self.suffix, TTBCR))
-            info("PL0 base: {:#x}".format(pl0base))
-        self.do_pagewalk_short(pl0base)
+            info("PL0 base: {:#x}".format(pl0_base))
+        self.do_pagewalk_short(pl0_base)
         self.print_page()
 
         # pagewalk TTBR1_EL1
         gef_print(titlify("$TTBR1_EL1{}".format(self.suffix)))
-        pl1_vabase = {0:None, 1:0x80000000, 2:0x40000000, 3:0x20000000, 4:0x10000000, 5:0x08000000, 6:0x04000000, 7:0x02000000}[self.N]
-        pl1base = ((TTBR1_EL1 & ((1<<32)-1)) >> ml) << ml
-        self.N = 0
+        if self.suffix:
+            pl1_vabase = 0 # I don't know why, but vabase of PL1 seems to be 0x0 when using TTBR1_EL1_S.
+        else:
+            pl1_vabase = {0:None, 1:0x80000000, 2:0x40000000, 3:0x20000000, 4:0x10000000, 5:0x08000000, 6:0x04000000, 7:0x02000000}[self.N]
+        pl1_base = ((TTBR1_EL1 & ((1<<32)-1)) >> ml) << ml
+        self.N = 0 # Whenever TTBCR.N is nonzero, the size of the translation table addressed by TTBR1 is 16KB (N=0).
         if pl1_vabase is not None:
             if not self.quiet:
                 info("$TTBR1_EL1{}: {:#x}".format(self.suffix, TTBR1_EL1))
-                info("PL1 base: {:#x}".format(pl1base))
+                info("$TTBCR{}: {:#x}".format(self.suffix, TTBCR))
+                info("PL1 base: {:#x}".format(pl1_base))
                 info("PL1 va_base: {:#x}".format(pl1_vabase))
-            self.do_pagewalk_short(pl1base, pl1_vabase)
+            self.do_pagewalk_short(pl1_base, pl1_vabase)
             self.print_page()
         else:
             if not self.quiet:
@@ -31873,28 +32339,28 @@ class PagewalkArmCommand(PagewalkCommand):
         T0SZ = TTBCR & 0b111
         T1SZ = (TTBCR >> 16) & 0b111
         self.N = T0SZ
-        pl0base = TTBR0_EL1 & ((1<<40)-1)
+        pl0_base = TTBR0_EL1 & ((1<<40)-1)
         if not self.quiet:
             info("$TTBR0_EL1{}: {:#x}".format(self.suffix, TTBR0_EL1))
             info("$TTBCR{}: {:#x}".format(self.suffix, TTBCR))
-            info("PL0 base: {:#x}".format(pl0base))
-        self.do_pagewalk_long(pl0base)
+            info("PL0 base: {:#x}".format(pl0_base))
+        self.do_pagewalk_long(pl0_base)
         self.print_page()
 
         # pagewalk TTBR1_EL1
         gef_print(titlify("$TTBR1_EL1{}".format(self.suffix)))
         if T0SZ != 0 or T1SZ != 0:
             self.N = T1SZ
-            pl1base = TTBR1_EL1 & ((1<<40)-1)
+            pl1_base = TTBR1_EL1 & ((1<<40)-1)
             if T1SZ == 0:
                 pl1_vabase = 2**(32-T0SZ)
             else:
                 pl1_vabase = 2**32 - 2**(32-T1SZ)
             if not self.quiet:
                 info("$TTBR1_EL1{}: {:#x}".format(self.suffix, TTBR1_EL1))
-                info("PL1 base: {:#x}".format(pl1base))
+                info("PL1 base: {:#x}".format(pl1_base))
                 info("PL1 va_base: {:#x}".format(pl1_vabase))
-            self.do_pagewalk_long(pl1base, pl1_vabase)
+            self.do_pagewalk_long(pl1_base, pl1_vabase)
             self.print_page()
         else:
             if not self.quiet:
