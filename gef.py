@@ -18650,7 +18650,7 @@ class SysregCommand(GenericCommand):
             if not m:
                 continue
             regname, regvalue = m.group(1), m.group(2)
-            if filt and not any([f in regname for f in filt]):
+            if filt and not any([f.lower() in regname.lower() for f in filt]):
                 continue
             regs[regname] = int(regvalue, 16)
         regs = list(filter(lambda x: "$"+x[0] not in current_arch.all_registers, sorted(regs.items())))
