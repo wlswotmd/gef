@@ -2501,7 +2501,15 @@ class ARM(Architecture):
         key = val & 0b11111
         CurrentMode = mode_dic[key][0]
         CurrentPL = mode_dic[key][1]
-        mode = " [Mode={:s}({:#07b},PL{:d})]".format(CurrentMode, key, CurrentPL)
+
+        scr = get_register("$SCR")
+        if scr is not None:
+            if (scr & 0b1) == 0:
+                mode = " [Mode={:s}({:#07b},PL{:d}), Secure]".format(CurrentMode, key, CurrentPL)
+            else:
+                mode = " [Mode={:s}({:#07b},PL{:d}), Non-Secure]".format(CurrentMode, key, CurrentPL)
+        else:
+            mode = " [Mode={:s}({:#07b},PL{:d})]".format(CurrentMode, key, CurrentPL)
         return flags_to_human(val, self.flags_table) + mode
 
     def is_conditional_branch(self, insn):
@@ -2619,7 +2627,15 @@ class AARCH64(ARM):
         if val is None:
             reg = self.flag_register
             val = get_register(reg) & 0xffffffff
-        mode = " [EL={:d},SP={:d}]".format((val >> 2) & 0b11, val & 0b11)
+
+        scr = get_register("$SCR_EL3")
+        if scr is not None:
+            if (scr & 0b1) == 0:
+                mode = " [EL={:d},SP={:d}, Secure]".format((val >> 2) & 0b11, val & 0b11)
+            else:
+                mode = " [EL={:d},SP={:d}, Non-Secure]".format((val >> 2) & 0b11, val & 0b11)
+        else:
+            mode = " [EL={:d},SP={:d}]".format((val >> 2) & 0b11, val & 0b11)
         return flags_to_human(val, self.flags_table) + mode
 
     @classmethod

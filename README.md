@@ -155,11 +155,11 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
     * It is redirected to `pagewalk` when connecting to gdb stub of qemu-system.
 * `registers`: is improved.
     * It also shows raw values of `$eflags` and `$cpsr`.
-    * It prints current ring for x64/x86 when prints `$eflags` (from `$cs`).
+    * It prints current ring for x64/x86 when prints `$eflags` (Ring state is from `$cs`).
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/registers-x64.png)
-    * It prints current exception level for ARM64 when prints `$cpsr`.
+    * It prints current exception level for ARM64 when prints `$cpsr` (Secure state is from `$SCR_EL3`).
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/registers-arm64.png)
-    * It prints current mode for ARM when prints `$cpsr`.
+    * It prints current mode for ARM when prints `$cpsr` (Secure state is from `$SCR`).
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/registers-arm.png)
 * `context`: is improved.
     * It supports automatic display of system call arguments when calling a system call.
