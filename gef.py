@@ -3410,14 +3410,12 @@ def write_memory(address, buffer, length=0x10):
     if is_qemu_usermode():
         fd = open("/proc/{:d}/mem".format(get_pid()), "wb")
         fd.seek(address)
-        if is_64bit():
-            fd.write(buffer[:length])
-        else:
-            fd.write(buffer[:length])
+        ret = fd.write(buffer[:length])
         fd.close()
     else:
         gdb.selected_inferior().write_memory(address, buffer, length)
-    return
+        ret = length
+    return ret
 
 
 def read_memory(addr, length=0x10):
@@ -3489,6 +3487,44 @@ def read_physmem(paddr, size):
         # fall through to slow path
         out = slow_path(paddr, size)
     return out
+
+
+def write_physmem_secure(paddr, buffer):
+    pid = get_pid()
+    if pid is None:
+        return None
+    sm_base, sm_size = XSecureMemAddrCommand.get_secure_memory_base_and_size()
+    if sm_base is None or sm_size is None:
+        return None
+    if not (sm_base <= paddr < sm_base+sm_size):
+        return None
+    sm = XSecureMemAddrCommand.get_secure_memory_qemu_map(pid, sm_base, sm_size)
+    if sm is None:
+        return None
+    out = XSecureMemAddrCommand.write_secure_memory(pid, sm, paddr-sm_base, buffer)
+    return out
+
+
+def write_physmem(paddr, buffer):
+    if is_arm32() or is_arm64():
+        ret = write_physmem_secure(paddr, buffer)
+        if ret:
+            return ret
+
+    if not is_supported_physmode():
+        return None
+
+    try:
+        orig_mode = get_current_mmu_mode()
+        if orig_mode == "virt":
+            enable_phys()
+        ret = write_memory(paddr, buffer, len(buffer))
+        if orig_mode == "virt":
+            disable_phys()
+    except:
+        if orig_mode == "virt":
+            disable_phys()
+    return ret
 
 
 def get_current_mmu_mode():
@@ -22956,6 +22992,80 @@ class MemoryCompareCommand(GenericCommand):
             info("The size is zero, maybe wrong.")
 
         self.memcmp()
+        return
+
+
+@register_command
+class MemoryCopyCommand(GenericCommand):
+    """Memory Copy."""
+    _cmdline_ = "memcpy"
+    _syntax_ = "{:s} [-h] [--phys] TO [--phys] FROM SIZE".format(_cmdline_)
+    _category_ = "Misc"
+
+    def memcpy(self):
+        try:
+            if self.from_phys:
+                data = read_physmem(self.from_addr, self.size)
+            else:
+                data = read_memory(self.from_addr, self.size)
+        except:
+            err("Read error {:#x}".format(self.from_addr))
+            return
+
+        info("Read count: {:#x}".format(len(data)))
+
+        try:
+            if self.to_phys:
+                written = write_physmem(self.to_addr, data)
+            else:
+                written = write_memory(self.to_addr, data, len(data))
+        except:
+            err("Write error {:#x}".format(self.to_addr))
+            return
+
+        info("Write count: {:#x}".format(written))
+        return
+
+    @only_if_gdb_running
+    def do_invoke(self, argv):
+        self.dont_repeat()
+
+        if "--phys" in argv and not is_qemu_system():
+            err("Unsupported")
+            return
+
+        if "-h" in argv:
+            self.usage()
+            return
+
+        try:
+            if argv[0] == "--phys":
+                self.to_phys = True
+                self.to_addr = parse_address(argv[1])
+                argv = argv[2:]
+            else:
+                self.to_phys = False
+                self.to_addr = parse_address(argv[0])
+                argv = argv[1:]
+
+            if argv[0] == "--phys":
+                self.from_phys = True
+                self.from_addr = parse_address(argv[1])
+                argv = argv[2:]
+            else:
+                self.from_phys = False
+                self.from_addr = parse_address(argv[0])
+                argv = argv[1:]
+
+            self.size = int(argv[0], 0)
+        except:
+            self.usage()
+            return
+
+        if self.size == 0:
+            info("The size is zero, maybe wrong.")
+
+        self.memcpy()
         return
 
 

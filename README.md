@@ -283,6 +283,7 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hash-memory.png)
 * `memcmp`: compares the contents of address A and B, whether virtual or physical.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/memcmp.png)
+* `memcpy`: copies the contents from address A to B, whether virtual or physical.
 * `is-mem-zero`: checks the contents of address range is all 0x00 or 0xff or not.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/is-mem-zero.png)
 * `pdisas`: is a shortcut for `cs-dis $pc LENGTH=50 OPCODES`.
