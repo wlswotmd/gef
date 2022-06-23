@@ -2865,11 +2865,13 @@ class X86(Architecture):
         _NR_mprotect = 125
         insns = [
             "pushad",
+            "pushfd",
             "mov eax, {:d}".format(_NR_mprotect),
             "mov ebx, {:d}".format(addr),
             "mov ecx, {:d}".format(size),
             "mov edx, {:d}".format(perm),
             "int 0x80",
+            "popfd",
             "popad",
         ]
         return "; ".join(insns)
@@ -2904,6 +2906,7 @@ class X86_64(X86):
     def mprotect_asm(cls, addr, size, perm):
         _NR_mprotect = 10
         insns = [
+            "pushfq",
             "push rax",
             "push rdi",
             "push rsi",
@@ -2921,6 +2924,7 @@ class X86_64(X86):
             "pop rsi",
             "pop rdi",
             "pop rax",
+            "popfq",
         ]
         return "; ".join(insns)
 
