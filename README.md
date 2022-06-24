@@ -28,10 +28,12 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh).
 
 All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 / Debian 10.x.
 
-### qemu-system cooperation
+### Qemu-system cooperation
 * It works with qemu-system installed via apt, but qemu-6.x or higher is recommended.
     * Start qemu with the `-s` option and listen on `localhost:1234`.
     * Attach with `gdb-multiarch -ex 'target remote localhost:1234'`.
+
+#### General
 * `qreg`: prints register values from qemu-monitor (allows to get like `$cs` even under qemu 2.x).
     * It is shortcut for `monitor info registers`.
     * It also prints the details of the each bit of the system register when x64/x86.
@@ -39,9 +41,6 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
 * `sysreg`: pretty prints system registers.
     * It is the result of `info registers` with filtering general registers.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/sysreg.png)
-* `msr`: prints MSR (Model Specific Registers) values by embedding/executing dynamic assembly.
-    * Supported on x64/x86 without `-enable-kvm`.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/msr.png)
 * `pagewalk`: prints page table from scanning physical memory.
     * x64 (Supported: PML5T/PML4T)
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-x64.png)
@@ -59,16 +58,12 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
         * Secure memory scanning is supported, you don't have to break in the secure world (use register with `_S` suffix).
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm.png)
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm-secure.png)
-* `xp`: is a shortcut for physical memory dump.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xp.png)
 * `v2p`, `p2v`: shows transformation virtual address <-> physical address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/v2p-p2v.png)
-* `xsm`: dumps secure memory.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xsm.png)
-* `wsm`: writes the value to secure memory.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/wsm.png)
-* `bsm`: set the breakpoint to secure memory.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/bsm.png)
+* `xp`: is a shortcut for physical memory dump.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xp.png)
+
+#### Linux specific
 * `ksymaddr-remote`: prints kallsyms informations from scanning of kernel memory (heuristic).
     * Supported: the symbol of kernel itself.
     * Unsupported: the symbol of kernel modules.
@@ -92,14 +87,6 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
     * Supported on both `CONFIG_SLAB_FREELIST_HARDENED` is `y` or `n`.
     * Supported on both the vmlinux symbol exists or not.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slub-dump.png)
-* `thunk-hunter`: collects and displays the thunk addresses that are called automatically (x64/x86 only).
-    * If this address comes from RW area, this is useful for getting RIP.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/thunk-hunter.png)
-* `usermodehelper-hunter`: collects and displays information that is executed by `call_usermodehelper_setup`.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/usermodehelper-hunter.png)
-* `uefi-ovmf-info`: displays addresses of some important structures in each boot phase of UEFI when OVMF is used (heuristic).
-    * Supported on x64 only.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/uefi-ovmf-info.png)
 * `kbase`: prints kernel base address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kbase.png)
 * `kversion`: displays the debugged kernel version.
@@ -116,6 +103,29 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kfops.png)
 * `syscall-table-view`: prints system call table (x64/x86/ARM64/ARM only).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/syscall-table-view.png)
+* `thunk-hunter`: collects and displays the thunk addresses that are called automatically (x64/x86 only).
+    * If this address comes from RW area, this is useful for getting RIP.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/thunk-hunter.png)
+* `usermodehelper-hunter`: collects and displays information that is executed by `call_usermodehelper_setup`.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/usermodehelper-hunter.png)
+
+#### Arch specific
+* `msr`: prints MSR (Model Specific Registers) values by embedding/executing dynamic assembly.
+    * Supported on x64/x86 without `-enable-kvm`.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/msr.png)
+* `xsm`: dumps secure memory when gdb is in normal world.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xsm.png)
+* `wsm`: writes the value to secure memory when gdb is in normal world.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/wsm.png)
+* `bsm`: set the breakpoint to secure memory when gdb is in normal world (only ARMv7).
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/bsm.png)
+* `optee-break-ta`: set the breakpoint to the offset of OPTEE-Trusted-App when gdb is in normal world (only ARMv7).
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/optee-break-ta.png)
+
+#### Other
+* `uefi-ovmf-info`: displays addresses of some important structures in each boot phase of UEFI when OVMF is used (heuristic).
+    * Supported on x64 only.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/uefi-ovmf-info.png)
 
 ### Heap dump features
 * `partition-alloc-dump-stable`: dumps partition-alloc free-list (heuristic).

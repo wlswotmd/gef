@@ -28761,6 +28761,108 @@ class BreakSecureMemAddrCommand(GenericCommand):
         return
 
 
+class OpteeThreadEnterUserModeBreakpoint(gdb.Breakpoint):
+    """Create a breakpoint to thread_enter_user_mode"""
+    def __init__(self, vaddr, ta_offset):
+        super().__init__("*{:#x}".format(vaddr), type=gdb.BP_BREAKPOINT, internal=True)
+        self.count = 0
+        self.ta_offset = ta_offset
+        return
+
+    def get_ta_loaded_address(self):
+        res = gdb.execute("pagewalk -q -S", to_string=True)
+        res = sorted(set(res.splitlines()))
+        res = list(filter(lambda line: "PL0/R-X" in line, res))
+        maps = []
+        for line in res:
+            vrange, prange, *_ = line.split()
+            vstart, vend = [int(x, 16) for x in vrange.split("-")]
+            pstart, pend = [int(x, 16) for x in prange.split("-")]
+            maps.append((vstart, vend, pstart, pend))
+        if len(maps) == 2:
+            return maps[1]
+        else:
+            return None
+
+    def stop(self):
+        if self.count != 1:
+            self.count += 1
+            return False
+
+        ta_address = self.get_ta_loaded_address()
+        if ta_address is None:
+            err("TA address is not found")
+            self.enabled = False
+            return False
+
+        ta_vstart, ta_vend, _, _ = ta_address
+        info("TA address: {:#x}".format(ta_vstart))
+
+        ta_vsize = ta_vend - ta_vstart
+        if self.ta_offset >= ta_vsize:
+            err("TA offset {:#x} is greater than the size of TA R-X area ({:#x})".format(self.ta_offset, ta_vsize))
+            self.enabled = False
+            return False
+
+        gdb.execute("break *{:#x}".format(ta_vstart + self.ta_offset))
+        self.enabled = False
+        return False
+
+
+@register_command
+class OpteeBreakTaAddrCommand(GenericCommand):
+    """Set a breakpoint to OPTEE-TA."""
+    _cmdline_ = "optee-break-ta"
+    _syntax_ = "{:s} [-h] [-v] ADDR_thread_enter_user_mode TA_OFFSET\n".format(_cmdline_)
+    _syntax_ += "  ADDR_thread_enter_user_mode: The physical address of `thread_enter_user_mode` at OPTEE-OS\n".format(_cmdline_)
+    _syntax_ += "  TA_OFFSET:                   The breakpoint target offset of OPTEE-TA".format(_cmdline_)
+    _example_ = "{:s} 0xe137c78 0x2784".format(_cmdline_)
+    _category_ = "Qemu-system Cooperation"
+
+    @only_if_gdb_running
+    @only_if_qemu_system
+    def do_invoke(self, argv):
+        self.dont_repeat()
+
+        if not is_arm32():
+            err("Unsupported")
+            return
+
+        if "-h" in argv:
+            self.usage()
+            return
+
+        # arg parse
+        verbose = False
+        if "-v" in argv:
+            verbose = True
+            argv.remove("-v")
+
+        try:
+            thread_enter_user_mode = phys_addr = parse_address(argv[0])
+            if verbose:
+                info("thread_enter_user_mode @ OPTEE-OS: {:#x}".format(thread_enter_user_mode))
+            argv = argv[1:]
+        except:
+            self.usage()
+            return
+
+        try:
+            ta_offset = parse_address(' '.join(argv))
+            if verbose:
+                info("breakpoint target offset of TA: {:#x}".format(ta_offset))
+        except:
+            self.usage()
+            return
+
+        thread_enter_user_mode_virt = BreakSecureMemAddrCommand.phys2virt(thread_enter_user_mode, verbose)
+
+        for vaddr in thread_enter_user_mode_virt:
+            OpteeThreadEnterUserModeBreakpoint(vaddr, ta_offset)
+            info("Temporarily breakpoint at {:#x}".format(vaddr))
+        return
+
+
 @register_command
 class CpuidCommand(GenericCommand):
     """Get cpuid result."""
