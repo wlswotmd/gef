@@ -12897,7 +12897,7 @@ class PatchWordCommand(PatchCommand):
 
 @register_command
 class PatchByteCommand(PatchCommand):
-    """Write specified WORD to the specified address."""
+    """Write specified BYTE to the specified address."""
     _cmdline_ = "patch byte"
     _syntax_ = "{:s} [-h] [--phys] LOCATION BYTE1 [BYTE2 [BYTE3..]]".format(_cmdline_)
     _example_ = "{:s} $rip 0x41 0x41 0x41 0x41 0x41".format(_cmdline_)
