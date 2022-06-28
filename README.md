@@ -159,6 +159,8 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
 * `musl-dump`: dumps musl-libc unused chunks (heuristic).
     * Supported on x64/x86, based on musl-libc v1.2.2.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/musl-dump.png)
+* `optee-bget-dump`: dumps bget allocator of OPTEE-Trusted-App.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/optee-bget-dump.png)
 
 ### Other improved features
 * Glibc heap commands are improved.

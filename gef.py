@@ -28773,7 +28773,8 @@ class OpteeThreadEnterUserModeBreakpoint(gdb.Breakpoint):
         self.ta_offset = ta_offset
         return
 
-    def get_ta_loaded_address(self):
+    @staticmethod
+    def get_ta_loaded_address():
         res = gdb.execute("pagewalk -q -S", to_string=True)
         res = sorted(set(res.splitlines()))
         res = list(filter(lambda line: "PL0/R-X" in line, res))
@@ -28864,6 +28865,263 @@ class OpteeBreakTaAddrCommand(GenericCommand):
         for vaddr in thread_enter_user_mode_virt:
             OpteeThreadEnterUserModeBreakpoint(vaddr, ta_offset)
             info("Temporarily breakpoint at {:#x}".format(vaddr))
+        return
+
+
+@register_command
+class OpteeBgetDumpCommand(GenericCommand):
+    """Dump bget allocator of OPTEE-Trusted-App."""
+    _cmdline_ = "optee-bget-dump"
+    _syntax_ = "{:s} [-h] [-v] OFFSET_malloc_ctx\n".format(_cmdline_)
+    _syntax_ += "  OFFSET_malloc_ctx:   The offset of `malloc_ctx` at OPTEE-TA".format(_cmdline_)
+    _example_ = "{:s} 0x2a408\n".format(_cmdline_)
+    _example_ += "\n"
+    _example_ += "Simplified heap structure\n"
+    _example_ += "+-malloc_ctx-------------------+         +-free-ed chunk----------+\n"
+    _example_ += "| bufsize prevfree             |<--+ +-->| bufsize prevfree       |= 0 (if upper chunk is used)  +--> ...\n"
+    _example_ += "| bufsize bsize                |   | |   | bufsize bsize          |= the size of this chunk      |\n"
+    _example_ += "| struct bfhead *flink         |-----+   | struct bfhead *flink   |------------------------------+\n"
+    _example_ += "| struct bfhead *blink         |   +-----| struct bfhead *blink   |\n"
+    _example_ += "| (bufsize totalloc)           |         |                        |\n"
+    _example_ += "| (long numget)                |         |                        |\n"
+    _example_ += "| (long numrel)                |         |                        |\n"
+    _example_ += "| (long numpblk)               |         +-used chunk-------------+\n"
+    _example_ += "| (long numpget)               |         | bufsize prevfree       |= the size of upper chunk (if upper chunk is free-ed)"
+    _example_ += "| (long numprel)               |         | bufsize bsize          |= the size of this chunk (negative number)\n"
+    _example_ += "| (long numdget)               |         | uchar user_data[bsize] |\n"
+    _example_ += "| (long numdrel)               |         |                        |\n"
+    _example_ += "| (func_ptr compfcn)           |         |                        |\n"
+    _example_ += "| (func_ptr acqfcn)            |         +------------------------+\n"
+    _example_ += "| (func_ptr relfcn)            |\n"
+    _example_ += "| (bufsize exp_incr)           |\n"
+    _example_ += "| (bufsize pool_len)           |\n"
+    _example_ += "| struct malloc_pool* pool     |\n"
+    _example_ += "| size_t pool_len              |\n"
+    _example_ += "| (struct malloc_stats mstats) |\n"
+    _example_ += "+------------------------------+"
+    _category_ = "Qemu-system Cooperation"
+
+    def is_readable_virt_memory(self, addr):
+        res = gdb.execute("pagewalk -q -S", to_string=True)
+        res = sorted(set(res.splitlines()))
+        res = list(filter(lambda line: "PL0/RW-" in line, res))
+        for line in res:
+            vrange, prange, *_ = line.split()
+            vstart, vend = [int(x, 16) for x in vrange.split("-")]
+            pstart, pend = [int(x, 16) for x in prange.split("-")]
+            if vstart <= addr < vend:
+                return True
+        return False
+
+    def parse_flink(self, head):
+        current = head
+        flinks = []
+        seen = [current]
+        while True:
+            try:
+                prevfree = read_int_from_memory(current + current_arch.ptrsize*0)
+                bsize = read_int_from_memory(current + current_arch.ptrsize*1)
+                flink = read_int_from_memory(current + current_arch.ptrsize*2)
+                blink = read_int_from_memory(current + current_arch.ptrsize*3)
+                next_prevfree = read_int_from_memory(current + bsize)
+                next_bsize = read_int_from_memory(current + bsize + current_arch.ptrsize)
+            except:
+                flinks.append("memory corrupted")
+                break
+            if flink % 8 or blink % 8 or bsize % 8 or next_prevfree % 8 or next_bsize % 8:
+                flinks.append("unaligned corrupted")
+                break
+            flinks.append({"_addr": current, "prevfree":prevfree, "bsize":bsize, "flink":flink, "blink":blink,
+                           "next_prevfree":next_prevfree, "next_bsize":next_bsize})
+            if flink == head:
+                break
+            if flink in seen[1:]:
+                flinks.append("loop detected")
+                break
+            seen.append(current)
+            current = flink
+        return flinks
+
+    def parse_blink(self, head):
+        current = head
+        blinks = []
+        seen = [current]
+        while True:
+            try:
+                prevfree = read_int_from_memory(current + current_arch.ptrsize*0)
+                bsize = read_int_from_memory(current + current_arch.ptrsize*1)
+                flink = read_int_from_memory(current + current_arch.ptrsize*2)
+                blink = read_int_from_memory(current + current_arch.ptrsize*3)
+                next_prevfree = read_int_from_memory(current + bsize)
+                next_bsize = read_int_from_memory(current + bsize + current_arch.ptrsize)
+            except:
+                blinks.append("memory corrupted")
+                break
+            if flink % 8 or blink % 8 or bsize % 8 or next_prevfree % 8 or next_bsize % 8:
+                blinks.append("unaligned corrupted")
+                break
+            blinks.append({"_addr": current, "prevfree":prevfree, "bsize":bsize, "flink":flink, "blink":blink,
+                           "next_prevfree":next_prevfree, "next_bsize":next_bsize})
+            if blink == head:
+                break
+            if blink in seen[1:]:
+                blinks.append("loop detected")
+                break
+            seen.append(current)
+            current = blink
+        return blinks
+
+    def parse_malloc_ctx(self, malloc_ctx_addr):
+        malloc_ctx = {}
+        malloc_ctx["_addr"] = current = malloc_ctx_addr
+
+        malloc_ctx["prevfree"] = read_int_from_memory(current)
+        current += current_arch.ptrsize
+        malloc_ctx["bsize"] = read_int_from_memory(current)
+        current += current_arch.ptrsize
+        malloc_ctx["flink"] = read_int_from_memory(current)
+        malloc_ctx["flink_list"] = self.parse_flink(malloc_ctx["flink"])
+        current += current_arch.ptrsize
+        malloc_ctx["blink"] = read_int_from_memory(current)
+        malloc_ctx["blink_list"] = self.parse_blink(malloc_ctx["blink"])
+        current += current_arch.ptrsize
+
+        # search pool
+        for i in range(14):
+            pool_candidate = read_int_from_memory(current)
+            current += current_arch.ptrsize
+            if self.is_readable_virt_memory(pool_candidate):
+                malloc_ctx["pool"] = pool_candidate
+                break
+        else:
+            err("Not found malloc_ctx->pool")
+            return None
+
+        malloc_ctx["pool_len"] = read_int_from_memory(current)
+        current += current_arch.ptrsize
+
+        malloc_ctx["pool_list"] = []
+        for i in range(malloc_ctx["pool_len"]):
+            buf = read_int_from_memory(malloc_ctx["pool"] + (i*2)*current_arch.ptrsize)
+            size = read_int_from_memory(malloc_ctx["pool"] + (i*2+1)*current_arch.ptrsize)
+            malloc_ctx["pool_list"].append({"buf": buf, "len":size})
+
+        return malloc_ctx
+
+    def print_malloc_ctx(self, malloc_ctx):
+        gef_print(titlify("malloc_ctx @ {:#x}".format(malloc_ctx["_addr"])))
+        gef_print("prevfree: {:#x}".format(malloc_ctx["prevfree"]))
+        gef_print("bsize:    {:#x}".format(malloc_ctx["bsize"]))
+        gef_print("flink:    {:#x}".format(malloc_ctx["flink"]))
+        for chunk in malloc_ctx["flink_list"]:
+            if isinstance(chunk, str):
+                gef_print("  -> {:s}".format(Color.colorify(chunk, "red bold")))
+            else:
+                chunk_addr = Color.colorify("{:#010x}".format(chunk["_addr"]), "yellow bold")
+                fmt = "  -> {:s}: (prevfree:{:#x}  bsize:{:#010x}  flink:{:#010x}  blink:{:#010x}  next_prevfree:{:#010x}  next_bsize:{:#010x}({:#010x}))"
+                gef_print(fmt.format(chunk_addr, chunk["prevfree"], chunk["bsize"], chunk["flink"], chunk["blink"],
+                                     chunk["next_prevfree"], chunk["next_bsize"], (-chunk["next_bsize"]) & 0xffffffff))
+        gef_print("blink:    {:#x}".format(malloc_ctx["blink"]))
+        for chunk in malloc_ctx["blink_list"]:
+            if isinstance(chunk, str):
+                gef_print("  -> {:s}".format(Color.colorify(chunk, "red bold")))
+            else:
+                chunk_addr = Color.colorify("{:#010x}".format(chunk["_addr"]), "yellow bold")
+                fmt = "  -> {:s}: (prevfree:{:#x}  bsize:{:#010x}  flink:{:#010x}  blink:{:#010x}  next_prevfree:{:#010x}  next_bsize:{:#010x}({:#010x}))"
+                gef_print(fmt.format(chunk_addr, chunk["prevfree"], chunk["bsize"], chunk["flink"], chunk["blink"],
+                                     chunk["next_prevfree"], chunk["next_bsize"], (-chunk["next_bsize"]) & 0xffffffff))
+        gef_print("pool:     {:#x}".format(malloc_ctx["pool"]))
+        gef_print("pool_len: {:#x}".format(malloc_ctx["pool_len"]))
+
+        for i in range(malloc_ctx["pool_len"]):
+          pool = malloc_ctx["pool_list"][i]
+          gef_print("  pool[{:d}]  buf:{:#x}  size:{:#x}".format(i, pool["buf"], pool["len"]))
+        return
+
+    def print_chunk_list(self, malloc_ctx):
+        for i in range(malloc_ctx["pool_len"]):
+            pool = malloc_ctx["pool_list"][i]
+            pool_start = pool["buf"]
+            pool_end = pool["buf"] + pool["len"]
+            gef_print(titlify("pool[{:d}] @ {:#x} - {:#x}".format(i, pool_start, pool_end)))
+
+            chunk = pool_start
+            used = Color.colorify("used", "green underline")
+            freed = Color.colorify("free", "grey bold")
+            seen = []
+            while chunk < pool_end:
+                if chunk in seen:
+                    gef_print(Color.colorify("loop detected", "red bold"))
+                    break
+                seen.append(chunk)
+                try:
+                    prevfree = read_int_from_memory(chunk + current_arch.ptrsize*0)
+                    bsize = read_int_from_memory(chunk + current_arch.ptrsize*1)
+                    flink = read_int_from_memory(chunk + current_arch.ptrsize*2)
+                    blink = read_int_from_memory(chunk + current_arch.ptrsize*3)
+                except:
+                    gef_print(Color.colorify("unaligned orrupted", "red bold"))
+                    break
+                chunk_addr = Color.colorify("{:#010x}".format(chunk), "yellow bold")
+                bsize_inv = (-bsize) & 0xffffffff
+                if bsize_inv < 0x80000000: # used
+                    fmt = "{:s} {:s}: prevfree:{:#010x}  bsize:{:#010x}({:#010x})"
+                    gef_print(fmt.format(used, chunk_addr, prevfree, bsize, bsize_inv))
+                    chunk += bsize_inv
+                else: # freed
+                    fmt = "{:s} {:s}: prevfree:{:#010x}  bsize:{:#010x}              flink:{:#010x}  blink:{:#010x}"
+                    gef_print(fmt.format(freed, chunk_addr, prevfree, bsize, flink, blink))
+                    chunk += bsize
+                if chunk % 8:
+                    gef_print(Color.colorify("unaligned orrupted", "red bold"))
+                    break
+            return
+
+    @only_if_gdb_running
+    @only_if_qemu_system
+    def do_invoke(self, argv):
+        self.dont_repeat()
+
+        if not is_arm32():
+            err("Unsupported")
+            return
+
+        if "-h" in argv:
+            self.usage()
+            return
+
+        # arg parse
+        verbose = False
+        if "-v" in argv:
+            verbose = True
+            argv.remove("-v")
+
+        try:
+            malloc_ctx_offset = parse_address(argv[0])
+            if verbose:
+                info("offset of malloc_ctx: {:#x}".format(malloc_ctx_offset))
+        except:
+            self.usage()
+            return
+
+        ta_address_map = OpteeThreadEnterUserModeBreakpoint.get_ta_loaded_address()
+        if ta_address_map is None:
+            err("TA address is not found")
+            return
+        ta_address = ta_address_map[0]
+        if verbose:
+            info("TA loaded address: {:#x}".format(ta_address))
+
+        malloc_ctx_addr = ta_address + malloc_ctx_offset
+        if verbose:
+            info("malloc_ctx: {:#x}".format(malloc_ctx_addr))
+
+        malloc_ctx = self.parse_malloc_ctx(malloc_ctx_addr)
+        if malloc_ctx is None:
+            err("parse failed")
+            return
+        self.print_malloc_ctx(malloc_ctx)
+        self.print_chunk_list(malloc_ctx)
         return
 
 
