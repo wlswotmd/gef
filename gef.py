@@ -23772,10 +23772,11 @@ class SlubDumpCommand(GenericCommand):
                 break
         else:
             # not found, so try x64 specific condition
-            off = current & 0x7f # maybe 0x80 aligned address
-            flags = read_int_from_memory(current - off + current_arch.ptrsize)
-            if is_x86_64() and (flags & 0xfffffffffbf00fff) == 0x0000000040000000: # heuristic flags value
-                pass
+            for diff in [0, 0x40]: # 0x80 or 0x40 align
+                off = (current & 0x7f) + diff
+                flags = read_int_from_memory(current - off + current_arch.ptrsize)
+                if is_x86_64() and (flags & 0xfffffffffbf00fff) == 0x0000000040000000: # heuristic flags value
+                    break
             else:
                 err("offsetof(kmem_cache, list): Not Found")
                 raise
@@ -23951,7 +23952,6 @@ class SlubDumpCommand(GenericCommand):
         return
 
     def dump_caches(self, targets, cpu):
-        gef_print(titlify("CPU {:d}".format(cpu)))
         gef_print('  ' + '-'*14)
         gef_print(' | ' + ' '*11 + ' |')
         gef_print(' |        slab_caches @ {:#x}'.format(self.slab_caches))
@@ -24010,10 +24010,12 @@ class SlubDumpCommand(GenericCommand):
 
         if self.cpuN is None:
             for i in range(len(self.cpu_offset)):
+                gef_print(titlify("CPU {:d}".format(i)))
                 self.walk_caches(i)
                 self.dump_caches(targets, i)
         else:
             if len(self.cpu_offset) > self.cpuN:
+                gef_print(titlify("CPU {:d}".format(self.cpuN)))
                 self.walk_caches(self.cpuN)
                 self.dump_caches(targets, self.cpuN)
             else:
@@ -24052,7 +24054,10 @@ class SlubDumpCommand(GenericCommand):
 
         info("Wait for memory scan")
 
-        self.slabwalk(argv)
+        try:
+            self.slabwalk(argv)
+        except:
+            err("Memory corrupted")
         return
 
 
