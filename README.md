@@ -345,6 +345,8 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
 * `srop-hint`: shows the code for srop as hint.
 * `dtor-dump`: dumps some destructor functions list.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dtor-dump.png)
+* `linklist-walk`: walks link list.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/linklist-walk.png)
 
 ### Other
 * The category is introduced in `gef help`.

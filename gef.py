@@ -36686,6 +36686,59 @@ class KsymaddrRemoteApplyCommand(GenericCommand):
 
 
 @register_command
+class LinklisWalkCommand(GenericCommand):
+    """Link list walk."""
+    _cmdline_ = "linklist-walk"
+    _syntax_ = "{:s} [-o OFFSET] ADDRESS".format(_cmdline_)
+    _example_ = "{:s} 0xffff9c60800597e0 # walk next\n".format(_cmdline_)
+    _example_ += "{:s} -o 8 0xffff9c60800597e0 # walk prev".format(_cmdline_)
+    _category_ = "Show/Modify Memory"
+
+    def walk_link_list(self, head, offset):
+        current = head
+        walkks = []
+        seen = [current]
+        idx = 1
+        while True:
+            try:
+                flink = read_int_from_memory(current + offset)
+            except:
+                err("memory corrupted")
+                return
+            gef_print("[{:d}]   -> {:#x}".format(idx, flink))
+            if flink == 0:
+                break
+            if flink == head:
+                break
+            if flink in seen[1:]:
+                err("loop detected")
+                break
+            seen.append(current)
+            current = flink
+            idx += 1
+        return
+
+    def do_invoke(self, argv):
+        self.dont_repeat()
+
+        try:
+            offset = 0
+            if "-o" in argv:
+                idx = argv.index("-o")
+                offset = int(argv[idx+1], 0)
+                argv = argv[:idx] + argv[idx+2:]
+            head = parse_address(''.join(argv))
+        except:
+            self.usage()
+            return
+
+        info("head addres: {:#x}".format(head))
+        info("list offset: {:#x}".format(offset))
+        self.walk_link_list(head, offset)
+        return
+
+
+@register_command
 class PeekPointersCommand(GenericCommand):
     """Command to help find pointers belonging to other memory regions helpful in case
     of OOB Read when looking for specific pointers"""
