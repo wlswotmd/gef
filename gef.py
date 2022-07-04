@@ -20638,8 +20638,9 @@ class KernelAddressHeuristicFinder:
         if nr_iowait_cpu:
             res = gdb.execute("x/10i {:#x}".format(nr_iowait_cpu), to_string=True)
             if is_x86():
+                # pattern 1
                 for line in res.splitlines():
-                    m = re.search(r"[DQ]WORD PTR \[.*([-+]0x\S+)\]", line)
+                    m = re.search(r"add.*[DQ]WORD PTR \[.*([-+]0x\S+)\]", line)
                     if m:
                         if is_64bit():
                             v = int(m.group(1), 16) & 0xffffffffffffffff
@@ -20649,6 +20650,13 @@ class KernelAddressHeuristicFinder:
                             v = int(m.group(1), 16) & 0xffffffff
                             if v != 0:
                                 return v
+                # pattern 2
+                for line in res.splitlines():
+                    m = re.search(r"DWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffffffffffff
+                        if v != 0:
+                            return v
             elif is_arm64():
                 base = None
                 for line in res.splitlines():
