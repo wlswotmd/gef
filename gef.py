@@ -15799,13 +15799,41 @@ class SyscallArgsCommand(GenericCommand):
             else:
                 return False # by default it considers on native
 
+        def is_secure():
+            scr = get_register("$SCR")
+            if scr is None:
+                return False
+            return (scr & 0b1) == 0
+
+        if arch is None and mode is None :
+            if is_x86_64():
+                arch, mode = "X86", "64"
+            elif is_x86_32():
+                if is_emulated32():
+                    arch, mode = "X86", "32"
+                else:
+                    arch, mode = "X86", "N32"
+            elif is_arm64():
+                if is_secure():
+                    arch, mode = "ARM64", "S"
+                else:
+                    arch, mode = "ARM64", None
+            elif is_arm32():
+                if is_secure():
+                    arch, mode = "ARM", "S"
+                else:
+                    if is_emulated32():
+                        arch, mode = "ARM", "32"
+                    else:
+                        arch, mode = "ARM", "N32"
+
         Entry = collections.namedtuple('Entry', 'name params')
         Param = collections.namedtuple('Param', 'reg param')
 
         # The info of arguments type is picked up from kernel source around "SYSCALL_DEFINE*(...) / COMPAT_SYSCALL_DEFINE*(...)",
         # The command I used: cd linux-5.*; ag --cc -A 6 "SYSCALL_DEFINE.*\bFUNCTION_NAME\b"
         # But these are some exceptions (ex: not found), I picked up from the function of syscall implementation, and so on
-        if (arch == "X86" and mode == "64") or (arch is None and mode is None and is_x86_64()):
+        if arch == "X86" and mode == "64":
             register_list = ["$rdi", "$rsi", "$rdx", "$r10", "$r8", "$r9"]
             # arch/x86/entry/syscalls/syscall_64.tbl
             # arch/x86/include/asm/unistd.h
@@ -16222,7 +16250,7 @@ class SyscallArgsCommand(GenericCommand):
                     continue
                 syscall_list += [[s[0]+0x40000000, s[1], s[2]]]
 
-        elif (arch == "X86" and mode == "32") or (arch is None and mode is None and is_x86_32() and is_emulated32()):
+        elif arch == "X86" and mode == "32":
             register_list = ["$ebx", "$ecx", "$edx", "$esi", "$edi", "$ebp"]
             # arch/x86/include/asm/unistd.h
             # arch/x86/include/uapi/asm/unistd.h
@@ -16677,7 +16705,7 @@ class SyscallArgsCommand(GenericCommand):
                 [0x1c2, 'set_mempolicy_home_node', ['unsigned long start', 'unsigned long len', 'unsigned long home_node', 'unsigned long flags']],
             ]
 
-        elif (arch == "X86" and mode == "N32") or (arch is None and mode is None and is_x86_32() and not is_emulated32()):
+        elif arch == "X86" and mode == "N32":
             register_list = ["$ebx", "$ecx", "$edx", "$esi", "$edi", "$ebp"]
             # arch/x86/include/asm/unistd.h
             # arch/x86/include/uapi/asm/unistd.h
@@ -17132,7 +17160,7 @@ class SyscallArgsCommand(GenericCommand):
                 [0x1c2, 'set_mempolicy_home_node', ['unsigned long start', 'unsigned long len', 'unsigned long home_node', 'unsigned long flags']],
             ]
 
-        elif (arch == "ARM64") or (arch is None and is_arm64()):
+        elif arch == "ARM64":
             register_list = ["$x0", "$x1", "$x2", "$x3", "$x4", "$x5"]
             # arch/arm64/include/asm/unistd.h
             # arch/arm64/include/uapi/asm/unistd.h
@@ -17449,7 +17477,7 @@ class SyscallArgsCommand(GenericCommand):
                 [0x1c2, 'set_mempolicy_home_node', ['unsigned long start', 'unsigned long len', 'unsigned long home_node', 'unsigned long flags']],
             ]
 
-        elif (arch == "ARM" and mode == "32") or (arch is None and mode is None and is_arm32() and is_emulated32()):
+        elif arch == "ARM" and mode == "32":
             register_list = ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6"]
             # arch/arm64/include/asm/unistd.h
             # arch/arm64/include/asm/unistd32.h
@@ -17909,7 +17937,7 @@ class SyscallArgsCommand(GenericCommand):
                 [0xf0005, 'set_tls', ['unsigned long val']], # arch/arm/kernel/traps.c
             ]
 
-        elif (arch == "ARM" and mode == "N32") or (arch is None and mode is None and is_arm32() and not is_emulated32()):
+        elif arch == "ARM" and mode == "N32":
             register_list = ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6"]
             # arch/arm/include/asm/unistd.h
             # arch/arm/include/generated/uapi/asm/unistd-common.h
@@ -18418,6 +18446,106 @@ class SyscallArgsCommand(GenericCommand):
             #    if name_list.count(s[1]) == 2: # already added
             #        continue
             #    syscall_list += [[s[0]+0x900000, s[1], s[2]]]
+
+        elif arch in ["ARM64", "ARM"] and mode == "S":
+            if arch == "ARM64":
+                register_list = ["$x0", "$x1", "$x2", "$x3", "$x4", "$x5", "$x6"]
+            else:
+                register_list = ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6"]
+            # core/include/tee/tee_svc.h
+            # core/include/tee/tee_svc_cryp.h
+            # core/include/tee/tee_svc_storage.h
+            # core/include/tee/svc_cache.h
+            syscall_list = [
+                [0x00, 'syscall_sys_return', ['unsigned long ret']],
+                [0x01, 'syscall_log', ['const void *buf', 'size_t len']],
+                [0x02, 'syscall_panic', ['unsigned long code']],
+                [0x03, 'syscall_get_property', ['unsigned long prop_set', 'unsigned long index', 'void *name', 'uint32_t *name_len', 'void *buf', 'uint32_t *blen', 'uint32_t *prop_type']],
+                [0x04, 'syscall_get_property_name_to_index', ['unsigned long prop_set', 'void *name', 'unsigned long name_len', 'uint32_t *index']],
+                [0x05, 'syscall_open_ta_session', ['const TEE_UUID *dest', 'unsigned long cancel_req_to', 'struct utee_params *params', 'uint32_t *sess', 'uint32_t *ret_orig']],
+                [0x06, 'syscall_close_ta_session', ['unsigned long sess']],
+                [0x07, 'syscall_invoke_ta_command', ['unsigned long sess', 'unsigned long cancel_req_to', 'unsigned long cmd_id', 'struct utee_params *params', 'uint32_t *ret_orig']],
+                [0x08, 'syscall_check_access_rights', ['unsigned long flags', 'const void *buf', 'size_t len']],
+                [0x09, 'syscall_get_cancellation_flag', ['uint32_t *cancel', ]],
+                [0x0a, 'syscall_unmask_cancellation', ['uint32_t *old_mask']],
+                [0x0b, 'syscall_mask_cancellation', ['uint32_t *old_mask']],
+                [0x0c, 'syscall_wait', ['unsigned long timeout']],
+                [0x0d, 'syscall_get_time', ['unsigned long cat', 'TEE_Time *time']],
+                [0x0e, 'syscall_set_ta_time', ['const TEE_Time *time']],
+                [0x0f, 'syscall_cryp_state_alloc', ['unsigned long algo', 'unsigned long op_mode', 'unsigned long key1', 'unsigned long key2', 'uint32_t *state']],
+                [0x10, 'syscall_cryp_state_copy', ['unsigned long dst', 'unsigned long src']],
+                [0x11, 'syscall_cryp_state_free', ['unsigned long state']],
+                [0x12, 'syscall_hash_init', ['unsigned long state', 'const void *iv', 'size_t iv_len']],
+                [0x13, 'syscall_hash_update', ['unsigned long state', 'const void *chunk', 'size_t chunk_size']],
+                [0x14, 'syscall_hash_final', ['unsigned long state', 'const void *chunk', 'size_t chunk_size', 'void *hash', 'uint64_t *hash_len']],
+                [0x15, 'syscall_cipher_init', ['unsigned long state', 'const void *iv', 'size_t iv_len']],
+                [0x16, 'syscall_cipher_update', ['unsigned long state', 'const void *src', 'size_t src_len', 'void *dest', 'uint64_t *dest_len']],
+                [0x17, 'syscall_cipher_final', ['unsigned long state', 'const void *src', 'size_t src_len', 'void *dest', 'uint64_t *dest_len']],
+                [0x18, 'syscall_cryp_obj_get_info', ['unsigned long obj', 'TEE_ObjectInfo *info']],
+                [0x19, 'syscall_cryp_obj_restrict_usage', ['unsigned long obj', 'unsigned long usage']],
+                [0x1a, 'syscall_cryp_obj_get_attr', ['unsigned long obj', 'unsigned long attr_id', 'void *buffer', 'uint64_t *size']],
+                [0x1b, 'syscall_cryp_obj_alloc', ['unsigned long obj_type', 'unsigned long max_key_size', 'uint32_t *obj']],
+                [0x1c, 'syscall_cryp_obj_close', ['unsigned long obj']],
+                [0x1d, 'syscall_cryp_obj_reset', ['unsigned long obj']],
+                [0x1e, 'syscall_cryp_obj_populate', ['unsigned long obj', 'struct utee_attribute *attrs', 'unsigned long attr_count']],
+                [0x1f, 'syscall_cryp_obj_copy', ['unsigned long dst_obj', 'unsigned long src_obj']],
+                [0x20, 'syscall_cryp_derive_key', ['unsigned long state', 'const struct utee_attribute *params', 'unsigned long param_count', 'unsigned long derived_key']],
+                [0x21, 'syscall_cryp_random_number_generate', ['void *buf', 'size_t blen']],
+                [0x22, 'syscall_authenc_init', ['unsigned long state', 'const void *nonce', 'size_t nonce_len', 'size_t tag_len', 'size_t aad_len', 'size_t payload_len']],
+                [0x23, 'syscall_authenc_update_aad', ['unsigned long state', 'const void *aad_data', 'size_t aad_data_len']],
+                [0x24, 'syscall_authenc_update_payload', ['unsigned long state', 'const void *src_data', 'size_t src_len', 'void *dest_data', 'uint64_t *dest_len']],
+                [0x25, 'syscall_authenc_enc_final', ['unsigned long state', 'const void *src_data', 'size_t src_len', 'void *dest_data', 'uint64_t *dest_len', 'void *tag', 'uint64_t *tag_len']],
+                [0x26, 'syscall_authenc_dec_final', ['unsigned long state', 'const void *src_data', 'size_t src_len', 'void *dest_data', 'uint64_t *dest_len', 'const void *tag', 'uint64_t *tag_len']],
+                [0x27, 'syscall_asymm_operate', ['unsigned long state', 'const struct utee_attribute *usr_params', 'size_t num_params', 'const void *src_data', 'size_t src_len', 'void *dest_data', 'uint64_t *dest_len']],
+                [0x28, 'syscall_asymm_verify', ['unsigned long state', 'const struct utee_attribute *usr_params', 'size_t num_params', 'const void *data', 'size_t data_len', 'const void *sig', 'size_t sig_len']],
+                [0x29, 'syscall_storage_obj_open', ['unsigned long storage_id', 'void *object_id', 'size_t object_id_len', 'unsigned long flags', 'uint32_t *obj']],
+                [0x2a, 'syscall_storage_obj_create', ['unsigned long storage_id', 'void *object_id', 'size_t object_id_len', 'unsigned long flags', 'unsigned long attr', 'void *data', 'size_t len', 'uint32_t *obj']],
+                [0x2b, 'syscall_storage_obj_del', ['unsigned long obj']],
+                [0x2c, 'syscall_storage_obj_rename', ['unsigned long obj', 'void *object_id', 'size_t object_id_len']],
+                [0x2d, 'syscall_storage_alloc_enum', ['uint32_t *obj_enum']],
+                [0x2e, 'syscall_storage_free_enum', ['nsigned long obj_enum']],
+                [0x2f, 'syscall_storage_reset_enum', ['unsigned long obj_enum']],
+                [0x30, 'syscall_storage_start_enum', ['unsigned long obj_enum', 'unsigned long storage_id']],
+                [0x31, 'syscall_storage_next_enum', ['unsigned long obj_enum', 'TEE_ObjectInfo *info', 'void *obj_id', 'uint64_t *len']],
+                [0x32, 'syscall_storage_obj_read', ['unsigned long obj', 'void *data', 'size_t len', 'uint64_t *count']],
+                [0x33, 'syscall_storage_obj_write', ['unsigned long obj', 'void *data', 'size_t len']],
+                [0x34, 'syscall_storage_obj_trunc', ['unsigned long obj, size_t len']],
+                [0x35, 'syscall_storage_obj_seek', ['unsigned long obj', 'int32_t offset', 'unsigned long whence']],
+                [0x36, 'syscall_obj_generate_key', ['unsigned long obj', 'unsigned long key_size', 'const struct utee_attribute *params', 'unsigned long param_count']],
+                [0x37, 'syscall_not_supported', []],
+                [0x38, 'syscall_not_supported', []],
+                [0x39, 'syscall_not_supported', []],
+                [0x3a, 'syscall_not_supported', []],
+                [0x3b, 'syscall_not_supported', []],
+                [0x3c, 'syscall_not_supported', []],
+                [0x3d, 'syscall_not_supported', []],
+                [0x3e, 'syscall_not_supported', []],
+                [0x3f, 'syscall_not_supported', []],
+                [0x40, 'syscall_not_supported', []],
+                [0x41, 'syscall_not_supported', []],
+                [0x42, 'syscall_not_supported', []],
+                [0x43, 'syscall_not_supported', []],
+                [0x44, 'syscall_not_supported', []],
+                [0x45, 'syscall_not_supported', []],
+                [0x46, 'syscall_cache_operation', ['void *va, size_t len', 'unsigned long op']],
+            ]
+            # ldelf
+            # core/include/tee/tee_svc.h
+            # core/include/kernel/ldelf_syscalls.h
+            #syscall_list += [
+            #    [0x00, 'syscall_sys_return', ['unsigned long ret']],
+            #    [0x01, 'syscall_log', ['const void *buf', 'size_t len']],
+            #    [0x02, 'syscall_panic', ['unsigned long code']],
+            #    [0x03, 'ldelf_syscall_map_zi', ['vaddr_t *va', 'size_t num_bytes', 'size_t pad_begin', 'size_t pad_end', 'unsigned long flags']],
+            #    [0x04, 'ldelf_syscall_unmap', ['vaddr_t va', 'size_t num_bytes']],
+            #    [0x05, 'ldelf_syscall_open_bin', ['const TEE_UUID *uuid', 'size_t uuid_size', 'uint32_t *handle']],
+            #    [0x06, 'ldelf_syscall_close_bin', ['unsigned long handle']],
+            #    [0x07, 'ldelf_syscall_map_bin', ['vaddr_t *va', 'size_t num_bytes', 'unsigned long handle', 'size_t offs_bytes', 'size_t pad_begin', 'size_t pad_end', 'unsigned long flags']],
+            #    [0x08, 'ldelf_syscall_copy_from_bin', ['void *dst', 'size_t offs', 'size_t num_bytes', 'unsigned long handle']],
+            #    [0x09, 'ldelf_syscall_set_prot', ['unsigned long va', 'size_t num_bytes', 'unsigned long flags']],
+            #    [0x0a, 'ldelf_syscall_remap', ['unsigned long old_va', 'addr_t *new_va', 'size_t num_bytes', 'size_t pad_begin', 'size_t pad_end']],
+            #    [0x0b, 'ldelf_syscall_gen_rnd_num', ['void *buf', 'size_t num_bytes']],
+            #]
 
         else:
             raise
