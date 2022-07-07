@@ -18767,8 +18767,17 @@ class LdCommand(GenericCommand):
 class MagicCommand(GenericCommand):
     """Show Magic addresses / offsets."""
     _cmdline_ = "magic"
-    _syntax_ = _cmdline_
+    _syntax_ = "{:s} [-h] [FILTER]".format(_cmdline_)
     _category_ = "Exploit Development"
+
+    def should_be_print(self, sym):
+        if not self.filter:
+            return True
+
+        for filt in self.filter:
+           if filt in sym:
+                return True
+        return False
 
     def resolve_and_print(self, sym, base):
         def get_permission(addr):
@@ -18777,6 +18786,9 @@ class MagicCommand(GenericCommand):
                 if m.page_start <= addr and addr < m.page_end:
                     return str(m.permission)
             return "???"
+
+        if not self.should_be_print(sym):
+            return
 
         try:
             addr = int(gdb.parse_and_eval(f"&{sym}"))
@@ -18895,6 +18907,9 @@ class MagicCommand(GenericCommand):
                     return perm
             return "???"
 
+        if not self.should_be_print(sym):
+            return
+
         try:
             if external_func:
                 addr = external_func()
@@ -19005,6 +19020,12 @@ class MagicCommand(GenericCommand):
     @only_if_gdb_running
     def do_invoke(self, argv):
         self.dont_repeat()
+
+        if "-h" in argv:
+            self.usage()
+            return
+
+        self.filter = argv
 
         if is_qemu_system():
             self.magic_kernel()
