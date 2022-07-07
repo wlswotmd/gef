@@ -26193,7 +26193,7 @@ class PartitionAllocDumpStableCommand(GenericCommand):
                     QuarantineMode quarantine_mode; // uint8_t
                     ScanMode scan_mode;             // uint8_t
                     bool with_thread_cache = false;
-                    //bool with_denser_bucket_distribution = false; // v100.x ~
+                    bool with_denser_bucket_distribution = false;
                     bool allow_aligned_alloc;
                     bool allow_cookie;
                     bool brp_enabled_;
@@ -26211,23 +26211,25 @@ class PartitionAllocDumpStableCommand(GenericCommand):
             std::atomic<size_t> max_size_of_committed_pages{0};
             std::atomic<size_t> total_size_of_super_pages{0};
             std::atomic<size_t> total_size_of_direct_mapped_pages{0};
-            size_t total_size_of_allocated_bytes GUARDED_BY(lock_) = 0;
-            size_t max_size_of_allocated_bytes GUARDED_BY(lock_) = 0;
+            size_t total_size_of_allocated_bytes PA_GUARDED_BY(lock_) = 0;
+            size_t max_size_of_allocated_bytes PA_GUARDED_BY(lock_) = 0;
             std::atomic<uint64_t> syscall_count{};
             std::atomic<uint64_t> syscall_total_time_ns{};
-            std::atomic<size_t> total_size_of_brp_quarantined_bytes{0};
-            std::atomic<size_t> total_count_of_brp_quarantined_slots{0};
-            size_t empty_slot_spans_dirty_bytes GUARDED_BY(lock_) = 0;
+            //std::atomic<size_t> total_size_of_brp_quarantined_bytes{0};
+            //std::atomic<size_t> total_count_of_brp_quarantined_slots{0};
+            //std::atomic<size_t> cumulative_size_of_brp_quarantined_bytes{0};
+            //std::atomic<size_t> cumulative_count_of_brp_quarantined_slots{0};
+            size_t empty_slot_spans_dirty_bytes PA_GUARDED_BY(lock_) = 0;
             int max_empty_slot_spans_dirty_bytes_shift = 3;
             uintptr_t next_super_page = 0;
             uintptr_t next_partition_page = 0;
             uintptr_t next_partition_page_end = 0;
             SuperPageExtentEntry* current_extent = nullptr;
             SuperPageExtentEntry* first_extent = nullptr;
-            DirectMapExtent* direct_map_list GUARDED_BY(lock_) = nullptr;
-            SlotSpan* global_empty_slot_span_ring[internal::kMaxFreeableSpans] GUARDED_BY(lock_) = {};
-            int16_t global_empty_slot_span_ring_index GUARDED_BY(lock_) = 0;
-            int16_t global_empty_slot_span_ring_size GUARDED_BY(lock_) = internal::kDefaultEmptySlotSpanRingSize;
+            DirectMapExtent* direct_map_list PA_GUARDED_BY(lock_) = nullptr;
+            SlotSpan* global_empty_slot_span_ring[internal::kMaxFreeableSpans] PA_GUARDED_BY(lock_) = {};
+            int16_t global_empty_slot_span_ring_index PA_GUARDED_BY(lock_) = 0;
+            int16_t global_empty_slot_span_ring_size PA_GUARDED_BY(lock_) = internal::kDefaultEmptySlotSpanRingSize;
             uintptr_t inverted_self = 0;
             std::atomic<int> thread_caches_being_constructed_{0};
             bool quarantine_always_for_testing = false;
@@ -26278,14 +26280,10 @@ class PartitionAllocDumpStableCommand(GenericCommand):
         current += ptrsize
         root["syscall_total_time_ns"] = read_int_from_memory(current)
         current += ptrsize
-        root["total_size_of_brp_quarantined_bytes"] = u32(read_memory(current, 4))
-        current += 4
-        root["total_count_of_brp_quarantined_slots"] = u32(read_memory(current, 4))
-        current += 4
         root["empty_slot_spans_dirty_bytes"] = u32(read_memory(current, 4))
-        current += 4
+        current += ptrsize # with pad
         root["max_empty_slot_spans_dirty_bytes_shift"] = u32(read_memory(current, 4))
-        current += 4
+        current += ptrsize # with pad
         root["next_super_page"] = read_int_from_memory(current)
         current += ptrsize
         root["next_partition_page"] = read_int_from_memory(current)
@@ -26473,8 +26471,6 @@ class PartitionAllocDumpStableCommand(GenericCommand):
         gef_print("size_t max_size_of_allocated_bytes:                    {:#x}".format(root["max_size_of_allocated_bytes"]))
         gef_print("std::atomic<uint64_t> syscall_count:                   {:#x}".format(root["syscall_count"]))
         gef_print("std::atomic<uint64_t> syscall_total_time_ns:           {:#x}".format(root["syscall_total_time_ns"]))
-        gef_print("std::atomic<size_t> total_size_of_brp_quarantined_bytes:{:#x}".format(root["total_size_of_brp_quarantined_bytes"]))
-        gef_print("std::atomic<size_t> total_count_of_brp_quarantined_slots:{:#x}".format(root["total_count_of_brp_quarantined_slots"]))
         gef_print("size_t empty_slot_spans_dirty_bytes:                   {:#x}".format(root["empty_slot_spans_dirty_bytes"]))
         gef_print("int max_empty_slot_spans_dirty_bytes_shift:            {:#x}".format(root["max_empty_slot_spans_dirty_bytes_shift"]))
         gef_print("uintptr_t next_super_page:                             {:#x}".format(root["next_super_page"]))
