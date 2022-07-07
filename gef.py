@@ -11550,6 +11550,7 @@ class ContextCommand(GenericCommand):
         self.add_setting("libc_args", False, "Show libc function call args description")
         self.add_setting("libc_args_path", "", "Path to libc function call args json files, provided via gef-extras")
         self.add_setting("smart_cpp_function_name", False, "Print cpp function name without args if demangled")
+        self.add_setting("use_native_x_command", False, "Use x/16i insted of gdb_disasembe/capstone")
 
         if "capstone" in list(sys.modules.keys()):
             self.add_setting("use_capstone", False, "Use capstone as disassembler in the code pane (instead of GDB)")
@@ -11749,6 +11750,7 @@ class ContextCommand(GenericCommand):
         return any(hex(address) in b for b in bp_locations)
 
     def context_code(self):
+        use_native_x_command = self.has_setting("use_native_x_command") and self.get_setting("use_native_x_command")
         nb_insn = self.get_setting("nb_lines_code")
         nb_insn_prev = self.get_setting("nb_lines_code_prev")
         use_capstone = self.has_setting("use_capstone") and self.get_setting("use_capstone")
@@ -11769,6 +11771,9 @@ class ContextCommand(GenericCommand):
         arch_name = "{}:{}".format(current_arch.arch.lower(), current_arch.mode)
 
         self.context_title("code:{}".format(arch_name))
+        if use_native_x_command:
+            gdb.execute("x/16i {:#x}".format(current_arch.pc))
+            return
 
         try:
             instruction_iterator = capstone_disassemble if use_capstone else gef_disassemble
