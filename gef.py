@@ -4940,7 +4940,7 @@ def parse_address(address):
 def get_ksymaddr(sym):
     # use available symbol
     try:
-        return parse_address(sym)
+        return parse_address('&' + sym)
     except:
         pass
     # use ksymaddr-remote
