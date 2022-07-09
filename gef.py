@@ -3463,18 +3463,15 @@ def read_ascii_string(address):
 
 
 def read_physmem_secure(paddr, size):
-    pid = get_pid()
-    if pid is None:
-        return None
     sm_base, sm_size = XSecureMemAddrCommand.get_secure_memory_base_and_size()
     if sm_base is None or sm_size is None:
         return None
     if not (sm_base <= paddr < sm_base+sm_size):
         return None
-    sm = XSecureMemAddrCommand.get_secure_memory_qemu_map(pid, sm_base, sm_size)
+    sm = XSecureMemAddrCommand.get_secure_memory_qemu_map(sm_base, sm_size)
     if sm is None:
         return None
-    out = XSecureMemAddrCommand.read_secure_memory(pid, sm, paddr-sm_base, size)
+    out = XSecureMemAddrCommand.read_secure_memory(sm, paddr-sm_base, size)
     return out
 
 
@@ -3515,18 +3512,15 @@ def read_physmem(paddr, size):
 
 
 def write_physmem_secure(paddr, buffer):
-    pid = get_pid()
-    if pid is None:
-        return None
     sm_base, sm_size = XSecureMemAddrCommand.get_secure_memory_base_and_size()
     if sm_base is None or sm_size is None:
         return None
     if not (sm_base <= paddr < sm_base+sm_size):
         return None
-    sm = XSecureMemAddrCommand.get_secure_memory_qemu_map(pid, sm_base, sm_size)
+    sm = XSecureMemAddrCommand.get_secure_memory_qemu_map(sm_base, sm_size)
     if sm is None:
         return None
-    out = XSecureMemAddrCommand.write_secure_memory(pid, sm, paddr-sm_base, buffer)
+    out = WSecureMemAddrCommand.write_secure_memory(sm, paddr-sm_base, buffer)
     return out
 
 
@@ -15800,7 +15794,7 @@ class SyscallArgsCommand(GenericCommand):
                 return False # by default it considers on native
 
         def is_secure():
-            scr = get_register("$SCR")
+            scr = get_register("$SCR" if is_arm32() else "$SCR_EL3")
             if scr is None:
                 return False
             return (scr & 0b1) == 0
@@ -28516,7 +28510,11 @@ class XSecureMemAddrCommand(GenericCommand):
         return secure_memory_base, secure_memory_size
 
     @staticmethod
-    def get_secure_memory_qemu_map(qemu_system_pid, secure_memory_base, secure_memory_size, verbose=False):
+    def get_secure_memory_qemu_map(secure_memory_base, secure_memory_size, verbose=False):
+        qemu_system_pid = get_pid()
+        if qemu_system_pid is None:
+            err("Not found qemu-system pid")
+            return None
         # fast path
         ret = gdb.execute("monitor gpa2hva {:#x}".format(secure_memory_base), to_string=True)
         r = re.search("is (0x[0-9a-f]+)", ret)
@@ -28553,7 +28551,12 @@ class XSecureMemAddrCommand(GenericCommand):
         return None
 
     @staticmethod
-    def read_secure_memory(qemu_system_pid, sm, offset, dump_size, verbose=False):
+    def read_secure_memory(sm, offset, dump_size, verbose=False):
+        qemu_system_pid = get_pid()
+        if qemu_system_pid is None:
+            err("Not found qemu-system pid")
+            return None
+
         if dump_size > sm.size:
             dump_size = sm.size
 
@@ -28568,7 +28571,7 @@ class XSecureMemAddrCommand(GenericCommand):
             except:
                 return None
         if verbose:
-            info("read size: {:#x}".format(len(data)))
+            info("read size result: {:#x}".format(len(data)))
         return data
 
     def print_secure_memory_x(self, target, data):
@@ -28623,7 +28626,6 @@ class XSecureMemAddrCommand(GenericCommand):
             self.usage()
             return
 
-        # arg parse
         verbose = False
         if "-v" in argv:
             verbose = True
@@ -28665,24 +28667,28 @@ class XSecureMemAddrCommand(GenericCommand):
             return
 
         # initialize
-        pid = get_pid()
-        if pid is None:
-            err("Not found qemu-system pid")
-            return
         sm_base, sm_size = self.get_secure_memory_base_and_size(verbose)
         if sm_base is None or sm_size is None:
-            err("Not found secure memory memory tree (see monitor info mtree -f)")
+            err("Not found memory tree of secure memory (see monitor info mtree -f)")
             return
-        sm = self.get_secure_memory_qemu_map(pid, sm_base, sm_size, verbose)
+        sm = self.get_secure_memory_qemu_map(sm_base, sm_size, verbose)
         if sm is None:
             err("Not found secure memory maps")
             return
 
         # dump
         if addr_type == "--phys":
-            target_offset = target - sm_base
+            if sm_base <= target < sm_base + sm_size:
+                target_offset = target - sm_base
+            else:
+                err("Phys {:#x} is not default secure memory (unsupported)".format(target))
+                return
         elif addr_type == "--off":
-            target_offset = target
+            if 0 <= target < sm_size:
+                target_offset = target
+            else:
+                err("Offset {:#x} is not default secure memory (unsupported)".format(target))
+                return
         elif addr_type == "--virt":
             target_phys = self.virt2phys(target, verbose)
             if target_phys is None:
@@ -28691,7 +28697,7 @@ class XSecureMemAddrCommand(GenericCommand):
             if sm_base <= target_phys < sm_base + sm_size:
                 target_offset = target_phys - sm_base
             else:
-                err("{:#x} is not secure memory".format(target))
+                err("Virt {:#x} is not default secure memory (unsupported)".format(target))
                 return
 
         if self.dump_type == "x":
@@ -28700,7 +28706,7 @@ class XSecureMemAddrCommand(GenericCommand):
             dump_size = self.dump_count * 4 # ARM opcode is at most 4byte
             if target_offset & 1:
                 target_offset -= 1
-        data = self.read_secure_memory(pid, sm, target_offset, dump_size, verbose)
+        data = self.read_secure_memory(sm, target_offset, dump_size, verbose)
         if data is None:
             err("Read error")
             return
@@ -28740,7 +28746,11 @@ class WSecureMemAddrCommand(GenericCommand):
     _category_ = "Qemu-system Cooperation"
 
     @staticmethod
-    def write_secure_memory(qemu_system_pid, sm, offset, data, verbose=False):
+    def write_secure_memory(sm, offset, data, verbose=False):
+        qemu_system_pid = get_pid()
+        if qemu_system_pid is None:
+            return None
+
         write_size = len(data)
         if write_size > sm.size:
             write_size = sm.size
@@ -28757,7 +28767,7 @@ class WSecureMemAddrCommand(GenericCommand):
             except:
                 return None
         if verbose:
-            info("written size: {:#x}".format(ret))
+            info("written size result: {:#x}".format(ret))
 
         # avoid qemu-system caches
         TemporaryDummyBreakpoint()
@@ -28782,7 +28792,6 @@ class WSecureMemAddrCommand(GenericCommand):
             self.usage()
             return
 
-        # arg parse
         verbose = False
         if "-v" in argv:
             verbose = True
@@ -28836,24 +28845,28 @@ class WSecureMemAddrCommand(GenericCommand):
             return
 
         # initialize
-        pid = get_pid()
-        if pid is None:
-            err("Not found qemu-system pid")
-            return
         sm_base, sm_size = XSecureMemAddrCommand.get_secure_memory_base_and_size(verbose)
         if sm_base is None or sm_size is None:
-            err("Not found secure memory memory tree (see monitor info mtree -f)")
+            err("Not found memory tree of secure memory (see monitor info mtree -f)")
             return
-        sm = XSecureMemAddrCommand.get_secure_memory_qemu_map(pid, sm_base, sm_size, verbose)
+        sm = XSecureMemAddrCommand.get_secure_memory_qemu_map(sm_base, sm_size, verbose)
         if sm is None:
             err("Not found secure memory maps")
             return
 
         # write
         if addr_type == "--phys":
-            target_offset = target - sm_base
+            if sm_base <= target < sm_base + sm_size:
+                target_offset = target - sm_base
+            else:
+                err("Phys {:#x} is not default secure memory (unsupported)".format(target))
+                return
         elif addr_type == "--off":
-            target_offset = target
+            if 0 <= target < sm_size:
+                target_offset = target
+            else:
+                err("Offset {:#x} is not default secure memory (unsupported)".format(target))
+                return
         elif addr_type == "--virt":
             target_phys = XSecureMemAddrCommand.virt2phys(target, verbose)
             if target_phys is None:
@@ -28862,9 +28875,9 @@ class WSecureMemAddrCommand(GenericCommand):
             if sm_base <= target_phys < sm_base + sm_size:
                 target_offset = target_phys - sm_base
             else:
-                err("{:#x} is not secure memory".format(target))
+                err("Virt {:#x} is not default secure memory (unsupported)".format(target))
                 return
-        ret = self.write_secure_memory(pid, sm, target_offset, data, verbose)
+        ret = self.write_secure_memory(sm, target_offset, data, verbose)
         if ret is None:
             err("Write error")
             return
