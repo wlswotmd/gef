@@ -34191,6 +34191,7 @@ class PagewalkArm64Command(PagewalkCommand):
 
         if not self.quiet:
             info('$TTBR0_EL1: {:#x}'.format(TTBR0_EL1))
+            info('$TCR_EL1: {:#x}'.format(TCR_EL1))
             info('Intermediate Physical Address Size: {:d} bits'.format(intermediate_pa_size))
             info('EL1 User Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end-1, region_bits))
             info('EL1 User Page Size: {:d}KB (per page)'.format(page_size))
@@ -34295,6 +34296,7 @@ class PagewalkArm64Command(PagewalkCommand):
 
         if not self.quiet:
             info('$TTBR1_EL1: {:#x}'.format(TTBR1_EL1))
+            info('$TCR_EL1: {:#x}'.format(TCR_EL1))
             info('Intermediate Physical Address Size: {:d} bits'.format(intermediate_pa_size))
             info('EL1 Kernel Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end-1, region_bits))
             info('EL1 Kernel Page Size: {:d}KB (per page)'.format(page_size))
@@ -34547,6 +34549,7 @@ class PagewalkArm64Command(PagewalkCommand):
 
         if not self.silent and not self.quiet:
             info('$VTTBR_EL2: {:#x}'.format(VTTBR_EL2))
+            info('$VTCR_EL2: {:#x}'.format(VTCR_EL2))
             info('Physical Address Size: {:d} bits'.format(pa_size))
             info('EL2 Starting Level: {:d}'.format(SL0))
             info('EL2 Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end-1, region_bits))
@@ -34718,6 +34721,7 @@ class PagewalkArm64Command(PagewalkCommand):
 
         if not self.quiet:
             info('$TTBR0_EL2: {:#x}'.format(TTBR0_EL2))
+            info('$TCR_EL2: {:#x}'.format(TCR_EL2))
             if self.EL2_E2H:
                 info('Intermediate Physical Address Size: {:d} bits'.format(intermediate_pa_size))
             else:
@@ -34832,6 +34836,7 @@ class PagewalkArm64Command(PagewalkCommand):
 
         if not self.quiet:
             info('$TTBR1_EL2: {:#x}'.format(TTBR1_EL2))
+            info('$TCR_EL2: {:#x}'.format(TCR_EL2))
             info('Intermediate Physical Address Size: {:d} bits'.format(intermediate_pa_size))
             info('EL2 Kernel Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end-1, region_bits))
             info('EL2 Kernel Page Size: {:d}KB (per page)'.format(page_size))
@@ -34959,6 +34964,7 @@ class PagewalkArm64Command(PagewalkCommand):
 
         if not self.quiet:
             info('$TTBR0_EL3: {:#x}'.format(TTBR0_EL3))
+            info('$TCR_EL3: {:#x}'.format(TCR_EL3))
             info('Physical Address Size: {:d} bits'.format(pa_size))
             info('EL3 Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end-1, region_bits))
             info('EL3 Page Size: {:d}KB (per page)'.format(page_size))
