@@ -117,9 +117,9 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xsm.png)
 * `wsm`: writes the value to secure memory when gdb is in normal world.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/wsm.png)
-* `bsm`: set the breakpoint to secure memory when gdb is in normal world (only ARMv7).
+* `bsm`: set the breakpoint to secure memory when gdb is in normal world.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/bsm.png)
-* `optee-break-ta`: set the breakpoint to the offset of OPTEE-Trusted-App when gdb is in normal world (only ARMv7).
+* `optee-break-ta`: set the breakpoint to the offset of OPTEE-Trusted-App when gdb is in normal world.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/optee-break-ta.png)
 
 #### Other

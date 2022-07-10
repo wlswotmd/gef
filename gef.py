@@ -3730,6 +3730,19 @@ def only_if_x86_32_64(f):
     return wrapper
 
 
+def only_if_arm_32_64(f):
+    """Decorator wrapper to check if the archtecture is ARM/AArch64."""
+
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        if is_arm32() or is_arm64():
+            return f(*args, **kwargs)
+        else:
+            warn("This command cannot work under this architecture.")
+
+    return wrapper
+
+
 def only_if_x86_32_64_or_arm_32_64(f):
     """Decorator wrapper to check if the archtecture is x86/x86-64/ARM/AArch64."""
 
@@ -28489,7 +28502,7 @@ class XSecureMemAddrCommand(GenericCommand):
     _example_ = "\n"
     _example_ += "{:s} /16xw --phys 0xe11e3d0 # absolute (physical/non-ASLR) address of secure memory\n".format(_cmdline_)
     _example_ += "{:s} /16xw --off 0x11e3d0 # the offset from secure memory area\n".format(_cmdline_)
-    _example_ += "{:s} /16xw --virt 0x783ae3d0 # secure memory ASLR is supported (only ARMv7)".format(_cmdline_)
+    _example_ += "{:s} /16xw --virt 0x783ae3d0 # secure memory ASLR is supported".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
 
     @staticmethod
@@ -28537,8 +28550,8 @@ class XSecureMemAddrCommand(GenericCommand):
         return None
 
     @staticmethod
-    def virt2phys(vaddr, verbose=False):
-        maps = V2PCommand.get_maps(FORCE_PREFIX_S=True)
+    def virt2phys(vaddr, verbose=False): # vaddr -> addr1 or None
+        maps = V2PCommand.get_maps(FORCE_PREFIX_S=True, verbose=verbose)
         if maps is None:
             return None
         for vstart, vend, pstart, pend in maps:
@@ -28549,6 +28562,21 @@ class XSecureMemAddrCommand(GenericCommand):
                     info("virt2phys: {:#x} -> {:#x}".format(vaddr, paddr))
                 return paddr
         return None
+
+    @staticmethod
+    def phys2virt(paddr, verbose=False): # paddr -> [addr1, addr2, ...] or []
+        maps = V2PCommand.get_maps(FORCE_PREFIX_S=True, verbose=verbose)
+        if maps is None:
+            return []
+        result = []
+        for vstart, vend, pstart, pend in maps:
+            if pstart <= paddr < pend:
+                offset = paddr - pstart
+                vaddr = vstart + offset
+                if verbose:
+                    info("phys2virt: {:#x} -> {:#x}".format(paddr, vaddr))
+                result.append(vaddr)
+        return result
 
     @staticmethod
     def read_secure_memory(sm, offset, dump_size, verbose=False):
@@ -28615,13 +28643,11 @@ class XSecureMemAddrCommand(GenericCommand):
 
     @only_if_gdb_running
     @only_if_qemu_system
+    @only_if_arm_32_64
     def do_invoke(self, argv):
         self.dont_repeat()
 
-        if not is_arm32() and not is_arm64():
-            err("Unsupported")
-            return
-
+        # arg parse
         if "-h" in argv:
             self.usage()
             return
@@ -28654,10 +28680,6 @@ class XSecureMemAddrCommand(GenericCommand):
             argv = argv[1:]
         else:
             self.usage()
-            return
-
-        if addr_type == "--virt" and is_arm64():
-            err("Unsupported (In ARM64, secure memory pagewalk is not possible in the normal world)")
             return
 
         try:
@@ -28742,7 +28764,7 @@ class WSecureMemAddrCommand(GenericCommand):
     _example_ += "{:s} -b dword 0x41414141 --phys 0xe11e3d0 # absolute (physical/non-ASLR) address of secure memory\n".format(_cmdline_)
     _example_ += "{:s} -b string \"\\\\x41\\\\x41\\\\x41\\\\x41\" --off 0x11e3d0 # the offset of secure memory\n".format(_cmdline_)
     _example_ += "{:s} -b hex \"4141 4141\" --off 0x11e3d0 # hex string is supported (invalid character is ignored)\n".format(_cmdline_)
-    _example_ += "{:s} -b byte 0x41 --virt 0x783ae3d0 # secure memory ASLR is supported (only ARMv7)".format(_cmdline_)
+    _example_ += "{:s} -b byte 0x41 --virt 0x783ae3d0 # secure memory ASLR is supported".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
 
     @staticmethod
@@ -28781,13 +28803,11 @@ class WSecureMemAddrCommand(GenericCommand):
 
     @only_if_gdb_running
     @only_if_qemu_system
+    @only_if_arm_32_64
     def do_invoke(self, argv):
         self.dont_repeat()
 
-        if not is_arm32() and not is_arm64():
-            err("Unsupported")
-            return
-
+        # arg parse
         if "-h" in argv:
             self.usage()
             return
@@ -28832,10 +28852,6 @@ class WSecureMemAddrCommand(GenericCommand):
             argv = argv[1:]
         else:
             self.usage()
-            return
-
-        if addr_type == "--virt" and is_arm64():
-            err("Unsupported (In ARM64, secure memory pagewalk is not possible in the normal world)")
             return
 
         try:
@@ -28892,29 +28908,11 @@ class BreakSecureMemAddrCommand(GenericCommand):
     _example_ = "{:s} 0xe1008d8".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
 
-    @staticmethod
-    def phys2virt(paddr, verbose=False):
-        maps = V2PCommand.get_maps(FORCE_PREFIX_S=True)
-        if maps is None:
-            return None
-        result = []
-        for vstart, vend, pstart, pend in maps:
-            if pstart <= paddr < pend:
-                offset = paddr - pstart
-                vaddr = vstart + offset
-                if verbose:
-                    info("phys2virt: {:#x} -> {:#x}".format(paddr, vaddr))
-                result.append(vaddr)
-        return result
-
     @only_if_gdb_running
     @only_if_qemu_system
+    @only_if_arm_32_64
     def do_invoke(self, argv):
         self.dont_repeat()
-
-        if not is_arm32():
-            err("Unsupported")
-            return
 
         if "-h" in argv:
             self.usage()
@@ -28934,7 +28932,7 @@ class BreakSecureMemAddrCommand(GenericCommand):
             self.usage()
             return
 
-        virt_addrs = self.phys2virt(phys_addr, verbose)
+        virt_addrs = XSecureMemAddrCommand.phys2virt(phys_addr, verbose)
 
         for virt_addr in virt_addrs:
             gdb.execute("break *{:#x}".format(virt_addr))
@@ -28951,9 +28949,14 @@ class OpteeThreadEnterUserModeBreakpoint(gdb.Breakpoint):
 
     @staticmethod
     def get_ta_loaded_address():
-        res = gdb.execute("pagewalk -q -S", to_string=True)
-        res = sorted(set(res.splitlines()))
-        res = list(filter(lambda line: "PL0/R-X" in line, res))
+        if is_arm32():
+            res = gdb.execute("pagewalk -q -S", to_string=True)
+            res = sorted(set(res.splitlines()))
+            res = list(filter(lambda line: "PL0/R-X" in line, res))
+        elif is_arm64():
+            res = gdb.execute("pagewalk 1 -q", to_string=True)
+            res = sorted(set(res.splitlines()))
+            res = list(filter(lambda line: "EL0/R-X" in line, res))
         maps = []
         for line in res:
             vrange, prange, *_ = line.split()
@@ -29002,12 +29005,9 @@ class OpteeBreakTaAddrCommand(GenericCommand):
 
     @only_if_gdb_running
     @only_if_qemu_system
+    @only_if_arm_32_64
     def do_invoke(self, argv):
         self.dont_repeat()
-
-        if not is_arm32():
-            err("Unsupported")
-            return
 
         if "-h" in argv:
             self.usage()
@@ -29036,7 +29036,7 @@ class OpteeBreakTaAddrCommand(GenericCommand):
             self.usage()
             return
 
-        thread_enter_user_mode_virt = BreakSecureMemAddrCommand.phys2virt(thread_enter_user_mode, verbose)
+        thread_enter_user_mode_virt = XSecureMemAddrCommand.phys2virt(thread_enter_user_mode, verbose)
 
         for vaddr in thread_enter_user_mode_virt:
             OpteeThreadEnterUserModeBreakpoint(vaddr, ta_offset)
@@ -29078,9 +29078,14 @@ class OpteeBgetDumpCommand(GenericCommand):
     _category_ = "Qemu-system Cooperation"
 
     def is_readable_virt_memory(self, addr):
-        res = gdb.execute("pagewalk -q -S", to_string=True)
-        res = sorted(set(res.splitlines()))
-        res = list(filter(lambda line: "PL0/RW-" in line, res))
+        if is_arm32():
+            res = gdb.execute("pagewalk -q -S", to_string=True)
+            res = sorted(set(res.splitlines()))
+            res = list(filter(lambda line: "PL0/RW-" in line, res))
+        elif is_arm64():
+            res = gdb.execute("pagewalk 1 -q", to_string=True)
+            res = sorted(set(res.splitlines()))
+            res = list(filter(lambda line: "EL0/RW-" in line, res))
         for line in res:
             vrange, prange, *_ = line.split()
             vstart, vend = [int(x, 16) for x in vrange.split("-")]
@@ -29255,18 +29260,15 @@ class OpteeBgetDumpCommand(GenericCommand):
 
     @only_if_gdb_running
     @only_if_qemu_system
+    @only_if_arm_32_64
     def do_invoke(self, argv):
         self.dont_repeat()
 
-        if not is_arm32():
-            err("Unsupported")
-            return
-
+        # arg parse
         if "-h" in argv:
             self.usage()
             return
 
-        # arg parse
         verbose = False
         if "-v" in argv:
             verbose = True
@@ -31194,25 +31196,122 @@ class QemuRegistersCommand(GenericCommand):
         return
 
 
+@lru_cache()
+def get_maps_arm64_optee_secure_memory(verbose=False):
+    # heuristic search of qemu-system memory
+    sm_base, sm_size = XSecureMemAddrCommand.get_secure_memory_base_and_size(verbose)
+    if sm_base is None or sm_size is None:
+        err("Not found memory tree of secure memory (see monitor info mtree -f)") 
+        return None
+    sm = XSecureMemAddrCommand.get_secure_memory_qemu_map(sm_base, sm_size, verbose)
+    if sm is None:
+        err("Not found secure memory maps")
+        return None
+    data = XSecureMemAddrCommand.read_secure_memory(sm, 0x0, sm.size, verbose)
+
+    def slice_unpack(data, n):
+        tmp = [data[i:i+n] for i in range(0, len(data), n)]
+        return list(map(u64 if n == 8 else u32, tmp))
+    data_list = slice_unpack(data, 8)
+
+    """
+    enum teecore_memtypes {
+        MEM_AREA_END = 0,
+        MEM_AREA_TEE_RAM,
+        MEM_AREA_TEE_RAM_RX,
+        MEM_AREA_TEE_RAM_RO,
+        MEM_AREA_TEE_RAM_RW,
+        MEM_AREA_INIT_RAM_RO,
+        MEM_AREA_INIT_RAM_RX,
+        MEM_AREA_NEX_RAM_RO,
+        MEM_AREA_NEX_RAM_RW,
+        MEM_AREA_TEE_COHERENT,
+        MEM_AREA_TEE_ASAN,
+        MEM_AREA_IDENTITY_MAP_RX,
+        MEM_AREA_TA_RAM,
+        MEM_AREA_NSEC_SHM,
+        MEM_AREA_RAM_NSEC,
+        MEM_AREA_RAM_SEC,
+        MEM_AREA_IO_NSEC,
+        MEM_AREA_IO_SEC,
+        MEM_AREA_EXT_DT,
+        MEM_AREA_RES_VASPACE,
+        MEM_AREA_SHM_VASPACE,
+        MEM_AREA_TS_VASPACE,
+        MEM_AREA_PAGER_VASPACE,
+        MEM_AREA_SDP_MEM,
+        MEM_AREA_DDR_OVERALL,
+        MEM_AREA_SEC_RAM_OVERALL,
+        MEM_AREA_MAXTYPE
+    };
+    struct tee_mmap_region {
+        unsigned int type; /* enum teecore_memtypes */
+        unsigned int region_size;
+        paddr_t pa;
+        vaddr_t va;
+        size_t size;
+        uint32_t attr; /* TEE_MATTR_* above */
+    };
+    """
+    maps = []
+    old_i = -1
+    for i in range(len(data_list)-4):
+        type = data_list[i] & 0xffffffff
+        if 26 < type: # enum teecore_memtypes
+            continue
+        region_size = (data_list[i] >> 32) & 0xffffffff
+        if region_size & 0xfff or region_size < 0x1000 or 0xfffff000 < region_size:
+            continue
+        pa, va, size, attr = data_list[i+1:i+5]
+        if pa & 0xfff or 0xfffff000 < pa:
+            continue
+        if va & 0xfff or 0xfffff000 < va:
+            continue
+        if size & 0xfff or size < 0x1000 or 0xfffff000 < size:
+            continue
+        if len(maps) > 0 and old_i + 5 != i: # Judging continuity
+            continue
+        maps.append([va, va+size, pa, pa+size])
+        old_i = i
+    if verbose:
+        fmt = "{:33s}  {:33s}  {:12s}"
+        legend = ["Virtual address start-end", "Physical address start-end", "Total size"]
+        gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+        for va_start, va_end, pa_start, pa_end in maps:
+            gef_print("{:016x}-{:016x}  {:016x}-{:016x}  {:<#12x}".format(va_start, va_end, pa_start, pa_end, va_end - va_start))
+    return maps
+
+
+@lru_cache()
+def get_maps_by_pagewalk(command):
+    return gdb.execute(command, to_string=True)
+
+
 @register_command
 class V2PCommand(GenericCommand):
     """Transfer from virtual address to physical address."""
     _cmdline_ = "v2p"
     _syntax_ = "{:s} [-h] [-s|-S] ADDRESS".format(_cmdline_)
+    _example_ = ""
+    _example_ += "{:s} 0xa31dd000\n".format(_cmdline_)
+    _example_ += "{:s} 0xa31dd000 -S # use TTBRn_ELm_S for parsing start register (ARMv7) / heuristic search the memory of qemu-system (ARMv8)\n".format(_cmdline_)
+    _example_ += "{:s} 0xa31dd000 -s # use TTBRn_ELm for parsing start register (ARMv7/v8)".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
 
     @staticmethod
-    @lru_cache()
-    def get_maps(FORCE_PREFIX_S):
+    def get_maps(FORCE_PREFIX_S, verbose=False):
         if is_arm64():
-            res = gdb.execute("pagewalk 1 -q --no-merge", to_string=True)
+            if FORCE_PREFIX_S is True:
+                return get_maps_arm64_optee_secure_memory(verbose) # already parsed
+            else:
+                res = get_maps_by_pagewalk("pagewalk 1 -q --no-merge")
         else:
             if FORCE_PREFIX_S is None:
-                res = gdb.execute("pagewalk -q --no-merge", to_string=True)
+                res = get_maps_by_pagewalk("pagewalk -q --no-merge")
             elif FORCE_PREFIX_S is True:
-                res = gdb.execute("pagewalk -q --no-merge -S", to_string=True)
+                res = get_maps_by_pagewalk("pagewalk -q --no-merge -S")
             elif FORCE_PREFIX_S is False:
-                res = gdb.execute("pagewalk -q --no-merge -s", to_string=True)
+                res = get_maps_by_pagewalk("pagewalk -q --no-merge -s")
         res = sorted(set(res.splitlines()))
         res = list(filter(lambda line: line.endswith("]"), res))
         res = list(filter(lambda line: not "[+]" in line, res))
@@ -31249,7 +31348,7 @@ class V2PCommand(GenericCommand):
             return
 
         FORCE_PREFIX_S = None
-        if is_arm32():
+        if is_arm32() or is_arm64():
             if "-s" in argv:
                 FORCE_PREFIX_S = False
                 argv.remove("-s")
@@ -31296,7 +31395,7 @@ class P2VCommand(GenericCommand):
             return
 
         FORCE_PREFIX_S = None
-        if is_arm32():
+        if is_arm32() or is_arm64():
             if "-s" in argv:
                 FORCE_PREFIX_S = False
                 argv.remove("-s")
@@ -35333,45 +35432,42 @@ class PagewalkArm64Command(PagewalkCommand):
         # TODO implementation for VSTTBR_EL2, VSTCR_EL2 pattern
 
         # do pagewalk
-        if self.TargetEL < 1:
+        if self.TargetEL < 1 or 3 < self.TargetEL:
             warn('No paging in EL{:d}'.format(self.TargetEL))
             return
-        elif self.TargetEL == 1:
-            if self.EL1_M:
-                if self.EL2_VM:
-                    # el2_mapping is needed because read_mem() uses PA, but not IPA
-                    self.silent = True
-                    self.pagewalk_VTTBR_EL2()
-                    if self.mappings:
-                        self.el2_mappings = self.mappings
-                    self.silent = False
-                self.pagewalk_TTBR0_EL1()
-                self.pagewalk_TTBR1_EL1()
-            else:
-                if not self.quiet:
-                    info("EL1/0 translation is unused")
-        elif self.TargetEL == 2:
+        if self.TargetEL == 1 and self.EL1_M:
             if self.EL2_VM:
+                # el2_mapping is needed because read_mem() uses PA, but not IPA
+                self.silent = True
                 self.pagewalk_VTTBR_EL2()
-            else:
-                if not self.quiet:
-                    info("EL2(as stage2) translation is unused")
-            if self.EL2_M:
-                self.pagewalk_TTBR0_EL2()
-                if self.EL2_M20:
-                    self.pagewalk_TTBR1_EL2()
-            else:
-                if not self.quiet:
-                    info("EL2(as stage1) translation is unused")
-        elif self.TargetEL == 3:
-            if self.EL3_M:
-                if not self.switch_el():
-                    return
-                self.pagewalk_TTBR0_EL3()
-                self.revert_el()
-            else:
-                if not self.quiet:
-                    info("EL3 translation is unused")
+                if self.mappings:
+                    self.el2_mappings = self.mappings
+                self.silent = False
+            self.pagewalk_TTBR0_EL1()
+            self.pagewalk_TTBR1_EL1()
+        if self.TargetEL == 1 and not self.EL1_M:
+            if not self.quiet:
+                info("EL1/0 translation is unused")
+        if self.TargetEL == 2 and self.EL2_VM:
+            self.pagewalk_VTTBR_EL2()
+        if self.TargetEL == 2 and not self.EL2_VM:
+            if not self.quiet:
+                info("EL2(as stage2) translation is unused")
+        if self.TargetEL == 2 and self.EL2_M:
+            self.pagewalk_TTBR0_EL2()
+            if self.EL2_M20:
+                self.pagewalk_TTBR1_EL2()
+        if self.TargetEL == 2 and self.EL2_VM:
+            if not self.quiet:
+                info("EL2(as stage1) translation is unused")
+        if self.TargetEL == 3 and self.EL3_M:
+            if not self.switch_el():
+                return
+            self.pagewalk_TTBR0_EL3()
+            self.revert_el()
+        if self.TargetEL == 3 and not self.EL3_M:
+            if not self.quiet:
+                info("EL3 translation is unused")
         return
 
     @only_if_gdb_running
