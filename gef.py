@@ -34,7 +34,7 @@
 #######################################################################################
 #
 # gef is distributed under the MIT License (MIT)
-# Copyright (c) 2013-2021 crazy rabbidz
+# Copyright (c) 2013-2022 crazy rabbidz
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -137,7 +137,7 @@ try:
     import gdb
 except ImportError:
     # if out of gdb, the only action allowed is to update gef.py
-    if len(sys.argv) == 2 and sys.argv[1].lower() in ("--update", "--upgrade"):
+    if len(sys.argv) == 2 and sys.argv[1].lower() in ("--update", "--upgrade", "-u"):
         sys.exit(update_gef(sys.argv))
     print("[-] gef cannot run as standalone")
     sys.exit(0)
@@ -1138,9 +1138,9 @@ class GlibcArena:
     @property
     def size(self):
         if current_arch.ptrsize == 4:
-          aligned_size = (self.__size + 7) & ~0b111
+            aligned_size = (self.__size + 7) & ~0b111
         else:
-          aligned_size = (self.__size + 15) & ~0b1111
+            aligned_size = (self.__size + 15) & ~0b1111
         return aligned_size
 
     @property
@@ -1579,7 +1579,8 @@ def gef_pystring(x):
     """Returns a sanitized version as string of the bytes list given in input."""
     res = str(x, encoding="utf-8")
     substs = [("\n", "\\n"), ("\r", "\\r"), ("\t", "\\t"), ("\v", "\\v"), ("\b", "\\b"), ]
-    for x, y in substs: res = res.replace(x, y)
+    for x, y in substs:
+        res = res.replace(x, y)
     return res
 
 
@@ -2276,11 +2277,13 @@ class RISCV(Architecture):
     arch = "RISCV"
     mode = "RISCV"
 
-    all_registers = ["$zero", "$ra", "$sp", "$gp", "$tp", "$t0", "$t1",
-                     "$t2", "$fp", "$s1", "$a0", "$a1", "$a2", "$a3",
-                     "$a4", "$a5", "$a6", "$a7", "$s2", "$s3", "$s4",
-                     "$s5", "$s6", "$s7", "$s8", "$s9", "$s10", "$s11",
-                     "$t3", "$t4", "$t5", "$t6",]
+    all_registers = [
+        "$zero", "$ra", "$sp", "$gp", "$tp", "$t0", "$t1",
+        "$t2", "$fp", "$s1", "$a0", "$a1", "$a2", "$a3",
+        "$a4", "$a5", "$a6", "$a7", "$s2", "$s3", "$s4",
+        "$s5", "$s6", "$s7", "$s8", "$s9", "$s10", "$s11",
+        "$t3", "$t4", "$t5", "$t6",
+    ]
     return_register = "$a0"
     function_parameters = ["$a0", "$a1", "$a2", "$a3", "$a4", "$a5", "$a6", "$a7"]
     syscall_register = "$a7"
@@ -2397,16 +2400,20 @@ class ARM(Architecture):
         _mode = "normal"
 
     if _mode == "normal":
-        all_registers = ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6",
-                         "$r7", "$r8", "$r9", "$r10", "$r11", "$r12", "$sp",
-                         "$lr", "$pc", "$cpsr",]
+        all_registers = [
+            "$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6",
+            "$r7", "$r8", "$r9", "$r10", "$r11", "$r12", "$sp",
+            "$lr", "$pc", "$cpsr",
+        ]
         flag_register = "$cpsr"
         thumb_bit = 5
     elif _mode == "cortex-m":
-        all_registers = ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6",
-                         "$r7", "$r8", "$r9", "$r10", "$r11", "$r12", "$sp",
-                         "$lr", "$pc", "$xpsr", "$msp", "$psp",
-                         "$primask", "$basepri", "$faultmask", "$control",]
+        all_registers = [
+            "$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6",
+            "$r7", "$r8", "$r9", "$r10", "$r11", "$r12", "$sp",
+            "$lr", "$pc", "$xpsr", "$msp", "$psp",
+            "$primask", "$basepri", "$faultmask", "$control",
+        ]
         flag_register = "$xpsr"
         thumb_bit = 24
     else:
@@ -2515,16 +2522,17 @@ class ARM(Architecture):
             val = get_register(reg) & 0xffffffff
         mode_str = ["User", "FIQ", "IRQ", "Supervisor", "Monitor", "Abort", "Hypervisor", "Undefined", "System"]
         # encoding: ["mode", PL]
-        mode_dic = {0b10000: [mode_str[0], 0],
-                    0b10001: [mode_str[1], 1],
-                    0b10010: [mode_str[2], 1],
-                    0b10011: [mode_str[3], 1],
-                    0b10110: [mode_str[4], 1],
-                    0b10111: [mode_str[5], 1],
-                    0b11010: [mode_str[6], 2],
-                    0b11011: [mode_str[7], 1],
-                    0b11111: [mode_str[8], 1],
-                   }
+        mode_dic = {
+            0b10000: [mode_str[0], 0],
+            0b10001: [mode_str[1], 1],
+            0b10010: [mode_str[2], 1],
+            0b10011: [mode_str[3], 1],
+            0b10110: [mode_str[4], 1],
+            0b10111: [mode_str[5], 1],
+            0b11010: [mode_str[6], 2],
+            0b11011: [mode_str[7], 1],
+            0b11111: [mode_str[8], 1],
+        }
         key = val & 0b11111
         CurrentMode = mode_dic[key][0]
         CurrentPL = mode_dic[key][1]
@@ -2541,7 +2549,7 @@ class ARM(Architecture):
 
     def is_conditional_branch(self, insn):
         conditions = ["eq", "ne", "lt", "le", "gt", "ge", "vs", "vc", "mi", "pl", "hi", "ls", "cs", "cc", "hs", "lo"]
-        return not insn.mnemonic == "svc" and insn.mnemonic[-2:] in conditions
+        return (not insn.mnemonic == "svc") and (insn.mnemonic[-2:] in conditions)
 
     def is_branch_taken(self, insn):
         mnemo = insn.mnemonic
@@ -2730,7 +2738,7 @@ class AARCH64(ARM):
                 else: taken, reason = False, "{}&1<<{}!=0".format(reg, i)
 
         if not reason:
-            taken, reason = super(AARCH64, self).is_branch_taken(insn)
+            taken, reason = super().is_branch_taken(insn)
         return taken, reason
 
 
@@ -2821,7 +2829,7 @@ class X86(Architecture):
         elif mnemo in ["jbe", "jna"]:
             taken, reason = val&(1<<flags["carry"]) or val&(1<<flags["zero"]), "C || Z"
         elif mnemo in ["jcxz", "jecxz", "jrcxz"]:
-            cx = get_register("$rcx") if self.mode == 64 else get_register("$ecx")
+            cx = get_register("$rcx") if self.mode == "64" else get_register("$ecx")
             taken, reason = cx == 0, "!$CX"
         elif mnemo in ["je", "jz"]:
             taken, reason = val&(1<<flags["zero"]), "Z"
@@ -3485,7 +3493,7 @@ def read_physmem(paddr, size):
         out = b""
         for line in res.splitlines():
             data = line.split()[1:]
-            out += bytes(map(lambda x: int(x,16), data))
+            out += bytes([int(x,16) for x in  data])
         return out
 
     if is_arm32() or is_arm64():
@@ -4158,13 +4166,16 @@ def elf_map(addr, objfile=''):
         perm += "r" if page['flags'] & 4 else "-"
         perm += "w" if page['flags'] & 2 else "-"
         perm += "x" if page['flags'] & 1 else "-"
-        sect = Section(page_start=page['vaddr'], page_end=page['vaddr']+page['memsize'],
-                       offset=page['offset'], permission=Permission.from_process_maps(perm), inode=None, path=objfile)
+        perm = Permission.from_process_maps(perm)
+        page_start = page['vaddr']
+        page_end = page['vaddr'] + page['memsize']
+        off = page['offset']
+        sect = Section(page_start=page_start, page_end=page_end, offset=off, permission=perm, inode=None, path=objfile)
         sects.append(sect)
     return sects
 
 
-# get_explored_regions (used qemu-user mode) is too slower,
+# get_explored_regions (used qemu-user mode) is too slow,
 # Because it repeats read_memory many times to find the upper and lower bounds of the page.
 # lru_cache() is not effective because it is cleared every time you stepi.
 # Fortunately, memory maps rarely change.
@@ -4237,7 +4248,8 @@ def get_explored_regions():
         start, end = get_region_start_end(addr)
         if start is None:
             return
-        sect = Section(page_start=start, page_end=end, offset=0, permission=Permission.from_process_maps(perm), inode=None, path=label)
+        perm = Permission.from_process_maps(perm)
+        sect = Section(page_start=start, page_end=end, offset=0, permission=perm, inode=None, path=label)
         regions.append(sect)
         return
 
@@ -6813,7 +6825,7 @@ class SearchPatternCommand(GenericCommand):
 
     @staticmethod
     def get_process_maps_qemu_system():
-        res = gdb.execute("pagewalk -q", to_string=True)
+        res = get_maps_by_pagewalk("pagewalk -q")
         res = sorted(set(res.splitlines()))
         res = list(filter(lambda line: line.endswith("]"), res))
         res = list(filter(lambda line: not "[+]" in line, res))
@@ -6856,7 +6868,7 @@ class SearchPatternCommand(GenericCommand):
                 self.print_section(section) # verbose: always print section before search
 
             start = section.page_start
-            end = section.page_end - 1
+            end = section.page_end
             ret = self.search_pattern_by_address(pattern, start, end) # search
 
             if ret:
@@ -7084,140 +7096,143 @@ class FlagsCommand(GenericCommand):
 
     def verbose_x86(self):
         eflags = get_register("$eflags")
-        gef_print("{:s}  MASK".format(self.bits_split(eflags)))
+        gef_print("{:s}  {:s}".format(self.bits_split(eflags), Color.colorify("MASK", "bold")))
 
-        def get_color(mask):
-            return ["bold", ""][(eflags & mask)==0]
+        def c(msg):
+            mask = int(msg.split()[0], 16)
+            color = ["bold", ""][(eflags & mask)==0]
+            return Color.colorify(msg, color)
 
-        c = Color.colorify
-        gef_print(" "*14 + "|| |||| |||| |||| |||| |||+- " + c("0x000001 [CF]   Carry flag", get_color(0x000001)))
-        gef_print(" "*14 + "|| |||| |||| |||| |||| ||+-- " + c("0x000002        Reserved (always 1)", get_color(0x000002)))
-        gef_print(" "*14 + "|| |||| |||| |||| |||| |+--- " + c("0x000004 [PF]   Parity flag", get_color(0x000004)))
-        gef_print(" "*14 + "|| |||| |||| |||| |||| +---- " + c("0x000008        Reserved (always 0)", get_color(0x000008)))
+        gef_print(" "*14 + "|| |||| |||| |||| |||| |||+- " + c("0x000001 [CF]   Carry flag"))
+        gef_print(" "*14 + "|| |||| |||| |||| |||| ||+-- " + c("0x000002        Reserved (always 1)"))
+        gef_print(" "*14 + "|| |||| |||| |||| |||| |+--- " + c("0x000004 [PF]   Parity flag"))
+        gef_print(" "*14 + "|| |||| |||| |||| |||| +---- " + c("0x000008        Reserved (always 0)"))
         gef_print(" "*14 + "|| |||| |||| |||| ||||")
-        gef_print(" "*14 + "|| |||| |||| |||| |||+------ " + c("0x000010 [AF]   Adjust flag (for BCD calc)", get_color(0x000010)))
-        gef_print(" "*14 + "|| |||| |||| |||| ||+------- " + c("0x000020        Reserved (always 0)", get_color(0x000020)))
-        gef_print(" "*14 + "|| |||| |||| |||| |+-------- " + c("0x000040 [ZF]   Zero flag", get_color(0x000040)))
-        gef_print(" "*14 + "|| |||| |||| |||| +--------- " + c("0x000080 [SF]   Sign flag", get_color(0x000080)))
+        gef_print(" "*14 + "|| |||| |||| |||| |||+------ " + c("0x000010 [AF]   Adjust flag (for BCD calc)"))
+        gef_print(" "*14 + "|| |||| |||| |||| ||+------- " + c("0x000020        Reserved (always 0)"))
+        gef_print(" "*14 + "|| |||| |||| |||| |+-------- " + c("0x000040 [ZF]   Zero flag"))
+        gef_print(" "*14 + "|| |||| |||| |||| +--------- " + c("0x000080 [SF]   Sign flag"))
         gef_print(" "*14 + "|| |||| |||| ||||")
-        gef_print(" "*14 + "|| |||| |||| |||+----------- " + c("0x000100 [TF]   Trap flag (single step)", get_color(0x000100)))
-        gef_print(" "*14 + "|| |||| |||| ||+------------ " + c("0x000200 [IF]   Interrupt enable flag", get_color(0x000200)))
-        gef_print(" "*14 + "|| |||| |||| |+------------- " + c("0x000400 [DF]   Direction flag", get_color(0x000400)))
-        gef_print(" "*14 + "|| |||| |||| +-------------- " + c("0x000800 [OF]   Overflow flag", get_color(0x000800)))
+        gef_print(" "*14 + "|| |||| |||| |||+----------- " + c("0x000100 [TF]   Trap flag (single step)"))
+        gef_print(" "*14 + "|| |||| |||| ||+------------ " + c("0x000200 [IF]   Interrupt enable flag"))
+        gef_print(" "*14 + "|| |||| |||| |+------------- " + c("0x000400 [DF]   Direction flag"))
+        gef_print(" "*14 + "|| |||| |||| +-------------- " + c("0x000800 [OF]   Overflow flag"))
         gef_print(" "*14 + "|| |||| ||||")
-        gef_print(" "*14 + "|| |||| ||++---------------- " + c("0x003000 [IOPL] I/O privilege level (2bit)", get_color(0x003000)))
-        gef_print(" "*14 + "|| |||| |+------------------ " + c("0x004000 [NT]   Nested task flag", get_color(0x004000)))
-        gef_print(" "*14 + "|| |||| +------------------- " + c("0x008000        Reserved (always 0)", get_color(0x008000)))
+        gef_print(" "*14 + "|| |||| ||++---------------- " + c("0x003000 [IOPL] I/O privilege level (2bit)"))
+        gef_print(" "*14 + "|| |||| |+------------------ " + c("0x004000 [NT]   Nested task flag"))
+        gef_print(" "*14 + "|| |||| +------------------- " + c("0x008000        Reserved (always 0)"))
         gef_print(" "*14 + "|| ||||")
-        gef_print(" "*14 + "|| |||+--------------------- " + c("0x010000 [RF]   Resume flag", get_color(0x010000)))
-        gef_print(" "*14 + "|| ||+---------------------- " + c("0x020000 [VM]   Virtual 8086 mode flag", get_color(0x020000)))
-        gef_print(" "*14 + "|| |+----------------------- " + c("0x040000 [AC]   Alignment check flag", get_color(0x040000)))
-        gef_print(" "*14 + "|| +------------------------ " + c("0x080000 [VIF]  Virtual interrupt flag", get_color(0x080000)))
+        gef_print(" "*14 + "|| |||+--------------------- " + c("0x010000 [RF]   Resume flag"))
+        gef_print(" "*14 + "|| ||+---------------------- " + c("0x020000 [VM]   Virtual 8086 mode flag"))
+        gef_print(" "*14 + "|| |+----------------------- " + c("0x040000 [AC]   Alignment check flag"))
+        gef_print(" "*14 + "|| +------------------------ " + c("0x080000 [VIF]  Virtual interrupt flag"))
         gef_print(" "*14 + "||")
-        gef_print(" "*14 + "|+-------------------------- " + c("0x100000 [VIP]  Virtual interrupt pending", get_color(0x100000)))
-        gef_print(" "*14 + "+--------------------------- " + c("0x200000 [ID]   Able to use CPUID instruction", get_color(0x200000)))
+        gef_print(" "*14 + "|+-------------------------- " + c("0x100000 [VIP]  Virtual interrupt pending"))
+        gef_print(" "*14 + "+--------------------------- " + c("0x200000 [ID]   Able to use CPUID instruction"))
         return
 
     def verbose_arm32(self):
         cpsr = get_register("$cpsr")
-        gef_print("{:s}  MASK".format(self.bits_split(cpsr)))
+        gef_print("{:s}  {:s}".format(self.bits_split(cpsr), Color.colorify("MASK", "bold")))
 
-        def get_color(mask):
-            return ["bold", ""][(cpsr & mask)==0]
+        def c(msg):
+            mask = int(msg.split()[0], 16)
+            color = ["bold", ""][(cpsr & mask)==0]
+            return Color.colorify(msg, color)
 
-        c = Color.colorify
-        gef_print("  |||| |||| |||| |||| |||| |||| |||+-++++- " + c("0x0000001f [M]  Mode field (5bit)", get_color(0x0000001f)))
+        gef_print("  |||| |||| |||| |||| |||| |||| |||+-++++- " + c("0x0000001f [M]  Mode field (5bit)"))
         gef_print("  |||| |||| |||| |||| |||| |||| |||        " + "  User:0b10000 FIQ:0b10001 IRQ:0b10010")
         gef_print("  |||| |||| |||| |||| |||| |||| |||        " + "  Supervisor:0b10011 Monitor:0b10110 Abort:0b10111")
         gef_print("  |||| |||| |||| |||| |||| |||| |||        " + "  Hyp:0b11010 Undefined:0b11011 System:0b11111")
         gef_print("  |||| |||| |||| |||| |||| |||| |||")
-        gef_print("  |||| |||| |||| |||| |||| |||| ||+------- " + c("0x00000020 [T]  Thumb execution state bit", get_color(0x00000020)))
-        gef_print("  |||| |||| |||| |||| |||| |||| |+-------- " + c("0x00000040 [F]  FIQ mask bit", get_color(0x00000040)))
-        gef_print("  |||| |||| |||| |||| |||| |||| +--------- " + c("0x00000080 [I]  IRQ mask bit", get_color(0x00000080)))
+        gef_print("  |||| |||| |||| |||| |||| |||| ||+------- " + c("0x00000020 [T]  Thumb execution state bit"))
+        gef_print("  |||| |||| |||| |||| |||| |||| |+-------- " + c("0x00000040 [F]  FIQ mask bit"))
+        gef_print("  |||| |||| |||| |||| |||| |||| +--------- " + c("0x00000080 [I]  IRQ mask bit"))
         gef_print("  |||| |||| |||| |||| |||| ||||")
-        gef_print("  |||| |||| |||| |||| |||| |||+----------- " + c("0x00000100 [A]  Asynchronous abort mask bit", get_color(0x00000100)))
-        gef_print("  |||| |||| |||| |||| |||| ||+------------ " + c("0x00000200 [E]  Endianness execution state bit", get_color(0x00000200)))
-        gef_print("  |||| |++------------++++-++------------- " + c("0x0600fc00 [IT] If-Then execution state bits for Thumb IT instruction", get_color(0x0000fc00)))
+        gef_print("  |||| |||| |||| |||| |||| |||+----------- " + c("0x00000100 [A]  Asynchronous abort mask bit"))
+        gef_print("  |||| |||| |||| |||| |||| ||+------------ " + c("0x00000200 [E]  Endianness execution state bit"))
+        gef_print("  |||| |++------------++++-++------------- " + c("0x0600fc00 [IT] If-Then execution state bits for Thumb IT instruction"))
         gef_print("  |||| |  | |||| ||||")
-        gef_print("  |||| |  | |||| ++++--------------------- " + c("0x000f0000 [GE] Greater than or Equal flags for SIMD instruction", get_color(0x000f0000)))
+        gef_print("  |||| |  | |||| ++++--------------------- " + c("0x000f0000 [GE] Greater than or Equal flags for SIMD instruction"))
         gef_print("  |||| |  | ||||")
-        gef_print("  |||| |  | ++++-------------------------- " + c("0x00f00000      Reserved", get_color(0x00f00000)))
+        gef_print("  |||| |  | ++++-------------------------- " + c("0x00f00000      Reserved"))
         gef_print("  |||| |  |")
-        gef_print("  |||| |  +------------------------------- " + c("0x01000000 [J]  Jazelle bit", get_color(0x01000000)))
-        gef_print("  |||| +---------------------------------- " + c("0x08000000 [Q]  Cumulative saturation bit", get_color(0x08000000)))
+        gef_print("  |||| |  +------------------------------- " + c("0x01000000 [J]  Jazelle bit"))
+        gef_print("  |||| +---------------------------------- " + c("0x08000000 [Q]  Cumulative saturation bit"))
         gef_print("  ||||")
-        gef_print("  |||+------------------------------------ " + c("0x10000000 [V]  Overflow condition flag", get_color(0x10000000)))
-        gef_print("  ||+------------------------------------- " + c("0x20000000 [C]  Carry condition flag", get_color(0x20000000)))
-        gef_print("  |+-------------------------------------- " + c("0x40000000 [Z]  Zero condition flag", get_color(0x40000000)))
-        gef_print("  +--------------------------------------- " + c("0x80000000 [N]  Negative condition flag", get_color(0x80000000)))
+        gef_print("  |||+------------------------------------ " + c("0x10000000 [V]  Overflow condition flag"))
+        gef_print("  ||+------------------------------------- " + c("0x20000000 [C]  Carry condition flag"))
+        gef_print("  |+-------------------------------------- " + c("0x40000000 [Z]  Zero condition flag"))
+        gef_print("  +--------------------------------------- " + c("0x80000000 [N]  Negative condition flag"))
         return
 
     def verbose_arm64(self):
         cpsr = get_register("$cpsr")
-        gef_print("{:s}  MASK".format(self.bits_split(cpsr)))
+        gef_print("{:s}  {:s}".format(self.bits_split(cpsr), Color.colorify("MASK", "bold")))
 
-        def get_color(mask):
-            return ["bold", ""][(cpsr & mask)==0]
+        def c(msg):
+            mask = int(msg.split()[0], 16)
+            color = ["bold", ""][(cpsr & mask)==0]
+            return Color.colorify(msg, color)
 
-        c = Color.colorify
         if ((cpsr >> 4) & 1) == 0: # AArch64 state
-          gef_print("  |||| |||| |||| |||| |||| |||| |||| ||++- " + c("0x00000003 [M.SP]  Selected stack pointer (2bit)", get_color(0x00000003)))
-          gef_print("  |||| |||| |||| |||| |||| |||| |||| ++--- " + c("0x0000000c [M.EL]  Exception level (2bit)", get_color(0x0000000C)))
-          gef_print("  |||| |||| |||| |||| |||| |||| ||||")
-          gef_print("  |||| |||| |||| |||| |||| |||| |||+------ " + c("0x00000010 [M.S]   Execution state (AArch64:0, AArch32:1)", get_color(0x00000010)))
-          gef_print("  |||| |||| |||| |||| |||| |||| ||+------- " + c("0x00000020         Reserved (always 0)", get_color(0x00000020)))
-          gef_print("  |||| |||| |||| |||| |||| |||| |+-------- " + c("0x00000040 [F]     FIQ interrupt mask bit", get_color(0x00000040)))
-          gef_print("  |||| |||| |||| |||| |||| |||| +--------- " + c("0x00000080 [I]     IRQ interrupt mask bit", get_color(0x00000080)))
-          gef_print("  |||| |||| |||| |||| |||| ||||")
-          gef_print("  |||| |||| |||| |||| |||| |||+----------- " + c("0x00000100 [A]     SError interrupt mask bit", get_color(0x00000100)))
-          gef_print("  |||| |||| |||| |||| |||| ||+------------ " + c("0x00000200 [D]     Debug exception mask bit", get_color(0x00000200)))
-          gef_print("  |||| |||| |||| |||| |||| ++------------- " + c("0x00000c00 [BTYPE] Branch Type Indicator when FEAT_BTI is implemented", get_color(0x00000c00)))
-          gef_print("  |||| |||| |||| |||| ||||")
-          gef_print("  |||| |||| |||| |||| |||+---------------- " + c("0x00001000 [SSBS]  Speculative Store Bypass when FEAT_SSBS is implemented", get_color(0x00001000)))
-          gef_print("  |||| |||| |||| ++++-+++----------------- " + c("0x000fe000         Reserved", get_color(0x000fe000)))
-          gef_print("  |||| |||| ||||")
-          gef_print("  |||| |||| |||+-------------------------- " + c("0x00100000 [IL]    Illegal execution state", get_color(0x00100000)))
-          gef_print("  |||| |||| ||+--------------------------- " + c("0x00200000 [SS]    Software step flag", get_color(0x00200000)))
-          gef_print("  |||| |||| |+---------------------------- " + c("0x00400000 [PAN]   Privileged Access Never when FEAT_PAN is implemented", get_color(0x00400000)))
-          gef_print("  |||| |||| +----------------------------- " + c("0x00800000 [UAO]   User Access Override when FEAT_UAO is implemented", get_color(0x00800000)))
-          gef_print("  |||| ||||")
-          gef_print("  |||| |||+------------------------------- " + c("0x01000000 [DIT]   Data Independent Timing when FEAT_DIT is implemented", get_color(0x01000000)))
-          gef_print("  |||| ||+-------------------------------- " + c("0x02000000 [TCO]   Tag Check Override when FEAT_MTE is implemented", get_color(0x02000000)))
-          gef_print("  |||| ++--------------------------------- " + c("0x0c000000         Reserved", get_color(0x0c000000)))
-          gef_print("  ||||")
-          gef_print("  |||+------------------------------------ " + c("0x10000000 [V]     Overflow condition flag", get_color(0x10000000)))
-          gef_print("  ||+------------------------------------- " + c("0x20000000 [C]     Carry condition flag", get_color(0x20000000)))
-          gef_print("  |+-------------------------------------- " + c("0x40000000 [Z]     Zero condition flag", get_color(0x40000000)))
-          gef_print("  +--------------------------------------- " + c("0x80000000 [N]     Negative condition flag", get_color(0x80000000)))
+            gef_print("  |||| |||| |||| |||| |||| |||| |||| ||++- " + c("0x00000003 [M.SP]  Selected stack pointer (2bit)"))
+            gef_print("  |||| |||| |||| |||| |||| |||| |||| ++--- " + c("0x0000000c [M.EL]  Exception level (2bit)"))
+            gef_print("  |||| |||| |||| |||| |||| |||| ||||")
+            gef_print("  |||| |||| |||| |||| |||| |||| |||+------ " + c("0x00000010 [M.S]   Execution state (AArch64:0, AArch32:1)"))
+            gef_print("  |||| |||| |||| |||| |||| |||| ||+------- " + c("0x00000020         Reserved (always 0)"))
+            gef_print("  |||| |||| |||| |||| |||| |||| |+-------- " + c("0x00000040 [F]     FIQ interrupt mask bit"))
+            gef_print("  |||| |||| |||| |||| |||| |||| +--------- " + c("0x00000080 [I]     IRQ interrupt mask bit"))
+            gef_print("  |||| |||| |||| |||| |||| ||||")
+            gef_print("  |||| |||| |||| |||| |||| |||+----------- " + c("0x00000100 [A]     SError interrupt mask bit"))
+            gef_print("  |||| |||| |||| |||| |||| ||+------------ " + c("0x00000200 [D]     Debug exception mask bit"))
+            gef_print("  |||| |||| |||| |||| |||| ++------------- " + c("0x00000c00 [BTYPE] Branch Type Indicator when FEAT_BTI is implemented"))
+            gef_print("  |||| |||| |||| |||| ||||")
+            gef_print("  |||| |||| |||| |||| |||+---------------- " + c("0x00001000 [SSBS]  Speculative Store Bypass when FEAT_SSBS is implemented"))
+            gef_print("  |||| |||| |||| ++++-+++----------------- " + c("0x000fe000         Reserved"))
+            gef_print("  |||| |||| ||||")
+            gef_print("  |||| |||| |||+-------------------------- " + c("0x00100000 [IL]    Illegal execution state"))
+            gef_print("  |||| |||| ||+--------------------------- " + c("0x00200000 [SS]    Software step flag"))
+            gef_print("  |||| |||| |+---------------------------- " + c("0x00400000 [PAN]   Privileged Access Never when FEAT_PAN is implemented"))
+            gef_print("  |||| |||| +----------------------------- " + c("0x00800000 [UAO]   User Access Override when FEAT_UAO is implemented"))
+            gef_print("  |||| ||||")
+            gef_print("  |||| |||+------------------------------- " + c("0x01000000 [DIT]   Data Independent Timing when FEAT_DIT is implemented"))
+            gef_print("  |||| ||+-------------------------------- " + c("0x02000000 [TCO]   Tag Check Override when FEAT_MTE is implemented"))
+            gef_print("  |||| ++--------------------------------- " + c("0x0c000000         Reserved"))
+            gef_print("  ||||")
+            gef_print("  |||+------------------------------------ " + c("0x10000000 [V]     Overflow condition flag"))
+            gef_print("  ||+------------------------------------- " + c("0x20000000 [C]     Carry condition flag"))
+            gef_print("  |+-------------------------------------- " + c("0x40000000 [Z]     Zero condition flag"))
+            gef_print("  +--------------------------------------- " + c("0x80000000 [N]     Negative condition flag"))
         else: # AArch32 state
-          gef_print("  |||| |||| |||| |||| |||| |||| |||| ++++- " + c("0x0000000f [M.A32] AArch32 mode (4bit)", get_color(0x0000000f)))
-          gef_print("  |||| |||| |||| |||| |||| |||| ||||       " + "   User:0b0000 FIQ:0b0001 IRQ:0b0010")
-          gef_print("  |||| |||| |||| |||| |||| |||| ||||       " + "   Supervisor:0b0011 Monitor:0b0110 Abort:0b0111")
-          gef_print("  |||| |||| |||| |||| |||| |||| ||||       " + "   Hyp:0b1010 Undefined:0b1011 System:0b1111")
-          gef_print("  |||| |||| |||| |||| |||| |||| ||||")
-          gef_print("  |||| |||| |||| |||| |||| |||| |||+------ " + c("0x00000010 [M.S]   Execution state (AAch64:0, AArch32:1)", get_color(0x00000010)))
-          gef_print("  |||| |||| |||| |||| |||| |||| ||+------- " + c("0x00000020 [T]     T32 instruction set (Thumb) state bit", get_color(0x00000020)))
-          gef_print("  |||| |||| |||| |||| |||| |||| |+-------- " + c("0x00000040 [F]     FIQ interrupt mask bit", get_color(0x00000040)))
-          gef_print("  |||| |||| |||| |||| |||| |||| +--------- " + c("0x00000080 [I]     IRQ interrupt mask bit", get_color(0x00000080)))
-          gef_print("  |||| |||| |||| |||| |||| ||||")
-          gef_print("  |||| |||| |||| |||| |||| |||+----------- " + c("0x00000100 [A]     SError interrupt mask bit", get_color(0x00000100)))
-          gef_print("  |||| |||| |||| |||| |||| ||+------------ " + c("0x00000200 [E]     Endianness execution state bit", get_color(0x00000200)))
-          gef_print("  |||| |++------------++++-++------------- " + c("0x0600fc00 [IT]    If-Then execution state bits for Thumb IT instruction", get_color(0x0000fc00)))
-          gef_print("  |||| |  | |||| ||||")
-          gef_print("  |||| |  | |||| ++++--------------------- " + c("0x000f0000 [GE]    Greater than or Equal flags for SIMD instruction", get_color(0x000f0000)))
-          gef_print("  |||| |  | ||||")
-          gef_print("  |||| |  | |||+-------------------------- " + c("0x00100000 [IL]    Illegal execution state", get_color(0x00100000)))
-          gef_print("  |||| |  | ||+--------------------------- " + c("0x00200000 [SS]    Software step flag", get_color(0x00200000)))
-          gef_print("  |||| |  | |+---------------------------- " + c("0x00400000 [PAN]   Privileged Access Never when FEAT_PAN is implemented", get_color(0x00400000)))
-          gef_print("  |||| |  | +----------------------------- " + c("0x00800000 [SSBS]  Speculative Store Bypass when FEAT_SBSS is implemented", get_color(0x00800000)))
-          gef_print("  |||| |  |")
-          gef_print("  |||| |  +------------------------------- " + c("0x01000000 [DIT]   Data Independent Timing when FEAT_DIT is implemented", get_color(0x01000000)))
-          gef_print("  |||| +---------------------------------- " + c("0x08000000 [Q]     Overflow or saturation flag", get_color(0x08000000)))
-          gef_print("  ||||")
-          gef_print("  |||+------------------------------------ " + c("0x10000000 [V]     Overflow condition flag", get_color(0x10000000)))
-          gef_print("  ||+------------------------------------- " + c("0x20000000 [C]     Carry condition flag", get_color(0x20000000)))
-          gef_print("  |+-------------------------------------- " + c("0x40000000 [Z]     Zero condition flag", get_color(0x40000000)))
-          gef_print("  +--------------------------------------- " + c("0x80000000 [N]     Negative condition flag", get_color(0x80000000)))
+            gef_print("  |||| |||| |||| |||| |||| |||| |||| ++++- " + c("0x0000000f [M.A32] AArch32 mode (4bit)"))
+            gef_print("  |||| |||| |||| |||| |||| |||| ||||       " + "   User:0b0000 FIQ:0b0001 IRQ:0b0010")
+            gef_print("  |||| |||| |||| |||| |||| |||| ||||       " + "   Supervisor:0b0011 Monitor:0b0110 Abort:0b0111")
+            gef_print("  |||| |||| |||| |||| |||| |||| ||||       " + "   Hyp:0b1010 Undefined:0b1011 System:0b1111")
+            gef_print("  |||| |||| |||| |||| |||| |||| ||||")
+            gef_print("  |||| |||| |||| |||| |||| |||| |||+------ " + c("0x00000010 [M.S]   Execution state (AAch64:0, AArch32:1)"))
+            gef_print("  |||| |||| |||| |||| |||| |||| ||+------- " + c("0x00000020 [T]     T32 instruction set (Thumb) state bit"))
+            gef_print("  |||| |||| |||| |||| |||| |||| |+-------- " + c("0x00000040 [F]     FIQ interrupt mask bit"))
+            gef_print("  |||| |||| |||| |||| |||| |||| +--------- " + c("0x00000080 [I]     IRQ interrupt mask bit"))
+            gef_print("  |||| |||| |||| |||| |||| ||||")
+            gef_print("  |||| |||| |||| |||| |||| |||+----------- " + c("0x00000100 [A]     SError interrupt mask bit"))
+            gef_print("  |||| |||| |||| |||| |||| ||+------------ " + c("0x00000200 [E]     Endianness execution state bit"))
+            gef_print("  |||| |++------------++++-++------------- " + c("0x0600fc00 [IT]    If-Then execution state bits for Thumb IT instruction"))
+            gef_print("  |||| |  | |||| ||||")
+            gef_print("  |||| |  | |||| ++++--------------------- " + c("0x000f0000 [GE]    Greater than or Equal flags for SIMD instruction"))
+            gef_print("  |||| |  | ||||")
+            gef_print("  |||| |  | |||+-------------------------- " + c("0x00100000 [IL]    Illegal execution state"))
+            gef_print("  |||| |  | ||+--------------------------- " + c("0x00200000 [SS]    Software step flag"))
+            gef_print("  |||| |  | |+---------------------------- " + c("0x00400000 [PAN]   Privileged Access Never when FEAT_PAN is implemented"))
+            gef_print("  |||| |  | +----------------------------- " + c("0x00800000 [SSBS]  Speculative Store Bypass when FEAT_SBSS is implemented"))
+            gef_print("  |||| |  |")
+            gef_print("  |||| |  +------------------------------- " + c("0x01000000 [DIT]   Data Independent Timing when FEAT_DIT is implemented"))
+            gef_print("  |||| +---------------------------------- " + c("0x08000000 [Q]     Overflow or saturation flag"))
+            gef_print("  ||||")
+            gef_print("  |||+------------------------------------ " + c("0x10000000 [V]     Overflow condition flag"))
+            gef_print("  ||+------------------------------------- " + c("0x20000000 [C]     Carry condition flag"))
+            gef_print("  |+-------------------------------------- " + c("0x40000000 [Z]     Zero condition flag"))
+            gef_print("  +--------------------------------------- " + c("0x80000000 [N]     Negative condition flag"))
         return
 
 
@@ -8194,8 +8209,8 @@ class GlibcHeapBinsCommand(GenericCommand):
 
         verbose = ""
         if "-v" in argv:
-           verbose = "-v"
-           argv.remove("-v")
+            verbose = "-v"
+            argv.remove("-v")
 
         if not argv:
             for bin_t in GlibcHeapBinsCommand._bin_types_:
@@ -11589,11 +11604,12 @@ class ContextCommand(GenericCommand):
             heap_addr_color = get_gef_setting("theme.address_heap")
             changed_register_color = get_gef_setting("theme.registers_value_changed")
 
-            gef_print("[ Legend: {} | {} | {} | {} | {} ]".format(Color.colorify("Modified register", changed_register_color),
-                                                                  Color.colorify("Code", code_addr_color),
-                                                                  Color.colorify("Heap", heap_addr_color),
-                                                                  Color.colorify("Stack", stack_addr_color),
-                                                                  Color.colorify("String", str_color)
+            gef_print("[ Legend: {} | {} | {} | {} | {} ]".format(
+                Color.colorify("Modified register", changed_register_color),
+                Color.colorify("Code", code_addr_color),
+                Color.colorify("Heap", heap_addr_color),
+                Color.colorify("Stack", stack_addr_color),
+                Color.colorify("String", str_color)
             ))
         return
 
@@ -12092,11 +12108,12 @@ class ContextCommand(GenericCommand):
 
                 if is_x86_64():
                     # also consider extended registers
-                    extended_registers = {"$rdi": ["$edi", "$di"],
-                                          "$rsi": ["$esi", "$si"],
-                                          "$rdx": ["$edx", "$dx"],
-                                          "$rcx": ["$ecx", "$cx"],
-                                         }
+                    extended_registers = {
+                        "$rdi": ["$edi", "$di"],
+                        "$rsi": ["$esi", "$si"],
+                        "$rdx": ["$edx", "$dx"],
+                        "$rcx": ["$ecx", "$cx"],
+                    }
                     for exreg in extended_registers:
                         if op in extended_registers[exreg]:
                             parameter_set.add(exreg)
@@ -18782,7 +18799,7 @@ class MagicCommand(GenericCommand):
             return True
 
         for filt in self.filter:
-           if filt in sym:
+            if filt in sym:
                 return True
         return False
 
@@ -18923,6 +18940,8 @@ class MagicCommand(GenericCommand):
             else:
                 if isinstance(sym, str):
                     addr = get_ksymaddr(sym)
+                    if addr is None:
+                        raise # goto Not found/recognized
                 elif isinstance(sym, list):
                     for s in sym:
                         addr = get_ksymaddr(s)
@@ -18949,7 +18968,6 @@ class MagicCommand(GenericCommand):
         if maps is None:
             return
         kbase, kbase_size = KernelbaseCommand.get_kernel_base(maps)
-        get_ksymaddr("DUMMY")
         gef_print("{:42s}: {:#x} ({:#x} bytes)".format("kernel_base", kbase, kbase_size))
 
         gef_print(titlify("Legend"))
@@ -19615,26 +19633,27 @@ class FpuCommand(GenericCommand):
             [[4,5,6,7], "Variant", "Variant number", "IMPLEMENTATION DEFINED"],
             [[0,1,2,3], "Revision", "Revisino number","IMPLEMENTATION DEFINED"],
         ]
-        impl = {0x00: "Reserved for software use",
-                0xc0: "Ampere Computing",
-                0x41: "Arm Limited",
-                0x42: "Broadcom Corporation",
-                0x43: "Cavium Inc.",
-                0x44: "Digital Equipment Corporation",
-                0x46: "Fujitsu Ltd.",
-                0x49: "Infineon Technologies AG",
-                0x4d: "Motorola or Freescale Semiconductor Inc.",
-                0x4e: "NVIDIA Corporation",
-                0x50: "Applied Micro Circuits Corporation",
-                0x51: "Qualcomm Inc.",
-                0x56: "Marvell International Ltd.",
-                0x69: "Intel Corporation",
+        impl = {
+            0x00: "Reserved for software use",
+            0xc0: "Ampere Computing",
+            0x41: "Arm Limited",
+            0x42: "Broadcom Corporation",
+            0x43: "Cavium Inc.",
+            0x44: "Digital Equipment Corporation",
+            0x46: "Fujitsu Ltd.",
+            0x49: "Infineon Technologies AG",
+            0x4d: "Motorola or Freescale Semiconductor Inc.",
+            0x4e: "NVIDIA Corporation",
+            0x50: "Applied Micro Circuits Corporation",
+            0x51: "Qualcomm Inc.",
+            0x56: "Marvell International Ltd.",
+            0x69: "Intel Corporation",
         }
         reg = int(gdb.execute("info registers $fpsid", to_string=True).split()[1],16)
         PrintBitInfo("$fpsid", 32, None, bit_info).print(reg)
         gef_print("Implementer code")
         for k, v in impl.items():
-          gef_print("  {:#02x}: {:s}".format(k, v))
+            gef_print("  {:#02x}: {:s}".format(k, v))
 
         # fpexc
         gef_print(titlify("FPEXC (Floating-Point Exception Control Register)"))
@@ -21385,7 +21404,7 @@ class KernelbaseCommand(GenericCommand):
     @lru_cache()
     def get_maps():
         maps = []
-        res = gdb.execute("pagewalk -q", to_string=True)
+        res = get_maps_by_pagewalk("pagewalk -q --simple")
         res = sorted(set(res.splitlines()))
         res = list(filter(lambda line: line.endswith("]"), res))
         res = list(filter(lambda line: not "[+]" in line, res))
@@ -21398,7 +21417,7 @@ class KernelbaseCommand(GenericCommand):
                     continue
                 vaddr = int(line[0].split("-")[0], 16)
                 size = int(line[2], 16)
-                perm = line[5][1:]
+                perm = line[5][1:] # [xxx
                 maps.append([vaddr, size, perm])
 
         elif is_arm32():
@@ -21408,7 +21427,7 @@ class KernelbaseCommand(GenericCommand):
                     continue
                 vaddr = int(line[0].split("-")[0], 16)
                 size = int(line[2], 16)
-                perm = line[6][4:7]
+                perm = line[6][4:7] # PL1/xxx
                 maps.append([vaddr, size, perm])
 
         elif is_arm64():
@@ -21418,7 +21437,7 @@ class KernelbaseCommand(GenericCommand):
                     continue
                 vaddr = int(line[0].split("-")[0], 16)
                 size = int(line[2], 16)
-                perm = line[6][4:7]
+                perm = line[6][4:7] # EL1/xxx
                 maps.append([vaddr, size, perm])
 
         if maps == []:
@@ -24365,7 +24384,7 @@ class KsymaddrRemoteCommand(GenericCommand):
                     continue
                 if (tmp & 0xffff0000) != (self.kbase & 0xffff0000): # holds around kbase
                     continue
-                if self.RO_REGION_u32[idx + 1] > 0x1ffff: # next address is kallsyms_num_syms. too large number is fail
+                if self.RO_REGION_u32[idx + 1] > 0x4ffff: # next address is kallsyms_num_syms. too large number is fail
                     continue
                 if 0 < self.RO_REGION_u32[idx + 1] < 0x100 : # next address is kallsyms_num_syms. too small number is fail
                     continue
@@ -24393,7 +24412,7 @@ class KsymaddrRemoteCommand(GenericCommand):
                     continue
                 if (tmp & 0xffff0000) != (self.kbase & 0xffff0000): # holds around kbase
                     continue
-                if self.RO_REGION_u32[idx + 1] > 0x1ffff: # next address is kallsyms_num_syms. too large number is fail
+                if self.RO_REGION_u32[idx + 1] > 0x4ffff: # next address is kallsyms_num_syms. too large number is fail
                     continue
                 if 0 < self.RO_REGION_u32[idx + 1] < 0x100 : # next address is kallsyms_num_syms. too small number is fail
                     continue
@@ -24571,11 +24590,11 @@ class KsymaddrRemoteCommand(GenericCommand):
     def initialize64_kallsyms_relative_base(self):
         # 1. find kbase from rodata
         for idx, tmp in enumerate(self.RO_REGION_u64[:-1]):
-            if tmp & 0xffff: # should be aligned
+            if tmp & 0xffff: # kbase should be aligned
                 continue
-            if (tmp & 0xfffffffffff00000) != (self.kbase & 0xfffffffffff00000): # holds around kbase
+            if (tmp & 0xfffffffffff00000) != (self.kbase & 0xfffffffffff00000): # the candidate holds around kbase (usually just kbase)
                 continue
-            if self.RO_REGION_u64[idx + 1] > 0x1ffff: # next address is kallsyms_num_syms. too large number is fail
+            if self.RO_REGION_u64[idx + 1] > 0x4ffff: # next element is kallsyms_num_syms. too large number is fail
                 continue
             self.kallsyms_relative_base = tmp
             self.kallsyms_relative_base_off = idx
@@ -25415,12 +25434,14 @@ class TcmallocDumpCommand(GenericCommand):
 
             # calc class -> size
             size_class = read_int_from_memory(central_cache_i + self.CentralCache_offset_size_class_)
-            class_to_size_array = [    0,    16,    32,    48,    64,    80,    96,   112,   128,   144,
-                                     160,   176,   192,   208,   224,   240,   256,   288,   320,   352,
-                                     384,   448,   512,   576,   640,   704,   768,   896,  1024,  1152,
-                                    1280,  1536,  1792,  2048,  2304,  2560,  2816,  3072,  3328,  4096,
-                                    4608,  5120,  6144,  6656,  8192, 10240, 12288, 13312, 16384, 20480,
-                                   24576, 28672, 32768]
+            class_to_size_array = [
+                    0,    16,    32,    48,    64,    80,    96,   112,   128,   144,
+                  160,   176,   192,   208,   224,   240,   256,   288,   320,   352,
+                  384,   448,   512,   576,   640,   704,   768,   896,  1024,  1152,
+                 1280,  1536,  1792,  2048,  2304,  2560,  2816,  3072,  3328,  4096,
+                 4608,  5120,  6144,  6656,  8192, 10240, 12288, 13312, 16384, 20480,
+                24576, 28672, 32768
+            ]
             size_byte = class_to_size_array[size_class]
 
             # dump
@@ -25832,8 +25853,9 @@ class V8DereferenceCommand(GenericCommand):
     def dereference_from(addr):
         def format_compressed(addr):
             heap_color = get_gef_setting("theme.address_heap")
-            return "{:s}{:s}".format(Color.colorify("0x{:08x}".format(addr>>32), "gray"),
-                                       Color.colorify("{:08x}".format(addr&0xffffffff), heap_color))
+            addr_high = Color.colorify("0x{:08x}".format(addr>>32), "gray")
+            addr_low  = Color.colorify(  "{:08x}".format(addr&0xffffffff), heap_color)
+            return "{:s}{:s}".format(addr_high, addr_low)
 
         if not is_alive():
             return ([format_address(addr),], None)
@@ -28950,11 +28972,11 @@ class OpteeThreadEnterUserModeBreakpoint(gdb.Breakpoint):
     @staticmethod
     def get_ta_loaded_address():
         if is_arm32():
-            res = gdb.execute("pagewalk -q -S", to_string=True)
+            res = get_maps_by_pagewalk("pagewalk -q -S")
             res = sorted(set(res.splitlines()))
             res = list(filter(lambda line: "PL0/R-X" in line, res))
         elif is_arm64():
-            res = gdb.execute("pagewalk 1 -q", to_string=True)
+            res = get_maps_by_pagewalk("pagewalk 1 -q")
             res = sorted(set(res.splitlines()))
             res = list(filter(lambda line: "EL0/R-X" in line, res))
         maps = []
@@ -29079,11 +29101,11 @@ class OpteeBgetDumpCommand(GenericCommand):
 
     def is_readable_virt_memory(self, addr):
         if is_arm32():
-            res = gdb.execute("pagewalk -q -S", to_string=True)
+            res = get_maps_by_pagewalk("pagewalk -q -S")
             res = sorted(set(res.splitlines()))
             res = list(filter(lambda line: "PL0/RW-" in line, res))
         elif is_arm64():
-            res = gdb.execute("pagewalk 1 -q", to_string=True)
+            res = get_maps_by_pagewalk("pagewalk 1 -q")
             res = sorted(set(res.splitlines()))
             res = list(filter(lambda line: "EL0/RW-" in line, res))
         for line in res:
@@ -29215,8 +29237,8 @@ class OpteeBgetDumpCommand(GenericCommand):
         gef_print("pool_len: {:#x}".format(malloc_ctx["pool_len"]))
 
         for i in range(malloc_ctx["pool_len"]):
-          pool = malloc_ctx["pool_list"][i]
-          gef_print("  pool[{:d}]  buf:{:#x}  size:{:#x}".format(i, pool["buf"], pool["len"]))
+            pool = malloc_ctx["pool_list"][i]
+            gef_print("  pool[{:d}]  buf:{:#x}  size:{:#x}".format(i, pool["buf"], pool["len"]))
         return
 
     def print_chunk_list(self, malloc_ctx):
@@ -31117,13 +31139,59 @@ class QemuRegistersCommand(GenericCommand):
         gdtinfo = read_memory(base, limit+1)
         # https://github.com/torvalds/linux/blob/master/arch/x86/include/asm/segment.h
         if is_x86_64():
-            segname_info = ["NULL", "KERNEL_32_CS", "KERNEL_CS", "KERNEL_DS", "DEFAULT_USER32_CS", "DEFAULT_USER_DS", "DEFAULT_USER_CS", "",
-                           "TSS-part1", "TSS-part2", "LDT-part1", "LDT-part2", "TLS_#1", "TLS_#2", "TLS_#3", "CPUNODE"]
+            segname_info = [
+                "NULL",
+                "KERNEL_32_CS",
+                "KERNEL_CS",
+                "KERNEL_DS",
+                "DEFAULT_USER32_CS",
+                "DEFAULT_USER_DS",
+                "DEFAULT_USER_CS",
+                "",
+                "TSS-part1",
+                "TSS-part2",
+                "LDT-part1",
+                "LDT-part2",
+                "TLS_#1",
+                "TLS_#2",
+                "TLS_#3",
+                "CPUNODE",
+            ]
         else:
-            segname_info = ["NULL","RESERVED","RESERVED","RESERVED","UNUSED","UNUSED","TLS_#1","TLS_#2","TLS_#3",
-                            "RESERVED","RESERVED","RESERVED","KERNEL_CS","KERNEL_DS","DEFAULT_USER_CS","DEFAULT_USER_DS","TSS","LDT",
-                            "PNPBIOS_CS32","PNPBIOS_CS16","PNPBIOS_DS","PNPBIOS_TS1","PNPBIOS_TS2",
-                            "APMBIOS_BASE","APMBIOS","APMBIOS","ESPFIX_SS","PERCPU","STACK_CANARY","UNUSED","UNUSED","DOUBLEFAULT_TSS"]
+            segname_info = [
+                "NULL",
+                "RESERVED",
+                "RESERVED",
+                "RESERVED",
+                "UNUSED",
+                "UNUSED",
+                "TLS_#1",
+                "TLS_#2",
+                "TLS_#3",
+                "RESERVED",
+                "RESERVED",
+                "RESERVED",
+                "KERNEL_CS",
+                "KERNEL_DS",
+                "DEFAULT_USER_CS",
+                "DEFAULT_USER_DS",
+                "TSS",
+                "LDT",
+                "PNPBIOS_CS32",
+                "PNPBIOS_CS16",
+                "PNPBIOS_DS",
+                "PNPBIOS_TS1",
+                "PNPBIOS_TS2",
+                "APMBIOS_BASE",
+                "APMBIOS",
+                "APMBIOS",
+                "ESPFIX_SS",
+                "PERCPU",
+                "STACK_CANARY",
+                "UNUSED",
+                "UNUSED",
+                "DOUBLEFAULT_TSS",
+            ]
         sliced = list(map(u64, [gdtinfo[i:i+8] for i in range(0, len(gdtinfo), 8)]))
         registers_color = get_gef_setting("theme.dereference_register_value")
         for i, b in enumerate(sliced):
@@ -31284,6 +31352,7 @@ def get_maps_arm64_optee_secure_memory(verbose=False):
 
 @lru_cache()
 def get_maps_by_pagewalk(command):
+    # for lru cache
     return gdb.execute(command, to_string=True)
 
 
@@ -36246,7 +36315,8 @@ class ThunkBreakpoint(gdb.Breakpoint):
         target_symbol = get_symbol_string(target_address, nosymbol_string=" <NO_SYMBOL>")
 
         # print information
-        info("{:#x}{:s} -> {:#x} <{:s}> -> {:#x}{:s}".format(caller_address, caller_symbol, self.loc, self.sym, target_address, target_symbol))
+        fmt = "{:#x}{:s} -> {:#x} <{:s}> -> {:#x}{:s}"
+        info(fmt.format(caller_address, caller_symbol, self.loc, self.sym, target_address, target_symbol))
         # print preferred register condition
         for reg in current_arch.gpr_registers:
             reg_value = get_register(reg)
@@ -36258,7 +36328,8 @@ class ThunkBreakpoint(gdb.Breakpoint):
                 perm = self.search_perm(reg_value)
                 reg_value_symbol = get_symbol_string(reg_value, nosymbol_string=" <NO_SYMBOL>")
                 mem_value_symbol = get_symbol_string(mem_value, nosymbol_string=" <NO_SYMBOL>")
-                info("    {:s}: {:#x}{:s} ({:s})  ->  {:#x}{:s}".format(reg, reg_value, reg_value_symbol, perm, mem_value, mem_value_symbol))
+                fmt = "    {:s}: {:#x}{:s} ({:s})  ->  {:#x}{:s}"
+                info(fmt.format(reg, reg_value, reg_value_symbol, perm, mem_value, mem_value_symbol))
         return False # continue
 
 
@@ -36750,7 +36821,8 @@ class UefiOvmfInfoCommand(GenericCommand):
             memtype = type_names[entry["Type"]]
             att = entry["Attribute"]
             att_s = att2str(att)
-            gef_print("{:#010x}-{:#010x} {:#010x} {:#010x} {:#x}:{:26s} {:#x}:[{:s}]".format(paddr_s, paddr_e, vaddr, size, typ, memtype, att, att_s))
+            fmt = "{:#010x}-{:#010x} {:#010x} {:#010x} {:#x}:{:26s} {:#x}:[{:s}]"
+            gef_print(fmt.format(paddr_s, paddr_e, vaddr, size, typ, memtype, att, att_s))
 
             if entry["Signature"] != u32(b"mmap"):
                 gef_print("Signature does not match. Corrupted?")
@@ -36877,10 +36949,12 @@ class AddSymbolTemporaryCommand(GenericCommand):
                 global_flag = "global"
 
             if fa < text_base:
-                cmd_string_arr.append(f"--add-symbol '{fn}'={fa:#x},{global_flag},{type_flag}") # lower address needs not relative, use absolute
+                # lower address needs not relative, use absolute
+                cmd_string_arr.append(f"--add-symbol '{fn}'={fa:#x},{global_flag},{type_flag}")
             else:
+                # higher address needs relative
                 relative_addr = fa - text_base
-                cmd_string_arr.append(f"--add-symbol '{fn}'=.text:{relative_addr:#x},{global_flag},{type_flag}") # higher address needs relative
+                cmd_string_arr.append(f"--add-symbol '{fn}'=.text:{relative_addr:#x},{global_flag},{type_flag}")
 
             if i > 1 and i % 1000 == 0:
                 # too long, so let's commit
@@ -36956,12 +37030,12 @@ class KsymaddrRemoteApplyCommand(GenericCommand):
 
 
 @register_command
-class LinklisWalkCommand(GenericCommand):
+class LinklistWalkCommand(GenericCommand):
     """Link list walk."""
     _cmdline_ = "linklist-walk"
     _syntax_ = "{:s} [-o OFFSET] ADDRESS".format(_cmdline_)
-    _example_ = "{:s} 0xffff9c60800597e0 # walk next\n".format(_cmdline_)
-    _example_ += "{:s} -o 8 0xffff9c60800597e0 # walk prev".format(_cmdline_)
+    _example_ = "{:s} 0xffff9c60800597e0 # walk list_head.next\n".format(_cmdline_)
+    _example_ += "{:s} -o 8 0xffff9c60800597e0 # walk list_head.prev".format(_cmdline_)
     _category_ = "Show/Modify Memory"
 
     def walk_link_list(self, head, offset):
@@ -37077,7 +37151,8 @@ class PeekPointersCommand(GenericCommand):
                 elif len(name)==0:
                     name = get_filename()
                 addr_pos = addr.value + off * current_arch.ptrsize
-                ok("Found at {:#x} to {:#x} {:s} ('{:s}', perm: {:s})".format(addr_pos, addr_value, sym, name, str(addr_v.section.permission)))
+                perm = str(addr_v.section.permission)
+                ok("Found at {:#x} to {:#x} {:s} ('{:s}', perm: {:s})".format(addr_pos, addr_value, sym, name, perm))
                 if unique:
                     del sections[i]
                 break
@@ -37162,7 +37237,7 @@ class XRefTelescopeCommand(SearchPatternCommand):
             if section.path == "[vvar]": continue
 
             start = section.page_start
-            end = section.page_end - 1
+            end = section.page_end
 
             locs += self.search_pattern_by_address(pattern, start, end)
         if tree_heading == "":
@@ -37258,8 +37333,8 @@ class BytearrayCommand(GenericCommand):
                         # get byte before and after ..
                         bytebefore = badchars[pos-2] + badchars[pos-1]
                         byteafter = badchars[pos+2] + badchars[pos+3]
-                        bbefore = int(bytebefore,16)
-                        bafter = int(byteafter,16)
+                        bbefore = int(bytebefore, 16)
+                        bafter = int(byteafter, 16)
                         if bbefore > bafter:
                             bbefore, bafter = bafter, bbefore
                         insertbytes = ""
@@ -37839,23 +37914,27 @@ class GefCommand(gdb.Command):
         self.loaded_commands = sorted(self.loaded_commands, key=lambda x: x[1]._cmdline_)
 
         if initial:
-            gef_print("{:s} for {:s} ready, type `{:s}' to start, `{:s}' to configure"
-                      .format(Color.greenify("GEF"), get_os(),
-                              Color.colorify("gef","underline yellow"),
-                              Color.colorify("gef config", "underline pink")))
+            gef_print("{:s} for {:s} ready, type `{:s}' to start, `{:s}' to configure".format(
+                Color.greenify("GEF"),
+                get_os(),
+                Color.colorify("gef","underline yellow"),
+                Color.colorify("gef config", "underline pink")
+            ))
 
             ver = "{:d}.{:d}".format(sys.version_info.major, sys.version_info.minor)
             nb_cmds = len(self.loaded_commands)
-            gef_print("{:s} commands loaded for GDB {:s} using Python engine {:s}"
-                      .format(Color.colorify(nb_cmds, "bold green"),
-                              Color.colorify(gdb.VERSION, "bold yellow"),
-                              Color.colorify(ver, "bold red")))
+            gef_print("{:s} commands loaded for GDB {:s} using Python engine {:s}".format(
+                Color.colorify(nb_cmds, "bold green"),
+                Color.colorify(gdb.VERSION, "bold yellow"),
+                Color.colorify(ver, "bold red")
+            ))
 
             if nb_missing:
-                warn("{:s} command{} could not be loaded, run `{:s}` to know why."
-                          .format(Color.colorify(nb_missing, "bold red"),
-                                  "s" if nb_missing > 1 else "",
-                                  Color.colorify("gef missing", "underline pink")))
+                warn("{:s} command{} could not be loaded, run `{:s}` to know why.".format(
+                    Color.colorify(nb_missing, "bold red"),
+                    "s" if nb_missing > 1 else "",
+                    Color.colorify("gef missing", "underline pink")
+                ))
         return
 
 
