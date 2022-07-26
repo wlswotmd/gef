@@ -12180,8 +12180,6 @@ class ContextCommand(GenericCommand):
 
         nb_line = self.get_setting("nb_lines_code")
         fn = symtab.filename
-        if len(fn) > 20:
-            fn = "{}[...]{}".format(fn[:15], os.path.splitext(fn)[1])
         title = "source:{}+{}".format(fn, line_num + 1)
         cur_line_color = get_gef_setting("theme.source_current_line")
         self.context_title(title)
