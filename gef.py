@@ -9706,26 +9706,28 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
     _example_ += "\n"
     _example_ += "Simplified DWARF Exception structure:\n"
     _example_ += "\n"
-    _example_ += "libgcc_s.so.1 bss area                ELF Program Header (for .eh_frame_hdr)\n"
+    _example_ += "\n"
+    _example_ += "[OLD IMPLEMENTATION]\n"
+    _example_ += " libgcc_s.so bss area                  ELF Program Header (for .eh_frame_hdr)\n"
     _example_ += "+--------------------------+      +-->+----------------+\n"
     _example_ += "| ...                      |      |   | p_type         |\n"
     _example_ += "| frame_hdr_cache_head     |---+  |   | p_flags        |\n"
-    _example_ += "+-frame_hdr_cache----------+ <-+  |   | p_offset       |\n"
+    _example_ += "+-frame_hdr_cache_entry----+ <-+  |   | p_offset       |\n"
     _example_ += "| pc_low                   |      |   | p_vaddr        |----+\n"
     _example_ += "| pc_high                  |      |   | p_paddr        |    |\n"
     _example_ += "| load_base                |      |   | p_filesz       |    |\n"
     _example_ += "| p_eh_frame_hdr           |------+   | p_memsz        |    |\n"
-    _example_ += "| p_dynamic                |          | p_align        |    |\n"
-    _example_ += "| link                     |---+      +----------------+    |\n"
-    _example_ += "+-frame_hdr_cache----------+ <-+                            |\n"
-    _example_ += "| pc_low                   |                                |\n"
-    _example_ += "| pc_high                  |                                |\n"
-    _example_ += "| load_base                |                                |\n"
-    _example_ += "| p_eh_frame_hdr           |                                |\n"
-    _example_ += "| p_dynamic                |                                |\n"
-    _example_ += "| link                     |                                |\n"
-    _example_ += "+--------------------------+                                |\n"
-    _example_ += "The frame_hdr_cache_head and frame_hdr_cache are            |\n"
+    _example_ += "| p_dynamic                |          | p_align        |    |             [NEW IMPLEMENTATION]\n"
+    _example_ += "| link                     |---+      +----------------+    |              _dlfo_main@ld.so rodata area\n"
+    _example_ += "+-frame_hdr_cache_entry----+ <-+                            |              _dlfo_nodelete_mappings@ld.so rodata area\n"
+    _example_ += "| pc_low                   |                                |             +-------------+\n"
+    _example_ += "| pc_high                  |                                |             | map_start   |\n"
+    _example_ += "| load_base                |                                |             | map_end     |\n"
+    _example_ += "| p_eh_frame_hdr           |                                |             | map         |\n"
+    _example_ += "| p_dynamic                |                                |<------------| eh_frame    |\n"
+    _example_ += "| link                     |                                |             | (eh_dbase)  |\n"
+    _example_ += "+--------------------------+                                |             | (eh_count)  |\n"
+    _example_ += "The frame_hdr_cache_head and frame_hdr_cache_entry are      |             +-------------+\n"
     _example_ += "initialized the first time they are called.                 |\n"
     _example_ += "                                                            |\n"
     _example_ += "                              +-----------------------------+\n"
@@ -9755,12 +9757,12 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
     _example_ += "                                     | ...                     |---(augmentation=='L')-|-+   || ttype                 ||---> type_info\n"
     _example_ += "                                     | augmentation_data[N]    |                       |     |+-----------------------+|\n"
     _example_ += "                                     | program                 |                       |     +-LSDA--------------------+\n"
-    _example_ += "                                     +-CIE---------------------+                       |     | ...                     |\n"
-    _example_ += "                                     | ...                     |                       |     +-------------------------+\n"
-    _example_ += "                                     +-FDE---------------------+                       |\n"
-    _example_ += "                                     | ...                     |                       |\n"
-    _example_ += "                                     +-------------------------+                       |\n"
-    _example_ += "                                                                                       +----> personality_routine"
+    _example_ += "                                     +-CIE---------------------+       +---------------+     | ...                     |\n"
+    _example_ += "                                     | ...                     |       |                     +-------------------------+\n"
+    _example_ += "                                     +-FDE---------------------+       |\n"
+    _example_ += "                                     | ...                     |       |\n"
+    _example_ += "                                     +-------------------------+       |\n"
+    _example_ += "                                                                       +----> personality_routine(=__gxx_personality_v0@libstdc++.so)"
     _category_ = "Process Information"
 
     # FDE data encoding
@@ -18828,6 +18830,7 @@ class MagicCommand(GenericCommand):
         return
 
     def magic(self):
+        codebase = get_section_base_address(get_filepath())
         libc = get_section_base_address_by_list(("libc-2.", "libc.so.6"))
         ld = get_section_base_address_by_list(("ld-2.", "ld-linux-", "ld-linux.so.2"))
         if libc is None or ld is None:
@@ -18922,6 +18925,8 @@ class MagicCommand(GenericCommand):
         gef_print(titlify("Destructor"))
         self.resolve_and_print("_rtld_global->_dl_rtld_lock_recursive", ld)
         self.resolve_and_print("_rtld_global->_dl_rtld_unlock_recursive", ld)
+        gef_print(titlify("Unwind"))
+        self.resolve_and_print("'DW.ref.__gxx_personality_v0'", codebase)
         return
 
     def resolve_and_print_kernel(self, sym, base, maps, external_func=None):
