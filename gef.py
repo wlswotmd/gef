@@ -7000,6 +7000,200 @@ class SearchPatternCommand(GenericCommand):
 
 
 @register_command
+class DemanglePtrCommand(GenericCommand):
+    """Demangle a mangled value by PTR_MANGLE."""
+    _cmdline_ = "ptr-demangle"
+    _syntax_ = "{:s} VALUE".format(_cmdline_)
+    _category_ = "Show/Modify Memory"
+
+    @staticmethod
+    def get_cookie():
+        if is_x86_64():
+            tls = TlsCommand.getfs()
+            cookie = read_int_from_memory(tls + 0x30)
+        elif is_x86_32():
+            tls = TlsCommand.getgs()
+            cookie = read_int_from_memory(tls + 0x18)
+        elif is_arm32() or is_arm64():
+            if is_arm32():
+                try:
+                    tls = parse_address("(unsigned int)__aeabi_read_tp()")
+                except:
+                    err("Not found symbol (__aeabi_read_tp)")
+                    return None
+            else:
+                try:
+                    tls = get_register("$TPIDR_EL0")
+                except:
+                    err("Fail reading $TPIDR_EL0 register")
+                    return None
+            try:
+                cookie_ptr = parse_address("&__pointer_chk_guard_local")
+            except:
+                err("Not found symbol (__pointer_chk_guard_local)")
+                return None
+            cookie = read_int_from_memory(cookie_ptr)
+        return cookie
+
+    @staticmethod
+    def decode(value, cookie):
+        def ror(val, bits, arch_bits):
+            new_val = (val >> bits) | (val << (arch_bits-bits))
+            mask = (1 << arch_bits) - 1
+            return new_val & mask
+
+        if is_x86_64():
+            decoded = ror(value, 17, 64) ^ cookie
+        elif is_x86_32():
+            decoded = ror(value, 9, 32) ^ cookie
+        elif is_arm32() or is_arm64():
+            decoded = value ^ cookie
+        return decoded
+
+    @only_if_gdb_running
+    @only_if_x86_32_64_or_arm_32_64
+    def do_invoke(self, argv):
+        self.dont_repeat()
+
+        cookie = self.get_cookie()
+        if cookie is None:
+            return
+        info("Cookie is {:#x}".format(cookie))
+
+        try:
+            target = int(argv[0], 0)
+        except:
+            self.usage()
+            return
+        decoded = self.decode(target, cookie)
+        color_decoded = Color.colorify("{:#x}".format(decoded), "white bold")
+        decoded_sym = get_symbol_string(decoded)
+        try:
+            read_memory(decoded, 1)
+            valid_msg = "valid"
+        except gdb.error:
+            valid_msg = "invalid"
+        info("Decoded value is {:s}{:s} ({:s})".format(color_decoded, decoded_sym, valid_msg))
+        return
+
+
+@register_command
+class SearchMangledPtrCommand(GenericCommand):
+    """Search a mangled pointer value in memory."""
+    _cmdline_ = "search-mangled-ptr"
+    _syntax_ = "{:s} [-h] [-v]".format(_cmdline_)
+    _category_ = "Show/Modify Memory"
+
+    def print_section(self, section):
+        if isinstance(section, Address):
+            section = section.section
+
+        if section is None:
+            return
+
+        title = "In "
+        if section.path:
+            title += "'{}'".format(Color.blueify(section.path))
+
+        title += "({:#x}-{:#x})".format(section.page_start, section.page_end)
+        title += ", permission={}".format(section.permission)
+        ok(title)
+        return
+
+    def print_loc(self, loc):
+        addr, a, b = loc[0], loc[1], loc[2]
+        color_b = Color.colorify("{:#x}".format(b), "white bold")
+        addr_sym = get_symbol_string(addr)
+        b_sym = get_symbol_string(b)
+        gef_print("  {:#x}{:s}: {:#x} (-> {:s}{:s})".format(addr, addr_sym, a, color_b, b_sym))
+        return
+
+    def search_mangled_ptr(self, start_address, end_address):
+        """Search a mangled pointer within a range defined by arguments."""
+        def slice_unpack(data, n):
+            tmp = [data[i:i+n] for i in range(0, len(data), n)]
+            return list(map(u64 if n == 8 else u32, tmp))
+
+        if is_qemu_system():
+            step = gef_getpagesize()
+        else:
+            step = 0x400 * gef_getpagesize()
+        locations = []
+
+        for chunk_addr in range(start_address, end_address, step):
+            if chunk_addr + step > end_address:
+                chunk_size = end_address - chunk_addr
+            else:
+                chunk_size = step
+
+            try:
+                mem = read_memory(chunk_addr, chunk_size)
+            except:
+                # cannot access memory this range. It doesn't make sense to try any more
+                break
+
+            for i, value in enumerate(slice_unpack(mem, current_arch.ptrsize)):
+                decoded = DemanglePtrCommand.decode(value, self.cookie)
+                try:
+                    read_memory(decoded, 1)
+                except gdb.error:
+                    continue
+                addr = chunk_addr + i * current_arch.ptrsize
+                locations.append((addr, value, decoded))
+            del mem
+        return locations
+
+    @only_if_gdb_running
+    @only_if_x86_32_64_or_arm_32_64
+    def do_invoke(self, argv):
+        self.dont_repeat()
+
+        if "-h" in argv:
+            self.usage()
+            return
+
+        self.verbose = False
+        if "-v" in argv:
+            self.verbose = True
+            argv.remove("-v")
+
+        # init
+        self.cookie = DemanglePtrCommand.get_cookie()
+        if self.cookie is None:
+            return
+        info("Cookie is {:#x}".format(self.cookie))
+
+        # search
+        if is_qemu_system():
+            maps_generator = self.get_process_maps_qemu_system()
+        else:
+            maps_generator = get_process_maps()
+        for section in maps_generator:
+            if not section.permission & Permission.READ:
+                continue
+            if not section.permission & Permission.WRITE:
+                continue
+            if self.verbose:
+                self.print_section(section) # verbose: always print section before search
+
+            start = section.page_start
+            end = section.page_end
+            ret = self.search_mangled_ptr(start, end)
+
+            if ret:
+                if not self.verbose:
+                    self.print_section(section) # default: print section if found
+
+            for loc in ret:
+                self.print_loc(loc)
+
+            if not is_alive():
+                err("The process is dead")
+                break
+        return
+
+
+@register_command
 class FlagsCommand(GenericCommand):
     """Edit flags in a human friendly way."""
     _cmdline_ = "edit-flags"

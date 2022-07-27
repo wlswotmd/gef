@@ -347,6 +347,10 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dtor-dump.png)
 * `linklist-walk`: walks link list.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/linklist-walk.png)
+* `ptr-demangle`: shows the demangled value of the value mangled by `PTR_MANGLE`.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ptr-demangle.png)
+* `search-mangled-ptr`: searchs the mangled value from RW memory.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/search-mangled-ptr.png)
 
 ### Other
 * The category is introduced in `gef help`.
