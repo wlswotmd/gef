@@ -37309,6 +37309,9 @@ class PeekPointersCommand(GenericCommand):
         if (addr.value % DEFAULT_PAGE_SIZE):
             err("<starting_address> must be aligned to a page")
             return
+        if addr.section is None:
+            err("{:#x} does not exist".format(addr.value))
+            return
 
         unique = True if "all" not in argv else False
         vmmap = get_process_maps()
