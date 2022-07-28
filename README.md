@@ -269,6 +269,8 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/gdtinfo.png)
 * `tls`: pretty prints TLS area.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/tls.png)
+* `fsbase`,`gsbase`: pretty prints `$fs_base`, `$gs_base`.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/fsbase_gsbase.png)
 * `magic`: is useful addresses resolver in gilbc.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/magic1.png)
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/magic2.png)

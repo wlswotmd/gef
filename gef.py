@@ -22982,6 +22982,42 @@ class TlsCommand(GenericCommand):
 
 
 @register_command
+class FsbaseCommand(GenericCommand):
+    """Show fsbase address."""
+    _cmdline_ = "fsbase"
+    _syntax_ = _cmdline_
+    _category_ = "Process Information"
+
+    @only_if_gdb_running
+    @only_if_gdb_target_local
+    @only_if_not_qemu_system
+    @only_if_x86_32_64
+    def do_invoke(self, argv):
+        self.dont_repeat()
+        fs_base = TlsCommand.getfs()
+        gef_print("$fs_base = {:#x}".format(fs_base))
+        return
+
+
+@register_command
+class GsbaseCommand(GenericCommand):
+    """Show gsbase address."""
+    _cmdline_ = "gsbase"
+    _syntax_ = _cmdline_
+    _category_ = "Process Information"
+
+    @only_if_gdb_running
+    @only_if_gdb_target_local
+    @only_if_not_qemu_system
+    @only_if_x86_32_64
+    def do_invoke(self, argv):
+        self.dont_repeat()
+        gs_base = TlsCommand.getgs()
+        gef_print("$gs_base = {:#x}".format(gs_base))
+        return
+
+
+@register_command
 class GdtInfoCommand(GenericCommand):
     """Print GDT entries sample."""
     _cmdline_ = "gdtinfo"
