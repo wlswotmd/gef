@@ -4281,6 +4281,7 @@ def get_process_maps(outer=False):
         return list(get_info_sections())
 
 
+@lru_cache()
 def get_info_sections():
     """Retrieve the debuggee sections."""
     stream = StringIO(gdb.execute("maintenance info sections", to_string=True))
@@ -4303,6 +4304,7 @@ def get_info_sections():
     return
 
 
+@lru_cache()
 def get_info_files():
     """Retrieve all the files loaded by debuggee."""
     lines = gdb.execute("info files", to_string=True).splitlines()
