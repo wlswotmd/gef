@@ -1,7 +1,7 @@
 ## What is this
 This is a fork of [GEF](https://github.com/hugsy/gef).
 However, it is specialized for x86 / x64 / ARM / AArch64, and various features are added.
-We hope you find it useful for CTF players, reversing, exploit development, etc.
+We hope you find it useful for CTF player, reverser, exploit developer, and so on.
 
 ## Install
 
