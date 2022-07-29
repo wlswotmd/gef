@@ -2016,22 +2016,6 @@ def checksec(filename):
     - Clang CFI/SafeStack
     Return a dict() with the different keys mentioned above, and the boolean
     associated whether the protection was found."""
-    if is_macho(filename):
-        return {
-            "Static": False,
-            "Stripped": False,
-            "Canary": False,
-            "NX": False,
-            "PIE": False,
-            "Partial RELRO": False,
-            "Fortify": False,
-            "Intel CET": False,
-            "RPATH": False,
-            "RUNPATH": False,
-            "Clang CFI": False,
-            "Clang SafeStack": False,
-        }
-
     try:
         readelf = which("readelf")
         objdump = which("objdump")
@@ -3994,26 +3978,6 @@ def get_filename():
     return os.path.basename(gdb.current_progspace().filename)
 
 
-@lru_cache()
-def inferior_is_macho():
-    """Return True if the current file is a Mach-O binary."""
-    for x in gdb.execute("info files", to_string=True).splitlines():
-        if "file type mach-o" in x:
-            return True
-    return False
-
-
-@lru_cache()
-def is_macho(filename):
-    """Return True if the specified file is a Mach-O binary."""
-    file_bin = which("file")
-    cmd = [file_bin, filename]
-    out = gef_execute_external(cmd)
-    if "Mach-O" in out:
-        return True
-    return False
-
-
 def download_file(target, use_cache=False, local_name=None):
     """Download filename `target` inside the mirror tree inside the get_gef_setting("gef.tempdir").
     The tree architecture must be get_gef_setting("gef.tempdir")/gef/<local_pid>/<remote_filepath>.
@@ -4085,22 +4049,6 @@ def get_process_maps_linux(proc_map_file):
         off = int(off, 16)
         perm = Permission.from_process_maps(perm)
         yield Section(page_start=addr_start, page_end=addr_end, offset=off, permission=perm, inode=inode, path=pathname)
-    return
-
-
-def get_mach_regions():
-    sp = current_arch.sp
-    for line in gdb.execute("info mach-regions", to_string=True).splitlines():
-        line = line.strip()
-        addr, perm, _ = line.split(" ", 2)
-        addr_start, addr_end = [int(x, 16) for x in addr.split("-")]
-        perm = Permission.from_process_maps(perm.split("/")[0])
-        zone = file_lookup_address(addr_start)
-        if zone:
-            path = zone.filename
-        else:
-            path = "[stack]" if sp >= addr_start and sp < addr_end else ""
-        yield Section(page_start=addr_start, page_end=addr_end, offset=0, permission=perm, inode=None, path=path)
     return
 
 
@@ -4319,9 +4267,6 @@ def get_explored_regions():
 @lru_cache()
 def get_process_maps(outer=False):
     """Return the mapped memory sections"""
-    if inferior_is_macho():
-        return list(get_mach_regions())
-
     if is_qemu_usermode() and not outer:
         return list(get_explored_regions())
 
@@ -8824,8 +8769,9 @@ class DetailRegistersCommand(GenericCommand):
                 line += format_address_spaces(value) # 0x41414141________ # non-colored value with padding space
 
             # dereference values
-            addrs = dereference_from(value) # ex: [Address(rax), Address(deref_of_rax), Address(deref_of_deref_of_rax), ..., str(msg)]
-            if len(addrs) > 1: # first element is skip because it is register value itself
+            # addrs: [Address(rax), Address(deref_of_rax), Address(deref_of_deref_of_rax), ..., str(msg)]
+            addrs = dereference_from(value)
+            if len(addrs) > 1: # skip first element because it is register value itself
                 sep = " {:s} ".format(RIGHT_ARROW)
                 for addr in addrs[1:]:
                     if isinstance(addr, Address):
@@ -13753,7 +13699,8 @@ class DereferenceCommand(GenericCommand):
 
         offset = idx * memalign
         current_address = align_address(addr + offset)
-        addrs = dereference_from(current_address) # ex: [Address(rax), Address(deref_of_rax), Address(deref_of_deref_of_rax), ..., str(msg)]
+        # addrs: [Address(rax), Address(deref_of_rax), Address(deref_of_deref_of_rax), ..., str(msg)]
+        addrs = dereference_from(current_address)
         if len(addrs) == 1: # cannot access this area
             raise
 
@@ -13776,9 +13723,10 @@ class DereferenceCommand(GenericCommand):
         # craete line of one entry
         l = ""
         addr_l = format_address(addrs[0].value)
-        addr_l_color = Color.colorify(addr_l, base_address_color)
+        addr_l_c = Color.colorify(addr_l, base_address_color)
+        idx = offset // memalign
         ma = memalign * 2 + 2
-        l += "{:s}{:s}+{:#06x}({:03d}): {:{ma}s}".format(addr_l_color, VERTICAL_LINE, offset, offset//memalign, link, ma=ma)
+        l += "{:s}{:s}+{:#06x}({:03d}): {:{ma}s}".format(addr_l_c, VERTICAL_LINE, offset, idx, link, ma=ma)
 
         # retaddr info
         try:
