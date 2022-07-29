@@ -18984,7 +18984,8 @@ class MagicCommand(GenericCommand):
                 gef_print(f"{sym:42s}: {addr:#18x} [{perm:3s}] ({base:#18x} + {addr - base:#10x}) -> {val:>18s}")
             else:
                 val = read_int_from_memory(addr)
-                gef_print(f"{sym:42s}: {addr:#18x} [{perm:3s}] ({base:#18x} + {addr - base:#10x}) -> {val:#18x}")
+                val_sym = get_symbol_string(val)
+                gef_print(f"{sym:42s}: {addr:#18x} [{perm:3s}] ({base:#18x} + {addr - base:#10x}) -> {val:#18x}{val_sym}")
         except:
             gef_print(f"{sym:42s}: {'Not found':>18s}")
         return
@@ -19142,8 +19143,9 @@ class MagicCommand(GenericCommand):
         gef_print(titlify("Credential"))
         self.resolve_and_print_kernel("commit_creds", kbase, maps)
         self.resolve_and_print_kernel("prepare_kernel_cred", kbase, maps)
-        self.resolve_and_print_kernel("init_task", kbase, maps, KernelAddressHeuristicFinder.get_init_task)
+        self.resolve_and_print_kernel("init_cred", kbase, maps, KernelAddressHeuristicFinder.get_init_cred)
         self.resolve_and_print_kernel(["sys_setuid", "__sys_setuid"], kbase, maps)
+        self.resolve_and_print_kernel("init_task", kbase, maps, KernelAddressHeuristicFinder.get_init_task)
         gef_print(titlify("Usermode helper"))
         self.resolve_and_print_kernel("call_usermodehelper", kbase, maps)
         self.resolve_and_print_kernel("run_cmd", kbase, maps)
@@ -20705,6 +20707,13 @@ class KernelAddressHeuristicFinder:
                         if m:
                             return base + (int(m.group(1), 16) << 16)
         return None
+
+    @staticmethod
+    def get_init_cred():
+        # plan 1 (directly)
+        init_cred = get_ksymaddr("init_cred")
+        if init_cred:
+            return init_cred
 
     @staticmethod
     def get_modules():
