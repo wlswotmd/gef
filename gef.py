@@ -13731,6 +13731,7 @@ class DereferenceCommand(GenericCommand):
         l += "{:s}{:s}+{:#06x}({:03d}): {:{ma}s}".format(addr_l_c, VERTICAL_LINE, offset, idx, link, ma=ma)
 
         # retaddr info
+        current_address_value = read_int_from_memory(current_address)
         try:
             frame = gdb.newest_frame()
             i = 0
@@ -13741,7 +13742,7 @@ class DereferenceCommand(GenericCommand):
                 if frame.pc() in seen:
                     break
                 seen.append(frame.pc())
-                if read_int_from_memory(current_address) == frame.pc():
+                if current_address_value == frame.pc():
                     m = " {:s} retaddr[{:d}]".format(LEFT_ARROW, i)
                     l += Color.colorify(m, registers_color)
                 frame = frame.older()
@@ -13754,7 +13755,7 @@ class DereferenceCommand(GenericCommand):
             res = gef_read_canary()
             if res:
                 canary, location = res
-                if read_int_from_memory(current_address) == canary:
+                if current_address_value == canary:
                     m = " {:s} canary".format(LEFT_ARROW)
                     l += Color.colorify(m, registers_color)
         except:
