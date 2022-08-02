@@ -2272,7 +2272,12 @@ class RISCV(Architecture):
     function_parameters = ["$a0", "$a1", "$a2", "$a3", "$a4", "$a5", "$a6", "$a7"]
     syscall_register = "$a7"
     syscall_instructions = ["ecall"]
-    nop_insn = b"\x00\x00\x00\x13"
+
+    nop_insn = b"\x01\x00" # c.nop
+    infloop_insn = b"\x01\xa0" # c.j self
+    trap_insn = b"\x02\x90" # c.ebreak
+    ret_insn = b"\x82\x80" # c.ret
+
     # RISC-V has no flags registers
     flag_register = None
     flag_register_to_human = None
@@ -2280,7 +2285,7 @@ class RISCV(Architecture):
 
     @property
     def instruction_length(self):
-        return 4
+        return None
 
     def is_syscall(self, insn):
         return insn.mnemonic == "ecall"
@@ -4776,7 +4781,7 @@ def set_arch(arch=None, default=None):
         "I386:X64_32:NACL": X86_64, "I386:X64-32:NACL": X86_64,
         "POWERPC": PowerPC, "PPC": PowerPC, Elf.POWERPC: PowerPC,
         "POWERPC64": PowerPC64, "PPC64": PowerPC64, Elf.POWERPC64: PowerPC64,
-        "RISCV": RISCV, Elf.RISCV: RISCV,
+        "RISCV": RISCV, "RISCV:RV64":RISCV, Elf.RISCV: RISCV,
         "SPARC": SPARC, Elf.SPARC: SPARC,
         "SPARC64": SPARC64, Elf.SPARC64: SPARC64,
         "MIPS": MIPS, Elf.MIPS: MIPS,
@@ -7986,6 +7991,8 @@ class CapstoneDisassembleCommand(GenericCommand):
                     msg = "{} {}".format(" "*5, text_insn)
 
                 gef_print(msg)
+        except AttributeError:
+            err("Maybe unsupported architecture")
         except gdb.error:
             pass
         return
@@ -15915,6 +15922,7 @@ class SyscallArgsCommand(GenericCommand):
     _category_ = "Debugging Support"
 
     @only_if_gdb_running
+    @only_if_x86_32_64_or_arm_32_64
     def do_invoke(self, argv):
         self.dont_repeat()
 
