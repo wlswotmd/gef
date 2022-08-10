@@ -22,7 +22,8 @@ rm -f /root/.gdbinit-gef.py /root/.gef.rc
 ```
 
 ## Dependency
-See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh).
+See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
+[install-minimal.sh](https://github.com/bata24/gef/blob/dev/install-minimal.sh).
 
 ## Added / Improved features
 
