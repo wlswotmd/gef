@@ -3408,15 +3408,26 @@ class MIPS(Architecture):
 
 def write_memory(address, buffer, length=0x10):
     """Write `buffer` at address `address`."""
-    if is_qemu_usermode():
-        fd = open("/proc/{:d}/mem".format(get_pid()), "wb")
-        fd.seek(address)
-        ret = fd.write(buffer[:length])
-        fd.close()
-    else:
+    try:
         gdb.selected_inferior().write_memory(address, buffer, length)
         ret = length
-    return ret
+        return ret
+    except:
+        if is_qemu_usermode():
+            # We can not patch to the code area under qemu-user
+            # so we patch via /proc/pid/mem
+            fd = open("/proc/{:d}/mem".format(get_pid()), "wb")
+            # The memory map of qemu-user 6.x~ is at +0x10000 (really?)
+            fd.seek(address + 0x10000)
+            try:
+                ret = fd.write(buffer[:length])
+                fd.flush()
+            except:
+                raise Exception("Unsupported before qemu 5.1")
+            fd.close()
+            gdb.execute("maintenance flush dcache", to_string=True)
+            return ret
+        raise Exception("write memory error")
 
 
 def read_memory(addr, length=0x10):
@@ -4872,9 +4883,12 @@ def clear_screen(tty=""):
     return
 
 
-def format_address(addr):
+def format_address(addr, memalign_size=None):
     """Format the address according to its size."""
-    memalign_size = get_memory_alignment()
+    # if qemu-xxx(32bit arch) runs on x86-64 machine, memalign_size does not match get_memory_alignment()
+    # so use the value forcibly if memalign_size is not None
+    if memalign_size is None:
+        memalign_size = get_memory_alignment()
 
     if isinstance(addr, str):
         if addr.startswith("0x"):
@@ -4882,7 +4896,7 @@ def format_address(addr):
         else:
             return "0x" + addr
 
-    addr = align_address(addr)
+    addr = align_address(addr, memalign_size)
 
     if memalign_size == 4:
         return "{:#010x}".format(addr)
@@ -4901,9 +4915,11 @@ def format_address_spaces(addr, left=True):
     return "{:#x}".format(addr).ljust(width)
 
 
-def align_address(address):
+def align_address(address, memalign_size=None):
     """Align the provided address to the process's native length."""
-    if get_memory_alignment() == 4:
+    # if qemu-xxx(32bit arch) runs on x86-64 machine, memalign_size does not match get_memory_alignment()
+    # so use the value forcibly if memalign_size is not None
+    if memalign_size is None and get_memory_alignment() == 4:
         return address & 0xFFFFFFFF
     return address & 0xFFFFFFFFFFFFFFFF
 
@@ -13946,20 +13962,20 @@ class VMMapCommand(GenericCommand):
 
         for entry in vmmap:
             if not argv:
-                self.print_entry(entry)
+                self.print_entry(entry, outer)
                 continue
             if argv[0] in entry.path:
-                self.print_entry(entry)
+                self.print_entry(entry, outer)
             elif self.is_integer(argv[0]):
                 addr = int(argv[0], 0)
                 if addr >= entry.page_start and addr < entry.page_end:
-                    self.print_entry(entry)
+                    self.print_entry(entry, outer)
 
-        if is_qemu_usermode():
+        if is_qemu_usermode() and not outer:
             info("Searched from auxv, registers, stack values. There may be areas that cannot be detected.")
         return
 
-    def print_entry(self, entry):
+    def print_entry(self, entry, outer):
         line_color = ""
         if entry.path == "[stack]":
             line_color = get_gef_setting("theme.address_stack")
@@ -13969,10 +13985,12 @@ class VMMapCommand(GenericCommand):
             line_color = get_gef_setting("theme.address_code")
 
         l = []
-        l.append(Color.colorify(format_address(entry.page_start), line_color))
-        l.append(Color.colorify(format_address(entry.page_end), line_color))
-        l.append(Color.colorify(format_address(entry.size), line_color))
-        l.append(Color.colorify(format_address(entry.offset), line_color))
+        # if qemu-xxx(32bit arch) runs on x86-64 machine, memalign_size does not match get_memory_alignment()
+        memalign_size = 8 if outer else None
+        l.append(Color.colorify(format_address(entry.page_start, memalign_size), line_color))
+        l.append(Color.colorify(format_address(entry.page_end, memalign_size), line_color))
+        l.append(Color.colorify(format_address(entry.size, memalign_size), line_color))
+        l.append(Color.colorify(format_address(entry.offset, memalign_size), line_color))
 
         if entry.permission.value == (Permission.READ|Permission.WRITE|Permission.EXECUTE):
             l.append(Color.colorify(str(entry.permission), "underline " + line_color))
