@@ -12493,7 +12493,7 @@ class ContextCommand(GenericCommand):
 
             orig_frame.select()
         except Exception:
-            pass
+            err("No such process")
         return
 
     def context_threads(self):
@@ -12547,7 +12547,11 @@ class ContextCommand(GenericCommand):
                     thread.switch()
                 except:
                     return
-                frame = gdb.selected_frame()
+                try:
+                    frame = gdb.selected_frame()
+                except:
+                    err("No such process")
+                    return
                 frame_name = Instruction.smartify_text(frame.name())
                 line += " {:s} in".format(Color.colorify("{:#x}".format(frame.pc()), "blue"))
                 line += " {:s} ()".format(Color.colorify(frame_name or "??", "bold yellow"))
