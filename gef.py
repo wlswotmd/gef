@@ -15619,8 +15619,14 @@ class GotCommand(GenericCommand):
         # getting vmmap to understand the boundaries of the main binary
         # we will use this info to understand if a function has been resolved or not.
         vmmap = get_process_maps()
-        base_address = min([x.page_start for x in vmmap if x.path in [filename, "<explored>", "[code]"]])
-        end_address = max([x.page_end for x in vmmap if x.path in [filename, "<explored>", "[code]"]])
+        try:
+            base_address = min([x.page_start for x in vmmap if x.path in [filename, "<explored>", "[code]"]])
+            end_address = max([x.page_end for x in vmmap if x.path in [filename, "<explored>", "[code]"]])
+        except:
+            # filename is different in proc?
+            base_address = get_section_base_address(get_filepath()) or get_section_base_address(get_path_from_info_proc())
+            path = [x.path for x in vmmap if x.page_start == base_address][0]
+            end_address = max([x.page_end for x in vmmap if x.path == path])
 
         # qemu uses fix address if pie / aslr is enable
         if is_qemu_usermode():
