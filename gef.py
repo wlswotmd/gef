@@ -18943,6 +18943,9 @@ class LibcCommand(GenericCommand):
         gef_print(f"$libc = {libc:#x}")
 
         libc = process_lookup_path_by_list(("libc-2.", "libc.so.6"))
+        if not os.path.exists(libc.path):
+            return
+
         gef_print("path:\t" + libc.path)
         data = open(libc.path, "rb").read()
 
@@ -18984,6 +18987,9 @@ class LdCommand(GenericCommand):
         gef_print(f"$ld = {ld:#x}")
 
         ld = process_lookup_path_by_list(("ld-2.", "ld-linux-"))
+        if not os.path.exists(ld.path):
+            return
+
         gef_print("path:\t" + ld.path)
         data = open(ld.path, "rb").read()
         gef_print("sha512:\t" + hashlib.sha512(data).hexdigest())
