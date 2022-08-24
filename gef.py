@@ -2021,7 +2021,7 @@ def checksec(filename):
         objdump = which("objdump")
     except FileNotFoundError as e:
         err("{}".format(e))
-        return
+        return False
 
     cache = {}
     def __check_security_property(opt, filename, pattern):
@@ -3979,6 +3979,10 @@ def get_filepath():
         else:
             return filename
     else:
+        # for different namespace, attaching by pid but it shows with `target:`
+        if filename.startswith("target:"):
+            filename = filename[len("target:") :]
+        # found
         if filename is not None:
             return filename
         # inferior probably did not have name, extract cmdline from info proc
@@ -18870,7 +18874,7 @@ class CodebaseCommand(GenericCommand):
     def do_invoke(self, argv):
         self.dont_repeat()
 
-        codebase = get_section_base_address(get_filepath())
+        codebase = get_section_base_address(get_filepath()) or get_section_base_address(get_path_from_info_proc())
         if codebase is None:
             gef_print("codebase not found")
             return
