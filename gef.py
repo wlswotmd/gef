@@ -2023,6 +2023,9 @@ def checksec(filename):
         err("{}".format(e))
         return False
 
+    if not os.path.exists(filename):
+        return False
+
     cache = {}
     def __check_security_property(opt, filename, pattern):
         if (opt, filename) in cache:
