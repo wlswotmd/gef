@@ -25,8 +25,12 @@ echo "[+] install rp++"
 if [ "x$(uname -m)" = "xx86_64" ]; then
   if [ "x$(getconf LONG_BIT)" = "x64" ]; then
     if [ "x$(which rp-lin-x64)" = "x" ]; then
-      wget -q https://github.com/0vercl0k/rp/releases/download/v2.0.2/rp-lin-x64 -O /usr/local/bin/rp-lin-x64
+      wget -q https://github.com/0vercl0k/rp/releases/download/v1/rp-lin-x64 -O /usr/local/bin/rp-lin-x64
       chmod +x /usr/local/bin/rp-lin-x64
+    fi
+    if [ "x$(which rp-lin-x64-v2)" = "x" ]; then
+      wget -q https://github.com/0vercl0k/rp/releases/download/v2.0.2/rp-lin-x64 -O /usr/local/bin/rp-lin-x64-v2
+      chmod +x /usr/local/bin/rp-lin-x64-v2
     fi
   fi
 fi
