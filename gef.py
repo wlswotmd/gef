@@ -37336,7 +37336,7 @@ class LinklistWalkCommand(GenericCommand):
             self.usage()
             return
 
-        info("head addres: {:#x}".format(head))
+        info("head address: {:#x}".format(head))
         info("list offset: {:#x}".format(offset))
         self.walk_link_list(head, offset)
         return
