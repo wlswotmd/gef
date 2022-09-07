@@ -10358,11 +10358,13 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
 
                     if version == 1:
                         new_pos, return_address_register = self.read_1ubyte(data, pos)
-                        entries.append([pos, data[pos:new_pos], "return_address_register", return_address_register, ""])
+                        ra_reg_name = self.get_register_name(return_address_register)
+                        entries.append([pos, data[pos:new_pos], "return_address_register", return_address_register, "Reg: {:s}".format(ra_reg_name)])
                         pos = new_pos
                     else:
                         new_pos, return_address_register = self.get_uleb128(data, pos)
-                        entries.append([pos, data[pos:new_pos], "return_address_register", return_address_register, ""])
+                        ra_reg_name = self.get_register_name(return_address_register)
+                        entries.append([pos, data[pos:new_pos], "return_address_register", return_address_register, "Reg: {:s}".format(ra_reg_name)])
                         pos = new_pos
 
                     if augmentation[0] == "z":
