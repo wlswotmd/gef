@@ -20327,6 +20327,8 @@ class U2dCommand(GenericCommand):
         gef_print("  {:#018x} ---> {:.20e}".format(n, self.u2d(n)))
         gef_print(Color.cyanify("ull -> double -> ull (static_cast)"))
         gef_print("  {:#018x} ---> {:#018x} ---> {:#018x}".format(n, self.d2u(float(n)), int(self.u2d(self.d2u(float(n))))))
+        gef_print(Color.cyanify("double -> ull (reinterpret_cast)"))
+        gef_print("  {:#018x} ---> {:#018x}".format(n, int(self.u2d(n))))
 
         n &= 0xffffffff
         gef_print(titlify("unsigned int <-> float"))
@@ -20334,6 +20336,8 @@ class U2dCommand(GenericCommand):
         gef_print("  {:#010x} ---> {:.20e}".format(n, self.u2f(n)))
         gef_print(Color.cyanify("uint -> float -> uint (static_cast)"))
         gef_print("  {:#010x} ---> {:#010x} ---> {:#010x}".format(n, self.f2u(float(n)), int(self.u2f(self.f2u(float(n))))))
+        gef_print(Color.cyanify("float -> uint (reinterpret_cast)"))
+        gef_print("  {:#010x} ---> {:#010x}".format(n, int(self.u2f(n))))
         return
 
     def do_invoke(self, argv):
