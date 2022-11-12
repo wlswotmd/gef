@@ -19005,7 +19005,10 @@ class LdCommand(GenericCommand):
 class MagicCommand(GenericCommand):
     """Show Magic addresses / offsets."""
     _cmdline_ = "magic"
-    _syntax_ = "{:s} [-h] [FILTER]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [--fj] [FILTER]".format(_cmdline_)
+    _example_ = "{:s}\n".format(_cmdline_)
+    _example_ += "{:s} --fj    # print _IO_xxx_jumps functions\n".format(_cmdline_)
+    _example_ += "{:s} system  # filtering by keyword (grep)".format(_cmdline_)
     _category_ = "Exploit Development"
 
     def should_be_print(self, sym):
@@ -19042,6 +19045,21 @@ class MagicCommand(GenericCommand):
             gef_print(f"{sym:42s}: {'Not found':>18s}")
         return
 
+    def print_file_jumps_func(self, sym):
+        if not self.should_be_print(sym):
+            return
+
+        if not self.print_file_jumps:
+            return
+
+        try:
+            vtable = int(gdb.parse_and_eval(f"&{sym}"))
+        except:
+            return
+
+        gdb.execute("telescope {:#x} 22".format(vtable))
+        return
+
     def magic(self):
         codebase = get_section_base_address(get_filepath())
         libc = get_section_base_address_by_list(("libc-2.", "libc.so.6"))
@@ -19074,25 +19092,45 @@ class MagicCommand(GenericCommand):
         self.resolve_and_print("*stderr", libc)
         self.resolve_and_print("_IO_list_all", libc)
         self.resolve_and_print("_IO_file_jumps", libc)
+        self.print_file_jumps_func("_IO_file_jumps")
         self.resolve_and_print("_IO_file_jumps_mmap", libc)
+        self.print_file_jumps_func("_IO_file_jumps_mmap")
         self.resolve_and_print("_IO_file_jumps_maybe_mmap", libc)
+        self.print_file_jumps_func("_IO_file_jumps_maybe_mmap")
         self.resolve_and_print("_IO_wfile_jumps", libc)
+        self.print_file_jumps_func("_IO_wfile_jumps")
         self.resolve_and_print("_IO_wfile_jumps_mmap", libc)
+        self.print_file_jumps_func("_IO_wfile_jumps_mmap")
         self.resolve_and_print("_IO_wfile_jumps_maybe_mmap", libc)
+        self.print_file_jumps_func("_IO_wfile_jumps_maybe_mmap")
         self.resolve_and_print("_IO_old_file_jumps", libc)
+        self.print_file_jumps_func("_IO_old_file_jumps")
         self.resolve_and_print("_IO_mem_jumps", libc)
+        self.print_file_jumps_func("_IO_mem_jumps")
         self.resolve_and_print("_IO_wmem_jumps", libc)
+        self.print_file_jumps_func("_IO_wmem_jumps")
         self.resolve_and_print("_IO_str_jumps", libc)
+        self.print_file_jumps_func("_IO_str_jumps")
         self.resolve_and_print("_IO_strn_jumps", libc)
+        self.print_file_jumps_func("_IO_strn_jumps")
         self.resolve_and_print("_IO_str_chk_jumps", libc)
+        self.print_file_jumps_func("_IO_str_chk_jumps")
         self.resolve_and_print("_IO_wstr_jumps", libc)
+        self.print_file_jumps_func("_IO_wstr_jumps")
         self.resolve_and_print("_IO_wstrn_jumps", libc)
+        self.print_file_jumps_func("_IO_wstrn_jumps")
         self.resolve_and_print("_IO_streambuf_jumps", libc)
+        self.print_file_jumps_func("_IO_streambuf_jumps")
         self.resolve_and_print("_IO_proc_jumps", libc)
+        self.print_file_jumps_func("_IO_proc_jumps")
         self.resolve_and_print("_IO_old_proc_jumps", libc)
+        self.print_file_jumps_func("_IO_old_proc_jumps")
         self.resolve_and_print("_IO_helper_jumps", libc)
+        self.print_file_jumps_func("_IO_helper_jumps")
         self.resolve_and_print("_IO_cookie_jumps", libc)
+        self.print_file_jumps_func("_IO_cookie_jumps")
         self.resolve_and_print("_IO_obstack_jumps", libc)
+        self.print_file_jumps_func("_IO_obstack_jumps")
         self.resolve_and_print("open", libc)
         self.resolve_and_print("read", libc)
         self.resolve_and_print("write", libc)
@@ -19268,6 +19306,12 @@ class MagicCommand(GenericCommand):
         if "-h" in argv:
             self.usage()
             return
+
+        if "--fj" in argv:
+            argv.remove("--fj")
+            self.print_file_jumps = True
+        else:
+            self.print_file_jumps = False
 
         self.filter = argv
 
