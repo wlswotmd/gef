@@ -14990,7 +14990,7 @@ class LinkmapCommand(GenericCommand):
 
         link_map_org = link_map = read_int_from_memory(got + current_arch.ptrsize)
         if link_map:
-            if sec["PIE"]:
+            if sec["PIE"] and link_map < load_base:
                 link_map += load_base
                 if not silent:
                     info("GOT[1]: {:#x} -> {:#x} ({:#x})".format(got + current_arch.ptrsize, link_map_org, link_map))
