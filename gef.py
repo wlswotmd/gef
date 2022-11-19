@@ -15366,23 +15366,36 @@ class DestructorDumpCommand(GenericCommand):
             gef_print("{:s}: {:#x}{:s}: {:#x}{:s}".format("tls_dtor_list", head_p, self.perm(head_p), head, self.perm(head)))
         else:
             gef_print("{:s}: {:#x}{:s}: {:#x}".format("tls_dtor_list", head_p, self.perm(head_p), head))
-        while current:
-            addr = current
+
+        ptrsize = current_arch.ptrsize
+        def read_fns(addr):
             func = read_int_from_memory(current)
-            current += current_arch.ptrsize
-            obj = read_int_from_memory(current)
-            current += current_arch.ptrsize
-            link_map = read_int_from_memory(current)
-            current += current_arch.ptrsize
-            next_ = read_int_from_memory(current)
-            current += current_arch.ptrsize
+            obj = read_int_from_memory(current + ptrsize * 1)
+            link_map = read_int_from_memory(current + ptrsize * 2)
+            next_ = read_int_from_memory(current + ptrsize * 3)
+            return func, obj, link_map, next_
+
+        while current:
+            try:
+                func, obj, link_map, next_ = read_fns(current)
+            except:
+                err("Memory access error at {:#x}".format(current))
+                break
+
             decoded_fn = self.decode_function(func)
             sym = get_symbol_string(decoded_fn)
             decoded_fn_s = Color.boldify("{:#x}".format(decoded_fn))
-            gef_print("    -> func:     {:#x}{:s}: {:#x} (={:s}{:s})".format(addr, self.perm(addr), func, decoded_fn_s, sym))
-            gef_print("       obj:      {:#x}{:s}: {:#x}".format(addr + current_arch.ptrsize*1, self.perm(addr + current_arch.ptrsize*1), obj))
-            gef_print("       link_map: {:#x}{:s}: {:#x}".format(addr + current_arch.ptrsize*2, self.perm(addr + current_arch.ptrsize*2), link_map))
-            gef_print("       next:     {:#x}{:s}: {:#x}".format(addr + current_arch.ptrsize*3, self.perm(addr + current_arch.ptrsize*3), next_))
+
+            try:
+                read_memory(decoded_fn, 1)
+                valid_msg = Color.colorify("valid", "bold green")
+            except gdb.error:
+                valid_msg = Color.colorify("invalid", "bold red")
+
+            gef_print("    -> func:     {:#x}{:s}: {:#x} (={:s}{:s}) [{:s}]".format(current, self.perm(current), func, decoded_fn_s, sym, valid_msg))
+            gef_print("       obj:      {:#x}{:s}: {:#x}".format(current + ptrsize*1, self.perm(current + ptrsize*1), obj))
+            gef_print("       link_map: {:#x}{:s}: {:#x}".format(current + ptrsize*2, self.perm(current + ptrsize*2), link_map))
+            gef_print("       next:     {:#x}{:s}: {:#x}".format(current + ptrsize*3, self.perm(current + ptrsize*3), next_))
             current = next_
         return
 
@@ -15398,30 +15411,50 @@ class DestructorDumpCommand(GenericCommand):
         if not current:
             return
 
+        ptrsize = current_arch.ptrsize
+
         next_ = read_int_from_memory(current)
-        current += current_arch.ptrsize
-        idx = read_int_from_memory(current)
-        current += current_arch.ptrsize
-        gef_print("    -> next:  {:#x}{:s}: {:#x}".format(head + current_arch.ptrsize*0, self.perm(head + current_arch.ptrsize*0), next_))
-        gef_print("       idx:   {:#x}{:s}: {:#x}".format(head + current_arch.ptrsize*1, self.perm(head + current_arch.ptrsize*1), idx))
-        for i in range(32):
-            addr = current
-            flavor = read_int_from_memory(current)
-            current += current_arch.ptrsize
-            fn = read_int_from_memory(current)
-            current += current_arch.ptrsize
-            arg = read_int_from_memory(current)
-            current += current_arch.ptrsize
-            dso_handle = read_int_from_memory(current)
-            current += current_arch.ptrsize
-            if fn == arg == dso_handle == 0: # flavor might be non-zero, so skip check
+        idx = read_int_from_memory(current + ptrsize)
+        current += ptrsize * 2
+        gef_print("    -> next:  {:#x}{:s}: {:#x}".format(head + ptrsize*0, self.perm(head + ptrsize*0), next_))
+        gef_print("       idx:   {:#x}{:s}: {:#x}".format(head + ptrsize*1, self.perm(head + ptrsize*1), idx))
+
+        def read_fns(addr):
+            flavor = read_int_from_memory(addr)
+            fn = read_int_from_memory(addr + ptrsize*1)
+            arg = read_int_from_memory(addr + ptrsize*2)
+            dso_handle = read_int_from_memory(addr + ptrsize*3)
+            return flavor, fn, arg, dso_handle
+
+        fns_size = ptrsize * 4 # flavor, fn, arg, dso_handle
+
+        if is_32bit():
+            mask = (1 << 32) - 1
+        else:
+            mask = (1 << 64) - 1
+
+        for i in range(idx, -1, -1):
+            addr = (current + fns_size * i) & mask
+            try:
+                flavor, fn, arg, dso_handle= read_fns(addr)
+            except:
+                err("Memory access error at {:#x}".format(addr))
                 break
+            if fn == 0:
+                continue
             decoded_fn = self.decode_function(fn)
             sym = get_symbol_string(decoded_fn)
             decoded_fn_s = Color.boldify("{:#x}".format(decoded_fn))
-            fns = "       fns[{:d}]:{:#x}{:s}:".format(i, addr, self.perm(addr))
-            gef_print("{} flavor:{:d}".format(fns, flavor))
-            gef_print("{} func:{:#x} (={:s}{:s})".format(" "*len(fns), fn, decoded_fn_s, sym))
+
+            try:
+                read_memory(decoded_fn, 1)
+                valid_msg = Color.colorify("valid", "bold green")
+            except gdb.error:
+                valid_msg = Color.colorify("invalid", "bold red")
+
+            fns = "       fns[{:#x}]:{:#x}{:s}:".format(i, addr, self.perm(addr))
+            gef_print("{} flavor:{:#x}".format(fns, flavor))
+            gef_print("{} func:{:#x} (={:s}{:s}) [{:s}]".format(" "*len(fns), fn, decoded_fn_s, sym, valid_msg))
             gef_print("{} arg:{:#x}".format(" "*len(fns), arg))
             gef_print("{} dso_handle:{:#x}".format(" "*len(fns), dso_handle))
         return
