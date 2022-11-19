@@ -8903,8 +8903,30 @@ class RpCommand(GenericCommand):
     _example_ += "{:s} kernel # under qemu-system (x86/x64) only".format(_cmdline_)
     _category_ = "Exploit Development"
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(complete=gdb.COMPLETE_LOCATION)
+        self.rp = None
+        self.less = None
+        self.rp_version = 1
+
+        try:
+            self.rp = which("rp-lin-x64")
+        except FileNotFoundError as e1:
+            try:
+                self.rp = which("rp-lin-x86")
+            except FileNotFoundError as e2:
+                err("{}".format(e1))
+                err("{}".format(e2))
+                return
+
+        try:
+            self.less = which("less")
+        except FileNotFoundError as e:
+            err("{}".format(e))
+        return
+
     def exec_rp(self, ropN):
-        out = "rop{}_{}.txt".format(ropN, os.path.basename(self.path))
+        out = "rop{}_{}_v{}.txt".format(ropN, os.path.basename(self.path), self.rp_version)
         cmd = f"{self.rp} --file='{self.path}' --rop={ropN} --unique > {out}"
         gef_print(titlify(cmd))
         if not os.path.exists(out):
@@ -8941,28 +8963,9 @@ class RpCommand(GenericCommand):
         return tmp_path
 
     @only_if_gdb_running
+    @only_if_x86_32_64
     def do_invoke(self, argv):
         self.dont_repeat()
-
-        if is_x86():
-            try:
-                self.rp = which("rp-lin-x64")
-            except FileNotFoundError as e1:
-                try:
-                    self.rp = which("rp-lin-x86")
-                except FileNotFoundError as e2:
-                    err("{}".format(e1))
-                    err("{}".format(e2))
-                    return
-        else:
-            err("Unsupported")
-            return
-
-        try:
-            less = which("less")
-        except FileNotFoundError as e:
-            err("{}".format(e))
-            return
 
         try:
             ropN = 3
@@ -9046,8 +9049,38 @@ class RpCommand(GenericCommand):
 
         # print
         if do_print:
-            os.system(f"{less} -R {tmp_path}")
+            os.system(f"{self.less} -R {tmp_path}")
             os.unlink(tmp_path)
+        return
+
+
+@register_command
+class Rp2Command(RpCommand):
+    """Exec `rp++-v2`."""
+    _cmdline_ = "rp2"
+    _syntax_ = "{:s} bin|libc|FILENAME|kernel [-f|--filter REGEXP] [-r|--rop ROP_N] [--no-print] [...]".format(_cmdline_)
+    _example_ = "\n"
+    _example_ += "{:s} bin -f 'pop r[abcd]x'\n".format(_cmdline_)
+    _example_ += "{:s} libc -f '(xchg|mov) [re]sp, \\\\w+' -f 'ret'\n".format(_cmdline_)
+    _example_ += "{:s} kernel # under qemu-system (x86/x64) only".format(_cmdline_)
+    _category_ = "Exploit Development"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(complete=gdb.COMPLETE_LOCATION)
+        self.rp = None
+        self.less = None
+        self.rp_version = 2
+
+        try:
+            self.rp = which("rp-lin-x64-v2")
+        except FileNotFoundError as e1:
+            err("{}".format(e1))
+            return
+
+        try:
+            self.less = which("less")
+        except FileNotFoundError as e:
+            err("{}".format(e))
         return
 
 
