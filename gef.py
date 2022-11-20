@@ -26444,6 +26444,7 @@ class PartitionAllocDumpStableCommand(GenericCommand):
             chromium_rw_maps = [p for p in get_process_maps() if p.permission.value == Permission.READ | Permission.WRITE]
             chromium_rw_maps = [p for p in chromium_rw_maps if p.page_start < heapbase and p.path != filepath]
 
+        # n_gram([1,2,3,4,5],3) -> [[1, 2, 3], [2, 3, 4], [3, 4, 5]]
         def n_gram(target, n):
             for idx in range(len(target) - n + 1):
                 yield target[idx:idx + n]
@@ -26451,7 +26452,7 @@ class PartitionAllocDumpStableCommand(GenericCommand):
         # Check the RW area
         roots = []
         for maps in chromium_rw_maps:
-            # explode to each qword (if 64 bit arch) or dword(if 32 bit arch)
+            # explode to each qword (if 64 bit arch) or dword (if 32 bit arch)
             datas = self.slice_unpack(read_memory(maps.page_start, maps.size), current_arch.ptrsize)
             addrs = [x for x in range(maps.page_start, maps.page_end, current_arch.ptrsize)]
 
@@ -26474,12 +26475,12 @@ class PartitionAllocDumpStableCommand(GenericCommand):
             """
             # check consecutive quadruples
             for addr, data in zip(n_gram(addrs, 4), n_gram(datas, 4)):
-                # root pointer address and root address are close (at least, these addresses are similar. see above example)
-                if data[0] != 0 and (addr[0] & mask) != (data[0] & mask): # fast_malloc_root may be zero
+                # root pointer address and root address are close (see above example)
+                if data[0] != 0 and (addr[0] & mask) != (data[0] & mask): # fast_malloc_root_ may be zero. but if non-zero, it holds address close to itself
                     continue
-                if (addr[1] & mask) != (data[1] & mask): # array_buffer_root_ is must be non-zero
+                if (addr[1] & mask) != (data[1] & mask): # array_buffer_root_ is must be non-zero. it holds address close to itself
                     continue
-                if (addr[2] & mask) != (data[2] & mask): # buffer_root_ is must be non-zero
+                if (addr[2] & mask) != (data[2] & mask): # buffer_root_ is must be non-zero. it holds address close to itself
                     continue
                 # they should be aligned
                 if data[0] & 0x7:
@@ -26493,24 +26494,22 @@ class PartitionAllocDumpStableCommand(GenericCommand):
                     continue
                 # check root size
                 buffer_root_size = data[1] - data[2]
-                if buffer_root_size < 0x300:
+                if buffer_root_size < 0x300: # 0x300 is heuristic value
                     continue
-                if buffer_root_size > 0x2000:
+                if buffer_root_size > 0x2000: # 0x2000 is heuristic value
                     continue
                 # check root struct.
                 """
                 The first 64 bytes of root are mostly 0 due to padding considering the cache line.
-                This is same both 64-bit and 32bit.
+                This is same both at 64-bit and 32bit arch.
                 0x55719118e380: 0x0000000100000001      0x0000000000000000     <--- here may be used
                 0x55719118e390: 0x0000000000000000      0x0000000000000000     <--- here may be used
                 0x55719118e3a0: 0x0000000000000000      0x0000000000000000     <--- hare may be not used
                 0x55719118e3b0: 0x0000000000000000      0x0000000000000000     <--- here may be not used
                 """
-                array_buffer_root_first64 = read_memory(data[1], 64)
-                if array_buffer_root_first64[32:] != b"\0"*32:
+                if read_memory(data[1], 64)[32:] != b"\0"*32:
                     continue
-                buffer_root_first64 = read_memory(data[2], 64)
-                if buffer_root_first64[32:] != b"\0"*32:
+                if read_memory(data[2], 64)[32:] != b"\0"*32:
                     continue
                 # add candidate
                 root_candidate = [
@@ -26529,7 +26528,7 @@ class PartitionAllocDumpStableCommand(GenericCommand):
             root = roots[0]
             for r in root:
                 info("found: {:s}: {:#x}".format(r[0], r[1]))
-            return roots[0] # [["fast_...", addr], ["array...", addr], ["buffer...", addr]]
+            return roots[0] # [["fast_malloc_root_", addr], ["array_buffer_root_", addr], ["buffer_root_", addr]]
 
         else:
             err("candidates for root are found in multiple places. try check code")
@@ -26604,12 +26603,15 @@ class PartitionAllocDumpStableCommand(GenericCommand):
                 struct {
                     QuarantineMode quarantine_mode; // uint8_t
                     ScanMode scan_mode;             // uint8_t
+                    BucketDistribution bucket_distribution = BucketDistribution::kCoarser; // uint8_t
                     bool with_thread_cache = false;
-                    bool with_denser_bucket_distribution = false;
                     bool allow_aligned_alloc;
                     bool allow_cookie;
                     bool brp_enabled_;
+                    bool brp_zapping_enabled_;
+                    //bool mac11_malloc_size_hack_enabled_ = false;
                     bool use_configurable_pool;
+                    //int pkey; // v109.x~
                     //uint32_t extras_size;
                     //uint32_t extras_offset;
                 }
@@ -26645,8 +26647,8 @@ class PartitionAllocDumpStableCommand(GenericCommand):
             uintptr_t inverted_self = 0;
             std::atomic<int> thread_caches_being_constructed_{0};
             bool quarantine_always_for_testing = false;
-            #partition_alloc::PartitionTag current_partition_tag = 0; // if ARM MTE is enable
-            #uintptr_t next_tag_bitmap_page = 0; // if ARM MTE is enable
+            //partition_alloc::PartitionTag current_partition_tag = 0; // if ARM MTE is enable
+            //uintptr_t next_tag_bitmap_page = 0; // if ARM MTE is enable
         }
         """
         x = u64(read_memory(current, 8))

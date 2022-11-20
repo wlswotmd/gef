@@ -12,7 +12,7 @@ def get_base_pos(current_version):
   j = json.loads(r.text)
 
   vlist = [("{:04d}.{:02d}.{:05d}.{:03d}".format(*map(int, k.split("."))), v) for k, v in j.items()]
-  curr_ver = "{:04d}.{:02d}.{:05d}.{:03d}".format(*map(int, current_version.split("."))) 
+  curr_ver = "{:04d}.{:02d}.{:05d}.{:03d}".format(*map(int, current_version.split(".")))
 
   best = None
   for ver, pos in vlist:
@@ -26,6 +26,8 @@ def get_base_pos(current_version):
     if ver < best[0]:
       best = (ver, pos)
       continue
+  if best is None:
+    return None
   return best[1]
 
 def download_binary(channel):
@@ -34,6 +36,9 @@ def download_binary(channel):
   current_version = subprocess.getoutput(f"python3 omahaproxy.py --os=linux --channel={channel} --field=current_version")
   print("[*] current_version: {:s}".format(current_version))
   pos = get_base_pos(current_version)
+  if pos is None:
+    print("Not found good target binary")
+    return
   print("[*] near position: {:s}".format(pos))
 
   dirname = f"./chrome_{channel}"
