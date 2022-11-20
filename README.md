@@ -327,7 +327,7 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/constgrep.png)
 * `time`: measures the time of the GDB command.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/time.png)
-* `rp`: invokes `rp++` with commonly used options.
+* `rp`,`rp2`: invokes `rp++` with commonly used options.
     * Supports both rp++ v1 and v2.
 * `cpuid`: shows the result of cpuid(eax=0,1,2...).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/cpuid.png)
@@ -344,8 +344,8 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dynamic.png)
 * `linkmap`: dumps linkmap with iterating.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/linkmap.png)
-* `ret2dl-hint`: shows the structure used by ret2dl as hint.
-* `srop-hint`: shows the code for srop as hint.
+* `ret2dl-hint`: shows the structure used by Return-to-dl-resolve as hint.
+* `srop-hint`: shows the code for Sigreturn-Oriented-Programming as hint.
 * `dtor-dump`: dumps some destructor functions list.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dtor-dump.png)
 * `linklist-walk`: walks link list.

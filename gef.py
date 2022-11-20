@@ -6146,6 +6146,7 @@ class CanaryCommand(GenericCommand):
         canary, location = res
         info("Found AT_RANDOM at {:#x}, reading {} bytes".format(location, current_arch.ptrsize))
         info("The canary of process {:d} is {:s}".format(get_pid(), Color.boldify("{:#x}".format(canary))))
+        gef_print(titlify("found canary"))
 
         vmmap = get_process_maps()
         unpack = u32 if current_arch.ptrsize == 4 else u64
@@ -6156,25 +6157,30 @@ class CanaryCommand(GenericCommand):
         elif is_x86_32():
             tls = TlsCommand.getgs()
 
+        sp = get_register("$sp")
         for m in vmmap:
             if not (m.permission & Permission.READ) or not (m.permission & Permission.WRITE):
                 continue
             if m.path == "[vvar]":
                 continue
             data = read_memory(m.page_start, m.page_end - m.page_start)
+            prev_addr = -1
             for pos in range(0, m.page_end - m.page_start, current_arch.ptrsize):
                 addr = m.page_start + pos
                 d = data[pos: pos + current_arch.ptrsize]
                 if canary != unpack(d):
                     continue
                 if m.path == "":
-                    if tls and tls <= addr < ((tls+0x1000)&0xfffffffffffff000):
+                    if tls and tls <= addr < ((tls + 0x1000) & 0xfffffffffffff000):
                         path = "tls"
                     else:
                         path = "unknown"
                 else:
                     path = m.path
-                info("Found at {:#x} in {:s}".format(m.page_start + pos, repr(path)))
+                if prev_addr <= sp <= addr:
+                    info("(Stack pointer is at {:#x})".format(sp))
+                info("Found at {:#x} in {:s}".format(addr, repr(path)))
+                prev_addr = addr
         return
 
 
@@ -22834,14 +22840,15 @@ class EnvpCommand(GenericCommand):
     def print_from_mem(self, array, verbose):
         i = 0
         while True:
-            addr = read_int_from_memory(array + i * current_arch.ptrsize)
+            pos = array + i * current_arch.ptrsize
+            addr = read_int_from_memory(pos)
             if addr == 0:
                 break
             if not verbose and i > 99:
                 gef_print("...")
                 break
             s = read_cstring_from_memory(addr, DEFAULT_PAGE_SIZE)
-            gef_print("[{:3d}]: {:#x}: {:#x}{:s}{:s}".format(i, array + i * current_arch.ptrsize, addr, RIGHT_ARROW, Color.yellowify(repr(s))))
+            gef_print("[{:3d}]: {:#x}: {:#x}{:s}{:s}".format(i, pos, addr, RIGHT_ARROW, Color.yellowify(repr(s))))
             i += 1
         return
 
