@@ -221,9 +221,10 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
     * It prints whether System-ASLR is enabled or not.
     * It prints whether GDB ASLR setting is enabled or not.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/checksec.png)
-* `got`: improved.
+* `got`: is improved.
     * It prints not only GOT address but also PLT address.
     * It scans `.plt.sec` section if Intel CET is enabled.
+    * It can also display the GOT of the library.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/got.png)
 * `canary`: is improved.
     * It prints all canary positions in memory.

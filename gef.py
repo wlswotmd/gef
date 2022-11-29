@@ -164,7 +164,7 @@ DEFAULT_PAGE_ALIGN_SHIFT               = 12
 DEFAULT_PAGE_SIZE                      = 1 << DEFAULT_PAGE_ALIGN_SHIFT
 GEF_RC                                 = os.getenv("GEF_RC") or os.path.join(os.getenv("HOME") or "~", ".gef.rc")
 GEF_TEMP_DIR                           = os.path.join(tempfile.gettempdir(), "gef")
-GEF_MAX_STRING_LENGTH                  = 50
+GEF_MAX_STRING_LENGTH                  = 0x50
 
 GDB_MIN_VERSION                        = (7, 7)
 GDB_VERSION                            = tuple(map(int, re.search(r"(\d+)[^\d]+(\d+)", gdb.VERSION).groups()))
@@ -2093,7 +2093,6 @@ def checksec(filename):
     elif not is_stripped(filename) and not is_static(filename):
         results["Intel CET"] = __check_security_property("-S", filename, r"\.plt\.sec") is True
     else: # static or stripped
-        objdump = which("objdump")
         cmd = [objdump, "-d", "-j", ".plt", filename] # check only .plt section for speed up
         out = gef_execute_external(cmd, as_list=True)
         results["Intel CET"] = False
@@ -2128,6 +2127,10 @@ def get_arch():
     if "The target architecture is set automatically (currently " in arch_str:
         arch_str = arch_str.split("(currently ", 1)[1]
         arch_str = arch_str.split(")", 1)[0]
+    elif "The target architecture is set to \"auto\" (currently \"" in arch_str:
+        # GDB version >= 12.x
+        arch_str = arch_str.split("(currently \"", 1)[1]
+        arch_str = arch_str.split("\")", 1)[0]
     elif "The target architecture is assumed to be " in arch_str:
         arch_str = arch_str.replace("The target architecture is assumed to be ", "")
     elif "The target architecture is set to " in arch_str:
@@ -3450,12 +3453,15 @@ def read_int_from_memory(addr):
 
 def read_cstring_from_memory(address, max_length=GEF_MAX_STRING_LENGTH):
     """Return a C-string read from memory."""
-    length = min((address|(DEFAULT_PAGE_SIZE-1)) - address, max_length+1)
     # original GEF uses gdb.Value().cast("char"),
     # but this is too slow if string is too large.
     # for example 0xcccccccccccccccc....(too long), this is in kernel or firmware commonly.
     # to avoid this, gdb.Value().cast() is removed.
     try:
+        # ex: address is 0xXXX100 -> length is 0xf00
+        # ex: address is 0xXXX200 -> length is 0xe00
+        # ex: address is 0xXXXff0 -> length is not 0x10, but GEF_MAX_STRING_LENGTH
+        length = max((address|(DEFAULT_PAGE_SIZE-1)) - address, max_length+1)
         res = read_memory(address, length).split(b"\x00")[0]
         ustr = res.decode("utf-8")
         if max_length and len(ustr) > max_length:
@@ -3972,24 +3978,26 @@ def get_filepath():
 
         # if target is remote file, download
         elif filename.startswith("target:"):
-            fname = filename[len("target:") :]
+            fname = filename[len("target:"):]
             return download_file(fname, use_cache=True, local_name=fname)
 
         elif filename.startswith(".gnu_debugdata for target:"):
-            fname = filename[len(".gnu_debugdata for target:") :]
+            fname = filename[len(".gnu_debugdata for target:"):]
             return download_file(fname, use_cache=True, local_name=fname)
 
         else:
             return filename
     else:
-        # for different namespace, attaching by pid but it shows with `target:`
-        if filename.startswith("target:"):
-            filename = filename[len("target:") :]
-        # found
-        if filename is not None:
-            return filename
         # inferior probably did not have name, extract cmdline from info proc
-        return get_path_from_info_proc()
+        if filename is None:
+            return get_path_from_info_proc()
+
+        # not remote, but different PID namespace and attaching by pid. it shows with `target:`
+        elif filename.startswith("target:"):
+            return filename[len("target:"):]
+
+        # normal path
+        return filename
 
 
 @lru_cache()
@@ -6561,7 +6569,7 @@ class GefThemeCommand(GenericCommand):
         self.add_setting("context_title_message", "cyan", "Color of the title in context window")
         self.add_setting("default_title_line", "gray", "Default color of borders")
         self.add_setting("default_title_message", "cyan", "Default color of title")
-        self.add_setting("table_heading", "blue", "Color of the column headings to tables (e.g. vmmap)")
+        self.add_setting("table_heading", "blue bold", "Color of the column headings to tables (e.g. vmmap)")
         self.add_setting("old_context", "gray", "Color to use to show things such as code that is not immediately relevant")
         self.add_setting("disassemble_current_instruction", "green", "Color to use to highlight the current $pc when disassembling")
         self.add_setting("dereference_string", "yellow", "Color of dereferenced string")
@@ -9848,13 +9856,13 @@ class ElfInfoCommand(GenericCommand):
         }
 
         gef_print(titlify("Program Header"))
-        fmt = "  [{:>2s}] {:12s} {:>10s} {:>10s} {:>10s} {:>10s} {:>10s} {:5s} {:>8s}"
+        fmt = "[{:>2s}] {:12s} {:>10s} {:>10s} {:>10s} {:>10s} {:>10s} {:5s} {:>8s}"
         legend = ["#", "Type", "Offset", "Virtaddr", "Physaddr", "FileSiz", "MemSiz", "Flags", "Align"]
         gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
         for i, p in enumerate(elf.phdrs):
             p_type = ptype[p.p_type] if p.p_type in ptype else "UNKNOWN"
             p_flags = pflags[p.p_flags] if p.p_flags in pflags else "???"
-            fmt = "  [{:2d}] {:12s} {:#10x} {:#10x} {:#10x} {:#10x} {:#10x} {:5s} {:#8x}"
+            fmt = "[{:2d}] {:12s} {:#10x} {:#10x} {:#10x} {:#10x} {:#10x} {:5s} {:#8x}"
             gef_print(fmt.format(i, p_type, p.p_offset, p.p_vaddr, p.p_paddr, p.p_filesz, p.p_memsz, p_flags, p.p_align))
 
         stype = {
@@ -9901,7 +9909,7 @@ class ElfInfoCommand(GenericCommand):
         if not elf.shdrs:
             gef_print("Not loaded")
         else:
-            fmt = "  [{:>2s}] {:20s} {:>15s} {:>10s} {:>10s} {:>10s} {:>10s} {:5s} {:4s} {:4s} {:>8s}"
+            fmt = "[{:>2s}] {:40s} {:>15s} {:>10s} {:>10s} {:>10s} {:>10s} {:>5s} {:>5s} {:>5s} {:>8s}"
             legend = ["#", "Name", "Type", "Address", "Offset", "Size", "EntSiz", "Flags", "Link", "Info", "Align"]
             gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
             for i, s in enumerate(elf.shdrs):
@@ -9920,7 +9928,7 @@ class ElfInfoCommand(GenericCommand):
                 if s.sh_flags & Shdr.SHF_EXCLUDE:          sh_flags += "E"
                 if s.sh_flags & Shdr.SHF_COMPRESSED:       sh_flags += "C"
 
-                fmt = "  [{:2d}] {:20s} {:>15s} {:#10x} {:#10x} {:#10x} {:#10x} {:5s} {:#4x} {:#4x} {:#8x}"
+                fmt = "[{:2d}] {:40s} {:>15s} {:#10x} {:#10x} {:#10x} {:#10x} {:5s} {:#5x} {:#5x} {:#8x}"
                 gef_print(fmt.format(i, s.sh_name, sh_type, s.sh_addr, s.sh_offset, s.sh_size,
                                      s.sh_entsize, sh_flags, s.sh_link, s.sh_info, s.sh_addralign))
         return
@@ -14504,7 +14512,7 @@ class ChecksecCommand(GenericCommand):
     """Checksec the security properties of the current executable or passed as argument. The
     command checks for the following protections: Canary, NX, PIE, RELRO, Fortify, CET, RPATH, RUNPATH, ASLR"""
     _cmdline_ = "checksec"
-    _syntax_ = "{:s} [FILENAME]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [FILENAME]".format(_cmdline_)
     _example_ = "{:s} /bin/ls".format(_cmdline_)
     _category_ = "Process Information"
 
@@ -14514,6 +14522,10 @@ class ChecksecCommand(GenericCommand):
 
     def do_invoke(self, argv):
         self.dont_repeat()
+
+        if "-h" in argv:
+            self.usage()
+            return
 
         if is_qemu_system():
             self.print_security_properties_qemu_system()
@@ -15602,8 +15614,10 @@ class DestructorDumpCommand(GenericCommand):
 class GotCommand(GenericCommand):
     """Display current status of the got/plt inside the process."""
     _cmdline_ = "got"
-    _syntax_ = "{:s} [FUNCTION_NAME ...] ".format(_cmdline_)
-    _example_ = "{:s} fread printf".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [-f FILE_NAME] [-a LOADED_BASE_ADDRESS] [FILTER, ...] ".format(_cmdline_)
+    _example_ = "{:s} read print # filter specific keyword\n".format(_cmdline_)
+    _example_ += "{:s} -f /usr/lib/x86_64-linux-gnu/libc.so.6 # target the library's GOT\n".format(_cmdline_)
+    _example_ += "{:s} -f /bin/ls -a 0x4000000000 # use specific address, it is useful under qemu".format(_cmdline_)
     _category_ = "Process Information"
     _aliases_ = ["plt", ]
 
@@ -15613,32 +15627,293 @@ class GotCommand(GenericCommand):
         self.add_setting("function_not_resolved", "yellow", "Line color of the got command output if the function has not been resolved")
         return
 
-    def get_jmp_slots(self, readelf, filename):
-        output = []
-        cmd = [readelf, "--relocs", "--wide", filename]
-        lines = gef_execute_external(cmd, as_list=True)
-        for line in lines:
-            if "JUMP" in line or 'GLOB_DAT' in line:
-                output.append(line)
-        return output
+    def get_base_address(self, filename):
+        @lru_cache()
+        def get_base_address_from_vmmap(filename):
+            vmmap = get_process_maps()
+            try:
+                return min([x.page_start for x in vmmap if x.path == filename])
+            except:
+                # not found
+                return None
 
-    def get_plt_addresses(self, objdump, filename):
-        if hasattr(self, 'plts'):
-            return self.plts
-        output = {}
-        cmd = [objdump, "-j", ".plt", "-j", ".plt.sec", "-j", ".plt.got", "-d", filename]
+        if self.base_address_hint:
+            return self.base_address_hint
+        # getting vmmap to understand the boundaries of the binary
+        # we will use this info to understand if a function has been resolved or not.
+        return get_base_address_from_vmmap(filename)
+
+    def get_jmp_slots(self, filename):
         try:
+            cmd = [self.readelf, "--relocs", "--wide", filename]
             lines = gef_execute_external(cmd, as_list=True)
         except:
-            lines = ""
+            lines = []
+
+        output = {}
+        section_name = None
+        reloc_count = 0
         for line in lines:
-            r = re.findall(r"^([0-9a-f]+) <(.+)@plt>:", line)
+            # get section
+            r = re.findall("Relocation section '(.+?)' ", line)
             if r:
-                address = r[0][0]
-                func_name = r[0][1]
-                output[func_name] = int(address, 16)
-        self.plts = output
-        return self.plts
+                section_name = r[0]
+                continue
+
+            # GOT entry pattern 1
+            if "JUMP_SLOT" in line:
+                type = "JUMP_SLOT"
+                address, _, _, _, name = line.split()[:5]
+                address = int(address, 16)
+                name = name.split("@")[0]
+            # GOT entry pattern 2 (?)
+            elif 'GLOB_DAT' in line:
+                type = "GLOB_DAT"
+                address, _, _, _, name = line.split()[:5]
+                address = int(address, 16)
+                name = name.split("@")[0]
+            # GOT entry pattern 3 (?)
+            elif "IRELATIVE" in line:
+                type = "IRELATIVE"
+                if is_x86_32():
+                    address = line.split()[0]
+                    address = int(address, 16)
+                    name = "*ABS*"
+                else:
+                    address, _, _, addend = line.split()[:4]
+                    address = int(address, 16)
+                    name = "*ABS*+{:#x}".format(int(addend, 16))
+            # Not GOT entry
+            else:
+                continue
+
+            # count up reloc_arg
+            if section_name in [".rel.plt", ".rela.plt"] and not checksec(filename)["Static"]:
+                reloc_arg = reloc_count * [1, 8][is_x86_32()]
+                reloc_count += 1
+            else:
+                reloc_arg = None
+
+            # fix address
+            if checksec(filename)["PIE"]:
+                address += self.get_base_address(filename)
+
+            # save
+            array = output.get(type, [])
+            output[type] = array + [[address, name, section_name, type, reloc_arg]]
+
+        # flatten
+        a = output.get("JUMP_SLOT", [])
+        b = output.get("IRELATIVE", [])
+        c = output.get("GLOB_DAT", [])
+        return a + b + c
+
+    def get_plt_addresses(self, filename):
+        try:
+            cmd = [self.objdump, "-j", ".plt", "-j", ".plt.sec", "-j", ".plt.got", "-d", filename]
+            lines = gef_execute_external(cmd, as_list=True)
+        except:
+            lines = []
+
+        output = {}
+        for line in lines:
+            # get function name
+            r = re.findall(r"^([0-9a-f]+) <(.+)@plt>:", line)
+            if not r:
+                continue
+            address, func_name = int(r[0][0], 16), r[0][1]
+
+            # fix addreess
+            if checksec(filename)["PIE"]:
+                address += self.get_base_address(filename)
+
+            # save
+            # Since DT_REL (used at i386) has no r_addend, the information of identification does not exist.
+            # So there are multiple "*ABS*" entries, keep them in a list.
+            array = output.get(func_name, [])
+            output[func_name] = array + [address]
+
+        return output
+
+    @lru_cache()
+    def get_elf(self, filename):
+        elf = Elf(filename)
+        return elf
+
+    def get_plt_range(self, filename):
+        # The PLT range is required to determine whether the information in the GOT is resolved or not.
+        elf = self.get_elf(filename)
+        sections = [x for x in elf.shdrs if x.sh_name in [".plt", ".plt.got", ".plt.sec"]]
+        if len(sections) == 0:
+            return 0, 0
+        plt_begin = min([x.sh_addr for x in sections])
+        plt_end = max([x.sh_addr + x.sh_size for x in sections])
+
+        # fix address
+        if checksec(filename)["PIE"]:
+            plt_begin += self.get_base_address(filename)
+            plt_end += self.get_base_address(filename)
+
+        return plt_begin, plt_end
+
+    def perm(self, addr):
+        try:
+            return "[{:s}]".format(str(lookup_address(addr).section.permission))
+        except:
+            return "[???]"
+
+    def get_section_name(self, filename, addr):
+        @lru_cache()
+        def get_shdr_range(filename):
+            elf = self.get_elf(filename)
+            ranges = []
+            for shdr in elf.shdrs:
+                sh_start = shdr.sh_addr
+                sh_end = shdr.sh_addr + shdr.sh_size
+                if checksec(filename)["PIE"]:
+                    sh_start += self.get_base_address(filename)
+                    sh_end += self.get_base_address(filename)
+                ranges.append([shdr.sh_name, sh_start, sh_end])
+            return ranges
+
+        ranges = get_shdr_range(filename)
+        for name, start, end in ranges:
+            if start <= addr < end:
+                return name
+        else:
+            return "???"
+
+    def get_section_sym(self, filename, addr):
+        @lru_cache()
+        def get_shdr_range(filename):
+            elf = self.get_elf(filename)
+            ranges = []
+            for shdr in elf.shdrs:
+                sh_start = shdr.sh_addr
+                sh_end = shdr.sh_addr + shdr.sh_size
+                if checksec(filename)["PIE"]:
+                    sh_start += self.get_base_address(filename)
+                    sh_end += self.get_base_address(filename)
+                ranges.append([shdr.sh_name, sh_start, sh_end])
+            return ranges
+
+        ranges = get_shdr_range(filename)
+        for name, start, end in ranges:
+            if start <= addr < end:
+                return " <{:s}+{:#x}>".format(name, addr - start)
+        else:
+            return ""
+
+    def print_plt_got(self, filename):
+        # retrieve base address
+        base_address = self.get_base_address(filename)
+        if base_address is None:
+            err("Not found {:s} in memory".format(filename))
+            return
+
+        # retrieve jump slots using readelf
+        jmpslots = self.get_jmp_slots(filename)
+
+        # retrieve plt address using objdump
+        plts = self.get_plt_addresses(filename)
+
+        # retrieve the end of plt from elf parsing
+        plt_begin, plt_end = self.get_plt_range(filename)
+
+        # print legend
+        gef_print(titlify("{:s}".format(filename)))
+        fmt = "{:>9s} {:s} {:>14s} @ {:12s} ({:>8s}) {:>9s} {:s} {:>14s} @ {:12s} ({:>8s}) {:s}"
+        legend = [
+            "TYPE", VERTICAL_LINE,
+            "PLT", "Section", "Offset", "reloc_arg", VERTICAL_LINE,
+            "GOT", "Section", "Offset", "Symbol -> GOTvalue",
+        ]
+        gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+
+        # link each PLT entries and each GOT entries
+        # and create lines for output
+        resolved_info = []
+        for got_address, name, section_name, type, reloc_arg in jmpslots:
+            # resolve PLT from GOT name
+            if section_name != ".rel.plt" and name == "*ABS*": # i386 special case
+                plt_address = []
+            else: # in many other case
+                plt_address = plts.get(name, [])
+            if plt_address:
+                plt_address = plt_address.pop(0)
+
+            # resolve offset from absolute address
+            got_offset = got_address - base_address
+            if plt_address:
+                plt_offset = plt_address - base_address
+
+            # read the address of the function
+            try:
+                got_value = read_int_from_memory(got_address)
+            except gdb.error:
+                err("Memory access error")
+                return
+
+            # resolve got value's symbol
+            if got_value == 0:
+                got_value_sym = ""
+            elif plt_begin <= got_value < plt_end: # Non-PIE
+                got_value_sym = self.get_section_sym(filename, got_value)
+            elif plt_begin - base_address <= got_value < plt_end - base_address: # PIE
+                got_value_sym = self.get_section_sym(filename, got_value)
+            else:
+                got_value_sym = get_symbol_string(got_value)
+
+            # different colors if the function has been resolved or not
+            if got_value == 0:
+                color = self.get_setting("function_resolved") # something is wrong
+            elif plt_begin <= got_value < plt_end: # Non-PIE
+                color = self.get_setting("function_not_resolved") # function hasn't already been resolved
+            elif plt_begin - base_address <= got_value < plt_end - base_address: # PIE
+                color = self.get_setting("function_not_resolved") # function hasn't already been resolved
+            else:
+                color = self.get_setting("function_resolved") # function has already been resolved
+
+            # reloc_arg
+            if reloc_arg is None:
+                reloc_arg_info = "{:>9s}".format("-")
+            else:
+                reloc_arg_info = "{:#9x}".format(reloc_arg)
+
+            # make plt info
+            if plt_address:
+                plt_section = self.get_section_name(filename, plt_address) + self.perm(plt_address)
+                plt_info = "{:#14x} @{:13s} ({:#8x}) {:9s}".format(plt_address, plt_section, plt_offset, reloc_arg_info)
+            else:
+                plt_info = "{:>14s}  {:13s}  {:>8s}  {:9s}".format("Not found", "", "", reloc_arg_info)
+
+            # make got info
+            got_section = self.get_section_name(filename, got_address) + self.perm(got_address)
+            got_value_c = Color.colorify("{:s} {:s} {:#x}{:s}".format(name, RIGHT_ARROW, got_value, got_value_sym), color)
+            got_info = "{:#14x} @{:13s} ({:#8x}) {:s}".format(got_address, got_section, got_offset, got_value_c)
+
+            # make line
+            line = "{:>9s} {:s} {:s} {:s} {:s}".format(type, VERTICAL_LINE, plt_info, VERTICAL_LINE, got_info)
+
+            # save
+            resolved_info.append([got_address, section_name, line])
+
+        # sort by GOT address
+        resolved_info = sorted(resolved_info)
+
+        # print
+        prev_section = None
+        for got_address, section_name, line in sorted(resolved_info):
+            # print section name
+            if prev_section != section_name:
+                gef_print(titlify(section_name))
+            prev_section = section_name
+            # if we have a filter let's skip the entries that are not requested
+            if self.filter:
+                if not any([pattern in line for pattern in self.filter]):
+                    continue
+            gef_print(line)
+        return
 
     @only_if_gdb_running
     @only_if_gdb_target_local
@@ -15646,116 +15921,48 @@ class GotCommand(GenericCommand):
     def do_invoke(self, argv):
         self.dont_repeat()
 
-        try:
-            readelf = which("readelf")
-        except IOError:
-            err("Missing `readelf`")
+        if "-h" in argv:
+            self.usage()
             return
 
+        # setup readelf/objdump
         try:
-            objdump = which("objdump")
-        except IOError:
-            err("Missing `objdump`")
+            self.readelf = which("readelf")
+            self.objdump = which("objdump")
+        except FileNotFoundError as e:
+            err("{}".format(e))
             return
 
-        # get the filtering parameter.
-        func_names_filter = []
+        # get filename
+        if "-f" in argv:
+            # use specific file
+            idx = argv.index("-f")
+            filename = argv[idx + 1]
+            argv = argv[:idx] + argv[idx+2:]
+        else:
+            # use main binary
+            filename = get_filepath()
+            if filename is None:
+                err("Missing info about architecture. Please set: `file /path/to/target_binary`")
+                return
+        if not os.path.exists(filename):
+            err("{:s} does not exist".format(filename))
+            return
+
+        # get base address
+        self.base_address_hint = None
+        if "-a" in argv:
+            idx = argv.index("-a")
+            self.base_address_hint = int(argv[idx + 1], 0)
+            argv = argv[:idx] + argv[idx+2:]
+
+        # get the filtering parameter
+        self.filter = []
         if argv:
-            func_names_filter = argv
+            self.filter = argv
 
-        filename = get_filepath()
-        if filename is None:
-            err("Missing info about architecture. Please set: `file /path/to/target_binary`")
-            return
-
-        # getting vmmap to understand the boundaries of the main binary
-        # we will use this info to understand if a function has been resolved or not.
-        vmmap = get_process_maps()
-        try:
-            base_address = min([x.page_start for x in vmmap if x.path in [filename, "<explored>", "[code]"]])
-            end_address = max([x.page_end for x in vmmap if x.path in [filename, "<explored>", "[code]"]])
-        except:
-            # filename is different in proc?
-            base_address = get_section_base_address(get_filepath()) or get_section_base_address(get_path_from_info_proc())
-            path = [x.path for x in vmmap if x.page_start == base_address][0]
-            end_address = max([x.page_end for x in vmmap if x.path == path])
-
-        # qemu uses fix address if pie / aslr is enable
-        if is_qemu_usermode():
-            if is_32bit():
-                base_address = 0x40000000
-            else:
-                base_address = 0x4000000000
-
-        # get the checksec output.
-        checksec_status = checksec(filename)
-        full_relro = checksec_status["Full RELRO"]
-        pie = checksec_status["PIE"] # if pie we will have offset instead of abs address.
-
-        relro_status = "Full RELRO"
-        if not full_relro:
-            relro_status = "Partial RELRO"
-            partial_relro = checksec_status["Partial RELRO"]
-
-            if not partial_relro:
-                relro_status = "No RELRO"
-
-        # retrieve jump slots using readelf
-        jmpslots = self.get_jmp_slots(readelf, filename)
-
-        # retrieve plt address
-        plts = self.get_plt_addresses(objdump, filename)
-
-        got_protection = Color.boldify(relro_status)
-        got_functions = Color.boldify("{}".format(len(jmpslots)))
-        gef_print("GOT protection: {} | GOT functions: {} ".format(got_protection, got_functions))
-
-        fmt = "{:>14s} ({:>9s}) {:>14s} ({:>9s}) {:s}"
-        legend = ["PLT", "Offset", "GOT", "Offset", "Symbol -> GOTvalue"]
-        gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
-        for line in sorted(jmpslots):
-            address, _, _, _, name = line.split()[:5]
-
-            # if we have a filter let's skip the entries that are not requested.
-            if func_names_filter:
-                if not any(map(lambda x: x in name, func_names_filter)):
-                    continue
-            got_address = int(address, 16)
-
-            # resolve PLT
-            if name.split("@")[0] in plts:
-                plt_address = plts[name.split("@")[0]]
-            else:
-                plt_address = None
-
-            # address_val is an offset from the base_address if we have PIE.
-            if pie:
-                got_address += base_address
-                if plt_address:
-                    plt_address += base_address
-
-            got_offset = got_address - base_address
-            if plt_address:
-                plt_offset = plt_address - base_address
-
-            # read the address of the function.
-            got_value = read_int_from_memory(got_address)
-
-            # for the swag: different colors if the function has been resolved or not.
-            if base_address < got_value < end_address or got_value == 0:
-                color = self.get_setting("function_not_resolved") # function hasn't already been resolved
-            else:
-                color = self.get_setting("function_resolved") # function has already been resolved
-
-            name_c = Color.colorify(name, color)
-            got_value_c = Color.colorify(hex(got_value), color)
-            if plt_address:
-                fmt = "{:#14x} ({:+#9x}) {:#14x} ({:+#9x}) {:s} {:s} {:s}"
-                line = fmt.format(plt_address, plt_offset, got_address, got_offset, name_c, RIGHT_ARROW, got_value_c)
-            else:
-                fmt = "{:>14s} {:11s} {:#14x} ({:+#9x}) {:s} {:s} {:s}"
-                line = fmt.format("Not found", "", got_address, got_offset, name_c, RIGHT_ARROW, got_value_c)
-            gef_print(line)
+        # doit
+        self.print_plt_got(filename)
         return
 
 
