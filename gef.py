@@ -15945,10 +15945,10 @@ class SyscallSearchCommand(GenericCommand):
     def print_legend(self):
         if self.verbose:
             headers = ["NR", "Name", "Parameter"]
-            gef_print(Color.colorify("{:<25} {:<20} {}".format(*headers), get_gef_setting("theme.table_heading")))
+            gef_print(Color.colorify("{:<25} {:<25} {}".format(*headers), get_gef_setting("theme.table_heading")))
         else:
             headers = ["NR", "Name"]
-            gef_print(Color.colorify("{:<25} {:<20}".format(*headers), get_gef_setting("theme.table_heading")))
+            gef_print(Color.colorify("{:<25} {:<25}".format(*headers), get_gef_setting("theme.table_heading")))
         return
 
     def print_syscall_by_number(self, syscall_table, syscall_num):
@@ -15957,10 +15957,10 @@ class SyscallSearchCommand(GenericCommand):
             if num == syscall_num:
                 nr = "{:d} (={:#x})".format(num, num)
                 if self.verbose:
-                    param = ('\n'+" "*47).join(["{}: {}".format(i, param.param) for i, param in enumerate(entry.params, start=1)])
+                    param = ('\n'+" "*52).join(["{}: {}".format(i, param.param) for i, param in enumerate(entry.params, start=1)])
                 else:
                     param = ""
-                gef_print("{:<25} {:<20} {}".format(nr, entry.name, param))
+                gef_print("{:<25} {:<25} {}".format(nr, entry.name, param))
         return
 
     def print_syscall_by_name(self, syscall_table, syscall_name_pattern):
@@ -15969,10 +15969,10 @@ class SyscallSearchCommand(GenericCommand):
             if re.search(syscall_name_pattern, entry.name):
                 nr = "{:d} (={:#x})".format(num, num)
                 if self.verbose:
-                    param = ('\n'+" "*47).join(["{}: {}".format(i, param.param) for i, param in enumerate(entry.params, start=1)])
+                    param = ('\n'+" "*52).join(["{}: {}".format(i, param.param) for i, param in enumerate(entry.params, start=1)])
                 else:
                     param = ""
-                gef_print("{:<25} {:<20} {}".format(nr, entry.name, param))
+                gef_print("{:<25} {:<25} {}".format(nr, entry.name, param))
         return
 
     def do_invoke(self, argv):
@@ -16080,6 +16080,16 @@ class SyscallArgsCommand(GenericCommand):
 
     @staticmethod
     def get_syscall_table(arch=None, mode=None):
+        # this table is supported following architecture.
+        #   - x86_64
+        #   - x86 (on x86_64 machine)
+        #   - x86 (on native x86 machine)
+        #   - ARM64
+        #   - ARM (on ARM64 machine)
+        #   - ARM (on native ARM machine)
+        #   - ARM64 OP-TEE (at secure world)
+        #   - ARM OP-TEE (at secure world)
+
         def is_emulated32():
             if is_qemu_usermode():
                 return True
@@ -16135,7 +16145,7 @@ class SyscallArgsCommand(GenericCommand):
         Param = collections.namedtuple('Param', 'reg param')
 
         # The info of arguments type is picked up from kernel source around "SYSCALL_DEFINE*(...) / COMPAT_SYSCALL_DEFINE*(...)",
-        # The command I used: cd linux-5.*; ag --cc -A 6 "SYSCALL_DEFINE.*\bFUNCTION_NAME\b"
+        # The command I used: cd linux-6.*; ag --cc -A 6 "SYSCALL_DEFINE.*\bFUNCTION_NAME\b"
         # But these are some exceptions (ex: not found), I picked up from the function of syscall implementation, and so on
         if arch == "X86" and mode == "64":
             register_list = ["$rdi", "$rsi", "$rdx", "$r10", "$r8", "$r9"]
