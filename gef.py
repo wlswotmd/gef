@@ -8915,20 +8915,21 @@ class RpCommand(GenericCommand):
         self.less = None
         self.rp_version = 1
 
-        try:
-            self.rp = which("rp-lin-x64")
-        except FileNotFoundError as e1:
+        if is_x86():
             try:
-                self.rp = which("rp-lin-x86")
-            except FileNotFoundError as e2:
-                err("{}".format(e1))
-                err("{}".format(e2))
-                return
+                self.rp = which("rp-lin-x64")
+            except FileNotFoundError as e1:
+                try:
+                    self.rp = which("rp-lin-x86")
+                except FileNotFoundError as e2:
+                    err("{}".format(e1))
+                    err("{}".format(e2))
+                    return
 
-        try:
-            self.less = which("less")
-        except FileNotFoundError as e:
-            err("{}".format(e))
+            try:
+                self.less = which("less")
+            except FileNotFoundError as e:
+                err("{}".format(e))
         return
 
     def exec_rp(self, ropN):
@@ -9077,16 +9078,17 @@ class Rp2Command(RpCommand):
         self.less = None
         self.rp_version = 2
 
-        try:
-            self.rp = which("rp-lin-x64-v2")
-        except FileNotFoundError as e1:
-            err("{}".format(e1))
-            return
+        if is_x86():
+            try:
+                self.rp = which("rp-lin-x64-v2")
+            except FileNotFoundError as e1:
+                err("{}".format(e1))
+                return
 
-        try:
-            self.less = which("less")
-        except FileNotFoundError as e:
-            err("{}".format(e))
+            try:
+                self.less = which("less")
+            except FileNotFoundError as e:
+                err("{}".format(e))
         return
 
 
