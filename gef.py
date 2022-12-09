@@ -14980,7 +14980,7 @@ class LinkmapCommand(GenericCommand):
     def dump_linkmap(self, link_map):
         section = process_lookup_address(link_map)
         info("link_map: {:#x}".format(link_map))
-        info("map: {:#x}-{:#x} ({:s})".format(section.page_start, section.page_end, str(section.permission)))
+        info("map in link_map: {:#x}-{:#x} [{:s}]".format(section.page_start, section.page_end, str(section.permission)))
 
         current = link_map
         while True:
@@ -15016,52 +15016,29 @@ class LinkmapCommand(GenericCommand):
 
     @staticmethod
     def get_linkmap(filename, silent=False):
-        if not silent:
-            info("filename: {:s}".format(filename))
         elf = Elf(filename)
         sec = checksec(filename)
 
-        try:
-            got = [s for s in elf.shdrs if s.sh_name == ".got.plt"][0].sh_addr
-        except:
-            got = [s for s in elf.shdrs if s.sh_name == ".got"][0].sh_addr
-        if sec["PIE"]:
-            load_base = get_section_base_address(filename)
-            got += load_base
-
-        link_map_org = link_map = read_int_from_memory(got + current_arch.ptrsize)
-        if link_map:
-            if sec["PIE"] and link_map < load_base:
-                link_map += load_base
+        current = dynamic = DynamicCommand.get_dynamic(filename, silent)
+        while True:
+            tag = read_int_from_memory(current)
+            current += current_arch.ptrsize
+            val = read_int_from_memory(current)
+            current += current_arch.ptrsize
+            if tag not in DynamicCommand.DT_TABLE:
+                link_map = None
                 if not silent:
-                    info("GOT[1]: {:#x} -> {:#x} ({:#x})".format(got + current_arch.ptrsize, link_map_org, link_map))
-            else:
+                    info("Not found link_map")
+                break
+            if DynamicCommand.DT_TABLE[tag] == "DT_DEBUG":
+                dt_debug = val
+                val_addr = current - current_arch.ptrsize
                 if not silent:
-                    info("GOT[1]: {:#x} -> {:#x}".format(got + current_arch.ptrsize, link_map))
-        else:
-            # Full-RELRO
-            if not silent:
-                err("GOT[1]: {:#x} -> {:#x}. Since link_map is 0, we will try to get from DT_DEBUG.".format(got + current_arch.ptrsize, link_map))
-            current = dynamic = DynamicCommand.get_dynamic(filename, silent)
-            while True:
-                tag = read_int_from_memory(current)
-                current += current_arch.ptrsize
-                val = read_int_from_memory(current)
-                current += current_arch.ptrsize
-                if tag not in DynamicCommand.DT_TABLE:
-                    link_map = None
-                    if not silent:
-                        info("Not found link_map")
-                    break
-                if DynamicCommand.DT_TABLE[tag] == "DT_DEBUG":
-                    dt_debug = val
-                    val_addr = current - current_arch.ptrsize
-                    if not silent:
-                        info("_DYNAMIC+{:#x}(=DT_DEBUG): {:#x} -> {:#x}".format(val_addr - dynamic, val_addr, dt_debug))
-                    link_map = read_int_from_memory(dt_debug + current_arch.ptrsize)
-                    if not silent:
-                        info("DT_DEBUG+{:#x}: {:#x} -> {:#x}".format(current_arch.ptrsize, dt_debug + current_arch.ptrsize, link_map))
-                    break
+                    info("_DYNAMIC+{:#x}(=DT_DEBUG): {:#x} -> {:#x}".format(val_addr - dynamic, val_addr, dt_debug))
+                link_map = read_int_from_memory(dt_debug + current_arch.ptrsize)
+                if not silent:
+                    info("DT_DEBUG+{:#x}: {:#x} -> {:#x}".format(current_arch.ptrsize, dt_debug + current_arch.ptrsize, link_map))
+                break
         return link_map
 
     @only_if_gdb_running
@@ -15221,7 +15198,7 @@ class DynamicCommand(GenericCommand):
 
     def dump_dynamic(self, dynamic):
         section = process_lookup_address(dynamic)
-        info("map: {:#x}-{:#x} ({:s})".format(section.page_start, section.page_end, str(section.permission)))
+        info("map in _DYNAMIC: {:#x}-{:#x} [{:s}]".format(section.page_start, section.page_end, str(section.permission)))
 
         current = dynamic
         while True:
@@ -15247,22 +15224,18 @@ class DynamicCommand(GenericCommand):
         elf = Elf(filename)
         sec = checksec(filename)
 
-        try:
-            got = [s for s in elf.shdrs if s.sh_name == ".got.plt"][0].sh_addr
-        except:
-            got = [s for s in elf.shdrs if s.sh_name == ".got"][0].sh_addr
+        phdrs = [phdr for phdr in elf.phdrs if phdr.p_type == Phdr.PT_DYNAMIC]
+        if len(phdrs) == 0:
+            return None
+
         if sec["PIE"]:
             load_base = get_section_base_address(filename)
-            got += load_base
-
-        dynamic_org = dynamic = read_int_from_memory(got)
-        if sec["PIE"]:
-            dynamic += load_base
-            if not silent:
-                info("GOT[0]: {:#x} -> {:#x} ({:#x})".format(got, dynamic_org, dynamic))
+            dynamic = phdrs[0].p_vaddr + load_base
         else:
-            if not silent:
-                info("GOT[0]: {:#x} -> {:#x}".format(got, dynamic))
+            dynamic = phdrs[0].p_vaddr
+
+        if not silent:
+            info("_DNYAMIC: {:#x}".format(dynamic))
         return dynamic
 
     @only_if_gdb_running
@@ -15318,7 +15291,7 @@ class DynamicCommand(GenericCommand):
                 return
 
         if dynamic is None:
-            info("_DYNAMIC is 0.")
+            info("_DYNAMIC is not found.")
             return
 
         try:
