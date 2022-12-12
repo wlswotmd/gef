@@ -23862,7 +23862,6 @@ class IsMemoryZeroCommand(GenericCommand):
     """Checks if all the memory in the specified range is 0x00, 0xff."""
     _cmdline_ = "is-mem-zero"
     _syntax_ = "{:s} [-h] [--phys] ADDRESS SIZE".format(_cmdline_)
-    _aliases_ = ["is-mem-ff",]
     _category_ = "Misc"
 
     def memcheck(self):
@@ -24108,9 +24107,14 @@ class VisualHeapCommand(GenericCommand):
 
         # parse arena
         if "-a" in argv:
-            idx = argv.index("-a")
-            self.arena = GlibcArena("*{:s}".format(argv[idx + 1]))
-            argv = argv[:idx] + argv[idx+2:]
+            try:
+                idx = argv.index("-a")
+                arena_addr = argv[idx+1]
+                self.arena = GlibcArena("*{:s}".format(arena_addr))
+                argv = argv[:idx] + argv[idx+2:]
+            except:
+                self.usage()
+                return
         else:
             self.arena = get_main_arena()
         if self.arena is None:
@@ -24122,19 +24126,27 @@ class VisualHeapCommand(GenericCommand):
 
         # parse count
         if "-c" in argv:
-            idx = argv.index("-c")
-            if argv[idx + 1] == "all":
-                self.count = None
-            else:
-                self.count = int(argv[idx + 1], 0)
-            argv = argv[:idx] + argv[idx+2:]
+            try:
+                idx = argv.index("-c")
+                if argv[idx+1] == "all":
+                    self.count = None
+                else:
+                    self.count = int(argv[idx+1], 0)
+                argv = argv[:idx] + argv[idx+2:]
+            except:
+                self.usage()
+                return
         else:
             self.count = 10
 
         # parse start address
         if len(argv) == 1:
-            self.dump_start = int(argv[0], 0)
-            argv = None
+            try:
+                self.dump_start = int(argv[0], 0)
+                argv = None
+            except:
+                self.usage()
+                return
         elif len(argv) == 0:
             self.dump_start = self.arena.heap_base
             # specific pattern
@@ -24509,7 +24521,7 @@ class SlubDumpCommand(GenericCommand):
         current = list_next = read_int_from_memory(self.slab_caches)
         for off in range(0, 0x70, current_arch.ptrsize): # backward search for the start of `struct kmem_cache`
             val = read_int_from_memory(current - off)
-            # saerch condition 1 (rare case)
+            # search condition 1 (rare case)
             if (is_32bit() and (val & 0x80000000)) or (is_64bit() and (val & 0x8000000000000000)):
                 try:
                     b = read_memory(val, 0x100)
@@ -24517,7 +24529,7 @@ class SlubDumpCommand(GenericCommand):
                         break
                 except: # read error, so this is not address. `off` just points `struct kmem_cache->cpu_slab`
                     break
-            # saerch condition 2 (normal case)
+            # search condition 2 (normal case)
             a = read_int_from_memory(current - off - current_arch.ptrsize*1)
             b = read_int_from_memory(current - off - current_arch.ptrsize*2)
             if (a == b == 0) or (a == b == 0xcccccccc) or (a == b == 0xcccccccccccccccc):
@@ -25504,8 +25516,8 @@ class KsymaddrRemoteCommand(GenericCommand):
     def print_meta(self, force=False):
         if self.meta or force:
             try:
-                info("kernel_base:            {:#x}".format(self.kbase)) # to saerch kallsyms_*
-                info("kernel_robase:          {:#x}".format(self.krobase)) # to saerch kallsyms_*
+                info("kernel_base:            {:#x}".format(self.kbase)) # to search kallsyms_*
+                info("kernel_robase:          {:#x}".format(self.krobase)) # to search kallsyms_*
                 if self.kallsyms_relative_base:
                     info("kallsyms_relative_base: {:#x}: {:#x}".format(self.kallsyms_relative_base_addr, self.kallsyms_relative_base))
                     info("kallsyms_num_syms:      {:#x}: {:#x}".format(self.kallsyms_num_syms_addr, self.kallsyms_num_syms))
@@ -25605,10 +25617,14 @@ class KsymaddrRemoteCommand(GenericCommand):
 
         self.head = -1
         if "--head" in argv:
-            idx = argv.index("--head")
-            headN = argv[idx + 1]
-            self.head = int(headN)
-            argv = argv[:idx] + argv[idx+2:]
+            try:
+                idx = argv.index("--head")
+                headN = argv[idx+1]
+                self.head = int(headN)
+                argv = argv[:idx] + argv[idx+2:]
+            except:
+                self.usage()
+                return
 
         self.print_all = False
         if "--print-all" in argv:
@@ -26046,21 +26062,33 @@ class TcmallocDumpCommand(GenericCommand):
 
         self.addr_to_color = []
         while "-c" in argv:
-            idx = argv.index("-c")
-            self.addr_to_color.append(int(argv[idx+1], 0))
-            argv = argv[:idx] + argv[idx+2:]
+            try:
+                idx = argv.index("-c")
+                self.addr_to_color.append(int(argv[idx+1], 0))
+                argv = argv[:idx] + argv[idx+2:]
+            except:
+                self.usage()
+                return
 
         self.FreeList_print_threshold = 5
         if "--th" in argv:
-            idx = argv.index("--th")
-            self.FreeList_print_threshold = int(argv[idx+1], 0)
-            argv = argv[:idx] + argv[idx+2:]
+            try:
+                idx = argv.index("--th")
+                self.FreeList_print_threshold = int(argv[idx+1], 0)
+                argv = argv[:idx] + argv[idx+2:]
+            except:
+                self.usage()
+                return
 
         self.FreeList_print_target_index = None
         if "--idx" in argv:
-            idx = argv.index("--idx")
-            self.FreeList_print_target_index = int(argv[idx+1], 0)
-            argv = argv[:idx] + argv[idx+2:]
+            try:
+                idx = argv.index("--idx")
+                self.FreeList_print_target_index = int(argv[idx+1], 0)
+                argv = argv[:idx] + argv[idx+2:]
+            except:
+                self.usage()
+                return
 
         if argv and argv[0] == "central":
             self.dump_central_cache()
@@ -29050,11 +29078,15 @@ class MuslDumpCommand(GenericCommand):
             self.verbose = True
             argv.remove("-v")
 
-        self.active_idx = False
-        while "-a" in argv:
-            idx = argv.index("-a")
-            self.active_idx = int(argv[idx + 1])
-            argv = argv[:idx] + argv[idx+2:]
+        try:
+            self.active_idx = False
+            while "-a" in argv:
+                idx = argv.index("-a")
+                self.active_idx = int(argv[idx + 1])
+                argv = argv[:idx] + argv[idx+2:]
+        except:
+            self.usage()
+            return
 
         if not argv:
             self.usage()
@@ -31410,7 +31442,7 @@ class PrintBitInfo:
         return
 
     def bits_split(self, x):
-        # 0xaaaabbbb -> 0xaaaa_bbbb
+        # split by 4bits. ex: 0bXXYYYY -> 0b00XX_YYYY
         out = ""
         for i in range(self.register_bit):
             if x & (1 << i):

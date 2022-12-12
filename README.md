@@ -27,22 +27,22 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 
 ## Added / Improved features
 
-All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 / Debian 10.x.
+All of these features are experimental. Tested on Ubuntu 22.04.
 
 ### Qemu-system cooperation
-* It works with qemu-system installed via apt, but qemu-6.x or higher is recommended.
+* It works with any version qemu-system, but qemu-6.x or higher is recommended.
     * Start qemu with the `-s` option and listen on `localhost:1234`.
     * Attach with `gdb-multiarch -ex 'target remote localhost:1234'`.
 
 #### General
-* `qreg`: prints register values from qemu-monitor (allows to get like `$cs` even under qemu 2.x).
+* `qreg`: displays the register values from qemu-monitor (allows to get like `$cs` even under qemu 2.x).
     * It is shortcut for `monitor info registers`.
     * It also prints the details of the each bit of the system register when x64/x86.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/qreg.png)
 * `sysreg`: pretty prints system registers.
     * It is the result of `info registers` with filtering general registers.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/sysreg.png)
-* `pagewalk`: prints page table from scanning physical memory.
+* `pagewalk`: displays the page table from scanning physical memory.
     * x64 (Supported: PML5T/PML4T)
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-x64.png)
     * x86 (Supported: PAE/Non-PAE)
@@ -59,13 +59,13 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
         * Secure memory scanning is supported, you don't have to break in the secure world (use register with `_S` suffix).
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm.png)
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm-secure.png)
-* `v2p`, `p2v`: shows transformation virtual address <-> physical address.
+* `v2p`, `p2v`: displays transformation virtual address <-> physical address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/v2p-p2v.png)
 * `xp`: is a shortcut for physical memory dump.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xp.png)
 
 #### Linux specific
-* `ksymaddr-remote`: prints kallsyms informations from scanning of kernel memory (heuristic).
+* `ksymaddr-remote`: displays kallsyms information from scanning kernel memory (heuristic).
     * Supported: the symbol of kernel itself.
     * Unsupported: the symbol of kernel modules.
     * Supported on x64/x86/ARM64/ARM.
@@ -73,9 +73,9 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
     * Unsupported: to resolve no-function address when kernel built as `CONFIG_KALLSYMS_ALL=n`.
     * This command is faster than `vmlinux-to-elf`, but it fails to parse depending on the in-memory layout.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksymaddr-remote.png)
-* `ksymaddr-remote-apply`: applies kallsyms informations obtained by `ksymaddr-remote` to gdb.
+* `ksymaddr-remote-apply`: applies kallsyms information obtained by `ksymaddr-remote` to gdb.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksymaddr-remote-apply.png)
-* `vmlinux-to-elf-apply`: applies kallsyms informations obtained by `vmlinux-to-elf` to gdb.
+* `vmlinux-to-elf-apply`: applies kallsyms information obtained by `vmlinux-to-elf` to gdb.
     * Very slow, but probably more accurate than my implementation.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmlinux-to-elf-apply1.png)
     * Once you get symboled vmlinux file, you can reuse and apply it automatically even after rebooting qemu-system.
@@ -88,7 +88,7 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
     * Supported on both `CONFIG_SLAB_FREELIST_HARDENED` is `y` or `n`.
     * Supported on both the vmlinux symbol exists or not.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slub-dump.png)
-* `kbase`: prints kernel base address.
+* `kbase`: displays the kernel base address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kbase.png)
 * `kversion`: displays the debugged kernel version.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kversion.png)
@@ -98,33 +98,33 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ktask.png)
 * `kmod`: displays each module address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmod.png)
-* `kcdev`: displays character devices informations.
+* `kcdev`: displays each character device information.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kcdev.png)
-* `kfops`: displays fops members.
+* `kfops`: displays each fops member.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kfops.png)
-* `syscall-table-view`: prints system call table (x64/x86/ARM64/ARM only).
+* `syscall-table-view`: displays system call table (x64/x86/ARM64/ARM only).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/syscall-table-view.png)
-* `thunk-hunter`: collects and displays the thunk addresses that are called automatically (x64/x86 only).
+* `thunk-hunter`: collects and displays the thunk function addresses that are called automatically (x64/x86 only).
     * If this address comes from RW area, this is useful for getting RIP.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/thunk-hunter.png)
-* `usermodehelper-hunter`: collects and displays information that is executed by `call_usermodehelper_setup`.
+* `usermodehelper-hunter`: collects and displays the information that is executed by `call_usermodehelper_setup`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/usermodehelper-hunter.png)
 
 #### Arch specific
-* `msr`: prints MSR (Model Specific Registers) values by embedding/executing dynamic assembly.
-    * Supported on x64/x86 without `-enable-kvm`.
+* `msr`: displays MSR (Model Specific Registers) values by embedding/executing dynamic assembly.
+    * Supported on x64/x86 WITHOUT `-enable-kvm`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/msr.png)
 * `xsm`: dumps secure memory when gdb is in normal world.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xsm.png)
 * `wsm`: writes the value to secure memory when gdb is in normal world.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/wsm.png)
-* `bsm`: set the breakpoint to secure memory when gdb is in normal world.
+* `bsm`: sets the breakpoint to secure memory when gdb is in normal world.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/bsm.png)
-* `optee-break-ta`: set the breakpoint to the offset of OPTEE-Trusted-App when gdb is in normal world.
+* `optee-break-ta`: sets the breakpoint to the offset of OPTEE-Trusted-App when gdb is in normal world.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/optee-break-ta.png)
 
 #### Other
-* `uefi-ovmf-info`: displays addresses of some important structures in each boot phase of UEFI when OVMF is used (heuristic).
+* `uefi-ovmf-info`: dumps addresses of some important structures in each boot phase of UEFI when OVMF is used (heuristic).
     * Supported on x64 only.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/uefi-ovmf-info.png)
 
@@ -176,18 +176,18 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
     * `extract-heap-addr`: analyzes tcache-protected-fd introduced from glibc-2.32.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/extract-heap-addr.png)
 * `vmmap`: is improved.
-    * It prints meomry map informations even when connecting to gdb stub like qemu-user (heuristic), intel pin and intel SDE.
+    * It displays the meomry map information even when connecting to gdb stub like qemu-user (heuristic), intel pin and intel SDE.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmmap-qemu-user.png)
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmmap-pin.png)
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmmap-sde.png)
     * It is redirected to `pagewalk` when connecting to gdb stub of qemu-system.
 * `registers`: is improved.
     * It also shows raw values of `$eflags` and `$cpsr`.
-    * It prints current ring for x64/x86 when prints `$eflags` (Ring state is from `$cs`).
+    * It displays current ring for x64/x86 when prints `$eflags` (Ring state is from `$cs`).
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/registers-x64.png)
-    * It prints current exception level for ARM64 when prints `$cpsr` (Secure state is from `$SCR_EL3`).
+    * It displays current exception level for ARM64 when prints `$cpsr` (Secure state is from `$SCR_EL3`).
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/registers-arm64.png)
-    * It prints current mode for ARM when prints `$cpsr` (Secure state is from `$SCR`).
+    * It displays current mode for ARM when prints `$cpsr` (Secure state is from `$SCR`).
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/registers-arm.png)
 * `context`: is improved.
     * It supports automatic display of system call arguments when calling a system call.
@@ -199,38 +199,38 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/smart-cpp-function-name.png)
         * command: `gef config context.smart_cpp_function_name true` or `smart-cpp-function-name` (later is used to toggle).
 * `telescope`: is improved.
-    * It prints ordinal numbers as well as offsets.
-    * It prints if there are canary and ret-addr on the target area.
+    * It displays ordinal numbers as well as offsets.
+    * It displays if there are canary and ret-addr on the target area.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/telescope.png)
     * It supports blacklist address features (to avoid dying when touching the address mapped to the serial device).
     * It also shows the symbol if available.
 * `procinfo`: is improved.
-    * It prints some additional informations.
+    * It displays some additional informations.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/procinfo.png)
 * `elf-info`: is improved.
-    * It prints Program Header and Section Header.
+    * It displays Program Header and Section Header.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/elf-info.png)
     * It supports parsing from memory.
 * `checksec`: is improved.
-    * It prints whether Static or Dynamic.
-    * It prints whether Stripped or not.
+    * It shows whether Static or Dynamic.
+    * It shows whether Stripped or not.
     * It detects canary against static stripped binary.
-    * It prints whether Intel CET instructions (endbr64/endbr32) is found or not.
-    * It prints whether RPATH/RUNPATH is set or not.
-    * It prints if Clang CFI/SafeStack is used or not.
-    * It prints whether System-ASLR is enabled or not.
-    * It prints whether GDB ASLR setting is enabled or not.
+    * It shows whether Intel CET instructions (endbr64/endbr32) is found or not.
+    * It shows whether RPATH/RUNPATH is set or not.
+    * It shows if Clang CFI/SafeStack is used or not.
+    * It shows whether System-ASLR is enabled or not.
+    * It shows whether GDB ASLR setting is enabled or not.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/checksec.png)
 * `got`: is improved.
-    * It prints not only GOT address but also PLT address.
+    * It displays not only GOT address but also PLT address.
     * It scans `.plt.sec` section if Intel CET is enabled.
     * It can also display the GOT of the library.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/got.png)
 * `canary`: is improved.
-    * It prints all canary positions in memory.
+    * It displays all canary positions in memory.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/canary.png)
 * `edit-flags`: is improved.
-    * It prints the meaning of each bit if `-v` option is provided.
+    * It displays the meaning of each bit if `-v` option is provided.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/edit-flags-x64.png)
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/edit-flags-arm.png)
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/edit-flags-arm64.png)
@@ -273,10 +273,10 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/tls.png)
 * `fsbase`,`gsbase`: pretty prints `$fs_base`, `$gs_base`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/fsbase_gsbase.png)
-* `magic`: is useful addresses resolver in gilbc.
+* `magic`: is useful addresses resolver in gilbc / kernel (when under qemu-system).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/magic1.png)
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/magic2.png)
-* `libc`/`ld`/`heapbase`/`codebase`: prints each of the base address.
+* `libc`/`ld`/`heapbase`/`codebase`: displays each of the base address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/base.png)
 * `fpu`/`mmx`/`sse`/`avx`: pretty prints FPU/MMX/SSE/AVX registers.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/fpu-mmx-sse-avx.png)
@@ -293,7 +293,7 @@ All of these features are experimental. Tested on Ubuntu 18.04 / 20.04 / 22.04 /
     * This is useful for the operation with `rep` prefix.
 * `add-symbol-temporary`: adds symbol information from command-line.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/add-symbol-temporary.png)
-* `errno`: prints errno list or specific errno.
+* `errno`: displays errno list or specific errno.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/errno.png)
 * `u2d`: shows cast/transformation u64 <-> double/float.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/u2d.png)
