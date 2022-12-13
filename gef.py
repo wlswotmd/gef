@@ -37928,6 +37928,7 @@ class XRefTelescopeCommand(SearchPatternCommand):
     _example_ += "{:s} AAAAAAAA\n".format(_cmdline_)
     _example_ += "{:s} 0x555555554000 15".format(_cmdline_)
     _category_ = "Show/Modify Memory"
+    _aliases_ = []
 
     def xref_telescope_(self, pattern, depth, tree_heading):
         """Recursively search a pattern within the whole userland memory."""
@@ -38680,7 +38681,10 @@ class GefHelpCommand(gdb.Command):
             return
         doc = getattr(class_name, "__doc__", "").lstrip()
         doc = "\n                         ".join(doc.split("\n"))
-        aliases = " (alias: {:s})".format(", ".join(class_name._aliases_)) if hasattr(class_name, "_aliases_") else ""
+        if hasattr(class_name, "_aliases_") and class_name._aliases_ != []:
+            aliases = " (alias: {:s})".format(", ".join(class_name._aliases_))
+        else:
+            aliases = ""
         msg = "  {cmd:<23s} -- {help:s}{aliases:s}".format(cmd=cmd, help=Color.greenify(doc), aliases=aliases)
         category = class_name._category_ if hasattr(class_name, "_category_") else "Uncategorized"
         self.docs.append([category, msg])
