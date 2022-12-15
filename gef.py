@@ -102,7 +102,9 @@ def http_get(url):
     """Basic HTTP wrapper for GET request. Return the body of the page if HTTP code is OK,
     otherwise return None."""
     try:
-        http = urllib.request.urlopen(url)
+        req = urllib.request.Request(url)
+        req.add_header('Cache-Control', 'no-cache, no-store')
+        http = urllib.request.urlopen(req)
         if http.getcode() != 200:
             return None
         return http.read()
