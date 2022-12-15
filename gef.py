@@ -39247,107 +39247,108 @@ def main():
     if sys.version_info[0] == 2:
         err("GEF has dropped Python2 support for GDB when it reached EOL on 2020/01/01.")
         err("If you require GEF for GDB+Python2, use https://github.com/hugsy/gef-legacy.")
+        return
 
-    elif GDB_VERSION < GDB_MIN_VERSION:
+    if GDB_VERSION < GDB_MIN_VERSION:
         err("You're using an old version of GDB. GEF will not work correctly. "
             "Consider updating to GDB {} or higher.".format(".".join(map(str, GDB_MIN_VERSION))))
+        return
 
-    else:
-        try:
-            pyenv = which("pyenv")
-            PYENV_ROOT = gef_pystring(subprocess.check_output([pyenv, "root"]).strip())
-            PYENV_VERSION = gef_pystring(subprocess.check_output([pyenv, "version-name"]).strip())
-            site_packages_dir = os.path.join(PYENV_ROOT, "versions", PYENV_VERSION, "lib",
-                                             "python{}".format(PYENV_VERSION[:3]), "site-packages")
-            site.addsitedir(site_packages_dir)
-        except FileNotFoundError as e:
-            pass
+    try:
+        pyenv = which("pyenv")
+        PYENV_ROOT = gef_pystring(subprocess.check_output([pyenv, "root"]).strip())
+        PYENV_VERSION = gef_pystring(subprocess.check_output([pyenv, "version-name"]).strip())
+        site_packages_dir = os.path.join(PYENV_ROOT, "versions", PYENV_VERSION, "lib",
+                                         "python{}".format(PYENV_VERSION[:3]), "site-packages")
+        site.addsitedir(site_packages_dir)
+    except FileNotFoundError as e:
+        pass
 
-        # When using a Python virtual environment, GDB still loads the system-installed Python
-        # so GEF doesn't load site-packages dir from environment
-        # In order to fix it, from the shell with venv activated we run the python binary,
-        # take and parse its path, add the path to the current python process using sys.path.extend
+    # When using a Python virtual environment, GDB still loads the system-installed Python
+    # so GEF doesn't load site-packages dir from environment
+    # In order to fix it, from the shell with venv activated we run the python binary,
+    # take and parse its path, add the path to the current python process using sys.path.extend
 
-        try:
-            pythonbin = which("python3")
-            cmds = [pythonbin, '-c', 'import os, sys;print((sys.prefix))']
-            PREFIX = gef_pystring(subprocess.check_output(cmds)).strip("\\n")
-            if PREFIX != sys.base_prefix:
-                cmds = [pythonbin, "-c", "import os, sys;print(os.linesep.join(sys.path).strip())"]
-                SITE_PACKAGES_DIRS = subprocess.check_output(cmds).decode("utf-8").split()
-                sys.path.extend(SITE_PACKAGES_DIRS)
-        except FileNotFoundError as e:
-            pass
+    try:
+        pythonbin = which("python3")
+        cmds = [pythonbin, '-c', 'import os, sys;print((sys.prefix))']
+        PREFIX = gef_pystring(subprocess.check_output(cmds)).strip("\\n")
+        if PREFIX != sys.base_prefix:
+            cmds = [pythonbin, "-c", "import os, sys;print(os.linesep.join(sys.path).strip())"]
+            SITE_PACKAGES_DIRS = subprocess.check_output(cmds).decode("utf-8").split()
+            sys.path.extend(SITE_PACKAGES_DIRS)
+    except FileNotFoundError as e:
+        pass
 
-        # setup prompt
-        gdb.prompt_hook = __gef_prompt__
+    # setup prompt
+    gdb.prompt_hook = __gef_prompt__
 
-        # setup config
-        gdb.execute("set confirm off")
-        gdb.execute("set verbose off")
-        gdb.execute("set pagination off")
-        gdb.execute("set print elements 0")
+    # setup config
+    gdb.execute("set confirm off")
+    gdb.execute("set verbose off")
+    gdb.execute("set pagination off")
+    gdb.execute("set print elements 0")
 
-        # gdb history
-        gdb.execute("set history save on")
-        gdb.execute("set history filename ~/.gdb_history")
+    # gdb history
+    gdb.execute("set history save on")
+    gdb.execute("set history filename ~/.gdb_history")
 
-        # gdb input and output bases
-        gdb.execute("set output-radix 0x10")
+    # gdb input and output bases
+    gdb.execute("set output-radix 0x10")
 
-        # pretty print
-        gdb.execute("set print pretty on")
+    # pretty print
+    gdb.execute("set print pretty on")
 
-        # array print
-        gdb.execute("set print array on")
-        gdb.execute("set print array-indexes on")
+    # array print
+    gdb.execute("set print array on")
+    gdb.execute("set print array-indexes on")
 
-        try:
-            # this will raise a gdb.error unless we're on x86
-            gdb.execute("set disassembly-flavor intel")
-        except gdb.error:
-            # we can safely ignore this
-            pass
+    try:
+        # this will raise a gdb.error unless we're on x86
+        gdb.execute("set disassembly-flavor intel")
+    except gdb.error:
+        # we can safely ignore this
+        pass
 
-        # SIGALRM will simply display a message, but gdb won't forward the signal to the process
-        gdb.execute("handle SIGALRM print nopass")
+    # SIGALRM will simply display a message, but gdb won't forward the signal to the process
+    gdb.execute("handle SIGALRM print nopass")
 
-        # SIGSEGV/SIGTERM/SIG32(for thread creation)
-        gdb.execute("handle SIGSEGV print nopass")
-        gdb.execute("handle SIGTERM print nopass")
-        gdb.execute("handle SIG32 nostop")
+    # SIGSEGV/SIGTERM/SIG32(for thread creation)
+    gdb.execute("handle SIGSEGV print nopass")
+    gdb.execute("handle SIGTERM print nopass")
+    gdb.execute("handle SIG32 nostop")
 
-        # demangle
-        gdb.execute("set print asm-demangle on")
+    # demangle
+    gdb.execute("set print asm-demangle on")
 
-        # frame args
-        gdb.execute("set print frame-arguments all")
+    # frame args
+    gdb.execute("set print frame-arguments all")
 
-        # object/vtbl
-        gdb.execute("set print object on")
-        gdb.execute("set print vtbl on")
+    # object/vtbl
+    gdb.execute("set print object on")
+    gdb.execute("set print vtbl on")
 
-        # load GEF
-        global __gef__
-        __gef__ = GefCommand()
-        __gef__.setup()
+    # load GEF
+    global __gef__
+    __gef__ = GefCommand()
+    __gef__.setup()
 
-        gdb.execute("save gdb-index {}".format(get_gef_setting("gef.tempdir")))
+    gdb.execute("save gdb-index {}".format(get_gef_setting("gef.tempdir")))
 
-        # gdb events configuration
-        gef_on_continue_hook(continue_handler)
-        gef_on_stop_hook(hook_stop_handler)
-        gef_on_new_hook(new_objfile_handler)
-        gef_on_exit_hook(exit_handler)
-        gef_on_memchanged_hook(memchanged_handler)
-        gef_on_regchanged_hook(regchanged_handler)
+    # gdb events configuration
+    gef_on_continue_hook(continue_handler)
+    gef_on_stop_hook(hook_stop_handler)
+    gef_on_new_hook(new_objfile_handler)
+    gef_on_exit_hook(exit_handler)
+    gef_on_memchanged_hook(memchanged_handler)
+    gef_on_regchanged_hook(regchanged_handler)
 
-        if gdb.current_progspace().filename is not None:
-            # if here, we are sourcing gef from a gdb session already attached
-            # we must force a call to the new_objfile handler (see issue #278)
-            new_objfile_handler(None)
+    if gdb.current_progspace().filename is not None:
+        # if here, we are sourcing gef from a gdb session already attached
+        # we must force a call to the new_objfile handler (see issue #278)
+        new_objfile_handler(None)
 
-        GefTmuxSetup()
+    GefTmuxSetup()
     return
 
 
