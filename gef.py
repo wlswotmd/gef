@@ -2308,6 +2308,29 @@ class Architecture:
             key = "[sp + {:#x}]".format(i * sz)
             return key, val
 
+    # {"$zero":"$zero/$x0", ...}
+    __aliased_registers = None
+    def get_aliased_registers(self):
+        if self.__aliased_registers is not None:
+            return self.__aliased_registers
+        self.__aliased_registers = {}
+        for reg in self.all_registers:
+            if reg in self.alias_registers:
+                reg_str = "{:s}/{:s}".format(reg, self.alias_registers[reg])
+            else:
+                reg_str = reg
+            self.__aliased_registers[reg] = reg_str
+        return self.__aliased_registers
+
+    # max(len("$zero/$x0"), ...)
+    __aliased_registers_max_len = None
+    def get_aliased_registers_name_max(self):
+        if self.__aliased_registers_max_len is not None:
+            return self.__aliased_regsiters_max_len
+        maxlen = max([len(v) for k,v in self.get_aliased_registers().items()])
+        self.__aliased_regsiters_max_len = maxlen
+        return self.__aliased_regsiters_max_len
+
 
 class RISCV(Architecture):
     arch = "RISCV"
@@ -2320,6 +2343,15 @@ class RISCV(Architecture):
         "$s5", "$s6", "$s7", "$s8", "$s9", "$s10", "$s11",
         "$t3", "$t4", "$t5", "$t6",
     ]
+    alias_registers = {
+        "$zero":"$x0", "$ra":"$x1", "$sp":"$x2", "$gp":"$x3", "$tp":"$x4",
+        "$t0":"$x5", "$t1":"$x6", "$t2":"$x7", "$fp":"$x8", "$s1":"$x9",
+        "$a0":"$x10", "$a1":"$x11", "$a2":"$x12", "$a3":"$x13", "$a4":"$x14",
+        "$a5":"$x15", "$a6":"$x16", "$a7":"$x17", "$s2":"$x18", "$s3":"$x19",
+        "$s4":"$x20", "$s5":"$x21", "$s6":"$x22", "$s7":"$x23", "$s8":"$x24",
+        "$s9":"$x25", "$s10":"$x26", "$s11":"$x27", "$t3":"$x28", "$t4":"$x29",
+        "$t5":"$x30", "$t6":"$x31",
+    }
     return_register = "$a0"
     function_parameters = ["$a0", "$a1", "$a2", "$a3", "$a4", "$a5", "$a6", "$a7"]
     syscall_register = "$a7"
@@ -2446,6 +2478,7 @@ class ARM(Architecture):
             "$r7", "$r8", "$r9", "$r10", "$r11", "$r12", "$sp",
             "$lr", "$pc", "$cpsr",
         ]
+        alias_registers = {"$sp":"$r13", "$lr":"$r14", "$pc":"$r15",}
         flag_register = "$cpsr"
         thumb_bit = 5
     elif _mode == "cortex-m":
@@ -2455,6 +2488,7 @@ class ARM(Architecture):
             "$lr", "$pc", "$xpsr", "$msp", "$psp",
             "$primask", "$basepri", "$faultmask", "$control",
         ]
+        alias_registers = {"$sp":"$r13", "$lr":"$r14", "$pc":"$r15",}
         flag_register = "$xpsr"
         thumb_bit = 24
     else:
@@ -2671,7 +2705,9 @@ class AARCH64(ARM):
         "$x8", "$x9", "$x10", "$x11", "$x12", "$x13", "$x14", "$x15",
         "$x16", "$x17", "$x18", "$x19", "$x20", "$x21", "$x22", "$x23",
         "$x24", "$x25", "$x26", "$x27", "$x28", "$x29", "$x30", "$sp",
-        "$pc", "$cpsr", "$fpsr", "$fpcr",]
+        "$pc", "$cpsr", "$fpsr", "$fpcr",
+    ]
+    alias_registers = {"$x30":"$lr",}
     return_register = "$x0"
     flag_register = "$cpsr"
     flags_table = {
@@ -2792,12 +2828,13 @@ class X86(Architecture):
     trap_insn = b"\xcc"
     ret_insn = b"\xc3"
     flag_register = "$eflags"
-    special_registers = ["$cs", "$ss", "$ds", "$es", "$fs", "$gs", ]
-    gpr_registers = ["$eax", "$ebx", "$ecx", "$edx", "$esp", "$ebp", "$esi", "$edi", "$eip", ]
+    special_registers = ["$cs", "$ss", "$ds", "$es", "$fs", "$gs",]
+    gpr_registers = ["$eax", "$ebx", "$ecx", "$edx", "$esp", "$ebp", "$esi", "$edi", "$eip",]
     all_registers = gpr_registers + [ flag_register, ] + special_registers
+    alias_registers = {}
     instruction_length = None
     return_register = "$eax"
-    function_parameters = ["$esp", ]
+    function_parameters = ["$esp"]
     flags_table = {
         21: "identification",
         #20: "virtual_interrupt_pending",
@@ -2942,8 +2979,10 @@ class X86_64(X86):
 
     gpr_registers = [
         "$rax", "$rbx", "$rcx", "$rdx", "$rsp", "$rbp", "$rsi", "$rdi", "$rip",
-        "$r8", "$r9", "$r10", "$r11", "$r12", "$r13", "$r14", "$r15", ]
+        "$r8", "$r9", "$r10", "$r11", "$r12", "$r13", "$r14", "$r15",
+    ]
     all_registers = gpr_registers + [ X86.flag_register, ] + X86.special_registers
+    alias_registers = {}
     return_register = "$rax"
     function_parameters = ["$rdi", "$rsi", "$rdx", "$rcx", "$r8", "$r9"]
     syscall_register = "$rax"
@@ -2987,7 +3026,9 @@ class PowerPC(Architecture):
         "$r8", "$r9", "$r10", "$r11", "$r12", "$r13", "$r14", "$r15",
         "$r16", "$r17", "$r18", "$r19", "$r20", "$r21", "$r22", "$r23",
         "$r24", "$r25", "$r26", "$r27", "$r28", "$r29", "$r30", "$r31",
-        "$pc", "$msr", "$cr", "$lr", "$ctr", "$xer", "$trap",]
+        "$pc", "$msr", "$cr", "$lr", "$ctr", "$xer", "$trap",
+    ]
+    alias_registers = {}
     instruction_length = 4
     nop_insn = b"\x60\x00\x00\x00" # http://www.ibm.com/developerworks/library/l-ppc/index.html
     return_register = "$r0"
@@ -3147,7 +3188,9 @@ class SPARC(Architecture):
         "$o0", "$o1", "$o2", "$o3", "$o4", "$o5", "$o7",
         "$l0", "$l1", "$l2", "$l3", "$l4", "$l5", "$l6", "$l7",
         "$i0", "$i1", "$i2", "$i3", "$i4", "$i5", "$i7",
-        "$pc", "$npc", "$sp ", "$fp ", "$psr",]
+        "$pc", "$npc", "$sp ", "$fp ", "$psr",
+    ]
+    alias_registers = {"$sp":"$o6", "$fp":"$i6",}
     instruction_length = 4
     nop_insn = b"\x00\x00\x00\x00" # sethi 0, %g0
     return_register = "$i0"
@@ -3160,7 +3203,7 @@ class SPARC(Architecture):
         7: "supervisor",
         5: "trap",
     }
-    function_parameters = ["$o0 ", "$o1 ", "$o2 ", "$o3 ", "$o4 ", "$o5 ", "$o7 ",]
+    function_parameters = ["$o0 ", "$o1 ", "$o2 ", "$o3 ", "$o4 ", "$o5 ", "$o7 "]
     syscall_register = "%g1"
     syscall_instructions = ["t 0x10"]
 
@@ -3284,7 +3327,9 @@ class SPARC64(SPARC):
         "$o0", "$o1", "$o2", "$o3", "$o4", "$o5", "$o7",
         "$l0", "$l1", "$l2", "$l3", "$l4", "$l5", "$l6", "$l7",
         "$i0", "$i1", "$i2", "$i3", "$i4", "$i5", "$i7",
-        "$pc", "$npc", "$sp", "$fp", "$state", ]
+        "$pc", "$npc", "$sp", "$fp", "$state",
+    ]
+    alias_registers = {"$sp":"$o6", "$fp":"$i6",}
 
     flag_register = "$state" # sparcv9.pdf, 5.1.5.1 (ccr)
     flags_table = {
@@ -3326,7 +3371,8 @@ class MIPS(Architecture):
         "$t0", "$t1", "$t2", "$t3", "$t4", "$t5", "$t6", "$t7",
         "$s0", "$s1", "$s2", "$s3", "$s4", "$s5", "$s6", "$s7",
         "$t8", "$t9", "$k0", "$k1", "$s8", "$pc", "$sp", "$hi",
-        "$lo", "$fir", "$ra", "$gp", ]
+        "$lo", "$fir", "$ra", "$gp",
+    ]
     instruction_length = 4
     nop_insn = b"\x00\x00\x00\x00" # sll $0,$0,0
     return_register = "$v0"
@@ -8791,15 +8837,13 @@ class DetailRegistersCommand(GenericCommand):
         memsize = current_arch.ptrsize
         endian = endian_str()
         charset = string.printable
-        widest = max(map(len, current_arch.all_registers))
+        widest = current_arch.get_aliased_registers_name_max()
         special_line = ""
 
         for regname in regs:
             reg = gdb.parse_and_eval(regname)
             if reg.type.code == gdb.TYPE_CODE_VOID:
                 continue
-
-            padreg = regname.ljust(widest, " ")
 
             if str(reg) == "<unavailable>":
                 line = "{}: ".format(Color.colorify(padreg, unchanged_color))
@@ -8822,6 +8866,7 @@ class DetailRegistersCommand(GenericCommand):
                 continue
 
             # reg name
+            padreg = current_arch.get_aliased_registers()[regname].ljust(widest, " ")
             line = "{}: ".format(Color.colorify(padreg, color))
 
             # flag register
@@ -11926,7 +11971,7 @@ class ContextCommand(GenericCommand):
             gdb.execute("registers {}".format(printable_registers))
             return
 
-        widest = l = max(map(len, current_arch.all_registers))
+        widest = l = current_arch.get_aliased_registers_name_max()
         l += 5
         l += current_arch.ptrsize * 2
         nb = get_terminal_size()[1]//l
@@ -11935,33 +11980,34 @@ class ContextCommand(GenericCommand):
         changed_color = get_gef_setting("theme.registers_value_changed")
         regname_color = get_gef_setting("theme.registers_register_name")
 
-        for reg in current_arch.all_registers:
-            if reg in ignored_registers:
+        for regname in current_arch.all_registers:
+            if regname in ignored_registers:
                 continue
 
             try:
-                r = gdb.parse_and_eval(reg)
-                if r.type.code == gdb.TYPE_CODE_VOID:
+                reg = gdb.parse_and_eval(regname)
+                if reg.type.code == gdb.TYPE_CODE_VOID:
                     continue
 
-                new_value_type_flag = (r.type.code == gdb.TYPE_CODE_FLAGS)
-                new_value = int(r)
+                new_value_type_flag = (reg.type.code == gdb.TYPE_CODE_FLAGS)
+                new_value = int(reg)
 
             except (gdb.MemoryError, gdb.error):
                 # If this exception is triggered, it means that the current register
                 # is corrupted. Just use the register "raw" value (not eval-ed)
-                new_value = get_register(reg)
+                new_value = get_register(regname)
                 new_value_type_flag = False
 
             except Exception:
                 new_value = 0
                 new_value_type_flag = False
 
-            old_value = self.old_registers.get(reg, 0)
+            padreg = current_arch.get_aliased_registers()[regname].ljust(widest, " ")
+            old_value = self.old_registers.get(regname, 0)
 
-            padreg = reg.ljust(widest, " ")
             value = align_address(new_value)
             old_value = align_address(old_value)
+
             if value == old_value:
                 line += "{}: ".format(Color.colorify(padreg, regname_color))
             else:
