@@ -54,8 +54,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 #
-
 from __future__ import print_function, division, absolute_import
+print("Loading GEF...")
 
 import abc
 import binascii
@@ -1787,6 +1787,51 @@ def get_symbol_string(addr, nosymbol_string=""):
         return " <{}+{:#x}>".format(sym_name, sym_offset)
 
 
+def load_capstone(f):
+    """Decorator wrapper to load capstone."""
+
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        try:
+            __import__("capstone")
+            return f(*args, **kwargs)
+        except ImportError:
+            msg = "Missing `capstone` package for Python. Install with `pip install capstone`."
+            raise ImportWarning(msg)
+
+    return wrapper
+
+
+def load_unicorn(f):
+    """Decorator wrapper to load unicorn."""
+
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        try:
+            __import__("unicorn")
+            return f(*args, **kwargs)
+        except ImportError:
+            msg = "Missing `unicorn` package for Python. Install with `pip install unicorn`."
+            raise ImportWarning(msg)
+
+    return wrapper
+
+
+def load_keystone(f):
+    """Decorator wrapper to load keystone."""
+
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        try:
+            __import__("keystone")
+            return f(*args, **kwargs)
+        except ImportError:
+            msg = "Missing `keystone-engine` package, install with: `pip install keystone-engine`."
+            raise ImportWarning(msg)
+
+    return wrapper
+
+
 def gdb_disassemble(start_pc, **kwargs):
     """Disassemble instructions from `start_pc` (Integer). Accepts the following named parameters:
     - `end_pc` (Integer) only instructions whose start address fall in the interval from start_pc to end_pc are returned.
@@ -1913,6 +1958,7 @@ def gef_disassemble(addr, nb_insn, nb_prev=0):
         yield insn
 
 
+@load_capstone
 def capstone_disassemble(location, nb_insn, **kwargs):
     """Disassemble `nb_insn` instructions after `addr` and `nb_prev` before
     `addr` using the Capstone-Engine disassembler, if available.
@@ -4600,6 +4646,7 @@ def get_generic_running_arch(module, prefix, to_string=False):
     return get_generic_arch(module, prefix, arch, mode, is_big_endian(), to_string)
 
 
+@load_unicorn
 def get_unicorn_arch(arch=None, mode=None, endian=None, to_string=False):
     unicorn = sys.modules["unicorn"]
     if (arch, mode, endian) == (None, None, None):
@@ -4607,6 +4654,7 @@ def get_unicorn_arch(arch=None, mode=None, endian=None, to_string=False):
     return get_generic_arch(unicorn, "UC", arch, mode, endian, to_string)
 
 
+@load_capstone
 def get_capstone_arch(arch=None, mode=None, endian=None, to_string=False):
     capstone = sys.modules["capstone"]
 
@@ -4626,6 +4674,7 @@ def get_capstone_arch(arch=None, mode=None, endian=None, to_string=False):
     return get_generic_arch(capstone, "CS", arch or current_arch.arch, mode or current_arch.mode, endian or is_big_endian(), to_string)
 
 
+@load_keystone
 def get_keystone_arch(arch=None, mode=None, endian=None, to_string=False):
     keystone = sys.modules["keystone"]
     if (arch, mode, endian) == (None, None, None):
@@ -4633,6 +4682,7 @@ def get_keystone_arch(arch=None, mode=None, endian=None, to_string=False):
     return get_generic_arch(keystone, "KS", arch, mode, endian, to_string)
 
 
+@load_unicorn
 def get_unicorn_registers(to_string=False):
     "Return a dict matching the Unicorn identifier for a specific register."
     unicorn = sys.modules["unicorn"]
@@ -4653,6 +4703,7 @@ def get_unicorn_registers(to_string=False):
     return regs
 
 
+@load_keystone
 def keystone_assemble(code, arch, mode, *args, **kwargs):
     """Assembly encoding function based on keystone."""
     keystone = sys.modules["keystone"]
@@ -7449,16 +7500,9 @@ class ChangePermissionCommand(GenericCommand):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         return
 
-    def pre_load(self):
-        try:
-            __import__("keystone")
-        except ImportError:
-            msg = "Missing `keystone-engine` package, install with: `pip install keystone-engine`."
-            raise ImportWarning(msg)
-        return
-
     @only_if_gdb_running
     @only_if_not_qemu_system
+    @load_keystone
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -7547,22 +7591,10 @@ class UnicornEmulateCommand(GenericCommand):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         return
 
-    def pre_load(self):
-        try:
-            __import__("unicorn")
-        except ImportError:
-            msg = "Missing `unicorn` package for Python. Install with `pip install unicorn`."
-            raise ImportWarning(msg)
-
-        try:
-            __import__("capstone")
-        except ImportError:
-            msg = "Missing `capstone` package for Python. Install with `pip install capstone`."
-            raise ImportWarning(msg)
-        return
-
     @only_if_gdb_running
     @only_if_not_qemu_system
+    @load_capstone
+    @load_unicorn
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -7948,14 +7980,6 @@ class CapstoneDisassembleCommand(GenericCommand):
     _category_ = "Assemble"
     _aliases_ = ["cs-dis",]
 
-    def pre_load(self):
-        try:
-            __import__("capstone")
-        except ImportError:
-            msg = "Missing `capstone` package for Python. Install with `pip install capstone`."
-            raise ImportWarning(msg)
-        return
-
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         self.valid_arch_modes = {
@@ -7978,6 +8002,7 @@ class CapstoneDisassembleCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @load_capstone
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -8858,20 +8883,17 @@ class RopperCommand(GenericCommand):
         super().__init__(complete=gdb.COMPLETE_NONE)
         return
 
-    def pre_load(self):
-        try:
-            __import__("ropper")
-        except ImportError:
-            msg = "Missing `ropper` package for Python, install with: `pip install ropper`."
-            raise ImportWarning(msg)
-        return
-
     @only_if_gdb_running
     @only_if_not_qemu_system
     def do_invoke(self, argv):
         self.dont_repeat()
 
-        ropper = sys.modules["ropper"]
+        try:
+            ropper = __import__("ropper")
+        except ImportError:
+            msg = "Missing `ropper` package for Python, install with: `pip install ropper`."
+            raise ImportWarning(msg)
+
         if "-h" in argv:
             os.system("ropper --help")
             os.system("ropper --help-examples")
@@ -8921,22 +8943,6 @@ class RpCommand(GenericCommand):
         self.rp = None
         self.less = None
         self.rp_version = 1
-
-        if is_x86():
-            try:
-                self.rp = which("rp-lin-x64")
-            except FileNotFoundError as e1:
-                try:
-                    self.rp = which("rp-lin-x86")
-                except FileNotFoundError as e2:
-                    err("{}".format(e1))
-                    err("{}".format(e2))
-                    return
-
-            try:
-                self.less = which("less")
-            except FileNotFoundError as e:
-                err("{}".format(e))
         return
 
     def exec_rp(self, ropN):
@@ -8981,6 +8987,33 @@ class RpCommand(GenericCommand):
     def do_invoke(self, argv):
         self.dont_repeat()
 
+        # load rp path
+        if self.rp is None:
+            if self.rp_version == 1:
+                try:
+                    self.rp = which("rp-lin-x64")
+                except FileNotFoundError as e1:
+                    try:
+                        self.rp = which("rp-lin-x86")
+                    except FileNotFoundError as e2:
+                        err("{}".format(e1))
+                        err("{}".format(e2))
+                        return
+            elif self.rp_version == 2:
+                try:
+                    self.rp = which("rp-lin-x64-v2")
+                except FileNotFoundError as e1:
+                    err("{}".format(e1))
+                    return
+
+        # load less path
+        if self.less is None:
+            try:
+                self.less = which("less")
+            except FileNotFoundError as e:
+                err("{}".format(e))
+
+        # parse args
         try:
             ropN = 3
             while "-r" in argv:
@@ -9084,18 +9117,6 @@ class Rp2Command(RpCommand):
         self.rp = None
         self.less = None
         self.rp_version = 2
-
-        if is_x86():
-            try:
-                self.rp = which("rp-lin-x64-v2")
-            except FileNotFoundError as e1:
-                err("{}".format(e1))
-                return
-
-            try:
-                self.less = which("less")
-            except FileNotFoundError as e:
-                err("{}".format(e))
         return
 
 
@@ -9144,14 +9165,7 @@ class AssembleCommand(GenericCommand):
         }
         return
 
-    def pre_load(self):
-        try:
-            __import__("keystone")
-        except ImportError:
-            msg = "Missing `keystone-engine` package for Python, install with: `pip install keystone-engine`."
-            raise ImportWarning(msg)
-        return
-
+    @load_keystone
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -9279,14 +9293,7 @@ class DisassembleCommand(GenericCommand):
         }
         return
 
-    def pre_load(self):
-        try:
-            __import__("capstone")
-        except ImportError:
-            msg = "Missing `capstone` package for Python. Install with `pip install capstone`."
-            raise ImportWarning(msg)
-        return
-
+    @load_capstone
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -9389,14 +9396,6 @@ class AsmListCommand(GenericCommand):
         self.valid_arch_modes = {
             "X86" : ["16", "32", "64"],
         }
-        return
-
-    def pre_load(self):
-        try:
-            __import__("capstone")
-        except ImportError:
-            msg = "Missing `capstone` package for Python. Install with `pip install capstone`."
-            raise ImportWarning(msg)
         return
 
     def listup_x86(self, arch, mode):
@@ -9521,6 +9520,7 @@ class AsmListCommand(GenericCommand):
                 seen_patterns.append(hex_code)
         return valid_patterns
 
+    @load_capstone
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -11815,9 +11815,7 @@ class ContextCommand(GenericCommand):
         self.add_setting("libc_args_path", "", "Path to libc function call args json files, provided via gef-extras")
         self.add_setting("smart_cpp_function_name", False, "Print cpp function name without args if demangled")
         self.add_setting("use_native_x_command", False, "Use x/16i insted of gdb_disasembe/capstone")
-
-        if "capstone" in list(sys.modules.keys()):
-            self.add_setting("use_capstone", False, "Use capstone as disassembler in the code pane (instead of GDB)")
+        self.add_setting("use_capstone", False, "Use capstone as disassembler in the code pane (instead of GDB)")
 
         self.layout_mapping = {
             "legend": self.show_legend,
@@ -37082,15 +37080,13 @@ class UefiOvmfInfoCommand(GenericCommand):
     _syntax_ = "{:s}".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
 
-    def pre_load(self):
+    def check_crc32(self, addr):
         try:
-            __import__("crccheck")
+            crccheck = __import__("crccheck")
         except ImportError:
             msg = "Missing `crccheck` package for Python, install with: `pip install crccheck`."
             raise ImportWarning(msg)
-        return
 
-    def check_crc32(self, addr):
         size = u32(read_memory(addr + 0xc, 0x4))
         if size <= 0 or size > 0x1000:
             return False
@@ -37100,7 +37096,6 @@ class UefiOvmfInfoCommand(GenericCommand):
         data = read_memory(addr, 0x10)
         data += p64(0x0) # crc is zero when calculate
         data += read_memory(addr + 0x18, size - 0x18)
-        crccheck = sys.modules["crccheck"]
         calculated_crc = crccheck.crc.Crc32().calc(data)
         return calculated_crc == crc
 
@@ -37556,6 +37551,7 @@ class UefiOvmfInfoCommand(GenericCommand):
     @only_if_x86_32_64
     def do_invoke(self, argv):
         self.dont_repeat()
+        info("This command is very slow. Wait a few tens of seconds")
         gef_print(titlify("SEC (Security) phase variables"))
         gef_print("Unimplemented")
         gef_print(titlify("PEI (Pre EFI Initialization) phase variables"))
@@ -38599,12 +38595,18 @@ class GefCommand(gdb.Command):
         def is_loaded(x):
             return any(filter(lambda u: x == u[0], self.loaded_commands))
 
+        time_elapsed = []
         for cmd, class_name in self.commands:
             if is_loaded(cmd):
                 continue
 
             try:
+                start_time_real = time.perf_counter()
+                start_time_proc = time.process_time()
                 self.loaded_commands.append((cmd, class_name, class_name()))
+                end_time_real = time.perf_counter()
+                end_time_proc = time.process_time()
+                time_elapsed.append((cmd, end_time_real - start_time_real, end_time_proc - start_time_proc))
 
                 repeat = False
                 if hasattr(class_name,"_repeat_"):
@@ -38618,6 +38620,11 @@ class GefCommand(gdb.Command):
             except Exception as reason:
                 self.missing_commands[cmd] = reason
                 nb_missing += 1
+
+        if False: # debug print
+            print(titlify("Top 10 commands that took the longest to load"))
+            for cmd, real, cpu in sorted(time_elapsed, key=lambda x: x[1], reverse=True)[:10]:
+                print("{:30s} Real:{:.10f} s, CPU:{:.10f} s".format(cmd, real, cpu))
 
         # sort by command name
         self.loaded_commands = sorted(self.loaded_commands, key=lambda x: x[1]._cmdline_)
