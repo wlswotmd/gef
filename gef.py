@@ -61,14 +61,19 @@ import abc
 import binascii
 import codecs
 import collections
+import configparser
 import ctypes
 import functools
 import getopt
 import hashlib
 import inspect
+import io
 import itertools
+import json
+import math
 import os
 import platform
+import psutil
 import re
 import site
 import socket
@@ -78,16 +83,9 @@ import subprocess
 import sys
 import tempfile
 import time
-import traceback
-import configparser
-import psutil
-import math
-import json
 import timeout
-
-from functools import lru_cache
-from io import StringIO
-from urllib.request import urlopen
+import traceback
+import urllib.request
 
 LEFT_ARROW = " <- "
 RIGHT_ARROW = " -> "
@@ -104,7 +102,7 @@ def http_get(url):
     """Basic HTTP wrapper for GET request. Return the body of the page if HTTP code is OK,
     otherwise return None."""
     try:
-        http = urlopen(url)
+        http = urllib.request.urlopen(url)
         if http.getcode() != 200:
             return None
         return http.read()
@@ -240,7 +238,7 @@ def bufferize(f):
         if __gef_int_stream_buffer__:
             return f(*args, **kwargs)
 
-        __gef_int_stream_buffer__ = StringIO()
+        __gef_int_stream_buffer__ = io.StringIO()
         try:
             rv = f(*args, **kwargs)
         finally:
@@ -958,7 +956,7 @@ class Instruction:
         return text
 
 
-@lru_cache()
+@functools.lru_cache()
 def search_for_main_arena():
     global __gef_default_main_arena__
     malloc_hook_addr = parse_address("(void *)&__malloc_hook")
@@ -1458,7 +1456,7 @@ class GlibcChunk:
 pattern_libc_ver = re.compile(rb"glibc (\d+)\.(\d+)")
 
 
-@lru_cache()
+@functools.lru_cache()
 def get_libc_version():
     sections = get_process_maps()
     for section in sections:
@@ -1589,7 +1587,7 @@ def gef_pybytes(x):
     return bytes(str(x), encoding="utf-8")
 
 
-@lru_cache()
+@functools.lru_cache()
 def which(program):
     """Locate a command on the filesystem."""
     def is_exe(fpath):
@@ -1666,7 +1664,7 @@ def hexdump(source, length=0x10, separator=".", show_raw=False, show_symbol=True
     return "\n".join(result)
 
 
-@lru_cache()
+@functools.lru_cache()
 def is_debug():
     """Check if debug mode is enabled."""
     return get_gef_setting("gef.debug") is True
@@ -1703,7 +1701,7 @@ def disable_redirect_output():
     return
 
 
-@lru_cache()
+@functools.lru_cache()
 def get_gef_setting(name):
     """Read global gef settings.
     Return None if not found. A valid config setting can never return None,
@@ -1747,7 +1745,7 @@ def gef_makedirs(path, mode=0o755):
     return abspath
 
 
-@lru_cache(maxsize=512)
+@functools.lru_cache(maxsize=512)
 def gdb_get_location_from_symbol(address):
     """Retrieve the location of the `address` argument from the symbol table.
     Return a tuple with the name and offset if found, None otherwise."""
@@ -2001,7 +1999,7 @@ def gef_execute_gdb_script(commands):
     return
 
 
-@lru_cache()
+@functools.lru_cache()
 def checksec(filename):
     """Check the security property of the ELF binary. The following properties are:
     - Static
@@ -2116,7 +2114,7 @@ def checksec(filename):
     return results
 
 
-@lru_cache()
+@functools.lru_cache()
 def get_arch():
     """Return the binary's architecture."""
     if is_alive():
@@ -2142,7 +2140,7 @@ def get_arch():
     return arch_str
 
 
-@lru_cache()
+@functools.lru_cache()
 def get_endian():
     """Return the binary endianness."""
     endian = gdb.execute("show endian", to_string=True).strip().lower()
@@ -2153,7 +2151,7 @@ def get_endian():
     raise EnvironmentError("Invalid endianness")
 
 
-@lru_cache()
+@functools.lru_cache()
 def get_entry_point():
     """Return the binary entry point."""
     for line in gdb.execute("info target", to_string=True).split("\n"):
@@ -3438,7 +3436,6 @@ def write_memory(address, buffer, length=0x10):
 
 def read_memory(addr, length=0x10):
     """Return a `length` long byte array with the copy of the process memory at `addr`."""
-    #import inspect
     #print(' <- '.join([x.function for x in inspect.stack()[1:4]]))
     return gdb.selected_inferior().read_memory(addr, length).tobytes()
 
@@ -3871,13 +3868,13 @@ def get_path_from_info_proc():
     return None
 
 
-@lru_cache()
+@functools.lru_cache()
 def get_os():
     """Return the current OS."""
     return platform.system().lower()
 
 
-@lru_cache()
+@functools.lru_cache()
 def is_pin():
     if not is_remote_debug():
         return False
@@ -3885,7 +3882,7 @@ def is_pin():
     return 'intel.name=' in response
 
 
-@lru_cache()
+@functools.lru_cache()
 def is_qemu():
     if not is_remote_debug():
         return False
@@ -3893,7 +3890,7 @@ def is_qemu():
     return 'ENABLE=' in response
 
 
-@lru_cache()
+@functools.lru_cache()
 def is_qemu_usermode():
     if is_qemu() == False:
         return False
@@ -3901,7 +3898,7 @@ def is_qemu_usermode():
     return 'Text=' in response
 
 
-@lru_cache()
+@functools.lru_cache()
 def is_qemu_system():
     if is_qemu() == False:
         return False
@@ -3909,7 +3906,7 @@ def is_qemu_system():
     return 'received: ""' in response
 
 
-@lru_cache()
+@functools.lru_cache()
 def get_pid():
     """Return the PID of the debuggee process."""
     def get_filepath():
@@ -3961,7 +3958,7 @@ def get_pid():
     return gdb.selected_inferior().pid
 
 
-@lru_cache()
+@functools.lru_cache()
 def get_filepath():
     """Return the local absolute path of the file currently debugged."""
     filename = gdb.current_progspace().filename
@@ -4000,7 +3997,7 @@ def get_filepath():
         return filename
 
 
-@lru_cache()
+@functools.lru_cache()
 def get_filename():
     """Return the full filename of the file currently debugged."""
     filename = gdb.current_progspace().filename
@@ -4174,9 +4171,9 @@ def elf_map(addr, objfile=''):
 
 # get_explored_regions (used qemu-user mode) is too slow,
 # Because it repeats read_memory many times to find the upper and lower bounds of the page.
-# lru_cache() is not effective because it is cleared every time you stepi.
+# functools.lru_cache() is not effective because it is cleared every time you stepi.
 # Fortunately, memory maps rarely change.
-# I decided to make it a cache mechanism independent of lru_cache and introduce a mechanism to forcibly clear it with vmmap.
+# I decided to make it a cache mechanism independent of functools.lru_cache and introduce a mechanism to forcibly clear it with vmmap.
 explored_regions = None
 
 
@@ -4295,7 +4292,7 @@ def get_explored_regions():
     return regions
 
 
-@lru_cache()
+@functools.lru_cache()
 def get_process_maps(outer=False):
     """Return the mapped memory sections"""
     if is_qemu_usermode() and not outer:
@@ -4312,10 +4309,10 @@ def get_process_maps(outer=False):
         return list(get_info_sections())
 
 
-@lru_cache()
+@functools.lru_cache()
 def get_info_sections():
     """Retrieve the debuggee sections."""
-    stream = StringIO(gdb.execute("maintenance info sections", to_string=True))
+    stream = io.StringIO(gdb.execute("maintenance info sections", to_string=True))
 
     for line in stream:
         if not line:
@@ -4335,7 +4332,7 @@ def get_info_sections():
     return
 
 
-@lru_cache()
+@functools.lru_cache()
 def get_info_files():
     """Retrieve all the files loaded by debuggee."""
     lines = gdb.execute("info files", to_string=True).splitlines()
@@ -4368,7 +4365,7 @@ def get_info_files():
     return infos_files
 
 
-@lru_cache()
+@functools.lru_cache()
 def process_lookup_address(address):
     """Look up for an address in memory.
     Return an Address object if found, None otherwise."""
@@ -4387,7 +4384,7 @@ def process_lookup_address(address):
     return None
 
 
-@lru_cache()
+@functools.lru_cache()
 def process_lookup_path(name, perm=Permission.ALL):
     """Look up for a path in the process memory mapping.
     Return a Section object if found, None otherwise."""
@@ -4402,7 +4399,7 @@ def process_lookup_path(name, perm=Permission.ALL):
     return None
 
 
-@lru_cache()
+@functools.lru_cache()
 def process_lookup_path_by_list(names):
     if not is_alive():
         err("Process is not running")
@@ -4416,7 +4413,7 @@ def process_lookup_path_by_list(names):
     return None
 
 
-@lru_cache()
+@functools.lru_cache()
 def file_lookup_name_path(name, path):
     """Look up a file by name and path.
     Return a Zone object if found, None otherwise."""
@@ -4426,7 +4423,7 @@ def file_lookup_name_path(name, path):
     return None
 
 
-@lru_cache()
+@functools.lru_cache()
 def file_lookup_address(address):
     """Look up for a file by its address.
     Return a Zone object if found, None otherwise."""
@@ -4436,7 +4433,7 @@ def file_lookup_address(address):
     return None
 
 
-@lru_cache()
+@functools.lru_cache()
 def lookup_address(address):
     """Try to find the address in the process address space.
     Return an Address object, with validity flag set based on success."""
@@ -4543,10 +4540,9 @@ def load_libc_args():
 def get_terminal_size():
     """Return the current terminal size."""
     if platform.system() == "Windows":
-        from ctypes import windll, create_string_buffer
         hStdErr = -12
-        herr = windll.kernel32.GetStdHandle(hStdErr)
-        csbi = create_string_buffer(22)
+        herr = ctypes.windll.kernel32.GetStdHandle(hStdErr)
+        csbi = ctypes.create_string_buffer(22)
         res = windll.kernel32.GetConsoleScreenBufferInfo(herr, csbi)
         if res:
             _, _, _, _, _, left, top, right, bottom, _, _ = struct.unpack("hhhhHhhhhhh", csbi.raw)
@@ -4687,7 +4683,7 @@ def keystone_assemble(code, arch, mode, *args, **kwargs):
     return enc
 
 
-@lru_cache()
+@functools.lru_cache()
 def get_elf_headers(filename=None):
     """Return an Elf object with info from `filename`. If not provided, will return
     the currently debugged file."""
@@ -4712,36 +4708,36 @@ def _ptr_width():
         return void.pointer().sizeof
 
 
-@lru_cache()
+@functools.lru_cache()
 def is_64bit():
     """Checks if current target is 64bit."""
     return _ptr_width() == 8
 
 
-@lru_cache()
+@functools.lru_cache()
 def is_32bit():
     """Checks if current target is 32bit."""
     return _ptr_width() == 4
 
 
-@lru_cache()
+@functools.lru_cache()
 def is_x86_64():
     """Checks if current target is x86-64"""
     return get_arch() == "i386:x86-64"
 
 
-@lru_cache()
+@functools.lru_cache()
 def is_x86_32():
     """Checks if current target is an x86-32"""
     return get_arch() == "i386"
 
 
-@lru_cache()
+@functools.lru_cache()
 def is_x86():
     return is_x86_32() or is_x86_64()
 
 
-@lru_cache()
+@functools.lru_cache()
 def is_arm32():
     """Checks if current target is an arm-32"""
     try:
@@ -4750,7 +4746,7 @@ def is_arm32():
         return False
 
 
-@lru_cache()
+@functools.lru_cache()
 def is_arm64():
     """Checks if current target is an aarch64"""
     try:
@@ -4759,14 +4755,14 @@ def is_arm64():
         return False
 
 
-@lru_cache()
+@functools.lru_cache()
 def is_arch(arch):
     """Checks if current target is specific architecture"""
     elf = current_elf or get_elf_headers()
     return elf and elf.e_machine == arch
 
 
-@lru_cache()
+@functools.lru_cache()
 def is_static(filename=None):
     if filename is None:
         filename = get_filepath()
@@ -4776,7 +4772,7 @@ def is_static(filename=None):
     return "statically linked" in out
 
 
-@lru_cache()
+@functools.lru_cache()
 def is_stripped(filename=None):
     if filename is None:
         filename = get_filepath()
@@ -4850,7 +4846,7 @@ def set_arch(arch=None, default=None):
         return
 
 
-@lru_cache()
+@functools.lru_cache()
 def cached_lookup_type(_type):
     try:
         return gdb.lookup_type(_type).strip_typedefs()
@@ -4858,7 +4854,7 @@ def cached_lookup_type(_type):
         return None
 
 
-@lru_cache()
+@functools.lru_cache()
 def get_memory_alignment(in_bits=False):
     """Try to determine the size of a pointer on this system.
     First, try to parse it out of the ELF header.
@@ -4976,21 +4972,22 @@ def is_in_x86_kernel(address):
     return (address >> memalign) == 0xF
 
 
-@lru_cache()
+@functools.lru_cache()
 def endian_str():
     return "<" if is_little_endian() else ">"
 
 
-@lru_cache()
+@functools.lru_cache()
 def is_remote_debug():
     """"Return True is the current debugging session is running through GDB remote session."""
     res = gdb.execute("maintenance print target-stack", to_string=True)
     return "remote" in res
 
 
-@lru_cache()
+@functools.lru_cache()
 def is_remote_but_same_host():
-    for ip, port in list(c.raddr for c in psutil.Process().connections()):
+    connections = psutil.Process().connections()
+    for ip, port in list(c.raddr for c in connections):
         if ip == "127.0.0.1":
             return True
     return False
@@ -5033,7 +5030,7 @@ def safe_parse_and_eval(value):
         return None
 
 
-@lru_cache()
+@functools.lru_cache()
 def dereference(addr):
     """GEF wrapper for gdb dereference function."""
     try:
@@ -5106,9 +5103,9 @@ AT_CONSTANTS = {
 
 # get_auxiliary_walk (used qemu-user mode) is too slower,
 # Because it repeats read_memory many times to find the auxv value.
-# lru_cache() is not effective because it is cleared every time you stepi.
+# functools.lru_cache() is not effective because it is cleared every time you stepi.
 # Fortunately, memory maps rarely change.
-# I decided to make it a cache mechanism independent of lru_cache and introduce a mechanism to forcibly clear it with vmmap.
+# I decided to make it a cache mechanism independent of functools.lru_cache and introduce a mechanism to forcibly clear it with vmmap.
 explored_auxv = {}
 
 
@@ -5195,7 +5192,7 @@ def get_auxiliary_walk(offset=0):
     return res
 
 
-@lru_cache()
+@functools.lru_cache()
 def gef_get_auxiliary_values():
     """Retrieves the auxiliary values of the current execution.
     Returns None if not running, or a dict() of values."""
@@ -5252,7 +5249,7 @@ def gef_get_pie_breakpoint(num):
     return __pie_breakpoints__[num]
 
 
-@lru_cache()
+@functools.lru_cache()
 def gef_getpagesize():
     """Get the page size from auxiliary values."""
     auxval = gef_get_auxiliary_values()
@@ -9406,7 +9403,7 @@ class AsmListCommand(GenericCommand):
         DISP16 = "1122"
         DISP8  = "11"
 
-        @lru_cache()
+        @functools.lru_cache()
         def get_typical_bytecodes_modrm(_reg):
             bytecodes = []
             for (mod, reg, rm) in itertools.product([0b00, 0b01, 0b10, 0b11], _reg, [0b000]):
@@ -9440,7 +9437,7 @@ class AsmListCommand(GenericCommand):
                 bytecodes.append(bytecode)
             return bytecodes
 
-        @lru_cache()
+        @functools.lru_cache()
         def get_typical_bytecodes(opcodes):
             bytecodes = []
             for i, operand in enumerate(opcodes.split()):
@@ -13667,7 +13664,7 @@ class PatchRevertCommand(PatchCommand):
             revert_count -= 1
         return
 
-@lru_cache()
+@functools.lru_cache()
 def dereference_from(addr):
     if not is_alive():
         return [format_address(addr),]
@@ -15628,7 +15625,7 @@ class GotCommand(GenericCommand):
         return
 
     def get_base_address(self, filename):
-        @lru_cache()
+        @functools.lru_cache()
         def get_base_address_from_vmmap(filename):
             vmmap = get_process_maps()
             try:
@@ -15735,7 +15732,7 @@ class GotCommand(GenericCommand):
 
         return output
 
-    @lru_cache()
+    @functools.lru_cache()
     def get_elf(self, filename):
         elf = Elf(filename)
         return elf
@@ -15763,7 +15760,7 @@ class GotCommand(GenericCommand):
             return "[???]"
 
     def get_section_name(self, filename, addr):
-        @lru_cache()
+        @functools.lru_cache()
         def get_shdr_range(filename):
             elf = self.get_elf(filename)
             ranges = []
@@ -15784,7 +15781,7 @@ class GotCommand(GenericCommand):
             return "???"
 
     def get_section_sym(self, filename, addr):
-        @lru_cache()
+        @functools.lru_cache()
         def get_shdr_range(filename):
             elf = self.get_elf(filename)
             ranges = []
@@ -19150,7 +19147,7 @@ class SyscallArgsCommand(GenericCommand):
         return syscall_table
 
 
-@lru_cache()
+@functools.lru_cache()
 def get_section_base_address(name):
     section = process_lookup_path(name)
     if section:
@@ -19170,7 +19167,7 @@ def get_section_base_address_by_list(names):
     return None
 
 
-@lru_cache()
+@functools.lru_cache()
 def get_zone_base_address(name):
     zone = file_lookup_name_path(name, get_filepath())
     if zone:
@@ -22036,7 +22033,7 @@ class KernelbaseCommand(GenericCommand):
     _category_ = "Qemu-system Cooperation"
 
     @staticmethod
-    @lru_cache()
+    @functools.lru_cache()
     def get_maps():
         maps = []
         res = get_maps_by_pagewalk("pagewalk -q --simple")
@@ -26744,7 +26741,7 @@ class PartitionAllocDumpStableCommand(GenericCommand):
         else:
             raise
 
-    @lru_cache()
+    @functools.lru_cache()
     def get_roots_heuristic(self):
         """searches for fast_malloc_root, array_buffer_root_ and buffer_root_"""
         # the pointers to each root are in the RW area.
@@ -26855,7 +26852,7 @@ class PartitionAllocDumpStableCommand(GenericCommand):
                 gef_print()
             return []
 
-    @lru_cache()
+    @functools.lru_cache()
     def get_roots(self):
         def get_root(root_string):
             try:
@@ -26877,7 +26874,7 @@ class PartitionAllocDumpStableCommand(GenericCommand):
             info("Symbol is not found.")
         return roots
 
-    @lru_cache()
+    @functools.lru_cache()
     def get_sentinel_slot_spans(self):
         """sentinel_slot_span is default slot_span, so search it"""
         sentinel = []
@@ -27535,7 +27532,7 @@ class PartitionAllocDumpOld1Command(GenericCommand):
         else:
             raise
 
-    @lru_cache()
+    @functools.lru_cache()
     def get_roots_heuristic(self):
         """searches for array_buffer_root_, buffer_root_, layout_root_ and fast_malloc_root_"""
         filepath = get_filepath()
@@ -27612,7 +27609,7 @@ class PartitionAllocDumpOld1Command(GenericCommand):
             roots = []
         return roots
 
-    @lru_cache()
+    @functools.lru_cache()
     def get_roots(self):
         def get_root(root_string):
             try:
@@ -27634,7 +27631,7 @@ class PartitionAllocDumpOld1Command(GenericCommand):
             info("Symbol is not found.")
         return roots
 
-    @lru_cache()
+    @functools.lru_cache()
     def get_sentinel_slot_spans(self):
         """sentinel_slot_span is default slot_span, so search it"""
         sentinel = []
@@ -28862,7 +28859,7 @@ class MuslDumpCommand(GenericCommand):
             info("Symbol is not found. It will use heuristic search")
             return self.get_malloc_context_heuristic()
 
-    @lru_cache()
+    @functools.lru_cache()
     def class_to_size(self, cl):
         class_to_size_list = [
             1, 2, 3, 4, 5, 6, 7, 8,
@@ -31970,7 +31967,7 @@ class QemuRegistersCommand(GenericCommand):
         return
 
 
-@lru_cache()
+@functools.lru_cache()
 def get_maps_arm64_optee_secure_memory(verbose=False):
     # heuristic search of qemu-system memory
     sm_base, sm_size = XSecureMemAddrCommand.get_secure_memory_base_and_size(verbose)
@@ -32056,7 +32053,7 @@ def get_maps_arm64_optee_secure_memory(verbose=False):
     return maps
 
 
-@lru_cache()
+@functools.lru_cache()
 def get_maps_by_pagewalk(command):
     # for lru cache
     return gdb.execute(command, to_string=True)
@@ -37114,7 +37111,7 @@ class UefiOvmfInfoCommand(GenericCommand):
             addr += size
         return d
 
-    @lru_cache()
+    @functools.lru_cache()
     def get_gPs(self):
         result = gdb.execute("search-pattern 'PEI SERV' --disable-utf16", to_string=True) # EFI_TABLE_HEADER.Signature
         result = filter(lambda x: "->" in x, result.splitlines())
@@ -37176,7 +37173,7 @@ class UefiOvmfInfoCommand(GenericCommand):
             gef_print("  {:40s}{:#x}".format(k+":",v))
         return
 
-    @lru_cache()
+    @functools.lru_cache()
     def get_mBootServices(self):
         result = gdb.execute("search-pattern BOOTSERV --disable-utf16", to_string=True) # EFI_TABLE_HEADER.Signature
         result = filter(lambda x: "->" in x, result.splitlines())
@@ -37255,7 +37252,7 @@ class UefiOvmfInfoCommand(GenericCommand):
             gef_print("  {:40s}{:#x}".format(k+":",v))
         return
 
-    @lru_cache()
+    @functools.lru_cache()
     def get_mDxeServices(self):
         # fastpath maybe mDxeServices is next to mBootServices
         if self.mBootServices:
@@ -37317,7 +37314,7 @@ class UefiOvmfInfoCommand(GenericCommand):
             gef_print("  {:40s}{:#x}".format(k+":",v))
         return
 
-    @lru_cache()
+    @functools.lru_cache()
     def get_mEfiSystemTable(self):
         result = gdb.execute("search-pattern 'IBI SYST' --disable-utf16", to_string=True) # EFI_TABLE_HEADER.Signature
         result = filter(lambda x: "->" in x, result.splitlines())
@@ -37364,7 +37361,7 @@ class UefiOvmfInfoCommand(GenericCommand):
             gef_print("  {:40s}{:#x}".format(k+":",v))
         return
 
-    @lru_cache()
+    @functools.lru_cache()
     def get_mEfiRuntimeServicesTable(self):
         result = gdb.execute("search-pattern RUNTSERV --disable-utf16", to_string=True) # EFI_TABLE_HEADER.Signature
         result = filter(lambda x: "->" in x, result.splitlines())
@@ -37413,7 +37410,7 @@ class UefiOvmfInfoCommand(GenericCommand):
             gef_print("  {:40s}{:#x}".format(k+":",v))
         return
 
-    @lru_cache()
+    @functools.lru_cache()
     def get_gMemoryMap(self):
         # gMemoryMap is just above mDxeServices
         if not self.mDxeServices:
@@ -39191,8 +39188,7 @@ def __gef_prompt__(current_prompt):
     return GEF_PROMPT_OFF
 
 
-if __name__ == "__main__":
-
+def main():
     if sys.version_info[0] == 2:
         err("GEF has dropped Python2 support for GDB when it reached EOL on 2020/01/01.")
         err("If you require GEF for GDB+Python2, use https://github.com/hugsy/gef-legacy.")
@@ -39277,6 +39273,7 @@ if __name__ == "__main__":
         gdb.execute("set print vtbl on")
 
         # load GEF
+        global __gef__
         __gef__ = GefCommand()
         __gef__.setup()
 
@@ -39296,3 +39293,8 @@ if __name__ == "__main__":
             new_objfile_handler(None)
 
         GefTmuxSetup()
+    return
+
+
+if __name__ == "__main__":
+    main()
