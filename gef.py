@@ -4469,9 +4469,9 @@ def continue_handler(event):
 
 def hook_stop_handler(event):
     """GDB event handler for stop cases."""
+    reset_all_caches()
     if current_arch is None:
         set_arch(get_arch())
-    reset_all_caches()
     gdb.execute("context")
     return
 
