@@ -4541,7 +4541,7 @@ def lookup_address(address):
 
 def xor(data, key):
     """Return `data` xor-ed with `key`."""
-    key = key.lstrip("0x")
+    key = key.removeprefix("0x")
     key = binascii.unhexlify(key)
     return bytearray([x ^ y for x, y in zip(data, itertools.cycle(key))])
 
@@ -5885,9 +5885,9 @@ class GenericCommand(gdb.Command):
         self.repeat = False
         self.repeat_count = 0
         self.__last_command = None
-        command_type = kwargs.setdefault("command", gdb.COMMAND_OBSCURE)
-        complete_type = kwargs.setdefault("complete", gdb.COMPLETE_NONE)
-        prefix = kwargs.setdefault("prefix", False)
+        command_type = kwargs.get("command", gdb.COMMAND_OBSCURE)
+        complete_type = kwargs.get("complete", gdb.COMPLETE_NONE)
+        prefix = kwargs.get("prefix", False)
         super().__init__(self._cmdline_, command_type, complete_type, prefix)
         self.post_load()
         return
@@ -5989,7 +5989,7 @@ class GenericCommand(gdb.Command):
 #     _aliases_ = ["tpl-fk",]
 #     _category_ = "Misc"
 #     def __init__(self):
-#        super().__init__(complete=gdb.COMPLETE_FILENAME)
+#         super().__init__(complete=gdb.COMPLETE_FILENAME)
 #         return
 #     def do_invoke(self, argv):
 #         self.dont_repeat()
@@ -6332,10 +6332,6 @@ class ProcessStatusCommand(GenericCommand):
     _aliases_ = ["status", "procinfo", "pr",]
     _category_ = "Process Information"
 
-    def __init__(self):
-        super().__init__(complete=gdb.COMPLETE_NONE)
-        return
-
     @only_if_gdb_running
     @only_if_gdb_target_local
     @only_if_not_qemu_system
@@ -6660,7 +6656,7 @@ class GefThemeCommand(GenericCommand):
     _category_ = "GEF Maintenance Command"
 
     def __init__(self, *args, **kwargs):
-        super().__init__(self._cmdline_)
+        super().__init__()
         self.add_setting("context_title_line", "gray", "Color of the borders in context window")
         self.add_setting("context_title_message", "cyan", "Color of the title in context window")
         self.add_setting("default_title_line", "gray", "Default color of borders")
@@ -8465,7 +8461,7 @@ class GlibcHeapBinsCommand(GenericCommand):
     _category_ = "Heap"
 
     def __init__(self):
-        super().__init__(prefix=True, complete=gdb.COMPLETE_LOCATION)
+        super().__init__(prefix=True)
         return
 
     @only_if_gdb_running
@@ -8924,10 +8920,6 @@ class RopperCommand(GenericCommand):
     _syntax_ = "{:s} [-h] [ROPPER_OPTIONS]".format(_cmdline_)
     _category_ = "Exploit Development"
 
-    def __init__(self):
-        super().__init__(complete=gdb.COMPLETE_NONE)
-        return
-
     @only_if_gdb_running
     @only_if_not_qemu_system
     def do_invoke(self, argv):
@@ -8983,10 +8975,8 @@ class RpCommand(GenericCommand):
     _example_ += "{:s} kernel # under qemu-system (x86/x64) only".format(_cmdline_)
     _category_ = "Exploit Development"
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(complete=gdb.COMPLETE_LOCATION)
-        self.rp = None
-        self.less = None
+    def __init__(self):
+        super().__init__(complete=gdb.COMPLETE_FILENAME)
         self.rp_version = 1
         return
 
@@ -9033,30 +9023,29 @@ class RpCommand(GenericCommand):
         self.dont_repeat()
 
         # load rp path
-        if self.rp is None:
-            if self.rp_version == 1:
+        if self.rp_version == 1:
+            try:
+                self.rp = which("rp-lin-x64")
+            except FileNotFoundError as e1:
                 try:
-                    self.rp = which("rp-lin-x64")
-                except FileNotFoundError as e1:
-                    try:
-                        self.rp = which("rp-lin-x86")
-                    except FileNotFoundError as e2:
-                        err("{}".format(e1))
-                        err("{}".format(e2))
-                        return
-            elif self.rp_version == 2:
-                try:
-                    self.rp = which("rp-lin-x64-v2")
-                except FileNotFoundError as e1:
+                    self.rp = which("rp-lin-x86")
+                except FileNotFoundError as e2:
                     err("{}".format(e1))
+                    err("{}".format(e2))
                     return
+        elif self.rp_version == 2:
+            try:
+                self.rp = which("rp-lin-x64-v2")
+            except FileNotFoundError as e1:
+                err("{}".format(e1))
+                return
 
         # load less path
-        if self.less is None:
-            try:
-                self.less = which("less")
-            except FileNotFoundError as e:
-                err("{}".format(e))
+        try:
+            self.less = which("less")
+        except FileNotFoundError as e:
+            err("{}".format(e))
+            return
 
         # parse args
         try:
@@ -9157,10 +9146,8 @@ class Rp2Command(RpCommand):
     _example_ += "{:s} kernel # under qemu-system (x86/x64) only".format(_cmdline_)
     _category_ = "Exploit Development"
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(complete=gdb.COMPLETE_LOCATION)
-        self.rp = None
-        self.less = None
+    def __init__(self):
+        super().__init__()
         self.rp_version = 2
         return
 
@@ -9196,19 +9183,6 @@ class AssembleCommand(GenericCommand):
     _example_ += '{:s} -a SPARC -m SPARC64 -e "add %g1, %g2, %g3"\n'.format(_cmdline_)
     _example_ += '{:s} -a SYSTEMZ -e "a %r0, 4095(%r15,%r1)"'.format(_cmdline_)
     _category_ = "Assemble"
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(complete=gdb.COMPLETE_LOCATION)
-        self.valid_arch_modes = {
-            "ARM": ["ARM", "THUMB"],
-            "ARM64": [],
-            "MIPS": ["MIPS32", "MIPS64",],
-            "PPC": ["PPC32", "PPC64",],
-            "SPARC": ["SPARC32", "SPARC64",],
-            "SYSTEMZ": [],
-            "X86": ["16", "32", "64"],
-        }
-        return
 
     @load_keystone
     def do_invoke(self, argv):
@@ -9326,18 +9300,6 @@ class DisassembleCommand(GenericCommand):
     _example_ += '{:s} -a SPARC -m V9 -e "86004002"'.format(_cmdline_)
     _category_ = "Assemble"
 
-    def __init__(self):
-        super().__init__(complete=gdb.COMPLETE_LOCATION)
-        self.valid_arch_modes = {
-            "ARM" : ["ARM", "THUMB"],
-            "ARM64" : [],
-            "MIPS" : ["MIPS32", "MIPS64"],
-            "PPC" : ["PPC32", "PPC64"],
-            "SPARC" : ["SPARC32"],
-            "X86" : ["16", "32", "64"],
-        }
-        return
-
     @load_capstone
     def do_invoke(self, argv):
         self.dont_repeat()
@@ -9435,13 +9397,6 @@ class AsmListCommand(GenericCommand):
     _example_ += '  8F (XOP prefix) is ignored\n'
     _example_ += '  62 (EVEX prefix) is ignored'
     _category_ = "Assemble"
-
-    def __init__(self):
-        super().__init__(complete=gdb.COMPLETE_LOCATION)
-        self.valid_arch_modes = {
-            "X86" : ["16", "32", "64"],
-        }
-        return
 
     def listup_x86(self, arch, mode):
         DISP64 = "1122334455667788"
@@ -9669,7 +9624,7 @@ class ProcessListingCommand(GenericCommand):
     _aliases_ = ["ps",]
 
     def __init__(self):
-        super().__init__(complete=gdb.COMPLETE_LOCATION)
+        super().__init__()
         ps = which("ps")
         self.add_setting("ps_command", "{:s} auxww".format(ps), "`ps` command to get process information")
         return
@@ -9747,7 +9702,7 @@ class ElfInfoCommand(GenericCommand):
     _category_ = "Process Information"
 
     def __init__(self, *args, **kwargs):
-        super().__init__(complete=gdb.COMPLETE_LOCATION)
+        super().__init__(complete=gdb.COMPLETE_FILENAME)
         return
 
     def do_invoke(self, argv):
@@ -11803,10 +11758,6 @@ class NamedBreakpointCommand(GenericCommand):
     _category_ = "Debugging Support"
     _aliases_ = ["nb",]
 
-    def __init__(self, *args, **kwargs):
-        super().__init__()
-        return
-
     @only_if_not_qemu_system
     def do_invoke(self, argv):
         self.dont_repeat()
@@ -12858,8 +12809,10 @@ class HexdumpCommand(GenericCommand):
     _example_ += "{:s} byte $rax 100 REVERSE # print in reverse order line by line".format(_cmdline_)
     _category_ = "Show/Modify Memory"
 
-    def __init__(self):
-        super().__init__(complete=gdb.COMPLETE_LOCATION, prefix=True)
+    def __init__(self, *args, **kwargs):
+        prefix = kwargs.get("prefix", True)
+        complete_type = kwargs.get("complete", gdb.COMPLETE_NONE)
+        super().__init__(prefix=prefix, complete=complete_type)
         self.add_setting("always_show_ascii", False, "If true, hexdump will always display the ASCII dump")
         self.format = None
         return
@@ -13042,7 +12995,7 @@ class HexdumpQwordCommand(HexdumpCommand):
     _category_ = "Show/Modify Memory"
 
     def __init__(self):
-        super().__init__()
+        super().__init__(prefix=False, complete=gdb.COMPLETE_LOCATION)
         self.format = "qword"
         return
 
@@ -13056,7 +13009,7 @@ class HexdumpDwordCommand(HexdumpCommand):
     _category_ = "Show/Modify Memory"
 
     def __init__(self):
-        super().__init__()
+        super().__init__(prefix=False, complete=gdb.COMPLETE_LOCATION)
         self.format = "dword"
         return
 
@@ -13070,7 +13023,7 @@ class HexdumpWordCommand(HexdumpCommand):
     _category_ = "Show/Modify Memory"
 
     def __init__(self):
-        super().__init__()
+        super().__init__(prefix=False, complete=gdb.COMPLETE_LOCATION)
         self.format = "word"
         return
 
@@ -13085,7 +13038,7 @@ class HexdumpByteCommand(HexdumpCommand):
     _category_ = "Show/Modify Memory"
 
     def __init__(self):
-        super().__init__()
+        super().__init__(prefix=False, complete=gdb.COMPLETE_LOCATION)
         self.format = "byte"
         return
 
@@ -13110,8 +13063,10 @@ class PatchCommand(GenericCommand):
     }
     history = []
 
-    def __init__(self):
-        super().__init__(prefix=True, complete=gdb.COMPLETE_LOCATION)
+    def __init__(self, *args, **kwargs):
+        prefix = kwargs.get("prefix", True)
+        complete_type = kwargs.get("complete", gdb.COMPLETE_NONE)
+        super().__init__(prefix=prefix, complete=complete_type)
         self.format = None
         return
 
@@ -13179,7 +13134,7 @@ class PatchQwordCommand(PatchCommand):
     _category_ = "Show/Modify Memory"
 
     def __init__(self):
-        super().__init__()
+        super().__init__(prefix=False, complete=gdb.COMPLETE_LOCATION)
         self.format = "qword"
         return
 
@@ -13193,7 +13148,7 @@ class PatchDwordCommand(PatchCommand):
     _category_ = "Show/Modify Memory"
 
     def __init__(self):
-        super().__init__()
+        super().__init__(prefix=False, complete=gdb.COMPLETE_LOCATION)
         self.format = "dword"
         return
 
@@ -13207,7 +13162,7 @@ class PatchWordCommand(PatchCommand):
     _category_ = "Show/Modify Memory"
 
     def __init__(self):
-        super().__init__()
+        super().__init__(prefix=False, complete=gdb.COMPLETE_LOCATION)
         self.format = "word"
         return
 
@@ -13221,7 +13176,7 @@ class PatchByteCommand(PatchCommand):
     _category_ = "Show/Modify Memory"
 
     def __init__(self):
-        super().__init__()
+        super().__init__(prefix=False, complete=gdb.COMPLETE_LOCATION)
         self.format = "byte"
         return
 
@@ -13233,6 +13188,10 @@ class PatchStringCommand(PatchCommand):
     _syntax_ = '{:s} [-h] [--phys] LOCATION "double backslash-escaped string" [LENGTH]'.format(_cmdline_)
     _example_ = '{:s} $sp "GEFROCKS"'.format(_cmdline_)
     _category_ = "Show/Modify Memory"
+
+    def __init__(self):
+        super().__init__(prefix=False, complete=gdb.COMPLETE_LOCATION)
+        return
 
     @only_if_gdb_running
     def do_invoke(self, argv):
@@ -13297,6 +13256,10 @@ class PatchPatternCommand(PatchCommand):
     _example_ = "{:s} $sp 128".format(_cmdline_)
     _category_ = "Show/Modify Memory"
 
+    def __init__(self):
+        super().__init__(prefix=False, complete=gdb.COMPLETE_LOCATION)
+        return
+
     @only_if_gdb_running
     def do_invoke(self, argv):
         self.dont_repeat()
@@ -13346,6 +13309,10 @@ class PatchNopCommand(PatchCommand):
     _example_ = "{:s} $pc -i 2".format(_cmdline_)
     _category_ = "Show/Modify Memory"
     _aliases_ = ["nop", ]
+
+    def __init__(self):
+        super().__init__(prefix=False, complete=gdb.COMPLETE_LOCATION)
+        return
 
     def get_insns_size(self, addr, num_insts):
         addr_after_n = gef_instruction_n(addr, num_insts)
@@ -13451,6 +13418,10 @@ class PatchInfloopCommand(PatchCommand):
     _example_ = "{:s} $pc".format(_cmdline_)
     _category_ = "Show/Modify Memory"
 
+    def __init__(self):
+        super().__init__(prefix=False, complete=gdb.COMPLETE_LOCATION)
+        return
+
     def patch_infloop(self, addr):
         if is_arm32() and current_arch.is_thumb() and addr & 1:
             addr -= 1
@@ -13511,6 +13482,10 @@ class PatchTrapCommand(PatchCommand):
     _syntax_ = "{:s} [-h] [--phys] [LOCATION]".format(_cmdline_)
     _example_ = "{:s} $pc".format(_cmdline_)
     _category_ = "Show/Modify Memory"
+
+    def __init__(self):
+        super().__init__(prefix=False, complete=gdb.COMPLETE_LOCATION)
+        return
 
     def patch_trap(self, addr):
         if is_arm32() and current_arch.is_thumb() and addr & 1:
@@ -13573,6 +13548,10 @@ class PatchRetCommand(PatchCommand):
     _example_ = "{:s} $pc".format(_cmdline_)
     _category_ = "Show/Modify Memory"
 
+    def __init__(self):
+        super().__init__(prefix=False, complete=gdb.COMPLETE_LOCATION)
+        return
+
     def patch_ret(self, addr):
         if is_arm32() and current_arch.is_thumb() and addr & 1:
             addr -= 1
@@ -13633,6 +13612,10 @@ class PatchHistoryCommand(PatchCommand):
     _syntax_ = _cmdline_
     _category_ = "Show/Modify Memory"
 
+    def __init__(self):
+        super().__init__(prefix=False)
+        return
+
     @only_if_gdb_running
     def do_invoke(self, argv):
         self.dont_repeat()
@@ -13658,6 +13641,10 @@ class PatchRevertCommand(PatchCommand):
     _cmdline_ = "patch revert"
     _syntax_ = "{:s} [-h] HISTORY".format(_cmdline_)
     _category_ = "Show/Modify Memory"
+
+    def __init__(self):
+        super().__init__(prefix=False)
+        return
 
     @only_if_gdb_running
     def do_invoke(self, argv):
@@ -14276,6 +14263,10 @@ class XorMemoryDisplayCommand(GenericCommand):
     _example_ = "{:s} $sp 16 41414141".format(_cmdline_)
     _category_ = "Show/Modify Memory"
 
+    def __init__(self):
+        super().__init__(complete=gdb.COMPLETE_LOCATION)
+        return
+
     @only_if_gdb_running
     def do_invoke(self, argv):
         self.dont_repeat()
@@ -14307,6 +14298,10 @@ class XorMemoryPatchCommand(GenericCommand):
     _example_ = "{:s} $sp 16 41414141".format(_cmdline_)
     _category_ = "Show/Modify Memory"
 
+    def __init__(self):
+        super().__init__(complete=gdb.COMPLETE_LOCATION)
+        return
+
     @only_if_gdb_running
     def do_invoke(self, argv):
         self.dont_repeat()
@@ -14335,7 +14330,7 @@ class TraceRunCommand(GenericCommand):
     _category_ = "Debugging Support"
 
     def __init__(self):
-        super().__init__(self._cmdline_, complete=gdb.COMPLETE_LOCATION)
+        super().__init__(complete=gdb.COMPLETE_LOCATION)
         self.add_setting("max_tracing_recursion", 1, "Maximum depth of tracing")
         self.add_setting("tracefile_prefix", "./gef-trace-", "Specify the tracing output file prefix")
         return
@@ -15032,6 +15027,10 @@ class LinkmapCommand(GenericCommand):
     _example_ += "{:s} -a 0x00007ffff7ffe190 # dump specific address".format(_cmdline_)
     _category_ = "Process Information"
 
+    def __init__(self):
+        super().__init__(complete=gdb.COMPLETE_LOCATION)
+        return
+
     def dump_linkmap(self, link_map):
         section = process_lookup_address(link_map)
         info("link_map: {:#x}".format(link_map))
@@ -15250,6 +15249,10 @@ class DynamicCommand(GenericCommand):
         0x7fffffff: "DT_FILTER",
         #0x7fffffff: "DT_HIPROC", # unspecified
     }
+
+    def __init__(self):
+        super().__init__(complete=gdb.COMPLETE_FILENAME)
+        return
 
     def dump_dynamic(self, dynamic):
         section = process_lookup_address(dynamic)
@@ -15665,7 +15668,7 @@ class GotCommand(GenericCommand):
     _aliases_ = ["plt", ]
 
     def __init__(self, *args, **kwargs):
-        super().__init__()
+        super().__init__(complete=gdb.COMPLETE_FILENAME)
         self.add_setting("function_resolved", "green", "Line color of the got command output if the function has been resolved")
         self.add_setting("function_not_resolved", "yellow", "Line color of the got command output if the function has not been resolved")
         return
@@ -16019,6 +16022,7 @@ class HighlightCommand(GenericCommand):
     def __init__(self):
         super().__init__(prefix=True)
         self.add_setting("regex", False, "Enable regex highlighting")
+        return
 
     def do_invoke(self, argv):
         self.dont_repeat()
@@ -16157,7 +16161,7 @@ class HeapAnalysisCommand(GenericCommand):
     _category_ = "Heap"
 
     def __init__(self, *args, **kwargs):
-        super().__init__(complete=gdb.COMPLETE_NONE)
+        super().__init__()
         self.add_setting("check_free_null", False, "Break execution when a free(NULL) is encountered")
         self.add_setting("check_double_free", True, "Break execution when a double free is encountered")
         self.add_setting("check_weird_free", True, "Break execution when free() is called against a non-tracked pointer")
@@ -16177,10 +16181,10 @@ class HeapAnalysisCommand(GenericCommand):
 
         if not argv:
             self.setup()
-            return
-
-        if argv[0] == "show":
+        elif argv[0] == "show":
             self.dump_tracked_allocations()
+        else:
+            self.usage()
         return
 
     def setup(self):
@@ -22904,9 +22908,13 @@ class KernelCharacterDevicesCommand(GenericCommand):
 class KernelFopsCommand(GenericCommand):
     """Display fops members under qemu-system."""
     _cmdline_ = "kfops"
-    _syntax_ = "{:s}".format(_cmdline_)
+    _syntax_ = "{:s} [ADDRESS]".format(_cmdline_)
     _example_ = "{:s}".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
+
+    def __init__(self):
+        super().__init__(complete=gdb.COMPLETE_LOCATION)
+        return
 
     def get_member(self):
         members = [
@@ -23810,11 +23818,11 @@ class GdtInfoCommand(GenericCommand):
 class MemoryCompareCommand(GenericCommand):
     """Memory Compare."""
     _cmdline_ = "memcmp"
-    _syntax_ = "{:s} [-h] [--phys] FROM1 [--phys] FROM2 SIZE".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [--phys] ADDRESS1 [--phys] ADDRESS2 SIZE".format(_cmdline_)
     _category_ = "Misc"
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(complete=gdb.COMPLETE_NONE)
+    def __init__(self):
+        super().__init__(complete=gdb.COMPLETE_LOCATION)
         return
 
     def diff(self, from1data, from2data):
@@ -23930,6 +23938,10 @@ class MemoryCopyCommand(GenericCommand):
     _syntax_ = "{:s} [-h] [--phys] TO [--phys] FROM SIZE".format(_cmdline_)
     _category_ = "Misc"
 
+    def __init__(self):
+        super().__init__(complete=gdb.COMPLETE_LOCATION)
+        return
+
     def memcpy(self):
         try:
             if self.from_phys:
@@ -24003,6 +24015,10 @@ class IsMemoryZeroCommand(GenericCommand):
     _cmdline_ = "is-mem-zero"
     _syntax_ = "{:s} [-h] [--phys] ADDRESS SIZE".format(_cmdline_)
     _category_ = "Misc"
+
+    def __init__(self):
+        super().__init__(complete=gdb.COMPLETE_LOCATION)
+        return
 
     def memcheck(self):
         current = self.addr
@@ -24143,6 +24159,10 @@ class VisualHeapCommand(GenericCommand):
     _cmdline_ = "visual-heap"
     _syntax_ = "{:s} [-h] [DUMP_START_ADDRESS] [-c CHUNK_PRINT_COUNT|all] [-a ARENA_ADDRESS] [-v]".format(_cmdline_)
     _category_ = "Heap"
+
+    def __init__(self):
+        super().__init__(complete=gdb.COMPLETE_LOCATION)
+        return
 
     def subinfo(self, addr):
         s = ""
@@ -24317,6 +24337,10 @@ class TimeCommand(GenericCommand):
     _syntax_ = "{:s} GDB_CMD [, ARG]".format(_cmdline_)
     _category_ = "Misc"
 
+    def __init__(self):
+        super().__init__(complete=gdb.COMPLETE_COMMAND)
+        return
+
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -24347,6 +24371,10 @@ class LsCommand(GenericCommand):
     _syntax_ = "{:s} [filename|dirname, ...]".format(_cmdline_)
     _category_ = "Misc"
 
+    def __init__(self):
+        super().__init__(complete=gdb.COMPLETE_FILENAME)
+        return
+
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -24371,6 +24399,10 @@ class CatCommand(GenericCommand):
     _cmdline_ = "cat"
     _syntax_ = "{:s} filename [filename, ...]".format(_cmdline_)
     _category_ = "Misc"
+
+    def __init__(self):
+        super().__init__(complete=gdb.COMPLETE_FILENAME)
+        return
 
     def do_invoke(self, argv):
         self.dont_repeat()
@@ -24398,6 +24430,10 @@ class PdisasCommand(GenericCommand):
     _cmdline_ = "pdisas"
     _syntax_ = "{:s} [addr] [length]".format(_cmdline_)
     _category_ = "Assemble"
+
+    def __init__(self):
+        super().__init__(complete=gdb.COMPLETE_LOCATION)
+        return
 
     @only_if_gdb_running
     def do_invoke(self, argv):
@@ -24427,6 +24463,10 @@ class IiCommand(GenericCommand):
     _cmdline_ = "ii"
     _syntax_ = "{:s} [addr]".format(_cmdline_)
     _category_ = "Assemble"
+
+    def __init__(self):
+        super().__init__(complete=gdb.COMPLETE_LOCATION)
+        return
 
     def is_all_zero(self, addr, N):
         res = read_memory(addr, N)
@@ -24624,10 +24664,6 @@ class SlubDumpCommand(GenericCommand):
         unsigned stat[NR_SLUB_STAT_ITEMS];       // if CONFIG_SLUB_STATS=y
     }
     """
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(complete=gdb.COMPLETE_NONE)
-        return
 
     def init_offset(self):
         # resolve __per_cpu_offset
@@ -24992,7 +25028,7 @@ class KsymaddrRemoteCommand(GenericCommand):
     _category_ = "Qemu-system Cooperation"
 
     def __init__(self, *args, **kwargs):
-        super().__init__(complete=gdb.COMPLETE_NONE)
+        super().__init__()
         self.initialized = False
         self.maps = None
         self.kallsyms = []
@@ -25951,7 +25987,8 @@ class TcmallocDumpCommand(GenericCommand):
     _category_ = "Heap"
 
     def __init__(self, *args, **kwargs):
-        super().__init__(prefix=True, complete=gdb.COMPLETE_NONE)
+        prefix = kwargs.get("prefix", True)
+        super().__init__(prefix=prefix)
         self.initialized = None
         return
 
@@ -26251,8 +26288,8 @@ class TcmallocDumpChromeCommand(TcmallocDumpCommand):
     _syntax_ = "tcmalloc-dump chrome [-h] [self|all|NAME[,NAME,..]|central] [--th PRINT_THRESHOLD] [--idx PRINT_TARGET_IDX] [-c ADDR_TO_COLOR]"
     _category_ = "Heap"
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(complete=gdb.COMPLETE_NONE)
+    def __init__(self):
+        super().__init__(prefix=False)
         # chromium/third_party/tcmalloc/chromium/src/common.h
         self.kClassSizesMax = 96
         self.kMaxSize = 32 * 1024
@@ -26344,8 +26381,8 @@ class TcmallocDumpOldCommand(TcmallocDumpCommand):
     _syntax_ = "tcmalloc-dump old [-h] [self|all|NAME[,NAME,..]|central] [--th PRINT_THRESHOLD] [--idx PRINT_TARGET_IDX] [-c ADDR_TO_COLOR]"
     _category_ = "Heap"
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(complete=gdb.COMPLETE_NONE)
+    def __init__(self):
+        super().__init__(prefix=False)
         # google-perftools-2.5/src/common.h
         self.kBaseClasses = 9 # or 16
         self.kNumClasses = self.kBaseClasses + 79 # or 73 or 69
@@ -26483,7 +26520,7 @@ class V8DereferenceCommand(GenericCommand):
     _category_ = "Chrome"
 
     def __init__(self):
-        super(V8DereferenceCommand, self).__init__(complete=gdb.COMPLETE_LOCATION)
+        super().__init__(complete=gdb.COMPLETE_LOCATION)
         gef_on_exit_hook(del_isolate_root)
         return
 
@@ -32253,7 +32290,8 @@ class PagewalkCommand(GenericCommand):
     _category_ = "Qemu-system Cooperation"
 
     def __init__(self, *args, **kwargs):
-        super().__init__(prefix=True, complete=gdb.COMPLETE_NONE)
+        prefix = kwargs.get("prefix", True)
+        super().__init__(prefix=prefix)
         return
 
     def read_physmem_cache(self, paddr, size=8):
@@ -32611,8 +32649,8 @@ class PagewalkX64Command(PagewalkCommand):
     _category_ = "Qemu-system Cooperation"
     _aliases_ = ["pagewalk x86",]
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(complete=gdb.COMPLETE_NONE)
+    def __init__(self):
+        super().__init__(prefix=False)
         return
 
     def format_flags(self, flag_info):
@@ -33080,8 +33118,8 @@ class PagewalkArmCommand(PagewalkCommand):
     _example_ += "PL2 pagewalk is unsupported"
     _category_ = "Qemu-system Cooperation"
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(complete=gdb.COMPLETE_NONE)
+    def __init__(self):
+        super().__init__(prefix=False)
         return
 
     def format_flags_short(self, flag_info):
@@ -33959,8 +33997,8 @@ class PagewalkArm64Command(PagewalkCommand):
     # It is difficult to know the correct value of the secure world's system registers while in the normal world,
     # as the secure monitor saves all system registers to memory when the world changes.
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(complete=gdb.COMPLETE_NONE)
+    def __init__(self):
+        super().__init__(prefix=False)
         return
 
     def read_mem_wrapper(self, addr, size=8):
@@ -36390,6 +36428,10 @@ class MemoryHashCommand(GenericCommand):
     _syntax_ = "{:s} [-h] md5|sha1|sha224|sha256|sha384|sha512|crc16|crc32|crc64 ADDRESS SIZE".format(_cmdline_)
     _category_ = "Misc"
 
+    def __init__(self):
+        super().__init__(complete=gdb.COMPLETE_LOCATION)
+        return
+
     def calc_hash(self, type, h, start_address, end_address):
         step = 0x400 * gef_getpagesize()
         if is_qemu_system():
@@ -36514,7 +36556,8 @@ class ExecUntilCommand(GenericCommand):
     _category_ = "Debugging Support"
 
     def __init__(self, *args, **kwargs):
-        super().__init__(prefix=True, complete=gdb.COMPLETE_NONE)
+        prefix = kwargs.get("prefix", True)
+        super().__init__(prefix=prefix)
         return
 
     def close_stdout_stderr(self):
@@ -36719,8 +36762,8 @@ class ExecUntilCallCommand(ExecUntilCommand):
     _aliases_ = ["next-call",]
     _repeat_ = True
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(complete=gdb.COMPLETE_NONE)
+    def __init__(self):
+        super().__init__(prefix=False)
         self.mode = "call"
         return
 
@@ -36738,8 +36781,8 @@ class ExecUntilJumpCommand(ExecUntilCommand):
     _aliases_ = ["next-jmp",]
     _repeat_ = True
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(complete=gdb.COMPLETE_NONE)
+    def __init__(self):
+        super().__init__(prefix=False)
         self.mode = "jmp"
         return
 
@@ -36757,8 +36800,8 @@ class ExecUntilIndirectBranchCommand(ExecUntilCommand):
     _aliases_ = ["next-indirect-branch",]
     _repeat_ = True
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(complete=gdb.COMPLETE_NONE)
+    def __init__(self):
+        super().__init__(prefix=False)
         self.mode = "indirect-branch"
         return
 
@@ -36807,8 +36850,8 @@ class ExecUntilSyscallCommand(ExecUntilCommand):
     _aliases_ = ["next-syscall",]
     _repeat_ = True
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(complete=gdb.COMPLETE_NONE)
+    def __init__(self):
+        super().__init__(prefix=False)
         self.mode = "syscall"
         return
 
@@ -36826,8 +36869,8 @@ class ExecUntilRetCommand(ExecUntilCommand):
     _aliases_ = ["next-ret",]
     _repeat_ = True
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(complete=gdb.COMPLETE_NONE)
+    def __init__(self):
+        super().__init__(prefix=False)
         self.mode = "ret"
         return
 
@@ -36845,8 +36888,8 @@ class ExecUntilMemaccessCommand(ExecUntilCommand):
     _aliases_ = ["next-mem",]
     _repeat_ = True
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(complete=gdb.COMPLETE_NONE)
+    def __init__(self):
+        super().__init__(prefix=False)
         self.mode = "memaccess"
         return
 
@@ -36867,8 +36910,8 @@ class ExecUntilKeywordReCommand(ExecUntilCommand):
     _aliases_ = ["next-keyword",]
     _repeat_ = True
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(complete=gdb.COMPLETE_NONE)
+    def __init__(self):
+        super().__init__(prefix=False)
         self.mode = "keyword"
         return
 
@@ -36920,8 +36963,8 @@ class ExecUntilCondCommand(ExecUntilCommand):
     _aliases_ = ["next-cond",]
     _repeat_ = True
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(complete=gdb.COMPLETE_NONE)
+    def __init__(self):
+        super().__init__(prefix=False)
         self.mode = "cond"
         return
 
@@ -37009,10 +37052,6 @@ class UsermodehelperHunterCommand(GenericCommand):
     _syntax_ = "{:s} [-h]".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(complete=gdb.COMPLETE_NONE)
-        return
-
     @only_if_gdb_running
     @only_if_qemu_system
     def do_invoke(self, argv):
@@ -37089,10 +37128,6 @@ class ThunkHunterCommand(GenericCommand):
     _cmdline_ = "thunk-hunter"
     _syntax_ = "{:s} [-h]".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(complete=gdb.COMPLETE_NONE)
-        return
 
     @only_if_gdb_running
     @only_if_qemu_system
@@ -37785,6 +37820,10 @@ class LinklistWalkCommand(GenericCommand):
     _example_ += "{:s} -o 8 0xffff9c60800597e0 # walk list_head.prev".format(_cmdline_)
     _category_ = "Show/Modify Memory"
 
+    def __init__(self):
+        super().__init__(complete=gdb.COMPLETE_LOCATION)
+        return
+
     def walk_link_list(self, head, offset):
         current = head
         walkks = []
@@ -37840,6 +37879,10 @@ class PeekPointersCommand(GenericCommand):
     _example_ += "{:s} 0x00007ffffffde000 vdso     # grep by `vdso`\n".format(_cmdline_)
     _example_ += "{:s} 0x00007ffffffde000 vdso all # show all found address".format(_cmdline_)
     _category_ = "Show/Modify Memory"
+
+    def __init__(self):
+        super().__init__(complete=gdb.COMPLETE_LOCATION)
+        return
 
     @only_if_gdb_running
     @only_if_not_qemu_system
@@ -39081,8 +39124,9 @@ class AliasesCommand(GenericCommand):
     _syntax_  = "{:s} (add|rm|ls)".format(_cmdline_)
     _category_ = "GEF Maintenance Command"
 
-    def __init__(self):
-        super().__init__(prefix=True)
+    def __init__(self, *args, **kwargs):
+        prefix = kwargs.get("prefix", True)
+        super().__init__(prefix=prefix)
         return
 
     def do_invoke(self, argv):
@@ -39100,7 +39144,7 @@ class AliasesAddCommand(AliasesCommand):
     _category_ = "GEF Maintenance Command"
 
     def __init__(self):
-        super().__init__()
+        super().__init__(prefix=False)
         return
 
     def do_invoke(self, argv):
@@ -39120,7 +39164,7 @@ class AliasesRmCommand(AliasesCommand):
     _category_ = "GEF Maintenance Command"
 
     def __init__(self):
-        super().__init__()
+        super().__init__(prefix=False)
         return
 
     def do_invoke(self, argv):
@@ -39147,7 +39191,7 @@ class AliasesListCommand(AliasesCommand):
     _category_ = "GEF Maintenance Command"
 
     def __init__(self):
-        super().__init__()
+        super().__init__(prefix=False)
         return
 
     def do_invoke(self, argv):
