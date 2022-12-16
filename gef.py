@@ -1872,14 +1872,24 @@ def load_keystone(f):
     return wrapper
 
 
+__prev_arch = None
 def gdb_disassemble(start_pc, **kwargs):
     """Disassemble instructions from `start_pc` (Integer). Accepts the following named parameters:
     - `end_pc` (Integer) only instructions whose start address fall in the interval from start_pc to end_pc are returned.
     - `count` (Integer) list at most this many disassembled instructions
     If `end_pc` and `count` are not provided, the function will behave as if `count=1`.
     Return an iterator of Instruction objects"""
-    frame = gdb.selected_frame()
-    arch = frame.architecture()
+
+    try:
+        arch = gdb.selected_frame().architecture()
+        global __prev_arch
+        __prev_arch = arch
+    except:
+        # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
+        # At this time arch cannot be resolved, but if it was successful before, it will be used.
+        arch = __prev_arch
+        if __prev_arch is None:
+            raise
 
     for insn in arch.disassemble(start_pc, **kwargs):
         address = insn["addr"]
@@ -2206,9 +2216,15 @@ def checksec(filename):
 def get_arch():
     """Return the binary's architecture."""
     if is_alive():
-        arch = gdb.selected_frame().architecture()
-        return arch.name()
+        try:
+            arch = gdb.selected_frame().architecture()
+            return arch.name()
+        except:
+            # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
+            # Resolve by moving to the slow path.
+            pass
 
+    # slow path
     arch_str = gdb.execute("show architecture", to_string=True).strip()
     if "The target architecture is set automatically (currently " in arch_str:
         arch_str = arch_str.split("(currently ", 1)[1]
@@ -3944,12 +3960,9 @@ def to_unsigned_long(v):
 
 def get_register(regname):
     """Return a register's value."""
-    return get_register_for_selected_frame(id(gdb.selected_frame()), regname)
-
-
-def get_register_for_selected_frame(selected_frame_id, regname):
     if regname[0] != '$':
         regname = "$" + regname
+
     try:
         value = gdb.parse_and_eval(regname)
         return to_unsigned_long(value) if value.type.code == gdb.TYPE_CODE_INT else int(value)
@@ -5804,7 +5817,10 @@ class UafWatchpoint(gdb.Breakpoint):
     def stop(self):
         """If this method is triggered, we likely have a UaF. Break the execution and report it."""
         reset_all_caches()
-        frame = gdb.selected_frame()
+        try:
+            frame = gdb.selected_frame()
+        except:
+            return False
         if frame.name() in ("_int_malloc", "malloc_consolidate", "__libc_calloc", ):
             return False
 
@@ -12041,8 +12057,12 @@ class ContextCommand(GenericCommand):
         breakpoints = gdb.breakpoints() or []
         bp_locations = [b.location for b in breakpoints if b.location and b.location.startswith("*")]
 
-        frame = gdb.selected_frame()
-        arch_name = "{}:{}".format(current_arch.arch.lower(), current_arch.mode)
+        try:
+            frame = gdb.selected_frame()
+            arch_name = "{}:{}".format(current_arch.arch.lower(), current_arch.mode)
+        except gdb.error:
+            # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
+            arch_name = "{}:{}".format(current_arch.arch.lower(), "???")
 
         self.context_title("code:{}".format(arch_name))
         if use_native_x_command:
@@ -12516,8 +12536,14 @@ class ContextCommand(GenericCommand):
                 gdb.execute("backtrace {:d}".format(nb_backtrace))
                 return
 
-            orig_frame = gdb.selected_frame()
-            current_frame = gdb.newest_frame()
+            try:
+                orig_frame = gdb.selected_frame()
+                current_frame = gdb.newest_frame()
+            except:
+                # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
+                err("Faild to get frame information.")
+                return
+
             frames = [current_frame]
             while current_frame != orig_frame:
                 current_frame = current_frame.older()
@@ -12598,7 +12624,11 @@ class ContextCommand(GenericCommand):
             return
 
         selected_thread = gdb.selected_thread()
-        selected_frame = gdb.selected_frame()
+        try:
+            selected_frame = gdb.selected_frame()
+        except:
+            # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
+            selected_frame = None
 
         for i, thread in enumerate(threads):
             line = "[{:s}]".format(Color.colorify("#{:d}".format(i), "bold green" if thread == selected_thread else "bold pink"))
@@ -12612,23 +12642,30 @@ class ContextCommand(GenericCommand):
                 try:
                     thread.switch()
                 except:
-                    return
+                    line += " - Failed to switch to this thread"
+                    gef_print(line)
+                    continue
                 try:
                     frame = gdb.selected_frame()
                 except:
-                    err("No such process")
-                    return
+                    # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
+                    # if failed, print thread information without frame (but with $pc).
+                    line += " {:s} in".format(Color.colorify("{:#x}".format(get_register("$pc")), "blue"))
+                    line += " {:s}".format(Color.colorify("unknown_frame", "bold yellow"))
+                    line += ", reason: {}".format(Color.colorify(reason(), "bold pink"))
+                    gef_print(line)
+                    continue
                 frame_name = Instruction.smartify_text(frame.name())
                 line += " {:s} in".format(Color.colorify("{:#x}".format(frame.pc()), "blue"))
-                line += " {:s} ()".format(Color.colorify(frame_name or "??", "bold yellow"))
+                line += " {:s}".format(Color.colorify(frame_name or "unknown_frame", "bold yellow"))
                 line += ", reason: {}".format(Color.colorify(reason(), "bold pink"))
             elif thread.is_exited():
                 line += Color.colorify("exited", "bold yellow")
             gef_print(line)
-            i += 1
 
         selected_thread.switch()
-        selected_frame.select()
+        if selected_frame is not None:
+            selected_frame.select()
         return
 
     def context_additional_information(self):
@@ -23542,7 +23579,7 @@ class GdtInfoCommand(GenericCommand):
         gef_print(titlify("Current register values"))
         red = lambda x: Color.colorify("{:4s}".format(x), "red bold")
         for k in ['cs', 'ds', 'es', 'fs', 'gs', 'ss']:
-            v = int(gdb.selected_frame().read_register(k))
+            v = get_register(k)
             gef_print("{:s}: {:s}".format(red(k), self.seg2str(v)))
         gef_print(" * rpl: Requested Privilege Level (0:Ring0, 3:Ring3)")
         gef_print(" * ti: Table Indicator (0:GDT, 1:LDT)")
@@ -23649,7 +23686,7 @@ class GdtInfoCommand(GenericCommand):
         regs = {}
         if is_alive():
             for k in ['cs', 'ds', 'es', 'fs', 'gs', 'ss']:
-                v = gdb.selected_frame().read_register(k)
+                v = get_register(k)
                 rpl = v & 0b11
                 ti = (v>>2) & 0b1
                 index = int(v>>3)
@@ -37100,9 +37137,12 @@ class ThunkBreakpoint(gdb.Breakpoint):
         return "?"
 
     def stop(self):
-        return_address = gdb.selected_frame().older().pc()
-        caller_address = gdb_get_nth_previous_instruction_address(return_address, 1)
-        target_address = get_register(self.reg)
+        try:
+            return_address = gdb.selected_frame().older().pc()
+            caller_address = gdb_get_nth_previous_instruction_address(return_address, 1)
+            target_address = get_register(self.reg)
+        except:
+            return False # continue
 
         # duplicate, check
         if (caller_address, target_address) in self.seen:
@@ -37980,7 +38020,12 @@ class CurrentFrameStackCommand(GenericCommand):
         self.dont_repeat()
 
         ptrsize = current_arch.ptrsize
-        frame = gdb.selected_frame()
+        try:
+            frame = gdb.selected_frame()
+        except:
+            # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
+            err("Faild to get frame information")
+            return
 
         if not frame.older():
             reason = frame.unwind_stop_reason()
