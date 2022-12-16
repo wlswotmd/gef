@@ -2227,7 +2227,10 @@ def flags_to_human(reg_value, value_table):
     """Return a human readable string showing the flag states."""
     flags = []
     for i in value_table:
-        flag_str = Color.boldify(value_table[i].upper()) if reg_value & (1<<i) else value_table[i].lower()
+        if reg_value & (1<<i):
+            flag_str = Color.boldify(value_table[i].upper())
+        else:
+            flag_str = value_table[i].lower()
         flags.append(flag_str)
     return "{:#x} [{}]".format(reg_value, " ".join(flags))
 
@@ -2364,8 +2367,9 @@ class RISCV(Architecture):
 
     # RISC-V has no flags registers
     flag_register = None
-    flag_register_to_human = None
     flags_table = None
+    def flag_register_to_human(self, val=None):
+        return Color.colorify("No flag register", "yellow underline")
 
     @property
     def instruction_length(self):
@@ -2590,36 +2594,39 @@ class ARM(Architecture):
             return True
         return False
 
+    __SCR_available = None
+    __mode_dic = {
+        # encoding: [mode, PL]
+        0b10000: ["User", 0],
+        0b10001: ["FIQ", 1],
+        0b10010: ["IRQ", 1],
+        0b10011: ["Supervisor", 1],
+        0b10110: ["Monitor", 1],
+        0b10111: ["Abort", 1],
+        0b11010: ["Hypervisor", 2],
+        0b11011: ["Undefined", 1],
+        0b11111: ["System", 1],
+    }
     def flag_register_to_human(self, val=None):
         # http://www.botskool.com/user-pages/tutorials/electronics/arm-7-tutorial-part-1
         if val is None:
             reg = self.flag_register
             val = get_register(reg) & 0xffffffff
-        mode_str = ["User", "FIQ", "IRQ", "Supervisor", "Monitor", "Abort", "Hypervisor", "Undefined", "System"]
-        # encoding: ["mode", PL]
-        mode_dic = {
-            0b10000: [mode_str[0], 0],
-            0b10001: [mode_str[1], 1],
-            0b10010: [mode_str[2], 1],
-            0b10011: [mode_str[3], 1],
-            0b10110: [mode_str[4], 1],
-            0b10111: [mode_str[5], 1],
-            0b11010: [mode_str[6], 2],
-            0b11011: [mode_str[7], 1],
-            0b11111: [mode_str[8], 1],
-        }
-        key = val & 0b11111
-        CurrentMode = mode_dic[key][0]
-        CurrentPL = mode_dic[key][1]
 
-        scr = get_register("$SCR")
-        if scr is not None:
-            if (scr & 0b1) == 0:
-                mode = " [Mode={:s}({:#07b},PL{:d}), Secure]".format(CurrentMode, key, CurrentPL)
-            else:
-                mode = " [Mode={:s}({:#07b},PL{:d}), Non-Secure]".format(CurrentMode, key, CurrentPL)
-        else:
+        key = val & 0b11111
+        CurrentMode, CurrentPL = self.__mode_dic[key]
+
+        if self.__SCR_available is False: # for speed up
             mode = " [Mode={:s}({:#07b},PL{:d})]".format(CurrentMode, key, CurrentPL)
+        else:
+            scr = get_register("$SCR")
+            if scr is not None:
+                self.__SCR_available = True
+                secure_state = ["Secure", "Non-Secure"][scr & 1]
+                mode = " [Mode={:s}({:#07b},PL{:d}),{:s}]".format(CurrentMode, key, CurrentPL, secure_state)
+            else:
+                self.__SCR_available = False
+                mode = " [Mode={:s}({:#07b},PL{:d})]".format(CurrentMode, key, CurrentPL)
         return flags_to_human(val, self.flags_table) + mode
 
     def is_conditional_branch(self, insn):
@@ -2739,20 +2746,25 @@ class AARCH64(ARM):
     def is_ret(self, insn):
         return (insn.mnemonic in ["ret", "eret"]) or (insn.mnemonic == "ldp" and "pc" in insn.operands)
 
+    __SCR_EL3_available = None
     def flag_register_to_human(self, val=None):
         # http://events.linuxfoundation.org/sites/events/files/slides/KoreaLinuxForum-2014.pdf
         if val is None:
             reg = self.flag_register
             val = get_register(reg) & 0xffffffff
 
-        scr = get_register("$SCR_EL3")
-        if scr is not None:
-            if (scr & 0b1) == 0:
-                mode = " [EL={:d},SP={:d}, Secure]".format((val >> 2) & 0b11, val & 0b11)
-            else:
-                mode = " [EL={:d},SP={:d}, Non-Secure]".format((val >> 2) & 0b11, val & 0b11)
-        else:
+        if self.__SCR_EL3_available is False: # for speed up
             mode = " [EL={:d},SP={:d}]".format((val >> 2) & 0b11, val & 0b11)
+        else:
+            scr = get_register("$SCR_EL3")
+            if scr is not None:
+                self.__SCR_EL3_available = True
+                secure_state = ["Secure", "Non-Secure"][scr & 1]
+                mode = " [EL={:d},SP={:d},{:s}]".format((val >> 2) & 0b11, val & 0b11, secure_state)
+            else:
+                self.__SCR_EL3_available = False
+                mode = " [EL={:d},SP={:d}]".format((val >> 2) & 0b11, val & 0b11)
+
         return flags_to_human(val, self.flags_table) + mode
 
     @classmethod
@@ -8841,6 +8853,7 @@ class DetailRegistersCommand(GenericCommand):
             if reg.type.code == gdb.TYPE_CODE_VOID:
                 continue
 
+            # https://arvid.io/2016/08/21/test-if-a-variable-is-unavailable-in-gdb/
             if str(reg) == "<unavailable>":
                 line = "{}: ".format(Color.colorify(padreg, unchanged_color))
                 line += Color.colorify("no value", "yellow underline")
