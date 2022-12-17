@@ -178,6 +178,46 @@ highlight_table = {}
 ANSI_SPLIT_RE = r"(\033\[[\d;]*m)"
 
 
+def perf_enable(f):
+    """Decorator wrapper to perf."""
+
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        import cProfile, pstats, io
+        pr = cProfile.Profile()
+        pr.enable()
+        ret = f(*args, **kwargs)
+        pr.disable()
+        s = io.StringIO()
+        #sortby = pstats.SortKey.CUMULATIVE
+        sortby = pstats.SortKey.TIME
+        ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+        ps.print_stats(20)
+        print(s.getvalue())
+        return ret
+
+    return wrapper
+
+
+def perf_by_line_enable(f):
+    """Decorator wrapper to perf."""
+
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        import line_profiler, pstats, io
+        pr = line_profiler.LineProfiler()
+        pr.add_function(f)
+        pr.enable()
+        ret = f(*args, **kwargs)
+        pr.disable()
+        s = io.StringIO()
+        pr.print_stats(stream=s)
+        print(s.getvalue())
+        return ret
+
+    return wrapper
+
+
 def reset_all_caches():
     """Free all caches. If an object is cached, it will have a callable attribute `cache_clear`
     which will be invoked to purge the function cache."""
@@ -3800,46 +3840,6 @@ def only_if_not_qemu_system(f):
             return f(*args, **kwargs)
         else:
             warn("This command cannot work under qemu-system.")
-
-    return wrapper
-
-
-def perf_enable(f):
-    """Decorator wrapper to perf."""
-
-    @functools.wraps(f)
-    def wrapper(*args, **kwargs):
-        import cProfile, pstats, io
-        pr = cProfile.Profile()
-        pr.enable()
-        ret = f(*args, **kwargs)
-        pr.disable()
-        s = io.StringIO()
-        #sortby = pstats.SortKey.CUMULATIVE
-        sortby = pstats.SortKey.TIME
-        ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
-        ps.print_stats(20)
-        print(s.getvalue())
-        return ret
-
-    return wrapper
-
-
-def perf_by_line_enable(f):
-    """Decorator wrapper to perf."""
-
-    @functools.wraps(f)
-    def wrapper(*args, **kwargs):
-        import line_profiler, pstats, io
-        pr = line_profiler.LineProfiler()
-        pr.add_function(f)
-        pr.enable()
-        ret = f(*args, **kwargs)
-        pr.disable()
-        s = io.StringIO()
-        pr.print_stats(stream=s)
-        print(s.getvalue())
-        return ret
 
     return wrapper
 
