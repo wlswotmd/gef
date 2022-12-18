@@ -162,6 +162,7 @@ __gef_redirect_output_fd__             = None
 
 DEFAULT_PAGE_ALIGN_SHIFT               = 12
 DEFAULT_PAGE_SIZE                      = 1 << DEFAULT_PAGE_ALIGN_SHIFT
+DEFAULT_PAGE_SIZE_MASK                 = ~ (DEFAULT_PAGE_SIZE - 1)
 GEF_RC                                 = os.getenv("GEF_RC") or os.path.join(os.getenv("HOME") or "~", ".gef.rc")
 GEF_TEMP_DIR                           = os.path.join(tempfile.gettempdir(), "gef")
 GEF_MAX_STRING_LENGTH                  = 0x50
@@ -3620,7 +3621,7 @@ def read_cstring_from_memory(address, max_length=GEF_MAX_STRING_LENGTH):
         # ex: address is 0xXXX100 -> length is 0xf00
         # ex: address is 0xXXX200 -> length is 0xe00
         # ex: address is 0xXXXff0 -> length is not 0x10, but GEF_MAX_STRING_LENGTH
-        length = max((address|(DEFAULT_PAGE_SIZE-1)) - address, max_length+1)
+        length = max((address|(gef_getpagesize()-1)) - address, max_length+1)
         res = read_memory(address, length).split(b"\x00")[0]
         ustr = res.decode("utf-8")
         if max_length and len(ustr) > max_length:
@@ -3965,7 +3966,10 @@ def get_register(regname):
 
     try:
         value = gdb.parse_and_eval(regname)
-        return to_unsigned_long(value) if value.type.code == gdb.TYPE_CODE_INT else int(value)
+        if value.type.code == gdb.TYPE_CODE_INT:
+            return to_unsigned_long(value)
+        else:
+            return int(value)
     except gdb.error:
         try:
             value = gdb.selected_frame().read_register(regname)
@@ -4200,7 +4204,7 @@ def get_process_maps_linux(proc_map_file):
 
 
 def get_ehdr(addr):
-    addr &= ~(gef_getpagesize()-1)
+    addr &= gef_getpagesize_mask()
     bound = (1<<32) if is_32bit() else (1<<64)
     for i in range(1024):
         if addr < 0 or addr > bound:
@@ -4231,9 +4235,9 @@ def elf_map(addr, objfile=''):
         vaddr = phdr.p_vaddr
 
         memsz += vaddr & (gef_getpagesize()-1)
-        memsz = (memsz + (gef_getpagesize()-1)) & ~(gef_getpagesize()-1) # padding
-        vaddr &= ~(gef_getpagesize()-1)
-        offset &= ~(gef_getpagesize()-1)
+        memsz = (memsz + (gef_getpagesize()-1)) & gef_getpagesize_mask() # padding
+        vaddr &= gef_getpagesize_mask()
+        offset &= gef_getpagesize_mask()
 
         for page_addr in range(vaddr, vaddr+memsz, gef_getpagesize()):
             for i, page in enumerate(pages):
@@ -4288,7 +4292,7 @@ def elf_map(addr, objfile=''):
     return sects
 
 
-# get_explored_regions (used qemu-user mode) is too slow,
+# get_explored_regions (used at qemu-user mode) is too slow,
 # Because it repeats read_memory many times to find the upper and lower bounds of the page.
 # functools.lru_cache() is not effective because it is cleared every time you stepi.
 # Fortunately, memory maps rarely change.
@@ -4318,7 +4322,7 @@ def get_explored_regions():
             return False
 
     def get_region_start_end(addr):
-        addr &= ~(gef_getpagesize()-1)
+        addr &= gef_getpagesize_mask()
         if not is_exist_page(addr):
             return None, None
         region_start = addr
@@ -4390,7 +4394,7 @@ def get_explored_regions():
     # walk near stack
     sp = get_register("$sp")
     try:
-        data = read_memory(sp & ~(gef_getpagesize()-1), gef_getpagesize())
+        data = read_memory(sp & gef_getpagesize_mask(), gef_getpagesize())
     except:
         return regions
     unpack = u32 if is_32bit() else u64
@@ -4415,7 +4419,7 @@ def get_explored_regions():
 def get_process_maps(outer=False):
     """Return the mapped memory sections"""
     if is_qemu_usermode() and not outer:
-        return list(get_explored_regions())
+        return get_explored_regions()
 
     pid = get_pid()
     if pid is None:
@@ -5381,6 +5385,15 @@ def gef_getpagesize():
     if not auxval:
         return DEFAULT_PAGE_SIZE
     return auxval["AT_PAGESZ"]
+
+
+@functools.lru_cache()
+def gef_getpagesize_mask():
+    """Get the page size mask from auxiliary values."""
+    auxval = gef_get_auxiliary_values()
+    if not auxval:
+        return DEFAULT_PAGE_SIZE_MASK
+    return ~(auxval["AT_PAGESZ"] - 1)
 
 
 def only_if_events_supported(event_type):
@@ -12983,7 +12996,7 @@ class HexdumpCommand(GenericCommand):
             pass
 
         read_end = read_from + read_len
-        read_end &= ~(gef_getpagesize() - 1)
+        read_end &= gef_getpagesize_mask()
         while read_end - read_from > 0:
             try:
                 if self.phys_mode:
@@ -13792,7 +13805,7 @@ def dereference_from(addr):
             # -- If it's a pointer, dereference
             deref = addr.dereference()
         except:
-            start = addr.value & ~(gef_getpagesize()-1)
+            start = addr.value & gef_getpagesize_mask()
             end = start + gef_getpagesize()
             err("Receive ignoring packets during access at {:#x}.".format(addr.value))
             err("Add {:#x}-{:#x} to blacklist addresses".format(start, end))
@@ -23168,7 +23181,7 @@ class ArgvCommand(GenericCommand):
             if not verbose and i > 99:
                 gef_print("...")
                 break
-            s = read_cstring_from_memory(addr, DEFAULT_PAGE_SIZE)
+            s = read_cstring_from_memory(addr, gef_getpagesize())
             gef_print("[{:3d}]: {:#x}: {:#x}{:s}{:s}".format(i, array + i * current_arch.ptrsize, addr, RIGHT_ARROW, Color.yellowify(repr(s))))
             i += 1
         return
@@ -23238,7 +23251,7 @@ class EnvpCommand(GenericCommand):
             if not verbose and i > 99:
                 gef_print("...")
                 break
-            s = read_cstring_from_memory(addr, DEFAULT_PAGE_SIZE)
+            s = read_cstring_from_memory(addr, gef_getpagesize())
             gef_print("[{:3d}]: {:#x}: {:#x}{:s}{:s}".format(i, pos, addr, RIGHT_ARROW, Color.yellowify(repr(s))))
             i += 1
         return
@@ -27271,9 +27284,9 @@ class PartitionAllocDumpStableCommand(GenericCommand):
         ptrsize = current_arch.ptrsize
         slot_span = {}
         slot_span["addr"] = current = addr
-        slot_span["super_page_addr"] = (slot_span["addr"] & ~(DEFAULT_PAGE_SIZE-1)) - DEFAULT_PAGE_SIZE
-        slot_span["partition_page_index"] = (slot_span["addr"] & (DEFAULT_PAGE_SIZE-1)) // 0x20
-        slot_span["partition_page_start"] = slot_span["super_page_addr"] + slot_span["partition_page_index"] * DEFAULT_PAGE_SIZE * 4
+        slot_span["super_page_addr"] = (slot_span["addr"] & gef_getpagesize_mask()) - gef_getpagesize()
+        slot_span["partition_page_index"] = (slot_span["addr"] & (gef_getpagesize()-1)) // 0x20
+        slot_span["partition_page_start"] = slot_span["super_page_addr"] + slot_span["partition_page_index"] * gef_getpagesize() * 4
         """
         https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/partition_page.h
         struct SlotSpanMetadata {
@@ -27445,7 +27458,7 @@ class PartitionAllocDumpStableCommand(GenericCommand):
             gef_print(text_fmt.format(slot_span["addr"], slot_span["partition_page_index"], slot_span["super_page_addr"]))
             gef_print("                   next_slot_span:{:<#14x} ".format(slot_span["next_slot_span"]))
             page_start = slot_span["partition_page_start"]
-            page_end = slot_span["partition_page_start"] + bucket["num_system_pages_per_slot_span"] * DEFAULT_PAGE_SIZE
+            page_end = slot_span["partition_page_start"] + bucket["num_system_pages_per_slot_span"] * gef_getpagesize()
             gef_print("                   slot_span_area:{:#x}-{:#x} ".format(page_start, page_end))
             gef_print("                   num_allocated_slots:{:#x}".format(slot_span["num_allocated_slots"]))
             self.print_freelist(slot_span["freelist_head"], bucket, slot_span)
@@ -27457,7 +27470,7 @@ class PartitionAllocDumpStableCommand(GenericCommand):
 
         slot_size = bucket["slot_size"]
         page_start = slot_span["partition_page_start"]
-        page_end = slot_span["partition_page_start"] + bucket["num_system_pages_per_slot_span"] * DEFAULT_PAGE_SIZE
+        page_end = slot_span["partition_page_start"] + bucket["num_system_pages_per_slot_span"] * gef_getpagesize()
 
         text = ""
         cnt = 0
@@ -27984,9 +27997,9 @@ class PartitionAllocDumpOld1Command(GenericCommand):
         ptrsize = current_arch.ptrsize
         slot_span = {}
         slot_span["addr"] = current = addr
-        slot_span["super_page_addr"] = (slot_span["addr"] & ~(DEFAULT_PAGE_SIZE-1)) - DEFAULT_PAGE_SIZE
-        slot_span["partition_page_index"] = (slot_span["addr"] & (DEFAULT_PAGE_SIZE-1)) // 0x20
-        slot_span["partition_page_start"] = slot_span["super_page_addr"] + slot_span["partition_page_index"] * DEFAULT_PAGE_SIZE * 4
+        slot_span["super_page_addr"] = (slot_span["addr"] & gef_getpagesize_mask()) - gef_getpagesize()
+        slot_span["partition_page_index"] = (slot_span["addr"] & (gef_getpagesize()-1)) // 0x20
+        slot_span["partition_page_start"] = slot_span["super_page_addr"] + slot_span["partition_page_index"] * gef_getpagesize() * 4
         """
         struct SlotSpanMetadata {
           PartitionFreelistEntry* freelist_head = nullptr;
@@ -28169,7 +28182,7 @@ class PartitionAllocDumpOld1Command(GenericCommand):
             text = "                "
             text += "next_slot_span:{:<#14x} ".format(slot_span["next_slot_span"])
             page_start = slot_span["partition_page_start"]
-            page_end = slot_span["partition_page_start"] + bucket["num_system_pages_per_slot_span"] * DEFAULT_PAGE_SIZE
+            page_end = slot_span["partition_page_start"] + bucket["num_system_pages_per_slot_span"] * gef_getpagesize()
             text += "slot_span_area:{:#x}-{:#x} ".format(page_start, page_end)
             text += "num_allocated_slots:{:#x}".format(slot_span["num_allocated_slots"])
             gef_print(text)
@@ -28182,7 +28195,7 @@ class PartitionAllocDumpOld1Command(GenericCommand):
 
         slot_size = bucket["slot_size"]
         page_start = slot_span["partition_page_start"]
-        page_end = slot_span["partition_page_start"] + bucket["num_system_pages_per_slot_span"] * DEFAULT_PAGE_SIZE
+        page_end = slot_span["partition_page_start"] + bucket["num_system_pages_per_slot_span"] * gef_getpagesize()
 
         text = ""
         cnt = 0
@@ -28594,9 +28607,9 @@ class PartitionAllocDumpOld2Command(GenericCommand):
         ptrsize = current_arch.ptrsize
         page = {}
         page["addr"] = current = addr
-        page["super_page_addr"] = (page["addr"] & ~(DEFAULT_PAGE_SIZE-1)) - DEFAULT_PAGE_SIZE
-        page["partition_page_index"] = (page["addr"] & (DEFAULT_PAGE_SIZE-1)) // 0x20
-        page["partition_page_start"] = page["super_page_addr"] + page["partition_page_index"] * DEFAULT_PAGE_SIZE * 4
+        page["super_page_addr"] = (page["addr"] & gef_getpagesize_mask()) - gef_getpagesize()
+        page["partition_page_index"] = (page["addr"] & (gef_getpagesize()-1)) // 0x20
+        page["partition_page_start"] = page["super_page_addr"] + page["partition_page_index"] * gef_getpagesize() * 4
         """
         struct PartitionPage {
           PartitionFreelistEntry* freelist_head;
@@ -28758,7 +28771,7 @@ class PartitionAllocDumpOld2Command(GenericCommand):
             text = text_fmt.format(page["addr"], page["partition_page_index"], page["super_page_addr"])
             text += "next_page:{:<#14x} ".format(page["next_page"])
             page_start = page["partition_page_start"]
-            page_end = page["partition_page_start"] + bucket["num_system_pages_per_slot_span"] * DEFAULT_PAGE_SIZE
+            page_end = page["partition_page_start"] + bucket["num_system_pages_per_slot_span"] * gef_getpagesize()
             text += "page_area:{:#x}-{:#x} ".format(page_start, page_end)
             text += "num_allocated_slots:{:#x}".format(page["num_allocated_slots"])
             gef_print(text)
@@ -28771,7 +28784,7 @@ class PartitionAllocDumpOld2Command(GenericCommand):
 
         slot_size = bucket["slot_size"]
         page_start = page["partition_page_start"]
-        page_end = page["partition_page_start"] + bucket["num_system_pages_per_slot_span"] * DEFAULT_PAGE_SIZE
+        page_end = page["partition_page_start"] + bucket["num_system_pages_per_slot_span"] * gef_getpagesize()
 
         text = ""
         cnt = 0
@@ -37953,7 +37966,7 @@ class PeekPointersCommand(GenericCommand):
         except:
             self.usage()
             return
-        if (addr.value % DEFAULT_PAGE_SIZE):
+        if (addr.value % gef_getpagesize()):
             err("<starting_address> must be aligned to a page")
             return
         if addr.section is None:
