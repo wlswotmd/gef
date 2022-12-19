@@ -3613,22 +3613,33 @@ def read_int_from_memory(addr):
 
 def read_cstring_from_memory(address, max_length=GEF_MAX_STRING_LENGTH):
     """Return a C-string read from memory."""
-    # original GEF uses gdb.Value().cast("char"),
-    # but this is too slow if string is too large.
+    # original GEF uses gdb.Value().cast("char"), but this is too slow if string is too large.
     # for example 0xcccccccccccccccc....(too long), this is in kernel or firmware commonly.
     # to avoid this, gdb.Value().cast() is removed.
+
+    # first, read to page boundary
+    length = gef_getpagesize() - (address % gef_getpagesize())
     try:
-        # ex: address is 0xXXX100 -> length is 0xf00
-        # ex: address is 0xXXX200 -> length is 0xe00
-        # ex: address is 0xXXXff0 -> length is not 0x10, but GEF_MAX_STRING_LENGTH
-        length = max((address|(gef_getpagesize()-1)) - address, max_length+1)
-        res = read_memory(address, length).split(b"\x00")[0]
-        ustr = res.decode("utf-8")
-        if max_length and len(ustr) > max_length:
-            ustr = "{}[...]".format(ustr[:max_length])
-        return ustr
+        res = read_memory(address, length)
     except:
         return None
+
+    # if too short, more read
+    while len(res) < max_length:
+        if b"\x00" in res:
+            break
+        try:
+            read_length = min(max_length - len(res), gef_getpagesize())
+            res += read_memory(address + len(res), read_length)
+        except:
+            break
+
+    # treat as utf-8
+    res = res.split(b"\x00")[0]
+    ustr = res.decode("utf-8")
+    if len(ustr) > max_length:
+        ustr = "{}[...]".format(ustr[:max_length])
+    return ustr
 
 
 def read_ascii_string(address):
@@ -5360,6 +5371,7 @@ def gef_get_auxiliary_values():
     return res
 
 
+@functools.lru_cache()
 def gef_read_canary():
     """Read the canary of a running process using Auxiliary Vector.
     Return a tuple of (canary, location) if found, None otherwise."""
@@ -5367,10 +5379,13 @@ def gef_read_canary():
     if not auxval:
         return None
 
-    canary_location = auxval["AT_RANDOM"]
-    canary = read_int_from_memory(canary_location)
-    canary &= ~0xFF
-    return canary, canary_location
+    try:
+        canary_location = auxval["AT_RANDOM"]
+        canary = read_int_from_memory(canary_location)
+        canary &= ~0xFF
+        return canary, canary_location
+    except:
+        return None
 
 
 def gef_get_pie_breakpoint(num):
@@ -8862,7 +8877,6 @@ class DetailRegistersCommand(GenericCommand):
         unchanged_color = get_gef_setting("theme.registers_register_name")
         changed_color = get_gef_setting("theme.registers_value_changed")
         string_color = get_gef_setting("theme.dereference_string")
-        max_recursion = get_gef_setting("dereference.max_recursion") or 4
 
         if argv:
             argv = [arg if arg.startswith("$") else "$" + arg for arg in argv]
@@ -8914,40 +8928,8 @@ class DetailRegistersCommand(GenericCommand):
                 gef_print(line)
                 continue
 
-            # register value with aligned width
-            sym = get_symbol_string(value)
-            addr = lookup_address(align_address(int(value)))
-            if sym or addr.valid:
-                line += str(addr) + sym # 0x0000000041414141 <foo> # 0-pad colored value with symbol if exists
-            else:
-                line += format_address_spaces(value) # 0x41414141________ # non-colored value with padding space
-
             # dereference values
-            # addrs: [Address(rax), Address(deref_of_rax), Address(deref_of_deref_of_rax), ..., str(msg)]
-            addrs = dereference_from(value)
-            if len(addrs) > 1: # skip first element because it is register value itself
-                sep = " {:s} ".format(RIGHT_ARROW)
-                for addr in addrs[1:]:
-                    if isinstance(addr, Address):
-                        line += sep + str(addr) + get_symbol_string(addr.value)
-                    else:
-                        line += sep + addr # actually this is msg
-
-            # add "..." or not
-            if max_recursion <= len(addrs) and isinstance(addrs[-1], Address):
-                subseq_addrs = dereference_from(addrs[-1].value)
-                if len(subseq_addrs) > 1:
-                    line += sep + "..."
-
-            # last dereference values list is ascii or not
-            if isinstance(addrs[-1], Address):
-                try:
-                    fmt = "{}{}".format(endian, "I" if memsize == 4 else "Q")
-                    val = gef_pystring(struct.pack(fmt, addrs[-1].value))
-                    if all([_ in charset for _ in val]):
-                        line += ' ("{:s}"?)'.format(Color.colorify(val, string_color))
-                except ValueError:
-                    pass
+            line += to_string_dereference_from(value)
 
             gef_print(line)
 
@@ -12338,7 +12320,7 @@ class ContextCommand(GenericCommand):
             _value = current_arch.get_ith_parameter(i, in_func=False)[1]
             if _value is None:
                 break
-            _value = RIGHT_ARROW.join([str(addr) for addr in dereference_from(_value)])
+            _value = to_string_dereference_from(_value)
             _name = f.name or "var_{}".format(i)
             _type = f.type.name or self.size2type[f.type.sizeof]
             args.append("{} {} = {}".format(_type, _name, _value))
@@ -12420,13 +12402,13 @@ class ContextCommand(GenericCommand):
 
         args = []
         for i in range(nb_argument):
-            _key, _values = current_arch.get_ith_parameter(i, in_func=False)
-            _values = RIGHT_ARROW.join([str(addr) for addr in dereference_from(_values)])
+            _key, _value = current_arch.get_ith_parameter(i, in_func=False)
+            _value = to_string_dereference_from(_value)
             try:
-                args.append("{} = {} (def: {})".format(Color.colorify(_key, arg_key_color), _values,
+                args.append("{} = {} (def: {})".format(Color.colorify(_key, arg_key_color), _value,
                                                        libc_args_definitions[_arch_mode][_function_name][_key]))
             except KeyError:
-                args.append("{} = {}".format(Color.colorify(_key, arg_key_color), _values))
+                args.append("{} = {}".format(Color.colorify(_key, arg_key_color), _value))
 
         self.context_title("arguments (guessed)")
         gef_print("{} (".format(function_name))
@@ -12495,7 +12477,6 @@ class ContextCommand(GenericCommand):
         return
 
     def get_pc_context_info(self, pc, line):
-        max_recursion = get_gef_setting("dereference.max_recursion") or 4
         try:
             current_block = gdb.block_for_pc(pc)
             if not current_block or not current_block.is_valid(): return ""
@@ -12507,20 +12488,7 @@ class ContextCommand(GenericCommand):
                         val = gdb.parse_and_eval(symbol)
                         if val.type.code in (gdb.TYPE_CODE_PTR, gdb.TYPE_CODE_ARRAY):
                             addr = int(val.address)
-                            addrs = dereference_from(addr)
-                            # dereference
-                            val = str(addrs[0])
-                            sep = " {:s} ".format(RIGHT_ARROW)
-                            for addr in addrs[1:]:
-                                if isinstance(addr, Address):
-                                    val += sep + str(addr) + get_symbol_string(addr.value)
-                                else:
-                                    val += sep + addr # actually this is msg
-                            # add "..." or not
-                            if max_recursion <= len(addrs) and isinstance(addrs[-1], Address):
-                                subseq_addrs = dereference_from(addrs[-1].value)
-                                if len(subseq_addrs) > 1:
-                                    val += sep + "..."
+                            val = to_string_dereference_from(addr)
                         elif val.type.code == gdb.TYPE_CODE_INT:
                             val = hex(int(val))
                         else:
@@ -12531,7 +12499,7 @@ class ContextCommand(GenericCommand):
                 current_block = current_block.superblock
 
             if m:
-                return ["{}={}".format(Color.yellowify(a), b) for a, b in m.items()]
+                return ["{} = {}".format(Color.yellowify(a), b) for a, b in m.items()]
         except Exception:
             pass
         return []
@@ -13763,16 +13731,23 @@ class PatchRevertCommand(PatchCommand):
 
 @functools.lru_cache()
 def dereference_from(addr):
+    """Create array like [Address(rax), Address(deref_of_rax), Address(deref_of_deref_of_rax), ..., str(msg)]"""
     if not is_alive():
         return [format_address(addr),]
 
     code_color = get_gef_setting("theme.dereference_code")
     string_color = get_gef_setting("theme.dereference_string")
     max_recursion = get_gef_setting("dereference.max_recursion") or 4
-    blacklist = eval(get_gef_setting("dereference.blacklist")) or []
+
+    @functools.lru_cache()
+    def get_blacklist():
+        return eval(get_gef_setting("dereference.blacklist")) or []
+    blacklist = get_blacklist()
+
     addr = lookup_address(align_address(int(addr)))
     msg = []
     seen_addrs = set()
+    recursion = 0
 
     # parse pattern
     #   ... -> addr -> seen_address (loop)
@@ -13780,17 +13755,17 @@ def dereference_from(addr):
     #   ... -> addr -> ...
     #   ... -> string
     #   ... -> value
-    while max_recursion:
+    while recursion < max_recursion + 1: # +1 is to determine adding "..." or not
         # check loop
         #   ... -> addr -> seen_address (loop)
-        if len(msg) > 1 and addr.value in seen_addrs:
+        if addr.value in seen_addrs:
             # If the address 0x0 is mapped, the loop is detected at the address 0x0.
             # but it is generally unnecessary information, so it is omitted.
             if addr.value != 0:
                 msg.append("[loop detected]")
             return msg
-        seen_addrs.add(addr.value)
-        max_recursion -= 1
+        else:
+            seen_addrs.add(addr.value)
 
         #   ... -> addr (blacklist)
         for baddr in blacklist:
@@ -13799,12 +13774,14 @@ def dereference_from(addr):
                 msg.append("[blacklist detected]")
                 return msg
 
-        # if addr is mapped to the HW device, an exception occurs, so we add the address to blacklilst -> exit
         try:
             # Is this value a pointer or a value?
             # -- If it's a pointer, dereference
+            # -- If it's a value, deref is None
             deref = addr.dereference()
         except:
+            # if addr is mapped to the HW device, an exception occurs. (not return None)
+            # So we add the address to blacklilst -> exit
             start = addr.value & gef_getpagesize_mask()
             end = start + gef_getpagesize()
             err("Receive ignoring packets during access at {:#x}.".format(addr.value))
@@ -13816,11 +13793,17 @@ def dereference_from(addr):
             info("try to exit. do restart")
             os._exit(0)
 
+        # reach to max_recursion. add "..." instead of addr object
+        if recursion == max_recursion:
+            msg.append("...")
+            return msg
+
         if deref is not None:
             # it can be referenced
             #   ... -> addr -> ...
             msg.append(addr)
             addr = lookup_address(deref)
+            recursion += 1
             continue # goto next loop
 
         else:
@@ -13835,20 +13818,42 @@ def dereference_from(addr):
                     s = read_cstring_from_memory(prev.value)
                     if len(s) < get_memory_alignment():
                         txt = '{:s} ({:s}?)'.format(format_address(addr.value), Color.colorify(repr(s), string_color))
-                    elif len(s) > 50:
-                        txt = Color.colorify('{:s}[...]'.format(repr(s[:50])), string_color)
+                    elif len(s) > GEF_MAX_STRING_LENGTH:
+                        txt = Color.colorify('{:s}[...]'.format(repr(s[:GEF_MAX_STRING_LENGTH])), string_color)
                     else:
                         txt = Color.colorify('{:s}'.format(repr(s)), string_color)
                     msg.append(txt)
                     return msg
 
-            # if not able to parse cleanly, simply display and return
+            # if not able to parse cleanly, simply use itself
             #   ... -> value
             msg.append(addr)
             return msg
 
-    # reached to max_recursion
-    return msg
+    # something is wrong
+    raise
+
+
+@functools.lru_cache()
+def to_string_dereference_from(value, join_start_idx=0):
+    """Create link list string like 0xXXXXXXXX -> 0xYYYYYYYY -> 0xZZZZZZZZ -> '...'"""
+    # dereference
+    addrs = dereference_from(value)
+
+    # value is not address
+    if join_start_idx == 0 and len(addrs) == 1:
+        return hex(value)
+
+    # create link list
+    link = ""
+    for addr in addrs[join_start_idx:]:
+        if link:
+            link += " {:s} ".format(RIGHT_ARROW)
+        if isinstance(addr, Address):
+            link += str(addr) + get_symbol_string(addr.value)
+        else:
+            link += addr # actually this is msg
+    return link
 
 
 @register_command
@@ -13873,88 +13878,81 @@ class DereferenceCommand(GenericCommand):
     def pprint_dereferenced(addr, idx):
         base_address_color = get_gef_setting("theme.dereference_base_address")
         registers_color = get_gef_setting("theme.dereference_register_value")
-        max_recursion = get_gef_setting("dereference.max_recursion") or 4
-
-        sep = " {:s} ".format(RIGHT_ARROW)
         memalign = current_arch.ptrsize
 
         offset = idx * memalign
         current_address = align_address(addr + offset)
+
         # addrs: [Address(rax), Address(deref_of_rax), Address(deref_of_deref_of_rax), ..., str(msg)]
         addrs = dereference_from(current_address)
         if len(addrs) == 1: # cannot access this area
             raise
 
         # create address link list
-        link = ""
-        for addr in addrs[1:]:
-            if link:
-                link += sep
-            if isinstance(addr, Address):
-                link += str(addr) + get_symbol_string(addr.value)
-            else:
-                link += addr # actually this is msg
-
-        # add "..." or not
-        if max_recursion <= len(addrs) and isinstance(addrs[-1], Address):
-            subseq_addrs = dereference_from(addrs[-1].value)
-            if len(subseq_addrs) > 1:
-                link += sep + "..."
+        link = to_string_dereference_from(current_address, join_start_idx=1)
 
         # craete line of one entry
-        l = ""
-        addr_l = format_address(addrs[0].value)
-        addr_l_c = Color.colorify(addr_l, base_address_color)
-        idx = offset // memalign
+        line = ""
+        addr_colored = Color.colorify(format_address(addrs[0].value), base_address_color)
         ma = memalign * 2 + 2
-        l += "{:s}{:s}+{:#06x}({:03d}): {:{ma}s}".format(addr_l_c, VERTICAL_LINE, offset, idx, link, ma=ma)
+        line += "{:s}{:s}+{:#06x}({:03d}): {:{ma}s}".format(addr_colored, VERTICAL_LINE, offset, idx, link, ma=ma)
+
+        # add extra info
+        current_address_value = read_int_from_memory(current_address)
 
         # retaddr info
-        current_address_value = read_int_from_memory(current_address)
-        try:
-            frame = gdb.newest_frame()
-            i = 0
-            seen = []
-            while frame:
-                if frame.pc() == 0:
-                    break
-                if frame.pc() in seen:
-                    break
-                seen.append(frame.pc())
-                if current_address_value == frame.pc():
-                    m = " {:s} retaddr[{:d}]".format(LEFT_ARROW, i)
-                    l += Color.colorify(m, registers_color)
-                frame = frame.older()
-                i += 1
-        except:
-            pass
+        @functools.lru_cache()
+        def get_frame_pcs():
+            frames = []
+            try:
+                frame = gdb.newest_frame()
+                while frame:
+                    pc = frame.pc()
+                    if pc == 0 or pc in frames:
+                        break
+                    frames.append(pc)
+                    frame = frame.older()
+            except:
+                pass
+            return frames
+
+        for i, frame_pc in enumerate(get_frame_pcs()):
+            if current_address_value == frame_pc:
+                m = " {:s} retaddr[{:d}]".format(LEFT_ARROW, i)
+                line += Color.colorify(m, registers_color)
 
         # canary info
-        try:
-            res = gef_read_canary()
-            if res:
-                canary, location = res
-                if current_address_value == canary:
-                    m = " {:s} canary".format(LEFT_ARROW)
-                    l += Color.colorify(m, registers_color)
-        except:
-            pass
+        res = gef_read_canary()
+        if res:
+            canary, location = res
+            if current_address_value == canary:
+                m = " {:s} canary".format(LEFT_ARROW)
+                line += Color.colorify(m, registers_color)
 
         # register info
-        try:
-            register_hints = []
+        @functools.lru_cache()
+        def get_register_values():
+            regs = []
             for regname in current_arch.all_registers:
-                regvalue = get_register(regname)
-                if current_address == regvalue:
-                    register_hints.append(regname)
-            if register_hints:
-                m = " {:s} {:s}".format(LEFT_ARROW, ", ".join(list(register_hints)))
-                l += Color.colorify(m, registers_color)
-        except:
-            pass
+                try:
+                    regvalue = get_register(regname)
+                except:
+                    continue
+                regs.append([regname, regvalue])
+            return regs
 
-        offset += memalign
-        return l
+        m = ""
+        for regname, regvalue in get_register_values():
+            if current_address == regvalue:
+                if m:
+                    m += ", " + regname
+                else:
+                    m += regname
+        if m:
+            m = " {:s} {:s}".format(LEFT_ARROW, m)
+            line += Color.colorify(m, registers_color)
+
+        return line
 
     @only_if_gdb_running
     def do_invoke(self, argv):
@@ -13973,13 +13971,8 @@ class DereferenceCommand(GenericCommand):
             else:
                 target = arg
 
-        addr = safe_parse_and_eval(target)
-        if addr is None:
-            err("Invalid address")
-            return
-
         try:
-            addr = to_unsigned_long(addr)
+            start_address = to_unsigned_long(safe_parse_and_eval(target))
         except:
             err("Invalid address")
             return
@@ -13993,13 +13986,13 @@ class DereferenceCommand(GenericCommand):
             to_insnum = nb * (self.repeat_count + 1)
             insnum_step = 1
 
-        start_address = align_address(addr)
-
-        for i in range(from_insnum, to_insnum, insnum_step):
+        for idx in range(from_insnum, to_insnum, insnum_step):
             try:
-                gef_print(DereferenceCommand.pprint_dereferenced(start_address, i))
+                line = DereferenceCommand.pprint_dereferenced(start_address, idx)
+                gef_print(line)
             except:
-                err("Cannot access memory at address {:#x}".format(start_address + i * current_arch.ptrsize))
+                # ex: nop DWORD PTR [rax+rax*1+0x0]
+                err("Cannot access memory at address {:#x}".format(start_address + idx * current_arch.ptrsize))
                 break
         return
 
@@ -16456,15 +16449,8 @@ class SyscallArgsCommand(GenericCommand):
 
         param_names = [re.split(r" |\*", p)[-1] for p in parameters]
         for name, register, value in zip(param_names, registers, values):
-            line = "    {:<20} {:<20} {:#x}".format(name, register, value)
-            addrs = dereference_from(value)
-            if len(addrs) > 1:
-                sep = " {:s} ".format(RIGHT_ARROW)
-                for addr in addrs[1:]:
-                    if isinstance(addr, Address):
-                        line += sep + str(addr) + get_symbol_string(addr.value)
-                    else:
-                        line += sep + addr # actually this is msg
+            line = "    {:<20} {:<20} ".format(name, register)
+            line += to_string_dereference_from(value)
             gef_print(line)
         return
 
