@@ -23583,6 +23583,11 @@ class GdtInfoCommand(GenericCommand):
         gef_print(" * rpl: Requested Privilege Level (0:Ring0, 3:Ring3)")
         gef_print(" * ti: Table Indicator (0:GDT, 1:LDT)")
         gef_print(" * index: Index of GDT/LDT")
+        gef_print(" * segment register value = (index << 3) | (ti << 2) | rpl")
+        gef_print(" * commonly used values:")
+        gef_print("   - x64 code: 0x33")
+        gef_print("   - x86 code (on x64): 0x23")
+        gef_print("   - x86 code (native): 0x73")
         return
 
     # struct desc_struct -> dictionary(each value)
