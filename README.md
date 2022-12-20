@@ -284,8 +284,8 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xmmset.png)
 * `mmxset`: sets the value to mm register simply.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/mmxset.png)
-* `exec-until`: executes until specific operation.
-    * Supported on x64/x86/ARM64/ARM for call/jmp/syscall/ret/memory-access/specific-keyword-regex/specific-condition.
+* `exec-until`: executes until specified operation.
+    * Supported on x64/x86/ARM64/ARM for call/jmp/syscall/ret/memory-access/specified-keyword-regex/specified-condition.
     * Supported on x64/x86 for indirect-branch.
     * Please note that this command temporarily closes stdin and stderr on gdb.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/exec-until.png)
@@ -293,7 +293,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * This is useful for the operation with `rep` prefix.
 * `add-symbol-temporary`: adds symbol information from command-line.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/add-symbol-temporary.png)
-* `errno`: displays errno list or specific errno.
+* `errno`: displays errno list or specified errno.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/errno.png)
 * `u2d`: shows cast/transformation u64 <-> double/float.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/u2d.png)

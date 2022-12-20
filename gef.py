@@ -7107,7 +7107,7 @@ class SearchPatternCommand(GenericCommand):
 
         if len(argv) == 3:
             if re.match(r"(0x)?[0-9a-fA-F]+-(0x)?[0-9a-fA-F]+", argv[2]):
-                # specific range -> call search_pattern_by_address directly
+                # specified range -> call search_pattern_by_address directly
                 search_area = argv[2]
                 info("Searching '{:s}' in {:s}".format(Color.yellowify(pattern), search_area))
                 start, end = parse_string_range(search_area)
@@ -7682,7 +7682,7 @@ class UnicornEmulateCommand(GenericCommand):
     _example_ = "\n"
     _example_ += "{:s} -n 5 # from $pc to 5 later asm\n".format(_cmdline_)
     _example_ += "{:s} -g 4 # from $pc to the point where 4 instructions are executed\n".format(_cmdline_)
-    _example_ += "{:s} -f 0x8056770c -t 0x805678a4 -o /tmp/my-gef-emulation.py # from/to specific address with saving script".format(_cmdline_)
+    _example_ += "{:s} -f 0x8056770c -t 0x805678a4 -o /tmp/my-gef-emulation.py # from/to specified address with saving script".format(_cmdline_)
     _category_ = "Debugging Support"
     _aliases_ = ["emulate",]
 
@@ -8075,7 +8075,7 @@ class CapstoneDisassembleCommand(GenericCommand):
     _example_ += "{:s} $pc length=50 # dump from $pc up to 50 lines later\n".format(_cmdline_)
     _example_ += "{:s} $pc length=50 OPCODES # show opcodes\n".format(_cmdline_)
     _example_ += "{:s} $pc length=50 OPCODES arch=ARM mode=ARM # specify arch and mode\n".format(_cmdline_)
-    _example_ += "{:s} OPCODES code=\"9090\" # disassemble specific byte patterns ".format(_cmdline_)
+    _example_ += "{:s} OPCODES code=\"9090\" # disassemble specified byte patterns ".format(_cmdline_)
     _category_ = "Assemble"
     _aliases_ = ["cs-dis",]
 
@@ -8447,7 +8447,7 @@ class GlibcHeapChunksCommand(GenericCommand):
             argv = None
         elif len(argv) == 0:
             self.dump_start = self.arena.heap_base
-            # specific pattern
+            # specified pattern
             if current_arch.ptrsize == 4 and self.arena.is_main_arena():
                 self.dump_start += 8
         else:
@@ -9964,7 +9964,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
     _cmdline_ = "dwarf-exception-handler"
     _syntax_ = "{:s} [-f FILENAME] [-x]".format(_cmdline_)
     _example_ = "{:s} # parse loaded binary\n".format(_cmdline_)
-    _example_ += "{:s} -f /path/to/binary # parse specific binary\n".format(_cmdline_)
+    _example_ += "{:s} -f /path/to/binary # parse specified binary\n".format(_cmdline_)
     _example_ += "{:s} -x # with hexdump\n".format(_cmdline_)
     _example_ += "\n"
     _example_ += "Simplified DWARF Exception structure:\n"
@@ -15081,7 +15081,7 @@ class LinkmapCommand(GenericCommand):
     _syntax_ = "{:s} [-h] [-a LINK_MAP_ADDRESS]".format(_cmdline_)
     _example_ = "\n"
     _example_ += "{:s} # dump itself\n".format(_cmdline_)
-    _example_ += "{:s} -a 0x00007ffff7ffe190 # dump specific address".format(_cmdline_)
+    _example_ += "{:s} -a 0x00007ffff7ffe190 # dump specified address".format(_cmdline_)
     _category_ = "Process Information"
 
     def __init__(self):
@@ -15090,8 +15090,7 @@ class LinkmapCommand(GenericCommand):
 
     def dump_linkmap(self, link_map):
         section = process_lookup_address(link_map)
-        info("link_map: {:#x}".format(link_map))
-        info("map in link_map: {:#x}-{:#x} [{:s}]".format(section.page_start, section.page_end, str(section.permission)))
+        info("link_map: {:#x} [{:s}]".format(link_map, str(section.permission)))
 
         current = link_map
         while True:
@@ -15211,8 +15210,8 @@ class DynamicCommand(GenericCommand):
     _syntax_ = "{:s} [-h] [-a DYNAMIC_ADDRESS|-f FILENAME]".format(_cmdline_)
     _example_ = "\n"
     _example_ += "{:s} # dump itself\n".format(_cmdline_)
-    _example_ += "{:s} -f /lib/x86_64-linux-gnu/libc-2.31.so # dump specific binary\n".format(_cmdline_)
-    _example_ += "{:s} -a 0x403de0 # dump specific address".format(_cmdline_)
+    _example_ += "{:s} -f /lib/x86_64-linux-gnu/libc-2.31.so # dump specified binary\n".format(_cmdline_)
+    _example_ += "{:s} -a 0x403de0 # dump specified address".format(_cmdline_)
     _category_ = "Process Information"
 
     DT_TABLE = {
@@ -15312,9 +15311,6 @@ class DynamicCommand(GenericCommand):
         return
 
     def dump_dynamic(self, dynamic):
-        section = process_lookup_address(dynamic)
-        info("map in _DYNAMIC: {:#x}-{:#x} [{:s}]".format(section.page_start, section.page_end, str(section.permission)))
-
         current = dynamic
         while True:
             addr = current
@@ -15350,7 +15346,8 @@ class DynamicCommand(GenericCommand):
             dynamic = phdrs[0].p_vaddr
 
         if not silent:
-            info("_DNYAMIC: {:#x}".format(dynamic))
+            section = process_lookup_address(dynamic)
+            info("_DNYAMIC: {:#x} [{:s}]".format(dynamic, str(section.permission)))
         return dynamic
 
     @only_if_gdb_running
@@ -15718,9 +15715,9 @@ class GotCommand(GenericCommand):
     """Display current status of the got/plt inside the process."""
     _cmdline_ = "got"
     _syntax_ = "{:s} [-h] [-f FILE_NAME] [-a LOADED_BASE_ADDRESS] [FILTER, ...] ".format(_cmdline_)
-    _example_ = "{:s} read print # filter specific keyword\n".format(_cmdline_)
+    _example_ = "{:s} read print # filter specified keyword\n".format(_cmdline_)
     _example_ += "{:s} -f /usr/lib/x86_64-linux-gnu/libc.so.6 # target the library's GOT\n".format(_cmdline_)
-    _example_ += "{:s} -f /bin/ls -a 0x4000000000 # use specific address, it is useful under qemu".format(_cmdline_)
+    _example_ += "{:s} -f /bin/ls -a 0x4000000000 # use specified address, it is useful under qemu".format(_cmdline_)
     _category_ = "Process Information"
     _aliases_ = ["plt", ]
 
@@ -16038,7 +16035,7 @@ class GotCommand(GenericCommand):
 
         # get filename
         if "-f" in argv:
-            # use specific file
+            # use specified file
             idx = argv.index("-f")
             filename = argv[idx + 1]
             argv = argv[:idx] + argv[idx+2:]
@@ -26033,7 +26030,7 @@ class TcmallocDumpCommand(GenericCommand):
     _example_ += "{:s} chrome\n".format(_cmdline_)
     _example_ += "{:s} chrome self # (default) print freelist of thread cache for current thread\n".format(_cmdline_)
     _example_ += "{:s} chrome all # print freelist of thread cache for all thread\n".format(_cmdline_)
-    _example_ += "{:s} chrome \"Chrome_DevTools,Bluez D-Bus thr\" # print freelist of thread cache for specific thread\n".format(_cmdline_)
+    _example_ += "{:s} chrome \"Chrome_DevTools,Bluez D-Bus thr\" # print freelist of thread cache for specified thread\n".format(_cmdline_)
     _example_ += "{:s} chrome central # print freelist of central cache\n".format(_cmdline_)
     _example_ += "{:s} chrome --th 10 --idx 32 # Number of chunks to display per freelist = 10, target idx = 32.\n".format(_cmdline_)
     _example_ += "{:s} chrome -c 0x23a43cbef500 -c 0x23a43cbefd40 # The specified address will be displayed in different colors\n".format(_cmdline_)
@@ -31055,7 +31052,7 @@ class MsrCommand(GenericCommand):
     _example_ += "{:s} 0xc0000080 # rcx value\n".format(_cmdline_)
     _example_ += "{:s} MSR_EFER # another valid format\n".format(_cmdline_)
     _example_ += "{:s} -l # list known MSR const values\n".format(_cmdline_)
-    _example_ += "{:s} -l MSR_EFER MSR_GS_BASE MSR_FS_BASE # show specific MSR const value\n".format(_cmdline_)
+    _example_ += "{:s} -l MSR_EFER MSR_GS_BASE MSR_FS_BASE # show specified MSR const value\n".format(_cmdline_)
     _example_ += "\n"
     _example_ += "DISABLE `-enbale-kvm` option for qemu-system; This command will be aborted if the option is set"
     _category_ = "Show/Modify Register"
@@ -32695,11 +32692,11 @@ class PagewalkX64Command(PagewalkCommand):
     _example_ += "{:s} --print-each-level # show all level pagetables\n".format(_cmdline_)
     _example_ += "{:s} --no-merge         # do not merge similar/consecutive address\n".format(_cmdline_)
     _example_ += "{:s} --filter 0xabc     # grep by REGEX pattern\n".format(_cmdline_)
-    _example_ += "{:s} --vrange 0x7fff00  # filter by map included specific virtual address\n".format(_cmdline_)
-    _example_ += "{:s} --prange 0x7fff00  # filter by map included specific physical address\n".format(_cmdline_)
+    _example_ += "{:s} --vrange 0x7fff00  # filter by map included specified virtual address\n".format(_cmdline_)
+    _example_ += "{:s} --prange 0x7fff00  # filter by map included specified physical address\n".format(_cmdline_)
     _example_ += "{:s} --sort-by-phys     # sort by physical address\n".format(_cmdline_)
     _example_ += "{:s} --simple           # merge with ignoring physical address consecutivness\n".format(_cmdline_)
-    _example_ += "{:s} --trace 0x7fff00   # show all level pagetables only associated specific address\n".format(_cmdline_)
+    _example_ += "{:s} --trace 0x7fff00   # show all level pagetables only associated specified address\n".format(_cmdline_)
     _example_ += "{:s} -q                 # show result only (quiet)".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
     _aliases_ = ["pagewalk x86",]
@@ -33162,11 +33159,11 @@ class PagewalkArmCommand(PagewalkCommand):
     _example_ += "{:s} --print-each-level # show all level pagetables\n".format(_cmdline_)
     _example_ += "{:s} --no-merge         # do not merge similar/consecutive address\n".format(_cmdline_)
     _example_ += "{:s} --filter 0xabc     # grep by REGEX pattern\n".format(_cmdline_)
-    _example_ += "{:s} --vrange 0x7fff00  # filter by map included specific virtual address\n".format(_cmdline_)
-    _example_ += "{:s} --prange 0x7fff00  # filter by map included specific physical address\n".format(_cmdline_)
+    _example_ += "{:s} --vrange 0x7fff00  # filter by map included specified virtual address\n".format(_cmdline_)
+    _example_ += "{:s} --prange 0x7fff00  # filter by map included specified physical address\n".format(_cmdline_)
     _example_ += "{:s} --sort-by-phys     # sort by physical address\n".format(_cmdline_)
     _example_ += "{:s} --simple           # merge with ignoring physical address consecutivness\n".format(_cmdline_)
-    _example_ += "{:s} --trace 0x7fff00   # show all level pagetables only associated specific address\n".format(_cmdline_)
+    _example_ += "{:s} --trace 0x7fff00   # show all level pagetables only associated specified address\n".format(_cmdline_)
     _example_ += "{:s} -q                 # show result only (quiet)\n".format(_cmdline_)
     _example_ += "{:s} -S                 # use TTBRn_ELm_S for parsing start register\n".format(_cmdline_)
     _example_ += "{:s} -s                 # use TTBRn_ELm for parsing start register\n".format(_cmdline_)
@@ -34039,11 +34036,11 @@ class PagewalkArm64Command(PagewalkCommand):
     _example_ += "{:s} --print-each-level # for current EL, show all level pagetables\n".format(_cmdline_)
     _example_ += "{:s} 1 --no-merge       # for EL1+0, do not merge similar/consecutive address\n".format(_cmdline_)
     _example_ += "{:s} 2 --filter 0xabc   # for EL2, grep by REGEX pattern\n".format(_cmdline_)
-    _example_ += "{:s} --vrange 0x7fff00  # filter by map included specific virtual address\n".format(_cmdline_)
-    _example_ += "{:s} --prange 0x7fff00  # filter by map included specific physical address\n".format(_cmdline_)
+    _example_ += "{:s} --vrange 0x7fff00  # filter by map included specified virtual address\n".format(_cmdline_)
+    _example_ += "{:s} --prange 0x7fff00  # filter by map included specified physical address\n".format(_cmdline_)
     _example_ += "{:s} --sort-by-phys     # for current EL, sort by physical address\n".format(_cmdline_)
     _example_ += "{:s} --simple           # for current EL, merge with ignoring physical address consecutivness\n".format(_cmdline_)
-    _example_ += "{:s} --trace 0x7fff00   # for current EL, show all level pagetables only associated specific address\n".format(_cmdline_)
+    _example_ += "{:s} --trace 0x7fff00   # for current EL, show all level pagetables only associated specified address\n".format(_cmdline_)
     _example_ += "{:s} -q                 # show result only (quiet)".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
 
@@ -36595,7 +36592,7 @@ class ExecNextCommand(GenericCommand):
 
 @register_command
 class ExecUntilCommand(GenericCommand):
-    """Execute until next call/jmp/syscall/ret/mem-access/specific-keyword instruction."""
+    """Execute until next call/jmp/syscall/ret/mem-access/specified-keyword instruction."""
     _cmdline_ = "exec-until"
     _syntax_ = "{:s} [-h] call|jmp|syscall|ret|memaccess|keyword|cond [ARGS] [--print-insn] [--skip-lib]".format(_cmdline_)
     _example_ = "\n"
@@ -36604,8 +36601,8 @@ class ExecUntilCommand(GenericCommand):
     _example_ += "{:s} syscall # execute until syscall instruction\n".format(_cmdline_)
     _example_ += "{:s} ret # execute until ret instruction\n".format(_cmdline_)
     _example_ += "{:s} memaccess # execute until '[' is included by the instruction\n".format(_cmdline_)
-    _example_ += "{:s} keyword \"call +r[ab]x\" # execute until specific keyword (regex)\n".format(_cmdline_)
-    _example_ += "{:s} cond \"$rax==0xdeadbeef && $rbx==0xcafebabe\" # execute until specific condition is filled\n".format(_cmdline_)
+    _example_ += "{:s} keyword \"call +r[ab]x\" # execute until specified keyword (regex)\n".format(_cmdline_)
+    _example_ += "{:s} cond \"$rax==0xdeadbeef && $rbx==0xcafebabe\" # execute until specified condition is filled\n".format(_cmdline_)
     _example_ += "THIS FEATURE IS TOO SLOW.\n"
     _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Debugging Support"
@@ -36951,11 +36948,11 @@ class ExecUntilMemaccessCommand(ExecUntilCommand):
 
 @register_command
 class ExecUntilKeywordReCommand(ExecUntilCommand):
-    """Execute until specific keyword instruction (alias: next-keyword)."""
+    """Execute until specified keyword instruction (alias: next-keyword)."""
     _cmdline_ = "exec-until keyword"
     _syntax_ = "{:s} [-h] KEYWORD [KEYWORD ...] [--print-insn] [--skip-lib]".format(_cmdline_)
     _example_ = "\n"
-    _example_ += '{:s} "call +r[ab]x" # execute until specific keyword (regex)\n'.format(_cmdline_)
+    _example_ += '{:s} "call +r[ab]x" # execute until specified keyword (regex)\n'.format(_cmdline_)
     _example_ += '{:s} "(push|pop) +(r[a-d]x|r[ds]i|r[sb]p|r[89]|r1[0-5])" # another exsample\n'.format(_cmdline_)
     _example_ += '{:s} "mov +rax, QWORD PTR \\\\[" # another exsample (need double escape if use)\n'.format(_cmdline_)
     _example_ += "\n"
@@ -37004,11 +37001,11 @@ class ExecUntilKeywordReCommand(ExecUntilCommand):
 
 @register_command
 class ExecUntilCondCommand(ExecUntilCommand):
-    """Execute until specific condition is filled (alias: next-cond)."""
+    """Execute until specified condition is filled (alias: next-cond)."""
     _cmdline_ = "exec-until cond"
     _syntax_ = "{:s} [-h] CONDITION [--print-insn] [--skip-lib]".format(_cmdline_)
     _example_ = "\n"
-    _example_ += '{:s} "$rax==0xdeadbeef && $rbx==0xcafebabe" # execute until specific condition is filled\n'.format(_cmdline_)
+    _example_ += '{:s} "$rax==0xdeadbeef && $rbx==0xcafebabe" # execute until specified condition is filled\n'.format(_cmdline_)
     _example_ += '{:s} "$rax==0x123 && *(long*)$rbx==0x4" # multiple condition and memory access is supported\n'.format(_cmdline_)
     _example_ += '{:s} "$ALL_REG==0x1234" # is replaced with a comparison for all registers. ex: `($rax==0x1234||$rbx==0x1234||...)`\n'.format(_cmdline_)
     _example_ += "\n"
