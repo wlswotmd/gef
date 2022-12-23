@@ -328,6 +328,8 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/constgrep.png)
 * `time`: measures the time of the GDB command.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/time.png)
+* `multi-line`: executes multiple GDB commands in sequence.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/multi-line.png)
 * `rp`,`rp2`: invokes `rp++` with commonly used options.
     * Supports both rp++ v1 and v2.
 * `cpuid`: shows the result of cpuid(eax=0,1,2...).

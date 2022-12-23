@@ -24383,6 +24383,71 @@ class VisualHeapCommand(GenericCommand):
 
 
 @register_command
+class MultiLineCommand(GenericCommand):
+    """Execute multiple GDB commands in sequence."""
+    _cmdline_ = "multi-line"
+    _syntax_ = "{:s} [-h] GDB_CMD [; GDB_CMD [; GDB_CMD [...]]]".format(_cmdline_)
+    _category_ = "Misc"
+    _aliases_ = ["ml",]
+
+    def __init__(self):
+        super().__init__(complete=gdb.COMPLETE_COMMAND)
+        return
+
+    def do_command(self, commands):
+        if commands == []:
+            return True
+
+        # make comnand string
+        cmd = ""
+        for c in commands:
+            if "\\" in c or " " in c:
+                cmd += " " + repr(c)
+            else:
+                cmd += " " + c
+        cmd = cmd.strip()
+
+        # blank command, so skip
+        if cmd.replace(" ", "") == "":
+            return True
+
+        gef_print(titlify(cmd))
+        try:
+            gdb.execute(cmd)
+        except Exception as e:
+            gef_print(e)
+            return False # fail
+        return True
+
+    def do_invoke(self, argv):
+        if len(argv) == 1 and argv[0] == "-h":
+            self.usage()
+            return
+
+        commands = []
+        for arg in argv:
+            if arg.endswith(";"):
+                commands.append(arg.rstrip(";").lstrip(";"))
+                if self.do_command(commands) is False:
+                    break
+                commands = []
+            elif arg.startswith(";"):
+                if self.do_command(commands) is False:
+                    break
+                commands = []
+                commands.append(arg.lstrip(";"))
+            elif arg == ";":
+                if self.do_command(commands) is False:
+                    break
+                commands = []
+            else:
+                commands.append(arg)
+        else:
+            self.do_command(commands)
+        return
+
+
+@register_command
 class TimeCommand(GenericCommand):
     """Measures the time of the GDB command."""
     _cmdline_ = "time"
@@ -24398,7 +24463,14 @@ class TimeCommand(GenericCommand):
 
         start_time_real = time.perf_counter()
         start_time_proc = time.process_time()
-        cmd = ' '.join(argv)
+
+        cmd = ""
+        for c in argv:
+            if "\\" in c or " " in c:
+                cmd += " " + repr(c)
+            else:
+                cmd += " " + c
+        cmd = cmd.strip()
 
         gef_print(titlify(cmd))
         try:
