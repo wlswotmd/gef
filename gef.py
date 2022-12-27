@@ -4166,17 +4166,6 @@ def download_file(target, use_cache=False, local_name=None):
     return local_name
 
 
-def open_file(path, use_cache=False):
-    """Attempt to open the given file, if remote debugging is active, download
-    it first to the mirror in /tmp/."""
-    if is_remote_debug() and not is_remote_but_same_host():
-        lpath = download_file(path, use_cache)
-        if not lpath:
-            raise IOError("cannot open remote path {:s}".format(path))
-        path = lpath
-    return open(path, "r")
-
-
 def get_function_length(sym):
     """Attempt to get the length of the raw bytes of a function."""
     dis = gdb.execute("disassemble {:s}".format(sym), to_string=True).splitlines()
@@ -4185,23 +4174,25 @@ def get_function_length(sym):
     return end_addr - start_addr
 
 
-def get_process_maps_linux(proc_map_file):
+def get_process_maps_linux(pid):
     """Parse the Linux process `/proc/pid/maps` file."""
-    for line in open_file(proc_map_file, use_cache=False):
+    proc_map_file = "/proc/{:d}/maps".format(pid)
+    maps = []
+    for line in open(proc_map_file, "r"):
         line = line.strip()
         addr, perm, off, _, rest = line.split(" ", 4)
         rest = rest.split(" ", 1)
+        inode = rest[0]
         if len(rest) == 1:
-            inode = rest[0]
             pathname = ""
         else:
-            inode = rest[0]
             pathname = rest[1].lstrip()
         addr_start, addr_end = [int(x, 16) for x in addr.split("-")]
         off = int(off, 16)
         perm = Permission.from_process_maps(perm)
-        yield Section(page_start=addr_start, page_end=addr_end, offset=off, permission=perm, inode=inode, path=pathname)
-    return
+        sect = Section(page_start=addr_start, page_end=addr_end, offset=off, permission=perm, inode=inode, path=pathname)
+        maps.append(sect)
+    return maps
 
 
 # get_explored_regions (used at qemu-user mode) is too slow,
@@ -4413,38 +4404,36 @@ def get_process_maps(outer=False):
     if is_qemu_usermode() and not outer:
         return get_explored_regions()
 
-    pid = get_pid()
-    if pid is None:
-        return list(get_info_sections())
-    try:
-        fpath = "/proc/{:d}/maps".format(pid)
-        return list(get_process_maps_linux(fpath))
-    except FileNotFoundError as e:
-        warn("Failed to read /proc/<PID>/maps, using GDB sections info: {}".format(e))
-        return list(get_info_sections())
-
-
-@functools.lru_cache()
-def get_info_sections():
-    """Retrieve the debuggee sections."""
-    stream = io.StringIO(gdb.execute("maintenance info sections", to_string=True))
-
-    for line in stream:
-        if not line:
-            break
+    pid = get_pid() # get_pid() returns pid of qemu-user if outer
+    if pid is not None:
         try:
-            parts = [x.strip() for x in line.split()]
-            addr_start, addr_end = [int(x, 16) for x in parts[1].split("->")]
-            off = int(parts[3][:-1], 16)
-            path = parts[4]
-            inode = ""
-            perm = Permission.from_info_sections(parts[5:])
-            yield Section(page_start=addr_start, page_end=addr_end, offset=off, permission=perm, inode=inode, path=path)
-        except IndexError:
-            continue
-        except ValueError:
-            continue
-    return
+            return get_process_maps_linux(pid)
+        except FileNotFoundError as e:
+            warn("Failed to read /proc/<PID>/maps, using GDB sections info: {}".format(e))
+
+    @functools.lru_cache()
+    def get_info_sections():
+        """Retrieve the debuggee sections."""
+        lines = gdb.execute("maintenance info sections", to_string=True).splitlines()
+        maps = []
+        for line in lines:
+            if not line:
+                break
+            try:
+                parts = [x.strip() for x in line.split()]
+                addr_start, addr_end = [int(x, 16) for x in parts[1].split("->")]
+                off = int(parts[3][:-1], 16)
+                path = parts[4]
+                perm = Permission.from_info_sections(parts[5:])
+                sect = Section(page_start=addr_start, page_end=addr_end, offset=off, permission=perm, inode=None, path=path)
+                maps.append(sect)
+            except IndexError:
+                continue
+            except ValueError:
+                continue
+        return maps
+
+    return get_info_sections()
 
 
 @functools.lru_cache()
@@ -29502,7 +29491,7 @@ class XSecureMemAddrCommand(GenericCommand):
                 return sm
 
         # slow path
-        maps = list(get_process_maps_linux("/proc/{:d}/maps".format(qemu_system_pid)))
+        maps = get_process_maps_linux(qemu_system_pid)
         secure_memory_maps = [m for m in maps if m.size == secure_memory_size]
         if len(secure_memory_maps) == 1:
             if verbose:
