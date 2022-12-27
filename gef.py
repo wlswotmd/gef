@@ -429,7 +429,7 @@ class Address:
 
     def is_in_text_segment(self):
         return (hasattr(self.info, "name") and ".text" in self.info.name) or \
-            (hasattr(self.section, "path") and get_filepath() == self.section.path and self.section.is_executable())
+            (hasattr(self.section, "path") and get_filepath(for_vmmap=True) == self.section.path and self.section.is_executable())
 
     def is_in_stack_segment(self):
         return hasattr(self.section, "path") and "[stack]" == self.section.path
@@ -4083,95 +4083,49 @@ def get_pid():
 
 
 @functools.lru_cache()
-def get_filepath():
+def get_filepath(for_vmmap=False):
     """Return the local absolute path of the file currently debugged."""
-    filename = gdb.current_progspace().filename
+    filepath = gdb.current_progspace().filename
+
+    def append_proc_root(filepath):
+        prefix = "/proc/{}/root".format(get_pid())
+        relative_path = filepath.lstrip("/")
+        return os.path.join(prefix, relative_path)
 
     if is_remote_debug():
-        # if no filename specified, try downloading target from /proc
-        if filename is None:
-            pid = get_pid()
-            if pid is None:
-                return None
-            if pid > 0:
-                return download_file("/proc/{:d}/exe".format(pid), use_cache=True)
+        if filepath is None:
             return None
-
-        # if target is remote file, download
-        elif filename.startswith("target:"):
-            fname = filename[len("target:"):]
-            return download_file(fname, use_cache=True, local_name=fname)
-
-        elif filename.startswith(".gnu_debugdata for target:"):
-            fname = filename[len(".gnu_debugdata for target:"):]
-            return download_file(fname, use_cache=True, local_name=fname)
-
+        elif filepath.startswith("target:"):
+            return None
+        elif filepath.startswith(".gnu_debugdata for target:"):
+            return None
         else:
-            return filename
+            return filepath
     else:
         # inferior probably did not have name, extract cmdline from info proc
-        if filename is None:
-            return get_path_from_info_proc()
-
+        if filepath is None:
+            filepath = get_path_from_info_proc()
+            if not for_vmmap:
+                # maybe different mnt namespace, so use /proc/<PID>/root
+                filepath = append_proc_root(filepath)
         # not remote, but different PID namespace and attaching by pid. it shows with `target:`
-        elif filename.startswith("target:"):
-            return filename[len("target:"):]
-
+        elif filepath.startswith("target:"):
+            # /proc/PID/root is not given when used for purposes such as comparing with entry in vmmap
+            filepath = filepath[len("target:"):]
+            if not for_vmmap:
+                # maybe different mnt namespace, so use /proc/<PID>/root
+                filepath = append_proc_root(filepath)
         # normal path
-        return filename
+        return filepath
 
 
 @functools.lru_cache()
 def get_filename():
     """Return the full filename of the file currently debugged."""
-    filename = gdb.current_progspace().filename
+    filename = get_filepath()
     if filename is None:
         return None
-    return os.path.basename(gdb.current_progspace().filename)
-
-
-def download_file(target, use_cache=False, local_name=None):
-    """Download filename `target` inside the mirror tree inside the get_gef_setting("gef.tempdir").
-    The tree architecture must be get_gef_setting("gef.tempdir")/gef/<local_pid>/<remote_filepath>.
-    This allow a "chroot-like" tree format."""
-    if is_qemu():
-        return None
-
-    try:
-        local_root = os.path.sep.join([get_gef_setting("gef.tempdir"), str(get_pid())])
-        if local_name is None:
-            local_path = os.path.sep.join([local_root, os.path.dirname(target)])
-            local_name = os.path.sep.join([local_path, os.path.basename(target)])
-        else:
-            local_path = os.path.sep.join([local_root, os.path.dirname(local_name)])
-            local_name = os.path.sep.join([local_path, os.path.basename(local_name)])
-
-        if use_cache and os.access(local_name, os.R_OK):
-            return local_name
-
-        gef_makedirs(local_path)
-        gdb.execute("remote get {0:s} {1:s}".format(target, local_name)) # Supported:gdbserver Unsupported:qemu
-
-    except gdb.error:
-        # gdb-stub compat
-        with open(local_name, "w") as f:
-            if is_32bit():
-                f.write("00000000-ffffffff rwxp 00000000 00:00 0                    {}\n".format(get_filepath()))
-            else:
-                f.write("0000000000000000-ffffffffffffffff rwxp 00000000 00:00 0                    {}\n".format(get_filepath()))
-
-    except Exception as e:
-        err("download_file() failed: {}".format(str(e)))
-        local_name = None
-    return local_name
-
-
-def get_function_length(sym):
-    """Attempt to get the length of the raw bytes of a function."""
-    dis = gdb.execute("disassemble {:s}".format(sym), to_string=True).splitlines()
-    start_addr = int(dis[1].split()[0], 16)
-    end_addr = int(dis[-2].split()[0], 16)
-    return end_addr - start_addr
+    return os.path.basename(filename)
 
 
 def get_process_maps_linux(pid):
@@ -4440,33 +4394,26 @@ def get_process_maps(outer=False):
 def get_info_files():
     """Retrieve all the files loaded by debuggee."""
     lines = gdb.execute("info files", to_string=True).splitlines()
-    infos_files = []
+    info_files = []
     for line in lines:
         line = line.strip()
-
         if not line:
             break
-
         if not line.startswith("0x"):
             continue
-
         blobs = [x.strip() for x in line.split(" ")]
         addr_start = int(blobs[0], 16)
         addr_end = int(blobs[2], 16)
         section_name = blobs[4]
-
         if "system-supplied DSO" in line:
             filename = "[vdso]"
         elif len(blobs) == 7:
-            filename = blobs[6]
+            filepath = blobs[6]
         else:
-            filename = get_filepath()
-
-        info = Zone(section_name, addr_start, addr_end, filename)
-
-        infos_files.append(info)
-
-    return infos_files
+            filepath = get_filepath(for_vmmap=True)
+        info = Zone(section_name, addr_start, addr_end, filepath)
+        info_files.append(info)
+    return info_files
 
 
 @functools.lru_cache()
@@ -4785,19 +4732,14 @@ def keystone_assemble(code, arch, mode, *args, **kwargs):
 
 
 @functools.lru_cache()
-def get_elf_headers(filename=None):
+def get_elf_headers(filepath=None):
     """Return an Elf object with info from `filename`. If not provided, will return
     the currently debugged file."""
-    if filename is None:
-        filename = get_filepath()
-        if filename is None:
+    if filepath is None:
+        filepath = get_filepath()
+        if filepath is None:
             return None
-
-    if filename.startswith("target:"): # local but different mnt namespace
-        prefix = "/proc/{}/root".format(get_pid())
-        filename = os.path.join(prefix, filename[7:])
-
-    return Elf(filename)
+    return Elf(filepath)
 
 
 def _ptr_width():
@@ -5162,7 +5104,7 @@ def gef_convenience(value):
 def parse_string_range(s):
     """Parses an address range (e.g. 0x400000-0x401000)"""
     addrs = s.split("-")
-    return map(lambda x: int(x, 16), addrs)
+    return [int(x,16) for x in addrs]
 
 
 AT_CONSTANTS = {
@@ -6826,22 +6768,28 @@ class ScanSectionCommand(GenericCommand):
         info("Searching for addresses in '{:s}' that point to '{:s}'"
              .format(Color.yellowify(haystack), Color.yellowify(needle)))
 
-        if haystack == "binary":
-            haystack = get_filepath()
+        if haystack in ["binary", "bin"]:
+            haystack = get_filepath(for_vmmap=True)
 
-        if needle == "binary":
-            needle = get_filepath()
+        if needle in ["binary", "bin"]:
+            needle = get_filepath(for_vmmap=True)
 
         needle_sections = []
         haystack_sections = []
 
         if "0x" in haystack:
-            start, end = parse_string_range(haystack)
-            haystack_sections.append((start, end, ""))
+            try:
+                start, end = parse_string_range(haystack)
+                haystack_sections.append((start, end, ""))
+            except:
+                pass
 
         if "0x" in needle:
-            start, end = parse_string_range(needle)
-            needle_sections.append((start, end))
+            try:
+                start, end = parse_string_range(needle)
+                needle_sections.append((start, end))
+            except:
+                pass
 
         for sect in get_process_maps():
             if haystack in sect.path:
@@ -6863,7 +6811,7 @@ class ScanSectionCommand(GenericCommand):
                 for nstart, nend in needle_sections:
                     if not (nstart <= target < nend):
                         continue
-                    deref = DereferenceCommand.pprint_dereferenced(hstart, int(i / step))
+                    deref = to_string_dereference_from(hstart + i)
                     if hname != "":
                         name = Color.colorify(hname, "yellow")
                         gef_print("{:s}: {:s}".format(name, deref))
@@ -7099,7 +7047,7 @@ class SearchPatternCommand(GenericCommand):
                 # section name -> call search wrapper
                 section_name = argv[2]
                 if section_name in ["binary", "bin"] and not is_qemu_system():
-                    section_name = get_filepath()
+                    section_name = get_filepath(for_vmmap=True)
 
                 info("Searching '{:s}' in {:s}".format(Color.yellowify(pattern), section_name))
                 self.search_pattern(pattern, section_name)
@@ -8989,7 +8937,7 @@ class RopperCommand(GenericCommand):
             if is_qemu_usermode():
                 sect = next(filter(lambda x: x.path == "[code]", get_process_maps()))
             else:
-                sect = next(filter(lambda x: x.path == path, get_process_maps()))
+                sect = next(filter(lambda x: x.path == get_filepath(for_vmmap=True), get_process_maps()))
             argv.append("-I")
             argv.append("{:#x}".format(sect.page_start))
 
@@ -11789,7 +11737,7 @@ class EntryPointBreakCommand(GenericCommand):
         unhide_context()
         gdb.execute("set stop-on-solib-events 0")
         vmmap = get_process_maps()
-        base_address = [x.page_start for x in vmmap if x.path == get_filepath()][0]
+        base_address = [x.page_start for x in vmmap if x.path == get_filepath(for_vmmap=True)][0]
         return self.set_init_tbreak(base_address + addr)
 
 
@@ -15746,12 +15694,12 @@ class GotCommand(GenericCommand):
         self.add_setting("function_not_resolved", "yellow", "Line color of the got command output if the function has not been resolved")
         return
 
-    def get_base_address(self, filename):
+    def get_base_address(self):
         @functools.lru_cache()
-        def get_base_address_from_vmmap(filename):
+        def get_base_address_from_vmmap(filename_vmmap):
             vmmap = get_process_maps()
             try:
-                return min([x.page_start for x in vmmap if x.path == filename])
+                return min([x.page_start for x in vmmap if x.path == filename_vmmap])
             except:
                 # not found
                 return None
@@ -15760,11 +15708,11 @@ class GotCommand(GenericCommand):
             return self.base_address_hint
         # getting vmmap to understand the boundaries of the binary
         # we will use this info to understand if a function has been resolved or not.
-        return get_base_address_from_vmmap(filename)
+        return get_base_address_from_vmmap(self.filename_vmmap)
 
-    def get_jmp_slots(self, filename):
+    def get_jmp_slots(self):
         try:
-            cmd = [self.readelf, "--relocs", "--wide", filename]
+            cmd = [self.readelf, "--relocs", "--wide", self.filename]
             lines = gef_execute_external(cmd, as_list=True)
         except:
             lines = []
@@ -15807,15 +15755,15 @@ class GotCommand(GenericCommand):
                 continue
 
             # count up reloc_arg
-            if section_name in [".rel.plt", ".rela.plt"] and not checksec(filename)["Static"]:
+            if section_name in [".rel.plt", ".rela.plt"] and not checksec(self.filename)["Static"]:
                 reloc_arg = reloc_count * [1, 8][is_x86_32()]
                 reloc_count += 1
             else:
                 reloc_arg = None
 
             # fix address
-            if checksec(filename)["PIE"]:
-                address += self.get_base_address(filename)
+            if checksec(self.filename)["PIE"]:
+                address += self.get_base_address()
 
             # save
             array = output.get(type, [])
@@ -15827,9 +15775,9 @@ class GotCommand(GenericCommand):
         c = output.get("GLOB_DAT", [])
         return a + b + c
 
-    def get_plt_addresses(self, filename):
+    def get_plt_addresses(self):
         try:
-            cmd = [self.objdump, "-j", ".plt", "-j", ".plt.sec", "-j", ".plt.got", "-d", filename]
+            cmd = [self.objdump, "-j", ".plt", "-j", ".plt.sec", "-j", ".plt.got", "-d", self.filename]
             lines = gef_execute_external(cmd, as_list=True)
         except:
             lines = []
@@ -15843,8 +15791,8 @@ class GotCommand(GenericCommand):
             address, func_name = int(r[0][0], 16), r[0][1]
 
             # fix addreess
-            if checksec(filename)["PIE"]:
-                address += self.get_base_address(filename)
+            if checksec(self.filename)["PIE"]:
+                address += self.get_base_address()
 
             # save
             # Since DT_REL (used at i386) has no r_addend, the information of identification does not exist.
@@ -15855,13 +15803,12 @@ class GotCommand(GenericCommand):
         return output
 
     @functools.lru_cache()
-    def get_elf(self, filename):
-        elf = Elf(filename)
-        return elf
+    def get_elf(self):
+        return Elf(self.filename)
 
-    def get_plt_range(self, filename):
+    def get_plt_range(self):
         # The PLT range is required to determine whether the information in the GOT is resolved or not.
-        elf = self.get_elf(filename)
+        elf = self.get_elf()
         sections = [x for x in elf.shdrs if x.sh_name in [".plt", ".plt.got", ".plt.sec"]]
         if len(sections) == 0:
             return 0, 0
@@ -15869,9 +15816,9 @@ class GotCommand(GenericCommand):
         plt_end = max([x.sh_addr + x.sh_size for x in sections])
 
         # fix address
-        if checksec(filename)["PIE"]:
-            plt_begin += self.get_base_address(filename)
-            plt_end += self.get_base_address(filename)
+        if checksec(self.filename)["PIE"]:
+            plt_begin += self.get_base_address()
+            plt_end += self.get_base_address()
 
         return plt_begin, plt_end
 
@@ -15881,66 +15828,66 @@ class GotCommand(GenericCommand):
         except:
             return "[???]"
 
-    def get_section_name(self, filename, addr):
+    def get_section_name(self, addr):
         @functools.lru_cache()
-        def get_shdr_range(filename):
-            elf = self.get_elf(filename)
+        def get_shdr_range():
+            elf = self.get_elf()
             ranges = []
             for shdr in elf.shdrs:
                 sh_start = shdr.sh_addr
                 sh_end = shdr.sh_addr + shdr.sh_size
-                if checksec(filename)["PIE"]:
-                    sh_start += self.get_base_address(filename)
-                    sh_end += self.get_base_address(filename)
+                if checksec(self.filename)["PIE"]:
+                    sh_start += self.get_base_address()
+                    sh_end += self.get_base_address()
                 ranges.append([shdr.sh_name, sh_start, sh_end])
             return ranges
 
-        ranges = get_shdr_range(filename)
+        ranges = get_shdr_range()
         for name, start, end in ranges:
             if start <= addr < end:
                 return name
         else:
             return "???"
 
-    def get_section_sym(self, filename, addr):
+    def get_section_sym(self, addr):
         @functools.lru_cache()
-        def get_shdr_range(filename):
-            elf = self.get_elf(filename)
+        def get_shdr_range():
+            elf = self.get_elf()
             ranges = []
             for shdr in elf.shdrs:
                 sh_start = shdr.sh_addr
                 sh_end = shdr.sh_addr + shdr.sh_size
-                if checksec(filename)["PIE"]:
-                    sh_start += self.get_base_address(filename)
-                    sh_end += self.get_base_address(filename)
+                if checksec(self.filename)["PIE"]:
+                    sh_start += self.get_base_address()
+                    sh_end += self.get_base_address()
                 ranges.append([shdr.sh_name, sh_start, sh_end])
             return ranges
 
-        ranges = get_shdr_range(filename)
+        ranges = get_shdr_range()
         for name, start, end in ranges:
             if start <= addr < end:
                 return " <{:s}+{:#x}>".format(name, addr - start)
         else:
             return ""
 
-    def print_plt_got(self, filename):
+    def print_plt_got(self):
         # retrieve base address
-        base_address = self.get_base_address(filename)
+        base_address = self.get_base_address()
         if base_address is None:
-            err("Not found {:s} in memory".format(filename))
+            err("Not found {:s} in memory".format(self.filename_vmmap))
             return
 
         # retrieve jump slots using readelf
-        jmpslots = self.get_jmp_slots(filename)
+        jmpslots = self.get_jmp_slots()
 
         # retrieve plt address using objdump
-        plts = self.get_plt_addresses(filename)
+        plts = self.get_plt_addresses()
 
         # retrieve the end of plt from elf parsing
-        plt_begin, plt_end = self.get_plt_range(filename)
+        plt_begin, plt_end = self.get_plt_range()
 
         # print legend
-        gef_print(titlify("{:s}".format(filename)))
+        gef_print(titlify("{:s}".format(self.filename)))
         fmt = "{:>9s} {:s} {:>14s} @ {:12s} ({:>8s}) {:>9s} {:s} {:>14s} @ {:12s} ({:>8s}) {:s}"
         legend = [
             "TYPE", VERTICAL_LINE,
@@ -15977,9 +15924,9 @@ class GotCommand(GenericCommand):
             if got_value == 0:
                 got_value_sym = ""
             elif plt_begin <= got_value < plt_end: # Non-PIE
-                got_value_sym = self.get_section_sym(filename, got_value)
+                got_value_sym = self.get_section_sym(got_value)
             elif plt_begin - base_address <= got_value < plt_end - base_address: # PIE
-                got_value_sym = self.get_section_sym(filename, got_value)
+                got_value_sym = self.get_section_sym(got_value)
             else:
                 got_value_sym = get_symbol_string(got_value)
 
@@ -16001,13 +15948,13 @@ class GotCommand(GenericCommand):
 
             # make plt info
             if plt_address:
-                plt_section = self.get_section_name(filename, plt_address) + self.perm(plt_address)
+                plt_section = self.get_section_name(plt_address) + self.perm(plt_address)
                 plt_info = "{:#14x} @{:13s} ({:#8x}) {:9s}".format(plt_address, plt_section, plt_offset, reloc_arg_info)
             else:
                 plt_info = "{:>14s}  {:13s}  {:>8s}  {:9s}".format("Not found", "", "", reloc_arg_info)
 
             # make got info
-            got_section = self.get_section_name(filename, got_address) + self.perm(got_address)
+            got_section = self.get_section_name(got_address) + self.perm(got_address)
             got_value_c = Color.colorify("{:s} {:s} {:#x}{:s}".format(name, RIGHT_ARROW, got_value, got_value_sym), color)
             got_info = "{:#14x} @{:13s} ({:#8x}) {:s}".format(got_address, got_section, got_offset, got_value_c)
 
@@ -16056,16 +16003,17 @@ class GotCommand(GenericCommand):
         if "-f" in argv:
             # use specified file
             idx = argv.index("-f")
-            filename = argv[idx + 1]
+            self.filename_vmmap = self.filename = argv[idx + 1]
             argv = argv[:idx] + argv[idx+2:]
         else:
             # use main binary
-            filename = get_filepath()
-            if filename is None:
+            self.filename = get_filepath() # /proc/<PID>/root/path/to/binary if another mnt namespace
+            self.filename_vmmap = get_filepath(for_vmmap=True)
+            if self.filename is None:
                 err("Missing info about architecture. Please set: `file /path/to/target_binary`")
                 return
-        if not os.path.exists(filename):
-            err("{:s} does not exist".format(filename))
+        if not os.path.exists(self.filename):
+            err("{:s} does not exist".format(self.filename))
             return
 
         # get base address
@@ -16081,7 +16029,7 @@ class GotCommand(GenericCommand):
             self.filter = argv
 
         # doit
-        self.print_plt_got(filename)
+        self.print_plt_got()
         return
 
 
@@ -19285,7 +19233,7 @@ def get_section_base_address_by_list(names):
 
 @functools.lru_cache()
 def get_zone_base_address(name):
-    zone = file_lookup_name_path(name, get_filepath())
+    zone = file_lookup_name_path(name, get_filepath(for_vmmap=True))
     if zone:
         return zone.zone_start
     return None
@@ -19359,7 +19307,9 @@ class CodebaseCommand(GenericCommand):
     def do_invoke(self, argv):
         self.dont_repeat()
 
-        codebase = get_section_base_address(get_filepath()) or get_section_base_address(get_path_from_info_proc())
+        codebase = get_section_base_address(get_filepath(for_vmmap=True))
+        if codebase is None:
+            codebase = get_section_base_address(get_path_from_info_proc())
         if codebase is None:
             gef_print("codebase not found")
             return
@@ -19535,7 +19485,7 @@ class MagicCommand(GenericCommand):
         return
 
     def magic(self):
-        codebase = get_section_base_address(get_filepath())
+        codebase = get_section_base_address(get_filepath(for_vmmap=True))
         libc = get_section_base_address_by_list(("libc-2.", "libc.so.6"))
         ld = get_section_base_address_by_list(("ld-2.", "ld-linux-", "ld-linux.so.2"))
         if libc is None or ld is None:
@@ -26972,7 +26922,7 @@ class PartitionAllocDumpStableCommand(GenericCommand):
         """searches for fast_malloc_root, array_buffer_root_ and buffer_root_"""
         # the pointers to each root are in the RW area.
         # first, we list up the RW area.
-        filepath = get_filepath()
+        filepath = get_filepath(for_vmmap=True)
         if is_64bit():
             codebase = get_section_base_address(filepath)
             mask = 0x0000ffff00000000
@@ -27761,7 +27711,7 @@ class PartitionAllocDumpOld1Command(GenericCommand):
     @functools.lru_cache()
     def get_roots_heuristic(self):
         """searches for array_buffer_root_, buffer_root_, layout_root_ and fast_malloc_root_"""
-        filepath = get_filepath()
+        filepath = get_filepath(for_vmmap=True)
         if is_64bit():
             codebase = get_section_base_address(filepath)
             mask = 0x0000ffff00000000
