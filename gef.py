@@ -4487,44 +4487,36 @@ def process_lookup_address(address):
     if not is_alive():
         err("Process is not running")
         return None
-
     if is_x86():
         if is_in_x86_kernel(address):
             return None
-
     for sect in get_process_maps():
         if sect.page_start <= address < sect.page_end:
             return sect
-
     return None
 
 
 @functools.lru_cache()
-def process_lookup_path(name, perm=Permission.ALL):
-    """Look up for a path in the process memory mapping.
-    Return a Section object if found, None otherwise."""
+def process_lookup_path(names, perm=Permission.ALL):
+    """Look up for paths in the process memory mapping.
+    Return a Section object of load base if found, None otherwise."""
     if not is_alive():
         err("Process is not running")
         return None
 
-    for sect in get_process_maps():
-        if name in sect.path and sect.permission.value & perm:
-            return sect
+    @functools.lru_cache()
+    def lookup(name, perm):
+        for sect in get_process_maps():
+            if name in sect.path and sect.permission.value & perm:
+                return sect
 
-    return None
-
-
-@functools.lru_cache()
-def process_lookup_path_by_list(names):
-    if not is_alive():
-        err("Process is not running")
-        return None
-
-    for name in names:
-        sect = process_lookup_path(name)
-        if sect is not None:
-            return sect
-
+    if isinstance(names, str):
+        return lookup(names, perm)
+    elif isinstance(names, tuple):
+        for name in names:
+            sect = lookup(name, perm)
+            if sect is not None:
+                return sect
     return None
 
 
@@ -9165,7 +9157,7 @@ class RpCommand(GenericCommand):
                 return
         else:
             if argv[0] == "libc":
-                libc = process_lookup_path_by_list(("libc-2.", "libc.so.6"))
+                libc = process_lookup_path(("libc-2.", "libc.so.6"))
                 if libc is None:
                     err("libc is not found")
                     return
@@ -19437,7 +19429,7 @@ class LibcCommand(GenericCommand):
         gdb.execute(f"set $libc = {libc}")
         gef_print(f"$libc = {libc:#x}")
 
-        libc = process_lookup_path_by_list(("libc-2.", "libc.so.6"))
+        libc = process_lookup_path(("libc-2.", "libc.so.6"))
         if not os.path.exists(libc.path):
             return
 
@@ -19481,7 +19473,7 @@ class LdCommand(GenericCommand):
         gdb.execute(f"set $ld = {ld}")
         gef_print(f"$ld = {ld:#x}")
 
-        ld = process_lookup_path_by_list(("ld-2.", "ld-linux-"))
+        ld = process_lookup_path(("ld-2.", "ld-linux-"))
         if not os.path.exists(ld.path):
             return
 
@@ -19828,7 +19820,7 @@ class OneGadgetCommand(GenericCommand):
     def do_invoke(self, argv):
         self.dont_repeat()
 
-        libc = process_lookup_path_by_list(("libc-2.", "libc.so.6"))
+        libc = process_lookup_path(("libc-2.", "libc.so.6"))
         if libc is None:
             err("libc is not found")
             return
