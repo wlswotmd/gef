@@ -4204,95 +4204,6 @@ def get_process_maps_linux(proc_map_file):
     return
 
 
-def get_ehdr(addr):
-    addr &= gef_getpagesize_mask()
-    bound = (1<<32) if is_32bit() else (1<<64)
-    for i in range(1024):
-        if addr < 0 or addr > bound:
-            return None
-        try:
-            if read_memory(addr, 4) == b'\x7FELF':
-                return Elf(addr)
-        except gdb.MemoryError:
-            return None
-        addr -= gef_getpagesize()
-    return None
-
-
-def elf_map(addr, objfile=''):
-    elf = get_ehdr(addr)
-    if elf is None:
-        return []
-
-    # walk phdr
-    pages = []
-    for phdr in elf.phdrs:
-        memsz = phdr.p_memsz
-        if not memsz:
-            continue
-
-        offset = phdr.p_offset
-        flags = phdr.p_flags
-        vaddr = phdr.p_vaddr
-
-        memsz += vaddr & (gef_getpagesize()-1)
-        memsz = (memsz + (gef_getpagesize()-1)) & gef_getpagesize_mask() # padding
-        vaddr &= gef_getpagesize_mask()
-        offset &= gef_getpagesize_mask()
-
-        for page_addr in range(vaddr, vaddr+memsz, gef_getpagesize()):
-            for i, page in enumerate(pages):
-                if page['vaddr'] == page_addr:
-                    if page['flags'] & 1: # PF_X
-                        flags |= 1
-                    pages[i]['flags'] = flags # overwrite, because RELRO
-                    break
-            else:
-                page = {'vaddr': page_addr, 'memsize': gef_getpagesize(), 'flags': flags, 'offset': offset + (page_addr-vaddr)}
-                pages.append(page)
-
-    # PIE
-    if elf.e_type == Elf.ET_DYN:
-        for i in range(len(pages)):
-            pages[i]['vaddr'] += elf.addr
-
-    pages = sorted(pages, key=lambda x:x['vaddr'])
-
-    # merge contiguous
-    prev = pages[0]
-    for page in pages[1:]:
-        if (prev['flags'] & 2) == (page['flags'] & 2) and prev['vaddr']+prev['memsize'] == page['vaddr']:
-            prev['memsize'] += page['memsize']
-            pages.remove(page)
-        else:
-            prev = page
-
-    # guard page
-    gaps = []
-    for i in range(len(pages)-1):
-        a, b = pages[i:i+2]
-        a_end = a['vaddr'] + a['memsize']
-        b_begin = b['vaddr']
-        if a_end != b_begin:
-            gaps.append({'vaddr': a_end, 'memsize': b_begin-a_end, 'flags': 0, 'offset': 0})
-
-    pages += gaps
-
-    sects = []
-    for page in pages:
-        perm = ""
-        perm += "r" if page['flags'] & 4 else "-"
-        perm += "w" if page['flags'] & 2 else "-"
-        perm += "x" if page['flags'] & 1 else "-"
-        perm = Permission.from_process_maps(perm)
-        page_start = page['vaddr']
-        page_end = page['vaddr'] + page['memsize']
-        off = page['offset']
-        sect = Section(page_start=page_start, page_end=page_end, offset=off, permission=perm, inode=None, path=objfile)
-        sects.append(sect)
-    return sects
-
-
 # get_explored_regions (used at qemu-user mode) is too slow,
 # Because it repeats read_memory many times to find the upper and lower bounds of the page.
 # functools.lru_cache() is not effective because it is cleared every time you stepi.
@@ -4315,6 +4226,9 @@ def get_explored_regions():
     if explored_regions:
         return explored_regions
 
+    regions = []
+
+    @functools.lru_cache()
     def is_exist_page(addr):
         try:
             _ = read_memory(addr, 1)
@@ -4322,6 +4236,7 @@ def get_explored_regions():
         except:
             return False
 
+    @functools.lru_cache()
     def get_region_start_end(addr):
         addr &= gef_getpagesize_mask()
         if not is_exist_page(addr):
@@ -4336,7 +4251,7 @@ def get_explored_regions():
         while True:
             if region_start - gef_getpagesize() < 0:
                 break
-            if not is_exist_page(region_start-gef_getpagesize()):
+            if not is_exist_page(region_start - gef_getpagesize()):
                 break
             if region_start in end_addrs:
                 break
@@ -4354,62 +4269,138 @@ def get_explored_regions():
             region_end += gef_getpagesize()
         return region_start, region_end
 
-    def is_in_regions(addr):
+    def make_regions(addr, label, perm="rwx"):
+        # check if already in region
         for rg in regions:
             if rg.page_start <= addr < rg.page_end:
-                return True
-        return False
-
-    def add_regions(addr, label, perm="rwx"):
-        if is_in_regions(addr):
-            return
+                return []
+        # make region
         start, end = get_region_start_end(addr)
         if start is None:
-            return
+            return []
         perm = Permission.from_process_maps(perm)
         sect = Section(page_start=start, page_end=end, offset=0, permission=perm, inode=None, path=label)
-        regions.append(sect)
-        return
+        return [sect]
 
-    regions = []
+    @functools.lru_cache()
+    def get_ehdr(addr):
+        bound = (1<<32) if is_32bit() else (1<<64)
+        for i in range(128):
+            if addr < 0 or addr > bound:
+                return None
+            try:
+                if read_memory(addr, 4) == b'\x7FELF':
+                    return Elf(addr)
+            except gdb.MemoryError:
+                return None
+            addr -= gef_getpagesize()
+        return None
+
+    def parse_region_from_ehdr(addr, label):
+        elf = get_ehdr(addr & gef_getpagesize_mask())
+        if elf is None:
+            return []
+
+        pages = []
+        for phdr in elf.phdrs:
+            if not phdr.p_memsz:
+                continue
+
+            vaddr = phdr.p_vaddr
+            if elf.e_type == Elf.ET_DYN: # PIE
+                vaddr += elf.addr
+            vaddr_end = vaddr + phdr.p_memsz
+
+            offset = phdr.p_offset
+            flags = phdr.p_flags
+
+            # align
+            vaddr &= gef_getpagesize_mask()
+            offset &= gef_getpagesize_mask()
+            vaddr_end = (vaddr_end + (gef_getpagesize() - 1)) & gef_getpagesize_mask()
+
+            # add per pages
+            for page_addr in range(vaddr, vaddr_end, gef_getpagesize()):
+                # check already exist
+                for i, page in enumerate(pages):
+                    if page['vaddr'] == page_addr:
+                        # found, so fix flags
+                        if page['flags'] & 1: # already has PF_X
+                            flags |= 1
+                        pages[i]['flags'] = flags # overwrite, because RELRO
+                        break
+                else:
+                    # not found, so add new page
+                    page = {'vaddr':page_addr, 'memsize':gef_getpagesize(), 'flags':flags, 'offset':offset + (page_addr - vaddr)}
+                    pages.append(page)
+
+        pages = sorted(pages, key=lambda x: x['vaddr'])
+
+        # merge contiguous
+        prev = pages[0]
+        for page in pages[1:]:
+            prev_vend = prev['vaddr'] + prev['memsize']
+            if prev['flags'] == page['flags'] and prev_vend == page['vaddr']:
+                prev['memsize'] += page['memsize']
+                pages.remove(page)
+            else:
+                prev = page
+
+        # page -> section
+        sects = []
+        for page in pages:
+            perm = ""
+            perm += "r" if page['flags'] & 4 else "-"
+            perm += "w" if page['flags'] & 2 else "-"
+            perm += "x" if page['flags'] & 1 else "-"
+            perm = Permission.from_process_maps(perm)
+            page_start = page['vaddr']
+            page_end = page['vaddr'] + page['memsize']
+            off = page['offset']
+            sect = Section(page_start=page_start, page_end=page_end, offset=off, permission=perm, inode=None, path=label)
+            sects.append(sect)
+        return sects
 
     # auxv parse
     auxv = gef_get_auxiliary_values()
     if auxv:
         if "AT_PHDR" in auxv:
-            regions += elf_map(auxv["AT_PHDR"], "[code]")
+            regions += parse_region_from_ehdr(auxv["AT_PHDR"], "[code]")
         elif "AT_ENTRY" in auxv:
-            regions += elf_map(auxv["AT_ENTRY"], "[code]")
+            regions += parse_region_from_ehdr(auxv["AT_ENTRY"], "[code]")
         if "AT_BASE" in auxv:
-            regions += elf_map(auxv["AT_BASE"], "[linker]")
+            regions += parse_region_from_ehdr(auxv["AT_BASE"], "[linker]")
         if "AT_SYSINFO_EHDR" in auxv:
-            regions += elf_map(auxv["AT_SYSINFO_EHDR"], "[vdso]")
+            regions += parse_region_from_ehdr(auxv["AT_SYSINFO_EHDR"], "[vdso]")
         elif "AT_SYSINFO" in auxv:
-            regions += elf_map(auxv["AT_SYSINFO"], "[vdso]")
+            regions += parse_region_from_ehdr(auxv["AT_SYSINFO"], "[vdso]")
 
     # registers
-    add_regions(get_register("$sp"), "[stack]", "rw-")
+    regions += make_regions(get_register("$sp"), "[stack]", "rw-")
     for regname in current_arch.all_registers:
-        add_regions(get_register(regname), "<explored>")
+        regions += make_regions(get_register(regname), "<explored>")
 
-    # walk near stack
+    # walk from stack top
     sp = get_register("$sp")
+    data = None
     try:
         data = read_memory(sp & gef_getpagesize_mask(), gef_getpagesize())
     except:
-        return regions
-    unpack = u32 if is_32bit() else u64
-    data = [unpack(data[i:i+current_arch.ptrsize]) for i in range(0, len(data), current_arch.ptrsize)]
-    data = list(set(data))
-    for d in data:
-        add_regions(d, "<explored>")
+        pass
+    if data:
+        unpack = u32 if is_32bit() else u64
+        data = [unpack(data[i:i + current_arch.ptrsize]) for i in range(0, len(data), current_arch.ptrsize)]
+        data = list(set(data))
+        for d in data:
+            regions += make_regions(d, "<explored>")
 
-    # walk around known map, because qemu may maps extra regions (?)
-    for r in regions:
-        add_regions(r.page_start-1, "<explored>", str(r.permission))
-        add_regions(r.page_end+1, "<explored>", str(r.permission))
+    # walk from known map, because qemu may maps extra regions (?)
+    for r in regions.copy():
+        regions += make_regions(r.page_start - 1, "<explored>", str(r.permission))
+        regions += make_regions(r.page_end + 1, "<explored>", str(r.permission))
 
-    regions = sorted(regions, key=lambda x:x.page_start)
+    # ok
+    regions = sorted(regions, key=lambda x: x.page_start)
 
     # cache globally
     explored_regions = regions.copy()
