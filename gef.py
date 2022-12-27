@@ -4043,7 +4043,7 @@ def is_qemu_system():
 @functools.lru_cache()
 def get_pid():
     """Return the PID of the debuggee process."""
-    def get_filepath():
+    def get_filepath_from_info_files():
         response = gdb.execute('info files', to_string=True)
         for line in response.splitlines():
             if line.startswith("Symbols from"):
@@ -4070,7 +4070,7 @@ def get_pid():
         return None
 
     if is_pin():
-        filepath = get_filepath()
+        filepath = get_filepath_from_info_files()
         if filepath is None:
             err("Missing info about architecture. Please set: `file /path/to/target_binary`")
             return None
@@ -7777,7 +7777,7 @@ class UnicornEmulateCommand(GenericCommand):
         arch, mode = get_unicorn_arch(to_string=True)
         unicorn_registers = get_unicorn_registers(to_string=True)
         cs_arch, cs_mode = get_capstone_arch(to_string=True)
-        fname = str(get_filename())
+        fname = get_filename()
         emulate_segmentation_block = ""
         context_segmentation_block = ""
 
@@ -9014,6 +9014,7 @@ class RopperCommand(GenericCommand):
 
         # ropper set up own autocompleter after which gdb/gef autocomplete don't work
         # due to fork/waitpid, child will be broken but parent will not change
+        gef_print(titlify(path))
         pid = os.fork()
         if pid == 0:
             try:
@@ -9475,14 +9476,14 @@ class AsmListCommand(GenericCommand):
                     if rm == 0b101: # special case; [REG + disp32]
                         bytecode = modrm + DISP32
                     elif rm == 0b100: # use sib; [INDEX * SCALE + BASE]
-                        for sib in filter(lambda x:x&0b111 != 0b101, range(256)):
+                        for sib in filter(lambda x: x&0b111 != 0b101, range(256)):
                             bytecode = modrm + "%02X" % sib
                     else: # [REG]
                         bytecode = modrm
                 elif mod == 0b01:
                     if rm == 0b100: # use sib; [INDEX * SCALE + BASE + disp8]
                         bytecode = []
-                        for sib in filter(lambda x:x&0b111 != 0b101, range(256)):
+                        for sib in filter(lambda x: x&0b111 != 0b101, range(256)):
                             b = modrm + ("%02X" % sib) + DISP8
                             bytecode.append(b)
                     else: # [REG + disp8]
@@ -9490,7 +9491,7 @@ class AsmListCommand(GenericCommand):
                 elif mod == 0b10:
                     if rm == 0b100: # use sib; [INDEX * SCALE + BASE + disp32]
                         bytecode = []
-                        for sib in filter(lambda x:x&0b111 != 0b101, range(256)):
+                        for sib in filter(lambda x: x&0b111 != 0b101, range(256)):
                             b = modrm + ("%02X" % sib) + DISP32
                             bytecode.append(b)
                     else: # [REG + disp32]
@@ -23687,7 +23688,7 @@ class GdtInfoCommand(GenericCommand):
 
     @staticmethod
     def segval2str(d, value_only=False, color=False):
-        c = Color.boldify if color else lambda x:x
+        c = Color.boldify if color else lambda x: x
         if value_only:
             return c(f"{d:#018x}")
         d = GdtInfoCommand.gdt_unpack(d)
@@ -23937,7 +23938,7 @@ class MemoryCompareCommand(GenericCommand):
             f2_ascii = []
             for i in range(min(len(f1_bin), 16)):
                 if f1_bin[i] == f2_bin[i]:
-                    color_func = lambda x:x
+                    color_func = lambda x: x
                 else:
                     color_func = Color.boldify
                 f1_hex.append(color_func("{:02x}".format(f1_bin[i])))
@@ -25098,7 +25099,7 @@ class SlubDumpCommand(GenericCommand):
 
     def dump_names(self):
         gef_print(Color.colorify("Object Size              : Name", get_gef_setting("theme.table_heading")))
-        for c in sorted(self.parsed_caches[1:], key=lambda x:x['name']):
+        for c in sorted(self.parsed_caches[1:], key=lambda x: x['name']):
             gef_print("{:5d} byte ({:#6x} bytes): {:s}".format(c['objsize'], c['objsize'], c['name']))
         return
 
