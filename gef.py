@@ -4050,17 +4050,15 @@ def get_pid():
                 return line.split('"')[1]
         return None
 
-    if is_pin():
-        filepath = get_filepath()
-        if filepath is None:
-            err("Missing info about architecture. Please set: `file /path/to/target_binary`")
-            return
+    def get_pid_from_tcp_session(filepath, match_prefix_only=False):
         gdb_tcp_sess = list(c.raddr for c in psutil.Process().connections())
         if not gdb_tcp_sess:
             err("gdb has no tcp session")
-            return
+            return None
         for process in psutil.process_iter():
-            if not process.name() == os.path.basename(filepath):
+            if match_prefix_only == True and not process.name().startswith(filepath):
+                continue
+            if match_prefix_only == False and process.name() != os.path.basename(filepath):
                 continue
             try:
                 connections = process.connections()
@@ -4071,23 +4069,15 @@ def get_pid():
                     return process.pid
         return None
 
+    if is_pin():
+        filepath = get_filepath()
+        if filepath is None:
+            err("Missing info about architecture. Please set: `file /path/to/target_binary`")
+            return None
+        return get_pid_from_tcp_session(filepath)
+
     elif is_qemu_usermode() or is_qemu_system():
-        filepath = "qemu"
-        gdb_tcp_sess = list(c.raddr for c in psutil.Process().connections())
-        if not gdb_tcp_sess:
-            err("gdb has no tcp session")
-            return
-        for process in psutil.process_iter():
-            if not process.name().startswith("qemu"):
-                continue
-            try:
-                connections = process.connections()
-            except Exception:
-                continue
-            for c in connections:
-                if c.laddr in gdb_tcp_sess:
-                    return process.pid
-        return None
+        return get_pid_from_tcp_session("qemu", match_prefix_only=True)
 
     return gdb.selected_inferior().pid
 
