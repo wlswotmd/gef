@@ -54,6 +54,10 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 #
+#######################################################################################
+# Use this command when check by flake8
+# flake8 gef.py --ignore E203,E221,E241,E261,E265,E401,E402,E501,E701,E702,E731
+#
 from __future__ import print_function, division, absolute_import
 print("Loading GEF...")
 
@@ -205,7 +209,7 @@ def perf_by_line_enable(f):
 
     @functools.wraps(f)
     def wrapper(*args, **kwargs):
-        import line_profiler, pstats, io
+        import line_profiler, io
         pr = line_profiler.LineProfiler()
         pr.add_function(f)
         pr.enable()
@@ -648,7 +652,7 @@ class Elf:
         for i in range(self.e_shnum):
             try:
                 self.shdrs.append(Shdr(self, self.e_shoff + self.e_shentsize * i))
-            except:
+            except Exception:
                 # Perspective failure. Probably it occurs when parsing ELF loaded into memory.
                 # Even if the ELF is loaded, the section header is not loaded. Therefore, it is ignored.
                 self.shdrs = []
@@ -893,7 +897,7 @@ class Instruction:
                     sym = "<{}>".format(ret[0])
                 else:
                     sym = "<{}+{:#x}>".format(ret[0], ret[1])
-            except:
+            except Exception:
                 pass
 
         # ex: lea rax, [rip + 0xXXXX]
@@ -908,7 +912,7 @@ class Instruction:
                     sym = "# {:#x} <{}>".format(reference_addr, ret[0])
                 else:
                     sym = "# {:#x} <{}+{:#x}>".format(reference_addr, ret[0], ret[1])
-            except:
+            except Exception:
                 pass
 
         # ex: b #0xXXXX
@@ -922,7 +926,7 @@ class Instruction:
                     sym = "<{}>".format(ret[0])
                 else:
                     sym = "<{}+{:#x}>".format(ret[0], ret[1])
-            except:
+            except Exception:
                 pass
 
         # ex: ldr r0, [pc, #0xXXXX]
@@ -937,7 +941,7 @@ class Instruction:
                     sym = "; {:#x} <{}>".format(reference_addr, ret[0])
                 else:
                     sym = "; {:#x} <{}+{:#x}>".format(reference_addr, ret[0], ret[1])
-            except:
+            except Exception:
                 pass
 
         # formatting
@@ -967,11 +971,11 @@ class Instruction:
         if len(text) == 0:
             return text
 
-        text = re.sub("\bstd::__1::", "", text)
+        text = re.sub(r"\bstd::__1::", "", text)
 
         old_text = text[::]
         while True:
-            text = re.sub("\([^(]+?\)", "__MARKER_GEF__", text)
+            text = re.sub(r"\([^(]+?\)", "__MARKER_GEF__", text)
             if text == old_text:
                 break
             old_text = text[::]
@@ -987,7 +991,7 @@ class Instruction:
             text_end = ""
 
         while True:
-            text = re.sub("\<[^<]+?\>", "__MARKER_GEF__", text)
+            text = re.sub(r"\<[^<]+?\>", "__MARKER_GEF__", text)
             if text == old_text:
                 break
             old_text = text[::]
@@ -1138,7 +1142,7 @@ class GlibcArena:
             self.__arena = arena.cast(malloc_state_t)
             self.__addr = int(arena.address)
             self.__size = malloc_state_t.sizeof
-        except:
+        except Exception:
             self.__arena = MallocStateStruct(addr)
             self.__addr = self.__arena.addr
             self.__size = self.__arena.struct_size
@@ -1164,11 +1168,11 @@ class GlibcArena:
     def is_main_arena(self):
         try:
             return self.__name == "main_arena" or self.__addr == parse_address("&main_arena")
-        except:
+        except Exception:
             pass
         try:
             return self.__addr == search_for_main_arena()
-        except:
+        except Exception:
             return None
 
     @property
@@ -1196,9 +1200,9 @@ class GlibcArena:
         if self.heap_base is None:
             return None
         if get_libc_version() < (2, 30):
-            addr = dereference(self.heap_base + 0x10 + self.TCACHE_MAX_BINS + i*current_arch.ptrsize)
+            addr = dereference(self.heap_base + 0x10 + self.TCACHE_MAX_BINS + i * current_arch.ptrsize)
         else:
-            addr = dereference(self.heap_base + 0x10 + 2*self.TCACHE_MAX_BINS + i*current_arch.ptrsize)
+            addr = dereference(self.heap_base + 0x10 + 2 * self.TCACHE_MAX_BINS + i * current_arch.ptrsize)
         if not addr:
             return None
         return GlibcChunk(int(addr))
@@ -1611,7 +1615,7 @@ def show_last_exception():
     except FileNotFoundError as e:
         gef_print("Cannot collect additional debug information: {}".format(e))
 
-    gef_print(HORIZONTAL_LINE*80)
+    gef_print(HORIZONTAL_LINE * 80)
     gef_print("")
     return
 
@@ -1703,7 +1707,7 @@ def hexdump(source, length=0x10, separator=".", show_raw=False, show_symbol=True
             sym = ""
 
         fmt = "{addr:#0{aw}x}{sym}   {data}{pad}   {text}"
-        result.append(fmt.format(aw=align, addr=base+i, sym=" "+sym, pad=" "*padlen, data=hexa, text=text))
+        result.append(fmt.format(aw=align, addr=base + i, sym=" " + sym, pad=" " * padlen, data=hexa, text=text))
     return "\n".join(result)
 
 
@@ -1816,7 +1820,7 @@ def get_symbol_string(addr, nosymbol_string=""):
             addr = re.sub(r"\x1B\[([0-9]{1,2}(;[0-9]{1,2})*)?m", "", addr) # remove color
             addr = int(addr, 16)
         ret = gdb_get_location_from_symbol(addr)
-    except:
+    except Exception:
         return nosymbol_string
     if ret is None:
         return nosymbol_string
@@ -1874,6 +1878,8 @@ def load_keystone(f):
 
 
 __prev_arch = None
+
+
 def gdb_disassemble(start_pc, **kwargs):
     """Disassemble instructions from `start_pc` (Integer). Accepts the following named parameters:
     - `end_pc` (Integer) only instructions whose start address fall in the interval from start_pc to end_pc are returned.
@@ -1885,7 +1891,7 @@ def gdb_disassemble(start_pc, **kwargs):
         arch = gdb.selected_frame().architecture()
         global __prev_arch
         __prev_arch = arch
-    except:
+    except Exception:
         # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
         # At this time arch cannot be resolved, but if it was successful before, it will be used.
         arch = __prev_arch
@@ -1905,7 +1911,7 @@ def gdb_disassemble(start_pc, **kwargs):
         location = "<{}+{}>".format(*loc) if loc else ""
 
         if is_arm32() and insn["addr"] & 1:
-            opcodes = read_memory(insn["addr"]-1, insn["length"])
+            opcodes = read_memory(insn["addr"] - 1, insn["length"])
         else:
             opcodes = read_memory(insn["addr"], insn["length"])
 
@@ -2002,7 +2008,7 @@ def gef_disassemble(addr, nb_insn, nb_prev=0):
                     yield insn
                 done = True
                 break
-            except:
+            except Exception:
                 pass
 
     for insn in gdb_disassemble(addr, count=nb_insn):
@@ -2058,8 +2064,8 @@ def capstone_disassemble(location, nb_insn, **kwargs):
         while True:
             try:
                 read_data = read_memory(read_addr, read_size)
-            except:
-                err("Memory read error at {:#x}-{:#x}".format(read_addr, read_addr+read_size))
+            except gdb.MemoryError:
+                err("Memory read error at {:#x}-{:#x}".format(read_addr, read_addr + read_size))
                 return
             code += bytes(read_data)
             for insn in cs.disasm(code, location):
@@ -2113,6 +2119,7 @@ def checksec(filename):
     - Clang CFI/SafeStack
     Return a dict() with the different keys mentioned above, and the boolean
     associated whether the protection was found."""
+
     try:
         readelf = which("readelf")
         objdump = which("objdump")
@@ -2124,6 +2131,7 @@ def checksec(filename):
         return False
 
     cache = {}
+
     def __check_security_property(opt, filename, pattern):
         if (opt, filename) in cache:
             lines = cache[(opt, filename)]
@@ -2220,7 +2228,7 @@ def get_arch():
         try:
             arch = gdb.selected_frame().architecture()
             return arch.name()
-        except:
+        except Exception:
             # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
             # Resolve by moving to the slow path.
             pass
@@ -2269,7 +2277,7 @@ def get_entry_point():
 
 
 def is_pie(fpath):
-    return checksec(fpath)["PIE"]
+    return checksec(fpath).get("PIE", False)
 
 
 def is_big_endian():
@@ -2284,7 +2292,7 @@ def flags_to_human(reg_value, value_table):
     """Return a human readable string showing the flag states."""
     flags = []
     for i in value_table:
-        if reg_value & (1<<i):
+        if reg_value & (1 << i):
             flag_str = Color.boldify(value_table[i].upper())
         else:
             flag_str = value_table[i].lower()
@@ -2297,41 +2305,76 @@ class Architecture:
     __metaclass__ = abc.ABCMeta
 
     @abc.abstractproperty
-    def all_registers(self):                       pass
+    def all_registers(self):
+        pass
+
     @abc.abstractproperty
-    def instruction_length(self):                  pass
+    def instruction_length(self):
+        pass
+
     @abc.abstractproperty
-    def nop_insn(self):                            pass
+    def nop_insn(self):
+        pass
+
     @abc.abstractproperty
-    def infloop_insn(self):                        pass
+    def infloop_insn(self):
+        pass
+
     @abc.abstractproperty
-    def trap_insn(self):                           pass
+    def trap_insn(self):
+        pass
+
     @abc.abstractproperty
-    def ret_insn(self):                            pass
+    def ret_insn(self):
+        pass
+
     @abc.abstractproperty
-    def return_register(self):                     pass
+    def return_register(self):
+        pass
+
     @abc.abstractproperty
-    def flag_register(self):                       pass
+    def flag_register(self):
+        pass
+
     @abc.abstractproperty
-    def flags_table(self):                         pass
+    def flags_table(self):
+        pass
+
     @abc.abstractproperty
-    def function_parameters(self):                 pass
+    def function_parameters(self):
+        pass
+
     @abc.abstractmethod
-    def flag_register_to_human(self, val=None):    pass
+    def flag_register_to_human(self, val=None):
+        pass
+
     @abc.abstractmethod
-    def is_syscall(self, insn):                    pass
+    def is_syscall(self, insn):
+        pass
+
     @abc.abstractmethod
-    def is_call(self, insn):                       pass
+    def is_call(self, insn):
+        pass
+
     @abc.abstractmethod
-    def is_jump(self, insn):                       pass
+    def is_jump(self, insn):
+        pass
+
     @abc.abstractmethod
-    def is_ret(self, insn):                        pass
+    def is_ret(self, insn):
+        pass
+
     @abc.abstractmethod
-    def is_conditional_branch(self, insn):         pass
+    def is_conditional_branch(self, insn):
+        pass
+
     @abc.abstractmethod
-    def is_branch_taken(self, insn):               pass
+    def is_branch_taken(self, insn):
+        pass
+
     @abc.abstractmethod
-    def get_ra(self, insn, frame):                 pass
+    def get_ra(self, insn, frame):
+        pass
 
     special_registers = []
 
@@ -2368,8 +2411,9 @@ class Architecture:
             key = "[sp + {:#x}]".format(i * sz)
             return key, val
 
-    # {"$zero":"$zero/$x0", ...}
     __aliased_registers = None
+
+    # {"$zero":"$zero/$x0", ...}
     def get_aliased_registers(self):
         if self.__aliased_registers is not None:
             return self.__aliased_registers
@@ -2382,12 +2426,13 @@ class Architecture:
             self.__aliased_registers[reg] = reg_str
         return self.__aliased_registers
 
-    # max(len("$zero/$x0"), ...)
     __aliased_registers_max_len = None
+
+    # max(len("$zero/$x0"), ...)
     def get_aliased_registers_name_max(self):
         if self.__aliased_registers_max_len is not None:
             return self.__aliased_regsiters_max_len
-        maxlen = max([len(v) for k,v in self.get_aliased_registers().items()])
+        maxlen = max([len(v) for k, v in self.get_aliased_registers().items()])
         self.__aliased_regsiters_max_len = maxlen
         return self.__aliased_regsiters_max_len
 
@@ -2397,20 +2442,16 @@ class RISCV(Architecture):
     mode = "RISCV"
 
     all_registers = [
-        "$zero", "$ra", "$sp", "$gp", "$tp", "$t0", "$t1",
-        "$t2", "$fp", "$s1", "$a0", "$a1", "$a2", "$a3",
-        "$a4", "$a5", "$a6", "$a7", "$s2", "$s3", "$s4",
-        "$s5", "$s6", "$s7", "$s8", "$s9", "$s10", "$s11",
-        "$t3", "$t4", "$t5", "$t6",
+        "$zero", "$ra", "$sp", "$gp", "$tp", "$t0", "$t1", "$t2",
+        "$fp", "$s1", "$a0", "$a1", "$a2", "$a3", "$a4", "$a5",
+        "$a6", "$a7", "$s2", "$s3", "$s4", "$s5", "$s6", "$s7",
+        "$s8", "$s9", "$s10", "$s11", "$t3", "$t4", "$t5", "$t6",
     ]
     alias_registers = {
-        "$zero":"$x0", "$ra":"$x1", "$sp":"$x2", "$gp":"$x3", "$tp":"$x4",
-        "$t0":"$x5", "$t1":"$x6", "$t2":"$x7", "$fp":"$x8", "$s1":"$x9",
-        "$a0":"$x10", "$a1":"$x11", "$a2":"$x12", "$a3":"$x13", "$a4":"$x14",
-        "$a5":"$x15", "$a6":"$x16", "$a7":"$x17", "$s2":"$x18", "$s3":"$x19",
-        "$s4":"$x20", "$s5":"$x21", "$s6":"$x22", "$s7":"$x23", "$s8":"$x24",
-        "$s9":"$x25", "$s10":"$x26", "$s11":"$x27", "$t3":"$x28", "$t4":"$x29",
-        "$t5":"$x30", "$t6":"$x31",
+        "$zero": "$x0", "$ra": "$x1", "$sp": "$x2", "$gp": "$x3", "$tp": "$x4", "$t0": "$x5", "$t1": "$x6", "$t2": "$x7",
+        "$fp": "$x8", "$s1": "$x9", "$a0": "$x10", "$a1": "$x11", "$a2": "$x12", "$a3": "$x13", "$a4": "$x14", "$a5": "$x15",
+        "$a6": "$x16", "$a7": "$x17", "$s2": "$x18", "$s3": "$x19", "$s4": "$x20", "$s5": "$x21", "$s6": "$x22", "$s7": "$x23",
+        "$s8": "$x24", "$s9": "$x25", "$s10": "$x26", "$s11": "$x27", "$t3": "$x28", "$t4": "$x29", "$t5": "$x30", "$t6": "$x31",
     }
     return_register = "$a0"
     function_parameters = ["$a0", "$a1", "$a2", "$a3", "$a4", "$a5", "$a6", "$a7"]
@@ -2425,6 +2466,7 @@ class RISCV(Architecture):
     # RISC-V has no flags registers
     flag_register = None
     flags_table = None
+
     def flag_register_to_human(self, val=None):
         return Color.colorify("No flag register", "yellow underline")
 
@@ -2445,8 +2487,7 @@ class RISCV(Architecture):
         mnemo = insn.mnemonic
         if mnemo == "ret":
             return True
-        elif (mnemo == "jalr" and insn.operands[0] == "zero" and
-              insn.operands[1] == "ra" and insn.operands[2] == 0):
+        elif (mnemo == "jalr" and insn.operands[0] == "zero" and insn.operands[1] == "ra" and insn.operands[2] == 0):
             return True
         elif (mnemo == "c.jalr" and insn.operands[0] == "ra"):
             return True
@@ -2496,17 +2537,25 @@ class RISCV(Architecture):
             condition = condition[:-1]
 
         if condition == "eq":
-            if rs1 == rs2: taken, reason = True, "{}={}".format(rs1, rs2)
-            else: taken, reason = False, "{}!={}".format(rs1, rs2)
+            if rs1 == rs2:
+                taken, reason = True, "{}={}".format(rs1, rs2)
+            else:
+                taken, reason = False, "{}!={}".format(rs1, rs2)
         elif condition == "ne":
-            if rs1 != rs2: taken, reason = True, "{}!={}".format(rs1, rs2)
-            else: taken, reason = False, "{}={}".format(rs1, rs2)
+            if rs1 != rs2:
+                taken, reason = True, "{}!={}".format(rs1, rs2)
+            else:
+                taken, reason = False, "{}={}".format(rs1, rs2)
         elif condition == "lt":
-            if rs1 < rs2: taken, reason = True, "{}<{}".format(rs1, rs2)
-            else: taken, reason = False, "{}>={}".format(rs1, rs2)
+            if rs1 < rs2:
+                taken, reason = True, "{}<{}".format(rs1, rs2)
+            else:
+                taken, reason = False, "{}>={}".format(rs1, rs2)
         elif condition == "ge":
-            if rs1 < rs2: taken, reason = True, "{}>={}".format(rs1, rs2)
-            else: taken, reason = False, "{}<{}".format(rs1, rs2)
+            if rs1 < rs2:
+                taken, reason = True, "{}>={}".format(rs1, rs2)
+            else:
+                taken, reason = False, "{}<{}".format(rs1, rs2)
         else:
             raise OSError("RISC-V: Conditional instruction `{:s}` not supported yet".format(insn))
 
@@ -2519,7 +2568,7 @@ class RISCV(Architecture):
                 ra = get_register("$ra")
             elif frame.older():
                 ra = frame.older().pc()
-        except:
+        except Exception:
             pass
         return ra
 
@@ -2530,26 +2579,30 @@ class ARM(Architecture):
     try:
         gdb.execute("info registers xpsr", to_string=True)
         _mode = "cortex-m"
-    except:
+    except Exception:
         _mode = "normal"
 
     if _mode == "normal":
         all_registers = [
-            "$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6",
-            "$r7", "$r8", "$r9", "$r10", "$r11", "$r12", "$sp",
-            "$lr", "$pc", "$cpsr",
+            "$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7",
+            "$r8", "$r9", "$r10", "$r11", "$r12", "$sp", "$lr", "$pc",
+            "$cpsr",
         ]
-        alias_registers = {"$sp":"$r13", "$lr":"$r14", "$pc":"$r15",}
+        alias_registers = {
+            "$sp": "$r13", "$lr": "$r14", "$pc": "$r15",
+        }
         flag_register = "$cpsr"
         thumb_bit = 5
     elif _mode == "cortex-m":
         all_registers = [
-            "$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6",
-            "$r7", "$r8", "$r9", "$r10", "$r11", "$r12", "$sp",
-            "$lr", "$pc", "$xpsr", "$msp", "$psp",
-            "$primask", "$basepri", "$faultmask", "$control",
+            "$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7",
+            "$r8", "$r9", "$r10", "$r11", "$r12", "$sp", "$lr", "$pc",
+            "$xpsr",
+            "$msp", "$psp", "$primask", "$basepri", "$faultmask", "$control",
         ]
-        alias_registers = {"$sp":"$r13", "$lr":"$r14", "$pc":"$r15",}
+        alias_registers = {
+            "$sp": "$r13", "$lr": "$r14", "$pc": "$r15",
+        }
         flag_register = "$xpsr"
         thumb_bit = 24
     else:
@@ -2640,8 +2693,11 @@ class ARM(Architecture):
         return insn.mnemonic in ["mov", "ldr", "add"] and insn.operands[0] == "pc"
 
     def is_ret(self, insn):
-        if insn.mnemonic in ["pop", "ldm", "ldmea", "ldmed", "ldmfa", "ldmfd", "ldmia", "ldmib", "ldmda", "ldmdb",
-                             "ldm.w", "ldmea.w", "ldmed.w", "ldmfa.w", "ldmfd.w", "ldmia.w", "ldmib.w", "ldmda.w", "ldmdb.w"]:
+        load_mnemos = [
+            "pop", "ldm", "ldmea", "ldmed", "ldmfa", "ldmfd", "ldmia", "ldmib", "ldmda", "ldmdb",
+            "ldm.w", "ldmea.w", "ldmed.w", "ldmfa.w", "ldmfd.w", "ldmia.w", "ldmib.w", "ldmda.w", "ldmdb.w"
+        ]
+        if insn.mnemonic in load_mnemos:
             return insn.operands[-1].strip() == "pc}"
         if insn.mnemonic in ["bl", "blx", "b", "bx"]:
             return insn.operands[-1] == "lr"
@@ -2664,6 +2720,7 @@ class ARM(Architecture):
         0b11011: ["Undefined", 1],
         0b11111: ["System", 1],
     }
+
     def flag_register_to_human(self, val=None):
         # http://www.botskool.com/user-pages/tutorials/electronics/arm-7-tutorial-part-1
         if val is None:
@@ -2697,34 +2754,39 @@ class ARM(Architecture):
         val = get_register(self.flag_register)
         taken, reason = False, ""
 
+        zero = bool(val & (1 << flags["zero"]))
+        negative = bool(val & (1 << flags["negative"]))
+        overflow = bool(val & (1 << flags["overflow"]))
+        carry = bool(val & (1 << flags["carry"]))
+
         if mnemo.endswith("eq"):
-            taken, reason = bool(val&(1<<flags["zero"])), "Z"
+            taken, reason = zero, "Z"
         elif mnemo.endswith("ne"):
-            taken, reason = not val&(1<<flags["zero"]), "!Z"
+            taken, reason = not zero, "!Z"
         elif mnemo.endswith("lt"):
-            taken, reason = bool(val&(1<<flags["negative"])) != bool(val&(1<<flags["overflow"])), "N!=V"
+            taken, reason = negative != overflow, "N!=V"
         elif mnemo.endswith("le"):
-            taken, reason = val&(1<<flags["zero"]) or bool(val&(1<<flags["negative"])) != bool(val&(1<<flags["overflow"])), "Z || N!=V"
+            taken, reason = zero or negative != overflow, "Z || N!=V"
         elif mnemo.endswith("gt"):
-            taken, reason = val&(1<<flags["zero"]) == 0 and bool(val&(1<<flags["negative"])) == bool(val&(1<<flags["overflow"])), "!Z && N==V"
+            taken, reason = not zero and negative == overflow, "!Z && N==V"
         elif mnemo.endswith("ge"):
-            taken, reason = bool(val&(1<<flags["negative"])) == bool(val&(1<<flags["overflow"])), "N==V"
+            taken, reason = negative == overflow, "N==V"
         elif mnemo.endswith("vs"):
-            taken, reason = bool(val&(1<<flags["overflow"])), "V"
+            taken, reason = overflow, "V"
         elif mnemo.endswith("vc"):
-            taken, reason = not val&(1<<flags["overflow"]), "!V"
+            taken, reason = not overflow, "!V"
         elif mnemo.endswith("mi"):
-            taken, reason = bool(val&(1<<flags["negative"])), "N"
+            taken, reason = negative, "N"
         elif mnemo.endswith("pl"):
-            taken, reason = not val&(1<<flags["negative"]), "N==0"
+            taken, reason = not negative, "N==0"
         elif mnemo.endswith("hi"):
-            taken, reason = val&(1<<flags["carry"]) and not val&(1<<flags["zero"]), "C && !Z"
+            taken, reason = carry and not zero, "C && !Z"
         elif mnemo.endswith("ls"):
-            taken, reason = not val&(1<<flags["carry"]) or val&(1<<flags["zero"]), "!C || Z"
+            taken, reason = not carry or zero, "!C || Z"
         elif mnemo.endswith("cs") or mnemo.endswith("hs"):
-            taken, reason = val&(1<<flags["carry"]), "C"
+            taken, reason = carry, "C"
         elif mnemo.endswith("cc") or mnemo.endswith("lo"):
-            taken, reason = not val&(1<<flags["carry"]), "!C"
+            taken, reason = not carry, "!C"
         return taken, reason
 
     def get_ra(self, insn, frame):
@@ -2733,7 +2795,7 @@ class ARM(Architecture):
             if self.is_ret(insn):
                 # If it's a pop, we have to peek into the stack, otherwise use lr
                 if insn.mnemonic == "pop":
-                    ra_addr = current_arch.sp + (len(insn.operands)-1) * get_memory_alignment()
+                    ra_addr = current_arch.sp + (len(insn.operands) - 1) * get_memory_alignment()
                     ra = to_unsigned_long(dereference(ra_addr))
                 elif insn.mnemonic == "ldr":
                     return to_unsigned_long(dereference(current_arch.sp))
@@ -2741,7 +2803,7 @@ class ARM(Architecture):
                     return get_register("$lr")
             elif frame.older():
                 ra = frame.older().pc()
-        except:
+        except Exception:
             pass
         return ra
 
@@ -2771,7 +2833,9 @@ class AARCH64(ARM):
         "$x24", "$x25", "$x26", "$x27", "$x28", "$x29", "$x30", "$sp",
         "$pc", "$cpsr", "$fpsr", "$fpcr",
     ]
-    alias_registers = {"$x30":"$lr",}
+    alias_registers = {
+        "$x30": "$lr",
+    }
     return_register = "$x0"
     flag_register = "$cpsr"
     flags_table = {
@@ -2804,6 +2868,7 @@ class AARCH64(ARM):
         return (insn.mnemonic in ["ret", "eret"]) or (insn.mnemonic == "ldp" and "pc" in insn.operands)
 
     __SCR_EL3_available = None
+
     def flag_register_to_human(self, val=None):
         # http://events.linuxfoundation.org/sites/events/files/slides/KoreaLinuxForum-2014.pdf
         if val is None:
@@ -2857,31 +2922,37 @@ class AARCH64(ARM):
 
     def is_branch_taken(self, insn):
         mnemo, operands = insn.mnemonic, insn.operands
-        flags = dict((self.flags_table[k], k) for k in self.flags_table)
-        val = get_register(self.flag_register)
         taken, reason = False, ""
 
         if mnemo in ["cbnz", "cbz", "tbnz", "tbz"]:
             reg = operands[0]
             op = get_register(reg)
             if mnemo == "cbnz":
-                if op != 0: taken, reason = True, "{}!=0".format(reg)
-                else: taken, reason = False, "{}==0".format(reg)
+                if op != 0:
+                    taken, reason = True, "{}!=0".format(reg)
+                else:
+                    taken, reason = False, "{}==0".format(reg)
             elif mnemo == "cbz":
-                if op == 0: taken, reason = True, "{}==0".format(reg)
-                else: taken, reason = False, "{}!=0".format(reg)
+                if op == 0:
+                    taken, reason = True, "{}==0".format(reg)
+                else:
+                    taken, reason = False, "{}!=0".format(reg)
             elif mnemo == "tbnz":
                 # operands[1] has one or more white spaces in front, then a #, then the number
                 # so we need to eliminate them
                 i = int(operands[1].strip().lstrip("#"))
-                if (op & 1<<i) != 0: taken, reason = True, "{}&1<<{}!=0".format(reg, i)
-                else: taken, reason = False, "{}&1<<{}==0".format(reg, i)
+                if (op & (1 << i)) != 0:
+                    taken, reason = True, "{}&1<<{}!=0".format(reg, i)
+                else:
+                    taken, reason = False, "{}&1<<{}==0".format(reg, i)
             elif mnemo == "tbz":
                 # operands[1] has one or more white spaces in front, then a #, then the number
                 # so we need to eliminate them
                 i = int(operands[1].strip().lstrip("#"))
-                if (op & 1<<i) == 0: taken, reason = True, "{}&1<<{}==0".format(reg, i)
-                else: taken, reason = False, "{}&1<<{}!=0".format(reg, i)
+                if (op & (1 << i)) == 0:
+                    taken, reason = True, "{}&1<<{}==0".format(reg, i)
+                else:
+                    taken, reason = False, "{}&1<<{}!=0".format(reg, i)
 
         if not reason:
             taken, reason = super().is_branch_taken(insn)
@@ -2897,13 +2968,13 @@ class X86(Architecture):
     trap_insn = b"\xcc"
     ret_insn = b"\xc3"
     flag_register = "$eflags"
-    special_registers = ["$cs", "$ss", "$ds", "$es", "$fs", "$gs",]
-    gpr_registers = ["$eax", "$ebx", "$ecx", "$edx", "$esp", "$ebp", "$esi", "$edi", "$eip",]
-    all_registers = gpr_registers + [ flag_register, ] + special_registers
+    special_registers = ["$cs", "$ss", "$ds", "$es", "$fs", "$gs"]
+    gpr_registers = ["$eax", "$ebx", "$ecx", "$edx", "$esp", "$ebp", "$esi", "$edi", "$eip"]
+    all_registers = gpr_registers + [flag_register] + special_registers
     alias_registers = {}
     instruction_length = None
     return_register = "$eax"
-    function_parameters = ["$esp"]
+    function_parameters = ["$esp"] # but unused because x86 uses stack
     flags_table = {
         21: "identification",
         #20: "virtual_interrupt_pending",
@@ -2955,7 +3026,7 @@ class X86(Architecture):
             "ja", "jnbe", "jae", "jnb", "jnc", "jb", "jc", "jnae", "jbe", "jna",
             "jcxz", "jecxz", "jrcxz", "je", "jz", "jg", "jnle", "jge", "jnl",
             "jl", "jnge", "jle", "jng", "jne", "jnz", "jno", "jnp", "jpo", "jns",
-            "jo", "jp", "jpe", "js"
+            "jo", "jp", "jpe", "js",
         ]
         return insn.mnemonic in branch_mnemos
 
@@ -2964,44 +3035,49 @@ class X86(Architecture):
         # all kudos to fG! (https://github.com/gdbinit/Gdbinit/blob/master/gdbinit#L1654)
         flags = dict((self.flags_table[k], k) for k in self.flags_table)
         val = get_register(self.flag_register)
-
         taken, reason = False, ""
 
+        zero = bool(val & (1 << flags["zero"]))
+        sign = bool(val & (1 << flags["sign"]))
+        overflow = bool(val & (1 << flags["overflow"]))
+        carry = bool(val & (1 << flags["carry"]))
+        parity = bool(val & (1 << flags["parity"]))
+
         if mnemo in ["ja", "jnbe"]:
-            taken, reason = not val&(1<<flags["carry"]) and not val&(1<<flags["zero"]), "!C && !Z"
+            taken, reason = not carry and not zero, "!C && !Z"
         elif mnemo in ["jae", "jnb", "jnc"]:
-            taken, reason = not val&(1<<flags["carry"]), "!C"
+            taken, reason = not carry, "!C"
         elif mnemo in ["jb", "jc", "jnae"]:
-            taken, reason = val&(1<<flags["carry"]), "C"
+            taken, reason = carry, "C"
         elif mnemo in ["jbe", "jna"]:
-            taken, reason = val&(1<<flags["carry"]) or val&(1<<flags["zero"]), "C || Z"
+            taken, reason = carry or zero, "C || Z"
         elif mnemo in ["jcxz", "jecxz", "jrcxz"]:
             cx = get_register("$rcx") if self.mode == "64" else get_register("$ecx")
             taken, reason = cx == 0, "!$CX"
         elif mnemo in ["je", "jz"]:
-            taken, reason = val&(1<<flags["zero"]), "Z"
+            taken, reason = zero, "Z"
         elif mnemo in ["jne", "jnz"]:
-            taken, reason = not val&(1<<flags["zero"]), "!Z"
+            taken, reason = not zero, "!Z"
         elif mnemo in ["jg", "jnle"]:
-            taken, reason = not val&(1<<flags["zero"]) and bool(val&(1<<flags["overflow"])) == bool(val&(1<<flags["sign"])), "!Z && S==O"
+            taken, reason = not zero and sign == overflow, "!Z && S==O"
         elif mnemo in ["jge", "jnl"]:
-            taken, reason = bool(val&(1<<flags["sign"])) == bool(val&(1<<flags["overflow"])), "S==O"
+            taken, reason = sign == overflow, "S==O"
         elif mnemo in ["jl", "jnge"]:
-            taken, reason = val&(1<<flags["overflow"]) != val&(1<<flags["sign"]), "S!=O"
+            taken, reason = sign != overflow, "S!=O"
         elif mnemo in ["jle", "jng"]:
-            taken, reason = val&(1<<flags["zero"]) or bool(val&(1<<flags["overflow"])) != bool(val&(1<<flags["sign"])), "Z || S!=O"
+            taken, reason = zero or sign != overflow, "Z || S!=O"
         elif mnemo in ["jo",]:
-            taken, reason = val&(1<<flags["overflow"]), "O"
+            taken, reason = overflow, "O"
         elif mnemo in ["jno",]:
-            taken, reason = not val&(1<<flags["overflow"]), "!O"
+            taken, reason = not overflow, "!O"
         elif mnemo in ["jpe", "jp"]:
-            taken, reason = val&(1<<flags["parity"]), "P"
+            taken, reason = parity, "P"
         elif mnemo in ["jnp", "jpo"]:
-            taken, reason = not val&(1<<flags["parity"]), "!P"
+            taken, reason = not parity, "!P"
         elif mnemo in ["js",]:
-            taken, reason = val&(1<<flags["sign"]), "S"
+            taken, reason = sign, "S"
         elif mnemo in ["jns",]:
-            taken, reason = not val&(1<<flags["sign"]), "!S"
+            taken, reason = not sign, "!S"
         return taken, reason
 
     def get_ra(self, insn, frame):
@@ -3011,7 +3087,7 @@ class X86(Architecture):
                 ra = to_unsigned_long(dereference(current_arch.sp))
             if frame.older():
                 ra = frame.older().pc()
-        except:
+        except Exception:
             pass
         return ra
 
@@ -3050,7 +3126,7 @@ class X86_64(X86):
         "$rax", "$rbx", "$rcx", "$rdx", "$rsp", "$rbp", "$rsi", "$rdi", "$rip",
         "$r8", "$r9", "$r10", "$r11", "$r12", "$r13", "$r14", "$r15",
     ]
-    all_registers = gpr_registers + [ X86.flag_register, ] + X86.special_registers
+    all_registers = gpr_registers + [X86.flag_register] + X86.special_registers
     alias_registers = {}
     return_register = "$rax"
     function_parameters = ["$rdi", "$rsi", "$rdx", "$rcx", "$r8", "$r9"]
@@ -3130,53 +3206,53 @@ class PowerPC(Architecture):
     def is_call(self, insn):
         condition = ["", "lt", "le", "eq", "ge", "gt", "nl", "ne", "ng", "so", "ns", "un", "nu"]
         for c in condition:
-            if insn.mnemonic == "b"+c+"l":
+            if insn.mnemonic == "b" + c + "l":
                 return True
-            if insn.mnemonic == "b"+c+"la":
+            if insn.mnemonic == "b" + c + "la":
                 return True
-            if insn.mnemonic == "b"+c+"ctrl":
+            if insn.mnemonic == "b" + c + "ctrl":
                 return True
-            if insn.mnemonic == "b"+c+"lrl":
+            if insn.mnemonic == "b" + c + "lrl":
                 return True
         mode = ["dz", "dnzf", "dzt", "dzf", "dnzt", "dnz"]
         for m in mode:
-            if insn.mnemonic == "b"+m+"l":
+            if insn.mnemonic == "b" + m + "l":
                 return True
-            if insn.mnemonic == "b"+m+"la":
+            if insn.mnemonic == "b" + m + "la":
                 return True
-            if insn.mnemonic == "b"+m+"lrl":
+            if insn.mnemonic == "b" + m + "lrl":
                 return True
         return False
 
     def is_jump(self, insn):
         condition = ["", "lt", "le", "eq", "ge", "gt", "nl", "ne", "ng", "so", "ns", "un", "nu"]
         for c in condition:
-            if insn.mnemonic == "b"+c:
+            if insn.mnemonic == "b" + c:
                 return True
-            if insn.mnemonic == "b"+c+"a":
+            if insn.mnemonic == "b" + c + "a":
                 return True
-            if insn.mnemonic == "b"+c+"ctr":
+            if insn.mnemonic == "b" + c + "ctr":
                 return True
         mode = ["dz", "dnzf", "dzt", "dzf", "dnzt", "dnz"]
         for m in mode:
-            if insn.mnemonic == "b"+m:
+            if insn.mnemonic == "b" + m:
                 return True
-            if insn.mnemonic == "b"+m+"a":
+            if insn.mnemonic == "b" + m + "a":
                 return True
         return False
 
     def is_ret(self, insn):
         condition = ["", "lt", "le", "eq", "ge", "gt", "nl", "ne", "ng", "so", "ns", "un", "nu"]
         for c in condition:
-            if insn.mnemonic == "b"+c+"lr":
+            if insn.mnemonic == "b" + c + "lr":
                 return True
-            if insn.mnemonic == "b"+c+"lrl":
+            if insn.mnemonic == "b" + c + "lrl":
                 return True
         mode = ["dz", "dnzf", "dzt", "dzf", "dnzt", "dnz"]
         for m in mode:
-            if insn.mnemonic == "b"+m+"lr":
+            if insn.mnemonic == "b" + m + "lr":
                 return True
-            if insn.mnemonic == "b"+m+"lrl":
+            if insn.mnemonic == "b" + m + "lrl":
                 return True
         return False
 
@@ -3189,18 +3265,23 @@ class PowerPC(Architecture):
         flags = dict((self.flags_table[k], k) for k in self.flags_table)
         val = get_register(self.flag_register)
         taken, reason = False, ""
+
+        equal = bool(val & (1 << flags["equal[7]"]))
+        less = bool(val & (1 << flags["less[7]"]))
+        greater = bool(val & (1 << flags["greater[7]"]))
+
         if mnemo == "beq":
-            taken, reason = val&(1<<flags["equal[7]"]), "E"
+            taken, reason = equal, "E"
         elif mnemo == "bne":
-            taken, reason = val&(1<<flags["equal[7]"]) == 0, "!E"
+            taken, reason = not equal, "!E"
         elif mnemo == "ble":
-            taken, reason = val&(1<<flags["equal[7]"]) or val&(1<<flags["less[7]"]), "E || L"
+            taken, reason = equal or less, "E || L"
         elif mnemo == "blt":
-            taken, reason = val&(1<<flags["less[7]"]), "L"
+            taken, reason = less, "L"
         elif mnemo == "bge":
-            taken, reason = val&(1<<flags["equal[7]"]) or val&(1<<flags["greater[7]"]), "E || G"
+            taken, reason = equal or greater, "E || G"
         elif mnemo == "bgt":
-            taken, reason = val&(1<<flags["greater[7]"]), "G"
+            taken, reason = greater, "G"
         # todo: bdn?z[tf]? are unsupported
         return taken, reason
 
@@ -3211,7 +3292,7 @@ class PowerPC(Architecture):
                 ra = get_register("$lr")
             elif frame.older():
                 ra = frame.older().pc()
-        except:
+        except Exception:
             pass
         return ra
 
@@ -3259,7 +3340,9 @@ class SPARC(Architecture):
         "$i0", "$i1", "$i2", "$i3", "$i4", "$i5", "$i7",
         "$pc", "$npc", "$sp ", "$fp ", "$psr",
     ]
-    alias_registers = {"$sp":"$o6", "$fp":"$i6",}
+    alias_registers = {
+        "$sp": "$o6", "$fp": "$i6",
+    }
     instruction_length = 4
     nop_insn = b"\x00\x00\x00\x00" # sethi 0, %g0
     return_register = "$i0"
@@ -3272,7 +3355,7 @@ class SPARC(Architecture):
         7: "supervisor",
         5: "trap",
     }
-    function_parameters = ["$o0 ", "$o1 ", "$o2 ", "$o3 ", "$o4 ", "$o5 ", "$o7 "]
+    function_parameters = ["$o0", "$o1", "$o2", "$o3", "$o4", "$o5", "$o7"]
     syscall_register = "%g1"
     syscall_instructions = ["t 0x10"]
 
@@ -3318,38 +3401,43 @@ class SPARC(Architecture):
         val = get_register(self.flag_register)
         taken, reason = False, ""
 
+        zero = bool(val & (1 << flags["zero"]))
+        negative = bool(val & (1 << flags["negative"]))
+        overflow = bool(val & (1 << flags["overflow"]))
+        carry = bool(val & (1 << flags["carry"]))
+
         if mnemo in ["be", "bpe"]:
-            taken, reason = val&(1<<flags["zero"]), "Z"
+            taken, reason = zero, "Z"
         elif mnemo in ["bne", "bpne"]:
-            taken, reason = val&(1<<flags["zero"]) == 0, "!Z"
+            taken, reason = not zero, "!Z"
         elif mnemo in ["bg", "bpg"]:
-            taken, reason = val&(1<<flags["zero"]) == 0 and (val&(1<<flags["negative"]) == 0 or val&(1<<flags["overflow"]) == 0), "!Z && (!N || !O)"
+            taken, reason = not zero and (not negative or not overflow), "!Z && (!N || !O)"
         elif mnemo in ["bge", "bpge"]:
-            taken, reason = val&(1<<flags["negative"]) == 0 or val&(1<<flags["overflow"]) == 0, "!N || !O"
+            taken, reason = not negative or not overflow, "!N || !O"
         elif mnemo in ["bgu", "bpgu"]:
-            taken, reason = val&(1<<flags["carry"]) == 0 and val&(1<<flags["zero"]) == 0, "!C && !Z"
+            taken, reason = not carry and not zero, "!C && !Z"
         elif mnemo in ["bgeu",]:
-            taken, reason = val&(1<<flags["carry"]) == 0, "!C"
+            taken, reason = not carry, "!C"
         elif mnemo in ["bl", "bpl"]:
-            taken, reason = val&(1<<flags["negative"]) and val&(1<<flags["overflow"]), "N && O"
+            taken, reason = negative and overflow, "N && O"
         elif mnemo in ["blu",]:
-            taken, reason = val&(1<<flags["carry"]), "C"
+            taken, reason = carry, "C"
         elif mnemo in ["ble", "bple"]:
-            taken, reason = val&(1<<flags["zero"]) or (val&(1<<flags["negative"]) or val&(1<<flags["overflow"])), "Z || (N || O)"
+            taken, reason = zero or (negative or overflow), "Z || (N || O)"
         elif mnemo in ["bleu", "bpleu"]:
-            taken, reason = val&(1<<flags["carry"]) or val&(1<<flags["zero"]), "C || Z"
+            taken, reason = carry or zero, "C || Z"
         elif mnemo in ["bneg", "bpneg"]:
-            taken, reason = val&(1<<flags["negative"]), "N"
+            taken, reason = negative, "N"
         elif mnemo in ["bpos", "bppos"]:
-            taken, reason = val&(1<<flags["negative"]) == 0, "!N"
+            taken, reason = not negative, "!N"
         elif mnemo in ["bvs", "bpvs"]:
-            taken, reason = val&(1<<flags["overflow"]), "O"
+            taken, reason = overflow, "O"
         elif mnemo in ["bvc", "bpvc"]:
-            taken, reason = val&(1<<flags["overflow"]) == 0, "!O"
+            taken, reason = not overflow, "!O"
         elif mnemo in ["bcs", "bpcs"]:
-            taken, reason = val&(1<<flags["carry"]), "C"
+            taken, reason = carry, "C"
         elif mnemo in ["bcc", "bpcc"]:
-            taken, reason = val&(1<<flags["carry"]) == 0, "!C"
+            taken, reason = not carry, "!C"
         # todo: f* opcode, brn?z/br[lg]e?z are unsupported
         return taken, reason
 
@@ -3360,7 +3448,7 @@ class SPARC(Architecture):
                 ra = get_register("$o7")
             elif frame.older():
                 ra = frame.older().pc()
-        except:
+        except Exception:
             pass
         return ra
 
@@ -3369,18 +3457,20 @@ class SPARC(Architecture):
         hi = (addr & 0xffff0000) >> 16
         lo = (addr & 0x0000ffff)
         _NR_mprotect = 125
-        insns = ["add %sp, -16, %sp",
-                 "st %g1, [ %sp ]", "st %o0, [ %sp + 4 ]",
-                 "st %o1, [ %sp + 8 ]", "st %o2, [ %sp + 12 ]",
-                 "sethi %hi({}), %o0".format(hi),
-                 "or %o0, {}, %o0".format(lo),
-                 "clr %o1",
-                 "clr %o2",
-                 "mov {}, %g1".format(_NR_mprotect),
-                 "t 0x10",
-                 "ld [ %sp ], %g1", "ld [ %sp + 4 ], %o0",
-                 "ld [ %sp + 8 ], %o1", "ld [ %sp + 12 ], %o2",
-                 "add %sp, 16, %sp",]
+        insns = [
+            "add %sp, -16, %sp",
+            "st %g1, [ %sp ]", "st %o0, [ %sp + 4 ]",
+            "st %o1, [ %sp + 8 ]", "st %o2, [ %sp + 12 ]",
+            "sethi %hi({}), %o0".format(hi),
+            "or %o0, {}, %o0".format(lo),
+            "clr %o1",
+            "clr %o2",
+            "mov {}, %g1".format(_NR_mprotect),
+            "t 0x10",
+            "ld [ %sp ], %g1", "ld [ %sp + 4 ], %o0",
+            "ld [ %sp + 8 ], %o1", "ld [ %sp + 12 ], %o2",
+            "add %sp, 16, %sp",
+        ]
         return "; ".join(insns)
 
 
@@ -3398,8 +3488,9 @@ class SPARC64(SPARC):
         "$i0", "$i1", "$i2", "$i3", "$i4", "$i5", "$i7",
         "$pc", "$npc", "$sp", "$fp", "$state",
     ]
-    alias_registers = {"$sp":"$o6", "$fp":"$i6",}
-
+    alias_registers = {
+        "$sp": "$o6", "$fp": "$i6",
+    }
     flag_register = "$state" # sparcv9.pdf, 5.1.5.1 (ccr)
     flags_table = {
         35: "negative",
@@ -3415,18 +3506,20 @@ class SPARC64(SPARC):
         hi = (addr & 0xffff0000) >> 16
         lo = (addr & 0x0000ffff)
         _NR_mprotect = 125
-        insns = ["add %sp, -16, %sp",
-                 "st %g1, [ %sp ]", "st %o0, [ %sp + 4 ]",
-                 "st %o1, [ %sp + 8 ]", "st %o2, [ %sp + 12 ]",
-                 "sethi %hi({}), %o0".format(hi),
-                 "or %o0, {}, %o0".format(lo),
-                 "clr %o1",
-                 "clr %o2",
-                 "mov {}, %g1".format(_NR_mprotect),
-                 "t 0x6d",
-                 "ld [ %sp ], %g1", "ld [ %sp + 4 ], %o0",
-                 "ld [ %sp + 8 ], %o1", "ld [ %sp + 12 ], %o2",
-                 "add %sp, 16, %sp",]
+        insns = [
+            "add %sp, -16, %sp",
+            "st %g1, [ %sp ]", "st %o0, [ %sp + 4 ]",
+            "st %o1, [ %sp + 8 ]", "st %o2, [ %sp + 12 ]",
+            "sethi %hi({}), %o0".format(hi),
+            "or %o0, {}, %o0".format(lo),
+            "clr %o1",
+            "clr %o2",
+            "mov {}, %g1".format(_NR_mprotect),
+            "t 0x6d",
+            "ld [ %sp ], %g1", "ld [ %sp + 4 ], %o0",
+            "ld [ %sp + 8 ], %o1", "ld [ %sp + 12 ], %o2",
+            "add %sp, 16, %sp",
+        ]
         return "; ".join(insns)
 
 
@@ -3479,29 +3572,26 @@ class MIPS(Architecture):
         return False
 
     def is_conditional_branch(self, insn):
-        branch_mnemos = ["beq", "bne", "bgtz", "bgez", "bltz", "blez", "beqz", "bnez",
-                         "beql", "bnel", "bgtzl", "bgezl", "bltzl", "blezl",
-                         "bgezal", "bgezall", "bltzal", "bltzall",
-                         "bc1f", "bc1fl", "bc1t", "bc1tl", "bc2f", "bc2fl", "bc2t", "bc2tl",
-                         "beqc", "beqic", "beqzc",
-                         "bnec", "bneic", "bnezc",
-                         "bgec", "bgeic", "bgeiuc", "bgeuc",
-                         "bltc", "bltic", "bltiuc", "bltuc",
-                         "bbeqzc", "bbnezc"]
+        branch_mnemos = [
+            "beq", "bne", "bgtz", "bgez", "bltz", "blez", "beqz", "bnez",
+            "beql", "bnel", "bgtzl", "bgezl", "bltzl", "blezl",
+            "bgezal", "bgezall", "bltzal", "bltzall",
+            "bc1f", "bc1fl", "bc1t", "bc1tl", "bc2f", "bc2fl", "bc2t", "bc2tl",
+            "beqc", "beqic", "beqzc",
+            "bnec", "bneic", "bnezc",
+            "bgec", "bgeic", "bgeiuc", "bgeuc",
+            "bltc", "bltic", "bltiuc", "bltuc",
+            "bbeqzc", "bbnezc",
+        ]
         return insn.mnemonic in branch_mnemos
 
     def is_branch_taken(self, insn):
         mnemo, ops = insn.mnemonic, insn.operands
         taken, reason = False, ""
 
-        def p(a):
-            return struct.pack("<I",a&0xffffffff)
-
-        def ui(a):
-            return struct.unpack("<i",a)[0]
-
-        def u2i(a):
-            return ui(p(a))
+        p = lambda a: struct.pack("<I", a & 0xffffffff)
+        ui = lambda a: struct.unpack("<i", a)[0]
+        u2i = lambda a: ui(p(a))
 
         if mnemo in ["beq", "beql", "beqc"]:
             taken, reason = get_register(ops[0]) == get_register(ops[1]), "{0[0]} == {0[1]}".format(ops)
@@ -3552,24 +3642,26 @@ class MIPS(Architecture):
                 ra = get_register("$ra")
             elif frame.older():
                 ra = frame.older().pc()
-        except:
+        except Exception:
             pass
         return ra
 
     @classmethod
     def mprotect_asm(cls, addr, size, perm):
         _NR_mprotect = 4125
-        insns = ["addi $sp, $sp, -16",
-                 "sw $v0, 0($sp)", "sw $a0, 4($sp)",
-                 "sw $a3, 8($sp)", "sw $a3, 12($sp)",
-                 "li $v0, {:d}".format(_NR_mprotect),
-                 "li $a0, {:d}".format(addr),
-                 "li $a1, {:d}".format(size),
-                 "li $a2, {:d}".format(perm),
-                 "syscall",
-                 "lw $v0, 0($sp)", "lw $a1, 4($sp)",
-                 "lw $a3, 8($sp)", "lw $a3, 12($sp)",
-                 "addi $sp, $sp, 16",]
+        insns = [
+            "addi $sp, $sp, -16",
+            "sw $v0, 0($sp)", "sw $a0, 4($sp)",
+            "sw $a3, 8($sp)", "sw $a3, 12($sp)",
+            "li $v0, {:d}".format(_NR_mprotect),
+            "li $a0, {:d}".format(addr),
+            "li $a1, {:d}".format(size),
+            "li $a2, {:d}".format(perm),
+            "syscall",
+            "lw $v0, 0($sp)", "lw $a1, 4($sp)",
+            "lw $a3, 8($sp)", "lw $a3, 12($sp)",
+            "addi $sp, $sp, 16",
+        ]
         return "; ".join(insns)
 
 
@@ -3579,7 +3671,7 @@ def write_memory(address, buffer, length=0x10):
         gdb.selected_inferior().write_memory(address, buffer, length)
         ret = length
         return ret
-    except:
+    except Exception:
         if is_qemu_usermode():
             # We can not patch to the code area under qemu-user
             # so we patch via /proc/pid/mem
@@ -3589,7 +3681,7 @@ def write_memory(address, buffer, length=0x10):
             try:
                 ret = fd.write(buffer[:length])
                 fd.flush()
-            except:
+            except Exception:
                 raise Exception("Unsupported before qemu 5.1")
             fd.close()
             gdb.execute("maintenance flush dcache", to_string=True)
@@ -3599,7 +3691,6 @@ def write_memory(address, buffer, length=0x10):
 
 def read_memory(addr, length=0x10):
     """Return a `length` long byte array with the copy of the process memory at `addr`."""
-    #print(' <- '.join([x.function for x in inspect.stack()[1:4]]))
     return gdb.selected_inferior().read_memory(addr, length).tobytes()
 
 
@@ -3621,7 +3712,7 @@ def read_cstring_from_memory(address, max_length=GEF_MAX_STRING_LENGTH):
     length = gef_getpagesize() - (address % gef_getpagesize())
     try:
         res = read_memory(address, length)
-    except:
+    except gdb.MemoryError:
         return None
 
     # if too short, more read
@@ -3631,7 +3722,7 @@ def read_cstring_from_memory(address, max_length=GEF_MAX_STRING_LENGTH):
         try:
             read_length = min(max_length - len(res), gef_getpagesize())
             res += read_memory(address + len(res), read_length)
-        except:
+        except gdb.MemoryError:
             break
 
     # treat as utf-8
@@ -3654,12 +3745,12 @@ def read_physmem_secure(paddr, size):
     sm_base, sm_size = XSecureMemAddrCommand.get_secure_memory_base_and_size()
     if sm_base is None or sm_size is None:
         return None
-    if not (sm_base <= paddr < sm_base+sm_size):
+    if not (sm_base <= paddr < sm_base + sm_size):
         return None
     sm = XSecureMemAddrCommand.get_secure_memory_qemu_map(sm_base, sm_size)
     if sm is None:
         return None
-    out = XSecureMemAddrCommand.read_secure_memory(sm, paddr-sm_base, size)
+    out = XSecureMemAddrCommand.read_secure_memory(sm, paddr - sm_base, size)
     return out
 
 
@@ -3673,7 +3764,7 @@ def read_physmem(paddr, size):
         out = b""
         for line in res.splitlines():
             data = line.split()[1:]
-            out += bytes([int(x,16) for x in  data])
+            out += bytes([int(x, 16) for x in data])
         return out
 
     if is_arm32() or is_arm64():
@@ -3691,7 +3782,7 @@ def read_physmem(paddr, size):
         out = fast_path(paddr, size)
         if orig_mode == "virt":
             disable_phys()
-    except:
+    except gdb.MemoryError:
         if orig_mode == "virt":
             disable_phys()
         # fall through to slow path
@@ -3703,12 +3794,12 @@ def write_physmem_secure(paddr, buffer):
     sm_base, sm_size = XSecureMemAddrCommand.get_secure_memory_base_and_size()
     if sm_base is None or sm_size is None:
         return None
-    if not (sm_base <= paddr < sm_base+sm_size):
+    if not (sm_base <= paddr < sm_base + sm_size):
         return None
     sm = XSecureMemAddrCommand.get_secure_memory_qemu_map(sm_base, sm_size)
     if sm is None:
         return None
-    out = WSecureMemAddrCommand.write_secure_memory(sm, paddr-sm_base, buffer)
+    out = WSecureMemAddrCommand.write_secure_memory(sm, paddr - sm_base, buffer)
     return out
 
 
@@ -3728,7 +3819,7 @@ def write_physmem(paddr, buffer):
         ret = write_memory(paddr, buffer, len(buffer))
         if orig_mode == "virt":
             disable_phys()
-    except:
+    except Exception:
         if orig_mode == "virt":
             disable_phys()
     return ret
@@ -3743,7 +3834,7 @@ def get_current_mmu_mode():
             return "phys"
         else:
             return False
-    except:
+    except Exception:
         return False
 
 
@@ -3994,7 +4085,7 @@ def get_register(regname):
 def get_path_from_info_proc():
     try:
         response = gdb.execute("info proc", to_string=True)
-    except:
+    except Exception:
         return None
     for x in response.splitlines():
         if x.startswith("exe = "):
@@ -4026,7 +4117,7 @@ def is_qemu():
 
 @functools.lru_cache()
 def is_qemu_usermode():
-    if is_qemu() == False:
+    if is_qemu() is False:
         return False
     response = gdb.execute('maintenance packet qOffsets', to_string=True, from_tty=False)
     return 'Text=' in response
@@ -4034,7 +4125,7 @@ def is_qemu_usermode():
 
 @functools.lru_cache()
 def is_qemu_system():
-    if is_qemu() == False:
+    if is_qemu() is False:
         return False
     response = gdb.execute('maintenance packet qOffsets', to_string=True, from_tty=False)
     return 'received: ""' in response
@@ -4056,9 +4147,9 @@ def get_pid():
             err("gdb has no tcp session")
             return None
         for process in psutil.process_iter():
-            if match_prefix_only == True and not process.name().startswith(filepath):
+            if match_prefix_only is True and not process.name().startswith(filepath):
                 continue
-            if match_prefix_only == False and process.name() != os.path.basename(filepath):
+            if match_prefix_only is False and process.name() != os.path.basename(filepath):
                 continue
             try:
                 connections = process.connections()
@@ -4088,6 +4179,8 @@ def get_filepath(for_vmmap=False):
     filepath = gdb.current_progspace().filename
 
     def append_proc_root(filepath):
+        if filepath is None:
+            return None
         prefix = "/proc/{}/root".format(get_pid())
         relative_path = filepath.lstrip("/")
         return os.path.join(prefix, relative_path)
@@ -4176,9 +4269,9 @@ def get_explored_regions():
     @functools.lru_cache()
     def is_exist_page(addr):
         try:
-            _ = read_memory(addr, 1)
+            read_memory(addr, 1)
             return True
-        except:
+        except gdb.MemoryError:
             return False
 
     @functools.lru_cache()
@@ -4202,7 +4295,7 @@ def get_explored_regions():
                 break
             region_start -= gef_getpagesize()
 
-        bound = (1<<32) if is_32bit() else (1<<64)
+        bound = (1 << 32) if is_32bit() else (1 << 64)
         # down search
         while True:
             if region_end > bound:
@@ -4229,7 +4322,7 @@ def get_explored_regions():
 
     @functools.lru_cache()
     def get_ehdr(addr):
-        bound = (1<<32) if is_32bit() else (1<<64)
+        bound = (1 << 32) if is_32bit() else (1 << 64)
         for i in range(128):
             if addr < 0 or addr > bound:
                 return None
@@ -4276,7 +4369,7 @@ def get_explored_regions():
                         break
                 else:
                     # not found, so add new page
-                    page = {'vaddr':page_addr, 'memsize':gef_getpagesize(), 'flags':flags, 'offset':offset + (page_addr - vaddr)}
+                    page = {'vaddr': page_addr, 'memsize': gef_getpagesize(), 'flags': flags, 'offset': offset + (page_addr - vaddr)}
                     pages.append(page)
 
         pages = sorted(pages, key=lambda x: x['vaddr'])
@@ -4330,7 +4423,7 @@ def get_explored_regions():
     data = None
     try:
         data = read_memory(sp & gef_getpagesize_mask(), gef_getpagesize())
-    except:
+    except gdb.MemoryError:
         pass
     if data:
         unpack = u32 if is_32bit() else u64
@@ -4406,7 +4499,7 @@ def get_info_files():
         addr_end = int(blobs[2], 16)
         section_name = blobs[4]
         if "system-supplied DSO" in line:
-            filename = "[vdso]"
+            filepath = "[vdso]"
         elif len(blobs) == 7:
             filepath = blobs[6]
         else:
@@ -4571,11 +4664,11 @@ def load_libc_args():
     try:
         with open(_libc_args_file) as _libc_args:
             libc_args_definitions[_arch_mode] = json.load(_libc_args)
-    except FileNotFoundError as e:
-        del(libc_args_definitions[_arch_mode])
+    except FileNotFoundError:
+        del libc_args_definitions[_arch_mode]
         warn("Config context.libc_args is set but definition cannot be loaded: file {} not found".format(_libc_args_file))
     except json.decoder.JSONDecodeError as e:
-        del(libc_args_definitions[_arch_mode])
+        del libc_args_definitions[_arch_mode]
         warn("Config context.libc_args is set but definition cannot be loaded from file {}: {}".format(_libc_args_file, e))
     return
 
@@ -4586,7 +4679,7 @@ def get_terminal_size():
         hStdErr = -12
         herr = ctypes.windll.kernel32.GetStdHandle(hStdErr)
         csbi = ctypes.create_string_buffer(22)
-        res = windll.kernel32.GetConsoleScreenBufferInfo(herr, csbi)
+        res = ctypes.windll.kernel32.GetConsoleScreenBufferInfo(herr, csbi)
         if res:
             _, _, _, _, _, left, top, right, bottom, _, _ = struct.unpack("hhhhHhhhhhh", csbi.raw)
             tty_columns = right - left + 1
@@ -4785,7 +4878,7 @@ def is_arm32():
     """Checks if current target is an arm-32"""
     try:
         return current_arch.arch == "ARM"
-    except:
+    except Exception:
         return False
 
 
@@ -4794,7 +4887,7 @@ def is_arm64():
     """Checks if current target is an aarch64"""
     try:
         return current_arch.arch == "ARM64"
-    except:
+    except Exception:
         return False
 
 
@@ -4833,7 +4926,7 @@ def set_arch(arch=None, default=None):
     Return the selected arch, or raise an OSError."""
     arches = {
         "ARM": ARM, Elf.ARM: ARM, "ARMV2": ARM, "ARMV3": ARM, "ARMV3M": ARM, "ARMV4": ARM,
-        "ARMV4T":ARM, "ARMV5":ARM, "ARMV5T":ARM, "ARMV5TE":ARM, "ARMV6":ARM, "ARMV7": ARM,
+        "ARMV4T": ARM, "ARMV5": ARM, "ARMV5T": ARM, "ARMV5TE": ARM, "ARMV6": ARM, "ARMV7": ARM,
         "AARCH64": AARCH64, "ARM64": AARCH64, Elf.AARCH64: AARCH64,
         "X86": X86, Elf.X86_32: X86, "I386": X86, "I386:INTEL": X86, "I8086": X86,
         "X64": X86_64, "AMD64": X86_64,
@@ -4846,7 +4939,7 @@ def set_arch(arch=None, default=None):
         "I386:X64_32:NACL": X86_64, "I386:X64-32:NACL": X86_64,
         "POWERPC": PowerPC, "PPC": PowerPC, Elf.POWERPC: PowerPC,
         "POWERPC64": PowerPC64, "PPC64": PowerPC64, Elf.POWERPC64: PowerPC64,
-        "RISCV": RISCV, "RISCV:RV64":RISCV, Elf.RISCV: RISCV,
+        "RISCV": RISCV, "RISCV:RV64": RISCV, Elf.RISCV: RISCV,
         "SPARC": SPARC, Elf.SPARC: SPARC,
         "SPARC64": SPARC64, Elf.SPARC64: SPARC64,
         "MIPS": MIPS, Elf.MIPS: MIPS,
@@ -4915,7 +5008,7 @@ def get_memory_alignment(in_bits=False):
 
     try:
         return gdb.parse_and_eval("$pc").type.sizeof
-    except:
+    except Exception:
         pass
     raise EnvironmentError("GEF is running under an unsupported mode")
 
@@ -4933,6 +5026,7 @@ def clear_screen(tty=""):
         with open(tty, "wt") as f:
             f.write("\x1b[H\x1b[2J")
     except PermissionError:
+        global __gef_redirect_output_fd__
         __gef_redirect_output_fd__ = None
         set_gef_setting("context.redirect", "")
     return
@@ -5001,14 +5095,15 @@ def get_ksymaddr(sym):
     # use available symbol
     try:
         return parse_address('&' + sym)
-    except:
+    except Exception:
         pass
     # use ksymaddr-remote
     try:
         res = gdb.execute("ksymaddr-remote --silent --exact {:s}".format(sym), to_string=True)
         return int(res.split()[0], 16)
-    except:
+    except Exception:
         return None
+
 
 def is_in_x86_kernel(address):
     address = align_address(address)
@@ -5041,6 +5136,7 @@ def de_bruijn(alphabet, n):
     """De Bruijn sequence for alphabet and subsequences of length n (for compat. w/ pwnlib)."""
     k = len(alphabet)
     a = [0] * k * n
+
     def db(t, p):
         if t > n:
             if n % p == 0:
@@ -5055,6 +5151,7 @@ def de_bruijn(alphabet, n):
                 a[t] = j
                 for c in db(t + 1, t):
                     yield c
+
     return db(1, 1)
 
 
@@ -5078,10 +5175,13 @@ def safe_parse_and_eval(value):
 def dereference(addr):
     """GEF wrapper for gdb dereference function."""
     try:
-        ulong_t = cached_lookup_type(use_stdtype()) or \
-                  cached_lookup_type(use_default_type()) or \
-                  cached_lookup_type(use_golang_type()) or \
-                  cached_lookup_type(use_rust_type())
+        ulong_t = cached_lookup_type(use_stdtype())
+        if not ulong_t:
+            ulong_t = cached_lookup_type(use_default_type())
+            if not ulong_t:
+                ulong_t = cached_lookup_type(use_golang_type())
+                if not ulong_t:
+                    ulong_t = cached_lookup_type(use_rust_type())
         unsigned_long_type = ulong_t.pointer()
         res = gdb.Value(addr).cast(unsigned_long_type).dereference()
         # GDB does lazy fetch by default so we need to force access to the value
@@ -5104,7 +5204,7 @@ def gef_convenience(value):
 def parse_string_range(s):
     """Parses an address range (e.g. 0x400000-0x401000)"""
     addrs = s.split("-")
-    return [int(x,16) for x in addrs]
+    return [int(x, 16) for x in addrs]
 
 
 AT_CONSTANTS = {
@@ -5167,12 +5267,12 @@ def get_auxiliary_walk(offset=0):
     if offset in explored_auxv:
         return explored_auxv[offset]
 
-    addr = get_register("$sp") & ~(DEFAULT_PAGE_SIZE-1)
+    addr = get_register("$sp") & ~(DEFAULT_PAGE_SIZE - 1)
 
     # check readable or not
     try:
-        v = read_memory(addr, 1)
-    except:
+        read_memory(addr, 1)
+    except gdb.MemoryError:
         return None
 
     # find stack bottom
@@ -5181,9 +5281,9 @@ def get_auxiliary_walk(offset=0):
             if b"\x7fELF" == read_memory(addr, 4):
                 break
             addr += DEFAULT_PAGE_SIZE
-    except: # if read error, that is stack bottom
+    except gdb.MemoryError: # if read error, that is stack bottom
         pass
-    current = addr - current_arch.ptrsize*2 - offset
+    current = addr - current_arch.ptrsize * 2 - offset
 
     # find auxv end
     while True:
@@ -5212,7 +5312,7 @@ def get_auxiliary_walk(offset=0):
     while True:
         key = read_int_from_memory(current)
         val = read_int_from_memory(current + current_arch.ptrsize)
-        if not key in AT_CONSTANTS:
+        if key not in AT_CONSTANTS:
             break
         res[AT_CONSTANTS[key]] = val
         if key == 0:
@@ -5260,7 +5360,7 @@ def gef_get_auxiliary_values():
 
     try:
         result = gdb.execute("info auxv", to_string=True)
-    except:
+    except Exception:
         return None
 
     res = {}
@@ -5288,7 +5388,7 @@ def gef_read_canary():
         canary = read_int_from_memory(canary_location)
         canary &= ~0xFF
         return canary, canary_location
-    except:
+    except Exception:
         return None
 
 
@@ -5395,6 +5495,7 @@ def gef_on_regchanged_unhook(func):
 # Virtual breakpoints
 #
 
+
 class PieVirtualBreakpoint:
     """PIE virtual breakpoint (not real breakpoint)."""
     def __init__(self, set_func, vbp_num, addr):
@@ -5441,6 +5542,7 @@ class PieVirtualBreakpoint:
 #
 # Breakpoints
 #
+
 
 class FormatStringBreakpoint(gdb.Breakpoint):
     """Inspect stack for format string."""
@@ -5584,7 +5686,7 @@ class TraceMallocRetBreakpoint(gdb.FinishBreakpoint):
 
                 if not (chunk_addr <= loc < chunk_addr + current_chunk_size):
                     continue
-                offset = loc - chunk_addr - 2*align
+                offset = loc - chunk_addr - 2 * align
                 if offset < 0:
                     continue # false positive, discard
 
@@ -5751,7 +5853,7 @@ class UafWatchpoint(gdb.Breakpoint):
         reset_all_caches()
         try:
             frame = gdb.selected_frame()
-        except:
+        except Exception:
             return False
         if frame.name() in ("_int_malloc", "malloc_consolidate", "__libc_calloc", ):
             return False
@@ -5842,7 +5944,7 @@ class GenericCommand(gdb.Command):
         syntax = Color.yellowify("\nSyntax: ") + self._syntax_
         example = Color.yellowify("\nExample: ") + self._example_ if self._example_ else ""
         aliases = Color.yellowify("\nAliases: ") + str(self._aliases_) if hasattr(self, "_aliases_") else ""
-        self.__doc__ = self.__doc__.replace(" "*4, "") + syntax + example + aliases
+        self.__doc__ = self.__doc__.replace(" " * 4, "") + syntax + example + aliases
         self.repeat = False
         self.repeat_count = 0
         self.__last_command = None
@@ -5875,20 +5977,26 @@ class GenericCommand(gdb.Command):
         return
 
     @abc.abstractproperty
-    def _cmdline_(self): pass
+    def _cmdline_(self):
+        pass
 
     @abc.abstractproperty
-    def _syntax_(self): pass
+    def _syntax_(self):
+        pass
 
     @abc.abstractproperty
-    def _example_(self): return ""
+    def _example_(self):
+        return ""
 
     @abc.abstractmethod
-    def do_invoke(self, argv): pass
+    def do_invoke(self, argv):
+        pass
 
-    def pre_load(self): pass
+    def pre_load(self):
+        pass
 
-    def post_load(self): pass
+    def post_load(self):
+        pass
 
     def __get_setting_name(self, name):
         def __sanitize_class_name(clsname):
@@ -5902,7 +6010,7 @@ class GenericCommand(gdb.Command):
     @property
     def settings(self):
         """Return the list of settings for this command."""
-        return [ x.split(".", 1)[1] for x in __config__ if x.startswith("{:s}.".format(self._cmdline_)) ]
+        return [x.split(".", 1)[1] for x in __config__ if x.startswith("{:s}.".format(self._cmdline_))]
 
     def get_setting(self, name):
         key = self.__get_setting_name(name)
@@ -6034,7 +6142,7 @@ class PrintFormatCommand(GenericCommand):
                 elif o == "-h":
                     self.usage()
                     return
-        except:
+        except Exception:
             self.usage()
             return
 
@@ -6065,7 +6173,7 @@ class PrintFormatCommand(GenericCommand):
         for address in range(start_addr, end_addr, size):
             try:
                 mem = read_memory(address, size)
-            except gdb.error:
+            except gdb.MemoryError:
                 err("Memory read error")
                 return None
             value = struct.unpack(bf, mem)[0]
@@ -6079,7 +6187,7 @@ class PrintFormatCommand(GenericCommand):
                     sdata += "\n"
         else:
             for i, x in enumerate(data):
-                sdata += "{:#0{}x}, ".format(x, bitlen//4 + 2)
+                sdata += "{:#0{}x}, ".format(x, bitlen // 4 + 2)
                 if (i % 8) == 7:
                     sdata += "\n"
         sdata = sdata.rstrip()
@@ -6131,7 +6239,8 @@ class SmartEvalCommand(GenericCommand):
 
     def evaluate(self, expr):
         def show_as_int(i):
-            off = current_arch.ptrsize*8
+            off = current_arch.ptrsize * 8
+
             def comp2_x(x):
                 return "{:x}".format((x + (1 << off)) % (1 << off))
 
@@ -6140,13 +6249,13 @@ class SmartEvalCommand(GenericCommand):
 
             try:
                 s_i = comp2_x(res)
-                s_i = s_i.rjust(len(s_i)+1, "0") if len(s_i)%2 else s_i
+                s_i = s_i.rjust(len(s_i) + 1, "0") if len(s_i) % 2 else s_i
                 gef_print("decimal      : {:d}".format(i))
                 gef_print("hex          : 0x" + comp2_x(res))
                 gef_print("binary       : 0b" + comp2_b(res))
                 gef_print("big-endian   : {}".format(binascii.unhexlify(s_i)))
                 gef_print("little-endian: {}".format(binascii.unhexlify(s_i)[::-1]))
-            except:
+            except Exception:
                 pass
             return
 
@@ -6228,7 +6337,10 @@ class CanaryCommand(GenericCommand):
                 continue
             if m.path == "[vvar]":
                 continue
-            data = read_memory(m.page_start, m.page_end - m.page_start)
+            try:
+                data = read_memory(m.page_start, m.page_end - m.page_start)
+            except gdb.MemoryError:
+                continue
             prev_addr = -1
             for pos in range(0, m.page_end - m.page_start, current_arch.ptrsize):
                 addr = m.page_start + pos
@@ -6312,7 +6424,7 @@ class ProcessStatusCommand(GenericCommand):
     def get_state_of(self, pid):
         try:
             status = open("/proc/{}/status".format(pid), "r").read()
-        except:
+        except Exception:
             return {}
         res = {}
         for line in status.splitlines():
@@ -6323,7 +6435,7 @@ class ProcessStatusCommand(GenericCommand):
     def get_stat_of(self, pid):
         try:
             stat = open("/proc/{}/stat".format(pid), "r").read()
-        except:
+        except Exception:
             return []
         name = re.search(r"\((.+)\)", stat)
         other = re.sub(r"\(.+\) ", "", stat).split()
@@ -6333,33 +6445,33 @@ class ProcessStatusCommand(GenericCommand):
     def get_cmdline_of(self, pid):
         try:
             cmdline = open("/proc/{}/cmdline".format(pid), "r").read()
-        except:
+        except Exception:
             return ""
         return cmdline.replace("\x00", "\x20").strip()
 
     def get_process_path_of(self, pid):
         try:
             return os.readlink("/proc/{}/exe".format(pid))
-        except:
+        except Exception:
             return "Not Found"
 
     def get_process_cwd(self, pid):
         try:
             return os.readlink("/proc/{}/cwd".format(pid))
-        except:
+        except Exception:
             return "Not Found"
 
     def get_process_root(self, pid):
         try:
             return os.readlink("/proc/{}/root".format(pid))
-        except:
+        except Exception:
             return "Not Found"
 
     def get_thread_ids(self, pid):
         try:
             tids = os.listdir("/proc/{}/task".format(pid))
             return [int(x) for x in tids]
-        except:
+        except Exception:
             return []
 
     def get_children_pids(self, pid):
@@ -6378,17 +6490,17 @@ class ProcessStatusCommand(GenericCommand):
     def get_uid_map(self, pid):
         try:
             uid_map = open("/proc/{}/uid_map".format(pid), "r").read().strip()
-        except:
+        except Exception:
             return []
-        slicer = lambda data, n: [data[i:i+n] for i in range(0, len(data), n)]
+        slicer = lambda data, n: [data[i:i + n] for i in range(0, len(data), n)]
         return slicer([int(x) for x in uid_map.split()], 3)
 
     def get_gid_map(self, pid):
         try:
             gid_map = open("/proc/{}/gid_map".format(pid), "r").read().strip()
-        except:
+        except Exception:
             return []
-        slicer = lambda data, n: [data[i:i+n] for i in range(0, len(data), n)]
+        slicer = lambda data, n: [data[i:i + n] for i in range(0, len(data), n)]
         return slicer([int(x) for x in gid_map.split()], 3)
 
     def get_tty_str(self, major, minor):
@@ -6405,7 +6517,7 @@ class ProcessStatusCommand(GenericCommand):
 
         try:
             devices = open("/proc/devices", "r").read()
-        except:
+        except Exception:
             return "Not found"
         for line in devices.splitlines():
             if not line or line.endswith(":"):
@@ -6460,16 +6572,16 @@ class ProcessStatusCommand(GenericCommand):
         gef_print("  {:32s} {} {}".format("Session ID", RIGHT_ARROW, sid))
         gef_print("  {:32s} {} {}".format("Session ID Executable", RIGHT_ARROW, repr(self.get_process_path_of(sid))))
         ttynr = self.get_stat_of(pid)[6]
-        major, minor = (ttynr>>8)&0xff, ((ttynr>>20)<<8)|(ttynr&0xff)
+        major, minor = (ttynr >> 8) & 0xff, ((ttynr >> 20) << 8) | (ttynr & 0xff)
         ttystr = self.get_tty_str(major, minor)
         gef_print("  {:32s} {} {} (Major:{} Minor:{} Dev:{})".format("TTY Device Number", RIGHT_ARROW, ttynr, major, minor, repr(ttystr)))
         tpgid = self.get_stat_of(pid)[7]
         gef_print("  {:32s} {} {}".format("TTY Process Group ID", RIGHT_ARROW, tpgid))
         gef_print("  {:32s} {} {}".format("TTY Process Group ID Executable", RIGHT_ARROW, repr(self.get_process_path_of(tpgid))))
-        gef_print("  {:32s} {} {}".format("RUID : EUID : SavedUID : FSUID", RIGHT_ARROW, re.sub(r"\s+", " : ",self.get_state_of(pid)['Uid'])))
-        gef_print("  {:32s} {} {}".format("RGID : EGID : SavedGID : FSGID", RIGHT_ARROW, re.sub(r"\s+", " : ",self.get_state_of(pid)['Gid'])))
+        gef_print("  {:32s} {} {}".format("RUID : EUID : SavedUID : FSUID", RIGHT_ARROW, re.sub(r"\s+", " : ", self.get_state_of(pid)['Uid'])))
+        gef_print("  {:32s} {} {}".format("RGID : EGID : SavedGID : FSGID", RIGHT_ARROW, re.sub(r"\s+", " : ", self.get_state_of(pid)['Gid'])))
         seccomp_n = self.get_state_of(pid)['Seccomp']
-        seccomp_s = {'0':'Disabled', '1':'Strict', '2':'Filter'}
+        seccomp_s = {'0': 'Disabled', '1': 'Strict', '2': 'Filter'}
         gef_print("  {:32s} {} {} ({})".format("Seccomp Mode", RIGHT_ARROW, seccomp_n, seccomp_s[seccomp_n]))
         return
 
@@ -6509,7 +6621,7 @@ class ProcessStatusCommand(GenericCommand):
         else:
             gef_print("  {:32s} {} {}".format("Thread ID List", RIGHT_ARROW, tids[:split]))
             for i in range(split, len(tids), split):
-                gef_print("  {:32s} {} {}".format("", RIGHT_ARROW, tids[i:i+split]))
+                gef_print("  {:32s} {} {}".format("", RIGHT_ARROW, tids[i:i + split]))
         return
 
     def show_info_proc_ns(self):
@@ -6543,7 +6655,7 @@ class ProcessStatusCommand(GenericCommand):
         for fname in items:
             fullpath = os.path.join(path, fname)
             if os.path.islink(fullpath):
-                gef_print("  {:32s} {:s} {:s}".format (fullpath, RIGHT_ARROW, os.readlink(fullpath)))
+                gef_print("  {:32s} {:s} {:s}".format(fullpath, RIGHT_ARROW, os.readlink(fullpath)))
         return
 
     def list_sockets(self, pid):
@@ -6591,7 +6703,7 @@ class ProcessStatusCommand(GenericCommand):
 
         entries = {}
         entries["TCP"] = [x.split() for x in open("/proc/{:d}/net/tcp".format(pid), "r").readlines()[1:]]
-        entries["UDP"]= [x.split() for x in open("/proc/{:d}/net/udp".format(pid), "r").readlines()[1:]]
+        entries["UDP"] = [x.split() for x in open("/proc/{:d}/net/udp".format(pid), "r").readlines()[1:]]
 
         for proto in entries:
             for entry in entries[proto]:
@@ -6781,14 +6893,14 @@ class ScanSectionCommand(GenericCommand):
             try:
                 start, end = parse_string_range(haystack)
                 haystack_sections.append((start, end, ""))
-            except:
+            except Exception:
                 pass
 
         if "0x" in needle:
             try:
                 start, end = parse_string_range(needle)
                 needle_sections.append((start, end))
-            except:
+            except Exception:
                 pass
 
         for sect in get_process_maps():
@@ -6807,7 +6919,7 @@ class ScanSectionCommand(GenericCommand):
                 continue
 
             for i in range(0, len(mem), step):
-                target = unpack(mem[i:i+step])
+                target = unpack(mem[i:i + step])
                 for nstart, nend in needle_sections:
                     if not (nstart <= target < nend):
                         continue
@@ -6877,7 +6989,7 @@ class SearchPatternCommand(GenericCommand):
 
             try:
                 mem = read_memory(chunk_addr, chunk_size)
-            except:
+            except gdb.MemoryError:
                 # cannot access memory this range. It doesn't make sense to try any more
                 break
 
@@ -6894,8 +7006,8 @@ class SearchPatternCommand(GenericCommand):
         res = get_maps_by_pagewalk("pagewalk -q")
         res = sorted(set(res.splitlines()))
         res = list(filter(lambda line: line.endswith("]"), res))
-        res = list(filter(lambda line: not "[+]" in line, res))
-        res = list(filter(lambda line: not "*" in line, res))
+        res = list(filter(lambda line: "[+]" not in line, res))
+        res = list(filter(lambda line: "*" not in line, res))
         for line in res:
             if is_x86() and "ACCESSED" not in line:
                 continue
@@ -6927,7 +7039,7 @@ class SearchPatternCommand(GenericCommand):
                 continue
             if section.path == "[vvar]":
                 continue
-            if not section_name in section.path:
+            if section_name not in section.path:
                 continue
 
             if self.verbose:
@@ -6969,8 +7081,8 @@ class SearchPatternCommand(GenericCommand):
         self.aligned = None
         if "--aligned" in argv:
             idx = argv.index("--aligned")
-            self.aligned = int(argv[idx+1])
-            argv = argv[:idx] + argv[idx+2:]
+            self.aligned = int(argv[idx + 1])
+            argv = argv[:idx] + argv[idx + 2:]
 
         self.disable_utf16 = False
         if "--disable-utf16" in argv:
@@ -7003,12 +7115,12 @@ class SearchPatternCommand(GenericCommand):
             if len(_pattern) % 2 != 0:
                 self.usage()
                 return
-            pattern = "".join(["\\x"+_pattern[i:i+2] for i in range(0, len(_pattern), 2)])
+            pattern = "".join(["\\x" + _pattern[i:i + 2] for i in range(0, len(_pattern), 2)])
         elif is_hex(pattern): # "0x41414141" -> "\x41\x41\x41\x41"
             if endian == Elf.BIG_ENDIAN:
-                pattern = "".join(["\\x"+pattern[i:i+2] for i in range(2, len(pattern), 2)])
+                pattern = "".join(["\\x" + pattern[i:i + 2] for i in range(2, len(pattern), 2)])
             else:
-                pattern = "".join(["\\x"+pattern[i:i+2] for i in range(len(pattern) - 2, 0, -2)])
+                pattern = "".join(["\\x" + pattern[i:i + 2] for i in range(len(pattern) - 2, 0, -2)])
 
         # create utf16 pattern
         pattern_utf16 = None
@@ -7084,18 +7196,18 @@ class DemanglePtrCommand(GenericCommand):
             if is_arm32():
                 try:
                     tls = parse_address("(unsigned int)__aeabi_read_tp()")
-                except:
+                except Exception:
                     err("Not found symbol (__aeabi_read_tp)")
                     return None
             else:
                 try:
                     tls = get_register("$TPIDR_EL0")
-                except:
+                except Exception:
                     err("Fail reading $TPIDR_EL0 register")
                     return None
             try:
                 cookie_ptr = parse_address("&__pointer_chk_guard_local")
-            except:
+            except Exception:
                 err("Not found symbol (__pointer_chk_guard_local)")
                 return None
             cookie = read_int_from_memory(cookie_ptr)
@@ -7104,7 +7216,7 @@ class DemanglePtrCommand(GenericCommand):
     @staticmethod
     def decode(value, cookie):
         def ror(val, bits, arch_bits):
-            new_val = (val >> bits) | (val << (arch_bits-bits))
+            new_val = (val >> bits) | (val << (arch_bits - bits))
             mask = (1 << arch_bits) - 1
             return new_val & mask
 
@@ -7128,7 +7240,7 @@ class DemanglePtrCommand(GenericCommand):
 
         try:
             target = int(argv[0], 0)
-        except:
+        except Exception:
             self.usage()
             return
         decoded = self.decode(target, cookie)
@@ -7137,7 +7249,7 @@ class DemanglePtrCommand(GenericCommand):
         try:
             read_memory(decoded, 1)
             valid_msg = "valid"
-        except gdb.error:
+        except gdb.MemoryError:
             valid_msg = "invalid"
         info("Decoded value is {:s}{:s} ({:s})".format(color_decoded, decoded_sym, valid_msg))
         return
@@ -7177,7 +7289,7 @@ class SearchMangledPtrCommand(GenericCommand):
     def search_mangled_ptr(self, start_address, end_address):
         """Search a mangled pointer within a range defined by arguments."""
         def slice_unpack(data, n):
-            tmp = [data[i:i+n] for i in range(0, len(data), n)]
+            tmp = [data[i:i + n] for i in range(0, len(data), n)]
             return list(map(u64 if n == 8 else u32, tmp))
 
         if is_qemu_system():
@@ -7194,7 +7306,7 @@ class SearchMangledPtrCommand(GenericCommand):
 
             try:
                 mem = read_memory(chunk_addr, chunk_size)
-            except:
+            except gdb.MemoryError:
                 # cannot access memory this range. It doesn't make sense to try any more
                 break
 
@@ -7202,7 +7314,7 @@ class SearchMangledPtrCommand(GenericCommand):
                 decoded = DemanglePtrCommand.decode(value, self.cookie)
                 try:
                     read_memory(decoded, 1)
-                except gdb.error:
+                except gdb.MemoryError:
                     continue
                 addr = chunk_addr + i * current_arch.ptrsize
                 locations.append((addr, value, decoded))
@@ -7360,35 +7472,35 @@ class FlagsCommand(GenericCommand):
 
         def c(msg):
             mask = int(msg.split()[0], 16)
-            color = ["bold", ""][(eflags & mask)==0]
+            color = ["bold", ""][(eflags & mask) == 0]
             return Color.colorify(msg, color)
 
-        gef_print(" "*14 + "|| |||| |||| |||| |||| |||+- " + c("0x000001 [CF]   Carry flag"))
-        gef_print(" "*14 + "|| |||| |||| |||| |||| ||+-- " + c("0x000002        Reserved (always 1)"))
-        gef_print(" "*14 + "|| |||| |||| |||| |||| |+--- " + c("0x000004 [PF]   Parity flag"))
-        gef_print(" "*14 + "|| |||| |||| |||| |||| +---- " + c("0x000008        Reserved (always 0)"))
-        gef_print(" "*14 + "|| |||| |||| |||| ||||")
-        gef_print(" "*14 + "|| |||| |||| |||| |||+------ " + c("0x000010 [AF]   Adjust flag (for BCD calc)"))
-        gef_print(" "*14 + "|| |||| |||| |||| ||+------- " + c("0x000020        Reserved (always 0)"))
-        gef_print(" "*14 + "|| |||| |||| |||| |+-------- " + c("0x000040 [ZF]   Zero flag"))
-        gef_print(" "*14 + "|| |||| |||| |||| +--------- " + c("0x000080 [SF]   Sign flag"))
-        gef_print(" "*14 + "|| |||| |||| ||||")
-        gef_print(" "*14 + "|| |||| |||| |||+----------- " + c("0x000100 [TF]   Trap flag (single step)"))
-        gef_print(" "*14 + "|| |||| |||| ||+------------ " + c("0x000200 [IF]   Interrupt enable flag"))
-        gef_print(" "*14 + "|| |||| |||| |+------------- " + c("0x000400 [DF]   Direction flag"))
-        gef_print(" "*14 + "|| |||| |||| +-------------- " + c("0x000800 [OF]   Overflow flag"))
-        gef_print(" "*14 + "|| |||| ||||")
-        gef_print(" "*14 + "|| |||| ||++---------------- " + c("0x003000 [IOPL] I/O privilege level (2bit)"))
-        gef_print(" "*14 + "|| |||| |+------------------ " + c("0x004000 [NT]   Nested task flag"))
-        gef_print(" "*14 + "|| |||| +------------------- " + c("0x008000        Reserved (always 0)"))
-        gef_print(" "*14 + "|| ||||")
-        gef_print(" "*14 + "|| |||+--------------------- " + c("0x010000 [RF]   Resume flag"))
-        gef_print(" "*14 + "|| ||+---------------------- " + c("0x020000 [VM]   Virtual 8086 mode flag"))
-        gef_print(" "*14 + "|| |+----------------------- " + c("0x040000 [AC]   Alignment check flag"))
-        gef_print(" "*14 + "|| +------------------------ " + c("0x080000 [VIF]  Virtual interrupt flag"))
-        gef_print(" "*14 + "||")
-        gef_print(" "*14 + "|+-------------------------- " + c("0x100000 [VIP]  Virtual interrupt pending"))
-        gef_print(" "*14 + "+--------------------------- " + c("0x200000 [ID]   Able to use CPUID instruction"))
+        gef_print(" " * 14 + "|| |||| |||| |||| |||| |||+- " + c("0x000001 [CF]   Carry flag"))
+        gef_print(" " * 14 + "|| |||| |||| |||| |||| ||+-- " + c("0x000002        Reserved (always 1)"))
+        gef_print(" " * 14 + "|| |||| |||| |||| |||| |+--- " + c("0x000004 [PF]   Parity flag"))
+        gef_print(" " * 14 + "|| |||| |||| |||| |||| +---- " + c("0x000008        Reserved (always 0)"))
+        gef_print(" " * 14 + "|| |||| |||| |||| ||||")
+        gef_print(" " * 14 + "|| |||| |||| |||| |||+------ " + c("0x000010 [AF]   Adjust flag (for BCD calc)"))
+        gef_print(" " * 14 + "|| |||| |||| |||| ||+------- " + c("0x000020        Reserved (always 0)"))
+        gef_print(" " * 14 + "|| |||| |||| |||| |+-------- " + c("0x000040 [ZF]   Zero flag"))
+        gef_print(" " * 14 + "|| |||| |||| |||| +--------- " + c("0x000080 [SF]   Sign flag"))
+        gef_print(" " * 14 + "|| |||| |||| ||||")
+        gef_print(" " * 14 + "|| |||| |||| |||+----------- " + c("0x000100 [TF]   Trap flag (single step)"))
+        gef_print(" " * 14 + "|| |||| |||| ||+------------ " + c("0x000200 [IF]   Interrupt enable flag"))
+        gef_print(" " * 14 + "|| |||| |||| |+------------- " + c("0x000400 [DF]   Direction flag"))
+        gef_print(" " * 14 + "|| |||| |||| +-------------- " + c("0x000800 [OF]   Overflow flag"))
+        gef_print(" " * 14 + "|| |||| ||||")
+        gef_print(" " * 14 + "|| |||| ||++---------------- " + c("0x003000 [IOPL] I/O privilege level (2bit)"))
+        gef_print(" " * 14 + "|| |||| |+------------------ " + c("0x004000 [NT]   Nested task flag"))
+        gef_print(" " * 14 + "|| |||| +------------------- " + c("0x008000        Reserved (always 0)"))
+        gef_print(" " * 14 + "|| ||||")
+        gef_print(" " * 14 + "|| |||+--------------------- " + c("0x010000 [RF]   Resume flag"))
+        gef_print(" " * 14 + "|| ||+---------------------- " + c("0x020000 [VM]   Virtual 8086 mode flag"))
+        gef_print(" " * 14 + "|| |+----------------------- " + c("0x040000 [AC]   Alignment check flag"))
+        gef_print(" " * 14 + "|| +------------------------ " + c("0x080000 [VIF]  Virtual interrupt flag"))
+        gef_print(" " * 14 + "||")
+        gef_print(" " * 14 + "|+-------------------------- " + c("0x100000 [VIP]  Virtual interrupt pending"))
+        gef_print(" " * 14 + "+--------------------------- " + c("0x200000 [ID]   Able to use CPUID instruction"))
         return
 
     def verbose_arm32(self):
@@ -7397,7 +7509,7 @@ class FlagsCommand(GenericCommand):
 
         def c(msg):
             mask = int(msg.split()[0], 16)
-            color = ["bold", ""][(cpsr & mask)==0]
+            color = ["bold", ""][(cpsr & mask) == 0]
             return Color.colorify(msg, color)
 
         gef_print("  |||| |||| |||| |||| |||| |||| |||+-++++- " + c("0x0000001f [M]  Mode field (5bit)"))
@@ -7432,7 +7544,7 @@ class FlagsCommand(GenericCommand):
 
         def c(msg):
             mask = int(msg.split()[0], 16)
-            color = ["bold", ""][(cpsr & mask)==0]
+            color = ["bold", ""][(cpsr & mask) == 0]
             return Color.colorify(msg, color)
 
         if ((cpsr >> 4) & 1) == 0: # AArch64 state
@@ -7547,7 +7659,11 @@ class ChangePermissionCommand(GenericCommand):
             return
 
         info("Saving original code")
-        original_code = read_memory(original_pc, len(stub))
+        try:
+            original_code = read_memory(original_pc, len(stub))
+        except gdb.MemoryError:
+            err("Failed to read memory")
+            return
 
         bp_loc = "*{:#x}".format(original_pc + len(stub))
         info("Setting a restore breakpoint at {:s}".format(bp_loc))
@@ -7651,7 +7767,7 @@ class UnicornEmulateCommand(GenericCommand):
                 elif o == "-h":
                     self.usage()
                     return
-        except:
+        except Exception:
             self.usage()
             return
 
@@ -7707,8 +7823,6 @@ class UnicornEmulateCommand(GenericCommand):
         unicorn_registers = get_unicorn_registers(to_string=True)
         cs_arch, cs_mode = get_capstone_arch(to_string=True)
         fname = get_filename()
-        emulate_segmentation_block = ""
-        context_segmentation_block = ""
 
         if to_file:
             tmp_filename = to_file
@@ -7734,7 +7848,7 @@ class UnicornEmulateCommand(GenericCommand):
         content += "\n"
 
         content += "registers = collections.OrderedDict({{{regs}}})\n".format(
-            regs=",".join(["\n    '%s': %s" % (k.strip(), unicorn_registers[k]) for k in unicorn_registers])+"\n"
+            regs=",".join(["\n    '%s': %s" % (k.strip(), unicorn_registers[k]) for k in unicorn_registers]) + "\n"
         )
         content += "uc = None\n"
         content += "verbose = {verbose}\n".format(verbose=str(verbose))
@@ -7953,7 +8067,7 @@ class UnicornEmulateCommand(GenericCommand):
         content += "    try:\n"
         content += "        print('========================= Starting emulation =========================')\n"
         content += "        emu.emu_start(start_addr, end_addr)\n"
-        content += "    except:\n"
+        content += "    except Exception:\n"
         content += "        emu.emu_stop()\n"
         content += "        print('========================= Emulation failed =========================')\n"
         content += "        traceback.print_exc(file=sys.stdout)\n"
@@ -8090,7 +8204,7 @@ class CapstoneDisassembleCommand(GenericCommand):
 
                 elif location is None:
                     location = parse_address(arg)
-        except:
+        except Exception:
             self.help()
             return
 
@@ -8101,7 +8215,7 @@ class CapstoneDisassembleCommand(GenericCommand):
         length = int(kwargs.get("length", get_gef_setting("context.nb_lines_code")))
 
         try:
-            for insn in capstone_disassemble(location, length, skip=length*self.repeat_count, **kwargs):
+            for insn in capstone_disassemble(location, length, skip=length * self.repeat_count, **kwargs):
                 insn_fmt = "{:12o}" if show_opcodes else "{}"
                 text_insn = insn_fmt.format(insn)
                 msg = ""
@@ -8114,7 +8228,7 @@ class CapstoneDisassembleCommand(GenericCommand):
                         gef_print(reason)
                         break
                 else:
-                    msg = "{} {}".format(" "*5, text_insn)
+                    msg = "{} {}".format(" " * 5, text_insn)
 
                 gef_print(msg)
         except AttributeError:
@@ -8139,9 +8253,9 @@ class CapstoneDisassembleCommand(GenericCommand):
                 target_address = int(insn.operands[-1].split()[0], 16)
                 msg = []
                 for i, new_insn in enumerate(capstone_disassemble(target_address, nb_insn)):
-                    msg.append("   {}  {}".format (DOWN_ARROW if i == 0 else " ", str(new_insn)))
+                    msg.append("   {}  {}".format(DOWN_ARROW if i == 0 else " ", str(new_insn)))
                 return (True, "\n".join(msg))
-            except:
+            except Exception:
                 pass
 
         return (False, "")
@@ -8212,17 +8326,17 @@ class GlibcHeapBinSizeInfoCommand(GenericCommand):
         gef_print(titlify("tcache size"))
         if is_64bit():
             for i in range(64):
-                gef_print("tcache[{:2d}]: {:#x}".format(i, i*0x10 + 0x20))
+                gef_print("tcache[{:2d}]: {:#x}".format(i, i * 0x10 + 0x20))
         elif is_32bit():
             gef_print("MALLOC_ALIGNMENT is changed from libc 2.26,")
             gef_print("for 32 bit arch, tcache 0x8 align is no longer used.")
             for i in range(64):
-                gef_print("tcache[{:2d}]: {:#x}".format(i, i*0x10 + 0x10))
+                gef_print("tcache[{:2d}]: {:#x}".format(i, i * 0x10 + 0x10))
 
         gef_print(titlify("fastbin size"))
         if is_64bit():
             for i in range(7):
-                gef_print("fastbins[{:d}]: {:#x}".format(i, i*0x10 + 0x20))
+                gef_print("fastbins[{:d}]: {:#x}".format(i, i * 0x10 + 0x20))
         elif is_32bit():
             gef_print("MALLOC_ALIGNMENT is changed from libc 2.26.")
             gef_print("for 32 bit arch, fastbin exists every 8 bytes, but only used every 16 bytes.")
@@ -8238,7 +8352,7 @@ class GlibcHeapBinSizeInfoCommand(GenericCommand):
         gef_print("bins[{:3d}]: unsorted_bin".format(0))
         if is_64bit():
             for i in range(1, 63):
-                gef_print("bins[{:3d}]: small_bins[{:3d}]: {:#x}".format( i*2, i, (i-1) * 0x10 + 0x20))
+                gef_print("bins[{:3d}]: small_bins[{:3d}]: {:#x}".format(i * 2, i, (i - 1) * 0x10 + 0x20))
             gef_print("bins[126]: large_bins[ 63]: 0x400 - 0x430")
             gef_print("bins[128]: large_bins[ 64]: 0x440 - 0x470")
             gef_print("bins[130]: large_bins[ 65]: 0x480 - 0x4b0")
@@ -8275,7 +8389,7 @@ class GlibcHeapBinSizeInfoCommand(GenericCommand):
             gef_print("bins[192]: large_bins[ 96]: 0xc40 - 0xdf0")
         elif is_32bit():
             for i in range(1, 63):
-                gef_print("bins[{:3d}]: small_bins[{:3d}]: {:#x}".format( i*2, i, (i-1) * 0x10 + 0x10))
+                gef_print("bins[{:3d}]: small_bins[{:3d}]: {:#x}".format(i * 2, i, (i - 1) * 0x10 + 0x10))
             gef_print("bins[126]: large_bins[ 63]: 0x3f0")
             gef_print("bins[128]: large_bins[ 64]: 0x400 - 0x430")
             gef_print("bins[130]: large_bins[ 65]: 0x440 - 0x470")
@@ -8397,7 +8511,7 @@ class GlibcHeapChunksCommand(GenericCommand):
         if "-a" in argv:
             idx = argv.index("-a")
             self.arena = GlibcArena("*{:s}".format(argv[idx + 1]))
-            argv = argv[:idx] + argv[idx+2:]
+            argv = argv[:idx] + argv[idx + 2:]
         else:
             self.arena = get_main_arena()
         if self.arena is None:
@@ -8497,7 +8611,7 @@ class GlibcHeapBinsCommand(GenericCommand):
         if "-a" in argv:
             idx = argv.index("-a")
             arena_addr = int(argv[-1], 16)
-            argv = argv[:idx] + argv[idx+2:]
+            argv = argv[:idx] + argv[idx + 2:]
 
         verbose = ""
         if "-v" in argv:
@@ -8625,7 +8739,7 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
                     m.append("{:s} [Corrupted chunk at {:#x}]".format(LEFT_ARROW, chunk.address))
                     break
             if m or verbose:
-                gef_print("Tcachebins[idx={:d}, size={:#x}] count={:d}\n".format(i, (current_arch.ptrsize)*4 + i*0x10, count), end="")
+                gef_print("Tcachebins[idx={:d}, size={:#x}] count={:d}\n".format(i, current_arch.ptrsize * 4 + i * 0x10, count), end="")
                 if m:
                     gef_print("\n".join(m))
         return
@@ -8648,10 +8762,8 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
     def do_invoke(self, argv):
         self.dont_repeat()
 
-        verbose = False
         if "-v" in argv:
-            verbose = True # no effect
-            argv.remove("-v")
+            argv.remove("-v") # no effect
 
         if argv and "-a" != argv[0]:
             self.usage()
@@ -8673,7 +8785,7 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
         arena_addr = "*{:s}".format(argv[1]) if len(argv) == 2 else __gef_default_main_arena__
         gef_print(titlify("Fastbins for arena '{:s}'".format(arena_addr)))
         for i in range(NFASTBINS):
-            gef_print("Fastbins[idx={:d}, size={:#x}] ".format(i, (i+2)*SIZE_SZ*2), end="")
+            gef_print("Fastbins[idx={:d}, size={:#x}] ".format(i, (i + 2) * SIZE_SZ * 2), end="")
             chunk = arena.fastbin(i)
             chunks = set()
 
@@ -8842,7 +8954,6 @@ class DetailRegistersCommand(GenericCommand):
 
         unchanged_color = get_gef_setting("theme.registers_register_name")
         changed_color = get_gef_setting("theme.registers_value_changed")
-        string_color = get_gef_setting("theme.dereference_string")
 
         if argv:
             argv = [arg if arg.startswith("$") else "$" + arg for arg in argv]
@@ -8852,9 +8963,6 @@ class DetailRegistersCommand(GenericCommand):
         else:
             regs = current_arch.all_registers
 
-        memsize = current_arch.ptrsize
-        endian = endian_str()
-        charset = string.printable
         widest = current_arch.get_aliased_registers_name_max()
         special_line = ""
 
@@ -8865,6 +8973,7 @@ class DetailRegistersCommand(GenericCommand):
 
             # https://arvid.io/2016/08/21/test-if-a-variable-is-unavailable-in-gdb/
             if str(reg) == "<unavailable>":
+                padreg = current_arch.get_aliased_registers()[regname].ljust(widest, " ")
                 line = "{}: ".format(Color.colorify(padreg, unchanged_color))
                 line += Color.colorify("no value", "yellow underline")
                 gef_print(line)
@@ -8948,7 +9057,7 @@ class RopperCommand(GenericCommand):
         if pid == 0:
             try:
                 ropper.start(argv)
-            except:
+            except Exception:
                 pass
             os._exit(0)
         else:
@@ -9002,7 +9111,7 @@ class RpCommand(GenericCommand):
                     x = line.split(":")
                     addr, gadget = int(x[0], 16), ':'.join(x[1:])
                     addr -= base_address # fix address
-                    x = Color.redify("{:#08x}".format(addr)) + ":" + ':'.join(x[1:]) # repaint color
+                    x = Color.redify("{:#08x}".format(addr)) + ":" + gadget # repaint color
                 else:
                     x = line
                 fp.write(x + "\n")
@@ -9045,12 +9154,12 @@ class RpCommand(GenericCommand):
             while "-r" in argv:
                 idx = argv.index("-r")
                 ropN = int(argv[idx + 1])
-                argv = argv[:idx] + argv[idx+2:]
+                argv = argv[:idx] + argv[idx + 2:]
             while "--rop" in argv:
                 idx = argv.index("--rop")
                 ropN = int(argv[idx + 1])
-                argv = argv[:idx] + argv[idx+2:]
-        except:
+                argv = argv[:idx] + argv[idx + 2:]
+        except Exception:
             self.usage()
             return
 
@@ -9060,13 +9169,13 @@ class RpCommand(GenericCommand):
                 idx = argv.index("-f")
                 pattern = argv[idx + 1]
                 filter_patterns.append(pattern)
-                argv = argv[:idx] + argv[idx+2:]
+                argv = argv[:idx] + argv[idx + 2:]
             while "--filter" in argv:
                 idx = argv.index("--filter")
                 pattern = argv[idx + 1]
                 filter_patterns.append(pattern)
-                argv = argv[:idx] + argv[idx+2:]
-        except:
+                argv = argv[:idx] + argv[idx + 2:]
+        except Exception:
             self.usage()
             return
 
@@ -9197,7 +9306,7 @@ class AssembleCommand(GenericCommand):
                 if o == "-h":
                     self.usage()
                     return
-        except:
+        except Exception:
             self.usage()
             return
 
@@ -9222,7 +9331,7 @@ class AssembleCommand(GenericCommand):
         elif not arch_s:
             err("An architecture (-a) must be provided")
             return
-        elif not arch_s in ["ARM64", "SYSTEMZ"] and not mode_s:
+        elif arch_s not in ["ARM64", "SYSTEMZ"] and not mode_s:
             err("A mode (-m) must be provided")
             return
         else:
@@ -9233,7 +9342,7 @@ class AssembleCommand(GenericCommand):
         insns = [x.strip() for x in insns.split(";") if x is not None and x.strip() != ""]
 
         arch_mode_s = ":".join([str(arch_s), str(mode_s)])
-        info("Assembling {} instruction{} for {} ({} endian)".format(len(insns), "s" if len(insns)>1 else "", arch_mode_s, endian_s))
+        info("Assembling {} instruction{} for {} ({} endian)".format(len(insns), "s" if len(insns) > 1 else "", arch_mode_s, endian_s))
 
         if as_shellcode:
             gef_print("""sc="" """)
@@ -9259,9 +9368,9 @@ class AssembleCommand(GenericCommand):
             gef_print("{0:60s} # {1}".format(res, insn))
 
         if overwrite_location:
-            l = len(raw)
-            info("Overwriting {:d} bytes at {:s}".format(l, format_address(overwrite_location)))
-            write_memory(overwrite_location, raw, l)
+            raw_sz = len(raw)
+            info("Overwriting {:d} bytes at {:s}".format(raw_sz, format_address(overwrite_location)))
+            write_memory(overwrite_location, raw, raw_sz)
         return
 
 
@@ -9309,7 +9418,7 @@ class DisassembleCommand(GenericCommand):
                 if o == "-h":
                     self.usage()
                     return
-        except:
+        except Exception:
             self.usage()
             return
 
@@ -9334,7 +9443,7 @@ class DisassembleCommand(GenericCommand):
         elif not arch_s:
             err("An architecture (-a) must be provided")
             return
-        elif not arch_s in ["SPARC"] and not mode_s:
+        elif arch_s not in ["SPARC"] and not mode_s:
             err("A mode (-m) must be provided")
             return
         else:
@@ -9345,7 +9454,7 @@ class DisassembleCommand(GenericCommand):
         insns = insns.replace(" ", "").replace("\t", "")
         try:
             insns = binascii.unhexlify(insns)
-        except:
+        except Exception:
             err("Invalid format")
             return
 
@@ -9405,14 +9514,14 @@ class AsmListCommand(GenericCommand):
                     if rm == 0b101: # special case; [REG + disp32]
                         bytecode = modrm + DISP32
                     elif rm == 0b100: # use sib; [INDEX * SCALE + BASE]
-                        for sib in filter(lambda x: x&0b111 != 0b101, range(256)):
+                        for sib in filter(lambda x: x & 0b111 != 0b101, range(256)):
                             bytecode = modrm + "%02X" % sib
                     else: # [REG]
                         bytecode = modrm
                 elif mod == 0b01:
                     if rm == 0b100: # use sib; [INDEX * SCALE + BASE + disp8]
                         bytecode = []
-                        for sib in filter(lambda x: x&0b111 != 0b101, range(256)):
+                        for sib in filter(lambda x: x & 0b111 != 0b101, range(256)):
                             b = modrm + ("%02X" % sib) + DISP8
                             bytecode.append(b)
                     else: # [REG + disp8]
@@ -9420,7 +9529,7 @@ class AsmListCommand(GenericCommand):
                 elif mod == 0b10:
                     if rm == 0b100: # use sib; [INDEX * SCALE + BASE + disp32]
                         bytecode = []
-                        for sib in filter(lambda x: x&0b111 != 0b101, range(256)):
+                        for sib in filter(lambda x: x & 0b111 != 0b101, range(256)):
                             b = modrm + ("%02X" % sib) + DISP32
                             bytecode.append(b)
                     else: # [REG + disp32]
@@ -9478,7 +9587,6 @@ class AsmListCommand(GenericCommand):
         valid_patterns = []
         seen_patterns = []
         for insn in x86_insns:
-            opcode_str = insn[0].split("/")[0]
             opcodes = insn[3]
             attr = insn[4].split()
 
@@ -9504,7 +9612,7 @@ class AsmListCommand(GenericCommand):
                 code = bytes.fromhex(hex_code)
                 try:
                     asm = cs.disasm(code, 0).__next__()
-                except:
+                except Exception:
                     continue
                 opstr = asm.mnemonic + " " + asm.op_str
                 # add
@@ -9544,7 +9652,7 @@ class AsmListCommand(GenericCommand):
                 if o == "-h":
                     self.usage()
                     return
-        except:
+        except Exception:
             self.usage()
             return
 
@@ -9571,6 +9679,8 @@ class AsmListCommand(GenericCommand):
         else:
             arch, mode = get_capstone_arch(arch=arch_s, mode=mode_s, endian=big_endian)
             endian_s = "big" if big_endian else "little"
+
+        endian_s # for future update
 
         # list up bytecode pattern
         if arch_s == "X86":
@@ -9635,7 +9745,7 @@ class ProcessListingCommand(GenericCommand):
                     do_attach = True
                 if o == "-s":
                     smart_scan = True
-        except:
+        except Exception:
             self.usage()
             return
 
@@ -9687,7 +9797,7 @@ class ElfInfoCommand(GenericCommand):
     show information about the current ELF being debugged."""
     _cmdline_ = "elf-info"
     _syntax_ = "{:s} [-h] [-r] [FILE|ADDRESS]".format(_cmdline_)
-    _example_ =  "{:s}                # parse binary itself\n".format(_cmdline_)
+    _example_ = "{:s}                # parse binary itself\n".format(_cmdline_)
     _example_ += "{:s} /bin/ls        # parse binary specified\n".format(_cmdline_)
     _example_ += "{:s} 0x555555554000 # parse memory\n".format(_cmdline_)
     _example_ += "{:s} -r /bin/ls     # show `readelf -a FILE | less`".format(_cmdline_)
@@ -9781,7 +9891,7 @@ class ElfInfoCommand(GenericCommand):
                 try:
                     addr = int(argv[0], 0)
                     elf = Elf(addr)
-                except:
+                except Exception:
                     self.usage()
                     return
 
@@ -9836,14 +9946,14 @@ class ElfInfoCommand(GenericCommand):
         }
 
         pflags = {
-            0:                             "---",
-            Phdr.PF_X:                     "--X",
-            Phdr.PF_W:                     "-W-",
-            Phdr.PF_R:                     "R--",
-            Phdr.PF_W|Phdr.PF_X:           "-WX",
-            Phdr.PF_R|Phdr.PF_X:           "R-X",
-            Phdr.PF_R|Phdr.PF_W:           "RW-",
-            Phdr.PF_R|Phdr.PF_W|Phdr.PF_X: "RWX",
+            0:                                 "---",
+            Phdr.PF_X:                         "--X",
+            Phdr.PF_W:                         "-W-",
+            Phdr.PF_R:                         "R--",
+            Phdr.PF_W | Phdr.PF_X:             "-WX",
+            Phdr.PF_R | Phdr.PF_X:             "R-X",
+            Phdr.PF_R | Phdr.PF_W:             "RW-",
+            Phdr.PF_R | Phdr.PF_W | Phdr.PF_X: "RWX",
         }
 
         gef_print(titlify("Program Header"))
@@ -9857,43 +9967,43 @@ class ElfInfoCommand(GenericCommand):
             gef_print(fmt.format(i, p_type, p.p_offset, p.p_vaddr, p.p_paddr, p.p_filesz, p.p_memsz, p_flags, p.p_align))
 
         stype = {
-            Shdr.SHT_NULL:          "NULL",
-            Shdr.SHT_PROGBITS:      "PROGBITS",
-            Shdr.SHT_SYMTAB:        "SYMTAB",
-            Shdr.SHT_STRTAB:        "STRTAB",
-            Shdr.SHT_RELA:          "RELA",
-            Shdr.SHT_HASH:          "HASH",
-            Shdr.SHT_DYNAMIC:       "DYNAMIC",
-            Shdr.SHT_NOTE:          "NOTE",
-            Shdr.SHT_NOBITS:        "NOBITS",
-            Shdr.SHT_REL:           "REL",
-            Shdr.SHT_SHLIB:         "SHLIB",
-            Shdr.SHT_DYNSYM:        "DYNSYM",
-            Shdr.SHT_NUM:           "NUM",
-            Shdr.SHT_INIT_ARRAY:    "INIT_ARRAY",
-            Shdr.SHT_FINI_ARRAY:    "FINI_ARRAY",
-            Shdr.SHT_PREINIT_ARRAY: "PREINIT_ARRAY",
-            Shdr.SHT_GROUP:         "GROUP",
-            Shdr.SHT_SYMTAB_SHNDX:  "SYMTAB_SHNDX",
-            Shdr.SHT_NUM:           "NUM",
-            Shdr.SHT_LOOS:          "LOOS",
-            Shdr.SHT_GNU_ATTRIBUTES:"GNU_ATTRIBUTES",
-            Shdr.SHT_GNU_HASH:      "GNU_HASH",
-            Shdr.SHT_GNU_LIBLIST:   "GNU_LIBLIST",
-            Shdr.SHT_CHECKSUM:      "CHECKSUM",
-            Shdr.SHT_LOSUNW:        "LOSUNW",
-            Shdr.SHT_SUNW_move:     "SUNW_move",
-            Shdr.SHT_SUNW_COMDAT:   "SUNW_COMDAT",
-            Shdr.SHT_SUNW_syminfo:  "SUNW_syminfo",
-            Shdr.SHT_GNU_verdef:    "GNU_verdef",
-            Shdr.SHT_GNU_verneed:   "GNU_verneed",
-            Shdr.SHT_GNU_versym:    "GNU_versym",
-            Shdr.SHT_HISUNW:        "HISUNW",
-            Shdr.SHT_HIOS:          "HIOS",
-            Shdr.SHT_LOPROC:        "LOPROC",
-            Shdr.SHT_HIPROC:        "HIPROC",
-            Shdr.SHT_LOUSER:        "LOUSER",
-            Shdr.SHT_HIUSER:        "HIUSER",
+            Shdr.SHT_NULL:           "NULL",
+            Shdr.SHT_PROGBITS:       "PROGBITS",
+            Shdr.SHT_SYMTAB:         "SYMTAB",
+            Shdr.SHT_STRTAB:         "STRTAB",
+            Shdr.SHT_RELA:           "RELA",
+            Shdr.SHT_HASH:           "HASH",
+            Shdr.SHT_DYNAMIC:        "DYNAMIC",
+            Shdr.SHT_NOTE:           "NOTE",
+            Shdr.SHT_NOBITS:         "NOBITS",
+            Shdr.SHT_REL:            "REL",
+            Shdr.SHT_SHLIB:          "SHLIB",
+            Shdr.SHT_DYNSYM:         "DYNSYM",
+            Shdr.SHT_NUM:            "NUM",
+            Shdr.SHT_INIT_ARRAY:     "INIT_ARRAY",
+            Shdr.SHT_FINI_ARRAY:     "FINI_ARRAY",
+            Shdr.SHT_PREINIT_ARRAY:  "PREINIT_ARRAY",
+            Shdr.SHT_GROUP:          "GROUP",
+            Shdr.SHT_SYMTAB_SHNDX:   "SYMTAB_SHNDX",
+            Shdr.SHT_NUM:            "NUM",
+            Shdr.SHT_LOOS:           "LOOS",
+            Shdr.SHT_GNU_ATTRIBUTES: "GNU_ATTRIBUTES",
+            Shdr.SHT_GNU_HASH:       "GNU_HASH",
+            Shdr.SHT_GNU_LIBLIST:    "GNU_LIBLIST",
+            Shdr.SHT_CHECKSUM:       "CHECKSUM",
+            Shdr.SHT_LOSUNW:         "LOSUNW",
+            Shdr.SHT_SUNW_move:      "SUNW_move",
+            Shdr.SHT_SUNW_COMDAT:    "SUNW_COMDAT",
+            Shdr.SHT_SUNW_syminfo:   "SUNW_syminfo",
+            Shdr.SHT_GNU_verdef:     "GNU_verdef",
+            Shdr.SHT_GNU_verneed:    "GNU_verneed",
+            Shdr.SHT_GNU_versym:     "GNU_versym",
+            Shdr.SHT_HISUNW:         "HISUNW",
+            Shdr.SHT_HIOS:           "HIOS",
+            Shdr.SHT_LOPROC:         "LOPROC",
+            Shdr.SHT_HIPROC:         "HIPROC",
+            Shdr.SHT_LOUSER:         "LOUSER",
+            Shdr.SHT_HIUSER:         "HIUSER",
         }
 
         gef_print(titlify("Section Header"))
@@ -9938,61 +10048,61 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
     _example_ += "\n"
     _example_ += "\n"
     _example_ += "[OLD IMPLEMENTATION]\n"
-    _example_ += " libgcc_s.so bss area                  ELF Program Header (for .eh_frame_hdr)\n"
-    _example_ += "+--------------------------+      +-->+----------------+\n"
-    _example_ += "| ...                      |      |   | p_type         |\n"
-    _example_ += "| frame_hdr_cache_head     |---+  |   | p_flags        |\n"
-    _example_ += "+-frame_hdr_cache_entry----+ <-+  |   | p_offset       |\n"
-    _example_ += "| pc_low                   |      |   | p_vaddr        |----+\n"
-    _example_ += "| pc_high                  |      |   | p_paddr        |    |\n"
-    _example_ += "| load_base                |      |   | p_filesz       |    |\n"
-    _example_ += "| p_eh_frame_hdr           |------+   | p_memsz        |    |\n"
-    _example_ += "| p_dynamic                |          | p_align        |    |             [NEW IMPLEMENTATION]\n"
-    _example_ += "| link                     |---+      +----------------+    |              _dlfo_main@ld.so rodata area\n"
-    _example_ += "+-frame_hdr_cache_entry----+ <-+                            |              _dlfo_nodelete_mappings@ld.so rodata area\n"
-    _example_ += "| pc_low                   |                                |             +-------------+\n"
-    _example_ += "| pc_high                  |                                |             | map_start   |\n"
-    _example_ += "| load_base                |                                |             | map_end     |\n"
-    _example_ += "| p_eh_frame_hdr           |                                |             | map         |\n"
-    _example_ += "| p_dynamic                |                                |<------------| eh_frame    |\n"
-    _example_ += "| link                     |                                |             | (eh_dbase)  |\n"
-    _example_ += "+--------------------------+                                |             | (eh_count)  |\n"
-    _example_ += "The frame_hdr_cache_head and frame_hdr_cache_entry are      |             +-------------+\n"
-    _example_ += "initialized the first time they are called.                 |\n"
-    _example_ += "                                                            |\n"
-    _example_ += "                              +-----------------------------+\n"
-    _example_ += "                              |\n"
-    _example_ += ".eh_frame_hdr                 |      .eh_frame                                               .gcc_except_table          \n"
-    _example_ += "+-------------------------+ <-+  +-> +-CIE---------------------+ <-+                     +-> +-LSDA--------------------+\n"
-    _example_ += "| version                 |      |   | length                  |   |                     |   | lpstart_enc             |\n"
-    _example_ += "| eh_frame_ptr_enc        |      |   | cie_id (=0)             |   |                     |   | ttype_enc               |\n"
-    _example_ += "| fde_count_enc           |      |   | version                 |   |                     |   | ttype_off               |\n"
-    _example_ += "| table_enc               |      |   | augmentation_string     |   |                     |   | call_site_encoding      |\n"
-    _example_ += "| eh_frame_ptr            |------+   | code_alignment_factor   |   |                     |   | call_site_table_len     |\n"
-    _example_ += "| fde_count               |          | data_alignment_factor   |   |                     |   |+-CallSite--------------+|\n"
-    _example_ += "| Table[0] initial_loc    |          | return_address_register |   |                     |   || call_site_start       || try_start\n"
-    _example_ += "| Table[0] fde            |---+      | augmentation_len        |   |                     |   || call_site_length      || try_end\n"
-    _example_ += "| Table[1] initial_loc    |   |      | augmentation_data[0]    |   |                     |   || landing_pad           || catch_start\n"
-    _example_ += "| Table[1] fde            |   |      | ...                     |---(augmentation=='P')-+ |   || action                ||---+\n"
-    _example_ += "| ...                     |   |      | ...                     |   |                   | |   |+-CallSite--------------+|   |\n"
-    _example_ += "| Table[N] initial_loc    |   |      | augmentation_data[N]    |   |                   | |   || ...                   ||   |\n"
-    _example_ += "| Table[N] fde            |   |      | program                 |   |                   | |   |+-ActionTable-----------+| <-+\n"
-    _example_ += "+-------------------------+   +----> +-FDE---------------------+   |                   | |   || ar_filter             ||---+\n"
-    _example_ += "                                     | length                  |   |                   | |   || ar_disp               ||   |\n"
-    _example_ += "                                     | cie_pointer (!=0)       |---+                   | |   |+-ActionTable-----------+|   |\n"
-    _example_ += "                                     | pc_begin                | try_catch_base        | |   || ...                   ||   |\n"
-    _example_ += "                                     | pc_range                |                       | |   |+-TTypeTable------------+|   |\n"
-    _example_ += "                                     | augmentation_len        |                       | |   || ...(stored upwards)   ||   |\n"
-    _example_ += "                                     | augmentation_data[0]    |                       | |   |+-TTypeTable------------+| <-+\n"
-    _example_ += "                                     | ...                     |---(augmentation=='L')-|-+   || ttype                 ||---> type_info\n"
-    _example_ += "                                     | augmentation_data[N]    |                       |     |+-----------------------+|\n"
-    _example_ += "                                     | program                 |                       |     +-LSDA--------------------+\n"
-    _example_ += "                                     +-CIE---------------------+       +---------------+     | ...                     |\n"
-    _example_ += "                                     | ...                     |       |                     +-------------------------+\n"
-    _example_ += "                                     +-FDE---------------------+       |\n"
-    _example_ += "                                     | ...                     |       |\n"
-    _example_ += "                                     +-------------------------+       |\n"
-    _example_ += "                                                                       +----> personality_routine(=__gxx_personality_v0@libstdc++.so)"
+    _example_ += " libgcc_s.so bss area               ELF Program Header (for .eh_frame_hdr)\n"
+    _example_ += "+-----------------------+      +-> +----------------+\n"
+    _example_ += "| ...                   |      |   | p_type         |\n"
+    _example_ += "| frame_hdr_cache_head  |---+  |   | p_flags        |\n"
+    _example_ += "+-frame_hdr_cache_entry-+ <-+  |   | p_offset       |\n"
+    _example_ += "| pc_low                |      |   | p_vaddr        |----+\n"
+    _example_ += "| pc_high               |      |   | p_paddr        |    |\n"
+    _example_ += "| load_base             |      |   | p_filesz       |    |\n"
+    _example_ += "| p_eh_frame_hdr        |------+   | p_memsz        |    |\n"
+    _example_ += "| p_dynamic             |          | p_align        |    |         [NEW IMPLEMENTATION]\n"
+    _example_ += "| link                  |---+      +----------------+    |          _dlfo_main@ld.so rodata area\n"
+    _example_ += "+-frame_hdr_cache_entry-+ <-+                            |          _dlfo_nodelete_mappings@ld.so rodata area\n"
+    _example_ += "| pc_low                |                                |         +-------------+\n"
+    _example_ += "| pc_high               |                                |         | map_start   |\n"
+    _example_ += "| load_base             |                                |         | map_end     |\n"
+    _example_ += "| p_eh_frame_hdr        |                                |         | map         |\n"
+    _example_ += "| p_dynamic             |                                | <-------| eh_frame    |\n"
+    _example_ += "| link                  |                                |         | (eh_dbase)  |\n"
+    _example_ += "+-----------------------+                                |         | (eh_count)  |\n"
+    _example_ += "The frame_hdr_cache_head and frame_hdr_cache_entry are   |         +-------------+\n"
+    _example_ += "initialized the first time they are called.              |\n"
+    _example_ += "                                                         |\n"
+    _example_ += "                           +-----------------------------+\n"
+    _example_ += "                           |\n"
+    _example_ += ".eh_frame_hdr              |      .eh_frame                                             .gcc_except_table\n"
+    _example_ += "+----------------------+ <-+  +-> +-CIE---------------------+ <-+                   +-> +-LSDA-----------------+\n"
+    _example_ += "| version              |      |   | length                  |   |                   |   | lpstart_enc          |\n"
+    _example_ += "| eh_frame_ptr_enc     |      |   | cie_id (=0)             |   |                   |   | ttype_enc            |\n"
+    _example_ += "| fde_count_enc        |      |   | version                 |   |                   |   | ttype_off            |\n"
+    _example_ += "| table_enc            |      |   | augmentation_string     |   |                   |   | call_site_encoding   |\n"
+    _example_ += "| eh_frame_ptr         |------+   | code_alignment_factor   |   |                   |   | call_site_table_len  |\n"
+    _example_ += "| fde_count            |          | data_alignment_factor   |   |                   |   |+-CallSite-----------+|\n"
+    _example_ += "| Table[0] initial_loc |          | return_address_register |   |                   |   || call_site_start    || try_start\n"
+    _example_ += "| Table[0] fde         |---+      | augmentation_len        |   |                   |   || call_site_length   || try_end\n"
+    _example_ += "| Table[1] initial_loc |   |      | augmentation_data[0]    |   |                   |   || landing_pad        || catch_start\n"
+    _example_ += "| Table[1] fde         |   |      | ...                     |-(augmentation=='P')-+ |   || action             ||---+\n"
+    _example_ += "| ...                  |   |      | ...                     |   |                 | |   |+-CallSite-----------+|   |\n"
+    _example_ += "| Table[N] initial_loc |   |      | augmentation_data[N]    |   |                 | |   || ...                ||   |\n"
+    _example_ += "| Table[N] fde         |   |      | program                 |   |                 | |   |+-ActionTable--------+| <-+\n"
+    _example_ += "+----------------------+   +----> +-FDE---------------------+   |                 | |   || ar_filter          ||---+\n"
+    _example_ += "                                  | length                  |   |                 | |   || ar_disp            ||   |\n"
+    _example_ += "                                  | cie_pointer (!=0)       |---+                 | |   |+-ActionTable--------+|   |\n"
+    _example_ += "                                  | pc_begin                | try_catch_base      | |   || ...                ||   |\n"
+    _example_ += "                                  | pc_range                |                     | |   |+-TTypeTable---------+|   |\n"
+    _example_ += "                                  | augmentation_len        |                     | |   || ...(stored upward) ||   |\n"
+    _example_ += "                                  | augmentation_data[0]    |                     | |   |+-TTypeTable---------+| <-+\n"
+    _example_ += "                                  | ...                     |-(augmentation=='L')-|-+   || ttype              ||---> type_info\n"
+    _example_ += "                                  | augmentation_data[N]    |                     |     |+--------------------+|\n"
+    _example_ += "                                  | program                 |                     |     +-LSDA-----------------+\n"
+    _example_ += "                                  +-CIE---------------------+   +-----------------+     | ...                  |\n"
+    _example_ += "                                  | ...                     |   |                       +----------------------+\n"
+    _example_ += "                                  +-FDE---------------------+   |\n"
+    _example_ += "                                  | ...                     |   |\n"
+    _example_ += "                                  +-------------------------+   |\n"
+    _example_ += "                                                                +----> personality_routine(=__gxx_personality_v0@libstdc++.so)"
     _category_ = "Process Information"
 
     # FDE data encoding
@@ -10031,7 +10141,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
 
         for entry in entries:
             if len(entry) == 1:
-                out.append("[!] "+ entry[0])
+                out.append("[!] " + entry[0])
 
             elif len(entry) == 3: # separation
                 pos, name, extra = entry
@@ -10039,7 +10149,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                     extra_s = "  |  {:s}".format(extra)
                 else:
                     extra_s = ""
-                out.append(titlify("[{:#06x}] {:4s}{:s}".format(pos, name, extra), color="red", msg_color="red"))
+                out.append(titlify("[{:#06x}] {:4s}{:s}".format(pos, name, extra_s), color="red", msg_color="red"))
 
             elif len(entry) == 5: # data
                 pos, raw_data, name, value, extra = entry
@@ -10100,45 +10210,45 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
         return pos + 1, acc
 
     def read_1sbyte(self, data, pos):
-        def pB(a): return struct.pack("<B",a&0xff)
-        def ub(a): return struct.unpack("<b",a)[0]
-        def u2i(a): return ub(pB(a))
+        pB = lambda a: struct.pack("<B", a & 0xff)
+        ub = lambda a: struct.unpack("<b", a)[0]
+        u2i = lambda a: ub(pB(a))
         acc = data[pos]
         return pos + 1, u2i(acc)
 
     def read_2ubyte(self, data, pos):
-        acc = (data[pos+1] << 8) | data[pos]
+        acc = (data[pos + 1] << 8) | data[pos]
         return pos + 2, acc
 
     def read_2sbyte(self, data, pos):
-        def pH(a): return struct.pack("<H",a&0xffff)
-        def uh(a): return struct.unpack("<h",a)[0]
-        def u2i(a): return uh(pH(a))
-        acc = (data[pos+1] << 8) | data[pos]
+        pH = lambda a: struct.pack("<H", a & 0xffff)
+        uh = lambda a: struct.unpack("<h", a)[0]
+        u2i = lambda a: uh(pH(a))
+        acc = (data[pos + 1] << 8) | data[pos]
         return pos + 2, u2i(acc)
 
     def read_4ubyte(self, data, pos):
-        acc = (data[pos+3] << 24) | (data[pos+2] << 16) | (data[pos+1] << 8) | data[pos]
+        acc = (data[pos + 3] << 24) | (data[pos + 2] << 16) | (data[pos + 1] << 8) | data[pos]
         return pos + 4, acc
 
     def read_4sbyte(self, data, pos):
-        def pI(a): return struct.pack("<I",a&0xffffffff)
-        def ui(a): return struct.unpack("<i",a)[0]
-        def u2i(a): return ui(pI(a))
-        acc = (data[pos+3] << 24) | (data[pos+2] << 16) | (data[pos+1] << 8) | data[pos]
+        pI = lambda a: struct.pack("<I", a & 0xffffffff)
+        ui = lambda a: struct.unpack("<i", a)[0]
+        u2i = lambda a: ui(pI(a))
+        acc = (data[pos + 3] << 24) | (data[pos + 2] << 16) | (data[pos + 1] << 8) | data[pos]
         return pos + 4, u2i(acc)
 
     def read_8ubyte(self, data, pos):
-        acc = (data[pos+7] << 56) | (data[pos+6] << 48) | (data[pos+5] << 40) | (data[pos+4] << 32)
-        acc |= (data[pos+3] << 24) | (data[pos+2] << 16) | (data[pos+1] << 8) | data[pos]
+        acc = (data[pos + 7] << 56) | (data[pos + 6] << 48) | (data[pos + 5] << 40) | (data[pos + 4] << 32)
+        acc |= (data[pos + 3] << 24) | (data[pos + 2] << 16) | (data[pos + 1] << 8) | data[pos]
         return pos + 8, acc
 
     def read_8sbyte(self, data, pos):
-        def pQ(a): return struct.pack("<Q",a&0xffffffffffffffff)
-        def uq(a): return struct.unpack("<q",a)[0]
-        def u2i(a): return uq(pQ(a))
-        acc = (data[pos+7] << 56) | (data[pos+6] << 48) | (data[pos+5] << 40) | (data[pos+4] << 32)
-        acc |= (data[pos+3] << 24) | (data[pos+2] << 16) | (data[pos+1] << 8) | data[pos]
+        pQ = lambda a: struct.pack("<Q", a & 0xffffffffffffffff)
+        uq = lambda a: struct.unpack("<q", a)[0]
+        u2i = lambda a: uq(pQ(a))
+        acc = (data[pos + 7] << 56) | (data[pos + 6] << 48) | (data[pos + 5] << 40) | (data[pos + 4] << 32)
+        acc |= (data[pos + 3] << 24) | (data[pos + 2] << 16) | (data[pos + 1] << 8) | data[pos]
         return pos + 8, u2i(acc)
 
     def read_encoded(self, encoding, data, pos):
@@ -10220,7 +10330,6 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
         return 0
 
     def parse_eh_frame_hdr(self, eh_frame_hdr):
-        section_addr = eh_frame_hdr["offset"]
         data = eh_frame_hdr["data"]
         shdr = [s for s in self.elf.shdrs if s.sh_name == ".eh_frame_hdr"][0]
         load_base = [phdr for phdr in self.elf.phdrs if phdr.p_type == Phdr.PT_LOAD][0].p_vaddr
@@ -10292,13 +10401,12 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                     pos = new_pos
 
                     table_cnt += 1
-        except:
+        except Exception:
             exc_type, exc_value, exc_traceback = sys.exc_info()
             entries.append(["Parse Error\n{}".format(exc_value)])
         return entries
 
     def parse_eh_frame(self, eh_frame):
-        section_addr = eh_frame["offset"]
         data = eh_frame["data"]
         shdr = [s for s in self.elf.shdrs if s.sh_name == ".eh_frame"][0]
         load_base = [phdr for phdr in self.elf.phdrs if phdr.p_type == Phdr.PT_LOAD][0].p_vaddr
@@ -10340,7 +10448,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                 if cie_id == 0:
                     tmp_entries.append([pos, data[pos:new_pos], "cie_id", cie_id, "type: CIE"])
                 else:
-                    extra_s = "type: FDE, Associated_CIE: {:#x}(={:#x}-{:#x})".format(start-cie_id, start, cie_id)
+                    extra_s = "type: FDE, Associated_CIE: {:#x}(={:#x}-{:#x})".format(start - cie_id, start, cie_id)
                     tmp_entries.append([pos, data[pos:new_pos], "cie_pointer", cie_id, extra_s])
                 pos = new_pos
 
@@ -10399,12 +10507,14 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                     if version == 1:
                         new_pos, return_address_register = self.read_1ubyte(data, pos)
                         ra_reg_name = self.get_register_name(return_address_register)
-                        entries.append([pos, data[pos:new_pos], "return_address_register", return_address_register, "Reg: {:s}".format(ra_reg_name)])
+                        extra_s = "Reg: {:s}".format(ra_reg_name)
+                        entries.append([pos, data[pos:new_pos], "return_address_register", return_address_register, extra_s])
                         pos = new_pos
                     else:
                         new_pos, return_address_register = self.get_uleb128(data, pos)
                         ra_reg_name = self.get_register_name(return_address_register)
-                        entries.append([pos, data[pos:new_pos], "return_address_register", return_address_register, "Reg: {:s}".format(ra_reg_name)])
+                        extra_s = "Reg: {:s}".format(ra_reg_name)
+                        entries.append([pos, data[pos:new_pos], "return_address_register", return_address_register, extra_s])
                         pos = new_pos
 
                     if augmentation[0] == "z":
@@ -10416,19 +10526,22 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                             if cp == "R":
                                 new_pos, fde_encoding = self.read_1ubyte(data, pos)
                                 encoding_str = self.get_encoding_str(fde_encoding)
-                                entries.append([pos, data[pos:new_pos], "augmentation_data(R)", fde_encoding, "FDE address encoding: {:s}".format(encoding_str)])
+                                extra_s = "FDE address encoding: {:s}".format(encoding_str)
+                                entries.append([pos, data[pos:new_pos], "augmentation_data(R)", fde_encoding, extra_s])
                                 pos = new_pos
                             elif cp == "L":
                                 new_pos, lsda_encoding = self.read_1ubyte(data, pos)
                                 encoding_str = self.get_encoding_str(lsda_encoding)
-                                entries.append([pos, data[pos:new_pos], "augmentation_data(L)", lsda_encoding, "LSDA pointer encoding: {:s}".format(encoding_str)])
+                                extra_s = "LSDA pointer encoding: {:s}".format(encoding_str)
+                                entries.append([pos, data[pos:new_pos], "augmentation_data(L)", lsda_encoding, extra_s])
                                 pos = new_pos
                             elif cp == "P":
                                 new_pos, p_encoding = self.read_1ubyte(data, pos)
                                 encoding_str = self.get_encoding_str(p_encoding)
-                                entries.append([pos, data[pos:new_pos], "augmentation_data(P)", p_encoding, "Personality pointer encoding: {:s}".format(encoding_str)])
+                                extra_s = "Personality pointer encoding: {:s}".format(encoding_str)
+                                entries.append([pos, data[pos:new_pos], "augmentation_data(P)", p_encoding, extra_s])
                                 pos = new_pos
-                                new_pos, p_addr= self.read_encoded(p_encoding, data, pos)
+                                new_pos, p_addr = self.read_encoded(p_encoding, data, pos)
                                 if (p_encoding & 0x70) == self.DW_EH_PE_pcrel:
                                     p_addr += shdr.sh_offset + pos
                                     if self.is_pie:
@@ -10532,7 +10645,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                 # common
                 entries += self.parse_cfa_program(data, pos, cie_end, vma_base, version, cie)
                 pos = cie_end
-        except:
+        except Exception:
             exc_type, exc_value, exc_traceback = sys.exc_info()
             entries.append(["Parse Error\n{}".format(exc_value)])
         return entries
@@ -10598,7 +10711,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                 "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7",
                 "r8", "r9", "r10", "r11", "r12", "sp", "lr", "pc",
                 "f0", "f1", "f2", "f3", "f4", "f5", "f6", "f7",
-            ] + ["???"]*40 + [
+            ] + ["???"] * 40 + [
                 "s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7",
                 "s8", "s9", "s10", "s11", "s12", "s13", "s14", "s15",
                 "s16", "s17", "s18", "s19", "s20", "s21", "s22", "s23",
@@ -10608,11 +10721,11 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                 "wr0", "wr1", "wr2", "wr3", "wr4", "wr5", "wr6", "wr7",
                 "wr8", "wr9", "wr10", "wr11", "wr12", "wr13", "wr14", "wr15",
                 "spsr", "spsr_fiq", "spsr_irq", "spsr_abt", "spsr_und", "spsr_svc",
-            ] + ["???"]*10 + [
+            ] + ["???"] * 10 + [
                 "r8_usr", "r9_usr", "r10_usr", "r11_usr", "r12_usr", "r13_usr", "r14_usr", "r8_fiq",
                 "r9_fiq", "r10_fiq", "r11_fiq", "r12_fiq", "r13_fiq", "r14_fiq", "r13_irq", "r14_irq",
                 "r13_abt", "r14_abt", "r13_und", "r14_und", "r13_svc", "r14_svc",
-            ] + ["???"]*26 + [
+            ] + ["???"] * 26 + [
                 "wc0", "wc1", "wc2", "wc3", "wc4", "wc5", "wc6", "wc7",
             ]
         elif self.elf.e_machine == Elf.AARCH64:
@@ -10622,7 +10735,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                 "x16", "x17", "x18", "x19", "x20", "x21", "x22", "x23",
                 "x24", "x25", "x26", "x27", "x28", "x29", "x30", "sp",
                 "???", "elr",
-            ] + ["???"]*30 + [
+            ] + ["???"] * 30 + [
                 "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7",
                 "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15",
                 "v16", "v17", "v18", "v19", "v20", "v21", "v22", "v23",
@@ -10642,7 +10755,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
         code_align = cie["code_alignment_factor"]
         data_align = cie["data_alignment_factor"]
         pc = vma_base
-        indent = " "*4
+        indent = " " * 4
 
         entries = []
         entries.append([pos, b"", "program", None, ""])
@@ -10652,132 +10765,138 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
 
                 if opcode < self.DW_CFA_advance_loc:
                     if opcode == self.DW_CFA_nop:
-                        entries.append([pos, data[pos:new_pos], indent+"nop", None, ""])
+                        entries.append([pos, data[pos:new_pos], indent + "nop", None, ""])
                     elif opcode == self.DW_CFA_set_loc:
                         new_pos, op1 = self.read_encoded(encoding, data, new_pos)
                         pc = vma_base + op1
-                        entries.append([pos, data[pos:new_pos], indent+"set_loc {:#x} to {:#x}".format(op1, pc), None, ""])
+                        entries.append([pos, data[pos:new_pos], indent + "set_loc {:#x} to {:#x}".format(op1, pc), None, ""])
                     elif opcode == self.DW_CFA_advance_loc1:
                         op1 = data[new_pos]
                         new_pos += 1
                         pc += op1 * code_align
-                        entries.append([pos, data[pos:new_pos], indent+"advance_loc1 {:#x} to {:#x}".format(op1, pc), None, ""])
+                        entries.append([pos, data[pos:new_pos], indent + "advance_loc1 {:#x} to {:#x}".format(op1, pc), None, ""])
                     elif opcode == self.DW_CFA_advance_loc2:
                         new_pos, op1 = self.read_2ubyte(data, new_pos)
                         pc += op1 * code_align
-                        entries.append([pos, data[pos:new_pos], indent+"advance_loc2 {:#x} to {:#x}".format(op1, pc), None, ""])
+                        entries.append([pos, data[pos:new_pos], indent + "advance_loc2 {:#x} to {:#x}".format(op1, pc), None, ""])
                     elif opcode == self.DW_CFA_advance_loc4:
                         new_pos, op1 = self.read_4ubyte(data, new_pos)
                         pc += op1 * code_align
-                        entries.append([pos, data[pos:new_pos], indent+"advance_loc4 {:#x} to {:#x}".format(op1, pc), None, ""])
+                        entries.append([pos, data[pos:new_pos], indent + "advance_loc4 {:#x} to {:#x}".format(op1, pc), None, ""])
                     elif opcode == self.DW_CFA_offset_extended:
                         new_pos, op1 = self.get_uleb128(data, new_pos)
                         new_pos, op2 = self.get_uleb128(data, new_pos)
                         regname = self.get_register_name(op1)
-                        entries.append([pos, data[pos:new_pos], indent+"offset_extended r{:d} ({:s}) at cfa{:+#x}".format(op1, regname, ep2 * data_align), None, ""])
+                        off = op2 * data_align
+                        entries.append([pos, data[pos:new_pos], indent + "offset_extended r{:d} ({:s}) at cfa{:+#x}".format(op1, regname, off), None, ""])
                     elif opcode == self.DW_CFA_restore_extended:
                         new_pos, op1 = self.get_uleb128(data, new_pos)
                         regname = self.get_register_name(op1)
-                        entries.append([pos, data[pos:new_pos], indent+"restore_extended r{:d} ({:s})".fomart(op1, regname), None, ""])
+                        entries.append([pos, data[pos:new_pos], indent + "restore_extended r{:d} ({:s})".fomart(op1, regname), None, ""])
                     elif opcode == self.DW_CFA_undefined:
                         new_pos, op1 = self.get_uleb128(data, new_pos)
                         regname = self.get_register_name(op1)
-                        entries.append([pos, data[pos:new_pos], indent+"undefined r{:d} ({:s})".format(op1, regname), None, ""])
+                        entries.append([pos, data[pos:new_pos], indent + "undefined r{:d} ({:s})".format(op1, regname), None, ""])
                     elif opcode == self.DW_CFA_same_value:
                         new_pos, op1 = self.get_uleb128(data, new_pos)
                         regname = self.get_register_name(op1)
-                        entries.append([pos, data[pos:new_pos], indent+"same_value r{:d} ({:s})".format(op1, regname), None, ""])
+                        entries.append([pos, data[pos:new_pos], indent + "same_value r{:d} ({:s})".format(op1, regname), None, ""])
                     elif opcode == self.DW_CFA_register:
                         new_pos, op1 = self.get_uleb128(data, new_pos)
                         new_pos, op2 = self.get_uleb128(data, new_pos)
                         regname1 = self.get_register_name(op1)
                         regname2 = self.get_register_name(op2)
-                        entries.append([pos, data[pos:new_pos], indent+"register r{:d} ({:s}) in r{:d} ({:s})".format(op1, op2, regname1, regname2), None, ""])
+                        entries.append([pos, data[pos:new_pos], indent + "register r{:d} ({:s}) in r{:d} ({:s})".format(op1, regname1, op2, regname2), None, ""])
                     elif opcode == self.DW_CFA_remember_state:
-                        entries.append([pos, data[pos:new_pos], indent+"remember_state", None, ""])
+                        entries.append([pos, data[pos:new_pos], indent + "remember_state", None, ""])
                     elif opcode == self.DW_CFA_restore_state:
-                        entries.append([pos, data[pos:new_pos], indent+"restore_state", None, ""])
+                        entries.append([pos, data[pos:new_pos], indent + "restore_state", None, ""])
                     elif opcode == self.DW_CFA_def_cfa:
                         new_pos, op1 = self.get_uleb128(data, new_pos)
                         new_pos, op2 = self.get_uleb128(data, new_pos)
                         regname = self.get_register_name(op1)
-                        entries.append([pos, data[pos:new_pos], indent+"def_cfa r{:d} ({:s}) at offset {:#x}".format(op1, regname, op2), None, ""])
+                        entries.append([pos, data[pos:new_pos], indent + "def_cfa r{:d} ({:s}) at offset {:#x}".format(op1, regname, op2), None, ""])
                     elif opcode == self.DW_CFA_def_cfa_register:
                         new_pos, op1 = self.get_uleb128(data, new_pos)
                         regname = self.get_register_name(op1)
-                        entries.append([pos, data[pos:new_pos], indent+"def_cfa_register r{:d} ({:s})".format(op1, regname), None, ""])
+                        entries.append([pos, data[pos:new_pos], indent + "def_cfa_register r{:d} ({:s})".format(op1, regname), None, ""])
                     elif opcode == self.DW_CFA_def_cfa_offset:
                         new_pos, op1 = self.get_uleb128(data, new_pos)
-                        entries.append([pos, data[pos:new_pos], indent+"def_cfa_offset {:#x}".format(op1), None, ""])
+                        entries.append([pos, data[pos:new_pos], indent + "def_cfa_offset {:#x}".format(op1), None, ""])
                     elif opcode == self.DW_CFA_def_cfa_expression:
                         new_pos, op1 = self.get_uleb128(data, new_pos)
-                        entries.append([pos, data[pos:new_pos], indent+"def_cfa_expression {:#x}".format(op1), None, ""])
+                        entries.append([pos, data[pos:new_pos], indent + "def_cfa_expression {:#x}".format(op1), None, ""])
                         entries += self.parse_ops(version, ptr_size, op1, data, new_pos)
                         new_pos += op1
                     elif opcode == self.DW_CFA_expression:
                         new_pos, op1 = self.get_uleb128(data, new_pos)
                         new_pos, op2 = self.get_uleb128(data, new_pos)
                         regname = self.get_register_name(op1)
-                        entries.append([pos, data[pos:new_pos], indent+"expression r{:d} ({:s})".format(op1, regname), None, ""])
+                        entries.append([pos, data[pos:new_pos], indent + "expression r{:d} ({:s})".format(op1, regname), None, ""])
                         entries += self.parse_ops(version, ptr_size, op2, data, new_pos)
                         new_pos += op2
                     elif opcode == self.DW_CFA_offset_extended_sf:
                         new_pos, op1 = self.get_uleb128(data, new_pos)
                         new_pos, op2 = self.get_uleb128(data, new_pos)
                         regname = self.get_register_name(op1)
-                        entries.append([pos, data[pos:new_pos], indent+"offset_extended_sf r{:d} ({:s}) at cfa{:+#x}".format(op1, regname, op2 * data_align), None, ""])
+                        off = op2 * data_align
+                        entries.append([pos, data[pos:new_pos], indent + "offset_extended_sf r{:d} ({:s}) at cfa{:+#x}".format(op1, regname, off), None, ""])
                     elif opcode == self.DW_CFA_def_cfa_sf:
                         new_pos, op1 = self.get_uleb128(data, new_pos)
                         new_pos, op2 = self.get_uleb128(data, new_pos)
                         regname = self.get_register_name(op1)
-                        entries.append([pos, data[pos:new_pos], indent+"def_cfa_sf r{:d} ({:s}) at offset {:#x}".format(op1, regname, op2 * data_align), None, ""])
+                        off = op2 * data_align
+                        entries.append([pos, data[pos:new_pos], indent + "def_cfa_sf r{:d} ({:s}) at offset {:#x}".format(op1, regname, off), None, ""])
                     elif opcode == self.DW_CFA_def_cfa_offset_sf:
                         new_pos, op1 = self.get_uleb128(data, new_pos)
-                        entries.append([pos, data[pos:new_pos], indent+"def_cfa_offset_sf {:#x}".format(op1 * data_align), None, ""])
+                        entries.append([pos, data[pos:new_pos], indent + "def_cfa_offset_sf {:#x}".format(op1 * data_align), None, ""])
                     elif opcode == self.DW_CFA_val_offset:
                         new_pos, op1 = self.get_uleb128(data, new_pos)
                         new_pos, op2 = self.get_uleb128(data, new_pos)
-                        entries.append([pos, data[pos:new_pos], indent+"val_offset {:#x} at offset {:#x}".format(op1, op2 * data_align), None, ""])
+                        off = op2 * data_align
+                        entries.append([pos, data[pos:new_pos], indent + "val_offset {:#x} at offset {:#x}".format(op1, off), None, ""])
                     elif opcode == self.DW_CFA_val_offset_sf:
                         new_pos, op1 = self.get_uleb128(data, new_pos)
                         new_pos, op2 = self.get_uleb128(data, new_pos)
-                        entries.append([pos, data[pos:new_pos], indent+"val_offset_sf {:#x} at offset {:#x}".format(op1, op2 * data_align), None, ""])
+                        off = op2 * data_align
+                        entries.append([pos, data[pos:new_pos], indent + "val_offset_sf {:#x} at offset {:#x}".format(op1, off), None, ""])
                     elif opcode == self.DW_CFA_val_expression:
                         new_pos, op1 = self.get_uleb128(data, new_pos)
                         new_pos, op2 = self.get_uleb128(data, new_pos)
                         regname = self.get_register_name(op1)
-                        entries.append([pos, data[pos:new_pos], indent+"val_expression r{:d} ({:s})".format(op1, regname), None, ""])
+                        entries.append([pos, data[pos:new_pos], indent + "val_expression r{:d} ({:s})".format(op1, regname), None, ""])
                         entries += self.parse_ops(version, ptr_size, op2, data, new_pos)
                         new_pos += op2
                     elif opcode == self.DW_CFA_MIPS_advance_loc8:
                         new_pos, op1 = self.read_8ubyte(data, new_pos)
                         pc += op1 * code_align
-                        entries.append([pos, data[pos:new_pos], indent+"MIPS_advance_loc8 {:#x} to {:#x}".format(op1, pc), None, ""])
+                        entries.append([pos, data[pos:new_pos], indent + "MIPS_advance_loc8 {:#x} to {:#x}".format(op1, pc), None, ""])
                     elif opcode == self.DW_CFA_GNU_window_save:
                         if self.elf.e_machine == Elf.AARCH64:
-                            entries.append([pos, data[pos:new_pos], indent+"AARCH64_negate_ra_state", None, ""])
+                            entries.append([pos, data[pos:new_pos], indent + "AARCH64_negate_ra_state", None, ""])
                         else:
-                            entries.append([pos, data[pos:new_pos], indent+"GNU_window_save", None, ""])
+                            entries.append([pos, data[pos:new_pos], indent + "GNU_window_save", None, ""])
                     elif opcode == self.DW_CFA_GNU_args_size:
                         new_pos, op1 = self.get_uleb128(data, new_pos)
-                        entries.append([pos, data[pos:new_pos], indent+"args_size {:#x}".format(op1), None, ""])
+                        entries.append([pos, data[pos:new_pos], indent + "args_size {:#x}".format(op1), None, ""])
                     else:
-                        entries.append([pos, data[pos:new_pos], indent+"??? {:#x}".format(opcode), None, ""])
+                        entries.append([pos, data[pos:new_pos], indent + "??? {:#x}".format(opcode), None, ""])
                 elif opcode < self.DW_CFA_offset:
                     op1 = opcode & 0x3f
                     pc += op1 * code_align
-                    entries.append([pos, data[pos:new_pos], indent+"advance_loc {:d} to {:#x}".format(op1, pc), None, ""])
+                    entries.append([pos, data[pos:new_pos], indent + "advance_loc {:d} to {:#x}".format(op1, pc), None, ""])
                 elif opcode < self.DW_CFA_restore:
                     op1 = opcode & 0x3f
                     new_pos, op2 = self.get_uleb128(data, new_pos)
                     regname = self.get_register_name(op1)
-                    entries.append([pos, data[pos:new_pos], indent+"offset r{:d} ({:s}) at cfa{:+#x}".format(op1, regname, op2 * data_align), None, ""])
+                    off = op2 * data_align
+                    entries.append([pos, data[pos:new_pos], indent + "offset r{:d} ({:s}) at cfa{:+#x}".format(op1, regname, off), None, ""])
                 else:
                     op1 = opcode & 0x3f
                     regname = self.get_register_name(op1)
-                    entries.append([pos, data[pos:new_pos], indent+"restore r{:d}".format(op1), None, ""])
+                    entries.append([pos, data[pos:new_pos], indent + "restore r{:d}".format(op1), None, ""])
                 pos = new_pos
-        except:
+        except Exception:
             exc_type, exc_value, exc_traceback = sys.exc_info()
             entries.append(["Parse Error\n{}".format(exc_value)])
         return entries
@@ -11155,12 +11274,12 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
             return "??? ({:#x})".format(code)
 
     def parse_ops(self, vers, addrsize, length, data, pos, indent_n=0):
-        indent = " " * ((indent_n + 2)*4)
+        indent = " " * ((indent_n + 2) * 4)
         entries = []
         ref_size = addrsize if vers < 3 else 0
 
         if length == 0:
-            entries.append([pos, b"", indent+"(empty)", None, ""])
+            entries.append([pos, b"", indent + "(empty)", None, ""])
             return entries
 
         offset = 0
@@ -11175,81 +11294,85 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                     elif addrsize == 8:
                         new_pos, d = self.read_8ubyte(data, new_pos)
                     extra_s = "push {:#x}".format(d)
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
                 elif op in [self.DW_OP_call_ref, self.DW_OP_GNU_variable_value]:
                     if ref_size == 4:
                         new_pos, d = self.read_4ubyte(data, new_pos)
                     else:
                         new_pos, d = self.read_8ubyte(data, new_pos)
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, ""])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, ""])
                 elif op in [self.DW_OP_deref]:
-                    extra_s = "pop; push *({:s}*)popped_value".format({4:"uint",8:"ulong"}[addrsize])
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s}".format(offset, op_name), None, extra_s])
+                    typ = {4: "uint", 8: "ulong"}[addrsize]
+                    extra_s = "pop; push *({:s}*)popped_value".format(typ)
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s}".format(offset, op_name), None, extra_s])
                 elif op in [self.DW_OP_xderef]:
-                    extra_s = "pop; pop; push *({:s}*)(popped_value2_as_segment:popped_value1)".format({4:"uint",8:"ulong"}[addrsize])
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s}".format(offset, op_name), None, extra_s])
+                    typ = {4: "uint", 8: "ulong"}[addrsize]
+                    extra_s = "pop; pop; push *({:s}*)(popped_value2_as_segment:popped_value1)".format(typ)
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s}".format(offset, op_name), None, extra_s])
                 elif op in [self.DW_OP_deref_size]:
                     new_pos, d = self.read_1ubyte(data, new_pos)
-                    extra_s = "pop; push *({:s}*)popped_value".format({1:"uchar",2:"ushort",4:"uint",8:"ulong"}[d])
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
+                    typ = {1: "uchar", 2: "ushort", 4: "uint", 8: "ulong"}[d]
+                    extra_s = "pop; push *({:s}*)popped_value".format(typ)
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
                 elif op in [self.DW_OP_xderef_size]:
                     new_pos, d = self.read_1ubyte(data, new_pos)
-                    extra_s = "pop; pop; push *({:s}*)(popped_value2_as_segment:popped_value1)".format({1:"uchar",2:"ushort",4:"uint",8:"ulong"}[d])
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
+                    typ = {1: "uchar", 2: "ushort", 4: "uint", 8: "ulong"}[d]
+                    extra_s = "pop; pop; push *({:s}*)(popped_value2_as_segment:popped_value1)".forma(typ)
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
                 elif op in [self.DW_OP_pick]:
                     new_pos, d = self.read_1ubyte(data, new_pos)
                     extra_s = "push stack[{:d}]".format(d)
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
                 elif op in [self.DW_OP_const1u]:
                     new_pos, d = self.read_1ubyte(data, new_pos)
                     extra_s = "push {:#x}".format(d)
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
                 elif op in [self.DW_OP_const2u]:
                     new_pos, d = self.read_2ubyte(data, new_pos)
                     extra_s = "push {:#x}".format(d)
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
                 elif op in [self.DW_OP_const4u]:
                     new_pos, d = self.read_4ubyte(data, new_pos)
                     extra_s = "push {:#x}".format(d)
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
                 elif op in [self.DW_OP_const8u]:
                     new_pos, d = self.read_8ubyte(data, new_pos)
                     extra_s = "push {:#x}".format(d)
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
                 elif op in [self.DW_OP_const1s]:
                     new_pos, d = self.read_1sbyte(data, new_pos)
                     extra_s = "push {:#x}".format(d)
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
                 elif op in [self.DW_OP_const2u]:
                     new_pos, d = self.read_2sbyte(data, new_pos)
                     extra_s = "push {:#x}".format(d)
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
                 elif op in [self.DW_OP_const4s]:
                     new_pos, d = self.read_4sbyte(data, new_pos)
                     extra_s = "push {:#x}".format(d)
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
                 elif op in [self.DW_OP_const8s]:
                     new_pos, d = self.read_8sbyte(data, new_pos)
                     extra_s = "push {:#x}".format(d)
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
                 elif op in [self.DW_OP_piece, self.DW_OP_regx, self.DW_OP_plus_uconst]:
                     new_pos, d = self.get_uleb128(data, new_pos)
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, ""])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, ""])
                 elif op in [self.DW_OP_constu]:
                     new_pos, d = self.get_uleb128(data, new_pos)
                     extra_s = "push {:#x}".format(d)
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
                 elif op in [self.DW_OP_consts]:
                     new_pos, d = self.get_sleb128(data, new_pos)
                     extra_s = "push {:#x}".format(d)
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
                 elif op in [self.DW_OP_addrx, self.DW_OP_GNU_addr_index, self.DW_OP_constx, self.DW_OP_GNU_const_index]:
                     new_pos, d = self.get_uleb128(data, new_pos)
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} [{:#x}]".format(offset, op_name, d), None, ""])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} [{:#x}]".format(offset, op_name, d), None, ""])
                 elif op in [self.DW_OP_bit_piece]:
                     new_pos, d1 = self.get_uleb128(data, new_pos)
                     new_pos, d2 = self.get_uleb128(data, new_pos)
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x},{:#x}".format(offset, op_name, d1, d2), None, ""])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} {:#x},{:#x}".format(offset, op_name, d1, d2), None, ""])
                 elif op in [self.DW_OP_lit0, self.DW_OP_lit1, self.DW_OP_lit2, self.DW_OP_lit3, self.DW_OP_lit4,
                             self.DW_OP_lit5, self.DW_OP_lit6, self.DW_OP_lit7, self.DW_OP_lit8, self.DW_OP_lit9,
                             self.DW_OP_lit10, self.DW_OP_lit11, self.DW_OP_lit12, self.DW_OP_lit13, self.DW_OP_lit14,
@@ -11258,7 +11381,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                             self.DW_OP_lit25, self.DW_OP_lit26, self.DW_OP_lit27, self.DW_OP_lit28, self.DW_OP_lit29,
                             self.DW_OP_lit30, self.DW_OP_lit31]:
                     extra_s = "push {:#x}".format(op - 0x30)
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s}".format(offset, op_name), None, extra_s])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s}".format(offset, op_name), None, extra_s])
                 elif op in [self.DW_OP_reg0, self.DW_OP_reg1, self.DW_OP_reg2, self.DW_OP_reg3, self.DW_OP_reg4,
                             self.DW_OP_reg5, self.DW_OP_reg6, self.DW_OP_reg7, self.DW_OP_reg8, self.DW_OP_reg9,
                             self.DW_OP_reg10, self.DW_OP_reg11, self.DW_OP_reg12, self.DW_OP_reg13, self.DW_OP_reg14,
@@ -11268,7 +11391,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                             self.DW_OP_reg30, self.DW_OP_reg31]:
                     regname = self.get_register_name(op - 0x50)
                     extra_s = "push {:s}".format(regname)
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s}".format(offset, op_name), None, extra_s])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s}".format(offset, op_name), None, extra_s])
                 elif op in [self.DW_OP_breg0, self.DW_OP_breg1, self.DW_OP_breg2, self.DW_OP_breg3, self.DW_OP_breg4,
                             self.DW_OP_breg5, self.DW_OP_breg6, self.DW_OP_breg7, self.DW_OP_breg8, self.DW_OP_breg9,
                             self.DW_OP_breg10, self.DW_OP_breg11, self.DW_OP_breg12, self.DW_OP_breg13, self.DW_OP_breg14,
@@ -11277,96 +11400,96 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                             self.DW_OP_breg25, self.DW_OP_breg26, self.DW_OP_breg27, self.DW_OP_breg28, self.DW_OP_breg29,
                             self.DW_OP_breg30, self.DW_OP_breg31]:
                     new_pos, d = self.get_sleb128(data, new_pos)
-                    regname = self.get_register_name(op-0x70)
+                    regname = self.get_register_name(op - 0x70)
                     extra_s = "push {:s}{:+#x}".format(regname, d)
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
                 elif op in [self.DW_OP_fbreg]:
                     new_pos, d = self.get_sleb128(data, new_pos)
                     regname = "push frame_base{:*#x}".format(d)
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} {:#x}".format(offset, op_name, d), None, extra_s])
                 elif op in [self.DW_OP_bregx]:
                     new_pos, d1 = self.get_uleb128(data, new_pos)
                     new_pos, d2 = self.get_sleb128(data, new_pos)
                     regname = self.get_register_name(d1)
                     extra_s = "push {:s}{:+#x}".format(regname, d2)
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x},{:#x}".format(offset, op_name, d1, d2), None, extra_s])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} {:#x},{:#x}".format(offset, op_name, d1, d2), None, extra_s])
                 elif op in [self.DW_OP_call2]:
                     new_pos, d = self.read_2ubyte(data, new_pos)
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} [{:#x}]".format(offset, op_name, d), None, ""])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} [{:#x}]".format(offset, op_name, d), None, ""])
                 elif op in [self.DW_OP_call4]:
                     new_pos, d = self.read_4ubyte(data, new_pos)
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} [{:#x}]".format(offset, op_name, d), None, ""])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} [{:#x}]".format(offset, op_name, d), None, ""])
                 elif op in [self.DW_OP_bra]:
                     new_pos, d = self.read_2sbyte(data, new_pos)
                     d += offset + 3
                     extra_s = "pop; jmp to [{:#x}] if popped_value != 0".format(d)
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} [{:#x}]".format(offset, op_name, d), None, extra_s])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} [{:#x}]".format(offset, op_name, d), None, extra_s])
                 elif op in [self.DW_OP_skip]:
                     new_pos, d = self.read_2sbyte(data, new_pos)
                     d += offset + 3
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} [{:#x}]".format(offset, op_name, d), None, ""])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} [{:#x}]".format(offset, op_name, d), None, ""])
                 elif op in [self.DW_OP_implicit_value]:
                     new_pos, d = self.get_uleb128(data, new_pos)
-                    block_s = ' '.join(["{:02x}".format(x) for x in data[new_pos:new_pos+d]])
+                    block_s = ' '.join(["{:02x}".format(x) for x in data[new_pos:new_pos + d]])
                     new_pos += d
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:s}".format(offset, op_name, block_s), None, ""])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} {:s}".format(offset, op_name, block_s), None, ""])
                 elif op in [self.DW_OP_implicit_pointer, self.DW_OP_GNU_implicit_pointer]:
                     if ref_size == 4:
                         new_pos, d1 = self.read_4ubyte(data, new_pos)
                     elif ref_size == 8:
                         new_pos, d1 = self.read_8ubyte(data, new_pos)
                     new_pos, d2 = self.get_sleb128(data, new_pos)
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} [{:#x}] {:+#x}".format(offset, op_name, d1, d2), None, ""])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} [{:#x}] {:+#x}".format(offset, op_name, d1, d2), None, ""])
                 elif op in [self.DW_OP_entry_value, self.DW_OP_GNU_entry_value]:
                     new_pos, d = self.get_uleb128(data, new_pos)
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s}".format(offset, op_name), None, ""])
-                    entries += self.parse_ops(vers, addrsize, d, data, new_pos, indent=indent+1)
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s}".format(offset, op_name), None, ""])
+                    entries += self.parse_ops(vers, addrsize, d, data, new_pos, indent=indent + 1)
                     new_pos += d
                 elif op in [self.DW_OP_const_type, self.DW_OP_GNU_const_type]:
                     new_pos, d1 = self.get_uleb128(data, new_pos)
                     new_pos, d2 = self.read_1ubyte(data, new_pos)
-                    block_s = ' '.join(["{:02x}".format(x) for x in data[new_pos:new_pos+d2]])
+                    block_s = ' '.join(["{:02x}".format(x) for x in data[new_pos:new_pos + d2]])
                     new_pos += d2
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} [{:#x}] {:s}".format(offset, op_name, d1, block_s), None, ""])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} [{:#x}] {:s}".format(offset, op_name, d1, block_s), None, ""])
                 elif op in [self.DW_OP_regval_type, self.DW_OP_GNU_regval_type]:
                     new_pos, d1 = self.get_uleb128(data, new_pos)
                     new_pos, d2 = self.get_uleb128(data, new_pos)
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x} [{:#x}]".format(offset, op_name, d1, d2), None, ""])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} {:#x} [{:#x}]".format(offset, op_name, d1, d2), None, ""])
                 elif op in [self.DW_OP_deref_type, self.DW_OP_GNU_deref_type]:
                     new_pos, d1 = self.read_1ubyte(data, new_pos)
                     new_pos, d2 = self.get_uleb128(data, new_pos)
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x} [{:#x}]".format(offset, op_name, d1, d2), None, ""])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} {:#x} [{:#x}]".format(offset, op_name, d1, d2), None, ""])
                 elif op in [self.DW_OP_xderef_type]:
                     new_pos, d1 = self.read_1ubyte(data, new_pos)
                     new_pos, d2 = self.get_uleb128(data, new_pos)
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} {:#x} [{:#x}]".format(offset, op_name, d1, d2), None, ""])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} {:#x} [{:#x}]".format(offset, op_name, d1, d2), None, ""])
                 elif op in [self.DW_OP_convert, self.DW_OP_GNU_convert, self.DW_OP_reinterpret, self.DW_OP_GNU_reinterpret]:
                     new_pos, d = self.get_uleb128(data, new_pos)
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} [{:#x}]".format(offset, op_name, d), None, ""])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} [{:#x}]".format(offset, op_name, d), None, ""])
                 elif op in [self.DW_OP_GNU_parameter_ref]:
                     new_pos, d = self.read_4ubyte(data, new_pos)
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s} [{:#x}]".format(offset, op_name, d), None, ""])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} [{:#x}]".format(offset, op_name, d), None, ""])
                 elif op in [self.DW_OP_drop]:
                     extra_s = "pop"
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s}".format(offset, op_name), None, extra_s])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s}".format(offset, op_name), None, extra_s])
                 elif op in [self.DW_OP_dup]:
                     extra_s = "push stack[0]"
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s}".format(offset, op_name), None, extra_s])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s}".format(offset, op_name), None, extra_s])
                 elif op in [self.DW_OP_over]:
                     extra_s = "push stack[1]"
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s}".format(offset, op_name), None, extra_s])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s}".format(offset, op_name), None, extra_s])
                 elif op in [self.DW_OP_swap]:
                     extra_s = "stack[0],stack[1] = stack[1],stack[0]"
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s}".format(offset, op_name), None, extra_s])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s}".format(offset, op_name), None, extra_s])
                 elif op in [self.DW_OP_rot]:
                     extra_s = "stack[0],stack[1],stack[2] = stack[1],stack[2],stack[0]"
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s}".format(offset, op_name), None, extra_s])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s}".format(offset, op_name), None, extra_s])
                 else:
-                    entries.append([pos, data[pos:new_pos], indent+"[{:#04x}] {:s}".format(offset, op_name), None, ""])
+                    entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s}".format(offset, op_name), None, ""])
                 length -= new_pos - pos
                 offset += new_pos - pos
                 pos = new_pos
-        except:
+        except Exception:
             exc_type, exc_value, exc_traceback = sys.exc_info()
             entries.append(["Parse Error\n{}".format(exc_value)])
         return entries
@@ -11416,8 +11539,8 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
 
                 # Found
                 if lsda_pos_padding:
-                    entries.append([pos-lsda_pos_padding, "Padding", ""])
-                    entries.append([pos-lsda_pos_padding, data[pos-lsda_pos_padding:pos], "padding", "", ""])
+                    entries.append([pos - lsda_pos_padding, "Padding", ""])
+                    entries.append([pos - lsda_pos_padding, data[pos - lsda_pos_padding:pos], "padding", "", ""])
                     lsda_pos_padding = 0
 
                 entries.append([pos, "LSDA Table[{:4d}]".format(lsda_table_cnt), ""])
@@ -11524,7 +11647,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
 
                         new_pos, ar_disp = self.get_sleb128(data, pos)
                         if ar_disp & 1:
-                            extra_s = "-> Action Table[{:4d}]".format(table_cnt + (ar_disp + 1)//2)
+                            extra_s = "-> Action Table[{:4d}]".format(table_cnt + (ar_disp + 1) // 2)
                         elif ar_disp:
                             extra_s = "-> ???"
                         else:
@@ -11568,8 +11691,8 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                     pass
                 else:
                     pos = ttype_base
-                lsda_table_cnt +=1
-        except:
+                lsda_table_cnt += 1
+        except Exception:
             exc_type, exc_value, exc_traceback = sys.exc_info()
             entries.append(["Parse Error\n{}".format(exc_value)])
         return entries
@@ -11605,15 +11728,15 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
         if "-x" in argv:
             idx = argv.index("-x")
             self.hexdump = True
-            argv = argv[:idx] + argv[idx+1:]
+            argv = argv[:idx] + argv[idx + 1:]
         else:
             self.hexdump = False
 
         # read file
         if "-f" in argv:
             idx = argv.index("-f")
-            filename = argv[idx+1]
-            argv = argv[:idx] + argv[idx+2:]
+            filename = argv[idx + 1]
+            argv = argv[:idx] + argv[idx + 2:]
         else:
             filename = get_filepath()
             if filename is None:
@@ -11825,7 +11948,7 @@ class ContextCommand(GenericCommand):
         return
 
     def show_legend(self):
-        if get_gef_setting("gef.disable_color")!=True:
+        if get_gef_setting("gef.disable_color") is not True:
             str_color = get_gef_setting("theme.dereference_string")
             code_addr_color = get_gef_setting("theme.address_code")
             stack_addr_color = get_gef_setting("theme.address_stack")
@@ -11914,10 +12037,10 @@ class ContextCommand(GenericCommand):
             gdb.execute("registers {}".format(printable_registers))
             return
 
-        widest = l = current_arch.get_aliased_registers_name_max()
-        l += 5
-        l += current_arch.ptrsize * 2
-        nb = get_terminal_size()[1]//l
+        widest = x = current_arch.get_aliased_registers_name_max()
+        x += 5
+        x += current_arch.ptrsize * 2
+        nb = get_terminal_size()[1] // x
         i = 1
         line = ""
         changed_color = get_gef_setting("theme.registers_value_changed")
@@ -12047,7 +12170,7 @@ class ContextCommand(GenericCommand):
                     text = insn_fmt.format(insn)
 
                 if insn.address < pc:
-                    line += "{}{}{}".format(bp_prefix, " "*len(RIGHT_ARROW[1:]), Color.colorify(text, past_insns_color))
+                    line += "{}{}{}".format(bp_prefix, " " * len(RIGHT_ARROW[1:]), Color.colorify(text, past_insns_color))
 
                 elif insn.address == pc:
                     line += "{}{}".format(bp_prefix, Color.colorify("{:s}{:s}".format(RIGHT_ARROW[1:], text), cur_insn_color))
@@ -12067,7 +12190,7 @@ class ContextCommand(GenericCommand):
                         target = current_arch.get_ra(insn, frame)
 
                 else:
-                    line += "{}{}{}".format(bp_prefix, " "*len(RIGHT_ARROW[1:]), text)
+                    line += "{}{}{}".format(bp_prefix, " " * len(RIGHT_ARROW[1:]), text)
 
                 gef_print("".join(line))
 
@@ -12085,9 +12208,9 @@ class ContextCommand(GenericCommand):
                                 text = str(tinsn)
                             else:
                                 text = insn_fmt.format(tinsn)
-                            text = "   {}  {}".format (DOWN_ARROW if i == 0 else " ", text)
+                            text = "   {}  {}".format(DOWN_ARROW if i == 0 else " ", text)
                             gef_print(text)
-                    except:
+                    except Exception:
                         pass
                     break
 
@@ -12127,7 +12250,7 @@ class ContextCommand(GenericCommand):
                 code = code.replace("*", " * ")
                 code = code.replace("eiz", " 0 ") # $eiz is always 0x0
                 code = code.split()
-                code = ["$"+x if x.isalpha() or re.match(r"r\d+d?", x) else x for x in code]
+                code = ["$" + x if x.isalpha() or re.match(r"r\d+d?", x) else x for x in code]
                 code = ''.join(code)
                 # $rip/$eip points next instruction
                 code_orig, code = code, code.replace("$rip", f"$rip+{codesize:#x}")
@@ -12138,7 +12261,7 @@ class ContextCommand(GenericCommand):
                 code = code.replace("#", "")
                 code = code.replace("lsl", "<<")
                 code = code.split(",")
-                code = ["$"+x if x.isalpha() or re.match(r"r\d+", x) else x for x in code]
+                code = ["$" + x if x.isalpha() or re.match(r"r\d+", x) else x for x in code]
                 if "<<" in code[-1]:
                     code = code[:-2] + ["(" + code[-2] + code[-1] + ")"]
                 code = '+'.join(code)
@@ -12154,7 +12277,7 @@ class ContextCommand(GenericCommand):
                 code = code.replace("wzr", " 0 ") # $wzr is always 0x0
                 code = code.replace("wsp", " ($sp&0xffff) ") # $wsp is a half of $sp
                 code = code.split(",")
-                code = ["$"+x if x.isalpha() or re.match(r"[xw]\d+", x) else x for x in code]
+                code = ["$" + x if x.isalpha() or re.match(r"[xw]\d+", x) else x for x in code]
                 if "<<" == code[-1]:
                     code[-1] += "0"
                 if "<<" in code[-1]:
@@ -12167,7 +12290,7 @@ class ContextCommand(GenericCommand):
             try:
                 code = code.replace("$", "(long)$")
                 addr = parse_address(code)
-            except:
+            except Exception:
                 # some binary fails to resolve "(long)"
                 addr = parse_address(code_orig)
             self.context_title(f"memory access: {code_orig} = {addr:#x}")
@@ -12195,10 +12318,10 @@ class ContextCommand(GenericCommand):
             offset = offset.replace("*", " * ")
             offset = offset.replace("eiz", " 0 ") # $eiz is always 0x0
             offset = offset.split()
-            offset = ["$"+x if x.isalpha() or re.match(r"r\d+d?", x) else x for x in offset]
+            offset = ["$" + x if x.isalpha() or re.match(r"r\d+d?", x) else x for x in offset]
             offset = ''.join(offset)
             offset = parse_address(offset)
-            mask = ((1<<32) - 1) if is_32bit() else ((1<<64) - 1)
+            mask = ((1 << 32) - 1) if is_32bit() else ((1 << 64) - 1)
             addr = (tls + offset) & mask
             self.context_title(f"memory access: {code} = {addr:#x}")
             gdb.execute(f"telescope {addr:#x} 1")
@@ -12218,13 +12341,13 @@ class ContextCommand(GenericCommand):
 
         r = re.findall(r"((es|ds|ss|cs):\[?([^,\]]+)\]?)", str(insn))
         for rr in r:
-            code, esdssscs, addr = rr[0], rr[1], rr[2]
+            code, addr = rr[0], rr[2]
             addr = addr.replace("+", " + ")
             addr = addr.replace("-", " - ")
             addr = addr.replace("*", " * ")
             addr = addr.replace("eiz", " 0 ") # $eiz is always 0x0
             addr = addr.split()
-            addr = ["$"+x if x.isalpha() or re.match(r"r\d+d?", x) else x for x in addr]
+            addr = ["$" + x if x.isalpha() or re.match(r"r\d+d?", x) else x for x in addr]
             addr = ''.join(addr)
             addr = parse_address(addr)
             self.context_title(f"memory access: {code} = {addr:#x}")
@@ -12253,10 +12376,10 @@ class ContextCommand(GenericCommand):
             8: "QWORD",
         }
 
-        if insn.operands[-1].startswith(self.size2type[current_arch.ptrsize]+" PTR"):
+        if insn.operands[-1].startswith(self.size2type[current_arch.ptrsize] + " PTR"):
             target = "*" + insn.operands[-1].split()[-1]
-        elif "$"+insn.operands[0] in current_arch.all_registers:
-            target = "*{:#x}".format(get_register("$"+insn.operands[0]))
+        elif "$" + insn.operands[0] in current_arch.all_registers:
+            target = "*{:#x}".format(get_register("$" + insn.operands[0]))
         else:
             # is there a symbol?
             ops = " ".join(insn.operands)
@@ -12365,7 +12488,7 @@ class ContextCommand(GenericCommand):
             if is_x86_32():
                 nb_argument = len(parameter_set)
             else:
-                nb_argument = max(function_parameters.index(p)+1 for p in parameter_set)
+                nb_argument = max(function_parameters.index(p) + 1 for p in parameter_set)
 
         args = []
         for i in range(nb_argument):
@@ -12399,7 +12522,7 @@ class ContextCommand(GenericCommand):
 
             fpath = symtab.fullname()
             with open(fpath, "r") as f:
-                lines = [l.rstrip() for l in f.readlines()]
+                lines = [x.rstrip() for x in f.readlines()]
 
         except Exception:
             return
@@ -12432,7 +12555,7 @@ class ContextCommand(GenericCommand):
                 if show_extra_info:
                     extra_info = self.get_pc_context_info(pc, lines[i])
                     for ext in extra_info:
-                        gef_print("{}// {}".format(" "*(len(prefix) + leading), ext))
+                        gef_print("{}// {}".format(" " * (len(prefix) + leading), ext))
                 gef_print(Color.colorify("{}{:s}".format(prefix, lines[i]), cur_line_color))
 
             elif i > line_num:
@@ -12487,7 +12610,7 @@ class ContextCommand(GenericCommand):
             try:
                 orig_frame = gdb.selected_frame()
                 current_frame = gdb.newest_frame()
-            except:
+            except Exception:
                 # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
                 err("Faild to get frame information.")
                 return
@@ -12519,7 +12642,7 @@ class ContextCommand(GenericCommand):
                 else:
                     try:
                         insn = next(gef_disassemble(pc, 1))
-                    except gdb.MemoryError as e:
+                    except gdb.MemoryError:
                         break
                     items.append(Color.redify("{} {}".format(insn.mnemonic, ", ".join(insn.operands))))
 
@@ -12574,7 +12697,7 @@ class ContextCommand(GenericCommand):
         selected_thread = gdb.selected_thread()
         try:
             selected_frame = gdb.selected_frame()
-        except:
+        except Exception:
             # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
             selected_frame = None
 
@@ -12589,13 +12712,13 @@ class ContextCommand(GenericCommand):
                 line += Color.colorify("stopped", "bold red")
                 try:
                     thread.switch()
-                except:
+                except Exception:
                     line += " - Failed to switch to this thread"
                     gef_print(line)
                     continue
                 try:
                     frame = gdb.selected_frame()
-                except:
+                except Exception:
                     # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
                     # if failed, print thread information without frame (but with $pc).
                     line += " {:s} in".format(Color.colorify("{:#x}".format(get_register("$pc")), "blue"))
@@ -12648,7 +12771,7 @@ class ContextCommand(GenericCommand):
                 except Exception:
                     cls.old_registers[reg] = 0
             return
-        except:
+        except Exception:
             return
 
     def empty_extra_messages(self, event):
@@ -12702,7 +12825,7 @@ class MemoryWatchCommand(GenericCommand):
         try:
             address = parse_address(argv[0])
             size = parse_address(argv[1]) if len(argv) > 1 else 0x10
-        except:
+        except Exception:
             self.usage()
             return
         group = "byte"
@@ -12801,7 +12924,7 @@ class HexdumpCommand(GenericCommand):
     """Display SIZE lines of hexdump from the memory location pointed by ADDRESS."""
     _cmdline_ = "hexdump"
     _syntax_ = "{:s} [-h] qword|dword|word|byte [--phys] [ADDRESS [SIZE]] [REVERSE] [FULL]".format(_cmdline_)
-    _example_  = "{:s} byte                  # dump from $sp as byte (0x10 bytes)\n".format(_cmdline_)
+    _example_ = "{:s} byte                  # dump from $sp as byte (0x10 bytes)\n".format(_cmdline_)
     _example_ += "{:s} qword                 # dump from $sp as qword (0x100 bytes)\n".format(_cmdline_)
     _example_ += "{:s} byte $rax 0x64        # dump from $rax as byte (100 bytes)\n".format(_cmdline_)
     _example_ += "{:s} byte $rax 100 FULL    # print the same line without omitting (byte mode only)\n".format(_cmdline_)
@@ -12844,11 +12967,8 @@ class HexdumpCommand(GenericCommand):
         try:
             for arg in argv:
                 arg_lower = arg.lower()
-                is_format_given = False
                 if arg_lower in valid_formats:
-                    fmt = valid_format
-                    is_format_given = True
-                if is_format_given:
+                    fmt = arg_lower
                     continue
                 if "reverse" == arg_lower:
                     reverse = True
@@ -12869,7 +12989,7 @@ class HexdumpCommand(GenericCommand):
 
             start_addr = parse_address(target)
             read_from = align_address(start_addr)
-        except:
+        except Exception:
             self.usage()
             return
 
@@ -12927,7 +13047,7 @@ class HexdumpCommand(GenericCommand):
             else:
                 mem = read_memory(read_from, read_len)
             return mem
-        except:
+        except Exception:
             pass
 
         read_end = read_from + read_len
@@ -12939,7 +13059,7 @@ class HexdumpCommand(GenericCommand):
                 else:
                     mem = read_memory(read_from, read_end - read_from)
                 return mem
-            except:
+            except Exception:
                 pass
             read_end -= gef_getpagesize()
         return None
@@ -12958,29 +13078,30 @@ class HexdumpCommand(GenericCommand):
             "word": ("H", 2),
         }
 
-        r, l = formats[arrange_as]
-        fmt_str = "{{base}}{v}+{{offset:#06x}}   {{sym}}{{val:#0{prec}x}}   {{text}}".format(v=VERTICAL_LINE, prec=l*2+2)
-        fmt_pack = endianness + r
+        spec, sz = formats[arrange_as]
+        fmt_str = "{{base}}{v}+{{offset:#06x}}   {{sym}}{{val:#0{prec}x}}   {{text}}".format(v=VERTICAL_LINE, prec=sz * 2 + 2)
+        fmt_pack = endianness + spec
         lines = []
 
         i = 0
         text = ""
         while i < length:
-            cur_addr = start_addr + (i + offset) * l
+            cur_addr = start_addr + (i + offset) * sz
             sym = gdb_get_location_from_symbol(cur_addr)
             sym = "<{:s}+{:04x}> ".format(*sym) if sym else ""
             try:
                 if self.phys_mode:
-                    mem = read_physmem(cur_addr, l)
+                    mem = read_physmem(cur_addr, sz)
                 else:
-                    mem = read_memory(cur_addr, l)
-            except:
+                    mem = read_memory(cur_addr, sz)
+            except Exception:
                 break
             val = struct.unpack(fmt_pack, mem)[0]
             if show_ascii:
                 text = "".join([chr(b) if 0x20 <= b < 0x7F else "." for b in mem])
-            lines.append(fmt_str.format(base=Color.colorify(format_address(cur_addr), base_address_color),
-                                        offset=(i + offset) * l, sym=sym, val=val, text=text))
+            cur_addr_c = Color.colorify(format_address(cur_addr), base_address_color)
+            line = fmt_str.format(base=cur_addr_c, offset=(i + offset) * sz, sym=sym, val=val, text=text)
+            lines.append(line)
             i += 1
         return lines
 
@@ -13052,7 +13173,7 @@ class PatchCommand(GenericCommand):
     _syntax_ += "{:s} [-h] nop [--phys] [LOCATION] [-b BYTE_LENGTH|-i INST_COUNT]\n".format(_cmdline_)
     _syntax_ += "{:s} [-h] inf|trap|ret [--phys] [LOCATION]\n".format(_cmdline_)
     _syntax_ += "{:s} [-h] history\n".format(_cmdline_)
-    _syntax_ += "{:s} [-h] revert [HISTORY]".format(_cmdline_)
+    _syntax_ += "{:s} [-h] revert [HISTORY_NUMBER]".format(_cmdline_)
     _category_ = "Show/Modify Memory"
     SUPPORTED_SIZES = {
         "qword": (8, "Q"),
@@ -13067,6 +13188,19 @@ class PatchCommand(GenericCommand):
         complete_type = kwargs.get("complete", gdb.COMPLETE_NONE)
         super().__init__(prefix=prefix, complete=complete_type)
         self.format = None
+        return
+
+    def patch(self, addr, data, length):
+        try:
+            before_data = read_memory(addr, length=length)
+            write_memory(addr, data, length=length)
+            after_data = read_memory(addr, length=length)
+        except gdb.MemoryError:
+            err("Failed to access memory")
+            return
+        history_info = {"addr": addr, "before_data": before_data, "after_data": after_data, "physmode": get_current_mmu_mode()}
+        self.history.insert(0, history_info)
+        ok("Patching {:d} bytes from {:s}".format(length, format_address(addr)))
         return
 
     @only_if_gdb_running
@@ -13112,10 +13246,7 @@ class PatchCommand(GenericCommand):
         for value in values:
             value = parse_address(value) & ((1 << size * 8) - 1)
             vstr = struct.pack(d + fcode, value)
-            before_data = read_memory(addr, length=size)
-            write_memory(addr, vstr, length=size)
-            after_data = read_memory(addr, length=size)
-            self.history.insert(0, {"addr":addr, "before_data":before_data, "after_data":after_data, "physmode":get_current_mmu_mode()})
+            self.patch(addr, vstr, size)
             addr += size
 
         if phys_mode:
@@ -13236,10 +13367,7 @@ class PatchStringCommand(PatchCommand):
             s = s * (length // len(s) + 1)
             s = s[:length]
 
-        before_data = read_memory(addr, length=len(s))
-        write_memory(addr, s, len(s))
-        after_data = read_memory(addr, length=len(s))
-        self.history.insert(0, {"addr":addr, "before_data":before_data, "after_data":after_data, "physmode":get_current_mmu_mode()})
+        self.patch(addr, s, len(s))
 
         if phys_mode:
             if orig_mode == "virt":
@@ -13289,10 +13417,7 @@ class PatchPatternCommand(PatchCommand):
         addr = align_address(parse_address(location))
         s = gef_pystring(generate_cyclic_pattern(int(length, 0)))
 
-        before_data = read_memory(addr, length=len(s))
-        write_memory(addr, s, len(s))
-        after_data = read_memory(addr, length=len(s))
-        self.history.insert(0, {"addr":addr, "before_data":before_data, "after_data":after_data, "physmode":get_current_mmu_mode()})
+        self.patch(addr, s, len(s))
 
         if phys_mode:
             if orig_mode == "virt":
@@ -13338,11 +13463,7 @@ class PatchNopCommand(PatchCommand):
             err("Cannot patch instruction at {:#x} (nop instruction does not evenly fit in requested size)".format(addr))
             return
 
-        ok("Patching {:d} bytes from {:s}".format(real_num_bytes, format_address(addr)))
-        before_data = read_memory(addr, length=real_num_bytes)
-        write_memory(addr, current_arch.nop_insn * count, real_num_bytes)
-        after_data = read_memory(addr, length=real_num_bytes)
-        self.history.insert(0, {"addr":addr, "before_data":before_data, "after_data":after_data, "physmode":get_current_mmu_mode()})
+        self.patch(addr, current_arch.nop_insn * count, real_num_bytes)
         return
 
     @only_if_gdb_running
@@ -13368,16 +13489,16 @@ class PatchNopCommand(PatchCommand):
             try:
                 idx = argv.index("-b")
                 num_bytes = int(argv[idx + 1], 0)
-                argv = argv[:idx] + argv[idx+2:]
-            except:
+                argv = argv[:idx] + argv[idx + 2:]
+            except Exception:
                 self.usage()
                 return
         elif "-i" in argv:
             try:
                 idx = argv.index("-i")
                 num_insts = int(argv[idx + 1], 0)
-                argv = argv[:idx] + argv[idx+2:]
-            except:
+                argv = argv[:idx] + argv[idx + 2:]
+            except Exception:
                 self.usage()
                 return
         else:
@@ -13390,7 +13511,7 @@ class PatchNopCommand(PatchCommand):
         if argv:
             try:
                 addr = parse_address(' '.join(argv))
-            except:
+            except Exception:
                 self.usage()
                 if phys_mode:
                     if orig_mode == "virt":
@@ -13426,11 +13547,7 @@ class PatchInfloopCommand(PatchCommand):
             addr -= 1
 
         num_bytes = len(current_arch.infloop_insn)
-        ok("Patching {:d} bytes from {:s}".format(num_bytes, format_address(addr)))
-        before_data = read_memory(addr, length=num_bytes)
-        write_memory(addr, current_arch.infloop_insn, num_bytes)
-        after_data = read_memory(addr, length=num_bytes)
-        self.history.insert(0, {"addr":addr, "before_data":before_data, "after_data":after_data, "physmode":get_current_mmu_mode()})
+        self.patch(addr, current_arch.infloop_insn, num_bytes)
         return
 
     @only_if_gdb_running
@@ -13457,7 +13574,7 @@ class PatchInfloopCommand(PatchCommand):
         if argv:
             try:
                 addr = parse_address(' '.join(argv))
-            except:
+            except Exception:
                 self.usage()
                 if phys_mode:
                     if orig_mode == "virt":
@@ -13491,11 +13608,7 @@ class PatchTrapCommand(PatchCommand):
             addr -= 1
 
         num_bytes = len(current_arch.trap_insn)
-        ok("Patching {:d} bytes from {:s}".format(num_bytes, format_address(addr)))
-        before_data = read_memory(addr, length=num_bytes)
-        write_memory(addr, current_arch.trap_insn, num_bytes)
-        after_data = read_memory(addr, length=num_bytes)
-        self.history.insert(0, {"addr":addr, "before_data":before_data, "after_data":after_data, "physmode":get_current_mmu_mode()})
+        self.patch(addr, current_arch.trap_insn, num_bytes)
         return
 
     @only_if_gdb_running
@@ -13522,7 +13635,7 @@ class PatchTrapCommand(PatchCommand):
         if argv:
             try:
                 addr = parse_address(' '.join(argv))
-            except:
+            except Exception:
                 self.usage()
                 if phys_mode:
                     if orig_mode == "virt":
@@ -13556,11 +13669,7 @@ class PatchRetCommand(PatchCommand):
             addr -= 1
 
         num_bytes = len(current_arch.ret_insn)
-        ok("Patching {:d} bytes from {:s}".format(num_bytes, format_address(addr)))
-        before_data = read_memory(addr, length=num_bytes)
-        write_memory(addr, current_arch.ret_insn, num_bytes)
-        after_data = read_memory(addr, length=num_bytes)
-        self.history.insert(0, {"addr":addr, "before_data":before_data, "after_data":after_data, "physmode":get_current_mmu_mode()})
+        self.patch(addr, current_arch.ret_insn, num_bytes)
         return
 
     @only_if_gdb_running
@@ -13587,7 +13696,7 @@ class PatchRetCommand(PatchCommand):
         if argv:
             try:
                 addr = parse_address(' '.join(argv))
-            except:
+            except Exception:
                 self.usage()
                 if phys_mode:
                     if orig_mode == "virt":
@@ -13638,7 +13747,7 @@ class PatchHistoryCommand(PatchCommand):
 class PatchRevertCommand(PatchCommand):
     """Revert patch history."""
     _cmdline_ = "patch revert"
-    _syntax_ = "{:s} [-h] HISTORY".format(_cmdline_)
+    _syntax_ = "{:s} [-h] HISTORY_NUMBER".format(_cmdline_)
     _category_ = "Show/Modify Memory"
 
     def __init__(self):
@@ -13655,7 +13764,7 @@ class PatchRevertCommand(PatchCommand):
 
         try:
             revert_target = int(argv[0])
-        except:
+        except Exception:
             self.usage()
             gef_print("")
             info("Patch history")
@@ -13696,21 +13805,22 @@ class PatchRevertCommand(PatchCommand):
             revert_count -= 1
         return
 
+
 @functools.lru_cache()
 def dereference_from(addr):
     """Create array like [Address(rax), Address(deref_of_rax), Address(deref_of_deref_of_rax), ..., str(msg)]"""
-    if not is_alive():
-        return [format_address(addr),]
-
-    code_color = get_gef_setting("theme.dereference_code")
-    string_color = get_gef_setting("theme.dereference_string")
-    max_recursion = get_gef_setting("dereference.max_recursion") or 4
 
     @functools.lru_cache()
     def get_blacklist():
         return eval(get_gef_setting("dereference.blacklist")) or []
-    blacklist = get_blacklist()
 
+    if not is_alive():
+        return [format_address(addr),]
+
+    string_color = get_gef_setting("theme.dereference_string")
+    max_recursion = get_gef_setting("dereference.max_recursion") or 4
+
+    blacklist = get_blacklist()
     addr = lookup_address(align_address(int(addr)))
     msg = []
     seen_addrs = set()
@@ -13746,7 +13856,7 @@ def dereference_from(addr):
             # -- If it's a pointer, dereference
             # -- If it's a value, deref is None
             deref = addr.dereference()
-        except:
+        except Exception:
             # if addr is mapped to the HW device, an exception occurs. (not return None)
             # So we add the address to blacklilst -> exit
             start = addr.value & gef_getpagesize_mask()
@@ -13879,7 +13989,7 @@ class DereferenceCommand(GenericCommand):
                         break
                     frames.append(pc)
                     frame = frame.older()
-            except:
+            except Exception:
                 pass
             return frames
 
@@ -13903,7 +14013,7 @@ class DereferenceCommand(GenericCommand):
             for regname in current_arch.all_registers:
                 try:
                     regvalue = get_register(regname)
-                except:
+                except Exception:
                     continue
                 regs.append([regname, regvalue])
             return regs
@@ -13940,7 +14050,7 @@ class DereferenceCommand(GenericCommand):
 
         try:
             start_address = to_unsigned_long(safe_parse_and_eval(target))
-        except:
+        except Exception:
             err("Invalid address")
             return
 
@@ -13957,7 +14067,7 @@ class DereferenceCommand(GenericCommand):
             try:
                 line = DereferenceCommand.pprint_dereferenced(start_address, idx)
                 gef_print(line)
-            except:
+            except Exception:
                 # ex: nop DWORD PTR [rax+rax*1+0x0]
                 err("Cannot access memory at address {:#x}".format(start_address + idx * current_arch.ptrsize))
                 break
@@ -14071,10 +14181,9 @@ class VMMapCommand(GenericCommand):
         if not get_gef_setting("gef.disable_color"):
             self.show_legend()
 
-        color = get_gef_setting("theme.table_heading")
         headers = ["Start", "End", "Size", "Offset", "Perm", "Path"]
-        w = get_memory_alignment() * 2 + 3
-        gef_print(Color.colorify("{:<{w}s}{:<{w}s}{:<{w}s}{:<{w}s}{:<4s} {:s}".format(*headers, w=w), color))
+        legend = "{:<{w}s}{:<{w}s}{:<{w}s}{:<{w}s}{:<4s} {:s}".format(*headers, w=get_memory_alignment() * 2 + 3)
+        gef_print(Color.colorify(legend, get_gef_setting("theme.table_heading")))
 
         for entry in vmmap:
             if not argv:
@@ -14100,21 +14209,21 @@ class VMMapCommand(GenericCommand):
         elif entry.permission.value & Permission.READ and entry.permission.value & Permission.EXECUTE:
             line_color = get_gef_setting("theme.address_code")
 
-        l = []
+        lines = []
         # if qemu-xxx(32bit arch) runs on x86-64 machine, memalign_size does not match get_memory_alignment()
         memalign_size = 8 if outer else None
-        l.append(Color.colorify(format_address(entry.page_start, memalign_size), line_color))
-        l.append(Color.colorify(format_address(entry.page_end, memalign_size), line_color))
-        l.append(Color.colorify(format_address(entry.size, memalign_size), line_color))
-        l.append(Color.colorify(format_address(entry.offset, memalign_size), line_color))
+        lines.append(Color.colorify(format_address(entry.page_start, memalign_size), line_color))
+        lines.append(Color.colorify(format_address(entry.page_end, memalign_size), line_color))
+        lines.append(Color.colorify(format_address(entry.size, memalign_size), line_color))
+        lines.append(Color.colorify(format_address(entry.offset, memalign_size), line_color))
 
-        if entry.permission.value == (Permission.READ|Permission.WRITE|Permission.EXECUTE):
-            l.append(Color.colorify(str(entry.permission), "underline " + line_color))
+        if entry.permission.value == (Permission.READ | Permission.WRITE | Permission.EXECUTE):
+            lines.append(Color.colorify(str(entry.permission), "underline " + line_color))
         else:
-            l.append(Color.colorify(str(entry.permission), line_color))
+            lines.append(Color.colorify(str(entry.permission), line_color))
 
-        l.append(Color.colorify(entry.path, line_color))
-        line = " ".join(l)
+        lines.append(Color.colorify(entry.path, line_color))
+        line = " ".join(lines)
 
         # register info
         if self.verbose:
@@ -14167,26 +14276,26 @@ class XFilesCommand(GenericCommand):
     def do_invoke(self, argv):
         self.dont_repeat()
 
-        color = get_gef_setting("theme.table_heading")
         headers = ["Start", "End", "Name", "File"]
-        gef_print(Color.colorify("{:<{w}s}{:<{w}s}{:<21s} {:s}".format(*headers, w=get_memory_alignment()*2+3), color))
+        legend = "{:<{w}s}{:<{w}s}{:<21s} {:s}".format(*headers, w=get_memory_alignment() * 2 + 3)
+        gef_print(Color.colorify(legend, get_gef_setting("theme.table_heading")))
 
-        filter_pattern = argv
+        filter_patterns = argv
 
         for xfile in get_info_files():
-            l = []
-            l.append(format_address(xfile.zone_start))
-            l.append(format_address(xfile.zone_end))
-            l.append("{:<21s}".format(xfile.name))
-            l.append(xfile.filename)
-            l = " ".join(l)
+            lines = []
+            lines.append(format_address(xfile.zone_start))
+            lines.append(format_address(xfile.zone_end))
+            lines.append("{:<21s}".format(xfile.name))
+            lines.append(xfile.filename)
+            line = " ".join(lines)
 
-            if not filter_pattern:
-                gef_print(l)
+            if not filter_patterns:
+                gef_print(line)
             else:
-                for filt in filter_pattern:
-                    if re.search(filt, l):
-                        gef_print(l)
+                for filt in filter_patterns:
+                    if re.search(filt, line):
+                        gef_print(line)
         return
 
 
@@ -14208,7 +14317,7 @@ class XAddressInfoCommand(GenericCommand):
         self.dont_repeat()
 
         if not argv:
-            err ("At least one valid address must be specified")
+            err("At least one valid address must be specified")
             self.usage()
             return
 
@@ -14253,7 +14362,7 @@ class XAddressInfoCommand(GenericCommand):
             name, offset = sym
             msg = "Symbol: {:s}".format(name)
             if offset:
-                msg+= "+{:d}".format(offset)
+                msg += "+{:d}".format(offset)
             gef_print(msg)
 
         return
@@ -14302,7 +14411,11 @@ class XorMemoryDisplayCommand(GenericCommand):
         address = parse_address(argv[0])
         length = int(argv[1], 0)
         key = argv[2]
-        block = read_memory(address, length)
+        try:
+            block = read_memory(address, length)
+        except gdb.MemoryError:
+            err("Failed to read memory")
+            return
         info("Displaying XOR-ing {:#x}-{:#x} with {:s}".format(address, address + len(block), repr(key)))
 
         gef_print(titlify("Original block"))
@@ -14337,7 +14450,11 @@ class XorMemoryPatchCommand(GenericCommand):
         address = parse_address(argv[0])
         length = int(argv[1], 0)
         key = argv[2]
-        block = read_memory(address, length)
+        try:
+            block = read_memory(address, length)
+        except gdb.MemoryError:
+            err("Failed to read memory")
+            return
         info("Patching XOR-ing {:#x}-{:#x} with '{:s}'".format(address, address + len(block), key))
         xored_block = xor(block, key)
         write_memory(address, xored_block, length)
@@ -14593,12 +14710,6 @@ class ChecksecCommand(GenericCommand):
             self.print_security_properties_qemu_system()
             return
 
-        try:
-            readelf = which("readelf")
-        except IOError:
-            err("Missing `readelf`")
-            return
-
         argc = len(argv)
 
         if argc == 0:
@@ -14635,6 +14746,9 @@ class ChecksecCommand(GenericCommand):
             return msg
 
         sec = checksec(filename)
+        if sec is False:
+            err("checksec is failed")
+            return
 
         # Static
         if sec["Static"]:
@@ -14714,7 +14828,7 @@ class ChecksecCommand(GenericCommand):
                     gef_print("{:<30s}: {:s} (randomize_va_space: 1)".format("System ASLR", Color.colorify("Partially Enabled", "yellow bold")))
                 elif system_aslr == 2:
                     gef_print("{:<30s}: {:s} (randomize_va_space: 2)".format("System ASLR", Color.colorify("Enabled", "green bold")))
-            except:
+            except Exception:
                 gef_print("{:<30s}: {:s} (randomize_va_space: error)".format("System-ASLR", Color.colorify("Unknown", "gray bold")))
         else:
             gef_print("{:<30s}: {:s} (attached remote process)".format("System-ASLR", Color.colorify("Unknown", "gray bold")))
@@ -15079,12 +15193,12 @@ class LinkmapCommand(GenericCommand):
             gef_print(titlify(name))
             if is_32bit():
                 gef_print("{:#010x}:  {:#010x} {:#010x}  |  load_address, name".format(addr, l_addr, l_name))
-                gef_print("{:#010x}:  {:#010x} {:#010x}  |  dynamic, next".format(addr + current_arch.ptrsize*2, l_ld, l_next))
-                gef_print("{:#010x}:  {:#010x} {:10s}  |  prev".format(addr + current_arch.ptrsize*4, l_prev, ""))
+                gef_print("{:#010x}:  {:#010x} {:#010x}  |  dynamic, next".format(addr + current_arch.ptrsize * 2, l_ld, l_next))
+                gef_print("{:#010x}:  {:#010x} {:10s}  |  prev".format(addr + current_arch.ptrsize * 4, l_prev, ""))
             else:
                 gef_print("{:#018x}:  {:#018x} {:#018x}  |  load_address, name".format(addr, l_addr, l_name))
-                gef_print("{:#018x}:  {:#018x} {:#018x}  |  dynamic, next".format(addr + current_arch.ptrsize*2, l_ld, l_next))
-                gef_print("{:#018x}:  {:#018x} {:18s}  |  prev".format(addr + current_arch.ptrsize*4, l_prev, ""))
+                gef_print("{:#018x}:  {:#018x} {:#018x}  |  dynamic, next".format(addr + current_arch.ptrsize * 2, l_ld, l_next))
+                gef_print("{:#018x}:  {:#018x} {:18s}  |  prev".format(addr + current_arch.ptrsize * 4, l_prev, ""))
 
             if l_next == 0:
                 break
@@ -15093,9 +15207,6 @@ class LinkmapCommand(GenericCommand):
 
     @staticmethod
     def get_linkmap(filename, silent=False):
-        elf = Elf(filename)
-        sec = checksec(filename)
-
         current = dynamic = DynamicCommand.get_dynamic(filename, silent)
         while True:
             tag = read_int_from_memory(current)
@@ -15135,8 +15246,8 @@ class LinkmapCommand(GenericCommand):
             try:
                 idx = argv.index("-a")
                 link_map = int(argv[idx + 1], 0)
-                argv = argv[:idx] + argv[idx+2:]
-            except:
+                argv = argv[:idx] + argv[idx + 2:]
+            except Exception:
                 self.usage()
                 return
         else:
@@ -15155,7 +15266,7 @@ class LinkmapCommand(GenericCommand):
                 return
             try:
                 link_map = self.get_linkmap(filename)
-            except:
+            except Exception:
                 err("Failed to get link_map.")
                 return
 
@@ -15165,7 +15276,7 @@ class LinkmapCommand(GenericCommand):
 
         try:
             self.dump_linkmap(link_map)
-        except:
+        except Exception:
             err("Failed to parse.")
         return
 
@@ -15286,7 +15397,7 @@ class DynamicCommand(GenericCommand):
             val = read_int_from_memory(current)
             current += current_arch.ptrsize
 
-            if not tag in self.DT_TABLE:
+            if tag not in self.DT_TABLE:
                 break
 
             if is_32bit():
@@ -15300,13 +15411,12 @@ class DynamicCommand(GenericCommand):
         if not silent:
             info("filename: {:s}".format(filename))
         elf = Elf(filename)
-        sec = checksec(filename)
 
         phdrs = [phdr for phdr in elf.phdrs if phdr.p_type == Phdr.PT_DYNAMIC]
         if len(phdrs) == 0:
             return None
 
-        if sec["PIE"]:
+        if is_pie(filename):
             load_base = get_section_base_address(filename)
             dynamic = phdrs[0].p_vaddr + load_base
         else:
@@ -15334,16 +15444,16 @@ class DynamicCommand(GenericCommand):
             try:
                 idx = argv.index("-a")
                 dynamic = int(argv[idx + 1], 0)
-                argv = argv[:idx] + argv[idx+2:]
-            except:
+                argv = argv[:idx] + argv[idx + 2:]
+            except Exception:
                 self.usage()
                 return
         elif "-f" in argv:
             try:
                 idx = argv.index("-f")
                 filename = argv[idx + 1]
-                argv = argv[:idx] + argv[idx+2:]
-            except:
+                argv = argv[:idx] + argv[idx + 2:]
+            except Exception:
                 self.usage()
                 return
         else:
@@ -15365,7 +15475,7 @@ class DynamicCommand(GenericCommand):
                 return
             try:
                 dynamic = self.get_dynamic(filename)
-            except:
+            except Exception:
                 err("Failed to get _DYNAMIC.")
                 return
 
@@ -15375,7 +15485,7 @@ class DynamicCommand(GenericCommand):
 
         try:
             self.dump_dynamic(dynamic)
-        except:
+        except Exception:
             err("Failed to parse.")
         return
 
@@ -15388,7 +15498,7 @@ class DestructorDumpCommand(GenericCommand):
     _category_ = "Process Information"
 
     def ror(self, val, bits, arch_bits):
-        new_val = (val >> bits) | (val << (arch_bits-bits))
+        new_val = (val >> bits) | (val << (arch_bits - bits))
         mask = (1 << arch_bits) - 1
         return new_val & mask
 
@@ -15404,7 +15514,7 @@ class DestructorDumpCommand(GenericCommand):
     def perm(self, addr):
         try:
             return "[{:s}]".format(str(lookup_address(addr).section.permission))
-        except:
+        except Exception:
             return "[???]"
 
     def dump_tls_dtors(self):
@@ -15428,6 +15538,7 @@ class DestructorDumpCommand(GenericCommand):
             gef_print("{:s}: {:#x}{:s}: {:#x}".format("tls_dtor_list", head_p, self.perm(head_p), head))
 
         ptrsize = current_arch.ptrsize
+
         def read_fns(addr):
             func = read_int_from_memory(current)
             obj = read_int_from_memory(current + ptrsize * 1)
@@ -15438,7 +15549,7 @@ class DestructorDumpCommand(GenericCommand):
         while current:
             try:
                 func, obj, link_map, next_ = read_fns(current)
-            except:
+            except Exception:
                 err("Memory access error at {:#x}".format(current))
                 break
 
@@ -15449,20 +15560,20 @@ class DestructorDumpCommand(GenericCommand):
             try:
                 read_memory(decoded_fn, 1)
                 valid_msg = Color.colorify("valid", "bold green")
-            except gdb.error:
+            except gdb.MemoryError:
                 valid_msg = Color.colorify("invalid", "bold red")
 
             gef_print("    -> func:     {:#x}{:s}: {:#x} (={:s}{:s}) [{:s}]".format(current, self.perm(current), func, decoded_fn_s, sym, valid_msg))
-            gef_print("       obj:      {:#x}{:s}: {:#x}".format(current + ptrsize*1, self.perm(current + ptrsize*1), obj))
-            gef_print("       link_map: {:#x}{:s}: {:#x}".format(current + ptrsize*2, self.perm(current + ptrsize*2), link_map))
-            gef_print("       next:     {:#x}{:s}: {:#x}".format(current + ptrsize*3, self.perm(current + ptrsize*3), next_))
+            gef_print("       obj:      {:#x}{:s}: {:#x}".format(current + ptrsize * 1, self.perm(current + ptrsize * 1), obj))
+            gef_print("       link_map: {:#x}{:s}: {:#x}".format(current + ptrsize * 2, self.perm(current + ptrsize * 2), link_map))
+            gef_print("       next:     {:#x}{:s}: {:#x}".format(current + ptrsize * 3, self.perm(current + ptrsize * 3), next_))
             current = next_
         return
 
     def dump_exit_funcs(self, name):
         try:
-            head_p = parse_address("&"+name)
-        except:
+            head_p = parse_address("&" + name)
+        except Exception:
             err("Not found symbol ({:s})".format(name))
             return
 
@@ -15476,14 +15587,14 @@ class DestructorDumpCommand(GenericCommand):
         next_ = read_int_from_memory(current)
         idx = read_int_from_memory(current + ptrsize)
         current += ptrsize * 2
-        gef_print("    -> next:  {:#x}{:s}: {:#x}".format(head + ptrsize*0, self.perm(head + ptrsize*0), next_))
-        gef_print("       idx:   {:#x}{:s}: {:#x}".format(head + ptrsize*1, self.perm(head + ptrsize*1), idx))
+        gef_print("    -> next:  {:#x}{:s}: {:#x}".format(head + ptrsize * 0, self.perm(head + ptrsize * 0), next_))
+        gef_print("       idx:   {:#x}{:s}: {:#x}".format(head + ptrsize * 1, self.perm(head + ptrsize * 1), idx))
 
         def read_fns(addr):
             flavor = read_int_from_memory(addr)
-            fn = read_int_from_memory(addr + ptrsize*1)
-            arg = read_int_from_memory(addr + ptrsize*2)
-            dso_handle = read_int_from_memory(addr + ptrsize*3)
+            fn = read_int_from_memory(addr + ptrsize * 1)
+            arg = read_int_from_memory(addr + ptrsize * 2)
+            dso_handle = read_int_from_memory(addr + ptrsize * 3)
             return flavor, fn, arg, dso_handle
 
         fns_size = ptrsize * 4 # flavor, fn, arg, dso_handle
@@ -15496,8 +15607,8 @@ class DestructorDumpCommand(GenericCommand):
         for i in range(idx, -1, -1):
             addr = (current + fns_size * i) & mask
             try:
-                flavor, fn, arg, dso_handle= read_fns(addr)
-            except:
+                flavor, fn, arg, dso_handle = read_fns(addr)
+            except Exception:
                 err("Memory access error at {:#x}".format(addr))
                 break
             if fn == 0:
@@ -15509,14 +15620,14 @@ class DestructorDumpCommand(GenericCommand):
             try:
                 read_memory(decoded_fn, 1)
                 valid_msg = Color.colorify("valid", "bold green")
-            except gdb.error:
+            except gdb.MemoryError:
                 valid_msg = Color.colorify("invalid", "bold red")
 
             fns = "       fns[{:#x}]:{:#x}{:s}:".format(i, addr, self.perm(addr))
             gef_print("{} flavor:{:#x}".format(fns, flavor))
-            gef_print("{} func:{:#x} (={:s}{:s}) [{:s}]".format(" "*len(fns), fn, decoded_fn_s, sym, valid_msg))
-            gef_print("{} arg:{:#x}".format(" "*len(fns), arg))
-            gef_print("{} dso_handle:{:#x}".format(" "*len(fns), dso_handle))
+            gef_print("{} func:{:#x} (={:s}{:s}) [{:s}]".format(" " * len(fns), fn, decoded_fn_s, sym, valid_msg))
+            gef_print("{} arg:{:#x}".format(" " * len(fns), arg))
+            gef_print("{} dso_handle:{:#x}".format(" " * len(fns), dso_handle))
         return
 
     def yield_linkmap(self):
@@ -15524,12 +15635,12 @@ class DestructorDumpCommand(GenericCommand):
         while link_map:
             dic = {}
             dic["load_address"] = read_int_from_memory(link_map)
-            name_ptr = read_int_from_memory(link_map + current_arch.ptrsize*1)
+            name_ptr = read_int_from_memory(link_map + current_arch.ptrsize * 1)
             dic["name"] = dic["name_org"] = read_cstring_from_memory(name_ptr)
             if dic["name_org"] == "":
                 dic["name"] = "{:s}".format(get_filepath())
-            dic["dynamic"] = read_int_from_memory(link_map + current_arch.ptrsize*2)
-            dic["next"] = read_int_from_memory(link_map + current_arch.ptrsize*3)
+            dic["dynamic"] = read_int_from_memory(link_map + current_arch.ptrsize * 2)
+            dic["next"] = read_int_from_memory(link_map + current_arch.ptrsize * 3)
             yield dic
             link_map = dic["next"]
 
@@ -15541,7 +15652,7 @@ class DestructorDumpCommand(GenericCommand):
                 elf = Elf(link_map["name"])
                 try:
                     shdr = [s for s in elf.shdrs if s.sh_name == section_name][0]
-                except:
+                except Exception:
                     continue
                 if is_pie(link_map["name"]):
                     addr = shdr.sh_addr + link_map["load_address"]
@@ -15555,7 +15666,7 @@ class DestructorDumpCommand(GenericCommand):
             elf = Elf(get_filepath())
             try:
                 shdr = [s for s in elf.shdrs if s.sh_name == section_name][0]
-            except:
+            except Exception:
                 err("Not found {:s} section".format(section_name))
                 return
             addr = shdr.sh_addr
@@ -15573,7 +15684,7 @@ class DestructorDumpCommand(GenericCommand):
                 elf = Elf(link_map["name"])
                 try:
                     shdr = [s for s in elf.shdrs if s.sh_name == section_name][0]
-                except:
+                except Exception:
                     continue
                 entries = []
                 for i in range(shdr.sh_size // current_arch.ptrsize):
@@ -15598,7 +15709,7 @@ class DestructorDumpCommand(GenericCommand):
             elf = Elf(get_filepath())
             try:
                 shdr = [s for s in elf.shdrs if s.sh_name == section_name][0]
-            except:
+            except Exception:
                 err("Not found {:s} section".format(section_name))
                 return
             entries = []
@@ -15637,18 +15748,18 @@ class DestructorDumpCommand(GenericCommand):
             if is_arm32():
                 try:
                     self.tls = parse_address("(unsigned int)__aeabi_read_tp()")
-                except:
+                except Exception:
                     err("Not found symbol (__aeabi_read_tp)")
                     return
             else:
                 try:
                     self.tls = get_register("$TPIDR_EL0")
-                except:
+                except Exception:
                     err("Fail reading $TPIDR_EL0 register")
                     return
             try:
                 cookie_ptr = parse_address("&__pointer_chk_guard_local")
-            except:
+            except Exception:
                 err("Not found symbol (__pointer_chk_guard_local)")
                 return
             self.cookie = read_int_from_memory(cookie_ptr)
@@ -15700,7 +15811,7 @@ class GotCommand(GenericCommand):
             vmmap = get_process_maps()
             try:
                 return min([x.page_start for x in vmmap if x.path == filename_vmmap])
-            except:
+            except Exception:
                 # not found
                 return None
 
@@ -15714,7 +15825,7 @@ class GotCommand(GenericCommand):
         try:
             cmd = [self.readelf, "--relocs", "--wide", self.filename]
             lines = gef_execute_external(cmd, as_list=True)
-        except:
+        except Exception:
             lines = []
 
         output = {}
@@ -15779,7 +15890,7 @@ class GotCommand(GenericCommand):
         try:
             cmd = [self.objdump, "-j", ".plt", "-j", ".plt.sec", "-j", ".plt.got", "-d", self.filename]
             lines = gef_execute_external(cmd, as_list=True)
-        except:
+        except Exception:
             lines = []
 
         output = {}
@@ -15825,7 +15936,7 @@ class GotCommand(GenericCommand):
     def perm(self, addr):
         try:
             return "[{:s}]".format(str(lookup_address(addr).section.permission))
-        except:
+        except Exception:
             return "[???]"
 
     def get_section_name(self, addr):
@@ -16004,7 +16115,7 @@ class GotCommand(GenericCommand):
             # use specified file
             idx = argv.index("-f")
             self.filename_vmmap = self.filename = argv[idx + 1]
-            argv = argv[:idx] + argv[idx+2:]
+            argv = argv[:idx] + argv[idx + 2:]
         else:
             # use main binary
             self.filename = get_filepath() # /proc/<PID>/root/path/to/binary if another mnt namespace
@@ -16021,7 +16132,7 @@ class GotCommand(GenericCommand):
         if "-a" in argv:
             idx = argv.index("-a")
             self.base_address_hint = int(argv[idx + 1], 0)
-            argv = argv[:idx] + argv[idx+2:]
+            argv = argv[:idx] + argv[idx + 2:]
 
         # get the filtering parameter
         self.filter = []
@@ -16304,7 +16415,7 @@ class SyscallSearchCommand(GenericCommand):
             if num == syscall_num:
                 nr = "{:d} (={:#x})".format(num, num)
                 if self.verbose:
-                    param = ('\n'+" "*52).join(["{}: {}".format(i, param.param) for i, param in enumerate(entry.params, start=1)])
+                    param = ('\n' + " " * 52).join(["{}: {}".format(i, param.param) for i, param in enumerate(entry.params, start=1)])
                 else:
                     param = ""
                 gef_print("{:<25} {:<25} {}".format(nr, entry.name, param))
@@ -16316,7 +16427,7 @@ class SyscallSearchCommand(GenericCommand):
             if re.search(syscall_name_pattern, entry.name):
                 nr = "{:d} (={:#x})".format(num, num)
                 if self.verbose:
-                    param = ('\n'+" "*52).join(["{}: {}".format(i, param.param) for i, param in enumerate(entry.params, start=1)])
+                    param = ('\n' + " " * 52).join(["{}: {}".format(i, param.param) for i, param in enumerate(entry.params, start=1)])
                 else:
                     param = ""
                 gef_print("{:<25} {:<25} {}".format(nr, entry.name, param))
@@ -16338,13 +16449,13 @@ class SyscallSearchCommand(GenericCommand):
         if "-a" in argv:
             idx = argv.index("-a")
             arch = argv[idx + 1]
-            argv = argv[:idx] + argv[idx+2:]
+            argv = argv[:idx] + argv[idx + 2:]
 
         mode = None
         if "-m" in argv:
             idx = argv.index("-m")
             mode = argv[idx + 1]
-            argv = argv[:idx] + argv[idx+2:]
+            argv = argv[:idx] + argv[idx + 2:]
 
         if len(argv) != 1:
             self.usage()
@@ -16352,7 +16463,7 @@ class SyscallSearchCommand(GenericCommand):
 
         try:
             syscall_table = SyscallArgsCommand.get_syscall_table(arch, mode)
-        except:
+        except Exception:
             self.usage()
             return
 
@@ -16360,7 +16471,7 @@ class SyscallSearchCommand(GenericCommand):
         syscall_name_pattern = None
         try:
             syscall_num = int(argv[0], 0)
-        except:
+        except Exception:
             syscall_name_pattern = argv[0]
 
         if syscall_num is not None:
@@ -16902,7 +17013,7 @@ class SyscallArgsCommand(GenericCommand):
             for s in syscall_list[::]:
                 if name_list.count(s[1]) == 2: # already added
                     continue
-                syscall_list += [[s[0]+0x40000000, s[1], s[2]]]
+                syscall_list += [[s[0] + 0x40000000, s[1], s[2]]]
 
         elif arch == "X86" and mode == "32":
             register_list = ["$ebx", "$ecx", "$edx", "$esi", "$edi", "$ebp"]
@@ -19465,7 +19576,7 @@ class MagicCommand(GenericCommand):
                 val = read_int_from_memory(addr)
                 val_sym = get_symbol_string(val)
                 gef_print(f"{sym:42s}: {addr:#18x} [{perm:3s}] ({base:#18x} + {addr - base:#10x}) -> {val:#18x}{val_sym}")
-        except:
+        except Exception:
             gef_print(f"{sym:42s}: {'Not found':>18s}")
         return
 
@@ -19478,7 +19589,7 @@ class MagicCommand(GenericCommand):
 
         try:
             vtable = int(gdb.parse_and_eval(f"&{sym}"))
-        except:
+        except Exception:
             return
 
         gdb.execute("telescope {:#x} 22".format(vtable))
@@ -19638,7 +19749,7 @@ class MagicCommand(GenericCommand):
             else:
                 val = read_int_from_memory(addr)
                 gef_print(f"{sym:42s}: {addr:#18x} [{perm:3s}] ({base:#18x} + {addr - base:#10x}) -> {val:#18x}")
-        except:
+        except Exception:
             gef_print(f"{sym:42s}: {'Not found/recognized':>18s}")
         return
 
@@ -19768,7 +19879,7 @@ class OneGadgetCommand(GenericCommand):
             one_gadget = which("one_gadget")
             gef_print(titlify(f"{one_gadget} '{libc.path}' -l 1"))
             os.system(f"{one_gadget} '{libc.path}' -l 1")
-        except:
+        except Exception:
             err("Missing `one_gadget`, install with: `gem install one_gadget`.")
         return
 
@@ -19791,7 +19902,7 @@ class SeccompCommand(GenericCommand):
             seccomp = which("seccomp-tools")
             gef_print(titlify(f"{seccomp} dump '{path}'"))
             os.system(f"{seccomp} dump '{path}'")
-        except:
+        except Exception:
             err("Missing `seccomp-tools`, install with: `gem install seccomp-tools`.")
         return
 
@@ -19815,7 +19926,7 @@ class SysregCommand(GenericCommand):
             if filt and not any([f.lower() in regname.lower() for f in filt]):
                 continue
             regs[regname] = int(regvalue, 16)
-        regs = list(filter(lambda x: "$"+x[0] not in current_arch.all_registers, sorted(regs.items())))
+        regs = list(filter(lambda x: "$" + x[0] not in current_arch.all_registers, sorted(regs.items())))
         return regs # [[regname, regvalue], ...]
 
     def print_sysreg_compact(self, filt):
@@ -19827,16 +19938,16 @@ class SysregCommand(GenericCommand):
             return
         COLUMN = 3
         length = len(regs)
-        length_of_each_bank = (length+COLUMN-1)//COLUMN
+        length_of_each_bank = (length + COLUMN - 1) // COLUMN
         for i in range(length_of_each_bank):
             out = []
             for j in range(COLUMN):
-                if len(regs) > i + j*length_of_each_bank:
+                if len(regs) > i + j * length_of_each_bank:
                     if is_32bit():
-                        msg = "{:16s} = {:#10x}".format(*regs[i + j*length_of_each_bank])
+                        msg = "{:16s} = {:#10x}".format(*regs[i + j * length_of_each_bank])
                     else:
-                        msg = "{:25s} = {:#18x}".format(*regs[i + j*length_of_each_bank])
-                    if regs[i + j*length_of_each_bank][1] > 0:
+                        msg = "{:25s} = {:#18x}".format(*regs[i + j * length_of_each_bank])
+                    if regs[i + j * length_of_each_bank][1] > 0:
                         msg = Color.boldify(msg)
                     out.append(msg)
                 else:
@@ -19911,10 +20022,10 @@ class MmxSetCommand(GenericCommand):
         d = self.get_state(len(code))
         write_memory(d["pc"], code, len(code))
         if is_x86_64():
-            gdb.execute("set $rax = {:#x}".format(d["pc"]+5), to_string=True) # points to p64(value)
+            gdb.execute("set $rax = {:#x}".format(d["pc"] + 5), to_string=True) # points to p64(value)
         else:
-            gdb.execute("set $eax = {:#x}".format(d["pc"]+5), to_string=True) # points to p64(value)
-        gdb.execute("set $pc = {:#x}".format(d["pc"]+2), to_string=True) # skip "\xeb\xfe"
+            gdb.execute("set $eax = {:#x}".format(d["pc"] + 5), to_string=True) # points to p64(value)
+        gdb.execute("set $pc = {:#x}".format(d["pc"] + 2), to_string=True) # skip "\xeb\xfe"
         self.close_stdout()
         gdb.execute("stepi", to_string=True)
         self.revert_stdout()
@@ -19931,12 +20042,12 @@ class MmxSetCommand(GenericCommand):
         try:
             reg, value = ''.join(argv).split("=")
             value = int(value, 0)
-        except:
+        except Exception:
             self.usage()
             return
 
         # check register is valid or not
-        if not reg in ["$mm{:d}".format(i) for i in range(8)]:
+        if reg not in ["$mm{:d}".format(i) for i in range(8)]:
             err("Invalid register name")
             return
 
@@ -19976,7 +20087,7 @@ class MmxCommand(GenericCommand):
             regname = "$mm{:d}".format(i)
             reghex = ""
             for j in range(8):
-                c = (regs[i] >> (8*j)) & 0xff
+                c = (regs[i] >> (8 * j)) & 0xff
                 reghex += chr(c) if 0x20 <= c < 0x7f else '.'
             gef_print("{:s} : {:#018x}  |  {:s}".format(red(regname), regs[i], reghex))
         return
@@ -20005,25 +20116,25 @@ class XmmSetCommand(GenericCommand):
         try:
             reg, value = ''.join(argv).split("=")
             value = int(value, 0)
-        except:
+        except Exception:
             self.usage()
             return
 
         # check register is valid or not
         try:
             gdb.execute(f"info register {reg}", to_string=True)
-        except:
+        except Exception:
             err("Invalid register name")
             return
 
         # modify
         if "$xmm" in reg:
             for i in range(2):
-                v = (value >> (64*i)) & ((1<<64) - 1)
+                v = (value >> (64 * i)) & ((1 << 64) - 1)
                 gdb.execute(f"set {reg}.v2_int64[{i}]={v:#x}", to_string=True)
         elif "$ymm" in reg:
             for i in range(4):
-                v = (value >> (64*i)) & ((1<<64) - 1)
+                v = (value >> (64 * i)) & ((1 << 64) - 1)
                 gdb.execute(f"set {reg}.v4_int64[{i}]={v:#x}", to_string=True)
         else:
             err("Unsupported")
@@ -20058,20 +20169,18 @@ class SseCommand(GenericCommand):
                 gef_print("* xmm8-15 are introduced by AVX")
             reghex = ""
             for j in range(16):
-                c = (regs[i] >> (8*j)) & 0xff
+                c = (regs[i] >> (8 * j)) & 0xff
                 reghex += chr(c) if 0x20 <= c < 0x7f else '.'
             regname = "$xmm{:<2d}".format(i)
             gef_print("{:s} : {:#034x}  |  {:s}".format(red(regname), regs[i], reghex))
         return
 
     def print_sse_other(self):
-        red = lambda x: Color.colorify("{:4s}".format(x), "red bold")
-
         # mxcsr
         gef_print(titlify("MXCSR (MXCSR Control and Status Register)"))
         bit_info = [
             [15, "FZ", "Flush To Zero", ""],
-            [[13,14], "RC", "Rounding Control", "00: Round To Nearest, 01: Round Negative, 10: Round Positive, 11: Round To Zero"],
+            [[13, 14], "RC", "Rounding Control", "00: Round To Nearest, 01: Round Negative, 10: Round Positive, 11: Round To Zero"],
             [12, "PM", "Precision Exception Mask", ""],
             [11, "UM", "Underflow Exception Mask", ""],
             [10, "OM", "Overflow Exception Mask", ""],
@@ -20086,7 +20195,7 @@ class SseCommand(GenericCommand):
             [1, "DE", "Denormalized Operand Exception", ""],
             [0, "IE", "Invalid Operation Exception", ""],
         ]
-        reg = int(gdb.execute("info registers $mxcsr", to_string=True).split()[1],16)
+        reg = int(gdb.execute("info registers $mxcsr", to_string=True).split()[1], 16)
         PrintBitInfo("$mxcsr", 32, None, bit_info).print(reg)
         return
 
@@ -20120,7 +20229,7 @@ class AvxCommand(GenericCommand):
         for i in range(16 if is_x86_64() else 8):
             try:
                 result = gdb.execute(f"info registers $ymm{i}", to_string=True)
-            except:
+            except Exception:
                 continue
             result = result.replace("\n", "")
             r = re.findall(r"v2_int128 = \{.*?\[0x0\] = (0x[0-9a-f]+),.*?\[0x1\] = (0x[0-9a-f]+).*?\}", result)
@@ -20137,7 +20246,7 @@ class AvxCommand(GenericCommand):
                 regname = "$ymm{:<2d}".format(i)
                 reghex = ""
                 for j in range(32):
-                    c = (regs[i] >> (8*j)) & 0xff
+                    c = (regs[i] >> (8 * j)) & 0xff
                     reghex += chr(c) if 0x20 <= c < 0x7f else '.'
                 gef_print("{:s} : {:#066x}  |  {:s}".format(red(regname), regs[i], reghex))
         else:
@@ -20160,38 +20269,30 @@ class FpuCommand(GenericCommand):
     _category_ = "Show/Modify Register"
 
     def f2u(self, a):
-        def u(a):
-            return struct.unpack("<I",a)[0]
-        def pf(a):
-            return struct.pack("<f",a)
+        u = lambda a: struct.unpack("<I", a)[0]
+        pf = lambda a: struct.pack("<f", a)
         return u(pf(a))
 
     def u2f(self, a):
-        def p(a):
-            return struct.pack("<I",a&0xffffffff)
-        def uf(a):
-            return struct.unpack("<f",a)[0]
+        p = lambda a: struct.pack("<I", a & 0xffffffff)
+        uf = lambda a: struct.unpack("<f", a)[0]
         return uf(p(a))
 
     def d2u(self, a):
-        def uQ(a):
-            return struct.unpack("<Q",a)[0]
-        def pd(a):
-            return struct.pack("<d",a)
+        uQ = lambda a: struct.unpack("<Q", a)[0]
+        pd = lambda a: struct.pack("<d", a)
         return uQ(pd(a))
 
     def u2d(self, a):
-        def pQ(a):
-            return struct.pack("<Q",a&0xffffffffffffffff)
-        def ud(a):
-            return struct.unpack("<d",a)[0]
+        pQ = lambda a: struct.pack("<Q", a & 0xffffffffffffffff)
+        ud = lambda a: struct.unpack("<d", a)[0]
         return ud(pQ(a))
 
     def d2u80(self, a):
         value = ctypes.c_longdouble(a)
         BYTES = ctypes.POINTER(ctypes.c_byte * 10)
         ptr = ctypes.cast(ctypes.addressof(value), BYTES)
-        x = ["{:02x}".format(int(x)&0xff) for x in ptr[0][::-1]]
+        x = ["{:02x}".format(int(x) & 0xff) for x in ptr[0][::-1]]
         return int(''.join(x), 16)
 
     def bits_split(self, x, bits=32):
@@ -20225,14 +20326,14 @@ class FpuCommand(GenericCommand):
                     reg3h = int(gdb.execute("p {}.u64[0]".format(regname3), to_string=True).split()[2], 16)
                     reg3l = int(gdb.execute("p {}.u64[1]".format(regname3), to_string=True).split()[2], 16)
                     reg3 = (reg3h << 64) + reg3l
-                except:
+                except Exception:
                     reg3 = None
             else:
                 reg1 = int(gdb.execute("p {}.u".format(regname1), to_string=True).split()[2], 16)
                 reg2 = int(gdb.execute("p {}.u".format(regname2), to_string=True).split()[2], 16)
                 try:
                     reg3 = int(gdb.execute("p {}.u".format(regname3), to_string=True).split()[2], 16)
-                except:
+                except Exception:
                     reg3 = None
 
             fmt1 = "{:s}: {:15s} {:<#10x}".format(red(regname1), "{:<+.8e}".format(self.u2f(reg1)), reg1)
@@ -20290,10 +20391,10 @@ class FpuCommand(GenericCommand):
             [26, "AHP", "Alternative Half-Precision Control", ""],
             [25, "DN", "Default NaN mode Control", ""],
             [24, "FZ", "Flush-to-zero mode Control", ""],
-            [[22,23], "RMode", "Rounding Control", "00: Round To Nearest, 01: Round Positive, 10: Round Negative, 11: Round To Zero"],
-            [[20,21], "Stride", "", "IMPLEMENTATION DEFINED"],
+            [[22, 23], "RMode", "Rounding Control", "00: Round To Nearest, 01: Round Positive, 10: Round Negative, 11: Round To Zero"],
+            [[20, 21], "Stride", "", "IMPLEMENTATION DEFINED"],
             [19, "FZ16", "Flush-to-zero mode Control", "When FEAT_FP16 is implemented"],
-            [[16,17,18], "Len", "", "IMPLEMENTATION DEFINED"],
+            [[16, 17, 18], "Len", "", "IMPLEMENTATION DEFINED"],
             [15, "IDE", "Input Denormal floating-point Exception trap enable", ""],
             [12, "IXE", "Inexact floating-point Exception trap enable", ""],
             [11, "UFE", "Underflow floating-point Exception trap enable", ""],
@@ -20307,18 +20408,18 @@ class FpuCommand(GenericCommand):
             [1, "DZC", "Divide by Zero Cumulative floating-point exception bit", ""],
             [0, "IOC", "Invalid Operation Cumulative floating-point exception bit", ""],
         ]
-        reg = int(gdb.execute("info registers $fpscr", to_string=True).split()[1],16)
+        reg = int(gdb.execute("info registers $fpscr", to_string=True).split()[1], 16)
         PrintBitInfo("$fpscr", 32, None, bit_info).print(reg)
 
         # fpsid
         gef_print(titlify("FPSID (Floating-Point System ID Register)"))
         bit_info = [
-            [list(range(24,32)), "Implementer", "Implementer code", ""],
+            [list(range(24, 32)), "Implementer", "Implementer code", ""],
             [23, "SW", "Software bit", "Implementation of floating point instructions, 0:HW, 1:SW"],
-            [list(range(16,23)), "Subarchitecture", "Subarchitecture version number", ""],
-            [list(range(8,16)), "PartNum", "Part number", "IMPLEMENTATION DEFINED"],
-            [[4,5,6,7], "Variant", "Variant number", "IMPLEMENTATION DEFINED"],
-            [[0,1,2,3], "Revision", "Revisino number","IMPLEMENTATION DEFINED"],
+            [list(range(16, 23)), "Subarchitecture", "Subarchitecture version number", ""],
+            [list(range(8, 16)), "PartNum", "Part number", "IMPLEMENTATION DEFINED"],
+            [[4, 5, 6, 7], "Variant", "Variant number", "IMPLEMENTATION DEFINED"],
+            [[0, 1, 2, 3], "Revision", "Revisino number", "IMPLEMENTATION DEFINED"],
         ]
         impl = {
             0x00: "Reserved for software use",
@@ -20336,7 +20437,7 @@ class FpuCommand(GenericCommand):
             0x56: "Marvell International Ltd.",
             0x69: "Intel Corporation",
         }
-        reg = int(gdb.execute("info registers $fpsid", to_string=True).split()[1],16)
+        reg = int(gdb.execute("info registers $fpsid", to_string=True).split()[1], 16)
         PrintBitInfo("$fpsid", 32, None, bit_info).print(reg)
         gef_print("Implementer code")
         for k, v in impl.items():
@@ -20351,7 +20452,7 @@ class FpuCommand(GenericCommand):
             [28, "FP2V", "FPINST2 instruction valid bit", ""],
             [27, "VV", "VECITR valid bit", ""],
             [26, "TFV", "Trapped Fault Valid bit", ""],
-            [[8,9,10], "VECITR", "Vector iteration count", ""],
+            [[8, 9, 10], "VECITR", "Vector iteration count", ""],
             [7, "IDF", "Input Denormal trapped exception bit", ""],
             [4, "IXF", "Inexact trapped exception bit", ""],
             [3, "UFF", "Underflow trapped exception bit", ""],
@@ -20359,7 +20460,7 @@ class FpuCommand(GenericCommand):
             [1, "DZF", "Divide by Zero trapped exception bit", ""],
             [0, "IOF", "Invalid Operation trapped exception bit", ""],
         ]
-        reg = int(gdb.execute("info registers $fpexc", to_string=True).split()[1],16)
+        reg = int(gdb.execute("info registers $fpexc", to_string=True).split()[1], 16)
         PrintBitInfo("$fpexc", 32, None, bit_info).print(reg)
         return
 
@@ -20370,10 +20471,10 @@ class FpuCommand(GenericCommand):
             [26, "AHP", "Alternative Half-Precision Control", ""],
             [25, "DN", "Default NaN mode Control", ""],
             [24, "FZ", "Flush-to-zero mode Control", ""],
-            [[22,23], "RMode", "Rounding Control", "00: Round To Nearest, 01: Round Positive, 10: Round Negative, 11: Round To Zero"],
-            [[20,21], "Stride", "", "Unused"],
+            [[22, 23], "RMode", "Rounding Control", "00: Round To Nearest, 01: Round Positive, 10: Round Negative, 11: Round To Zero"],
+            [[20, 21], "Stride", "", "Unused"],
             [19, "FZ16", "Flush-to-zero mode Control", "When FEAT_FP16 is implemented"],
-            [[16,17,18], "Len", "", "Unused"],
+            [[16, 17, 18], "Len", "", "Unused"],
             [15, "IDE", "Input Denormal floating-point Exception trap enable", ""],
             [12, "IXE", "Inexact floating-point Exception trap enable", ""],
             [11, "UFE", "Underflow floating-point Exception trap enable", ""],
@@ -20381,7 +20482,7 @@ class FpuCommand(GenericCommand):
             [9, "DZE", "Divide by Zero floating-point Exception trap enable", ""],
             [8, "IOE", "Invalid Operation floating-point Exception trap enable", ""],
         ]
-        reg = int(gdb.execute("info registers $fpcr", to_string=True).split()[1],16)
+        reg = int(gdb.execute("info registers $fpcr", to_string=True).split()[1], 16)
         PrintBitInfo("$fpcr", 32, None, bit_info).print(reg)
 
         # fpsr
@@ -20399,7 +20500,7 @@ class FpuCommand(GenericCommand):
             [1, "DZC", "Divide by Zero Cumulative floating-point exception bit", ""],
             [0, "IOC", "Invalid Operation Cumulative floating-point exception bit", ""],
         ]
-        reg = int(gdb.execute("info registers $fpsr", to_string=True).split()[1],16)
+        reg = int(gdb.execute("info registers $fpsr", to_string=True).split()[1], 16)
         PrintBitInfo("$fpsr", 32, None, bit_info).print(reg)
         return
 
@@ -20409,7 +20510,7 @@ class FpuCommand(GenericCommand):
         bit_info = [
             [12, "X", "Infinity Control", ""],
             [[10, 11], "RC", "Rounding Control", "00: Round To Nearest, 01: Round Negative, 10: Round Positive, 11: Round To Zero"],
-            [[8,9], "PC", "Precision Control", "00: Signle Precison, 01: Reserved, 10: Double Precision, 11: Double-Extended Precision"],
+            [[8, 9], "PC", "Precision Control", "00: Signle Precison, 01: Reserved, 10: Double Precision, 11: Double-Extended Precision"],
             [5, "PM", "Precision Exception Mask", ""],
             [4, "UM", "Underflow Exception Mask", ""],
             [3, "OM", "Overflow Exception Mask", ""],
@@ -20417,7 +20518,7 @@ class FpuCommand(GenericCommand):
             [1, "DM", "Denormalized Opernd Exception Mask", ""],
             [0, "IM", "Invalid Operation Exception Mask", ""],
         ]
-        reg = int(gdb.execute("info registers $fctrl", to_string=True).split()[1],16)
+        reg = int(gdb.execute("info registers $fctrl", to_string=True).split()[1], 16)
         PrintBitInfo("$fctrl", 16, None, bit_info).print(reg)
 
         # fstat
@@ -20425,7 +20526,7 @@ class FpuCommand(GenericCommand):
         bit_info = [
             [15, "B",  "FPU Busy", ""],
             [14, "C3", "Condition Code", ""],
-            [[11,12,13], "TOP","Top of Stack Pointer", ""],
+            [[11, 12, 13], "TOP", "Top of Stack Pointer", ""],
             [10, "C2", "Condition Code", ""],
             [9, "C1", "Condition Code", ""],
             [8, "C0", "Condition Code", ""],
@@ -20438,41 +20539,41 @@ class FpuCommand(GenericCommand):
             [1, "DE", "Denormalized Operand Exception", ""],
             [0, "IE", "Invalid Operation Exception", ""],
         ]
-        reg = int(gdb.execute("info registers $fstat", to_string=True).split()[1],16)
+        reg = int(gdb.execute("info registers $fstat", to_string=True).split()[1], 16)
         PrintBitInfo("$fstat", 16, None, bit_info).print(reg)
 
         # ftag
         gef_print(titlify("FTAG (x87 FPU Tag Word)"))
         bit_info = [
-            [[14,15], "TAG(7)", "Reg7 Tag", "00: Valid, 01: Zero, 10: Invalid/Nan/Inf/Denormal, 11: Blank"],
-            [[12,13], "TAG(6)", "Reg6 Tag", "00: Valid, 01: Zero, 10: Invalid/Nan/Inf/Denormal, 11: Blank"],
-            [[10,11], "TAG(5)", "Reg5 Tag", "00: Valid, 01: Zero, 10: Invalid/Nan/Inf/Denormal, 11: Blank"],
-            [[8,9], "TAG(4)", "Reg4 Tag", "00: Valid, 01: Zero, 10: Invalid/Nan/Inf/Denormal, 11: Blank"],
-            [[6,7], "TAG(3)", "Reg3 Tag", "00: Valid, 01: Zero, 10: Invalid/Nan/Inf/Denormal, 11: Blank"],
-            [[4,5], "TAG(2)", "Reg2 Tag", "00: Valid, 01: Zero, 10: Invalid/Nan/Inf/Denormal, 11: Blank"],
-            [[2,3], "TAG(1)", "Reg1 Tag", "00: Valid, 01: Zero, 10: Invalid/Nan/Inf/Denormal, 11: Blank"],
-            [[0,1], "TAG(0)", "Reg0 Tag", "00: Valid, 01: Zero, 10: Invalid/Nan/Inf/Denormal, 11: Blank"],
+            [[14, 15], "TAG(7)", "Reg7 Tag", "00: Valid, 01: Zero, 10: Invalid/Nan/Inf/Denormal, 11: Blank"],
+            [[12, 13], "TAG(6)", "Reg6 Tag", "00: Valid, 01: Zero, 10: Invalid/Nan/Inf/Denormal, 11: Blank"],
+            [[10, 11], "TAG(5)", "Reg5 Tag", "00: Valid, 01: Zero, 10: Invalid/Nan/Inf/Denormal, 11: Blank"],
+            [[8, 9], "TAG(4)", "Reg4 Tag", "00: Valid, 01: Zero, 10: Invalid/Nan/Inf/Denormal, 11: Blank"],
+            [[6, 7], "TAG(3)", "Reg3 Tag", "00: Valid, 01: Zero, 10: Invalid/Nan/Inf/Denormal, 11: Blank"],
+            [[4, 5], "TAG(2)", "Reg2 Tag", "00: Valid, 01: Zero, 10: Invalid/Nan/Inf/Denormal, 11: Blank"],
+            [[2, 3], "TAG(1)", "Reg1 Tag", "00: Valid, 01: Zero, 10: Invalid/Nan/Inf/Denormal, 11: Blank"],
+            [[0, 1], "TAG(0)", "Reg0 Tag", "00: Valid, 01: Zero, 10: Invalid/Nan/Inf/Denormal, 11: Blank"],
         ]
-        reg = int(gdb.execute("info registers $ftag", to_string=True).split()[1],16)
+        reg = int(gdb.execute("info registers $ftag", to_string=True).split()[1], 16)
         PrintBitInfo("$ftag", 16, None, bit_info).print(reg)
 
         # $fiseg, $fioff
         gef_print(titlify("FCS:FIP (x87 FPU Last Instruction Pointer)"))
-        reg = int(gdb.execute("info registers $fiseg", to_string=True).split()[1],16)
-        reg = int(gdb.execute("info registers $fioff", to_string=True).split()[1],16)
+        reg = int(gdb.execute("info registers $fiseg", to_string=True).split()[1], 16)
+        reg = int(gdb.execute("info registers $fioff", to_string=True).split()[1], 16)
         PrintBitInfo("$fiseg(FCS)", 16, None, bit_info=[]).print(reg, split=False)
         PrintBitInfo("$fioff(FIP)", 32, None, bit_info=[]).print(reg, split=False)
 
         # $foseg, $fooff
         gef_print(titlify("FDS:FDP (x87 FPU Last Data(Operand) Pointer)"))
-        reg = int(gdb.execute("info registers $foseg", to_string=True).split()[1],16)
-        reg = int(gdb.execute("info registers $fooff", to_string=True).split()[1],16)
+        reg = int(gdb.execute("info registers $foseg", to_string=True).split()[1], 16)
+        reg = int(gdb.execute("info registers $fooff", to_string=True).split()[1], 16)
         PrintBitInfo("$foseg(FDS)", 16, None, bit_info=[]).print(reg, split=False)
         PrintBitInfo("$fooff(FDP)", 32, None, bit_info=[]).print(reg, split=False)
 
         # $fop
         gef_print(titlify("FOP (x87 FPU Last Instruction Opcode)"))
-        reg = int(gdb.execute("info registers $fop", to_string=True).split()[1],16)
+        reg = int(gdb.execute("info registers $fop", to_string=True).split()[1], 16)
         PrintBitInfo("$fop", 11, None, bit_info=[]).print(reg, split=False)
         return
 
@@ -20662,7 +20763,7 @@ class ErrnoCommand(GenericCommand):
                     return
             else:
                 val = int(argv[0], 0)
-        except:
+        except Exception:
             self.usage()
             return
 
@@ -20700,9 +20801,9 @@ class ExtractHeapAddrCommand(GenericCommand):
     def reveal(self, fd):
         L = fd >> 36
         for i in range(3):
-            temp = (fd >> (36-(i+1)*8)) & 0xff
-            element = ((L>>4) ^ temp) & 0xff
-            L = (L<<8) + element
+            temp = (fd >> (36 - (i + 1) * 8)) & 0xff
+            element = ((L >> 4) ^ temp) & 0xff
+            L = (L << 8) + element
         return L << 12
 
     def print_source(self):
@@ -20710,9 +20811,9 @@ class ExtractHeapAddrCommand(GenericCommand):
         s += "def reveal(fd):\n"
         s += "    L = fd >> 36\n"
         s += "    for i in range(3):\n"
-        s += "        temp = (fd >> (36-(i+1)*8)) & 0xff\n"
-        s += "        element = ((L>>4) ^ temp) & 0xff\n"
-        s += "        L = (L<<8) + element\n"
+        s += "        temp = (fd >> (36 - (i + 1) * 8)) & 0xff\n"
+        s += "        element = ((L >> 4) ^ temp) & 0xff\n"
+        s += "        L = (L << 8) + element\n"
         s += "    return L << 12"
         gef_print(s)
         return
@@ -20751,33 +20852,25 @@ class U2dCommand(GenericCommand):
     _example_ += " * only ~64bit supported (Unsupported 80bit, 128bit)"
     _category_ = "Misc"
 
-    def f2u(self, a):
-        def u(a):
-            return struct.unpack("<I",a)[0]
-        def pf(a):
-            return struct.pack("<f",a)
-        return u(pf(a))
+    def f2u(self, x):
+        u = lambda a: struct.unpack("<I", a)[0]
+        pf = lambda a: struct.pack("<f", a)
+        return u(pf(x))
 
-    def u2f(self, a):
-        def p(a):
-            return struct.pack("<I",a&0xffffffff)
-        def uf(a):
-            return struct.unpack("<f",a)[0]
-        return uf(p(a))
+    def u2f(self, x):
+        p = lambda a: struct.pack("<I", a & 0xffffffff)
+        uf = lambda a: struct.unpack("<f", a)[0]
+        return uf(p(x))
 
-    def d2u(self, a):
-        def uQ(a):
-            return struct.unpack("<Q",a)[0]
-        def pd(a):
-            return struct.pack("<d",a)
-        return uQ(pd(a))
+    def d2u(self, x):
+        uQ = lambda a: struct.unpack("<Q", a)[0]
+        pd = lambda a: struct.pack("<d", a)
+        return uQ(pd(x))
 
-    def u2d(self, a):
-        def pQ(a):
-            return struct.pack("<Q",a&0xffffffffffffffff)
-        def ud(a):
-            return struct.unpack("<d",a)[0]
-        return ud(pQ(a))
+    def u2d(self, x):
+        pQ = lambda a: struct.pack("<Q", a & 0xffffffffffffffff)
+        ud = lambda a: struct.unpack("<d", a)[0]
+        return ud(pQ(x))
 
     def translate_from_float(self, n):
         gef_print(titlify("double -> unsigned long long"))
@@ -20826,7 +20919,7 @@ class U2dCommand(GenericCommand):
             else:
                 n = int(argv[0], 0)
                 self.translate_from_int(n)
-        except:
+        except Exception:
             self.usage()
         return
 
@@ -20852,7 +20945,7 @@ class PackCommand(GenericCommand):
 
         try:
             value = int(argv[0], 0)
-        except:
+        except Exception:
             self.usage()
             return
         gef_print("pack8:   {}".format(p8(value & 0xff)))
@@ -20892,7 +20985,7 @@ class UnpackCommand(GenericCommand):
             return
 
         try:
-            value = codecs.escape_decode(argv[0])[0] + b"\0"*16
+            value = codecs.escape_decode(argv[0])[0] + b"\0" * 16
         except binascii.Error:
             gef_print("Could not decode '\\xXX' encoded string \"{}\"".format(argv[0]))
             return
@@ -20985,22 +21078,14 @@ class ByteswapCommand(GenericCommand):
 
         try:
             x = int(argv[0], 0)
-        except:
+        except Exception:
             self.usage()
             return
 
-        def p(a):
-            return struct.pack("<I",a&0xffffffff)
-
-        def ube(a):
-            return struct.unpack(">I",a)[0]
-
-        def pQ(a):
-            return struct.pack("<Q",a&0xffffffffffffffff)
-
-        def uQbe(a):
-            return struct.unpack(">Q",a)[0]
-
+        p = lambda a: struct.pack("<I", a & 0xffffffff)
+        ube = lambda a: struct.unpack(">I", a)[0]
+        pQ = lambda a: struct.pack("<Q", a & 0xffffffffffffffff)
+        uQbe = lambda a: struct.unpack(">Q", a)[0]
         converted32 = ube(p(x))
         converted64 = uQbe(pQ(x))
 
@@ -21756,7 +21841,7 @@ class KernelAddressHeuristicFinder:
                         addr = int(m.group(1), 16)
                         try:
                             return read_int_from_memory(addr)
-                        except:
+                        except Exception:
                             pass
         return None
 
@@ -22105,8 +22190,8 @@ class KernelbaseCommand(GenericCommand):
         res = get_maps_by_pagewalk("pagewalk -q --simple")
         res = sorted(set(res.splitlines()))
         res = list(filter(lambda line: line.endswith("]"), res))
-        res = list(filter(lambda line: not "[+]" in line, res))
-        res = list(filter(lambda line: not "*" in line, res))
+        res = list(filter(lambda line: "[+]" not in line, res))
+        res = list(filter(lambda line: "*" not in line, res))
 
         if is_x86():
             for line in res:
@@ -22168,11 +22253,11 @@ class KernelbaseCommand(GenericCommand):
             found = False
             ro = None
             for vaddr, size, perm in maps:
-                if found == False:
+                if found is False:
                     if vaddr == kbase: # search kernel base
                         found = True
                     continue
-                if found == True:
+                if found is True:
                     if perm == target_perm: # kernel data is next to kernel base
                         if ro is None:
                             ro = [vaddr, size]
@@ -22196,11 +22281,11 @@ class KernelbaseCommand(GenericCommand):
             found = False
             rw = None
             for vaddr, size, perm in maps:
-                if found == False:
+                if found is False:
                     if vaddr == krobase: # search kernel rodata base
                         found = True
                     continue
-                if found == True:
+                if found is True:
                     if perm == target_perm: # kernel data is next to kernel base
                         if rw is None:
                             rw = [vaddr, size]
@@ -22273,14 +22358,17 @@ class KernelVersionCommand(GenericCommand):
                 continue
             if addr[0] >= krwbase:
                 continue
-            area.append([addr[0], addr[0]+addr[1]])
+            area.append([addr[0], addr[0] + addr[1]])
         if area == []:
             return None
 
         for start, end in area:
-            data = read_memory(start, end-start)
+            try:
+                data = read_memory(start, end - start)
+            except gdb.MemoryError:
+                continue
             data = ''.join([chr(x) for x in data])
-            r = re.findall("(Linux version (?:\d+\.[\d.]*\d)[ -~]+)", data)
+            r = re.findall(r"(Linux version (?:\d+\.[\d.]*\d)[ -~]+)", data)
             if not r:
                 continue
             kernel_version_string = r[0]
@@ -22318,7 +22406,7 @@ class KernelCmdlineCommand(GenericCommand):
             ptr = read_int_from_memory(saved_command_line)
             cmdline = read_cstring_from_memory(ptr)
             return ptr, cmdline
-        except:
+        except Exception:
             return None
 
     @only_if_gdb_running
@@ -22362,7 +22450,7 @@ class KernelTaskCommand(GenericCommand):
                 # read check
                 try:
                     pos = read_int_from_memory(pos)
-                except: # memory read error
+                except Exception: # memory read error
                     found = False
                     break
                 # list validate
@@ -22416,7 +22504,7 @@ class KernelTaskCommand(GenericCommand):
         """
         # backward search from `comm`
         for i in range(0x100):
-            offset_cred = offset_comm - ((i+1) * current_arch.ptrsize)
+            offset_cred = offset_comm - ((i + 1) * current_arch.ptrsize)
             for task in task_addrs:
                 val1 = read_int_from_memory(task + offset_cred)
                 val2 = read_int_from_memory(task + offset_cred - current_arch.ptrsize)
@@ -22459,7 +22547,7 @@ class KernelTaskCommand(GenericCommand):
         uid_gid_size = 4 * 8 # uid_t:4byte. len([uid,gid,suid,sgid,euid,egid,fsuid,fsgid]) == 8
         offset_uid = 4
         ret = read_memory(init_task_cred + offset_uid, uid_gid_size)
-        if ret == b"\0"*uid_gid_size:
+        if ret == b"\0" * uid_gid_size:
             pass
         else:
             offset_uid += 4 + current_arch.ptrsize + 4
@@ -22489,7 +22577,7 @@ class KernelTaskCommand(GenericCommand):
         if offset_uid is None:
             return
 
-        ids_str = ','.join(["uid","gid","suid","sgid","euid","egid","fsuid","fsgid"])
+        ids_str = ','.join(["uid", "gid", "suid", "sgid", "euid", "egid", "fsuid", "fsgid"])
         fmt = "{:<18s}: {:<16s} {:<18s} [{}]"
         legend = ["task", "task->comm", "task->cred", ids_str]
         gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
@@ -22499,6 +22587,7 @@ class KernelTaskCommand(GenericCommand):
             uids = [u32(read_memory(cred + offset_uid + j * 4, 4)) for j in range(8)]
             gef_print("{:#018x}: {:<16s} {:#018x} {}".format(task, comm_string, cred, uids))
         return
+
 
 @register_command
 class KernelModuleCommand(GenericCommand):
@@ -22641,22 +22730,22 @@ class KernelModuleCommand(GenericCommand):
                     valid = False
                     break
                 # size align check
-                cand_size = u32(read_memory(module + offset_layout + current_arch.ptrsize + 4*0, 4))
+                cand_size = u32(read_memory(module + offset_layout + current_arch.ptrsize + 4 * 0, 4))
                 if cand_size == 0 or cand_size & 0xfff:
                     valid = False
                     break
                 # text_size align check
-                cand_text_size = u32(read_memory(module + offset_layout + current_arch.ptrsize + 4*1, 4))
+                cand_text_size = u32(read_memory(module + offset_layout + current_arch.ptrsize + 4 * 1, 4))
                 if cand_text_size == 0 or cand_text_size & 0xfff:
                     valid = False
                     break
                 # ro_size align check
-                cand_ro_size = u32(read_memory(module + offset_layout + current_arch.ptrsize + 4*2, 4))
+                cand_ro_size = u32(read_memory(module + offset_layout + current_arch.ptrsize + 4 * 2, 4))
                 if cand_ro_size == 0 or cand_ro_size & 0xfff:
                     valid = False
                     break
                 # ro_after_init_size align check
-                cand_ro_after_init_size = u32(read_memory(module + offset_layout + current_arch.ptrsize + 4*3, 4))
+                cand_ro_after_init_size = u32(read_memory(module + offset_layout + current_arch.ptrsize + 4 * 3, 4))
                 if cand_ro_after_init_size == 0 or cand_ro_after_init_size & 0xfff:
                     valid = False
                     break
@@ -22785,7 +22874,7 @@ class KernelCharacterDevicesCommand(GenericCommand):
         try:
             cdev_map_ = read_int_from_memory(cdev_map)
             info("*cdev_map: {:#x}".format(cdev_map_))
-        except:
+        except Exception:
             err("cdev_map is not initialized")
             return None
 
@@ -22797,7 +22886,7 @@ class KernelCharacterDevicesCommand(GenericCommand):
                 cdev = read_int_from_memory(addr + 6 * current_arch.ptrsize)
                 dev = u32(read_memory(addr + current_arch.ptrsize, 4))
                 major = dev >> 20
-                minor = dev & ((1<<20) - 1)
+                minor = dev & ((1 << 20) - 1)
                 if cdev and cdev not in seen:
                     cdev_addrs.append([cdev, major, minor])
                     seen.append(cdev)
@@ -22818,7 +22907,7 @@ class KernelCharacterDevicesCommand(GenericCommand):
                     try:
                         pos_next = read_int_from_memory(pos_next)
                         pos_prev = read_int_from_memory(pos_prev) + current_arch.ptrsize
-                    except: # memory read error
+                    except Exception: # memory read error
                         valid = False
                         break
                     # list validate
@@ -22862,12 +22951,12 @@ class KernelCharacterDevicesCommand(GenericCommand):
         for chrdev in chrdev_addrs:
             major = u32(read_memory(chrdev + current_arch.ptrsize, 4))
             minor = u32(read_memory(chrdev + current_arch.ptrsize + 4, 4))
-            name_string = read_cstring_from_memory(chrdev + current_arch.ptrsize + 4*3) or "<None>"
-            off = chrdev + current_arch.ptrsize + 4*3 + 64
+            name_string = read_cstring_from_memory(chrdev + current_arch.ptrsize + 4 * 3) or "<None>"
+            off = chrdev + current_arch.ptrsize + 4 * 3 + 64
             while off % current_arch.ptrsize: # align
                 off += 1
             cdev = read_int_from_memory(off)
-            merged[major, minor] = {"chrdev":chrdev, "name":name_string, "cdev":cdev}
+            merged[major, minor] = {"chrdev": chrdev, "name": name_string, "cdev": cdev}
 
         # merge cdev (from cdev_map)
         for cdev, major, minor in cdev_addrs:
@@ -22880,10 +22969,10 @@ class KernelCharacterDevicesCommand(GenericCommand):
                 if merged[major, minor]["name"] == "<None>":
                     merged[major, minor]["name"] = name_string
             else:
-                merged[major, minor] = {"chrdev": 0x0, "name":name_string, "cdev":cdev}
+                merged[major, minor] = {"chrdev": 0x0, "name": name_string, "cdev": cdev}
 
         # add ops info
-        off_ops = self.get_offset_ops([v["cdev"] for k,v in merged.items() if v["cdev"]])
+        off_ops = self.get_offset_ops([v["cdev"] for k, v in merged.items() if v["cdev"]])
         if off_ops is None:
             return
         for k in merged.keys():
@@ -22981,7 +23070,7 @@ class KernelFopsCommand(GenericCommand):
             try:
                 addr = int(argv[0], 16)
                 addrs = [read_int_from_memory(addr + current_arch.ptrsize * i) for i in range(len(members))]
-            except:
+            except Exception:
                 self.usage()
                 return
             fmt = "[{:3s}] {:<10s} {:<20s} {:s}"
@@ -23027,7 +23116,7 @@ class SyscallTableViewCommand(GenericCommand):
                 break
             try:
                 read_int_from_memory(syscall_function_addr) # if entry is valid, no error
-            except:
+            except Exception:
                 break
             symbol = get_symbol_string(syscall_function_addr, nosymbol_string=" <NO_SYMBOL>")
             seen[syscall_function_addr] = seen.get(syscall_function_addr, 0) + 1
@@ -23065,7 +23154,7 @@ class SyscallTableViewCommand(GenericCommand):
             idx = argv.index("--filter")
             pattern = argv[idx + 1]
             self.filter.append(pattern)
-            argv = argv[:idx] + argv[idx+2:]
+            argv = argv[:idx] + argv[idx + 2:]
 
         if argv:
             self.usage()
@@ -23099,15 +23188,15 @@ class AuxvCommand(GenericCommand):
             else:
                 num = -1
             if k == "AT_NULL":
-                gef_print("[{:#4x}] {:16s} {:#x} (End of vector)".format(num, k+":", v))
+                gef_print("[{:#4x}] {:16s} {:#x} (End of vector)".format(num, k + ":", v))
             elif k in ["AT_EXECFN", "AT_PLATFORM"]:
                 s = read_cstring_from_memory(v)
-                gef_print("[{:#4x}] {:16s} {:#x}{:s}{}".format(num, k+":", v, RIGHT_ARROW, Color.yellowify(repr(s))))
+                gef_print("[{:#4x}] {:16s} {:#x}{:s}{}".format(num, k + ":", v, RIGHT_ARROW, Color.yellowify(repr(s))))
             elif k in ["AT_RANDOM"]:
                 s = read_int_from_memory(v)
-                gef_print("[{:#4x}] {:16s} {:#x}{:s}{:#x}".format(num, k+":", v, RIGHT_ARROW, s))
+                gef_print("[{:#4x}] {:16s} {:#x}{:s}{:#x}".format(num, k + ":", v, RIGHT_ARROW, s))
             else:
-                gef_print("[{:#4x}] {:16s} {:#x}".format(num, k+":", v))
+                gef_print("[{:#4x}] {:16s} {:#x}".format(num, k + ":", v))
         return
 
 
@@ -23121,7 +23210,7 @@ class ArgvCommand(GenericCommand):
     def get_address_from_symbol(self, symbol):
         try:
             return parse_address(symbol)
-        except:
+        except Exception:
             return None
 
     def print_from_mem(self, array, verbose):
@@ -23190,7 +23279,7 @@ class EnvpCommand(GenericCommand):
     def get_address_from_symbol(self, symbol):
         try:
             return parse_address(symbol)
-        except:
+        except Exception:
             return None
 
     def print_from_mem(self, array, verbose):
@@ -23330,7 +23419,7 @@ class CetStatusCommand(GenericCommand):
             gdb.execute("set $eax = 0x180", to_string=True) # arch_prctl
             gdb.execute("set $ebx = 0x3001", to_string=True) # ARCH_CET_STATUS
             gdb.execute("set $ecx = $esp", to_string=True) # buffer
-        gdb.execute("set $pc = {:#x}".format(d["pc"]+2), to_string=True) # skip "\xeb\xfe"
+        gdb.execute("set $pc = {:#x}".format(d["pc"] + 2), to_string=True) # skip "\xeb\xfe"
         self.close_stdout()
         gdb.execute("stepi", to_string=True)
         self.revert_stdout()
@@ -23347,7 +23436,7 @@ class CetStatusCommand(GenericCommand):
 
         try:
             r = self.execute_get_cet_status()
-        except:
+        except Exception:
             err("Execute code fails. Memory write feature may not be supported.")
             return
 
@@ -23381,7 +23470,7 @@ class TlsCommand(GenericCommand):
     @staticmethod
     def getfsgs_qemu_usermode():
         def slice_unpack(data, n):
-            tmp = [data[i:i+n] for i in range(0, len(data), n)]
+            tmp = [data[i:i + n] for i in range(0, len(data), n)]
             return list(map(u64 if n == 8 else u32, tmp))
         vmmap = get_process_maps()
         for m in vmmap[::-1]:
@@ -23391,8 +23480,8 @@ class TlsCommand(GenericCommand):
             data = slice_unpack(data, current_arch.ptrsize)
             addr = [x for x in range(m.page_start, m.page_end, current_arch.ptrsize)]
             assert len(data) == len(addr)
-            for i in range(len(data)-2):
-                if data[i] == addr[i] and data[i+2] == addr[i] and (data[i+5] & 0xff) == 0 and data[i+5] != 0:
+            for i in range(len(data) - 2):
+                if data[i] == addr[i] and data[i + 2] == addr[i] and (data[i + 5] & 0xff) == 0 and data[i + 5] != 0:
                     return addr[i]
         return 0
 
@@ -23416,7 +23505,10 @@ class TlsCommand(GenericCommand):
         value.contents.value = 0
         libc = ctypes.CDLL('libc.so.6')
         result = libc.ptrace(PTRACE_ARCH_PRCTL, lwpid, value, ARCH_GET_FS)
-        return value.contents.value or 0
+        if result == 0:
+            return value.contents.value or 0
+        else:
+            return 0
 
     @staticmethod
     def getgs():
@@ -23438,7 +23530,10 @@ class TlsCommand(GenericCommand):
         value.contents.value = 0
         libc = ctypes.CDLL('libc.so.6')
         result = libc.ptrace(PTRACE_ARCH_PRCTL, lwpid, value, ARCH_GET_GS)
-        return value.contents.value or 0
+        if result == 0:
+            return value.contents.value or 0
+        else:
+            return 0
 
     @only_if_gdb_running
     @only_if_gdb_target_local
@@ -23533,8 +23628,8 @@ class GdtInfoCommand(GenericCommand):
     @staticmethod
     def seg2str(v):
         rpl = v & 0b11
-        ti = (v>>2) & 0b1
-        index = (v>>3)
+        ti = (v >> 2) & 0b1
+        index = (v >> 3)
         return f"{v:#4x} (=rpl:{rpl}, ti:{ti}, index:{index})"
 
     # dump segment register
@@ -23569,12 +23664,12 @@ class GdtInfoCommand(GenericCommand):
         d['_value'] = val
 
         d['limit0'] = val & 0xffff
-        d['base0'] = (val>>16) & 0xffff
-        d['base1'] = (val>>32) & 0xff
-        d['_access_bytes'] = (val>>40) & 0xff
-        d['limit1'] = (val>>48) & 0x0f
-        d['_flag_bytes'] = (val>>52)&0x0f
-        d['base2'] = (val>>56) & 0xff
+        d['base0'] = (val >> 16) & 0xffff
+        d['base1'] = (val >> 32) & 0xff
+        d['_access_bytes'] = (val >> 40) & 0xff
+        d['limit1'] = (val >> 48) & 0x0f
+        d['_flag_bytes'] = (val >> 52) & 0x0f
+        d['base2'] = (val >> 56) & 0xff
 
         d['p'] = (d['_access_bytes'] >> 7) & 0x01
         d['dpl'] = (d['_access_bytes'] >> 5) & 0x03
@@ -23585,28 +23680,30 @@ class GdtInfoCommand(GenericCommand):
         d['rw'] = (d['_access_bytes'] >> 1) & 0x01
         d['ac'] = (d['_access_bytes'] >> 0) & 0x01
 
-        d['gr'] = (d['_flag_bytes']>>3) & 0x01
-        d['db'] = (d['_flag_bytes']>>2) & 0x01
-        d['l'] = (d['_flag_bytes']>>1) & 0x01
-        d['avl'] = (d['_flag_bytes']>>0) & 0x01
-        d['_FLAGS'] = (d['_flag_bytes']<<12) | d['_access_bytes'] # for easy use
+        d['gr'] = (d['_flag_bytes'] >> 3) & 0x01
+        d['db'] = (d['_flag_bytes'] >> 2) & 0x01
+        d['l'] = (d['_flag_bytes'] >> 1) & 0x01
+        d['avl'] = (d['_flag_bytes'] >> 0) & 0x01
+        d['_FLAGS'] = (d['_flag_bytes'] << 12) | d['_access_bytes'] # for easy use
 
-        d['_limit'] = ((d['limit1']<<16) | d['limit0']) * ({0:1, 1:4096}[d['gr']])
-        d['_base'] = (d['base2']<<24) | (d['base1']<<16) | d['base0']
+        grsize = {0: 1, 1: 4096}[d['gr']]
+        d['_limit'] = ((d['limit1'] << 16) | d['limit0']) * grsize
+        d['_base'] = (d['base2'] << 24) | (d['base1'] << 16) | d['base0']
 
         # create memo
         if d['ex'] == 0: # data
             d['_exs'] = "DATA"
-            d['_rws'] = ["RO","RW"][d['rw']]
-            d['_dcs'] = ["UP","DN"][d['dc']]
+            d['_rws'] = ["RO", "RW"][d['rw']]
+            d['_dcs'] = ["UP", "DN"][d['dc']]
         else: # code
             d['_exs'] = "CODE"
-            d['_rws'] = ["RO","RX"][d['rw']]
-            d['_dcs'] = ["NC","CO"][d['dc']]
+            d['_rws'] = ["RO", "RX"][d['rw']]
+            d['_dcs'] = ["NC", "CO"][d['dc']]
 
-        d['_ss'] = ["SYS","C/D"][d['s']]
-        d['_dbl'] = "{:d}".format( (d['db']<<1)|d['l'] )
-        d['_dbls'] = ["16bit","64bit","32bit","(N/A)"][ (d['db']<<1)|d['l'] ]
+        d['_ss'] = ["SYS", "C/D"][d['s']]
+        dbl = (d['db'] << 1) | d['l']
+        d['_dbl'] = "{:d}".format(dbl)
+        d['_dbls'] = ["16bit", "64bit", "32bit", "(N/A)"][dbl]
 
         # for TSS/LDT
         if isinstance(vals, list):
@@ -23614,7 +23711,7 @@ class GdtInfoCommand(GenericCommand):
             d['_value2'] = d['_value']
             d['_value'] = val
             d['base3'] = val & 0xffffffff
-            d['_base'] = (d['base3']<<32) | d['_base']
+            d['_base'] = (d['base3'] << 32) | d['_base']
         return d
 
     @staticmethod
@@ -23644,7 +23741,8 @@ class GdtInfoCommand(GenericCommand):
 
     @staticmethod
     def segval2str_legend():
-        legend = ""
+        legend = "[ #] "
+        legend += f"{'segment name':20}: "
         legend += f"{'value':18} : {'base':>18} {'limit/size':} "
         legend += f"{'gr':} {'dbl':}      {'avl':>} "
         legend += f"{'p':} {'dpl':} {'s':}      "
@@ -23657,9 +23755,8 @@ class GdtInfoCommand(GenericCommand):
         if is_alive():
             for k in ['cs', 'ds', 'es', 'fs', 'gs', 'ss']:
                 v = get_register(k)
-                rpl = v & 0b11
-                ti = (v>>2) & 0b1
-                index = int(v>>3)
+                ti = (v >> 2) & 0b1
+                index = int(v >> 3)
                 if v != 0 and ti == 0:
                     regs[index] = regs.get(index, []) + [k]
         return regs
@@ -23691,21 +23788,21 @@ class GdtInfoCommand(GenericCommand):
         info("*** This is an {:s} (GDT/LDT exist per-CPU) ***".format(Color.boldify("EXAMPLE")))
         registers_color = get_gef_setting("theme.dereference_register_value")
         # print legend
-        legend = f"[ #] {'segment name':17} : " + self.segval2str_legend()
+        legend = self.segval2str_legend()
         gef_print(Color.colorify(legend, get_gef_setting("theme.table_heading")))
         # regs check
         regs = self.get_segreg_list()
         # parse entry
         for (i, print_flag, segname, value) in entries:
             # get segment regs value
-            reglist = ', '.join(regs.get(i,[]))
+            reglist = ', '.join(regs.get(i, []))
             if reglist:
                 reglist = LEFT_ARROW + reglist
             # decode and print
             if print_flag:
-                fmt = f"[{i:>2}] {segname:17} : " + self.segval2str(value) + " " + Color.colorify(f"{reglist:s}", registers_color)
+                fmt = f"[{i:>2}] {segname:20}: " + self.segval2str(value) + " " + Color.colorify(f"{reglist:s}", registers_color)
             else:
-                fmt = f"[{i:>2}] {segname:17} : {value:#018x} " + Color.colorify(f"{reglist:s}", registers_color)
+                fmt = f"[{i:>2}] {segname:20}: {value:#018x} " + Color.colorify(f"{reglist:s}", registers_color)
             gef_print(fmt)
         return
 
@@ -23850,10 +23947,10 @@ class MemoryCompareCommand(GenericCommand):
         diff_found = False
         asterisk = True
         for pos in range(0, self.size, 16):
-            f1_bin = from1data[pos : pos+16]
-            f2_bin = from2data[pos : pos+16]
+            f1_bin = from1data[pos : pos + 16]
+            f2_bin = from2data[pos : pos + 16]
             if f1_bin == f2_bin:
-                if asterisk == False:
+                if asterisk is False:
                     gef_print("*")
                     asterisk = True
                 continue
@@ -23876,14 +23973,14 @@ class MemoryCompareCommand(GenericCommand):
                 f2_hex.append(color_func("{:02x}".format(f2_bin[i])))
                 f1_ascii.append(color_func(chr(f1_bin[i]) if 0x20 <= f1_bin[i] < 0x7f else "."))
                 f2_ascii.append(color_func(chr(f2_bin[i]) if 0x20 <= f2_bin[i] < 0x7f else "."))
-            f1_hex_s = ' '.join(f1_hex) + " " * ((16 - len(f1_hex))*3)
-            f2_hex_s = ' '.join(f2_hex) + " " * ((16 - len(f2_hex))*3)
+            f1_hex_s = ' '.join(f1_hex) + " " * ((16 - len(f1_hex)) * 3)
+            f2_hex_s = ' '.join(f2_hex) + " " * ((16 - len(f2_hex)) * 3)
             f1_ascii_s = ''.join(f1_ascii) + " " * (16 - len(f1_ascii))
             f2_ascii_s = ''.join(f2_ascii) + " " * (16 - len(f2_ascii))
             msg = "{:#018x}: {:s} | {:s} | {:#018x}: {:s} | {:s} |".format(addr1, f1_hex_s, f1_ascii_s, addr2, f2_hex_s, f2_ascii_s)
             gef_print(msg)
 
-        if diff_found == False:
+        if diff_found is False:
             info("Not found diff")
         return
 
@@ -23893,7 +23990,7 @@ class MemoryCompareCommand(GenericCommand):
                 from1data = read_physmem(self.from1, self.size)
             else:
                 from1data = read_memory(self.from1, self.size)
-        except:
+        except Exception:
             err("Read error {:#x}".format(self.from1))
             return
 
@@ -23902,7 +23999,7 @@ class MemoryCompareCommand(GenericCommand):
                 from2data = read_physmem(self.from2, self.size)
             else:
                 from2data = read_memory(self.from2, self.size)
-        except:
+        except Exception:
             err("Read error {:#x}".format(self.from2))
             return
 
@@ -23941,7 +24038,7 @@ class MemoryCompareCommand(GenericCommand):
                 argv = argv[1:]
 
             self.size = int(argv[0], 0)
-        except:
+        except Exception:
             self.usage()
             return
 
@@ -23969,7 +24066,7 @@ class MemoryCopyCommand(GenericCommand):
                 data = read_physmem(self.from_addr, self.size)
             else:
                 data = read_memory(self.from_addr, self.size)
-        except:
+        except Exception:
             err("Read error {:#x}".format(self.from_addr))
             return
 
@@ -23980,7 +24077,7 @@ class MemoryCopyCommand(GenericCommand):
                 written = write_physmem(self.to_addr, data)
             else:
                 written = write_memory(self.to_addr, data, len(data))
-        except:
+        except Exception:
             err("Write error {:#x}".format(self.to_addr))
             return
 
@@ -24019,7 +24116,7 @@ class MemoryCopyCommand(GenericCommand):
                 argv = argv[1:]
 
             self.size = int(argv[0], 0)
-        except:
+        except Exception:
             self.usage()
             return
 
@@ -24053,7 +24150,7 @@ class IsMemoryZeroCommand(GenericCommand):
                     data = read_physmem(current, read_size)
                 else:
                     data = read_memory(current, read_size)
-            except:
+            except Exception:
                 err("Read error {:#x}".format(self.addr))
                 return
             if data == b"\0" * len(data):
@@ -24063,7 +24160,7 @@ class IsMemoryZeroCommand(GenericCommand):
             else:
                 is_zero = False
                 is_ff = False
-            if is_zero == False and is_ff == False:
+            if is_zero is False and is_ff is False:
                 break
             current += 0x1000
 
@@ -24105,7 +24202,7 @@ class IsMemoryZeroCommand(GenericCommand):
 class FindFakeFastCommand(GenericCommand):
     """Find candidate fake fast chunks from rw memory."""
     _cmdline_ = "find-fake-fast"
-    _syntax_ = "{:s} [-h] size [--include-heap]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] size [--include-heap] [--aligned]".format(_cmdline_)
     _category_ = "Heap"
 
     def print_result(self, m, pos, size_candidate):
@@ -24117,18 +24214,18 @@ class FindFakeFastCommand(GenericCommand):
         else:
             res = gdb.execute("x/6xg {:#x}".format(m.page_start + pos), to_string=True)
         flag = []
-        flag += [Color.colorify("NON_MAIN_ARENA","bold yellow") if (size_candidate&0b100) else Color.colorify("NON_MAIN_ARENA","normal")]
-        flag += [Color.colorify("IS_MMAPED", "bold blue") if (size_candidate&0b10) else Color.colorify("IS_MMAPED", "normal")]
-        flag += [Color.colorify("PREV_INUSE","bold red") if (size_candidate&0b1) else Color.colorify("PREV_INUSED", "normal")]
+        flag += [Color.colorify("NON_MAIN_ARENA", "bold yellow") if (size_candidate & 0b100) else Color.colorify("NON_MAIN_ARENA", "normal")]
+        flag += [Color.colorify("IS_MMAPED", "bold blue") if (size_candidate & 0b10) else Color.colorify("IS_MMAPED", "normal")]
+        flag += [Color.colorify("PREV_INUSE", "bold red") if (size_candidate & 0b1) else Color.colorify("PREV_INUSED", "normal")]
         gef_print("    [{:s}]".format(' '.join(flag)))
         for line in res.splitlines():
             gef_print("    {:s}".format(line))
 
-    def find_fake_fast(self, target_size, mask):
+    def find_fake_fast(self, target_size):
+        mask = ~0x7 if current_arch.ptrsize == 4 else ~0xf
         target_size &= mask
         vmmap = get_process_maps()
         unpack = u32 if current_arch.ptrsize == 4 else u64
-        slicer = lambda data, n: [data[i:i+n] for i in range(0, len(data), n)]
         for m in vmmap:
             if not (m.permission & Permission.READ) or not (m.permission & Permission.WRITE):
                 continue
@@ -24137,11 +24234,15 @@ class FindFakeFastCommand(GenericCommand):
             if not self.include_heap and m.path == "[heap]":
                 continue
             data = read_memory(m.page_start, m.size)
+            # Scanning page-by-page
             for pos in range(0, m.size, gef_getpagesize()):
-                if b"\0" * gef_getpagesize() == data[pos : pos+gef_getpagesize()]: # for fast check
+                # fast check for all zero, because there may be huge mmap-ed memory
+                if b"\0" * gef_getpagesize() == data[pos:pos + gef_getpagesize()]:
                     continue
-                for posb in range(pos, pos+gef_getpagesize()):
-                    size_candidate = data[posb+current_arch.ptrsize : posb+current_arch.ptrsize*2]
+                # this page has some data
+                unit = 0x10 if self.aligned else 1
+                for posb in range(pos, pos + gef_getpagesize(), unit):
+                    size_candidate = data[posb + current_arch.ptrsize:posb + current_arch.ptrsize * 2]
                     if len(size_candidate) != current_arch.ptrsize:
                         break
                     size_candidate = unpack(size_candidate)
@@ -24164,13 +24265,17 @@ class FindFakeFastCommand(GenericCommand):
             self.include_heap = True
             argv.remove("--include-heap")
 
+        self.aligned = False
+        if "--aligned" in argv:
+            self.aligned = True
+            argv.remove("--aligned")
+
         if len(argv) == 0:
             self.usage()
             return
 
         target_size = int(argv[0], 0)
-        mask = ~0x7 if current_arch.ptrsize == 4 else ~0xf
-        self.find_fake_fast(target_size, mask)
+        self.find_fake_fast(target_size)
         return
 
 
@@ -24209,31 +24314,31 @@ class VisualHeapCommand(GenericCommand):
     def print_chunk(self, chunk, color_func):
         ptrsize = current_arch.ptrsize
         unpack = u32 if ptrsize == 4 else u64
-        slicer = lambda data, n: [data[i:i+n] for i in range(0, len(data), n)]
-        data = slicer(chunk.data, ptrsize*2)
+        slicer = lambda data, n: [data[i:i + n] for i in range(0, len(data), n)]
+        data = slicer(chunk.data, ptrsize * 2)
         group_line_threshold = 8
 
         addr = chunk.chunk_base_address
-        width = ptrsize*2 + 2
+        width = ptrsize * 2 + 2
         dump = ""
         done = False
         for blk, blks in itertools.groupby(data):
             repeat_count = len(list(blks))
             d1, d2 = unpack(blk[:ptrsize]), unpack(blk[ptrsize:])
-            dascii = ''.join(list(map(lambda x: chr(x) if 0x20<=x<0x7f else '.', list(blk))))
+            dascii = ''.join(list(map(lambda x: chr(x) if 0x20 <= x < 0x7f else '.', list(blk))))
 
             if repeat_count < group_line_threshold or self.verbose:
                 for i in range(repeat_count):
                     dump += f"{addr:#x}: {d1:#0{width:d}x} {d2:#0{width:d}x} | {dascii:s} | " + self.subinfo(addr) + "\n"
-                    addr += ptrsize*2
-                    if addr > self.top + ptrsize*4:
+                    addr += ptrsize * 2
+                    if addr > self.top + ptrsize * 4:
                         dump += "..."
                         done = True
                         break
             else:
                 dump += f"{addr:#x}: {d1:#0{width:d}x} {d2:#0{width:d}x} | {dascii:s} | " + self.subinfo(addr) + "\n"
-                dump += "* {:#d} lines, {:#x} bytes \n".format(repeat_count-1, (repeat_count-1)*ptrsize*2)
-                addr += ptrsize*2*repeat_count
+                dump += "* {:#d} lines, {:#x} bytes \n".format(repeat_count - 1, (repeat_count - 1) * ptrsize * 2)
+                addr += ptrsize * 2 * repeat_count
 
             if done:
                 break
@@ -24247,7 +24352,7 @@ class VisualHeapCommand(GenericCommand):
         i = 0
         color = [Color.redify, Color.greenify, Color.blueify, Color.yellowify]
         while addr < sect.page_end and (self.count is None or i < self.count):
-            chunk = GlibcChunk(addr + current_arch.ptrsize*2)
+            chunk = GlibcChunk(addr + current_arch.ptrsize * 2)
             # corrupt check
             if addr != self.top and addr + chunk.size > self.top:
                 err("Corrupted (addr + chunk.size > self.top)")
@@ -24262,9 +24367,9 @@ class VisualHeapCommand(GenericCommand):
             # maybe not corrupted
             try:
                 chunk.data = read_memory(addr, chunk.size)
-            except:
+            except gdb.MemoryError:
                 break
-            color_func = color[ i % len(color) ]
+            color_func = color[i % len(color)]
             self.print_chunk(chunk, color_func)
             addr += chunk.size
             i += 1
@@ -24290,10 +24395,10 @@ class VisualHeapCommand(GenericCommand):
         if "-a" in argv:
             try:
                 idx = argv.index("-a")
-                arena_addr = argv[idx+1]
+                arena_addr = argv[idx + 1]
                 self.arena = GlibcArena("*{:s}".format(arena_addr))
-                argv = argv[:idx] + argv[idx+2:]
-            except:
+                argv = argv[:idx] + argv[idx + 2:]
+            except Exception:
                 self.usage()
                 return
         else:
@@ -24309,12 +24414,12 @@ class VisualHeapCommand(GenericCommand):
         if "-c" in argv:
             try:
                 idx = argv.index("-c")
-                if argv[idx+1] == "all":
+                if argv[idx + 1] == "all":
                     self.count = None
                 else:
-                    self.count = int(argv[idx+1], 0)
-                argv = argv[:idx] + argv[idx+2:]
-            except:
+                    self.count = int(argv[idx + 1], 0)
+                argv = argv[:idx] + argv[idx + 2:]
+            except Exception:
                 self.usage()
                 return
         else:
@@ -24325,7 +24430,7 @@ class VisualHeapCommand(GenericCommand):
             try:
                 self.dump_start = int(argv[0], 0)
                 argv = None
-            except:
+            except Exception:
                 self.usage()
                 return
         elif len(argv) == 0:
@@ -24346,7 +24451,7 @@ class VisualHeapCommand(GenericCommand):
 
         try:
             self.print_heap()
-        except:
+        except Exception:
             pass
         return
 
@@ -24444,7 +24549,7 @@ class TimeCommand(GenericCommand):
         gef_print(titlify(cmd))
         try:
             gdb.execute(cmd)
-        except:
+        except Exception:
             exc_type, exc_value, exc_traceback = sys.exc_info()
             gef_print(exc_value)
             return
@@ -24473,7 +24578,7 @@ class LsCommand(GenericCommand):
 
         try:
             ls = which("ls")
-        except:
+        except Exception:
             err("Missing `ls` command")
             return
 
@@ -24481,7 +24586,7 @@ class LsCommand(GenericCommand):
             result = gef_execute_external([ls, "-la", "--color=always"] + argv, as_list=True)
             for line in result:
                 gef_print(line)
-        except:
+        except Exception:
             gef_print("file/dir is not found")
         return
 
@@ -24504,7 +24609,7 @@ class CatCommand(GenericCommand):
             return
         try:
             cat = which("cat")
-        except:
+        except Exception:
             err("Missing `cat` command")
             return
 
@@ -24512,7 +24617,7 @@ class CatCommand(GenericCommand):
             result = gef_execute_external([cat] + argv, as_list=True)
             for line in result:
                 gef_print(line.replace("\0", "\\x00"))
-        except:
+        except Exception:
             gef_print("file not found")
         return
 
@@ -24542,7 +24647,7 @@ class PdisasCommand(GenericCommand):
                 addr = argv[0]
             else:
                 addr = "$pc"
-        except:
+        except Exception:
             self.usage()
             return
 
@@ -24563,11 +24668,11 @@ class IiCommand(GenericCommand):
 
     def is_all_zero(self, addr, N):
         res = read_memory(addr, N)
-        return res == b"\0"*N
+        return res == b"\0" * N
 
     def is_all_ff(self, addr, N):
         res = read_memory(addr, N)
-        return res == b"\xff"*N
+        return res == b"\xff" * N
 
     def ii(self, addr, N):
         if isinstance(addr, int):
@@ -24592,7 +24697,7 @@ class IiCommand(GenericCommand):
                     raise
                 val = read_int_from_memory(addr)
                 line += " -> [{:#x}]".format(val)
-            except:
+            except Exception:
                 pass
             gef_print(line)
         return
@@ -24608,9 +24713,9 @@ class IiCommand(GenericCommand):
             else:
                 try:
                     self.ii(int(argv[0], 16), N)
-                except:
+                except Exception:
                     self.ii(argv[0], N)
-        except:
+        except Exception:
             self.usage()
         return
 
@@ -24626,7 +24731,7 @@ class ConstGrepCommand(GenericCommand):
     def read_normalize(self, path):
         try:
             content = open(path, "rb").read()
-        except:
+        except Exception:
             return None
         content = content.replace(b"\\\n", b"")
         content = content.replace(b"\t", b" ")
@@ -24635,7 +24740,7 @@ class ConstGrepCommand(GenericCommand):
             content = content.replace(bytes([i]), b"")
         try:
             content = content.decode("UTF-8")
-        except:
+        except Exception:
             err("decode error: " + path)
             return None
         return content
@@ -24648,7 +24753,7 @@ class ConstGrepCommand(GenericCommand):
             return
 
         srcdir = "/usr/include"
-        pattern = re.compile("^#define\s+\S*" + argv[0])
+        pattern = re.compile(r"^#define\s+\S*" + argv[0])
         for cur, dirs, files in os.walk(srcdir):
             for f in files:
                 path = os.path.join(cur, f)
@@ -24771,7 +24876,7 @@ class SlubDumpCommand(GenericCommand):
         self.cpu_offset = [read_int_from_memory(self.__per_cpu_offset)]
         i = 1
         while True:
-            off = read_int_from_memory(self.__per_cpu_offset + i*8)
+            off = read_int_from_memory(self.__per_cpu_offset + i * 8)
             if off == self.cpu_offset[-1]:
                 self.cpu_offset = self.cpu_offset[:-1]
                 break
@@ -24794,13 +24899,13 @@ class SlubDumpCommand(GenericCommand):
             if (is_32bit() and (val & 0x80000000)) or (is_64bit() and (val & 0x8000000000000000)):
                 try:
                     b = read_memory(val, 0x100)
-                    if b == b"\x00"*0x100: # read ok, but data is none. `off` just points `struct kmem_cache->cpu_slab`
+                    if b == b"\x00" * 0x100: # read ok, but data is none. `off` just points `struct kmem_cache->cpu_slab`
                         break
-                except: # read error, so this is not address. `off` just points `struct kmem_cache->cpu_slab`
+                except gdb.MemoryError: # read error, so this is not address. `off` just points `struct kmem_cache->cpu_slab`
                     break
             # search condition 2 (normal case)
-            a = read_int_from_memory(current - off - current_arch.ptrsize*1)
-            b = read_int_from_memory(current - off - current_arch.ptrsize*2)
+            a = read_int_from_memory(current - off - current_arch.ptrsize * 1)
+            b = read_int_from_memory(current - off - current_arch.ptrsize * 2)
             if (a == b == 0) or (a == b == 0xcccccccc) or (a == b == 0xcccccccccccccccc):
                 # normal case: [..., 0x0, 0x0, struct kmem_cache, ...]
                 # rare case: [..., 0xcccccccc, 0xcccccccc, struct kmem_cache, ...]
@@ -24825,12 +24930,12 @@ class SlubDumpCommand(GenericCommand):
 
         # offsetof(kmem_cache, offset)
         top = list_next - self.kmem_cache_offset_list
-        objsize = u32(read_memory(top + current_arch.ptrsize*3+4, 4))
-        maybe_recip = u32(read_memory(top + current_arch.ptrsize*3+4+4, 4))
+        objsize = u32(read_memory(top + current_arch.ptrsize * 3 + 4, 4))
+        maybe_recip = u32(read_memory(top + current_arch.ptrsize * 3 + 4 + 4, 4))
         if objsize < maybe_recip or (maybe_recip % 8) != 0:
-            self.kmem_cache_offset_offset = current_arch.ptrsize*3+4+4 + current_arch.ptrsize
+            self.kmem_cache_offset_offset = current_arch.ptrsize * 3 + 4 + 4 + current_arch.ptrsize
         else:
-            self.kmem_cache_offset_offset = current_arch.ptrsize*3+4+4
+            self.kmem_cache_offset_offset = current_arch.ptrsize * 3 + 4 + 4
         info("offsetof(kmem_cache, offset): {:#x}".format(self.kmem_cache_offset_offset))
 
         # offsetof(kmem_cache, random)
@@ -24839,17 +24944,17 @@ class SlubDumpCommand(GenericCommand):
         else:
             current = top
             for i in range(64): # walk from list for heuristic search
-                val = read_int_from_memory(current + i*current_arch.ptrsize)
+                val = read_int_from_memory(current + i * current_arch.ptrsize)
                 if is_64bit():
-                    if (val >> 48) in [0, 0xffff, 0xfffe, 0xdead, current>>48]: # for la57: current>>48
+                    if (val >> 48) in [0, 0xffff, 0xfffe, 0xdead, current >> 48]: # for la57: current >> 48
                         continue
                     if (val >> 32) == (val & 0xffffffff):
                         continue
                     if "{:064b}".format(val).count("1") < 6: # low entrorpy is not `random`
                         continue
-                    if "{:064b}".format(val).count("1") > 64-6: # low entrorpy is not `random`
+                    if "{:064b}".format(val).count("1") > 64 - 6: # low entrorpy is not `random`
                         continue
-                    self.kmem_cache_offset_random = i*current_arch.ptrsize
+                    self.kmem_cache_offset_random = i * current_arch.ptrsize
                     info("offsetof(kmem_cache, random): {:#x}".format(self.kmem_cache_offset_random))
                     break
                 elif is_32bit():
@@ -24859,17 +24964,17 @@ class SlubDumpCommand(GenericCommand):
                         continue
                     if "{:032b}".format(val).count("1") < 6: # low entrorpy is not `random`
                         continue
-                    if "{:032b}".format(val).count("1") > 32-6: # low entrorpy is not `random`
+                    if "{:032b}".format(val).count("1") > 32 - 6: # low entrorpy is not `random`
                         continue
                     if (val & 0xf) % 4 != 0: # not aligned, it is maybe `random`
-                        self.kmem_cache_offset_random = i*current_arch.ptrsize
+                        self.kmem_cache_offset_random = i * current_arch.ptrsize
                         info("offsetof(kmem_cache, random): {:#x}".format(self.kmem_cache_offset_random))
                         break
                     try:
                         read_int_from_memory(val) # if no error, it is not `random`
                         continue
-                    except:
-                        self.kmem_cache_offset_random = i*current_arch.ptrsize
+                    except Exception:
+                        self.kmem_cache_offset_random = i * current_arch.ptrsize
                         info("offsetof(kmem_cache, random): {:#x}".format(self.kmem_cache_offset_random))
                         break
             else:
@@ -24879,7 +24984,7 @@ class SlubDumpCommand(GenericCommand):
         # offsetof(kmem_cache, cpu_slab)
         self.kmem_cache_offset_cpu_slab = 0
         # offsetof(kmem_cache, object_size)
-        self.kmem_cache_offset_object_size = current_arch.ptrsize*3+4
+        self.kmem_cache_offset_object_size = current_arch.ptrsize * 3 + 4
         # offsetof(kmem_cache_cpu, freelist)
         self.kmem_cache_cpu_offset_freelist = 0
         return True
@@ -24920,7 +25025,7 @@ class SlubDumpCommand(GenericCommand):
         bits = 64 if is_64bit() else 32
         s = 0
         for i in range(0, bits, 8):
-            s += ((x >> i) & 0xff) << (bits-(i+8))
+            s += ((x >> i) & 0xff) << (bits - (i + 8))
         return s
 
     def pointer_xor(self, addr, chunk, cache):
@@ -24932,9 +25037,9 @@ class SlubDumpCommand(GenericCommand):
 
         shift_bits = 48 if is_64bit() else 24
 
-        if self.swap == False:
+        if self.swap is False:
             chunk = pattern1(addr, chunk, cache)
-        elif self.swap == True:
+        elif self.swap is True:
             chunk = pattern2(addr, chunk, cache)
 
         elif self.swap is None: # swap type is unknown, try heuristic check
@@ -24958,19 +25063,19 @@ class SlubDumpCommand(GenericCommand):
             new_cache = {}
             # parse member
             new_cache['address'] = current_kmem_cache
-            new_cache['objsize'] = objsize = self.get_objsize(current_kmem_cache)
-            new_cache['offset'] = offset = self.get_offset(current_kmem_cache)
-            new_cache['name'] = name = self.get_name(current_kmem_cache)
+            new_cache['objsize'] = self.get_objsize(current_kmem_cache)
+            new_cache['offset'] = self.get_offset(current_kmem_cache)
+            new_cache['name'] = self.get_name(current_kmem_cache)
             new_cache['random'] = self.get_random(current_kmem_cache)
             # parse free_list
-            new_cache['kmem_cache_cpu'] = kmem_cache_cpu = self.get_kmem_cache_cpu(current_kmem_cache, cpu)
-            chunk = self.get_freelist(kmem_cache_cpu)
+            new_cache['kmem_cache_cpu'] = self.get_kmem_cache_cpu(current_kmem_cache, cpu)
+            chunk = self.get_freelist(new_cache['kmem_cache_cpu'])
             new_cache['freelist'] = [chunk]
             while chunk:
                 try:
-                    addr = chunk + offset
+                    addr = chunk + new_cache['offset']
                     chunk = read_int_from_memory(addr) # get next chunk
-                except:
+                except Exception:
                     new_cache['freelist'].append("{:s}".format(Color.colorify("Corrupted (Memory access denied)", "bold yellow")))
                     break
                 if self.kmem_cache_offset_random is not None: # fix if randomized
@@ -24988,14 +25093,14 @@ class SlubDumpCommand(GenericCommand):
         return
 
     def dump_caches(self, targets, cpu):
-        gef_print('  ' + '-'*14)
-        gef_print(' | ' + ' '*11 + ' |')
+        gef_print('  ' + '-' * 14)
+        gef_print(' | ' + ' ' * 11 + ' |')
         gef_print(' |        slab_caches @ {:#x}'.format(self.slab_caches))
-        gef_print(' | ' + ' '*11 + ' |')
+        gef_print(' | ' + ' ' * 11 + ' |')
         if targets != []:
-            gef_print(' | ' + ' '*10 + ' ...')
-            gef_print(' | ' + ' '*11 + ' |')
-        gef_print(' | ' + ' '*11 + ' v')
+            gef_print(' | ' + ' ' * 10 + ' ...')
+            gef_print(' | ' + ' ' * 11 + ' |')
+        gef_print(' | ' + ' ' * 11 + ' v')
         for c in self.parsed_caches[1:]:
             if targets != [] and not c['name'] in targets:
                 continue
@@ -25005,7 +25110,7 @@ class SlubDumpCommand(GenericCommand):
             gef_print(' |   offset (offset to next pointer in chunk): {:#x}'.format(c['offset']))
             gef_print(' |   objsize: {:s}'.format(Color.colorify("{:#x}".format(c['objsize']), "bold pink")))
             if c['random']:
-                if self.no_xor == False and self.swap == True:
+                if self.no_xor is False and self.swap is True:
                     gef_print(' |   random (xor key): {:#x} ^ byteswap(address of chunk->next)'.format(c['random']))
                 else:
                     gef_print(' |   random (xor key): {:#x} ^ address of chunk->next'.format(c['random']))
@@ -25016,16 +25121,16 @@ class SlubDumpCommand(GenericCommand):
                     gef_print(' |   freelist:   {:s}'.format(Color.colorify("{:#x}".format(c['freelist'][0]), "bold yellow")))
                 for f in c['freelist'][1:]:
                     if isinstance(f, str):
-                        gef_print(' | ' + ' '*14 + '{:s}'.format(f))
+                        gef_print(' | ' + ' ' * 14 + '{:s}'.format(f))
                     else:
-                        gef_print(' | ' + ' '*14 + '{:s}'.format(Color.colorify("{:#x}".format(f), "bold yellow")))
+                        gef_print(' | ' + ' ' * 14 + '{:s}'.format(Color.colorify("{:#x}".format(f), "bold yellow")))
             gef_print(' |   next: {:#x}'.format(c['next']))
-            gef_print(' | ' + ' '*11 + ' |')
+            gef_print(' | ' + ' ' * 11 + ' |')
             if targets != []:
-                gef_print(' | ' + ' '*10 + ' ...')
-            gef_print(' | ' + ' '*11 + ' |')
-            gef_print(' | ' + ' '*11 + ' v')
-        gef_print('  <' + '-'*13)
+                gef_print(' | ' + ' ' * 10 + ' ...')
+            gef_print(' | ' + ' ' * 11 + ' |')
+            gef_print(' | ' + ' ' * 11 + ' v')
+        gef_print('  <' + '-' * 13)
         return
 
     def dump_names(self):
@@ -25055,7 +25160,7 @@ class SlubDumpCommand(GenericCommand):
                 self.walk_caches(self.cpuN)
                 self.dump_caches(targets, self.cpuN)
             else:
-                err("CPU number is invalid (valid range:{:d}-{:d})".format(0, len(self.cpu_offset)-1))
+                err("CPU number is invalid (valid range:{:d}-{:d})".format(0, len(self.cpu_offset) - 1))
         return
 
     @only_if_gdb_running
@@ -25073,8 +25178,8 @@ class SlubDumpCommand(GenericCommand):
             while "--cpu" in argv:
                 idx = argv.index("--cpu")
                 self.cpuN = int(argv[idx + 1])
-                argv = argv[:idx] + argv[idx+2:]
-        except:
+                argv = argv[:idx] + argv[idx + 2:]
+        except Exception:
             self.usage()
             return
 
@@ -25092,7 +25197,7 @@ class SlubDumpCommand(GenericCommand):
 
         try:
             self.slabwalk(argv)
-        except:
+        except Exception:
             err("Memory corrupted")
         return
 
@@ -25132,7 +25237,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         len_ = self.kallsyms_names[data]
         data += 1
 
-        string = ""
+        symbol = ""
         skipped_first = False
         off = len_ + 1
         while len_:
@@ -25145,11 +25250,11 @@ class KsymaddrRemoteCommand(GenericCommand):
                 if c == 0:
                     break
                 if skipped_first:
-                    string += chr(c)
+                    symbol += chr(c)
                 else:
                     skipped_first = True
                 tptr += 1
-        return off, string
+        return off, symbol
 
     def kallsyms_sym_address(self, idx):
         if self.kallsyms_relative_base is None:
@@ -25176,11 +25281,11 @@ class KsymaddrRemoteCommand(GenericCommand):
             return
         off = 0
         for i in range(self.kallsyms_num_syms):
-            offdiff, string = self.expand_symbol(off)
+            offdiff, symbol = self.expand_symbol(off)
             typ = self.kallsyms_get_symbol_type(off)
             off += offdiff
             addr = self.kallsyms_sym_address(i)
-            self.kallsyms.append([addr, string, typ])
+            self.kallsyms.append([addr, symbol, typ])
         return
 
     def print_kallsyms(self, keywords):
@@ -25189,16 +25294,16 @@ class KsymaddrRemoteCommand(GenericCommand):
         else:
             fmt = "{:#018x} {:s} {:s}"
         print_count = 0
-        for addr, string, typ in self.kallsyms:
+        for addr, symbol, typ in self.kallsyms:
             if print_count == self.head:
                 break
             if self.print_all:
-                gef_print(fmt.format(addr, typ, string))
+                gef_print(fmt.format(addr, typ, symbol))
                 print_count += 1
             else:
                 for k in keywords:
-                    text = fmt.format(addr, typ, string)
-                    if self.exact and k == string:
+                    text = fmt.format(addr, typ, symbol)
+                    if self.exact and k == symbol:
                         gef_print(text)
                         print_count += 1
                         break
@@ -25254,7 +25359,7 @@ class KsymaddrRemoteCommand(GenericCommand):
                 if val == self.kbase:
                     pos = len(self.RO_REGION_u32) - i - 1
                     # found contiguous, go prev as possilbe
-                    while self.RO_REGION_u32[pos] == self.RO_REGION_u32[pos-1]:
+                    while self.RO_REGION_u32[pos] == self.RO_REGION_u32[pos - 1]:
                         pos -= 1
                     self.kallsyms_relative_base = self.kbase
                     self.kallsyms_relative_base_off = pos
@@ -25280,14 +25385,14 @@ class KsymaddrRemoteCommand(GenericCommand):
             # ARM has specific relative_base (buildroot:5.4.58, debian10.4:4.19.0-9)
             for i in range(4):
                 try:
-                    kbase_diff = -(0x100000*i + 0xf8000)
+                    kbase_diff = -(0x100000 * i + 0xf8000)
                     self.kallsyms_relative_base = self.kbase + kbase_diff
                     self.kallsyms_relative_base_off = self.RO_REGION_u32.index(self.kallsyms_relative_base)
                     self.kallsyms_relative_base_addr = self.krobase + self.kallsyms_relative_base_off * 4
                     if self.meta:
                         info("kbase difference is {:#x}".format(kbase_diff))
                     return
-                except:
+                except Exception:
                     pass
 
         # not found
@@ -25348,7 +25453,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         pos = self.kallsyms_markers_off
         while True: # use pos above
             v = self.RO_REGION_u32[pos]
-            if v & 0xff000000 > 0 or (self.RO_REGION_u32[pos-1] > 0 and self.RO_REGION_u32[pos-1]*4 < v):
+            if v & 0xff000000 > 0 or (self.RO_REGION_u32[pos - 1] > 0 and self.RO_REGION_u32[pos - 1] * 4 < v):
                 self.kallsyms_token_table_addr = self.krobase + pos * 4
                 break
             pos += 4
@@ -25359,7 +25464,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         # 2. align
         pos = self.kallsyms_token_table_addr - self.krobase
         while True:
-            if self.RO_REGION[pos] == 0 and self.RO_REGION[pos+1] == 0:
+            if self.RO_REGION[pos] == 0 and self.RO_REGION[pos + 1] == 0:
                 pos += 1
                 while pos % 16: # need align
                     pos += 1
@@ -25423,7 +25528,7 @@ class KsymaddrRemoteCommand(GenericCommand):
             0xcc7c3f10:     0x66006f66      0x5f656572      0x65735f00      0x656d0074
             0xcc7c3f20:     0x6474006d      0x005f7200      0x74006354      0x63005f6f
             """
-            if v == 0 or (v & 0xff000000) > 0 or (self.RO_REGION_u32[pos-1] > 0 and self.RO_REGION_u32[pos-1]*4 < v) :
+            if v == 0 or (v & 0xff000000) > 0 or (self.RO_REGION_u32[pos - 1] > 0 and self.RO_REGION_u32[pos - 1] * 4 < v) :
                 self.kallsyms_token_table_addr = self.krobase + pos * 4 # need not align
                 break
             pos += 1
@@ -25434,7 +25539,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         # 2. align
         pos = self.kallsyms_token_table_addr - self.krobase
         while True:
-            if self.RO_REGION[pos] == 0 and self.RO_REGION[pos+1] == 0:
+            if self.RO_REGION[pos] == 0 and self.RO_REGION[pos + 1] == 0:
                 pos += 1
                 while pos % 4: # need align
                     pos += 1
@@ -25480,7 +25585,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         # 1. walk to prev and found non-zero value
         # 2. if the MSB of the element is on, then it is pattern 4 at kallsyms_sym_address() in root/kernel/kallsyms.c.
         #    so not pattern 2, therefore, CONFIG_KALLSYMS_ABSOLUTE_PERCPU = True
-        pos = self.kallsyms_relative_base_off*2 - 4 # from u64 pos to u32 pos
+        pos = self.kallsyms_relative_base_off * 2 - 4 # from u64 pos to u32 pos
         while self.RO_REGION_u32[pos] == 0:
             pos -= 1
         self.CONFIG_KALLSYMS_ABSOLUTE_PERCPU = (((self.RO_REGION_u32[pos] >> 31) & 1) == 1)
@@ -25513,7 +25618,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         pos = self.kallsyms_markers_off
         while True: # use pos above
             v = self.RO_REGION_u64[pos]
-            if v & 0xffffffffff000000 > 0 or (self.RO_REGION_u64[pos-1] > 0 and self.RO_REGION_u64[pos-1]*4 < v):
+            if v & 0xffffffffff000000 > 0 or (self.RO_REGION_u64[pos - 1] > 0 and self.RO_REGION_u64[pos - 1] * 4 < v):
                 self.kallsyms_token_table_addr = self.krobase + pos * 8
                 break
             pos += 32
@@ -25524,7 +25629,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         # 2. align
         pos = self.kallsyms_token_table_addr - self.krobase
         while True:
-            if self.RO_REGION[pos] == 0 and self.RO_REGION[pos+1] == 0:
+            if self.RO_REGION[pos] == 0 and self.RO_REGION[pos + 1] == 0:
                 pos += 1
                 while pos % 256: # need align
                     pos += 1
@@ -25550,7 +25655,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         # 1. prev to it
         # 2. if the MSB of the element is on, then it is pattern 4 at kallsyms_sym_address() in root/kernel/kallsyms.c.
         #    so not pattern 2, therefore, CONFIG_KALLSYMS_ABSOLUTE_PERCPU = True
-        pos = self.kallsyms_relative_base_off*2 - 4 # from u64 pos to u32 pos
+        pos = self.kallsyms_relative_base_off * 2 - 4 # from u64 pos to u32 pos
         self.CONFIG_KALLSYMS_ABSOLUTE_PERCPU = (((self.RO_REGION_u32[pos] >> 31) & 1) == 1)
         return
 
@@ -25583,7 +25688,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         # 2. walk to next until specific value
         # 3. align
         pos = self.kallsyms_markers_off
-        if self.RO_REGION_u32[pos] == 0 and self.RO_REGION_u32[pos+1] == 0: # u64 mode
+        if self.RO_REGION_u32[pos] == 0 and self.RO_REGION_u32[pos + 1] == 0: # u64 mode
             if self.meta:
                 info("u64 mode at initialize64_normal_kallsyms_token_table")
             """
@@ -25592,7 +25697,7 @@ class KsymaddrRemoteCommand(GenericCommand):
                 0xffffffff987aafa0:     0x65735f0074736967      0x6c6261005f360074
                 0xffffffff987aafb0:     0x656565006c660065      0x2e00656b00647400
             """
-            pos = pos//2 + 1 # skip first zero
+            pos = pos // 2 + 1 # skip first zero
             while True:
                 if self.RO_REGION_u64[pos] == 0 or (self.RO_REGION_u64[pos] & 0xffffffffff000000) > 0:
                     self.kallsyms_token_table_addr = self.krobase + pos * 8
@@ -25627,10 +25732,10 @@ class KsymaddrRemoteCommand(GenericCommand):
             pos += 2 # we want to use (pos, pos-1, pos-2), so avoid bug
             while True:
                 if self.RO_REGION_u32[pos] == 0: # pattern 1, 2
-                    self.kallsyms_token_table_addr = self.krobase + (pos+1) * 4
+                    self.kallsyms_token_table_addr = self.krobase + (pos + 1) * 4
                     break
-                diff1 = self.RO_REGION_u32[pos-1] - self.RO_REGION_u32[pos-2]
-                diff2 = self.RO_REGION_u32[pos-0] - self.RO_REGION_u32[pos-1]
+                diff1 = self.RO_REGION_u32[pos - 1] - self.RO_REGION_u32[pos - 2]
+                diff2 = self.RO_REGION_u32[pos - 0] - self.RO_REGION_u32[pos - 1]
                 if diff1 * 100 < diff2: # pattern 3, 4
                     self.kallsyms_token_table_addr = self.krobase + pos * 4
                     break
@@ -25642,7 +25747,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         # 2. align
         pos = self.kallsyms_token_table_addr - self.krobase
         while True:
-            if self.RO_REGION[pos] == 0 and self.RO_REGION[pos+1] == 0:
+            if self.RO_REGION[pos] == 0 and self.RO_REGION[pos + 1] == 0:
                 pos += 1
                 while pos % 8: # need align
                     pos += 1
@@ -25686,13 +25791,14 @@ class KsymaddrRemoteCommand(GenericCommand):
 
     def initialize32(self):
         self.RO_REGION = read_memory(self.krobase, self.krobase_size)
-        self.RO_REGION_u32 = [u32(self.RO_REGION[i:i+4]) for i in range(0, len(self.RO_REGION), 4)]
+        self.RO_REGION_u32 = [u32(self.RO_REGION[i:i + 4]) for i in range(0, len(self.RO_REGION), 4)]
         self.initialize32_kallsyms_relative_base()
 
         if self.kallsyms_relative_base_off is None:
             return None
 
-        if self.RO_REGION_u32[self.kallsyms_relative_base_off + 1] == self.RO_REGION_u32[self.kallsyms_relative_base_off]: # rare case (maybe no kASLR kernel)
+        # rare case (maybe no kASLR kernel)
+        if self.RO_REGION_u32[self.kallsyms_relative_base_off + 1] == self.RO_REGION_u32[self.kallsyms_relative_base_off]:
             self.initialize32_kallsyms_num_syms_2() # common to sparse and normal
             # do not use kallsyms_relative_base, use absolute value
             self.kallsyms_relative_base = None
@@ -25736,8 +25842,8 @@ class KsymaddrRemoteCommand(GenericCommand):
 
     def initialize64(self):
         self.RO_REGION = read_memory(self.krobase, self.krobase_size)
-        self.RO_REGION_u64 = [u64(self.RO_REGION[i:i+8]) for i in range(0, len(self.RO_REGION), 8)]
-        self.RO_REGION_u32 = [u32(self.RO_REGION[i:i+4]) for i in range(0, len(self.RO_REGION), 4)]
+        self.RO_REGION_u64 = [u64(self.RO_REGION[i:i + 8]) for i in range(0, len(self.RO_REGION), 8)]
+        self.RO_REGION_u32 = [u32(self.RO_REGION[i:i + 4]) for i in range(0, len(self.RO_REGION), 4)]
         self.initialize64_kallsyms_relative_base()
 
         if self.RO_REGION_u64[self.kallsyms_relative_base_off + 1] == self.RO_REGION_u64[self.kallsyms_relative_base_off]: # rare case
@@ -25806,7 +25912,7 @@ class KsymaddrRemoteCommand(GenericCommand):
                 gdb.execute("x/8x{} {}".format(["w", "g"][is_64bit()], self.kallsyms_token_table_addr - 0x10))
                 info("kallsyms_token_index:   {:#x}".format(self.kallsyms_token_index_addr)) # to calculate address
                 gdb.execute("x/8x{} {}".format(["w", "g"][is_64bit()], self.kallsyms_token_index_addr - 0x10))
-            except:
+            except Exception:
                 pass
         return
 
@@ -25838,18 +25944,18 @@ class KsymaddrRemoteCommand(GenericCommand):
             if self.kallsyms_relative_base is None:
                 r = self.RO_REGION[self.kallsyms_offsets_addr - self.krobase: self.kallsyms_num_syms_addr - self.krobase]
                 if is_64bit():
-                    self.kallsyms_offsets = [ u64(r[i:i+8]) for i in range(0, len(r), 8)] # unsigned 64bit
+                    self.kallsyms_offsets = [u64(r[i:i + 8]) for i in range(0, len(r), 8)] # unsigned 64bit
                 else:
-                    self.kallsyms_offsets = [ u32(r[i:i+4]) for i in range(0, len(r), 4)] # unsigned 32bit
+                    self.kallsyms_offsets = [u32(r[i:i + 4]) for i in range(0, len(r), 4)] # unsigned 32bit
             else:
                 r = self.RO_REGION[self.kallsyms_offsets_addr - self.krobase: self.kallsyms_relative_base_addr - self.krobase]
-                self.kallsyms_offsets = [ u32(r[i:i+4], s=True) for i in range(0, len(r), 4)] # signed 32bit
+                self.kallsyms_offsets = [u32(r[i:i + 4], s=True) for i in range(0, len(r), 4)] # signed 32bit
             r = self.RO_REGION[self.kallsyms_names_addr - self.krobase: self.kallsyms_markers_addr - self.krobase]
-            self.kallsyms_names = [ u8(r[i:i+1]) for i in range(0, len(r), 1)] # 8bit
+            self.kallsyms_names = [u8(r[i:i + 1]) for i in range(0, len(r), 1)] # 8bit
             r = self.RO_REGION[self.kallsyms_token_table_addr - self.krobase: self.kallsyms_token_index_addr - self.krobase]
-            self.kallsyms_token_table = [ u8(r[i:i+1]) for i in range(0, len(r), 1)] # 8bit
-            r = self.RO_REGION[self.kallsyms_token_index_addr - self.krobase:][:0x100*2] # fixed table size
-            self.kallsyms_token_index = [u16(r[i:i+2]) for i in range(0, len(r), 2)] # 16bit
+            self.kallsyms_token_table = [u8(r[i:i + 1]) for i in range(0, len(r), 1)] # 8bit
+            r = self.RO_REGION[self.kallsyms_token_index_addr - self.krobase:][:0x100 * 2] # fixed table size
+            self.kallsyms_token_index = [u16(r[i:i + 2]) for i in range(0, len(r), 2)] # 16bit
             self.initialized = True
         # finish
         self.print_meta()
@@ -25888,10 +25994,10 @@ class KsymaddrRemoteCommand(GenericCommand):
         if "--head" in argv:
             try:
                 idx = argv.index("--head")
-                headN = argv[idx+1]
+                headN = argv[idx + 1]
                 self.head = int(headN)
-                argv = argv[:idx] + argv[idx+2:]
-            except:
+                argv = argv[:idx] + argv[idx + 2:]
+            except Exception:
                 self.usage()
                 return
 
@@ -25965,7 +26071,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
                 continue
             if addr[0] >= addrs['krwbase']:
                 continue
-            area.append([addr[0], addr[0]+addr[1]])
+            area.append([addr[0], addr[0] + addr[1]])
         if area == []:
             err("area is blank")
             return None
@@ -25993,6 +26099,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
 
             # dump
             info("Dumping memory")
+            old_end_addr = None
             for i, (start_addr, end_addr) in enumerate(area):
                 if i == 0:
                     gef_print("Dumping area:     {:#x} - {:#x}".format(start_addr, end_addr))
@@ -26066,7 +26173,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
 class TcmallocDumpCommand(GenericCommand):
     """tcmalloc thread_heap freelist viewer (supported x86_64 only)."""
     _cmdline_ = "tcmalloc-dump"
-    _syntax_ = "{:s} old|chrome [-h] [self|all|NAME[,NAME,..]|central] [--th PRINT_THRESHOLD] [--idx PRINT_TARGET_IDX] [-c ADDR_TO_COLOR]".format(_cmdline_)
+    _syntax_ = "{:s} old|chrome [-h] [self|all|NAME[,NAME,..]|central] [--th PRINT_THRESHOLD] [--idx PRINT_TARGET_IDX]".format(_cmdline_)
     _example_ = "\n"
     _example_ += "{:s} chrome\n".format(_cmdline_)
     _example_ += "{:s} chrome self # (default) print freelist of thread cache for current thread\n".format(_cmdline_)
@@ -26074,7 +26181,6 @@ class TcmallocDumpCommand(GenericCommand):
     _example_ += "{:s} chrome \"Chrome_DevTools,Bluez D-Bus thr\" # print freelist of thread cache for specified thread\n".format(_cmdline_)
     _example_ += "{:s} chrome central # print freelist of central cache\n".format(_cmdline_)
     _example_ += "{:s} chrome --th 10 --idx 32 # Number of chunks to display per freelist = 10, target idx = 32.\n".format(_cmdline_)
-    _example_ += "{:s} chrome -c 0x23a43cbef500 -c 0x23a43cbefd40 # The specified address will be displayed in different colors\n".format(_cmdline_)
     _example_ += "\n"
     _example_ += "THIS FEATURE IS EXPERIMENTAL AND HEURISTIC."
     _category_ = "Heap"
@@ -26088,19 +26194,19 @@ class TcmallocDumpCommand(GenericCommand):
     def get_central_cache_(self):
         try:
             return parse_address("&'tcmalloc::Static::central_cache_'")
-        except:
+        except Exception:
             return None
 
     def get_thread_heaps_(self):
         try:
             return parse_address("&'tcmalloc::ThreadCache::thread_heaps_'")
-        except:
+        except Exception:
             return None
 
     def get_sizemap(self):
         try:
             return parse_address("&'tcmalloc::Static::sizemap_'")
-        except:
+        except Exception:
             return None
 
     def get_tls_addr(self, lwpid):
@@ -26131,7 +26237,7 @@ class TcmallocDumpCommand(GenericCommand):
         lines = gdb.execute("info threads", to_string=True)
         dic = {}
         for line in lines.splitlines():
-            r = re.findall('\(LWP (\d+)\) "(.+?)"', line)
+            r = re.findall(r'\(LWP (\d+)\) "(.+?)"', line)
             if not r:
                 continue
             lwpid, name = int(r[0][0]), r[0][1]
@@ -26156,17 +26262,14 @@ class TcmallocDumpCommand(GenericCommand):
                 seen.append(chunk)
                 # print threshold check
                 if real_length < self.FreeList_print_threshold:
-                    if chunk in self.addr_to_color:
-                        chunklist_string += " -> " + Color.colorify(f"{chunk:#x}", "cyan bold underline")
-                    else:
-                        chunklist_string += " -> " + Color.colorify(f"{chunk:#x}", "yellow bold underline")
+                    chunklist_string += " -> " + Color.colorify(f"{chunk:#x}", "yellow bold underline")
                 else:
                     if not chunklist_string.endswith(" -> ..."):
                         chunklist_string += " -> ..."
                 # corrupted memory check
                 try:
                     chunk = read_int_from_memory(chunk)
-                except:
+                except Exception:
                     if chunklist_string.endswith(" -> ..."):
                         chunklist_string += " -> " + Color.colorify(f"{seen[-2]:#x}", "yellow bold underline")
                         chunklist_string += " -> " + Color.colorify(f"{chunk:#x}", "red bold underline")
@@ -26204,7 +26307,7 @@ class TcmallocDumpCommand(GenericCommand):
             pass
         elif self.FreeList_print_target_thread == "self" and lwpid != current_lwpid:
             return
-        elif isinstance(self.FreeList_print_target_thread, list) and not name in self.FreeList_print_target_thread:
+        elif isinstance(self.FreeList_print_target_thread, list) and name not in self.FreeList_print_target_thread:
             return
 
         current_or_not = "(current thread)" if lwpid == current_lwpid else ""
@@ -26237,7 +26340,6 @@ class TcmallocDumpCommand(GenericCommand):
         seen = []
         chunk = read_int_from_memory(freelist + self.FreeList_offset_list)
         real_length = 0
-        error = False
         if chunk != 0: # freelist exists
             chunklist_string = ""
             while chunk != 0:
@@ -26245,29 +26347,24 @@ class TcmallocDumpCommand(GenericCommand):
                 seen.append(chunk)
                 # print threshold check
                 if real_length < self.FreeList_print_threshold:
-                    if chunk in self.addr_to_color:
-                        chunklist_string += " -> " + Color.colorify(f"{chunk:#x}", "cyan bold underline")
-                    else:
-                        chunklist_string += " -> " + Color.colorify(f"{chunk:#x}", "yellow bold underline")
+                    chunklist_string += " -> " + Color.colorify(f"{chunk:#x}", "yellow bold underline")
                 else:
                     if not chunklist_string.endswith(" -> ..."):
                         chunklist_string += " -> ..."
                 # corrupted memory check
                 try:
                     chunk = read_int_from_memory(chunk)
-                except:
+                except Exception:
                     if chunklist_string.endswith(" -> ..."):
                         chunklist_string += " -> " + Color.colorify(f"{seen[-2]:#x}", "yellow bold underline")
                         chunklist_string += " -> " + Color.colorify(f"{chunk:#x}", "red bold underline")
                     chunklist_string += " (corrupted)"
-                    error = True
                     break
                 # heap key decode
                 chunk ^= self.get_heap_key()
                 # loop check
                 if chunk in seen:
                     chunklist_string += " -> " + Color.colorify(f"{chunk:#x}", "red bold underline") + " (loop)"
-                    error = True
                     break
             # print
             gef_print(f"central_cache_[{_i}].tc_slot[{_j}] @ {freelist:#x}{chunklist_string}")
@@ -26296,12 +26393,12 @@ class TcmallocDumpCommand(GenericCommand):
             # calc class -> size
             size_class = read_int_from_memory(central_cache_i + self.CentralCache_offset_size_class_)
             class_to_size_array = [
-                    0,    16,    32,    48,    64,    80,    96,   112,   128,   144,
-                  160,   176,   192,   208,   224,   240,   256,   288,   320,   352,
-                  384,   448,   512,   576,   640,   704,   768,   896,  1024,  1152,
-                 1280,  1536,  1792,  2048,  2304,  2560,  2816,  3072,  3328,  4096,
-                 4608,  5120,  6144,  6656,  8192, 10240, 12288, 13312, 16384, 20480,
-                24576, 28672, 32768
+                0,     16,    32,    48,    64,   80,    96,    112,   128,   144,
+                160,   176,   192,   208,   224,  240,   256,   288,   320,   352,
+                384,   448,   512,   576,   640,  704,   768,   896,   1024,  1152,
+                1280,  1536,  1792,  2048,  2304, 2560,  2816,  3072,  3328,  4096,
+                4608,  5120,  6144,  6656,  8192, 10240, 12288, 13312, 16384, 20480,
+                24576, 28672, 32768,
             ]
             size_byte = class_to_size_array[size_class]
 
@@ -26330,23 +26427,13 @@ class TcmallocDumpCommand(GenericCommand):
             self.usage()
             return
 
-        self.addr_to_color = []
-        while "-c" in argv:
-            try:
-                idx = argv.index("-c")
-                self.addr_to_color.append(int(argv[idx+1], 0))
-                argv = argv[:idx] + argv[idx+2:]
-            except:
-                self.usage()
-                return
-
         self.FreeList_print_threshold = 5
         if "--th" in argv:
             try:
                 idx = argv.index("--th")
-                self.FreeList_print_threshold = int(argv[idx+1], 0)
-                argv = argv[:idx] + argv[idx+2:]
-            except:
+                self.FreeList_print_threshold = int(argv[idx + 1], 0)
+                argv = argv[:idx] + argv[idx + 2:]
+            except Exception:
                 self.usage()
                 return
 
@@ -26354,9 +26441,9 @@ class TcmallocDumpCommand(GenericCommand):
         if "--idx" in argv:
             try:
                 idx = argv.index("--idx")
-                self.FreeList_print_target_index = int(argv[idx+1], 0)
-                argv = argv[:idx] + argv[idx+2:]
-            except:
+                self.FreeList_print_target_index = int(argv[idx + 1], 0)
+                argv = argv[:idx] + argv[idx + 2:]
+            except Exception:
                 self.usage()
                 return
 
@@ -26378,7 +26465,7 @@ class TcmallocDumpCommand(GenericCommand):
 class TcmallocDumpChromeCommand(TcmallocDumpCommand):
     """tcmalloc (chrome edition (improved from google-perftools-2.5)) freelist viewer (supported x86_64 only)."""
     _cmdline_ = "tcmalloc-dump chrome"
-    _syntax_ = "tcmalloc-dump chrome [-h] [self|all|NAME[,NAME,..]|central] [--th PRINT_THRESHOLD] [--idx PRINT_TARGET_IDX] [-c ADDR_TO_COLOR]"
+    _syntax_ = "tcmalloc-dump chrome [-h] [self|all|NAME[,NAME,..]|central] [--th PRINT_THRESHOLD] [--idx PRINT_TARGET_IDX]"
     _category_ = "Heap"
 
     def __init__(self):
@@ -26471,7 +26558,7 @@ class TcmallocDumpChromeCommand(TcmallocDumpCommand):
 class TcmallocDumpOldCommand(TcmallocDumpCommand):
     """tcmalloc (google-perftools-2.5 edition) freelist viewer (supported x86_64 only)."""
     _cmdline_ = "tcmalloc-dump old"
-    _syntax_ = "tcmalloc-dump old [-h] [self|all|NAME[,NAME,..]|central] [--th PRINT_THRESHOLD] [--idx PRINT_TARGET_IDX] [-c ADDR_TO_COLOR]"
+    _syntax_ = "tcmalloc-dump old [-h] [self|all|NAME[,NAME,..]|central] [--th PRINT_THRESHOLD] [--idx PRINT_TARGET_IDX]"
     _category_ = "Heap"
 
     def __init__(self):
@@ -26571,15 +26658,18 @@ class TcmallocDumpOldCommand(TcmallocDumpCommand):
 
 
 isolate_root = None
+
+
 def get_isolate_root():
+
     def to_int32(v):
         """Cast a gdb.Value to int32"""
-        return int(v.cast(gdb.Value(2**32-1).type))
+        return int(v.cast(gdb.Value(2 ** 32 - 1).type))
+
     def lookup_symbol_hack(symbol):
         """Hacky way to lookup symbol's address, I've tried other options like parse_and_eval but they
            throw errors like `No symbol "v8" in current context.`. I would like to replace this function
-           once I figure out the proper way.
-        """
+           once I figure out the proper way."""
         return int(gdb.execute("info address {}".format(symbol), to_string=True).split(" is at ")[1].split(" ")[0], 16)
 
     global isolate_root
@@ -26589,7 +26679,7 @@ def get_isolate_root():
         try:
             isolate_key_addr = lookup_symbol_hack("v8::internal::Isolate::isolate_key_")
             isolate_key = to_int32(gdb.parse_and_eval("*(int *){}".format(isolate_key_addr)))
-        except:
+        except Exception:
             err("Failed to get value of v8::internal::Isolate::isolate_key_")
             return None
 
@@ -26608,7 +26698,7 @@ def del_isolate_root(event):
 class V8DereferenceCommand(GenericCommand):
     """Dereference recursively from an address and display information. Handles v8 specific values like tagged and compressed pointers"""
     _cmdline_ = "v8deref"
-    _syntax_  = "{:s} [LOCATION] [l[NB]]".format(_cmdline_)
+    _syntax_ = "{:s} [LOCATION] [l[NB]]".format(_cmdline_)
     _example_ = "{:s} $sp l20".format(_cmdline_)
     _category_ = "Chrome"
 
@@ -26626,6 +26716,7 @@ class V8DereferenceCommand(GenericCommand):
 
         sep = " {:s} ".format(RIGHT_ARROW)
         memalign = current_arch.ptrsize
+        ma = memalign * 2 + 2
 
         offset = off * memalign
         current_address = align_address(addr + offset)
@@ -26633,51 +26724,29 @@ class V8DereferenceCommand(GenericCommand):
         if not addrs:
             return ""
         if addrs[1]:
-            l  = ""
             addr_l0 = format_address(int(addrs[0][0], 16))
-            l += "{:s}{:s}+{:#06x}: {:{ma}s}".format(Color.colorify(addr_l0, base_address_color),
-                                                     VERTICAL_LINE, offset,
-                                                     sep.join(addrs[0][1:]), ma=(memalign*2 + 2))
-            addr_l1 = " "*len(addr_l0)
-            l += "\n"
-            l += "{:s}{:s}+{:#06x}: {:{ma}s}".format(Color.colorify(addr_l1, base_address_color),
-                                                     VERTICAL_LINE, offset+4,
-                                                     sep.join(addrs[1][1:]), ma=(memalign*2 + 2))
+            addr_l0_c = Color.colorify(addr_l0, base_address_color)
+            line = ""
+            line += "{:s}{:s}+{:#06x}: {:{ma}s}".format(addr_l0_c, VERTICAL_LINE, offset, sep.join(addrs[0][1:]), ma=ma)
 
-            """
-            TODO: Get register hints working for this as well (but not super impt imo)
-            register_hints = []
-
-            for regname, regvalue in regs:
-                if current_address == regvalue:
-                    register_hints.append(regname)
-
-            if register_hints:
-                m = "\t{:s}{:s}".format(LEFT_ARROW, ", ".join(list(register_hints)))
-                l += Color.colorify(m, registers_color)
-            """
-
-            offset += memalign
-            pass
+            addr_l1 = " " * len(addr_l0)
+            addr_l1_c = Color.colorify(addr_l1, base_address_color)
+            line += "\n"
+            line += "{:s}{:s}+{:#06x}: {:{ma}s}".format(addr_l1_c, VERTICAL_LINE, offset + 4, sep.join(addrs[1][1:]), ma=ma)
         else:
-            l  = ""
             addr_l = format_address(int(addrs[0][0], 16))
-            l += "{:s}{:s}+{:#06x}: {:{ma}s}".format(Color.colorify(addr_l, base_address_color),
-                                                     VERTICAL_LINE, offset,
-                                                     sep.join(addrs[0][1:]), ma=(memalign*2 + 2))
+            addr_l_c = Color.colorify(addr_l, base_address_color)
+            line = ""
+            line += "{:s}{:s}+{:#06x}: {:{ma}s}".format(addr_l_c, VERTICAL_LINE, offset, sep.join(addrs[0][1:]), ma=ma)
 
             register_hints = []
-
             for regname, regvalue in regs:
                 if current_address == regvalue:
                     register_hints.append(regname)
-
             if register_hints:
                 m = "\t{:s}{:s}".format(LEFT_ARROW, ", ".join(list(register_hints)))
-                l += Color.colorify(m, registers_color)
-
-            offset += memalign
-        return l
+                line += Color.colorify(m, registers_color)
+        return line
 
     @only_if_gdb_running
     def do_invoke(self, argv):
@@ -26699,7 +26768,7 @@ class V8DereferenceCommand(GenericCommand):
 
         addr = int(addr)
         # Remove tagging (tagged pointers)
-        addr = addr & (2**(8*current_arch.ptrsize)-2)
+        addr = addr & (2 ** (8 * current_arch.ptrsize) - 2)
         if process_lookup_address(addr) is None:
             err("Unmapped address")
             return
@@ -26726,8 +26795,8 @@ class V8DereferenceCommand(GenericCommand):
     def dereference_from(addr):
         def format_compressed(addr):
             heap_color = get_gef_setting("theme.address_heap")
-            addr_high = Color.colorify("0x{:08x}".format(addr>>32), "gray")
-            addr_low  = Color.colorify(  "{:08x}".format(addr&0xffffffff), heap_color)
+            addr_high = Color.colorify("0x{:08x}".format(addr >> 32), "gray")
+            addr_low = Color.colorify("{:08x}".format(addr & 0xffffffff), heap_color)
             return "{:s}{:s}".format(addr_high, addr_low)
 
         if not is_alive():
@@ -26738,7 +26807,7 @@ class V8DereferenceCommand(GenericCommand):
         max_recursion = get_gef_setting("dereference.max_recursion") or 10
         addr = lookup_address(align_address(int(addr)))
         msg = ([format_address(addr.value),], [])
-        seen_addrs = set()#tuple(set(), set())
+        seen_addrs = set()
 
         # Is this address pointing to a normal pointer?
         deref = addr.dereference()
@@ -26758,18 +26827,17 @@ class V8DereferenceCommand(GenericCommand):
                 compressed[0] = addr0.dereference() and addr0.value > isolate_root + 0x0c000 and addr0.value & 1
                 compressed[1] = addr1.dereference() and addr1.value > isolate_root + 0x0c000 and addr1.value & 1
                 if True in compressed:
-                    msg[1].append(format_address(addr.value+4))
+                    msg[1].append(format_address(addr.value + 4))
                     for i in range(2):
                         if compressed[i]:
                             msg[i].append(format_compressed(addr0.value if not i else addr1.value))
                         else:
                             val = int(deref & 0xffffffff) if not i else int(deref >> 32)
                             if not (val & 1): # Maybe SMI
-                                msg[i].append("        {:#0{ma}x} (SMI: {:#x})".format( val, val >> 1, ma=( 10 )) )
+                                msg[i].append("        {:#0{ma}x} (SMI: {:#x})".format(val, val >> 1, ma=10))
                             else:
-                                msg[i].append("        {:#0{ma}x}".format( val, ma=( 10 )) )
+                                msg[i].append("        {:#0{ma}x}".format(val, ma=10))
                     return msg
-
 
         while addr.section and max_recursion:
             if addr.value in seen_addrs:
@@ -26909,7 +26977,7 @@ class PartitionAllocDumpStableCommand(GenericCommand):
     """
 
     def slice_unpack(self, data, n):
-        tmp = [data[i:i+n] for i in range(0, len(data), n)]
+        tmp = [data[i:i + n] for i in range(0, len(data), n)]
         if n == 8:
             return list(map(u64, tmp))
         elif n == 4:
@@ -26966,11 +27034,14 @@ class PartitionAllocDumpStableCommand(GenericCommand):
             # check consecutive quadruples
             for addr, data in zip(n_gram(addrs, 4), n_gram(datas, 4)):
                 # root pointer address and root address are close (see above example)
-                if data[0] != 0 and (addr[0] & mask) != (data[0] & mask): # fast_malloc_root_ may be zero. but if non-zero, it holds address close to itself
+                if data[0] != 0 and (addr[0] & mask) != (data[0] & mask):
+                    # fast_malloc_root_ may be zero. but if non-zero, it holds address close to itself
                     continue
-                if (addr[1] & mask) != (data[1] & mask): # array_buffer_root_ is must be non-zero. it holds address close to itself
+                if (addr[1] & mask) != (data[1] & mask):
+                    # array_buffer_root_ is must be non-zero. it holds address close to itself
                     continue
-                if (addr[2] & mask) != (data[2] & mask): # buffer_root_ is must be non-zero. it holds address close to itself
+                if (addr[2] & mask) != (data[2] & mask):
+                    # buffer_root_ is must be non-zero. it holds address close to itself
                     continue
                 # they should be aligned
                 if data[0] & 0x7:
@@ -26997,15 +27068,15 @@ class PartitionAllocDumpStableCommand(GenericCommand):
                 0x55719118e3a0: 0x0000000000000000      0x0000000000000000     <--- hare may be not used
                 0x55719118e3b0: 0x0000000000000000      0x0000000000000000     <--- here may be not used
                 """
-                if read_memory(data[1], 64)[32:] != b"\0"*32:
+                if read_memory(data[1], 64)[32:] != b"\0" * 32:
                     continue
-                if read_memory(data[2], 64)[32:] != b"\0"*32:
+                if read_memory(data[2], 64)[32:] != b"\0" * 32:
                     continue
                 # add candidate
                 root_candidate = [
-                    ["fast_malloc_root_",  addr[0]],
+                    ["fast_malloc_root_", addr[0]],
                     ["array_buffer_root_", addr[1]],
-                    ["buffer_root_",       addr[2]],
+                    ["buffer_root_", addr[2]],
                 ]
                 roots.append(root_candidate)
 
@@ -27034,7 +27105,7 @@ class PartitionAllocDumpStableCommand(GenericCommand):
             try:
                 root_addr = parse_address("&'WTF::Partitions::{:s}'".format(root_string))
                 return [[root_string, root_addr]]
-            except:
+            except Exception:
                 return []
 
         roots = []
@@ -27057,24 +27128,20 @@ class PartitionAllocDumpStableCommand(GenericCommand):
         try:
             t = parse_address("&'base::internal::SlotSpanMetadata<true>::sentinel_slot_span_'")
             sentinel.append(t)
-        except:
+        except Exception:
             pass
         try:
             f = parse_address("&'base::internal::SlotSpanMetadata<false>::sentinel_slot_span_'")
             sentinel.append(f)
-        except:
+        except Exception:
             pass
         return sentinel
 
     def byteswap(self, x):
-        def p(a):
-            return struct.pack("<I",a&0xffffffff)
-        def ube(a):
-            return struct.unpack(">I",a)[0]
-        def pQ(a):
-            return struct.pack("<Q",a&0xffffffffffffffff)
-        def uQbe(a):
-            return struct.unpack(">Q",a)[0]
+        p = lambda a: struct.pack("<I", a & 0xffffffff)
+        ube = lambda a: struct.unpack(">I", a)[0]
+        pQ = lambda a: struct.pack("<Q", a & 0xffffffffffffffff)
+        uQbe = lambda a: struct.unpack(">Q", a)[0]
         if is_64bit():
             converted = uQbe(pQ(x))
         elif is_32bit():
@@ -27314,7 +27381,7 @@ class PartitionAllocDumpStableCommand(GenericCommand):
         slot_span = {}
         slot_span["addr"] = current = addr
         slot_span["super_page_addr"] = (slot_span["addr"] & gef_getpagesize_mask()) - gef_getpagesize()
-        slot_span["partition_page_index"] = (slot_span["addr"] & (gef_getpagesize()-1)) // 0x20
+        slot_span["partition_page_index"] = (slot_span["addr"] & (gef_getpagesize() - 1)) // 0x20
         slot_span["partition_page_start"] = slot_span["super_page_addr"] + slot_span["partition_page_index"] * gef_getpagesize() * 4
         """
         https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/partition_page.h
@@ -27416,7 +27483,7 @@ class PartitionAllocDumpStableCommand(GenericCommand):
                 gef_print("           non_empty_slot_spans:{:d} ".format(extent["number_of_nonempty_slot_spans"]))
                 gef_print("           next:{:<#14x}".format(extent["next"]))
                 current = extent["next"]
-        except:
+        except Exception:
             err("Corrupted?")
         return
 
@@ -27434,11 +27501,11 @@ class PartitionAllocDumpStableCommand(GenericCommand):
                 bucket, _ = self.read_bucket(direct_map["bucket"])
                 self.print_bucket(bucket, root)
                 current = direct_map["next_extent"]
-        except:
+        except Exception:
             err("Corrupted?")
         return
 
-    def print_bucket(self, bucket, root, idx = None):
+    def print_bucket(self, bucket, root, idx=None):
         sentinel1 = self.get_sentinel_slot_spans() # from symbol
         sentinel2 = [root["sentinel_bucket"]["active_slot_spans_head"]] # from heuristic search
         sentinel = list(set(sentinel1 + sentinel2)) # uniq
@@ -27480,7 +27547,7 @@ class PartitionAllocDumpStableCommand(GenericCommand):
         while current:
             try:
                 slot_span, _ = self.read_slot_span(current)
-            except:
+            except Exception:
                 err("Corrupted?")
                 break
             text_fmt = "            -> slot_span @{:<#14x} (#{:3d} of super_page @{:<#14x})"
@@ -27509,7 +27576,7 @@ class PartitionAllocDumpStableCommand(GenericCommand):
             if cnt % 7 == 0:
                 if cnt > 0:
                     text += "\n"
-                text += " "*23
+                text += " " * 23
 
             if chunk in seen:
                 text += Color.colorify("-> {:<#14x} (loop) ".format(chunk), "red bold")
@@ -27521,7 +27588,7 @@ class PartitionAllocDumpStableCommand(GenericCommand):
 
             try:
                 next_chunk = self.byteswap(read_int_from_memory(chunk))
-            except:
+            except Exception:
                 text += Color.colorify("-> {:<#14x} (corrupted) ".format(chunk), "red bold")
                 break
 
@@ -27578,7 +27645,7 @@ class PartitionAllocDumpStableCommand(GenericCommand):
             if ok:
                 try:
                     root, _ = self.read_root(addr, name)
-                except:
+                except Exception:
                     mem_value = read_int_from_memory(addr)
                     err("Parse error {:s}: @ {:#x} -> {:#x}".format(name, addr, mem_value))
                     continue
@@ -27700,7 +27767,7 @@ class PartitionAllocDumpOld1Command(GenericCommand):
     """
 
     def slice_unpack(self, data, n):
-        tmp = [data[i:i+n] for i in range(0, len(data), n)]
+        tmp = [data[i:i + n] for i in range(0, len(data), n)]
         if n == 8:
             return list(map(u64, tmp))
         elif n == 4:
@@ -27736,17 +27803,17 @@ class PartitionAllocDumpOld1Command(GenericCommand):
             base::ThreadSafePartitionRoot* Partitions::buffer_root_ = nullptr;
             base::ThreadUnsafePartitionRoot* Partitions::layout_root_ = nullptr;
             """
-            for i in range(len(addrs)-3):
+            for i in range(len(addrs) - 3):
                 if (datas[i] & mask) != (addrs[i] & mask): # maybe it points near
                     continue
                 if (datas[i] & 0x7) != 0: # maybe it is aligned
                     continue
 
                 # roots are next to each other
-                # calc diff                          # [fast_malloc_root_ exists]            # [fast_malloc_root_ does not exist] #
-                root_size1 = datas[i+1] - datas[i]   # array_buffer_root - fast_malloc_root_ # buffer_root_ - array_buffer_root_  # valid
-                root_size2 = datas[i+2] - datas[i+1] # buffer_root_ - array_buffer_root_     # layout_root_ - buffer_root_        # valid
-                root_size3 = datas[i+3] - datas[i+2] # layout_root_ - buffer_root_           # xxx - xxx                          # maybe invalid
+                # calc diff                              # [fast_malloc_root_ exists]            # [fast_malloc_root_ does not exist] #
+                root_size1 = datas[i + 1] - datas[i]     # array_buffer_root - fast_malloc_root_ # buffer_root_ - array_buffer_root_  # valid
+                root_size2 = datas[i + 2] - datas[i + 1] # buffer_root_ - array_buffer_root_     # layout_root_ - buffer_root_        # valid
+                root_size3 = datas[i + 3] - datas[i + 2] # layout_root_ - buffer_root_           # xxx - xxx                          # maybe invalid
 
                 # sizeof(root) is all same
                 if root_size1 != root_size2:
@@ -27763,13 +27830,13 @@ class PartitionAllocDumpOld1Command(GenericCommand):
 
                 if root_size2 == root_size3: # fast_malloc_root_ exists
                     roots.append(["fast_malloc_root_", addrs[i]])
-                    roots.append(["array_buffer_root_", addrs[i+1]])
-                    roots.append(["buffer_root_", addrs[i+2]])
-                    roots.append(["layout_root_", addrs[i+3]])
+                    roots.append(["array_buffer_root_", addrs[i + 1]])
+                    roots.append(["buffer_root_", addrs[i + 2]])
+                    roots.append(["layout_root_", addrs[i + 3]])
                 else: # fast_malloc_root_ does not exist
                     roots.append(["array_buffer_root_", addrs[i]])
-                    roots.append(["buffer_root_", addrs[i+1]])
-                    roots.append(["layout_root_", addrs[i+2]])
+                    roots.append(["buffer_root_", addrs[i + 1]])
+                    roots.append(["layout_root_", addrs[i + 2]])
 
         if len(roots) in [3, 4]:
             for root in roots:
@@ -27791,7 +27858,7 @@ class PartitionAllocDumpOld1Command(GenericCommand):
             try:
                 root_addr = parse_address("&'WTF::Partitions::{:s}'".format(root_string))
                 return [[root_string, root_addr]]
-            except:
+            except Exception:
                 return []
 
         roots = []
@@ -27814,24 +27881,20 @@ class PartitionAllocDumpOld1Command(GenericCommand):
         try:
             t = parse_address("&'base::internal::SlotSpanMetadata<true>::sentinel_slot_span_'")
             sentinel.append(t)
-        except:
+        except Exception:
             pass
         try:
             f = parse_address("&'base::internal::SlotSpanMetadata<false>::sentinel_slot_span_'")
             sentinel.append(f)
-        except:
+        except Exception:
             pass
         return sentinel
 
     def byteswap(self, x):
-        def p(a):
-            return struct.pack("<I",a&0xffffffff)
-        def ube(a):
-            return struct.unpack(">I",a)[0]
-        def pQ(a):
-            return struct.pack("<Q",a&0xffffffffffffffff)
-        def uQbe(a):
-            return struct.unpack(">Q",a)[0]
+        p = lambda a: struct.pack("<I", a & 0xffffffff)
+        ube = lambda a: struct.unpack(">I", a)[0]
+        pQ = lambda a: struct.pack("<Q", a & 0xffffffffffffffff)
+        uQbe = lambda a: struct.unpack(">Q", a)[0]
         if is_64bit():
             converted = uQbe(pQ(x))
         elif is_32bit():
@@ -28027,7 +28090,7 @@ class PartitionAllocDumpOld1Command(GenericCommand):
         slot_span = {}
         slot_span["addr"] = current = addr
         slot_span["super_page_addr"] = (slot_span["addr"] & gef_getpagesize_mask()) - gef_getpagesize()
-        slot_span["partition_page_index"] = (slot_span["addr"] & (gef_getpagesize()-1)) // 0x20
+        slot_span["partition_page_index"] = (slot_span["addr"] & (gef_getpagesize() - 1)) // 0x20
         slot_span["partition_page_start"] = slot_span["super_page_addr"] + slot_span["partition_page_index"] * gef_getpagesize() * 4
         """
         struct SlotSpanMetadata {
@@ -28112,12 +28175,13 @@ class PartitionAllocDumpOld1Command(GenericCommand):
                 text += "next:{:<#14x}".format(extent["next"])
                 gef_print(text)
                 current = extent["next"]
-        except:
+        except Exception:
             err("Corrupted?")
         return
 
     def print_direct_map_list(self, head, root):
         bugged = False
+
         def bugcheck(bucket):
             # maybe chromium's bug: bucket used by direct_map is strange
             """
@@ -28137,7 +28201,7 @@ class PartitionAllocDumpOld1Command(GenericCommand):
                 return
             try:
                 read_memory(x)
-            except:
+            except gdb.MemoryError:
                 info("maybe chrome bug; direct_map_list->bucket->active_slot_spans_head is broken? it was fixed at least v93.0.4540.0")
                 bugged = True
             return
@@ -28156,11 +28220,11 @@ class PartitionAllocDumpOld1Command(GenericCommand):
                 bugcheck(bucket)
                 self.print_bucket(bucket, root)
                 current = direct_map["next_extent"]
-        except:
+        except Exception:
             err("Corrupted?")
         return
 
-    def print_bucket(self, bucket, root, idx = None):
+    def print_bucket(self, bucket, root, idx=None):
         sentinel1 = self.get_sentinel_slot_spans() # from symbol
         sentinel2 = [root["sentinel_bucket"]["active_slot_spans_head"]] # from heuristic search
         sentinel = list(set(sentinel1 + sentinel2)) # uniq
@@ -28202,7 +28266,7 @@ class PartitionAllocDumpOld1Command(GenericCommand):
         while current:
             try:
                 slot_span, _ = self.read_slot_span(current)
-            except:
+            except Exception:
                 err("Corrupted?")
                 break
             text_fmt = "            -> slot_span @{:<#14x} (#{:3d} of super_page @{:<#14x})"
@@ -28234,7 +28298,7 @@ class PartitionAllocDumpOld1Command(GenericCommand):
             if cnt % 7 == 0:
                 if cnt > 0:
                     text += "\n"
-                text += " "*20
+                text += " " * 20
 
             if chunk in seen:
                 text += Color.colorify("-> {:<#14x} (loop) ".format(chunk), "red bold")
@@ -28246,7 +28310,7 @@ class PartitionAllocDumpOld1Command(GenericCommand):
 
             try:
                 next_chunk = self.byteswap(read_int_from_memory(chunk))
-            except:
+            except Exception:
                 text += Color.colorify("-> {:<#14x} (corrupted) ".format(chunk), "red bold")
                 break
 
@@ -28305,7 +28369,7 @@ class PartitionAllocDumpOld1Command(GenericCommand):
             if ok:
                 try:
                     root, _ = self.read_root(addr, name)
-                except:
+                except Exception:
                     err("Parse error {:s}: @ {:#x}".format(name, addr))
                     continue
                 self.print_root(root)
@@ -28400,22 +28464,22 @@ class PartitionAllocDumpOld2Command(GenericCommand):
         try:
             fast_malloc_root = parse_address("&'WTF::Partitions::fast_malloc_root_'")
             roots.append(("fast_malloc_root_", fast_malloc_root))
-        except:
+        except Exception:
             err("'WTF::Partitions::fast_malloc_root_' is not found")
         try:
             array_buffer_root = parse_address("&'WTF::Partitions::array_buffer_root_'")
             roots.append(("array_buffer_root_", array_buffer_root))
-        except:
+        except Exception:
             err("'WTF::Partitions::array_buffer_root_' is not found")
         try:
             buffer_root = parse_address("&'WTF::Partitions::buffer_root_'")
             roots.append(("buffer_root_", buffer_root))
-        except:
+        except Exception:
             err("'WTF::Partitions::buffer_root_' is not found")
         try:
             layout_root = parse_address("&'WTF::Partitions::layout_root_'")
             roots.append(("layout_root_", layout_root))
-        except:
+        except Exception:
             err("'WTF::Partitions::layout_root_' is not found")
         return roots
 
@@ -28424,12 +28488,12 @@ class PartitionAllocDumpOld2Command(GenericCommand):
         try:
             t = parse_address("&'base::internal::PartitionBucket<true>::sentinel_bucket_'")
             sentinel.append(t)
-        except:
+        except Exception:
             err("'base::internal::PartitionBucket<true>::sentinel_bucket_' is not found")
         try:
             f = parse_address("&'base::internal::PartitionBucket<false>::sentinel_bucket_'")
             sentinel.append(f)
-        except:
+        except Exception:
             err("'base::internal::PartitionBucket<false>::sentinel_bucket_' is not found")
         return sentinel
 
@@ -28438,20 +28502,18 @@ class PartitionAllocDumpOld2Command(GenericCommand):
         try:
             t = parse_address("&'base::internal::PartitionPage<true>::sentinel_page_'")
             sentinel.append(t)
-        except:
+        except Exception:
             err("'base::internal::PartitionPage<true>::sentinel_page_' is not found")
         try:
             f = parse_address("&'base::internal::PartitionPage<false>::sentinel_page_'")
             sentinel.append(f)
-        except:
+        except Exception:
             err("'base::internal::PartitionPage<false>::sentinel_page_' is not found")
         return sentinel
 
     def byteswap(self, x):
-        def pQ(a):
-            return struct.pack("<Q",a&0xffffffffffffffff)
-        def uQbe(a):
-            return struct.unpack(">Q",a)[0]
+        pQ = lambda a: struct.pack("<Q", a & 0xffffffffffffffff)
+        uQbe = lambda a: struct.unpack(">Q", a)[0]
         return uQbe(pQ(x))
 
     def read_root(self, addr, name):
@@ -28491,14 +28553,14 @@ class PartitionAllocDumpOld2Command(GenericCommand):
         kGenericNumBucketedOrders = (kGenericMaxBucketedOrder - kGenericMinBucketedOrder) + 1
         kGenericNumBucketsPerOrder = 8
         kGenericNumBuckets = kGenericNumBucketedOrders * kGenericNumBucketsPerOrder
-        kGenericSmallestBucket = 1 << (kGenericMinBucketedOrder - 1)
-        kSystemPageSize = 4096
-        kPartitionPageShift = 14
-        kPageMetadataShift = 5
-        kSuperPageShift = 21
-        kSuperPageSize = 1 << kSuperPageShift
-        kSuperPageOffsetMask = kSuperPageSize - 1
-        kSuperPageBaseMask = ~kSuperPageOffsetMask
+        # kGenericSmallestBucket = 1 << (kGenericMinBucketedOrder - 1)
+        # kSystemPageSize = 4096
+        # kPartitionPageShift = 14
+        # kPageMetadataShift = 5
+        # kSuperPageShift = 21
+        # kSuperPageSize = 1 << kSuperPageShift
+        # kSuperPageOffsetMask = kSuperPageSize - 1
+        # kSuperPageBaseMask = ~kSuperPageOffsetMask
 
         current += ptrsize # needed, but why?
         root["total_size_of_committed_pages"] = read_int_from_memory(current)
@@ -28637,7 +28699,7 @@ class PartitionAllocDumpOld2Command(GenericCommand):
         page = {}
         page["addr"] = current = addr
         page["super_page_addr"] = (page["addr"] & gef_getpagesize_mask()) - gef_getpagesize()
-        page["partition_page_index"] = (page["addr"] & (gef_getpagesize()-1)) // 0x20
+        page["partition_page_index"] = (page["addr"] & (gef_getpagesize() - 1)) // 0x20
         page["partition_page_start"] = page["super_page_addr"] + page["partition_page_index"] * gef_getpagesize() * 4
         """
         struct PartitionPage {
@@ -28694,7 +28756,7 @@ class PartitionAllocDumpOld2Command(GenericCommand):
 
         gef_print("int16_t global_empty_page_ring_index:          {:#x}".format(root["global_empty_page_ring_index"]))
         inv = root["inverted_self"]
-        gef_print("uintptr_t inverted_self:                       {:#x} (=~{:#x})".format(inv, inv^0xffffffffffffffff))
+        gef_print("uintptr_t inverted_self:                       {:#x} (=~{:#x})".format(inv, inv ^ 0xffffffffffffffff))
 
         if self.verbose:
             gef_print("size_t order_index_shifts[{:2d}]".format(len(root["order_index_shifts"])))
@@ -28738,7 +28800,7 @@ class PartitionAllocDumpOld2Command(GenericCommand):
                 text += "next:{:<#14x}".format(extent["next"])
                 gef_print(text)
                 current = extent["next"]
-        except:
+        except Exception:
             err("Corrupted?")
         return
 
@@ -28756,11 +28818,11 @@ class PartitionAllocDumpOld2Command(GenericCommand):
                 bucket, _ = self.read_bucket(direct_map["bucket"])
                 self.print_bucket(bucket)
                 current = direct_map["next_extent"]
-        except:
+        except Exception:
             err("Corrupted?")
         return
 
-    def print_bucket(self, bucket, idx = None):
+    def print_bucket(self, bucket, idx=None):
         skip_pages = self.get_sentinel_pages()
 
         slot_size = Color.colorify("{:#7x}".format(bucket["slot_size"]), "bold pink")
@@ -28793,7 +28855,7 @@ class PartitionAllocDumpOld2Command(GenericCommand):
         while current:
             try:
                 page, _ = self.read_page(current)
-            except:
+            except Exception:
                 err("Corrupted?")
                 break
             text_fmt = "            -> page @{:<#14x} (#{:3d} of super_page @{:<#14x}): "
@@ -28823,7 +28885,7 @@ class PartitionAllocDumpOld2Command(GenericCommand):
             if cnt % 7 == 0:
                 if cnt > 0:
                     text += "\n"
-                text += " "*20
+                text += " " * 20
 
             if chunk in seen:
                 text += Color.colorify("-> {:<#14x} (loop) ".format(chunk), "red bold")
@@ -28835,7 +28897,7 @@ class PartitionAllocDumpOld2Command(GenericCommand):
 
             try:
                 next_chunk = self.byteswap(read_int_from_memory(chunk))
-            except:
+            except Exception:
                 text += Color.colorify("-> {:<#14x} (corrupted) ".format(chunk), "red bold")
                 break
 
@@ -29024,14 +29086,14 @@ class MuslDumpCommand(GenericCommand):
                     info("__malloc_context: {:#x}".format(__malloc_context))
                     return __malloc_context
             return None
-        except:
+        except Exception:
             err("Not found &__malloc_context")
             return None
 
     def get_malloc_context(self):
         try:
             return parse_address("&__malloc_context")
-        except:
+        except Exception:
             info("Symbol is not found. It will use heuristic search")
             return self.get_malloc_context_heuristic()
 
@@ -29197,9 +29259,8 @@ class MuslDumpCommand(GenericCommand):
         freed_mask = meta["freed_mask"]
         last_idx = meta["last_idx"]
 
-        mask = avail_mask | freed_mask
         text = ""
-        for i in range(last_idx+1):
+        for i in range(last_idx + 1):
             if avail_mask & 1:
                 text = "A" + text
             elif freed_mask & 1:
@@ -29208,7 +29269,6 @@ class MuslDumpCommand(GenericCommand):
                 text = "U" + text
             avail_mask >>= 1
             freed_mask >>= 1
-            mask = avail_mask | freed_mask
         return text
 
     def read_group(self, meta, offset):
@@ -29256,30 +29316,30 @@ class MuslDumpCommand(GenericCommand):
         if state == "Used":
             subinfo += " slot_idx:{:<#3x} slot_offset:{:#x}".format(group["slot_idx"], group["slot_offset"])
 
-        slicer = lambda data, n: [data[i:i+n] for i in range(0, len(data), n)]
-        data = slicer(group["data"], ptrsize*2)
+        slicer = lambda data, n: [data[i:i + n] for i in range(0, len(data), n)]
+        data = slicer(group["data"], ptrsize * 2)
         addr = group["addr"]
         group_line_threshold = 8
 
         # create dump text
         unpack = u32 if ptrsize == 4 else u64
-        width = ptrsize*2 + 2
+        width = ptrsize * 2 + 2
         dump = ""
         done = False
         for blk, blks in itertools.groupby(data):
             repeat_count = len(list(blks))
             d1, d2 = unpack(blk[:ptrsize]), unpack(blk[ptrsize:])
-            dascii = ''.join(list(map(lambda x: chr(x) if 0x20<=x<0x7f else '.', list(blk))))
+            dascii = ''.join(list(map(lambda x: chr(x) if 0x20 <= x < 0x7f else '.', list(blk))))
             if repeat_count < group_line_threshold:
                 for i in range(repeat_count):
                     dump += f"{addr:#x}: {d1:#0{width:d}x} {d2:#0{width:d}x} | {dascii:s} | " + subinfo + "\n"
-                    addr += ptrsize*2
+                    addr += ptrsize * 2
                     if subinfo:
                         subinfo = ""
             else:
                 dump += f"{addr:#x}: {d1:#0{width:d}x} {d2:#0{width:d}x} | {dascii:s} | " + subinfo + "\n"
-                dump += "* {:#d} lines, {:#x} bytes \n".format(repeat_count-1, (repeat_count-1)*ptrsize*2)
-                addr += ptrsize*2*repeat_count
+                dump += "* {:#d} lines, {:#x} bytes \n".format(repeat_count - 1, (repeat_count - 1) * ptrsize * 2)
+                addr += ptrsize * 2 * repeat_count
                 if subinfo:
                     subinfo = ""
             if done:
@@ -29331,7 +29391,7 @@ class MuslDumpCommand(GenericCommand):
                     for i in range(meta["last_idx"] + 1):
                         offset = self.class_to_size(idx) * i
                         group = self.read_group(meta, offset)
-                        self.dump_chunk(group, dic[state[-i-1]])
+                        self.dump_chunk(group, dic[state[-i - 1]])
                     gef_print("")
 
                 seen.append(current)
@@ -29353,8 +29413,8 @@ class MuslDumpCommand(GenericCommand):
             while "-a" in argv:
                 idx = argv.index("-a")
                 self.active_idx = int(argv[idx + 1])
-                argv = argv[:idx] + argv[idx+2:]
-        except:
+                argv = argv[:idx] + argv[idx + 2:]
+        except Exception:
             self.usage()
             return
 
@@ -29497,14 +29557,14 @@ class XSecureMemAddrCommand(GenericCommand):
             try:
                 fd.seek(sm.page_start + offset, 0)
                 data = fd.read(dump_size)
-            except:
+            except Exception:
                 return None
         if verbose:
             info("read size result: {:#x}".format(len(data)))
         return data
 
     def print_secure_memory_x(self, target, data):
-        slicer = lambda data, n: [data[i:i+n] for i in range(0, len(data), n)]
+        slicer = lambda data, n: [data[i:i + n] for i in range(0, len(data), n)]
         for i, data16 in enumerate(slicer(data, 16)):
             addr = int(target) + i * 0x10
             data_units = slicer(data16, self.dump_unit)
@@ -29536,7 +29596,7 @@ class XSecureMemAddrCommand(GenericCommand):
             for insn in capstone_disassemble(target, self.dump_count, **kwargs):
                 insn_fmt = "{:12o}"
                 text_insn = insn_fmt.format(insn)
-                msg = "{} {}".format(" "*5, text_insn)
+                msg = "{} {}".format(" " * 5, text_insn)
                 gef_print(msg)
         except gdb.error:
             pass
@@ -29570,7 +29630,7 @@ class XSecureMemAddrCommand(GenericCommand):
                     if c in ["x", "i"]:
                         self.dump_type = c
                     elif c in ["b", "h", "w", "g"]:
-                        self.dump_unit = {"b":1, "h":2, "w":4, "g":8}[c]
+                        self.dump_unit = {"b": 1, "h": 2, "w": 4, "g": 8}[c]
                     else:
                         err("Unsupported format: {}".format(c))
                         return
@@ -29585,7 +29645,7 @@ class XSecureMemAddrCommand(GenericCommand):
 
         try:
             target = int(gdb.parse_and_eval(''.join(argv)))
-        except:
+        except Exception:
             self.usage()
             return
 
@@ -29687,7 +29747,7 @@ class WSecureMemAddrCommand(GenericCommand):
             try:
                 fd.seek(sm.page_start + offset, 0)
                 ret = fd.write(data)
-            except:
+            except Exception:
                 return None
         if verbose:
             info("written size result: {:#x}".format(ret))
@@ -29744,7 +29804,7 @@ class WSecureMemAddrCommand(GenericCommand):
                     self.usage()
                     return
                 argv = argv[3:]
-            except:
+            except Exception:
                 self.usage()
                 return
 
@@ -29757,7 +29817,7 @@ class WSecureMemAddrCommand(GenericCommand):
 
         try:
             target = int(gdb.parse_and_eval(''.join(argv)))
-        except:
+        except Exception:
             self.usage()
             return
 
@@ -29829,7 +29889,7 @@ class BreakSecureMemAddrCommand(GenericCommand):
             phys_addr = parse_address(' '.join(argv))
             if verbose:
                 info("phys address: {:#x}".format(phys_addr))
-        except:
+        except Exception:
             self.usage()
             return
 
@@ -29899,8 +29959,8 @@ class OpteeBreakTaAddrCommand(GenericCommand):
     """Set a breakpoint to OPTEE-TA."""
     _cmdline_ = "optee-break-ta"
     _syntax_ = "{:s} [-h] [-v] ADDR_thread_enter_user_mode TA_OFFSET\n".format(_cmdline_)
-    _syntax_ += "  ADDR_thread_enter_user_mode: The physical address of `thread_enter_user_mode` at OPTEE-OS\n".format(_cmdline_)
-    _syntax_ += "  TA_OFFSET:                   The breakpoint target offset of OPTEE-TA".format(_cmdline_)
+    _syntax_ += "  ADDR_thread_enter_user_mode: The physical address of `thread_enter_user_mode` at OPTEE-OS\n"
+    _syntax_ += "  TA_OFFSET:                   The breakpoint target offset of OPTEE-TA"
     _example_ = "{:s} 0xe137c78 0x2784".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
 
@@ -29921,11 +29981,11 @@ class OpteeBreakTaAddrCommand(GenericCommand):
             argv.remove("-v")
 
         try:
-            thread_enter_user_mode = phys_addr = parse_address(argv[0])
+            thread_enter_user_mode = parse_address(argv[0])
             if verbose:
                 info("thread_enter_user_mode @ OPTEE-OS: {:#x}".format(thread_enter_user_mode))
             argv = argv[1:]
-        except:
+        except Exception:
             self.usage()
             return
 
@@ -29933,7 +29993,7 @@ class OpteeBreakTaAddrCommand(GenericCommand):
             ta_offset = parse_address(' '.join(argv))
             if verbose:
                 info("breakpoint target offset of TA: {:#x}".format(ta_offset))
-        except:
+        except Exception:
             self.usage()
             return
 
@@ -29950,7 +30010,7 @@ class OpteeBgetDumpCommand(GenericCommand):
     """Dump bget allocator of OPTEE-Trusted-App."""
     _cmdline_ = "optee-bget-dump"
     _syntax_ = "{:s} [-h] [-v] OFFSET_malloc_ctx\n".format(_cmdline_)
-    _syntax_ += "  OFFSET_malloc_ctx:   The offset of `malloc_ctx` at OPTEE-TA".format(_cmdline_)
+    _syntax_ += "  OFFSET_malloc_ctx:   The offset of `malloc_ctx` at OPTEE-TA"
     _example_ = "{:s} 0x2a408\n".format(_cmdline_)
     _example_ += "\n"
     _example_ += "Simplified heap structure\n"
@@ -29963,7 +30023,7 @@ class OpteeBgetDumpCommand(GenericCommand):
     _example_ += "| (long numget)                |         |                        |\n"
     _example_ += "| (long numrel)                |         |                        |\n"
     _example_ += "| (long numpblk)               |         +-used chunk-------------+\n"
-    _example_ += "| (long numpget)               |         | bufsize prevfree       |= the size of upper chunk (if upper chunk is free-ed)"
+    _example_ += "| (long numpget)               |         | bufsize prevfree       |= the size of upper chunk (if upper chunk is free-ed)\n"
     _example_ += "| (long numprel)               |         | bufsize bsize          |= the size of this chunk (negative number)\n"
     _example_ += "| (long numdget)               |         | uchar user_data[bsize] |\n"
     _example_ += "| (long numdrel)               |         |                        |\n"
@@ -30001,20 +30061,20 @@ class OpteeBgetDumpCommand(GenericCommand):
         seen = [current]
         while True:
             try:
-                prevfree = read_int_from_memory(current + current_arch.ptrsize*0)
-                bsize = read_int_from_memory(current + current_arch.ptrsize*1)
-                flink = read_int_from_memory(current + current_arch.ptrsize*2)
-                blink = read_int_from_memory(current + current_arch.ptrsize*3)
+                prevfree = read_int_from_memory(current + current_arch.ptrsize * 0)
+                bsize = read_int_from_memory(current + current_arch.ptrsize * 1)
+                flink = read_int_from_memory(current + current_arch.ptrsize * 2)
+                blink = read_int_from_memory(current + current_arch.ptrsize * 3)
                 next_prevfree = read_int_from_memory(current + bsize)
                 next_bsize = read_int_from_memory(current + bsize + current_arch.ptrsize)
-            except:
+            except Exception:
                 flinks.append("memory corrupted")
                 break
             if flink % 8 or blink % 8 or bsize % 8 or next_prevfree % 8 or next_bsize % 8:
                 flinks.append("unaligned corrupted")
                 break
-            flinks.append({"_addr": current, "prevfree":prevfree, "bsize":bsize, "flink":flink, "blink":blink,
-                           "next_prevfree":next_prevfree, "next_bsize":next_bsize})
+            flinks.append({"_addr": current, "prevfree": prevfree, "bsize": bsize, "flink": flink, "blink": blink,
+                           "next_prevfree": next_prevfree, "next_bsize": next_bsize})
             if flink == head:
                 break
             if flink in seen[1:]:
@@ -30030,20 +30090,20 @@ class OpteeBgetDumpCommand(GenericCommand):
         seen = [current]
         while True:
             try:
-                prevfree = read_int_from_memory(current + current_arch.ptrsize*0)
-                bsize = read_int_from_memory(current + current_arch.ptrsize*1)
-                flink = read_int_from_memory(current + current_arch.ptrsize*2)
-                blink = read_int_from_memory(current + current_arch.ptrsize*3)
+                prevfree = read_int_from_memory(current + current_arch.ptrsize * 0)
+                bsize = read_int_from_memory(current + current_arch.ptrsize * 1)
+                flink = read_int_from_memory(current + current_arch.ptrsize * 2)
+                blink = read_int_from_memory(current + current_arch.ptrsize * 3)
                 next_prevfree = read_int_from_memory(current + bsize)
                 next_bsize = read_int_from_memory(current + bsize + current_arch.ptrsize)
-            except:
+            except Exception:
                 blinks.append("memory corrupted")
                 break
             if flink % 8 or blink % 8 or bsize % 8 or next_prevfree % 8 or next_bsize % 8:
                 blinks.append("unaligned corrupted")
                 break
-            blinks.append({"_addr": current, "prevfree":prevfree, "bsize":bsize, "flink":flink, "blink":blink,
-                           "next_prevfree":next_prevfree, "next_bsize":next_bsize})
+            blinks.append({"_addr": current, "prevfree": prevfree, "bsize": bsize, "flink": flink, "blink": blink,
+                           "next_prevfree": next_prevfree, "next_bsize": next_bsize})
             if blink == head:
                 break
             if blink in seen[1:]:
@@ -30084,9 +30144,9 @@ class OpteeBgetDumpCommand(GenericCommand):
 
         malloc_ctx["pool_list"] = []
         for i in range(malloc_ctx["pool_len"]):
-            buf = read_int_from_memory(malloc_ctx["pool"] + (i*2)*current_arch.ptrsize)
-            size = read_int_from_memory(malloc_ctx["pool"] + (i*2+1)*current_arch.ptrsize)
-            malloc_ctx["pool_list"].append({"buf": buf, "len":size})
+            buf = read_int_from_memory(malloc_ctx["pool"] + (i * 2) * current_arch.ptrsize)
+            size = read_int_from_memory(malloc_ctx["pool"] + (i * 2 + 1) * current_arch.ptrsize)
+            malloc_ctx["pool_list"].append({"buf": buf, "len": size})
 
         return malloc_ctx
 
@@ -30137,11 +30197,11 @@ class OpteeBgetDumpCommand(GenericCommand):
                     break
                 seen.append(chunk)
                 try:
-                    prevfree = read_int_from_memory(chunk + current_arch.ptrsize*0)
-                    bsize = read_int_from_memory(chunk + current_arch.ptrsize*1)
-                    flink = read_int_from_memory(chunk + current_arch.ptrsize*2)
-                    blink = read_int_from_memory(chunk + current_arch.ptrsize*3)
-                except:
+                    prevfree = read_int_from_memory(chunk + current_arch.ptrsize * 0)
+                    bsize = read_int_from_memory(chunk + current_arch.ptrsize * 1)
+                    flink = read_int_from_memory(chunk + current_arch.ptrsize * 2)
+                    blink = read_int_from_memory(chunk + current_arch.ptrsize * 3)
+                except Exception:
                     gef_print(Color.colorify("unaligned orrupted", "red bold"))
                     break
                 chunk_addr = Color.colorify("{:#010x}".format(chunk), "yellow bold")
@@ -30179,7 +30239,7 @@ class OpteeBgetDumpCommand(GenericCommand):
             malloc_ctx_offset = parse_address(argv[0])
             if verbose:
                 info("offset of malloc_ctx: {:#x}".format(malloc_ctx_offset))
-        except:
+        except Exception:
             self.usage()
             return
 
@@ -30269,7 +30329,7 @@ class CpuidCommand(GenericCommand):
         else:
             gdb.execute("set $eax = {:#x}".format(num), to_string=True)
             gdb.execute("set $ecx = {:#x}".format(subnum), to_string=True)
-        gdb.execute("set $pc = {:#x}".format(d["pc"]+2), to_string=True) # skip "\xeb\xfe"
+        gdb.execute("set $pc = {:#x}".format(d["pc"] + 2), to_string=True) # skip "\xeb\xfe"
         self.close_stdout()
         gdb.execute("stepi", to_string=True)
         self.revert_stdout()
@@ -30305,84 +30365,84 @@ class CpuidCommand(GenericCommand):
             gef_print("    ebx+edx+ecx: Vendor ID (={:s})".format(repr(vid)))
         elif id == 1:
             gef_print("    eax: Version Information")
-            gef_print(c(eax,  0, 0xf,       "        EAX  3- 0: Stepping ID"))
-            gef_print(c(eax,  4, 0xf,       "        EAX  7- 4: Model Number"))
-            gef_print(c(eax,  8, 0xf,       "        EAX 11- 8: Family Code"))
-            gef_print(c(eax, 12, 0b11,      "        EAX 13-12: Processor Type"))
-            gef_print(c(eax, 14, 0b11,      "        EAX 15-14: Reserved"))
-            gef_print(c(eax, 16, 0xf,       "        EAX 19-16: Extended Model"))
-            gef_print(c(eax, 20, 0xff,      "        EAX 27-20: Extended Family"))
-            gef_print(c(eax, 28, 0xf,       "        EAX 31-28: Reserved"))
+            gef_print(c(eax,  0, 0xf,        "        EAX  3- 0: Stepping ID"))
+            gef_print(c(eax,  4, 0xf,        "        EAX  7- 4: Model Number"))
+            gef_print(c(eax,  8, 0xf,        "        EAX 11- 8: Family Code"))
+            gef_print(c(eax, 12, 0b11,       "        EAX 13-12: Processor Type"))
+            gef_print(c(eax, 14, 0b11,       "        EAX 15-14: Reserved"))
+            gef_print(c(eax, 16, 0xf,        "        EAX 19-16: Extended Model"))
+            gef_print(c(eax, 20, 0xff,       "        EAX 27-20: Extended Family"))
+            gef_print(c(eax, 28, 0xf,        "        EAX 31-28: Reserved"))
             gef_print("    ebx: Additional Information")
-            gef_print(c(ebx,  0, 0xff,      "        EBX  7- 0: Brand Index"))
-            gef_print(c(ebx,  8, 0xff,      "        EBX 15- 8: CLFLUSH line size"))
-            gef_print(c(ebx, 16, 0xff,      "        EBX 23-16: The number of logical processors"))
-            gef_print(c(ebx, 24, 0xff,      "        EBX 31-24: Initial APIC ID"))
+            gef_print(c(ebx,  0, 0xff,       "        EBX  7- 0: Brand Index"))
+            gef_print(c(ebx,  8, 0xff,       "        EBX 15- 8: CLFLUSH line size"))
+            gef_print(c(ebx, 16, 0xff,       "        EBX 23-16: The number of logical processors"))
+            gef_print(c(ebx, 24, 0xff,       "        EBX 31-24: Initial APIC ID"))
             gef_print("    edx,ecx: Feature Information")
-            gef_print(c(edx,  0, 1,         "        EDX     0: FPU (Floating Point Unit on-chip)"))
-            gef_print(c(edx,  1, 1,         "        EDX     1: VME (Virtual 8086 Mode Enhancements)"))
-            gef_print(c(edx,  2, 1,         "        EDX     2: DE (Debugging Extensions)"))
-            gef_print(c(edx,  3, 1,         "        EDX     3: PSE (Page Size Extension)"))
-            gef_print(c(edx,  4, 1,         "        EDX     4: TSC (Time Stamp Counter)"))
-            gef_print(c(edx,  5, 1,         "        EDX     5: MSR (Model Specific Registers RDMSR and WRMSR instructions)"))
-            gef_print(c(edx,  6, 1,         "        EDX     6: PAE (Physical Address Extension)"))
-            gef_print(c(edx,  7, 1,         "        EDX     7: MCE (Machine Check Exception)"))
-            gef_print(c(edx,  8, 1,         "        EDX     8: CX8 (CMPXCHG8B instruction)"))
-            gef_print(c(edx,  9, 1,         "        EDX     9: APIC (APIC on-chip)"))
-            gef_print(c(edx, 10, 1,         "        EDX    10: Reserved"))
-            gef_print(c(edx, 11, 1,         "        EDX    11: SEP (SYSENTER and SYSEXIT instructions)"))
-            gef_print(c(edx, 12, 1,         "        EDX    12: MTRR (Memory Type Range Registers)"))
-            gef_print(c(edx, 13, 1,         "        EDX    13: PGE (Page Global Bit)"))
-            gef_print(c(edx, 14, 1,         "        EDX    14: MCA (Machine Check Architecture)"))
-            gef_print(c(edx, 15, 1,         "        EDX    15: CMOV (Conditional Move instructions)"))
-            gef_print(c(edx, 16, 1,         "        EDX    16: PAT (Page Attribute Table)"))
-            gef_print(c(edx, 17, 1,         "        EDX    17: PSE-36 (36-Bit Page Size Extension)"))
-            gef_print(c(edx, 18, 1,         "        EDX    18: PSN (Processor Serial Number)"))
-            gef_print(c(edx, 19, 1,         "        EDX    19: CLFSH (CLFLUSH instruction)"))
-            gef_print(c(edx, 20, 1,         "        EDX    20: Reserved"))
-            gef_print(c(edx, 21, 1,         "        EDX    21: DS (Debug Store)"))
-            gef_print(c(edx, 22, 1,         "        EDX    22: ACPI (Thermal Monitor and Software Controlled Clock Facilities)"))
-            gef_print(c(edx, 23, 1,         "        EDX    23: MMX (Intel MMX technology)"))
-            gef_print(c(edx, 24, 1,         "        EDX    24: FXSR (FXSAVE and FXRSTOR instructions)"))
-            gef_print(c(edx, 25, 1,         "        EDX    25: SSE (Streaming SIMD Extension)"))
-            gef_print(c(edx, 26, 1,         "        EDX    26: SSE2 (STreaming SIMD Extension 2)"))
-            gef_print(c(edx, 27, 1,         "        EDX    27: SS (Self Snoop)"))
-            gef_print(c(edx, 28, 1,         "        EDX    28: HTT (Max APIC IDs reserved field is Valid)"))
-            gef_print(c(edx, 29, 1,         "        EDX    29: TM (Thermal Monitor)"))
-            gef_print(c(edx, 30, 1,         "        EDX    30: Reserved"))
-            gef_print(c(edx, 31, 1,         "        EDX    31: PBE (Pending Break Enable)"))
-            gef_print(c(ecx,  0, 1,         "        ECX     0: SSE3 (Streaming SIMD Extensions 3)"))
-            gef_print(c(ecx,  1, 1,         "        ECX     1: PCLMULQDQ (PCLMULQDQ instruction)"))
-            gef_print(c(ecx,  2, 1,         "        ECX     2: DTES64 (64-bit DS Area)"))
-            gef_print(c(ecx,  3, 1,         "        ECX     3: MONITOR (MONITOR/MWAIT instruction)"))
-            gef_print(c(ecx,  4, 1,         "        ECX     4: DS-CPL (CPL Qualified Debug Store)"))
-            gef_print(c(ecx,  5, 1,         "        ECX     5: VMX (Intel VT (Virtual Machine eXtensions))"))
-            gef_print(c(ecx,  6, 1,         "        ECX     6: SMX (Safer Mode eXtensions)"))
-            gef_print(c(ecx,  7, 1,         "        ECX     7: EIST (Enhanced Intel SpeedStep Technology)"))
-            gef_print(c(ecx,  8, 1,         "        ECX     8: TM2 (Thermal Monitor 2)"))
-            gef_print(c(ecx,  9, 1,         "        ECX     9: SSSE3 (Supplemental Streaming SIMD Extensions 3)"))
-            gef_print(c(ecx, 10, 1,         "        ECX    10: CNXT-ID (L1 Context ID)"))
-            gef_print(c(ecx, 11, 1,         "        ECX    11: SDBG (IA32_DEBUG_INTERFACE MSR for silicon debug)"))
-            gef_print(c(ecx, 12, 1,         "        ECX    12: FMA (FMA extensions using YMM state)"))
-            gef_print(c(ecx, 13, 1,         "        ECX    13: CMPXCHG16B (CMPXCHG16B instruction)"))
-            gef_print(c(ecx, 14, 1,         "        ECX    14: xTPR (xTPR update control)"))
-            gef_print(c(ecx, 15, 1,         "        ECX    15: PDCM (Perfmon and Debug Capability MSR)"))
-            gef_print(c(ecx, 16, 1,         "        ECX    16: Reserved"))
-            gef_print(c(ecx, 17, 1,         "        ECX    17: PCID (Process-Context IDentifiers)"))
-            gef_print(c(ecx, 18, 1,         "        ECX    18: DCA (Direct Cache Access)"))
-            gef_print(c(ecx, 19, 1,         "        ECX    19: SSE4_1 (Streaming SIMD Extensions 4.1)"))
-            gef_print(c(ecx, 20, 1,         "        ECX    20: SSE4_2 (Streaming SIMD Extensions 4.2)"))
-            gef_print(c(ecx, 21, 1,         "        ECX    21: x2APIC"))
-            gef_print(c(ecx, 22, 1,         "        ECX    22: MOVBE (MOVBE instruction)"))
-            gef_print(c(ecx, 23, 1,         "        ECX    23: POPCNT (POPulation CouNt instruction)"))
-            gef_print(c(ecx, 24, 1,         "        ECX    24: TSC-Deadline"))
-            gef_print(c(ecx, 25, 1,         "        ECX    25: AESNI (AESNI Instruction)"))
-            gef_print(c(ecx, 26, 1,         "        ECX    26: XSAVE (XSAVE instruction)"))
-            gef_print(c(ecx, 27, 1,         "        ECX    27: OSXSAVE (OSXSAVE instruction)"))
-            gef_print(c(ecx, 28, 1,         "        ECX    28: AVX (Intel Advanced Vector eXtensions)"))
-            gef_print(c(ecx, 29, 1,         "        ECX    29: F16C (16-bit Floating-point Conversion instructions)"))
-            gef_print(c(ecx, 30, 1,         "        ECX    30: RDRAND (RDRAND instruction)"))
-            gef_print(c(ecx, 31, 1,         "        ECX    31: RAZ (Reserved for use by hypervisor to indicate guest status)"))
+            gef_print(c(edx,  0, 1,          "        EDX     0: FPU (Floating Point Unit on-chip)"))
+            gef_print(c(edx,  1, 1,          "        EDX     1: VME (Virtual 8086 Mode Enhancements)"))
+            gef_print(c(edx,  2, 1,          "        EDX     2: DE (Debugging Extensions)"))
+            gef_print(c(edx,  3, 1,          "        EDX     3: PSE (Page Size Extension)"))
+            gef_print(c(edx,  4, 1,          "        EDX     4: TSC (Time Stamp Counter)"))
+            gef_print(c(edx,  5, 1,          "        EDX     5: MSR (Model Specific Registers RDMSR and WRMSR instructions)"))
+            gef_print(c(edx,  6, 1,          "        EDX     6: PAE (Physical Address Extension)"))
+            gef_print(c(edx,  7, 1,          "        EDX     7: MCE (Machine Check Exception)"))
+            gef_print(c(edx,  8, 1,          "        EDX     8: CX8 (CMPXCHG8B instruction)"))
+            gef_print(c(edx,  9, 1,          "        EDX     9: APIC (APIC on-chip)"))
+            gef_print(c(edx, 10, 1,          "        EDX    10: Reserved"))
+            gef_print(c(edx, 11, 1,          "        EDX    11: SEP (SYSENTER and SYSEXIT instructions)"))
+            gef_print(c(edx, 12, 1,          "        EDX    12: MTRR (Memory Type Range Registers)"))
+            gef_print(c(edx, 13, 1,          "        EDX    13: PGE (Page Global Bit)"))
+            gef_print(c(edx, 14, 1,          "        EDX    14: MCA (Machine Check Architecture)"))
+            gef_print(c(edx, 15, 1,          "        EDX    15: CMOV (Conditional Move instructions)"))
+            gef_print(c(edx, 16, 1,          "        EDX    16: PAT (Page Attribute Table)"))
+            gef_print(c(edx, 17, 1,          "        EDX    17: PSE-36 (36-Bit Page Size Extension)"))
+            gef_print(c(edx, 18, 1,          "        EDX    18: PSN (Processor Serial Number)"))
+            gef_print(c(edx, 19, 1,          "        EDX    19: CLFSH (CLFLUSH instruction)"))
+            gef_print(c(edx, 20, 1,          "        EDX    20: Reserved"))
+            gef_print(c(edx, 21, 1,          "        EDX    21: DS (Debug Store)"))
+            gef_print(c(edx, 22, 1,          "        EDX    22: ACPI (Thermal Monitor and Software Controlled Clock Facilities)"))
+            gef_print(c(edx, 23, 1,          "        EDX    23: MMX (Intel MMX technology)"))
+            gef_print(c(edx, 24, 1,          "        EDX    24: FXSR (FXSAVE and FXRSTOR instructions)"))
+            gef_print(c(edx, 25, 1,          "        EDX    25: SSE (Streaming SIMD Extension)"))
+            gef_print(c(edx, 26, 1,          "        EDX    26: SSE2 (STreaming SIMD Extension 2)"))
+            gef_print(c(edx, 27, 1,          "        EDX    27: SS (Self Snoop)"))
+            gef_print(c(edx, 28, 1,          "        EDX    28: HTT (Max APIC IDs reserved field is Valid)"))
+            gef_print(c(edx, 29, 1,          "        EDX    29: TM (Thermal Monitor)"))
+            gef_print(c(edx, 30, 1,          "        EDX    30: Reserved"))
+            gef_print(c(edx, 31, 1,          "        EDX    31: PBE (Pending Break Enable)"))
+            gef_print(c(ecx,  0, 1,          "        ECX     0: SSE3 (Streaming SIMD Extensions 3)"))
+            gef_print(c(ecx,  1, 1,          "        ECX     1: PCLMULQDQ (PCLMULQDQ instruction)"))
+            gef_print(c(ecx,  2, 1,          "        ECX     2: DTES64 (64-bit DS Area)"))
+            gef_print(c(ecx,  3, 1,          "        ECX     3: MONITOR (MONITOR/MWAIT instruction)"))
+            gef_print(c(ecx,  4, 1,          "        ECX     4: DS-CPL (CPL Qualified Debug Store)"))
+            gef_print(c(ecx,  5, 1,          "        ECX     5: VMX (Intel VT (Virtual Machine eXtensions))"))
+            gef_print(c(ecx,  6, 1,          "        ECX     6: SMX (Safer Mode eXtensions)"))
+            gef_print(c(ecx,  7, 1,          "        ECX     7: EIST (Enhanced Intel SpeedStep Technology)"))
+            gef_print(c(ecx,  8, 1,          "        ECX     8: TM2 (Thermal Monitor 2)"))
+            gef_print(c(ecx,  9, 1,          "        ECX     9: SSSE3 (Supplemental Streaming SIMD Extensions 3)"))
+            gef_print(c(ecx, 10, 1,          "        ECX    10: CNXT-ID (L1 Context ID)"))
+            gef_print(c(ecx, 11, 1,          "        ECX    11: SDBG (IA32_DEBUG_INTERFACE MSR for silicon debug)"))
+            gef_print(c(ecx, 12, 1,          "        ECX    12: FMA (FMA extensions using YMM state)"))
+            gef_print(c(ecx, 13, 1,          "        ECX    13: CMPXCHG16B (CMPXCHG16B instruction)"))
+            gef_print(c(ecx, 14, 1,          "        ECX    14: xTPR (xTPR update control)"))
+            gef_print(c(ecx, 15, 1,          "        ECX    15: PDCM (Perfmon and Debug Capability MSR)"))
+            gef_print(c(ecx, 16, 1,          "        ECX    16: Reserved"))
+            gef_print(c(ecx, 17, 1,          "        ECX    17: PCID (Process-Context IDentifiers)"))
+            gef_print(c(ecx, 18, 1,          "        ECX    18: DCA (Direct Cache Access)"))
+            gef_print(c(ecx, 19, 1,          "        ECX    19: SSE4_1 (Streaming SIMD Extensions 4.1)"))
+            gef_print(c(ecx, 20, 1,          "        ECX    20: SSE4_2 (Streaming SIMD Extensions 4.2)"))
+            gef_print(c(ecx, 21, 1,          "        ECX    21: x2APIC"))
+            gef_print(c(ecx, 22, 1,          "        ECX    22: MOVBE (MOVBE instruction)"))
+            gef_print(c(ecx, 23, 1,          "        ECX    23: POPCNT (POPulation CouNt instruction)"))
+            gef_print(c(ecx, 24, 1,          "        ECX    24: TSC-Deadline"))
+            gef_print(c(ecx, 25, 1,          "        ECX    25: AESNI (AESNI Instruction)"))
+            gef_print(c(ecx, 26, 1,          "        ECX    26: XSAVE (XSAVE instruction)"))
+            gef_print(c(ecx, 27, 1,          "        ECX    27: OSXSAVE (OSXSAVE instruction)"))
+            gef_print(c(ecx, 28, 1,          "        ECX    28: AVX (Intel Advanced Vector eXtensions)"))
+            gef_print(c(ecx, 29, 1,          "        ECX    29: F16C (16-bit Floating-point Conversion instructions)"))
+            gef_print(c(ecx, 30, 1,          "        ECX    30: RDRAND (RDRAND instruction)"))
+            gef_print(c(ecx, 31, 1,          "        ECX    31: RAZ (Reserved for use by hypervisor to indicate guest status)"))
         elif id == 2:
             gef_print("    Cache and TLB Information")
         elif id == 3:
@@ -30394,141 +30454,141 @@ class CpuidCommand(GenericCommand):
             gef_print("    Information of MONITOR/MWAIT")
         elif id == 6:
             gef_print("    Information of power management")
-            gef_print(c(eax,  0, 1,         "        EAX     0: Digital temperature sensor"))
-            gef_print(c(eax,  1, 1,         "        EAX     1: Intel Turbo Boost Technology"))
-            gef_print(c(eax,  2, 1,         "        EAX     2: ARAT (Always Running APIC Timer)"))
-            gef_print(c(eax,  3, 1,         "        EAX     3: Reserved"))
-            gef_print(c(eax,  4, 1,         "        EAX     4: Power limit notification controls"))
-            gef_print(c(eax,  5, 1,         "        EAX     5: Clock modulation duty cycle extensions"))
-            gef_print(c(eax,  6, 1,         "        EAX     6: Package thermal management"))
-            gef_print(c(eax,  7, 1,         "        EAX     7: Hardware-managed P-state base support (HWP)"))
-            gef_print(c(eax,  8, 1,         "        EAX     8: HWP notification interrupt enable MSR"))
-            gef_print(c(eax,  9, 1,         "        EAX     9: HWP activity window MSR"))
-            gef_print(c(eax, 10, 1,         "        EAX    10: HWP energy/performance preference MSR"))
-            gef_print(c(eax, 11, 1,         "        EAX    11: HWP package level request MSR"))
-            gef_print(c(eax, 12, 1,         "        EAX    12: Reserved"))
-            gef_print(c(eax, 13, 1,         "        EAX    13: HDC (Hardware Duty Cycle programming)"))
-            gef_print(c(eax, 14, 1,         "        EAX    14: Intel Turbo Boost Max Technology 3.0"))
-            gef_print(c(eax, 15, 1,         "        EAX    15: HWP Capabilities, Highest Performance change"))
-            gef_print(c(eax, 16, 1,         "        EAX    16: HWP PECI override"))
-            gef_print(c(eax, 17, 1,         "        EAX    17: Flexible HWP"))
-            gef_print(c(eax, 18, 1,         "        EAX    18: Fast access mode for IA32_HWP_REQUEST MSR"))
-            gef_print(c(eax, 19, 1,         "        EAX    19: Hardware feedback MSRs"))
-            gef_print(c(eax, 20, 1,         "        EAX    20: Ignoring Idle Logical Processor HWP request"))
-            gef_print(c(eax, 21, 1,         "        EAX    21: Reserved"))
-            gef_print(c(eax, 22, 1,         "        EAX    22: Reserved"))
-            gef_print(c(eax, 23, 1,         "        EAX    23: Enhanced hardware feedback MSRs"))
-            gef_print(c(eax, 24, 0x7f,      "        EAX 30-24: Reserved"))
-            gef_print(c(eax, 31, 1,         "        EAX    31: IP payloads are LIP"))
-            gef_print(c(ebx,  0, 0xf,       "        EBX  3- 0: Number of interrupted thresholds of digital temperature sensor"))
-            gef_print(c(ebx,  4, 0xfffffff, "        EBX 31- 4: Reserved"))
-            gef_print(c(ecx,  0, 1,         "        ECX     0: Hardware Coordination Feedback Capability (APERF and MPERF)"))
-            gef_print(c(ecx,  1, 1,         "        ECX     1: Reserved"))
-            gef_print(c(ecx,  2, 1,         "        ECX     2: Reserved"))
-            gef_print(c(ecx,  3, 1,         "        ECX     3: Performance-energy bias preference"))
-            gef_print(c(ecx,  4, 0xfffffff, "        ECX 31- 4: Reserved"))
-            gef_print(c(edx,  0, 1,         "        EDX     0: Performance feature report"))
-            gef_print(c(edx,  1, 1,         "        EDX     1: Energy efficiency capacity report"))
-            gef_print(c(edx,  2, 0x3f,      "        EDX  7- 2: Reserved"))
-            gef_print(c(edx,  8, 0xf,       "        EDX 11- 8: The size of the hardware feedback interface structure"))
-            gef_print(c(edx, 12, 0xf,       "        EDX 15-12: Reserved"))
-            gef_print(c(edx, 16, 0xffff,    "        EDX 31-16: Index of rows for the hardware feedback interface structure"))
+            gef_print(c(eax,  0, 1,          "        EAX     0: Digital temperature sensor"))
+            gef_print(c(eax,  1, 1,          "        EAX     1: Intel Turbo Boost Technology"))
+            gef_print(c(eax,  2, 1,          "        EAX     2: ARAT (Always Running APIC Timer)"))
+            gef_print(c(eax,  3, 1,          "        EAX     3: Reserved"))
+            gef_print(c(eax,  4, 1,          "        EAX     4: Power limit notification controls"))
+            gef_print(c(eax,  5, 1,          "        EAX     5: Clock modulation duty cycle extensions"))
+            gef_print(c(eax,  6, 1,          "        EAX     6: Package thermal management"))
+            gef_print(c(eax,  7, 1,          "        EAX     7: Hardware-managed P-state base support (HWP)"))
+            gef_print(c(eax,  8, 1,          "        EAX     8: HWP notification interrupt enable MSR"))
+            gef_print(c(eax,  9, 1,          "        EAX     9: HWP activity window MSR"))
+            gef_print(c(eax, 10, 1,          "        EAX    10: HWP energy/performance preference MSR"))
+            gef_print(c(eax, 11, 1,          "        EAX    11: HWP package level request MSR"))
+            gef_print(c(eax, 12, 1,          "        EAX    12: Reserved"))
+            gef_print(c(eax, 13, 1,          "        EAX    13: HDC (Hardware Duty Cycle programming)"))
+            gef_print(c(eax, 14, 1,          "        EAX    14: Intel Turbo Boost Max Technology 3.0"))
+            gef_print(c(eax, 15, 1,          "        EAX    15: HWP Capabilities, Highest Performance change"))
+            gef_print(c(eax, 16, 1,          "        EAX    16: HWP PECI override"))
+            gef_print(c(eax, 17, 1,          "        EAX    17: Flexible HWP"))
+            gef_print(c(eax, 18, 1,          "        EAX    18: Fast access mode for IA32_HWP_REQUEST MSR"))
+            gef_print(c(eax, 19, 1,          "        EAX    19: Hardware feedback MSRs"))
+            gef_print(c(eax, 20, 1,          "        EAX    20: Ignoring Idle Logical Processor HWP request"))
+            gef_print(c(eax, 21, 1,          "        EAX    21: Reserved"))
+            gef_print(c(eax, 22, 1,          "        EAX    22: Reserved"))
+            gef_print(c(eax, 23, 1,          "        EAX    23: Enhanced hardware feedback MSRs"))
+            gef_print(c(eax, 24, 0x7f,       "        EAX 30-24: Reserved"))
+            gef_print(c(eax, 31, 1,          "        EAX    31: IP payloads are LIP"))
+            gef_print(c(ebx,  0, 0xf,        "        EBX  3- 0: Number of interrupted thresholds of digital temperature sensor"))
+            gef_print(c(ebx,  4, 0xfffffff,  "        EBX 31- 4: Reserved"))
+            gef_print(c(ecx,  0, 1,          "        ECX     0: Hardware Coordination Feedback Capability (APERF and MPERF)"))
+            gef_print(c(ecx,  1, 1,          "        ECX     1: Reserved"))
+            gef_print(c(ecx,  2, 1,          "        ECX     2: Reserved"))
+            gef_print(c(ecx,  3, 1,          "        ECX     3: Performance-energy bias preference"))
+            gef_print(c(ecx,  4, 0xfffffff,  "        ECX 31- 4: Reserved"))
+            gef_print(c(edx,  0, 1,          "        EDX     0: Performance feature report"))
+            gef_print(c(edx,  1, 1,          "        EDX     1: Energy efficiency capacity report"))
+            gef_print(c(edx,  2, 0x3f,       "        EDX  7- 2: Reserved"))
+            gef_print(c(edx,  8, 0xf,        "        EDX 11- 8: The size of the hardware feedback interface structure"))
+            gef_print(c(edx, 12, 0xf,        "        EDX 15-12: Reserved"))
+            gef_print(c(edx, 16, 0xffff,     "        EDX 31-16: Index of rows for the hardware feedback interface structure"))
         elif id == 7 and subid == 0:
             gef_print("    eax: Maximum Input Value for Extended CPUID Information")
             gef_print("    ebx,edx,edx: Extended Feature Information")
-            gef_print(c(ebx,  0, 1,         "        EBX     0: FSGSBASE (FSGSBASE instructions)"))
-            gef_print(c(ebx,  1, 1,         "        EBX     1: TSC_ADJUST (IA32_TSC_ADJUST MSR supported)"))
-            gef_print(c(ebx,  2, 1,         "        EBX     2: SGX (Software Guard Extensions)"))
-            gef_print(c(ebx,  3, 1,         "        EBX     3: BMI1 (Bit Manipulation Instructions)"))
-            gef_print(c(ebx,  4, 1,         "        EBX     4: HLE (Hardware Lock Elision)"))
-            gef_print(c(ebx,  5, 1,         "        EBX     5: AVX2 (Advanced Vector Extensions 2.0)"))
-            gef_print(c(ebx,  6, 1,         "        EBX     6: FDP_EXCPTN_ONLY (x87 FPU Data Pointer updated only on x87 Exceptions)"))
-            gef_print(c(ebx,  7, 1,         "        EBX     7: SMEP (Supervisor Mode Execution Protection)"))
-            gef_print(c(ebx,  8, 1,         "        EBX     8: BMI2 (Bit Manipulation Instructions 2)"))
-            gef_print(c(ebx,  9, 1,         "        EBX     9: ERMS (Enhanced REP MOVSB/STOSB)"))
-            gef_print(c(ebx, 10, 1,         "        EBX    10: INVPCID (INVPCID instruction)"))
-            gef_print(c(ebx, 11, 1,         "        EBX    11: RTM (Restricted Transactional Memor)"))
-            gef_print(c(ebx, 12, 1,         "        EBX    12: PQM (Platform QoS Monitoring)"))
-            gef_print(c(ebx, 13, 1,         "        EBX    13: x87 FPU CS and DS deprecated"))
-            gef_print(c(ebx, 14, 1,         "        EBX    14: MPX (Memory Protection eXtensions)"))
-            gef_print(c(ebx, 15, 1,         "        EBX    15: PQE (Platform QoS Enforcement)"))
-            gef_print(c(ebx, 16, 1,         "        EBX    16: AVX512F (AVX512 Foundation)"))
-            gef_print(c(ebx, 17, 1,         "        EBX    17: AVX512DQ (AVX512 Double/Quadword instructions)"))
-            gef_print(c(ebx, 18, 1,         "        EBX    18: RDSEED (RDSEED instruction)"))
-            gef_print(c(ebx, 19, 1,         "        EBX    19: ADX (Multi-Precision Add-Carry instruction eXtensions)"))
-            gef_print(c(ebx, 20, 1,         "        EBX    20: SMAP (Supervisor Mode Access Prevention)"))
-            gef_print(c(ebx, 21, 1,         "        EBX    21: AVX512IFMA (AVX512 Integer FMA instructions)"))
-            gef_print(c(ebx, 22, 1,         "        EBX    22: (Intel) PCOMMIT (Persistent Commit instruction)"))
-            gef_print(c(ebx, 22, 1,         "        EBX    22: (AMD) RDPID (RDPID instruction and TSC_AUX MSR iupport)"))
-            gef_print(c(ebx, 23, 1,         "        EBX    23: CLFLUSHOPT (CLFLUSHOPT instruction)"))
-            gef_print(c(ebx, 24, 1,         "        EBX    24: CLWB (Cache Line Write-Back instruction)"))
-            gef_print(c(ebx, 25, 1,         "        EBX    25: PT (Intel Processor Trace)"))
-            gef_print(c(ebx, 26, 1,         "        EBX    26: AVX512PF (AVX512 Prefetch instructions)"))
-            gef_print(c(ebx, 27, 1,         "        EBX    27: AVX512ER (AVX512 Exponent/Reciprocal instructions)"))
-            gef_print(c(ebx, 28, 1,         "        EBX    28: AVX512CD (AVX512 Conflict Detection instructions)"))
-            gef_print(c(ebx, 29, 1,         "        EBX    29: SHA (SHA-1/SHA-256 instructions)"))
-            gef_print(c(ebx, 30, 1,         "        EBX    30: AVX512BW (AVX512 Byte/Word instructions)"))
-            gef_print(c(ebx, 31, 1,         "        EBX    31: AVX512VL (AVX512 Vector Length Extensions)"))
-            gef_print(c(ecx,  0, 1,         "        ECX     0: PREFETCHWT1 (PREFETCHWT1 instruction)"))
-            gef_print(c(ecx,  1, 1,         "        ECX     1: AVX512VBMI (AVX512 Vector Byte Manipulation Instructions)"))
-            gef_print(c(ecx,  2, 1,         "        ECX     2: UMIP (User Mode Instruction Prevention)"))
-            gef_print(c(ecx,  3, 1,         "        ECX     3: PKU (Protection Keys for User-mode pages)"))
-            gef_print(c(ecx,  4, 1,         "        ECX     4: OSPKE (OS has Enabled Protection Keys)"))
-            gef_print(c(ecx,  5, 1,         "        ECX     5: WAITPKG (Wait and Pause Enhancements)"))
-            gef_print(c(ecx,  6, 1,         "        ECX     6: AVX512VBMI2 (AVX512 Vector Byte Manipulation Instructions 2)"))
-            gef_print(c(ecx,  7, 1,         "        ECX     7: CET_SS (CET shadow stack)"))
-            gef_print(c(ecx,  8, 1,         "        ECX     8: GFNI (Galois Field NI / Galois Field Affine Transformation)"))
-            gef_print(c(ecx,  9, 1,         "        ECX     9: VAES (VEX-encoded AES-NI)"))
-            gef_print(c(ecx, 10, 1,         "        ECX    10: VPCL (VEX-encoded PCLMUL)"))
-            gef_print(c(ecx, 11, 1,         "        ECX    11: AVX512VNNI (AVX512 Vector Neural Network Instructions)"))
-            gef_print(c(ecx, 12, 1,         "        ECX    12: AVX512BITALG (AVX512 Bitwise Algorithms)"))
-            gef_print(c(ecx, 13, 1,         "        ECX    13: TME_EN (Total Memory Encryption)"))
-            gef_print(c(ecx, 14, 1,         "        ECX    14: AVX512 VPOPCNTDQ"))
-            gef_print(c(ecx, 15, 1,         "        ECX    15: Reserved"))
-            gef_print(c(ecx, 16, 1,         "        ECX    16: LA57 (5-Level paging)"))
-            gef_print(c(ecx, 17, 0x1f,      "        ECX 21-17: MAWAU (MPX Address-Width Adjust for CPL=3)"))
-            gef_print(c(ecx, 22, 1,         "        ECX    22: RDPID (Read Processor ID)"))
-            gef_print(c(ecx, 23, 1,         "        ECX    23: KL (Key Locker)"))
-            gef_print(c(ecx, 24, 1,         "        ECX    24: Reserved"))
-            gef_print(c(ecx, 25, 1,         "        ECX    25: CLDEMOTE (Cache Line Demote)"))
-            gef_print(c(ecx, 26, 1,         "        ECX    26: Reserved"))
-            gef_print(c(ecx, 27, 1,         "        ECX    27: MOVDIRI (32-bit Direct Stores)"))
-            gef_print(c(ecx, 28, 1,         "        ECX    28: MOVDIRI64B (64-bit Direct Stores)"))
-            gef_print(c(ecx, 29, 1,         "        ECX    29: ENQCMD (ENQueue Stores)"))
-            gef_print(c(ecx, 30, 1,         "        ECX    30: SGX_LC (SGX Launch Configuration)"))
-            gef_print(c(ecx, 31, 1,         "        ECX    31: PKS (Protection Keys for Supervisor-mode pages)"))
-            gef_print(c(edx,  0, 1,         "        EDX     0: Reserved"))
-            gef_print(c(edx,  1, 1,         "        EDX     1: Reserved"))
-            gef_print(c(edx,  2, 1,         "        EDX     2: AVX512_4VNNIW"))
-            gef_print(c(edx,  3, 1,         "        EDX     3: AVX512_4FMAPS"))
-            gef_print(c(edx,  4, 1,         "        EDX     4: Fast Short REP MOV"))
-            gef_print(c(edx,  5, 1,         "        EDX     5: UINTR (User Interrupts)"))
-            gef_print(c(edx,  6, 1,         "        EDX     6: Reserved"))
-            gef_print(c(edx,  7, 1,         "        EDX     7: Reserved"))
-            gef_print(c(edx,  8, 1,         "        EDX     8: AVX512_VP2INTERSECT"))
-            gef_print(c(edx,  9, 1,         "        EDX     9: Reserved"))
-            gef_print(c(edx, 10, 1,         "        EDX    10: MD_CLEAR"))
-            gef_print(c(edx, 11, 1,         "        EDX    11: Reserved"))
-            gef_print(c(edx, 12, 1,         "        EDX    12: Reserved"))
-            gef_print(c(edx, 13, 1,         "        EDX    13: TSX force abort MSR"))
-            gef_print(c(edx, 14, 1,         "        EDX    14: SERIALIZE"))
-            gef_print(c(edx, 15, 1,         "        EDX    15: Hybrid"))
-            gef_print(c(edx, 16, 1,         "        EDX    16: TSX suspend load address tracking"))
-            gef_print(c(edx, 17, 1,         "        EDX    17: Reserved"))
-            gef_print(c(edx, 18, 1,         "        EDX    18: PCONFIG"))
-            gef_print(c(edx, 19, 1,         "        EDX    19: Reserved"))
-            gef_print(c(edx, 20, 1,         "        EDX    20: CET_IBT (CET Indirect Branch Tracking)"))
-            gef_print(c(edx, 21, 1,         "        EDX    21: Reserved"))
-            gef_print(c(edx, 22, 1,         "        EDX    22: AMX-BF16 (Tile computation on bfloat16)"))
-            gef_print(c(edx, 23, 1,         "        EDX    23: AVX512FP16"))
-            gef_print(c(edx, 24, 1,         "        EDX    24: AMX-TILE (Tile architecture)"))
-            gef_print(c(edx, 25, 1,         "        EDX    25: AMX-INT8 (Tile computation on 8-bit integers)"))
-            gef_print(c(edx, 26, 1,         "        EDX    26: IBRS/IBPB (Indirect Branch Restricted Speculation/Indirect Branch Predictor Barrier)"))
-            gef_print(c(edx, 27, 1,         "        EDX    27: STIBP (Single Thread Indirect Branch Predictors)"))
-            gef_print(c(edx, 28, 1,         "        EDX    28: L1D_FLUSH (L1 Data Cache Flush)"))
-            gef_print(c(edx, 29, 1,         "        EDX    29: IA32_ARCH_CAPABILITIES MSR"))
-            gef_print(c(edx, 30, 1,         "        EDX    30: IA32_CORE_CAPABILITIES MSR"))
-            gef_print(c(edx, 31, 1,         "        EDX    31: SSBD (Speculative Store Bypass Disable)"))
+            gef_print(c(ebx,  0, 1,          "        EBX     0: FSGSBASE (FSGSBASE instructions)"))
+            gef_print(c(ebx,  1, 1,          "        EBX     1: TSC_ADJUST (IA32_TSC_ADJUST MSR supported)"))
+            gef_print(c(ebx,  2, 1,          "        EBX     2: SGX (Software Guard Extensions)"))
+            gef_print(c(ebx,  3, 1,          "        EBX     3: BMI1 (Bit Manipulation Instructions)"))
+            gef_print(c(ebx,  4, 1,          "        EBX     4: HLE (Hardware Lock Elision)"))
+            gef_print(c(ebx,  5, 1,          "        EBX     5: AVX2 (Advanced Vector Extensions 2.0)"))
+            gef_print(c(ebx,  6, 1,          "        EBX     6: FDP_EXCPTN_ONLY (x87 FPU Data Pointer updated only on x87 Exceptions)"))
+            gef_print(c(ebx,  7, 1,          "        EBX     7: SMEP (Supervisor Mode Execution Protection)"))
+            gef_print(c(ebx,  8, 1,          "        EBX     8: BMI2 (Bit Manipulation Instructions 2)"))
+            gef_print(c(ebx,  9, 1,          "        EBX     9: ERMS (Enhanced REP MOVSB/STOSB)"))
+            gef_print(c(ebx, 10, 1,          "        EBX    10: INVPCID (INVPCID instruction)"))
+            gef_print(c(ebx, 11, 1,          "        EBX    11: RTM (Restricted Transactional Memor)"))
+            gef_print(c(ebx, 12, 1,          "        EBX    12: PQM (Platform QoS Monitoring)"))
+            gef_print(c(ebx, 13, 1,          "        EBX    13: x87 FPU CS and DS deprecated"))
+            gef_print(c(ebx, 14, 1,          "        EBX    14: MPX (Memory Protection eXtensions)"))
+            gef_print(c(ebx, 15, 1,          "        EBX    15: PQE (Platform QoS Enforcement)"))
+            gef_print(c(ebx, 16, 1,          "        EBX    16: AVX512F (AVX512 Foundation)"))
+            gef_print(c(ebx, 17, 1,          "        EBX    17: AVX512DQ (AVX512 Double/Quadword instructions)"))
+            gef_print(c(ebx, 18, 1,          "        EBX    18: RDSEED (RDSEED instruction)"))
+            gef_print(c(ebx, 19, 1,          "        EBX    19: ADX (Multi-Precision Add-Carry instruction eXtensions)"))
+            gef_print(c(ebx, 20, 1,          "        EBX    20: SMAP (Supervisor Mode Access Prevention)"))
+            gef_print(c(ebx, 21, 1,          "        EBX    21: AVX512IFMA (AVX512 Integer FMA instructions)"))
+            gef_print(c(ebx, 22, 1,          "        EBX    22: (Intel) PCOMMIT (Persistent Commit instruction)"))
+            gef_print(c(ebx, 22, 1,          "        EBX    22: (AMD) RDPID (RDPID instruction and TSC_AUX MSR iupport)"))
+            gef_print(c(ebx, 23, 1,          "        EBX    23: CLFLUSHOPT (CLFLUSHOPT instruction)"))
+            gef_print(c(ebx, 24, 1,          "        EBX    24: CLWB (Cache Line Write-Back instruction)"))
+            gef_print(c(ebx, 25, 1,          "        EBX    25: PT (Intel Processor Trace)"))
+            gef_print(c(ebx, 26, 1,          "        EBX    26: AVX512PF (AVX512 Prefetch instructions)"))
+            gef_print(c(ebx, 27, 1,          "        EBX    27: AVX512ER (AVX512 Exponent/Reciprocal instructions)"))
+            gef_print(c(ebx, 28, 1,          "        EBX    28: AVX512CD (AVX512 Conflict Detection instructions)"))
+            gef_print(c(ebx, 29, 1,          "        EBX    29: SHA (SHA-1/SHA-256 instructions)"))
+            gef_print(c(ebx, 30, 1,          "        EBX    30: AVX512BW (AVX512 Byte/Word instructions)"))
+            gef_print(c(ebx, 31, 1,          "        EBX    31: AVX512VL (AVX512 Vector Length Extensions)"))
+            gef_print(c(ecx,  0, 1,          "        ECX     0: PREFETCHWT1 (PREFETCHWT1 instruction)"))
+            gef_print(c(ecx,  1, 1,          "        ECX     1: AVX512VBMI (AVX512 Vector Byte Manipulation Instructions)"))
+            gef_print(c(ecx,  2, 1,          "        ECX     2: UMIP (User Mode Instruction Prevention)"))
+            gef_print(c(ecx,  3, 1,          "        ECX     3: PKU (Protection Keys for User-mode pages)"))
+            gef_print(c(ecx,  4, 1,          "        ECX     4: OSPKE (OS has Enabled Protection Keys)"))
+            gef_print(c(ecx,  5, 1,          "        ECX     5: WAITPKG (Wait and Pause Enhancements)"))
+            gef_print(c(ecx,  6, 1,          "        ECX     6: AVX512VBMI2 (AVX512 Vector Byte Manipulation Instructions 2)"))
+            gef_print(c(ecx,  7, 1,          "        ECX     7: CET_SS (CET shadow stack)"))
+            gef_print(c(ecx,  8, 1,          "        ECX     8: GFNI (Galois Field NI / Galois Field Affine Transformation)"))
+            gef_print(c(ecx,  9, 1,          "        ECX     9: VAES (VEX-encoded AES-NI)"))
+            gef_print(c(ecx, 10, 1,          "        ECX    10: VPCL (VEX-encoded PCLMUL)"))
+            gef_print(c(ecx, 11, 1,          "        ECX    11: AVX512VNNI (AVX512 Vector Neural Network Instructions)"))
+            gef_print(c(ecx, 12, 1,          "        ECX    12: AVX512BITALG (AVX512 Bitwise Algorithms)"))
+            gef_print(c(ecx, 13, 1,          "        ECX    13: TME_EN (Total Memory Encryption)"))
+            gef_print(c(ecx, 14, 1,          "        ECX    14: AVX512 VPOPCNTDQ"))
+            gef_print(c(ecx, 15, 1,          "        ECX    15: Reserved"))
+            gef_print(c(ecx, 16, 1,          "        ECX    16: LA57 (5-Level paging)"))
+            gef_print(c(ecx, 17, 0x1f,       "        ECX 21-17: MAWAU (MPX Address-Width Adjust for CPL=3)"))
+            gef_print(c(ecx, 22, 1,          "        ECX    22: RDPID (Read Processor ID)"))
+            gef_print(c(ecx, 23, 1,          "        ECX    23: KL (Key Locker)"))
+            gef_print(c(ecx, 24, 1,          "        ECX    24: Reserved"))
+            gef_print(c(ecx, 25, 1,          "        ECX    25: CLDEMOTE (Cache Line Demote)"))
+            gef_print(c(ecx, 26, 1,          "        ECX    26: Reserved"))
+            gef_print(c(ecx, 27, 1,          "        ECX    27: MOVDIRI (32-bit Direct Stores)"))
+            gef_print(c(ecx, 28, 1,          "        ECX    28: MOVDIRI64B (64-bit Direct Stores)"))
+            gef_print(c(ecx, 29, 1,          "        ECX    29: ENQCMD (ENQueue Stores)"))
+            gef_print(c(ecx, 30, 1,          "        ECX    30: SGX_LC (SGX Launch Configuration)"))
+            gef_print(c(ecx, 31, 1,          "        ECX    31: PKS (Protection Keys for Supervisor-mode pages)"))
+            gef_print(c(edx,  0, 1,          "        EDX     0: Reserved"))
+            gef_print(c(edx,  1, 1,          "        EDX     1: Reserved"))
+            gef_print(c(edx,  2, 1,          "        EDX     2: AVX512_4VNNIW"))
+            gef_print(c(edx,  3, 1,          "        EDX     3: AVX512_4FMAPS"))
+            gef_print(c(edx,  4, 1,          "        EDX     4: Fast Short REP MOV"))
+            gef_print(c(edx,  5, 1,          "        EDX     5: UINTR (User Interrupts)"))
+            gef_print(c(edx,  6, 1,          "        EDX     6: Reserved"))
+            gef_print(c(edx,  7, 1,          "        EDX     7: Reserved"))
+            gef_print(c(edx,  8, 1,          "        EDX     8: AVX512_VP2INTERSECT"))
+            gef_print(c(edx,  9, 1,          "        EDX     9: Reserved"))
+            gef_print(c(edx, 10, 1,          "        EDX    10: MD_CLEAR"))
+            gef_print(c(edx, 11, 1,          "        EDX    11: Reserved"))
+            gef_print(c(edx, 12, 1,          "        EDX    12: Reserved"))
+            gef_print(c(edx, 13, 1,          "        EDX    13: TSX force abort MSR"))
+            gef_print(c(edx, 14, 1,          "        EDX    14: SERIALIZE"))
+            gef_print(c(edx, 15, 1,          "        EDX    15: Hybrid"))
+            gef_print(c(edx, 16, 1,          "        EDX    16: TSX suspend load address tracking"))
+            gef_print(c(edx, 17, 1,          "        EDX    17: Reserved"))
+            gef_print(c(edx, 18, 1,          "        EDX    18: PCONFIG"))
+            gef_print(c(edx, 19, 1,          "        EDX    19: Reserved"))
+            gef_print(c(edx, 20, 1,          "        EDX    20: CET_IBT (CET Indirect Branch Tracking)"))
+            gef_print(c(edx, 21, 1,          "        EDX    21: Reserved"))
+            gef_print(c(edx, 22, 1,          "        EDX    22: AMX-BF16 (Tile computation on bfloat16)"))
+            gef_print(c(edx, 23, 1,          "        EDX    23: AVX512FP16"))
+            gef_print(c(edx, 24, 1,          "        EDX    24: AMX-TILE (Tile architecture)"))
+            gef_print(c(edx, 25, 1,          "        EDX    25: AMX-INT8 (Tile computation on 8-bit integers)"))
+            gef_print(c(edx, 26, 1,          "        EDX    26: IBRS/IBPB (Indirect Branch Restricted Speculation/Predictor Barrier)"))
+            gef_print(c(edx, 27, 1,          "        EDX    27: STIBP (Single Thread Indirect Branch Predictors)"))
+            gef_print(c(edx, 28, 1,          "        EDX    28: L1D_FLUSH (L1 Data Cache Flush)"))
+            gef_print(c(edx, 29, 1,          "        EDX    29: IA32_ARCH_CAPABILITIES MSR"))
+            gef_print(c(edx, 30, 1,          "        EDX    30: IA32_CORE_CAPABILITIES MSR"))
+            gef_print(c(edx, 31, 1,          "        EDX    31: SSBD (Speculative Store Bypass Disable)"))
         elif id == 7 and subid != 0:
             gef_print("    ebx,edx,edx: Extended Feature Information")
         elif id == 8:
@@ -30538,25 +30598,25 @@ class CpuidCommand(GenericCommand):
             gef_print("    ebx,ecx,edx: Reserved")
         elif id == 10:
             gef_print("    DCA parameters")
-            gef_print(c(eax,  0, 0xff,      "        EAX  7- 0: Revision"))
-            gef_print(c(eax,  8, 0xff,      "        EAX 15- 8: Number of PeMo counters per logical processor"))
-            gef_print(c(eax, 16, 0xff,      "        EAX 23-16: Bit width of PeMo counter"))
-            gef_print(c(eax, 24, 0xff,      "        EAX 31-24: EBX bit vector length"))
-            gef_print(c(ebx,  0, 1,         "        EBX     0: Core cycles event unavailable"))
-            gef_print(c(ebx,  1, 1,         "        EBX     1: Instructions retired event unavailable"))
-            gef_print(c(ebx,  2, 1,         "        EBX     2: Reference cycles event unavailable"))
-            gef_print(c(ebx,  3, 1,         "        EBX     3: Last level cache references event unavailable"))
-            gef_print(c(ebx,  4, 1,         "        EBX     4: Last level cache misses event unavailable"))
-            gef_print(c(ebx,  5, 1,         "        EBX     5: Branch instructions retired event unavailable"))
-            gef_print(c(ebx,  6, 1,         "        EBX     6: Branch mispredicts retired event unavailable"))
-            gef_print(c(ebx,  7, 0x1ffffff, "        EBX 31- 7: Reserved"))
-            gef_print(c(ecx,  0, 0xffffffff,"        ECX 31- 0: Reserved"))
-            gef_print(c(edx,  0, 0x1f,      "        EDX  4- 0: Number of fixed function PeMo counters"))
-            gef_print(c(edx,  5, 0xff,      "        EDX 12- 5: Bit width of fixed function PeMo counter"))
-            gef_print(c(edx, 13, 1,         "        EDX    13: Reserved"))
-            gef_print(c(edx, 14, 1,         "        EDX    14: Reserved"))
-            gef_print(c(edx, 15, 1,         "        EDX    15: AnyThread deprecation"))
-            gef_print(c(edx, 16, 0xffff,    "        EDX 31-16: Reserved"))
+            gef_print(c(eax,  0, 0xff,       "        EAX  7- 0: Revision"))
+            gef_print(c(eax,  8, 0xff,       "        EAX 15- 8: Number of PeMo counters per logical processor"))
+            gef_print(c(eax, 16, 0xff,       "        EAX 23-16: Bit width of PeMo counter"))
+            gef_print(c(eax, 24, 0xff,       "        EAX 31-24: EBX bit vector length"))
+            gef_print(c(ebx,  0, 1,          "        EBX     0: Core cycles event unavailable"))
+            gef_print(c(ebx,  1, 1,          "        EBX     1: Instructions retired event unavailable"))
+            gef_print(c(ebx,  2, 1,          "        EBX     2: Reference cycles event unavailable"))
+            gef_print(c(ebx,  3, 1,          "        EBX     3: Last level cache references event unavailable"))
+            gef_print(c(ebx,  4, 1,          "        EBX     4: Last level cache misses event unavailable"))
+            gef_print(c(ebx,  5, 1,          "        EBX     5: Branch instructions retired event unavailable"))
+            gef_print(c(ebx,  6, 1,          "        EBX     6: Branch mispredicts retired event unavailable"))
+            gef_print(c(ebx,  7, 0x1ffffff,  "        EBX 31- 7: Reserved"))
+            gef_print(c(ecx,  0, 0xffffffff, "        ECX 31- 0: Reserved"))
+            gef_print(c(edx,  0, 0x1f,       "        EDX  4- 0: Number of fixed function PeMo counters"))
+            gef_print(c(edx,  5, 0xff,       "        EDX 12- 5: Bit width of fixed function PeMo counter"))
+            gef_print(c(edx, 13, 1,          "        EDX    13: Reserved"))
+            gef_print(c(edx, 14, 1,          "        EDX    14: Reserved"))
+            gef_print(c(edx, 15, 1,          "        EDX    15: AnyThread deprecation"))
+            gef_print(c(edx, 16, 0xffff,     "        EDX 31-16: Reserved"))
         elif id == 11:
             gef_print("    Information of topology enumeration")
         elif id == 12:
@@ -30575,31 +30635,31 @@ class CpuidCommand(GenericCommand):
             gef_print("    Information of Intel SGX")
         elif id == 20:
             gef_print("    Information of Intel Processor Trace Enumeration")
-            gef_print(c(ebx,  0, 1,         "        EBX     0: CR3 filtering"))
-            gef_print(c(ebx,  1, 1,         "        EBX     1: Configurable PSB, Cycle-Accurate Mode"))
-            gef_print(c(ebx,  2, 1,         "        EBX     2: Filtering preserved across warm reset"))
-            gef_print(c(ebx,  3, 1,         "        EBX     3: MTC timing packet, suppression of COFI-based packets"))
-            gef_print(c(ebx,  4, 1,         "        EBX     4: PTWRITE"))
-            gef_print(c(ebx,  5, 1,         "        EBX     5: Power Event Trace"))
-            gef_print(c(ebx,  6, 1,         "        EBX     6: PSB and PMI preservation MSRs"))
-            gef_print(c(ebx,  7, 0x1ffffff, "        EBX 31- 7: Reserved"))
-            gef_print(c(ecx,  0, 1,         "        ECX     0: ToPA output scheme"))
-            gef_print(c(ecx,  1, 1,         "        ECX     1: ToPA tables hold multiple output entries"))
-            gef_print(c(ecx,  2, 1,         "        ECX     2: Single-range output scheme"))
-            gef_print(c(ecx,  3, 1,         "        ECX     3: Trace Transport output support"))
-            gef_print(c(ecx,  4, 0x7ffffff, "        ECX 30- 4: Reserved"))
-            gef_print(c(ecx, 31, 1,         "        ECX    31: IP payloads are LIP"))
+            gef_print(c(ebx,  0, 1,          "        EBX     0: CR3 filtering"))
+            gef_print(c(ebx,  1, 1,          "        EBX     1: Configurable PSB, Cycle-Accurate Mode"))
+            gef_print(c(ebx,  2, 1,          "        EBX     2: Filtering preserved across warm reset"))
+            gef_print(c(ebx,  3, 1,          "        EBX     3: MTC timing packet, suppression of COFI-based packets"))
+            gef_print(c(ebx,  4, 1,          "        EBX     4: PTWRITE"))
+            gef_print(c(ebx,  5, 1,          "        EBX     5: Power Event Trace"))
+            gef_print(c(ebx,  6, 1,          "        EBX     6: PSB and PMI preservation MSRs"))
+            gef_print(c(ebx,  7, 0x1ffffff,  "        EBX 31- 7: Reserved"))
+            gef_print(c(ecx,  0, 1,          "        ECX     0: ToPA output scheme"))
+            gef_print(c(ecx,  1, 1,          "        ECX     1: ToPA tables hold multiple output entries"))
+            gef_print(c(ecx,  2, 1,          "        ECX     2: Single-range output scheme"))
+            gef_print(c(ecx,  3, 1,          "        ECX     3: Trace Transport output support"))
+            gef_print(c(ecx,  4, 0x7ffffff,  "        ECX 30- 4: Reserved"))
+            gef_print(c(ecx, 31, 1,          "        ECX    31: IP payloads are LIP"))
         elif id == 21:
             gef_print("    TSC and Nominal Core Crystal Clock")
         elif id == 22:
             gef_print("    Information of CPU frequency")
-            gef_print(c(eax,  0, 0xffff,    "        EAX 15- 0: Processor Base Frequency (MHz)"))
-            gef_print(c(eax, 16, 0xffff,    "        EAX 31-16: Reserved"))
-            gef_print(c(ebx,  0, 0xffff,    "        EBX 15- 0: Maximum Frequency (MHz)"))
-            gef_print(c(ebx, 16, 0xffff,    "        EBX 31-16: Reserved"))
-            gef_print(c(ecx,  0, 0xffff,    "        ECX 15- 0: Bus (Reference) Frequency (MHz)"))
-            gef_print(c(ecx, 16, 0xffff,    "        ECX 31-16: Reserved"))
-            gef_print(c(edx,  0, 0xffffffff,"        EDX 31- 0: Reserved"))
+            gef_print(c(eax,  0, 0xffff,     "        EAX 15- 0: Processor Base Frequency (MHz)"))
+            gef_print(c(eax, 16, 0xffff,     "        EAX 31-16: Reserved"))
+            gef_print(c(ebx,  0, 0xffff,     "        EBX 15- 0: Maximum Frequency (MHz)"))
+            gef_print(c(ebx, 16, 0xffff,     "        EBX 31-16: Reserved"))
+            gef_print(c(ecx,  0, 0xffff,     "        ECX 15- 0: Bus (Reference) Frequency (MHz)"))
+            gef_print(c(ecx, 16, 0xffff,     "        ECX 31-16: Reserved"))
+            gef_print(c(edx,  0, 0xffffffff, "        EDX 31- 0: Reserved"))
         elif id == 23:
             gef_print("    Information of System-On-Chip Vendor Attribute Enumeration")
         elif id == 24:
@@ -30614,176 +30674,176 @@ class CpuidCommand(GenericCommand):
             gef_print("    ebx+ecx+edx: Hypervisor Brand String (={:s})".format(repr(vid)))
         elif id == 0x40000001:
             gef_print("    Hypervisor")
-            gef_print(c(eax,  0, 1,         "        EAX     0: Clocksource"))
-            gef_print(c(eax,  1, 1,         "        EAX     1: NOP IO Delay"))
-            gef_print(c(eax,  2, 1,         "        EAX     2: MMU Op"))
-            gef_print(c(eax,  3, 1,         "        EAX     3: Clocksource 2"))
-            gef_print(c(eax,  4, 1,         "        EAX     4: Async PF"))
-            gef_print(c(eax,  5, 1,         "        EAX     5: Steal Time"))
-            gef_print(c(eax,  6, 1,         "        EAX     6: PV EOI"))
-            gef_print(c(eax,  7, 1,         "        EAX     7: PV UNHALT"))
-            gef_print(c(eax,  8, 1,         "        EAX     8: Reserved"))
-            gef_print(c(eax,  9, 1,         "        EAX     9: PV TLB flush"))
-            gef_print(c(eax, 10, 1,         "        EAX    10: PV async PF VMEXIT"))
-            gef_print(c(eax, 11, 1,         "        EAX    11: PV send IPI"))
-            gef_print(c(eax, 12, 1,         "        EAX    12: PV poll control"))
-            gef_print(c(eax, 13, 1,         "        EAX    13: PV sched yield"))
-            gef_print(c(eax, 14, 1,         "        EAX    14: Async PF INT"))
-            gef_print(c(eax, 15, 1,         "        EAX    15: MSI extended destination ID"))
-            gef_print(c(eax, 16, 1,         "        EAX    16: Hypercall map GPA range"))
-            gef_print(c(eax, 17, 1,         "        EAX    17: Hypercall map GPA range"))
-            gef_print(c(eax, 18, 1,         "        EAX    18: Migration control"))
-            gef_print(c(eax, 19, 0x3f,      "        EAX 24-19: Reserved"))
-            gef_print(c(eax, 25, 1,         "        EAX    25: Clocksource Stable"))
-            gef_print(c(eax, 26, 0x3f,      "        EAX 31-26: Reserved"))
-            gef_print(c(edx,  0, 1,         "        EDX     0: vCPUs realtime, never preempted"))
-            gef_print(c(edx,  1, 0x7fffffff,"        EDX 31- 1: Reserved"))
+            gef_print(c(eax,  0, 1,          "        EAX     0: Clocksource"))
+            gef_print(c(eax,  1, 1,          "        EAX     1: NOP IO Delay"))
+            gef_print(c(eax,  2, 1,          "        EAX     2: MMU Op"))
+            gef_print(c(eax,  3, 1,          "        EAX     3: Clocksource 2"))
+            gef_print(c(eax,  4, 1,          "        EAX     4: Async PF"))
+            gef_print(c(eax,  5, 1,          "        EAX     5: Steal Time"))
+            gef_print(c(eax,  6, 1,          "        EAX     6: PV EOI"))
+            gef_print(c(eax,  7, 1,          "        EAX     7: PV UNHALT"))
+            gef_print(c(eax,  8, 1,          "        EAX     8: Reserved"))
+            gef_print(c(eax,  9, 1,          "        EAX     9: PV TLB flush"))
+            gef_print(c(eax, 10, 1,          "        EAX    10: PV async PF VMEXIT"))
+            gef_print(c(eax, 11, 1,          "        EAX    11: PV send IPI"))
+            gef_print(c(eax, 12, 1,          "        EAX    12: PV poll control"))
+            gef_print(c(eax, 13, 1,          "        EAX    13: PV sched yield"))
+            gef_print(c(eax, 14, 1,          "        EAX    14: Async PF INT"))
+            gef_print(c(eax, 15, 1,          "        EAX    15: MSI extended destination ID"))
+            gef_print(c(eax, 16, 1,          "        EAX    16: Hypercall map GPA range"))
+            gef_print(c(eax, 17, 1,          "        EAX    17: Hypercall map GPA range"))
+            gef_print(c(eax, 18, 1,          "        EAX    18: Migration control"))
+            gef_print(c(eax, 19, 0x3f,       "        EAX 24-19: Reserved"))
+            gef_print(c(eax, 25, 1,          "        EAX    25: Clocksource Stable"))
+            gef_print(c(eax, 26, 0x3f,       "        EAX 31-26: Reserved"))
+            gef_print(c(edx,  0, 1,          "        EDX     0: vCPUs realtime, never preempted"))
+            gef_print(c(edx,  1, 0x7fffffff, "        EDX 31- 1: Reserved"))
         elif id == 0x40000003:
             gef_print("    Hypervisor")
-            gef_print(c(eax,  0, 1,         "        EAX     0: VP_RUNTIME"))
-            gef_print(c(eax,  1, 1,         "        EAX     1: TIME_REF_COUNT"))
-            gef_print(c(eax,  2, 1,         "        EAX     2: Basic SynIC MSRs"))
-            gef_print(c(eax,  3, 1,         "        EAX     3: Synthetic Timer"))
-            gef_print(c(eax,  4, 1,         "        EAX     4: APIC access"))
-            gef_print(c(eax,  5, 1,         "        EAX     5: Hypercall MSRs"))
-            gef_print(c(eax,  6, 1,         "        EAX     6: VP Index MSR"))
-            gef_print(c(eax,  7, 1,         "        EAX     7: System Reset MSR"))
-            gef_print(c(eax,  8, 1,         "        EAX     8: Access stats MSRs"))
-            gef_print(c(eax,  9, 1,         "        EAX     9: Reference TSC"))
-            gef_print(c(eax, 10, 1,         "        EAX    10: Guest Idle MSR"))
-            gef_print(c(eax, 11, 1,         "        EAX    11: Timer Frequency MSRs"))
-            gef_print(c(eax, 12, 1,         "        EAX    12: Debug MSRs"))
-            gef_print(c(eax, 13, 1,         "        EAX    13: Reenlightenment controls"))
-            gef_print(c(eax, 14, 0x3ffff,   "        EAX 31-14: Reserved"))
-            gef_print(c(ebx,  0, 1,         "        EBX     0: CreatePartitions"))
-            gef_print(c(ebx,  1, 1,         "        EBX     1: AccessPartitionId"))
-            gef_print(c(ebx,  2, 1,         "        EBX     2: AccessMemoryPool"))
-            gef_print(c(ebx,  3, 1,         "        EBX     3: AdjustMemoryBuffers"))
-            gef_print(c(ebx,  4, 1,         "        EBX     4: PostMessages"))
-            gef_print(c(ebx,  5, 1,         "        EBX     5: SignalEvents"))
-            gef_print(c(ebx,  6, 1,         "        EBX     6: CreatePort"))
-            gef_print(c(ebx,  7, 1,         "        EBX     7: ConnectPort"))
-            gef_print(c(ebx,  8, 1,         "        EBX     8: AccessStats"))
-            gef_print(c(ebx,  9, 1,         "        EBX     9: Reserved"))
-            gef_print(c(ebx, 10, 1,         "        EBX    10: Reserved"))
-            gef_print(c(ebx, 11, 1,         "        EBX    11: Debugging"))
-            gef_print(c(ebx, 12, 1,         "        EBX    12: CpuManagement"))
-            gef_print(c(ebx, 13, 1,         "        EBX    13: ConfigureProfiler"))
-            gef_print(c(ebx, 14, 1,         "        EBX    14: EnableExpandedStackwalking"))
-            gef_print(c(ebx, 15, 1,         "        EBX    15: Reserved"))
-            gef_print(c(ebx, 16, 1,         "        EBX    16: AccessVSM"))
-            gef_print(c(ebx, 17, 1,         "        EBX    17: AccessVpRegisters"))
-            gef_print(c(ebx, 18, 1,         "        EBX    18: Reserved"))
-            gef_print(c(ebx, 19, 1,         "        EBX    19: Reserved"))
-            gef_print(c(ebx, 20, 1,         "        EBX    20: EnableExtendedHypercalls"))
-            gef_print(c(ebx, 21, 1,         "        EBX    21: StartVirtualProcessor"))
-            gef_print(c(ebx, 22, 0x3ff,     "        EBX 31-22: Reserved"))
-            gef_print(c(edx,  0, 1,         "        EDX     0: MWAIT instruction support (deprecated)"))
-            gef_print(c(edx,  1, 1,         "        EDX     1: Guest debugging support"))
-            gef_print(c(edx,  2, 1,         "        EDX     2: Performance Monitor support"))
-            gef_print(c(edx,  3, 1,         "        EDX     3: Physical CPU dynamic partitioning event support"))
-            gef_print(c(edx,  4, 1,         "        EDX     4: Hypercall input params via XMM registers"))
-            gef_print(c(edx,  5, 1,         "        EDX     5: Virtual guest idle state support"))
-            gef_print(c(edx,  6, 1,         "        EDX     6: Hypervisor sleep state support"))
-            gef_print(c(edx,  7, 1,         "        EDX     7: NUMA distance query support"))
-            gef_print(c(edx,  8, 1,         "        EDX     8: Timer frequency details available"))
-            gef_print(c(edx,  9, 1,         "        EDX     9: Synthetic machine check injection support"))
-            gef_print(c(edx, 10, 1,         "        EDX    10: Guest crash MSR support"))
-            gef_print(c(edx, 11, 1,         "        EDX    11: Debug MSR support"))
-            gef_print(c(edx, 12, 1,         "        EDX    12: NPIEP support"))
-            gef_print(c(edx, 13, 1,         "        EDX    13: Hypervisor disable support"))
-            gef_print(c(edx, 14, 1,         "        EDX    14: Extended GVA ranges for flush virtual address list available"))
-            gef_print(c(edx, 15, 1,         "        EDX    15: Hypercall output via XMM registers"))
-            gef_print(c(edx, 16, 1,         "        EDX    16: Virtual guest idle state"))
-            gef_print(c(edx, 17, 1,         "        EDX    17: Soft interrupt polling mode available"))
-            gef_print(c(edx, 18, 1,         "        EDX    18: Hypercall MSR lock available"))
-            gef_print(c(edx, 19, 1,         "        EDX    19: Direct synthetic timers support"))
-            gef_print(c(edx, 20, 1,         "        EDX    20: PAT register available for VSM"))
-            gef_print(c(edx, 21, 1,         "        EDX    21: BNDCFGS register available for VSM"))
-            gef_print(c(edx, 22, 1,         "        EDX    22: Reserved"))
-            gef_print(c(edx, 23, 1,         "        EDX    23: Synthetic time unhalted timer"))
-            gef_print(c(edx, 24, 1,         "        EDX    24: Reserved"))
-            gef_print(c(edx, 25, 1,         "        EDX    25: Reserved"))
-            gef_print(c(edx, 26, 1,         "        EDX    26: Intel Last Branch Record (LBR) feature"))
-            gef_print(c(edx, 27, 1,         "        EDX 31-27: Reserved"))
+            gef_print(c(eax,  0, 1,          "        EAX     0: VP_RUNTIME"))
+            gef_print(c(eax,  1, 1,          "        EAX     1: TIME_REF_COUNT"))
+            gef_print(c(eax,  2, 1,          "        EAX     2: Basic SynIC MSRs"))
+            gef_print(c(eax,  3, 1,          "        EAX     3: Synthetic Timer"))
+            gef_print(c(eax,  4, 1,          "        EAX     4: APIC access"))
+            gef_print(c(eax,  5, 1,          "        EAX     5: Hypercall MSRs"))
+            gef_print(c(eax,  6, 1,          "        EAX     6: VP Index MSR"))
+            gef_print(c(eax,  7, 1,          "        EAX     7: System Reset MSR"))
+            gef_print(c(eax,  8, 1,          "        EAX     8: Access stats MSRs"))
+            gef_print(c(eax,  9, 1,          "        EAX     9: Reference TSC"))
+            gef_print(c(eax, 10, 1,          "        EAX    10: Guest Idle MSR"))
+            gef_print(c(eax, 11, 1,          "        EAX    11: Timer Frequency MSRs"))
+            gef_print(c(eax, 12, 1,          "        EAX    12: Debug MSRs"))
+            gef_print(c(eax, 13, 1,          "        EAX    13: Reenlightenment controls"))
+            gef_print(c(eax, 14, 0x3ffff,    "        EAX 31-14: Reserved"))
+            gef_print(c(ebx,  0, 1,          "        EBX     0: CreatePartitions"))
+            gef_print(c(ebx,  1, 1,          "        EBX     1: AccessPartitionId"))
+            gef_print(c(ebx,  2, 1,          "        EBX     2: AccessMemoryPool"))
+            gef_print(c(ebx,  3, 1,          "        EBX     3: AdjustMemoryBuffers"))
+            gef_print(c(ebx,  4, 1,          "        EBX     4: PostMessages"))
+            gef_print(c(ebx,  5, 1,          "        EBX     5: SignalEvents"))
+            gef_print(c(ebx,  6, 1,          "        EBX     6: CreatePort"))
+            gef_print(c(ebx,  7, 1,          "        EBX     7: ConnectPort"))
+            gef_print(c(ebx,  8, 1,          "        EBX     8: AccessStats"))
+            gef_print(c(ebx,  9, 1,          "        EBX     9: Reserved"))
+            gef_print(c(ebx, 10, 1,          "        EBX    10: Reserved"))
+            gef_print(c(ebx, 11, 1,          "        EBX    11: Debugging"))
+            gef_print(c(ebx, 12, 1,          "        EBX    12: CpuManagement"))
+            gef_print(c(ebx, 13, 1,          "        EBX    13: ConfigureProfiler"))
+            gef_print(c(ebx, 14, 1,          "        EBX    14: EnableExpandedStackwalking"))
+            gef_print(c(ebx, 15, 1,          "        EBX    15: Reserved"))
+            gef_print(c(ebx, 16, 1,          "        EBX    16: AccessVSM"))
+            gef_print(c(ebx, 17, 1,          "        EBX    17: AccessVpRegisters"))
+            gef_print(c(ebx, 18, 1,          "        EBX    18: Reserved"))
+            gef_print(c(ebx, 19, 1,          "        EBX    19: Reserved"))
+            gef_print(c(ebx, 20, 1,          "        EBX    20: EnableExtendedHypercalls"))
+            gef_print(c(ebx, 21, 1,          "        EBX    21: StartVirtualProcessor"))
+            gef_print(c(ebx, 22, 0x3ff,      "        EBX 31-22: Reserved"))
+            gef_print(c(edx,  0, 1,          "        EDX     0: MWAIT instruction support (deprecated)"))
+            gef_print(c(edx,  1, 1,          "        EDX     1: Guest debugging support"))
+            gef_print(c(edx,  2, 1,          "        EDX     2: Performance Monitor support"))
+            gef_print(c(edx,  3, 1,          "        EDX     3: Physical CPU dynamic partitioning event support"))
+            gef_print(c(edx,  4, 1,          "        EDX     4: Hypercall input params via XMM registers"))
+            gef_print(c(edx,  5, 1,          "        EDX     5: Virtual guest idle state support"))
+            gef_print(c(edx,  6, 1,          "        EDX     6: Hypervisor sleep state support"))
+            gef_print(c(edx,  7, 1,          "        EDX     7: NUMA distance query support"))
+            gef_print(c(edx,  8, 1,          "        EDX     8: Timer frequency details available"))
+            gef_print(c(edx,  9, 1,          "        EDX     9: Synthetic machine check injection support"))
+            gef_print(c(edx, 10, 1,          "        EDX    10: Guest crash MSR support"))
+            gef_print(c(edx, 11, 1,          "        EDX    11: Debug MSR support"))
+            gef_print(c(edx, 12, 1,          "        EDX    12: NPIEP support"))
+            gef_print(c(edx, 13, 1,          "        EDX    13: Hypervisor disable support"))
+            gef_print(c(edx, 14, 1,          "        EDX    14: Extended GVA ranges for flush virtual address list available"))
+            gef_print(c(edx, 15, 1,          "        EDX    15: Hypercall output via XMM registers"))
+            gef_print(c(edx, 16, 1,          "        EDX    16: Virtual guest idle state"))
+            gef_print(c(edx, 17, 1,          "        EDX    17: Soft interrupt polling mode available"))
+            gef_print(c(edx, 18, 1,          "        EDX    18: Hypercall MSR lock available"))
+            gef_print(c(edx, 19, 1,          "        EDX    19: Direct synthetic timers support"))
+            gef_print(c(edx, 20, 1,          "        EDX    20: PAT register available for VSM"))
+            gef_print(c(edx, 21, 1,          "        EDX    21: BNDCFGS register available for VSM"))
+            gef_print(c(edx, 22, 1,          "        EDX    22: Reserved"))
+            gef_print(c(edx, 23, 1,          "        EDX    23: Synthetic time unhalted timer"))
+            gef_print(c(edx, 24, 1,          "        EDX    24: Reserved"))
+            gef_print(c(edx, 25, 1,          "        EDX    25: Reserved"))
+            gef_print(c(edx, 26, 1,          "        EDX    26: Intel Last Branch Record (LBR) feature"))
+            gef_print(c(edx, 27, 1,          "        EDX 31-27: Reserved"))
         elif id == 0x40000004:
             gef_print("    Hypervisor implementation recommendations")
-            gef_print(c(eax,  0, 1,         "        EAX     0: Hypercall for address space switches"))
-            gef_print(c(eax,  1, 1,         "        EAX     1: Hypercall for local TLB flushes"))
-            gef_print(c(eax,  2, 1,         "        EAX     2: Hypercall for remote TLB flushes"))
-            gef_print(c(eax,  3, 1,         "        EAX     3: MSRs for accessing APIC registers"))
-            gef_print(c(eax,  4, 1,         "        EAX     4: Hypervisor MSR for system RESET"))
-            gef_print(c(eax,  5, 1,         "        EAX     5: Relaxed timing"))
-            gef_print(c(eax,  6, 1,         "        EAX     6: DMA remapping"))
-            gef_print(c(eax,  7, 1,         "        EAX     7: Interrupt remapping"))
-            gef_print(c(eax,  8, 1,         "        EAX     8: x2APIC MSRs"))
-            gef_print(c(eax,  9, 1,         "        EAX     9: Deprecating AutoEOI"))
-            gef_print(c(eax, 10, 1,         "        EAX    10: Hypercall for SyntheticClusterIpi"))
-            gef_print(c(eax, 11, 1,         "        EAX    11: Interface ExProcessorMasks"))
-            gef_print(c(eax, 12, 1,         "        EAX    12: Nested Hyper-V partition"))
-            gef_print(c(eax, 13, 1,         "        EAX    13: INT for MBEC system calls"))
-            gef_print(c(eax, 14, 1,         "        EAX    14: Enlightenment VMCS interface"))
-            gef_print(c(eax, 15, 1,         "        EAX    15: Synced timeline"))
-            gef_print(c(eax, 16, 1,         "        EAX    16: Reserved"))
-            gef_print(c(eax, 17, 1,         "        EAX    17: Direct local flush entire"))
-            gef_print(c(eax, 18, 1,         "        EAX    18: No architectural core sharing"))
-            gef_print(c(eax, 19, 0x1fff,    "        EAX 31-19: Reserved"))
+            gef_print(c(eax,  0, 1,          "        EAX     0: Hypercall for address space switches"))
+            gef_print(c(eax,  1, 1,          "        EAX     1: Hypercall for local TLB flushes"))
+            gef_print(c(eax,  2, 1,          "        EAX     2: Hypercall for remote TLB flushes"))
+            gef_print(c(eax,  3, 1,          "        EAX     3: MSRs for accessing APIC registers"))
+            gef_print(c(eax,  4, 1,          "        EAX     4: Hypervisor MSR for system RESET"))
+            gef_print(c(eax,  5, 1,          "        EAX     5: Relaxed timing"))
+            gef_print(c(eax,  6, 1,          "        EAX     6: DMA remapping"))
+            gef_print(c(eax,  7, 1,          "        EAX     7: Interrupt remapping"))
+            gef_print(c(eax,  8, 1,          "        EAX     8: x2APIC MSRs"))
+            gef_print(c(eax,  9, 1,          "        EAX     9: Deprecating AutoEOI"))
+            gef_print(c(eax, 10, 1,          "        EAX    10: Hypercall for SyntheticClusterIpi"))
+            gef_print(c(eax, 11, 1,          "        EAX    11: Interface ExProcessorMasks"))
+            gef_print(c(eax, 12, 1,          "        EAX    12: Nested Hyper-V partition"))
+            gef_print(c(eax, 13, 1,          "        EAX    13: INT for MBEC system calls"))
+            gef_print(c(eax, 14, 1,          "        EAX    14: Enlightenment VMCS interface"))
+            gef_print(c(eax, 15, 1,          "        EAX    15: Synced timeline"))
+            gef_print(c(eax, 16, 1,          "        EAX    16: Reserved"))
+            gef_print(c(eax, 17, 1,          "        EAX    17: Direct local flush entire"))
+            gef_print(c(eax, 18, 1,          "        EAX    18: No architectural core sharing"))
+            gef_print(c(eax, 19, 0x1fff,     "        EAX 31-19: Reserved"))
         elif id == 0x40000006:
             gef_print("    Hypervisor hardware features enable")
-            gef_print(c(eax,  0, 1,         "        EAX     0: APIC overlay assist"))
-            gef_print(c(eax,  1, 1,         "        EAX     1: MSR bitmaps"))
-            gef_print(c(eax,  2, 1,         "        EAX     2: Architectural performance counters"))
-            gef_print(c(eax,  3, 1,         "        EAX     3: Second-level address translation"))
-            gef_print(c(eax,  4, 1,         "        EAX     4: DMA remapping"))
-            gef_print(c(eax,  5, 1,         "        EAX     5: Interrupt remapping"))
-            gef_print(c(eax,  6, 1,         "        EAX     6: Memory patrol scrubber"))
-            gef_print(c(eax,  7, 1,         "        EAX     7: DMA protection"))
-            gef_print(c(eax,  8, 1,         "        EAX     8: HPET"))
-            gef_print(c(eax,  9, 1,         "        EAX     9: Volatile synthetic timers"))
-            gef_print(c(eax, 10, 0x3fffff,  "        EAX 31-10: Reserved"))
+            gef_print(c(eax,  0, 1,          "        EAX     0: APIC overlay assist"))
+            gef_print(c(eax,  1, 1,          "        EAX     1: MSR bitmaps"))
+            gef_print(c(eax,  2, 1,          "        EAX     2: Architectural performance counters"))
+            gef_print(c(eax,  3, 1,          "        EAX     3: Second-level address translation"))
+            gef_print(c(eax,  4, 1,          "        EAX     4: DMA remapping"))
+            gef_print(c(eax,  5, 1,          "        EAX     5: Interrupt remapping"))
+            gef_print(c(eax,  6, 1,          "        EAX     6: Memory patrol scrubber"))
+            gef_print(c(eax,  7, 1,          "        EAX     7: DMA protection"))
+            gef_print(c(eax,  8, 1,          "        EAX     8: HPET"))
+            gef_print(c(eax,  9, 1,          "        EAX     9: Volatile synthetic timers"))
+            gef_print(c(eax, 10, 0x3fffff,   "        EAX 31-10: Reserved"))
         elif id == 0x40000007:
             gef_print("    Hypervisor CPU management features")
-            gef_print(c(eax,  0, 1,         "        EAX     0: Start logical processor"))
-            gef_print(c(eax,  1, 1,         "        EAX     1: Create root virtual processor"))
-            gef_print(c(eax,  2, 1,         "        EAX     2: Performance counter sync"))
-            gef_print(c(eax,  3, 0x1fffffff,"        EAX 31- 3: Reserved"))
-            gef_print(c(ebx,  0, 1,         "        EBX     0: Processor power management"))
-            gef_print(c(ebx,  1, 1,         "        EBX     1: MWAIT idle states"))
-            gef_print(c(ebx,  2, 1,         "        EBX     2: Logical processor idling"))
-            gef_print(c(ebx,  3, 0x1fffffff,"        EBX 31- 3: Reserved"))
-            gef_print(c(ecx,  0, 1,         "        ECX     0: Remap guest uncached"))
-            gef_print(c(ecx,  1, 0x7fffffff,"        ECX 31- 1: Reserved"))
+            gef_print(c(eax,  0, 1,          "        EAX     0: Start logical processor"))
+            gef_print(c(eax,  1, 1,          "        EAX     1: Create root virtual processor"))
+            gef_print(c(eax,  2, 1,          "        EAX     2: Performance counter sync"))
+            gef_print(c(eax,  3, 0x1fffffff, "        EAX 31- 3: Reserved"))
+            gef_print(c(ebx,  0, 1,          "        EBX     0: Processor power management"))
+            gef_print(c(ebx,  1, 1,          "        EBX     1: MWAIT idle states"))
+            gef_print(c(ebx,  2, 1,          "        EBX     2: Logical processor idling"))
+            gef_print(c(ebx,  3, 0x1fffffff, "        EBX 31- 3: Reserved"))
+            gef_print(c(ecx,  0, 1,          "        ECX     0: Remap guest uncached"))
+            gef_print(c(ecx,  1, 0x7fffffff, "        ECX 31- 1: Reserved"))
         elif id == 0x40000008:
             gef_print("    Hypervisor shared virtual memory (SVM) features")
-            gef_print(c(eax,  0, 1,         "        EAX     0: SVM (Shared Virtual Memory)"))
-            gef_print(c(eax,  1, 0x7fffffff,"        EAX 31- 1: Reserved"))
+            gef_print(c(eax,  0, 1,          "        EAX     0: SVM (Shared Virtual Memory)"))
+            gef_print(c(eax,  1, 0x7fffffff, "        EAX 31- 1: Reserved"))
         elif id == 0x40000009:
             gef_print("    Nested hypervisor feature indentification")
-            gef_print(c(eax,  0, 1,         "        EAX     0: Reserved"))
-            gef_print(c(eax,  1, 1,         "        EAX     1: Reserved"))
-            gef_print(c(eax,  2, 1,         "        EAX     2: Synthetic Timer"))
-            gef_print(c(eax,  3, 1,         "        EAX     3: Reserved"))
-            gef_print(c(eax,  4, 1,         "        EAX     4: Interrupt control registers"))
-            gef_print(c(eax,  5, 1,         "        EAX     5: Hypercall MSRs"))
-            gef_print(c(eax,  6, 1,         "        EAX     6: VP index MSR"))
-            gef_print(c(eax,  7, 0x1f,      "        EAX 11- 7: Reserved"))
-            gef_print(c(eax, 12, 1,         "        EAX    12: Reenlightenment controls"))
-            gef_print(c(eax, 13, 0x7ffff,   "        EAX 31-13: Reserved"))
-            gef_print(c(edx,  0, 0xf,       "        EDX  3- 0: Reserved"))
-            gef_print(c(eax,  4, 1,         "        EDX     4: Hypercall input params via XMM registers"))
-            gef_print(c(edx,  5, 0x3ff,     "        EDX 14- 5: Reserved"))
-            gef_print(c(edx, 15, 1,         "        EDX    15: Hypercall output via XMM registers"))
-            gef_print(c(edx, 16, 1,         "        EDX    16: Reserved"))
-            gef_print(c(edx, 17, 1,         "        EDX    17: Soft interrupt polling mode available"))
-            gef_print(c(edx, 18, 0x3fff,    "        EDX 31-18: Reserved"))
+            gef_print(c(eax,  0, 1,          "        EAX     0: Reserved"))
+            gef_print(c(eax,  1, 1,          "        EAX     1: Reserved"))
+            gef_print(c(eax,  2, 1,          "        EAX     2: Synthetic Timer"))
+            gef_print(c(eax,  3, 1,          "        EAX     3: Reserved"))
+            gef_print(c(eax,  4, 1,          "        EAX     4: Interrupt control registers"))
+            gef_print(c(eax,  5, 1,          "        EAX     5: Hypercall MSRs"))
+            gef_print(c(eax,  6, 1,          "        EAX     6: VP index MSR"))
+            gef_print(c(eax,  7, 0x1f,       "        EAX 11- 7: Reserved"))
+            gef_print(c(eax, 12, 1,          "        EAX    12: Reenlightenment controls"))
+            gef_print(c(eax, 13, 0x7ffff,    "        EAX 31-13: Reserved"))
+            gef_print(c(edx,  0, 0xf,        "        EDX  3- 0: Reserved"))
+            gef_print(c(eax,  4, 1,          "        EDX     4: Hypercall input params via XMM registers"))
+            gef_print(c(edx,  5, 0x3ff,      "        EDX 14- 5: Reserved"))
+            gef_print(c(edx, 15, 1,          "        EDX    15: Hypercall output via XMM registers"))
+            gef_print(c(edx, 16, 1,          "        EDX    16: Reserved"))
+            gef_print(c(edx, 17, 1,          "        EDX    17: Soft interrupt polling mode available"))
+            gef_print(c(edx, 18, 0x3fff,     "        EDX 31-18: Reserved"))
         elif id == 0x4000000a:
             gef_print("    Nested hypervisor feature indentification")
-            gef_print(c(eax,  0, 0x1ffff,   "        EAX 16- 0: Reserved"))
-            gef_print(c(eax, 17, 1,         "        EAX    17: Direct virtual flush hypercalls"))
-            gef_print(c(eax, 18, 1,         "        EAX    18: Flush GPA space and list hypercalls"))
-            gef_print(c(eax, 19, 1,         "        EAX    19: Enlightened MSR bitmaps"))
-            gef_print(c(eax, 20, 1,         "        EAX    20: Combining virtualization exceptions in page fault exception class"))
-            gef_print(c(eax, 21, 0x7ff,     "        EAX 31-21: Reserved"))
+            gef_print(c(eax,  0, 0x1ffff,    "        EAX 16- 0: Reserved"))
+            gef_print(c(eax, 17, 1,          "        EAX    17: Direct virtual flush hypercalls"))
+            gef_print(c(eax, 18, 1,          "        EAX    18: Flush GPA space and list hypercalls"))
+            gef_print(c(eax, 19, 1,          "        EAX    19: Enlightened MSR bitmaps"))
+            gef_print(c(eax, 20, 1,          "        EAX    20: Combining virtualization exceptions in page fault exception class"))
+            gef_print(c(eax, 21, 0x7ff,      "        EAX 31-21: Reserved"))
         elif id == 0x40000010:
             gef_print("    Hypervisor timing information")
             gef_print("    eax: (Virtual) TSC frequency in kHz")
@@ -30795,72 +30855,72 @@ class CpuidCommand(GenericCommand):
         elif id == 0x80000001:
             gef_print("    eax,ebx: Extended Processor Signature")
             gef_print("    edx,ecx: Extended Processor Feature")
-            gef_print(c(edx,  0, 1,         "        EDX     0: FPU (Floating Point Unit on-chip)"))
-            gef_print(c(edx,  1, 1,         "        EDX     1: VME (Virtual 8086 Mode Enhancements)"))
-            gef_print(c(edx,  2, 1,         "        EDX     2: DE (Debugging Extensions)"))
-            gef_print(c(edx,  3, 1,         "        EDX     3: PSE (Page Size Extension)"))
-            gef_print(c(edx,  4, 1,         "        EDX     4: TSC (Time Stamp Counter)"))
-            gef_print(c(edx,  5, 1,         "        EDX     5: MSR (Model Specific Registers RDMSR and WRMSR instructions)"))
-            gef_print(c(edx,  6, 1,         "        EDX     6: PAE (Physical Address Extension)"))
-            gef_print(c(edx,  7, 1,         "        EDX     7: MCE (Machine Check Exception)"))
-            gef_print(c(edx,  8, 1,         "        EDX     8: CX8 (CMPXCHG8B instruction)"))
-            gef_print(c(edx,  9, 1,         "        EDX     9: APIC (APIC on-chip)"))
-            gef_print(c(edx, 10, 1,         "        EDX    10: Reserved"))
-            gef_print(c(edx, 11, 1,         "        EDX    11: (Intel) SEP (SYSENTER and SYSEXIT instructions)"))
-            gef_print(c(edx, 11, 1,         "        EDX    11: (AMD) SYSCALL (SYSCALL and SYSRET instructions)"))
-            gef_print(c(edx, 12, 1,         "        EDX    12: MTRR (Memory Type Range Registers)"))
-            gef_print(c(edx, 13, 1,         "        EDX    13: PGE (Page Global Bit)"))
-            gef_print(c(edx, 14, 1,         "        EDX    14: MCA (Machine Check Architecture)"))
-            gef_print(c(edx, 15, 1,         "        EDX    15: CMOV (Conditional MOVe instructions)"))
-            gef_print(c(edx, 16, 1,         "        EDX    16: PAT (Page Attribute Table)"))
-            gef_print(c(edx, 17, 1,         "        EDX    17: PSE-36 (36-Bit Page Size Extension)"))
-            gef_print(c(edx, 18, 1,         "        EDX    18: Reserved"))
-            gef_print(c(edx, 19, 1,         "        EDX    19: MP (MultiProcessing capable)"))
-            gef_print(c(edx, 20, 1,         "        EDX    20: (Intel) XD (No-execute page protection)"))
-            gef_print(c(edx, 20, 1,         "        EDX    20: (AMD) NX (No-execute page protection)"))
-            gef_print(c(edx, 21, 1,         "        EDX    21: Reserved"))
-            gef_print(c(edx, 22, 1,         "        EDX    22: MMX+ (MMX instruction extensions)"))
-            gef_print(c(edx, 23, 1,         "        EDX    23: MMX (Intel MMX technology)"))
-            gef_print(c(edx, 24, 1,         "        EDX    24: FXSR (FXSAVE and FXRSTOR instructions)"))
-            gef_print(c(edx, 25, 1,         "        EDX    25: FFXSR (Fast FXSAVE/FXRSTOR)"))
-            gef_print(c(edx, 26, 1,         "        EDX    26: P1GB (1GB Page support)"))
-            gef_print(c(edx, 27, 1,         "        EDX    27: RDTSCP (RDTSCP instruction)"))
-            gef_print(c(edx, 28, 1,         "        EDX    28: Reserved"))
-            gef_print(c(edx, 29, 1,         "        EDX    29: LM (Long Mode (EM64T))"))
-            gef_print(c(edx, 30, 1,         "        EDX    30: 3DNow!+ (3DNow! extended)"))
-            gef_print(c(edx, 31, 1,         "        EDX    31: 3DNow! (3DNow! instructions)"))
-            gef_print(c(ecx,  0, 1,         "        ECX     0: LAHF (LAHF/SAHF supported in 64-bit mode)"))
-            gef_print(c(ecx,  1, 1,         "        ECX     1: CMPL (Core Multi-Processing Legacy mode)"))
-            gef_print(c(ecx,  2, 1,         "        ECX     2: SVM (Secure Virtual Machine)"))
-            gef_print(c(ecx,  3, 1,         "        ECX     3: EAS (Extended APIC Space)"))
-            gef_print(c(ecx,  4, 1,         "        ECX     4: AMC8 (AltMovCr8; LOCK MOV CR0 means MOV CR8)"))
-            gef_print(c(ecx,  5, 1,         "        ECX     5: ABM (Advanced Bit Manipulation; LZCNT instruction)"))
-            gef_print(c(ecx,  6, 1,         "        ECX     6: SSE4A (SSE4A instructions)"))
-            gef_print(c(ecx,  7, 1,         "        ECX     7: MASSE (Mis-Aligned SSE Support)"))
-            gef_print(c(ecx,  8, 1,         "        ECX     8: PREFETCH (3DNow! PREFETCH/PREFETCHHW instructions)"))
-            gef_print(c(ecx,  9, 1,         "        ECX     9: OSVW (OS-Visible Workaround)"))
-            gef_print(c(ecx, 10, 1,         "        ECX    10: IBS (Instruction-Based Sampling)"))
-            gef_print(c(ecx, 11, 1,         "        ECX    11: XOP (eXtended OPeration)"))
-            gef_print(c(ecx, 12, 1,         "        ECX    12: SKINIT (SKINIT/STGI instructions)"))
-            gef_print(c(ecx, 13, 1,         "        ECX    13: WDT (WatchDog Timer)"))
-            gef_print(c(ecx, 14, 1,         "        ECX    14: Reserved"))
-            gef_print(c(ecx, 15, 1,         "        ECX    15: LWP (Light Weight Profiling)"))
-            gef_print(c(ecx, 16, 1,         "        ECX    16: FMA4 (4-operands FMA instructions)"))
-            gef_print(c(ecx, 17, 1,         "        ECX    17: TCE (Translation Cache Extension)"))
-            gef_print(c(ecx, 18, 1,         "        ECX    18: Reserved"))
-            gef_print(c(ecx, 19, 1,         "        ECX    19: MSR (Node ID MSR"))
-            gef_print(c(ecx, 20, 1,         "        ECX    20: Reserved"))
-            gef_print(c(ecx, 21, 1,         "        ECX    21: TBM (Trailing Bit Manipulation instructions)"))
-            gef_print(c(ecx, 22, 1,         "        ECX    22: TOPOEXT (TOPology EXTensions)"))
-            gef_print(c(ecx, 23, 1,         "        ECX    23: PERFCTR_CORE (CORE PERFormance CounTeR extensions)"))
-            gef_print(c(ecx, 24, 1,         "        ECX    24: PERFCTR_NB (NB PERFormance CounTeR extensions"))
-            gef_print(c(ecx, 25, 1,         "        ECX    25: Streaming performance monitor architecture"))
-            gef_print(c(ecx, 26, 1,         "        ECX    26: DBX (Data breakpoint eXtensions)"))
-            gef_print(c(ecx, 27, 1,         "        ECX    27: PERFTSC (PERFormance Time Stamp Counter)"))
-            gef_print(c(ecx, 28, 1,         "        ECX    28: PERFCTR_L2 (L2 PERFormance CounTeR extensions)"))
-            gef_print(c(ecx, 29, 1,         "        ECX    29: MONITORX/MWAITX instructions"))
-            gef_print(c(ecx, 30, 1,         "        ECX    30: Address mask extension for instruction breakpoint"))
-            gef_print(c(ecx, 31, 1,         "        ECX    31: Reserved"))
+            gef_print(c(edx,  0, 1,          "        EDX     0: FPU (Floating Point Unit on-chip)"))
+            gef_print(c(edx,  1, 1,          "        EDX     1: VME (Virtual 8086 Mode Enhancements)"))
+            gef_print(c(edx,  2, 1,          "        EDX     2: DE (Debugging Extensions)"))
+            gef_print(c(edx,  3, 1,          "        EDX     3: PSE (Page Size Extension)"))
+            gef_print(c(edx,  4, 1,          "        EDX     4: TSC (Time Stamp Counter)"))
+            gef_print(c(edx,  5, 1,          "        EDX     5: MSR (Model Specific Registers RDMSR and WRMSR instructions)"))
+            gef_print(c(edx,  6, 1,          "        EDX     6: PAE (Physical Address Extension)"))
+            gef_print(c(edx,  7, 1,          "        EDX     7: MCE (Machine Check Exception)"))
+            gef_print(c(edx,  8, 1,          "        EDX     8: CX8 (CMPXCHG8B instruction)"))
+            gef_print(c(edx,  9, 1,          "        EDX     9: APIC (APIC on-chip)"))
+            gef_print(c(edx, 10, 1,          "        EDX    10: Reserved"))
+            gef_print(c(edx, 11, 1,          "        EDX    11: (Intel) SEP (SYSENTER and SYSEXIT instructions)"))
+            gef_print(c(edx, 11, 1,          "        EDX    11: (AMD) SYSCALL (SYSCALL and SYSRET instructions)"))
+            gef_print(c(edx, 12, 1,          "        EDX    12: MTRR (Memory Type Range Registers)"))
+            gef_print(c(edx, 13, 1,          "        EDX    13: PGE (Page Global Bit)"))
+            gef_print(c(edx, 14, 1,          "        EDX    14: MCA (Machine Check Architecture)"))
+            gef_print(c(edx, 15, 1,          "        EDX    15: CMOV (Conditional MOVe instructions)"))
+            gef_print(c(edx, 16, 1,          "        EDX    16: PAT (Page Attribute Table)"))
+            gef_print(c(edx, 17, 1,          "        EDX    17: PSE-36 (36-Bit Page Size Extension)"))
+            gef_print(c(edx, 18, 1,          "        EDX    18: Reserved"))
+            gef_print(c(edx, 19, 1,          "        EDX    19: MP (MultiProcessing capable)"))
+            gef_print(c(edx, 20, 1,          "        EDX    20: (Intel) XD (No-execute page protection)"))
+            gef_print(c(edx, 20, 1,          "        EDX    20: (AMD) NX (No-execute page protection)"))
+            gef_print(c(edx, 21, 1,          "        EDX    21: Reserved"))
+            gef_print(c(edx, 22, 1,          "        EDX    22: MMX+ (MMX instruction extensions)"))
+            gef_print(c(edx, 23, 1,          "        EDX    23: MMX (Intel MMX technology)"))
+            gef_print(c(edx, 24, 1,          "        EDX    24: FXSR (FXSAVE and FXRSTOR instructions)"))
+            gef_print(c(edx, 25, 1,          "        EDX    25: FFXSR (Fast FXSAVE/FXRSTOR)"))
+            gef_print(c(edx, 26, 1,          "        EDX    26: P1GB (1GB Page support)"))
+            gef_print(c(edx, 27, 1,          "        EDX    27: RDTSCP (RDTSCP instruction)"))
+            gef_print(c(edx, 28, 1,          "        EDX    28: Reserved"))
+            gef_print(c(edx, 29, 1,          "        EDX    29: LM (Long Mode (EM64T))"))
+            gef_print(c(edx, 30, 1,          "        EDX    30: 3DNow!+ (3DNow! extended)"))
+            gef_print(c(edx, 31, 1,          "        EDX    31: 3DNow! (3DNow! instructions)"))
+            gef_print(c(ecx,  0, 1,          "        ECX     0: LAHF (LAHF/SAHF supported in 64-bit mode)"))
+            gef_print(c(ecx,  1, 1,          "        ECX     1: CMPL (Core Multi-Processing Legacy mode)"))
+            gef_print(c(ecx,  2, 1,          "        ECX     2: SVM (Secure Virtual Machine)"))
+            gef_print(c(ecx,  3, 1,          "        ECX     3: EAS (Extended APIC Space)"))
+            gef_print(c(ecx,  4, 1,          "        ECX     4: AMC8 (AltMovCr8; LOCK MOV CR0 means MOV CR8)"))
+            gef_print(c(ecx,  5, 1,          "        ECX     5: ABM (Advanced Bit Manipulation; LZCNT instruction)"))
+            gef_print(c(ecx,  6, 1,          "        ECX     6: SSE4A (SSE4A instructions)"))
+            gef_print(c(ecx,  7, 1,          "        ECX     7: MASSE (Mis-Aligned SSE Support)"))
+            gef_print(c(ecx,  8, 1,          "        ECX     8: PREFETCH (3DNow! PREFETCH/PREFETCHHW instructions)"))
+            gef_print(c(ecx,  9, 1,          "        ECX     9: OSVW (OS-Visible Workaround)"))
+            gef_print(c(ecx, 10, 1,          "        ECX    10: IBS (Instruction-Based Sampling)"))
+            gef_print(c(ecx, 11, 1,          "        ECX    11: XOP (eXtended OPeration)"))
+            gef_print(c(ecx, 12, 1,          "        ECX    12: SKINIT (SKINIT/STGI instructions)"))
+            gef_print(c(ecx, 13, 1,          "        ECX    13: WDT (WatchDog Timer)"))
+            gef_print(c(ecx, 14, 1,          "        ECX    14: Reserved"))
+            gef_print(c(ecx, 15, 1,          "        ECX    15: LWP (Light Weight Profiling)"))
+            gef_print(c(ecx, 16, 1,          "        ECX    16: FMA4 (4-operands FMA instructions)"))
+            gef_print(c(ecx, 17, 1,          "        ECX    17: TCE (Translation Cache Extension)"))
+            gef_print(c(ecx, 18, 1,          "        ECX    18: Reserved"))
+            gef_print(c(ecx, 19, 1,          "        ECX    19: MSR (Node ID MSR"))
+            gef_print(c(ecx, 20, 1,          "        ECX    20: Reserved"))
+            gef_print(c(ecx, 21, 1,          "        ECX    21: TBM (Trailing Bit Manipulation instructions)"))
+            gef_print(c(ecx, 22, 1,          "        ECX    22: TOPOEXT (TOPology EXTensions)"))
+            gef_print(c(ecx, 23, 1,          "        ECX    23: PERFCTR_CORE (CORE PERFormance CounTeR extensions)"))
+            gef_print(c(ecx, 24, 1,          "        ECX    24: PERFCTR_NB (NB PERFormance CounTeR extensions"))
+            gef_print(c(ecx, 25, 1,          "        ECX    25: Streaming performance monitor architecture"))
+            gef_print(c(ecx, 26, 1,          "        ECX    26: DBX (Data breakpoint eXtensions)"))
+            gef_print(c(ecx, 27, 1,          "        ECX    27: PERFTSC (PERFormance Time Stamp Counter)"))
+            gef_print(c(ecx, 28, 1,          "        ECX    28: PERFCTR_L2 (L2 PERFormance CounTeR extensions)"))
+            gef_print(c(ecx, 29, 1,          "        ECX    29: MONITORX/MWAITX instructions"))
+            gef_print(c(ecx, 30, 1,          "        ECX    30: Address mask extension for instruction breakpoint"))
+            gef_print(c(ecx, 31, 1,          "        ECX    31: Reserved"))
         elif id in [0x80000002, 0x80000003, 0x80000004]:
             vid = (p32(eax) + p32(ebx) + p32(ecx) + p32(edx)).decode("utf-8")
             gef_print("    eax+ebx+ecx+edx: Processor Brand String (={:s})".format(repr(vid)))
@@ -30878,123 +30938,123 @@ class CpuidCommand(GenericCommand):
             gef_print("    edx: unified L3 cache configuration descriptor")
         elif id == 0x80000007:
             gef_print("    ebx: RAS Capabilities")
-            gef_print(c(ebx,  0, 1,         "        EBX     0: MCA overflow recovery"))
-            gef_print(c(ebx,  1, 1,         "        EBX     1: Software uncorrectable error containment and recovery"))
-            gef_print(c(ebx,  2, 1,         "        EBX     2: HWA (HardWare Assert)"))
-            gef_print(c(ebx,  3, 1,         "        EBX     3: Scalable MCA"))
-            gef_print(c(ebx,  4, 1,         "        EBX     4: PFEH (Platform First Error Handling)"))
-            gef_print(c(ebx,  5, 0x7ffffff, "        EBX 31- 5: Reserved"))
+            gef_print(c(ebx,  0, 1,          "        EBX     0: MCA overflow recovery"))
+            gef_print(c(ebx,  1, 1,          "        EBX     1: Software uncorrectable error containment and recovery"))
+            gef_print(c(ebx,  2, 1,          "        EBX     2: HWA (HardWare Assert)"))
+            gef_print(c(ebx,  3, 1,          "        EBX     3: Scalable MCA"))
+            gef_print(c(ebx,  4, 1,          "        EBX     4: PFEH (Platform First Error Handling)"))
+            gef_print(c(ebx,  5, 0x7ffffff,  "        EBX 31- 5: Reserved"))
             gef_print("    edx: Advanced Power Management information")
-            gef_print(c(edx,  0, 1,         "        EDX     0: TS (Temperature Sensor)"))
-            gef_print(c(edx,  1, 1,         "        EDX     1: FID (Frequency ID control)"))
-            gef_print(c(edx,  2, 1,         "        EDX     2: VID (Voltage ID control)"))
-            gef_print(c(edx,  3, 1,         "        EDX     3: TTP (Thermal Trip)"))
-            gef_print(c(edx,  4, 1,         "        EDX     4: TM (Thermal Monitoring)"))
-            gef_print(c(edx,  5, 1,         "        EDX     5: STC (Software Thermal Control)"))
-            gef_print(c(edx,  6, 1,         "        EDX     6: MUL (100MHz Multiplier steps)"))
-            gef_print(c(edx,  7, 1,         "        EDX     7: HWPS (HardWare P-State control)"))
-            gef_print(c(edx,  8, 1,         "        EDX     8: ITSC (Invariant TSC)"))
-            gef_print(c(edx,  9, 1,         "        EDX     9: Core performance boost"))
-            gef_print(c(edx, 10, 1,         "        EDX    10: Read-only effective frequency interface"))
-            gef_print(c(edx, 11, 1,         "        EDX    11: Processor feedback interface"))
-            gef_print(c(edx, 12, 1,         "        EDX    12: Core power reporting"))
-            gef_print(c(edx, 13, 1,         "        EDX    13: Connected standby"))
-            gef_print(c(edx, 14, 1,         "        EDX    14: RAPL (Running Average Power Limit)"))
-            gef_print(c(edx, 15, 0x1ffff,   "        EAX 31-15: Reserved"))
+            gef_print(c(edx,  0, 1,          "        EDX     0: TS (Temperature Sensor)"))
+            gef_print(c(edx,  1, 1,          "        EDX     1: FID (Frequency ID control)"))
+            gef_print(c(edx,  2, 1,          "        EDX     2: VID (Voltage ID control)"))
+            gef_print(c(edx,  3, 1,          "        EDX     3: TTP (Thermal Trip)"))
+            gef_print(c(edx,  4, 1,          "        EDX     4: TM (Thermal Monitoring)"))
+            gef_print(c(edx,  5, 1,          "        EDX     5: STC (Software Thermal Control)"))
+            gef_print(c(edx,  6, 1,          "        EDX     6: MUL (100MHz Multiplier steps)"))
+            gef_print(c(edx,  7, 1,          "        EDX     7: HWPS (HardWare P-State control)"))
+            gef_print(c(edx,  8, 1,          "        EDX     8: ITSC (Invariant TSC)"))
+            gef_print(c(edx,  9, 1,          "        EDX     9: Core performance boost"))
+            gef_print(c(edx, 10, 1,          "        EDX    10: Read-only effective frequency interface"))
+            gef_print(c(edx, 11, 1,          "        EDX    11: Processor feedback interface"))
+            gef_print(c(edx, 12, 1,          "        EDX    12: Core power reporting"))
+            gef_print(c(edx, 13, 1,          "        EDX    13: Connected standby"))
+            gef_print(c(edx, 14, 1,          "        EDX    14: RAPL (Running Average Power Limit)"))
+            gef_print(c(edx, 15, 0x1ffff,    "        EAX 31-15: Reserved"))
         elif id == 0x80000008:
             gef_print("    eax: Extended Address Length Information")
-            gef_print(c(eax,  0, 0xff,      "        EAX  7- 0: Physical address length"))
-            gef_print(c(eax,  8, 0xff,      "        EAX 15- 8: Linear address length"))
-            gef_print(c(eax, 16, 0xff,      "        EAX 23-16: Guest physical address length"))
-            gef_print(c(eax, 24, 0xff,      "        EAX 31-24: Reserved"))
+            gef_print(c(eax,  0, 0xff,       "        EAX  7- 0: Physical address length"))
+            gef_print(c(eax,  8, 0xff,       "        EAX 15- 8: Linear address length"))
+            gef_print(c(eax, 16, 0xff,       "        EAX 23-16: Guest physical address length"))
+            gef_print(c(eax, 24, 0xff,       "        EAX 31-24: Reserved"))
             gef_print("    ebx: Extended Feature Extensions ID")
-            gef_print(c(ebx,  0, 1,         "        EBX     0: CLZERO (CLZERO instruction)"))
-            gef_print(c(ebx,  1, 1,         "        EBX     1: IRPerf (Instructions Retired count support)"))
-            gef_print(c(ebx,  2, 1,         "        EBX     2: XSAVE always saves/restores error pointers"))
-            gef_print(c(ebx,  3, 1,         "        EBX     3: INVLPGB and TLBSYNC instruction"))
-            gef_print(c(ebx,  4, 1,         "        EBX     4: RDPRU (RDPRU instruction)"))
-            gef_print(c(ebx,  5, 1,         "        EBX     5: Reserved"))
-            gef_print(c(ebx,  6, 1,         "        EBX     6: MBE (Memory Bandwidth Enforcement)"))
-            gef_print(c(ebx,  7, 1,         "        EBX     7: Reserved"))
-            gef_print(c(ebx,  8, 1,         "        EBX     8: MCOMMIT (MCOMMIT instruction)"))
-            gef_print(c(ebx,  9, 1,         "        EBX     9: WBNOINVD (Write Back and do NOt INValiDate cache)"))
-            gef_print(c(ebx, 10, 1,         "        EBX    10: LBR extensions"))
-            gef_print(c(ebx, 11, 1,         "        EBX    11: Reserved"))
-            gef_print(c(ebx, 12, 1,         "        EBX    12: IBPB (Indirect Branch Prediction Barrier)"))
-            gef_print(c(ebx, 13, 1,         "        EBX    13: WBINVD (Write Back and INValiDate cache)"))
-            gef_print(c(ebx, 14, 1,         "        EBX    14: IBRS (Indirect Branch Restricted Speculation)"))
-            gef_print(c(ebx, 15, 1,         "        EBX    15: STIBP (Single Thread Indirect Branch Predictor)"))
-            gef_print(c(ebx, 16, 1,         "        EBX    16: Reserved"))
-            gef_print(c(ebx, 17, 1,         "        EBX    17: STIBP always on"))
-            gef_print(c(ebx, 18, 1,         "        EBX    18: IBRS preferred over software solution"))
-            gef_print(c(ebx, 19, 1,         "        EBX    19: IBRS provides Same Mode Protection"))
-            gef_print(c(ebx, 20, 1,         "        EBX    20: EFER.LMLSE is unsupported"))
-            gef_print(c(ebx, 21, 1,         "        EBX    21: INVLPGB for guest nested translations"))
-            gef_print(c(ebx, 22, 1,         "        EBX    22: Reserved"))
-            gef_print(c(ebx, 23, 1,         "        EBX    23: PPIN (Protected Processor Inventory Number)"))
-            gef_print(c(ebx, 24, 1,         "        EBX    24: SSBD (Speculative Store Bypass Disable)"))
-            gef_print(c(ebx, 25, 1,         "        EBX    25: VIRT_SPEC_CTL"))
-            gef_print(c(ebx, 26, 1,         "        EBX    26: SSBD no longer needed"))
-            gef_print(c(ebx, 27, 1,         "        EBX    27: CPPC (Collaborative Processor Performance Control)"))
-            gef_print(c(ebx, 28, 1,         "        EBX    28: PSFD (Predictive Store Forward Disable)"))
-            gef_print(c(ebx, 29, 1,         "        EBX    29: Reserved"))
-            gef_print(c(ebx, 30, 1,         "        EBX    30: Reserved"))
-            gef_print(c(ebx, 31, 1,         "        EBX    31: Reserved"))
+            gef_print(c(ebx,  0, 1,          "        EBX     0: CLZERO (CLZERO instruction)"))
+            gef_print(c(ebx,  1, 1,          "        EBX     1: IRPerf (Instructions Retired count support)"))
+            gef_print(c(ebx,  2, 1,          "        EBX     2: XSAVE always saves/restores error pointers"))
+            gef_print(c(ebx,  3, 1,          "        EBX     3: INVLPGB and TLBSYNC instruction"))
+            gef_print(c(ebx,  4, 1,          "        EBX     4: RDPRU (RDPRU instruction)"))
+            gef_print(c(ebx,  5, 1,          "        EBX     5: Reserved"))
+            gef_print(c(ebx,  6, 1,          "        EBX     6: MBE (Memory Bandwidth Enforcement)"))
+            gef_print(c(ebx,  7, 1,          "        EBX     7: Reserved"))
+            gef_print(c(ebx,  8, 1,          "        EBX     8: MCOMMIT (MCOMMIT instruction)"))
+            gef_print(c(ebx,  9, 1,          "        EBX     9: WBNOINVD (Write Back and do NOt INValiDate cache)"))
+            gef_print(c(ebx, 10, 1,          "        EBX    10: LBR extensions"))
+            gef_print(c(ebx, 11, 1,          "        EBX    11: Reserved"))
+            gef_print(c(ebx, 12, 1,          "        EBX    12: IBPB (Indirect Branch Prediction Barrier)"))
+            gef_print(c(ebx, 13, 1,          "        EBX    13: WBINVD (Write Back and INValiDate cache)"))
+            gef_print(c(ebx, 14, 1,          "        EBX    14: IBRS (Indirect Branch Restricted Speculation)"))
+            gef_print(c(ebx, 15, 1,          "        EBX    15: STIBP (Single Thread Indirect Branch Predictor)"))
+            gef_print(c(ebx, 16, 1,          "        EBX    16: Reserved"))
+            gef_print(c(ebx, 17, 1,          "        EBX    17: STIBP always on"))
+            gef_print(c(ebx, 18, 1,          "        EBX    18: IBRS preferred over software solution"))
+            gef_print(c(ebx, 19, 1,          "        EBX    19: IBRS provides Same Mode Protection"))
+            gef_print(c(ebx, 20, 1,          "        EBX    20: EFER.LMLSE is unsupported"))
+            gef_print(c(ebx, 21, 1,          "        EBX    21: INVLPGB for guest nested translations"))
+            gef_print(c(ebx, 22, 1,          "        EBX    22: Reserved"))
+            gef_print(c(ebx, 23, 1,          "        EBX    23: PPIN (Protected Processor Inventory Number)"))
+            gef_print(c(ebx, 24, 1,          "        EBX    24: SSBD (Speculative Store Bypass Disable)"))
+            gef_print(c(ebx, 25, 1,          "        EBX    25: VIRT_SPEC_CTL"))
+            gef_print(c(ebx, 26, 1,          "        EBX    26: SSBD no longer needed"))
+            gef_print(c(ebx, 27, 1,          "        EBX    27: CPPC (Collaborative Processor Performance Control)"))
+            gef_print(c(ebx, 28, 1,          "        EBX    28: PSFD (Predictive Store Forward Disable)"))
+            gef_print(c(ebx, 29, 1,          "        EBX    29: Reserved"))
+            gef_print(c(ebx, 30, 1,          "        EBX    30: Reserved"))
+            gef_print(c(ebx, 31, 1,          "        EBX    31: Reserved"))
             gef_print("    ecx: Extended Core Information")
-            gef_print(c(ecx,  0, 0xff,      "        ECX  7- 0: Number of cores per (number of dies-1)"))
-            gef_print(c(ecx,  8, 0xf,       "        ECX 11- 8: Reserved"))
-            gef_print(c(ecx, 12, 0xf,       "        ECX 15-12: Number of LSBs in APIC ID that indicate core ID"))
-            gef_print(c(ecx, 16, 0xffff,    "        ECX 31-16: Reserved"))
+            gef_print(c(ecx,  0, 0xff,       "        ECX  7- 0: Number of cores per (number of dies-1)"))
+            gef_print(c(ecx,  8, 0xf,        "        ECX 11- 8: Reserved"))
+            gef_print(c(ecx, 12, 0xf,        "        ECX 15-12: Number of LSBs in APIC ID that indicate core ID"))
+            gef_print(c(ecx, 16, 0xffff,     "        ECX 31-16: Reserved"))
         elif id == 0x8000000a:
             gef_print("    SVM Revision and Feature Identification")
-            gef_print(c(edx,  0, 1,         "        EDX     0: Nested paging"))
-            gef_print(c(edx,  1, 1,         "        EDX     1: LBR virtualization"))
-            gef_print(c(edx,  2, 1,         "        EDX     2: SVM lock"))
-            gef_print(c(edx,  3, 1,         "        EDX     3: NRIP save"))
-            gef_print(c(edx,  4, 1,         "        EDX     4: MSR-based TSC rate control"))
-            gef_print(c(edx,  5, 1,         "        EDX     5: VMCB clean bits"))
-            gef_print(c(edx,  6, 1,         "        EDX     6: Flush by ASID"))
-            gef_print(c(edx,  7, 1,         "        EDX     7: Decode assists"))
-            gef_print(c(edx,  8, 1,         "        EDX     8: Reserved"))
-            gef_print(c(edx,  9, 1,         "        EDX     9: Reserved"))
-            gef_print(c(edx, 10, 1,         "        EDX    10: Pause intercept filter"))
-            gef_print(c(edx, 11, 1,         "        EDX    11: Encrypted micro-code patch"))
-            gef_print(c(edx, 12, 1,         "        EDX    12: PAUSE filter threshold"))
-            gef_print(c(edx, 13, 1,         "        EDX    13: AMD virtual interrupt controller"))
-            gef_print(c(edx, 14, 1,         "        EDX    14: Reserved"))
-            gef_print(c(edx, 15, 1,         "        EDX    15: Virtualized VMLOAD/VMSAVE"))
-            gef_print(c(edx, 16, 1,         "        EDX    16: Virtualized GIF"))
-            gef_print(c(edx, 17, 1,         "        EDX    17: GMET (Guest Mode Execution Trap"))
-            gef_print(c(edx, 18, 1,         "        EDX    18: Reserved"))
-            gef_print(c(edx, 19, 1,         "        EDX    19: SVM supervisor shadow stack restrictions"))
-            gef_print(c(edx, 20, 1,         "        EDX    20: SPEC_CTRL virtualization"))
-            gef_print(c(edx, 21, 1,         "        EDX    21: Reserved"))
-            gef_print(c(edx, 22, 1,         "        EDX    22: Reserved"))
-            gef_print(c(edx, 23, 1,         "        EDX    23: Host MCE override"))
-            gef_print(c(edx, 24, 1,         "        EDX    24: INVLPGB/TLBSYNC hypervisor enable"))
-            gef_print(c(edx, 25, 0x7f,      "        EDX 31-25: Reserved"))
+            gef_print(c(edx,  0, 1,          "        EDX     0: Nested paging"))
+            gef_print(c(edx,  1, 1,          "        EDX     1: LBR virtualization"))
+            gef_print(c(edx,  2, 1,          "        EDX     2: SVM lock"))
+            gef_print(c(edx,  3, 1,          "        EDX     3: NRIP save"))
+            gef_print(c(edx,  4, 1,          "        EDX     4: MSR-based TSC rate control"))
+            gef_print(c(edx,  5, 1,          "        EDX     5: VMCB clean bits"))
+            gef_print(c(edx,  6, 1,          "        EDX     6: Flush by ASID"))
+            gef_print(c(edx,  7, 1,          "        EDX     7: Decode assists"))
+            gef_print(c(edx,  8, 1,          "        EDX     8: Reserved"))
+            gef_print(c(edx,  9, 1,          "        EDX     9: Reserved"))
+            gef_print(c(edx, 10, 1,          "        EDX    10: Pause intercept filter"))
+            gef_print(c(edx, 11, 1,          "        EDX    11: Encrypted micro-code patch"))
+            gef_print(c(edx, 12, 1,          "        EDX    12: PAUSE filter threshold"))
+            gef_print(c(edx, 13, 1,          "        EDX    13: AMD virtual interrupt controller"))
+            gef_print(c(edx, 14, 1,          "        EDX    14: Reserved"))
+            gef_print(c(edx, 15, 1,          "        EDX    15: Virtualized VMLOAD/VMSAVE"))
+            gef_print(c(edx, 16, 1,          "        EDX    16: Virtualized GIF"))
+            gef_print(c(edx, 17, 1,          "        EDX    17: GMET (Guest Mode Execution Trap"))
+            gef_print(c(edx, 18, 1,          "        EDX    18: Reserved"))
+            gef_print(c(edx, 19, 1,          "        EDX    19: SVM supervisor shadow stack restrictions"))
+            gef_print(c(edx, 20, 1,          "        EDX    20: SPEC_CTRL virtualization"))
+            gef_print(c(edx, 21, 1,          "        EDX    21: Reserved"))
+            gef_print(c(edx, 22, 1,          "        EDX    22: Reserved"))
+            gef_print(c(edx, 23, 1,          "        EDX    23: Host MCE override"))
+            gef_print(c(edx, 24, 1,          "        EDX    24: INVLPGB/TLBSYNC hypervisor enable"))
+            gef_print(c(edx, 25, 0x7f,       "        EDX 31-25: Reserved"))
         elif id == 0x80000019:
             gef_print("    TLB Configuration Descriptors")
         elif id == 0x8000001a:
             gef_print("    Performance Optimization Identifiers")
-            gef_print(c(eax,  0, 1,         "        EAX     0: FP128 (128-bit SSE full-width pipelines)"))
-            gef_print(c(eax,  1, 1,         "        EAX     1: MOVU (Efficient MOVU SSE instructions)"))
-            gef_print(c(eax,  2, 1,         "        EAX     2: FP256 (256-bit AVX full-width pipelines)"))
-            gef_print(c(eax,  3, 0x1fffffff,"        EAX 31- 3: Reserved"))
+            gef_print(c(eax,  0, 1,          "        EAX     0: FP128 (128-bit SSE full-width pipelines)"))
+            gef_print(c(eax,  1, 1,          "        EAX     1: MOVU (Efficient MOVU SSE instructions)"))
+            gef_print(c(eax,  2, 1,          "        EAX     2: FP256 (256-bit AVX full-width pipelines)"))
+            gef_print(c(eax,  3, 0x1fffffff, "        EAX 31- 3: Reserved"))
         elif id == 0x8000001b:
             gef_print("    Instruction Based Sampling Identifiers")
-            gef_print(c(eax,  0, 1,         "        EAX     0: IBSFFV (IBS Feature Flags Valid)"))
-            gef_print(c(eax,  1, 1,         "        EAX     1: FetchSam (IBS Fetch Sampling)"))
-            gef_print(c(eax,  2, 1,         "        EAX     2: OpSam (IBS Execution Sampling)"))
-            gef_print(c(eax,  3, 1,         "        EAX     3: RdWrOpCnt (Read/write of Op Counter)"))
-            gef_print(c(eax,  4, 1,         "        EAX     4: OpCnt (Op Counting mode)"))
-            gef_print(c(eax,  5, 1,         "        EAX     5: BrnTrgt (Branch Target address reporting)"))
-            gef_print(c(eax,  6, 1,         "        EAX     6: OpCntExt (IBS op cur/max count extended by 7 bits)"))
-            gef_print(c(eax,  7, 1,         "        EAX     7: RipInvalidChk (IBS RIP invalid indication)"))
-            gef_print(c(eax,  8, 1,         "        EAX     8: OpBrnFuse (IBS fused Branch micro-op indication)"))
-            gef_print(c(eax,  9, 1,         "        EAX     9: IbsFetchCtlExtd (IBS Fetch Control Extended MSR)"))
-            gef_print(c(eax, 10, 1,         "        EAX    10: IbsOpData4 (IBS Op Data 4 MSR)"))
-            gef_print(c(eax, 11, 0x1fffff,  "        EAX 31-11: Reserved"))
+            gef_print(c(eax,  0, 1,          "        EAX     0: IBSFFV (IBS Feature Flags Valid)"))
+            gef_print(c(eax,  1, 1,          "        EAX     1: FetchSam (IBS Fetch Sampling)"))
+            gef_print(c(eax,  2, 1,          "        EAX     2: OpSam (IBS Execution Sampling)"))
+            gef_print(c(eax,  3, 1,          "        EAX     3: RdWrOpCnt (Read/write of Op Counter)"))
+            gef_print(c(eax,  4, 1,          "        EAX     4: OpCnt (Op Counting mode)"))
+            gef_print(c(eax,  5, 1,          "        EAX     5: BrnTrgt (Branch Target address reporting)"))
+            gef_print(c(eax,  6, 1,          "        EAX     6: OpCntExt (IBS op cur/max count extended by 7 bits)"))
+            gef_print(c(eax,  7, 1,          "        EAX     7: RipInvalidChk (IBS RIP invalid indication)"))
+            gef_print(c(eax,  8, 1,          "        EAX     8: OpBrnFuse (IBS fused Branch micro-op indication)"))
+            gef_print(c(eax,  9, 1,          "        EAX     9: IbsFetchCtlExtd (IBS Fetch Control Extended MSR)"))
+            gef_print(c(eax, 10, 1,          "        EAX    10: IbsOpData4 (IBS Op Data 4 MSR)"))
+            gef_print(c(eax, 11, 0x1fffff,   "        EAX 31-11: Reserved"))
         elif id == 0x8fffffff:
             vid = (p32(eax) + p32(ebx) + p32(ecx) + p32(edx)).decode("utf-8")
             gef_print("    eax+ebx+ecx+edx: Easter egg (={:s})".format(repr(vid)))
@@ -31003,21 +31063,21 @@ class CpuidCommand(GenericCommand):
             gef_print("    ebx,ecx,edx: Reserved")
         elif id == 0xc0000001:
             gef_print("    Centaur features")
-            gef_print(c(edx,  0, 1,         "        EDX     0: AIS (Alternate Instruction Set available)"))
-            gef_print(c(edx,  1, 1,         "        EDX     1: AIS_EN (Alternate Instruction Set ENabled)"))
-            gef_print(c(edx,  2, 1,         "        EDX     2: RNG (Random Number Generator available)"))
-            gef_print(c(edx,  3, 1,         "        EDX     3: RNG_EN (Random Number Generator ENabled)"))
-            gef_print(c(edx,  4, 1,         "        EDX     4: LH (LongHaul MSR 0000_110Ah)"))
-            gef_print(c(edx,  5, 1,         "        EDX     5: FEMMS"))
-            gef_print(c(edx,  6, 1,         "        EDX     6: ACE (Advanced Cryptography Engine available)"))
-            gef_print(c(edx,  7, 1,         "        EDX     7: ACE_EN (Advanced Cryptography Engine Enabled)"))
-            gef_print(c(edx,  8, 1,         "        EDX     8: ACE2 (Montgomery Multiplier and Hash Engine available)"))
-            gef_print(c(edx,  9, 1,         "        EDX     9: ACE2_EN (Montgomery Multiplier and Hash Engine Enabled)"))
-            gef_print(c(edx, 10, 1,         "        EDX    10: PHE (Padlock Hash Engine available)"))
-            gef_print(c(edx, 11, 1,         "        EDX    11: PHE_EN (Padlock Hash Engine ENabled)"))
-            gef_print(c(edx, 12, 1,         "        EDX    12: PMM (Padlock Montgomery Multiplier available)"))
-            gef_print(c(edx, 13, 1,         "        EDX    13: PMM_EN (Padlock Montgomery Multiplier ENabled)"))
-            gef_print(c(edx, 14, 0x3ffff,   "        EAX 31-14: Reserved"))
+            gef_print(c(edx,  0, 1,          "        EDX     0: AIS (Alternate Instruction Set available)"))
+            gef_print(c(edx,  1, 1,          "        EDX     1: AIS_EN (Alternate Instruction Set ENabled)"))
+            gef_print(c(edx,  2, 1,          "        EDX     2: RNG (Random Number Generator available)"))
+            gef_print(c(edx,  3, 1,          "        EDX     3: RNG_EN (Random Number Generator ENabled)"))
+            gef_print(c(edx,  4, 1,          "        EDX     4: LH (LongHaul MSR 0000_110Ah)"))
+            gef_print(c(edx,  5, 1,          "        EDX     5: FEMMS"))
+            gef_print(c(edx,  6, 1,          "        EDX     6: ACE (Advanced Cryptography Engine available)"))
+            gef_print(c(edx,  7, 1,          "        EDX     7: ACE_EN (Advanced Cryptography Engine Enabled)"))
+            gef_print(c(edx,  8, 1,          "        EDX     8: ACE2 (Montgomery Multiplier and Hash Engine available)"))
+            gef_print(c(edx,  9, 1,          "        EDX     9: ACE2_EN (Montgomery Multiplier and Hash Engine Enabled)"))
+            gef_print(c(edx, 10, 1,          "        EDX    10: PHE (Padlock Hash Engine available)"))
+            gef_print(c(edx, 11, 1,          "        EDX    11: PHE_EN (Padlock Hash Engine ENabled)"))
+            gef_print(c(edx, 12, 1,          "        EDX    12: PMM (Padlock Montgomery Multiplier available)"))
+            gef_print(c(edx, 13, 1,          "        EDX    13: PMM_EN (Padlock Montgomery Multiplier ENabled)"))
+            gef_print(c(edx, 14, 0x3ffff,    "        EAX 31-14: Reserved"))
         return
 
     @only_if_gdb_running
@@ -31655,7 +31715,7 @@ class MsrCommand(GenericCommand):
             gdb.execute("set $rcx = {:#x}".format(num), to_string=True)
         else:
             gdb.execute("set $ecx = {:#x}".format(num), to_string=True)
-        gdb.execute("set $pc = {:#x}".format(d["pc"]+2), to_string=True) # skip "\xeb\xfe"
+        gdb.execute("set $pc = {:#x}".format(d["pc"] + 2), to_string=True) # skip "\xeb\xfe"
         self.close_stdout()
         gdb.execute("stepi", to_string=True)
         self.revert_stdout()
@@ -31695,11 +31755,12 @@ class MsrCommand(GenericCommand):
         if num is None:
             try:
                 num = int(argv[0], 16)
-            except:
+            except Exception:
                 self.usage()
                 return
         self.read_msr(num)
         return
+
 
 class PrintBitInfo:
     """Printing various bit informations of the register"""
@@ -31788,7 +31849,7 @@ class PrintBitInfo:
             elif isinstance(bits, list):
                 val = 0
                 for j, x in enumerate(bits):
-                    val |= (regval & (1 << x)) >> (x-j)
+                    val |= (regval & (1 << x)) >> (x - j)
             else:
                 raise
             max_width_val = max(max_width_val, len("{:#x}".format(val)))
@@ -31810,7 +31871,7 @@ class PrintBitInfo:
                 b = bit_range_strs[i]
                 val = 0
                 for j, x in enumerate(bits):
-                    val |= (regval & (1 << x)) >> (x-j)
+                    val |= (regval & (1 << x)) >> (x - j)
             else:
                 raise
 
@@ -31876,7 +31937,7 @@ class QemuRegistersCommand(GenericCommand):
         gef_print(titlify("CR3 (Control Register 3)"))
         desc = "It contains the physical address of the base of the paging-structure hierarchy and two flags"
         bit_info = [
-            [list(range(12,32)), None, None, "Base of page directory base, typically it points to PML4T if 4-level paging"],
+            [list(range(12, 32)), None, None, "Base of page directory base, typically it points to PML4T if 4-level paging"],
             [list(range(0, 12)), None, None, "Process context identifier when CR4.PCIDE=1"],
             [4, "PCD", "Page-level Cache Disable", "If 1, disable Page-Directory itself caching when CR4.PCIDE=0"],
             [3, "PWT", "Page-level Write-Through", "If 1, enable write through Page-Directory itself caching when CR4.PCIDE=0"],
@@ -31935,7 +31996,7 @@ class QemuRegistersCommand(GenericCommand):
         gef_print(titlify("DR6 (Debug Status Register 6)"))
         desc = "It permits the debugger to determine which debug conditions have occurred"
         bit_info = [
-            [16, "RTM","restricted transactional memory", "If 0, the debug exception or breakpoint exception occured inside an RTM region"],
+            [16, "RTM", "restricted transactional memory", "If 0, the debug exception or breakpoint exception occured inside an RTM region"],
             [15, "BT", "task switch", "If 1, the debug instruction resulted from a task switch where TSS.T of target task was set"],
             [14, "BS", "single step", "If 1, the debug exception was triggered by the single-step execution mode (enabled with EFLAGS.TF)"],
             [13, "BD", "debug register access detected", "If 1, the next instruction accesses one of the debug registers"],
@@ -31951,14 +32012,14 @@ class QemuRegistersCommand(GenericCommand):
         gef_print(titlify("DR7 (Debug Control Register 7)"))
         desc = "A local breakpoint bit deactivates on hardware task switches, while a global does not"
         bit_info = [
-            [[30,31], "LEN3", "Size of DR3 breakpoint", ""],
-            [[28,29], "R/W3", "Breakpoint conditions for DR3", ""],
-            [[26,27], "LEN2", "Size of DR2 breakpoint", ""],
-            [[24,25], "R/W2", "Breakpoint conditions for DR2", ""],
-            [[22,23], "LEN1", "Size of DR1 breakpoint", ""],
-            [[20,21], "R/W1", "Breakpoint conditions for DR1", ""],
-            [[18,19], "LEN0", "Size of DR0 breakpoint", ""],
-            [[16,17], "R/W0", "Breakpoint conditions for DR0", ""],
+            [[30, 31], "LEN3", "Size of DR3 breakpoint", ""],
+            [[28, 29], "R/W3", "Breakpoint conditions for DR3", ""],
+            [[26, 27], "LEN2", "Size of DR2 breakpoint", ""],
+            [[24, 25], "R/W2", "Breakpoint conditions for DR2", ""],
+            [[22, 23], "LEN1", "Size of DR1 breakpoint", ""],
+            [[20, 21], "R/W1", "Breakpoint conditions for DR1", ""],
+            [[18, 19], "LEN0", "Size of DR0 breakpoint", ""],
+            [[16, 17], "R/W0", "Breakpoint conditions for DR0", ""],
             [13, "GD", "General Detect enable", ""],
             [11, "RTM", "Restricted Transactional Memory", ""],
             [9, "GE", "Global Exact breakpoint", ""],
@@ -31979,43 +32040,45 @@ class QemuRegistersCommand(GenericCommand):
         gef_print(titlify("EFER (Extended Feature Enable Register; MSR_EFER:0xc0000080)"))
         efer = int(re.search(r"EFER=(\S+)", res).group(1), 16)
         bit_info = [
-            [15,"TCE",   "Translation Cache Extension", ""],
-            [14,"FFXSR", "Fast FXSAVE/FXRSTOR", ""],
-            [13,"LMSLE", "Long Mode Segment Limit Enable", ""],
-            [12,"SVME",  "Secure Virtual Machine Enable", ""],
-            [11,"NXE",   "No-Execute Enable", ""],
-            [10,"LMA",   "Long Mode Active", ""],
-            [8, "LME",   "Long Mode Enable", ""],
-            [4, "L2D",   "L2 Cache Disable", "AMD K6 only"],
-            [3, "GEWBED","Global EWBE# Disable", "AMD K6 only"],
-            [2, "SEWBED","Speculative EWBE# Disable", "AMD K6 only"],
-            [1, "DPE",   "Data Prefetch Enable", "AMD K6 only"],
-            [0, "SCE",   "System Call Extensions", ""],
+            [15, "TCE", "Translation Cache Extension", ""],
+            [14, "FFXSR", "Fast FXSAVE/FXRSTOR", ""],
+            [13, "LMSLE", "Long Mode Segment Limit Enable", ""],
+            [12, "SVME", "Secure Virtual Machine Enable", ""],
+            [11, "NXE", "No-Execute Enable", ""],
+            [10, "LMA", "Long Mode Active", ""],
+            [8, "LME", "Long Mode Enable", ""],
+            [4, "L2D", "L2 Cache Disable", "AMD K6 only"],
+            [3, "GEWBED", "Global EWBE# Disable", "AMD K6 only"],
+            [2, "SEWBED", "Speculative EWBE# Disable", "AMD K6 only"],
+            [1, "DPE", "Data Prefetch Enable", "AMD K6 only"],
+            [0, "SCE", "System Call Extensions", ""],
         ]
         PrintBitInfo("EFER", 64 if is_x86_64() else 32, None, bit_info).print(efer)
 
         # TR
         gef_print(titlify("TR (Task Register)"))
         tr = re.search(r"TR\s*=\s*(\S+) (\S+) (\S+) (\S+)", res)
-        trseg, base, limit, attr = [int(tr.group(i), 16) for i in range(1,5)]
+        trseg, base, limit, attr = [int(tr.group(i), 16) for i in range(1, 5)]
         gef_print("{:s} = {:s}".format(red("TR"), yellow("{:#x}".format(trseg))))
-        regv = Color.boldify("{:#x} (rpl:{:d},ti:{:d},index:{:d})".format(trseg, trseg&0b11, (trseg>>2)&1, trseg>>3))
+        regv = Color.boldify("{:#x} (rpl:{:d},ti:{:d},index:{:d})".format(trseg, trseg & 0b11, (trseg >> 2) & 1, trseg >> 3))
         gef_print("seg: {:s}: segment selector for TSS (Task State Segment)".format(regv))
         gef_print("  base : {:s}: starting address of TSS".format(Color.boldify("{:#x}".format(base))))
-        gef_print("  limit: {:s}: segment limit or fixed value(=__KERNEL_TSS_LIMIT x64:0x206f/x86:0x206b)".format(Color.boldify("{:#x}".format(limit))))
+        limit_c = Color.boldify("{:#x}".format(limit))
+        gef_print("  limit: {:s}: segment limit or fixed value(=__KERNEL_TSS_LIMIT x64:0x206f/x86:0x206b)".format(limit_c))
         gef_print("  attr : {:s}: attribute".format(Color.boldify("{:#x}".format(attr))))
 
         # GDTR
         gef_print(titlify("GDTR (Global Descriptor Table Register)"))
         gdtr = re.search(r"GDT\s*=\s*(\S+) (\S+)", res)
-        base, limit = [int(gdtr.group(i), 16) for i in range(1,3)]
+        base, limit = [int(gdtr.group(i), 16) for i in range(1, 3)]
         gef_print("{:s} = {:s}:{:s}".format(red("GDTR"), yellow("{:#x}".format(base)), yellow("{:#x}".format(limit))))
         gef_print("base : {:s}: starting address of GDT (Global Descriptor Table)".format(Color.boldify("{:#x}".format(base))))
         gef_print("limit: {:s}: (size of GDT) - 1".format(Color.boldify("{:#x}".format(limit))))
         info("GDT entry")
         regs = GdtInfoCommand.get_segreg_list()
-        gef_print(Color.colorify("[ #] {:20s}: ".format("segname") + GdtInfoCommand.segval2str_legend(), get_gef_setting("theme.table_heading")))
-        gdtinfo = read_memory(base, limit+1)
+        legend = GdtInfoCommand.segval2str_legend()
+        gef_print(Color.colorify(legend, get_gef_setting("theme.table_heading")))
+        gdtinfo = read_memory(base, limit + 1)
         # https://github.com/torvalds/linux/blob/master/arch/x86/include/asm/segment.h
         if is_x86_64():
             segname_info = [
@@ -32071,19 +32134,19 @@ class QemuRegistersCommand(GenericCommand):
                 "UNUSED",
                 "DOUBLEFAULT_TSS",
             ]
-        sliced = list(map(u64, [gdtinfo[i:i+8] for i in range(0, len(gdtinfo), 8)]))
+        sliced = list(map(u64, [gdtinfo[i:i + 8] for i in range(0, len(gdtinfo), 8)]))
         registers_color = get_gef_setting("theme.dereference_register_value")
         for i, b in enumerate(sliced):
-            reglist = ', '.join(regs.get(i,[]))
+            reglist = ', '.join(regs.get(i, []))
             if reglist:
                 reglist = LEFT_ARROW + reglist
-            if is_x86_64() and i == (trseg>>3): # for TSS
+            if is_x86_64() and i == (trseg >> 3): # for TSS
                 s = GdtInfoCommand.segval2str(b, value_only=True)
                 prev = b
                 reglist = reglist + ", tr" if reglist else LEFT_ARROW + "TR"
-            elif is_x86_64() and i == (trseg>>3) + 1: # for TSS
+            elif is_x86_64() and i == (trseg >> 3) + 1: # for TSS
                 s = GdtInfoCommand.segval2str([prev, b])
-            elif is_x86_32() and i == (trseg>>3): # for TSS
+            elif is_x86_32() and i == (trseg >> 3): # for TSS
                 s = GdtInfoCommand.segval2str(b)
                 reglist = reglist + ", tr" if reglist else LEFT_ARROW + "TR"
             else:
@@ -32094,7 +32157,7 @@ class QemuRegistersCommand(GenericCommand):
         # IDTR
         gef_print(titlify("IDTR (Interrupt Descriptor Table Register)"))
         idtr = re.search(r"IDT\s*=\s*(\S+) (\S+)", res)
-        base, limit = [int(idtr.group(i), 16) for i in range(1,3)]
+        base, limit = [int(idtr.group(i), 16) for i in range(1, 3)]
         gef_print("{:s} = {:s}:{:s}".format(red("IDTR"), yellow("{:#x}".format(base)), yellow("{:#x}".format(limit))))
         gef_print("base : {:s}: starting address of IDT (Interrupt Descriptor Table)".format(Color.boldify("{:#x}".format(base))))
         gef_print("limit: {:s}: (size of IDT) - 1".format(Color.boldify("{:#x}".format(limit))))
@@ -32102,9 +32165,9 @@ class QemuRegistersCommand(GenericCommand):
         # LDTR
         gef_print(titlify("LDTR (Local Descriptor Table Register)"))
         ldtr = re.search(r"LDT\s*=\s*(\S+) (\S+) (\S+) (\S+)", res)
-        seg, base, limit, attr = [int(ldtr.group(i), 16) for i in range(1,5)]
+        seg, base, limit, attr = [int(ldtr.group(i), 16) for i in range(1, 5)]
         gef_print("{:s} = {:s}".format(red("LDTR"), yellow("{:#x}".format(seg))))
-        regv = Color.boldify("{:#x} (rpl:{:d},ti:{:d},index:{:d})".format(seg, seg&0b11, (seg>>2)&1, seg>>3))
+        regv = Color.boldify("{:#x} (rpl:{:d},ti:{:d},index:{:d})".format(seg, seg & 0b11, (seg >> 2) & 1, seg >> 3))
         gef_print("seg: {:s}: segment selector for LDT (Local Descriptor Table)".format(regv))
         gef_print("  base : {:s}: starting address of LDT".format(Color.boldify("{:#x}".format(base))))
         gef_print("  limit: {:s}: segment limit".format(Color.boldify("{:#x}".format(limit))))
@@ -32148,7 +32211,7 @@ def get_maps_arm64_optee_secure_memory(verbose=False):
     # heuristic search of qemu-system memory
     sm_base, sm_size = XSecureMemAddrCommand.get_secure_memory_base_and_size(verbose)
     if sm_base is None or sm_size is None:
-        err("Not found memory tree of secure memory (see monitor info mtree -f)") 
+        err("Not found memory tree of secure memory (see monitor info mtree -f)")
         return None
     sm = XSecureMemAddrCommand.get_secure_memory_qemu_map(sm_base, sm_size, verbose)
     if sm is None:
@@ -32157,7 +32220,7 @@ def get_maps_arm64_optee_secure_memory(verbose=False):
     data = XSecureMemAddrCommand.read_secure_memory(sm, 0x0, sm.size, verbose)
 
     def slice_unpack(data, n):
-        tmp = [data[i:i+n] for i in range(0, len(data), n)]
+        tmp = [data[i:i + n] for i in range(0, len(data), n)]
         return list(map(u64 if n == 8 else u32, tmp))
     data_list = slice_unpack(data, 8)
 
@@ -32202,14 +32265,14 @@ def get_maps_arm64_optee_secure_memory(verbose=False):
     """
     maps = []
     old_i = -1
-    for i in range(len(data_list)-4):
+    for i in range(len(data_list) - 4):
         type = data_list[i] & 0xffffffff
         if 26 < type: # enum teecore_memtypes
             continue
         region_size = (data_list[i] >> 32) & 0xffffffff
         if region_size & 0xfff or region_size < 0x1000 or 0xfffff000 < region_size:
             continue
-        pa, va, size, attr = data_list[i+1:i+5]
+        pa, va, size, attr = data_list[i + 1:i + 5]
         if pa & 0xfff or 0xfffff000 < pa:
             continue
         if va & 0xfff or 0xfffff000 < va:
@@ -32218,14 +32281,15 @@ def get_maps_arm64_optee_secure_memory(verbose=False):
             continue
         if len(maps) > 0 and old_i + 5 != i: # Judging continuity
             continue
-        maps.append([va, va+size, pa, pa+size])
+        maps.append([va, va + size, pa, pa + size])
         old_i = i
     if verbose:
         fmt = "{:33s}  {:33s}  {:12s}"
         legend = ["Virtual address start-end", "Physical address start-end", "Total size"]
         gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
         for va_start, va_end, pa_start, pa_end in maps:
-            gef_print("{:016x}-{:016x}  {:016x}-{:016x}  {:<#12x}".format(va_start, va_end, pa_start, pa_end, va_end - va_start))
+            fmt = "{:016x}-{:016x}  {:016x}-{:016x}  {:<#12x}"
+            gef_print(fmt.format(va_start, va_end, pa_start, pa_end, va_end - va_start))
     return maps
 
 
@@ -32242,7 +32306,8 @@ class V2PCommand(GenericCommand):
     _syntax_ = "{:s} [-h] [-s|-S] ADDRESS".format(_cmdline_)
     _example_ = ""
     _example_ += "{:s} 0xa31dd000\n".format(_cmdline_)
-    _example_ += "{:s} 0xa31dd000 -S # use TTBRn_ELm_S for parsing start register (ARMv7) / heuristic search the memory of qemu-system (ARMv8)\n".format(_cmdline_)
+    _example_ += "{:s} 0xa31dd000 -S # use TTBRn_ELm_S for parsing start register (ARMv7)\n".format(_cmdline_)
+    _example_ += "                  # heuristic search the memory of qemu-system (ARMv8)\n"
     _example_ += "{:s} 0xa31dd000 -s # use TTBRn_ELm for parsing start register (ARMv7/v8)".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
 
@@ -32262,7 +32327,7 @@ class V2PCommand(GenericCommand):
                 res = get_maps_by_pagewalk("pagewalk -q --no-merge -s")
         res = sorted(set(res.splitlines()))
         res = list(filter(lambda line: line.endswith("]"), res))
-        res = list(filter(lambda line: not "[+]" in line, res))
+        res = list(filter(lambda line: "[+]" not in line, res))
         maps = []
         for line in res:
             vrange, prange, *_ = line.split()
@@ -32306,7 +32371,7 @@ class V2PCommand(GenericCommand):
 
         try:
             addr = int(gdb.parse_and_eval(' '.join(argv)))
-        except:
+        except Exception:
             self.usage()
             return
 
@@ -32353,7 +32418,7 @@ class P2VCommand(GenericCommand):
 
         try:
             addr = int(gdb.parse_and_eval(' '.join(argv)))
-        except:
+        except Exception:
             self.usage()
             return
 
@@ -32395,7 +32460,7 @@ class PagewalkCommand(GenericCommand):
         return out
 
     def slice_unpack(self, data, n):
-        tmp = [data[i:i+n] for i in range(0, len(data), n)]
+        tmp = [data[i:i + n] for i in range(0, len(data), n)]
         if n == 8:
             return list(map(u64, tmp))
         elif n == 4:
@@ -32419,7 +32484,7 @@ class PagewalkCommand(GenericCommand):
         tmp = {}
         for entry in self.mappings: # [virt_addr, phys_addr, page_size, page_count, flags]
             va, other = entry[0], tuple(entry[1:])
-            if not other in tmp:
+            if other not in tmp:
                 tmp[other] = []
             tmp[other].append("{:016x}".format(va))
 
@@ -32433,16 +32498,17 @@ class PagewalkCommand(GenericCommand):
             queue = va_array
             queue_done = []
             for shift in range(4, 16):
+                shift_rem = 16 - shift
                 while len(queue) >= 16:
                     q = queue[0]
                     tmp16 = []
                     for c in "0123456789abcdef":
-                        cand = q[:16-shift-1] + c + q[16-shift:]
+                        cand = q[:shift_rem - 1] + c + q[shift_rem:]
                         if cand in queue:
                             queue.remove(cand)
                             tmp16.append(cand)
                     if len(tmp16) == 16:
-                        queue_done.append( q[:16-shift-1] + "*" + q[16-shift:] )
+                        queue_done.append(q[:shift_rem - 1] + "*" + q[shift_rem:])
                     else:
                         queue_done += tmp16
 
@@ -32481,7 +32547,7 @@ class PagewalkCommand(GenericCommand):
             prev_pa = int(prev[1], 16) if isinstance(prev[1], str) else prev[1]
             now_size = now[2]
             prev_size = prev[2]
-            now_cnt = now[3]
+            #now_cnt = now[3] # unused
             prev_cnt = prev[3]
             now_flags = now[4]
             prev_flags = prev[4]
@@ -32556,18 +32622,22 @@ class PagewalkCommand(GenericCommand):
                 vend = vend[:pos[0]] + "*" + vend[pos[1]:]
             pend = pa + size * cnt
             if self.simple:
-                text = "{:16s}-{:16s}  {:33s}  {:<#12x} {:<11s} {:<6s} [{:s}]".format(va, vend, "-", size, "-", "-", flags)
+                fmt = "{:16s}-{:16s}  {:33s}  {:<#12x} {:<11s} {:<6s} [{:s}]"
+                text = fmt.format(va, vend, "-", size, "-", "-", flags)
             else:
-                text = "{:16s}-{:16s}  {:016x}-{:016x}  {:<#12x} {:<#11x} {:<6d} [{:s}]".format(va, vend, pa, pend, size*cnt, size, cnt, flags)
+                fmt = "{:16s}-{:16s}  {:016x}-{:016x}  {:<#12x} {:<#11x} {:<6d} [{:s}]"
+                text = fmt.format(va, vend, pa, pend, size * cnt, size, cnt, flags)
         else:
             if isinstance(va, str):
                 va = int(va, 16)
             vend = va + size * cnt
             pend = pa + size * cnt
             if self.simple:
-                text = "{:016x}-{:016x}  {:33s}  {:<#12x} {:<11s} {:<6s} [{:s}]".format(va, vend, "-", size, "-", "-", flags)
+                fmt = "{:016x}-{:016x}  {:33s}  {:<#12x} {:<11s} {:<6s} [{:s}]"
+                text = fmt.format(va, vend, "-", size, "-", "-", flags)
             else:
-                text = "{:016x}-{:016x}  {:016x}-{:016x}  {:<#12x} {:<#11x} {:<6d} [{:s}]".format(va, vend, pa, pend, size*cnt, size, cnt, flags)
+                fmt = "{:016x}-{:016x}  {:016x}-{:016x}  {:<#12x} {:<#11x} {:<6d} [{:s}]"
+                text = fmt.format(va, vend, pa, pend, size * cnt, size, cnt, flags)
         return text
 
     def print_page(self):
@@ -32680,21 +32750,21 @@ class PagewalkCommand(GenericCommand):
             idx = argv.index("--filter")
             pattern = argv[idx + 1]
             self.filter.append(pattern)
-            argv = argv[:idx] + argv[idx+2:]
+            argv = argv[:idx] + argv[idx + 2:]
 
         self.vrange = []
         while "--vrange" in argv:
             idx = argv.index("--vrange")
             vrange_addr = int(argv[idx + 1], 16)
             self.vrange.append(vrange_addr)
-            argv = argv[:idx] + argv[idx+2:]
+            argv = argv[:idx] + argv[idx + 2:]
 
         self.prange = []
         while "--prange" in argv:
             idx = argv.index("--prange")
             prange_addr = int(argv[idx + 1], 16)
             self.prange.append(prange_addr)
-            argv = argv[:idx] + argv[idx+2:]
+            argv = argv[:idx] + argv[idx + 2:]
 
         self.trace = []
         while "--trace" in argv:
@@ -32702,7 +32772,7 @@ class PagewalkCommand(GenericCommand):
             trace_addr = int(argv[idx + 1], 16)
             self.trace.append(trace_addr)
             self.vrange.append(trace_addr) # also set --vrange
-            argv = argv[:idx] + argv[idx+2:]
+            argv = argv[:idx] + argv[idx + 2:]
             self.print_each_level = True # overwrite
 
         self.cache = {}
@@ -32728,7 +32798,8 @@ class PagewalkCommand(GenericCommand):
 class PagewalkX64Command(PagewalkCommand):
     """Dump pagetable for x64/x86 using qemu-monitor."""
     _cmdline_ = "pagewalk x64"
-    _syntax_ = "{:s} [-h] [-q] [--print-each-level] [--no-merge] [--filter REGEX] [--vrange ADDR] [--prange ADDR] [--sort-by-phys] [--simple] [--trace ADDR]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [-q] [--print-each-level] [--no-merge] [--filter REGEX] ".format(_cmdline_)
+    _syntax_ += "[--vrange ADDR] [--prange ADDR] [--sort-by-phys] [--simple] [--trace ADDR]"
     _example_ = "\n"
     _example_ += "{:s} --print-each-level # show all level pagetables\n".format(_cmdline_)
     _example_ += "{:s} --no-merge         # do not merge similar/consecutive address\n".format(_cmdline_)
@@ -32750,11 +32821,11 @@ class PagewalkX64Command(PagewalkCommand):
         flags = []
         if "NO_RW" in flag_info and "XD" in flag_info:
             flags += ["R--"]
-        elif "NO_RW" in flag_info and not "XD" in flag_info:
+        elif "NO_RW" in flag_info and "XD" not in flag_info:
             flags += ["R-X"]
-        elif not "NO_RW" in flag_info and "XD" in flag_info:
+        elif "NO_RW" not in flag_info and "XD" in flag_info:
             flags += ["RW-"]
-        elif not "NO_RW" in flag_info and not "XD" in flag_info:
+        elif "NO_RW" not in flag_info and "XD" not in flag_info:
             flags += ["RWX"]
         if "NO_US" in flag_info:
             flags += ["KERN"]
@@ -32774,7 +32845,7 @@ class PagewalkX64Command(PagewalkCommand):
         PML5E = []
         COUNT = 0; INVALID = 0
         for va_base, table_base, parent_flags in self.TABLES:
-            entries = self.read_physmem_cache(table_base, 2**self.bits["PML5T_BITS"] * self.bits["ENTRY_SIZE"])
+            entries = self.read_physmem_cache(table_base, 2 ** self.bits["PML5T_BITS"] * self.bits["ENTRY_SIZE"])
             entries = self.slice_unpack(entries, self.bits["ENTRY_SIZE"])
             COUNT += len(entries)
             for i, entry in enumerate(entries):
@@ -32785,7 +32856,7 @@ class PagewalkX64Command(PagewalkCommand):
 
                 # calc virtual address
                 b = self.bits["PML4T_BITS"] + self.bits["PDPT_BITS"] + self.bits["PDT_BITS"] + self.bits["PT_BITS"] + self.bits["OFFSET"]
-                sign_ext = 0xfe00000000000000 if ((i >> (self.bits["PML5T_BITS"]-1)) & 1) else 0
+                sign_ext = 0xfe00000000000000 if ((i >> (self.bits["PML5T_BITS"] - 1)) & 1) else 0
                 new_va = va_base + (sign_ext | (i << b))
                 new_va_end = new_va + (1 << b)
 
@@ -32842,7 +32913,7 @@ class PagewalkX64Command(PagewalkCommand):
                     new_va = va_base + (i << b)
                     new_va_end = new_va + (1 << b)
                 else:
-                    sign_ext = 0xffff000000000000 if ((i >> (self.bits["PML4T_BITS"]-1)) & 1) else 0
+                    sign_ext = 0xffff000000000000 if ((i >> (self.bits["PML4T_BITS"] - 1)) & 1) else 0
                     new_va = va_base + (sign_ext | (i << b))
                     new_va_end = new_va + (1 << b)
 
@@ -33118,7 +33189,10 @@ class PagewalkX64Command(PagewalkCommand):
                 # 64bit 5-level(1GB): 9,9,9,0,0,30
                 if not self.quiet:
                     info("64-bit 5 level page table")
-                self.bits = { "ENTRY_SIZE":64//8, "PML5T_BITS":9, "PML4T_BITS":9, "PDPT_BITS":9, "PDT_BITS":9, "PT_BITS":9, "OFFSET":12 }
+                self.bits = {
+                    "ENTRY_SIZE": 8,
+                    "PML5T_BITS": 9, "PML4T_BITS": 9, "PDPT_BITS": 9, "PDT_BITS": 9, "PT_BITS": 9, "OFFSET": 12,
+                }
                 self.PAE = True
                 self.pagewalk_PML5T()
                 self.pagewalk_PML4T()
@@ -33131,7 +33205,10 @@ class PagewalkX64Command(PagewalkCommand):
                 # 64bit 4-level(1GB): 9,9,0,0,30
                 if not self.quiet:
                     info("64-bit 4 level page table")
-                self.bits = { "ENTRY_SIZE":64//8, "PML4T_BITS":9, "PDPT_BITS":9, "PDT_BITS":9, "PT_BITS":9, "OFFSET":12 }
+                self.bits = {
+                    "ENTRY_SIZE": 8,
+                    "PML4T_BITS": 9, "PDPT_BITS": 9, "PDT_BITS": 9, "PT_BITS": 9, "OFFSET": 12,
+                }
                 self.PAE = True
                 self.pagewalk_PML4T()
                 self.pagewalk_PDPT()
@@ -33143,7 +33220,10 @@ class PagewalkX64Command(PagewalkCommand):
                 # 32bit PAE(2MB): 2,9,0,21 (PTE Size: 64bit)
                 if not self.quiet:
                     info("32-bit {:s} page table".format(Color.boldify("PAE")))
-                self.bits = { "ENTRY_SIZE":64//8, "PDPT_BITS":2, "PDT_BITS":9, "PT_BITS":9, "OFFSET":12 }
+                self.bits = {
+                    "ENTRY_SIZE": 8,
+                    "PDPT_BITS": 2, "PDT_BITS": 9, "PT_BITS": 9, "OFFSET": 12,
+                }
                 self.PAE = True
                 self.pagewalk_PDPT()
                 self.pagewalk_PDT()
@@ -33153,7 +33233,10 @@ class PagewalkX64Command(PagewalkCommand):
                 # 32bit(4MB): 10,0,22
                 if not self.quiet:
                     info("32-bit Non-PAE page table")
-                self.bits = { "ENTRY_SIZE":32//8, "PDT_BITS":10, "PT_BITS":10, "OFFSET":12 }
+                self.bits = {
+                    "ENTRY_SIZE": 4,
+                    "PDT_BITS": 10, "PT_BITS": 10, "OFFSET": 12,
+                }
                 self.PAE = False
                 self.pagewalk_PDT()
                 self.pagewalk_PT()
@@ -33182,7 +33265,7 @@ class PagewalkX64Command(PagewalkCommand):
             argv = self.parse_common_args(argv)
             if argv:
                 raise
-        except:
+        except Exception:
             self.usage()
             return
         self.mappings = None
@@ -33195,7 +33278,8 @@ class PagewalkX64Command(PagewalkCommand):
 class PagewalkArmCommand(PagewalkCommand):
     """Dump pagetable for ARM (Cortex-A only) using qemu-monitor."""
     _cmdline_ = "pagewalk arm"
-    _syntax_ = "{:s} [-h] [-q] [-S|-s] [--print-each-level] [--no-merge] [--filter REGEX] [--vrange ADDR] [--prange ADDR] [--sort-by-phys] [--simple] [--trace ADDR]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [-q] [-S|-s] [--print-each-level] [--no-merge] [--filter REGEX] ".format(_cmdline_)
+    _syntax_ += "[--vrange ADDR] [--prange ADDR] [--sort-by-phys] [--simple] [--trace ADDR]"
     _example_ = "\n"
     _example_ += "{:s} --print-each-level # show all level pagetables\n".format(_cmdline_)
     _example_ += "{:s} --no-merge         # do not merge similar/consecutive address\n".format(_cmdline_)
@@ -33224,106 +33308,106 @@ class PagewalkArmCommand(PagewalkCommand):
 
         # AP[2:0] access permissions model
         if "AP=000" in flag_info:
-            if XN == False and PXN == False:
+            if XN is False and PXN is False:
                 flags += ['PL0/---', "PL1/---"] #
-            elif XN == False and PXN == True:
+            elif XN is False and PXN is True:
                 flags += ['PL0/---', "PL1/---"] # PXN
-            elif XN == True and PXN == False:
+            elif XN is True and PXN is False:
                 flags += ['PL0/---', "PL1/---"] # XN
-            elif XN == True and PXN == True:
+            elif XN is True and PXN is True:
                 flags += ['PL0/---', "PL1/---"] # XN, PXN
         elif "AP=001" in flag_info:
-            if XN == False and PXN == False:
+            if XN is False and PXN is False:
                 flags += ['PL0/---', "PL1/RWX"] #
-            elif XN == False and PXN == True:
+            elif XN is False and PXN is True:
                 flags += ['PL0/---', "PL1/RW-"] # PXN
-            elif XN == True and PXN == False:
+            elif XN is True and PXN is False:
                 flags += ['PL0/---', "PL1/RW-"] # XN
-            elif XN == True and PXN == True:
+            elif XN is True and PXN is True:
                 flags += ['PL0/---', "PL1/RW-"] # XN, PXN
         elif "AP=010" in flag_info:
-            if XN == False and PXN == False:
+            if XN is False and PXN is False:
                 flags += ['PL0/R-X', "PL1/RWX"] #
-            elif XN == False and PXN == True:
+            elif XN is False and PXN is True:
                 flags += ['PL0/R-X', "PL1/RW-"] # PXN
-            elif XN == True and PXN == False:
+            elif XN is True and PXN is False:
                 flags += ['PL0/R--', "PL1/RW-"] # XN
-            elif XN == True and PXN == True:
+            elif XN is True and PXN is True:
                 flags += ['PL0/R--', "PL1/RW-"] # XN, PXN
         elif "AP=011" in flag_info:
-            if XN == False and PXN == False:
+            if XN is False and PXN is False:
                 flags += ['PL0/RWX', "PL1/RWX"] #
-            elif XN == False and PXN == True:
+            elif XN is False and PXN is True:
                 flags += ['PL0/RWX', "PL1/RW-"] # PXN
-            elif XN == True and PXN == False:
+            elif XN is True and PXN is False:
                 flags += ['PL0/RW-', "PL1/RW-"] # XN
-            elif XN == True and PXN == True:
+            elif XN is True and PXN is True:
                 flags += ['PL0/RW-', "PL1/RW-"] # XN, PXN
         elif "AP=100" in flag_info:
             flags += ['PL0/???', "PL1/???"] # undefined (reserved)
         elif "AP=101" in flag_info:
-            if XN == False and PXN == False:
+            if XN is False and PXN is False:
                 flags += ['PL0/---', "PL1/R-X"] #
-            elif XN == False and PXN == True:
+            elif XN is False and PXN is True:
                 flags += ['PL0/---', "PL1/R--"] # PXN
-            elif XN == True and PXN == False:
+            elif XN is True and PXN is False:
                 flags += ['PL0/---', "PL1/R--"] # XN
-            elif XN == True and PXN == True:
+            elif XN is True and PXN is True:
                 flags += ['PL0/---', "PL1/R--"] # XN, PXN
         elif "AP=110" in flag_info: # deprecated
-            if XN == False and PXN == False:
+            if XN is False and PXN is False:
                 flags += ['PL0/R-X', "PL1/R-X"] #
-            elif XN == False and PXN == True:
+            elif XN is False and PXN is True:
                 flags += ['PL0/R-X', "PL1/R--"] # PXN
-            elif XN == True and PXN == False:
+            elif XN is True and PXN is False:
                 flags += ['PL0/R--', "PL1/R--"] # XN
-            elif XN == True and PXN == True:
+            elif XN is True and PXN is True:
                 flags += ['PL0/R--', "PL1/R--"] # XN, PXN
         elif "AP=111" in flag_info:
-            if XN == False and PXN == False:
+            if XN is False and PXN is False:
                 flags += ['PL0/R-X', "PL1/R-X"] #
-            elif XN == False and PXN == True:
+            elif XN is False and PXN is True:
                 flags += ['PL0/R-X', "PL1/R--"] # PXN
-            elif XN == True and PXN == False:
+            elif XN is True and PXN is False:
                 flags += ['PL0/R--', "PL1/R--"] # XN
-            elif XN == True and PXN == True:
+            elif XN is True and PXN is True:
                 flags += ['PL0/R--', "PL1/R--"] # XN, PXN
         # AP[2:1] access permissions model
         elif "AP=00" in flag_info:
-            if XN == False and PXN == False:
+            if XN is False and PXN is False:
                 flags += ['PL0/---', "PL1/RWX"] #
-            elif XN == False and PXN == True:
+            elif XN is False and PXN is True:
                 flags += ['PL0/---', "PL1/RW-"] # PXN
-            elif XN == True and PXN == False:
+            elif XN is True and PXN is False:
                 flags += ['PL0/---', "PL1/RW-"] # XN
-            elif XN == True and PXN == True:
+            elif XN is True and PXN is True:
                 flags += ['PL0/---', "PL1/RW-"] # XN, PXN
         elif "AP=01" in flag_info:
-            if XN == False and PXN == False:
+            if XN is False and PXN is False:
                 flags += ['PL0/RWX', "PL1/RWX"] #
-            elif XN == False and PXN == True:
+            elif XN is False and PXN is True:
                 flags += ['PL0/RWX', "PL1/RW-"] # PXN
-            elif XN == True and PXN == False:
+            elif XN is True and PXN is False:
                 flags += ['PL0/RW-', "PL1/RW-"] # XN
-            elif XN == True and PXN == True:
+            elif XN is True and PXN is True:
                 flags += ['PL0/RW-', "PL1/RW-"] # XN, PXN
         elif "AP=10" in flag_info:
-            if XN == False and PXN == False:
+            if XN is False and PXN is False:
                 flags += ['PL0/---', "PL1/R-X"] #
-            elif XN == False and PXN == True:
+            elif XN is False and PXN is True:
                 flags += ['PL0/---', "PL1/R--"] # PXN
-            elif XN == True and PXN == False:
+            elif XN is True and PXN is False:
                 flags += ['PL0/---', "PL1/R--"] # XN
-            elif XN == True and PXN == True:
+            elif XN is True and PXN is True:
                 flags += ['PL0/---', "PL1/R--"] # XN, PXN
         elif "AP=11" in flag_info:
-            if XN == False and PXN == False:
+            if XN is False and PXN is False:
                 flags += ['PL0/R-X', "PL1/R-X"] #
-            elif XN == False and PXN == True:
+            elif XN is False and PXN is True:
                 flags += ['PL0/R-X', "PL1/R--"] # PXN
-            elif XN == True and PXN == False:
+            elif XN is True and PXN is False:
                 flags += ['PL0/R--', "PL1/R--"] # XN
-            elif XN == True and PXN == True:
+            elif XN is True and PXN is True:
                 flags += ['PL0/R--', "PL1/R--"] # XN, PXN
 
         if "NS" in flag_info:
@@ -33383,40 +33467,40 @@ class PagewalkArmCommand(PagewalkCommand):
 
         # AP[2:1] access permissions model
         if AP == 0b00:
-            if XN == False and PXN == False:
+            if XN is False and PXN is False:
                 flags += ['PL0/---', "PL1/RWX"] #
-            elif XN == False and PXN == True:
+            elif XN is False and PXN is True:
                 flags += ['PL0/---', "PL1/RW-"] # PXN
-            elif XN == True and PXN == False:
+            elif XN is True and PXN is False:
                 flags += ['PL0/---', "PL1/RW-"] # XN
-            elif XN == True and PXN == True:
+            elif XN is True and PXN is True:
                 flags += ['PL0/---', "PL1/RW-"] # XN, PXN
         elif AP == 0b01:
-            if XN == False and PXN == False:
+            if XN is False and PXN is False:
                 flags += ['PL0/RWX', "PL1/RWX"] #
-            elif XN == False and PXN == True:
+            elif XN is False and PXN is True:
                 flags += ['PL0/RWX', "PL1/RW-"] # PXN
-            elif XN == True and PXN == False:
+            elif XN is True and PXN is False:
                 flags += ['PL0/RW-', "PL1/RW-"] # XN
-            elif XN == True and PXN == True:
+            elif XN is True and PXN is True:
                 flags += ['PL0/RW-', "PL1/RW-"] # XN, PXN
         elif AP == 0b10:
-            if XN == False and PXN == False:
+            if XN is False and PXN is False:
                 flags += ['PL0/---', "PL1/R-X"] #
-            elif XN == False and PXN == True:
+            elif XN is False and PXN is True:
                 flags += ['PL0/---', "PL1/R--"] # PXN
-            elif XN == True and PXN == False:
+            elif XN is True and PXN is False:
                 flags += ['PL0/---', "PL1/R--"] # XN
-            elif XN == True and PXN == True:
+            elif XN is True and PXN is True:
                 flags += ['PL0/---', "PL1/R--"] # XN, PXN
         elif AP == 0b11:
-            if XN == False and PXN == False:
+            if XN is False and PXN is False:
                 flags += ['PL0/R-X', "PL1/R-X"] #
-            elif XN == False and PXN == True:
+            elif XN is False and PXN is True:
                 flags += ['PL0/R-X', "PL1/R--"] # PXN
-            elif XN == True and PXN == False:
+            elif XN is True and PXN is False:
                 flags += ['PL0/R--', "PL1/R--"] # XN
-            elif XN == True and PXN == True:
+            elif XN is True and PXN is True:
                 flags += ['PL0/R--', "PL1/R--"] # XN, PXN
 
         if NS:
@@ -33432,12 +33516,16 @@ class PagewalkArmCommand(PagewalkCommand):
 
         def has_next_level(entry):
             return (entry & 0b11) == 0b01
+
         def is_section(entry):
             return (entry & 0b11) in [0b10, 0b11] and ((entry >> 18) & 1) == 0
+
         def is_super_section(entry):
             return (entry & 0b11) in [0b10, 0b11] and ((entry >> 18) & 1) == 1
+
         def is_large_page(entry):
             return (entry & 0b11) == 0b01
+
         def is_small_page(entry):
             return (entry & 0b11) in [0b10, 0b11]
 
@@ -33446,7 +33534,7 @@ class PagewalkArmCommand(PagewalkCommand):
             gef_print(titlify("LEVEL 1"))
         LEVEL1 = []; SECTION = []; SUPER_SECTION = []
         COUNT = 0; INVALID = 0
-        entries = self.read_physmem_cache(table_base, 4 * (2**(12-self.N)))
+        entries = self.read_physmem_cache(table_base, 4 * (2 ** (12 - self.N)))
         entries = self.slice_unpack(entries, 4)
         COUNT += len(entries)
         for i, entry in enumerate(entries):
@@ -33636,8 +33724,10 @@ class PagewalkArmCommand(PagewalkCommand):
 
         def has_next_level(entry):
             return (entry & 0b11) == 0b11
+
         def is_1GB_page(entry):
             return (entry & 0b11) == 0b01
+
         def is_2MB_page(entry):
             return (entry & 0b11) == 0b01
 
@@ -33876,7 +33966,7 @@ class PagewalkArmCommand(PagewalkCommand):
         # pagewalk TTBR0_EL1
         self.N = TTBCR & 0b111
         ml = 14 - self.N
-        pl0_base = ((TTBR0_EL1 & ((1<<32)-1)) >> ml) << ml
+        pl0_base = ((TTBR0_EL1 & ((1 << 32) - 1)) >> ml) << ml
         if not self.quiet:
             info("$TTBR0_EL1{}: {:#x}".format(self.suffix, TTBR0_EL1))
             info("$TTBCR{}: {:#x}".format(self.suffix, TTBCR))
@@ -33889,8 +33979,11 @@ class PagewalkArmCommand(PagewalkCommand):
         if self.suffix:
             pl1_vabase = 0 # I don't know why, but vabase of PL1 seems to be 0x0 when using TTBR1_EL1_S.
         else:
-            pl1_vabase = {0:None, 1:0x80000000, 2:0x40000000, 3:0x20000000, 4:0x10000000, 5:0x08000000, 6:0x04000000, 7:0x02000000}[self.N]
-        pl1_base = ((TTBR1_EL1 & ((1<<32)-1)) >> ml) << ml
+            pl1_vabase = {
+                0: None, 1: 0x80000000, 2: 0x40000000, 3: 0x20000000,
+                4: 0x10000000, 5: 0x08000000, 6: 0x04000000, 7: 0x02000000
+            }[self.N]
+        pl1_base = ((TTBR1_EL1 & ((1 << 32) - 1)) >> ml) << ml
         self.N = 0 # Whenever TTBCR.N is nonzero, the size of the translation table addressed by TTBR1 is 16KB (N=0).
         if pl1_vabase is not None:
             if not self.quiet:
@@ -33927,7 +34020,7 @@ class PagewalkArmCommand(PagewalkCommand):
         T0SZ = TTBCR & 0b111
         T1SZ = (TTBCR >> 16) & 0b111
         self.N = T0SZ
-        pl0_base = TTBR0_EL1 & ((1<<40)-1)
+        pl0_base = TTBR0_EL1 & ((1 << 40) - 1)
         if not self.quiet:
             info("$TTBR0_EL1{}: {:#x}".format(self.suffix, TTBR0_EL1))
             info("$TTBCR{}: {:#x}".format(self.suffix, TTBCR))
@@ -33939,11 +34032,11 @@ class PagewalkArmCommand(PagewalkCommand):
         gef_print(titlify("$TTBR1_EL1{}".format(self.suffix)))
         if T0SZ != 0 or T1SZ != 0:
             self.N = T1SZ
-            pl1_base = TTBR1_EL1 & ((1<<40)-1)
+            pl1_base = TTBR1_EL1 & ((1 << 40) - 1)
             if T1SZ == 0:
-                pl1_vabase = 2**(32-T0SZ)
+                pl1_vabase = 2 ** (32 - T0SZ)
             else:
-                pl1_vabase = 2**32 - 2**(32-T1SZ)
+                pl1_vabase = (2 ** 32) - (2 ** (32 - T1SZ))
             if not self.quiet:
                 info("$TTBR1_EL1{}: {:#x}".format(self.suffix, TTBR1_EL1))
                 info("PL1 base: {:#x}".format(pl1_base))
@@ -33957,7 +34050,7 @@ class PagewalkArmCommand(PagewalkCommand):
 
     def pagewalk(self):
         res = gdb.execute("info registers", to_string=True)
-        if not "TTBR" in res:
+        if "TTBR" not in res:
             err("Not found system registers. Check qemu version (at least: 3.x~, recommend: 5.x~).")
             return
 
@@ -34059,7 +34152,7 @@ class PagewalkArmCommand(PagewalkCommand):
             argv = self.parse_common_args(argv)
             if argv:
                 raise
-        except:
+        except Exception:
             self.usage()
             return
         self.mappings = None
@@ -34072,7 +34165,8 @@ class PagewalkArmCommand(PagewalkCommand):
 class PagewalkArm64Command(PagewalkCommand):
     """Dump pagetable for ARM64 using qemu-monitor (for ARMv8.3)."""
     _cmdline_ = "pagewalk arm64"
-    _syntax_ = "{:s} [-h] [-q] [TARGET_EL] [--print-each-level] [--no-merge] [--filter REGEX] [--vrange ADDR] [--prange ADDR] [--sort-by-phys] [--simple] [--trace ADDR]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [-q] [TARGET_EL] [--print-each-level] [--no-merge] [--filter REGEX] ".format(_cmdline_)
+    _syntax_ += "[--vrange ADDR] [--prange ADDR] [--sort-by-phys] [--simple] [--trace ADDR]"
     _example_ = "\n"
     _example_ += "{:s} --print-each-level # for current EL, show all level pagetables\n".format(_cmdline_)
     _example_ += "{:s} 1 --no-merge       # for EL1+0, do not merge similar/consecutive address\n".format(_cmdline_)
@@ -34136,40 +34230,40 @@ class PagewalkArm64Command(PagewalkCommand):
         XN1 = "XN1" in flag_info
         XN0 = "XN0" in flag_info
         if "S2AP=00" in flag_info:
-            if XN1 == False and XN0 == False:
+            if XN1 is False and XN0 is False:
                 flags += ['EL0/---', 'EL1/---']
-            elif XN1 == False and XN0 == True:
+            elif XN1 is False and XN0 is True:
                 flags += ['EL0/---', 'EL1/---']
-            elif XN1 == True and XN0 == False:
+            elif XN1 is True and XN0 is False:
                 flags += ['EL0/---', 'EL1/---']
-            elif XN1 == True and XN0 == True:
+            elif XN1 is True and XN0 is True:
                 flags += ['EL0/---', 'EL1/---']
         elif "S2AP=01" in flag_info:
-            if XN1 == False and XN0 == False:
+            if XN1 is False and XN0 is False:
                 flags += ['EL0/R-X', 'EL1/R-X']
-            elif XN1 == False and XN0 == True:
+            elif XN1 is False and XN0 is True:
                 flags += ['EL0/R-X', 'EL1/R--']
-            elif XN1 == True and XN0 == False:
+            elif XN1 is True and XN0 is False:
                 flags += ['EL0/R--', 'EL1/R--']
-            elif XN1 == True and XN0 == True:
+            elif XN1 is True and XN0 is True:
                 flags += ['EL0/R--', 'EL1/R-X']
         elif "S2AP=10" in flag_info:
-            if XN1 == False and XN0 == False:
+            if XN1 is False and XN0 is False:
                 flags += ['EL0/-W-', 'EL1/-W-']
-            elif XN1 == False and XN0 == True:
+            elif XN1 is False and XN0 is True:
                 flags += ['EL0/-W-', 'EL1/-W-']
-            elif XN1 == True and XN0 == False:
+            elif XN1 is True and XN0 is False:
                 flags += ['EL0/-W-', 'EL1/-W-']
-            elif XN1 == True and XN0 == True:
+            elif XN1 is True and XN0 is True:
                 flags += ['EL0/-W-', 'EL1/-W-']
         elif "S2AP=11" in flag_info:
-            if XN1 == False and XN0 == False:
+            if XN1 is False and XN0 is False:
                 flags += ['EL0/RWX', 'EL1/RWX']
-            elif XN1 == False and XN0 == True:
+            elif XN1 is False and XN0 is True:
                 flags += ['EL0/RWX', 'EL1/RW-']
-            elif XN1 == True and XN0 == False:
+            elif XN1 is True and XN0 is False:
                 flags += ['EL0/RW-', 'EL1/RW-']
-            elif XN1 == True and XN0 == True:
+            elif XN1 is True and XN0 is True:
                 flags += ['EL0/RW-', 'EL1/RWX']
         if "AF" in flag_info:
             flags += ['ACCESSED']
@@ -34255,7 +34349,7 @@ class PagewalkArm64Command(PagewalkCommand):
 
         if self.TargetEL == 1:
             # always support 2VA ranges
-            if UXN == False and PXN == False:
+            if UXN is False and PXN is False:
                 if disable_write_access == 0 and enable_unpriv_access == 0:
                     if not self.EL1_WXN:
                         flags += ['EL0/--X', 'EL1/RWX']
@@ -34270,7 +34364,7 @@ class PagewalkArm64Command(PagewalkCommand):
                     flags += ['EL0/--X', 'EL1/R-X']
                 elif disable_write_access == 1 and enable_unpriv_access == 1:
                     flags += ['EL0/R-X', 'EL1/R-X']
-            elif UXN == False and PXN == True:
+            elif UXN is False and PXN is True:
                 if disable_write_access == 0 and enable_unpriv_access == 0:
                     flags += ['EL0/--X', 'EL1/RW-']
                 elif disable_write_access == 0 and enable_unpriv_access == 1:
@@ -34282,7 +34376,7 @@ class PagewalkArm64Command(PagewalkCommand):
                     flags += ['EL0/--X', 'EL1/R--']
                 elif disable_write_access == 1 and enable_unpriv_access == 1:
                     flags += ['EL0/R-X', 'EL1/R--']
-            elif UXN == True and PXN == False:
+            elif UXN is True and PXN is False:
                 if disable_write_access == 0 and enable_unpriv_access == 0:
                     if not self.EL1_WXN:
                         flags += ['EL0/---', 'EL1/RWX']
@@ -34294,7 +34388,7 @@ class PagewalkArm64Command(PagewalkCommand):
                     flags += ['EL0/---', 'EL1/R-X']
                 elif disable_write_access == 1 and enable_unpriv_access == 1:
                     flags += ['EL0/R--', 'EL1/R-X']
-            elif UXN == True and PXN == True:
+            elif UXN is True and PXN is True:
                 if disable_write_access == 0 and enable_unpriv_access == 0:
                     flags += ['EL0/---', 'EL1/RW-']
                 elif disable_write_access == 0 and enable_unpriv_access == 1:
@@ -34306,7 +34400,7 @@ class PagewalkArm64Command(PagewalkCommand):
         elif self.TargetEL == 2:
             if self.EL2_M20:
                 # support 2VA ranges if HCR_EL2.{TGE,E2H} == {1,1}
-                if UXN == False and PXN == False:
+                if UXN is False and PXN is False:
                     if disable_write_access == 0 and enable_unpriv_access == 0:
                         if not self.EL2_WXN:
                             flags += ['EL0/--X', 'EL2/RWX']
@@ -34321,7 +34415,7 @@ class PagewalkArm64Command(PagewalkCommand):
                         flags += ['EL0/--X', 'EL2/R-X']
                     elif disable_write_access == 1 and enable_unpriv_access == 1:
                         flags += ['EL0/R-X', 'EL2/R-X']
-                elif UXN == False and PXN == True:
+                elif UXN is False and PXN is True:
                     if disable_write_access == 0 and enable_unpriv_access == 0:
                         flags += ['EL0/--X', 'EL2/RW-']
                     elif disable_write_access == 0 and enable_unpriv_access == 1:
@@ -34333,7 +34427,7 @@ class PagewalkArm64Command(PagewalkCommand):
                         flags += ['EL0/--X', 'EL2/R--']
                     elif disable_write_access == 1 and enable_unpriv_access == 1:
                         flags += ['EL0/R-X', 'EL2/R--']
-                elif UXN == True and PXN == False:
+                elif UXN is True and PXN is False:
                     if disable_write_access == 0 and enable_unpriv_access == 0:
                         if not self.EL2_WXN:
                             flags += ['EL0/---', 'EL2/RWX']
@@ -34345,7 +34439,7 @@ class PagewalkArm64Command(PagewalkCommand):
                         flags += ['EL0/---', 'EL2/R-X']
                     elif disable_write_access == 1 and enable_unpriv_access == 1:
                         flags += ['EL0/R--', 'EL2/R-X']
-                elif UXN == True and PXN == True:
+                elif UXN is True and PXN is True:
                     if disable_write_access == 0 and enable_unpriv_access == 0:
                         flags += ['EL0/---', 'EL2/RW-']
                     elif disable_write_access == 0 and enable_unpriv_access == 1:
@@ -34356,7 +34450,7 @@ class PagewalkArm64Command(PagewalkCommand):
                         flags += ['EL0/R--', 'EL2/R--']
             else:
                 # not support 2VA ranges if HCR_EL2.{TGE,E2H} != {1,1}
-                if XN == False:
+                if XN is False:
                     if disable_write_access == 0:
                         if not self.EL2_WXN:
                             flags += ['EL2/RWX']
@@ -34364,13 +34458,13 @@ class PagewalkArm64Command(PagewalkCommand):
                             flags += ['EL2/RW-']
                     elif disable_write_access == 1:
                         flags += ['EL2/R-X']
-                elif XN == True:
+                elif XN is True:
                     if disable_write_access == 0:
                         flags += ['EL2/RW-']
                     elif disable_write_access == 1:
                         flags += ['EL2/R--']
         elif self.TargetEL == 3:
-            if XN == False:
+            if XN is False:
                 if disable_write_access == 0:
                     if not self.EL3_WXN:
                         flags += ['EL3/RWX']
@@ -34378,7 +34472,7 @@ class PagewalkArm64Command(PagewalkCommand):
                         flags += ['EL3/RW-']
                 elif disable_write_access == 1:
                     flags += ['EL3/R-X']
-            elif XN == True:
+            elif XN is True:
                 if disable_write_access == 0:
                     flags += ['EL3/RW-']
                 elif disable_write_access == 1:
@@ -34429,26 +34523,26 @@ class PagewalkArm64Command(PagewalkCommand):
     def parse_bit_range(self, granule_bits, region_bits):
         IA_LVA_MAX = 52 if self.FEAT_LVA else 48
         if granule_bits == 12: # 4KB granule
-            self.LEVELM1_BIT_RANGE = [48,min(IA_LVA_MAX, region_bits)] if region_bits > 48 else None # no block descriptor
-            self.LEVEL0_BIT_RANGE = [39,min(48, region_bits)] if region_bits > 39 else None          # 512GB
-            self.LEVEL1_BIT_RANGE = [30,min(39, region_bits)] if region_bits > 30 else None          # 1GB
-            self.LEVEL2_BIT_RANGE = [21,min(30, region_bits)] if region_bits > 21 else None          # 2MB
-            self.LEVEL3_BIT_RANGE = [12,min(21, region_bits)] if region_bits > 12 else None          # 4KB
-            self.OFFSET_BIT_RANGE = [ 0,12]
+            self.LEVELM1_BIT_RANGE = [48, min(IA_LVA_MAX, region_bits)] if region_bits > 48 else None # no block descriptor
+            self.LEVEL0_BIT_RANGE = [39, min(48, region_bits)] if region_bits > 39 else None          # 512GB
+            self.LEVEL1_BIT_RANGE = [30, min(39, region_bits)] if region_bits > 30 else None          # 1GB
+            self.LEVEL2_BIT_RANGE = [21, min(30, region_bits)] if region_bits > 21 else None          # 2MB
+            self.LEVEL3_BIT_RANGE = [12, min(21, region_bits)] if region_bits > 12 else None          # 4KB
+            self.OFFSET_BIT_RANGE = [0, 12]
         elif granule_bits == 14: # 16KB granule
             self.LEVELM1_BIT_RANGE = None
-            self.LEVEL0_BIT_RANGE = [47,min(IA_LVA_MAX, region_bits)] if region_bits > 47 else None  # no block descriptor
-            self.LEVEL1_BIT_RANGE = [36,min(47, region_bits)] if region_bits > 36 else None          # 64GB
-            self.LEVEL2_BIT_RANGE = [25,min(36, region_bits)] if region_bits > 25 else None          # 32MB
-            self.LEVEL3_BIT_RANGE = [14,min(25, region_bits)] if region_bits > 14 else None          # 16KB
-            self.OFFSET_BIT_RANGE = [ 0,14]
+            self.LEVEL0_BIT_RANGE = [47, min(IA_LVA_MAX, region_bits)] if region_bits > 47 else None  # no block descriptor
+            self.LEVEL1_BIT_RANGE = [36, min(47, region_bits)] if region_bits > 36 else None          # 64GB
+            self.LEVEL2_BIT_RANGE = [25, min(36, region_bits)] if region_bits > 25 else None          # 32MB
+            self.LEVEL3_BIT_RANGE = [14, min(25, region_bits)] if region_bits > 14 else None          # 16KB
+            self.OFFSET_BIT_RANGE = [0, 14]
         elif granule_bits == 16: # 64KB granule
             self.LEVELM1_BIT_RANGE = None
             self.LEVEL0_BIT_RANGE = None
-            self.LEVEL1_BIT_RANGE = [42,min(IA_LVA_MAX, region_bits)] if region_bits > 42 else None  # 4TB
-            self.LEVEL2_BIT_RANGE = [29,min(42, region_bits)] if region_bits > 29 else None          # 512MB
-            self.LEVEL3_BIT_RANGE = [16,min(29, region_bits)] if region_bits > 16 else None          # 64KB
-            self.OFFSET_BIT_RANGE = [ 0,16]
+            self.LEVEL1_BIT_RANGE = [42, min(IA_LVA_MAX, region_bits)] if region_bits > 42 else None  # 4TB
+            self.LEVEL2_BIT_RANGE = [29, min(42, region_bits)] if region_bits > 29 else None          # 512MB
+            self.LEVEL3_BIT_RANGE = [16, min(29, region_bits)] if region_bits > 16 else None          # 64KB
+            self.OFFSET_BIT_RANGE = [0, 16]
         else:
             if not self.silent:
                 err("Unsupported granule_bits")
@@ -35152,7 +35246,8 @@ class PagewalkArm64Command(PagewalkCommand):
             rely on this property as the behavior of the reserved values might change in a future revision of the architecture.
             If the translation granule is not 64KB and FEAT_LPA2 is not implemented, the value 0b110 is treated as reserved.
             It is IMPLEMENTATION DEFINED whether an implementation that does not implement FEAT_LPA
-            supports setting the value of 0b110 for the 64KB translation granule size or whether setting this value behaves as the 0b101 encoding.
+            supports setting the value of 0b110 for the 64KB translation granule size or whether setting this value behaves
+            as the 0b101 encoding.
             In an implementation that supports 52-bit PAs, if the value of this field is not 0b110 or a value treated as 0b110,
             then bits[51:48] of every translation table base address for the stage of translation controlled by TCR_EL1 are 0b0000.
             On a Warm reset, this field resets to an architecturally UNKNOWN value.
@@ -35169,7 +35264,8 @@ class PagewalkArm64Command(PagewalkCommand):
             If the value is programmed to either a reserved value or a size that has not been implemented, then
             the hardware will treat the field as if it has been programmed to an IMPLEMENTATION DEFINED
             choice of the sizes that has been implemented for all purposes other than the value read back from this register.
-            It is IMPLEMENTATION DEFINED whether the value read back is the value programmed or the value that corresponds to the size chosen.
+            It is IMPLEMENTATION DEFINED whether the value read back is the value programmed or the value that corresponds
+            to the size chosen.
             On a Warm reset, this field resets to an architecturally UNKNOWN value.
 
         T0SZ, bits [5:0]
@@ -35177,8 +35273,10 @@ class PagewalkArm64Command(PagewalkCommand):
             The maximum and minimum possible values for T0SZ depend on the level of translation table and
             the memory translation granule size, as described in the AArch64 Virtual Memory System Architecture chapter.
             Note
-                For the 4KB translation granule, if FEAT_LPA2 is implemented and this field is less than 16, the translation table walk begins with a level -1 initial lookup.
-                For the 16KB translation granule, if FEAT_LPA2 is implemented and this field is less than 17, the translation table walk begins with a level 0 initial lookup.
+                For the 4KB translation granule, if FEAT_LPA2 is implemented and this field is less than 16,
+                the translation table walk begins with a level -1 initial lookup.
+                For the 16KB translation granule, if FEAT_LPA2 is implemented and this field is less than 17,
+                the translation table walk begins with a level 0 initial lookup.
                 On a Warm reset, this field resets to an architecturally UNKNOWN value.
         """
         IPS = (TCR_EL1 >> 32) & 0b111
@@ -35186,11 +35284,11 @@ class PagewalkArm64Command(PagewalkCommand):
         T0SZ = TCR_EL1 & 0b111111
         try:
             granule_bits = {0b00: 12, 0b01: 16, 0b10: 14}[TG0]
-        except:
+        except Exception:
             err("Unsupported $TCR_EL1.TG0")
             return
         region_start = 0
-        region_end = region_start + (2 ** (64-T0SZ))
+        region_end = region_start + (2 ** (64 - T0SZ))
         region_bits = int(math.log2(region_end - region_start))
         page_size = 2 ** (granule_bits - 10)
         intermediate_pa_size = 32 + (IPS * 4)
@@ -35208,7 +35306,8 @@ class PagewalkArm64Command(PagewalkCommand):
                 eight entries, it must be aligned on a 64 byte address boundary.
             If the value of TCR_EL1.IPS is not 0b110, then:
             - Register bits[(x-1):1] are RES0.
-            - If the implementation supports 52-bit PAs and IPAs, then bits A[51:48] of the stage 1 translation table base address are 0b0000.
+            - If the implementation supports 52-bit PAs and IPAs, then bits A[51:48] of the stage 1 translation
+              table base address are 0b0000.
             If FEAT_LPA is implemented and the value of TCR_EL1.IPS is 0b110, then:
             - Bits A[51:48] of the stage 1 translation table base address bits are in register bits[5:2].
             - Register bit[1] is RES0.
@@ -35225,7 +35324,8 @@ class PagewalkArm64Command(PagewalkCommand):
             CONSTRAINED UNPREDICTABLE, and must be one of the following:
             - Bits A[(x-1):0] of the stage 1 translation table base address are treated as if all the bits are zero.
               The value read back from the corresponding register bits is either the value written to the register or zero.
-            - The result of the calculation of an address for a translation table walk using this register can be corrupted in those bits that are nonzero.
+            - The result of the calculation of an address for a translation table walk using this register can be corrupted
+              in those bits that are nonzero.
             On a Warm reset, this field resets to an architecturally UNKNOWN value.
         """
         if IPS == 0b110:
@@ -35241,7 +35341,7 @@ class PagewalkArm64Command(PagewalkCommand):
             info('$TTBR0_EL1: {:#x}'.format(TTBR0_EL1))
             info('$TCR_EL1: {:#x}'.format(TCR_EL1))
             info('Intermediate Physical Address Size: {:d} bits'.format(intermediate_pa_size))
-            info('EL1 User Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end-1, region_bits))
+            info('EL1 User Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end - 1, region_bits))
             info('EL1 User Page Size: {:d}KB (per page)'.format(page_size))
 
         self.parse_bit_range(granule_bits, region_bits)
@@ -35274,7 +35374,8 @@ class PagewalkArm64Command(PagewalkCommand):
             If the value is programmed to either a reserved value or a size that has not been implemented, then
             the hardware will treat the field as if it has been programmed to an IMPLEMENTATION DEFINED
             choice of the sizes that has been implemented for all purposes other than the value read back from this register.
-            It is IMPLEMENTATION DEFINED whether the value read back is the value programmed or the value that corresponds to the size chosen.
+            It is IMPLEMENTATION DEFINED whether the value read back is the value programmed or the value that corresponds
+            to the size chosen.
             On a Warm reset, this field resets to an architecturally UNKNOWN value.
 
         T1SZ, bits [21:16]
@@ -35282,8 +35383,10 @@ class PagewalkArm64Command(PagewalkCommand):
             The maximum and minimum possible values for T1SZ depend on the level of translation table and
             the memory translation granule size, as described in the AArch64 Virtual Memory System Architecture chapter.
             Note
-                For the 4KB translation granule, if FEAT_LPA2 is implemented and this field is less than 16, the translation table walk begins with a level -1 initial lookup.
-                For the 16KB translation granule, if FEAT_LPA2 is implemented and this field is less than 17, the translation table walk begins with a level 0 initial lookup.
+                For the 4KB translation granule, if FEAT_LPA2 is implemented and this field is less than 16,
+                the translation table walk begins with a level -1 initial lookup.
+                For the 16KB translation granule, if FEAT_LPA2 is implemented and this field is less than 17,
+                the translation table walk begins with a level 0 initial lookup.
                 On a Warm reset, this field resets to an architecturally UNKNOWN value.
         """
         IPS = (TCR_EL1 >> 32) & 0b111
@@ -35291,11 +35394,11 @@ class PagewalkArm64Command(PagewalkCommand):
         T1SZ = (TCR_EL1 >> 16) & 0b111111
         try:
             granule_bits = {0b01: 14, 0b10: 12, 0b11: 16}[TG1]
-        except:
+        except Exception:
             err("Unsupported $TCR_EL1.TG1")
             return
         region_end = 2 ** 64
-        region_start = region_end - (2 ** (64-T1SZ))
+        region_start = region_end - (2 ** (64 - T1SZ))
         region_bits = int(math.log2(region_end - region_start))
         page_size = 2 ** (granule_bits - 10)
         intermediate_pa_size = 32 + (IPS * 4)
@@ -35313,7 +35416,8 @@ class PagewalkArm64Command(PagewalkCommand):
                 eight entries, it must be aligned on a 64 byte address boundary.
             If the value of TCR_EL1.IPS is not 0b110, then:
             - Register bits[(x-1):1] are RES0.
-            - If the implementation supports 52-bit PAs and IPAs, then bits A[51:48] of the stage 1 translation table base address are 0b0000.
+            - If the implementation supports 52-bit PAs and IPAs, then bits A[51:48] of the stage 1 translation
+              table base address are 0b0000.
             If FEAT_LPA is implemented and the value of TCR_EL1.IPS is 0b110, then:
             - Bits A[51:48] of the stage 1 translation table base address bits are in register bits[5:2].
             - Register bit[1] is RES0.
@@ -35330,7 +35434,8 @@ class PagewalkArm64Command(PagewalkCommand):
             CONSTRAINED UNPREDICTABLE, and must be one of the following:
             - Bits A[(x-1):0] of the stage 1 translation table base address are treated as if all the bits are zero.
               The value read back from the corresponding register bits is either the value written to the register or zero.
-            - The result of the calculation of an address for a translation table walk using this register can be corrupted in those bits that are nonzero.
+            - The result of the calculation of an address for a translation table walk using this register can be corrupted
+              in those bits that are nonzero.
             On a Warm reset, this field resets to an architecturally UNKNOWN value.
         """
         if IPS == 0b110:
@@ -35346,7 +35451,7 @@ class PagewalkArm64Command(PagewalkCommand):
             info('$TTBR1_EL1: {:#x}'.format(TTBR1_EL1))
             info('$TCR_EL1: {:#x}'.format(TCR_EL1))
             info('Intermediate Physical Address Size: {:d} bits'.format(intermediate_pa_size))
-            info('EL1 Kernel Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end-1, region_bits))
+            info('EL1 Kernel Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end - 1, region_bits))
             info('EL1 Kernel Page Size: {:d}KB (per page)'.format(page_size))
 
         self.parse_bit_range(granule_bits, region_bits)
@@ -35370,7 +35475,8 @@ class PagewalkArm64Command(PagewalkCommand):
             When FEAT_LPA2 is implemented:
                 SL2
                 Starting level of the stage 2 translation lookup controlled by VTCR_EL2.
-                If VTCR_EL2.DS == 1, then VTCR_EL2.SL2, in combination with VTCR_EL2.SL0, gives encodings for the stage 2 translation table walk initial lookup level.
+                If VTCR_EL2.DS == 1, then VTCR_EL2.SL2, in combination with VTCR_EL2.SL0, gives encodings
+                for the stage 2 translation table walk initial lookup level.
                 If VTCR_EL2.DS == 0, then VTCR_EL2.SL2 is RES0.
                 If the translation granule size is not 4KB, then this field is RES0.
                 On a Warm reset, this field resets to an architecturally UNKNOWN value.
@@ -35398,9 +35504,11 @@ class PagewalkArm64Command(PagewalkCommand):
             rely on this property as the behavior of the reserved values might change in a future revision of the architecture.
             If the translation granule is not 64KB and FEAT_LPA2 is not implemented, the value 0b110 is treated as reserved.
             It is IMPLEMENTATION DEFINED whether an implementation that does not implement FEAT_LPA
-            supports setting the value of 0b110 for the 64KB translation granule size or whether setting this value behaves as the 0b101 encoding.
+            supports setting the value of 0b110 for the 64KB translation granule size or whether setting this value behaves
+            as the 0b101 encoding.
             In an implementation that supports 52-bit PAs, if the value of this field is not 0b110 or a value treated
-            as 0b110, then bits[51:48] of every translation table base address for the stage of translation controlled by VTCR_EL2 are 0b0000.
+            as 0b110, then bits[51:48] of every translation table base address for the stage of translation controlled
+            by VTCR_EL2 are 0b0000.
             On a Warm reset, this field resets to an architecturally UNKNOWN value.
 
         TG0, bits [15:14]
@@ -35412,18 +35520,21 @@ class PagewalkArm64Command(PagewalkCommand):
             0b10
                 16KB.
             Other values are reserved.
-            If FEAT_GTG is implemented, ID_AA64MMFR0_EL1.{TGran4_2, TGran16_2, TGran64_2} indicate which granule sizes are supported for Level 2 translation.
+            If FEAT_GTG is implemented, ID_AA64MMFR0_EL1.{TGran4_2, TGran16_2, TGran64_2} indicate which granule sizes are
+            supported for Level 2 translation.
             If FEAT_GTG is not implemented, ID_AA64MMFR0_EL1.{TGran4, TGran16, TGran64} indicate which granule sizes are supported.
             If the value is programmed to either a reserved value or a size that has not been implemented, then
             the hardware will treat the field as if it has been programmed to an IMPLEMENTATION DEFINED
             choice of the sizes that has been implemented for all purposes other than the value read back from this register.
-            It is IMPLEMENTATION DEFINED whether the value read back is the value programmed or the value that corresponds to the size chosen.
+            It is IMPLEMENTATION DEFINED whether the value read back is the value programmed or the value that corresponds
+            to the size chosen.
             On a Warm reset, this field resets to an architecturally UNKNOWN value.
 
         SL0, bits [7:6]
             When FEAT_TTST is implemented:
                 SL0
-                Starting level of the stage 2 translation lookup, controlled by VTCR_EL2. The meaning of this field depends on the value of VTCR_EL2.TG0.
+                Starting level of the stage 2 translation lookup, controlled by VTCR_EL2. The meaning of this field depends
+                on the value of VTCR_EL2.TG0.
                 0b00
                     If VTCR_EL2.TG0 is 0b00 (4KB granule):
                     - If FEAT_LPA2 is not implemented, start at level 2.
@@ -35448,17 +35559,22 @@ class PagewalkArm64Command(PagewalkCommand):
                     - If FEAT_LPA2 is implemented and VTCR_EL2.SL2 is 0b0, start at level 3.
                     - If FEAT_LPA2 is implemented, the combination of VTCR_EL2.SL0 == 11 and VTCR_EL2.SL2 == 1 is reserved.
                     If VTCR_EL2.TG0 is 0b10 (16KB granule) and FEAT_LPA2 is implemented, start at level 0.
-                If this field is programmed to a value that is not consistent with the programming of VTCR_EL2.T0SZ, then a stage 2 level 0 Translation fault is generated.
+                If this field is programmed to a value that is not consistent with the programming of VTCR_EL2.T0SZ, then
+                a stage 2 level 0 Translation fault is generated.
                 On a Warm reset, this field resets to an architecturally UNKNOWN value.
             Otherwise:
                 SL0
-                Starting level of the stage 2 translation lookup, controlled by VTCR_EL2. The meaning of this field depends on the value of VTCR_EL2.TG0.
+                Starting level of the stage 2 translation lookup, controlled by VTCR_EL2. The meaning of this field depends
+                on the value of VTCR_EL2.TG0.
                 0b00
-                    If VTCR_EL2.TG0 is 0b00 (4KB granule), start at level 2. If VTCR_EL2.TG0 is 0b10 (16KB granule) or 0b01 (64KB granule), start at level 3.
+                    If VTCR_EL2.TG0 is 0b00 (4KB granule), start at level 2. If VTCR_EL2.TG0 is 0b10 (16KB granule) or 0b01
+                    (64KB granule), start at level 3.
                 0b01
-                    If VTCR_EL2.TG0 is 0b00 (4KB granule), start at level 1. If VTCR_EL2.TG0 is 0b10 (16KB granule) or 0b01 (64KB granule), start at level 2.
+                    If VTCR_EL2.TG0 is 0b00 (4KB granule), start at level 1. If VTCR_EL2.TG0 is 0b10 (16KB granule) or 0b01
+                    (64KB granule), start at level 2.
                 0b10
-                    If VTCR_EL2.TG0 is 0b00 (4KB granule), start at level 0. If VTCR_EL2.TG0 is 0b10 (16KB granule) or 0b01 (64KB granule), start at level 1.
+                    If VTCR_EL2.TG0 is 0b00 (4KB granule), start at level 0. If VTCR_EL2.TG0 is 0b10 (16KB granule) or 0b01
+                    (64KB granule), start at level 1.
                 All other values are reserved. If this field is programmed to a reserved value, or to a value that is not
                 consistent with the programming of VTCR_EL2.T0SZ, then a stage 2 level 0 Translation fault is generated.
                 On a Warm reset, this field resets to an architecturally UNKNOWN value.
@@ -35467,10 +35583,13 @@ class PagewalkArm64Command(PagewalkCommand):
             The size offset of the memory region addressed by VTTBR_EL2. The region size is 2(64-T0SZ) bytes.
             The maximum and minimum possible values for T0SZ depend on the level of translation table and
             the memory translation granule size, as described in the AArch64 Virtual Memory System Architecture chapter.
-            If this field is programmed to a value that is not consistent with the programming of SL0, then a stage 2 level 0 Translation fault is generated.
+            If this field is programmed to a value that is not consistent with the programming of SL0, then a stage 2
+            level 0 Translation fault is generated.
             Note
-                For the 4KB translation granule, if FEAT_LPA2 is implemented and this field is less than 16, the translation table walk begins with a level -1 initial lookup.
-                For the 16KB translation granule, if FEAT_LPA2 is implemented and this field is less than 17, the translation table walk begins with a level 0 initial lookup.
+                For the 4KB translation granule, if FEAT_LPA2 is implemented and this field is less than 16,
+                the translation table walk begins with a level -1 initial lookup.
+                For the 16KB translation granule, if FEAT_LPA2 is implemented and this field is less than 17,
+                the translation table walk begins with a level 0 initial lookup.
                 On a Warm reset, this field resets to an architecturally UNKNOWN value.
         """
         SL2 = (VTCR_EL2 >> 33) & 0b1
@@ -35480,12 +35599,12 @@ class PagewalkArm64Command(PagewalkCommand):
         T0SZ = VTCR_EL2 & 0b111111
         try:
             granule_bits = {0b00: 12, 0b01: 16, 0b10: 14}[TG0]
-        except:
+        except Exception:
             if not self.silent:
                 err("Unsupported $VTCR_EL2.TG0")
             return
         region_start = 0
-        region_end = region_start + (2 ** (64-T0SZ))
+        region_end = region_start + (2 ** (64 - T0SZ))
         region_bits = int(math.log2(region_end - region_start))
         page_size = 2 ** (granule_bits - 10)
         pa_size = 32 + (PS * 4)
@@ -35574,13 +35693,15 @@ class PagewalkArm64Command(PagewalkCommand):
                 If the Effective value of VTCR_EL2.PS is not 0b110 then:
             - Register bits[47:x] hold bits[47:x] of the stage 1 translation table base address.
             - Register bits[(x-1):1] are RES0.
-            - If the implementation supports 52-bit PAs and IPAs then bits[51:48] of the translation table base addresses used in this stage of translation are 0b0000.
+            - If the implementation supports 52-bit PAs and IPAs then bits[51:48] of the translation table base addresses used
+              in this stage of translation are 0b0000.
             If any VTTBR_EL2[47:0] bit that is defined as RES0 has the value 1 when a translation table walk
             is performed using VTTBR_EL2, then the translation table base address might be misaligned, with
             effects that are CONSTRAINED UNPREDICTABLE, and must be one of the following:
             - Bits[x-1:0] of the translation table base address are treated as if all the bits are zero. The value
             read back from the corresponding register bits is either the value written to the register or zero.
-            - The result of the calculation of an address for a translation table walk using this register can be corrupted in those bits that are nonzero.
+            - The result of the calculation of an address for a translation table walk using this register can be corrupted
+              in those bits that are nonzero.
             The AArch64 Virtual Memory System Architecture chapter describes how x is calculated based on
             the value of VTCR_EL2.T0SZ, the stage of translation, and the translation granule size.
             On a Warm reset, this field resets to an architecturally UNKNOWN value.
@@ -35600,7 +35721,7 @@ class PagewalkArm64Command(PagewalkCommand):
             info('$VTCR_EL2: {:#x}'.format(VTCR_EL2))
             info('Physical Address Size: {:d} bits'.format(pa_size))
             info('EL2 Starting Level: {:d}'.format(SL0))
-            info('EL2 Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end-1, region_bits))
+            info('EL2 Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end - 1, region_bits))
             info('EL2 Page Size: {:d}KB (per page)'.format(page_size))
 
         self.parse_bit_range(granule_bits, region_bits)
@@ -35641,9 +35762,11 @@ class PagewalkArm64Command(PagewalkCommand):
                 rely on this property as the behavior of the reserved values might change in a future revision of the architecture.
                 If the translation granule is not 64KB and FEAT_LPA2 is not implemented, the value 0b110 is treated as reserved.
                 It is IMPLEMENTATION DEFINED whether an implementation that does not implement FEAT_LPA
-                supports setting the value of 0b110 for the 64KB translation granule size or whether setting this value behaves as the 0b101 encoding.
+                supports setting the value of 0b110 for the 64KB translation granule size or whether setting this value behaves
+                as the 0b101 encoding.
                 In an implementation that supports 52-bit PAs, if the value of this field is not 0b110 or a value treated
-                as 0b110, then bits[51:48] of every translation table base address for the stage of translation controlled by TCR_EL2 are 0b0000.
+                as 0b110, then bits[51:48] of every translation table base address for the stage of translation controlled
+                by TCR_EL2 are 0b0000.
                 On a Warm reset, this field resets to an architecturally UNKNOWN value.
         Otherwise:
             IPS, bits [34:32]
@@ -35667,9 +35790,11 @@ class PagewalkArm64Command(PagewalkCommand):
                 rely on this property as the behavior of the reserved values might change in a future revision of the architecture.
                 If the translation granule is not 64KB, the value 0b110 is treated as reserved.
                 It is IMPLEMENTATION DEFINED whether an implementation that does not implement FEAT_LPA
-                supports setting the value of 0b110 for the 64KB translation granule size or whether setting this value behaves as the 0b101 encoding.
+                supports setting the value of 0b110 for the 64KB translation granule size or whether setting this value behaves
+                as the 0b101 encoding.
                 In an implementation that supports 52-bit PAs, if the value of this field is not 0b110 or a value treated
-                as 0b110, then bits[51:48] of every translation table base address for the stage of translation controlled by TCR_EL2 are 0b0000.
+                as 0b110, then bits[51:48] of every translation table base address for the stage of translation controlled
+                by TCR_EL2 are 0b0000.
                 On a Warm reset, this field resets to an architecturally UNKNOWN value.
 
         TG0, bits [15:14]
@@ -35684,7 +35809,8 @@ class PagewalkArm64Command(PagewalkCommand):
             If the value is programmed to either a reserved value or a size that has not been implemented, then
             the hardware will treat the field as if it has been programmed to an IMPLEMENTATION DEFINED
             choice of the sizes that has been implemented for all purposes other than the value read back from this register.
-            It is IMPLEMENTATION DEFINED whether the value read back is the value programmed or the value that corresponds to the size chosen.
+            It is IMPLEMENTATION DEFINED whether the value read back is the value programmed or the value that corresponds
+            to the size chosen.
             On a Warm reset, this field resets to an architecturally UNKNOWN value.
 
         T0SZ, bits [5:0]
@@ -35692,8 +35818,10 @@ class PagewalkArm64Command(PagewalkCommand):
             The maximum and minimum possible values for T0SZ depend on the level of translation table and
             the memory translation granule size, as described in the AArch64 Virtual Memory System Architecture chapter.
             Note
-                For the 4KB translation granule, if FEAT_LPA2 is implemented and this field is less than 16, the translation table walk begins with a level -1 initial lookup.
-                For the 16KB translation granule, if FEAT_LPA2 is implemented and this field is less than 17, the translation table walk begins with a level 0 initial lookup.
+                For the 4KB translation granule, if FEAT_LPA2 is implemented and this field is less than 16,
+                the translation table walk begins with a level -1 initial lookup.
+                For the 16KB translation granule, if FEAT_LPA2 is implemented and this field is less than 17,
+                the translation table walk begins with a level 0 initial lookup.
                 On a Warm reset, this field resets to an architecturally UNKNOWN value.
         """
         if self.EL2_E2H:
@@ -35704,11 +35832,11 @@ class PagewalkArm64Command(PagewalkCommand):
         T0SZ = TCR_EL2 & 0b111111
         try:
             granule_bits = {0b00: 12, 0b01: 16, 0b10: 14}[TG0]
-        except:
+        except Exception:
             err("Unsupported $TCR_EL2.TG0")
             return
         region_start = 0
-        region_end = region_start + (2 ** (64-T0SZ))
+        region_end = region_start + (2 ** (64 - T0SZ))
         region_bits = int(math.log2(region_end - region_start))
         page_size = 2 ** (granule_bits - 10)
         if self.EL2_E2H:
@@ -35729,7 +35857,8 @@ class PagewalkArm64Command(PagewalkCommand):
                 eight entries, it must be aligned on a 64 byte address boundary.
             If the value of TCR_EL2.{I}PS is not 0b110, then:
             - Register bits[(x-1):1] are RES0.
-            - If the implementation supports 52-bit PAs and IPAs, then bits A[51:48] of the stage 1 translation table base address are 0b0000.
+            - If the implementation supports 52-bit PAs and IPAs, then bits A[51:48] of the stage 1 translation
+              table base address are 0b0000.
             If FEAT_LPA is implemented and the value of TCR_EL2.{I}PS is 0b110, then:
             • Bits A[51:48] of the stage 1 translation table base address bits are in register bits[5:2].
             • Register bit[1] is RES0.
@@ -35749,7 +35878,8 @@ class PagewalkArm64Command(PagewalkCommand):
             CONSTRAINED UNPREDICTABLE, and must be one of the following:
             - Bits A[(x-1):0] of the stage 1 translation table base address are treated as if all the bits are zero.
               The value read back from the corresponding register bits is either the value written to the register or zero.
-            - The result of the calculation of an address for a translation table walk using this register can be corrupted in those bits that are nonzero.
+            - The result of the calculation of an address for a translation table walk using this register can be corrupted
+              in those bits that are nonzero.
             On a Warm reset, this field resets to an architecturally UNKNOWN value.
         """
         if not self.EL2_E2H and PS == 0b110:
@@ -35775,10 +35905,10 @@ class PagewalkArm64Command(PagewalkCommand):
             else:
                 info('Physical Address Size: {:d} bits'.format(pa_size))
             if self.EL2_M20:
-                info('EL2 User Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end-1, region_bits))
+                info('EL2 User Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end - 1, region_bits))
                 info('EL2 USer Page Size: {:d}KB (per page)'.format(page_size))
             else:
-                info('EL2 Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end-1, region_bits))
+                info('EL2 Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end - 1, region_bits))
                 info('EL2 Page Size: {:d}KB (per page)'.format(page_size))
 
         self.parse_bit_range(granule_bits, region_bits)
@@ -35811,7 +35941,8 @@ class PagewalkArm64Command(PagewalkCommand):
             If the value is programmed to either a reserved value, or a size that has not been implemented, then
             the hardware will treat the field as if it has been programmed to an IMPLEMENTATION DEFINED
             choice of the sizes that has been implemented for all purposes other than the value read back from this register.
-            It is IMPLEMENTATION DEFINED whether the value read back is the value programmed or the value that corresponds to the size chosen.
+            It is IMPLEMENTATION DEFINED whether the value read back is the value programmed or the value that corresponds
+            to the size chosen.
             On a Warm reset, this field resets to an architecturally UNKNOWN value.
 
         T1SZ, bits [21:16]
@@ -35819,8 +35950,10 @@ class PagewalkArm64Command(PagewalkCommand):
             The maximum and minimum possible values for T1SZ depend on the level of translation table and
             the memory translation granule size, as described in the AArch64 Virtual Memory System Architecture chapter.
             Note
-                For the 4KB translation granule, if FEAT_LPA2 is implemented and this field is less than 16, the translation table walk begins with a level -1 initial lookup.
-                For the 16KB translation granule, if FEAT_LPA2 is implemented and this field is less than 17, the translation table walk begins with a level 0 initial lookup.
+                For the 4KB translation granule, if FEAT_LPA2 is implemented and this field is less than 16,
+                the translation table walk begins with a level -1 initial lookup.
+                For the 16KB translation granule, if FEAT_LPA2 is implemented and this field is less than 17,
+                the translation table walk begins with a level 0 initial lookup.
                 On a Warm reset, this field resets to an architecturally UNKNOWN value.
         """
         IPS = (TCR_EL2 >> 32) & 0b111
@@ -35828,11 +35961,11 @@ class PagewalkArm64Command(PagewalkCommand):
         T1SZ = (TCR_EL2 >> 16) & 0b111111
         try:
             granule_bits = {0b01: 14, 0b10: 12, 0b11: 16}[TG1]
-        except:
+        except Exception:
             err("Unsupported $TCR_EL2.TG1")
             return
         region_end = 2 ** 64
-        region_start = region_end - (2 ** (64-T1SZ))
+        region_start = region_end - (2 ** (64 - T1SZ))
         region_bits = int(math.log2(region_end - region_start))
         page_size = 2 ** (granule_bits - 10)
         intermediate_pa_size = 32 + (IPS * 4)
@@ -35844,13 +35977,15 @@ class PagewalkArm64Command(PagewalkCommand):
             - Bits A[(x-1):0] of the stage 1 translation table base address are zero.
             Address bit x is the minimum address bit required to align the translation table to the size of the table.
             The smallest permitted value of x is 6. The AArch64 Virtual Memory System Architecture
-            chapter describes how x is calculated based on the value of TCR_EL2.T1SZ, the translation stage, and the translation granule size.
+            chapter describes how x is calculated based on the value of TCR_EL2.T1SZ, the translation stage,
+            and the translation granule size.
             Note
                 A translation table is required to be aligned to the size of the table. If a table contains fewer than
                 eight entries, it must be aligned on a 64 byte address boundary
             If the value of TCR_EL2.{I}PS is not 0b110, then:
             - Register bits[(x-1):1] are RES0.
-            - If the implementation supports 52-bit PAs and IPAs, then bits A[51:48] of the stage 1 translation table base address are 0b0000.
+            - If the implementation supports 52-bit PAs and IPAs, then bits A[51:48] of the stage 1 translation
+              table base address are 0b0000.
             If FEAT_LPA is implemented and the value of TCR_EL2.{I}PS is 0b110, then:
             - Bits A[51:48] of the stage 1 translation table base address bits are in register bits[5:2].
             - Register bit[1] is RES0.
@@ -35870,7 +36005,8 @@ class PagewalkArm64Command(PagewalkCommand):
             CONSTRAINED UNPREDICTABLE, and must be one of the following:
             - Bits A[(x-1):0] of the stage 1 translation table base address are treated as if all the bits are zero.
               The value read back from the corresponding register bits is either the value written to the register or zero.
-            - The result of the calculation of an address for a translation table walk using this register can be corrupted in those bits that are nonzero.
+            - The result of the calculation of an address for a translation table walk using this register can be corrupted
+              in those bits that are nonzero.
             On a Warm reset, this field resets to an architecturally UNKNOWN value.
         """
         if IPS == 0b110:
@@ -35886,7 +36022,7 @@ class PagewalkArm64Command(PagewalkCommand):
             info('$TTBR1_EL2: {:#x}'.format(TTBR1_EL2))
             info('$TCR_EL2: {:#x}'.format(TCR_EL2))
             info('Intermediate Physical Address Size: {:d} bits'.format(intermediate_pa_size))
-            info('EL2 Kernel Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end-1, region_bits))
+            info('EL2 Kernel Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end - 1, region_bits))
             info('EL2 Kernel Page Size: {:d}KB (per page)'.format(page_size))
 
         self.parse_bit_range(granule_bits, region_bits)
@@ -35925,7 +36061,8 @@ class PagewalkArm64Command(PagewalkCommand):
             rely on this property as the behavior of the reserved values might change in a future revision of the architecture.
             If the translation granule is not 64KB and FEAT_LPA2 is not implemented, the value 0b110 is treated as reserved.
             It is IMPLEMENTATION DEFINED whether an implementation that does not implement FEAT_LPA
-            supports setting the value of 0b110 for the 64KB translation granule size or whether setting this value behaves as the 0b101 encoding.
+            supports setting the value of 0b110 for the 64KB translation granule size or whether setting this value behaves
+            as the 0b101 encoding.
             In an implementation that supports 52-bit PAs, if the value of this field is not 0b110 or a value treated as 0b110,
             then bits[51:48] of every translation table base address for the stage of translation controlled by TCR_EL3 are 0b0000.
             On a Warm reset, this field resets to an architecturally UNKNOWN value.
@@ -35942,7 +36079,8 @@ class PagewalkArm64Command(PagewalkCommand):
             If the value is programmed to either a reserved value or a size that has not been implemented, then
             the hardware will treat the field as if it has been programmed to an IMPLEMENTATION DEFINED
             choice of the sizes that has been implemented for all purposes other than the value read back from this register.
-            It is IMPLEMENTATION DEFINED whether the value read back is the value programmed or the value that corresponds to the size chosen.
+            It is IMPLEMENTATION DEFINED whether the value read back is the value programmed or the value that corresponds
+            to the size chosen.
             On a Warm reset, this field resets to an architecturally UNKNOWN value.
 
         T0SZ, bits [5:0]
@@ -35950,8 +36088,10 @@ class PagewalkArm64Command(PagewalkCommand):
             The maximum and minimum possible values for T0SZ depend on the level of translation table and
             the memory translation granule size, as described in the AArch64 Virtual Memory System Architecture chapter
             Note
-                For the 4KB translation granule, if FEAT_LPA2 is implemented and this field is less than 16, the translation table walk begins with a level -1 initial lookup.
-                For the 16KB translation granule, if FEAT_LPA2 is implemented and this field is less than 17, the translation table walk begins with a level 0 initial lookup.
+                For the 4KB translation granule, if FEAT_LPA2 is implemented and this field is less than 16,
+                the translation table walk begins with a level -1 initial lookup.
+                For the 16KB translation granule, if FEAT_LPA2 is implemented and this field is less than 17,
+                the translation table walk begins with a level 0 initial lookup.
                 On a Warm reset, this field resets to an architecturally UNKNOWN value.
         """
         PS = (TCR_EL3 >> 16) & 0b111
@@ -35959,11 +36099,11 @@ class PagewalkArm64Command(PagewalkCommand):
         T0SZ = TCR_EL3 & 0b111111
         try:
             granule_bits = {0b00: 12, 0b01: 16, 0b10: 14}[TG0]
-        except:
+        except Exception:
             err("Unsupported $TCR_EL3.TG0")
             return
         region_start = 0
-        region_end = region_start + (2 ** (64-T0SZ))
+        region_end = region_start + (2 ** (64 - T0SZ))
         region_bits = int(math.log2(region_end - region_start))
         page_size = 2 ** (granule_bits - 10)
         pa_size = 32 + (PS * 4)
@@ -35975,13 +36115,15 @@ class PagewalkArm64Command(PagewalkCommand):
             - Bits A[(x-1):0] of the stage 1 translation table base address are zero.
             Address bit x is the minimum address bit required to align the translation table to the size of the table.
             The smallest permitted value of x is 6. The AArch64 Virtual Memory System Architecture
-            chapter describes how x is calculated based on the value of TCR_EL3.T0SZ, the translation stage, and the translation granule size.
+            chapter describes how x is calculated based on the value of TCR_EL3.T0SZ, the translation stage, and the
+            translation granule size.
             Note
                 A translation table is required to be aligned to the size of the table. If a table contains fewer than
                 eight entries, it must be aligned on a 64 byte address boundary.
             If the value of TCR_EL3.PS is not 0b110, then:
             - Register bits[(x-1):1] are RES0.
-            - If the implementation supports 52-bit PAs and IPAs, then bits A[51:48] of the stage 1 translation table base address are 0b0000.
+            - If the implementation supports 52-bit PAs and IPAs, then bits A[51:48] of the stage 1 translation
+              table base address are 0b0000.
             If FEAT_LPA is implemented and the value of TCR_EL3.PS is 0b110, then:
             - Bits A[51:48] of the stage 1 translation table base address bits are in register bits[5:2].
             - Register bit[1] is RES0.
@@ -35998,7 +36140,8 @@ class PagewalkArm64Command(PagewalkCommand):
             CONSTRAINED UNPREDICTABLE, and must be one of the following:
             - Bits A[(x-1):0] of the stage 1 translation table base address are treated as if all the bits are zero.
               The value read back from the corresponding register bits is either the value written to the register or zero.
-            - The result of the calculation of an address for a translation table walk using this register can be corrupted in those bits that are nonzero.
+            - The result of the calculation of an address for a translation table walk using this register can be corrupted
+              in those bits that are nonzero.
             On a Warm reset, this field resets to an architecturally UNKNOWN value.
         """
         if PS == 0b110:
@@ -36014,7 +36157,7 @@ class PagewalkArm64Command(PagewalkCommand):
             info('$TTBR0_EL3: {:#x}'.format(TTBR0_EL3))
             info('$TCR_EL3: {:#x}'.format(TCR_EL3))
             info('Physical Address Size: {:d} bits'.format(pa_size))
-            info('EL3 Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end-1, region_bits))
+            info('EL3 Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end - 1, region_bits))
             info('EL3 Page Size: {:d}KB (per page)'.format(page_size))
 
         self.parse_bit_range(granule_bits, region_bits)
@@ -36024,7 +36167,7 @@ class PagewalkArm64Command(PagewalkCommand):
 
     def pagewalk_init(self):
         res = gdb.execute("info registers", to_string=True)
-        if not "TTBR" in res:
+        if "TTBR" not in res:
             err("Not found system registers. Check qemu version (at least: 3.x~, recommend: 5.x~).")
             return
 
@@ -36047,7 +36190,8 @@ class PagewalkArm64Command(PagewalkCommand):
             0b0
                 This control has no effect on memory access permissions.
             0b1
-                Any region that is writable in the EL1&0 translation regime is forced to XN for accesses from software executing at EL1 or EL0.
+                Any region that is writable in the EL1&0 translation regime is forced to XN for accesses from software
+                executing at EL1 or EL0.
             This bit applies only when SCTLR_EL1.M bit is set.
             The WXN bit is permitted to be cached in a TLB.
             When FEAT_VHE is implemented, and the value of HCR_EL2.{E2H, TGE} is {1, 1}, this bit has no effect on the PE.
@@ -36066,7 +36210,8 @@ class PagewalkArm64Command(PagewalkCommand):
         """ HCR_EL2
         E2H, bit [34]
             When FEAT_VHE is implemented:
-                EL2 Host. Enables a configuration where a Host Operating System is running in EL2, and the Host Operating System's applications are running in EL0.
+                EL2 Host. Enables a configuration where a Host Operating System is running in EL2,
+                and the Host Operating System's applications are running in EL0.
                 0b0
                     The facilities to support a Host Operating System at EL2 are disabled.
                 0b1
@@ -36085,12 +36230,15 @@ class PagewalkArm64Command(PagewalkCommand):
                 When EL2 is not enabled in the current Security state, this control has no effect on execution at EL0.
                 When EL2 is enabled in the current Security state, in all cases:
                 - All exceptions that would be routed to EL1 are routed to EL2.
-                - If EL1 is using AArch64, the SCTLR_EL1.M field is treated as being 0 for all purposes other than returning the result of a direct read of SCTLR_EL1.
-                - If EL1 is using AArch32, the SCTLR.M field is treated as being 0 for all purposes other than returning the result of a direct read of SCTLR.
+                - If EL1 is using AArch64, the SCTLR_EL1.M field is treated as being 0 for all purposes other than
+                  returning the result of a direct read of SCTLR_EL1.
+                - If EL1 is using AArch32, the SCTLR.M field is treated as being 0 for all purposes other than
+                  returning the result of a direct read of SCTLR.
                 - All virtual interrupts are disabled.
                 - Any IMPLEMENTATION DEFINED mechanisms for signaling virtual interrupts are disabled.
                 - An exception return to EL1 is treated as an illegal exception return.
-                - The MDCR_EL2.{TDRA, TDOSA, TDA, TDE} fields are treated as being 1 for all purposes other than returning the result of a direct read of MDCR_EL2.
+                - The MDCR_EL2.{TDRA, TDOSA, TDA, TDE} fields are treated as being 1 for all purposes other than
+                  returning the result of a direct read of MDCR_EL2.
                 In addition, when EL2 is enabled in the current Security state, if:
                 - HCR_EL2.E2H is 0, the Effective values of the HCR_EL2.{FMO, IMO, AMO} fields are 1.
                 - HCR_EL2.E2H is 1, the Effective values of the HCR_EL2.{FMO, IMO, AMO} fields are 0.
@@ -36189,16 +36337,21 @@ class PagewalkArm64Command(PagewalkCommand):
         """
         FEAT_LPA, Large PA and IPA support
             - Allows a larger intermediate physical address (IPA) and PA space of up to 52 bits when using the 64KB translation granule.
-            - Allows a level 1 block size where the block covers a 4TB address range for the 64KB translation granule if the implementation support 52 bits of PA.
+            - Allows a level 1 block size where the block covers a 4TB address range for the 64KB translation granule
+              if the implementation support 52 bits of PA.
             This is an OPTIONAL feature in Armv8.2 implementations. It is IMPLEMENTATION DEFINED whether it is implemented.
             This feature is supported in AArch64 state only.
             The ID_AA64MMFR0_EL1.PARange field identifies the presence of FEAT_LPA.
 
         FEAT_LPA2, Larger physical address for 4KB and 16KB translation granules
-            - Allows a larger VA space for each translation table base register of up to 52 bits when using the 4KB or 16KB translation granules.
-            - Allows a larger intermediate physical address (IPA) and PA space of up to 52 bits when using the 4KB or 16KB translation granules.
-            - Allows a level 0 block size where the block covers a 512GB address range for the 4KB translation granule if the implementation supports 52 bits of PA.
-            - Allows a level 1 block size where the block covers a 64GB address range for the 16KB translation granule if the implementation supports 52 bits of PA.
+            - Allows a larger VA space for each translation table base register of up to 52 bits when using the 4KB or 16KB
+              translation granules.
+            - Allows a larger intermediate physical address (IPA) and PA space of up to 52 bits when using the 4KB or 16KB
+              translation granules.
+            - Allows a level 0 block size where the block covers a 512GB address range for the 4KB translation granule
+              if the implementation supports 52 bits of PA.
+            - Allows a level 1 block size where the block covers a 64GB address range for the 16KB translation granule
+              if the implementation supports 52 bits of PA.
             This feature is supported in AArch64 state only.
             This feature is OPTIONAL in Armv8.7 implementations. This feature requires implementation of FEAT_LPA and FEAT_LVA.
             The ID_AA64MMFR0_EL1.{TGRAN4_2, TGRAN16_2, TGRAN4, TGRAN16} fields identify the presence of FEAT_LPA2.
@@ -36296,7 +36449,8 @@ class PagewalkArm64Command(PagewalkCommand):
 
         """ ID_AA64MMFR1_EL1
         PAN, bits [23:20]
-            Privileged Access Never. Indicates support for the PAN bit in PSTATE, SPSR_EL1, SPSR_EL2, SPSR_EL3, and DSPSR_EL0. Defined values are:
+            Privileged Access Never. Indicates support for the PAN bit in PSTATE, SPSR_EL1, SPSR_EL2, SPSR_EL3,
+            and DSPSR_EL0. Defined values are:
             0b0000
                 PAN not supported.
             0b0001
@@ -36335,7 +36489,8 @@ class PagewalkArm64Command(PagewalkCommand):
             The ID_AA64MMFR2_EL1.ST field identifies the presence of FEAT_TTST.
 
         FEAT_LVA, Large VA support
-            FEAT_LVA supports a larger VA space for each translation table base register of up to 52 bits when using the 64KB translation granule.
+            FEAT_LVA supports a larger VA space for each translation table base register of up to 52 bits when using the 64KB
+            translation granule.
             This feature is supported in AArch64 state only.
             This is an OPTIONAL feature in Armv8.2 implementations. It is IMPLEMENTATION DEFINED whether it is implemented.
             If FEAT_LVA is implemented, then any implemented trace macrocell must be at least ETMv4.2.
@@ -36348,7 +36503,8 @@ class PagewalkArm64Command(PagewalkCommand):
             0b0000
                 The maximum value of the TCR_ELx.{T0SZ,T1SZ} and VTCR_EL2.T0SZ fields is 39.
             0b0001
-                The maximum value of the TCR_ELx.{T0SZ,T1SZ} and VTCR_EL2.T0SZ fields is 48 for 4KB and 16KB granules, and 47 for 64KB granules.
+                The maximum value of the TCR_ELx.{T0SZ,T1SZ} and VTCR_EL2.T0SZ fields is 48 for 4KB and 16KB granules,
+                and 47 for 64KB granules.
             All other values are reserved.
             FEAT_TTST implements the functionality identified by the value 0b0001.
             If FEAT_SEL2 is implemented, the only permitted value is 0b0001.
@@ -36359,7 +36515,8 @@ class PagewalkArm64Command(PagewalkCommand):
             0b0000
                 VMSAv8-64 supports 48-bit VAs.
             0b0001
-                VMSAv8-64 supports 52-bit VAs when using the 64KB translation granule. The size for other translation granules is not defined by this field.
+                VMSAv8-64 supports 52-bit VAs when using the 64KB translation granule. The size for other translation
+                granules is not defined by this field.
             All other values are reserved.
             FEAT_LVA implements the functionality identified by the value 0b0001.
             From Armv8.2, the permitted values are 0b0000 and 0b0001.
@@ -36442,7 +36599,7 @@ class PagewalkArm64Command(PagewalkCommand):
             else:
                 CPSR = int(gdb.parse_and_eval('$cpsr'))
                 self.TargetEL = (CPSR >> 2) & 0b11
-        except:
+        except Exception:
             self.usage()
             return
 
@@ -36538,7 +36695,7 @@ class MemoryHashCommand(GenericCommand):
 
             try:
                 mem = read_memory(chunk_addr, chunk_size)
-            except gdb.error:
+            except gdb.MemoryError:
                 err("Memory read error")
                 return None
 
@@ -36573,7 +36730,7 @@ class MemoryHashCommand(GenericCommand):
         try:
             address = int(argv[1], 0)
             size = int(argv[2], 0)
-        except:
+        except Exception:
             self.usage()
             return
 
@@ -36581,17 +36738,17 @@ class MemoryHashCommand(GenericCommand):
         gef_print("Size: {:#x}".format(size))
 
         if argv[0] == "md5":
-            h = self.calc_hash(1, hashlib.md5(), address, address+size)
+            h = self.calc_hash(1, hashlib.md5(), address, address + size)
         elif argv[0] == "sha1":
-            h = self.calc_hash(1, hashlib.sha1(), address, address+size)
+            h = self.calc_hash(1, hashlib.sha1(), address, address + size)
         elif argv[0] == "sha224":
-            h = self.calc_hash(1, hashlib.sha224(), address, address+size)
+            h = self.calc_hash(1, hashlib.sha224(), address, address + size)
         elif argv[0] == "sha256":
-            h = self.calc_hash(1, hashlib.sha256(), address, address+size)
+            h = self.calc_hash(1, hashlib.sha256(), address, address + size)
         elif argv[0] == "sha384":
-            h = self.calc_hash(1, hashlib.sha384(), address, address+size)
+            h = self.calc_hash(1, hashlib.sha384(), address, address + size)
         elif argv[0] == "sha512":
-            h = self.calc_hash(1, hashlib.sha512(), address, address+size)
+            h = self.calc_hash(1, hashlib.sha512(), address, address + size)
         else:
             try:
                 crccheck = __import__("crccheck")
@@ -36599,16 +36756,16 @@ class MemoryHashCommand(GenericCommand):
                 msg = "Missing `crccheck` package for Python, install with: `pip install crccheck`."
                 raise ImportWarning(msg)
             if argv[0] == "crc16":
-                h = self.calc_hash(2, crccheck.crc.Crc16(), address, address+size)
+                h = self.calc_hash(2, crccheck.crc.Crc16(), address, address + size)
             elif argv[0] == "crc32":
-                h = self.calc_hash(2, crccheck.crc.Crc32(), address, address+size)
+                h = self.calc_hash(2, crccheck.crc.Crc32(), address, address + size)
             elif argv[0] == "crc64":
-                h = self.calc_hash(2, crccheck.crc.Crc64(), address, address+size)
+                h = self.calc_hash(2, crccheck.crc.Crc64(), address, address + size)
 
         if h is None:
             return
 
-        gef_print("{:s} ({:d}-bit)".format(h, len(h)*4))
+        gef_print("{:s} ({:d}-bit)".format(h, len(h) * 4))
         return
 
 
@@ -36707,7 +36864,7 @@ class ExecUntilCommand(GenericCommand):
                 v = gdb.parse_and_eval(self.condition)
             except gdb.error:
                 return False
-            if not v in [0x0, 0x1]:
+            if v not in [0x0, 0x1]:
                 self.err = "condition result should be True or False"
                 return True
             if v:
@@ -36731,7 +36888,7 @@ class ExecUntilCommand(GenericCommand):
                 addr = int(line[addr_idx:].split()[0], 16)
                 if enable == 'y':
                     bp_list.append(addr)
-            except:
+            except Exception:
                 pass
         # breakpoint with condition is unsupported
         return bp_list
@@ -36748,7 +36905,7 @@ class ExecUntilCommand(GenericCommand):
             while True:
                 # progress
                 if not self.print_insn and count % 100 == 0:
-                    self.force_write_stdout([b"\r|", b"\r/", b"\r-", b"\r\\"][count//100 % 4])
+                    self.force_write_stdout([b"\r|", b"\r/", b"\r-", b"\r\\"][count // 100 % 4])
 
                 # backup
                 prev_prev_addr = prev_addr
@@ -36795,7 +36952,7 @@ class ExecUntilCommand(GenericCommand):
         except KeyboardInterrupt:
             pass
 
-        except:
+        except Exception:
             if is_alive():
                 exc_type, exc_value, exc_traceback = sys.exc_info()
                 self.err = exc_value
@@ -36832,7 +36989,7 @@ class ExecUntilCommand(GenericCommand):
             idx = argv.index("-v")
             filter_address = int(argv[idx + 1], 16)
             self.filter.append(filter_address)
-            argv = argv[:idx] + argv[idx+2:]
+            argv = argv[:idx] + argv[idx + 2:]
 
         if argv:
             self.usage()
@@ -36920,7 +37077,7 @@ class ExecUntilIndirectBranchCommand(ExecUntilCommand):
             idx = argv.index("-v")
             filter_address = int(argv[idx + 1], 16)
             self.filter.append(filter_address)
-            argv = argv[:idx] + argv[idx+2:]
+            argv = argv[:idx] + argv[idx + 2:]
 
         if argv:
             self.usage()
@@ -37029,7 +37186,7 @@ class ExecUntilKeywordReCommand(ExecUntilCommand):
             idx = argv.index("-v")
             filter_address = int(argv[idx + 1], 16)
             self.filter.append(filter_address)
-            argv = argv[:idx] + argv[idx+2:]
+            argv = argv[:idx] + argv[idx + 2:]
 
         if len(argv) == 0:
             self.usage()
@@ -37082,7 +37239,7 @@ class ExecUntilCondCommand(ExecUntilCommand):
             idx = argv.index("-v")
             filter_address = int(argv[idx + 1], 16)
             self.filter.append(filter_address)
-            argv = argv[:idx] + argv[idx+2:]
+            argv = argv[:idx] + argv[idx + 2:]
 
         if len(argv) == 0:
             self.usage()
@@ -37174,7 +37331,7 @@ class ThunkBreakpoint(gdb.Breakpoint):
     def search_perm(self, target):
         for m in self.maps:
             addr, size, perm = m
-            if addr <= target < addr+size:
+            if addr <= target < addr + size:
                 return perm
         return "?"
 
@@ -37183,7 +37340,7 @@ class ThunkBreakpoint(gdb.Breakpoint):
             return_address = gdb.selected_frame().older().pc()
             caller_address = gdb_get_nth_previous_instruction_address(return_address, 1)
             target_address = get_register(self.reg)
-        except:
+        except Exception:
             return False # continue
 
         # duplicate, check
@@ -37206,7 +37363,7 @@ class ThunkBreakpoint(gdb.Breakpoint):
             reg_value = get_register(reg)
             try:
                 mem_value = read_int_from_memory(reg_value)
-            except:
+            except Exception:
                 continue
             if mem_value == target_address:
                 perm = self.search_perm(reg_value)
@@ -37344,7 +37501,7 @@ class UefiOvmfInfoCommand(GenericCommand):
         for k, v in self.gPs.items():
             if k.startswith("__"):
                 continue
-            gef_print("  {:40s}{:#x}".format(k+":",v))
+            gef_print("  {:40s}{:#x}".format(k + ":", v))
         return
 
     @functools.lru_cache()
@@ -37423,7 +37580,7 @@ class UefiOvmfInfoCommand(GenericCommand):
         for k, v in self.mBootServices.items():
             if k.startswith("__"):
                 continue
-            gef_print("  {:40s}{:#x}".format(k+":",v))
+            gef_print("  {:40s}{:#x}".format(k + ":", v))
         return
 
     @functools.lru_cache()
@@ -37485,7 +37642,7 @@ class UefiOvmfInfoCommand(GenericCommand):
         for k, v in self.mDxeServices.items():
             if k.startswith("__"):
                 continue
-            gef_print("  {:40s}{:#x}".format(k+":",v))
+            gef_print("  {:40s}{:#x}".format(k + ":", v))
         return
 
     @functools.lru_cache()
@@ -37532,7 +37689,7 @@ class UefiOvmfInfoCommand(GenericCommand):
         for k, v in self.mEfiSystemTable.items():
             if k.startswith("__"):
                 continue
-            gef_print("  {:40s}{:#x}".format(k+":",v))
+            gef_print("  {:40s}{:#x}".format(k + ":", v))
         return
 
     @functools.lru_cache()
@@ -37581,7 +37738,7 @@ class UefiOvmfInfoCommand(GenericCommand):
         for k, v in self.mEfiRuntimeServicesTable.items():
             if k.startswith("__"):
                 continue
-            gef_print("  {:40s}{:#x}".format(k+":",v))
+            gef_print("  {:40s}{:#x}".format(k + ":", v))
         return
 
     @functools.lru_cache()
@@ -37602,7 +37759,7 @@ class UefiOvmfInfoCommand(GenericCommand):
                 csig = u64(read_memory(c - 8, 8))
                 if addr == b == d and asig == csig == u32(b"mmap"):
                     return addr
-            except:
+            except Exception:
                 pass
             addr -= 0x10
         return None
@@ -37764,6 +37921,7 @@ class AddSymbolTemporaryCommand(GenericCommand):
             return
 
         cache = {}
+
         def create_blank_elf(text_base):
             if cache:
                 open(cache["fname"], "wb").write(cache["data"])
@@ -37845,7 +38003,7 @@ class AddSymbolTemporaryCommand(GenericCommand):
         if cmd_string_arr:
             apply_symbol(fname, cmd_string_arr, text_base)
 
-        info("{:d} entries were processed".format(i+1))
+        info("{:d} entries were processed".format(i + 1))
         return
 
     @only_if_gdb_running
@@ -37859,7 +38017,7 @@ class AddSymbolTemporaryCommand(GenericCommand):
         try:
             function_name = argv[0]
             function_addr = int(gdb.parse_and_eval(argv[1]))
-        except:
+        except Exception:
             self.usage()
             return
 
@@ -37922,13 +38080,12 @@ class LinklistWalkCommand(GenericCommand):
 
     def walk_link_list(self, head, offset):
         current = head
-        walkks = []
         seen = [current]
         idx = 1
         while True:
             try:
                 flink = read_int_from_memory(current + offset)
-            except:
+            except Exception:
                 err("memory corrupted")
                 return
             gef_print("[{:d}]   -> {:#x}".format(idx, flink))
@@ -37951,10 +38108,10 @@ class LinklistWalkCommand(GenericCommand):
             offset = 0
             if "-o" in argv:
                 idx = argv.index("-o")
-                offset = int(argv[idx+1], 0)
-                argv = argv[:idx] + argv[idx+2:]
+                offset = int(argv[idx + 1], 0)
+                argv = argv[:idx] + argv[idx + 2:]
             head = parse_address(''.join(argv))
-        except:
+        except Exception:
             self.usage()
             return
 
@@ -37992,7 +38149,7 @@ class PeekPointersCommand(GenericCommand):
 
         try:
             addr = lookup_address(int(argv[0], 16))
-        except:
+        except Exception:
             self.usage()
             return
         if (addr.value % gef_getpagesize()):
@@ -38012,17 +38169,17 @@ class PeekPointersCommand(GenericCommand):
             elif section_name == "heap":
                 sections = [(s.path, s.page_start, s.page_end) for s in vmmap if s.path == "[heap]"]
             elif section_name != "all":
-                sections = [(s.path, s.page_start, s.page_end) for s in vmmap if section_name in s.path ]
+                sections = [(s.path, s.page_start, s.page_end) for s in vmmap if section_name in s.path]
             else:
-                sections = [(s.path, s.page_start, s.page_end) for s in vmmap ]
+                sections = [(s.path, s.page_start, s.page_end) for s in vmmap]
         else:
-            sections = [ (s.path, s.page_start, s.page_end) for s in vmmap ]
+            sections = [(s.path, s.page_start, s.page_end) for s in vmmap]
 
         data = read_memory(addr.section.page_start, addr.section.size)
         if current_arch.ptrsize == 8:
-            data = [u64(data[i:i+8]) for i in range(0, len(data), 8)]
+            data = [u64(data[i:i + 8]) for i in range(0, len(data), 8)]
         else:
-            data = [u32(data[i:i+4]) for i in range(0, len(data), 4)]
+            data = [u32(data[i:i + 4]) for i in range(0, len(data), 4)]
 
         for off, addr_value in enumerate(data):
             addr_v = lookup_address(addr_value)
@@ -38037,7 +38194,7 @@ class PeekPointersCommand(GenericCommand):
                 sym = "<{:s}+{:04x}>".format(*sym) if sym else ''
                 if name.startswith("/"):
                     name = os.path.basename(name)
-                elif len(name)==0:
+                elif len(name) == 0:
                     name = get_filename()
                 addr_pos = addr.value + off * current_arch.ptrsize
                 perm = str(addr_v.section.permission)
@@ -38064,22 +38221,20 @@ class CurrentFrameStackCommand(GenericCommand):
         ptrsize = current_arch.ptrsize
         try:
             frame = gdb.selected_frame()
-        except:
+        except Exception:
             # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
             err("Faild to get frame information")
             return
 
         if not frame.older():
-            reason = frame.unwind_stop_reason()
-            reason_str = gdb.frame_stop_reason_string( frame.unwind_stop_reason() )
+            reason_str = gdb.frame_stop_reason_string(frame.unwind_stop_reason())
             warn("Cannot determine frame boundary, reason: {:s}".format(reason_str))
             return
 
         saved_ip = frame.older().pc()
-        base_address_color = get_gef_setting("theme.dereference_base_address")
         stack_hi = int(frame.older().read_register("sp"))
         stack_lo = int(frame.read_register("sp"))
-        should_stack_grow_down = get_gef_setting("context.grow_stack_down") == True
+        should_stack_grow_down = get_gef_setting("context.grow_stack_down") is True
         results = []
 
         for offset, address in enumerate(range(stack_lo, stack_hi, ptrsize)):
@@ -38122,9 +38277,9 @@ class XRefTelescopeCommand(SearchPatternCommand):
 
         if is_hex(pattern):
             if get_endian() == Elf.BIG_ENDIAN:
-                pattern = "".join(["\\x"+pattern[i:i+2] for i in range(2, len(pattern), 2)])
+                pattern = "".join(["\\x" + pattern[i:i + 2] for i in range(2, len(pattern), 2)])
             else:
-                pattern = "".join(["\\x"+pattern[i:i+2] for i in range(len(pattern)-2, 0, -2)])
+                pattern = "".join(["\\x" + pattern[i:i + 2] for i in range(len(pattern) - 2, 0, -2)])
 
         locs = []
         for section in get_process_maps():
@@ -38210,7 +38365,7 @@ class BytearrayCommand(GenericCommand):
                     return
                 elif o == "-d":
                     dump = True
-        except:
+        except Exception:
             self.usage()
             return
 
@@ -38221,13 +38376,13 @@ class BytearrayCommand(GenericCommand):
             bpos = 0
             newbadchars = ""
             while bpos < len(badchars):
-                curchar = badchars[bpos] + badchars[bpos+1]
+                curchar = badchars[bpos] + badchars[bpos + 1]
                 if curchar == "..":
                     pos = bpos
-                    if pos > 1 and pos <= len(badchars)-4:
+                    if pos > 1 and pos <= len(badchars) - 4:
                         # get byte before and after ..
-                        bytebefore = badchars[pos-2] + badchars[pos-1]
-                        byteafter = badchars[pos+2] + badchars[pos+3]
+                        bytebefore = badchars[pos - 2] + badchars[pos - 1]
+                        byteafter = badchars[pos + 2] + badchars[pos + 3]
                         bbefore = int(bytebefore, 16)
                         bafter = int(byteafter, 16)
                         if bbefore > bafter:
@@ -38246,9 +38401,9 @@ class BytearrayCommand(GenericCommand):
             cnt = 0
             excluded = []
             while cnt < len(badchars):
-                excluded.append(self.hex2bin(badchars[cnt]+badchars[cnt+1]))
-                cnt = cnt+2
-        except:
+                excluded.append(self.hex2bin(badchars[cnt] + badchars[cnt + 1]))
+                cnt = cnt + 2
+        except Exception:
             self.usage()
             return
 
@@ -38265,11 +38420,11 @@ class BytearrayCommand(GenericCommand):
             increment = -1
 
         # create bytearray
-        for thisval in range(startval,endval,increment):
+        for thisval in range(startval, endval, increment):
             hexbyte = "{:02x}".format(thisval)
             binbyte = self.hex2bin(hexbyte)
             intbyte = self.hex2int(hexbyte)
-            if not binbyte in excluded:
+            if binbyte not in excluded:
                 arraytable.append(hexbyte)
                 binarray.append(intbyte)
 
@@ -38289,7 +38444,7 @@ class BytearrayCommand(GenericCommand):
                 outputline = '"\\x' + arraytable[tablecnt]
             tablecnt += 1
             cnt += 1
-        if (cnt-1) < bytesperline:
+        if (cnt - 1) < bytesperline:
             outputline += '"'
         output += outputline
         gef_print(output)
@@ -38297,15 +38452,15 @@ class BytearrayCommand(GenericCommand):
         if dump:
             binfilename = "bytearray.bin"
             arrayfile = "bytearray.txt"
-            binfile = open(binfilename,"wb")
+            binfile = open(binfilename, "wb")
             binfile.write(binarray)
             binfile.close()
 
-            txtfile = open(arrayfile,"w+")
+            txtfile = open(arrayfile, "w+")
             txtfile.write(output)
             txtfile.close()
 
-            info("Done, wrote {:d} bytes to file {:s}".format(len(arraytable),arrayfile))
+            info("Done, wrote {:d} bytes to file {:s}".format(len(arraytable), arrayfile))
             info("Binary output saved in {:s}".format(binfilename))
         return
 
@@ -38322,7 +38477,7 @@ class BytearrayCommand(GenericCommand):
         return "".join(filter(self.permitted_char, hex))
 
     def hex2int(self, hex):
-        return int(hex,16)
+        return int(hex, 16)
 
     def permitted_char(self, s):
         if bool(re.match("^[A-Fa-f0-9.]", s)):
@@ -38364,7 +38519,7 @@ class BincompareCommand(GenericCommand):
                 elif o == "-h":
                     self.usage()
                     return
-        except:
+        except Exception:
             self.usage()
             return
 
@@ -38421,7 +38576,7 @@ class BincompareCommand(GenericCommand):
         for line in range(0, len(result_table), 16):
             pdata1 = []
             pdata2 = []
-            for i in range(line,line+16):
+            for i in range(line, line + 16):
                 if i < len(result_table):
                     pdata1.append(result_table[i][0])
                     pdata2.append(result_table[i][1])
@@ -38441,15 +38596,16 @@ class BincompareCommand(GenericCommand):
             info("Badchars found: {:s}".format(badchars))
         return
 
-    def print_line(self, line, data, label):
-        l = []
+    def print_line(self, prefix, data, label):
+        line = []
         for d in data:
-            l.append(d)
-        r = 16 - len(l)
-        for i in range(0,r):
-            l.append("--")
+            line.append(d)
+        r = 16 - len(line)
+        for i in range(0, r):
+            line.append("--")
 
-        gef_print(" {:s} |{:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s}| {:s}".format(line, *l, label))
+        fmt = " {:s} |{:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s}| {:s}"
+        gef_print(fmt.format(prefix, *line, label))
         return
 
 
@@ -38491,7 +38647,7 @@ class FtraceExitBreakpoint(gdb.FinishBreakpoint):
             mode = "w"
             use_color = True
 
-        with open(output, "w") as fd:
+        with open(output, mode) as fd:
             if use_color:
                 fd.write("{:s}() = {} {{\n".format(Color.yellowify(self.args["location"]), retval))
             else:
@@ -38548,7 +38704,7 @@ class GenericFunction(gdb.Function):
     def _syntax_(self):
         return "${}([offset])".format(self._function_)
 
-    def __init__ (self):
+    def __init__(self):
         super().__init__(self._function_)
         return
 
@@ -38799,7 +38955,7 @@ class GefCommand(gdb.Command):
                 time_elapsed.append((cmd, end_time_real - start_time_real, end_time_proc - start_time_proc))
 
                 repeat = False
-                if hasattr(class_name,"_repeat_"):
+                if hasattr(class_name, "_repeat_"):
                     repeat = getattr(class_name, "_repeat_")
 
                 if hasattr(class_name, "_aliases_"):
@@ -38823,7 +38979,7 @@ class GefCommand(gdb.Command):
             gef_print("{:s} for {:s} ready, type `{:s}' to start, `{:s}' to configure".format(
                 Color.greenify("GEF"),
                 get_os(),
-                Color.colorify("gef","underline yellow"),
+                Color.colorify("gef", "underline yellow"),
                 Color.colorify("gef config", "underline pink")
             ))
 
@@ -38977,7 +39133,7 @@ class GefConfigCommand(gdb.Command):
             err("Invalid command format")
             return
 
-        loaded_commands = [ x[0] for x in __gef__.loaded_commands ] + ["gef"]
+        loaded_commands = [x[0] for x in __gef__.loaded_commands] + ["gef"]
         plugin_name = argv[0].split(".", 1)[0]
         if plugin_name not in loaded_commands:
             err("Unknown plugin '{:s}'".format(plugin_name))
@@ -39082,7 +39238,7 @@ class GefRestoreCommand(gdb.Command):
                 for key in cfg.options(section):
                     try:
                         GefAlias(key, cfg.get(section, key))
-                    except:
+                    except Exception:
                         pass
                 continue
 
@@ -39143,7 +39299,7 @@ class GefSetCommand(gdb.Command):
     def invoke(self, args, from_tty):
         self.dont_repeat()
         args = args.split()
-        cmd = ["set", args[0],]
+        cmd = ["set", args[0]]
         for p in args[1:]:
             if p.startswith("$_gef"):
                 c = gdb.parse_and_eval(p)
@@ -39222,7 +39378,7 @@ class GefAlias(gdb.Command):
 class AliasesCommand(GenericCommand):
     """Base command to add, remove, or list aliases."""
     _cmdline_ = "aliases"
-    _syntax_  = "{:s} (add|rm|ls)".format(_cmdline_)
+    _syntax_ = "{:s} (add|rm|ls)".format(_cmdline_)
     _category_ = "GEF Maintenance Command"
 
     def __init__(self, *args, **kwargs):
@@ -39240,7 +39396,7 @@ class AliasesCommand(GenericCommand):
 class AliasesAddCommand(AliasesCommand):
     """Command to add aliases."""
     _cmdline_ = "aliases add"
-    _syntax_  = "{:s} [ALIAS] [COMMAND]".format(_cmdline_)
+    _syntax_ = "{:s} [ALIAS] [COMMAND]".format(_cmdline_)
     _example_ = "{:s} scope telescope".format(_cmdline_)
     _category_ = "GEF Maintenance Command"
 
@@ -39277,7 +39433,7 @@ class AliasesRmCommand(AliasesCommand):
         try:
             alias_to_remove = next(filter(lambda x: x._alias == argv[0], __aliases__))
             __aliases__.remove(alias_to_remove)
-        except (ValueError, StopIteration) as e:
+        except (ValueError, StopIteration):
             err("{0} not found in aliases.".format(argv[0]))
             return
         gef_print("You must reload GEF for alias removals to apply.")
@@ -39406,7 +39562,7 @@ def main():
         site_packages_dir = os.path.join(PYENV_ROOT, "versions", PYENV_VERSION, "lib",
                                          "python{}".format(PYENV_VERSION[:3]), "site-packages")
         site.addsitedir(site_packages_dir)
-    except FileNotFoundError as e:
+    except FileNotFoundError:
         pass
 
     # When using a Python virtual environment, GDB still loads the system-installed Python
@@ -39422,7 +39578,7 @@ def main():
             cmds = [pythonbin, "-c", "import os, sys;print(os.linesep.join(sys.path).strip())"]
             SITE_PACKAGES_DIRS = subprocess.check_output(cmds).decode("utf-8").split()
             sys.path.extend(SITE_PACKAGES_DIRS)
-    except FileNotFoundError as e:
+    except FileNotFoundError:
         pass
 
     # setup prompt
