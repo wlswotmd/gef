@@ -6721,6 +6721,184 @@ class ProcessStatusCommand(GenericCommand):
         return
 
 
+@register_command
+class CapabilityCommand(GenericCommand):
+    """Show the capabilities of the debugging process."""
+    _cmdline_ = "capability"
+    _syntax_ = "{:s} [-v]".format(_cmdline_)
+    _category_ = "Process Information"
+
+    def get_thread_ids(self, pid):
+        try:
+            tids = os.listdir("/proc/{}/task".format(pid))
+            return [int(x) for x in tids]
+        except Exception:
+            return []
+
+    def print_cap_details(self, name, cap):
+        bit_info = [
+            [40, "CAP_CHECKPOINT_RESTORE", "Update /proc/sys/kernel/ns_last_pid; read /proc/[another_pid]/map_files; etc.", ""],
+            [39, "CAP_BPF", "Allow privileged BPF operations", ""],
+            [38, "CAP_PERFMON", "Allow various performance-monitoring mechanisms; allow perf_event_open(2); allow some BPF operations", ""],
+            [37, "CAP_AUDIT_READ", "Allow reading the audit log via a multicast netlink socket", ""],
+            [36, "CAP_BLOCK_SUSPEND", "Allow features that can block system suspend", ""],
+            [35, "CAP_WAKE_ALARM", "Trigger something that will wake up the system", ""],
+            [34, "CAP_SYSLOG", "Allow privileged syslog(2) operations; View kernel addresses exposed via /proc even if kptr_restrict=1", ""],
+            [33, "CAP_MAC_ADMIN", "Allow MAC configuration or state changes", ""],
+            [32, "CAP_MAC_OVERRIDE", "Override MAC", ""],
+            [31, "CAP_SETFCAP", "Set arbitrary capabilities on a file", ""],
+            [30, "CAP_AUDIT_CONTROL", "Enable/disable kernel audit; change audit filter rules; retrieve audit status and filter rules", ""],
+            [29, "CAP_AUDIT_WRITE", "Write records to kernel audit log", ""],
+            [28, "CAP_LEASE", "Establish leases", ""],
+            [27, "CAP_MKNOD", "Create special files using mknod(2)", ""],
+            [26, "CAP_SYS_TTY_CONFIG", "Allow vhangup(2); allow various privileged ioctl(2) operations on virtual terminals", ""],
+            [25, "CAP_SYS_TIME", "Set system cloc; set real-time (hardware) clock", ""],
+            [24, "CAP_SYS_RESOURCE", "Override disk quota limits; override RLIMIT_NPROC resource limit; etc.", ""],
+            [23, "CAP_SYS_NICE", "Lower the process nice value and change the nice value for arbitrary processes; etc.", ""],
+            [22, "CAP_SYS_BOOT", "Allow reboot(2) and kexec_load(2)", ""],
+            [21, "CAP_SYS_ADMIN", "Allow various privileges operations", ""],
+            [20, "CAP_SYS_PACCT", "Allow acct(2)", ""],
+            [19, "CAP_SYS_PTRACE", "Trace arbitrary processes using ptrace(2); etc.", ""],
+            [18, "CAP_SYS_CHROOT", "Allow chroot(2); change mount namespaces using setns(2)", ""],
+            [17, "CAP_SYS_RAWIO", "Perform I/O port operations; etc.", ""],
+            [16, "CAP_SYS_MODULE", "Load and unload kernel modules", ""],
+            [15, "CAP_IPC_OWNER", "Bypass permission checks for operations on SystemV IPC objects", ""],
+            [14, "CAP_IPC_LOCK", "Lock memory; allocate memory using huge pages", ""],
+            [13, "CAP_NET_RAW", "Use RAW and PACKET sockets; bind to any address for transparent proxying", ""],
+            [12, "CAP_NET_ADMIN", "Perform various network-related operations", ""],
+            [11, "CAP_NET_BROADCASTE", "(Unused) Make socket broadcasts, and listen to multicast", ""],
+            [10, "CAP_NET_BIND_SERVICE", "Bind a socket to Internet domain privileged ports (less than 1024)", ""],
+            [9, "CAP_LINUX_IMMUTABLE", "Set the FS_APPEND_FL and FS_IMMUTABLE_FL inode flags", ""],
+            [8, "CAP_SETPCAP", "Add any capability from the calling thread's bounding set to its inheritable set; etc.", ""],
+            [7, "CAP_SETUID", "Make arbitrary manipulations of process UIDs; etc.", ""],
+            [6, "CAP_SETGID", "Make arbitrary manipulations of process GIDs and supplementary GID list; etc.", ""],
+            [5, "CAP_KILL", "Bypass permission checks for sending signals", ""],
+            [4, "CAP_FSETID", "Don't clear SUID and SGID bits when a file is modified; etc.", ""],
+            [3, "CAP_FOWNER", "Bypass permission checks whether FSUID == file UID; set ACLs; etc.", ""],
+            [2, "CAP_DAC_READ_SEARCH", "Bypass permission checks of file read, dir read/exec; etc.", ""],
+            [1, "CAP_DAC_OVERRIDE", "Bypass permission checks of file read/write/exec", ""],
+            [0, "CAP_CHOWN", "Make arbitrary changes to file UIDs and GIDs", ""],
+        ]
+        PrintBitInfo(name, 64, None, bit_info).print(cap)
+        return
+
+    def print_capability_from_pid(self):
+        pid = get_pid()
+        if pid is None:
+            return
+
+        tids = self.get_thread_ids(pid)
+        for tid in tids:
+            gef_print(titlify("Thread capability set [PID={:d}, TID={:d}]".format(pid, tid)))
+            try:
+                status_path = "/proc/{:d}/task/{:d}/status".format(pid, tid)
+                status = open(status_path, "r").read()
+            except Exception:
+                err("Failed to get the information of capability from {:s}".format(status_path))
+                continue
+
+            caps = {}
+            m = re.search(r"CapInh:\s+(.+)", status)
+            if m:
+                caps["cap_inh"] = int(m.group(1), 16)
+            m = re.search(r"CapPrm:\s+(.+)", status)
+            if m:
+                caps["cap_prm"] = int(m.group(1), 16)
+            m = re.search(r"CapEff:\s+(.+)", status)
+            if m:
+                caps["cap_eff"] = int(m.group(1), 16)
+            m = re.search(r"CapBnd:\s+(.+)", status)
+            if m:
+                caps["cap_bnd"] = int(m.group(1), 16)
+            m = re.search(r"CapAmb:\s+(.+)", status)
+            if m:
+                caps["cap_amb"] = int(m.group(1), 16)
+
+            if "cap_prm" in caps:
+                gef_print("Permitted  : {:#018x} - Capability set that Effective and Inheritable are allowed to have".format(caps["cap_prm"]))
+                if self.verbose:
+                    self.print_cap_details("cap_prm", caps["cap_prm"])
+            if "cap_inh" in caps:
+                gef_print("Inheritable: {:#018x} - Capability set that can be inherited when execve(2)".format(caps["cap_inh"]))
+                if self.verbose:
+                    self.print_cap_details("cap_inh", caps["cap_inh"])
+            if "cap_amb" in caps:
+                gef_print("Ambient    : {:#018x} - Capability set that inherited when execve(2) not suid/sgid program".format(caps["cap_amb"]))
+                if self.verbose:
+                    self.print_cap_details("cap_amb", caps["cap_amb"])
+            if "cap_eff" in caps:
+                gef_print("Effective  : {:#018x} - Capability set that kernel actually uses to determine privileges".format(caps["cap_eff"]))
+                self.print_cap_details("cap_eff", caps["cap_eff"])
+            if "cap_bnd" in caps:
+                gef_print("Bounding   : {:#018x} - Capability set that limits the capabilities set that can be acquired".format(caps["cap_bnd"]))
+                if self.verbose:
+                    self.print_cap_details("cap_bnd", caps["cap_bnd"])
+        return
+
+    def print_capability_from_file(self):
+        filepath = get_filepath()
+        if filepath is None:
+            return
+
+        gef_print(titlify("File capability set [{:s}]".format(filepath)))
+        try:
+            raw_caps = os.getxattr(filepath, "security.capability")
+        except OSError:
+            err("No data available")
+            return
+
+        caps = {}
+        magic = struct.unpack("<I", raw_caps[:4])[0]
+        caps["magic"] = magic & ~1
+        caps["cap_eff"] = magic & 1
+        if caps["magic"] == 0x01000000:
+            cap_prm, cap_inh = struct.unpack("<II", raw_caps[4:12])
+        elif caps["magic"] == 0x02000000:
+            cap_prm_low, cap_inh_low, cap_prm_high, cap_inh_high = struct.unpack("<IIII", raw_caps[4:20])
+            cap_prm = (cap_prm_high << 32) | cap_prm_low
+            cap_inh = (cap_inh_high << 32) | cap_inh_low
+        elif caps["magic"] == 0x03000000:
+            cap_prm_low, cap_inh_low, cap_prm_high, cap_inh_high, rootid = struct.unpack("<IIIII", raw_caps[4:24])
+            cap_prm = (cap_prm_high << 32) | cap_prm_low
+            cap_inh = (cap_inh_high << 32) | cap_inh_low
+            caps["rootid"] = rootid
+        else:
+            err("Invalid magic values: {:#x}".format(magic))
+            return
+        caps["cap_prm"] = cap_prm
+        caps["cap_inh"] = cap_inh
+
+        if "magic" in caps:
+            gef_print("Magic      : {:#010x} - Magic number: ver1: 0x01000000, ver2:0x02000000, ver3:0x03000000".format(caps["magic"]))
+        if "cap_eff" in caps:
+            gef_print("Effective  : {:#03x} - If 1, new cap_prm are added to nww cap_eff after execve(2)".format(caps["cap_eff"]))
+        if "cap_prm" in caps:
+            gef_print("Permitted  : {:#018x} - Capability set that permitted to the thread, regardless of the thread's cap_inh".format(cap_prm))
+            if self.verbose:
+                self.print_cap_details("cap_prm", cap_prm)
+        if "cap_inh" in caps:
+            gef_print("Inheritable: {:#018x} - Capability set that is ANDed with thread cap_inh to determine cap_inh after execve(2)".format(cap_inh))
+            if self.verbose:
+                self.print_cap_details("cap_inh", cap_inh)
+        if "rootid" in caps:
+            gef_print("Root ID    : {:#010x} - UID of root in user namespace".format(caps["rootid"]))
+        return
+
+    @only_if_gdb_target_local
+    @only_if_not_qemu_system
+    def do_invoke(self, argv):
+        self.dont_repeat()
+
+        self.verbose = False
+        if "-v" in argv:
+            self.verbose = True
+            argv.remove("-v")
+
+        self.print_capability_from_pid()
+        self.print_capability_from_file()
+        return
+
+
 @register_priority_command
 class GefThemeCommand(GenericCommand):
     """Customize GEF appearance."""

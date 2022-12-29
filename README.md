@@ -358,6 +358,8 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ptr-demangle.png)
 * `search-mangled-ptr`: searchs the mangled value from RW memory.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/search-mangled-ptr.png)
+* `capability`: shows the capabilities of the debugging process.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/capability.png)
 
 ### Other
 * The category is introduced in `gef help`.
