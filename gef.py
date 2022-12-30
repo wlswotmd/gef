@@ -6899,6 +6899,56 @@ class CapabilityCommand(GenericCommand):
         return
 
 
+@register_command
+class SmartMemoryDumpCommand(GenericCommand):
+    """Smart dump the process memory."""
+    _cmdline_ = "smart-memory-dump"
+    _syntax_ = _cmdline_
+    _category_ = "Misc"
+
+    @only_if_gdb_running
+    @only_if_gdb_target_local
+    @only_if_not_qemu_system
+    def do_invoke(self, argv):
+        self.dont_repeat()
+
+        pid = get_pid()
+        if pid is None:
+            err("Failed to get pid")
+            return
+
+        maps = get_process_maps()
+        if maps is None:
+            err("Failed to get maps")
+            return
+
+        addr_len = current_arch.ptrsize * 2
+        for entry in maps:
+            start = entry.page_start
+            end = entry.page_end
+            perm = str(entry.permission)
+
+            if entry.path in ["[vvar]", "[vsyscall]"]:
+                continue
+
+            if not entry.path.startswith("["):
+                path = os.path.basename(entry.path)
+            else:
+                path = entry.path
+                path = path.replace("[", "").replace("]", "") # consider [heap], [stack], [vdso]
+                path = path.replace("<", "").replace(">", "") # consider under qemu-user. ex: <explored>
+                path = path.replace(" ", "_") # consider deleted case. ex: /path/to/file (deleted)
+
+            try:
+                data = read_memory(start, end - start)
+            except gdb.MemoryError:
+                continue
+
+            dumpfile_name = "{:05d}_{:0{}x}-{:0{}x}_{:s}_{:s}.raw".format(pid, start, addr_len, end, addr_len, perm, path)
+            open(dumpfile_name, "wb").write(data)
+        return
+
+
 @register_priority_command
 class GefThemeCommand(GenericCommand):
     """Customize GEF appearance."""
