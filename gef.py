@@ -7187,10 +7187,9 @@ class SearchPatternCommand(GenericCommand):
 
         title = "In "
         if section.path:
-            title += "'{}'".format(Color.blueify(section.path))
+            title += "'{}' ".format(Color.blueify(section.path))
 
-        title += "({:#x}-{:#x})".format(section.page_start, section.page_end)
-        title += ", permission={}".format(section.permission)
+        title += "({:#x}-{:#x} [{}])".format(section.page_start, section.page_end, section.permission)
         ok(title)
         return
 
@@ -7409,7 +7408,7 @@ class SearchPatternCommand(GenericCommand):
 class DemanglePtrCommand(GenericCommand):
     """Demangle a mangled value by PTR_MANGLE."""
     _cmdline_ = "ptr-demangle"
-    _syntax_ = "{:s} VALUE".format(_cmdline_)
+    _syntax_ = "{:s} [-h] VALUE|--source".format(_cmdline_)
     _category_ = "Show/Modify Memory"
 
     @staticmethod
@@ -7456,10 +7455,22 @@ class DemanglePtrCommand(GenericCommand):
             decoded = value ^ cookie
         return decoded
 
+    def print_source(self):
+        return
+
     @only_if_gdb_running
     @only_if_x86_32_64_or_arm_32_64
     def do_invoke(self, argv):
         self.dont_repeat()
+
+        if "-h" in argv:
+            self.usage()
+            return
+
+        if "--source" in argv:
+            s = inspect.getsource(self.decode).rstrip()
+            gef_print(s)
+            return
 
         cookie = self.get_cookie()
         if cookie is None:
@@ -7476,10 +7487,10 @@ class DemanglePtrCommand(GenericCommand):
         decoded_sym = get_symbol_string(decoded)
         try:
             read_memory(decoded, 1)
-            valid_msg = "valid"
+            valid_msg = Color.colorify("valid", "bold green")
         except gdb.MemoryError:
-            valid_msg = "invalid"
-        info("Decoded value is {:s}{:s} ({:s})".format(color_decoded, decoded_sym, valid_msg))
+            valid_msg = Color.colorify("invalid", "bold red")
+        info("Decoded value is {:s}{:s} [{:s}]".format(color_decoded, decoded_sym, valid_msg))
         return
 
 
@@ -7499,19 +7510,23 @@ class SearchMangledPtrCommand(GenericCommand):
 
         title = "In "
         if section.path:
-            title += "'{}'".format(Color.blueify(section.path))
+            title += "'{}' ".format(Color.blueify(section.path))
 
-        title += "({:#x}-{:#x})".format(section.page_start, section.page_end)
-        title += ", permission={}".format(section.permission)
+        title += "({:#x}-{:#x} [{}])".format(section.page_start, section.page_end, section.permission)
         ok(title)
         return
 
     def print_loc(self, loc):
-        addr, a, b = loc[0], loc[1], loc[2]
-        color_b = Color.colorify("{:#x}".format(b), "white bold")
+        addr, value, decoded = loc[0], loc[1], loc[2]
         addr_sym = get_symbol_string(addr)
-        b_sym = get_symbol_string(b)
-        gef_print("  {:#x}{:s}: {:#x} (-> {:s}{:s})".format(addr, addr_sym, a, color_b, b_sym))
+        decoded_sym = get_symbol_string(decoded)
+        try:
+            read_memory(decoded, 1)
+            valid_msg = Color.colorify("valid", "bold green")
+        except gdb.MemoryError:
+            valid_msg = Color.colorify("invalid", "bold red")
+        decoded = Color.colorify("{:#x}".format(decoded), "white bold")
+        gef_print("  {:#x}{:s}: {:#x} (={:s}{:s}) [{:s}]".format(addr, addr_sym, value, decoded, decoded_sym, valid_msg))
         return
 
     def search_mangled_ptr(self, start_address, end_address):
@@ -21025,26 +21040,14 @@ class ExtractHeapAddrCommand(GenericCommand):
     _example_ = "{:s} 0x000055500000C7F9".format(_cmdline_)
     _category_ = "Heap"
 
-    # https://smallkirby.hatenablog.com/entry/safeunlinking
     def reveal(self, fd):
+        # https://smallkirby.hatenablog.com/entry/safeunlinking
         L = fd >> 36
         for i in range(3):
             temp = (fd >> (36 - (i + 1) * 8)) & 0xff
             element = ((L >> 4) ^ temp) & 0xff
             L = (L << 8) + element
         return L << 12
-
-    def print_source(self):
-        s = ""
-        s += "def reveal(fd):\n"
-        s += "    L = fd >> 36\n"
-        s += "    for i in range(3):\n"
-        s += "        temp = (fd >> (36 - (i + 1) * 8)) & 0xff\n"
-        s += "        element = ((L >> 4) ^ temp) & 0xff\n"
-        s += "        L = (L << 8) + element\n"
-        s += "    return L << 12"
-        gef_print(s)
-        return
 
     @only_if_gdb_running
     def do_invoke(self, argv):
@@ -21059,7 +21062,8 @@ class ExtractHeapAddrCommand(GenericCommand):
             return
 
         if "--source" in argv:
-            self.print_source()
+            s = inspect.getsource(self.reveal).rstrip()
+            gef_print(s)
             return
 
         ptr = int(argv[0], 16)
