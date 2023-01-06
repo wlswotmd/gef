@@ -326,6 +326,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/onegadget.png)
 * `ls`/`cat`: invokes `ls`/`cat` directly.
 * `smart-memory-dump`: dumps all regions of memory to each file.
+* `mmap`: allocates a new memory (syntax sugar of `call mmap(...)`).
 * `constgrep`: invokes `grep` under `/usr/include`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/constgrep.png)
 * `time`: measures the time of the GDB command.

@@ -7873,7 +7873,7 @@ class FlagsCommand(GenericCommand):
 class ChangePermissionCommand(GenericCommand):
     """Change a page permission. By default, it will change it to RWX."""
     _cmdline_ = "set-permission"
-    _syntax_ = "{:s} LOCATION [PERMISSION]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] LOCATION [PERMISSION]".format(_cmdline_)
     _example_ = "{:s} $sp 7".format(_cmdline_)
     _category_ = "Debugging Support"
     _aliases_ = ["mprotect",]
@@ -7888,13 +7888,30 @@ class ChangePermissionCommand(GenericCommand):
     def do_invoke(self, argv):
         self.dont_repeat()
 
+        if "-h" in argv:
+            self.usage()
+            return
+
         if len(argv) not in (1, 2):
             err("Incorrect syntax")
             self.usage()
             return
 
         if len(argv) == 2:
-            perm = int(argv[1])
+            if re.match(r"[rwx-]{3}", argv[1]):
+                perm = Permission.NONE
+                if argv[1][0] == "r":
+                    perm |= Permission.READ
+                if argv[1][1] == "w":
+                    perm |= Permission.WRITE
+                if argv[1][2] == "x":
+                    perm |= Permission.EXECUTE
+            else:
+                try:
+                    perm = int(argv[1])
+                except:
+                    err("Invalid permission")
+                    return
         else:
             perm = Permission.READ | Permission.WRITE | Permission.EXECUTE
 
@@ -7942,6 +7959,83 @@ class ChangePermissionCommand(GenericCommand):
         arch, mode = get_keystone_arch()
         raw_insns = keystone_assemble(code, arch, mode, raw=True)
         return raw_insns
+
+
+@register_command
+class MmapMemoryCommand(GenericCommand):
+    """Allocate a new memory (syntax sugar of `call mmap(...)`)."""
+    _cmdline_ = "mmap"
+    _syntax_ = "{:s} [-h] [LOCATION [SIZE [PERMISSION]]]".format(_cmdline_)
+    _example_ = "{:s} 0x10000 0x1000 rwx".format(_cmdline_)
+    _category_ = "Debugging Support"
+
+    def __init__(self):
+        super().__init__(complete=gdb.COMPLETE_LOCATION)
+        return
+
+    @only_if_gdb_running
+    @only_if_not_qemu_system
+    def do_invoke(self, argv):
+        self.dont_repeat()
+
+        if "-h" in argv:
+            self.usage()
+            return
+
+        try:
+            parse_address("mmap")
+        except gdb.error:
+            err("Not found mmap function")
+            return
+
+        location = 0
+        size = gef_getpagesize()
+        perm = Permission.READ | Permission.WRITE | Permission.EXECUTE
+        flags = 0x22 # MAP_ANONYMOUS | MAP_PRIVATE
+
+        if len(argv) >= 1:
+            location = safe_parse_and_eval(argv[0])
+            if location is None:
+                err("Invalid address")
+                return
+            location = to_unsigned_long(location)
+            if location % gef_getpagesize():
+                err("Address is not a multiple of {:#x}".format(gef_getpagesize()))
+                return
+            if location != 0:
+                flags |= 0x10 # MAP_FIXED
+
+        if len(argv) >= 2:
+            try:
+                size = int(argv[1], 0)
+            except:
+                err("Invalid size")
+                return
+            if size % gef_getpagesize():
+                err("Size is not a multiple of {:#x}".format(gef_getpagesize()))
+                return
+
+        if len(argv) >= 3:
+            if re.match(r"[rwx-]{3}", argv[2]):
+                perm = Permission.NONE
+                if argv[2][0] == "r":
+                    perm |= Permission.READ
+                if argv[2][1] == "w":
+                    perm |= Permission.WRITE
+                if argv[2][2] == "x":
+                    perm |= Permission.EXECUTE
+            else:
+                try:
+                    perm = int(argv[2])
+                except:
+                    err("Invalid permission")
+                    return
+
+        cmd = "call mmap({:#x}, {:#x}, {:#x}, {:#x}, -1, 0)".format(location, size, perm, flags)
+        gef_print(titlify(cmd))
+        gdb.execute(cmd)
+        reset_all_caches()
+        return
 
 
 @register_command
