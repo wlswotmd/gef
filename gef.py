@@ -6894,13 +6894,13 @@ class CapabilityCommand(GenericCommand):
         if "cap_eff" in caps:
             gef_print("Effective  : {:#03x} - If 1, new cap_prm are added to nww cap_eff after execve(2)".format(caps["cap_eff"]))
         if "cap_prm" in caps:
-            gef_print("Permitted  : {:#018x} - Capability set that permitted to the thread, regardless of the thread's cap_inh".format(cap_prm))
+            gef_print("Permitted  : {:#018x} - Capability set that permitted to the thread, regardless of the thread's cap_inh".format(caps["cap_prm"]))
             if self.verbose:
-                self.print_cap_details("cap_prm", cap_prm)
+                self.print_cap_details("cap_prm", caps["cap_prm"])
         if "cap_inh" in caps:
-            gef_print("Inheritable: {:#018x} - Capability set that is ANDed with thread cap_inh to determine cap_inh after execve(2)".format(cap_inh))
+            gef_print("Inheritable: {:#018x} - Capability set that is ANDed with thread cap_inh to determine cap_inh after execve(2)".format(caps["cap_inh"]))
             if self.verbose:
-                self.print_cap_details("cap_inh", cap_inh)
+                self.print_cap_details("cap_inh", caps["cap_inh"])
         if "rootid" in caps:
             gef_print("Root ID    : {:#010x} - UID of root in user namespace".format(caps["rootid"]))
         return
@@ -7475,9 +7475,6 @@ class DemanglePtrCommand(GenericCommand):
         elif is_arm32() or is_arm64():
             decoded = value ^ cookie
         return decoded
-
-    def print_source(self):
-        return
 
     @only_if_gdb_running
     @only_if_x86_32_64_or_arm_32_64
