@@ -3684,7 +3684,7 @@ def write_memory(address, buffer, length=0x10):
         gdb.selected_inferior().write_memory(address, buffer, length)
         ret = length
         return ret
-    except Exception:
+    except gdb.MemoryError:
         if is_qemu_usermode():
             # We can not patch to the code area under qemu-user
             # so we patch via /proc/pid/mem
@@ -6836,22 +6836,27 @@ class CapabilityCommand(GenericCommand):
                 caps["cap_amb"] = int(m.group(1), 16)
 
             if "cap_prm" in caps:
-                gef_print("Permitted  : {:#018x} - Capability set that Effective and Inheritable are allowed to have".format(caps["cap_prm"]))
+                msg = "Capability set that Effective and Inheritable are allowed to have"
+                gef_print("Permitted  : {:#018x} - {:s}".format(caps["cap_prm"], msg))
                 if self.verbose:
                     self.print_cap_details("cap_prm", caps["cap_prm"])
             if "cap_inh" in caps:
-                gef_print("Inheritable: {:#018x} - Capability set that can be inherited when execve(2)".format(caps["cap_inh"]))
+                msg = "Capability set that can be inherited when execve(2)"
+                gef_print("Inheritable: {:#018x} - {:s}".format(caps["cap_inh"], msg))
                 if self.verbose:
                     self.print_cap_details("cap_inh", caps["cap_inh"])
             if "cap_amb" in caps:
-                gef_print("Ambient    : {:#018x} - Capability set that inherited when execve(2) not suid/sgid program".format(caps["cap_amb"]))
+                msg = "Capability set that inherited when execve(2) not suid/sgid program"
+                gef_print("Ambient    : {:#018x} - {:s}".format(caps["cap_amb"], msg))
                 if self.verbose:
                     self.print_cap_details("cap_amb", caps["cap_amb"])
             if "cap_eff" in caps:
-                gef_print("Effective  : {:#018x} - Capability set that kernel actually uses to determine privileges".format(caps["cap_eff"]))
+                msg = "Capability set that kernel actually uses to determine privileges"
+                gef_print("Effective  : {:#018x} - {:s}".format(caps["cap_eff"], msg))
                 self.print_cap_details("cap_eff", caps["cap_eff"])
             if "cap_bnd" in caps:
-                gef_print("Bounding   : {:#018x} - Capability set that limits the capabilities set that can be acquired".format(caps["cap_bnd"]))
+                msg = "Capability set that limits the capabilities set that can be acquired"
+                gef_print("Bounding   : {:#018x} - {:s}".format(caps["cap_bnd"], msg))
                 if self.verbose:
                     self.print_cap_details("cap_bnd", caps["cap_bnd"])
         return
@@ -6890,19 +6895,24 @@ class CapabilityCommand(GenericCommand):
         caps["cap_inh"] = cap_inh
 
         if "magic" in caps:
-            gef_print("Magic      : {:#010x} - Magic number: ver1: 0x01000000, ver2:0x02000000, ver3:0x03000000".format(caps["magic"]))
+            msg = "Magic number: ver1: 0x01000000, ver2:0x02000000, ver3:0x03000000"
+            gef_print("Magic      : {:#010x} - {:s}".format(caps["magic"], msg))
         if "cap_eff" in caps:
-            gef_print("Effective  : {:#03x} - If 1, new cap_prm are added to nww cap_eff after execve(2)".format(caps["cap_eff"]))
+            msg = "If 1, new cap_prm are added to new cap_eff after execve(2)"
+            gef_print("Effective  : {:#03x} - {:s}".format(caps["cap_eff"], msg))
         if "cap_prm" in caps:
-            gef_print("Permitted  : {:#018x} - Capability set that permitted to the thread, regardless of the thread's cap_inh".format(caps["cap_prm"]))
+            msg = "Capability set that permitted to the thread, regardless of the thread's cap_inh"
+            gef_print("Permitted  : {:#018x} - {:s}".format(caps["cap_prm"], msg))
             if self.verbose:
                 self.print_cap_details("cap_prm", caps["cap_prm"])
         if "cap_inh" in caps:
-            gef_print("Inheritable: {:#018x} - Capability set that is ANDed with thread cap_inh to determine cap_inh after execve(2)".format(caps["cap_inh"]))
+            msg = "Capability set that is ANDed with thread cap_inh to determine cap_inh after execve(2)"
+            gef_print("Inheritable: {:#018x} - {:s}".format(caps["cap_inh"], msg))
             if self.verbose:
                 self.print_cap_details("cap_inh", caps["cap_inh"])
         if "rootid" in caps:
-            gef_print("Root ID    : {:#010x} - UID of root in user namespace".format(caps["rootid"]))
+            msg = "UID of root in user namespace"
+            gef_print("Root ID    : {:#010x} - {:s}".format(caps["rootid"], msg))
         return
 
     @only_if_gdb_target_local
@@ -7909,7 +7919,7 @@ class ChangePermissionCommand(GenericCommand):
             else:
                 try:
                     perm = int(argv[1])
-                except:
+                except Exception:
                     err("Invalid permission")
                     return
         else:
@@ -8008,7 +8018,7 @@ class MmapMemoryCommand(GenericCommand):
         if len(argv) >= 2:
             try:
                 size = int(argv[1], 0)
-            except:
+            except Exception:
                 err("Invalid size")
                 return
             if size % gef_getpagesize():
@@ -8027,7 +8037,7 @@ class MmapMemoryCommand(GenericCommand):
             else:
                 try:
                     perm = int(argv[2])
-                except:
+                except Exception:
                     err("Invalid permission")
                     return
 
@@ -8279,7 +8289,8 @@ class UnicornEmulateCommand(GenericCommand):
         content += "\n"
         content += "def print_regs(emu, regs):\n"
         content += "    for i, r in enumerate(regs):\n"
-        content += "        print('{{:7s}} = {{:#0{ptrsize}x}}  '.format(r, emu.reg_read(regs[r])), end='')\n".format(ptrsize=current_arch.ptrsize * 2 + 2)
+        content += "        fmt = '{{:7s}} = {{:#0{ptrsize}x}}  '\n".format(ptrsize=current_arch.ptrsize * 2 + 2)
+        content += "        print(fmt.format(r, emu.reg_read(regs[r])), end='')\n"
         content += "        if (i % 4 == 3) or (i == len(regs)-1): print('')\n"
         content += "    return\n"
         content += "\n"
@@ -8320,8 +8331,8 @@ class UnicornEmulateCommand(GenericCommand):
         content += "            print('*')\n"
         content += "        print(line)\n"
         content += "        prev_address = address\n"
-        content += "    print('\033[2m00\033[0m means write accessed, ', end='')\n"
-        content += "    print('\033[2m\033[1m00\033[0m means value changes')\n"
+        content += "    print('\033[2m00\033[0m: write accessed, ', end='')\n"
+        content += "    print('\033[2m\033[1m00\033[0m: value changes')\n"
         content += "    return\n"
 
         if is_x86():
@@ -8429,7 +8440,7 @@ class UnicornEmulateCommand(GenericCommand):
         content += "\n"
         content += "    print('========================= Final registers =========================')\n"
         content += "    print_regs(emu, registers)\n"
-        content += "    print('========================= Modified memories =========================')\n"
+        content += "    print('========================= Modified memories (before | after) =========================')\n"
         content += "    print_mems(emu)\n"
         content += "    return\n"
         content += "\n"
@@ -12665,7 +12676,7 @@ class ContextCommand(GenericCommand):
                 # some binary fails to resolve "(long)"
                 addr = parse_address(code_orig)
             self.context_title(f"memory access: {code_orig} = {addr:#x}")
-            gdb.execute(f"telescope {addr:#x} 1")
+            gdb.execute(f"telescope {addr:#x} 4")
         return
 
     def context_memory_access2(self):
@@ -12695,7 +12706,7 @@ class ContextCommand(GenericCommand):
             mask = ((1 << 32) - 1) if is_32bit() else ((1 << 64) - 1)
             addr = (tls + offset) & mask
             self.context_title(f"memory access: {code} = {addr:#x}")
-            gdb.execute(f"telescope {addr:#x} 1")
+            gdb.execute(f"telescope {addr:#x} 4")
         return
 
     def context_memory_access3(self):
@@ -12722,7 +12733,7 @@ class ContextCommand(GenericCommand):
             addr = ''.join(addr)
             addr = parse_address(addr)
             self.context_title(f"memory access: {code} = {addr:#x}")
-            gdb.execute(f"telescope {addr:#x} 1")
+            gdb.execute(f"telescope {addr:#x} 4")
         return
 
     def context_args(self):
@@ -14345,10 +14356,8 @@ class DereferenceCommand(GenericCommand):
         link = to_string_dereference_from(current_address, join_start_idx=1)
 
         # craete line of one entry
-        line = ""
         addr_colored = Color.colorify(format_address(addrs[0].value), base_address_color)
-        ma = memalign * 2 + 2
-        line += "{:s}{:s}+{:#06x}({:03d}): {:{ma}s}".format(addr_colored, VERTICAL_LINE, offset, idx, link, ma=ma)
+        line = f"{addr_colored}{VERTICAL_LINE}+{offset:#06x}{VERTICAL_LINE}{idx:03d}: {link:{memalign * 2 + 2}s}"
 
         # add extra info
         current_address_value = read_int_from_memory(current_address)
@@ -16838,7 +16847,7 @@ class SyscallSearchCommand(GenericCommand):
             return
 
         try:
-            syscall_table = SyscallArgsCommand.get_syscall_table(arch, mode)
+            syscall_table = get_syscall_table(arch, mode)
         except Exception:
             self.usage()
             return
@@ -16857,6 +16866,2843 @@ class SyscallSearchCommand(GenericCommand):
         return
 
 
+# System call table
+# - The info of arguments type is picked up from kernel source around "SYSCALL_DEFINE*(...) / COMPAT_SYSCALL_DEFINE*(...)",
+# - The command I used: cd linux-6.*; ag --cc -A 6 "SYSCALL_DEFINE.*\bFUNCTION_NAME\b"
+# - But these are some exceptions (ex: not found), I picked up from the function of syscall implementation, and so on
+
+# x86_64
+# - arch/x86/entry/syscalls/syscall_64.tbl
+# - arch/x86/include/asm/unistd.h
+# - arch/x86/include/uapi/asm/unistd.h
+# - arch/x86/include/generated/uapi/asm/unistd-64.h
+# - arch/x86/include/generated/uapi/asm/unistd-x32.h
+x64_syscall_list = [
+    [0x000, 'read', ['unsigned int fd', 'char *buf', 'size_t count']],
+    [0x001, 'write', ['unsigned int fd', 'const char *buf', 'size_t count']],
+    [0x002, 'open', ['const char *filename', 'int flags', 'umode_t mode']],
+    [0x003, 'close', ['unsigned int fd']],
+    [0x004, 'stat', ['const char *filename', 'struct __old_kernel_stat *statbuf']],
+    [0x005, 'fstat', ['unsigned int fd', 'struct __old_kernel_stat *statbuf']],
+    [0x006, 'lstat', ['const char *filename', 'struct __old_kernel_stat *statbuf']],
+    [0x007, 'poll', ['struct pollfd *ufds', 'unsigned int nfds', 'int timeout_msecs']],
+    [0x008, 'lseek', ['unsigned int fd', 'off_t offset', 'unsigned int whence']],
+    [0x009, 'mmap', ['unsigned long addr', 'unsigned long len', 'unsigned long prot', 'unsigned long flags', 'unsigned long fd', 'unsigned long off']],
+    [0x00a, 'mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot']],
+    [0x00b, 'munmap', ['unsigned long addr', 'size_t len']],
+    [0x00c, 'brk', ['unsigned long brk']],
+    [0x00d, 'rt_sigaction', ['int sig', 'const struct sigaction *act', 'struct sigaction *oact', 'size_t sigsetsize']],
+    [0x00e, 'rt_sigprocmask', ['int how', 'sigset_t *nset', 'sigset_t *oset', 'size_t sigsetsize']],
+    [0x00f, 'rt_sigreturn', []],
+    [0x010, 'ioctl', ['unsigned int fd', 'unsigned int cmd', 'unsigned long arg']],
+    [0x011, 'pread64', ['unsigned int fd', 'char *buf', 'size_t count', 'loff_t pos']],
+    [0x012, 'pwrite64', ['unsigned int fd', 'const char *buf', 'size_t count', 'loff_t pos']],
+    [0x013, 'readv', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen']],
+    [0x014, 'writev', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen']],
+    [0x015, 'access', ['const char *filename', 'int mode']],
+    [0x016, 'pipe', ['int *fildes']],
+    [0x017, 'select', ['int n', 'fd_set *inp', 'fd_set *outp', 'fd_set *exp', 'struct __kernel_old_timeval *tvp']],
+    [0x018, 'sched_yield', []],
+    [0x019, 'mremap', ['unsigned long addr', 'unsigned long old_len', 'unsigned long new_len', 'unsigned long flags', 'unsigned long new_addr']],
+    [0x01a, 'msync', ['unsigned long start', 'size_t len', 'int flags']],
+    [0x01b, 'mincore', ['unsigned long start', 'size_t len', 'unsigned char *vec']],
+    [0x01c, 'madvise', ['unsigned long start', 'size_t len_in', 'int behavior']],
+    [0x01d, 'shmget', ['key_t key', 'size_t size', 'int shmflg']],
+    [0x01e, 'shmat', ['int shmid', 'char *shmaddr', 'int shmflg']],
+    [0x01f, 'shmctl', ['int shmid', 'int cmd', 'struct shmid_ds *buf']],
+    [0x020, 'dup', ['unsigned int fildes']],
+    [0x021, 'dup2', ['unsigned int oldfd', 'unsigned int newfd']],
+    [0x022, 'pause', []],
+    [0x023, 'nanosleep', ['struct __kernel_timespec *rqtp', 'struct __kernel_timespec *rmtp']],
+    [0x024, 'getitimer', ['int which', 'struct __kernel_old_itimerval *value']],
+    [0x025, 'alarm', ['unsigned int seconds']],
+    [0x026, 'setitimer', ['int which', 'struct __kernel_old_itimerval *value', 'struct __kernel_old_itimerval *ovalue']],
+    [0x027, 'getpid', []],
+    [0x028, 'sendfile', ['int out_fd', 'int in_fd', 'off_t *offset', 'size_t count']],
+    [0x029, 'socket', ['int family', 'int type', 'int protocol']],
+    [0x02a, 'connect', ['int fd', 'struct sockaddr *uservaddr', 'int addrlen']],
+    [0x02b, 'accept', ['int fd', 'struct sockaddr *upeer_sockaddr', 'int *upeer_addrlen']],
+    [0x02c, 'sendto', ['int fd', 'void *buff', 'size_t len', 'unsigned int flags', 'struct sockaddr *addr', 'int addr_len']],
+    [0x02d, 'recvfrom', ['int fd', 'void *ubuf', 'size_t size', 'unsigned int flags', 'struct sockaddr *addr', 'int *addr_len']],
+    [0x02e, 'sendmsg', ['int fd', 'struct user_msghdr *msg', 'unsigned int flags']],
+    [0x02f, 'recvmsg', ['int fd', 'struct user_msghdr *msg', 'unsigned int flags']],
+    [0x030, 'shutdown', ['int fd', 'int how']],
+    [0x031, 'bind', ['int fd', 'struct sockaddr *umyaddr', 'int addrlen']],
+    [0x032, 'listen', ['int fd', 'int backlog']],
+    [0x033, 'getsockname', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
+    [0x034, 'getpeername', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
+    [0x035, 'socketpair', ['int family', 'int type', 'int protocol', 'int *usockvec']],
+    [0x036, 'setsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int optlen']],
+    [0x037, 'getsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int *optlen']],
+    [0x038, 'clone', ['unsigned long clone_flags', 'unsigned long newsp', 'int *parent_tidptr', 'int *child_tidptr', 'unsigned long tls']],
+    [0x039, 'fork', []],
+    [0x03a, 'vfork', []],
+    [0x03b, 'execve', ['const char *filename', 'const char *const *argv', 'const char *const *envp']],
+    [0x03c, 'exit', ['int error_code']],
+    [0x03d, 'wait4', ['pid_t upid', 'int *stat_addr', 'int options', 'struct rusage *ru']],
+    [0x03e, 'kill', ['pid_t pid', 'int sig']],
+    [0x03f, 'uname', ['struct old_utsname *name']],
+    [0x040, 'semget', ['key_t key', 'int nsems', 'int semflg']],
+    [0x041, 'semop', ['int semid', 'struct sembuf *tsops', 'unsigned nsops']],
+    [0x042, 'semctl', ['int semid', 'int semnum', 'int cmd', 'unsigned long arg']],
+    [0x043, 'shmdt', ['char *shmaddr']],
+    [0x044, 'msgget', ['key_t key', 'int msgflg']],
+    [0x045, 'msgsnd', ['int msqid', 'struct msgbuf *msgp', 'size_t msgsz', 'int msgflg']],
+    [0x046, 'msgrcv', ['int msqid', 'struct msgbuf *msgp', 'size_t msgsz', 'long msgtyp', 'int msgflg']],
+    [0x047, 'msgctl', ['int msqid', 'int cmd', 'struct msqid_ds *buf']],
+    [0x048, 'fcntl', ['unsigned int fd', 'unsigned int cmd', 'unsigned long arg']],
+    [0x049, 'flock', ['unsigned int fd', 'unsigned int cmd']],
+    [0x04a, 'fsync', ['unsigned int fd']],
+    [0x04b, 'fdatasync', ['unsigned int fd']],
+    [0x04c, 'truncate', ['const char *path', 'long length']],
+    [0x04d, 'ftruncate', ['unsigned int fd', 'unsigned long length']],
+    [0x04e, 'getdents', ['unsigned int fd', 'struct linux_dirent *dirent', 'unsigned int count']],
+    [0x04f, 'getcwd', ['char *buf', 'unsigned long size']],
+    [0x050, 'chdir', ['const char *filename']],
+    [0x051, 'fchdir', ['unsigned int fd']],
+    [0x052, 'rename', ['const char *oldname', 'const char *newname']],
+    [0x053, 'mkdir', ['const char *pathname', 'umode_t mode']],
+    [0x054, 'rmdir', ['const char *pathname']],
+    [0x055, 'creat', ['const char *pathname', 'umode_t mode']],
+    [0x056, 'link', ['const char *oldname', 'const char *newname']],
+    [0x057, 'unlink', ['const char *pathname']],
+    [0x058, 'symlink', ['const char *oldname', 'const char *newname']],
+    [0x059, 'readlink', ['const char *path', 'char *buf', 'int bufsiz']],
+    [0x05a, 'chmod', ['const char *filename', 'umode_t mode']],
+    [0x05b, 'fchmod', ['unsigned int fd', 'umode_t mode']],
+    [0x05c, 'chown', ['const char *filename', 'uid_t user', 'gid_t group']],
+    [0x05d, 'fchown', ['unsigned int fd', 'uid_t user', 'gid_t group']],
+    [0x05e, 'lchown', ['const char *filename', 'uid_t user', 'gid_t group']],
+    [0x05f, 'umask', ['int mask']],
+    [0x060, 'gettimeofday', ['struct __kernel_old_timeval *tv', 'struct timezone *tz']],
+    [0x061, 'getrlimit', ['unsigned int resource', 'struct rlimit *rlim']],
+    [0x062, 'getrusage', ['int who', 'struct rusage *ru']],
+    [0x063, 'sysinfo', ['struct sysinfo *info']],
+    [0x064, 'times', ['struct tms *tbuf']],
+    [0x065, 'ptrace', ['long request', 'long pid', 'unsigned long addr', 'unsigned long data']],
+    [0x066, 'getuid', []],
+    [0x067, 'syslog', ['int type', 'char *buf', 'int len']],
+    [0x068, 'getgid', []],
+    [0x069, 'setuid', ['uid_t uid']],
+    [0x06a, 'setgid', ['gid_t gid']],
+    [0x06b, 'geteuid', []],
+    [0x06c, 'getegid', []],
+    [0x06d, 'setpgid', ['pid_t pid', 'pid_t pgid']],
+    [0x06e, 'getppid', []],
+    [0x06f, 'getpgrp', []],
+    [0x070, 'setsid', []],
+    [0x071, 'setreuid', ['uid_t ruid', 'uid_t euid']],
+    [0x072, 'setregid', ['gid_t rgid', 'gid_t egid']],
+    [0x073, 'getgroups', ['int gidsetsize', 'gid_t *grouplist']],
+    [0x074, 'setgroups', ['int gidsetsize', 'gid_t *grouplist']],
+    [0x075, 'setresuid', ['uid_t ruid', 'uid_t euid', 'uid_t suid']],
+    [0x076, 'getresuid', ['uid_t *ruidp', 'uid_t *euidp', 'uid_t *suidp']],
+    [0x077, 'setresgid', ['gid_t rgid', 'gid_t egid', 'gid_t sgid']],
+    [0x078, 'getresgid', ['gid_t *rgidp', 'gid_t *egidp', 'gid_t *sgidp']],
+    [0x079, 'getpgid', ['pid_t pid']],
+    [0x07a, 'setfsuid', ['uid_t uid']],
+    [0x07b, 'setfsgid', ['gid_t gid']],
+    [0x07c, 'getsid', ['pid_t pid']],
+    [0x07d, 'capget', ['cap_user_header_t header', 'cap_user_data_t dataptr']],
+    [0x07e, 'capset', ['cap_user_header_t header', 'const cap_user_data_t data']],
+    [0x07f, 'rt_sigpending', ['sigset_t *uset', 'size_t sigsetsize']],
+    [0x080, 'rt_sigtimedwait', ['const sigset_t *uthese', 'siginfo_t *uinfo', 'const struct __kernel_timespec *uts', 'size_t sigsetsize']],
+    [0x081, 'rt_sigqueueinfo', ['pid_t pid', 'int sig', 'siginfo_t *uinfo']],
+    [0x082, 'rt_sigsuspend', ['sigset_t *unewset', 'size_t sigsetsize']],
+    [0x083, 'sigaltstack', ['const stack_t *uss', 'stack_t *uoss']],
+    [0x084, 'utime', ['char *filename', 'struct utimbuf *times']],
+    [0x085, 'mknod', ['const char *filename', 'umode_t mode', 'unsigned dev']],
+    [0x086, 'uselib', ['const char *library']],
+    [0x087, 'personality', ['unsigned int personality']],
+    [0x088, 'ustat', ['unsigned dev', 'struct ustat *ubuf']],
+    [0x089, 'statfs', ['const char *pathname', 'struct statfs *buf']],
+    [0x08a, 'fstatfs', ['unsigned int fd', 'struct statfs *buf']],
+    [0x08b, 'sysfs', ['int option', 'unsigned long arg1', 'unsigned long arg2']],
+    [0x08c, 'getpriority', ['int which', 'int who']],
+    [0x08d, 'setpriority', ['int which', 'int who', 'int niceval']],
+    [0x08e, 'sched_setparam', ['pid_t pid', 'struct sched_param *param']],
+    [0x08f, 'sched_getparam', ['pid_t pid', 'struct sched_param *param']],
+    [0x090, 'sched_setscheduler', ['pid_t pid', 'int policy', 'struct sched_param *param']],
+    [0x091, 'sched_getscheduler', ['pid_t pid']],
+    [0x092, 'sched_get_priority_max', ['int policy']],
+    [0x093, 'sched_get_priority_min', ['int policy']],
+    [0x094, 'sched_rr_get_interval', ['pid_t pid', 'struct __kernel_timespec *interval']],
+    [0x095, 'mlock', ['unsigned long start', 'size_t len']],
+    [0x096, 'munlock', ['unsigned long start', 'size_t len']],
+    [0x097, 'mlockall', ['int flags']],
+    [0x098, 'munlockall', []],
+    [0x099, 'vhangup', []],
+    [0x09a, 'modify_ldt', ['int func', 'void *ptr', 'unsigned long bytecount']],
+    [0x09b, 'pivot_root', ['const char *new_root', 'const char *put_old']],
+    [0x09c, '_sysctl', ['struct __sysctl_args *args']], # sysctl # deleted from kenrel 5.5 ?
+    [0x09d, 'prctl', ['int option', 'unsigned long arg2', 'unsigned long arg3', 'unsigned long arg4', 'unsigned long arg5']],
+    [0x09e, 'arch_prctl', ['int option', 'unsigned long arg2']],
+    [0x09f, 'adjtimex', ['struct __kernel_timex *txc_p']],
+    [0x0a0, 'setrlimit', ['unsigned int resource', 'struct rlimit *rlim']],
+    [0x0a1, 'chroot', ['const char *filename']],
+    [0x0a2, 'sync', []],
+    [0x0a3, 'acct', ['const char *name']],
+    [0x0a4, 'settimeofday', ['struct __kernel_old_timeval *tv', 'struct timezone *tz']],
+    [0x0a5, 'mount', ['char *dev_name', 'char *dir_name', 'char *type', 'unsigned long flags', 'void *data']],
+    [0x0a6, 'umount2', ['char *name', 'int flags']],
+    [0x0a7, 'swapon', ['const char *specialfile', 'int swap_flags']],
+    [0x0a8, 'swapoff', ['const char *specialfile']],
+    [0x0a9, 'reboot', ['int magic1', 'int magic2', 'unsigned int cmd', 'void *arg']],
+    [0x0aa, 'sethostname', ['char *name', 'int len']],
+    [0x0ab, 'setdomainname', ['char *name', 'int len']],
+    [0x0ac, 'iopl', ['unsigned int level']],
+    [0x0ad, 'ioperm', ['unsigned long from', 'unsigned long num', 'int turn_on']],
+    #0x0ae, create_module # deleted from kernel 2.6
+    [0x0af, 'init_module', ['void *umod', 'unsigned long len', 'const char *uargs']],
+    [0x0b0, 'delete_module', ['const char *name_user', 'unsigned int flags']],
+    #0x0b1, get_kernel_syms # deleted from kernel 2.6
+    #0x0b2, query_module # deleted from kernel 2.6
+    [0x0b3, 'quotactl', ['unsigned int cmd', 'const char *special', 'qid_t id', 'void *addr']],
+    #0x0b4, nfsservctl # deleted from kernel 3.1
+    #0x0b5, getpmsg # unimplemented
+    #0x0b6, putpmsg # unimplemented
+    #0x0b7, afs_syscall # unimplemented
+    #0x0b8, tuxcall # unimplemented
+    #0x0b9, security # unimplemented
+    [0x0ba, 'gettid', []],
+    [0x0bb, 'readahead', ['int fd', 'loff_t offset', 'size_t count']],
+    [0x0bc, 'setxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
+    [0x0bd, 'lsetxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
+    [0x0be, 'fsetxattr', ['int fd', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
+    [0x0bf, 'getxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
+    [0x0c0, 'lgetxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
+    [0x0c1, 'fgetxattr', ['int fd', 'const char *name', 'void *value', 'size_t size']],
+    [0x0c2, 'listxattr', ['const char *pathname', 'char *list', 'size_t size']],
+    [0x0c3, 'llistxattr', ['const char *pathname', 'char *list', 'size_t size']],
+    [0x0c4, 'flistxattr', ['int fd', 'char *list', 'size_t size']],
+    [0x0c5, 'removexattr', ['const char *pathname', 'const char *name']],
+    [0x0c6, 'lremovexattr', ['const char *pathname', 'const char *name']],
+    [0x0c7, 'fremovexattr', ['int fd', 'const char *name']],
+    [0x0c8, 'tkill', ['pid_t pid', 'int sig']],
+    [0x0c9, 'time', ['__kernel_old_time_t *tloc']],
+    [0x0ca, 'futex', ['u32 *uaddr', 'int op', 'u32 val', 'struct __kernel_timespec *utime', 'u32 *uaddr2', 'u32 val3']],
+    [0x0cb, 'sched_setaffinity', ['pid_t pid', 'unsigned int len', 'unsigned long *user_mask_ptr']],
+    [0x0cc, 'sched_getaffinity', ['pid_t pid', 'unsigned int len', 'unsigned long *user_mask_ptr']],
+    [0x0cd, 'set_thread_area', ['struct user_desc *u_info']],
+    [0x0ce, 'io_setup', ['unsigned nr_events', 'aio_context_t *ctxp']],
+    [0x0cf, 'io_destroy', ['aio_context_t ctx']],
+    [0x0d0, 'io_getevents', ['aio_context_t ctx_id', 'long min_nr', 'long nr', 'struct io_event *events', 'struct __kernel_timespec *timeout']],
+    [0x0d1, 'io_submit', ['aio_context_t ctx_id', 'long nr', 'struct iocb **iocbpp']],
+    [0x0d2, 'io_cancel', ['aio_context_t ctx_id', 'struct iocb *iocb', 'struct io_event *result']],
+    [0x0d3, 'get_thread_area', ['struct user_desc *u_info']],
+    [0x0d4, 'lookup_dcookie', ['u64 cookie64', 'char *buf', 'size_t len']],
+    [0x0d5, 'epoll_create', ['int size']],
+    #0x0d6, epoll_ctl_old # unimplemented
+    #0x0d7, epoll_wait_old # unimplemented
+    [0x0d8, 'remap_file_pages', ['unsigned long start', 'unsigned long size', 'unsigned long prot', 'unsigned long pgoff', 'unsigned long flags']],
+    [0x0d9, 'getdents64', ['unsigned int fd', 'struct linux_dirent64 *dirent', 'unsigned int count']],
+    [0x0da, 'set_tid_address', ['int *tidptr']],
+    [0x0db, 'restart_syscall', []],
+    [0x0dc, 'semtimedop', ['int semid', 'struct sembuf *tsops', 'unsigned int nsops', 'const struct __kernel_timespec *timeout']],
+    [0x0dd, 'fadvise64', ['int fd', 'loff_t offset', 'size_t len', 'int advice']],
+    [0x0de, 'timer_create', ['clockid_t which_clock', 'struct sigevent *timer_event_spec', 'timer_t *created_timer_id']],
+    [0x0df, 'timer_settime', ['timer_t timer_id', 'int flags', 'const struct __kernel_itimerspec *new_setting', 'struct __kernel_itimerspec *old_setting']],
+    [0x0e0, 'timer_gettime', ['timer_t timer_id', 'struct __kernel_itimerspec *setting']],
+    [0x0e1, 'timer_getoverrun', ['timer_t timer_id']],
+    [0x0e2, 'timer_delete', ['timer_t timer_id']],
+    [0x0e3, 'clock_settime', ['clockid_t which_clock', 'const struct __kernel_timespec *tp']],
+    [0x0e4, 'clock_gettime', ['clockid_t which_clock', 'struct __kernel_timespec *tp']],
+    [0x0e5, 'clock_getres', ['clockid_t which_clock', 'struct __kernel_timespec *tp']],
+    [0x0e6, 'clock_nanosleep', ['clockid_t which_clock', 'int flags', 'const struct __kernel_timespec *rqtp', 'struct __kernel_timespec *rmtp']],
+    [0x0e7, 'exit_group', ['int error_code']],
+    [0x0e8, 'epoll_wait', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'int timeout']],
+    [0x0e9, 'epoll_ctl', ['int epfd', 'int op', 'int fd', 'struct epoll_event *event']],
+    [0x0ea, 'tgkill', ['pid_t tgid', 'pid_t pid', 'int sig']],
+    [0x0eb, 'utimes', ['char *filename', 'struct __kernel_old_timeval *utimes']],
+    #0x0ec, vserver # unimplemented
+    [0x0ed, 'mbind', ['unsigned long start', 'unsigned long len', 'unsigned long mode', 'const unsigned long *nmask', 'unsigned long maxnode', 'unsigned int flags']],
+    [0x0ee, 'set_mempolicy', ['int mode', 'const unsigned long *nmask', 'unsigned long maxnode']],
+    [0x0ef, 'get_mempolicy', ['int *policy', 'unsigned long *nmask', 'unsigned long maxnode', 'unsigned long addr', 'unsigned long flags']],
+    [0x0f0, 'mq_open', ['const char *u_name', 'int oflag', 'umode_t mode', 'struct mq_attr *u_attr']],
+    [0x0f1, 'mq_unlink', ['const char *u_name']],
+    [0x0f2, 'mq_timedsend', ['mqd_t mqdes', 'const char *u_msg_ptr', 'size_t msg_len', 'unsigned int msg_prio', 'const struct __kernel_timespec *u_abs_timeout']],
+    [0x0f3, 'mq_timedreceive', ['mqd_t mqdes', 'char *u_msg_ptr', 'size_t msg_len', 'unsigned int *u_msg_prio', 'const struct __kernel_timespec *u_abs_timeout']],
+    [0x0f4, 'mq_notify', ['mqd_t mqdes', 'const struct sigevent *u_notification']],
+    [0x0f5, 'mq_getsetattr', ['mqd_t mqdes', 'const struct mq_attr *u_mqstat', 'struct mq_attr *u_omqstat']],
+    [0x0f6, 'kexec_load', ['unsigned long entry', 'unsigned long nr_segments', 'struct kexec_segment *segments', 'unsigned long flags']],
+    [0x0f7, 'waitid', ['int which', 'pid_t pid', 'struct siginfo *infop', 'int options', 'struct rusage *ru']],
+    [0x0f8, 'add_key', ['const char *_type', 'const char *_description', 'const void *_payload', 'size_t plen', 'key_serial_t ringid']],
+    [0x0f9, 'request_key', ['const char *_type', 'const char *_description', 'const char *_callout_info', 'key_serial_t destringid']],
+    [0x0fa, 'keyctl', ['int option', 'unsigned long arg2', 'unsigned long arg3', 'unsigned long arg4', 'unsigned long arg5']],
+    [0x0fb, 'ioprio_set', ['int which', 'int who', 'int ioprio']],
+    [0x0fc, 'ioprio_get', ['int which', 'int who']],
+    [0x0fd, 'inotify_init', []],
+    [0x0fe, 'inotify_add_watch', ['int fd', 'const char *pathname', 'u32 mask']],
+    [0x0ff, 'inotify_rm_watch', ['int fd', '__s32 wd']],
+    [0x100, 'migrate_pages', ['pid_t pid', 'unsigned long maxnode', 'const unsigned long *old_nodes', 'const unsigned long *new_nodes']],
+    [0x101, 'openat', ['int dfd', 'const char *filename', 'int flags', 'umode_t mode']],
+    [0x102, 'mkdirat', ['int dfd', 'const char *pathname', 'umode_t mode']],
+    [0x103, 'mknodat', ['int dfd', 'const char *filename', 'umode_t mode', 'unsigned int dev']],
+    [0x104, 'fchownat', ['int dfd', 'const char *filename', 'uid_t user', 'gid_t group', 'int flag']],
+    [0x105, 'futimesat', ['int dfd', 'const char *filename', 'struct __kernel_old_timeval *utimes']],
+    [0x106, 'newfstatat', ['int dfd', 'const char *filename', 'struct stat *statbuf', 'int flag']],
+    [0x107, 'unlinkat', ['int dfd', 'const char *pathname', 'int flag']],
+    [0x108, 'renameat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname']],
+    [0x109, 'linkat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'int flags']],
+    [0x10a, 'symlinkat', ['const char *oldname', 'int newdfd', 'const char *newname']],
+    [0x10b, 'readlinkat', ['int dfd', 'const char *pathname', 'char *buf', 'int bufsiz']],
+    [0x10c, 'fchmodat', ['int dfd', 'const char *filename', 'umode_t mode']],
+    [0x10d, 'faccessat', ['int dfd', 'const char *filename', 'int mode']],
+    [0x10e, 'pselect6', ['int n', 'fd_set *inp', 'fd_set *outp', 'fd_set *exp', 'struct __kernel_timespec *tsp', 'void *sig']],
+    [0x10f, 'ppoll', ['struct pollfd *ufds', 'unsigned int nfds', 'struct __kernel_timespec *tsp', 'const sigset_t *sigmask', 'size_t sigsetsize']],
+    [0x110, 'unshare', ['unsigned long unshare_flags']],
+    [0x111, 'set_robust_list', ['struct robust_list_head *head', 'size_t len']],
+    [0x112, 'get_robust_list', ['int pid', 'struct robust_list_head **head_ptr', 'size_t *len_ptr']],
+    [0x113, 'splice', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
+    [0x114, 'tee', ['int fdin', 'int fdout', 'size_t len', 'unsigned int flags']],
+    [0x115, 'sync_file_range', ['int fd', 'loff_t offset', 'loff_t nbytes', 'unsigned int flags']],
+    [0x116, 'vmsplice', ['int fd', 'const struct iovec *uiov', 'unsigned long nr_segs', 'unsigned int flags']],
+    [0x117, 'move_pages', ['pid_t pid', 'unsigned long nr_pages', 'const void **pages', 'const int *nodes', 'int *status', 'int flags']],
+    [0x118, 'utimensat', ['int dfd', 'const char *filename', 'struct __kernel_timespec *utimes', 'int flags']],
+    [0x119, 'epoll_pwait', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'int timeout', 'const sigset_t *sigmask', 'size_t sigsetsize']],
+    [0x11a, 'signalfd', ['int ufd', 'sigset_t *user_mask', 'size_t sizemask']],
+    [0x11b, 'timerfd_create', ['int clockid', 'int flags']],
+    [0x11c, 'eventfd', ['unsigned int count']],
+    [0x11d, 'fallocate', ['int fd', 'int mode', 'loff_t offset', 'loff_t len']],
+    [0x11e, 'timerfd_settime', ['int ufd', 'int flags', 'const struct __kernel_itimerspec *utmr', 'struct __kernel_itimerspec *otmr']],
+    [0x11f, 'timerfd_gettime', ['int ufd', 'struct __kernel_itimerspec *otmr']],
+    [0x120, 'accept4', ['int fd', 'struct sockaddr *upeer_sockaddr', 'int *upeer_addrlen', 'int flags']],
+    [0x121, 'signalfd4', ['int ufd', 'sigset_t *user_mask', 'size_t sizemask', 'int flags']],
+    [0x122, 'eventfd2', ['unsigned int count', 'int flags']],
+    [0x123, 'epoll_create1', ['int flags']],
+    [0x124, 'dup3', ['unsigned int oldfd', 'unsigned int newfd', 'int flags']],
+    [0x125, 'pipe2', ['int *fildes', 'int flags']],
+    [0x126, 'inotify_init1', ['int flags']],
+    [0x127, 'preadv', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h']],
+    [0x128, 'pwritev', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h']],
+    [0x129, 'rt_tgsigqueueinfo', ['pid_t tgid', 'pid_t pid', 'int sig', 'siginfo_t *uinfo']],
+    [0x12a, 'perf_event_open', ['struct perf_event_attr *attr_uptr', 'pid_t pid', 'int cpu', 'int group_fd', 'unsigned long flags']],
+    [0x12b, 'recvmmsg', ['int fd', 'struct mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags', 'struct __kernel_timespec *timeout']],
+    [0x12c, 'fanotify_init', ['unsigned int flags', 'unsigned int event_f_flags']],
+    [0x12d, 'fanotify_mark', ['int fanotify_fd', 'unsigned int flags', '__u64 mask', 'int dfd', 'const char *pathname']],
+    [0x12e, 'prlimit64', ['pid_t pid', 'unsigned int resource', 'const struct rlimit64 *new_rlim', 'struct rlimit64 *old_rlim']],
+    [0x12f, 'name_to_handle_at', ['int dfd', 'const char *name', 'struct file_handle *handle', 'int *mnt_id', 'int flag']],
+    [0x130, 'open_by_handle_at', ['int mountdirfd', 'struct file_handle *handle', 'int flags']],
+    [0x131, 'clock_adjtime', ['clockid_t which_clock', 'struct __kernel_timex *tx']],
+    [0x132, 'syncfs', ['int fd']],
+    [0x133, 'sendmmsg', ['int fd', 'struct mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags']],
+    [0x134, 'setns', ['int fd', 'int flags']],
+    [0x135, 'getcpu', ['unsigned *cpup', 'unsigned *nodep', 'struct getcpu_cache *unused']],
+    [0x136, 'process_vm_readv', ['pid_t pid', 'const struct iovec *lvec', 'unsigned long liovcnt', 'const struct iovec *rvec', 'unsigned long riovcnt', 'unsigned long flags']],
+    [0x137, 'process_vm_writev', ['pid_t pid', 'const struct iovec *lvec', 'unsigned long liovcnt', 'const struct iovec *rvec', 'unsigned long riovcnt', 'unsigned long flags']],
+    [0x138, 'kcmp', ['pid_t pid1', 'pid_t pid2', 'int type', 'unsigned long idx1', 'unsigned long idx2']],
+    [0x139, 'finit_module', ['int fd', 'const char *uargs', 'int flags']],
+    [0x13a, 'sched_setattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int flags']],
+    [0x13b, 'sched_getattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int usize', 'unsigned int flags']],
+    [0x13c, 'renameat2', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'unsigned int flags']],
+    [0x13d, 'seccomp', ['unsigned int op', 'unsigned int flags', 'void *uargs']],
+    [0x13e, 'getrandom', ['char *buf', 'size_t count', 'unsigned int flags']],
+    [0x13f, 'memfd_create', ['const char *uname', 'unsigned int flags']],
+    [0x140, 'kexec_file_load', ["int kernel_fd", "int initrd_fd", "unsigned long cmdline_len", "const char *cmdline_ptr", "unsigned long flags"]],
+    [0x141, 'bpf', ['int cmd', 'union bpf_attr *uattr', 'unsigned int size']],
+    [0x142, 'execveat', ['int fd', 'const char *filename', 'const char *const *argv', 'const char *const *envp', 'int flags']],
+    [0x143, 'userfaultfd', ['int flags']],
+    [0x144, 'membarrier', ['int cmd', 'int flags']],
+    [0x145, 'mlock2', ['unsigned long start', 'size_t len', 'int flags']],
+    [0x146, 'copy_file_range', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
+    [0x147, 'preadv2', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h', 'rwf_t flags']],
+    [0x148, 'pwritev2', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h', 'rwf_t flags']],
+    [0x149, 'pkey_mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot', 'int pkey']],
+    [0x14a, 'pkey_alloc', ['unsigned long flags', 'unsigned long init_val']],
+    [0x14b, 'pkey_free', ['int pkey']],
+    [0x14c, 'statx', ['int dfd', 'const char *filename', 'unsigned flags', 'unsigned int mask', 'struct statx *buffer']],
+    [0x14d, 'io_pgetevents', ['aio_context_t ctx_id', 'long min_nr', 'long nr', 'struct io_event *events', 'struct __kernel_timespec *timeout', 'const struct __aio_sigset *usig']],
+    [0x14e, 'rseq', ['struct rseq *rseq', 'u32 rseq_len', 'int flags', 'u32 sig']],
+    # 0x14e-0x182, unused
+    # 0x183-0x1a7, don't use
+    [0x1a8, 'pidfd_send_signal', ['int pidfd', 'int sig', 'siginfo_t *info', 'unsigned int flags']],
+    [0x1a9, 'io_uring_setup', ['u32 entries', 'struct io_uring_params *params']],
+    [0x1aa, 'io_uring_enter', ['unsigned int fd', 'u32 to_submit', 'u32 min_complete', 'u32 flags', 'const sigset_t *sig', 'size_t sigsz']],
+    [0x1ab, 'io_uring_register', ['unsigned int fd', 'unsigned int opcode', 'void *arg', 'unsigned int nr_args']],
+    [0x1ac, 'open_tree', ['int dfd', 'const char *filename', 'unsigned flags']],
+    [0x1ad, 'move_mount', ['int from_dfd', 'const char *from_pathname', 'int to_dfd', 'const char *to_pathname', 'unsigned int flags']],
+    [0x1ae, 'fsopen', ['const char *_fs_name', 'unsigned int flags']],
+    [0x1af, 'fsconfig', ['int fd', 'unsigned int cmd', 'const char *_key', 'const void *_value', 'int aux']],
+    [0x1b0, 'fsmount', ['int fs_fd', 'unsigned int flags', 'unsigned int attr_flags']],
+    [0x1b1, 'fspick', ['int, dfd', 'const char *path', 'unsigned int flags']],
+    [0x1b2, 'pidfd_open', ['pid_t pid', 'unsigned int flags']],
+    [0x1b3, 'clone3', ['struct clone_args *uargs', 'size_t size']],
+    [0x1b4, 'close_range', ['unsigned int fd', 'unsigned int max_fd', 'unsigned int flag']],
+    [0x1b5, 'openat2', ['int dfd', 'const char *filename', 'struct open_how *how', 'size_t usize']],
+    [0x1b6, 'pidfd_getfd', ['int pidfd', 'int fd', 'unsigned int flags']],
+    [0x1b7, 'faccessat2', ['int dfd', 'const char *filename', 'int mode', 'int flags']],
+    [0x1b8, 'process_madvise', ['int pidfd', 'const struct iovec *vec', 'size_t vlen', 'int behavior', 'unsigned int flags']],
+    [0x1b9, 'epoll_pwait2', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'const struct __kernel_timespec *timeout', 'const sigset_t *sigmask', 'size_t sigsetsize']],
+    [0x1ba, 'mount_setattr', ['int dfd', 'const char *path', 'unsigned int flags', 'struct mount_attr *uattr', 'size_t usize']],
+    [0x1bb, 'quotactl_fd', ['unsigned int fd', 'unsigned int cmd', 'qid_t id', 'void __user *addr']],
+    [0x1bc, 'landlock_create_ruleset', ['const struct landlock_ruleset_attr *const attr', 'const size_t size', 'const __u32 flags']],
+    [0x1bd, 'landlock_add_rule', ['const int ruleset_fd', 'const enum landlock_rule_type rule_type', 'const void *const rule_attr', 'const __u32 flags']],
+    [0x1be, 'landlock_restrict_self', ['const int ruleset_fd', 'const __u32 flags']],
+    [0x1bf, 'memfd_secret', ['unsigned int, flags']],
+    [0x1c0, 'process_mrelease', ['int pidfd', 'unsigned int flags']],
+    [0x1c1, 'futex_waitv', ['struct futex_waitv *waiters', 'unsigned int nr_futexes', 'unsigned int flags', 'struct __kernel_timespec *timeout', 'clockid_t clockid']],
+    [0x1c2, 'set_mempolicy_home_node', ['unsigned long start', 'unsigned long len', 'unsigned long home_node', 'unsigned long flags']],
+]
+
+x32_special_syscall_list = [
+    [0x40000200, 'rt_sigaction', ['int sig', 'const struct compat_sigaction *act', 'struct compat_sigaction *oact', 'compat_size_t sigsetsize']], # compat
+    [0x40000201, 'rt_sigreturn', []], # compat x32_rt_sigreturn
+    [0x40000202, 'ioctl', ['unsigned int fd', 'unsigned int cmd', 'compat_ulong_t arg']], # compat
+    [0x40000203, 'readv', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen']], # compat
+    [0x40000204, 'writev', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen']], # compat
+    [0x40000205, 'recvfrom', ['int fd', 'void *buf', 'compat_size_t len', 'unsigned int flags', 'struct sockaddr *addr', 'int *addr_len']], # compat
+    [0x40000206, 'sendmsg', ['int fd', 'struct compat_msghdr *msg', 'unsigned int flags']], # compat
+    [0x40000207, 'recvmsg', ['int fd', 'struct compat_msghdr *msg', 'unsigned int flags']], # compat
+    [0x40000208, 'execve', ['const char *filename', 'const compat_uptr_t *argv', 'const compat_uptr_t *envp']], # compat
+    [0x40000209, 'ptrace', ['compat_long_t request', 'compat_long_t pid', 'compat_long_t addr', 'compat_long_t data']], # compat
+    [0x4000020a, 'rt_sigpending', ['compat_sigset_t *uset', 'compat_size_t sigsetsize']],
+    [0x4000020b, 'rt_sigtimedwait', ['const compat_sigset_t *uthese', 'struct compat_siginfo *uinfo', 'struct __kernel_timespec *uts', 'compat_size_t sigsetsize']], # compat rt_sigtimedwait_time64
+    [0x4000020c, 'rt_sigqueueinfo', ['compat_pid_t pid', 'int sig', 'struct compat_siginfo *uinfo']], # compat
+    [0x4000020d, 'sigaltstack', ['const compat_stack_t *uss_ptr', 'compat_stack_t *uoss_ptr']], # compat
+    [0x4000020e, 'timer_create', ['clockid_t which_clock', 'struct compat_sigevent *timer_event_spec', 'timer_t *created_timer_id']], # compat
+    [0x4000020f, 'mq_notify', ['mqd_t mqdes', 'const struct compat_sigevent *u_notification']], # compat
+    [0x40000210, 'kexec_load', ['compat_ulong_t entry', 'compat_ulong_t nr_segments', 'struct compat_kkexec_segment *segments', 'compat_ulong_t flags']], # compat
+    [0x40000211, 'waitid', ['int which', 'compat_pid_t pid', 'struct compat_siginfo *infop', 'int options', 'struct compat_rusage *uru']], # compat
+    [0x40000212, 'set_robust_list', ['struct compat_robust_list_head *head', 'compat_size_t len']], # compat
+    [0x40000213, 'get_robust_list', ['int pid', 'compat_uptr_t *head_ptr', 'compat_size_t *len_ptr']], # compat
+    [0x40000214, 'vmsplice', ['int fd', 'const struct compat_iovec *iov32', 'unsigned int nr_segs', 'unsigned int flags']], # compat
+    [0x40000215, 'move_pages', ['pid_t pid', 'compat_ulong_t nr_pages', 'compat_uptr_t *pages32', 'const int *nodes', 'int *status', 'int flags']], # compat
+    [0x40000216, 'preadv', ['unsigned long fd', 'const struct compat_iovec *vec', 'unsigned long vlen', 'loff_t pos']], # compat preadv64
+    [0x40000217, 'pwritev', ['unsigned long fd', 'const struct compat_iovec *vec', 'unsigned long vlen', 'loff_t pos']], # compat pwritev64
+    [0x40000218, 'rt_tgsigqueueinfo', ['compat_pid_t tgid', 'compat_pid_t pid', 'int sig', 'struct compat_siginfo *uinfo']], # compat
+    [0x40000219, 'recvmmsg', ['int fd', 'struct compat_mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags', 'struct __kernel_timespec *timeout']], # compat recvmmsg_time64
+    [0x4000021a, 'sendmmsg', ['int fd', 'struct compat_mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags']], # compat
+    [0x4000021b, 'process_vm_readv', ['compat_pid_t pid', 'const struct compat_iovec *lvec', 'compat_ulong_t liovcnt', 'const struct compat_iovec *rvec', 'compat_ulong_t riovcnt', 'compat_ulong_t flags']], # compat
+    [0x4000021c, 'process_vm_writev', ['compat_pid_t pid', 'const struct compat_iovec *lvec', 'compat_ulong_t liovcnt', 'const struct compat_iovec *rvec', 'compat_ulong_t riovcnt', 'compat_ulong_t flags']], # compat
+    [0x4000021d, 'setsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int optlen']],
+    [0x4000021e, 'getsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int *optlen']],
+    [0x4000021f, 'io_setup', ['unsigned nr_events', 'u32 *ctx32p']], # compat
+    [0x40000220, 'io_submit', ['compat_aio_context_t ctx_id', 'int nr', 'compat_uptr_t *iocbpp']], # compat
+    [0x40000221, 'execveat', ['int fd', 'const char *filename', 'const compat_uptr_t *argv', 'const compat_uptr_t *envp', 'int flags']], # compat
+    [0x40000222, 'preadv2', ['unsigned long fd', 'const struct compat_iovec *vec', 'unsigned long vlen', 'loff_t pos', 'rwf_t flags']], # compat preadv64v2
+    [0x40000223, 'pwritev2', ['unsigned long fd', 'const struct compat_iovec *vec', 'unsigned long vlen', 'loff_t pos', 'rwf_t flags']], # compat pwritev64v2
+]
+
+
+# x86 (on x86_64 machine)
+# - arch/x86/include/asm/unistd.h
+# - arch/x86/include/uapi/asm/unistd.h
+# - arch/x86/include/generated/uapi/asm/unistd-32.h
+# - arch/x86/entry/syscalls/syscall_32.tbl
+x86_emulated_syscall_list = [
+    [0x000, 'restart_syscall', []],
+    [0x001, 'exit', ['int error_code']],
+    [0x002, 'fork', []],
+    [0x003, 'read', ['unsigned int fd', 'char *buf', 'size_t count']],
+    [0x004, 'write', ['unsigned int fd', 'const char *buf', 'size_t count']],
+    [0x005, 'open', ['const char *filename', 'int flags', 'umode_t mode']], # compat
+    [0x006, 'close', ['unsigned int fd']],
+    [0x007, 'waitpid', ['pid_t pid', 'int *stat_addr', 'int options']],
+    [0x008, 'creat', ['const char *pathname', 'umode_t mode']],
+    [0x009, 'link', ['const char *oldname', 'const char *newname']],
+    [0x00a, 'unlink', ['const char *pathname']],
+    [0x00b, 'execve', ['const char *filename', 'const compat_uptr_t *argv', 'const compat_uptr_t *envp']], # compat
+    [0x00c, 'chdir', ['const char *filename']],
+    [0x00d, 'time', ['old_time32_t *tloc']], # time32
+    [0x00e, 'mknod', ['const char *filename', 'umode_t mode', 'unsigned dev']],
+    [0x00f, 'chmod', ['const char *filename', 'umode_t mode']],
+    [0x010, 'lchown', ['const char *filename', 'old_uid_t user', 'old_gid_t group']], # lchown16
+    #0x011, break # unimplemented
+    [0x012, 'oldstat', ['const char *filename', 'struct __old_kernel_stat *statbuf']], # fstat
+    [0x013, 'lseek', ['unsigned int fd', 'compat_off_t offset', 'unsigned int whence']], # compat
+    [0x014, 'getpid', []],
+    [0x015, 'mount', ['const char *dev_name', 'const char *dir_name', 'const char *type', 'compat_ulong_t flags', 'const void *data']], # compat
+    [0x016, 'umount', ['char *name']], # oldumount
+    [0x017, 'setuid', ['old_uid_t uid']], # setuid16
+    [0x018, 'getuid', []], # getuid16
+    [0x019, 'stime', ['old_time32_t *tptr']], # stime32
+    [0x01a, 'ptrace', ['compat_long_t request', 'compat_long_t pid', 'compat_long_t addr', 'compat_long_t data']], # compat
+    [0x01b, 'alarm', ['unsigned int seconds']],
+    [0x01c, 'oldfstat', ['unsigned int fd', 'struct __old_kernel_stat *statbuf']], # fstat
+    [0x01d, 'pause', []],
+    [0x01e, 'utime', ['char *filename', 'struct old_utimbuf32 *t']], # utime32
+    #0x01f, stty # unimplemented
+    #0x020, gtty # unimplemented
+    [0x021, 'access', ['const char *filename', 'int mode']],
+    [0x022, 'nice', ['int increment']],
+    #0x023, ftime # unimplemented
+    [0x024, 'sync', []],
+    [0x025, 'kill', ['pid_t pid', 'int sig']],
+    [0x026, 'rename', ['const char *oldname', 'const char *newname']],
+    [0x027, 'mkdir', ['const char *pathname', 'umode_t mode']],
+    [0x028, 'rmdir', ['const char *pathname']],
+    [0x029, 'dup', ['unsigned int fildes']],
+    [0x02a, 'pipe', ['int *fildes']],
+    [0x02b, 'times', ['struct compat_tms *tbuf']], # compat
+    #0x02c, prof # unimplemented
+    [0x02d, 'brk', ['unsigned long brk']],
+    [0x02e, 'setgid', ['old_gid_t gid']], # setgid16
+    [0x02f, 'getgid', []], # getgid16
+    [0x030, 'signal', ['int sig', '__sighandler_t handler']],
+    [0x031, 'geteuid', []], # geteuid16
+    [0x032, 'getegid', []], # getegid16
+    [0x033, 'acct', ['const char *name']],
+    [0x034, 'umount2', ['char *name', 'int flags']], # umount
+    #0x035, lock # unimplemented
+    [0x036, 'ioctl', ['unsigned int fd', 'unsigned int cmd', 'compat_ulong_t arg']], # compat
+    [0x037, 'fcntl', ['unsigned int fd', 'unsigned int cmd', 'compat_ulong_t arg']], # compat fcntl64
+    #0x038, mpx # unimplemented
+    [0x039, 'setpgid', ['pid_t pid', 'pid_t pgid']],
+    #0x03a, ulimit # unimplemented
+    [0x03b, 'oldolduname', ['struct oldold_utsname *name']], # olduname
+    [0x03c, 'umask', ['int mask']],
+    [0x03d, 'chroot', ['const char *filename']],
+    [0x03e, 'ustat', ['unsigned dev', 'struct compat_ustat *u']], # compat
+    [0x03f, 'dup2', ['unsigned int oldfd', 'unsigned int newfd']],
+    [0x040, 'getppid', []],
+    [0x041, 'getpgrp', []],
+    [0x042, 'setsid', []],
+    [0x043, 'sigaction', ['int sig', 'const struct compat_old_sigaction *act', 'struct compat_old_sigaction *oact']], # compat
+    [0x044, 'sgetmask', []],
+    [0x045, 'ssetmask', ['int newmask']],
+    [0x046, 'setreuid', ['old_uid_t ruid', 'old_uid_t euid']], # setreuid16
+    [0x047, 'setregid', ['old_gid_t rgid', 'old_gid_t egid']], # setregid16
+    [0x048, 'sigsuspend', ['old_sigset_t mask']],
+    [0x049, 'sigpending', ['compat_old_sigset_t *set32']], # compat
+    [0x04a, 'sethostname', ['char *name', 'int len']],
+    [0x04b, 'setrlimit', ['unsigned int resource', 'struct compat_rlimit *rlim']], # compat
+    [0x04c, 'getrlimit', ['unsigned int resource', 'struct compat_rlimit *rlim']], # compat old_getrlimit
+    [0x04d, 'getrusage', ['int who', 'struct compat_rusage *ru']], # compat
+    [0x04e, 'gettimeofday', ['struct old_timeval32 *tv', 'struct timezone *tz']], # compat
+    [0x04f, 'settimeofday', ['struct old_timeval32 *tv', 'struct timezone *tz']], # compat
+    [0x050, 'getgroups', ['int gidsetsize', 'old_gid_t *grouplist']], # getgroups16
+    [0x051, 'setgroups', ['int gidsetsize', 'old_gid_t *grouplist']], # setgroups16
+    [0x052, 'select', ['struct compat_sel_arg_struct *arg']], # compat old_select
+    [0x053, 'symlink', ['const char *oldname', 'const char *newname']],
+    [0x054, 'oldlstat', ['const char *filename', 'struct __old_kernel_stat *statbuf']], # lstat
+    [0x055, 'readlink', ['const char *path', 'char *buf', 'int bufsiz']],
+    [0x056, 'uselib', ['const char *library']],
+    [0x057, 'swapon', ['const char *specialfile', 'int swap_flags']],
+    [0x058, 'reboot', ['int magic1', 'int magic2', 'unsigned int cmd', 'void *arg']],
+    [0x059, 'readdir', ['unsigned int fd', 'struct compat_old_linux_dirent *dirent', 'unsigned int count']], # compat old_readdir
+    [0x05a, 'mmap', ['struct mmap_arg_struct32 *arg']], # compat ia32_mmap
+    [0x05b, 'munmap', ['unsigned long addr', 'size_t len']],
+    [0x05c, 'truncate', ['const char *path', 'compat_off_t length']], # compat
+    [0x05d, 'ftruncate', ['unsigned int fd', 'compat_ulong_t length']], # compat
+    [0x05e, 'fchmod', ['unsigned int fd', 'umode_t mode']],
+    [0x05f, 'fchown', ['unsigned int fd', 'old_uid_t user', 'old_gid_t group']], # fchown16
+    [0x060, 'getpriority', ['int which', 'int who']],
+    [0x061, 'setpriority', ['int which', 'int who', 'int niceval']],
+    #0x062, profil # unimplemented
+    [0x063, 'statfs', ['const char *pathname', 'struct compat_statfs *buf']], # compat
+    [0x064, 'fstatfs', ['unsigned int fd', 'struct compat_statfs *buf']], # compat
+    [0x065, 'ioperm', ['unsigned long from', 'unsigned long num', 'int turn_on']],
+    [0x066, 'socketcall', ['int call', 'u32 *args']], # compat
+    [0x067, 'syslog', ['int type', 'char *buf', 'int len']],
+    [0x068, 'setitimer', ['int which', 'struct old_itimerval32 *value', 'struct old_itimerval32 *ovalue']], # compat
+    [0x069, 'getitimer', ['int which', 'struct old_itimerval32 *value']], # compat
+    [0x06a, 'stat', ['const char *filename', 'struct compat_stat *statbuf']], # compat newstat
+    [0x06b, 'lstat', ['const char *filename', 'struct compat_stat *statbuf']], # compat newlstat
+    [0x06c, 'fstat', ['unsigned int fd', 'struct compat_stat *statbuf']], # compat newfstat
+    [0x06d, 'olduname', ['struct old_utsname *name']], # uname
+    [0x06e, 'iopl', ['unsigned int level']],
+    [0x06f, 'vhangup', []],
+    #0x070, idle # deleted from kernel 2.3.13
+    #0x071, vm86old # only native i386
+    [0x072, 'wait4', ['compat_pid_t upid', 'compat_uint_t *stat_addr', 'int options', 'struct compat_rusage *ru']], # compat
+    [0x073, 'swapoff', ['const char *specialfile']],
+    [0x074, 'sysinfo', ['struct compat_sysinfo *info']], # compat
+    [0x075, 'ipc', ['u32 call', 'int first', 'int second', 'u32 third', 'compat_uptr_t ptr', 'u32 fifth']], # compat
+    [0x076, 'fsync', ['unsigned int fd']],
+    [0x077, 'sigreturn', []], # compat
+    [0x078, 'clone', ['unsigned long clone_flags', 'unsigned long newsp', 'int *parent_tidptr', 'unsigned long tls_val', 'int *child_tidptr']], # compat ia32_clone
+    [0x079, 'setdomainname', ['char *name', 'int len']],
+    [0x07a, 'uname', ['struct new_utsname *name']], # newuname
+    [0x07b, 'modify_ldt', ['int func', 'void *ptr', 'unsigned long bytecount']],
+    [0x07c, 'adjtimex', ['struct old_timex32 *utp']], # adjtimex_time32
+    [0x07d, 'mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot']],
+    [0x07e, 'sigprocmask', ['int how', 'compat_old_sigset_t *nset', 'compat_old_sigset_t *oset']], # compat
+    #0x07f, create_module # deleted from kernel 2.6
+    [0x080, 'init_module', ['void *umod', 'unsigned long len', 'const char *uargs']],
+    [0x081, 'delete_module', ['const char *name_user', 'unsigned int flags']],
+    #0x082, get_kernel_syms # deleted from kernel 2.6
+    [0x083, 'quotactl', ['unsigned int cmd', 'const char *special', 'qid_t id', 'void *addr']], # compat quotactl32
+    [0x084, 'getpgid', ['pid_t pid']],
+    [0x085, 'fchdir', ['unsigned int fd']],
+    [0x086, 'bdflush', ['int func', 'long data']],
+    [0x087, 'sysfs', ['int option', 'unsigned long arg1', 'unsigned long arg2']],
+    [0x088, 'personality', ['unsigned int personality']],
+    #0x089, afs_syscall # unimplemented
+    [0x08a, 'setfsuid', ['old_uid_t uid']], # setfsuid16
+    [0x08b, 'setfsgid', ['old_gid_t gid']], # setfsgid16
+    [0x08c, '_llseek', ['unsigned int fd', 'unsigned long offset_high', 'unsigned long offset_low', 'loff_t *result', 'unsigned int whence']], # llseek
+    [0x08d, 'getdents', ['unsigned int fd', 'struct compat_linux_dirent *dirent', 'unsigned int count']], # compat
+    [0x08e, '_newselect', ['int n', 'compat_ulong_t *inp', 'compat_ulong_t *outp', 'compat_ulong_t *exp', 'struct old_timeval32 *tvp']], # compat select
+    [0x08f, 'flock', ['unsigned int fd', 'unsigned int cmd']],
+    [0x090, 'msync', ['unsigned long start', 'size_t len', 'int flags']],
+    [0x091, 'readv', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen']], # compat
+    [0x092, 'writev', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen']], # compat
+    [0x093, 'getsid', ['pid_t pid']],
+    [0x094, 'fdatasync', ['unsigned int fd']],
+    [0x095, '_sysctl', ['struct __sysctl_args *args']], # sysctl # deleted from kenrel 5.5 ?
+    [0x096, 'mlock', ['unsigned long start', 'size_t len']],
+    [0x097, 'munlock', ['unsigned long start', 'size_t len']],
+    [0x098, 'mlockall', ['int flags']],
+    [0x099, 'munlockall', []],
+    [0x09a, 'sched_setparam', ['pid_t pid', 'struct sched_param *param']],
+    [0x09b, 'sched_getparam', ['pid_t pid', 'struct sched_param *param']],
+    [0x09c, 'sched_setscheduler', ['pid_t pid', 'int policy', 'struct sched_param *param']],
+    [0x09d, 'sched_getscheduler', ['pid_t pid']],
+    [0x09e, 'sched_yield', []],
+    [0x09f, 'sched_get_priority_max', ['int policy']],
+    [0x0a0, 'sched_get_priority_min', ['int policy']],
+    [0x0a1, 'sched_rr_get_interval', ['pid_t pid', 'struct old_timespec32 *interval']], # sched_rr_get_interval_time32
+    [0x0a2, 'nanosleep', ['struct old_timespec32 *rqtp', 'struct old_timespec32 *rmtp']], # nanosleep_time32
+    [0x0a3, 'mremap', ['unsigned long addr', 'unsigned long old_len', 'unsigned long new_len', 'unsigned long flags', 'unsigned long new_addr']],
+    [0x0a4, 'setresuid', ['old_uid_t ruid', 'old_uid_t euid', 'old_uid_t suid']], # setresuid16
+    [0x0a5, 'getresuid', ['old_uid_t *ruidp', 'old_uid_t *euidp', 'old_uid_t *suidp']], # getresuid16
+    #0x0a6, vm86 # only native i386
+    #0x0a7, query_module # deleted from kernel 2.6
+    [0x0a8, 'poll', ['struct pollfd *ufds', 'unsigned int nfds', 'int timeout_msecs']],
+    #0x0a9, nfsservctl # deleted from kernel 3.1
+    [0x0aa, 'setresgid', ['old_gid_t rgid', 'old_gid_t egid', 'old_gid_t sgid']], # setresgid16
+    [0x0ab, 'getresgid', ['old_gid_t *rgidp', 'old_gid_t *egidp', 'old_gid_t *sgidp']], # getresgid16
+    [0x0ac, 'prctl', ['int option', 'unsigned long arg2', 'unsigned long arg3', 'unsigned long arg4', 'unsigned long arg5']],
+    [0x0ad, 'rt_sigreturn', []], # compat
+    [0x0ae, 'rt_sigaction', ['int sig', 'const struct compat_sigaction *act', 'struct compat_sigaction *oact', 'compat_size_t sigsetsize']], # compat
+    [0x0af, 'rt_sigprocmask', ['int how', 'compat_sigset_t *nset', 'compat_sigset_t *oset', 'compat_size_t sigsetsize']], # compat
+    [0x0b0, 'rt_sigpending', ['compat_sigset_t *uset', 'compat_size_t sigsetsize']], # compat
+    [0x0b1, 'rt_sigtimedwait', ['compat_sigset_t *uthese', 'struct compat_siginfo_t *uinfo', 'struct old_timespec32 *uts', 'compat_size_t sigsetsize']], # compat rt_sigtimedwait_time32
+    [0x0b2, 'rt_sigqueueinfo', ['compat_pid_t pid', 'int sig', 'struct compat_siginfo *uinfo']], # compat
+    [0x0b3, 'rt_sigsuspend', ['compat_sigset_t *unewset', 'compat_size_t sigsetsize']], # compat
+    [0x0b4, 'pread64', ['unsigned int fd', 'char *ubuf', 'u32 count', 'u32 poslo', 'u32 poshi']], # ia32_pread64
+    [0x0b5, 'pwrite64', ['unsigned int fd', 'const char *ubuf', 'u32 count', 'u32 poslo', 'u32 poshi']], # ia32_pwrite64
+    [0x0b6, 'chown', ['const char *filename', 'old_uid_t user', 'old_gid_t group']], # chown16
+    [0x0b7, 'getcwd', ['char *buf', 'unsigned long size']],
+    [0x0b8, 'capget', ['cap_user_header_t header', 'cap_user_data_t dataptr']],
+    [0x0b9, 'capset', ['cap_user_header_t header', 'const cap_user_data_t data']],
+    [0x0ba, 'sigaltstack', ['const compat_stack_t *uss_ptr', 'compat_stack_t *uoss_ptr']], # compat
+    [0x0bb, 'sendfile', ['int out_fd', 'int in_fd', 'compat_off_t *offset', 'compat_size_t count']], # compat
+    #0x0bc, getpmsg # unimplemented
+    #0x0bd, putpmsg # unimplemented
+    [0x0be, 'vfork', []],
+    [0x0bf, 'ugetrlimit', ['unsigned int resource', 'struct compat_rlimit *rlim']], # compat getrlimit
+    [0x0c0, 'mmap2', ['unsigned long addr', 'unsigned long len', 'unsigned long prot', 'unsigned long flags', 'unsigned long fd', 'unsigned long pgoff']], # mmap_pgoff
+    [0x0c1, 'truncate64', ['const char *filename', 'unsigned long offset_low', 'unsigned long offset_high']], # ia32_truncate64
+    [0x0c2, 'ftruncate64', ['unsigned int fd', 'unsigned long offset_low', 'unsigned long offset_high']], # ia32_ftruncate64
+    [0x0c3, 'stat64', ['const char *filename', 'struct stat64 *statbuf']], # compat ia32_stat64
+    [0x0c4, 'lstat64', ['const char *filename', 'struct stat64 *statbuf']], # compat ia32_lstat64
+    [0x0c5, 'fstat64', ['unsigned long fd', 'struct stat64 *statbuf']], # compat ia32_fstat64
+    [0x0c6, 'lchown32', ['const char *filename', 'uid_t user', 'gid_t group']], # lchown
+    [0x0c7, 'getuid32', []], # getuid
+    [0x0c8, 'getgid32', []], # getgid
+    [0x0c9, 'geteuid32', []], # geteuid
+    [0x0ca, 'getegid32', []], # getegid
+    [0x0cb, 'setreuid32', ['uid_t ruid', 'uid_t euid']], # setreuid32
+    [0x0cc, 'setregid32', ['gid_t rgid', 'gid_t egid']], # setregid32
+    [0x0cd, 'getgroups32', ['int gidsetsize', 'gid_t *grouplist']], # getgroups32
+    [0x0ce, 'setgroups32', ['int gidsetsize', 'gid_t *grouplist']], # setgroups32
+    [0x0cf, 'fchown32', ['unsigned int fd', 'uid_t user', 'gid_t group']], # fchown
+    [0x0d0, 'setresuid32', ['uid_t ruid', 'uid_t euid', 'uid_t suid']], # setresuid
+    [0x0d1, 'getresuid32', ['uid_t *ruidp', 'uid_t *euidp', 'uid_t *suidp']], # getresuid
+    [0x0d2, 'setresgid32', ['gid_t rgid', 'gid_t egid', 'gid_t sgid']], # setresgid
+    [0x0d3, 'getresgid32', ['gid_t *rgidp', 'gid_t *egidp', 'gid_t *sgidp']], # getresgid
+    [0x0d4, 'chown32', ['const char *filename', 'uid_t user', 'gid_t group']], # chown
+    [0x0d5, 'setuid32', ['uid_t uid']], # setuid
+    [0x0d6, 'setgid32', ['gid_t gid']], # setgid
+    [0x0d7, 'setfsuid32', ['uid_t uid']], # setfsuid
+    [0x0d8, 'setfsgid32', ['gid_t gid']], # setfsgid
+    [0x0d9, 'pivot_root', ['const char *new_root', 'const char *put_old']],
+    [0x0da, 'mincore', ['unsigned long start', 'size_t len', 'unsigned char *vec']],
+    [0x0db, 'madvise', ['unsigned long start', 'size_t len_in', 'int behavior']],
+    [0x0dc, 'getdents64', ['unsigned int fd', 'struct linux_dirent64 *dirent', 'unsigned int count']],
+    [0x0dd, 'fcntl64', ['unsigned int fd', 'unsigned int cmd', 'compat_ulong_t arg']], # compat
+    #0x0de, unused
+    #0x0df, unused
+    [0x0e0, 'gettid', []],
+    [0x0e1, 'readahead', ['int fd', 'unsigned int off_lo', 'unsigned int off_high', 'size_t count']], # ia32_readahead
+    [0x0e2, 'setxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
+    [0x0e3, 'lsetxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
+    [0x0e4, 'fsetxattr', ['int fd', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
+    [0x0e5, 'getxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
+    [0x0e6, 'lgetxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
+    [0x0e7, 'fgetxattr', ['int fd', 'const char *name', 'void *value', 'size_t size']],
+    [0x0e8, 'listxattr', ['const char *pathname', 'char *list', 'size_t size']],
+    [0x0e9, 'llistxattr', ['const char *pathname', 'char *list', 'size_t size']],
+    [0x0ea, 'flistxattr', ['int fd', 'char *list', 'size_t size']],
+    [0x0eb, 'removexattr', ['const char *pathname', 'const char *name']],
+    [0x0ec, 'lremovexattr', ['const char *pathname', 'const char *name']],
+    [0x0ed, 'fremovexattr', ['int fd', 'const char *name']],
+    [0x0ee, 'tkill', ['pid_t pid', 'int sig']],
+    [0x0ef, 'sendfile64', ['int out_fd', 'int in_fd', 'loff_t *offset', 'size_t count']],
+    [0x0f0, 'futex', ['u32 *uaddr', 'int op', 'u32 val', 'struct old_timespec32 *utime', 'u32 *uaddr2', 'u32 val3']], # futex_time32
+    [0x0f1, 'sched_setaffinity', ['compat_pid_t pid', 'unsigned int len', 'compat_ulong_t *user_mask_ptr']], # compat
+    [0x0f2, 'sched_getaffinity', ['compat_pid_t pid', 'unsigned int len', 'compat_ulong_t *user_mask_ptr']], # compat
+    [0x0f3, 'set_thread_area', ['struct user_desc *u_info']],
+    [0x0f4, 'get_thread_area', ['struct user_desc *u_info']],
+    [0x0f5, 'io_setup', ['unsigned nr_events', 'u32 *ctx32p']], # compat
+    [0x0f6, 'io_destroy', ['aio_context_t ctx']],
+    [0x0f7, 'io_getevents', ['__u32 ctx_id', '__s32 min_nr', '__s32 nr', 'struct io_event *events', 'struct old_timespec32 *timeout']], # io_getevents_time32
+    [0x0f8, 'io_submit', ['compat_aio_context_t ctx_id', 'int nr', 'compat_uptr_t *iocbpp']], # compat
+    [0x0f9, 'io_cancel', ['aio_context_t ctx_id', 'struct iocb *iocb', 'struct io_event *result']],
+    [0x0fa, 'fadvise64', ['int fd', 'unsigned int offset_lo', 'unsigned int offset_hi', 'size_t len', 'int advice']], # ia32_fadvise64
+    #0x0fb, set_zone_reclaim
+    [0x0fc, 'exit_group', ['int error_code']],
+    [0x0fd, 'lookup_dcookie', ['u32 w0', 'u32 w1', 'char *buf', 'compat_size_t len']], # compat
+    [0x0fe, 'epoll_create', ['int size']],
+    [0x0ff, 'epoll_ctl', ['int epfd', 'int op', 'int fd', 'struct epoll_event *event']],
+    [0x100, 'epoll_wait', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'int timeout']],
+    [0x101, 'remap_file_pages', ['unsigned long start', 'unsigned long size', 'unsigned long prot', 'unsigned long pgoff', 'unsigned long flags']],
+    [0x102, 'set_tid_address', ['int *tidptr']],
+    [0x103, 'timer_create', ['clockid_t which_clock', 'struct compat_sigevent *timer_event_spec', 'timer_t *created_timer_id']], # compat
+    [0x104, 'timer_settime', ['timer_t timer_id', 'int flags', 'struct old_itimerspec32 *new', 'struct old_itimerspec32 *old']], # timer_settime32
+    [0x105, 'timer_gettime', ['timer_t timer_id', 'struct old_itimerspec32 *setting']],
+    [0x106, 'timer_getoverrun', ['timer_t timer_id']],
+    [0x107, 'timer_delete', ['timer_t timer_id']],
+    [0x108, 'clock_settime', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_settime32
+    [0x109, 'clock_gettime', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_gettime32
+    [0x10a, 'clock_getres', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_getres_time32
+    [0x10b, 'clock_nanosleep', ['clockid_t which_clock', 'int flags', 'struct old_timespec32 *rqtp', 'struct old_timespec32 *rmtp']], # clock_nanosleep_time32
+    [0x10c, 'statfs64', ['const char *pathname', 'compat_size_t sz', 'struct compat_statfs64 *buf']], # compat
+    [0x10d, 'fstatfs64', ['unsigned int fd', 'compat_size_t sz', 'struct compat_statfs64 *buf']], # compat
+    [0x10e, 'tgkill', ['pid_t tgid', 'pid_t pid', 'int sig']],
+    [0x10f, 'utimes', ['char *filename', 'struct old_timeval32 *utimes']], # utimes_time32
+    [0x110, 'fadvise64_64', ['int fd', '__u32 offset_low', '__u32 offset_high', '__u32 len_low', '__u32 len_high', 'int advice']], # ia32_fadvise64_64
+    #0x111, vserver # unimplemented
+    [0x112, 'mbind', ['unsigned long start', 'unsigned long len', 'unsigned long mode', 'const unsigned long *nmask', 'unsigned long maxnode', 'unsigned int flags']],
+    [0x113, 'get_mempolicy', ['int *policy', 'compat_ulong_t *nmask', 'compat_ulong_t maxnode', 'compat_ulong_t addr', 'compat_ulong_t flags']], # compat
+    [0x114, 'set_mempolicy', ['int mode', 'const unsigned long *nmask', 'unsigned long maxnode']],
+    [0x115, 'mq_open', ['const char *u_name', 'int oflag', 'compat_mode_t mode', 'struct compat_mq_attr *u_attr']], # compat
+    [0x116, 'mq_unlink', ['const char *u_name']],
+    [0x117, 'mq_timedsend', ['mqd_t mqdes', 'const char *u_msg_ptr', 'unsigned int msg_len', 'unsigned int msg_prio', 'const struct old_timespec32 *u_abs_timeout']], # mq_timedsend_time32
+    [0x118, 'mq_timedreceive', ['mqd_t mqdes', 'char *u_msg_ptr', 'unsigned int msg_len', 'unsigned int *u_msg_prio', 'const struct old_timespec32 *u_abs_timeout']], # mq_timedreceive_time32
+    [0x119, 'mq_notify', ['mqd_t mqdes', 'const struct compat_sigevent *u_notification']], # compat
+    [0x11a, 'mq_getsetattr', ['mqd_t mqdes', 'const struct compat_mq_attr *u_mqstat', 'struct compat_mq_attr *u_omqstat']], # compat
+    [0x11b, 'kexec_load', ['compat_ulong_t entry', 'compat_ulong_t nr_segments', 'struct compat_kexec_segment *segments', 'compat_ulong_t flags']], # compat
+    [0x11c, 'waitid', ['int which', 'compat_pid_t pid', 'struct compat_siginfo *infop', 'int options', 'struct compat_rusage *uru']], # compat
+    #0x11d, unused
+    [0x11e, 'add_key', ['const char *_type', 'const char *_description', 'const void *_payload', 'size_t plen', 'key_serial_t ringid']],
+    [0x11f, 'request_key', ['const char *_type', 'const char *_description', 'const char *_callout_info', 'key_serial_t destringid']],
+    [0x120, 'keyctl', ['u32 option', 'u32 arg2', 'u32 arg3', 'u32 arg4', 'u32 arg5']], # compat
+    [0x121, 'ioprio_set', ['int which', 'int who', 'int ioprio']],
+    [0x122, 'ioprio_get', ['int which', 'int who']],
+    [0x123, 'inotify_init', []],
+    [0x124, 'inotify_add_watch', ['int fd', 'const char *pathname', 'u32 mask']],
+    [0x125, 'inotify_rm_watch', ['int fd', '__s32 wd']],
+    [0x126, 'migrate_pages', ['pid_t pid', 'unsigned long maxnode', 'const unsigned long *old_nodes', 'const unsigned long *new_nodes']],
+    [0x127, 'openat', ['int dfd', 'const char *filename', 'int flags', 'umode_t mode']], # compat
+    [0x128, 'mkdirat', ['int dfd', 'const char *pathname', 'umode_t mode']],
+    [0x129, 'mknodat', ['int dfd', 'const char *filename', 'umode_t mode', 'unsigned int dev']],
+    [0x12a, 'fchownat', ['int dfd', 'const char *filename', 'uid_t user', 'gid_t group', 'int flag']],
+    [0x12b, 'futimesat', ['unsigned int dfd', 'const char *filename', 'struct old_timeval32 *t']], # futimesat_time32
+    [0x12c, 'fstatat64', ['unsigned int dfd', 'const char *filename', 'struct stat64 *statbuf', 'int flag']], # compat ia32_fstatat64
+    [0x12d, 'unlinkat', ['int dfd', 'const char *pathname', 'int flag']],
+    [0x12e, 'renameat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname']],
+    [0x12f, 'linkat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'int flags']],
+    [0x130, 'symlinkat', ['const char *oldname', 'int newdfd', 'const char *newname']],
+    [0x131, 'readlinkat', ['int dfd', 'const char *pathname', 'char *buf', 'int bufsiz']],
+    [0x132, 'fchmodat', ['int dfd', 'const char *filename', 'umode_t mode']],
+    [0x133, 'faccessat', ['int dfd', 'const char *filename', 'int mode']],
+    [0x134, 'pselect6', ['int n', 'compat_ulong_t *inp', 'compat_ulong_t *outp', 'compat_ulong_t *exp', 'struct old_timespec32 *tsp', 'void *sig']], # compat pselect6_time32
+    [0x135, 'ppoll', ['struct pollfd *ufds', 'unsigned int nfds', 'struct old_timespec32 *tsp', 'const compat_sigset_t *sigmask', 'compat_size_t sigsetsize']], # compat ppoll_time32
+    [0x136, 'unshare', ['unsigned long unshare_flags']],
+    [0x137, 'set_robust_list', ['struct compat_robust_list_head *head', 'compat_size_t len']], # compat
+    [0x138, 'get_robust_list', ['int pid', 'compat_uptr_t *head_ptr', 'compat_size_t *len_ptr']], # compat
+    [0x139, 'splice', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
+    [0x13a, 'sync_file_range', ['int fd', 'unsigned int off_low', 'unsigned int off_hi', 'unsigned int n_low', 'unsigned int n_hi', 'unsigned int flags']], # ia32_sync_file_range
+    [0x13b, 'tee', ['int fdin', 'int fdout', 'size_t len', 'unsigned int flags']],
+    [0x13c, 'vmsplice', ['int fd', 'const struct compat_iovec *iov32', 'unsigned int nr_segs', 'unsigned int flags']], # compat
+    [0x13d, 'move_pages', ['pid_t pid', 'compat_ulong_t nr_pages', 'compat_uptr_t *pages32', 'const int *nodes', 'int *status', 'int flags']], # compat
+    [0x13e, 'getcpu', ['unsigned *cpup', 'unsigned *nodep', 'struct getcpu_cache *unused']],
+    [0x13f, 'epoll_pwait', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'int timeout', 'const sigset_t *sigmask', 'size_t sigsetsize']],
+    [0x140, 'utimensat', ['unsigned int dfd', 'const char *filename', 'struct old_timespec32 *t', 'int flags']], # utimensat_time32
+    [0x141, 'signalfd', ['int ufd', 'const compat_sigset_t *user_mask', 'compat_size_t sizemask']], # compat
+    [0x142, 'timerfd_create', ['int clockid', 'int flags']],
+    [0x143, 'eventfd', ['unsigned int count']],
+    [0x144, 'fallocate', ['int fd', 'int mode', 'unsigned int offset_lo', 'unsigned int offset_hi', 'unsigned int len_lo', 'unsigned int len_hi']], # ia32_fallocate
+    [0x145, 'timerfd_settime', ['int ufd', 'int flags', 'const struct old_itimerspec32 *utmr', 'struct old_itimerspec32 *otmr']], # timerfd_settime32
+    [0x146, 'timerfd_gettime', ['int ufd', 'struct old_itimerspec32 *otmr']], # timerfd_gettime32
+    [0x147, 'signalfd4', ['int ufd', 'const compat_sigset_t *user_mask', 'compat_size_t sizemask', 'int flags']], # compat
+    [0x148, 'eventfd2', ['unsigned int count', 'int flags']],
+    [0x149, 'epoll_create1', ['int flags']],
+    [0x14a, 'dup3', ['unsigned int oldfd', 'unsigned int newfd', 'int flags']],
+    [0x14b, 'pipe2', ['int *fildes', 'int flags']],
+    [0x14c, 'inotify_init1', ['int flags']],
+    [0x14d, 'preadv', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen', 'u32 pos_low', 'u32 pos_high']], # compat
+    [0x14e, 'pwritev', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen', 'u32 pos_low', 'u32 pos_high']], # compat
+    [0x14f, 'rt_tgsigqueueinfo', ['compat_pid_t tgid', 'compat_pid_t pid', 'int sig', 'struct compat_siginfo_t *uinfo']], # compat
+    [0x150, 'perf_event_open', ['struct perf_event_attr *attr_uptr', 'pid_t pid', 'int cpu', 'int group_fd', 'unsigned long flags']],
+    [0x151, 'recvmmsg', ['int fd', 'struct compat_mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags', 'struct old_timespec32 *timeout']], # compat recvmmsg_time32
+    [0x152, 'fanotify_init', ['unsigned int flags', 'unsigned int event_f_flags']],
+    [0x153, 'fanotify_mark', ['int fanotify_fd', 'unsigned int flags', '__u32 mask0', '__u32 mask1', 'int dfd', 'const char *pathname']], # compat
+    [0x154, 'prlimit64', ['pid_t pid', 'unsigned int resource', 'const struct rlimit64 *new_rlim', 'struct rlimit64 *old_rlim']],
+    [0x155, 'name_to_handle_at', ['int dfd', 'const char *name', 'struct file_handle *handle', 'int *mnt_id', 'int flag']],
+    [0x156, 'open_by_handle_at', ['int mountdirfd', 'struct file_handle *handle', 'int flags']], # compat
+    [0x157, 'clock_adjtime', ['clockid_t which_clock', 'struct old_timex32 *utp']], # clock_adjtime32
+    [0x158, 'syncfs', ['int fd']],
+    [0x159, 'sendmmsg', ['int fd', 'struct compat_mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags']], # compat
+    [0x15a, 'setns', ['int fd', 'int flags']],
+    [0x15b, 'process_vm_readv', ['compat_pid_t pid', 'const struct compat_iovec *lvec', 'compat_ulong_t liovcnt', 'const struct compat_iovec *rvec', 'compat_ulong_t riovcnt', 'compat_ulong_t flags']], # compat
+    [0x15c, 'process_vm_writev', ['compat_pid_t pid', 'const struct compat_iovec *lvec', 'compat_ulong_t liovcnt', 'const struct compat_iovec *rvec', 'compat_ulong_t riovcnt', 'compat_ulong_t flags']], # compat
+    [0x15d, 'kcmp', ['pid_t pid1', 'pid_t pid2', 'int type', 'unsigned long idx1', 'unsigned long idx2']],
+    [0x15e, 'finit_module', ['int fd', 'const char *uargs', 'int flags']],
+    [0x15f, 'sched_setattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int flags']],
+    [0x160, 'sched_getattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int usize', 'unsigned int flags']],
+    [0x161, 'renameat2', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'unsigned int flags']],
+    [0x162, 'seccomp', ['unsigned int op', 'unsigned int flags', 'void *uargs']],
+    [0x163, 'getrandom', ['char *buf', 'size_t count', 'unsigned int flags']],
+    [0x164, 'memfd_create', ['const char *uname', 'unsigned int flags']],
+    [0x165, 'bpf', ['int cmd', 'union bpf_attr *uattr', 'unsigned int size']],
+    [0x166, 'execveat', ['int fd', 'const char *filename', 'const compat_uptr_t *argv', 'const compat_uptr_t *envp', 'int flags']], # compat
+    [0x167, 'socket', ['int family', 'int type', 'int protocol']],
+    [0x168, 'socketpair', ['int family', 'int type', 'int protocol', 'int *usockvec']],
+    [0x169, 'bind', ['int fd', 'struct sockaddr *umyaddr', 'int addrlen']],
+    [0x16a, 'connect', ['int fd', 'struct sockaddr *uservaddr', 'int addrlen']],
+    [0x16b, 'listen', ['int fd', 'int backlog']],
+    [0x16c, 'accept4', ['int fd', 'struct sockaddr *upeer_sockaddr', 'int *upeer_addrlen', 'int flags']],
+    [0x16d, 'getsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int *optlen']],
+    [0x16e, 'setsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int optlen']],
+    [0x16f, 'getsockname', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
+    [0x170, 'getpeername', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
+    [0x171, 'sendto', ['int fd', 'void *buff', 'size_t len', 'unsigned int flags', 'struct sockaddr *addr', 'int addr_len']],
+    [0x172, 'sendmsg', ['int fd', 'struct compat_msghdr *msg', 'unsigned int flags']], # compat
+    [0x173, 'recvfrom', ['int fd', 'void *ubuf', 'compat_size_t size', 'unsigned int flags', 'struct sockaddr *addr', 'int *addr_len']], # compat
+    [0x174, 'recvmsg', ['int fd', 'struct compat_msghdr *msg', 'unsigned int flags']], # compat
+    [0x175, 'shutdown', ['int fd', 'int how']],
+    [0x176, 'userfaultfd', ['int flags']],
+    [0x177, 'membarrier', ['int cmd', 'int flags']],
+    [0x178, 'mlock2', ['unsigned long start', 'size_t len', 'int flags']],
+    [0x179, 'copy_file_range', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
+    [0x17a, 'preadv2', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen', 'u32 pos_low', 'u32 pos_high', 'rwf_t flags']], # compat
+    [0x17b, 'pwritev2', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen', 'u32 pos_low', 'u32 pos_high', 'rwf_t flags']], # compat
+    [0x17c, 'pkey_mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot', 'int pkey']],
+    [0x17d, 'pkey_alloc', ['unsigned long flags', 'unsigned long init_val']],
+    [0x17e, 'pkey_free', ['int pkey']],
+    [0x17f, 'statx', ['int dfd', 'const char *filename', 'unsigned flags', 'unsigned int mask', 'struct statx *buffer']],
+    [0x180, 'arch_prctl', ['int option', 'unsigned long arg2']], # compat
+    [0x181, 'io_pgetevents', ['compat_aio_context_t ctx_id', 'compat_long_t min_nr', 'compat_long_t nr', 'struct io_event *events', 'struct old_timespec32 *timeout', 'const struct __compat_aio_sigset *usig']], # compat
+    [0x182, 'rseq', ['struct rseq *rseq', 'u32 rseq_len', 'int flags', 'u32 sig']],
+    # 0x183-0x187: don't use
+    [0x189, 'semget', ['key_t key', 'int nsems', 'int semflg']],
+    [0x18a, 'semctl', ['int semid', 'int semnum', 'int cmd', 'int arg']], # compat
+    [0x18b, 'shmget', ['key_t key', 'size_t size', 'int shmflg']],
+    [0x18c, 'shmctl', ['int shmid', 'int cmd', 'void *uptr']], # compat
+    [0x18d, 'shmat', ['int shmid', 'compat_uptr_t *shmaddr', 'int shmflg']], # compat
+    [0x18e, 'shmdt', ['char *shmaddr']],
+    [0x18f, 'msgget', ['key_t key', 'int msgflg']],
+    [0x190, 'msgsnd', ['int msqid', 'struct compat_uptr_t *msgp', 'compat_ssize_t msgsz', 'int msgflg']], # compat
+    [0x191, 'msgrcv', ['int msqid', 'struct compat_uptr_t *msgp', 'compat_ssize_t msgsz', 'compat_long_t msgtyp', 'int msgflg']], # compat
+    [0x192, 'msgctl', ['int msqid', 'int cmd', 'void *uptr']], # compat
+    [0x193, 'clock_gettime_time64', ['const clockid_t which_clock', 'struct __kernel_timespec *tp']], # clock_gettime
+    [0x194, 'clock_settime_time64', ['const clockid_t which_clock', 'struct __kernel_timespec *tp']], # clock_settime
+    [0x195, 'clock_adjtime_time64', ['const clockid_t which_clock', 'struct __kernel_timex *utx']], # clock_adjtime
+    [0x196, 'clock_getres_time64', ['const clockid_t which_clock', 'struct __kernel_timespec *tp']], # clock_getres
+    [0x197, 'clock_nanosleep_time64', ['const clockid_t which_clock', 'int flags', 'const struct __kernel_timespec *rqtp', 'struct __kernel_timespec *rmtp']], # clock_nanosleep
+    [0x198, 'timer_gettime_time64', ['timer_t timer_id', 'struct __kernel_itimerspec *setting']], # timer_gettime
+    [0x199, 'timer_settime_time64', ['timer_t timer_id', 'int flags', 'const struct __kernel_itimerspec *new_setting', 'struct __kernel_itimerspec *old_setting']], # timer_settime
+    [0x19a, 'timerfd_gettime_time64', ['int ufd', 'struct __kernel_itimerspec *otmr']], # timerfd_gettime
+    [0x19b, 'timerfd_settime_time64', ['int ufd', 'int flags', 'const struct __kernel_itimerspec *utmr', 'struct __kernel_itimerspec *otmr']], # timerfd_settime
+    [0x19c, 'utimensat_time64', ['int dfd', 'const char *filename', 'struct __kernel_timespec *utimes', 'int flags']], # utimensat
+    [0x19d, 'pselect6_time64', ['int n', 'compat_ulong_t *inp', 'compat_ulong_t *outp', 'compat_ulong_t *exp', 'struct __kernel_timespec *tsp', 'void *sig']], # compat
+    [0x19e, 'ppoll_time64', ['struct pollfd *ufds', 'unsigned int nfds', 'struct __kernel_timespec *tsp', 'const compat_sigset_t *sigmask', 'compat_size_t sigsetsize']], # compat
+    #0x19f, unused
+    [0x1a0, 'io_pgetevents_time64', ['aio_context_t ctx_id', 'long min_nr', 'long nr', 'struct io_event *events', 'struct __kernel_timespec *timeout', 'const struct __aio_sigset *usig']], # io_pgetevents
+    [0x1a1, 'recvmmsg_time64', ['int fd', 'struct compat_mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags', 'struct __kernel_timespec *timeout']], # compat
+    [0x1a2, 'mq_timedsend_time64', ['mqd_t mqdes', 'const char *u_msg_ptr', 'size_t msg_len', 'unsigned int msg_prio', 'const struct __kernel_timespec *u_abs_timeout']], # mq_timedsend
+    [0x1a3, 'mq_timedreceive_time64', ['mqd_t mqdes', 'char *u_msg_ptr', 'size_t msg_len', 'unsigned int *u_msg_prio', 'const struct __kernel_timespec *u_abs_timeout']], # mq_timedreceive
+    [0x1a4, 'semtimedop_time64', ['int semid', 'struct sembuf *tsops', 'unsigned int nsops', 'const struct __kernel_timespec *timeout']], # semtimedop
+    [0x1a5, 'rt_sigtimedwait_time64', ['compat_sigset_t *uthese', 'struct compat_siginfo *uinfo', 'struct __kernel_timespec *uts', 'compat_size_t sigsetsize']], # compat
+    [0x1a6, 'futex_time64', ['u32 *uaddr', 'int op', 'u32 val', 'struct __kernel_timespec *utime', 'u32 *uaddr2', 'u32 val3']], # futex
+    [0x1a7, 'sched_rr_get_interval_time64', ['pid_t pid', 'struct __kernel_timespec *interval']], # sched_rr_get_interval
+    [0x1a8, 'pidfd_send_signal', ['int pidfd', 'int sig', 'siginfo_t *info', 'unsigned int flags']],
+    [0x1a9, 'io_uring_setup', ['u32 entries', 'struct io_uring_params *params']],
+    [0x1aa, 'io_uring_enter', ['unsigned int fd', 'u32 to_submit', 'u32 min_complete', 'u32 flags', 'const sigset_t *sig', 'size_t sigsz']],
+    [0x1ab, 'io_uring_register', ['unsigned int fd', 'unsigned int opcode', 'void *arg', 'unsigned int nr_args']],
+    [0x1ac, 'open_tree', ['int dfd', 'const char *filename', 'unsigned flags']],
+    [0x1ad, 'move_mount', ['int from_dfd', 'const char *from_pathname', 'int to_dfd', 'const char *to_pathname', 'unsigned int flags']],
+    [0x1ae, 'fsopen', ['const char *_fs_name', 'unsigned int flags']],
+    [0x1af, 'fsconfig', ['int fd', 'unsigned int cmd', 'const char *_key', 'const void *_value', 'int aux']],
+    [0x1b0, 'fsmount', ['int fs_fd', 'unsigned int flags', 'unsigned int attr_flags']],
+    [0x1b1, 'fspick', ['int, dfd', 'const char *path', 'unsigned int flags']],
+    [0x1b2, 'pidfd_open', ['pid_t pid', 'unsigned int flags']],
+    [0x1b3, 'clone3', ['struct clone_args *uargs', 'size_t size']],
+    [0x1b4, 'close_range', ['unsigned int fd', 'unsigned int max_fd', 'unsigned int flag']],
+    [0x1b5, 'openat2', ['int dfd', 'const char *filename', 'struct open_how *how', 'size_t usize']],
+    [0x1b6, 'pidfd_getfd', ['int pidfd', 'int fd', 'unsigned int flags']],
+    [0x1b7, 'faccessat2', ['int dfd', 'const char *filename', 'int mode', 'int flags']],
+    [0x1b8, 'process_madvise', ['int pidfd', 'const struct iovec *vec', 'size_t vlen', 'int behavior', 'unsigned int flags']],
+    [0x1b9, 'epoll_pwait2', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'const struct __kernel_timespec *timeout', 'const compat_sigset_t *sigmask', 'compat_size_t sigsetsize']], # compat
+    [0x1ba, 'mount_setattr', ['int dfd', 'const char *path', 'unsigned int flags', 'struct mount_attr *uattr', 'size_t usize']],
+    [0x1bb, 'quotactl_fd', ['unsigned int fd', 'unsigned int cmd', 'qid_t id', 'void __user *addr']],
+    [0x1bc, 'landlock_create_ruleset', ['const struct landlock_ruleset_attr *const attr', 'const size_t size', 'const __u32 flags']],
+    [0x1bd, 'landlock_add_rule', ['const int ruleset_fd', 'const enum landlock_rule_type rule_type', 'const void *const rule_attr', 'const __u32 flags']],
+    [0x1be, 'landlock_restrict_self', ['const int ruleset_fd', 'const __u32 flags']],
+    [0x1bf, 'memfd_secret', ['unsigned int, flags']],
+    [0x1c0, 'process_mrelease', ['int pidfd', 'unsigned int flags']],
+    [0x1c1, 'futex_waitv', ['struct futex_waitv *waiters', 'unsigned int nr_futexes', 'unsigned int flags', 'struct __kernel_timespec *timeout', 'clockid_t clockid']],
+    [0x1c2, 'set_mempolicy_home_node', ['unsigned long start', 'unsigned long len', 'unsigned long home_node', 'unsigned long flags']],
+]
+
+
+# x86 (on native x86 machine)
+# - arch/x86/include/asm/unistd.h
+# - arch/x86/include/uapi/asm/unistd.h
+# - arch/x86/include/generated/uapi/asm/unistd-32.h
+# - arch/x86/entry/syscalls/syscall_32.tbl
+x86_native_syscall_list = [
+    [0x000, 'restart_syscall', []],
+    [0x001, 'exit', ['int error_code']],
+    [0x002, 'fork', []],
+    [0x003, 'read', ['unsigned int fd', 'char *buf', 'size_t count']],
+    [0x004, 'write', ['unsigned int fd', 'const char *buf', 'size_t count']],
+    [0x005, 'open', ['const char *filename', 'int flags', 'umode_t mode']],
+    [0x006, 'close', ['unsigned int fd']],
+    [0x007, 'waitpid', ['pid_t pid', 'int *stat_addr', 'int options']],
+    [0x008, 'creat', ['const char *pathname', 'umode_t mode']],
+    [0x009, 'link', ['const char *oldname', 'const char *newname']],
+    [0x00a, 'unlink', ['const char *pathname']],
+    [0x00b, 'execve', ['const char *filename', 'const char *const *argv', 'const char *const *envp']],
+    [0x00c, 'chdir', ['const char *filename']],
+    [0x00d, 'time', ['old_time32_t *tloc']], # time32
+    [0x00e, 'mknod', ['const char *filename', 'umode_t mode', 'unsigned dev']],
+    [0x00f, 'chmod', ['const char *filename', 'umode_t mode']],
+    [0x010, 'lchown', ['const char *filename', 'old_uid_t user', 'old_gid_t group']], # lchown16
+    #0x011, break # unimplemented
+    [0x012, 'oldstat', ['const char *filename', 'struct __old_kernel_stat *statbuf']], # fstat
+    [0x013, 'lseek', ['unsigned int fd', 'off_t offset', 'unsigned int whence']],
+    [0x014, 'getpid', []],
+    [0x015, 'mount', ['const char *dev_name', 'const char *dir_name', 'const char *type', 'unsigned long flags', 'void *data']],
+    [0x016, 'umount', ['char *name']], # oldumount
+    [0x017, 'setuid', ['old_uid_t uid']], # setuid16
+    [0x018, 'getuid', []], # getuid16
+    [0x019, 'stime', ['old_time32_t *tptr']], # stime32
+    [0x01a, 'ptrace', ['long request', 'long pid', 'unsigned long addr', 'unsigned long data']],
+    [0x01b, 'alarm', ['unsigned int seconds']],
+    [0x01c, 'oldfstat', ['unsigned int fd', 'struct __old_kernel_stat *statbuf']], # fstat
+    [0x01d, 'pause', []],
+    [0x01e, 'utime', ['char *filename', 'struct old_utimbuf32 *t']], # utime32
+    #0x01f, stty # unimplemented
+    #0x020, gtty # unimplemented
+    [0x021, 'access', ['const char *filename', 'int mode']],
+    [0x022, 'nice', ['int increment']],
+    #0x023, ftime # unimplemented
+    [0x024, 'sync', []],
+    [0x025, 'kill', ['pid_t pid', 'int sig']],
+    [0x026, 'rename', ['const char *oldname', 'const char *newname']],
+    [0x027, 'mkdir', ['const char *pathname', 'umode_t mode']],
+    [0x028, 'rmdir', ['const char *pathname']],
+    [0x029, 'dup', ['unsigned int fildes']],
+    [0x02a, 'pipe', ['int *fildes']],
+    [0x02b, 'times', ['struct tms *tbuf']],
+    #0x02c, prof # unimplemented
+    [0x02d, 'brk', ['unsigned long brk']],
+    [0x02e, 'setgid', ['old_gid_t gid']], # setgid16
+    [0x02f, 'getgid', []], # getgid16
+    [0x030, 'signal', ['int sig', '__sighandler_t handler']],
+    [0x031, 'geteuid', []], # geteuid16
+    [0x032, 'getegid', []], # getegid16
+    [0x033, 'acct', ['const char *name']],
+    [0x034, 'umount2', ['char *name', 'int flags']], # umount
+    #0x035, lock # unimplemented
+    [0x036, 'ioctl', ['unsigned int fd', 'unsigned int cmd', 'unsigned long arg']],
+    [0x037, 'fcntl', ['unsigned int fd', 'unsigned int cmd', 'unsigned long arg']],
+    #0x038, mpx # unimplemented
+    [0x039, 'setpgid', ['pid_t pid', 'pid_t pgid']],
+    #0x03a, ulimit # unimplemented
+    [0x03b, 'oldolduname', ['struct oldold_utsname *name']], # olduname
+    [0x03c, 'umask', ['int mask']],
+    [0x03d, 'chroot', ['const char *filename']],
+    [0x03e, 'ustat', ['unsigned dev', 'struct ustat *ubuf']],
+    [0x03f, 'dup2', ['unsigned int oldfd', 'unsigned int newfd']],
+    [0x040, 'getppid', []],
+    [0x041, 'getpgrp', []],
+    [0x042, 'setsid', []],
+    [0x043, 'sigaction', ['int sig', 'const struct old_sigaction *act', 'struct old_sigaction *oact']],
+    [0x044, 'sgetmask', []],
+    [0x045, 'ssetmask', ['int newmask']],
+    [0x046, 'setreuid', ['old_uid_t ruid', 'old_uid_t euid']], # setreuid16
+    [0x047, 'setregid', ['old_gid_t rgid', 'old_gid_t egid']], # setregid16
+    [0x048, 'sigsuspend', ['old_sigset_t mask']],
+    [0x049, 'sigpending', ['old_sigset_t *uset']],
+    [0x04a, 'sethostname', ['char *name', 'int len']],
+    [0x04b, 'setrlimit', ['unsigned int resource', 'struct rlimit *rlim']],
+    [0x04c, 'getrlimit', ['unsigned int resource', 'struct rlimit *rlim']], # old_getrlimit
+    [0x04d, 'getrusage', ['int who', 'struct rusage *ru']],
+    [0x04e, 'gettimeofday', ['struct __kernel_old_timeval *tv', 'struct timezone *tz']],
+    [0x04f, 'settimeofday', ['struct __kernel_old_timeval *tv', 'struct timezone *tz']],
+    [0x050, 'getgroups', ['int gidsetsize', 'old_gid_t *grouplist']], # getgroups16
+    [0x051, 'setgroups', ['int gidsetsize', 'old_gid_t *grouplist']], # setgroups16
+    [0x052, 'select', ['struct sel_arg_struct *arg']], # old_select
+    [0x053, 'symlink', ['const char *oldname', 'const char *newname']],
+    [0x054, 'oldlstat', ['const char *filename', 'struct __old_kernel_stat *statbuf']], # lstat
+    [0x055, 'readlink', ['const char *path', 'char *buf', 'int bufsiz']],
+    [0x056, 'uselib', ['const char *library']],
+    [0x057, 'swapon', ['const char *specialfile', 'int swap_flags']],
+    [0x058, 'reboot', ['int magic1', 'int magic2', 'unsigned int cmd', 'void *arg']],
+    [0x059, 'readdir', ['unsigned int fd', 'struct old_linux_dirent *dirent', 'unsigned int count']], # old_readdir
+    [0x05a, 'mmap', ['struct mmap_arg_struct *arg']], # old_mmap
+    [0x05b, 'munmap', ['unsigned long addr', 'size_t len']],
+    [0x05c, 'truncate', ['const char *path', 'long length']],
+    [0x05d, 'ftruncate', ['unsigned int fd', 'unsigned long length']],
+    [0x05e, 'fchmod', ['unsigned int fd', 'umode_t mode']],
+    [0x05f, 'fchown', ['unsigned int fd', 'old_uid_t user', 'old_gid_t group']], # fchown16
+    [0x060, 'getpriority', ['int which', 'int who']],
+    [0x061, 'setpriority', ['int which', 'int who', 'int niceval']],
+    #0x062, profil # unimplemented
+    [0x063, 'statfs', ['const char *pathname', 'struct statfs *buf']],
+    [0x064, 'fstatfs', ['unsigned int fd', 'struct statfs *buf']],
+    [0x065, 'ioperm', ['unsigned long from', 'unsigned long num', 'int turn_on']],
+    [0x066, 'socketcall', ['int call', 'unsigned long *args']],
+    [0x067, 'syslog', ['int type', 'char *buf', 'int len']],
+    [0x068, 'setitimer', ['int which', 'struct __kernel_old_itimerval *value', 'struct __kernel_old_itimerval *ovalue']],
+    [0x069, 'getitimer', ['int which', 'struct __kernel_old_itimerval *value']],
+    [0x06a, 'stat', ['const char *filename', 'struct stat *statbuf']], # newstat
+    [0x06b, 'lstat', ['const char *filename', 'struct stat *statbuf']], # newlstat
+    [0x06c, 'fstat', ['unsigned int fd', 'struct stat *statbuf']], # newfstat
+    [0x06d, 'olduname', ['struct old_utsname *name']], # uname
+    [0x06e, 'iopl', ['unsigned int level']],
+    [0x06f, 'vhangup', []],
+    #0x070, idle # deleted from kernel 2.3.13
+    [0x071, 'vm86old', ['struct vm86_struct *user_vm86']],
+    [0x072, 'wait4', ['pid_t upid', 'int *stat_addr', 'int options', 'struct rusage *ru']],
+    [0x073, 'swapoff', ['const char *specialfile']],
+    [0x074, 'sysinfo', ['struct sysinfo *info']],
+    [0x075, 'ipc', ['unsigned int call', 'int first', 'unsigned long second', 'unsigned long third', 'void *ptr', 'long fifth']],
+    [0x076, 'fsync', ['unsigned int fd']],
+    [0x077, 'sigreturn', []],
+    [0x078, 'clone', ['unsigned long clone_flags', 'unsigned long newsp', 'int *parent_tidptr', 'int *child_tidptr', 'unsigned long tls']],
+    [0x079, 'setdomainname', ['char *name', 'int len']],
+    [0x07a, 'uname', ['struct new_utsname *name']], # newuname
+    [0x07b, 'modify_ldt', ['int func', 'void *ptr', 'unsigned long bytecount']],
+    [0x07c, 'adjtimex', ['struct old_timex32 *utp']], # adjtimex_time32
+    [0x07d, 'mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot']],
+    [0x07e, 'sigprocmask', ['int how', 'old_sigset_t *nset', 'old_sigset_t *oset']],
+    #0x07f, create_module # deleted from kernel 2.6
+    [0x080, 'init_module', ['void *umod', 'unsigned long len', 'const char *uargs']],
+    [0x081, 'delete_module', ['const char *name_user', 'unsigned int flags']],
+    #0x082, get_kernel_syms # deleted from kernel 2.6
+    [0x083, 'quotactl', ['unsigned int cmd', 'const char *special', 'qid_t id', 'void *addr']],
+    [0x084, 'getpgid', ['pid_t pid']],
+    [0x085, 'fchdir', ['unsigned int fd']],
+    [0x086, 'bdflush', ['int func', 'long data']],
+    [0x087, 'sysfs', ['int option', 'unsigned long arg1', 'unsigned long arg2']],
+    [0x088, 'personality', ['unsigned int personality']],
+    #0x089, afs_syscall # unimplemented
+    [0x08a, 'setfsuid', ['old_uid_t uid']], # setfsuid16
+    [0x08b, 'setfsgid', ['old_gid_t gid']], # setfsgid16
+    [0x08c, '_llseek', ['unsigned int fd', 'unsigned long offset_high', 'unsigned long offset_low', 'loff_t *result', 'unsigned int whence']], # llseek
+    [0x08d, 'getdents', ['unsigned int fd', 'struct linux_dirent *dirent', 'unsigned int count']],
+    [0x08e, '_newselect', ['int n', 'fd_set *inp', 'fd_set *outp', 'fd_set *exp', 'struct __kernel_old_timeval *tvp']], # select
+    [0x08f, 'flock', ['unsigned int fd', 'unsigned int cmd']],
+    [0x090, 'msync', ['unsigned long start', 'size_t len', 'int flags']],
+    [0x091, 'readv', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen']],
+    [0x092, 'writev', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen']],
+    [0x093, 'getsid', ['pid_t pid']],
+    [0x094, 'fdatasync', ['unsigned int fd']],
+    [0x095, '_sysctl', ['struct __sysctl_args *args']], # sysctl # deleted from kenrel 5.5 ?
+    [0x096, 'mlock', ['unsigned long start', 'size_t len']],
+    [0x097, 'munlock', ['unsigned long start', 'size_t len']],
+    [0x098, 'mlockall', ['int flags']],
+    [0x099, 'munlockall', []],
+    [0x09a, 'sched_setparam', ['pid_t pid', 'struct sched_param *param']],
+    [0x09b, 'sched_getparam', ['pid_t pid', 'struct sched_param *param']],
+    [0x09c, 'sched_setscheduler', ['pid_t pid', 'int policy', 'struct sched_param *param']],
+    [0x09d, 'sched_getscheduler', ['pid_t pid']],
+    [0x09e, 'sched_yield', []],
+    [0x09f, 'sched_get_priority_max', ['int policy']],
+    [0x0a0, 'sched_get_priority_min', ['int policy']],
+    [0x0a1, 'sched_rr_get_interval', ['pid_t pid', 'struct old_timespec32 *interval']], # sched_rr_get_interval_time32
+    [0x0a2, 'nanosleep', ['struct old_timespec32 *rqtp', 'struct old_timespec32 *rmtp']], # nanosleep_time32
+    [0x0a3, 'mremap', ['unsigned long addr', 'unsigned long old_len', 'unsigned long new_len', 'unsigned long flags', 'unsigned long new_addr']],
+    [0x0a4, 'setresuid', ['old_uid_t ruid', 'old_uid_t euid', 'old_uid_t suid']], # setresuid16
+    [0x0a5, 'getresuid', ['old_uid_t *ruidp', 'old_uid_t *euidp', 'old_uid_t *suidp']], # getresuid16
+    [0x0a6, 'vm86', ['unsigned long cmd', 'unsigned long arg']],
+    #0x0a7, query_module # deleted from kernel 2.6
+    [0x0a8, 'poll', ['struct pollfd *ufds', 'unsigned int nfds', 'int timeout_msecs']],
+    #0x0a9, nfsservctl # deleted from kernel 3.1
+    [0x0aa, 'setresgid', ['old_gid_t rgid', 'old_gid_t egid', 'old_gid_t sgid']], # setresgid16
+    [0x0ab, 'getresgid', ['old_gid_t *rgidp', 'old_gid_t *egidp', 'old_gid_t *sgidp']], # getresgid16
+    [0x0ac, 'prctl', ['int option', 'unsigned long arg2', 'unsigned long arg3', 'unsigned long arg4', 'unsigned long arg5']],
+    [0x0ad, 'rt_sigreturn', []],
+    [0x0ae, 'rt_sigaction', ['int sig', 'const struct sigaction *act', 'struct sigaction *oact', 'size_t sigsetsize']],
+    [0x0af, 'rt_sigprocmask', ['int how', 'sigset_t *nset', 'sigset_t *oset', 'size_t sigsetsize']],
+    [0x0b0, 'rt_sigpending', ['sigset_t *uset', 'size_t sigsetsize']],
+    [0x0b1, 'rt_sigtimedwait', ['const sigset_t *uthese', 'siginfo_t *uinfo', 'const struct old_timespec32 *uts', 'size_t sigsetsize']], # rt_sigtimedwait_time32
+    [0x0b2, 'rt_sigqueueinfo', ['pid_t pid', 'int sig', 'siginfo_t *uinfo']],
+    [0x0b3, 'rt_sigsuspend', ['sigset_t *unewset', 'size_t sigsetsize']],
+    [0x0b4, 'pread64', ['unsigned int fd', 'char *ubuf', 'u32 count', 'u32 poslo', 'u32 poshi']], # ia32_pread64
+    [0x0b5, 'pwrite64', ['unsigned int fd', 'const char *ubuf', 'u32 count', 'u32 poslo', 'u32 poshi']], # ia32_pwrite64
+    [0x0b6, 'chown', ['const char *filename', 'old_uid_t user', 'old_gid_t group']], # chown16
+    [0x0b7, 'getcwd', ['char *buf', 'unsigned long size']],
+    [0x0b8, 'capget', ['cap_user_header_t header', 'cap_user_data_t dataptr']],
+    [0x0b9, 'capset', ['cap_user_header_t header', 'const cap_user_data_t data']],
+    [0x0ba, 'sigaltstack', ['const stack_t *uss', 'stack_t *uoss']],
+    [0x0bb, 'sendfile', ['int out_fd', 'int in_fd', 'off_t *offset', 'size_t count']],
+    #0x0bc, getpmsg # unimplemented
+    #0x0bd, putpmsg # unimplemented
+    [0x0be, 'vfork', []],
+    [0x0bf, 'ugetrlimit', ['unsigned int resource', 'struct rlimit *rlim']], # getrlimit
+    [0x0c0, 'mmap2', ['unsigned long addr', 'unsigned long len', 'unsigned long prot', 'unsigned long flags', 'unsigned long fd', 'unsigned long pgoff']], # mmap_pgoff
+    [0x0c1, 'truncate64', ['const char *filename', 'unsigned long offset_low', 'unsigned long offset_high']], # ia32_truncate64
+    [0x0c2, 'ftruncate64', ['unsigned int fd', 'unsigned long offset_low', 'unsigned long offset_high']], # ia32_ftruncate64
+    [0x0c3, 'stat64', ['const char *filename', 'struct stat64 *statbuf']], # stat64
+    [0x0c4, 'lstat64', ['const char *filename', 'struct stat64 *statbuf']], # lstat64
+    [0x0c5, 'fstat64', ['unsigned long fd', 'struct stat64 *statbuf']], # fstat64
+    [0x0c6, 'lchown32', ['const char *filename', 'uid_t user', 'gid_t group']], # lchown
+    [0x0c7, 'getuid32', []], # getuid
+    [0x0c8, 'getgid32', []], # getgid
+    [0x0c9, 'geteuid32', []], # geteuid
+    [0x0ca, 'getegid32', []], # getegid
+    [0x0cb, 'setreuid32', ['uid_t ruid', 'uid_t euid']], # setreuid32
+    [0x0cc, 'setregid32', ['gid_t rgid', 'gid_t egid']], # setregid32
+    [0x0cd, 'getgroups32', ['int gidsetsize', 'gid_t *grouplist']], # getgroups32
+    [0x0ce, 'setgroups32', ['int gidsetsize', 'gid_t *grouplist']], # setgroups32
+    [0x0cf, 'fchown32', ['unsigned int fd', 'uid_t user', 'gid_t group']], # fchown
+    [0x0d0, 'setresuid32', ['uid_t ruid', 'uid_t euid', 'uid_t suid']], # setresuid
+    [0x0d1, 'getresuid32', ['uid_t *ruidp', 'uid_t *euidp', 'uid_t *suidp']], # getresuid
+    [0x0d2, 'setresgid32', ['gid_t rgid', 'gid_t egid', 'gid_t sgid']], # setresgid
+    [0x0d3, 'getresgid32', ['gid_t *rgidp', 'gid_t *egidp', 'gid_t *sgidp']], # getresgid
+    [0x0d4, 'chown32', ['const char *filename', 'uid_t user', 'gid_t group']], # chown
+    [0x0d5, 'setuid32', ['uid_t uid']], # setuid
+    [0x0d6, 'setgid32', ['gid_t gid']], # setgid
+    [0x0d7, 'setfsuid32', ['uid_t uid']], # setfsuid
+    [0x0d8, 'setfsgid32', ['gid_t gid']], # setfsgid
+    [0x0d9, 'pivot_root', ['const char *new_root', 'const char *put_old']],
+    [0x0da, 'mincore', ['unsigned long start', 'size_t len', 'unsigned char *vec']],
+    [0x0db, 'madvise', ['unsigned long start', 'size_t len_in', 'int behavior']],
+    [0x0dc, 'getdents64', ['unsigned int fd', 'struct linux_dirent64 *dirent', 'unsigned int count']],
+    [0x0dd, 'fcntl64', ['unsigned int fd', 'unsigned int cmd', 'unsigned long arg']],
+    #0x0de, unused
+    #0x0df, unused
+    [0x0e0, 'gettid', []],
+    [0x0e1, 'readahead', ['int fd', 'unsigned int off_lo', 'unsigned int off_high', 'size_t count']], # ia32_readahead
+    [0x0e2, 'setxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
+    [0x0e3, 'lsetxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
+    [0x0e4, 'fsetxattr', ['int fd', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
+    [0x0e5, 'getxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
+    [0x0e6, 'lgetxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
+    [0x0e7, 'fgetxattr', ['int fd', 'const char *name', 'void *value', 'size_t size']],
+    [0x0e8, 'listxattr', ['const char *pathname', 'char *list', 'size_t size']],
+    [0x0e9, 'llistxattr', ['const char *pathname', 'char *list', 'size_t size']],
+    [0x0ea, 'flistxattr', ['int fd', 'char *list', 'size_t size']],
+    [0x0eb, 'removexattr', ['const char *pathname', 'const char *name']],
+    [0x0ec, 'lremovexattr', ['const char *pathname', 'const char *name']],
+    [0x0ed, 'fremovexattr', ['int fd', 'const char *name']],
+    [0x0ee, 'tkill', ['pid_t pid', 'int sig']],
+    [0x0ef, 'sendfile64', ['int out_fd', 'int in_fd', 'loff_t *offset', 'size_t count']],
+    [0x0f0, 'futex', ['u32 *uaddr', 'int op', 'u32 val', 'struct old_timespec32 *utime', 'u32 *uaddr2', 'u32 val3']], # futex_time32
+    [0x0f1, 'sched_setaffinity', ['pid_t pid', 'unsigned int len', 'unsigned long *user_mask_ptr']],
+    [0x0f2, 'sched_getaffinity', ['pid_t pid', 'unsigned int len', 'unsigned long *user_mask_ptr']],
+    [0x0f3, 'set_thread_area', ['struct user_desc *u_info']],
+    [0x0f4, 'get_thread_area', ['struct user_desc *u_info']],
+    [0x0f5, 'io_setup', ['unsigned nr_events', 'aio_context_t *ctxp']],
+    [0x0f6, 'io_destroy', ['aio_context_t ctx']],
+    [0x0f7, 'io_getevents', ['__u32 ctx_id', '__s32 min_nr', '__s32 nr', 'struct io_event *events', 'struct old_timespec32 *timeout']], # io_getevents_time32
+    [0x0f8, 'io_submit', ['aio_context_t ctx_id', 'long nr', 'struct iocb *iocbpp']],
+    [0x0f9, 'io_cancel', ['aio_context_t ctx_id', 'struct iocb *iocb', 'struct io_event *result']],
+    [0x0fa, 'fadvise64', ['int fd', 'unsigned int offset_lo', 'unsigned int offset_hi', 'size_t len', 'int advice']], # ia32_fadvise64
+    #0x0fb, set_zone_reclaim
+    [0x0fc, 'exit_group', ['int error_code']],
+    [0x0fd, 'lookup_dcookie', ['u64 cookie64', 'char *buf', 'size_t len']],
+    [0x0fe, 'epoll_create', ['int size']],
+    [0x0ff, 'epoll_ctl', ['int epfd', 'int op', 'int fd', 'struct epoll_event *event']],
+    [0x100, 'epoll_wait', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'int timeout']],
+    [0x101, 'remap_file_pages', ['unsigned long start', 'unsigned long size', 'unsigned long prot', 'unsigned long pgoff', 'unsigned long flags']],
+    [0x102, 'set_tid_address', ['int *tidptr']],
+    [0x103, 'timer_create', ['clockid_t which_clock', 'struct sigevent *timer_event_spec', 'timer_t *created_timer_id']],
+    [0x104, 'timer_settime', ['timer_t timer_id', 'int flags', 'struct old_itimerspec32 *new', 'struct old_itimerspec32 *old']], # timer_settime32
+    [0x105, 'timer_gettime', ['timer_t timer_id', 'struct old_itimerspec32 *setting']],
+    [0x106, 'timer_getoverrun', ['timer_t timer_id']],
+    [0x107, 'timer_delete', ['timer_t timer_id']],
+    [0x108, 'clock_settime', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_settime32
+    [0x109, 'clock_gettime', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_gettime32
+    [0x10a, 'clock_getres', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_getres_time32
+    [0x10b, 'clock_nanosleep', ['clockid_t which_clock', 'int flags', 'struct old_timespec32 *rqtp', 'struct old_timespec32 *rmtp']], # clock_nanosleep_time32
+    [0x10c, 'statfs64', ['const char *pathname', 'size_t sz', 'struct statfs64 *buf']],
+    [0x10d, 'fstatfs64', ['unsigned int fd', 'size_t sz', 'struct statfs64 *buf']],
+    [0x10e, 'tgkill', ['pid_t tgid', 'pid_t pid', 'int sig']],
+    [0x10f, 'utimes', ['char *filename', 'struct old_timeval32 *utimes']], # utimes_time32
+    [0x110, 'fadvise64_64', ['int fd', '__u32 offset_low', '__u32 offset_high', '__u32 len_low', '__u32 len_high', 'int advice']], # ia32_fadvise64_64
+    #0x111, vserver # unimplemented
+    [0x112, 'mbind', ['unsigned long start', 'unsigned long len', 'unsigned long mode', 'const unsigned long *nmask', 'unsigned long maxnode', 'unsigned int flags']],
+    [0x113, 'get_mempolicy', ['int *policy', 'unsigned long *nmask', 'unsigned long maxnode', 'unsigned long addr', 'unsigned long flags']],
+    [0x114, 'set_mempolicy', ['int mode', 'const unsigned long *nmask', 'unsigned long maxnode']],
+    [0x115, 'mq_open', ['const char *u_name', 'int oflag', 'umode_t mode', 'struct mq_attr *u_attr']],
+    [0x116, 'mq_unlink', ['const char *u_name']],
+    [0x117, 'mq_timedsend', ['mqd_t mqdes', 'const char *u_msg_ptr', 'unsigned int msg_len', 'unsigned int msg_prio', 'const struct old_timespec32 *u_abs_timeout']], # mq_timedsend_time32
+    [0x118, 'mq_timedreceive', ['mqd_t mqdes', 'char *u_msg_ptr', 'unsigned int msg_len', 'unsigned int *u_msg_prio', 'const struct old_timespec32 *u_abs_timeout']], # mq_timedreceive_time32
+    [0x119, 'mq_notify', ['mqd_t mqdes', 'const struct sigevent *u_notification']],
+    [0x11a, 'mq_getsetattr', ['mqd_t mqdes', 'const struct mq_attr *u_mqstat', 'struct mq_attr *u_omqstat']],
+    [0x11b, 'kexec_load', ['unsigned long entry', 'unsigned long nr_segments', 'struct kexec_segment *segments', 'unsigned long flags']],
+    [0x11c, 'waitid', ['int which', 'pid_t upid', 'struct siginfo *infop', 'int options', 'struct rusage *ru']],
+    #0x11d, unused
+    [0x11e, 'add_key', ['const char *_type', 'const char *_description', 'const void *_payload', 'size_t plen', 'key_serial_t ringid']],
+    [0x11f, 'request_key', ['const char *_type', 'const char *_description', 'const char *_callout_info', 'key_serial_t destringid']],
+    [0x120, 'keyctl', ['int option', 'unsigned long arg2', 'unsigned long arg3', 'unsigned long arg4', 'unsigned long arg5']],
+    [0x121, 'ioprio_set', ['int which', 'int who', 'int ioprio']],
+    [0x122, 'ioprio_get', ['int which', 'int who']],
+    [0x123, 'inotify_init', []],
+    [0x124, 'inotify_add_watch', ['int fd', 'const char *pathname', 'u32 mask']],
+    [0x125, 'inotify_rm_watch', ['int fd', '__s32 wd']],
+    [0x126, 'migrate_pages', ['pid_t pid', 'unsigned long maxnode', 'const unsigned long *old_nodes', 'const unsigned long *new_nodes']],
+    [0x127, 'openat', ['int dfd', 'const char *filename', 'int flags', 'umode_t mode']],
+    [0x128, 'mkdirat', ['int dfd', 'const char *pathname', 'umode_t mode']],
+    [0x129, 'mknodat', ['int dfd', 'const char *filename', 'umode_t mode', 'unsigned int dev']],
+    [0x12a, 'fchownat', ['int dfd', 'const char *filename', 'uid_t user', 'gid_t group', 'int flag']],
+    [0x12b, 'futimesat', ['unsigned int dfd', 'const char *filename', 'struct old_timeval32 *t']], # futimesat_time32
+    [0x12c, 'fstatat64', ['unsigned int dfd', 'const char *filename', 'struct stat64 *statbuf', 'int flag']], # fstatat64
+    [0x12d, 'unlinkat', ['int dfd', 'const char *pathname', 'int flag']],
+    [0x12e, 'renameat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname']],
+    [0x12f, 'linkat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'int flags']],
+    [0x130, 'symlinkat', ['const char *oldname', 'int newdfd', 'const char *newname']],
+    [0x131, 'readlinkat', ['int dfd', 'const char *pathname', 'char *buf', 'int bufsiz']],
+    [0x132, 'fchmodat', ['int dfd', 'const char *filename', 'umode_t mode']],
+    [0x133, 'faccessat', ['int dfd', 'const char *filename', 'int mode']],
+    [0x134, 'pselect6', ['int n', 'fd_set *inp', 'fd_set *outp', 'fd_set *exp', 'struct old_timespec32 *tsp', 'void *sig']], # pselect6_time32
+    [0x135, 'ppoll', ['struct pollfd *ufds', 'unsigned int nfds', 'struct old_timespec32 *tsp', 'const sigset_t *sigmask', 'size_t sigsetsize']], # ppoll_time32
+    [0x136, 'unshare', ['unsigned long unshare_flags']],
+    [0x137, 'set_robust_list', ['struct robust_list_head *head', 'size_t len']],
+    [0x138, 'get_robust_list', ['int pid', 'struct robust_list_head **head_ptr', 'size_t *len_ptr']],
+    [0x139, 'splice', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
+    [0x13a, 'sync_file_range', ['int fd', 'unsigned int off_low', 'unsigned int off_hi', 'unsigned int n_low', 'unsigned int n_hi', 'unsigned int flags']], # ia32_sync_file_range
+    [0x13b, 'tee', ['int fdin', 'int fdout', 'size_t len', 'unsigned int flags']],
+    [0x13c, 'vmsplice', ['int fd', 'const struct iovec *uiov', 'unsigned long nr_segs', 'unsigned int flags']],
+    [0x13d, 'move_pages', ['pid_t pid', 'unsigned long nr_pages', 'const void **pages', 'const int *nodes', 'int *status', 'int flags']],
+    [0x13e, 'getcpu', ['unsigned *cpup', 'unsigned *nodep', 'struct getcpu_cache *unused']],
+    [0x13f, 'epoll_pwait', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'int timeout', 'const sigset_t *sigmask', 'size_t sigsetsize']],
+    [0x140, 'utimensat', ['unsigned int dfd', 'const char *filename', 'struct old_timespec32 *t', 'int flags']], # utimensat_time32
+    [0x141, 'signalfd', ['int ufd', 'sigset_t *user_mask', 'size_t sizemask']],
+    [0x142, 'timerfd_create', ['int clockid', 'int flags']],
+    [0x143, 'eventfd', ['unsigned int count']],
+    [0x144, 'fallocate', ['int fd', 'int mode', 'unsigned int offset_lo', 'unsigned int offset_hi', 'unsigned int len_lo', 'unsigned int len_hi']], # ia32_fallocate
+    [0x145, 'timerfd_settime', ['int ufd', 'int flags', 'const struct old_itimerspec32 *utmr', 'struct old_itimerspec32 *otmr']], # timerfd_settime32
+    [0x146, 'timerfd_gettime', ['int ufd', 'struct old_itimerspec32 *otmr']], # timerfd_gettime32
+    [0x147, 'signalfd4', ['int ufd', 'sigset_t *user_mask', 'size_t sizemask', 'int flags']],
+    [0x148, 'eventfd2', ['unsigned int count', 'int flags']],
+    [0x149, 'epoll_create1', ['int flags']],
+    [0x14a, 'dup3', ['unsigned int oldfd', 'unsigned int newfd', 'int flags']],
+    [0x14b, 'pipe2', ['int *fildes', 'int flags']],
+    [0x14c, 'inotify_init1', ['int flags']],
+    [0x14d, 'preadv', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h']],
+    [0x14e, 'pwritev', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h']],
+    [0x14f, 'rt_tgsigqueueinfo', ['pid_t tgid', 'pid_t pid', 'int sig', 'siginfo_t *uinfo']],
+    [0x150, 'perf_event_open', ['struct perf_event_attr *attr_uptr', 'pid_t pid', 'int cpu', 'int group_fd', 'unsigned long flags']],
+    [0x151, 'recvmmsg', ['int fd', 'struct mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags', 'struct old_timespec32 *timeout']], # recvmmsg_time32
+    [0x152, 'fanotify_init', ['unsigned int flags', 'unsigned int event_f_flags']],
+    [0x153, 'fanotify_mark', ['int fanotify_fd', 'unsigned int flags', '__u64 mask', 'int dfd', 'const char *pathname']],
+    [0x154, 'prlimit64', ['pid_t pid', 'unsigned int resource', 'const struct rlimit64 *new_rlim', 'struct rlimit64 *old_rlim']],
+    [0x155, 'name_to_handle_at', ['int dfd', 'const char *name', 'struct file_handle *handle', 'int *mnt_id', 'int flag']],
+    [0x156, 'open_by_handle_at', ['int mountdirfd', 'struct file_handle *handle', 'int flags']],
+    [0x157, 'clock_adjtime', ['clockid_t which_clock', 'struct old_timex32 *utp']], # clock_adjtime32
+    [0x158, 'syncfs', ['int fd']],
+    [0x159, 'sendmmsg', ['int fd', 'struct mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags']],
+    [0x15a, 'setns', ['int fd', 'int flags']],
+    [0x15b, 'process_vm_readv', ['pid_t pid', 'const struct iovec *lvec', 'unsigned long liovcnt', 'const struct iovec *rvec', 'unsigned long riovcnt', 'unsigned long flags']],
+    [0x15c, 'process_vm_writev', ['pid_t pid', 'const struct iovec *lvec', 'unsigned long liovcnt', 'const struct iovec *rvec', 'unsigned long riovcnt', 'unsigned long flags']],
+    [0x15d, 'kcmp', ['pid_t pid1', 'pid_t pid2', 'int type', 'unsigned long idx1', 'unsigned long idx2']],
+    [0x15e, 'finit_module', ['int fd', 'const char *uargs', 'int flags']],
+    [0x15f, 'sched_setattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int flags']],
+    [0x160, 'sched_getattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int usize', 'unsigned int flags']],
+    [0x161, 'renameat2', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'unsigned int flags']],
+    [0x162, 'seccomp', ['unsigned int op', 'unsigned int flags', 'void *uargs']],
+    [0x163, 'getrandom', ['char *buf', 'size_t count', 'unsigned int flags']],
+    [0x164, 'memfd_create', ['const char *uname', 'unsigned int flags']],
+    [0x165, 'bpf', ['int cmd', 'union bpf_attr *uattr', 'unsigned int size']],
+    [0x166, 'execveat', ['int fd', 'const char *filename', 'const char *const *argv', 'const char *const *envp', 'int flags']],
+    [0x167, 'socket', ['int family', 'int type', 'int protocol']],
+    [0x168, 'socketpair', ['int family', 'int type', 'int protocol', 'int *usockvec']],
+    [0x169, 'bind', ['int fd', 'struct sockaddr *umyaddr', 'int addrlen']],
+    [0x16a, 'connect', ['int fd', 'struct sockaddr *uservaddr', 'int addrlen']],
+    [0x16b, 'listen', ['int fd', 'int backlog']],
+    [0x16c, 'accept4', ['int fd', 'struct sockaddr *upeer_sockaddr', 'int *upeer_addrlen', 'int flags']],
+    [0x16d, 'getsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int *optlen']],
+    [0x16e, 'setsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int optlen']],
+    [0x16f, 'getsockname', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
+    [0x170, 'getpeername', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
+    [0x171, 'sendto', ['int fd', 'void *buff', 'size_t len', 'unsigned int flags', 'struct sockaddr *addr', 'int addr_len']],
+    [0x172, 'sendmsg', ['int fd', 'struct user_msghdr *msg', 'unsigned int flags']],
+    [0x173, 'recvfrom', ['int fd', 'void *ubuf', 'size_t size', 'unsigned int flags', 'struct sockaddr *addr', 'int *addr_len']],
+    [0x174, 'recvmsg', ['int fd', 'struct user_msghdr *msg', 'unsigned int flags']],
+    [0x175, 'shutdown', ['int fd', 'int how']],
+    [0x176, 'userfaultfd', ['int flags']],
+    [0x177, 'membarrier', ['int cmd', 'int flags']],
+    [0x178, 'mlock2', ['unsigned long start', 'size_t len', 'int flags']],
+    [0x179, 'copy_file_range', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
+    [0x17a, 'preadv2', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h', 'rwf_t flags']],
+    [0x17b, 'pwritev2', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h', 'rwf_t flags']],
+    [0x17c, 'pkey_mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot', 'int pkey']],
+    [0x17d, 'pkey_alloc', ['unsigned long flags', 'unsigned long init_val']],
+    [0x17e, 'pkey_free', ['int pkey']],
+    [0x17f, 'statx', ['int dfd', 'const char *filename', 'unsigned flags', 'unsigned int mask', 'struct statx *buffer']],
+    [0x180, 'arch_prctl', ['int option', 'unsigned long arg2']],
+    [0x181, 'io_pgetevents', ['aio_context_t ctx_id', 'long min_nr', 'long nr', 'struct io_event *events', 'struct __kernel_timespec *timeout', 'const struct __aio_sigset *usig']],
+    [0x182, 'rseq', ['struct rseq *rseq', 'u32 rseq_len', 'int flags', 'u32 sig']],
+    # 0x183-0x188, don't use
+    [0x189, 'semget', ['key_t key', 'int nsems', 'int semflg']],
+    [0x18a, 'semctl', ['int semid', 'int semnum', 'int cmd', 'unsigned long arg']],
+    [0x18b, 'shmget', ['key_t key', 'size_t size', 'int shmflg']],
+    [0x18c, 'shmctl', ['int shmid', 'int cmd', 'struct shmid_ds *buf']],
+    [0x18d, 'shmat', ['int shmid', 'char *shmaddr', 'int shmflg']],
+    [0x18e, 'shmdt', ['char *shmaddr']],
+    [0x18f, 'msgget', ['key_t key', 'int msgflg']],
+    [0x190, 'msgsnd', ['int msqid', 'struct msgbuf *msgp', 'size_t msgsz', 'int msgflg']],
+    [0x191, 'msgrcv', ['int msqid', 'struct msgbuf *msgp', 'size_t msgsz', 'long msgtyp', 'int msgflg']],
+    [0x192, 'msgctl', ['int msqid', 'int cmd', 'struct msqid_ds *buf']],
+    [0x193, 'clock_gettime_time64', ['const clockid_t which_clock', 'struct __kernel_timespec *tp']], # clock_gettime
+    [0x194, 'clock_settime_time64', ['const clockid_t which_clock', 'struct __kernel_timespec *tp']], # clock_settime
+    [0x195, 'clock_adjtime_time64', ['const clockid_t which_clock', 'struct __kernel_timex *utx']], # clock_adjtime
+    [0x196, 'clock_getres_time64', ['const clockid_t which_clock', 'struct __kernel_timespec *tp']], # clock_getres
+    [0x197, 'clock_nanosleep_time64', ['const clockid_t which_clock', 'int flags', 'const struct __kernel_timespec *rqtp', 'struct __kernel_timespec *rmtp']], # clock_nanosleep
+    [0x198, 'timer_gettime_time64', ['timer_t timer_id', 'struct __kernel_itimerspec *setting']], # timer_gettime
+    [0x199, 'timer_settime_time64', ['timer_t timer_id', 'int flags', 'const struct __kernel_itimerspec *new_setting', 'struct __kernel_itimerspec *old_setting']], # timer_settime
+    [0x19a, 'timerfd_gettime_time64', ['int ufd', 'struct __kernel_itimerspec *otmr']], # timerfd_gettime
+    [0x19b, 'timerfd_settime_time64', ['int ufd', 'int flags', 'const struct __kernel_itimerspec *utmr', 'struct __kernel_itimerspec *otmr']], # timerfd_settime
+    [0x19c, 'utimensat_time64', ['int dfd', 'const char *filename', 'struct __kernel_timespec *utimes', 'int flags']], # utimensat
+    [0x19d, 'pselect6_time64', ['int n', 'fd_set *inp', 'fd_set *outp', 'fd_set *exp', 'struct __kernel_timespec *tsp', 'void *sig']], # pselect6
+    [0x19e, 'ppoll_time64', ['struct pollfd *ufds', 'unsigned int nfds', 'struct __kernel_timespec *tsp', 'const sigset_t *sigmask', 'size_t sigsetsize']], # ppoll
+    #0x19f, unused
+    [0x1a0, 'io_pgetevents_time64', ['aio_context_t ctx_id', 'long min_nr', 'long nr', 'struct io_event *events', 'struct __kernel_timespec *timeout', 'const struct __aio_sigset *usig']], # io_pgetevents
+    [0x1a1, 'recvmmsg_time64', ['int fd', 'struct mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags', 'struct __kernel_timespec *timeout']], # recvmmsg
+    [0x1a2, 'mq_timedsend_time64', ['mqd_t mqdes', 'const char *u_msg_ptr', 'size_t msg_len', 'unsigned int msg_prio', 'const struct __kernel_timespec *u_abs_timeout']], # mq_timedsend
+    [0x1a3, 'mq_timedreceive_time64', ['mqd_t mqdes', 'char *u_msg_ptr', 'size_t msg_len', 'unsigned int *u_msg_prio', 'const struct __kernel_timespec *u_abs_timeout']], # mq_timedreceive
+    [0x1a4, 'semtimedop_time64', ['int semid', 'struct sembuf *tsops', 'unsigned int nsops', 'const struct __kernel_timespec *timeout']], # semtimedop
+    [0x1a5, 'rt_sigtimedwait_time64', ['const sigset_t *uthese', 'siginfo_t *uinfo', 'const struct __kernel_timespec *uts', 'size_t sigsetsize']], # rt_sigtimedwait
+    [0x1a6, 'futex_time64', ['u32 *uaddr', 'int op', 'u32 val', 'struct __kernel_timespec *utime', 'u32 *uaddr2', 'u32 val3']], # futex
+    [0x1a7, 'sched_rr_get_interval_time64', ['pid_t pid', 'struct __kernel_timespec *interval']], # sched_rr_get_interval
+    [0x1a8, 'pidfd_send_signal', ['int pidfd', 'int sig', 'siginfo_t *info', 'unsigned int flags']],
+    [0x1a9, 'io_uring_setup', ['u32 entries', 'struct io_uring_params *params']],
+    [0x1aa, 'io_uring_enter', ['unsigned int fd', 'u32 to_submit', 'u32 min_complete', 'u32 flags', 'const sigset_t *sig', 'size_t sigsz']],
+    [0x1ab, 'io_uring_register', ['unsigned int fd', 'unsigned int opcode', 'void *arg', 'unsigned int nr_args']],
+    [0x1ac, 'open_tree', ['int dfd', 'const char *filename', 'unsigned flags']],
+    [0x1ad, 'move_mount', ['int from_dfd', 'const char *from_pathname', 'int to_dfd', 'const char *to_pathname', 'unsigned int flags']],
+    [0x1ae, 'fsopen', ['const char *_fs_name', 'unsigned int flags']],
+    [0x1af, 'fsconfig', ['int fd', 'unsigned int cmd', 'const char *_key', 'const void *_value', 'int aux']],
+    [0x1b0, 'fsmount', ['int fs_fd', 'unsigned int flags', 'unsigned int attr_flags']],
+    [0x1b1, 'fspick', ['int, dfd', 'const char *path', 'unsigned int flags']],
+    [0x1b2, 'pidfd_open', ['pid_t pid', 'unsigned int flags']],
+    [0x1b3, 'clone3', ['struct clone_args *uargs', 'size_t size']],
+    [0x1b4, 'close_range', ['unsigned int fd', 'unsigned int max_fd', 'unsigned int flag']],
+    [0x1b5, 'openat2', ['int dfd', 'const char *filename', 'struct open_how *how', 'size_t usize']],
+    [0x1b6, 'pidfd_getfd', ['int pidfd', 'int fd', 'unsigned int flags']],
+    [0x1b7, 'faccessat2', ['int dfd', 'const char *filename', 'int mode', 'int flags']],
+    [0x1b8, 'process_madvise', ['int pidfd', 'const struct iovec *vec', 'size_t vlen', 'int behavior', 'unsigned int flags']],
+    [0x1b9, 'epoll_pwait2', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'const struct __kernel_timespec *timeout', 'const sigset_t *sigmask', 'size_t sigsetsize']],
+    [0x1ba, 'mount_setattr', ['int dfd', 'const char *path', 'unsigned int flags', 'struct mount_attr *uattr', 'size_t usize']],
+    [0x1bb, 'quotactl_fd', ['unsigned int fd', 'unsigned int cmd', 'qid_t id', 'void __user *addr']],
+    [0x1bc, 'landlock_create_ruleset', ['const struct landlock_ruleset_attr *const attr', 'const size_t size', 'const __u32 flags']],
+    [0x1bd, 'landlock_add_rule', ['const int ruleset_fd', 'const enum landlock_rule_type rule_type', 'const void *const rule_attr', 'const __u32 flags']],
+    [0x1be, 'landlock_restrict_self', ['const int ruleset_fd', 'const __u32 flags']],
+    [0x1bf, 'memfd_secret', ['unsigned int, flags']],
+    [0x1c0, 'process_mrelease', ['int pidfd', 'unsigned int flags']],
+    [0x1c1, 'futex_waitv', ['struct futex_waitv *waiters', 'unsigned int nr_futexes', 'unsigned int flags', 'struct __kernel_timespec *timeout', 'clockid_t clockid']],
+    [0x1c2, 'set_mempolicy_home_node', ['unsigned long start', 'unsigned long len', 'unsigned long home_node', 'unsigned long flags']],
+]
+
+
+# ARM64
+# - arch/arm64/include/asm/unistd.h
+# - arch/arm64/include/uapi/asm/unistd.h
+# - include/uapi/asm-generic/unistd.h
+arm64_syscall_list = [
+    [0x000, 'io_setup', ['unsigned nr_events', 'aio_context_t *ctxp']],
+    [0x001, 'io_destroy', ['aio_context_t ctx']],
+    [0x002, 'io_submit', ['aio_context_t ctx_id', 'long nr', 'struct iocb **iocbpp']],
+    [0x003, 'io_cancel', ['aio_context_t ctx_id', 'struct iocb *iocb', 'struct io_event *result']],
+    [0x004, 'io_getevents', ['aio_context_t ctx_id', 'long min_nr', 'long nr', 'struct io_event *events', 'struct __kernel_timespec *timeout']],
+    [0x005, 'setxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
+    [0x006, 'lsetxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
+    [0x007, 'fsetxattr', ['int fd', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
+    [0x008, 'getxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
+    [0x009, 'lgetxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
+    [0x00a, 'fgetxattr', ['int fd', 'const char *name', 'void *value', 'size_t size']],
+    [0x00b, 'listxattr', ['const char *pathname', 'char *list', 'size_t size']],
+    [0x00c, 'llistxattr', ['const char *pathname', 'char *list', 'size_t size']],
+    [0x00d, 'flistxattr', ['int fd', 'char *list', 'size_t size']],
+    [0x00e, 'removexattr', ['const char *pathname', 'const char *name']],
+    [0x00f, 'lremovexattr', ['const char *pathname', 'const char *name']],
+    [0x010, 'fremovexattr', ['int fd', 'const char *name']],
+    [0x011, 'getcwd', ['char *buf', 'unsigned long size']],
+    [0x012, 'lookup_dcookie', ['u64 cookie64', 'char *buf', 'size_t len']],
+    [0x013, 'eventfd2', ['unsigned int count', 'int flags']],
+    [0x014, 'epoll_create1', ['int flags']],
+    [0x015, 'epoll_ctl', ['int epfd', 'int op', 'int fd', 'struct epoll_event *event']],
+    [0x016, 'epoll_pwait', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'int timeout', 'const sigset_t *sigmask', 'size_t sigsetsize']],
+    [0x017, 'dup', ['unsigned int fildes']],
+    [0x018, 'dup3', ['unsigned int oldfd', 'unsigned int newfd', 'int flags']],
+    [0x019, 'fcntl', ['unsigned int fd', 'unsigned int cmd', 'unsigned long arg']],
+    [0x01a, 'inotify_init1', ['int flags']],
+    [0x01b, 'inotify_add_watch', ['int fd', 'const char *pathname', 'u32 mask']],
+    [0x01c, 'inotify_rm_watch', ['int fd', '__s32 wd']],
+    [0x01d, 'ioctl', ['unsigned int fd', 'unsigned int cmd', 'unsigned long arg']],
+    [0x01e, 'ioprio_set', ['int which', 'int who', 'int ioprio']],
+    [0x01f, 'ioprio_get', ['int which', 'int who']],
+    [0x020, 'flock', ['unsigned int fd', 'unsigned int cmd']],
+    [0x021, 'mknodat', ['int dfd', 'const char *filename', 'umode_t mode', 'unsigned int dev']],
+    [0x022, 'mkdirat', ['int dfd', 'const char *pathname', 'umode_t mode']],
+    [0x023, 'unlinkat', ['int dfd', 'const char *pathname', 'int flag']],
+    [0x024, 'symlinkat', ['const char *oldname', 'int newdfd', 'const char *newname']],
+    [0x025, 'linkat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'int flags']],
+    [0x026, 'renameat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname']],
+    [0x027, 'umount2', ['char *name', 'int flags']],
+    [0x028, 'mount', ['char *dev_name', 'char *dir_name', 'char *type', 'unsigned long flags', 'void *data']],
+    [0x029, 'pivot_root', ['const char *new_root', 'const char *put_old']],
+    #0x02a, nfsservctl # deleted from kernel 3.1
+    [0x02b, 'statfs', ['const char *pathname', 'struct statfs *buf']],
+    [0x02c, 'fstatfs', ['unsigned int fd', 'struct statfs *buf']],
+    [0x02d, 'truncate', ['const char *path', 'long length']],
+    [0x02e, 'ftruncate', ['unsigned int fd', 'unsigned long length']],
+    [0x02f, 'fallocate', ['int fd', 'int mode', 'loff_t offset', 'loff_t len']],
+    [0x030, 'faccessat', ['int dfd', 'const char *filename', 'int mode']],
+    [0x031, 'chdir', ['const char *filename']],
+    [0x032, 'fchdir', ['unsigned int fd']],
+    [0x033, 'chroot', ['const char *filename']],
+    [0x034, 'fchmod', ['unsigned int fd', 'umode_t mode']],
+    [0x035, 'fchmodat', ['int dfd', 'const char *filename', 'umode_t mode']],
+    [0x036, 'fchownat', ['int dfd', 'const char *filename', 'uid_t user', 'gid_t group', 'int flag']],
+    [0x037, 'fchown', ['unsigned int fd', 'uid_t user', 'gid_t group']],
+    [0x038, 'openat', ['int dfd', 'const char *filename', 'int flags', 'umode_t mode']],
+    [0x039, 'close', ['unsigned int fd']],
+    [0x03a, 'vhangup', []],
+    [0x03b, 'pipe2', ['int *fildes', 'int flags']],
+    [0x03c, 'quotactl', ['unsigned int cmd', 'const char *special', 'qid_t id', 'void *addr']],
+    [0x03d, 'getdents64', ['unsigned int fd', 'struct linux_dirent64 *dirent', 'unsigned int count']],
+    [0x03e, 'lseek', ['unsigned int fd', 'off_t offset', 'unsigned int whence']],
+    [0x03f, 'read', ['unsigned int fd', 'char *buf', 'size_t count']],
+    [0x040, 'write', ['unsigned int fd', 'const char *buf', 'size_t count']],
+    [0x041, 'readv', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen']],
+    [0x042, 'writev', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen']],
+    [0x043, 'pread64', ['unsigned int fd', 'char *buf', 'size_t count', 'loff_t pos']],
+    [0x044, 'pwrite64', ['unsigned int fd', 'const char *buf', 'size_t count', 'loff_t pos']],
+    [0x045, 'preadv', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h']],
+    [0x046, 'pwritev', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h']],
+    [0x047, 'sendfile', ['int out_fd', 'int in_fd', 'off_t *offset', 'size_t count']], # sendfile64
+    [0x048, 'pselect6', ['int n', 'fd_set *inp', 'fd_set *outp', 'fd_set *exp', 'struct __kernel_timespec *tsp', 'void *sig']],
+    [0x049, 'ppoll', ['struct pollfd *ufds', 'unsigned int nfds', 'struct __kernel_timespec *tsp', 'const sigset_t *sigmask', 'size_t sigsetsize']],
+    [0x04a, 'signalfd4', ['int ufd', 'sigset_t *user_mask', 'size_t sizemask', 'int flags']],
+    [0x04b, 'vmsplice', ['int fd', 'const struct iovec *uiov', 'unsigned long nr_segs', 'unsigned int flags']],
+    [0x04c, 'splice', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
+    [0x04d, 'tee', ['int fdin', 'int fdout', 'size_t len', 'unsigned int flags']],
+    [0x04e, 'readlinkat', ['int dfd', 'const char *pathname', 'char *buf', 'int bufsiz']],
+    [0x04f, 'fstatat', ['int dfd', 'const char *filename', 'struct stat *statbuf', 'int flag']], # newfstatat
+    [0x050, 'fstat', ['unsigned int fd', 'struct stat *statbuf']], # newfstat
+    [0x051, 'sync', []],
+    [0x052, 'fsync', ['unsigned int fd']],
+    [0x053, 'fdatasync', ['unsigned int fd']],
+    [0x054, 'sync_file_range', ['int fd', 'loff_t offset', 'loff_t nbytes', 'unsigned int flags']], # sync_file_range2 is unimplemented
+    [0x055, 'timerfd_create', ['int clockid', 'int flags']],
+    [0x056, 'timerfd_settime', ['int ufd', 'int flags', 'const struct __kernel_itimerspec *utmr', 'struct __kernel_itimerspec *otmr']],
+    [0x057, 'timerfd_gettime', ['int ufd', 'struct __kernel_itimerspec *otmr']],
+    [0x058, 'utimensat', ['int dfd', 'const char *filename', 'struct __kernel_timespec *utimes', 'int flags']],
+    [0x059, 'acct', ['const char *name']],
+    [0x05a, 'capget', ['cap_user_header_t header', 'cap_user_data_t dataptr']],
+    [0x05b, 'capset', ['cap_user_header_t header', 'const cap_user_data_t data']],
+    [0x05c, 'personality', ['unsigned int personality']],
+    [0x05d, 'exit', ['int error_code']],
+    [0x05e, 'exit_group', ['int error_code']],
+    [0x05f, 'waitid', ['int which', 'pid_t upid', 'struct siginfo *infop', 'int options', 'struct rusage *ru']],
+    [0x060, 'set_tid_address', ['int *tidptr']],
+    [0x061, 'unshare', ['unsigned long unshare_flags']],
+    [0x062, 'futex', ['u32 *uaddr', 'int op', 'u32 val', 'struct __kernel_timespec *utime', 'u32 *uaddr2', 'u32 val3']],
+    [0x063, 'set_robust_list', ['struct robust_list_head *head', 'size_t len']],
+    [0x064, 'get_robust_list', ['int pid', 'struct robust_list_head **head_ptr', 'size_t *len_ptr']],
+    [0x065, 'nanosleep', ['struct __kernel_timespec *rqtp', 'struct __kernel_timespec *rmtp']],
+    [0x066, 'getitimer', ['int which', 'struct __kernel_old_itimerval *value']],
+    [0x067, 'setitimer', ['int which', 'struct __kernel_old_itimerval *value', 'struct __kernel_old_itimerval *ovalue']],
+    [0x068, 'kexec_load', ['unsigned long entry', 'unsigned long nr_segments', 'struct kexec_segment *segments', 'unsigned long flags']],
+    [0x069, 'init_module', ['void *umod', 'unsigned long len', 'const char *uargs']],
+    [0x06a, 'delete_module', ['const char *name_user', 'unsigned int flags']],
+    [0x06b, 'timer_create', ['clockid_t which_clock', 'struct sigevent *timer_event_spec', 'timer_t *created_timer_id']],
+    [0x06c, 'timer_gettime', ['timer_t timer_id', 'struct __kernel_itimerspec *setting']],
+    [0x06d, 'timer_getoverrun', ['timer_t timer_id']],
+    [0x06e, 'timer_settime', ['timer_t timer_id', 'int flags', 'const struct __kernel_itimerspec *new_setting', 'struct __kernel_itimerspec *old_setting']],
+    [0x06f, 'timer_delete', ['timer_t timer_id']],
+    [0x070, 'clock_settime', ['clockid_t which_clock', 'const struct __kernel_timespec *tp']],
+    [0x071, 'clock_gettime', ['clockid_t which_clock', 'struct __kernel_timespec *tp']],
+    [0x072, 'clock_getres', ['clockid_t which_clock', 'struct __kernel_timespec *tp']],
+    [0x073, 'clock_nanosleep', ['clockid_t which_clock', 'int flags', 'const struct __kernel_timespec *rqtp', 'struct __kernel_timespec *rmtp']],
+    [0x074, 'syslog', ['int type', 'char *buf', 'int len']],
+    [0x075, 'ptrace', ['long request', 'long pid', 'unsigned long addr', 'unsigned long data']],
+    [0x076, 'sched_setparam', ['pid_t pid', 'struct sched_param *param']],
+    [0x077, 'sched_setscheduler', ['pid_t pid', 'int policy', 'struct sched_param *param']],
+    [0x078, 'sched_getscheduler', ['pid_t pid']],
+    [0x079, 'sched_getparam', ['pid_t pid', 'struct sched_param *param']],
+    [0x07a, 'sched_setaffinity', ['pid_t pid', 'unsigned int len', 'unsigned long *user_mask_ptr']],
+    [0x07b, 'sched_getaffinity', ['pid_t pid', 'unsigned int len', 'unsigned long *user_mask_ptr']],
+    [0x07c, 'sched_yield', []],
+    [0x07d, 'sched_get_priority_max', ['int policy']],
+    [0x07e, 'sched_get_priority_min', ['int policy']],
+    [0x07f, 'sched_rr_get_interval', ['pid_t pid', 'struct __kernel_timespec *interval']],
+    [0x080, 'restart_syscall', []],
+    [0x081, 'kill', ['pid_t pid', 'int sig']],
+    [0x082, 'tkill', ['pid_t pid', 'int sig']],
+    [0x083, 'tgkill', ['pid_t tgid', 'pid_t pid', 'int sig']],
+    [0x084, 'sigaltstack', ['const stack_t *uss', 'stack_t *uoss']],
+    [0x085, 'rt_sigsuspend', ['sigset_t *unewset', 'size_t sigsetsize']],
+    [0x086, 'rt_sigaction', ['int sig', 'const struct sigaction *act', 'struct sigaction *oact', 'size_t sigsetsize']],
+    [0x087, 'rt_sigprocmask', ['int how', 'sigset_t *nset', 'sigset_t *oset', 'size_t sigsetsize']],
+    [0x088, 'rt_sigpending', ['sigset_t *uset', 'size_t sigsetsize']],
+    [0x089, 'rt_sigtimedwait', ['const sigset_t *uthese', 'siginfo_t *uinfo', 'const struct __kernel_timespec *uts', 'size_t sigsetsize']],
+    [0x08a, 'rt_sigqueueinfo', ['pid_t pid', 'int sig', 'siginfo_t *uinfo']],
+    [0x08b, 'rt_sigreturn', []],
+    [0x08c, 'setpriority', ['int which', 'int who', 'int niceval']],
+    [0x08d, 'getpriority', ['int which', 'int who']],
+    [0x08e, 'reboot', ['int magic1', 'int magic2', 'unsigned int cmd', 'void *arg']],
+    [0x08f, 'setregid', ['gid_t rgid', 'gid_t egid']],
+    [0x090, 'setgid', ['gid_t gid']],
+    [0x091, 'setreuid', ['uid_t ruid', 'uid_t euid']],
+    [0x092, 'setuid', ['uid_t uid']],
+    [0x093, 'setresuid', ['uid_t ruid', 'uid_t euid', 'uid_t suid']],
+    [0x094, 'getresuid', ['uid_t *ruidp', 'uid_t *euidp', 'uid_t *suidp']],
+    [0x095, 'setresgid', ['gid_t rgid', 'gid_t egid', 'gid_t sgid']],
+    [0x096, 'getresgid', ['gid_t *rgidp', 'gid_t *egidp', 'gid_t *sgidp']],
+    [0x097, 'setfsuid', ['uid_t uid']],
+    [0x098, 'setfsgid', ['gid_t gid']],
+    [0x099, 'times', ['struct tms *tbuf']],
+    [0x09a, 'setpgid', ['pid_t pid', 'pid_t pgid']],
+    [0x09b, 'getpgid', ['pid_t pid']],
+    [0x09c, 'getsid', ['pid_t pid']],
+    [0x09d, 'setsid', []],
+    [0x09e, 'getgroups', ['int gidsetsize', 'gid_t *grouplist']],
+    [0x09f, 'setgroups', ['int gidsetsize', 'gid_t *grouplist']],
+    [0x0a0, 'uname', ['struct new_utsname *name']], # newuname
+    [0x0a1, 'sethostname', ['char *name', 'int len']],
+    [0x0a2, 'setdomainname', ['char *name', 'int len']],
+    [0x0a3, 'getrlimit', ['unsigned int resource', 'struct rlimit *rlim']],
+    [0x0a4, 'setrlimit', ['unsigned int resource', 'struct rlimit *rlim']],
+    [0x0a5, 'getrusage', ['int who', 'struct rusage *ru']],
+    [0x0a6, 'umask', ['int mask']],
+    [0x0a7, 'prctl', ['int option', 'unsigned long arg2', 'unsigned long arg3', 'unsigned long arg4', 'unsigned long arg5']],
+    [0x0a8, 'getcpu', ['unsigned *cpup', 'unsigned *nodep', 'struct getcpu_cache *unused']],
+    [0x0a9, 'gettimeofday', ['struct __kernel_old_timeval *tv', 'struct timezone *tz']],
+    [0x0aa, 'settimeofday', ['struct __kernel_old_timeval *tv', 'struct timezone *tz']],
+    [0x0ab, 'adjtimex', ['struct __kernel_timex *txc_p']],
+    [0x0ac, 'getpid', []],
+    [0x0ad, 'getppid', []],
+    [0x0ae, 'getuid', []],
+    [0x0af, 'geteuid', []],
+    [0x0b0, 'getgid', []],
+    [0x0b1, 'getegid', []],
+    [0x0b2, 'gettid', []],
+    [0x0b3, 'sysinfo', ['struct sysinfo *info']],
+    [0x0b4, 'mq_open', ['const char *u_name', 'int oflag', 'umode_t mode', 'struct mq_attr *u_attr']],
+    [0x0b5, 'mq_unlink', ['const char *u_name']],
+    [0x0b6, 'mq_timedsend', ['mqd_t mqdes', 'const char *u_msg_ptr', 'size_t msg_len', 'unsigned int msg_prio', 'const struct __kernel_timespec *u_abs_timeout']],
+    [0x0b7, 'mq_timedreceive', ['mqd_t mqdes', 'char *u_msg_ptr', 'size_t msg_len', 'unsigned int *msg_prio', 'const struct __kernel_timespec *u_abs_timeout']],
+    [0x0b8, 'mq_notify', ['mqd_t mqdes', 'const struct sigevent *u_notification']],
+    [0x0b9, 'mq_getsetattr', ['mqd_t mqdes', 'const struct mq_attr *u_mqstat', 'struct mq_attr *u_omqstat']],
+    [0x0ba, 'msgget', ['key_t key', 'int msgflg']],
+    [0x0bb, 'msgctl', ['int msqid', 'int cmd', 'struct msqid_ds *buf']],
+    [0x0bc, 'msgrcv', ['int msqid', 'struct msgbuf *msgp', 'size_t msgsz', 'long msgtyp', 'int msgflg']],
+    [0x0bd, 'msgsnd', ['int msqid', 'struct msgbuf *msgp', 'size_t msgsz', 'int msgflg']],
+    [0x0be, 'semget', ['key_t key', 'int nsems', 'int semflg']],
+    [0x0bf, 'semctl', ['int semid', 'int semnum', 'int cmd', 'unsigned long arg']],
+    [0x0c0, 'semtimedop', ['int semid', 'struct sembuf *tsops', 'unsigned int nsops', 'const struct __kernel_timespec *timeout']],
+    [0x0c1, 'semop', ['int semid', 'struct sembuf *tsops', 'unsigned nsops']],
+    [0x0c2, 'shmget', ['key_t key', 'size_t size', 'int shmflg']],
+    [0x0c3, 'shmctl', ['int shmid', 'int cmd', 'struct shmid_ds *buf']],
+    [0x0c4, 'shmat', ['int shmid', 'char *shmaddr', 'int shmflg']],
+    [0x0c5, 'shmdt', ['char *shmaddr']],
+    [0x0c6, 'socket', ['int family', 'int type', 'int protocol']],
+    [0x0c7, 'socketpair', ['int family', 'int type', 'int protocol', 'int *usockvec']],
+    [0x0c8, 'bind', ['int fd', 'struct sockaddr *umyaddr', 'int addrlen']],
+    [0x0c9, 'listen', ['int fd', 'int backlog']],
+    [0x0ca, 'accept', ['int fd', 'struct sockaddr *upeer_sockaddr', 'int *upeer_addrlen']],
+    [0x0cb, 'connect', ['int fd', 'struct sockaddr *uservaddr', 'int addrlen']],
+    [0x0cc, 'getsockname', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
+    [0x0cd, 'getpeername', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
+    [0x0ce, 'sendto', ['int fd', 'void *buff', 'size_t len', 'unsigned int flags', 'struct sockaddr *addr', 'int addr_len']],
+    [0x0cf, 'recvfrom', ['int fd', 'void *ubuf', 'size_t size', 'unsigned int flags', 'struct sockaddr *addr', 'int *addr_len']],
+    [0x0d0, 'setsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int optlen']],
+    [0x0d1, 'getsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int *optlen']],
+    [0x0d2, 'shutdown', ['int fd', 'int how']],
+    [0x0d3, 'sendmsg', ['int fd', 'struct user_msghdr *msg', 'unsigned int flags']],
+    [0x0d4, 'recvmsg', ['int fd', 'struct user_msghdr *msg', 'unsigned int flags']],
+    [0x0d5, 'readahead', ['int fd', 'loff_t offset', 'size_t count']],
+    [0x0d6, 'brk', ['unsigned long brk']],
+    [0x0d7, 'munmap', ['unsigned long addr', 'size_t len']],
+    [0x0d8, 'mremap', ['unsigned long addr', 'unsigned long old_len', 'unsigned long new_len', 'unsigned long flags', 'unsigned long new_addr']],
+    [0x0d9, 'add_key', ['const char *_type', 'const char *_description', 'const void *_payload', 'size_t plen', 'key_serial_t ringid']],
+    [0x0da, 'request_key', ['const char *_type', 'const char *_description', 'const char *_callout_info', 'key_serial_t destringid']],
+    [0x0db, 'keyctl', ['int option', 'unsigned long arg2', 'unsigned long arg3', 'unsigned long arg4', 'unsigned long arg5']],
+    [0x0dc, 'clone', ['unsigned long clone_flags', 'unsigned long newsp', 'int *parent_tidptr', 'unsigned long tls', 'int *child_tidptr']],
+    [0x0dd, 'execve', ['const char *filename', 'const char *const *argv', 'const char *const *envp']],
+    [0x0de, 'mmap', ['unsigned long addr', 'unsigned long len', 'unsigned long prot', 'unsigned long flags', 'unsigned long fd', 'unsigned long off']],
+    [0x0df, 'fadvise64', ['int fd', 'loff_t offset', 'loff_t len', 'int advice']], # fadvise64_64
+    [0x0e0, 'swapon', ['const char *specialfile', 'int swap_flags']],
+    [0x0e1, 'swapoff', ['const char *specialfile']],
+    [0x0e2, 'mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot']],
+    [0x0e3, 'msync', ['unsigned long start', 'size_t len', 'int flags']],
+    [0x0e4, 'mlock', ['unsigned long start', 'size_t len']],
+    [0x0e5, 'munlock', ['unsigned long start', 'size_t len']],
+    [0x0e6, 'mlockall', ['int flags']],
+    [0x0e7, 'munlockall', []],
+    [0x0e8, 'mincore', ['unsigned long start', 'size_t len', 'unsigned char *vec']],
+    [0x0e9, 'madvise', ['unsigned long start', 'size_t len_in', 'int behavior']],
+    [0x0ea, 'remap_file_pages', ['unsigned long start', 'unsigned long size', 'unsigned long prot', 'unsigned long pgoff', 'unsigned long flags']],
+    [0x0eb, 'mbind', ['unsigned long start', 'unsigned long len', 'unsigned long mode', 'const unsigned long *nmask', 'unsigned long maxnode', 'unsigned flags']],
+    [0x0ec, 'get_mempolicy', ['int *policy', 'unsigned long *nmask', 'unsigned long maxnode', 'unsigned long addr', 'unsigned long flags']],
+    [0x0ed, 'set_mempolicy', ['int mode', 'const unsigned long *nmask', 'unsigned long maxnode']],
+    [0x0ee, 'migrate_pages', ['pid_t pid', 'unsigned long maxnode', 'const unsigned long *old_nodes', 'const unsigned long *new_nodes']],
+    [0x0ef, 'move_pages', ['pid_t pid', 'unsigned long nr_pages', 'const void **pages', 'const int *nodes', 'int *status', 'int flags']],
+    [0x0f0, 'rt_tgsigqueueinfo', ['pid_t tgid', 'pid_t pid', 'int sig', 'siginfo_t *uinfo']],
+    [0x0f1, 'perf_event_open', ['struct perf_event_attr *attr_uptr', 'pid_t pid', 'int cpu', 'int group_fd', 'unsigned long flags']],
+    [0x0f2, 'accept4', ['int fd', 'struct sockaddr *upeer_sockaddr', 'int *upeer_addrlen', 'int flags']],
+    [0x0f3, 'recvmmsg', ['int fd', 'struct mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags', 'struct __kernel_timespec *timeout']],
+    [0x0f4, 'arch_specific_syscall', []],
+    #0x0f5-0x103, unused
+    [0x104, 'wait4', ['pid_t upid', 'int *stat_addr', 'int options', 'struct rusage *ru']],
+    [0x105, 'prlimit64', ['pid_t pid', 'unsigned int resource', 'const struct rlimit64 *new_rlim', 'struct rlimit64 *old_rlim']],
+    [0x106, 'fanotify_init', ['unsigned int flags', 'unsigned int event_f_flags']],
+    [0x107, 'fanotify_mark', ['int fanotify_fd', 'unsigned int flags', '__u64 mask', 'int dfd', 'const char *pathname']],
+    [0x108, 'name_to_handle_at', ['int dfd', 'const char *name', 'struct file_handle *handle', 'int *mnt_id', 'int flag']],
+    [0x109, 'open_by_handle_at', ['int mountdirfd', 'struct file_handle *handle', 'int flags']],
+    [0x10a, 'clock_adjtime', ['clockid_t which_clock', 'struct __kernel_timex *tx']],
+    [0x10b, 'syncfs', ['int fd']],
+    [0x10c, 'setns', ['int fd', 'int flags']],
+    [0x10d, 'sendmmsg', ['int fd', 'struct mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags']],
+    [0x10e, 'process_vm_readv', ['pid_t pid', 'const struct iovec *lvec', 'unsigned long liovcnt', 'const struct iovec *rvec', 'unsigned long riovcnt', 'unsigned long flags']],
+    [0x10f, 'process_vm_writev', ['pid_t pid', 'const struct iovec *lvec', 'unsigned long liovcnt', 'const struct iovec *rvec', 'unsigned long riovcnt', 'unsigned long flags']],
+    [0x110, 'kcmp', ['pid_t pid1', 'pid_t pid2', 'int type', 'unsigned long idx1', 'unsigned long idx2']],
+    [0x111, 'finit_module', ['int fd', 'const char *uargs', 'int flags']],
+    [0x112, 'sched_setattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int flags']],
+    [0x113, 'sched_getattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int usize', 'unsigned int flags']],
+    [0x114, 'renameat2', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'unsigned int flags']],
+    [0x115, 'seccomp', ['unsigned int op', 'unsigned int flags', 'void *uargs']],
+    [0x116, 'getrandom', ['char *buf', 'size_t count', 'unsigned int flags']],
+    [0x117, 'memfd_create', ['const char *uname', 'unsigned int flags']],
+    [0x118, 'bpf', ['int cmd', 'union bpf_attr *uattr', 'unsigned int size']],
+    [0x119, 'execveat', ['int fd', 'const char *filename', 'const char *const *argv', 'const char *const *envp', 'int flags']],
+    [0x11a, 'userfaultfd', ['int flags']],
+    [0x11b, 'membarrier', ['int cmd', 'int flags']],
+    [0x11c, 'mlock2', ['unsigned long start', 'size_t len', 'int flags']],
+    [0x11d, 'copy_file_range', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
+    [0x11e, 'preadv2', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h', 'rwf_t flags']],
+    [0x11f, 'pwritev2', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h', 'rwf_t flags']],
+    [0x120, 'pkey_mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot', 'int pkey']],
+    [0x121, 'pkey_alloc', ['unsigned long flags', 'unsigned long init_val']],
+    [0x122, 'pkey_free', ['int pkey']],
+    [0x123, 'statx', ['int dfd', 'const char *filename', 'unsigned flags', 'unsigned int mask', 'struct statx *buffer']],
+    [0x124, 'io_pgetevents', ['aio_context_t ctx_id', 'long min_nr', 'long nr', 'struct io_event *events', 'struct __kernel_timespec *timeout', 'const struct __aio_sigset *usig']],
+    [0x125, 'rseq', ['struct rseq *rseq', 'u32 rseq_len', 'int flags', 'u32 sig']],
+    [0x126, 'kexec_file_load', ['int kernel_fd', 'int initrd_fd', 'unsigned long cmdline_len', 'const char *cmdline_ptr', 'unsigned long flags']],
+    #0x127-0x1a7, unused
+    [0x1a8, 'pidfd_send_signal', ['int pidfd', 'int sig', 'siginfo_t *info', 'unsigned int flags']],
+    [0x1a9, 'io_uring_setup', ['u32 entries', 'struct io_uring_params *params']],
+    [0x1aa, 'io_uring_enter', ['unsigned int fd', 'u32 to_submit', 'u32 min_complete', 'u32 flags', 'const sigset_t *sig', 'size_t sigsz']],
+    [0x1ab, 'io_uring_register', ['unsigned int fd', 'unsigned int opcode', 'void *arg', 'unsigned int nr_args']],
+    [0x1ac, 'open_tree', ['int dfd', 'const char *filename', 'unsigned flags']],
+    [0x1ad, 'move_mount', ['int from_dfd', 'const char *from_pathname', 'int to_dfd', 'const char *to_pathname', 'unsigned int flags']],
+    [0x1ae, 'fsopen', ['const char *_fs_name', 'unsigned int flags']],
+    [0x1af, 'fsconfig', ['int fd', 'unsigned int cmd', 'const char *_key', 'const void *_value', 'int aux']],
+    [0x1b0, 'fsmount', ['int fs_fd', 'unsigned int flags', 'unsigned int attr_flags']],
+    [0x1b1, 'fspick', ['int, dfd', 'const char *path', 'unsigned int flags']],
+    [0x1b2, 'pidfd_open', ['pid_t pid', 'unsigned int flags']],
+    [0x1b3, 'clone3', ['struct clone_args *uargs', 'size_t size']],
+    [0x1b4, 'close_range', ['unsigned int fd', 'unsigned int max_fd', 'unsigned int flag']],
+    [0x1b5, 'openat2', ['int dfd', 'const char *filename', 'struct open_how *how', 'size_t usize']],
+    [0x1b6, 'pidfd_getfd', ['int pidfd', 'int fd', 'unsigned int flags']],
+    [0x1b7, 'faccessat2', ['int dfd', 'const char *filename', 'int mode', 'int flags']],
+    [0x1b8, 'process_madvise', ['int pidfd', 'const struct iovec *vec', 'size_t vlen', 'int behavior', 'unsigned int flags']],
+    [0x1b9, 'epoll_pwait2', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'const struct __kernel_timespec *timeout', 'const sigset_t *sigmask', 'size_t sigsetsize']],
+    [0x1ba, 'mount_setattr', ['int dfd', 'const char *path', 'unsigned int flags', 'struct mount_attr *uattr', 'size_t usize']],
+    [0x1bb, 'quotactl_fd', ['unsigned int fd', 'unsigned int cmd', 'qid_t id', 'void __user *addr']],
+    [0x1bc, 'landlock_create_ruleset', ['const struct landlock_ruleset_attr *const attr', 'const size_t size', 'const __u32 flags']],
+    [0x1bd, 'landlock_add_rule', ['const int ruleset_fd', 'const enum landlock_rule_type rule_type', 'const void *const rule_attr', 'const __u32 flags']],
+    [0x1be, 'landlock_restrict_self', ['const int ruleset_fd', 'const __u32 flags']],
+    [0x1bf, 'memfd_secret', ['unsigned int, flags']],
+    [0x1c0, 'process_mrelease', ['int pidfd', 'unsigned int flags']],
+    [0x1c1, 'futex_waitv', ['struct futex_waitv *waiters', 'unsigned int nr_futexes', 'unsigned int flags', 'struct __kernel_timespec *timeout', 'clockid_t clockid']],
+    [0x1c2, 'set_mempolicy_home_node', ['unsigned long start', 'unsigned long len', 'unsigned long home_node', 'unsigned long flags']],
+]
+
+
+# ARM (on ARM64 machine)
+# - arch/arm64/include/asm/unistd.h
+# - arch/arm64/include/asm/unistd32.h
+arm_emulated_syscall_list = [
+    [0x000, 'restart_syscall', []],
+    [0x001, 'exit', ['int error_code']],
+    [0x002, 'fork', []],
+    [0x003, 'read', ['unsigned int fd', 'char *buf', 'size_t count']],
+    [0x004, 'write', ['unsigned int fd', 'const char *buf', 'size_t count']],
+    [0x005, 'open', ['const char *filename', 'int flags', 'umode_t mode']], # compat
+    [0x006, 'close', ['unsigned int fd']],
+    #0x007, waitpid # unimplemented
+    [0x008, 'creat', ['const char *pathname', 'umode_t mode']],
+    [0x009, 'link', ['const char *oldname', 'const char *newname']],
+    [0x00a, 'unlink', ['const char *pathname']],
+    [0x00b, 'execve', ['const char *filename', 'const compat_uptr_t *argv', 'const compat_uptr_t *envp']], # compat
+    [0x00c, 'chdir', ['const char *filename']],
+    #0x00d, time # unimplemented
+    [0x00e, 'mknod', ['const char *filename', 'umode_t mode', 'unsigned dev']],
+    [0x00f, 'chmod', ['const char *filename', 'umode_t mode']],
+    [0x010, 'lchown', ['const char *filename', 'old_uid_t user', 'old_gid_t group']], # lchown16
+    #0x011, break # unimplemented
+    #0x012, stat # unimplemented
+    [0x013, 'lseek', ['unsigned int fd', 'compat_off_t offset', 'unsigned int whence']], # compat
+    [0x014, 'getpid', []],
+    [0x015, 'mount', ['char *dev_name', 'char *dir_name', 'char *type', 'unsigned long flags', 'void *data']],
+    #0x016, umount # unimplemented
+    [0x017, 'setuid', ['old_uid_t uid']], # setuid16
+    [0x018, 'getuid', []], # getuid16
+    #0x019, stime # unimplemented
+    [0x01a, 'ptrace', ['compat_long_t request', 'compat_long_t pid', 'compat_long_t addr', 'compat_long_t data']], # compat
+    #0x01b, alarm # unimplemented
+    #0x01c, fstat # unimplemented
+    [0x01d, 'pause', []],
+    #0x01e, utime # unimplemented
+    #0x01f, stty # unimplemented
+    #0x020, gtty # unimplemented
+    [0x021, 'access', ['const char *filename', 'int mode']],
+    [0x022, 'nice', ['int increment']],
+    #0x023, ftime # unimplemented
+    [0x024, 'sync', []],
+    [0x025, 'kill', ['pid_t pid', 'int sig']],
+    [0x026, 'rename', ['const char *oldname', 'const char *newname']],
+    [0x027, 'mkdir', ['const char *pathname', 'umode_t mode']],
+    [0x028, 'rmdir', ['const char *pathname']],
+    [0x029, 'dup', ['unsigned int fildes']],
+    [0x02a, 'pipe', ['int *fildes']],
+    [0x02b, 'times', ['struct compat_tms *tbuf']], # compat
+    #0x02c, prof # unimplemented
+    [0x02d, 'brk', ['unsigned long brk']],
+    [0x02e, 'setgid', ['old_gid_t gid']], # setgid16
+    [0x02f, 'getgid', []], # getgid16
+    #0x030, signal # unimplemented
+    [0x031, 'geteuid', []], # geteuid16
+    [0x032, 'getegid', []], # getegid16
+    [0x033, 'acct', ['const char *name']],
+    [0x034, 'umount2', ['char *name', 'int flags']], # umount
+    #0x035, lock # unimplemented
+    [0x036, 'ioctl', ['unsigned int fd', 'unsigned int cmd', 'compat_ulong_t arg']], # compat
+    [0x037, 'fcntl', ['unsigned int fd', 'unsigned int cmd', 'compat_ulong_t arg']], # compat
+    #0x038, mpx # unimplemented
+    [0x039, 'setpgid', ['pid_t pid', 'pid_t pgid']],
+    #0x03a, ulimit # unimplemented
+    #0x03b, olduname # unimplemented
+    [0x03c, 'umask', ['int mask']],
+    [0x03d, 'chroot', ['const char *filename']],
+    [0x03e, 'ustat', ['unsigned dev', 'struct compat_ustat *u']], # compat
+    [0x03f, 'dup2', ['unsigned int oldfd', 'unsigned int newfd']],
+    [0x040, 'getppid', []],
+    [0x041, 'getpgrp', []],
+    [0x042, 'setsid', []],
+    [0x043, 'sigaction', ['int sig', 'const struct compat_old_sigaction *act', 'struct compat_old_sigaction *oact']], # compat
+    #0x044, sgetmask # unimplemented
+    #0x045, ssetmask # unimplemented
+    [0x046, 'setreuid', ['old_uid_t ruid', 'old_uid_t euid']], # setreuid16
+    [0x047, 'setregid', ['old_gid_t rgid', 'old_gid_t egid']], # setregid16
+    [0x048, 'sigsuspend', ['old_sigset_t mask']],
+    [0x049, 'sigpending', ['compat_old_sigset_t *set32']], # compat
+    [0x04a, 'sethostname', ['char *name', 'int len']],
+    [0x04b, 'setrlimit', ['unsigned int resource', 'struct compat_rlimit *rlim']], # compat
+    #0x04c, getrlimit # unimplemented
+    [0x04d, 'getrusage', ['int who', 'struct compat_rusage *ru']], # compat
+    [0x04e, 'gettimeofday', ['struct old_timeval32 *tv', 'struct timezone *tz']], # compat
+    [0x04f, 'settimeofday', ['struct old_timeval32 *tv', 'struct timezone *tz']], # compat
+    [0x050, 'getgroups', ['int gidsetsize', 'old_gid_t *grouplist']], # setgroups16
+    [0x051, 'setgroups', ['int gidsetsize', 'old_gid_t *grouplist']], # getgroups16
+    #0x052, select # unimplemented
+    [0x053, 'symlink', ['const char *oldname', 'const char *newname']],
+    #0x054, lstat # unimplemented
+    [0x055, 'readlink', ['const char *path', 'char *buf', 'int bufsiz']],
+    [0x056, 'uselib', ['const char *library']],
+    [0x057, 'swapon', ['const char *specialfile', 'int swap_flags']],
+    [0x058, 'reboot', ['int magic1', 'int magic2', 'unsigned int cmd', 'void *arg']],
+    #0x059, readdir # unimplemented
+    #0x05a, mmap # unimplemented
+    [0x05b, 'munmap', ['unsigned long addr', 'size_t len']],
+    [0x05c, 'truncate', ['const char *path', 'compat_off_t length']], # compat
+    [0x05d, 'ftruncate', ['unsigned int fd', 'compat_ulong_t length']], # compat
+    [0x05e, 'fchmod', ['unsigned int fd', 'umode_t mode']],
+    [0x05f, 'fchown', ['unsigned int fd', 'old_uid_t user', 'old_gid_t group']], # fchown16
+    [0x060, 'getpriority', ['int which', 'int who']],
+    [0x061, 'setpriority', ['int which', 'int who', 'int niceval']],
+    #0x062, profil # unimplemented
+    [0x063, 'statfs', ['const char *pathname', 'struct compat_statfs *buf']], # compat
+    [0x064, 'fstatfs', ['unsigned int fd', 'struct compat_statfs *buf']], # compat
+    #0x065, ioperm # unimplemented
+    #0x066, socketcall # unimplemented
+    [0x067, 'syslog', ['int type', 'char *buf', 'int len']],
+    [0x068, 'setitimer', ['int which', 'struct old_itimerval32 *value', 'struct old_itimerval32 *ovalue']], # compat
+    [0x069, 'getitimer', ['int which', 'struct old_itimerval32 *value']], # compat
+    [0x06a, 'stat', ['const char *filename', 'struct compat_stat *statbuf']], # compat newstat
+    [0x06b, 'lstat', ['const char *filename', 'struct compat_stat *statbuf']], # compat newlstat
+    [0x06c, 'fstat', ['unsigned int fd', 'struct compat_stat *statbuf']], # compat newfstat
+    #0x06d, uname # unimplemented
+    #0x06e, iopl # unimplemented
+    [0x06f, 'vhangup', []],
+    #0x070, idle # deleted from kernel 2.3.13
+    #0x071, syscall # unimplemented
+    [0x072, 'wait4', ['compat_pid_t upid', 'compat_uint_t *stat_addr', 'int options', 'struct compat_rusage *ru']], # compat
+    [0x073, 'swapoff', ['const char *specialfile']],
+    [0x074, 'sysinfo', ['struct compat_sysinfo *info']], # compat
+    #0x075, ipc # unimplemented
+    [0x076, 'fsync', ['unsigned int fd']],
+    [0x077, 'sigreturn', []], # compat
+    [0x078, 'clone', ['unsigned long clone_flags', 'unsigned long newsp', 'int *parent_tidptr', 'unsigned long tls', 'int *child_tidptr']], # arg4,5 are swapped
+    [0x079, 'setdomainname', ['char *name', 'int len']],
+    [0x07a, 'uname', ['struct new_utsname *name']], # newuname
+    #0x07b, modify_ldt # unimplemented
+    [0x07c, 'adjtimex', ['struct old_timex32 *utp']], # adjtimex_time32
+    [0x07d, 'mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot']],
+    [0x07e, 'sigprocmask', ['int how', 'compat_old_sigset_t *nset', 'compat_old_sigset_t *oset']], # compat
+    #0x07f, create_module # dereted from kernel 2.6
+    [0x080, 'init_module', ['void *umod', 'unsigned long len', 'const char *uargs']],
+    [0x081, 'delete_module', ['const char *name_user', 'unsigned int flags']],
+    #0x082, get_kernel_syms # dereted from kernel 2.6
+    [0x083, 'quotactl', ['unsigned int cmd', 'const char *special', 'qid_t id', 'void *addr']],
+    [0x084, 'getpgid', ['pid_t pid']],
+    [0x085, 'fchdir', ['unsigned int fd']],
+    [0x086, 'bdflush', ['int func', 'long data']],
+    [0x087, 'sysfs', ['int option', 'unsigned long arg1', 'unsigned long arg2']],
+    [0x088, 'personality', ['unsigned int personality']],
+    #0x089, afs_syscall # unimplemented
+    [0x08a, 'setfsuid', ['old_uid_t uid']], # setfsuid16
+    [0x08b, 'setfsgid', ['old_gid_t gid']], # setfsgid16
+    [0x08c, '_llseek', ['unsigned int fd', 'unsigned long offset_high', 'unsigned long offset_low', 'loff_t *result', 'unsigned int whence']], # llseek
+    [0x08d, 'getdents', ['unsigned int fd', 'struct compat_linux_dirent *dirent', 'unsigned int count']], # compat
+    [0x08e, '_newselect', ['int n', 'compat_ulong_t *inp', 'compat_ulong_t *outp', 'compat_ulong_t *exp', 'struct old_timeval32 *tvp']], # compat select
+    [0x08f, 'flock', ['unsigned int fd', 'unsigned int cmd']],
+    [0x090, 'msync', ['unsigned long start', 'size_t len', 'int flags']],
+    [0x091, 'readv', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen']], # compat
+    [0x092, 'writev', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen']], # compat
+    [0x093, 'getsid', ['pid_t pid']],
+    [0x094, 'fdatasync', ['unsigned int fd']],
+    #0x095, _sysctl # unimplemented
+    [0x096, 'mlock', ['unsigned long start', 'size_t len']],
+    [0x097, 'munlock', ['unsigned long start', 'size_t len']],
+    [0x098, 'mlockall', ['int flags']],
+    [0x099, 'munlockall', []],
+    [0x09a, 'sched_setparam', ['pid_t pid', 'struct sched_param *param']],
+    [0x09b, 'sched_getparam', ['pid_t pid', 'struct sched_param *param']],
+    [0x09c, 'sched_setscheduler', ['pid_t pid', 'int policy', 'struct sched_param *param']],
+    [0x09d, 'sched_getscheduler', ['pid_t pid']],
+    [0x09e, 'sched_yield', []],
+    [0x09f, 'sched_get_priority_max', ['int policy']],
+    [0x0a0, 'sched_get_priority_min', ['int policy']],
+    [0x0a1, 'sched_rr_get_interval', ['pid_t pid', 'struct old_timespec32 *interval']], # sched_rr_get_interval_time32
+    [0x0a2, 'nanosleep', ['struct old_timespec32 *rqtp', 'struct old_timespec32 *rmtp']], # nanosleep_time32
+    [0x0a3, 'mremap', ['unsigned long addr', 'unsigned long old_len', 'unsigned long new_len', 'unsigned long flags', 'unsigned long new_addr']],
+    [0x0a4, 'setresuid', ['old_uid_t ruid', 'old_uid_t euid', 'old_uid_t suid']], # setresuid16
+    [0x0a5, 'getresuid', ['old_uid_t *ruidp', 'old_uid_t *euidp', 'old_uid_t *suidp']], # getresuid16
+    #0x0a6, vm86 # unimplemented
+    #0x0a7, query_module # dereted from kernel 2.6
+    [0x0a8, 'poll', ['struct pollfd *ufds', 'unsigned int nfds', 'int timeout_msecs']],
+    #0x0a9, nfsservctl # deleted from kernel 3.1
+    [0x0aa, 'setresgid', ['old_gid_t rgid', 'old_gid_t egid', 'old_gid_t sgid']], # setresgid16
+    [0x0ab, 'getresgid', ['old_gid_t *rgidp', 'old_gid_t *egidp', 'old_gid_t *sgidp']], # getresgid16
+    [0x0ac, 'prctl', ['int option', 'unsigned long arg2', 'unsigned long arg3', 'unsigned long arg4', 'unsigned long arg5']],
+    [0x0ad, 'rt_sigreturn', []], # compat
+    [0x0ae, 'rt_sigaction', ['int sig', 'const struct compat_sigaction *act', 'struct compat_sigaction *oact', 'compat_size_t sigsetsize']], # compat
+    [0x0af, 'rt_sigprocmask', ['int how', 'compat_sigset_t *nset', 'compat_sigset_t *oset', 'compat_size_t sigsetsize']], # compat
+    [0x0b0, 'rt_sigpending', ['compat_sigset_t *uset', 'compat_size_t sigsetsize']], # compat
+    [0x0b1, 'rt_sigtimedwait', ['compat_sigset_t *uthese', 'struct compat_siginfo_t *uinfo', 'struct old_timespec32 *uts', 'compat_size_t sigsetsize']], # compat rt_sigtimedwait_time32
+    [0x0b2, 'rt_sigqueueinfo', ['compat_pid_t pid', 'int sig', 'struct compat_siginfo *uinfo']], # compat
+    [0x0b3, 'rt_sigsuspend', ['compat_sigset_t *unewset', 'compat_size_t sigsetsize']], # compat
+    [0x0b4, 'pread64', ['unsigned int fd', 'char *buf', 'size_t count', 'u32 __pad', 'arg_u32p(pos)']], # compat aarch32_pread64
+    [0x0b5, 'pwrite64', ['unsigned int fd', 'const char *buf', 'size_t count', 'u32 __pad', 'arg_u32p(pos)']], # compat aarch32_pwrite64
+    [0x0b6, 'chown', ['const char *filename', 'old_uid_t user', 'old_gid_t group']], # chown16
+    [0x0b7, 'getcwd', ['char *buf', 'unsigned long size']],
+    [0x0b8, 'capget', ['cap_user_header_t header', 'cap_user_data_t dataptr']],
+    [0x0b9, 'capset', ['cap_user_header_t header', 'const cap_user_data_t data']],
+    [0x0ba, 'sigaltstack', ['const compat_stack_t *uss_ptr', 'compat_stack_t *uoss_ptr']], # compat
+    [0x0bb, 'sendfile', ['int out_fd', 'int in_fd', 'compat_off_t *offset', 'compat_size_t count']], # compat
+    #0x0bc, reserved
+    #0x0bd, reserved
+    [0x0be, 'vfork', []],
+    [0x0bf, 'ugetrlimit', ['unsigned int resource', 'struct compat_rlimit *rlim']], # compat getrlimit
+    [0x0c0, 'mmap2', ['unsigned long addr', 'unsigned long len', 'unsigned long prot', 'unsigned long flags', 'unsigned long fd', 'unsigned long off_4k']], # compat aarch32_mmap2
+    [0x0c1, 'truncate64', ['const char *path', 'u32 __pad', 'arg_u32p(length)']], # aarch32_truncate64
+    [0x0c2, 'ftruncate64', ['unsigned int fd', 'u32 __pad', 'arg_u32p(length)']], # aarch32_ftruncate64
+    [0x0c3, 'stat64', ['const char *filename', 'struct stat64 *statbuf']],
+    [0x0c4, 'lstat64', ['const char *filename', 'struct stat64 *statbuf']],
+    [0x0c5, 'fstat64', ['unsigned long fd', 'struct stat64 *statbuf']],
+    [0x0c6, 'lchown32', ['const char *filename', 'uid_t user', 'gid_t group']], # lchown
+    [0x0c7, 'getuid32', []], # getiud
+    [0x0c8, 'getgid32', []], # getgid
+    [0x0c9, 'geteuid32', []], # geteuid
+    [0x0ca, 'getegid32', []], # getegid
+    [0x0cb, 'setreuid32', ['uid_t ruid', 'uid_t euid']], # setreuid
+    [0x0cc, 'setregid32', ['gid_t rgid', 'gid_t egid']], # setregid
+    [0x0cd, 'getgroups32', ['int gidsetsize', 'gid_t *grouplist']], # getgroups
+    [0x0ce, 'setgroups32', ['int gidsetsize', 'gid_t *grouplist']], # setgroups
+    [0x0cf, 'fchown32', ['unsigned int fd', 'uid_t user', 'gid_t group']], # fchown
+    [0x0d0, 'setresuid32', ['uid_t ruid', 'uid_t euid', 'uid_t suid']], # setresuid
+    [0x0d1, 'getresuid32', ['uid_t *ruidp', 'uid_t *euidp', 'uid_t *suidp']], # getresuid
+    [0x0d2, 'setresgid32', ['gid_t rgid', 'gid_t egid', 'gid_t sgid']], # setresgid
+    [0x0d3, 'getresgid32', ['gid_t *rgidp', 'gid_t *egidp', 'gid_t *sgidp']], # getresgid
+    [0x0d4, 'chown32', ['const char *filename', 'uid_t user', 'gid_t group']], # chown
+    [0x0d5, 'setuid32', ['uid_t uid']], # setuid
+    [0x0d6, 'setgid32', ['gid_t gid']], # setgid
+    [0x0d7, 'setfsuid32', ['uid_t uid']], # setfsuid
+    [0x0d8, 'setfsgid32', ['gid_t gid']], # setfsgid
+    [0x0d9, 'getdents64', ['unsigned int fd', 'struct linux_dirent64 *dirent', 'unsigned int count']],
+    [0x0da, 'pivot_root', ['const char *new_root', 'const char *put_old']],
+    [0x0db, 'mincore', ['unsigned long start', 'size_t len', 'unsigned char *vec']],
+    [0x0dc, 'madvise', ['unsigned long start', 'size_t len_in', 'int behavior']],
+    [0x0dd, 'fcntl64', ['unsigned int fd', 'unsigned int cmd', 'compat_ulong_t arg']], # compat
+    #0x0de, tux # unimplemented
+    #0x0df, unused
+    [0x0e0, 'gettid', []],
+    [0x0e1, 'readahead', ['int fd', 'u32 __pad', 'arg_u32(offset)', 'size_t count']], # compat aarch32_readahead
+    [0x0e2, 'setxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
+    [0x0e3, 'lsetxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
+    [0x0e4, 'fsetxattr', ['int fd', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
+    [0x0e5, 'getxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
+    [0x0e6, 'lgetxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
+    [0x0e7, 'fgetxattr', ['int fd', 'const char *name', 'void *value', 'size_t size']],
+    [0x0e8, 'listxattr', ['const char *pathname', 'char *list', 'size_t size']],
+    [0x0e9, 'llistxattr', ['const char *pathname', 'char *list', 'size_t size']],
+    [0x0ea, 'flistxattr', ['int fd', 'char *list', 'size_t size']],
+    [0x0eb, 'removexattr', ['const char *pathname', 'const char *name']],
+    [0x0ec, 'lremovexattr', ['const char *pathname', 'const char *name']],
+    [0x0ed, 'fremovexattr', ['int fd', 'const char *name']],
+    [0x0ee, 'tkill', ['pid_t pid', 'int sig']],
+    [0x0ef, 'sendfile64', ['int out_fd', 'int in_fd', 'loff_t *offset', 'size_t count']],
+    [0x0f0, 'futex', ['u32 *uaddr', 'int op', 'u32 val', 'struct old_timespec32 *utime', 'u32 *uaddr2', 'u32 val3']], # futex_time32
+    [0x0f1, 'sched_setaffinity', ['compat_pid_t pid', 'unsigned int len', 'compat_ulong_t *user_mask_ptr']], # compat
+    [0x0f2, 'sched_getaffinity', ['compat_pid_t pid', 'unsigned int len', 'compat_ulong_t *user_mask_ptr']], # compat
+    [0x0f3, 'io_setup', ['unsigned nr_events', 'u32 *ctx32p']], # compat
+    [0x0f4, 'io_destroy', ['aio_context_t ctx']],
+    [0x0f5, 'io_getevents', ['__u32 ctx_id', '__s32 min_nr', '__s32 nr', 'struct io_event *events', 'struct old_timespec32 *timeout']], # io_getevents_time32
+    [0x0f6, 'io_submit', ['compat_aio_context_t ctx_id', 'int nr', 'compat_uptr_t *iocbpp']], # compat
+    [0x0f7, 'io_cancel', ['aio_context_t ctx_id', 'struct iocb *iocb', 'struct io_event *result']],
+    [0x0f8, 'exit_group', ['int error_code']],
+    [0x0f9, 'lookup_dcookie', ['u32 w0', 'u32 w1', 'char *buf', 'compat_size_t len']], # compat
+    [0x0fa, 'epoll_create', ['int size']],
+    [0x0fb, 'epoll_ctl', ['int epfd', 'int op', 'int fd', 'struct epoll_event *event']],
+    [0x0fc, 'epoll_wait', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'int timeout']],
+    [0x0fd, 'remap_file_pages', ['unsigned long start', 'unsigned long size', 'unsigned long prot', 'unsigned long pgoff', 'unsigned long flags']],
+    #0x0fe, set_thread_area # unimplemented
+    #0x0ff, get_thread_area # unimplemented
+    [0x100, 'set_tid_address', ['int *tidptr']],
+    [0x101, 'timer_create', ['clockid_t which_clock', 'struct compat_sigevent *timer_event_spec', 'timer_t *created_timer_id']], # compat
+    [0x102, 'timer_settime', ['timer_t timer_id', 'int flags', 'struct old_itimerspec32 *new', 'struct old_itimerspec32 *old']], # timer_settime32
+    [0x103, 'timer_gettime', ['timer_t timer_id', 'struct old_itimerspec32 *setting']], # timer_gettime32
+    [0x104, 'timer_getoverrun', ['timer_t timer_id']],
+    [0x105, 'timer_delete', ['timer_t timer_id']],
+    [0x106, 'clock_settime', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_settime32
+    [0x107, 'clock_gettime', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_gettime32
+    [0x108, 'clock_getres', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_getres_time32
+    [0x109, 'clock_nanosleep', ['clockid_t which_clock', 'int flags', 'struct old_timespec32 *rqtp', 'struct old_timespec32 *rmtp']], # clock_nanosleep_time32
+    [0x10a, 'statfs64', ['const char *pathname', 'compat_size_t sz', 'struct compat_statfs64 *buf']], # aarch32_statfs64
+    [0x10b, 'fstatfs64', ['unsigned int fd', 'compat_size_t sz', 'struct compat_statfs64 *buf']], # aarch32_fstatfs64
+    [0x10c, 'tgkill', ['pid_t tgid', 'pid_t pid', 'int sig']],
+    [0x10d, 'utimes', ['const char *filename', 'struct old_timeval32 *t']], # utimes_time32
+    [0x10e, 'arm_fadvise64_64', ['int fd', 'int advice', 'arg_u32p(offset)', 'arg_u32p(len)']], # compat aarch32_fadvise64_64
+    [0x10f, 'pciconfig_iobase', ['long which', 'unsigned long bus', 'unsigned long devfn']],
+    [0x110, 'pciconfig_read', ['unsigned long bus', 'unsigned long dfn', 'unsigned long off', 'unsigned long len', 'void *buf']],
+    [0x111, 'pciconfig_write', ['unsigned long bus', 'unsigned long dfn', 'unsigned long off', 'unsigned long len', 'void *buf']],
+    [0x112, 'mq_open', ['const char *u_name', 'int oflag', 'compat_mode_t mode', 'struct compat_mq_attr *u_attr']], # compat
+    [0x113, 'mq_unlink', ['const char *u_name']],
+    [0x114, 'mq_timedsend', ['mqd_t mqdes', 'const char *u_msg_ptr', 'unsigned int msg_len', 'unsigned int msg_prio', 'const struct old_timespec32 *u_abs_timeout']], # mq_timedsend_time32
+    [0x115, 'mq_timedreceive', ['mqd_t mqdes', 'const char *u_msg_ptr', 'unsigned int msg_len', 'unsigned int *msg_prio', 'const struct old_timespec32 *u_abs_timeout']], # mq_timedreceive_time32
+    [0x116, 'mq_notify', ['mqd_t mqdes', 'const struct compat_sigevent *u_notification']], # compat
+    [0x117, 'mq_getsetattr', ['mqd_t mqdes', 'const struct compat_mq_attr *u_mqstat', 'struct compat_mq_attr *u_omqstat']], # compat
+    [0x118, 'waitid', ['int which', 'compat_pid_t pid', 'struct compat_siginfo *infop', 'int options', 'struct compat_rusage *uru']], # compat
+    [0x119, 'socket', ['int family', 'int type', 'int protocol']],
+    [0x11a, 'bind', ['int fd', 'struct sockaddr *umyaddr', 'int addrlen']],
+    [0x11b, 'connect', ['int fd', 'struct sockaddr *uservaddr', 'int addrlen']],
+    [0x11c, 'listen', ['int fd', 'int backlog']],
+    [0x11d, 'accept', ['int fd', 'struct sockaddr *upeer_sockaddr', 'int *upeer_addrlen']],
+    [0x11e, 'getsockname', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
+    [0x11f, 'getpeername', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
+    [0x120, 'socketpair', ['int family', 'int type', 'int protocol', 'int *usockvec']],
+    [0x121, 'send', ['int fd', 'void *buff', 'size_t len', 'unsigned int flags']],
+    [0x122, 'sendto', ['int fd', 'void *buff', 'size_t len', 'unsigned int flags', 'struct sockaddr *addr', 'int addr_len']],
+    [0x123, 'recv', ['int fd', 'void *ubuf', 'compat_size_t size', 'unsigned int flags']], # compat
+    [0x124, 'recvfrom', ['int fd', 'void *ubuf', 'compat_size_t size', 'unsigned int flags', 'struct sockaddr *addr', 'int *addr_len']], # compat
+    [0x125, 'shutdown', ['int fd', 'int how']],
+    [0x126, 'setsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int optlen']],
+    [0x127, 'getsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int *optlen']],
+    [0x128, 'sendmsg', ['int fd', 'struct compat_msghdr *msg', 'unsigned int flags']], # compat
+    [0x129, 'recvmsg', ['int fd', 'struct compat_msghdr *msg', 'unsigned int flags']], # compat
+    [0x12a, 'semop', ['int semid', 'struct sembuf *tsops', 'unsigned nsops']],
+    [0x12b, 'semget', ['key_t key', 'int nsems', 'int semflg']],
+    [0x12c, 'semctl', ['int semid', 'int semnum', 'int cmd', 'int arg']], # compat old_semctl
+    [0x12d, 'msgsnd', ['int msqid', 'struct compat_uptr_t *msgp', 'compat_ssize_t msgsz', 'int msgflg']], # compat
+    [0x12e, 'msgrcv', ['int msqid', 'struct compat_uptr_t *msgp', 'compat_ssize_t msgsz', 'compat_long_t msgtyp', 'int msgflg']], # compat
+    [0x12f, 'msgget', ['key_t key', 'int msgflg']],
+    [0x130, 'msgctl', ['int msqid', 'int cmd', 'void *uptr']], # compat old_msgctl
+    [0x131, 'shmat', ['int shmid', 'compat_uptr_t *shmaddr', 'int shmflg']], # compat
+    [0x132, 'shmdt', ['char *shmaddr']],
+    [0x133, 'shmget', ['key_t key', 'size_t size', 'int shmflg']],
+    [0x134, 'shmctl', ['int shmid', 'int cmd', 'void *uptr']], # compat old_shmctl
+    [0x135, 'add_key', ['const char *_type', 'const char *_description', 'const void *_payload', 'size_t plen', 'key_serial_t ringid']],
+    [0x136, 'request_key', ['const char *_type', 'const char *_description', 'const char *_callout_info', 'key_serial_t destringid']],
+    [0x137, 'keyctl', ['u32 option', 'u32 arg2', 'u32 arg3', 'u32 arg4', 'u32 arg5']], # compat
+    [0x138, 'semtimedop', ['int semid', 'struct sembuf *tsems', 'unsigned nsops', 'const struct old_timespec32 *timeout']], # semtimedop_time32
+    #0x139, vserver # unimplemented
+    [0x13a, 'ioprio_set', ['int which', 'int who', 'int ioprio']],
+    [0x13b, 'ioprio_get', ['int which', 'int who']],
+    [0x13c, 'inotify_init', []],
+    [0x13d, 'inotify_add_watch', ['int fd', 'const char *pathname', 'u32 mask']],
+    [0x13e, 'inotify_rm_watch', ['int fd', '__s32 wd']],
+    [0x13f, 'mbind', ['compat_ulong_t start', 'compat_ulong_t len', 'compat_ulong_t mode', 'compat_ulong_t *nmask', 'compat_ulong_t maxnode', 'compat_ulong_t flags']], # compat
+    [0x140, 'get_mempolicy', ['int *policy', 'compat_ulong_t *nmask', 'compat_ulong_t maxnode', 'compat_ulong_t addr', 'compat_ulong_t flags']], # compat
+    [0x141, 'set_mempolicy', ['int mode', 'compat_ulong_t *nmask', 'compat_ulong_t maxnode']], # compat
+    [0x142, 'openat', ['int dfd', 'const char *filename', 'int flags', 'umode_t mode']], # compat
+    [0x143, 'mkdirat', ['int dfd', 'const char *pathname', 'umode_t mode']],
+    [0x144, 'mknodat', ['int dfd', 'const char *filename', 'umode_t mode', 'unsigned int dev']],
+    [0x145, 'fchownat', ['int dfd', 'const char *filename', 'uid_t user', 'gid_t group', 'int flag']],
+    [0x146, 'futimesat', ['unsigned int dfd', 'const char *filename', 'struct old_timeval32 *t']], # futimesat_time32
+    [0x147, 'fstatat64', ['int dfd', 'const char *filename', 'struct stat64 *statbuf', 'int flag']],
+    [0x148, 'unlinkat', ['int dfd', 'const char *pathname', 'int flag']],
+    [0x149, 'renameat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname']],
+    [0x14a, 'linkat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'int flags']],
+    [0x14b, 'symlinkat', ['const char *oldname', 'int newdfd', 'const char *newname']],
+    [0x14c, 'readlinkat', ['int dfd', 'const char *pathname', 'char *buf', 'int bufsiz']],
+    [0x14d, 'fchmodat', ['int dfd', 'const char *filename', 'umode_t mode']],
+    [0x14e, 'faccessat', ['int dfd', 'const char *filename', 'int mode']],
+    [0x14f, 'pselect6', ['int n', 'compat_ulong_t *inp', 'compat_ulong_t *outp', 'compat_ulong_t *exp', 'struct old_timespec32 *tsp', 'void *sig']], # compat pselect6_time32
+    [0x150, 'ppoll', ['struct pollfd *ufds', 'unsigned int nfds', 'struct old_timespec32 *tsp', 'const compat_sigset_t *sigmask', 'compat_size_t sigsetsize']], # compat ppoll_time32
+    [0x151, 'unshare', ['unsigned long unshare_flags']],
+    [0x152, 'set_robust_list', ['struct compat_robust_list_head *head', 'compat_size_t len']], # compat,
+    [0x153, 'get_robust_list', ['int pid', 'compat_uptr_t *head_ptr', 'compat_size_t *len_ptr']], # compat
+    [0x154, 'splice', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
+    [0x155, 'sync_file_range2', ['int fd', 'unsigned int flags', 'arg_u32p(offset)', 'arg_u32p(nbytes)']], # compat aarch32_sync_file_range2
+    [0x156, 'tee', ['int fdin', 'int fdout', 'size_t len', 'unsigned int flags']],
+    [0x157, 'vmsplice', ['int fd', 'const struct compat_iovec *iov32', 'unsigned int nr_segs', 'unsigned int flags']], # compat
+    [0x158, 'move_pages', ['pid_t pid', 'compat_ulong_t nr_pages', 'compat_uptr_t *pages32', 'const int *nodes', 'int *status', 'int flags']], # compat
+    [0x159, 'getcpu', ['unsigned *cpup', 'unsigned *nodep', 'struct getcpu_cache *unused']],
+    [0x15a, 'epoll_pwait', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'int timeout', 'const compat_sigset_t *sigmask', 'compat_size_t sigsetsize']], # compat
+    [0x15b, 'kexec_load', ['compat_ulong_t entry', 'compat_ulong_t nr_segments', 'struct compat_kexec_segment *segments', 'compat_ulong_t flags']], # compat
+    [0x15c, 'utimensat', ['unsigned int dfd', 'const char *filename', 'struct old_timespec32 *t', 'int flags']], # utimensat_time32
+    [0x15d, 'signalfd', ['int ufd', 'const compat_sigset_t *user_mask', 'compat_size_t sizemask']], # compat
+    [0x15e, 'timerfd_create', ['int clockid', 'int flags']],
+    [0x15f, 'eventfd', ['unsigned int count']],
+    [0x160, 'fallocate', ['int fd', 'int mode', 'arg_u32p(offset)', 'arg_u32p(len)']], # compat aarch32_fallocate
+    [0x161, 'timerfd_settime', ['int ufd', 'int flags', 'const struct old_itimerspec32 *utmr', 'struct old_itimerspec32 *otmr']], # timerfd_settime32
+    [0x162, 'timerfd_gettime', ['int ufd', 'struct old_itimerspec32 *otmr']], # timerfd_gettime32
+    [0x163, 'signalfd4', ['int ufd', 'const compat_sigset_t *user_mask', 'compat_size_t sizemask', 'int flags']], # compat
+    [0x164, 'eventfd2', ['unsigned int count', 'int flags']],
+    [0x165, 'epoll_create1', ['int flags']],
+    [0x166, 'dup3', ['unsigned int oldfd', 'unsigned int newfd', 'int flags']],
+    [0x167, 'pipe2', ['int *fildes', 'int flags']],
+    [0x168, 'inotify_init1', ['int flags']],
+    [0x169, 'preadv', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen', 'u32 pos_low', 'u32 pos_high']], # compat
+    [0x16a, 'pwritev', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen', 'u32 pos_low', 'u32 pos_high']], # compat
+    [0x16b, 'rt_tgsigqueueinfo', ['compat_pid_t tgid', 'compat_pid_t pid', 'int sig', 'struct compat_siginfo_t *uinfo']], # compat
+    [0x16c, 'perf_event_open', ['struct perf_event_attr *attr_uptr', 'pid_t pid', 'int cpu', 'int group_fd', 'unsigned long flags']],
+    [0x16d, 'recvmmsg', ['int fd', 'struct compat_mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags', 'struct old_timespec32 *timeout']], # compat recvmmsg_time32
+    [0x16e, 'accept4', ['int fd', 'struct sockaddr *upeer_sockaddr', 'int *upeer_addrlen', 'int flags']],
+    [0x16f, 'fanotify_init', ['unsigned int flags', 'unsigned int event_f_flags']],
+    [0x170, 'fanotify_mark', ['int fanotify_fd', 'unsigned int flags', '__u32 mask0', '__u32 mask1', 'int dfd', 'const char *pathname']], # compat
+    [0x171, 'prlimit64', ['pid_t pid', 'unsigned int resource', 'const struct rlimit64 *new_rlim', 'struct rlimit64 *old_rlim']],
+    [0x172, 'name_to_handle_at', ['int dfd', 'const char *name', 'struct file_handle *handle', 'int *mnt_id', 'int flag']],
+    [0x173, 'open_by_handle_at', ['int mountdirfd', 'struct file_handle *handle', 'int flags']], # compat
+    [0x174, 'clock_adjtime', ['clockid_t which_clock', 'struct old_timex32 *tx']], # clock_adjtime32
+    [0x175, 'syncfs', ['int fd']],
+    [0x176, 'sendmmsg', ['int fd', 'struct compat_mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags']], # compat
+    [0x177, 'setns', ['int fd', 'int flags']],
+    [0x178, 'process_vm_readv', ['compat_pid_t pid', 'const struct compat_iovec *lvec', 'compat_ulong_t liovcnt', 'const struct compat_iovec *rvec', 'compat_ulong_t riovcnt', 'compat_ulong_t flags']], # compat
+    [0x179, 'process_vm_writev', ['compat_pid_t pid', 'const struct compat_iovec *lvec', 'compat_ulong_t liovcnt', 'const struct compat_iovec *rvec', 'compat_ulong_t riovcnt', 'compat_ulong_t flags']], # compat
+    [0x17a, 'kcmp', ['pid_t pid1', 'pid_t pid2', 'int type', 'unsigned long idx1', 'unsigned long idx2']],
+    [0x17b, 'finit_module', ['int fd', 'const char *uargs', 'int flags']],
+    [0x17c, 'sched_setattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int flags']],
+    [0x17d, 'sched_getattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int usize', 'unsigned int flags']],
+    [0x17e, 'renameat2', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'unsigned int flags']],
+    [0x17f, 'seccomp', ['unsigned int op', 'unsigned int flags', 'void *uargs']],
+    [0x180, 'getrandom', ['char *buf', 'size_t count', 'unsigned int flags']],
+    [0x181, 'memfd_create', ['const char *uname', 'unsigned int flags']],
+    [0x182, 'bpf', ['int cmd', 'union bpf_attr *uattr', 'unsigned int size']],
+    [0x183, 'execveat', ['int fd', 'const char *filename', 'const compat_uptr_t *argv', 'const compat_uptr_t *envp', 'int flags']], # compat
+    [0x184, 'userfaultfd', ['int flags']],
+    [0x185, 'membarrier', ['int cmd', 'int flags']],
+    [0x186, 'mlock2', ['unsigned long start', 'size_t len', 'int flags']],
+    [0x187, 'copy_file_range', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
+    [0x188, 'preadv2', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen', 'u32 pos_low', 'u32 pos_high']], # compat
+    [0x189, 'pwritev2', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen', 'u32 pos_low', 'u32 pos_high']], # compat
+    [0x18a, 'pkey_mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot', 'int pkey']],
+    [0x18b, 'pkey_alloc', ['unsigned long flags', 'unsigned long init_val']],
+    [0x18c, 'pkey_free', ['int pkey']],
+    [0x18d, 'statx', ['int dfd', 'const char *filename', 'unsigned flags', 'unsigned int mask', 'struct statx *buffer']],
+    [0x18e, 'rseq', ['struct rseq *rseq', 'u32 rseq_len', 'int flags', 'u32 sig']],
+    [0x18f, 'io_pgetevents', ['compat_aio_context_t ctx_id', 'compat_long_t min_nr', 'compat_long_t nr', 'struct io_event *events', 'struct old_timespec32 *timeout', 'const struct __compat_aio_sigset *usig']], # compat
+    [0x190, 'migrate_pages', ['compat_pid_t pid', 'compat_ulong_t maxnode', 'const compat_ulong_t *old_nodes', 'const compat_ulong_t *new_nodes']], # compat
+    [0x191, 'kexec_file_load', ['int kernel_fd', 'int initrd_fd', 'unsigned long cmdline_len', 'const char *cmdline_ptr', 'unsigned long flags']],
+    #0x192, unused
+    [0x193, 'clock_gettime_time64', ['const clockid_t which_clock', 'const struct __kernel_timespec *tp']], # clock_gettime
+    [0x194, 'clock_settime_time64', ['const clockid_t which_clock', 'const struct __kernel_timespec *tp']], # clock_settime
+    [0x195, 'clock_adjtime_time64', ['const clockid_t which_clock', 'struct __kernel_timex *utx']], # clock_adjtime
+    [0x196, 'clock_getres_time64', ['const clockid_t which_clock', 'struct __kernel_timespec *tp']], # clock_getres
+    [0x197, 'clock_nanosleep_time64', ['const clockid_t which_clock', 'int flags', 'const struct __kernel_timespec *rqtp', 'struct __kernel_timespec *rmtp']], # clock_nanosleep
+    [0x198, 'timer_gettime_time64', ['timer_t timer_id', 'struct __kernel_itimerspec *setting']], # timer_gettime
+    [0x199, 'timer_settime_time64', ['timer_t timer_id', 'int flags', 'const struct __kernel_itimerspec *new_setting', 'struct __kernel_itimerspec *old_setting']], # timer_settime
+    [0x19a, 'timerfd_gettime_time64', ['int ufd', 'struct __kernel_itimerspec *otmr']], # timerfd_gettime
+    [0x19b, 'timerfd_settime_time64', ['int ufd', 'int flags', 'const struct __kernel_itimerspec *utmr', 'struct __kernel_itimerspec *otmr']], # timerfd_settime
+    [0x19c, 'utimensat_time64', ['int dfd', 'const char *filename', 'struct __kernel_timespec *utimes', 'int flags']], # utimensat
+    [0x19d, 'pselect6_time64', ['int n', 'compat_ulong_t *inp', 'compat_ulong_t *outp', 'compat_ulong_t *exp', 'struct __kernel_timespec *tsp', 'void *sig']], # compat
+    [0x19e, 'ppoll_time64', ['struct pollfd *ufds', 'unsigned int nfds', 'struct __kernel_timespec *tsp', 'const compat_sigset_t *sigmask', 'compat_size_t sigsetsize']], # compat
+    #0x19f, unused
+    [0x1a0, 'io_pgetevents_time64', ['aio_context_t ctx_id', 'long min_nr', 'long nr', 'struct io_event *events', 'struct __kernel_timespec *timeout', 'const struct __aio_sigset *usig']], # io_pgetevents
+    [0x1a1, 'recvmmsg_time64', ['int fd', 'struct compat_mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags', 'struct __kernel_timespec *timeout']], # compat
+    [0x1a2, 'mq_timedsend_time64', ['mqd_t mqdes', 'const char *u_msg_ptr', 'size_t msg_len', 'unsigned int msg_prio', 'const struct __kernel_timespec *u_abs_timeout']], # mq_timedsend
+    [0x1a3, 'mq_timedreceive_time64', ['mqd_t mqdes', 'const char *u_msg_ptr', 'size_t msg_len', 'unsigned int *u_msg_prio', 'const struct __kernel_timespec *u_abs_timeout']], # mq_timedreceive
+    [0x1a4, 'semtimedop_time64', ['int semid', 'struct sembuf *tsops', 'unsigned int nsops', 'const struct __kernel_timespec *timeout']], # semtimedop
+    [0x1a5, 'rt_sigtimedwait_time64', ['compat_sigset_t *uthese', 'struct compat_siginfo *uinfo', 'struct __kernel_timespec *uts', 'compat_size_t sigsetsize']], # compat
+    [0x1a6, 'futex_time64', ['u32 *uaddr', 'int op', 'u32 val', 'struct __kernel_timespec *utime', 'u32 *uaddr2', 'u32 val3']], # futex
+    [0x1a7, 'sched_rr_get_interval_time64', ['pid_t pid', 'struct __kernel_timespec *interval']], # sched_rr_get_interval
+    [0x1a8, 'pidfd_send_signal', ['int pidfd', 'int sig', 'siginfo_t *info', 'unsigned int flags']],
+    [0x1a9, 'io_uring_setup', ['u32 entries', 'struct io_uring_params *params']],
+    [0x1aa, 'io_uring_enter', ['unsigned int fd', 'u32 to_submit', 'u32 min_complete', 'u32 flags', 'const sigset_t *sig', 'size_t sigsz']],
+    [0x1ab, 'io_uring_register', ['unsigned int fd', 'unsigned int opcode', 'void *arg', 'unsigned int nr_args']],
+    [0x1ac, 'open_tree', ['int dfd', 'const char *filename', 'unsigned flags']],
+    [0x1ad, 'move_mount', ['int from_dfd', 'const char *from_pathname', 'int to_dfd', 'const char *to_pathname', 'unsigned int flags']],
+    [0x1ae, 'fsopen', ['const char *_fs_name', 'unsigned int flags']],
+    [0x1af, 'fsconfig', ['int fd', 'unsigned int cmd', 'const char *_key', 'const void *_value', 'int aux']],
+    [0x1b0, 'fsmount', ['int fs_fd', 'unsigned int flags', 'unsigned int attr_flags']],
+    [0x1b1, 'fspick', ['int, dfd', 'const char *path', 'unsigned int flags']],
+    [0x1b2, 'pidfd_open', ['pid_t pid', 'unsigned int flags']],
+    [0x1b3, 'clone3', ['struct clone_args *uargs', 'size_t size']],
+    [0x1b4, 'close_range', ['unsigned int fd', 'unsigned int max_fd', 'unsigned int flag']],
+    [0x1b5, 'openat2', ['int dfd', 'const char *filename', 'struct open_how *how', 'size_t usize']],
+    [0x1b6, 'pidfd_getfd', ['int pidfd', 'int fd', 'unsigned int flags']],
+    [0x1b7, 'faccessat2', ['int dfd', 'const char *filename', 'int mode', 'int flags']],
+    [0x1b8, 'process_madvise', ['int pidfd', 'const struct iovec *vec', 'size_t vlen', 'int behavior', 'unsigned int flags']],
+    [0x1b9, 'epoll_pwait2', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'const struct __kernel_timespec *timeout', 'const compat_sigset_t *sigmask', 'compat_size_t sigsetsize']], # compat
+    [0x1ba, 'mount_setattr', ['int dfd', 'const char *path', 'unsigned int flags', 'struct mount_attr *uattr', 'size_t usize']],
+    [0x1bb, 'quotactl_fd', ['unsigned int fd', 'unsigned int cmd', 'qid_t id', 'void __user *addr']],
+    [0x1bc, 'landlock_create_ruleset', ['const struct landlock_ruleset_attr *const attr', 'const size_t size', 'const __u32 flags']],
+    [0x1bd, 'landlock_add_rule', ['const int ruleset_fd', 'const enum landlock_rule_type rule_type', 'const void *const rule_attr', 'const __u32 flags']],
+    [0x1be, 'landlock_restrict_self', ['const int ruleset_fd', 'const __u32 flags']],
+    [0x1bf, 'memfd_secret', ['unsigned int, flags']],
+    [0x1c0, 'process_mrelease', ['int pidfd', 'unsigned int flags']],
+    [0x1c1, 'futex_waitv', ['struct futex_waitv *waiters', 'unsigned int nr_futexes', 'unsigned int flags', 'struct __kernel_timespec *timeout', 'clockid_t clockid']],
+    [0x1c2, 'set_mempolicy_home_node', ['unsigned long start', 'unsigned long len', 'unsigned long home_node', 'unsigned long flags']],
+    [0xf0002, 'cacheflush', ['unsigned long start', 'unsigned long end', 'int flags']], # arch/arm/kernel/traps.c
+    [0xf0005, 'set_tls', ['unsigned long val']], # arch/arm/kernel/traps.c
+]
+
+
+# ARM (on native ARM machine)
+# - arch/arm/include/asm/unistd.h
+# - arch/arm/include/generated/uapi/asm/unistd-common.h
+# - arch/arm/include/generated/uapi/asm/unistd-oabi.h
+# - arch/arm/include/generated/uapi/asm/unistd-eabi.h
+# - arch/arm/tools/syscall.tbl
+arm_native_EABI_syscall_list = [
+    [0x000, 'restart_syscall', []],
+    [0x001, 'exit', ['int error_code']],
+    [0x002, 'fork', []],
+    [0x003, 'read', ['unsigned int fd', 'char *buf', 'size_t count']],
+    [0x004, 'write', ['unsigned int fd', 'const char *buf', 'size_t count']],
+    [0x005, 'open', ['const char *filename', 'int flags', 'umode_t mode']],
+    [0x006, 'close', ['unsigned int fd']],
+    #0x007, waitpid # unimplemented
+    [0x008, 'creat', ['const char *pathname', 'umode_t mode']],
+    [0x009, 'link', ['const char *oldname', 'const char *newname']],
+    [0x00a, 'unlink', ['const char *pathname']],
+    [0x00b, 'execve', ['const char *filename', 'const char *const *argv', 'const char *const *envp']],
+    [0x00c, 'chdir', ['const char *filename']],
+    #0x00d, time # unimplemented by EABI
+    [0x00e, 'mknod', ['const char *filename', 'umode_t mode', 'unsigned dev']],
+    [0x00f, 'chmod', ['const char *filename', 'umode_t mode']],
+    [0x010, 'lchown', ['const char *filename', 'old_uid_t user', 'old_gid_t group']], # lchown16
+    #0x011, break # unimplemented
+    #0x012, stat # unimplemented
+    [0x013, 'lseek', ['unsigned int fd', 'off_t offset', 'unsigned int whence']],
+    [0x014, 'getpid', []],
+    [0x015, 'mount', ['char *dev_name', 'char *dir_name', 'char *type', 'unsigned long flags', 'void *data']],
+    #0x016, umount # unimplemented by EABI
+    [0x017, 'setuid', ['old_uid_t uid']], # setuid16
+    [0x018, 'getuid', []], # getuid16
+    #0x019, stime # unimplemented by EABI
+    [0x01a, 'ptrace', ['long request', 'long pid', 'unsigned long addr', 'unsigned long data']],
+    #0x01b, alarm # unimplemented by EABI
+    #0x01c, fstat # unimplemented
+    [0x01d, 'pause', []],
+    #0x01e, utime # unimplemented by EABI
+    #0x01f, stty # unimplemented
+    #0x020, gtty # unimplemented
+    [0x021, 'access', ['const char *filename', 'int mode']],
+    [0x022, 'nice', ['int increment']],
+    #0x023, ftime # unimplemented
+    [0x024, 'sync', []],
+    [0x025, 'kill', ['pid_t pid', 'int sig']],
+    [0x026, 'rename', ['const char *oldname', 'const char *newname']],
+    [0x027, 'mkdir', ['const char *pathname', 'umode_t mode']],
+    [0x028, 'rmdir', ['const char *pathname']],
+    [0x029, 'dup', ['unsigned int fildes']],
+    [0x02a, 'pipe', ['int *fildes']],
+    [0x02b, 'times', ['struct tms *tbuf']],
+    #0x02c, prof # unimplemented
+    [0x02d, 'brk', ['unsigned long brk']],
+    [0x02e, 'setgid', ['old_gid_t gid']], # setgid16
+    [0x02f, 'getgid', []], # getgid16
+    #0x030, signal # unimplemented
+    [0x031, 'geteuid', []], # geteuid16
+    [0x032, 'getegid', []], # getegid16
+    [0x033, 'acct', ['const char *name']],
+    [0x034, 'umount2', ['char *name', 'int flags']], # umount
+    #0x035, lock # unimplemented
+    [0x036, 'ioctl', ['unsigned int fd', 'unsigned int cmd', 'unsigned long arg']],
+    [0x037, 'fcntl', ['unsigned int fd', 'unsigned int cmd', 'unsigned long arg']],
+    #0x038, mpx # unimplemented
+    [0x039, 'setpgid', ['pid_t pid', 'pid_t pgid']],
+    #0x03a, ulimit # unimplemented
+    #0x03b, olduname # unimplemented
+    [0x03c, 'umask', ['int mask']],
+    [0x03d, 'chroot', ['const char *filename']],
+    [0x03e, 'ustat', ['unsigned dev', 'struct ustat *ubuf']],
+    [0x03f, 'dup2', ['unsigned int oldfd', 'unsigned int newfd']],
+    [0x040, 'getppid', []],
+    [0x041, 'getpgrp', []],
+    [0x042, 'setsid', []],
+    [0x043, 'sigaction', ['int sig', 'const struct old_sigaction *act', 'struct old_sigaction *oact']],
+    #0x044, sgetmask # unimplemented
+    #0x045, ssetmask # unimplemented
+    [0x046, 'setreuid', ['old_uid_t ruid', 'old_uid_t euid']], # setreuid16
+    [0x047, 'setregid', ['old_gid_t rgid', 'old_gid_t egid']], # setregid16
+    [0x048, 'sigsuspend', ['old_sigset_t mask']],
+    [0x049, 'sigpending', ['old_sigset_t *uset']],
+    [0x04a, 'sethostname', ['char *name', 'int len']],
+    [0x04b, 'setrlimit', ['unsigned int resource', 'struct rlimit *rlim']],
+    #0x04c, getrlimit # unimplemented by EABI
+    [0x04d, 'getrusage', ['int who', 'struct rusage *ru']],
+    [0x04e, 'gettimeofday', ['struct __kernel_old_timeval *tv', 'struct timezone *tz']],
+    [0x04f, 'settimeofday', ['struct __kernel_old_timeval *tv', 'struct timezone *tz']],
+    [0x050, 'getgroups', ['int gidsetsize', 'old_gid_t *grouplist']], # setgroups16
+    [0x051, 'setgroups', ['int gidsetsize', 'old_gid_t *grouplist']], # getgroups16
+    #0x052, select # unimplemented by EABI
+    [0x053, 'symlink', ['const char *oldname', 'const char *newname']],
+    #0x054, lstat # unimplemented
+    [0x055, 'readlink', ['const char *path', 'char *buf', 'int bufsiz']],
+    [0x056, 'uselib', ['const char *library']],
+    [0x057, 'swapon', ['const char *specialfile', 'int swap_flags']],
+    [0x058, 'reboot', ['int magic1', 'int magic2', 'unsigned int cmd', 'void *arg']],
+    #0x059, readdir # unimplemented by EABI
+    #0x05a, mmap # unimplemented by EABI
+    [0x05b, 'munmap', ['unsigned long addr', 'size_t len']],
+    [0x05c, 'truncate', ['const char *path', 'long length']],
+    [0x05d, 'ftruncate', ['unsigned int fd', 'unsigned long length']],
+    [0x05e, 'fchmod', ['unsigned int fd', 'umode_t mode']],
+    [0x05f, 'fchown', ['unsigned int fd', 'old_uid_t user', 'old_gid_t group']], # fchown16
+    [0x060, 'getpriority', ['int which', 'int who']],
+    [0x061, 'setpriority', ['int which', 'int who', 'int niceval']],
+    #0x062, profil # unimplemented
+    [0x063, 'statfs', ['const char *pathname', 'struct statfs *buf']],
+    [0x064, 'fstatfs', ['unsigned int fd', 'struct statfs *buf']],
+    #0x065, ioperm # unimplemented
+    #0x066, socketcall # unimplemented by EABI
+    [0x067, 'syslog', ['int type', 'char *buf', 'int len']],
+    [0x068, 'setitimer', ['int which', 'struct __kernel_old_itimerval *value', 'struct __kernel_old_itimerval *ovalue']],
+    [0x069, 'getitimer', ['int which', 'struct __kernel_old_itimerval *value']],
+    [0x06a, 'stat', ['const char *filename', 'struct stat *statbuf']], # newstat
+    [0x06b, 'lstat', ['const char *filename', 'struct stat *statbuf']], # newlstat
+    [0x06c, 'fstat', ['unsigned int fd', 'struct stat *statbuf']], # newfstat
+    #0x06d, uname # unimplemented
+    #0x06e, iopl # unimplemented
+    [0x06f, 'vhangup', []],
+    #0x070, idle # deleted from kernel 2.3.13
+    #0x071, syscall # unimplemented by EABI (entry point exists at arch/arm/kernel/entry-common.S, but jump to sys_ni_syscall)
+    [0x072, 'wait4', ['pid_t upid', 'int *stat_addr', 'int options', 'struct rusage *ru']],
+    [0x073, 'swapoff', ['const char *specialfile']],
+    [0x074, 'sysinfo', ['struct sysinfo *info']],
+    #0x075, ipc # unimplemented by EABI
+    [0x076, 'fsync', ['unsigned int fd']],
+    [0x077, 'sigreturn', []], # sigreturn_wrapper # arch/arm/kernel/entry-common.S
+    [0x078, 'clone', ['unsigned long clone_flags', 'unsigned long newsp', 'int *parent_tidptr', 'unsigned long tls', 'int *child_tidptr']], # arg4,5 are swapped
+    [0x079, 'setdomainname', ['char *name', 'int len']],
+    [0x07a, 'uname', ['struct new_utsname *name']], # newuname
+    #0x07b, modify_ldt # unimplemented
+    [0x07c, 'adjtimex', ['struct old_timex32 *utp']], # adjtimex_time32
+    [0x07d, 'mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot']],
+    [0x07e, 'sigprocmask', ['int how', 'old_sigset_t *nset', 'old_sigset_t *oset']],
+    #0x07f, create_module # dereted from kernel 2.6
+    [0x080, 'init_module', ['void *umod', 'unsigned long len', 'const char *uargs']],
+    [0x081, 'delete_module', ['const char *name_user', 'unsigned int flags']],
+    #0x082, get_kernel_syms # dereted from kernel 2.6
+    [0x083, 'quotactl', ['unsigned int cmd', 'const char *special', 'qid_t id', 'void *addr']],
+    [0x084, 'getpgid', ['pid_t pid']],
+    [0x085, 'fchdir', ['unsigned int fd']],
+    [0x086, 'bdflush', ['int func', 'long data']],
+    [0x087, 'sysfs', ['int option', 'unsigned long arg1', 'unsigned long arg2']],
+    [0x088, 'personality', ['unsigned int personality']],
+    #0x089, afs_syscall # unimplemented
+    [0x08a, 'setfsuid', ['old_uid_t uid']], # setfsuid16
+    [0x08b, 'setfsgid', ['old_gid_t gid']], # setfsgid16
+    [0x08c, '_llseek', ['unsigned int fd', 'unsigned long offset_high', 'unsigned long offset_low', 'loff_t *result', 'unsigned int whence']], # llseek
+    [0x08d, 'getdents', ['unsigned int fd', 'struct linux_dirent *dirent', 'unsigned int count']],
+    [0x08e, '_newselect', ['int n', 'fd_set *inp', 'fd_set *outp', 'fd_set *exp', 'struct __kernel_old_timeval *tvp']], # select
+    [0x08f, 'flock', ['unsigned int fd', 'unsigned int cmd']],
+    [0x090, 'msync', ['unsigned long start', 'size_t len', 'int flags']],
+    [0x091, 'readv', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen']],
+    [0x092, 'writev', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen']],
+    [0x093, 'getsid', ['pid_t pid']],
+    [0x094, 'fdatasync', ['unsigned int fd']],
+    #0x095, _sysctl # unimplemented
+    [0x096, 'mlock', ['unsigned long start', 'size_t len']],
+    [0x097, 'munlock', ['unsigned long start', 'size_t len']],
+    [0x098, 'mlockall', ['int flags']],
+    [0x099, 'munlockall', []],
+    [0x09a, 'sched_setparam', ['pid_t pid', 'struct sched_param *param']],
+    [0x09b, 'sched_getparam', ['pid_t pid', 'struct sched_param *param']],
+    [0x09c, 'sched_setscheduler', ['pid_t pid', 'int policy', 'struct sched_param *param']],
+    [0x09d, 'sched_getscheduler', ['pid_t pid']],
+    [0x09e, 'sched_yield', []],
+    [0x09f, 'sched_get_priority_max', ['int policy']],
+    [0x0a0, 'sched_get_priority_min', ['int policy']],
+    [0x0a1, 'sched_rr_get_interval', ['pid_t pid', 'struct old_timespec32 *interval']], # sched_rr_get_interval_time32
+    [0x0a2, 'nanosleep', ['struct old_timespec32 *rqtp', 'struct old_timespec32 *rmtp']], # nanosleep_time32
+    [0x0a3, 'mremap', ['unsigned long addr', 'unsigned long old_len', 'unsigned long new_len', 'unsigned long flags', 'unsigned long new_addr']],
+    [0x0a4, 'setresuid', ['old_uid_t ruid', 'old_uid_t euid', 'old_uid_t suid']], # setresuid16
+    [0x0a5, 'getresuid', ['old_uid_t *ruidp', 'old_uid_t *euidp', 'old_uid_t *suidp']], # getresuid16
+    #0x0a6, vm86 # unimplemented
+    #0x0a7, query_module # dereted from kernel 2.6
+    [0x0a8, 'poll', ['struct pollfd *ufds', 'unsigned int nfds', 'int timeout_msecs']],
+    #0x0a9, nfsservctl # deleted from kernel 3.1
+    [0x0aa, 'setresgid', ['old_gid_t rgid', 'old_gid_t egid', 'old_gid_t sgid']], # setresgid16
+    [0x0ab, 'getresgid', ['old_gid_t *rgidp', 'old_gid_t *egidp', 'old_gid_t *sgidp']], # getresgid16
+    [0x0ac, 'prctl', ['int option', 'unsigned long arg2', 'unsigned long arg3', 'unsigned long arg4', 'unsigned long arg5']],
+    [0x0ad, 'rt_sigreturn', []], # rt_sigreturn_wrapper # arch/arm/kernel/entry-common.S
+    [0x0ae, 'rt_sigaction', ['int sig', 'const struct sigaction *act', 'struct sigaction *oact', 'size_t sigsetsize']],
+    [0x0af, 'rt_sigprocmask', ['int how', 'sigset_t *nset', 'sigset_t *oset', 'size_t sigsetsize']],
+    [0x0b0, 'rt_sigpending', ['sigset_t *uset', 'size_t sigsetsize']],
+    [0x0b1, 'rt_sigtimedwait', ['const sigset_t *uthese', 'siginfo_t *uinfo', 'const struct old_timespec32 *uts', 'size_t sigsetsize']], # sigtimedwait_time32
+    [0x0b2, 'rt_sigqueueinfo', ['pid_t pid', 'int sig', 'siginfo_t *uinfo']],
+    [0x0b3, 'rt_sigsuspend', ['sigset_t *unewset', 'size_t sigsetsize']],
+    [0x0b4, 'pread64', ['unsigned int fd', 'char *buf', 'size_t count', 'loff_t pos']],
+    [0x0b5, 'pwrite64', ['unsigned int fd', 'const char *buf', 'size_t count', 'loff_t pos']],
+    [0x0b6, 'chown', ['const char *filename', 'old_uid_t user', 'old_gid_t group']], # chown16
+    [0x0b7, 'getcwd', ['char *buf', 'unsigned long size']],
+    [0x0b8, 'capget', ['cap_user_header_t header', 'cap_user_data_t dataptr']],
+    [0x0b9, 'capset', ['cap_user_header_t header', 'const cap_user_data_t data']],
+    [0x0ba, 'sigaltstack', ['const stack_t *uss', 'stack_t *uoss']],
+    [0x0bb, 'sendfile', ['int out_fd', 'int in_fd', 'off_t *offset', 'size_t count']],
+    #0x0bc, reserved
+    #0x0bd, reserved
+    [0x0be, 'vfork', []],
+    [0x0bf, 'ugetrlimit', ['unsigned int resource', 'struct rlimit *rlim']], # getrlimit
+    [0x0c0, 'mmap2', ['unsigned long addr', 'unsigned long len', 'unsigned long prot', 'unsigned long flags', 'unsigned long fd', 'unsigned long pgoff']], # arch/arm/kernel/entry-common.S
+    [0x0c1, 'truncate64', ['const char *path', 'loff_t length']],
+    [0x0c2, 'ftruncate64', ['unsigned int fd', 'loff_t length']],
+    [0x0c3, 'stat64', ['const char *filename', 'struct stat64 *statbuf']],
+    [0x0c4, 'lstat64', ['const char *filename', 'struct stat64 *statbuf']],
+    [0x0c5, 'fstat64', ['unsigned long fd', 'struct stat64 *statbuf']],
+    [0x0c6, 'lchown32', ['const char *filename', 'uid_t user', 'gid_t group']], # lchown
+    [0x0c7, 'getuid32', []], # getiud
+    [0x0c8, 'getgid32', []], # getgid
+    [0x0c9, 'geteuid32', []], # geteuid
+    [0x0ca, 'getegid32', []], # getegid
+    [0x0cb, 'setreuid32', ['uid_t ruid', 'uid_t euid']], # setreuid
+    [0x0cc, 'setregid32', ['gid_t rgid', 'gid_t egid']], # setregid
+    [0x0cd, 'getgroups32', ['int gidsetsize', 'gid_t *grouplist']], # getgroups
+    [0x0ce, 'setgroups32', ['int gidsetsize', 'gid_t *grouplist']], # setgroups
+    [0x0cf, 'fchown32', ['unsigned int fd', 'uid_t user', 'gid_t group']], # fchown
+    [0x0d0, 'setresuid32', ['uid_t ruid', 'uid_t euid', 'uid_t suid']], # setresuid
+    [0x0d1, 'getresuid32', ['uid_t *ruidp', 'uid_t *euidp', 'uid_t *suidp']], # getresuid
+    [0x0d2, 'setresgid32', ['gid_t rgid', 'gid_t egid', 'gid_t sgid']], # setresgid
+    [0x0d3, 'getresgid32', ['gid_t *rgidp', 'gid_t *egidp', 'gid_t *sgidp']], # getresgid
+    [0x0d4, 'chown32', ['const char *filename', 'uid_t user', 'gid_t group']], # chown
+    [0x0d5, 'setuid32', ['uid_t uid']], # setuid
+    [0x0d6, 'setgid32', ['gid_t gid']], # setgid
+    [0x0d7, 'setfsuid32', ['uid_t uid']], # setfsuid
+    [0x0d8, 'setfsgid32', ['gid_t gid']], # setfsgid
+    [0x0d9, 'getdents64', ['unsigned int fd', 'struct linux_dirent64 *dirent', 'unsigned int count']],
+    [0x0da, 'pivot_root', ['const char *new_root', 'const char *put_old']],
+    [0x0db, 'mincore', ['unsigned long start', 'size_t len', 'unsigned char *vec']],
+    [0x0dc, 'madvise', ['unsigned long start', 'size_t len_in', 'int behavior']],
+    [0x0dd, 'fcntl64', ['unsigned int fd', 'unsigned int cmd', 'unsigned long arg']],
+    #0x0de, tux # unimplemented
+    #0x0df, unused
+    [0x0e0, 'gettid', []],
+    [0x0e1, 'readahead', ['int fd', 'loff_t offset', 'size_t count']],
+    [0x0e2, 'setxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
+    [0x0e3, 'lsetxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
+    [0x0e4, 'fsetxattr', ['int fd', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
+    [0x0e5, 'getxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
+    [0x0e6, 'lgetxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
+    [0x0e7, 'fgetxattr', ['int fd', 'const char *name', 'void *value', 'size_t size']],
+    [0x0e8, 'listxattr', ['const char *pathname', 'char *list', 'size_t size']],
+    [0x0e9, 'llistxattr', ['const char *pathname', 'char *list', 'size_t size']],
+    [0x0ea, 'flistxattr', ['int fd', 'char *list', 'size_t size']],
+    [0x0eb, 'removexattr', ['const char *pathname', 'const char *name']],
+    [0x0ec, 'lremovexattr', ['const char *pathname', 'const char *name']],
+    [0x0ed, 'fremovexattr', ['int fd', 'const char *name']],
+    [0x0ee, 'tkill', ['pid_t pid', 'int sig']],
+    [0x0ef, 'sendfile64', ['int out_fd', 'int in_fd', 'loff_t *offset', 'size_t count']],
+    [0x0f0, 'futex', ['u32 *uaddr', 'int op', 'u32 val', 'struct old_timespec32 *utime', 'u32 *uaddr2', 'u32 val3']], # futex_time32
+    [0x0f1, 'sched_setaffinity', ['pid_t pid', 'unsigned int len', 'unsigned long *user_mask_ptr']],
+    [0x0f2, 'sched_getaffinity', ['pid_t pid', 'unsigned int len', 'unsigned long *user_mask_ptr']],
+    [0x0f3, 'io_setup', ['unsigned nr_events', 'aio_context_t *ctxp']],
+    [0x0f4, 'io_destroy', ['aio_context_t ctx']],
+    [0x0f5, 'io_getevents', ['__u32 ctx_id', '__s32 min_nr', '__s32 nr', 'struct io_event *events', 'struct old_timespec32 *timeout']], # io_getevents_time32
+    [0x0f6, 'io_submit', ['aio_context_t ctx_id', 'long nr', 'struct iocb **iocbpp']],
+    [0x0f7, 'io_cancel', ['aio_context_t ctx_id', 'struct iocb *iocb', 'struct io_event *result']],
+    [0x0f8, 'exit_group', ['int error_code']],
+    [0x0f9, 'lookup_dcookie', ['u64 cookie64', 'char *buf', 'size_t len']],
+    [0x0fa, 'epoll_create', ['int size']],
+    [0x0fb, 'epoll_ctl', ['int epfd', 'int op', 'int fd', 'struct epoll_event *event']],
+    [0x0fc, 'epoll_wait', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'int timeout']],
+    [0x0fd, 'remap_file_pages', ['unsigned long start', 'unsigned long size', 'unsigned long prot', 'unsigned long pgoff', 'unsigned long flags']],
+    #0x0fe, set_thread_area # unimplemented
+    #0x0ff, get_thread_area # unimplemented
+    [0x100, 'set_tid_address', ['int *tidptr']],
+    [0x101, 'timer_create', ['clockid_t which_clock', 'struct sigevent *timer_event_spec', 'timer_t *created_timer_id']],
+    [0x102, 'timer_settime', ['timer_t timer_id', 'int flags', 'struct old_itimerspec32 *new', 'struct old_itimerspec32 *old']], # timer_settime32
+    [0x103, 'timer_gettime', ['timer_t timer_id', 'struct old_itimerspec32 *setting']], # timer_gettime32
+    [0x104, 'timer_getoverrun', ['timer_t timer_id']],
+    [0x105, 'timer_delete', ['timer_t timer_id']],
+    [0x106, 'clock_settime', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_settime32
+    [0x107, 'clock_gettime', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_gettime32
+    [0x108, 'clock_getres', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_getres_time32
+    [0x109, 'clock_nanosleep', ['clockid_t which_clock', 'int flags', 'struct old_timespec32 *rqtp', 'struct old_timespec32 *rmtp']], # clock_nanosleep_time32
+    [0x10a, 'statfs64', ['const char *path', 'size_t sz', 'struct statfs64 *buf']], # statfs64_wrapper # arch/arm/kernel/entry-common.S
+    [0x10b, 'fstatfs64', ['unsigned int fd', 'size_t sz', 'struct statfs64 *buf']], # fstatfs64_wrapper # arch/arm/kernel/entry-common.S
+    [0x10c, 'tgkill', ['pid_t tgid', 'pid_t pid', 'int sig']],
+    [0x10d, 'utimes', ['const char *filename', 'struct old_timeval32 *t']], # utimes_time32
+    [0x10e, 'arm_fadvise64_64', ['int fd', 'int advice', 'loff_t offset', 'loff_t len']], # arch/arm/kernel/sys_arm.c
+    [0x10f, 'pciconfig_iobase', ['long which', 'unsigned long bus', 'unsigned long devfn']],
+    [0x110, 'pciconfig_read', ['unsigned long bus', 'unsigned long dfn', 'unsigned long off', 'unsigned long len', 'void *buf']],
+    [0x111, 'pciconfig_write', ['unsigned long bus', 'unsigned long dfn', 'unsigned long off', 'unsigned long len', 'void *buf']],
+    [0x112, 'mq_open', ['const char *u_name', 'int oflag', 'umode_t mode', 'struct mq_attr *u_attr']],
+    [0x113, 'mq_unlink', ['const char *u_name']],
+    [0x114, 'mq_timedsend', ['mqd_t mqdes', 'const char *u_msg_ptr', 'unsigned int msg_len', 'unsigned int msg_prio', 'const struct old_timespec32 *u_abs_timeout']], # mq_timedsend_time32
+    [0x115, 'mq_timedreceive', ['mqd_t mqdes', 'const char *u_msg_ptr', 'unsigned int msg_len', 'unsigned int *msg_prio', 'const struct old_timespec32 *u_abs_timeout']], # mq_timedreceive_time32
+    [0x116, 'mq_notify', ['mqd_t mqdes', 'const struct sigevent *u_notification']],
+    [0x117, 'mq_getsetattr', ['mqd_t mqdes', 'const struct mq_attr *u_mqstat', 'struct mq_attr *u_omqstat']],
+    [0x118, 'waitid', ['int which', 'pid_t upid', 'struct siginfo *infop', 'int options', 'struct rusage *ru']],
+    [0x119, 'socket', ['int family', 'int type', 'int protocol']],
+    [0x11a, 'bind', ['int fd', 'struct sockaddr *umyaddr', 'int addrlen']],
+    [0x11b, 'connect', ['int fd', 'struct sockaddr *uservaddr', 'int addrlen']],
+    [0x11c, 'listen', ['int fd', 'int backlog']],
+    [0x11d, 'accept', ['int fd', 'struct sockaddr *upeer_sockaddr', 'int *upeer_addrlen']],
+    [0x11e, 'getsockname', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
+    [0x11f, 'getpeername', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
+    [0x120, 'socketpair', ['int family', 'int type', 'int protocol', 'int *usockvec']],
+    [0x121, 'send', ['int fd', 'void *buff', 'size_t len', 'unsigned int flags']],
+    [0x122, 'sendto', ['int fd', 'void *buff', 'size_t len', 'unsigned int flags', 'struct sockaddr *addr', 'int addr_len']],
+    [0x123, 'recv', ['int fd', 'void *ubuf', 'size_t size', 'unsigned int flags']],
+    [0x124, 'recvfrom', ['int fd', 'void *ubuf', 'size_t size', 'unsigned int flags', 'struct sockaddr *addr', 'int *addr_len']],
+    [0x125, 'shutdown', ['int fd', 'int how']],
+    [0x126, 'setsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int optlen']],
+    [0x127, 'getsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int *optlen']],
+    [0x128, 'sendmsg', ['int fd', 'struct user_msghdr *msg', 'unsigned int flags']],
+    [0x129, 'recvmsg', ['int fd', 'struct user_msghdr *msg', 'unsigned int flags']],
+    [0x12a, 'semop', ['int semid', 'struct sembuf *tsops', 'unsigned nsops']],
+    [0x12b, 'semget', ['key_t key', 'int nsems', 'int semflg']],
+    [0x12c, 'semctl', ['int semid', 'int semnum', 'int cmd', 'unsigned long arg']], # old_semctl
+    [0x12d, 'msgsnd', ['int msqid', 'struct msgbuf *msgp', 'size_t msgsz', 'int msgflg']],
+    [0x12e, 'msgrcv', ['int msqid', 'struct msgbuf *msgp', 'size_t msgsz', 'long msgtyp', 'int msgflg']],
+    [0x12f, 'msgget', ['key_t key', 'int msgflg']],
+    [0x130, 'msgctl', ['int msqid', 'int cmd', 'struct msqid_ds *buf']], # old_msgctl
+    [0x131, 'shmat', ['int shmid', 'char *shmaddr', 'int shmflg']],
+    [0x132, 'shmdt', ['char *shmaddr']],
+    [0x133, 'shmget', ['key_t key', 'size_t size', 'int shmflg']],
+    [0x134, 'shmctl', ['int shmid', 'int cmd', 'struct shmid_ds *buf']], # old_shmctl
+    [0x135, 'add_key', ['const char *_type', 'const char *_description', 'const void *_payload', 'size_t plen', 'key_serial_t ringid']],
+    [0x136, 'request_key', ['const char *_type', 'const char *_description', 'const char *_callout_info', 'key_serial_t destringid']],
+    [0x137, 'keyctl', ['int option', 'unsigned long arg2', 'unsigned long arg3', 'unsigned long arg4', 'unsigned long arg5']],
+    [0x138, 'semtimedop', ['int semid', 'struct sembuf *tsems', 'unsigned nsops', 'const struct old_timespec32 *timeout']], # semtimedop_time32
+    #0x139, vserver # unimplemented
+    [0x13a, 'ioprio_set', ['int which', 'int who', 'int ioprio']],
+    [0x13b, 'ioprio_get', ['int which', 'int who']],
+    [0x13c, 'inotify_init', []],
+    [0x13d, 'inotify_add_watch', ['int fd', 'const char *pathname', 'u32 mask']],
+    [0x13e, 'inotify_rm_watch', ['int fd', '__s32 wd']],
+    [0x13f, 'mbind', ['unsigned long start', 'unsigned long len', 'unsigned long mode', 'const unsigned long *nmask', 'unsigned long maxnode', 'unsigned int flags']],
+    [0x140, 'get_mempolicy', ['int *policy', 'unsigned long *nmask', 'unsigned long maxnode', 'unsigned long addr', 'unsigned long flags']],
+    [0x141, 'set_mempolicy', ['int mode', 'const unsigned long *nmask', 'unsigned long maxnode']],
+    [0x142, 'openat', ['int dfd', 'const char *filename', 'int flags', 'umode_t mode']],
+    [0x143, 'mkdirat', ['int dfd', 'const char *pathname', 'umode_t mode']],
+    [0x144, 'mknodat', ['int dfd', 'const char *filename', 'umode_t mode', 'unsigned int dev']],
+    [0x145, 'fchownat', ['int dfd', 'const char *filename', 'uid_t user', 'gid_t group', 'int flag']],
+    [0x146, 'futimesat', ['unsigned int dfd', 'const char *filename', 'struct old_timeval32 *t']], # futimesat_time32
+    [0x147, 'fstatat64', ['int dfd', 'const char *filename', 'struct stat64 *statbuf', 'int flag']],
+    [0x148, 'unlinkat', ['int dfd', 'const char *pathname', 'int flag']],
+    [0x149, 'renameat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname']],
+    [0x14a, 'linkat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'int flags']],
+    [0x14b, 'symlinkat', ['const char *oldname', 'int newdfd', 'const char *newname']],
+    [0x14c, 'readlinkat', ['int dfd', 'const char *pathname', 'char *buf', 'int bufsiz']],
+    [0x14d, 'fchmodat', ['int dfd', 'const char *filename', 'umode_t mode']],
+    [0x14e, 'faccessat', ['int dfd', 'const char *filename', 'int mode']],
+    [0x14f, 'pselect6', ['int n', 'fd_set *inp', 'fd_set *outp', 'fd_set *exp', 'struct old_timespec32 *tsp', 'void *sig']], # pselect6_time32
+    [0x150, 'ppoll', ['struct pollfd *ufds', 'unsigned int nfds', 'struct old_timespec32 *tsp', 'const sigset_t *sigmask', 'size_t sigsetsize']],
+    [0x151, 'unshare', ['unsigned long unshare_flags']],
+    [0x152, 'set_robust_list', ['struct robust_list_head *head', 'size_t len']],
+    [0x153, 'get_robust_list', ['int pid', 'struct robust_list_head **head_ptr', 'size_t *len_ptr']],
+    [0x154, 'splice', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
+    [0x155, 'sync_file_range2', ['int fd', 'unsigned int flags', 'loff_t offset', 'loff_t nbytes']],
+    [0x156, 'tee', ['int fdin', 'int fdout', 'size_t len', 'unsigned int flags']],
+    [0x157, 'vmsplice', ['int fd', 'const struct iovec *uiov', 'unsigned long nr_segs', 'unsigned int flags']],
+    [0x158, 'move_pages', ['pid_t pid', 'unsigned long nr_pages', 'const void **pages', 'const int *nodes', 'int *status', 'int flags']],
+    [0x159, 'getcpu', ['unsigned *cpup', 'unsigned *nodep', 'struct getcpu_cache *unused']],
+    [0x15a, 'epoll_pwait', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'int timeout', 'const sigset_t *sigmask', 'size_t sigsetsize']],
+    [0x15b, 'kexec_load', ['unsigned long entry', 'unsigned long nr_segments', 'struct kexec_segment *segments', 'unsigned long flags']],
+    [0x15c, 'utimensat', ['unsigned int dfd', 'const char *filename', 'struct old_timespec32 *t', 'int flags']], # utimensat_time32
+    [0x15d, 'signalfd', ['int ufd', 'sigset_t *user_mask', 'size_t sizemask']],
+    [0x15e, 'timerfd_create', ['int clockid', 'int flags']],
+    [0x15f, 'eventfd', ['unsigned int count']],
+    [0x160, 'fallocate', ['int fd', 'int mode', 'loff_t offset', 'loff_t len']],
+    [0x161, 'timerfd_settime', ['int ufd', 'int flags', 'const struct old_itimerspec32 *utmr', 'struct old_itimerspec32 *otmr']], # timerfd_settime32
+    [0x162, 'timerfd_gettime', ['int ufd', 'struct old_itimerspec32 *otmr']], # timerfd_gettime32
+    [0x163, 'signalfd4', ['int ufd', 'sigset_t *user_mask', 'size_t sizemask', 'int flags']],
+    [0x164, 'eventfd2', ['unsigned int count', 'int flags']],
+    [0x165, 'epoll_create1', ['int flags']],
+    [0x166, 'dup3', ['unsigned int oldfd', 'unsigned int newfd', 'int flags']],
+    [0x167, 'pipe2', ['int *fildes', 'int flags']],
+    [0x168, 'inotify_init1', ['int flags']],
+    [0x169, 'preadv', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h']],
+    [0x16a, 'pwritev', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h']],
+    [0x16b, 'rt_tgsigqueueinfo', ['pid_t tgid', 'pid_t pid', 'int sig', 'siginfo_t *uinfo']],
+    [0x16c, 'perf_event_open', ['struct perf_event_attr *attr_uptr', 'pid_t pid', 'int cpu', 'int group_fd', 'unsigned long flags']],
+    [0x16d, 'recvmmsg', ['int fd', 'struct mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags', 'struct old_timespec32 *timeout']], # recvmmsg_time32
+    [0x16e, 'accept4', ['int fd', 'struct sockaddr *upeer_sockaddr', 'int *upeer_addrlen', 'int flags']],
+    [0x16f, 'fanotify_init', ['unsigned int flags', 'unsigned int event_f_flags']],
+    [0x170, 'fanotify_mark', ['int fanotify_fd', 'unsigned int flags', '__u64 mask', 'int dfd', 'const char *pathname']],
+    [0x171, 'prlimit64', ['pid_t pid', 'unsigned int resource', 'const struct rlimit64 *new_rlim', 'struct rlimit64 *old_rlim']],
+    [0x172, 'name_to_handle_at', ['int dfd', 'const char *name', 'struct file_handle *handle', 'int *mnt_id', 'int flag']],
+    [0x173, 'open_by_handle_at', ['int mountdirfd', 'struct file_handle *handle', 'int flags']],
+    [0x174, 'clock_adjtime', ['clockid_t which_clock', 'struct old_timex32 *tx']], # clock_adjtime32
+    [0x175, 'syncfs', ['int fd']],
+    [0x176, 'sendmmsg', ['int fd', 'struct mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags']],
+    [0x177, 'setns', ['int fd', 'int flags']],
+    [0x178, 'process_vm_readv', ['pid_t pid', 'const struct iovec *lvec', 'unsigned long liovcnt', 'const struct iovec *rvec', 'unsigned long riovcnt', 'unsigned long flags']],
+    [0x179, 'process_vm_writev', ['pid_t pid', 'const struct iovec *lvec', 'unsigned long liovcnt', 'const struct iovec *rvec', 'unsigned long riovcnt', 'unsigned long flags']],
+    [0x17a, 'kcmp', ['pid_t pid1', 'pid_t pid2', 'int type', 'unsigned long idx1', 'unsigned long idx2']],
+    [0x17b, 'finit_module', ['int fd', 'const char *uargs', 'int flags']],
+    [0x17c, 'sched_setattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int flags']],
+    [0x17d, 'sched_getattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int usize', 'unsigned int flags']],
+    [0x17e, 'renameat2', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'unsigned int flags']],
+    [0x17f, 'seccomp', ['unsigned int op', 'unsigned int flags', 'void *uargs']],
+    [0x180, 'getrandom', ['char *buf', 'size_t count', 'unsigned int flags']],
+    [0x181, 'memfd_create', ['const char *uname', 'unsigned int flags']],
+    [0x182, 'bpf', ['int cmd', 'union bpf_attr *uattr', 'unsigned int size']],
+    [0x183, 'execveat', ['int fd', 'const char *filename', 'const char *const *argv', 'const char *const *envp', 'int flags']],
+    [0x184, 'userfaultfd', ['int flags']],
+    [0x185, 'membarrier', ['int cmd', 'int flags']],
+    [0x186, 'mlock2', ['unsigned long start', 'size_t len', 'int flags']],
+    [0x187, 'copy_file_range', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
+    [0x188, 'preadv2', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h', 'rwf_t flags']],
+    [0x189, 'pwritev2', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h', 'rwf_t flags']],
+    [0x18a, 'pkey_mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot', 'int pkey']],
+    [0x18b, 'pkey_alloc', ['unsigned long flags', 'unsigned long init_val']],
+    [0x18c, 'pkey_free', ['int pkey']],
+    [0x18d, 'statx', ['int dfd', 'const char *filename', 'unsigned flags', 'unsigned int mask', 'struct statx *buffer']],
+    [0x18e, 'rseq', ['struct rseq *rseq', 'u32 rseq_len', 'int flags', 'u32 sig']],
+    [0x18f, 'io_pgetevents', ['aio_context_t ctx_id', 'long min_nr', 'long nr', 'struct io_event *events', 'struct old_timespec32 *timeout', 'const struct __aio_sigset *usig']], # io_pgetevents_time32
+    [0x190, 'migrate_pages', ['pid_t pid', 'unsigned long maxnode', 'const unsigned long *old_nodes', 'const unsigned long *new_nodes']],
+    [0x191, 'kexec_file_load', ['int kernel_fd', 'int initrd_fd', 'unsigned long cmdline_len', 'const char *cmdline_ptr', 'unsigned long flags']],
+    #0x192, unused
+    [0x193, 'clock_gettime_time64', ['const clockid_t which_clock', 'const struct __kernel_timespec *tp']], # clock_gettime
+    [0x194, 'clock_settime_time64', ['const clockid_t which_clock', 'const struct __kernel_timespec *tp']], # clock_settime
+    [0x195, 'clock_adjtime_time64', ['const clockid_t which_clock', 'struct __kernel_timex *utx']], # clock_adjtime
+    [0x196, 'clock_getres_time64', ['const clockid_t which_clock', 'struct __kernel_timespec *tp']], # clock_getres
+    [0x197, 'clock_nanosleep_time64', ['const clockid_t which_clock', 'int flags', 'const struct __kernel_timespec *rqtp', 'struct __kernel_timespec *rmtp']], # clock_nanosleep
+    [0x198, 'timer_gettime_time64', ['timer_t timer_id', 'struct __kernel_itimerspec *setting']], # timer_gettime
+    [0x199, 'timer_settime_time64', ['timer_t timer_id', 'int flags', 'const struct __kernel_itimerspec *new_setting', 'struct __kernel_itimerspec *old_setting']], # timer_settime
+    [0x19a, 'timerfd_gettime_time64', ['int ufd', 'struct __kernel_itimerspec *otmr']], # timerfd_gettime
+    [0x19b, 'timerfd_settime_time64', ['int ufd', 'int flags', 'const struct __kernel_itimerspec *utmr', 'struct __kernel_itimerspec *otmr']], # timerfd_settime
+    [0x19c, 'utimensat_time64', ['int dfd', 'const char *filename', 'struct __kernel_timespec *utimes', 'int flags']], # utimensat
+    [0x19d, 'pselect6_time64', ['int n', 'fd_set *inp', 'fd_set *outp', 'fd_set *exp', 'struct __kernel_timespec *tsp', 'void *sig']], # pselect6
+    [0x19e, 'ppoll_time64', ['struct pollfd *ufds', 'unsigned int nfds', 'struct __kernel_timespec *tsp', 'const sigset_t *sigmask', 'size_t sigsetsize']], # ppoll
+    #0x19f, unused
+    [0x1a0, 'io_pgetevents_time64', ['aio_context_t ctx_id', 'long min_nr', 'long nr', 'struct io_event *events', 'struct __kernel_timespec *timeout', 'const struct __aio_sigset *usig']], # io_pgetevents
+    [0x1a1, 'recvmmsg_time64', ['int fd', 'struct mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags', 'struct __kernel_timespec *timeout']], # recvmmsg
+    [0x1a2, 'mq_timedsend_time64', ['mqd_t mqdes', 'const char *u_msg_ptr', 'size_t msg_len', 'unsigned int msg_prio', 'const struct __kernel_timespec *u_abs_timeout']], # mq_timedsend
+    [0x1a3, 'mq_timedreceive_time64', ['mqd_t mqdes', 'const char *u_msg_ptr', 'size_t msg_len', 'unsigned int *u_msg_prio', 'const struct __kernel_timespec *u_abs_timeout']], # mq_timedreceive
+    [0x1a4, 'semtimedop_time64', ['int semid', 'struct sembuf *tsops', 'unsigned int nsops', 'const struct __kernel_timespec *timeout']], # semtimedop
+    [0x1a5, 'rt_sigtimedwait_time64', ['const sigset_t *uthese', 'siginfo *uinfo', 'struct struct __kernel_timespec *uts', 'size_t sigsetsize']], # rt_sigtimedwait
+    [0x1a6, 'futex_time64', ['u32 *uaddr', 'int op', 'u32 val', 'struct __kernel_timespec *utime', 'u32 *uaddr2', 'u32 val3']], # futex
+    [0x1a7, 'sched_rr_get_interval_time64', ['pid_t pid', 'struct __kernel_timespec *interval']], # sched_rr_get_interval
+    [0x1a8, 'pidfd_send_signal', ['int pidfd', 'int sig', 'siginfo_t *info', 'unsigned int flags']],
+    [0x1a9, 'io_uring_setup', ['u32 entries', 'struct io_uring_params *params']],
+    [0x1aa, 'io_uring_enter', ['unsigned int fd', 'u32 to_submit', 'u32 min_complete', 'u32 flags', 'const sigset_t *sig', 'size_t sigsz']],
+    [0x1ab, 'io_uring_register', ['unsigned int fd', 'unsigned int opcode', 'void *arg', 'unsigned int nr_args']],
+    [0x1ac, 'open_tree', ['int dfd', 'const char *filename', 'unsigned flags']],
+    [0x1ad, 'move_mount', ['int from_dfd', 'const char *from_pathname', 'int to_dfd', 'const char *to_pathname', 'unsigned int flags']],
+    [0x1ae, 'fsopen', ['const char *_fs_name', 'unsigned int flags']],
+    [0x1af, 'fsconfig', ['int fd', 'unsigned int cmd', 'const char *_key', 'const void *_value', 'int aux']],
+    [0x1b0, 'fsmount', ['int fs_fd', 'unsigned int flags', 'unsigned int attr_flags']],
+    [0x1b1, 'fspick', ['int, dfd', 'const char *path', 'unsigned int flags']],
+    [0x1b2, 'pidfd_open', ['pid_t pid', 'unsigned int flags']],
+    [0x1b3, 'clone3', ['struct clone_args *uargs', 'size_t size']],
+    [0x1b4, 'close_range', ['unsigned int fd', 'unsigned int max_fd', 'unsigned int flag']],
+    [0x1b5, 'openat2', ['int dfd', 'const char *filename', 'struct open_how *how', 'size_t usize']],
+    [0x1b6, 'pidfd_getfd', ['int pidfd', 'int fd', 'unsigned int flags']],
+    [0x1b7, 'faccessat2', ['int dfd', 'const char *filename', 'int mode', 'int flags']],
+    [0x1b8, 'process_madvise', ['int pidfd', 'const struct iovec *vec', 'size_t vlen', 'int behavior', 'unsigned int flags']],
+    [0x1b9, 'epoll_pwait2', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'const struct __kernel_timespec *timeout', 'const sigset_t *sigmask', 'size_t sigsetsize']],
+    [0x1ba, 'mount_setattr', ['int dfd', 'const char *path', 'unsigned int flags', 'struct mount_attr *uattr', 'size_t usize']],
+    [0x1bb, 'quotactl_fd', ['unsigned int fd', 'unsigned int cmd', 'qid_t id', 'void __user *addr']],
+    [0x1bc, 'landlock_create_ruleset', ['const struct landlock_ruleset_attr *const attr', 'const size_t size', 'const __u32 flags']],
+    [0x1bd, 'landlock_add_rule', ['const int ruleset_fd', 'const enum landlock_rule_type rule_type', 'const void *const rule_attr', 'const __u32 flags']],
+    [0x1be, 'landlock_restrict_self', ['const int ruleset_fd', 'const __u32 flags']],
+    [0x1bf, 'memfd_secret', ['unsigned int, flags']],
+    [0x1c0, 'process_mrelease', ['int pidfd', 'unsigned int flags']],
+    [0x1c1, 'futex_waitv', ['struct futex_waitv *waiters', 'unsigned int nr_futexes', 'unsigned int flags', 'struct __kernel_timespec *timeout', 'clockid_t clockid']],
+    [0x1c2, 'set_mempolicy_home_node', ['unsigned long start', 'unsigned long len', 'unsigned long home_node', 'unsigned long flags']],
+    [0xf0001, 'breakpoint', []], # arch/arm/kernel/traps.c
+    [0xf0002, 'cacheflush', ['unsigned long start', 'unsigned long end', 'int flags']], # arch/arm/kernel/traps.c
+    [0xf0003, 'usr26', []], # arch/arm/kernel/traps.c
+    [0xf0004, 'usr32', []], # arch/arm/kernel/traps.c
+    [0xf0005, 'set_tls', ['unsigned long val']], # arch/arm/kernel/traps.c
+    [0xf0006, 'get_tls', []], # arch/arm/kernel/traps.c
+]
+
+
+arm_native_OABI_syscall_list = [ # obsolete
+    [0x90000d, 'time', ['old_time32_t *tloc']], # time32
+    [0x900016, 'umount', ['char *name']], # oldumount
+    [0x900019, 'stime', ['old_time32_t *tptr']], # stime32
+    [0x90001b, 'alarm', ['unsigned int seconds']],
+    [0x90001e, 'utime', ['char *filename', 'struct old_utimbuf32 *t']], # utime32
+    [0x90004c, 'getrlimit', ['unsigned int resource', 'struct rlimit *rlim']], # old_getrlimit
+    [0x900052, 'select', ['struct sel_arg_struct *arg']], # old_select
+    [0x900059, 'readdir', ['unsigned int fd', 'struct old_linux_dirent *dirent', 'unsigned int count']], # old_readdir
+    [0x90005a, 'mmap', ['struct mmap_arg_struct *arg']], # old_mmap
+    [0x900066, 'socketcall', ['int call', 'unsigned long *args']], # oabi_socketcall # arch/arm/kernel/sys_oabi-compat.c
+    [0x900071, 'syscall', ['long number']], # arch/arm/kernel/entry-common.S
+    [0x900075, 'ipc', ['uint call', 'int first', 'int second', 'int third', 'void *ptr', 'long fifth']], # oabi_ipc # arch/arm/kernel/sys_oabi-compat.c
+    [0x9000b4, 'pread64', ['unsigned int fd', 'char *buf', 'size_t count', 'loff_t pos']], # oabi_pread64 # arch/arm/kernel/entry-common.S
+    [0x9000b5, 'pwrite64', ['unsigned int fd', 'const char *buf', 'size_t count', 'loff_t pos']], # oabi_pwrite64 # arch/arm/kernel/entry-common.S
+    [0x9000c1, 'truncate64', ['const char *path', 'loff_t length']], # oabi_truncate64 # arch/arm/kernel/entry-common.S
+    [0x9000c2, 'ftruncate64', ['unsigned int fd', 'loff_t length']], # oabi_ftruncate64 # arch/arm/kernel/entry-common.S
+    [0x9000c3, 'stat64', ['const char *filename', 'struct oldabi_stat64 *statbuf']], # oabi_stat64 # arch/arm/kernel/sys_oabi-compat.c
+    [0x9000c4, 'lstat64', ['const char *filename', 'struct oldabi_stat64 *statbuf']], # oabi_lstat64 # arch/arm/kernel/sys_oabi-compat.c
+    [0x9000c5, 'fstat64', ['unsigned long fd', 'struct oldabi_stat64 *statbuf']], # oabi_fstat64 # arch/arm/kernel/sys_oabi-compat.c
+    [0x9000dd, 'fcntl64', ['unsigned int fd', 'unsigned int cmd', 'unsigned long arg']], # oabi_fcntl64 # arch/arm/kernel/sys_oabi-compat.c
+    [0x9000e1, 'readahead', ['int fd', 'loff_t offset', 'size_t count']], # oabi_readahead # arch/arm/kernel/entry-common.S
+    [0x9000fb, 'epoll_ctl', ['int epfd', 'int op', 'int fd', 'struct oabi_epoll_event *event']], # oabi_epoll_ctl # arch/arm/kernel/sys_oabi-compat.c
+    [0x9000fc, 'epoll_wait', ['int epfd', 'struct oabi_epoll_event *events', 'int maxevents', 'int timeout']], # oabi_epoll_wait # arch/arm/kernel/sys_oabi-compat.c
+    [0x90011a, 'bind', ['int fd', 'struct sockaddr *addr', 'int addrlen']], # oabi_bind # arch/arm/kernel/sys_oabi-compat.c
+    [0x90011b, 'connect', ['int fd', 'struct sockaddr *addr', 'int addrlen']], # oabi_connect # arch/arm/kernel/sys_oabi-compat.c
+    [0x900122, 'sendto', ['int fd', 'void *buff', 'size_t len', 'unsigned int flags', 'struct sockaddr *addr', 'int addrlen']], # oabi_sendto # arch/arm/kernel/sys_oabi-compat.c
+    [0x900128, 'sendmsg', ['int fd', 'struct user_msghdr *msg', 'unsigned int flags']], # oabi_sendmsg # arch/arm/kernel/sys_oabi-compat.c
+    [0x90012a, 'semop', ['int semid', 'struct oabi_sembuf *tsops', 'unsigned nsops']], # oabi_semop # arch/arm/kernel/sys_oabi-compat.c
+    [0x900138, 'semtimedop', ['int semid', 'struct oabi_sembuf *tsops', 'unsigned nsops', 'const struct old_timespec32 *timeout']], # oabi_semtimedop # arch/arm/kernel/sys_oabi-compat.c
+    [0x900147, 'fstatat64', ['int dfd', 'const char *filename', 'struct oldabi_stat64 *statbuf', 'int flag']], # oabi_fstatat64 # arch/arm/kernel/sys_oabi-compat.c
+    [0x9f0001, 'breakpoint', []], # arch/arm/kernel/traps.c
+    [0x9f0002, 'cacheflush', ['unsigned long start', 'unsigned long end', 'int flags']], # arch/arm/kernel/traps.c
+    [0x9f0003, 'usr26', []], # arch/arm/kernel/traps.c
+    [0x9f0004, 'usr32', []], # arch/arm/kernel/traps.c
+    [0x9f0005, 'set_tls', ['unsigned long val']], # arch/arm/kernel/traps.c
+    [0x9f0006, 'get_tls', []], # arch/arm/kernel/traps.c
+]
+
+
+# ARM/ARM64 OP-TEE (at secure world)
+# - core/include/tee/tee_svc.h
+# - core/include/tee/tee_svc_cryp.h
+# - core/include/tee/tee_svc_storage.h
+# - core/include/tee/svc_cache.h
+arm_OPTEE_syscall_list = [
+    [0x00, 'syscall_sys_return', ['unsigned long ret']],
+    [0x01, 'syscall_log', ['const void *buf', 'size_t len']],
+    [0x02, 'syscall_panic', ['unsigned long code']],
+    [0x03, 'syscall_get_property', ['unsigned long prop_set', 'unsigned long index', 'void *name', 'uint32_t *name_len', 'void *buf', 'uint32_t *blen', 'uint32_t *prop_type']],
+    [0x04, 'syscall_get_property_name_to_index', ['unsigned long prop_set', 'void *name', 'unsigned long name_len', 'uint32_t *index']],
+    [0x05, 'syscall_open_ta_session', ['const TEE_UUID *dest', 'unsigned long cancel_req_to', 'struct utee_params *params', 'uint32_t *sess', 'uint32_t *ret_orig']],
+    [0x06, 'syscall_close_ta_session', ['unsigned long sess']],
+    [0x07, 'syscall_invoke_ta_command', ['unsigned long sess', 'unsigned long cancel_req_to', 'unsigned long cmd_id', 'struct utee_params *params', 'uint32_t *ret_orig']],
+    [0x08, 'syscall_check_access_rights', ['unsigned long flags', 'const void *buf', 'size_t len']],
+    [0x09, 'syscall_get_cancellation_flag', ['uint32_t *cancel', ]],
+    [0x0a, 'syscall_unmask_cancellation', ['uint32_t *old_mask']],
+    [0x0b, 'syscall_mask_cancellation', ['uint32_t *old_mask']],
+    [0x0c, 'syscall_wait', ['unsigned long timeout']],
+    [0x0d, 'syscall_get_time', ['unsigned long cat', 'TEE_Time *time']],
+    [0x0e, 'syscall_set_ta_time', ['const TEE_Time *time']],
+    [0x0f, 'syscall_cryp_state_alloc', ['unsigned long algo', 'unsigned long op_mode', 'unsigned long key1', 'unsigned long key2', 'uint32_t *state']],
+    [0x10, 'syscall_cryp_state_copy', ['unsigned long dst', 'unsigned long src']],
+    [0x11, 'syscall_cryp_state_free', ['unsigned long state']],
+    [0x12, 'syscall_hash_init', ['unsigned long state', 'const void *iv', 'size_t iv_len']],
+    [0x13, 'syscall_hash_update', ['unsigned long state', 'const void *chunk', 'size_t chunk_size']],
+    [0x14, 'syscall_hash_final', ['unsigned long state', 'const void *chunk', 'size_t chunk_size', 'void *hash', 'uint64_t *hash_len']],
+    [0x15, 'syscall_cipher_init', ['unsigned long state', 'const void *iv', 'size_t iv_len']],
+    [0x16, 'syscall_cipher_update', ['unsigned long state', 'const void *src', 'size_t src_len', 'void *dest', 'uint64_t *dest_len']],
+    [0x17, 'syscall_cipher_final', ['unsigned long state', 'const void *src', 'size_t src_len', 'void *dest', 'uint64_t *dest_len']],
+    [0x18, 'syscall_cryp_obj_get_info', ['unsigned long obj', 'TEE_ObjectInfo *info']],
+    [0x19, 'syscall_cryp_obj_restrict_usage', ['unsigned long obj', 'unsigned long usage']],
+    [0x1a, 'syscall_cryp_obj_get_attr', ['unsigned long obj', 'unsigned long attr_id', 'void *buffer', 'uint64_t *size']],
+    [0x1b, 'syscall_cryp_obj_alloc', ['unsigned long obj_type', 'unsigned long max_key_size', 'uint32_t *obj']],
+    [0x1c, 'syscall_cryp_obj_close', ['unsigned long obj']],
+    [0x1d, 'syscall_cryp_obj_reset', ['unsigned long obj']],
+    [0x1e, 'syscall_cryp_obj_populate', ['unsigned long obj', 'struct utee_attribute *attrs', 'unsigned long attr_count']],
+    [0x1f, 'syscall_cryp_obj_copy', ['unsigned long dst_obj', 'unsigned long src_obj']],
+    [0x20, 'syscall_cryp_derive_key', ['unsigned long state', 'const struct utee_attribute *params', 'unsigned long param_count', 'unsigned long derived_key']],
+    [0x21, 'syscall_cryp_random_number_generate', ['void *buf', 'size_t blen']],
+    [0x22, 'syscall_authenc_init', ['unsigned long state', 'const void *nonce', 'size_t nonce_len', 'size_t tag_len', 'size_t aad_len', 'size_t payload_len']],
+    [0x23, 'syscall_authenc_update_aad', ['unsigned long state', 'const void *aad_data', 'size_t aad_data_len']],
+    [0x24, 'syscall_authenc_update_payload', ['unsigned long state', 'const void *src_data', 'size_t src_len', 'void *dest_data', 'uint64_t *dest_len']],
+    [0x25, 'syscall_authenc_enc_final', ['unsigned long state', 'const void *src_data', 'size_t src_len', 'void *dest_data', 'uint64_t *dest_len', 'void *tag', 'uint64_t *tag_len']],
+    [0x26, 'syscall_authenc_dec_final', ['unsigned long state', 'const void *src_data', 'size_t src_len', 'void *dest_data', 'uint64_t *dest_len', 'const void *tag', 'uint64_t *tag_len']],
+    [0x27, 'syscall_asymm_operate', ['unsigned long state', 'const struct utee_attribute *usr_params', 'size_t num_params', 'const void *src_data', 'size_t src_len', 'void *dest_data', 'uint64_t *dest_len']],
+    [0x28, 'syscall_asymm_verify', ['unsigned long state', 'const struct utee_attribute *usr_params', 'size_t num_params', 'const void *data', 'size_t data_len', 'const void *sig', 'size_t sig_len']],
+    [0x29, 'syscall_storage_obj_open', ['unsigned long storage_id', 'void *object_id', 'size_t object_id_len', 'unsigned long flags', 'uint32_t *obj']],
+    [0x2a, 'syscall_storage_obj_create', ['unsigned long storage_id', 'void *object_id', 'size_t object_id_len', 'unsigned long flags', 'unsigned long attr', 'void *data', 'size_t len', 'uint32_t *obj']],
+    [0x2b, 'syscall_storage_obj_del', ['unsigned long obj']],
+    [0x2c, 'syscall_storage_obj_rename', ['unsigned long obj', 'void *object_id', 'size_t object_id_len']],
+    [0x2d, 'syscall_storage_alloc_enum', ['uint32_t *obj_enum']],
+    [0x2e, 'syscall_storage_free_enum', ['nsigned long obj_enum']],
+    [0x2f, 'syscall_storage_reset_enum', ['unsigned long obj_enum']],
+    [0x30, 'syscall_storage_start_enum', ['unsigned long obj_enum', 'unsigned long storage_id']],
+    [0x31, 'syscall_storage_next_enum', ['unsigned long obj_enum', 'TEE_ObjectInfo *info', 'void *obj_id', 'uint64_t *len']],
+    [0x32, 'syscall_storage_obj_read', ['unsigned long obj', 'void *data', 'size_t len', 'uint64_t *count']],
+    [0x33, 'syscall_storage_obj_write', ['unsigned long obj', 'void *data', 'size_t len']],
+    [0x34, 'syscall_storage_obj_trunc', ['unsigned long obj, size_t len']],
+    [0x35, 'syscall_storage_obj_seek', ['unsigned long obj', 'int32_t offset', 'unsigned long whence']],
+    [0x36, 'syscall_obj_generate_key', ['unsigned long obj', 'unsigned long key_size', 'const struct utee_attribute *params', 'unsigned long param_count']],
+    [0x37, 'syscall_not_supported', []],
+    [0x38, 'syscall_not_supported', []],
+    [0x39, 'syscall_not_supported', []],
+    [0x3a, 'syscall_not_supported', []],
+    [0x3b, 'syscall_not_supported', []],
+    [0x3c, 'syscall_not_supported', []],
+    [0x3d, 'syscall_not_supported', []],
+    [0x3e, 'syscall_not_supported', []],
+    [0x3f, 'syscall_not_supported', []],
+    [0x40, 'syscall_not_supported', []],
+    [0x41, 'syscall_not_supported', []],
+    [0x42, 'syscall_not_supported', []],
+    [0x43, 'syscall_not_supported', []],
+    [0x44, 'syscall_not_supported', []],
+    [0x45, 'syscall_not_supported', []],
+    [0x46, 'syscall_cache_operation', ['void *va, size_t len', 'unsigned long op']],
+]
+
+
+# ARM/ARM64 OP-TEE ldelf (at secure world)
+# - core/include/tee/tee_svc.h
+# - core/include/kernel/ldelf_syscalls.h
+arm_ldelf_syscall_list = [
+    [0x00, 'syscall_sys_return', ['unsigned long ret']],
+    [0x01, 'syscall_log', ['const void *buf', 'size_t len']],
+    [0x02, 'syscall_panic', ['unsigned long code']],
+    [0x03, 'ldelf_syscall_map_zi', ['vaddr_t *va', 'size_t num_bytes', 'size_t pad_begin', 'size_t pad_end', 'unsigned long flags']],
+    [0x04, 'ldelf_syscall_unmap', ['vaddr_t va', 'size_t num_bytes']],
+    [0x05, 'ldelf_syscall_open_bin', ['const TEE_UUID *uuid', 'size_t uuid_size', 'uint32_t *handle']],
+    [0x06, 'ldelf_syscall_close_bin', ['unsigned long handle']],
+    [0x07, 'ldelf_syscall_map_bin', ['vaddr_t *va', 'size_t num_bytes', 'unsigned long handle', 'size_t offs_bytes', 'size_t pad_begin', 'size_t pad_end', 'unsigned long flags']],
+    [0x08, 'ldelf_syscall_copy_from_bin', ['void *dst', 'size_t offs', 'size_t num_bytes', 'unsigned long handle']],
+    [0x09, 'ldelf_syscall_set_prot', ['unsigned long va', 'size_t num_bytes', 'unsigned long flags']],
+    [0x0a, 'ldelf_syscall_remap', ['unsigned long old_va', 'addr_t *new_va', 'size_t num_bytes', 'size_t pad_begin', 'size_t pad_end']],
+    [0x0b, 'ldelf_syscall_gen_rnd_num', ['void *buf', 'size_t num_bytes']],
+]
+
+
+# This cache is not cleared when reset_cache() is run.
+cached_syscall_table = None
+
+
+def get_syscall_table(arch=None, mode=None):
+    # this table is supported following architecture.
+    #   - x86_64
+    #   - x86 (on x86_64 machine)
+    #   - x86 (on native x86 machine)
+    #   - ARM64
+    #   - ARM (on ARM64 machine)
+    #   - ARM (on native ARM machine)
+    #   - ARM64 OP-TEE (at secure world)
+    #   - ARM OP-TEE (at secure world)
+
+    global cached_syscall_table
+    if cached_syscall_table:
+        return cached_syscall_table
+
+    def is_emulated32():
+        if is_qemu_usermode():
+            return True
+
+        if is_qemu_system():
+            # corner case (ex: using qemu-system-x86_64, but process is executed as 32bit mode)
+            # is not able to be detected
+            return True
+
+        for m in get_process_maps():
+            # native x86:
+            # 0xbffdf000 0xc0000000 0x021000 0x000000 rw- [stack]
+            # emulated x86 on x86_64
+            # 0xfffdd000 0xffffe000 0x021000 0x000000 rw- [stack]
+            # native arm:
+            # 0xbefdf000 0xbf000000 0x021000 0x000000 rw- [stack]
+            # emulated arm on aarch64
+            # 0xfffcf000 0xffff0000 0x021000 0x000000 rw- [stack]
+            if m.path == "[stack]":
+                return (m.page_start >> 28) == 0xf
+        else:
+            return False # by default it considers on native
+
+    def is_secure():
+        scr = get_register("$SCR" if is_arm32() else "$SCR_EL3")
+        if scr is None:
+            return False
+        return (scr & 0b1) == 0
+
+    if arch is None and mode is None :
+        if is_x86_64():
+            arch, mode = "X86", "64"
+        elif is_x86_32():
+            arch, mode = "X86", ["N32", "32"][is_emulated32()]
+        elif is_arm64():
+            arch, mode = "ARM64", [None, "S"][is_secure()]
+        elif is_arm32():
+            arch, mode = "ARM", [["N32", "32"][is_emulated32()], "S"][is_secure()]
+
+    if arch == "X86" and mode == "64":
+        register_list = ["$rdi", "$rsi", "$rdx", "$r10", "$r8", "$r9"]
+        syscall_list = x64_syscall_list.copy()
+        # add x32 most case
+        name_list = [s[1] for s in x32_special_syscall_list]
+        for nr, name, args in x64_syscall_list:
+            if name in name_list:
+                continue
+            syscall_list += [[nr + 0x40000000, name, args]]
+        # add x32 special case
+        syscall_list += x32_special_syscall_list.copy()
+
+    elif arch == "X86" and mode == "32":
+        register_list = ["$ebx", "$ecx", "$edx", "$esi", "$edi", "$ebp"]
+        syscall_list = x86_emulated_syscall_list.copy()
+
+    elif arch == "X86" and mode == "N32":
+        register_list = ["$ebx", "$ecx", "$edx", "$esi", "$edi", "$ebp"]
+        syscall_list = x86_native_syscall_list.copy()
+
+    elif arch == "ARM64":
+        register_list = ["$x0", "$x1", "$x2", "$x3", "$x4", "$x5"]
+        syscall_list = arm64_syscall_list.copy()
+
+    elif arch == "ARM" and mode == "32":
+        register_list = ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6"]
+        syscall_list = arm_emulated_syscall_list.copy()
+
+    elif arch == "ARM" and mode == "N32":
+        register_list = ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6"]
+        syscall_list = arm_native_EABI_syscall_list.copy()
+        """
+        # add OABI (obsolete)
+        name_list = [s[1] for s in arm_native_OABI_syscall_list]
+        for nr, name, args in arm_native_EABI_syscall_list:
+            if name in name_list:
+                continue
+            syscall_list += [[nr + 0x900000, name, args]]
+        """
+
+    elif arch in ["ARM64", "ARM"] and mode == "S":
+        if arch == "ARM64":
+            register_list = ["$x0", "$x1", "$x2", "$x3", "$x4", "$x5", "$x6"]
+        else:
+            register_list = ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6"]
+        syscall_list = arm_OPTEE_syscall_list.copy()
+
+    else:
+        raise
+
+    if mode == "S":
+        mode = "Secure-World"
+    elif mode == "N32":
+        mode = "Native-32"
+    elif mode == "32":
+        mode = "Emulated-32"
+    syscall_table = {"arch": arch, "mode": mode}
+
+    Entry = collections.namedtuple('Entry', 'name params')
+    Param = collections.namedtuple('Param', 'reg param')
+    for nr, name, args in syscall_list:
+        args = list(zip(register_list[:len(args)], args))
+        syscall_table[nr] = Entry(name, [Param(*p) for p in args])
+
+    cached_syscall_table = syscall_table
+    return syscall_table
+
+
 @register_command
 class SyscallArgsCommand(GenericCommand):
     """Gets the syscall name and arguments based on the register values in the current state."""
@@ -16873,7 +19719,7 @@ class SyscallArgsCommand(GenericCommand):
             self.usage()
             return
 
-        syscall_table = self.get_syscall_table()
+        syscall_table = get_syscall_table()
 
         if len(argv) == 1:
             reg_value = int(argv[0], 0)
@@ -16891,7 +19737,7 @@ class SyscallArgsCommand(GenericCommand):
         parameters = [s.param for s in syscall_entry.params]
         registers = [s.reg for s in syscall_entry.params]
 
-        info("Detected syscall")
+        info("Detected syscall (arch:{:s}, mode:{:s})".format(syscall_table["arch"], syscall_table["mode"]))
         gef_print("    " + Color.colorify("{}({})".format(syscall_entry.name, ", ".join(parameters)), "bold yellow"))
 
         headers = ["Parameter", "Register", "Value"]
@@ -16904,2798 +19750,6 @@ class SyscallArgsCommand(GenericCommand):
             line += to_string_dereference_from(value)
             gef_print(line)
         return
-
-    @staticmethod
-    def get_syscall_table(arch=None, mode=None):
-        # this table is supported following architecture.
-        #   - x86_64
-        #   - x86 (on x86_64 machine)
-        #   - x86 (on native x86 machine)
-        #   - ARM64
-        #   - ARM (on ARM64 machine)
-        #   - ARM (on native ARM machine)
-        #   - ARM64 OP-TEE (at secure world)
-        #   - ARM OP-TEE (at secure world)
-
-        def is_emulated32():
-            if is_qemu_usermode():
-                return True
-
-            if is_qemu_system():
-                # corner case (ex: using qemu-system-x86_64, but process is executed as 32bit mode)
-                # is not able to be detected
-                return True
-
-            for m in get_process_maps():
-                # native x86:
-                # 0xbffdf000 0xc0000000 0x021000 0x000000 rw- [stack]
-                # emulated x86 on x86_64
-                # 0xfffdd000 0xffffe000 0x021000 0x000000 rw- [stack]
-                # native arm:
-                # 0xbefdf000 0xbf000000 0x021000 0x000000 rw- [stack]
-                # emulated arm on aarch64
-                # 0xfffcf000 0xffff0000 0x021000 0x000000 rw- [stack]
-                if m.path == "[stack]":
-                    return (m.page_start >> 28) == 0xf
-            else:
-                return False # by default it considers on native
-
-        def is_secure():
-            scr = get_register("$SCR" if is_arm32() else "$SCR_EL3")
-            if scr is None:
-                return False
-            return (scr & 0b1) == 0
-
-        if arch is None and mode is None :
-            if is_x86_64():
-                arch, mode = "X86", "64"
-            elif is_x86_32():
-                if is_emulated32():
-                    arch, mode = "X86", "32"
-                else:
-                    arch, mode = "X86", "N32"
-            elif is_arm64():
-                if is_secure():
-                    arch, mode = "ARM64", "S"
-                else:
-                    arch, mode = "ARM64", None
-            elif is_arm32():
-                if is_secure():
-                    arch, mode = "ARM", "S"
-                else:
-                    if is_emulated32():
-                        arch, mode = "ARM", "32"
-                    else:
-                        arch, mode = "ARM", "N32"
-
-        Entry = collections.namedtuple('Entry', 'name params')
-        Param = collections.namedtuple('Param', 'reg param')
-
-        # The info of arguments type is picked up from kernel source around "SYSCALL_DEFINE*(...) / COMPAT_SYSCALL_DEFINE*(...)",
-        # The command I used: cd linux-6.*; ag --cc -A 6 "SYSCALL_DEFINE.*\bFUNCTION_NAME\b"
-        # But these are some exceptions (ex: not found), I picked up from the function of syscall implementation, and so on
-        if arch == "X86" and mode == "64":
-            register_list = ["$rdi", "$rsi", "$rdx", "$r10", "$r8", "$r9"]
-            # arch/x86/entry/syscalls/syscall_64.tbl
-            # arch/x86/include/asm/unistd.h
-            # arch/x86/include/uapi/asm/unistd.h
-            # arch/x86/include/generated/uapi/asm/unistd-64.h
-            # arch/x86/include/generated/uapi/asm/unistd-x32.h
-            syscall_list = [
-                [0x000, 'read', ['unsigned int fd', 'char *buf', 'size_t count']],
-                [0x001, 'write', ['unsigned int fd', 'const char *buf', 'size_t count']],
-                [0x002, 'open', ['const char *filename', 'int flags', 'umode_t mode']],
-                [0x003, 'close', ['unsigned int fd']],
-                [0x004, 'stat', ['const char *filename', 'struct __old_kernel_stat *statbuf']],
-                [0x005, 'fstat', ['unsigned int fd', 'struct __old_kernel_stat *statbuf']],
-                [0x006, 'lstat', ['const char *filename', 'struct __old_kernel_stat *statbuf']],
-                [0x007, 'poll', ['struct pollfd *ufds', 'unsigned int nfds', 'int timeout_msecs']],
-                [0x008, 'lseek', ['unsigned int fd', 'off_t offset', 'unsigned int whence']],
-                [0x009, 'mmap', ['unsigned long addr', 'unsigned long len', 'unsigned long prot', 'unsigned long flags', 'unsigned long fd', 'unsigned long off']],
-                [0x00a, 'mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot']],
-                [0x00b, 'munmap', ['unsigned long addr', 'size_t len']],
-                [0x00c, 'brk', ['unsigned long brk']],
-                [0x00d, 'rt_sigaction', ['int sig', 'const struct sigaction *act', 'struct sigaction *oact', 'size_t sigsetsize']],
-                [0x00e, 'rt_sigprocmask', ['int how', 'sigset_t *nset', 'sigset_t *oset', 'size_t sigsetsize']],
-                [0x00f, 'rt_sigreturn', []],
-                [0x010, 'ioctl', ['unsigned int fd', 'unsigned int cmd', 'unsigned long arg']],
-                [0x011, 'pread64', ['unsigned int fd', 'char *buf', 'size_t count', 'loff_t pos']],
-                [0x012, 'pwrite64', ['unsigned int fd', 'const char *buf', 'size_t count', 'loff_t pos']],
-                [0x013, 'readv', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen']],
-                [0x014, 'writev', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen']],
-                [0x015, 'access', ['const char *filename', 'int mode']],
-                [0x016, 'pipe', ['int *fildes']],
-                [0x017, 'select', ['int n', 'fd_set *inp', 'fd_set *outp', 'fd_set *exp', 'struct __kernel_old_timeval *tvp']],
-                [0x018, 'sched_yield', []],
-                [0x019, 'mremap', ['unsigned long addr', 'unsigned long old_len', 'unsigned long new_len', 'unsigned long flags', 'unsigned long new_addr']],
-                [0x01a, 'msync', ['unsigned long start', 'size_t len', 'int flags']],
-                [0x01b, 'mincore', ['unsigned long start', 'size_t len', 'unsigned char *vec']],
-                [0x01c, 'madvise', ['unsigned long start', 'size_t len_in', 'int behavior']],
-                [0x01d, 'shmget', ['key_t key', 'size_t size', 'int shmflg']],
-                [0x01e, 'shmat', ['int shmid', 'char *shmaddr', 'int shmflg']],
-                [0x01f, 'shmctl', ['int shmid', 'int cmd', 'struct shmid_ds *buf']],
-                [0x020, 'dup', ['unsigned int fildes']],
-                [0x021, 'dup2', ['unsigned int oldfd', 'unsigned int newfd']],
-                [0x022, 'pause', []],
-                [0x023, 'nanosleep', ['struct __kernel_timespec *rqtp', 'struct __kernel_timespec *rmtp']],
-                [0x024, 'getitimer', ['int which', 'struct __kernel_old_itimerval *value']],
-                [0x025, 'alarm', ['unsigned int seconds']],
-                [0x026, 'setitimer', ['int which', 'struct __kernel_old_itimerval *value', 'struct __kernel_old_itimerval *ovalue']],
-                [0x027, 'getpid', []],
-                [0x028, 'sendfile', ['int out_fd', 'int in_fd', 'off_t *offset', 'size_t count']],
-                [0x029, 'socket', ['int family', 'int type', 'int protocol']],
-                [0x02a, 'connect', ['int fd', 'struct sockaddr *uservaddr', 'int addrlen']],
-                [0x02b, 'accept', ['int fd', 'struct sockaddr *upeer_sockaddr', 'int *upeer_addrlen']],
-                [0x02c, 'sendto', ['int fd', 'void *buff', 'size_t len', 'unsigned int flags', 'struct sockaddr *addr', 'int addr_len']],
-                [0x02d, 'recvfrom', ['int fd', 'void *ubuf', 'size_t size', 'unsigned int flags', 'struct sockaddr *addr', 'int *addr_len']],
-                [0x02e, 'sendmsg', ['int fd', 'struct user_msghdr *msg', 'unsigned int flags']],
-                [0x02f, 'recvmsg', ['int fd', 'struct user_msghdr *msg', 'unsigned int flags']],
-                [0x030, 'shutdown', ['int fd', 'int how']],
-                [0x031, 'bind', ['int fd', 'struct sockaddr *umyaddr', 'int addrlen']],
-                [0x032, 'listen', ['int fd', 'int backlog']],
-                [0x033, 'getsockname', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
-                [0x034, 'getpeername', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
-                [0x035, 'socketpair', ['int family', 'int type', 'int protocol', 'int *usockvec']],
-                [0x036, 'setsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int optlen']],
-                [0x037, 'getsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int *optlen']],
-                [0x038, 'clone', ['unsigned long clone_flags', 'unsigned long newsp', 'int *parent_tidptr', 'int *child_tidptr', 'unsigned long tls']],
-                [0x039, 'fork', []],
-                [0x03a, 'vfork', []],
-                [0x03b, 'execve', ['const char *filename', 'const char *const *argv', 'const char *const *envp']],
-                [0x03c, 'exit', ['int error_code']],
-                [0x03d, 'wait4', ['pid_t upid', 'int *stat_addr', 'int options', 'struct rusage *ru']],
-                [0x03e, 'kill', ['pid_t pid', 'int sig']],
-                [0x03f, 'uname', ['struct old_utsname *name']],
-                [0x040, 'semget', ['key_t key', 'int nsems', 'int semflg']],
-                [0x041, 'semop', ['int semid', 'struct sembuf *tsops', 'unsigned nsops']],
-                [0x042, 'semctl', ['int semid', 'int semnum', 'int cmd', 'unsigned long arg']],
-                [0x043, 'shmdt', ['char *shmaddr']],
-                [0x044, 'msgget', ['key_t key', 'int msgflg']],
-                [0x045, 'msgsnd', ['int msqid', 'struct msgbuf *msgp', 'size_t msgsz', 'int msgflg']],
-                [0x046, 'msgrcv', ['int msqid', 'struct msgbuf *msgp', 'size_t msgsz', 'long msgtyp', 'int msgflg']],
-                [0x047, 'msgctl', ['int msqid', 'int cmd', 'struct msqid_ds *buf']],
-                [0x048, 'fcntl', ['unsigned int fd', 'unsigned int cmd', 'unsigned long arg']],
-                [0x049, 'flock', ['unsigned int fd', 'unsigned int cmd']],
-                [0x04a, 'fsync', ['unsigned int fd']],
-                [0x04b, 'fdatasync', ['unsigned int fd']],
-                [0x04c, 'truncate', ['const char *path', 'long length']],
-                [0x04d, 'ftruncate', ['unsigned int fd', 'unsigned long length']],
-                [0x04e, 'getdents', ['unsigned int fd', 'struct linux_dirent *dirent', 'unsigned int count']],
-                [0x04f, 'getcwd', ['char *buf', 'unsigned long size']],
-                [0x050, 'chdir', ['const char *filename']],
-                [0x051, 'fchdir', ['unsigned int fd']],
-                [0x052, 'rename', ['const char *oldname', 'const char *newname']],
-                [0x053, 'mkdir', ['const char *pathname', 'umode_t mode']],
-                [0x054, 'rmdir', ['const char *pathname']],
-                [0x055, 'creat', ['const char *pathname', 'umode_t mode']],
-                [0x056, 'link', ['const char *oldname', 'const char *newname']],
-                [0x057, 'unlink', ['const char *pathname']],
-                [0x058, 'symlink', ['const char *oldname', 'const char *newname']],
-                [0x059, 'readlink', ['const char *path', 'char *buf', 'int bufsiz']],
-                [0x05a, 'chmod', ['const char *filename', 'umode_t mode']],
-                [0x05b, 'fchmod', ['unsigned int fd', 'umode_t mode']],
-                [0x05c, 'chown', ['const char *filename', 'uid_t user', 'gid_t group']],
-                [0x05d, 'fchown', ['unsigned int fd', 'uid_t user', 'gid_t group']],
-                [0x05e, 'lchown', ['const char *filename', 'uid_t user', 'gid_t group']],
-                [0x05f, 'umask', ['int mask']],
-                [0x060, 'gettimeofday', ['struct __kernel_old_timeval *tv', 'struct timezone *tz']],
-                [0x061, 'getrlimit', ['unsigned int resource', 'struct rlimit *rlim']],
-                [0x062, 'getrusage', ['int who', 'struct rusage *ru']],
-                [0x063, 'sysinfo', ['struct sysinfo *info']],
-                [0x064, 'times', ['struct tms *tbuf']],
-                [0x065, 'ptrace', ['long request', 'long pid', 'unsigned long addr', 'unsigned long data']],
-                [0x066, 'getuid', []],
-                [0x067, 'syslog', ['int type', 'char *buf', 'int len']],
-                [0x068, 'getgid', []],
-                [0x069, 'setuid', ['uid_t uid']],
-                [0x06a, 'setgid', ['gid_t gid']],
-                [0x06b, 'geteuid', []],
-                [0x06c, 'getegid', []],
-                [0x06d, 'setpgid', ['pid_t pid', 'pid_t pgid']],
-                [0x06e, 'getppid', []],
-                [0x06f, 'getpgrp', []],
-                [0x070, 'setsid', []],
-                [0x071, 'setreuid', ['uid_t ruid', 'uid_t euid']],
-                [0x072, 'setregid', ['gid_t rgid', 'gid_t egid']],
-                [0x073, 'getgroups', ['int gidsetsize', 'gid_t *grouplist']],
-                [0x074, 'setgroups', ['int gidsetsize', 'gid_t *grouplist']],
-                [0x075, 'setresuid', ['uid_t ruid', 'uid_t euid', 'uid_t suid']],
-                [0x076, 'getresuid', ['uid_t *ruidp', 'uid_t *euidp', 'uid_t *suidp']],
-                [0x077, 'setresgid', ['gid_t rgid', 'gid_t egid', 'gid_t sgid']],
-                [0x078, 'getresgid', ['gid_t *rgidp', 'gid_t *egidp', 'gid_t *sgidp']],
-                [0x079, 'getpgid', ['pid_t pid']],
-                [0x07a, 'setfsuid', ['uid_t uid']],
-                [0x07b, 'setfsgid', ['gid_t gid']],
-                [0x07c, 'getsid', ['pid_t pid']],
-                [0x07d, 'capget', ['cap_user_header_t header', 'cap_user_data_t dataptr']],
-                [0x07e, 'capset', ['cap_user_header_t header', 'const cap_user_data_t data']],
-                [0x07f, 'rt_sigpending', ['sigset_t *uset', 'size_t sigsetsize']],
-                [0x080, 'rt_sigtimedwait', ['const sigset_t *uthese', 'siginfo_t *uinfo', 'const struct __kernel_timespec *uts', 'size_t sigsetsize']],
-                [0x081, 'rt_sigqueueinfo', ['pid_t pid', 'int sig', 'siginfo_t *uinfo']],
-                [0x082, 'rt_sigsuspend', ['sigset_t *unewset', 'size_t sigsetsize']],
-                [0x083, 'sigaltstack', ['const stack_t *uss', 'stack_t *uoss']],
-                [0x084, 'utime', ['char *filename', 'struct utimbuf *times']],
-                [0x085, 'mknod', ['const char *filename', 'umode_t mode', 'unsigned dev']],
-                [0x086, 'uselib', ['const char *library']],
-                [0x087, 'personality', ['unsigned int personality']],
-                [0x088, 'ustat', ['unsigned dev', 'struct ustat *ubuf']],
-                [0x089, 'statfs', ['const char *pathname', 'struct statfs *buf']],
-                [0x08a, 'fstatfs', ['unsigned int fd', 'struct statfs *buf']],
-                [0x08b, 'sysfs', ['int option', 'unsigned long arg1', 'unsigned long arg2']],
-                [0x08c, 'getpriority', ['int which', 'int who']],
-                [0x08d, 'setpriority', ['int which', 'int who', 'int niceval']],
-                [0x08e, 'sched_setparam', ['pid_t pid', 'struct sched_param *param']],
-                [0x08f, 'sched_getparam', ['pid_t pid', 'struct sched_param *param']],
-                [0x090, 'sched_setscheduler', ['pid_t pid', 'int policy', 'struct sched_param *param']],
-                [0x091, 'sched_getscheduler', ['pid_t pid']],
-                [0x092, 'sched_get_priority_max', ['int policy']],
-                [0x093, 'sched_get_priority_min', ['int policy']],
-                [0x094, 'sched_rr_get_interval', ['pid_t pid', 'struct __kernel_timespec *interval']],
-                [0x095, 'mlock', ['unsigned long start', 'size_t len']],
-                [0x096, 'munlock', ['unsigned long start', 'size_t len']],
-                [0x097, 'mlockall', ['int flags']],
-                [0x098, 'munlockall', []],
-                [0x099, 'vhangup', []],
-                [0x09a, 'modify_ldt', ['int func', 'void *ptr', 'unsigned long bytecount']],
-                [0x09b, 'pivot_root', ['const char *new_root', 'const char *put_old']],
-                [0x09c, '_sysctl', ['struct __sysctl_args *args']], # sysctl # deleted from kenrel 5.5 ?
-                [0x09d, 'prctl', ['int option', 'unsigned long arg2', 'unsigned long arg3', 'unsigned long arg4', 'unsigned long arg5']],
-                [0x09e, 'arch_prctl', ['int option', 'unsigned long arg2']],
-                [0x09f, 'adjtimex', ['struct __kernel_timex *txc_p']],
-                [0x0a0, 'setrlimit', ['unsigned int resource', 'struct rlimit *rlim']],
-                [0x0a1, 'chroot', ['const char *filename']],
-                [0x0a2, 'sync', []],
-                [0x0a3, 'acct', ['const char *name']],
-                [0x0a4, 'settimeofday', ['struct __kernel_old_timeval *tv', 'struct timezone *tz']],
-                [0x0a5, 'mount', ['char *dev_name', 'char *dir_name', 'char *type', 'unsigned long flags', 'void *data']],
-                [0x0a6, 'umount2', ['char *name', 'int flags']],
-                [0x0a7, 'swapon', ['const char *specialfile', 'int swap_flags']],
-                [0x0a8, 'swapoff', ['const char *specialfile']],
-                [0x0a9, 'reboot', ['int magic1', 'int magic2', 'unsigned int cmd', 'void *arg']],
-                [0x0aa, 'sethostname', ['char *name', 'int len']],
-                [0x0ab, 'setdomainname', ['char *name', 'int len']],
-                [0x0ac, 'iopl', ['unsigned int level']],
-                [0x0ad, 'ioperm', ['unsigned long from', 'unsigned long num', 'int turn_on']],
-                #0x0ae, create_module # deleted from kernel 2.6
-                [0x0af, 'init_module', ['void *umod', 'unsigned long len', 'const char *uargs']],
-                [0x0b0, 'delete_module', ['const char *name_user', 'unsigned int flags']],
-                #0x0b1, get_kernel_syms # deleted from kernel 2.6
-                #0x0b2, query_module # deleted from kernel 2.6
-                [0x0b3, 'quotactl', ['unsigned int cmd', 'const char *special', 'qid_t id', 'void *addr']],
-                #0x0b4, nfsservctl # deleted from kernel 3.1
-                #0x0b5, getpmsg # unimplemented
-                #0x0b6, putpmsg # unimplemented
-                #0x0b7, afs_syscall # unimplemented
-                #0x0b8, tuxcall # unimplemented
-                #0x0b9, security # unimplemented
-                [0x0ba, 'gettid', []],
-                [0x0bb, 'readahead', ['int fd', 'loff_t offset', 'size_t count']],
-                [0x0bc, 'setxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-                [0x0bd, 'lsetxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-                [0x0be, 'fsetxattr', ['int fd', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-                [0x0bf, 'getxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
-                [0x0c0, 'lgetxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
-                [0x0c1, 'fgetxattr', ['int fd', 'const char *name', 'void *value', 'size_t size']],
-                [0x0c2, 'listxattr', ['const char *pathname', 'char *list', 'size_t size']],
-                [0x0c3, 'llistxattr', ['const char *pathname', 'char *list', 'size_t size']],
-                [0x0c4, 'flistxattr', ['int fd', 'char *list', 'size_t size']],
-                [0x0c5, 'removexattr', ['const char *pathname', 'const char *name']],
-                [0x0c6, 'lremovexattr', ['const char *pathname', 'const char *name']],
-                [0x0c7, 'fremovexattr', ['int fd', 'const char *name']],
-                [0x0c8, 'tkill', ['pid_t pid', 'int sig']],
-                [0x0c9, 'time', ['__kernel_old_time_t *tloc']],
-                [0x0ca, 'futex', ['u32 *uaddr', 'int op', 'u32 val', 'struct __kernel_timespec *utime', 'u32 *uaddr2', 'u32 val3']],
-                [0x0cb, 'sched_setaffinity', ['pid_t pid', 'unsigned int len', 'unsigned long *user_mask_ptr']],
-                [0x0cc, 'sched_getaffinity', ['pid_t pid', 'unsigned int len', 'unsigned long *user_mask_ptr']],
-                [0x0cd, 'set_thread_area', ['struct user_desc *u_info']],
-                [0x0ce, 'io_setup', ['unsigned nr_events', 'aio_context_t *ctxp']],
-                [0x0cf, 'io_destroy', ['aio_context_t ctx']],
-                [0x0d0, 'io_getevents', ['aio_context_t ctx_id', 'long min_nr', 'long nr', 'struct io_event *events', 'struct __kernel_timespec *timeout']],
-                [0x0d1, 'io_submit', ['aio_context_t ctx_id', 'long nr', 'struct iocb **iocbpp']],
-                [0x0d2, 'io_cancel', ['aio_context_t ctx_id', 'struct iocb *iocb', 'struct io_event *result']],
-                [0x0d3, 'get_thread_area', ['struct user_desc *u_info']],
-                [0x0d4, 'lookup_dcookie', ['u64 cookie64', 'char *buf', 'size_t len']],
-                [0x0d5, 'epoll_create', ['int size']],
-                #0x0d6, epoll_ctl_old # unimplemented
-                #0x0d7, epoll_wait_old # unimplemented
-                [0x0d8, 'remap_file_pages', ['unsigned long start', 'unsigned long size', 'unsigned long prot', 'unsigned long pgoff', 'unsigned long flags']],
-                [0x0d9, 'getdents64', ['unsigned int fd', 'struct linux_dirent64 *dirent', 'unsigned int count']],
-                [0x0da, 'set_tid_address', ['int *tidptr']],
-                [0x0db, 'restart_syscall', []],
-                [0x0dc, 'semtimedop', ['int semid', 'struct sembuf *tsops', 'unsigned int nsops', 'const struct __kernel_timespec *timeout']],
-                [0x0dd, 'fadvise64', ['int fd', 'loff_t offset', 'size_t len', 'int advice']],
-                [0x0de, 'timer_create', ['clockid_t which_clock', 'struct sigevent *timer_event_spec', 'timer_t *created_timer_id']],
-                [0x0df, 'timer_settime', ['timer_t timer_id', 'int flags', 'const struct __kernel_itimerspec *new_setting', 'struct __kernel_itimerspec *old_setting']],
-                [0x0e0, 'timer_gettime', ['timer_t timer_id', 'struct __kernel_itimerspec *setting']],
-                [0x0e1, 'timer_getoverrun', ['timer_t timer_id']],
-                [0x0e2, 'timer_delete', ['timer_t timer_id']],
-                [0x0e3, 'clock_settime', ['clockid_t which_clock', 'const struct __kernel_timespec *tp']],
-                [0x0e4, 'clock_gettime', ['clockid_t which_clock', 'struct __kernel_timespec *tp']],
-                [0x0e5, 'clock_getres', ['clockid_t which_clock', 'struct __kernel_timespec *tp']],
-                [0x0e6, 'clock_nanosleep', ['clockid_t which_clock', 'int flags', 'const struct __kernel_timespec *rqtp', 'struct __kernel_timespec *rmtp']],
-                [0x0e7, 'exit_group', ['int error_code']],
-                [0x0e8, 'epoll_wait', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'int timeout']],
-                [0x0e9, 'epoll_ctl', ['int epfd', 'int op', 'int fd', 'struct epoll_event *event']],
-                [0x0ea, 'tgkill', ['pid_t tgid', 'pid_t pid', 'int sig']],
-                [0x0eb, 'utimes', ['char *filename', 'struct __kernel_old_timeval *utimes']],
-                #0x0ec, vserver # unimplemented
-                [0x0ed, 'mbind', ['unsigned long start', 'unsigned long len', 'unsigned long mode', 'const unsigned long *nmask', 'unsigned long maxnode', 'unsigned int flags']],
-                [0x0ee, 'set_mempolicy', ['int mode', 'const unsigned long *nmask', 'unsigned long maxnode']],
-                [0x0ef, 'get_mempolicy', ['int *policy', 'unsigned long *nmask', 'unsigned long maxnode', 'unsigned long addr', 'unsigned long flags']],
-                [0x0f0, 'mq_open', ['const char *u_name', 'int oflag', 'umode_t mode', 'struct mq_attr *u_attr']],
-                [0x0f1, 'mq_unlink', ['const char *u_name']],
-                [0x0f2, 'mq_timedsend', ['mqd_t mqdes', 'const char *u_msg_ptr', 'size_t msg_len', 'unsigned int msg_prio', 'const struct __kernel_timespec *u_abs_timeout']],
-                [0x0f3, 'mq_timedreceive', ['mqd_t mqdes', 'char *u_msg_ptr', 'size_t msg_len', 'unsigned int *u_msg_prio', 'const struct __kernel_timespec *u_abs_timeout']],
-                [0x0f4, 'mq_notify', ['mqd_t mqdes', 'const struct sigevent *u_notification']],
-                [0x0f5, 'mq_getsetattr', ['mqd_t mqdes', 'const struct mq_attr *u_mqstat', 'struct mq_attr *u_omqstat']],
-                [0x0f6, 'kexec_load', ['unsigned long entry', 'unsigned long nr_segments', 'struct kexec_segment *segments', 'unsigned long flags']],
-                [0x0f7, 'waitid', ['int which', 'pid_t pid', 'struct siginfo *infop', 'int options', 'struct rusage *ru']],
-                [0x0f8, 'add_key', ['const char *_type', 'const char *_description', 'const void *_payload', 'size_t plen', 'key_serial_t ringid']],
-                [0x0f9, 'request_key', ['const char *_type', 'const char *_description', 'const char *_callout_info', 'key_serial_t destringid']],
-                [0x0fa, 'keyctl', ['int option', 'unsigned long arg2', 'unsigned long arg3', 'unsigned long arg4', 'unsigned long arg5']],
-                [0x0fb, 'ioprio_set', ['int which', 'int who', 'int ioprio']],
-                [0x0fc, 'ioprio_get', ['int which', 'int who']],
-                [0x0fd, 'inotify_init', []],
-                [0x0fe, 'inotify_add_watch', ['int fd', 'const char *pathname', 'u32 mask']],
-                [0x0ff, 'inotify_rm_watch', ['int fd', '__s32 wd']],
-                [0x100, 'migrate_pages', ['pid_t pid', 'unsigned long maxnode', 'const unsigned long *old_nodes', 'const unsigned long *new_nodes']],
-                [0x101, 'openat', ['int dfd', 'const char *filename', 'int flags', 'umode_t mode']],
-                [0x102, 'mkdirat', ['int dfd', 'const char *pathname', 'umode_t mode']],
-                [0x103, 'mknodat', ['int dfd', 'const char *filename', 'umode_t mode', 'unsigned int dev']],
-                [0x104, 'fchownat', ['int dfd', 'const char *filename', 'uid_t user', 'gid_t group', 'int flag']],
-                [0x105, 'futimesat', ['int dfd', 'const char *filename', 'struct __kernel_old_timeval *utimes']],
-                [0x106, 'newfstatat', ['int dfd', 'const char *filename', 'struct stat *statbuf', 'int flag']],
-                [0x107, 'unlinkat', ['int dfd', 'const char *pathname', 'int flag']],
-                [0x108, 'renameat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname']],
-                [0x109, 'linkat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'int flags']],
-                [0x10a, 'symlinkat', ['const char *oldname', 'int newdfd', 'const char *newname']],
-                [0x10b, 'readlinkat', ['int dfd', 'const char *pathname', 'char *buf', 'int bufsiz']],
-                [0x10c, 'fchmodat', ['int dfd', 'const char *filename', 'umode_t mode']],
-                [0x10d, 'faccessat', ['int dfd', 'const char *filename', 'int mode']],
-                [0x10e, 'pselect6', ['int n', 'fd_set *inp', 'fd_set *outp', 'fd_set *exp', 'struct __kernel_timespec *tsp', 'void *sig']],
-                [0x10f, 'ppoll', ['struct pollfd *ufds', 'unsigned int nfds', 'struct __kernel_timespec *tsp', 'const sigset_t *sigmask', 'size_t sigsetsize']],
-                [0x110, 'unshare', ['unsigned long unshare_flags']],
-                [0x111, 'set_robust_list', ['struct robust_list_head *head', 'size_t len']],
-                [0x112, 'get_robust_list', ['int pid', 'struct robust_list_head **head_ptr', 'size_t *len_ptr']],
-                [0x113, 'splice', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
-                [0x114, 'tee', ['int fdin', 'int fdout', 'size_t len', 'unsigned int flags']],
-                [0x115, 'sync_file_range', ['int fd', 'loff_t offset', 'loff_t nbytes', 'unsigned int flags']],
-                [0x116, 'vmsplice', ['int fd', 'const struct iovec *uiov', 'unsigned long nr_segs', 'unsigned int flags']],
-                [0x117, 'move_pages', ['pid_t pid', 'unsigned long nr_pages', 'const void **pages', 'const int *nodes', 'int *status', 'int flags']],
-                [0x118, 'utimensat', ['int dfd', 'const char *filename', 'struct __kernel_timespec *utimes', 'int flags']],
-                [0x119, 'epoll_pwait', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'int timeout', 'const sigset_t *sigmask', 'size_t sigsetsize']],
-                [0x11a, 'signalfd', ['int ufd', 'sigset_t *user_mask', 'size_t sizemask']],
-                [0x11b, 'timerfd_create', ['int clockid', 'int flags']],
-                [0x11c, 'eventfd', ['unsigned int count']],
-                [0x11d, 'fallocate', ['int fd', 'int mode', 'loff_t offset', 'loff_t len']],
-                [0x11e, 'timerfd_settime', ['int ufd', 'int flags', 'const struct __kernel_itimerspec *utmr', 'struct __kernel_itimerspec *otmr']],
-                [0x11f, 'timerfd_gettime', ['int ufd', 'struct __kernel_itimerspec *otmr']],
-                [0x120, 'accept4', ['int fd', 'struct sockaddr *upeer_sockaddr', 'int *upeer_addrlen', 'int flags']],
-                [0x121, 'signalfd4', ['int ufd', 'sigset_t *user_mask', 'size_t sizemask', 'int flags']],
-                [0x122, 'eventfd2', ['unsigned int count', 'int flags']],
-                [0x123, 'epoll_create1', ['int flags']],
-                [0x124, 'dup3', ['unsigned int oldfd', 'unsigned int newfd', 'int flags']],
-                [0x125, 'pipe2', ['int *fildes', 'int flags']],
-                [0x126, 'inotify_init1', ['int flags']],
-                [0x127, 'preadv', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h']],
-                [0x128, 'pwritev', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h']],
-                [0x129, 'rt_tgsigqueueinfo', ['pid_t tgid', 'pid_t pid', 'int sig', 'siginfo_t *uinfo']],
-                [0x12a, 'perf_event_open', ['struct perf_event_attr *attr_uptr', 'pid_t pid', 'int cpu', 'int group_fd', 'unsigned long flags']],
-                [0x12b, 'recvmmsg', ['int fd', 'struct mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags', 'struct __kernel_timespec *timeout']],
-                [0x12c, 'fanotify_init', ['unsigned int flags', 'unsigned int event_f_flags']],
-                [0x12d, 'fanotify_mark', ['int fanotify_fd', 'unsigned int flags', '__u64 mask', 'int dfd', 'const char *pathname']],
-                [0x12e, 'prlimit64', ['pid_t pid', 'unsigned int resource', 'const struct rlimit64 *new_rlim', 'struct rlimit64 *old_rlim']],
-                [0x12f, 'name_to_handle_at', ['int dfd', 'const char *name', 'struct file_handle *handle', 'int *mnt_id', 'int flag']],
-                [0x130, 'open_by_handle_at', ['int mountdirfd', 'struct file_handle *handle', 'int flags']],
-                [0x131, 'clock_adjtime', ['clockid_t which_clock', 'struct __kernel_timex *tx']],
-                [0x132, 'syncfs', ['int fd']],
-                [0x133, 'sendmmsg', ['int fd', 'struct mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags']],
-                [0x134, 'setns', ['int fd', 'int flags']],
-                [0x135, 'getcpu', ['unsigned *cpup', 'unsigned *nodep', 'struct getcpu_cache *unused']],
-                [0x136, 'process_vm_readv', ['pid_t pid', 'const struct iovec *lvec', 'unsigned long liovcnt', 'const struct iovec *rvec', 'unsigned long riovcnt', 'unsigned long flags']],
-                [0x137, 'process_vm_writev', ['pid_t pid', 'const struct iovec *lvec', 'unsigned long liovcnt', 'const struct iovec *rvec', 'unsigned long riovcnt', 'unsigned long flags']],
-                [0x138, 'kcmp', ['pid_t pid1', 'pid_t pid2', 'int type', 'unsigned long idx1', 'unsigned long idx2']],
-                [0x139, 'finit_module', ['int fd', 'const char *uargs', 'int flags']],
-                [0x13a, 'sched_setattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int flags']],
-                [0x13b, 'sched_getattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int usize', 'unsigned int flags']],
-                [0x13c, 'renameat2', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'unsigned int flags']],
-                [0x13d, 'seccomp', ['unsigned int op', 'unsigned int flags', 'void *uargs']],
-                [0x13e, 'getrandom', ['char *buf', 'size_t count', 'unsigned int flags']],
-                [0x13f, 'memfd_create', ['const char *uname', 'unsigned int flags']],
-                [0x140, 'kexec_file_load', ["int kernel_fd", "int initrd_fd", "unsigned long cmdline_len", "const char *cmdline_ptr", "unsigned long flags"]],
-                [0x141, 'bpf', ['int cmd', 'union bpf_attr *uattr', 'unsigned int size']],
-                [0x142, 'execveat', ['int fd', 'const char *filename', 'const char *const *argv', 'const char *const *envp', 'int flags']],
-                [0x143, 'userfaultfd', ['int flags']],
-                [0x144, 'membarrier', ['int cmd', 'int flags']],
-                [0x145, 'mlock2', ['unsigned long start', 'size_t len', 'int flags']],
-                [0x146, 'copy_file_range', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
-                [0x147, 'preadv2', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h', 'rwf_t flags']],
-                [0x148, 'pwritev2', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h', 'rwf_t flags']],
-                [0x149, 'pkey_mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot', 'int pkey']],
-                [0x14a, 'pkey_alloc', ['unsigned long flags', 'unsigned long init_val']],
-                [0x14b, 'pkey_free', ['int pkey']],
-                [0x14c, 'statx', ['int dfd', 'const char *filename', 'unsigned flags', 'unsigned int mask', 'struct statx *buffer']],
-                [0x14d, 'io_pgetevents', ['aio_context_t ctx_id', 'long min_nr', 'long nr', 'struct io_event *events', 'struct __kernel_timespec *timeout', 'const struct __aio_sigset *usig']],
-                [0x14e, 'rseq', ['struct rseq *rseq', 'u32 rseq_len', 'int flags', 'u32 sig']],
-                # 0x14e-0x182, unused
-                # 0x183-0x1a7, don't use
-                [0x1a8, 'pidfd_send_signal', ['int pidfd', 'int sig', 'siginfo_t *info', 'unsigned int flags']],
-                [0x1a9, 'io_uring_setup', ['u32 entries', 'struct io_uring_params *params']],
-                [0x1aa, 'io_uring_enter', ['unsigned int fd', 'u32 to_submit', 'u32 min_complete', 'u32 flags', 'const sigset_t *sig', 'size_t sigsz']],
-                [0x1ab, 'io_uring_register', ['unsigned int fd', 'unsigned int opcode', 'void *arg', 'unsigned int nr_args']],
-                [0x1ac, 'open_tree', ['int dfd', 'const char *filename', 'unsigned flags']],
-                [0x1ad, 'move_mount', ['int from_dfd', 'const char *from_pathname', 'int to_dfd', 'const char *to_pathname', 'unsigned int flags']],
-                [0x1ae, 'fsopen', ['const char *_fs_name', 'unsigned int flags']],
-                [0x1af, 'fsconfig', ['int fd', 'unsigned int cmd', 'const char *_key', 'const void *_value', 'int aux']],
-                [0x1b0, 'fsmount', ['int fs_fd', 'unsigned int flags', 'unsigned int attr_flags']],
-                [0x1b1, 'fspick', ['int, dfd', 'const char *path', 'unsigned int flags']],
-                [0x1b2, 'pidfd_open', ['pid_t pid', 'unsigned int flags']],
-                [0x1b3, 'clone3', ['struct clone_args *uargs', 'size_t size']],
-                [0x1b4, 'close_range', ['unsigned int fd', 'unsigned int max_fd', 'unsigned int flag']],
-                [0x1b5, 'openat2', ['int dfd', 'const char *filename', 'struct open_how *how', 'size_t usize']],
-                [0x1b6, 'pidfd_getfd', ['int pidfd', 'int fd', 'unsigned int flags']],
-                [0x1b7, 'faccessat2', ['int dfd', 'const char *filename', 'int mode', 'int flags']],
-                [0x1b8, 'process_madvise', ['int pidfd', 'const struct iovec *vec', 'size_t vlen', 'int behavior', 'unsigned int flags']],
-                [0x1b9, 'epoll_pwait2', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'const struct __kernel_timespec *timeout', 'const sigset_t *sigmask', 'size_t sigsetsize']],
-                [0x1ba, 'mount_setattr', ['int dfd', 'const char *path', 'unsigned int flags', 'struct mount_attr *uattr', 'size_t usize']],
-                [0x1bb, 'quotactl_fd', ['unsigned int fd', 'unsigned int cmd', 'qid_t id', 'void __user *addr']],
-                [0x1bc, 'landlock_create_ruleset', ['const struct landlock_ruleset_attr *const attr', 'const size_t size', 'const __u32 flags']],
-                [0x1bd, 'landlock_add_rule', ['const int ruleset_fd', 'const enum landlock_rule_type rule_type', 'const void *const rule_attr', 'const __u32 flags']],
-                [0x1be, 'landlock_restrict_self', ['const int ruleset_fd', 'const __u32 flags']],
-                [0x1bf, 'memfd_secret', ['unsigned int, flags']],
-                [0x1c0, 'process_mrelease', ['int pidfd', 'unsigned int flags']],
-                [0x1c1, 'futex_waitv', ['struct futex_waitv *waiters', 'unsigned int nr_futexes', 'unsigned int flags', 'struct __kernel_timespec *timeout', 'clockid_t clockid']],
-                [0x1c2, 'set_mempolicy_home_node', ['unsigned long start', 'unsigned long len', 'unsigned long home_node', 'unsigned long flags']],
-            ]
-            syscall_list += [ # x32
-                [0x40000200, 'rt_sigaction', ['int sig', 'const struct compat_sigaction *act', 'struct compat_sigaction *oact', 'compat_size_t sigsetsize']], # compat
-                [0x40000201, 'rt_sigreturn', []], # compat x32_rt_sigreturn
-                [0x40000202, 'ioctl', ['unsigned int fd', 'unsigned int cmd', 'compat_ulong_t arg']], # compat
-                [0x40000203, 'readv', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen']], # compat
-                [0x40000204, 'writev', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen']], # compat
-                [0x40000205, 'recvfrom', ['int fd', 'void *buf', 'compat_size_t len', 'unsigned int flags', 'struct sockaddr *addr', 'int *addr_len']], # compat
-                [0x40000206, 'sendmsg', ['int fd', 'struct compat_msghdr *msg', 'unsigned int flags']], # compat
-                [0x40000207, 'recvmsg', ['int fd', 'struct compat_msghdr *msg', 'unsigned int flags']], # compat
-                [0x40000208, 'execve', ['const char *filename', 'const compat_uptr_t *argv', 'const compat_uptr_t *envp']], # compat
-                [0x40000209, 'ptrace', ['compat_long_t request', 'compat_long_t pid', 'compat_long_t addr', 'compat_long_t data']], # compat
-                [0x4000020a, 'rt_sigpending', ['compat_sigset_t *uset', 'compat_size_t sigsetsize']],
-                [0x4000020b, 'rt_sigtimedwait', ['const compat_sigset_t *uthese', 'struct compat_siginfo *uinfo', 'struct __kernel_timespec *uts', 'compat_size_t sigsetsize']], # compat rt_sigtimedwait_time64
-                [0x4000020c, 'rt_sigqueueinfo', ['compat_pid_t pid', 'int sig', 'struct compat_siginfo *uinfo']], # compat
-                [0x4000020d, 'sigaltstack', ['const compat_stack_t *uss_ptr', 'compat_stack_t *uoss_ptr']], # compat
-                [0x4000020e, 'timer_create', ['clockid_t which_clock', 'struct compat_sigevent *timer_event_spec', 'timer_t *created_timer_id']], # compat
-                [0x4000020f, 'mq_notify', ['mqd_t mqdes', 'const struct compat_sigevent *u_notification']], # compat
-                [0x40000210, 'kexec_load', ['compat_ulong_t entry', 'compat_ulong_t nr_segments', 'struct compat_kkexec_segment *segments', 'compat_ulong_t flags']], # compat
-                [0x40000211, 'waitid', ['int which', 'compat_pid_t pid', 'struct compat_siginfo *infop', 'int options', 'struct compat_rusage *uru']], # compat
-                [0x40000212, 'set_robust_list', ['struct compat_robust_list_head *head', 'compat_size_t len']], # compat
-                [0x40000213, 'get_robust_list', ['int pid', 'compat_uptr_t *head_ptr', 'compat_size_t *len_ptr']], # compat
-                [0x40000214, 'vmsplice', ['int fd', 'const struct compat_iovec *iov32', 'unsigned int nr_segs', 'unsigned int flags']], # compat
-                [0x40000215, 'move_pages', ['pid_t pid', 'compat_ulong_t nr_pages', 'compat_uptr_t *pages32', 'const int *nodes', 'int *status', 'int flags']], # compat
-                [0x40000216, 'preadv', ['unsigned long fd', 'const struct compat_iovec *vec', 'unsigned long vlen', 'loff_t pos']], # compat preadv64
-                [0x40000217, 'pwritev', ['unsigned long fd', 'const struct compat_iovec *vec', 'unsigned long vlen', 'loff_t pos']], # compat pwritev64
-                [0x40000218, 'rt_tgsigqueueinfo', ['compat_pid_t tgid', 'compat_pid_t pid', 'int sig', 'struct compat_siginfo *uinfo']], # compat
-                [0x40000219, 'recvmmsg', ['int fd', 'struct compat_mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags', 'struct __kernel_timespec *timeout']], # compat recvmmsg_time64
-                [0x4000021a, 'sendmmsg', ['int fd', 'struct compat_mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags']], # compat
-                [0x4000021b, 'process_vm_readv', ['compat_pid_t pid', 'const struct compat_iovec *lvec', 'compat_ulong_t liovcnt', 'const struct compat_iovec *rvec', 'compat_ulong_t riovcnt', 'compat_ulong_t flags']], # compat
-                [0x4000021c, 'process_vm_writev', ['compat_pid_t pid', 'const struct compat_iovec *lvec', 'compat_ulong_t liovcnt', 'const struct compat_iovec *rvec', 'compat_ulong_t riovcnt', 'compat_ulong_t flags']], # compat
-                [0x4000021d, 'setsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int optlen']],
-                [0x4000021e, 'getsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int *optlen']],
-                [0x4000021f, 'io_setup', ['unsigned nr_events', 'u32 *ctx32p']], # compat
-                [0x40000220, 'io_submit', ['compat_aio_context_t ctx_id', 'int nr', 'compat_uptr_t *iocbpp']], # compat
-                [0x40000221, 'execveat', ['int fd', 'const char *filename', 'const compat_uptr_t *argv', 'const compat_uptr_t *envp', 'int flags']], # compat
-                [0x40000222, 'preadv2', ['unsigned long fd', 'const struct compat_iovec *vec', 'unsigned long vlen', 'loff_t pos', 'rwf_t flags']], # compat preadv64v2
-                [0x40000223, 'pwritev2', ['unsigned long fd', 'const struct compat_iovec *vec', 'unsigned long vlen', 'loff_t pos', 'rwf_t flags']], # compat pwritev64v2
-            ]
-            name_list = list(zip(*syscall_list))[1]
-            for s in syscall_list[::]:
-                if name_list.count(s[1]) == 2: # already added
-                    continue
-                syscall_list += [[s[0] + 0x40000000, s[1], s[2]]]
-
-        elif arch == "X86" and mode == "32":
-            register_list = ["$ebx", "$ecx", "$edx", "$esi", "$edi", "$ebp"]
-            # arch/x86/include/asm/unistd.h
-            # arch/x86/include/uapi/asm/unistd.h
-            # arch/x86/include/generated/uapi/asm/unistd-32.h
-            # arch/x86/entry/syscalls/syscall_32.tbl
-            syscall_list = [
-                [0x000, 'restart_syscall', []],
-                [0x001, 'exit', ['int error_code']],
-                [0x002, 'fork', []],
-                [0x003, 'read', ['unsigned int fd', 'char *buf', 'size_t count']],
-                [0x004, 'write', ['unsigned int fd', 'const char *buf', 'size_t count']],
-                [0x005, 'open', ['const char *filename', 'int flags', 'umode_t mode']], # compat
-                [0x006, 'close', ['unsigned int fd']],
-                [0x007, 'waitpid', ['pid_t pid', 'int *stat_addr', 'int options']],
-                [0x008, 'creat', ['const char *pathname', 'umode_t mode']],
-                [0x009, 'link', ['const char *oldname', 'const char *newname']],
-                [0x00a, 'unlink', ['const char *pathname']],
-                [0x00b, 'execve', ['const char *filename', 'const compat_uptr_t *argv', 'const compat_uptr_t *envp']], # compat
-                [0x00c, 'chdir', ['const char *filename']],
-                [0x00d, 'time', ['old_time32_t *tloc']], # time32
-                [0x00e, 'mknod', ['const char *filename', 'umode_t mode', 'unsigned dev']],
-                [0x00f, 'chmod', ['const char *filename', 'umode_t mode']],
-                [0x010, 'lchown', ['const char *filename', 'old_uid_t user', 'old_gid_t group']], # lchown16
-                #0x011, break # unimplemented
-                [0x012, 'oldstat', ['const char *filename', 'struct __old_kernel_stat *statbuf']], # fstat
-                [0x013, 'lseek', ['unsigned int fd', 'compat_off_t offset', 'unsigned int whence']], # compat
-                [0x014, 'getpid', []],
-                [0x015, 'mount', ['const char *dev_name', 'const char *dir_name', 'const char *type', 'compat_ulong_t flags', 'const void *data']], # compat
-                [0x016, 'umount', ['char *name']], # oldumount
-                [0x017, 'setuid', ['old_uid_t uid']], # setuid16
-                [0x018, 'getuid', []], # getuid16
-                [0x019, 'stime', ['old_time32_t *tptr']], # stime32
-                [0x01a, 'ptrace', ['compat_long_t request', 'compat_long_t pid', 'compat_long_t addr', 'compat_long_t data']], # compat
-                [0x01b, 'alarm', ['unsigned int seconds']],
-                [0x01c, 'oldfstat', ['unsigned int fd', 'struct __old_kernel_stat *statbuf']], # fstat
-                [0x01d, 'pause', []],
-                [0x01e, 'utime', ['char *filename', 'struct old_utimbuf32 *t']], # utime32
-                #0x01f, stty # unimplemented
-                #0x020, gtty # unimplemented
-                [0x021, 'access', ['const char *filename', 'int mode']],
-                [0x022, 'nice', ['int increment']],
-                #0x023, ftime # unimplemented
-                [0x024, 'sync', []],
-                [0x025, 'kill', ['pid_t pid', 'int sig']],
-                [0x026, 'rename', ['const char *oldname', 'const char *newname']],
-                [0x027, 'mkdir', ['const char *pathname', 'umode_t mode']],
-                [0x028, 'rmdir', ['const char *pathname']],
-                [0x029, 'dup', ['unsigned int fildes']],
-                [0x02a, 'pipe', ['int *fildes']],
-                [0x02b, 'times', ['struct compat_tms *tbuf']], # compat
-                #0x02c, prof # unimplemented
-                [0x02d, 'brk', ['unsigned long brk']],
-                [0x02e, 'setgid', ['old_gid_t gid']], # setgid16
-                [0x02f, 'getgid', []], # getgid16
-                [0x030, 'signal', ['int sig', '__sighandler_t handler']],
-                [0x031, 'geteuid', []], # geteuid16
-                [0x032, 'getegid', []], # getegid16
-                [0x033, 'acct', ['const char *name']],
-                [0x034, 'umount2', ['char *name', 'int flags']], # umount
-                #0x035, lock # unimplemented
-                [0x036, 'ioctl', ['unsigned int fd', 'unsigned int cmd', 'compat_ulong_t arg']], # compat
-                [0x037, 'fcntl', ['unsigned int fd', 'unsigned int cmd', 'compat_ulong_t arg']], # compat fcntl64
-                #0x038, mpx # unimplemented
-                [0x039, 'setpgid', ['pid_t pid', 'pid_t pgid']],
-                #0x03a, ulimit # unimplemented
-                [0x03b, 'oldolduname', ['struct oldold_utsname *name']], # olduname
-                [0x03c, 'umask', ['int mask']],
-                [0x03d, 'chroot', ['const char *filename']],
-                [0x03e, 'ustat', ['unsigned dev', 'struct compat_ustat *u']], # compat
-                [0x03f, 'dup2', ['unsigned int oldfd', 'unsigned int newfd']],
-                [0x040, 'getppid', []],
-                [0x041, 'getpgrp', []],
-                [0x042, 'setsid', []],
-                [0x043, 'sigaction', ['int sig', 'const struct compat_old_sigaction *act', 'struct compat_old_sigaction *oact']], # compat
-                [0x044, 'sgetmask', []],
-                [0x045, 'ssetmask', ['int newmask']],
-                [0x046, 'setreuid', ['old_uid_t ruid', 'old_uid_t euid']], # setreuid16
-                [0x047, 'setregid', ['old_gid_t rgid', 'old_gid_t egid']], # setregid16
-                [0x048, 'sigsuspend', ['old_sigset_t mask']],
-                [0x049, 'sigpending', ['compat_old_sigset_t *set32']], # compat
-                [0x04a, 'sethostname', ['char *name', 'int len']],
-                [0x04b, 'setrlimit', ['unsigned int resource', 'struct compat_rlimit *rlim']], # compat
-                [0x04c, 'getrlimit', ['unsigned int resource', 'struct compat_rlimit *rlim']], # compat old_getrlimit
-                [0x04d, 'getrusage', ['int who', 'struct compat_rusage *ru']], # compat
-                [0x04e, 'gettimeofday', ['struct old_timeval32 *tv', 'struct timezone *tz']], # compat
-                [0x04f, 'settimeofday', ['struct old_timeval32 *tv', 'struct timezone *tz']], # compat
-                [0x050, 'getgroups', ['int gidsetsize', 'old_gid_t *grouplist']], # getgroups16
-                [0x051, 'setgroups', ['int gidsetsize', 'old_gid_t *grouplist']], # setgroups16
-                [0x052, 'select', ['struct compat_sel_arg_struct *arg']], # compat old_select
-                [0x053, 'symlink', ['const char *oldname', 'const char *newname']],
-                [0x054, 'oldlstat', ['const char *filename', 'struct __old_kernel_stat *statbuf']], # lstat
-                [0x055, 'readlink', ['const char *path', 'char *buf', 'int bufsiz']],
-                [0x056, 'uselib', ['const char *library']],
-                [0x057, 'swapon', ['const char *specialfile', 'int swap_flags']],
-                [0x058, 'reboot', ['int magic1', 'int magic2', 'unsigned int cmd', 'void *arg']],
-                [0x059, 'readdir', ['unsigned int fd', 'struct compat_old_linux_dirent *dirent', 'unsigned int count']], # compat old_readdir
-                [0x05a, 'mmap', ['struct mmap_arg_struct32 *arg']], # compat ia32_mmap
-                [0x05b, 'munmap', ['unsigned long addr', 'size_t len']],
-                [0x05c, 'truncate', ['const char *path', 'compat_off_t length']], # compat
-                [0x05d, 'ftruncate', ['unsigned int fd', 'compat_ulong_t length']], # compat
-                [0x05e, 'fchmod', ['unsigned int fd', 'umode_t mode']],
-                [0x05f, 'fchown', ['unsigned int fd', 'old_uid_t user', 'old_gid_t group']], # fchown16
-                [0x060, 'getpriority', ['int which', 'int who']],
-                [0x061, 'setpriority', ['int which', 'int who', 'int niceval']],
-                #0x062, profil # unimplemented
-                [0x063, 'statfs', ['const char *pathname', 'struct compat_statfs *buf']], # compat
-                [0x064, 'fstatfs', ['unsigned int fd', 'struct compat_statfs *buf']], # compat
-                [0x065, 'ioperm', ['unsigned long from', 'unsigned long num', 'int turn_on']],
-                [0x066, 'socketcall', ['int call', 'u32 *args']], # compat
-                [0x067, 'syslog', ['int type', 'char *buf', 'int len']],
-                [0x068, 'setitimer', ['int which', 'struct old_itimerval32 *value', 'struct old_itimerval32 *ovalue']], # compat
-                [0x069, 'getitimer', ['int which', 'struct old_itimerval32 *value']], # compat
-                [0x06a, 'stat', ['const char *filename', 'struct compat_stat *statbuf']], # compat newstat
-                [0x06b, 'lstat', ['const char *filename', 'struct compat_stat *statbuf']], # compat newlstat
-                [0x06c, 'fstat', ['unsigned int fd', 'struct compat_stat *statbuf']], # compat newfstat
-                [0x06d, 'olduname', ['struct old_utsname *name']], # uname
-                [0x06e, 'iopl', ['unsigned int level']],
-                [0x06f, 'vhangup', []],
-                #0x070, idle # deleted from kernel 2.3.13
-                #0x071, vm86old # only native i386
-                [0x072, 'wait4', ['compat_pid_t upid', 'compat_uint_t *stat_addr', 'int options', 'struct compat_rusage *ru']], # compat
-                [0x073, 'swapoff', ['const char *specialfile']],
-                [0x074, 'sysinfo', ['struct compat_sysinfo *info']], # compat
-                [0x075, 'ipc', ['u32 call', 'int first', 'int second', 'u32 third', 'compat_uptr_t ptr', 'u32 fifth']], # compat
-                [0x076, 'fsync', ['unsigned int fd']],
-                [0x077, 'sigreturn', []], # compat
-                [0x078, 'clone', ['unsigned long clone_flags', 'unsigned long newsp', 'int *parent_tidptr', 'unsigned long tls_val', 'int *child_tidptr']], # compat ia32_clone
-                [0x079, 'setdomainname', ['char *name', 'int len']],
-                [0x07a, 'uname', ['struct new_utsname *name']], # newuname
-                [0x07b, 'modify_ldt', ['int func', 'void *ptr', 'unsigned long bytecount']],
-                [0x07c, 'adjtimex', ['struct old_timex32 *utp']], # adjtimex_time32
-                [0x07d, 'mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot']],
-                [0x07e, 'sigprocmask', ['int how', 'compat_old_sigset_t *nset', 'compat_old_sigset_t *oset']], # compat
-                #0x07f, create_module # deleted from kernel 2.6
-                [0x080, 'init_module', ['void *umod', 'unsigned long len', 'const char *uargs']],
-                [0x081, 'delete_module', ['const char *name_user', 'unsigned int flags']],
-                #0x082, get_kernel_syms # deleted from kernel 2.6
-                [0x083, 'quotactl', ['unsigned int cmd', 'const char *special', 'qid_t id', 'void *addr']], # compat quotactl32
-                [0x084, 'getpgid', ['pid_t pid']],
-                [0x085, 'fchdir', ['unsigned int fd']],
-                [0x086, 'bdflush', ['int func', 'long data']],
-                [0x087, 'sysfs', ['int option', 'unsigned long arg1', 'unsigned long arg2']],
-                [0x088, 'personality', ['unsigned int personality']],
-                #0x089, afs_syscall # unimplemented
-                [0x08a, 'setfsuid', ['old_uid_t uid']], # setfsuid16
-                [0x08b, 'setfsgid', ['old_gid_t gid']], # setfsgid16
-                [0x08c, '_llseek', ['unsigned int fd', 'unsigned long offset_high', 'unsigned long offset_low', 'loff_t *result', 'unsigned int whence']], # llseek
-                [0x08d, 'getdents', ['unsigned int fd', 'struct compat_linux_dirent *dirent', 'unsigned int count']], # compat
-                [0x08e, '_newselect', ['int n', 'compat_ulong_t *inp', 'compat_ulong_t *outp', 'compat_ulong_t *exp', 'struct old_timeval32 *tvp']], # compat select
-                [0x08f, 'flock', ['unsigned int fd', 'unsigned int cmd']],
-                [0x090, 'msync', ['unsigned long start', 'size_t len', 'int flags']],
-                [0x091, 'readv', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen']], # compat
-                [0x092, 'writev', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen']], # compat
-                [0x093, 'getsid', ['pid_t pid']],
-                [0x094, 'fdatasync', ['unsigned int fd']],
-                [0x095, '_sysctl', ['struct __sysctl_args *args']], # sysctl # deleted from kenrel 5.5 ?
-                [0x096, 'mlock', ['unsigned long start', 'size_t len']],
-                [0x097, 'munlock', ['unsigned long start', 'size_t len']],
-                [0x098, 'mlockall', ['int flags']],
-                [0x099, 'munlockall', []],
-                [0x09a, 'sched_setparam', ['pid_t pid', 'struct sched_param *param']],
-                [0x09b, 'sched_getparam', ['pid_t pid', 'struct sched_param *param']],
-                [0x09c, 'sched_setscheduler', ['pid_t pid', 'int policy', 'struct sched_param *param']],
-                [0x09d, 'sched_getscheduler', ['pid_t pid']],
-                [0x09e, 'sched_yield', []],
-                [0x09f, 'sched_get_priority_max', ['int policy']],
-                [0x0a0, 'sched_get_priority_min', ['int policy']],
-                [0x0a1, 'sched_rr_get_interval', ['pid_t pid', 'struct old_timespec32 *interval']], # sched_rr_get_interval_time32
-                [0x0a2, 'nanosleep', ['struct old_timespec32 *rqtp', 'struct old_timespec32 *rmtp']], # nanosleep_time32
-                [0x0a3, 'mremap', ['unsigned long addr', 'unsigned long old_len', 'unsigned long new_len', 'unsigned long flags', 'unsigned long new_addr']],
-                [0x0a4, 'setresuid', ['old_uid_t ruid', 'old_uid_t euid', 'old_uid_t suid']], # setresuid16
-                [0x0a5, 'getresuid', ['old_uid_t *ruidp', 'old_uid_t *euidp', 'old_uid_t *suidp']], # getresuid16
-                #0x0a6, vm86 # only native i386
-                #0x0a7, query_module # deleted from kernel 2.6
-                [0x0a8, 'poll', ['struct pollfd *ufds', 'unsigned int nfds', 'int timeout_msecs']],
-                #0x0a9, nfsservctl # deleted from kernel 3.1
-                [0x0aa, 'setresgid', ['old_gid_t rgid', 'old_gid_t egid', 'old_gid_t sgid']], # setresgid16
-                [0x0ab, 'getresgid', ['old_gid_t *rgidp', 'old_gid_t *egidp', 'old_gid_t *sgidp']], # getresgid16
-                [0x0ac, 'prctl', ['int option', 'unsigned long arg2', 'unsigned long arg3', 'unsigned long arg4', 'unsigned long arg5']],
-                [0x0ad, 'rt_sigreturn', []], # compat
-                [0x0ae, 'rt_sigaction', ['int sig', 'const struct compat_sigaction *act', 'struct compat_sigaction *oact', 'compat_size_t sigsetsize']], # compat
-                [0x0af, 'rt_sigprocmask', ['int how', 'compat_sigset_t *nset', 'compat_sigset_t *oset', 'compat_size_t sigsetsize']], # compat
-                [0x0b0, 'rt_sigpending', ['compat_sigset_t *uset', 'compat_size_t sigsetsize']], # compat
-                [0x0b1, 'rt_sigtimedwait', ['compat_sigset_t *uthese', 'struct compat_siginfo_t *uinfo', 'struct old_timespec32 *uts', 'compat_size_t sigsetsize']], # compat rt_sigtimedwait_time32
-                [0x0b2, 'rt_sigqueueinfo', ['compat_pid_t pid', 'int sig', 'struct compat_siginfo *uinfo']], # compat
-                [0x0b3, 'rt_sigsuspend', ['compat_sigset_t *unewset', 'compat_size_t sigsetsize']], # compat
-                [0x0b4, 'pread64', ['unsigned int fd', 'char *ubuf', 'u32 count', 'u32 poslo', 'u32 poshi']], # ia32_pread64
-                [0x0b5, 'pwrite64', ['unsigned int fd', 'const char *ubuf', 'u32 count', 'u32 poslo', 'u32 poshi']], # ia32_pwrite64
-                [0x0b6, 'chown', ['const char *filename', 'old_uid_t user', 'old_gid_t group']], # chown16
-                [0x0b7, 'getcwd', ['char *buf', 'unsigned long size']],
-                [0x0b8, 'capget', ['cap_user_header_t header', 'cap_user_data_t dataptr']],
-                [0x0b9, 'capset', ['cap_user_header_t header', 'const cap_user_data_t data']],
-                [0x0ba, 'sigaltstack', ['const compat_stack_t *uss_ptr', 'compat_stack_t *uoss_ptr']], # compat
-                [0x0bb, 'sendfile', ['int out_fd', 'int in_fd', 'compat_off_t *offset', 'compat_size_t count']], # compat
-                #0x0bc, getpmsg # unimplemented
-                #0x0bd, putpmsg # unimplemented
-                [0x0be, 'vfork', []],
-                [0x0bf, 'ugetrlimit', ['unsigned int resource', 'struct compat_rlimit *rlim']], # compat getrlimit
-                [0x0c0, 'mmap2', ['unsigned long addr', 'unsigned long len', 'unsigned long prot', 'unsigned long flags', 'unsigned long fd', 'unsigned long pgoff']], # mmap_pgoff
-                [0x0c1, 'truncate64', ['const char *filename', 'unsigned long offset_low', 'unsigned long offset_high']], # ia32_truncate64
-                [0x0c2, 'ftruncate64', ['unsigned int fd', 'unsigned long offset_low', 'unsigned long offset_high']], # ia32_ftruncate64
-                [0x0c3, 'stat64', ['const char *filename', 'struct stat64 *statbuf']], # compat ia32_stat64
-                [0x0c4, 'lstat64', ['const char *filename', 'struct stat64 *statbuf']], # compat ia32_lstat64
-                [0x0c5, 'fstat64', ['unsigned long fd', 'struct stat64 *statbuf']], # compat ia32_fstat64
-                [0x0c6, 'lchown32', ['const char *filename', 'uid_t user', 'gid_t group']], # lchown
-                [0x0c7, 'getuid32', []], # getuid
-                [0x0c8, 'getgid32', []], # getgid
-                [0x0c9, 'geteuid32', []], # geteuid
-                [0x0ca, 'getegid32', []], # getegid
-                [0x0cb, 'setreuid32', ['uid_t ruid', 'uid_t euid']], # setreuid32
-                [0x0cc, 'setregid32', ['gid_t rgid', 'gid_t egid']], # setregid32
-                [0x0cd, 'getgroups32', ['int gidsetsize', 'gid_t *grouplist']], # getgroups32
-                [0x0ce, 'setgroups32', ['int gidsetsize', 'gid_t *grouplist']], # setgroups32
-                [0x0cf, 'fchown32', ['unsigned int fd', 'uid_t user', 'gid_t group']], # fchown
-                [0x0d0, 'setresuid32', ['uid_t ruid', 'uid_t euid', 'uid_t suid']], # setresuid
-                [0x0d1, 'getresuid32', ['uid_t *ruidp', 'uid_t *euidp', 'uid_t *suidp']], # getresuid
-                [0x0d2, 'setresgid32', ['gid_t rgid', 'gid_t egid', 'gid_t sgid']], # setresgid
-                [0x0d3, 'getresgid32', ['gid_t *rgidp', 'gid_t *egidp', 'gid_t *sgidp']], # getresgid
-                [0x0d4, 'chown32', ['const char *filename', 'uid_t user', 'gid_t group']], # chown
-                [0x0d5, 'setuid32', ['uid_t uid']], # setuid
-                [0x0d6, 'setgid32', ['gid_t gid']], # setgid
-                [0x0d7, 'setfsuid32', ['uid_t uid']], # setfsuid
-                [0x0d8, 'setfsgid32', ['gid_t gid']], # setfsgid
-                [0x0d9, 'pivot_root', ['const char *new_root', 'const char *put_old']],
-                [0x0da, 'mincore', ['unsigned long start', 'size_t len', 'unsigned char *vec']],
-                [0x0db, 'madvise', ['unsigned long start', 'size_t len_in', 'int behavior']],
-                [0x0dc, 'getdents64', ['unsigned int fd', 'struct linux_dirent64 *dirent', 'unsigned int count']],
-                [0x0dd, 'fcntl64', ['unsigned int fd', 'unsigned int cmd', 'compat_ulong_t arg']], # compat
-                #0x0de, unused
-                #0x0df, unused
-                [0x0e0, 'gettid', []],
-                [0x0e1, 'readahead', ['int fd', 'unsigned int off_lo', 'unsigned int off_high', 'size_t count']], # ia32_readahead
-                [0x0e2, 'setxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-                [0x0e3, 'lsetxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-                [0x0e4, 'fsetxattr', ['int fd', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-                [0x0e5, 'getxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
-                [0x0e6, 'lgetxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
-                [0x0e7, 'fgetxattr', ['int fd', 'const char *name', 'void *value', 'size_t size']],
-                [0x0e8, 'listxattr', ['const char *pathname', 'char *list', 'size_t size']],
-                [0x0e9, 'llistxattr', ['const char *pathname', 'char *list', 'size_t size']],
-                [0x0ea, 'flistxattr', ['int fd', 'char *list', 'size_t size']],
-                [0x0eb, 'removexattr', ['const char *pathname', 'const char *name']],
-                [0x0ec, 'lremovexattr', ['const char *pathname', 'const char *name']],
-                [0x0ed, 'fremovexattr', ['int fd', 'const char *name']],
-                [0x0ee, 'tkill', ['pid_t pid', 'int sig']],
-                [0x0ef, 'sendfile64', ['int out_fd', 'int in_fd', 'loff_t *offset', 'size_t count']],
-                [0x0f0, 'futex', ['u32 *uaddr', 'int op', 'u32 val', 'struct old_timespec32 *utime', 'u32 *uaddr2', 'u32 val3']], # futex_time32
-                [0x0f1, 'sched_setaffinity', ['compat_pid_t pid', 'unsigned int len', 'compat_ulong_t *user_mask_ptr']], # compat
-                [0x0f2, 'sched_getaffinity', ['compat_pid_t pid', 'unsigned int len', 'compat_ulong_t *user_mask_ptr']], # compat
-                [0x0f3, 'set_thread_area', ['struct user_desc *u_info']],
-                [0x0f4, 'get_thread_area', ['struct user_desc *u_info']],
-                [0x0f5, 'io_setup', ['unsigned nr_events', 'u32 *ctx32p']], # compat
-                [0x0f6, 'io_destroy', ['aio_context_t ctx']],
-                [0x0f7, 'io_getevents', ['__u32 ctx_id', '__s32 min_nr', '__s32 nr', 'struct io_event *events', 'struct old_timespec32 *timeout']], # io_getevents_time32
-                [0x0f8, 'io_submit', ['compat_aio_context_t ctx_id', 'int nr', 'compat_uptr_t *iocbpp']], # compat
-                [0x0f9, 'io_cancel', ['aio_context_t ctx_id', 'struct iocb *iocb', 'struct io_event *result']],
-                [0x0fa, 'fadvise64', ['int fd', 'unsigned int offset_lo', 'unsigned int offset_hi', 'size_t len', 'int advice']], # ia32_fadvise64
-                #0x0fb, set_zone_reclaim
-                [0x0fc, 'exit_group', ['int error_code']],
-                [0x0fd, 'lookup_dcookie', ['u32 w0', 'u32 w1', 'char *buf', 'compat_size_t len']], # compat
-                [0x0fe, 'epoll_create', ['int size']],
-                [0x0ff, 'epoll_ctl', ['int epfd', 'int op', 'int fd', 'struct epoll_event *event']],
-                [0x100, 'epoll_wait', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'int timeout']],
-                [0x101, 'remap_file_pages', ['unsigned long start', 'unsigned long size', 'unsigned long prot', 'unsigned long pgoff', 'unsigned long flags']],
-                [0x102, 'set_tid_address', ['int *tidptr']],
-                [0x103, 'timer_create', ['clockid_t which_clock', 'struct compat_sigevent *timer_event_spec', 'timer_t *created_timer_id']], # compat
-                [0x104, 'timer_settime', ['timer_t timer_id', 'int flags', 'struct old_itimerspec32 *new', 'struct old_itimerspec32 *old']], # timer_settime32
-                [0x105, 'timer_gettime', ['timer_t timer_id', 'struct old_itimerspec32 *setting']],
-                [0x106, 'timer_getoverrun', ['timer_t timer_id']],
-                [0x107, 'timer_delete', ['timer_t timer_id']],
-                [0x108, 'clock_settime', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_settime32
-                [0x109, 'clock_gettime', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_gettime32
-                [0x10a, 'clock_getres', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_getres_time32
-                [0x10b, 'clock_nanosleep', ['clockid_t which_clock', 'int flags', 'struct old_timespec32 *rqtp', 'struct old_timespec32 *rmtp']], # clock_nanosleep_time32
-                [0x10c, 'statfs64', ['const char *pathname', 'compat_size_t sz', 'struct compat_statfs64 *buf']], # compat
-                [0x10d, 'fstatfs64', ['unsigned int fd', 'compat_size_t sz', 'struct compat_statfs64 *buf']], # compat
-                [0x10e, 'tgkill', ['pid_t tgid', 'pid_t pid', 'int sig']],
-                [0x10f, 'utimes', ['char *filename', 'struct old_timeval32 *utimes']], # utimes_time32
-                [0x110, 'fadvise64_64', ['int fd', '__u32 offset_low', '__u32 offset_high', '__u32 len_low', '__u32 len_high', 'int advice']], # ia32_fadvise64_64
-                #0x111, vserver # unimplemented
-                [0x112, 'mbind', ['unsigned long start', 'unsigned long len', 'unsigned long mode', 'const unsigned long *nmask', 'unsigned long maxnode', 'unsigned int flags']],
-                [0x113, 'get_mempolicy', ['int *policy', 'compat_ulong_t *nmask', 'compat_ulong_t maxnode', 'compat_ulong_t addr', 'compat_ulong_t flags']], # compat
-                [0x114, 'set_mempolicy', ['int mode', 'const unsigned long *nmask', 'unsigned long maxnode']],
-                [0x115, 'mq_open', ['const char *u_name', 'int oflag', 'compat_mode_t mode', 'struct compat_mq_attr *u_attr']], # compat
-                [0x116, 'mq_unlink', ['const char *u_name']],
-                [0x117, 'mq_timedsend', ['mqd_t mqdes', 'const char *u_msg_ptr', 'unsigned int msg_len', 'unsigned int msg_prio', 'const struct old_timespec32 *u_abs_timeout']], # mq_timedsend_time32
-                [0x118, 'mq_timedreceive', ['mqd_t mqdes', 'char *u_msg_ptr', 'unsigned int msg_len', 'unsigned int *u_msg_prio', 'const struct old_timespec32 *u_abs_timeout']], # mq_timedreceive_time32
-                [0x119, 'mq_notify', ['mqd_t mqdes', 'const struct compat_sigevent *u_notification']], # compat
-                [0x11a, 'mq_getsetattr', ['mqd_t mqdes', 'const struct compat_mq_attr *u_mqstat', 'struct compat_mq_attr *u_omqstat']], # compat
-                [0x11b, 'kexec_load', ['compat_ulong_t entry', 'compat_ulong_t nr_segments', 'struct compat_kexec_segment *segments', 'compat_ulong_t flags']], # compat
-                [0x11c, 'waitid', ['int which', 'compat_pid_t pid', 'struct compat_siginfo *infop', 'int options', 'struct compat_rusage *uru']], # compat
-                #0x11d, unused
-                [0x11e, 'add_key', ['const char *_type', 'const char *_description', 'const void *_payload', 'size_t plen', 'key_serial_t ringid']],
-                [0x11f, 'request_key', ['const char *_type', 'const char *_description', 'const char *_callout_info', 'key_serial_t destringid']],
-                [0x120, 'keyctl', ['u32 option', 'u32 arg2', 'u32 arg3', 'u32 arg4', 'u32 arg5']], # compat
-                [0x121, 'ioprio_set', ['int which', 'int who', 'int ioprio']],
-                [0x122, 'ioprio_get', ['int which', 'int who']],
-                [0x123, 'inotify_init', []],
-                [0x124, 'inotify_add_watch', ['int fd', 'const char *pathname', 'u32 mask']],
-                [0x125, 'inotify_rm_watch', ['int fd', '__s32 wd']],
-                [0x126, 'migrate_pages', ['pid_t pid', 'unsigned long maxnode', 'const unsigned long *old_nodes', 'const unsigned long *new_nodes']],
-                [0x127, 'openat', ['int dfd', 'const char *filename', 'int flags', 'umode_t mode']], # compat
-                [0x128, 'mkdirat', ['int dfd', 'const char *pathname', 'umode_t mode']],
-                [0x129, 'mknodat', ['int dfd', 'const char *filename', 'umode_t mode', 'unsigned int dev']],
-                [0x12a, 'fchownat', ['int dfd', 'const char *filename', 'uid_t user', 'gid_t group', 'int flag']],
-                [0x12b, 'futimesat', ['unsigned int dfd', 'const char *filename', 'struct old_timeval32 *t']], # futimesat_time32
-                [0x12c, 'fstatat64', ['unsigned int dfd', 'const char *filename', 'struct stat64 *statbuf', 'int flag']], # compat ia32_fstatat64
-                [0x12d, 'unlinkat', ['int dfd', 'const char *pathname', 'int flag']],
-                [0x12e, 'renameat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname']],
-                [0x12f, 'linkat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'int flags']],
-                [0x130, 'symlinkat', ['const char *oldname', 'int newdfd', 'const char *newname']],
-                [0x131, 'readlinkat', ['int dfd', 'const char *pathname', 'char *buf', 'int bufsiz']],
-                [0x132, 'fchmodat', ['int dfd', 'const char *filename', 'umode_t mode']],
-                [0x133, 'faccessat', ['int dfd', 'const char *filename', 'int mode']],
-                [0x134, 'pselect6', ['int n', 'compat_ulong_t *inp', 'compat_ulong_t *outp', 'compat_ulong_t *exp', 'struct old_timespec32 *tsp', 'void *sig']], # compat pselect6_time32
-                [0x135, 'ppoll', ['struct pollfd *ufds', 'unsigned int nfds', 'struct old_timespec32 *tsp', 'const compat_sigset_t *sigmask', 'compat_size_t sigsetsize']], # compat ppoll_time32
-                [0x136, 'unshare', ['unsigned long unshare_flags']],
-                [0x137, 'set_robust_list', ['struct compat_robust_list_head *head', 'compat_size_t len']], # compat
-                [0x138, 'get_robust_list', ['int pid', 'compat_uptr_t *head_ptr', 'compat_size_t *len_ptr']], # compat
-                [0x139, 'splice', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
-                [0x13a, 'sync_file_range', ['int fd', 'unsigned int off_low', 'unsigned int off_hi', 'unsigned int n_low', 'unsigned int n_hi', 'unsigned int flags']], # ia32_sync_file_range
-                [0x13b, 'tee', ['int fdin', 'int fdout', 'size_t len', 'unsigned int flags']],
-                [0x13c, 'vmsplice', ['int fd', 'const struct compat_iovec *iov32', 'unsigned int nr_segs', 'unsigned int flags']], # compat
-                [0x13d, 'move_pages', ['pid_t pid', 'compat_ulong_t nr_pages', 'compat_uptr_t *pages32', 'const int *nodes', 'int *status', 'int flags']], # compat
-                [0x13e, 'getcpu', ['unsigned *cpup', 'unsigned *nodep', 'struct getcpu_cache *unused']],
-                [0x13f, 'epoll_pwait', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'int timeout', 'const sigset_t *sigmask', 'size_t sigsetsize']],
-                [0x140, 'utimensat', ['unsigned int dfd', 'const char *filename', 'struct old_timespec32 *t', 'int flags']], # utimensat_time32
-                [0x141, 'signalfd', ['int ufd', 'const compat_sigset_t *user_mask', 'compat_size_t sizemask']], # compat
-                [0x142, 'timerfd_create', ['int clockid', 'int flags']],
-                [0x143, 'eventfd', ['unsigned int count']],
-                [0x144, 'fallocate', ['int fd', 'int mode', 'unsigned int offset_lo', 'unsigned int offset_hi', 'unsigned int len_lo', 'unsigned int len_hi']], # ia32_fallocate
-                [0x145, 'timerfd_settime', ['int ufd', 'int flags', 'const struct old_itimerspec32 *utmr', 'struct old_itimerspec32 *otmr']], # timerfd_settime32
-                [0x146, 'timerfd_gettime', ['int ufd', 'struct old_itimerspec32 *otmr']], # timerfd_gettime32
-                [0x147, 'signalfd4', ['int ufd', 'const compat_sigset_t *user_mask', 'compat_size_t sizemask', 'int flags']], # compat
-                [0x148, 'eventfd2', ['unsigned int count', 'int flags']],
-                [0x149, 'epoll_create1', ['int flags']],
-                [0x14a, 'dup3', ['unsigned int oldfd', 'unsigned int newfd', 'int flags']],
-                [0x14b, 'pipe2', ['int *fildes', 'int flags']],
-                [0x14c, 'inotify_init1', ['int flags']],
-                [0x14d, 'preadv', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen', 'u32 pos_low', 'u32 pos_high']], # compat
-                [0x14e, 'pwritev', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen', 'u32 pos_low', 'u32 pos_high']], # compat
-                [0x14f, 'rt_tgsigqueueinfo', ['compat_pid_t tgid', 'compat_pid_t pid', 'int sig', 'struct compat_siginfo_t *uinfo']], # compat
-                [0x150, 'perf_event_open', ['struct perf_event_attr *attr_uptr', 'pid_t pid', 'int cpu', 'int group_fd', 'unsigned long flags']],
-                [0x151, 'recvmmsg', ['int fd', 'struct compat_mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags', 'struct old_timespec32 *timeout']], # compat recvmmsg_time32
-                [0x152, 'fanotify_init', ['unsigned int flags', 'unsigned int event_f_flags']],
-                [0x153, 'fanotify_mark', ['int fanotify_fd', 'unsigned int flags', '__u32 mask0', '__u32 mask1', 'int dfd', 'const char *pathname']], # compat
-                [0x154, 'prlimit64', ['pid_t pid', 'unsigned int resource', 'const struct rlimit64 *new_rlim', 'struct rlimit64 *old_rlim']],
-                [0x155, 'name_to_handle_at', ['int dfd', 'const char *name', 'struct file_handle *handle', 'int *mnt_id', 'int flag']],
-                [0x156, 'open_by_handle_at', ['int mountdirfd', 'struct file_handle *handle', 'int flags']], # compat
-                [0x157, 'clock_adjtime', ['clockid_t which_clock', 'struct old_timex32 *utp']], # clock_adjtime32
-                [0x158, 'syncfs', ['int fd']],
-                [0x159, 'sendmmsg', ['int fd', 'struct compat_mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags']], # compat
-                [0x15a, 'setns', ['int fd', 'int flags']],
-                [0x15b, 'process_vm_readv', ['compat_pid_t pid', 'const struct compat_iovec *lvec', 'compat_ulong_t liovcnt', 'const struct compat_iovec *rvec', 'compat_ulong_t riovcnt', 'compat_ulong_t flags']], # compat
-                [0x15c, 'process_vm_writev', ['compat_pid_t pid', 'const struct compat_iovec *lvec', 'compat_ulong_t liovcnt', 'const struct compat_iovec *rvec', 'compat_ulong_t riovcnt', 'compat_ulong_t flags']], # compat
-                [0x15d, 'kcmp', ['pid_t pid1', 'pid_t pid2', 'int type', 'unsigned long idx1', 'unsigned long idx2']],
-                [0x15e, 'finit_module', ['int fd', 'const char *uargs', 'int flags']],
-                [0x15f, 'sched_setattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int flags']],
-                [0x160, 'sched_getattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int usize', 'unsigned int flags']],
-                [0x161, 'renameat2', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'unsigned int flags']],
-                [0x162, 'seccomp', ['unsigned int op', 'unsigned int flags', 'void *uargs']],
-                [0x163, 'getrandom', ['char *buf', 'size_t count', 'unsigned int flags']],
-                [0x164, 'memfd_create', ['const char *uname', 'unsigned int flags']],
-                [0x165, 'bpf', ['int cmd', 'union bpf_attr *uattr', 'unsigned int size']],
-                [0x166, 'execveat', ['int fd', 'const char *filename', 'const compat_uptr_t *argv', 'const compat_uptr_t *envp', 'int flags']], # compat
-                [0x167, 'socket', ['int family', 'int type', 'int protocol']],
-                [0x168, 'socketpair', ['int family', 'int type', 'int protocol', 'int *usockvec']],
-                [0x169, 'bind', ['int fd', 'struct sockaddr *umyaddr', 'int addrlen']],
-                [0x16a, 'connect', ['int fd', 'struct sockaddr *uservaddr', 'int addrlen']],
-                [0x16b, 'listen', ['int fd', 'int backlog']],
-                [0x16c, 'accept4', ['int fd', 'struct sockaddr *upeer_sockaddr', 'int *upeer_addrlen', 'int flags']],
-                [0x16d, 'getsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int *optlen']],
-                [0x16e, 'setsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int optlen']],
-                [0x16f, 'getsockname', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
-                [0x170, 'getpeername', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
-                [0x171, 'sendto', ['int fd', 'void *buff', 'size_t len', 'unsigned int flags', 'struct sockaddr *addr', 'int addr_len']],
-                [0x172, 'sendmsg', ['int fd', 'struct compat_msghdr *msg', 'unsigned int flags']], # compat
-                [0x173, 'recvfrom', ['int fd', 'void *ubuf', 'compat_size_t size', 'unsigned int flags', 'struct sockaddr *addr', 'int *addr_len']], # compat
-                [0x174, 'recvmsg', ['int fd', 'struct compat_msghdr *msg', 'unsigned int flags']], # compat
-                [0x175, 'shutdown', ['int fd', 'int how']],
-                [0x176, 'userfaultfd', ['int flags']],
-                [0x177, 'membarrier', ['int cmd', 'int flags']],
-                [0x178, 'mlock2', ['unsigned long start', 'size_t len', 'int flags']],
-                [0x179, 'copy_file_range', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
-                [0x17a, 'preadv2', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen', 'u32 pos_low', 'u32 pos_high', 'rwf_t flags']], # compat
-                [0x17b, 'pwritev2', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen', 'u32 pos_low', 'u32 pos_high', 'rwf_t flags']], # compat
-                [0x17c, 'pkey_mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot', 'int pkey']],
-                [0x17d, 'pkey_alloc', ['unsigned long flags', 'unsigned long init_val']],
-                [0x17e, 'pkey_free', ['int pkey']],
-                [0x17f, 'statx', ['int dfd', 'const char *filename', 'unsigned flags', 'unsigned int mask', 'struct statx *buffer']],
-                [0x180, 'arch_prctl', ['int option', 'unsigned long arg2']], # compat
-                [0x181, 'io_pgetevents', ['compat_aio_context_t ctx_id', 'compat_long_t min_nr', 'compat_long_t nr', 'struct io_event *events', 'struct old_timespec32 *timeout', 'const struct __compat_aio_sigset *usig']], # compat
-                [0x182, 'rseq', ['struct rseq *rseq', 'u32 rseq_len', 'int flags', 'u32 sig']],
-                # 0x183-0x187: don't use
-                [0x189, 'semget', ['key_t key', 'int nsems', 'int semflg']],
-                [0x18a, 'semctl', ['int semid', 'int semnum', 'int cmd', 'int arg']], # compat
-                [0x18b, 'shmget', ['key_t key', 'size_t size', 'int shmflg']],
-                [0x18c, 'shmctl', ['int shmid', 'int cmd', 'void *uptr']], # compat
-                [0x18d, 'shmat', ['int shmid', 'compat_uptr_t *shmaddr', 'int shmflg']], # compat
-                [0x18e, 'shmdt', ['char *shmaddr']],
-                [0x18f, 'msgget', ['key_t key', 'int msgflg']],
-                [0x190, 'msgsnd', ['int msqid', 'struct compat_uptr_t *msgp', 'compat_ssize_t msgsz', 'int msgflg']], # compat
-                [0x191, 'msgrcv', ['int msqid', 'struct compat_uptr_t *msgp', 'compat_ssize_t msgsz', 'compat_long_t msgtyp', 'int msgflg']], # compat
-                [0x192, 'msgctl', ['int msqid', 'int cmd', 'void *uptr']], # compat
-                [0x193, 'clock_gettime_time64', ['const clockid_t which_clock', 'struct __kernel_timespec *tp']], # clock_gettime
-                [0x194, 'clock_settime_time64', ['const clockid_t which_clock', 'struct __kernel_timespec *tp']], # clock_settime
-                [0x195, 'clock_adjtime_time64', ['const clockid_t which_clock', 'struct __kernel_timex *utx']], # clock_adjtime
-                [0x196, 'clock_getres_time64', ['const clockid_t which_clock', 'struct __kernel_timespec *tp']], # clock_getres
-                [0x197, 'clock_nanosleep_time64', ['const clockid_t which_clock', 'int flags', 'const struct __kernel_timespec *rqtp', 'struct __kernel_timespec *rmtp']], # clock_nanosleep
-                [0x198, 'timer_gettime_time64', ['timer_t timer_id', 'struct __kernel_itimerspec *setting']], # timer_gettime
-                [0x199, 'timer_settime_time64', ['timer_t timer_id', 'int flags', 'const struct __kernel_itimerspec *new_setting', 'struct __kernel_itimerspec *old_setting']], # timer_settime
-                [0x19a, 'timerfd_gettime_time64', ['int ufd', 'struct __kernel_itimerspec *otmr']], # timerfd_gettime
-                [0x19b, 'timerfd_settime_time64', ['int ufd', 'int flags', 'const struct __kernel_itimerspec *utmr', 'struct __kernel_itimerspec *otmr']], # timerfd_settime
-                [0x19c, 'utimensat_time64', ['int dfd', 'const char *filename', 'struct __kernel_timespec *utimes', 'int flags']], # utimensat
-                [0x19d, 'pselect6_time64', ['int n', 'compat_ulong_t *inp', 'compat_ulong_t *outp', 'compat_ulong_t *exp', 'struct __kernel_timespec *tsp', 'void *sig']], # compat
-                [0x19e, 'ppoll_time64', ['struct pollfd *ufds', 'unsigned int nfds', 'struct __kernel_timespec *tsp', 'const compat_sigset_t *sigmask', 'compat_size_t sigsetsize']], # compat
-                #0x19f, unused
-                [0x1a0, 'io_pgetevents_time64', ['aio_context_t ctx_id', 'long min_nr', 'long nr', 'struct io_event *events', 'struct __kernel_timespec *timeout', 'const struct __aio_sigset *usig']], # io_pgetevents
-                [0x1a1, 'recvmmsg_time64', ['int fd', 'struct compat_mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags', 'struct __kernel_timespec *timeout']], # compat
-                [0x1a2, 'mq_timedsend_time64', ['mqd_t mqdes', 'const char *u_msg_ptr', 'size_t msg_len', 'unsigned int msg_prio', 'const struct __kernel_timespec *u_abs_timeout']], # mq_timedsend
-                [0x1a3, 'mq_timedreceive_time64', ['mqd_t mqdes', 'char *u_msg_ptr', 'size_t msg_len', 'unsigned int *u_msg_prio', 'const struct __kernel_timespec *u_abs_timeout']], # mq_timedreceive
-                [0x1a4, 'semtimedop_time64', ['int semid', 'struct sembuf *tsops', 'unsigned int nsops', 'const struct __kernel_timespec *timeout']], # semtimedop
-                [0x1a5, 'rt_sigtimedwait_time64', ['compat_sigset_t *uthese', 'struct compat_siginfo *uinfo', 'struct __kernel_timespec *uts', 'compat_size_t sigsetsize']], # compat
-                [0x1a6, 'futex_time64', ['u32 *uaddr', 'int op', 'u32 val', 'struct __kernel_timespec *utime', 'u32 *uaddr2', 'u32 val3']], # futex
-                [0x1a7, 'sched_rr_get_interval_time64', ['pid_t pid', 'struct __kernel_timespec *interval']], # sched_rr_get_interval
-                [0x1a8, 'pidfd_send_signal', ['int pidfd', 'int sig', 'siginfo_t *info', 'unsigned int flags']],
-                [0x1a9, 'io_uring_setup', ['u32 entries', 'struct io_uring_params *params']],
-                [0x1aa, 'io_uring_enter', ['unsigned int fd', 'u32 to_submit', 'u32 min_complete', 'u32 flags', 'const sigset_t *sig', 'size_t sigsz']],
-                [0x1ab, 'io_uring_register', ['unsigned int fd', 'unsigned int opcode', 'void *arg', 'unsigned int nr_args']],
-                [0x1ac, 'open_tree', ['int dfd', 'const char *filename', 'unsigned flags']],
-                [0x1ad, 'move_mount', ['int from_dfd', 'const char *from_pathname', 'int to_dfd', 'const char *to_pathname', 'unsigned int flags']],
-                [0x1ae, 'fsopen', ['const char *_fs_name', 'unsigned int flags']],
-                [0x1af, 'fsconfig', ['int fd', 'unsigned int cmd', 'const char *_key', 'const void *_value', 'int aux']],
-                [0x1b0, 'fsmount', ['int fs_fd', 'unsigned int flags', 'unsigned int attr_flags']],
-                [0x1b1, 'fspick', ['int, dfd', 'const char *path', 'unsigned int flags']],
-                [0x1b2, 'pidfd_open', ['pid_t pid', 'unsigned int flags']],
-                [0x1b3, 'clone3', ['struct clone_args *uargs', 'size_t size']],
-                [0x1b4, 'close_range', ['unsigned int fd', 'unsigned int max_fd', 'unsigned int flag']],
-                [0x1b5, 'openat2', ['int dfd', 'const char *filename', 'struct open_how *how', 'size_t usize']],
-                [0x1b6, 'pidfd_getfd', ['int pidfd', 'int fd', 'unsigned int flags']],
-                [0x1b7, 'faccessat2', ['int dfd', 'const char *filename', 'int mode', 'int flags']],
-                [0x1b8, 'process_madvise', ['int pidfd', 'const struct iovec *vec', 'size_t vlen', 'int behavior', 'unsigned int flags']],
-                [0x1b9, 'epoll_pwait2', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'const struct __kernel_timespec *timeout', 'const compat_sigset_t *sigmask', 'compat_size_t sigsetsize']], # compat
-                [0x1ba, 'mount_setattr', ['int dfd', 'const char *path', 'unsigned int flags', 'struct mount_attr *uattr', 'size_t usize']],
-                [0x1bb, 'quotactl_fd', ['unsigned int fd', 'unsigned int cmd', 'qid_t id', 'void __user *addr']],
-                [0x1bc, 'landlock_create_ruleset', ['const struct landlock_ruleset_attr *const attr', 'const size_t size', 'const __u32 flags']],
-                [0x1bd, 'landlock_add_rule', ['const int ruleset_fd', 'const enum landlock_rule_type rule_type', 'const void *const rule_attr', 'const __u32 flags']],
-                [0x1be, 'landlock_restrict_self', ['const int ruleset_fd', 'const __u32 flags']],
-                [0x1bf, 'memfd_secret', ['unsigned int, flags']],
-                [0x1c0, 'process_mrelease', ['int pidfd', 'unsigned int flags']],
-                [0x1c1, 'futex_waitv', ['struct futex_waitv *waiters', 'unsigned int nr_futexes', 'unsigned int flags', 'struct __kernel_timespec *timeout', 'clockid_t clockid']],
-                [0x1c2, 'set_mempolicy_home_node', ['unsigned long start', 'unsigned long len', 'unsigned long home_node', 'unsigned long flags']],
-            ]
-
-        elif arch == "X86" and mode == "N32":
-            register_list = ["$ebx", "$ecx", "$edx", "$esi", "$edi", "$ebp"]
-            # arch/x86/include/asm/unistd.h
-            # arch/x86/include/uapi/asm/unistd.h
-            # arch/x86/include/generated/uapi/asm/unistd-32.h
-            # arch/x86/entry/syscalls/syscall_32.tbl
-            syscall_list = [
-                [0x000, 'restart_syscall', []],
-                [0x001, 'exit', ['int error_code']],
-                [0x002, 'fork', []],
-                [0x003, 'read', ['unsigned int fd', 'char *buf', 'size_t count']],
-                [0x004, 'write', ['unsigned int fd', 'const char *buf', 'size_t count']],
-                [0x005, 'open', ['const char *filename', 'int flags', 'umode_t mode']],
-                [0x006, 'close', ['unsigned int fd']],
-                [0x007, 'waitpid', ['pid_t pid', 'int *stat_addr', 'int options']],
-                [0x008, 'creat', ['const char *pathname', 'umode_t mode']],
-                [0x009, 'link', ['const char *oldname', 'const char *newname']],
-                [0x00a, 'unlink', ['const char *pathname']],
-                [0x00b, 'execve', ['const char *filename', 'const char *const *argv', 'const char *const *envp']],
-                [0x00c, 'chdir', ['const char *filename']],
-                [0x00d, 'time', ['old_time32_t *tloc']], # time32
-                [0x00e, 'mknod', ['const char *filename', 'umode_t mode', 'unsigned dev']],
-                [0x00f, 'chmod', ['const char *filename', 'umode_t mode']],
-                [0x010, 'lchown', ['const char *filename', 'old_uid_t user', 'old_gid_t group']], # lchown16
-                #0x011, break # unimplemented
-                [0x012, 'oldstat', ['const char *filename', 'struct __old_kernel_stat *statbuf']], # fstat
-                [0x013, 'lseek', ['unsigned int fd', 'off_t offset', 'unsigned int whence']],
-                [0x014, 'getpid', []],
-                [0x015, 'mount', ['const char *dev_name', 'const char *dir_name', 'const char *type', 'unsigned long flags', 'void *data']],
-                [0x016, 'umount', ['char *name']], # oldumount
-                [0x017, 'setuid', ['old_uid_t uid']], # setuid16
-                [0x018, 'getuid', []], # getuid16
-                [0x019, 'stime', ['old_time32_t *tptr']], # stime32
-                [0x01a, 'ptrace', ['long request', 'long pid', 'unsigned long addr', 'unsigned long data']],
-                [0x01b, 'alarm', ['unsigned int seconds']],
-                [0x01c, 'oldfstat', ['unsigned int fd', 'struct __old_kernel_stat *statbuf']], # fstat
-                [0x01d, 'pause', []],
-                [0x01e, 'utime', ['char *filename', 'struct old_utimbuf32 *t']], # utime32
-                #0x01f, stty # unimplemented
-                #0x020, gtty # unimplemented
-                [0x021, 'access', ['const char *filename', 'int mode']],
-                [0x022, 'nice', ['int increment']],
-                #0x023, ftime # unimplemented
-                [0x024, 'sync', []],
-                [0x025, 'kill', ['pid_t pid', 'int sig']],
-                [0x026, 'rename', ['const char *oldname', 'const char *newname']],
-                [0x027, 'mkdir', ['const char *pathname', 'umode_t mode']],
-                [0x028, 'rmdir', ['const char *pathname']],
-                [0x029, 'dup', ['unsigned int fildes']],
-                [0x02a, 'pipe', ['int *fildes']],
-                [0x02b, 'times', ['struct tms *tbuf']],
-                #0x02c, prof # unimplemented
-                [0x02d, 'brk', ['unsigned long brk']],
-                [0x02e, 'setgid', ['old_gid_t gid']], # setgid16
-                [0x02f, 'getgid', []], # getgid16
-                [0x030, 'signal', ['int sig', '__sighandler_t handler']],
-                [0x031, 'geteuid', []], # geteuid16
-                [0x032, 'getegid', []], # getegid16
-                [0x033, 'acct', ['const char *name']],
-                [0x034, 'umount2', ['char *name', 'int flags']], # umount
-                #0x035, lock # unimplemented
-                [0x036, 'ioctl', ['unsigned int fd', 'unsigned int cmd', 'unsigned long arg']],
-                [0x037, 'fcntl', ['unsigned int fd', 'unsigned int cmd', 'unsigned long arg']],
-                #0x038, mpx # unimplemented
-                [0x039, 'setpgid', ['pid_t pid', 'pid_t pgid']],
-                #0x03a, ulimit # unimplemented
-                [0x03b, 'oldolduname', ['struct oldold_utsname *name']], # olduname
-                [0x03c, 'umask', ['int mask']],
-                [0x03d, 'chroot', ['const char *filename']],
-                [0x03e, 'ustat', ['unsigned dev', 'struct ustat *ubuf']],
-                [0x03f, 'dup2', ['unsigned int oldfd', 'unsigned int newfd']],
-                [0x040, 'getppid', []],
-                [0x041, 'getpgrp', []],
-                [0x042, 'setsid', []],
-                [0x043, 'sigaction', ['int sig', 'const struct old_sigaction *act', 'struct old_sigaction *oact']],
-                [0x044, 'sgetmask', []],
-                [0x045, 'ssetmask', ['int newmask']],
-                [0x046, 'setreuid', ['old_uid_t ruid', 'old_uid_t euid']], # setreuid16
-                [0x047, 'setregid', ['old_gid_t rgid', 'old_gid_t egid']], # setregid16
-                [0x048, 'sigsuspend', ['old_sigset_t mask']],
-                [0x049, 'sigpending', ['old_sigset_t *uset']],
-                [0x04a, 'sethostname', ['char *name', 'int len']],
-                [0x04b, 'setrlimit', ['unsigned int resource', 'struct rlimit *rlim']],
-                [0x04c, 'getrlimit', ['unsigned int resource', 'struct rlimit *rlim']], # old_getrlimit
-                [0x04d, 'getrusage', ['int who', 'struct rusage *ru']],
-                [0x04e, 'gettimeofday', ['struct __kernel_old_timeval *tv', 'struct timezone *tz']],
-                [0x04f, 'settimeofday', ['struct __kernel_old_timeval *tv', 'struct timezone *tz']],
-                [0x050, 'getgroups', ['int gidsetsize', 'old_gid_t *grouplist']], # getgroups16
-                [0x051, 'setgroups', ['int gidsetsize', 'old_gid_t *grouplist']], # setgroups16
-                [0x052, 'select', ['struct sel_arg_struct *arg']], # old_select
-                [0x053, 'symlink', ['const char *oldname', 'const char *newname']],
-                [0x054, 'oldlstat', ['const char *filename', 'struct __old_kernel_stat *statbuf']], # lstat
-                [0x055, 'readlink', ['const char *path', 'char *buf', 'int bufsiz']],
-                [0x056, 'uselib', ['const char *library']],
-                [0x057, 'swapon', ['const char *specialfile', 'int swap_flags']],
-                [0x058, 'reboot', ['int magic1', 'int magic2', 'unsigned int cmd', 'void *arg']],
-                [0x059, 'readdir', ['unsigned int fd', 'struct old_linux_dirent *dirent', 'unsigned int count']], # old_readdir
-                [0x05a, 'mmap', ['struct mmap_arg_struct *arg']], # old_mmap
-                [0x05b, 'munmap', ['unsigned long addr', 'size_t len']],
-                [0x05c, 'truncate', ['const char *path', 'long length']],
-                [0x05d, 'ftruncate', ['unsigned int fd', 'unsigned long length']],
-                [0x05e, 'fchmod', ['unsigned int fd', 'umode_t mode']],
-                [0x05f, 'fchown', ['unsigned int fd', 'old_uid_t user', 'old_gid_t group']], # fchown16
-                [0x060, 'getpriority', ['int which', 'int who']],
-                [0x061, 'setpriority', ['int which', 'int who', 'int niceval']],
-                #0x062, profil # unimplemented
-                [0x063, 'statfs', ['const char *pathname', 'struct statfs *buf']],
-                [0x064, 'fstatfs', ['unsigned int fd', 'struct statfs *buf']],
-                [0x065, 'ioperm', ['unsigned long from', 'unsigned long num', 'int turn_on']],
-                [0x066, 'socketcall', ['int call', 'unsigned long *args']],
-                [0x067, 'syslog', ['int type', 'char *buf', 'int len']],
-                [0x068, 'setitimer', ['int which', 'struct __kernel_old_itimerval *value', 'struct __kernel_old_itimerval *ovalue']],
-                [0x069, 'getitimer', ['int which', 'struct __kernel_old_itimerval *value']],
-                [0x06a, 'stat', ['const char *filename', 'struct stat *statbuf']], # newstat
-                [0x06b, 'lstat', ['const char *filename', 'struct stat *statbuf']], # newlstat
-                [0x06c, 'fstat', ['unsigned int fd', 'struct stat *statbuf']], # newfstat
-                [0x06d, 'olduname', ['struct old_utsname *name']], # uname
-                [0x06e, 'iopl', ['unsigned int level']],
-                [0x06f, 'vhangup', []],
-                #0x070, idle # deleted from kernel 2.3.13
-                [0x071, 'vm86old', ['struct vm86_struct *user_vm86']],
-                [0x072, 'wait4', ['pid_t upid', 'int *stat_addr', 'int options', 'struct rusage *ru']],
-                [0x073, 'swapoff', ['const char *specialfile']],
-                [0x074, 'sysinfo', ['struct sysinfo *info']],
-                [0x075, 'ipc', ['unsigned int call', 'int first', 'unsigned long second', 'unsigned long third', 'void *ptr', 'long fifth']],
-                [0x076, 'fsync', ['unsigned int fd']],
-                [0x077, 'sigreturn', []],
-                [0x078, 'clone', ['unsigned long clone_flags', 'unsigned long newsp', 'int *parent_tidptr', 'int *child_tidptr', 'unsigned long tls']],
-                [0x079, 'setdomainname', ['char *name', 'int len']],
-                [0x07a, 'uname', ['struct new_utsname *name']], # newuname
-                [0x07b, 'modify_ldt', ['int func', 'void *ptr', 'unsigned long bytecount']],
-                [0x07c, 'adjtimex', ['struct old_timex32 *utp']], # adjtimex_time32
-                [0x07d, 'mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot']],
-                [0x07e, 'sigprocmask', ['int how', 'old_sigset_t *nset', 'old_sigset_t *oset']],
-                #0x07f, create_module # deleted from kernel 2.6
-                [0x080, 'init_module', ['void *umod', 'unsigned long len', 'const char *uargs']],
-                [0x081, 'delete_module', ['const char *name_user', 'unsigned int flags']],
-                #0x082, get_kernel_syms # deleted from kernel 2.6
-                [0x083, 'quotactl', ['unsigned int cmd', 'const char *special', 'qid_t id', 'void *addr']],
-                [0x084, 'getpgid', ['pid_t pid']],
-                [0x085, 'fchdir', ['unsigned int fd']],
-                [0x086, 'bdflush', ['int func', 'long data']],
-                [0x087, 'sysfs', ['int option', 'unsigned long arg1', 'unsigned long arg2']],
-                [0x088, 'personality', ['unsigned int personality']],
-                #0x089, afs_syscall # unimplemented
-                [0x08a, 'setfsuid', ['old_uid_t uid']], # setfsuid16
-                [0x08b, 'setfsgid', ['old_gid_t gid']], # setfsgid16
-                [0x08c, '_llseek', ['unsigned int fd', 'unsigned long offset_high', 'unsigned long offset_low', 'loff_t *result', 'unsigned int whence']], # llseek
-                [0x08d, 'getdents', ['unsigned int fd', 'struct linux_dirent *dirent', 'unsigned int count']],
-                [0x08e, '_newselect', ['int n', 'fd_set *inp', 'fd_set *outp', 'fd_set *exp', 'struct __kernel_old_timeval *tvp']], # select
-                [0x08f, 'flock', ['unsigned int fd', 'unsigned int cmd']],
-                [0x090, 'msync', ['unsigned long start', 'size_t len', 'int flags']],
-                [0x091, 'readv', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen']],
-                [0x092, 'writev', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen']],
-                [0x093, 'getsid', ['pid_t pid']],
-                [0x094, 'fdatasync', ['unsigned int fd']],
-                [0x095, '_sysctl', ['struct __sysctl_args *args']], # sysctl # deleted from kenrel 5.5 ?
-                [0x096, 'mlock', ['unsigned long start', 'size_t len']],
-                [0x097, 'munlock', ['unsigned long start', 'size_t len']],
-                [0x098, 'mlockall', ['int flags']],
-                [0x099, 'munlockall', []],
-                [0x09a, 'sched_setparam', ['pid_t pid', 'struct sched_param *param']],
-                [0x09b, 'sched_getparam', ['pid_t pid', 'struct sched_param *param']],
-                [0x09c, 'sched_setscheduler', ['pid_t pid', 'int policy', 'struct sched_param *param']],
-                [0x09d, 'sched_getscheduler', ['pid_t pid']],
-                [0x09e, 'sched_yield', []],
-                [0x09f, 'sched_get_priority_max', ['int policy']],
-                [0x0a0, 'sched_get_priority_min', ['int policy']],
-                [0x0a1, 'sched_rr_get_interval', ['pid_t pid', 'struct old_timespec32 *interval']], # sched_rr_get_interval_time32
-                [0x0a2, 'nanosleep', ['struct old_timespec32 *rqtp', 'struct old_timespec32 *rmtp']], # nanosleep_time32
-                [0x0a3, 'mremap', ['unsigned long addr', 'unsigned long old_len', 'unsigned long new_len', 'unsigned long flags', 'unsigned long new_addr']],
-                [0x0a4, 'setresuid', ['old_uid_t ruid', 'old_uid_t euid', 'old_uid_t suid']], # setresuid16
-                [0x0a5, 'getresuid', ['old_uid_t *ruidp', 'old_uid_t *euidp', 'old_uid_t *suidp']], # getresuid16
-                [0x0a6, 'vm86', ['unsigned long cmd', 'unsigned long arg']],
-                #0x0a7, query_module # deleted from kernel 2.6
-                [0x0a8, 'poll', ['struct pollfd *ufds', 'unsigned int nfds', 'int timeout_msecs']],
-                #0x0a9, nfsservctl # deleted from kernel 3.1
-                [0x0aa, 'setresgid', ['old_gid_t rgid', 'old_gid_t egid', 'old_gid_t sgid']], # setresgid16
-                [0x0ab, 'getresgid', ['old_gid_t *rgidp', 'old_gid_t *egidp', 'old_gid_t *sgidp']], # getresgid16
-                [0x0ac, 'prctl', ['int option', 'unsigned long arg2', 'unsigned long arg3', 'unsigned long arg4', 'unsigned long arg5']],
-                [0x0ad, 'rt_sigreturn', []],
-                [0x0ae, 'rt_sigaction', ['int sig', 'const struct sigaction *act', 'struct sigaction *oact', 'size_t sigsetsize']],
-                [0x0af, 'rt_sigprocmask', ['int how', 'sigset_t *nset', 'sigset_t *oset', 'size_t sigsetsize']],
-                [0x0b0, 'rt_sigpending', ['sigset_t *uset', 'size_t sigsetsize']],
-                [0x0b1, 'rt_sigtimedwait', ['const sigset_t *uthese', 'siginfo_t *uinfo', 'const struct old_timespec32 *uts', 'size_t sigsetsize']], # rt_sigtimedwait_time32
-                [0x0b2, 'rt_sigqueueinfo', ['pid_t pid', 'int sig', 'siginfo_t *uinfo']],
-                [0x0b3, 'rt_sigsuspend', ['sigset_t *unewset', 'size_t sigsetsize']],
-                [0x0b4, 'pread64', ['unsigned int fd', 'char *ubuf', 'u32 count', 'u32 poslo', 'u32 poshi']], # ia32_pread64
-                [0x0b5, 'pwrite64', ['unsigned int fd', 'const char *ubuf', 'u32 count', 'u32 poslo', 'u32 poshi']], # ia32_pwrite64
-                [0x0b6, 'chown', ['const char *filename', 'old_uid_t user', 'old_gid_t group']], # chown16
-                [0x0b7, 'getcwd', ['char *buf', 'unsigned long size']],
-                [0x0b8, 'capget', ['cap_user_header_t header', 'cap_user_data_t dataptr']],
-                [0x0b9, 'capset', ['cap_user_header_t header', 'const cap_user_data_t data']],
-                [0x0ba, 'sigaltstack', ['const stack_t *uss', 'stack_t *uoss']],
-                [0x0bb, 'sendfile', ['int out_fd', 'int in_fd', 'off_t *offset', 'size_t count']],
-                #0x0bc, getpmsg # unimplemented
-                #0x0bd, putpmsg # unimplemented
-                [0x0be, 'vfork', []],
-                [0x0bf, 'ugetrlimit', ['unsigned int resource', 'struct rlimit *rlim']], # getrlimit
-                [0x0c0, 'mmap2', ['unsigned long addr', 'unsigned long len', 'unsigned long prot', 'unsigned long flags', 'unsigned long fd', 'unsigned long pgoff']], # mmap_pgoff
-                [0x0c1, 'truncate64', ['const char *filename', 'unsigned long offset_low', 'unsigned long offset_high']], # ia32_truncate64
-                [0x0c2, 'ftruncate64', ['unsigned int fd', 'unsigned long offset_low', 'unsigned long offset_high']], # ia32_ftruncate64
-                [0x0c3, 'stat64', ['const char *filename', 'struct stat64 *statbuf']], # stat64
-                [0x0c4, 'lstat64', ['const char *filename', 'struct stat64 *statbuf']], # lstat64
-                [0x0c5, 'fstat64', ['unsigned long fd', 'struct stat64 *statbuf']], # fstat64
-                [0x0c6, 'lchown32', ['const char *filename', 'uid_t user', 'gid_t group']], # lchown
-                [0x0c7, 'getuid32', []], # getuid
-                [0x0c8, 'getgid32', []], # getgid
-                [0x0c9, 'geteuid32', []], # geteuid
-                [0x0ca, 'getegid32', []], # getegid
-                [0x0cb, 'setreuid32', ['uid_t ruid', 'uid_t euid']], # setreuid32
-                [0x0cc, 'setregid32', ['gid_t rgid', 'gid_t egid']], # setregid32
-                [0x0cd, 'getgroups32', ['int gidsetsize', 'gid_t *grouplist']], # getgroups32
-                [0x0ce, 'setgroups32', ['int gidsetsize', 'gid_t *grouplist']], # setgroups32
-                [0x0cf, 'fchown32', ['unsigned int fd', 'uid_t user', 'gid_t group']], # fchown
-                [0x0d0, 'setresuid32', ['uid_t ruid', 'uid_t euid', 'uid_t suid']], # setresuid
-                [0x0d1, 'getresuid32', ['uid_t *ruidp', 'uid_t *euidp', 'uid_t *suidp']], # getresuid
-                [0x0d2, 'setresgid32', ['gid_t rgid', 'gid_t egid', 'gid_t sgid']], # setresgid
-                [0x0d3, 'getresgid32', ['gid_t *rgidp', 'gid_t *egidp', 'gid_t *sgidp']], # getresgid
-                [0x0d4, 'chown32', ['const char *filename', 'uid_t user', 'gid_t group']], # chown
-                [0x0d5, 'setuid32', ['uid_t uid']], # setuid
-                [0x0d6, 'setgid32', ['gid_t gid']], # setgid
-                [0x0d7, 'setfsuid32', ['uid_t uid']], # setfsuid
-                [0x0d8, 'setfsgid32', ['gid_t gid']], # setfsgid
-                [0x0d9, 'pivot_root', ['const char *new_root', 'const char *put_old']],
-                [0x0da, 'mincore', ['unsigned long start', 'size_t len', 'unsigned char *vec']],
-                [0x0db, 'madvise', ['unsigned long start', 'size_t len_in', 'int behavior']],
-                [0x0dc, 'getdents64', ['unsigned int fd', 'struct linux_dirent64 *dirent', 'unsigned int count']],
-                [0x0dd, 'fcntl64', ['unsigned int fd', 'unsigned int cmd', 'unsigned long arg']],
-                #0x0de, unused
-                #0x0df, unused
-                [0x0e0, 'gettid', []],
-                [0x0e1, 'readahead', ['int fd', 'unsigned int off_lo', 'unsigned int off_high', 'size_t count']], # ia32_readahead
-                [0x0e2, 'setxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-                [0x0e3, 'lsetxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-                [0x0e4, 'fsetxattr', ['int fd', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-                [0x0e5, 'getxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
-                [0x0e6, 'lgetxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
-                [0x0e7, 'fgetxattr', ['int fd', 'const char *name', 'void *value', 'size_t size']],
-                [0x0e8, 'listxattr', ['const char *pathname', 'char *list', 'size_t size']],
-                [0x0e9, 'llistxattr', ['const char *pathname', 'char *list', 'size_t size']],
-                [0x0ea, 'flistxattr', ['int fd', 'char *list', 'size_t size']],
-                [0x0eb, 'removexattr', ['const char *pathname', 'const char *name']],
-                [0x0ec, 'lremovexattr', ['const char *pathname', 'const char *name']],
-                [0x0ed, 'fremovexattr', ['int fd', 'const char *name']],
-                [0x0ee, 'tkill', ['pid_t pid', 'int sig']],
-                [0x0ef, 'sendfile64', ['int out_fd', 'int in_fd', 'loff_t *offset', 'size_t count']],
-                [0x0f0, 'futex', ['u32 *uaddr', 'int op', 'u32 val', 'struct old_timespec32 *utime', 'u32 *uaddr2', 'u32 val3']], # futex_time32
-                [0x0f1, 'sched_setaffinity', ['pid_t pid', 'unsigned int len', 'unsigned long *user_mask_ptr']],
-                [0x0f2, 'sched_getaffinity', ['pid_t pid', 'unsigned int len', 'unsigned long *user_mask_ptr']],
-                [0x0f3, 'set_thread_area', ['struct user_desc *u_info']],
-                [0x0f4, 'get_thread_area', ['struct user_desc *u_info']],
-                [0x0f5, 'io_setup', ['unsigned nr_events', 'aio_context_t *ctxp']],
-                [0x0f6, 'io_destroy', ['aio_context_t ctx']],
-                [0x0f7, 'io_getevents', ['__u32 ctx_id', '__s32 min_nr', '__s32 nr', 'struct io_event *events', 'struct old_timespec32 *timeout']], # io_getevents_time32
-                [0x0f8, 'io_submit', ['aio_context_t ctx_id', 'long nr', 'struct iocb *iocbpp']],
-                [0x0f9, 'io_cancel', ['aio_context_t ctx_id', 'struct iocb *iocb', 'struct io_event *result']],
-                [0x0fa, 'fadvise64', ['int fd', 'unsigned int offset_lo', 'unsigned int offset_hi', 'size_t len', 'int advice']], # ia32_fadvise64
-                #0x0fb, set_zone_reclaim
-                [0x0fc, 'exit_group', ['int error_code']],
-                [0x0fd, 'lookup_dcookie', ['u64 cookie64', 'char *buf', 'size_t len']],
-                [0x0fe, 'epoll_create', ['int size']],
-                [0x0ff, 'epoll_ctl', ['int epfd', 'int op', 'int fd', 'struct epoll_event *event']],
-                [0x100, 'epoll_wait', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'int timeout']],
-                [0x101, 'remap_file_pages', ['unsigned long start', 'unsigned long size', 'unsigned long prot', 'unsigned long pgoff', 'unsigned long flags']],
-                [0x102, 'set_tid_address', ['int *tidptr']],
-                [0x103, 'timer_create', ['clockid_t which_clock', 'struct sigevent *timer_event_spec', 'timer_t *created_timer_id']],
-                [0x104, 'timer_settime', ['timer_t timer_id', 'int flags', 'struct old_itimerspec32 *new', 'struct old_itimerspec32 *old']], # timer_settime32
-                [0x105, 'timer_gettime', ['timer_t timer_id', 'struct old_itimerspec32 *setting']],
-                [0x106, 'timer_getoverrun', ['timer_t timer_id']],
-                [0x107, 'timer_delete', ['timer_t timer_id']],
-                [0x108, 'clock_settime', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_settime32
-                [0x109, 'clock_gettime', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_gettime32
-                [0x10a, 'clock_getres', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_getres_time32
-                [0x10b, 'clock_nanosleep', ['clockid_t which_clock', 'int flags', 'struct old_timespec32 *rqtp', 'struct old_timespec32 *rmtp']], # clock_nanosleep_time32
-                [0x10c, 'statfs64', ['const char *pathname', 'size_t sz', 'struct statfs64 *buf']],
-                [0x10d, 'fstatfs64', ['unsigned int fd', 'size_t sz', 'struct statfs64 *buf']],
-                [0x10e, 'tgkill', ['pid_t tgid', 'pid_t pid', 'int sig']],
-                [0x10f, 'utimes', ['char *filename', 'struct old_timeval32 *utimes']], # utimes_time32
-                [0x110, 'fadvise64_64', ['int fd', '__u32 offset_low', '__u32 offset_high', '__u32 len_low', '__u32 len_high', 'int advice']], # ia32_fadvise64_64
-                #0x111, vserver # unimplemented
-                [0x112, 'mbind', ['unsigned long start', 'unsigned long len', 'unsigned long mode', 'const unsigned long *nmask', 'unsigned long maxnode', 'unsigned int flags']],
-                [0x113, 'get_mempolicy', ['int *policy', 'unsigned long *nmask', 'unsigned long maxnode', 'unsigned long addr', 'unsigned long flags']],
-                [0x114, 'set_mempolicy', ['int mode', 'const unsigned long *nmask', 'unsigned long maxnode']],
-                [0x115, 'mq_open', ['const char *u_name', 'int oflag', 'umode_t mode', 'struct mq_attr *u_attr']],
-                [0x116, 'mq_unlink', ['const char *u_name']],
-                [0x117, 'mq_timedsend', ['mqd_t mqdes', 'const char *u_msg_ptr', 'unsigned int msg_len', 'unsigned int msg_prio', 'const struct old_timespec32 *u_abs_timeout']], # mq_timedsend_time32
-                [0x118, 'mq_timedreceive', ['mqd_t mqdes', 'char *u_msg_ptr', 'unsigned int msg_len', 'unsigned int *u_msg_prio', 'const struct old_timespec32 *u_abs_timeout']], # mq_timedreceive_time32
-                [0x119, 'mq_notify', ['mqd_t mqdes', 'const struct sigevent *u_notification']],
-                [0x11a, 'mq_getsetattr', ['mqd_t mqdes', 'const struct mq_attr *u_mqstat', 'struct mq_attr *u_omqstat']],
-                [0x11b, 'kexec_load', ['unsigned long entry', 'unsigned long nr_segments', 'struct kexec_segment *segments', 'unsigned long flags']],
-                [0x11c, 'waitid', ['int which', 'pid_t upid', 'struct siginfo *infop', 'int options', 'struct rusage *ru']],
-                #0x11d, unused
-                [0x11e, 'add_key', ['const char *_type', 'const char *_description', 'const void *_payload', 'size_t plen', 'key_serial_t ringid']],
-                [0x11f, 'request_key', ['const char *_type', 'const char *_description', 'const char *_callout_info', 'key_serial_t destringid']],
-                [0x120, 'keyctl', ['int option', 'unsigned long arg2', 'unsigned long arg3', 'unsigned long arg4', 'unsigned long arg5']],
-                [0x121, 'ioprio_set', ['int which', 'int who', 'int ioprio']],
-                [0x122, 'ioprio_get', ['int which', 'int who']],
-                [0x123, 'inotify_init', []],
-                [0x124, 'inotify_add_watch', ['int fd', 'const char *pathname', 'u32 mask']],
-                [0x125, 'inotify_rm_watch', ['int fd', '__s32 wd']],
-                [0x126, 'migrate_pages', ['pid_t pid', 'unsigned long maxnode', 'const unsigned long *old_nodes', 'const unsigned long *new_nodes']],
-                [0x127, 'openat', ['int dfd', 'const char *filename', 'int flags', 'umode_t mode']],
-                [0x128, 'mkdirat', ['int dfd', 'const char *pathname', 'umode_t mode']],
-                [0x129, 'mknodat', ['int dfd', 'const char *filename', 'umode_t mode', 'unsigned int dev']],
-                [0x12a, 'fchownat', ['int dfd', 'const char *filename', 'uid_t user', 'gid_t group', 'int flag']],
-                [0x12b, 'futimesat', ['unsigned int dfd', 'const char *filename', 'struct old_timeval32 *t']], # futimesat_time32
-                [0x12c, 'fstatat64', ['unsigned int dfd', 'const char *filename', 'struct stat64 *statbuf', 'int flag']], # fstatat64
-                [0x12d, 'unlinkat', ['int dfd', 'const char *pathname', 'int flag']],
-                [0x12e, 'renameat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname']],
-                [0x12f, 'linkat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'int flags']],
-                [0x130, 'symlinkat', ['const char *oldname', 'int newdfd', 'const char *newname']],
-                [0x131, 'readlinkat', ['int dfd', 'const char *pathname', 'char *buf', 'int bufsiz']],
-                [0x132, 'fchmodat', ['int dfd', 'const char *filename', 'umode_t mode']],
-                [0x133, 'faccessat', ['int dfd', 'const char *filename', 'int mode']],
-                [0x134, 'pselect6', ['int n', 'fd_set *inp', 'fd_set *outp', 'fd_set *exp', 'struct old_timespec32 *tsp', 'void *sig']], # pselect6_time32
-                [0x135, 'ppoll', ['struct pollfd *ufds', 'unsigned int nfds', 'struct old_timespec32 *tsp', 'const sigset_t *sigmask', 'size_t sigsetsize']], # ppoll_time32
-                [0x136, 'unshare', ['unsigned long unshare_flags']],
-                [0x137, 'set_robust_list', ['struct robust_list_head *head', 'size_t len']],
-                [0x138, 'get_robust_list', ['int pid', 'struct robust_list_head **head_ptr', 'size_t *len_ptr']],
-                [0x139, 'splice', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
-                [0x13a, 'sync_file_range', ['int fd', 'unsigned int off_low', 'unsigned int off_hi', 'unsigned int n_low', 'unsigned int n_hi', 'unsigned int flags']], # ia32_sync_file_range
-                [0x13b, 'tee', ['int fdin', 'int fdout', 'size_t len', 'unsigned int flags']],
-                [0x13c, 'vmsplice', ['int fd', 'const struct iovec *uiov', 'unsigned long nr_segs', 'unsigned int flags']],
-                [0x13d, 'move_pages', ['pid_t pid', 'unsigned long nr_pages', 'const void **pages', 'const int *nodes', 'int *status', 'int flags']],
-                [0x13e, 'getcpu', ['unsigned *cpup', 'unsigned *nodep', 'struct getcpu_cache *unused']],
-                [0x13f, 'epoll_pwait', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'int timeout', 'const sigset_t *sigmask', 'size_t sigsetsize']],
-                [0x140, 'utimensat', ['unsigned int dfd', 'const char *filename', 'struct old_timespec32 *t', 'int flags']], # utimensat_time32
-                [0x141, 'signalfd', ['int ufd', 'sigset_t *user_mask', 'size_t sizemask']],
-                [0x142, 'timerfd_create', ['int clockid', 'int flags']],
-                [0x143, 'eventfd', ['unsigned int count']],
-                [0x144, 'fallocate', ['int fd', 'int mode', 'unsigned int offset_lo', 'unsigned int offset_hi', 'unsigned int len_lo', 'unsigned int len_hi']], # ia32_fallocate
-                [0x145, 'timerfd_settime', ['int ufd', 'int flags', 'const struct old_itimerspec32 *utmr', 'struct old_itimerspec32 *otmr']], # timerfd_settime32
-                [0x146, 'timerfd_gettime', ['int ufd', 'struct old_itimerspec32 *otmr']], # timerfd_gettime32
-                [0x147, 'signalfd4', ['int ufd', 'sigset_t *user_mask', 'size_t sizemask', 'int flags']],
-                [0x148, 'eventfd2', ['unsigned int count', 'int flags']],
-                [0x149, 'epoll_create1', ['int flags']],
-                [0x14a, 'dup3', ['unsigned int oldfd', 'unsigned int newfd', 'int flags']],
-                [0x14b, 'pipe2', ['int *fildes', 'int flags']],
-                [0x14c, 'inotify_init1', ['int flags']],
-                [0x14d, 'preadv', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h']],
-                [0x14e, 'pwritev', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h']],
-                [0x14f, 'rt_tgsigqueueinfo', ['pid_t tgid', 'pid_t pid', 'int sig', 'siginfo_t *uinfo']],
-                [0x150, 'perf_event_open', ['struct perf_event_attr *attr_uptr', 'pid_t pid', 'int cpu', 'int group_fd', 'unsigned long flags']],
-                [0x151, 'recvmmsg', ['int fd', 'struct mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags', 'struct old_timespec32 *timeout']], # recvmmsg_time32
-                [0x152, 'fanotify_init', ['unsigned int flags', 'unsigned int event_f_flags']],
-                [0x153, 'fanotify_mark', ['int fanotify_fd', 'unsigned int flags', '__u64 mask', 'int dfd', 'const char *pathname']],
-                [0x154, 'prlimit64', ['pid_t pid', 'unsigned int resource', 'const struct rlimit64 *new_rlim', 'struct rlimit64 *old_rlim']],
-                [0x155, 'name_to_handle_at', ['int dfd', 'const char *name', 'struct file_handle *handle', 'int *mnt_id', 'int flag']],
-                [0x156, 'open_by_handle_at', ['int mountdirfd', 'struct file_handle *handle', 'int flags']],
-                [0x157, 'clock_adjtime', ['clockid_t which_clock', 'struct old_timex32 *utp']], # clock_adjtime32
-                [0x158, 'syncfs', ['int fd']],
-                [0x159, 'sendmmsg', ['int fd', 'struct mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags']],
-                [0x15a, 'setns', ['int fd', 'int flags']],
-                [0x15b, 'process_vm_readv', ['pid_t pid', 'const struct iovec *lvec', 'unsigned long liovcnt', 'const struct iovec *rvec', 'unsigned long riovcnt', 'unsigned long flags']],
-                [0x15c, 'process_vm_writev', ['pid_t pid', 'const struct iovec *lvec', 'unsigned long liovcnt', 'const struct iovec *rvec', 'unsigned long riovcnt', 'unsigned long flags']],
-                [0x15d, 'kcmp', ['pid_t pid1', 'pid_t pid2', 'int type', 'unsigned long idx1', 'unsigned long idx2']],
-                [0x15e, 'finit_module', ['int fd', 'const char *uargs', 'int flags']],
-                [0x15f, 'sched_setattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int flags']],
-                [0x160, 'sched_getattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int usize', 'unsigned int flags']],
-                [0x161, 'renameat2', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'unsigned int flags']],
-                [0x162, 'seccomp', ['unsigned int op', 'unsigned int flags', 'void *uargs']],
-                [0x163, 'getrandom', ['char *buf', 'size_t count', 'unsigned int flags']],
-                [0x164, 'memfd_create', ['const char *uname', 'unsigned int flags']],
-                [0x165, 'bpf', ['int cmd', 'union bpf_attr *uattr', 'unsigned int size']],
-                [0x166, 'execveat', ['int fd', 'const char *filename', 'const char *const *argv', 'const char *const *envp', 'int flags']],
-                [0x167, 'socket', ['int family', 'int type', 'int protocol']],
-                [0x168, 'socketpair', ['int family', 'int type', 'int protocol', 'int *usockvec']],
-                [0x169, 'bind', ['int fd', 'struct sockaddr *umyaddr', 'int addrlen']],
-                [0x16a, 'connect', ['int fd', 'struct sockaddr *uservaddr', 'int addrlen']],
-                [0x16b, 'listen', ['int fd', 'int backlog']],
-                [0x16c, 'accept4', ['int fd', 'struct sockaddr *upeer_sockaddr', 'int *upeer_addrlen', 'int flags']],
-                [0x16d, 'getsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int *optlen']],
-                [0x16e, 'setsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int optlen']],
-                [0x16f, 'getsockname', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
-                [0x170, 'getpeername', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
-                [0x171, 'sendto', ['int fd', 'void *buff', 'size_t len', 'unsigned int flags', 'struct sockaddr *addr', 'int addr_len']],
-                [0x172, 'sendmsg', ['int fd', 'struct user_msghdr *msg', 'unsigned int flags']],
-                [0x173, 'recvfrom', ['int fd', 'void *ubuf', 'size_t size', 'unsigned int flags', 'struct sockaddr *addr', 'int *addr_len']],
-                [0x174, 'recvmsg', ['int fd', 'struct user_msghdr *msg', 'unsigned int flags']],
-                [0x175, 'shutdown', ['int fd', 'int how']],
-                [0x176, 'userfaultfd', ['int flags']],
-                [0x177, 'membarrier', ['int cmd', 'int flags']],
-                [0x178, 'mlock2', ['unsigned long start', 'size_t len', 'int flags']],
-                [0x179, 'copy_file_range', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
-                [0x17a, 'preadv2', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h', 'rwf_t flags']],
-                [0x17b, 'pwritev2', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h', 'rwf_t flags']],
-                [0x17c, 'pkey_mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot', 'int pkey']],
-                [0x17d, 'pkey_alloc', ['unsigned long flags', 'unsigned long init_val']],
-                [0x17e, 'pkey_free', ['int pkey']],
-                [0x17f, 'statx', ['int dfd', 'const char *filename', 'unsigned flags', 'unsigned int mask', 'struct statx *buffer']],
-                [0x180, 'arch_prctl', ['int option', 'unsigned long arg2']],
-                [0x181, 'io_pgetevents', ['aio_context_t ctx_id', 'long min_nr', 'long nr', 'struct io_event *events', 'struct __kernel_timespec *timeout', 'const struct __aio_sigset *usig']],
-                [0x182, 'rseq', ['struct rseq *rseq', 'u32 rseq_len', 'int flags', 'u32 sig']],
-                # 0x183-0x188, don't use
-                [0x189, 'semget', ['key_t key', 'int nsems', 'int semflg']],
-                [0x18a, 'semctl', ['int semid', 'int semnum', 'int cmd', 'unsigned long arg']],
-                [0x18b, 'shmget', ['key_t key', 'size_t size', 'int shmflg']],
-                [0x18c, 'shmctl', ['int shmid', 'int cmd', 'struct shmid_ds *buf']],
-                [0x18d, 'shmat', ['int shmid', 'char *shmaddr', 'int shmflg']],
-                [0x18e, 'shmdt', ['char *shmaddr']],
-                [0x18f, 'msgget', ['key_t key', 'int msgflg']],
-                [0x190, 'msgsnd', ['int msqid', 'struct msgbuf *msgp', 'size_t msgsz', 'int msgflg']],
-                [0x191, 'msgrcv', ['int msqid', 'struct msgbuf *msgp', 'size_t msgsz', 'long msgtyp', 'int msgflg']],
-                [0x192, 'msgctl', ['int msqid', 'int cmd', 'struct msqid_ds *buf']],
-                [0x193, 'clock_gettime_time64', ['const clockid_t which_clock', 'struct __kernel_timespec *tp']], # clock_gettime
-                [0x194, 'clock_settime_time64', ['const clockid_t which_clock', 'struct __kernel_timespec *tp']], # clock_settime
-                [0x195, 'clock_adjtime_time64', ['const clockid_t which_clock', 'struct __kernel_timex *utx']], # clock_adjtime
-                [0x196, 'clock_getres_time64', ['const clockid_t which_clock', 'struct __kernel_timespec *tp']], # clock_getres
-                [0x197, 'clock_nanosleep_time64', ['const clockid_t which_clock', 'int flags', 'const struct __kernel_timespec *rqtp', 'struct __kernel_timespec *rmtp']], # clock_nanosleep
-                [0x198, 'timer_gettime_time64', ['timer_t timer_id', 'struct __kernel_itimerspec *setting']], # timer_gettime
-                [0x199, 'timer_settime_time64', ['timer_t timer_id', 'int flags', 'const struct __kernel_itimerspec *new_setting', 'struct __kernel_itimerspec *old_setting']], # timer_settime
-                [0x19a, 'timerfd_gettime_time64', ['int ufd', 'struct __kernel_itimerspec *otmr']], # timerfd_gettime
-                [0x19b, 'timerfd_settime_time64', ['int ufd', 'int flags', 'const struct __kernel_itimerspec *utmr', 'struct __kernel_itimerspec *otmr']], # timerfd_settime
-                [0x19c, 'utimensat_time64', ['int dfd', 'const char *filename', 'struct __kernel_timespec *utimes', 'int flags']], # utimensat
-                [0x19d, 'pselect6_time64', ['int n', 'fd_set *inp', 'fd_set *outp', 'fd_set *exp', 'struct __kernel_timespec *tsp', 'void *sig']], # pselect6
-                [0x19e, 'ppoll_time64', ['struct pollfd *ufds', 'unsigned int nfds', 'struct __kernel_timespec *tsp', 'const sigset_t *sigmask', 'size_t sigsetsize']], # ppoll
-                #0x19f, unused
-                [0x1a0, 'io_pgetevents_time64', ['aio_context_t ctx_id', 'long min_nr', 'long nr', 'struct io_event *events', 'struct __kernel_timespec *timeout', 'const struct __aio_sigset *usig']], # io_pgetevents
-                [0x1a1, 'recvmmsg_time64', ['int fd', 'struct mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags', 'struct __kernel_timespec *timeout']], # recvmmsg
-                [0x1a2, 'mq_timedsend_time64', ['mqd_t mqdes', 'const char *u_msg_ptr', 'size_t msg_len', 'unsigned int msg_prio', 'const struct __kernel_timespec *u_abs_timeout']], # mq_timedsend
-                [0x1a3, 'mq_timedreceive_time64', ['mqd_t mqdes', 'char *u_msg_ptr', 'size_t msg_len', 'unsigned int *u_msg_prio', 'const struct __kernel_timespec *u_abs_timeout']], # mq_timedreceive
-                [0x1a4, 'semtimedop_time64', ['int semid', 'struct sembuf *tsops', 'unsigned int nsops', 'const struct __kernel_timespec *timeout']], # semtimedop
-                [0x1a5, 'rt_sigtimedwait_time64', ['const sigset_t *uthese', 'siginfo_t *uinfo', 'const struct __kernel_timespec *uts', 'size_t sigsetsize']], # rt_sigtimedwait
-                [0x1a6, 'futex_time64', ['u32 *uaddr', 'int op', 'u32 val', 'struct __kernel_timespec *utime', 'u32 *uaddr2', 'u32 val3']], # futex
-                [0x1a7, 'sched_rr_get_interval_time64', ['pid_t pid', 'struct __kernel_timespec *interval']], # sched_rr_get_interval
-                [0x1a8, 'pidfd_send_signal', ['int pidfd', 'int sig', 'siginfo_t *info', 'unsigned int flags']],
-                [0x1a9, 'io_uring_setup', ['u32 entries', 'struct io_uring_params *params']],
-                [0x1aa, 'io_uring_enter', ['unsigned int fd', 'u32 to_submit', 'u32 min_complete', 'u32 flags', 'const sigset_t *sig', 'size_t sigsz']],
-                [0x1ab, 'io_uring_register', ['unsigned int fd', 'unsigned int opcode', 'void *arg', 'unsigned int nr_args']],
-                [0x1ac, 'open_tree', ['int dfd', 'const char *filename', 'unsigned flags']],
-                [0x1ad, 'move_mount', ['int from_dfd', 'const char *from_pathname', 'int to_dfd', 'const char *to_pathname', 'unsigned int flags']],
-                [0x1ae, 'fsopen', ['const char *_fs_name', 'unsigned int flags']],
-                [0x1af, 'fsconfig', ['int fd', 'unsigned int cmd', 'const char *_key', 'const void *_value', 'int aux']],
-                [0x1b0, 'fsmount', ['int fs_fd', 'unsigned int flags', 'unsigned int attr_flags']],
-                [0x1b1, 'fspick', ['int, dfd', 'const char *path', 'unsigned int flags']],
-                [0x1b2, 'pidfd_open', ['pid_t pid', 'unsigned int flags']],
-                [0x1b3, 'clone3', ['struct clone_args *uargs', 'size_t size']],
-                [0x1b4, 'close_range', ['unsigned int fd', 'unsigned int max_fd', 'unsigned int flag']],
-                [0x1b5, 'openat2', ['int dfd', 'const char *filename', 'struct open_how *how', 'size_t usize']],
-                [0x1b6, 'pidfd_getfd', ['int pidfd', 'int fd', 'unsigned int flags']],
-                [0x1b7, 'faccessat2', ['int dfd', 'const char *filename', 'int mode', 'int flags']],
-                [0x1b8, 'process_madvise', ['int pidfd', 'const struct iovec *vec', 'size_t vlen', 'int behavior', 'unsigned int flags']],
-                [0x1b9, 'epoll_pwait2', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'const struct __kernel_timespec *timeout', 'const sigset_t *sigmask', 'size_t sigsetsize']],
-                [0x1ba, 'mount_setattr', ['int dfd', 'const char *path', 'unsigned int flags', 'struct mount_attr *uattr', 'size_t usize']],
-                [0x1bb, 'quotactl_fd', ['unsigned int fd', 'unsigned int cmd', 'qid_t id', 'void __user *addr']],
-                [0x1bc, 'landlock_create_ruleset', ['const struct landlock_ruleset_attr *const attr', 'const size_t size', 'const __u32 flags']],
-                [0x1bd, 'landlock_add_rule', ['const int ruleset_fd', 'const enum landlock_rule_type rule_type', 'const void *const rule_attr', 'const __u32 flags']],
-                [0x1be, 'landlock_restrict_self', ['const int ruleset_fd', 'const __u32 flags']],
-                [0x1bf, 'memfd_secret', ['unsigned int, flags']],
-                [0x1c0, 'process_mrelease', ['int pidfd', 'unsigned int flags']],
-                [0x1c1, 'futex_waitv', ['struct futex_waitv *waiters', 'unsigned int nr_futexes', 'unsigned int flags', 'struct __kernel_timespec *timeout', 'clockid_t clockid']],
-                [0x1c2, 'set_mempolicy_home_node', ['unsigned long start', 'unsigned long len', 'unsigned long home_node', 'unsigned long flags']],
-            ]
-
-        elif arch == "ARM64":
-            register_list = ["$x0", "$x1", "$x2", "$x3", "$x4", "$x5"]
-            # arch/arm64/include/asm/unistd.h
-            # arch/arm64/include/uapi/asm/unistd.h
-            # include/uapi/asm-generic/unistd.h
-            syscall_list = [
-                [0x000, 'io_setup', ['unsigned nr_events', 'aio_context_t *ctxp']],
-                [0x001, 'io_destroy', ['aio_context_t ctx']],
-                [0x002, 'io_submit', ['aio_context_t ctx_id', 'long nr', 'struct iocb **iocbpp']],
-                [0x003, 'io_cancel', ['aio_context_t ctx_id', 'struct iocb *iocb', 'struct io_event *result']],
-                [0x004, 'io_getevents', ['aio_context_t ctx_id', 'long min_nr', 'long nr', 'struct io_event *events', 'struct __kernel_timespec *timeout']],
-                [0x005, 'setxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-                [0x006, 'lsetxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-                [0x007, 'fsetxattr', ['int fd', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-                [0x008, 'getxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
-                [0x009, 'lgetxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
-                [0x00a, 'fgetxattr', ['int fd', 'const char *name', 'void *value', 'size_t size']],
-                [0x00b, 'listxattr', ['const char *pathname', 'char *list', 'size_t size']],
-                [0x00c, 'llistxattr', ['const char *pathname', 'char *list', 'size_t size']],
-                [0x00d, 'flistxattr', ['int fd', 'char *list', 'size_t size']],
-                [0x00e, 'removexattr', ['const char *pathname', 'const char *name']],
-                [0x00f, 'lremovexattr', ['const char *pathname', 'const char *name']],
-                [0x010, 'fremovexattr', ['int fd', 'const char *name']],
-                [0x011, 'getcwd', ['char *buf', 'unsigned long size']],
-                [0x012, 'lookup_dcookie', ['u64 cookie64', 'char *buf', 'size_t len']],
-                [0x013, 'eventfd2', ['unsigned int count', 'int flags']],
-                [0x014, 'epoll_create1', ['int flags']],
-                [0x015, 'epoll_ctl', ['int epfd', 'int op', 'int fd', 'struct epoll_event *event']],
-                [0x016, 'epoll_pwait', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'int timeout', 'const sigset_t *sigmask', 'size_t sigsetsize']],
-                [0x017, 'dup', ['unsigned int fildes']],
-                [0x018, 'dup3', ['unsigned int oldfd', 'unsigned int newfd', 'int flags']],
-                [0x019, 'fcntl', ['unsigned int fd', 'unsigned int cmd', 'unsigned long arg']],
-                [0x01a, 'inotify_init1', ['int flags']],
-                [0x01b, 'inotify_add_watch', ['int fd', 'const char *pathname', 'u32 mask']],
-                [0x01c, 'inotify_rm_watch', ['int fd', '__s32 wd']],
-                [0x01d, 'ioctl', ['unsigned int fd', 'unsigned int cmd', 'unsigned long arg']],
-                [0x01e, 'ioprio_set', ['int which', 'int who', 'int ioprio']],
-                [0x01f, 'ioprio_get', ['int which', 'int who']],
-                [0x020, 'flock', ['unsigned int fd', 'unsigned int cmd']],
-                [0x021, 'mknodat', ['int dfd', 'const char *filename', 'umode_t mode', 'unsigned int dev']],
-                [0x022, 'mkdirat', ['int dfd', 'const char *pathname', 'umode_t mode']],
-                [0x023, 'unlinkat', ['int dfd', 'const char *pathname', 'int flag']],
-                [0x024, 'symlinkat', ['const char *oldname', 'int newdfd', 'const char *newname']],
-                [0x025, 'linkat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'int flags']],
-                [0x026, 'renameat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname']],
-                [0x027, 'umount2', ['char *name', 'int flags']],
-                [0x028, 'mount', ['char *dev_name', 'char *dir_name', 'char *type', 'unsigned long flags', 'void *data']],
-                [0x029, 'pivot_root', ['const char *new_root', 'const char *put_old']],
-                #0x02a, nfsservctl # deleted from kernel 3.1
-                [0x02b, 'statfs', ['const char *pathname', 'struct statfs *buf']],
-                [0x02c, 'fstatfs', ['unsigned int fd', 'struct statfs *buf']],
-                [0x02d, 'truncate', ['const char *path', 'long length']],
-                [0x02e, 'ftruncate', ['unsigned int fd', 'unsigned long length']],
-                [0x02f, 'fallocate', ['int fd', 'int mode', 'loff_t offset', 'loff_t len']],
-                [0x030, 'faccessat', ['int dfd', 'const char *filename', 'int mode']],
-                [0x031, 'chdir', ['const char *filename']],
-                [0x032, 'fchdir', ['unsigned int fd']],
-                [0x033, 'chroot', ['const char *filename']],
-                [0x034, 'fchmod', ['unsigned int fd', 'umode_t mode']],
-                [0x035, 'fchmodat', ['int dfd', 'const char *filename', 'umode_t mode']],
-                [0x036, 'fchownat', ['int dfd', 'const char *filename', 'uid_t user', 'gid_t group', 'int flag']],
-                [0x037, 'fchown', ['unsigned int fd', 'uid_t user', 'gid_t group']],
-                [0x038, 'openat', ['int dfd', 'const char *filename', 'int flags', 'umode_t mode']],
-                [0x039, 'close', ['unsigned int fd']],
-                [0x03a, 'vhangup', []],
-                [0x03b, 'pipe2', ['int *fildes', 'int flags']],
-                [0x03c, 'quotactl', ['unsigned int cmd', 'const char *special', 'qid_t id', 'void *addr']],
-                [0x03d, 'getdents64', ['unsigned int fd', 'struct linux_dirent64 *dirent', 'unsigned int count']],
-                [0x03e, 'lseek', ['unsigned int fd', 'off_t offset', 'unsigned int whence']],
-                [0x03f, 'read', ['unsigned int fd', 'char *buf', 'size_t count']],
-                [0x040, 'write', ['unsigned int fd', 'const char *buf', 'size_t count']],
-                [0x041, 'readv', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen']],
-                [0x042, 'writev', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen']],
-                [0x043, 'pread64', ['unsigned int fd', 'char *buf', 'size_t count', 'loff_t pos']],
-                [0x044, 'pwrite64', ['unsigned int fd', 'const char *buf', 'size_t count', 'loff_t pos']],
-                [0x045, 'preadv', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h']],
-                [0x046, 'pwritev', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h']],
-                [0x047, 'sendfile', ['int out_fd', 'int in_fd', 'off_t *offset', 'size_t count']], # sendfile64
-                [0x048, 'pselect6', ['int n', 'fd_set *inp', 'fd_set *outp', 'fd_set *exp', 'struct __kernel_timespec *tsp', 'void *sig']],
-                [0x049, 'ppoll', ['struct pollfd *ufds', 'unsigned int nfds', 'struct __kernel_timespec *tsp', 'const sigset_t *sigmask', 'size_t sigsetsize']],
-                [0x04a, 'signalfd4', ['int ufd', 'sigset_t *user_mask', 'size_t sizemask', 'int flags']],
-                [0x04b, 'vmsplice', ['int fd', 'const struct iovec *uiov', 'unsigned long nr_segs', 'unsigned int flags']],
-                [0x04c, 'splice', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
-                [0x04d, 'tee', ['int fdin', 'int fdout', 'size_t len', 'unsigned int flags']],
-                [0x04e, 'readlinkat', ['int dfd', 'const char *pathname', 'char *buf', 'int bufsiz']],
-                [0x04f, 'fstatat', ['int dfd', 'const char *filename', 'struct stat *statbuf', 'int flag']], # newfstatat
-                [0x050, 'fstat', ['unsigned int fd', 'struct stat *statbuf']], # newfstat
-                [0x051, 'sync', []],
-                [0x052, 'fsync', ['unsigned int fd']],
-                [0x053, 'fdatasync', ['unsigned int fd']],
-                [0x054, 'sync_file_range', ['int fd', 'loff_t offset', 'loff_t nbytes', 'unsigned int flags']], # sync_file_range2 is unimplemented
-                [0x055, 'timerfd_create', ['int clockid', 'int flags']],
-                [0x056, 'timerfd_settime', ['int ufd', 'int flags', 'const struct __kernel_itimerspec *utmr', 'struct __kernel_itimerspec *otmr']],
-                [0x057, 'timerfd_gettime', ['int ufd', 'struct __kernel_itimerspec *otmr']],
-                [0x058, 'utimensat', ['int dfd', 'const char *filename', 'struct __kernel_timespec *utimes', 'int flags']],
-                [0x059, 'acct', ['const char *name']],
-                [0x05a, 'capget', ['cap_user_header_t header', 'cap_user_data_t dataptr']],
-                [0x05b, 'capset', ['cap_user_header_t header', 'const cap_user_data_t data']],
-                [0x05c, 'personality', ['unsigned int personality']],
-                [0x05d, 'exit', ['int error_code']],
-                [0x05e, 'exit_group', ['int error_code']],
-                [0x05f, 'waitid', ['int which', 'pid_t upid', 'struct siginfo *infop', 'int options', 'struct rusage *ru']],
-                [0x060, 'set_tid_address', ['int *tidptr']],
-                [0x061, 'unshare', ['unsigned long unshare_flags']],
-                [0x062, 'futex', ['u32 *uaddr', 'int op', 'u32 val', 'struct __kernel_timespec *utime', 'u32 *uaddr2', 'u32 val3']],
-                [0x063, 'set_robust_list', ['struct robust_list_head *head', 'size_t len']],
-                [0x064, 'get_robust_list', ['int pid', 'struct robust_list_head **head_ptr', 'size_t *len_ptr']],
-                [0x065, 'nanosleep', ['struct __kernel_timespec *rqtp', 'struct __kernel_timespec *rmtp']],
-                [0x066, 'getitimer', ['int which', 'struct __kernel_old_itimerval *value']],
-                [0x067, 'setitimer', ['int which', 'struct __kernel_old_itimerval *value', 'struct __kernel_old_itimerval *ovalue']],
-                [0x068, 'kexec_load', ['unsigned long entry', 'unsigned long nr_segments', 'struct kexec_segment *segments', 'unsigned long flags']],
-                [0x069, 'init_module', ['void *umod', 'unsigned long len', 'const char *uargs']],
-                [0x06a, 'delete_module', ['const char *name_user', 'unsigned int flags']],
-                [0x06b, 'timer_create', ['clockid_t which_clock', 'struct sigevent *timer_event_spec', 'timer_t *created_timer_id']],
-                [0x06c, 'timer_gettime', ['timer_t timer_id', 'struct __kernel_itimerspec *setting']],
-                [0x06d, 'timer_getoverrun', ['timer_t timer_id']],
-                [0x06e, 'timer_settime', ['timer_t timer_id', 'int flags', 'const struct __kernel_itimerspec *new_setting', 'struct __kernel_itimerspec *old_setting']],
-                [0x06f, 'timer_delete', ['timer_t timer_id']],
-                [0x070, 'clock_settime', ['clockid_t which_clock', 'const struct __kernel_timespec *tp']],
-                [0x071, 'clock_gettime', ['clockid_t which_clock', 'struct __kernel_timespec *tp']],
-                [0x072, 'clock_getres', ['clockid_t which_clock', 'struct __kernel_timespec *tp']],
-                [0x073, 'clock_nanosleep', ['clockid_t which_clock', 'int flags', 'const struct __kernel_timespec *rqtp', 'struct __kernel_timespec *rmtp']],
-                [0x074, 'syslog', ['int type', 'char *buf', 'int len']],
-                [0x075, 'ptrace', ['long request', 'long pid', 'unsigned long addr', 'unsigned long data']],
-                [0x076, 'sched_setparam', ['pid_t pid', 'struct sched_param *param']],
-                [0x077, 'sched_setscheduler', ['pid_t pid', 'int policy', 'struct sched_param *param']],
-                [0x078, 'sched_getscheduler', ['pid_t pid']],
-                [0x079, 'sched_getparam', ['pid_t pid', 'struct sched_param *param']],
-                [0x07a, 'sched_setaffinity', ['pid_t pid', 'unsigned int len', 'unsigned long *user_mask_ptr']],
-                [0x07b, 'sched_getaffinity', ['pid_t pid', 'unsigned int len', 'unsigned long *user_mask_ptr']],
-                [0x07c, 'sched_yield', []],
-                [0x07d, 'sched_get_priority_max', ['int policy']],
-                [0x07e, 'sched_get_priority_min', ['int policy']],
-                [0x07f, 'sched_rr_get_interval', ['pid_t pid', 'struct __kernel_timespec *interval']],
-                [0x080, 'restart_syscall', []],
-                [0x081, 'kill', ['pid_t pid', 'int sig']],
-                [0x082, 'tkill', ['pid_t pid', 'int sig']],
-                [0x083, 'tgkill', ['pid_t tgid', 'pid_t pid', 'int sig']],
-                [0x084, 'sigaltstack', ['const stack_t *uss', 'stack_t *uoss']],
-                [0x085, 'rt_sigsuspend', ['sigset_t *unewset', 'size_t sigsetsize']],
-                [0x086, 'rt_sigaction', ['int sig', 'const struct sigaction *act', 'struct sigaction *oact', 'size_t sigsetsize']],
-                [0x087, 'rt_sigprocmask', ['int how', 'sigset_t *nset', 'sigset_t *oset', 'size_t sigsetsize']],
-                [0x088, 'rt_sigpending', ['sigset_t *uset', 'size_t sigsetsize']],
-                [0x089, 'rt_sigtimedwait', ['const sigset_t *uthese', 'siginfo_t *uinfo', 'const struct __kernel_timespec *uts', 'size_t sigsetsize']],
-                [0x08a, 'rt_sigqueueinfo', ['pid_t pid', 'int sig', 'siginfo_t *uinfo']],
-                [0x08b, 'rt_sigreturn', []],
-                [0x08c, 'setpriority', ['int which', 'int who', 'int niceval']],
-                [0x08d, 'getpriority', ['int which', 'int who']],
-                [0x08e, 'reboot', ['int magic1', 'int magic2', 'unsigned int cmd', 'void *arg']],
-                [0x08f, 'setregid', ['gid_t rgid', 'gid_t egid']],
-                [0x090, 'setgid', ['gid_t gid']],
-                [0x091, 'setreuid', ['uid_t ruid', 'uid_t euid']],
-                [0x092, 'setuid', ['uid_t uid']],
-                [0x093, 'setresuid', ['uid_t ruid', 'uid_t euid', 'uid_t suid']],
-                [0x094, 'getresuid', ['uid_t *ruidp', 'uid_t *euidp', 'uid_t *suidp']],
-                [0x095, 'setresgid', ['gid_t rgid', 'gid_t egid', 'gid_t sgid']],
-                [0x096, 'getresgid', ['gid_t *rgidp', 'gid_t *egidp', 'gid_t *sgidp']],
-                [0x097, 'setfsuid', ['uid_t uid']],
-                [0x098, 'setfsgid', ['gid_t gid']],
-                [0x099, 'times', ['struct tms *tbuf']],
-                [0x09a, 'setpgid', ['pid_t pid', 'pid_t pgid']],
-                [0x09b, 'getpgid', ['pid_t pid']],
-                [0x09c, 'getsid', ['pid_t pid']],
-                [0x09d, 'setsid', []],
-                [0x09e, 'getgroups', ['int gidsetsize', 'gid_t *grouplist']],
-                [0x09f, 'setgroups', ['int gidsetsize', 'gid_t *grouplist']],
-                [0x0a0, 'uname', ['struct new_utsname *name']], # newuname
-                [0x0a1, 'sethostname', ['char *name', 'int len']],
-                [0x0a2, 'setdomainname', ['char *name', 'int len']],
-                [0x0a3, 'getrlimit', ['unsigned int resource', 'struct rlimit *rlim']],
-                [0x0a4, 'setrlimit', ['unsigned int resource', 'struct rlimit *rlim']],
-                [0x0a5, 'getrusage', ['int who', 'struct rusage *ru']],
-                [0x0a6, 'umask', ['int mask']],
-                [0x0a7, 'prctl', ['int option', 'unsigned long arg2', 'unsigned long arg3', 'unsigned long arg4', 'unsigned long arg5']],
-                [0x0a8, 'getcpu', ['unsigned *cpup', 'unsigned *nodep', 'struct getcpu_cache *unused']],
-                [0x0a9, 'gettimeofday', ['struct __kernel_old_timeval *tv', 'struct timezone *tz']],
-                [0x0aa, 'settimeofday', ['struct __kernel_old_timeval *tv', 'struct timezone *tz']],
-                [0x0ab, 'adjtimex', ['struct __kernel_timex *txc_p']],
-                [0x0ac, 'getpid', []],
-                [0x0ad, 'getppid', []],
-                [0x0ae, 'getuid', []],
-                [0x0af, 'geteuid', []],
-                [0x0b0, 'getgid', []],
-                [0x0b1, 'getegid', []],
-                [0x0b2, 'gettid', []],
-                [0x0b3, 'sysinfo', ['struct sysinfo *info']],
-                [0x0b4, 'mq_open', ['const char *u_name', 'int oflag', 'umode_t mode', 'struct mq_attr *u_attr']],
-                [0x0b5, 'mq_unlink', ['const char *u_name']],
-                [0x0b6, 'mq_timedsend', ['mqd_t mqdes', 'const char *u_msg_ptr', 'size_t msg_len', 'unsigned int msg_prio', 'const struct __kernel_timespec *u_abs_timeout']],
-                [0x0b7, 'mq_timedreceive', ['mqd_t mqdes', 'char *u_msg_ptr', 'size_t msg_len', 'unsigned int *msg_prio', 'const struct __kernel_timespec *u_abs_timeout']],
-                [0x0b8, 'mq_notify', ['mqd_t mqdes', 'const struct sigevent *u_notification']],
-                [0x0b9, 'mq_getsetattr', ['mqd_t mqdes', 'const struct mq_attr *u_mqstat', 'struct mq_attr *u_omqstat']],
-                [0x0ba, 'msgget', ['key_t key', 'int msgflg']],
-                [0x0bb, 'msgctl', ['int msqid', 'int cmd', 'struct msqid_ds *buf']],
-                [0x0bc, 'msgrcv', ['int msqid', 'struct msgbuf *msgp', 'size_t msgsz', 'long msgtyp', 'int msgflg']],
-                [0x0bd, 'msgsnd', ['int msqid', 'struct msgbuf *msgp', 'size_t msgsz', 'int msgflg']],
-                [0x0be, 'semget', ['key_t key', 'int nsems', 'int semflg']],
-                [0x0bf, 'semctl', ['int semid', 'int semnum', 'int cmd', 'unsigned long arg']],
-                [0x0c0, 'semtimedop', ['int semid', 'struct sembuf *tsops', 'unsigned int nsops', 'const struct __kernel_timespec *timeout']],
-                [0x0c1, 'semop', ['int semid', 'struct sembuf *tsops', 'unsigned nsops']],
-                [0x0c2, 'shmget', ['key_t key', 'size_t size', 'int shmflg']],
-                [0x0c3, 'shmctl', ['int shmid', 'int cmd', 'struct shmid_ds *buf']],
-                [0x0c4, 'shmat', ['int shmid', 'char *shmaddr', 'int shmflg']],
-                [0x0c5, 'shmdt', ['char *shmaddr']],
-                [0x0c6, 'socket', ['int family', 'int type', 'int protocol']],
-                [0x0c7, 'socketpair', ['int family', 'int type', 'int protocol', 'int *usockvec']],
-                [0x0c8, 'bind', ['int fd', 'struct sockaddr *umyaddr', 'int addrlen']],
-                [0x0c9, 'listen', ['int fd', 'int backlog']],
-                [0x0ca, 'accept', ['int fd', 'struct sockaddr *upeer_sockaddr', 'int *upeer_addrlen']],
-                [0x0cb, 'connect', ['int fd', 'struct sockaddr *uservaddr', 'int addrlen']],
-                [0x0cc, 'getsockname', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
-                [0x0cd, 'getpeername', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
-                [0x0ce, 'sendto', ['int fd', 'void *buff', 'size_t len', 'unsigned int flags', 'struct sockaddr *addr', 'int addr_len']],
-                [0x0cf, 'recvfrom', ['int fd', 'void *ubuf', 'size_t size', 'unsigned int flags', 'struct sockaddr *addr', 'int *addr_len']],
-                [0x0d0, 'setsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int optlen']],
-                [0x0d1, 'getsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int *optlen']],
-                [0x0d2, 'shutdown', ['int fd', 'int how']],
-                [0x0d3, 'sendmsg', ['int fd', 'struct user_msghdr *msg', 'unsigned int flags']],
-                [0x0d4, 'recvmsg', ['int fd', 'struct user_msghdr *msg', 'unsigned int flags']],
-                [0x0d5, 'readahead', ['int fd', 'loff_t offset', 'size_t count']],
-                [0x0d6, 'brk', ['unsigned long brk']],
-                [0x0d7, 'munmap', ['unsigned long addr', 'size_t len']],
-                [0x0d8, 'mremap', ['unsigned long addr', 'unsigned long old_len', 'unsigned long new_len', 'unsigned long flags', 'unsigned long new_addr']],
-                [0x0d9, 'add_key', ['const char *_type', 'const char *_description', 'const void *_payload', 'size_t plen', 'key_serial_t ringid']],
-                [0x0da, 'request_key', ['const char *_type', 'const char *_description', 'const char *_callout_info', 'key_serial_t destringid']],
-                [0x0db, 'keyctl', ['int option', 'unsigned long arg2', 'unsigned long arg3', 'unsigned long arg4', 'unsigned long arg5']],
-                [0x0dc, 'clone', ['unsigned long clone_flags', 'unsigned long newsp', 'int *parent_tidptr', 'unsigned long tls', 'int *child_tidptr']],
-                [0x0dd, 'execve', ['const char *filename', 'const char *const *argv', 'const char *const *envp']],
-                [0x0de, 'mmap', ['unsigned long addr', 'unsigned long len', 'unsigned long prot', 'unsigned long flags', 'unsigned long fd', 'unsigned long off']],
-                [0x0df, 'fadvise64', ['int fd', 'loff_t offset', 'loff_t len', 'int advice']], # fadvise64_64
-                [0x0e0, 'swapon', ['const char *specialfile', 'int swap_flags']],
-                [0x0e1, 'swapoff', ['const char *specialfile']],
-                [0x0e2, 'mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot']],
-                [0x0e3, 'msync', ['unsigned long start', 'size_t len', 'int flags']],
-                [0x0e4, 'mlock', ['unsigned long start', 'size_t len']],
-                [0x0e5, 'munlock', ['unsigned long start', 'size_t len']],
-                [0x0e6, 'mlockall', ['int flags']],
-                [0x0e7, 'munlockall', []],
-                [0x0e8, 'mincore', ['unsigned long start', 'size_t len', 'unsigned char *vec']],
-                [0x0e9, 'madvise', ['unsigned long start', 'size_t len_in', 'int behavior']],
-                [0x0ea, 'remap_file_pages', ['unsigned long start', 'unsigned long size', 'unsigned long prot', 'unsigned long pgoff', 'unsigned long flags']],
-                [0x0eb, 'mbind', ['unsigned long start', 'unsigned long len', 'unsigned long mode', 'const unsigned long *nmask', 'unsigned long maxnode', 'unsigned flags']],
-                [0x0ec, 'get_mempolicy', ['int *policy', 'unsigned long *nmask', 'unsigned long maxnode', 'unsigned long addr', 'unsigned long flags']],
-                [0x0ed, 'set_mempolicy', ['int mode', 'const unsigned long *nmask', 'unsigned long maxnode']],
-                [0x0ee, 'migrate_pages', ['pid_t pid', 'unsigned long maxnode', 'const unsigned long *old_nodes', 'const unsigned long *new_nodes']],
-                [0x0ef, 'move_pages', ['pid_t pid', 'unsigned long nr_pages', 'const void **pages', 'const int *nodes', 'int *status', 'int flags']],
-                [0x0f0, 'rt_tgsigqueueinfo', ['pid_t tgid', 'pid_t pid', 'int sig', 'siginfo_t *uinfo']],
-                [0x0f1, 'perf_event_open', ['struct perf_event_attr *attr_uptr', 'pid_t pid', 'int cpu', 'int group_fd', 'unsigned long flags']],
-                [0x0f2, 'accept4', ['int fd', 'struct sockaddr *upeer_sockaddr', 'int *upeer_addrlen', 'int flags']],
-                [0x0f3, 'recvmmsg', ['int fd', 'struct mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags', 'struct __kernel_timespec *timeout']],
-                [0x0f4, 'arch_specific_syscall', []],
-                #0x0f5-0x103, unused
-                [0x104, 'wait4', ['pid_t upid', 'int *stat_addr', 'int options', 'struct rusage *ru']],
-                [0x105, 'prlimit64', ['pid_t pid', 'unsigned int resource', 'const struct rlimit64 *new_rlim', 'struct rlimit64 *old_rlim']],
-                [0x106, 'fanotify_init', ['unsigned int flags', 'unsigned int event_f_flags']],
-                [0x107, 'fanotify_mark', ['int fanotify_fd', 'unsigned int flags', '__u64 mask', 'int dfd', 'const char *pathname']],
-                [0x108, 'name_to_handle_at', ['int dfd', 'const char *name', 'struct file_handle *handle', 'int *mnt_id', 'int flag']],
-                [0x109, 'open_by_handle_at', ['int mountdirfd', 'struct file_handle *handle', 'int flags']],
-                [0x10a, 'clock_adjtime', ['clockid_t which_clock', 'struct __kernel_timex *tx']],
-                [0x10b, 'syncfs', ['int fd']],
-                [0x10c, 'setns', ['int fd', 'int flags']],
-                [0x10d, 'sendmmsg', ['int fd', 'struct mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags']],
-                [0x10e, 'process_vm_readv', ['pid_t pid', 'const struct iovec *lvec', 'unsigned long liovcnt', 'const struct iovec *rvec', 'unsigned long riovcnt', 'unsigned long flags']],
-                [0x10f, 'process_vm_writev', ['pid_t pid', 'const struct iovec *lvec', 'unsigned long liovcnt', 'const struct iovec *rvec', 'unsigned long riovcnt', 'unsigned long flags']],
-                [0x110, 'kcmp', ['pid_t pid1', 'pid_t pid2', 'int type', 'unsigned long idx1', 'unsigned long idx2']],
-                [0x111, 'finit_module', ['int fd', 'const char *uargs', 'int flags']],
-                [0x112, 'sched_setattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int flags']],
-                [0x113, 'sched_getattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int usize', 'unsigned int flags']],
-                [0x114, 'renameat2', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'unsigned int flags']],
-                [0x115, 'seccomp', ['unsigned int op', 'unsigned int flags', 'void *uargs']],
-                [0x116, 'getrandom', ['char *buf', 'size_t count', 'unsigned int flags']],
-                [0x117, 'memfd_create', ['const char *uname', 'unsigned int flags']],
-                [0x118, 'bpf', ['int cmd', 'union bpf_attr *uattr', 'unsigned int size']],
-                [0x119, 'execveat', ['int fd', 'const char *filename', 'const char *const *argv', 'const char *const *envp', 'int flags']],
-                [0x11a, 'userfaultfd', ['int flags']],
-                [0x11b, 'membarrier', ['int cmd', 'int flags']],
-                [0x11c, 'mlock2', ['unsigned long start', 'size_t len', 'int flags']],
-                [0x11d, 'copy_file_range', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
-                [0x11e, 'preadv2', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h', 'rwf_t flags']],
-                [0x11f, 'pwritev2', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h', 'rwf_t flags']],
-                [0x120, 'pkey_mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot', 'int pkey']],
-                [0x121, 'pkey_alloc', ['unsigned long flags', 'unsigned long init_val']],
-                [0x122, 'pkey_free', ['int pkey']],
-                [0x123, 'statx', ['int dfd', 'const char *filename', 'unsigned flags', 'unsigned int mask', 'struct statx *buffer']],
-                [0x124, 'io_pgetevents', ['aio_context_t ctx_id', 'long min_nr', 'long nr', 'struct io_event *events', 'struct __kernel_timespec *timeout', 'const struct __aio_sigset *usig']],
-                [0x125, 'rseq', ['struct rseq *rseq', 'u32 rseq_len', 'int flags', 'u32 sig']],
-                [0x126, 'kexec_file_load', ['int kernel_fd', 'int initrd_fd', 'unsigned long cmdline_len', 'const char *cmdline_ptr', 'unsigned long flags']],
-                #0x127-0x1a7, unused
-                [0x1a8, 'pidfd_send_signal', ['int pidfd', 'int sig', 'siginfo_t *info', 'unsigned int flags']],
-                [0x1a9, 'io_uring_setup', ['u32 entries', 'struct io_uring_params *params']],
-                [0x1aa, 'io_uring_enter', ['unsigned int fd', 'u32 to_submit', 'u32 min_complete', 'u32 flags', 'const sigset_t *sig', 'size_t sigsz']],
-                [0x1ab, 'io_uring_register', ['unsigned int fd', 'unsigned int opcode', 'void *arg', 'unsigned int nr_args']],
-                [0x1ac, 'open_tree', ['int dfd', 'const char *filename', 'unsigned flags']],
-                [0x1ad, 'move_mount', ['int from_dfd', 'const char *from_pathname', 'int to_dfd', 'const char *to_pathname', 'unsigned int flags']],
-                [0x1ae, 'fsopen', ['const char *_fs_name', 'unsigned int flags']],
-                [0x1af, 'fsconfig', ['int fd', 'unsigned int cmd', 'const char *_key', 'const void *_value', 'int aux']],
-                [0x1b0, 'fsmount', ['int fs_fd', 'unsigned int flags', 'unsigned int attr_flags']],
-                [0x1b1, 'fspick', ['int, dfd', 'const char *path', 'unsigned int flags']],
-                [0x1b2, 'pidfd_open', ['pid_t pid', 'unsigned int flags']],
-                [0x1b3, 'clone3', ['struct clone_args *uargs', 'size_t size']],
-                [0x1b4, 'close_range', ['unsigned int fd', 'unsigned int max_fd', 'unsigned int flag']],
-                [0x1b5, 'openat2', ['int dfd', 'const char *filename', 'struct open_how *how', 'size_t usize']],
-                [0x1b6, 'pidfd_getfd', ['int pidfd', 'int fd', 'unsigned int flags']],
-                [0x1b7, 'faccessat2', ['int dfd', 'const char *filename', 'int mode', 'int flags']],
-                [0x1b8, 'process_madvise', ['int pidfd', 'const struct iovec *vec', 'size_t vlen', 'int behavior', 'unsigned int flags']],
-                [0x1b9, 'epoll_pwait2', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'const struct __kernel_timespec *timeout', 'const sigset_t *sigmask', 'size_t sigsetsize']],
-                [0x1ba, 'mount_setattr', ['int dfd', 'const char *path', 'unsigned int flags', 'struct mount_attr *uattr', 'size_t usize']],
-                [0x1bb, 'quotactl_fd', ['unsigned int fd', 'unsigned int cmd', 'qid_t id', 'void __user *addr']],
-                [0x1bc, 'landlock_create_ruleset', ['const struct landlock_ruleset_attr *const attr', 'const size_t size', 'const __u32 flags']],
-                [0x1bd, 'landlock_add_rule', ['const int ruleset_fd', 'const enum landlock_rule_type rule_type', 'const void *const rule_attr', 'const __u32 flags']],
-                [0x1be, 'landlock_restrict_self', ['const int ruleset_fd', 'const __u32 flags']],
-                [0x1bf, 'memfd_secret', ['unsigned int, flags']],
-                [0x1c0, 'process_mrelease', ['int pidfd', 'unsigned int flags']],
-                [0x1c1, 'futex_waitv', ['struct futex_waitv *waiters', 'unsigned int nr_futexes', 'unsigned int flags', 'struct __kernel_timespec *timeout', 'clockid_t clockid']],
-                [0x1c2, 'set_mempolicy_home_node', ['unsigned long start', 'unsigned long len', 'unsigned long home_node', 'unsigned long flags']],
-            ]
-
-        elif arch == "ARM" and mode == "32":
-            register_list = ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6"]
-            # arch/arm64/include/asm/unistd.h
-            # arch/arm64/include/asm/unistd32.h
-            syscall_list = [
-                [0x000, 'restart_syscall', []],
-                [0x001, 'exit', ['int error_code']],
-                [0x002, 'fork', []],
-                [0x003, 'read', ['unsigned int fd', 'char *buf', 'size_t count']],
-                [0x004, 'write', ['unsigned int fd', 'const char *buf', 'size_t count']],
-                [0x005, 'open', ['const char *filename', 'int flags', 'umode_t mode']], # compat
-                [0x006, 'close', ['unsigned int fd']],
-                #0x007, waitpid # unimplemented
-                [0x008, 'creat', ['const char *pathname', 'umode_t mode']],
-                [0x009, 'link', ['const char *oldname', 'const char *newname']],
-                [0x00a, 'unlink', ['const char *pathname']],
-                [0x00b, 'execve', ['const char *filename', 'const compat_uptr_t *argv', 'const compat_uptr_t *envp']], # compat
-                [0x00c, 'chdir', ['const char *filename']],
-                #0x00d, time # unimplemented
-                [0x00e, 'mknod', ['const char *filename', 'umode_t mode', 'unsigned dev']],
-                [0x00f, 'chmod', ['const char *filename', 'umode_t mode']],
-                [0x010, 'lchown', ['const char *filename', 'old_uid_t user', 'old_gid_t group']], # lchown16
-                #0x011, break # unimplemented
-                #0x012, stat # unimplemented
-                [0x013, 'lseek', ['unsigned int fd', 'compat_off_t offset', 'unsigned int whence']], # compat
-                [0x014, 'getpid', []],
-                [0x015, 'mount', ['char *dev_name', 'char *dir_name', 'char *type', 'unsigned long flags', 'void *data']],
-                #0x016, umount # unimplemented
-                [0x017, 'setuid', ['old_uid_t uid']], # setuid16
-                [0x018, 'getuid', []], # getuid16
-                #0x019, stime # unimplemented
-                [0x01a, 'ptrace', ['compat_long_t request', 'compat_long_t pid', 'compat_long_t addr', 'compat_long_t data']], # compat
-                #0x01b, alarm # unimplemented
-                #0x01c, fstat # unimplemented
-                [0x01d, 'pause', []],
-                #0x01e, utime # unimplemented
-                #0x01f, stty # unimplemented
-                #0x020, gtty # unimplemented
-                [0x021, 'access', ['const char *filename', 'int mode']],
-                [0x022, 'nice', ['int increment']],
-                #0x023, ftime # unimplemented
-                [0x024, 'sync', []],
-                [0x025, 'kill', ['pid_t pid', 'int sig']],
-                [0x026, 'rename', ['const char *oldname', 'const char *newname']],
-                [0x027, 'mkdir', ['const char *pathname', 'umode_t mode']],
-                [0x028, 'rmdir', ['const char *pathname']],
-                [0x029, 'dup', ['unsigned int fildes']],
-                [0x02a, 'pipe', ['int *fildes']],
-                [0x02b, 'times', ['struct compat_tms *tbuf']], # compat
-                #0x02c, prof # unimplemented
-                [0x02d, 'brk', ['unsigned long brk']],
-                [0x02e, 'setgid', ['old_gid_t gid']], # setgid16
-                [0x02f, 'getgid', []], # getgid16
-                #0x030, signal # unimplemented
-                [0x031, 'geteuid', []], # geteuid16
-                [0x032, 'getegid', []], # getegid16
-                [0x033, 'acct', ['const char *name']],
-                [0x034, 'umount2', ['char *name', 'int flags']], # umount
-                #0x035, lock # unimplemented
-                [0x036, 'ioctl', ['unsigned int fd', 'unsigned int cmd', 'compat_ulong_t arg']], # compat
-                [0x037, 'fcntl', ['unsigned int fd', 'unsigned int cmd', 'compat_ulong_t arg']], # compat
-                #0x038, mpx # unimplemented
-                [0x039, 'setpgid', ['pid_t pid', 'pid_t pgid']],
-                #0x03a, ulimit # unimplemented
-                #0x03b, olduname # unimplemented
-                [0x03c, 'umask', ['int mask']],
-                [0x03d, 'chroot', ['const char *filename']],
-                [0x03e, 'ustat', ['unsigned dev', 'struct compat_ustat *u']], # compat
-                [0x03f, 'dup2', ['unsigned int oldfd', 'unsigned int newfd']],
-                [0x040, 'getppid', []],
-                [0x041, 'getpgrp', []],
-                [0x042, 'setsid', []],
-                [0x043, 'sigaction', ['int sig', 'const struct compat_old_sigaction *act', 'struct compat_old_sigaction *oact']], # compat
-                #0x044, sgetmask # unimplemented
-                #0x045, ssetmask # unimplemented
-                [0x046, 'setreuid', ['old_uid_t ruid', 'old_uid_t euid']], # setreuid16
-                [0x047, 'setregid', ['old_gid_t rgid', 'old_gid_t egid']], # setregid16
-                [0x048, 'sigsuspend', ['old_sigset_t mask']],
-                [0x049, 'sigpending', ['compat_old_sigset_t *set32']], # compat
-                [0x04a, 'sethostname', ['char *name', 'int len']],
-                [0x04b, 'setrlimit', ['unsigned int resource', 'struct compat_rlimit *rlim']], # compat
-                #0x04c, getrlimit # unimplemented
-                [0x04d, 'getrusage', ['int who', 'struct compat_rusage *ru']], # compat
-                [0x04e, 'gettimeofday', ['struct old_timeval32 *tv', 'struct timezone *tz']], # compat
-                [0x04f, 'settimeofday', ['struct old_timeval32 *tv', 'struct timezone *tz']], # compat
-                [0x050, 'getgroups', ['int gidsetsize', 'old_gid_t *grouplist']], # setgroups16
-                [0x051, 'setgroups', ['int gidsetsize', 'old_gid_t *grouplist']], # getgroups16
-                #0x052, select # unimplemented
-                [0x053, 'symlink', ['const char *oldname', 'const char *newname']],
-                #0x054, lstat # unimplemented
-                [0x055, 'readlink', ['const char *path', 'char *buf', 'int bufsiz']],
-                [0x056, 'uselib', ['const char *library']],
-                [0x057, 'swapon', ['const char *specialfile', 'int swap_flags']],
-                [0x058, 'reboot', ['int magic1', 'int magic2', 'unsigned int cmd', 'void *arg']],
-                #0x059, readdir # unimplemented
-                #0x05a, mmap # unimplemented
-                [0x05b, 'munmap', ['unsigned long addr', 'size_t len']],
-                [0x05c, 'truncate', ['const char *path', 'compat_off_t length']], # compat
-                [0x05d, 'ftruncate', ['unsigned int fd', 'compat_ulong_t length']], # compat
-                [0x05e, 'fchmod', ['unsigned int fd', 'umode_t mode']],
-                [0x05f, 'fchown', ['unsigned int fd', 'old_uid_t user', 'old_gid_t group']], # fchown16
-                [0x060, 'getpriority', ['int which', 'int who']],
-                [0x061, 'setpriority', ['int which', 'int who', 'int niceval']],
-                #0x062, profil # unimplemented
-                [0x063, 'statfs', ['const char *pathname', 'struct compat_statfs *buf']], # compat
-                [0x064, 'fstatfs', ['unsigned int fd', 'struct compat_statfs *buf']], # compat
-                #0x065, ioperm # unimplemented
-                #0x066, socketcall # unimplemented
-                [0x067, 'syslog', ['int type', 'char *buf', 'int len']],
-                [0x068, 'setitimer', ['int which', 'struct old_itimerval32 *value', 'struct old_itimerval32 *ovalue']], # compat
-                [0x069, 'getitimer', ['int which', 'struct old_itimerval32 *value']], # compat
-                [0x06a, 'stat', ['const char *filename', 'struct compat_stat *statbuf']], # compat newstat
-                [0x06b, 'lstat', ['const char *filename', 'struct compat_stat *statbuf']], # compat newlstat
-                [0x06c, 'fstat', ['unsigned int fd', 'struct compat_stat *statbuf']], # compat newfstat
-                #0x06d, uname # unimplemented
-                #0x06e, iopl # unimplemented
-                [0x06f, 'vhangup', []],
-                #0x070, idle # deleted from kernel 2.3.13
-                #0x071, syscall # unimplemented
-                [0x072, 'wait4', ['compat_pid_t upid', 'compat_uint_t *stat_addr', 'int options', 'struct compat_rusage *ru']], # compat
-                [0x073, 'swapoff', ['const char *specialfile']],
-                [0x074, 'sysinfo', ['struct compat_sysinfo *info']], # compat
-                #0x075, ipc # unimplemented
-                [0x076, 'fsync', ['unsigned int fd']],
-                [0x077, 'sigreturn', []], # compat
-                [0x078, 'clone', ['unsigned long clone_flags', 'unsigned long newsp', 'int *parent_tidptr', 'unsigned long tls', 'int *child_tidptr']], # arg4,5 are swapped
-                [0x079, 'setdomainname', ['char *name', 'int len']],
-                [0x07a, 'uname', ['struct new_utsname *name']], # newuname
-                #0x07b, modify_ldt # unimplemented
-                [0x07c, 'adjtimex', ['struct old_timex32 *utp']], # adjtimex_time32
-                [0x07d, 'mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot']],
-                [0x07e, 'sigprocmask', ['int how', 'compat_old_sigset_t *nset', 'compat_old_sigset_t *oset']], # compat
-                #0x07f, create_module # dereted from kernel 2.6
-                [0x080, 'init_module', ['void *umod', 'unsigned long len', 'const char *uargs']],
-                [0x081, 'delete_module', ['const char *name_user', 'unsigned int flags']],
-                #0x082, get_kernel_syms # dereted from kernel 2.6
-                [0x083, 'quotactl', ['unsigned int cmd', 'const char *special', 'qid_t id', 'void *addr']],
-                [0x084, 'getpgid', ['pid_t pid']],
-                [0x085, 'fchdir', ['unsigned int fd']],
-                [0x086, 'bdflush', ['int func', 'long data']],
-                [0x087, 'sysfs', ['int option', 'unsigned long arg1', 'unsigned long arg2']],
-                [0x088, 'personality', ['unsigned int personality']],
-                #0x089, afs_syscall # unimplemented
-                [0x08a, 'setfsuid', ['old_uid_t uid']], # setfsuid16
-                [0x08b, 'setfsgid', ['old_gid_t gid']], # setfsgid16
-                [0x08c, '_llseek', ['unsigned int fd', 'unsigned long offset_high', 'unsigned long offset_low', 'loff_t *result', 'unsigned int whence']], # llseek
-                [0x08d, 'getdents', ['unsigned int fd', 'struct compat_linux_dirent *dirent', 'unsigned int count']], # compat
-                [0x08e, '_newselect', ['int n', 'compat_ulong_t *inp', 'compat_ulong_t *outp', 'compat_ulong_t *exp', 'struct old_timeval32 *tvp']], # compat select
-                [0x08f, 'flock', ['unsigned int fd', 'unsigned int cmd']],
-                [0x090, 'msync', ['unsigned long start', 'size_t len', 'int flags']],
-                [0x091, 'readv', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen']], # compat
-                [0x092, 'writev', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen']], # compat
-                [0x093, 'getsid', ['pid_t pid']],
-                [0x094, 'fdatasync', ['unsigned int fd']],
-                #0x095, _sysctl # unimplemented
-                [0x096, 'mlock', ['unsigned long start', 'size_t len']],
-                [0x097, 'munlock', ['unsigned long start', 'size_t len']],
-                [0x098, 'mlockall', ['int flags']],
-                [0x099, 'munlockall', []],
-                [0x09a, 'sched_setparam', ['pid_t pid', 'struct sched_param *param']],
-                [0x09b, 'sched_getparam', ['pid_t pid', 'struct sched_param *param']],
-                [0x09c, 'sched_setscheduler', ['pid_t pid', 'int policy', 'struct sched_param *param']],
-                [0x09d, 'sched_getscheduler', ['pid_t pid']],
-                [0x09e, 'sched_yield', []],
-                [0x09f, 'sched_get_priority_max', ['int policy']],
-                [0x0a0, 'sched_get_priority_min', ['int policy']],
-                [0x0a1, 'sched_rr_get_interval', ['pid_t pid', 'struct old_timespec32 *interval']], # sched_rr_get_interval_time32
-                [0x0a2, 'nanosleep', ['struct old_timespec32 *rqtp', 'struct old_timespec32 *rmtp']], # nanosleep_time32
-                [0x0a3, 'mremap', ['unsigned long addr', 'unsigned long old_len', 'unsigned long new_len', 'unsigned long flags', 'unsigned long new_addr']],
-                [0x0a4, 'setresuid', ['old_uid_t ruid', 'old_uid_t euid', 'old_uid_t suid']], # setresuid16
-                [0x0a5, 'getresuid', ['old_uid_t *ruidp', 'old_uid_t *euidp', 'old_uid_t *suidp']], # getresuid16
-                #0x0a6, vm86 # unimplemented
-                #0x0a7, query_module # dereted from kernel 2.6
-                [0x0a8, 'poll', ['struct pollfd *ufds', 'unsigned int nfds', 'int timeout_msecs']],
-                #0x0a9, nfsservctl # deleted from kernel 3.1
-                [0x0aa, 'setresgid', ['old_gid_t rgid', 'old_gid_t egid', 'old_gid_t sgid']], # setresgid16
-                [0x0ab, 'getresgid', ['old_gid_t *rgidp', 'old_gid_t *egidp', 'old_gid_t *sgidp']], # getresgid16
-                [0x0ac, 'prctl', ['int option', 'unsigned long arg2', 'unsigned long arg3', 'unsigned long arg4', 'unsigned long arg5']],
-                [0x0ad, 'rt_sigreturn', []], # compat
-                [0x0ae, 'rt_sigaction', ['int sig', 'const struct compat_sigaction *act', 'struct compat_sigaction *oact', 'compat_size_t sigsetsize']], # compat
-                [0x0af, 'rt_sigprocmask', ['int how', 'compat_sigset_t *nset', 'compat_sigset_t *oset', 'compat_size_t sigsetsize']], # compat
-                [0x0b0, 'rt_sigpending', ['compat_sigset_t *uset', 'compat_size_t sigsetsize']], # compat
-                [0x0b1, 'rt_sigtimedwait', ['compat_sigset_t *uthese', 'struct compat_siginfo_t *uinfo', 'struct old_timespec32 *uts', 'compat_size_t sigsetsize']], # compat rt_sigtimedwait_time32
-                [0x0b2, 'rt_sigqueueinfo', ['compat_pid_t pid', 'int sig', 'struct compat_siginfo *uinfo']], # compat
-                [0x0b3, 'rt_sigsuspend', ['compat_sigset_t *unewset', 'compat_size_t sigsetsize']], # compat
-                [0x0b4, 'pread64', ['unsigned int fd', 'char *buf', 'size_t count', 'u32 __pad', 'arg_u32p(pos)']], # compat aarch32_pread64
-                [0x0b5, 'pwrite64', ['unsigned int fd', 'const char *buf', 'size_t count', 'u32 __pad', 'arg_u32p(pos)']], # compat aarch32_pwrite64
-                [0x0b6, 'chown', ['const char *filename', 'old_uid_t user', 'old_gid_t group']], # chown16
-                [0x0b7, 'getcwd', ['char *buf', 'unsigned long size']],
-                [0x0b8, 'capget', ['cap_user_header_t header', 'cap_user_data_t dataptr']],
-                [0x0b9, 'capset', ['cap_user_header_t header', 'const cap_user_data_t data']],
-                [0x0ba, 'sigaltstack', ['const compat_stack_t *uss_ptr', 'compat_stack_t *uoss_ptr']], # compat
-                [0x0bb, 'sendfile', ['int out_fd', 'int in_fd', 'compat_off_t *offset', 'compat_size_t count']], # compat
-                #0x0bc, reserved
-                #0x0bd, reserved
-                [0x0be, 'vfork', []],
-                [0x0bf, 'ugetrlimit', ['unsigned int resource', 'struct compat_rlimit *rlim']], # compat getrlimit
-                [0x0c0, 'mmap2', ['unsigned long addr', 'unsigned long len', 'unsigned long prot', 'unsigned long flags', 'unsigned long fd', 'unsigned long off_4k']], # compat aarch32_mmap2
-                [0x0c1, 'truncate64', ['const char *path', 'u32 __pad', 'arg_u32p(length)']], # aarch32_truncate64
-                [0x0c2, 'ftruncate64', ['unsigned int fd', 'u32 __pad', 'arg_u32p(length)']], # aarch32_ftruncate64
-                [0x0c3, 'stat64', ['const char *filename', 'struct stat64 *statbuf']],
-                [0x0c4, 'lstat64', ['const char *filename', 'struct stat64 *statbuf']],
-                [0x0c5, 'fstat64', ['unsigned long fd', 'struct stat64 *statbuf']],
-                [0x0c6, 'lchown32', ['const char *filename', 'uid_t user', 'gid_t group']], # lchown
-                [0x0c7, 'getuid32', []], # getiud
-                [0x0c8, 'getgid32', []], # getgid
-                [0x0c9, 'geteuid32', []], # geteuid
-                [0x0ca, 'getegid32', []], # getegid
-                [0x0cb, 'setreuid32', ['uid_t ruid', 'uid_t euid']], # setreuid
-                [0x0cc, 'setregid32', ['gid_t rgid', 'gid_t egid']], # setregid
-                [0x0cd, 'getgroups32', ['int gidsetsize', 'gid_t *grouplist']], # getgroups
-                [0x0ce, 'setgroups32', ['int gidsetsize', 'gid_t *grouplist']], # setgroups
-                [0x0cf, 'fchown32', ['unsigned int fd', 'uid_t user', 'gid_t group']], # fchown
-                [0x0d0, 'setresuid32', ['uid_t ruid', 'uid_t euid', 'uid_t suid']], # setresuid
-                [0x0d1, 'getresuid32', ['uid_t *ruidp', 'uid_t *euidp', 'uid_t *suidp']], # getresuid
-                [0x0d2, 'setresgid32', ['gid_t rgid', 'gid_t egid', 'gid_t sgid']], # setresgid
-                [0x0d3, 'getresgid32', ['gid_t *rgidp', 'gid_t *egidp', 'gid_t *sgidp']], # getresgid
-                [0x0d4, 'chown32', ['const char *filename', 'uid_t user', 'gid_t group']], # chown
-                [0x0d5, 'setuid32', ['uid_t uid']], # setuid
-                [0x0d6, 'setgid32', ['gid_t gid']], # setgid
-                [0x0d7, 'setfsuid32', ['uid_t uid']], # setfsuid
-                [0x0d8, 'setfsgid32', ['gid_t gid']], # setfsgid
-                [0x0d9, 'getdents64', ['unsigned int fd', 'struct linux_dirent64 *dirent', 'unsigned int count']],
-                [0x0da, 'pivot_root', ['const char *new_root', 'const char *put_old']],
-                [0x0db, 'mincore', ['unsigned long start', 'size_t len', 'unsigned char *vec']],
-                [0x0dc, 'madvise', ['unsigned long start', 'size_t len_in', 'int behavior']],
-                [0x0dd, 'fcntl64', ['unsigned int fd', 'unsigned int cmd', 'compat_ulong_t arg']], # compat
-                #0x0de, tux # unimplemented
-                #0x0df, unused
-                [0x0e0, 'gettid', []],
-                [0x0e1, 'readahead', ['int fd', 'u32 __pad', 'arg_u32(offset)', 'size_t count']], # compat aarch32_readahead
-                [0x0e2, 'setxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-                [0x0e3, 'lsetxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-                [0x0e4, 'fsetxattr', ['int fd', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-                [0x0e5, 'getxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
-                [0x0e6, 'lgetxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
-                [0x0e7, 'fgetxattr', ['int fd', 'const char *name', 'void *value', 'size_t size']],
-                [0x0e8, 'listxattr', ['const char *pathname', 'char *list', 'size_t size']],
-                [0x0e9, 'llistxattr', ['const char *pathname', 'char *list', 'size_t size']],
-                [0x0ea, 'flistxattr', ['int fd', 'char *list', 'size_t size']],
-                [0x0eb, 'removexattr', ['const char *pathname', 'const char *name']],
-                [0x0ec, 'lremovexattr', ['const char *pathname', 'const char *name']],
-                [0x0ed, 'fremovexattr', ['int fd', 'const char *name']],
-                [0x0ee, 'tkill', ['pid_t pid', 'int sig']],
-                [0x0ef, 'sendfile64', ['int out_fd', 'int in_fd', 'loff_t *offset', 'size_t count']],
-                [0x0f0, 'futex', ['u32 *uaddr', 'int op', 'u32 val', 'struct old_timespec32 *utime', 'u32 *uaddr2', 'u32 val3']], # futex_time32
-                [0x0f1, 'sched_setaffinity', ['compat_pid_t pid', 'unsigned int len', 'compat_ulong_t *user_mask_ptr']], # compat
-                [0x0f2, 'sched_getaffinity', ['compat_pid_t pid', 'unsigned int len', 'compat_ulong_t *user_mask_ptr']], # compat
-                [0x0f3, 'io_setup', ['unsigned nr_events', 'u32 *ctx32p']], # compat
-                [0x0f4, 'io_destroy', ['aio_context_t ctx']],
-                [0x0f5, 'io_getevents', ['__u32 ctx_id', '__s32 min_nr', '__s32 nr', 'struct io_event *events', 'struct old_timespec32 *timeout']], # io_getevents_time32
-                [0x0f6, 'io_submit', ['compat_aio_context_t ctx_id', 'int nr', 'compat_uptr_t *iocbpp']], # compat
-                [0x0f7, 'io_cancel', ['aio_context_t ctx_id', 'struct iocb *iocb', 'struct io_event *result']],
-                [0x0f8, 'exit_group', ['int error_code']],
-                [0x0f9, 'lookup_dcookie', ['u32 w0', 'u32 w1', 'char *buf', 'compat_size_t len']], # compat
-                [0x0fa, 'epoll_create', ['int size']],
-                [0x0fb, 'epoll_ctl', ['int epfd', 'int op', 'int fd', 'struct epoll_event *event']],
-                [0x0fc, 'epoll_wait', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'int timeout']],
-                [0x0fd, 'remap_file_pages', ['unsigned long start', 'unsigned long size', 'unsigned long prot', 'unsigned long pgoff', 'unsigned long flags']],
-                #0x0fe, set_thread_area # unimplemented
-                #0x0ff, get_thread_area # unimplemented
-                [0x100, 'set_tid_address', ['int *tidptr']],
-                [0x101, 'timer_create', ['clockid_t which_clock', 'struct compat_sigevent *timer_event_spec', 'timer_t *created_timer_id']], # compat
-                [0x102, 'timer_settime', ['timer_t timer_id', 'int flags', 'struct old_itimerspec32 *new', 'struct old_itimerspec32 *old']], # timer_settime32
-                [0x103, 'timer_gettime', ['timer_t timer_id', 'struct old_itimerspec32 *setting']], # timer_gettime32
-                [0x104, 'timer_getoverrun', ['timer_t timer_id']],
-                [0x105, 'timer_delete', ['timer_t timer_id']],
-                [0x106, 'clock_settime', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_settime32
-                [0x107, 'clock_gettime', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_gettime32
-                [0x108, 'clock_getres', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_getres_time32
-                [0x109, 'clock_nanosleep', ['clockid_t which_clock', 'int flags', 'struct old_timespec32 *rqtp', 'struct old_timespec32 *rmtp']], # clock_nanosleep_time32
-                [0x10a, 'statfs64', ['const char *pathname', 'compat_size_t sz', 'struct compat_statfs64 *buf']], # aarch32_statfs64
-                [0x10b, 'fstatfs64', ['unsigned int fd', 'compat_size_t sz', 'struct compat_statfs64 *buf']], # aarch32_fstatfs64
-                [0x10c, 'tgkill', ['pid_t tgid', 'pid_t pid', 'int sig']],
-                [0x10d, 'utimes', ['const char *filename', 'struct old_timeval32 *t']], # utimes_time32
-                [0x10e, 'arm_fadvise64_64', ['int fd', 'int advice', 'arg_u32p(offset)', 'arg_u32p(len)']], # compat aarch32_fadvise64_64
-                [0x10f, 'pciconfig_iobase', ['long which', 'unsigned long bus', 'unsigned long devfn']],
-                [0x110, 'pciconfig_read', ['unsigned long bus', 'unsigned long dfn', 'unsigned long off', 'unsigned long len', 'void *buf']],
-                [0x111, 'pciconfig_write', ['unsigned long bus', 'unsigned long dfn', 'unsigned long off', 'unsigned long len', 'void *buf']],
-                [0x112, 'mq_open', ['const char *u_name', 'int oflag', 'compat_mode_t mode', 'struct compat_mq_attr *u_attr']], # compat
-                [0x113, 'mq_unlink', ['const char *u_name']],
-                [0x114, 'mq_timedsend', ['mqd_t mqdes', 'const char *u_msg_ptr', 'unsigned int msg_len', 'unsigned int msg_prio', 'const struct old_timespec32 *u_abs_timeout']], # mq_timedsend_time32
-                [0x115, 'mq_timedreceive', ['mqd_t mqdes', 'const char *u_msg_ptr', 'unsigned int msg_len', 'unsigned int *msg_prio', 'const struct old_timespec32 *u_abs_timeout']], # mq_timedreceive_time32
-                [0x116, 'mq_notify', ['mqd_t mqdes', 'const struct compat_sigevent *u_notification']], # compat
-                [0x117, 'mq_getsetattr', ['mqd_t mqdes', 'const struct compat_mq_attr *u_mqstat', 'struct compat_mq_attr *u_omqstat']], # compat
-                [0x118, 'waitid', ['int which', 'compat_pid_t pid', 'struct compat_siginfo *infop', 'int options', 'struct compat_rusage *uru']], # compat
-                [0x119, 'socket', ['int family', 'int type', 'int protocol']],
-                [0x11a, 'bind', ['int fd', 'struct sockaddr *umyaddr', 'int addrlen']],
-                [0x11b, 'connect', ['int fd', 'struct sockaddr *uservaddr', 'int addrlen']],
-                [0x11c, 'listen', ['int fd', 'int backlog']],
-                [0x11d, 'accept', ['int fd', 'struct sockaddr *upeer_sockaddr', 'int *upeer_addrlen']],
-                [0x11e, 'getsockname', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
-                [0x11f, 'getpeername', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
-                [0x120, 'socketpair', ['int family', 'int type', 'int protocol', 'int *usockvec']],
-                [0x121, 'send', ['int fd', 'void *buff', 'size_t len', 'unsigned int flags']],
-                [0x122, 'sendto', ['int fd', 'void *buff', 'size_t len', 'unsigned int flags', 'struct sockaddr *addr', 'int addr_len']],
-                [0x123, 'recv', ['int fd', 'void *ubuf', 'compat_size_t size', 'unsigned int flags']], # compat
-                [0x124, 'recvfrom', ['int fd', 'void *ubuf', 'compat_size_t size', 'unsigned int flags', 'struct sockaddr *addr', 'int *addr_len']], # compat
-                [0x125, 'shutdown', ['int fd', 'int how']],
-                [0x126, 'setsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int optlen']],
-                [0x127, 'getsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int *optlen']],
-                [0x128, 'sendmsg', ['int fd', 'struct compat_msghdr *msg', 'unsigned int flags']], # compat
-                [0x129, 'recvmsg', ['int fd', 'struct compat_msghdr *msg', 'unsigned int flags']], # compat
-                [0x12a, 'semop', ['int semid', 'struct sembuf *tsops', 'unsigned nsops']],
-                [0x12b, 'semget', ['key_t key', 'int nsems', 'int semflg']],
-                [0x12c, 'semctl', ['int semid', 'int semnum', 'int cmd', 'int arg']], # compat old_semctl
-                [0x12d, 'msgsnd', ['int msqid', 'struct compat_uptr_t *msgp', 'compat_ssize_t msgsz', 'int msgflg']], # compat
-                [0x12e, 'msgrcv', ['int msqid', 'struct compat_uptr_t *msgp', 'compat_ssize_t msgsz', 'compat_long_t msgtyp', 'int msgflg']], # compat
-                [0x12f, 'msgget', ['key_t key', 'int msgflg']],
-                [0x130, 'msgctl', ['int msqid', 'int cmd', 'void *uptr']], # compat old_msgctl
-                [0x131, 'shmat', ['int shmid', 'compat_uptr_t *shmaddr', 'int shmflg']], # compat
-                [0x132, 'shmdt', ['char *shmaddr']],
-                [0x133, 'shmget', ['key_t key', 'size_t size', 'int shmflg']],
-                [0x134, 'shmctl', ['int shmid', 'int cmd', 'void *uptr']], # compat old_shmctl
-                [0x135, 'add_key', ['const char *_type', 'const char *_description', 'const void *_payload', 'size_t plen', 'key_serial_t ringid']],
-                [0x136, 'request_key', ['const char *_type', 'const char *_description', 'const char *_callout_info', 'key_serial_t destringid']],
-                [0x137, 'keyctl', ['u32 option', 'u32 arg2', 'u32 arg3', 'u32 arg4', 'u32 arg5']], # compat
-                [0x138, 'semtimedop', ['int semid', 'struct sembuf *tsems', 'unsigned nsops', 'const struct old_timespec32 *timeout']], # semtimedop_time32
-                #0x139, vserver # unimplemented
-                [0x13a, 'ioprio_set', ['int which', 'int who', 'int ioprio']],
-                [0x13b, 'ioprio_get', ['int which', 'int who']],
-                [0x13c, 'inotify_init', []],
-                [0x13d, 'inotify_add_watch', ['int fd', 'const char *pathname', 'u32 mask']],
-                [0x13e, 'inotify_rm_watch', ['int fd', '__s32 wd']],
-                [0x13f, 'mbind', ['compat_ulong_t start', 'compat_ulong_t len', 'compat_ulong_t mode', 'compat_ulong_t *nmask', 'compat_ulong_t maxnode', 'compat_ulong_t flags']], # compat
-                [0x140, 'get_mempolicy', ['int *policy', 'compat_ulong_t *nmask', 'compat_ulong_t maxnode', 'compat_ulong_t addr', 'compat_ulong_t flags']], # compat
-                [0x141, 'set_mempolicy', ['int mode', 'compat_ulong_t *nmask', 'compat_ulong_t maxnode']], # compat
-                [0x142, 'openat', ['int dfd', 'const char *filename', 'int flags', 'umode_t mode']], # compat
-                [0x143, 'mkdirat', ['int dfd', 'const char *pathname', 'umode_t mode']],
-                [0x144, 'mknodat', ['int dfd', 'const char *filename', 'umode_t mode', 'unsigned int dev']],
-                [0x145, 'fchownat', ['int dfd', 'const char *filename', 'uid_t user', 'gid_t group', 'int flag']],
-                [0x146, 'futimesat', ['unsigned int dfd', 'const char *filename', 'struct old_timeval32 *t']], # futimesat_time32
-                [0x147, 'fstatat64', ['int dfd', 'const char *filename', 'struct stat64 *statbuf', 'int flag']],
-                [0x148, 'unlinkat', ['int dfd', 'const char *pathname', 'int flag']],
-                [0x149, 'renameat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname']],
-                [0x14a, 'linkat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'int flags']],
-                [0x14b, 'symlinkat', ['const char *oldname', 'int newdfd', 'const char *newname']],
-                [0x14c, 'readlinkat', ['int dfd', 'const char *pathname', 'char *buf', 'int bufsiz']],
-                [0x14d, 'fchmodat', ['int dfd', 'const char *filename', 'umode_t mode']],
-                [0x14e, 'faccessat', ['int dfd', 'const char *filename', 'int mode']],
-                [0x14f, 'pselect6', ['int n', 'compat_ulong_t *inp', 'compat_ulong_t *outp', 'compat_ulong_t *exp', 'struct old_timespec32 *tsp', 'void *sig']], # compat pselect6_time32
-                [0x150, 'ppoll', ['struct pollfd *ufds', 'unsigned int nfds', 'struct old_timespec32 *tsp', 'const compat_sigset_t *sigmask', 'compat_size_t sigsetsize']], # compat ppoll_time32
-                [0x151, 'unshare', ['unsigned long unshare_flags']],
-                [0x152, 'set_robust_list', ['struct compat_robust_list_head *head', 'compat_size_t len']], # compat,
-                [0x153, 'get_robust_list', ['int pid', 'compat_uptr_t *head_ptr', 'compat_size_t *len_ptr']], # compat
-                [0x154, 'splice', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
-                [0x155, 'sync_file_range2', ['int fd', 'unsigned int flags', 'arg_u32p(offset)', 'arg_u32p(nbytes)']], # compat aarch32_sync_file_range2
-                [0x156, 'tee', ['int fdin', 'int fdout', 'size_t len', 'unsigned int flags']],
-                [0x157, 'vmsplice', ['int fd', 'const struct compat_iovec *iov32', 'unsigned int nr_segs', 'unsigned int flags']], # compat
-                [0x158, 'move_pages', ['pid_t pid', 'compat_ulong_t nr_pages', 'compat_uptr_t *pages32', 'const int *nodes', 'int *status', 'int flags']], # compat
-                [0x159, 'getcpu', ['unsigned *cpup', 'unsigned *nodep', 'struct getcpu_cache *unused']],
-                [0x15a, 'epoll_pwait', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'int timeout', 'const compat_sigset_t *sigmask', 'compat_size_t sigsetsize']], # compat
-                [0x15b, 'kexec_load', ['compat_ulong_t entry', 'compat_ulong_t nr_segments', 'struct compat_kexec_segment *segments', 'compat_ulong_t flags']], # compat
-                [0x15c, 'utimensat', ['unsigned int dfd', 'const char *filename', 'struct old_timespec32 *t', 'int flags']], # utimensat_time32
-                [0x15d, 'signalfd', ['int ufd', 'const compat_sigset_t *user_mask', 'compat_size_t sizemask']], # compat
-                [0x15e, 'timerfd_create', ['int clockid', 'int flags']],
-                [0x15f, 'eventfd', ['unsigned int count']],
-                [0x160, 'fallocate', ['int fd', 'int mode', 'arg_u32p(offset)', 'arg_u32p(len)']], # compat aarch32_fallocate
-                [0x161, 'timerfd_settime', ['int ufd', 'int flags', 'const struct old_itimerspec32 *utmr', 'struct old_itimerspec32 *otmr']], # timerfd_settime32
-                [0x162, 'timerfd_gettime', ['int ufd', 'struct old_itimerspec32 *otmr']], # timerfd_gettime32
-                [0x163, 'signalfd4', ['int ufd', 'const compat_sigset_t *user_mask', 'compat_size_t sizemask', 'int flags']], # compat
-                [0x164, 'eventfd2', ['unsigned int count', 'int flags']],
-                [0x165, 'epoll_create1', ['int flags']],
-                [0x166, 'dup3', ['unsigned int oldfd', 'unsigned int newfd', 'int flags']],
-                [0x167, 'pipe2', ['int *fildes', 'int flags']],
-                [0x168, 'inotify_init1', ['int flags']],
-                [0x169, 'preadv', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen', 'u32 pos_low', 'u32 pos_high']], # compat
-                [0x16a, 'pwritev', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen', 'u32 pos_low', 'u32 pos_high']], # compat
-                [0x16b, 'rt_tgsigqueueinfo', ['compat_pid_t tgid', 'compat_pid_t pid', 'int sig', 'struct compat_siginfo_t *uinfo']], # compat
-                [0x16c, 'perf_event_open', ['struct perf_event_attr *attr_uptr', 'pid_t pid', 'int cpu', 'int group_fd', 'unsigned long flags']],
-                [0x16d, 'recvmmsg', ['int fd', 'struct compat_mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags', 'struct old_timespec32 *timeout']], # compat recvmmsg_time32
-                [0x16e, 'accept4', ['int fd', 'struct sockaddr *upeer_sockaddr', 'int *upeer_addrlen', 'int flags']],
-                [0x16f, 'fanotify_init', ['unsigned int flags', 'unsigned int event_f_flags']],
-                [0x170, 'fanotify_mark', ['int fanotify_fd', 'unsigned int flags', '__u32 mask0', '__u32 mask1', 'int dfd', 'const char *pathname']], # compat
-                [0x171, 'prlimit64', ['pid_t pid', 'unsigned int resource', 'const struct rlimit64 *new_rlim', 'struct rlimit64 *old_rlim']],
-                [0x172, 'name_to_handle_at', ['int dfd', 'const char *name', 'struct file_handle *handle', 'int *mnt_id', 'int flag']],
-                [0x173, 'open_by_handle_at', ['int mountdirfd', 'struct file_handle *handle', 'int flags']], # compat
-                [0x174, 'clock_adjtime', ['clockid_t which_clock', 'struct old_timex32 *tx']], # clock_adjtime32
-                [0x175, 'syncfs', ['int fd']],
-                [0x176, 'sendmmsg', ['int fd', 'struct compat_mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags']], # compat
-                [0x177, 'setns', ['int fd', 'int flags']],
-                [0x178, 'process_vm_readv', ['compat_pid_t pid', 'const struct compat_iovec *lvec', 'compat_ulong_t liovcnt', 'const struct compat_iovec *rvec', 'compat_ulong_t riovcnt', 'compat_ulong_t flags']], # compat
-                [0x179, 'process_vm_writev', ['compat_pid_t pid', 'const struct compat_iovec *lvec', 'compat_ulong_t liovcnt', 'const struct compat_iovec *rvec', 'compat_ulong_t riovcnt', 'compat_ulong_t flags']], # compat
-                [0x17a, 'kcmp', ['pid_t pid1', 'pid_t pid2', 'int type', 'unsigned long idx1', 'unsigned long idx2']],
-                [0x17b, 'finit_module', ['int fd', 'const char *uargs', 'int flags']],
-                [0x17c, 'sched_setattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int flags']],
-                [0x17d, 'sched_getattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int usize', 'unsigned int flags']],
-                [0x17e, 'renameat2', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'unsigned int flags']],
-                [0x17f, 'seccomp', ['unsigned int op', 'unsigned int flags', 'void *uargs']],
-                [0x180, 'getrandom', ['char *buf', 'size_t count', 'unsigned int flags']],
-                [0x181, 'memfd_create', ['const char *uname', 'unsigned int flags']],
-                [0x182, 'bpf', ['int cmd', 'union bpf_attr *uattr', 'unsigned int size']],
-                [0x183, 'execveat', ['int fd', 'const char *filename', 'const compat_uptr_t *argv', 'const compat_uptr_t *envp', 'int flags']], # compat
-                [0x184, 'userfaultfd', ['int flags']],
-                [0x185, 'membarrier', ['int cmd', 'int flags']],
-                [0x186, 'mlock2', ['unsigned long start', 'size_t len', 'int flags']],
-                [0x187, 'copy_file_range', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
-                [0x188, 'preadv2', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen', 'u32 pos_low', 'u32 pos_high']], # compat
-                [0x189, 'pwritev2', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen', 'u32 pos_low', 'u32 pos_high']], # compat
-                [0x18a, 'pkey_mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot', 'int pkey']],
-                [0x18b, 'pkey_alloc', ['unsigned long flags', 'unsigned long init_val']],
-                [0x18c, 'pkey_free', ['int pkey']],
-                [0x18d, 'statx', ['int dfd', 'const char *filename', 'unsigned flags', 'unsigned int mask', 'struct statx *buffer']],
-                [0x18e, 'rseq', ['struct rseq *rseq', 'u32 rseq_len', 'int flags', 'u32 sig']],
-                [0x18f, 'io_pgetevents', ['compat_aio_context_t ctx_id', 'compat_long_t min_nr', 'compat_long_t nr', 'struct io_event *events', 'struct old_timespec32 *timeout', 'const struct __compat_aio_sigset *usig']], # compat
-                [0x190, 'migrate_pages', ['compat_pid_t pid', 'compat_ulong_t maxnode', 'const compat_ulong_t *old_nodes', 'const compat_ulong_t *new_nodes']], # compat
-                [0x191, 'kexec_file_load', ['int kernel_fd', 'int initrd_fd', 'unsigned long cmdline_len', 'const char *cmdline_ptr', 'unsigned long flags']],
-                #0x192, unused
-                [0x193, 'clock_gettime_time64', ['const clockid_t which_clock', 'const struct __kernel_timespec *tp']], # clock_gettime
-                [0x194, 'clock_settime_time64', ['const clockid_t which_clock', 'const struct __kernel_timespec *tp']], # clock_settime
-                [0x195, 'clock_adjtime_time64', ['const clockid_t which_clock', 'struct __kernel_timex *utx']], # clock_adjtime
-                [0x196, 'clock_getres_time64', ['const clockid_t which_clock', 'struct __kernel_timespec *tp']], # clock_getres
-                [0x197, 'clock_nanosleep_time64', ['const clockid_t which_clock', 'int flags', 'const struct __kernel_timespec *rqtp', 'struct __kernel_timespec *rmtp']], # clock_nanosleep
-                [0x198, 'timer_gettime_time64', ['timer_t timer_id', 'struct __kernel_itimerspec *setting']], # timer_gettime
-                [0x199, 'timer_settime_time64', ['timer_t timer_id', 'int flags', 'const struct __kernel_itimerspec *new_setting', 'struct __kernel_itimerspec *old_setting']], # timer_settime
-                [0x19a, 'timerfd_gettime_time64', ['int ufd', 'struct __kernel_itimerspec *otmr']], # timerfd_gettime
-                [0x19b, 'timerfd_settime_time64', ['int ufd', 'int flags', 'const struct __kernel_itimerspec *utmr', 'struct __kernel_itimerspec *otmr']], # timerfd_settime
-                [0x19c, 'utimensat_time64', ['int dfd', 'const char *filename', 'struct __kernel_timespec *utimes', 'int flags']], # utimensat
-                [0x19d, 'pselect6_time64', ['int n', 'compat_ulong_t *inp', 'compat_ulong_t *outp', 'compat_ulong_t *exp', 'struct __kernel_timespec *tsp', 'void *sig']], # compat
-                [0x19e, 'ppoll_time64', ['struct pollfd *ufds', 'unsigned int nfds', 'struct __kernel_timespec *tsp', 'const compat_sigset_t *sigmask', 'compat_size_t sigsetsize']], # compat
-                #0x19f, unused
-                [0x1a0, 'io_pgetevents_time64', ['aio_context_t ctx_id', 'long min_nr', 'long nr', 'struct io_event *events', 'struct __kernel_timespec *timeout', 'const struct __aio_sigset *usig']], # io_pgetevents
-                [0x1a1, 'recvmmsg_time64', ['int fd', 'struct compat_mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags', 'struct __kernel_timespec *timeout']], # compat
-                [0x1a2, 'mq_timedsend_time64', ['mqd_t mqdes', 'const char *u_msg_ptr', 'size_t msg_len', 'unsigned int msg_prio', 'const struct __kernel_timespec *u_abs_timeout']], # mq_timedsend
-                [0x1a3, 'mq_timedreceive_time64', ['mqd_t mqdes', 'const char *u_msg_ptr', 'size_t msg_len', 'unsigned int *u_msg_prio', 'const struct __kernel_timespec *u_abs_timeout']], # mq_timedreceive
-                [0x1a4, 'semtimedop_time64', ['int semid', 'struct sembuf *tsops', 'unsigned int nsops', 'const struct __kernel_timespec *timeout']], # semtimedop
-                [0x1a5, 'rt_sigtimedwait_time64', ['compat_sigset_t *uthese', 'struct compat_siginfo *uinfo', 'struct __kernel_timespec *uts', 'compat_size_t sigsetsize']], # compat
-                [0x1a6, 'futex_time64', ['u32 *uaddr', 'int op', 'u32 val', 'struct __kernel_timespec *utime', 'u32 *uaddr2', 'u32 val3']], # futex
-                [0x1a7, 'sched_rr_get_interval_time64', ['pid_t pid', 'struct __kernel_timespec *interval']], # sched_rr_get_interval
-                [0x1a8, 'pidfd_send_signal', ['int pidfd', 'int sig', 'siginfo_t *info', 'unsigned int flags']],
-                [0x1a9, 'io_uring_setup', ['u32 entries', 'struct io_uring_params *params']],
-                [0x1aa, 'io_uring_enter', ['unsigned int fd', 'u32 to_submit', 'u32 min_complete', 'u32 flags', 'const sigset_t *sig', 'size_t sigsz']],
-                [0x1ab, 'io_uring_register', ['unsigned int fd', 'unsigned int opcode', 'void *arg', 'unsigned int nr_args']],
-                [0x1ac, 'open_tree', ['int dfd', 'const char *filename', 'unsigned flags']],
-                [0x1ad, 'move_mount', ['int from_dfd', 'const char *from_pathname', 'int to_dfd', 'const char *to_pathname', 'unsigned int flags']],
-                [0x1ae, 'fsopen', ['const char *_fs_name', 'unsigned int flags']],
-                [0x1af, 'fsconfig', ['int fd', 'unsigned int cmd', 'const char *_key', 'const void *_value', 'int aux']],
-                [0x1b0, 'fsmount', ['int fs_fd', 'unsigned int flags', 'unsigned int attr_flags']],
-                [0x1b1, 'fspick', ['int, dfd', 'const char *path', 'unsigned int flags']],
-                [0x1b2, 'pidfd_open', ['pid_t pid', 'unsigned int flags']],
-                [0x1b3, 'clone3', ['struct clone_args *uargs', 'size_t size']],
-                [0x1b4, 'close_range', ['unsigned int fd', 'unsigned int max_fd', 'unsigned int flag']],
-                [0x1b5, 'openat2', ['int dfd', 'const char *filename', 'struct open_how *how', 'size_t usize']],
-                [0x1b6, 'pidfd_getfd', ['int pidfd', 'int fd', 'unsigned int flags']],
-                [0x1b7, 'faccessat2', ['int dfd', 'const char *filename', 'int mode', 'int flags']],
-                [0x1b8, 'process_madvise', ['int pidfd', 'const struct iovec *vec', 'size_t vlen', 'int behavior', 'unsigned int flags']],
-                [0x1b9, 'epoll_pwait2', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'const struct __kernel_timespec *timeout', 'const compat_sigset_t *sigmask', 'compat_size_t sigsetsize']], # compat
-                [0x1ba, 'mount_setattr', ['int dfd', 'const char *path', 'unsigned int flags', 'struct mount_attr *uattr', 'size_t usize']],
-                [0x1bb, 'quotactl_fd', ['unsigned int fd', 'unsigned int cmd', 'qid_t id', 'void __user *addr']],
-                [0x1bc, 'landlock_create_ruleset', ['const struct landlock_ruleset_attr *const attr', 'const size_t size', 'const __u32 flags']],
-                [0x1bd, 'landlock_add_rule', ['const int ruleset_fd', 'const enum landlock_rule_type rule_type', 'const void *const rule_attr', 'const __u32 flags']],
-                [0x1be, 'landlock_restrict_self', ['const int ruleset_fd', 'const __u32 flags']],
-                [0x1bf, 'memfd_secret', ['unsigned int, flags']],
-                [0x1c0, 'process_mrelease', ['int pidfd', 'unsigned int flags']],
-                [0x1c1, 'futex_waitv', ['struct futex_waitv *waiters', 'unsigned int nr_futexes', 'unsigned int flags', 'struct __kernel_timespec *timeout', 'clockid_t clockid']],
-                [0x1c2, 'set_mempolicy_home_node', ['unsigned long start', 'unsigned long len', 'unsigned long home_node', 'unsigned long flags']],
-                [0xf0002, 'cacheflush', ['unsigned long start', 'unsigned long end', 'int flags']], # arch/arm/kernel/traps.c
-                [0xf0005, 'set_tls', ['unsigned long val']], # arch/arm/kernel/traps.c
-            ]
-
-        elif arch == "ARM" and mode == "N32":
-            register_list = ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6"]
-            # arch/arm/include/asm/unistd.h
-            # arch/arm/include/generated/uapi/asm/unistd-common.h
-            # arch/arm/include/generated/uapi/asm/unistd-oabi.h
-            # arch/arm/include/generated/uapi/asm/unistd-eabi.h
-            # arch/arm/tools/syscall.tbl
-            syscall_list = [ # EABI
-                [0x000, 'restart_syscall', []],
-                [0x001, 'exit', ['int error_code']],
-                [0x002, 'fork', []],
-                [0x003, 'read', ['unsigned int fd', 'char *buf', 'size_t count']],
-                [0x004, 'write', ['unsigned int fd', 'const char *buf', 'size_t count']],
-                [0x005, 'open', ['const char *filename', 'int flags', 'umode_t mode']],
-                [0x006, 'close', ['unsigned int fd']],
-                #0x007, waitpid # unimplemented
-                [0x008, 'creat', ['const char *pathname', 'umode_t mode']],
-                [0x009, 'link', ['const char *oldname', 'const char *newname']],
-                [0x00a, 'unlink', ['const char *pathname']],
-                [0x00b, 'execve', ['const char *filename', 'const char *const *argv', 'const char *const *envp']],
-                [0x00c, 'chdir', ['const char *filename']],
-                #0x00d, time # unimplemented by EABI
-                [0x00e, 'mknod', ['const char *filename', 'umode_t mode', 'unsigned dev']],
-                [0x00f, 'chmod', ['const char *filename', 'umode_t mode']],
-                [0x010, 'lchown', ['const char *filename', 'old_uid_t user', 'old_gid_t group']], # lchown16
-                #0x011, break # unimplemented
-                #0x012, stat # unimplemented
-                [0x013, 'lseek', ['unsigned int fd', 'off_t offset', 'unsigned int whence']],
-                [0x014, 'getpid', []],
-                [0x015, 'mount', ['char *dev_name', 'char *dir_name', 'char *type', 'unsigned long flags', 'void *data']],
-                #0x016, umount # unimplemented by EABI
-                [0x017, 'setuid', ['old_uid_t uid']], # setuid16
-                [0x018, 'getuid', []], # getuid16
-                #0x019, stime # unimplemented by EABI
-                [0x01a, 'ptrace', ['long request', 'long pid', 'unsigned long addr', 'unsigned long data']],
-                #0x01b, alarm # unimplemented by EABI
-                #0x01c, fstat # unimplemented
-                [0x01d, 'pause', []],
-                #0x01e, utime # unimplemented by EABI
-                #0x01f, stty # unimplemented
-                #0x020, gtty # unimplemented
-                [0x021, 'access', ['const char *filename', 'int mode']],
-                [0x022, 'nice', ['int increment']],
-                #0x023, ftime # unimplemented
-                [0x024, 'sync', []],
-                [0x025, 'kill', ['pid_t pid', 'int sig']],
-                [0x026, 'rename', ['const char *oldname', 'const char *newname']],
-                [0x027, 'mkdir', ['const char *pathname', 'umode_t mode']],
-                [0x028, 'rmdir', ['const char *pathname']],
-                [0x029, 'dup', ['unsigned int fildes']],
-                [0x02a, 'pipe', ['int *fildes']],
-                [0x02b, 'times', ['struct tms *tbuf']],
-                #0x02c, prof # unimplemented
-                [0x02d, 'brk', ['unsigned long brk']],
-                [0x02e, 'setgid', ['old_gid_t gid']], # setgid16
-                [0x02f, 'getgid', []], # getgid16
-                #0x030, signal # unimplemented
-                [0x031, 'geteuid', []], # geteuid16
-                [0x032, 'getegid', []], # getegid16
-                [0x033, 'acct', ['const char *name']],
-                [0x034, 'umount2', ['char *name', 'int flags']], # umount
-                #0x035, lock # unimplemented
-                [0x036, 'ioctl', ['unsigned int fd', 'unsigned int cmd', 'unsigned long arg']],
-                [0x037, 'fcntl', ['unsigned int fd', 'unsigned int cmd', 'unsigned long arg']],
-                #0x038, mpx # unimplemented
-                [0x039, 'setpgid', ['pid_t pid', 'pid_t pgid']],
-                #0x03a, ulimit # unimplemented
-                #0x03b, olduname # unimplemented
-                [0x03c, 'umask', ['int mask']],
-                [0x03d, 'chroot', ['const char *filename']],
-                [0x03e, 'ustat', ['unsigned dev', 'struct ustat *ubuf']],
-                [0x03f, 'dup2', ['unsigned int oldfd', 'unsigned int newfd']],
-                [0x040, 'getppid', []],
-                [0x041, 'getpgrp', []],
-                [0x042, 'setsid', []],
-                [0x043, 'sigaction', ['int sig', 'const struct old_sigaction *act', 'struct old_sigaction *oact']],
-                #0x044, sgetmask # unimplemented
-                #0x045, ssetmask # unimplemented
-                [0x046, 'setreuid', ['old_uid_t ruid', 'old_uid_t euid']], # setreuid16
-                [0x047, 'setregid', ['old_gid_t rgid', 'old_gid_t egid']], # setregid16
-                [0x048, 'sigsuspend', ['old_sigset_t mask']],
-                [0x049, 'sigpending', ['old_sigset_t *uset']],
-                [0x04a, 'sethostname', ['char *name', 'int len']],
-                [0x04b, 'setrlimit', ['unsigned int resource', 'struct rlimit *rlim']],
-                #0x04c, getrlimit # unimplemented by EABI
-                [0x04d, 'getrusage', ['int who', 'struct rusage *ru']],
-                [0x04e, 'gettimeofday', ['struct __kernel_old_timeval *tv', 'struct timezone *tz']],
-                [0x04f, 'settimeofday', ['struct __kernel_old_timeval *tv', 'struct timezone *tz']],
-                [0x050, 'getgroups', ['int gidsetsize', 'old_gid_t *grouplist']], # setgroups16
-                [0x051, 'setgroups', ['int gidsetsize', 'old_gid_t *grouplist']], # getgroups16
-                #0x052, select # unimplemented by EABI
-                [0x053, 'symlink', ['const char *oldname', 'const char *newname']],
-                #0x054, lstat # unimplemented
-                [0x055, 'readlink', ['const char *path', 'char *buf', 'int bufsiz']],
-                [0x056, 'uselib', ['const char *library']],
-                [0x057, 'swapon', ['const char *specialfile', 'int swap_flags']],
-                [0x058, 'reboot', ['int magic1', 'int magic2', 'unsigned int cmd', 'void *arg']],
-                #0x059, readdir # unimplemented by EABI
-                #0x05a, mmap # unimplemented by EABI
-                [0x05b, 'munmap', ['unsigned long addr', 'size_t len']],
-                [0x05c, 'truncate', ['const char *path', 'long length']],
-                [0x05d, 'ftruncate', ['unsigned int fd', 'unsigned long length']],
-                [0x05e, 'fchmod', ['unsigned int fd', 'umode_t mode']],
-                [0x05f, 'fchown', ['unsigned int fd', 'old_uid_t user', 'old_gid_t group']], # fchown16
-                [0x060, 'getpriority', ['int which', 'int who']],
-                [0x061, 'setpriority', ['int which', 'int who', 'int niceval']],
-                #0x062, profil # unimplemented
-                [0x063, 'statfs', ['const char *pathname', 'struct statfs *buf']],
-                [0x064, 'fstatfs', ['unsigned int fd', 'struct statfs *buf']],
-                #0x065, ioperm # unimplemented
-                #0x066, socketcall # unimplemented by EABI
-                [0x067, 'syslog', ['int type', 'char *buf', 'int len']],
-                [0x068, 'setitimer', ['int which', 'struct __kernel_old_itimerval *value', 'struct __kernel_old_itimerval *ovalue']],
-                [0x069, 'getitimer', ['int which', 'struct __kernel_old_itimerval *value']],
-                [0x06a, 'stat', ['const char *filename', 'struct stat *statbuf']], # newstat
-                [0x06b, 'lstat', ['const char *filename', 'struct stat *statbuf']], # newlstat
-                [0x06c, 'fstat', ['unsigned int fd', 'struct stat *statbuf']], # newfstat
-                #0x06d, uname # unimplemented
-                #0x06e, iopl # unimplemented
-                [0x06f, 'vhangup', []],
-                #0x070, idle # deleted from kernel 2.3.13
-                #0x071, syscall # unimplemented by EABI (entry point exists at arch/arm/kernel/entry-common.S, but jump to sys_ni_syscall)
-                [0x072, 'wait4', ['pid_t upid', 'int *stat_addr', 'int options', 'struct rusage *ru']],
-                [0x073, 'swapoff', ['const char *specialfile']],
-                [0x074, 'sysinfo', ['struct sysinfo *info']],
-                #0x075, ipc # unimplemented by EABI
-                [0x076, 'fsync', ['unsigned int fd']],
-                [0x077, 'sigreturn', []], # sigreturn_wrapper # arch/arm/kernel/entry-common.S
-                [0x078, 'clone', ['unsigned long clone_flags', 'unsigned long newsp', 'int *parent_tidptr', 'unsigned long tls', 'int *child_tidptr']], # arg4,5 are swapped
-                [0x079, 'setdomainname', ['char *name', 'int len']],
-                [0x07a, 'uname', ['struct new_utsname *name']], # newuname
-                #0x07b, modify_ldt # unimplemented
-                [0x07c, 'adjtimex', ['struct old_timex32 *utp']], # adjtimex_time32
-                [0x07d, 'mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot']],
-                [0x07e, 'sigprocmask', ['int how', 'old_sigset_t *nset', 'old_sigset_t *oset']],
-                #0x07f, create_module # dereted from kernel 2.6
-                [0x080, 'init_module', ['void *umod', 'unsigned long len', 'const char *uargs']],
-                [0x081, 'delete_module', ['const char *name_user', 'unsigned int flags']],
-                #0x082, get_kernel_syms # dereted from kernel 2.6
-                [0x083, 'quotactl', ['unsigned int cmd', 'const char *special', 'qid_t id', 'void *addr']],
-                [0x084, 'getpgid', ['pid_t pid']],
-                [0x085, 'fchdir', ['unsigned int fd']],
-                [0x086, 'bdflush', ['int func', 'long data']],
-                [0x087, 'sysfs', ['int option', 'unsigned long arg1', 'unsigned long arg2']],
-                [0x088, 'personality', ['unsigned int personality']],
-                #0x089, afs_syscall # unimplemented
-                [0x08a, 'setfsuid', ['old_uid_t uid']], # setfsuid16
-                [0x08b, 'setfsgid', ['old_gid_t gid']], # setfsgid16
-                [0x08c, '_llseek', ['unsigned int fd', 'unsigned long offset_high', 'unsigned long offset_low', 'loff_t *result', 'unsigned int whence']], # llseek
-                [0x08d, 'getdents', ['unsigned int fd', 'struct linux_dirent *dirent', 'unsigned int count']],
-                [0x08e, '_newselect', ['int n', 'fd_set *inp', 'fd_set *outp', 'fd_set *exp', 'struct __kernel_old_timeval *tvp']], # select
-                [0x08f, 'flock', ['unsigned int fd', 'unsigned int cmd']],
-                [0x090, 'msync', ['unsigned long start', 'size_t len', 'int flags']],
-                [0x091, 'readv', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen']],
-                [0x092, 'writev', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen']],
-                [0x093, 'getsid', ['pid_t pid']],
-                [0x094, 'fdatasync', ['unsigned int fd']],
-                #0x095, _sysctl # unimplemented
-                [0x096, 'mlock', ['unsigned long start', 'size_t len']],
-                [0x097, 'munlock', ['unsigned long start', 'size_t len']],
-                [0x098, 'mlockall', ['int flags']],
-                [0x099, 'munlockall', []],
-                [0x09a, 'sched_setparam', ['pid_t pid', 'struct sched_param *param']],
-                [0x09b, 'sched_getparam', ['pid_t pid', 'struct sched_param *param']],
-                [0x09c, 'sched_setscheduler', ['pid_t pid', 'int policy', 'struct sched_param *param']],
-                [0x09d, 'sched_getscheduler', ['pid_t pid']],
-                [0x09e, 'sched_yield', []],
-                [0x09f, 'sched_get_priority_max', ['int policy']],
-                [0x0a0, 'sched_get_priority_min', ['int policy']],
-                [0x0a1, 'sched_rr_get_interval', ['pid_t pid', 'struct old_timespec32 *interval']], # sched_rr_get_interval_time32
-                [0x0a2, 'nanosleep', ['struct old_timespec32 *rqtp', 'struct old_timespec32 *rmtp']], # nanosleep_time32
-                [0x0a3, 'mremap', ['unsigned long addr', 'unsigned long old_len', 'unsigned long new_len', 'unsigned long flags', 'unsigned long new_addr']],
-                [0x0a4, 'setresuid', ['old_uid_t ruid', 'old_uid_t euid', 'old_uid_t suid']], # setresuid16
-                [0x0a5, 'getresuid', ['old_uid_t *ruidp', 'old_uid_t *euidp', 'old_uid_t *suidp']], # getresuid16
-                #0x0a6, vm86 # unimplemented
-                #0x0a7, query_module # dereted from kernel 2.6
-                [0x0a8, 'poll', ['struct pollfd *ufds', 'unsigned int nfds', 'int timeout_msecs']],
-                #0x0a9, nfsservctl # deleted from kernel 3.1
-                [0x0aa, 'setresgid', ['old_gid_t rgid', 'old_gid_t egid', 'old_gid_t sgid']], # setresgid16
-                [0x0ab, 'getresgid', ['old_gid_t *rgidp', 'old_gid_t *egidp', 'old_gid_t *sgidp']], # getresgid16
-                [0x0ac, 'prctl', ['int option', 'unsigned long arg2', 'unsigned long arg3', 'unsigned long arg4', 'unsigned long arg5']],
-                [0x0ad, 'rt_sigreturn', []], # rt_sigreturn_wrapper # arch/arm/kernel/entry-common.S
-                [0x0ae, 'rt_sigaction', ['int sig', 'const struct sigaction *act', 'struct sigaction *oact', 'size_t sigsetsize']],
-                [0x0af, 'rt_sigprocmask', ['int how', 'sigset_t *nset', 'sigset_t *oset', 'size_t sigsetsize']],
-                [0x0b0, 'rt_sigpending', ['sigset_t *uset', 'size_t sigsetsize']],
-                [0x0b1, 'rt_sigtimedwait', ['const sigset_t *uthese', 'siginfo_t *uinfo', 'const struct old_timespec32 *uts', 'size_t sigsetsize']], # sigtimedwait_time32
-                [0x0b2, 'rt_sigqueueinfo', ['pid_t pid', 'int sig', 'siginfo_t *uinfo']],
-                [0x0b3, 'rt_sigsuspend', ['sigset_t *unewset', 'size_t sigsetsize']],
-                [0x0b4, 'pread64', ['unsigned int fd', 'char *buf', 'size_t count', 'loff_t pos']],
-                [0x0b5, 'pwrite64', ['unsigned int fd', 'const char *buf', 'size_t count', 'loff_t pos']],
-                [0x0b6, 'chown', ['const char *filename', 'old_uid_t user', 'old_gid_t group']], # chown16
-                [0x0b7, 'getcwd', ['char *buf', 'unsigned long size']],
-                [0x0b8, 'capget', ['cap_user_header_t header', 'cap_user_data_t dataptr']],
-                [0x0b9, 'capset', ['cap_user_header_t header', 'const cap_user_data_t data']],
-                [0x0ba, 'sigaltstack', ['const stack_t *uss', 'stack_t *uoss']],
-                [0x0bb, 'sendfile', ['int out_fd', 'int in_fd', 'off_t *offset', 'size_t count']],
-                #0x0bc, reserved
-                #0x0bd, reserved
-                [0x0be, 'vfork', []],
-                [0x0bf, 'ugetrlimit', ['unsigned int resource', 'struct rlimit *rlim']], # getrlimit
-                [0x0c0, 'mmap2', ['unsigned long addr', 'unsigned long len', 'unsigned long prot', 'unsigned long flags', 'unsigned long fd', 'unsigned long pgoff']], # arch/arm/kernel/entry-common.S
-                [0x0c1, 'truncate64', ['const char *path', 'loff_t length']],
-                [0x0c2, 'ftruncate64', ['unsigned int fd', 'loff_t length']],
-                [0x0c3, 'stat64', ['const char *filename', 'struct stat64 *statbuf']],
-                [0x0c4, 'lstat64', ['const char *filename', 'struct stat64 *statbuf']],
-                [0x0c5, 'fstat64', ['unsigned long fd', 'struct stat64 *statbuf']],
-                [0x0c6, 'lchown32', ['const char *filename', 'uid_t user', 'gid_t group']], # lchown
-                [0x0c7, 'getuid32', []], # getiud
-                [0x0c8, 'getgid32', []], # getgid
-                [0x0c9, 'geteuid32', []], # geteuid
-                [0x0ca, 'getegid32', []], # getegid
-                [0x0cb, 'setreuid32', ['uid_t ruid', 'uid_t euid']], # setreuid
-                [0x0cc, 'setregid32', ['gid_t rgid', 'gid_t egid']], # setregid
-                [0x0cd, 'getgroups32', ['int gidsetsize', 'gid_t *grouplist']], # getgroups
-                [0x0ce, 'setgroups32', ['int gidsetsize', 'gid_t *grouplist']], # setgroups
-                [0x0cf, 'fchown32', ['unsigned int fd', 'uid_t user', 'gid_t group']], # fchown
-                [0x0d0, 'setresuid32', ['uid_t ruid', 'uid_t euid', 'uid_t suid']], # setresuid
-                [0x0d1, 'getresuid32', ['uid_t *ruidp', 'uid_t *euidp', 'uid_t *suidp']], # getresuid
-                [0x0d2, 'setresgid32', ['gid_t rgid', 'gid_t egid', 'gid_t sgid']], # setresgid
-                [0x0d3, 'getresgid32', ['gid_t *rgidp', 'gid_t *egidp', 'gid_t *sgidp']], # getresgid
-                [0x0d4, 'chown32', ['const char *filename', 'uid_t user', 'gid_t group']], # chown
-                [0x0d5, 'setuid32', ['uid_t uid']], # setuid
-                [0x0d6, 'setgid32', ['gid_t gid']], # setgid
-                [0x0d7, 'setfsuid32', ['uid_t uid']], # setfsuid
-                [0x0d8, 'setfsgid32', ['gid_t gid']], # setfsgid
-                [0x0d9, 'getdents64', ['unsigned int fd', 'struct linux_dirent64 *dirent', 'unsigned int count']],
-                [0x0da, 'pivot_root', ['const char *new_root', 'const char *put_old']],
-                [0x0db, 'mincore', ['unsigned long start', 'size_t len', 'unsigned char *vec']],
-                [0x0dc, 'madvise', ['unsigned long start', 'size_t len_in', 'int behavior']],
-                [0x0dd, 'fcntl64', ['unsigned int fd', 'unsigned int cmd', 'unsigned long arg']],
-                #0x0de, tux # unimplemented
-                #0x0df, unused
-                [0x0e0, 'gettid', []],
-                [0x0e1, 'readahead', ['int fd', 'loff_t offset', 'size_t count']],
-                [0x0e2, 'setxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-                [0x0e3, 'lsetxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-                [0x0e4, 'fsetxattr', ['int fd', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-                [0x0e5, 'getxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
-                [0x0e6, 'lgetxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
-                [0x0e7, 'fgetxattr', ['int fd', 'const char *name', 'void *value', 'size_t size']],
-                [0x0e8, 'listxattr', ['const char *pathname', 'char *list', 'size_t size']],
-                [0x0e9, 'llistxattr', ['const char *pathname', 'char *list', 'size_t size']],
-                [0x0ea, 'flistxattr', ['int fd', 'char *list', 'size_t size']],
-                [0x0eb, 'removexattr', ['const char *pathname', 'const char *name']],
-                [0x0ec, 'lremovexattr', ['const char *pathname', 'const char *name']],
-                [0x0ed, 'fremovexattr', ['int fd', 'const char *name']],
-                [0x0ee, 'tkill', ['pid_t pid', 'int sig']],
-                [0x0ef, 'sendfile64', ['int out_fd', 'int in_fd', 'loff_t *offset', 'size_t count']],
-                [0x0f0, 'futex', ['u32 *uaddr', 'int op', 'u32 val', 'struct old_timespec32 *utime', 'u32 *uaddr2', 'u32 val3']], # futex_time32
-                [0x0f1, 'sched_setaffinity', ['pid_t pid', 'unsigned int len', 'unsigned long *user_mask_ptr']],
-                [0x0f2, 'sched_getaffinity', ['pid_t pid', 'unsigned int len', 'unsigned long *user_mask_ptr']],
-                [0x0f3, 'io_setup', ['unsigned nr_events', 'aio_context_t *ctxp']],
-                [0x0f4, 'io_destroy', ['aio_context_t ctx']],
-                [0x0f5, 'io_getevents', ['__u32 ctx_id', '__s32 min_nr', '__s32 nr', 'struct io_event *events', 'struct old_timespec32 *timeout']], # io_getevents_time32
-                [0x0f6, 'io_submit', ['aio_context_t ctx_id', 'long nr', 'struct iocb **iocbpp']],
-                [0x0f7, 'io_cancel', ['aio_context_t ctx_id', 'struct iocb *iocb', 'struct io_event *result']],
-                [0x0f8, 'exit_group', ['int error_code']],
-                [0x0f9, 'lookup_dcookie', ['u64 cookie64', 'char *buf', 'size_t len']],
-                [0x0fa, 'epoll_create', ['int size']],
-                [0x0fb, 'epoll_ctl', ['int epfd', 'int op', 'int fd', 'struct epoll_event *event']],
-                [0x0fc, 'epoll_wait', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'int timeout']],
-                [0x0fd, 'remap_file_pages', ['unsigned long start', 'unsigned long size', 'unsigned long prot', 'unsigned long pgoff', 'unsigned long flags']],
-                #0x0fe, set_thread_area # unimplemented
-                #0x0ff, get_thread_area # unimplemented
-                [0x100, 'set_tid_address', ['int *tidptr']],
-                [0x101, 'timer_create', ['clockid_t which_clock', 'struct sigevent *timer_event_spec', 'timer_t *created_timer_id']],
-                [0x102, 'timer_settime', ['timer_t timer_id', 'int flags', 'struct old_itimerspec32 *new', 'struct old_itimerspec32 *old']], # timer_settime32
-                [0x103, 'timer_gettime', ['timer_t timer_id', 'struct old_itimerspec32 *setting']], # timer_gettime32
-                [0x104, 'timer_getoverrun', ['timer_t timer_id']],
-                [0x105, 'timer_delete', ['timer_t timer_id']],
-                [0x106, 'clock_settime', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_settime32
-                [0x107, 'clock_gettime', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_gettime32
-                [0x108, 'clock_getres', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_getres_time32
-                [0x109, 'clock_nanosleep', ['clockid_t which_clock', 'int flags', 'struct old_timespec32 *rqtp', 'struct old_timespec32 *rmtp']], # clock_nanosleep_time32
-                [0x10a, 'statfs64', ['const char *path', 'size_t sz', 'struct statfs64 *buf']], # statfs64_wrapper # arch/arm/kernel/entry-common.S
-                [0x10b, 'fstatfs64', ['unsigned int fd', 'size_t sz', 'struct statfs64 *buf']], # fstatfs64_wrapper # arch/arm/kernel/entry-common.S
-                [0x10c, 'tgkill', ['pid_t tgid', 'pid_t pid', 'int sig']],
-                [0x10d, 'utimes', ['const char *filename', 'struct old_timeval32 *t']], # utimes_time32
-                [0x10e, 'arm_fadvise64_64', ['int fd', 'int advice', 'loff_t offset', 'loff_t len']], # arch/arm/kernel/sys_arm.c
-                [0x10f, 'pciconfig_iobase', ['long which', 'unsigned long bus', 'unsigned long devfn']],
-                [0x110, 'pciconfig_read', ['unsigned long bus', 'unsigned long dfn', 'unsigned long off', 'unsigned long len', 'void *buf']],
-                [0x111, 'pciconfig_write', ['unsigned long bus', 'unsigned long dfn', 'unsigned long off', 'unsigned long len', 'void *buf']],
-                [0x112, 'mq_open', ['const char *u_name', 'int oflag', 'umode_t mode', 'struct mq_attr *u_attr']],
-                [0x113, 'mq_unlink', ['const char *u_name']],
-                [0x114, 'mq_timedsend', ['mqd_t mqdes', 'const char *u_msg_ptr', 'unsigned int msg_len', 'unsigned int msg_prio', 'const struct old_timespec32 *u_abs_timeout']], # mq_timedsend_time32
-                [0x115, 'mq_timedreceive', ['mqd_t mqdes', 'const char *u_msg_ptr', 'unsigned int msg_len', 'unsigned int *msg_prio', 'const struct old_timespec32 *u_abs_timeout']], # mq_timedreceive_time32
-                [0x116, 'mq_notify', ['mqd_t mqdes', 'const struct sigevent *u_notification']],
-                [0x117, 'mq_getsetattr', ['mqd_t mqdes', 'const struct mq_attr *u_mqstat', 'struct mq_attr *u_omqstat']],
-                [0x118, 'waitid', ['int which', 'pid_t upid', 'struct siginfo *infop', 'int options', 'struct rusage *ru']],
-                [0x119, 'socket', ['int family', 'int type', 'int protocol']],
-                [0x11a, 'bind', ['int fd', 'struct sockaddr *umyaddr', 'int addrlen']],
-                [0x11b, 'connect', ['int fd', 'struct sockaddr *uservaddr', 'int addrlen']],
-                [0x11c, 'listen', ['int fd', 'int backlog']],
-                [0x11d, 'accept', ['int fd', 'struct sockaddr *upeer_sockaddr', 'int *upeer_addrlen']],
-                [0x11e, 'getsockname', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
-                [0x11f, 'getpeername', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
-                [0x120, 'socketpair', ['int family', 'int type', 'int protocol', 'int *usockvec']],
-                [0x121, 'send', ['int fd', 'void *buff', 'size_t len', 'unsigned int flags']],
-                [0x122, 'sendto', ['int fd', 'void *buff', 'size_t len', 'unsigned int flags', 'struct sockaddr *addr', 'int addr_len']],
-                [0x123, 'recv', ['int fd', 'void *ubuf', 'size_t size', 'unsigned int flags']],
-                [0x124, 'recvfrom', ['int fd', 'void *ubuf', 'size_t size', 'unsigned int flags', 'struct sockaddr *addr', 'int *addr_len']],
-                [0x125, 'shutdown', ['int fd', 'int how']],
-                [0x126, 'setsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int optlen']],
-                [0x127, 'getsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int *optlen']],
-                [0x128, 'sendmsg', ['int fd', 'struct user_msghdr *msg', 'unsigned int flags']],
-                [0x129, 'recvmsg', ['int fd', 'struct user_msghdr *msg', 'unsigned int flags']],
-                [0x12a, 'semop', ['int semid', 'struct sembuf *tsops', 'unsigned nsops']],
-                [0x12b, 'semget', ['key_t key', 'int nsems', 'int semflg']],
-                [0x12c, 'semctl', ['int semid', 'int semnum', 'int cmd', 'unsigned long arg']], # old_semctl
-                [0x12d, 'msgsnd', ['int msqid', 'struct msgbuf *msgp', 'size_t msgsz', 'int msgflg']],
-                [0x12e, 'msgrcv', ['int msqid', 'struct msgbuf *msgp', 'size_t msgsz', 'long msgtyp', 'int msgflg']],
-                [0x12f, 'msgget', ['key_t key', 'int msgflg']],
-                [0x130, 'msgctl', ['int msqid', 'int cmd', 'struct msqid_ds *buf']], # old_msgctl
-                [0x131, 'shmat', ['int shmid', 'char *shmaddr', 'int shmflg']],
-                [0x132, 'shmdt', ['char *shmaddr']],
-                [0x133, 'shmget', ['key_t key', 'size_t size', 'int shmflg']],
-                [0x134, 'shmctl', ['int shmid', 'int cmd', 'struct shmid_ds *buf']], # old_shmctl
-                [0x135, 'add_key', ['const char *_type', 'const char *_description', 'const void *_payload', 'size_t plen', 'key_serial_t ringid']],
-                [0x136, 'request_key', ['const char *_type', 'const char *_description', 'const char *_callout_info', 'key_serial_t destringid']],
-                [0x137, 'keyctl', ['int option', 'unsigned long arg2', 'unsigned long arg3', 'unsigned long arg4', 'unsigned long arg5']],
-                [0x138, 'semtimedop', ['int semid', 'struct sembuf *tsems', 'unsigned nsops', 'const struct old_timespec32 *timeout']], # semtimedop_time32
-                #0x139, vserver # unimplemented
-                [0x13a, 'ioprio_set', ['int which', 'int who', 'int ioprio']],
-                [0x13b, 'ioprio_get', ['int which', 'int who']],
-                [0x13c, 'inotify_init', []],
-                [0x13d, 'inotify_add_watch', ['int fd', 'const char *pathname', 'u32 mask']],
-                [0x13e, 'inotify_rm_watch', ['int fd', '__s32 wd']],
-                [0x13f, 'mbind', ['unsigned long start', 'unsigned long len', 'unsigned long mode', 'const unsigned long *nmask', 'unsigned long maxnode', 'unsigned int flags']],
-                [0x140, 'get_mempolicy', ['int *policy', 'unsigned long *nmask', 'unsigned long maxnode', 'unsigned long addr', 'unsigned long flags']],
-                [0x141, 'set_mempolicy', ['int mode', 'const unsigned long *nmask', 'unsigned long maxnode']],
-                [0x142, 'openat', ['int dfd', 'const char *filename', 'int flags', 'umode_t mode']],
-                [0x143, 'mkdirat', ['int dfd', 'const char *pathname', 'umode_t mode']],
-                [0x144, 'mknodat', ['int dfd', 'const char *filename', 'umode_t mode', 'unsigned int dev']],
-                [0x145, 'fchownat', ['int dfd', 'const char *filename', 'uid_t user', 'gid_t group', 'int flag']],
-                [0x146, 'futimesat', ['unsigned int dfd', 'const char *filename', 'struct old_timeval32 *t']], # futimesat_time32
-                [0x147, 'fstatat64', ['int dfd', 'const char *filename', 'struct stat64 *statbuf', 'int flag']],
-                [0x148, 'unlinkat', ['int dfd', 'const char *pathname', 'int flag']],
-                [0x149, 'renameat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname']],
-                [0x14a, 'linkat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'int flags']],
-                [0x14b, 'symlinkat', ['const char *oldname', 'int newdfd', 'const char *newname']],
-                [0x14c, 'readlinkat', ['int dfd', 'const char *pathname', 'char *buf', 'int bufsiz']],
-                [0x14d, 'fchmodat', ['int dfd', 'const char *filename', 'umode_t mode']],
-                [0x14e, 'faccessat', ['int dfd', 'const char *filename', 'int mode']],
-                [0x14f, 'pselect6', ['int n', 'fd_set *inp', 'fd_set *outp', 'fd_set *exp', 'struct old_timespec32 *tsp', 'void *sig']], # pselect6_time32
-                [0x150, 'ppoll', ['struct pollfd *ufds', 'unsigned int nfds', 'struct old_timespec32 *tsp', 'const sigset_t *sigmask', 'size_t sigsetsize']],
-                [0x151, 'unshare', ['unsigned long unshare_flags']],
-                [0x152, 'set_robust_list', ['struct robust_list_head *head', 'size_t len']],
-                [0x153, 'get_robust_list', ['int pid', 'struct robust_list_head **head_ptr', 'size_t *len_ptr']],
-                [0x154, 'splice', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
-                [0x155, 'sync_file_range2', ['int fd', 'unsigned int flags', 'loff_t offset', 'loff_t nbytes']],
-                [0x156, 'tee', ['int fdin', 'int fdout', 'size_t len', 'unsigned int flags']],
-                [0x157, 'vmsplice', ['int fd', 'const struct iovec *uiov', 'unsigned long nr_segs', 'unsigned int flags']],
-                [0x158, 'move_pages', ['pid_t pid', 'unsigned long nr_pages', 'const void **pages', 'const int *nodes', 'int *status', 'int flags']],
-                [0x159, 'getcpu', ['unsigned *cpup', 'unsigned *nodep', 'struct getcpu_cache *unused']],
-                [0x15a, 'epoll_pwait', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'int timeout', 'const sigset_t *sigmask', 'size_t sigsetsize']],
-                [0x15b, 'kexec_load', ['unsigned long entry', 'unsigned long nr_segments', 'struct kexec_segment *segments', 'unsigned long flags']],
-                [0x15c, 'utimensat', ['unsigned int dfd', 'const char *filename', 'struct old_timespec32 *t', 'int flags']], # utimensat_time32
-                [0x15d, 'signalfd', ['int ufd', 'sigset_t *user_mask', 'size_t sizemask']],
-                [0x15e, 'timerfd_create', ['int clockid', 'int flags']],
-                [0x15f, 'eventfd', ['unsigned int count']],
-                [0x160, 'fallocate', ['int fd', 'int mode', 'loff_t offset', 'loff_t len']],
-                [0x161, 'timerfd_settime', ['int ufd', 'int flags', 'const struct old_itimerspec32 *utmr', 'struct old_itimerspec32 *otmr']], # timerfd_settime32
-                [0x162, 'timerfd_gettime', ['int ufd', 'struct old_itimerspec32 *otmr']], # timerfd_gettime32
-                [0x163, 'signalfd4', ['int ufd', 'sigset_t *user_mask', 'size_t sizemask', 'int flags']],
-                [0x164, 'eventfd2', ['unsigned int count', 'int flags']],
-                [0x165, 'epoll_create1', ['int flags']],
-                [0x166, 'dup3', ['unsigned int oldfd', 'unsigned int newfd', 'int flags']],
-                [0x167, 'pipe2', ['int *fildes', 'int flags']],
-                [0x168, 'inotify_init1', ['int flags']],
-                [0x169, 'preadv', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h']],
-                [0x16a, 'pwritev', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h']],
-                [0x16b, 'rt_tgsigqueueinfo', ['pid_t tgid', 'pid_t pid', 'int sig', 'siginfo_t *uinfo']],
-                [0x16c, 'perf_event_open', ['struct perf_event_attr *attr_uptr', 'pid_t pid', 'int cpu', 'int group_fd', 'unsigned long flags']],
-                [0x16d, 'recvmmsg', ['int fd', 'struct mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags', 'struct old_timespec32 *timeout']], # recvmmsg_time32
-                [0x16e, 'accept4', ['int fd', 'struct sockaddr *upeer_sockaddr', 'int *upeer_addrlen', 'int flags']],
-                [0x16f, 'fanotify_init', ['unsigned int flags', 'unsigned int event_f_flags']],
-                [0x170, 'fanotify_mark', ['int fanotify_fd', 'unsigned int flags', '__u64 mask', 'int dfd', 'const char *pathname']],
-                [0x171, 'prlimit64', ['pid_t pid', 'unsigned int resource', 'const struct rlimit64 *new_rlim', 'struct rlimit64 *old_rlim']],
-                [0x172, 'name_to_handle_at', ['int dfd', 'const char *name', 'struct file_handle *handle', 'int *mnt_id', 'int flag']],
-                [0x173, 'open_by_handle_at', ['int mountdirfd', 'struct file_handle *handle', 'int flags']],
-                [0x174, 'clock_adjtime', ['clockid_t which_clock', 'struct old_timex32 *tx']], # clock_adjtime32
-                [0x175, 'syncfs', ['int fd']],
-                [0x176, 'sendmmsg', ['int fd', 'struct mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags']],
-                [0x177, 'setns', ['int fd', 'int flags']],
-                [0x178, 'process_vm_readv', ['pid_t pid', 'const struct iovec *lvec', 'unsigned long liovcnt', 'const struct iovec *rvec', 'unsigned long riovcnt', 'unsigned long flags']],
-                [0x179, 'process_vm_writev', ['pid_t pid', 'const struct iovec *lvec', 'unsigned long liovcnt', 'const struct iovec *rvec', 'unsigned long riovcnt', 'unsigned long flags']],
-                [0x17a, 'kcmp', ['pid_t pid1', 'pid_t pid2', 'int type', 'unsigned long idx1', 'unsigned long idx2']],
-                [0x17b, 'finit_module', ['int fd', 'const char *uargs', 'int flags']],
-                [0x17c, 'sched_setattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int flags']],
-                [0x17d, 'sched_getattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int usize', 'unsigned int flags']],
-                [0x17e, 'renameat2', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'unsigned int flags']],
-                [0x17f, 'seccomp', ['unsigned int op', 'unsigned int flags', 'void *uargs']],
-                [0x180, 'getrandom', ['char *buf', 'size_t count', 'unsigned int flags']],
-                [0x181, 'memfd_create', ['const char *uname', 'unsigned int flags']],
-                [0x182, 'bpf', ['int cmd', 'union bpf_attr *uattr', 'unsigned int size']],
-                [0x183, 'execveat', ['int fd', 'const char *filename', 'const char *const *argv', 'const char *const *envp', 'int flags']],
-                [0x184, 'userfaultfd', ['int flags']],
-                [0x185, 'membarrier', ['int cmd', 'int flags']],
-                [0x186, 'mlock2', ['unsigned long start', 'size_t len', 'int flags']],
-                [0x187, 'copy_file_range', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
-                [0x188, 'preadv2', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h', 'rwf_t flags']],
-                [0x189, 'pwritev2', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h', 'rwf_t flags']],
-                [0x18a, 'pkey_mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot', 'int pkey']],
-                [0x18b, 'pkey_alloc', ['unsigned long flags', 'unsigned long init_val']],
-                [0x18c, 'pkey_free', ['int pkey']],
-                [0x18d, 'statx', ['int dfd', 'const char *filename', 'unsigned flags', 'unsigned int mask', 'struct statx *buffer']],
-                [0x18e, 'rseq', ['struct rseq *rseq', 'u32 rseq_len', 'int flags', 'u32 sig']],
-                [0x18f, 'io_pgetevents', ['aio_context_t ctx_id', 'long min_nr', 'long nr', 'struct io_event *events', 'struct old_timespec32 *timeout', 'const struct __aio_sigset *usig']], # io_pgetevents_time32
-                [0x190, 'migrate_pages', ['pid_t pid', 'unsigned long maxnode', 'const unsigned long *old_nodes', 'const unsigned long *new_nodes']],
-                [0x191, 'kexec_file_load', ['int kernel_fd', 'int initrd_fd', 'unsigned long cmdline_len', 'const char *cmdline_ptr', 'unsigned long flags']],
-                #0x192, unused
-                [0x193, 'clock_gettime_time64', ['const clockid_t which_clock', 'const struct __kernel_timespec *tp']], # clock_gettime
-                [0x194, 'clock_settime_time64', ['const clockid_t which_clock', 'const struct __kernel_timespec *tp']], # clock_settime
-                [0x195, 'clock_adjtime_time64', ['const clockid_t which_clock', 'struct __kernel_timex *utx']], # clock_adjtime
-                [0x196, 'clock_getres_time64', ['const clockid_t which_clock', 'struct __kernel_timespec *tp']], # clock_getres
-                [0x197, 'clock_nanosleep_time64', ['const clockid_t which_clock', 'int flags', 'const struct __kernel_timespec *rqtp', 'struct __kernel_timespec *rmtp']], # clock_nanosleep
-                [0x198, 'timer_gettime_time64', ['timer_t timer_id', 'struct __kernel_itimerspec *setting']], # timer_gettime
-                [0x199, 'timer_settime_time64', ['timer_t timer_id', 'int flags', 'const struct __kernel_itimerspec *new_setting', 'struct __kernel_itimerspec *old_setting']], # timer_settime
-                [0x19a, 'timerfd_gettime_time64', ['int ufd', 'struct __kernel_itimerspec *otmr']], # timerfd_gettime
-                [0x19b, 'timerfd_settime_time64', ['int ufd', 'int flags', 'const struct __kernel_itimerspec *utmr', 'struct __kernel_itimerspec *otmr']], # timerfd_settime
-                [0x19c, 'utimensat_time64', ['int dfd', 'const char *filename', 'struct __kernel_timespec *utimes', 'int flags']], # utimensat
-                [0x19d, 'pselect6_time64', ['int n', 'fd_set *inp', 'fd_set *outp', 'fd_set *exp', 'struct __kernel_timespec *tsp', 'void *sig']], # pselect6
-                [0x19e, 'ppoll_time64', ['struct pollfd *ufds', 'unsigned int nfds', 'struct __kernel_timespec *tsp', 'const sigset_t *sigmask', 'size_t sigsetsize']], # ppoll
-                #0x19f, unused
-                [0x1a0, 'io_pgetevents_time64', ['aio_context_t ctx_id', 'long min_nr', 'long nr', 'struct io_event *events', 'struct __kernel_timespec *timeout', 'const struct __aio_sigset *usig']], # io_pgetevents
-                [0x1a1, 'recvmmsg_time64', ['int fd', 'struct mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags', 'struct __kernel_timespec *timeout']], # recvmmsg
-                [0x1a2, 'mq_timedsend_time64', ['mqd_t mqdes', 'const char *u_msg_ptr', 'size_t msg_len', 'unsigned int msg_prio', 'const struct __kernel_timespec *u_abs_timeout']], # mq_timedsend
-                [0x1a3, 'mq_timedreceive_time64', ['mqd_t mqdes', 'const char *u_msg_ptr', 'size_t msg_len', 'unsigned int *u_msg_prio', 'const struct __kernel_timespec *u_abs_timeout']], # mq_timedreceive
-                [0x1a4, 'semtimedop_time64', ['int semid', 'struct sembuf *tsops', 'unsigned int nsops', 'const struct __kernel_timespec *timeout']], # semtimedop
-                [0x1a5, 'rt_sigtimedwait_time64', ['const sigset_t *uthese', 'siginfo *uinfo', 'struct struct __kernel_timespec *uts', 'size_t sigsetsize']], # rt_sigtimedwait
-                [0x1a6, 'futex_time64', ['u32 *uaddr', 'int op', 'u32 val', 'struct __kernel_timespec *utime', 'u32 *uaddr2', 'u32 val3']], # futex
-                [0x1a7, 'sched_rr_get_interval_time64', ['pid_t pid', 'struct __kernel_timespec *interval']], # sched_rr_get_interval
-                [0x1a8, 'pidfd_send_signal', ['int pidfd', 'int sig', 'siginfo_t *info', 'unsigned int flags']],
-                [0x1a9, 'io_uring_setup', ['u32 entries', 'struct io_uring_params *params']],
-                [0x1aa, 'io_uring_enter', ['unsigned int fd', 'u32 to_submit', 'u32 min_complete', 'u32 flags', 'const sigset_t *sig', 'size_t sigsz']],
-                [0x1ab, 'io_uring_register', ['unsigned int fd', 'unsigned int opcode', 'void *arg', 'unsigned int nr_args']],
-                [0x1ac, 'open_tree', ['int dfd', 'const char *filename', 'unsigned flags']],
-                [0x1ad, 'move_mount', ['int from_dfd', 'const char *from_pathname', 'int to_dfd', 'const char *to_pathname', 'unsigned int flags']],
-                [0x1ae, 'fsopen', ['const char *_fs_name', 'unsigned int flags']],
-                [0x1af, 'fsconfig', ['int fd', 'unsigned int cmd', 'const char *_key', 'const void *_value', 'int aux']],
-                [0x1b0, 'fsmount', ['int fs_fd', 'unsigned int flags', 'unsigned int attr_flags']],
-                [0x1b1, 'fspick', ['int, dfd', 'const char *path', 'unsigned int flags']],
-                [0x1b2, 'pidfd_open', ['pid_t pid', 'unsigned int flags']],
-                [0x1b3, 'clone3', ['struct clone_args *uargs', 'size_t size']],
-                [0x1b4, 'close_range', ['unsigned int fd', 'unsigned int max_fd', 'unsigned int flag']],
-                [0x1b5, 'openat2', ['int dfd', 'const char *filename', 'struct open_how *how', 'size_t usize']],
-                [0x1b6, 'pidfd_getfd', ['int pidfd', 'int fd', 'unsigned int flags']],
-                [0x1b7, 'faccessat2', ['int dfd', 'const char *filename', 'int mode', 'int flags']],
-                [0x1b8, 'process_madvise', ['int pidfd', 'const struct iovec *vec', 'size_t vlen', 'int behavior', 'unsigned int flags']],
-                [0x1b9, 'epoll_pwait2', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'const struct __kernel_timespec *timeout', 'const sigset_t *sigmask', 'size_t sigsetsize']],
-                [0x1ba, 'mount_setattr', ['int dfd', 'const char *path', 'unsigned int flags', 'struct mount_attr *uattr', 'size_t usize']],
-                [0x1bb, 'quotactl_fd', ['unsigned int fd', 'unsigned int cmd', 'qid_t id', 'void __user *addr']],
-                [0x1bc, 'landlock_create_ruleset', ['const struct landlock_ruleset_attr *const attr', 'const size_t size', 'const __u32 flags']],
-                [0x1bd, 'landlock_add_rule', ['const int ruleset_fd', 'const enum landlock_rule_type rule_type', 'const void *const rule_attr', 'const __u32 flags']],
-                [0x1be, 'landlock_restrict_self', ['const int ruleset_fd', 'const __u32 flags']],
-                [0x1bf, 'memfd_secret', ['unsigned int, flags']],
-                [0x1c0, 'process_mrelease', ['int pidfd', 'unsigned int flags']],
-                [0x1c1, 'futex_waitv', ['struct futex_waitv *waiters', 'unsigned int nr_futexes', 'unsigned int flags', 'struct __kernel_timespec *timeout', 'clockid_t clockid']],
-                [0x1c2, 'set_mempolicy_home_node', ['unsigned long start', 'unsigned long len', 'unsigned long home_node', 'unsigned long flags']],
-                [0xf0001, 'breakpoint', []], # arch/arm/kernel/traps.c
-                [0xf0002, 'cacheflush', ['unsigned long start', 'unsigned long end', 'int flags']], # arch/arm/kernel/traps.c
-                [0xf0003, 'usr26', []], # arch/arm/kernel/traps.c
-                [0xf0004, 'usr32', []], # arch/arm/kernel/traps.c
-                [0xf0005, 'set_tls', ['unsigned long val']], # arch/arm/kernel/traps.c
-                [0xf0006, 'get_tls', []], # arch/arm/kernel/traps.c
-            ]
-            #syscall_list += [ # OABI: obsolete
-            #    [0x90000d, 'time', ['old_time32_t *tloc']], # time32
-            #    [0x900016, 'umount', ['char *name']], # oldumount
-            #    [0x900019, 'stime', ['old_time32_t *tptr']], # stime32
-            #    [0x90001b, 'alarm', ['unsigned int seconds']],
-            #    [0x90001e, 'utime', ['char *filename', 'struct old_utimbuf32 *t']], # utime32
-            #    [0x90004c, 'getrlimit', ['unsigned int resource', 'struct rlimit *rlim']], # old_getrlimit
-            #    [0x900052, 'select', ['struct sel_arg_struct *arg']], # old_select
-            #    [0x900059, 'readdir', ['unsigned int fd', 'struct old_linux_dirent *dirent', 'unsigned int count']], # old_readdir
-            #    [0x90005a, 'mmap', ['struct mmap_arg_struct *arg']], # old_mmap
-            #    [0x900066, 'socketcall', ['int call', 'unsigned long *args']], # oabi_socketcall # arch/arm/kernel/sys_oabi-compat.c
-            #    [0x900071, 'syscall', ['long number']], # arch/arm/kernel/entry-common.S
-            #    [0x900075, 'ipc', ['uint call', 'int first', 'int second', 'int third', 'void *ptr', 'long fifth']], # oabi_ipc # arch/arm/kernel/sys_oabi-compat.c
-            #    [0x9000b4, 'pread64', ['unsigned int fd', 'char *buf', 'size_t count', 'loff_t pos']], # oabi_pread64 # arch/arm/kernel/entry-common.S
-            #    [0x9000b5, 'pwrite64', ['unsigned int fd', 'const char *buf', 'size_t count', 'loff_t pos']], # oabi_pwrite64 # arch/arm/kernel/entry-common.S
-            #    [0x9000c1, 'truncate64', ['const char *path', 'loff_t length']], # oabi_truncate64 # arch/arm/kernel/entry-common.S
-            #    [0x9000c2, 'ftruncate64', ['unsigned int fd', 'loff_t length']], # oabi_ftruncate64 # arch/arm/kernel/entry-common.S
-            #    [0x9000c3, 'stat64', ['const char *filename', 'struct oldabi_stat64 *statbuf']], # oabi_stat64 # arch/arm/kernel/sys_oabi-compat.c
-            #    [0x9000c4, 'lstat64', ['const char *filename', 'struct oldabi_stat64 *statbuf']], # oabi_lstat64 # arch/arm/kernel/sys_oabi-compat.c
-            #    [0x9000c5, 'fstat64', ['unsigned long fd', 'struct oldabi_stat64 *statbuf']], # oabi_fstat64 # arch/arm/kernel/sys_oabi-compat.c
-            #    [0x9000dd, 'fcntl64', ['unsigned int fd', 'unsigned int cmd', 'unsigned long arg']], # oabi_fcntl64 # arch/arm/kernel/sys_oabi-compat.c
-            #    [0x9000e1, 'readahead', ['int fd', 'loff_t offset', 'size_t count']], # oabi_readahead # arch/arm/kernel/entry-common.S
-            #    [0x9000fb, 'epoll_ctl', ['int epfd', 'int op', 'int fd', 'struct oabi_epoll_event *event']], # oabi_epoll_ctl # arch/arm/kernel/sys_oabi-compat.c
-            #    [0x9000fc, 'epoll_wait', ['int epfd', 'struct oabi_epoll_event *events', 'int maxevents', 'int timeout']], # oabi_epoll_wait # arch/arm/kernel/sys_oabi-compat.c
-            #    [0x90011a, 'bind', ['int fd', 'struct sockaddr *addr', 'int addrlen']], # oabi_bind # arch/arm/kernel/sys_oabi-compat.c
-            #    [0x90011b, 'connect', ['int fd', 'struct sockaddr *addr', 'int addrlen']], # oabi_connect # arch/arm/kernel/sys_oabi-compat.c
-            #    [0x900122, 'sendto', ['int fd', 'void *buff', 'size_t len', 'unsigned int flags', 'struct sockaddr *addr', 'int addrlen']], # oabi_sendto # arch/arm/kernel/sys_oabi-compat.c
-            #    [0x900128, 'sendmsg', ['int fd', 'struct user_msghdr *msg', 'unsigned int flags']], # oabi_sendmsg # arch/arm/kernel/sys_oabi-compat.c
-            #    [0x90012a, 'semop', ['int semid', 'struct oabi_sembuf *tsops', 'unsigned nsops']], # oabi_semop # arch/arm/kernel/sys_oabi-compat.c
-            #    [0x900138, 'semtimedop', ['int semid', 'struct oabi_sembuf *tsops', 'unsigned nsops', 'const struct old_timespec32 *timeout']], # oabi_semtimedop # arch/arm/kernel/sys_oabi-compat.c
-            #    [0x900147, 'fstatat64', ['int dfd', 'const char *filename', 'struct oldabi_stat64 *statbuf', 'int flag']], # oabi_fstatat64 # arch/arm/kernel/sys_oabi-compat.c
-            #    [0x9f0001, 'breakpoint', []], # arch/arm/kernel/traps.c
-            #    [0x9f0002, 'cacheflush', ['unsigned long start', 'unsigned long end', 'int flags']], # arch/arm/kernel/traps.c
-            #    [0x9f0003, 'usr26', []], # arch/arm/kernel/traps.c
-            #    [0x9f0004, 'usr32', []], # arch/arm/kernel/traps.c
-            #    [0x9f0005, 'set_tls', ['unsigned long val']], # arch/arm/kernel/traps.c
-            #    [0x9f0006, 'get_tls', []], # arch/arm/kernel/traps.c
-            #]
-            #name_list = list(zip(*syscall_list))[1]
-            #for s in syscall_list[::]:
-            #    if name_list.count(s[1]) == 2: # already added
-            #        continue
-            #    syscall_list += [[s[0]+0x900000, s[1], s[2]]]
-
-        elif arch in ["ARM64", "ARM"] and mode == "S":
-            if arch == "ARM64":
-                register_list = ["$x0", "$x1", "$x2", "$x3", "$x4", "$x5", "$x6"]
-            else:
-                register_list = ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6"]
-            # core/include/tee/tee_svc.h
-            # core/include/tee/tee_svc_cryp.h
-            # core/include/tee/tee_svc_storage.h
-            # core/include/tee/svc_cache.h
-            syscall_list = [
-                [0x00, 'syscall_sys_return', ['unsigned long ret']],
-                [0x01, 'syscall_log', ['const void *buf', 'size_t len']],
-                [0x02, 'syscall_panic', ['unsigned long code']],
-                [0x03, 'syscall_get_property', ['unsigned long prop_set', 'unsigned long index', 'void *name', 'uint32_t *name_len', 'void *buf', 'uint32_t *blen', 'uint32_t *prop_type']],
-                [0x04, 'syscall_get_property_name_to_index', ['unsigned long prop_set', 'void *name', 'unsigned long name_len', 'uint32_t *index']],
-                [0x05, 'syscall_open_ta_session', ['const TEE_UUID *dest', 'unsigned long cancel_req_to', 'struct utee_params *params', 'uint32_t *sess', 'uint32_t *ret_orig']],
-                [0x06, 'syscall_close_ta_session', ['unsigned long sess']],
-                [0x07, 'syscall_invoke_ta_command', ['unsigned long sess', 'unsigned long cancel_req_to', 'unsigned long cmd_id', 'struct utee_params *params', 'uint32_t *ret_orig']],
-                [0x08, 'syscall_check_access_rights', ['unsigned long flags', 'const void *buf', 'size_t len']],
-                [0x09, 'syscall_get_cancellation_flag', ['uint32_t *cancel', ]],
-                [0x0a, 'syscall_unmask_cancellation', ['uint32_t *old_mask']],
-                [0x0b, 'syscall_mask_cancellation', ['uint32_t *old_mask']],
-                [0x0c, 'syscall_wait', ['unsigned long timeout']],
-                [0x0d, 'syscall_get_time', ['unsigned long cat', 'TEE_Time *time']],
-                [0x0e, 'syscall_set_ta_time', ['const TEE_Time *time']],
-                [0x0f, 'syscall_cryp_state_alloc', ['unsigned long algo', 'unsigned long op_mode', 'unsigned long key1', 'unsigned long key2', 'uint32_t *state']],
-                [0x10, 'syscall_cryp_state_copy', ['unsigned long dst', 'unsigned long src']],
-                [0x11, 'syscall_cryp_state_free', ['unsigned long state']],
-                [0x12, 'syscall_hash_init', ['unsigned long state', 'const void *iv', 'size_t iv_len']],
-                [0x13, 'syscall_hash_update', ['unsigned long state', 'const void *chunk', 'size_t chunk_size']],
-                [0x14, 'syscall_hash_final', ['unsigned long state', 'const void *chunk', 'size_t chunk_size', 'void *hash', 'uint64_t *hash_len']],
-                [0x15, 'syscall_cipher_init', ['unsigned long state', 'const void *iv', 'size_t iv_len']],
-                [0x16, 'syscall_cipher_update', ['unsigned long state', 'const void *src', 'size_t src_len', 'void *dest', 'uint64_t *dest_len']],
-                [0x17, 'syscall_cipher_final', ['unsigned long state', 'const void *src', 'size_t src_len', 'void *dest', 'uint64_t *dest_len']],
-                [0x18, 'syscall_cryp_obj_get_info', ['unsigned long obj', 'TEE_ObjectInfo *info']],
-                [0x19, 'syscall_cryp_obj_restrict_usage', ['unsigned long obj', 'unsigned long usage']],
-                [0x1a, 'syscall_cryp_obj_get_attr', ['unsigned long obj', 'unsigned long attr_id', 'void *buffer', 'uint64_t *size']],
-                [0x1b, 'syscall_cryp_obj_alloc', ['unsigned long obj_type', 'unsigned long max_key_size', 'uint32_t *obj']],
-                [0x1c, 'syscall_cryp_obj_close', ['unsigned long obj']],
-                [0x1d, 'syscall_cryp_obj_reset', ['unsigned long obj']],
-                [0x1e, 'syscall_cryp_obj_populate', ['unsigned long obj', 'struct utee_attribute *attrs', 'unsigned long attr_count']],
-                [0x1f, 'syscall_cryp_obj_copy', ['unsigned long dst_obj', 'unsigned long src_obj']],
-                [0x20, 'syscall_cryp_derive_key', ['unsigned long state', 'const struct utee_attribute *params', 'unsigned long param_count', 'unsigned long derived_key']],
-                [0x21, 'syscall_cryp_random_number_generate', ['void *buf', 'size_t blen']],
-                [0x22, 'syscall_authenc_init', ['unsigned long state', 'const void *nonce', 'size_t nonce_len', 'size_t tag_len', 'size_t aad_len', 'size_t payload_len']],
-                [0x23, 'syscall_authenc_update_aad', ['unsigned long state', 'const void *aad_data', 'size_t aad_data_len']],
-                [0x24, 'syscall_authenc_update_payload', ['unsigned long state', 'const void *src_data', 'size_t src_len', 'void *dest_data', 'uint64_t *dest_len']],
-                [0x25, 'syscall_authenc_enc_final', ['unsigned long state', 'const void *src_data', 'size_t src_len', 'void *dest_data', 'uint64_t *dest_len', 'void *tag', 'uint64_t *tag_len']],
-                [0x26, 'syscall_authenc_dec_final', ['unsigned long state', 'const void *src_data', 'size_t src_len', 'void *dest_data', 'uint64_t *dest_len', 'const void *tag', 'uint64_t *tag_len']],
-                [0x27, 'syscall_asymm_operate', ['unsigned long state', 'const struct utee_attribute *usr_params', 'size_t num_params', 'const void *src_data', 'size_t src_len', 'void *dest_data', 'uint64_t *dest_len']],
-                [0x28, 'syscall_asymm_verify', ['unsigned long state', 'const struct utee_attribute *usr_params', 'size_t num_params', 'const void *data', 'size_t data_len', 'const void *sig', 'size_t sig_len']],
-                [0x29, 'syscall_storage_obj_open', ['unsigned long storage_id', 'void *object_id', 'size_t object_id_len', 'unsigned long flags', 'uint32_t *obj']],
-                [0x2a, 'syscall_storage_obj_create', ['unsigned long storage_id', 'void *object_id', 'size_t object_id_len', 'unsigned long flags', 'unsigned long attr', 'void *data', 'size_t len', 'uint32_t *obj']],
-                [0x2b, 'syscall_storage_obj_del', ['unsigned long obj']],
-                [0x2c, 'syscall_storage_obj_rename', ['unsigned long obj', 'void *object_id', 'size_t object_id_len']],
-                [0x2d, 'syscall_storage_alloc_enum', ['uint32_t *obj_enum']],
-                [0x2e, 'syscall_storage_free_enum', ['nsigned long obj_enum']],
-                [0x2f, 'syscall_storage_reset_enum', ['unsigned long obj_enum']],
-                [0x30, 'syscall_storage_start_enum', ['unsigned long obj_enum', 'unsigned long storage_id']],
-                [0x31, 'syscall_storage_next_enum', ['unsigned long obj_enum', 'TEE_ObjectInfo *info', 'void *obj_id', 'uint64_t *len']],
-                [0x32, 'syscall_storage_obj_read', ['unsigned long obj', 'void *data', 'size_t len', 'uint64_t *count']],
-                [0x33, 'syscall_storage_obj_write', ['unsigned long obj', 'void *data', 'size_t len']],
-                [0x34, 'syscall_storage_obj_trunc', ['unsigned long obj, size_t len']],
-                [0x35, 'syscall_storage_obj_seek', ['unsigned long obj', 'int32_t offset', 'unsigned long whence']],
-                [0x36, 'syscall_obj_generate_key', ['unsigned long obj', 'unsigned long key_size', 'const struct utee_attribute *params', 'unsigned long param_count']],
-                [0x37, 'syscall_not_supported', []],
-                [0x38, 'syscall_not_supported', []],
-                [0x39, 'syscall_not_supported', []],
-                [0x3a, 'syscall_not_supported', []],
-                [0x3b, 'syscall_not_supported', []],
-                [0x3c, 'syscall_not_supported', []],
-                [0x3d, 'syscall_not_supported', []],
-                [0x3e, 'syscall_not_supported', []],
-                [0x3f, 'syscall_not_supported', []],
-                [0x40, 'syscall_not_supported', []],
-                [0x41, 'syscall_not_supported', []],
-                [0x42, 'syscall_not_supported', []],
-                [0x43, 'syscall_not_supported', []],
-                [0x44, 'syscall_not_supported', []],
-                [0x45, 'syscall_not_supported', []],
-                [0x46, 'syscall_cache_operation', ['void *va, size_t len', 'unsigned long op']],
-            ]
-            # ldelf
-            # core/include/tee/tee_svc.h
-            # core/include/kernel/ldelf_syscalls.h
-            #syscall_list += [
-            #    [0x00, 'syscall_sys_return', ['unsigned long ret']],
-            #    [0x01, 'syscall_log', ['const void *buf', 'size_t len']],
-            #    [0x02, 'syscall_panic', ['unsigned long code']],
-            #    [0x03, 'ldelf_syscall_map_zi', ['vaddr_t *va', 'size_t num_bytes', 'size_t pad_begin', 'size_t pad_end', 'unsigned long flags']],
-            #    [0x04, 'ldelf_syscall_unmap', ['vaddr_t va', 'size_t num_bytes']],
-            #    [0x05, 'ldelf_syscall_open_bin', ['const TEE_UUID *uuid', 'size_t uuid_size', 'uint32_t *handle']],
-            #    [0x06, 'ldelf_syscall_close_bin', ['unsigned long handle']],
-            #    [0x07, 'ldelf_syscall_map_bin', ['vaddr_t *va', 'size_t num_bytes', 'unsigned long handle', 'size_t offs_bytes', 'size_t pad_begin', 'size_t pad_end', 'unsigned long flags']],
-            #    [0x08, 'ldelf_syscall_copy_from_bin', ['void *dst', 'size_t offs', 'size_t num_bytes', 'unsigned long handle']],
-            #    [0x09, 'ldelf_syscall_set_prot', ['unsigned long va', 'size_t num_bytes', 'unsigned long flags']],
-            #    [0x0a, 'ldelf_syscall_remap', ['unsigned long old_va', 'addr_t *new_va', 'size_t num_bytes', 'size_t pad_begin', 'size_t pad_end']],
-            #    [0x0b, 'ldelf_syscall_gen_rnd_num', ['void *buf', 'size_t num_bytes']],
-            #]
-
-        else:
-            raise
-
-        syscall_table = {}
-        for nr, name, args in syscall_list:
-            args = list(zip(register_list[:len(args)], args))
-            syscall_table[nr] = Entry(name, [Param(*p) for p in args])
-        return syscall_table
 
 
 @functools.lru_cache()
@@ -22751,6 +22805,7 @@ class KernelVersionCommand(GenericCommand):
             err("Parse failed")
             return
         addr, kernel_version_string = ret
+        gef_print(titlify("Kernel version (heuristic)"))
         gef_print("{:#x}: {:s}".format(addr, kernel_version_string))
         return
 
@@ -22786,6 +22841,7 @@ class KernelCmdlineCommand(GenericCommand):
             err("Parse failed")
             return
         addr, kernel_cmdline_string = ret
+        gef_print(titlify("Kernel cmdline (heuristic)"))
         gef_print("{:#x}: '{:s}'".format(addr, kernel_cmdline_string))
         return
 
@@ -22803,6 +22859,7 @@ class KernelTaskCommand(GenericCommand):
         if init_task is None:
             err("Not found symbol")
             return None
+        gef_print(titlify("Kernel tasks (heuristic)"))
         info("init_task: {:#x}".format(init_task))
 
         # search init_task->tasks
@@ -22967,6 +23024,7 @@ class KernelModuleCommand(GenericCommand):
         if modules is None:
             err("Not found symbol")
             return None
+        gef_print(titlify("Kernel modules (heuristic)"))
         info("modules: {:#x}".format(modules))
 
         module_addrs = []
@@ -23177,6 +23235,7 @@ class KernelCharacterDevicesCommand(GenericCommand):
         if chrdevs is None:
             err("Not found symbol")
             return None
+        gef_print(titlify("Kernel character devices (heuristic)"))
         info("chrdevs: {:#x}".format(chrdevs))
 
         chrdev_addrs = []
@@ -23369,7 +23428,7 @@ class KernelCharacterDevicesCommand(GenericCommand):
         legend = ["chrdev", "name", "major", "minor", "cdev", "cdev->kobj.parent", "parent_name", "cdev->ops"]
         gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
         for (major, minor), m in sorted(merged.items()):
-            fmt = "{:#018x}: {:<18s} {:6d} {:6d} {:#018x} {:#018x} {:<18s} {:#018x}{:s}"
+            fmt = "{:#018x}: {:<18s} {:<6d} {:<6d} {:#018x} {:#018x} {:<18s} {:#018x}{:s}"
             gef_print(fmt.format(m["chrdev"], m["name"], major, minor, m["cdev"], m["parent"], m["parent_name"], m["ops"], m["ops_sym"]))
         return
 
@@ -30533,7 +30592,8 @@ class OpteeBgetDumpCommand(GenericCommand):
                 gef_print("  -> {:s}".format(Color.colorify(chunk, "red bold")))
             else:
                 chunk_addr = Color.colorify("{:#010x}".format(chunk["_addr"]), "yellow bold")
-                fmt = "  -> {:s}: (prevfree:{:#x}  bsize:{:#010x}  flink:{:#010x}  blink:{:#010x}  next_prevfree:{:#010x}  next_bsize:{:#010x}({:#010x}))"
+                fmt = "  -> {:s}: (prevfree:{:#x}  bsize:{:#010x}  flink:{:#010x}  blink:{:#010x}"
+                fmt += "  next_prevfree:{:#010x}  next_bsize:{:#010x}({:#010x}))"
                 gef_print(fmt.format(chunk_addr, chunk["prevfree"], chunk["bsize"], chunk["flink"], chunk["blink"],
                                      chunk["next_prevfree"], chunk["next_bsize"], (-chunk["next_bsize"]) & 0xffffffff))
         gef_print("blink:    {:#x}".format(malloc_ctx["blink"]))
@@ -30542,7 +30602,8 @@ class OpteeBgetDumpCommand(GenericCommand):
                 gef_print("  -> {:s}".format(Color.colorify(chunk, "red bold")))
             else:
                 chunk_addr = Color.colorify("{:#010x}".format(chunk["_addr"]), "yellow bold")
-                fmt = "  -> {:s}: (prevfree:{:#x}  bsize:{:#010x}  flink:{:#010x}  blink:{:#010x}  next_prevfree:{:#010x}  next_bsize:{:#010x}({:#010x}))"
+                fmt = "  -> {:s}: (prevfree:{:#x}  bsize:{:#010x}  flink:{:#010x}  blink:{:#010x}"
+                fmt += "  next_prevfree:{:#010x}  next_bsize:{:#010x}({:#010x}))"
                 gef_print(fmt.format(chunk_addr, chunk["prevfree"], chunk["bsize"], chunk["flink"], chunk["blink"],
                                      chunk["next_prevfree"], chunk["next_bsize"], (-chunk["next_bsize"]) & 0xffffffff))
         gef_print("pool:     {:#x}".format(malloc_ctx["pool"]))
@@ -37785,7 +37846,7 @@ class ExecUntilCondCommand(ExecUntilCommand):
     _example_ = "\n"
     _example_ += '{:s} "$rax==0xdeadbeef && $rbx==0xcafebabe" # execute until specified condition is filled\n'.format(_cmdline_)
     _example_ += '{:s} "$rax==0x123 && *(long*)$rbx==0x4" # multiple condition and memory access is supported\n'.format(_cmdline_)
-    _example_ += '{:s} "$ALL_REG==0x1234" # is replaced with a comparison for all registers. ex: `($rax==0x1234||$rbx==0x1234||...)`\n'.format(_cmdline_)
+    _example_ += '{:s} "$ALL_REG==0x1234" # means compare with all registers. ex: `($rax==0x1234||$rbx==0x1234||...)`\n'.format(_cmdline_)
     _example_ += "\n"
     _example_ += "THIS FEATURE IS TOO SLOW.\n"
     _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"

@@ -1,7 +1,7 @@
 ## What is this
 This is a fork of [GEF](https://github.com/hugsy/gef).
 However, it is specialized for x86 / x64 / ARM / AArch64, and various features are added.
-We hope you find it useful for CTF player, reverser, exploit developer, and so on.
+I hope you find it useful for CTF player, reverser, exploit developer, and so on.
 
 ## Install
 
@@ -33,6 +33,8 @@ All of these features are experimental. Tested on Ubuntu 22.04.
 * It works with any version qemu-system, but qemu-6.x or higher is recommended.
     * Start qemu with the `-s` option and listen on `localhost:1234`.
     * Attach with `gdb-multiarch -ex 'target remote localhost:1234'`.
+    * Or `gdb-multiarch -ex 'file /PATH/TO/BINARY' -ex 'target remote localhost:1234'`.
+    * Or `gdb-multiarch -ex 'set architecture TARGET_ARCH' -ex 'target remote localhost:1234'`.
 
 #### General
 * `qreg`: displays the register values from qemu-monitor (allows to get like `$cs` even under qemu 2.x).
@@ -315,7 +317,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
 * `pdisas`: is a shortcut for `cs-dis $pc LENGTH=50 OPCODES`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pdisas.png)
 * `ii`: is a shortcut for `x/50i $pc`.
-    * It prints the value if memory access operation.
+    * It prints the value if it is memory access operation.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ii.png)
 * `version`: shows software version that gef used.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/version.png)
@@ -325,7 +327,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
 * `onegadget`: invokes `one_gadget`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/onegadget.png)
 * `ls`/`cat`: invokes `ls`/`cat` directly.
-* `smart-memory-dump`: dumps all regions of memory to each file.
+* `smart-memory-dump`: dumps all regions of the memory to each file.
 * `mmap`: allocates a new memory (syntax sugar of `call mmap(...)`).
 * `constgrep`: invokes `grep` under `/usr/include`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/constgrep.png)
@@ -348,7 +350,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dwarf-exception-handler.png)
 * `dynamic`: dumps the DYNAMIC area.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dynamic.png)
-* `linkmap`: dumps linkmap with iterating.
+* `linkmap`: dumps the linkmap with iterating.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/linkmap.png)
 * `ret2dl-hint`: shows the structure used by Return-to-dl-resolve as hint.
 * `srop-hint`: shows the code for Sigreturn-Oriented-Programming as hint.
@@ -358,7 +360,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/linklist-walk.png)
 * `ptr-demangle`: shows the demangled value of the value mangled by `PTR_MANGLE`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ptr-demangle.png)
-* `search-mangled-ptr`: searchs the mangled value from RW memory.
+* `search-mangled-ptr`: searches the mangled value from RW memory.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/search-mangled-ptr.png)
 * `capability`: shows the capabilities of the debugging process.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/capability.png)
@@ -375,3 +377,9 @@ All of these features are experimental. Tested on Ubuntu 22.04.
 * Removed some features I don't use.
     * `ida-interact`, `gef-remote`, `pie`, `pcustom`, `ksymaddr` and `shellcode`.
 * Many bugs fix / formatting / made it easy for me to use.
+
+## Memo (Japanese)
+* Why i decided to make this
+    * [gefを改造した話](https://hackmd.io/@bata24/rJVtBJsrP)
+* The story behind each command, etc.
+    * [bata24/gefの機能紹介とか](https://hackmd.io/@bata24/SycIO4qPi)
