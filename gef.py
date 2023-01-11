@@ -1646,6 +1646,19 @@ def gef_pybytes(x):
     return bytes(str(x), encoding="utf-8")
 
 
+def slicer(data, n):
+    return [data[i:i + n] for i in range(0, len(data), n)]
+
+
+def slice_unpack(data, n):
+    if n == 8:
+        return [u64(data[i:i + 8]) for i in range(0, len(data), 8)]
+    elif n == 4:
+        return [u32(data[i:i + 4]) for i in range(0, len(data), 4)]
+    else:
+        raise
+
+
 @functools.lru_cache()
 def which(program):
     """Locate a command on the filesystem."""
@@ -4455,8 +4468,7 @@ def get_explored_regions():
     except gdb.MemoryError:
         pass
     if data:
-        unpack = u32 if is_32bit() else u64
-        data = [unpack(data[i:i + current_arch.ptrsize]) for i in range(0, len(data), current_arch.ptrsize)]
+        data = slice_unpack(data, current_arch.ptrsize)
         data = list(set(data))
         for d in data:
             regions += make_regions(d, "<explored>")
@@ -6521,7 +6533,6 @@ class ProcessStatusCommand(GenericCommand):
             uid_map = open("/proc/{}/uid_map".format(pid), "r").read().strip()
         except Exception:
             return []
-        slicer = lambda data, n: [data[i:i + n] for i in range(0, len(data), n)]
         return slicer([int(x) for x in uid_map.split()], 3)
 
     def get_gid_map(self, pid):
@@ -6529,7 +6540,6 @@ class ProcessStatusCommand(GenericCommand):
             gid_map = open("/proc/{}/gid_map".format(pid), "r").read().strip()
         except Exception:
             return []
-        slicer = lambda data, n: [data[i:i + n] for i in range(0, len(data), n)]
         return slicer([int(x) for x in gid_map.split()], 3)
 
     def get_tty_str(self, major, minor):
@@ -7567,10 +7577,6 @@ class SearchMangledPtrCommand(GenericCommand):
 
     def search_mangled_ptr(self, start_address, end_address):
         """Search a mangled pointer within a range defined by arguments."""
-        def slice_unpack(data, n):
-            tmp = [data[i:i + n] for i in range(0, len(data), n)]
-            return list(map(u64 if n == 8 else u32, tmp))
-
         if is_qemu_system():
             step = gef_getpagesize()
         else:
@@ -23901,9 +23907,6 @@ class TlsCommand(GenericCommand):
 
     @staticmethod
     def getfsgs_qemu_usermode():
-        def slice_unpack(data, n):
-            tmp = [data[i:i + n] for i in range(0, len(data), n)]
-            return list(map(u64 if n == 8 else u32, tmp))
         vmmap = get_process_maps()
         for m in vmmap[::-1]:
             if m.path != "<explored>":
@@ -24746,7 +24749,6 @@ class VisualHeapCommand(GenericCommand):
     def print_chunk(self, chunk, color_func):
         ptrsize = current_arch.ptrsize
         unpack = u32 if ptrsize == 4 else u64
-        slicer = lambda data, n: [data[i:i + n] for i in range(0, len(data), n)]
         data = slicer(chunk.data, ptrsize * 2)
         group_line_threshold = 8
 
@@ -27416,15 +27418,6 @@ class PartitionAllocDumpStableCommand(GenericCommand):
           +---------------------+
     """
 
-    def slice_unpack(self, data, n):
-        tmp = [data[i:i + n] for i in range(0, len(data), n)]
-        if n == 8:
-            return list(map(u64, tmp))
-        elif n == 4:
-            return list(map(u32, tmp))
-        else:
-            raise
-
     @functools.lru_cache()
     def get_roots_heuristic(self):
         """searches for fast_malloc_root, array_buffer_root_ and buffer_root_"""
@@ -27451,7 +27444,7 @@ class PartitionAllocDumpStableCommand(GenericCommand):
         roots = []
         for maps in chromium_rw_maps:
             # explode to each qword (if 64 bit arch) or dword (if 32 bit arch)
-            datas = self.slice_unpack(read_memory(maps.page_start, maps.size), current_arch.ptrsize)
+            datas = slice_unpack(read_memory(maps.page_start, maps.size), current_arch.ptrsize)
             addrs = [x for x in range(maps.page_start, maps.page_end, current_arch.ptrsize)]
 
             """
@@ -28206,15 +28199,6 @@ class PartitionAllocDumpOld1Command(GenericCommand):
           +---------------------+
     """
 
-    def slice_unpack(self, data, n):
-        tmp = [data[i:i + n] for i in range(0, len(data), n)]
-        if n == 8:
-            return list(map(u64, tmp))
-        elif n == 4:
-            return list(map(u32, tmp))
-        else:
-            raise
-
     @functools.lru_cache()
     def get_roots_heuristic(self):
         """searches for array_buffer_root_, buffer_root_, layout_root_ and fast_malloc_root_"""
@@ -28232,7 +28216,7 @@ class PartitionAllocDumpOld1Command(GenericCommand):
 
         roots = []
         for maps in chromium_rw_maps:
-            datas = self.slice_unpack(read_memory(maps.page_start, maps.size), current_arch.ptrsize)
+            datas = slice_unpack(read_memory(maps.page_start, maps.size), current_arch.ptrsize)
             addrs = [x for x in range(maps.page_start, maps.page_end, current_arch.ptrsize)]
 
             """
@@ -29756,7 +29740,6 @@ class MuslDumpCommand(GenericCommand):
         if state == "Used":
             subinfo += " slot_idx:{:<#3x} slot_offset:{:#x}".format(group["slot_idx"], group["slot_offset"])
 
-        slicer = lambda data, n: [data[i:i + n] for i in range(0, len(data), n)]
         data = slicer(group["data"], ptrsize * 2)
         addr = group["addr"]
         group_line_threshold = 8
@@ -30004,7 +29987,6 @@ class XSecureMemAddrCommand(GenericCommand):
         return data
 
     def print_secure_memory_x(self, target, data):
-        slicer = lambda data, n: [data[i:i + n] for i in range(0, len(data), n)]
         for i, data16 in enumerate(slicer(data, 16)):
             addr = int(target) + i * 0x10
             data_units = slicer(data16, self.dump_unit)
@@ -32660,10 +32642,6 @@ def get_maps_arm64_optee_secure_memory(verbose=False):
         err("Not found secure memory maps")
         return None
     data = XSecureMemAddrCommand.read_secure_memory(sm, 0x0, sm.size, verbose)
-
-    def slice_unpack(data, n):
-        tmp = [data[i:i + n] for i in range(0, len(data), n)]
-        return list(map(u64 if n == 8 else u32, tmp))
     data_list = slice_unpack(data, 8)
 
     """
@@ -32901,15 +32879,6 @@ class PagewalkCommand(GenericCommand):
         out = read_physmem(paddr, size)
         self.cache[key] = out
         return out
-
-    def slice_unpack(self, data, n):
-        tmp = [data[i:i + n] for i in range(0, len(data), n)]
-        if n == 8:
-            return list(map(u64, tmp))
-        elif n == 4:
-            return list(map(u32, tmp))
-        else:
-            raise
 
     # merge pages that points same phys page
     # for example, there are 16 pages,
@@ -33294,7 +33263,7 @@ class PagewalkX64Command(PagewalkCommand):
         COUNT = 0
         for va_base, table_base, parent_flags in self.TABLES:
             entries = self.read_physmem_cache(table_base, 2 ** self.bits["PML5T_BITS"] * self.bits["ENTRY_SIZE"])
-            entries = self.slice_unpack(entries, self.bits["ENTRY_SIZE"])
+            entries = slice_unpack(entries, self.bits["ENTRY_SIZE"])
             COUNT += len(entries)
             for i, entry in enumerate(entries):
                 # present flag
@@ -33350,7 +33319,7 @@ class PagewalkX64Command(PagewalkCommand):
         COUNT = 0
         for va_base, table_base, parent_flags in self.TABLES:
             entries = self.read_physmem_cache(table_base, 2 ** self.bits["PML4T_BITS"] * self.bits["ENTRY_SIZE"])
-            entries = self.slice_unpack(entries, self.bits["ENTRY_SIZE"])
+            entries = slice_unpack(entries, self.bits["ENTRY_SIZE"])
             COUNT += len(entries)
             for i, entry in enumerate(entries):
                 # present flag
@@ -33415,7 +33384,7 @@ class PagewalkX64Command(PagewalkCommand):
         COUNT = 0
         for va_base, table_base, parent_flags in self.TABLES:
             entries = self.read_physmem_cache(table_base, 2 ** self.bits["PDPT_BITS"] * self.bits["ENTRY_SIZE"])
-            entries = self.slice_unpack(entries, self.bits["ENTRY_SIZE"])
+            entries = slice_unpack(entries, self.bits["ENTRY_SIZE"])
             COUNT += len(entries)
             for i, entry in enumerate(entries):
                 # present flag
@@ -33494,7 +33463,7 @@ class PagewalkX64Command(PagewalkCommand):
         COUNT = 0
         for va_base, table_base, parent_flags in self.TABLES:
             entries = self.read_physmem_cache(table_base, 2 ** self.bits["PDT_BITS"] * self.bits["ENTRY_SIZE"])
-            entries = self.slice_unpack(entries, self.bits["ENTRY_SIZE"])
+            entries = slice_unpack(entries, self.bits["ENTRY_SIZE"])
             COUNT += len(entries)
             for i, entry in enumerate(entries):
                 # present flag
@@ -33573,7 +33542,7 @@ class PagewalkX64Command(PagewalkCommand):
         COUNT = 0
         for va_base, table_base, parent_flags in self.TABLES:
             entries = self.read_physmem_cache(table_base, 2 ** self.bits["PT_BITS"] * self.bits["ENTRY_SIZE"])
-            entries = self.slice_unpack(entries, self.bits["ENTRY_SIZE"])
+            entries = slice_unpack(entries, self.bits["ENTRY_SIZE"])
             COUNT += len(entries)
             for i, entry in enumerate(entries):
                 # present flag
@@ -34008,7 +33977,7 @@ class PagewalkArmCommand(PagewalkCommand):
         SUPER_SECTION = []
         COUNT = 0
         entries = self.read_physmem_cache(table_base, 4 * (2 ** (12 - self.N)))
-        entries = self.slice_unpack(entries, 4)
+        entries = slice_unpack(entries, 4)
         COUNT += len(entries)
         for i, entry in enumerate(entries):
             # present flag
@@ -34127,7 +34096,7 @@ class PagewalkArmCommand(PagewalkCommand):
         COUNT = 0
         for va_base, table_base, parent_flags in LEVEL1:
             entries = self.read_physmem_cache(table_base, 4 * (2 ** 8))
-            entries = self.slice_unpack(entries, 4)
+            entries = slice_unpack(entries, 4)
             COUNT += len(entries)
             for i, entry in enumerate(entries):
                 # present flag
@@ -34237,7 +34206,7 @@ class PagewalkArmCommand(PagewalkCommand):
             GB = []
             COUNT = 0
             entries = self.read_physmem_cache(table_base, 8 * (2 ** 2))
-            entries = self.slice_unpack(entries, 8)
+            entries = slice_unpack(entries, 8)
             COUNT += len(entries)
             for i, entry in enumerate(entries):
                 # present flag
@@ -34324,7 +34293,7 @@ class PagewalkArmCommand(PagewalkCommand):
         COUNT = 0
         for va_base, table_base, parent_flags in LEVEL1:
             entries = self.read_physmem_cache(table_base, 8 * (2 ** 9))
-            entries = self.slice_unpack(entries, 8)
+            entries = slice_unpack(entries, 8)
             COUNT += len(entries)
             for i, entry in enumerate(entries):
                 # present flag
@@ -34405,7 +34374,7 @@ class PagewalkArmCommand(PagewalkCommand):
         COUNT = 0
         for va_base, table_base, parent_flags in LEVEL2:
             entries = self.read_physmem_cache(table_base, 8 * (2 ** 9))
-            entries = self.slice_unpack(entries, 8)
+            entries = slice_unpack(entries, 8)
             COUNT += len(entries)
             for i, entry in enumerate(entries):
                 # present flag
@@ -35112,7 +35081,7 @@ class PagewalkArm64Command(PagewalkCommand):
             COUNT = 0
             for va_base, table_base, parent_flags in TABLE_BASE:
                 entries = self.read_mem_wrapper(table_base, 8 * entries_per_table)
-                entries = self.slice_unpack(entries, 8)
+                entries = slice_unpack(entries, 8)
                 COUNT += len(entries)
                 for i, entry in enumerate(entries):
                     # present flag
@@ -35192,7 +35161,7 @@ class PagewalkArm64Command(PagewalkCommand):
             COUNT = 0
             for va_base, table_base, parent_flags in LEVELM1:
                 entries = self.read_mem_wrapper(table_base, 8 * entries_per_table)
-                entries = self.slice_unpack(entries, 8)
+                entries = slice_unpack(entries, 8)
                 COUNT += len(entries)
                 for i, entry in enumerate(entries):
                     # present flag
@@ -35342,7 +35311,7 @@ class PagewalkArm64Command(PagewalkCommand):
             COUNT = 0
             for va_base, table_base, parent_flags in LEVEL0:
                 entries = self.read_mem_wrapper(table_base, 8 * entries_per_table)
-                entries = self.slice_unpack(entries, 8)
+                entries = slice_unpack(entries, 8)
                 COUNT += len(entries)
                 for i, entry in enumerate(entries):
                     # present flag
@@ -35505,7 +35474,7 @@ class PagewalkArm64Command(PagewalkCommand):
             COUNT = 0
             for va_base, table_base, parent_flags in LEVEL1:
                 entries = self.read_mem_wrapper(table_base, 8 * entries_per_table)
-                entries = self.slice_unpack(entries, 8)
+                entries = slice_unpack(entries, 8)
                 COUNT += len(entries)
                 for i, entry in enumerate(entries):
                     # present flag
@@ -35667,7 +35636,7 @@ class PagewalkArm64Command(PagewalkCommand):
             COUNT = 0
             for va_base, table_base, parent_flags in LEVEL2:
                 entries = self.read_mem_wrapper(table_base, 8 * entries_per_table)
-                entries = self.slice_unpack(entries, 8)
+                entries = slice_unpack(entries, 8)
                 COUNT += len(entries)
                 for i, entry in enumerate(entries):
                     # present flag
@@ -37928,10 +37897,7 @@ class PeekPointersCommand(GenericCommand):
             sections = [(s.path, s.page_start, s.page_end) for s in vmmap]
 
         data = read_memory(addr.section.page_start, addr.section.size)
-        if current_arch.ptrsize == 8:
-            data = [u64(data[i:i + 8]) for i in range(0, len(data), 8)]
-        else:
-            data = [u32(data[i:i + 4]) for i in range(0, len(data), 4)]
+        data = slice_unpack(data, current_arch.ptrsize)
 
         for off, addr_value in enumerate(data):
             addr_v = lookup_address(addr_value)
