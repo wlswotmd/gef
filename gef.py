@@ -37973,7 +37973,7 @@ class ThunkBreakpoint(gdb.Breakpoint):
         for m in self.maps:
             addr, size, perm = m
             if addr <= target < addr + size:
-                return perm
+                return perm.lower()
         return "?"
 
     def stop(self):
@@ -37997,21 +37997,32 @@ class ThunkBreakpoint(gdb.Breakpoint):
         target_symbol = get_symbol_string(target_address, nosymbol_string=" <NO_SYMBOL>")
 
         # print information
-        fmt = "{:#x}{:s} -> {:#x} <{:s}> -> {:#x}{:s}"
-        info(fmt.format(caller_address, caller_symbol, self.loc, self.sym, target_address, target_symbol))
+        if caller_address is None:
+            fmt = "{:s}{:s} -> {:#x} <{:s}> -> {:#x}{:s}"
+            msg = fmt.format("???(unknown)", caller_symbol, self.loc, self.sym, target_address, target_symbol)
+        else:
+            fmt = "{:#x}{:s} -> {:#x} <{:s}> -> {:#x}{:s}"
+            msg = fmt.format(caller_address, caller_symbol, self.loc, self.sym, target_address, target_symbol)
+        info(msg)
+
         # print preferred register condition
+        pattern = [0] + [(x + 1) * y for x, y in itertools.product(range(0x100), [1, -1])] # [0, 1, -1, 2, -2, ...]
         for reg in current_arch.gpr_registers:
             reg_value = get_register(reg)
-            try:
-                mem_value = read_int_from_memory(reg_value)
-            except Exception:
-                continue
-            if mem_value == target_address:
-                perm = self.search_perm(reg_value)
-                reg_value_symbol = get_symbol_string(reg_value, nosymbol_string=" <NO_SYMBOL>")
-                mem_value_symbol = get_symbol_string(mem_value, nosymbol_string=" <NO_SYMBOL>")
-                fmt = "    {:s}: {:#x}{:s} ({:s})  ->  {:#x}{:s}"
-                info(fmt.format(reg, reg_value, reg_value_symbol, perm, mem_value, mem_value_symbol))
+            for i in pattern:
+                slide = current_arch.ptrsize * i
+                reg_value_slided = reg_value + slide
+                try:
+                    mem_value = read_int_from_memory(reg_value_slided)
+                except Exception:
+                    continue
+                if mem_value == target_address:
+                    perm = self.search_perm(reg_value_slided)
+                    reg_value_slided_symbol = get_symbol_string(reg_value_slided, nosymbol_string=" <NO_SYMBOL>")
+                    mem_value_symbol = get_symbol_string(mem_value, nosymbol_string=" <NO_SYMBOL>")
+                    fmt = "    {:s}{:+#x}: {:#x}{:s} [{:s}]  ->  {:#x}{:s}"
+                    info(fmt.format(reg, slide, reg_value_slided, reg_value_slided_symbol, perm, mem_value, mem_value_symbol))
+                    break
         return False # continue
 
 
@@ -38033,10 +38044,13 @@ class ThunkHunterCommand(GenericCommand):
         maps = KernelbaseCommand.get_maps() # [vaddr, size, perm]
         info("Resolving thunk function addresses")
         for reg in current_arch.gpr_registers:
+            if reg in ["$esp", "$rsp", "$eip", "$rip"]:
+                continue
             sym = "__x86_indirect_thunk_{}".format(reg.replace("$", ""))
             addr = get_ksymaddr(sym)
             if addr is None:
                 continue
+            gef_print(sym + ": ", end="")
             ThunkBreakpoint(addr, sym, reg, maps)
         info("Do `continue`. If NO_SYMBOL is in the result, try `vmlinux-to-elf-apply`")
         return
