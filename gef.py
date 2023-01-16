@@ -20204,10 +20204,13 @@ class MagicCommand(GenericCommand):
 
     def magic_kernel(self):
         info("Wait for memory scan")
-        maps = KernelbaseCommand.get_maps()
-        if maps is None:
+
+        dic = KernelbaseCommand.get_kernel_base()
+        maps = dic["maps"]
+        kbase = dic["kbase"]
+        kbase_size = dic["kbase_size"]
+        if maps is None or kbase is None or kbase_size is None:
             return
-        kbase, kbase_size = KernelbaseCommand.get_kernel_base(maps)
         gef_print("{:42s}: {:#x} ({:#x} bytes)".format("kernel_base", kbase, kbase_size))
 
         gef_print(titlify("Legend"))
@@ -22675,69 +22678,104 @@ class KernelbaseCommand(GenericCommand):
             return maps
 
     @staticmethod
-    def get_kernel_base(maps):
-        for vaddr, size, perm in maps:
+    def get_kernel_base():
+        dic = {
+            "maps": KernelbaseCommand.get_maps(),
+            "kbase": None,
+            "kbase_size": None,
+            "krobase": None,
+            "krobase_size": None,
+            "krwbase": None,
+            "krwbase_size": None,
+        }
+
+        # maps is not found, so fast return
+        if dic["maps"] is None:
+            return dic
+
+        # search kbase
+        for i, (vaddr, size, perm) in enumerate(dic["maps"]):
             if perm == "R-X" and size >= 0x100000:
-                return vaddr, size
-        # not found, maybe old kernel
-        for vaddr, size, perm in maps:
-            if perm == "RWX" and size >= 0x100000:
-                return vaddr, size
-        return None, None
+                dic["kbase"] = vaddr
+                dic["kbase_size"] = size
+                maps_after_kbase = dic["maps"][i + 1:]
+                break
+        else:
+            # not found, maybe old kernel
+            for i, (vaddr, size, perm) in enumerate(dic["maps"]):
+                if perm == "RWX" and size >= 0x100000:
+                    dic["kbase"] = vaddr
+                    dic["kbase_size"] = size
+                    maps_after_kbase = dic["maps"][i + 1:]
+                    break
+            else:
+                # Not found, so fast return
+                return dic
 
-    @staticmethod
-    def get_kernel_rodata_base(maps, kbase):
+        # search kernel RO base - logic 1
+        for i, (vaddr, size, perm) in enumerate(maps_after_kbase):
+            if perm == "R--":
+                if dic["krobase"] is None:
+                    if size > 0x1000: # ignore ranges that are too small
+                        dic["krobase"] = vaddr
+                        dic["krobase_size"] = size
+                        maps_after_krobase = maps_after_kbase[i + 1:]
+                elif dic["krobase"] + dic["krobase_size"] == vaddr:
+                    dic["krobase_size"] += size # merge contiguous region
+                    maps_after_krobase = maps_after_kbase[i + 1:]
+                else:
+                    break
+
+        # search kernel RO base - logic 2
+        if dic["krobase"] is None:
+            # maybe old kernel (no-NX)
+            # Detected kbase(R-X) range already includes rodata, so use heuristic search
+            #    [  .text  ] <- maybe .text is larger than 0x3000 (it fails in certain cases if 0x2000)
+            #    [  .text  ]
+            #    [  .text  ]
+            #    [  .text  ] <- end of this area has [0x00, 0x00, 0x00, ...]
+            #    [  .rodata  ]
+            #    [  .rodata  ]
+            #    [  .rodata  ]
+            start = dic["kbase"] + gef_getpagesize() * 3
+            end = dic["kbase"] + dic["kbase_size"]
+            for addr in range(start, end, gef_getpagesize()):
+                data = read_memory(addr - 0x20, 0x20)
+                if data == b"\0" * 0x20:
+                    dic["krobase"] = addr
+                    dic["krobase_size"] = end - dic["krobase"]
+                    dic["kbase_size"] -= dic["krobase_size"]
+                    maps_after_krobase = maps_after_kbase
+                    break
+            else:
+                return dic
+
+        # search kernel RW base
         def search_perm(target_perm):
-            found = False
-            ro = None
-            for vaddr, size, perm in maps:
-                if found is False:
-                    if vaddr == kbase: # search kernel base
-                        found = True
-                    continue
-                if found is True:
-                    if perm == target_perm: # kernel data is next to kernel base
-                        if ro is None:
-                            ro = [vaddr, size]
-                        elif ro[0] + ro[1] == vaddr:
-                            ro = [ro[0], ro[1] + size] # merge contiguous region
-            return ro
-
-        res = search_perm("R--")
-        if res is None:
-            res = search_perm("R-X") # old kernel
-            if res is None:
-                res = search_perm("RWX") # old kernel
-                if res is None:
-                    return None, None
-
-        return res[0], res[1]
-
-    @staticmethod
-    def get_kernel_rwdata_base(maps, krobase):
-        def search_perm(target_perm):
-            found = False
             rw = None
-            for vaddr, size, perm in maps:
-                if found is False:
-                    if vaddr == krobase: # search kernel rodata base
-                        found = True
-                    continue
-                if found is True:
-                    if perm == target_perm: # kernel data is next to kernel base
-                        if rw is None:
+            for vaddr, size, perm in maps_after_krobase:
+                if perm == target_perm:
+                    if rw is None:
+                        if size > 0x1000:
                             rw = [vaddr, size]
-                        elif rw[0] + rw[1] == vaddr:
-                            rw = [rw[0], rw[1] + size] # merge contiguous region
+                    elif rw[0] + rw[1] == vaddr:
+                        rw = [rw[0], rw[1] + size] # merge contiguous region
             return rw
 
         res = search_perm("RW-")
-        if res is None:
-            res = search_perm("RWX") # old kernel
-            if res is None:
-                return None, None
+        if res:
+            dic["krwbase"] = res[0]
+            dic["krwbase_size"] = res[1]
+        else:
+            res = search_perm("RWX") # old x86/arm kernel
+            if res:
+                dic["krwbase"] = res[0]
+                dic["krwbase_size"] = res[1]
+            else:
+                # Not found
+                pass
 
-        return res[0], res[1]
+        return dic
 
     @only_if_gdb_running
     @only_if_qemu_system
@@ -22746,23 +22784,14 @@ class KernelbaseCommand(GenericCommand):
 
         # resolve kbase, krobase
         info("Wait for memory scan")
-        maps = self.get_maps() # [vaddr, size, perm]
-        if maps is None:
-            return None
-        kbase, kbase_size = self.get_kernel_base(maps)
-        if kbase is None:
-            return None
-        krobase, krobase_size = self.get_kernel_rodata_base(maps, kbase)
-        if krobase is None:
-            return None
-        krwbase, krwbase_size = self.get_kernel_rwdata_base(maps, krobase)
-        if krwbase is None:
-            return None
-
+        dic = self.get_kernel_base()
+        if None in dic.values():
+            err("Failed to resolve")
+            return
         gef_print(titlify("Kernel base (heuristic)"))
-        gef_print("kernel text:   {:#x} ({:#x} bytes)".format(kbase, kbase_size))
-        gef_print("kernel rodata: {:#x} ({:#x} bytes)".format(krobase, krobase_size))
-        gef_print("kernel data:   {:#x} ({:#x} bytes)".format(krwbase, krwbase_size))
+        gef_print("kernel text:   {:#x} ({:#x} bytes)".format(dic["kbase"], dic["kbase_size"]))
+        gef_print("kernel rodata: {:#x} ({:#x} bytes)".format(dic["krobase"], dic["krobase_size"]))
+        gef_print("kernel data:   {:#x} ({:#x} bytes)".format(dic["krwbase"], dic["krwbase_size"]))
         return
 
 
@@ -22776,25 +22805,17 @@ class KernelVersionCommand(GenericCommand):
 
     def kernel_version(self):
         info("Wait for memory scan")
-        maps = KernelbaseCommand.get_maps() # [vaddr, size, perm]
-        if maps is None:
-            return None
-        kbase, kbase_size = KernelbaseCommand.get_kernel_base(maps)
-        if kbase is None:
-            return None
-        krobase, krobase_size = KernelbaseCommand.get_kernel_rodata_base(maps, kbase)
-        if krobase is None:
-            return None
-        krwbase, krwbase_size = KernelbaseCommand.get_kernel_rwdata_base(maps, krobase)
-        if krwbase is None:
+        dic = KernelbaseCommand.get_kernel_base()
+        if None in dic.values():
+            err("Failed to resolve")
             return None
 
         # resolve area
         area = []
-        for addr in maps:
-            if addr[0] < kbase:
+        for addr in dic["maps"]:
+            if addr[0] < dic["kbase"]:
                 continue
-            if addr[0] >= krwbase:
+            if addr[0] >= dic["krwbase"]:
                 continue
             area.append([addr[0], addr[0] + addr[1]])
         if area == []:
@@ -26370,17 +26391,15 @@ class KsymaddrRemoteCommand(GenericCommand):
         # get kernel memory maps
         if not self.silent:
             info("Wait for memory scan")
-        self.maps = KernelbaseCommand.get_maps()
-        if self.maps is None:
+        dic = KernelbaseCommand.get_kernel_base()
+        if None in dic.values():
+            err("Failed to resolve")
             return None
-        # get kernel base
-        self.kbase, self.kbase_size = KernelbaseCommand.get_kernel_base(self.maps)
-        if self.kbase is None:
-            return None
-        # get kernel ro_base
-        self.krobase, self.krobase_size = KernelbaseCommand.get_kernel_rodata_base(self.maps, self.kbase)
-        if self.krobase is None:
-            return None
+        self.maps = dic["maps"]
+        self.kbase = dic["kbase"]
+        self.kbase_size = dic["kbase_size"]
+        self.krobase = dic["krobase"]
+        self.krobase_size = dic["krobase_size"]
         # resolve some address
         if is_32bit():
             res = self.initialize32()
@@ -26481,42 +26500,22 @@ class VmlinuxToElfApplyCommand(GenericCommand):
 
         # resolve kbase, krobase
         info("Wait for memory scan")
-        maps = KernelbaseCommand.get_maps() # [vaddr, size, perm]
-        if maps is None:
-            err("maps is None")
-            return None
-        kbase, kbase_size = KernelbaseCommand.get_kernel_base(maps)
-        if kbase is None:
-            err("kbase is None")
-            return None
-        krobase, krobase_size = KernelbaseCommand.get_kernel_rodata_base(maps, kbase)
-        if krobase is None:
-            err("krobase is None")
-            return None
-        krwbase, krwbase_size = KernelbaseCommand.get_kernel_rwdata_base(maps, krobase)
-        if krwbase is None:
-            err("krwbase is None")
+
+        dic = KernelbaseCommand.get_kernel_base()
+        if None in dic.values():
+            err("Failed to resolve")
             return None
 
-        gef_print("kernel base:   {:#x} ({:#x} bytes)".format(kbase, kbase_size))
-        gef_print("kernel rodata: {:#x} ({:#x} bytes)".format(krobase, krobase_size))
-        gef_print("kernel data:   {:#x} ({:#x} bytes)".format(krwbase, krwbase_size))
-
-        addrs = {}
-        addrs['kbase'] = kbase
-        addrs['kbase_size'] = kbase_size
-        addrs['krobase'] = krobase
-        addrs['krobase_size'] = krobase_size
-        addrs['krwbase'] = krwbase
-        addrs['krwbase_size'] = krwbase_size
-        addrs['maps'] = maps
+        gef_print("kernel base:   {:#x} ({:#x} bytes)".format(dic["kbase"], dic["kbase_size"]))
+        gef_print("kernel rodata: {:#x} ({:#x} bytes)".format(dic["krobase"], dic["krobase_size"]))
+        gef_print("kernel data:   {:#x} ({:#x} bytes)".format(dic["krwbase"], dic["krwbase_size"]))
 
         # resolve area
         area = []
-        for addr in addrs['maps']:
-            if addr[0] < addrs['kbase']:
+        for addr in dic['maps']:
+            if addr[0] < dic['kbase']:
                 continue
-            if addr[0] >= addrs['krwbase']:
+            if addr[0] >= dic['krwbase']:
                 continue
             area.append([addr[0], addr[0] + addr[1]])
         if area == []:
@@ -26529,7 +26528,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
             data = ''.join([chr(x) for x in data])
             r1 = re.findall(r"(Linux version (?:\d+\.[\d.]*\d)[ -~]+)", data)
 
-            data = read_memory(addrs["krobase"], addrs["krobase_size"])
+            data = read_memory(dic["krobase"], dic["krobase_size"])
             data = ''.join([chr(x) for x in data])
             r2 = re.findall(r"(Linux version (?:\d+\.[\d.]*\d)[ -~]+)", data)
 
@@ -26566,8 +26565,8 @@ class VmlinuxToElfApplyCommand(GenericCommand):
 
         # apply vmlinux-to-elf
         if force or not os.path.exists(symboled_vmlinux_file):
-            info("Execute `{} '{}' '{}' --base-address={:#x}`".format(vmlinux2elf, dumped_mem_file, symboled_vmlinux_file, addrs["kbase"]))
-            os.system("{} '{}' '{}' --base-address={:#x}".format(vmlinux2elf, dumped_mem_file, symboled_vmlinux_file, addrs["kbase"]))
+            info("Execute `{} '{}' '{}' --base-address={:#x}`".format(vmlinux2elf, dumped_mem_file, symboled_vmlinux_file, dic["kbase"]))
+            os.system("{} '{}' '{}' --base-address={:#x}".format(vmlinux2elf, dumped_mem_file, symboled_vmlinux_file, dic["kbase"]))
         else:
             # reuse by default
             pass
@@ -26579,7 +26578,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
             return None
 
         # Success
-        return addrs
+        return dic
 
     @only_if_gdb_running
     @only_if_qemu_system
@@ -26598,8 +26597,8 @@ class VmlinuxToElfApplyCommand(GenericCommand):
 
         DUMPED_MEM_FILE = "/tmp/gef-dump-memory.raw"
         SYMBOLED_VMLINUX_FILE = "/tmp/gef-dump-memory.elf"
-        addrs = self.dump_kernel_elf(DUMPED_MEM_FILE, SYMBOLED_VMLINUX_FILE, force=force_reparse)
-        if addrs is None:
+        dic = self.dump_kernel_elf(DUMPED_MEM_FILE, SYMBOLED_VMLINUX_FILE, force=force_reparse)
+        if dic is None:
             err("Failed to create kernel ELF")
             return
 
@@ -26610,7 +26609,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
         #   gdb 8.x: Usage: add-symbol-file FILE ADDR [-readnow | -readnever | -s SECT-NAME SECT-ADDR]...
         # But the created ELF has no .text, only a .kernel
         # Applying an empty symbol has no effect, so tentatively specify the same address as the .kernel.
-        cmd = "add-symbol-file {} {:#x} -s .kernel {:#x}".format(SYMBOLED_VMLINUX_FILE, addrs['kbase'], addrs['kbase'])
+        cmd = "add-symbol-file {} {:#x} -s .kernel {:#x}".format(SYMBOLED_VMLINUX_FILE, dic['kbase'], dic['kbase'])
         info(cmd)
         gdb.execute(cmd)
         return
