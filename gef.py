@@ -4641,12 +4641,23 @@ def continue_handler(event):
     return
 
 
+check_info_file = True
+
+
 def hook_stop_handler(event):
     """GDB event handler for stop cases."""
     reset_all_caches()
     if current_arch is None:
         set_arch(get_arch())
     gdb.execute("context")
+
+    global check_info_file
+    if check_info_file:
+        response = gdb.execute('info files', to_string=True)
+        if "Symbols from" not in response:
+            err("Missing info about architecture. Please set: `file /path/to/target_binary`")
+            err("Some architectures may not be automatically recognized. Set it manually with `set architecture YOUR_ARCH`.")
+        check_info_file = False
     return
 
 
