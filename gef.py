@@ -2650,23 +2650,23 @@ class ARM(Architecture):
     @property
     def infloop_insn(self):
         if self.is_thumb():
-            return b"\xfe\xe7"
+            return b"\xfe\xe7" # b #0
         else:
-            return b"\xfe\xff\xff\xea"
+            return b"\xfe\xff\xff\xea" # b #0
 
     @property
     def trap_insn(self):
         if self.is_thumb():
-            return b"\x00\xbe"
+            return b"\x00\xbe" # bkpt #0
         else:
-            return b"\x70\x00\x20\xe1"
+            return b"\x70\x00\x20\xe1" # bkpt #0
 
     @property
     def ret_insn(self):
         if self.is_thumb():
-            return b"\xf7\x46"
+            return b"\xf7\x46" # mov pc, lr
         else:
-            return b"\x0e\xf0\xa0\xe1"
+            return b"\x0e\xf0\xa0\xe1" # mov pc, lr
 
     return_register = "$r0"
     flags_table = {
@@ -2880,10 +2880,10 @@ class AARCH64(ARM):
     syscall_register = "$x8"
     syscall_instructions = ["svc #0x0"]
 
-    nop_insn = b"\x1f\x20\x03\xd5"
-    infloop_insn = b"\x00\x00\x00\x14"
-    trap_insn = b"\x00\x00\x20\xd4"
-    ret_insn = b"\xc0\x03\x5f\xd6"
+    nop_insn = b"\x1f\x20\x03\xd5" # nop
+    infloop_insn = b"\x00\x00\x00\x14" # b #0
+    trap_insn = b"\x00\x00\x20\xd4" # bkr #0
+    ret_insn = b"\xc0\x03\x5f\xd6" # ret
 
     def is_syscall(self, insn):
         return insn.mnemonic == "svc"
@@ -2993,10 +2993,11 @@ class X86(Architecture):
     arch = "X86"
     mode = "32"
 
-    nop_insn = b"\x90"
-    infloop_insn = b"\xeb\xfe"
-    trap_insn = b"\xcc"
-    ret_insn = b"\xc3"
+    nop_insn = b"\x90" # nop
+    infloop_insn = b"\xeb\xfe" # jmp 0
+    trap_insn = b"\xcc" # int3
+    ret_insn = b"\xc3" # ret
+
     flag_register = "$eflags"
     special_registers = ["$cs", "$ss", "$ds", "$es", "$fs", "$gs"]
     gpr_registers = ["$eax", "$ebx", "$ecx", "$edx", "$esp", "$ebp", "$esi", "$edi", "$eip"]
@@ -3205,7 +3206,12 @@ class PowerPC(Architecture):
     ]
     alias_registers = {}
     instruction_length = 4
-    nop_insn = b"\x60\x00\x00\x00" # http://www.ibm.com/developerworks/library/l-ppc/index.html
+
+    nop_insn = b"\x00\x00\x00\x60" # nop # http://www.ibm.com/developerworks/library/l-ppc/index.html
+    infloop_insn = b"\x00\x00\x00\x48" # b #0
+    trap_insn = b"\x08\x00\xe0\x7f" # trap
+    ret_insn = b"\x20\x00\x80\x4e" # blr
+
     return_register = "$r0"
     flag_register = "$cr"
     flags_table = {
@@ -3374,7 +3380,11 @@ class SPARC(Architecture):
         "$sp": "$o6", "$fp": "$i6",
     }
     instruction_length = 4
-    nop_insn = b"\x00\x00\x00\x00" # sethi 0, %g0
+
+    nop_insn = b"\x00\x00\x00\x01" # nop
+    infloop_insn = b"\x00\x00\x80\x10" + nop_insn # b #0 (+ delay slot)
+    ret_insn = b"\x08\xe0\xc7\x81" + nop_insn # ret (+ delay slot)
+
     return_register = "$i0"
     flag_register = "$psr"
     flags_table = {
@@ -3529,6 +3539,10 @@ class SPARC64(SPARC):
         32: "carry",
     }
 
+    nop_insn = b"\x00\x00\x00\x01" # nop
+    infloop_insn = b"\x00\x00\x80\x10" + nop_insn # b #0 (+ delay slot)
+    ret_insn = b"\x08\xe0\xc7\x81" + nop_insn # ret (+ delay slot)
+
     syscall_instructions = ["t 0x6d"]
 
     @classmethod
@@ -3566,7 +3580,12 @@ class MIPS(Architecture):
         "$lo", "$fir", "$ra", "$gp",
     ]
     instruction_length = 4
-    nop_insn = b"\x00\x00\x00\x00" # sll $0,$0,0
+
+    nop_insn = b"\x00\x00\x00\x00" # nop
+    infloop_insn = b"\xff\xff\x00\x10" + nop_insn # b 0 (+ delay slot)
+    trap_insn = b"\x0d\x00\x00\x00" + nop_insn # break (+ delay slot)
+    ret_insn = b"\x08\x00\xe0\x03" + nop_insn # jr $ra (+ delay slot)
+
     return_register = "$v0"
     flag_register = "$fcsr"
     flags_table = {}
@@ -13606,6 +13625,9 @@ class PatchCommand(GenericCommand):
         except gdb.MemoryError:
             err("Failed to access memory")
             return
+        if data != after_data:
+            err("Failed to write memory (qemu doesn't support writing to code area?)")
+            return
         history_info = {"addr": addr, "before_data": before_data, "after_data": after_data, "physmode": get_current_mmu_mode()}
         self.history.insert(0, history_info)
         ok("Patching {:d} bytes from {:s}".format(length, format_address(addr)))
@@ -13871,7 +13893,11 @@ class PatchNopCommand(PatchCommand):
             err("Cannot patch instruction at {:#x} (nop instruction does not evenly fit in requested size)".format(addr))
             return
 
-        self.patch(addr, current_arch.nop_insn * count, real_num_bytes)
+        if is_big_endian():
+            insn = b''.join([x[::-1] for x in slicer(current_arch.nop_insn, 4)])
+        else:
+            insn = current_arch.nop_insn
+        self.patch(addr, insn * count, real_num_bytes)
         return
 
     @only_if_gdb_running
@@ -13880,6 +13906,10 @@ class PatchNopCommand(PatchCommand):
 
         if "-h" in argv:
             self.usage()
+            return
+
+        if current_arch.nop_insn is None:
+            err("This command cannot work under this architecture.")
             return
 
         phys_mode = False
@@ -13929,7 +13959,11 @@ class PatchNopCommand(PatchCommand):
             addr = current_arch.pc
 
         if num_insts:
-            num_bytes = self.get_insns_size(addr, num_insts)
+            try:
+                num_bytes = self.get_insns_size(addr, num_insts)
+            except Exception:
+                self.usage()
+                return
         self.patch_nop(addr, num_bytes)
 
         if phys_mode:
@@ -13955,7 +13989,13 @@ class PatchInfloopCommand(PatchCommand):
             addr -= 1
 
         num_bytes = len(current_arch.infloop_insn)
-        self.patch(addr, current_arch.infloop_insn, num_bytes)
+
+        if is_big_endian():
+            insn = b''.join([x[::-1] for x in slicer(current_arch.infloop_insn, 4)])
+        else:
+            insn = current_arch.infloop_insn
+
+        self.patch(addr, insn, num_bytes)
         return
 
     @only_if_gdb_running
@@ -13964,6 +14004,10 @@ class PatchInfloopCommand(PatchCommand):
 
         if "-h" in argv:
             self.usage()
+            return
+
+        if current_arch.infloop_insn is None:
+            err("This command cannot work under this architecture.")
             return
 
         phys_mode = False
@@ -14016,7 +14060,13 @@ class PatchTrapCommand(PatchCommand):
             addr -= 1
 
         num_bytes = len(current_arch.trap_insn)
-        self.patch(addr, current_arch.trap_insn, num_bytes)
+
+        if is_big_endian():
+            insn = b''.join([x[::-1] for x in slicer(current_arch.trap_insn, 4)])
+        else:
+            insn = current_arch.trap_insn
+
+        self.patch(addr, insn, num_bytes)
         return
 
     @only_if_gdb_running
@@ -14025,6 +14075,10 @@ class PatchTrapCommand(PatchCommand):
 
         if "-h" in argv:
             self.usage()
+            return
+
+        if current_arch.trap_insn is None:
+            err("This command cannot work under this architecture.")
             return
 
         phys_mode = False
@@ -14077,7 +14131,13 @@ class PatchRetCommand(PatchCommand):
             addr -= 1
 
         num_bytes = len(current_arch.ret_insn)
-        self.patch(addr, current_arch.ret_insn, num_bytes)
+
+        if is_big_endian():
+            insn = b''.join([x[::-1] for x in slicer(current_arch.ret_insn, 4)])
+        else:
+            insn = current_arch.ret_insn
+
+        self.patch(addr, insn, num_bytes)
         return
 
     @only_if_gdb_running
@@ -14086,6 +14146,10 @@ class PatchRetCommand(PatchCommand):
 
         if "-h" in argv:
             self.usage()
+            return
+
+        if current_arch.nop_insn is None:
+            err("This command cannot work under this architecture.")
             return
 
         phys_mode = False
@@ -14137,6 +14201,7 @@ class PatchHistoryCommand(PatchCommand):
         self.dont_repeat()
 
         if self.history:
+            gef_print("[Newer]")
             for i, hist in enumerate(self.history):
                 b = ' '.join(["{:02x}".format(x) for x in hist["before_data"][:0x10]])
                 if len(hist["before_data"]) > 0x10:
@@ -14145,7 +14210,9 @@ class PatchHistoryCommand(PatchCommand):
                 if len(hist["after_data"]) > 0x10:
                     a += "..."
                 sym = get_symbol_string(hist["addr"])
-                gef_print("[{:d}] {:#x}{:s}: {:s} -> {:s}".format(i, hist["addr"], sym, b, a))
+                i_str = Color.boldify("{:d}".format(i))
+                gef_print("[{:s}] {:#x}{:s}: {:s} -> {:s}".format(i_str, hist["addr"], sym, b, a))
+            gef_print("[Older]")
         else:
             info("Patch history is empty.")
         return
@@ -14157,6 +14224,8 @@ class PatchRevertCommand(PatchCommand):
     _cmdline_ = "patch revert"
     _syntax_ = "{:s} [-h] HISTORY_NUMBER".format(_cmdline_)
     _category_ = "Show/Modify Memory"
+    _example_ = "{:s} 0 # revert to patch history stack[0]\n".format(_cmdline_)
+    _example_ += "{:s} 3 # revert to patch history stack[3] ([0]-[2] are also reverted)".format(_cmdline_)
 
     def __init__(self):
         super().__init__(prefix=False)
@@ -14174,8 +14243,7 @@ class PatchRevertCommand(PatchCommand):
             revert_target = int(argv[0])
         except Exception:
             self.usage()
-            gef_print("")
-            info("Patch history")
+            gef_print(titlify("Patch history"))
             gdb.execute("patch history")
             return
 
