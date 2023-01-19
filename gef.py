@@ -5132,29 +5132,27 @@ def is_stripped(filename=None):
 
 def set_arch(arch=None, default=None):
     """Sets the current architecture.
-    If an arch is explicitly specified, use that one, otherwise try to parse it
-    out of the current target. If that fails, and default is specified, select and
-    set that arch.
+    If an arch is explicitly specified, use that one, otherwise try to parse it out of the current target.
+    If that fails, and default is specified, select and set that arch.
     Return the selected arch, or raise an OSError."""
     arches = {
-        "ARM": ARM, Elf.ARM: ARM, "ARMV2": ARM, "ARMV3": ARM, "ARMV3M": ARM, "ARMV4": ARM,
-        "ARMV4T": ARM, "ARMV5": ARM, "ARMV5T": ARM, "ARMV5TE": ARM, "ARMV6": ARM, "ARMV7": ARM,
-        "AARCH64": AARCH64, "ARM64": AARCH64, Elf.AARCH64: AARCH64,
-        "X86": X86, Elf.X86_32: X86, "I386": X86, "I386:INTEL": X86, "I8086": X86,
-        "X64": X86_64, "AMD64": X86_64,
-        "X86_64": X86_64, Elf.X86_64: X86_64,
-        "X86-64": X86_64, Elf.X86_64: X86_64,
-        "I386:X86_64": X86_64, "I386:X86_64:INTEL": X86_64, "I386:X64_32": X86_64, "I386:X64_32:INTEL": X86_64,
-        "I386:X86-64": X86_64, "I386:X86-64:INTEL": X86_64, "I386:X64-32": X86_64, "I386:X64-32:INTEL": X86_64,
-        "I386:NACL": X86,
-        "I386:X86_64:NACL": X86_64, "I386:X86-64:NACL": X86_64,
-        "I386:X64_32:NACL": X86_64, "I386:X64-32:NACL": X86_64,
-        "POWERPC": PowerPC, "PPC": PowerPC, Elf.POWERPC: PowerPC,
-        "POWERPC64": PowerPC64, "PPC64": PowerPC64, Elf.POWERPC64: PowerPC64,
-        "RISCV": RISCV, "RISCV:RV64": RISCV, Elf.RISCV: RISCV,
-        "SPARC": SPARC, Elf.SPARC: SPARC,
-        "SPARC64": SPARC64, Elf.SPARC64: SPARC64,
-        "MIPS": MIPS, Elf.MIPS: MIPS,
+        Elf.ARM: ARM, "ARM": ARM, "ARM_ANY": ARM, "ARMV2": ARM, "ARMV2A": ARM, "ARMV3": ARM,
+        "ARMV4": ARM, "ARMV4T": ARM, "ARMV5": ARM, "ARMV5T": ARM, "ARMV5TE": ARM, "ARMV5TEJ": ARM,
+        "ARMV6": ARM, "ARMV6K": ARM, "ARMV6KZ": ARM, "ARMV6T2": ARM, "ARMV7": ARM,
+        Elf.AARCH64: AARCH64, "AARCH64": AARCH64, "ARM64": AARCH64, "ARMV8": AARCH64, "ARMV8-A": AARCH64,
+        "ARMV9": AARCH64, "ARMV9-A": AARCH64,
+        Elf.X86_32: X86, "X86": X86, "I386": X86, "I386:INTEL": X86, "I8086": X86,
+        Elf.X86_64: X86_64, "X64": X86_64, "AMD64": X86_64, "X86_64": X86_64, "X86-64": X86_64,
+        "I386:X86-64": X86_64, "I386:X86-64:INTEL": X86_64,
+        Elf.POWERPC: PowerPC, "POWERPC": PowerPC, "PPC": PowerPC, "PPC32": PowerPC, "POWERPC:COMMON": PowerPC,
+        Elf.POWERPC64: PowerPC64, "POWERPC64": PowerPC64, "PPC64": PowerPC64, "POWERPC:COMMON64": PowerPC64,
+        Elf.RISCV: RISCV, "RISCV": RISCV, "RISCV:RV32": RISCV, "RISCV:RV64": RISCV,
+        Elf.SPARC: SPARC, "SPARC": SPARC, "SPARC32": SPARC, "SPARC:V8": SPARC, "SPARC:V8PLUS": SPARC,
+        Elf.SPARC64: SPARC64, "SPARC64": SPARC64, "SPARC:V9": SPARC64,
+        Elf.MIPS: MIPS, "MIPS": MIPS, "MIPS:ISA32": MIPS, "MIPS:ISA32R2": MIPS, "MIPS:ISA32R3": MIPS,
+        "MIPS:ISA32R5": MIPS, "MIPS:ISA32R6": MIPS,
+        "MIPS64": MIPS64, "MIPS:ISA64": MIPS64, "MIPS:ISA64R2": MIPS64, "MIPS:ISA64R3": MIPS64,
+        "MIPS:ISA64R5": MIPS64, "MIPS:ISA64R6": MIPS64,
     }
     global current_arch, current_elf
 
@@ -5179,9 +5177,11 @@ def set_arch(arch=None, default=None):
                 current_elf = None
 
         try:
-            if current_elf:
+            if current_elf and current_elf.e_machine != Elf.MIPS:
                 current_arch = arches[current_elf.e_machine]()
             else:
+                # MIPS64 and MIPS32 are indistinguishable because e_machine of the ELF header has the same value
+                # so we use the detection result of gdb
                 current_arch = arches[get_arch().upper()]()
         except KeyError:
             if default:
