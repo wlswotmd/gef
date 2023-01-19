@@ -3375,7 +3375,7 @@ class SPARC(Architecture):
     """ Refs:
     - http://www.cse.scu.edu/~atkinson/teaching/sp05/259/sparc.pdf"""
     arch = "SPARC"
-    mode = ""
+    mode = "SPARC32"
 
     all_registers = [
         "$g0", "$g1", "$g2", "$g3", "$g4", "$g5", "$g6", "$g7",
@@ -3527,7 +3527,7 @@ class SPARC64(SPARC):
     - http://math-atlas.sourceforge.net/devel/assembly/abi_sysV_sparc.pdf
     - https://cr.yp.to/2005-590/sparcv9.pdf"""
     arch = "SPARC"
-    mode = "V9"
+    mode = "SPARC64"
 
     all_registers = [
         "$g0", "$g1", "$g2", "$g3", "$g4", "$g5", "$g6", "$g7",
@@ -4011,6 +4011,7 @@ def only_if_gdb_running(f):
             return f(*args, **kwargs)
         else:
             warn("No debugging session active")
+            return
 
     return wrapper
 
@@ -4024,6 +4025,7 @@ def only_if_gdb_target_local(f):
             return f(*args, **kwargs)
         else:
             warn("This command cannot work for remote sessions.")
+            return
 
     return wrapper
 
@@ -4037,6 +4039,7 @@ def only_if_qemu_system(f):
             return f(*args, **kwargs)
         else:
             warn("This command can work under qemu-system only.")
+            return
 
     return wrapper
 
@@ -4050,6 +4053,7 @@ def only_if_not_qemu_system(f):
             return f(*args, **kwargs)
         else:
             warn("This command cannot work under qemu-system.")
+            return
 
     return wrapper
 
@@ -4065,41 +4069,83 @@ def experimental_feature(f):
     return wrapper
 
 
-def only_if_x86_32_64(f):
-    """Decorator wrapper to check if the archtecture is x86/x86-64."""
+def only_if_specific_arch(arch=[]):
+    """Decorator wrapper to check if the archtecture is specific."""
 
-    @functools.wraps(f)
-    def wrapper(*args, **kwargs):
-        if is_x86():
-            return f(*args, **kwargs)
-        else:
-            warn("This command cannot work under this architecture.")
+    def wrapper(f):
+        @functools.wraps(f)
+        def inner_f(*args, **kwargs):
+            for a in arch:
+                if a == "x86_32" and is_x86_32():
+                    return f(*args, **kwargs)
+                elif a == "x86_64" and is_x86_64():
+                    return f(*args, **kwargs)
+                elif a == "ARM64" and is_arm64():
+                    return f(*args, **kwargs)
+                elif a == "ARM32" and is_arm32():
+                    return f(*args, **kwargs)
+                elif a == "MIPS32" and is_mips32():
+                    return f(*args, **kwargs)
+                elif a == "MIPS64" and is_mips64():
+                    return f(*args, **kwargs)
+                elif a == "PPC32" and is_ppc32():
+                    return f(*args, **kwargs)
+                elif a == "PPC64" and is_ppc64():
+                    return f(*args, **kwargs)
+                elif a == "SPARC32" and is_sparc32():
+                    return f(*args, **kwargs)
+                elif a == "SPARC64" and is_sparc64():
+                    return f(*args, **kwargs)
+            else:
+                warn("This command cannot work under this architecture.")
+                return
+
+        return inner_f
 
     return wrapper
 
 
-def only_if_arm_32_64(f):
-    """Decorator wrapper to check if the archtecture is ARM/AArch64."""
+def exclude_specific_arch(arch=[]):
+    """Decorator wrapper to check if the archtecture is specific."""
 
-    @functools.wraps(f)
-    def wrapper(*args, **kwargs):
-        if is_arm32() or is_arm64():
-            return f(*args, **kwargs)
-        else:
-            warn("This command cannot work under this architecture.")
+    def wrapper(f):
+        @functools.wraps(f)
+        def inner_f(*args, **kwargs):
+            for a in arch:
+                if a == "x86_32" and is_x86_32():
+                    warn("This command cannot work under this architecture.")
+                    return
+                elif a == "x86_64" and is_x86_64():
+                    warn("This command cannot work under this architecture.")
+                    return
+                elif a == "ARM64" and is_arm64():
+                    warn("This command cannot work under this architecture.")
+                    return
+                elif a == "ARM32" and is_arm32():
+                    warn("This command cannot work under this architecture.")
+                    return
+                elif a == "MIPS32" and is_mips32():
+                    warn("This command cannot work under this architecture.")
+                    return
+                elif a == "MIPS64" and is_mips64():
+                    warn("This command cannot work under this architecture.")
+                    return
+                elif a == "PPC32" and is_ppc32():
+                    warn("This command cannot work under this architecture.")
+                    return
+                elif a == "PPC64" and is_ppc64():
+                    warn("This command cannot work under this architecture.")
+                    return
+                elif a == "SPARC32" and is_sparc32():
+                    warn("This command cannot work under this architecture.")
+                    return
+                elif a == "SPARC64" and is_sparc64():
+                    warn("This command cannot work under this architecture.")
+                    return
+            else:
+                return f(*args, **kwargs)
 
-    return wrapper
-
-
-def only_if_x86_32_64_or_arm_32_64(f):
-    """Decorator wrapper to check if the archtecture is x86/x86-64/ARM/AArch64."""
-
-    @functools.wraps(f)
-    def wrapper(*args, **kwargs):
-        if is_x86() or is_arm32() or is_arm64():
-            return f(*args, **kwargs)
-        else:
-            warn("This command cannot work under this architecture.")
+        return inner_f
 
     return wrapper
 
@@ -4110,10 +4156,11 @@ def only_if_gdb_version_higher_than(required_gdb_version):
     def wrapper(f):
         def inner_f(*args, **kwargs):
             if GDB_VERSION >= required_gdb_version:
-                f(*args, **kwargs)
+                return f(*args, **kwargs)
             else:
                 reason = "GDB >= {} for this command".format(required_gdb_version)
                 raise EnvironmentError(reason)
+
         return inner_f
 
     return wrapper
@@ -4998,6 +5045,60 @@ def is_arm64():
     """Checks if current target is an aarch64"""
     try:
         return current_arch.arch == "ARM64"
+    except Exception:
+        return False
+
+
+@functools.lru_cache()
+def is_mips32():
+    """Checks if current target is an mips-32"""
+    try:
+        return current_arch.arch == "MIPS" and current_arch.mode == "MIPS32"
+    except Exception:
+        return False
+
+
+@functools.lru_cache()
+def is_mips64():
+    """Checks if current target is an mips-64"""
+    try:
+        return current_arch.arch == "MIPS" and current_arch.mode == "MIPS64"
+    except Exception:
+        return False
+
+
+@functools.lru_cache()
+def is_ppc32():
+    """Checks if current target is an powerpc-32"""
+    try:
+        return current_arch.arch == "PPC" and current_arch.mode == "PPC32"
+    except Exception:
+        return False
+
+
+@functools.lru_cache()
+def is_ppc64():
+    """Checks if current target is an powerpc-64"""
+    try:
+        return current_arch.arch == "PPC" and current_arch.mode == "PPC64"
+    except Exception:
+        return False
+
+
+@functools.lru_cache()
+def is_sparc32():
+    """Checks if current target is an sparc-32"""
+    try:
+        return current_arch.arch == "SPARC" and current_arch.mode == "SPARC32"
+    except Exception:
+        return False
+
+
+@functools.lru_cache()
+def is_sparc64():
+    """Checks if current target is an powerpc-64"""
+    try:
+        return current_arch.arch == "SPARC" and current_arch.mode == "SPARC64"
     except Exception:
         return False
 
@@ -7575,7 +7676,7 @@ class DemanglePtrCommand(GenericCommand):
         return decoded
 
     @only_if_gdb_running
-    @only_if_x86_32_64_or_arm_32_64
+    @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -7677,7 +7778,7 @@ class SearchMangledPtrCommand(GenericCommand):
         return locations
 
     @only_if_gdb_running
-    @only_if_x86_32_64_or_arm_32_64
+    @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -8167,6 +8268,7 @@ class UnicornEmulateCommand(GenericCommand):
 
     @only_if_gdb_running
     @only_if_not_qemu_system
+    @exclude_specific_arch(arch=["PPC64", "MIPS64"])
     @load_capstone
     @load_unicorn
     def do_invoke(self, argv):
@@ -9569,7 +9671,7 @@ class RpCommand(GenericCommand):
         return tmp_path
 
     @only_if_gdb_running
-    @only_if_x86_32_64
+    @only_if_specific_arch(arch=["x86_32", "x86_64"])
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -16247,7 +16349,7 @@ class DestructorDumpCommand(GenericCommand):
 
     @only_if_gdb_running
     @only_if_not_qemu_system
-    @only_if_x86_32_64_or_arm_32_64
+    @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -19840,7 +19942,6 @@ class SyscallArgsCommand(GenericCommand):
     _category_ = "Debugging Support"
 
     @only_if_gdb_running
-    @only_if_x86_32_64_or_arm_32_64
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -20596,7 +20697,7 @@ class MmxSetCommand(GenericCommand):
         return
 
     @only_if_gdb_running
-    @only_if_x86_32_64
+    @only_if_specific_arch(arch=["x86_32", "x86_64"])
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -20655,7 +20756,7 @@ class MmxCommand(GenericCommand):
         return
 
     @only_if_gdb_running
-    @only_if_x86_32_64
+    @only_if_specific_arch(arch=["x86_32", "x86_64"])
     def do_invoke(self, argv):
         self.dont_repeat()
         self.print_mmx()
@@ -20670,7 +20771,7 @@ class XmmSetCommand(GenericCommand):
     _category_ = "Show/Modify Register"
 
     @only_if_gdb_running
-    @only_if_x86_32_64
+    @only_if_specific_arch(arch=["x86_32", "x86_64"])
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -20762,7 +20863,7 @@ class SseCommand(GenericCommand):
         return
 
     @only_if_gdb_running
-    @only_if_x86_32_64
+    @only_if_specific_arch(arch=["x86_32", "x86_64"])
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -20816,7 +20917,7 @@ class AvxCommand(GenericCommand):
         return
 
     @only_if_gdb_running
-    @only_if_x86_32_64
+    @only_if_specific_arch(arch=["x86_32", "x86_64"])
     def do_invoke(self, argv):
         self.dont_repeat()
         self.print_avx()
@@ -21140,7 +21241,7 @@ class FpuCommand(GenericCommand):
         return
 
     @only_if_gdb_running
-    @only_if_x86_32_64_or_arm_32_64
+    @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -23799,7 +23900,7 @@ class SyscallTableViewCommand(GenericCommand):
 
     @only_if_gdb_running
     @only_if_qemu_system
-    @only_if_x86_32_64_or_arm_32_64
+    @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -24105,7 +24206,7 @@ class CetStatusCommand(GenericCommand):
 
     @only_if_gdb_running
     @only_if_not_qemu_system
-    @only_if_x86_32_64
+    @only_if_specific_arch(arch=["x86_32", "x86_64"])
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -24210,7 +24311,7 @@ class TlsCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_gdb_target_local
     @only_if_not_qemu_system
-    @only_if_x86_32_64_or_arm_32_64
+    @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -24264,7 +24365,7 @@ class FsbaseCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_gdb_target_local
     @only_if_not_qemu_system
-    @only_if_x86_32_64
+    @only_if_specific_arch(arch=["x86_32", "x86_64"])
     def do_invoke(self, argv):
         self.dont_repeat()
         fs_base = TlsCommand.getfs()
@@ -24282,7 +24383,7 @@ class GsbaseCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_gdb_target_local
     @only_if_not_qemu_system
-    @only_if_x86_32_64
+    @only_if_specific_arch(arch=["x86_32", "x86_64"])
     def do_invoke(self, argv):
         self.dont_repeat()
         gs_base = TlsCommand.getgs()
@@ -24590,7 +24691,7 @@ class GdtInfoCommand(GenericCommand):
             info("for flags description, use `-v`")
         return
 
-    @only_if_x86_32_64
+    @only_if_specific_arch(arch=["x86_32", "x86_64"])
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -25836,7 +25937,7 @@ class SlubDumpCommand(GenericCommand):
 
     @only_if_gdb_running
     @only_if_qemu_system
-    @only_if_x86_32_64_or_arm_32_64
+    @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -26640,7 +26741,7 @@ class KsymaddrRemoteCommand(GenericCommand):
 
     @only_if_gdb_running
     @only_if_qemu_system
-    @only_if_x86_32_64_or_arm_32_64
+    @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -26801,7 +26902,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
 
     @only_if_gdb_running
     @only_if_qemu_system
-    @only_if_x86_32_64_or_arm_32_64
+    @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -28262,7 +28363,7 @@ class PartitionAllocDumpStableCommand(GenericCommand):
 
     @only_if_gdb_running
     @only_if_not_qemu_system
-    @only_if_x86_32_64_or_arm_32_64
+    @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -28975,7 +29076,7 @@ class PartitionAllocDumpOld1Command(GenericCommand):
 
     @only_if_gdb_running
     @only_if_not_qemu_system
-    @only_if_x86_32_64_or_arm_32_64
+    @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -30045,7 +30146,7 @@ class MuslDumpCommand(GenericCommand):
         return
 
     @only_if_gdb_running
-    @only_if_x86_32_64
+    @only_if_specific_arch(arch=["x86_32", "x86_64"])
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -30249,7 +30350,7 @@ class XSecureMemAddrCommand(GenericCommand):
 
     @only_if_gdb_running
     @only_if_qemu_system
-    @only_if_arm_32_64
+    @only_if_specific_arch(arch=["ARM32", "ARM64"])
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -30409,7 +30510,7 @@ class WSecureMemAddrCommand(GenericCommand):
 
     @only_if_gdb_running
     @only_if_qemu_system
-    @only_if_arm_32_64
+    @only_if_specific_arch(arch=["ARM32", "ARM64"])
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -30516,7 +30617,7 @@ class BreakSecureMemAddrCommand(GenericCommand):
 
     @only_if_gdb_running
     @only_if_qemu_system
-    @only_if_arm_32_64
+    @only_if_specific_arch(arch=["ARM32", "ARM64"])
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -30611,7 +30712,7 @@ class OpteeBreakTaAddrCommand(GenericCommand):
 
     @only_if_gdb_running
     @only_if_qemu_system
-    @only_if_arm_32_64
+    @only_if_specific_arch(arch=["ARM32", "ARM64"])
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -30868,7 +30969,7 @@ class OpteeBgetDumpCommand(GenericCommand):
 
     @only_if_gdb_running
     @only_if_qemu_system
-    @only_if_arm_32_64
+    @only_if_specific_arch(arch=["ARM32", "ARM64"])
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -31728,7 +31829,7 @@ class CpuidCommand(GenericCommand):
         return
 
     @only_if_gdb_running
-    @only_if_x86_32_64
+    @only_if_specific_arch(arch=["x86_32", "x86_64"])
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -32379,7 +32480,7 @@ class MsrCommand(GenericCommand):
         return
 
     @only_if_gdb_running
-    @only_if_x86_32_64
+    @only_if_specific_arch(arch=["x86_32", "x86_64"])
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -32991,7 +33092,7 @@ class V2PCommand(GenericCommand):
 
     @only_if_gdb_running
     @only_if_qemu_system
-    @only_if_x86_32_64_or_arm_32_64
+    @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -33038,7 +33139,7 @@ class P2VCommand(GenericCommand):
 
     @only_if_gdb_running
     @only_if_qemu_system
-    @only_if_x86_32_64_or_arm_32_64
+    @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -33420,7 +33521,7 @@ class PagewalkCommand(GenericCommand):
 
     @only_if_gdb_running
     @only_if_qemu_system
-    @only_if_x86_32_64_or_arm_32_64
+    @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
     def do_invoke(self, argv):
         self.dont_repeat()
         if is_x86_32():
@@ -33916,7 +34017,7 @@ class PagewalkX64Command(PagewalkCommand):
 
     @only_if_gdb_running
     @only_if_qemu_system
-    @only_if_x86_32_64
+    @only_if_specific_arch(arch=["x86_32", "x86_64"])
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -36991,7 +37092,7 @@ class ExecUntilIndirectBranchCommand(ExecUntilCommand):
         return
 
     @only_if_gdb_running
-    @only_if_x86_32_64
+    @only_if_specific_arch(arch=["x86_32", "x86_64"])
     def do_invoke(self, argv):
         if "-h" in argv:
             self.usage()
@@ -37330,7 +37431,7 @@ class ThunkHunterCommand(GenericCommand):
 
     @only_if_gdb_running
     @only_if_qemu_system
-    @only_if_x86_32_64
+    @only_if_specific_arch(arch=["x86_32", "x86_64"])
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -37831,7 +37932,7 @@ class UefiOvmfInfoCommand(GenericCommand):
 
     @only_if_gdb_running
     @only_if_qemu_system
-    @only_if_x86_32_64
+    @only_if_specific_arch(arch=["x86_32", "x86_64"])
     def do_invoke(self, argv):
         self.dont_repeat()
         info("This command is very slow. Wait a few tens of seconds")
