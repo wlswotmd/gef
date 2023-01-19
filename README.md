@@ -106,6 +106,8 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kfops.png)
 * `syscall-table-view`: displays system call table (x64/x86/ARM64/ARM only).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/syscall-table-view.png)
+    * It also dumps ia32/x32 syscall table under x64.
+    * It also dumps compat syscall table under ARM64.
 * `thunk-hunter`: collects and displays the thunk function addresses that are called automatically (x64/x86 only).
     * If this address comes from RW area, this is useful for getting RIP.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/thunk-hunter.png)

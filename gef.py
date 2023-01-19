@@ -21967,68 +21967,151 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
-    def get_sys_call_table():
+    def get_sys_call_table_x64():
         # plan 1 (directly)
-        sys_call_table = get_ksymaddr("sys_call_table")
+        if is_x86_64():
+            sys_call_table = get_ksymaddr("sys_call_table")
+        else:
+            return None
         if sys_call_table:
             return sys_call_table
 
+        # plan 2 (available v4.6-rc1 or later)
+        do_syscall_64 = get_ksymaddr("do_syscall_64")
+        if do_syscall_64:
+            res = gdb.execute("x/30i {:#x}".format(do_syscall_64), to_string=True)
+            for line in res.splitlines():
+                m = re.search(r"[DQ]WORD PTR \[.*\*8([-+]0x\S+)\]", line)
+                if m:
+                    v = int(m.group(1), 16) & 0xffffffffffffffff
+                    if v != 0:
+                        return v
+        return None
+
+    @staticmethod
+    def get_sys_call_table_x32():
+        # plan 1 (directly)
         if is_x86_64():
-            # plan 2 (available v4.6-rc1 or later)
-            do_syscall_64 = get_ksymaddr("do_syscall_64")
-            if do_syscall_64:
-                res = gdb.execute("x/30i {:#x}".format(do_syscall_64), to_string=True)
-                for line in res.splitlines():
-                    m = re.search(r"[DQ]WORD PTR \[.*\*8([-+]0x\S+)\]", line)
-                    if m:
-                        v = int(m.group(1), 16) & 0xffffffffffffffff
-                        if v != 0:
-                            return v
+            sys_call_table = get_ksymaddr("x32_sys_call_table")
+        else:
+            return None
+        if sys_call_table:
+            return sys_call_table
+
+        # plan 2 (available v4.6-rc1 or later)
+        do_syscall_64 = get_ksymaddr("do_syscall_64")
+        if do_syscall_64:
+            count = 0
+            res = gdb.execute("x/30i {:#x}".format(do_syscall_64), to_string=True)
+            for line in res.splitlines():
+                m = re.search(r"[DQ]WORD PTR \[.*\*8([-+]0x\S+)\]", line)
+                if m and count == 0:
+                    count += 1
+                    continue
+                elif m and count == 1:
+                    v = int(m.group(1), 16) & 0xffffffffffffffff
+                    if v != 0:
+                        return v
+        return None
+
+    @staticmethod
+    def get_sys_call_table_x86():
+        # plan 1 (directly)
+        if is_x86_64():
+            sys_call_table = get_ksymaddr("ia32_sys_call_table")
         elif is_x86_32():
-            # plan 2 (available v4.6-rc1 or later)
-            do_int80_syscall_32 = get_ksymaddr("do_int80_syscall_32")
-            if do_int80_syscall_32:
-                res = gdb.execute("x/20i {:#x}".format(do_int80_syscall_32), to_string=True)
-                for line in res.splitlines():
+            sys_call_table = get_ksymaddr("sys_call_table")
+        else:
+            return None
+        if sys_call_table:
+            return sys_call_table
+
+        # plan 2 (available v4.6-rc1 or later)
+        do_int80_syscall_32 = get_ksymaddr("do_int80_syscall_32")
+        if do_int80_syscall_32:
+            res = gdb.execute("x/20i {:#x}".format(do_int80_syscall_32), to_string=True)
+            for line in res.splitlines():
+                if is_x86_32():
                     m = re.search(r"\[eax\*4([+-]0x\S+)\]", line)
                     if m:
                         v = int(m.group(1), 16) & 0xffffffff
                         if v != 0:
                             return v
-        elif is_arm32():
-            # plan 2 is nothing
-            # because `sys_call_table` symbol is embeded in .text area
-            pass
-        elif is_arm64():
-            # plan 2 (available v4.19-rc1 or later)
-            el0_svc_handler = get_ksymaddr("el0_svc_handler")
-            if el0_svc_handler:
-                res = gdb.execute("x/20i {:#x}".format(el0_svc_handler), to_string=True)
-                base = None
-                for line in res.splitlines():
-                    if base is None:
-                        m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
-                        if m:
-                            base = int(m.group(1), 16)
-                    else:
-                        m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
-                        if m:
-                            return base + int(m.group(1), 16)
-            # plan 3 (available v3.7-rc1 or later)
-            el0_svc = get_ksymaddr("el0_svc")
-            if el0_svc:
-                res = gdb.execute("x/20i {:#x}".format(el0_svc), to_string=True)
-                base = None
-                for line in res.splitlines():
-                    if base is None:
-                        m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
-                        if m:
-                            base = int(m.group(1), 16)
-                    else:
-                        m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
-                        if m:
-                            return base + int(m.group(1), 16)
+                if is_x86_64():
+                    m = re.search(r"\[rax\*8([+-]0x\S+)\]", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffffffffffff
+                        if v != 0:
+                            return v
         return None
+
+    @staticmethod
+    def get_sys_call_table_arm32():
+        # plan 1 (directly)
+        if is_arm32():
+            sys_call_table = get_ksymaddr("sys_call_table")
+        else:
+            return None
+        if sys_call_table:
+            return sys_call_table
+
+        # plan 2 is nothing
+        # because `sys_call_table` symbol is embeded in .text area
+        # I couldn't come up with the detection logic.
+        return None
+
+    @staticmethod
+    def get_sys_call_table_arm64():
+        # plan 1 (directly)
+        if is_arm64():
+            sys_call_table = get_ksymaddr("sys_call_table")
+        else:
+            return None
+        if sys_call_table:
+            return sys_call_table
+
+        # plan 2 (available v3.7-rc1 or later)
+        el0_svc = get_ksymaddr("do_el0_svc") or get_ksymaddr("el0_svc")
+        if el0_svc:
+            res = gdb.execute("x/20i {:#x}".format(el0_svc), to_string=True)
+            base = None
+            for line in res.splitlines():
+                if base is None:
+                    m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
+                    if m:
+                        base = int(m.group(1), 16)
+                else:
+                    m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
+                    if m:
+                        return base + int(m.group(1), 16)
+        return None
+
+    @staticmethod
+    def get_sys_call_table_arm64_compat():
+        # plan 1 (directly)
+        if is_arm64():
+            sys_call_table = get_ksymaddr("compat_sys_call_table")
+        else:
+            return None
+        if sys_call_table:
+            return sys_call_table
+
+        # plan 2 (available v3.7-rc1 or later)
+        el0_svc_compat = get_ksymaddr("do_el0_svc_compat") or get_ksymaddr("el0_svc_compat")
+        if el0_svc_compat:
+            res = gdb.execute("x/20i {:#x}".format(el0_svc_compat), to_string=True)
+            base = None
+            for line in res.splitlines():
+                if base is None:
+                    m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
+                    if m:
+                        base = int(m.group(1), 16)
+                else:
+                    m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
+                    if m:
+                        return base + int(m.group(1), 16)
+        return None
+
 
     @staticmethod
     def get_per_cpu_offset():
@@ -23562,8 +23645,7 @@ class SyscallTableViewCommand(GenericCommand):
     _example_ += "{:s} --filter write".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
 
-    def syscall_table_view(self):
-        sys_call_table_addr = KernelAddressHeuristicFinder.get_sys_call_table()
+    def syscall_table_view(self, sys_call_table_addr):
         if sys_call_table_addr is None:
             err("Not found symbol")
             return
@@ -23573,14 +23655,17 @@ class SyscallTableViewCommand(GenericCommand):
         table = []
         while True:
             addr = sys_call_table_addr + i * current_arch.ptrsize
-            syscall_function_addr = read_int_from_memory(addr)
+            try:
+                syscall_function_addr = read_int_from_memory(addr)
+            except gdb.MemoryError:
+                break
             if is_x86() and syscall_function_addr % 0x10: # should be aligned
                 break
-            elif (is_arm32() or is_arm64()) and syscall_function_addr % current_arch.ptrsize: # should be aligned
+            elif (is_arm32() or is_arm64()) and syscall_function_addr % 4: # should be aligned
                 break
             try:
                 read_int_from_memory(syscall_function_addr) # if entry is valid, no error
-            except Exception:
+            except gdb.MemoryError:
                 break
             symbol = get_symbol_string(syscall_function_addr, nosymbol_string=" <NO_SYMBOL>")
             seen[syscall_function_addr] = seen.get(syscall_function_addr, 0) + 1
@@ -23624,7 +23709,24 @@ class SyscallTableViewCommand(GenericCommand):
             self.usage()
             return
 
-        self.syscall_table_view()
+        if is_x86_32():
+            gef_print(titlify("sys_call_table (x86)"))
+            self.syscall_table_view(KernelAddressHeuristicFinder.get_sys_call_table_x86())
+        elif is_x86_64():
+            gef_print(titlify("sys_call_table (x64)"))
+            self.syscall_table_view(KernelAddressHeuristicFinder.get_sys_call_table_x64())
+            gef_print(titlify("ia32_sys_call_table"))
+            self.syscall_table_view(KernelAddressHeuristicFinder.get_sys_call_table_x86())
+            gef_print(titlify("x32_sys_call_table"))
+            self.syscall_table_view(KernelAddressHeuristicFinder.get_sys_call_table_x32())
+        elif is_arm32():
+            gef_print(titlify("sys_call_table (arm32)"))
+            self.syscall_table_view(KernelAddressHeuristicFinder.get_sys_call_table_arm32())
+        elif is_arm64():
+            gef_print(titlify("sys_call_table (arm64)"))
+            self.syscall_table_view(KernelAddressHeuristicFinder.get_sys_call_table_arm64())
+            gef_print(titlify("compat_sys_call_table (arm32)"))
+            self.syscall_table_view(KernelAddressHeuristicFinder.get_sys_call_table_arm64_compat())
         return
 
 
