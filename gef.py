@@ -26638,7 +26638,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
                 info("Run vmlinux-to-elf again because the kernel version is different")
                 force = True
 
-        # dumpe memory
+        # dump memory
         if force or (not os.path.exists(dumped_mem_file) and not os.path.exists(symboled_vmlinux_file)):
             # remove old file
             if os.path.exists(dumped_mem_file):
@@ -26651,14 +26651,22 @@ class VmlinuxToElfApplyCommand(GenericCommand):
             for i, (start_addr, end_addr) in enumerate(area):
                 if i == 0:
                     gef_print("Dumping area:     {:#x} - {:#x}".format(start_addr, end_addr))
-                    gdb.execute("dump memory {} {:#x} {:#x}".format(dumped_mem_file, start_addr, end_addr), to_string=True)
+                    try:
+                        gdb.execute("dump memory {} {:#x} {:#x}".format(dumped_mem_file, start_addr, end_addr), to_string=True)
+                    except gdb.MemoryError:
+                        err("Memory read error. Make sure the context is in supervisor mode / Ring-0")
+                        return None
                 else:
                     size_diff = start_addr - old_end_addr
                     if size_diff:
                         gef_print("Non-mapping area: {:#x} - {:#x} (ZERO fill)".format(old_end_addr, start_addr))
                         open(dumped_mem_file, "a").write("\0" * size_diff)
                     gef_print("Dumping area:     {:#x} - {:#x}".format(start_addr, end_addr))
-                    gdb.execute("append memory {} {:#x} {:#x}".format(dumped_mem_file, start_addr, end_addr), to_string=True)
+                    try:
+                        gdb.execute("append memory {} {:#x} {:#x}".format(dumped_mem_file, start_addr, end_addr), to_string=True)
+                    except gdb.MemoryError:
+                        err("Memory read error. Make sure the context is in supervisor mode / Ring-0")
+                        return None
                 old_end_addr = end_addr
             gef_print("Dumped to {}".format(dumped_mem_file))
         else:
