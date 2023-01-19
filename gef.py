@@ -701,38 +701,42 @@ class Elf:
 
 
 class Phdr:
-    PT_NULL         = 0
-    PT_LOAD         = 1
-    PT_DYNAMIC      = 2
-    PT_INTERP       = 3
-    PT_NOTE         = 4
-    PT_SHLIB        = 5
-    PT_PHDR         = 6
-    PT_TLS          = 7
-    PT_LOOS         = 0x60000000
-    PT_GNU_EH_FRAME = 0x6474e550
-    PT_GNU_STACK    = 0x6474e551
-    PT_GNU_RELRO    = 0x6474e552
-    PT_LOSUNW       = 0x6ffffffa
-    PT_SUNWBSS      = 0x6ffffffa
-    PT_SUNWSTACK    = 0x6ffffffb
-    PT_HISUNW       = 0x6fffffff
-    PT_HIOS         = 0x6fffffff
-    PT_LOPROC       = 0x70000000
-    PT_HIPROC       = 0x7fffffff
+    PT_NULL          = 0
+    PT_LOAD          = 1
+    PT_DYNAMIC       = 2
+    PT_INTERP        = 3
+    PT_NOTE          = 4
+    PT_SHLIB         = 5
+    PT_PHDR          = 6
+    PT_TLS           = 7
+    #PT_LOOS          = 0x60000000
+    PT_GNU_EH_FRAME  = 0x6474e550
+    PT_GNU_STACK     = 0x6474e551
+    PT_GNU_RELRO     = 0x6474e552
+    #PT_LOSUNW        = 0x6ffffffa
+    PT_SUNWBSS       = 0x6ffffffa
+    PT_SUNWSTACK     = 0x6ffffffb
+    #PT_HISUNW        = 0x6fffffff
+    #PT_HIOS          = 0x6fffffff
+    #PT_LOPROC        = 0x70000000
+    #PT_HIPROC        = 0x7fffffff
+    PT_MIPS_REGINFO  = 0x70000000
+    PT_MIPS_RTPROC   = 0x70000001
+    PT_MIPS_OPTIONS  = 0x70000002
+    PT_MIPS_ABIFLAGS = 0x70000003
 
-    PF_X            = 1
-    PF_W            = 2
-    PF_R            = 4
+    PF_X             = 1
+    PF_W             = 2
+    PF_R             = 4
 
-    p_type          = None
-    p_flags         = None
-    p_offset        = None
-    p_vaddr         = None
-    p_paddr         = None
-    p_filesz        = None
-    p_memsz         = None
-    p_align         = None
+    p_type           = None
+    p_flags          = None
+    p_offset         = None
+    p_vaddr          = None
+    p_paddr          = None
+    p_filesz         = None
+    p_memsz          = None
+    p_align          = None
 
     def __init__(self, elf, off):
         if elf is None:
@@ -769,24 +773,24 @@ class Shdr:
     SHT_GROUP            = 17
     SHT_SYMTAB_SHNDX     = 18
     SHT_NUM              = 19
-    SHT_LOOS             = 0x60000000
+    #SHT_LOOS             = 0x60000000
     SHT_GNU_ATTRIBUTES   = 0x6ffffff5
     SHT_GNU_HASH         = 0x6ffffff6
     SHT_GNU_LIBLIST      = 0x6ffffff7
     SHT_CHECKSUM         = 0x6ffffff8
-    SHT_LOSUNW           = 0x6ffffffa
+    #SHT_LOSUNW           = 0x6ffffffa
     SHT_SUNW_move        = 0x6ffffffa
     SHT_SUNW_COMDAT      = 0x6ffffffb
     SHT_SUNW_syminfo     = 0x6ffffffc
     SHT_GNU_verdef       = 0x6ffffffd
     SHT_GNU_verneed      = 0x6ffffffe
     SHT_GNU_versym       = 0x6fffffff
-    SHT_HISUNW           = 0x6fffffff
-    SHT_HIOS             = 0x6fffffff
-    SHT_LOPROC           = 0x70000000
-    SHT_HIPROC           = 0x7fffffff
-    SHT_LOUSER           = 0x80000000
-    SHT_HIUSER           = 0x8fffffff
+    #SHT_HISUNW           = 0x6fffffff
+    #SHT_HIOS             = 0x6fffffff
+    #SHT_LOPROC           = 0x70000000
+    #SHT_HIPROC           = 0x7fffffff
+    #SHT_LOUSER           = 0x80000000
+    #SHT_HIUSER           = 0x8fffffff
 
     SHF_WRITE            = 1
     SHF_ALLOC            = 2
@@ -10327,17 +10331,15 @@ class ElfInfoCommand(GenericCommand):
             Phdr.PT_SHLIB        : "SHLIB",
             Phdr.PT_PHDR         : "PHDR",
             Phdr.PT_TLS          : "TLS",
-            Phdr.PT_LOOS         : "LOOS",
             Phdr.PT_GNU_EH_FRAME : "GNU_EH_FLAME",
             Phdr.PT_GNU_STACK    : "GNU_STACK",
             Phdr.PT_GNU_RELRO    : "GNU_RELRO",
-            Phdr.PT_LOSUNW       : "LOSUNW",
             Phdr.PT_SUNWBSS      : "SUNWBSS",
             Phdr.PT_SUNWSTACK    : "SUNWSTACK",
-            Phdr.PT_HISUNW       : "HISUNW",
-            Phdr.PT_HIOS         : "HIOS",
-            Phdr.PT_LOPROC       : "LOPROC",
-            Phdr.PT_HIPROC       : "HIPROC",
+            Phdr.PT_MIPS_REGINFO : "REGINFO",
+            Phdr.PT_MIPS_RTPROC  : "RTPROC",
+            Phdr.PT_MIPS_OPTIONS : "OPTIONS",
+            Phdr.PT_MIPS_ABIFLAGS: "ABIFLAGS",
         }
 
         pflags = {
@@ -10381,24 +10383,16 @@ class ElfInfoCommand(GenericCommand):
             Shdr.SHT_GROUP          : "GROUP",
             Shdr.SHT_SYMTAB_SHNDX   : "SYMTAB_SHNDX",
             Shdr.SHT_NUM            : "NUM",
-            Shdr.SHT_LOOS           : "LOOS",
             Shdr.SHT_GNU_ATTRIBUTES : "GNU_ATTRIBUTES",
             Shdr.SHT_GNU_HASH       : "GNU_HASH",
             Shdr.SHT_GNU_LIBLIST    : "GNU_LIBLIST",
             Shdr.SHT_CHECKSUM       : "CHECKSUM",
-            Shdr.SHT_LOSUNW         : "LOSUNW",
             Shdr.SHT_SUNW_move      : "SUNW_move",
             Shdr.SHT_SUNW_COMDAT    : "SUNW_COMDAT",
             Shdr.SHT_SUNW_syminfo   : "SUNW_syminfo",
             Shdr.SHT_GNU_verdef     : "GNU_verdef",
             Shdr.SHT_GNU_verneed    : "GNU_verneed",
             Shdr.SHT_GNU_versym     : "GNU_versym",
-            Shdr.SHT_HISUNW         : "HISUNW",
-            Shdr.SHT_HIOS           : "HIOS",
-            Shdr.SHT_LOPROC         : "LOPROC",
-            Shdr.SHT_HIPROC         : "HIPROC",
-            Shdr.SHT_LOUSER         : "LOUSER",
-            Shdr.SHT_HIUSER         : "HIUSER",
         }
 
         gef_print(titlify("Section Header"))
