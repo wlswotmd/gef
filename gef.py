@@ -4890,8 +4890,8 @@ def get_generic_arch(module, prefix, arch, mode, big_endian, to_string=False):
         if mode:
             mode = "{:s}.{:s}_MODE_{:s}".format(module.__name__, prefix, str(mode))
         else:
-            mode = ""
-        if is_big_endian():
+            mode = "0"
+        if big_endian:
             mode += " + {:s}.{:s}_MODE_BIG_ENDIAN".format(module.__name__, prefix)
         else:
             mode += " + {:s}.{:s}_MODE_LITTLE_ENDIAN".format(module.__name__, prefix)
@@ -4908,50 +4908,45 @@ def get_generic_arch(module, prefix, arch, mode, big_endian, to_string=False):
     return arch, mode
 
 
-def get_generic_running_arch(module, prefix, to_string=False):
-    """Retrieves architecture and mode from the current context."""
-    if not is_alive():
-        return None, None
-    if current_arch is not None:
-        arch, mode = current_arch.arch, current_arch.mode
-    else:
-        raise OSError("Emulation not supported for your OS")
-    return get_generic_arch(module, prefix, arch, mode, is_big_endian(), to_string)
-
-
 @load_unicorn
 def get_unicorn_arch(arch=None, mode=None, endian=None, to_string=False):
     unicorn = sys.modules["unicorn"]
     if (arch, mode, endian) == (None, None, None):
-        return get_generic_running_arch(unicorn, "UC", to_string)
+        arch = current_arch.arch
+        mode = current_arch.mode
+        endian = is_big_endian()
     return get_generic_arch(unicorn, "UC", arch, mode, endian, to_string)
 
 
 @load_capstone
 def get_capstone_arch(arch=None, mode=None, endian=None, to_string=False):
     capstone = sys.modules["capstone"]
-
-    # hacky patch to unify capstone/ppc syntax with keystone & unicorn:
-    # CS_MODE_PPC32 does not exist (but UC_MODE_32 & KS_MODE_32 do)
-    if is_arch(Elf.POWERPC64):
-        raise OSError("Capstone not supported for PPC64 yet.")
-
-    if is_alive() and is_arch(Elf.POWERPC):
-        arch = "PPC"
-        mode = "32"
-        endian = is_big_endian()
-        return get_generic_arch(capstone, "CS", arch or current_arch.arch, mode or current_arch.mode, endian or is_big_endian(), to_string)
-
     if (arch, mode, endian) == (None, None, None):
-        return get_generic_running_arch(capstone, "CS", to_string)
-    return get_generic_arch(capstone, "CS", arch or current_arch.arch, mode or current_arch.mode, endian or is_big_endian(), to_string)
+        arch = current_arch.arch
+        mode = current_arch.mode
+        endian = is_big_endian()
+    # hacky patch for applying to capstone's mode
+    if arch == "PPC" and mode == "PPC32":
+        mode = "32"
+    if arch == "PPC" and mode == "PPC64":
+        mode = "64"
+    if arch == "SPARC" and mode == "SPARC32":
+        mode = ""
+    if arch == "SPARC" and mode == "SPARC64":
+        mode = "V9"
+    return get_generic_arch(capstone, "CS", arch, mode, endian, to_string)
 
 
 @load_keystone
 def get_keystone_arch(arch=None, mode=None, endian=None, to_string=False):
     keystone = sys.modules["keystone"]
     if (arch, mode, endian) == (None, None, None):
-        return get_generic_running_arch(keystone, "KS", to_string)
+        arch = current_arch.arch
+        mode = current_arch.mode
+        endian = is_big_endian()
+    # hacky patch for applying to capstone's mode
+    if arch == "ARM64" and mode == "ARM":
+        mode = 0
     return get_generic_arch(keystone, "KS", arch, mode, endian, to_string)
 
 
@@ -4968,7 +4963,14 @@ def get_unicorn_registers(to_string=False):
 
     const = getattr(unicorn, "{}_const".format(arch))
     for reg in current_arch.all_registers:
-        regname = "UC_{:s}_REG_{:s}".format(arch.upper(), reg[1:].upper())
+        if arch == "ppc" and reg.startswith("$r"):
+            regname = "UC_{:s}_REG_{:s}".format(arch.upper(), reg.lstrip("$r").upper())
+        else:
+            regname = "UC_{:s}_REG_{:s}".format(arch.upper(), reg.lstrip("$").upper())
+        try:
+            getattr(const, regname)
+        except AttributeError:
+            continue
         if to_string:
             regs[reg] = "{:s}.{:s}".format(const.__name__, regname)
         else:
@@ -8757,7 +8759,7 @@ class CapstoneDisassembleCommand(GenericCommand):
     _example_ = "\n"
     _example_ += "{:s} $pc length=50 # dump from $pc up to 50 lines later\n".format(_cmdline_)
     _example_ += "{:s} $pc length=50 OPCODES # show opcodes\n".format(_cmdline_)
-    _example_ += "{:s} $pc length=50 OPCODES arch=ARM mode=ARM # specify arch and mode\n".format(_cmdline_)
+    _example_ += "{:s} $pc length=50 OPCODES arch=ARM mode=ARM endian=1 # specify arch, mode and endian (1:big endian)\n".format(_cmdline_)
     _example_ += "{:s} OPCODES code=\"9090\" # disassemble specified byte patterns ".format(_cmdline_)
     _category_ = "Assemble"
     _aliases_ = ["cs-dis"]
@@ -8766,10 +8768,10 @@ class CapstoneDisassembleCommand(GenericCommand):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         self.valid_arch_modes = {
             "ARM" : ["ARM", "THUMB"],
-            "ARM64" : [],
+            "ARM64" : ["ARM"],
             "MIPS" : ["MIPS32", "MIPS64"],
             "PPC" : ["PPC32", "PPC64"],
-            "SPARC" : ["SPARC32"],
+            "SPARC" : ["SPARC32", "SPARC64"],
             "X86" : ["16", "32", "64"],
         }
         return
@@ -9871,10 +9873,11 @@ class AssembleCommand(GenericCommand):
     _example_ += '{:s} -a X86 -m 64 "mov rax, qword ptr [rax] ; inc rax ;"\n'.format(_cmdline_)
     _example_ += '{:s} -a X86 -m 32 "mov eax, dword ptr [eax] ; inc eax ;"\n'.format(_cmdline_)
     _example_ += '{:s} -a X86 -m 16 "mov ax, word ptr [ax] ; inc ax"\n'.format(_cmdline_)
-    _example_ += '{:s} -a ARM -m ARM    "sub r1, r2, r3"\n'.format(_cmdline_)
-    _example_ += '{:s} -a ARM -m ARM -e "sub r1, r2, r3"\n'.format(_cmdline_)
-    _example_ += '{:s} -a ARM -m THUMB  "movs r4, #0xf0"\n'.format(_cmdline_)
-    _example_ += '{:s} -a ARM64         "ldr w1, [sp, #0x8]"\n'.format(_cmdline_)
+    _example_ += '{:s} -a ARM -m ARM      "sub r1, r2, r3"\n'.format(_cmdline_)
+    _example_ += '{:s} -a ARM -m ARM -e   "sub r1, r2, r3"\n'.format(_cmdline_)
+    _example_ += '{:s} -a ARM -m THUMB    "movs r4, #0xf0"\n'.format(_cmdline_)
+    _example_ += '{:s} -a ARM -m THUMB -e "movs r4, #0xf0"\n'.format(_cmdline_)
+    _example_ += '{:s} -a ARM64 -m ARM    "ldr w1, [sp, #0x8]"\n'.format(_cmdline_)
     _example_ += '{:s} -a MIPS -m MIPS32    "and $9, $6, $7"\n'.format(_cmdline_)
     _example_ += '{:s} -a MIPS -m MIPS32 -e "and $9, $6, $7"\n'.format(_cmdline_)
     _example_ += '{:s} -a MIPS -m MIPS64    "and $9, $6, $7"\n'.format(_cmdline_)
@@ -9882,7 +9885,6 @@ class AssembleCommand(GenericCommand):
     _example_ += '{:s} -a PPC -m PPC32 -e "add 1, 2, 3"\n'.format(_cmdline_)
     _example_ += '{:s} -a PPC -m PPC64    "add 1, 2, 3"\n'.format(_cmdline_)
     _example_ += '{:s} -a PPC -m PPC64 -e "add 1, 2, 3"\n'.format(_cmdline_)
-    _example_ += '{:s} -a SPARC -m SPARC32    "add %g1, %g2, %g3"\n'.format(_cmdline_)
     _example_ += '{:s} -a SPARC -m SPARC32 -e "add %g1, %g2, %g3"\n'.format(_cmdline_)
     _example_ += '{:s} -a SPARC -m SPARC64 -e "add %g1, %g2, %g3"\n'.format(_cmdline_)
     _example_ += '{:s} -a SYSTEMZ -e "a %r0, 4095(%r15,%r1)"'.format(_cmdline_)
@@ -9919,27 +9921,28 @@ class AssembleCommand(GenericCommand):
 
         if (arch_s, mode_s) == (None, None):
             if is_alive():
-                if is_arm64():
-                    arch_s, mode_s = current_arch.arch, 0
-                else:
-                    arch_s, mode_s = current_arch.arch, current_arch.mode
+                arch_s, mode_s = current_arch.arch, current_arch.mode
                 endian_s = "big" if is_big_endian() else "little"
                 arch, mode = get_keystone_arch(arch=arch_s, mode=mode_s, endian=is_big_endian())
             else:
                 # if not alive, defaults to x86-64
-                arch_s = "X86"
-                mode_s = "64"
+                arch_s, mode_s = "X86", "64"
                 endian_s = "little"
                 arch, mode = get_keystone_arch(arch=arch_s, mode=mode_s, endian=False)
         elif not arch_s:
             err("An architecture (-a) must be provided")
             return
-        elif arch_s not in ["ARM64", "SYSTEMZ"] and not mode_s:
+        elif arch_s != "SYSTEMZ" and not mode_s:
+            # keystone gives no error so check here
             err("A mode (-m) must be provided")
             return
+        elif arch_s in ["SPARC", "SYSTEM_Z"] and big_endian is False:
+            # keystone gives no error so check here
+            err("A big endian flag (-e) must be provided")
+            return
         else:
-            arch, mode = get_keystone_arch(arch=arch_s, mode=mode_s, endian=big_endian)
             endian_s = "big" if big_endian else "little"
+            arch, mode = get_keystone_arch(arch=arch_s, mode=mode_s, endian=big_endian)
 
         insns = " ".join(args)
         insns = [x.strip() for x in insns.split(";") if x is not None and x.strip() != ""]
@@ -9989,10 +9992,11 @@ class DisassembleCommand(GenericCommand):
     _example_ += '{:s} -a X86 -m 64 "488b00 48ffc0"\n'.format(_cmdline_)
     _example_ += '{:s} -a X86 -m 32 "8b00 40"\n'.format(_cmdline_)
     _example_ += '{:s} -a X86 -m 16 "8b00 40"\n'.format(_cmdline_)
-    _example_ += '{:s} -a ARM -m ARM    "031042e0"\n'.format(_cmdline_)
-    _example_ += '{:s} -a ARM -m ARM -e "e0421003"\n'.format(_cmdline_)
-    _example_ += '{:s} -a ARM -m THUMB  "f024"\n'.format(_cmdline_)
-    _example_ += '{:s} -a ARM64 -m ARM  "e10b40b9"\n'.format(_cmdline_)
+    _example_ += '{:s} -a ARM -m ARM      "031042e0"\n'.format(_cmdline_)
+    _example_ += '{:s} -a ARM -m ARM -e   "e0421003"\n'.format(_cmdline_)
+    _example_ += '{:s} -a ARM -m THUMB    "f024"\n'.format(_cmdline_)
+    _example_ += '{:s} -a ARM -m THUMB -e "24f0"\n'.format(_cmdline_)
+    _example_ += '{:s} -a ARM64 -m ARM    "e10b40b9"\n'.format(_cmdline_)
     _example_ += '{:s} -a MIPS -m MIPS32    "2448c700"\n'.format(_cmdline_)
     _example_ += '{:s} -a MIPS -m MIPS32 -e "00c74824"\n'.format(_cmdline_)
     _example_ += '{:s} -a MIPS -m MIPS64    "2448c700"\n'.format(_cmdline_)
@@ -10000,8 +10004,8 @@ class DisassembleCommand(GenericCommand):
     _example_ += '{:s} -a PPC -m 32 -e "7c221a14"\n'.format(_cmdline_)
     _example_ += '{:s} -a PPC -m 64    "141a227c"\n'.format(_cmdline_)
     _example_ += '{:s} -a PPC -m 64 -e "7c221a14"\n'.format(_cmdline_)
-    _example_ += '{:s} -a SPARC -m V9    "02400086"\n'.format(_cmdline_)
-    _example_ += '{:s} -a SPARC -m V9 -e "86004002"'.format(_cmdline_)
+    _example_ += '{:s} -a SPARC -m SPARC32 -e "86004002"\n'.format(_cmdline_)
+    _example_ += '{:s} -a SPARC -m SPARC64 -e "86004002"'.format(_cmdline_)
     _category_ = "Assemble"
 
     @load_capstone
@@ -10031,27 +10035,27 @@ class DisassembleCommand(GenericCommand):
 
         if (arch_s, mode_s) == (None, None):
             if is_alive():
-                if is_arm64():
-                    arch_s, mode_s = current_arch.arch, 0
-                else:
-                    arch_s, mode_s = current_arch.arch, current_arch.mode
+                arch_s, mode_s = current_arch.arch, current_arch.mode
                 endian_s = "big" if is_big_endian() else "little"
                 arch, mode = get_capstone_arch(arch=arch_s, mode=mode_s, endian=is_big_endian())
             else:
                 # if not alive, defaults to x86-64
-                arch_s = "X86"
-                mode_s = "64"
+                arch_s, mode_s = "X86", "64"
                 endian_s = "little"
                 arch, mode = get_capstone_arch(arch=arch_s, mode=mode_s, endian=False)
         elif not arch_s:
             err("An architecture (-a) must be provided")
             return
-        elif arch_s not in ["SPARC"] and not mode_s:
+        elif not mode_s:
             err("A mode (-m) must be provided")
             return
+        elif arch_s == "SPARC" and big_endian is False:
+            # capstone gives no error so check here
+            err("A big endian flag (-e) must be provided")
+            return
         else:
-            arch, mode = get_capstone_arch(arch=arch_s, mode=mode_s, endian=big_endian)
             endian_s = "big" if big_endian else "little"
+            arch, mode = get_capstone_arch(arch=arch_s, mode=mode_s, endian=big_endian)
 
         insns = " ".join(args)
         insns = insns.replace(" ", "").replace("\t", "")
@@ -10261,16 +10265,12 @@ class AsmListCommand(GenericCommand):
 
         if (arch_s, mode_s) == (None, None):
             if is_alive():
-                if is_arm64():
-                    arch_s, mode_s = current_arch.arch, 0
-                else:
-                    arch_s, mode_s = current_arch.arch, current_arch.mode
+                arch_s, mode_s = current_arch.arch, current_arch.mode
                 endian_s = "big" if is_big_endian() else "little"
                 arch, mode = get_capstone_arch(arch=arch_s, mode=mode_s, endian=is_big_endian())
             else:
                 # if not alive, defaults to x86-64
-                arch_s = "X86"
-                mode_s = "64"
+                arch_s, mode_s = "X86", "64"
                 endian_s = "little"
                 arch, mode = get_capstone_arch(arch=arch_s, mode=mode_s, endian=False)
         elif not arch_s:
@@ -10280,8 +10280,8 @@ class AsmListCommand(GenericCommand):
             err("A mode (-m) must be provided")
             return
         else:
-            arch, mode = get_capstone_arch(arch=arch_s, mode=mode_s, endian=big_endian)
             endian_s = "big" if big_endian else "little"
+            arch, mode = get_capstone_arch(arch=arch_s, mode=mode_s, endian=big_endian)
 
         endian_s # for future update
 
