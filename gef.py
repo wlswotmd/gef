@@ -36526,6 +36526,7 @@ class ExecUntilCommand(GenericCommand):
     def __init__(self, *args, **kwargs):
         prefix = kwargs.get("prefix", True)
         super().__init__(prefix=prefix)
+        self.mode = None
         return
 
     def close_stdout_stderr(self):
@@ -36689,6 +36690,10 @@ class ExecUntilCommand(GenericCommand):
     @only_if_gdb_running
     def do_invoke(self, argv):
         if "-h" in argv:
+            self.usage()
+            return
+
+        if self.mode is None:
             self.usage()
             return
 
