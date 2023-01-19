@@ -3756,21 +3756,51 @@ def write_memory(address, buffer, length=0x10):
         ret = length
         return ret
     except gdb.MemoryError:
-        if is_qemu_usermode():
-            # We can not patch to the code area under qemu-user
-            # so we patch via /proc/pid/mem
-            fd = open("/proc/{:d}/mem".format(get_pid()), "wb")
-            # The memory map of qemu-user 6.x~ is at +0x10000 (really?)
-            fd.seek(address + 0x10000)
-            try:
-                ret = fd.write(buffer[:length])
-                fd.flush()
-            except Exception:
-                raise Exception("Unsupported before qemu 5.1")
-            fd.close()
-            gdb.execute("maintenance flush dcache", to_string=True)
+        pass
+
+    pid = get_pid()
+    if is_qemu_usermode() and pid:
+        # Under qemu-user you may not be able to patch code areas, so we patch via /proc/pid/mem
+        info("Detected memory write error, attempt patch via /proc/pid/mem (offset +0x0)")
+
+        def write_memory_by_pid(pid, address, buffer, length):
+            with open("/proc/{:d}/mem".format(pid), "wb") as fd:
+                try:
+                    fd.seek(address)
+                    ret = fd.write(buffer[:length])
+                    fd.flush()
+                    gdb.execute("maintenance flush dcache", to_string=True)
+                    return ret
+                except Exception:
+                    return None
+
+        def write_with_check(pid, address, buffer, length, offset=0):
+            before = read_memory(address, length)
+            ret = write_memory_by_pid(pid, address + offset, buffer, length)
+            after = read_memory(address, length)
+
+            if ret:
+                if after == buffer[:length]:
+                    return ret
+                else:
+                    # fail, revert
+                    write_memory_by_pid(pid, address + offset, before, length)
+                    return None
+            return None
+
+        ret = write_with_check(pid, address, buffer, length)
+        if ret:
             return ret
-        raise Exception("write memory error")
+
+        # some qemu-user maps the memory at +0x10000
+        info("Detected memory write error, attempt patch via /proc/pid/mem (offset +0x10000)")
+        ret = write_with_check(pid, address, buffer, length, offset=0x10000)
+        if ret:
+            return ret
+        else:
+            raise Exception("Unsupported before qemu 5.1")
+
+    raise Exception("Write memory error")
 
 
 def read_memory(addr, length=0x10):
