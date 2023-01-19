@@ -3202,9 +3202,9 @@ class PowerPC(Architecture):
         "$r8", "$r9", "$r10", "$r11", "$r12", "$r13", "$r14", "$r15",
         "$r16", "$r17", "$r18", "$r19", "$r20", "$r21", "$r22", "$r23",
         "$r24", "$r25", "$r26", "$r27", "$r28", "$r29", "$r30", "$r31",
-        "$pc", "$msr", "$cr", "$lr", "$ctr", "$xer", "$trap",
+        "$pc", "$msr", "$cr", "$lr", "$ctr", "$xer", "$fpscr",
     ]
-    alias_registers = {}
+    alias_registers = {"$r1": "$sp"}
     instruction_length = 4
 
     nop_insn = b"\x00\x00\x00\x60" # nop # http://www.ibm.com/developerworks/library/l-ppc/index.html
@@ -3225,7 +3225,7 @@ class PowerPC(Architecture):
         29: "equal[7]",
         28: "overflow[7]",
     }
-    function_parameters = ["$i0", "$i1", "$i2", "$i3", "$i4", "$i5"]
+    function_parameters = ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5"]
     syscall_register = "$r0"
     syscall_instructions = ["sc"]
 
@@ -3362,6 +3362,14 @@ class PowerPC64(PowerPC):
     arch = "PPC"
     mode = "PPC64"
 
+    all_registers = [
+        "$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7",
+        "$r8", "$r9", "$r10", "$r11", "$r12", "$r13", "$r14", "$r15",
+        "$r16", "$r17", "$r18", "$r19", "$r20", "$r21", "$r22", "$r23",
+        "$r24", "$r25", "$r26", "$r27", "$r28", "$r29", "$r30", "$r31",
+        "$pc", "$msr", "$cr", "$lr", "$ctr", "$xer", "$fpscr", "$vscr", "$vrsave",
+    ]
+
 
 class SPARC(Architecture):
     """ Refs:
@@ -3371,10 +3379,10 @@ class SPARC(Architecture):
 
     all_registers = [
         "$g0", "$g1", "$g2", "$g3", "$g4", "$g5", "$g6", "$g7",
-        "$o0", "$o1", "$o2", "$o3", "$o4", "$o5", "$o7",
+        "$o0", "$o1", "$o2", "$o3", "$o4", "$o5", "$sp", "$o7",
         "$l0", "$l1", "$l2", "$l3", "$l4", "$l5", "$l6", "$l7",
-        "$i0", "$i1", "$i2", "$i3", "$i4", "$i5", "$i7",
-        "$pc", "$npc", "$sp ", "$fp ", "$psr",
+        "$i0", "$i1", "$i2", "$i3", "$i4", "$i5", "$fp", "$i7",
+        "$y", "$psr", "$wim", "$tbr", "$pc", "$npc", "$fsr", "$csr",
     ]
     alias_registers = {
         "$sp": "$o6", "$fp": "$i6",
@@ -3396,8 +3404,8 @@ class SPARC(Architecture):
         5: "trap",
     }
     function_parameters = ["$o0", "$o1", "$o2", "$o3", "$o4", "$o5", "$o7"]
-    syscall_register = "%g1"
-    syscall_instructions = ["t 0x10"]
+    syscall_register = "$g1"
+    syscall_instructions = ["ta 0x10"]
 
     def flag_register_to_human(self, val=None):
         # http://www.gaisler.com/doc/sparcv8.pdf
@@ -3407,7 +3415,7 @@ class SPARC(Architecture):
         return flags_to_human(val, self.flags_table)
 
     def is_syscall(self, insn):
-        return insn.mnemonic == "t"
+        return insn.mnemonic == "ta"
 
     def is_call(self, insn):
         return insn.mnemonic in ["jmpl", "call"]
@@ -3523,10 +3531,11 @@ class SPARC64(SPARC):
 
     all_registers = [
         "$g0", "$g1", "$g2", "$g3", "$g4", "$g5", "$g6", "$g7",
-        "$o0", "$o1", "$o2", "$o3", "$o4", "$o5", "$o7",
+        "$o0", "$o1", "$o2", "$o3", "$o4", "$o5", "$sp", "$o7",
         "$l0", "$l1", "$l2", "$l3", "$l4", "$l5", "$l6", "$l7",
-        "$i0", "$i1", "$i2", "$i3", "$i4", "$i5", "$i7",
-        "$pc", "$npc", "$sp", "$fp", "$state",
+        "$i0", "$i1", "$i2", "$i3", "$i4", "$i5", "$fp", "$i7",
+        "$pc", "$npc", "$state", "$fsr", "$fprs", "$y", "$cwp",
+        "$pstate", "$asi", "$ccr",
     ]
     alias_registers = {
         "$sp": "$o6", "$fp": "$i6",
@@ -3543,7 +3552,7 @@ class SPARC64(SPARC):
     infloop_insn = b"\x00\x00\x80\x10" + nop_insn # b #0 (+ delay slot)
     ret_insn = b"\x08\xe0\xc7\x81" + nop_insn # ret (+ delay slot)
 
-    syscall_instructions = ["t 0x6d"]
+    syscall_instructions = ["ta 0x6d"]
 
     @classmethod
     def mprotect_asm(cls, addr, size, perm):
@@ -3576,9 +3585,15 @@ class MIPS(Architecture):
         "$zero", "$at", "$v0", "$v1", "$a0", "$a1", "$a2", "$a3",
         "$t0", "$t1", "$t2", "$t3", "$t4", "$t5", "$t6", "$t7",
         "$s0", "$s1", "$s2", "$s3", "$s4", "$s5", "$s6", "$s7",
-        "$t8", "$t9", "$k0", "$k1", "$s8", "$pc", "$sp", "$hi",
-        "$lo", "$fir", "$ra", "$gp",
+        "$t8", "$t9", "$k0", "$k1", "$gp", "$sp", "$fp", "$ra",
+        "$sr", "$lo", "$hi", "$bad", "$cause", "$fsr", "$fir", "$pc",
     ]
+    alias_registers = {
+        "$zero": "$r0", "$at": "$r1", "$v0": "$r2", "$v1": "$r3", "$a0": "$r4", "$a1": "$r5", "$a2": "$r6", "$a3": "$r7",
+        "$t0": "$r8", "$t1": "$r9", "$t2": "$r10", "$t3": "$r11", "$t4": "$r12", "$t5": "$r13", "$t6": "$r14", "$t7": "$r15",
+        "$s0": "$r16", "$s1": "$r17", "$s2": "$r18", "$s3": "$r19", "$s4": "$r20", "$s5": "$r21", "$s6": "$r22", "$s7": "$r23",
+        "$t8": "$r24", "$t9": "$r25", "$k0": "$r26", "$k1": "$r27", "$gp": "$r28", "$sp": "$r29", "$fp": "$s8/$r30", "$ra": "$r31",
+    }
     instruction_length = 4
 
     nop_insn = b"\x00\x00\x00\x00" # nop
@@ -3712,6 +3727,25 @@ class MIPS(Architecture):
             "addi $sp, $sp, 16",
         ]
         return "; ".join(insns)
+
+
+class MIPS64(MIPS):
+    arch = "MIPS"
+    mode = "MIPS64"
+
+    all_registers = [
+        "$zero", "$at", "$v0", "$v1", "$a0", "$a1", "$a2", "$a3",
+        "$a4", "$a5", "$a6", "$a7", "$t0", "$t1", "$t2", "$t3",
+        "$s0", "$s1", "$s2", "$s3", "$s4", "$s5", "$s6", "$s7",
+        "$t8", "$t9", "$k0", "$k1", "$gp", "$sp", "$fp", "$ra",
+        "$sr", "$lo", "$hi", "$bad", "$cause", "$fsr", "$fir", "$pc",
+    ]
+    alias_registers = {
+        "$zero": "$r0", "$at": "$r1", "$v0": "$r2", "$v1": "$r3", "$a0": "$r4", "$a1": "$r5", "$a2": "$r6", "$a3": "$r7",
+        "$a4": "$r8", "$a5": "$r9", "$a6": "$r10", "$a7": "$r11", "$t0": "$r12", "$t1": "$r13", "$t2": "$r14", "$t3": "$r15",
+        "$s0": "$r16", "$s1": "$r17", "$s2": "$r18", "$s3": "$r19", "$s4": "$r20", "$s5": "$r21", "$s6": "$r22", "$s7": "$r23",
+        "$t8": "$r24", "$t9": "$r25", "$k0": "$r26", "$k1": "$r27", "$gp": "$r28", "$sp": "$r29", "$fp": "$s8/$r30", "$ra": "$r31",
+    }
 
 
 def write_memory(address, buffer, length=0x10):
