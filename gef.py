@@ -2165,9 +2165,9 @@ def checksec(filename):
         if (opt, filename) in cache:
             lines = cache[(opt, filename)]
         else:
-            cmd = [readelf,]
+            cmd = [readelf]
             cmd += opt.split()
-            cmd += [filename,]
+            cmd += [filename]
             lines = gef_execute_external(cmd, as_list=True)
             cache[(opt, filename)] = lines
         for line in lines:
@@ -3096,17 +3096,17 @@ class X86(Architecture):
             taken, reason = sign != overflow, "S!=O"
         elif mnemo in ["jle", "jng"]:
             taken, reason = zero or sign != overflow, "Z || S!=O"
-        elif mnemo in ["jo",]:
+        elif mnemo in ["jo"]:
             taken, reason = overflow, "O"
-        elif mnemo in ["jno",]:
+        elif mnemo in ["jno"]:
             taken, reason = not overflow, "!O"
         elif mnemo in ["jpe", "jp"]:
             taken, reason = parity, "P"
         elif mnemo in ["jnp", "jpo"]:
             taken, reason = not parity, "!P"
-        elif mnemo in ["js",]:
+        elif mnemo in ["js"]:
             taken, reason = sign, "S"
-        elif mnemo in ["jns",]:
+        elif mnemo in ["jns"]:
             taken, reason = not sign, "!S"
         return taken, reason
 
@@ -3446,11 +3446,11 @@ class SPARC(Architecture):
             taken, reason = not negative or not overflow, "!N || !O"
         elif mnemo in ["bgu", "bpgu"]:
             taken, reason = not carry and not zero, "!C && !Z"
-        elif mnemo in ["bgeu",]:
+        elif mnemo in ["bgeu"]:
             taken, reason = not carry, "!C"
         elif mnemo in ["bl", "bpl"]:
             taken, reason = negative and overflow, "N && O"
-        elif mnemo in ["blu",]:
+        elif mnemo in ["blu"]:
             taken, reason = carry, "C"
         elif mnemo in ["ble", "bple"]:
             taken, reason = zero or (negative or overflow), "Z || (N || O)"
@@ -3625,11 +3625,11 @@ class MIPS(Architecture):
 
         if mnemo in ["beq", "beql", "beqc"]:
             taken, reason = get_register(ops[0]) == get_register(ops[1]), "{0[0]} == {0[1]}".format(ops)
-        elif mnemo in ["beqic",]:
+        elif mnemo in ["beqic"]:
             taken, reason = get_register(ops[0]) == int(ops[1], 0), "{0[0]} == {0[1]}".format(ops)
         elif mnemo in ["bne", "bnel", "bnec"]:
             taken, reason = get_register(ops[0]) != get_register(ops[1]), "{0[0]} != {0[1]}".format(ops)
-        elif mnemo in ["bneic",]:
+        elif mnemo in ["bneic"]:
             taken, reason = get_register(ops[0]) != int(ops[1], 0), "{0[0]} != {0[1]}".format(ops)
         elif mnemo in ["beqz", "beqzc"]:
             taken, reason = get_register(ops[0]) == 0, "{0[0]} == 0".format(ops)
@@ -3643,25 +3643,25 @@ class MIPS(Architecture):
             taken, reason = get_register(ops[0]) < 0, "{0[0]} < 0".format(ops)
         elif mnemo in ["blez", "blezl"]:
             taken, reason = get_register(ops[0]) <= 0, "{0[0]} <= 0".format(ops)
-        elif mnemo in ["bbeqzc",]:
+        elif mnemo in ["bbeqzc"]:
             taken, reason = (get_register(ops[0]) >> int(ops[1], 0) & 1) == 0, "(({0[0]} >> {0[1]}) & 1) == 0".format(ops)
-        elif mnemo in ["bbnezc",]:
+        elif mnemo in ["bbnezc"]:
             taken, reason = (get_register(ops[0]) >> int(ops[1], 0) & 1) == 0, "(({0[0]} >> {0[1]}) & 1) != 0".format(ops)
-        elif mnemo in ["bgec",]:
+        elif mnemo in ["bgec"]:
             taken, reason = get_register(ops[0]) >= u2i(get_register(ops[1])), "{0[0]} >= {0[1]}".format(ops)
-        elif mnemo in ["bgeic",]:
+        elif mnemo in ["bgeic"]:
             taken, reason = get_register(ops[0]) >= u2i(int(ops[1], 0)), "{0[0]} >= {0[1]}".format(ops)
-        elif mnemo in ["bgeuc",]:
+        elif mnemo in ["bgeuc"]:
             taken, reason = get_register(ops[0]) >= get_register(ops[1]), "{0[0]} >= {0[1]}".format(ops)
-        elif mnemo in ["bgeiuc",]:
+        elif mnemo in ["bgeiuc"]:
             taken, reason = get_register(ops[0]) >= int(ops[1], 0), "{0[0]} >= {0[1]}".format(ops)
-        elif mnemo in ["bltc",]:
+        elif mnemo in ["bltc"]:
             taken, reason = get_register(ops[0]) < u2i(get_register(ops[1])), "{0[0]} < {0[1]}".format(ops)
-        elif mnemo in ["bltic",]:
+        elif mnemo in ["bltic"]:
             taken, reason = get_register(ops[0]) < u2i(int(ops[1], 0)), "{0[0]} < {0[1]}".format(ops)
-        elif mnemo in ["bltuc",]:
+        elif mnemo in ["bltuc"]:
             taken, reason = get_register(ops[0]) < get_register(ops[1]), "{0[0]} < {0[1]}".format(ops)
-        elif mnemo in ["bltiuc",]:
+        elif mnemo in ["bltiuc"]:
             taken, reason = get_register(ops[0]) < int(ops[1], 0), "{0[0]} < {0[1]}".format(ops)
         return taken, reason
 
@@ -4684,11 +4684,13 @@ def exit_handler(event):
 def memchanged_handler(event):
     """GDB event handler for mem changes cases."""
     reset_all_caches()
+    return
 
 
 def regchanged_handler(event):
     """GDB event handler for reg changes cases."""
     reset_all_caches()
+    return
 
 
 def load_libc_args():
@@ -6133,7 +6135,7 @@ class PrintFormatCommand(GenericCommand):
     _syntax_ += "  LOCATION    specifies where the address of bytes is stored."
     _example_ = "{:s} -f py -b 8 -l 256 $rsp".format(_cmdline_)
     _category_ = "Exploit Development"
-    _aliases_ = ["pf",]
+    _aliases_ = ["pf"]
 
     bitformat = {8: "<B", 16: "<H", 32: "<I", 64: "<Q"}
     c_type = {8: "char", 16: "short", 32: "int", 64: "long long"}
@@ -6280,7 +6282,7 @@ class SmartEvalCommand(GenericCommand):
     _example_ += "{:s} $pc+1\n".format(_cmdline_)
     _example_ += "{:s} 0x00007ffff7a10000 0x00007ffff7bce000".format(_cmdline_)
     _category_ = "Misc"
-    _aliases_ = ["smart-eval", ]
+    _aliases_ = ["smart-eval"]
 
     def do_invoke(self, argv):
         self.dont_repeat()
@@ -6458,7 +6460,7 @@ class ProcessStatusCommand(GenericCommand):
     process status (file descriptors, ancestor, descendants, etc.)."""
     _cmdline_ = "process-status"
     _syntax_ = _cmdline_
-    _aliases_ = ["status", "procinfo", "pr",]
+    _aliases_ = ["status", "procinfo", "pr"]
     _category_ = "Process Information"
 
     @only_if_gdb_running
@@ -7156,7 +7158,7 @@ class ScanSectionCommand(GenericCommand):
     _example_ += "{:s} heap libc # scan libc address from heap\n".format(_cmdline_)
     _example_ += "{:s} 0x0000555555772000-0x0000555555774000 libc".format(_cmdline_)
     _category_ = "Show/Modify Memory"
-    _aliases_ = ["lookup",]
+    _aliases_ = ["lookup"]
 
     @only_if_gdb_running
     @only_if_not_qemu_system
@@ -7240,7 +7242,7 @@ class SearchPatternCommand(GenericCommand):
     _example_ += "{:s} --hex=\"00 00 00 00\" little stack # another valid format (invalid char is ignored)\n".format(_cmdline_)
     _example_ += "{:s} AAAA -v # verbose output".format(_cmdline_)
     _category_ = "Show/Modify Memory"
-    _aliases_ = ["find",]
+    _aliases_ = ["find"]
 
     def print_section(self, section):
         if isinstance(section, Address):
@@ -7683,7 +7685,7 @@ class FlagsCommand(GenericCommand):
     _example_ += "{:s} ~sign # toggle SIGN flag\n".format(_cmdline_)
     _example_ += "{:s} -v # print verbose".format(_cmdline_)
     _category_ = "Show/Modify Register"
-    _aliases_ = ["flags",]
+    _aliases_ = ["flags"]
 
     @only_if_gdb_running
     def do_invoke(self, argv):
@@ -7915,7 +7917,7 @@ class ChangePermissionCommand(GenericCommand):
     _syntax_ = "{:s} [-h] LOCATION [PERMISSION]".format(_cmdline_)
     _example_ = "{:s} $sp 7".format(_cmdline_)
     _category_ = "Debugging Support"
-    _aliases_ = ["mprotect",]
+    _aliases_ = ["mprotect"]
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
@@ -7968,8 +7970,8 @@ class ChangePermissionCommand(GenericCommand):
         size = sect.page_end - sect.page_start
         original_pc = current_arch.pc
 
-        info("Generating sys_mprotect({:#x}, {:#x}, '{:s}') stub for arch {:s}"
-             .format(sect.page_start, size, str(Permission(value=perm)), get_arch()))
+        fmt = "Generating sys_mprotect({:#x}, {:#x}, '{:s}') stub for arch {:s}"
+        info(fmt.format(sect.page_start, size, str(Permission(value=perm)), get_arch()))
         stub = self.get_stub_by_arch(sect.page_start, size, perm)
         if stub is None:
             err("Failed to generate mprotect opcodes")
@@ -8104,7 +8106,7 @@ class UnicornEmulateCommand(GenericCommand):
     _example_ += "{:s} -g 4 # from $pc to the point where 4 instructions are executed\n".format(_cmdline_)
     _example_ += "{:s} -f 0x8056770c -t 0x805678a4 -o /tmp/my-gef-emulation.py # from/to specified address with saving script".format(_cmdline_)
     _category_ = "Debugging Support"
-    _aliases_ = ["emulate",]
+    _aliases_ = ["emulate"]
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
@@ -8516,7 +8518,7 @@ class StubCommand(GenericCommand):
     _syntax_ += "  -r RETVAL  Set the return value"
     _example_ = "{:s} -r 0 fork".format(_cmdline_)
     _category_ = "Debugging Support"
-    _aliases_ = ["deactive",]
+    _aliases_ = ["deactive"]
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
@@ -8552,7 +8554,7 @@ class CapstoneDisassembleCommand(GenericCommand):
     _example_ += "{:s} $pc length=50 OPCODES arch=ARM mode=ARM # specify arch and mode\n".format(_cmdline_)
     _example_ += "{:s} OPCODES code=\"9090\" # disassemble specified byte patterns ".format(_cmdline_)
     _category_ = "Assemble"
-    _aliases_ = ["cs-dis",]
+    _aliases_ = ["cs-dis"]
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
@@ -8680,7 +8682,7 @@ class GlibcHeapArenaCommand(GenericCommand):
     """Display information on a heap chunk."""
     _cmdline_ = "heap arenas"
     _syntax_ = _cmdline_
-    _aliases_ = ["arena",]
+    _aliases_ = ["arena"]
     _category_ = "Heap"
 
     @only_if_gdb_running
@@ -10118,7 +10120,7 @@ class ProcessListingCommand(GenericCommand):
     _syntax_ = "{:s} [REGEX_PATTERN]".format(_cmdline_)
     _example_ = "{:s} gdb.*".format(_cmdline_)
     _category_ = "Misc"
-    _aliases_ = ["ps",]
+    _aliases_ = ["ps"]
 
     def __init__(self):
         super().__init__()
@@ -12187,7 +12189,7 @@ class EntryPointBreakCommand(GenericCommand):
     the setting `entrypoint_symbols`."""
     _cmdline_ = "entry-break"
     _syntax_ = _cmdline_
-    _aliases_ = ["start",]
+    _aliases_ = ["start"]
     _category_ = "Debugging Support"
 
     def __init__(self, *args, **kwargs):
@@ -12272,7 +12274,7 @@ class NamedBreakpointCommand(GenericCommand):
     _syntax_ = "{:s} NAME [LOCATION]".format(_cmdline_)
     _example_ = "{:s} main *0x4008a9".format(_cmdline_)
     _category_ = "Debugging Support"
-    _aliases_ = ["nb",]
+    _aliases_ = ["nb"]
 
     @only_if_not_qemu_system
     def do_invoke(self, argv):
@@ -12298,7 +12300,7 @@ class ContextCommand(GenericCommand):
     states, the stack, and the disassembly code around $pc."""
     _cmdline_ = "context"
     _syntax_ = "{:s} [legend|regs|stack|code|args|memory|source|trace|threads|extra]".format(_cmdline_)
-    _aliases_ = ["ctx",]
+    _aliases_ = ["ctx"]
     _category_ = "Debugging Support"
 
     old_registers = {}
@@ -14221,7 +14223,7 @@ def dereference_from(addr):
         return eval(get_gef_setting("dereference.blacklist")) or []
 
     if not is_alive():
-        return [format_address(addr),]
+        return [format_address(addr)]
 
     string_color = get_gef_setting("theme.dereference_string")
     max_recursion = get_gef_setting("dereference.max_recursion") or 4
@@ -14983,7 +14985,7 @@ class PatternCreateCommand(GenericCommand):
     Note: This algorithm is the same than the one used by pwntools library."""
     _cmdline_ = "pattern create"
     _syntax_ = "{:s} [SIZE]".format(_cmdline_)
-    _aliases_ = ["pattc",]
+    _aliases_ = ["pattc"]
     _category_ = "Exploit Development"
 
     def do_invoke(self, argv):
@@ -15019,7 +15021,7 @@ class PatternSearchCommand(GenericCommand):
     _example_ += "{:s} 0x61616164\n".format(_cmdline_)
     _example_ += "{:s} aaab".format(_cmdline_)
     _category_ = "Exploit Development"
-    _aliases_ = ["patto",]
+    _aliases_ = ["patto"]
 
     @only_if_gdb_running
     def do_invoke(self, argv):
@@ -15937,9 +15939,11 @@ class DestructorDumpCommand(GenericCommand):
 
         current = head = read_int_from_memory(head_p)
         if head:
-            gef_print("{:s}: {:#x}{:s}: {:#x}{:s}".format("tls_dtor_list", head_p, self.perm(head_p), head, self.perm(head)))
+            fmt = "{:s}: {:#x}{:s}: {:#x}{:s}"
+            gef_print(fmt.format("tls_dtor_list", head_p, self.perm(head_p), head, self.perm(head)))
         else:
-            gef_print("{:s}: {:#x}{:s}: {:#x}".format("tls_dtor_list", head_p, self.perm(head_p), head))
+            fmt = "{:s}: {:#x}{:s}: {:#x}"
+            gef_print(fmt.format("tls_dtor_list", head_p, self.perm(head_p), head))
 
         ptrsize = current_arch.ptrsize
 
@@ -15967,10 +15971,14 @@ class DestructorDumpCommand(GenericCommand):
             except gdb.MemoryError:
                 valid_msg = Color.colorify("invalid", "bold red")
 
-            gef_print("    -> func:     {:#x}{:s}: {:#x} (={:s}{:s}) [{:s}]".format(current, self.perm(current), func, decoded_fn_s, sym, valid_msg))
-            gef_print("       obj:      {:#x}{:s}: {:#x}".format(current + ptrsize * 1, self.perm(current + ptrsize * 1), obj))
-            gef_print("       link_map: {:#x}{:s}: {:#x}".format(current + ptrsize * 2, self.perm(current + ptrsize * 2), link_map))
-            gef_print("       next:     {:#x}{:s}: {:#x}".format(current + ptrsize * 3, self.perm(current + ptrsize * 3), next_))
+            fmt = "    -> func:     {:#x}{:s}: {:#x} (={:s}{:s}) [{:s}]"
+            gef_print(fmt.format(current, self.perm(current), func, decoded_fn_s, sym, valid_msg))
+            fmt = "       obj:      {:#x}{:s}: {:#x}"
+            gef_print(fmt.format(current + ptrsize * 1, self.perm(current + ptrsize * 1), obj))
+            fmt = "       link_map: {:#x}{:s}: {:#x}"
+            gef_print(fmt.format(current + ptrsize * 2, self.perm(current + ptrsize * 2), link_map))
+            fmt = "       next:     {:#x}{:s}: {:#x}"
+            gef_print(fmt.format(current + ptrsize * 3, self.perm(current + ptrsize * 3), next_))
             current = next_
         return
 
@@ -16201,7 +16209,7 @@ class GotCommand(GenericCommand):
     _example_ += "{:s} -f /usr/lib/x86_64-linux-gnu/libc.so.6 # target the library's GOT\n".format(_cmdline_)
     _example_ += "{:s} -f /bin/ls -a 0x4000000000 # use specified address, it is useful under qemu".format(_cmdline_)
     _category_ = "Process Information"
-    _aliases_ = ["plt", ]
+    _aliases_ = ["plt"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(complete=gdb.COMPLETE_FILENAME)
@@ -16570,7 +16578,7 @@ class HighlightCommand(GenericCommand):
 class HighlightListCommand(GenericCommand):
     """Show the current highlight table with matches to colors."""
     _cmdline_ = "highlight list"
-    _aliases_ = ["highlight ls",]
+    _aliases_ = ["highlight ls"]
     _syntax_ = _cmdline_
     _category_ = "GEF Maintenance Command"
 
@@ -16594,7 +16602,7 @@ class HighlightListCommand(GenericCommand):
 class HighlightClearCommand(GenericCommand):
     """Clear the highlight table, remove all matches."""
     _cmdline_ = "highlight clear"
-    _aliases_ = ["highlight reset",]
+    _aliases_ = ["highlight reset"]
     _syntax_ = _cmdline_
     _category_ = "GEF Maintenance Command"
 
@@ -16609,7 +16617,7 @@ class HighlightAddCommand(GenericCommand):
     """Add a match to the highlight table."""
     _cmdline_ = "highlight add"
     _syntax_ = "{:s} MATCH COLOR".format(_cmdline_)
-    _aliases_ = ["highlight set",]
+    _aliases_ = ["highlight set"]
     _example_ = "{:s} \"call   rcx\" yellow bold\n".format(_cmdline_)
     _example_ += "use config `gef config highlight.regex true` if need regex"
     _category_ = "GEF Maintenance Command"
@@ -16631,7 +16639,7 @@ class HighlightRemoveCommand(GenericCommand):
     """Remove a match in the highlight table."""
     _cmdline_ = "highlight remove"
     _syntax_ = "{:s} MATCH".format(_cmdline_)
-    _aliases_ = ["highlight del", "highlight unset", "highlight rm",]
+    _aliases_ = ["highlight del", "highlight unset", "highlight rm"]
     _example_ = "{:s} \"call   rcx\"".format(_cmdline_)
     _category_ = "GEF Maintenance Command"
 
@@ -16654,7 +16662,7 @@ class FormatStringSearchCommand(GenericCommand):
     attacks if an attacker can control its content."""
     _cmdline_ = "format-string-helper"
     _syntax_ = _cmdline_
-    _aliases_ = ["fmtstr-helper",]
+    _aliases_ = ["fmtstr-helper"]
     _category_ = "Debugging Support"
 
     def do_invoke(self, argv):
@@ -20598,7 +20606,7 @@ class SseCommand(GenericCommand):
     """Show SSE registers."""
     _cmdline_ = "sse"
     _syntax_ = "{:s} [-h] [-v]".format(_cmdline_)
-    _aliases_ = ["xmm",]
+    _aliases_ = ["xmm"]
     _category_ = "Show/Modify Register"
 
     def print_sse(self):
@@ -20673,7 +20681,7 @@ class AvxCommand(GenericCommand):
     """Show AVX registers."""
     _cmdline_ = "avx"
     _syntax_ = _cmdline_
-    _aliases_ = ["ymm",]
+    _aliases_ = ["ymm"]
     _category_ = "Show/Modify Register"
 
     def print_avx(self):
@@ -22111,7 +22119,6 @@ class KernelAddressHeuristicFinder:
                     if m:
                         return base + int(m.group(1), 16)
         return None
-
 
     @staticmethod
     def get_per_cpu_offset():
@@ -23839,7 +23846,7 @@ class EnvpCommand(GenericCommand):
     """Show initial envp from __environ@ld, or modified envp from last_environ@libc."""
     _cmdline_ = "envp"
     _syntax_ = "{:s} [-h] [-v] [libc]".format(_cmdline_)
-    _aliases_ = ["envs", "env",]
+    _aliases_ = ["envs", "env"]
     _category_ = "Process Information"
 
     def get_address_from_symbol(self, symbol):
@@ -25024,7 +25031,7 @@ class MultiLineCommand(GenericCommand):
     _cmdline_ = "multi-line"
     _syntax_ = "{:s} [-h] GDB_CMD [; GDB_CMD [; GDB_CMD [...]]]".format(_cmdline_)
     _category_ = "Misc"
-    _aliases_ = ["ml",]
+    _aliases_ = ["ml"]
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_COMMAND)
@@ -27356,13 +27363,13 @@ class V8DereferenceCommand(GenericCommand):
             return "{:s}{:s}".format(addr_high, addr_low)
 
         if not is_alive():
-            return ([format_address(addr),], None)
+            return ([format_address(addr)], None)
 
         code_color = get_gef_setting("theme.dereference_code")
         string_color = get_gef_setting("theme.dereference_string")
         max_recursion = get_gef_setting("dereference.max_recursion") or 10
         addr = lookup_address(align_address(int(addr)))
-        msg = ([format_address(addr.value),], [])
+        msg = ([format_address(addr.value)], [])
         seen_addrs = set()
 
         # Is this address pointing to a normal pointer?
@@ -31664,7 +31671,7 @@ class CpuidCommand(GenericCommand):
         for id in range(0x80000000, valid_max_cpuid + 1):
             eax, ebx, ecx, edx = self.execute_cpuid(id)
             self.show_result(id, None, eax, ebx, ecx, edx)
-        for id in [0x8fffffff,]:
+        for id in [0x8fffffff]:
             eax, ebx, ecx, edx = self.execute_cpuid(id)
             self.show_result(id, None, eax, ebx, ecx, edx)
 
@@ -33342,7 +33349,7 @@ class PagewalkX64Command(PagewalkCommand):
     _example_ += "{:s} --trace 0x7fff00   # show all level pagetables only associated specified address\n".format(_cmdline_)
     _example_ += "{:s} -q                 # show result only (quiet)".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
-    _aliases_ = ["pagewalk x86",]
+    _aliases_ = ["pagewalk x86"]
 
     def __init__(self):
         super().__init__(prefix=False)
@@ -36835,7 +36842,7 @@ class ExecUntilCallCommand(ExecUntilCommand):
     _example_ += "THIS FEATURE IS TOO SLOW.\n"
     _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Debugging Support"
-    _aliases_ = ["next-call",]
+    _aliases_ = ["next-call"]
     _repeat_ = True
 
     def __init__(self):
@@ -36854,7 +36861,7 @@ class ExecUntilJumpCommand(ExecUntilCommand):
     _example_ += "THIS FEATURE IS TOO SLOW.\n"
     _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Debugging Support"
-    _aliases_ = ["next-jmp",]
+    _aliases_ = ["next-jmp"]
     _repeat_ = True
 
     def __init__(self):
@@ -36873,7 +36880,7 @@ class ExecUntilIndirectBranchCommand(ExecUntilCommand):
     _example_ += "THIS FEATURE IS TOO SLOW.\n"
     _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Debugging Support"
-    _aliases_ = ["next-indirect-branch",]
+    _aliases_ = ["next-indirect-branch"]
     _repeat_ = True
 
     def __init__(self):
@@ -36923,7 +36930,7 @@ class ExecUntilSyscallCommand(ExecUntilCommand):
     _example_ += "THIS FEATURE IS TOO SLOW.\n"
     _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Debugging Support"
-    _aliases_ = ["next-syscall",]
+    _aliases_ = ["next-syscall"]
     _repeat_ = True
 
     def __init__(self):
@@ -36942,7 +36949,7 @@ class ExecUntilRetCommand(ExecUntilCommand):
     _example_ += "THIS FEATURE IS TOO SLOW.\n"
     _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Debugging Support"
-    _aliases_ = ["next-ret",]
+    _aliases_ = ["next-ret"]
     _repeat_ = True
 
     def __init__(self):
@@ -36961,7 +36968,7 @@ class ExecUntilMemaccessCommand(ExecUntilCommand):
     _example_ += "THIS FEATURE IS TOO SLOW.\n"
     _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Debugging Support"
-    _aliases_ = ["next-mem",]
+    _aliases_ = ["next-mem"]
     _repeat_ = True
 
     def __init__(self):
@@ -36983,7 +36990,7 @@ class ExecUntilKeywordReCommand(ExecUntilCommand):
     _example_ += "THIS FEATURE IS TOO SLOW.\n"
     _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Debugging Support"
-    _aliases_ = ["next-keyword",]
+    _aliases_ = ["next-keyword"]
     _repeat_ = True
 
     def __init__(self):
@@ -37036,7 +37043,7 @@ class ExecUntilCondCommand(ExecUntilCommand):
     _example_ += "THIS FEATURE IS TOO SLOW.\n"
     _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Debugging Support"
-    _aliases_ = ["next-cond",]
+    _aliases_ = ["next-cond"]
     _repeat_ = True
 
     def __init__(self):
@@ -38049,7 +38056,7 @@ class CurrentFrameStackCommand(GenericCommand):
     _syntax_ = "{:s}".format(_cmdline_)
     _example_ = "{:s}".format(_cmdline_)
     _category_ = "Show/Modify Memory"
-    _aliases_ = ["stack", "full-stack",]
+    _aliases_ = ["stack", "full-stack"]
 
     @only_if_gdb_running
     def do_invoke(self, argv):
