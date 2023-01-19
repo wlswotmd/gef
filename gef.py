@@ -17059,12 +17059,18 @@ class SyscallSearchCommand(GenericCommand):
     _cmdline_ = "syscall-search"
     _syntax_ = "{:s} [-h] [-v] [-a ARCH] [-m MODE] SYSCALL_NAME_REGEX_SEARCH_PATTERN|SYSCALL_NUM".format(_cmdline_)
     _example_ = "\n"
-    _example_ += '{:s} -a X86 -m 64  "^writev?" # amd64\n'.format(_cmdline_)
-    _example_ += '{:s} -a X86 -m 32  "^writev?" # i386 on amd64\n'.format(_cmdline_)
-    _example_ += '{:s} -a X86 -m N32 "^writev?" # i386 native\n'.format(_cmdline_)
-    _example_ += '{:s} -a ARM64      "^writev?" # arm64\n'.format(_cmdline_)
-    _example_ += '{:s} -a ARM -m 32  "^writev?" # arm32 on arm64\n'.format(_cmdline_)
-    _example_ += '{:s} -a ARM -m N32 "^writev?" # arm32 native'.format(_cmdline_)
+    _example_ += '{:s} -a X86 -m 64        "^writev?" # amd64\n'.format(_cmdline_)
+    _example_ += '{:s} -a X86 -m 32        "^writev?" # i386 on amd64\n'.format(_cmdline_)
+    _example_ += '{:s} -a X86 -m N32       "^writev?" # i386 native\n'.format(_cmdline_)
+    _example_ += '{:s} -a ARM64            "^writev?" # arm64\n'.format(_cmdline_)
+    _example_ += '{:s} -a ARM -m 32        "^writev?" # arm32 on arm64\n'.format(_cmdline_)
+    _example_ += '{:s} -a ARM -m N32       "^writev?" # arm32 native\n'.format(_cmdline_)
+    _example_ += '{:s} -a MIPS -m MIPS32   "^writev?" # mips32\n'.format(_cmdline_)
+    _example_ += '{:s} -a MIPS -m MIPS64   "^writev?" # mips64\n'.format(_cmdline_)
+    _example_ += '{:s} -a PPC -m PPC32     "^writev?" # ppc32\n'.format(_cmdline_)
+    _example_ += '{:s} -a PPC -m PPC64     "^writev?" # ppc64\n'.format(_cmdline_)
+    _example_ += '{:s} -a SPARC -m SPARC32 "^writev?" # sparc32\n'.format(_cmdline_)
+    _example_ += '{:s} -a SPARC -m SPARC64 "^writev?" # sparc64'.format(_cmdline_)
     _category_ = "Misc"
 
     def print_legend(self):
@@ -17076,28 +17082,20 @@ class SyscallSearchCommand(GenericCommand):
             gef_print(Color.colorify("{:<25} {:<25}".format(*headers), get_gef_setting("theme.table_heading")))
         return
 
-    def print_syscall_by_number(self, syscall_table, syscall_num):
-        self.print_legend()
-        for num, entry in syscall_table.items():
-            if num == syscall_num:
-                nr = "{:d} (={:#x})".format(num, num)
-                if self.verbose:
-                    param = ('\n' + " " * 52).join(["{}: {}".format(i, param.param) for i, param in enumerate(entry.params, start=1)])
-                else:
-                    param = ""
-                gef_print("{:<25} {:<25} {}".format(nr, entry.name, param))
-        return
-
-    def print_syscall_by_name(self, syscall_table, syscall_name_pattern):
-        self.print_legend()
-        for num, entry in syscall_table.items():
-            if re.search(syscall_name_pattern, entry.name):
-                nr = "{:d} (={:#x})".format(num, num)
-                if self.verbose:
-                    param = ('\n' + " " * 52).join(["{}: {}".format(i, param.param) for i, param in enumerate(entry.params, start=1)])
-                else:
-                    param = ""
-                gef_print("{:<25} {:<25} {}".format(nr, entry.name, param))
+    def print_syscall(self, syscall_table, syscall_num, syscall_name_pattern):
+        gef_print(Color.colorify("{:<17}{:s}".format("Syscall-num", "Syscall-name"), get_gef_setting("theme.table_heading")))
+        for key, entry in syscall_table.items():
+            if key in ["arch", "mode"]:
+                continue
+            nr = key
+            if not re.search(syscall_name_pattern, entry.name):
+                continue
+            if syscall_num is not None and nr != syscall_num:
+                continue
+            params = ""
+            if self.verbose:
+                params = "(" + ', '.join([param.param for param in entry.params]) + ");"
+            gef_print("NR={:<#14x}{:s}{:s}".format(nr, Color.boldify(entry.name), params))
         return
 
     def do_invoke(self, argv):
@@ -17112,21 +17110,34 @@ class SyscallSearchCommand(GenericCommand):
             self.verbose = True
             argv.remove("-v")
 
-        arch = None
-        if "-a" in argv:
-            idx = argv.index("-a")
-            arch = argv[idx + 1]
-            argv = argv[:idx] + argv[idx + 2:]
-
-        mode = None
-        if "-m" in argv:
-            idx = argv.index("-m")
-            mode = argv[idx + 1]
-            argv = argv[:idx] + argv[idx + 2:]
-
-        if len(argv) != 1:
+        try:
+            arch = None
+            if "-a" in argv:
+                idx = argv.index("-a")
+                arch = argv[idx + 1]
+                argv = argv[:idx] + argv[idx + 2:]
+        except Exception:
             self.usage()
             return
+
+        try:
+            mode = None
+            if "-m" in argv:
+                idx = argv.index("-m")
+                mode = argv[idx + 1]
+                argv = argv[:idx] + argv[idx + 2:]
+        except Exception:
+            self.usage()
+            return
+
+        syscall_num = None
+        syscall_name_pattern = ".*"
+
+        if len(argv) > 0:
+            try:
+                syscall_num = int(argv[0], 0)
+            except ValueError:
+                syscall_name_pattern = argv[0]
 
         try:
             syscall_table = get_syscall_table(arch, mode)
@@ -17134,2630 +17145,4950 @@ class SyscallSearchCommand(GenericCommand):
             self.usage()
             return
 
-        syscall_num = None
-        syscall_name_pattern = None
-        try:
-            syscall_num = int(argv[0], 0)
-        except Exception:
-            syscall_name_pattern = argv[0]
-
-        if syscall_num is not None:
-            self.print_syscall_by_number(syscall_table, syscall_num)
-        if syscall_name_pattern is not None:
-            self.print_syscall_by_name(syscall_table, syscall_name_pattern)
+        self.print_syscall(syscall_table, syscall_num, syscall_name_pattern)
         return
 
 
-# System call table
-# - The info of arguments type is picked up from kernel source around "SYSCALL_DEFINE*(...) / COMPAT_SYSCALL_DEFINE*(...)",
-# - The command I used: cd linux-6.*; ag --cc -A 6 "SYSCALL_DEFINE.*\bFUNCTION_NAME\b"
-# - But these are some exceptions (ex: not found), I picked up from the function of syscall implementation, and so on
+# System call table (linux-6.0.10)
+
+# [How to make]
+# clang-format-14 --style='{BasedOnStyle: Google, ColumnLimit: 1000}' FILENAME | grep ^asmlinkage
+#   `!` at the beginning of the line: manually fixed the argument information
+#   `#` at the beginning of the line: excluded for reasons such as duplication
+
+# include/linux/syscalls.h
+syscall_defs = """
+asmlinkage long sys_io_setup(unsigned nr_reqs, aio_context_t __user *ctx);
+asmlinkage long sys_io_destroy(aio_context_t ctx);
+!asmlinkage long sys_io_submit(aio_context_t ctx_id, long nr, struct iocb __user * __user *iocbpp);
+asmlinkage long sys_io_cancel(aio_context_t ctx_id, struct iocb __user *iocb, struct io_event __user *result);
+asmlinkage long sys_io_getevents(aio_context_t ctx_id, long min_nr, long nr, struct io_event __user *events, struct __kernel_timespec __user *timeout);
+asmlinkage long sys_io_getevents_time32(__u32 ctx_id, __s32 min_nr, __s32 nr, struct io_event __user *events, struct old_timespec32 __user *timeout);
+asmlinkage long sys_io_pgetevents(aio_context_t ctx_id, long min_nr, long nr, struct io_event __user *events, struct __kernel_timespec __user *timeout, const struct __aio_sigset *sig);
+asmlinkage long sys_io_pgetevents_time32(aio_context_t ctx_id, long min_nr, long nr, struct io_event __user *events, struct old_timespec32 __user *timeout, const struct __aio_sigset *sig);
+asmlinkage long sys_io_uring_setup(u32 entries, struct io_uring_params __user *p);
+asmlinkage long sys_io_uring_enter(unsigned int fd, u32 to_submit, u32 min_complete, u32 flags, const void __user *argp, size_t argsz);
+asmlinkage long sys_io_uring_register(unsigned int fd, unsigned int op, void __user *arg, unsigned int nr_args);
+asmlinkage long sys_setxattr(const char __user *path, const char __user *name, const void __user *value, size_t size, int flags);
+asmlinkage long sys_lsetxattr(const char __user *path, const char __user *name, const void __user *value, size_t size, int flags);
+asmlinkage long sys_fsetxattr(int fd, const char __user *name, const void __user *value, size_t size, int flags);
+asmlinkage long sys_getxattr(const char __user *path, const char __user *name, void __user *value, size_t size);
+asmlinkage long sys_lgetxattr(const char __user *path, const char __user *name, void __user *value, size_t size);
+asmlinkage long sys_fgetxattr(int fd, const char __user *name, void __user *value, size_t size);
+asmlinkage long sys_listxattr(const char __user *path, char __user *list, size_t size);
+asmlinkage long sys_llistxattr(const char __user *path, char __user *list, size_t size);
+asmlinkage long sys_flistxattr(int fd, char __user *list, size_t size);
+asmlinkage long sys_removexattr(const char __user *path, const char __user *name);
+asmlinkage long sys_lremovexattr(const char __user *path, const char __user *name);
+asmlinkage long sys_fremovexattr(int fd, const char __user *name);
+asmlinkage long sys_getcwd(char __user *buf, unsigned long size);
+asmlinkage long sys_lookup_dcookie(u64 cookie64, char __user *buf, size_t len);
+asmlinkage long sys_eventfd2(unsigned int count, int flags);
+asmlinkage long sys_epoll_create1(int flags);
+asmlinkage long sys_epoll_ctl(int epfd, int op, int fd, struct epoll_event __user *event);
+asmlinkage long sys_epoll_pwait(int epfd, struct epoll_event __user *events, int maxevents, int timeout, const sigset_t __user *sigmask, size_t sigsetsize);
+asmlinkage long sys_epoll_pwait2(int epfd, struct epoll_event __user *events, int maxevents, const struct __kernel_timespec __user *timeout, const sigset_t __user *sigmask, size_t sigsetsize);
+asmlinkage long sys_dup(unsigned int fildes);
+asmlinkage long sys_dup3(unsigned int oldfd, unsigned int newfd, int flags);
+asmlinkage long sys_fcntl(unsigned int fd, unsigned int cmd, unsigned long arg);
+asmlinkage long sys_fcntl64(unsigned int fd, unsigned int cmd, unsigned long arg);
+asmlinkage long sys_inotify_init1(int flags);
+asmlinkage long sys_inotify_add_watch(int fd, const char __user *path, u32 mask);
+asmlinkage long sys_inotify_rm_watch(int fd, __s32 wd);
+asmlinkage long sys_ioctl(unsigned int fd, unsigned int cmd, unsigned long arg);
+asmlinkage long sys_ioprio_set(int which, int who, int ioprio);
+asmlinkage long sys_ioprio_get(int which, int who);
+asmlinkage long sys_flock(unsigned int fd, unsigned int cmd);
+asmlinkage long sys_mknodat(int dfd, const char __user *filename, umode_t mode, unsigned dev);
+asmlinkage long sys_mkdirat(int dfd, const char __user *pathname, umode_t mode);
+asmlinkage long sys_unlinkat(int dfd, const char __user *pathname, int flag);
+asmlinkage long sys_symlinkat(const char __user *oldname, int newdfd, const char __user *newname);
+asmlinkage long sys_linkat(int olddfd, const char __user *oldname, int newdfd, const char __user *newname, int flags);
+asmlinkage long sys_renameat(int olddfd, const char __user *oldname, int newdfd, const char __user *newname);
+asmlinkage long sys_umount(char __user *name, int flags);
+asmlinkage long sys_mount(char __user *dev_name, char __user *dir_name, char __user *type, unsigned long flags, void __user *data);
+asmlinkage long sys_pivot_root(const char __user *new_root, const char __user *put_old);
+asmlinkage long sys_statfs(const char __user *path, struct statfs __user *buf);
+asmlinkage long sys_statfs64(const char __user *path, size_t sz, struct statfs64 __user *buf);
+asmlinkage long sys_fstatfs(unsigned int fd, struct statfs __user *buf);
+asmlinkage long sys_fstatfs64(unsigned int fd, size_t sz, struct statfs64 __user *buf);
+asmlinkage long sys_truncate(const char __user *path, long length);
+asmlinkage long sys_ftruncate(unsigned int fd, unsigned long length);
+asmlinkage long sys_truncate64(const char __user *path, loff_t length);
+asmlinkage long sys_ftruncate64(unsigned int fd, loff_t length);
+asmlinkage long sys_fallocate(int fd, int mode, loff_t offset, loff_t len);
+asmlinkage long sys_faccessat(int dfd, const char __user *filename, int mode);
+asmlinkage long sys_faccessat2(int dfd, const char __user *filename, int mode, int flags);
+asmlinkage long sys_chdir(const char __user *filename);
+asmlinkage long sys_fchdir(unsigned int fd);
+asmlinkage long sys_chroot(const char __user *filename);
+asmlinkage long sys_fchmod(unsigned int fd, umode_t mode);
+asmlinkage long sys_fchmodat(int dfd, const char __user *filename, umode_t mode);
+asmlinkage long sys_fchownat(int dfd, const char __user *filename, uid_t user, gid_t group, int flag);
+asmlinkage long sys_fchown(unsigned int fd, uid_t user, gid_t group);
+asmlinkage long sys_openat(int dfd, const char __user *filename, int flags, umode_t mode);
+asmlinkage long sys_openat2(int dfd, const char __user *filename, struct open_how *how, size_t size);
+asmlinkage long sys_close(unsigned int fd);
+asmlinkage long sys_close_range(unsigned int fd, unsigned int max_fd, unsigned int flags);
+asmlinkage long sys_vhangup(void);
+asmlinkage long sys_pipe2(int __user *fildes, int flags);
+asmlinkage long sys_quotactl(unsigned int cmd, const char __user *special, qid_t id, void __user *addr);
+asmlinkage long sys_quotactl_fd(unsigned int fd, unsigned int cmd, qid_t id, void __user *addr);
+asmlinkage long sys_getdents64(unsigned int fd, struct linux_dirent64 __user *dirent, unsigned int count);
+asmlinkage long sys_llseek(unsigned int fd, unsigned long offset_high, unsigned long offset_low, loff_t __user *result, unsigned int whence);
+asmlinkage long sys_lseek(unsigned int fd, off_t offset, unsigned int whence);
+asmlinkage long sys_read(unsigned int fd, char __user *buf, size_t count);
+asmlinkage long sys_write(unsigned int fd, const char __user *buf, size_t count);
+asmlinkage long sys_readv(unsigned long fd, const struct iovec __user *vec, unsigned long vlen);
+asmlinkage long sys_writev(unsigned long fd, const struct iovec __user *vec, unsigned long vlen);
+asmlinkage long sys_pread64(unsigned int fd, char __user *buf, size_t count, loff_t pos);
+asmlinkage long sys_pwrite64(unsigned int fd, const char __user *buf, size_t count, loff_t pos);
+asmlinkage long sys_preadv(unsigned long fd, const struct iovec __user *vec, unsigned long vlen, unsigned long pos_l, unsigned long pos_h);
+asmlinkage long sys_pwritev(unsigned long fd, const struct iovec __user *vec, unsigned long vlen, unsigned long pos_l, unsigned long pos_h);
+asmlinkage long sys_sendfile64(int out_fd, int in_fd, loff_t __user *offset, size_t count);
+!asmlinkage long sys_pselect6(int n, fd_set __user *inp, fd_set __user *outp, fd_set __user *exp, struct __kernel_timespec __user *tsp, void __user *sig);
+!asmlinkage long sys_pselect6_time32(int n, fd_set __user *inp, fd_set __user *outp, fd_set __user *exp, struct old_timespec32 __user *tsp, void __user *sig);
+!asmlinkage long sys_ppoll(struct pollfd __user *ufds, unsigned int nfds, struct __kernel_timespec __user *tsp, const sigset_t __user *sigmask, size_t sigsetsize);
+!asmlinkage long sys_ppoll_time32(struct pollfd __user *ufds, unsigned int nfds, struct old_timespec32 __user *tsp, const sigset_t __user *sigmask, size_t sigsetsize);
+asmlinkage long sys_signalfd4(int ufd, sigset_t __user *user_mask, size_t sizemask, int flags);
+asmlinkage long sys_vmsplice(int fd, const struct iovec __user *iov, unsigned long nr_segs, unsigned int flags);
+asmlinkage long sys_splice(int fd_in, loff_t __user *off_in, int fd_out, loff_t __user *off_out, size_t len, unsigned int flags);
+asmlinkage long sys_tee(int fdin, int fdout, size_t len, unsigned int flags);
+asmlinkage long sys_readlinkat(int dfd, const char __user *path, char __user *buf, int bufsiz);
+asmlinkage long sys_newfstatat(int dfd, const char __user *filename, struct stat __user *statbuf, int flag);
+asmlinkage long sys_newfstat(unsigned int fd, struct stat __user *statbuf);
+asmlinkage long sys_fstat64(unsigned long fd, struct stat64 __user *statbuf);
+asmlinkage long sys_fstatat64(int dfd, const char __user *filename, struct stat64 __user *statbuf, int flag);
+asmlinkage long sys_sync(void);
+asmlinkage long sys_fsync(unsigned int fd);
+asmlinkage long sys_fdatasync(unsigned int fd);
+asmlinkage long sys_sync_file_range2(int fd, unsigned int flags, loff_t offset, loff_t nbytes);
+asmlinkage long sys_sync_file_range(int fd, loff_t offset, loff_t nbytes, unsigned int flags);
+asmlinkage long sys_timerfd_create(int clockid, int flags);
+asmlinkage long sys_timerfd_settime(int ufd, int flags, const struct __kernel_itimerspec __user *utmr, struct __kernel_itimerspec __user *otmr);
+asmlinkage long sys_timerfd_gettime(int ufd, struct __kernel_itimerspec __user *otmr);
+asmlinkage long sys_timerfd_gettime32(int ufd, struct old_itimerspec32 __user *otmr);
+asmlinkage long sys_timerfd_settime32(int ufd, int flags, const struct old_itimerspec32 __user *utmr, struct old_itimerspec32 __user *otmr);
+asmlinkage long sys_utimensat(int dfd, const char __user *filename, struct __kernel_timespec __user *utimes, int flags);
+asmlinkage long sys_utimensat_time32(unsigned int dfd, const char __user *filename, struct old_timespec32 __user *t, int flags);
+asmlinkage long sys_acct(const char __user *name);
+asmlinkage long sys_capget(cap_user_header_t header, cap_user_data_t dataptr);
+asmlinkage long sys_capset(cap_user_header_t header, const cap_user_data_t data);
+asmlinkage long sys_personality(unsigned int personality);
+asmlinkage long sys_exit(int error_code);
+asmlinkage long sys_exit_group(int error_code);
+asmlinkage long sys_waitid(int which, pid_t pid, struct siginfo __user *infop, int options, struct rusage __user *ru);
+asmlinkage long sys_set_tid_address(int __user *tidptr);
+asmlinkage long sys_unshare(unsigned long unshare_flags);
+asmlinkage long sys_futex(u32 __user *uaddr, int op, u32 val, const struct __kernel_timespec __user *utime, u32 __user *uaddr2, u32 val3);
+asmlinkage long sys_futex_time32(u32 __user *uaddr, int op, u32 val, const struct old_timespec32 __user *utime, u32 __user *uaddr2, u32 val3);
+asmlinkage long sys_get_robust_list(int pid, struct robust_list_head __user *__user *head_ptr, size_t __user *len_ptr);
+asmlinkage long sys_set_robust_list(struct robust_list_head __user *head, size_t len);
+asmlinkage long sys_futex_waitv(struct futex_waitv *waiters, unsigned int nr_futexes, unsigned int flags, struct __kernel_timespec __user *timeout, clockid_t clockid);
+asmlinkage long sys_nanosleep(struct __kernel_timespec __user *rqtp, struct __kernel_timespec __user *rmtp);
+asmlinkage long sys_nanosleep_time32(struct old_timespec32 __user *rqtp, struct old_timespec32 __user *rmtp);
+asmlinkage long sys_getitimer(int which, struct __kernel_old_itimerval __user *value);
+asmlinkage long sys_setitimer(int which, struct __kernel_old_itimerval __user *value, struct __kernel_old_itimerval __user *ovalue);
+asmlinkage long sys_kexec_load(unsigned long entry, unsigned long nr_segments, struct kexec_segment __user *segments, unsigned long flags);
+asmlinkage long sys_init_module(void __user *umod, unsigned long len, const char __user *uargs);
+asmlinkage long sys_delete_module(const char __user *name_user, unsigned int flags);
+asmlinkage long sys_timer_create(clockid_t which_clock, struct sigevent __user *timer_event_spec, timer_t __user *created_timer_id);
+asmlinkage long sys_timer_gettime(timer_t timer_id, struct __kernel_itimerspec __user *setting);
+asmlinkage long sys_timer_getoverrun(timer_t timer_id);
+asmlinkage long sys_timer_settime(timer_t timer_id, int flags, const struct __kernel_itimerspec __user *new_setting, struct __kernel_itimerspec __user *old_setting);
+asmlinkage long sys_timer_delete(timer_t timer_id);
+asmlinkage long sys_clock_settime(clockid_t which_clock, const struct __kernel_timespec __user *tp);
+asmlinkage long sys_clock_gettime(clockid_t which_clock, struct __kernel_timespec __user *tp);
+asmlinkage long sys_clock_getres(clockid_t which_clock, struct __kernel_timespec __user *tp);
+asmlinkage long sys_clock_nanosleep(clockid_t which_clock, int flags, const struct __kernel_timespec __user *rqtp, struct __kernel_timespec __user *rmtp);
+asmlinkage long sys_timer_gettime32(timer_t timer_id, struct old_itimerspec32 __user *setting);
+asmlinkage long sys_timer_settime32(timer_t timer_id, int flags, struct old_itimerspec32 __user *new, struct old_itimerspec32 __user *old);
+asmlinkage long sys_clock_settime32(clockid_t which_clock, struct old_timespec32 __user *tp);
+asmlinkage long sys_clock_gettime32(clockid_t which_clock, struct old_timespec32 __user *tp);
+asmlinkage long sys_clock_getres_time32(clockid_t which_clock, struct old_timespec32 __user *tp);
+asmlinkage long sys_clock_nanosleep_time32(clockid_t which_clock, int flags, struct old_timespec32 __user *rqtp, struct old_timespec32 __user *rmtp);
+asmlinkage long sys_syslog(int type, char __user *buf, int len);
+asmlinkage long sys_ptrace(long request, long pid, unsigned long addr, unsigned long data);
+asmlinkage long sys_sched_setparam(pid_t pid, struct sched_param __user *param);
+asmlinkage long sys_sched_setscheduler(pid_t pid, int policy, struct sched_param __user *param);
+asmlinkage long sys_sched_getscheduler(pid_t pid);
+asmlinkage long sys_sched_getparam(pid_t pid, struct sched_param __user *param);
+asmlinkage long sys_sched_setaffinity(pid_t pid, unsigned int len, unsigned long __user *user_mask_ptr);
+asmlinkage long sys_sched_getaffinity(pid_t pid, unsigned int len, unsigned long __user *user_mask_ptr);
+asmlinkage long sys_sched_yield(void);
+asmlinkage long sys_sched_get_priority_max(int policy);
+asmlinkage long sys_sched_get_priority_min(int policy);
+asmlinkage long sys_sched_rr_get_interval(pid_t pid, struct __kernel_timespec __user *interval);
+asmlinkage long sys_sched_rr_get_interval_time32(pid_t pid, struct old_timespec32 __user *interval);
+asmlinkage long sys_restart_syscall(void);
+asmlinkage long sys_kill(pid_t pid, int sig);
+asmlinkage long sys_tkill(pid_t pid, int sig);
+asmlinkage long sys_tgkill(pid_t tgid, pid_t pid, int sig);
+asmlinkage long sys_sigaltstack(const struct sigaltstack __user *uss, struct sigaltstack __user *uoss);
+asmlinkage long sys_rt_sigsuspend(sigset_t __user *unewset, size_t sigsetsize);
+!asmlinkage long sys_rt_sigaction(int sig, const struct sigaction __user *act, struct sigaction __user *oact, size_t sigsetsize);
+asmlinkage long sys_rt_sigprocmask(int how, sigset_t __user *set, sigset_t __user *oset, size_t sigsetsize);
+asmlinkage long sys_rt_sigpending(sigset_t __user *set, size_t sigsetsize);
+asmlinkage long sys_rt_sigtimedwait(const sigset_t __user *uthese, siginfo_t __user *uinfo, const struct __kernel_timespec __user *uts, size_t sigsetsize);
+asmlinkage long sys_rt_sigtimedwait_time32(const sigset_t __user *uthese, siginfo_t __user *uinfo, const struct old_timespec32 __user *uts, size_t sigsetsize);
+asmlinkage long sys_rt_sigqueueinfo(pid_t pid, int sig, siginfo_t __user *uinfo);
+asmlinkage long sys_setpriority(int which, int who, int niceval);
+asmlinkage long sys_getpriority(int which, int who);
+asmlinkage long sys_reboot(int magic1, int magic2, unsigned int cmd, void __user *arg);
+asmlinkage long sys_setregid(gid_t rgid, gid_t egid);
+asmlinkage long sys_setgid(gid_t gid);
+asmlinkage long sys_setreuid(uid_t ruid, uid_t euid);
+asmlinkage long sys_setuid(uid_t uid);
+asmlinkage long sys_setresuid(uid_t ruid, uid_t euid, uid_t suid);
+asmlinkage long sys_getresuid(uid_t __user *ruid, uid_t __user *euid, uid_t __user *suid);
+asmlinkage long sys_setresgid(gid_t rgid, gid_t egid, gid_t sgid);
+asmlinkage long sys_getresgid(gid_t __user *rgid, gid_t __user *egid, gid_t __user *sgid);
+asmlinkage long sys_setfsuid(uid_t uid);
+asmlinkage long sys_setfsgid(gid_t gid);
+asmlinkage long sys_times(struct tms __user *tbuf);
+asmlinkage long sys_setpgid(pid_t pid, pid_t pgid);
+asmlinkage long sys_getpgid(pid_t pid);
+asmlinkage long sys_getsid(pid_t pid);
+asmlinkage long sys_setsid(void);
+asmlinkage long sys_getgroups(int gidsetsize, gid_t __user *grouplist);
+asmlinkage long sys_setgroups(int gidsetsize, gid_t __user *grouplist);
+asmlinkage long sys_newuname(struct new_utsname __user *name);
+asmlinkage long sys_sethostname(char __user *name, int len);
+asmlinkage long sys_setdomainname(char __user *name, int len);
+asmlinkage long sys_getrlimit(unsigned int resource, struct rlimit __user *rlim);
+asmlinkage long sys_setrlimit(unsigned int resource, struct rlimit __user *rlim);
+asmlinkage long sys_getrusage(int who, struct rusage __user *ru);
+asmlinkage long sys_umask(int mask);
+asmlinkage long sys_prctl(int option, unsigned long arg2, unsigned long arg3, unsigned long arg4, unsigned long arg5);
+asmlinkage long sys_getcpu(unsigned __user *cpu, unsigned __user *node, struct getcpu_cache __user *cache);
+asmlinkage long sys_gettimeofday(struct __kernel_old_timeval __user *tv, struct timezone __user *tz);
+asmlinkage long sys_settimeofday(struct __kernel_old_timeval __user *tv, struct timezone __user *tz);
+asmlinkage long sys_adjtimex(struct __kernel_timex __user *txc_p);
+asmlinkage long sys_adjtimex_time32(struct old_timex32 __user *txc_p);
+asmlinkage long sys_getpid(void);
+asmlinkage long sys_getppid(void);
+asmlinkage long sys_getuid(void);
+asmlinkage long sys_geteuid(void);
+asmlinkage long sys_getgid(void);
+asmlinkage long sys_getegid(void);
+asmlinkage long sys_gettid(void);
+asmlinkage long sys_sysinfo(struct sysinfo __user *info);
+asmlinkage long sys_mq_open(const char __user *name, int oflag, umode_t mode, struct mq_attr __user *attr);
+asmlinkage long sys_mq_unlink(const char __user *name);
+asmlinkage long sys_mq_timedsend(mqd_t mqdes, const char __user *msg_ptr, size_t msg_len, unsigned int msg_prio, const struct __kernel_timespec __user *abs_timeout);
+asmlinkage long sys_mq_timedreceive(mqd_t mqdes, char __user *msg_ptr, size_t msg_len, unsigned int __user *msg_prio, const struct __kernel_timespec __user *abs_timeout);
+asmlinkage long sys_mq_notify(mqd_t mqdes, const struct sigevent __user *notification);
+asmlinkage long sys_mq_getsetattr(mqd_t mqdes, const struct mq_attr __user *mqstat, struct mq_attr __user *omqstat);
+asmlinkage long sys_mq_timedreceive_time32(mqd_t mqdes, char __user *u_msg_ptr, unsigned int msg_len, unsigned int __user *u_msg_prio, const struct old_timespec32 __user *u_abs_timeout);
+asmlinkage long sys_mq_timedsend_time32(mqd_t mqdes, const char __user *u_msg_ptr, unsigned int msg_len, unsigned int msg_prio, const struct old_timespec32 __user *u_abs_timeout);
+asmlinkage long sys_msgget(key_t key, int msgflg);
+asmlinkage long sys_old_msgctl(int msqid, int cmd, struct msqid_ds __user *buf);
+asmlinkage long sys_msgctl(int msqid, int cmd, struct msqid_ds __user *buf);
+asmlinkage long sys_msgrcv(int msqid, struct msgbuf __user *msgp, size_t msgsz, long msgtyp, int msgflg);
+asmlinkage long sys_msgsnd(int msqid, struct msgbuf __user *msgp, size_t msgsz, int msgflg);
+asmlinkage long sys_semget(key_t key, int nsems, int semflg);
+asmlinkage long sys_semctl(int semid, int semnum, int cmd, unsigned long arg);
+asmlinkage long sys_old_semctl(int semid, int semnum, int cmd, unsigned long arg);
+asmlinkage long sys_semtimedop(int semid, struct sembuf __user *sops, unsigned nsops, const struct __kernel_timespec __user *timeout);
+asmlinkage long sys_semtimedop_time32(int semid, struct sembuf __user *sops, unsigned nsops, const struct old_timespec32 __user *timeout);
+asmlinkage long sys_semop(int semid, struct sembuf __user *sops, unsigned nsops);
+asmlinkage long sys_shmget(key_t key, size_t size, int flag);
+asmlinkage long sys_old_shmctl(int shmid, int cmd, struct shmid_ds __user *buf);
+asmlinkage long sys_shmctl(int shmid, int cmd, struct shmid_ds __user *buf);
+asmlinkage long sys_shmat(int shmid, char __user *shmaddr, int shmflg);
+asmlinkage long sys_shmdt(char __user *shmaddr);
+!asmlinkage long sys_socket(int family, int type, int protocol);
+!asmlinkage long sys_socketpair(int family, int type, int protocol, int __user *usockvec);
+!asmlinkage long sys_bind(int fd, struct sockaddr __user *umyaddr, int addrlen);
+!asmlinkage long sys_listen(int fd, int backlog);
+!asmlinkage long sys_accept(int fd, struct sockaddr __user *upeer_sockaddr, int __user *upeer_addrlen);
+!asmlinkage long sys_connect(int fd, struct sockaddr __user *uservaddr, int addrlen);
+!asmlinkage long sys_getsockname(int fd, struct sockaddr __user *usockaddr, int __user *usockaddr_len);
+!asmlinkage long sys_getpeername(int fd, struct sockaddr __user *usockaddr, int __user *usockaddr_len);
+!asmlinkage long sys_sendto(int fd, void __user *buff, size_t len, unsigned int flags, struct sockaddr __user *addr, int addr_len);
+!asmlinkage long sys_recvfrom(int fd, void __user *ubuf, size_t size, unsigned int flags, struct sockaddr __user *addr, int __user *addr_len);
+asmlinkage long sys_setsockopt(int fd, int level, int optname, char __user *optval, int optlen);
+asmlinkage long sys_getsockopt(int fd, int level, int optname, char __user *optval, int __user *optlen);
+!asmlinkage long sys_shutdown(int fd, int how);
+asmlinkage long sys_sendmsg(int fd, struct user_msghdr __user *msg, unsigned flags);
+asmlinkage long sys_recvmsg(int fd, struct user_msghdr __user *msg, unsigned flags);
+asmlinkage long sys_readahead(int fd, loff_t offset, size_t count);
+asmlinkage long sys_brk(unsigned long brk);
+asmlinkage long sys_munmap(unsigned long addr, size_t len);
+asmlinkage long sys_mremap(unsigned long addr, unsigned long old_len, unsigned long new_len, unsigned long flags, unsigned long new_addr);
+asmlinkage long sys_add_key(const char __user *_type, const char __user *_description, const void __user *_payload, size_t plen, key_serial_t destringid);
+asmlinkage long sys_request_key(const char __user *_type, const char __user *_description, const char __user *_callout_info, key_serial_t destringid);
+asmlinkage long sys_keyctl(int cmd, unsigned long arg2, unsigned long arg3, unsigned long arg4, unsigned long arg5);
+#asmlinkage long sys_clone(unsigned long, unsigned long, int __user *, unsigned long, int __user *);
+#asmlinkage long sys_clone(unsigned long, unsigned long, int, int __user *, int __user *, unsigned long);
+#asmlinkage long sys_clone(unsigned long, unsigned long, int __user *, int __user *, unsigned long);
+asmlinkage long sys_clone3(struct clone_args __user *uargs, size_t size);
+asmlinkage long sys_execve(const char __user *filename, const char __user *const __user *argv, const char __user *const __user *envp);
+asmlinkage long sys_fadvise64_64(int fd, loff_t offset, loff_t len, int advice);
+asmlinkage long sys_swapon(const char __user *specialfile, int swap_flags);
+asmlinkage long sys_swapoff(const char __user *specialfile);
+asmlinkage long sys_mprotect(unsigned long start, size_t len, unsigned long prot);
+asmlinkage long sys_msync(unsigned long start, size_t len, int flags);
+asmlinkage long sys_mlock(unsigned long start, size_t len);
+asmlinkage long sys_munlock(unsigned long start, size_t len);
+asmlinkage long sys_mlockall(int flags);
+asmlinkage long sys_munlockall(void);
+asmlinkage long sys_mincore(unsigned long start, size_t len, unsigned char __user *vec);
+asmlinkage long sys_madvise(unsigned long start, size_t len, int behavior);
+asmlinkage long sys_process_madvise(int pidfd, const struct iovec __user *vec, size_t vlen, int behavior, unsigned int flags);
+asmlinkage long sys_process_mrelease(int pidfd, unsigned int flags);
+asmlinkage long sys_remap_file_pages(unsigned long start, unsigned long size, unsigned long prot, unsigned long pgoff, unsigned long flags);
+asmlinkage long sys_mbind(unsigned long start, unsigned long len, unsigned long mode, const unsigned long __user *nmask, unsigned long maxnode, unsigned flags);
+asmlinkage long sys_get_mempolicy(int __user *policy, unsigned long __user *nmask, unsigned long maxnode, unsigned long addr, unsigned long flags);
+asmlinkage long sys_set_mempolicy(int mode, const unsigned long __user *nmask, unsigned long maxnode);
+asmlinkage long sys_migrate_pages(pid_t pid, unsigned long maxnode, const unsigned long __user *from, const unsigned long __user *to);
+asmlinkage long sys_move_pages(pid_t pid, unsigned long nr_pages, const void __user *__user *pages, const int __user *nodes, int __user *status, int flags);
+asmlinkage long sys_rt_tgsigqueueinfo(pid_t tgid, pid_t pid, int sig, siginfo_t __user *uinfo);
+asmlinkage long sys_perf_event_open(struct perf_event_attr __user *attr_uptr, pid_t pid, int cpu, int group_fd, unsigned long flags);
+!asmlinkage long sys_accept4(int fd, struct sockaddr __user *upeer_sockaddr, int __user *upeer_addrlen, int flags);
+asmlinkage long sys_recvmmsg(int fd, struct mmsghdr __user *msg, unsigned int vlen, unsigned flags, struct __kernel_timespec __user *timeout);
+asmlinkage long sys_recvmmsg_time32(int fd, struct mmsghdr __user *msg, unsigned int vlen, unsigned flags, struct old_timespec32 __user *timeout);
+asmlinkage long sys_wait4(pid_t pid, int __user *stat_addr, int options, struct rusage __user *ru);
+asmlinkage long sys_prlimit64(pid_t pid, unsigned int resource, const struct rlimit64 __user *new_rlim, struct rlimit64 __user *old_rlim);
+asmlinkage long sys_fanotify_init(unsigned int flags, unsigned int event_f_flags);
+asmlinkage long sys_fanotify_mark(int fanotify_fd, unsigned int flags, u64 mask, int fd, const char __user *pathname);
+asmlinkage long sys_name_to_handle_at(int dfd, const char __user *name, struct file_handle __user *handle, int __user *mnt_id, int flag);
+asmlinkage long sys_open_by_handle_at(int mountdirfd, struct file_handle __user *handle, int flags);
+asmlinkage long sys_clock_adjtime(clockid_t which_clock, struct __kernel_timex __user *tx);
+asmlinkage long sys_clock_adjtime32(clockid_t which_clock, struct old_timex32 __user *tx);
+asmlinkage long sys_syncfs(int fd);
+asmlinkage long sys_setns(int fd, int nstype);
+asmlinkage long sys_pidfd_open(pid_t pid, unsigned int flags);
+asmlinkage long sys_sendmmsg(int fd, struct mmsghdr __user *msg, unsigned int vlen, unsigned flags);
+asmlinkage long sys_process_vm_readv(pid_t pid, const struct iovec __user *lvec, unsigned long liovcnt, const struct iovec __user *rvec, unsigned long riovcnt, unsigned long flags);
+asmlinkage long sys_process_vm_writev(pid_t pid, const struct iovec __user *lvec, unsigned long liovcnt, const struct iovec __user *rvec, unsigned long riovcnt, unsigned long flags);
+asmlinkage long sys_kcmp(pid_t pid1, pid_t pid2, int type, unsigned long idx1, unsigned long idx2);
+asmlinkage long sys_finit_module(int fd, const char __user *uargs, int flags);
+asmlinkage long sys_sched_setattr(pid_t pid, struct sched_attr __user *attr, unsigned int flags);
+asmlinkage long sys_sched_getattr(pid_t pid, struct sched_attr __user *attr, unsigned int size, unsigned int flags);
+asmlinkage long sys_renameat2(int olddfd, const char __user *oldname, int newdfd, const char __user *newname, unsigned int flags);
+asmlinkage long sys_seccomp(unsigned int op, unsigned int flags, void __user *uargs);
+asmlinkage long sys_getrandom(char __user *buf, size_t count, unsigned int flags);
+asmlinkage long sys_memfd_create(const char __user *uname_ptr, unsigned int flags);
+asmlinkage long sys_bpf(int cmd, union bpf_attr *attr, unsigned int size);
+asmlinkage long sys_execveat(int dfd, const char __user *filename, const char __user *const __user *argv, const char __user *const __user *envp, int flags);
+asmlinkage long sys_userfaultfd(int flags);
+asmlinkage long sys_membarrier(int cmd, unsigned int flags, int cpu_id);
+asmlinkage long sys_mlock2(unsigned long start, size_t len, int flags);
+asmlinkage long sys_copy_file_range(int fd_in, loff_t __user *off_in, int fd_out, loff_t __user *off_out, size_t len, unsigned int flags);
+asmlinkage long sys_preadv2(unsigned long fd, const struct iovec __user *vec, unsigned long vlen, unsigned long pos_l, unsigned long pos_h, rwf_t flags);
+asmlinkage long sys_pwritev2(unsigned long fd, const struct iovec __user *vec, unsigned long vlen, unsigned long pos_l, unsigned long pos_h, rwf_t flags);
+asmlinkage long sys_pkey_mprotect(unsigned long start, size_t len, unsigned long prot, int pkey);
+asmlinkage long sys_pkey_alloc(unsigned long flags, unsigned long init_val);
+asmlinkage long sys_pkey_free(int pkey);
+asmlinkage long sys_statx(int dfd, const char __user *path, unsigned flags, unsigned mask, struct statx __user *buffer);
+asmlinkage long sys_rseq(struct rseq __user *rseq, uint32_t rseq_len, int flags, uint32_t sig);
+asmlinkage long sys_open_tree(int dfd, const char __user *path, unsigned flags);
+asmlinkage long sys_move_mount(int from_dfd, const char __user *from_path, int to_dfd, const char __user *to_path, unsigned int ms_flags);
+asmlinkage long sys_mount_setattr(int dfd, const char __user *path, unsigned int flags, struct mount_attr __user *uattr, size_t usize);
+asmlinkage long sys_fsopen(const char __user *fs_name, unsigned int flags);
+asmlinkage long sys_fsconfig(int fs_fd, unsigned int cmd, const char __user *key, const void __user *value, int aux);
+asmlinkage long sys_fsmount(int fs_fd, unsigned int flags, unsigned int ms_flags);
+asmlinkage long sys_fspick(int dfd, const char __user *path, unsigned int flags);
+asmlinkage long sys_pidfd_send_signal(int pidfd, int sig, siginfo_t __user *info, unsigned int flags);
+asmlinkage long sys_pidfd_getfd(int pidfd, int fd, unsigned int flags);
+asmlinkage long sys_landlock_create_ruleset(const struct landlock_ruleset_attr __user *attr, size_t size, __u32 flags);
+asmlinkage long sys_landlock_add_rule(int ruleset_fd, enum landlock_rule_type rule_type, const void __user *rule_attr, __u32 flags);
+asmlinkage long sys_landlock_restrict_self(int ruleset_fd, __u32 flags);
+asmlinkage long sys_memfd_secret(unsigned int flags);
+asmlinkage long sys_set_mempolicy_home_node(unsigned long start, unsigned long len, unsigned long home_node, unsigned long flags);
+asmlinkage long sys_ioperm(unsigned long from, unsigned long num, int on);
+asmlinkage long sys_pciconfig_read(unsigned long bus, unsigned long dfn, unsigned long off, unsigned long len, void __user *buf);
+asmlinkage long sys_pciconfig_write(unsigned long bus, unsigned long dfn, unsigned long off, unsigned long len, void __user *buf);
+asmlinkage long sys_pciconfig_iobase(long which, unsigned long bus, unsigned long devfn);
+asmlinkage long sys_spu_run(int fd, __u32 __user *unpc, __u32 __user *ustatus);
+asmlinkage long sys_spu_create(const char __user *name, unsigned int flags, umode_t mode, int fd);
+asmlinkage long sys_open(const char __user *filename, int flags, umode_t mode);
+asmlinkage long sys_link(const char __user *oldname, const char __user *newname);
+asmlinkage long sys_unlink(const char __user *pathname);
+asmlinkage long sys_mknod(const char __user *filename, umode_t mode, unsigned dev);
+asmlinkage long sys_chmod(const char __user *filename, umode_t mode);
+asmlinkage long sys_chown(const char __user *filename, uid_t user, gid_t group);
+asmlinkage long sys_mkdir(const char __user *pathname, umode_t mode);
+asmlinkage long sys_rmdir(const char __user *pathname);
+asmlinkage long sys_lchown(const char __user *filename, uid_t user, gid_t group);
+asmlinkage long sys_access(const char __user *filename, int mode);
+asmlinkage long sys_rename(const char __user *oldname, const char __user *newname);
+asmlinkage long sys_symlink(const char __user *old, const char __user *new);
+asmlinkage long sys_stat64(const char __user *filename, struct stat64 __user *statbuf);
+asmlinkage long sys_lstat64(const char __user *filename, struct stat64 __user *statbuf);
+asmlinkage long sys_pipe(int __user *fildes);
+asmlinkage long sys_dup2(unsigned int oldfd, unsigned int newfd);
+asmlinkage long sys_epoll_create(int size);
+asmlinkage long sys_inotify_init(void);
+asmlinkage long sys_eventfd(unsigned int count);
+asmlinkage long sys_signalfd(int ufd, sigset_t __user *user_mask, size_t sizemask);
+asmlinkage long sys_sendfile(int out_fd, int in_fd, off_t __user *offset, size_t count);
+asmlinkage long sys_newstat(const char __user *filename, struct stat __user *statbuf);
+asmlinkage long sys_newlstat(const char __user *filename, struct stat __user *statbuf);
+asmlinkage long sys_fadvise64(int fd, loff_t offset, size_t len, int advice);
+asmlinkage long sys_alarm(unsigned int seconds);
+asmlinkage long sys_getpgrp(void);
+asmlinkage long sys_pause(void);
+asmlinkage long sys_time(__kernel_old_time_t __user *tloc);
+asmlinkage long sys_time32(old_time32_t __user *tloc);
+asmlinkage long sys_utime(char __user *filename, struct utimbuf __user *times);
+asmlinkage long sys_utimes(char __user *filename, struct __kernel_old_timeval __user *utimes);
+asmlinkage long sys_futimesat(int dfd, const char __user *filename, struct __kernel_old_timeval __user *utimes);
+asmlinkage long sys_futimesat_time32(unsigned int dfd, const char __user *filename, struct old_timeval32 __user *t);
+asmlinkage long sys_utime32(const char __user *filename, struct old_utimbuf32 __user *t);
+asmlinkage long sys_utimes_time32(const char __user *filename, struct old_timeval32 __user *t);
+asmlinkage long sys_creat(const char __user *pathname, umode_t mode);
+asmlinkage long sys_getdents(unsigned int fd, struct linux_dirent __user *dirent, unsigned int count);
+asmlinkage long sys_select(int n, fd_set __user *inp, fd_set __user *outp, fd_set __user *exp, struct __kernel_old_timeval __user *tvp);
+asmlinkage long sys_poll(struct pollfd __user *ufds, unsigned int nfds, int timeout);
+asmlinkage long sys_epoll_wait(int epfd, struct epoll_event __user *events, int maxevents, int timeout);
+asmlinkage long sys_ustat(unsigned dev, struct ustat __user *ubuf);
+asmlinkage long sys_vfork(void);
+asmlinkage long sys_recv(int, void __user *, size_t, unsigned);
+asmlinkage long sys_send(int, void __user *, size_t, unsigned);
+asmlinkage long sys_oldumount(char __user *name);
+asmlinkage long sys_uselib(const char __user *library);
+asmlinkage long sys_sysfs(int option, unsigned long arg1, unsigned long arg2);
+asmlinkage long sys_fork(void);
+asmlinkage long sys_stime(__kernel_old_time_t __user *tptr);
+asmlinkage long sys_stime32(old_time32_t __user *tptr);
+asmlinkage long sys_sigpending(old_sigset_t __user *uset);
+asmlinkage long sys_sigprocmask(int how, old_sigset_t __user *set, old_sigset_t __user *oset);
+asmlinkage long sys_sigsuspend(old_sigset_t mask);
+#asmlinkage long sys_sigsuspend(int unused1, int unused2, old_sigset_t mask);
+asmlinkage long sys_sigaction(int, const struct old_sigaction __user *, struct old_sigaction __user *);
+asmlinkage long sys_sgetmask(void);
+asmlinkage long sys_ssetmask(int newmask);
+asmlinkage long sys_signal(int sig, __sighandler_t handler);
+asmlinkage long sys_nice(int increment);
+asmlinkage long sys_kexec_file_load(int kernel_fd, int initrd_fd, unsigned long cmdline_len, const char __user *cmdline_ptr, unsigned long flags);
+asmlinkage long sys_waitpid(pid_t pid, int __user *stat_addr, int options);
+asmlinkage long sys_chown16(const char __user *filename, old_uid_t user, old_gid_t group);
+asmlinkage long sys_lchown16(const char __user *filename, old_uid_t user, old_gid_t group);
+asmlinkage long sys_fchown16(unsigned int fd, old_uid_t user, old_gid_t group);
+asmlinkage long sys_setregid16(old_gid_t rgid, old_gid_t egid);
+asmlinkage long sys_setgid16(old_gid_t gid);
+asmlinkage long sys_setreuid16(old_uid_t ruid, old_uid_t euid);
+asmlinkage long sys_setuid16(old_uid_t uid);
+asmlinkage long sys_setresuid16(old_uid_t ruid, old_uid_t euid, old_uid_t suid);
+asmlinkage long sys_getresuid16(old_uid_t __user *ruid, old_uid_t __user *euid, old_uid_t __user *suid);
+asmlinkage long sys_setresgid16(old_gid_t rgid, old_gid_t egid, old_gid_t sgid);
+asmlinkage long sys_getresgid16(old_gid_t __user *rgid, old_gid_t __user *egid, old_gid_t __user *sgid);
+asmlinkage long sys_setfsuid16(old_uid_t uid);
+asmlinkage long sys_setfsgid16(old_gid_t gid);
+asmlinkage long sys_getgroups16(int gidsetsize, old_gid_t __user *grouplist);
+asmlinkage long sys_setgroups16(int gidsetsize, old_gid_t __user *grouplist);
+asmlinkage long sys_getuid16(void);
+asmlinkage long sys_geteuid16(void);
+asmlinkage long sys_getgid16(void);
+asmlinkage long sys_getegid16(void);
+asmlinkage long sys_socketcall(int call, unsigned long __user *args);
+asmlinkage long sys_stat(const char __user *filename, struct __old_kernel_stat __user *statbuf);
+asmlinkage long sys_lstat(const char __user *filename, struct __old_kernel_stat __user *statbuf);
+asmlinkage long sys_fstat(unsigned int fd, struct __old_kernel_stat __user *statbuf);
+asmlinkage long sys_readlink(const char __user *path, char __user *buf, int bufsiz);
+asmlinkage long sys_old_select(struct sel_arg_struct __user *arg);
+asmlinkage long sys_old_readdir(unsigned int, struct old_linux_dirent __user *, unsigned int);
+asmlinkage long sys_gethostname(char __user *name, int len);
+asmlinkage long sys_uname(struct old_utsname __user *);
+asmlinkage long sys_olduname(struct oldold_utsname __user *);
+asmlinkage long sys_old_getrlimit(unsigned int resource, struct rlimit __user *rlim);
+asmlinkage long sys_ipc(unsigned int call, int first, unsigned long second, unsigned long third, void __user *ptr, long fifth);
+asmlinkage long sys_mmap_pgoff(unsigned long addr, unsigned long len, unsigned long prot, unsigned long flags, unsigned long fd, unsigned long pgoff);
+asmlinkage long sys_old_mmap(struct mmap_arg_struct __user *arg);
+#asmlinkage long sys_ni_syscall(void);
+"""
+
+# include/linux/compat.h
+syscall_defs_compat = """
+asmlinkage long compat_sys_io_setup(unsigned nr_reqs, u32 __user *ctx32p);
+asmlinkage long compat_sys_io_submit(compat_aio_context_t ctx_id, int nr, u32 __user *iocb);
+asmlinkage long compat_sys_io_pgetevents(compat_aio_context_t ctx_id, compat_long_t min_nr, compat_long_t nr, struct io_event __user *events, struct old_timespec32 __user *timeout, const struct __compat_aio_sigset __user *usig);
+asmlinkage long compat_sys_io_pgetevents_time64(compat_aio_context_t ctx_id, compat_long_t min_nr, compat_long_t nr, struct io_event __user *events, struct __kernel_timespec __user *timeout, const struct __compat_aio_sigset __user *usig);
+asmlinkage long compat_sys_lookup_dcookie(u32, u32, char __user *, compat_size_t);
+asmlinkage long compat_sys_epoll_pwait(int epfd, struct epoll_event __user *events, int maxevents, int timeout, const compat_sigset_t __user *sigmask, compat_size_t sigsetsize);
+asmlinkage long compat_sys_epoll_pwait2(int epfd, struct epoll_event __user *events, int maxevents, const struct __kernel_timespec __user *timeout, const compat_sigset_t __user *sigmask, compat_size_t sigsetsize);
+asmlinkage long compat_sys_fcntl(unsigned int fd, unsigned int cmd, compat_ulong_t arg);
+asmlinkage long compat_sys_fcntl64(unsigned int fd, unsigned int cmd, compat_ulong_t arg);
+asmlinkage long compat_sys_ioctl(unsigned int fd, unsigned int cmd, compat_ulong_t arg);
+asmlinkage long compat_sys_statfs(const char __user *pathname, struct compat_statfs __user *buf);
+asmlinkage long compat_sys_statfs64(const char __user *pathname, compat_size_t sz, struct compat_statfs64 __user *buf);
+asmlinkage long compat_sys_fstatfs(unsigned int fd, struct compat_statfs __user *buf);
+asmlinkage long compat_sys_fstatfs64(unsigned int fd, compat_size_t sz, struct compat_statfs64 __user *buf);
+asmlinkage long compat_sys_truncate(const char __user *, compat_off_t);
+asmlinkage long compat_sys_ftruncate(unsigned int, compat_ulong_t);
+asmlinkage long compat_sys_openat(int dfd, const char __user *filename, int flags, umode_t mode);
+asmlinkage long compat_sys_getdents(unsigned int fd, struct compat_linux_dirent __user *dirent, unsigned int count);
+asmlinkage long compat_sys_lseek(unsigned int, compat_off_t, unsigned int);
+asmlinkage ssize_t compat_sys_preadv(compat_ulong_t fd, const struct iovec __user *vec, compat_ulong_t vlen, u32 pos_low, u32 pos_high);
+asmlinkage ssize_t compat_sys_pwritev(compat_ulong_t fd, const struct iovec __user *vec, compat_ulong_t vlen, u32 pos_low, u32 pos_high);
+asmlinkage long compat_sys_preadv64(unsigned long fd, const struct iovec __user *vec, unsigned long vlen, loff_t pos);
+asmlinkage long compat_sys_pwritev64(unsigned long fd, const struct iovec __user *vec, unsigned long vlen, loff_t pos);
+asmlinkage long compat_sys_sendfile(int out_fd, int in_fd, compat_off_t __user *offset, compat_size_t count);
+asmlinkage long compat_sys_sendfile64(int out_fd, int in_fd, compat_loff_t __user *offset, compat_size_t count);
+asmlinkage long compat_sys_pselect6_time32(int n, compat_ulong_t __user *inp, compat_ulong_t __user *outp, compat_ulong_t __user *exp, struct old_timespec32 __user *tsp, void __user *sig);
+asmlinkage long compat_sys_pselect6_time64(int n, compat_ulong_t __user *inp, compat_ulong_t __user *outp, compat_ulong_t __user *exp, struct __kernel_timespec __user *tsp, void __user *sig);
+asmlinkage long compat_sys_ppoll_time32(struct pollfd __user *ufds, unsigned int nfds, struct old_timespec32 __user *tsp, const compat_sigset_t __user *sigmask, compat_size_t sigsetsize);
+asmlinkage long compat_sys_ppoll_time64(struct pollfd __user *ufds, unsigned int nfds, struct __kernel_timespec __user *tsp, const compat_sigset_t __user *sigmask, compat_size_t sigsetsize);
+asmlinkage long compat_sys_signalfd4(int ufd, const compat_sigset_t __user *sigmask, compat_size_t sigsetsize, int flags);
+asmlinkage long compat_sys_newfstatat(unsigned int dfd, const char __user *filename, struct compat_stat __user *statbuf, int flag);
+asmlinkage long compat_sys_newfstat(unsigned int fd, struct compat_stat __user *statbuf);
+!asmlinkage long compat_sys_waitid(int which, compat_pid_t pid, struct compat_siginfo __user *waitid, int options, struct compat_rusage __user *uru);
+asmlinkage long compat_sys_set_robust_list(struct compat_robust_list_head __user *head, compat_size_t len);
+asmlinkage long compat_sys_get_robust_list(int pid, compat_uptr_t __user *head_ptr, compat_size_t __user *len_ptr);
+asmlinkage long compat_sys_getitimer(int which, struct old_itimerval32 __user *it);
+asmlinkage long compat_sys_setitimer(int which, struct old_itimerval32 __user *in, struct old_itimerval32 __user *out);
+!asmlinkage long compat_sys_kexec_load(compat_ulong_t entry, compat_ulong_t nr_segments, struct compat_kexec_segment __user *segments, compat_ulong_t flags);
+asmlinkage long compat_sys_timer_create(clockid_t which_clock, struct compat_sigevent __user *timer_event_spec, timer_t __user *created_timer_id);
+asmlinkage long compat_sys_ptrace(compat_long_t request, compat_long_t pid, compat_long_t addr, compat_long_t data);
+asmlinkage long compat_sys_sched_setaffinity(compat_pid_t pid, unsigned int len, compat_ulong_t __user *user_mask_ptr);
+asmlinkage long compat_sys_sched_getaffinity(compat_pid_t pid, unsigned int len, compat_ulong_t __user *user_mask_ptr);
+asmlinkage long compat_sys_sigaltstack(const compat_stack_t __user *uss_ptr, compat_stack_t __user *uoss_ptr);
+asmlinkage long compat_sys_rt_sigsuspend(compat_sigset_t __user *unewset, compat_size_t sigsetsize);
+!asmlinkage long compat_sys_rt_sigaction(int sig, const struct compat_sigaction __user *act, struct compat_sigaction __user *oact, compat_size_t sigsetsize);
+asmlinkage long compat_sys_rt_sigprocmask(int how, compat_sigset_t __user *set, compat_sigset_t __user *oset, compat_size_t sigsetsize);
+asmlinkage long compat_sys_rt_sigpending(compat_sigset_t __user *uset, compat_size_t sigsetsize);
+asmlinkage long compat_sys_rt_sigtimedwait_time32(compat_sigset_t __user *uthese, struct compat_siginfo __user *uinfo, struct old_timespec32 __user *uts, compat_size_t sigsetsize);
+asmlinkage long compat_sys_rt_sigtimedwait_time64(compat_sigset_t __user *uthese, struct compat_siginfo __user *uinfo, struct __kernel_timespec __user *uts, compat_size_t sigsetsize);
+asmlinkage long compat_sys_rt_sigqueueinfo(compat_pid_t pid, int sig, struct compat_siginfo __user *uinfo);
+asmlinkage long compat_sys_times(struct compat_tms __user *tbuf);
+asmlinkage long compat_sys_getrlimit(unsigned int resource, struct compat_rlimit __user *rlim);
+asmlinkage long compat_sys_setrlimit(unsigned int resource, struct compat_rlimit __user *rlim);
+asmlinkage long compat_sys_getrusage(int who, struct compat_rusage __user *ru);
+asmlinkage long compat_sys_gettimeofday(struct old_timeval32 __user *tv, struct timezone __user *tz);
+asmlinkage long compat_sys_settimeofday(struct old_timeval32 __user *tv, struct timezone __user *tz);
+asmlinkage long compat_sys_sysinfo(struct compat_sysinfo __user *info);
+asmlinkage long compat_sys_mq_open(const char __user *u_name, int oflag, compat_mode_t mode, struct compat_mq_attr __user *u_attr);
+asmlinkage long compat_sys_mq_notify(mqd_t mqdes, const struct compat_sigevent __user *u_notification);
+asmlinkage long compat_sys_mq_getsetattr(mqd_t mqdes, const struct compat_mq_attr __user *u_mqstat, struct compat_mq_attr __user *u_omqstat);
+asmlinkage long compat_sys_msgctl(int first, int second, void __user *uptr);
+asmlinkage long compat_sys_msgrcv(int msqid, compat_uptr_t msgp, compat_ssize_t msgsz, compat_long_t msgtyp, int msgflg);
+asmlinkage long compat_sys_msgsnd(int msqid, compat_uptr_t msgp, compat_ssize_t msgsz, int msgflg);
+asmlinkage long compat_sys_semctl(int semid, int semnum, int cmd, int arg);
+asmlinkage long compat_sys_shmctl(int first, int second, void __user *uptr);
+asmlinkage long compat_sys_shmat(int shmid, compat_uptr_t shmaddr, int shmflg);
+asmlinkage long compat_sys_recvfrom(int fd, void __user *buf, compat_size_t len, unsigned flags, struct sockaddr __user *addr, int __user *addrlen);
+asmlinkage long compat_sys_sendmsg(int fd, struct compat_msghdr __user *msg, unsigned flags);
+asmlinkage long compat_sys_recvmsg(int fd, struct compat_msghdr __user *msg, unsigned int flags);
+asmlinkage long compat_sys_keyctl(u32 option, u32 arg2, u32 arg3, u32 arg4, u32 arg5);
+asmlinkage long compat_sys_execve(const char __user *filename, const compat_uptr_t __user *argv, const compat_uptr_t __user *envp);
+asmlinkage long compat_sys_rt_tgsigqueueinfo(compat_pid_t tgid, compat_pid_t pid, int sig, struct compat_siginfo __user *uinfo);
+asmlinkage long compat_sys_recvmmsg_time64(int fd, struct compat_mmsghdr __user *mmsg, unsigned vlen, unsigned int flags, struct __kernel_timespec __user *timeout);
+asmlinkage long compat_sys_recvmmsg_time32(int fd, struct compat_mmsghdr __user *mmsg, unsigned vlen, unsigned int flags, struct old_timespec32 __user *timeout);
+asmlinkage long compat_sys_wait4(compat_pid_t pid, compat_uint_t __user *stat_addr, int options, struct compat_rusage __user *ru);
+asmlinkage long compat_sys_fanotify_mark(int, unsigned int, __u32, __u32, int, const char __user *);
+asmlinkage long compat_sys_open_by_handle_at(int mountdirfd, struct file_handle __user *handle, int flags);
+asmlinkage long compat_sys_sendmmsg(int fd, struct compat_mmsghdr __user *mmsg, unsigned vlen, unsigned int flags);
+asmlinkage long compat_sys_execveat(int dfd, const char __user *filename, const compat_uptr_t __user *argv, const compat_uptr_t __user *envp, int flags);
+asmlinkage ssize_t compat_sys_preadv2(compat_ulong_t fd, const struct iovec __user *vec, compat_ulong_t vlen, u32 pos_low, u32 pos_high, rwf_t flags);
+asmlinkage ssize_t compat_sys_pwritev2(compat_ulong_t fd, const struct iovec __user *vec, compat_ulong_t vlen, u32 pos_low, u32 pos_high, rwf_t flags);
+asmlinkage long compat_sys_preadv64v2(unsigned long fd, const struct iovec __user *vec, unsigned long vlen, loff_t pos, rwf_t flags);
+asmlinkage long compat_sys_pwritev64v2(unsigned long fd, const struct iovec __user *vec, unsigned long vlen, loff_t pos, rwf_t flags);
+asmlinkage long compat_sys_open(const char __user *filename, int flags, umode_t mode);
+asmlinkage long compat_sys_signalfd(int ufd, const compat_sigset_t __user *sigmask, compat_size_t sigsetsize);
+asmlinkage long compat_sys_newstat(const char __user *filename, struct compat_stat __user *statbuf);
+asmlinkage long compat_sys_newlstat(const char __user *filename, struct compat_stat __user *statbuf);
+asmlinkage long compat_sys_select(int n, compat_ulong_t __user *inp, compat_ulong_t __user *outp, compat_ulong_t __user *exp, struct old_timeval32 __user *tvp);
+asmlinkage long compat_sys_ustat(unsigned dev, struct compat_ustat __user *u32);
+asmlinkage long compat_sys_recv(int fd, void __user *buf, compat_size_t len, unsigned flags);
+asmlinkage long compat_sys_old_readdir(unsigned int fd, struct compat_old_linux_dirent __user *, unsigned int count);
+asmlinkage long compat_sys_old_select(struct compat_sel_arg_struct __user *arg);
+asmlinkage long compat_sys_ipc(u32, int, int, u32, compat_uptr_t, u32);
+asmlinkage long compat_sys_sigpending(compat_old_sigset_t __user *set);
+asmlinkage long compat_sys_sigprocmask(int how, compat_old_sigset_t __user *nset, compat_old_sigset_t __user *oset);
+asmlinkage long compat_sys_sigaction(int sig, const struct compat_old_sigaction __user *act, struct compat_old_sigaction __user *oact);
+asmlinkage long compat_sys_socketcall(int call, u32 __user *args);
+asmlinkage long compat_sys_truncate64(const char __user *pathname, compat_arg_u64(len));
+asmlinkage long compat_sys_ftruncate64(unsigned int fd, compat_arg_u64(len));
+asmlinkage long compat_sys_fallocate(int fd, int mode, compat_arg_u64(offset), compat_arg_u64(len));
+asmlinkage long compat_sys_pread64(unsigned int fd, char __user *buf, size_t count, compat_arg_u64(pos));
+asmlinkage long compat_sys_pwrite64(unsigned int fd, const char __user *buf, size_t count, compat_arg_u64(pos));
+asmlinkage long compat_sys_sync_file_range(int fd, compat_arg_u64(pos), compat_arg_u64(nbytes), unsigned int flags);
+asmlinkage long compat_sys_fadvise64_64(int fd, compat_arg_u64(pos), compat_arg_u64(len), int advice);
+asmlinkage long compat_sys_readahead(int fd, compat_arg_u64(offset), size_t count);
+"""
+
+
+def parse_common_syscall_defs():
+    sc_defs = [
+        syscall_defs,
+        syscall_defs_compat,
+    ]
+    dic = {}
+    for defs in sc_defs:
+        for line in defs.splitlines():
+            if line == "":
+                continue
+            if line.startswith("#"):
+                continue
+            m = re.search(r"asmlinkage\s+(?:long|ssize_t)\s+(\S+)\((.+?)\);", line)
+            if not m:
+                continue
+            name, args = m.group(1), m.group(2)
+            args = [x.strip() for x in args.split(",")]
+            if name in dic:
+                err("duplicate: {:s}".format(name))
+                raise
+            if len(args) == 1 and args[0] == "void":
+                dic[name] = []
+            else:
+                dic[name] = args
+    return dic
+
 
 # x86_64
 # - arch/x86/entry/syscalls/syscall_64.tbl
-# - arch/x86/include/asm/unistd.h
-# - arch/x86/include/uapi/asm/unistd.h
-# - arch/x86/include/generated/uapi/asm/unistd-64.h
-# - arch/x86/include/generated/uapi/asm/unistd-x32.h
-x64_syscall_list = [
-    [0x000, 'read', ['unsigned int fd', 'char *buf', 'size_t count']],
-    [0x001, 'write', ['unsigned int fd', 'const char *buf', 'size_t count']],
-    [0x002, 'open', ['const char *filename', 'int flags', 'umode_t mode']],
-    [0x003, 'close', ['unsigned int fd']],
-    [0x004, 'stat', ['const char *filename', 'struct __old_kernel_stat *statbuf']],
-    [0x005, 'fstat', ['unsigned int fd', 'struct __old_kernel_stat *statbuf']],
-    [0x006, 'lstat', ['const char *filename', 'struct __old_kernel_stat *statbuf']],
-    [0x007, 'poll', ['struct pollfd *ufds', 'unsigned int nfds', 'int timeout_msecs']],
-    [0x008, 'lseek', ['unsigned int fd', 'off_t offset', 'unsigned int whence']],
-    [0x009, 'mmap', ['unsigned long addr', 'unsigned long len', 'unsigned long prot', 'unsigned long flags', 'unsigned long fd', 'unsigned long off']],
-    [0x00a, 'mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot']],
-    [0x00b, 'munmap', ['unsigned long addr', 'size_t len']],
-    [0x00c, 'brk', ['unsigned long brk']],
-    [0x00d, 'rt_sigaction', ['int sig', 'const struct sigaction *act', 'struct sigaction *oact', 'size_t sigsetsize']],
-    [0x00e, 'rt_sigprocmask', ['int how', 'sigset_t *nset', 'sigset_t *oset', 'size_t sigsetsize']],
-    [0x00f, 'rt_sigreturn', []],
-    [0x010, 'ioctl', ['unsigned int fd', 'unsigned int cmd', 'unsigned long arg']],
-    [0x011, 'pread64', ['unsigned int fd', 'char *buf', 'size_t count', 'loff_t pos']],
-    [0x012, 'pwrite64', ['unsigned int fd', 'const char *buf', 'size_t count', 'loff_t pos']],
-    [0x013, 'readv', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen']],
-    [0x014, 'writev', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen']],
-    [0x015, 'access', ['const char *filename', 'int mode']],
-    [0x016, 'pipe', ['int *fildes']],
-    [0x017, 'select', ['int n', 'fd_set *inp', 'fd_set *outp', 'fd_set *exp', 'struct __kernel_old_timeval *tvp']],
-    [0x018, 'sched_yield', []],
-    [0x019, 'mremap', ['unsigned long addr', 'unsigned long old_len', 'unsigned long new_len', 'unsigned long flags', 'unsigned long new_addr']],
-    [0x01a, 'msync', ['unsigned long start', 'size_t len', 'int flags']],
-    [0x01b, 'mincore', ['unsigned long start', 'size_t len', 'unsigned char *vec']],
-    [0x01c, 'madvise', ['unsigned long start', 'size_t len_in', 'int behavior']],
-    [0x01d, 'shmget', ['key_t key', 'size_t size', 'int shmflg']],
-    [0x01e, 'shmat', ['int shmid', 'char *shmaddr', 'int shmflg']],
-    [0x01f, 'shmctl', ['int shmid', 'int cmd', 'struct shmid_ds *buf']],
-    [0x020, 'dup', ['unsigned int fildes']],
-    [0x021, 'dup2', ['unsigned int oldfd', 'unsigned int newfd']],
-    [0x022, 'pause', []],
-    [0x023, 'nanosleep', ['struct __kernel_timespec *rqtp', 'struct __kernel_timespec *rmtp']],
-    [0x024, 'getitimer', ['int which', 'struct __kernel_old_itimerval *value']],
-    [0x025, 'alarm', ['unsigned int seconds']],
-    [0x026, 'setitimer', ['int which', 'struct __kernel_old_itimerval *value', 'struct __kernel_old_itimerval *ovalue']],
-    [0x027, 'getpid', []],
-    [0x028, 'sendfile', ['int out_fd', 'int in_fd', 'off_t *offset', 'size_t count']],
-    [0x029, 'socket', ['int family', 'int type', 'int protocol']],
-    [0x02a, 'connect', ['int fd', 'struct sockaddr *uservaddr', 'int addrlen']],
-    [0x02b, 'accept', ['int fd', 'struct sockaddr *upeer_sockaddr', 'int *upeer_addrlen']],
-    [0x02c, 'sendto', ['int fd', 'void *buff', 'size_t len', 'unsigned int flags', 'struct sockaddr *addr', 'int addr_len']],
-    [0x02d, 'recvfrom', ['int fd', 'void *ubuf', 'size_t size', 'unsigned int flags', 'struct sockaddr *addr', 'int *addr_len']],
-    [0x02e, 'sendmsg', ['int fd', 'struct user_msghdr *msg', 'unsigned int flags']],
-    [0x02f, 'recvmsg', ['int fd', 'struct user_msghdr *msg', 'unsigned int flags']],
-    [0x030, 'shutdown', ['int fd', 'int how']],
-    [0x031, 'bind', ['int fd', 'struct sockaddr *umyaddr', 'int addrlen']],
-    [0x032, 'listen', ['int fd', 'int backlog']],
-    [0x033, 'getsockname', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
-    [0x034, 'getpeername', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
-    [0x035, 'socketpair', ['int family', 'int type', 'int protocol', 'int *usockvec']],
-    [0x036, 'setsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int optlen']],
-    [0x037, 'getsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int *optlen']],
-    [0x038, 'clone', ['unsigned long clone_flags', 'unsigned long newsp', 'int *parent_tidptr', 'int *child_tidptr', 'unsigned long tls']],
-    [0x039, 'fork', []],
-    [0x03a, 'vfork', []],
-    [0x03b, 'execve', ['const char *filename', 'const char *const *argv', 'const char *const *envp']],
-    [0x03c, 'exit', ['int error_code']],
-    [0x03d, 'wait4', ['pid_t upid', 'int *stat_addr', 'int options', 'struct rusage *ru']],
-    [0x03e, 'kill', ['pid_t pid', 'int sig']],
-    [0x03f, 'uname', ['struct old_utsname *name']],
-    [0x040, 'semget', ['key_t key', 'int nsems', 'int semflg']],
-    [0x041, 'semop', ['int semid', 'struct sembuf *tsops', 'unsigned nsops']],
-    [0x042, 'semctl', ['int semid', 'int semnum', 'int cmd', 'unsigned long arg']],
-    [0x043, 'shmdt', ['char *shmaddr']],
-    [0x044, 'msgget', ['key_t key', 'int msgflg']],
-    [0x045, 'msgsnd', ['int msqid', 'struct msgbuf *msgp', 'size_t msgsz', 'int msgflg']],
-    [0x046, 'msgrcv', ['int msqid', 'struct msgbuf *msgp', 'size_t msgsz', 'long msgtyp', 'int msgflg']],
-    [0x047, 'msgctl', ['int msqid', 'int cmd', 'struct msqid_ds *buf']],
-    [0x048, 'fcntl', ['unsigned int fd', 'unsigned int cmd', 'unsigned long arg']],
-    [0x049, 'flock', ['unsigned int fd', 'unsigned int cmd']],
-    [0x04a, 'fsync', ['unsigned int fd']],
-    [0x04b, 'fdatasync', ['unsigned int fd']],
-    [0x04c, 'truncate', ['const char *path', 'long length']],
-    [0x04d, 'ftruncate', ['unsigned int fd', 'unsigned long length']],
-    [0x04e, 'getdents', ['unsigned int fd', 'struct linux_dirent *dirent', 'unsigned int count']],
-    [0x04f, 'getcwd', ['char *buf', 'unsigned long size']],
-    [0x050, 'chdir', ['const char *filename']],
-    [0x051, 'fchdir', ['unsigned int fd']],
-    [0x052, 'rename', ['const char *oldname', 'const char *newname']],
-    [0x053, 'mkdir', ['const char *pathname', 'umode_t mode']],
-    [0x054, 'rmdir', ['const char *pathname']],
-    [0x055, 'creat', ['const char *pathname', 'umode_t mode']],
-    [0x056, 'link', ['const char *oldname', 'const char *newname']],
-    [0x057, 'unlink', ['const char *pathname']],
-    [0x058, 'symlink', ['const char *oldname', 'const char *newname']],
-    [0x059, 'readlink', ['const char *path', 'char *buf', 'int bufsiz']],
-    [0x05a, 'chmod', ['const char *filename', 'umode_t mode']],
-    [0x05b, 'fchmod', ['unsigned int fd', 'umode_t mode']],
-    [0x05c, 'chown', ['const char *filename', 'uid_t user', 'gid_t group']],
-    [0x05d, 'fchown', ['unsigned int fd', 'uid_t user', 'gid_t group']],
-    [0x05e, 'lchown', ['const char *filename', 'uid_t user', 'gid_t group']],
-    [0x05f, 'umask', ['int mask']],
-    [0x060, 'gettimeofday', ['struct __kernel_old_timeval *tv', 'struct timezone *tz']],
-    [0x061, 'getrlimit', ['unsigned int resource', 'struct rlimit *rlim']],
-    [0x062, 'getrusage', ['int who', 'struct rusage *ru']],
-    [0x063, 'sysinfo', ['struct sysinfo *info']],
-    [0x064, 'times', ['struct tms *tbuf']],
-    [0x065, 'ptrace', ['long request', 'long pid', 'unsigned long addr', 'unsigned long data']],
-    [0x066, 'getuid', []],
-    [0x067, 'syslog', ['int type', 'char *buf', 'int len']],
-    [0x068, 'getgid', []],
-    [0x069, 'setuid', ['uid_t uid']],
-    [0x06a, 'setgid', ['gid_t gid']],
-    [0x06b, 'geteuid', []],
-    [0x06c, 'getegid', []],
-    [0x06d, 'setpgid', ['pid_t pid', 'pid_t pgid']],
-    [0x06e, 'getppid', []],
-    [0x06f, 'getpgrp', []],
-    [0x070, 'setsid', []],
-    [0x071, 'setreuid', ['uid_t ruid', 'uid_t euid']],
-    [0x072, 'setregid', ['gid_t rgid', 'gid_t egid']],
-    [0x073, 'getgroups', ['int gidsetsize', 'gid_t *grouplist']],
-    [0x074, 'setgroups', ['int gidsetsize', 'gid_t *grouplist']],
-    [0x075, 'setresuid', ['uid_t ruid', 'uid_t euid', 'uid_t suid']],
-    [0x076, 'getresuid', ['uid_t *ruidp', 'uid_t *euidp', 'uid_t *suidp']],
-    [0x077, 'setresgid', ['gid_t rgid', 'gid_t egid', 'gid_t sgid']],
-    [0x078, 'getresgid', ['gid_t *rgidp', 'gid_t *egidp', 'gid_t *sgidp']],
-    [0x079, 'getpgid', ['pid_t pid']],
-    [0x07a, 'setfsuid', ['uid_t uid']],
-    [0x07b, 'setfsgid', ['gid_t gid']],
-    [0x07c, 'getsid', ['pid_t pid']],
-    [0x07d, 'capget', ['cap_user_header_t header', 'cap_user_data_t dataptr']],
-    [0x07e, 'capset', ['cap_user_header_t header', 'const cap_user_data_t data']],
-    [0x07f, 'rt_sigpending', ['sigset_t *uset', 'size_t sigsetsize']],
-    [0x080, 'rt_sigtimedwait', ['const sigset_t *uthese', 'siginfo_t *uinfo', 'const struct __kernel_timespec *uts', 'size_t sigsetsize']],
-    [0x081, 'rt_sigqueueinfo', ['pid_t pid', 'int sig', 'siginfo_t *uinfo']],
-    [0x082, 'rt_sigsuspend', ['sigset_t *unewset', 'size_t sigsetsize']],
-    [0x083, 'sigaltstack', ['const stack_t *uss', 'stack_t *uoss']],
-    [0x084, 'utime', ['char *filename', 'struct utimbuf *times']],
-    [0x085, 'mknod', ['const char *filename', 'umode_t mode', 'unsigned dev']],
-    [0x086, 'uselib', ['const char *library']],
-    [0x087, 'personality', ['unsigned int personality']],
-    [0x088, 'ustat', ['unsigned dev', 'struct ustat *ubuf']],
-    [0x089, 'statfs', ['const char *pathname', 'struct statfs *buf']],
-    [0x08a, 'fstatfs', ['unsigned int fd', 'struct statfs *buf']],
-    [0x08b, 'sysfs', ['int option', 'unsigned long arg1', 'unsigned long arg2']],
-    [0x08c, 'getpriority', ['int which', 'int who']],
-    [0x08d, 'setpriority', ['int which', 'int who', 'int niceval']],
-    [0x08e, 'sched_setparam', ['pid_t pid', 'struct sched_param *param']],
-    [0x08f, 'sched_getparam', ['pid_t pid', 'struct sched_param *param']],
-    [0x090, 'sched_setscheduler', ['pid_t pid', 'int policy', 'struct sched_param *param']],
-    [0x091, 'sched_getscheduler', ['pid_t pid']],
-    [0x092, 'sched_get_priority_max', ['int policy']],
-    [0x093, 'sched_get_priority_min', ['int policy']],
-    [0x094, 'sched_rr_get_interval', ['pid_t pid', 'struct __kernel_timespec *interval']],
-    [0x095, 'mlock', ['unsigned long start', 'size_t len']],
-    [0x096, 'munlock', ['unsigned long start', 'size_t len']],
-    [0x097, 'mlockall', ['int flags']],
-    [0x098, 'munlockall', []],
-    [0x099, 'vhangup', []],
-    [0x09a, 'modify_ldt', ['int func', 'void *ptr', 'unsigned long bytecount']],
-    [0x09b, 'pivot_root', ['const char *new_root', 'const char *put_old']],
-    [0x09c, '_sysctl', ['struct __sysctl_args *args']], # sysctl # deleted from kenrel 5.5 ?
-    [0x09d, 'prctl', ['int option', 'unsigned long arg2', 'unsigned long arg3', 'unsigned long arg4', 'unsigned long arg5']],
-    [0x09e, 'arch_prctl', ['int option', 'unsigned long arg2']],
-    [0x09f, 'adjtimex', ['struct __kernel_timex *txc_p']],
-    [0x0a0, 'setrlimit', ['unsigned int resource', 'struct rlimit *rlim']],
-    [0x0a1, 'chroot', ['const char *filename']],
-    [0x0a2, 'sync', []],
-    [0x0a3, 'acct', ['const char *name']],
-    [0x0a4, 'settimeofday', ['struct __kernel_old_timeval *tv', 'struct timezone *tz']],
-    [0x0a5, 'mount', ['char *dev_name', 'char *dir_name', 'char *type', 'unsigned long flags', 'void *data']],
-    [0x0a6, 'umount2', ['char *name', 'int flags']],
-    [0x0a7, 'swapon', ['const char *specialfile', 'int swap_flags']],
-    [0x0a8, 'swapoff', ['const char *specialfile']],
-    [0x0a9, 'reboot', ['int magic1', 'int magic2', 'unsigned int cmd', 'void *arg']],
-    [0x0aa, 'sethostname', ['char *name', 'int len']],
-    [0x0ab, 'setdomainname', ['char *name', 'int len']],
-    [0x0ac, 'iopl', ['unsigned int level']],
-    [0x0ad, 'ioperm', ['unsigned long from', 'unsigned long num', 'int turn_on']],
-    #0x0ae, create_module # deleted from kernel 2.6
-    [0x0af, 'init_module', ['void *umod', 'unsigned long len', 'const char *uargs']],
-    [0x0b0, 'delete_module', ['const char *name_user', 'unsigned int flags']],
-    #0x0b1, get_kernel_syms # deleted from kernel 2.6
-    #0x0b2, query_module # deleted from kernel 2.6
-    [0x0b3, 'quotactl', ['unsigned int cmd', 'const char *special', 'qid_t id', 'void *addr']],
-    #0x0b4, nfsservctl # deleted from kernel 3.1
-    #0x0b5, getpmsg # unimplemented
-    #0x0b6, putpmsg # unimplemented
-    #0x0b7, afs_syscall # unimplemented
-    #0x0b8, tuxcall # unimplemented
-    #0x0b9, security # unimplemented
-    [0x0ba, 'gettid', []],
-    [0x0bb, 'readahead', ['int fd', 'loff_t offset', 'size_t count']],
-    [0x0bc, 'setxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-    [0x0bd, 'lsetxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-    [0x0be, 'fsetxattr', ['int fd', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-    [0x0bf, 'getxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
-    [0x0c0, 'lgetxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
-    [0x0c1, 'fgetxattr', ['int fd', 'const char *name', 'void *value', 'size_t size']],
-    [0x0c2, 'listxattr', ['const char *pathname', 'char *list', 'size_t size']],
-    [0x0c3, 'llistxattr', ['const char *pathname', 'char *list', 'size_t size']],
-    [0x0c4, 'flistxattr', ['int fd', 'char *list', 'size_t size']],
-    [0x0c5, 'removexattr', ['const char *pathname', 'const char *name']],
-    [0x0c6, 'lremovexattr', ['const char *pathname', 'const char *name']],
-    [0x0c7, 'fremovexattr', ['int fd', 'const char *name']],
-    [0x0c8, 'tkill', ['pid_t pid', 'int sig']],
-    [0x0c9, 'time', ['__kernel_old_time_t *tloc']],
-    [0x0ca, 'futex', ['u32 *uaddr', 'int op', 'u32 val', 'struct __kernel_timespec *utime', 'u32 *uaddr2', 'u32 val3']],
-    [0x0cb, 'sched_setaffinity', ['pid_t pid', 'unsigned int len', 'unsigned long *user_mask_ptr']],
-    [0x0cc, 'sched_getaffinity', ['pid_t pid', 'unsigned int len', 'unsigned long *user_mask_ptr']],
-    [0x0cd, 'set_thread_area', ['struct user_desc *u_info']],
-    [0x0ce, 'io_setup', ['unsigned nr_events', 'aio_context_t *ctxp']],
-    [0x0cf, 'io_destroy', ['aio_context_t ctx']],
-    [0x0d0, 'io_getevents', ['aio_context_t ctx_id', 'long min_nr', 'long nr', 'struct io_event *events', 'struct __kernel_timespec *timeout']],
-    [0x0d1, 'io_submit', ['aio_context_t ctx_id', 'long nr', 'struct iocb **iocbpp']],
-    [0x0d2, 'io_cancel', ['aio_context_t ctx_id', 'struct iocb *iocb', 'struct io_event *result']],
-    [0x0d3, 'get_thread_area', ['struct user_desc *u_info']],
-    [0x0d4, 'lookup_dcookie', ['u64 cookie64', 'char *buf', 'size_t len']],
-    [0x0d5, 'epoll_create', ['int size']],
-    #0x0d6, epoll_ctl_old # unimplemented
-    #0x0d7, epoll_wait_old # unimplemented
-    [0x0d8, 'remap_file_pages', ['unsigned long start', 'unsigned long size', 'unsigned long prot', 'unsigned long pgoff', 'unsigned long flags']],
-    [0x0d9, 'getdents64', ['unsigned int fd', 'struct linux_dirent64 *dirent', 'unsigned int count']],
-    [0x0da, 'set_tid_address', ['int *tidptr']],
-    [0x0db, 'restart_syscall', []],
-    [0x0dc, 'semtimedop', ['int semid', 'struct sembuf *tsops', 'unsigned int nsops', 'const struct __kernel_timespec *timeout']],
-    [0x0dd, 'fadvise64', ['int fd', 'loff_t offset', 'size_t len', 'int advice']],
-    [0x0de, 'timer_create', ['clockid_t which_clock', 'struct sigevent *timer_event_spec', 'timer_t *created_timer_id']],
-    [0x0df, 'timer_settime', ['timer_t timer_id', 'int flags', 'const struct __kernel_itimerspec *new_setting', 'struct __kernel_itimerspec *old_setting']],
-    [0x0e0, 'timer_gettime', ['timer_t timer_id', 'struct __kernel_itimerspec *setting']],
-    [0x0e1, 'timer_getoverrun', ['timer_t timer_id']],
-    [0x0e2, 'timer_delete', ['timer_t timer_id']],
-    [0x0e3, 'clock_settime', ['clockid_t which_clock', 'const struct __kernel_timespec *tp']],
-    [0x0e4, 'clock_gettime', ['clockid_t which_clock', 'struct __kernel_timespec *tp']],
-    [0x0e5, 'clock_getres', ['clockid_t which_clock', 'struct __kernel_timespec *tp']],
-    [0x0e6, 'clock_nanosleep', ['clockid_t which_clock', 'int flags', 'const struct __kernel_timespec *rqtp', 'struct __kernel_timespec *rmtp']],
-    [0x0e7, 'exit_group', ['int error_code']],
-    [0x0e8, 'epoll_wait', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'int timeout']],
-    [0x0e9, 'epoll_ctl', ['int epfd', 'int op', 'int fd', 'struct epoll_event *event']],
-    [0x0ea, 'tgkill', ['pid_t tgid', 'pid_t pid', 'int sig']],
-    [0x0eb, 'utimes', ['char *filename', 'struct __kernel_old_timeval *utimes']],
-    #0x0ec, vserver # unimplemented
-    [0x0ed, 'mbind', ['unsigned long start', 'unsigned long len', 'unsigned long mode', 'const unsigned long *nmask', 'unsigned long maxnode', 'unsigned int flags']],
-    [0x0ee, 'set_mempolicy', ['int mode', 'const unsigned long *nmask', 'unsigned long maxnode']],
-    [0x0ef, 'get_mempolicy', ['int *policy', 'unsigned long *nmask', 'unsigned long maxnode', 'unsigned long addr', 'unsigned long flags']],
-    [0x0f0, 'mq_open', ['const char *u_name', 'int oflag', 'umode_t mode', 'struct mq_attr *u_attr']],
-    [0x0f1, 'mq_unlink', ['const char *u_name']],
-    [0x0f2, 'mq_timedsend', ['mqd_t mqdes', 'const char *u_msg_ptr', 'size_t msg_len', 'unsigned int msg_prio', 'const struct __kernel_timespec *u_abs_timeout']],
-    [0x0f3, 'mq_timedreceive', ['mqd_t mqdes', 'char *u_msg_ptr', 'size_t msg_len', 'unsigned int *u_msg_prio', 'const struct __kernel_timespec *u_abs_timeout']],
-    [0x0f4, 'mq_notify', ['mqd_t mqdes', 'const struct sigevent *u_notification']],
-    [0x0f5, 'mq_getsetattr', ['mqd_t mqdes', 'const struct mq_attr *u_mqstat', 'struct mq_attr *u_omqstat']],
-    [0x0f6, 'kexec_load', ['unsigned long entry', 'unsigned long nr_segments', 'struct kexec_segment *segments', 'unsigned long flags']],
-    [0x0f7, 'waitid', ['int which', 'pid_t pid', 'struct siginfo *infop', 'int options', 'struct rusage *ru']],
-    [0x0f8, 'add_key', ['const char *_type', 'const char *_description', 'const void *_payload', 'size_t plen', 'key_serial_t ringid']],
-    [0x0f9, 'request_key', ['const char *_type', 'const char *_description', 'const char *_callout_info', 'key_serial_t destringid']],
-    [0x0fa, 'keyctl', ['int option', 'unsigned long arg2', 'unsigned long arg3', 'unsigned long arg4', 'unsigned long arg5']],
-    [0x0fb, 'ioprio_set', ['int which', 'int who', 'int ioprio']],
-    [0x0fc, 'ioprio_get', ['int which', 'int who']],
-    [0x0fd, 'inotify_init', []],
-    [0x0fe, 'inotify_add_watch', ['int fd', 'const char *pathname', 'u32 mask']],
-    [0x0ff, 'inotify_rm_watch', ['int fd', '__s32 wd']],
-    [0x100, 'migrate_pages', ['pid_t pid', 'unsigned long maxnode', 'const unsigned long *old_nodes', 'const unsigned long *new_nodes']],
-    [0x101, 'openat', ['int dfd', 'const char *filename', 'int flags', 'umode_t mode']],
-    [0x102, 'mkdirat', ['int dfd', 'const char *pathname', 'umode_t mode']],
-    [0x103, 'mknodat', ['int dfd', 'const char *filename', 'umode_t mode', 'unsigned int dev']],
-    [0x104, 'fchownat', ['int dfd', 'const char *filename', 'uid_t user', 'gid_t group', 'int flag']],
-    [0x105, 'futimesat', ['int dfd', 'const char *filename', 'struct __kernel_old_timeval *utimes']],
-    [0x106, 'newfstatat', ['int dfd', 'const char *filename', 'struct stat *statbuf', 'int flag']],
-    [0x107, 'unlinkat', ['int dfd', 'const char *pathname', 'int flag']],
-    [0x108, 'renameat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname']],
-    [0x109, 'linkat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'int flags']],
-    [0x10a, 'symlinkat', ['const char *oldname', 'int newdfd', 'const char *newname']],
-    [0x10b, 'readlinkat', ['int dfd', 'const char *pathname', 'char *buf', 'int bufsiz']],
-    [0x10c, 'fchmodat', ['int dfd', 'const char *filename', 'umode_t mode']],
-    [0x10d, 'faccessat', ['int dfd', 'const char *filename', 'int mode']],
-    [0x10e, 'pselect6', ['int n', 'fd_set *inp', 'fd_set *outp', 'fd_set *exp', 'struct __kernel_timespec *tsp', 'void *sig']],
-    [0x10f, 'ppoll', ['struct pollfd *ufds', 'unsigned int nfds', 'struct __kernel_timespec *tsp', 'const sigset_t *sigmask', 'size_t sigsetsize']],
-    [0x110, 'unshare', ['unsigned long unshare_flags']],
-    [0x111, 'set_robust_list', ['struct robust_list_head *head', 'size_t len']],
-    [0x112, 'get_robust_list', ['int pid', 'struct robust_list_head **head_ptr', 'size_t *len_ptr']],
-    [0x113, 'splice', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
-    [0x114, 'tee', ['int fdin', 'int fdout', 'size_t len', 'unsigned int flags']],
-    [0x115, 'sync_file_range', ['int fd', 'loff_t offset', 'loff_t nbytes', 'unsigned int flags']],
-    [0x116, 'vmsplice', ['int fd', 'const struct iovec *uiov', 'unsigned long nr_segs', 'unsigned int flags']],
-    [0x117, 'move_pages', ['pid_t pid', 'unsigned long nr_pages', 'const void **pages', 'const int *nodes', 'int *status', 'int flags']],
-    [0x118, 'utimensat', ['int dfd', 'const char *filename', 'struct __kernel_timespec *utimes', 'int flags']],
-    [0x119, 'epoll_pwait', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'int timeout', 'const sigset_t *sigmask', 'size_t sigsetsize']],
-    [0x11a, 'signalfd', ['int ufd', 'sigset_t *user_mask', 'size_t sizemask']],
-    [0x11b, 'timerfd_create', ['int clockid', 'int flags']],
-    [0x11c, 'eventfd', ['unsigned int count']],
-    [0x11d, 'fallocate', ['int fd', 'int mode', 'loff_t offset', 'loff_t len']],
-    [0x11e, 'timerfd_settime', ['int ufd', 'int flags', 'const struct __kernel_itimerspec *utmr', 'struct __kernel_itimerspec *otmr']],
-    [0x11f, 'timerfd_gettime', ['int ufd', 'struct __kernel_itimerspec *otmr']],
-    [0x120, 'accept4', ['int fd', 'struct sockaddr *upeer_sockaddr', 'int *upeer_addrlen', 'int flags']],
-    [0x121, 'signalfd4', ['int ufd', 'sigset_t *user_mask', 'size_t sizemask', 'int flags']],
-    [0x122, 'eventfd2', ['unsigned int count', 'int flags']],
-    [0x123, 'epoll_create1', ['int flags']],
-    [0x124, 'dup3', ['unsigned int oldfd', 'unsigned int newfd', 'int flags']],
-    [0x125, 'pipe2', ['int *fildes', 'int flags']],
-    [0x126, 'inotify_init1', ['int flags']],
-    [0x127, 'preadv', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h']],
-    [0x128, 'pwritev', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h']],
-    [0x129, 'rt_tgsigqueueinfo', ['pid_t tgid', 'pid_t pid', 'int sig', 'siginfo_t *uinfo']],
-    [0x12a, 'perf_event_open', ['struct perf_event_attr *attr_uptr', 'pid_t pid', 'int cpu', 'int group_fd', 'unsigned long flags']],
-    [0x12b, 'recvmmsg', ['int fd', 'struct mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags', 'struct __kernel_timespec *timeout']],
-    [0x12c, 'fanotify_init', ['unsigned int flags', 'unsigned int event_f_flags']],
-    [0x12d, 'fanotify_mark', ['int fanotify_fd', 'unsigned int flags', '__u64 mask', 'int dfd', 'const char *pathname']],
-    [0x12e, 'prlimit64', ['pid_t pid', 'unsigned int resource', 'const struct rlimit64 *new_rlim', 'struct rlimit64 *old_rlim']],
-    [0x12f, 'name_to_handle_at', ['int dfd', 'const char *name', 'struct file_handle *handle', 'int *mnt_id', 'int flag']],
-    [0x130, 'open_by_handle_at', ['int mountdirfd', 'struct file_handle *handle', 'int flags']],
-    [0x131, 'clock_adjtime', ['clockid_t which_clock', 'struct __kernel_timex *tx']],
-    [0x132, 'syncfs', ['int fd']],
-    [0x133, 'sendmmsg', ['int fd', 'struct mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags']],
-    [0x134, 'setns', ['int fd', 'int flags']],
-    [0x135, 'getcpu', ['unsigned *cpup', 'unsigned *nodep', 'struct getcpu_cache *unused']],
-    [0x136, 'process_vm_readv', ['pid_t pid', 'const struct iovec *lvec', 'unsigned long liovcnt', 'const struct iovec *rvec', 'unsigned long riovcnt', 'unsigned long flags']],
-    [0x137, 'process_vm_writev', ['pid_t pid', 'const struct iovec *lvec', 'unsigned long liovcnt', 'const struct iovec *rvec', 'unsigned long riovcnt', 'unsigned long flags']],
-    [0x138, 'kcmp', ['pid_t pid1', 'pid_t pid2', 'int type', 'unsigned long idx1', 'unsigned long idx2']],
-    [0x139, 'finit_module', ['int fd', 'const char *uargs', 'int flags']],
-    [0x13a, 'sched_setattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int flags']],
-    [0x13b, 'sched_getattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int usize', 'unsigned int flags']],
-    [0x13c, 'renameat2', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'unsigned int flags']],
-    [0x13d, 'seccomp', ['unsigned int op', 'unsigned int flags', 'void *uargs']],
-    [0x13e, 'getrandom', ['char *buf', 'size_t count', 'unsigned int flags']],
-    [0x13f, 'memfd_create', ['const char *uname', 'unsigned int flags']],
-    [0x140, 'kexec_file_load', ["int kernel_fd", "int initrd_fd", "unsigned long cmdline_len", "const char *cmdline_ptr", "unsigned long flags"]],
-    [0x141, 'bpf', ['int cmd', 'union bpf_attr *uattr', 'unsigned int size']],
-    [0x142, 'execveat', ['int fd', 'const char *filename', 'const char *const *argv', 'const char *const *envp', 'int flags']],
-    [0x143, 'userfaultfd', ['int flags']],
-    [0x144, 'membarrier', ['int cmd', 'int flags']],
-    [0x145, 'mlock2', ['unsigned long start', 'size_t len', 'int flags']],
-    [0x146, 'copy_file_range', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
-    [0x147, 'preadv2', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h', 'rwf_t flags']],
-    [0x148, 'pwritev2', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h', 'rwf_t flags']],
-    [0x149, 'pkey_mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot', 'int pkey']],
-    [0x14a, 'pkey_alloc', ['unsigned long flags', 'unsigned long init_val']],
-    [0x14b, 'pkey_free', ['int pkey']],
-    [0x14c, 'statx', ['int dfd', 'const char *filename', 'unsigned flags', 'unsigned int mask', 'struct statx *buffer']],
-    [0x14d, 'io_pgetevents', ['aio_context_t ctx_id', 'long min_nr', 'long nr', 'struct io_event *events', 'struct __kernel_timespec *timeout', 'const struct __aio_sigset *usig']],
-    [0x14e, 'rseq', ['struct rseq *rseq', 'u32 rseq_len', 'int flags', 'u32 sig']],
-    # 0x14e-0x182, unused
-    # 0x183-0x1a7, don't use
-    [0x1a8, 'pidfd_send_signal', ['int pidfd', 'int sig', 'siginfo_t *info', 'unsigned int flags']],
-    [0x1a9, 'io_uring_setup', ['u32 entries', 'struct io_uring_params *params']],
-    [0x1aa, 'io_uring_enter', ['unsigned int fd', 'u32 to_submit', 'u32 min_complete', 'u32 flags', 'const sigset_t *sig', 'size_t sigsz']],
-    [0x1ab, 'io_uring_register', ['unsigned int fd', 'unsigned int opcode', 'void *arg', 'unsigned int nr_args']],
-    [0x1ac, 'open_tree', ['int dfd', 'const char *filename', 'unsigned flags']],
-    [0x1ad, 'move_mount', ['int from_dfd', 'const char *from_pathname', 'int to_dfd', 'const char *to_pathname', 'unsigned int flags']],
-    [0x1ae, 'fsopen', ['const char *_fs_name', 'unsigned int flags']],
-    [0x1af, 'fsconfig', ['int fd', 'unsigned int cmd', 'const char *_key', 'const void *_value', 'int aux']],
-    [0x1b0, 'fsmount', ['int fs_fd', 'unsigned int flags', 'unsigned int attr_flags']],
-    [0x1b1, 'fspick', ['int, dfd', 'const char *path', 'unsigned int flags']],
-    [0x1b2, 'pidfd_open', ['pid_t pid', 'unsigned int flags']],
-    [0x1b3, 'clone3', ['struct clone_args *uargs', 'size_t size']],
-    [0x1b4, 'close_range', ['unsigned int fd', 'unsigned int max_fd', 'unsigned int flag']],
-    [0x1b5, 'openat2', ['int dfd', 'const char *filename', 'struct open_how *how', 'size_t usize']],
-    [0x1b6, 'pidfd_getfd', ['int pidfd', 'int fd', 'unsigned int flags']],
-    [0x1b7, 'faccessat2', ['int dfd', 'const char *filename', 'int mode', 'int flags']],
-    [0x1b8, 'process_madvise', ['int pidfd', 'const struct iovec *vec', 'size_t vlen', 'int behavior', 'unsigned int flags']],
-    [0x1b9, 'epoll_pwait2', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'const struct __kernel_timespec *timeout', 'const sigset_t *sigmask', 'size_t sigsetsize']],
-    [0x1ba, 'mount_setattr', ['int dfd', 'const char *path', 'unsigned int flags', 'struct mount_attr *uattr', 'size_t usize']],
-    [0x1bb, 'quotactl_fd', ['unsigned int fd', 'unsigned int cmd', 'qid_t id', 'void __user *addr']],
-    [0x1bc, 'landlock_create_ruleset', ['const struct landlock_ruleset_attr *const attr', 'const size_t size', 'const __u32 flags']],
-    [0x1bd, 'landlock_add_rule', ['const int ruleset_fd', 'const enum landlock_rule_type rule_type', 'const void *const rule_attr', 'const __u32 flags']],
-    [0x1be, 'landlock_restrict_self', ['const int ruleset_fd', 'const __u32 flags']],
-    [0x1bf, 'memfd_secret', ['unsigned int, flags']],
-    [0x1c0, 'process_mrelease', ['int pidfd', 'unsigned int flags']],
-    [0x1c1, 'futex_waitv', ['struct futex_waitv *waiters', 'unsigned int nr_futexes', 'unsigned int flags', 'struct __kernel_timespec *timeout', 'clockid_t clockid']],
-    [0x1c2, 'set_mempolicy_home_node', ['unsigned long start', 'unsigned long len', 'unsigned long home_node', 'unsigned long flags']],
-]
+x64_syscall_tbl = """
+#
+# 64-bit system call numbers and entry vectors
+#
+# The format is:
+# <number> <abi> <name> <entry point>
+#
+# The __x64_sys_*() stubs are created on-the-fly for sys_*() system calls
+#
+# The abi is "common", "64" or "x32" for this file.
+#
+0       common  read                    sys_read
+1       common  write                   sys_write
+2       common  open                    sys_open
+3       common  close                   sys_close
+4       common  stat                    sys_newstat
+5       common  fstat                   sys_newfstat
+6       common  lstat                   sys_newlstat
+7       common  poll                    sys_poll
+8       common  lseek                   sys_lseek
+9       common  mmap                    sys_mmap
+10      common  mprotect                sys_mprotect
+11      common  munmap                  sys_munmap
+12      common  brk                     sys_brk
+13      64      rt_sigaction            sys_rt_sigaction
+14      common  rt_sigprocmask          sys_rt_sigprocmask
+15      64      rt_sigreturn            sys_rt_sigreturn
+16      64      ioctl                   sys_ioctl
+17      common  pread64                 sys_pread64
+18      common  pwrite64                sys_pwrite64
+19      64      readv                   sys_readv
+20      64      writev                  sys_writev
+21      common  access                  sys_access
+22      common  pipe                    sys_pipe
+23      common  select                  sys_select
+24      common  sched_yield             sys_sched_yield
+25      common  mremap                  sys_mremap
+26      common  msync                   sys_msync
+27      common  mincore                 sys_mincore
+28      common  madvise                 sys_madvise
+29      common  shmget                  sys_shmget
+30      common  shmat                   sys_shmat
+31      common  shmctl                  sys_shmctl
+32      common  dup                     sys_dup
+33      common  dup2                    sys_dup2
+34      common  pause                   sys_pause
+35      common  nanosleep               sys_nanosleep
+36      common  getitimer               sys_getitimer
+37      common  alarm                   sys_alarm
+38      common  setitimer               sys_setitimer
+39      common  getpid                  sys_getpid
+40      common  sendfile                sys_sendfile64
+41      common  socket                  sys_socket
+42      common  connect                 sys_connect
+43      common  accept                  sys_accept
+44      common  sendto                  sys_sendto
+45      64      recvfrom                sys_recvfrom
+46      64      sendmsg                 sys_sendmsg
+47      64      recvmsg                 sys_recvmsg
+48      common  shutdown                sys_shutdown
+49      common  bind                    sys_bind
+50      common  listen                  sys_listen
+51      common  getsockname             sys_getsockname
+52      common  getpeername             sys_getpeername
+53      common  socketpair              sys_socketpair
+54      64      setsockopt              sys_setsockopt
+55      64      getsockopt              sys_getsockopt
+56      common  clone                   sys_clone
+57      common  fork                    sys_fork
+58      common  vfork                   sys_vfork
+59      64      execve                  sys_execve
+60      common  exit                    sys_exit
+61      common  wait4                   sys_wait4
+62      common  kill                    sys_kill
+63      common  uname                   sys_newuname
+64      common  semget                  sys_semget
+65      common  semop                   sys_semop
+66      common  semctl                  sys_semctl
+67      common  shmdt                   sys_shmdt
+68      common  msgget                  sys_msgget
+69      common  msgsnd                  sys_msgsnd
+70      common  msgrcv                  sys_msgrcv
+71      common  msgctl                  sys_msgctl
+72      common  fcntl                   sys_fcntl
+73      common  flock                   sys_flock
+74      common  fsync                   sys_fsync
+75      common  fdatasync               sys_fdatasync
+76      common  truncate                sys_truncate
+77      common  ftruncate               sys_ftruncate
+78      common  getdents                sys_getdents
+79      common  getcwd                  sys_getcwd
+80      common  chdir                   sys_chdir
+81      common  fchdir                  sys_fchdir
+82      common  rename                  sys_rename
+83      common  mkdir                   sys_mkdir
+84      common  rmdir                   sys_rmdir
+85      common  creat                   sys_creat
+86      common  link                    sys_link
+87      common  unlink                  sys_unlink
+88      common  symlink                 sys_symlink
+89      common  readlink                sys_readlink
+90      common  chmod                   sys_chmod
+91      common  fchmod                  sys_fchmod
+92      common  chown                   sys_chown
+93      common  fchown                  sys_fchown
+94      common  lchown                  sys_lchown
+95      common  umask                   sys_umask
+96      common  gettimeofday            sys_gettimeofday
+97      common  getrlimit               sys_getrlimit
+98      common  getrusage               sys_getrusage
+99      common  sysinfo                 sys_sysinfo
+100     common  times                   sys_times
+101     64      ptrace                  sys_ptrace
+102     common  getuid                  sys_getuid
+103     common  syslog                  sys_syslog
+104     common  getgid                  sys_getgid
+105     common  setuid                  sys_setuid
+106     common  setgid                  sys_setgid
+107     common  geteuid                 sys_geteuid
+108     common  getegid                 sys_getegid
+109     common  setpgid                 sys_setpgid
+110     common  getppid                 sys_getppid
+111     common  getpgrp                 sys_getpgrp
+112     common  setsid                  sys_setsid
+113     common  setreuid                sys_setreuid
+114     common  setregid                sys_setregid
+115     common  getgroups               sys_getgroups
+116     common  setgroups               sys_setgroups
+117     common  setresuid               sys_setresuid
+118     common  getresuid               sys_getresuid
+119     common  setresgid               sys_setresgid
+120     common  getresgid               sys_getresgid
+121     common  getpgid                 sys_getpgid
+122     common  setfsuid                sys_setfsuid
+123     common  setfsgid                sys_setfsgid
+124     common  getsid                  sys_getsid
+125     common  capget                  sys_capget
+126     common  capset                  sys_capset
+127     64      rt_sigpending           sys_rt_sigpending
+128     64      rt_sigtimedwait         sys_rt_sigtimedwait
+129     64      rt_sigqueueinfo         sys_rt_sigqueueinfo
+130     common  rt_sigsuspend           sys_rt_sigsuspend
+131     64      sigaltstack             sys_sigaltstack
+132     common  utime                   sys_utime
+133     common  mknod                   sys_mknod
+134     64      uselib
+135     common  personality             sys_personality
+136     common  ustat                   sys_ustat
+137     common  statfs                  sys_statfs
+138     common  fstatfs                 sys_fstatfs
+139     common  sysfs                   sys_sysfs
+140     common  getpriority             sys_getpriority
+141     common  setpriority             sys_setpriority
+142     common  sched_setparam          sys_sched_setparam
+143     common  sched_getparam          sys_sched_getparam
+144     common  sched_setscheduler      sys_sched_setscheduler
+145     common  sched_getscheduler      sys_sched_getscheduler
+146     common  sched_get_priority_max  sys_sched_get_priority_max
+147     common  sched_get_priority_min  sys_sched_get_priority_min
+148     common  sched_rr_get_interval   sys_sched_rr_get_interval
+149     common  mlock                   sys_mlock
+150     common  munlock                 sys_munlock
+151     common  mlockall                sys_mlockall
+152     common  munlockall              sys_munlockall
+153     common  vhangup                 sys_vhangup
+154     common  modify_ldt              sys_modify_ldt
+155     common  pivot_root              sys_pivot_root
+156     64      _sysctl                 sys_ni_syscall
+157     common  prctl                   sys_prctl
+158     common  arch_prctl              sys_arch_prctl
+159     common  adjtimex                sys_adjtimex
+160     common  setrlimit               sys_setrlimit
+161     common  chroot                  sys_chroot
+162     common  sync                    sys_sync
+163     common  acct                    sys_acct
+164     common  settimeofday            sys_settimeofday
+165     common  mount                   sys_mount
+166     common  umount2                 sys_umount
+167     common  swapon                  sys_swapon
+168     common  swapoff                 sys_swapoff
+169     common  reboot                  sys_reboot
+170     common  sethostname             sys_sethostname
+171     common  setdomainname           sys_setdomainname
+172     common  iopl                    sys_iopl
+173     common  ioperm                  sys_ioperm
+174     64      create_module
+175     common  init_module             sys_init_module
+176     common  delete_module           sys_delete_module
+177     64      get_kernel_syms
+178     64      query_module
+179     common  quotactl                sys_quotactl
+180     64      nfsservctl
+181     common  getpmsg
+182     common  putpmsg
+183     common  afs_syscall
+184     common  tuxcall
+185     common  security
+186     common  gettid                  sys_gettid
+187     common  readahead               sys_readahead
+188     common  setxattr                sys_setxattr
+189     common  lsetxattr               sys_lsetxattr
+190     common  fsetxattr               sys_fsetxattr
+191     common  getxattr                sys_getxattr
+192     common  lgetxattr               sys_lgetxattr
+193     common  fgetxattr               sys_fgetxattr
+194     common  listxattr               sys_listxattr
+195     common  llistxattr              sys_llistxattr
+196     common  flistxattr              sys_flistxattr
+197     common  removexattr             sys_removexattr
+198     common  lremovexattr            sys_lremovexattr
+199     common  fremovexattr            sys_fremovexattr
+200     common  tkill                   sys_tkill
+201     common  time                    sys_time
+202     common  futex                   sys_futex
+203     common  sched_setaffinity       sys_sched_setaffinity
+204     common  sched_getaffinity       sys_sched_getaffinity
+205     64      set_thread_area
+206     64      io_setup                sys_io_setup
+207     common  io_destroy              sys_io_destroy
+208     common  io_getevents            sys_io_getevents
+209     64      io_submit               sys_io_submit
+210     common  io_cancel               sys_io_cancel
+211     64      get_thread_area
+212     common  lookup_dcookie          sys_lookup_dcookie
+213     common  epoll_create            sys_epoll_create
+214     64      epoll_ctl_old
+215     64      epoll_wait_old
+216     common  remap_file_pages        sys_remap_file_pages
+217     common  getdents64              sys_getdents64
+218     common  set_tid_address         sys_set_tid_address
+219     common  restart_syscall         sys_restart_syscall
+220     common  semtimedop              sys_semtimedop
+221     common  fadvise64               sys_fadvise64
+222     64      timer_create            sys_timer_create
+223     common  timer_settime           sys_timer_settime
+224     common  timer_gettime           sys_timer_gettime
+225     common  timer_getoverrun        sys_timer_getoverrun
+226     common  timer_delete            sys_timer_delete
+227     common  clock_settime           sys_clock_settime
+228     common  clock_gettime           sys_clock_gettime
+229     common  clock_getres            sys_clock_getres
+230     common  clock_nanosleep         sys_clock_nanosleep
+231     common  exit_group              sys_exit_group
+232     common  epoll_wait              sys_epoll_wait
+233     common  epoll_ctl               sys_epoll_ctl
+234     common  tgkill                  sys_tgkill
+235     common  utimes                  sys_utimes
+236     64      vserver
+237     common  mbind                   sys_mbind
+238     common  set_mempolicy           sys_set_mempolicy
+239     common  get_mempolicy           sys_get_mempolicy
+240     common  mq_open                 sys_mq_open
+241     common  mq_unlink               sys_mq_unlink
+242     common  mq_timedsend            sys_mq_timedsend
+243     common  mq_timedreceive         sys_mq_timedreceive
+244     64      mq_notify               sys_mq_notify
+245     common  mq_getsetattr           sys_mq_getsetattr
+246     64      kexec_load              sys_kexec_load
+247     64      waitid                  sys_waitid
+248     common  add_key                 sys_add_key
+249     common  request_key             sys_request_key
+250     common  keyctl                  sys_keyctl
+251     common  ioprio_set              sys_ioprio_set
+252     common  ioprio_get              sys_ioprio_get
+253     common  inotify_init            sys_inotify_init
+254     common  inotify_add_watch       sys_inotify_add_watch
+255     common  inotify_rm_watch        sys_inotify_rm_watch
+256     common  migrate_pages           sys_migrate_pages
+257     common  openat                  sys_openat
+258     common  mkdirat                 sys_mkdirat
+259     common  mknodat                 sys_mknodat
+260     common  fchownat                sys_fchownat
+261     common  futimesat               sys_futimesat
+262     common  newfstatat              sys_newfstatat
+263     common  unlinkat                sys_unlinkat
+264     common  renameat                sys_renameat
+265     common  linkat                  sys_linkat
+266     common  symlinkat               sys_symlinkat
+267     common  readlinkat              sys_readlinkat
+268     common  fchmodat                sys_fchmodat
+269     common  faccessat               sys_faccessat
+270     common  pselect6                sys_pselect6
+271     common  ppoll                   sys_ppoll
+272     common  unshare                 sys_unshare
+273     64      set_robust_list         sys_set_robust_list
+274     64      get_robust_list         sys_get_robust_list
+275     common  splice                  sys_splice
+276     common  tee                     sys_tee
+277     common  sync_file_range         sys_sync_file_range
+278     64      vmsplice                sys_vmsplice
+279     64      move_pages              sys_move_pages
+280     common  utimensat               sys_utimensat
+281     common  epoll_pwait             sys_epoll_pwait
+282     common  signalfd                sys_signalfd
+283     common  timerfd_create          sys_timerfd_create
+284     common  eventfd                 sys_eventfd
+285     common  fallocate               sys_fallocate
+286     common  timerfd_settime         sys_timerfd_settime
+287     common  timerfd_gettime         sys_timerfd_gettime
+288     common  accept4                 sys_accept4
+289     common  signalfd4               sys_signalfd4
+290     common  eventfd2                sys_eventfd2
+291     common  epoll_create1           sys_epoll_create1
+292     common  dup3                    sys_dup3
+293     common  pipe2                   sys_pipe2
+294     common  inotify_init1           sys_inotify_init1
+295     64      preadv                  sys_preadv
+296     64      pwritev                 sys_pwritev
+297     64      rt_tgsigqueueinfo       sys_rt_tgsigqueueinfo
+298     common  perf_event_open         sys_perf_event_open
+299     64      recvmmsg                sys_recvmmsg
+300     common  fanotify_init           sys_fanotify_init
+301     common  fanotify_mark           sys_fanotify_mark
+302     common  prlimit64               sys_prlimit64
+303     common  name_to_handle_at       sys_name_to_handle_at
+304     common  open_by_handle_at       sys_open_by_handle_at
+305     common  clock_adjtime           sys_clock_adjtime
+306     common  syncfs                  sys_syncfs
+307     64      sendmmsg                sys_sendmmsg
+308     common  setns                   sys_setns
+309     common  getcpu                  sys_getcpu
+310     64      process_vm_readv        sys_process_vm_readv
+311     64      process_vm_writev       sys_process_vm_writev
+312     common  kcmp                    sys_kcmp
+313     common  finit_module            sys_finit_module
+314     common  sched_setattr           sys_sched_setattr
+315     common  sched_getattr           sys_sched_getattr
+316     common  renameat2               sys_renameat2
+317     common  seccomp                 sys_seccomp
+318     common  getrandom               sys_getrandom
+319     common  memfd_create            sys_memfd_create
+320     common  kexec_file_load         sys_kexec_file_load
+321     common  bpf                     sys_bpf
+322     64      execveat                sys_execveat
+323     common  userfaultfd             sys_userfaultfd
+324     common  membarrier              sys_membarrier
+325     common  mlock2                  sys_mlock2
+326     common  copy_file_range         sys_copy_file_range
+327     64      preadv2                 sys_preadv2
+328     64      pwritev2                sys_pwritev2
+329     common  pkey_mprotect           sys_pkey_mprotect
+330     common  pkey_alloc              sys_pkey_alloc
+331     common  pkey_free               sys_pkey_free
+332     common  statx                   sys_statx
+333     common  io_pgetevents           sys_io_pgetevents
+334     common  rseq                    sys_rseq
+# don't use numbers 387 through 423, add new calls after the last
+# 'common' entry
+424     common  pidfd_send_signal       sys_pidfd_send_signal
+425     common  io_uring_setup          sys_io_uring_setup
+426     common  io_uring_enter          sys_io_uring_enter
+427     common  io_uring_register       sys_io_uring_register
+428     common  open_tree               sys_open_tree
+429     common  move_mount              sys_move_mount
+430     common  fsopen                  sys_fsopen
+431     common  fsconfig                sys_fsconfig
+432     common  fsmount                 sys_fsmount
+433     common  fspick                  sys_fspick
+434     common  pidfd_open              sys_pidfd_open
+435     common  clone3                  sys_clone3
+436     common  close_range             sys_close_range
+437     common  openat2                 sys_openat2
+438     common  pidfd_getfd             sys_pidfd_getfd
+439     common  faccessat2              sys_faccessat2
+440     common  process_madvise         sys_process_madvise
+441     common  epoll_pwait2            sys_epoll_pwait2
+442     common  mount_setattr           sys_mount_setattr
+443     common  quotactl_fd             sys_quotactl_fd
+444     common  landlock_create_ruleset sys_landlock_create_ruleset
+445     common  landlock_add_rule       sys_landlock_add_rule
+446     common  landlock_restrict_self  sys_landlock_restrict_self
+447     common  memfd_secret            sys_memfd_secret
+448     common  process_mrelease        sys_process_mrelease
+449     common  futex_waitv             sys_futex_waitv
+450     common  set_mempolicy_home_node sys_set_mempolicy_home_node
 
-x32_special_syscall_list = [
-    [0x40000200, 'rt_sigaction', ['int sig', 'const struct compat_sigaction *act', 'struct compat_sigaction *oact', 'compat_size_t sigsetsize']], # compat
-    [0x40000201, 'rt_sigreturn', []], # compat x32_rt_sigreturn
-    [0x40000202, 'ioctl', ['unsigned int fd', 'unsigned int cmd', 'compat_ulong_t arg']], # compat
-    [0x40000203, 'readv', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen']], # compat
-    [0x40000204, 'writev', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen']], # compat
-    [0x40000205, 'recvfrom', ['int fd', 'void *buf', 'compat_size_t len', 'unsigned int flags', 'struct sockaddr *addr', 'int *addr_len']], # compat
-    [0x40000206, 'sendmsg', ['int fd', 'struct compat_msghdr *msg', 'unsigned int flags']], # compat
-    [0x40000207, 'recvmsg', ['int fd', 'struct compat_msghdr *msg', 'unsigned int flags']], # compat
-    [0x40000208, 'execve', ['const char *filename', 'const compat_uptr_t *argv', 'const compat_uptr_t *envp']], # compat
-    [0x40000209, 'ptrace', ['compat_long_t request', 'compat_long_t pid', 'compat_long_t addr', 'compat_long_t data']], # compat
-    [0x4000020a, 'rt_sigpending', ['compat_sigset_t *uset', 'compat_size_t sigsetsize']],
-    [0x4000020b, 'rt_sigtimedwait', ['const compat_sigset_t *uthese', 'struct compat_siginfo *uinfo', 'struct __kernel_timespec *uts', 'compat_size_t sigsetsize']], # compat rt_sigtimedwait_time64
-    [0x4000020c, 'rt_sigqueueinfo', ['compat_pid_t pid', 'int sig', 'struct compat_siginfo *uinfo']], # compat
-    [0x4000020d, 'sigaltstack', ['const compat_stack_t *uss_ptr', 'compat_stack_t *uoss_ptr']], # compat
-    [0x4000020e, 'timer_create', ['clockid_t which_clock', 'struct compat_sigevent *timer_event_spec', 'timer_t *created_timer_id']], # compat
-    [0x4000020f, 'mq_notify', ['mqd_t mqdes', 'const struct compat_sigevent *u_notification']], # compat
-    [0x40000210, 'kexec_load', ['compat_ulong_t entry', 'compat_ulong_t nr_segments', 'struct compat_kkexec_segment *segments', 'compat_ulong_t flags']], # compat
-    [0x40000211, 'waitid', ['int which', 'compat_pid_t pid', 'struct compat_siginfo *infop', 'int options', 'struct compat_rusage *uru']], # compat
-    [0x40000212, 'set_robust_list', ['struct compat_robust_list_head *head', 'compat_size_t len']], # compat
-    [0x40000213, 'get_robust_list', ['int pid', 'compat_uptr_t *head_ptr', 'compat_size_t *len_ptr']], # compat
-    [0x40000214, 'vmsplice', ['int fd', 'const struct compat_iovec *iov32', 'unsigned int nr_segs', 'unsigned int flags']], # compat
-    [0x40000215, 'move_pages', ['pid_t pid', 'compat_ulong_t nr_pages', 'compat_uptr_t *pages32', 'const int *nodes', 'int *status', 'int flags']], # compat
-    [0x40000216, 'preadv', ['unsigned long fd', 'const struct compat_iovec *vec', 'unsigned long vlen', 'loff_t pos']], # compat preadv64
-    [0x40000217, 'pwritev', ['unsigned long fd', 'const struct compat_iovec *vec', 'unsigned long vlen', 'loff_t pos']], # compat pwritev64
-    [0x40000218, 'rt_tgsigqueueinfo', ['compat_pid_t tgid', 'compat_pid_t pid', 'int sig', 'struct compat_siginfo *uinfo']], # compat
-    [0x40000219, 'recvmmsg', ['int fd', 'struct compat_mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags', 'struct __kernel_timespec *timeout']], # compat recvmmsg_time64
-    [0x4000021a, 'sendmmsg', ['int fd', 'struct compat_mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags']], # compat
-    [0x4000021b, 'process_vm_readv', ['compat_pid_t pid', 'const struct compat_iovec *lvec', 'compat_ulong_t liovcnt', 'const struct compat_iovec *rvec', 'compat_ulong_t riovcnt', 'compat_ulong_t flags']], # compat
-    [0x4000021c, 'process_vm_writev', ['compat_pid_t pid', 'const struct compat_iovec *lvec', 'compat_ulong_t liovcnt', 'const struct compat_iovec *rvec', 'compat_ulong_t riovcnt', 'compat_ulong_t flags']], # compat
-    [0x4000021d, 'setsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int optlen']],
-    [0x4000021e, 'getsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int *optlen']],
-    [0x4000021f, 'io_setup', ['unsigned nr_events', 'u32 *ctx32p']], # compat
-    [0x40000220, 'io_submit', ['compat_aio_context_t ctx_id', 'int nr', 'compat_uptr_t *iocbpp']], # compat
-    [0x40000221, 'execveat', ['int fd', 'const char *filename', 'const compat_uptr_t *argv', 'const compat_uptr_t *envp', 'int flags']], # compat
-    [0x40000222, 'preadv2', ['unsigned long fd', 'const struct compat_iovec *vec', 'unsigned long vlen', 'loff_t pos', 'rwf_t flags']], # compat preadv64v2
-    [0x40000223, 'pwritev2', ['unsigned long fd', 'const struct compat_iovec *vec', 'unsigned long vlen', 'loff_t pos', 'rwf_t flags']], # compat pwritev64v2
-]
+#
+# Due to a historical design error, certain syscalls are numbered differently
+# in x32 as compared to native x86_64.  These syscalls have numbers 512-547.
+# Do not add new syscalls to this range.  Numbers 548 and above are available
+# for non-x32 use.
+#
+512     x32     rt_sigaction            compat_sys_rt_sigaction
+513     x32     rt_sigreturn            compat_sys_x32_rt_sigreturn
+514     x32     ioctl                   compat_sys_ioctl
+515     x32     readv                   sys_readv
+516     x32     writev                  sys_writev
+517     x32     recvfrom                compat_sys_recvfrom
+518     x32     sendmsg                 compat_sys_sendmsg
+519     x32     recvmsg                 compat_sys_recvmsg
+520     x32     execve                  compat_sys_execve
+521     x32     ptrace                  compat_sys_ptrace
+522     x32     rt_sigpending           compat_sys_rt_sigpending
+523     x32     rt_sigtimedwait         compat_sys_rt_sigtimedwait_time64
+524     x32     rt_sigqueueinfo         compat_sys_rt_sigqueueinfo
+525     x32     sigaltstack             compat_sys_sigaltstack
+526     x32     timer_create            compat_sys_timer_create
+527     x32     mq_notify               compat_sys_mq_notify
+528     x32     kexec_load              compat_sys_kexec_load
+529     x32     waitid                  compat_sys_waitid
+530     x32     set_robust_list         compat_sys_set_robust_list
+531     x32     get_robust_list         compat_sys_get_robust_list
+532     x32     vmsplice                sys_vmsplice
+533     x32     move_pages              sys_move_pages
+534     x32     preadv                  compat_sys_preadv64
+535     x32     pwritev                 compat_sys_pwritev64
+536     x32     rt_tgsigqueueinfo       compat_sys_rt_tgsigqueueinfo
+537     x32     recvmmsg                compat_sys_recvmmsg_time64
+538     x32     sendmmsg                compat_sys_sendmmsg
+539     x32     process_vm_readv        sys_process_vm_readv
+540     x32     process_vm_writev       sys_process_vm_writev
+541     x32     setsockopt              sys_setsockopt
+542     x32     getsockopt              sys_getsockopt
+543     x32     io_setup                compat_sys_io_setup
+544     x32     io_submit               compat_sys_io_submit
+545     x32     execveat                compat_sys_execveat
+546     x32     preadv2                 compat_sys_preadv64v2
+547     x32     pwritev2                compat_sys_pwritev64v2
+# This is the end of the legacy x32 range.  Numbers 548 and above are
+# not special and are not to be used for x32-specific syscalls.
+"""
 
 
-# x86 (on x86_64 machine)
-# - arch/x86/include/asm/unistd.h
-# - arch/x86/include/uapi/asm/unistd.h
-# - arch/x86/include/generated/uapi/asm/unistd-32.h
+# i386 (native / compat(emulated))
 # - arch/x86/entry/syscalls/syscall_32.tbl
-x86_emulated_syscall_list = [
-    [0x000, 'restart_syscall', []],
-    [0x001, 'exit', ['int error_code']],
-    [0x002, 'fork', []],
-    [0x003, 'read', ['unsigned int fd', 'char *buf', 'size_t count']],
-    [0x004, 'write', ['unsigned int fd', 'const char *buf', 'size_t count']],
-    [0x005, 'open', ['const char *filename', 'int flags', 'umode_t mode']], # compat
-    [0x006, 'close', ['unsigned int fd']],
-    [0x007, 'waitpid', ['pid_t pid', 'int *stat_addr', 'int options']],
-    [0x008, 'creat', ['const char *pathname', 'umode_t mode']],
-    [0x009, 'link', ['const char *oldname', 'const char *newname']],
-    [0x00a, 'unlink', ['const char *pathname']],
-    [0x00b, 'execve', ['const char *filename', 'const compat_uptr_t *argv', 'const compat_uptr_t *envp']], # compat
-    [0x00c, 'chdir', ['const char *filename']],
-    [0x00d, 'time', ['old_time32_t *tloc']], # time32
-    [0x00e, 'mknod', ['const char *filename', 'umode_t mode', 'unsigned dev']],
-    [0x00f, 'chmod', ['const char *filename', 'umode_t mode']],
-    [0x010, 'lchown', ['const char *filename', 'old_uid_t user', 'old_gid_t group']], # lchown16
-    #0x011, break # unimplemented
-    [0x012, 'oldstat', ['const char *filename', 'struct __old_kernel_stat *statbuf']], # fstat
-    [0x013, 'lseek', ['unsigned int fd', 'compat_off_t offset', 'unsigned int whence']], # compat
-    [0x014, 'getpid', []],
-    [0x015, 'mount', ['const char *dev_name', 'const char *dir_name', 'const char *type', 'compat_ulong_t flags', 'const void *data']], # compat
-    [0x016, 'umount', ['char *name']], # oldumount
-    [0x017, 'setuid', ['old_uid_t uid']], # setuid16
-    [0x018, 'getuid', []], # getuid16
-    [0x019, 'stime', ['old_time32_t *tptr']], # stime32
-    [0x01a, 'ptrace', ['compat_long_t request', 'compat_long_t pid', 'compat_long_t addr', 'compat_long_t data']], # compat
-    [0x01b, 'alarm', ['unsigned int seconds']],
-    [0x01c, 'oldfstat', ['unsigned int fd', 'struct __old_kernel_stat *statbuf']], # fstat
-    [0x01d, 'pause', []],
-    [0x01e, 'utime', ['char *filename', 'struct old_utimbuf32 *t']], # utime32
-    #0x01f, stty # unimplemented
-    #0x020, gtty # unimplemented
-    [0x021, 'access', ['const char *filename', 'int mode']],
-    [0x022, 'nice', ['int increment']],
-    #0x023, ftime # unimplemented
-    [0x024, 'sync', []],
-    [0x025, 'kill', ['pid_t pid', 'int sig']],
-    [0x026, 'rename', ['const char *oldname', 'const char *newname']],
-    [0x027, 'mkdir', ['const char *pathname', 'umode_t mode']],
-    [0x028, 'rmdir', ['const char *pathname']],
-    [0x029, 'dup', ['unsigned int fildes']],
-    [0x02a, 'pipe', ['int *fildes']],
-    [0x02b, 'times', ['struct compat_tms *tbuf']], # compat
-    #0x02c, prof # unimplemented
-    [0x02d, 'brk', ['unsigned long brk']],
-    [0x02e, 'setgid', ['old_gid_t gid']], # setgid16
-    [0x02f, 'getgid', []], # getgid16
-    [0x030, 'signal', ['int sig', '__sighandler_t handler']],
-    [0x031, 'geteuid', []], # geteuid16
-    [0x032, 'getegid', []], # getegid16
-    [0x033, 'acct', ['const char *name']],
-    [0x034, 'umount2', ['char *name', 'int flags']], # umount
-    #0x035, lock # unimplemented
-    [0x036, 'ioctl', ['unsigned int fd', 'unsigned int cmd', 'compat_ulong_t arg']], # compat
-    [0x037, 'fcntl', ['unsigned int fd', 'unsigned int cmd', 'compat_ulong_t arg']], # compat fcntl64
-    #0x038, mpx # unimplemented
-    [0x039, 'setpgid', ['pid_t pid', 'pid_t pgid']],
-    #0x03a, ulimit # unimplemented
-    [0x03b, 'oldolduname', ['struct oldold_utsname *name']], # olduname
-    [0x03c, 'umask', ['int mask']],
-    [0x03d, 'chroot', ['const char *filename']],
-    [0x03e, 'ustat', ['unsigned dev', 'struct compat_ustat *u']], # compat
-    [0x03f, 'dup2', ['unsigned int oldfd', 'unsigned int newfd']],
-    [0x040, 'getppid', []],
-    [0x041, 'getpgrp', []],
-    [0x042, 'setsid', []],
-    [0x043, 'sigaction', ['int sig', 'const struct compat_old_sigaction *act', 'struct compat_old_sigaction *oact']], # compat
-    [0x044, 'sgetmask', []],
-    [0x045, 'ssetmask', ['int newmask']],
-    [0x046, 'setreuid', ['old_uid_t ruid', 'old_uid_t euid']], # setreuid16
-    [0x047, 'setregid', ['old_gid_t rgid', 'old_gid_t egid']], # setregid16
-    [0x048, 'sigsuspend', ['old_sigset_t mask']],
-    [0x049, 'sigpending', ['compat_old_sigset_t *set32']], # compat
-    [0x04a, 'sethostname', ['char *name', 'int len']],
-    [0x04b, 'setrlimit', ['unsigned int resource', 'struct compat_rlimit *rlim']], # compat
-    [0x04c, 'getrlimit', ['unsigned int resource', 'struct compat_rlimit *rlim']], # compat old_getrlimit
-    [0x04d, 'getrusage', ['int who', 'struct compat_rusage *ru']], # compat
-    [0x04e, 'gettimeofday', ['struct old_timeval32 *tv', 'struct timezone *tz']], # compat
-    [0x04f, 'settimeofday', ['struct old_timeval32 *tv', 'struct timezone *tz']], # compat
-    [0x050, 'getgroups', ['int gidsetsize', 'old_gid_t *grouplist']], # getgroups16
-    [0x051, 'setgroups', ['int gidsetsize', 'old_gid_t *grouplist']], # setgroups16
-    [0x052, 'select', ['struct compat_sel_arg_struct *arg']], # compat old_select
-    [0x053, 'symlink', ['const char *oldname', 'const char *newname']],
-    [0x054, 'oldlstat', ['const char *filename', 'struct __old_kernel_stat *statbuf']], # lstat
-    [0x055, 'readlink', ['const char *path', 'char *buf', 'int bufsiz']],
-    [0x056, 'uselib', ['const char *library']],
-    [0x057, 'swapon', ['const char *specialfile', 'int swap_flags']],
-    [0x058, 'reboot', ['int magic1', 'int magic2', 'unsigned int cmd', 'void *arg']],
-    [0x059, 'readdir', ['unsigned int fd', 'struct compat_old_linux_dirent *dirent', 'unsigned int count']], # compat old_readdir
-    [0x05a, 'mmap', ['struct mmap_arg_struct32 *arg']], # compat ia32_mmap
-    [0x05b, 'munmap', ['unsigned long addr', 'size_t len']],
-    [0x05c, 'truncate', ['const char *path', 'compat_off_t length']], # compat
-    [0x05d, 'ftruncate', ['unsigned int fd', 'compat_ulong_t length']], # compat
-    [0x05e, 'fchmod', ['unsigned int fd', 'umode_t mode']],
-    [0x05f, 'fchown', ['unsigned int fd', 'old_uid_t user', 'old_gid_t group']], # fchown16
-    [0x060, 'getpriority', ['int which', 'int who']],
-    [0x061, 'setpriority', ['int which', 'int who', 'int niceval']],
-    #0x062, profil # unimplemented
-    [0x063, 'statfs', ['const char *pathname', 'struct compat_statfs *buf']], # compat
-    [0x064, 'fstatfs', ['unsigned int fd', 'struct compat_statfs *buf']], # compat
-    [0x065, 'ioperm', ['unsigned long from', 'unsigned long num', 'int turn_on']],
-    [0x066, 'socketcall', ['int call', 'u32 *args']], # compat
-    [0x067, 'syslog', ['int type', 'char *buf', 'int len']],
-    [0x068, 'setitimer', ['int which', 'struct old_itimerval32 *value', 'struct old_itimerval32 *ovalue']], # compat
-    [0x069, 'getitimer', ['int which', 'struct old_itimerval32 *value']], # compat
-    [0x06a, 'stat', ['const char *filename', 'struct compat_stat *statbuf']], # compat newstat
-    [0x06b, 'lstat', ['const char *filename', 'struct compat_stat *statbuf']], # compat newlstat
-    [0x06c, 'fstat', ['unsigned int fd', 'struct compat_stat *statbuf']], # compat newfstat
-    [0x06d, 'olduname', ['struct old_utsname *name']], # uname
-    [0x06e, 'iopl', ['unsigned int level']],
-    [0x06f, 'vhangup', []],
-    #0x070, idle # deleted from kernel 2.3.13
-    #0x071, vm86old # only native i386
-    [0x072, 'wait4', ['compat_pid_t upid', 'compat_uint_t *stat_addr', 'int options', 'struct compat_rusage *ru']], # compat
-    [0x073, 'swapoff', ['const char *specialfile']],
-    [0x074, 'sysinfo', ['struct compat_sysinfo *info']], # compat
-    [0x075, 'ipc', ['u32 call', 'int first', 'int second', 'u32 third', 'compat_uptr_t ptr', 'u32 fifth']], # compat
-    [0x076, 'fsync', ['unsigned int fd']],
-    [0x077, 'sigreturn', []], # compat
-    [0x078, 'clone', ['unsigned long clone_flags', 'unsigned long newsp', 'int *parent_tidptr', 'unsigned long tls_val', 'int *child_tidptr']], # compat ia32_clone
-    [0x079, 'setdomainname', ['char *name', 'int len']],
-    [0x07a, 'uname', ['struct new_utsname *name']], # newuname
-    [0x07b, 'modify_ldt', ['int func', 'void *ptr', 'unsigned long bytecount']],
-    [0x07c, 'adjtimex', ['struct old_timex32 *utp']], # adjtimex_time32
-    [0x07d, 'mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot']],
-    [0x07e, 'sigprocmask', ['int how', 'compat_old_sigset_t *nset', 'compat_old_sigset_t *oset']], # compat
-    #0x07f, create_module # deleted from kernel 2.6
-    [0x080, 'init_module', ['void *umod', 'unsigned long len', 'const char *uargs']],
-    [0x081, 'delete_module', ['const char *name_user', 'unsigned int flags']],
-    #0x082, get_kernel_syms # deleted from kernel 2.6
-    [0x083, 'quotactl', ['unsigned int cmd', 'const char *special', 'qid_t id', 'void *addr']], # compat quotactl32
-    [0x084, 'getpgid', ['pid_t pid']],
-    [0x085, 'fchdir', ['unsigned int fd']],
-    [0x086, 'bdflush', ['int func', 'long data']],
-    [0x087, 'sysfs', ['int option', 'unsigned long arg1', 'unsigned long arg2']],
-    [0x088, 'personality', ['unsigned int personality']],
-    #0x089, afs_syscall # unimplemented
-    [0x08a, 'setfsuid', ['old_uid_t uid']], # setfsuid16
-    [0x08b, 'setfsgid', ['old_gid_t gid']], # setfsgid16
-    [0x08c, '_llseek', ['unsigned int fd', 'unsigned long offset_high', 'unsigned long offset_low', 'loff_t *result', 'unsigned int whence']], # llseek
-    [0x08d, 'getdents', ['unsigned int fd', 'struct compat_linux_dirent *dirent', 'unsigned int count']], # compat
-    [0x08e, '_newselect', ['int n', 'compat_ulong_t *inp', 'compat_ulong_t *outp', 'compat_ulong_t *exp', 'struct old_timeval32 *tvp']], # compat select
-    [0x08f, 'flock', ['unsigned int fd', 'unsigned int cmd']],
-    [0x090, 'msync', ['unsigned long start', 'size_t len', 'int flags']],
-    [0x091, 'readv', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen']], # compat
-    [0x092, 'writev', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen']], # compat
-    [0x093, 'getsid', ['pid_t pid']],
-    [0x094, 'fdatasync', ['unsigned int fd']],
-    [0x095, '_sysctl', ['struct __sysctl_args *args']], # sysctl # deleted from kenrel 5.5 ?
-    [0x096, 'mlock', ['unsigned long start', 'size_t len']],
-    [0x097, 'munlock', ['unsigned long start', 'size_t len']],
-    [0x098, 'mlockall', ['int flags']],
-    [0x099, 'munlockall', []],
-    [0x09a, 'sched_setparam', ['pid_t pid', 'struct sched_param *param']],
-    [0x09b, 'sched_getparam', ['pid_t pid', 'struct sched_param *param']],
-    [0x09c, 'sched_setscheduler', ['pid_t pid', 'int policy', 'struct sched_param *param']],
-    [0x09d, 'sched_getscheduler', ['pid_t pid']],
-    [0x09e, 'sched_yield', []],
-    [0x09f, 'sched_get_priority_max', ['int policy']],
-    [0x0a0, 'sched_get_priority_min', ['int policy']],
-    [0x0a1, 'sched_rr_get_interval', ['pid_t pid', 'struct old_timespec32 *interval']], # sched_rr_get_interval_time32
-    [0x0a2, 'nanosleep', ['struct old_timespec32 *rqtp', 'struct old_timespec32 *rmtp']], # nanosleep_time32
-    [0x0a3, 'mremap', ['unsigned long addr', 'unsigned long old_len', 'unsigned long new_len', 'unsigned long flags', 'unsigned long new_addr']],
-    [0x0a4, 'setresuid', ['old_uid_t ruid', 'old_uid_t euid', 'old_uid_t suid']], # setresuid16
-    [0x0a5, 'getresuid', ['old_uid_t *ruidp', 'old_uid_t *euidp', 'old_uid_t *suidp']], # getresuid16
-    #0x0a6, vm86 # only native i386
-    #0x0a7, query_module # deleted from kernel 2.6
-    [0x0a8, 'poll', ['struct pollfd *ufds', 'unsigned int nfds', 'int timeout_msecs']],
-    #0x0a9, nfsservctl # deleted from kernel 3.1
-    [0x0aa, 'setresgid', ['old_gid_t rgid', 'old_gid_t egid', 'old_gid_t sgid']], # setresgid16
-    [0x0ab, 'getresgid', ['old_gid_t *rgidp', 'old_gid_t *egidp', 'old_gid_t *sgidp']], # getresgid16
-    [0x0ac, 'prctl', ['int option', 'unsigned long arg2', 'unsigned long arg3', 'unsigned long arg4', 'unsigned long arg5']],
-    [0x0ad, 'rt_sigreturn', []], # compat
-    [0x0ae, 'rt_sigaction', ['int sig', 'const struct compat_sigaction *act', 'struct compat_sigaction *oact', 'compat_size_t sigsetsize']], # compat
-    [0x0af, 'rt_sigprocmask', ['int how', 'compat_sigset_t *nset', 'compat_sigset_t *oset', 'compat_size_t sigsetsize']], # compat
-    [0x0b0, 'rt_sigpending', ['compat_sigset_t *uset', 'compat_size_t sigsetsize']], # compat
-    [0x0b1, 'rt_sigtimedwait', ['compat_sigset_t *uthese', 'struct compat_siginfo_t *uinfo', 'struct old_timespec32 *uts', 'compat_size_t sigsetsize']], # compat rt_sigtimedwait_time32
-    [0x0b2, 'rt_sigqueueinfo', ['compat_pid_t pid', 'int sig', 'struct compat_siginfo *uinfo']], # compat
-    [0x0b3, 'rt_sigsuspend', ['compat_sigset_t *unewset', 'compat_size_t sigsetsize']], # compat
-    [0x0b4, 'pread64', ['unsigned int fd', 'char *ubuf', 'u32 count', 'u32 poslo', 'u32 poshi']], # ia32_pread64
-    [0x0b5, 'pwrite64', ['unsigned int fd', 'const char *ubuf', 'u32 count', 'u32 poslo', 'u32 poshi']], # ia32_pwrite64
-    [0x0b6, 'chown', ['const char *filename', 'old_uid_t user', 'old_gid_t group']], # chown16
-    [0x0b7, 'getcwd', ['char *buf', 'unsigned long size']],
-    [0x0b8, 'capget', ['cap_user_header_t header', 'cap_user_data_t dataptr']],
-    [0x0b9, 'capset', ['cap_user_header_t header', 'const cap_user_data_t data']],
-    [0x0ba, 'sigaltstack', ['const compat_stack_t *uss_ptr', 'compat_stack_t *uoss_ptr']], # compat
-    [0x0bb, 'sendfile', ['int out_fd', 'int in_fd', 'compat_off_t *offset', 'compat_size_t count']], # compat
-    #0x0bc, getpmsg # unimplemented
-    #0x0bd, putpmsg # unimplemented
-    [0x0be, 'vfork', []],
-    [0x0bf, 'ugetrlimit', ['unsigned int resource', 'struct compat_rlimit *rlim']], # compat getrlimit
-    [0x0c0, 'mmap2', ['unsigned long addr', 'unsigned long len', 'unsigned long prot', 'unsigned long flags', 'unsigned long fd', 'unsigned long pgoff']], # mmap_pgoff
-    [0x0c1, 'truncate64', ['const char *filename', 'unsigned long offset_low', 'unsigned long offset_high']], # ia32_truncate64
-    [0x0c2, 'ftruncate64', ['unsigned int fd', 'unsigned long offset_low', 'unsigned long offset_high']], # ia32_ftruncate64
-    [0x0c3, 'stat64', ['const char *filename', 'struct stat64 *statbuf']], # compat ia32_stat64
-    [0x0c4, 'lstat64', ['const char *filename', 'struct stat64 *statbuf']], # compat ia32_lstat64
-    [0x0c5, 'fstat64', ['unsigned long fd', 'struct stat64 *statbuf']], # compat ia32_fstat64
-    [0x0c6, 'lchown32', ['const char *filename', 'uid_t user', 'gid_t group']], # lchown
-    [0x0c7, 'getuid32', []], # getuid
-    [0x0c8, 'getgid32', []], # getgid
-    [0x0c9, 'geteuid32', []], # geteuid
-    [0x0ca, 'getegid32', []], # getegid
-    [0x0cb, 'setreuid32', ['uid_t ruid', 'uid_t euid']], # setreuid32
-    [0x0cc, 'setregid32', ['gid_t rgid', 'gid_t egid']], # setregid32
-    [0x0cd, 'getgroups32', ['int gidsetsize', 'gid_t *grouplist']], # getgroups32
-    [0x0ce, 'setgroups32', ['int gidsetsize', 'gid_t *grouplist']], # setgroups32
-    [0x0cf, 'fchown32', ['unsigned int fd', 'uid_t user', 'gid_t group']], # fchown
-    [0x0d0, 'setresuid32', ['uid_t ruid', 'uid_t euid', 'uid_t suid']], # setresuid
-    [0x0d1, 'getresuid32', ['uid_t *ruidp', 'uid_t *euidp', 'uid_t *suidp']], # getresuid
-    [0x0d2, 'setresgid32', ['gid_t rgid', 'gid_t egid', 'gid_t sgid']], # setresgid
-    [0x0d3, 'getresgid32', ['gid_t *rgidp', 'gid_t *egidp', 'gid_t *sgidp']], # getresgid
-    [0x0d4, 'chown32', ['const char *filename', 'uid_t user', 'gid_t group']], # chown
-    [0x0d5, 'setuid32', ['uid_t uid']], # setuid
-    [0x0d6, 'setgid32', ['gid_t gid']], # setgid
-    [0x0d7, 'setfsuid32', ['uid_t uid']], # setfsuid
-    [0x0d8, 'setfsgid32', ['gid_t gid']], # setfsgid
-    [0x0d9, 'pivot_root', ['const char *new_root', 'const char *put_old']],
-    [0x0da, 'mincore', ['unsigned long start', 'size_t len', 'unsigned char *vec']],
-    [0x0db, 'madvise', ['unsigned long start', 'size_t len_in', 'int behavior']],
-    [0x0dc, 'getdents64', ['unsigned int fd', 'struct linux_dirent64 *dirent', 'unsigned int count']],
-    [0x0dd, 'fcntl64', ['unsigned int fd', 'unsigned int cmd', 'compat_ulong_t arg']], # compat
-    #0x0de, unused
-    #0x0df, unused
-    [0x0e0, 'gettid', []],
-    [0x0e1, 'readahead', ['int fd', 'unsigned int off_lo', 'unsigned int off_high', 'size_t count']], # ia32_readahead
-    [0x0e2, 'setxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-    [0x0e3, 'lsetxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-    [0x0e4, 'fsetxattr', ['int fd', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-    [0x0e5, 'getxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
-    [0x0e6, 'lgetxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
-    [0x0e7, 'fgetxattr', ['int fd', 'const char *name', 'void *value', 'size_t size']],
-    [0x0e8, 'listxattr', ['const char *pathname', 'char *list', 'size_t size']],
-    [0x0e9, 'llistxattr', ['const char *pathname', 'char *list', 'size_t size']],
-    [0x0ea, 'flistxattr', ['int fd', 'char *list', 'size_t size']],
-    [0x0eb, 'removexattr', ['const char *pathname', 'const char *name']],
-    [0x0ec, 'lremovexattr', ['const char *pathname', 'const char *name']],
-    [0x0ed, 'fremovexattr', ['int fd', 'const char *name']],
-    [0x0ee, 'tkill', ['pid_t pid', 'int sig']],
-    [0x0ef, 'sendfile64', ['int out_fd', 'int in_fd', 'loff_t *offset', 'size_t count']],
-    [0x0f0, 'futex', ['u32 *uaddr', 'int op', 'u32 val', 'struct old_timespec32 *utime', 'u32 *uaddr2', 'u32 val3']], # futex_time32
-    [0x0f1, 'sched_setaffinity', ['compat_pid_t pid', 'unsigned int len', 'compat_ulong_t *user_mask_ptr']], # compat
-    [0x0f2, 'sched_getaffinity', ['compat_pid_t pid', 'unsigned int len', 'compat_ulong_t *user_mask_ptr']], # compat
-    [0x0f3, 'set_thread_area', ['struct user_desc *u_info']],
-    [0x0f4, 'get_thread_area', ['struct user_desc *u_info']],
-    [0x0f5, 'io_setup', ['unsigned nr_events', 'u32 *ctx32p']], # compat
-    [0x0f6, 'io_destroy', ['aio_context_t ctx']],
-    [0x0f7, 'io_getevents', ['__u32 ctx_id', '__s32 min_nr', '__s32 nr', 'struct io_event *events', 'struct old_timespec32 *timeout']], # io_getevents_time32
-    [0x0f8, 'io_submit', ['compat_aio_context_t ctx_id', 'int nr', 'compat_uptr_t *iocbpp']], # compat
-    [0x0f9, 'io_cancel', ['aio_context_t ctx_id', 'struct iocb *iocb', 'struct io_event *result']],
-    [0x0fa, 'fadvise64', ['int fd', 'unsigned int offset_lo', 'unsigned int offset_hi', 'size_t len', 'int advice']], # ia32_fadvise64
-    #0x0fb, set_zone_reclaim
-    [0x0fc, 'exit_group', ['int error_code']],
-    [0x0fd, 'lookup_dcookie', ['u32 w0', 'u32 w1', 'char *buf', 'compat_size_t len']], # compat
-    [0x0fe, 'epoll_create', ['int size']],
-    [0x0ff, 'epoll_ctl', ['int epfd', 'int op', 'int fd', 'struct epoll_event *event']],
-    [0x100, 'epoll_wait', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'int timeout']],
-    [0x101, 'remap_file_pages', ['unsigned long start', 'unsigned long size', 'unsigned long prot', 'unsigned long pgoff', 'unsigned long flags']],
-    [0x102, 'set_tid_address', ['int *tidptr']],
-    [0x103, 'timer_create', ['clockid_t which_clock', 'struct compat_sigevent *timer_event_spec', 'timer_t *created_timer_id']], # compat
-    [0x104, 'timer_settime', ['timer_t timer_id', 'int flags', 'struct old_itimerspec32 *new', 'struct old_itimerspec32 *old']], # timer_settime32
-    [0x105, 'timer_gettime', ['timer_t timer_id', 'struct old_itimerspec32 *setting']],
-    [0x106, 'timer_getoverrun', ['timer_t timer_id']],
-    [0x107, 'timer_delete', ['timer_t timer_id']],
-    [0x108, 'clock_settime', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_settime32
-    [0x109, 'clock_gettime', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_gettime32
-    [0x10a, 'clock_getres', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_getres_time32
-    [0x10b, 'clock_nanosleep', ['clockid_t which_clock', 'int flags', 'struct old_timespec32 *rqtp', 'struct old_timespec32 *rmtp']], # clock_nanosleep_time32
-    [0x10c, 'statfs64', ['const char *pathname', 'compat_size_t sz', 'struct compat_statfs64 *buf']], # compat
-    [0x10d, 'fstatfs64', ['unsigned int fd', 'compat_size_t sz', 'struct compat_statfs64 *buf']], # compat
-    [0x10e, 'tgkill', ['pid_t tgid', 'pid_t pid', 'int sig']],
-    [0x10f, 'utimes', ['char *filename', 'struct old_timeval32 *utimes']], # utimes_time32
-    [0x110, 'fadvise64_64', ['int fd', '__u32 offset_low', '__u32 offset_high', '__u32 len_low', '__u32 len_high', 'int advice']], # ia32_fadvise64_64
-    #0x111, vserver # unimplemented
-    [0x112, 'mbind', ['unsigned long start', 'unsigned long len', 'unsigned long mode', 'const unsigned long *nmask', 'unsigned long maxnode', 'unsigned int flags']],
-    [0x113, 'get_mempolicy', ['int *policy', 'compat_ulong_t *nmask', 'compat_ulong_t maxnode', 'compat_ulong_t addr', 'compat_ulong_t flags']], # compat
-    [0x114, 'set_mempolicy', ['int mode', 'const unsigned long *nmask', 'unsigned long maxnode']],
-    [0x115, 'mq_open', ['const char *u_name', 'int oflag', 'compat_mode_t mode', 'struct compat_mq_attr *u_attr']], # compat
-    [0x116, 'mq_unlink', ['const char *u_name']],
-    [0x117, 'mq_timedsend', ['mqd_t mqdes', 'const char *u_msg_ptr', 'unsigned int msg_len', 'unsigned int msg_prio', 'const struct old_timespec32 *u_abs_timeout']], # mq_timedsend_time32
-    [0x118, 'mq_timedreceive', ['mqd_t mqdes', 'char *u_msg_ptr', 'unsigned int msg_len', 'unsigned int *u_msg_prio', 'const struct old_timespec32 *u_abs_timeout']], # mq_timedreceive_time32
-    [0x119, 'mq_notify', ['mqd_t mqdes', 'const struct compat_sigevent *u_notification']], # compat
-    [0x11a, 'mq_getsetattr', ['mqd_t mqdes', 'const struct compat_mq_attr *u_mqstat', 'struct compat_mq_attr *u_omqstat']], # compat
-    [0x11b, 'kexec_load', ['compat_ulong_t entry', 'compat_ulong_t nr_segments', 'struct compat_kexec_segment *segments', 'compat_ulong_t flags']], # compat
-    [0x11c, 'waitid', ['int which', 'compat_pid_t pid', 'struct compat_siginfo *infop', 'int options', 'struct compat_rusage *uru']], # compat
-    #0x11d, unused
-    [0x11e, 'add_key', ['const char *_type', 'const char *_description', 'const void *_payload', 'size_t plen', 'key_serial_t ringid']],
-    [0x11f, 'request_key', ['const char *_type', 'const char *_description', 'const char *_callout_info', 'key_serial_t destringid']],
-    [0x120, 'keyctl', ['u32 option', 'u32 arg2', 'u32 arg3', 'u32 arg4', 'u32 arg5']], # compat
-    [0x121, 'ioprio_set', ['int which', 'int who', 'int ioprio']],
-    [0x122, 'ioprio_get', ['int which', 'int who']],
-    [0x123, 'inotify_init', []],
-    [0x124, 'inotify_add_watch', ['int fd', 'const char *pathname', 'u32 mask']],
-    [0x125, 'inotify_rm_watch', ['int fd', '__s32 wd']],
-    [0x126, 'migrate_pages', ['pid_t pid', 'unsigned long maxnode', 'const unsigned long *old_nodes', 'const unsigned long *new_nodes']],
-    [0x127, 'openat', ['int dfd', 'const char *filename', 'int flags', 'umode_t mode']], # compat
-    [0x128, 'mkdirat', ['int dfd', 'const char *pathname', 'umode_t mode']],
-    [0x129, 'mknodat', ['int dfd', 'const char *filename', 'umode_t mode', 'unsigned int dev']],
-    [0x12a, 'fchownat', ['int dfd', 'const char *filename', 'uid_t user', 'gid_t group', 'int flag']],
-    [0x12b, 'futimesat', ['unsigned int dfd', 'const char *filename', 'struct old_timeval32 *t']], # futimesat_time32
-    [0x12c, 'fstatat64', ['unsigned int dfd', 'const char *filename', 'struct stat64 *statbuf', 'int flag']], # compat ia32_fstatat64
-    [0x12d, 'unlinkat', ['int dfd', 'const char *pathname', 'int flag']],
-    [0x12e, 'renameat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname']],
-    [0x12f, 'linkat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'int flags']],
-    [0x130, 'symlinkat', ['const char *oldname', 'int newdfd', 'const char *newname']],
-    [0x131, 'readlinkat', ['int dfd', 'const char *pathname', 'char *buf', 'int bufsiz']],
-    [0x132, 'fchmodat', ['int dfd', 'const char *filename', 'umode_t mode']],
-    [0x133, 'faccessat', ['int dfd', 'const char *filename', 'int mode']],
-    [0x134, 'pselect6', ['int n', 'compat_ulong_t *inp', 'compat_ulong_t *outp', 'compat_ulong_t *exp', 'struct old_timespec32 *tsp', 'void *sig']], # compat pselect6_time32
-    [0x135, 'ppoll', ['struct pollfd *ufds', 'unsigned int nfds', 'struct old_timespec32 *tsp', 'const compat_sigset_t *sigmask', 'compat_size_t sigsetsize']], # compat ppoll_time32
-    [0x136, 'unshare', ['unsigned long unshare_flags']],
-    [0x137, 'set_robust_list', ['struct compat_robust_list_head *head', 'compat_size_t len']], # compat
-    [0x138, 'get_robust_list', ['int pid', 'compat_uptr_t *head_ptr', 'compat_size_t *len_ptr']], # compat
-    [0x139, 'splice', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
-    [0x13a, 'sync_file_range', ['int fd', 'unsigned int off_low', 'unsigned int off_hi', 'unsigned int n_low', 'unsigned int n_hi', 'unsigned int flags']], # ia32_sync_file_range
-    [0x13b, 'tee', ['int fdin', 'int fdout', 'size_t len', 'unsigned int flags']],
-    [0x13c, 'vmsplice', ['int fd', 'const struct compat_iovec *iov32', 'unsigned int nr_segs', 'unsigned int flags']], # compat
-    [0x13d, 'move_pages', ['pid_t pid', 'compat_ulong_t nr_pages', 'compat_uptr_t *pages32', 'const int *nodes', 'int *status', 'int flags']], # compat
-    [0x13e, 'getcpu', ['unsigned *cpup', 'unsigned *nodep', 'struct getcpu_cache *unused']],
-    [0x13f, 'epoll_pwait', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'int timeout', 'const sigset_t *sigmask', 'size_t sigsetsize']],
-    [0x140, 'utimensat', ['unsigned int dfd', 'const char *filename', 'struct old_timespec32 *t', 'int flags']], # utimensat_time32
-    [0x141, 'signalfd', ['int ufd', 'const compat_sigset_t *user_mask', 'compat_size_t sizemask']], # compat
-    [0x142, 'timerfd_create', ['int clockid', 'int flags']],
-    [0x143, 'eventfd', ['unsigned int count']],
-    [0x144, 'fallocate', ['int fd', 'int mode', 'unsigned int offset_lo', 'unsigned int offset_hi', 'unsigned int len_lo', 'unsigned int len_hi']], # ia32_fallocate
-    [0x145, 'timerfd_settime', ['int ufd', 'int flags', 'const struct old_itimerspec32 *utmr', 'struct old_itimerspec32 *otmr']], # timerfd_settime32
-    [0x146, 'timerfd_gettime', ['int ufd', 'struct old_itimerspec32 *otmr']], # timerfd_gettime32
-    [0x147, 'signalfd4', ['int ufd', 'const compat_sigset_t *user_mask', 'compat_size_t sizemask', 'int flags']], # compat
-    [0x148, 'eventfd2', ['unsigned int count', 'int flags']],
-    [0x149, 'epoll_create1', ['int flags']],
-    [0x14a, 'dup3', ['unsigned int oldfd', 'unsigned int newfd', 'int flags']],
-    [0x14b, 'pipe2', ['int *fildes', 'int flags']],
-    [0x14c, 'inotify_init1', ['int flags']],
-    [0x14d, 'preadv', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen', 'u32 pos_low', 'u32 pos_high']], # compat
-    [0x14e, 'pwritev', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen', 'u32 pos_low', 'u32 pos_high']], # compat
-    [0x14f, 'rt_tgsigqueueinfo', ['compat_pid_t tgid', 'compat_pid_t pid', 'int sig', 'struct compat_siginfo_t *uinfo']], # compat
-    [0x150, 'perf_event_open', ['struct perf_event_attr *attr_uptr', 'pid_t pid', 'int cpu', 'int group_fd', 'unsigned long flags']],
-    [0x151, 'recvmmsg', ['int fd', 'struct compat_mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags', 'struct old_timespec32 *timeout']], # compat recvmmsg_time32
-    [0x152, 'fanotify_init', ['unsigned int flags', 'unsigned int event_f_flags']],
-    [0x153, 'fanotify_mark', ['int fanotify_fd', 'unsigned int flags', '__u32 mask0', '__u32 mask1', 'int dfd', 'const char *pathname']], # compat
-    [0x154, 'prlimit64', ['pid_t pid', 'unsigned int resource', 'const struct rlimit64 *new_rlim', 'struct rlimit64 *old_rlim']],
-    [0x155, 'name_to_handle_at', ['int dfd', 'const char *name', 'struct file_handle *handle', 'int *mnt_id', 'int flag']],
-    [0x156, 'open_by_handle_at', ['int mountdirfd', 'struct file_handle *handle', 'int flags']], # compat
-    [0x157, 'clock_adjtime', ['clockid_t which_clock', 'struct old_timex32 *utp']], # clock_adjtime32
-    [0x158, 'syncfs', ['int fd']],
-    [0x159, 'sendmmsg', ['int fd', 'struct compat_mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags']], # compat
-    [0x15a, 'setns', ['int fd', 'int flags']],
-    [0x15b, 'process_vm_readv', ['compat_pid_t pid', 'const struct compat_iovec *lvec', 'compat_ulong_t liovcnt', 'const struct compat_iovec *rvec', 'compat_ulong_t riovcnt', 'compat_ulong_t flags']], # compat
-    [0x15c, 'process_vm_writev', ['compat_pid_t pid', 'const struct compat_iovec *lvec', 'compat_ulong_t liovcnt', 'const struct compat_iovec *rvec', 'compat_ulong_t riovcnt', 'compat_ulong_t flags']], # compat
-    [0x15d, 'kcmp', ['pid_t pid1', 'pid_t pid2', 'int type', 'unsigned long idx1', 'unsigned long idx2']],
-    [0x15e, 'finit_module', ['int fd', 'const char *uargs', 'int flags']],
-    [0x15f, 'sched_setattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int flags']],
-    [0x160, 'sched_getattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int usize', 'unsigned int flags']],
-    [0x161, 'renameat2', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'unsigned int flags']],
-    [0x162, 'seccomp', ['unsigned int op', 'unsigned int flags', 'void *uargs']],
-    [0x163, 'getrandom', ['char *buf', 'size_t count', 'unsigned int flags']],
-    [0x164, 'memfd_create', ['const char *uname', 'unsigned int flags']],
-    [0x165, 'bpf', ['int cmd', 'union bpf_attr *uattr', 'unsigned int size']],
-    [0x166, 'execveat', ['int fd', 'const char *filename', 'const compat_uptr_t *argv', 'const compat_uptr_t *envp', 'int flags']], # compat
-    [0x167, 'socket', ['int family', 'int type', 'int protocol']],
-    [0x168, 'socketpair', ['int family', 'int type', 'int protocol', 'int *usockvec']],
-    [0x169, 'bind', ['int fd', 'struct sockaddr *umyaddr', 'int addrlen']],
-    [0x16a, 'connect', ['int fd', 'struct sockaddr *uservaddr', 'int addrlen']],
-    [0x16b, 'listen', ['int fd', 'int backlog']],
-    [0x16c, 'accept4', ['int fd', 'struct sockaddr *upeer_sockaddr', 'int *upeer_addrlen', 'int flags']],
-    [0x16d, 'getsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int *optlen']],
-    [0x16e, 'setsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int optlen']],
-    [0x16f, 'getsockname', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
-    [0x170, 'getpeername', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
-    [0x171, 'sendto', ['int fd', 'void *buff', 'size_t len', 'unsigned int flags', 'struct sockaddr *addr', 'int addr_len']],
-    [0x172, 'sendmsg', ['int fd', 'struct compat_msghdr *msg', 'unsigned int flags']], # compat
-    [0x173, 'recvfrom', ['int fd', 'void *ubuf', 'compat_size_t size', 'unsigned int flags', 'struct sockaddr *addr', 'int *addr_len']], # compat
-    [0x174, 'recvmsg', ['int fd', 'struct compat_msghdr *msg', 'unsigned int flags']], # compat
-    [0x175, 'shutdown', ['int fd', 'int how']],
-    [0x176, 'userfaultfd', ['int flags']],
-    [0x177, 'membarrier', ['int cmd', 'int flags']],
-    [0x178, 'mlock2', ['unsigned long start', 'size_t len', 'int flags']],
-    [0x179, 'copy_file_range', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
-    [0x17a, 'preadv2', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen', 'u32 pos_low', 'u32 pos_high', 'rwf_t flags']], # compat
-    [0x17b, 'pwritev2', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen', 'u32 pos_low', 'u32 pos_high', 'rwf_t flags']], # compat
-    [0x17c, 'pkey_mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot', 'int pkey']],
-    [0x17d, 'pkey_alloc', ['unsigned long flags', 'unsigned long init_val']],
-    [0x17e, 'pkey_free', ['int pkey']],
-    [0x17f, 'statx', ['int dfd', 'const char *filename', 'unsigned flags', 'unsigned int mask', 'struct statx *buffer']],
-    [0x180, 'arch_prctl', ['int option', 'unsigned long arg2']], # compat
-    [0x181, 'io_pgetevents', ['compat_aio_context_t ctx_id', 'compat_long_t min_nr', 'compat_long_t nr', 'struct io_event *events', 'struct old_timespec32 *timeout', 'const struct __compat_aio_sigset *usig']], # compat
-    [0x182, 'rseq', ['struct rseq *rseq', 'u32 rseq_len', 'int flags', 'u32 sig']],
-    # 0x183-0x187: don't use
-    [0x189, 'semget', ['key_t key', 'int nsems', 'int semflg']],
-    [0x18a, 'semctl', ['int semid', 'int semnum', 'int cmd', 'int arg']], # compat
-    [0x18b, 'shmget', ['key_t key', 'size_t size', 'int shmflg']],
-    [0x18c, 'shmctl', ['int shmid', 'int cmd', 'void *uptr']], # compat
-    [0x18d, 'shmat', ['int shmid', 'compat_uptr_t *shmaddr', 'int shmflg']], # compat
-    [0x18e, 'shmdt', ['char *shmaddr']],
-    [0x18f, 'msgget', ['key_t key', 'int msgflg']],
-    [0x190, 'msgsnd', ['int msqid', 'struct compat_uptr_t *msgp', 'compat_ssize_t msgsz', 'int msgflg']], # compat
-    [0x191, 'msgrcv', ['int msqid', 'struct compat_uptr_t *msgp', 'compat_ssize_t msgsz', 'compat_long_t msgtyp', 'int msgflg']], # compat
-    [0x192, 'msgctl', ['int msqid', 'int cmd', 'void *uptr']], # compat
-    [0x193, 'clock_gettime_time64', ['const clockid_t which_clock', 'struct __kernel_timespec *tp']], # clock_gettime
-    [0x194, 'clock_settime_time64', ['const clockid_t which_clock', 'struct __kernel_timespec *tp']], # clock_settime
-    [0x195, 'clock_adjtime_time64', ['const clockid_t which_clock', 'struct __kernel_timex *utx']], # clock_adjtime
-    [0x196, 'clock_getres_time64', ['const clockid_t which_clock', 'struct __kernel_timespec *tp']], # clock_getres
-    [0x197, 'clock_nanosleep_time64', ['const clockid_t which_clock', 'int flags', 'const struct __kernel_timespec *rqtp', 'struct __kernel_timespec *rmtp']], # clock_nanosleep
-    [0x198, 'timer_gettime_time64', ['timer_t timer_id', 'struct __kernel_itimerspec *setting']], # timer_gettime
-    [0x199, 'timer_settime_time64', ['timer_t timer_id', 'int flags', 'const struct __kernel_itimerspec *new_setting', 'struct __kernel_itimerspec *old_setting']], # timer_settime
-    [0x19a, 'timerfd_gettime_time64', ['int ufd', 'struct __kernel_itimerspec *otmr']], # timerfd_gettime
-    [0x19b, 'timerfd_settime_time64', ['int ufd', 'int flags', 'const struct __kernel_itimerspec *utmr', 'struct __kernel_itimerspec *otmr']], # timerfd_settime
-    [0x19c, 'utimensat_time64', ['int dfd', 'const char *filename', 'struct __kernel_timespec *utimes', 'int flags']], # utimensat
-    [0x19d, 'pselect6_time64', ['int n', 'compat_ulong_t *inp', 'compat_ulong_t *outp', 'compat_ulong_t *exp', 'struct __kernel_timespec *tsp', 'void *sig']], # compat
-    [0x19e, 'ppoll_time64', ['struct pollfd *ufds', 'unsigned int nfds', 'struct __kernel_timespec *tsp', 'const compat_sigset_t *sigmask', 'compat_size_t sigsetsize']], # compat
-    #0x19f, unused
-    [0x1a0, 'io_pgetevents_time64', ['aio_context_t ctx_id', 'long min_nr', 'long nr', 'struct io_event *events', 'struct __kernel_timespec *timeout', 'const struct __aio_sigset *usig']], # io_pgetevents
-    [0x1a1, 'recvmmsg_time64', ['int fd', 'struct compat_mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags', 'struct __kernel_timespec *timeout']], # compat
-    [0x1a2, 'mq_timedsend_time64', ['mqd_t mqdes', 'const char *u_msg_ptr', 'size_t msg_len', 'unsigned int msg_prio', 'const struct __kernel_timespec *u_abs_timeout']], # mq_timedsend
-    [0x1a3, 'mq_timedreceive_time64', ['mqd_t mqdes', 'char *u_msg_ptr', 'size_t msg_len', 'unsigned int *u_msg_prio', 'const struct __kernel_timespec *u_abs_timeout']], # mq_timedreceive
-    [0x1a4, 'semtimedop_time64', ['int semid', 'struct sembuf *tsops', 'unsigned int nsops', 'const struct __kernel_timespec *timeout']], # semtimedop
-    [0x1a5, 'rt_sigtimedwait_time64', ['compat_sigset_t *uthese', 'struct compat_siginfo *uinfo', 'struct __kernel_timespec *uts', 'compat_size_t sigsetsize']], # compat
-    [0x1a6, 'futex_time64', ['u32 *uaddr', 'int op', 'u32 val', 'struct __kernel_timespec *utime', 'u32 *uaddr2', 'u32 val3']], # futex
-    [0x1a7, 'sched_rr_get_interval_time64', ['pid_t pid', 'struct __kernel_timespec *interval']], # sched_rr_get_interval
-    [0x1a8, 'pidfd_send_signal', ['int pidfd', 'int sig', 'siginfo_t *info', 'unsigned int flags']],
-    [0x1a9, 'io_uring_setup', ['u32 entries', 'struct io_uring_params *params']],
-    [0x1aa, 'io_uring_enter', ['unsigned int fd', 'u32 to_submit', 'u32 min_complete', 'u32 flags', 'const sigset_t *sig', 'size_t sigsz']],
-    [0x1ab, 'io_uring_register', ['unsigned int fd', 'unsigned int opcode', 'void *arg', 'unsigned int nr_args']],
-    [0x1ac, 'open_tree', ['int dfd', 'const char *filename', 'unsigned flags']],
-    [0x1ad, 'move_mount', ['int from_dfd', 'const char *from_pathname', 'int to_dfd', 'const char *to_pathname', 'unsigned int flags']],
-    [0x1ae, 'fsopen', ['const char *_fs_name', 'unsigned int flags']],
-    [0x1af, 'fsconfig', ['int fd', 'unsigned int cmd', 'const char *_key', 'const void *_value', 'int aux']],
-    [0x1b0, 'fsmount', ['int fs_fd', 'unsigned int flags', 'unsigned int attr_flags']],
-    [0x1b1, 'fspick', ['int, dfd', 'const char *path', 'unsigned int flags']],
-    [0x1b2, 'pidfd_open', ['pid_t pid', 'unsigned int flags']],
-    [0x1b3, 'clone3', ['struct clone_args *uargs', 'size_t size']],
-    [0x1b4, 'close_range', ['unsigned int fd', 'unsigned int max_fd', 'unsigned int flag']],
-    [0x1b5, 'openat2', ['int dfd', 'const char *filename', 'struct open_how *how', 'size_t usize']],
-    [0x1b6, 'pidfd_getfd', ['int pidfd', 'int fd', 'unsigned int flags']],
-    [0x1b7, 'faccessat2', ['int dfd', 'const char *filename', 'int mode', 'int flags']],
-    [0x1b8, 'process_madvise', ['int pidfd', 'const struct iovec *vec', 'size_t vlen', 'int behavior', 'unsigned int flags']],
-    [0x1b9, 'epoll_pwait2', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'const struct __kernel_timespec *timeout', 'const compat_sigset_t *sigmask', 'compat_size_t sigsetsize']], # compat
-    [0x1ba, 'mount_setattr', ['int dfd', 'const char *path', 'unsigned int flags', 'struct mount_attr *uattr', 'size_t usize']],
-    [0x1bb, 'quotactl_fd', ['unsigned int fd', 'unsigned int cmd', 'qid_t id', 'void __user *addr']],
-    [0x1bc, 'landlock_create_ruleset', ['const struct landlock_ruleset_attr *const attr', 'const size_t size', 'const __u32 flags']],
-    [0x1bd, 'landlock_add_rule', ['const int ruleset_fd', 'const enum landlock_rule_type rule_type', 'const void *const rule_attr', 'const __u32 flags']],
-    [0x1be, 'landlock_restrict_self', ['const int ruleset_fd', 'const __u32 flags']],
-    [0x1bf, 'memfd_secret', ['unsigned int, flags']],
-    [0x1c0, 'process_mrelease', ['int pidfd', 'unsigned int flags']],
-    [0x1c1, 'futex_waitv', ['struct futex_waitv *waiters', 'unsigned int nr_futexes', 'unsigned int flags', 'struct __kernel_timespec *timeout', 'clockid_t clockid']],
-    [0x1c2, 'set_mempolicy_home_node', ['unsigned long start', 'unsigned long len', 'unsigned long home_node', 'unsigned long flags']],
-]
-
-
-# x86 (on native x86 machine)
-# - arch/x86/include/asm/unistd.h
-# - arch/x86/include/uapi/asm/unistd.h
-# - arch/x86/include/generated/uapi/asm/unistd-32.h
-# - arch/x86/entry/syscalls/syscall_32.tbl
-x86_native_syscall_list = [
-    [0x000, 'restart_syscall', []],
-    [0x001, 'exit', ['int error_code']],
-    [0x002, 'fork', []],
-    [0x003, 'read', ['unsigned int fd', 'char *buf', 'size_t count']],
-    [0x004, 'write', ['unsigned int fd', 'const char *buf', 'size_t count']],
-    [0x005, 'open', ['const char *filename', 'int flags', 'umode_t mode']],
-    [0x006, 'close', ['unsigned int fd']],
-    [0x007, 'waitpid', ['pid_t pid', 'int *stat_addr', 'int options']],
-    [0x008, 'creat', ['const char *pathname', 'umode_t mode']],
-    [0x009, 'link', ['const char *oldname', 'const char *newname']],
-    [0x00a, 'unlink', ['const char *pathname']],
-    [0x00b, 'execve', ['const char *filename', 'const char *const *argv', 'const char *const *envp']],
-    [0x00c, 'chdir', ['const char *filename']],
-    [0x00d, 'time', ['old_time32_t *tloc']], # time32
-    [0x00e, 'mknod', ['const char *filename', 'umode_t mode', 'unsigned dev']],
-    [0x00f, 'chmod', ['const char *filename', 'umode_t mode']],
-    [0x010, 'lchown', ['const char *filename', 'old_uid_t user', 'old_gid_t group']], # lchown16
-    #0x011, break # unimplemented
-    [0x012, 'oldstat', ['const char *filename', 'struct __old_kernel_stat *statbuf']], # fstat
-    [0x013, 'lseek', ['unsigned int fd', 'off_t offset', 'unsigned int whence']],
-    [0x014, 'getpid', []],
-    [0x015, 'mount', ['const char *dev_name', 'const char *dir_name', 'const char *type', 'unsigned long flags', 'void *data']],
-    [0x016, 'umount', ['char *name']], # oldumount
-    [0x017, 'setuid', ['old_uid_t uid']], # setuid16
-    [0x018, 'getuid', []], # getuid16
-    [0x019, 'stime', ['old_time32_t *tptr']], # stime32
-    [0x01a, 'ptrace', ['long request', 'long pid', 'unsigned long addr', 'unsigned long data']],
-    [0x01b, 'alarm', ['unsigned int seconds']],
-    [0x01c, 'oldfstat', ['unsigned int fd', 'struct __old_kernel_stat *statbuf']], # fstat
-    [0x01d, 'pause', []],
-    [0x01e, 'utime', ['char *filename', 'struct old_utimbuf32 *t']], # utime32
-    #0x01f, stty # unimplemented
-    #0x020, gtty # unimplemented
-    [0x021, 'access', ['const char *filename', 'int mode']],
-    [0x022, 'nice', ['int increment']],
-    #0x023, ftime # unimplemented
-    [0x024, 'sync', []],
-    [0x025, 'kill', ['pid_t pid', 'int sig']],
-    [0x026, 'rename', ['const char *oldname', 'const char *newname']],
-    [0x027, 'mkdir', ['const char *pathname', 'umode_t mode']],
-    [0x028, 'rmdir', ['const char *pathname']],
-    [0x029, 'dup', ['unsigned int fildes']],
-    [0x02a, 'pipe', ['int *fildes']],
-    [0x02b, 'times', ['struct tms *tbuf']],
-    #0x02c, prof # unimplemented
-    [0x02d, 'brk', ['unsigned long brk']],
-    [0x02e, 'setgid', ['old_gid_t gid']], # setgid16
-    [0x02f, 'getgid', []], # getgid16
-    [0x030, 'signal', ['int sig', '__sighandler_t handler']],
-    [0x031, 'geteuid', []], # geteuid16
-    [0x032, 'getegid', []], # getegid16
-    [0x033, 'acct', ['const char *name']],
-    [0x034, 'umount2', ['char *name', 'int flags']], # umount
-    #0x035, lock # unimplemented
-    [0x036, 'ioctl', ['unsigned int fd', 'unsigned int cmd', 'unsigned long arg']],
-    [0x037, 'fcntl', ['unsigned int fd', 'unsigned int cmd', 'unsigned long arg']],
-    #0x038, mpx # unimplemented
-    [0x039, 'setpgid', ['pid_t pid', 'pid_t pgid']],
-    #0x03a, ulimit # unimplemented
-    [0x03b, 'oldolduname', ['struct oldold_utsname *name']], # olduname
-    [0x03c, 'umask', ['int mask']],
-    [0x03d, 'chroot', ['const char *filename']],
-    [0x03e, 'ustat', ['unsigned dev', 'struct ustat *ubuf']],
-    [0x03f, 'dup2', ['unsigned int oldfd', 'unsigned int newfd']],
-    [0x040, 'getppid', []],
-    [0x041, 'getpgrp', []],
-    [0x042, 'setsid', []],
-    [0x043, 'sigaction', ['int sig', 'const struct old_sigaction *act', 'struct old_sigaction *oact']],
-    [0x044, 'sgetmask', []],
-    [0x045, 'ssetmask', ['int newmask']],
-    [0x046, 'setreuid', ['old_uid_t ruid', 'old_uid_t euid']], # setreuid16
-    [0x047, 'setregid', ['old_gid_t rgid', 'old_gid_t egid']], # setregid16
-    [0x048, 'sigsuspend', ['old_sigset_t mask']],
-    [0x049, 'sigpending', ['old_sigset_t *uset']],
-    [0x04a, 'sethostname', ['char *name', 'int len']],
-    [0x04b, 'setrlimit', ['unsigned int resource', 'struct rlimit *rlim']],
-    [0x04c, 'getrlimit', ['unsigned int resource', 'struct rlimit *rlim']], # old_getrlimit
-    [0x04d, 'getrusage', ['int who', 'struct rusage *ru']],
-    [0x04e, 'gettimeofday', ['struct __kernel_old_timeval *tv', 'struct timezone *tz']],
-    [0x04f, 'settimeofday', ['struct __kernel_old_timeval *tv', 'struct timezone *tz']],
-    [0x050, 'getgroups', ['int gidsetsize', 'old_gid_t *grouplist']], # getgroups16
-    [0x051, 'setgroups', ['int gidsetsize', 'old_gid_t *grouplist']], # setgroups16
-    [0x052, 'select', ['struct sel_arg_struct *arg']], # old_select
-    [0x053, 'symlink', ['const char *oldname', 'const char *newname']],
-    [0x054, 'oldlstat', ['const char *filename', 'struct __old_kernel_stat *statbuf']], # lstat
-    [0x055, 'readlink', ['const char *path', 'char *buf', 'int bufsiz']],
-    [0x056, 'uselib', ['const char *library']],
-    [0x057, 'swapon', ['const char *specialfile', 'int swap_flags']],
-    [0x058, 'reboot', ['int magic1', 'int magic2', 'unsigned int cmd', 'void *arg']],
-    [0x059, 'readdir', ['unsigned int fd', 'struct old_linux_dirent *dirent', 'unsigned int count']], # old_readdir
-    [0x05a, 'mmap', ['struct mmap_arg_struct *arg']], # old_mmap
-    [0x05b, 'munmap', ['unsigned long addr', 'size_t len']],
-    [0x05c, 'truncate', ['const char *path', 'long length']],
-    [0x05d, 'ftruncate', ['unsigned int fd', 'unsigned long length']],
-    [0x05e, 'fchmod', ['unsigned int fd', 'umode_t mode']],
-    [0x05f, 'fchown', ['unsigned int fd', 'old_uid_t user', 'old_gid_t group']], # fchown16
-    [0x060, 'getpriority', ['int which', 'int who']],
-    [0x061, 'setpriority', ['int which', 'int who', 'int niceval']],
-    #0x062, profil # unimplemented
-    [0x063, 'statfs', ['const char *pathname', 'struct statfs *buf']],
-    [0x064, 'fstatfs', ['unsigned int fd', 'struct statfs *buf']],
-    [0x065, 'ioperm', ['unsigned long from', 'unsigned long num', 'int turn_on']],
-    [0x066, 'socketcall', ['int call', 'unsigned long *args']],
-    [0x067, 'syslog', ['int type', 'char *buf', 'int len']],
-    [0x068, 'setitimer', ['int which', 'struct __kernel_old_itimerval *value', 'struct __kernel_old_itimerval *ovalue']],
-    [0x069, 'getitimer', ['int which', 'struct __kernel_old_itimerval *value']],
-    [0x06a, 'stat', ['const char *filename', 'struct stat *statbuf']], # newstat
-    [0x06b, 'lstat', ['const char *filename', 'struct stat *statbuf']], # newlstat
-    [0x06c, 'fstat', ['unsigned int fd', 'struct stat *statbuf']], # newfstat
-    [0x06d, 'olduname', ['struct old_utsname *name']], # uname
-    [0x06e, 'iopl', ['unsigned int level']],
-    [0x06f, 'vhangup', []],
-    #0x070, idle # deleted from kernel 2.3.13
-    [0x071, 'vm86old', ['struct vm86_struct *user_vm86']],
-    [0x072, 'wait4', ['pid_t upid', 'int *stat_addr', 'int options', 'struct rusage *ru']],
-    [0x073, 'swapoff', ['const char *specialfile']],
-    [0x074, 'sysinfo', ['struct sysinfo *info']],
-    [0x075, 'ipc', ['unsigned int call', 'int first', 'unsigned long second', 'unsigned long third', 'void *ptr', 'long fifth']],
-    [0x076, 'fsync', ['unsigned int fd']],
-    [0x077, 'sigreturn', []],
-    [0x078, 'clone', ['unsigned long clone_flags', 'unsigned long newsp', 'int *parent_tidptr', 'int *child_tidptr', 'unsigned long tls']],
-    [0x079, 'setdomainname', ['char *name', 'int len']],
-    [0x07a, 'uname', ['struct new_utsname *name']], # newuname
-    [0x07b, 'modify_ldt', ['int func', 'void *ptr', 'unsigned long bytecount']],
-    [0x07c, 'adjtimex', ['struct old_timex32 *utp']], # adjtimex_time32
-    [0x07d, 'mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot']],
-    [0x07e, 'sigprocmask', ['int how', 'old_sigset_t *nset', 'old_sigset_t *oset']],
-    #0x07f, create_module # deleted from kernel 2.6
-    [0x080, 'init_module', ['void *umod', 'unsigned long len', 'const char *uargs']],
-    [0x081, 'delete_module', ['const char *name_user', 'unsigned int flags']],
-    #0x082, get_kernel_syms # deleted from kernel 2.6
-    [0x083, 'quotactl', ['unsigned int cmd', 'const char *special', 'qid_t id', 'void *addr']],
-    [0x084, 'getpgid', ['pid_t pid']],
-    [0x085, 'fchdir', ['unsigned int fd']],
-    [0x086, 'bdflush', ['int func', 'long data']],
-    [0x087, 'sysfs', ['int option', 'unsigned long arg1', 'unsigned long arg2']],
-    [0x088, 'personality', ['unsigned int personality']],
-    #0x089, afs_syscall # unimplemented
-    [0x08a, 'setfsuid', ['old_uid_t uid']], # setfsuid16
-    [0x08b, 'setfsgid', ['old_gid_t gid']], # setfsgid16
-    [0x08c, '_llseek', ['unsigned int fd', 'unsigned long offset_high', 'unsigned long offset_low', 'loff_t *result', 'unsigned int whence']], # llseek
-    [0x08d, 'getdents', ['unsigned int fd', 'struct linux_dirent *dirent', 'unsigned int count']],
-    [0x08e, '_newselect', ['int n', 'fd_set *inp', 'fd_set *outp', 'fd_set *exp', 'struct __kernel_old_timeval *tvp']], # select
-    [0x08f, 'flock', ['unsigned int fd', 'unsigned int cmd']],
-    [0x090, 'msync', ['unsigned long start', 'size_t len', 'int flags']],
-    [0x091, 'readv', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen']],
-    [0x092, 'writev', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen']],
-    [0x093, 'getsid', ['pid_t pid']],
-    [0x094, 'fdatasync', ['unsigned int fd']],
-    [0x095, '_sysctl', ['struct __sysctl_args *args']], # sysctl # deleted from kenrel 5.5 ?
-    [0x096, 'mlock', ['unsigned long start', 'size_t len']],
-    [0x097, 'munlock', ['unsigned long start', 'size_t len']],
-    [0x098, 'mlockall', ['int flags']],
-    [0x099, 'munlockall', []],
-    [0x09a, 'sched_setparam', ['pid_t pid', 'struct sched_param *param']],
-    [0x09b, 'sched_getparam', ['pid_t pid', 'struct sched_param *param']],
-    [0x09c, 'sched_setscheduler', ['pid_t pid', 'int policy', 'struct sched_param *param']],
-    [0x09d, 'sched_getscheduler', ['pid_t pid']],
-    [0x09e, 'sched_yield', []],
-    [0x09f, 'sched_get_priority_max', ['int policy']],
-    [0x0a0, 'sched_get_priority_min', ['int policy']],
-    [0x0a1, 'sched_rr_get_interval', ['pid_t pid', 'struct old_timespec32 *interval']], # sched_rr_get_interval_time32
-    [0x0a2, 'nanosleep', ['struct old_timespec32 *rqtp', 'struct old_timespec32 *rmtp']], # nanosleep_time32
-    [0x0a3, 'mremap', ['unsigned long addr', 'unsigned long old_len', 'unsigned long new_len', 'unsigned long flags', 'unsigned long new_addr']],
-    [0x0a4, 'setresuid', ['old_uid_t ruid', 'old_uid_t euid', 'old_uid_t suid']], # setresuid16
-    [0x0a5, 'getresuid', ['old_uid_t *ruidp', 'old_uid_t *euidp', 'old_uid_t *suidp']], # getresuid16
-    [0x0a6, 'vm86', ['unsigned long cmd', 'unsigned long arg']],
-    #0x0a7, query_module # deleted from kernel 2.6
-    [0x0a8, 'poll', ['struct pollfd *ufds', 'unsigned int nfds', 'int timeout_msecs']],
-    #0x0a9, nfsservctl # deleted from kernel 3.1
-    [0x0aa, 'setresgid', ['old_gid_t rgid', 'old_gid_t egid', 'old_gid_t sgid']], # setresgid16
-    [0x0ab, 'getresgid', ['old_gid_t *rgidp', 'old_gid_t *egidp', 'old_gid_t *sgidp']], # getresgid16
-    [0x0ac, 'prctl', ['int option', 'unsigned long arg2', 'unsigned long arg3', 'unsigned long arg4', 'unsigned long arg5']],
-    [0x0ad, 'rt_sigreturn', []],
-    [0x0ae, 'rt_sigaction', ['int sig', 'const struct sigaction *act', 'struct sigaction *oact', 'size_t sigsetsize']],
-    [0x0af, 'rt_sigprocmask', ['int how', 'sigset_t *nset', 'sigset_t *oset', 'size_t sigsetsize']],
-    [0x0b0, 'rt_sigpending', ['sigset_t *uset', 'size_t sigsetsize']],
-    [0x0b1, 'rt_sigtimedwait', ['const sigset_t *uthese', 'siginfo_t *uinfo', 'const struct old_timespec32 *uts', 'size_t sigsetsize']], # rt_sigtimedwait_time32
-    [0x0b2, 'rt_sigqueueinfo', ['pid_t pid', 'int sig', 'siginfo_t *uinfo']],
-    [0x0b3, 'rt_sigsuspend', ['sigset_t *unewset', 'size_t sigsetsize']],
-    [0x0b4, 'pread64', ['unsigned int fd', 'char *ubuf', 'u32 count', 'u32 poslo', 'u32 poshi']], # ia32_pread64
-    [0x0b5, 'pwrite64', ['unsigned int fd', 'const char *ubuf', 'u32 count', 'u32 poslo', 'u32 poshi']], # ia32_pwrite64
-    [0x0b6, 'chown', ['const char *filename', 'old_uid_t user', 'old_gid_t group']], # chown16
-    [0x0b7, 'getcwd', ['char *buf', 'unsigned long size']],
-    [0x0b8, 'capget', ['cap_user_header_t header', 'cap_user_data_t dataptr']],
-    [0x0b9, 'capset', ['cap_user_header_t header', 'const cap_user_data_t data']],
-    [0x0ba, 'sigaltstack', ['const stack_t *uss', 'stack_t *uoss']],
-    [0x0bb, 'sendfile', ['int out_fd', 'int in_fd', 'off_t *offset', 'size_t count']],
-    #0x0bc, getpmsg # unimplemented
-    #0x0bd, putpmsg # unimplemented
-    [0x0be, 'vfork', []],
-    [0x0bf, 'ugetrlimit', ['unsigned int resource', 'struct rlimit *rlim']], # getrlimit
-    [0x0c0, 'mmap2', ['unsigned long addr', 'unsigned long len', 'unsigned long prot', 'unsigned long flags', 'unsigned long fd', 'unsigned long pgoff']], # mmap_pgoff
-    [0x0c1, 'truncate64', ['const char *filename', 'unsigned long offset_low', 'unsigned long offset_high']], # ia32_truncate64
-    [0x0c2, 'ftruncate64', ['unsigned int fd', 'unsigned long offset_low', 'unsigned long offset_high']], # ia32_ftruncate64
-    [0x0c3, 'stat64', ['const char *filename', 'struct stat64 *statbuf']], # stat64
-    [0x0c4, 'lstat64', ['const char *filename', 'struct stat64 *statbuf']], # lstat64
-    [0x0c5, 'fstat64', ['unsigned long fd', 'struct stat64 *statbuf']], # fstat64
-    [0x0c6, 'lchown32', ['const char *filename', 'uid_t user', 'gid_t group']], # lchown
-    [0x0c7, 'getuid32', []], # getuid
-    [0x0c8, 'getgid32', []], # getgid
-    [0x0c9, 'geteuid32', []], # geteuid
-    [0x0ca, 'getegid32', []], # getegid
-    [0x0cb, 'setreuid32', ['uid_t ruid', 'uid_t euid']], # setreuid32
-    [0x0cc, 'setregid32', ['gid_t rgid', 'gid_t egid']], # setregid32
-    [0x0cd, 'getgroups32', ['int gidsetsize', 'gid_t *grouplist']], # getgroups32
-    [0x0ce, 'setgroups32', ['int gidsetsize', 'gid_t *grouplist']], # setgroups32
-    [0x0cf, 'fchown32', ['unsigned int fd', 'uid_t user', 'gid_t group']], # fchown
-    [0x0d0, 'setresuid32', ['uid_t ruid', 'uid_t euid', 'uid_t suid']], # setresuid
-    [0x0d1, 'getresuid32', ['uid_t *ruidp', 'uid_t *euidp', 'uid_t *suidp']], # getresuid
-    [0x0d2, 'setresgid32', ['gid_t rgid', 'gid_t egid', 'gid_t sgid']], # setresgid
-    [0x0d3, 'getresgid32', ['gid_t *rgidp', 'gid_t *egidp', 'gid_t *sgidp']], # getresgid
-    [0x0d4, 'chown32', ['const char *filename', 'uid_t user', 'gid_t group']], # chown
-    [0x0d5, 'setuid32', ['uid_t uid']], # setuid
-    [0x0d6, 'setgid32', ['gid_t gid']], # setgid
-    [0x0d7, 'setfsuid32', ['uid_t uid']], # setfsuid
-    [0x0d8, 'setfsgid32', ['gid_t gid']], # setfsgid
-    [0x0d9, 'pivot_root', ['const char *new_root', 'const char *put_old']],
-    [0x0da, 'mincore', ['unsigned long start', 'size_t len', 'unsigned char *vec']],
-    [0x0db, 'madvise', ['unsigned long start', 'size_t len_in', 'int behavior']],
-    [0x0dc, 'getdents64', ['unsigned int fd', 'struct linux_dirent64 *dirent', 'unsigned int count']],
-    [0x0dd, 'fcntl64', ['unsigned int fd', 'unsigned int cmd', 'unsigned long arg']],
-    #0x0de, unused
-    #0x0df, unused
-    [0x0e0, 'gettid', []],
-    [0x0e1, 'readahead', ['int fd', 'unsigned int off_lo', 'unsigned int off_high', 'size_t count']], # ia32_readahead
-    [0x0e2, 'setxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-    [0x0e3, 'lsetxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-    [0x0e4, 'fsetxattr', ['int fd', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-    [0x0e5, 'getxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
-    [0x0e6, 'lgetxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
-    [0x0e7, 'fgetxattr', ['int fd', 'const char *name', 'void *value', 'size_t size']],
-    [0x0e8, 'listxattr', ['const char *pathname', 'char *list', 'size_t size']],
-    [0x0e9, 'llistxattr', ['const char *pathname', 'char *list', 'size_t size']],
-    [0x0ea, 'flistxattr', ['int fd', 'char *list', 'size_t size']],
-    [0x0eb, 'removexattr', ['const char *pathname', 'const char *name']],
-    [0x0ec, 'lremovexattr', ['const char *pathname', 'const char *name']],
-    [0x0ed, 'fremovexattr', ['int fd', 'const char *name']],
-    [0x0ee, 'tkill', ['pid_t pid', 'int sig']],
-    [0x0ef, 'sendfile64', ['int out_fd', 'int in_fd', 'loff_t *offset', 'size_t count']],
-    [0x0f0, 'futex', ['u32 *uaddr', 'int op', 'u32 val', 'struct old_timespec32 *utime', 'u32 *uaddr2', 'u32 val3']], # futex_time32
-    [0x0f1, 'sched_setaffinity', ['pid_t pid', 'unsigned int len', 'unsigned long *user_mask_ptr']],
-    [0x0f2, 'sched_getaffinity', ['pid_t pid', 'unsigned int len', 'unsigned long *user_mask_ptr']],
-    [0x0f3, 'set_thread_area', ['struct user_desc *u_info']],
-    [0x0f4, 'get_thread_area', ['struct user_desc *u_info']],
-    [0x0f5, 'io_setup', ['unsigned nr_events', 'aio_context_t *ctxp']],
-    [0x0f6, 'io_destroy', ['aio_context_t ctx']],
-    [0x0f7, 'io_getevents', ['__u32 ctx_id', '__s32 min_nr', '__s32 nr', 'struct io_event *events', 'struct old_timespec32 *timeout']], # io_getevents_time32
-    [0x0f8, 'io_submit', ['aio_context_t ctx_id', 'long nr', 'struct iocb *iocbpp']],
-    [0x0f9, 'io_cancel', ['aio_context_t ctx_id', 'struct iocb *iocb', 'struct io_event *result']],
-    [0x0fa, 'fadvise64', ['int fd', 'unsigned int offset_lo', 'unsigned int offset_hi', 'size_t len', 'int advice']], # ia32_fadvise64
-    #0x0fb, set_zone_reclaim
-    [0x0fc, 'exit_group', ['int error_code']],
-    [0x0fd, 'lookup_dcookie', ['u64 cookie64', 'char *buf', 'size_t len']],
-    [0x0fe, 'epoll_create', ['int size']],
-    [0x0ff, 'epoll_ctl', ['int epfd', 'int op', 'int fd', 'struct epoll_event *event']],
-    [0x100, 'epoll_wait', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'int timeout']],
-    [0x101, 'remap_file_pages', ['unsigned long start', 'unsigned long size', 'unsigned long prot', 'unsigned long pgoff', 'unsigned long flags']],
-    [0x102, 'set_tid_address', ['int *tidptr']],
-    [0x103, 'timer_create', ['clockid_t which_clock', 'struct sigevent *timer_event_spec', 'timer_t *created_timer_id']],
-    [0x104, 'timer_settime', ['timer_t timer_id', 'int flags', 'struct old_itimerspec32 *new', 'struct old_itimerspec32 *old']], # timer_settime32
-    [0x105, 'timer_gettime', ['timer_t timer_id', 'struct old_itimerspec32 *setting']],
-    [0x106, 'timer_getoverrun', ['timer_t timer_id']],
-    [0x107, 'timer_delete', ['timer_t timer_id']],
-    [0x108, 'clock_settime', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_settime32
-    [0x109, 'clock_gettime', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_gettime32
-    [0x10a, 'clock_getres', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_getres_time32
-    [0x10b, 'clock_nanosleep', ['clockid_t which_clock', 'int flags', 'struct old_timespec32 *rqtp', 'struct old_timespec32 *rmtp']], # clock_nanosleep_time32
-    [0x10c, 'statfs64', ['const char *pathname', 'size_t sz', 'struct statfs64 *buf']],
-    [0x10d, 'fstatfs64', ['unsigned int fd', 'size_t sz', 'struct statfs64 *buf']],
-    [0x10e, 'tgkill', ['pid_t tgid', 'pid_t pid', 'int sig']],
-    [0x10f, 'utimes', ['char *filename', 'struct old_timeval32 *utimes']], # utimes_time32
-    [0x110, 'fadvise64_64', ['int fd', '__u32 offset_low', '__u32 offset_high', '__u32 len_low', '__u32 len_high', 'int advice']], # ia32_fadvise64_64
-    #0x111, vserver # unimplemented
-    [0x112, 'mbind', ['unsigned long start', 'unsigned long len', 'unsigned long mode', 'const unsigned long *nmask', 'unsigned long maxnode', 'unsigned int flags']],
-    [0x113, 'get_mempolicy', ['int *policy', 'unsigned long *nmask', 'unsigned long maxnode', 'unsigned long addr', 'unsigned long flags']],
-    [0x114, 'set_mempolicy', ['int mode', 'const unsigned long *nmask', 'unsigned long maxnode']],
-    [0x115, 'mq_open', ['const char *u_name', 'int oflag', 'umode_t mode', 'struct mq_attr *u_attr']],
-    [0x116, 'mq_unlink', ['const char *u_name']],
-    [0x117, 'mq_timedsend', ['mqd_t mqdes', 'const char *u_msg_ptr', 'unsigned int msg_len', 'unsigned int msg_prio', 'const struct old_timespec32 *u_abs_timeout']], # mq_timedsend_time32
-    [0x118, 'mq_timedreceive', ['mqd_t mqdes', 'char *u_msg_ptr', 'unsigned int msg_len', 'unsigned int *u_msg_prio', 'const struct old_timespec32 *u_abs_timeout']], # mq_timedreceive_time32
-    [0x119, 'mq_notify', ['mqd_t mqdes', 'const struct sigevent *u_notification']],
-    [0x11a, 'mq_getsetattr', ['mqd_t mqdes', 'const struct mq_attr *u_mqstat', 'struct mq_attr *u_omqstat']],
-    [0x11b, 'kexec_load', ['unsigned long entry', 'unsigned long nr_segments', 'struct kexec_segment *segments', 'unsigned long flags']],
-    [0x11c, 'waitid', ['int which', 'pid_t upid', 'struct siginfo *infop', 'int options', 'struct rusage *ru']],
-    #0x11d, unused
-    [0x11e, 'add_key', ['const char *_type', 'const char *_description', 'const void *_payload', 'size_t plen', 'key_serial_t ringid']],
-    [0x11f, 'request_key', ['const char *_type', 'const char *_description', 'const char *_callout_info', 'key_serial_t destringid']],
-    [0x120, 'keyctl', ['int option', 'unsigned long arg2', 'unsigned long arg3', 'unsigned long arg4', 'unsigned long arg5']],
-    [0x121, 'ioprio_set', ['int which', 'int who', 'int ioprio']],
-    [0x122, 'ioprio_get', ['int which', 'int who']],
-    [0x123, 'inotify_init', []],
-    [0x124, 'inotify_add_watch', ['int fd', 'const char *pathname', 'u32 mask']],
-    [0x125, 'inotify_rm_watch', ['int fd', '__s32 wd']],
-    [0x126, 'migrate_pages', ['pid_t pid', 'unsigned long maxnode', 'const unsigned long *old_nodes', 'const unsigned long *new_nodes']],
-    [0x127, 'openat', ['int dfd', 'const char *filename', 'int flags', 'umode_t mode']],
-    [0x128, 'mkdirat', ['int dfd', 'const char *pathname', 'umode_t mode']],
-    [0x129, 'mknodat', ['int dfd', 'const char *filename', 'umode_t mode', 'unsigned int dev']],
-    [0x12a, 'fchownat', ['int dfd', 'const char *filename', 'uid_t user', 'gid_t group', 'int flag']],
-    [0x12b, 'futimesat', ['unsigned int dfd', 'const char *filename', 'struct old_timeval32 *t']], # futimesat_time32
-    [0x12c, 'fstatat64', ['unsigned int dfd', 'const char *filename', 'struct stat64 *statbuf', 'int flag']], # fstatat64
-    [0x12d, 'unlinkat', ['int dfd', 'const char *pathname', 'int flag']],
-    [0x12e, 'renameat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname']],
-    [0x12f, 'linkat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'int flags']],
-    [0x130, 'symlinkat', ['const char *oldname', 'int newdfd', 'const char *newname']],
-    [0x131, 'readlinkat', ['int dfd', 'const char *pathname', 'char *buf', 'int bufsiz']],
-    [0x132, 'fchmodat', ['int dfd', 'const char *filename', 'umode_t mode']],
-    [0x133, 'faccessat', ['int dfd', 'const char *filename', 'int mode']],
-    [0x134, 'pselect6', ['int n', 'fd_set *inp', 'fd_set *outp', 'fd_set *exp', 'struct old_timespec32 *tsp', 'void *sig']], # pselect6_time32
-    [0x135, 'ppoll', ['struct pollfd *ufds', 'unsigned int nfds', 'struct old_timespec32 *tsp', 'const sigset_t *sigmask', 'size_t sigsetsize']], # ppoll_time32
-    [0x136, 'unshare', ['unsigned long unshare_flags']],
-    [0x137, 'set_robust_list', ['struct robust_list_head *head', 'size_t len']],
-    [0x138, 'get_robust_list', ['int pid', 'struct robust_list_head **head_ptr', 'size_t *len_ptr']],
-    [0x139, 'splice', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
-    [0x13a, 'sync_file_range', ['int fd', 'unsigned int off_low', 'unsigned int off_hi', 'unsigned int n_low', 'unsigned int n_hi', 'unsigned int flags']], # ia32_sync_file_range
-    [0x13b, 'tee', ['int fdin', 'int fdout', 'size_t len', 'unsigned int flags']],
-    [0x13c, 'vmsplice', ['int fd', 'const struct iovec *uiov', 'unsigned long nr_segs', 'unsigned int flags']],
-    [0x13d, 'move_pages', ['pid_t pid', 'unsigned long nr_pages', 'const void **pages', 'const int *nodes', 'int *status', 'int flags']],
-    [0x13e, 'getcpu', ['unsigned *cpup', 'unsigned *nodep', 'struct getcpu_cache *unused']],
-    [0x13f, 'epoll_pwait', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'int timeout', 'const sigset_t *sigmask', 'size_t sigsetsize']],
-    [0x140, 'utimensat', ['unsigned int dfd', 'const char *filename', 'struct old_timespec32 *t', 'int flags']], # utimensat_time32
-    [0x141, 'signalfd', ['int ufd', 'sigset_t *user_mask', 'size_t sizemask']],
-    [0x142, 'timerfd_create', ['int clockid', 'int flags']],
-    [0x143, 'eventfd', ['unsigned int count']],
-    [0x144, 'fallocate', ['int fd', 'int mode', 'unsigned int offset_lo', 'unsigned int offset_hi', 'unsigned int len_lo', 'unsigned int len_hi']], # ia32_fallocate
-    [0x145, 'timerfd_settime', ['int ufd', 'int flags', 'const struct old_itimerspec32 *utmr', 'struct old_itimerspec32 *otmr']], # timerfd_settime32
-    [0x146, 'timerfd_gettime', ['int ufd', 'struct old_itimerspec32 *otmr']], # timerfd_gettime32
-    [0x147, 'signalfd4', ['int ufd', 'sigset_t *user_mask', 'size_t sizemask', 'int flags']],
-    [0x148, 'eventfd2', ['unsigned int count', 'int flags']],
-    [0x149, 'epoll_create1', ['int flags']],
-    [0x14a, 'dup3', ['unsigned int oldfd', 'unsigned int newfd', 'int flags']],
-    [0x14b, 'pipe2', ['int *fildes', 'int flags']],
-    [0x14c, 'inotify_init1', ['int flags']],
-    [0x14d, 'preadv', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h']],
-    [0x14e, 'pwritev', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h']],
-    [0x14f, 'rt_tgsigqueueinfo', ['pid_t tgid', 'pid_t pid', 'int sig', 'siginfo_t *uinfo']],
-    [0x150, 'perf_event_open', ['struct perf_event_attr *attr_uptr', 'pid_t pid', 'int cpu', 'int group_fd', 'unsigned long flags']],
-    [0x151, 'recvmmsg', ['int fd', 'struct mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags', 'struct old_timespec32 *timeout']], # recvmmsg_time32
-    [0x152, 'fanotify_init', ['unsigned int flags', 'unsigned int event_f_flags']],
-    [0x153, 'fanotify_mark', ['int fanotify_fd', 'unsigned int flags', '__u64 mask', 'int dfd', 'const char *pathname']],
-    [0x154, 'prlimit64', ['pid_t pid', 'unsigned int resource', 'const struct rlimit64 *new_rlim', 'struct rlimit64 *old_rlim']],
-    [0x155, 'name_to_handle_at', ['int dfd', 'const char *name', 'struct file_handle *handle', 'int *mnt_id', 'int flag']],
-    [0x156, 'open_by_handle_at', ['int mountdirfd', 'struct file_handle *handle', 'int flags']],
-    [0x157, 'clock_adjtime', ['clockid_t which_clock', 'struct old_timex32 *utp']], # clock_adjtime32
-    [0x158, 'syncfs', ['int fd']],
-    [0x159, 'sendmmsg', ['int fd', 'struct mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags']],
-    [0x15a, 'setns', ['int fd', 'int flags']],
-    [0x15b, 'process_vm_readv', ['pid_t pid', 'const struct iovec *lvec', 'unsigned long liovcnt', 'const struct iovec *rvec', 'unsigned long riovcnt', 'unsigned long flags']],
-    [0x15c, 'process_vm_writev', ['pid_t pid', 'const struct iovec *lvec', 'unsigned long liovcnt', 'const struct iovec *rvec', 'unsigned long riovcnt', 'unsigned long flags']],
-    [0x15d, 'kcmp', ['pid_t pid1', 'pid_t pid2', 'int type', 'unsigned long idx1', 'unsigned long idx2']],
-    [0x15e, 'finit_module', ['int fd', 'const char *uargs', 'int flags']],
-    [0x15f, 'sched_setattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int flags']],
-    [0x160, 'sched_getattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int usize', 'unsigned int flags']],
-    [0x161, 'renameat2', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'unsigned int flags']],
-    [0x162, 'seccomp', ['unsigned int op', 'unsigned int flags', 'void *uargs']],
-    [0x163, 'getrandom', ['char *buf', 'size_t count', 'unsigned int flags']],
-    [0x164, 'memfd_create', ['const char *uname', 'unsigned int flags']],
-    [0x165, 'bpf', ['int cmd', 'union bpf_attr *uattr', 'unsigned int size']],
-    [0x166, 'execveat', ['int fd', 'const char *filename', 'const char *const *argv', 'const char *const *envp', 'int flags']],
-    [0x167, 'socket', ['int family', 'int type', 'int protocol']],
-    [0x168, 'socketpair', ['int family', 'int type', 'int protocol', 'int *usockvec']],
-    [0x169, 'bind', ['int fd', 'struct sockaddr *umyaddr', 'int addrlen']],
-    [0x16a, 'connect', ['int fd', 'struct sockaddr *uservaddr', 'int addrlen']],
-    [0x16b, 'listen', ['int fd', 'int backlog']],
-    [0x16c, 'accept4', ['int fd', 'struct sockaddr *upeer_sockaddr', 'int *upeer_addrlen', 'int flags']],
-    [0x16d, 'getsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int *optlen']],
-    [0x16e, 'setsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int optlen']],
-    [0x16f, 'getsockname', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
-    [0x170, 'getpeername', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
-    [0x171, 'sendto', ['int fd', 'void *buff', 'size_t len', 'unsigned int flags', 'struct sockaddr *addr', 'int addr_len']],
-    [0x172, 'sendmsg', ['int fd', 'struct user_msghdr *msg', 'unsigned int flags']],
-    [0x173, 'recvfrom', ['int fd', 'void *ubuf', 'size_t size', 'unsigned int flags', 'struct sockaddr *addr', 'int *addr_len']],
-    [0x174, 'recvmsg', ['int fd', 'struct user_msghdr *msg', 'unsigned int flags']],
-    [0x175, 'shutdown', ['int fd', 'int how']],
-    [0x176, 'userfaultfd', ['int flags']],
-    [0x177, 'membarrier', ['int cmd', 'int flags']],
-    [0x178, 'mlock2', ['unsigned long start', 'size_t len', 'int flags']],
-    [0x179, 'copy_file_range', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
-    [0x17a, 'preadv2', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h', 'rwf_t flags']],
-    [0x17b, 'pwritev2', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h', 'rwf_t flags']],
-    [0x17c, 'pkey_mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot', 'int pkey']],
-    [0x17d, 'pkey_alloc', ['unsigned long flags', 'unsigned long init_val']],
-    [0x17e, 'pkey_free', ['int pkey']],
-    [0x17f, 'statx', ['int dfd', 'const char *filename', 'unsigned flags', 'unsigned int mask', 'struct statx *buffer']],
-    [0x180, 'arch_prctl', ['int option', 'unsigned long arg2']],
-    [0x181, 'io_pgetevents', ['aio_context_t ctx_id', 'long min_nr', 'long nr', 'struct io_event *events', 'struct __kernel_timespec *timeout', 'const struct __aio_sigset *usig']],
-    [0x182, 'rseq', ['struct rseq *rseq', 'u32 rseq_len', 'int flags', 'u32 sig']],
-    # 0x183-0x188, don't use
-    [0x189, 'semget', ['key_t key', 'int nsems', 'int semflg']],
-    [0x18a, 'semctl', ['int semid', 'int semnum', 'int cmd', 'unsigned long arg']],
-    [0x18b, 'shmget', ['key_t key', 'size_t size', 'int shmflg']],
-    [0x18c, 'shmctl', ['int shmid', 'int cmd', 'struct shmid_ds *buf']],
-    [0x18d, 'shmat', ['int shmid', 'char *shmaddr', 'int shmflg']],
-    [0x18e, 'shmdt', ['char *shmaddr']],
-    [0x18f, 'msgget', ['key_t key', 'int msgflg']],
-    [0x190, 'msgsnd', ['int msqid', 'struct msgbuf *msgp', 'size_t msgsz', 'int msgflg']],
-    [0x191, 'msgrcv', ['int msqid', 'struct msgbuf *msgp', 'size_t msgsz', 'long msgtyp', 'int msgflg']],
-    [0x192, 'msgctl', ['int msqid', 'int cmd', 'struct msqid_ds *buf']],
-    [0x193, 'clock_gettime_time64', ['const clockid_t which_clock', 'struct __kernel_timespec *tp']], # clock_gettime
-    [0x194, 'clock_settime_time64', ['const clockid_t which_clock', 'struct __kernel_timespec *tp']], # clock_settime
-    [0x195, 'clock_adjtime_time64', ['const clockid_t which_clock', 'struct __kernel_timex *utx']], # clock_adjtime
-    [0x196, 'clock_getres_time64', ['const clockid_t which_clock', 'struct __kernel_timespec *tp']], # clock_getres
-    [0x197, 'clock_nanosleep_time64', ['const clockid_t which_clock', 'int flags', 'const struct __kernel_timespec *rqtp', 'struct __kernel_timespec *rmtp']], # clock_nanosleep
-    [0x198, 'timer_gettime_time64', ['timer_t timer_id', 'struct __kernel_itimerspec *setting']], # timer_gettime
-    [0x199, 'timer_settime_time64', ['timer_t timer_id', 'int flags', 'const struct __kernel_itimerspec *new_setting', 'struct __kernel_itimerspec *old_setting']], # timer_settime
-    [0x19a, 'timerfd_gettime_time64', ['int ufd', 'struct __kernel_itimerspec *otmr']], # timerfd_gettime
-    [0x19b, 'timerfd_settime_time64', ['int ufd', 'int flags', 'const struct __kernel_itimerspec *utmr', 'struct __kernel_itimerspec *otmr']], # timerfd_settime
-    [0x19c, 'utimensat_time64', ['int dfd', 'const char *filename', 'struct __kernel_timespec *utimes', 'int flags']], # utimensat
-    [0x19d, 'pselect6_time64', ['int n', 'fd_set *inp', 'fd_set *outp', 'fd_set *exp', 'struct __kernel_timespec *tsp', 'void *sig']], # pselect6
-    [0x19e, 'ppoll_time64', ['struct pollfd *ufds', 'unsigned int nfds', 'struct __kernel_timespec *tsp', 'const sigset_t *sigmask', 'size_t sigsetsize']], # ppoll
-    #0x19f, unused
-    [0x1a0, 'io_pgetevents_time64', ['aio_context_t ctx_id', 'long min_nr', 'long nr', 'struct io_event *events', 'struct __kernel_timespec *timeout', 'const struct __aio_sigset *usig']], # io_pgetevents
-    [0x1a1, 'recvmmsg_time64', ['int fd', 'struct mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags', 'struct __kernel_timespec *timeout']], # recvmmsg
-    [0x1a2, 'mq_timedsend_time64', ['mqd_t mqdes', 'const char *u_msg_ptr', 'size_t msg_len', 'unsigned int msg_prio', 'const struct __kernel_timespec *u_abs_timeout']], # mq_timedsend
-    [0x1a3, 'mq_timedreceive_time64', ['mqd_t mqdes', 'char *u_msg_ptr', 'size_t msg_len', 'unsigned int *u_msg_prio', 'const struct __kernel_timespec *u_abs_timeout']], # mq_timedreceive
-    [0x1a4, 'semtimedop_time64', ['int semid', 'struct sembuf *tsops', 'unsigned int nsops', 'const struct __kernel_timespec *timeout']], # semtimedop
-    [0x1a5, 'rt_sigtimedwait_time64', ['const sigset_t *uthese', 'siginfo_t *uinfo', 'const struct __kernel_timespec *uts', 'size_t sigsetsize']], # rt_sigtimedwait
-    [0x1a6, 'futex_time64', ['u32 *uaddr', 'int op', 'u32 val', 'struct __kernel_timespec *utime', 'u32 *uaddr2', 'u32 val3']], # futex
-    [0x1a7, 'sched_rr_get_interval_time64', ['pid_t pid', 'struct __kernel_timespec *interval']], # sched_rr_get_interval
-    [0x1a8, 'pidfd_send_signal', ['int pidfd', 'int sig', 'siginfo_t *info', 'unsigned int flags']],
-    [0x1a9, 'io_uring_setup', ['u32 entries', 'struct io_uring_params *params']],
-    [0x1aa, 'io_uring_enter', ['unsigned int fd', 'u32 to_submit', 'u32 min_complete', 'u32 flags', 'const sigset_t *sig', 'size_t sigsz']],
-    [0x1ab, 'io_uring_register', ['unsigned int fd', 'unsigned int opcode', 'void *arg', 'unsigned int nr_args']],
-    [0x1ac, 'open_tree', ['int dfd', 'const char *filename', 'unsigned flags']],
-    [0x1ad, 'move_mount', ['int from_dfd', 'const char *from_pathname', 'int to_dfd', 'const char *to_pathname', 'unsigned int flags']],
-    [0x1ae, 'fsopen', ['const char *_fs_name', 'unsigned int flags']],
-    [0x1af, 'fsconfig', ['int fd', 'unsigned int cmd', 'const char *_key', 'const void *_value', 'int aux']],
-    [0x1b0, 'fsmount', ['int fs_fd', 'unsigned int flags', 'unsigned int attr_flags']],
-    [0x1b1, 'fspick', ['int, dfd', 'const char *path', 'unsigned int flags']],
-    [0x1b2, 'pidfd_open', ['pid_t pid', 'unsigned int flags']],
-    [0x1b3, 'clone3', ['struct clone_args *uargs', 'size_t size']],
-    [0x1b4, 'close_range', ['unsigned int fd', 'unsigned int max_fd', 'unsigned int flag']],
-    [0x1b5, 'openat2', ['int dfd', 'const char *filename', 'struct open_how *how', 'size_t usize']],
-    [0x1b6, 'pidfd_getfd', ['int pidfd', 'int fd', 'unsigned int flags']],
-    [0x1b7, 'faccessat2', ['int dfd', 'const char *filename', 'int mode', 'int flags']],
-    [0x1b8, 'process_madvise', ['int pidfd', 'const struct iovec *vec', 'size_t vlen', 'int behavior', 'unsigned int flags']],
-    [0x1b9, 'epoll_pwait2', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'const struct __kernel_timespec *timeout', 'const sigset_t *sigmask', 'size_t sigsetsize']],
-    [0x1ba, 'mount_setattr', ['int dfd', 'const char *path', 'unsigned int flags', 'struct mount_attr *uattr', 'size_t usize']],
-    [0x1bb, 'quotactl_fd', ['unsigned int fd', 'unsigned int cmd', 'qid_t id', 'void __user *addr']],
-    [0x1bc, 'landlock_create_ruleset', ['const struct landlock_ruleset_attr *const attr', 'const size_t size', 'const __u32 flags']],
-    [0x1bd, 'landlock_add_rule', ['const int ruleset_fd', 'const enum landlock_rule_type rule_type', 'const void *const rule_attr', 'const __u32 flags']],
-    [0x1be, 'landlock_restrict_self', ['const int ruleset_fd', 'const __u32 flags']],
-    [0x1bf, 'memfd_secret', ['unsigned int, flags']],
-    [0x1c0, 'process_mrelease', ['int pidfd', 'unsigned int flags']],
-    [0x1c1, 'futex_waitv', ['struct futex_waitv *waiters', 'unsigned int nr_futexes', 'unsigned int flags', 'struct __kernel_timespec *timeout', 'clockid_t clockid']],
-    [0x1c2, 'set_mempolicy_home_node', ['unsigned long start', 'unsigned long len', 'unsigned long home_node', 'unsigned long flags']],
-]
+x86_syscall_tbl = """
+#
+# 32-bit system call numbers and entry vectors
+#
+# The format is:
+# <number> <abi> <name> <entry point> <compat entry point>
+#
+# The __ia32_sys and __ia32_compat_sys stubs are created on-the-fly for
+# sys_*() system calls and compat_sys_*() compat system calls if
+# IA32_EMULATION is defined, and expect struct pt_regs *regs as their only
+# parameter.
+#
+# The abi is always "i386" for this file.
+#
+0       i386    restart_syscall         sys_restart_syscall
+1       i386    exit                    sys_exit
+2       i386    fork                    sys_fork
+3       i386    read                    sys_read
+4       i386    write                   sys_write
+5       i386    open                    sys_open                        compat_sys_open
+6       i386    close                   sys_close
+7       i386    waitpid                 sys_waitpid
+8       i386    creat                   sys_creat
+9       i386    link                    sys_link
+10      i386    unlink                  sys_unlink
+11      i386    execve                  sys_execve                      compat_sys_execve
+12      i386    chdir                   sys_chdir
+13      i386    time                    sys_time32
+14      i386    mknod                   sys_mknod
+15      i386    chmod                   sys_chmod
+16      i386    lchown                  sys_lchown16
+17      i386    break
+18      i386    oldstat                 sys_stat
+19      i386    lseek                   sys_lseek                       compat_sys_lseek
+20      i386    getpid                  sys_getpid
+21      i386    mount                   sys_mount
+22      i386    umount                  sys_oldumount
+23      i386    setuid                  sys_setuid16
+24      i386    getuid                  sys_getuid16
+25      i386    stime                   sys_stime32
+26      i386    ptrace                  sys_ptrace                      compat_sys_ptrace
+27      i386    alarm                   sys_alarm
+28      i386    oldfstat                sys_fstat
+29      i386    pause                   sys_pause
+30      i386    utime                   sys_utime32
+31      i386    stty
+32      i386    gtty
+33      i386    access                  sys_access
+34      i386    nice                    sys_nice
+35      i386    ftime
+36      i386    sync                    sys_sync
+37      i386    kill                    sys_kill
+38      i386    rename                  sys_rename
+39      i386    mkdir                   sys_mkdir
+40      i386    rmdir                   sys_rmdir
+41      i386    dup                     sys_dup
+42      i386    pipe                    sys_pipe
+43      i386    times                   sys_times                       compat_sys_times
+44      i386    prof
+45      i386    brk                     sys_brk
+46      i386    setgid                  sys_setgid16
+47      i386    getgid                  sys_getgid16
+48      i386    signal                  sys_signal
+49      i386    geteuid                 sys_geteuid16
+50      i386    getegid                 sys_getegid16
+51      i386    acct                    sys_acct
+52      i386    umount2                 sys_umount
+53      i386    lock
+54      i386    ioctl                   sys_ioctl                       compat_sys_ioctl
+55      i386    fcntl                   sys_fcntl                       compat_sys_fcntl64
+56      i386    mpx
+57      i386    setpgid                 sys_setpgid
+58      i386    ulimit
+59      i386    oldolduname             sys_olduname
+60      i386    umask                   sys_umask
+61      i386    chroot                  sys_chroot
+62      i386    ustat                   sys_ustat                       compat_sys_ustat
+63      i386    dup2                    sys_dup2
+64      i386    getppid                 sys_getppid
+65      i386    getpgrp                 sys_getpgrp
+66      i386    setsid                  sys_setsid
+67      i386    sigaction               sys_sigaction                   compat_sys_sigaction
+68      i386    sgetmask                sys_sgetmask
+69      i386    ssetmask                sys_ssetmask
+70      i386    setreuid                sys_setreuid16
+71      i386    setregid                sys_setregid16
+72      i386    sigsuspend              sys_sigsuspend
+73      i386    sigpending              sys_sigpending                  compat_sys_sigpending
+74      i386    sethostname             sys_sethostname
+75      i386    setrlimit               sys_setrlimit                   compat_sys_setrlimit
+76      i386    getrlimit               sys_old_getrlimit               compat_sys_old_getrlimit
+77      i386    getrusage               sys_getrusage                   compat_sys_getrusage
+78      i386    gettimeofday            sys_gettimeofday                compat_sys_gettimeofday
+79      i386    settimeofday            sys_settimeofday                compat_sys_settimeofday
+80      i386    getgroups               sys_getgroups16
+81      i386    setgroups               sys_setgroups16
+82      i386    select                  sys_old_select                  compat_sys_old_select
+83      i386    symlink                 sys_symlink
+84      i386    oldlstat                sys_lstat
+85      i386    readlink                sys_readlink
+86      i386    uselib                  sys_uselib
+87      i386    swapon                  sys_swapon
+88      i386    reboot                  sys_reboot
+89      i386    readdir                 sys_old_readdir                 compat_sys_old_readdir
+90      i386    mmap                    sys_old_mmap                    compat_sys_ia32_mmap
+91      i386    munmap                  sys_munmap
+92      i386    truncate                sys_truncate                    compat_sys_truncate
+93      i386    ftruncate               sys_ftruncate                   compat_sys_ftruncate
+94      i386    fchmod                  sys_fchmod
+95      i386    fchown                  sys_fchown16
+96      i386    getpriority             sys_getpriority
+97      i386    setpriority             sys_setpriority
+98      i386    profil
+99      i386    statfs                  sys_statfs                      compat_sys_statfs
+100     i386    fstatfs                 sys_fstatfs                     compat_sys_fstatfs
+101     i386    ioperm                  sys_ioperm
+102     i386    socketcall              sys_socketcall                  compat_sys_socketcall
+103     i386    syslog                  sys_syslog
+104     i386    setitimer               sys_setitimer                   compat_sys_setitimer
+105     i386    getitimer               sys_getitimer                   compat_sys_getitimer
+106     i386    stat                    sys_newstat                     compat_sys_newstat
+107     i386    lstat                   sys_newlstat                    compat_sys_newlstat
+108     i386    fstat                   sys_newfstat                    compat_sys_newfstat
+109     i386    olduname                sys_uname
+110     i386    iopl                    sys_iopl
+111     i386    vhangup                 sys_vhangup
+112     i386    idle
+113     i386    vm86old                 sys_vm86old                     sys_ni_syscall
+114     i386    wait4                   sys_wait4                       compat_sys_wait4
+115     i386    swapoff                 sys_swapoff
+116     i386    sysinfo                 sys_sysinfo                     compat_sys_sysinfo
+117     i386    ipc                     sys_ipc                         compat_sys_ipc
+118     i386    fsync                   sys_fsync
+119     i386    sigreturn               sys_sigreturn                   compat_sys_sigreturn
+120     i386    clone                   sys_clone                       compat_sys_ia32_clone
+121     i386    setdomainname           sys_setdomainname
+122     i386    uname                   sys_newuname
+123     i386    modify_ldt              sys_modify_ldt
+124     i386    adjtimex                sys_adjtimex_time32
+125     i386    mprotect                sys_mprotect
+126     i386    sigprocmask             sys_sigprocmask                 compat_sys_sigprocmask
+127     i386    create_module
+128     i386    init_module             sys_init_module
+129     i386    delete_module           sys_delete_module
+130     i386    get_kernel_syms
+131     i386    quotactl                sys_quotactl
+132     i386    getpgid                 sys_getpgid
+133     i386    fchdir                  sys_fchdir
+134     i386    bdflush                 sys_ni_syscall
+135     i386    sysfs                   sys_sysfs
+136     i386    personality             sys_personality
+137     i386    afs_syscall
+138     i386    setfsuid                sys_setfsuid16
+139     i386    setfsgid                sys_setfsgid16
+140     i386    _llseek                 sys_llseek
+141     i386    getdents                sys_getdents                    compat_sys_getdents
+142     i386    _newselect              sys_select                      compat_sys_select
+143     i386    flock                   sys_flock
+144     i386    msync                   sys_msync
+145     i386    readv                   sys_readv
+146     i386    writev                  sys_writev
+147     i386    getsid                  sys_getsid
+148     i386    fdatasync               sys_fdatasync
+149     i386    _sysctl                 sys_ni_syscall
+150     i386    mlock                   sys_mlock
+151     i386    munlock                 sys_munlock
+152     i386    mlockall                sys_mlockall
+153     i386    munlockall              sys_munlockall
+154     i386    sched_setparam          sys_sched_setparam
+155     i386    sched_getparam          sys_sched_getparam
+156     i386    sched_setscheduler      sys_sched_setscheduler
+157     i386    sched_getscheduler      sys_sched_getscheduler
+158     i386    sched_yield             sys_sched_yield
+159     i386    sched_get_priority_max  sys_sched_get_priority_max
+160     i386    sched_get_priority_min  sys_sched_get_priority_min
+161     i386    sched_rr_get_interval   sys_sched_rr_get_interval_time32
+162     i386    nanosleep               sys_nanosleep_time32
+163     i386    mremap                  sys_mremap
+164     i386    setresuid               sys_setresuid16
+165     i386    getresuid               sys_getresuid16
+166     i386    vm86                    sys_vm86                        sys_ni_syscall
+167     i386    query_module
+168     i386    poll                    sys_poll
+169     i386    nfsservctl
+170     i386    setresgid               sys_setresgid16
+171     i386    getresgid               sys_getresgid16
+172     i386    prctl                   sys_prctl
+173     i386    rt_sigreturn            sys_rt_sigreturn                compat_sys_rt_sigreturn
+174     i386    rt_sigaction            sys_rt_sigaction                compat_sys_rt_sigaction
+175     i386    rt_sigprocmask          sys_rt_sigprocmask              compat_sys_rt_sigprocmask
+176     i386    rt_sigpending           sys_rt_sigpending               compat_sys_rt_sigpending
+177     i386    rt_sigtimedwait         sys_rt_sigtimedwait_time32      compat_sys_rt_sigtimedwait_time32
+178     i386    rt_sigqueueinfo         sys_rt_sigqueueinfo             compat_sys_rt_sigqueueinfo
+179     i386    rt_sigsuspend           sys_rt_sigsuspend               compat_sys_rt_sigsuspend
+180     i386    pread64                 sys_ia32_pread64
+181     i386    pwrite64                sys_ia32_pwrite64
+182     i386    chown                   sys_chown16
+183     i386    getcwd                  sys_getcwd
+184     i386    capget                  sys_capget
+185     i386    capset                  sys_capset
+186     i386    sigaltstack             sys_sigaltstack                 compat_sys_sigaltstack
+187     i386    sendfile                sys_sendfile                    compat_sys_sendfile
+188     i386    getpmsg
+189     i386    putpmsg
+190     i386    vfork                   sys_vfork
+191     i386    ugetrlimit              sys_getrlimit                   compat_sys_getrlimit
+192     i386    mmap2                   sys_mmap_pgoff
+193     i386    truncate64              sys_ia32_truncate64
+194     i386    ftruncate64             sys_ia32_ftruncate64
+195     i386    stat64                  sys_stat64                      compat_sys_ia32_stat64
+196     i386    lstat64                 sys_lstat64                     compat_sys_ia32_lstat64
+197     i386    fstat64                 sys_fstat64                     compat_sys_ia32_fstat64
+198     i386    lchown32                sys_lchown
+199     i386    getuid32                sys_getuid
+200     i386    getgid32                sys_getgid
+201     i386    geteuid32               sys_geteuid
+202     i386    getegid32               sys_getegid
+203     i386    setreuid32              sys_setreuid
+204     i386    setregid32              sys_setregid
+205     i386    getgroups32             sys_getgroups
+206     i386    setgroups32             sys_setgroups
+207     i386    fchown32                sys_fchown
+208     i386    setresuid32             sys_setresuid
+209     i386    getresuid32             sys_getresuid
+210     i386    setresgid32             sys_setresgid
+211     i386    getresgid32             sys_getresgid
+212     i386    chown32                 sys_chown
+213     i386    setuid32                sys_setuid
+214     i386    setgid32                sys_setgid
+215     i386    setfsuid32              sys_setfsuid
+216     i386    setfsgid32              sys_setfsgid
+217     i386    pivot_root              sys_pivot_root
+218     i386    mincore                 sys_mincore
+219     i386    madvise                 sys_madvise
+220     i386    getdents64              sys_getdents64
+221     i386    fcntl64                 sys_fcntl64                     compat_sys_fcntl64
+# 222 is unused
+# 223 is unused
+224     i386    gettid                  sys_gettid
+225     i386    readahead               sys_ia32_readahead
+226     i386    setxattr                sys_setxattr
+227     i386    lsetxattr               sys_lsetxattr
+228     i386    fsetxattr               sys_fsetxattr
+229     i386    getxattr                sys_getxattr
+230     i386    lgetxattr               sys_lgetxattr
+231     i386    fgetxattr               sys_fgetxattr
+232     i386    listxattr               sys_listxattr
+233     i386    llistxattr              sys_llistxattr
+234     i386    flistxattr              sys_flistxattr
+235     i386    removexattr             sys_removexattr
+236     i386    lremovexattr            sys_lremovexattr
+237     i386    fremovexattr            sys_fremovexattr
+238     i386    tkill                   sys_tkill
+239     i386    sendfile64              sys_sendfile64
+240     i386    futex                   sys_futex_time32
+241     i386    sched_setaffinity       sys_sched_setaffinity           compat_sys_sched_setaffinity
+242     i386    sched_getaffinity       sys_sched_getaffinity           compat_sys_sched_getaffinity
+243     i386    set_thread_area         sys_set_thread_area
+244     i386    get_thread_area         sys_get_thread_area
+245     i386    io_setup                sys_io_setup                    compat_sys_io_setup
+246     i386    io_destroy              sys_io_destroy
+247     i386    io_getevents            sys_io_getevents_time32
+248     i386    io_submit               sys_io_submit                   compat_sys_io_submit
+249     i386    io_cancel               sys_io_cancel
+250     i386    fadvise64               sys_ia32_fadvise64
+# 251 is available for reuse (was briefly sys_set_zone_reclaim)
+252     i386    exit_group              sys_exit_group
+253     i386    lookup_dcookie          sys_lookup_dcookie              compat_sys_lookup_dcookie
+254     i386    epoll_create            sys_epoll_create
+255     i386    epoll_ctl               sys_epoll_ctl
+256     i386    epoll_wait              sys_epoll_wait
+257     i386    remap_file_pages        sys_remap_file_pages
+258     i386    set_tid_address         sys_set_tid_address
+259     i386    timer_create            sys_timer_create                compat_sys_timer_create
+260     i386    timer_settime           sys_timer_settime32
+261     i386    timer_gettime           sys_timer_gettime32
+262     i386    timer_getoverrun        sys_timer_getoverrun
+263     i386    timer_delete            sys_timer_delete
+264     i386    clock_settime           sys_clock_settime32
+265     i386    clock_gettime           sys_clock_gettime32
+266     i386    clock_getres            sys_clock_getres_time32
+267     i386    clock_nanosleep         sys_clock_nanosleep_time32
+268     i386    statfs64                sys_statfs64                    compat_sys_statfs64
+269     i386    fstatfs64               sys_fstatfs64                   compat_sys_fstatfs64
+270     i386    tgkill                  sys_tgkill
+271     i386    utimes                  sys_utimes_time32
+272     i386    fadvise64_64            sys_ia32_fadvise64_64
+273     i386    vserver
+274     i386    mbind                   sys_mbind
+275     i386    get_mempolicy           sys_get_mempolicy
+276     i386    set_mempolicy           sys_set_mempolicy
+277     i386    mq_open                 sys_mq_open                     compat_sys_mq_open
+278     i386    mq_unlink               sys_mq_unlink
+279     i386    mq_timedsend            sys_mq_timedsend_time32
+280     i386    mq_timedreceive         sys_mq_timedreceive_time32
+281     i386    mq_notify               sys_mq_notify                   compat_sys_mq_notify
+282     i386    mq_getsetattr           sys_mq_getsetattr               compat_sys_mq_getsetattr
+283     i386    kexec_load              sys_kexec_load                  compat_sys_kexec_load
+284     i386    waitid                  sys_waitid                      compat_sys_waitid
+# 285 sys_setaltroot
+286     i386    add_key                 sys_add_key
+287     i386    request_key             sys_request_key
+288     i386    keyctl                  sys_keyctl                      compat_sys_keyctl
+289     i386    ioprio_set              sys_ioprio_set
+290     i386    ioprio_get              sys_ioprio_get
+291     i386    inotify_init            sys_inotify_init
+292     i386    inotify_add_watch       sys_inotify_add_watch
+293     i386    inotify_rm_watch        sys_inotify_rm_watch
+294     i386    migrate_pages           sys_migrate_pages
+295     i386    openat                  sys_openat                      compat_sys_openat
+296     i386    mkdirat                 sys_mkdirat
+297     i386    mknodat                 sys_mknodat
+298     i386    fchownat                sys_fchownat
+299     i386    futimesat               sys_futimesat_time32
+300     i386    fstatat64               sys_fstatat64                   compat_sys_ia32_fstatat64
+301     i386    unlinkat                sys_unlinkat
+302     i386    renameat                sys_renameat
+303     i386    linkat                  sys_linkat
+304     i386    symlinkat               sys_symlinkat
+305     i386    readlinkat              sys_readlinkat
+306     i386    fchmodat                sys_fchmodat
+307     i386    faccessat               sys_faccessat
+308     i386    pselect6                sys_pselect6_time32             compat_sys_pselect6_time32
+309     i386    ppoll                   sys_ppoll_time32                compat_sys_ppoll_time32
+310     i386    unshare                 sys_unshare
+311     i386    set_robust_list         sys_set_robust_list             compat_sys_set_robust_list
+312     i386    get_robust_list         sys_get_robust_list             compat_sys_get_robust_list
+313     i386    splice                  sys_splice
+314     i386    sync_file_range         sys_ia32_sync_file_range
+315     i386    tee                     sys_tee
+316     i386    vmsplice                sys_vmsplice
+317     i386    move_pages              sys_move_pages
+318     i386    getcpu                  sys_getcpu
+319     i386    epoll_pwait             sys_epoll_pwait
+320     i386    utimensat               sys_utimensat_time32
+321     i386    signalfd                sys_signalfd                    compat_sys_signalfd
+322     i386    timerfd_create          sys_timerfd_create
+323     i386    eventfd                 sys_eventfd
+324     i386    fallocate               sys_ia32_fallocate
+325     i386    timerfd_settime         sys_timerfd_settime32
+326     i386    timerfd_gettime         sys_timerfd_gettime32
+327     i386    signalfd4               sys_signalfd4                   compat_sys_signalfd4
+328     i386    eventfd2                sys_eventfd2
+329     i386    epoll_create1           sys_epoll_create1
+330     i386    dup3                    sys_dup3
+331     i386    pipe2                   sys_pipe2
+332     i386    inotify_init1           sys_inotify_init1
+333     i386    preadv                  sys_preadv                      compat_sys_preadv
+334     i386    pwritev                 sys_pwritev                     compat_sys_pwritev
+335     i386    rt_tgsigqueueinfo       sys_rt_tgsigqueueinfo           compat_sys_rt_tgsigqueueinfo
+336     i386    perf_event_open         sys_perf_event_open
+337     i386    recvmmsg                sys_recvmmsg_time32             compat_sys_recvmmsg_time32
+338     i386    fanotify_init           sys_fanotify_init
+339     i386    fanotify_mark           sys_fanotify_mark               compat_sys_fanotify_mark
+340     i386    prlimit64               sys_prlimit64
+341     i386    name_to_handle_at       sys_name_to_handle_at
+342     i386    open_by_handle_at       sys_open_by_handle_at           compat_sys_open_by_handle_at
+343     i386    clock_adjtime           sys_clock_adjtime32
+344     i386    syncfs                  sys_syncfs
+345     i386    sendmmsg                sys_sendmmsg                    compat_sys_sendmmsg
+346     i386    setns                   sys_setns
+347     i386    process_vm_readv        sys_process_vm_readv
+348     i386    process_vm_writev       sys_process_vm_writev
+349     i386    kcmp                    sys_kcmp
+350     i386    finit_module            sys_finit_module
+351     i386    sched_setattr           sys_sched_setattr
+352     i386    sched_getattr           sys_sched_getattr
+353     i386    renameat2               sys_renameat2
+354     i386    seccomp                 sys_seccomp
+355     i386    getrandom               sys_getrandom
+356     i386    memfd_create            sys_memfd_create
+357     i386    bpf                     sys_bpf
+358     i386    execveat                sys_execveat                    compat_sys_execveat
+359     i386    socket                  sys_socket
+360     i386    socketpair              sys_socketpair
+361     i386    bind                    sys_bind
+362     i386    connect                 sys_connect
+363     i386    listen                  sys_listen
+364     i386    accept4                 sys_accept4
+365     i386    getsockopt              sys_getsockopt                  sys_getsockopt
+366     i386    setsockopt              sys_setsockopt                  sys_setsockopt
+367     i386    getsockname             sys_getsockname
+368     i386    getpeername             sys_getpeername
+369     i386    sendto                  sys_sendto
+370     i386    sendmsg                 sys_sendmsg                     compat_sys_sendmsg
+371     i386    recvfrom                sys_recvfrom                    compat_sys_recvfrom
+372     i386    recvmsg                 sys_recvmsg                     compat_sys_recvmsg
+373     i386    shutdown                sys_shutdown
+374     i386    userfaultfd             sys_userfaultfd
+375     i386    membarrier              sys_membarrier
+376     i386    mlock2                  sys_mlock2
+377     i386    copy_file_range         sys_copy_file_range
+378     i386    preadv2                 sys_preadv2                     compat_sys_preadv2
+379     i386    pwritev2                sys_pwritev2                    compat_sys_pwritev2
+380     i386    pkey_mprotect           sys_pkey_mprotect
+381     i386    pkey_alloc              sys_pkey_alloc
+382     i386    pkey_free               sys_pkey_free
+383     i386    statx                   sys_statx
+384     i386    arch_prctl              sys_arch_prctl                  compat_sys_arch_prctl
+385     i386    io_pgetevents           sys_io_pgetevents_time32        compat_sys_io_pgetevents
+386     i386    rseq                    sys_rseq
+393     i386    semget                  sys_semget
+394     i386    semctl                  sys_semctl                      compat_sys_semctl
+395     i386    shmget                  sys_shmget
+396     i386    shmctl                  sys_shmctl                      compat_sys_shmctl
+397     i386    shmat                   sys_shmat                       compat_sys_shmat
+398     i386    shmdt                   sys_shmdt
+399     i386    msgget                  sys_msgget
+400     i386    msgsnd                  sys_msgsnd                      compat_sys_msgsnd
+401     i386    msgrcv                  sys_msgrcv                      compat_sys_msgrcv
+402     i386    msgctl                  sys_msgctl                      compat_sys_msgctl
+403     i386    clock_gettime64         sys_clock_gettime
+404     i386    clock_settime64         sys_clock_settime
+405     i386    clock_adjtime64         sys_clock_adjtime
+406     i386    clock_getres_time64     sys_clock_getres
+407     i386    clock_nanosleep_time64  sys_clock_nanosleep
+408     i386    timer_gettime64         sys_timer_gettime
+409     i386    timer_settime64         sys_timer_settime
+410     i386    timerfd_gettime64       sys_timerfd_gettime
+411     i386    timerfd_settime64       sys_timerfd_settime
+412     i386    utimensat_time64        sys_utimensat
+413     i386    pselect6_time64         sys_pselect6                    compat_sys_pselect6_time64
+414     i386    ppoll_time64            sys_ppoll                       compat_sys_ppoll_time64
+416     i386    io_pgetevents_time64    sys_io_pgetevents
+417     i386    recvmmsg_time64         sys_recvmmsg                    compat_sys_recvmmsg_time64
+418     i386    mq_timedsend_time64     sys_mq_timedsend
+419     i386    mq_timedreceive_time64  sys_mq_timedreceive
+420     i386    semtimedop_time64       sys_semtimedop
+421     i386    rt_sigtimedwait_time64  sys_rt_sigtimedwait             compat_sys_rt_sigtimedwait_time64
+422     i386    futex_time64            sys_futex
+423     i386    sched_rr_get_interval_time64    sys_sched_rr_get_interval
+424     i386    pidfd_send_signal       sys_pidfd_send_signal
+425     i386    io_uring_setup          sys_io_uring_setup
+426     i386    io_uring_enter          sys_io_uring_enter
+427     i386    io_uring_register       sys_io_uring_register
+428     i386    open_tree               sys_open_tree
+429     i386    move_mount              sys_move_mount
+430     i386    fsopen                  sys_fsopen
+431     i386    fsconfig                sys_fsconfig
+432     i386    fsmount                 sys_fsmount
+433     i386    fspick                  sys_fspick
+434     i386    pidfd_open              sys_pidfd_open
+435     i386    clone3                  sys_clone3
+436     i386    close_range             sys_close_range
+437     i386    openat2                 sys_openat2
+438     i386    pidfd_getfd             sys_pidfd_getfd
+439     i386    faccessat2              sys_faccessat2
+440     i386    process_madvise         sys_process_madvise
+441     i386    epoll_pwait2            sys_epoll_pwait2                compat_sys_epoll_pwait2
+442     i386    mount_setattr           sys_mount_setattr
+443     i386    quotactl_fd             sys_quotactl_fd
+444     i386    landlock_create_ruleset sys_landlock_create_ruleset
+445     i386    landlock_add_rule       sys_landlock_add_rule
+446     i386    landlock_restrict_self  sys_landlock_restrict_self
+447     i386    memfd_secret            sys_memfd_secret
+448     i386    process_mrelease        sys_process_mrelease
+449     i386    futex_waitv             sys_futex_waitv
+450     i386    set_mempolicy_home_node         sys_set_mempolicy_home_node
+"""
 
 
 # ARM64
-# - arch/arm64/include/asm/unistd.h
-# - arch/arm64/include/uapi/asm/unistd.h
-# - include/uapi/asm-generic/unistd.h
-arm64_syscall_list = [
-    [0x000, 'io_setup', ['unsigned nr_events', 'aio_context_t *ctxp']],
-    [0x001, 'io_destroy', ['aio_context_t ctx']],
-    [0x002, 'io_submit', ['aio_context_t ctx_id', 'long nr', 'struct iocb **iocbpp']],
-    [0x003, 'io_cancel', ['aio_context_t ctx_id', 'struct iocb *iocb', 'struct io_event *result']],
-    [0x004, 'io_getevents', ['aio_context_t ctx_id', 'long min_nr', 'long nr', 'struct io_event *events', 'struct __kernel_timespec *timeout']],
-    [0x005, 'setxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-    [0x006, 'lsetxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-    [0x007, 'fsetxattr', ['int fd', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-    [0x008, 'getxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
-    [0x009, 'lgetxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
-    [0x00a, 'fgetxattr', ['int fd', 'const char *name', 'void *value', 'size_t size']],
-    [0x00b, 'listxattr', ['const char *pathname', 'char *list', 'size_t size']],
-    [0x00c, 'llistxattr', ['const char *pathname', 'char *list', 'size_t size']],
-    [0x00d, 'flistxattr', ['int fd', 'char *list', 'size_t size']],
-    [0x00e, 'removexattr', ['const char *pathname', 'const char *name']],
-    [0x00f, 'lremovexattr', ['const char *pathname', 'const char *name']],
-    [0x010, 'fremovexattr', ['int fd', 'const char *name']],
-    [0x011, 'getcwd', ['char *buf', 'unsigned long size']],
-    [0x012, 'lookup_dcookie', ['u64 cookie64', 'char *buf', 'size_t len']],
-    [0x013, 'eventfd2', ['unsigned int count', 'int flags']],
-    [0x014, 'epoll_create1', ['int flags']],
-    [0x015, 'epoll_ctl', ['int epfd', 'int op', 'int fd', 'struct epoll_event *event']],
-    [0x016, 'epoll_pwait', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'int timeout', 'const sigset_t *sigmask', 'size_t sigsetsize']],
-    [0x017, 'dup', ['unsigned int fildes']],
-    [0x018, 'dup3', ['unsigned int oldfd', 'unsigned int newfd', 'int flags']],
-    [0x019, 'fcntl', ['unsigned int fd', 'unsigned int cmd', 'unsigned long arg']],
-    [0x01a, 'inotify_init1', ['int flags']],
-    [0x01b, 'inotify_add_watch', ['int fd', 'const char *pathname', 'u32 mask']],
-    [0x01c, 'inotify_rm_watch', ['int fd', '__s32 wd']],
-    [0x01d, 'ioctl', ['unsigned int fd', 'unsigned int cmd', 'unsigned long arg']],
-    [0x01e, 'ioprio_set', ['int which', 'int who', 'int ioprio']],
-    [0x01f, 'ioprio_get', ['int which', 'int who']],
-    [0x020, 'flock', ['unsigned int fd', 'unsigned int cmd']],
-    [0x021, 'mknodat', ['int dfd', 'const char *filename', 'umode_t mode', 'unsigned int dev']],
-    [0x022, 'mkdirat', ['int dfd', 'const char *pathname', 'umode_t mode']],
-    [0x023, 'unlinkat', ['int dfd', 'const char *pathname', 'int flag']],
-    [0x024, 'symlinkat', ['const char *oldname', 'int newdfd', 'const char *newname']],
-    [0x025, 'linkat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'int flags']],
-    [0x026, 'renameat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname']],
-    [0x027, 'umount2', ['char *name', 'int flags']],
-    [0x028, 'mount', ['char *dev_name', 'char *dir_name', 'char *type', 'unsigned long flags', 'void *data']],
-    [0x029, 'pivot_root', ['const char *new_root', 'const char *put_old']],
-    #0x02a, nfsservctl # deleted from kernel 3.1
-    [0x02b, 'statfs', ['const char *pathname', 'struct statfs *buf']],
-    [0x02c, 'fstatfs', ['unsigned int fd', 'struct statfs *buf']],
-    [0x02d, 'truncate', ['const char *path', 'long length']],
-    [0x02e, 'ftruncate', ['unsigned int fd', 'unsigned long length']],
-    [0x02f, 'fallocate', ['int fd', 'int mode', 'loff_t offset', 'loff_t len']],
-    [0x030, 'faccessat', ['int dfd', 'const char *filename', 'int mode']],
-    [0x031, 'chdir', ['const char *filename']],
-    [0x032, 'fchdir', ['unsigned int fd']],
-    [0x033, 'chroot', ['const char *filename']],
-    [0x034, 'fchmod', ['unsigned int fd', 'umode_t mode']],
-    [0x035, 'fchmodat', ['int dfd', 'const char *filename', 'umode_t mode']],
-    [0x036, 'fchownat', ['int dfd', 'const char *filename', 'uid_t user', 'gid_t group', 'int flag']],
-    [0x037, 'fchown', ['unsigned int fd', 'uid_t user', 'gid_t group']],
-    [0x038, 'openat', ['int dfd', 'const char *filename', 'int flags', 'umode_t mode']],
-    [0x039, 'close', ['unsigned int fd']],
-    [0x03a, 'vhangup', []],
-    [0x03b, 'pipe2', ['int *fildes', 'int flags']],
-    [0x03c, 'quotactl', ['unsigned int cmd', 'const char *special', 'qid_t id', 'void *addr']],
-    [0x03d, 'getdents64', ['unsigned int fd', 'struct linux_dirent64 *dirent', 'unsigned int count']],
-    [0x03e, 'lseek', ['unsigned int fd', 'off_t offset', 'unsigned int whence']],
-    [0x03f, 'read', ['unsigned int fd', 'char *buf', 'size_t count']],
-    [0x040, 'write', ['unsigned int fd', 'const char *buf', 'size_t count']],
-    [0x041, 'readv', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen']],
-    [0x042, 'writev', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen']],
-    [0x043, 'pread64', ['unsigned int fd', 'char *buf', 'size_t count', 'loff_t pos']],
-    [0x044, 'pwrite64', ['unsigned int fd', 'const char *buf', 'size_t count', 'loff_t pos']],
-    [0x045, 'preadv', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h']],
-    [0x046, 'pwritev', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h']],
-    [0x047, 'sendfile', ['int out_fd', 'int in_fd', 'off_t *offset', 'size_t count']], # sendfile64
-    [0x048, 'pselect6', ['int n', 'fd_set *inp', 'fd_set *outp', 'fd_set *exp', 'struct __kernel_timespec *tsp', 'void *sig']],
-    [0x049, 'ppoll', ['struct pollfd *ufds', 'unsigned int nfds', 'struct __kernel_timespec *tsp', 'const sigset_t *sigmask', 'size_t sigsetsize']],
-    [0x04a, 'signalfd4', ['int ufd', 'sigset_t *user_mask', 'size_t sizemask', 'int flags']],
-    [0x04b, 'vmsplice', ['int fd', 'const struct iovec *uiov', 'unsigned long nr_segs', 'unsigned int flags']],
-    [0x04c, 'splice', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
-    [0x04d, 'tee', ['int fdin', 'int fdout', 'size_t len', 'unsigned int flags']],
-    [0x04e, 'readlinkat', ['int dfd', 'const char *pathname', 'char *buf', 'int bufsiz']],
-    [0x04f, 'fstatat', ['int dfd', 'const char *filename', 'struct stat *statbuf', 'int flag']], # newfstatat
-    [0x050, 'fstat', ['unsigned int fd', 'struct stat *statbuf']], # newfstat
-    [0x051, 'sync', []],
-    [0x052, 'fsync', ['unsigned int fd']],
-    [0x053, 'fdatasync', ['unsigned int fd']],
-    [0x054, 'sync_file_range', ['int fd', 'loff_t offset', 'loff_t nbytes', 'unsigned int flags']], # sync_file_range2 is unimplemented
-    [0x055, 'timerfd_create', ['int clockid', 'int flags']],
-    [0x056, 'timerfd_settime', ['int ufd', 'int flags', 'const struct __kernel_itimerspec *utmr', 'struct __kernel_itimerspec *otmr']],
-    [0x057, 'timerfd_gettime', ['int ufd', 'struct __kernel_itimerspec *otmr']],
-    [0x058, 'utimensat', ['int dfd', 'const char *filename', 'struct __kernel_timespec *utimes', 'int flags']],
-    [0x059, 'acct', ['const char *name']],
-    [0x05a, 'capget', ['cap_user_header_t header', 'cap_user_data_t dataptr']],
-    [0x05b, 'capset', ['cap_user_header_t header', 'const cap_user_data_t data']],
-    [0x05c, 'personality', ['unsigned int personality']],
-    [0x05d, 'exit', ['int error_code']],
-    [0x05e, 'exit_group', ['int error_code']],
-    [0x05f, 'waitid', ['int which', 'pid_t upid', 'struct siginfo *infop', 'int options', 'struct rusage *ru']],
-    [0x060, 'set_tid_address', ['int *tidptr']],
-    [0x061, 'unshare', ['unsigned long unshare_flags']],
-    [0x062, 'futex', ['u32 *uaddr', 'int op', 'u32 val', 'struct __kernel_timespec *utime', 'u32 *uaddr2', 'u32 val3']],
-    [0x063, 'set_robust_list', ['struct robust_list_head *head', 'size_t len']],
-    [0x064, 'get_robust_list', ['int pid', 'struct robust_list_head **head_ptr', 'size_t *len_ptr']],
-    [0x065, 'nanosleep', ['struct __kernel_timespec *rqtp', 'struct __kernel_timespec *rmtp']],
-    [0x066, 'getitimer', ['int which', 'struct __kernel_old_itimerval *value']],
-    [0x067, 'setitimer', ['int which', 'struct __kernel_old_itimerval *value', 'struct __kernel_old_itimerval *ovalue']],
-    [0x068, 'kexec_load', ['unsigned long entry', 'unsigned long nr_segments', 'struct kexec_segment *segments', 'unsigned long flags']],
-    [0x069, 'init_module', ['void *umod', 'unsigned long len', 'const char *uargs']],
-    [0x06a, 'delete_module', ['const char *name_user', 'unsigned int flags']],
-    [0x06b, 'timer_create', ['clockid_t which_clock', 'struct sigevent *timer_event_spec', 'timer_t *created_timer_id']],
-    [0x06c, 'timer_gettime', ['timer_t timer_id', 'struct __kernel_itimerspec *setting']],
-    [0x06d, 'timer_getoverrun', ['timer_t timer_id']],
-    [0x06e, 'timer_settime', ['timer_t timer_id', 'int flags', 'const struct __kernel_itimerspec *new_setting', 'struct __kernel_itimerspec *old_setting']],
-    [0x06f, 'timer_delete', ['timer_t timer_id']],
-    [0x070, 'clock_settime', ['clockid_t which_clock', 'const struct __kernel_timespec *tp']],
-    [0x071, 'clock_gettime', ['clockid_t which_clock', 'struct __kernel_timespec *tp']],
-    [0x072, 'clock_getres', ['clockid_t which_clock', 'struct __kernel_timespec *tp']],
-    [0x073, 'clock_nanosleep', ['clockid_t which_clock', 'int flags', 'const struct __kernel_timespec *rqtp', 'struct __kernel_timespec *rmtp']],
-    [0x074, 'syslog', ['int type', 'char *buf', 'int len']],
-    [0x075, 'ptrace', ['long request', 'long pid', 'unsigned long addr', 'unsigned long data']],
-    [0x076, 'sched_setparam', ['pid_t pid', 'struct sched_param *param']],
-    [0x077, 'sched_setscheduler', ['pid_t pid', 'int policy', 'struct sched_param *param']],
-    [0x078, 'sched_getscheduler', ['pid_t pid']],
-    [0x079, 'sched_getparam', ['pid_t pid', 'struct sched_param *param']],
-    [0x07a, 'sched_setaffinity', ['pid_t pid', 'unsigned int len', 'unsigned long *user_mask_ptr']],
-    [0x07b, 'sched_getaffinity', ['pid_t pid', 'unsigned int len', 'unsigned long *user_mask_ptr']],
-    [0x07c, 'sched_yield', []],
-    [0x07d, 'sched_get_priority_max', ['int policy']],
-    [0x07e, 'sched_get_priority_min', ['int policy']],
-    [0x07f, 'sched_rr_get_interval', ['pid_t pid', 'struct __kernel_timespec *interval']],
-    [0x080, 'restart_syscall', []],
-    [0x081, 'kill', ['pid_t pid', 'int sig']],
-    [0x082, 'tkill', ['pid_t pid', 'int sig']],
-    [0x083, 'tgkill', ['pid_t tgid', 'pid_t pid', 'int sig']],
-    [0x084, 'sigaltstack', ['const stack_t *uss', 'stack_t *uoss']],
-    [0x085, 'rt_sigsuspend', ['sigset_t *unewset', 'size_t sigsetsize']],
-    [0x086, 'rt_sigaction', ['int sig', 'const struct sigaction *act', 'struct sigaction *oact', 'size_t sigsetsize']],
-    [0x087, 'rt_sigprocmask', ['int how', 'sigset_t *nset', 'sigset_t *oset', 'size_t sigsetsize']],
-    [0x088, 'rt_sigpending', ['sigset_t *uset', 'size_t sigsetsize']],
-    [0x089, 'rt_sigtimedwait', ['const sigset_t *uthese', 'siginfo_t *uinfo', 'const struct __kernel_timespec *uts', 'size_t sigsetsize']],
-    [0x08a, 'rt_sigqueueinfo', ['pid_t pid', 'int sig', 'siginfo_t *uinfo']],
-    [0x08b, 'rt_sigreturn', []],
-    [0x08c, 'setpriority', ['int which', 'int who', 'int niceval']],
-    [0x08d, 'getpriority', ['int which', 'int who']],
-    [0x08e, 'reboot', ['int magic1', 'int magic2', 'unsigned int cmd', 'void *arg']],
-    [0x08f, 'setregid', ['gid_t rgid', 'gid_t egid']],
-    [0x090, 'setgid', ['gid_t gid']],
-    [0x091, 'setreuid', ['uid_t ruid', 'uid_t euid']],
-    [0x092, 'setuid', ['uid_t uid']],
-    [0x093, 'setresuid', ['uid_t ruid', 'uid_t euid', 'uid_t suid']],
-    [0x094, 'getresuid', ['uid_t *ruidp', 'uid_t *euidp', 'uid_t *suidp']],
-    [0x095, 'setresgid', ['gid_t rgid', 'gid_t egid', 'gid_t sgid']],
-    [0x096, 'getresgid', ['gid_t *rgidp', 'gid_t *egidp', 'gid_t *sgidp']],
-    [0x097, 'setfsuid', ['uid_t uid']],
-    [0x098, 'setfsgid', ['gid_t gid']],
-    [0x099, 'times', ['struct tms *tbuf']],
-    [0x09a, 'setpgid', ['pid_t pid', 'pid_t pgid']],
-    [0x09b, 'getpgid', ['pid_t pid']],
-    [0x09c, 'getsid', ['pid_t pid']],
-    [0x09d, 'setsid', []],
-    [0x09e, 'getgroups', ['int gidsetsize', 'gid_t *grouplist']],
-    [0x09f, 'setgroups', ['int gidsetsize', 'gid_t *grouplist']],
-    [0x0a0, 'uname', ['struct new_utsname *name']], # newuname
-    [0x0a1, 'sethostname', ['char *name', 'int len']],
-    [0x0a2, 'setdomainname', ['char *name', 'int len']],
-    [0x0a3, 'getrlimit', ['unsigned int resource', 'struct rlimit *rlim']],
-    [0x0a4, 'setrlimit', ['unsigned int resource', 'struct rlimit *rlim']],
-    [0x0a5, 'getrusage', ['int who', 'struct rusage *ru']],
-    [0x0a6, 'umask', ['int mask']],
-    [0x0a7, 'prctl', ['int option', 'unsigned long arg2', 'unsigned long arg3', 'unsigned long arg4', 'unsigned long arg5']],
-    [0x0a8, 'getcpu', ['unsigned *cpup', 'unsigned *nodep', 'struct getcpu_cache *unused']],
-    [0x0a9, 'gettimeofday', ['struct __kernel_old_timeval *tv', 'struct timezone *tz']],
-    [0x0aa, 'settimeofday', ['struct __kernel_old_timeval *tv', 'struct timezone *tz']],
-    [0x0ab, 'adjtimex', ['struct __kernel_timex *txc_p']],
-    [0x0ac, 'getpid', []],
-    [0x0ad, 'getppid', []],
-    [0x0ae, 'getuid', []],
-    [0x0af, 'geteuid', []],
-    [0x0b0, 'getgid', []],
-    [0x0b1, 'getegid', []],
-    [0x0b2, 'gettid', []],
-    [0x0b3, 'sysinfo', ['struct sysinfo *info']],
-    [0x0b4, 'mq_open', ['const char *u_name', 'int oflag', 'umode_t mode', 'struct mq_attr *u_attr']],
-    [0x0b5, 'mq_unlink', ['const char *u_name']],
-    [0x0b6, 'mq_timedsend', ['mqd_t mqdes', 'const char *u_msg_ptr', 'size_t msg_len', 'unsigned int msg_prio', 'const struct __kernel_timespec *u_abs_timeout']],
-    [0x0b7, 'mq_timedreceive', ['mqd_t mqdes', 'char *u_msg_ptr', 'size_t msg_len', 'unsigned int *msg_prio', 'const struct __kernel_timespec *u_abs_timeout']],
-    [0x0b8, 'mq_notify', ['mqd_t mqdes', 'const struct sigevent *u_notification']],
-    [0x0b9, 'mq_getsetattr', ['mqd_t mqdes', 'const struct mq_attr *u_mqstat', 'struct mq_attr *u_omqstat']],
-    [0x0ba, 'msgget', ['key_t key', 'int msgflg']],
-    [0x0bb, 'msgctl', ['int msqid', 'int cmd', 'struct msqid_ds *buf']],
-    [0x0bc, 'msgrcv', ['int msqid', 'struct msgbuf *msgp', 'size_t msgsz', 'long msgtyp', 'int msgflg']],
-    [0x0bd, 'msgsnd', ['int msqid', 'struct msgbuf *msgp', 'size_t msgsz', 'int msgflg']],
-    [0x0be, 'semget', ['key_t key', 'int nsems', 'int semflg']],
-    [0x0bf, 'semctl', ['int semid', 'int semnum', 'int cmd', 'unsigned long arg']],
-    [0x0c0, 'semtimedop', ['int semid', 'struct sembuf *tsops', 'unsigned int nsops', 'const struct __kernel_timespec *timeout']],
-    [0x0c1, 'semop', ['int semid', 'struct sembuf *tsops', 'unsigned nsops']],
-    [0x0c2, 'shmget', ['key_t key', 'size_t size', 'int shmflg']],
-    [0x0c3, 'shmctl', ['int shmid', 'int cmd', 'struct shmid_ds *buf']],
-    [0x0c4, 'shmat', ['int shmid', 'char *shmaddr', 'int shmflg']],
-    [0x0c5, 'shmdt', ['char *shmaddr']],
-    [0x0c6, 'socket', ['int family', 'int type', 'int protocol']],
-    [0x0c7, 'socketpair', ['int family', 'int type', 'int protocol', 'int *usockvec']],
-    [0x0c8, 'bind', ['int fd', 'struct sockaddr *umyaddr', 'int addrlen']],
-    [0x0c9, 'listen', ['int fd', 'int backlog']],
-    [0x0ca, 'accept', ['int fd', 'struct sockaddr *upeer_sockaddr', 'int *upeer_addrlen']],
-    [0x0cb, 'connect', ['int fd', 'struct sockaddr *uservaddr', 'int addrlen']],
-    [0x0cc, 'getsockname', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
-    [0x0cd, 'getpeername', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
-    [0x0ce, 'sendto', ['int fd', 'void *buff', 'size_t len', 'unsigned int flags', 'struct sockaddr *addr', 'int addr_len']],
-    [0x0cf, 'recvfrom', ['int fd', 'void *ubuf', 'size_t size', 'unsigned int flags', 'struct sockaddr *addr', 'int *addr_len']],
-    [0x0d0, 'setsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int optlen']],
-    [0x0d1, 'getsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int *optlen']],
-    [0x0d2, 'shutdown', ['int fd', 'int how']],
-    [0x0d3, 'sendmsg', ['int fd', 'struct user_msghdr *msg', 'unsigned int flags']],
-    [0x0d4, 'recvmsg', ['int fd', 'struct user_msghdr *msg', 'unsigned int flags']],
-    [0x0d5, 'readahead', ['int fd', 'loff_t offset', 'size_t count']],
-    [0x0d6, 'brk', ['unsigned long brk']],
-    [0x0d7, 'munmap', ['unsigned long addr', 'size_t len']],
-    [0x0d8, 'mremap', ['unsigned long addr', 'unsigned long old_len', 'unsigned long new_len', 'unsigned long flags', 'unsigned long new_addr']],
-    [0x0d9, 'add_key', ['const char *_type', 'const char *_description', 'const void *_payload', 'size_t plen', 'key_serial_t ringid']],
-    [0x0da, 'request_key', ['const char *_type', 'const char *_description', 'const char *_callout_info', 'key_serial_t destringid']],
-    [0x0db, 'keyctl', ['int option', 'unsigned long arg2', 'unsigned long arg3', 'unsigned long arg4', 'unsigned long arg5']],
-    [0x0dc, 'clone', ['unsigned long clone_flags', 'unsigned long newsp', 'int *parent_tidptr', 'unsigned long tls', 'int *child_tidptr']],
-    [0x0dd, 'execve', ['const char *filename', 'const char *const *argv', 'const char *const *envp']],
-    [0x0de, 'mmap', ['unsigned long addr', 'unsigned long len', 'unsigned long prot', 'unsigned long flags', 'unsigned long fd', 'unsigned long off']],
-    [0x0df, 'fadvise64', ['int fd', 'loff_t offset', 'loff_t len', 'int advice']], # fadvise64_64
-    [0x0e0, 'swapon', ['const char *specialfile', 'int swap_flags']],
-    [0x0e1, 'swapoff', ['const char *specialfile']],
-    [0x0e2, 'mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot']],
-    [0x0e3, 'msync', ['unsigned long start', 'size_t len', 'int flags']],
-    [0x0e4, 'mlock', ['unsigned long start', 'size_t len']],
-    [0x0e5, 'munlock', ['unsigned long start', 'size_t len']],
-    [0x0e6, 'mlockall', ['int flags']],
-    [0x0e7, 'munlockall', []],
-    [0x0e8, 'mincore', ['unsigned long start', 'size_t len', 'unsigned char *vec']],
-    [0x0e9, 'madvise', ['unsigned long start', 'size_t len_in', 'int behavior']],
-    [0x0ea, 'remap_file_pages', ['unsigned long start', 'unsigned long size', 'unsigned long prot', 'unsigned long pgoff', 'unsigned long flags']],
-    [0x0eb, 'mbind', ['unsigned long start', 'unsigned long len', 'unsigned long mode', 'const unsigned long *nmask', 'unsigned long maxnode', 'unsigned flags']],
-    [0x0ec, 'get_mempolicy', ['int *policy', 'unsigned long *nmask', 'unsigned long maxnode', 'unsigned long addr', 'unsigned long flags']],
-    [0x0ed, 'set_mempolicy', ['int mode', 'const unsigned long *nmask', 'unsigned long maxnode']],
-    [0x0ee, 'migrate_pages', ['pid_t pid', 'unsigned long maxnode', 'const unsigned long *old_nodes', 'const unsigned long *new_nodes']],
-    [0x0ef, 'move_pages', ['pid_t pid', 'unsigned long nr_pages', 'const void **pages', 'const int *nodes', 'int *status', 'int flags']],
-    [0x0f0, 'rt_tgsigqueueinfo', ['pid_t tgid', 'pid_t pid', 'int sig', 'siginfo_t *uinfo']],
-    [0x0f1, 'perf_event_open', ['struct perf_event_attr *attr_uptr', 'pid_t pid', 'int cpu', 'int group_fd', 'unsigned long flags']],
-    [0x0f2, 'accept4', ['int fd', 'struct sockaddr *upeer_sockaddr', 'int *upeer_addrlen', 'int flags']],
-    [0x0f3, 'recvmmsg', ['int fd', 'struct mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags', 'struct __kernel_timespec *timeout']],
-    [0x0f4, 'arch_specific_syscall', []],
-    #0x0f5-0x103, unused
-    [0x104, 'wait4', ['pid_t upid', 'int *stat_addr', 'int options', 'struct rusage *ru']],
-    [0x105, 'prlimit64', ['pid_t pid', 'unsigned int resource', 'const struct rlimit64 *new_rlim', 'struct rlimit64 *old_rlim']],
-    [0x106, 'fanotify_init', ['unsigned int flags', 'unsigned int event_f_flags']],
-    [0x107, 'fanotify_mark', ['int fanotify_fd', 'unsigned int flags', '__u64 mask', 'int dfd', 'const char *pathname']],
-    [0x108, 'name_to_handle_at', ['int dfd', 'const char *name', 'struct file_handle *handle', 'int *mnt_id', 'int flag']],
-    [0x109, 'open_by_handle_at', ['int mountdirfd', 'struct file_handle *handle', 'int flags']],
-    [0x10a, 'clock_adjtime', ['clockid_t which_clock', 'struct __kernel_timex *tx']],
-    [0x10b, 'syncfs', ['int fd']],
-    [0x10c, 'setns', ['int fd', 'int flags']],
-    [0x10d, 'sendmmsg', ['int fd', 'struct mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags']],
-    [0x10e, 'process_vm_readv', ['pid_t pid', 'const struct iovec *lvec', 'unsigned long liovcnt', 'const struct iovec *rvec', 'unsigned long riovcnt', 'unsigned long flags']],
-    [0x10f, 'process_vm_writev', ['pid_t pid', 'const struct iovec *lvec', 'unsigned long liovcnt', 'const struct iovec *rvec', 'unsigned long riovcnt', 'unsigned long flags']],
-    [0x110, 'kcmp', ['pid_t pid1', 'pid_t pid2', 'int type', 'unsigned long idx1', 'unsigned long idx2']],
-    [0x111, 'finit_module', ['int fd', 'const char *uargs', 'int flags']],
-    [0x112, 'sched_setattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int flags']],
-    [0x113, 'sched_getattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int usize', 'unsigned int flags']],
-    [0x114, 'renameat2', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'unsigned int flags']],
-    [0x115, 'seccomp', ['unsigned int op', 'unsigned int flags', 'void *uargs']],
-    [0x116, 'getrandom', ['char *buf', 'size_t count', 'unsigned int flags']],
-    [0x117, 'memfd_create', ['const char *uname', 'unsigned int flags']],
-    [0x118, 'bpf', ['int cmd', 'union bpf_attr *uattr', 'unsigned int size']],
-    [0x119, 'execveat', ['int fd', 'const char *filename', 'const char *const *argv', 'const char *const *envp', 'int flags']],
-    [0x11a, 'userfaultfd', ['int flags']],
-    [0x11b, 'membarrier', ['int cmd', 'int flags']],
-    [0x11c, 'mlock2', ['unsigned long start', 'size_t len', 'int flags']],
-    [0x11d, 'copy_file_range', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
-    [0x11e, 'preadv2', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h', 'rwf_t flags']],
-    [0x11f, 'pwritev2', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h', 'rwf_t flags']],
-    [0x120, 'pkey_mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot', 'int pkey']],
-    [0x121, 'pkey_alloc', ['unsigned long flags', 'unsigned long init_val']],
-    [0x122, 'pkey_free', ['int pkey']],
-    [0x123, 'statx', ['int dfd', 'const char *filename', 'unsigned flags', 'unsigned int mask', 'struct statx *buffer']],
-    [0x124, 'io_pgetevents', ['aio_context_t ctx_id', 'long min_nr', 'long nr', 'struct io_event *events', 'struct __kernel_timespec *timeout', 'const struct __aio_sigset *usig']],
-    [0x125, 'rseq', ['struct rseq *rseq', 'u32 rseq_len', 'int flags', 'u32 sig']],
-    [0x126, 'kexec_file_load', ['int kernel_fd', 'int initrd_fd', 'unsigned long cmdline_len', 'const char *cmdline_ptr', 'unsigned long flags']],
-    #0x127-0x1a7, unused
-    [0x1a8, 'pidfd_send_signal', ['int pidfd', 'int sig', 'siginfo_t *info', 'unsigned int flags']],
-    [0x1a9, 'io_uring_setup', ['u32 entries', 'struct io_uring_params *params']],
-    [0x1aa, 'io_uring_enter', ['unsigned int fd', 'u32 to_submit', 'u32 min_complete', 'u32 flags', 'const sigset_t *sig', 'size_t sigsz']],
-    [0x1ab, 'io_uring_register', ['unsigned int fd', 'unsigned int opcode', 'void *arg', 'unsigned int nr_args']],
-    [0x1ac, 'open_tree', ['int dfd', 'const char *filename', 'unsigned flags']],
-    [0x1ad, 'move_mount', ['int from_dfd', 'const char *from_pathname', 'int to_dfd', 'const char *to_pathname', 'unsigned int flags']],
-    [0x1ae, 'fsopen', ['const char *_fs_name', 'unsigned int flags']],
-    [0x1af, 'fsconfig', ['int fd', 'unsigned int cmd', 'const char *_key', 'const void *_value', 'int aux']],
-    [0x1b0, 'fsmount', ['int fs_fd', 'unsigned int flags', 'unsigned int attr_flags']],
-    [0x1b1, 'fspick', ['int, dfd', 'const char *path', 'unsigned int flags']],
-    [0x1b2, 'pidfd_open', ['pid_t pid', 'unsigned int flags']],
-    [0x1b3, 'clone3', ['struct clone_args *uargs', 'size_t size']],
-    [0x1b4, 'close_range', ['unsigned int fd', 'unsigned int max_fd', 'unsigned int flag']],
-    [0x1b5, 'openat2', ['int dfd', 'const char *filename', 'struct open_how *how', 'size_t usize']],
-    [0x1b6, 'pidfd_getfd', ['int pidfd', 'int fd', 'unsigned int flags']],
-    [0x1b7, 'faccessat2', ['int dfd', 'const char *filename', 'int mode', 'int flags']],
-    [0x1b8, 'process_madvise', ['int pidfd', 'const struct iovec *vec', 'size_t vlen', 'int behavior', 'unsigned int flags']],
-    [0x1b9, 'epoll_pwait2', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'const struct __kernel_timespec *timeout', 'const sigset_t *sigmask', 'size_t sigsetsize']],
-    [0x1ba, 'mount_setattr', ['int dfd', 'const char *path', 'unsigned int flags', 'struct mount_attr *uattr', 'size_t usize']],
-    [0x1bb, 'quotactl_fd', ['unsigned int fd', 'unsigned int cmd', 'qid_t id', 'void __user *addr']],
-    [0x1bc, 'landlock_create_ruleset', ['const struct landlock_ruleset_attr *const attr', 'const size_t size', 'const __u32 flags']],
-    [0x1bd, 'landlock_add_rule', ['const int ruleset_fd', 'const enum landlock_rule_type rule_type', 'const void *const rule_attr', 'const __u32 flags']],
-    [0x1be, 'landlock_restrict_self', ['const int ruleset_fd', 'const __u32 flags']],
-    [0x1bf, 'memfd_secret', ['unsigned int, flags']],
-    [0x1c0, 'process_mrelease', ['int pidfd', 'unsigned int flags']],
-    [0x1c1, 'futex_waitv', ['struct futex_waitv *waiters', 'unsigned int nr_futexes', 'unsigned int flags', 'struct __kernel_timespec *timeout', 'clockid_t clockid']],
-    [0x1c2, 'set_mempolicy_home_node', ['unsigned long start', 'unsigned long len', 'unsigned long home_node', 'unsigned long flags']],
-]
+#
+# [How to make]
+# cd /path/to/linux-6.*/
+# gcc -I `pwd`/include/uapi/ -E -D__SYSCALL=SYSCALL arch/arm64/include/uapi/asm/unistd.h | grep ^SYSCALL | sed -e 's/SYSCALL(//;s/[,)]//g' > /tmp/a
+# grep -oP "__NR\S+\s+\d+$" include/uapi/asm-generic/unistd.h | grep -v __NR_sync_file_range2 > /tmp/b
+# join -2 2 -o 1.1,1.10,2.1,1.2 -e arm64 /tmp/a /tmp/b | sed -e 's/\(__NR_\|__NR3264_\)//g' | column -t
+#
+arm64_syscall_tbl = """
+0    arm64  io_setup                 sys_io_setup
+1    arm64  io_destroy               sys_io_destroy
+2    arm64  io_submit                sys_io_submit
+3    arm64  io_cancel                sys_io_cancel
+4    arm64  io_getevents             sys_io_getevents
+5    arm64  setxattr                 sys_setxattr
+6    arm64  lsetxattr                sys_lsetxattr
+7    arm64  fsetxattr                sys_fsetxattr
+8    arm64  getxattr                 sys_getxattr
+9    arm64  lgetxattr                sys_lgetxattr
+10   arm64  fgetxattr                sys_fgetxattr
+11   arm64  listxattr                sys_listxattr
+12   arm64  llistxattr               sys_llistxattr
+13   arm64  flistxattr               sys_flistxattr
+14   arm64  removexattr              sys_removexattr
+15   arm64  lremovexattr             sys_lremovexattr
+16   arm64  fremovexattr             sys_fremovexattr
+17   arm64  getcwd                   sys_getcwd
+18   arm64  lookup_dcookie           sys_lookup_dcookie
+19   arm64  eventfd2                 sys_eventfd2
+20   arm64  epoll_create1            sys_epoll_create1
+21   arm64  epoll_ctl                sys_epoll_ctl
+22   arm64  epoll_pwait              sys_epoll_pwait
+23   arm64  dup                      sys_dup
+24   arm64  dup3                     sys_dup3
+25   arm64  fcntl                    sys_fcntl
+26   arm64  inotify_init1            sys_inotify_init1
+27   arm64  inotify_add_watch        sys_inotify_add_watch
+28   arm64  inotify_rm_watch         sys_inotify_rm_watch
+29   arm64  ioctl                    sys_ioctl
+30   arm64  ioprio_set               sys_ioprio_set
+31   arm64  ioprio_get               sys_ioprio_get
+32   arm64  flock                    sys_flock
+33   arm64  mknodat                  sys_mknodat
+34   arm64  mkdirat                  sys_mkdirat
+35   arm64  unlinkat                 sys_unlinkat
+36   arm64  symlinkat                sys_symlinkat
+37   arm64  linkat                   sys_linkat
+38   arm64  renameat                 sys_renameat
+39   arm64  umount2                  sys_umount
+40   arm64  mount                    sys_mount
+41   arm64  pivot_root               sys_pivot_root
+42   arm64  nfsservctl               sys_ni_syscall
+43   arm64  statfs                   sys_statfs
+44   arm64  fstatfs                  sys_fstatfs
+45   arm64  truncate                 sys_truncate
+46   arm64  ftruncate                sys_ftruncate
+47   arm64  fallocate                sys_fallocate
+48   arm64  faccessat                sys_faccessat
+49   arm64  chdir                    sys_chdir
+50   arm64  fchdir                   sys_fchdir
+51   arm64  chroot                   sys_chroot
+52   arm64  fchmod                   sys_fchmod
+53   arm64  fchmodat                 sys_fchmodat
+54   arm64  fchownat                 sys_fchownat
+55   arm64  fchown                   sys_fchown
+56   arm64  openat                   sys_openat
+57   arm64  close                    sys_close
+58   arm64  vhangup                  sys_vhangup
+59   arm64  pipe2                    sys_pipe2
+60   arm64  quotactl                 sys_quotactl
+61   arm64  getdents64               sys_getdents64
+62   arm64  lseek                    sys_lseek
+63   arm64  read                     sys_read
+64   arm64  write                    sys_write
+65   arm64  readv                    sys_readv
+66   arm64  writev                   sys_writev
+67   arm64  pread64                  sys_pread64
+68   arm64  pwrite64                 sys_pwrite64
+69   arm64  preadv                   sys_preadv
+70   arm64  pwritev                  sys_pwritev
+71   arm64  sendfile                 sys_sendfile64
+72   arm64  pselect6                 sys_pselect6
+73   arm64  ppoll                    sys_ppoll
+74   arm64  signalfd4                sys_signalfd4
+75   arm64  vmsplice                 sys_vmsplice
+76   arm64  splice                   sys_splice
+77   arm64  tee                      sys_tee
+78   arm64  readlinkat               sys_readlinkat
+79   arm64  fstatat                  sys_newfstatat
+80   arm64  fstat                    sys_newfstat
+81   arm64  sync                     sys_sync
+82   arm64  fsync                    sys_fsync
+83   arm64  fdatasync                sys_fdatasync
+84   arm64  sync_file_range          sys_sync_file_range
+85   arm64  timerfd_create           sys_timerfd_create
+86   arm64  timerfd_settime          sys_timerfd_settime
+87   arm64  timerfd_gettime          sys_timerfd_gettime
+88   arm64  utimensat                sys_utimensat
+89   arm64  acct                     sys_acct
+90   arm64  capget                   sys_capget
+91   arm64  capset                   sys_capset
+92   arm64  personality              sys_personality
+93   arm64  exit                     sys_exit
+94   arm64  exit_group               sys_exit_group
+95   arm64  waitid                   sys_waitid
+96   arm64  set_tid_address          sys_set_tid_address
+97   arm64  unshare                  sys_unshare
+98   arm64  futex                    sys_futex
+99   arm64  set_robust_list          sys_set_robust_list
+100  arm64  get_robust_list          sys_get_robust_list
+101  arm64  nanosleep                sys_nanosleep
+102  arm64  getitimer                sys_getitimer
+103  arm64  setitimer                sys_setitimer
+104  arm64  kexec_load               sys_kexec_load
+105  arm64  init_module              sys_init_module
+106  arm64  delete_module            sys_delete_module
+107  arm64  timer_create             sys_timer_create
+108  arm64  timer_gettime            sys_timer_gettime
+109  arm64  timer_getoverrun         sys_timer_getoverrun
+110  arm64  timer_settime            sys_timer_settime
+111  arm64  timer_delete             sys_timer_delete
+112  arm64  clock_settime            sys_clock_settime
+113  arm64  clock_gettime            sys_clock_gettime
+114  arm64  clock_getres             sys_clock_getres
+115  arm64  clock_nanosleep          sys_clock_nanosleep
+116  arm64  syslog                   sys_syslog
+117  arm64  ptrace                   sys_ptrace
+118  arm64  sched_setparam           sys_sched_setparam
+119  arm64  sched_setscheduler       sys_sched_setscheduler
+120  arm64  sched_getscheduler       sys_sched_getscheduler
+121  arm64  sched_getparam           sys_sched_getparam
+122  arm64  sched_setaffinity        sys_sched_setaffinity
+123  arm64  sched_getaffinity        sys_sched_getaffinity
+124  arm64  sched_yield              sys_sched_yield
+125  arm64  sched_get_priority_max   sys_sched_get_priority_max
+126  arm64  sched_get_priority_min   sys_sched_get_priority_min
+127  arm64  sched_rr_get_interval    sys_sched_rr_get_interval
+128  arm64  restart_syscall          sys_restart_syscall
+129  arm64  kill                     sys_kill
+130  arm64  tkill                    sys_tkill
+131  arm64  tgkill                   sys_tgkill
+132  arm64  sigaltstack              sys_sigaltstack
+133  arm64  rt_sigsuspend            sys_rt_sigsuspend
+134  arm64  rt_sigaction             sys_rt_sigaction
+135  arm64  rt_sigprocmask           sys_rt_sigprocmask
+136  arm64  rt_sigpending            sys_rt_sigpending
+137  arm64  rt_sigtimedwait          sys_rt_sigtimedwait
+138  arm64  rt_sigqueueinfo          sys_rt_sigqueueinfo
+139  arm64  rt_sigreturn             sys_rt_sigreturn
+140  arm64  setpriority              sys_setpriority
+141  arm64  getpriority              sys_getpriority
+142  arm64  reboot                   sys_reboot
+143  arm64  setregid                 sys_setregid
+144  arm64  setgid                   sys_setgid
+145  arm64  setreuid                 sys_setreuid
+146  arm64  setuid                   sys_setuid
+147  arm64  setresuid                sys_setresuid
+148  arm64  getresuid                sys_getresuid
+149  arm64  setresgid                sys_setresgid
+150  arm64  getresgid                sys_getresgid
+151  arm64  setfsuid                 sys_setfsuid
+152  arm64  setfsgid                 sys_setfsgid
+153  arm64  times                    sys_times
+154  arm64  setpgid                  sys_setpgid
+155  arm64  getpgid                  sys_getpgid
+156  arm64  getsid                   sys_getsid
+157  arm64  setsid                   sys_setsid
+158  arm64  getgroups                sys_getgroups
+159  arm64  setgroups                sys_setgroups
+160  arm64  uname                    sys_newuname
+161  arm64  sethostname              sys_sethostname
+162  arm64  setdomainname            sys_setdomainname
+163  arm64  getrlimit                sys_getrlimit
+164  arm64  setrlimit                sys_setrlimit
+165  arm64  getrusage                sys_getrusage
+166  arm64  umask                    sys_umask
+167  arm64  prctl                    sys_prctl
+168  arm64  getcpu                   sys_getcpu
+169  arm64  gettimeofday             sys_gettimeofday
+170  arm64  settimeofday             sys_settimeofday
+171  arm64  adjtimex                 sys_adjtimex
+172  arm64  getpid                   sys_getpid
+173  arm64  getppid                  sys_getppid
+174  arm64  getuid                   sys_getuid
+175  arm64  geteuid                  sys_geteuid
+176  arm64  getgid                   sys_getgid
+177  arm64  getegid                  sys_getegid
+178  arm64  gettid                   sys_gettid
+179  arm64  sysinfo                  sys_sysinfo
+180  arm64  mq_open                  sys_mq_open
+181  arm64  mq_unlink                sys_mq_unlink
+182  arm64  mq_timedsend             sys_mq_timedsend
+183  arm64  mq_timedreceive          sys_mq_timedreceive
+184  arm64  mq_notify                sys_mq_notify
+185  arm64  mq_getsetattr            sys_mq_getsetattr
+186  arm64  msgget                   sys_msgget
+187  arm64  msgctl                   sys_msgctl
+188  arm64  msgrcv                   sys_msgrcv
+189  arm64  msgsnd                   sys_msgsnd
+190  arm64  semget                   sys_semget
+191  arm64  semctl                   sys_semctl
+192  arm64  semtimedop               sys_semtimedop
+193  arm64  semop                    sys_semop
+194  arm64  shmget                   sys_shmget
+195  arm64  shmctl                   sys_shmctl
+196  arm64  shmat                    sys_shmat
+197  arm64  shmdt                    sys_shmdt
+198  arm64  socket                   sys_socket
+199  arm64  socketpair               sys_socketpair
+200  arm64  bind                     sys_bind
+201  arm64  listen                   sys_listen
+202  arm64  accept                   sys_accept
+203  arm64  connect                  sys_connect
+204  arm64  getsockname              sys_getsockname
+205  arm64  getpeername              sys_getpeername
+206  arm64  sendto                   sys_sendto
+207  arm64  recvfrom                 sys_recvfrom
+208  arm64  setsockopt               sys_setsockopt
+209  arm64  getsockopt               sys_getsockopt
+210  arm64  shutdown                 sys_shutdown
+211  arm64  sendmsg                  sys_sendmsg
+212  arm64  recvmsg                  sys_recvmsg
+213  arm64  readahead                sys_readahead
+214  arm64  brk                      sys_brk
+215  arm64  munmap                   sys_munmap
+216  arm64  mremap                   sys_mremap
+217  arm64  add_key                  sys_add_key
+218  arm64  request_key              sys_request_key
+219  arm64  keyctl                   sys_keyctl
+220  arm64  clone                    sys_clone
+221  arm64  execve                   sys_execve
+222  arm64  mmap                     sys_mmap
+223  arm64  fadvise64                sys_fadvise64_64
+224  arm64  swapon                   sys_swapon
+225  arm64  swapoff                  sys_swapoff
+226  arm64  mprotect                 sys_mprotect
+227  arm64  msync                    sys_msync
+228  arm64  mlock                    sys_mlock
+229  arm64  munlock                  sys_munlock
+230  arm64  mlockall                 sys_mlockall
+231  arm64  munlockall               sys_munlockall
+232  arm64  mincore                  sys_mincore
+233  arm64  madvise                  sys_madvise
+234  arm64  remap_file_pages         sys_remap_file_pages
+235  arm64  mbind                    sys_mbind
+236  arm64  get_mempolicy            sys_get_mempolicy
+237  arm64  set_mempolicy            sys_set_mempolicy
+238  arm64  migrate_pages            sys_migrate_pages
+239  arm64  move_pages               sys_move_pages
+240  arm64  rt_tgsigqueueinfo        sys_rt_tgsigqueueinfo
+241  arm64  perf_event_open          sys_perf_event_open
+242  arm64  accept4                  sys_accept4
+243  arm64  recvmmsg                 sys_recvmmsg
+260  arm64  wait4                    sys_wait4
+261  arm64  prlimit64                sys_prlimit64
+262  arm64  fanotify_init            sys_fanotify_init
+263  arm64  fanotify_mark            sys_fanotify_mark
+264  arm64  name_to_handle_at        sys_name_to_handle_at
+265  arm64  open_by_handle_at        sys_open_by_handle_at
+266  arm64  clock_adjtime            sys_clock_adjtime
+267  arm64  syncfs                   sys_syncfs
+268  arm64  setns                    sys_setns
+269  arm64  sendmmsg                 sys_sendmmsg
+270  arm64  process_vm_readv         sys_process_vm_readv
+271  arm64  process_vm_writev        sys_process_vm_writev
+272  arm64  kcmp                     sys_kcmp
+273  arm64  finit_module             sys_finit_module
+274  arm64  sched_setattr            sys_sched_setattr
+275  arm64  sched_getattr            sys_sched_getattr
+276  arm64  renameat2                sys_renameat2
+277  arm64  seccomp                  sys_seccomp
+278  arm64  getrandom                sys_getrandom
+279  arm64  memfd_create             sys_memfd_create
+280  arm64  bpf                      sys_bpf
+281  arm64  execveat                 sys_execveat
+282  arm64  userfaultfd              sys_userfaultfd
+283  arm64  membarrier               sys_membarrier
+284  arm64  mlock2                   sys_mlock2
+285  arm64  copy_file_range          sys_copy_file_range
+286  arm64  preadv2                  sys_preadv2
+287  arm64  pwritev2                 sys_pwritev2
+288  arm64  pkey_mprotect            sys_pkey_mprotect
+289  arm64  pkey_alloc               sys_pkey_alloc
+290  arm64  pkey_free                sys_pkey_free
+291  arm64  statx                    sys_statx
+292  arm64  io_pgetevents            sys_io_pgetevents
+293  arm64  rseq                     sys_rseq
+294  arm64  kexec_file_load          sys_kexec_file_load
+424  arm64  pidfd_send_signal        sys_pidfd_send_signal
+425  arm64  io_uring_setup           sys_io_uring_setup
+426  arm64  io_uring_enter           sys_io_uring_enter
+427  arm64  io_uring_register        sys_io_uring_register
+428  arm64  open_tree                sys_open_tree
+429  arm64  move_mount               sys_move_mount
+430  arm64  fsopen                   sys_fsopen
+431  arm64  fsconfig                 sys_fsconfig
+432  arm64  fsmount                  sys_fsmount
+433  arm64  fspick                   sys_fspick
+434  arm64  pidfd_open               sys_pidfd_open
+435  arm64  clone3                   sys_clone3
+436  arm64  close_range              sys_close_range
+437  arm64  openat2                  sys_openat2
+438  arm64  pidfd_getfd              sys_pidfd_getfd
+439  arm64  faccessat2               sys_faccessat2
+440  arm64  process_madvise          sys_process_madvise
+441  arm64  epoll_pwait2             sys_epoll_pwait2
+442  arm64  mount_setattr            sys_mount_setattr
+443  arm64  quotactl_fd              sys_quotactl_fd
+444  arm64  landlock_create_ruleset  sys_landlock_create_ruleset
+445  arm64  landlock_add_rule        sys_landlock_add_rule
+446  arm64  landlock_restrict_self   sys_landlock_restrict_self
+447  arm64  memfd_secret             sys_memfd_secret
+448  arm64  process_mrelease         sys_process_mrelease
+449  arm64  futex_waitv              sys_futex_waitv
+450  arm64  set_mempolicy_home_node  sys_set_mempolicy_home_node
+"""
 
 
-# ARM (on ARM64 machine)
-# - arch/arm64/include/asm/unistd.h
-# - arch/arm64/include/asm/unistd32.h
-arm_emulated_syscall_list = [
-    [0x000, 'restart_syscall', []],
-    [0x001, 'exit', ['int error_code']],
-    [0x002, 'fork', []],
-    [0x003, 'read', ['unsigned int fd', 'char *buf', 'size_t count']],
-    [0x004, 'write', ['unsigned int fd', 'const char *buf', 'size_t count']],
-    [0x005, 'open', ['const char *filename', 'int flags', 'umode_t mode']], # compat
-    [0x006, 'close', ['unsigned int fd']],
-    #0x007, waitpid # unimplemented
-    [0x008, 'creat', ['const char *pathname', 'umode_t mode']],
-    [0x009, 'link', ['const char *oldname', 'const char *newname']],
-    [0x00a, 'unlink', ['const char *pathname']],
-    [0x00b, 'execve', ['const char *filename', 'const compat_uptr_t *argv', 'const compat_uptr_t *envp']], # compat
-    [0x00c, 'chdir', ['const char *filename']],
-    #0x00d, time # unimplemented
-    [0x00e, 'mknod', ['const char *filename', 'umode_t mode', 'unsigned dev']],
-    [0x00f, 'chmod', ['const char *filename', 'umode_t mode']],
-    [0x010, 'lchown', ['const char *filename', 'old_uid_t user', 'old_gid_t group']], # lchown16
-    #0x011, break # unimplemented
-    #0x012, stat # unimplemented
-    [0x013, 'lseek', ['unsigned int fd', 'compat_off_t offset', 'unsigned int whence']], # compat
-    [0x014, 'getpid', []],
-    [0x015, 'mount', ['char *dev_name', 'char *dir_name', 'char *type', 'unsigned long flags', 'void *data']],
-    #0x016, umount # unimplemented
-    [0x017, 'setuid', ['old_uid_t uid']], # setuid16
-    [0x018, 'getuid', []], # getuid16
-    #0x019, stime # unimplemented
-    [0x01a, 'ptrace', ['compat_long_t request', 'compat_long_t pid', 'compat_long_t addr', 'compat_long_t data']], # compat
-    #0x01b, alarm # unimplemented
-    #0x01c, fstat # unimplemented
-    [0x01d, 'pause', []],
-    #0x01e, utime # unimplemented
-    #0x01f, stty # unimplemented
-    #0x020, gtty # unimplemented
-    [0x021, 'access', ['const char *filename', 'int mode']],
-    [0x022, 'nice', ['int increment']],
-    #0x023, ftime # unimplemented
-    [0x024, 'sync', []],
-    [0x025, 'kill', ['pid_t pid', 'int sig']],
-    [0x026, 'rename', ['const char *oldname', 'const char *newname']],
-    [0x027, 'mkdir', ['const char *pathname', 'umode_t mode']],
-    [0x028, 'rmdir', ['const char *pathname']],
-    [0x029, 'dup', ['unsigned int fildes']],
-    [0x02a, 'pipe', ['int *fildes']],
-    [0x02b, 'times', ['struct compat_tms *tbuf']], # compat
-    #0x02c, prof # unimplemented
-    [0x02d, 'brk', ['unsigned long brk']],
-    [0x02e, 'setgid', ['old_gid_t gid']], # setgid16
-    [0x02f, 'getgid', []], # getgid16
-    #0x030, signal # unimplemented
-    [0x031, 'geteuid', []], # geteuid16
-    [0x032, 'getegid', []], # getegid16
-    [0x033, 'acct', ['const char *name']],
-    [0x034, 'umount2', ['char *name', 'int flags']], # umount
-    #0x035, lock # unimplemented
-    [0x036, 'ioctl', ['unsigned int fd', 'unsigned int cmd', 'compat_ulong_t arg']], # compat
-    [0x037, 'fcntl', ['unsigned int fd', 'unsigned int cmd', 'compat_ulong_t arg']], # compat
-    #0x038, mpx # unimplemented
-    [0x039, 'setpgid', ['pid_t pid', 'pid_t pgid']],
-    #0x03a, ulimit # unimplemented
-    #0x03b, olduname # unimplemented
-    [0x03c, 'umask', ['int mask']],
-    [0x03d, 'chroot', ['const char *filename']],
-    [0x03e, 'ustat', ['unsigned dev', 'struct compat_ustat *u']], # compat
-    [0x03f, 'dup2', ['unsigned int oldfd', 'unsigned int newfd']],
-    [0x040, 'getppid', []],
-    [0x041, 'getpgrp', []],
-    [0x042, 'setsid', []],
-    [0x043, 'sigaction', ['int sig', 'const struct compat_old_sigaction *act', 'struct compat_old_sigaction *oact']], # compat
-    #0x044, sgetmask # unimplemented
-    #0x045, ssetmask # unimplemented
-    [0x046, 'setreuid', ['old_uid_t ruid', 'old_uid_t euid']], # setreuid16
-    [0x047, 'setregid', ['old_gid_t rgid', 'old_gid_t egid']], # setregid16
-    [0x048, 'sigsuspend', ['old_sigset_t mask']],
-    [0x049, 'sigpending', ['compat_old_sigset_t *set32']], # compat
-    [0x04a, 'sethostname', ['char *name', 'int len']],
-    [0x04b, 'setrlimit', ['unsigned int resource', 'struct compat_rlimit *rlim']], # compat
-    #0x04c, getrlimit # unimplemented
-    [0x04d, 'getrusage', ['int who', 'struct compat_rusage *ru']], # compat
-    [0x04e, 'gettimeofday', ['struct old_timeval32 *tv', 'struct timezone *tz']], # compat
-    [0x04f, 'settimeofday', ['struct old_timeval32 *tv', 'struct timezone *tz']], # compat
-    [0x050, 'getgroups', ['int gidsetsize', 'old_gid_t *grouplist']], # setgroups16
-    [0x051, 'setgroups', ['int gidsetsize', 'old_gid_t *grouplist']], # getgroups16
-    #0x052, select # unimplemented
-    [0x053, 'symlink', ['const char *oldname', 'const char *newname']],
-    #0x054, lstat # unimplemented
-    [0x055, 'readlink', ['const char *path', 'char *buf', 'int bufsiz']],
-    [0x056, 'uselib', ['const char *library']],
-    [0x057, 'swapon', ['const char *specialfile', 'int swap_flags']],
-    [0x058, 'reboot', ['int magic1', 'int magic2', 'unsigned int cmd', 'void *arg']],
-    #0x059, readdir # unimplemented
-    #0x05a, mmap # unimplemented
-    [0x05b, 'munmap', ['unsigned long addr', 'size_t len']],
-    [0x05c, 'truncate', ['const char *path', 'compat_off_t length']], # compat
-    [0x05d, 'ftruncate', ['unsigned int fd', 'compat_ulong_t length']], # compat
-    [0x05e, 'fchmod', ['unsigned int fd', 'umode_t mode']],
-    [0x05f, 'fchown', ['unsigned int fd', 'old_uid_t user', 'old_gid_t group']], # fchown16
-    [0x060, 'getpriority', ['int which', 'int who']],
-    [0x061, 'setpriority', ['int which', 'int who', 'int niceval']],
-    #0x062, profil # unimplemented
-    [0x063, 'statfs', ['const char *pathname', 'struct compat_statfs *buf']], # compat
-    [0x064, 'fstatfs', ['unsigned int fd', 'struct compat_statfs *buf']], # compat
-    #0x065, ioperm # unimplemented
-    #0x066, socketcall # unimplemented
-    [0x067, 'syslog', ['int type', 'char *buf', 'int len']],
-    [0x068, 'setitimer', ['int which', 'struct old_itimerval32 *value', 'struct old_itimerval32 *ovalue']], # compat
-    [0x069, 'getitimer', ['int which', 'struct old_itimerval32 *value']], # compat
-    [0x06a, 'stat', ['const char *filename', 'struct compat_stat *statbuf']], # compat newstat
-    [0x06b, 'lstat', ['const char *filename', 'struct compat_stat *statbuf']], # compat newlstat
-    [0x06c, 'fstat', ['unsigned int fd', 'struct compat_stat *statbuf']], # compat newfstat
-    #0x06d, uname # unimplemented
-    #0x06e, iopl # unimplemented
-    [0x06f, 'vhangup', []],
-    #0x070, idle # deleted from kernel 2.3.13
-    #0x071, syscall # unimplemented
-    [0x072, 'wait4', ['compat_pid_t upid', 'compat_uint_t *stat_addr', 'int options', 'struct compat_rusage *ru']], # compat
-    [0x073, 'swapoff', ['const char *specialfile']],
-    [0x074, 'sysinfo', ['struct compat_sysinfo *info']], # compat
-    #0x075, ipc # unimplemented
-    [0x076, 'fsync', ['unsigned int fd']],
-    [0x077, 'sigreturn', []], # compat
-    [0x078, 'clone', ['unsigned long clone_flags', 'unsigned long newsp', 'int *parent_tidptr', 'unsigned long tls', 'int *child_tidptr']], # arg4,5 are swapped
-    [0x079, 'setdomainname', ['char *name', 'int len']],
-    [0x07a, 'uname', ['struct new_utsname *name']], # newuname
-    #0x07b, modify_ldt # unimplemented
-    [0x07c, 'adjtimex', ['struct old_timex32 *utp']], # adjtimex_time32
-    [0x07d, 'mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot']],
-    [0x07e, 'sigprocmask', ['int how', 'compat_old_sigset_t *nset', 'compat_old_sigset_t *oset']], # compat
-    #0x07f, create_module # dereted from kernel 2.6
-    [0x080, 'init_module', ['void *umod', 'unsigned long len', 'const char *uargs']],
-    [0x081, 'delete_module', ['const char *name_user', 'unsigned int flags']],
-    #0x082, get_kernel_syms # dereted from kernel 2.6
-    [0x083, 'quotactl', ['unsigned int cmd', 'const char *special', 'qid_t id', 'void *addr']],
-    [0x084, 'getpgid', ['pid_t pid']],
-    [0x085, 'fchdir', ['unsigned int fd']],
-    [0x086, 'bdflush', ['int func', 'long data']],
-    [0x087, 'sysfs', ['int option', 'unsigned long arg1', 'unsigned long arg2']],
-    [0x088, 'personality', ['unsigned int personality']],
-    #0x089, afs_syscall # unimplemented
-    [0x08a, 'setfsuid', ['old_uid_t uid']], # setfsuid16
-    [0x08b, 'setfsgid', ['old_gid_t gid']], # setfsgid16
-    [0x08c, '_llseek', ['unsigned int fd', 'unsigned long offset_high', 'unsigned long offset_low', 'loff_t *result', 'unsigned int whence']], # llseek
-    [0x08d, 'getdents', ['unsigned int fd', 'struct compat_linux_dirent *dirent', 'unsigned int count']], # compat
-    [0x08e, '_newselect', ['int n', 'compat_ulong_t *inp', 'compat_ulong_t *outp', 'compat_ulong_t *exp', 'struct old_timeval32 *tvp']], # compat select
-    [0x08f, 'flock', ['unsigned int fd', 'unsigned int cmd']],
-    [0x090, 'msync', ['unsigned long start', 'size_t len', 'int flags']],
-    [0x091, 'readv', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen']], # compat
-    [0x092, 'writev', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen']], # compat
-    [0x093, 'getsid', ['pid_t pid']],
-    [0x094, 'fdatasync', ['unsigned int fd']],
-    #0x095, _sysctl # unimplemented
-    [0x096, 'mlock', ['unsigned long start', 'size_t len']],
-    [0x097, 'munlock', ['unsigned long start', 'size_t len']],
-    [0x098, 'mlockall', ['int flags']],
-    [0x099, 'munlockall', []],
-    [0x09a, 'sched_setparam', ['pid_t pid', 'struct sched_param *param']],
-    [0x09b, 'sched_getparam', ['pid_t pid', 'struct sched_param *param']],
-    [0x09c, 'sched_setscheduler', ['pid_t pid', 'int policy', 'struct sched_param *param']],
-    [0x09d, 'sched_getscheduler', ['pid_t pid']],
-    [0x09e, 'sched_yield', []],
-    [0x09f, 'sched_get_priority_max', ['int policy']],
-    [0x0a0, 'sched_get_priority_min', ['int policy']],
-    [0x0a1, 'sched_rr_get_interval', ['pid_t pid', 'struct old_timespec32 *interval']], # sched_rr_get_interval_time32
-    [0x0a2, 'nanosleep', ['struct old_timespec32 *rqtp', 'struct old_timespec32 *rmtp']], # nanosleep_time32
-    [0x0a3, 'mremap', ['unsigned long addr', 'unsigned long old_len', 'unsigned long new_len', 'unsigned long flags', 'unsigned long new_addr']],
-    [0x0a4, 'setresuid', ['old_uid_t ruid', 'old_uid_t euid', 'old_uid_t suid']], # setresuid16
-    [0x0a5, 'getresuid', ['old_uid_t *ruidp', 'old_uid_t *euidp', 'old_uid_t *suidp']], # getresuid16
-    #0x0a6, vm86 # unimplemented
-    #0x0a7, query_module # dereted from kernel 2.6
-    [0x0a8, 'poll', ['struct pollfd *ufds', 'unsigned int nfds', 'int timeout_msecs']],
-    #0x0a9, nfsservctl # deleted from kernel 3.1
-    [0x0aa, 'setresgid', ['old_gid_t rgid', 'old_gid_t egid', 'old_gid_t sgid']], # setresgid16
-    [0x0ab, 'getresgid', ['old_gid_t *rgidp', 'old_gid_t *egidp', 'old_gid_t *sgidp']], # getresgid16
-    [0x0ac, 'prctl', ['int option', 'unsigned long arg2', 'unsigned long arg3', 'unsigned long arg4', 'unsigned long arg5']],
-    [0x0ad, 'rt_sigreturn', []], # compat
-    [0x0ae, 'rt_sigaction', ['int sig', 'const struct compat_sigaction *act', 'struct compat_sigaction *oact', 'compat_size_t sigsetsize']], # compat
-    [0x0af, 'rt_sigprocmask', ['int how', 'compat_sigset_t *nset', 'compat_sigset_t *oset', 'compat_size_t sigsetsize']], # compat
-    [0x0b0, 'rt_sigpending', ['compat_sigset_t *uset', 'compat_size_t sigsetsize']], # compat
-    [0x0b1, 'rt_sigtimedwait', ['compat_sigset_t *uthese', 'struct compat_siginfo_t *uinfo', 'struct old_timespec32 *uts', 'compat_size_t sigsetsize']], # compat rt_sigtimedwait_time32
-    [0x0b2, 'rt_sigqueueinfo', ['compat_pid_t pid', 'int sig', 'struct compat_siginfo *uinfo']], # compat
-    [0x0b3, 'rt_sigsuspend', ['compat_sigset_t *unewset', 'compat_size_t sigsetsize']], # compat
-    [0x0b4, 'pread64', ['unsigned int fd', 'char *buf', 'size_t count', 'u32 __pad', 'arg_u32p(pos)']], # compat aarch32_pread64
-    [0x0b5, 'pwrite64', ['unsigned int fd', 'const char *buf', 'size_t count', 'u32 __pad', 'arg_u32p(pos)']], # compat aarch32_pwrite64
-    [0x0b6, 'chown', ['const char *filename', 'old_uid_t user', 'old_gid_t group']], # chown16
-    [0x0b7, 'getcwd', ['char *buf', 'unsigned long size']],
-    [0x0b8, 'capget', ['cap_user_header_t header', 'cap_user_data_t dataptr']],
-    [0x0b9, 'capset', ['cap_user_header_t header', 'const cap_user_data_t data']],
-    [0x0ba, 'sigaltstack', ['const compat_stack_t *uss_ptr', 'compat_stack_t *uoss_ptr']], # compat
-    [0x0bb, 'sendfile', ['int out_fd', 'int in_fd', 'compat_off_t *offset', 'compat_size_t count']], # compat
-    #0x0bc, reserved
-    #0x0bd, reserved
-    [0x0be, 'vfork', []],
-    [0x0bf, 'ugetrlimit', ['unsigned int resource', 'struct compat_rlimit *rlim']], # compat getrlimit
-    [0x0c0, 'mmap2', ['unsigned long addr', 'unsigned long len', 'unsigned long prot', 'unsigned long flags', 'unsigned long fd', 'unsigned long off_4k']], # compat aarch32_mmap2
-    [0x0c1, 'truncate64', ['const char *path', 'u32 __pad', 'arg_u32p(length)']], # aarch32_truncate64
-    [0x0c2, 'ftruncate64', ['unsigned int fd', 'u32 __pad', 'arg_u32p(length)']], # aarch32_ftruncate64
-    [0x0c3, 'stat64', ['const char *filename', 'struct stat64 *statbuf']],
-    [0x0c4, 'lstat64', ['const char *filename', 'struct stat64 *statbuf']],
-    [0x0c5, 'fstat64', ['unsigned long fd', 'struct stat64 *statbuf']],
-    [0x0c6, 'lchown32', ['const char *filename', 'uid_t user', 'gid_t group']], # lchown
-    [0x0c7, 'getuid32', []], # getiud
-    [0x0c8, 'getgid32', []], # getgid
-    [0x0c9, 'geteuid32', []], # geteuid
-    [0x0ca, 'getegid32', []], # getegid
-    [0x0cb, 'setreuid32', ['uid_t ruid', 'uid_t euid']], # setreuid
-    [0x0cc, 'setregid32', ['gid_t rgid', 'gid_t egid']], # setregid
-    [0x0cd, 'getgroups32', ['int gidsetsize', 'gid_t *grouplist']], # getgroups
-    [0x0ce, 'setgroups32', ['int gidsetsize', 'gid_t *grouplist']], # setgroups
-    [0x0cf, 'fchown32', ['unsigned int fd', 'uid_t user', 'gid_t group']], # fchown
-    [0x0d0, 'setresuid32', ['uid_t ruid', 'uid_t euid', 'uid_t suid']], # setresuid
-    [0x0d1, 'getresuid32', ['uid_t *ruidp', 'uid_t *euidp', 'uid_t *suidp']], # getresuid
-    [0x0d2, 'setresgid32', ['gid_t rgid', 'gid_t egid', 'gid_t sgid']], # setresgid
-    [0x0d3, 'getresgid32', ['gid_t *rgidp', 'gid_t *egidp', 'gid_t *sgidp']], # getresgid
-    [0x0d4, 'chown32', ['const char *filename', 'uid_t user', 'gid_t group']], # chown
-    [0x0d5, 'setuid32', ['uid_t uid']], # setuid
-    [0x0d6, 'setgid32', ['gid_t gid']], # setgid
-    [0x0d7, 'setfsuid32', ['uid_t uid']], # setfsuid
-    [0x0d8, 'setfsgid32', ['gid_t gid']], # setfsgid
-    [0x0d9, 'getdents64', ['unsigned int fd', 'struct linux_dirent64 *dirent', 'unsigned int count']],
-    [0x0da, 'pivot_root', ['const char *new_root', 'const char *put_old']],
-    [0x0db, 'mincore', ['unsigned long start', 'size_t len', 'unsigned char *vec']],
-    [0x0dc, 'madvise', ['unsigned long start', 'size_t len_in', 'int behavior']],
-    [0x0dd, 'fcntl64', ['unsigned int fd', 'unsigned int cmd', 'compat_ulong_t arg']], # compat
-    #0x0de, tux # unimplemented
-    #0x0df, unused
-    [0x0e0, 'gettid', []],
-    [0x0e1, 'readahead', ['int fd', 'u32 __pad', 'arg_u32(offset)', 'size_t count']], # compat aarch32_readahead
-    [0x0e2, 'setxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-    [0x0e3, 'lsetxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-    [0x0e4, 'fsetxattr', ['int fd', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-    [0x0e5, 'getxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
-    [0x0e6, 'lgetxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
-    [0x0e7, 'fgetxattr', ['int fd', 'const char *name', 'void *value', 'size_t size']],
-    [0x0e8, 'listxattr', ['const char *pathname', 'char *list', 'size_t size']],
-    [0x0e9, 'llistxattr', ['const char *pathname', 'char *list', 'size_t size']],
-    [0x0ea, 'flistxattr', ['int fd', 'char *list', 'size_t size']],
-    [0x0eb, 'removexattr', ['const char *pathname', 'const char *name']],
-    [0x0ec, 'lremovexattr', ['const char *pathname', 'const char *name']],
-    [0x0ed, 'fremovexattr', ['int fd', 'const char *name']],
-    [0x0ee, 'tkill', ['pid_t pid', 'int sig']],
-    [0x0ef, 'sendfile64', ['int out_fd', 'int in_fd', 'loff_t *offset', 'size_t count']],
-    [0x0f0, 'futex', ['u32 *uaddr', 'int op', 'u32 val', 'struct old_timespec32 *utime', 'u32 *uaddr2', 'u32 val3']], # futex_time32
-    [0x0f1, 'sched_setaffinity', ['compat_pid_t pid', 'unsigned int len', 'compat_ulong_t *user_mask_ptr']], # compat
-    [0x0f2, 'sched_getaffinity', ['compat_pid_t pid', 'unsigned int len', 'compat_ulong_t *user_mask_ptr']], # compat
-    [0x0f3, 'io_setup', ['unsigned nr_events', 'u32 *ctx32p']], # compat
-    [0x0f4, 'io_destroy', ['aio_context_t ctx']],
-    [0x0f5, 'io_getevents', ['__u32 ctx_id', '__s32 min_nr', '__s32 nr', 'struct io_event *events', 'struct old_timespec32 *timeout']], # io_getevents_time32
-    [0x0f6, 'io_submit', ['compat_aio_context_t ctx_id', 'int nr', 'compat_uptr_t *iocbpp']], # compat
-    [0x0f7, 'io_cancel', ['aio_context_t ctx_id', 'struct iocb *iocb', 'struct io_event *result']],
-    [0x0f8, 'exit_group', ['int error_code']],
-    [0x0f9, 'lookup_dcookie', ['u32 w0', 'u32 w1', 'char *buf', 'compat_size_t len']], # compat
-    [0x0fa, 'epoll_create', ['int size']],
-    [0x0fb, 'epoll_ctl', ['int epfd', 'int op', 'int fd', 'struct epoll_event *event']],
-    [0x0fc, 'epoll_wait', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'int timeout']],
-    [0x0fd, 'remap_file_pages', ['unsigned long start', 'unsigned long size', 'unsigned long prot', 'unsigned long pgoff', 'unsigned long flags']],
-    #0x0fe, set_thread_area # unimplemented
-    #0x0ff, get_thread_area # unimplemented
-    [0x100, 'set_tid_address', ['int *tidptr']],
-    [0x101, 'timer_create', ['clockid_t which_clock', 'struct compat_sigevent *timer_event_spec', 'timer_t *created_timer_id']], # compat
-    [0x102, 'timer_settime', ['timer_t timer_id', 'int flags', 'struct old_itimerspec32 *new', 'struct old_itimerspec32 *old']], # timer_settime32
-    [0x103, 'timer_gettime', ['timer_t timer_id', 'struct old_itimerspec32 *setting']], # timer_gettime32
-    [0x104, 'timer_getoverrun', ['timer_t timer_id']],
-    [0x105, 'timer_delete', ['timer_t timer_id']],
-    [0x106, 'clock_settime', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_settime32
-    [0x107, 'clock_gettime', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_gettime32
-    [0x108, 'clock_getres', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_getres_time32
-    [0x109, 'clock_nanosleep', ['clockid_t which_clock', 'int flags', 'struct old_timespec32 *rqtp', 'struct old_timespec32 *rmtp']], # clock_nanosleep_time32
-    [0x10a, 'statfs64', ['const char *pathname', 'compat_size_t sz', 'struct compat_statfs64 *buf']], # aarch32_statfs64
-    [0x10b, 'fstatfs64', ['unsigned int fd', 'compat_size_t sz', 'struct compat_statfs64 *buf']], # aarch32_fstatfs64
-    [0x10c, 'tgkill', ['pid_t tgid', 'pid_t pid', 'int sig']],
-    [0x10d, 'utimes', ['const char *filename', 'struct old_timeval32 *t']], # utimes_time32
-    [0x10e, 'arm_fadvise64_64', ['int fd', 'int advice', 'arg_u32p(offset)', 'arg_u32p(len)']], # compat aarch32_fadvise64_64
-    [0x10f, 'pciconfig_iobase', ['long which', 'unsigned long bus', 'unsigned long devfn']],
-    [0x110, 'pciconfig_read', ['unsigned long bus', 'unsigned long dfn', 'unsigned long off', 'unsigned long len', 'void *buf']],
-    [0x111, 'pciconfig_write', ['unsigned long bus', 'unsigned long dfn', 'unsigned long off', 'unsigned long len', 'void *buf']],
-    [0x112, 'mq_open', ['const char *u_name', 'int oflag', 'compat_mode_t mode', 'struct compat_mq_attr *u_attr']], # compat
-    [0x113, 'mq_unlink', ['const char *u_name']],
-    [0x114, 'mq_timedsend', ['mqd_t mqdes', 'const char *u_msg_ptr', 'unsigned int msg_len', 'unsigned int msg_prio', 'const struct old_timespec32 *u_abs_timeout']], # mq_timedsend_time32
-    [0x115, 'mq_timedreceive', ['mqd_t mqdes', 'const char *u_msg_ptr', 'unsigned int msg_len', 'unsigned int *msg_prio', 'const struct old_timespec32 *u_abs_timeout']], # mq_timedreceive_time32
-    [0x116, 'mq_notify', ['mqd_t mqdes', 'const struct compat_sigevent *u_notification']], # compat
-    [0x117, 'mq_getsetattr', ['mqd_t mqdes', 'const struct compat_mq_attr *u_mqstat', 'struct compat_mq_attr *u_omqstat']], # compat
-    [0x118, 'waitid', ['int which', 'compat_pid_t pid', 'struct compat_siginfo *infop', 'int options', 'struct compat_rusage *uru']], # compat
-    [0x119, 'socket', ['int family', 'int type', 'int protocol']],
-    [0x11a, 'bind', ['int fd', 'struct sockaddr *umyaddr', 'int addrlen']],
-    [0x11b, 'connect', ['int fd', 'struct sockaddr *uservaddr', 'int addrlen']],
-    [0x11c, 'listen', ['int fd', 'int backlog']],
-    [0x11d, 'accept', ['int fd', 'struct sockaddr *upeer_sockaddr', 'int *upeer_addrlen']],
-    [0x11e, 'getsockname', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
-    [0x11f, 'getpeername', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
-    [0x120, 'socketpair', ['int family', 'int type', 'int protocol', 'int *usockvec']],
-    [0x121, 'send', ['int fd', 'void *buff', 'size_t len', 'unsigned int flags']],
-    [0x122, 'sendto', ['int fd', 'void *buff', 'size_t len', 'unsigned int flags', 'struct sockaddr *addr', 'int addr_len']],
-    [0x123, 'recv', ['int fd', 'void *ubuf', 'compat_size_t size', 'unsigned int flags']], # compat
-    [0x124, 'recvfrom', ['int fd', 'void *ubuf', 'compat_size_t size', 'unsigned int flags', 'struct sockaddr *addr', 'int *addr_len']], # compat
-    [0x125, 'shutdown', ['int fd', 'int how']],
-    [0x126, 'setsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int optlen']],
-    [0x127, 'getsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int *optlen']],
-    [0x128, 'sendmsg', ['int fd', 'struct compat_msghdr *msg', 'unsigned int flags']], # compat
-    [0x129, 'recvmsg', ['int fd', 'struct compat_msghdr *msg', 'unsigned int flags']], # compat
-    [0x12a, 'semop', ['int semid', 'struct sembuf *tsops', 'unsigned nsops']],
-    [0x12b, 'semget', ['key_t key', 'int nsems', 'int semflg']],
-    [0x12c, 'semctl', ['int semid', 'int semnum', 'int cmd', 'int arg']], # compat old_semctl
-    [0x12d, 'msgsnd', ['int msqid', 'struct compat_uptr_t *msgp', 'compat_ssize_t msgsz', 'int msgflg']], # compat
-    [0x12e, 'msgrcv', ['int msqid', 'struct compat_uptr_t *msgp', 'compat_ssize_t msgsz', 'compat_long_t msgtyp', 'int msgflg']], # compat
-    [0x12f, 'msgget', ['key_t key', 'int msgflg']],
-    [0x130, 'msgctl', ['int msqid', 'int cmd', 'void *uptr']], # compat old_msgctl
-    [0x131, 'shmat', ['int shmid', 'compat_uptr_t *shmaddr', 'int shmflg']], # compat
-    [0x132, 'shmdt', ['char *shmaddr']],
-    [0x133, 'shmget', ['key_t key', 'size_t size', 'int shmflg']],
-    [0x134, 'shmctl', ['int shmid', 'int cmd', 'void *uptr']], # compat old_shmctl
-    [0x135, 'add_key', ['const char *_type', 'const char *_description', 'const void *_payload', 'size_t plen', 'key_serial_t ringid']],
-    [0x136, 'request_key', ['const char *_type', 'const char *_description', 'const char *_callout_info', 'key_serial_t destringid']],
-    [0x137, 'keyctl', ['u32 option', 'u32 arg2', 'u32 arg3', 'u32 arg4', 'u32 arg5']], # compat
-    [0x138, 'semtimedop', ['int semid', 'struct sembuf *tsems', 'unsigned nsops', 'const struct old_timespec32 *timeout']], # semtimedop_time32
-    #0x139, vserver # unimplemented
-    [0x13a, 'ioprio_set', ['int which', 'int who', 'int ioprio']],
-    [0x13b, 'ioprio_get', ['int which', 'int who']],
-    [0x13c, 'inotify_init', []],
-    [0x13d, 'inotify_add_watch', ['int fd', 'const char *pathname', 'u32 mask']],
-    [0x13e, 'inotify_rm_watch', ['int fd', '__s32 wd']],
-    [0x13f, 'mbind', ['compat_ulong_t start', 'compat_ulong_t len', 'compat_ulong_t mode', 'compat_ulong_t *nmask', 'compat_ulong_t maxnode', 'compat_ulong_t flags']], # compat
-    [0x140, 'get_mempolicy', ['int *policy', 'compat_ulong_t *nmask', 'compat_ulong_t maxnode', 'compat_ulong_t addr', 'compat_ulong_t flags']], # compat
-    [0x141, 'set_mempolicy', ['int mode', 'compat_ulong_t *nmask', 'compat_ulong_t maxnode']], # compat
-    [0x142, 'openat', ['int dfd', 'const char *filename', 'int flags', 'umode_t mode']], # compat
-    [0x143, 'mkdirat', ['int dfd', 'const char *pathname', 'umode_t mode']],
-    [0x144, 'mknodat', ['int dfd', 'const char *filename', 'umode_t mode', 'unsigned int dev']],
-    [0x145, 'fchownat', ['int dfd', 'const char *filename', 'uid_t user', 'gid_t group', 'int flag']],
-    [0x146, 'futimesat', ['unsigned int dfd', 'const char *filename', 'struct old_timeval32 *t']], # futimesat_time32
-    [0x147, 'fstatat64', ['int dfd', 'const char *filename', 'struct stat64 *statbuf', 'int flag']],
-    [0x148, 'unlinkat', ['int dfd', 'const char *pathname', 'int flag']],
-    [0x149, 'renameat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname']],
-    [0x14a, 'linkat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'int flags']],
-    [0x14b, 'symlinkat', ['const char *oldname', 'int newdfd', 'const char *newname']],
-    [0x14c, 'readlinkat', ['int dfd', 'const char *pathname', 'char *buf', 'int bufsiz']],
-    [0x14d, 'fchmodat', ['int dfd', 'const char *filename', 'umode_t mode']],
-    [0x14e, 'faccessat', ['int dfd', 'const char *filename', 'int mode']],
-    [0x14f, 'pselect6', ['int n', 'compat_ulong_t *inp', 'compat_ulong_t *outp', 'compat_ulong_t *exp', 'struct old_timespec32 *tsp', 'void *sig']], # compat pselect6_time32
-    [0x150, 'ppoll', ['struct pollfd *ufds', 'unsigned int nfds', 'struct old_timespec32 *tsp', 'const compat_sigset_t *sigmask', 'compat_size_t sigsetsize']], # compat ppoll_time32
-    [0x151, 'unshare', ['unsigned long unshare_flags']],
-    [0x152, 'set_robust_list', ['struct compat_robust_list_head *head', 'compat_size_t len']], # compat,
-    [0x153, 'get_robust_list', ['int pid', 'compat_uptr_t *head_ptr', 'compat_size_t *len_ptr']], # compat
-    [0x154, 'splice', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
-    [0x155, 'sync_file_range2', ['int fd', 'unsigned int flags', 'arg_u32p(offset)', 'arg_u32p(nbytes)']], # compat aarch32_sync_file_range2
-    [0x156, 'tee', ['int fdin', 'int fdout', 'size_t len', 'unsigned int flags']],
-    [0x157, 'vmsplice', ['int fd', 'const struct compat_iovec *iov32', 'unsigned int nr_segs', 'unsigned int flags']], # compat
-    [0x158, 'move_pages', ['pid_t pid', 'compat_ulong_t nr_pages', 'compat_uptr_t *pages32', 'const int *nodes', 'int *status', 'int flags']], # compat
-    [0x159, 'getcpu', ['unsigned *cpup', 'unsigned *nodep', 'struct getcpu_cache *unused']],
-    [0x15a, 'epoll_pwait', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'int timeout', 'const compat_sigset_t *sigmask', 'compat_size_t sigsetsize']], # compat
-    [0x15b, 'kexec_load', ['compat_ulong_t entry', 'compat_ulong_t nr_segments', 'struct compat_kexec_segment *segments', 'compat_ulong_t flags']], # compat
-    [0x15c, 'utimensat', ['unsigned int dfd', 'const char *filename', 'struct old_timespec32 *t', 'int flags']], # utimensat_time32
-    [0x15d, 'signalfd', ['int ufd', 'const compat_sigset_t *user_mask', 'compat_size_t sizemask']], # compat
-    [0x15e, 'timerfd_create', ['int clockid', 'int flags']],
-    [0x15f, 'eventfd', ['unsigned int count']],
-    [0x160, 'fallocate', ['int fd', 'int mode', 'arg_u32p(offset)', 'arg_u32p(len)']], # compat aarch32_fallocate
-    [0x161, 'timerfd_settime', ['int ufd', 'int flags', 'const struct old_itimerspec32 *utmr', 'struct old_itimerspec32 *otmr']], # timerfd_settime32
-    [0x162, 'timerfd_gettime', ['int ufd', 'struct old_itimerspec32 *otmr']], # timerfd_gettime32
-    [0x163, 'signalfd4', ['int ufd', 'const compat_sigset_t *user_mask', 'compat_size_t sizemask', 'int flags']], # compat
-    [0x164, 'eventfd2', ['unsigned int count', 'int flags']],
-    [0x165, 'epoll_create1', ['int flags']],
-    [0x166, 'dup3', ['unsigned int oldfd', 'unsigned int newfd', 'int flags']],
-    [0x167, 'pipe2', ['int *fildes', 'int flags']],
-    [0x168, 'inotify_init1', ['int flags']],
-    [0x169, 'preadv', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen', 'u32 pos_low', 'u32 pos_high']], # compat
-    [0x16a, 'pwritev', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen', 'u32 pos_low', 'u32 pos_high']], # compat
-    [0x16b, 'rt_tgsigqueueinfo', ['compat_pid_t tgid', 'compat_pid_t pid', 'int sig', 'struct compat_siginfo_t *uinfo']], # compat
-    [0x16c, 'perf_event_open', ['struct perf_event_attr *attr_uptr', 'pid_t pid', 'int cpu', 'int group_fd', 'unsigned long flags']],
-    [0x16d, 'recvmmsg', ['int fd', 'struct compat_mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags', 'struct old_timespec32 *timeout']], # compat recvmmsg_time32
-    [0x16e, 'accept4', ['int fd', 'struct sockaddr *upeer_sockaddr', 'int *upeer_addrlen', 'int flags']],
-    [0x16f, 'fanotify_init', ['unsigned int flags', 'unsigned int event_f_flags']],
-    [0x170, 'fanotify_mark', ['int fanotify_fd', 'unsigned int flags', '__u32 mask0', '__u32 mask1', 'int dfd', 'const char *pathname']], # compat
-    [0x171, 'prlimit64', ['pid_t pid', 'unsigned int resource', 'const struct rlimit64 *new_rlim', 'struct rlimit64 *old_rlim']],
-    [0x172, 'name_to_handle_at', ['int dfd', 'const char *name', 'struct file_handle *handle', 'int *mnt_id', 'int flag']],
-    [0x173, 'open_by_handle_at', ['int mountdirfd', 'struct file_handle *handle', 'int flags']], # compat
-    [0x174, 'clock_adjtime', ['clockid_t which_clock', 'struct old_timex32 *tx']], # clock_adjtime32
-    [0x175, 'syncfs', ['int fd']],
-    [0x176, 'sendmmsg', ['int fd', 'struct compat_mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags']], # compat
-    [0x177, 'setns', ['int fd', 'int flags']],
-    [0x178, 'process_vm_readv', ['compat_pid_t pid', 'const struct compat_iovec *lvec', 'compat_ulong_t liovcnt', 'const struct compat_iovec *rvec', 'compat_ulong_t riovcnt', 'compat_ulong_t flags']], # compat
-    [0x179, 'process_vm_writev', ['compat_pid_t pid', 'const struct compat_iovec *lvec', 'compat_ulong_t liovcnt', 'const struct compat_iovec *rvec', 'compat_ulong_t riovcnt', 'compat_ulong_t flags']], # compat
-    [0x17a, 'kcmp', ['pid_t pid1', 'pid_t pid2', 'int type', 'unsigned long idx1', 'unsigned long idx2']],
-    [0x17b, 'finit_module', ['int fd', 'const char *uargs', 'int flags']],
-    [0x17c, 'sched_setattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int flags']],
-    [0x17d, 'sched_getattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int usize', 'unsigned int flags']],
-    [0x17e, 'renameat2', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'unsigned int flags']],
-    [0x17f, 'seccomp', ['unsigned int op', 'unsigned int flags', 'void *uargs']],
-    [0x180, 'getrandom', ['char *buf', 'size_t count', 'unsigned int flags']],
-    [0x181, 'memfd_create', ['const char *uname', 'unsigned int flags']],
-    [0x182, 'bpf', ['int cmd', 'union bpf_attr *uattr', 'unsigned int size']],
-    [0x183, 'execveat', ['int fd', 'const char *filename', 'const compat_uptr_t *argv', 'const compat_uptr_t *envp', 'int flags']], # compat
-    [0x184, 'userfaultfd', ['int flags']],
-    [0x185, 'membarrier', ['int cmd', 'int flags']],
-    [0x186, 'mlock2', ['unsigned long start', 'size_t len', 'int flags']],
-    [0x187, 'copy_file_range', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
-    [0x188, 'preadv2', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen', 'u32 pos_low', 'u32 pos_high']], # compat
-    [0x189, 'pwritev2', ['compat_ulong_t fd', 'const struct compat_iovec *vec', 'compat_ulong_t vlen', 'u32 pos_low', 'u32 pos_high']], # compat
-    [0x18a, 'pkey_mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot', 'int pkey']],
-    [0x18b, 'pkey_alloc', ['unsigned long flags', 'unsigned long init_val']],
-    [0x18c, 'pkey_free', ['int pkey']],
-    [0x18d, 'statx', ['int dfd', 'const char *filename', 'unsigned flags', 'unsigned int mask', 'struct statx *buffer']],
-    [0x18e, 'rseq', ['struct rseq *rseq', 'u32 rseq_len', 'int flags', 'u32 sig']],
-    [0x18f, 'io_pgetevents', ['compat_aio_context_t ctx_id', 'compat_long_t min_nr', 'compat_long_t nr', 'struct io_event *events', 'struct old_timespec32 *timeout', 'const struct __compat_aio_sigset *usig']], # compat
-    [0x190, 'migrate_pages', ['compat_pid_t pid', 'compat_ulong_t maxnode', 'const compat_ulong_t *old_nodes', 'const compat_ulong_t *new_nodes']], # compat
-    [0x191, 'kexec_file_load', ['int kernel_fd', 'int initrd_fd', 'unsigned long cmdline_len', 'const char *cmdline_ptr', 'unsigned long flags']],
-    #0x192, unused
-    [0x193, 'clock_gettime_time64', ['const clockid_t which_clock', 'const struct __kernel_timespec *tp']], # clock_gettime
-    [0x194, 'clock_settime_time64', ['const clockid_t which_clock', 'const struct __kernel_timespec *tp']], # clock_settime
-    [0x195, 'clock_adjtime_time64', ['const clockid_t which_clock', 'struct __kernel_timex *utx']], # clock_adjtime
-    [0x196, 'clock_getres_time64', ['const clockid_t which_clock', 'struct __kernel_timespec *tp']], # clock_getres
-    [0x197, 'clock_nanosleep_time64', ['const clockid_t which_clock', 'int flags', 'const struct __kernel_timespec *rqtp', 'struct __kernel_timespec *rmtp']], # clock_nanosleep
-    [0x198, 'timer_gettime_time64', ['timer_t timer_id', 'struct __kernel_itimerspec *setting']], # timer_gettime
-    [0x199, 'timer_settime_time64', ['timer_t timer_id', 'int flags', 'const struct __kernel_itimerspec *new_setting', 'struct __kernel_itimerspec *old_setting']], # timer_settime
-    [0x19a, 'timerfd_gettime_time64', ['int ufd', 'struct __kernel_itimerspec *otmr']], # timerfd_gettime
-    [0x19b, 'timerfd_settime_time64', ['int ufd', 'int flags', 'const struct __kernel_itimerspec *utmr', 'struct __kernel_itimerspec *otmr']], # timerfd_settime
-    [0x19c, 'utimensat_time64', ['int dfd', 'const char *filename', 'struct __kernel_timespec *utimes', 'int flags']], # utimensat
-    [0x19d, 'pselect6_time64', ['int n', 'compat_ulong_t *inp', 'compat_ulong_t *outp', 'compat_ulong_t *exp', 'struct __kernel_timespec *tsp', 'void *sig']], # compat
-    [0x19e, 'ppoll_time64', ['struct pollfd *ufds', 'unsigned int nfds', 'struct __kernel_timespec *tsp', 'const compat_sigset_t *sigmask', 'compat_size_t sigsetsize']], # compat
-    #0x19f, unused
-    [0x1a0, 'io_pgetevents_time64', ['aio_context_t ctx_id', 'long min_nr', 'long nr', 'struct io_event *events', 'struct __kernel_timespec *timeout', 'const struct __aio_sigset *usig']], # io_pgetevents
-    [0x1a1, 'recvmmsg_time64', ['int fd', 'struct compat_mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags', 'struct __kernel_timespec *timeout']], # compat
-    [0x1a2, 'mq_timedsend_time64', ['mqd_t mqdes', 'const char *u_msg_ptr', 'size_t msg_len', 'unsigned int msg_prio', 'const struct __kernel_timespec *u_abs_timeout']], # mq_timedsend
-    [0x1a3, 'mq_timedreceive_time64', ['mqd_t mqdes', 'const char *u_msg_ptr', 'size_t msg_len', 'unsigned int *u_msg_prio', 'const struct __kernel_timespec *u_abs_timeout']], # mq_timedreceive
-    [0x1a4, 'semtimedop_time64', ['int semid', 'struct sembuf *tsops', 'unsigned int nsops', 'const struct __kernel_timespec *timeout']], # semtimedop
-    [0x1a5, 'rt_sigtimedwait_time64', ['compat_sigset_t *uthese', 'struct compat_siginfo *uinfo', 'struct __kernel_timespec *uts', 'compat_size_t sigsetsize']], # compat
-    [0x1a6, 'futex_time64', ['u32 *uaddr', 'int op', 'u32 val', 'struct __kernel_timespec *utime', 'u32 *uaddr2', 'u32 val3']], # futex
-    [0x1a7, 'sched_rr_get_interval_time64', ['pid_t pid', 'struct __kernel_timespec *interval']], # sched_rr_get_interval
-    [0x1a8, 'pidfd_send_signal', ['int pidfd', 'int sig', 'siginfo_t *info', 'unsigned int flags']],
-    [0x1a9, 'io_uring_setup', ['u32 entries', 'struct io_uring_params *params']],
-    [0x1aa, 'io_uring_enter', ['unsigned int fd', 'u32 to_submit', 'u32 min_complete', 'u32 flags', 'const sigset_t *sig', 'size_t sigsz']],
-    [0x1ab, 'io_uring_register', ['unsigned int fd', 'unsigned int opcode', 'void *arg', 'unsigned int nr_args']],
-    [0x1ac, 'open_tree', ['int dfd', 'const char *filename', 'unsigned flags']],
-    [0x1ad, 'move_mount', ['int from_dfd', 'const char *from_pathname', 'int to_dfd', 'const char *to_pathname', 'unsigned int flags']],
-    [0x1ae, 'fsopen', ['const char *_fs_name', 'unsigned int flags']],
-    [0x1af, 'fsconfig', ['int fd', 'unsigned int cmd', 'const char *_key', 'const void *_value', 'int aux']],
-    [0x1b0, 'fsmount', ['int fs_fd', 'unsigned int flags', 'unsigned int attr_flags']],
-    [0x1b1, 'fspick', ['int, dfd', 'const char *path', 'unsigned int flags']],
-    [0x1b2, 'pidfd_open', ['pid_t pid', 'unsigned int flags']],
-    [0x1b3, 'clone3', ['struct clone_args *uargs', 'size_t size']],
-    [0x1b4, 'close_range', ['unsigned int fd', 'unsigned int max_fd', 'unsigned int flag']],
-    [0x1b5, 'openat2', ['int dfd', 'const char *filename', 'struct open_how *how', 'size_t usize']],
-    [0x1b6, 'pidfd_getfd', ['int pidfd', 'int fd', 'unsigned int flags']],
-    [0x1b7, 'faccessat2', ['int dfd', 'const char *filename', 'int mode', 'int flags']],
-    [0x1b8, 'process_madvise', ['int pidfd', 'const struct iovec *vec', 'size_t vlen', 'int behavior', 'unsigned int flags']],
-    [0x1b9, 'epoll_pwait2', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'const struct __kernel_timespec *timeout', 'const compat_sigset_t *sigmask', 'compat_size_t sigsetsize']], # compat
-    [0x1ba, 'mount_setattr', ['int dfd', 'const char *path', 'unsigned int flags', 'struct mount_attr *uattr', 'size_t usize']],
-    [0x1bb, 'quotactl_fd', ['unsigned int fd', 'unsigned int cmd', 'qid_t id', 'void __user *addr']],
-    [0x1bc, 'landlock_create_ruleset', ['const struct landlock_ruleset_attr *const attr', 'const size_t size', 'const __u32 flags']],
-    [0x1bd, 'landlock_add_rule', ['const int ruleset_fd', 'const enum landlock_rule_type rule_type', 'const void *const rule_attr', 'const __u32 flags']],
-    [0x1be, 'landlock_restrict_self', ['const int ruleset_fd', 'const __u32 flags']],
-    [0x1bf, 'memfd_secret', ['unsigned int, flags']],
-    [0x1c0, 'process_mrelease', ['int pidfd', 'unsigned int flags']],
-    [0x1c1, 'futex_waitv', ['struct futex_waitv *waiters', 'unsigned int nr_futexes', 'unsigned int flags', 'struct __kernel_timespec *timeout', 'clockid_t clockid']],
-    [0x1c2, 'set_mempolicy_home_node', ['unsigned long start', 'unsigned long len', 'unsigned long home_node', 'unsigned long flags']],
-    [0xf0002, 'cacheflush', ['unsigned long start', 'unsigned long end', 'int flags']], # arch/arm/kernel/traps.c
-    [0xf0005, 'set_tls', ['unsigned long val']], # arch/arm/kernel/traps.c
-]
+# ARM (compat(emulated))
+#
+# [How to make]
+# cd /path/to/linux-6.*/
+# gcc -E -D__SYSCALL=SYSCALL arch/arm64/include/asm/unistd32.h | grep ^SYSCALL | sed -e 's/SYSCALL(//;s/[,)]//g' > /tmp/a
+# grep -oP "__NR\S+\s+\d+" arch/arm64/include/asm/unistd32.h > /tmp/b
+# join -2 2 -o 1.1,1.10,2.1,1.2 -e arm /tmp/a /tmp/b | sed -e 's/__NR_//g' | column -t
+#
+arm_compat_syscall_tbl = """
+0    arm  restart_syscall               sys_restart_syscall
+1    arm  exit                          sys_exit
+2    arm  fork                          sys_fork
+3    arm  read                          sys_read
+4    arm  write                         sys_write
+5    arm  open                          compat_sys_open
+6    arm  close                         sys_close
+8    arm  creat                         sys_creat
+9    arm  link                          sys_link
+10   arm  unlink                        sys_unlink
+11   arm  execve                        compat_sys_execve
+12   arm  chdir                         sys_chdir
+14   arm  mknod                         sys_mknod
+15   arm  chmod                         sys_chmod
+16   arm  lchown                        sys_lchown16
+19   arm  lseek                         compat_sys_lseek
+20   arm  getpid                        sys_getpid
+21   arm  mount                         sys_mount
+23   arm  setuid                        sys_setuid16
+24   arm  getuid                        sys_getuid16
+26   arm  ptrace                        compat_sys_ptrace
+29   arm  pause                         sys_pause
+33   arm  access                        sys_access
+34   arm  nice                          sys_nice
+36   arm  sync                          sys_sync
+37   arm  kill                          sys_kill
+38   arm  rename                        sys_rename
+39   arm  mkdir                         sys_mkdir
+40   arm  rmdir                         sys_rmdir
+41   arm  dup                           sys_dup
+42   arm  pipe                          sys_pipe
+43   arm  times                         compat_sys_times
+45   arm  brk                           sys_brk
+46   arm  setgid                        sys_setgid16
+47   arm  getgid                        sys_getgid16
+49   arm  geteuid                       sys_geteuid16
+50   arm  getegid                       sys_getegid16
+51   arm  acct                          sys_acct
+52   arm  umount2                       sys_umount
+54   arm  ioctl                         compat_sys_ioctl
+55   arm  fcntl                         compat_sys_fcntl
+57   arm  setpgid                       sys_setpgid
+60   arm  umask                         sys_umask
+61   arm  chroot                        sys_chroot
+62   arm  ustat                         compat_sys_ustat
+63   arm  dup2                          sys_dup2
+64   arm  getppid                       sys_getppid
+65   arm  getpgrp                       sys_getpgrp
+66   arm  setsid                        sys_setsid
+67   arm  sigaction                     compat_sys_sigaction
+70   arm  setreuid                      sys_setreuid16
+71   arm  setregid                      sys_setregid16
+72   arm  sigsuspend                    sys_sigsuspend
+73   arm  sigpending                    compat_sys_sigpending
+74   arm  sethostname                   sys_sethostname
+75   arm  setrlimit                     compat_sys_setrlimit
+77   arm  getrusage                     compat_sys_getrusage
+78   arm  gettimeofday                  compat_sys_gettimeofday
+79   arm  settimeofday                  compat_sys_settimeofday
+80   arm  getgroups                     sys_getgroups16
+81   arm  setgroups                     sys_setgroups16
+83   arm  symlink                       sys_symlink
+85   arm  readlink                      sys_readlink
+86   arm  uselib                        sys_uselib
+87   arm  swapon                        sys_swapon
+88   arm  reboot                        sys_reboot
+91   arm  munmap                        sys_munmap
+92   arm  truncate                      compat_sys_truncate
+93   arm  ftruncate                     compat_sys_ftruncate
+94   arm  fchmod                        sys_fchmod
+95   arm  fchown                        sys_fchown16
+96   arm  getpriority                   sys_getpriority
+97   arm  setpriority                   sys_setpriority
+99   arm  statfs                        compat_sys_statfs
+100  arm  fstatfs                       compat_sys_fstatfs
+103  arm  syslog                        sys_syslog
+104  arm  setitimer                     compat_sys_setitimer
+105  arm  getitimer                     compat_sys_getitimer
+106  arm  stat                          compat_sys_newstat
+107  arm  lstat                         compat_sys_newlstat
+108  arm  fstat                         compat_sys_newfstat
+111  arm  vhangup                       sys_vhangup
+114  arm  wait4                         compat_sys_wait4
+115  arm  swapoff                       sys_swapoff
+116  arm  sysinfo                       compat_sys_sysinfo
+118  arm  fsync                         sys_fsync
+119  arm  sigreturn                     compat_sys_sigreturn
+120  arm  clone                         sys_clone
+121  arm  setdomainname                 sys_setdomainname
+122  arm  uname                         sys_newuname
+124  arm  adjtimex                      sys_adjtimex_time32
+125  arm  mprotect                      sys_mprotect
+126  arm  sigprocmask                   compat_sys_sigprocmask
+128  arm  init_module                   sys_init_module
+129  arm  delete_module                 sys_delete_module
+131  arm  quotactl                      sys_quotactl
+132  arm  getpgid                       sys_getpgid
+133  arm  fchdir                        sys_fchdir
+134  arm  bdflush                       sys_ni_syscall
+135  arm  sysfs                         sys_sysfs
+136  arm  personality                   sys_personality
+138  arm  setfsuid                      sys_setfsuid16
+139  arm  setfsgid                      sys_setfsgid16
+140  arm  _llseek                       sys_llseek
+141  arm  getdents                      compat_sys_getdents
+142  arm  _newselect                    compat_sys_select
+143  arm  flock                         sys_flock
+144  arm  msync                         sys_msync
+145  arm  readv                         sys_readv
+146  arm  writev                        sys_writev
+147  arm  getsid                        sys_getsid
+148  arm  fdatasync                     sys_fdatasync
+150  arm  mlock                         sys_mlock
+151  arm  munlock                       sys_munlock
+152  arm  mlockall                      sys_mlockall
+153  arm  munlockall                    sys_munlockall
+154  arm  sched_setparam                sys_sched_setparam
+155  arm  sched_getparam                sys_sched_getparam
+156  arm  sched_setscheduler            sys_sched_setscheduler
+157  arm  sched_getscheduler            sys_sched_getscheduler
+158  arm  sched_yield                   sys_sched_yield
+159  arm  sched_get_priority_max        sys_sched_get_priority_max
+160  arm  sched_get_priority_min        sys_sched_get_priority_min
+161  arm  sched_rr_get_interval         sys_sched_rr_get_interval_time32
+162  arm  nanosleep                     sys_nanosleep_time32
+163  arm  mremap                        sys_mremap
+164  arm  setresuid                     sys_setresuid16
+165  arm  getresuid                     sys_getresuid16
+168  arm  poll                          sys_poll
+169  arm  nfsservctl                    sys_ni_syscall
+170  arm  setresgid                     sys_setresgid16
+171  arm  getresgid                     sys_getresgid16
+172  arm  prctl                         sys_prctl
+173  arm  rt_sigreturn                  compat_sys_rt_sigreturn
+174  arm  rt_sigaction                  compat_sys_rt_sigaction
+175  arm  rt_sigprocmask                compat_sys_rt_sigprocmask
+176  arm  rt_sigpending                 compat_sys_rt_sigpending
+177  arm  rt_sigtimedwait               compat_sys_rt_sigtimedwait_time32
+178  arm  rt_sigqueueinfo               compat_sys_rt_sigqueueinfo
+179  arm  rt_sigsuspend                 compat_sys_rt_sigsuspend
+180  arm  pread64                       compat_sys_aarch32_pread64
+181  arm  pwrite64                      compat_sys_aarch32_pwrite64
+182  arm  chown                         sys_chown16
+183  arm  getcwd                        sys_getcwd
+184  arm  capget                        sys_capget
+185  arm  capset                        sys_capset
+186  arm  sigaltstack                   compat_sys_sigaltstack
+187  arm  sendfile                      compat_sys_sendfile
+190  arm  vfork                         sys_vfork
+191  arm  ugetrlimit                    compat_sys_getrlimit
+192  arm  mmap2                         compat_sys_aarch32_mmap2
+193  arm  truncate64                    compat_sys_aarch32_truncate64
+194  arm  ftruncate64                   compat_sys_aarch32_ftruncate64
+195  arm  stat64                        sys_stat64
+196  arm  lstat64                       sys_lstat64
+197  arm  fstat64                       sys_fstat64
+198  arm  lchown32                      sys_lchown
+199  arm  getuid32                      sys_getuid
+200  arm  getgid32                      sys_getgid
+201  arm  geteuid32                     sys_geteuid
+202  arm  getegid32                     sys_getegid
+203  arm  setreuid32                    sys_setreuid
+204  arm  setregid32                    sys_setregid
+205  arm  getgroups32                   sys_getgroups
+206  arm  setgroups32                   sys_setgroups
+207  arm  fchown32                      sys_fchown
+208  arm  setresuid32                   sys_setresuid
+209  arm  getresuid32                   sys_getresuid
+210  arm  setresgid32                   sys_setresgid
+211  arm  getresgid32                   sys_getresgid
+212  arm  chown32                       sys_chown
+213  arm  setuid32                      sys_setuid
+214  arm  setgid32                      sys_setgid
+215  arm  setfsuid32                    sys_setfsuid
+216  arm  setfsgid32                    sys_setfsgid
+217  arm  getdents64                    sys_getdents64
+218  arm  pivot_root                    sys_pivot_root
+219  arm  mincore                       sys_mincore
+220  arm  madvise                       sys_madvise
+221  arm  fcntl64                       compat_sys_fcntl64
+224  arm  gettid                        sys_gettid
+225  arm  readahead                     compat_sys_aarch32_readahead
+226  arm  setxattr                      sys_setxattr
+227  arm  lsetxattr                     sys_lsetxattr
+228  arm  fsetxattr                     sys_fsetxattr
+229  arm  getxattr                      sys_getxattr
+230  arm  lgetxattr                     sys_lgetxattr
+231  arm  fgetxattr                     sys_fgetxattr
+232  arm  listxattr                     sys_listxattr
+233  arm  llistxattr                    sys_llistxattr
+234  arm  flistxattr                    sys_flistxattr
+235  arm  removexattr                   sys_removexattr
+236  arm  lremovexattr                  sys_lremovexattr
+237  arm  fremovexattr                  sys_fremovexattr
+238  arm  tkill                         sys_tkill
+239  arm  sendfile64                    sys_sendfile64
+240  arm  futex                         sys_futex_time32
+241  arm  sched_setaffinity             compat_sys_sched_setaffinity
+242  arm  sched_getaffinity             compat_sys_sched_getaffinity
+243  arm  io_setup                      compat_sys_io_setup
+244  arm  io_destroy                    sys_io_destroy
+245  arm  io_getevents                  sys_io_getevents_time32
+246  arm  io_submit                     compat_sys_io_submit
+247  arm  io_cancel                     sys_io_cancel
+248  arm  exit_group                    sys_exit_group
+249  arm  lookup_dcookie                compat_sys_lookup_dcookie
+250  arm  epoll_create                  sys_epoll_create
+251  arm  epoll_ctl                     sys_epoll_ctl
+252  arm  epoll_wait                    sys_epoll_wait
+253  arm  remap_file_pages              sys_remap_file_pages
+256  arm  set_tid_address               sys_set_tid_address
+257  arm  timer_create                  compat_sys_timer_create
+258  arm  timer_settime                 sys_timer_settime32
+259  arm  timer_gettime                 sys_timer_gettime32
+260  arm  timer_getoverrun              sys_timer_getoverrun
+261  arm  timer_delete                  sys_timer_delete
+262  arm  clock_settime                 sys_clock_settime32
+263  arm  clock_gettime                 sys_clock_gettime32
+264  arm  clock_getres                  sys_clock_getres_time32
+265  arm  clock_nanosleep               sys_clock_nanosleep_time32
+266  arm  statfs64                      compat_sys_aarch32_statfs64
+267  arm  fstatfs64                     compat_sys_aarch32_fstatfs64
+268  arm  tgkill                        sys_tgkill
+269  arm  utimes                        sys_utimes_time32
+270  arm  arm_fadvise64_64              compat_sys_aarch32_fadvise64_64
+271  arm  pciconfig_iobase              sys_pciconfig_iobase
+272  arm  pciconfig_read                sys_pciconfig_read
+273  arm  pciconfig_write               sys_pciconfig_write
+274  arm  mq_open                       compat_sys_mq_open
+275  arm  mq_unlink                     sys_mq_unlink
+276  arm  mq_timedsend                  sys_mq_timedsend_time32
+277  arm  mq_timedreceive               sys_mq_timedreceive_time32
+278  arm  mq_notify                     compat_sys_mq_notify
+279  arm  mq_getsetattr                 compat_sys_mq_getsetattr
+280  arm  waitid                        compat_sys_waitid
+281  arm  socket                        sys_socket
+282  arm  bind                          sys_bind
+283  arm  connect                       sys_connect
+284  arm  listen                        sys_listen
+285  arm  accept                        sys_accept
+286  arm  getsockname                   sys_getsockname
+287  arm  getpeername                   sys_getpeername
+288  arm  socketpair                    sys_socketpair
+289  arm  send                          sys_send
+290  arm  sendto                        sys_sendto
+291  arm  recv                          compat_sys_recv
+292  arm  recvfrom                      compat_sys_recvfrom
+293  arm  shutdown                      sys_shutdown
+294  arm  setsockopt                    sys_setsockopt
+295  arm  getsockopt                    sys_getsockopt
+296  arm  sendmsg                       compat_sys_sendmsg
+297  arm  recvmsg                       compat_sys_recvmsg
+298  arm  semop                         sys_semop
+299  arm  semget                        sys_semget
+300  arm  semctl                        compat_sys_old_semctl
+301  arm  msgsnd                        compat_sys_msgsnd
+302  arm  msgrcv                        compat_sys_msgrcv
+303  arm  msgget                        sys_msgget
+304  arm  msgctl                        compat_sys_old_msgctl
+305  arm  shmat                         compat_sys_shmat
+306  arm  shmdt                         sys_shmdt
+307  arm  shmget                        sys_shmget
+308  arm  shmctl                        compat_sys_old_shmctl
+309  arm  add_key                       sys_add_key
+310  arm  request_key                   sys_request_key
+311  arm  keyctl                        compat_sys_keyctl
+312  arm  semtimedop                    sys_semtimedop_time32
+313  arm  vserver                       sys_ni_syscall
+314  arm  ioprio_set                    sys_ioprio_set
+315  arm  ioprio_get                    sys_ioprio_get
+316  arm  inotify_init                  sys_inotify_init
+317  arm  inotify_add_watch             sys_inotify_add_watch
+318  arm  inotify_rm_watch              sys_inotify_rm_watch
+319  arm  mbind                         sys_mbind
+320  arm  get_mempolicy                 sys_get_mempolicy
+321  arm  set_mempolicy                 sys_set_mempolicy
+322  arm  openat                        compat_sys_openat
+323  arm  mkdirat                       sys_mkdirat
+324  arm  mknodat                       sys_mknodat
+325  arm  fchownat                      sys_fchownat
+326  arm  futimesat                     sys_futimesat_time32
+327  arm  fstatat64                     sys_fstatat64
+328  arm  unlinkat                      sys_unlinkat
+329  arm  renameat                      sys_renameat
+330  arm  linkat                        sys_linkat
+331  arm  symlinkat                     sys_symlinkat
+332  arm  readlinkat                    sys_readlinkat
+333  arm  fchmodat                      sys_fchmodat
+334  arm  faccessat                     sys_faccessat
+335  arm  pselect6                      compat_sys_pselect6_time32
+336  arm  ppoll                         compat_sys_ppoll_time32
+337  arm  unshare                       sys_unshare
+338  arm  set_robust_list               compat_sys_set_robust_list
+339  arm  get_robust_list               compat_sys_get_robust_list
+340  arm  splice                        sys_splice
+341  arm  sync_file_range2              compat_sys_aarch32_sync_file_range2
+342  arm  tee                           sys_tee
+343  arm  vmsplice                      sys_vmsplice
+344  arm  move_pages                    sys_move_pages
+345  arm  getcpu                        sys_getcpu
+346  arm  epoll_pwait                   compat_sys_epoll_pwait
+347  arm  kexec_load                    compat_sys_kexec_load
+348  arm  utimensat                     sys_utimensat_time32
+349  arm  signalfd                      compat_sys_signalfd
+350  arm  timerfd_create                sys_timerfd_create
+351  arm  eventfd                       sys_eventfd
+352  arm  fallocate                     compat_sys_aarch32_fallocate
+353  arm  timerfd_settime               sys_timerfd_settime32
+354  arm  timerfd_gettime               sys_timerfd_gettime32
+355  arm  signalfd4                     compat_sys_signalfd4
+356  arm  eventfd2                      sys_eventfd2
+357  arm  epoll_create1                 sys_epoll_create1
+358  arm  dup3                          sys_dup3
+359  arm  pipe2                         sys_pipe2
+360  arm  inotify_init1                 sys_inotify_init1
+361  arm  preadv                        compat_sys_preadv
+362  arm  pwritev                       compat_sys_pwritev
+363  arm  rt_tgsigqueueinfo             compat_sys_rt_tgsigqueueinfo
+364  arm  perf_event_open               sys_perf_event_open
+365  arm  recvmmsg                      compat_sys_recvmmsg_time32
+366  arm  accept4                       sys_accept4
+367  arm  fanotify_init                 sys_fanotify_init
+368  arm  fanotify_mark                 compat_sys_fanotify_mark
+369  arm  prlimit64                     sys_prlimit64
+370  arm  name_to_handle_at             sys_name_to_handle_at
+371  arm  open_by_handle_at             compat_sys_open_by_handle_at
+372  arm  clock_adjtime                 sys_clock_adjtime32
+373  arm  syncfs                        sys_syncfs
+374  arm  sendmmsg                      compat_sys_sendmmsg
+375  arm  setns                         sys_setns
+376  arm  process_vm_readv              sys_process_vm_readv
+377  arm  process_vm_writev             sys_process_vm_writev
+378  arm  kcmp                          sys_kcmp
+379  arm  finit_module                  sys_finit_module
+380  arm  sched_setattr                 sys_sched_setattr
+381  arm  sched_getattr                 sys_sched_getattr
+382  arm  renameat2                     sys_renameat2
+383  arm  seccomp                       sys_seccomp
+384  arm  getrandom                     sys_getrandom
+385  arm  memfd_create                  sys_memfd_create
+386  arm  bpf                           sys_bpf
+387  arm  execveat                      compat_sys_execveat
+388  arm  userfaultfd                   sys_userfaultfd
+389  arm  membarrier                    sys_membarrier
+390  arm  mlock2                        sys_mlock2
+391  arm  copy_file_range               sys_copy_file_range
+392  arm  preadv2                       compat_sys_preadv2
+393  arm  pwritev2                      compat_sys_pwritev2
+394  arm  pkey_mprotect                 sys_pkey_mprotect
+395  arm  pkey_alloc                    sys_pkey_alloc
+396  arm  pkey_free                     sys_pkey_free
+397  arm  statx                         sys_statx
+398  arm  rseq                          sys_rseq
+399  arm  io_pgetevents                 compat_sys_io_pgetevents
+400  arm  migrate_pages                 sys_migrate_pages
+401  arm  kexec_file_load               sys_kexec_file_load
+403  arm  clock_gettime64               sys_clock_gettime
+404  arm  clock_settime64               sys_clock_settime
+405  arm  clock_adjtime64               sys_clock_adjtime
+406  arm  clock_getres_time64           sys_clock_getres
+407  arm  clock_nanosleep_time64        sys_clock_nanosleep
+408  arm  timer_gettime64               sys_timer_gettime
+409  arm  timer_settime64               sys_timer_settime
+410  arm  timerfd_gettime64             sys_timerfd_gettime
+411  arm  timerfd_settime64             sys_timerfd_settime
+412  arm  utimensat_time64              sys_utimensat
+413  arm  pselect6_time64               compat_sys_pselect6_time64
+414  arm  ppoll_time64                  compat_sys_ppoll_time64
+416  arm  io_pgetevents_time64          sys_io_pgetevents
+417  arm  recvmmsg_time64               compat_sys_recvmmsg_time64
+418  arm  mq_timedsend_time64           sys_mq_timedsend
+419  arm  mq_timedreceive_time64        sys_mq_timedreceive
+420  arm  semtimedop_time64             sys_semtimedop
+421  arm  rt_sigtimedwait_time64        compat_sys_rt_sigtimedwait_time64
+422  arm  futex_time64                  sys_futex
+423  arm  sched_rr_get_interval_time64  sys_sched_rr_get_interval
+424  arm  pidfd_send_signal             sys_pidfd_send_signal
+425  arm  io_uring_setup                sys_io_uring_setup
+426  arm  io_uring_enter                sys_io_uring_enter
+427  arm  io_uring_register             sys_io_uring_register
+428  arm  open_tree                     sys_open_tree
+429  arm  move_mount                    sys_move_mount
+430  arm  fsopen                        sys_fsopen
+431  arm  fsconfig                      sys_fsconfig
+432  arm  fsmount                       sys_fsmount
+433  arm  fspick                        sys_fspick
+434  arm  pidfd_open                    sys_pidfd_open
+435  arm  clone3                        sys_clone3
+436  arm  close_range                   sys_close_range
+437  arm  openat2                       sys_openat2
+438  arm  pidfd_getfd                   sys_pidfd_getfd
+439  arm  faccessat2                    sys_faccessat2
+440  arm  process_madvise               sys_process_madvise
+441  arm  epoll_pwait2                  compat_sys_epoll_pwait2
+442  arm  mount_setattr                 sys_mount_setattr
+443  arm  quotactl_fd                   sys_quotactl_fd
+444  arm  landlock_create_ruleset       sys_landlock_create_ruleset
+445  arm  landlock_add_rule             sys_landlock_add_rule
+446  arm  landlock_restrict_self        sys_landlock_restrict_self
+448  arm  process_mrelease              sys_process_mrelease
+449  arm  futex_waitv                   sys_futex_waitv
+450  arm  set_mempolicy_home_node       sys_set_mempolicy_home_node
+"""
 
-
-# ARM (on native ARM machine)
-# - arch/arm/include/asm/unistd.h
-# - arch/arm/include/generated/uapi/asm/unistd-common.h
-# - arch/arm/include/generated/uapi/asm/unistd-oabi.h
-# - arch/arm/include/generated/uapi/asm/unistd-eabi.h
+# ARM (native)
 # - arch/arm/tools/syscall.tbl
-arm_native_EABI_syscall_list = [
-    [0x000, 'restart_syscall', []],
-    [0x001, 'exit', ['int error_code']],
-    [0x002, 'fork', []],
-    [0x003, 'read', ['unsigned int fd', 'char *buf', 'size_t count']],
-    [0x004, 'write', ['unsigned int fd', 'const char *buf', 'size_t count']],
-    [0x005, 'open', ['const char *filename', 'int flags', 'umode_t mode']],
-    [0x006, 'close', ['unsigned int fd']],
-    #0x007, waitpid # unimplemented
-    [0x008, 'creat', ['const char *pathname', 'umode_t mode']],
-    [0x009, 'link', ['const char *oldname', 'const char *newname']],
-    [0x00a, 'unlink', ['const char *pathname']],
-    [0x00b, 'execve', ['const char *filename', 'const char *const *argv', 'const char *const *envp']],
-    [0x00c, 'chdir', ['const char *filename']],
-    #0x00d, time # unimplemented by EABI
-    [0x00e, 'mknod', ['const char *filename', 'umode_t mode', 'unsigned dev']],
-    [0x00f, 'chmod', ['const char *filename', 'umode_t mode']],
-    [0x010, 'lchown', ['const char *filename', 'old_uid_t user', 'old_gid_t group']], # lchown16
-    #0x011, break # unimplemented
-    #0x012, stat # unimplemented
-    [0x013, 'lseek', ['unsigned int fd', 'off_t offset', 'unsigned int whence']],
-    [0x014, 'getpid', []],
-    [0x015, 'mount', ['char *dev_name', 'char *dir_name', 'char *type', 'unsigned long flags', 'void *data']],
-    #0x016, umount # unimplemented by EABI
-    [0x017, 'setuid', ['old_uid_t uid']], # setuid16
-    [0x018, 'getuid', []], # getuid16
-    #0x019, stime # unimplemented by EABI
-    [0x01a, 'ptrace', ['long request', 'long pid', 'unsigned long addr', 'unsigned long data']],
-    #0x01b, alarm # unimplemented by EABI
-    #0x01c, fstat # unimplemented
-    [0x01d, 'pause', []],
-    #0x01e, utime # unimplemented by EABI
-    #0x01f, stty # unimplemented
-    #0x020, gtty # unimplemented
-    [0x021, 'access', ['const char *filename', 'int mode']],
-    [0x022, 'nice', ['int increment']],
-    #0x023, ftime # unimplemented
-    [0x024, 'sync', []],
-    [0x025, 'kill', ['pid_t pid', 'int sig']],
-    [0x026, 'rename', ['const char *oldname', 'const char *newname']],
-    [0x027, 'mkdir', ['const char *pathname', 'umode_t mode']],
-    [0x028, 'rmdir', ['const char *pathname']],
-    [0x029, 'dup', ['unsigned int fildes']],
-    [0x02a, 'pipe', ['int *fildes']],
-    [0x02b, 'times', ['struct tms *tbuf']],
-    #0x02c, prof # unimplemented
-    [0x02d, 'brk', ['unsigned long brk']],
-    [0x02e, 'setgid', ['old_gid_t gid']], # setgid16
-    [0x02f, 'getgid', []], # getgid16
-    #0x030, signal # unimplemented
-    [0x031, 'geteuid', []], # geteuid16
-    [0x032, 'getegid', []], # getegid16
-    [0x033, 'acct', ['const char *name']],
-    [0x034, 'umount2', ['char *name', 'int flags']], # umount
-    #0x035, lock # unimplemented
-    [0x036, 'ioctl', ['unsigned int fd', 'unsigned int cmd', 'unsigned long arg']],
-    [0x037, 'fcntl', ['unsigned int fd', 'unsigned int cmd', 'unsigned long arg']],
-    #0x038, mpx # unimplemented
-    [0x039, 'setpgid', ['pid_t pid', 'pid_t pgid']],
-    #0x03a, ulimit # unimplemented
-    #0x03b, olduname # unimplemented
-    [0x03c, 'umask', ['int mask']],
-    [0x03d, 'chroot', ['const char *filename']],
-    [0x03e, 'ustat', ['unsigned dev', 'struct ustat *ubuf']],
-    [0x03f, 'dup2', ['unsigned int oldfd', 'unsigned int newfd']],
-    [0x040, 'getppid', []],
-    [0x041, 'getpgrp', []],
-    [0x042, 'setsid', []],
-    [0x043, 'sigaction', ['int sig', 'const struct old_sigaction *act', 'struct old_sigaction *oact']],
-    #0x044, sgetmask # unimplemented
-    #0x045, ssetmask # unimplemented
-    [0x046, 'setreuid', ['old_uid_t ruid', 'old_uid_t euid']], # setreuid16
-    [0x047, 'setregid', ['old_gid_t rgid', 'old_gid_t egid']], # setregid16
-    [0x048, 'sigsuspend', ['old_sigset_t mask']],
-    [0x049, 'sigpending', ['old_sigset_t *uset']],
-    [0x04a, 'sethostname', ['char *name', 'int len']],
-    [0x04b, 'setrlimit', ['unsigned int resource', 'struct rlimit *rlim']],
-    #0x04c, getrlimit # unimplemented by EABI
-    [0x04d, 'getrusage', ['int who', 'struct rusage *ru']],
-    [0x04e, 'gettimeofday', ['struct __kernel_old_timeval *tv', 'struct timezone *tz']],
-    [0x04f, 'settimeofday', ['struct __kernel_old_timeval *tv', 'struct timezone *tz']],
-    [0x050, 'getgroups', ['int gidsetsize', 'old_gid_t *grouplist']], # setgroups16
-    [0x051, 'setgroups', ['int gidsetsize', 'old_gid_t *grouplist']], # getgroups16
-    #0x052, select # unimplemented by EABI
-    [0x053, 'symlink', ['const char *oldname', 'const char *newname']],
-    #0x054, lstat # unimplemented
-    [0x055, 'readlink', ['const char *path', 'char *buf', 'int bufsiz']],
-    [0x056, 'uselib', ['const char *library']],
-    [0x057, 'swapon', ['const char *specialfile', 'int swap_flags']],
-    [0x058, 'reboot', ['int magic1', 'int magic2', 'unsigned int cmd', 'void *arg']],
-    #0x059, readdir # unimplemented by EABI
-    #0x05a, mmap # unimplemented by EABI
-    [0x05b, 'munmap', ['unsigned long addr', 'size_t len']],
-    [0x05c, 'truncate', ['const char *path', 'long length']],
-    [0x05d, 'ftruncate', ['unsigned int fd', 'unsigned long length']],
-    [0x05e, 'fchmod', ['unsigned int fd', 'umode_t mode']],
-    [0x05f, 'fchown', ['unsigned int fd', 'old_uid_t user', 'old_gid_t group']], # fchown16
-    [0x060, 'getpriority', ['int which', 'int who']],
-    [0x061, 'setpriority', ['int which', 'int who', 'int niceval']],
-    #0x062, profil # unimplemented
-    [0x063, 'statfs', ['const char *pathname', 'struct statfs *buf']],
-    [0x064, 'fstatfs', ['unsigned int fd', 'struct statfs *buf']],
-    #0x065, ioperm # unimplemented
-    #0x066, socketcall # unimplemented by EABI
-    [0x067, 'syslog', ['int type', 'char *buf', 'int len']],
-    [0x068, 'setitimer', ['int which', 'struct __kernel_old_itimerval *value', 'struct __kernel_old_itimerval *ovalue']],
-    [0x069, 'getitimer', ['int which', 'struct __kernel_old_itimerval *value']],
-    [0x06a, 'stat', ['const char *filename', 'struct stat *statbuf']], # newstat
-    [0x06b, 'lstat', ['const char *filename', 'struct stat *statbuf']], # newlstat
-    [0x06c, 'fstat', ['unsigned int fd', 'struct stat *statbuf']], # newfstat
-    #0x06d, uname # unimplemented
-    #0x06e, iopl # unimplemented
-    [0x06f, 'vhangup', []],
-    #0x070, idle # deleted from kernel 2.3.13
-    #0x071, syscall # unimplemented by EABI (entry point exists at arch/arm/kernel/entry-common.S, but jump to sys_ni_syscall)
-    [0x072, 'wait4', ['pid_t upid', 'int *stat_addr', 'int options', 'struct rusage *ru']],
-    [0x073, 'swapoff', ['const char *specialfile']],
-    [0x074, 'sysinfo', ['struct sysinfo *info']],
-    #0x075, ipc # unimplemented by EABI
-    [0x076, 'fsync', ['unsigned int fd']],
-    [0x077, 'sigreturn', []], # sigreturn_wrapper # arch/arm/kernel/entry-common.S
-    [0x078, 'clone', ['unsigned long clone_flags', 'unsigned long newsp', 'int *parent_tidptr', 'unsigned long tls', 'int *child_tidptr']], # arg4,5 are swapped
-    [0x079, 'setdomainname', ['char *name', 'int len']],
-    [0x07a, 'uname', ['struct new_utsname *name']], # newuname
-    #0x07b, modify_ldt # unimplemented
-    [0x07c, 'adjtimex', ['struct old_timex32 *utp']], # adjtimex_time32
-    [0x07d, 'mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot']],
-    [0x07e, 'sigprocmask', ['int how', 'old_sigset_t *nset', 'old_sigset_t *oset']],
-    #0x07f, create_module # dereted from kernel 2.6
-    [0x080, 'init_module', ['void *umod', 'unsigned long len', 'const char *uargs']],
-    [0x081, 'delete_module', ['const char *name_user', 'unsigned int flags']],
-    #0x082, get_kernel_syms # dereted from kernel 2.6
-    [0x083, 'quotactl', ['unsigned int cmd', 'const char *special', 'qid_t id', 'void *addr']],
-    [0x084, 'getpgid', ['pid_t pid']],
-    [0x085, 'fchdir', ['unsigned int fd']],
-    [0x086, 'bdflush', ['int func', 'long data']],
-    [0x087, 'sysfs', ['int option', 'unsigned long arg1', 'unsigned long arg2']],
-    [0x088, 'personality', ['unsigned int personality']],
-    #0x089, afs_syscall # unimplemented
-    [0x08a, 'setfsuid', ['old_uid_t uid']], # setfsuid16
-    [0x08b, 'setfsgid', ['old_gid_t gid']], # setfsgid16
-    [0x08c, '_llseek', ['unsigned int fd', 'unsigned long offset_high', 'unsigned long offset_low', 'loff_t *result', 'unsigned int whence']], # llseek
-    [0x08d, 'getdents', ['unsigned int fd', 'struct linux_dirent *dirent', 'unsigned int count']],
-    [0x08e, '_newselect', ['int n', 'fd_set *inp', 'fd_set *outp', 'fd_set *exp', 'struct __kernel_old_timeval *tvp']], # select
-    [0x08f, 'flock', ['unsigned int fd', 'unsigned int cmd']],
-    [0x090, 'msync', ['unsigned long start', 'size_t len', 'int flags']],
-    [0x091, 'readv', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen']],
-    [0x092, 'writev', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen']],
-    [0x093, 'getsid', ['pid_t pid']],
-    [0x094, 'fdatasync', ['unsigned int fd']],
-    #0x095, _sysctl # unimplemented
-    [0x096, 'mlock', ['unsigned long start', 'size_t len']],
-    [0x097, 'munlock', ['unsigned long start', 'size_t len']],
-    [0x098, 'mlockall', ['int flags']],
-    [0x099, 'munlockall', []],
-    [0x09a, 'sched_setparam', ['pid_t pid', 'struct sched_param *param']],
-    [0x09b, 'sched_getparam', ['pid_t pid', 'struct sched_param *param']],
-    [0x09c, 'sched_setscheduler', ['pid_t pid', 'int policy', 'struct sched_param *param']],
-    [0x09d, 'sched_getscheduler', ['pid_t pid']],
-    [0x09e, 'sched_yield', []],
-    [0x09f, 'sched_get_priority_max', ['int policy']],
-    [0x0a0, 'sched_get_priority_min', ['int policy']],
-    [0x0a1, 'sched_rr_get_interval', ['pid_t pid', 'struct old_timespec32 *interval']], # sched_rr_get_interval_time32
-    [0x0a2, 'nanosleep', ['struct old_timespec32 *rqtp', 'struct old_timespec32 *rmtp']], # nanosleep_time32
-    [0x0a3, 'mremap', ['unsigned long addr', 'unsigned long old_len', 'unsigned long new_len', 'unsigned long flags', 'unsigned long new_addr']],
-    [0x0a4, 'setresuid', ['old_uid_t ruid', 'old_uid_t euid', 'old_uid_t suid']], # setresuid16
-    [0x0a5, 'getresuid', ['old_uid_t *ruidp', 'old_uid_t *euidp', 'old_uid_t *suidp']], # getresuid16
-    #0x0a6, vm86 # unimplemented
-    #0x0a7, query_module # dereted from kernel 2.6
-    [0x0a8, 'poll', ['struct pollfd *ufds', 'unsigned int nfds', 'int timeout_msecs']],
-    #0x0a9, nfsservctl # deleted from kernel 3.1
-    [0x0aa, 'setresgid', ['old_gid_t rgid', 'old_gid_t egid', 'old_gid_t sgid']], # setresgid16
-    [0x0ab, 'getresgid', ['old_gid_t *rgidp', 'old_gid_t *egidp', 'old_gid_t *sgidp']], # getresgid16
-    [0x0ac, 'prctl', ['int option', 'unsigned long arg2', 'unsigned long arg3', 'unsigned long arg4', 'unsigned long arg5']],
-    [0x0ad, 'rt_sigreturn', []], # rt_sigreturn_wrapper # arch/arm/kernel/entry-common.S
-    [0x0ae, 'rt_sigaction', ['int sig', 'const struct sigaction *act', 'struct sigaction *oact', 'size_t sigsetsize']],
-    [0x0af, 'rt_sigprocmask', ['int how', 'sigset_t *nset', 'sigset_t *oset', 'size_t sigsetsize']],
-    [0x0b0, 'rt_sigpending', ['sigset_t *uset', 'size_t sigsetsize']],
-    [0x0b1, 'rt_sigtimedwait', ['const sigset_t *uthese', 'siginfo_t *uinfo', 'const struct old_timespec32 *uts', 'size_t sigsetsize']], # sigtimedwait_time32
-    [0x0b2, 'rt_sigqueueinfo', ['pid_t pid', 'int sig', 'siginfo_t *uinfo']],
-    [0x0b3, 'rt_sigsuspend', ['sigset_t *unewset', 'size_t sigsetsize']],
-    [0x0b4, 'pread64', ['unsigned int fd', 'char *buf', 'size_t count', 'loff_t pos']],
-    [0x0b5, 'pwrite64', ['unsigned int fd', 'const char *buf', 'size_t count', 'loff_t pos']],
-    [0x0b6, 'chown', ['const char *filename', 'old_uid_t user', 'old_gid_t group']], # chown16
-    [0x0b7, 'getcwd', ['char *buf', 'unsigned long size']],
-    [0x0b8, 'capget', ['cap_user_header_t header', 'cap_user_data_t dataptr']],
-    [0x0b9, 'capset', ['cap_user_header_t header', 'const cap_user_data_t data']],
-    [0x0ba, 'sigaltstack', ['const stack_t *uss', 'stack_t *uoss']],
-    [0x0bb, 'sendfile', ['int out_fd', 'int in_fd', 'off_t *offset', 'size_t count']],
-    #0x0bc, reserved
-    #0x0bd, reserved
-    [0x0be, 'vfork', []],
-    [0x0bf, 'ugetrlimit', ['unsigned int resource', 'struct rlimit *rlim']], # getrlimit
-    [0x0c0, 'mmap2', ['unsigned long addr', 'unsigned long len', 'unsigned long prot', 'unsigned long flags', 'unsigned long fd', 'unsigned long pgoff']], # arch/arm/kernel/entry-common.S
-    [0x0c1, 'truncate64', ['const char *path', 'loff_t length']],
-    [0x0c2, 'ftruncate64', ['unsigned int fd', 'loff_t length']],
-    [0x0c3, 'stat64', ['const char *filename', 'struct stat64 *statbuf']],
-    [0x0c4, 'lstat64', ['const char *filename', 'struct stat64 *statbuf']],
-    [0x0c5, 'fstat64', ['unsigned long fd', 'struct stat64 *statbuf']],
-    [0x0c6, 'lchown32', ['const char *filename', 'uid_t user', 'gid_t group']], # lchown
-    [0x0c7, 'getuid32', []], # getiud
-    [0x0c8, 'getgid32', []], # getgid
-    [0x0c9, 'geteuid32', []], # geteuid
-    [0x0ca, 'getegid32', []], # getegid
-    [0x0cb, 'setreuid32', ['uid_t ruid', 'uid_t euid']], # setreuid
-    [0x0cc, 'setregid32', ['gid_t rgid', 'gid_t egid']], # setregid
-    [0x0cd, 'getgroups32', ['int gidsetsize', 'gid_t *grouplist']], # getgroups
-    [0x0ce, 'setgroups32', ['int gidsetsize', 'gid_t *grouplist']], # setgroups
-    [0x0cf, 'fchown32', ['unsigned int fd', 'uid_t user', 'gid_t group']], # fchown
-    [0x0d0, 'setresuid32', ['uid_t ruid', 'uid_t euid', 'uid_t suid']], # setresuid
-    [0x0d1, 'getresuid32', ['uid_t *ruidp', 'uid_t *euidp', 'uid_t *suidp']], # getresuid
-    [0x0d2, 'setresgid32', ['gid_t rgid', 'gid_t egid', 'gid_t sgid']], # setresgid
-    [0x0d3, 'getresgid32', ['gid_t *rgidp', 'gid_t *egidp', 'gid_t *sgidp']], # getresgid
-    [0x0d4, 'chown32', ['const char *filename', 'uid_t user', 'gid_t group']], # chown
-    [0x0d5, 'setuid32', ['uid_t uid']], # setuid
-    [0x0d6, 'setgid32', ['gid_t gid']], # setgid
-    [0x0d7, 'setfsuid32', ['uid_t uid']], # setfsuid
-    [0x0d8, 'setfsgid32', ['gid_t gid']], # setfsgid
-    [0x0d9, 'getdents64', ['unsigned int fd', 'struct linux_dirent64 *dirent', 'unsigned int count']],
-    [0x0da, 'pivot_root', ['const char *new_root', 'const char *put_old']],
-    [0x0db, 'mincore', ['unsigned long start', 'size_t len', 'unsigned char *vec']],
-    [0x0dc, 'madvise', ['unsigned long start', 'size_t len_in', 'int behavior']],
-    [0x0dd, 'fcntl64', ['unsigned int fd', 'unsigned int cmd', 'unsigned long arg']],
-    #0x0de, tux # unimplemented
-    #0x0df, unused
-    [0x0e0, 'gettid', []],
-    [0x0e1, 'readahead', ['int fd', 'loff_t offset', 'size_t count']],
-    [0x0e2, 'setxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-    [0x0e3, 'lsetxattr', ['const char *pathname', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-    [0x0e4, 'fsetxattr', ['int fd', 'const char *name', 'const void *value', 'size_t size', 'int flags']],
-    [0x0e5, 'getxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
-    [0x0e6, 'lgetxattr', ['const char *pathname', 'const char *name', 'void *value', 'size_t size']],
-    [0x0e7, 'fgetxattr', ['int fd', 'const char *name', 'void *value', 'size_t size']],
-    [0x0e8, 'listxattr', ['const char *pathname', 'char *list', 'size_t size']],
-    [0x0e9, 'llistxattr', ['const char *pathname', 'char *list', 'size_t size']],
-    [0x0ea, 'flistxattr', ['int fd', 'char *list', 'size_t size']],
-    [0x0eb, 'removexattr', ['const char *pathname', 'const char *name']],
-    [0x0ec, 'lremovexattr', ['const char *pathname', 'const char *name']],
-    [0x0ed, 'fremovexattr', ['int fd', 'const char *name']],
-    [0x0ee, 'tkill', ['pid_t pid', 'int sig']],
-    [0x0ef, 'sendfile64', ['int out_fd', 'int in_fd', 'loff_t *offset', 'size_t count']],
-    [0x0f0, 'futex', ['u32 *uaddr', 'int op', 'u32 val', 'struct old_timespec32 *utime', 'u32 *uaddr2', 'u32 val3']], # futex_time32
-    [0x0f1, 'sched_setaffinity', ['pid_t pid', 'unsigned int len', 'unsigned long *user_mask_ptr']],
-    [0x0f2, 'sched_getaffinity', ['pid_t pid', 'unsigned int len', 'unsigned long *user_mask_ptr']],
-    [0x0f3, 'io_setup', ['unsigned nr_events', 'aio_context_t *ctxp']],
-    [0x0f4, 'io_destroy', ['aio_context_t ctx']],
-    [0x0f5, 'io_getevents', ['__u32 ctx_id', '__s32 min_nr', '__s32 nr', 'struct io_event *events', 'struct old_timespec32 *timeout']], # io_getevents_time32
-    [0x0f6, 'io_submit', ['aio_context_t ctx_id', 'long nr', 'struct iocb **iocbpp']],
-    [0x0f7, 'io_cancel', ['aio_context_t ctx_id', 'struct iocb *iocb', 'struct io_event *result']],
-    [0x0f8, 'exit_group', ['int error_code']],
-    [0x0f9, 'lookup_dcookie', ['u64 cookie64', 'char *buf', 'size_t len']],
-    [0x0fa, 'epoll_create', ['int size']],
-    [0x0fb, 'epoll_ctl', ['int epfd', 'int op', 'int fd', 'struct epoll_event *event']],
-    [0x0fc, 'epoll_wait', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'int timeout']],
-    [0x0fd, 'remap_file_pages', ['unsigned long start', 'unsigned long size', 'unsigned long prot', 'unsigned long pgoff', 'unsigned long flags']],
-    #0x0fe, set_thread_area # unimplemented
-    #0x0ff, get_thread_area # unimplemented
-    [0x100, 'set_tid_address', ['int *tidptr']],
-    [0x101, 'timer_create', ['clockid_t which_clock', 'struct sigevent *timer_event_spec', 'timer_t *created_timer_id']],
-    [0x102, 'timer_settime', ['timer_t timer_id', 'int flags', 'struct old_itimerspec32 *new', 'struct old_itimerspec32 *old']], # timer_settime32
-    [0x103, 'timer_gettime', ['timer_t timer_id', 'struct old_itimerspec32 *setting']], # timer_gettime32
-    [0x104, 'timer_getoverrun', ['timer_t timer_id']],
-    [0x105, 'timer_delete', ['timer_t timer_id']],
-    [0x106, 'clock_settime', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_settime32
-    [0x107, 'clock_gettime', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_gettime32
-    [0x108, 'clock_getres', ['clockid_t which_clock', 'struct old_timespec32 *tp']], # clock_getres_time32
-    [0x109, 'clock_nanosleep', ['clockid_t which_clock', 'int flags', 'struct old_timespec32 *rqtp', 'struct old_timespec32 *rmtp']], # clock_nanosleep_time32
-    [0x10a, 'statfs64', ['const char *path', 'size_t sz', 'struct statfs64 *buf']], # statfs64_wrapper # arch/arm/kernel/entry-common.S
-    [0x10b, 'fstatfs64', ['unsigned int fd', 'size_t sz', 'struct statfs64 *buf']], # fstatfs64_wrapper # arch/arm/kernel/entry-common.S
-    [0x10c, 'tgkill', ['pid_t tgid', 'pid_t pid', 'int sig']],
-    [0x10d, 'utimes', ['const char *filename', 'struct old_timeval32 *t']], # utimes_time32
-    [0x10e, 'arm_fadvise64_64', ['int fd', 'int advice', 'loff_t offset', 'loff_t len']], # arch/arm/kernel/sys_arm.c
-    [0x10f, 'pciconfig_iobase', ['long which', 'unsigned long bus', 'unsigned long devfn']],
-    [0x110, 'pciconfig_read', ['unsigned long bus', 'unsigned long dfn', 'unsigned long off', 'unsigned long len', 'void *buf']],
-    [0x111, 'pciconfig_write', ['unsigned long bus', 'unsigned long dfn', 'unsigned long off', 'unsigned long len', 'void *buf']],
-    [0x112, 'mq_open', ['const char *u_name', 'int oflag', 'umode_t mode', 'struct mq_attr *u_attr']],
-    [0x113, 'mq_unlink', ['const char *u_name']],
-    [0x114, 'mq_timedsend', ['mqd_t mqdes', 'const char *u_msg_ptr', 'unsigned int msg_len', 'unsigned int msg_prio', 'const struct old_timespec32 *u_abs_timeout']], # mq_timedsend_time32
-    [0x115, 'mq_timedreceive', ['mqd_t mqdes', 'const char *u_msg_ptr', 'unsigned int msg_len', 'unsigned int *msg_prio', 'const struct old_timespec32 *u_abs_timeout']], # mq_timedreceive_time32
-    [0x116, 'mq_notify', ['mqd_t mqdes', 'const struct sigevent *u_notification']],
-    [0x117, 'mq_getsetattr', ['mqd_t mqdes', 'const struct mq_attr *u_mqstat', 'struct mq_attr *u_omqstat']],
-    [0x118, 'waitid', ['int which', 'pid_t upid', 'struct siginfo *infop', 'int options', 'struct rusage *ru']],
-    [0x119, 'socket', ['int family', 'int type', 'int protocol']],
-    [0x11a, 'bind', ['int fd', 'struct sockaddr *umyaddr', 'int addrlen']],
-    [0x11b, 'connect', ['int fd', 'struct sockaddr *uservaddr', 'int addrlen']],
-    [0x11c, 'listen', ['int fd', 'int backlog']],
-    [0x11d, 'accept', ['int fd', 'struct sockaddr *upeer_sockaddr', 'int *upeer_addrlen']],
-    [0x11e, 'getsockname', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
-    [0x11f, 'getpeername', ['int fd', 'struct sockaddr *usockaddr', 'int *usockaddr_len']],
-    [0x120, 'socketpair', ['int family', 'int type', 'int protocol', 'int *usockvec']],
-    [0x121, 'send', ['int fd', 'void *buff', 'size_t len', 'unsigned int flags']],
-    [0x122, 'sendto', ['int fd', 'void *buff', 'size_t len', 'unsigned int flags', 'struct sockaddr *addr', 'int addr_len']],
-    [0x123, 'recv', ['int fd', 'void *ubuf', 'size_t size', 'unsigned int flags']],
-    [0x124, 'recvfrom', ['int fd', 'void *ubuf', 'size_t size', 'unsigned int flags', 'struct sockaddr *addr', 'int *addr_len']],
-    [0x125, 'shutdown', ['int fd', 'int how']],
-    [0x126, 'setsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int optlen']],
-    [0x127, 'getsockopt', ['int fd', 'int level', 'int optname', 'char *optval', 'int *optlen']],
-    [0x128, 'sendmsg', ['int fd', 'struct user_msghdr *msg', 'unsigned int flags']],
-    [0x129, 'recvmsg', ['int fd', 'struct user_msghdr *msg', 'unsigned int flags']],
-    [0x12a, 'semop', ['int semid', 'struct sembuf *tsops', 'unsigned nsops']],
-    [0x12b, 'semget', ['key_t key', 'int nsems', 'int semflg']],
-    [0x12c, 'semctl', ['int semid', 'int semnum', 'int cmd', 'unsigned long arg']], # old_semctl
-    [0x12d, 'msgsnd', ['int msqid', 'struct msgbuf *msgp', 'size_t msgsz', 'int msgflg']],
-    [0x12e, 'msgrcv', ['int msqid', 'struct msgbuf *msgp', 'size_t msgsz', 'long msgtyp', 'int msgflg']],
-    [0x12f, 'msgget', ['key_t key', 'int msgflg']],
-    [0x130, 'msgctl', ['int msqid', 'int cmd', 'struct msqid_ds *buf']], # old_msgctl
-    [0x131, 'shmat', ['int shmid', 'char *shmaddr', 'int shmflg']],
-    [0x132, 'shmdt', ['char *shmaddr']],
-    [0x133, 'shmget', ['key_t key', 'size_t size', 'int shmflg']],
-    [0x134, 'shmctl', ['int shmid', 'int cmd', 'struct shmid_ds *buf']], # old_shmctl
-    [0x135, 'add_key', ['const char *_type', 'const char *_description', 'const void *_payload', 'size_t plen', 'key_serial_t ringid']],
-    [0x136, 'request_key', ['const char *_type', 'const char *_description', 'const char *_callout_info', 'key_serial_t destringid']],
-    [0x137, 'keyctl', ['int option', 'unsigned long arg2', 'unsigned long arg3', 'unsigned long arg4', 'unsigned long arg5']],
-    [0x138, 'semtimedop', ['int semid', 'struct sembuf *tsems', 'unsigned nsops', 'const struct old_timespec32 *timeout']], # semtimedop_time32
-    #0x139, vserver # unimplemented
-    [0x13a, 'ioprio_set', ['int which', 'int who', 'int ioprio']],
-    [0x13b, 'ioprio_get', ['int which', 'int who']],
-    [0x13c, 'inotify_init', []],
-    [0x13d, 'inotify_add_watch', ['int fd', 'const char *pathname', 'u32 mask']],
-    [0x13e, 'inotify_rm_watch', ['int fd', '__s32 wd']],
-    [0x13f, 'mbind', ['unsigned long start', 'unsigned long len', 'unsigned long mode', 'const unsigned long *nmask', 'unsigned long maxnode', 'unsigned int flags']],
-    [0x140, 'get_mempolicy', ['int *policy', 'unsigned long *nmask', 'unsigned long maxnode', 'unsigned long addr', 'unsigned long flags']],
-    [0x141, 'set_mempolicy', ['int mode', 'const unsigned long *nmask', 'unsigned long maxnode']],
-    [0x142, 'openat', ['int dfd', 'const char *filename', 'int flags', 'umode_t mode']],
-    [0x143, 'mkdirat', ['int dfd', 'const char *pathname', 'umode_t mode']],
-    [0x144, 'mknodat', ['int dfd', 'const char *filename', 'umode_t mode', 'unsigned int dev']],
-    [0x145, 'fchownat', ['int dfd', 'const char *filename', 'uid_t user', 'gid_t group', 'int flag']],
-    [0x146, 'futimesat', ['unsigned int dfd', 'const char *filename', 'struct old_timeval32 *t']], # futimesat_time32
-    [0x147, 'fstatat64', ['int dfd', 'const char *filename', 'struct stat64 *statbuf', 'int flag']],
-    [0x148, 'unlinkat', ['int dfd', 'const char *pathname', 'int flag']],
-    [0x149, 'renameat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname']],
-    [0x14a, 'linkat', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'int flags']],
-    [0x14b, 'symlinkat', ['const char *oldname', 'int newdfd', 'const char *newname']],
-    [0x14c, 'readlinkat', ['int dfd', 'const char *pathname', 'char *buf', 'int bufsiz']],
-    [0x14d, 'fchmodat', ['int dfd', 'const char *filename', 'umode_t mode']],
-    [0x14e, 'faccessat', ['int dfd', 'const char *filename', 'int mode']],
-    [0x14f, 'pselect6', ['int n', 'fd_set *inp', 'fd_set *outp', 'fd_set *exp', 'struct old_timespec32 *tsp', 'void *sig']], # pselect6_time32
-    [0x150, 'ppoll', ['struct pollfd *ufds', 'unsigned int nfds', 'struct old_timespec32 *tsp', 'const sigset_t *sigmask', 'size_t sigsetsize']],
-    [0x151, 'unshare', ['unsigned long unshare_flags']],
-    [0x152, 'set_robust_list', ['struct robust_list_head *head', 'size_t len']],
-    [0x153, 'get_robust_list', ['int pid', 'struct robust_list_head **head_ptr', 'size_t *len_ptr']],
-    [0x154, 'splice', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
-    [0x155, 'sync_file_range2', ['int fd', 'unsigned int flags', 'loff_t offset', 'loff_t nbytes']],
-    [0x156, 'tee', ['int fdin', 'int fdout', 'size_t len', 'unsigned int flags']],
-    [0x157, 'vmsplice', ['int fd', 'const struct iovec *uiov', 'unsigned long nr_segs', 'unsigned int flags']],
-    [0x158, 'move_pages', ['pid_t pid', 'unsigned long nr_pages', 'const void **pages', 'const int *nodes', 'int *status', 'int flags']],
-    [0x159, 'getcpu', ['unsigned *cpup', 'unsigned *nodep', 'struct getcpu_cache *unused']],
-    [0x15a, 'epoll_pwait', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'int timeout', 'const sigset_t *sigmask', 'size_t sigsetsize']],
-    [0x15b, 'kexec_load', ['unsigned long entry', 'unsigned long nr_segments', 'struct kexec_segment *segments', 'unsigned long flags']],
-    [0x15c, 'utimensat', ['unsigned int dfd', 'const char *filename', 'struct old_timespec32 *t', 'int flags']], # utimensat_time32
-    [0x15d, 'signalfd', ['int ufd', 'sigset_t *user_mask', 'size_t sizemask']],
-    [0x15e, 'timerfd_create', ['int clockid', 'int flags']],
-    [0x15f, 'eventfd', ['unsigned int count']],
-    [0x160, 'fallocate', ['int fd', 'int mode', 'loff_t offset', 'loff_t len']],
-    [0x161, 'timerfd_settime', ['int ufd', 'int flags', 'const struct old_itimerspec32 *utmr', 'struct old_itimerspec32 *otmr']], # timerfd_settime32
-    [0x162, 'timerfd_gettime', ['int ufd', 'struct old_itimerspec32 *otmr']], # timerfd_gettime32
-    [0x163, 'signalfd4', ['int ufd', 'sigset_t *user_mask', 'size_t sizemask', 'int flags']],
-    [0x164, 'eventfd2', ['unsigned int count', 'int flags']],
-    [0x165, 'epoll_create1', ['int flags']],
-    [0x166, 'dup3', ['unsigned int oldfd', 'unsigned int newfd', 'int flags']],
-    [0x167, 'pipe2', ['int *fildes', 'int flags']],
-    [0x168, 'inotify_init1', ['int flags']],
-    [0x169, 'preadv', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h']],
-    [0x16a, 'pwritev', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h']],
-    [0x16b, 'rt_tgsigqueueinfo', ['pid_t tgid', 'pid_t pid', 'int sig', 'siginfo_t *uinfo']],
-    [0x16c, 'perf_event_open', ['struct perf_event_attr *attr_uptr', 'pid_t pid', 'int cpu', 'int group_fd', 'unsigned long flags']],
-    [0x16d, 'recvmmsg', ['int fd', 'struct mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags', 'struct old_timespec32 *timeout']], # recvmmsg_time32
-    [0x16e, 'accept4', ['int fd', 'struct sockaddr *upeer_sockaddr', 'int *upeer_addrlen', 'int flags']],
-    [0x16f, 'fanotify_init', ['unsigned int flags', 'unsigned int event_f_flags']],
-    [0x170, 'fanotify_mark', ['int fanotify_fd', 'unsigned int flags', '__u64 mask', 'int dfd', 'const char *pathname']],
-    [0x171, 'prlimit64', ['pid_t pid', 'unsigned int resource', 'const struct rlimit64 *new_rlim', 'struct rlimit64 *old_rlim']],
-    [0x172, 'name_to_handle_at', ['int dfd', 'const char *name', 'struct file_handle *handle', 'int *mnt_id', 'int flag']],
-    [0x173, 'open_by_handle_at', ['int mountdirfd', 'struct file_handle *handle', 'int flags']],
-    [0x174, 'clock_adjtime', ['clockid_t which_clock', 'struct old_timex32 *tx']], # clock_adjtime32
-    [0x175, 'syncfs', ['int fd']],
-    [0x176, 'sendmmsg', ['int fd', 'struct mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags']],
-    [0x177, 'setns', ['int fd', 'int flags']],
-    [0x178, 'process_vm_readv', ['pid_t pid', 'const struct iovec *lvec', 'unsigned long liovcnt', 'const struct iovec *rvec', 'unsigned long riovcnt', 'unsigned long flags']],
-    [0x179, 'process_vm_writev', ['pid_t pid', 'const struct iovec *lvec', 'unsigned long liovcnt', 'const struct iovec *rvec', 'unsigned long riovcnt', 'unsigned long flags']],
-    [0x17a, 'kcmp', ['pid_t pid1', 'pid_t pid2', 'int type', 'unsigned long idx1', 'unsigned long idx2']],
-    [0x17b, 'finit_module', ['int fd', 'const char *uargs', 'int flags']],
-    [0x17c, 'sched_setattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int flags']],
-    [0x17d, 'sched_getattr', ['pid_t pid', 'struct sched_attr *uattr', 'unsigned int usize', 'unsigned int flags']],
-    [0x17e, 'renameat2', ['int olddfd', 'const char *oldname', 'int newdfd', 'const char *newname', 'unsigned int flags']],
-    [0x17f, 'seccomp', ['unsigned int op', 'unsigned int flags', 'void *uargs']],
-    [0x180, 'getrandom', ['char *buf', 'size_t count', 'unsigned int flags']],
-    [0x181, 'memfd_create', ['const char *uname', 'unsigned int flags']],
-    [0x182, 'bpf', ['int cmd', 'union bpf_attr *uattr', 'unsigned int size']],
-    [0x183, 'execveat', ['int fd', 'const char *filename', 'const char *const *argv', 'const char *const *envp', 'int flags']],
-    [0x184, 'userfaultfd', ['int flags']],
-    [0x185, 'membarrier', ['int cmd', 'int flags']],
-    [0x186, 'mlock2', ['unsigned long start', 'size_t len', 'int flags']],
-    [0x187, 'copy_file_range', ['int fd_in', 'loff_t *off_in', 'int fd_out', 'loff_t *off_out', 'size_t len', 'unsigned int flags']],
-    [0x188, 'preadv2', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h', 'rwf_t flags']],
-    [0x189, 'pwritev2', ['unsigned long fd', 'const struct iovec *vec', 'unsigned long vlen', 'unsigned long pos_l', 'unsigned long pos_h', 'rwf_t flags']],
-    [0x18a, 'pkey_mprotect', ['unsigned long start', 'size_t len', 'unsigned long prot', 'int pkey']],
-    [0x18b, 'pkey_alloc', ['unsigned long flags', 'unsigned long init_val']],
-    [0x18c, 'pkey_free', ['int pkey']],
-    [0x18d, 'statx', ['int dfd', 'const char *filename', 'unsigned flags', 'unsigned int mask', 'struct statx *buffer']],
-    [0x18e, 'rseq', ['struct rseq *rseq', 'u32 rseq_len', 'int flags', 'u32 sig']],
-    [0x18f, 'io_pgetevents', ['aio_context_t ctx_id', 'long min_nr', 'long nr', 'struct io_event *events', 'struct old_timespec32 *timeout', 'const struct __aio_sigset *usig']], # io_pgetevents_time32
-    [0x190, 'migrate_pages', ['pid_t pid', 'unsigned long maxnode', 'const unsigned long *old_nodes', 'const unsigned long *new_nodes']],
-    [0x191, 'kexec_file_load', ['int kernel_fd', 'int initrd_fd', 'unsigned long cmdline_len', 'const char *cmdline_ptr', 'unsigned long flags']],
-    #0x192, unused
-    [0x193, 'clock_gettime_time64', ['const clockid_t which_clock', 'const struct __kernel_timespec *tp']], # clock_gettime
-    [0x194, 'clock_settime_time64', ['const clockid_t which_clock', 'const struct __kernel_timespec *tp']], # clock_settime
-    [0x195, 'clock_adjtime_time64', ['const clockid_t which_clock', 'struct __kernel_timex *utx']], # clock_adjtime
-    [0x196, 'clock_getres_time64', ['const clockid_t which_clock', 'struct __kernel_timespec *tp']], # clock_getres
-    [0x197, 'clock_nanosleep_time64', ['const clockid_t which_clock', 'int flags', 'const struct __kernel_timespec *rqtp', 'struct __kernel_timespec *rmtp']], # clock_nanosleep
-    [0x198, 'timer_gettime_time64', ['timer_t timer_id', 'struct __kernel_itimerspec *setting']], # timer_gettime
-    [0x199, 'timer_settime_time64', ['timer_t timer_id', 'int flags', 'const struct __kernel_itimerspec *new_setting', 'struct __kernel_itimerspec *old_setting']], # timer_settime
-    [0x19a, 'timerfd_gettime_time64', ['int ufd', 'struct __kernel_itimerspec *otmr']], # timerfd_gettime
-    [0x19b, 'timerfd_settime_time64', ['int ufd', 'int flags', 'const struct __kernel_itimerspec *utmr', 'struct __kernel_itimerspec *otmr']], # timerfd_settime
-    [0x19c, 'utimensat_time64', ['int dfd', 'const char *filename', 'struct __kernel_timespec *utimes', 'int flags']], # utimensat
-    [0x19d, 'pselect6_time64', ['int n', 'fd_set *inp', 'fd_set *outp', 'fd_set *exp', 'struct __kernel_timespec *tsp', 'void *sig']], # pselect6
-    [0x19e, 'ppoll_time64', ['struct pollfd *ufds', 'unsigned int nfds', 'struct __kernel_timespec *tsp', 'const sigset_t *sigmask', 'size_t sigsetsize']], # ppoll
-    #0x19f, unused
-    [0x1a0, 'io_pgetevents_time64', ['aio_context_t ctx_id', 'long min_nr', 'long nr', 'struct io_event *events', 'struct __kernel_timespec *timeout', 'const struct __aio_sigset *usig']], # io_pgetevents
-    [0x1a1, 'recvmmsg_time64', ['int fd', 'struct mmsghdr *mmsg', 'unsigned int vlen', 'unsigned int flags', 'struct __kernel_timespec *timeout']], # recvmmsg
-    [0x1a2, 'mq_timedsend_time64', ['mqd_t mqdes', 'const char *u_msg_ptr', 'size_t msg_len', 'unsigned int msg_prio', 'const struct __kernel_timespec *u_abs_timeout']], # mq_timedsend
-    [0x1a3, 'mq_timedreceive_time64', ['mqd_t mqdes', 'const char *u_msg_ptr', 'size_t msg_len', 'unsigned int *u_msg_prio', 'const struct __kernel_timespec *u_abs_timeout']], # mq_timedreceive
-    [0x1a4, 'semtimedop_time64', ['int semid', 'struct sembuf *tsops', 'unsigned int nsops', 'const struct __kernel_timespec *timeout']], # semtimedop
-    [0x1a5, 'rt_sigtimedwait_time64', ['const sigset_t *uthese', 'siginfo *uinfo', 'struct struct __kernel_timespec *uts', 'size_t sigsetsize']], # rt_sigtimedwait
-    [0x1a6, 'futex_time64', ['u32 *uaddr', 'int op', 'u32 val', 'struct __kernel_timespec *utime', 'u32 *uaddr2', 'u32 val3']], # futex
-    [0x1a7, 'sched_rr_get_interval_time64', ['pid_t pid', 'struct __kernel_timespec *interval']], # sched_rr_get_interval
-    [0x1a8, 'pidfd_send_signal', ['int pidfd', 'int sig', 'siginfo_t *info', 'unsigned int flags']],
-    [0x1a9, 'io_uring_setup', ['u32 entries', 'struct io_uring_params *params']],
-    [0x1aa, 'io_uring_enter', ['unsigned int fd', 'u32 to_submit', 'u32 min_complete', 'u32 flags', 'const sigset_t *sig', 'size_t sigsz']],
-    [0x1ab, 'io_uring_register', ['unsigned int fd', 'unsigned int opcode', 'void *arg', 'unsigned int nr_args']],
-    [0x1ac, 'open_tree', ['int dfd', 'const char *filename', 'unsigned flags']],
-    [0x1ad, 'move_mount', ['int from_dfd', 'const char *from_pathname', 'int to_dfd', 'const char *to_pathname', 'unsigned int flags']],
-    [0x1ae, 'fsopen', ['const char *_fs_name', 'unsigned int flags']],
-    [0x1af, 'fsconfig', ['int fd', 'unsigned int cmd', 'const char *_key', 'const void *_value', 'int aux']],
-    [0x1b0, 'fsmount', ['int fs_fd', 'unsigned int flags', 'unsigned int attr_flags']],
-    [0x1b1, 'fspick', ['int, dfd', 'const char *path', 'unsigned int flags']],
-    [0x1b2, 'pidfd_open', ['pid_t pid', 'unsigned int flags']],
-    [0x1b3, 'clone3', ['struct clone_args *uargs', 'size_t size']],
-    [0x1b4, 'close_range', ['unsigned int fd', 'unsigned int max_fd', 'unsigned int flag']],
-    [0x1b5, 'openat2', ['int dfd', 'const char *filename', 'struct open_how *how', 'size_t usize']],
-    [0x1b6, 'pidfd_getfd', ['int pidfd', 'int fd', 'unsigned int flags']],
-    [0x1b7, 'faccessat2', ['int dfd', 'const char *filename', 'int mode', 'int flags']],
-    [0x1b8, 'process_madvise', ['int pidfd', 'const struct iovec *vec', 'size_t vlen', 'int behavior', 'unsigned int flags']],
-    [0x1b9, 'epoll_pwait2', ['int epfd', 'struct epoll_event *events', 'int maxevents', 'const struct __kernel_timespec *timeout', 'const sigset_t *sigmask', 'size_t sigsetsize']],
-    [0x1ba, 'mount_setattr', ['int dfd', 'const char *path', 'unsigned int flags', 'struct mount_attr *uattr', 'size_t usize']],
-    [0x1bb, 'quotactl_fd', ['unsigned int fd', 'unsigned int cmd', 'qid_t id', 'void __user *addr']],
-    [0x1bc, 'landlock_create_ruleset', ['const struct landlock_ruleset_attr *const attr', 'const size_t size', 'const __u32 flags']],
-    [0x1bd, 'landlock_add_rule', ['const int ruleset_fd', 'const enum landlock_rule_type rule_type', 'const void *const rule_attr', 'const __u32 flags']],
-    [0x1be, 'landlock_restrict_self', ['const int ruleset_fd', 'const __u32 flags']],
-    [0x1bf, 'memfd_secret', ['unsigned int, flags']],
-    [0x1c0, 'process_mrelease', ['int pidfd', 'unsigned int flags']],
-    [0x1c1, 'futex_waitv', ['struct futex_waitv *waiters', 'unsigned int nr_futexes', 'unsigned int flags', 'struct __kernel_timespec *timeout', 'clockid_t clockid']],
-    [0x1c2, 'set_mempolicy_home_node', ['unsigned long start', 'unsigned long len', 'unsigned long home_node', 'unsigned long flags']],
-    [0xf0001, 'breakpoint', []], # arch/arm/kernel/traps.c
-    [0xf0002, 'cacheflush', ['unsigned long start', 'unsigned long end', 'int flags']], # arch/arm/kernel/traps.c
-    [0xf0003, 'usr26', []], # arch/arm/kernel/traps.c
-    [0xf0004, 'usr32', []], # arch/arm/kernel/traps.c
-    [0xf0005, 'set_tls', ['unsigned long val']], # arch/arm/kernel/traps.c
-    [0xf0006, 'get_tls', []], # arch/arm/kernel/traps.c
-]
+arm_native_syscall_tbl = """
+#
+# Linux system call numbers and entry vectors
+#
+# The format is:
+# <num> <abi>   <name>                  [<entry point>                  [<oabi compat entry point>]]
+#
+# Where abi is:
+#  common - for system calls shared between oabi and eabi (may have compat)
+#  oabi   - for oabi-only system calls (may have compat)
+#  eabi   - for eabi-only system calls
+#
+# For each syscall number, "common" is mutually exclusive with oabi and eabi
+#
+0       common  restart_syscall         sys_restart_syscall
+1       common  exit                    sys_exit
+2       common  fork                    sys_fork
+3       common  read                    sys_read
+4       common  write                   sys_write
+5       common  open                    sys_open
+6       common  close                   sys_close
+# 7 was sys_waitpid
+8       common  creat                   sys_creat
+9       common  link                    sys_link
+10      common  unlink                  sys_unlink
+11      common  execve                  sys_execve
+12      common  chdir                   sys_chdir
+13      oabi    time                    sys_time32
+14      common  mknod                   sys_mknod
+15      common  chmod                   sys_chmod
+16      common  lchown                  sys_lchown16
+# 17 was sys_break
+# 18 was sys_stat
+19      common  lseek                   sys_lseek
+20      common  getpid                  sys_getpid
+21      common  mount                   sys_mount
+22      oabi    umount                  sys_oldumount
+23      common  setuid                  sys_setuid16
+24      common  getuid                  sys_getuid16
+25      oabi    stime                   sys_stime32
+26      common  ptrace                  sys_ptrace
+27      oabi    alarm                   sys_alarm
+# 28 was sys_fstat
+29      common  pause                   sys_pause
+30      oabi    utime                   sys_utime32
+# 31 was sys_stty
+# 32 was sys_gtty
+33      common  access                  sys_access
+34      common  nice                    sys_nice
+# 35 was sys_ftime
+36      common  sync                    sys_sync
+37      common  kill                    sys_kill
+38      common  rename                  sys_rename
+39      common  mkdir                   sys_mkdir
+40      common  rmdir                   sys_rmdir
+41      common  dup                     sys_dup
+42      common  pipe                    sys_pipe
+43      common  times                   sys_times
+# 44 was sys_prof
+45      common  brk                     sys_brk
+46      common  setgid                  sys_setgid16
+47      common  getgid                  sys_getgid16
+# 48 was sys_signal
+49      common  geteuid                 sys_geteuid16
+50      common  getegid                 sys_getegid16
+51      common  acct                    sys_acct
+52      common  umount2                 sys_umount
+# 53 was sys_lock
+54      common  ioctl                   sys_ioctl
+55      common  fcntl                   sys_fcntl
+# 56 was sys_mpx
+57      common  setpgid                 sys_setpgid
+# 58 was sys_ulimit
+# 59 was sys_olduname
+60      common  umask                   sys_umask
+61      common  chroot                  sys_chroot
+62      common  ustat                   sys_ustat
+63      common  dup2                    sys_dup2
+64      common  getppid                 sys_getppid
+65      common  getpgrp                 sys_getpgrp
+66      common  setsid                  sys_setsid
+67      common  sigaction               sys_sigaction
+# 68 was sys_sgetmask
+# 69 was sys_ssetmask
+70      common  setreuid                sys_setreuid16
+71      common  setregid                sys_setregid16
+72      common  sigsuspend              sys_sigsuspend
+73      common  sigpending              sys_sigpending
+74      common  sethostname             sys_sethostname
+75      common  setrlimit               sys_setrlimit
+# Back compat 2GB limited rlimit
+76      oabi    getrlimit               sys_old_getrlimit
+77      common  getrusage               sys_getrusage
+78      common  gettimeofday            sys_gettimeofday
+79      common  settimeofday            sys_settimeofday
+80      common  getgroups               sys_getgroups16
+81      common  setgroups               sys_setgroups16
+82      oabi    select                  sys_old_select
+83      common  symlink                 sys_symlink
+# 84 was sys_lstat
+85      common  readlink                sys_readlink
+86      common  uselib                  sys_uselib
+87      common  swapon                  sys_swapon
+88      common  reboot                  sys_reboot
+89      oabi    readdir                 sys_old_readdir
+90      oabi    mmap                    sys_old_mmap
+91      common  munmap                  sys_munmap
+92      common  truncate                sys_truncate
+93      common  ftruncate               sys_ftruncate
+94      common  fchmod                  sys_fchmod
+95      common  fchown                  sys_fchown16
+96      common  getpriority             sys_getpriority
+97      common  setpriority             sys_setpriority
+# 98 was sys_profil
+99      common  statfs                  sys_statfs
+100     common  fstatfs                 sys_fstatfs
+# 101 was sys_ioperm
+102     oabi    socketcall              sys_socketcall          sys_oabi_socketcall
+103     common  syslog                  sys_syslog
+104     common  setitimer               sys_setitimer
+105     common  getitimer               sys_getitimer
+106     common  stat                    sys_newstat
+107     common  lstat                   sys_newlstat
+108     common  fstat                   sys_newfstat
+# 109 was sys_uname
+# 110 was sys_iopl
+111     common  vhangup                 sys_vhangup
+# 112 was sys_idle
+# syscall to call a syscall!
+113     oabi    syscall                 sys_syscall
+114     common  wait4                   sys_wait4
+115     common  swapoff                 sys_swapoff
+116     common  sysinfo                 sys_sysinfo
+117     oabi    ipc                     sys_ipc                 sys_oabi_ipc
+118     common  fsync                   sys_fsync
+119     common  sigreturn               sys_sigreturn_wrapper
+120     common  clone                   sys_clone
+121     common  setdomainname           sys_setdomainname
+122     common  uname                   sys_newuname
+# 123 was sys_modify_ldt
+124     common  adjtimex                sys_adjtimex_time32
+125     common  mprotect                sys_mprotect
+126     common  sigprocmask             sys_sigprocmask
+# 127 was sys_create_module
+128     common  init_module             sys_init_module
+129     common  delete_module           sys_delete_module
+# 130 was sys_get_kernel_syms
+131     common  quotactl                sys_quotactl
+132     common  getpgid                 sys_getpgid
+133     common  fchdir                  sys_fchdir
+134     common  bdflush                 sys_ni_syscall
+135     common  sysfs                   sys_sysfs
+136     common  personality             sys_personality
+# 137 was sys_afs_syscall
+138     common  setfsuid                sys_setfsuid16
+139     common  setfsgid                sys_setfsgid16
+140     common  _llseek                 sys_llseek
+141     common  getdents                sys_getdents
+142     common  _newselect              sys_select
+143     common  flock                   sys_flock
+144     common  msync                   sys_msync
+145     common  readv                   sys_readv
+146     common  writev                  sys_writev
+147     common  getsid                  sys_getsid
+148     common  fdatasync               sys_fdatasync
+149     common  _sysctl                 sys_ni_syscall
+150     common  mlock                   sys_mlock
+151     common  munlock                 sys_munlock
+152     common  mlockall                sys_mlockall
+153     common  munlockall              sys_munlockall
+154     common  sched_setparam          sys_sched_setparam
+155     common  sched_getparam          sys_sched_getparam
+156     common  sched_setscheduler      sys_sched_setscheduler
+157     common  sched_getscheduler      sys_sched_getscheduler
+158     common  sched_yield             sys_sched_yield
+159     common  sched_get_priority_max  sys_sched_get_priority_max
+160     common  sched_get_priority_min  sys_sched_get_priority_min
+161     common  sched_rr_get_interval   sys_sched_rr_get_interval_time32
+162     common  nanosleep               sys_nanosleep_time32
+163     common  mremap                  sys_mremap
+164     common  setresuid               sys_setresuid16
+165     common  getresuid               sys_getresuid16
+# 166 was sys_vm86
+# 167 was sys_query_module
+168     common  poll                    sys_poll
+169     common  nfsservctl
+170     common  setresgid               sys_setresgid16
+171     common  getresgid               sys_getresgid16
+172     common  prctl                   sys_prctl
+173     common  rt_sigreturn            sys_rt_sigreturn_wrapper
+174     common  rt_sigaction            sys_rt_sigaction
+175     common  rt_sigprocmask          sys_rt_sigprocmask
+176     common  rt_sigpending           sys_rt_sigpending
+177     common  rt_sigtimedwait         sys_rt_sigtimedwait_time32
+178     common  rt_sigqueueinfo         sys_rt_sigqueueinfo
+179     common  rt_sigsuspend           sys_rt_sigsuspend
+180     common  pread64                 sys_pread64             sys_oabi_pread64
+181     common  pwrite64                sys_pwrite64            sys_oabi_pwrite64
+182     common  chown                   sys_chown16
+183     common  getcwd                  sys_getcwd
+184     common  capget                  sys_capget
+185     common  capset                  sys_capset
+186     common  sigaltstack             sys_sigaltstack
+187     common  sendfile                sys_sendfile
+# 188 reserved
+# 189 reserved
+190     common  vfork                   sys_vfork
+# SuS compliant getrlimit
+191     common  ugetrlimit              sys_getrlimit
+192     common  mmap2                   sys_mmap2
+193     common  truncate64              sys_truncate64          sys_oabi_truncate64
+194     common  ftruncate64             sys_ftruncate64         sys_oabi_ftruncate64
+195     common  stat64                  sys_stat64              sys_oabi_stat64
+196     common  lstat64                 sys_lstat64             sys_oabi_lstat64
+197     common  fstat64                 sys_fstat64             sys_oabi_fstat64
+198     common  lchown32                sys_lchown
+199     common  getuid32                sys_getuid
+200     common  getgid32                sys_getgid
+201     common  geteuid32               sys_geteuid
+202     common  getegid32               sys_getegid
+203     common  setreuid32              sys_setreuid
+204     common  setregid32              sys_setregid
+205     common  getgroups32             sys_getgroups
+206     common  setgroups32             sys_setgroups
+207     common  fchown32                sys_fchown
+208     common  setresuid32             sys_setresuid
+209     common  getresuid32             sys_getresuid
+210     common  setresgid32             sys_setresgid
+211     common  getresgid32             sys_getresgid
+212     common  chown32                 sys_chown
+213     common  setuid32                sys_setuid
+214     common  setgid32                sys_setgid
+215     common  setfsuid32              sys_setfsuid
+216     common  setfsgid32              sys_setfsgid
+217     common  getdents64              sys_getdents64
+218     common  pivot_root              sys_pivot_root
+219     common  mincore                 sys_mincore
+220     common  madvise                 sys_madvise
+221     common  fcntl64                 sys_fcntl64             sys_oabi_fcntl64
+# 222 for tux
+# 223 is unused
+224     common  gettid                  sys_gettid
+225     common  readahead               sys_readahead           sys_oabi_readahead
+226     common  setxattr                sys_setxattr
+227     common  lsetxattr               sys_lsetxattr
+228     common  fsetxattr               sys_fsetxattr
+229     common  getxattr                sys_getxattr
+230     common  lgetxattr               sys_lgetxattr
+231     common  fgetxattr               sys_fgetxattr
+232     common  listxattr               sys_listxattr
+233     common  llistxattr              sys_llistxattr
+234     common  flistxattr              sys_flistxattr
+235     common  removexattr             sys_removexattr
+236     common  lremovexattr            sys_lremovexattr
+237     common  fremovexattr            sys_fremovexattr
+238     common  tkill                   sys_tkill
+239     common  sendfile64              sys_sendfile64
+240     common  futex                   sys_futex_time32
+241     common  sched_setaffinity       sys_sched_setaffinity
+242     common  sched_getaffinity       sys_sched_getaffinity
+243     common  io_setup                sys_io_setup
+244     common  io_destroy              sys_io_destroy
+245     common  io_getevents            sys_io_getevents_time32
+246     common  io_submit               sys_io_submit
+247     common  io_cancel               sys_io_cancel
+248     common  exit_group              sys_exit_group
+249     common  lookup_dcookie          sys_lookup_dcookie
+250     common  epoll_create            sys_epoll_create
+251     common  epoll_ctl               sys_epoll_ctl           sys_oabi_epoll_ctl
+252     common  epoll_wait              sys_epoll_wait
+253     common  remap_file_pages        sys_remap_file_pages
+# 254 for set_thread_area
+# 255 for get_thread_area
+256     common  set_tid_address         sys_set_tid_address
+257     common  timer_create            sys_timer_create
+258     common  timer_settime           sys_timer_settime32
+259     common  timer_gettime           sys_timer_gettime32
+260     common  timer_getoverrun        sys_timer_getoverrun
+261     common  timer_delete            sys_timer_delete
+262     common  clock_settime           sys_clock_settime32
+263     common  clock_gettime           sys_clock_gettime32
+264     common  clock_getres            sys_clock_getres_time32
+265     common  clock_nanosleep         sys_clock_nanosleep_time32
+266     common  statfs64                sys_statfs64_wrapper
+267     common  fstatfs64               sys_fstatfs64_wrapper
+268     common  tgkill                  sys_tgkill
+269     common  utimes                  sys_utimes_time32
+270     common  arm_fadvise64_64        sys_arm_fadvise64_64
+271     common  pciconfig_iobase        sys_pciconfig_iobase
+272     common  pciconfig_read          sys_pciconfig_read
+273     common  pciconfig_write         sys_pciconfig_write
+274     common  mq_open                 sys_mq_open
+275     common  mq_unlink               sys_mq_unlink
+276     common  mq_timedsend            sys_mq_timedsend_time32
+277     common  mq_timedreceive         sys_mq_timedreceive_time32
+278     common  mq_notify               sys_mq_notify
+279     common  mq_getsetattr           sys_mq_getsetattr
+280     common  waitid                  sys_waitid
+281     common  socket                  sys_socket
+282     common  bind                    sys_bind                sys_oabi_bind
+283     common  connect                 sys_connect             sys_oabi_connect
+284     common  listen                  sys_listen
+285     common  accept                  sys_accept
+286     common  getsockname             sys_getsockname
+287     common  getpeername             sys_getpeername
+288     common  socketpair              sys_socketpair
+289     common  send                    sys_send
+290     common  sendto                  sys_sendto              sys_oabi_sendto
+291     common  recv                    sys_recv
+292     common  recvfrom                sys_recvfrom
+293     common  shutdown                sys_shutdown
+294     common  setsockopt              sys_setsockopt
+295     common  getsockopt              sys_getsockopt
+296     common  sendmsg                 sys_sendmsg             sys_oabi_sendmsg
+297     common  recvmsg                 sys_recvmsg
+298     common  semop                   sys_semop               sys_oabi_semop
+299     common  semget                  sys_semget
+300     common  semctl                  sys_old_semctl
+301     common  msgsnd                  sys_msgsnd
+302     common  msgrcv                  sys_msgrcv
+303     common  msgget                  sys_msgget
+304     common  msgctl                  sys_old_msgctl
+305     common  shmat                   sys_shmat
+306     common  shmdt                   sys_shmdt
+307     common  shmget                  sys_shmget
+308     common  shmctl                  sys_old_shmctl
+309     common  add_key                 sys_add_key
+310     common  request_key             sys_request_key
+311     common  keyctl                  sys_keyctl
+312     common  semtimedop              sys_semtimedop_time32   sys_oabi_semtimedop
+313     common  vserver
+314     common  ioprio_set              sys_ioprio_set
+315     common  ioprio_get              sys_ioprio_get
+316     common  inotify_init            sys_inotify_init
+317     common  inotify_add_watch       sys_inotify_add_watch
+318     common  inotify_rm_watch        sys_inotify_rm_watch
+319     common  mbind                   sys_mbind
+320     common  get_mempolicy           sys_get_mempolicy
+321     common  set_mempolicy           sys_set_mempolicy
+322     common  openat                  sys_openat
+323     common  mkdirat                 sys_mkdirat
+324     common  mknodat                 sys_mknodat
+325     common  fchownat                sys_fchownat
+326     common  futimesat               sys_futimesat_time32
+327     common  fstatat64               sys_fstatat64           sys_oabi_fstatat64
+328     common  unlinkat                sys_unlinkat
+329     common  renameat                sys_renameat
+330     common  linkat                  sys_linkat
+331     common  symlinkat               sys_symlinkat
+332     common  readlinkat              sys_readlinkat
+333     common  fchmodat                sys_fchmodat
+334     common  faccessat               sys_faccessat
+335     common  pselect6                sys_pselect6_time32
+336     common  ppoll                   sys_ppoll_time32
+337     common  unshare                 sys_unshare
+338     common  set_robust_list         sys_set_robust_list
+339     common  get_robust_list         sys_get_robust_list
+340     common  splice                  sys_splice
+341     common  arm_sync_file_range     sys_sync_file_range2
+342     common  tee                     sys_tee
+343     common  vmsplice                sys_vmsplice
+344     common  move_pages              sys_move_pages
+345     common  getcpu                  sys_getcpu
+346     common  epoll_pwait             sys_epoll_pwait
+347     common  kexec_load              sys_kexec_load
+348     common  utimensat               sys_utimensat_time32
+349     common  signalfd                sys_signalfd
+350     common  timerfd_create          sys_timerfd_create
+351     common  eventfd                 sys_eventfd
+352     common  fallocate               sys_fallocate
+353     common  timerfd_settime         sys_timerfd_settime32
+354     common  timerfd_gettime         sys_timerfd_gettime32
+355     common  signalfd4               sys_signalfd4
+356     common  eventfd2                sys_eventfd2
+357     common  epoll_create1           sys_epoll_create1
+358     common  dup3                    sys_dup3
+359     common  pipe2                   sys_pipe2
+360     common  inotify_init1           sys_inotify_init1
+361     common  preadv                  sys_preadv
+362     common  pwritev                 sys_pwritev
+363     common  rt_tgsigqueueinfo       sys_rt_tgsigqueueinfo
+364     common  perf_event_open         sys_perf_event_open
+365     common  recvmmsg                sys_recvmmsg_time32
+366     common  accept4                 sys_accept4
+367     common  fanotify_init           sys_fanotify_init
+368     common  fanotify_mark           sys_fanotify_mark
+369     common  prlimit64               sys_prlimit64
+370     common  name_to_handle_at       sys_name_to_handle_at
+371     common  open_by_handle_at       sys_open_by_handle_at
+372     common  clock_adjtime           sys_clock_adjtime32
+373     common  syncfs                  sys_syncfs
+374     common  sendmmsg                sys_sendmmsg
+375     common  setns                   sys_setns
+376     common  process_vm_readv        sys_process_vm_readv
+377     common  process_vm_writev       sys_process_vm_writev
+378     common  kcmp                    sys_kcmp
+379     common  finit_module            sys_finit_module
+380     common  sched_setattr           sys_sched_setattr
+381     common  sched_getattr           sys_sched_getattr
+382     common  renameat2               sys_renameat2
+383     common  seccomp                 sys_seccomp
+384     common  getrandom               sys_getrandom
+385     common  memfd_create            sys_memfd_create
+386     common  bpf                     sys_bpf
+387     common  execveat                sys_execveat
+388     common  userfaultfd             sys_userfaultfd
+389     common  membarrier              sys_membarrier
+390     common  mlock2                  sys_mlock2
+391     common  copy_file_range         sys_copy_file_range
+392     common  preadv2                 sys_preadv2
+393     common  pwritev2                sys_pwritev2
+394     common  pkey_mprotect           sys_pkey_mprotect
+395     common  pkey_alloc              sys_pkey_alloc
+396     common  pkey_free               sys_pkey_free
+397     common  statx                   sys_statx
+398     common  rseq                    sys_rseq
+399     common  io_pgetevents           sys_io_pgetevents_time32
+400     common  migrate_pages           sys_migrate_pages
+401     common  kexec_file_load         sys_kexec_file_load
+# 402 is unused
+403     common  clock_gettime64                 sys_clock_gettime
+404     common  clock_settime64                 sys_clock_settime
+405     common  clock_adjtime64                 sys_clock_adjtime
+406     common  clock_getres_time64             sys_clock_getres
+407     common  clock_nanosleep_time64          sys_clock_nanosleep
+408     common  timer_gettime64                 sys_timer_gettime
+409     common  timer_settime64                 sys_timer_settime
+410     common  timerfd_gettime64               sys_timerfd_gettime
+411     common  timerfd_settime64               sys_timerfd_settime
+412     common  utimensat_time64                sys_utimensat
+413     common  pselect6_time64                 sys_pselect6
+414     common  ppoll_time64                    sys_ppoll
+416     common  io_pgetevents_time64            sys_io_pgetevents
+417     common  recvmmsg_time64                 sys_recvmmsg
+418     common  mq_timedsend_time64             sys_mq_timedsend
+419     common  mq_timedreceive_time64          sys_mq_timedreceive
+420     common  semtimedop_time64               sys_semtimedop
+421     common  rt_sigtimedwait_time64          sys_rt_sigtimedwait
+422     common  futex_time64                    sys_futex
+423     common  sched_rr_get_interval_time64    sys_sched_rr_get_interval
+424     common  pidfd_send_signal               sys_pidfd_send_signal
+425     common  io_uring_setup                  sys_io_uring_setup
+426     common  io_uring_enter                  sys_io_uring_enter
+427     common  io_uring_register               sys_io_uring_register
+428     common  open_tree                       sys_open_tree
+429     common  move_mount                      sys_move_mount
+430     common  fsopen                          sys_fsopen
+431     common  fsconfig                        sys_fsconfig
+432     common  fsmount                         sys_fsmount
+433     common  fspick                          sys_fspick
+434     common  pidfd_open                      sys_pidfd_open
+435     common  clone3                          sys_clone3
+436     common  close_range                     sys_close_range
+437     common  openat2                         sys_openat2
+438     common  pidfd_getfd                     sys_pidfd_getfd
+439     common  faccessat2                      sys_faccessat2
+440     common  process_madvise                 sys_process_madvise
+441     common  epoll_pwait2                    sys_epoll_pwait2
+442     common  mount_setattr                   sys_mount_setattr
+443     common  quotactl_fd                     sys_quotactl_fd
+444     common  landlock_create_ruleset         sys_landlock_create_ruleset
+445     common  landlock_add_rule               sys_landlock_add_rule
+446     common  landlock_restrict_self          sys_landlock_restrict_self
+# 447 reserved for memfd_secret
+448     common  process_mrelease                sys_process_mrelease
+449     common  futex_waitv                     sys_futex_waitv
+450     common  set_mempolicy_home_node         sys_set_mempolicy_home_node
+"""
 
 
-arm_native_OABI_syscall_list = [ # obsolete
-    [0x90000d, 'time', ['old_time32_t *tloc']], # time32
-    [0x900016, 'umount', ['char *name']], # oldumount
-    [0x900019, 'stime', ['old_time32_t *tptr']], # stime32
-    [0x90001b, 'alarm', ['unsigned int seconds']],
-    [0x90001e, 'utime', ['char *filename', 'struct old_utimbuf32 *t']], # utime32
-    [0x90004c, 'getrlimit', ['unsigned int resource', 'struct rlimit *rlim']], # old_getrlimit
-    [0x900052, 'select', ['struct sel_arg_struct *arg']], # old_select
-    [0x900059, 'readdir', ['unsigned int fd', 'struct old_linux_dirent *dirent', 'unsigned int count']], # old_readdir
-    [0x90005a, 'mmap', ['struct mmap_arg_struct *arg']], # old_mmap
-    [0x900066, 'socketcall', ['int call', 'unsigned long *args']], # oabi_socketcall # arch/arm/kernel/sys_oabi-compat.c
-    [0x900071, 'syscall', ['long number']], # arch/arm/kernel/entry-common.S
-    [0x900075, 'ipc', ['uint call', 'int first', 'int second', 'int third', 'void *ptr', 'long fifth']], # oabi_ipc # arch/arm/kernel/sys_oabi-compat.c
-    [0x9000b4, 'pread64', ['unsigned int fd', 'char *buf', 'size_t count', 'loff_t pos']], # oabi_pread64 # arch/arm/kernel/entry-common.S
-    [0x9000b5, 'pwrite64', ['unsigned int fd', 'const char *buf', 'size_t count', 'loff_t pos']], # oabi_pwrite64 # arch/arm/kernel/entry-common.S
-    [0x9000c1, 'truncate64', ['const char *path', 'loff_t length']], # oabi_truncate64 # arch/arm/kernel/entry-common.S
-    [0x9000c2, 'ftruncate64', ['unsigned int fd', 'loff_t length']], # oabi_ftruncate64 # arch/arm/kernel/entry-common.S
-    [0x9000c3, 'stat64', ['const char *filename', 'struct oldabi_stat64 *statbuf']], # oabi_stat64 # arch/arm/kernel/sys_oabi-compat.c
-    [0x9000c4, 'lstat64', ['const char *filename', 'struct oldabi_stat64 *statbuf']], # oabi_lstat64 # arch/arm/kernel/sys_oabi-compat.c
-    [0x9000c5, 'fstat64', ['unsigned long fd', 'struct oldabi_stat64 *statbuf']], # oabi_fstat64 # arch/arm/kernel/sys_oabi-compat.c
-    [0x9000dd, 'fcntl64', ['unsigned int fd', 'unsigned int cmd', 'unsigned long arg']], # oabi_fcntl64 # arch/arm/kernel/sys_oabi-compat.c
-    [0x9000e1, 'readahead', ['int fd', 'loff_t offset', 'size_t count']], # oabi_readahead # arch/arm/kernel/entry-common.S
-    [0x9000fb, 'epoll_ctl', ['int epfd', 'int op', 'int fd', 'struct oabi_epoll_event *event']], # oabi_epoll_ctl # arch/arm/kernel/sys_oabi-compat.c
-    [0x9000fc, 'epoll_wait', ['int epfd', 'struct oabi_epoll_event *events', 'int maxevents', 'int timeout']], # oabi_epoll_wait # arch/arm/kernel/sys_oabi-compat.c
-    [0x90011a, 'bind', ['int fd', 'struct sockaddr *addr', 'int addrlen']], # oabi_bind # arch/arm/kernel/sys_oabi-compat.c
-    [0x90011b, 'connect', ['int fd', 'struct sockaddr *addr', 'int addrlen']], # oabi_connect # arch/arm/kernel/sys_oabi-compat.c
-    [0x900122, 'sendto', ['int fd', 'void *buff', 'size_t len', 'unsigned int flags', 'struct sockaddr *addr', 'int addrlen']], # oabi_sendto # arch/arm/kernel/sys_oabi-compat.c
-    [0x900128, 'sendmsg', ['int fd', 'struct user_msghdr *msg', 'unsigned int flags']], # oabi_sendmsg # arch/arm/kernel/sys_oabi-compat.c
-    [0x90012a, 'semop', ['int semid', 'struct oabi_sembuf *tsops', 'unsigned nsops']], # oabi_semop # arch/arm/kernel/sys_oabi-compat.c
-    [0x900138, 'semtimedop', ['int semid', 'struct oabi_sembuf *tsops', 'unsigned nsops', 'const struct old_timespec32 *timeout']], # oabi_semtimedop # arch/arm/kernel/sys_oabi-compat.c
-    [0x900147, 'fstatat64', ['int dfd', 'const char *filename', 'struct oldabi_stat64 *statbuf', 'int flag']], # oabi_fstatat64 # arch/arm/kernel/sys_oabi-compat.c
-    [0x9f0001, 'breakpoint', []], # arch/arm/kernel/traps.c
-    [0x9f0002, 'cacheflush', ['unsigned long start', 'unsigned long end', 'int flags']], # arch/arm/kernel/traps.c
-    [0x9f0003, 'usr26', []], # arch/arm/kernel/traps.c
-    [0x9f0004, 'usr32', []], # arch/arm/kernel/traps.c
-    [0x9f0005, 'set_tls', ['unsigned long val']], # arch/arm/kernel/traps.c
-    [0x9f0006, 'get_tls', []], # arch/arm/kernel/traps.c
-]
+# MIPS o32 (backward compatible ABI, present in /lib)
+# - arch/mips/kernel/syscalls/syscall_o32.tbl
+mips_o32_syscall_tbl = """
+# system call numbers and entry vectors for mips
+#
+# The format is:
+# <number> <abi> <name> <entry point> <compat entry point>
+#
+# The <abi> is always "o32" for this file.
+#
+0       o32     syscall                         sys_syscall                     sys32_syscall
+1       o32     exit                            sys_exit
+2       o32     fork                            __sys_fork
+3       o32     read                            sys_read
+4       o32     write                           sys_write
+5       o32     open                            sys_open                        compat_sys_open
+6       o32     close                           sys_close
+7       o32     waitpid                         sys_waitpid
+8       o32     creat                           sys_creat
+9       o32     link                            sys_link
+10      o32     unlink                          sys_unlink
+11      o32     execve                          sys_execve                      compat_sys_execve
+12      o32     chdir                           sys_chdir
+13      o32     time                            sys_time32
+14      o32     mknod                           sys_mknod
+15      o32     chmod                           sys_chmod
+16      o32     lchown                          sys_lchown
+17      o32     break                           sys_ni_syscall
+# 18 was sys_stat
+18      o32     unused18                        sys_ni_syscall
+19      o32     lseek                           sys_lseek
+20      o32     getpid                          sys_getpid
+21      o32     mount                           sys_mount
+22      o32     umount                          sys_oldumount
+23      o32     setuid                          sys_setuid
+24      o32     getuid                          sys_getuid
+25      o32     stime                           sys_stime32
+26      o32     ptrace                          sys_ptrace                      compat_sys_ptrace
+27      o32     alarm                           sys_alarm
+# 28 was sys_fstat
+28      o32     unused28                        sys_ni_syscall
+29      o32     pause                           sys_pause
+30      o32     utime                           sys_utime32
+31      o32     stty                            sys_ni_syscall
+32      o32     gtty                            sys_ni_syscall
+33      o32     access                          sys_access
+34      o32     nice                            sys_nice
+35      o32     ftime                           sys_ni_syscall
+36      o32     sync                            sys_sync
+37      o32     kill                            sys_kill
+38      o32     rename                          sys_rename
+39      o32     mkdir                           sys_mkdir
+40      o32     rmdir                           sys_rmdir
+41      o32     dup                             sys_dup
+42      o32     pipe                            sysm_pipe
+43      o32     times                           sys_times                       compat_sys_times
+44      o32     prof                            sys_ni_syscall
+45      o32     brk                             sys_brk
+46      o32     setgid                          sys_setgid
+47      o32     getgid                          sys_getgid
+48      o32     signal                          sys_ni_syscall
+49      o32     geteuid                         sys_geteuid
+50      o32     getegid                         sys_getegid
+51      o32     acct                            sys_acct
+52      o32     umount2                         sys_umount
+53      o32     lock                            sys_ni_syscall
+54      o32     ioctl                           sys_ioctl                       compat_sys_ioctl
+55      o32     fcntl                           sys_fcntl                       compat_sys_fcntl
+56      o32     mpx                             sys_ni_syscall
+57      o32     setpgid                         sys_setpgid
+58      o32     ulimit                          sys_ni_syscall
+59      o32     unused59                        sys_olduname
+60      o32     umask                           sys_umask
+61      o32     chroot                          sys_chroot
+62      o32     ustat                           sys_ustat                       compat_sys_ustat
+63      o32     dup2                            sys_dup2
+64      o32     getppid                         sys_getppid
+65      o32     getpgrp                         sys_getpgrp
+66      o32     setsid                          sys_setsid
+67      o32     sigaction                       sys_sigaction                   sys_32_sigaction
+68      o32     sgetmask                        sys_sgetmask
+69      o32     ssetmask                        sys_ssetmask
+70      o32     setreuid                        sys_setreuid
+71      o32     setregid                        sys_setregid
+72      o32     sigsuspend                      sys_sigsuspend                  sys32_sigsuspend
+73      o32     sigpending                      sys_sigpending                  compat_sys_sigpending
+74      o32     sethostname                     sys_sethostname
+75      o32     setrlimit                       sys_setrlimit                   compat_sys_setrlimit
+76      o32     getrlimit                       sys_getrlimit                   compat_sys_getrlimit
+77      o32     getrusage                       sys_getrusage                   compat_sys_getrusage
+78      o32     gettimeofday                    sys_gettimeofday                compat_sys_gettimeofday
+79      o32     settimeofday                    sys_settimeofday                compat_sys_settimeofday
+80      o32     getgroups                       sys_getgroups
+81      o32     setgroups                       sys_setgroups
+# 82 was old_select
+82      o32     reserved82                      sys_ni_syscall
+83      o32     symlink                         sys_symlink
+# 84 was sys_lstat
+84      o32     unused84                        sys_ni_syscall
+85      o32     readlink                        sys_readlink
+86      o32     uselib                          sys_uselib
+87      o32     swapon                          sys_swapon
+88      o32     reboot                          sys_reboot
+89      o32     readdir                         sys_old_readdir                 compat_sys_old_readdir
+90      o32     mmap                            sys_mips_mmap
+91      o32     munmap                          sys_munmap
+92      o32     truncate                        sys_truncate                    compat_sys_truncate
+93      o32     ftruncate                       sys_ftruncate                   compat_sys_ftruncate
+94      o32     fchmod                          sys_fchmod
+95      o32     fchown                          sys_fchown
+96      o32     getpriority                     sys_getpriority
+97      o32     setpriority                     sys_setpriority
+98      o32     profil                          sys_ni_syscall
+99      o32     statfs                          sys_statfs                      compat_sys_statfs
+100     o32     fstatfs                         sys_fstatfs                     compat_sys_fstatfs
+101     o32     ioperm                          sys_ni_syscall
+102     o32     socketcall                      sys_socketcall                  compat_sys_socketcall
+103     o32     syslog                          sys_syslog
+104     o32     setitimer                       sys_setitimer                   compat_sys_setitimer
+105     o32     getitimer                       sys_getitimer                   compat_sys_getitimer
+106     o32     stat                            sys_newstat                     compat_sys_newstat
+107     o32     lstat                           sys_newlstat                    compat_sys_newlstat
+108     o32     fstat                           sys_newfstat                    compat_sys_newfstat
+109     o32     unused109                       sys_uname
+110     o32     iopl                            sys_ni_syscall
+111     o32     vhangup                         sys_vhangup
+112     o32     idle                            sys_ni_syscall
+113     o32     vm86                            sys_ni_syscall
+114     o32     wait4                           sys_wait4                       compat_sys_wait4
+115     o32     swapoff                         sys_swapoff
+116     o32     sysinfo                         sys_sysinfo                     compat_sys_sysinfo
+117     o32     ipc                             sys_ipc                         compat_sys_ipc
+118     o32     fsync                           sys_fsync
+119     o32     sigreturn                       sys_sigreturn                   sys32_sigreturn
+120     o32     clone                           __sys_clone
+121     o32     setdomainname                   sys_setdomainname
+122     o32     uname                           sys_newuname
+123     o32     modify_ldt                      sys_ni_syscall
+124     o32     adjtimex                        sys_adjtimex_time32
+125     o32     mprotect                        sys_mprotect
+126     o32     sigprocmask                     sys_sigprocmask                 compat_sys_sigprocmask
+127     o32     create_module                   sys_ni_syscall
+128     o32     init_module                     sys_init_module
+129     o32     delete_module                   sys_delete_module
+130     o32     get_kernel_syms                 sys_ni_syscall
+131     o32     quotactl                        sys_quotactl
+132     o32     getpgid                         sys_getpgid
+133     o32     fchdir                          sys_fchdir
+134     o32     bdflush                         sys_ni_syscall
+135     o32     sysfs                           sys_sysfs
+136     o32     personality                     sys_personality                 sys_32_personality
+137     o32     afs_syscall                     sys_ni_syscall
+138     o32     setfsuid                        sys_setfsuid
+139     o32     setfsgid                        sys_setfsgid
+140     o32     _llseek                         sys_llseek                      sys_32_llseek
+141     o32     getdents                        sys_getdents                    compat_sys_getdents
+142     o32     _newselect                      sys_select                      compat_sys_select
+143     o32     flock                           sys_flock
+144     o32     msync                           sys_msync
+145     o32     readv                           sys_readv
+146     o32     writev                          sys_writev
+147     o32     cacheflush                      sys_cacheflush
+148     o32     cachectl                        sys_cachectl
+149     o32     sysmips                         __sys_sysmips
+150     o32     unused150                       sys_ni_syscall
+151     o32     getsid                          sys_getsid
+152     o32     fdatasync                       sys_fdatasync
+153     o32     _sysctl                         sys_ni_syscall
+154     o32     mlock                           sys_mlock
+155     o32     munlock                         sys_munlock
+156     o32     mlockall                        sys_mlockall
+157     o32     munlockall                      sys_munlockall
+158     o32     sched_setparam                  sys_sched_setparam
+159     o32     sched_getparam                  sys_sched_getparam
+160     o32     sched_setscheduler              sys_sched_setscheduler
+161     o32     sched_getscheduler              sys_sched_getscheduler
+162     o32     sched_yield                     sys_sched_yield
+163     o32     sched_get_priority_max          sys_sched_get_priority_max
+164     o32     sched_get_priority_min          sys_sched_get_priority_min
+165     o32     sched_rr_get_interval           sys_sched_rr_get_interval_time32
+166     o32     nanosleep                       sys_nanosleep_time32
+167     o32     mremap                          sys_mremap
+168     o32     accept                          sys_accept
+169     o32     bind                            sys_bind
+170     o32     connect                         sys_connect
+171     o32     getpeername                     sys_getpeername
+172     o32     getsockname                     sys_getsockname
+173     o32     getsockopt                      sys_getsockopt                  sys_getsockopt
+174     o32     listen                          sys_listen
+175     o32     recv                            sys_recv                        compat_sys_recv
+176     o32     recvfrom                        sys_recvfrom                    compat_sys_recvfrom
+177     o32     recvmsg                         sys_recvmsg                     compat_sys_recvmsg
+178     o32     send                            sys_send
+179     o32     sendmsg                         sys_sendmsg                     compat_sys_sendmsg
+180     o32     sendto                          sys_sendto
+181     o32     setsockopt                      sys_setsockopt                  sys_setsockopt
+182     o32     shutdown                        sys_shutdown
+183     o32     socket                          sys_socket
+184     o32     socketpair                      sys_socketpair
+185     o32     setresuid                       sys_setresuid
+186     o32     getresuid                       sys_getresuid
+187     o32     query_module                    sys_ni_syscall
+188     o32     poll                            sys_poll
+189     o32     nfsservctl                      sys_ni_syscall
+190     o32     setresgid                       sys_setresgid
+191     o32     getresgid                       sys_getresgid
+192     o32     prctl                           sys_prctl
+193     o32     rt_sigreturn                    sys_rt_sigreturn                sys32_rt_sigreturn
+194     o32     rt_sigaction                    sys_rt_sigaction                compat_sys_rt_sigaction
+195     o32     rt_sigprocmask                  sys_rt_sigprocmask              compat_sys_rt_sigprocmask
+196     o32     rt_sigpending                   sys_rt_sigpending               compat_sys_rt_sigpending
+197     o32     rt_sigtimedwait                 sys_rt_sigtimedwait_time32      compat_sys_rt_sigtimedwait_time32
+198     o32     rt_sigqueueinfo                 sys_rt_sigqueueinfo             compat_sys_rt_sigqueueinfo
+199     o32     rt_sigsuspend                   sys_rt_sigsuspend               compat_sys_rt_sigsuspend
+200     o32     pread64                         sys_pread64                     sys_32_pread
+201     o32     pwrite64                        sys_pwrite64                    sys_32_pwrite
+202     o32     chown                           sys_chown
+203     o32     getcwd                          sys_getcwd
+204     o32     capget                          sys_capget
+205     o32     capset                          sys_capset
+206     o32     sigaltstack                     sys_sigaltstack                 compat_sys_sigaltstack
+207     o32     sendfile                        sys_sendfile                    compat_sys_sendfile
+208     o32     getpmsg                         sys_ni_syscall
+209     o32     putpmsg                         sys_ni_syscall
+210     o32     mmap2                           sys_mips_mmap2
+211     o32     truncate64                      sys_truncate64                  sys_32_truncate64
+212     o32     ftruncate64                     sys_ftruncate64                 sys_32_ftruncate64
+213     o32     stat64                          sys_stat64                      sys_newstat
+214     o32     lstat64                         sys_lstat64                     sys_newlstat
+215     o32     fstat64                         sys_fstat64                     sys_newfstat
+216     o32     pivot_root                      sys_pivot_root
+217     o32     mincore                         sys_mincore
+218     o32     madvise                         sys_madvise
+219     o32     getdents64                      sys_getdents64
+220     o32     fcntl64                         sys_fcntl64                     compat_sys_fcntl64
+221     o32     reserved221                     sys_ni_syscall
+222     o32     gettid                          sys_gettid
+223     o32     readahead                       sys_readahead                   sys32_readahead
+224     o32     setxattr                        sys_setxattr
+225     o32     lsetxattr                       sys_lsetxattr
+226     o32     fsetxattr                       sys_fsetxattr
+227     o32     getxattr                        sys_getxattr
+228     o32     lgetxattr                       sys_lgetxattr
+229     o32     fgetxattr                       sys_fgetxattr
+230     o32     listxattr                       sys_listxattr
+231     o32     llistxattr                      sys_llistxattr
+232     o32     flistxattr                      sys_flistxattr
+233     o32     removexattr                     sys_removexattr
+234     o32     lremovexattr                    sys_lremovexattr
+235     o32     fremovexattr                    sys_fremovexattr
+236     o32     tkill                           sys_tkill
+237     o32     sendfile64                      sys_sendfile64
+238     o32     futex                           sys_futex_time32
+239     o32     sched_setaffinity               sys_sched_setaffinity           compat_sys_sched_setaffinity
+240     o32     sched_getaffinity               sys_sched_getaffinity           compat_sys_sched_getaffinity
+241     o32     io_setup                        sys_io_setup                    compat_sys_io_setup
+242     o32     io_destroy                      sys_io_destroy
+243     o32     io_getevents                    sys_io_getevents_time32
+244     o32     io_submit                       sys_io_submit                   compat_sys_io_submit
+245     o32     io_cancel                       sys_io_cancel
+246     o32     exit_group                      sys_exit_group
+247     o32     lookup_dcookie                  sys_lookup_dcookie              compat_sys_lookup_dcookie
+248     o32     epoll_create                    sys_epoll_create
+249     o32     epoll_ctl                       sys_epoll_ctl
+250     o32     epoll_wait                      sys_epoll_wait
+251     o32     remap_file_pages                sys_remap_file_pages
+252     o32     set_tid_address                 sys_set_tid_address
+253     o32     restart_syscall                 sys_restart_syscall
+254     o32     fadvise64                       sys_fadvise64_64                sys32_fadvise64_64
+255     o32     statfs64                        sys_statfs64                    compat_sys_statfs64
+256     o32     fstatfs64                       sys_fstatfs64                   compat_sys_fstatfs64
+257     o32     timer_create                    sys_timer_create                compat_sys_timer_create
+258     o32     timer_settime                   sys_timer_settime32
+259     o32     timer_gettime                   sys_timer_gettime32
+260     o32     timer_getoverrun                sys_timer_getoverrun
+261     o32     timer_delete                    sys_timer_delete
+262     o32     clock_settime                   sys_clock_settime32
+263     o32     clock_gettime                   sys_clock_gettime32
+264     o32     clock_getres                    sys_clock_getres_time32
+265     o32     clock_nanosleep                 sys_clock_nanosleep_time32
+266     o32     tgkill                          sys_tgkill
+267     o32     utimes                          sys_utimes_time32
+268     o32     mbind                           sys_mbind
+269     o32     get_mempolicy                   sys_get_mempolicy
+270     o32     set_mempolicy                   sys_set_mempolicy
+271     o32     mq_open                         sys_mq_open                     compat_sys_mq_open
+272     o32     mq_unlink                       sys_mq_unlink
+273     o32     mq_timedsend                    sys_mq_timedsend_time32
+274     o32     mq_timedreceive                 sys_mq_timedreceive_time32
+275     o32     mq_notify                       sys_mq_notify                   compat_sys_mq_notify
+276     o32     mq_getsetattr                   sys_mq_getsetattr               compat_sys_mq_getsetattr
+277     o32     vserver                         sys_ni_syscall
+278     o32     waitid                          sys_waitid                      compat_sys_waitid
+# 279 was sys_setaltroot
+280     o32     add_key                         sys_add_key
+281     o32     request_key                     sys_request_key
+282     o32     keyctl                          sys_keyctl                      compat_sys_keyctl
+283     o32     set_thread_area                 sys_set_thread_area
+284     o32     inotify_init                    sys_inotify_init
+285     o32     inotify_add_watch               sys_inotify_add_watch
+286     o32     inotify_rm_watch                sys_inotify_rm_watch
+287     o32     migrate_pages                   sys_migrate_pages
+288     o32     openat                          sys_openat                      compat_sys_openat
+289     o32     mkdirat                         sys_mkdirat
+290     o32     mknodat                         sys_mknodat
+291     o32     fchownat                        sys_fchownat
+292     o32     futimesat                       sys_futimesat_time32
+293     o32     fstatat64                       sys_fstatat64                   sys_newfstatat
+294     o32     unlinkat                        sys_unlinkat
+295     o32     renameat                        sys_renameat
+296     o32     linkat                          sys_linkat
+297     o32     symlinkat                       sys_symlinkat
+298     o32     readlinkat                      sys_readlinkat
+299     o32     fchmodat                        sys_fchmodat
+300     o32     faccessat                       sys_faccessat
+301     o32     pselect6                        sys_pselect6_time32             compat_sys_pselect6_time32
+302     o32     ppoll                           sys_ppoll_time32                compat_sys_ppoll_time32
+303     o32     unshare                         sys_unshare
+304     o32     splice                          sys_splice
+305     o32     sync_file_range                 sys_sync_file_range             sys32_sync_file_range
+306     o32     tee                             sys_tee
+307     o32     vmsplice                        sys_vmsplice
+308     o32     move_pages                      sys_move_pages
+309     o32     set_robust_list                 sys_set_robust_list             compat_sys_set_robust_list
+310     o32     get_robust_list                 sys_get_robust_list             compat_sys_get_robust_list
+311     o32     kexec_load                      sys_kexec_load                  compat_sys_kexec_load
+312     o32     getcpu                          sys_getcpu
+313     o32     epoll_pwait                     sys_epoll_pwait                 compat_sys_epoll_pwait
+314     o32     ioprio_set                      sys_ioprio_set
+315     o32     ioprio_get                      sys_ioprio_get
+316     o32     utimensat                       sys_utimensat_time32
+317     o32     signalfd                        sys_signalfd                    compat_sys_signalfd
+318     o32     timerfd                         sys_ni_syscall
+319     o32     eventfd                         sys_eventfd
+320     o32     fallocate                       sys_fallocate                   sys32_fallocate
+321     o32     timerfd_create                  sys_timerfd_create
+322     o32     timerfd_gettime                 sys_timerfd_gettime32
+323     o32     timerfd_settime                 sys_timerfd_settime32
+324     o32     signalfd4                       sys_signalfd4                   compat_sys_signalfd4
+325     o32     eventfd2                        sys_eventfd2
+326     o32     epoll_create1                   sys_epoll_create1
+327     o32     dup3                            sys_dup3
+328     o32     pipe2                           sys_pipe2
+329     o32     inotify_init1                   sys_inotify_init1
+330     o32     preadv                          sys_preadv                      compat_sys_preadv
+331     o32     pwritev                         sys_pwritev                     compat_sys_pwritev
+332     o32     rt_tgsigqueueinfo               sys_rt_tgsigqueueinfo           compat_sys_rt_tgsigqueueinfo
+333     o32     perf_event_open                 sys_perf_event_open
+334     o32     accept4                         sys_accept4
+335     o32     recvmmsg                        sys_recvmmsg_time32             compat_sys_recvmmsg_time32
+336     o32     fanotify_init                   sys_fanotify_init
+337     o32     fanotify_mark                   sys_fanotify_mark               compat_sys_fanotify_mark
+338     o32     prlimit64                       sys_prlimit64
+339     o32     name_to_handle_at               sys_name_to_handle_at
+340     o32     open_by_handle_at               sys_open_by_handle_at           compat_sys_open_by_handle_at
+341     o32     clock_adjtime                   sys_clock_adjtime32
+342     o32     syncfs                          sys_syncfs
+343     o32     sendmmsg                        sys_sendmmsg                    compat_sys_sendmmsg
+344     o32     setns                           sys_setns
+345     o32     process_vm_readv                sys_process_vm_readv
+346     o32     process_vm_writev               sys_process_vm_writev
+347     o32     kcmp                            sys_kcmp
+348     o32     finit_module                    sys_finit_module
+349     o32     sched_setattr                   sys_sched_setattr
+350     o32     sched_getattr                   sys_sched_getattr
+351     o32     renameat2                       sys_renameat2
+352     o32     seccomp                         sys_seccomp
+353     o32     getrandom                       sys_getrandom
+354     o32     memfd_create                    sys_memfd_create
+355     o32     bpf                             sys_bpf
+356     o32     execveat                        sys_execveat                    compat_sys_execveat
+357     o32     userfaultfd                     sys_userfaultfd
+358     o32     membarrier                      sys_membarrier
+359     o32     mlock2                          sys_mlock2
+360     o32     copy_file_range                 sys_copy_file_range
+361     o32     preadv2                         sys_preadv2                     compat_sys_preadv2
+362     o32     pwritev2                        sys_pwritev2                    compat_sys_pwritev2
+363     o32     pkey_mprotect                   sys_pkey_mprotect
+364     o32     pkey_alloc                      sys_pkey_alloc
+365     o32     pkey_free                       sys_pkey_free
+366     o32     statx                           sys_statx
+367     o32     rseq                            sys_rseq
+368     o32     io_pgetevents                   sys_io_pgetevents_time32        compat_sys_io_pgetevents
+# room for arch specific calls
+393     o32     semget                          sys_semget
+394     o32     semctl                          sys_semctl                      compat_sys_semctl
+395     o32     shmget                          sys_shmget
+396     o32     shmctl                          sys_shmctl                      compat_sys_shmctl
+397     o32     shmat                           sys_shmat                       compat_sys_shmat
+398     o32     shmdt                           sys_shmdt
+399     o32     msgget                          sys_msgget
+400     o32     msgsnd                          sys_msgsnd                      compat_sys_msgsnd
+401     o32     msgrcv                          sys_msgrcv                      compat_sys_msgrcv
+402     o32     msgctl                          sys_msgctl                      compat_sys_msgctl
+403     o32     clock_gettime64                 sys_clock_gettime               sys_clock_gettime
+404     o32     clock_settime64                 sys_clock_settime               sys_clock_settime
+405     o32     clock_adjtime64                 sys_clock_adjtime               sys_clock_adjtime
+406     o32     clock_getres_time64             sys_clock_getres                sys_clock_getres
+407     o32     clock_nanosleep_time64          sys_clock_nanosleep             sys_clock_nanosleep
+408     o32     timer_gettime64                 sys_timer_gettime               sys_timer_gettime
+409     o32     timer_settime64                 sys_timer_settime               sys_timer_settime
+410     o32     timerfd_gettime64               sys_timerfd_gettime             sys_timerfd_gettime
+411     o32     timerfd_settime64               sys_timerfd_settime             sys_timerfd_settime
+412     o32     utimensat_time64                sys_utimensat                   sys_utimensat
+413     o32     pselect6_time64                 sys_pselect6                    compat_sys_pselect6_time64
+414     o32     ppoll_time64                    sys_ppoll                       compat_sys_ppoll_time64
+416     o32     io_pgetevents_time64            sys_io_pgetevents               sys_io_pgetevents
+417     o32     recvmmsg_time64                 sys_recvmmsg                    compat_sys_recvmmsg_time64
+418     o32     mq_timedsend_time64             sys_mq_timedsend                sys_mq_timedsend
+419     o32     mq_timedreceive_time64          sys_mq_timedreceive             sys_mq_timedreceive
+420     o32     semtimedop_time64               sys_semtimedop                  sys_semtimedop
+421     o32     rt_sigtimedwait_time64          sys_rt_sigtimedwait             compat_sys_rt_sigtimedwait_time64
+422     o32     futex_time64                    sys_futex                       sys_futex
+423     o32     sched_rr_get_interval_time64    sys_sched_rr_get_interval       sys_sched_rr_get_interval
+424     o32     pidfd_send_signal               sys_pidfd_send_signal
+425     o32     io_uring_setup                  sys_io_uring_setup
+426     o32     io_uring_enter                  sys_io_uring_enter
+427     o32     io_uring_register               sys_io_uring_register
+428     o32     open_tree                       sys_open_tree
+429     o32     move_mount                      sys_move_mount
+430     o32     fsopen                          sys_fsopen
+431     o32     fsconfig                        sys_fsconfig
+432     o32     fsmount                         sys_fsmount
+433     o32     fspick                          sys_fspick
+434     o32     pidfd_open                      sys_pidfd_open
+435     o32     clone3                          __sys_clone3
+436     o32     close_range                     sys_close_range
+437     o32     openat2                         sys_openat2
+438     o32     pidfd_getfd                     sys_pidfd_getfd
+439     o32     faccessat2                      sys_faccessat2
+440     o32     process_madvise                 sys_process_madvise
+441     o32     epoll_pwait2                    sys_epoll_pwait2                compat_sys_epoll_pwait2
+442     o32     mount_setattr                   sys_mount_setattr
+443     o32     quotactl_fd                     sys_quotactl_fd
+444     o32     landlock_create_ruleset         sys_landlock_create_ruleset
+445     o32     landlock_add_rule               sys_landlock_add_rule
+446     o32     landlock_restrict_self          sys_landlock_restrict_self
+# 447 reserved for memfd_secret
+448     o32     process_mrelease                sys_process_mrelease
+449     o32     futex_waitv                     sys_futex_waitv
+450     o32     set_mempolicy_home_node         sys_set_mempolicy_home_node
+"""
+
+
+# MIPS n32 (default ABI, present in /lib32)
+# - arch/mips/kernel/syscalls/syscall_n32.tbl
+mips_n32_syscall_tbl = """
+# system call numbers and entry vectors for mips
+#
+# The format is:
+# <number> <abi> <name> <entry point> <compat entry point>
+#
+# The <abi> is always "n32" for this file.
+#
+0       n32     read                            sys_read
+1       n32     write                           sys_write
+2       n32     open                            sys_open
+3       n32     close                           sys_close
+4       n32     stat                            sys_newstat
+5       n32     fstat                           sys_newfstat
+6       n32     lstat                           sys_newlstat
+7       n32     poll                            sys_poll
+8       n32     lseek                           sys_lseek
+9       n32     mmap                            sys_mips_mmap
+10      n32     mprotect                        sys_mprotect
+11      n32     munmap                          sys_munmap
+12      n32     brk                             sys_brk
+13      n32     rt_sigaction                    compat_sys_rt_sigaction
+14      n32     rt_sigprocmask                  compat_sys_rt_sigprocmask
+15      n32     ioctl                           compat_sys_ioctl
+16      n32     pread64                         sys_pread64
+17      n32     pwrite64                        sys_pwrite64
+18      n32     readv                           sys_readv
+19      n32     writev                          sys_writev
+20      n32     access                          sys_access
+21      n32     pipe                            sysm_pipe
+22      n32     _newselect                      compat_sys_select
+23      n32     sched_yield                     sys_sched_yield
+24      n32     mremap                          sys_mremap
+25      n32     msync                           sys_msync
+26      n32     mincore                         sys_mincore
+27      n32     madvise                         sys_madvise
+28      n32     shmget                          sys_shmget
+29      n32     shmat                           sys_shmat
+30      n32     shmctl                          compat_sys_old_shmctl
+31      n32     dup                             sys_dup
+32      n32     dup2                            sys_dup2
+33      n32     pause                           sys_pause
+34      n32     nanosleep                       sys_nanosleep_time32
+35      n32     getitimer                       compat_sys_getitimer
+36      n32     setitimer                       compat_sys_setitimer
+37      n32     alarm                           sys_alarm
+38      n32     getpid                          sys_getpid
+39      n32     sendfile                        compat_sys_sendfile
+40      n32     socket                          sys_socket
+41      n32     connect                         sys_connect
+42      n32     accept                          sys_accept
+43      n32     sendto                          sys_sendto
+44      n32     recvfrom                        compat_sys_recvfrom
+45      n32     sendmsg                         compat_sys_sendmsg
+46      n32     recvmsg                         compat_sys_recvmsg
+47      n32     shutdown                        sys_shutdown
+48      n32     bind                            sys_bind
+49      n32     listen                          sys_listen
+50      n32     getsockname                     sys_getsockname
+51      n32     getpeername                     sys_getpeername
+52      n32     socketpair                      sys_socketpair
+53      n32     setsockopt                      sys_setsockopt
+54      n32     getsockopt                      sys_getsockopt
+55      n32     clone                           __sys_clone
+56      n32     fork                            __sys_fork
+57      n32     execve                          compat_sys_execve
+58      n32     exit                            sys_exit
+59      n32     wait4                           compat_sys_wait4
+60      n32     kill                            sys_kill
+61      n32     uname                           sys_newuname
+62      n32     semget                          sys_semget
+63      n32     semop                           sys_semop
+64      n32     semctl                          compat_sys_old_semctl
+65      n32     shmdt                           sys_shmdt
+66      n32     msgget                          sys_msgget
+67      n32     msgsnd                          compat_sys_msgsnd
+68      n32     msgrcv                          compat_sys_msgrcv
+69      n32     msgctl                          compat_sys_old_msgctl
+70      n32     fcntl                           compat_sys_fcntl
+71      n32     flock                           sys_flock
+72      n32     fsync                           sys_fsync
+73      n32     fdatasync                       sys_fdatasync
+74      n32     truncate                        sys_truncate
+75      n32     ftruncate                       sys_ftruncate
+76      n32     getdents                        compat_sys_getdents
+77      n32     getcwd                          sys_getcwd
+78      n32     chdir                           sys_chdir
+79      n32     fchdir                          sys_fchdir
+80      n32     rename                          sys_rename
+81      n32     mkdir                           sys_mkdir
+82      n32     rmdir                           sys_rmdir
+83      n32     creat                           sys_creat
+84      n32     link                            sys_link
+85      n32     unlink                          sys_unlink
+86      n32     symlink                         sys_symlink
+87      n32     readlink                        sys_readlink
+88      n32     chmod                           sys_chmod
+89      n32     fchmod                          sys_fchmod
+90      n32     chown                           sys_chown
+91      n32     fchown                          sys_fchown
+92      n32     lchown                          sys_lchown
+93      n32     umask                           sys_umask
+94      n32     gettimeofday                    compat_sys_gettimeofday
+95      n32     getrlimit                       compat_sys_getrlimit
+96      n32     getrusage                       compat_sys_getrusage
+97      n32     sysinfo                         compat_sys_sysinfo
+98      n32     times                           compat_sys_times
+99      n32     ptrace                          compat_sys_ptrace
+100     n32     getuid                          sys_getuid
+101     n32     syslog                          sys_syslog
+102     n32     getgid                          sys_getgid
+103     n32     setuid                          sys_setuid
+104     n32     setgid                          sys_setgid
+105     n32     geteuid                         sys_geteuid
+106     n32     getegid                         sys_getegid
+107     n32     setpgid                         sys_setpgid
+108     n32     getppid                         sys_getppid
+109     n32     getpgrp                         sys_getpgrp
+110     n32     setsid                          sys_setsid
+111     n32     setreuid                        sys_setreuid
+112     n32     setregid                        sys_setregid
+113     n32     getgroups                       sys_getgroups
+114     n32     setgroups                       sys_setgroups
+115     n32     setresuid                       sys_setresuid
+116     n32     getresuid                       sys_getresuid
+117     n32     setresgid                       sys_setresgid
+118     n32     getresgid                       sys_getresgid
+119     n32     getpgid                         sys_getpgid
+120     n32     setfsuid                        sys_setfsuid
+121     n32     setfsgid                        sys_setfsgid
+122     n32     getsid                          sys_getsid
+123     n32     capget                          sys_capget
+124     n32     capset                          sys_capset
+125     n32     rt_sigpending                   compat_sys_rt_sigpending
+126     n32     rt_sigtimedwait                 compat_sys_rt_sigtimedwait_time32
+127     n32     rt_sigqueueinfo                 compat_sys_rt_sigqueueinfo
+128     n32     rt_sigsuspend                   compat_sys_rt_sigsuspend
+129     n32     sigaltstack                     compat_sys_sigaltstack
+130     n32     utime                           sys_utime32
+131     n32     mknod                           sys_mknod
+132     n32     personality                     sys_32_personality
+133     n32     ustat                           compat_sys_ustat
+134     n32     statfs                          compat_sys_statfs
+135     n32     fstatfs                         compat_sys_fstatfs
+136     n32     sysfs                           sys_sysfs
+137     n32     getpriority                     sys_getpriority
+138     n32     setpriority                     sys_setpriority
+139     n32     sched_setparam                  sys_sched_setparam
+140     n32     sched_getparam                  sys_sched_getparam
+141     n32     sched_setscheduler              sys_sched_setscheduler
+142     n32     sched_getscheduler              sys_sched_getscheduler
+143     n32     sched_get_priority_max          sys_sched_get_priority_max
+144     n32     sched_get_priority_min          sys_sched_get_priority_min
+145     n32     sched_rr_get_interval           sys_sched_rr_get_interval_time32
+146     n32     mlock                           sys_mlock
+147     n32     munlock                         sys_munlock
+148     n32     mlockall                        sys_mlockall
+149     n32     munlockall                      sys_munlockall
+150     n32     vhangup                         sys_vhangup
+151     n32     pivot_root                      sys_pivot_root
+152     n32     _sysctl                         sys_ni_syscall
+153     n32     prctl                           sys_prctl
+154     n32     adjtimex                        sys_adjtimex_time32
+155     n32     setrlimit                       compat_sys_setrlimit
+156     n32     chroot                          sys_chroot
+157     n32     sync                            sys_sync
+158     n32     acct                            sys_acct
+159     n32     settimeofday                    compat_sys_settimeofday
+160     n32     mount                           sys_mount
+161     n32     umount2                         sys_umount
+162     n32     swapon                          sys_swapon
+163     n32     swapoff                         sys_swapoff
+164     n32     reboot                          sys_reboot
+165     n32     sethostname                     sys_sethostname
+166     n32     setdomainname                   sys_setdomainname
+167     n32     create_module                   sys_ni_syscall
+168     n32     init_module                     sys_init_module
+169     n32     delete_module                   sys_delete_module
+170     n32     get_kernel_syms                 sys_ni_syscall
+171     n32     query_module                    sys_ni_syscall
+172     n32     quotactl                        sys_quotactl
+173     n32     nfsservctl                      sys_ni_syscall
+174     n32     getpmsg                         sys_ni_syscall
+175     n32     putpmsg                         sys_ni_syscall
+176     n32     afs_syscall                     sys_ni_syscall
+# 177 reserved for security
+177     n32     reserved177                     sys_ni_syscall
+178     n32     gettid                          sys_gettid
+179     n32     readahead                       sys_readahead
+180     n32     setxattr                        sys_setxattr
+181     n32     lsetxattr                       sys_lsetxattr
+182     n32     fsetxattr                       sys_fsetxattr
+183     n32     getxattr                        sys_getxattr
+184     n32     lgetxattr                       sys_lgetxattr
+185     n32     fgetxattr                       sys_fgetxattr
+186     n32     listxattr                       sys_listxattr
+187     n32     llistxattr                      sys_llistxattr
+188     n32     flistxattr                      sys_flistxattr
+189     n32     removexattr                     sys_removexattr
+190     n32     lremovexattr                    sys_lremovexattr
+191     n32     fremovexattr                    sys_fremovexattr
+192     n32     tkill                           sys_tkill
+193     n32     reserved193                     sys_ni_syscall
+194     n32     futex                           sys_futex_time32
+195     n32     sched_setaffinity               compat_sys_sched_setaffinity
+196     n32     sched_getaffinity               compat_sys_sched_getaffinity
+197     n32     cacheflush                      sys_cacheflush
+198     n32     cachectl                        sys_cachectl
+199     n32     sysmips                         __sys_sysmips
+200     n32     io_setup                        compat_sys_io_setup
+201     n32     io_destroy                      sys_io_destroy
+202     n32     io_getevents                    sys_io_getevents_time32
+203     n32     io_submit                       compat_sys_io_submit
+204     n32     io_cancel                       sys_io_cancel
+205     n32     exit_group                      sys_exit_group
+206     n32     lookup_dcookie                  sys_lookup_dcookie
+207     n32     epoll_create                    sys_epoll_create
+208     n32     epoll_ctl                       sys_epoll_ctl
+209     n32     epoll_wait                      sys_epoll_wait
+210     n32     remap_file_pages                sys_remap_file_pages
+211     n32     rt_sigreturn                    sysn32_rt_sigreturn
+212     n32     fcntl64                         compat_sys_fcntl64
+213     n32     set_tid_address                 sys_set_tid_address
+214     n32     restart_syscall                 sys_restart_syscall
+215     n32     semtimedop                      sys_semtimedop_time32
+216     n32     fadvise64                       sys_fadvise64_64
+217     n32     statfs64                        compat_sys_statfs64
+218     n32     fstatfs64                       compat_sys_fstatfs64
+219     n32     sendfile64                      sys_sendfile64
+220     n32     timer_create                    compat_sys_timer_create
+221     n32     timer_settime                   sys_timer_settime32
+222     n32     timer_gettime                   sys_timer_gettime32
+223     n32     timer_getoverrun                sys_timer_getoverrun
+224     n32     timer_delete                    sys_timer_delete
+225     n32     clock_settime                   sys_clock_settime32
+226     n32     clock_gettime                   sys_clock_gettime32
+227     n32     clock_getres                    sys_clock_getres_time32
+228     n32     clock_nanosleep                 sys_clock_nanosleep_time32
+229     n32     tgkill                          sys_tgkill
+230     n32     utimes                          sys_utimes_time32
+231     n32     mbind                           sys_mbind
+232     n32     get_mempolicy                   sys_get_mempolicy
+233     n32     set_mempolicy                   sys_set_mempolicy
+234     n32     mq_open                         compat_sys_mq_open
+235     n32     mq_unlink                       sys_mq_unlink
+236     n32     mq_timedsend                    sys_mq_timedsend_time32
+237     n32     mq_timedreceive                 sys_mq_timedreceive_time32
+238     n32     mq_notify                       compat_sys_mq_notify
+239     n32     mq_getsetattr                   compat_sys_mq_getsetattr
+240     n32     vserver                         sys_ni_syscall
+241     n32     waitid                          compat_sys_waitid
+# 242 was sys_setaltroot
+243     n32     add_key                         sys_add_key
+244     n32     request_key                     sys_request_key
+245     n32     keyctl                          compat_sys_keyctl
+246     n32     set_thread_area                 sys_set_thread_area
+247     n32     inotify_init                    sys_inotify_init
+248     n32     inotify_add_watch               sys_inotify_add_watch
+249     n32     inotify_rm_watch                sys_inotify_rm_watch
+250     n32     migrate_pages                   sys_migrate_pages
+251     n32     openat                          sys_openat
+252     n32     mkdirat                         sys_mkdirat
+253     n32     mknodat                         sys_mknodat
+254     n32     fchownat                        sys_fchownat
+255     n32     futimesat                       sys_futimesat_time32
+256     n32     newfstatat                      sys_newfstatat
+257     n32     unlinkat                        sys_unlinkat
+258     n32     renameat                        sys_renameat
+259     n32     linkat                          sys_linkat
+260     n32     symlinkat                       sys_symlinkat
+261     n32     readlinkat                      sys_readlinkat
+262     n32     fchmodat                        sys_fchmodat
+263     n32     faccessat                       sys_faccessat
+264     n32     pselect6                        compat_sys_pselect6_time32
+265     n32     ppoll                           compat_sys_ppoll_time32
+266     n32     unshare                         sys_unshare
+267     n32     splice                          sys_splice
+268     n32     sync_file_range                 sys_sync_file_range
+269     n32     tee                             sys_tee
+270     n32     vmsplice                        sys_vmsplice
+271     n32     move_pages                      sys_move_pages
+272     n32     set_robust_list                 compat_sys_set_robust_list
+273     n32     get_robust_list                 compat_sys_get_robust_list
+274     n32     kexec_load                      compat_sys_kexec_load
+275     n32     getcpu                          sys_getcpu
+276     n32     epoll_pwait                     compat_sys_epoll_pwait
+277     n32     ioprio_set                      sys_ioprio_set
+278     n32     ioprio_get                      sys_ioprio_get
+279     n32     utimensat                       sys_utimensat_time32
+280     n32     signalfd                        compat_sys_signalfd
+281     n32     timerfd                         sys_ni_syscall
+282     n32     eventfd                         sys_eventfd
+283     n32     fallocate                       sys_fallocate
+284     n32     timerfd_create                  sys_timerfd_create
+285     n32     timerfd_gettime                 sys_timerfd_gettime32
+286     n32     timerfd_settime                 sys_timerfd_settime32
+287     n32     signalfd4                       compat_sys_signalfd4
+288     n32     eventfd2                        sys_eventfd2
+289     n32     epoll_create1                   sys_epoll_create1
+290     n32     dup3                            sys_dup3
+291     n32     pipe2                           sys_pipe2
+292     n32     inotify_init1                   sys_inotify_init1
+293     n32     preadv                          compat_sys_preadv
+294     n32     pwritev                         compat_sys_pwritev
+295     n32     rt_tgsigqueueinfo               compat_sys_rt_tgsigqueueinfo
+296     n32     perf_event_open                 sys_perf_event_open
+297     n32     accept4                         sys_accept4
+298     n32     recvmmsg                        compat_sys_recvmmsg_time32
+299     n32     getdents64                      sys_getdents64
+300     n32     fanotify_init                   sys_fanotify_init
+301     n32     fanotify_mark                   sys_fanotify_mark
+302     n32     prlimit64                       sys_prlimit64
+303     n32     name_to_handle_at               sys_name_to_handle_at
+304     n32     open_by_handle_at               sys_open_by_handle_at
+305     n32     clock_adjtime                   sys_clock_adjtime32
+306     n32     syncfs                          sys_syncfs
+307     n32     sendmmsg                        compat_sys_sendmmsg
+308     n32     setns                           sys_setns
+309     n32     process_vm_readv                sys_process_vm_readv
+310     n32     process_vm_writev               sys_process_vm_writev
+311     n32     kcmp                            sys_kcmp
+312     n32     finit_module                    sys_finit_module
+313     n32     sched_setattr                   sys_sched_setattr
+314     n32     sched_getattr                   sys_sched_getattr
+315     n32     renameat2                       sys_renameat2
+316     n32     seccomp                         sys_seccomp
+317     n32     getrandom                       sys_getrandom
+318     n32     memfd_create                    sys_memfd_create
+319     n32     bpf                             sys_bpf
+320     n32     execveat                        compat_sys_execveat
+321     n32     userfaultfd                     sys_userfaultfd
+322     n32     membarrier                      sys_membarrier
+323     n32     mlock2                          sys_mlock2
+324     n32     copy_file_range                 sys_copy_file_range
+325     n32     preadv2                         compat_sys_preadv2
+326     n32     pwritev2                        compat_sys_pwritev2
+327     n32     pkey_mprotect                   sys_pkey_mprotect
+328     n32     pkey_alloc                      sys_pkey_alloc
+329     n32     pkey_free                       sys_pkey_free
+330     n32     statx                           sys_statx
+331     n32     rseq                            sys_rseq
+332     n32     io_pgetevents                   compat_sys_io_pgetevents
+# 333 through 402 are unassigned to sync up with generic numbers
+403     n32     clock_gettime64                 sys_clock_gettime
+404     n32     clock_settime64                 sys_clock_settime
+405     n32     clock_adjtime64                 sys_clock_adjtime
+406     n32     clock_getres_time64             sys_clock_getres
+407     n32     clock_nanosleep_time64          sys_clock_nanosleep
+408     n32     timer_gettime64                 sys_timer_gettime
+409     n32     timer_settime64                 sys_timer_settime
+410     n32     timerfd_gettime64               sys_timerfd_gettime
+411     n32     timerfd_settime64               sys_timerfd_settime
+412     n32     utimensat_time64                sys_utimensat
+413     n32     pselect6_time64                 compat_sys_pselect6_time64
+414     n32     ppoll_time64                    compat_sys_ppoll_time64
+416     n32     io_pgetevents_time64            sys_io_pgetevents
+417     n32     recvmmsg_time64                 compat_sys_recvmmsg_time64
+418     n32     mq_timedsend_time64             sys_mq_timedsend
+419     n32     mq_timedreceive_time64          sys_mq_timedreceive
+420     n32     semtimedop_time64               sys_semtimedop
+421     n32     rt_sigtimedwait_time64          compat_sys_rt_sigtimedwait_time64
+422     n32     futex_time64                    sys_futex
+423     n32     sched_rr_get_interval_time64    sys_sched_rr_get_interval
+424     n32     pidfd_send_signal               sys_pidfd_send_signal
+425     n32     io_uring_setup                  sys_io_uring_setup
+426     n32     io_uring_enter                  sys_io_uring_enter
+427     n32     io_uring_register               sys_io_uring_register
+428     n32     open_tree                       sys_open_tree
+429     n32     move_mount                      sys_move_mount
+430     n32     fsopen                          sys_fsopen
+431     n32     fsconfig                        sys_fsconfig
+432     n32     fsmount                         sys_fsmount
+433     n32     fspick                          sys_fspick
+434     n32     pidfd_open                      sys_pidfd_open
+435     n32     clone3                          __sys_clone3
+436     n32     close_range                     sys_close_range
+437     n32     openat2                         sys_openat2
+438     n32     pidfd_getfd                     sys_pidfd_getfd
+439     n32     faccessat2                      sys_faccessat2
+440     n32     process_madvise                 sys_process_madvise
+441     n32     epoll_pwait2                    compat_sys_epoll_pwait2
+442     n32     mount_setattr                   sys_mount_setattr
+443     n32     quotactl_fd                     sys_quotactl_fd
+444     n32     landlock_create_ruleset         sys_landlock_create_ruleset
+445     n32     landlock_add_rule               sys_landlock_add_rule
+446     n32     landlock_restrict_self          sys_landlock_restrict_self
+# 447 reserved for memfd_secret
+448     n32     process_mrelease                sys_process_mrelease
+449     n32     futex_waitv                     sys_futex_waitv
+450     n32     set_mempolicy_home_node         sys_set_mempolicy_home_node
+"""
+
+
+# MIPS n64 (for 64-bit ABI, present in /lib64)
+# - arch/mips/kernel/syscalls/syscall_n64.tbl
+mips_n64_syscall_tbl = """
+# system call numbers and entry vectors for mips
+#
+# The format is:
+# <number> <abi> <name> <entry point>
+#
+# The <abi> is always "n64" for this file.
+#
+0       n64     read                            sys_read
+1       n64     write                           sys_write
+2       n64     open                            sys_open
+3       n64     close                           sys_close
+4       n64     stat                            sys_newstat
+5       n64     fstat                           sys_newfstat
+6       n64     lstat                           sys_newlstat
+7       n64     poll                            sys_poll
+8       n64     lseek                           sys_lseek
+9       n64     mmap                            sys_mips_mmap
+10      n64     mprotect                        sys_mprotect
+11      n64     munmap                          sys_munmap
+12      n64     brk                             sys_brk
+13      n64     rt_sigaction                    sys_rt_sigaction
+14      n64     rt_sigprocmask                  sys_rt_sigprocmask
+15      n64     ioctl                           sys_ioctl
+16      n64     pread64                         sys_pread64
+17      n64     pwrite64                        sys_pwrite64
+18      n64     readv                           sys_readv
+19      n64     writev                          sys_writev
+20      n64     access                          sys_access
+21      n64     pipe                            sysm_pipe
+22      n64     _newselect                      sys_select
+23      n64     sched_yield                     sys_sched_yield
+24      n64     mremap                          sys_mremap
+25      n64     msync                           sys_msync
+26      n64     mincore                         sys_mincore
+27      n64     madvise                         sys_madvise
+28      n64     shmget                          sys_shmget
+29      n64     shmat                           sys_shmat
+30      n64     shmctl                          sys_old_shmctl
+31      n64     dup                             sys_dup
+32      n64     dup2                            sys_dup2
+33      n64     pause                           sys_pause
+34      n64     nanosleep                       sys_nanosleep
+35      n64     getitimer                       sys_getitimer
+36      n64     setitimer                       sys_setitimer
+37      n64     alarm                           sys_alarm
+38      n64     getpid                          sys_getpid
+39      n64     sendfile                        sys_sendfile64
+40      n64     socket                          sys_socket
+41      n64     connect                         sys_connect
+42      n64     accept                          sys_accept
+43      n64     sendto                          sys_sendto
+44      n64     recvfrom                        sys_recvfrom
+45      n64     sendmsg                         sys_sendmsg
+46      n64     recvmsg                         sys_recvmsg
+47      n64     shutdown                        sys_shutdown
+48      n64     bind                            sys_bind
+49      n64     listen                          sys_listen
+50      n64     getsockname                     sys_getsockname
+51      n64     getpeername                     sys_getpeername
+52      n64     socketpair                      sys_socketpair
+53      n64     setsockopt                      sys_setsockopt
+54      n64     getsockopt                      sys_getsockopt
+55      n64     clone                           __sys_clone
+56      n64     fork                            __sys_fork
+57      n64     execve                          sys_execve
+58      n64     exit                            sys_exit
+59      n64     wait4                           sys_wait4
+60      n64     kill                            sys_kill
+61      n64     uname                           sys_newuname
+62      n64     semget                          sys_semget
+63      n64     semop                           sys_semop
+64      n64     semctl                          sys_old_semctl
+65      n64     shmdt                           sys_shmdt
+66      n64     msgget                          sys_msgget
+67      n64     msgsnd                          sys_msgsnd
+68      n64     msgrcv                          sys_msgrcv
+69      n64     msgctl                          sys_old_msgctl
+70      n64     fcntl                           sys_fcntl
+71      n64     flock                           sys_flock
+72      n64     fsync                           sys_fsync
+73      n64     fdatasync                       sys_fdatasync
+74      n64     truncate                        sys_truncate
+75      n64     ftruncate                       sys_ftruncate
+76      n64     getdents                        sys_getdents
+77      n64     getcwd                          sys_getcwd
+78      n64     chdir                           sys_chdir
+79      n64     fchdir                          sys_fchdir
+80      n64     rename                          sys_rename
+81      n64     mkdir                           sys_mkdir
+82      n64     rmdir                           sys_rmdir
+83      n64     creat                           sys_creat
+84      n64     link                            sys_link
+85      n64     unlink                          sys_unlink
+86      n64     symlink                         sys_symlink
+87      n64     readlink                        sys_readlink
+88      n64     chmod                           sys_chmod
+89      n64     fchmod                          sys_fchmod
+90      n64     chown                           sys_chown
+91      n64     fchown                          sys_fchown
+92      n64     lchown                          sys_lchown
+93      n64     umask                           sys_umask
+94      n64     gettimeofday                    sys_gettimeofday
+95      n64     getrlimit                       sys_getrlimit
+96      n64     getrusage                       sys_getrusage
+97      n64     sysinfo                         sys_sysinfo
+98      n64     times                           sys_times
+99      n64     ptrace                          sys_ptrace
+100     n64     getuid                          sys_getuid
+101     n64     syslog                          sys_syslog
+102     n64     getgid                          sys_getgid
+103     n64     setuid                          sys_setuid
+104     n64     setgid                          sys_setgid
+105     n64     geteuid                         sys_geteuid
+106     n64     getegid                         sys_getegid
+107     n64     setpgid                         sys_setpgid
+108     n64     getppid                         sys_getppid
+109     n64     getpgrp                         sys_getpgrp
+110     n64     setsid                          sys_setsid
+111     n64     setreuid                        sys_setreuid
+112     n64     setregid                        sys_setregid
+113     n64     getgroups                       sys_getgroups
+114     n64     setgroups                       sys_setgroups
+115     n64     setresuid                       sys_setresuid
+116     n64     getresuid                       sys_getresuid
+117     n64     setresgid                       sys_setresgid
+118     n64     getresgid                       sys_getresgid
+119     n64     getpgid                         sys_getpgid
+120     n64     setfsuid                        sys_setfsuid
+121     n64     setfsgid                        sys_setfsgid
+122     n64     getsid                          sys_getsid
+123     n64     capget                          sys_capget
+124     n64     capset                          sys_capset
+125     n64     rt_sigpending                   sys_rt_sigpending
+126     n64     rt_sigtimedwait                 sys_rt_sigtimedwait
+127     n64     rt_sigqueueinfo                 sys_rt_sigqueueinfo
+128     n64     rt_sigsuspend                   sys_rt_sigsuspend
+129     n64     sigaltstack                     sys_sigaltstack
+130     n64     utime                           sys_utime
+131     n64     mknod                           sys_mknod
+132     n64     personality                     sys_personality
+133     n64     ustat                           sys_ustat
+134     n64     statfs                          sys_statfs
+135     n64     fstatfs                         sys_fstatfs
+136     n64     sysfs                           sys_sysfs
+137     n64     getpriority                     sys_getpriority
+138     n64     setpriority                     sys_setpriority
+139     n64     sched_setparam                  sys_sched_setparam
+140     n64     sched_getparam                  sys_sched_getparam
+141     n64     sched_setscheduler              sys_sched_setscheduler
+142     n64     sched_getscheduler              sys_sched_getscheduler
+143     n64     sched_get_priority_max          sys_sched_get_priority_max
+144     n64     sched_get_priority_min          sys_sched_get_priority_min
+145     n64     sched_rr_get_interval           sys_sched_rr_get_interval
+146     n64     mlock                           sys_mlock
+147     n64     munlock                         sys_munlock
+148     n64     mlockall                        sys_mlockall
+149     n64     munlockall                      sys_munlockall
+150     n64     vhangup                         sys_vhangup
+151     n64     pivot_root                      sys_pivot_root
+152     n64     _sysctl                         sys_ni_syscall
+153     n64     prctl                           sys_prctl
+154     n64     adjtimex                        sys_adjtimex
+155     n64     setrlimit                       sys_setrlimit
+156     n64     chroot                          sys_chroot
+157     n64     sync                            sys_sync
+158     n64     acct                            sys_acct
+159     n64     settimeofday                    sys_settimeofday
+160     n64     mount                           sys_mount
+161     n64     umount2                         sys_umount
+162     n64     swapon                          sys_swapon
+163     n64     swapoff                         sys_swapoff
+164     n64     reboot                          sys_reboot
+165     n64     sethostname                     sys_sethostname
+166     n64     setdomainname                   sys_setdomainname
+167     n64     create_module                   sys_ni_syscall
+168     n64     init_module                     sys_init_module
+169     n64     delete_module                   sys_delete_module
+170     n64     get_kernel_syms                 sys_ni_syscall
+171     n64     query_module                    sys_ni_syscall
+172     n64     quotactl                        sys_quotactl
+173     n64     nfsservctl                      sys_ni_syscall
+174     n64     getpmsg                         sys_ni_syscall
+175     n64     putpmsg                         sys_ni_syscall
+176     n64     afs_syscall                     sys_ni_syscall
+# 177 reserved for security
+177     n64     reserved177                     sys_ni_syscall
+178     n64     gettid                          sys_gettid
+179     n64     readahead                       sys_readahead
+180     n64     setxattr                        sys_setxattr
+181     n64     lsetxattr                       sys_lsetxattr
+182     n64     fsetxattr                       sys_fsetxattr
+183     n64     getxattr                        sys_getxattr
+184     n64     lgetxattr                       sys_lgetxattr
+185     n64     fgetxattr                       sys_fgetxattr
+186     n64     listxattr                       sys_listxattr
+187     n64     llistxattr                      sys_llistxattr
+188     n64     flistxattr                      sys_flistxattr
+189     n64     removexattr                     sys_removexattr
+190     n64     lremovexattr                    sys_lremovexattr
+191     n64     fremovexattr                    sys_fremovexattr
+192     n64     tkill                           sys_tkill
+193     n64     reserved193                     sys_ni_syscall
+194     n64     futex                           sys_futex
+195     n64     sched_setaffinity               sys_sched_setaffinity
+196     n64     sched_getaffinity               sys_sched_getaffinity
+197     n64     cacheflush                      sys_cacheflush
+198     n64     cachectl                        sys_cachectl
+199     n64     sysmips                         __sys_sysmips
+200     n64     io_setup                        sys_io_setup
+201     n64     io_destroy                      sys_io_destroy
+202     n64     io_getevents                    sys_io_getevents
+203     n64     io_submit                       sys_io_submit
+204     n64     io_cancel                       sys_io_cancel
+205     n64     exit_group                      sys_exit_group
+206     n64     lookup_dcookie                  sys_lookup_dcookie
+207     n64     epoll_create                    sys_epoll_create
+208     n64     epoll_ctl                       sys_epoll_ctl
+209     n64     epoll_wait                      sys_epoll_wait
+210     n64     remap_file_pages                sys_remap_file_pages
+211     n64     rt_sigreturn                    sys_rt_sigreturn
+212     n64     set_tid_address                 sys_set_tid_address
+213     n64     restart_syscall                 sys_restart_syscall
+214     n64     semtimedop                      sys_semtimedop
+215     n64     fadvise64                       sys_fadvise64_64
+216     n64     timer_create                    sys_timer_create
+217     n64     timer_settime                   sys_timer_settime
+218     n64     timer_gettime                   sys_timer_gettime
+219     n64     timer_getoverrun                sys_timer_getoverrun
+220     n64     timer_delete                    sys_timer_delete
+221     n64     clock_settime                   sys_clock_settime
+222     n64     clock_gettime                   sys_clock_gettime
+223     n64     clock_getres                    sys_clock_getres
+224     n64     clock_nanosleep                 sys_clock_nanosleep
+225     n64     tgkill                          sys_tgkill
+226     n64     utimes                          sys_utimes
+227     n64     mbind                           sys_mbind
+228     n64     get_mempolicy                   sys_get_mempolicy
+229     n64     set_mempolicy                   sys_set_mempolicy
+230     n64     mq_open                         sys_mq_open
+231     n64     mq_unlink                       sys_mq_unlink
+232     n64     mq_timedsend                    sys_mq_timedsend
+233     n64     mq_timedreceive                 sys_mq_timedreceive
+234     n64     mq_notify                       sys_mq_notify
+235     n64     mq_getsetattr                   sys_mq_getsetattr
+236     n64     vserver                         sys_ni_syscall
+237     n64     waitid                          sys_waitid
+# 238 was sys_setaltroot
+239     n64     add_key                         sys_add_key
+240     n64     request_key                     sys_request_key
+241     n64     keyctl                          sys_keyctl
+242     n64     set_thread_area                 sys_set_thread_area
+243     n64     inotify_init                    sys_inotify_init
+244     n64     inotify_add_watch               sys_inotify_add_watch
+245     n64     inotify_rm_watch                sys_inotify_rm_watch
+246     n64     migrate_pages                   sys_migrate_pages
+247     n64     openat                          sys_openat
+248     n64     mkdirat                         sys_mkdirat
+249     n64     mknodat                         sys_mknodat
+250     n64     fchownat                        sys_fchownat
+251     n64     futimesat                       sys_futimesat
+252     n64     newfstatat                      sys_newfstatat
+253     n64     unlinkat                        sys_unlinkat
+254     n64     renameat                        sys_renameat
+255     n64     linkat                          sys_linkat
+256     n64     symlinkat                       sys_symlinkat
+257     n64     readlinkat                      sys_readlinkat
+258     n64     fchmodat                        sys_fchmodat
+259     n64     faccessat                       sys_faccessat
+260     n64     pselect6                        sys_pselect6
+261     n64     ppoll                           sys_ppoll
+262     n64     unshare                         sys_unshare
+263     n64     splice                          sys_splice
+264     n64     sync_file_range                 sys_sync_file_range
+265     n64     tee                             sys_tee
+266     n64     vmsplice                        sys_vmsplice
+267     n64     move_pages                      sys_move_pages
+268     n64     set_robust_list                 sys_set_robust_list
+269     n64     get_robust_list                 sys_get_robust_list
+270     n64     kexec_load                      sys_kexec_load
+271     n64     getcpu                          sys_getcpu
+272     n64     epoll_pwait                     sys_epoll_pwait
+273     n64     ioprio_set                      sys_ioprio_set
+274     n64     ioprio_get                      sys_ioprio_get
+275     n64     utimensat                       sys_utimensat
+276     n64     signalfd                        sys_signalfd
+277     n64     timerfd                         sys_ni_syscall
+278     n64     eventfd                         sys_eventfd
+279     n64     fallocate                       sys_fallocate
+280     n64     timerfd_create                  sys_timerfd_create
+281     n64     timerfd_gettime                 sys_timerfd_gettime
+282     n64     timerfd_settime                 sys_timerfd_settime
+283     n64     signalfd4                       sys_signalfd4
+284     n64     eventfd2                        sys_eventfd2
+285     n64     epoll_create1                   sys_epoll_create1
+286     n64     dup3                            sys_dup3
+287     n64     pipe2                           sys_pipe2
+288     n64     inotify_init1                   sys_inotify_init1
+289     n64     preadv                          sys_preadv
+290     n64     pwritev                         sys_pwritev
+291     n64     rt_tgsigqueueinfo               sys_rt_tgsigqueueinfo
+292     n64     perf_event_open                 sys_perf_event_open
+293     n64     accept4                         sys_accept4
+294     n64     recvmmsg                        sys_recvmmsg
+295     n64     fanotify_init                   sys_fanotify_init
+296     n64     fanotify_mark                   sys_fanotify_mark
+297     n64     prlimit64                       sys_prlimit64
+298     n64     name_to_handle_at               sys_name_to_handle_at
+299     n64     open_by_handle_at               sys_open_by_handle_at
+300     n64     clock_adjtime                   sys_clock_adjtime
+301     n64     syncfs                          sys_syncfs
+302     n64     sendmmsg                        sys_sendmmsg
+303     n64     setns                           sys_setns
+304     n64     process_vm_readv                sys_process_vm_readv
+305     n64     process_vm_writev               sys_process_vm_writev
+306     n64     kcmp                            sys_kcmp
+307     n64     finit_module                    sys_finit_module
+308     n64     getdents64                      sys_getdents64
+309     n64     sched_setattr                   sys_sched_setattr
+310     n64     sched_getattr                   sys_sched_getattr
+311     n64     renameat2                       sys_renameat2
+312     n64     seccomp                         sys_seccomp
+313     n64     getrandom                       sys_getrandom
+314     n64     memfd_create                    sys_memfd_create
+315     n64     bpf                             sys_bpf
+316     n64     execveat                        sys_execveat
+317     n64     userfaultfd                     sys_userfaultfd
+318     n64     membarrier                      sys_membarrier
+319     n64     mlock2                          sys_mlock2
+320     n64     copy_file_range                 sys_copy_file_range
+321     n64     preadv2                         sys_preadv2
+322     n64     pwritev2                        sys_pwritev2
+323     n64     pkey_mprotect                   sys_pkey_mprotect
+324     n64     pkey_alloc                      sys_pkey_alloc
+325     n64     pkey_free                       sys_pkey_free
+326     n64     statx                           sys_statx
+327     n64     rseq                            sys_rseq
+328     n64     io_pgetevents                   sys_io_pgetevents
+# 329 through 423 are reserved to sync up with other architectures
+424     n64     pidfd_send_signal               sys_pidfd_send_signal
+425     n64     io_uring_setup                  sys_io_uring_setup
+426     n64     io_uring_enter                  sys_io_uring_enter
+427     n64     io_uring_register               sys_io_uring_register
+428     n64     open_tree                       sys_open_tree
+429     n64     move_mount                      sys_move_mount
+430     n64     fsopen                          sys_fsopen
+431     n64     fsconfig                        sys_fsconfig
+432     n64     fsmount                         sys_fsmount
+433     n64     fspick                          sys_fspick
+434     n64     pidfd_open                      sys_pidfd_open
+435     n64     clone3                          __sys_clone3
+436     n64     close_range                     sys_close_range
+437     n64     openat2                         sys_openat2
+438     n64     pidfd_getfd                     sys_pidfd_getfd
+439     n64     faccessat2                      sys_faccessat2
+440     n64     process_madvise                 sys_process_madvise
+441     n64     epoll_pwait2                    sys_epoll_pwait2
+442     n64     mount_setattr                   sys_mount_setattr
+443     n64     quotactl_fd                     sys_quotactl_fd
+444     n64     landlock_create_ruleset         sys_landlock_create_ruleset
+445     n64     landlock_add_rule               sys_landlock_add_rule
+446     n64     landlock_restrict_self          sys_landlock_restrict_self
+# 447 reserved for memfd_secret
+448     n64     process_mrelease                sys_process_mrelease
+449     n64     futex_waitv                     sys_futex_waitv
+450     common  set_mempolicy_home_node         sys_set_mempolicy_home_node
+"""
+
+
+# PowerPC
+# - arch/powerpc/kernel/syscalls/syscall.tbl
+ppc_syscall_tbl = """
+# system call numbers and entry vectors for powerpc
+#
+# The format is:
+# <number> <abi> <name> <entry point> <compat entry point>
+#
+# The <abi> can be common, spu, nospu, 64, or 32 for this file.
+#
+0       nospu   restart_syscall                 sys_restart_syscall
+1       nospu   exit                            sys_exit
+2       nospu   fork                            sys_fork
+3       common  read                            sys_read
+4       common  write                           sys_write
+5       common  open                            sys_open                        compat_sys_open
+6       common  close                           sys_close
+7       common  waitpid                         sys_waitpid
+8       common  creat                           sys_creat
+9       common  link                            sys_link
+10      common  unlink                          sys_unlink
+11      nospu   execve                          sys_execve                      compat_sys_execve
+12      common  chdir                           sys_chdir
+13      32      time                            sys_time32
+13      64      time                            sys_time
+13      spu     time                            sys_time
+14      common  mknod                           sys_mknod
+15      common  chmod                           sys_chmod
+16      common  lchown                          sys_lchown
+17      common  break                           sys_ni_syscall
+18      32      oldstat                         sys_stat                        sys_ni_syscall
+18      64      oldstat                         sys_ni_syscall
+18      spu     oldstat                         sys_ni_syscall
+19      common  lseek                           sys_lseek                       compat_sys_lseek
+20      common  getpid                          sys_getpid
+21      nospu   mount                           sys_mount
+22      32      umount                          sys_oldumount
+22      64      umount                          sys_ni_syscall
+22      spu     umount                          sys_ni_syscall
+23      common  setuid                          sys_setuid
+24      common  getuid                          sys_getuid
+25      32      stime                           sys_stime32
+25      64      stime                           sys_stime
+25      spu     stime                           sys_stime
+26      nospu   ptrace                          sys_ptrace                      compat_sys_ptrace
+27      common  alarm                           sys_alarm
+28      32      oldfstat                        sys_fstat                       sys_ni_syscall
+28      64      oldfstat                        sys_ni_syscall
+28      spu     oldfstat                        sys_ni_syscall
+29      nospu   pause                           sys_pause
+30      32      utime                           sys_utime32
+30      64      utime                           sys_utime
+31      common  stty                            sys_ni_syscall
+32      common  gtty                            sys_ni_syscall
+33      common  access                          sys_access
+34      common  nice                            sys_nice
+35      common  ftime                           sys_ni_syscall
+36      common  sync                            sys_sync
+37      common  kill                            sys_kill
+38      common  rename                          sys_rename
+39      common  mkdir                           sys_mkdir
+40      common  rmdir                           sys_rmdir
+41      common  dup                             sys_dup
+42      common  pipe                            sys_pipe
+43      common  times                           sys_times                       compat_sys_times
+44      common  prof                            sys_ni_syscall
+45      common  brk                             sys_brk
+46      common  setgid                          sys_setgid
+47      common  getgid                          sys_getgid
+48      nospu   signal                          sys_signal
+49      common  geteuid                         sys_geteuid
+50      common  getegid                         sys_getegid
+51      nospu   acct                            sys_acct
+52      nospu   umount2                         sys_umount
+53      common  lock                            sys_ni_syscall
+54      common  ioctl                           sys_ioctl                       compat_sys_ioctl
+55      common  fcntl                           sys_fcntl                       compat_sys_fcntl
+56      common  mpx                             sys_ni_syscall
+57      common  setpgid                         sys_setpgid
+58      common  ulimit                          sys_ni_syscall
+59      32      oldolduname                     sys_olduname
+59      64      oldolduname                     sys_ni_syscall
+59      spu     oldolduname                     sys_ni_syscall
+60      common  umask                           sys_umask
+61      common  chroot                          sys_chroot
+62      nospu   ustat                           sys_ustat                       compat_sys_ustat
+63      common  dup2                            sys_dup2
+64      common  getppid                         sys_getppid
+65      common  getpgrp                         sys_getpgrp
+66      common  setsid                          sys_setsid
+67      32      sigaction                       sys_sigaction                   compat_sys_sigaction
+67      64      sigaction                       sys_ni_syscall
+67      spu     sigaction                       sys_ni_syscall
+68      common  sgetmask                        sys_sgetmask
+69      common  ssetmask                        sys_ssetmask
+70      common  setreuid                        sys_setreuid
+71      common  setregid                        sys_setregid
+72      32      sigsuspend                      sys_sigsuspend
+72      64      sigsuspend                      sys_ni_syscall
+72      spu     sigsuspend                      sys_ni_syscall
+73      32      sigpending                      sys_sigpending                  compat_sys_sigpending
+73      64      sigpending                      sys_ni_syscall
+73      spu     sigpending                      sys_ni_syscall
+74      common  sethostname                     sys_sethostname
+75      common  setrlimit                       sys_setrlimit                   compat_sys_setrlimit
+76      32      getrlimit                       sys_old_getrlimit               compat_sys_old_getrlimit
+76      64      getrlimit                       sys_ni_syscall
+76      spu     getrlimit                       sys_ni_syscall
+77      common  getrusage                       sys_getrusage                   compat_sys_getrusage
+78      common  gettimeofday                    sys_gettimeofday                compat_sys_gettimeofday
+79      common  settimeofday                    sys_settimeofday                compat_sys_settimeofday
+80      common  getgroups                       sys_getgroups
+81      common  setgroups                       sys_setgroups
+82      32      select                          ppc_select                      sys_ni_syscall
+82      64      select                          sys_ni_syscall
+82      spu     select                          sys_ni_syscall
+83      common  symlink                         sys_symlink
+84      32      oldlstat                        sys_lstat                       sys_ni_syscall
+84      64      oldlstat                        sys_ni_syscall
+84      spu     oldlstat                        sys_ni_syscall
+85      common  readlink                        sys_readlink
+86      nospu   uselib                          sys_uselib
+87      nospu   swapon                          sys_swapon
+88      nospu   reboot                          sys_reboot
+89      32      readdir                         sys_old_readdir                 compat_sys_old_readdir
+89      64      readdir                         sys_ni_syscall
+89      spu     readdir                         sys_ni_syscall
+90      common  mmap                            sys_mmap
+91      common  munmap                          sys_munmap
+92      common  truncate                        sys_truncate                    compat_sys_truncate
+93      common  ftruncate                       sys_ftruncate                   compat_sys_ftruncate
+94      common  fchmod                          sys_fchmod
+95      common  fchown                          sys_fchown
+96      common  getpriority                     sys_getpriority
+97      common  setpriority                     sys_setpriority
+98      common  profil                          sys_ni_syscall
+99      nospu   statfs                          sys_statfs                      compat_sys_statfs
+100     nospu   fstatfs                         sys_fstatfs                     compat_sys_fstatfs
+101     common  ioperm                          sys_ni_syscall
+102     common  socketcall                      sys_socketcall                  compat_sys_socketcall
+103     common  syslog                          sys_syslog
+104     common  setitimer                       sys_setitimer                   compat_sys_setitimer
+105     common  getitimer                       sys_getitimer                   compat_sys_getitimer
+106     common  stat                            sys_newstat                     compat_sys_newstat
+107     common  lstat                           sys_newlstat                    compat_sys_newlstat
+108     common  fstat                           sys_newfstat                    compat_sys_newfstat
+109     32      olduname                        sys_uname
+109     64      olduname                        sys_ni_syscall
+109     spu     olduname                        sys_ni_syscall
+110     common  iopl                            sys_ni_syscall
+111     common  vhangup                         sys_vhangup
+112     common  idle                            sys_ni_syscall
+113     common  vm86                            sys_ni_syscall
+114     common  wait4                           sys_wait4                       compat_sys_wait4
+115     nospu   swapoff                         sys_swapoff
+116     common  sysinfo                         sys_sysinfo                     compat_sys_sysinfo
+117     nospu   ipc                             sys_ipc                         compat_sys_ipc
+118     common  fsync                           sys_fsync
+119     32      sigreturn                       sys_sigreturn                   compat_sys_sigreturn
+119     64      sigreturn                       sys_ni_syscall
+119     spu     sigreturn                       sys_ni_syscall
+120     nospu   clone                           sys_clone
+121     common  setdomainname                   sys_setdomainname
+122     common  uname                           sys_newuname
+123     common  modify_ldt                      sys_ni_syscall
+124     32      adjtimex                        sys_adjtimex_time32
+124     64      adjtimex                        sys_adjtimex
+124     spu     adjtimex                        sys_adjtimex
+125     common  mprotect                        sys_mprotect
+126     32      sigprocmask                     sys_sigprocmask                 compat_sys_sigprocmask
+126     64      sigprocmask                     sys_ni_syscall
+126     spu     sigprocmask                     sys_ni_syscall
+127     common  create_module                   sys_ni_syscall
+128     nospu   init_module                     sys_init_module
+129     nospu   delete_module                   sys_delete_module
+130     common  get_kernel_syms                 sys_ni_syscall
+131     nospu   quotactl                        sys_quotactl
+132     common  getpgid                         sys_getpgid
+133     common  fchdir                          sys_fchdir
+134     common  bdflush                         sys_ni_syscall
+135     common  sysfs                           sys_sysfs
+136     32      personality                     sys_personality                 ppc64_personality
+136     64      personality                     ppc64_personality
+136     spu     personality                     ppc64_personality
+137     common  afs_syscall                     sys_ni_syscall
+138     common  setfsuid                        sys_setfsuid
+139     common  setfsgid                        sys_setfsgid
+140     common  _llseek                         sys_llseek
+141     common  getdents                        sys_getdents                    compat_sys_getdents
+142     common  _newselect                      sys_select                      compat_sys_select
+143     common  flock                           sys_flock
+144     common  msync                           sys_msync
+145     common  readv                           sys_readv
+146     common  writev                          sys_writev
+147     common  getsid                          sys_getsid
+148     common  fdatasync                       sys_fdatasync
+149     nospu   _sysctl                         sys_ni_syscall
+150     common  mlock                           sys_mlock
+151     common  munlock                         sys_munlock
+152     common  mlockall                        sys_mlockall
+153     common  munlockall                      sys_munlockall
+154     common  sched_setparam                  sys_sched_setparam
+155     common  sched_getparam                  sys_sched_getparam
+156     common  sched_setscheduler              sys_sched_setscheduler
+157     common  sched_getscheduler              sys_sched_getscheduler
+158     common  sched_yield                     sys_sched_yield
+159     common  sched_get_priority_max          sys_sched_get_priority_max
+160     common  sched_get_priority_min          sys_sched_get_priority_min
+161     32      sched_rr_get_interval           sys_sched_rr_get_interval_time32
+161     64      sched_rr_get_interval           sys_sched_rr_get_interval
+161     spu     sched_rr_get_interval           sys_sched_rr_get_interval
+162     32      nanosleep                       sys_nanosleep_time32
+162     64      nanosleep                       sys_nanosleep
+162     spu     nanosleep                       sys_nanosleep
+163     common  mremap                          sys_mremap
+164     common  setresuid                       sys_setresuid
+165     common  getresuid                       sys_getresuid
+166     common  query_module                    sys_ni_syscall
+167     common  poll                            sys_poll
+168     common  nfsservctl                      sys_ni_syscall
+169     common  setresgid                       sys_setresgid
+170     common  getresgid                       sys_getresgid
+171     common  prctl                           sys_prctl
+172     nospu   rt_sigreturn                    sys_rt_sigreturn                compat_sys_rt_sigreturn
+173     nospu   rt_sigaction                    sys_rt_sigaction                compat_sys_rt_sigaction
+174     nospu   rt_sigprocmask                  sys_rt_sigprocmask              compat_sys_rt_sigprocmask
+175     nospu   rt_sigpending                   sys_rt_sigpending               compat_sys_rt_sigpending
+176     32      rt_sigtimedwait                 sys_rt_sigtimedwait_time32      compat_sys_rt_sigtimedwait_time32
+176     64      rt_sigtimedwait                 sys_rt_sigtimedwait
+177     nospu   rt_sigqueueinfo                 sys_rt_sigqueueinfo             compat_sys_rt_sigqueueinfo
+178     nospu   rt_sigsuspend                   sys_rt_sigsuspend               compat_sys_rt_sigsuspend
+179     common  pread64                         sys_pread64                     compat_sys_pread64
+180     common  pwrite64                        sys_pwrite64                    compat_sys_pwrite64
+181     common  chown                           sys_chown
+182     common  getcwd                          sys_getcwd
+183     common  capget                          sys_capget
+184     common  capset                          sys_capset
+185     nospu   sigaltstack                     sys_sigaltstack                 compat_sys_sigaltstack
+186     32      sendfile                        sys_sendfile                    compat_sys_sendfile
+186     64      sendfile                        sys_sendfile64
+186     spu     sendfile                        sys_sendfile64
+187     common  getpmsg                         sys_ni_syscall
+188     common  putpmsg                         sys_ni_syscall
+189     nospu   vfork                           sys_vfork
+190     common  ugetrlimit                      sys_getrlimit                   compat_sys_getrlimit
+191     common  readahead                       sys_readahead                   compat_sys_readahead
+192     32      mmap2                           sys_mmap2                       compat_sys_mmap2
+193     32      truncate64                      sys_truncate64                  compat_sys_truncate64
+194     32      ftruncate64                     sys_ftruncate64                 compat_sys_ftruncate64
+195     32      stat64                          sys_stat64
+196     32      lstat64                         sys_lstat64
+197     32      fstat64                         sys_fstat64
+198     nospu   pciconfig_read                  sys_pciconfig_read
+199     nospu   pciconfig_write                 sys_pciconfig_write
+200     nospu   pciconfig_iobase                sys_pciconfig_iobase
+201     common  multiplexer                     sys_ni_syscall
+202     common  getdents64                      sys_getdents64
+203     common  pivot_root                      sys_pivot_root
+204     32      fcntl64                         sys_fcntl64                     compat_sys_fcntl64
+205     common  madvise                         sys_madvise
+206     common  mincore                         sys_mincore
+207     common  gettid                          sys_gettid
+208     common  tkill                           sys_tkill
+209     common  setxattr                        sys_setxattr
+210     common  lsetxattr                       sys_lsetxattr
+211     common  fsetxattr                       sys_fsetxattr
+212     common  getxattr                        sys_getxattr
+213     common  lgetxattr                       sys_lgetxattr
+214     common  fgetxattr                       sys_fgetxattr
+215     common  listxattr                       sys_listxattr
+216     common  llistxattr                      sys_llistxattr
+217     common  flistxattr                      sys_flistxattr
+218     common  removexattr                     sys_removexattr
+219     common  lremovexattr                    sys_lremovexattr
+220     common  fremovexattr                    sys_fremovexattr
+221     32      futex                           sys_futex_time32
+221     64      futex                           sys_futex
+221     spu     futex                           sys_futex
+222     common  sched_setaffinity               sys_sched_setaffinity           compat_sys_sched_setaffinity
+223     common  sched_getaffinity               sys_sched_getaffinity           compat_sys_sched_getaffinity
+# 224 unused
+225     common  tuxcall                         sys_ni_syscall
+226     32      sendfile64                      sys_sendfile64                  compat_sys_sendfile64
+227     common  io_setup                        sys_io_setup                    compat_sys_io_setup
+228     common  io_destroy                      sys_io_destroy
+229     32      io_getevents                    sys_io_getevents_time32
+229     64      io_getevents                    sys_io_getevents
+229     spu     io_getevents                    sys_io_getevents
+230     common  io_submit                       sys_io_submit                   compat_sys_io_submit
+231     common  io_cancel                       sys_io_cancel
+232     nospu   set_tid_address                 sys_set_tid_address
+233     common  fadvise64                       sys_fadvise64                   ppc32_fadvise64
+234     nospu   exit_group                      sys_exit_group
+235     nospu   lookup_dcookie                  sys_lookup_dcookie              compat_sys_lookup_dcookie
+236     common  epoll_create                    sys_epoll_create
+237     common  epoll_ctl                       sys_epoll_ctl
+238     common  epoll_wait                      sys_epoll_wait
+239     common  remap_file_pages                sys_remap_file_pages
+240     common  timer_create                    sys_timer_create                compat_sys_timer_create
+241     32      timer_settime                   sys_timer_settime32
+241     64      timer_settime                   sys_timer_settime
+241     spu     timer_settime                   sys_timer_settime
+242     32      timer_gettime                   sys_timer_gettime32
+242     64      timer_gettime                   sys_timer_gettime
+242     spu     timer_gettime                   sys_timer_gettime
+243     common  timer_getoverrun                sys_timer_getoverrun
+244     common  timer_delete                    sys_timer_delete
+245     32      clock_settime                   sys_clock_settime32
+245     64      clock_settime                   sys_clock_settime
+245     spu     clock_settime                   sys_clock_settime
+246     32      clock_gettime                   sys_clock_gettime32
+246     64      clock_gettime                   sys_clock_gettime
+246     spu     clock_gettime                   sys_clock_gettime
+247     32      clock_getres                    sys_clock_getres_time32
+247     64      clock_getres                    sys_clock_getres
+247     spu     clock_getres                    sys_clock_getres
+248     32      clock_nanosleep                 sys_clock_nanosleep_time32
+248     64      clock_nanosleep                 sys_clock_nanosleep
+248     spu     clock_nanosleep                 sys_clock_nanosleep
+249     nospu   swapcontext                     sys_swapcontext                 compat_sys_swapcontext
+250     common  tgkill                          sys_tgkill
+251     32      utimes                          sys_utimes_time32
+251     64      utimes                          sys_utimes
+251     spu     utimes                          sys_utimes
+252     common  statfs64                        sys_statfs64                    compat_sys_statfs64
+253     common  fstatfs64                       sys_fstatfs64                   compat_sys_fstatfs64
+254     32      fadvise64_64                    ppc_fadvise64_64
+254     spu     fadvise64_64                    sys_ni_syscall
+255     common  rtas                            sys_rtas
+256     32      sys_debug_setcontext            sys_debug_setcontext            sys_ni_syscall
+256     64      sys_debug_setcontext            sys_ni_syscall
+256     spu     sys_debug_setcontext            sys_ni_syscall
+# 257 reserved for vserver
+258     nospu   migrate_pages                   sys_migrate_pages
+259     nospu   mbind                           sys_mbind
+260     nospu   get_mempolicy                   sys_get_mempolicy
+261     nospu   set_mempolicy                   sys_set_mempolicy
+262     nospu   mq_open                         sys_mq_open                     compat_sys_mq_open
+263     nospu   mq_unlink                       sys_mq_unlink
+264     32      mq_timedsend                    sys_mq_timedsend_time32
+264     64      mq_timedsend                    sys_mq_timedsend
+265     32      mq_timedreceive                 sys_mq_timedreceive_time32
+265     64      mq_timedreceive                 sys_mq_timedreceive
+266     nospu   mq_notify                       sys_mq_notify                   compat_sys_mq_notify
+267     nospu   mq_getsetattr                   sys_mq_getsetattr               compat_sys_mq_getsetattr
+268     nospu   kexec_load                      sys_kexec_load                  compat_sys_kexec_load
+269     nospu   add_key                         sys_add_key
+270     nospu   request_key                     sys_request_key
+271     nospu   keyctl                          sys_keyctl                      compat_sys_keyctl
+272     nospu   waitid                          sys_waitid                      compat_sys_waitid
+273     nospu   ioprio_set                      sys_ioprio_set
+274     nospu   ioprio_get                      sys_ioprio_get
+275     nospu   inotify_init                    sys_inotify_init
+276     nospu   inotify_add_watch               sys_inotify_add_watch
+277     nospu   inotify_rm_watch                sys_inotify_rm_watch
+278     nospu   spu_run                         sys_spu_run
+279     nospu   spu_create                      sys_spu_create
+280     32      pselect6                        sys_pselect6_time32             compat_sys_pselect6_time32
+280     64      pselect6                        sys_pselect6
+281     32      ppoll                           sys_ppoll_time32                compat_sys_ppoll_time32
+281     64      ppoll                           sys_ppoll
+282     common  unshare                         sys_unshare
+283     common  splice                          sys_splice
+284     common  tee                             sys_tee
+285     common  vmsplice                        sys_vmsplice
+286     common  openat                          sys_openat                      compat_sys_openat
+287     common  mkdirat                         sys_mkdirat
+288     common  mknodat                         sys_mknodat
+289     common  fchownat                        sys_fchownat
+290     32      futimesat                       sys_futimesat_time32
+290     64      futimesat                       sys_futimesat
+290     spu     utimesat                        sys_futimesat
+291     32      fstatat64                       sys_fstatat64
+291     64      newfstatat                      sys_newfstatat
+291     spu     newfstatat                      sys_newfstatat
+292     common  unlinkat                        sys_unlinkat
+293     common  renameat                        sys_renameat
+294     common  linkat                          sys_linkat
+295     common  symlinkat                       sys_symlinkat
+296     common  readlinkat                      sys_readlinkat
+297     common  fchmodat                        sys_fchmodat
+298     common  faccessat                       sys_faccessat
+299     common  get_robust_list                 sys_get_robust_list             compat_sys_get_robust_list
+300     common  set_robust_list                 sys_set_robust_list             compat_sys_set_robust_list
+301     common  move_pages                      sys_move_pages
+302     common  getcpu                          sys_getcpu
+303     nospu   epoll_pwait                     sys_epoll_pwait                 compat_sys_epoll_pwait
+304     32      utimensat                       sys_utimensat_time32
+304     64      utimensat                       sys_utimensat
+304     spu     utimensat                       sys_utimensat
+305     common  signalfd                        sys_signalfd                    compat_sys_signalfd
+306     common  timerfd_create                  sys_timerfd_create
+307     common  eventfd                         sys_eventfd
+308     common  sync_file_range2                sys_sync_file_range2            compat_sys_sync_file_range2
+309     nospu   fallocate                       sys_fallocate                   compat_sys_fallocate
+310     nospu   subpage_prot                    sys_subpage_prot
+311     32      timerfd_settime                 sys_timerfd_settime32
+311     64      timerfd_settime                 sys_timerfd_settime
+311     spu     timerfd_settime                 sys_timerfd_settime
+312     32      timerfd_gettime                 sys_timerfd_gettime32
+312     64      timerfd_gettime                 sys_timerfd_gettime
+312     spu     timerfd_gettime                 sys_timerfd_gettime
+313     common  signalfd4                       sys_signalfd4                   compat_sys_signalfd4
+314     common  eventfd2                        sys_eventfd2
+315     common  epoll_create1                   sys_epoll_create1
+316     common  dup3                            sys_dup3
+317     common  pipe2                           sys_pipe2
+318     nospu   inotify_init1                   sys_inotify_init1
+319     common  perf_event_open                 sys_perf_event_open
+320     common  preadv                          sys_preadv                      compat_sys_preadv
+321     common  pwritev                         sys_pwritev                     compat_sys_pwritev
+322     nospu   rt_tgsigqueueinfo               sys_rt_tgsigqueueinfo           compat_sys_rt_tgsigqueueinfo
+323     nospu   fanotify_init                   sys_fanotify_init
+324     nospu   fanotify_mark                   sys_fanotify_mark               compat_sys_fanotify_mark
+325     common  prlimit64                       sys_prlimit64
+326     common  socket                          sys_socket
+327     common  bind                            sys_bind
+328     common  connect                         sys_connect
+329     common  listen                          sys_listen
+330     common  accept                          sys_accept
+331     common  getsockname                     sys_getsockname
+332     common  getpeername                     sys_getpeername
+333     common  socketpair                      sys_socketpair
+334     common  send                            sys_send
+335     common  sendto                          sys_sendto
+336     common  recv                            sys_recv                        compat_sys_recv
+337     common  recvfrom                        sys_recvfrom                    compat_sys_recvfrom
+338     common  shutdown                        sys_shutdown
+339     common  setsockopt                      sys_setsockopt                  sys_setsockopt
+340     common  getsockopt                      sys_getsockopt                  sys_getsockopt
+341     common  sendmsg                         sys_sendmsg                     compat_sys_sendmsg
+342     common  recvmsg                         sys_recvmsg                     compat_sys_recvmsg
+343     32      recvmmsg                        sys_recvmmsg_time32             compat_sys_recvmmsg_time32
+343     64      recvmmsg                        sys_recvmmsg
+343     spu     recvmmsg                        sys_recvmmsg
+344     common  accept4                         sys_accept4
+345     common  name_to_handle_at               sys_name_to_handle_at
+346     common  open_by_handle_at               sys_open_by_handle_at           compat_sys_open_by_handle_at
+347     32      clock_adjtime                   sys_clock_adjtime32
+347     64      clock_adjtime                   sys_clock_adjtime
+347     spu     clock_adjtime                   sys_clock_adjtime
+348     common  syncfs                          sys_syncfs
+349     common  sendmmsg                        sys_sendmmsg                    compat_sys_sendmmsg
+350     common  setns                           sys_setns
+351     nospu   process_vm_readv                sys_process_vm_readv
+352     nospu   process_vm_writev               sys_process_vm_writev
+353     nospu   finit_module                    sys_finit_module
+354     nospu   kcmp                            sys_kcmp
+355     common  sched_setattr                   sys_sched_setattr
+356     common  sched_getattr                   sys_sched_getattr
+357     common  renameat2                       sys_renameat2
+358     common  seccomp                         sys_seccomp
+359     common  getrandom                       sys_getrandom
+360     common  memfd_create                    sys_memfd_create
+361     common  bpf                             sys_bpf
+362     nospu   execveat                        sys_execveat                    compat_sys_execveat
+363     32      switch_endian                   sys_ni_syscall
+363     64      switch_endian                   sys_switch_endian
+363     spu     switch_endian                   sys_ni_syscall
+364     common  userfaultfd                     sys_userfaultfd
+365     common  membarrier                      sys_membarrier
+# 366-377 originally left for IPC, now unused
+378     nospu   mlock2                          sys_mlock2
+379     nospu   copy_file_range                 sys_copy_file_range
+380     common  preadv2                         sys_preadv2                     compat_sys_preadv2
+381     common  pwritev2                        sys_pwritev2                    compat_sys_pwritev2
+382     nospu   kexec_file_load                 sys_kexec_file_load
+383     nospu   statx                           sys_statx
+384     nospu   pkey_alloc                      sys_pkey_alloc
+385     nospu   pkey_free                       sys_pkey_free
+386     nospu   pkey_mprotect                   sys_pkey_mprotect
+387     nospu   rseq                            sys_rseq
+388     32      io_pgetevents                   sys_io_pgetevents_time32        compat_sys_io_pgetevents
+388     64      io_pgetevents                   sys_io_pgetevents
+# room for arch specific syscalls
+392     64      semtimedop                      sys_semtimedop
+393     common  semget                          sys_semget
+394     common  semctl                          sys_semctl                      compat_sys_semctl
+395     common  shmget                          sys_shmget
+396     common  shmctl                          sys_shmctl                      compat_sys_shmctl
+397     common  shmat                           sys_shmat                       compat_sys_shmat
+398     common  shmdt                           sys_shmdt
+399     common  msgget                          sys_msgget
+400     common  msgsnd                          sys_msgsnd                      compat_sys_msgsnd
+401     common  msgrcv                          sys_msgrcv                      compat_sys_msgrcv
+402     common  msgctl                          sys_msgctl                      compat_sys_msgctl
+403     32      clock_gettime64                 sys_clock_gettime               sys_clock_gettime
+404     32      clock_settime64                 sys_clock_settime               sys_clock_settime
+405     32      clock_adjtime64                 sys_clock_adjtime               sys_clock_adjtime
+406     32      clock_getres_time64             sys_clock_getres                sys_clock_getres
+407     32      clock_nanosleep_time64          sys_clock_nanosleep             sys_clock_nanosleep
+408     32      timer_gettime64                 sys_timer_gettime               sys_timer_gettime
+409     32      timer_settime64                 sys_timer_settime               sys_timer_settime
+410     32      timerfd_gettime64               sys_timerfd_gettime             sys_timerfd_gettime
+411     32      timerfd_settime64               sys_timerfd_settime             sys_timerfd_settime
+412     32      utimensat_time64                sys_utimensat                   sys_utimensat
+413     32      pselect6_time64                 sys_pselect6                    compat_sys_pselect6_time64
+414     32      ppoll_time64                    sys_ppoll                       compat_sys_ppoll_time64
+416     32      io_pgetevents_time64            sys_io_pgetevents               sys_io_pgetevents
+417     32      recvmmsg_time64                 sys_recvmmsg                    compat_sys_recvmmsg_time64
+418     32      mq_timedsend_time64             sys_mq_timedsend                sys_mq_timedsend
+419     32      mq_timedreceive_time64          sys_mq_timedreceive             sys_mq_timedreceive
+420     32      semtimedop_time64               sys_semtimedop                  sys_semtimedop
+421     32      rt_sigtimedwait_time64          sys_rt_sigtimedwait             compat_sys_rt_sigtimedwait_time64
+422     32      futex_time64                    sys_futex                       sys_futex
+423     32      sched_rr_get_interval_time64    sys_sched_rr_get_interval       sys_sched_rr_get_interval
+424     common  pidfd_send_signal               sys_pidfd_send_signal
+425     common  io_uring_setup                  sys_io_uring_setup
+426     common  io_uring_enter                  sys_io_uring_enter
+427     common  io_uring_register               sys_io_uring_register
+428     common  open_tree                       sys_open_tree
+429     common  move_mount                      sys_move_mount
+430     common  fsopen                          sys_fsopen
+431     common  fsconfig                        sys_fsconfig
+432     common  fsmount                         sys_fsmount
+433     common  fspick                          sys_fspick
+434     common  pidfd_open                      sys_pidfd_open
+435     nospu   clone3                          sys_clone3
+436     common  close_range                     sys_close_range
+437     common  openat2                         sys_openat2
+438     common  pidfd_getfd                     sys_pidfd_getfd
+439     common  faccessat2                      sys_faccessat2
+440     common  process_madvise                 sys_process_madvise
+441     common  epoll_pwait2                    sys_epoll_pwait2                compat_sys_epoll_pwait2
+442     common  mount_setattr                   sys_mount_setattr
+443     common  quotactl_fd                     sys_quotactl_fd
+444     common  landlock_create_ruleset         sys_landlock_create_ruleset
+445     common  landlock_add_rule               sys_landlock_add_rule
+446     common  landlock_restrict_self          sys_landlock_restrict_self
+# 447 reserved for memfd_secret
+448     common  process_mrelease                sys_process_mrelease
+449     common  futex_waitv                     sys_futex_waitv
+450     nospu   set_mempolicy_home_node         sys_set_mempolicy_home_node
+"""
+
+
+# SPARC
+# - arch/sparc/kernel/syscalls/syscall.tbl
+sparc_syscall_tbl = """
+# system call numbers and entry vectors for sparc
+#
+# The format is:
+# <number> <abi> <name> <entry point> <compat entry point>
+#
+# The <abi> can be common, 64, or 32 for this file.
+#
+0       common  restart_syscall         sys_restart_syscall
+1       32      exit                    sys_exit                        sparc_exit
+1       64      exit                    sparc_exit
+2       common  fork                    sys_fork
+3       common  read                    sys_read
+4       common  write                   sys_write
+5       common  open                    sys_open                        compat_sys_open
+6       common  close                   sys_close
+7       common  wait4                   sys_wait4                       compat_sys_wait4
+8       common  creat                   sys_creat
+9       common  link                    sys_link
+10      common  unlink                  sys_unlink
+11      32      execv                   sunos_execv
+11      64      execv                   sys_nis_syscall
+12      common  chdir                   sys_chdir
+13      32      chown                   sys_chown16
+13      64      chown                   sys_chown
+14      common  mknod                   sys_mknod
+15      common  chmod                   sys_chmod
+16      32      lchown                  sys_lchown16
+16      64      lchown                  sys_lchown
+17      common  brk                     sys_brk
+18      common  perfctr                 sys_nis_syscall
+19      common  lseek                   sys_lseek                       compat_sys_lseek
+20      common  getpid                  sys_getpid
+21      common  capget                  sys_capget
+22      common  capset                  sys_capset
+23      32      setuid                  sys_setuid16
+23      64      setuid                  sys_setuid
+24      32      getuid                  sys_getuid16
+24      64      getuid                  sys_getuid
+25      common  vmsplice                sys_vmsplice
+26      common  ptrace                  sys_ptrace                      compat_sys_ptrace
+27      common  alarm                   sys_alarm
+28      common  sigaltstack             sys_sigaltstack                 compat_sys_sigaltstack
+29      32      pause                   sys_pause
+29      64      pause                   sys_nis_syscall
+30      32      utime                   sys_utime32
+30      64      utime                   sys_utime
+31      32      lchown32                sys_lchown
+32      32      fchown32                sys_fchown
+33      common  access                  sys_access
+34      common  nice                    sys_nice
+35      32      chown32                 sys_chown
+36      common  sync                    sys_sync
+37      common  kill                    sys_kill
+38      common  stat                    sys_newstat                     compat_sys_newstat
+39      32      sendfile                sys_sendfile                    compat_sys_sendfile
+39      64      sendfile                sys_sendfile64
+40      common  lstat                   sys_newlstat                    compat_sys_newlstat
+41      common  dup                     sys_dup
+42      common  pipe                    sys_sparc_pipe
+43      common  times                   sys_times                       compat_sys_times
+44      32      getuid32                sys_getuid
+45      common  umount2                 sys_umount
+46      32      setgid                  sys_setgid16
+46      64      setgid                  sys_setgid
+47      32      getgid                  sys_getgid16
+47      64      getgid                  sys_getgid
+48      common  signal                  sys_signal
+49      32      geteuid                 sys_geteuid16
+49      64      geteuid                 sys_geteuid
+50      32      getegid                 sys_getegid16
+50      64      getegid                 sys_getegid
+51      common  acct                    sys_acct
+52      64      memory_ordering         sys_memory_ordering
+53      32      getgid32                sys_getgid
+54      common  ioctl                   sys_ioctl                       compat_sys_ioctl
+55      common  reboot                  sys_reboot
+56      32      mmap2                   sys_mmap2                       sys32_mmap2
+57      common  symlink                 sys_symlink
+58      common  readlink                sys_readlink
+59      32      execve                  sys_execve                      sys32_execve
+59      64      execve                  sys64_execve
+60      common  umask                   sys_umask
+61      common  chroot                  sys_chroot
+62      common  fstat                   sys_newfstat                    compat_sys_newfstat
+63      common  fstat64                 sys_fstat64                     compat_sys_fstat64
+64      common  getpagesize             sys_getpagesize
+65      common  msync                   sys_msync
+66      common  vfork                   sys_vfork
+67      common  pread64                 sys_pread64                     compat_sys_pread64
+68      common  pwrite64                sys_pwrite64                    compat_sys_pwrite64
+69      32      geteuid32               sys_geteuid
+70      32      getegid32               sys_getegid
+71      common  mmap                    sys_mmap
+72      32      setreuid32              sys_setreuid
+73      32      munmap                  sys_munmap
+73      64      munmap                  sys_64_munmap
+74      common  mprotect                sys_mprotect
+75      common  madvise                 sys_madvise
+76      common  vhangup                 sys_vhangup
+77      32      truncate64              sys_truncate64                  compat_sys_truncate64
+78      common  mincore                 sys_mincore
+79      32      getgroups               sys_getgroups16
+79      64      getgroups               sys_getgroups
+80      32      setgroups               sys_setgroups16
+80      64      setgroups               sys_setgroups
+81      common  getpgrp                 sys_getpgrp
+82      32      setgroups32             sys_setgroups
+83      common  setitimer               sys_setitimer                   compat_sys_setitimer
+84      32      ftruncate64             sys_ftruncate64                 compat_sys_ftruncate64
+85      common  swapon                  sys_swapon
+86      common  getitimer               sys_getitimer                   compat_sys_getitimer
+87      32      setuid32                sys_setuid
+88      common  sethostname             sys_sethostname
+89      32      setgid32                sys_setgid
+90      common  dup2                    sys_dup2
+91      32      setfsuid32              sys_setfsuid
+92      common  fcntl                   sys_fcntl                       compat_sys_fcntl
+93      common  select                  sys_select
+94      32      setfsgid32              sys_setfsgid
+95      common  fsync                   sys_fsync
+96      common  setpriority             sys_setpriority
+97      common  socket                  sys_socket
+98      common  connect                 sys_connect
+99      common  accept                  sys_accept
+100     common  getpriority             sys_getpriority
+101     common  rt_sigreturn            sys_rt_sigreturn                sys32_rt_sigreturn
+102     common  rt_sigaction            sys_rt_sigaction                compat_sys_rt_sigaction
+103     common  rt_sigprocmask          sys_rt_sigprocmask              compat_sys_rt_sigprocmask
+104     common  rt_sigpending           sys_rt_sigpending               compat_sys_rt_sigpending
+105     32      rt_sigtimedwait         sys_rt_sigtimedwait_time32      compat_sys_rt_sigtimedwait_time32
+105     64      rt_sigtimedwait         sys_rt_sigtimedwait
+106     common  rt_sigqueueinfo         sys_rt_sigqueueinfo             compat_sys_rt_sigqueueinfo
+107     common  rt_sigsuspend           sys_rt_sigsuspend               compat_sys_rt_sigsuspend
+108     32      setresuid32             sys_setresuid
+108     64      setresuid               sys_setresuid
+109     32      getresuid32             sys_getresuid
+109     64      getresuid               sys_getresuid
+110     32      setresgid32             sys_setresgid
+110     64      setresgid               sys_setresgid
+111     32      getresgid32             sys_getresgid
+111     64      getresgid               sys_getresgid
+112     32      setregid32              sys_setregid
+113     common  recvmsg                 sys_recvmsg                     compat_sys_recvmsg
+114     common  sendmsg                 sys_sendmsg                     compat_sys_sendmsg
+115     32      getgroups32             sys_getgroups
+116     common  gettimeofday            sys_gettimeofday                compat_sys_gettimeofday
+117     common  getrusage               sys_getrusage                   compat_sys_getrusage
+118     common  getsockopt              sys_getsockopt                  sys_getsockopt
+119     common  getcwd                  sys_getcwd
+120     common  readv                   sys_readv
+121     common  writev                  sys_writev
+122     common  settimeofday            sys_settimeofday                compat_sys_settimeofday
+123     32      fchown                  sys_fchown16
+123     64      fchown                  sys_fchown
+124     common  fchmod                  sys_fchmod
+125     common  recvfrom                sys_recvfrom
+126     32      setreuid                sys_setreuid16
+126     64      setreuid                sys_setreuid
+127     32      setregid                sys_setregid16
+127     64      setregid                sys_setregid
+128     common  rename                  sys_rename
+129     common  truncate                sys_truncate                    compat_sys_truncate
+130     common  ftruncate               sys_ftruncate                   compat_sys_ftruncate
+131     common  flock                   sys_flock
+132     common  lstat64                 sys_lstat64                     compat_sys_lstat64
+133     common  sendto                  sys_sendto
+134     common  shutdown                sys_shutdown
+135     common  socketpair              sys_socketpair
+136     common  mkdir                   sys_mkdir
+137     common  rmdir                   sys_rmdir
+138     32      utimes                  sys_utimes_time32
+138     64      utimes                  sys_utimes
+139     common  stat64                  sys_stat64                      compat_sys_stat64
+140     common  sendfile64              sys_sendfile64
+141     common  getpeername             sys_getpeername
+142     32      futex                   sys_futex_time32
+142     64      futex                   sys_futex
+143     common  gettid                  sys_gettid
+144     common  getrlimit               sys_getrlimit                   compat_sys_getrlimit
+145     common  setrlimit               sys_setrlimit                   compat_sys_setrlimit
+146     common  pivot_root              sys_pivot_root
+147     common  prctl                   sys_prctl
+148     common  pciconfig_read          sys_pciconfig_read
+149     common  pciconfig_write         sys_pciconfig_write
+150     common  getsockname             sys_getsockname
+151     common  inotify_init            sys_inotify_init
+152     common  inotify_add_watch       sys_inotify_add_watch
+153     common  poll                    sys_poll
+154     common  getdents64              sys_getdents64
+155     32      fcntl64                 sys_fcntl64                     compat_sys_fcntl64
+156     common  inotify_rm_watch        sys_inotify_rm_watch
+157     common  statfs                  sys_statfs                      compat_sys_statfs
+158     common  fstatfs                 sys_fstatfs                     compat_sys_fstatfs
+159     common  umount                  sys_oldumount
+160     common  sched_set_affinity      sys_sched_setaffinity           compat_sys_sched_setaffinity
+161     common  sched_get_affinity      sys_sched_getaffinity           compat_sys_sched_getaffinity
+162     common  getdomainname           sys_getdomainname
+163     common  setdomainname           sys_setdomainname
+164     64      utrap_install           sys_utrap_install
+165     common  quotactl                sys_quotactl
+166     common  set_tid_address         sys_set_tid_address
+167     common  mount                   sys_mount
+168     common  ustat                   sys_ustat                       compat_sys_ustat
+169     common  setxattr                sys_setxattr
+170     common  lsetxattr               sys_lsetxattr
+171     common  fsetxattr               sys_fsetxattr
+172     common  getxattr                sys_getxattr
+173     common  lgetxattr               sys_lgetxattr
+174     common  getdents                sys_getdents                    compat_sys_getdents
+175     common  setsid                  sys_setsid
+176     common  fchdir                  sys_fchdir
+177     common  fgetxattr               sys_fgetxattr
+178     common  listxattr               sys_listxattr
+179     common  llistxattr              sys_llistxattr
+180     common  flistxattr              sys_flistxattr
+181     common  removexattr             sys_removexattr
+182     common  lremovexattr            sys_lremovexattr
+183     32      sigpending              sys_sigpending                  compat_sys_sigpending
+183     64      sigpending              sys_nis_syscall
+184     common  query_module            sys_ni_syscall
+185     common  setpgid                 sys_setpgid
+186     common  fremovexattr            sys_fremovexattr
+187     common  tkill                   sys_tkill
+188     32      exit_group              sys_exit_group                  sparc_exit_group
+188     64      exit_group              sparc_exit_group
+189     common  uname                   sys_newuname
+190     common  init_module             sys_init_module
+191     32      personality             sys_personality                 sys_sparc64_personality
+191     64      personality             sys_sparc64_personality
+192     32      remap_file_pages        sys_sparc_remap_file_pages      sys_remap_file_pages
+192     64      remap_file_pages        sys_remap_file_pages
+193     common  epoll_create            sys_epoll_create
+194     common  epoll_ctl               sys_epoll_ctl
+195     common  epoll_wait              sys_epoll_wait
+196     common  ioprio_set              sys_ioprio_set
+197     common  getppid                 sys_getppid
+198     32      sigaction               sys_sparc_sigaction             compat_sys_sparc_sigaction
+198     64      sigaction               sys_nis_syscall
+199     common  sgetmask                sys_sgetmask
+200     common  ssetmask                sys_ssetmask
+201     32      sigsuspend              sys_sigsuspend
+201     64      sigsuspend              sys_nis_syscall
+202     common  oldlstat                sys_newlstat                    compat_sys_newlstat
+203     common  uselib                  sys_uselib
+204     32      readdir                 sys_old_readdir                 compat_sys_old_readdir
+204     64      readdir                 sys_nis_syscall
+205     common  readahead               sys_readahead                   compat_sys_readahead
+206     common  socketcall              sys_socketcall                  sys32_socketcall
+207     common  syslog                  sys_syslog
+208     common  lookup_dcookie          sys_lookup_dcookie              compat_sys_lookup_dcookie
+209     common  fadvise64               sys_fadvise64                   compat_sys_fadvise64
+210     common  fadvise64_64            sys_fadvise64_64                compat_sys_fadvise64_64
+211     common  tgkill                  sys_tgkill
+212     common  waitpid                 sys_waitpid
+213     common  swapoff                 sys_swapoff
+214     common  sysinfo                 sys_sysinfo                     compat_sys_sysinfo
+215     32      ipc                     sys_ipc                         compat_sys_ipc
+215     64      ipc                     sys_sparc_ipc
+216     32      sigreturn               sys_sigreturn                   sys32_sigreturn
+216     64      sigreturn               sys_nis_syscall
+217     common  clone                   sys_clone
+218     common  ioprio_get              sys_ioprio_get
+219     32      adjtimex                sys_adjtimex_time32
+219     64      adjtimex                sys_sparc_adjtimex
+220     32      sigprocmask             sys_sigprocmask                 compat_sys_sigprocmask
+220     64      sigprocmask             sys_nis_syscall
+221     common  create_module           sys_ni_syscall
+222     common  delete_module           sys_delete_module
+223     common  get_kernel_syms         sys_ni_syscall
+224     common  getpgid                 sys_getpgid
+225     common  bdflush                 sys_ni_syscall
+226     common  sysfs                   sys_sysfs
+227     common  afs_syscall             sys_nis_syscall
+228     common  setfsuid                sys_setfsuid16
+229     common  setfsgid                sys_setfsgid16
+230     common  _newselect              sys_select                      compat_sys_select
+231     32      time                    sys_time32
+232     common  splice                  sys_splice
+233     32      stime                   sys_stime32
+233     64      stime                   sys_stime
+234     common  statfs64                sys_statfs64                    compat_sys_statfs64
+235     common  fstatfs64               sys_fstatfs64                   compat_sys_fstatfs64
+236     common  _llseek                 sys_llseek
+237     common  mlock                   sys_mlock
+238     common  munlock                 sys_munlock
+239     common  mlockall                sys_mlockall
+240     common  munlockall              sys_munlockall
+241     common  sched_setparam          sys_sched_setparam
+242     common  sched_getparam          sys_sched_getparam
+243     common  sched_setscheduler      sys_sched_setscheduler
+244     common  sched_getscheduler      sys_sched_getscheduler
+245     common  sched_yield             sys_sched_yield
+246     common  sched_get_priority_max  sys_sched_get_priority_max
+247     common  sched_get_priority_min  sys_sched_get_priority_min
+248     32      sched_rr_get_interval   sys_sched_rr_get_interval_time32
+248     64      sched_rr_get_interval   sys_sched_rr_get_interval
+249     32      nanosleep               sys_nanosleep_time32
+249     64      nanosleep               sys_nanosleep
+250     32      mremap                  sys_mremap
+250     64      mremap                  sys_64_mremap
+251     common  _sysctl                 sys_ni_syscall
+252     common  getsid                  sys_getsid
+253     common  fdatasync               sys_fdatasync
+254     32      nfsservctl              sys_ni_syscall                  sys_nis_syscall
+254     64      nfsservctl              sys_nis_syscall
+255     common  sync_file_range         sys_sync_file_range             compat_sys_sync_file_range
+256     32      clock_settime           sys_clock_settime32
+256     64      clock_settime           sys_clock_settime
+257     32      clock_gettime           sys_clock_gettime32
+257     64      clock_gettime           sys_clock_gettime
+258     32      clock_getres            sys_clock_getres_time32
+258     64      clock_getres            sys_clock_getres
+259     32      clock_nanosleep         sys_clock_nanosleep_time32
+259     64      clock_nanosleep         sys_clock_nanosleep
+260     common  sched_getaffinity       sys_sched_getaffinity           compat_sys_sched_getaffinity
+261     common  sched_setaffinity       sys_sched_setaffinity           compat_sys_sched_setaffinity
+262     32      timer_settime           sys_timer_settime32
+262     64      timer_settime           sys_timer_settime
+263     32      timer_gettime           sys_timer_gettime32
+263     64      timer_gettime           sys_timer_gettime
+264     common  timer_getoverrun        sys_timer_getoverrun
+265     common  timer_delete            sys_timer_delete
+266     common  timer_create            sys_timer_create                compat_sys_timer_create
+# 267 was vserver
+267     common  vserver                 sys_nis_syscall
+268     common  io_setup                sys_io_setup                    compat_sys_io_setup
+269     common  io_destroy              sys_io_destroy
+270     common  io_submit               sys_io_submit                   compat_sys_io_submit
+271     common  io_cancel               sys_io_cancel
+272     32      io_getevents            sys_io_getevents_time32
+272     64      io_getevents            sys_io_getevents
+273     common  mq_open                 sys_mq_open                     compat_sys_mq_open
+274     common  mq_unlink               sys_mq_unlink
+275     32      mq_timedsend            sys_mq_timedsend_time32
+275     64      mq_timedsend            sys_mq_timedsend
+276     32      mq_timedreceive         sys_mq_timedreceive_time32
+276     64      mq_timedreceive         sys_mq_timedreceive
+277     common  mq_notify               sys_mq_notify                   compat_sys_mq_notify
+278     common  mq_getsetattr           sys_mq_getsetattr               compat_sys_mq_getsetattr
+279     common  waitid                  sys_waitid                      compat_sys_waitid
+280     common  tee                     sys_tee
+281     common  add_key                 sys_add_key
+282     common  request_key             sys_request_key
+283     common  keyctl                  sys_keyctl                      compat_sys_keyctl
+284     common  openat                  sys_openat                      compat_sys_openat
+285     common  mkdirat                 sys_mkdirat
+286     common  mknodat                 sys_mknodat
+287     common  fchownat                sys_fchownat
+288     32      futimesat               sys_futimesat_time32
+288     64      futimesat               sys_futimesat
+289     common  fstatat64               sys_fstatat64                   compat_sys_fstatat64
+290     common  unlinkat                sys_unlinkat
+291     common  renameat                sys_renameat
+292     common  linkat                  sys_linkat
+293     common  symlinkat               sys_symlinkat
+294     common  readlinkat              sys_readlinkat
+295     common  fchmodat                sys_fchmodat
+296     common  faccessat               sys_faccessat
+297     32      pselect6                sys_pselect6_time32             compat_sys_pselect6_time32
+297     64      pselect6                sys_pselect6
+298     32      ppoll                   sys_ppoll_time32                compat_sys_ppoll_time32
+298     64      ppoll                   sys_ppoll
+299     common  unshare                 sys_unshare
+300     common  set_robust_list         sys_set_robust_list             compat_sys_set_robust_list
+301     common  get_robust_list         sys_get_robust_list             compat_sys_get_robust_list
+302     common  migrate_pages           sys_migrate_pages
+303     common  mbind                   sys_mbind
+304     common  get_mempolicy           sys_get_mempolicy
+305     common  set_mempolicy           sys_set_mempolicy
+306     common  kexec_load              sys_kexec_load                  compat_sys_kexec_load
+307     common  move_pages              sys_move_pages
+308     common  getcpu                  sys_getcpu
+309     common  epoll_pwait             sys_epoll_pwait                 compat_sys_epoll_pwait
+310     32      utimensat               sys_utimensat_time32
+310     64      utimensat               sys_utimensat
+311     common  signalfd                sys_signalfd                    compat_sys_signalfd
+312     common  timerfd_create          sys_timerfd_create
+313     common  eventfd                 sys_eventfd
+314     common  fallocate               sys_fallocate                   compat_sys_fallocate
+315     32      timerfd_settime         sys_timerfd_settime32
+315     64      timerfd_settime         sys_timerfd_settime
+316     32      timerfd_gettime         sys_timerfd_gettime32
+316     64      timerfd_gettime         sys_timerfd_gettime
+317     common  signalfd4               sys_signalfd4                   compat_sys_signalfd4
+318     common  eventfd2                sys_eventfd2
+319     common  epoll_create1           sys_epoll_create1
+320     common  dup3                    sys_dup3
+321     common  pipe2                   sys_pipe2
+322     common  inotify_init1           sys_inotify_init1
+323     common  accept4                 sys_accept4
+324     common  preadv                  sys_preadv                      compat_sys_preadv
+325     common  pwritev                 sys_pwritev                     compat_sys_pwritev
+326     common  rt_tgsigqueueinfo       sys_rt_tgsigqueueinfo           compat_sys_rt_tgsigqueueinfo
+327     common  perf_event_open         sys_perf_event_open
+328     32      recvmmsg                sys_recvmmsg_time32             compat_sys_recvmmsg_time32
+328     64      recvmmsg                sys_recvmmsg
+329     common  fanotify_init           sys_fanotify_init
+330     common  fanotify_mark           sys_fanotify_mark               compat_sys_fanotify_mark
+331     common  prlimit64               sys_prlimit64
+332     common  name_to_handle_at       sys_name_to_handle_at
+333     common  open_by_handle_at       sys_open_by_handle_at           compat_sys_open_by_handle_at
+334     32      clock_adjtime           sys_clock_adjtime32
+334     64      clock_adjtime           sys_sparc_clock_adjtime
+335     common  syncfs                  sys_syncfs
+336     common  sendmmsg                sys_sendmmsg                    compat_sys_sendmmsg
+337     common  setns                   sys_setns
+338     common  process_vm_readv        sys_process_vm_readv
+339     common  process_vm_writev       sys_process_vm_writev
+340     32      kern_features           sys_ni_syscall                  sys_kern_features
+340     64      kern_features           sys_kern_features
+341     common  kcmp                    sys_kcmp
+342     common  finit_module            sys_finit_module
+343     common  sched_setattr           sys_sched_setattr
+344     common  sched_getattr           sys_sched_getattr
+345     common  renameat2               sys_renameat2
+346     common  seccomp                 sys_seccomp
+347     common  getrandom               sys_getrandom
+348     common  memfd_create            sys_memfd_create
+349     common  bpf                     sys_bpf
+350     32      execveat                sys_execveat                    sys32_execveat
+350     64      execveat                sys64_execveat
+351     common  membarrier              sys_membarrier
+352     common  userfaultfd             sys_userfaultfd
+353     common  bind                    sys_bind
+354     common  listen                  sys_listen
+355     common  setsockopt              sys_setsockopt                  sys_setsockopt
+356     common  mlock2                  sys_mlock2
+357     common  copy_file_range         sys_copy_file_range
+358     common  preadv2                 sys_preadv2                     compat_sys_preadv2
+359     common  pwritev2                sys_pwritev2                    compat_sys_pwritev2
+360     common  statx                   sys_statx
+361     32      io_pgetevents           sys_io_pgetevents_time32        compat_sys_io_pgetevents
+361     64      io_pgetevents           sys_io_pgetevents
+362     common  pkey_mprotect           sys_pkey_mprotect
+363     common  pkey_alloc              sys_pkey_alloc
+364     common  pkey_free               sys_pkey_free
+365     common  rseq                    sys_rseq
+# room for arch specific syscalls
+392     64      semtimedop                      sys_semtimedop
+393     common  semget                  sys_semget
+394     common  semctl                  sys_semctl                      compat_sys_semctl
+395     common  shmget                  sys_shmget
+396     common  shmctl                  sys_shmctl                      compat_sys_shmctl
+397     common  shmat                   sys_shmat                       compat_sys_shmat
+398     common  shmdt                   sys_shmdt
+399     common  msgget                  sys_msgget
+400     common  msgsnd                  sys_msgsnd                      compat_sys_msgsnd
+401     common  msgrcv                  sys_msgrcv                      compat_sys_msgrcv
+402     common  msgctl                  sys_msgctl                      compat_sys_msgctl
+403     32      clock_gettime64                 sys_clock_gettime               sys_clock_gettime
+404     32      clock_settime64                 sys_clock_settime               sys_clock_settime
+405     32      clock_adjtime64                 sys_clock_adjtime               sys_clock_adjtime
+406     32      clock_getres_time64             sys_clock_getres                sys_clock_getres
+407     32      clock_nanosleep_time64          sys_clock_nanosleep             sys_clock_nanosleep
+408     32      timer_gettime64                 sys_timer_gettime               sys_timer_gettime
+409     32      timer_settime64                 sys_timer_settime               sys_timer_settime
+410     32      timerfd_gettime64               sys_timerfd_gettime             sys_timerfd_gettime
+411     32      timerfd_settime64               sys_timerfd_settime             sys_timerfd_settime
+412     32      utimensat_time64                sys_utimensat                   sys_utimensat
+413     32      pselect6_time64                 sys_pselect6                    compat_sys_pselect6_time64
+414     32      ppoll_time64                    sys_ppoll                       compat_sys_ppoll_time64
+416     32      io_pgetevents_time64            sys_io_pgetevents               sys_io_pgetevents
+417     32      recvmmsg_time64                 sys_recvmmsg                    compat_sys_recvmmsg_time64
+418     32      mq_timedsend_time64             sys_mq_timedsend                sys_mq_timedsend
+419     32      mq_timedreceive_time64          sys_mq_timedreceive             sys_mq_timedreceive
+420     32      semtimedop_time64               sys_semtimedop                  sys_semtimedop
+421     32      rt_sigtimedwait_time64          sys_rt_sigtimedwait             compat_sys_rt_sigtimedwait_time64
+422     32      futex_time64                    sys_futex                       sys_futex
+423     32      sched_rr_get_interval_time64    sys_sched_rr_get_interval       sys_sched_rr_get_interval
+424     common  pidfd_send_signal               sys_pidfd_send_signal
+425     common  io_uring_setup                  sys_io_uring_setup
+426     common  io_uring_enter                  sys_io_uring_enter
+427     common  io_uring_register               sys_io_uring_register
+428     common  open_tree                       sys_open_tree
+429     common  move_mount                      sys_move_mount
+430     common  fsopen                          sys_fsopen
+431     common  fsconfig                        sys_fsconfig
+432     common  fsmount                         sys_fsmount
+433     common  fspick                          sys_fspick
+434     common  pidfd_open                      sys_pidfd_open
+# 435 reserved for clone3
+436     common  close_range                     sys_close_range
+437     common  openat2                 sys_openat2
+438     common  pidfd_getfd                     sys_pidfd_getfd
+439     common  faccessat2                      sys_faccessat2
+440     common  process_madvise                 sys_process_madvise
+441     common  epoll_pwait2                    sys_epoll_pwait2                compat_sys_epoll_pwait2
+442     common  mount_setattr                   sys_mount_setattr
+443     common  quotactl_fd                     sys_quotactl_fd
+444     common  landlock_create_ruleset         sys_landlock_create_ruleset
+445     common  landlock_add_rule               sys_landlock_add_rule
+446     common  landlock_restrict_self          sys_landlock_restrict_self
+# 447 reserved for memfd_secret
+448     common  process_mrelease                sys_process_mrelease
+449     common  futex_waitv                     sys_futex_waitv
+450     common  set_mempolicy_home_node         sys_set_mempolicy_home_node
+"""
+
+
+def parse_syscall_table_defs(table_defs):
+    table = []
+    for line in table_defs.splitlines():
+        if line == "":
+            continue
+        if line.startswith("#"):
+            continue
+        entry = line.split()
+        if len(entry) == 3: # it is unimplemented
+            continue
+        entry[0] = int(entry[0])
+        table.append(entry)
+    return table
 
 
 # ARM/ARM64 OP-TEE (at secure world)
@@ -19860,23 +22191,10 @@ arm_ldelf_syscall_list = [
 
 
 # This cache is not cleared when reset_cache() is run.
-cached_syscall_table = None
+cached_syscall_table = {}
 
 
 def get_syscall_table(arch=None, mode=None):
-    # this table is supported following architecture.
-    #   - x86_64
-    #   - x86 (on x86_64 machine)
-    #   - x86 (on native x86 machine)
-    #   - ARM64
-    #   - ARM (on ARM64 machine)
-    #   - ARM (on native ARM machine)
-    #   - ARM64 OP-TEE (at secure world)
-    #   - ARM OP-TEE (at secure world)
-
-    global cached_syscall_table
-    if cached_syscall_table:
-        return cached_syscall_table
 
     def is_emulated32():
         if is_qemu_usermode():
@@ -19916,72 +22234,881 @@ def get_syscall_table(arch=None, mode=None):
             arch, mode = "ARM64", [None, "S"][is_secure()]
         elif is_arm32():
             arch, mode = "ARM", [["N32", "32"][is_emulated32()], "S"][is_secure()]
+        elif is_mips32():
+            arch, mode = "MIPS", "MIPS32"
+        elif is_mips64():
+            arch, mode = "MIPS", "MIPS64"
+        elif is_ppc32():
+            arch, mode = "PPC", "PPC32"
+        elif is_ppc64():
+            arch, mode = "PPC", "PPC64"
+        elif is_sparc32():
+            arch, mode = "SPARC", "SPARC32"
+        elif is_sparc64():
+            arch, mode = "SPARC", "SPARC64"
+        else:
+            raise
+
+    global cached_syscall_table
+    if (arch, mode) in cached_syscall_table:
+        return cached_syscall_table[arch, mode]
 
     if arch == "X86" and mode == "64":
         register_list = ["$rdi", "$rsi", "$rdx", "$r10", "$r8", "$r9"]
-        syscall_list = x64_syscall_list.copy()
-        # add x32 most case
-        name_list = [s[1] for s in x32_special_syscall_list]
-        for nr, name, args in x64_syscall_list:
-            if name in name_list:
+        #syscall_register = "$rax"
+        #retval_register_list = ["$rax"]
+
+        sc_def = parse_common_syscall_defs()
+        tbl = parse_syscall_table_defs(x64_syscall_tbl)
+        arch_specific_dic = {
+            'sys_clone': [
+                'unsigned long clone_flags', 'unsigned long newsp',
+                'int __user *parent_tidptr', 'int __user *child_tidptr', 'unsigned long tls',
+            ], # kernel/fork.c
+            'sys_modify_ldt': [
+                'int func', 'void __user *ptr', 'unsigned long bytecount',
+            ], # arch/x86/kernel/ldt.c
+            'sys_arch_prctl': [
+                'int option', 'unsigned long arg2',
+            ], # arch/x86/kernel/process_64.c
+            'sys_iopl': [
+                'unsigned int level',
+            ], # arch/x86/kernel/ioport.c
+            'compat_sys_x32_rt_sigreturn': [], # arch/x86/kernel/signal.c
+            'sys_mmap': [
+                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
+                'unsigned long flags', 'unsigned long fd', 'unsigned long off',
+            ], # arch/x86/kernel/sys_x86_64.c
+            'sys_rt_sigreturn': [], # arch/x86/kernel/signal.c
+        }
+
+        syscall_list = []
+        for entry in tbl:
+            nr, abi, name, func = entry
+            if abi not in ["common", "64", "x32"]:
                 continue
-            syscall_list += [[nr + 0x40000000, name, args]]
-        # add x32 special case
-        syscall_list += x32_special_syscall_list.copy()
+            # special case
+            if func in arch_specific_dic:
+                if abi in ["common", "64"]:
+                    syscall_list.append([nr, name, arch_specific_dic[func]])
+                if abi in ["common", "x32"]:
+                    syscall_list.append([nr + 0x40000000, name, arch_specific_dic[func]])
+                continue
+            # common case
+            if func == 'sys_ni_syscall':
+                continue
+            if func not in sc_def:
+                err("Not found: {:s}".format(func))
+                raise
+            if abi in ["common", "64"]:
+                syscall_list.append([nr, name, sc_def[func]])
+            if abi in ["common", "x32"]:
+                syscall_list.append([nr + 0x40000000, name, sc_def[func]])
 
     elif arch == "X86" and mode == "32":
         register_list = ["$ebx", "$ecx", "$edx", "$esi", "$edi", "$ebp"]
-        syscall_list = x86_emulated_syscall_list.copy()
+        #syscall_register = "$eax"
+        #retval_register_list = ["$eax"]
+
+        sc_def = parse_common_syscall_defs()
+        tbl = parse_syscall_table_defs(x86_syscall_tbl)
+        arch_specific_dic = {
+            'compat_sys_sigreturn': [], # arch/x86/ia32/ia32_signal.c
+            'compat_sys_rt_sigreturn': [], # arch/x86/ia32/ia32_signal.c
+            'compat_sys_old_getrlimit': [
+                'unsigned int resource', 'struct compat_rlimit *rlim',
+            ], # kernel/sys.c
+            'compat_sys_ia32_mmap': [
+                'struct mmap_arg_struct32 __user *arg',
+            ], # arch/x86/kernel/sys_ia32.c
+            'sys_iopl': [
+                'unsigned int level',
+            ], # arch/x86/kernel/ioport.c
+            'compat_sys_ia32_clone': [
+                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
+                'unsigned long tls_val', 'int __user *child_tidptr',
+            ], # arch/x86/kernel/sys_ia32.c (CONFIG_CLONE_BACKWARDS)
+            'sys_modify_ldt': [
+                'int func', 'void __user *ptr', 'unsigned long bytecount',
+            ], # arch/x86/kernel/ldt.c
+            'sys_ia32_pread64': [
+                'unsigned int fd', 'char __user *ubuf', 'u32 count', 'u32 poslo', 'u32 poshi',
+            ], # arch/x86/kernel/sys_ia32.c
+            'sys_ia32_pwrite64': [
+                'unsigned int fd', 'const char __user *ubuf', 'u32 count', 'u32 poslo', 'u32 poshi',
+            ], # arch/x86/kernel/sys_ia32.c
+            'sys_ia32_truncate64': [
+                'const char __user *filename', 'unsigned long offset_low', 'unsigned long offset_high',
+            ], # arch/x86/kernel/sys_ia32.c
+            'sys_ia32_ftruncate64': [
+                'unsigned int fd', 'unsigned long offset_low', 'unsigned long offset_high',
+            ], # arch/x86/kernel/sys_ia32.c
+            'compat_sys_ia32_stat64': [
+                'const char __user *filename', 'struct stat64 __user *statbuf',
+            ], # arch/x86/kernel/sys_ia32.c
+            'compat_sys_ia32_lstat64': [
+                'const char __user *filename', 'struct stat64 __user *statbuf',
+            ], # arch/x86/kernel/sys_ia32.c
+            'compat_sys_ia32_fstat64': [
+                'unsigned long fd', 'struct stat64 __user *statbuf',
+            ], # arch/x86/kernel/sys_ia32.c
+            'sys_ia32_readahead': [
+                'int fd', 'unsigned int off_lo', 'unsigned int off_high', 'size_t count',
+            ], # arch/x86/kernel/sys_ia32.c
+            'sys_set_thread_area': [
+                'struct user_desc __user * u_info',
+            ], # arch/x86/kernel/tls.c
+            'sys_get_thread_area': [
+                'struct user_desc __user * u_info',
+            ], # arch/x86/kernel/tls.c
+            'sys_ia32_fadvise64': [
+                'int fd', 'unsigned int offset_lo', 'unsigned int offset_hi', 'size_t len', 'int advice',
+            ], # arch/x86/kernel/sys_ia32.c
+            'sys_ia32_fadvise64_64': [
+                'int fd', '__u32 offset_low', '__u32 offset_high', '__u32 len_low', '__u32 len_high', 'int advice',
+            ], # arch/x86/kernel/sys_ia32.c
+            'compat_sys_ia32_fstatat64': [
+                'unsigned int dfd', 'const char __user *filename', 'struct stat64 __user *statbuf', 'int flag',
+            ], # arch/x86/kernel/sys_ia32.c
+            'sys_ia32_sync_file_range': [
+                'int fd', 'unsigned int off_low', 'unsigned int off_hi', 'unsigned int n_low',
+                'unsigned int n_hi', 'unsigned int flags',
+            ], # arch/x86/kernel/sys_ia32.c
+            'sys_ia32_fallocate': [
+                'int fd', 'int mode', 'unsigned int offset_lo', 'unsigned int offset_hi',
+                'unsigned int len_lo', 'unsigned int len_hi',
+            ], # arch/x86/kernel/sys_ia32.c
+            'compat_sys_arch_prctl': [
+                'int option', 'unsigned long arg2',
+            ], # arch/x86/kernel/process_64.c
+        }
+
+        syscall_list = []
+        for entry in tbl:
+            if len(entry) == 5:
+                nr, abi, name, _, func = entry # use compat
+            else:
+                nr, abi, name, func = entry
+            if abi != "i386":
+                continue
+            # special case
+            if func in arch_specific_dic:
+                syscall_list.append([nr, name, arch_specific_dic[func]])
+                continue
+            # common case
+            if func == 'sys_ni_syscall':
+                continue
+            if func not in sc_def:
+                err("Not found: {:s}".format(func))
+                raise
+            syscall_list.append([nr, name, sc_def[func]])
 
     elif arch == "X86" and mode == "N32":
         register_list = ["$ebx", "$ecx", "$edx", "$esi", "$edi", "$ebp"]
-        syscall_list = x86_native_syscall_list.copy()
+        #syscall_register = "$eax"
+        #retval_register_list = ["$eax"]
+
+        sc_def = parse_common_syscall_defs()
+        tbl = parse_syscall_table_defs(x86_syscall_tbl)
+        arch_specific_dic = {
+            'sys_iopl': [
+                'unsigned int level',
+            ], # arch/x86/kernel/ioport.c
+            'sys_vm86old': [
+                'struct vm86_struct __user *user_vm86',
+            ], # arch/x86/kernel/vm86_32.c
+            'sys_sigreturn': [], # arch/x86/kernel/signal.c
+            'sys_rt_sigreturn': [], # arch/x86/kernel/signal.c
+            'sys_clone': [
+                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
+                'unsigned long tls', 'int *child_tidptr',
+            ], # kernel/fork.c (CONFIG_CLONE_BACKWARDS)
+            'sys_modify_ldt': [
+                'int func', 'void __user *ptr', 'unsigned long bytecount',
+            ], # arch/x86/kernel/ldt.c
+            'sys_vm86': [
+                'unsigned long cmd', 'unsigned long arg',
+            ], # arch/x86/kernel/vm86_32.c
+            'sys_ia32_pread64': [
+                'unsigned int fd', 'char __user *ubuf', 'u32 count', 'u32 poslo', 'u32 poshi',
+            ], # arch/x86/kernel/sys_ia32.c
+            'sys_ia32_pwrite64': [
+                'unsigned int fd', 'const char __user *ubuf', 'u32 count', 'u32 poslo', 'u32 poshi',
+            ], # arch/x86/kernel/sys_ia32.c
+            'sys_ia32_truncate64': [
+                'const char __user *filename', 'unsigned long offset_low', 'unsigned long offset_high',
+            ], # arch/x86/kernel/sys_ia32.c
+            'sys_ia32_ftruncate64': [
+                'unsigned int fd', 'unsigned long offset_low', 'unsigned long offset_high',
+            ], # arch/x86/kernel/sys_ia32.c
+            'sys_ia32_readahead': [
+                'int fd', 'unsigned int off_lo', 'unsigned int off_high', 'size_t count',
+            ], # arch/x86/kernel/sys_ia32.c
+            'sys_set_thread_area': [
+                'struct user_desc __user * u_info',
+            ], # arch/x86/kernel/tls.c
+            'sys_get_thread_area': [
+                'struct user_desc __user * u_info',
+            ], # arch/x86/kernel/tls.c
+            'sys_ia32_fadvise64': [
+                'int fd', 'unsigned int offset_lo', 'unsigned int offset_hi', 'size_t len', 'int advice',
+            ], # arch/x86/kernel/sys_ia32.c
+            'sys_ia32_fadvise64_64': [
+                'int fd', '__u32 offset_low', '__u32 offset_high', '__u32 len_low', '__u32 len_high', 'int advice',
+            ], # arch/x86/kernel/sys_ia32.c
+            'sys_ia32_sync_file_range': [
+                'int fd', 'unsigned int off_low', 'unsigned int off_hi', 'unsigned int n_low',
+                'unsigned int n_hi', 'unsigned int flags',
+            ], # arch/x86/kernel/sys_ia32.c
+            'sys_ia32_fallocate': [
+                'int fd', 'int mode', 'unsigned int offset_lo', 'unsigned int offset_hi',
+                'unsigned int len_lo', 'unsigned int len_hi',
+            ], # arch/x86/kernel/sys_ia32.c
+            'sys_arch_prctl': [
+                'int option', 'unsigned long arg2',
+            ], # arch/x86/kernel/process_32.c
+        }
+
+        syscall_list = []
+        for entry in tbl:
+            if len(entry) == 5:
+                nr, abi, name, func, _ = entry # dont use compat
+            else:
+                nr, abi, name, func = entry
+            if abi != "i386":
+                continue
+            # special case
+            if func in arch_specific_dic:
+                syscall_list.append([nr, name, arch_specific_dic[func]])
+                continue
+            # common case
+            if func == 'sys_ni_syscall':
+                continue
+            if func not in sc_def:
+                err("Not found: {:s}".format(func))
+                raise
+            syscall_list.append([nr, name, sc_def[func]])
 
     elif arch == "ARM64":
         register_list = ["$x0", "$x1", "$x2", "$x3", "$x4", "$x5"]
-        syscall_list = arm64_syscall_list.copy()
+        #syscall_register = "$x8"
+        #retval_register_list = ["$x0", "$x1"]
 
-    elif arch == "ARM" and mode == "32":
-        register_list = ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6"]
-        syscall_list = arm_emulated_syscall_list.copy()
+        sc_def = parse_common_syscall_defs()
+        tbl = parse_syscall_table_defs(arm64_syscall_tbl)
+        arch_specific_dic = {
+            'sys_clone': [
+                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
+                'unsigned long tls', 'int __user *child_tidptr',
+            ], # kernel/fork.c (CONFIG_CLONE_BACKWARDS)
+            'sys_rt_sigreturn': [], # arch/arm64/kernel/signal.c
+            'sys_mmap': [
+                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
+                'unsigned long flags', 'unsigned long fd', 'unsigned long off',
+            ], # arch/arm64/kernel/sys.c
+        }
 
-    elif arch == "ARM" and mode == "N32":
-        register_list = ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6"]
-        syscall_list = arm_native_EABI_syscall_list.copy()
-        """
-        # add OABI (obsolete)
-        name_list = [s[1] for s in arm_native_OABI_syscall_list]
-        for nr, name, args in arm_native_EABI_syscall_list:
-            if name in name_list:
+        syscall_list = []
+        for entry in tbl:
+            nr, abi, name, func = entry
+            if abi != "arm64":
                 continue
-            syscall_list += [[nr + 0x900000, name, args]]
-        """
+            # special case
+            if func in arch_specific_dic:
+                syscall_list.append([nr, name, arch_specific_dic[func]])
+                continue
+            # common case
+            if func == 'sys_ni_syscall':
+                continue
+            if func not in sc_def:
+                err("Not found: {:s}".format(func))
+                raise
+            syscall_list.append([nr, name, sc_def[func]])
+
+    elif arch == "ARM" and mode == "32": # support EABI only
+        register_list = ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6"]
+        #syscall_register = "$r7"
+        #retval_register_list = ["$r0", "$r1"]
+
+        sc_def = parse_common_syscall_defs()
+        tbl = parse_syscall_table_defs(arm_compat_syscall_tbl)
+        arch_specific_dic = {
+            'sys_clone': [
+                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
+                'unsigned long tls', 'int __user *child_tidptr',
+            ], # kernel/fork.c (CONFIG_CLONE_BACKWARDS)
+            'compat_sys_aarch32_pread64': [
+                'unsigned int fd', 'char *buf', 'size_t count', 'u32 __pad', 'arg_u32p(pos)',
+            ], # arch/arm64/kernel/sys32.c
+            'compat_sys_aarch32_pwrite64': [
+                'unsigned int fd', 'const char *buf', 'size_t count', 'u32 __pad', 'arg_u32p(pos)',
+            ], # arch/arm64/kernel/sys32.c
+            'compat_sys_aarch32_mmap2': [
+                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
+                'unsigned long flags', 'unsigned long fd', 'unsigned long off_4k',
+            ], # arch/arm64/kernel/sys32.c
+            'compat_sys_aarch32_truncate64': [
+                'const char *path', 'u32 __pad', 'arg_u32p(length)',
+            ], # arch/arm64/kernel/sys32.c
+            'compat_sys_aarch32_ftruncate64': [
+                'unsigned int fd', 'u32 __pad', 'arg_u32p(length)',
+            ], # arch/arm64/kernel/sys32.c
+            'compat_sys_aarch32_readahead': [
+                'int fd', 'u32 __pad', 'arg_u32(offset)', 'size_t count',
+            ], # arch/arm64/kernel/sys32.c
+            'compat_sys_aarch32_statfs64': [
+                'const char *pathname', 'compat_size_t sz', 'struct compat_statfs64 *buf',
+            ], # arch/arm64/kernel/sys32.c
+            'compat_sys_aarch32_fstatfs64': [
+                'unsigned int fd', 'compat_size_t sz', 'struct compat_statfs64 *buf',
+            ], # arch/arm64/kernel/sys32.c
+            'compat_sys_aarch32_fadvise64_64': [
+                'int fd', 'int advice', 'arg_u32p(offset)', 'arg_u32p(len)',
+            ], # arch/arm64/kernel/sys32.c
+            'compat_sys_aarch32_sync_file_range2': [
+                'int fd', 'unsigned int flags', 'arg_u32p(offset)', 'arg_u32p(nbytes)',
+            ], # arch/arm64/kernel/sys32.c
+            'compat_sys_aarch32_fallocate': [
+                'int fd', 'int mode', 'arg_u32p(offset)', 'arg_u32p(len)',
+            ], # arch/arm64/kernel/sys32.c
+            'compat_sys_old_semctl': [
+                'int semid', 'int semnum', 'int cmd', 'int arg',
+            ], # ipc/sem.c
+            'compat_sys_old_msgctl': [
+                'int msqid', 'int cmd', 'void *uptr',
+            ], # ipc/msg.c
+            'compat_sys_old_shmctl': [
+                'int shmid', 'int cmd', 'void *uptr',
+            ], # ipc/shm.c
+            'compat_sys_sigreturn': [], # arch/arm64/kernel/signal32.c
+            'compat_sys_rt_sigreturn': [], # arch/arm64/kernel/signal32.c
+        }
+
+        syscall_list = []
+        for entry in tbl:
+            nr, abi, name, func = entry
+            if abi != "arm":
+                continue
+            # special case
+            if func in arch_specific_dic:
+                syscall_list.append([nr, name, arch_specific_dic[func]])
+                continue
+            # common case
+            if func == 'sys_ni_syscall':
+                continue
+            if func not in sc_def:
+                err("Not found: {:s}".format(func))
+                raise
+            syscall_list.append([nr, name, sc_def[func]])
+
+        arch_specific_extra = [
+            [0xf0002, 'cacheflush', [
+                'unsigned long start', 'unsigned long end', 'int flags',
+            ]], # arch/arm64/kernel/sys_compat.c
+            [0xf0005, 'set_tls', [
+                'unsigned long val',
+            ]], # arch/arm64/kernel/sys_compat.c
+        ]
+        syscall_list += arch_specific_extra
+
+    elif arch == "ARM" and mode == "N32": # support EABI only
+        register_list = ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6"]
+        #syscall_register = "$r7"
+        #retval_register_list = ["$r0", "$r1"]
+
+        sc_def = parse_common_syscall_defs()
+        tbl = parse_syscall_table_defs(arm_native_syscall_tbl)
+        arch_specific_dic = {
+            'sys_clone': [
+                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
+                'unsigned long tls', 'int __user *child_tidptr',
+            ], # kernel/fork.c (CONFIG_CLONE_BACKWARDS)
+            'sys_mmap2': [
+                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
+                'unsigned long flags', 'unsigned long fd', 'unsigned long pgoff',
+            ], # include/asm-generic/syscalls.h
+            'sys_sigreturn_wrapper': [], # arch/arm/kernel/entry-common.S
+            'sys_rt_sigreturn_wrapper': [], # arch/arm/kernel/entry-common.S
+            'sys_statfs64_wrapper': [
+                'const char __user *path', 'size_t sz', 'struct statfs64 __user *buf',
+            ], # arch/arm/kernel/entry-common.S
+            'sys_fstatfs64_wrapper': [
+                'unsigned int fd', 'size_t sz', 'struct statfs64 __user *buf',
+            ], # arch/arm/kernel/entry-common.S
+            'sys_arm_fadvise64_64': [
+                'int fd', 'int advice', 'loff_t offset', 'loff_t len',
+            ] # arch/arm/kernel/sys_arm.c
+        }
+
+        syscall_list = []
+        for entry in tbl:
+            nr, abi, name, func = entry[:4] # dont use OABI
+            if abi not in ["common", "eabi"]:
+                continue
+            # special case
+            if func in arch_specific_dic:
+                syscall_list.append([nr, name, arch_specific_dic[func]])
+                continue
+            # common case
+            if func == 'sys_ni_syscall':
+                continue
+            if func not in sc_def:
+                err("Not found: {:s}".format(func))
+                raise
+            syscall_list.append([nr, name, sc_def[func]])
+
+        arch_specific_extra = [
+            [0xf0001, 'breakpoint', []], # arch/arm/kernel/traps.c
+            [0xf0002, 'cacheflush', [
+                'unsigned long start', 'unsigned long end', 'int flags',
+            ]], # arch/arm/kernel/traps.c
+            [0xf0003, 'usr26', []], # arch/arm/kernel/traps.c
+            [0xf0004, 'usr32', []], # arch/arm/kernel/traps.c
+            [0xf0005, 'set_tls', [
+                'unsigned long val',
+            ]], # arch/arm/kernel/traps.c
+            [0xf0006, 'get_tls', []], # arch/arm/kernel/traps.c
+        ]
+        syscall_list += arch_specific_extra
 
     elif arch in ["ARM64", "ARM"] and mode == "S":
         if arch == "ARM64":
             register_list = ["$x0", "$x1", "$x2", "$x3", "$x4", "$x5", "$x6"]
+            #syscall_register = "$x8"
+            #retval_register_list = ["$x0", "$x1"]
         else:
             register_list = ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6"]
+            #syscall_register = "$r7"
+            #retval_register_list = ["$r0", "$r1"]
         syscall_list = arm_OPTEE_syscall_list.copy()
+
+    elif arch == "MIPS" and mode == "MIPS32":
+        o32_register_list = ["$a0", "$a1", "$a2", "$a3", "$sp+0x10", "$sp+0x14", "$sp+0x18", "$sp+0x1c"]
+        n32_register_list = ["$a0", "$a1", "$a2", "$a3", "$a4", "$a5"]
+        #syscall_register = "$v0"
+        #retval_register_list = ["$v0", "$v1"]
+
+        sc_def = parse_common_syscall_defs()
+        tbl = parse_syscall_table_defs(mips_o32_syscall_tbl)
+        tbl += parse_syscall_table_defs(mips_n32_syscall_tbl)
+        arch_specific_dic = {
+            # o32
+            'sys_syscall': ['...', ], #
+            '__sys_fork': [], #
+            'sys_rt_sigreturn': [], # arch/mips/kernel/signal.c
+            'sysm_pipe': [], # arch/mips/kernel/syscall.c
+            'sys_mips_mmap': [
+                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
+                'unsigned long flags', 'unsigned long fd', 'off_t offset',
+            ], # arch/mips/kernel/syscall.c
+            'sys_sigreturn': [], #
+            '__sys_clone': [
+                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
+                'unsigned long tls', 'int __user *child_tidptr',
+            ], # kernel/fork.c (CONFIG_CLONE_BACKWARDS)
+            'sys_cacheflush': [
+                'unsigned long addr', 'unsigned long bytes', 'unsigned int cache',
+            ], # arch/mips/mm/cache.c
+            'sys_cachectl': [
+                'char *addr', 'int nbytes', 'int op',
+            ], # arch/mips/kernel/syscall.c
+            '__sys_sysmips': [
+                'long cmd', 'long arg1', 'long arg2',
+            ], # arch/mips/kernel/syscall.c
+            'sys_mips_mmap2': [
+                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
+                'unsigned long flags', 'unsigned long fd', 'unsigned long pgoff',
+            ], # arch/mips/kernel/syscall.c
+            'sys_set_thread_area': [
+                'unsigned long addr',
+            ], # arch/mips/kernel/syscall.c
+            '__sys_clone3': [
+                'struct clone_args __user *uargs', 'size_t size',
+            ], #
+            'sys_sigsuspend': [
+                'sigset_t __user *uset',
+            ], # arch/mips/kernel/signal.c
+            'sys_sigaction': [
+                'int sig2', 'const struct sigaction __user *act', 'struct sigaction __user *oact',
+            ], # arch/mips/kernel/signal.c
+            # n32
+            'compat_sys_old_shmctl': [
+                'int shmid', 'int cmd', 'void *uptr',
+            ], # ipc/shm.c
+            'compat_sys_old_semctl': [
+                'int semid', 'int semnum', 'int cmd', 'int arg',
+            ], # ipc/sem.c
+            'compat_sys_old_msgctl': [
+                'int msqid', 'int cmd', 'void *uptr',
+            ], # ipc/msg.c
+            'sys_32_personality': [
+                'unsigned long personality',
+            ], # arch/mips/kernel/linux32.c
+            'sysn32_rt_sigreturn': [], # arch/mips/kernel/signal_n32.c
+        }
+
+        syscall_list = []
+        for entry in tbl:
+            nr, abi, name, func = entry[:4] # dont use compat
+            if abi not in ["o32", "n32"]:
+                continue
+            if abi == "o32":
+                nr += 4000 # arch/mips/include/asm/unistd.h
+            elif abi == "n32":
+                nr += 6000 # arch/mips/include/asm/unistd.h
+            # special case
+            if func in arch_specific_dic:
+                syscall_list.append([nr, name, arch_specific_dic[func]])
+                continue
+            # common case
+            if func == 'sys_ni_syscall':
+                continue
+            if func not in sc_def:
+                err("Not found: {:s}".format(func))
+                raise
+            syscall_list.append([nr, name, sc_def[func]])
+
+    elif arch == "MIPS" and mode == "MIPS64":
+        register_list = ["$a0", "$a1", "$a2", "$a3", "$a4", "$a5"]
+        #syscall_register = "$v0"
+        #retval_register_list = ["$v0", "$v1"]
+
+        sc_def = parse_common_syscall_defs()
+        tbl = parse_syscall_table_defs(mips_n64_syscall_tbl)
+        arch_specific_dic = {
+            'sys_mips_mmap': [
+                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
+                'unsigned long flags', 'unsigned long fd', 'off_t offset',
+            ], # arch/mips/kernel/syscall.c
+            'sysm_pipe': [], # arch/mips/kernel/syscall.c
+            '__sys_clone': [
+                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
+                'unsigned long tls', 'int __user *child_tidptr',
+            ], # kernel/fork.c (CONFIG_CLONE_BACKWARDS)
+            '__sys_fork': [], #
+            'sys_rt_sigreturn': [], # arch/mips/kernel/signal.c
+            'sys_cacheflush': [
+                'unsigned long addr', 'unsigned long bytes', 'unsigned int cache',
+            ], # arch/mips/mm/cache.c
+            'sys_cachectl': [
+                'char *addr', 'int nbytes', 'int op',
+            ], # arch/mips/kernel/syscall.c
+            '__sys_sysmips': [
+                'long cmd', 'long arg1', 'long arg2',
+            ], # arch/mips/kernel/syscall.c
+            'sys_set_thread_area': [
+                'unsigned long addr',
+            ], # arch/mips/kernel/syscall.c
+            '__sys_clone3': [
+                'struct clone_args __user *uargs', 'size_t size',
+            ], #
+        }
+
+        syscall_list = []
+        for entry in tbl:
+            nr, abi, name, func = entry[:4] # dont use compat
+            if abi != "n64":
+                continue
+            nr += 5000 # arch/mips/include/asm/unistd.h
+            # special case
+            if func in arch_specific_dic:
+                syscall_list.append([nr, name, arch_specific_dic[func]])
+                continue
+            # common case
+            if func == 'sys_ni_syscall':
+                continue
+            if func not in sc_def:
+                err("Not found: {:s}".format(func))
+                raise
+            syscall_list.append([nr, name, sc_def[func]])
+
+    elif arch == "PPC" and mode == "PPC32":
+        register_list = ["$r3", "$r4", "$r5", "$r6", "$r7", "$r8", "$r9"]
+        #syscall_register = "$r0"
+        #retval_register_list = ["$r3"]
+
+        sc_def = parse_common_syscall_defs()
+        tbl = parse_syscall_table_defs(ppc_syscall_tbl)
+        arch_specific_dic = {
+            'ppc_select': [
+                'int n', 'fd_set __user *inp', 'fd_set __user *outp', 'fd_set __user *exp',
+                'struct __kernel_old_timeval __user *tvp',
+            ], # arch/poerpc/kernel/syscalls.c
+            'sys_sigreturn': [], # arch/powerpc/kernel/signal_32.c
+            'sys_rt_sigreturn': [], # arch/powerpc/kernel/signal_32.c
+            'sys_mmap': [
+                'unsigned long addr', 'size_t len', 'unsigned long prot',
+                'unsigned long flags', 'unsigned long fd', 'off_t offset',
+            ], # arch/powerpc/kernel/syscalls.c
+            'sys_mmap2': [
+                'unsigned long addr', 'size_t len', 'unsigned long prot',
+                'unsigned long flags', 'unsigned long fd', 'unsigned long pgoff',
+            ], # arch/powerpc/kernel/syscalls.c
+            'sys_clone': [
+                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
+                'unsigned long tls', 'int __user *child_tidptr',
+            ], # kernel/fork.c (CONFIG_CLONE_BACKWARDS)
+            'sys_swapcontext': [
+                'struct ucontext __user *old_ctx', 'struct ucontext __user *new_ctx', 'long ctx_size',
+            ], # arch/powerpc/kernel/signal_32.c
+            'ppc_fadvise64_64': [
+                'int fd', 'int advice', 'u32 offset_high', 'u32 offset_low', 'u32 len_high', 'u32 len_low',
+            ], # arch/poerpc/kernel/syscalls.c
+            'sys_rtas': [
+                'struct rtas_args __user *uargs',
+            ], # arch/powerpc/include/asm/syscalls.h
+            'sys_debug_setcontext': [
+                'struct ucontext __user *ctx', 'int ndbg', 'struct sig_dbg_op __user *dbg',
+            ], # arch/powerpc/kernel/signal_32.c
+            'sys_subpage_prot': [
+                'unsigned long addr', 'unsigned long len', 'u32 __user *map',
+            ], # arch/powerpc/mm/book3s64/subpage_prot.c
+        }
+
+        syscall_list = []
+        for entry in tbl:
+            nr, abi, name, func = entry[:4] # dont use compat
+            if abi not in ["common", "32", "nospu"]:
+                continue
+            # special case
+            if func in arch_specific_dic:
+                syscall_list.append([nr, name, arch_specific_dic[func]])
+                continue
+            # common case
+            if func == 'sys_ni_syscall':
+                continue
+            if func not in sc_def:
+                err("Not found: {:s}".format(func))
+                raise
+            syscall_list.append([nr, name, sc_def[func]])
+
+    elif arch == "PPC" and mode == "PPC64":
+        register_list = ["$r3", "$r4", "$r5", "$r6", "$r7", "$r8"]
+        #syscall_register = "$r0"
+        #retval_register_list = ["$r3"]
+
+        sc_def = parse_common_syscall_defs()
+        tbl = parse_syscall_table_defs(ppc_syscall_tbl)
+        arch_specific_dic = {
+            'sys_clone': [
+                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
+                'unsigned long tls', 'int __user *child_tidptr',
+            ], # kernel/fork.c (CONFIG_CLONE_BACKWARDS)
+            'sys_rt_sigreturn': [], # arch/powerpc/kernel/signal_64.c
+            'sys_mmap': [
+                'unsigned long addr', 'size_t len', 'unsigned long prot',
+                'unsigned long flags', 'unsigned long fd', 'off_t offset',
+            ], # arch/powerpc/kernel/syscalls.c
+            'sys_mmap2': [
+                'unsigned long addr', 'size_t len', 'unsigned long prot',
+                'unsigned long flags', 'unsigned long fd', 'unsigned long pgoff',
+            ], # arch/powerpc/kernel/syscalls.c
+            'ppc64_personality': [
+                'unsigned long personality',
+            ], # arch/powerpc/kernel/syscalls.c
+            'sys_swapcontext': [
+                'struct ucontext __user *old_ctx', 'struct ucontext __user *new_ctx', 'long ctx_size',
+            ], # arch/powerpc/kernel/signal_64.c
+            'sys_rtas': [
+                'struct rtas_args __user *uargs',
+            ], # arch/powerpc/include/asm/syscalls.h
+            'sys_subpage_prot': [
+                'unsigned long addr', 'unsigned long len', 'u32 __user *map',
+            ], # arch/powerpc/mm/book3s64/subpage_prot.c
+            'sys_switch_endian': [], # arch/powerpc/kernel/syscalls.c
+        }
+
+        syscall_list = []
+        for entry in tbl:
+            nr, abi, name, func = entry[:4] # dont use compat
+            if abi not in ["common", "64", "nospu"]:
+                continue
+            # special case
+            if func in arch_specific_dic:
+                syscall_list.append([nr, name, arch_specific_dic[func]])
+                continue
+            # common case
+            if func == 'sys_ni_syscall':
+                continue
+            if func not in sc_def:
+                err("Not found: {:s}".format(func))
+                raise
+            syscall_list.append([nr, name, sc_def[func]])
+
+    elif arch == "SPARC" and mode == "SPARC32":
+        register_list = ["$o0", "$o1", "$o2", "$o3", "$o4", "$o5"]
+        #syscall_register = "$g1"
+        #retval_register_list = ["$o0", "$o1"]
+
+        sc_def = parse_common_syscall_defs()
+        tbl = parse_syscall_table_defs(sparc_syscall_tbl)
+        arch_specific_dic = {
+            'sys_mmap': [
+                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
+                'unsigned long flags', 'unsigned long fd', 'unsigned long off'
+            ], # arch/sparc/kernel/sys_sparc_32.c
+            'sys_mmap2': [
+                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
+                'unsigned long flags', 'unsigned long fd', 'unsigned long pgoff'
+            ], # arch/sparc/kernel/sys_sparc_32.c
+            'sunos_execv': [
+                'const char __user *filename', 'const char __user *const __user *argv',
+                'const char __user *const __user *envp',
+            ], # arch/sparc/kernel/entry.S
+            'sys_sparc_pipe': [], # arch/sparc/kernel/sys_sparc_32.c
+            'sys_getpagesize': [], # arch/sparc/kernel/sys_sparc_32.c
+            'sys_getdomainname': [
+                'char __user *name', 'int len'
+            ], # arch/sparc/kernel/sys_sparc_32.c
+            'sys_sparc_remap_file_pages': [
+                'unsigned long start', 'unsigned long size', 'unsigned long prot',
+                'unsigned long pgoff', 'unsigned long flags',
+            ], # kernel/sys_sparc_32.c
+            'sys_sparc_sigaction': [
+                'int, sig', 'struct old_sigaction __user *act', 'struct old_sigaction __user *oact',
+            ], # arch/sparc/kernel/sys_sparc_32.c
+            'sys_sigreturn': [
+                "struct pt_regs *regs",
+            ], # arch/sparc/kernel/signal_32.c
+            'sys_rt_sigreturn': [
+                "struct pt_regs *regs",
+            ], # arch/sparc/kernel/signal_32.c
+            'sys_clone': [
+                'unsigned long clone_flags', 'unsigned long newsp',
+                'int __user *parent_tidptr', 'int __user *child_tidptr', 'unsigned long tls',
+            ], # kernel/fork.c
+        }
+
+        syscall_list = []
+        for entry in tbl:
+            nr, abi, name, func = entry[:4] # dont use compat
+            if abi not in ["common", "32"]:
+                continue
+            # special case
+            if func in arch_specific_dic:
+                syscall_list.append([nr, name, arch_specific_dic[func]])
+                continue
+            # common case
+            if func in ['sys_ni_syscall', 'sys_nis_syscall']:
+                continue
+            if func not in sc_def:
+                err("Not found: {:s}".format(func))
+                raise
+            syscall_list.append([nr, name, sc_def[func]])
+
+    elif arch == "SPARC" and mode == "SPARC64":
+        register_list = ["$o0", "$o1", "$o2", "$o3", "$o4", "$o5"]
+        #syscall_register = "$g1"
+        #retval_register_list = ["$o0", "$o1"]
+
+        sc_def = parse_common_syscall_defs()
+        tbl = parse_syscall_table_defs(sparc_syscall_tbl)
+        arch_specific_dic = {
+            'sparc_exit': [
+                'int error_code',
+            ], # arch/sparc/kernel/syscalls.S
+            'sys_sparc_pipe': [], # arch/sparc/kernel/sys_sparc_64.c
+            'sys_memory_ordering': [
+                'unsigned long model',
+            ], # arch/sparc/kernel/sys_sparc_64.c
+            'sys64_execve': [
+                'const char __user *filename', 'const char __user *const __user *argv',
+                'const char __user *const __user *envp',
+            ], # arch/sparc/kernel/syscalls.S
+            'sys_getpagesize': [], # arch/sparc/kernel/sys_sparc_64.c
+            'sys_64_munmap': [
+                'unsigned long addr', 'size_t len',
+            ], # arch/sparc/kernel/sys_sparc_64.c
+            'sys_getdomainname': [
+                'char __user *name', 'int len'
+            ], # arch/sparc/kernel/sys_sparc_64.c
+            'sys_utrap_install': [
+                'utrap_entry_t type', 'utrap_handler_t new_p', 'utrap_handler_t new_d',
+                'utrap_handler_t __user * old_p', 'utrap_handler_t __user *old_d',
+            ], # arch/sparc/kernel/sys_sparc_64.c
+            'sparc_exit_group': [
+                'int error_code',
+            ], # arch/sparc/kernel/syscalls.S
+            'sys_sparc64_personality': [
+                'unsigned long personality',
+            ], # arch/sparc/kernel/sys_sparc_64.c
+            'sys_sparc_ipc': [
+                'unsigned int call', 'int first', 'unsigned long second',
+                'unsigned long third', 'void __user *ptr', 'long fifth',
+            ], # arch/sparc/kernel/sys_sparc_64.c
+            'sys_clone': [
+                'unsigned long clone_flags', 'unsigned long newsp',
+                'int __user *parent_tidptr', 'int __user *child_tidptr', 'unsigned long tls',
+            ], # kernel/fork.c
+            'sys_sparc_adjtimex': [
+                'struct __kernel_timex __user *txc_p',
+            ], # arch/sparc/kernel/sys_sparc_64.c
+            'sys_mmap': [
+                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
+                'unsigned long flags', 'unsigned long fd', 'unsigned long off'
+            ], # arch/sparc/kernel/sys_sparc_64.c
+            'sys_64_mremap': [
+                'unsigned long addr', 'unsigned long old_len', 'unsigned long new_len',
+                'unsigned long flags', 'unsigned long new_addr',
+            ], # arch/sparc/kernel/sys_sparc_64.c
+            'sys_sparc_clock_adjtime': [
+                'const clockid_t which_clock', 'struct __kernel_timex __user *txc_p',
+            ], # arch/sparc/kernel/sys_sparc_64.c
+            'sys_kern_features': [], # arch/sparc/kernel/sys_sparc_64.c
+            'sys64_execveat': [
+                'int dfd', 'const char __user *filename', 'const char __user *const __user *argv',
+                'const char __user *const __user *envp', 'int flags',
+            ] ,# arch/sparc/kernel/syscalls.S
+            'sys_rt_sigreturn': [
+                "struct pt_regs *regs",
+            ], # arch/sparc/kernel/signal_64.c
+        }
+
+        syscall_list = []
+        for entry in tbl:
+            nr, abi, name, func = entry[:4] # dont use compat
+            if abi not in ["common", "64"]:
+                continue
+            # special case
+            if func in arch_specific_dic:
+                syscall_list.append([nr, name, arch_specific_dic[func]])
+                continue
+            # common case
+            if func in ['sys_ni_syscall', 'sys_nis_syscall']:
+                continue
+            if func not in sc_def:
+                err("Not found: {:s}".format(func))
+                raise
+            syscall_list.append([nr, name, sc_def[func]])
 
     else:
         raise
 
+    # common process
     if mode == "S":
-        mode = "Secure-World"
+        mode_str = "Secure-World"
     elif mode == "N32":
-        mode = "Native-32"
+        mode_str = "Native-32"
     elif mode == "32":
-        mode = "Emulated-32"
-    syscall_table = {"arch": arch, "mode": mode}
+        mode_str = "Emulated-32"
+    else:
+        mode_str = mode
+    syscall_table = {"arch": arch, "mode": mode_str}
 
+    syscall_list = sorted(syscall_list, key=lambda x: x[0])
     Entry = collections.namedtuple('Entry', 'name params')
     Param = collections.namedtuple('Param', 'reg param')
     for nr, name, args in syscall_list:
-        args = list(zip(register_list[:len(args)], args))
+        if arch == "MIPS" and mode == "MIPS32":
+            if nr >= 6000:
+                args = list(zip(n32_register_list[:len(args)], args))
+            else:
+                args = list(zip(o32_register_list[:len(args)], args))
+        else:
+            args = list(zip(register_list[:len(args)], args))
         syscall_table[nr] = Entry(name, [Param(*p) for p in args])
 
-    cached_syscall_table = syscall_table
+    cached_syscall_table[arch, mode] = syscall_table
     return syscall_table
 
 
@@ -20000,7 +23127,11 @@ class SyscallArgsCommand(GenericCommand):
             self.usage()
             return
 
-        syscall_table = get_syscall_table()
+        try:
+            syscall_table = get_syscall_table()
+        except Exception:
+            warn("This command cannot work under this architecture.")
+            return
 
         if len(argv) == 1:
             reg_value = int(argv[0], 0)
@@ -20013,7 +23144,11 @@ class SyscallArgsCommand(GenericCommand):
 
         values = []
         for param in syscall_entry.params:
-            values.append(get_register(param.reg))
+            if "+" not in param.reg:
+                values.append(get_register(param.reg))
+            else:
+                _reg, _off = param.reg.split("+") # like `$sp + 0x10`
+                values.append(read_int_from_memory(get_register(_reg) + int(_off, 0)))
 
         parameters = [s.param for s in syscall_entry.params]
         registers = [s.reg for s in syscall_entry.params]
@@ -20035,6 +23170,8 @@ class SyscallArgsCommand(GenericCommand):
 
 @functools.lru_cache()
 def get_section_base_address(name):
+    if name is None:
+        return None
     section = process_lookup_path(name)
     if section:
         return section.page_start
