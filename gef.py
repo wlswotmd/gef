@@ -2842,13 +2842,15 @@ class ARM(Architecture):
     def mprotect_asm(cls, addr, size, perm):
         _NR_mprotect = 125
         insns = [
-            "push {r0-r2, r7}",
-            "mov r0, {:d}".format(addr),
-            "mov r1, {:d}".format(size),
-            "mov r2, {:d}".format(perm),
             "mov r7, {:d}".format(_NR_mprotect),
+            "movw r0, #{:#x}".format((addr >> 16) & 0xffff),
+            "lsl r0, r0, 16",
+            "orr r0, #{:#x}".format((addr >> 0) & 0xffff),
+            "movw r1, #{:#x}".format((size >> 16) & 0xffff),
+            "lsl r1, r1, 16",
+            "orr r1, #{:#x}".format((size >> 0) & 0xffff),
+            "mov r2, {:d}".format(perm),
             "svc 0",
-            "pop {r0-r2, r7}",
         ]
         return "; ".join(insns)
 
@@ -2924,23 +2926,17 @@ class AARCH64(ARM):
     def mprotect_asm(cls, addr, size, perm):
         _NR_mprotect = 226
         insns = [
-            "str x8, [sp, -16]!",
-            "str x0, [sp, -16]!",
-            "str x1, [sp, -16]!",
-            "str x2, [sp, -16]!",
             "mov x8, {:d}".format(_NR_mprotect),
-            "movz x0, {:#x}".format(addr & 0xFFFF),
-            "movk x0, {:#x}, lsl 16".format((addr >> 16) & 0xFFFF),
-            "movk x0, {:#x}, lsl 32".format((addr >> 32) & 0xFFFF),
-            "movk x0, {:#x}, lsl 48".format((addr >> 48) & 0xFFFF),
-            "movz x1, {:#x}".format(size & 0xFFFF),
-            "movk x1, {:#x}, lsl 16".format((size >> 16) & 0xFFFF),
+            "movz x0, {:#x}".format(addr & 0xffff),
+            "movk x0, {:#x}, lsl 16".format((addr >> 16) & 0xffff),
+            "movk x0, {:#x}, lsl 32".format((addr >> 32) & 0xffff),
+            "movk x0, {:#x}, lsl 48".format((addr >> 48) & 0xffff),
+            "movz x1, {:#x}".format(size & 0xffff),
+            "movk x1, {:#x}, lsl 16".format((size >> 16) & 0xffff),
+            "movk x1, {:#x}, lsl 32".format((size >> 32) & 0xffff),
+            "movk x1, {:#x}, lsl 48".format((size >> 48) & 0xffff),
             "mov x2, {:d}".format(perm),
             "svc 0",
-            "ldr x2, [sp], 16",
-            "ldr x1, [sp], 16",
-            "ldr x0, [sp], 16",
-            "ldr x8, [sp], 16",
         ]
         return "; ".join(insns)
 
@@ -3127,15 +3123,11 @@ class X86(Architecture):
     def mprotect_asm(cls, addr, size, perm):
         _NR_mprotect = 125
         insns = [
-            "pushad",
-            "pushfd",
             "mov eax, {:d}".format(_NR_mprotect),
             "mov ebx, {:d}".format(addr),
             "mov ecx, {:d}".format(size),
             "mov edx, {:d}".format(perm),
             "int 0x80",
-            "popfd",
-            "popad",
         ]
         return "; ".join(insns)
 
@@ -3171,25 +3163,11 @@ class X86_64(X86):
     def mprotect_asm(cls, addr, size, perm):
         _NR_mprotect = 10
         insns = [
-            "pushfq",
-            "push rax",
-            "push rdi",
-            "push rsi",
-            "push rdx",
-            "push rcx",
-            "push r11",
             "mov rax, {:d}".format(_NR_mprotect),
             "mov rdi, {:d}".format(addr),
             "mov rsi, {:d}".format(size),
             "mov rdx, {:d}".format(perm),
             "syscall",
-            "pop r11",
-            "pop rcx",
-            "pop rdx",
-            "pop rsi",
-            "pop rdi",
-            "pop rax",
-            "popfq",
         ]
         return "; ".join(insns)
 
@@ -3338,23 +3316,17 @@ class PowerPC(Architecture):
         # Ref: http://www.ibm.com/developerworks/library/l-ppc/index.html
         _NR_mprotect = 125
         insns = [
-            "addi 1, 1, -16", # 1 = r1 = sp
-            "stw 0, 0(1)",
-            "stw 3, 4(1)", # r0 = syscall_code | r3, r4, r5 = args
-            "stw 4, 8(1)",
-            "stw 5, 12(1)",
-            "li 0, {:d}".format(_NR_mprotect),
-            "lis 3, {:#x}@h".format(addr),
-            "ori 3, 3, {:#x}@l".format(addr),
-            "lis 4, {:#x}@h".format(size),
-            "ori 4, 4, {:#x}@l".format(size),
+            "li 3, 0",
+            "ori 3, 3, {:d}".format((addr >> 16) & 0xffff),
+            "slwi 3, 3, 16",
+            "ori 3, 3, {:d}".format((addr >> 0) & 0xffff),
+            "li 4, 0",
+            "ori 4, 4, {:d}".format((size >> 16) & 0xffff),
+            "slwi 4, 4, 16",
+            "ori 4, 4, {:d}".format((size >> 0) & 0xffff),
             "li 5, {:d}".format(perm),
+            "li 0, {:d}".format(_NR_mprotect),
             "sc",
-            "lwz 0, 0(1)",
-            "lwz 3, 4(1)",
-            "lwz 4, 8(1)",
-            "lwz 5, 12(1)",
-            "addi 1, 1, 16",
         ]
         return ";".join(insns)
 
@@ -3370,6 +3342,32 @@ class PowerPC64(PowerPC):
         "$r24", "$r25", "$r26", "$r27", "$r28", "$r29", "$r30", "$r31",
         "$pc", "$msr", "$cr", "$lr", "$ctr", "$xer", "$fpscr", "$vscr", "$vrsave",
     ]
+
+    @classmethod
+    def mprotect_asm(cls, addr, size, perm):
+        _NR_mprotect = 125
+        insns = [
+            "li 3, 0",
+            "ori 3, 3, {:d}".format((addr >> 48) & 0xffff),
+            "sldi 3, 3, 16",
+            "ori 3, 3, {:d}".format((addr >> 32) & 0xffff),
+            "sldi 3, 3, 16",
+            "ori 3, 3, {:d}".format((addr >> 16) & 0xffff),
+            "sldi 3, 3, 16",
+            "ori 3, 3, {:d}".format((addr >> 0) & 0xffff),
+            "li 4, 0",
+            "ori 4, 4, {:d}".format((size >> 48) & 0xffff),
+            "sldi 4, 4, 16",
+            "ori 4, 4, {:d}".format((size >> 32) & 0xffff),
+            "sldi 4, 4, 16",
+            "ori 4, 4, {:d}".format((size >> 16) & 0xffff),
+            "sldi 4, 4, 16",
+            "ori 4, 4, {:d}".format((size >> 48) & 0xffff),
+            "li 5, {:d}".format(perm),
+            "li 0, {:d}".format(_NR_mprotect),
+            "sc",
+        ]
+        return ";".join(insns)
 
 
 class SPARC(Architecture):
@@ -3503,22 +3501,16 @@ class SPARC(Architecture):
 
     @classmethod
     def mprotect_asm(cls, addr, size, perm):
-        hi = (addr & 0xffff0000) >> 16
-        lo = (addr & 0x0000ffff)
-        _NR_mprotect = 125
+        _NR_mprotect = 74
         insns = [
-            "add %sp, -16, %sp",
-            "st %g1, [ %sp ]", "st %o0, [ %sp + 4 ]",
-            "st %o1, [ %sp + 8 ]", "st %o2, [ %sp + 12 ]",
-            "sethi %hi({}), %o0".format(hi),
-            "or %o0, {}, %o0".format(lo),
-            "clr %o1",
-            "clr %o2",
+            "sethi %hi({}), %o0".format(addr & 0xfffffc00),
+            "or %o0, {}, %o0".format(addr & 0x000003ff),
+            "sethi %hi({}), %o1".format(size & 0xfffffc00),
+            "or %o1, {}, %o1".format(size & 0x000003ff),
+            "mov {}, %o2".format(perm),
             "mov {}, %g1".format(_NR_mprotect),
             "t 0x10",
-            "ld [ %sp ], %g1", "ld [ %sp + 4 ], %o0",
-            "ld [ %sp + 8 ], %o1", "ld [ %sp + 12 ], %o2",
-            "add %sp, 16, %sp",
+            "nop", # keystone does not give nop for delay slot, needs this nop
         ]
         return "; ".join(insns)
 
@@ -3557,22 +3549,24 @@ class SPARC64(SPARC):
 
     @classmethod
     def mprotect_asm(cls, addr, size, perm):
-        hi = (addr & 0xffff0000) >> 16
-        lo = (addr & 0x0000ffff)
-        _NR_mprotect = 125
+        _NR_mprotect = 74
         insns = [
-            "add %sp, -16, %sp",
-            "st %g1, [ %sp ]", "st %o0, [ %sp + 4 ]",
-            "st %o1, [ %sp + 8 ]", "st %o2, [ %sp + 12 ]",
-            "sethi %hi({}), %o0".format(hi),
-            "or %o0, {}, %o0".format(lo),
-            "clr %o1",
-            "clr %o2",
+            "sethi %hi({}), %o0".format(addr & 0xfffffc00),
+            "or %o0, {}, %o0".format(addr & 0x000003ff),
+            "sethi %hi({}), %o1".format((addr >> 32) & 0xfffffc00),
+            "or %o1, {}, %o1".format((addr >> 32) & 0x000003ff),
+            "sllx %o1, 32, %o1",
+            "or %o0, %o1, %o0",
+            "sethi %hi({}), %o1".format(size & 0xfffffc00),
+            "or %o1, {}, %o1".format(size & 0x000003ff),
+            "sethi %hi({}), %o2".format((size >> 32) & 0xfffffc00),
+            "or %o2, {}, %o2".format((size >> 32) & 0x000003ff),
+            "sllx %o2, 32, %o2",
+            "or %o1, %o2, %o1",
+            "mov {}, %o2".format(perm),
             "mov {}, %g1".format(_NR_mprotect),
             "t 0x6d",
-            "ld [ %sp ], %g1", "ld [ %sp + 4 ], %o0",
-            "ld [ %sp + 8 ], %o1", "ld [ %sp + 12 ], %o2",
-            "add %sp, 16, %sp",
+            "nop", # keystone does not give nop for delay slot, needs this nop
         ]
         return "; ".join(insns)
 
@@ -3715,17 +3709,11 @@ class MIPS(Architecture):
     def mprotect_asm(cls, addr, size, perm):
         _NR_mprotect = 4125
         insns = [
-            "addi $sp, $sp, -16",
-            "sw $v0, 0($sp)", "sw $a0, 4($sp)",
-            "sw $a3, 8($sp)", "sw $a3, 12($sp)",
             "li $v0, {:d}".format(_NR_mprotect),
             "li $a0, {:d}".format(addr),
             "li $a1, {:d}".format(size),
             "li $a2, {:d}".format(perm),
-            "syscall",
-            "lw $v0, 0($sp)", "lw $a1, 4($sp)",
-            "lw $a3, 8($sp)", "lw $a3, 12($sp)",
-            "addi $sp, $sp, 16",
+            "syscall", # keystone gives nop for delay slot, need not nop
         ]
         return "; ".join(insns)
 
@@ -3747,6 +3735,30 @@ class MIPS64(MIPS):
         "$s0": "$r16", "$s1": "$r17", "$s2": "$r18", "$s3": "$r19", "$s4": "$r20", "$s5": "$r21", "$s6": "$r22", "$s7": "$r23",
         "$t8": "$r24", "$t9": "$r25", "$k0": "$r26", "$k1": "$r27", "$gp": "$r28", "$sp": "$r29", "$fp": "$s8/$r30", "$ra": "$r31",
     }
+
+    @classmethod
+    def mprotect_asm(cls, addr, size, perm):
+        _NR_mprotect = 5010
+        insns = [
+            "ori $a0, $zero, {:#x}".format((addr >> 48) & 0xffff),
+            "dsll $a0, $a0, 16",
+            "ori $a0, $a0, {:#x}".format((addr >> 32) & 0xffff),
+            "dsll $a0, $a0, 16",
+            "ori $a0, $a0, {:#x}".format((addr >> 16) & 0xffff),
+            "dsll $a0, $a0, 16",
+            "ori $a0, $a0, {:#x}".format((addr >> 0) & 0xffff),
+            "ori $a1, $zero, {:#x}".format((size >> 48) & 0xffff),
+            "dsll $a1, $a1, 16",
+            "ori $a1, $a1, {:#x}".format((size >> 32) & 0xffff),
+            "dsll $a1, $a1, 16",
+            "ori $a1, $a1, {:#x}".format((size >> 16) & 0xffff),
+            "dsll $a1, $a1, 16",
+            "ori $a1, $a1, {:#x}".format((size >> 0) & 0xffff),
+            "li $a2, {:d}".format(perm),
+            "li $v0, {:d}".format(_NR_mprotect),
+            "syscall", # keystone gives nop for delay slot, need not nop
+        ]
+        return "; ".join(insns)
 
 
 def write_memory(address, buffer, length=0x10):
@@ -5877,17 +5889,22 @@ class StubBreakpoint(gdb.Breakpoint):
 class ChangePermissionBreakpoint(gdb.Breakpoint):
     """When hit, this temporary breakpoint will restore the original code, and position
     $pc correctly."""
-    def __init__(self, loc, code, pc):
-        super().__init__(loc, gdb.BP_BREAKPOINT, internal=False)
+    def __init__(self, loc, code, pc, regs):
+        super().__init__(loc, gdb.BP_BREAKPOINT, internal=True, temporary=True)
         self.original_code = code
         self.original_pc = pc
+        self.original_regs = regs
         return
 
     def stop(self):
         info("Restoring original context")
         write_memory(self.original_pc, self.original_code, len(self.original_code))
-        info("Restoring $pc")
-        gdb.execute("set $pc = {:#x}".format(self.original_pc))
+        info("Restoring registers")
+        for k, v in self.original_regs.items():
+            try:
+                gdb.execute("set {:s} = {:#x}".format(k, v))
+            except gdb.error:
+                pass
         return True
 
 
@@ -8154,7 +8171,6 @@ class ChangePermissionCommand(GenericCommand):
             return
 
         if len(argv) not in (1, 2):
-            err("Incorrect syntax")
             self.usage()
             return
 
@@ -8181,7 +8197,12 @@ class ChangePermissionCommand(GenericCommand):
             err("Invalid address")
             return
 
-        loc = to_unsigned_long(loc)
+        try:
+            loc = to_unsigned_long(loc)
+        except gdb.error:
+            err("Invalid address")
+            return
+
         sect = process_lookup_address(loc)
         if sect is None:
             err("Unmapped address")
@@ -8189,6 +8210,8 @@ class ChangePermissionCommand(GenericCommand):
 
         size = sect.page_end - sect.page_start
         original_pc = current_arch.pc
+        if is_arm32() and current_arch.is_thumb():
+            original_pc -= 1
 
         fmt = "Generating sys_mprotect({:#x}, {:#x}, '{:s}') stub for arch {:s}"
         info(fmt.format(sect.page_start, size, str(Permission(value=perm)), get_arch()))
@@ -8204,12 +8227,26 @@ class ChangePermissionCommand(GenericCommand):
             err("Failed to read memory")
             return
 
+        info("Saving original registers value")
+        try:
+            original_regs = {}
+            for r in current_arch.all_registers:
+                v = get_register(r)
+                original_regs[r] = v
+        except Exception:
+            err("Failed to read register")
+            return
+
         bp_loc = "*{:#x}".format(original_pc + len(stub))
         info("Setting a restore breakpoint at {:s}".format(bp_loc))
-        ChangePermissionBreakpoint(bp_loc, original_code, original_pc)
+        ChangePermissionBreakpoint(bp_loc, original_code, original_pc, original_regs)
 
         info("Overwriting current memory at {:#x} ({:d} bytes)".format(loc, len(stub)))
         write_memory(original_pc, stub, len(stub))
+        after_data = read_memory(original_pc, len(stub))
+        if stub != after_data:
+            err("Failed to write memory (qemu doesn't support writing to code area?)")
+            return
 
         info("Resuming execution")
         gdb.execute("continue")
