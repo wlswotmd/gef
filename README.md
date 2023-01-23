@@ -366,6 +366,16 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/search-mangled-ptr.png)
 * `capability`: shows the capabilities of the debugging process.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/capability.png)
+* `si`/`ni`: are the wrapper for native `si`/`ni`.
+    * On some architectures such as s390x, a `PC not saved` error may be output when executing "stepi/nexti".
+    * But the execution itself is fine, so this command ignores this error and executes `context` normally.
+    * If you want native `si`/`ni`, use the full form `stepi`/`nexti`.
+* `c`: is the wrapper for native `c`.
+    * When connecting to qemu-user's gdb stub, gdb does not trap SIGINT during "continue".
+    * If you want to trap, you need to issue SIGINT on the qemu-user side, but switching screens is troublesome.
+    * This command realizes a pseudo SIGINT trap by trapping SIGINT on the python side and throwing SIGINT back to qemu-user.
+    * It works local qemu-user only.
+    * If you want native `c`, use the full form `continue`.
 
 ### Other
 * The category is introduced in `gef help`.

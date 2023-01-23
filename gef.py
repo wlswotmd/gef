@@ -6361,6 +6361,94 @@ class GenericCommand(gdb.Command):
 
 
 @register_command
+class NiCommand(GenericCommand):
+    """nexti wrapper for s390x because s390x sometimes returns `PC not saved` when nexti command is executed."""
+    _cmdline_ = "ni"
+    _syntax_ = _cmdline_
+    _category_ = "Debugging Support"
+
+    def do_invoke(self, argv):
+        cmd = "nexti " + ' '.join(argv)
+        try:
+            gdb.execute(cmd.rstrip())
+        except gdb.error:
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            if str(exc_value) == "PC not saved":
+                gdb.execute("context")
+            else:
+                err(exc_value)
+        return
+
+
+@register_command
+class SiCommand(GenericCommand):
+    """stepi wrapper for s390x because s390x sometimes returns `PC not saved` when stepi command is executed."""
+    _cmdline_ = "si"
+    _syntax_ = _cmdline_
+    _category_ = "Debugging Support"
+
+    def do_invoke(self, argv):
+        cmd = "stepi " + ' '.join(argv)
+        try:
+            gdb.execute(cmd.rstrip())
+        except gdb.error:
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            if str(exc_value) == "PC not saved":
+                gdb.execute("context")
+            else:
+                err(exc_value)
+        return
+
+
+@register_command
+class ContCommand(GenericCommand):
+    """qemu-user does not trap SIGINT during "continue". Realize a pseudo SIGINT trap by trapping
+    SIGINT on the python side and throwing SIGINT back to qemu-user."""
+    _cmdline_ = "c"
+    _syntax_ = _cmdline_
+    _category_ = "Debugging Support"
+
+    def do_invoke(self, argv):
+        self.dont_repeat()
+
+        if is_qemu_usermode() and get_pid():
+
+            import threading
+            import signal
+            thread_started = False
+            thread_finished = False
+
+            def continue_thread():
+                nonlocal thread_started, thread_finished
+                thread_started = True
+                gdb.execute("continue")
+                thread_finished = True
+                return
+
+            def sig_handler(signum, frame):
+                os.kill(get_pid(), signal.SIGINT)
+                return
+
+            th = threading.Thread(target=continue_thread, daemon=True)
+            th.start()
+            while thread_started is False:
+                pass
+            old = signal.signal(signal.SIGINT, sig_handler)
+            while thread_finished is False:
+                time.sleep(0.1)
+            th.join()
+            signal.signal(signal.SIGINT, old)
+        else:
+            try:
+                cmd = "continue " + ' '.join(argv)
+                gdb.execute(cmd.rstrip())
+            except Exception:
+                exc_type, exc_value, exc_traceback = sys.exc_info()
+                err(exc_value)
+        return
+
+
+@register_command
 class PrintFormatCommand(GenericCommand):
     """Print bytes format in high level languages."""
     _cmdline_ = "print-format"
@@ -12516,7 +12604,11 @@ class EntryPointBreakCommand(GenericCommand):
 
         if is_pie(fpath):
             self.set_init_tbreak_pie(entry, argv)
-            gdb.execute("continue")
+            try:
+                gdb.execute("continue")
+            except Exception:
+                exc_type, exc_value, exc_traceback = sys.exc_info()
+                err(exc_value)
             return
 
         self.set_init_tbreak(entry)
