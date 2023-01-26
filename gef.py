@@ -2058,7 +2058,11 @@ def capstone_disassemble(location, nb_insn, **kwargs):
 
     capstone = sys.modules["capstone"]
     arch, mode = get_capstone_arch(arch=kwargs.get("arch", None), mode=kwargs.get("mode", None), endian=kwargs.get("endian", None))
-    cs = capstone.Cs(arch, mode)
+    try:
+        cs = capstone.Cs(arch, mode)
+    except capstone.CsError:
+        err("CsError")
+        return
     cs.detail = True
     skip = int(kwargs.get("skip", 0))
 
@@ -6785,7 +6789,7 @@ class GetFileCommand(GenericCommand):
 @register_command
 class ProcessStatusCommand(GenericCommand):
     """Extends the info given by GDB `info proc`, by giving an exhaustive description of the
-    process status (file descriptors, ancestor, descendants, etc.)."""
+    process status (file descriptors, parent, childs, etc.)."""
     _cmdline_ = "process-status"
     _syntax_ = _cmdline_
     _aliases_ = ["status", "procinfo", "pr"]
@@ -8021,6 +8025,10 @@ class FlagsCommand(GenericCommand):
 
         if "-h" in argv:
             self.usage()
+            return
+
+        if current_arch.flag_register is None:
+            warn("This command cannot work under this architecture.")
             return
 
         self.verbose = False
@@ -9761,7 +9769,7 @@ class DetailRegistersCommand(GenericCommand):
             line = "{}: ".format(Color.colorify(padreg, color))
 
             # flag register
-            if regname == current_arch.flag_register:
+            if current_arch.flag_register and regname == current_arch.flag_register:
                 line += current_arch.flag_register_to_human()
                 gef_print(line)
                 continue
@@ -10100,7 +10108,11 @@ class AssembleCommand(GenericCommand):
             return
         else:
             endian_s = "big" if big_endian else "little"
-            arch, mode = get_keystone_arch(arch=arch_s, mode=mode_s, endian=big_endian)
+            try:
+                arch, mode = get_keystone_arch(arch=arch_s, mode=mode_s, endian=big_endian)
+            except AttributeError:
+                self.usage()
+                return
 
         insns = " ".join(args)
         insns = [x.strip() for x in insns.split(";") if x is not None and x.strip() != ""]
@@ -10213,7 +10225,11 @@ class DisassembleCommand(GenericCommand):
             return
         else:
             endian_s = "big" if big_endian else "little"
-            arch, mode = get_capstone_arch(arch=arch_s, mode=mode_s, endian=big_endian)
+            try:
+                arch, mode = get_capstone_arch(arch=arch_s, mode=mode_s, endian=big_endian)
+            except AttributeError:
+                self.usage()
+                return
 
         insns = " ".join(args)
         insns = insns.replace(" ", "").replace("\t", "")
@@ -10227,7 +10243,11 @@ class DisassembleCommand(GenericCommand):
         info("Disassembling {} bytes for {} ({} endian)".format(len(insns), arch_mode_s, endian_s))
 
         capstone = sys.modules["capstone"]
-        cs = capstone.Cs(arch, mode)
+        try:
+            cs = capstone.Cs(arch, mode)
+        except capstone.CsError:
+            err("CsError")
+            return
         cs.detail = True
 
         for insn in cs.disasm(insns, 0x0):
@@ -10238,7 +10258,7 @@ class DisassembleCommand(GenericCommand):
 
 @register_command
 class AsmListCommand(GenericCommand):
-    """List up general instructions by capstone.(x64/x86 only) """
+    """List up general instructions by capstone (x64/x86 only)."""
     _cmdline_ = "asm-list"
     _syntax_ = "{:s} [-h] [-a ARCH] [-m MODE] [-e] [-n NBYTE] [-f INCLUDE] [-v EXCLUDE] [-s]\n".format(_cmdline_)
     _syntax_ += "  -a ARCH      specify the architecture\n"
@@ -10348,7 +10368,11 @@ class AsmListCommand(GenericCommand):
         #x86_insns.append(["ibts", "", "", "0F A7", "Undocumented"]) # removed now
 
         capstone = sys.modules["capstone"]
-        cs = capstone.Cs(arch, mode)
+        try:
+            cs = capstone.Cs(arch, mode)
+        except capstone.CsError:
+            err("CsError")
+            return []
         valid_patterns = []
         seen_patterns = []
         for insn in x86_insns:
@@ -10558,8 +10582,8 @@ class ProcessListingCommand(GenericCommand):
 
 @register_command
 class ElfInfoCommand(GenericCommand):
-    """Display a limited subset of ELF header information. If no argument is provided, the command will
-    show information about the current ELF being debugged."""
+    """Display a limited subset of ELF header information. If no argument is provided,
+    the command will show information about the current ELF being debugged."""
     _cmdline_ = "elf-info"
     _syntax_ = "{:s} [-h] [-r] [FILE|ADDRESS]".format(_cmdline_)
     _example_ = "{:s}                # parse binary itself\n".format(_cmdline_)
@@ -10804,7 +10828,7 @@ class ElfInfoCommand(GenericCommand):
 
 @register_command
 class DwarfExceptionHandlerInfoCommand(GenericCommand):
-    """Dump the DWARF exception handler informations"""
+    """Dump the DWARF exception handler informations with the byte code itself."""
     _cmdline_ = "dwarf-exception-handler"
     _syntax_ = "{:s} [-f FILENAME] [-x]".format(_cmdline_)
     _example_ = "{:s} # parse loaded binary\n".format(_cmdline_)
@@ -12866,7 +12890,8 @@ class ContextCommand(GenericCommand):
         if line:
             gef_print(line)
 
-        gef_print("Flags: {:s}".format(current_arch.flag_register_to_human()))
+        if current_arch.flag_register:
+            gef_print("Flags: {:s}".format(current_arch.flag_register_to_human()))
         return
 
     def context_stack(self):
@@ -14760,7 +14785,8 @@ def to_string_dereference_from(value, join_start_idx=0):
 
 @register_command
 class DereferenceCommand(GenericCommand):
-    """Dereference recursively from an address and display information. This acts like WinDBG `dps` command."""
+    """Dereference recursively from an address and display information.
+    This acts like WinDBG `dps` command."""
     _cmdline_ = "dereference"
     _syntax_ = "{:s} [-h] [LOCATION] [[L]NUM]".format(_cmdline_)
     _example_ = "\n"
@@ -14899,8 +14925,8 @@ class DereferenceCommand(GenericCommand):
 
 @register_command
 class ASLRCommand(GenericCommand):
-    """View/modify the ASLR setting of GDB. By default, GDB will disable ASLR when it starts the process (i.e. not
-    attached). This command allows to change that setting."""
+    """View/modify the ASLR setting of GDB. By default, GDB will disable ASLR when it starts
+    the process (i.e. not attached). This command allows to change that setting."""
     _cmdline_ = "aslr"
     _syntax_ = "{:s} (on|off)".format(_cmdline_)
     _category_ = "Process Information"
@@ -15511,8 +15537,9 @@ class PatternSearchCommand(GenericCommand):
 
 @register_command
 class ChecksecCommand(GenericCommand):
-    """Checksec the security properties of the current executable or passed as argument. The
-    command checks for the following protections: Canary, NX, PIE, RELRO, Fortify, CET, RPATH, RUNPATH, ASLR"""
+    """Checksec the security properties of the current executable or passed as argument.
+    This command checks for the following protections:
+    Static/Dynamic, Stripped, Canary, NX, PIE, RELRO, FORTIFY_SOURCE, CET, RPATH, RUNPATH, ASLR"""
     _cmdline_ = "checksec"
     _syntax_ = "{:s} [-h] [FILENAME]".format(_cmdline_)
     _example_ = "{:s} /bin/ls".format(_cmdline_)
@@ -17217,7 +17244,7 @@ class HeapAnalysisCommand(GenericCommand):
 
 @register_command
 class SyscallSearchCommand(GenericCommand):
-    """Search the syscall number"""
+    """Search the syscall number for specified architecture."""
     _cmdline_ = "syscall-search"
     _syntax_ = "{:s} [-h] [-v] [-a ARCH] [-m MODE] SYSCALL_NAME_REGEX_SEARCH_PATTERN|SYSCALL_NUM".format(_cmdline_)
     _example_ = "\n"
@@ -23325,7 +23352,8 @@ class SyscallArgsCommand(GenericCommand):
         param_names = [re.split(r" |\*", p)[-1] for p in parameters]
         for name, register, value in zip(param_names, registers, values):
             line = "    {:<20} {:<20} ".format(name, register)
-            line += to_string_dereference_from(value)
+            if value is not None:
+                line += to_string_dereference_from(value)
             gef_print(line)
         return
 
@@ -23362,7 +23390,7 @@ def get_zone_base_address(name):
 
 @register_command
 class SmartCppFunctionNameCommand(GenericCommand):
-    """Toggle the setting of `config context.smart_cpp_function_name`"""
+    """Toggle the setting of `config context.smart_cpp_function_name`."""
     _cmdline_ = "smart-cpp-function-name"
     _syntax_ = "{:s}".format(_cmdline_)
     _category_ = "Misc"
@@ -23379,8 +23407,8 @@ class SmartCppFunctionNameCommand(GenericCommand):
 
 @register_command
 class FollowCommand(GenericCommand):
-    """View/modify the follow-fork-mode setting of GDB. By default, GDB will follow parent when it starts the process.
-    This command allows to change that setting."""
+    """View/modify the follow-fork-mode setting of GDB. By default, GDB will follow parent
+    when it starts the process. This command allows to change that setting."""
     _cmdline_ = "follow"
     _syntax_ = "{:s} (child|parent)".format(_cmdline_)
     _category_ = "Misc"
@@ -23922,7 +23950,7 @@ class SeccompCommand(GenericCommand):
 
 @register_command
 class SysregCommand(GenericCommand):
-    """Pretty-print system registers (not general parpose) from `info regiser`"""
+    """Pretty-print system registers (not general parpose) from `info regiser`."""
     _cmdline_ = "sysreg"
     _syntax_ = "{:s} [-h] [FILTER[, FILTER, ...]]".format(_cmdline_)
     _category_ = "Show/Modify Register"
@@ -24276,7 +24304,7 @@ class AvxCommand(GenericCommand):
 
 @register_command
 class FpuCommand(GenericCommand):
-    """Show fpu registers.(x86/x64:x57-fpu, ARM/ARM64:vfp-d16)"""
+    """Show fpu registers (x86/x64:x87-fpu, ARM/ARM64:vfp-d16)."""
     _cmdline_ = "fpu"
     _syntax_ = "{:s} [-h] [-v]".format(_cmdline_)
     _category_ = "Show/Modify Register"
@@ -24804,7 +24832,8 @@ class ErrnoCommand(GenericCommand):
 
 @register_command
 class ExtractHeapAddrCommand(GenericCommand):
-    """Extract heap address from protected `fd` pointer of single linked-list. This will be introduced from glibc 2.32."""
+    """Extract heap address from protected `fd` pointer of single linked-list.
+    This will be introduced from glibc 2.32."""
     _cmdline_ = "extract-heap-addr"
     _syntax_ = "{:s} [-h] VALUE|--source".format(_cmdline_)
     _example_ = "{:s} 0x000055500000C7F9".format(_cmdline_)
@@ -24969,7 +24998,7 @@ class PackCommand(GenericCommand):
 
 @register_command
 class UnpackCommand(GenericCommand):
-    """Translate string -> integer"""
+    """Translate string -> integer."""
     _cmdline_ = "unpack"
     _syntax_ = '{:s} [-h] "double-escaped string"'.format(_cmdline_)
     _example_ = '{:s} "\\\\x41\\\\x42\\\\x43\\\\x44"'.format(_cmdline_)
@@ -25002,7 +25031,7 @@ class UnpackCommand(GenericCommand):
 
 @register_command
 class TohexCommand(GenericCommand):
-    """Translate bytes -> hex"""
+    """Translate bytes -> hex."""
     _cmdline_ = "tohex"
     _syntax_ = '{:s} [-h] "double-escaped string"'.format(_cmdline_)
     _example_ = '{:s} "\\\\x41\\\\x42\\\\x43\\\\x44"'.format(_cmdline_)
@@ -25031,7 +25060,7 @@ class TohexCommand(GenericCommand):
 
 @register_command
 class UnhexCommand(GenericCommand):
-    """Translate hex -> bytes"""
+    """Translate hex -> bytes."""
     _cmdline_ = "unhex"
     _syntax_ = '{:s} [-h] "hex string"'.format(_cmdline_)
     _example_ = "{:s} 41414242 43434444".format(_cmdline_)
@@ -28890,7 +28919,8 @@ class ConstGrepCommand(GenericCommand):
 
 @register_command
 class SlubDumpCommand(GenericCommand):
-    """Dump slab freelist with kenrel memory scanning. Thanks to https://github.com/PaoloMonti42/salt"""
+    """Dump slab freelist with kenrel memory scanning."""
+    # Thanks to https://github.com/PaoloMonti42/salt
     _cmdline_ = "slub-dump"
     _syntax_ = "{:s} [-h] [SLAB_CACHE_NAME] [--cpu N] [--no-xor] [--list]".format(_cmdline_)
     _example_ = "\n"
@@ -29326,8 +29356,7 @@ class SlubDumpCommand(GenericCommand):
 
 @register_command
 class KsymaddrRemoteCommand(GenericCommand):
-    """Solve kernel symbols from kallsyms table using kenrel memory scanning.
-    See: kernel/kallsyms.c"""
+    """Solve kernel symbols from kallsyms table using kenrel memory scanning."""
     _cmdline_ = "ksymaddr-remote"
     _syntax_ = "{:s} [-h] KEYWORD|--print-all [--head N] [--silent] [--exact] [--meta]".format(_cmdline_)
     _example_ = "\n"
@@ -30145,14 +30174,14 @@ class KsymaddrRemoteCommand(GenericCommand):
 
 @register_command
 class VmlinuxToElfApplyCommand(GenericCommand):
-    """Apply symbol from kallsyms in memory using vmlinux-to-elf (too slow but more accurate)"""
+    """Apply symbol from kallsyms in memory using vmlinux-to-elf (too slow but more accurate)."""
     _cmdline_ = "vmlinux-to-elf-apply"
     _syntax_ = "{:s} [--reparse]".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
 
     @staticmethod
     def dump_kernel_elf(dumped_mem_file, symboled_vmlinux_file, force=False):
-        """Dump the kernel from the memory, then apply vmlinux-to-elf to create symboled ELF"""
+        """Dump the kernel from the memory, then apply vmlinux-to-elf to create symboled ELF."""
         # check
         try:
             vmlinux2elf = which("vmlinux-to-elf")
@@ -30812,7 +30841,8 @@ def del_isolate_root(event):
 
 @register_command
 class V8DereferenceCommand(GenericCommand):
-    """Dereference recursively from an address and display information. Handles v8 specific values like tagged and compressed pointers"""
+    """Dereference recursively from an address and display information.
+    Handles v8 specific values like tagged and compressed pointers."""
     _cmdline_ = "v8deref"
     _syntax_ = "{:s} [LOCATION] [l[NB]]".format(_cmdline_)
     _example_ = "{:s} $sp l20".format(_cmdline_)
@@ -40659,7 +40689,7 @@ class ExecUntilCondCommand(ExecUntilCommand):
 
 
 class CallUsermodehelperSetupBreakpoint(gdb.Breakpoint):
-    """Create a breakpoint to print argv information at call_usermodehelper_setup"""
+    """Create a breakpoint to print argv information at call_usermodehelper_setup."""
     def __init__(self, loc):
         super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=False)
         return
@@ -40683,7 +40713,7 @@ class CallUsermodehelperSetupBreakpoint(gdb.Breakpoint):
 
 @register_command
 class UsermodehelperHunterCommand(GenericCommand):
-    """Collects and displays information that is executed by call_usermodehelper_setup"""
+    """Collects and displays information that is executed by call_usermodehelper_setup."""
     _cmdline_ = "usermodehelper-hunter"
     _syntax_ = "{:s} [-h]".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
@@ -40704,7 +40734,7 @@ class UsermodehelperHunterCommand(GenericCommand):
 
 
 class ThunkBreakpoint(gdb.Breakpoint):
-    """Create a breakpoint to print caller address for thunk function"""
+    """Create a breakpoint to print caller address for thunk function."""
     def __init__(self, loc, sym, reg, maps):
         super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=False)
         self.loc = loc
@@ -40803,13 +40833,13 @@ class ThunkHunterCommand(GenericCommand):
 
 @register_command
 class UefiOvmfInfoCommand(GenericCommand):
-    """Print UEFI OVMF info.
-    https://github.com/tianocore/tianocore.github.io/wiki/OVMF-Boot-Overview
-    https://github.com/tianocore/edk2/blob/master/OvmfPkg/Sec/SecMain.c
-    https://github.com/tianocore/edk2/blob/master/MdeModulePkg/Core/Pei/PeiMain/PeiMain.c
-    https://github.com/tianocore/edk2/blob/master/MdeModulePkg/Core/Dxe/DxeMain/DxeMain.c
-    https://github.com/tianocore/edk2/blob/master/MdeModulePkg/Universal/BdsDxe/BdsEntry.c
-    https://uefi.org/sites/default/files/resources/UEFI_Spec_2_8_final.pdf"""
+    """Print UEFI OVMF info."""
+    # https://github.com/tianocore/tianocore.github.io/wiki/OVMF-Boot-Overview
+    # https://github.com/tianocore/edk2/blob/master/OvmfPkg/Sec/SecMain.c
+    # https://github.com/tianocore/edk2/blob/master/MdeModulePkg/Core/Pei/PeiMain/PeiMain.c
+    # https://github.com/tianocore/edk2/blob/master/MdeModulePkg/Core/Dxe/DxeMain/DxeMain.c
+    # https://github.com/tianocore/edk2/blob/master/MdeModulePkg/Universal/BdsDxe/BdsEntry.c
+    # https://uefi.org/sites/default/files/resources/UEFI_Spec_2_8_final.pdf
     _cmdline_ = "uefi-ovmf-info"
     _syntax_ = "{:s}".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
@@ -41306,7 +41336,7 @@ class UefiOvmfInfoCommand(GenericCommand):
 
 @register_command
 class AddSymbolTemporaryCommand(GenericCommand):
-    """Add symbol from command temporarily"""
+    """Add symbol from command temporarily."""
     _cmdline_ = "add-symbol-temporary"
     _syntax_ = "{:s} FUNCTION_NAME ADDRESS".format(_cmdline_)
     _category_ = "Misc"
@@ -41436,7 +41466,7 @@ class AddSymbolTemporaryCommand(GenericCommand):
 
 @register_command
 class KsymaddrRemoteApplyCommand(GenericCommand):
-    """Apply symbol from kallsyms in memory"""
+    """Apply symbol from kallsyms in memory."""
     _cmdline_ = "ksymaddr-remote-apply"
     _syntax_ = "{:s}".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
@@ -41524,7 +41554,7 @@ class LinklistWalkCommand(GenericCommand):
 @register_command
 class PeekPointersCommand(GenericCommand):
     """Command to help find pointers belonging to other memory regions helpful in case
-    of OOB Read when looking for specific pointers"""
+    of OOB Read when looking for specific pointers."""
     _cmdline_ = "peek-pointers"
     _syntax_ = "{:s} starting_address <object_name> <all>".format(_cmdline_)
     _example_ = "\n"
@@ -41658,7 +41688,7 @@ class CurrentFrameStackCommand(GenericCommand):
 
 @register_command
 class XRefTelescopeCommand(SearchPatternCommand):
-    """Recursively search for cross-references to a pattern in memory"""
+    """Recursively search for cross-references to a pattern in memory."""
     _cmdline_ = "xref-telescope"
     _syntax_ = "{:s} PATTERN [depth]".format(_cmdline_)
     _example_ = "\n"
@@ -41731,8 +41761,7 @@ class XRefTelescopeCommand(SearchPatternCommand):
 
 @register_command
 class BytearrayCommand(GenericCommand):
-    """BytearrayCommand: Generate a bytearray to be compared with possible badchars.
-    Function ported from mona.py"""
+    """Generate a bytearray to be compared with possible badchars (ported from mona.py)."""
     _cmdline_ = "bytearray"
     _syntax_ = "{:s} [-b badchars] [-d]".format(_cmdline_)
     _example_ = "\n"
