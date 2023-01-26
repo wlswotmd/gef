@@ -3307,7 +3307,7 @@ class X86_64(X86):
         return "; ".join(insns)
 
 
-class PowerPC(Architecture):
+class PPC(Architecture):
     arch = "PPC"
     mode = "PPC32"
 
@@ -3319,14 +3319,6 @@ class PowerPC(Architecture):
         "$pc", "$msr", "$cr", "$lr", "$ctr", "$xer", "$fpscr",
     ]
     alias_registers = {"$r1": "$sp"}
-    instruction_length = 4
-
-    nop_insn = b"\x00\x00\x00\x60" # nop # http://www.ibm.com/developerworks/library/l-ppc/index.html
-    infloop_insn = b"\x00\x00\x00\x48" # b #0
-    trap_insn = b"\x08\x00\xe0\x7f" # trap
-    ret_insn = b"\x20\x00\x80\x4e" # blr
-
-    return_register = "$r0"
     flag_register = "$cr"
     flags_table = {
         3: "negative[0]",
@@ -3339,9 +3331,18 @@ class PowerPC(Architecture):
         29: "equal[7]",
         28: "overflow[7]",
     }
-    function_parameters = ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5"]
+    return_register = "$r0"
+    function_parameters = ["$r3", "$r4", "$r5", "$r6", "$r7", "$r8", "$r9", "$r10"]
     syscall_register = "$r0"
+    syscall_parameters = ["$r3", "$r4", "$r5", "$r6", "$r7", "$r8", "$r9"]
     syscall_instructions = ["sc"]
+
+    instruction_length = 4
+
+    nop_insn = b"\x00\x00\x00\x60" # nop
+    infloop_insn = b"\x00\x00\x00\x48" # b #0
+    trap_insn = b"\x08\x00\xe0\x7f" # trap
+    ret_insn = b"\x20\x00\x80\x4e" # blr
 
     def flag_register_to_human(self, val=None):
         # http://www.cebix.net/downloads/bebox/pem32b.pdf (% 2.1.3)
@@ -3351,63 +3352,75 @@ class PowerPC(Architecture):
         return flags_to_human(val, self.flags_table)
 
     def is_syscall(self, insn):
-        return insn.mnemonic == "sc"
+        return insn.mnemonic in self.syscall_instructions
 
     def is_call(self, insn):
-        condition = ["", "lt", "le", "eq", "ge", "gt", "nl", "ne", "ng", "so", "ns", "un", "nu"]
-        for c in condition:
-            if insn.mnemonic == "b" + c + "l":
+        conditions = [
+            "", "lt", "le", "eq", "ge", "gt", "nl",
+            "ne", "ng", "so", "ns", "un", "nu",
+        ]
+        for cc in conditions:
+            if insn.mnemonic == f"b{cc}l":
                 return True
-            if insn.mnemonic == "b" + c + "la":
+            if insn.mnemonic == f"b{cc}la":
                 return True
-            if insn.mnemonic == "b" + c + "ctrl":
+            if insn.mnemonic == f"b{cc}ctrl":
                 return True
-            if insn.mnemonic == "b" + c + "lrl":
+            if insn.mnemonic == f"b{cc}lrl":
                 return True
-        mode = ["dz", "dnzf", "dzt", "dzf", "dnzt", "dnz"]
-        for m in mode:
-            if insn.mnemonic == "b" + m + "l":
+        modes = ["dz", "dnzf", "dzt", "dzf", "dnzt", "dnz"]
+        for m in modes:
+            if insn.mnemonic == f"b{m}l":
                 return True
-            if insn.mnemonic == "b" + m + "la":
+            if insn.mnemonic == f"b{m}la":
                 return True
-            if insn.mnemonic == "b" + m + "lrl":
+            if insn.mnemonic == f"b{m}lrl":
                 return True
         return False
 
     def is_jump(self, insn):
-        condition = ["", "lt", "le", "eq", "ge", "gt", "nl", "ne", "ng", "so", "ns", "un", "nu"]
-        for c in condition:
-            if insn.mnemonic == "b" + c:
+        conditions = [
+            "", "lt", "le", "eq", "ge", "gt", "nl",
+            "ne", "ng", "so", "ns", "un", "nu",
+        ]
+        for cc in conditions:
+            if insn.mnemonic == f"b{cc}":
                 return True
-            if insn.mnemonic == "b" + c + "a":
+            if insn.mnemonic == f"b{cc}a":
                 return True
-            if insn.mnemonic == "b" + c + "ctr":
+            if insn.mnemonic == f"b{cc}ctr":
                 return True
-        mode = ["dz", "dnzf", "dzt", "dzf", "dnzt", "dnz"]
-        for m in mode:
-            if insn.mnemonic == "b" + m:
+        modes = ["dz", "dnzf", "dzt", "dzf", "dnzt", "dnz"]
+        for m in modes:
+            if insn.mnemonic == f"b{m}":
                 return True
-            if insn.mnemonic == "b" + m + "a":
+            if insn.mnemonic == f"b{m}a":
                 return True
         return False
 
     def is_ret(self, insn):
-        condition = ["", "lt", "le", "eq", "ge", "gt", "nl", "ne", "ng", "so", "ns", "un", "nu"]
-        for c in condition:
-            if insn.mnemonic == "b" + c + "lr":
+        conditions = [
+            "", "lt", "le", "eq", "ge", "gt", "nl",
+            "ne", "ng", "so", "ns", "un", "nu",
+        ]
+        for cc in conditions:
+            if insn.mnemonic == f"b{cc}lr":
                 return True
-            if insn.mnemonic == "b" + c + "lrl":
+            if insn.mnemonic == b"b{cc}lrl":
                 return True
-        mode = ["dz", "dnzf", "dzt", "dzf", "dnzt", "dnz"]
-        for m in mode:
-            if insn.mnemonic == "b" + m + "lr":
+        modes = ["dz", "dnzf", "dzt", "dzf", "dnzt", "dnz"]
+        for m in modes:
+            if insn.mnemonic == f"b{m}lr":
                 return True
-            if insn.mnemonic == "b" + m + "lrl":
+            if insn.mnemonic == f"b{m}lrl":
                 return True
         return False
 
     def is_conditional_branch(self, insn):
-        branch_mnemos = ["beq", "bne", "ble", "blt", "bgt", "bge", "bdz", "bdnz", "bdzt", "bdnzt", "bdzf", "bdnzf"]
+        branch_mnemos = [
+            "beq", "bne", "ble", "blt", "bgt", "bge",
+            "bdz", "bdnz", "bdzt", "bdnzt", "bdzf", "bdnzf",
+        ]
         return insn.mnemonic in branch_mnemos
 
     def is_branch_taken(self, insn):
@@ -3434,6 +3447,22 @@ class PowerPC(Architecture):
             taken, reason = greater, "G"
         # todo: bdn?z[tf]? are unsupported
         return taken, reason
+
+    def get_ith_parameter(self, i, in_func=True):
+        if i < len(self.function_parameters):
+            reg = self.function_parameters[i]
+            val = get_register(reg)
+            key = reg
+            return key, val
+        else:
+            i -= len(self.function_parameters)
+            i += 2 # ???
+            sp = current_arch.sp
+            sz = current_arch.ptrsize
+            loc = sp + (i * sz)
+            val = read_int_from_memory(loc)
+            key = "[sp + {:#x}]".format(i * sz)
+            return key, val
 
     def get_ra(self, insn, frame):
         ra = None
@@ -3466,7 +3495,7 @@ class PowerPC(Architecture):
         return ";".join(insns)
 
 
-class PowerPC64(PowerPC):
+class PPC64(PPC):
     arch = "PPC"
     mode = "PPC64"
 
@@ -3477,6 +3506,22 @@ class PowerPC64(PowerPC):
         "$r24", "$r25", "$r26", "$r27", "$r28", "$r29", "$r30", "$r31",
         "$pc", "$msr", "$cr", "$lr", "$ctr", "$xer", "$fpscr", "$vscr", "$vrsave",
     ]
+    syscall_paramter_list = ["$r3", "$r4", "$r5", "$r6", "$r7", "$r8"]
+
+    def get_ith_parameter(self, i, in_func=True):
+        if i < len(self.function_parameters):
+            reg = self.function_parameters[i]
+            val = get_register(reg)
+            key = reg
+            return key, val
+        else:
+            i += 4 # ???
+            sp = current_arch.sp
+            sz = current_arch.ptrsize
+            loc = sp + (i * sz)
+            val = read_int_from_memory(loc)
+            key = "[sp + {:#x}]".format(i * sz)
+            return key, val
 
     @classmethod
     def mprotect_asm(cls, addr, size, perm):
@@ -5454,8 +5499,8 @@ def set_arch(arch=None, default=None):
         Elf.X86_32: X86, "X86": X86, "I386": X86, "I386:INTEL": X86, "I8086": X86,
         Elf.X86_64: X86_64, "X64": X86_64, "AMD64": X86_64, "X86_64": X86_64, "X86-64": X86_64,
         "I386:X86-64": X86_64, "I386:X86-64:INTEL": X86_64,
-        Elf.POWERPC: PowerPC, "POWERPC": PowerPC, "PPC": PowerPC, "PPC32": PowerPC, "POWERPC:COMMON": PowerPC,
-        Elf.POWERPC64: PowerPC64, "POWERPC64": PowerPC64, "PPC64": PowerPC64, "POWERPC:COMMON64": PowerPC64,
+        Elf.POWERPC: PPC, "POWERPC": PPC, "PPC": PPC, "PPC32": PPC, "POWERPC:COMMON": PPC,
+        Elf.POWERPC64: PPC64, "POWERPC64": PPC64, "PPC64": PPC64, "POWERPC:COMMON64": PPC64,
         "RISCV": RISCV, "RISCV32": RISCV, "RISCV:RV32": RISCV, "RISCV64": RISCV64, "RISCV:RV64": RISCV64,
         Elf.SPARC: SPARC, "SPARC": SPARC, "SPARC32": SPARC, "SPARC:V8": SPARC,
         Elf.SPARC64: SPARC64, "SPARC64": SPARC64, "SPARC:V9": SPARC64,
@@ -23960,10 +24005,7 @@ def get_syscall_table(arch=None, mode=None):
             syscall_list.append([nr, name, sc_def[func]])
 
     elif arch == "PPC" and mode == "PPC32":
-        register_list = ["$r3", "$r4", "$r5", "$r6", "$r7", "$r8", "$r9"]
-        #syscall_register = "$r0"
-        #retval_register_list = ["$r3"]
-
+        register_list = PPC().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(ppc_syscall_tbl)
         arch_specific_dic = {
@@ -24020,10 +24062,7 @@ def get_syscall_table(arch=None, mode=None):
             syscall_list.append([nr, name, sc_def[func]])
 
     elif arch == "PPC" and mode == "PPC64":
-        register_list = ["$r3", "$r4", "$r5", "$r6", "$r7", "$r8"]
-        #syscall_register = "$r0"
-        #retval_register_list = ["$r3"]
-
+        register_list = PPC64().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(ppc_syscall_tbl)
         arch_specific_dic = {
