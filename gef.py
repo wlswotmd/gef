@@ -27428,7 +27428,6 @@ class EnvpCommand(GenericCommand):
     """Show initial envp from __environ@ld, or modified envp from last_environ@libc."""
     _cmdline_ = "envp"
     _syntax_ = "{:s} [-h] [-v] [libc]".format(_cmdline_)
-    _aliases_ = ["envs", "env"]
     _category_ = "Process Information"
 
     def get_address_from_symbol(self, symbol):
@@ -27448,7 +27447,8 @@ class EnvpCommand(GenericCommand):
                 gef_print("...")
                 break
             s = read_cstring_from_memory(addr, gef_getpagesize())
-            gef_print("[{:3d}]: {:#x}: {:#x}{:s}{:s}".format(i, pos, addr, RIGHT_ARROW, Color.yellowify(repr(s))))
+            s = Color.yellowify(repr(s))
+            gef_print("[{:3d}]: {:#x}: {:#x}{:s}{:s}".format(i, pos, addr, RIGHT_ARROW, s))
             i += 1
         return
 
@@ -27495,7 +27495,7 @@ class EnvpCommand(GenericCommand):
                 gef_print(titlify("ENVP from __environ"))
                 info("__environ @ {:#x}".format(paddr))
                 self.print_from_mem(addr, verbose)
-                info("to see the result of putenv(), use `env libc`")
+                info("to see the result of putenv(), use `envp libc`")
                 return
 
             if not is_remote_debug() or is_remote_but_same_host():
