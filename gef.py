@@ -4426,7 +4426,8 @@ def get_process_maps_linux(pid):
         addr_start, addr_end = [int(x, 16) for x in addr.split("-")]
         off = int(off, 16)
         perm = Permission.from_process_maps(perm)
-        sect = Section(page_start=addr_start, page_end=addr_end, offset=off, permission=perm, inode=inode, path=pathname)
+        sect = Section(page_start=addr_start, page_end=addr_end, offset=off,
+                       permission=perm, inode=inode, path=pathname)
         maps.append(sect)
     return maps
 
@@ -4435,7 +4436,8 @@ def get_process_maps_linux(pid):
 # Because it repeats read_memory many times to find the upper and lower bounds of the page.
 # functools.lru_cache() is not effective because it is cleared every time you stepi.
 # Fortunately, memory maps rarely change.
-# I decided to make it a cache mechanism independent of functools.lru_cache and introduce a mechanism to forcibly clear it with vmmap.
+# I decided to make it a cache mechanism independent of functools.lru_cache and
+# introduce a mechanism to forcibly clear it with vmmap.
 explored_regions = None
 
 
@@ -5349,8 +5351,8 @@ def format_address_spaces(addr, left=True):
 
 def align_address(address, memalign_size=None):
     """Align the provided address to the process's native length."""
-    # if qemu-xxx(32bit arch) runs on x86-64 machine, memalign_size does not match get_memory_alignment()
-    # so use the value forcibly if memalign_size is not None
+    # if qemu-xxx(32bit arch) runs on x86-64 machine, memalign_size does not match
+    # get_memory_alignment(), so use the value forcibly if memalign_size is not None
     if memalign_size is None and get_memory_alignment() == 4:
         return address & 0xFFFFFFFF
     return address & 0xFFFFFFFFFFFFFFFF
@@ -5532,7 +5534,8 @@ AT_CONSTANTS = {
 # Because it repeats read_memory many times to find the auxv value.
 # functools.lru_cache() is not effective because it is cleared every time you stepi.
 # Fortunately, memory maps rarely change.
-# I decided to make it a cache mechanism independent of functools.lru_cache and introduce a mechanism to forcibly clear it with vmmap.
+# I decided to make it a cache mechanism independent of functools.lru_cache and
+# introduce a mechanism to forcibly clear it with vmmap.
 explored_auxv = {}
 
 
