@@ -136,24 +136,10 @@ All of these features are experimental. Tested on Ubuntu 22.04.
 * `partition-alloc-dump-stable`: dumps partition-alloc free-list (heuristic).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/partition-alloc-dump.png)
     * This command is reserved for the implementation of latest stable version of chromium.
-        * Currently tested: v108.x / 1059644 / 924425b9ee31a4b12132787f8652cab99d574bd5
-        * https://commondatastorage.googleapis.com/chromium-browser-snapshots/index.html?prefix=Linux_x64/1059644/
-    * Supported on x64 only (maybe it works on x86/ARM/ARM64, but not tested).
-    * It will try heuristic search if binary has no symbol.
-* `partition-alloc-dump-beta`: dumps partition-alloc free-list (heuristic).
-    * This command is reserved for the implementation of latest beta version of chromium.
-        * Currently tested: v109.x / 1070729 / 7066d5dacf1514a54907e3963f49987f8d0fac1b
-        * https://commondatastorage.googleapis.com/chromium-browser-snapshots/index.html?prefix=Linux_x64/1070729/
-* `partition-alloc-dump-dev`: dumps partition-alloc free-list (heuristic).
-    * This command is reserved for the implementation of latest dev version of chromium.
         * Currently tested: v110.x / 1078401 / ac3cfdd3e961f4db164ab8de44c38c9ba34a8c1e
         * https://commondatastorage.googleapis.com/chromium-browser-snapshots/index.html?prefix=Linux_x64/1078401/
-* `partition-alloc-dump-old1`: dumps partition-alloc free-list (heuristic).
-    * For the implementation in 2021 Jul (tested on `Google CTF 2021 - fullchain`).
-    * Not maintained for a while.
-* `partition-alloc-dump-old2`: dumps partition-alloc free-list (heuristic).
-    * For the implementation in 2020 Jun (tested on `0CTF 2020 - chromium fullchain`).
-    * Not maintained for a while.
+    * Supported on x64 only (maybe it works on x86/ARM/ARM64, but not tested).
+    * It will try heuristic search if binary has no symbol.
 * `tcmalloc-dump`: dumps tcmalloc free-list (heuristic).
     * For tcmalloc, there are 3 major versions.
         1. tcmalloc that is a part of gperftools published in 2005: supported.
