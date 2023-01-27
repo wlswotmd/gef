@@ -1025,8 +1025,10 @@ def search_for_main_arena():
 
     if is_x86():
         addr = align_address_to_size(malloc_hook_addr + current_arch.ptrsize, 0x20)
-    elif is_arm64() or is_arm32():
+    elif is_arm64():
         addr = malloc_hook_addr - current_arch.ptrsize * 2 - MallocStateStruct("*0").struct_size
+    elif is_arm32():
+        addr = malloc_hook_addr - current_arch.ptrsize - MallocStateStruct("*0").struct_size
     else:
         raise OSError("Cannot find main_arena for {}".format(current_arch.arch))
 
@@ -1149,18 +1151,19 @@ class GlibcArena:
     Ref: https://github.com/sploitfun/lsploits/blob/master/glibc/malloc/malloc.c#L1671"""
     TCACHE_MAX_BINS = 0x40
 
-    def __init__(self, addr, name=None):
-        self.__name = name or __gef_default_main_arena__
+    def __init__(self, addr_string):
+        self.__name = addr_string
         try:
-            arena = gdb.parse_and_eval(addr)
+            arena = gdb.parse_and_eval(addr_string)
             malloc_state_t = cached_lookup_type("struct malloc_state")
             self.__arena = arena.cast(malloc_state_t)
             self.__addr = int(arena.address)
             self.__size = malloc_state_t.sizeof
         except Exception:
-            self.__arena = MallocStateStruct(addr)
+            self.__arena = MallocStateStruct(addr_string)
             self.__addr = self.__arena.addr
             self.__size = self.__arena.struct_size
+
         try:
             self.top = int(self.top)
             self.last_remainder = int(self.last_remainder)
@@ -1181,18 +1184,24 @@ class GlibcArena:
         return self.__addr
 
     def is_main_arena(self):
+        # fast path
+        if self.__name == __gef_default_main_arena__:
+            return True
+        # slow path
         try:
-            return self.__name == "main_arena" or self.__addr == parse_address("&main_arena")
+            if self.__addr == get_main_arena().addr:
+                return True
         except Exception:
             pass
-        try:
-            return self.__addr == search_for_main_arena()
-        except Exception:
-            return None
+        return False
 
     @property
     def addr(self):
         return self.__addr
+
+    @property
+    def name(self):
+        return self.__name
 
     # arena aligned_size
     @property
@@ -1237,14 +1246,19 @@ class GlibcArena:
 
     def get_next(self):
         addr_next = int(self.next)
-        arena_main = GlibcArena(self.__name)
-        if addr_next == arena_main.__addr:
+        if addr_next == 0:
+            return None
+        try:
+            if addr_next == get_main_arena().addr:
+                return None
+        except Exception:
             return None
         return GlibcArena("*{:#x} ".format(addr_next))
 
     def __str__(self):
-        fmt = "Arena (base={:#x}, top={:#x}, last_remainder={:#x}, next={:#x}, next_free={:#x}, system_mem={:#x})"
-        return fmt.format(self.__addr, self.top, self.last_remainder, self.n, self.nfree, self.sysmem)
+        fmt = "Arena (base={:s}, top={:#x}, last_remainder={:#x}, next={:#x}, next_free={:#x}, system_mem={:#x})"
+        addr = Color.boldify("{:#x}".format(self.__addr))
+        return fmt.format(addr, self.top, self.last_remainder, self.n, self.nfree, self.sysmem)
 
     def tcache_list(self):
         if get_libc_version() < (2, 26):
@@ -1429,15 +1443,23 @@ class GlibcChunk:
         - or checking that next chunk PREV_INUSE flag is true"""
         if self.has_m_bit():
             return True
-
         next_chunk = self.get_next_chunk()
         return True if next_chunk.has_p_bit() else False
 
     def str_chunk_size_flag(self):
         msg = []
-        msg.append("PREV_INUSE flag: {}".format(Color.greenify("On") if self.has_p_bit() else Color.redify("Off")))
-        msg.append("IS_MMAPPED flag: {}".format(Color.greenify("On") if self.has_m_bit() else Color.redify("Off")))
-        msg.append("NON_MAIN_ARENA flag: {}".format(Color.greenify("On") if self.has_n_bit() else Color.redify("Off")))
+        if self.has_p_bit():
+            msg.append("  PREV_INUSE flag: {}".format(Color.greenify("On")))
+        else:
+            msg.append("  PREV_INUSE flag: {}".format(Color.redify("Off")))
+        if self.has_m_bit():
+            msg.append("  IS_MMAPPED flag: {}".format(Color.greenify("On")))
+        else:
+            msg.append("  IS_MMAPPED flag: {}".format(Color.redify("Off")))
+        if self.has_n_bit():
+            msg.append("  NON_MAIN_ARENA flag: {}".format(Color.greenify("On")))
+        else:
+            msg.append("  NON_MAIN_ARENA flag: {}".format(Color.redify("Off")))
         return "\n".join(msg)
 
     def _str_sizes(self):
@@ -1445,17 +1467,17 @@ class GlibcChunk:
         failed = False
 
         try:
-            msg.append("Chunk size: {0:d} ({0:#x})".format(self.get_chunk_size()))
-            msg.append("Usable size: {0:d} ({0:#x})".format(self.get_usable_size()))
+            msg.append("  Chunk size: {0:d} ({0:#x})".format(self.get_chunk_size()))
+            msg.append("  Usable size: {0:d} ({0:#x})".format(self.get_usable_size()))
             failed = True
         except gdb.MemoryError:
-            msg.append("Chunk size: Cannot read at {:#x} (corrupted?)".format(self.size_addr))
+            msg.append("  Chunk size: Cannot read at {:#x} (corrupted?)".format(self.size_addr))
 
         try:
-            msg.append("Previous chunk size: {0:d} ({0:#x})".format(self.get_prev_chunk_size()))
+            msg.append("  Previous chunk size: {0:d} ({0:#x})".format(self.get_prev_chunk_size()))
             failed = True
         except gdb.MemoryError:
-            msg.append("Previous chunk size: Cannot read at {:#x} (corrupted?)".format(self.chunk_base_address))
+            msg.append("  Previous chunk size: Cannot read at {:#x} (corrupted?)".format(self.chunk_base_address))
 
         if failed:
             msg.append(self.str_chunk_size_flag())
@@ -1468,14 +1490,14 @@ class GlibcChunk:
 
         msg = []
         try:
-            msg.append("Forward pointer: {0:#x}".format(self.get_fwd_ptr(False)))
+            msg.append("  Forward pointer: {0:#x}".format(self.get_fwd_ptr(False)))
         except gdb.MemoryError:
-            msg.append("Forward pointer: {0:#x} (corrupted?)".format(fwd))
+            msg.append("  Forward pointer: {0:#x} (corrupted?)".format(fwd))
 
         try:
-            msg.append("Backward pointer: {0:#x}".format(self.get_bkw_ptr()))
+            msg.append("  Backward pointer: {0:#x}".format(self.get_bkw_ptr()))
         except gdb.MemoryError:
-            msg.append("Backward pointer: {0:#x} (corrupted?)".format(bkw))
+            msg.append("  Backward pointer: {0:#x} (corrupted?)".format(bkw))
 
         return "\n".join(msg)
 
@@ -1498,13 +1520,13 @@ class GlibcChunk:
     def __str__(self):
         chunk_c = Color.colorify("Chunk", "yellow bold underline")
         size_c = Color.colorify("{:#x}".format(self.get_chunk_size()), "bold pink")
-        msg = "{:s}(addr={:#x}, size={:s}, flags={:s})".format(chunk_c, int(self.address), size_c, self.flags_as_string())
-        return msg
-
-    def str_large(self):
-        chunk_c = Color.colorify("Chunk", "yellow bold underline")
-        fmt = "{:s}(addr={:#x}, size={:#x}, flags={:s}, fd_nextsize={:#x}, bk_nextsize={:#x})"
-        msg = fmt.format(chunk_c, int(self.address), self.get_chunk_size(), self.flags_as_string(), self.fd_nextsize, self.bk_nextsize)
+        addr = Color.boldify("{:#x}".format(int(self.address)))
+        if (is_32bit() and self.size < 0x3f0) or (is_64bit() and self.size < 0x400):
+            fmt = "{:s}(addr={:s}, size={:s}, flags={:s})"
+            msg = fmt.format(chunk_c, addr, size_c, self.flags_as_string())
+        else:
+            fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd_nextsize={:#x}, bk_nextsize={:#x})"
+            msg = fmt.format(chunk_c, addr, size_c, self.flags_as_string(), self.fd_nextsize, self.bk_nextsize)
         return msg
 
     def psprint(self):
@@ -1514,29 +1536,36 @@ class GlibcChunk:
             msg.append(self.str_as_alloced())
         else:
             msg.append(self.str_as_freed())
-        return "\n".join(msg) + "\n"
+        return "\n".join(msg)
 
 
-pattern_libc_ver = re.compile(rb"glibc (\d+)\.(\d+)")
-
-
-@functools.lru_cache()
 def get_libc_version():
-    sections = get_process_maps()
-    for section in sections:
-        match = re.search(r"libc6?[-_](\d+)\.(\d+)\.so", section.path)
-        if match:
-            return tuple(int(_) for _ in match.groups())
-        if "libc" in section.path:
-            try:
-                with open(section.path, "rb") as f:
-                    data = f.read()
-            except OSError:
-                continue
-            match = re.search(pattern_libc_ver, data)
-            if match:
-                return tuple(int(_) for _ in match.groups())
-    return 0, 0
+
+    @functools.lru_cache()
+    def get_libc_version_from_path():
+        sections = get_process_maps()
+        for section in sections:
+            r = re.search(r"libc6?[-_](\d+)\.(\d+)\.so", section.path)
+            if r:
+                return tuple(int(x) for x in r.groups())
+            if "libc" in section.path:
+                try:
+                    data = open(section.path, "rb").read()
+                except OSError:
+                    continue
+                r = re.search(rb"glibc (\d+)\.(\d+)", data)
+                if r:
+                    return tuple(int(x) for x in r.groups())
+        return None
+
+    libc_version = get_libc_version_from_path()
+    if libc_version is not None:
+        return libc_version
+
+    if get_gef_setting("libc.assume_version") is None:
+        # assume Ubuntu 22.04
+        set_gef_setting("libc.assume_version", (2, 35), tuple, "The value to force get_libc_version to return")
+    return get_gef_setting("libc.assume_version")
 
 
 def get_main_arena():
@@ -1794,8 +1823,9 @@ def set_gef_setting(name, value, _type=None, _desc=None):
     """Set global gef settings.
     Raise ValueError if `name` doesn't exist and `type` and `desc`
     are not provided."""
-    global __config__
+    reset_all_caches()
 
+    global __config__
     if name not in __config__:
         # create new setting
         if _type is None or _desc is None:
@@ -8161,7 +8191,7 @@ class DemanglePtrCommand(GenericCommand):
             return
 
         if "--source" in argv:
-            s = inspect.getsource(self.decode).rstrip()
+            s = inspect.getsource(DemanglePtrCommand.decode).rstrip()
             gef_print(s)
             return
 
@@ -9336,7 +9366,7 @@ class CapstoneDisassembleCommand(GenericCommand):
 class GlibcHeapCommand(GenericCommand):
     """Base command to get information about the Glibc heap structure."""
     _cmdline_ = "heap"
-    _syntax_ = "{:s} (chunk|chunks|bins|arenas|binsize-info)".format(_cmdline_)
+    _syntax_ = "{:s} (chunk|chunks|bins|arena|arenas)".format(_cmdline_)
     _category_ = "Heap"
 
     def __init__(self):
@@ -9352,10 +9382,36 @@ class GlibcHeapCommand(GenericCommand):
 
 
 @register_command
-class GlibcHeapArenaCommand(GenericCommand):
-    """Display information on a heap chunk."""
+class GlibcHeapArenasCommand(GenericCommand):
+    """List up heap arenas."""
     _cmdline_ = "heap arenas"
     _syntax_ = _cmdline_
+    _aliases_ = ["arenas"]
+    _category_ = "Heap"
+
+    @only_if_gdb_running
+    @only_if_not_qemu_system
+    def do_invoke(self, argv):
+        self.dont_repeat()
+
+        arena = get_main_arena()
+        if arena is None:
+            err("Could not find Glibc main arena")
+            return
+
+        while arena:
+            gef_print("{}".format(arena))
+            arena = arena.get_next()
+
+        info("additionally, you can see struct member by `heap arena [-a ARENA_ADDRESS]`")
+        return
+
+
+@register_command
+class GlibcHeapArenaCommand(GenericCommand):
+    """Display information on a heap arena."""
+    _cmdline_ = "heap arena"
+    _syntax_ = "{:s} [-h] [-a ARENA_ADDRESS]".format(_cmdline_)
     _aliases_ = ["arena"]
     _category_ = "Heap"
 
@@ -9364,166 +9420,39 @@ class GlibcHeapArenaCommand(GenericCommand):
     def do_invoke(self, argv):
         self.dont_repeat()
 
-        try:
-            arena = GlibcArena(__gef_default_main_arena__)
-        except gdb.error:
-            err("Could not find Glibc main arena")
+        if "-h" in argv:
+            self.usage()
             return
 
-        while True:
-            gef_print("{}".format(arena))
-            arena = arena.get_next()
-            if arena is None:
-                break
+        # parse arena
+        if "-a" in argv:
+            try:
+                idx = argv.index("-a")
+                arena_addr = argv[idx + 1]
+                argv = argv[:idx] + argv[idx + 2:]
+            except IndexError:
+                self.usage()
+                return
+            arena = GlibcArena("*{:s}".format(arena_addr))
+        else:
+            arena = get_main_arena()
 
-        info("additionally, you can see struct member by following")
-        gef_print("p ((struct malloc_state*) ADDRESS)[0]")
-        gef_print("p ((struct _heap_info*) ADDRESS)[0]")
-        return
+        if arena is None:
+            err("No valid arena")
+            return
 
+        if cached_lookup_type("struct malloc_state") is None:
+            err("No type info")
+            return
 
-@register_command
-class GlibcHeapBinSizeInfoCommand(GenericCommand):
-    """Display heap bin size info."""
-    _cmdline_ = "heap binsize-info"
-    _syntax_ = _cmdline_
-    _category_ = "Heap"
+        # doit
+        gef_print(titlify("[arena] ----- p ((struct malloc_state*) {:#x})[0]".format(arena.addr)))
+        gdb.execute("p ((struct malloc_state*) {:#x})[0]".format(arena.addr))
 
-    @only_if_gdb_running
-    @only_if_not_qemu_system
-    def do_invoke(self, argv):
-        self.dont_repeat()
-
-        gef_print(titlify("tcache size"))
-        if is_64bit():
-            for i in range(64):
-                gef_print("tcache[{:2d}]: {:#x}".format(i, i * 0x10 + 0x20))
-        elif is_32bit():
-            gef_print("MALLOC_ALIGNMENT is changed from libc 2.26,")
-            gef_print("for 32 bit arch, tcache 0x8 align is no longer used.")
-            for i in range(64):
-                gef_print("tcache[{:2d}]: {:#x}".format(i, i * 0x10 + 0x10))
-
-        gef_print(titlify("fastbin size"))
-        if is_64bit():
-            for i in range(7):
-                gef_print("fastbins[{:d}]: {:#x}".format(i, i * 0x10 + 0x20))
-        elif is_32bit():
-            gef_print("MALLOC_ALIGNMENT is changed from libc 2.26.")
-            gef_print("for 32 bit arch, fastbin exists every 8 bytes, but only used every 16 bytes.")
-            gef_print("fastbins[0]: 0x10")
-            gef_print("fastbins[1]: 0x18 # unused")
-            gef_print("fastbins[2]: 0x20")
-            gef_print("fastbins[3]: 0x28 # unused")
-            gef_print("fastbins[4]: 0x30")
-            gef_print("fastbins[5]: 0x38 # unused")
-            gef_print("fastbins[6]: 0x40")
-
-        gef_print(titlify("unsorted_bin / small_bin / large_bin size"))
-        gef_print("bins[{:3d}]: unsorted_bin".format(0))
-        if is_64bit():
-            for i in range(1, 63):
-                gef_print("bins[{:3d}]: small_bins[{:3d}]: {:#x}".format(i * 2, i, (i - 1) * 0x10 + 0x20))
-            gef_print("bins[126]: large_bins[ 63]: 0x400 - 0x430")
-            gef_print("bins[128]: large_bins[ 64]: 0x440 - 0x470")
-            gef_print("bins[130]: large_bins[ 65]: 0x480 - 0x4b0")
-            gef_print("bins[132]: large_bins[ 66]: 0x4c0 - 0x4f0")
-            gef_print("bins[134]: large_bins[ 67]: 0x500 - 0x530")
-            gef_print("bins[136]: large_bins[ 68]: 0x540 - 0x570")
-            gef_print("bins[138]: large_bins[ 69]: 0x580 - 0x5b0")
-            gef_print("bins[140]: large_bins[ 70]: 0x5c0 - 0x5f0")
-            gef_print("bins[142]: large_bins[ 71]: 0x600 - 0x630")
-            gef_print("bins[144]: large_bins[ 72]: 0x640 - 0x670")
-            gef_print("bins[146]: large_bins[ 73]: 0x680 - 0x6b0")
-            gef_print("bins[148]: large_bins[ 74]: 0x6c0 - 0x6f0")
-            gef_print("bins[150]: large_bins[ 75]: 0x700 - 0x730")
-            gef_print("bins[152]: large_bins[ 76]: 0x740 - 0x770")
-            gef_print("bins[154]: large_bins[ 77]: 0x780 - 0x7b0")
-            gef_print("bins[156]: large_bins[ 78]: 0x7c0 - 0x7f0")
-            gef_print("bins[158]: large_bins[ 79]: 0x800 - 0x830")
-            gef_print("bins[160]: large_bins[ 80]: 0x840 - 0x870")
-            gef_print("bins[162]: large_bins[ 81]: 0x880 - 0x8b0")
-            gef_print("bins[164]: large_bins[ 82]: 0x8c0 - 0x8f0")
-            gef_print("bins[166]: large_bins[ 83]: 0x900 - 0x930")
-            gef_print("bins[168]: large_bins[ 84]: 0x940 - 0x970")
-            gef_print("bins[170]: large_bins[ 85]: 0x980 - 0x9b0")
-            gef_print("bins[172]: large_bins[ 86]: 0x9c0 - 0x9f0")
-            gef_print("bins[174]: large_bins[ 87]: 0xa00 - 0xa30")
-            gef_print("bins[176]: large_bins[ 88]: 0xa40 - 0xa70")
-            gef_print("bins[178]: large_bins[ 89]: 0xa80 - 0xab0")
-            gef_print("bins[180]: large_bins[ 90]: 0xac0 - 0xaf0")
-            gef_print("bins[182]: large_bins[ 91]: 0xb00 - 0xb30")
-            gef_print("bins[184]: large_bins[ 92]: 0xb40 - 0xb70")
-            gef_print("bins[186]: large_bins[ 93]: 0xb80 - 0xbb0")
-            gef_print("bins[188]: large_bins[ 94]: 0xbc0 - 0xbf0")
-            gef_print("bins[190]: large_bins[ 95]: 0xc00 - 0xc30")
-            gef_print("bins[192]: large_bins[ 96]: 0xc40 - 0xdf0")
-        elif is_32bit():
-            for i in range(1, 63):
-                gef_print("bins[{:3d}]: small_bins[{:3d}]: {:#x}".format(i * 2, i, (i - 1) * 0x10 + 0x10))
-            gef_print("bins[126]: large_bins[ 63]: 0x3f0")
-            gef_print("bins[128]: large_bins[ 64]: 0x400 - 0x430")
-            gef_print("bins[130]: large_bins[ 65]: 0x440 - 0x470")
-            gef_print("bins[132]: large_bins[ 66]: 0x480 - 0x4b0")
-            gef_print("bins[134]: large_bins[ 67]: 0x4c0 - 0x4f0")
-            gef_print("bins[136]: large_bins[ 68]: 0x500 - 0x530")
-            gef_print("bins[138]: large_bins[ 69]: 0x540 - 0x570")
-            gef_print("bins[140]: large_bins[ 70]: 0x580 - 0x5b0")
-            gef_print("bins[142]: large_bins[ 71]: 0x5c0 - 0x5f0")
-            gef_print("bins[144]: large_bins[ 72]: 0x600 - 0x630")
-            gef_print("bins[146]: large_bins[ 73]: 0x640 - 0x670")
-            gef_print("bins[148]: large_bins[ 74]: 0x680 - 0x6b0")
-            gef_print("bins[150]: large_bins[ 75]: 0x6c0 - 0x6f0")
-            gef_print("bins[152]: large_bins[ 76]: 0x700 - 0x730")
-            gef_print("bins[154]: large_bins[ 77]: 0x740 - 0x770")
-            gef_print("bins[156]: large_bins[ 78]: 0x780 - 0x7b0")
-            gef_print("bins[158]: large_bins[ 79]: 0x7c0 - 0x7f0")
-            gef_print("bins[160]: large_bins[ 80]: 0x800 - 0x830")
-            gef_print("bins[162]: large_bins[ 81]: 0x840 - 0x870")
-            gef_print("bins[164]: large_bins[ 82]: 0x880 - 0x8b0")
-            gef_print("bins[166]: large_bins[ 83]: 0x8c0 - 0x8f0")
-            gef_print("bins[168]: large_bins[ 84]: 0x900 - 0x930")
-            gef_print("bins[170]: large_bins[ 85]: 0x940 - 0x970")
-            gef_print("bins[172]: large_bins[ 86]: 0x980 - 0x9b0")
-            gef_print("bins[174]: large_bins[ 87]: 0x9c0 - 0x9f0")
-            gef_print("bins[176]: large_bins[ 88]: 0xa00 - 0xa30")
-            gef_print("bins[178]: large_bins[ 89]: 0xa40 - 0xa70")
-            gef_print("bins[180]: large_bins[ 90]: 0xa80 - 0xab0")
-            gef_print("bins[182]: large_bins[ 91]: 0xac0 - 0xaf0")
-            gef_print("bins[184]: large_bins[ 92]: 0xb00 - 0xb30")
-            gef_print("bins[186]: large_bins[ 93]: 0xb40 - 0xb70")
-            gef_print("bins[190]: large_bins[ 95]: 0xb80 - 0xbf0")
-            gef_print("bins[192]: large_bins[ 96]: 0xc00 - 0xdf0")
-        gef_print("bins[194]: large_bins[ 97]: 0xe00 - 0xff0")
-        gef_print("bins[196]: large_bins[ 98]: 0x1000 - 0x11f0")
-        gef_print("bins[198]: large_bins[ 99]: 0x1200 - 0x13f0")
-        gef_print("bins[200]: large_bins[100]: 0x1400 - 0x15f0")
-        gef_print("bins[202]: large_bins[101]: 0x1600 - 0x17f0")
-        gef_print("bins[204]: large_bins[102]: 0x1800 - 0x19f0")
-        gef_print("bins[206]: large_bins[103]: 0x1a00 - 0x1bf0")
-        gef_print("bins[208]: large_bins[104]: 0x1c00 - 0x1df0")
-        gef_print("bins[210]: large_bins[105]: 0x1e00 - 0x1ff0")
-        gef_print("bins[212]: large_bins[106]: 0x2000 - 0x21f0")
-        gef_print("bins[214]: large_bins[107]: 0x2200 - 0x23f0")
-        gef_print("bins[216]: large_bins[108]: 0x2400 - 0x25f0")
-        gef_print("bins[218]: large_bins[109]: 0x2600 - 0x27f0")
-        gef_print("bins[220]: large_bins[110]: 0x2800 - 0x29f0")
-        gef_print("bins[222]: large_bins[111]: 0x2a00 - 0x2ff0")
-        gef_print("bins[224]: large_bins[112]: 0x3000 - 0x3ff0")
-        gef_print("bins[226]: large_bins[113]: 0x4000 - 0x4ff0")
-        gef_print("bins[228]: large_bins[114]: 0x5000 - 0x5ff0")
-        gef_print("bins[230]: large_bins[115]: 0x6000 - 0x6ff0")
-        gef_print("bins[232]: large_bins[116]: 0x7000 - 0x7ff0")
-        gef_print("bins[234]: large_bins[117]: 0x8000 - 0x8ff0")
-        gef_print("bins[236]: large_bins[118]: 0x9000 - 0x9ff0")
-        gef_print("bins[238]: large_bins[119]: 0xa000 - 0xfff0")
-        gef_print("bins[240]: large_bins[120]: 0x10000 - 0x17ff0")
-        gef_print("bins[242]: large_bins[121]: 0x18000 - 0x1fff0")
-        gef_print("bins[244]: large_bins[122]: 0x20000 - 0x27ff0")
-        gef_print("bins[246]: large_bins[123]: 0x28000 - 0x3fff0")
-        gef_print("bins[248]: large_bins[124]: 0x40000 - 0x7fff0")
-        gef_print("bins[250]: large_bins[125]:")
-        gef_print("bins[252]: large_bins[126]:")
+        main_arena = get_main_arena()
+        if main_arena and main_arena.addr != arena.addr:
+            gef_print(titlify("[mp_] ----- p ((struct _heap_info*) {:#x})[0]".format(arena.addr & ~0xfff)))
+            gdb.execute("p ((struct _heap_info*) {:#x})[0]".format(arena.addr & ~0xfff))
         return
 
 
@@ -9532,7 +9461,7 @@ class GlibcHeapChunkCommand(GenericCommand):
     """Display information on a heap chunk.
     See https://github.com/sploitfun/lsploits/blob/master/glibc/malloc/malloc.c#L1123."""
     _cmdline_ = "heap chunk"
-    _syntax_ = "{:s} LOCATION".format(_cmdline_)
+    _syntax_ = "{:s} [-h] LOCATION".format(_cmdline_)
     _category_ = "Heap"
 
     def __init__(self):
@@ -9544,15 +9473,27 @@ class GlibcHeapChunkCommand(GenericCommand):
     def do_invoke(self, argv):
         self.dont_repeat()
 
+        if "-h" in argv:
+            self.usage()
+            return
+
         if not argv:
             err("Missing chunk address")
             self.usage()
             return
 
         if get_main_arena() is None:
+            err("Heap is not initialized")
             return
 
-        addr = parse_address(argv[0])
+        try:
+            addr = parse_address(argv[0])
+        except Exception:
+            err("Wrong address")
+            self.usage()
+            return
+
+        # doit
         chunk = GlibcChunk(addr)
         gef_print(chunk.psprint())
         return
@@ -9562,7 +9503,7 @@ class GlibcHeapChunkCommand(GenericCommand):
 class GlibcHeapChunksCommand(GenericCommand):
     """Display information all heap chunks."""
     _cmdline_ = "heap chunks"
-    _syntax_ = "{:s} [LOCATION] [-a ARENA_ADDRESS]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [LOCATION] [-a ARENA_ADDRESS]".format(_cmdline_)
     _example_ = "\n"
     _example_ += "{:s}\n".format(_cmdline_)
     _example_ += "{:s} -a 0x7ffff0000020".format(_cmdline_)
@@ -9578,49 +9519,66 @@ class GlibcHeapChunksCommand(GenericCommand):
     def do_invoke(self, argv):
         self.dont_repeat()
 
+        if "-h" in argv:
+            self.usage()
+            return
+
         # parse arena
         if "-a" in argv:
-            idx = argv.index("-a")
-            self.arena = GlibcArena("*{:s}".format(argv[idx + 1]))
-            argv = argv[:idx] + argv[idx + 2:]
+            try:
+                idx = argv.index("-a")
+                arena_addr = argv[idx + 1]
+                argv = argv[:idx] + argv[idx + 2:]
+            except IndexError:
+                self.usage()
+                return
+            arena = GlibcArena("*{:s}".format(arena_addr))
         else:
-            self.arena = get_main_arena()
-        if self.arena is None:
+            arena = get_main_arena()
+
+        if arena is None:
             err("No valid arena")
             return
-        if self.arena.heap_base is None:
+
+        if arena.heap_base is None:
             err("Heap is not initialized")
             return
 
         # parse start address
         if len(argv) == 1:
-            self.dump_start = int(argv[0], 16)
-            argv = None
+            try:
+                dump_start = parse_address(argv[0])
+            except Exception:
+                err("Wrong address")
+                self.usage()
+                return
         elif len(argv) == 0:
-            self.dump_start = self.arena.heap_base
+            dump_start = arena.heap_base
             # specified pattern
-            if current_arch.ptrsize == 4 and self.arena.is_main_arena():
-                self.dump_start += 8
+            if current_arch.ptrsize == 4 and arena.is_main_arena():
+                dump_start += 8
         else:
             self.usage()
             return
 
-        self.print_heap_chunks()
+        # doit
+        self.print_heap_chunks(arena, dump_start)
         return
 
-    def print_heap_chunks(self):
+    def print_heap_chunks(self, arena, dump_start):
         nb = self.get_setting("peek_nb_byte")
-        current_chunk = GlibcChunk(self.dump_start, from_base=True)
-        tcache_list = self.arena.tcache_list()
-        fastbin_list = self.arena.fastbin_list()
-        unsortedbin_list = self.arena.unsortedbin_list()
-        smallbin_list = self.arena.smallbin_list()
-        largebin_list = self.arena.largebin_list()
+        current_chunk = GlibcChunk(dump_start, from_base=True)
+        tcache_list = arena.tcache_list()
+        fastbin_list = arena.fastbin_list()
+        unsortedbin_list = arena.unsortedbin_list()
+        smallbin_list = arena.smallbin_list()
+        largebin_list = arena.largebin_list()
+
         while True:
-            if current_chunk.chunk_base_address == self.arena.top:
+            if current_chunk.chunk_base_address == arena.top:
                 gef_print("{} {} {}".format(str(current_chunk), LEFT_ARROW, Color.greenify("top chunk")))
                 break
-            if current_chunk.chunk_base_address > self.arena.top:
+            if current_chunk.chunk_base_address > arena.top:
                 break
             if current_chunk.size == 0:
                 # EOF
@@ -9659,9 +9617,9 @@ class GlibcHeapChunksCommand(GenericCommand):
 class GlibcHeapBinsCommand(GenericCommand):
     """Display information on the bins on an arena (default: main_arena).
     See https://github.com/sploitfun/lsploits/blob/master/glibc/malloc/malloc.c#L1123."""
-    _bin_types_ = ["tcache", "fast", "unsorted", "small", "large"]
     _cmdline_ = "heap bins"
-    _syntax_ = "{:s} [{:s}] [-a ARENA_ADDRESS] [-v]".format(_cmdline_, "|".join(_bin_types_))
+    _bin_types_ = ["tcache", "fast", "unsorted", "small", "large"]
+    _syntax_ = "{:s} [-h] [{:s}] [-a ARENA_ADDRESS] [-v]".format(_cmdline_, "|".join(_bin_types_))
     _example_ = "\n"
     _example_ += "{:s}\n".format(_cmdline_)
     _example_ += "{:s} fast\n".format(_cmdline_)
@@ -9677,37 +9635,55 @@ class GlibcHeapBinsCommand(GenericCommand):
     def do_invoke(self, argv):
         self.dont_repeat()
 
-        # parse arena
-        arena_addr = None
-        if "-a" in argv:
-            idx = argv.index("-a")
-            arena_addr = int(argv[-1], 16)
-            argv = argv[:idx] + argv[idx + 2:]
+        if "-h" in argv:
+            self.usage()
+            return
 
         verbose = ""
         if "-v" in argv:
             verbose = "-v"
             argv.remove("-v")
 
-        if not argv:
-            for bin_t in GlibcHeapBinsCommand._bin_types_:
-                if arena_addr:
-                    gdb.execute("heap bins {:s} -a {:#x} {:s}".format(bin_t, arena_addr, verbose))
-                else:
-                    gdb.execute("heap bins {:s} {:s}".format(bin_t, verbose))
+        # parse arena
+        if "-a" in argv:
+            try:
+                idx = argv.index("-a")
+                arena_addr = argv[idx + 1]
+                argv = argv[:idx] + argv[idx + 2:]
+            except IndexError:
+                self.usage()
+                return
+            arena = GlibcArena("*{:s}".format(arena_addr))
+        else:
+            arena = get_main_arena()
+
+        if arena is None:
+            err("No valid arena")
             return
 
-        bin_t = argv[0]
-        if bin_t not in GlibcHeapBinsCommand._bin_types_:
-            self.usage()
+        if arena.heap_base is None:
+            err("Heap is not initialized")
             return
 
-        gdb.execute("heap bins {} {:s}".format(bin_t, verbose))
+        # parse bin type
+        if argv:
+            if argv[0] not in GlibcHeapBinsCommand._bin_types_:
+                self.usage()
+                return
+            bin_types = [argv[0]]
+        else:
+            bin_types = GlibcHeapBinsCommand._bin_types_
+
+        # doit
+        for bin_t in bin_types:
+            if arena.is_main_arena():
+                gdb.execute("heap bins {:s} {:s}".format(bin_t, verbose))
+            else:
+                gdb.execute("heap bins {:s} -a {:#x} {:s}".format(bin_t, arena.addr, verbose))
         return
 
     @staticmethod
-    def pprint_bin(arena_addr, index, _type="", verbose=False):
-        arena = GlibcArena(arena_addr)
+    def pprint_bin(arena, index, bin_name, verbose=False):
         fw, bk = arena.bin(index)
 
         if bk == 0x00 and fw == 0x00:
@@ -9719,15 +9695,19 @@ class GlibcHeapBinsCommand(GenericCommand):
         if fw == head and not verbose:
             return nb_chunk
 
-        ok("{:s}bins[idx={:d}]: fw={:#x}, bk={:#x}".format(_type, index, fw, bk))
+        bin_info = get_binsize_table()[bin_name][index]
+        if "size" in bin_info:
+            size_str = "{:#x}".format(bin_info["size"])
+        elif "size_min" in bin_info and "size_max" in bin_info:
+            size_str = "{:#x}-{:#x}".format(bin_info["size_min"], bin_info["size_max"])
+        else:
+            size_str = "any"
+        ok("{:s}[idx={:d}, size={:s}]: fw={:#x}, bk={:#x}".format(bin_name, index, size_str, fw, bk))
 
         m = []
         while fw != head:
             chunk = GlibcChunk(fw, from_base=True)
-            if _type == "large_":
-                m.append("{:s} {:s}".format(RIGHT_ARROW, chunk.str_large()))
-            else:
-                m.append("{:s} {:s}".format(RIGHT_ARROW, str(chunk)))
+            m.append("{:s} {:s}".format(RIGHT_ARROW, str(chunk)))
             fw = chunk.fwd
             nb_chunk += 1
 
@@ -9741,7 +9721,7 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
     """Display information on the Tcachebins on an arena (default: main_arena).
     See https://sourceware.org/git/?p=glibc.git;a=commitdiff;h=d5c3fafc4307c9b7a4c7d5cb381fcdbfad340bcc."""
     _cmdline_ = "heap bins tcache"
-    _syntax_ = "{:s} [-a ARENA_ADDRESS] [-v]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [-a ARENA_ADDRESS] [-v]".format(_cmdline_)
     _category_ = "Heap"
 
     def __init__(self):
@@ -9753,33 +9733,51 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
     def do_invoke(self, argv):
         self.dont_repeat()
 
+        if "-h" in argv:
+            self.usage()
+            return
+
         verbose = False
         if "-v" in argv:
             verbose = True
             argv.remove("-v")
-
-        if argv and "-a" != argv[0]:
-            self.usage()
-            return
 
         # Determine if we are using libc with tcache built in (2.26+)
         if get_libc_version() < (2, 26):
             info("No Tcache in this version of libc")
             return
 
-        arena = GlibcArena("*{:s}".format(argv[1])) if len(argv) == 2 else get_main_arena()
+        # parse arena
+        if "-a" in argv:
+            try:
+                idx = argv.index("-a")
+                arena_addr = argv[idx + 1]
+                argv = argv[:idx] + argv[idx + 2:]
+            except IndexError:
+                self.usage()
+                return
+            arena = GlibcArena("*{:s}".format(arena_addr))
+        else:
+            arena = get_main_arena()
 
         if arena is None:
-            err("Invalid Glibc arena")
+            err("No valid arena")
             return
 
-        # Get tcache_perthread_struct for this arena
         if arena.heap_base is None:
-            err("No heap section")
+            err("Heap is not initialized")
             return
+
+        self.print_tcache(arena, verbose)
+        return
+
+    def print_tcache(self, arena, verbose):
+        # Get tcache_perthread_struct for this arena
         tcache_perthread_struct = arena.heap_base + 0x10
-        arena_addr = "*{:s}".format(argv[1]) if len(argv) == 2 else __gef_default_main_arena__
-        gef_print(titlify("Tcachebins for arena '{:s}'".format(arena_addr)))
+
+        gef_print(titlify("Tcachebins for arena '{:s}'".format(arena.name)))
+
+        nb_chunk = 0
         for i in range(GlibcArena.TCACHE_MAX_BINS):
             if get_libc_version() < (2, 30):
                 count = ord(read_memory(tcache_perthread_struct + i, 1))
@@ -9800,6 +9798,7 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
                         break
 
                     chunks.add(chunk.address)
+                    nb_chunk += 1
 
                     next_chunk = chunk.get_fwd_ptr(True)
                     if next_chunk == 0:
@@ -9810,9 +9809,13 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
                     m.append("{:s} [Corrupted chunk at {:#x}]".format(LEFT_ARROW, chunk.address))
                     break
             if m or verbose:
-                gef_print("Tcachebins[idx={:d}, size={:#x}] count={:d}\n".format(i, current_arch.ptrsize * 4 + i * 0x10, count), end="")
+                size = current_arch.ptrsize * 4 + i * 0x10
+                size = get_binsize_table()["tcache"][i]["size"]
+                ok("Tcachebins[idx={:d}, size={:#x}] count={:d}".format(i, size, count))
                 if m:
                     gef_print("\n".join(m))
+
+        info("Found {:d} chunks in tcache.".format(nb_chunk))
         return
 
 
@@ -9821,7 +9824,7 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
     """Display information on the fastbinsY on an arena (default: main_arena).
     See: https://github.com/sploitfun/lsploits/blob/master/glibc/malloc/malloc.c#L1123."""
     _cmdline_ = "heap bins fast"
-    _syntax_ = "{:s} [-a ARENA_ADDRESS]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [-a ARENA_ADDRESS]".format(_cmdline_)
     _category_ = "Heap"
 
     def __init__(self):
@@ -9833,13 +9836,41 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
     def do_invoke(self, argv):
         self.dont_repeat()
 
-        if "-v" in argv:
-            argv.remove("-v") # no effect
-
-        if argv and "-a" != argv[0]:
+        if "-h" in argv:
             self.usage()
             return
 
+        verbose = False
+        if "-v" in argv:
+            verbose = True
+            argv.remove("-v")
+
+        # parse arena
+        if "-a" in argv:
+            try:
+                idx = argv.index("-a")
+                arena_addr = argv[idx + 1]
+                argv = argv[:idx] + argv[idx + 2:]
+            except IndexError:
+                self.usage()
+                return
+            arena = GlibcArena("*{:s}".format(arena_addr))
+        else:
+            arena = get_main_arena()
+
+        if arena is None:
+            err("No valid arena")
+            return
+
+        if arena.heap_base is None:
+            err("Heap is not initialized")
+            return
+
+        # doit
+        self.print_fastbin(arena, verbose)
+        return
+
+    def print_fastbin(self, arena, verbose):
         def fastbin_index(sz):
             return (sz >> 4) - 2 if SIZE_SZ == 8 else (sz >> 3) - 2
 
@@ -9847,33 +9878,29 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
         MAX_FAST_SIZE = 80 * SIZE_SZ // 4
         NFASTBINS = fastbin_index(MAX_FAST_SIZE) - 1
 
-        arena = GlibcArena("*{:s}".format(argv[1])) if len(argv) == 2 else get_main_arena()
+        gef_print(titlify("Fastbins for arena '{:s}'".format(arena.name)))
 
-        if arena is None:
-            err("Invalid Glibc arena")
-            return
-
-        arena_addr = "*{:s}".format(argv[1]) if len(argv) == 2 else __gef_default_main_arena__
-        gef_print(titlify("Fastbins for arena '{:s}'".format(arena_addr)))
+        nb_chunk = 0
         for i in range(NFASTBINS):
-            gef_print("Fastbins[idx={:d}, size={:#x}] ".format(i, (i + 2) * SIZE_SZ * 2), end="")
             chunk = arena.fastbin(i)
             chunks = set()
+            m = []
 
             while True:
                 if chunk is None:
                     break
 
                 try:
-                    gef_print("\n{:s} {:s} ".format(RIGHT_ARROW, str(chunk)), end="")
+                    m.append("{:s} {:s} ".format(RIGHT_ARROW, str(chunk)))
                     if chunk.address in chunks:
-                        gef_print("{:s} [loop detected]".format(RIGHT_ARROW), end="")
+                        m.append("{:s} [loop detected]".format(RIGHT_ARROW))
                         break
 
                     if fastbin_index(chunk.get_chunk_size()) != i:
-                        gef_print("[incorrect fastbin_index] ", end="")
+                        m.append("[incorrect fastbin_index]")
 
                     chunks.add(chunk.address)
+                    nb_chunk += 1
 
                     next_chunk = chunk.get_fwd_ptr(True)
                     if next_chunk == 0:
@@ -9881,9 +9908,14 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
 
                     chunk = GlibcChunk(next_chunk, from_base=True)
                 except gdb.MemoryError:
-                    gef_print("{:s} [Corrupted chunk at {:#x}]".format(LEFT_ARROW, chunk.address), end="")
+                    m.append("{:s} [Corrupted chunk at {:#x}]".format(LEFT_ARROW, chunk.address))
                     break
-            gef_print()
+            if m or verbose:
+                ok("Fastbins[idx={:d}, size={:#x}] ".format(i, (i + 2) * SIZE_SZ * 2))
+                if m:
+                    gef_print("\n".join(m))
+
+        info("Found {:d} chunks in fastbin.".format(nb_chunk))
         return
 
 
@@ -9892,7 +9924,7 @@ class GlibcHeapUnsortedBinsCommand(GenericCommand):
     """Display information on the Unsorted Bins of an arena (default: main_arena).
     See: https://github.com/sploitfun/lsploits/blob/master/glibc/malloc/malloc.c#L1689."""
     _cmdline_ = "heap bins unsorted"
-    _syntax_ = "{:s} [-a ARENA_ADDRESS]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [-a ARENA_ADDRESS]".format(_cmdline_)
     _category_ = "Heap"
 
     def __init__(self):
@@ -9904,24 +9936,40 @@ class GlibcHeapUnsortedBinsCommand(GenericCommand):
     def do_invoke(self, argv):
         self.dont_repeat()
 
+        if "-h" in argv:
+            self.usage()
+            return
+
         verbose = False
         if "-v" in argv:
             verbose = True
             argv.remove("-v")
 
-        if argv and "-a" != argv[0]:
-            self.usage()
+        # parse arena
+        if "-a" in argv:
+            try:
+                idx = argv.index("-a")
+                arena_addr = argv[idx + 1]
+                argv = argv[:idx] + argv[idx + 2:]
+            except IndexError:
+                self.usage()
+                return
+            arena = GlibcArena("*{:s}".format(arena_addr))
+        else:
+            arena = get_main_arena()
+
+        if arena is None:
+            err("No valid arena")
             return
 
-        if get_main_arena() is None:
-            err("Invalid Glibc arena")
+        if arena.heap_base is None:
+            err("Heap is not initialized")
             return
 
-        arena_addr = "*{:s}".format(argv[1]) if len(argv) == 2 else __gef_default_main_arena__
-        gef_print(titlify("Unsorted Bin for arena '{:s}'".format(arena_addr)))
-        nb_chunk = GlibcHeapBinsCommand.pprint_bin(arena_addr, 0, "unsorted_", verbose)
-        if nb_chunk >= 0:
-            info("Found {:d} chunks in unsorted bin.".format(nb_chunk))
+        # doit
+        gef_print(titlify("Unsorted Bin for arena '{:s}'".format(arena.name)))
+        nb_chunk = GlibcHeapBinsCommand.pprint_bin(arena, 0, "unsorted_bins", verbose)
+        info("Found {:d} chunks in unsorted bin.".format(nb_chunk))
         return
 
 
@@ -9929,7 +9977,7 @@ class GlibcHeapUnsortedBinsCommand(GenericCommand):
 class GlibcHeapSmallBinsCommand(GenericCommand):
     """Convenience command for viewing small bins."""
     _cmdline_ = "heap bins small"
-    _syntax_ = "{:s} [-a ARENA_ADDRESS] [-v]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [-a ARENA_ADDRESS] [-v]".format(_cmdline_)
     _category_ = "Heap"
 
     def __init__(self):
@@ -9941,24 +9989,41 @@ class GlibcHeapSmallBinsCommand(GenericCommand):
     def do_invoke(self, argv):
         self.dont_repeat()
 
+        if "-h" in argv:
+            self.usage()
+            return
+
         verbose = False
         if "-v" in argv:
             verbose = True
             argv.remove("-v")
 
-        if argv and "-a" != argv[0]:
-            self.usage()
+        # parse arena
+        if "-a" in argv:
+            try:
+                idx = argv.index("-a")
+                arena_addr = argv[idx + 1]
+                argv = argv[:idx] + argv[idx + 2:]
+            except IndexError:
+                self.usage()
+                return
+            arena = GlibcArena("*{:s}".format(arena_addr))
+        else:
+            arena = get_main_arena()
+
+        if arena is None:
+            err("No valid arena")
             return
 
-        if get_main_arena() is None:
-            err("Invalid Glibc arena")
+        if arena.heap_base is None:
+            err("Heap is not initialized")
             return
 
-        arena_addr = "*{:s}".format(argv[1]) if len(argv) == 2 else __gef_default_main_arena__
-        gef_print(titlify("Small Bins for arena '{:s}'".format(arena_addr)))
+        # doit
+        gef_print(titlify("Small Bins for arena '{:s}'".format(arena.name)))
         bins = {}
         for i in range(1, 63):
-            nb_chunk = GlibcHeapBinsCommand.pprint_bin(arena_addr, i, "small_", verbose)
+            nb_chunk = GlibcHeapBinsCommand.pprint_bin(arena, i, "small_bins", verbose)
             if nb_chunk < 0:
                 break
             if nb_chunk > 0:
@@ -9971,7 +10036,7 @@ class GlibcHeapSmallBinsCommand(GenericCommand):
 class GlibcHeapLargeBinsCommand(GenericCommand):
     """Convenience command for viewing large bins."""
     _cmdline_ = "heap bins large"
-    _syntax_ = "{:s} [-a ARENA_ADDRESS] [-v]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [-a ARENA_ADDRESS] [-v]".format(_cmdline_)
     _category_ = "Heap"
 
     def __init__(self):
@@ -9983,30 +10048,198 @@ class GlibcHeapLargeBinsCommand(GenericCommand):
     def do_invoke(self, argv):
         self.dont_repeat()
 
+        if "-h" in argv:
+            self.usage()
+            return
+
         verbose = False
         if "-v" in argv:
             verbose = True
             argv.remove("-v")
 
-        if argv and "-a" != argv[0]:
-            self.usage()
+        # parse arena
+        if "-a" in argv:
+            try:
+                idx = argv.index("-a")
+                arena_addr = argv[idx + 1]
+                argv = argv[:idx] + argv[idx + 2:]
+            except IndexError:
+                self.usage()
+                return
+            arena = GlibcArena("*{:s}".format(arena_addr))
+        else:
+            arena = get_main_arena()
+
+        if arena is None:
+            err("No valid arena")
             return
 
-        if get_main_arena() is None:
-            err("Invalid Glibc arena")
+        if arena.heap_base is None:
+            err("Heap is not initialized")
             return
 
-        arena_addr = "*{:s}".format(argv[1]) if len(argv) == 2 else __gef_default_main_arena__
-        gef_print(titlify("Large Bins for arena '{:s}'".format(arena_addr)))
+        # doit
+        gef_print(titlify("Large Bins for arena '{:s}'".format(arena.name)))
         bins = {}
         for i in range(63, 126):
-            nb_chunk = GlibcHeapBinsCommand.pprint_bin(arena_addr, i, "large_", verbose)
+            nb_chunk = GlibcHeapBinsCommand.pprint_bin(arena, i, "large_bins", verbose)
             if nb_chunk < 0:
                 break
             if nb_chunk > 0:
                 bins[i] = nb_chunk
         info("Found {:d} chunks in {:d} large non-empty bins.".format(sum(bins.values()), len(bins)))
         return
+
+
+binsize_table = None
+
+
+def get_binsize_table():
+    global binsize_table
+    if binsize_table:
+        return binsize_table
+
+    table = {
+        "tcache": {},
+        "fastbins": {},
+        "unsorted_bins": {},
+        "small_bins":{},
+        "large_bins":{},
+    }
+
+    # tcache
+    # "MALLOC_ALIGNMENT is changed from libc 2.26,
+    # for 32 bit arch, tcache 0x8 align is no longer used.
+    for i in range(64):
+        size = i * 0x10 + [0x10, 0x20][is_64bit()]
+        table["tcache"][i] = {"size": size}
+
+    # fastbins
+    if is_64bit():
+        for i in range(7):
+            size = i * 0x10 + 0x20
+            table["fastbins"][i] = {"size": size}
+    elif is_32bit():
+        # MALLOC_ALIGNMENT is changed from libc 2.26.
+        # for 32 bit arch, fastbin exists every 8 bytes, but only used every 16 bytes.
+        table["fastbins"][0] = {"size": 0x10}
+        table["fastbins"][2] = {"size": 0x20}
+        table["fastbins"][4] = {"size": 0x30}
+        table["fastbins"][6] = {"size": 0x40}
+
+    # unsorted bins
+    table["unsorted_bins"][0] = {"bins_idx": 0}
+
+    # smallbins
+    if is_64bit():
+        for i in range(1, 63):
+            size = (i - 1) * 0x10 + [0x10, 0x20][is_64bit()]
+            table["small_bins"][i] = {"size": size}
+
+    # largebins
+    if is_64bit():
+        table["large_bins"][63] = {"size_min": 0x400, "size_max": 0x440}
+        table["large_bins"][64] = {"size_min": 0x440, "size_max": 0x480}
+        table["large_bins"][65] = {"size_min": 0x480, "size_max": 0x4c0}
+        table["large_bins"][66] = {"size_min": 0x4c0, "size_max": 0x500}
+        table["large_bins"][67] = {"size_min": 0x500, "size_max": 0x540}
+        table["large_bins"][68] = {"size_min": 0x540, "size_max": 0x580}
+        table["large_bins"][69] = {"size_min": 0x580, "size_max": 0x5c0}
+        table["large_bins"][70] = {"size_min": 0x5c0, "size_max": 0x600}
+        table["large_bins"][71] = {"size_min": 0x600, "size_max": 0x640}
+        table["large_bins"][72] = {"size_min": 0x640, "size_max": 0x680}
+        table["large_bins"][73] = {"size_min": 0x680, "size_max": 0x6c0}
+        table["large_bins"][74] = {"size_min": 0x6c0, "size_max": 0x700}
+        table["large_bins"][75] = {"size_min": 0x700, "size_max": 0x740}
+        table["large_bins"][76] = {"size_min": 0x740, "size_max": 0x780}
+        table["large_bins"][77] = {"size_min": 0x780, "size_max": 0x7c0}
+        table["large_bins"][78] = {"size_min": 0x7c0, "size_max": 0x800}
+        table["large_bins"][79] = {"size_min": 0x800, "size_max": 0x840}
+        table["large_bins"][80] = {"size_min": 0x840, "size_max": 0x880}
+        table["large_bins"][81] = {"size_min": 0x880, "size_max": 0x8c0}
+        table["large_bins"][82] = {"size_min": 0x8c0, "size_max": 0x900}
+        table["large_bins"][83] = {"size_min": 0x900, "size_max": 0x940}
+        table["large_bins"][84] = {"size_min": 0x940, "size_max": 0x980}
+        table["large_bins"][85] = {"size_min": 0x980, "size_max": 0x9c0}
+        table["large_bins"][86] = {"size_min": 0x9c0, "size_max": 0xa00}
+        table["large_bins"][87] = {"size_min": 0xa00, "size_max": 0xa40}
+        table["large_bins"][88] = {"size_min": 0xa40, "size_max": 0xa80}
+        table["large_bins"][89] = {"size_min": 0xa80, "size_max": 0xac0}
+        table["large_bins"][90] = {"size_min": 0xac0, "size_max": 0xb00}
+        table["large_bins"][91] = {"size_min": 0xb00, "size_max": 0xb40}
+        table["large_bins"][92] = {"size_min": 0xb40, "size_max": 0xb80}
+        table["large_bins"][93] = {"size_min": 0xb80, "size_max": 0xbc0}
+        table["large_bins"][94] = {"size_min": 0xbc0, "size_max": 0xc00}
+        table["large_bins"][95] = {"size_min": 0xc00, "size_max": 0xc40}
+        table["large_bins"][96] = {"size_min": 0xc40, "size_max": 0xe00}
+    elif is_32bit():
+        table["large_bins"][63] = {"size_min": 0x3f0, "size_max": 0x400}
+        table["large_bins"][64] = {"size_min": 0x400, "size_max": 0x440}
+        table["large_bins"][65] = {"size_min": 0x440, "size_max": 0x480}
+        table["large_bins"][66] = {"size_min": 0x480, "size_max": 0x4c0}
+        table["large_bins"][67] = {"size_min": 0x4c0, "size_max": 0x500}
+        table["large_bins"][68] = {"size_min": 0x500, "size_max": 0x540}
+        table["large_bins"][69] = {"size_min": 0x540, "size_max": 0x580}
+        table["large_bins"][70] = {"size_min": 0x580, "size_max": 0x5c0}
+        table["large_bins"][71] = {"size_min": 0x5c0, "size_max": 0x600}
+        table["large_bins"][72] = {"size_min": 0x600, "size_max": 0x640}
+        table["large_bins"][73] = {"size_min": 0x640, "size_max": 0x680}
+        table["large_bins"][74] = {"size_min": 0x680, "size_max": 0x6c0}
+        table["large_bins"][75] = {"size_min": 0x6c0, "size_max": 0x700}
+        table["large_bins"][76] = {"size_min": 0x700, "size_max": 0x740}
+        table["large_bins"][77] = {"size_min": 0x740, "size_max": 0x780}
+        table["large_bins"][78] = {"size_min": 0x780, "size_max": 0x7c0}
+        table["large_bins"][79] = {"size_min": 0x7c0, "size_max": 0x800}
+        table["large_bins"][80] = {"size_min": 0x800, "size_max": 0x840}
+        table["large_bins"][81] = {"size_min": 0x840, "size_max": 0x880}
+        table["large_bins"][82] = {"size_min": 0x880, "size_max": 0x8c0}
+        table["large_bins"][83] = {"size_min": 0x8c0, "size_max": 0x900}
+        table["large_bins"][84] = {"size_min": 0x900, "size_max": 0x940}
+        table["large_bins"][85] = {"size_min": 0x940, "size_max": 0x980}
+        table["large_bins"][86] = {"size_min": 0x980, "size_max": 0x9c0}
+        table["large_bins"][87] = {"size_min": 0x9c0, "size_max": 0xa00}
+        table["large_bins"][88] = {"size_min": 0xa00, "size_max": 0xa40}
+        table["large_bins"][89] = {"size_min": 0xa40, "size_max": 0xa80}
+        table["large_bins"][90] = {"size_min": 0xa80, "size_max": 0xac0}
+        table["large_bins"][91] = {"size_min": 0xac0, "size_max": 0xb00}
+        table["large_bins"][92] = {"size_min": 0xb00, "size_max": 0xb40}
+        table["large_bins"][93] = {"size_min": 0xb40, "size_max": 0xb80}
+        table["large_bins"][95] = {"size_min": 0xb80, "size_max": 0xc00}
+        table["large_bins"][96] = {"size_min": 0xc00, "size_max": 0xe00}
+
+    table["large_bins"][97] = {"size_min": 0xe00, "size_max": 0x1000}
+    table["large_bins"][98] = {"size_min": 0x1000, "size_max": 0x1200}
+    table["large_bins"][99] = {"size_min": 0x1200, "size_max": 0x1400}
+    table["large_bins"][100] = {"size_min": 0x1400, "size_max": 0x1600}
+    table["large_bins"][101] = {"size_min": 0x1600, "size_max": 0x1800}
+    table["large_bins"][102] = {"size_min": 0x1800, "size_max": 0x1a00}
+    table["large_bins"][103] = {"size_min": 0x1a00, "size_max": 0x1c00}
+    table["large_bins"][104] = {"size_min": 0x1c00, "size_max": 0x1e00}
+    table["large_bins"][105] = {"size_min": 0x1e00, "size_max": 0x2000}
+    table["large_bins"][106] = {"size_min": 0x2000, "size_max": 0x2200}
+    table["large_bins"][107] = {"size_min": 0x2200, "size_max": 0x2400}
+    table["large_bins"][108] = {"size_min": 0x2400, "size_max": 0x2600}
+    table["large_bins"][109] = {"size_min": 0x2600, "size_max": 0x2800}
+    table["large_bins"][110] = {"size_min": 0x2800, "size_max": 0x2a00}
+    table["large_bins"][111] = {"size_min": 0x2a00, "size_max": 0x3000}
+    table["large_bins"][112] = {"size_min": 0x3000, "size_max": 0x4000}
+    table["large_bins"][113] = {"size_min": 0x4000, "size_max": 0x5000}
+    table["large_bins"][114] = {"size_min": 0x5000, "size_max": 0x6000}
+    table["large_bins"][115] = {"size_min": 0x6000, "size_max": 0x7000}
+    table["large_bins"][116] = {"size_min": 0x7000, "size_max": 0x8000}
+    table["large_bins"][117] = {"size_min": 0x8000, "size_max": 0x9000}
+    table["large_bins"][118] = {"size_min": 0x9000, "size_max": 0xa000}
+    table["large_bins"][119] = {"size_min": 0xa000, "size_max": 0x10000}
+    table["large_bins"][120] = {"size_min": 0x10000, "size_max": 0x18000}
+    table["large_bins"][121] = {"size_min": 0x18000, "size_max": 0x20000}
+    table["large_bins"][122] = {"size_min": 0x20000, "size_max": 0x28000}
+    table["large_bins"][123] = {"size_min": 0x28000, "size_max": 0x40000}
+    table["large_bins"][124] = {"size_min": 0x40000, "size_max": 0x80000}
+    table["large_bins"][125] = {"size_min": 0x80000, "size_max": 0x0}
+    table["large_bins"][126] = {"size_min": 0x0, "size_max": 0x0} # maybe unused
+
+    binsize_table = table
+    return table
 
 
 @register_command
@@ -25918,7 +26151,7 @@ class ExtractHeapAddrCommand(GenericCommand):
             return
 
         if "--source" in argv:
-            s = inspect.getsource(self.reveal).rstrip()
+            s = inspect.getsource(ExtractHeapAddrCommand.reveal).rstrip()
             gef_print(s)
             return
 
@@ -29633,16 +29866,18 @@ class VisualHeapCommand(GenericCommand):
             try:
                 idx = argv.index("-a")
                 arena_addr = argv[idx + 1]
-                self.arena = GlibcArena("*{:s}".format(arena_addr))
                 argv = argv[:idx] + argv[idx + 2:]
-            except Exception:
+            except IndexError:
                 self.usage()
                 return
+            self.arena = GlibcArena("*{:s}".format(arena_addr))
         else:
             self.arena = get_main_arena()
+
         if self.arena is None:
             err("No valid arena")
             return
+
         if self.arena.heap_base is None:
             err("No heap section")
             return
