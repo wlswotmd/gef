@@ -6802,9 +6802,9 @@ class ProcessStatusCommand(GenericCommand):
         self.dont_repeat()
         gef_print(titlify("Process information"))
         self.show_info_proc()
-        self.show_info_proc2()
-        self.show_ancestor()
-        self.show_descendants()
+        self.show_info_proc_extra()
+        self.show_parent()
+        self.show_childs()
         self.show_info_thread()
         self.show_info_proc_ns()
         self.show_fds()
@@ -6942,74 +6942,88 @@ class ProcessStatusCommand(GenericCommand):
     def show_info_proc(self):
         info("Process Information")
         pid = get_pid()
+        executable = self.get_process_path_of(pid)
         cmdline = self.get_cmdline_of(pid)
+        cwd = self.get_process_cwd(pid)
+        root = self.get_process_root(pid)
         gef_print("  {:32s} {} {}".format("PID", RIGHT_ARROW, pid))
-        gef_print("  {:32s} {} {}".format("Executable", RIGHT_ARROW, repr(self.get_process_path_of(pid))))
-        gef_print("  {:32s} {} {}".format("Command Line", RIGHT_ARROW, repr(cmdline)))
-        gef_print("  {:32s} {} {}".format("Current Working Directory", RIGHT_ARROW, repr(self.get_process_cwd(pid))))
-        gef_print("  {:32s} {} {}".format("Root Directory", RIGHT_ARROW, repr(self.get_process_root(pid))))
+        gef_print("  {:32s} {} {}".format("  Executable", RIGHT_ARROW, repr(executable)))
+        gef_print("  {:32s} {} {}".format("  Command Line", RIGHT_ARROW, repr(cmdline)))
+        gef_print("  {:32s} {} {}".format("  Current Working Directory", RIGHT_ARROW, repr(cwd)))
+        gef_print("  {:32s} {} {}".format("  Root Directory", RIGHT_ARROW, repr(root)))
+        uids = re.sub(r"\s+", " : ", self.get_state_of(pid)['Uid'])
+        gids = re.sub(r"\s+", " : ", self.get_state_of(pid)['Gid'])
+        gef_print("  {:32s} {} {}".format("  RUID : EUID : SavedUID : FSUID", RIGHT_ARROW, uids))
+        gef_print("  {:32s} {} {}".format("  RGID : EGID : SavedGID : FSGID", RIGHT_ARROW, gids))
+        seccomp_n = self.get_state_of(pid)['Seccomp']
+        seccomp_s = {'0': 'Disabled', '1': 'Strict', '2': 'Filter'}[seccomp_n]
+        gef_print("  {:32s} {} {} ({})".format("  Seccomp Mode", RIGHT_ARROW, seccomp_n, seccomp_s))
         return
 
-    def show_info_proc2(self):
+    def show_info_proc_extra(self):
         info("Process Information Additional")
         pid = get_pid()
         pgid = self.get_stat_of(pid)[4]
+        pgid_exec = self.get_process_path_of(pgid)
+        pgid_cmdline = self.get_cmdline_of(pgid)
         gef_print("  {:32s} {} {}".format("Process Group ID", RIGHT_ARROW, pgid))
-        gef_print("  {:32s} {} {}".format("Process Group ID Executable", RIGHT_ARROW, repr(self.get_process_path_of(pgid))))
+        gef_print("  {:32s} {} {}".format("  Executable", RIGHT_ARROW, repr(pgid_exec)))
+        gef_print("  {:32s} {} {}".format("  Command Line", RIGHT_ARROW, repr(pgid_cmdline)))
         sid = self.get_stat_of(pid)[5]
+        sid_exec = self.get_process_path_of(sid)
+        sid_cmdline = self.get_cmdline_of(sid)
         gef_print("  {:32s} {} {}".format("Session ID", RIGHT_ARROW, sid))
-        gef_print("  {:32s} {} {}".format("Session ID Executable", RIGHT_ARROW, repr(self.get_process_path_of(sid))))
+        gef_print("  {:32s} {} {}".format("  Executable", RIGHT_ARROW, repr(sid_exec)))
+        gef_print("  {:32s} {} {}".format("  Command Line", RIGHT_ARROW, repr(sid_cmdline)))
+        tpgid = self.get_stat_of(pid)[7]
+        tpgid_exec = self.get_process_path_of(tpgid)
+        tpgid_cmdline = self.get_cmdline_of(tpgid)
+        gef_print("  {:32s} {} {}".format("TTY Process Group ID", RIGHT_ARROW, tpgid))
+        gef_print("  {:32s} {} {}".format("  Executable", RIGHT_ARROW, repr(tpgid_exec)))
+        gef_print("  {:32s} {} {}".format("  Command Line", RIGHT_ARROW, repr(tpgid_cmdline)))
         ttynr = self.get_stat_of(pid)[6]
         major, minor = (ttynr >> 8) & 0xff, ((ttynr >> 20) << 8) | (ttynr & 0xff)
         ttystr = self.get_tty_str(major, minor)
-        gef_print("  {:32s} {} {} (Major:{} Minor:{} Dev:{})".format("TTY Device Number", RIGHT_ARROW, ttynr, major, minor, repr(ttystr)))
-        tpgid = self.get_stat_of(pid)[7]
-        gef_print("  {:32s} {} {}".format("TTY Process Group ID", RIGHT_ARROW, tpgid))
-        gef_print("  {:32s} {} {}".format("TTY Process Group ID Executable", RIGHT_ARROW, repr(self.get_process_path_of(tpgid))))
-        gef_print("  {:32s} {} {}".format("RUID : EUID : SavedUID : FSUID", RIGHT_ARROW, re.sub(r"\s+", " : ", self.get_state_of(pid)['Uid'])))
-        gef_print("  {:32s} {} {}".format("RGID : EGID : SavedGID : FSGID", RIGHT_ARROW, re.sub(r"\s+", " : ", self.get_state_of(pid)['Gid'])))
-        seccomp_n = self.get_state_of(pid)['Seccomp']
-        seccomp_s = {'0': 'Disabled', '1': 'Strict', '2': 'Filter'}
-        gef_print("  {:32s} {} {} ({})".format("Seccomp Mode", RIGHT_ARROW, seccomp_n, seccomp_s[seccomp_n]))
+        gef_print("  {:32s} {} {} ({})".format("  TTY Device Number", RIGHT_ARROW, ttynr, repr(ttystr)))
         return
 
-    def show_ancestor(self):
+    def show_parent(self):
         info("Parent Process Information")
         ppid = int(self.get_state_of(get_pid())["PPid"])
-        state = self.get_state_of(ppid)
-        cmdline = self.get_cmdline_of(ppid)
-        gef_print("  {:32s} {} {}".format("Parent PID", RIGHT_ARROW, state["Pid"]))
-        gef_print("  {:32s} {} {}".format("Command Line", RIGHT_ARROW, repr(cmdline)))
+        ppid_exec = self.get_process_path_of(ppid)
+        ppid_cmdline = self.get_cmdline_of(ppid)
+        gef_print("  {:32s} {} {}".format("Parent PID", RIGHT_ARROW, ppid))
+        gef_print("  {:32s} {} {}".format("  Executable", RIGHT_ARROW, repr(ppid_exec)))
+        gef_print("  {:32s} {} {}".format("  Command Line", RIGHT_ARROW, repr(ppid_cmdline)))
         return
 
-    def show_descendants(self):
+    def show_childs(self):
         info("Children Process Information")
         children = self.get_children_pids(get_pid())
         if not children:
             gef_print("  No child process")
             return
 
-        for child_pid in children:
-            state = self.get_state_of(child_pid)
-            pid = state["Pid"]
-            pid_path = self.get_process_path_of(pid)
-            pid_cmdline = self.get_cmdline_of(pid)
-            gef_print("  {:32s} {} {} (Name: '{}', CmdLine: '{}')".format("PID", RIGHT_ARROW, pid, pid_path, pid_cmdline))
+        for i, cpid in enumerate(children, start=1):
+            cpid_exec = self.get_process_path_of(cpid)
+            cpid_cmdline = self.get_cmdline_of(cpid)
+            gef_print("  {:32s} {} {}".format("Child {} PID".format(i), RIGHT_ARROW, cpid))
+            gef_print("  {:32s} {} {}".format("  Executable", RIGHT_ARROW, repr(cpid_exec)))
+            gef_print("  {:32s} {} {}".format("  Command Line", RIGHT_ARROW, repr(cpid_cmdline)))
         return
 
     def show_info_thread(self):
         info("Thread Information")
         pid = get_pid()
-        gef_print("  {:32s} {} {}".format("Num of Threads", RIGHT_ARROW, self.get_state_of(pid)['Threads']))
-        gef_print("  {:32s} {} {}".format("Thread Group ID", RIGHT_ARROW, self.get_state_of(pid)['Tgid']))
+        nthreads = self.get_state_of(pid)['Threads']
+        tgid = self.get_state_of(pid)['Tgid']
+        gef_print("  {:32s} {} {}".format("Num of Threads", RIGHT_ARROW, nthreads))
+        gef_print("  {:32s} {} {}".format("Thread Group ID", RIGHT_ARROW, tgid))
         tids = self.get_thread_ids(pid)
         split = 8
-        if len(tids) <= split:
-            gef_print("  {:32s} {} {}".format("Thread ID List", RIGHT_ARROW, tids))
-        else:
-            gef_print("  {:32s} {} {}".format("Thread ID List", RIGHT_ARROW, tids[:split]))
-            for i in range(split, len(tids), split):
-                gef_print("  {:32s} {} {}".format("", RIGHT_ARROW, tids[i:i + split]))
+        gef_print("  {:32s} {} {}".format("Thread ID List", RIGHT_ARROW, tids[:split]))
+        for i in range(split, len(tids), split):
+            gef_print("  {:32s} {} {}".format("", RIGHT_ARROW, tids[i:i + split]))
         return
 
     def show_info_proc_ns(self):
