@@ -25168,6 +25168,7 @@ class VersionCommand(GenericCommand):
     def python_version(self):
         return sys.version.replace('\n', ' ')
 
+    @load_capstone
     def capstone_version(self):
         try:
             capstone = sys.modules['capstone']
@@ -25175,6 +25176,7 @@ class VersionCommand(GenericCommand):
         except KeyError:
             return 'not found'
 
+    @load_keystone
     def keystone_version(self):
         try:
             keystone = sys.modules['keystone']
@@ -25182,6 +25184,7 @@ class VersionCommand(GenericCommand):
         except KeyError:
             return 'not found'
 
+    @load_unicorn
     def unicorn_version(self):
         try:
             unicorn = sys.modules['unicorn']
@@ -25228,6 +25231,20 @@ class VersionCommand(GenericCommand):
         except IOError:
             return 'not found'
 
+    def rp_version(self):
+        try:
+            command = which("rp-lin-x64")
+        except IOError:
+            try:
+                command = which("rp-lin-x86")
+            except IOError:
+                return 'not found'
+        try:
+            res = gef_execute_external([command, "--version"], as_list=True)
+            return res[0]
+        except IOError:
+            return 'not found'
+
     def qemu_version(self):
         return gdb.execute('monitor info version', to_string=True).strip()
 
@@ -25239,9 +25256,20 @@ class VersionCommand(GenericCommand):
         except IOError:
             return 'not found'
 
+    def os_version(self):
+        try:
+            command = which("lsb_release")
+            res = gef_execute_external([command, "-d"], as_list=True)
+            for line in res:
+                if line.startswith("Description:"):
+                    return line.split(":")[1].strip("\\t")
+        except IOError:
+            return 'not found'
+
     def do_invoke(self, argv):
         self.dont_repeat()
 
+        gef_print("OS:            \t{:s}".format(self.os_version()))
         gef_print("Kernel:        \t{:s}".format(self.kernel_version()))
         gef_print("GEF:           \t{:s}".format(self.gef_version()))
         gef_print("Gdb:           \t{:s}".format(self.gdb_version()))
@@ -25254,6 +25282,7 @@ class VersionCommand(GenericCommand):
         gef_print("objdump:       \t{:s}".format(self.objdump_version()))
         gef_print("seccomp-tools: \t{:s}".format(self.seccomp_tools_version()))
         gef_print("one_gadget:    \t{:s}".format(self.one_gadget_version()))
+        gef_print("rp:            \t{:s}".format(self.rp_version()))
 
         if is_qemu_system():
             gef_print("qemu:          \t{:s}".format(self.qemu_version()))
