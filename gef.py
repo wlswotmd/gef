@@ -3608,11 +3608,23 @@ class MIPS(Architecture):
         "$sr", "$lo", "$hi", "$bad", "$cause", "$fsr", "$fir", "$pc",
     ]
     alias_registers = {
-        "$zero": "$r0", "$at": "$r1", "$v0": "$r2", "$v1": "$r3", "$a0": "$r4", "$a1": "$r5", "$a2": "$r6", "$a3": "$r7",
-        "$t0": "$r8", "$t1": "$r9", "$t2": "$r10", "$t3": "$r11", "$t4": "$r12", "$t5": "$r13", "$t6": "$r14", "$t7": "$r15",
-        "$s0": "$r16", "$s1": "$r17", "$s2": "$r18", "$s3": "$r19", "$s4": "$r20", "$s5": "$r21", "$s6": "$r22", "$s7": "$r23",
-        "$t8": "$r24", "$t9": "$r25", "$k0": "$r26", "$k1": "$r27", "$gp": "$r28", "$sp": "$r29", "$fp": "$s8/$r30", "$ra": "$r31",
+        "$zero": "$r0", "$at": "$r1", "$v0": "$r2", "$v1": "$r3",
+        "$a0": "$r4", "$a1": "$r5", "$a2": "$r6", "$a3": "$r7",
+        "$t0": "$r8", "$t1": "$r9", "$t2": "$r10", "$t3": "$r11",
+        "$t4": "$r12", "$t5": "$r13", "$t6": "$r14", "$t7": "$r15",
+        "$s0": "$r16", "$s1": "$r17", "$s2": "$r18", "$s3": "$r19",
+        "$s4": "$r20", "$s5": "$r21", "$s6": "$r22", "$s7": "$r23",
+        "$t8": "$r24", "$t9": "$r25", "$k0": "$r26", "$k1": "$r27",
+        "$gp": "$r28", "$sp": "$r29", "$fp": "$s8/$r30", "$ra": "$r31",
     }
+    flag_register = None # MIPS has no flags register
+    return_register = "$v0"
+    function_parameters = ["$a0", "$a1", "$a2", "$a3"]
+    syscall_register = "$v0"
+    syscall_parameters_o32 = ["$a0", "$a1", "$a2", "$a3", "$sp+0x10", "$sp+0x14", "$sp+0x18", "$sp+0x1c"]
+    syscall_parameters_n32 = ["$a0", "$a1", "$a2", "$a3", "$a4", "$a5"]
+    syscall_instructions = ["syscall"]
+
     instruction_length = 4
 
     nop_insn = b"\x00\x00\x00\x00" # nop
@@ -3620,21 +3632,15 @@ class MIPS(Architecture):
     trap_insn = b"\x0d\x00\x00\x00" + nop_insn # break (+ delay slot)
     ret_insn = b"\x08\x00\xe0\x03" + nop_insn # jr $ra (+ delay slot)
 
-    return_register = "$v0"
-    flag_register = "$fcsr"
-    flags_table = {}
-    function_parameters = ["$a0", "$a1", "$a2", "$a3"]
-    syscall_register = "$v0"
-    syscall_instructions = ["syscall"]
-
-    def flag_register_to_human(self, val=None):
-        return Color.colorify("No flag register", "yellow underline")
-
     def is_syscall(self, insn):
-        return insn.mnemonic == "syscall"
+        return insn.mnemonic in self.syscall_instructions
 
     def is_call(self, insn):
-        return insn.mnemonic in ["bal", "balc", "jal", "jalr", "jalrc", "jalrc.hb", "bgezal", "bgezall", "bltzal", "bltzall"]
+        branch_mnemos = [
+            "bal", "balc", "jal", "jalr", "jalrc", "jalrc.hb",
+            "bgezal", "bgezall", "bltzal", "bltzall",
+        ]
+        return insn.mnemonic in branch_mnemos
 
     def is_jump(self, insn):
         if self.is_ret(insn):
@@ -3718,6 +3724,20 @@ class MIPS(Architecture):
             taken, reason = get_register(ops[0]) < int(ops[1], 0), "{0[0]} < {0[1]}".format(ops)
         return taken, reason
 
+    def get_ith_parameter(self, i, in_func=True):
+        if i < len(self.function_parameters):
+            reg = self.function_parameters[i]
+            val = get_register(reg)
+            key = reg
+            return key, val
+        else:
+            sp = current_arch.sp
+            sz = current_arch.ptrsize
+            loc = sp + (i * sz)
+            val = read_int_from_memory(loc)
+            key = "[sp + {:#x}]".format(i * sz)
+            return key, val
+
     def get_ra(self, insn, frame):
         ra = None
         try:
@@ -3754,11 +3774,32 @@ class MIPS64(MIPS):
         "$sr", "$lo", "$hi", "$bad", "$cause", "$fsr", "$fir", "$pc",
     ]
     alias_registers = {
-        "$zero": "$r0", "$at": "$r1", "$v0": "$r2", "$v1": "$r3", "$a0": "$r4", "$a1": "$r5", "$a2": "$r6", "$a3": "$r7",
-        "$a4": "$r8", "$a5": "$r9", "$a6": "$r10", "$a7": "$r11", "$t0": "$r12", "$t1": "$r13", "$t2": "$r14", "$t3": "$r15",
-        "$s0": "$r16", "$s1": "$r17", "$s2": "$r18", "$s3": "$r19", "$s4": "$r20", "$s5": "$r21", "$s6": "$r22", "$s7": "$r23",
-        "$t8": "$r24", "$t9": "$r25", "$k0": "$r26", "$k1": "$r27", "$gp": "$r28", "$sp": "$r29", "$fp": "$s8/$r30", "$ra": "$r31",
+        "$zero": "$r0", "$at": "$r1", "$v0": "$r2", "$v1": "$r3",
+        "$a0": "$r4", "$a1": "$r5", "$a2": "$r6", "$a3": "$r7",
+        "$a4": "$r8", "$a5": "$r9", "$a6": "$r10", "$a7": "$r11",
+        "$t0": "$r12", "$t1": "$r13", "$t2": "$r14", "$t3": "$r15",
+        "$s0": "$r16", "$s1": "$r17", "$s2": "$r18", "$s3": "$r19",
+        "$s4": "$r20", "$s5": "$r21", "$s6": "$r22", "$s7": "$r23",
+        "$t8": "$r24", "$t9": "$r25", "$k0": "$r26", "$k1": "$r27",
+        "$gp": "$r28", "$sp": "$r29", "$fp": "$s8/$r30", "$ra": "$r31",
     }
+    function_parameters = ["$a0", "$a1", "$a2", "$a3", "$a4", "$a5", "$a6", "$a7"]
+    syscall_parameters = ["$a0", "$a1", "$a2", "$a3", "$a4", "$a5"]
+
+    def get_ith_parameter(self, i, in_func=True):
+        if i < len(self.function_parameters):
+            reg = self.function_parameters[i]
+            val = get_register(reg)
+            key = reg
+            return key, val
+        else:
+            i -= len(self.function_parameters)
+            sp = current_arch.sp
+            sz = current_arch.ptrsize
+            loc = sp + (i * sz)
+            val = read_int_from_memory(loc)
+            key = "[sp + {:#x}]".format(i * sz)
+            return key, val
 
     @classmethod
     def mprotect_asm(cls, addr, size, perm):
@@ -5239,7 +5280,7 @@ def set_arch(arch=None, default=None):
         Elf.RISCV: RISCV, "RISCV": RISCV, "RISCV:RV32": RISCV, "RISCV:RV64": RISCV,
         Elf.SPARC: SPARC, "SPARC": SPARC, "SPARC32": SPARC, "SPARC:V8": SPARC, "SPARC:V8PLUS": SPARC,
         Elf.SPARC64: SPARC64, "SPARC64": SPARC64, "SPARC:V9": SPARC64,
-        Elf.MIPS: MIPS, "MIPS": MIPS, "MIPS:ISA32": MIPS, "MIPS:ISA32R2": MIPS, "MIPS:ISA32R3": MIPS,
+        "MIPS": MIPS, "MIPS:ISA32": MIPS, "MIPS:ISA32R2": MIPS, "MIPS:ISA32R3": MIPS,
         "MIPS:ISA32R5": MIPS, "MIPS:ISA32R6": MIPS,
         "MIPS64": MIPS64, "MIPS:ISA64": MIPS64, "MIPS:ISA64R2": MIPS64, "MIPS:ISA64R3": MIPS64,
         "MIPS:ISA64R5": MIPS64, "MIPS:ISA64R6": MIPS64,
@@ -22978,11 +23019,8 @@ def get_syscall_table(arch=None, mode=None):
         syscall_list = arm_OPTEE_syscall_list.copy()
 
     elif arch == "MIPS" and mode == "MIPS32":
-        o32_register_list = ["$a0", "$a1", "$a2", "$a3", "$sp+0x10", "$sp+0x14", "$sp+0x18", "$sp+0x1c"]
-        n32_register_list = ["$a0", "$a1", "$a2", "$a3", "$a4", "$a5"]
-        #syscall_register = "$v0"
-        #retval_register_list = ["$v0", "$v1"]
-
+        o32_register_list = MIPS().syscall_parameters_o32
+        n32_register_list = MIPS().syscall_parameters_n32
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(mips_o32_syscall_tbl)
         tbl += parse_syscall_table_defs(mips_n32_syscall_tbl)
@@ -23064,10 +23102,7 @@ def get_syscall_table(arch=None, mode=None):
             syscall_list.append([nr, name, sc_def[func]])
 
     elif arch == "MIPS" and mode == "MIPS64":
-        register_list = ["$a0", "$a1", "$a2", "$a3", "$a4", "$a5"]
-        #syscall_register = "$v0"
-        #retval_register_list = ["$v0", "$v1"]
-
+        register_list = MIPS64().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(mips_n64_syscall_tbl)
         arch_specific_dic = {
