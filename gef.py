@@ -7315,7 +7315,7 @@ class CapabilityCommand(GenericCommand):
 class SmartMemoryDumpCommand(GenericCommand):
     """Smart dump the process memory."""
     _cmdline_ = "smart-memory-dump"
-    _syntax_ = _cmdline_
+    _syntax_ = "{:s} [--prefix PREFIX]".format(_cmdline_)
     _category_ = "Misc"
 
     @only_if_gdb_running
@@ -7323,6 +7323,11 @@ class SmartMemoryDumpCommand(GenericCommand):
     @only_if_not_qemu_system
     def do_invoke(self, argv):
         self.dont_repeat()
+
+        prefix = "_"
+        if "--prefix" in argv:
+            idx = argv.index("--prefix")
+            prefix = "_" + argv[idx + 1] + "_"
 
         pid = get_pid()
         if pid is None:
@@ -7356,7 +7361,7 @@ class SmartMemoryDumpCommand(GenericCommand):
             except gdb.MemoryError:
                 continue
 
-            dumpfile_name = "{:05d}_{:0{}x}-{:0{}x}_{:s}_{:s}.raw".format(pid, start, addr_len, end, addr_len, perm, path)
+            dumpfile_name = "{:05d}{:s}{:0{}x}-{:0{}x}_{:s}_{:s}.raw".format(pid, prefix, start, addr_len, end, addr_len, perm, path)
             open(dumpfile_name, "wb").write(data)
         return
 
