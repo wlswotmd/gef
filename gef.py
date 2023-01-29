@@ -1024,7 +1024,7 @@ def search_for_main_arena():
 
     if is_x86():
         addr = align_address_to_size(malloc_hook_addr + current_arch.ptrsize, 0x20)
-    elif is_arch(Elf.AARCH64) or is_arch(Elf.ARM):
+    elif is_arm64() or is_arm32():
         addr = malloc_hook_addr - current_arch.ptrsize * 2 - MallocStateStruct("*0").struct_size
     else:
         raise OSError("Cannot find main_arena for {}".format(current_arch.arch))
@@ -2643,8 +2643,41 @@ class ARM(Architecture):
     else:
         raise
 
+    flags_table = {
+        31: "negative",
+        30: "zero",
+        29: "carry",
+        28: "overflow",
+        7: "interrupt",
+        6: "fast",
+        thumb_bit: "thumb",
+    }
+    return_register = "$r0"
+    function_parameters = ["$r0", "$r1", "$r2", "$r3"]
+    syscall_register = "$r7"
+    syscall_parameters = ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6"]
+    syscall_instructions = ["svc 0x0", "swi 0x0"]
+
+    def is_thumb(self):
+        """Determine if the machine is currently in THUMB mode."""
+        return is_alive() and get_register(self.flag_register) & (1 << self.thumb_bit)
+
+    @property
+    def mode(self):
+        if self.is_thumb():
+            return "THUMB"
+        else:
+            return "ARM"
+
+    @property
+    def instruction_length(self):
+        # Thumb instructions have variable-length (2 or 4-byte)
+        if self.is_thumb():
+            return None # variable length
+        else:
+            return 4
+
     # http://infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.dui0041c/Caccegih.html
-    # return b"\x00\x00\xa0\xe1" # mov r0, r0
     @property
     def nop_insn(self):
         if self.is_thumb():
@@ -2673,24 +2706,6 @@ class ARM(Architecture):
         else:
             return b"\x0e\xf0\xa0\xe1" # mov pc, lr
 
-    return_register = "$r0"
-    flags_table = {
-        31: "negative",
-        30: "zero",
-        29: "carry",
-        28: "overflow",
-        7: "interrupt",
-        6: "fast",
-        thumb_bit: "thumb",
-    }
-    function_parameters = ["$r0", "$r1", "$r2", "$r3"]
-    syscall_register = "$r7"
-    syscall_instructions = ["svc 0x0", "swi 0x0", "swi NR"]
-
-    def is_thumb(self):
-        """Determine if the machine is currently in THUMB mode."""
-        return is_alive() and get_register(self.flag_register) & (1 << self.thumb_bit)
-
     @property
     def pc(self):
         pc = get_register("$pc")
@@ -2698,89 +2713,57 @@ class ARM(Architecture):
             pc += 1
         return pc
 
-    @property
-    def mode(self):
-        return "THUMB" if self.is_thumb() else "ARM"
-
-    @property
-    def instruction_length(self):
-        # Thumb instructions have variable-length (2 or 4-byte)
-        return None if self.is_thumb() else 4
-
     def is_syscall(self, insn):
         return insn.mnemonic in ["svc", "swi"]
 
     def is_call(self, insn):
-        for c in ["bl", "blx"]:
-            for cc in ["", "eq", "ne", "lt", "le", "gt", "ge", "vs", "vc", "mi", "pl", "hi", "ls", "cs", "cc", "hs", "lo", "al"]:
-                if insn.mnemonic == c + cc:
-                    return True
+        conditions = [
+            "", "eq", "ne", "lt", "le", "gt", "ge", "vs", "vc",
+            "mi", "pl", "hi", "ls", "cs", "cc", "hs", "lo", "al",
+        ]
+        for cc in conditions:
+            return insn.mnemonic in [f"bl{cc}", f"bl{cc}.n", f"bl{cc}.w", f"blx{cc}", f"blx{cc}.n", f"blx{cc}.w"]
         return False
 
     def is_jump(self, insn):
-        if insn.mnemonic in ["b", "bx"] and insn.operands[-1] == "lr":
+        if self.is_ret(insn):
             return False
-        for c in ["b", "bx"]:
-            for cc in ["", "eq", "ne", "lt", "le", "gt", "ge", "vs", "vc", "mi", "pl", "hi", "ls", "cs", "cc", "hs", "lo", "al"]:
-                for suffix in ["", ".n", ".w"]:
-                    if insn.mnemonic == c + cc + suffix:
-                        return True
-        return insn.mnemonic in ["mov", "ldr", "add"] and insn.operands[0] == "pc"
+        if self.is_conditional_branch(insn):
+            return True
+        if insn.mnemonic in ["b", "b.n", "b.w", "bx", "bx.n", "bx.w"]:
+            return True
+        if insn.mnemonic == ["mov", "mov.n", "mov.w", "ldr", "ldr.n", "ldr.w", "add", "add.n", "add.w"]:
+            return insn.operands[0] == "pc"
+        return False
 
     def is_ret(self, insn):
         load_mnemos = [
-            "pop", "ldm", "ldmea", "ldmed", "ldmfa", "ldmfd", "ldmia", "ldmib", "ldmda", "ldmdb",
-            "ldm.w", "ldmea.w", "ldmed.w", "ldmfa.w", "ldmfd.w", "ldmia.w", "ldmib.w", "ldmda.w", "ldmdb.w"
+            "pop", "ldm", "ldmea", "ldmed", "ldmfa",
+            "ldmfd", "ldmia", "ldmib", "ldmda", "ldmdb",
+            "ldm.n", "ldmea.n", "ldmed.n", "ldmfa.n",
+            "ldmfd.n", "ldmia.n", "ldmib.n", "ldmda.n", "ldmdb.n",
+            "ldm.w", "ldmea.w", "ldmed.w", "ldmfa.w",
+            "ldmfd.w", "ldmia.w", "ldmib.w", "ldmda.w", "ldmdb.w",
         ]
         if insn.mnemonic in load_mnemos:
-            return insn.operands[-1].strip() == "pc}"
-        if insn.mnemonic in ["bl", "blx", "b", "bx"]:
-            return insn.operands[-1] == "lr"
-        if insn.mnemonic in ["ldr", "add"]:
-            return insn.operands[0] == "pc"
+            return "pc}" in "".join(insn.operands)
+        if insn.mnemonic in ["b", "b.n", "b.w", "bx", "bx.n", "bx.w"]:
+            return insn.operands[0] == "lr"
+        if insn.mnemonic in ["mov", "mov.n", "mov.w"]:
+            return insn.operands[0] == "pc" and insn.operands[1] == "lr"
         if insn.mnemonic == "rfe":
             return True
         return False
 
-    __SCR_available = None
-    __mode_dic = {
-        # encoding: [mode, PL]
-        0b10000: ["User", 0],
-        0b10001: ["FIQ", 1],
-        0b10010: ["IRQ", 1],
-        0b10011: ["Supervisor", 1],
-        0b10110: ["Monitor", 1],
-        0b10111: ["Abort", 1],
-        0b11010: ["Hypervisor", 2],
-        0b11011: ["Undefined", 1],
-        0b11111: ["System", 1],
-    }
-
-    def flag_register_to_human(self, val=None):
-        # http://www.botskool.com/user-pages/tutorials/electronics/arm-7-tutorial-part-1
-        if val is None:
-            reg = self.flag_register
-            val = get_register(reg) & 0xffffffff
-
-        key = val & 0b11111
-        CurrentMode, CurrentPL = self.__mode_dic[key]
-
-        if self.__SCR_available is False: # for speed up
-            mode = " [Mode={:s}({:#07b},PL{:d})]".format(CurrentMode, key, CurrentPL)
-        else:
-            scr = get_register("$SCR")
-            if scr is not None:
-                self.__SCR_available = True
-                secure_state = ["Secure", "Non-Secure"][scr & 1]
-                mode = " [Mode={:s}({:#07b},PL{:d}),{:s}]".format(CurrentMode, key, CurrentPL, secure_state)
-            else:
-                self.__SCR_available = False
-                mode = " [Mode={:s}({:#07b},PL{:d})]".format(CurrentMode, key, CurrentPL)
-        return flags_to_human(val, self.flags_table) + mode
-
     def is_conditional_branch(self, insn):
-        conditions = ["eq", "ne", "lt", "le", "gt", "ge", "vs", "vc", "mi", "pl", "hi", "ls", "cs", "cc", "hs", "lo"]
-        return (not insn.mnemonic == "svc") and (insn.mnemonic[-2:] in conditions)
+        conditions = [
+            "eq", "ne", "lt", "le", "gt", "ge", "vs", "vc",
+            "mi", "pl", "hi", "ls", "cs", "cc", "hs", "lo", "al",
+        ]
+        for cc in conditions:
+            if insn.mnemonic in [f"b{cc}", f"b{cc}.n", f"b{cc}.w", f"bx{cc}", f"bx{cc}.n", f"bx{cc}.w"]:
+                return True
+        return False
 
     def is_branch_taken(self, insn):
         mnemo = insn.mnemonic
@@ -2823,6 +2806,42 @@ class ARM(Architecture):
         elif mnemo.endswith("cc") or mnemo.endswith("lo"):
             taken, reason = not carry, "!C"
         return taken, reason
+
+    __SCR_available = None
+    __mode_dic = {
+        # encoding: [mode, PL]
+        0b10000: ["User", 0],
+        0b10001: ["FIQ", 1],
+        0b10010: ["IRQ", 1],
+        0b10011: ["Supervisor", 1],
+        0b10110: ["Monitor", 1],
+        0b10111: ["Abort", 1],
+        0b11010: ["Hypervisor", 2],
+        0b11011: ["Undefined", 1],
+        0b11111: ["System", 1],
+    }
+
+    def flag_register_to_human(self, val=None):
+        # http://www.botskool.com/user-pages/tutorials/electronics/arm-7-tutorial-part-1
+        if val is None:
+            reg = self.flag_register
+            val = get_register(reg) & 0xffffffff
+
+        key = val & 0b11111
+        CurrentMode, CurrentPL = self.__mode_dic[key]
+
+        if self.__SCR_available is False: # for speed up
+            mode = " [Mode={:s}({:#07b},PL{:d})]".format(CurrentMode, key, CurrentPL)
+        else:
+            scr = get_register("$SCR")
+            if scr is not None:
+                self.__SCR_available = True
+                secure_state = ["Secure", "Non-Secure"][scr & 1]
+                mode = " [Mode={:s}({:#07b},PL{:d}),{:s}]".format(CurrentMode, key, CurrentPL, secure_state)
+            else:
+                self.__SCR_available = False
+                mode = " [Mode={:s}({:#07b},PL{:d})]".format(CurrentMode, key, CurrentPL)
+        return flags_to_human(val, self.flags_table) + mode
 
     def get_ra(self, insn, frame):
         ra = None
@@ -2873,7 +2892,6 @@ class AARCH64(ARM):
     alias_registers = {
         "$x30": "$lr",
     }
-    return_register = "$x0"
     flag_register = "$cpsr"
     flags_table = {
         31: "negative",
@@ -2883,8 +2901,10 @@ class AARCH64(ARM):
         7: "interrupt",
         6: "fast",
     }
+    return_register = "$x0"
     function_parameters = ["$x0", "$x1", "$x2", "$x3", "$x4", "$x5", "$x6", "$x7"]
     syscall_register = "$x8"
+    syscall_paramter_list = ["$x0", "$x1", "$x2", "$x3", "$x4", "$x5"]
     syscall_instructions = ["svc #0x0"]
 
     nop_insn = b"\x1f\x20\x03\xd5" # nop
@@ -4993,7 +5013,7 @@ def get_keystone_arch(arch=None, mode=None, endian=None, to_string=False):
         mode = current_arch.mode
         endian = is_big_endian()
     # hacky patch for applying to capstone's mode
-    if arch == "ARM64" and mode == "ARM":
+    if arch == "ARM64":
         mode = 0
     return get_generic_arch(keystone, "KS", arch, mode, endian, to_string)
 
@@ -5178,13 +5198,6 @@ def is_sparc64():
         return current_arch.arch == "SPARC" and current_arch.mode == "SPARC64"
     except Exception:
         return False
-
-
-@functools.lru_cache()
-def is_arch(arch):
-    """Checks if current target is specific architecture"""
-    elf = current_elf or get_elf_headers()
-    return elf and elf.e_machine == arch
 
 
 @functools.lru_cache()
@@ -22785,10 +22798,7 @@ def get_syscall_table(arch=None, mode=None):
             syscall_list.append([nr, name, sc_def[func]])
 
     elif arch == "ARM64":
-        register_list = ["$x0", "$x1", "$x2", "$x3", "$x4", "$x5"]
-        #syscall_register = "$x8"
-        #retval_register_list = ["$x0", "$x1"]
-
+        register_list = AARCH64().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(arm64_syscall_tbl)
         arch_specific_dic = {
@@ -22821,10 +22831,7 @@ def get_syscall_table(arch=None, mode=None):
             syscall_list.append([nr, name, sc_def[func]])
 
     elif arch == "ARM" and mode == "32": # support EABI only
-        register_list = ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6"]
-        #syscall_register = "$r7"
-        #retval_register_list = ["$r0", "$r1"]
-
+        register_list = ARM().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(arm_compat_syscall_tbl)
         arch_specific_dic = {
@@ -22907,10 +22914,7 @@ def get_syscall_table(arch=None, mode=None):
         syscall_list += arch_specific_extra
 
     elif arch == "ARM" and mode == "N32": # support EABI only
-        register_list = ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6"]
-        #syscall_register = "$r7"
-        #retval_register_list = ["$r0", "$r1"]
-
+        register_list = ARM().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(arm_native_syscall_tbl)
         arch_specific_dic = {
@@ -22968,13 +22972,9 @@ def get_syscall_table(arch=None, mode=None):
 
     elif arch in ["ARM64", "ARM"] and mode == "S":
         if arch == "ARM64":
-            register_list = ["$x0", "$x1", "$x2", "$x3", "$x4", "$x5", "$x6"]
-            #syscall_register = "$x8"
-            #retval_register_list = ["$x0", "$x1"]
+            register_list = AARCH64().syscall_parameters + ["$x6"] # OPTEE uses 7 args
         else:
-            register_list = ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6"]
-            #syscall_register = "$r7"
-            #retval_register_list = ["$r0", "$r1"]
+            register_list = ARM().syscall_parameters
         syscall_list = arm_OPTEE_syscall_list.copy()
 
     elif arch == "MIPS" and mode == "MIPS32":
