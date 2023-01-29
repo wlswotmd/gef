@@ -2437,8 +2437,6 @@ class Architecture:
             return key, val
         else:
             i -= len(self.function_parameters)
-            if in_func and is_x86():
-                i += 1 # Account for RA being at the top of the stack
             sp = current_arch.sp
             sz = current_arch.ptrsize
             loc = sp + (i * sz)
@@ -2913,7 +2911,7 @@ class AARCH64(ARM):
     ret_insn = b"\xc0\x03\x5f\xd6" # ret
 
     def is_syscall(self, insn):
-        return insn.mnemonic == "svc"
+        return insn.mnemonic == "svc" and insn.operands == ["#0x0"]
 
     def is_call(self, insn):
         return insn.mnemonic in ["bl", "blr"]
@@ -3014,19 +3012,11 @@ class X86(Architecture):
     arch = "X86"
     mode = "32"
 
-    nop_insn = b"\x90" # nop
-    infloop_insn = b"\xeb\xfe" # jmp 0
-    trap_insn = b"\xcc" # int3
-    ret_insn = b"\xc3" # ret
-
-    flag_register = "$eflags"
-    special_registers = ["$cs", "$ss", "$ds", "$es", "$fs", "$gs"]
     gpr_registers = ["$eax", "$ebx", "$ecx", "$edx", "$esp", "$ebp", "$esi", "$edi", "$eip"]
+    special_registers = ["$cs", "$ss", "$ds", "$es", "$fs", "$gs"]
+    flag_register = "$eflags"
     all_registers = gpr_registers + [flag_register] + special_registers
     alias_registers = {}
-    instruction_length = None
-    return_register = "$eax"
-    function_parameters = ["$esp"] # but unused because x86 uses stack
     flags_table = {
         21: "identification",
         #20: "virtual_interrupt_pending",
@@ -3050,8 +3040,18 @@ class X86(Architecture):
         #1: N/A
         0: "carry",
     }
+    return_register = "$eax"
+    function_parameters = ["$esp"] # but unused because x86 uses stack
     syscall_register = "$eax"
+    syscall_parameters = ["$ebx", "$ecx", "$edx", "$esi", "$edi", "$ebp"]
     syscall_instructions = ["sysenter", "syscall", "int 0x80"]
+
+    instruction_length = None # variable length
+
+    nop_insn = b"\x90" # nop
+    infloop_insn = b"\xeb\xfe" # jmp 0
+    trap_insn = b"\xcc" # int3
+    ret_insn = b"\xc3" # ret
 
     def flag_register_to_human(self, val=None):
         if val is None:
@@ -3061,8 +3061,11 @@ class X86(Architecture):
         return flags_to_human(val, self.flags_table) + mode
 
     def is_syscall(self, insn):
-        insn_str = insn.mnemonic + " " + ", ".join(insn.operands)
-        return insn_str.strip() in self.syscall_instructions
+        if insn.mnemonic in ["sysenter", "syscall"]:
+            return True
+        if insn.mnemonic == "int" and insn.operands[0] == "0x80":
+            return True
+        return False
 
     def is_call(self, insn):
         return insn.mnemonic in ["call", "callq"]
@@ -3179,9 +3182,25 @@ class X86_64(X86):
     return_register = "$rax"
     function_parameters = ["$rdi", "$rsi", "$rdx", "$rcx", "$r8", "$r9"]
     syscall_register = "$rax"
+    syscall_parameters = ["$rdi", "$rsi", "$rdx", "$r10", "$r8", "$r9"]
     syscall_instructions = ["syscall", "sysenter"]
-    # We don't want to inherit x86's stack based param getter
-    get_ith_parameter = Architecture.get_ith_parameter
+
+    def get_ith_parameter(self, i, in_func=True):
+        if i < len(self.function_parameters):
+            reg = self.function_parameters[i]
+            val = get_register(reg)
+            key = reg
+            return key, val
+        else:
+            i -= len(self.function_parameters)
+            if in_func:
+                i += 1 # Account for RA being at the top of the stack
+            sp = current_arch.sp
+            sz = current_arch.ptrsize
+            loc = sp + (i * sz)
+            val = read_int_from_memory(loc)
+            key = "[sp + {:#x}]".format(i * sz)
+            return key, val
 
     @classmethod
     def mprotect_asm(cls, addr, size, perm):
@@ -22603,16 +22622,13 @@ def get_syscall_table(arch=None, mode=None):
         return cached_syscall_table[arch, mode]
 
     if arch == "X86" and mode == "64":
-        register_list = ["$rdi", "$rsi", "$rdx", "$r10", "$r8", "$r9"]
-        #syscall_register = "$rax"
-        #retval_register_list = ["$rax"]
-
+        register_list = X86_64().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(x64_syscall_tbl)
         arch_specific_dic = {
             'sys_clone': [
-                'unsigned long clone_flags', 'unsigned long newsp',
-                'int __user *parent_tidptr', 'int __user *child_tidptr', 'unsigned long tls',
+                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
+                'int __user *child_tidptr', 'unsigned long tls',
             ], # kernel/fork.c
             'sys_modify_ldt': [
                 'int func', 'void __user *ptr', 'unsigned long bytecount',
@@ -22655,10 +22671,7 @@ def get_syscall_table(arch=None, mode=None):
                 syscall_list.append([nr + 0x40000000, name, sc_def[func]])
 
     elif arch == "X86" and mode == "32":
-        register_list = ["$ebx", "$ecx", "$edx", "$esi", "$edi", "$ebp"]
-        #syscall_register = "$eax"
-        #retval_register_list = ["$eax"]
-
+        register_list = X86().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(x86_syscall_tbl)
         arch_specific_dic = {
@@ -22753,10 +22766,7 @@ def get_syscall_table(arch=None, mode=None):
             syscall_list.append([nr, name, sc_def[func]])
 
     elif arch == "X86" and mode == "N32":
-        register_list = ["$ebx", "$ecx", "$edx", "$esi", "$edi", "$ebp"]
-        #syscall_register = "$eax"
-        #retval_register_list = ["$eax"]
-
+        register_list = X86().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(x86_syscall_tbl)
         arch_specific_dic = {
@@ -23304,8 +23314,8 @@ def get_syscall_table(arch=None, mode=None):
                 "struct pt_regs *regs",
             ], # arch/sparc/kernel/signal_32.c
             'sys_clone': [
-                'unsigned long clone_flags', 'unsigned long newsp',
-                'int __user *parent_tidptr', 'int __user *child_tidptr', 'unsigned long tls',
+                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
+                'int __user *child_tidptr', 'unsigned long tls',
             ], # kernel/fork.c
         }
 
