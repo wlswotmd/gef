@@ -569,6 +569,7 @@ class Elf:
     POWERPC           = 0x14
     POWERPC64         = 0x15
     SPARC             = 0x02
+    SPARC32PLUS       = 0x12
     SPARC64           = 0x2b
     AARCH64           = 0xb7
     RISCV             = 0xf3
@@ -3505,11 +3506,10 @@ class PowerPC64(PowerPC):
 
 
 class SPARC(Architecture):
-    """ Refs:
-    - http://www.cse.scu.edu/~atkinson/teaching/sp05/259/sparc.pdf"""
     arch = "SPARC"
     mode = "SPARC32"
 
+    # http://www.cse.scu.edu/~atkinson/teaching/sp05/259/sparc.pdf
     all_registers = [
         "$g0", "$g1", "$g2", "$g3", "$g4", "$g5", "$g6", "$g7",
         "$o0", "$o1", "$o2", "$o3", "$o4", "$o5", "$sp", "$o7",
@@ -3520,13 +3520,6 @@ class SPARC(Architecture):
     alias_registers = {
         "$sp": "$o6", "$fp": "$i6",
     }
-    instruction_length = 4
-
-    nop_insn = b"\x00\x00\x00\x01" # nop
-    infloop_insn = b"\x00\x00\x80\x10" + nop_insn # b #0 (+ delay slot)
-    ret_insn = b"\x08\xe0\xc7\x81" + nop_insn # ret (+ delay slot)
-
-    return_register = "$i0"
     flag_register = "$psr"
     flags_table = {
         23: "negative",
@@ -3536,9 +3529,18 @@ class SPARC(Architecture):
         7: "supervisor",
         5: "trap",
     }
-    function_parameters = ["$o0", "$o1", "$o2", "$o3", "$o4", "$o5", "$o7"]
+    return_register = "$i0"
+    function_parameters = ["$o0", "$o1", "$o2", "$o3", "$o4", "$o5"]
     syscall_register = "$g1"
+    syscall_parameters = ["$o0", "$o1", "$o2", "$o3", "$o4", "$o5"]
     syscall_instructions = ["ta 0x10"]
+
+    instruction_length = 4
+
+    nop_insn = b"\x00\x00\x00\x01" # nop
+    infloop_insn = b"\x00\x00\x80\x10" + nop_insn # b #0 (+ delay slot)
+    trap_insn = None # trap does not exist
+    ret_insn = b"\x08\xe0\xc7\x81" + nop_insn # ret (+ delay slot)
 
     def flag_register_to_human(self, val=None):
         # http://www.gaisler.com/doc/sparcv8.pdf
@@ -3548,14 +3550,14 @@ class SPARC(Architecture):
         return flags_to_human(val, self.flags_table)
 
     def is_syscall(self, insn):
-        return insn.mnemonic == "ta"
+        return insn.mnemonic == "ta" and insn.operands == ["0x10"]
 
     def is_call(self, insn):
         return insn.mnemonic in ["jmpl", "call"]
 
     def is_jump(self, insn):
         mnemo = insn.mnemonic
-        return mnemo.startswith("b") or mnemo.startswith("fb") or mnemo == "jmpl"
+        return (mnemo.startswith("b") and mnemo != "btst") or mnemo.startswith("fb") or mnemo == "jmpl"
 
     def is_ret(self, insn):
         return insn.mnemonic in ["ret", "retl"]
@@ -3622,6 +3624,21 @@ class SPARC(Architecture):
         # todo: f* opcode, brn?z/br[lg]e?z are unsupported
         return taken, reason
 
+    def get_ith_parameter(self, i, in_func=True):
+        if i < len(self.function_parameters):
+            reg = self.function_parameters[i]
+            val = get_register(reg)
+            key = reg
+            return key, val
+        else:
+            i += 17 # ???
+            sp = current_arch.sp
+            sz = current_arch.ptrsize
+            loc = sp + (i * sz)
+            val = read_int_from_memory(loc)
+            key = "[sp + {:#x}]".format(i * sz)
+            return key, val
+
     def get_ra(self, insn, frame):
         ra = None
         try:
@@ -3650,12 +3667,11 @@ class SPARC(Architecture):
 
 
 class SPARC64(SPARC):
-    """Refs:
-    - http://math-atlas.sourceforge.net/devel/assembly/abi_sysV_sparc.pdf
-    - https://cr.yp.to/2005-590/sparcv9.pdf"""
     arch = "SPARC"
     mode = "SPARC64"
 
+    # http://math-atlas.sourceforge.net/devel/assembly/abi_sysV_sparc.pdf
+    # https://cr.yp.to/2005-590/sparcv9.pdf
     all_registers = [
         "$g0", "$g1", "$g2", "$g3", "$g4", "$g5", "$g6", "$g7",
         "$o0", "$o1", "$o2", "$o3", "$o4", "$o5", "$sp", "$o7",
@@ -3674,12 +3690,30 @@ class SPARC64(SPARC):
         33: "overflow",
         32: "carry",
     }
+    syscall_instructions = ["ta 0x6d"]
 
     nop_insn = b"\x00\x00\x00\x01" # nop
     infloop_insn = b"\x00\x00\x80\x10" + nop_insn # b #0 (+ delay slot)
+    trap_insn = None # trap does not exist
     ret_insn = b"\x08\xe0\xc7\x81" + nop_insn # ret (+ delay slot)
 
-    syscall_instructions = ["ta 0x6d"]
+    def is_syscall(self, insn):
+        return insn.mnemonic == "ta" and insn.operands == ["0x6d"]
+
+    def get_ith_parameter(self, i, in_func=True):
+        if i < len(self.function_parameters):
+            reg = self.function_parameters[i]
+            val = get_register(reg)
+            key = reg
+            return key, val
+        else:
+            i += 272 # ???
+            sp = current_arch.sp
+            sz = current_arch.ptrsize
+            loc = sp + (i * sz) - 1
+            val = read_int_from_memory(loc)
+            key = "[sp + {:#x}]".format(i * sz - 1)
+            return key, val
 
     @classmethod
     def mprotect_asm(cls, addr, size, perm):
@@ -5361,7 +5395,7 @@ def is_sparc32():
 
 @functools.lru_cache()
 def is_sparc64():
-    """Checks if current target is an powerpc-64"""
+    """Checks if current target is an sparc-64"""
     try:
         return current_arch.arch == "SPARC" and current_arch.mode == "SPARC64"
     except Exception:
@@ -5423,8 +5457,9 @@ def set_arch(arch=None, default=None):
         Elf.POWERPC: PowerPC, "POWERPC": PowerPC, "PPC": PowerPC, "PPC32": PowerPC, "POWERPC:COMMON": PowerPC,
         Elf.POWERPC64: PowerPC64, "POWERPC64": PowerPC64, "PPC64": PowerPC64, "POWERPC:COMMON64": PowerPC64,
         "RISCV": RISCV, "RISCV32": RISCV, "RISCV:RV32": RISCV, "RISCV64": RISCV64, "RISCV:RV64": RISCV64,
-        Elf.SPARC: SPARC, "SPARC": SPARC, "SPARC32": SPARC, "SPARC:V8": SPARC, "SPARC:V8PLUS": SPARC,
+        Elf.SPARC: SPARC, "SPARC": SPARC, "SPARC32": SPARC, "SPARC:V8": SPARC,
         Elf.SPARC64: SPARC64, "SPARC64": SPARC64, "SPARC:V9": SPARC64,
+        Elf.SPARC32PLUS: SPARC64, "SPARC:V8PLUS": SPARC64, "SPARC:V8PLUSA": SPARC64,
         "MIPS": MIPS, "MIPS:ISA32": MIPS, "MIPS:ISA32R2": MIPS, "MIPS:ISA32R3": MIPS,
         "MIPS:ISA32R5": MIPS, "MIPS:ISA32R6": MIPS,
         "MIPS64": MIPS64, "MIPS:ISA64": MIPS64, "MIPS:ISA64R2": MIPS64, "MIPS:ISA64R3": MIPS64,
@@ -10857,6 +10892,7 @@ class ElfInfoCommand(GenericCommand):
             Elf.POWERPC       : "PowerPC",
             Elf.POWERPC64     : "PowerPC64",
             Elf.SPARC         : "SPARC",
+            Elf.SPARC32PLUS   : "SPARC32PLUS",
             Elf.SPARC64       : "SPARC64",
             Elf.AARCH64       : "AArch64",
             Elf.RISCV         : "RISC-V",
@@ -24037,10 +24073,7 @@ def get_syscall_table(arch=None, mode=None):
             syscall_list.append([nr, name, sc_def[func]])
 
     elif arch == "SPARC" and mode == "SPARC32":
-        register_list = ["$o0", "$o1", "$o2", "$o3", "$o4", "$o5"]
-        #syscall_register = "$g1"
-        #retval_register_list = ["$o0", "$o1"]
-
+        register_list = SPARC().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(sparc_syscall_tbl)
         arch_specific_dic = {
@@ -24068,12 +24101,8 @@ def get_syscall_table(arch=None, mode=None):
             'sys_sparc_sigaction': [
                 'int, sig', 'struct old_sigaction __user *act', 'struct old_sigaction __user *oact',
             ], # arch/sparc/kernel/sys_sparc_32.c
-            'sys_sigreturn': [
-                "struct pt_regs *regs",
-            ], # arch/sparc/kernel/signal_32.c
-            'sys_rt_sigreturn': [
-                "struct pt_regs *regs",
-            ], # arch/sparc/kernel/signal_32.c
+            'sys_sigreturn': [], # arch/sparc/kernel/syscalls.S
+            'sys_rt_sigreturn': [], # arch/sparc/kernel/syscalls.S
             'sys_clone': [
                 'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
                 'int __user *child_tidptr', 'unsigned long tls',
@@ -24098,10 +24127,7 @@ def get_syscall_table(arch=None, mode=None):
             syscall_list.append([nr, name, sc_def[func]])
 
     elif arch == "SPARC" and mode == "SPARC64":
-        register_list = ["$o0", "$o1", "$o2", "$o3", "$o4", "$o5"]
-        #syscall_register = "$g1"
-        #retval_register_list = ["$o0", "$o1"]
-
+        register_list = SPARC64().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(sparc_syscall_tbl)
         arch_specific_dic = {
@@ -24138,8 +24164,8 @@ def get_syscall_table(arch=None, mode=None):
                 'unsigned long third', 'void __user *ptr', 'long fifth',
             ], # arch/sparc/kernel/sys_sparc_64.c
             'sys_clone': [
-                'unsigned long clone_flags', 'unsigned long newsp',
-                'int __user *parent_tidptr', 'int __user *child_tidptr', 'unsigned long tls',
+                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
+                'int __user *child_tidptr', 'unsigned long tls',
             ], # kernel/fork.c
             'sys_sparc_adjtimex': [
                 'struct __kernel_timex __user *txc_p',
