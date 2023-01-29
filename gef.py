@@ -1884,6 +1884,7 @@ def load_unicorn(f):
         try:
             __import__("unicorn")
             __import__("unicorn.ppc_const")
+            __import__("unicorn.riscv_const")
             return f(*args, **kwargs)
         except ImportError:
             msg = "Missing `unicorn` package for Python. Install with `pip install unicorn`."
@@ -2472,66 +2473,73 @@ class Architecture:
 
 class RISCV(Architecture):
     arch = "RISCV"
-    mode = "RISCV"
+    mode = "RISCV32"
 
+    # https://msyksphinz-self.github.io/riscv-isadoc/html/index.html
     all_registers = [
         "$zero", "$ra", "$sp", "$gp", "$tp", "$t0", "$t1", "$t2",
         "$fp", "$s1", "$a0", "$a1", "$a2", "$a3", "$a4", "$a5",
         "$a6", "$a7", "$s2", "$s3", "$s4", "$s5", "$s6", "$s7",
         "$s8", "$s9", "$s10", "$s11", "$t3", "$t4", "$t5", "$t6",
+        "$pc",
     ]
     alias_registers = {
-        "$zero": "$x0", "$ra": "$x1", "$sp": "$x2", "$gp": "$x3", "$tp": "$x4", "$t0": "$x5", "$t1": "$x6", "$t2": "$x7",
-        "$fp": "$x8", "$s1": "$x9", "$a0": "$x10", "$a1": "$x11", "$a2": "$x12", "$a3": "$x13", "$a4": "$x14", "$a5": "$x15",
-        "$a6": "$x16", "$a7": "$x17", "$s2": "$x18", "$s3": "$x19", "$s4": "$x20", "$s5": "$x21", "$s6": "$x22", "$s7": "$x23",
-        "$s8": "$x24", "$s9": "$x25", "$s10": "$x26", "$s11": "$x27", "$t3": "$x28", "$t4": "$x29", "$t5": "$x30", "$t6": "$x31",
+        "$zero": "$x0", "$ra": "$x1", "$sp": "$x2", "$gp": "$x3",
+        "$tp": "$x4/$s0", "$t0": "$x5", "$t1": "$x6", "$t2": "$x7",
+        "$fp": "$x8", "$s1": "$x9", "$a0": "$x10", "$a1": "$x11",
+        "$a2": "$x12", "$a3": "$x13", "$a4": "$x14", "$a5": "$x15",
+        "$a6": "$x16", "$a7": "$x17", "$s2": "$x18", "$s3": "$x19",
+        "$s4": "$x20", "$s5": "$x21", "$s6": "$x22", "$s7": "$x23",
+        "$s8": "$x24", "$s9": "$x25", "$s10": "$x26", "$s11": "$x27",
+        "$t3": "$x28", "$t4": "$x29", "$t5": "$x30", "$t6": "$x31",
     }
+    flag_register = None # RISC-V has no flags register
     return_register = "$a0"
     function_parameters = ["$a0", "$a1", "$a2", "$a3", "$a4", "$a5", "$a6", "$a7"]
     syscall_register = "$a7"
+    syscall_parameters = ["$a0", "$a1", "$a2", "$a3", "$a4", "$a5"]
     syscall_instructions = ["ecall"]
 
-    nop_insn = b"\x01\x00" # c.nop
-    infloop_insn = b"\x01\xa0" # c.j self
-    trap_insn = b"\x02\x90" # c.ebreak
-    ret_insn = b"\x82\x80" # c.ret
+    instruction_length = None # variable length
 
-    # RISC-V has no flags registers
-    flag_register = None
-    flags_table = None
-
-    def flag_register_to_human(self, val=None):
-        return Color.colorify("No flag register", "yellow underline")
-
-    @property
-    def instruction_length(self):
-        return None
+    nop_insn = b"\x13\x00\x00\x00" # nop
+    infloop_insn = b"\x6f\x00\x00\x00" # j self
+    trap_insn = b"\x73\x00\x10\x00" # ebreak
+    ret_insn = b"\x67\x80\x00\x00" # ret
 
     def is_syscall(self, insn):
-        return insn.mnemonic == "ecall"
+        return insn.mnemonic in self.syscall_instructions
 
     def is_call(self, insn):
-        return not self.is_ret(insn) and insn.mnemonic in ["jal", "jalr"]
+        if self.is_ret(insn):
+            return False
+        if insn.mnemonic in ["jal", "jalr", "c.jal", "c.jalr"]:
+            return True
+        return False
 
     def is_jump(self, insn):
-        return self.is_conditional_branch(self) or (not self.is_ret(insn) and insn.mnemonic in ["jal", "jalr"])
+        if self.is_conditional_branch(insn):
+            return True
+        if insn.mnemonic in ["c.j", "c.jr"]:
+            return True
+        return False
 
     def is_ret(self, insn):
         mnemo = insn.mnemonic
         if mnemo == "ret":
             return True
-        elif (mnemo == "jalr" and insn.operands[0] == "zero" and insn.operands[1] == "ra" and insn.operands[2] == 0):
-            return True
-        elif (mnemo == "c.jalr" and insn.operands[0] == "ra"):
-            return True
+        elif mnemo == "jalr":
+            return insn.operands[0] == "zero" and insn.operands[1] == "ra" and insn.operands[2] == 0
+        elif mnemo == "c.jalr":
+            return insn.operands[0] == "ra"
         return False
 
-    @classmethod
-    def mprotect_asm(cls, addr, size, perm):
-        raise OSError("Architecture {:s} not supported yet".format(cls.arch))
-
     def is_conditional_branch(self, insn):
-        return insn.mnemonic.startswith("b")
+        branch_mnemos = [
+            "beq", "bne", "blt", "bge", "bltu", "bgeu",
+            "c.beqz", "c.bnez",
+        ]
+        return insn.mnemonic in branch_mnemos
 
     def is_branch_taken(self, insn):
         def long_to_twos_complement(v):
@@ -2604,6 +2612,89 @@ class RISCV(Architecture):
         except Exception:
             pass
         return ra
+
+    @classmethod
+    def mprotect_asm_raw(cls, addr, size, perm):
+        _NR_mprotect = 226
+        insns = [
+            p32(int("0b00000_00_{:05b}_{:05b}_100_{:05b}_01100_11".format(10, 10, 10), 2)), # xor a0, a0, a0
+            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 20) & 0xfff, 10, 10), 2)), # addi a0, a0, addr[31:20]
+            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 10, 10), 2)), # slli a0, a0, 12
+            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 8) & 0xfff, 10, 10), 2)), # addi a0, a0, addr[19:8]
+            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(8, 10, 10), 2)), # slli a0, a0, 8
+            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 0) & 0xff, 10, 10), 2)), # addi a0, a0, addr[7:0]
+
+            p32(int("0b00000_00_{:05b}_{:05b}_100_{:05b}_01100_11".format(11, 11, 11), 2)), # xor a1, a1, a1
+            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 20) & 0xfff, 11, 11), 2)), # addi a1, a1, size[31:20]
+            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 11, 11), 2)), # slli a0, a0, 12
+            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 8) & 0xfff, 11, 11), 2)), # addi a1, a1, size[19:8]
+            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(8, 11, 11), 2)), # slli a0, a0, 12
+            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 0) & 0xff, 11, 11), 2)), # addi a1, a1, size[7:0]
+
+            p32(int("0b00000_00_{:05b}_{:05b}_100_{:05b}_01100_11".format(12, 12, 12), 2)), # xor a2, a2, a2
+            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 20) & 0xfff, 12, 12), 2)), # addi a2, a2, perm[31:20]
+            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 12, 12), 2)), # slli a0, a0, 12
+            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 8) & 0xfff, 12, 12), 2)), # addi a2, a2, perm[19:8]
+            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(8, 12, 12), 2)), # slli a0, a0, 12
+            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 0) & 0xff, 12, 12), 2)), # addi a2, a2, perm[7:0]
+
+            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format(_NR_mprotect, 0, 17), 2)), # addi a7, zero, _NR_mprotect
+            p32(int("0b00000_00_00000_00000_000_00000_11100_11", 2)), # ecall
+        ]
+        return b''.join(insns)
+
+
+class RISCV64(RISCV):
+    arch = "RISCV"
+    mode = "RISCV64"
+
+    @classmethod
+    def mprotect_asm_raw(cls, addr, size, perm):
+        _NR_mprotect = 226
+        insns = [
+            p32(int("0b00000_00_{:05b}_{:05b}_100_{:05b}_01100_11".format(10, 10, 10), 2)), # xor a0, a0, a0
+            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 52) & 0xfff, 10, 10), 2)), # addi a0, a0, addr[63:52]
+            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 10, 10), 2)), # slli a0, a0, 12
+            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 40) & 0xfff, 10, 10), 2)), # addi a0, a0, addr[51:40]
+            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 10, 10), 2)), # slli a0, a0, 12
+            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 28) & 0xfff, 10, 10), 2)), # addi a0, a0, addr[39:28]
+            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 10, 10), 2)), # slli a0, a0, 12
+            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 16) & 0xfff, 10, 10), 2)), # addi a0, a0, addr[27:16]
+            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 10, 10), 2)), # slli a0, a0, 12
+            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 4) & 0xfff, 10, 10), 2)), # addi a0, a0, addr[15:4]
+            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(4, 10, 10), 2)), # slli a0, a0, 12
+            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 0) & 0xf, 10, 10), 2)), # addi a0, a0, addr[3:0]
+
+            p32(int("0b00000_00_{:05b}_{:05b}_100_{:05b}_01100_11".format(11, 11, 11), 2)), # xor a1, a1, a1
+            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 52) & 0xfff, 11, 11), 2)), # addi a1, a1, size[63:52]
+            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 11, 11), 2)), # slli a0, a0, 12
+            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 40) & 0xfff, 11, 11), 2)), # addi a1, a1, size[51:40]
+            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 11, 11), 2)), # slli a0, a0, 12
+            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 28) & 0xfff, 11, 11), 2)), # addi a1, a1, size[39:28]
+            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 11, 11), 2)), # slli a0, a0, 12
+            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 16) & 0xfff, 11, 11), 2)), # addi a1, a1, size[27:16]
+            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 11, 11), 2)), # slli a0, a0, 12
+            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 4) & 0xfff, 11, 11), 2)), # addi a1, a1, size[15:4]
+            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(4, 11, 11), 2)), # slli a0, a0, 12
+            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 0) & 0xf, 11, 11), 2)), # addi a1, a1, size[3:0]
+
+            p32(int("0b00000_00_{:05b}_{:05b}_100_{:05b}_01100_11".format(12, 12, 12), 2)), # xor a2, a2, a2
+            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 52) & 0xfff, 12, 12), 2)), # addi a2, a2, perm[63:52]
+            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 12, 12), 2)), # slli a0, a0, 12
+            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 40) & 0xfff, 12, 12), 2)), # addi a2, a2, perm[51:40]
+            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 12, 12), 2)), # slli a0, a0, 12
+            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 28) & 0xfff, 12, 12), 2)), # addi a2, a2, perm[39:28]
+            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 12, 12), 2)), # slli a0, a0, 12
+            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 16) & 0xfff, 12, 12), 2)), # addi a2, a2, perm[27:16]
+            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 12, 12), 2)), # slli a0, a0, 12
+            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 4) & 0xfff, 12, 12), 2)), # addi a2, a2, perm[15:4]
+            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(4, 12, 12), 2)), # slli a0, a0, 12
+            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 0) & 0xf, 12, 12), 2)), # addi a2, a2, perm[3:0]
+
+            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format(_NR_mprotect, 0, 17), 2)), # addi a7, zero, _NR_mprotect
+            p32(int("0b00000_00_00000_00000_000_00000_11100_11", 2)), # ecall
+        ]
+        return b''.join(insns)
 
 
 class ARM(Architecture):
@@ -4223,6 +4314,10 @@ def only_if_specific_arch(arch=[]):
                     return f(*args, **kwargs)
                 elif a == "SPARC64" and is_sparc64():
                     return f(*args, **kwargs)
+                elif a == "RISCV32" and is_riscv32():
+                    return f(*args, **kwargs)
+                elif a == "RISCV64" and is_riscv64():
+                    return f(*args, **kwargs)
             else:
                 warn("This command cannot work under this architecture.")
                 return
@@ -4267,6 +4362,12 @@ def exclude_specific_arch(arch=[]):
                     warn("This command cannot work under this architecture.")
                     return
                 elif a == "SPARC64" and is_sparc64():
+                    warn("This command cannot work under this architecture.")
+                    return
+                elif a == "RISCV32" and is_riscv32():
+                    warn("This command cannot work under this architecture.")
+                    return
+                elif a == "RISCV64" and is_riscv64():
                     warn("This command cannot work under this architecture.")
                     return
             else:
@@ -5010,7 +5111,7 @@ def get_terminal_size():
             return 600, 100
 
 
-def get_generic_arch(module, prefix, arch, mode, big_endian, to_string=False):
+def get_generic_arch(module, prefix, arch, mode, big_endian, to_string=False, extra=[]):
     """Retrieves architecture and mode from the arguments for use for the holy
     {cap,key}stone/unicorn trinity."""
     if to_string:
@@ -5023,6 +5124,8 @@ def get_generic_arch(module, prefix, arch, mode, big_endian, to_string=False):
             mode += " + {:s}.{:s}_MODE_BIG_ENDIAN".format(module.__name__, prefix)
         else:
             mode += " + {:s}.{:s}_MODE_LITTLE_ENDIAN".format(module.__name__, prefix)
+        for e in extra:
+            mode += " + {:s}.{:s}_MODE_{:s}".format(module.__name__, prefix, e)
     else:
         arch = getattr(module, "{:s}_ARCH_{:s}".format(prefix, arch))
         if mode:
@@ -5033,6 +5136,8 @@ def get_generic_arch(module, prefix, arch, mode, big_endian, to_string=False):
             mode |= getattr(module, "{:s}_MODE_BIG_ENDIAN".format(prefix))
         else:
             mode |= getattr(module, "{:s}_MODE_LITTLE_ENDIAN".format(prefix))
+        for e in extra:
+            mode |= getattr(module, "{:s}_MODE_{:s}".format(prefix, e))
     return arch, mode
 
 
@@ -5049,6 +5154,7 @@ def get_unicorn_arch(arch=None, mode=None, endian=None, to_string=False):
 @load_capstone
 def get_capstone_arch(arch=None, mode=None, endian=None, to_string=False):
     capstone = sys.modules["capstone"]
+    extra = []
     if (arch, mode, endian) == (None, None, None):
         arch = current_arch.arch
         mode = current_arch.mode
@@ -5062,7 +5168,9 @@ def get_capstone_arch(arch=None, mode=None, endian=None, to_string=False):
         mode = ""
     if arch == "SPARC" and mode == "SPARC64":
         mode = "V9"
-    return get_generic_arch(capstone, "CS", arch, mode, endian, to_string)
+    if arch == "RISCV":
+        extra = ["RISCVC"]
+    return get_generic_arch(capstone, "CS", arch, mode, endian, to_string, extra=extra)
 
 
 @load_keystone
@@ -5261,6 +5369,24 @@ def is_sparc64():
 
 
 @functools.lru_cache()
+def is_riscv32():
+    """Checks if current target is an riscv-32"""
+    try:
+        return current_arch.arch == "RISCV" and current_arch.mode == "RISCV32"
+    except Exception:
+        return False
+
+
+@functools.lru_cache()
+def is_riscv64():
+    """Checks if current target is an riscv-64"""
+    try:
+        return current_arch.arch == "RISCV" and current_arch.mode == "RISCV64"
+    except Exception:
+        return False
+
+
+@functools.lru_cache()
 def is_static(filename=None):
     if filename is None:
         filename = get_filepath()
@@ -5296,7 +5422,7 @@ def set_arch(arch=None, default=None):
         "I386:X86-64": X86_64, "I386:X86-64:INTEL": X86_64,
         Elf.POWERPC: PowerPC, "POWERPC": PowerPC, "PPC": PowerPC, "PPC32": PowerPC, "POWERPC:COMMON": PowerPC,
         Elf.POWERPC64: PowerPC64, "POWERPC64": PowerPC64, "PPC64": PowerPC64, "POWERPC:COMMON64": PowerPC64,
-        Elf.RISCV: RISCV, "RISCV": RISCV, "RISCV:RV32": RISCV, "RISCV:RV64": RISCV,
+        "RISCV": RISCV, "RISCV32": RISCV, "RISCV:RV32": RISCV, "RISCV64": RISCV64, "RISCV:RV64": RISCV64,
         Elf.SPARC: SPARC, "SPARC": SPARC, "SPARC32": SPARC, "SPARC:V8": SPARC, "SPARC:V8PLUS": SPARC,
         Elf.SPARC64: SPARC64, "SPARC64": SPARC64, "SPARC:V9": SPARC64,
         "MIPS": MIPS, "MIPS:ISA32": MIPS, "MIPS:ISA32R2": MIPS, "MIPS:ISA32R3": MIPS,
@@ -5327,11 +5453,11 @@ def set_arch(arch=None, default=None):
                 current_elf = None
 
         try:
-            if current_elf and current_elf.e_machine != Elf.MIPS:
+            if current_elf and current_elf.e_machine not in [Elf.MIPS, Elf.RISCV]:
                 current_arch = arches[current_elf.e_machine]()
             else:
-                # MIPS64 and MIPS32 are indistinguishable because e_machine of the ELF header has the same value
-                # so we use the detection result of gdb
+                # MIPS32/64 and RISCV32/64  are indistinguishable because e_machine of the ELF header
+                # has the same value, so we use the detection result of gdb
                 current_arch = arches[get_arch().upper()]()
         except KeyError:
             if default:
@@ -8684,6 +8810,8 @@ class UnicornEmulateCommand(GenericCommand):
         content += "import unicorn\n"
         if is_ppc64() or is_ppc32():
             content += "import unicorn.ppc_const\n"
+        elif is_riscv32() or is_riscv64():
+            content += "import unicorn.riscv_const\n"
         content += "\n"
 
         content += "registers = collections.OrderedDict({\n"
@@ -17437,7 +17565,9 @@ class SyscallSearchCommand(GenericCommand):
     _example_ += '{:s} -a PPC -m PPC32     "^writev?" # ppc32\n'.format(_cmdline_)
     _example_ += '{:s} -a PPC -m PPC64     "^writev?" # ppc64\n'.format(_cmdline_)
     _example_ += '{:s} -a SPARC -m SPARC32 "^writev?" # sparc32\n'.format(_cmdline_)
-    _example_ += '{:s} -a SPARC -m SPARC64 "^writev?" # sparc64'.format(_cmdline_)
+    _example_ += '{:s} -a SPARC -m SPARC64 "^writev?" # sparc64\n'.format(_cmdline_)
+    _example_ += '{:s} -a RISCV -m RISCV32 "^writev?" # riscv32\n'.format(_cmdline_)
+    _example_ += '{:s} -a RISCV -m RISCV64 "^writev?" # riscv64'.format(_cmdline_)
     _category_ = "Misc"
 
     def print_legend(self):
@@ -22444,6 +22574,632 @@ sparc_syscall_tbl = """
 """
 
 
+# RISCV64
+#
+# [How to make]
+# gcc -I `pwd`/include/uapi/ -E -D__SYSCALL=SYSCALL arch/riscv/include/uapi/asm/unistd.h | grep ^SYSCALL | sed -e 's/SYSCALL(//;s/[,)]//g;/+/d' > /tmp/a
+# grep -oP "__NR\S+\s+\d+$" include/uapi/asm-generic/unistd.h | grep -v __NR_sync_file_range2 > /tmp/b
+# join -2 2 -o 1.1,1.10,2.1,1.2 -e riscv64 /tmp/a /tmp/b | sed -e 's/\(__NR_\|__NR3264_\)//g' | column -t
+#
+riscv64_syscall_tbl = """
+0    riscv64  io_setup                 sys_io_setup
+1    riscv64  io_destroy               sys_io_destroy
+2    riscv64  io_submit                sys_io_submit
+3    riscv64  io_cancel                sys_io_cancel
+4    riscv64  io_getevents             sys_io_getevents
+5    riscv64  setxattr                 sys_setxattr
+6    riscv64  lsetxattr                sys_lsetxattr
+7    riscv64  fsetxattr                sys_fsetxattr
+8    riscv64  getxattr                 sys_getxattr
+9    riscv64  lgetxattr                sys_lgetxattr
+10   riscv64  fgetxattr                sys_fgetxattr
+11   riscv64  listxattr                sys_listxattr
+12   riscv64  llistxattr               sys_llistxattr
+13   riscv64  flistxattr               sys_flistxattr
+14   riscv64  removexattr              sys_removexattr
+15   riscv64  lremovexattr             sys_lremovexattr
+16   riscv64  fremovexattr             sys_fremovexattr
+17   riscv64  getcwd                   sys_getcwd
+18   riscv64  lookup_dcookie           sys_lookup_dcookie
+19   riscv64  eventfd2                 sys_eventfd2
+20   riscv64  epoll_create1            sys_epoll_create1
+21   riscv64  epoll_ctl                sys_epoll_ctl
+22   riscv64  epoll_pwait              sys_epoll_pwait
+23   riscv64  dup                      sys_dup
+24   riscv64  dup3                     sys_dup3
+25   riscv64  fcntl                    sys_fcntl
+26   riscv64  inotify_init1            sys_inotify_init1
+27   riscv64  inotify_add_watch        sys_inotify_add_watch
+28   riscv64  inotify_rm_watch         sys_inotify_rm_watch
+29   riscv64  ioctl                    sys_ioctl
+30   riscv64  ioprio_set               sys_ioprio_set
+31   riscv64  ioprio_get               sys_ioprio_get
+32   riscv64  flock                    sys_flock
+33   riscv64  mknodat                  sys_mknodat
+34   riscv64  mkdirat                  sys_mkdirat
+35   riscv64  unlinkat                 sys_unlinkat
+36   riscv64  symlinkat                sys_symlinkat
+37   riscv64  linkat                   sys_linkat
+39   riscv64  umount2                  sys_umount
+40   riscv64  mount                    sys_mount
+41   riscv64  pivot_root               sys_pivot_root
+42   riscv64  nfsservctl               sys_ni_syscall
+43   riscv64  statfs                   sys_statfs
+44   riscv64  fstatfs                  sys_fstatfs
+45   riscv64  truncate                 sys_truncate
+46   riscv64  ftruncate                sys_ftruncate
+47   riscv64  fallocate                sys_fallocate
+48   riscv64  faccessat                sys_faccessat
+49   riscv64  chdir                    sys_chdir
+50   riscv64  fchdir                   sys_fchdir
+51   riscv64  chroot                   sys_chroot
+52   riscv64  fchmod                   sys_fchmod
+53   riscv64  fchmodat                 sys_fchmodat
+54   riscv64  fchownat                 sys_fchownat
+55   riscv64  fchown                   sys_fchown
+56   riscv64  openat                   sys_openat
+57   riscv64  close                    sys_close
+58   riscv64  vhangup                  sys_vhangup
+59   riscv64  pipe2                    sys_pipe2
+60   riscv64  quotactl                 sys_quotactl
+61   riscv64  getdents64               sys_getdents64
+62   riscv64  lseek                    sys_lseek
+63   riscv64  read                     sys_read
+64   riscv64  write                    sys_write
+65   riscv64  readv                    sys_readv
+66   riscv64  writev                   sys_writev
+67   riscv64  pread64                  sys_pread64
+68   riscv64  pwrite64                 sys_pwrite64
+69   riscv64  preadv                   sys_preadv
+70   riscv64  pwritev                  sys_pwritev
+71   riscv64  sendfile                 sys_sendfile64
+72   riscv64  pselect6                 sys_pselect6
+73   riscv64  ppoll                    sys_ppoll
+74   riscv64  signalfd4                sys_signalfd4
+75   riscv64  vmsplice                 sys_vmsplice
+76   riscv64  splice                   sys_splice
+77   riscv64  tee                      sys_tee
+78   riscv64  readlinkat               sys_readlinkat
+79   riscv64  fstatat                  sys_newfstatat
+80   riscv64  fstat                    sys_newfstat
+81   riscv64  sync                     sys_sync
+82   riscv64  fsync                    sys_fsync
+83   riscv64  fdatasync                sys_fdatasync
+84   riscv64  sync_file_range          sys_sync_file_range
+85   riscv64  timerfd_create           sys_timerfd_create
+86   riscv64  timerfd_settime          sys_timerfd_settime
+87   riscv64  timerfd_gettime          sys_timerfd_gettime
+88   riscv64  utimensat                sys_utimensat
+89   riscv64  acct                     sys_acct
+90   riscv64  capget                   sys_capget
+91   riscv64  capset                   sys_capset
+92   riscv64  personality              sys_personality
+93   riscv64  exit                     sys_exit
+94   riscv64  exit_group               sys_exit_group
+95   riscv64  waitid                   sys_waitid
+96   riscv64  set_tid_address          sys_set_tid_address
+97   riscv64  unshare                  sys_unshare
+98   riscv64  futex                    sys_futex
+99   riscv64  set_robust_list          sys_set_robust_list
+100  riscv64  get_robust_list          sys_get_robust_list
+101  riscv64  nanosleep                sys_nanosleep
+102  riscv64  getitimer                sys_getitimer
+103  riscv64  setitimer                sys_setitimer
+104  riscv64  kexec_load               sys_kexec_load
+105  riscv64  init_module              sys_init_module
+106  riscv64  delete_module            sys_delete_module
+107  riscv64  timer_create             sys_timer_create
+108  riscv64  timer_gettime            sys_timer_gettime
+109  riscv64  timer_getoverrun         sys_timer_getoverrun
+110  riscv64  timer_settime            sys_timer_settime
+111  riscv64  timer_delete             sys_timer_delete
+112  riscv64  clock_settime            sys_clock_settime
+113  riscv64  clock_gettime            sys_clock_gettime
+114  riscv64  clock_getres             sys_clock_getres
+115  riscv64  clock_nanosleep          sys_clock_nanosleep
+116  riscv64  syslog                   sys_syslog
+117  riscv64  ptrace                   sys_ptrace
+118  riscv64  sched_setparam           sys_sched_setparam
+119  riscv64  sched_setscheduler       sys_sched_setscheduler
+120  riscv64  sched_getscheduler       sys_sched_getscheduler
+121  riscv64  sched_getparam           sys_sched_getparam
+122  riscv64  sched_setaffinity        sys_sched_setaffinity
+123  riscv64  sched_getaffinity        sys_sched_getaffinity
+124  riscv64  sched_yield              sys_sched_yield
+125  riscv64  sched_get_priority_max   sys_sched_get_priority_max
+126  riscv64  sched_get_priority_min   sys_sched_get_priority_min
+127  riscv64  sched_rr_get_interval    sys_sched_rr_get_interval
+128  riscv64  restart_syscall          sys_restart_syscall
+129  riscv64  kill                     sys_kill
+130  riscv64  tkill                    sys_tkill
+131  riscv64  tgkill                   sys_tgkill
+132  riscv64  sigaltstack              sys_sigaltstack
+133  riscv64  rt_sigsuspend            sys_rt_sigsuspend
+134  riscv64  rt_sigaction             sys_rt_sigaction
+135  riscv64  rt_sigprocmask           sys_rt_sigprocmask
+136  riscv64  rt_sigpending            sys_rt_sigpending
+137  riscv64  rt_sigtimedwait          sys_rt_sigtimedwait
+138  riscv64  rt_sigqueueinfo          sys_rt_sigqueueinfo
+139  riscv64  rt_sigreturn             sys_rt_sigreturn
+140  riscv64  setpriority              sys_setpriority
+141  riscv64  getpriority              sys_getpriority
+142  riscv64  reboot                   sys_reboot
+143  riscv64  setregid                 sys_setregid
+144  riscv64  setgid                   sys_setgid
+145  riscv64  setreuid                 sys_setreuid
+146  riscv64  setuid                   sys_setuid
+147  riscv64  setresuid                sys_setresuid
+148  riscv64  getresuid                sys_getresuid
+149  riscv64  setresgid                sys_setresgid
+150  riscv64  getresgid                sys_getresgid
+151  riscv64  setfsuid                 sys_setfsuid
+152  riscv64  setfsgid                 sys_setfsgid
+153  riscv64  times                    sys_times
+154  riscv64  setpgid                  sys_setpgid
+155  riscv64  getpgid                  sys_getpgid
+156  riscv64  getsid                   sys_getsid
+157  riscv64  setsid                   sys_setsid
+158  riscv64  getgroups                sys_getgroups
+159  riscv64  setgroups                sys_setgroups
+160  riscv64  uname                    sys_newuname
+161  riscv64  sethostname              sys_sethostname
+162  riscv64  setdomainname            sys_setdomainname
+163  riscv64  getrlimit                sys_getrlimit
+164  riscv64  setrlimit                sys_setrlimit
+165  riscv64  getrusage                sys_getrusage
+166  riscv64  umask                    sys_umask
+167  riscv64  prctl                    sys_prctl
+168  riscv64  getcpu                   sys_getcpu
+169  riscv64  gettimeofday             sys_gettimeofday
+170  riscv64  settimeofday             sys_settimeofday
+171  riscv64  adjtimex                 sys_adjtimex
+172  riscv64  getpid                   sys_getpid
+173  riscv64  getppid                  sys_getppid
+174  riscv64  getuid                   sys_getuid
+175  riscv64  geteuid                  sys_geteuid
+176  riscv64  getgid                   sys_getgid
+177  riscv64  getegid                  sys_getegid
+178  riscv64  gettid                   sys_gettid
+179  riscv64  sysinfo                  sys_sysinfo
+180  riscv64  mq_open                  sys_mq_open
+181  riscv64  mq_unlink                sys_mq_unlink
+182  riscv64  mq_timedsend             sys_mq_timedsend
+183  riscv64  mq_timedreceive          sys_mq_timedreceive
+184  riscv64  mq_notify                sys_mq_notify
+185  riscv64  mq_getsetattr            sys_mq_getsetattr
+186  riscv64  msgget                   sys_msgget
+187  riscv64  msgctl                   sys_msgctl
+188  riscv64  msgrcv                   sys_msgrcv
+189  riscv64  msgsnd                   sys_msgsnd
+190  riscv64  semget                   sys_semget
+191  riscv64  semctl                   sys_semctl
+192  riscv64  semtimedop               sys_semtimedop
+193  riscv64  semop                    sys_semop
+194  riscv64  shmget                   sys_shmget
+195  riscv64  shmctl                   sys_shmctl
+196  riscv64  shmat                    sys_shmat
+197  riscv64  shmdt                    sys_shmdt
+198  riscv64  socket                   sys_socket
+199  riscv64  socketpair               sys_socketpair
+200  riscv64  bind                     sys_bind
+201  riscv64  listen                   sys_listen
+202  riscv64  accept                   sys_accept
+203  riscv64  connect                  sys_connect
+204  riscv64  getsockname              sys_getsockname
+205  riscv64  getpeername              sys_getpeername
+206  riscv64  sendto                   sys_sendto
+207  riscv64  recvfrom                 sys_recvfrom
+208  riscv64  setsockopt               sys_setsockopt
+209  riscv64  getsockopt               sys_getsockopt
+210  riscv64  shutdown                 sys_shutdown
+211  riscv64  sendmsg                  sys_sendmsg
+212  riscv64  recvmsg                  sys_recvmsg
+213  riscv64  readahead                sys_readahead
+214  riscv64  brk                      sys_brk
+215  riscv64  munmap                   sys_munmap
+216  riscv64  mremap                   sys_mremap
+217  riscv64  add_key                  sys_add_key
+218  riscv64  request_key              sys_request_key
+219  riscv64  keyctl                   sys_keyctl
+220  riscv64  clone                    sys_clone
+221  riscv64  execve                   sys_execve
+222  riscv64  mmap                     sys_mmap
+223  riscv64  fadvise64                sys_fadvise64_64
+224  riscv64  swapon                   sys_swapon
+225  riscv64  swapoff                  sys_swapoff
+226  riscv64  mprotect                 sys_mprotect
+227  riscv64  msync                    sys_msync
+228  riscv64  mlock                    sys_mlock
+229  riscv64  munlock                  sys_munlock
+230  riscv64  mlockall                 sys_mlockall
+231  riscv64  munlockall               sys_munlockall
+232  riscv64  mincore                  sys_mincore
+233  riscv64  madvise                  sys_madvise
+234  riscv64  remap_file_pages         sys_remap_file_pages
+235  riscv64  mbind                    sys_mbind
+236  riscv64  get_mempolicy            sys_get_mempolicy
+237  riscv64  set_mempolicy            sys_set_mempolicy
+238  riscv64  migrate_pages            sys_migrate_pages
+239  riscv64  move_pages               sys_move_pages
+240  riscv64  rt_tgsigqueueinfo        sys_rt_tgsigqueueinfo
+241  riscv64  perf_event_open          sys_perf_event_open
+242  riscv64  accept4                  sys_accept4
+243  riscv64  recvmmsg                 sys_recvmmsg
+260  riscv64  wait4                    sys_wait4
+261  riscv64  prlimit64                sys_prlimit64
+262  riscv64  fanotify_init            sys_fanotify_init
+263  riscv64  fanotify_mark            sys_fanotify_mark
+264  riscv64  name_to_handle_at        sys_name_to_handle_at
+265  riscv64  open_by_handle_at        sys_open_by_handle_at
+266  riscv64  clock_adjtime            sys_clock_adjtime
+267  riscv64  syncfs                   sys_syncfs
+268  riscv64  setns                    sys_setns
+269  riscv64  sendmmsg                 sys_sendmmsg
+270  riscv64  process_vm_readv         sys_process_vm_readv
+271  riscv64  process_vm_writev        sys_process_vm_writev
+272  riscv64  kcmp                     sys_kcmp
+273  riscv64  finit_module             sys_finit_module
+274  riscv64  sched_setattr            sys_sched_setattr
+275  riscv64  sched_getattr            sys_sched_getattr
+276  riscv64  renameat2                sys_renameat2
+277  riscv64  seccomp                  sys_seccomp
+278  riscv64  getrandom                sys_getrandom
+279  riscv64  memfd_create             sys_memfd_create
+280  riscv64  bpf                      sys_bpf
+281  riscv64  execveat                 sys_execveat
+282  riscv64  userfaultfd              sys_userfaultfd
+283  riscv64  membarrier               sys_membarrier
+284  riscv64  mlock2                   sys_mlock2
+285  riscv64  copy_file_range          sys_copy_file_range
+286  riscv64  preadv2                  sys_preadv2
+287  riscv64  pwritev2                 sys_pwritev2
+288  riscv64  pkey_mprotect            sys_pkey_mprotect
+289  riscv64  pkey_alloc               sys_pkey_alloc
+290  riscv64  pkey_free                sys_pkey_free
+291  riscv64  statx                    sys_statx
+292  riscv64  io_pgetevents            sys_io_pgetevents
+293  riscv64  rseq                     sys_rseq
+294  riscv64  kexec_file_load          sys_kexec_file_load
+424  riscv64  pidfd_send_signal        sys_pidfd_send_signal
+425  riscv64  io_uring_setup           sys_io_uring_setup
+426  riscv64  io_uring_enter           sys_io_uring_enter
+427  riscv64  io_uring_register        sys_io_uring_register
+428  riscv64  open_tree                sys_open_tree
+429  riscv64  move_mount               sys_move_mount
+430  riscv64  fsopen                   sys_fsopen
+431  riscv64  fsconfig                 sys_fsconfig
+432  riscv64  fsmount                  sys_fsmount
+433  riscv64  fspick                   sys_fspick
+434  riscv64  pidfd_open               sys_pidfd_open
+435  riscv64  clone3                   sys_clone3
+436  riscv64  close_range              sys_close_range
+437  riscv64  openat2                  sys_openat2
+438  riscv64  pidfd_getfd              sys_pidfd_getfd
+439  riscv64  faccessat2               sys_faccessat2
+440  riscv64  process_madvise          sys_process_madvise
+441  riscv64  epoll_pwait2             sys_epoll_pwait2
+442  riscv64  mount_setattr            sys_mount_setattr
+443  riscv64  quotactl_fd              sys_quotactl_fd
+444  riscv64  landlock_create_ruleset  sys_landlock_create_ruleset
+445  riscv64  landlock_add_rule        sys_landlock_add_rule
+446  riscv64  landlock_restrict_self   sys_landlock_restrict_self
+447  riscv64  memfd_secret             sys_memfd_secret
+448  riscv64  process_mrelease         sys_process_mrelease
+449  riscv64  futex_waitv              sys_futex_waitv
+450  riscv64  set_mempolicy_home_node  sys_set_mempolicy_home_node
+"""
+
+
+# RISCV32
+#
+# [How to make]
+# gcc -I `pwd`/include/uapi/ -E -D__SYSCALL=SYSCALL -D__BITS_PER_LONG=32 -D__ILP32__=1 arch/riscv/include/uapi/asm/unistd.h | grep ^SYSCALL | sed -e 's/SYSCALL(//;s/[,)]//g;/+/d' > /tmp/a
+# grep -oP "__NR\S+\s+\d+$" include/uapi/asm-generic/unistd.h | grep -v __NR_sync_file_range2 > /tmp/b
+# join -2 2 -o 1.1,1.10,2.1,1.2 -e riscv32 /tmp/a /tmp/b | sed -e 's/\(__NR_\|__NR3264_\)//g' | column -t
+#
+riscv32_syscall_tbl = """
+0    riscv32  io_setup                      sys_io_setup
+1    riscv32  io_destroy                    sys_io_destroy
+2    riscv32  io_submit                     sys_io_submit
+3    riscv32  io_cancel                     sys_io_cancel
+5    riscv32  setxattr                      sys_setxattr
+6    riscv32  lsetxattr                     sys_lsetxattr
+7    riscv32  fsetxattr                     sys_fsetxattr
+8    riscv32  getxattr                      sys_getxattr
+9    riscv32  lgetxattr                     sys_lgetxattr
+10   riscv32  fgetxattr                     sys_fgetxattr
+11   riscv32  listxattr                     sys_listxattr
+12   riscv32  llistxattr                    sys_llistxattr
+13   riscv32  flistxattr                    sys_flistxattr
+14   riscv32  removexattr                   sys_removexattr
+15   riscv32  lremovexattr                  sys_lremovexattr
+16   riscv32  fremovexattr                  sys_fremovexattr
+17   riscv32  getcwd                        sys_getcwd
+18   riscv32  lookup_dcookie                sys_lookup_dcookie
+19   riscv32  eventfd2                      sys_eventfd2
+20   riscv32  epoll_create1                 sys_epoll_create1
+21   riscv32  epoll_ctl                     sys_epoll_ctl
+22   riscv32  epoll_pwait                   sys_epoll_pwait
+23   riscv32  dup                           sys_dup
+24   riscv32  dup3                          sys_dup3
+25   riscv32  fcntl                         sys_fcntl64
+26   riscv32  inotify_init1                 sys_inotify_init1
+27   riscv32  inotify_add_watch             sys_inotify_add_watch
+28   riscv32  inotify_rm_watch              sys_inotify_rm_watch
+29   riscv32  ioctl                         sys_ioctl
+30   riscv32  ioprio_set                    sys_ioprio_set
+31   riscv32  ioprio_get                    sys_ioprio_get
+32   riscv32  flock                         sys_flock
+33   riscv32  mknodat                       sys_mknodat
+34   riscv32  mkdirat                       sys_mkdirat
+35   riscv32  unlinkat                      sys_unlinkat
+36   riscv32  symlinkat                     sys_symlinkat
+37   riscv32  linkat                        sys_linkat
+39   riscv32  umount2                       sys_umount
+40   riscv32  mount                         sys_mount
+41   riscv32  pivot_root                    sys_pivot_root
+42   riscv32  nfsservctl                    sys_ni_syscall
+43   riscv32  statfs                        sys_statfs64
+44   riscv32  fstatfs                       sys_fstatfs64
+45   riscv32  truncate                      sys_truncate64
+46   riscv32  ftruncate                     sys_ftruncate64
+47   riscv32  fallocate                     sys_fallocate
+48   riscv32  faccessat                     sys_faccessat
+49   riscv32  chdir                         sys_chdir
+50   riscv32  fchdir                        sys_fchdir
+51   riscv32  chroot                        sys_chroot
+52   riscv32  fchmod                        sys_fchmod
+53   riscv32  fchmodat                      sys_fchmodat
+54   riscv32  fchownat                      sys_fchownat
+55   riscv32  fchown                        sys_fchown
+56   riscv32  openat                        sys_openat
+57   riscv32  close                         sys_close
+58   riscv32  vhangup                       sys_vhangup
+59   riscv32  pipe2                         sys_pipe2
+60   riscv32  quotactl                      sys_quotactl
+61   riscv32  getdents64                    sys_getdents64
+62   riscv32  lseek                         sys_llseek
+63   riscv32  read                          sys_read
+64   riscv32  write                         sys_write
+65   riscv32  readv                         sys_readv
+66   riscv32  writev                        sys_writev
+67   riscv32  pread64                       sys_pread64
+68   riscv32  pwrite64                      sys_pwrite64
+69   riscv32  preadv                        sys_preadv
+70   riscv32  pwritev                       sys_pwritev
+71   riscv32  sendfile                      sys_sendfile64
+74   riscv32  signalfd4                     sys_signalfd4
+75   riscv32  vmsplice                      sys_vmsplice
+76   riscv32  splice                        sys_splice
+77   riscv32  tee                           sys_tee
+78   riscv32  readlinkat                    sys_readlinkat
+79   riscv32  fstatat                       sys_fstatat64
+80   riscv32  fstat                         sys_fstat64
+81   riscv32  sync                          sys_sync
+82   riscv32  fsync                         sys_fsync
+83   riscv32  fdatasync                     sys_fdatasync
+84   riscv32  sync_file_range               sys_sync_file_range
+85   riscv32  timerfd_create                sys_timerfd_create
+89   riscv32  acct                          sys_acct
+90   riscv32  capget                        sys_capget
+91   riscv32  capset                        sys_capset
+92   riscv32  personality                   sys_personality
+93   riscv32  exit                          sys_exit
+94   riscv32  exit_group                    sys_exit_group
+95   riscv32  waitid                        sys_waitid
+96   riscv32  set_tid_address               sys_set_tid_address
+97   riscv32  unshare                       sys_unshare
+99   riscv32  set_robust_list               sys_set_robust_list
+100  riscv32  get_robust_list               sys_get_robust_list
+102  riscv32  getitimer                     sys_getitimer
+103  riscv32  setitimer                     sys_setitimer
+104  riscv32  kexec_load                    sys_kexec_load
+105  riscv32  init_module                   sys_init_module
+106  riscv32  delete_module                 sys_delete_module
+107  riscv32  timer_create                  sys_timer_create
+109  riscv32  timer_getoverrun              sys_timer_getoverrun
+111  riscv32  timer_delete                  sys_timer_delete
+116  riscv32  syslog                        sys_syslog
+117  riscv32  ptrace                        sys_ptrace
+118  riscv32  sched_setparam                sys_sched_setparam
+119  riscv32  sched_setscheduler            sys_sched_setscheduler
+120  riscv32  sched_getscheduler            sys_sched_getscheduler
+121  riscv32  sched_getparam                sys_sched_getparam
+122  riscv32  sched_setaffinity             sys_sched_setaffinity
+123  riscv32  sched_getaffinity             sys_sched_getaffinity
+124  riscv32  sched_yield                   sys_sched_yield
+125  riscv32  sched_get_priority_max        sys_sched_get_priority_max
+126  riscv32  sched_get_priority_min        sys_sched_get_priority_min
+128  riscv32  restart_syscall               sys_restart_syscall
+129  riscv32  kill                          sys_kill
+130  riscv32  tkill                         sys_tkill
+131  riscv32  tgkill                        sys_tgkill
+132  riscv32  sigaltstack                   sys_sigaltstack
+133  riscv32  rt_sigsuspend                 sys_rt_sigsuspend
+134  riscv32  rt_sigaction                  sys_rt_sigaction
+135  riscv32  rt_sigprocmask                sys_rt_sigprocmask
+136  riscv32  rt_sigpending                 sys_rt_sigpending
+138  riscv32  rt_sigqueueinfo               sys_rt_sigqueueinfo
+139  riscv32  rt_sigreturn                  sys_rt_sigreturn
+140  riscv32  setpriority                   sys_setpriority
+141  riscv32  getpriority                   sys_getpriority
+142  riscv32  reboot                        sys_reboot
+143  riscv32  setregid                      sys_setregid
+144  riscv32  setgid                        sys_setgid
+145  riscv32  setreuid                      sys_setreuid
+146  riscv32  setuid                        sys_setuid
+147  riscv32  setresuid                     sys_setresuid
+148  riscv32  getresuid                     sys_getresuid
+149  riscv32  setresgid                     sys_setresgid
+150  riscv32  getresgid                     sys_getresgid
+151  riscv32  setfsuid                      sys_setfsuid
+152  riscv32  setfsgid                      sys_setfsgid
+153  riscv32  times                         sys_times
+154  riscv32  setpgid                       sys_setpgid
+155  riscv32  getpgid                       sys_getpgid
+156  riscv32  getsid                        sys_getsid
+157  riscv32  setsid                        sys_setsid
+158  riscv32  getgroups                     sys_getgroups
+159  riscv32  setgroups                     sys_setgroups
+160  riscv32  uname                         sys_newuname
+161  riscv32  sethostname                   sys_sethostname
+162  riscv32  setdomainname                 sys_setdomainname
+163  riscv32  getrlimit                     sys_getrlimit
+164  riscv32  setrlimit                     sys_setrlimit
+165  riscv32  getrusage                     sys_getrusage
+166  riscv32  umask                         sys_umask
+167  riscv32  prctl                         sys_prctl
+168  riscv32  getcpu                        sys_getcpu
+172  riscv32  getpid                        sys_getpid
+173  riscv32  getppid                       sys_getppid
+174  riscv32  getuid                        sys_getuid
+175  riscv32  geteuid                       sys_geteuid
+176  riscv32  getgid                        sys_getgid
+177  riscv32  getegid                       sys_getegid
+178  riscv32  gettid                        sys_gettid
+179  riscv32  sysinfo                       sys_sysinfo
+180  riscv32  mq_open                       sys_mq_open
+181  riscv32  mq_unlink                     sys_mq_unlink
+184  riscv32  mq_notify                     sys_mq_notify
+185  riscv32  mq_getsetattr                 sys_mq_getsetattr
+186  riscv32  msgget                        sys_msgget
+187  riscv32  msgctl                        sys_msgctl
+188  riscv32  msgrcv                        sys_msgrcv
+189  riscv32  msgsnd                        sys_msgsnd
+190  riscv32  semget                        sys_semget
+191  riscv32  semctl                        sys_semctl
+193  riscv32  semop                         sys_semop
+194  riscv32  shmget                        sys_shmget
+195  riscv32  shmctl                        sys_shmctl
+196  riscv32  shmat                         sys_shmat
+197  riscv32  shmdt                         sys_shmdt
+198  riscv32  socket                        sys_socket
+199  riscv32  socketpair                    sys_socketpair
+200  riscv32  bind                          sys_bind
+201  riscv32  listen                        sys_listen
+202  riscv32  accept                        sys_accept
+203  riscv32  connect                       sys_connect
+204  riscv32  getsockname                   sys_getsockname
+205  riscv32  getpeername                   sys_getpeername
+206  riscv32  sendto                        sys_sendto
+207  riscv32  recvfrom                      sys_recvfrom
+208  riscv32  setsockopt                    sys_setsockopt
+209  riscv32  getsockopt                    sys_getsockopt
+210  riscv32  shutdown                      sys_shutdown
+211  riscv32  sendmsg                       sys_sendmsg
+212  riscv32  recvmsg                       sys_recvmsg
+213  riscv32  readahead                     sys_readahead
+214  riscv32  brk                           sys_brk
+215  riscv32  munmap                        sys_munmap
+216  riscv32  mremap                        sys_mremap
+217  riscv32  add_key                       sys_add_key
+218  riscv32  request_key                   sys_request_key
+219  riscv32  keyctl                        sys_keyctl
+220  riscv32  clone                         sys_clone
+221  riscv32  execve                        sys_execve
+222  riscv32  mmap                          sys_mmap2
+223  riscv32  fadvise64                     sys_fadvise64_64
+224  riscv32  swapon                        sys_swapon
+225  riscv32  swapoff                       sys_swapoff
+226  riscv32  mprotect                      sys_mprotect
+227  riscv32  msync                         sys_msync
+228  riscv32  mlock                         sys_mlock
+229  riscv32  munlock                       sys_munlock
+230  riscv32  mlockall                      sys_mlockall
+231  riscv32  munlockall                    sys_munlockall
+232  riscv32  mincore                       sys_mincore
+233  riscv32  madvise                       sys_madvise
+234  riscv32  remap_file_pages              sys_remap_file_pages
+235  riscv32  mbind                         sys_mbind
+236  riscv32  get_mempolicy                 sys_get_mempolicy
+237  riscv32  set_mempolicy                 sys_set_mempolicy
+238  riscv32  migrate_pages                 sys_migrate_pages
+239  riscv32  move_pages                    sys_move_pages
+240  riscv32  rt_tgsigqueueinfo             sys_rt_tgsigqueueinfo
+241  riscv32  perf_event_open               sys_perf_event_open
+242  riscv32  accept4                       sys_accept4
+261  riscv32  prlimit64                     sys_prlimit64
+262  riscv32  fanotify_init                 sys_fanotify_init
+263  riscv32  fanotify_mark                 sys_fanotify_mark
+264  riscv32  name_to_handle_at             sys_name_to_handle_at
+265  riscv32  open_by_handle_at             sys_open_by_handle_at
+267  riscv32  syncfs                        sys_syncfs
+268  riscv32  setns                         sys_setns
+269  riscv32  sendmmsg                      sys_sendmmsg
+270  riscv32  process_vm_readv              sys_process_vm_readv
+271  riscv32  process_vm_writev             sys_process_vm_writev
+272  riscv32  kcmp                          sys_kcmp
+273  riscv32  finit_module                  sys_finit_module
+274  riscv32  sched_setattr                 sys_sched_setattr
+275  riscv32  sched_getattr                 sys_sched_getattr
+276  riscv32  renameat2                     sys_renameat2
+277  riscv32  seccomp                       sys_seccomp
+278  riscv32  getrandom                     sys_getrandom
+279  riscv32  memfd_create                  sys_memfd_create
+280  riscv32  bpf                           sys_bpf
+281  riscv32  execveat                      sys_execveat
+282  riscv32  userfaultfd                   sys_userfaultfd
+283  riscv32  membarrier                    sys_membarrier
+284  riscv32  mlock2                        sys_mlock2
+285  riscv32  copy_file_range               sys_copy_file_range
+286  riscv32  preadv2                       sys_preadv2
+287  riscv32  pwritev2                      sys_pwritev2
+288  riscv32  pkey_mprotect                 sys_pkey_mprotect
+289  riscv32  pkey_alloc                    sys_pkey_alloc
+290  riscv32  pkey_free                     sys_pkey_free
+291  riscv32  statx                         sys_statx
+293  riscv32  rseq                          sys_rseq
+294  riscv32  kexec_file_load               sys_kexec_file_load
+403  riscv32  clock_gettime64               sys_clock_gettime
+404  riscv32  clock_settime64               sys_clock_settime
+405  riscv32  clock_adjtime64               sys_clock_adjtime
+406  riscv32  clock_getres_time64           sys_clock_getres
+407  riscv32  clock_nanosleep_time64        sys_clock_nanosleep
+408  riscv32  timer_gettime64               sys_timer_gettime
+409  riscv32  timer_settime64               sys_timer_settime
+410  riscv32  timerfd_gettime64             sys_timerfd_gettime
+411  riscv32  timerfd_settime64             sys_timerfd_settime
+412  riscv32  utimensat_time64              sys_utimensat
+413  riscv32  pselect6_time64               sys_pselect6
+414  riscv32  ppoll_time64                  sys_ppoll
+416  riscv32  io_pgetevents_time64          sys_io_pgetevents
+417  riscv32  recvmmsg_time64               sys_recvmmsg
+418  riscv32  mq_timedsend_time64           sys_mq_timedsend
+419  riscv32  mq_timedreceive_time64        sys_mq_timedreceive
+420  riscv32  semtimedop_time64             sys_semtimedop
+421  riscv32  rt_sigtimedwait_time64        sys_rt_sigtimedwait
+422  riscv32  futex_time64                  sys_futex
+423  riscv32  sched_rr_get_interval_time64  sys_sched_rr_get_interval
+424  riscv32  pidfd_send_signal             sys_pidfd_send_signal
+425  riscv32  io_uring_setup                sys_io_uring_setup
+426  riscv32  io_uring_enter                sys_io_uring_enter
+427  riscv32  io_uring_register             sys_io_uring_register
+428  riscv32  open_tree                     sys_open_tree
+429  riscv32  move_mount                    sys_move_mount
+430  riscv32  fsopen                        sys_fsopen
+431  riscv32  fsconfig                      sys_fsconfig
+432  riscv32  fsmount                       sys_fsmount
+433  riscv32  fspick                        sys_fspick
+434  riscv32  pidfd_open                    sys_pidfd_open
+435  riscv32  clone3                        sys_clone3
+436  riscv32  close_range                   sys_close_range
+437  riscv32  openat2                       sys_openat2
+438  riscv32  pidfd_getfd                   sys_pidfd_getfd
+439  riscv32  faccessat2                    sys_faccessat2
+440  riscv32  process_madvise               sys_process_madvise
+441  riscv32  epoll_pwait2                  sys_epoll_pwait2
+442  riscv32  mount_setattr                 sys_mount_setattr
+443  riscv32  quotactl_fd                   sys_quotactl_fd
+444  riscv32  landlock_create_ruleset       sys_landlock_create_ruleset
+445  riscv32  landlock_add_rule             sys_landlock_add_rule
+446  riscv32  landlock_restrict_self        sys_landlock_restrict_self
+447  riscv32  memfd_secret                  sys_memfd_secret
+448  riscv32  process_mrelease              sys_process_mrelease
+449  riscv32  futex_waitv                   sys_futex_waitv
+450  riscv32  set_mempolicy_home_node       sys_set_mempolicy_home_node
+"""
+
+
 def parse_syscall_table_defs(table_defs):
     table = []
     for line in table_defs.splitlines():
@@ -22602,6 +23358,7 @@ def get_syscall_table(arch=None, mode=None):
             arch, mode = "ARM64", [None, "S"][is_secure()]
         elif is_arm32():
             arch, mode = "ARM", [["N32", "32"][is_emulated32()], "S"][is_secure()]
+        # TODO: Supports native and emulated differences
         elif is_mips32():
             arch, mode = "MIPS", "MIPS32"
         elif is_mips64():
@@ -22614,6 +23371,10 @@ def get_syscall_table(arch=None, mode=None):
             arch, mode = "SPARC", "SPARC32"
         elif is_sparc64():
             arch, mode = "SPARC", "SPARC64"
+        elif is_riscv32():
+            arch, mode = "RISCV", "RISCV32"
+        elif is_riscv64():
+            arch, mode = "RISCV", "RISCV64"
         else:
             raise
 
@@ -23420,6 +24181,86 @@ def get_syscall_table(arch=None, mode=None):
                 err("Not found: {:s}".format(func))
                 raise
             syscall_list.append([nr, name, sc_def[func]])
+
+    elif arch == "RISCV" and mode == "RISCV32":
+        register_list = RISCV().syscall_parameters
+        sc_def = parse_common_syscall_defs()
+        tbl = parse_syscall_table_defs(riscv32_syscall_tbl)
+        arch_specific_dic = {
+            'sys_rt_sigreturn': [], # arch/riscv/kernel/signal.c
+            'sys_clone': [
+                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
+                'unsigned long tls', 'int *child_tidptr',
+            ], # kernel/fork.c (CONFIG_CLONE_BACKWARDS)
+            'sys_mmap2': [
+                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
+                'unsigned long flags', 'unsigned long fd', 'off_t offset',
+            ], # arch/riscv/kernel/sys_riscv.c"
+        }
+
+        syscall_list = []
+        for entry in tbl:
+            nr, abi, name, func = entry
+            if abi != "riscv32":
+                continue
+            # special case
+            if func in arch_specific_dic:
+                syscall_list.append([nr, name, arch_specific_dic[func]])
+                continue
+            # common case
+            if func == 'sys_ni_syscall':
+                continue
+            if func not in sc_def:
+                err("Not found: {:s}".format(func))
+                raise
+            syscall_list.append([nr, name, sc_def[func]])
+
+        arch_specific_extra = [
+            [259, 'riscv_flush_icache', [
+                'uintptr_t start', 'uintptr_t end', 'uintptr_t flags',
+            ]], # arch/riscv/include/uapi/asm/unistd.h, arch/riscv/kernel/sys_riscv.c
+        ]
+        syscall_list += arch_specific_extra
+
+    elif arch == "RISCV" and mode == "RISCV64":
+        register_list = RISCV64().syscall_parameters
+        sc_def = parse_common_syscall_defs()
+        tbl = parse_syscall_table_defs(riscv64_syscall_tbl)
+        arch_specific_dic = {
+            'sys_rt_sigreturn': [], # arch/riscv/kernel/signal.c
+            'sys_clone': [
+                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
+                'unsigned long tls', 'int *child_tidptr',
+            ], # kernel/fork.c (CONFIG_CLONE_BACKWARDS)
+            'sys_mmap': [
+                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
+                'unsigned long flags', 'unsigned long fd', 'off_t offset',
+            ], # arch/riscv/kernel/sys_riscv.c"
+        }
+
+        syscall_list = []
+        for entry in tbl:
+            nr, abi, name, func = entry
+            if abi != "riscv64":
+                continue
+            # special case
+            if func in arch_specific_dic:
+                syscall_list.append([nr, name, arch_specific_dic[func]])
+                continue
+            # common case
+            if func == 'sys_ni_syscall':
+                continue
+            if func not in sc_def:
+                err("Not found: {:s}".format(func))
+                raise
+            syscall_list.append([nr, name, sc_def[func]])
+
+        arch_specific_extra = [
+            [259, 'riscv_flush_icache', [
+                'uintptr_t start', 'uintptr_t end', 'uintptr_t flags',
+            ]], # arch/riscv/include/uapi/asm/unistd.h, arch/riscv/kernel/sys_riscv.c
+        ]
+        syscall_list += arch_specific_extra
 
     else:
         raise
