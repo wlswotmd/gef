@@ -373,7 +373,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * This is because a single file is more attractive than ease of maintenance.
 * The system-call table used by `syscall-args` is moved from gef-extras.
     * It was updated up to linux kernel 6.0.10.
-    * It supports x64/x86/ARM64/ARM(EABI)/MIPS64/MIPS32/PPC64/PPC32/SPARC64/SPARC32/RISCV64/RISCV32/s390x/sh4.
+    * It supports x64/x86/ARM64/ARM(EABI)/MIPS64/MIPS32/PPC64/PPC32/SPARC64/SPARC32/RISCV64/RISCV32/s390x/sh4/m68k.
     * It also supports x86-native/x86-compatible(emulated on x64)/ARM-native/ARM-compatible(emulated on ARM64).
 * Removed some features I don't use.
     * `ida-interact`, `gef-remote`, `pie`, `pcustom`, `ksymaddr` and `shellcode`.
