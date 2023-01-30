@@ -17377,6 +17377,7 @@ class SyscallSearchCommand(GenericCommand):
         return
 
     def print_syscall(self, syscall_table, syscall_num, syscall_name_pattern):
+        gef_print(titlify("arch={:s}, mode={:s}".format(syscall_table["arch"], syscall_table["mode"])))
         gef_print(Color.colorify("{:<17}{:s}".format("Syscall-num", "Syscall-name"), get_gef_setting("theme.table_heading")))
         for key, entry in syscall_table.items():
             if key in ["arch", "mode"]:
