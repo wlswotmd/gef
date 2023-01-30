@@ -13991,13 +13991,14 @@ class HexdumpByteCommand(HexdumpCommand):
 class PatchCommand(GenericCommand):
     """Write specified values to the specified address."""
     _cmdline_ = "patch"
-    _syntax_ = "{:s} [-h] qword|dword|word|byte [--phys] LOCATION VALUES\n".format(_cmdline_)
-    _syntax_ += "{:s} [-h] string [--phys] LOCATION \"double-escaped string\" [LENGTH]\n".format(_cmdline_)
-    _syntax_ += "{:s} [-h] pattern [--phys] LOCATION LENGTH\n".format(_cmdline_)
-    _syntax_ += "{:s} [-h] nop [--phys] [LOCATION] [-b BYTE_LENGTH|-i INST_COUNT]\n".format(_cmdline_)
-    _syntax_ += "{:s} [-h] inf|trap|ret [--phys] [LOCATION]\n".format(_cmdline_)
-    _syntax_ += "{:s} [-h] history\n".format(_cmdline_)
-    _syntax_ += "{:s} [-h] revert [HISTORY_NUMBER]".format(_cmdline_)
+    _syntax_ = "{:s} qword|dword|word|byte [-h] [-e] [--phys] LOCATION VALUES\n".format(_cmdline_)
+    _syntax_ += '{:s} string [-h] [--phys] LOCATION "double-escaped string" [LENGTH]\n'.format(_cmdline_)
+    _syntax_ += '{:s} hexstring [-h] [--phys] LOCATION "hex-string" [LENGTH]\n'.format(_cmdline_)
+    _syntax_ += "{:s} pattern [-h] [--phys] LOCATION LENGTH\n".format(_cmdline_)
+    _syntax_ += "{:s} nop [-h] [--phys] [LOCATION] [-b BYTE_LENGTH|-i INST_COUNT]\n".format(_cmdline_)
+    _syntax_ += "{:s} inf|trap|ret [-h] [--phys] [LOCATION]\n".format(_cmdline_)
+    _syntax_ += "{:s} history [-h] \n".format(_cmdline_)
+    _syntax_ += "{:s} revert [-h] HISTORY_NUMBER".format(_cmdline_)
     _category_ = "Show/Modify Memory"
     SUPPORTED_SIZES = {
         "qword": (8, "Q"),
@@ -14038,11 +14039,11 @@ class PatchCommand(GenericCommand):
             self.usage()
             return
 
-        phys_mode = False
         if not self.format:
             self.usage()
             return
 
+        phys_mode = False
         if "--phys" in argv:
             if not is_supported_physmode():
                 err("Unsupported. Check qemu version (at least: 4.1.0-rc0~, recommend: 5.x~)")
@@ -14050,6 +14051,11 @@ class PatchCommand(GenericCommand):
             phys_mode = True
             orig_mode = get_current_mmu_mode()
             argv.remove("--phys")
+
+        endian_reverse = False
+        if "-e" in argv:
+            endian_reverse = True
+            argv.remove("-e")
 
         argc = len(argv)
         if argc < 2:
@@ -14066,19 +14072,27 @@ class PatchCommand(GenericCommand):
             if orig_mode == "virt":
                 enable_phys()
 
-        addr = align_address(parse_address(location))
-        size, fcode = self.SUPPORTED_SIZES[fmt]
+        try:
+            addr = align_address(parse_address(location))
+            size, fcode = self.SUPPORTED_SIZES[fmt]
 
-        d = "<" if is_little_endian() else ">"
-        for value in values:
-            value = parse_address(value) & ((1 << size * 8) - 1)
-            vstr = struct.pack(d + fcode, value)
-            self.patch(addr, vstr, size)
-            addr += size
+            if endian_reverse is False:
+                d = "<" if is_little_endian() else ">"
+            else:
+                d = ">" if is_little_endian() else "<"
 
-        if phys_mode:
-            if orig_mode == "virt":
-                disable_phys()
+            for value in values:
+                value = parse_address(value) & ((1 << size * 8) - 1)
+                vstr = struct.pack(d + fcode, value)
+                self.patch(addr, vstr, size)
+                addr += size
+        except Exception:
+            self.usage()
+
+        finally:
+            if phys_mode:
+                if orig_mode == "virt":
+                    disable_phys()
         return
 
 
@@ -14086,8 +14100,9 @@ class PatchCommand(GenericCommand):
 class PatchQwordCommand(PatchCommand):
     """Write specified QWORD to the specified address."""
     _cmdline_ = "patch qword"
-    _syntax_ = "{:s} [-h] [--phys] LOCATION QWORD1 [QWORD2 [QWORD3..]]".format(_cmdline_)
-    _example_ = "{:s} $rip 0x4141414141414141".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [-e] [--phys] LOCATION QWORD1 [QWORD2 [QWORD3 ...]]".format(_cmdline_)
+    _example_ = "{:s}    $rip 0x4142434445464748 # write `HGFEDCBA` to [rip]\n".format(_cmdline_)
+    _example_ = "{:s} -e $rip 0x4142434445464748 # write `ABCDEFGH` to [rip]".format(_cmdline_)
     _category_ = "Show/Modify Memory"
 
     def __init__(self):
@@ -14100,8 +14115,9 @@ class PatchQwordCommand(PatchCommand):
 class PatchDwordCommand(PatchCommand):
     """Write specified DWORD to the specified address."""
     _cmdline_ = "patch dword"
-    _syntax_ = "{:s} [-h] [--phys] LOCATION DWORD1 [DWORD2 [DWORD3..]]".format(_cmdline_)
-    _example_ = "{:s} $rip 0x41414141".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [-e] [--phys] LOCATION DWORD1 [DWORD2 [DWORD3 ...]]".format(_cmdline_)
+    _example_ = "{:s}    $rip 0x41424344 # write `DCBA` to [rip]\n".format(_cmdline_)
+    _example_ = "{:s} -e $rip 0x41424344 # write `ABCD` to [rip]".format(_cmdline_)
     _category_ = "Show/Modify Memory"
 
     def __init__(self):
@@ -14114,8 +14130,9 @@ class PatchDwordCommand(PatchCommand):
 class PatchWordCommand(PatchCommand):
     """Write specified WORD to the specified address."""
     _cmdline_ = "patch word"
-    _syntax_ = "{:s} [-h] [--phys] LOCATION WORD1 [WORD2 [WORD3..]]".format(_cmdline_)
-    _example_ = "{:s} $rip 0x4141".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [-e] [--phys] LOCATION WORD1 [WORD2 [WORD3 ...]]".format(_cmdline_)
+    _example_ = "{:s}    $rip 0x4142 # write `BA` to [rip]\n".format(_cmdline_)
+    _example_ = "{:s} -e $rip 0x4142 # write `AB` to [rip]".format(_cmdline_)
     _category_ = "Show/Modify Memory"
 
     def __init__(self):
@@ -14128,8 +14145,9 @@ class PatchWordCommand(PatchCommand):
 class PatchByteCommand(PatchCommand):
     """Write specified BYTE to the specified address."""
     _cmdline_ = "patch byte"
-    _syntax_ = "{:s} [-h] [--phys] LOCATION BYTE1 [BYTE2 [BYTE3..]]".format(_cmdline_)
-    _example_ = "{:s} $rip 0x41 0x41 0x41 0x41 0x41".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [-e] [--phys] LOCATION BYTE1 [BYTE2 [BYTE3 ...]]".format(_cmdline_)
+    _example_ = "{:s}    $rip 0x41 0x41 0x41 0x41 0x41\n".format(_cmdline_)
+    _example_ = "{:s} -e $rip 0x41 0x41 0x41 0x41 0x41 # -e is ignored".format(_cmdline_)
     _category_ = "Show/Modify Memory"
 
     def __init__(self):
@@ -14143,7 +14161,7 @@ class PatchStringCommand(PatchCommand):
     """Write specified string to the specified memory location pointed by LOCATION."""
     _cmdline_ = "patch string"
     _syntax_ = '{:s} [-h] [--phys] LOCATION "double backslash-escaped string" [LENGTH]'.format(_cmdline_)
-    _example_ = '{:s} $sp "GEFROCKS"'.format(_cmdline_)
+    _example_ = '{:s} $sp "AAAABBBB"'.format(_cmdline_)
     _category_ = "Show/Modify Memory"
 
     def __init__(self):
@@ -14186,8 +14204,72 @@ class PatchStringCommand(PatchCommand):
 
         try:
             s = codecs.escape_decode(s)[0]
-        except binascii.Error:
-            gef_print("Could not decode '\\xXX' encoded string \"{}\"".format(s))
+        except ValueError:
+            err("Could not decode string.")
+            return
+
+        if length:
+            s = s * (length // len(s) + 1)
+            s = s[:length]
+
+        self.patch(addr, s, len(s))
+
+        if phys_mode:
+            if orig_mode == "virt":
+                disable_phys()
+        return
+
+
+@register_command
+class PatchHexStringCommand(PatchCommand):
+    """Write specified string to the specified memory location pointed by LOCATION."""
+    _cmdline_ = "patch hexstring"
+    _syntax_ = '{:s} [-h] [--phys] LOCATION "hex-string" [LENGTH]'.format(_cmdline_)
+    _example_ = '{:s} $sp "4141414142424242"'.format(_cmdline_)
+    _category_ = "Show/Modify Memory"
+
+    def __init__(self):
+        super().__init__(prefix=False, complete=gdb.COMPLETE_LOCATION)
+        return
+
+    @only_if_gdb_running
+    def do_invoke(self, argv):
+        self.dont_repeat()
+
+        if "-h" in argv:
+            self.usage()
+            return
+
+        phys_mode = False
+        if "--phys" in argv:
+            if not is_supported_physmode():
+                err("Unsupported. Check qemu version (at least: 4.1.0-rc0~, recommend: 5.x~)")
+                return
+            phys_mode = True
+            orig_mode = get_current_mmu_mode()
+            argv.remove("--phys")
+
+        length = None
+        if len(argv) == 3:
+            length = int(argv[-1], 0)
+            argv = argv[:-1]
+
+        argc = len(argv)
+        if argc != 2:
+            self.usage()
+            return
+
+        if phys_mode:
+            if orig_mode == "virt":
+                enable_phys()
+
+        location, s = argv[0:2]
+        addr = align_address(parse_address(location))
+
+        try:
+            s = bytes.fromhex(s)
+        except ValueError:
+            err("Could not decode hex-string.")
             return
 
         if length:
