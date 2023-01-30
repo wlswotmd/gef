@@ -11566,6 +11566,70 @@ class ProcessListingCommand(GenericCommand):
 
 
 @register_command
+class ArchInfoCommand(GenericCommand):
+    """Show current architecture information."""
+    _cmdline_ = "arch-info"
+    _syntax_ = _cmdline_
+    _category_ = "Process Information"
+
+    def is_emulated32(self):
+        if is_64bit():
+            return False
+
+        if is_qemu_usermode():
+            return True
+
+        if is_qemu_system():
+            # corner case (ex: using qemu-system-x86_64, but process is executed as 32bit mode)
+            # is not able to be detected
+            return True
+
+        for m in get_process_maps():
+            # native x86:
+            # 0xbffdf000 0xc0000000 0x021000 0x000000 rw- [stack]
+            # emulated x86 on x86_64
+            # 0xfffdd000 0xffffe000 0x021000 0x000000 rw- [stack]
+            # native arm:
+            # 0xbefdf000 0xbf000000 0x021000 0x000000 rw- [stack]
+            # emulated arm on aarch64
+            # 0xfffcf000 0xffff0000 0x021000 0x000000 rw- [stack]
+            if m.path == "[stack]":
+                return (m.page_start >> 28) == 0xf
+        else:
+            return False # by default it considers on native
+
+    def do_invoke(self, argv):
+        self.dont_repeat()
+
+        if current_arch is None:
+            err("current_arch not set")
+            return
+
+        gef_print(titlify("GDB/ELF settings"))
+        show_arch = gdb.execute("show architecture", to_string=True).rstrip()
+        gef_print("{:28s} {:s} {:s}".format("show architecture", RIGHT_ARROW, show_arch))
+        gef_print("{:28s} {:s} {:s}".format("bit", RIGHT_ARROW, ["32-bit", "64-bit"][is_64bit()]))
+        gef_print("{:28s} {:s} {:s}".format("endian", RIGHT_ARROW, ["little", "big"][is_big_endian()]))
+        gef_print("{:28s} {:s} {:s}".format("qemu-user", RIGHT_ARROW, str(is_qemu_usermode())))
+        gef_print("{:28s} {:s} {:s}".format("qemu-system", RIGHT_ARROW, str(is_qemu_system())))
+        gef_print("{:28s} {:s} {:s}".format("Intel-pin/Intel-SDE", RIGHT_ARROW, str(is_pin())))
+        gef_print(titlify("GEF settings"))
+        gef_print("{:28s} {:s} {:s}".format("current_arch.arch", RIGHT_ARROW, current_arch.arch))
+        gef_print("{:28s} {:s} {:s}".format("current_arch.mode", RIGHT_ARROW, current_arch.mode))
+        instlen = str(current_arch.instruction_length) if current_arch.instruction_length else "variable length"
+        gef_print("{:28s} {:s} {:s}".format("instruction length", RIGHT_ARROW, instlen))
+        fparams = ', '.join(current_arch.function_parameters)
+        if len(current_arch.function_parameters) == 1:
+            fparams += "(passing via stack)"
+        gef_print("{:28s} {:s} {:s}".format("function parameters", RIGHT_ARROW, fparams))
+        gef_print("{:28s} {:s} {:s}".format("syscall register", RIGHT_ARROW, current_arch.syscall_register))
+        sparams = ', '.join(current_arch.syscall_parameters)
+        gef_print("{:28s} {:s} {:s}".format("syscall parameters", RIGHT_ARROW, sparams))
+        gef_print("{:28s} {:s} {:s}".format("32bit-emulated (compat mode)", RIGHT_ARROW, str(self.is_emulated32())))
+        return
+
+
+@register_command
 class ElfInfoCommand(GenericCommand):
     """Display a limited subset of ELF header information. If no argument is provided,
     the command will show information about the current ELF being debugged."""

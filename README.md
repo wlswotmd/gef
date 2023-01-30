@@ -362,6 +362,8 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * This command realizes a pseudo SIGINT trap by trapping SIGINT on the python side and throwing SIGINT back to qemu-user.
     * It works local qemu-user only.
     * If you want native `c`, use the full form `continue`.
+* `arch-info`: shows architecture information.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/arch-info.png)
 
 ### Other
 * The category is introduced in `gef help`.
