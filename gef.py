@@ -12999,6 +12999,8 @@ class ContextCommand(GenericCommand):
                         else:
                             reason = "[Reason: !({:s})]".format(reason) if reason else ""
                             line += Color.colorify("\tNOT taken {:s}".format(reason), "bold red")
+                    elif current_arch.is_jump(insn):
+                        target = insn.operands[-1].split()[0]
                     elif current_arch.is_call(insn) and self.get_setting("peek_calls") is True:
                         target = insn.operands[-1].split()[0]
                     elif current_arch.is_ret(insn) and self.get_setting("peek_ret") is True:
@@ -13273,7 +13275,9 @@ class ContextCommand(GenericCommand):
                 if insn.mnemonic == "push":
                     parameter_set.add(insn.operands[0])
             else:
-                op = "$" + insn.operands[0]
+                op = insn.operands[0].replace("%", "$")
+                if not op.startswith("$"):
+                    op = "$" + op
                 if op in function_parameters:
                     parameter_set.add(op)
 
@@ -13285,9 +13289,9 @@ class ContextCommand(GenericCommand):
                         "$rdx": ["$edx", "$dx"],
                         "$rcx": ["$ecx", "$cx"],
                     }
-                    for exreg in extended_registers:
-                        if op in extended_registers[exreg]:
-                            parameter_set.add(exreg)
+                    for key, val in extended_registers.items():
+                        if op in val:
+                            parameter_set.add(key)
 
         nb_argument = 0
         _arch_mode = "{}_{}".format(current_arch.arch.lower(), current_arch.mode)
@@ -13310,8 +13314,8 @@ class ContextCommand(GenericCommand):
             _key, _value = current_arch.get_ith_parameter(i, in_func=False)
             _value = to_string_dereference_from(_value)
             try:
-                args.append("{} = {} (def: {})".format(Color.colorify(_key, arg_key_color), _value,
-                                                       libc_args_definitions[_arch_mode][_function_name][_key]))
+                libc_args_def = libc_args_definitions[_arch_mode][_function_name][_key]
+                args.append("{} = {} (def: {})".format(Color.colorify(_key, arg_key_color), _value, libc_args_def))
             except KeyError:
                 args.append("{} = {}".format(Color.colorify(_key, arg_key_color), _value))
 
