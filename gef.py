@@ -568,9 +568,6 @@ class Section:
         return self.path
 
 
-Zone = collections.namedtuple("Zone", ["name", "zone_start", "zone_end", "filename"])
-
-
 class Elf:
     """Basic ELF parsing.
     Ref:
@@ -1237,7 +1234,7 @@ class GlibcArena:
     @property
     def heap_base(self):
         if self.is_main_arena():
-            return HeapBaseFunction.heap_base()
+            return HeapbaseCommand.heap_base()
         else:
             return self.addr + self.size
 
@@ -5482,6 +5479,7 @@ def get_info_files():
             filepath = blobs[6]
         else:
             filepath = get_filepath(for_vmmap=True)
+        Zone = collections.namedtuple("Zone", ["name", "zone_start", "zone_end", "filename"])
         info = Zone(section_name, addr_start, addr_end, filepath)
         info_files.append(info)
     return info_files
@@ -25630,14 +25628,6 @@ def get_section_base_address_by_list(names):
     return None
 
 
-@functools.lru_cache(maxsize=None)
-def get_zone_base_address(name):
-    zone = file_lookup_name_path(name, get_filepath(for_vmmap=True))
-    if zone:
-        return zone.zone_start
-    return None
-
-
 @register_command
 class SmartCppFunctionNameCommand(GenericCommand):
     """Toggle the setting of `config context.smart_cpp_function_name`."""
@@ -25729,13 +25719,23 @@ class HeapbaseCommand(GenericCommand):
     _syntax_ = _cmdline_
     _category_ = "Process Information"
 
+    @staticmethod
+    def heap_base():
+        try:
+            base = parse_address("mp_->sbrk_base")
+            if base != 0:
+                return base
+        except gdb.error:
+            pass
+        return get_section_base_address("[heap]")
+
     @only_if_gdb_running
     @only_if_gdb_target_local
     @only_if_not_qemu_system
     def do_invoke(self, argv):
         self.dont_repeat()
 
-        heap = HeapBaseFunction.heap_base()
+        heap = HeapbaseCommand.heap_base()
         if heap is None:
             gef_print("heap not found")
             return
@@ -33415,7 +33415,7 @@ class PartitionAllocDumpCommand(GenericCommand):
             chromium_rw_maps = [p for p in chromium_rw_maps if (p.page_start & mask) == (codebase & mask) and p.path != filepath]
         elif is_32bit():
             mask = 0xff000000
-            heapbase = HeapBaseFunction.heap_base()
+            heapbase = HeapbaseCommand.heap_base()
             chromium_rw_maps = [p for p in get_process_maps() if p.permission.value == Permission.READ | Permission.WRITE]
             chromium_rw_maps = [p for p in chromium_rw_maps if p.page_start < heapbase and p.path != filepath]
 
@@ -43126,78 +43126,6 @@ class GenericFunction(gdb.Function):
     @abc.abstractmethod
     def do_invoke(self, args):
         return
-
-
-@register_function
-class StackOffsetFunction(GenericFunction):
-    """Return the current stack base address plus an optional offset."""
-    _function_ = "_stack"
-
-    def do_invoke(self, args):
-        return self.arg_to_long(args, 0) + get_section_base_address("[stack]")
-
-
-@register_function
-class HeapBaseFunction(GenericFunction):
-    """Return the current heap base address plus an optional offset."""
-    _function_ = "_heap"
-
-    def do_invoke(self, args):
-        base = HeapBaseFunction.heap_base()
-        if not base:
-            raise gdb.GdbError("Heap not found")
-
-        return self.arg_to_long(args, 0) + base
-
-    @staticmethod
-    def heap_base():
-        try:
-            base = parse_address("mp_->sbrk_base")
-            if base != 0:
-                return base
-        except gdb.error:
-            pass
-        return get_section_base_address("[heap]")
-
-
-@register_function
-class SectionBaseFunction(GenericFunction):
-    """Return the matching section's base address plus an optional offset."""
-    _function_ = "_base"
-
-    def do_invoke(self, args):
-        try:
-            name = args[0].string()
-        except IndexError:
-            name = get_filename()
-        except gdb.error:
-            err("Invalid arg: {}".format(args[0]))
-            return 0
-
-        try:
-            addr = int(get_section_base_address(name))
-        except TypeError:
-            err("Cannot find section {}".format(name))
-            return 0
-        return addr
-
-
-@register_function
-class BssBaseFunction(GenericFunction):
-    """Return the current bss base address plus the given offset."""
-    _function_ = "_bss"
-
-    def do_invoke(self, args):
-        return self.arg_to_long(args, 0) + get_zone_base_address(".bss")
-
-
-@register_function
-class GotBaseFunction(GenericFunction):
-    """Return the current bss base address plus the given offset."""
-    _function_ = "_got"
-
-    def do_invoke(self, args):
-        return self.arg_to_long(args, 0) + get_zone_base_address(".got")
 
 
 @register_command
