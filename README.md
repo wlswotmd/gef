@@ -1,27 +1,50 @@
+## Table of Contents
+* [What is this](#what-is-this)
+* [Setup](#setup)
+    * [Install](#install)
+    * [Upgrade (replace itself)](#upgrade-replace-itself)
+    * [Uninstall](#uninstall)
+    * [Dependency](#dependency)
+* [Added / Improved features](#added--improved-features)
+    * [Qemu-system cooperation](#qemu-system-cooperation)
+        * [General](#general)
+        * [Linux specific](#linux-specific)
+        * [Arch specific](#arch-specific)
+        * [Other](#other)
+    * [Qemu-user cooperation](#qemu-user-cooperation)
+        * [General](#general-1)
+    * [Heap dump features](#heap-dump-features)
+    * [Other improved features](#other-improved-features)
+    * [Other new features](#other-new-features)
+    * [Other](#other-1)
+* [Memo (Japanese)](#memo-japanese)
+
 ## What is this
 This is a fork of [GEF](https://github.com/hugsy/gef).
 However, it is specialized for x86 / x64 / ARM / AArch64, and various features are added.
 I hope you find it useful for CTF player, reverser, exploit developer, and so on.
 
-## Install
+## Setup
+
+### Install
 
 ```bash
 # Run with root user (sudo is NOT recommended)
 wget -q https://raw.githubusercontent.com/bata24/gef/dev/install.sh -O- | sh
 ```
 
-## Upgrade (replace itself)
+### Upgrade (replace itself)
 ```bash
 python3 /root/.gdbinit-gef.py --upgrade
 ```
 
-## Uninstall
+### Uninstall
 
 ```bash
 rm -f /root/.gdbinit-gef.py /root/.gef.rc
 ```
 
-## Dependency
+### Dependency
 See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 [install-minimal.sh](https://github.com/bata24/gef/blob/dev/install-minimal.sh).
 
@@ -33,7 +56,6 @@ All of these features are experimental. Tested on Ubuntu 22.04.
 * It works with any version qemu-system, but qemu-6.x or higher is recommended.
     * Start qemu with the `-s` option and listen on `localhost:1234`.
     * Attach with `gdb-multiarch -ex 'target remote localhost:1234'`.
-    * Or `gdb-multiarch -ex 'file /PATH/TO/BINARY' -ex 'target remote localhost:1234'`.
     * Or `gdb-multiarch -ex 'set architecture TARGET_ARCH' -ex 'target remote localhost:1234'`.
 
 #### General
@@ -113,8 +135,14 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/thunk-hunter.png)
 * `usermodehelper-hunter`: collects and displays the information that is executed by `call_usermodehelper_setup`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/usermodehelper-hunter.png)
+* `magic`: displays useful addresses in kernel. Of cource, it also supports in userland.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/magic2.png)
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/magic1.png)
 
 #### Arch specific
+* `uefi-ovmf-info`: dumps addresses of some important structures in each boot phase of UEFI when OVMF is used (heuristic).
+    * Supported on x64 only.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/uefi-ovmf-info.png)
 * `msr`: displays MSR (Model Specific Registers) values by embedding/executing dynamic assembly.
     * Supported on x64/x86 WITHOUT `-enable-kvm`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/msr.png)
@@ -127,10 +155,44 @@ All of these features are experimental. Tested on Ubuntu 22.04.
 * `optee-break-ta`: sets the breakpoint to the offset of OPTEE-Trusted-App when gdb is in normal world.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/optee-break-ta.png)
 
-#### Other
-* `uefi-ovmf-info`: dumps addresses of some important structures in each boot phase of UEFI when OVMF is used (heuristic).
-    * Supported on x64 only.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/uefi-ovmf-info.png)
+### Qemu-user cooperation
+* It works with any version qemu-user, but qemu-6.x or higher is recommended.
+    * Start qemu with the `-g 1234` option and listen on `localhost:1234`.
+    * Attach with `gdb-multiarch -ex 'file /PATH/TO/BINARY' -ex 'target remote localhost:1234'`.
+    * Or `gdb-multiarch -ex 'set architecture TARGET_ARCH' -ex 'target remote localhost:1234'`.
+* Intel pin is supported.
+    * Listen with `pin -appdebug -appdebug_server_port 1234 -t obj-intel64/inscount0.so -- /bin/ls`.
+* Intel SDE is supported.
+    * Listen with `sde64 -debug -debug-port 1234 -- /bin/ls`.
+
+#### General
+* Supported architecture
+    * x86/x64
+    * ARM(EABI)/Thumb2(EABI)/Aarch64
+    * PPC32/PPC64
+    * MIPS32(o32)/MIPS32(n32)/MIPS64(n64)
+    * SPARC32(v8)/SPARC64(v9)
+    * RISCV32/RISCV64
+    * s390x
+    * sh4
+    * m68k
+    * alpha (under development)
+* `vmmap`: is improved.
+    * It displays the meomry map information even when connecting to gdb stub like qemu-user (heuristic), intel pin and intel SDE.
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmmap-qemu-user.png)
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmmap-pin.png)
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmmap-sde.png)
+    * It is redirected to `pagewalk` when connecting to gdb stub of qemu-system.
+* `si`/`ni`: are the wrapper for native `si`/`ni`.
+    * On some architectures such as s390x, a `PC not saved` error may be output when executing "stepi/nexti".
+    * But the execution itself is fine, so this command ignores this error and executes `context` normally.
+    * If you want native `si`/`ni`, use the full form `stepi`/`nexti`.
+* `c`: is the wrapper for native `c`.
+    * When connecting to qemu-user's gdb stub, gdb does not trap SIGINT during "continue".
+    * If you want to trap, you need to issue SIGINT on the qemu-user side, but switching screens is troublesome.
+    * This command realizes a pseudo SIGINT trap by trapping SIGINT on the python side and throwing SIGINT back to qemu-user.
+    * It works local qemu-user only.
+    * If you want native `c`, use the full form `continue`.
 
 ### Heap dump features
 * `partition-alloc-dump-stable`: dumps partition-alloc free-list (heuristic).
@@ -143,7 +205,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
 * `tcmalloc-dump`: dumps tcmalloc free-list (heuristic).
     * For tcmalloc, there are 3 major versions.
         1. tcmalloc that is a part of gperftools published in 2005: supported.
-        2. tcmalloc that is included in chromium: supported. (For the implementation in 2020 Jun. Tested on `0CTF 2020 - chromium fullchain`).
+        2. tcmalloc that is included in chromium: supported. (For the implementation in 2020 Jun).
         3. tcmalloc that is maintained in Google Inc. published in 2020: unsupported.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/tcmalloc-dump.png)
     * Not maintained for a while.
@@ -165,12 +227,6 @@ All of these features are experimental. Tested on Ubuntu 22.04.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/visual-heap.png)
     * `extract-heap-addr`: analyzes tcache-protected-fd introduced from glibc-2.32.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/extract-heap-addr.png)
-* `vmmap`: is improved.
-    * It displays the meomry map information even when connecting to gdb stub like qemu-user (heuristic), intel pin and intel SDE.
-        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmmap-qemu-user.png)
-        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmmap-pin.png)
-        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmmap-sde.png)
-    * It is redirected to `pagewalk` when connecting to gdb stub of qemu-system.
 * `registers`: is improved.
     * It also shows raw values of `$eflags` and `$cpsr`.
     * It displays current ring for x64/x86 when prints `$eflags` (Ring state is from `$cs`).
@@ -264,9 +320,6 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/tls.png)
 * `fsbase`,`gsbase`: pretty prints `$fs_base`, `$gs_base`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/fsbase_gsbase.png)
-* `magic`: is useful addresses resolver in gilbc / kernel (when under qemu-system).
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/magic1.png)
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/magic2.png)
 * `libc`/`ld`/`heapbase`/`codebase`: displays each of the base address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/base.png)
 * `fpu`/`mmx`/`sse`/`avx`: pretty prints FPU/MMX/SSE/AVX registers.
@@ -276,7 +329,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
 * `mmxset`: sets the value to mm register simply.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/mmxset.png)
 * `exec-until`: executes until specified operation.
-    * Supported on x64/x86/ARM64/ARM for call/jmp/syscall/ret/memory-access/specified-keyword-regex/specified-condition.
+    * Supported for call/jmp/syscall/ret/memory-access/specified-keyword-regex/specified-condition.
     * Supported on x64/x86 for indirect-branch.
     * Please note that this command temporarily closes stdin and stderr on gdb.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/exec-until.png)
@@ -352,16 +405,6 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/search-mangled-ptr.png)
 * `capability`: shows the capabilities of the debugging process.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/capability.png)
-* `si`/`ni`: are the wrapper for native `si`/`ni`.
-    * On some architectures such as s390x, a `PC not saved` error may be output when executing "stepi/nexti".
-    * But the execution itself is fine, so this command ignores this error and executes `context` normally.
-    * If you want native `si`/`ni`, use the full form `stepi`/`nexti`.
-* `c`: is the wrapper for native `c`.
-    * When connecting to qemu-user's gdb stub, gdb does not trap SIGINT during "continue".
-    * If you want to trap, you need to issue SIGINT on the qemu-user side, but switching screens is troublesome.
-    * This command realizes a pseudo SIGINT trap by trapping SIGINT on the python side and throwing SIGINT back to qemu-user.
-    * It works local qemu-user only.
-    * If you want native `c`, use the full form `continue`.
 * `arch-info`: shows architecture information.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/arch-info.png)
 
@@ -369,12 +412,11 @@ All of these features are experimental. Tested on Ubuntu 22.04.
 * The category is introduced in `gef help`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/gef-help.png)
 * Combined into one file (from gef-extra).
-    * `peek-pointers`, `current-stack-frame`, `xref-telescope`, `bytearray`, `bincompare`, `ftrace` and `v8deref` are moved from gef-extras.
+    * The followings are moved from gef-extras.
+        * `peek-pointers`, `current-stack-frame`, `xref-telescope`, `bytearray`, `bincompare`, `ftrace` and `v8deref`
     * This is because a single file is more attractive than ease of maintenance.
 * The system-call table used by `syscall-args` is moved from gef-extras.
-    * It was updated up to linux kernel 6.0.10.
-    * It supports x64/x86/ARM64/ARM(EABI)/MIPS64/MIPS32/PPC64/PPC32/SPARC64/SPARC32/RISCV64/RISCV32/s390x/sh4/m68k.
-    * It also supports x86-native/x86-compatible(emulated on x64)/ARM-native/ARM-compatible(emulated on ARM64).
+    * It was updated up to linux kernel 6.0.10 for each architecture.
 * Removed some features I don't use.
     * `ida-interact`, `gef-remote`, `pie`, `pcustom`, `ksymaddr` and `shellcode`.
 * Many bugs fix / formatting / made it easy for me to use.
