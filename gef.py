@@ -919,7 +919,7 @@ class Instruction:
 
         # format operands
         operands = self.smartify_text(", ".join(self.operands))
-        r = re.search(r"(.*?)<(.+)\+(\d+)>(.*?)", operands)
+        r = re.search(r"^(.*?)<(.+)\+(\d+)>(.*)$", operands)
         if r:
             operands = "{}<{}+{:#x}>{}".format(r.group(1), r.group(2), int(r.group(3)), r.group(4))
 
