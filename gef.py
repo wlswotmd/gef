@@ -9466,7 +9466,7 @@ class FlagsCommand(GenericCommand):
 class ChangePermissionCommand(GenericCommand):
     """Change a page permission. By default, it will change it to RWX."""
     _cmdline_ = "set-permission"
-    _syntax_ = "{:s} [-h] LOCATION [PERMISSION]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [--only-patch] LOCATION [PERMISSION]".format(_cmdline_)
     _example_ = "{:s} $sp 7".format(_cmdline_)
     _category_ = "Debugging Support"
     _aliases_ = ["mprotect"]
@@ -9484,6 +9484,11 @@ class ChangePermissionCommand(GenericCommand):
         if "-h" in argv:
             self.usage()
             return
+
+        only_patch = False
+        if "--only-patch" in argv:
+            only_patch = True
+            argv.remove("--only-patch")
 
         if len(argv) not in (1, 2):
             self.usage()
@@ -9563,8 +9568,9 @@ class ChangePermissionCommand(GenericCommand):
             err("Failed to write memory (qemu doesn't support writing to code area?)")
             return
 
-        info("Resuming execution")
-        gdb.execute("continue")
+        if not only_patch:
+            info("Resuming execution")
+            gdb.execute("continue")
         return
 
     def get_stub_by_arch(self, addr, size, perm):
