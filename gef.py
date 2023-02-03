@@ -12236,15 +12236,18 @@ class ElfInfoCommand(GenericCommand):
             Phdr.PF_R | Phdr.PF_W | Phdr.PF_X : "RWX",
         }
 
+        name_width = max([len(ptype.get(p.p_type, "UNKNOWN")) for p in elf.phdrs])
+
         gef_print(titlify("Program Header"))
-        fmt = "[{:>2s}] {:12s} {:>10s} {:>10s} {:>10s} {:>10s} {:>10s} {:5s} {:>8s}"
-        legend = ["#", "Type", "Offset", "Virtaddr", "Physaddr", "FileSiz", "MemSiz", "Flags", "Align"]
+        fmt = "[{:>2s}] {:{:d}s} {:>12s} {:>12s} {:>12s} {:>12s} {:>12s} {:5s} {:>8s}"
+        legend = ["#", "Type", name_width, "Offset", "Virtaddr", "Physaddr", "FileSiz", "MemSiz", "Flags", "Align"]
         gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
         for i, p in enumerate(elf.phdrs):
             p_type = ptype[p.p_type] if p.p_type in ptype else "UNKNOWN"
             p_flags = pflags[p.p_flags] if p.p_flags in pflags else "???"
-            fmt = "[{:2d}] {:12s} {:#10x} {:#10x} {:#10x} {:#10x} {:#10x} {:5s} {:#8x}"
-            gef_print(fmt.format(i, p_type, p.p_offset, p.p_vaddr, p.p_paddr, p.p_filesz, p.p_memsz, p_flags, p.p_align))
+            fmt = "[{:2d}] {:{:d}s} {:#12x} {:#12x} {:#12x} {:#12x} {:#12x} {:5s} {:#8x}"
+            args = [i, p_type, name_width, p.p_offset, p.p_vaddr, p.p_paddr, p.p_filesz, p.p_memsz, p_flags, p.p_align]
+            gef_print(fmt.format(*args))
 
         stype = {
             Shdr.SHT_NULL           : "NULL",
@@ -12278,12 +12281,14 @@ class ElfInfoCommand(GenericCommand):
             Shdr.SHT_GNU_versym     : "GNU_versym",
         }
 
+        name_width = max([len(s.sh_name) for s in elf.shdrs])
+
         gef_print(titlify("Section Header"))
         if not elf.shdrs:
             gef_print("Not loaded")
         else:
-            fmt = "[{:>2s}] {:40s} {:>15s} {:>10s} {:>10s} {:>10s} {:>10s} {:>5s} {:>5s} {:>5s} {:>8s}"
-            legend = ["#", "Name", "Type", "Address", "Offset", "Size", "EntSiz", "Flags", "Link", "Info", "Align"]
+            fmt = "[{:>2s}] {:{:d}s} {:>15s} {:>12s} {:>12s} {:>12s} {:>12s} {:>5s} {:>5s} {:>5s} {:>8s}"
+            legend = ["#", "Name", name_width, "Type", "Address", "Offset", "Size", "EntSiz", "Flags", "Link", "Info", "Align"]
             gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
             for i, s in enumerate(elf.shdrs):
                 sh_type = stype[s.sh_type] if s.sh_type in stype else "UNKNOWN"
@@ -12313,9 +12318,12 @@ class ElfInfoCommand(GenericCommand):
                 if s.sh_flags & Shdr.SHF_COMPRESSED:
                     sh_flags += "C"
 
-                fmt = "[{:2d}] {:40s} {:>15s} {:#10x} {:#10x} {:#10x} {:#10x} {:5s} {:#5x} {:#5x} {:#8x}"
-                gef_print(fmt.format(i, s.sh_name, sh_type, s.sh_addr, s.sh_offset, s.sh_size,
-                                     s.sh_entsize, sh_flags, s.sh_link, s.sh_info, s.sh_addralign))
+                fmt = "[{:2d}] {:{:d}s} {:>15s} {:#12x} {:#12x} {:#12x} {:#12x} {:5s} {:#5x} {:#5x} {:#8x}"
+                args = [
+                    i, s.sh_name, name_width, sh_type, s.sh_addr, s.sh_offset, s.sh_size,
+                    s.sh_entsize, sh_flags, s.sh_link, s.sh_info, s.sh_addralign,
+                ]
+                gef_print(fmt.format(*args))
         return
 
 
