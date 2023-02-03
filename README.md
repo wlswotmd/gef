@@ -329,8 +329,16 @@ All of these features are experimental. Tested on Ubuntu 22.04.
 * `mmxset`: sets the value to mm register simply.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/mmxset.png)
 * `exec-until`: executes until specified operation.
-    * Supported for call/jmp/syscall/ret/memory-access/specified-keyword-regex/specified-condition.
-    * Supported on x64/x86 for indirect-branch.
+    * Supported following patterns of detection.
+        * call
+        * jmp
+        * syscall
+        * ret
+        * indirect-branch (x86/x64 only)
+        * all-branch (call || jmp || ret)
+        * memory-access (detect "[")
+        * specified-keyword-regex
+        * specified-condition (expressions using register or memory values)
     * Please note that this command temporarily closes stdin and stderr on gdb.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/exec-until.png)
 * `exec-next`: executes until next address.

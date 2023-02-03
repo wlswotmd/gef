@@ -42723,17 +42723,20 @@ class ExecNextCommand(GenericCommand):
 class ExecUntilCommand(GenericCommand):
     """Execute until next call/jmp/syscall/ret/mem-access/specified-keyword instruction."""
     _cmdline_ = "exec-until"
-    _syntax_ = "{:s} [-h] call|jmp|syscall|ret|memaccess|keyword|cond [ARGS] [--print-insn] [--skip-lib]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] call|jmp|syscall|ret|all-branch|indirect-branch|memaccess|keyword|cond ".format(_cmdline_)
+    _syntax_ += "[ARGS] [--print-insn] [--skip-lib]"
     _example_ = "\n"
     _example_ += "{:s} call # execute until call instruction\n".format(_cmdline_)
     _example_ += "{:s} jmp # execute until jmp instruction\n".format(_cmdline_)
     _example_ += "{:s} syscall # execute until syscall instruction\n".format(_cmdline_)
     _example_ += "{:s} ret # execute until ret instruction\n".format(_cmdline_)
+    _example_ += "{:s} all-branch # execute until call/jmp/ret instruction\n".format(_cmdline_)
+    _example_ += "{:s} indirect-branch # execute until indirect branch instruction\n".format(_cmdline_)
     _example_ += "{:s} memaccess # execute until '[' is included by the instruction\n".format(_cmdline_)
-    _example_ += "{:s} keyword \"call +r[ab]x\" # execute until specified keyword (regex)\n".format(_cmdline_)
-    _example_ += "{:s} cond \"$rax==0xdeadbeef && $rbx==0xcafebabe\" # execute until specified condition is filled\n".format(_cmdline_)
-    _example_ += "THIS FEATURE IS TOO SLOW.\n"
-    _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
+    _example_ += '{:s} keyword "call +r[ab]x" # execute until specified keyword (regex)\n'.format(_cmdline_)
+    _example_ += '{:s} cond "$rax==0xdead && $rbx==0xcafe" # execute until specified condition is filled\n'.format(_cmdline_)
+    _example_ += "THIS FEATURE IS VERY SLOW. Consider using the `--skip-lib` option.\n"
+    _example_ += "(it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Debugging Support"
 
     def __init__(self, *args, **kwargs):
@@ -42784,6 +42787,8 @@ class ExecUntilCommand(GenericCommand):
             return current_arch.is_syscall(insn)
         elif self.mode == "ret":
             return current_arch.is_ret(insn)
+        if self.mode == "all-branch":
+            return current_arch.is_call(insn) or current_arch.is_jump(insn) or current_arch.is_ret(insn)
         elif self.mode == "memaccess":
             return "[" in str(insn)
         elif self.mode == "keyword":
@@ -42937,13 +42942,13 @@ class ExecUntilCommand(GenericCommand):
 
 @register_command
 class ExecUntilCallCommand(ExecUntilCommand):
-    """Execute until next call instruction (alias: next-call)."""
+    """Execute until next call instruction."""
     _cmdline_ = "exec-until call"
     _syntax_ = "{:s} [-h] [--print-insn] [--skip-lib]".format(_cmdline_)
     _example_ = "{:s} # execute until call instruction\n".format(_cmdline_)
     _example_ += "\n"
-    _example_ += "THIS FEATURE IS TOO SLOW.\n"
-    _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
+    _example_ += "THIS FEATURE IS VERY SLOW. Consider using the `--skip-lib` option.\n"
+    _example_ += "(it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Debugging Support"
     _aliases_ = ["next-call"]
     _repeat_ = True
@@ -42956,13 +42961,13 @@ class ExecUntilCallCommand(ExecUntilCommand):
 
 @register_command
 class ExecUntilJumpCommand(ExecUntilCommand):
-    """Execute until next jmp instruction (alias: next-jmp)."""
+    """Execute until next jmp instruction."""
     _cmdline_ = "exec-until jmp"
     _syntax_ = "{:s} [-h] [--print-insn] [--skip-lib]".format(_cmdline_)
     _example_ = "{:s} # execute until jmp instruction\n".format(_cmdline_)
     _example_ += "\n"
-    _example_ += "THIS FEATURE IS TOO SLOW.\n"
-    _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
+    _example_ += "THIS FEATURE IS VERY SLOW. Consider using the `--skip-lib` option.\n"
+    _example_ += "(it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Debugging Support"
     _aliases_ = ["next-jmp"]
     _repeat_ = True
@@ -42975,13 +42980,13 @@ class ExecUntilJumpCommand(ExecUntilCommand):
 
 @register_command
 class ExecUntilIndirectBranchCommand(ExecUntilCommand):
-    """Execute until next indirect call/jmp instruction (x86/x64 only) (alias: next-indirect-branch)."""
+    """Execute until next indirect call/jmp instruction (x86/x64 only)."""
     _cmdline_ = "exec-until indirect-branch"
     _syntax_ = "{:s} [-h] [--print-insn] [--skip-lib]".format(_cmdline_)
     _example_ = "{:s} # execute until indirect branch instruction\n".format(_cmdline_)
     _example_ += "\n"
-    _example_ += "THIS FEATURE IS TOO SLOW.\n"
-    _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
+    _example_ += "THIS FEATURE IS VERY SLOW. Consider using the `--skip-lib` option.\n"
+    _example_ += "(it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Debugging Support"
     _aliases_ = ["next-indirect-branch"]
     _repeat_ = True
@@ -43024,14 +43029,33 @@ class ExecUntilIndirectBranchCommand(ExecUntilCommand):
 
 
 @register_command
+class ExecUntilAllBranchCommand(ExecUntilCommand):
+    """Execute until next call/jump/ret instruction."""
+    _cmdline_ = "exec-until all-branch"
+    _syntax_ = "{:s} [-h] [--print-insn] [--skip-lib]".format(_cmdline_)
+    _example_ = "{:s} # execute until call/jmp/ret instruction\n".format(_cmdline_)
+    _example_ += "\n"
+    _example_ += "THIS FEATURE IS VERY SLOW. Consider using the `--skip-lib` option.\n"
+    _example_ += "(it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
+    _category_ = "Debugging Support"
+    _aliases_ = ["next-all-branch"]
+    _repeat_ = True
+
+    def __init__(self):
+        super().__init__(prefix=False)
+        self.mode = "all-branch"
+        return
+
+
+@register_command
 class ExecUntilSyscallCommand(ExecUntilCommand):
-    """Execute until next syscall instruction (alias: next-syscall)."""
+    """Execute until next syscall instruction."""
     _cmdline_ = "exec-until syscall"
     _syntax_ = "{:s} [-h] [--print-insn] [--skip-lib]".format(_cmdline_)
     _example_ = "{:s} # execute until syscall instruction\n".format(_cmdline_)
     _example_ += "\n"
-    _example_ += "THIS FEATURE IS TOO SLOW.\n"
-    _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
+    _example_ += "THIS FEATURE IS VERY SLOW. Consider using the `--skip-lib` option.\n"
+    _example_ += "(it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Debugging Support"
     _aliases_ = ["next-syscall"]
     _repeat_ = True
@@ -43044,13 +43068,13 @@ class ExecUntilSyscallCommand(ExecUntilCommand):
 
 @register_command
 class ExecUntilRetCommand(ExecUntilCommand):
-    """Execute until next ret instruction (alias: next-ret)."""
+    """Execute until next ret instruction."""
     _cmdline_ = "exec-until ret"
     _syntax_ = "{:s} [-h] [--print-insn] [--skip-lib]".format(_cmdline_)
     _example_ = "{:s} # execute until ret instruction\n".format(_cmdline_)
     _example_ += "\n"
-    _example_ += "THIS FEATURE IS TOO SLOW.\n"
-    _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
+    _example_ += "THIS FEATURE IS VERY SLOW. Consider using the `--skip-lib` option.\n"
+    _example_ += "(it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Debugging Support"
     _aliases_ = ["next-ret"]
     _repeat_ = True
@@ -43063,13 +43087,13 @@ class ExecUntilRetCommand(ExecUntilCommand):
 
 @register_command
 class ExecUntilMemaccessCommand(ExecUntilCommand):
-    """Execute until next mem-access instruction (alias: next-mem)."""
+    """Execute until next mem-access instruction."""
     _cmdline_ = "exec-until memaccess"
     _syntax_ = "{:s} [-h] [--print-insn] [--skip-lib]".format(_cmdline_)
     _example_ = "{:s} # execute until '[' is included by the instruction\n".format(_cmdline_)
     _example_ += "\n"
-    _example_ += "THIS FEATURE IS TOO SLOW.\n"
-    _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
+    _example_ += "THIS FEATURE IS VERY SLOW. Consider using the `--skip-lib` option.\n"
+    _example_ += "(it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Debugging Support"
     _aliases_ = ["next-mem"]
     _repeat_ = True
@@ -43082,7 +43106,7 @@ class ExecUntilMemaccessCommand(ExecUntilCommand):
 
 @register_command
 class ExecUntilKeywordReCommand(ExecUntilCommand):
-    """Execute until specified keyword instruction (alias: next-keyword)."""
+    """Execute until specified keyword instruction."""
     _cmdline_ = "exec-until keyword"
     _syntax_ = "{:s} [-h] KEYWORD [KEYWORD ...] [--print-insn] [--skip-lib]".format(_cmdline_)
     _example_ = "\n"
@@ -43090,8 +43114,8 @@ class ExecUntilKeywordReCommand(ExecUntilCommand):
     _example_ += '{:s} "(push|pop) +(r[a-d]x|r[ds]i|r[sb]p|r[89]|r1[0-5])" # another exsample\n'.format(_cmdline_)
     _example_ += '{:s} "mov +rax, QWORD PTR \\\\[" # another exsample (need double escape if use)\n'.format(_cmdline_)
     _example_ += "\n"
-    _example_ += "THIS FEATURE IS TOO SLOW.\n"
-    _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
+    _example_ += "THIS FEATURE IS VERY SLOW. Consider using the `--skip-lib` option.\n"
+    _example_ += "(it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Debugging Support"
     _aliases_ = ["next-keyword"]
     _repeat_ = True
@@ -43135,16 +43159,16 @@ class ExecUntilKeywordReCommand(ExecUntilCommand):
 
 @register_command
 class ExecUntilCondCommand(ExecUntilCommand):
-    """Execute until specified condition is filled (alias: next-cond)."""
+    """Execute until specified condition is filled."""
     _cmdline_ = "exec-until cond"
     _syntax_ = "{:s} [-h] CONDITION [--print-insn] [--skip-lib]".format(_cmdline_)
     _example_ = "\n"
-    _example_ += '{:s} "$rax==0xdeadbeef && $rbx==0xcafebabe" # execute until specified condition is filled\n'.format(_cmdline_)
+    _example_ += '{:s} "$rax==0xdead && $rbx==0xcafe" # execute until specified condition is filled\n'.format(_cmdline_)
     _example_ += '{:s} "$rax==0x123 && *(long*)$rbx==0x4" # multiple condition and memory access is supported\n'.format(_cmdline_)
-    _example_ += '{:s} "$ALL_REG==0x1234" # means compare with all registers. ex: `($rax==0x1234||$rbx==0x1234||...)`\n'.format(_cmdline_)
+    _example_ += '{:s} "$ALL_REG==0x1234" # compare with all registers. ex: `($rax==0x1234 || $rbx==0x1234 || ...)`\n'.format(_cmdline_)
     _example_ += "\n"
-    _example_ += "THIS FEATURE IS TOO SLOW.\n"
-    _example_ += "Consider using the `--skip-lib` option. (it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
+    _example_ += "THIS FEATURE IS TOO SLOW. Consider using the `--skip-lib` option.\n"
+    _example_ += "(it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Debugging Support"
     _aliases_ = ["next-cond"]
     _repeat_ = True
