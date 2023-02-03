@@ -42662,7 +42662,8 @@ class MemoryHashCommand(GenericCommand):
             self.usage()
             return
 
-        if not argv[0] in ["md5", "sha1", "sha224", "sha256", "sha384", "sha512", "crc16", "crc32", "crc64"]:
+        hashes = ["md5", "sha1", "sha224", "sha256", "sha384", "sha512", "crc16", "crc32", "crc64"]
+        if not argv[0] in hashes:
             self.usage()
             return
 
