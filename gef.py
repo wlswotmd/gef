@@ -14200,6 +14200,7 @@ class ContextCommand(GenericCommand):
         self.add_setting("peek_calls", True, "Peek into calls")
         self.add_setting("peek_ret", True, "Peek at return address")
         self.add_setting("nb_lines_stack", 8, "Number of line in the stack pane")
+        self.add_setting("nb_guessed_arguments", 6, "Number to display when guessing functions arguments")
         self.add_setting("grow_stack_down", False, "Order of stack downward starts at largest down to stack pointer")
         self.add_setting("nb_lines_backtrace", 10, "Number of line in the backtrace pane")
         self.add_setting("nb_lines_backtrace_before", 2, "Number of line in the backtrace pane before selected frame")
@@ -14208,7 +14209,8 @@ class ContextCommand(GenericCommand):
         self.add_setting("nb_lines_code_prev", 3, "Number of instruction before $pc")
         self.add_setting("ignore_registers", "", "Space-separated list of registers not to display (e.g. '$cs $ds $gs')")
         self.add_setting("clear_screen", True, "Clear the screen before printing the context")
-        self.add_setting("layout", "legend regs stack code args source memory threads trace extra", "Change the order/presence of the context sections")
+        default_legend = "legend regs stack code args source memory threads trace extra"
+        self.add_setting("layout", default_legend, "Change the order/presence of the context sections")
         self.add_setting("redirect", "", "Redirect the context information to another TTY")
         self.add_setting("libc_args", False, "Show libc function call args description")
         self.add_setting("libc_args_path", "", "Path to libc function call args json files, provided via gef-extras")
@@ -14467,16 +14469,16 @@ class ContextCommand(GenericCommand):
                     if current_arch.is_conditional_branch(insn):
                         is_taken, reason = current_arch.is_branch_taken(insn)
                         if is_taken:
-                            target = insn.operands[-1].split()[0]
+                            target = self.get_branch_addr(insn)
                             reason = "[Reason: {:s}]".format(reason) if reason else ""
                             line += Color.colorify("\tTAKEN {:s}".format(reason), "bold green")
                         else:
                             reason = "[Reason: !({:s})]".format(reason) if reason else ""
                             line += Color.colorify("\tNOT taken {:s}".format(reason), "bold red")
                     elif current_arch.is_jump(insn):
-                        target = insn.operands[-1].split()[0]
+                        target = self.get_branch_addr(insn)
                     elif current_arch.is_call(insn) and self.get_setting("peek_calls") is True:
-                        target = insn.operands[-1].split()[0]
+                        target = self.get_branch_addr(insn)
                     elif current_arch.is_ret(insn) and self.get_setting("peek_ret") is True:
                         target = current_arch.get_ra(insn, frame)
 
@@ -14486,13 +14488,6 @@ class ContextCommand(GenericCommand):
                 gef_print("".join(line))
 
                 if target:
-                    try:
-                        target = int(target, 0)
-                    except TypeError: # Already an int
-                        pass
-                    except ValueError:
-                        # If the operand isn't an address right now we can't parse it
-                        continue
                     try:
                         for i, tinsn in enumerate(instruction_iterator(target, nb_insn)):
                             if show_opcodes_size == 0:
@@ -14645,6 +14640,71 @@ class ContextCommand(GenericCommand):
             gdb.execute(f"telescope {addr:#x} 4")
         return
 
+    def get_branch_addr(self, insn, to_str=False):
+        ops = " ".join(insn.operands)
+        ops = re.sub(r"<.*?>", "", ops)
+
+        # x86/x64: call ... [rip+0x1111] # 0xAABBCCDD
+        if " # 0x" in ops:
+            addr = re.sub(r".*# (0x[a-fA-F0-9]*).*", r"\1", ops)
+            ptr = to_unsigned_long(gdb.parse_and_eval(addr))
+            try:
+                if to_str:
+                    return "{:#x}".format(read_int_from_memory(ptr))
+                else:
+                    return read_int_from_memory(ptr)
+            except gdb.MemoryError:
+                if to_str:
+                    return "*{:#x}".format(ptr)
+                else:
+                    return None
+
+        # x86/x64: call ... PTR [rbx]
+        if is_x86():
+            if " PTR " in ops:
+                addr = re.sub(r".* PTR \[(.+?)\].*", r"\1", ops)
+                for gr in current_arch.gpr_registers:
+                    addr = addr.replace(gr.replace("$", ""), gr)
+                ptr = to_unsigned_long(gdb.parse_and_eval(addr))
+                try:
+                    if to_str:
+                        return "{:#x}".format(read_int_from_memory(ptr))
+                    else:
+                        return read_int_from_memory(ptr)
+                except gdb.MemoryError:
+                    if to_str:
+                        return "*{:#x}".format(ptr)
+                    else:
+                        return None
+
+        # is there a immediate?
+        #   s390x:   bra    0x3ffdfc60
+        #   s390x:   brasl  %r14, 0x1020b50
+        #   RISCV:   jal    ra, 0x13894
+        #   RISCV:   bgeu   t1, a2, 0x10350
+        if "0x" in ops:
+            addr = re.sub(r".*(0x[a-fA-F0-9]*).*", r"\1", ops)
+            if to_str:
+                return "{:#x}".format(to_unsigned_long(gdb.parse_and_eval(addr)))
+            else:
+                return to_unsigned_long(gdb.parse_and_eval(addr))
+
+        # is there register(s)?
+        #   x86/x64  call   rax
+        #   s390x    basr   %lr, %r1
+        #   sh4:     jsr    @r1
+        #   alpha:   jmp    (t0)
+        maybe_reg = insn.operands[-1].split()[0]
+        if len(maybe_reg) <= 5 and maybe_reg[0] == "(" and maybe_reg[-1] == ")":
+            maybe_reg = maybe_reg[1:-1]
+        if get_register(maybe_reg):
+            if to_str:
+                return "{:#x}".format(get_register(maybe_reg))
+            else:
+                return get_register(maybe_reg)
+
+        return None
+
     def context_args(self):
         if current_arch is None and is_remote_debug():
             err("Missing info about architecture. Please set: `file /path/to/target_binary`")
@@ -14660,27 +14720,20 @@ class ContextCommand(GenericCommand):
         if not current_arch.is_call(insn):
             return
 
-        self.size2type = {
-            1: "BYTE",
-            2: "WORD",
-            4: "DWORD",
-            8: "QWORD",
-        }
-
-        if insn.operands[-1].startswith(self.size2type[current_arch.ptrsize] + " PTR"):
-            target = "*" + insn.operands[-1].split()[-1]
-        elif "$" + insn.operands[0] in current_arch.all_registers:
-            target = "*{:#x}".format(get_register("$" + insn.operands[0]))
+        ops = " ".join(insn.operands)
+        # is there a symbol?
+        if "<" in ops and ">" in ops:
+            target = re.sub(r".*<([^\(> ]*).*", r"\1", ops)
         else:
-            # is there a symbol?
-            ops = " ".join(insn.operands)
-            if "<" in ops and ">" in ops:
-                # extract it
-                target = re.sub(r".*<([^\(> ]*).*", r"\1", ops)
+            # no, try extract target address
+            addr = self.get_branch_addr(insn, to_str=True)
+            if addr is not None:
+                target = addr
             else:
-                # it's an address, just use as is
-                target = re.sub(r".*(0x[a-fA-F0-9]*).*", r"\1", ops)
+                # failed, use raw operands
+                target = ' '.join(insn.operands)
 
+        # print
         sym = gdb.lookup_global_symbol(target)
         if sym is None:
             self.print_guessed_arguments(target)
@@ -14697,13 +14750,20 @@ class ContextCommand(GenericCommand):
         """If symbols were found, parse them and print the argument adequately."""
         args = []
 
+        size2type = {
+            1: "BYTE",
+            2: "WORD",
+            4: "DWORD",
+            8: "QWORD",
+        }
+
         for i, f in enumerate(symbol.type.fields()):
             _value = current_arch.get_ith_parameter(i, in_func=False)[1]
             if _value is None:
                 break
             _value = to_string_dereference_from(_value)
             _name = f.name or "var_{}".format(i)
-            _type = f.type.name or self.size2type[f.type.sizeof]
+            _type = f.type.name or size2type[f.type.sizeof]
             args.append("{} {} = {}".format(_type, _name, _value))
 
         self.context_title("arguments")
@@ -14718,56 +14778,9 @@ class ContextCommand(GenericCommand):
         return
 
     def print_guessed_arguments(self, function_name):
-        """When no symbol, read the current basic block and look for "interesting" instructions."""
-        def __get_current_block_start_address():
-            pc = current_arch.pc
-            try:
-                block = gdb.block_for_pc(pc)
-                if block and 0 <= pc - block.start <= 0x100:
-                    block_start = block.start
-                else:
-                    block_start = gdb_get_nth_previous_instruction_address(pc, 5)
-            except RuntimeError:
-                block_start = gdb_get_nth_previous_instruction_address(pc, 5)
-            return block_start
-
-        parameter_set = set()
-        pc = current_arch.pc
-        block_start = __get_current_block_start_address()
-        if not block_start:
-            return
-        use_capstone = self.has_setting("use_capstone") and self.get_setting("use_capstone")
-        instruction_iterator = capstone_disassemble if use_capstone else gef_disassemble
-        function_parameters = current_arch.function_parameters
+        """When no symbol, print six arguments."""
         arg_key_color = get_gef_setting("theme.registers_register_name")
-
-        for insn in instruction_iterator(block_start, pc - block_start):
-            if not insn.operands:
-                continue
-
-            if is_x86_32():
-                if insn.mnemonic == "push":
-                    parameter_set.add(insn.operands[0])
-            else:
-                op = insn.operands[0].replace("%", "$")
-                if not op.startswith("$"):
-                    op = "$" + op
-                if op in function_parameters:
-                    parameter_set.add(op)
-
-                if is_x86_64():
-                    # also consider extended registers
-                    extended_registers = {
-                        "$rdi": ["$edi", "$di"],
-                        "$rsi": ["$esi", "$si"],
-                        "$rdx": ["$edx", "$dx"],
-                        "$rcx": ["$ecx", "$cx"],
-                    }
-                    for key, val in extended_registers.items():
-                        if op in val:
-                            parameter_set.add(key)
-
-        nb_argument = 0
+        nb_argument = self.get_setting("nb_guessed_arguments")
         _arch_mode = "{}_{}".format(current_arch.arch.lower(), current_arch.mode)
         _function_name = None
         if function_name.endswith("@plt"):
@@ -14777,16 +14790,13 @@ class ContextCommand(GenericCommand):
             except KeyError:
                 pass
 
-        if not nb_argument and len(parameter_set) > 0:
-            if is_x86_32():
-                nb_argument = len(parameter_set)
-            else:
-                nb_argument = max(function_parameters.index(p) + 1 for p in parameter_set)
-
         args = []
         for i in range(nb_argument):
-            _key, _value = current_arch.get_ith_parameter(i, in_func=False)
-            _value = to_string_dereference_from(_value)
+            try:
+                _key, _value = current_arch.get_ith_parameter(i, in_func=False)
+                _value = to_string_dereference_from(_value)
+            except Exception:
+                break
             try:
                 libc_args_def = libc_args_definitions[_arch_mode][_function_name][_key]
                 args.append("{} = {} (def: {})".format(Color.colorify(_key, arg_key_color), _value, libc_args_def))
