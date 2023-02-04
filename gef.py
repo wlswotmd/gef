@@ -4979,6 +4979,99 @@ class ALPHA(Architecture):
         return b''.join(insns)
 
 
+# The prototype for new architecture.
+#
+#class XXX(Architecture):
+#    arch = "XXX"
+#    mode = "XXX"
+#
+#    all_registers = [
+#        "$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7",
+#        "$r8", "$r9", "$r10", "$r11", "$r12", "$r13", "$r14", "$r15",
+#        "$pc", "$sr",
+#    ]
+#    alias_registers = {
+#        "$r15": "$sp",
+#    }
+#    #flag_register = "$flags"
+#    #flags_table = {
+#    #    0: "negative",
+#    #    1: "zero",
+#    #}
+#    #return_register = "$r0"
+#    #function_parameters = ["$r1", "$r2", "$r3", "$r4", "$r5", "$r6"]
+#    #syscall_register = "$r0"
+#    #syscall_parameters = ["$r1", "$r2", "$r3", "$r4", "$r5", "$r6"]
+#    #syscall_instructions = ["syscall"]
+#
+#    #instruction_length = 4
+#
+#    #nop_insn = b"\x00\x00" # nop
+#    #infloop_insn = b"\x11\x11" # bra self
+#    #trap_insn = None
+#    #ret_insn = b"\x22\x22" # ret
+#
+#    #def is_syscall(self, insn):
+#    #    return insn.mnemonic in self.syscall_instructions
+#
+#    #def is_call(self, insn):
+#    #    return insn.mnemonic in []
+#
+#    #def is_jump(self, insn):
+#    #    if self.is_conditional_branch(insn):
+#    #        return True
+#    #    return insn.mnemonic in []
+#
+#    #def is_ret(self, insn):
+#    #    return insn.mnemonic in []
+#
+#    #def is_conditional_branch(self, insn):
+#    #    return insn.mnemonic in []
+#
+#    #def is_branch_taken(self, insn):
+#    #    mnemo = insn.mnemonic
+#    #    val = get_register(self.flag_register)
+#    #    flags = dict((self.flags_table[k], k) for k in self.flags_table)
+#    #    taken, reason = False, ""
+#    #    return taken, reason
+#
+#    #def flag_register_to_human(self, val=None):
+#    #    if not val:
+#    #        reg = self.flag_register
+#    #        val = get_register(reg)
+#    #    return flags_to_human(val, self.flags_table)
+#
+#    #def get_ith_parameter(self, i, in_func=True):
+#    #    if in_func:
+#    #        i += 1 # Account for RA being at the top of the stack
+#    #    sp = current_arch.sp
+#    #    sz = current_arch.ptrsize
+#    #    loc = sp + (i * sz)
+#    #    val = read_int_from_memory(loc)
+#    #    key = "[sp + {:#x}]".format(i * sz)
+#    #    return key, val
+#
+#    #def get_ra(self, insn, frame):
+#    #    ra = None
+#    #    try:
+#    #        if self.is_ret(insn):
+#    #            ra = get_register("$sr")
+#    #        elif frame.older():
+#    #            ra = frame.older().pc()
+#    #    except Exception:
+#    #        pass
+#    #    return ra
+#
+#    #mprotect_asm = None
+#
+#    #@classmethod
+#    #def mprotect_asm_raw(cls, addr, size, perm):
+#    #    insns = [
+#    #        b"\x00\x00", # nop
+#    #    ]
+#    #    return b''.join(insns)
+
+
 def write_memory(address, buffer, length):
     """Write `buffer` at address `address`."""
     try:
