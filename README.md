@@ -177,6 +177,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * sh4
     * m68k
     * alpha
+    * HPPA(PA-RISC)
 * `vmmap`: is improved.
     * It displays the meomry map information even when connecting to gdb stub like qemu-user (heuristic), intel pin and intel SDE.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmmap-qemu-user.png)
