@@ -7797,7 +7797,11 @@ class ContCommand(GenericCommand):
             def continue_thread():
                 nonlocal thread_started, thread_finished
                 thread_started = True
-                gdb.execute("continue")
+                try:
+                    gdb.execute("continue")
+                except gdb.error:
+                    exc_type, exc_value, exc_traceback = sys.exc_info()
+                    err(exc_value)
                 thread_finished = True
                 return
 
@@ -7808,7 +7812,7 @@ class ContCommand(GenericCommand):
             th = threading.Thread(target=continue_thread, daemon=True)
             th.start()
             while thread_started is False:
-                pass
+                time.sleep(0.1)
             old = signal.signal(signal.SIGINT, sig_handler)
             while thread_finished is False:
                 time.sleep(0.1)
@@ -7818,7 +7822,7 @@ class ContCommand(GenericCommand):
             try:
                 cmd = "continue " + ' '.join(argv)
                 gdb.execute(cmd.rstrip())
-            except Exception:
+            except gdb.error:
                 exc_type, exc_value, exc_traceback = sys.exc_info()
                 err(exc_value)
         return
