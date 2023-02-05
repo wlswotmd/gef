@@ -4546,6 +4546,9 @@ def to_unsigned_long(v):
 
 def get_register(regname):
     """Return a register's value."""
+    if regname[0] == "%":
+        regname = "$" + regname[1:]
+
     if regname[0] != '$':
         regname = "$" + regname
 
