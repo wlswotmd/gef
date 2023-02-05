@@ -4793,7 +4793,7 @@ def get_explored_regions():
             region_end += gef_getpagesize()
         return region_start, region_end
 
-    def make_regions(addr, label, perm="rwx"):
+    def make_regions(addr, label, perm="rw-"):
         # check if already in region
         for rg in regions:
             if rg.page_start <= addr < rg.page_end:
@@ -4885,15 +4885,90 @@ def get_explored_regions():
             sects.append(sect)
         return sects
 
+    def get_linker(addr):
+        elf = get_ehdr(addr & gef_getpagesize_mask())
+        phdrs = [phdr for phdr in elf.phdrs if phdr.p_type == Phdr.PT_INTERP]
+        if len(phdrs) != 1:
+            return None
+        vaddr = phdrs[0].p_vaddr
+        if elf.e_type == Elf.ET_DYN: # PIE
+            vaddr += elf.addr
+        linker =read_cstring_from_memory(vaddr)
+        return linker
+
+    def get_linkmap(addr):
+        if addr is None:
+            return None
+
+        elf = get_ehdr(addr & gef_getpagesize_mask())
+
+        # get dynamic
+        phdrs = [phdr for phdr in elf.phdrs if phdr.p_type == Phdr.PT_DYNAMIC]
+        if len(phdrs) != 1:
+            return None
+        vaddr = phdrs[0].p_vaddr
+        vaddr_end = vaddr + phdrs[0].p_memsz
+        if elf.e_type == Elf.ET_DYN: # PIE
+            vaddr += elf.addr
+            vaddr_end += elf.addr
+
+        # search DT_DEBUG
+        for tag_addr in range(vaddr, vaddr_end, current_arch.ptrsize * 2):
+            tag = read_int_from_memory(tag_addr)
+            if tag == 21: # DT_DEBUG
+                dt_debug = read_int_from_memory(tag_addr + current_arch.ptrsize)
+                break
+        else:
+            # not found
+            return None
+
+        # get linkmap
+        try:
+            linkmap = read_int_from_memory(dt_debug + current_arch.ptrsize)
+        except Exception:
+            return None
+
+        return linkmap
+
+    def parse_region_from_linkmap(linkmap):
+        current = linkmap
+
+        regions = []
+        while True:
+            l_addr = read_int_from_memory(current + current_arch.ptrsize * 0)
+            l_name = read_int_from_memory(current + current_arch.ptrsize * 1)
+            l_next = read_int_from_memory(current + current_arch.ptrsize * 3)
+            name = read_cstring_from_memory(l_name)
+            if not name:
+                name = get_filepath() or "[code]"
+            regions += parse_region_from_ehdr(l_addr, name)
+            if l_next == 0:
+                break
+            current = l_next
+        return regions
+
     # auxv parse
     auxv = gef_get_auxiliary_values()
-    if auxv:
+    codebase = auxv.get("AT_PHDR", None) or auxv.get("AT_ENTRY", None)
+
+    # plan1: from linkmap info (code, all loaded shared library)
+    linkmap = get_linkmap(codebase)
+    if linkmap:
+        regions += parse_region_from_linkmap(linkmap)
+
+    # plan2: use each auxv info (for code, linker)
+    elif auxv:
+        # code
         if "AT_PHDR" in auxv:
-            regions += parse_region_from_ehdr(auxv["AT_PHDR"], "[code]")
+            regions += parse_region_from_ehdr(auxv["AT_PHDR"], get_filepath() or "[code]")
         elif "AT_ENTRY" in auxv:
-            regions += parse_region_from_ehdr(auxv["AT_ENTRY"], "[code]")
+            regions += parse_region_from_ehdr(auxv["AT_ENTRY"], get_filepath() or "[code]")
+        # linker
         if "AT_BASE" in auxv:
-            regions += parse_region_from_ehdr(auxv["AT_BASE"], "[linker]")
+            regions += parse_region_from_ehdr(auxv["AT_BASE"], get_linker(codebase) or "[linker]")
+
+    # vdso
+    if auxv:
         if "AT_SYSINFO_EHDR" in auxv:
             regions += parse_region_from_ehdr(auxv["AT_SYSINFO_EHDR"], "[vdso]")
         elif "AT_SYSINFO" in auxv:
@@ -5949,36 +6024,37 @@ def gef_get_auxiliary_values():
     if not is_alive():
         return None
 
-    if is_qemu_usermode():
+    def slow_path():
         if is_arm32():
             # sometimes AUXV under qemu-arm is not aligned.
             # for fast search, switch order
-            for offset in [current_arch.ptrsize, 0]:
-                result = get_auxiliary_walk(offset)
-                if result:
-                    return result
+            offset_pattern = [current_arch.ptrsize, 0]
         else:
-            for offset in [0, current_arch.ptrsize]:
-                result = get_auxiliary_walk(offset)
-                if result:
-                    return result
+            offset_pattern = [0, current_arch.ptrsize]
+
+        for offset in offset_pattern:
+            res = get_auxiliary_walk(offset)
+            if res:
+                return res
         return None
 
-    try:
-        result = gdb.execute("info auxv", to_string=True)
-    except Exception:
-        return None
+    def fast_path():
+        try:
+            result = gdb.execute("info auxv", to_string=True)
+        except gdb.error:
+            return None
+        res = {}
+        for line in result.splitlines():
+            tmp = line.split()
+            auxv_type = tmp[1]
+            if auxv_type in ("AT_PLATFORM", "AT_EXECFN"):
+                m = re.match("^.+?(0x[0-9a-f]+)", line)
+                res[auxv_type] = int(m.group(1), 0)
+            else:
+                res[auxv_type] = int(tmp[-1], 0)
+        return res
 
-    res = {}
-    for line in result.splitlines():
-        tmp = line.split()
-        _type = tmp[1]
-        if _type in ("AT_PLATFORM", "AT_EXECFN"):
-            m = re.match("^.+?(0x[0-9a-f]+)", line)
-            res[_type] = int(m.group(1), base=0)
-        else:
-            res[_type] = int(tmp[-1], base=0)
-    return res
+    return fast_path() or slow_path()
 
 
 @functools.lru_cache()
@@ -6007,7 +6083,7 @@ def gef_get_pie_breakpoint(num):
 def gef_getpagesize():
     """Get the page size from auxiliary values."""
     auxval = gef_get_auxiliary_values()
-    if not auxval:
+    if not auxval or "AT_PAGESZ" not in auxval:
         return DEFAULT_PAGE_SIZE
     return auxval["AT_PAGESZ"]
 
@@ -6016,7 +6092,7 @@ def gef_getpagesize():
 def gef_getpagesize_mask():
     """Get the page size mask from auxiliary values."""
     auxval = gef_get_auxiliary_values()
-    if not auxval:
+    if not auxval or "AT_PAGESZ" not in auxval:
         return DEFAULT_PAGE_SIZE_MASK
     return ~(auxval["AT_PAGESZ"] - 1)
 
@@ -15666,7 +15742,8 @@ class VMMapCommand(GenericCommand):
                     self.print_entry(entry, outer)
 
         if is_qemu_usermode() and not outer:
-            info("Searched from auxv, registers, stack values. There may be areas that cannot be detected.")
+            info("Searched from auxv, registers and stack values. There may be areas that cannot be detected.")
+            info("Permission is based on ELF header or default value `rw-`. Dynamic permission changes cannot be detected.")
         return
 
     def print_entry(self, entry, outer):
