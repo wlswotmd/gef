@@ -2044,9 +2044,27 @@ def gef_current_instruction(addr):
     return gef_instruction_n(addr, 0)
 
 
+def get_insn(addr=None):
+    """Wrapper of gef_current_instruction to use easy."""
+    if addr is None:
+        if not is_alive():
+            return None
+        addr = current_arch.pc
+    return gef_current_instruction(addr)
+
+
 def gef_next_instruction(addr):
     """Return the next instruction as an Instruction object."""
     return gef_instruction_n(addr, 1)
+
+
+def get_insn_next(addr=None):
+    """Wrapper of gef_next_instruction to use easy."""
+    if addr is None:
+        if not is_alive():
+            return None
+        addr = current_arch.pc
+    return gef_next_instruction(addr)
 
 
 def gef_disassemble(addr, nb_insn, nb_prev=0):
