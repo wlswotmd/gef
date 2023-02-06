@@ -2607,6 +2607,7 @@ class RISCV(Architecture):
     infloop_insn = b"\x6f\x00\x00\x00" # j self
     trap_insn = b"\x73\x00\x10\x00" # ebreak
     ret_insn = b"\x67\x80\x00\x00" # ret
+    syscall_insn = b"\x73\x00\x00\x00" # ecall
 
     def is_syscall(self, insn):
         return insn.mnemonic in self.syscall_instructions
@@ -2903,6 +2904,13 @@ class ARM(Architecture):
             return b"\x0e\xf0\xa0\xe1" # mov pc, lr
 
     @property
+    def syscall_insn(self):
+        if self.is_thumb():
+            return b"\x00\xdf" # svc 0x0
+        else:
+            return b"\x00\x00\x00\xef" # svc 0x0
+
+    @property
     def pc(self):
         pc = get_register("$pc")
         if self.is_thumb():
@@ -3100,13 +3108,14 @@ class AARCH64(ARM):
     return_register = "$x0"
     function_parameters = ["$x0", "$x1", "$x2", "$x3", "$x4", "$x5", "$x6", "$x7"]
     syscall_register = "$x8"
-    syscall_paramter_list = ["$x0", "$x1", "$x2", "$x3", "$x4", "$x5"]
+    syscall_parameters = ["$x0", "$x1", "$x2", "$x3", "$x4", "$x5"]
     syscall_instructions = ["svc #0x0"]
 
     nop_insn = b"\x1f\x20\x03\xd5" # nop
     infloop_insn = b"\x00\x00\x00\x14" # b #0
     trap_insn = b"\x00\x00\x20\xd4" # bkr #0
     ret_insn = b"\xc0\x03\x5f\xd6" # ret
+    syscall_insn = b"\x01\x00\x00\xd4" # svc #0x0
 
     def is_syscall(self, insn):
         return insn.mnemonic == "svc" and insn.operands == ["#0x0"]
@@ -3255,6 +3264,7 @@ class X86(Architecture):
     infloop_insn = b"\xeb\xfe" # jmp 0
     trap_insn = b"\xcc" # int3
     ret_insn = b"\xc3" # ret
+    syscall_insn = b"\xcd\x80" # int 0x80
 
     def flag_register_to_human(self, val=None):
         if val is None:
@@ -3388,6 +3398,8 @@ class X86_64(X86):
     syscall_parameters = ["$rdi", "$rsi", "$rdx", "$r10", "$r8", "$r9"]
     syscall_instructions = ["syscall", "sysenter"]
 
+    syscall_insn = b"\x0f\x05" # syscall
+
     def get_ith_parameter(self, i, in_func=True):
         if i < len(self.function_parameters):
             reg = self.function_parameters[i]
@@ -3459,6 +3471,7 @@ class PPC(Architecture):
     infloop_insn = b"\x00\x00\x00\x48" # b #0
     trap_insn = b"\x08\x00\xe0\x7f" # trap
     ret_insn = b"\x20\x00\x80\x4e" # blr
+    syscall_insn = b"\x02\x00\x00\x44" # sc
 
     def flag_register_to_human(self, val=None):
         # http://www.cebix.net/downloads/bebox/pem32b.pdf (% 2.1.3)
@@ -3709,6 +3722,7 @@ class SPARC(Architecture):
     infloop_insn = b"\x00\x00\x80\x10" + nop_insn # b #0 (+ delay slot)
     trap_insn = None # trap does not exist
     ret_insn = b"\x08\xe0\xc7\x81" + nop_insn # ret (+ delay slot)
+    syscall_insn = b"\x10\x20\xd0\x91" + nop_insn # trap 0x10 (+ delay slot)
 
     def flag_register_to_human(self, val=None):
         # http://www.gaisler.com/doc/sparcv8.pdf
@@ -3864,6 +3878,7 @@ class SPARC64(SPARC):
     infloop_insn = b"\x00\x00\x80\x10" + nop_insn # b #0 (+ delay slot)
     trap_insn = None # trap does not exist
     ret_insn = b"\x08\xe0\xc7\x81" + nop_insn # ret (+ delay slot)
+    syscall_insn = b"\x6d\x20\xd0\x91" + nop_insn # trap 0x6d (+ delay slot)
 
     def is_syscall(self, insn):
         return insn.mnemonic == "ta" and insn.operands == ["0x6d"]
@@ -3948,6 +3963,7 @@ class MIPS(Architecture):
     infloop_insn = b"\xff\xff\x00\x10" + nop_insn # b 0 (+ delay slot)
     trap_insn = b"\x0d\x00\x00\x00" + nop_insn # break (+ delay slot)
     ret_insn = b"\x08\x00\xe0\x03" + nop_insn # jr $ra (+ delay slot)
+    syscall_insn = b"\x0c\x00\x00\x00" + nop_insn # syscall (+ delay slot)
 
     def is_syscall(self, insn):
         return insn.mnemonic in self.syscall_instructions
@@ -4182,6 +4198,7 @@ class S390X(Architecture):
     infloop_insn = b"\x00\x00\xf4\xa7" # j 0
     trap_insn = b"\xff\x01" # trap2 (not SIGTRAP, but SIGILL)
     ret_insn = b"\xfe\x07" # br %r14
+    syscall_insn = b"\x00\x0a" # svc 0x0
 
     def is_syscall(self, insn):
         return insn.mnemonic == "svc"
@@ -4525,6 +4542,7 @@ class SH4(Architecture):
     infloop_insn = b"\xfe\xaf" + nop_insn # bra 0
     #trap_insn = None
     ret_insn = b"\x0b\x00" + nop_insn # rts
+    syscall_insn = b"\x13\xc3" # trapa #19
 
     def is_syscall(self, insn):
         return insn.mnemonic == "trapa" and insn.operands == ["#19"]
@@ -4701,6 +4719,7 @@ class M68K(Architecture):
     infloop_insn = b"\xfe\x60" # bras self
     trap_insn = b"\x48\x48" # bkpt 0
     ret_insn = b"\x75\x4e" # rts
+    syscall_insn = b"\x40\x4e" # trap #0
 
     def is_syscall(self, insn):
         return insn.mnemonic == "trap" and insn.operands == ["#0"]
@@ -4932,6 +4951,7 @@ class ALPHA(Architecture):
     infloop_insn = b"\xff\xff\xff\xc3" # br self
     trap_insn = b"\x80\x00\x00\x00" # bpt
     ret_insn = b"\x01\x80\xfa\x6b" # ret
+    syscall_insn = b"\x83\x00\x00\x00" # callsys
 
     def is_syscall(self, insn):
         return insn.mnemonic in self.syscall_instructions
@@ -5086,6 +5106,7 @@ class HPPA(Architecture):
     infloop_insn = b"\xf7\x1f\x1f\xe8" # b,l,n self, r0
     trap_insn = None # trap does not exist
     ret_insn = b"\x02\xc0\x40\xe8" # bv.n r0(rp)
+    syscall_insn = b"\x00\x82\x00\xe4" # be,l 100(sr2, r0), sr0, r31
 
     def is_syscall(self, insn):
         return insn.mnemonic == "be,l" and insn.operands == ["100(sr2", "r0)", "sr0", "r31"]
@@ -5431,6 +5452,7 @@ class HPPA64(HPPA):
 #    #infloop_insn = b"\x11\x11" # bra self
 #    #trap_insn = None
 #    #ret_insn = b"\x22\x22" # ret
+#    #syscall_insn = b"\x33\x33" # ecall
 #
 #    #def is_syscall(self, insn):
 #    #    return insn.mnemonic in self.syscall_instructions
@@ -16239,7 +16261,7 @@ class PatchCommand(GenericCommand):
     _syntax_ += '{:s} hexstring [-h] [--phys] LOCATION "hex-string" [LENGTH]\n'.format(_cmdline_)
     _syntax_ += "{:s} pattern [-h] [--phys] LOCATION LENGTH\n".format(_cmdline_)
     _syntax_ += "{:s} nop [-h] [--phys] [LOCATION] [-b BYTE_LENGTH|-i INST_COUNT]\n".format(_cmdline_)
-    _syntax_ += "{:s} inf|trap|ret [-h] [--phys] [LOCATION]\n".format(_cmdline_)
+    _syntax_ += "{:s} inf|trap|ret|syscall [-h] [--phys] [LOCATION]\n".format(_cmdline_)
     _syntax_ += "{:s} history [-h] \n".format(_cmdline_)
     _syntax_ += "{:s} revert [-h] HISTORY_NUMBER".format(_cmdline_)
     _category_ = "Show/Modify Memory"
@@ -16900,6 +16922,77 @@ class PatchRetCommand(PatchCommand):
             addr = current_arch.pc
 
         self.patch_ret(addr)
+
+        if phys_mode:
+            if orig_mode == "virt":
+                disable_phys()
+        return
+
+
+@register_command
+class PatchSyscallCommand(PatchCommand):
+    """Patch the instruction(s) pointed by parameters with syscall. Note: this command is architecture aware."""
+    _cmdline_ = "patch syscall"
+    _syntax_ = "{:s} [-h] [--phys] [LOCATION]".format(_cmdline_)
+    _example_ = "{:s} $pc".format(_cmdline_)
+    _category_ = "Show/Modify Memory"
+
+    def __init__(self):
+        super().__init__(prefix=False, complete=gdb.COMPLETE_LOCATION)
+        return
+
+    def patch_syscall(self, addr):
+        if is_arm32() and current_arch.is_thumb() and addr & 1:
+            addr -= 1
+
+        num_bytes = len(current_arch.syscall_insn)
+
+        if is_big_endian():
+            insn = b''.join([x[::-1] for x in slicer(current_arch.syscall_insn, 4)])
+        else:
+            insn = current_arch.syscall_insn
+
+        self.patch(addr, insn, num_bytes)
+        return
+
+    @only_if_gdb_running
+    def do_invoke(self, argv):
+        self.dont_repeat()
+
+        if "-h" in argv:
+            self.usage()
+            return
+
+        if current_arch.syscall_insn is None:
+            err("This command cannot work under this architecture.")
+            return
+
+        phys_mode = False
+        if "--phys" in argv:
+            if not is_supported_physmode():
+                err("Unsupported. Check qemu version (at least: 4.1.0-rc0~, recommend: 5.x~)")
+                return
+            phys_mode = True
+            orig_mode = get_current_mmu_mode()
+            argv.remove("--phys")
+
+        if phys_mode:
+            if orig_mode == "virt":
+                enable_phys()
+
+        if argv:
+            try:
+                addr = parse_address(' '.join(argv))
+            except Exception:
+                self.usage()
+                if phys_mode:
+                    if orig_mode == "virt":
+                        disable_phys()
+                return
+        else:
+            addr = current_arch.pc
+
+        self.patch_syscall(addr)
 
         if phys_mode:
             if orig_mode == "virt":
@@ -27704,7 +27797,7 @@ def get_syscall_table(arch=None, mode=None):
         elif is_x86_32():
             arch, mode = "X86", ["N32", "32"][is_emulated32()]
         elif is_arm64():
-            arch, mode = "ARM64", [None, "S"][is_secure()]
+            arch, mode = "ARM64", ["ARM", "S"][is_secure()]
         elif is_arm32():
             arch, mode = "ARM", [["N32", "32"][is_emulated32()], "S"][is_secure()]
         # TODO: Supports native and emulated differences
@@ -27970,7 +28063,7 @@ def get_syscall_table(arch=None, mode=None):
                 raise
             syscall_list.append([nr, name, sc_def[func]])
 
-    elif arch == "ARM64":
+    elif arch == "ARM64" and mode == "ARM":
         register_list = AARCH64().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(arm64_syscall_tbl)
