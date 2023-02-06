@@ -4045,7 +4045,7 @@ class MIPS64(MIPS):
         return "; ".join(insns)
 
 
-def write_memory(address, buffer, length=0x10):
+def write_memory(address, buffer, length):
     """Write `buffer` at address `address`."""
     try:
         gdb.selected_inferior().write_memory(address, buffer, length)
@@ -4055,11 +4055,17 @@ def write_memory(address, buffer, length=0x10):
         pass
 
     pid = get_pid()
-    if is_qemu_usermode() and pid:
-        # Under qemu-user you may not be able to patch code areas, so we patch via /proc/pid/mem
-        info("Detected memory write error, attempt patch via /proc/pid/mem (offset +0x0)")
+    if pid and (is_qemu_usermode() or is_pin()):
 
-        def write_memory_by_pid(pid, address, buffer, length):
+        def read_memory_via_proc_mem(pid, address, length):
+            with open("/proc/{:d}/mem".format(pid), "rb") as fd:
+                try:
+                    fd.seek(address)
+                    return fd.read(length)
+                except Exception:
+                    return None
+
+        def write_memory_via_proc_mem(pid, address, buffer, length):
             with open("/proc/{:d}/mem".format(pid), "wb") as fd:
                 try:
                     fd.seek(address)
@@ -4071,8 +4077,11 @@ def write_memory(address, buffer, length=0x10):
                     return None
 
         def write_with_check(pid, address, buffer, length, offset=0):
-            before = read_memory(address, length)
-            ret = write_memory_by_pid(pid, address + offset, buffer, length)
+            before = read_memory_via_proc_mem(pid, address + offset, length)
+            if before is None:
+                return None
+
+            ret = write_memory_via_proc_mem(pid, address + offset, buffer, length)
             after = read_memory(address, length)
 
             if ret:
@@ -4080,27 +4089,36 @@ def write_memory(address, buffer, length=0x10):
                     return ret
                 else:
                     # fail, revert
-                    write_memory_by_pid(pid, address + offset, before, length)
+                    write_memory_via_proc_mem(pid, address + offset, before, length)
                     return None
             return None
 
+        # qemu-user (32bit) maps the memory at +0x10000
+        if is_qemu_usermode() and is_32bit():
+            ret = write_with_check(pid, address, buffer, length, offset=0x10000)
+            if ret:
+                return ret
+
+        # Under qemu-user/pin, you may not be able to patch code areas, so we patch via /proc/pid/mem
         ret = write_with_check(pid, address, buffer, length)
         if ret:
             return ret
 
-        # some qemu-user maps the memory at +0x10000
-        info("Detected memory write error, attempt patch via /proc/pid/mem (offset +0x10000)")
-        ret = write_with_check(pid, address, buffer, length, offset=0x10000)
-        if ret:
-            return ret
-        else:
-            raise Exception("Unsupported before qemu 5.1")
+        raise Exception("Unsupported before qemu 5.1")
 
     raise Exception("Write memory error")
 
 
-def read_memory(addr, length=0x10):
+def read_memory(addr, length):
     """Return a `length` long byte array with the copy of the process memory at `addr`."""
+    if is_pin():
+        # Memory read of pin is very slow, so speed it up
+        with open("/proc/{:d}/mem".format(get_pid()), "rb") as fd:
+            try:
+                fd.seek(addr)
+                return fd.read(length)
+            except Exception:
+                pass
     return gdb.selected_inferior().read_memory(addr, length).tobytes()
 
 
@@ -4146,7 +4164,7 @@ def read_cstring_from_memory(address, max_length=GEF_MAX_STRING_LENGTH):
 def read_ascii_string(address):
     """Read an ASCII string from memory"""
     cstr = read_cstring_from_memory(address)
-    if isinstance(cstr, str) and cstr and all([x in string.printable for x in cstr]):
+    if cstr and all([x in string.printable for x in cstr]):
         return cstr
     return None
 
@@ -14611,9 +14629,9 @@ class PatchCommand(GenericCommand):
 
     def patch(self, addr, data, length):
         try:
-            before_data = read_memory(addr, length=length)
-            write_memory(addr, data, length=length)
-            after_data = read_memory(addr, length=length)
+            before_data = read_memory(addr, length)
+            write_memory(addr, data, length)
+            after_data = read_memory(addr, length)
         except gdb.MemoryError:
             err("Failed to access memory")
             return
@@ -15343,7 +15361,7 @@ class PatchRevertCommand(PatchCommand):
                 elif orig_mode == "phys" and hist["physmode"] == "virt":
                     disable_phys()
 
-            write_memory(hist["addr"], hist["before_data"], length=len(hist["before_data"]))
+            write_memory(hist["addr"], hist["before_data"], len(hist["before_data"]))
 
             if is_supported_physmode():
                 if orig_mode == "virt" and get_current_mmu_mode() == "phys":
@@ -28931,7 +28949,7 @@ class CetStatusCommand(GenericCommand):
         for regname, regvalue in d["reg"].items():
             gdb.execute("set {:s} = {:#x}".format(regname, regvalue), to_string=True)
         for addr, value in d["stack"].items():
-            write_memory(addr, value)
+            write_memory(addr, value, len(value))
         return
 
     def close_stdout(self):
