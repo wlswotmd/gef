@@ -2429,6 +2429,10 @@ class Architecture:
         pass
 
     @abc.abstractproperty
+    def has_delay_slot(self):
+        pass
+
+    @abc.abstractproperty
     def nop_insn(self):
         pass
 
@@ -2581,6 +2585,7 @@ class RISCV(Architecture):
     syscall_instructions = ["ecall"]
 
     instruction_length = None # variable length
+    has_delay_slot = False
 
     nop_insn = b"\x13\x00\x00\x00" # nop
     infloop_insn = b"\x6f\x00\x00\x00" # j self
@@ -2845,6 +2850,8 @@ class ARM(Architecture):
             return None # variable length
         else:
             return 4
+
+    has_delay_slot = False
 
     # http://infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.dui0041c/Caccegih.html
     @property
@@ -3218,6 +3225,7 @@ class X86(Architecture):
     syscall_instructions = ["sysenter", "syscall", "int 0x80"]
 
     instruction_length = None # variable length
+    has_delay_slot = False
 
     nop_insn = b"\x90" # nop
     infloop_insn = b"\xeb\xfe" # jmp 0
@@ -3417,6 +3425,7 @@ class PPC(Architecture):
     syscall_instructions = ["sc"]
 
     instruction_length = 4
+    has_delay_slot = False
 
     nop_insn = b"\x00\x00\x00\x60" # nop
     infloop_insn = b"\x00\x00\x00\x48" # b #0
@@ -3660,6 +3669,7 @@ class SPARC(Architecture):
     syscall_instructions = ["ta 0x10"]
 
     instruction_length = 4
+    has_delay_slot = True
 
     nop_insn = b"\x00\x00\x00\x01" # nop
     infloop_insn = b"\x00\x00\x80\x10" + nop_insn # b #0 (+ delay slot)
@@ -3894,6 +3904,7 @@ class MIPS(Architecture):
     syscall_instructions = ["syscall"]
 
     instruction_length = 4
+    has_delay_slot = True
 
     nop_insn = b"\x00\x00\x00\x00" # nop
     infloop_insn = b"\xff\xff\x00\x10" + nop_insn # b 0 (+ delay slot)
@@ -4121,6 +4132,7 @@ class S390X(Architecture):
     syscall_instructions = ["svc NR", "svc 0"]
 
     instruction_length = None # variable length
+    has_delay_slot = False
 
     nop_insn = b"\x07\x07" # bcr 0, %r7
     infloop_insn = b"\x00\x00\xf4\xa7" # j 0
@@ -4459,6 +4471,7 @@ class SH4(Architecture):
     syscall_instructions = ["trapa #19"]
 
     instruction_length = 2
+    has_delay_slot = True
 
     nop_insn = b"\x09\x00" # nop
     infloop_insn = b"\xfe\xaf" + nop_insn # bra 0
@@ -4630,6 +4643,7 @@ class M68K(Architecture):
     syscall_instructions = ["trap #0"]
 
     instruction_length = None # variable length
+    has_delay_slot = False
 
     nop_insn = b"\x71\x4e" # nop
     infloop_insn = b"\xfe\x60" # bras self
@@ -4856,6 +4870,7 @@ class ALPHA(Architecture):
     syscall_instructions = ["callsys"]
 
     instruction_length = 4
+    has_delay_slot = False
 
     nop_insn = b"\x1f\x04\xff\x47" # nop
     infloop_insn = b"\xff\xff\xff\xc3" # br self
@@ -5005,6 +5020,7 @@ class HPPA(Architecture):
     syscall_instructions = ["be,l 100(sr2, r0), sr0, r31"]
 
     instruction_length = 4
+    has_delay_slot = True
 
     nop_insn = b"\x40\x02\x00\x08" # nop
     infloop_insn = b"\xf7\x1f\x1f\xe8" # b,l,n self, r0
@@ -5345,6 +5361,7 @@ class HPPA64(HPPA):
 #    #syscall_instructions = ["syscall"]
 #
 #    #instruction_length = 4
+#    #has_delay_slot = False
 #
 #    #nop_insn = b"\x00\x00" # nop
 #    #infloop_insn = b"\x11\x11" # bra self
@@ -12710,6 +12727,7 @@ class ArchInfoCommand(GenericCommand):
         sparams = ', '.join(current_arch.syscall_parameters)
         gef_print("{:28s} {:s} {:s}".format("syscall parameters", RIGHT_ARROW, sparams))
         gef_print("{:28s} {:s} {:s}".format("32bit-emulated (compat mode)", RIGHT_ARROW, str(self.is_emulated32())))
+        gef_print("{:28s} {:s} {:s}".format("Has a delay slot", RIGHT_ARROW, str(current_arch.has_delay_slot)))
         return
 
 
@@ -15104,7 +15122,7 @@ class ContextCommand(GenericCommand):
             instruction_iterator = capstone_disassemble if use_capstone else gef_disassemble
 
             for insn in instruction_iterator(pc, nb_insn, nb_prev=nb_insn_prev):
-                line = []
+                line = ""
                 is_taken = False
                 target = None
                 bp_prefix = Color.redify(BP_GLYPH) if self.addr_has_breakpoint(insn.address, bp_locations) else " "
@@ -15115,6 +15133,7 @@ class ContextCommand(GenericCommand):
                     insn_fmt = "{{:{}o}}".format(show_opcodes_size)
                     text = insn_fmt.format(insn)
 
+                # coloring by address against pc
                 if insn.address < pc:
                     line += "{}{}{}".format(bp_prefix, " " * len(RIGHT_ARROW[1:]), Color.colorify(text, past_insns_color))
 
@@ -15140,9 +15159,24 @@ class ContextCommand(GenericCommand):
                 else:
                     line += "{}{}{}".format(bp_prefix, " " * len(RIGHT_ARROW[1:]), text)
 
-                gef_print("".join(line))
+                gef_print(line)
 
+                # add extra branch info
                 if target:
+                    try:
+                        if current_arch.has_delay_slot:
+                            next_insn = list(instruction_iterator(insn.address, 2))[-1]
+                            if show_opcodes_size == 0:
+                                text = str(next_insn)
+                            else:
+                                insn_fmt = "{{:{}o}}".format(show_opcodes_size)
+                                text = insn_fmt.format(next_insn)
+                            text = "{}{}{}".format(bp_prefix, " " * len(RIGHT_ARROW[1:]), text)
+                            text += Color.colorify("\t Maybe delay-slot", "yellow bold")
+                            gef_print(text)
+                    except Exception:
+                        pass
+
                     try:
                         for i, tinsn in enumerate(instruction_iterator(target, nb_insn)):
                             if show_opcodes_size == 0:
