@@ -2496,6 +2496,18 @@ class Architecture:
     def get_ra(self, insn, frame):
         pass
 
+    @abc.abstractmethod
+    def keystone_support(self):
+        pass
+
+    @abc.abstractmethod
+    def capstone_support(self):
+        pass
+
+    @abc.abstractmethod
+    def unicorn_support(self):
+        pass
+
     special_registers = []
 
     @property
@@ -2586,6 +2598,10 @@ class RISCV(Architecture):
 
     instruction_length = None # variable length
     has_delay_slot = False
+
+    keystone_support = False
+    capstone_support = True
+    unicorn_support = True
 
     nop_insn = b"\x13\x00\x00\x00" # nop
     infloop_insn = b"\x6f\x00\x00\x00" # j self
@@ -2852,6 +2868,10 @@ class ARM(Architecture):
             return 4
 
     has_delay_slot = False
+
+    keystone_support = True
+    capstone_support = True
+    unicorn_support = True
 
     # http://infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.dui0041c/Caccegih.html
     @property
@@ -3227,6 +3247,10 @@ class X86(Architecture):
     instruction_length = None # variable length
     has_delay_slot = False
 
+    keystone_support = True
+    capstone_support = True
+    unicorn_support = True
+
     nop_insn = b"\x90" # nop
     infloop_insn = b"\xeb\xfe" # jmp 0
     trap_insn = b"\xcc" # int3
@@ -3427,6 +3451,10 @@ class PPC(Architecture):
     instruction_length = 4
     has_delay_slot = False
 
+    keystone_support = True
+    capstone_support = True
+    unicorn_support = True
+
     nop_insn = b"\x00\x00\x00\x60" # nop
     infloop_insn = b"\x00\x00\x00\x48" # b #0
     trap_insn = b"\x08\x00\xe0\x7f" # trap
@@ -3596,6 +3624,8 @@ class PPC64(PPC):
     ]
     syscall_paramter_list = ["$r3", "$r4", "$r5", "$r6", "$r7", "$r8"]
 
+    unicorn_support = False
+
     def get_ith_parameter(self, i, in_func=True):
         if i < len(self.function_parameters):
             reg = self.function_parameters[i]
@@ -3670,6 +3700,10 @@ class SPARC(Architecture):
 
     instruction_length = 4
     has_delay_slot = True
+
+    keystone_support = True
+    capstone_support = True
+    unicorn_support = True
 
     nop_insn = b"\x00\x00\x00\x01" # nop
     infloop_insn = b"\x00\x00\x80\x10" + nop_insn # b #0 (+ delay slot)
@@ -3906,6 +3940,10 @@ class MIPS(Architecture):
     instruction_length = 4
     has_delay_slot = True
 
+    keystone_support = True
+    capstone_support = True
+    unicorn_support = True
+
     nop_insn = b"\x00\x00\x00\x00" # nop
     infloop_insn = b"\xff\xff\x00\x10" + nop_insn # b 0 (+ delay slot)
     trap_insn = b"\x0d\x00\x00\x00" + nop_insn # break (+ delay slot)
@@ -4065,6 +4103,8 @@ class MIPS64(MIPS):
     function_parameters = ["$a0", "$a1", "$a2", "$a3", "$a4", "$a5", "$a6", "$a7"]
     syscall_parameters = ["$a0", "$a1", "$a2", "$a3", "$a4", "$a5"]
 
+    unicorn_support = False
+
     def get_ith_parameter(self, i, in_func=True):
         if i < len(self.function_parameters):
             reg = self.function_parameters[i]
@@ -4133,6 +4173,10 @@ class S390X(Architecture):
 
     instruction_length = None # variable length
     has_delay_slot = False
+
+    keystone_support = True
+    capstone_support = True
+    unicorn_support = False
 
     nop_insn = b"\x07\x07" # bcr 0, %r7
     infloop_insn = b"\x00\x00\xf4\xa7" # j 0
@@ -4473,6 +4517,10 @@ class SH4(Architecture):
     instruction_length = 2
     has_delay_slot = True
 
+    keystone_support = False
+    capstone_support = False
+    unicorn_support = False
+
     nop_insn = b"\x09\x00" # nop
     infloop_insn = b"\xfe\xaf" + nop_insn # bra 0
     #trap_insn = None
@@ -4644,6 +4692,10 @@ class M68K(Architecture):
 
     instruction_length = None # variable length
     has_delay_slot = False
+
+    keystone_support = False
+    capstone_support = True
+    unicorn_support = True
 
     nop_insn = b"\x71\x4e" # nop
     infloop_insn = b"\xfe\x60" # bras self
@@ -4872,6 +4924,10 @@ class ALPHA(Architecture):
     instruction_length = 4
     has_delay_slot = False
 
+    keystone_support = False
+    capstone_support = False
+    unicorn_support = False
+
     nop_insn = b"\x1f\x04\xff\x47" # nop
     infloop_insn = b"\xff\xff\xff\xc3" # br self
     trap_insn = b"\x80\x00\x00\x00" # bpt
@@ -5021,6 +5077,10 @@ class HPPA(Architecture):
 
     instruction_length = 4
     has_delay_slot = True
+
+    keystone_support = False
+    capstone_support = False
+    unicorn_support = False
 
     nop_insn = b"\x40\x02\x00\x08" # nop
     infloop_insn = b"\xf7\x1f\x1f\xe8" # b,l,n self, r0
@@ -5362,6 +5422,10 @@ class HPPA64(HPPA):
 #
 #    #instruction_length = 4
 #    #has_delay_slot = False
+#
+#    #keystone_support = False
+#    #capstone_support = False
+#    #unicorn_support = False
 #
 #    #nop_insn = b"\x00\x00" # nop
 #    #infloop_insn = b"\x11\x11" # bra self
@@ -12262,6 +12326,8 @@ class DisassembleCommand(GenericCommand):
     _example_ += '{:s} -a PPC -m 64 -e "7c221a14"\n'.format(_cmdline_)
     _example_ += '{:s} -a SPARC -m SPARC32 -e "86004002"\n'.format(_cmdline_)
     _example_ += '{:s} -a SPARC -m SPARC64 -e "86004002"\n'.format(_cmdline_)
+    _example_ += '{:s} -a RISCV -m RISCV32 "97c10600"\n'.format(_cmdline_)
+    _example_ += '{:s} -a RISCV -m RISCV64 "97c10600"\n'.format(_cmdline_)
     _example_ += '{:s} -a S390X -m S390X -e "5a0f1fff"\n'.format(_cmdline_)
     _example_ += '{:s} -a M68K -m M68K -e "9dce"'.format(_cmdline_)
     _category_ = "Assemble"
@@ -12678,7 +12744,8 @@ class ArchInfoCommand(GenericCommand):
             return False
 
         if is_qemu_usermode():
-            return True
+            # This case cannot be determined
+            return False
 
         if is_qemu_system():
             # corner case (ex: using qemu-system-x86_64, but process is executed as 32bit mode)
@@ -12728,6 +12795,9 @@ class ArchInfoCommand(GenericCommand):
         gef_print("{:28s} {:s} {:s}".format("syscall parameters", RIGHT_ARROW, sparams))
         gef_print("{:28s} {:s} {:s}".format("32bit-emulated (compat mode)", RIGHT_ARROW, str(self.is_emulated32())))
         gef_print("{:28s} {:s} {:s}".format("Has a delay slot", RIGHT_ARROW, str(current_arch.has_delay_slot)))
+        gef_print("{:28s} {:s} {:s}".format("keystone_support", RIGHT_ARROW, str(current_arch.keystone_support)))
+        gef_print("{:28s} {:s} {:s}".format("capstone_support", RIGHT_ARROW, str(current_arch.capstone_support)))
+        gef_print("{:28s} {:s} {:s}".format("unicorn_support", RIGHT_ARROW, str(current_arch.unicorn_support)))
         return
 
 
@@ -27600,7 +27670,8 @@ def get_syscall_table(arch=None, mode=None):
 
     def is_emulated32():
         if is_qemu_usermode():
-            return True
+            # This case cannot be determined
+            return False
 
         if is_qemu_system():
             # corner case (ex: using qemu-system-x86_64, but process is executed as 32bit mode)
