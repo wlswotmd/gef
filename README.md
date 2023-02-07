@@ -199,8 +199,8 @@ All of these features are experimental. Tested on Ubuntu 22.04.
 * `partition-alloc-dump-stable`: dumps partition-alloc free-list (heuristic).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/partition-alloc-dump.png)
     * This command is reserved for the implementation of latest stable version of chromium.
-        * Currently tested: v110.x / 1078401 / ac3cfdd3e961f4db164ab8de44c38c9ba34a8c1e
-        * https://commondatastorage.googleapis.com/chromium-browser-snapshots/index.html?prefix=Linux_x64/1078401/
+        * Currently tested: v111.x / 1097615 / 3ac59a6729cdb287a7ee629a0004c907ec1b06dc
+        * https://commondatastorage.googleapis.com/chromium-browser-snapshots/index.html?prefix=Linux_x64/1097615/
     * Supported on x64 only (maybe it works on x86/ARM/ARM64, but not tested).
     * It will try heuristic search if binary has no symbol.
 * `tcmalloc-dump`: dumps tcmalloc free-list (heuristic).
