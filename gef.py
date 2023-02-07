@@ -162,34 +162,34 @@ except ImportError:
     print("[-] gef cannot run as standalone")
     sys.exit(0)
 
-__gef__                                = None
-__commands__                           = []
-__functions__                          = []
-__aliases__                            = []
-__config__                             = {}
-__watches__                            = {}
-__gef_convenience_vars_index__         = 0
-__context_messages__                   = []
-__heap_allocated_list__                = []
-__heap_freed_list__                    = []
-__heap_uaf_watchpoints__               = []
-__pie_breakpoints__                    = {}
-__pie_counter__                        = 1
-__gef_qemu_mode__                      = False
-__gef_default_main_arena__             = "main_arena"
-__gef_int_stream_buffer__              = None
-__gef_redirect_output_fd__             = None
-__gef_prev_arch__                      = None
+__gef__                         = None
+__commands__                    = []
+__functions__                   = []
+__aliases__                     = []
+__config__                      = {}
+__watches__                     = {}
+__gef_convenience_vars_index__  = 0
+__context_messages__            = []
+__heap_allocated_list__         = []
+__heap_freed_list__             = []
+__heap_uaf_watchpoints__        = []
+__pie_breakpoints__             = {}
+__pie_counter__                 = 1
+__gef_qemu_mode__               = False
+__gef_default_main_arena__      = "main_arena"
+__gef_int_stream_buffer__       = None
+__gef_redirect_output_fd__      = None
+__gef_prev_arch__               = None
 
-DEFAULT_PAGE_ALIGN_SHIFT               = 12
-DEFAULT_PAGE_SIZE                      = 1 << DEFAULT_PAGE_ALIGN_SHIFT
-DEFAULT_PAGE_SIZE_MASK                 = ~ (DEFAULT_PAGE_SIZE - 1)
-GEF_RC                                 = os.getenv("GEF_RC") or os.path.join(os.getenv("HOME") or "~", ".gef.rc")
-GEF_TEMP_DIR                           = os.path.join(tempfile.gettempdir(), "gef")
-GEF_MAX_STRING_LENGTH                  = 0x50
+DEFAULT_PAGE_ALIGN_SHIFT        = 12
+DEFAULT_PAGE_SIZE               = 1 << DEFAULT_PAGE_ALIGN_SHIFT
+DEFAULT_PAGE_SIZE_MASK          = ~ (DEFAULT_PAGE_SIZE - 1)
+GEF_RC                          = os.getenv("GEF_RC") or os.path.join(os.getenv("HOME") or "~", ".gef.rc")
+GEF_TEMP_DIR                    = os.path.join(tempfile.gettempdir(), "gef")
+GEF_MAX_STRING_LENGTH           = 0x50
 
-GDB_MIN_VERSION                        = (7, 7)
-GDB_VERSION                            = tuple(map(int, re.search(r"(\d+)[^\d]+(\d+)", gdb.VERSION).groups()))
+GDB_MIN_VERSION                 = (7, 7)
+GDB_VERSION                     = tuple(map(int, re.search(r"(\d+)[^\d]+(\d+)", gdb.VERSION).groups()))
 
 current_elf  = None
 current_arch = None
@@ -547,10 +547,10 @@ class Section:
     def __init__(self, *args, **kwargs):
         self.page_start = kwargs.get("page_start")
         self.page_end = kwargs.get("page_end")
-        self.offset = kwargs.get("offset")
+        self.offset = kwargs.get("offset", 0)
         self.permission = kwargs.get("permission")
-        self.inode = kwargs.get("inode")
-        self.path = kwargs.get("path")
+        self.inode = kwargs.get("inode", None)
+        self.path = kwargs.get("path", "")
         return
 
     def is_readable(self):
@@ -1085,8 +1085,7 @@ class MallocStateStruct:
         # Account for separation of have_fastchunks flag into its own field
         # within the malloc_state struct in GLIBC >= 2.27
         # https://sourceware.org/git/?p=glibc.git;a=commit;h=e956075a5a2044d05ce48b905b10270ed4a63e87
-        # Be aware you could see this change backported into GLIBC release
-        # branches.
+        # Be aware you could see this change backported into GLIBC release branches.
         if get_libc_version() >= (2, 27):
             self.fastbin_offset = align_address_to_size(self.int_size * 3, 8)
         else:
@@ -1285,9 +1284,10 @@ class GlibcArena:
         return GlibcArena("*{:#x} ".format(addr_next))
 
     def __str__(self):
-        fmt = "Arena (base={:s}, top={:#x}, last_remainder={:#x}, next={:#x}, next_free={:#x}, system_mem={:#x})"
+        arena_c = Color.colorify("Arena", "yellow bold underline")
+        fmt = "{:s}(base={:s}, top={:#x}, last_remainder={:#x}, next={:#x}, next_free={:#x}, system_mem={:#x})"
         addr = Color.boldify("{:#x}".format(self.__addr))
-        return fmt.format(addr, self.top, self.last_remainder, self.n, self.nfree, self.sysmem)
+        return fmt.format(arena_c, addr, self.top, self.last_remainder, self.n, self.nfree, self.sysmem)
 
     def tcache_list(self):
         if get_libc_version() < (2, 26):
@@ -2134,7 +2134,10 @@ def capstone_disassemble(location, nb_insn, **kwargs):
         return Instruction(cs_insn.address, loc, cs_insn.mnemonic, ops, cs_insn.bytes)
 
     capstone = sys.modules["capstone"]
-    arch, mode = get_capstone_arch(arch=kwargs.get("arch", None), mode=kwargs.get("mode", None), endian=kwargs.get("endian", None))
+    _arch=kwargs.get("arch", None)
+    _mode=kwargs.get("mode", None)
+    _endian=kwargs.get("endian", None)
+    arch, mode = get_capstone_arch(arch=_arch, mode=_mode, endian=_endian)
     try:
         cs = capstone.Cs(arch, mode)
     except capstone.CsError:
@@ -2265,10 +2268,10 @@ def checksec(filename):
     # Canary
     if not is_stripped(filename):
         results["Canary"] = __check_security_property("-rs", filename, r"__stack_chk_fail") is True
-        if not results["Canary"]:
-            results["Canary"] = __check_security_property("-rs", filename, r"__stack_chk_guard") is True # for non-x86
-        if not results["Canary"]:
-            results["Canary"] = __check_security_property("-rs", filename, r"__intel_security_cookie") is True # for intel compiler
+        if not results["Canary"]: # for non-x86
+            results["Canary"] = __check_security_property("-rs", filename, r"__stack_chk_guard") is True
+        if not results["Canary"]: # for intel compiler
+            results["Canary"] = __check_security_property("-rs", filename, r"__intel_security_cookie") is True
     else:
         results["Canary"] = None # it means unknown
         if is_x86_64():
@@ -2717,31 +2720,34 @@ class RISCV(Architecture):
 
     @classmethod
     def mprotect_asm_raw(cls, addr, size, perm):
+        def p(x):
+            return p32(int(x, 2))
+
         _NR_mprotect = 226
         insns = [
-            p32(int("0b00000_00_{:05b}_{:05b}_100_{:05b}_01100_11".format(10, 10, 10), 2)), # xor a0, a0, a0
-            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 20) & 0xfff, 10, 10), 2)), # addi a0, a0, addr[31:20]
-            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 10, 10), 2)), # slli a0, a0, 12
-            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 8) & 0xfff, 10, 10), 2)), # addi a0, a0, addr[19:8]
-            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(8, 10, 10), 2)), # slli a0, a0, 8
-            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 0) & 0xff, 10, 10), 2)), # addi a0, a0, addr[7:0]
+            p("0b00000_00_{:05b}_{:05b}_100_{:05b}_01100_11".format(10, 10, 10)), # xor a0, a0, a0
+            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 20) & 0xfff, 10, 10)), # addi a0, a0, addr[31:20]
+            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 10, 10)), # slli a0, a0, 12
+            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 8) & 0xfff, 10, 10)), # addi a0, a0, addr[19:8]
+            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(8, 10, 10)), # slli a0, a0, 8
+            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 0) & 0xff, 10, 10)), # addi a0, a0, addr[7:0]
 
-            p32(int("0b00000_00_{:05b}_{:05b}_100_{:05b}_01100_11".format(11, 11, 11), 2)), # xor a1, a1, a1
-            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 20) & 0xfff, 11, 11), 2)), # addi a1, a1, size[31:20]
-            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 11, 11), 2)), # slli a0, a0, 12
-            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 8) & 0xfff, 11, 11), 2)), # addi a1, a1, size[19:8]
-            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(8, 11, 11), 2)), # slli a0, a0, 12
-            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 0) & 0xff, 11, 11), 2)), # addi a1, a1, size[7:0]
+            p("0b00000_00_{:05b}_{:05b}_100_{:05b}_01100_11".format(11, 11, 11)), # xor a1, a1, a1
+            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 20) & 0xfff, 11, 11)), # addi a1, a1, size[31:20]
+            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 11, 11)), # slli a0, a0, 12
+            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 8) & 0xfff, 11, 11)), # addi a1, a1, size[19:8]
+            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(8, 11, 11)), # slli a0, a0, 12
+            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 0) & 0xff, 11, 11)), # addi a1, a1, size[7:0]
 
-            p32(int("0b00000_00_{:05b}_{:05b}_100_{:05b}_01100_11".format(12, 12, 12), 2)), # xor a2, a2, a2
-            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 20) & 0xfff, 12, 12), 2)), # addi a2, a2, perm[31:20]
-            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 12, 12), 2)), # slli a0, a0, 12
-            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 8) & 0xfff, 12, 12), 2)), # addi a2, a2, perm[19:8]
-            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(8, 12, 12), 2)), # slli a0, a0, 12
-            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 0) & 0xff, 12, 12), 2)), # addi a2, a2, perm[7:0]
+            p("0b00000_00_{:05b}_{:05b}_100_{:05b}_01100_11".format(12, 12, 12)), # xor a2, a2, a2
+            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 20) & 0xfff, 12, 12)), # addi a2, a2, perm[31:20]
+            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 12, 12)), # slli a0, a0, 12
+            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 8) & 0xfff, 12, 12)), # addi a2, a2, perm[19:8]
+            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(8, 12, 12)), # slli a0, a0, 12
+            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 0) & 0xff, 12, 12)), # addi a2, a2, perm[7:0]
 
-            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format(_NR_mprotect, 0, 17), 2)), # addi a7, zero, _NR_mprotect
-            p32(int("0b00000_00_00000_00000_000_00000_11100_11", 2)), # ecall
+            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format(_NR_mprotect, 0, 17)), # addi a7, zero, _NR_mprotect
+            p("0b00000_00_00000_00000_000_00000_11100_11"), # ecall
         ]
         return b''.join(insns)
 
@@ -2752,49 +2758,52 @@ class RISCV64(RISCV):
 
     @classmethod
     def mprotect_asm_raw(cls, addr, size, perm):
+        def p(x):
+            return p32(int(x, 2))
+
         _NR_mprotect = 226
         insns = [
-            p32(int("0b00000_00_{:05b}_{:05b}_100_{:05b}_01100_11".format(10, 10, 10), 2)), # xor a0, a0, a0
-            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 52) & 0xfff, 10, 10), 2)), # addi a0, a0, addr[63:52]
-            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 10, 10), 2)), # slli a0, a0, 12
-            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 40) & 0xfff, 10, 10), 2)), # addi a0, a0, addr[51:40]
-            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 10, 10), 2)), # slli a0, a0, 12
-            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 28) & 0xfff, 10, 10), 2)), # addi a0, a0, addr[39:28]
-            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 10, 10), 2)), # slli a0, a0, 12
-            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 16) & 0xfff, 10, 10), 2)), # addi a0, a0, addr[27:16]
-            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 10, 10), 2)), # slli a0, a0, 12
-            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 4) & 0xfff, 10, 10), 2)), # addi a0, a0, addr[15:4]
-            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(4, 10, 10), 2)), # slli a0, a0, 12
-            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 0) & 0xf, 10, 10), 2)), # addi a0, a0, addr[3:0]
+            p("0b00000_00_{:05b}_{:05b}_100_{:05b}_01100_11".format(10, 10, 10)), # xor a0, a0, a0
+            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 52) & 0xfff, 10, 10)), # addi a0, a0, addr[63:52]
+            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 10, 10)), # slli a0, a0, 12
+            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 40) & 0xfff, 10, 10)), # addi a0, a0, addr[51:40]
+            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 10, 10)), # slli a0, a0, 12
+            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 28) & 0xfff, 10, 10)), # addi a0, a0, addr[39:28]
+            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 10, 10)), # slli a0, a0, 12
+            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 16) & 0xfff, 10, 10)), # addi a0, a0, addr[27:16]
+            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 10, 10)), # slli a0, a0, 12
+            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 4) & 0xfff, 10, 10)), # addi a0, a0, addr[15:4]
+            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(4, 10, 10)), # slli a0, a0, 12
+            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 0) & 0xf, 10, 10)), # addi a0, a0, addr[3:0]
 
-            p32(int("0b00000_00_{:05b}_{:05b}_100_{:05b}_01100_11".format(11, 11, 11), 2)), # xor a1, a1, a1
-            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 52) & 0xfff, 11, 11), 2)), # addi a1, a1, size[63:52]
-            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 11, 11), 2)), # slli a0, a0, 12
-            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 40) & 0xfff, 11, 11), 2)), # addi a1, a1, size[51:40]
-            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 11, 11), 2)), # slli a0, a0, 12
-            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 28) & 0xfff, 11, 11), 2)), # addi a1, a1, size[39:28]
-            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 11, 11), 2)), # slli a0, a0, 12
-            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 16) & 0xfff, 11, 11), 2)), # addi a1, a1, size[27:16]
-            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 11, 11), 2)), # slli a0, a0, 12
-            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 4) & 0xfff, 11, 11), 2)), # addi a1, a1, size[15:4]
-            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(4, 11, 11), 2)), # slli a0, a0, 12
-            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 0) & 0xf, 11, 11), 2)), # addi a1, a1, size[3:0]
+            p("0b00000_00_{:05b}_{:05b}_100_{:05b}_01100_11".format(11, 11, 11)), # xor a1, a1, a1
+            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 52) & 0xfff, 11, 11)), # addi a1, a1, size[63:52]
+            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 11, 11)), # slli a0, a0, 12
+            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 40) & 0xfff, 11, 11)), # addi a1, a1, size[51:40]
+            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 11, 11)), # slli a0, a0, 12
+            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 28) & 0xfff, 11, 11)), # addi a1, a1, size[39:28]
+            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 11, 11)), # slli a0, a0, 12
+            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 16) & 0xfff, 11, 11)), # addi a1, a1, size[27:16]
+            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 11, 11)), # slli a0, a0, 12
+            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 4) & 0xfff, 11, 11)), # addi a1, a1, size[15:4]
+            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(4, 11, 11)), # slli a0, a0, 12
+            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 0) & 0xf, 11, 11)), # addi a1, a1, size[3:0]
 
-            p32(int("0b00000_00_{:05b}_{:05b}_100_{:05b}_01100_11".format(12, 12, 12), 2)), # xor a2, a2, a2
-            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 52) & 0xfff, 12, 12), 2)), # addi a2, a2, perm[63:52]
-            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 12, 12), 2)), # slli a0, a0, 12
-            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 40) & 0xfff, 12, 12), 2)), # addi a2, a2, perm[51:40]
-            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 12, 12), 2)), # slli a0, a0, 12
-            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 28) & 0xfff, 12, 12), 2)), # addi a2, a2, perm[39:28]
-            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 12, 12), 2)), # slli a0, a0, 12
-            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 16) & 0xfff, 12, 12), 2)), # addi a2, a2, perm[27:16]
-            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 12, 12), 2)), # slli a0, a0, 12
-            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 4) & 0xfff, 12, 12), 2)), # addi a2, a2, perm[15:4]
-            p32(int("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(4, 12, 12), 2)), # slli a0, a0, 12
-            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 0) & 0xf, 12, 12), 2)), # addi a2, a2, perm[3:0]
+            p("0b00000_00_{:05b}_{:05b}_100_{:05b}_01100_11".format(12, 12, 12)), # xor a2, a2, a2
+            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 52) & 0xfff, 12, 12)), # addi a2, a2, perm[63:52]
+            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 12, 12)), # slli a0, a0, 12
+            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 40) & 0xfff, 12, 12)), # addi a2, a2, perm[51:40]
+            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 12, 12)), # slli a0, a0, 12
+            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 28) & 0xfff, 12, 12)), # addi a2, a2, perm[39:28]
+            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 12, 12)), # slli a0, a0, 12
+            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 16) & 0xfff, 12, 12)), # addi a2, a2, perm[27:16]
+            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 12, 12)), # slli a0, a0, 12
+            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 4) & 0xfff, 12, 12)), # addi a2, a2, perm[15:4]
+            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(4, 12, 12)), # slli a0, a0, 12
+            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 0) & 0xf, 12, 12)), # addi a2, a2, perm[3:0]
 
-            p32(int("0b{:012b}_{:05b}_000_{:05b}_00100_11".format(_NR_mprotect, 0, 17), 2)), # addi a7, zero, _NR_mprotect
-            p32(int("0b00000_00_00000_00000_000_00000_11100_11", 2)), # ecall
+            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format(_NR_mprotect, 0, 17)), # addi a7, zero, _NR_mprotect
+            p("0b00000_00_00000_00000_000_00000_11100_11"), # ecall
         ]
         return b''.join(insns)
 
@@ -5753,51 +5762,75 @@ def disable_phys():
 
 
 @functools.lru_cache(maxsize=None)
-def p8(x: int, s: bool = False) -> bytes:
+def p8(x, s=False):
     """Pack one byte respecting the current architecture endianness."""
-    return struct.pack("{}B".format(endian_str()), x) if not s else struct.pack("{}b".format(endian_str()), x)
+    if not s:
+        return struct.pack("{}B".format(endian_str()), x)
+    else:
+        return struct.pack("{}b".format(endian_str()), x)
 
 
 @functools.lru_cache(maxsize=None)
-def p16(x: int, s: bool = False) -> bytes:
+def p16(x, s=False):
     """Pack one word respecting the current architecture endianness."""
-    return struct.pack("{}H".format(endian_str()), x) if not s else struct.pack("{}h".format(endian_str()), x)
+    if not s:
+        return struct.pack("{}H".format(endian_str()), x)
+    else:
+        return struct.pack("{}h".format(endian_str()), x)
 
 
 @functools.lru_cache(maxsize=None)
-def p32(x: int, s: bool = False) -> bytes:
+def p32(x, s=False):
     """Pack one dword respecting the current architecture endianness."""
-    return struct.pack("{}I".format(endian_str()), x) if not s else struct.pack("{}i".format(endian_str()), x)
+    if not s:
+        return struct.pack("{}I".format(endian_str()), x)
+    else:
+        return struct.pack("{}i".format(endian_str()), x)
 
 
 @functools.lru_cache(maxsize=None)
-def p64(x: int, s: bool = False) -> bytes:
+def p64(x, s=False):
     """Pack one qword respecting the current architecture endianness."""
-    return struct.pack("{}Q".format(endian_str()), x) if not s else struct.pack("{}q".format(endian_str()), x)
+    if not s:
+        return struct.pack("{}Q".format(endian_str()), x)
+    else:
+        return struct.pack("{}q".format(endian_str()), x)
 
 
 @functools.lru_cache(maxsize=None)
-def u8(x: bytes, s: bool = False) -> int:
+def u8(x, s=False):
     """Unpack one byte respecting the current architecture endianness."""
-    return struct.unpack("{}B".format(endian_str()), x)[0] if not s else struct.unpack("{}b".format(endian_str()), x)[0]
+    if not s:
+        return struct.unpack("{}B".format(endian_str()), x)[0]
+    else:
+        return struct.unpack("{}b".format(endian_str()), x)[0]
 
 
 @functools.lru_cache(maxsize=None)
-def u16(x: bytes, s: bool = False) -> int:
+def u16(x, s=False):
     """Unpack one word respecting the current architecture endianness."""
-    return struct.unpack("{}H".format(endian_str()), x)[0] if not s else struct.unpack("{}h".format(endian_str()), x)[0]
+    if not s:
+        return struct.unpack("{}H".format(endian_str()), x)[0]
+    else:
+        return struct.unpack("{}h".format(endian_str()), x)[0]
 
 
 @functools.lru_cache(maxsize=None)
-def u32(x: bytes, s: bool = False) -> int:
+def u32(x, s=False):
     """Unpack one dword respecting the current architecture endianness."""
-    return struct.unpack("{}I".format(endian_str()), x)[0] if not s else struct.unpack("{}i".format(endian_str()), x)[0]
+    if not s:
+        return struct.unpack("{}I".format(endian_str()), x)[0]
+    else:
+        return struct.unpack("{}i".format(endian_str()), x)[0]
 
 
 @functools.lru_cache(maxsize=None)
-def u64(x: bytes, s: bool = False) -> int:
+def u64(x, s=False):
     """Unpack one qword respecting the current architecture endianness."""
-    return struct.unpack("{}Q".format(endian_str()), x)[0] if not s else struct.unpack("{}q".format(endian_str()), x)[0]
+    if not s:
+        return struct.unpack("{}Q".format(endian_str()), x)[0]
+    else:
+        return struct.unpack("{}q".format(endian_str()), x)[0]
 
 
 def is_ascii_string(address):
@@ -6243,8 +6276,7 @@ def get_process_maps_linux(pid):
         addr_start, addr_end = [int(x, 16) for x in addr.split("-")]
         off = int(off, 16)
         perm = Permission.from_process_maps(perm)
-        sect = Section(page_start=addr_start, page_end=addr_end, offset=off,
-                       permission=perm, inode=inode, path=pathname)
+        sect = Section(page_start=addr_start, page_end=addr_end, offset=off, permission=perm, inode=inode, path=pathname)
         maps.append(sect)
     return maps
 
@@ -6284,9 +6316,9 @@ def __get_explored_regions():
         start_addrs = [r.page_start for r in regions]
 
         # up search
-        upper_bound = gef_getpagesize()
+        lower_bound = 0
         while True:
-            if region_start < upper_bound:
+            if region_start < lower_bound:
                 break
             if region_start in end_addrs:
                 break
@@ -6294,10 +6326,10 @@ def __get_explored_regions():
                 break
             region_start -= gef_getpagesize()
 
-        lower_bound = (1 << 32) if is_32bit() else (1 << 64)
+        upper_bound = (1 << 32) if is_32bit() else (1 << 64)
         # down search
         while True:
-            if region_end >= lower_bound:
+            if region_end >= upper_bound:
                 break
             if region_end in start_addrs:
                 break
@@ -6316,13 +6348,13 @@ def __get_explored_regions():
         if start is None:
             return []
         perm = Permission.from_process_maps(perm)
-        sect = Section(page_start=start, page_end=end, offset=0, permission=perm, inode=None, path=label)
+        sect = Section(page_start=start, page_end=end, permission=perm, path=label)
         return [sect]
 
     def get_ehdr(addr):
-        bound = (1 << 32) if is_32bit() else (1 << 64)
+        upper_bound = (1 << 32) if is_32bit() else (1 << 64)
         for i in range(128):
-            if addr < 0 or addr > bound:
+            if addr < 0 or addr > upper_bound:
                 return None
             try:
                 if read_memory(addr, 4) == b'\x7FELF':
@@ -6367,7 +6399,12 @@ def __get_explored_regions():
                         break
                 else:
                     # not found, so add new page
-                    page = {'vaddr': page_addr, 'memsize': gef_getpagesize(), 'flags': flags, 'offset': offset + (page_addr - vaddr)}
+                    page = {
+                        'vaddr': page_addr,
+                        'memsize': gef_getpagesize(),
+                        'flags': flags,
+                        'offset': offset + (page_addr - vaddr),
+                    }
                     pages.append(page)
 
         pages = sorted(pages, key=lambda x: x['vaddr'])
@@ -6393,7 +6430,7 @@ def __get_explored_regions():
             page_start = page['vaddr']
             page_end = page['vaddr'] + page['memsize']
             off = page['offset']
-            sect = Section(page_start=page_start, page_end=page_end, offset=off, permission=perm, inode=None, path=label)
+            sect = Section(page_start=page_start, page_end=page_end, offset=off, permission=perm, path=label)
             sects.append(sect)
         return sects
 
@@ -6554,7 +6591,7 @@ def get_info_sections():
             off = int(parts[3][:-1], 16)
             path = parts[4]
             perm = Permission.from_info_sections(parts[5:])
-            sect = Section(page_start=addr_start, page_end=addr_end, offset=off, permission=perm, inode=None, path=path)
+            sect = Section(page_start=addr_start, page_end=addr_end, offset=off, permission=perm, path=path)
             maps.append(sect)
         except IndexError:
             continue
@@ -7602,6 +7639,8 @@ def gef_get_auxiliary_values():
     """Retrieves the auxiliary values of the current execution.
     Returns None if not running, or a dict() of values."""
     if not is_alive():
+        return None
+    if is_qemu_system():
         return None
     return __gef_get_auxiliary_values()
 
@@ -9607,7 +9646,7 @@ class SearchPatternCommand(GenericCommand):
                     continue
                 perm = line.split("/")[-1][:3]
                 perm = Permission.from_process_maps(perm.lower())
-            yield Section(page_start=addr_start, page_end=addr_end, permission=perm, path="")
+            yield Section(page_start=addr_start, page_end=addr_end, permission=perm)
 
     def search_pattern(self, pattern, section_name):
         """Search a pattern within the whole userland memory."""
@@ -12869,7 +12908,7 @@ class ElfInfoCommand(GenericCommand):
             Elf.ET_RELOC          : "Relocatable",
             Elf.ET_EXEC           : "Executable",
             Elf.ET_DYN            : "Shared",
-            Elf.ET_CORE           : "Core"
+            Elf.ET_CORE           : "Core",
         }
 
         machines = {
@@ -21244,7 +21283,8 @@ x86_syscall_tbl = """
 #
 # [How to make]
 # cd /path/to/linux-6.*/
-# gcc -I `pwd`/include/uapi/ -E -D__SYSCALL=SYSCALL arch/arm64/include/uapi/asm/unistd.h | grep ^SYSCALL | sed -e 's/SYSCALL(//;s/[,)]//g' > /tmp/a
+# gcc -I `pwd`/include/uapi/ -E -D__SYSCALL=SYSCALL arch/arm64/include/uapi/asm/unistd.h \
+# | grep ^SYSCALL | sed -e 's/SYSCALL(//;s/[,)]//g' > /tmp/a
 # grep -oP "__NR\S+\s+\d+$" include/uapi/asm-generic/unistd.h | grep -v __NR_sync_file_range2 > /tmp/b
 # join -2 2 -o 1.1,1.10,2.1,1.2 -e arm64 /tmp/a /tmp/b | sed -e 's/\(__NR_\|__NR3264_\)//g' | column -t
 #
@@ -21562,7 +21602,8 @@ arm64_syscall_tbl = """
 #
 # [How to make]
 # cd /path/to/linux-6.*/
-# gcc -E -D__SYSCALL=SYSCALL arch/arm64/include/asm/unistd32.h | grep ^SYSCALL | sed -e 's/SYSCALL(//;s/[,)]//g' > /tmp/a
+# gcc -E -D__SYSCALL=SYSCALL arch/arm64/include/asm/unistd32.h \
+# | grep ^SYSCALL | sed -e 's/SYSCALL(//;s/[,)]//g' > /tmp/a
 # grep -oP "__NR\S+\s+\d+" arch/arm64/include/asm/unistd32.h > /tmp/b
 # join -2 2 -o 1.1,1.10,2.1,1.2 -e arm /tmp/a /tmp/b | sed -e 's/__NR_//g' | column -t
 #
@@ -24694,7 +24735,8 @@ sparc_syscall_tbl = """
 # RISCV64
 #
 # [How to make]
-# gcc -I `pwd`/include/uapi/ -E -D__SYSCALL=SYSCALL arch/riscv/include/uapi/asm/unistd.h | grep ^SYSCALL | sed -e 's/SYSCALL(//;s/[,)]//g;/+/d' > /tmp/a
+# gcc -I `pwd`/include/uapi/ -E -D__SYSCALL=SYSCALL arch/riscv/include/uapi/asm/unistd.h \
+# | grep ^SYSCALL | sed -e 's/SYSCALL(//;s/[,)]//g;/+/d' > /tmp/a
 # grep -oP "__NR\S+\s+\d+$" include/uapi/asm-generic/unistd.h | grep -v __NR_sync_file_range2 > /tmp/b
 # join -2 2 -o 1.1,1.10,2.1,1.2 -e riscv64 /tmp/a /tmp/b | sed -e 's/\(__NR_\|__NR3264_\)//g' | column -t
 #
@@ -25010,7 +25052,8 @@ riscv64_syscall_tbl = """
 # RISCV32
 #
 # [How to make]
-# gcc -I `pwd`/include/uapi/ -E -D__SYSCALL=SYSCALL -D__BITS_PER_LONG=32 -D__ILP32__=1 arch/riscv/include/uapi/asm/unistd.h | grep ^SYSCALL | sed -e 's/SYSCALL(//;s/[,)]//g;/+/d' > /tmp/a
+# gcc -I `pwd`/include/uapi/ -E -D__SYSCALL=SYSCALL -D__BITS_PER_LONG=32 -D__ILP32__=1 arch/riscv/include/uapi/asm/unistd.h \
+# | grep ^SYSCALL | sed -e 's/SYSCALL(//;s/[,)]//g;/+/d' > /tmp/a
 # grep -oP "__NR\S+\s+\d+$" include/uapi/asm-generic/unistd.h | grep -v __NR_sync_file_range2 > /tmp/b
 # join -2 2 -o 1.1,1.10,2.1,1.2 -e riscv32 /tmp/a /tmp/b | sed -e 's/\(__NR_\|__NR3264_\)//g' | column -t
 #
