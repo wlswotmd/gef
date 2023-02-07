@@ -6264,6 +6264,7 @@ def get_process_maps_linux(pid):
     """Parse the Linux process `/proc/pid/maps` file."""
     proc_map_file = "/proc/{:d}/maps".format(pid)
     maps = []
+    tls = TlsCommand.get_tls()
     for line in open(proc_map_file, "r"):
         line = line.strip()
         addr, perm, off, _, rest = line.split(" ", 4)
@@ -6274,6 +6275,8 @@ def get_process_maps_linux(pid):
         else:
             pathname = rest[1].lstrip()
         addr_start, addr_end = [int(x, 16) for x in addr.split("-")]
+        if tls and addr_start <= tls < addr_end:
+            pathname = "<tls>"
         off = int(off, 16)
         perm = Permission.from_process_maps(perm)
         sect = Section(page_start=addr_start, page_end=addr_end, offset=off, permission=perm, inode=inode, path=pathname)
@@ -8693,10 +8696,8 @@ class CanaryCommand(GenericCommand):
         unpack = u32 if current_arch.ptrsize == 4 else u64
 
         tls = None
-        if is_x86_64():
-            tls = TlsCommand.getfs()
-        elif is_x86_32():
-            tls = TlsCommand.getgs()
+        if is_x86():
+            tls = TlsCommand.get_tls()
 
         sp = get_register("$sp")
         for m in vmmap:
@@ -8715,10 +8716,7 @@ class CanaryCommand(GenericCommand):
                 if canary != unpack(d):
                     continue
                 if m.path == "":
-                    if tls and tls <= addr < ((tls + 0x1000) & 0xfffffffffffff000):
-                        path = "tls"
-                    else:
-                        path = "unknown"
+                    path = "unknown"
                 else:
                     path = m.path
                 if prev_addr <= sp <= addr:
@@ -33668,6 +33666,16 @@ class TlsCommand(GenericCommand):
             return value.contents.value or 0
         else:
             return 0
+
+    @staticmethod
+    def get_tls():
+        if is_qemu_system():
+            return None
+        elif is_x86_64():
+            return TlsCommand.getfs()
+        elif is_x86_32():
+            return TlsCommand.getgs()
+        return None
 
     @only_if_gdb_running
     @only_if_gdb_target_local
