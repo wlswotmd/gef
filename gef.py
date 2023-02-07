@@ -15648,7 +15648,7 @@ class ContextCommand(GenericCommand):
                 args.append("{} = {}".format(Color.colorify(_key, arg_key_color), _value))
 
         self.context_title("arguments (guessed)")
-        gef_print("{} (".format(function_name))
+        gef_print("{:s}{:s} (".format(function_name, get_symbol_string(function_name)))
         if args:
             gef_print("   " + ",\n   ".join(args))
         gef_print(")")
