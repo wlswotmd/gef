@@ -4549,7 +4549,7 @@ class SH4(Architecture):
 
     nop_insn = b"\x09\x00" # nop
     infloop_insn = b"\xfe\xaf" + nop_insn # bra 0
-    #trap_insn = None
+    trap_insn = None
     ret_insn = b"\x0b\x00" + nop_insn # rts
     syscall_insn = b"\x13\xc3" # trapa #19
 
