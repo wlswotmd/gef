@@ -31,6 +31,7 @@
 #   * m68k
 #   * alpha
 #   * hppa (parisc)
+#   * or1k (openrisc)
 #
 # For GEF with Python2 (only) support was moved to the GEF-Legacy
 # (https://github.com/hugsy/gef-legacy)
@@ -604,6 +605,7 @@ class Elf:
     ALPHA             = 0x29
     ALPHA_UNOFFICIAL  = 0x9026
     PARISC            = 0x0f
+    OR1K              = 0x5c
 
     ET_RELOC          = 1
     ET_EXEC           = 2
@@ -5465,6 +5467,126 @@ class HPPA64(HPPA):
 
     # qemu does not support hppa64, so I could not test
 
+
+class OR1K(Architecture):
+    arch = "OR1K"
+    mode = "OR1K"
+
+    # https://openrisc.io/or1k.html
+    # https://sourceware.org/cgen/gen-doc/openrisc-insn.html
+    all_registers = [
+        "$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7",
+        "$r8", "$r9", "$r10", "$r11", "$r12", "$r13", "$r14", "$r15",
+        "$r16", "$r17", "$r18", "$r19", "$r20", "$r21", "$r22", "$r23",
+        "$r24", "$r25", "$r26", "$r27", "$r28", "$r29", "$r30", "$r31",
+        "$ppc", "$npc", "$sr",
+    ]
+    alias_registers = {
+        "$r1": "$sp", "$r9": "$lr",
+    }
+    flag_register = "$sr"
+    flags_table = {
+        11: "overflow",
+        10: "carry",
+        9: "flag",
+    }
+    return_register = "$r11"
+    function_parameters = ["$r3", "$r4", "$r5", "$r6", "$r7", "$r8"]
+    syscall_register = "$r11"
+    syscall_parameters = ["$r3", "$r4", "$r5", "$r6", "$r7", "$r8"]
+    syscall_instructions = ["l.sys 0x1"]
+
+    instruction_length = 4
+    has_delay_slot = True
+
+    keystone_support = False
+    capstone_support = False
+    unicorn_support = False
+
+    nop_insn = b"\x00\x00\x00\x15" # l.nop 0x0
+    infloop_insn = b"\x00\x00\x00\x00" + nop_insn # l.j self (+ delay slot)
+    trap_insn = None
+    ret_insn = b"\x00\x48\x00\x44" + nop_insn  # l.jr r9 (+ delay slot)
+    syscall_insn = b"\x01\x00\x00\x20" + nop_insn # l.sys 0x1 (+delay slot)
+
+    def is_syscall(self, insn):
+        return insn.mnemonic == "l.sys" and insn.operands[0] == "0x1"
+
+    def is_call(self, insn):
+        return insn.mnemonic in ["l.bal", "l.jal", "ljalr"]
+
+    def is_jump(self, insn):
+        if self.is_conditional_branch(insn):
+            return True
+        return insn.mnemonic in ["l.j", "l.jr"]
+
+    def is_ret(self, insn):
+        if insn.mnemonic == "l.jr" and insn.operands[0] == "r9":
+            return True
+        if insn.mnemonic in ["l.rfe"]:
+            return True
+        return False
+
+    def is_conditional_branch(self, insn):
+        return insn.mnemonic in ["l.bf", "l.bnf"]
+
+    def is_branch_taken(self, insn):
+        mnemo = insn.mnemonic
+        val = get_register(self.flag_register)
+        flags = dict((self.flags_table[k], k) for k in self.flags_table)
+        taken, reason = False, ""
+
+        flag = bool(val & (1 << flags["flag"]))
+
+        if mnemo == "l.bf":
+            taken, reason = flag, "F"
+        if mnemo == "l.bnf":
+            taken, reason = not flag, "!F"
+        return taken, reason
+
+    def flag_register_to_human(self, val=None):
+        if not val:
+            reg = self.flag_register
+            val = get_register(reg)
+        return flags_to_human(val, self.flags_table)
+
+    def get_ra(self, insn, frame):
+        ra = None
+        try:
+            if self.is_ret(insn):
+                ra = get_register("$r9")
+            elif frame.older():
+                ra = frame.older().pc()
+        except Exception:
+            pass
+        return ra
+
+    mprotect_asm = None
+
+    @classmethod
+    def mprotect_asm_raw(cls, addr, size, perm):
+        _NR_mprotect = 226
+        insns = [
+            b"\xa8\x60" + p16(addr >> 16), # l.ori r3, r0, addr[31:16]
+            b"\xb8\x63\x00\x10", # l.slli r3, r3, 16
+            b"\xa8\x63" + p16(addr & 0xffff), # l.ori r3, r6, addr[15:0]
+
+            b"\xa8\x80" + p16(size >> 16), # l.ori r4, r0, size[31:16]
+            b"\xb8\x84\x00\x10", # l.slli r4, r4, 16
+            b"\xa8\x84" + p16(size & 0xffff), # l.ori r4, r6, size[15:0]
+
+            b"\xa8\xa0" + p16(perm >> 16), # l.ori r5, r0, perm[31:16]
+            b"\xb8\xa5\x00\x10", # l.slli r5, r5, 16
+            b"\xa8\xa5" + p16(perm & 0xffff), # l.ori r5, r6, perm[15:0]
+
+            b"\xa9\x60" + p16(_NR_mprotect), # l.ori r11, r0, _NR_mprotect
+
+            b"\x20\x00\x00\x01", # l.sys 0x1
+            b"\x15\x00\x00\x00", # l.nop 0x0 (delay slot)
+        ]
+        return b''.join(insns)
+
+
 # The prototype for new architecture.
 #
 #class XXX(Architecture):
@@ -6000,6 +6122,8 @@ def only_if_specific_arch(arch=[]):
                     return f(*args, **kwargs)
                 elif a == "HPPA64" and is_hppa64():
                     return f(*args, **kwargs)
+                elif a == "OR1K" and is_or1k():
+                    return f(*args, **kwargs)
             else:
                 warn("This command cannot work under this architecture.")
                 return
@@ -6068,6 +6192,9 @@ def exclude_specific_arch(arch=[]):
                     warn("This command cannot work under this architecture.")
                     return
                 elif a == "HPPA64" and is_hppa64():
+                    warn("This command cannot work under this architecture.")
+                    return
+                elif a == "OR1K" and is_or1k():
                     warn("This command cannot work under this architecture.")
                     return
             else:
@@ -7208,6 +7335,14 @@ def is_hppa64():
         return False
 
 
+def is_or1k():
+    """Checks if current target is an or1k"""
+    try:
+        return current_arch.arch == "OR1K" and current_arch.mode == "OR1K"
+    except Exception:
+        return False
+
+
 @functools.lru_cache(maxsize=None)
 def is_static(filename=None):
     if filename is None:
@@ -7259,6 +7394,7 @@ def set_arch(arch=None, default=None):
         Elf.ALPHA: ALPHA, Elf.ALPHA_UNOFFICIAL: ALPHA, "ALPHA": ALPHA, "ALPHA:EV4": ALPHA,
         "ALPHA:EV5": ALPHA, "ALPHA;EV6": ALPHA,
         Elf.PARISC: HPPA, "HPPA1.0": HPPA, "HPPA1.1": HPPA,
+        Elf.OR1K: OR1K, "OR1K": OR1K,
     }
     global current_arch, current_elf
 
@@ -8385,12 +8521,39 @@ class GenericCommand(gdb.Command):
 
 @register_command
 class NiCommand(GenericCommand):
-    """nexti wrapper for s390x because s390x sometimes returns `PC not saved` when nexti command is executed."""
+    """nexti wrapper for specific arch.
+    s390x: sometimes returns `PC not saved` when nexti command is executed.
+    or1k: branch operations don't work well, so use breakpoints to simulate."""
     _cmdline_ = "ni"
     _syntax_ = _cmdline_
     _category_ = "Debugging Support"
 
+    def pre_ni_or1k(self, argv):
+        insn = get_insn()
+        insn_next = get_insn_next()
+        target = None
+
+        try:
+            frame = gdb.selected_frame()
+        except gdb.error:
+            # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
+            frame = None
+
+        if insn and current_arch.is_jump(insn):
+            target = ContextCommand.get_branch_addr(insn)
+        elif insn and current_arch.is_ret(insn):
+            target = current_arch.get_ra(insn, frame)
+
+        if target is not None:
+            gdb.Breakpoint("*{:#x}".format(target), gdb.BP_BREAKPOINT, internal=True, temporary=True)
+            # delay slot
+            gdb.Breakpoint("*{:#x}".format(insn_next.address), gdb.BP_BREAKPOINT, internal=True, temporary=True)
+        return
+
     def do_invoke(self, argv):
+        if is_or1k():
+            self.pre_ni_or1k(argv)
+
         cmd = "nexti " + ' '.join(argv)
         try:
             gdb.execute(cmd.rstrip())
@@ -8405,12 +8568,39 @@ class NiCommand(GenericCommand):
 
 @register_command
 class SiCommand(GenericCommand):
-    """stepi wrapper for s390x because s390x sometimes returns `PC not saved` when stepi command is executed."""
+    """stepi wrapper for specific arch.
+    s390x: sometimes returns `PC not saved` when stepi command is executed.
+    or1k: branch operations don't work well, so use breakpoints to simulate."""
     _cmdline_ = "si"
     _syntax_ = _cmdline_
     _category_ = "Debugging Support"
 
+    def pre_si_or1k(self, argv):
+        insn = get_insn()
+        insn_next = get_insn_next()
+        target = None
+
+        try:
+            frame = gdb.selected_frame()
+        except gdb.error:
+            # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
+            frame = None
+
+        if insn and current_arch.is_jump(insn) or current_arch.is_call(insn):
+            target = ContextCommand.get_branch_addr(insn)
+        elif insn and current_arch.is_ret(insn):
+            target = current_arch.get_ra(insn, frame)
+
+        if target is not None:
+            gdb.Breakpoint("*{:#x}".format(target), gdb.BP_BREAKPOINT, internal=True, temporary=True)
+            # delay slot
+            gdb.Breakpoint("*{:#x}".format(insn_next.address), gdb.BP_BREAKPOINT, internal=True, temporary=True)
+        return
+
     def do_invoke(self, argv):
+        if is_or1k():
+            self.pre_si_or1k(argv)
+
         cmd = "stepi " + ' '.join(argv)
         try:
             gdb.execute(cmd.rstrip())
@@ -10285,7 +10475,8 @@ class ChangePermissionCommand(GenericCommand):
     """Change a page permission. By default, it will change it to RWX."""
     _cmdline_ = "set-permission"
     _syntax_ = "{:s} [-h] [--only-patch] LOCATION [PERMISSION]".format(_cmdline_)
-    _example_ = "{:s} $sp 7".format(_cmdline_)
+    _example_ = "{:s} $sp 7\n".format(_cmdline_)
+    _example_ += "{:s} $sp rwx".format(_cmdline_)
     _category_ = "Debugging Support"
     _aliases_ = ["mprotect"]
 
@@ -10515,7 +10706,7 @@ class UnicornEmulateCommand(GenericCommand):
 
     @only_if_gdb_running
     @only_if_not_qemu_system
-    @exclude_specific_arch(arch=["PPC64", "MIPS64", "S390X", "SH4", "ALPHA", "HPPA32", "HPPA64"])
+    @exclude_specific_arch(arch=["PPC64", "MIPS64", "S390X", "SH4", "ALPHA", "HPPA32", "HPPA64", "OR1K"])
     @load_capstone
     @load_unicorn
     def do_invoke(self, argv):
@@ -12967,7 +13158,8 @@ class ElfInfoCommand(GenericCommand):
             Elf.M68K              : "m68k",
             Elf.ALPHA             : "alpha",
             Elf.ALPHA_UNOFFICIAL  : "alpha-unofficial",
-            Elf.PARISC            : "PA-RISC(HP/PA)"
+            Elf.PARISC            : "PA-RISC(HP/PA)",
+            Elf.OR1K              : "OpenRISC 1000",
         }
 
         if "-h" in argv:
@@ -15498,7 +15690,8 @@ class ContextCommand(GenericCommand):
             gdb.execute(f"telescope {addr:#x} 4")
         return
 
-    def get_branch_addr(self, insn, to_str=False):
+    @staticmethod
+    def get_branch_addr(insn, to_str=False):
         ops = " ".join(insn.operands)
         ops = re.sub(r"<.*?>", "", ops)
 
@@ -19761,7 +19954,8 @@ class SyscallSearchCommand(GenericCommand):
     _example_ += '{:s} -a M68K -m M68K     "^writev?" # m68k\n'.format(_cmdline_)
     _example_ += '{:s} -a ALPHA -m ALPHA   "^writev?" # alpha\n'.format(_cmdline_)
     _example_ += '{:s} -a HPPA -m HPPA32   "^writev?" # hppa32\n'.format(_cmdline_)
-    _example_ += '{:s} -a HPPA -m HPPA64   "^writev?" # hppa64'.format(_cmdline_)
+    _example_ += '{:s} -a HPPA -m HPPA64   "^writev?" # hppa64\n'.format(_cmdline_)
+    _example_ += '{:s} -a OR1K -m OR1K     "^writev?" # or1k'.format(_cmdline_)
     _category_ = "Misc"
 
     def print_legend(self):
@@ -27722,6 +27916,324 @@ hppa_syscall_tbl = """
 """
 
 
+# OpenRISC
+#
+# [How to make]
+# cd /path/to/linux-6.*/
+# gcc -I `pwd`/include/uapi/ -E -D__SYSCALL=SYSCALL arch/openrisc/include/uapi/asm/unistd.h \
+# | grep ^SYSCALL | sed -e 's/SYSCALL(//;s/[,)]//g' > /tmp/a
+# grep -oP "__NR\S+\s+\d+$" include/uapi/asm-generic/unistd.h | grep -v __NR_sync_file_range2 > /tmp/b
+# join -2 2 -o 1.1,1.10,2.1,1.2 -e or1k /tmp/a /tmp/b | sed -e 's/\(__NR_\|__NR3264_\)//g' | column -t
+#
+or1k_syscall_tbl = """
+0    or1k  io_setup                 sys_io_setup
+1    or1k  io_destroy               sys_io_destroy
+2    or1k  io_submit                sys_io_submit
+3    or1k  io_cancel                sys_io_cancel
+4    or1k  io_getevents             sys_io_getevents
+5    or1k  setxattr                 sys_setxattr
+6    or1k  lsetxattr                sys_lsetxattr
+7    or1k  fsetxattr                sys_fsetxattr
+8    or1k  getxattr                 sys_getxattr
+9    or1k  lgetxattr                sys_lgetxattr
+10   or1k  fgetxattr                sys_fgetxattr
+11   or1k  listxattr                sys_listxattr
+12   or1k  llistxattr               sys_llistxattr
+13   or1k  flistxattr               sys_flistxattr
+14   or1k  removexattr              sys_removexattr
+15   or1k  lremovexattr             sys_lremovexattr
+16   or1k  fremovexattr             sys_fremovexattr
+17   or1k  getcwd                   sys_getcwd
+18   or1k  lookup_dcookie           sys_lookup_dcookie
+19   or1k  eventfd2                 sys_eventfd2
+20   or1k  epoll_create1            sys_epoll_create1
+21   or1k  epoll_ctl                sys_epoll_ctl
+22   or1k  epoll_pwait              sys_epoll_pwait
+23   or1k  dup                      sys_dup
+24   or1k  dup3                     sys_dup3
+25   or1k  fcntl                    sys_fcntl
+26   or1k  inotify_init1            sys_inotify_init1
+27   or1k  inotify_add_watch        sys_inotify_add_watch
+28   or1k  inotify_rm_watch         sys_inotify_rm_watch
+29   or1k  ioctl                    sys_ioctl
+30   or1k  ioprio_set               sys_ioprio_set
+31   or1k  ioprio_get               sys_ioprio_get
+32   or1k  flock                    sys_flock
+33   or1k  mknodat                  sys_mknodat
+34   or1k  mkdirat                  sys_mkdirat
+35   or1k  unlinkat                 sys_unlinkat
+36   or1k  symlinkat                sys_symlinkat
+37   or1k  linkat                   sys_linkat
+38   or1k  renameat                 sys_renameat
+39   or1k  umount2                  sys_umount
+40   or1k  mount                    sys_mount
+41   or1k  pivot_root               sys_pivot_root
+42   or1k  nfsservctl               sys_ni_syscall
+43   or1k  statfs                   sys_statfs
+44   or1k  fstatfs                  sys_fstatfs
+45   or1k  truncate                 sys_truncate
+46   or1k  ftruncate                sys_ftruncate
+47   or1k  fallocate                sys_fallocate
+48   or1k  faccessat                sys_faccessat
+49   or1k  chdir                    sys_chdir
+50   or1k  fchdir                   sys_fchdir
+51   or1k  chroot                   sys_chroot
+52   or1k  fchmod                   sys_fchmod
+53   or1k  fchmodat                 sys_fchmodat
+54   or1k  fchownat                 sys_fchownat
+55   or1k  fchown                   sys_fchown
+56   or1k  openat                   sys_openat
+57   or1k  close                    sys_close
+58   or1k  vhangup                  sys_vhangup
+59   or1k  pipe2                    sys_pipe2
+60   or1k  quotactl                 sys_quotactl
+61   or1k  getdents64               sys_getdents64
+62   or1k  lseek                    sys_lseek
+63   or1k  read                     sys_read
+64   or1k  write                    sys_write
+65   or1k  readv                    sys_readv
+66   or1k  writev                   sys_writev
+67   or1k  pread64                  sys_pread64
+68   or1k  pwrite64                 sys_pwrite64
+69   or1k  preadv                   sys_preadv
+70   or1k  pwritev                  sys_pwritev
+71   or1k  sendfile                 sys_sendfile64
+72   or1k  pselect6                 sys_pselect6
+73   or1k  ppoll                    sys_ppoll
+74   or1k  signalfd4                sys_signalfd4
+75   or1k  vmsplice                 sys_vmsplice
+76   or1k  splice                   sys_splice
+77   or1k  tee                      sys_tee
+78   or1k  readlinkat               sys_readlinkat
+79   or1k  fstatat                  sys_newfstatat
+80   or1k  fstat                    sys_newfstat
+81   or1k  sync                     sys_sync
+82   or1k  fsync                    sys_fsync
+83   or1k  fdatasync                sys_fdatasync
+84   or1k  sync_file_range          sys_sync_file_range
+85   or1k  timerfd_create           sys_timerfd_create
+86   or1k  timerfd_settime          sys_timerfd_settime
+87   or1k  timerfd_gettime          sys_timerfd_gettime
+88   or1k  utimensat                sys_utimensat
+89   or1k  acct                     sys_acct
+90   or1k  capget                   sys_capget
+91   or1k  capset                   sys_capset
+92   or1k  personality              sys_personality
+93   or1k  exit                     sys_exit
+94   or1k  exit_group               sys_exit_group
+95   or1k  waitid                   sys_waitid
+96   or1k  set_tid_address          sys_set_tid_address
+97   or1k  unshare                  sys_unshare
+98   or1k  futex                    sys_futex
+99   or1k  set_robust_list          sys_set_robust_list
+100  or1k  get_robust_list          sys_get_robust_list
+101  or1k  nanosleep                sys_nanosleep
+102  or1k  getitimer                sys_getitimer
+103  or1k  setitimer                sys_setitimer
+104  or1k  kexec_load               sys_kexec_load
+105  or1k  init_module              sys_init_module
+106  or1k  delete_module            sys_delete_module
+107  or1k  timer_create             sys_timer_create
+108  or1k  timer_gettime            sys_timer_gettime
+109  or1k  timer_getoverrun         sys_timer_getoverrun
+110  or1k  timer_settime            sys_timer_settime
+111  or1k  timer_delete             sys_timer_delete
+112  or1k  clock_settime            sys_clock_settime
+113  or1k  clock_gettime            sys_clock_gettime
+114  or1k  clock_getres             sys_clock_getres
+115  or1k  clock_nanosleep          sys_clock_nanosleep
+116  or1k  syslog                   sys_syslog
+117  or1k  ptrace                   sys_ptrace
+118  or1k  sched_setparam           sys_sched_setparam
+119  or1k  sched_setscheduler       sys_sched_setscheduler
+120  or1k  sched_getscheduler       sys_sched_getscheduler
+121  or1k  sched_getparam           sys_sched_getparam
+122  or1k  sched_setaffinity        sys_sched_setaffinity
+123  or1k  sched_getaffinity        sys_sched_getaffinity
+124  or1k  sched_yield              sys_sched_yield
+125  or1k  sched_get_priority_max   sys_sched_get_priority_max
+126  or1k  sched_get_priority_min   sys_sched_get_priority_min
+127  or1k  sched_rr_get_interval    sys_sched_rr_get_interval
+128  or1k  restart_syscall          sys_restart_syscall
+129  or1k  kill                     sys_kill
+130  or1k  tkill                    sys_tkill
+131  or1k  tgkill                   sys_tgkill
+132  or1k  sigaltstack              sys_sigaltstack
+133  or1k  rt_sigsuspend            sys_rt_sigsuspend
+134  or1k  rt_sigaction             sys_rt_sigaction
+135  or1k  rt_sigprocmask           sys_rt_sigprocmask
+136  or1k  rt_sigpending            sys_rt_sigpending
+137  or1k  rt_sigtimedwait          sys_rt_sigtimedwait
+138  or1k  rt_sigqueueinfo          sys_rt_sigqueueinfo
+139  or1k  rt_sigreturn             sys_rt_sigreturn
+140  or1k  setpriority              sys_setpriority
+141  or1k  getpriority              sys_getpriority
+142  or1k  reboot                   sys_reboot
+143  or1k  setregid                 sys_setregid
+144  or1k  setgid                   sys_setgid
+145  or1k  setreuid                 sys_setreuid
+146  or1k  setuid                   sys_setuid
+147  or1k  setresuid                sys_setresuid
+148  or1k  getresuid                sys_getresuid
+149  or1k  setresgid                sys_setresgid
+150  or1k  getresgid                sys_getresgid
+151  or1k  setfsuid                 sys_setfsuid
+152  or1k  setfsgid                 sys_setfsgid
+153  or1k  times                    sys_times
+154  or1k  setpgid                  sys_setpgid
+155  or1k  getpgid                  sys_getpgid
+156  or1k  getsid                   sys_getsid
+157  or1k  setsid                   sys_setsid
+158  or1k  getgroups                sys_getgroups
+159  or1k  setgroups                sys_setgroups
+160  or1k  uname                    sys_newuname
+161  or1k  sethostname              sys_sethostname
+162  or1k  setdomainname            sys_setdomainname
+163  or1k  getrlimit                sys_getrlimit
+164  or1k  setrlimit                sys_setrlimit
+165  or1k  getrusage                sys_getrusage
+166  or1k  umask                    sys_umask
+167  or1k  prctl                    sys_prctl
+168  or1k  getcpu                   sys_getcpu
+169  or1k  gettimeofday             sys_gettimeofday
+170  or1k  settimeofday             sys_settimeofday
+171  or1k  adjtimex                 sys_adjtimex
+172  or1k  getpid                   sys_getpid
+173  or1k  getppid                  sys_getppid
+174  or1k  getuid                   sys_getuid
+175  or1k  geteuid                  sys_geteuid
+176  or1k  getgid                   sys_getgid
+177  or1k  getegid                  sys_getegid
+178  or1k  gettid                   sys_gettid
+179  or1k  sysinfo                  sys_sysinfo
+180  or1k  mq_open                  sys_mq_open
+181  or1k  mq_unlink                sys_mq_unlink
+182  or1k  mq_timedsend             sys_mq_timedsend
+183  or1k  mq_timedreceive          sys_mq_timedreceive
+184  or1k  mq_notify                sys_mq_notify
+185  or1k  mq_getsetattr            sys_mq_getsetattr
+186  or1k  msgget                   sys_msgget
+187  or1k  msgctl                   sys_msgctl
+188  or1k  msgrcv                   sys_msgrcv
+189  or1k  msgsnd                   sys_msgsnd
+190  or1k  semget                   sys_semget
+191  or1k  semctl                   sys_semctl
+192  or1k  semtimedop               sys_semtimedop
+193  or1k  semop                    sys_semop
+194  or1k  shmget                   sys_shmget
+195  or1k  shmctl                   sys_shmctl
+196  or1k  shmat                    sys_shmat
+197  or1k  shmdt                    sys_shmdt
+198  or1k  socket                   sys_socket
+199  or1k  socketpair               sys_socketpair
+200  or1k  bind                     sys_bind
+201  or1k  listen                   sys_listen
+202  or1k  accept                   sys_accept
+203  or1k  connect                  sys_connect
+204  or1k  getsockname              sys_getsockname
+205  or1k  getpeername              sys_getpeername
+206  or1k  sendto                   sys_sendto
+207  or1k  recvfrom                 sys_recvfrom
+208  or1k  setsockopt               sys_setsockopt
+209  or1k  getsockopt               sys_getsockopt
+210  or1k  shutdown                 sys_shutdown
+211  or1k  sendmsg                  sys_sendmsg
+212  or1k  recvmsg                  sys_recvmsg
+213  or1k  readahead                sys_readahead
+214  or1k  brk                      sys_brk
+215  or1k  munmap                   sys_munmap
+216  or1k  mremap                   sys_mremap
+217  or1k  add_key                  sys_add_key
+218  or1k  request_key              sys_request_key
+219  or1k  keyctl                   sys_keyctl
+220  or1k  clone                    sys_clone
+221  or1k  execve                   sys_execve
+222  or1k  mmap                     sys_mmap
+223  or1k  fadvise64                sys_fadvise64_64
+224  or1k  swapon                   sys_swapon
+225  or1k  swapoff                  sys_swapoff
+226  or1k  mprotect                 sys_mprotect
+227  or1k  msync                    sys_msync
+228  or1k  mlock                    sys_mlock
+229  or1k  munlock                  sys_munlock
+230  or1k  mlockall                 sys_mlockall
+231  or1k  munlockall               sys_munlockall
+232  or1k  mincore                  sys_mincore
+233  or1k  madvise                  sys_madvise
+234  or1k  remap_file_pages         sys_remap_file_pages
+235  or1k  mbind                    sys_mbind
+236  or1k  get_mempolicy            sys_get_mempolicy
+237  or1k  set_mempolicy            sys_set_mempolicy
+238  or1k  migrate_pages            sys_migrate_pages
+239  or1k  move_pages               sys_move_pages
+240  or1k  rt_tgsigqueueinfo        sys_rt_tgsigqueueinfo
+241  or1k  perf_event_open          sys_perf_event_open
+242  or1k  accept4                  sys_accept4
+243  or1k  recvmmsg                 sys_recvmmsg
+260  or1k  wait4                    sys_wait4
+261  or1k  prlimit64                sys_prlimit64
+262  or1k  fanotify_init            sys_fanotify_init
+263  or1k  fanotify_mark            sys_fanotify_mark
+264  or1k  name_to_handle_at        sys_name_to_handle_at
+265  or1k  open_by_handle_at        sys_open_by_handle_at
+266  or1k  clock_adjtime            sys_clock_adjtime
+267  or1k  syncfs                   sys_syncfs
+268  or1k  setns                    sys_setns
+269  or1k  sendmmsg                 sys_sendmmsg
+270  or1k  process_vm_readv         sys_process_vm_readv
+271  or1k  process_vm_writev        sys_process_vm_writev
+272  or1k  kcmp                     sys_kcmp
+273  or1k  finit_module             sys_finit_module
+274  or1k  sched_setattr            sys_sched_setattr
+275  or1k  sched_getattr            sys_sched_getattr
+276  or1k  renameat2                sys_renameat2
+277  or1k  seccomp                  sys_seccomp
+278  or1k  getrandom                sys_getrandom
+279  or1k  memfd_create             sys_memfd_create
+280  or1k  bpf                      sys_bpf
+281  or1k  execveat                 sys_execveat
+282  or1k  userfaultfd              sys_userfaultfd
+283  or1k  membarrier               sys_membarrier
+284  or1k  mlock2                   sys_mlock2
+285  or1k  copy_file_range          sys_copy_file_range
+286  or1k  preadv2                  sys_preadv2
+287  or1k  pwritev2                 sys_pwritev2
+288  or1k  pkey_mprotect            sys_pkey_mprotect
+289  or1k  pkey_alloc               sys_pkey_alloc
+290  or1k  pkey_free                sys_pkey_free
+291  or1k  statx                    sys_statx
+292  or1k  io_pgetevents            sys_io_pgetevents
+293  or1k  rseq                     sys_rseq
+294  or1k  kexec_file_load          sys_kexec_file_load
+424  or1k  pidfd_send_signal        sys_pidfd_send_signal
+425  or1k  io_uring_setup           sys_io_uring_setup
+426  or1k  io_uring_enter           sys_io_uring_enter
+427  or1k  io_uring_register        sys_io_uring_register
+428  or1k  open_tree                sys_open_tree
+429  or1k  move_mount               sys_move_mount
+430  or1k  fsopen                   sys_fsopen
+431  or1k  fsconfig                 sys_fsconfig
+432  or1k  fsmount                  sys_fsmount
+433  or1k  fspick                   sys_fspick
+434  or1k  pidfd_open               sys_pidfd_open
+435  or1k  clone3                   sys_clone3
+436  or1k  close_range              sys_close_range
+437  or1k  openat2                  sys_openat2
+438  or1k  pidfd_getfd              sys_pidfd_getfd
+439  or1k  faccessat2               sys_faccessat2
+440  or1k  process_madvise          sys_process_madvise
+441  or1k  epoll_pwait2             sys_epoll_pwait2
+442  or1k  mount_setattr            sys_mount_setattr
+443  or1k  quotactl_fd              sys_quotactl_fd
+444  or1k  landlock_create_ruleset  sys_landlock_create_ruleset
+445  or1k  landlock_add_rule        sys_landlock_add_rule
+446  or1k  landlock_restrict_self   sys_landlock_restrict_self
+448  or1k  process_mrelease         sys_process_mrelease
+449  or1k  futex_waitv              sys_futex_waitv
+450  or1k  set_mempolicy_home_node  sys_set_mempolicy_home_node
+"""
+
+
 def parse_syscall_table_defs(table_defs):
     table = []
     for line in table_defs.splitlines():
@@ -27910,6 +28422,8 @@ def get_syscall_table(arch=None, mode=None):
             arch, mode = "HPPA", "HPPA32"
         elif is_hppa64():
             arch, mode = "HPPA", "HPPA64"
+        elif is_or1k():
+            arch, mode = "OR1K", "OR1K"
         else:
             raise
 
@@ -29235,6 +29749,38 @@ def get_syscall_table(arch=None, mode=None):
                 raise
             syscall_list.append([nr, name, sc_def[func]])
 
+    elif arch == "OR1K" and mode == "OR1K":
+        register_list = OR1K().syscall_parameters
+        sc_def = parse_common_syscall_defs()
+        tbl = parse_syscall_table_defs(or1k_syscall_tbl)
+        arch_specific_dic = {
+            'sys_rt_sigreturn': [], # arch/openrisc/kernel/entry.S
+            'sys_clone': [
+                'unsigned long clone_flags', 'unsigned long newsp',
+                'void __user *parent_tid', 'void __user *child_tid', 'int tls',
+            ], # arch/openrisc/include/syscalls.h
+            'sys_mmap': [
+                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
+                'unsigned long flags', 'unsigned long fd', 'off_t pgoff',
+            ], # include/asm-generic/syscalls.h
+        }
+
+        syscall_list = []
+        for entry in tbl:
+            nr, abi, name, func = entry
+            if abi != "or1k":
+                continue
+            # special case
+            if func in arch_specific_dic:
+                syscall_list.append([nr, name, arch_specific_dic[func]])
+                continue
+            # common case
+            if func == 'sys_ni_syscall':
+                continue
+            if func not in sc_def:
+                err("Not found: {:s}".format(func))
+                raise
+            syscall_list.append([nr, name, sc_def[func]])
     else:
         raise
 

@@ -166,7 +166,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * Listen with `sde64 -debug -debug-port 1234 -- /bin/ls`.
 
 #### General
-* Supported architecture
+* Supported architectures
     * x86/x64
     * ARM(EABI)/Thumb2(EABI)/Aarch64
     * PPC32/PPC64
@@ -178,6 +178,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * m68k
     * alpha
     * HPPA(PA-RISC)
+    * OR1K(OpenRISC 1000)
 * `vmmap`: is improved.
     * It displays the meomry map information even when connecting to gdb stub like qemu-user (heuristic), intel pin and intel SDE.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmmap-qemu-user.png)
@@ -187,6 +188,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
 * `si`/`ni`: are the wrapper for native `si`/`ni`.
     * On some architectures such as s390x, a `PC not saved` error may be output when executing "stepi/nexti".
     * But the execution itself is fine, so this command ignores this error and executes `context` normally.
+    * On or1k, branch operations don't work well, so use breakpoints to simulate.
     * If you want native `si`/`ni`, use the full form `stepi`/`nexti`.
 * `c`: is the wrapper for native `c`.
     * When connecting to qemu-user's gdb stub, gdb does not trap SIGINT during "continue".
