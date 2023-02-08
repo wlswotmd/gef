@@ -2261,18 +2261,16 @@ def checksec(filename):
         return False
 
     results = collections.OrderedDict()
+
     # Static
     results["Static"] = is_static(filename)
+
     # Stripped
     results["Stripped"] = is_stripped(filename)
+
     # Canary
-    if not is_stripped(filename):
-        results["Canary"] = __check_security_property("-rs", filename, r"__stack_chk_fail") is True
-        if not results["Canary"]: # for non-x86
-            results["Canary"] = __check_security_property("-rs", filename, r"__stack_chk_guard") is True
-        if not results["Canary"]: # for intel compiler
-            results["Canary"] = __check_security_property("-rs", filename, r"__intel_security_cookie") is True
-    else:
+    if is_stripped(filename) and is_static(filename):
+        # heuristic search
         results["Canary"] = None # it means unknown
         if is_x86_64():
             proc = subprocess.Popen([objdump, "-d", filename], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -2288,17 +2286,27 @@ def checksec(filename):
                     results["Canary"] = True
                     break
             proc.kill()
+    else:
+        results["Canary"] = __check_security_property("-rs", filename, r"__stack_chk_fail") is True
+        if not results["Canary"]: # for non-x86
+            results["Canary"] = __check_security_property("-rs", filename, r"__stack_chk_guard") is True
+        if not results["Canary"]: # for intel compiler
+            results["Canary"] = __check_security_property("-rs", filename, r"__intel_security_cookie") is True
+
     # NX
     has_gnu_stack = __check_security_property("-W -l", filename, r"GNU_STACK") is True
     if has_gnu_stack:
         results["NX"] = __check_security_property("-W -l", filename, r"GNU_STACK.*RWE") is False
     else:
         results["NX"] = False
+
     # PIE
     results["PIE"] = __check_security_property("-h", filename, r":.*EXEC") is False
+
     # RELRO
     results["Partial RELRO"] = __check_security_property("-l", filename, r"GNU_RELRO") is True
     results["Full RELRO"] = results["Partial RELRO"] and __check_security_property("-d", filename, r"BIND_NOW") is True
+
     # Fortify
     if is_stripped(filename):
         results["Fortify"] = None # it means unknown
@@ -2306,6 +2314,7 @@ def checksec(filename):
         results["Fortify"] = __check_security_property("-rs", filename, r"__mem(cpy|move)_chk") is True
     else:
         results["Fortify"] = __check_security_property("-rs", filename, r"_chk@GLIBC") is True
+
     # CET
     if not is_x86():
         results["Intel CET"] = False
@@ -2325,14 +2334,19 @@ def checksec(filename):
             elif is_x86_32() and line.endswith("endbr32"):
                 results["Intel CET"] = True
                 break
+
     # RPATH
     results["RPATH"] = __check_security_property("-d", filename, r"\(RPATH\)") is True
+
     # RUNPATH
     results["RUNPATH"] = __check_security_property("-d", filename, r"\(RUNPATH\)") is True
+
     # Clang CFI (detected only when `-fno-sanitize-trap=all`)
     results["Clang CFI"] = __check_security_property("-s", filename, r"__ubsan_handle_cfi_") is True
+
     # Clang SafeStack
     results["Clang SafeStack"] = __check_security_property("-s", filename, r"__safestack_init") is True
+
     return results
 
 
