@@ -29273,6 +29273,80 @@ class SyscallArgsCommand(GenericCommand):
     _syntax_ = "{:s} [-h] [SYSCALL_NUM]".format(_cmdline_)
     _category_ = "Debugging Support"
 
+    def get_nr(self):
+        syscall_register = current_arch.syscall_register
+
+        # hppa specific. hppa syscall instruction has a delay slot and _NR may be set there.
+        if is_hppa32() or is_hppa64():
+            next_insn = gef_instruction_n(current_arch.pc, 1)
+            if next_insn.mnemonic == "ldi" and next_insn.operands[1] == "r20":
+                nr = int(next_insn.operands[0], 0)
+            else:
+                # already set
+                nr = get_register(syscall_register)
+
+        # normal pattern
+        elif syscall_register.startswith("$"):
+            nr = get_register(syscall_register)
+
+        # extract by PCRE if syscall number is embedded in the instruction
+        else:
+            insn = gef_current_instruction(current_arch.pc)
+            r = re.search(syscall_register, str(insn))
+            if r:
+                nr = int(r.group(1), 0)
+            else:
+                warn("Failed to recognize the syscall number.")
+                return
+            if is_s390x() and nr == 0:
+                syscall_register = current_arch.syscall_register2
+                nr = get_register(syscall_register)
+
+        return syscall_register, nr
+
+    def get_values(self, registers):
+        values = []
+        for reg in registers:
+            if "+" not in reg:
+                values.append(get_register(reg))
+            else:
+                _reg, _off = reg.split("+") # like `$sp + 0x10`
+                values.append(read_int_from_memory(get_register(_reg) + int(_off, 0)))
+        return values
+
+    def print_syscall(self, syscall_register, nr, syscall_table):
+        if syscall_table:
+            syscall_name = syscall_table[nr].name
+            parameters = [s.param for s in syscall_table[nr].params]
+            param_names = [re.split(r" |\*", p)[-1] for p in parameters]
+            registers = [s.reg for s in syscall_table[nr].params]
+            arch = syscall_table["arch"]
+            mode = syscall_table["mode"]
+        else:
+            syscall_name = None
+            registers = current_arch.syscall_parameters
+            parameters = None
+            param_names = ["?"] * len(registers)
+            arch = current_arch.arch
+            mode = current_arch.mode
+
+        info("Detected syscall (arch:{:s}, mode:{:s})".format(arch, mode))
+
+        if syscall_name and parameters:
+            gef_print("    " + Color.colorify("{}({})".format(syscall_name, ", ".join(parameters)), "bold yellow"))
+
+        headers = ["Parameter", "Register", "Value"]
+        info(Color.colorify("{:<20} {:<20} {}".format(*headers), get_gef_setting("theme.table_heading")))
+        gef_print("    {:<20} {:<20} {:#x}".format("_NR", syscall_register, nr))
+
+        values = self.get_values(registers)
+        for name, register, value in zip(param_names, registers, values):
+            line = "    {:<20} {:<20} ".format(name, register)
+            if value is not None:
+                line += to_string_dereference_from(value)
+            gef_print(line)
+        return
+
     @only_if_gdb_running
     def do_invoke(self, argv):
         self.dont_repeat()
@@ -29281,69 +29355,21 @@ class SyscallArgsCommand(GenericCommand):
             self.usage()
             return
 
+        if len(argv) == 1:
+            syscall_register = "-"
+            nr = int(argv[0], 0)
+        else:
+            syscall_register, nr = self.get_nr()
+
         try:
             syscall_table = get_syscall_table()
+            if nr not in syscall_table:
+                warn("There is no system call for {:#x}".format(nr))
+                return
         except Exception:
-            warn("This command cannot work under this architecture.")
-            return
+            syscall_table = None
 
-        syscall_register = current_arch.syscall_register
-
-        if len(argv) == 1:
-            reg_value = int(argv[0], 0)
-        else:
-            # hppa specific. hppa syscall instruction has a delay slot and _NR may be set there.
-            if is_hppa32() or is_hppa64():
-                next_insn = gef_instruction_n(current_arch.pc, 1)
-                if next_insn.mnemonic == "ldi" and next_insn.operands[1] == "r20":
-                    reg_value = int(next_insn.operands[0], 0)
-                else:
-                    # already set
-                    reg_value = get_register(syscall_register)
-            # normal pattern
-            elif syscall_register.startswith("$"):
-                reg_value = get_register(syscall_register)
-            # extract by PCRE if syscall number is embedded in the instruction
-            else:
-                insn = gef_current_instruction(current_arch.pc)
-                r = re.search(syscall_register, str(insn))
-                if r:
-                    reg_value = int(r.group(1), 0)
-                else:
-                    warn("Failed to recognize the syscall number.")
-                    return
-                if is_s390x() and reg_value == 0:
-                    syscall_register = current_arch.syscall_register2
-                    reg_value = get_register(syscall_register)
-        if reg_value not in syscall_table:
-            warn("There is no system call for {:#x}".format(reg_value))
-            return
-        syscall_entry = syscall_table[reg_value]
-
-        values = []
-        for param in syscall_entry.params:
-            if "+" not in param.reg:
-                values.append(get_register(param.reg))
-            else:
-                _reg, _off = param.reg.split("+") # like `$sp + 0x10`
-                values.append(read_int_from_memory(get_register(_reg) + int(_off, 0)))
-
-        parameters = [s.param for s in syscall_entry.params]
-        registers = [s.reg for s in syscall_entry.params]
-
-        info("Detected syscall (arch:{:s}, mode:{:s})".format(syscall_table["arch"], syscall_table["mode"]))
-        gef_print("    " + Color.colorify("{}({})".format(syscall_entry.name, ", ".join(parameters)), "bold yellow"))
-
-        headers = ["Parameter", "Register", "Value"]
-        info(Color.colorify("{:<20} {:<20} {}".format(*headers), get_gef_setting("theme.table_heading")))
-        gef_print("    {:<20} {:<20} {:#x}".format("_NR", syscall_register, reg_value))
-
-        param_names = [re.split(r" |\*", p)[-1] for p in parameters]
-        for name, register, value in zip(param_names, registers, values):
-            line = "    {:<20} {:<20} ".format(name, register)
-            if value is not None:
-                line += to_string_dereference_from(value)
-            gef_print(line)
+        self.print_syscall(syscall_register, nr, syscall_table)
         return
 
 
