@@ -3851,7 +3851,7 @@ class SPARC(Architecture):
             "or %o1, {}, %o1".format(size & 0x000003ff),
             "mov {}, %o2".format(perm),
             "mov {}, %g1".format(_NR_mprotect),
-            "t 0x10",
+            "ta 0x10",
             "nop", # keystone does not give nop for delay slot, needs this nop
         ]
         return "; ".join(insns)
@@ -3925,7 +3925,7 @@ class SPARC64(SPARC):
             "or %o1, %o2, %o1",
             "mov {}, %o2".format(perm),
             "mov {}, %g1".format(_NR_mprotect),
-            "t 0x6d",
+            "ta 0x6d",
             "nop", # keystone does not give nop for delay slot, needs this nop
         ]
         return "; ".join(insns)
