@@ -32,6 +32,7 @@
 #   * alpha
 #   * hppa (parisc)
 #   * or1k (openrisc)
+#   * nios2
 #
 # For GEF with Python2 (only) support was moved to the GEF-Legacy
 # (https://github.com/hugsy/gef-legacy)
@@ -606,6 +607,7 @@ class Elf:
     ALPHA_UNOFFICIAL  = 0x9026
     PARISC            = 0x0f
     OR1K              = 0x5c
+    NIOS2             = 0x71
 
     ET_RELOC          = 1
     ET_EXEC           = 2
@@ -5587,6 +5589,134 @@ class OR1K(Architecture):
         return b''.join(insns)
 
 
+class NIOS2(Architecture):
+    arch = "NIOS2"
+    mode = "NIOS2"
+
+    # https://www.intel.com/content/www/us/en/docs/programmable/683836/current/introduction.html
+    # https://www.intel.co.jp/content/dam/altera-www/global/ja_JP/pdfs/literature/hb/nios2/n2cpu-nii5v1gen2-j.pdf
+    all_registers = [
+        "$zero", "$at", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7",
+        "$r8", "$r9", "$r10", "$r11", "$r12", "$r13", "$r14", "$r15",
+        "$r16", "$r17", "$r18", "$r19", "$r20", "$r21", "$r22", "$r23",
+        "$et", "$bt", "$gp", "$sp", "$fp", "$ea", "$sstatus", "$ra",
+        "$pc",
+    ]
+    alias_registers = {
+        "$zero": "$r0", "$at": "$r1", "$et": "$r24", "$bt": "$r25",
+        "$gp": "$r26", "$sp": "$r27", "$fp": "$r28", "$ea": "$r29",
+        "$sstatus": "$r30", "$ra": "$r31",
+    }
+    flag_register = None # NIOS2 has no flags register
+    return_register = "$r2"
+    function_parameters = ["$r4", "$r5", "$r6", "$r7"]
+    syscall_register = "$r2"
+    syscall_parameters = ["$r4", "$r5", "$r6", "$r7", "$r8", "$r9"]
+    syscall_instructions = ["trap 0"]
+
+    instruction_length = 4
+    has_delay_slot = False
+
+    keystone_support = False
+    capstone_support = False
+    unicorn_support = False
+
+    nop_insn = b"\x3a\x88\x01\x00" # nop
+    infloop_insn = b"\x06\xff\x3f\x00" # br self
+    trap_insn = None
+    ret_insn = b"\x3a\x28\x00\xf8" # ret
+    syscall_insn = b"\x3a\x68\x3b\x00" # trap 0
+
+    def is_syscall(self, insn):
+        return insn.mnemonic == "trap" and insn.operands == ["0"]
+
+    def is_call(self, insn):
+        return insn.mnemonic in ["call", "callr"]
+
+    def is_jump(self, insn):
+        if self.is_conditional_branch(insn):
+            return True
+        return insn.mnemonic in ["br", "jmp", "jmpi"]
+
+    def is_ret(self, insn):
+        return insn.mnemonic in ["ret", "bret", "eret"]
+
+    def is_conditional_branch(self, insn):
+        branch_mnemos = [
+            "beq", "bne",
+            "bge", "bgeu", "bgt", "bgtu",
+            "ble", "bleu", "blt", "bltu",
+        ]
+        return insn.mnemonic in branch_mnemos
+
+    def is_branch_taken(self, insn):
+        mnemo, ops = insn.mnemonic, insn.operands
+        v0 = get_register(ops[0])
+        v1 = get_register(ops[1])
+        v0u = v0 & 0xffffffff
+        v1u = v1 & 0xffffffff
+        taken, reason = False, ""
+
+        if mnemo == "beq":
+            taken, reason = v0 == v1, "{:s}=={:s}".format(ops[0], ops[1])
+        elif mnemo == "bne":
+            taken, reason = v0 != v1, "{:s}!={:s}".format(ops[0], ops[1])
+        elif mnemo == "bge":
+            taken, reason = v0 >= v1, "{:s}>={:s} (signed)".format(ops[0], ops[1])
+        elif mnemo == "bgeu":
+            taken, reason = v0u >= v1u, "{:s}>={:s} (unsigned)".format(ops[0], ops[1])
+        elif mnemo == "bgt":
+            taken, reason = v0 > v1, "{:s}>{:s} (signed)".format(ops[0], ops[1])
+        elif mnemo == "bgtu":
+            taken, reason = v0u > v1u, "{:s}>{:s} (unsigned)".format(ops[0], ops[1])
+        elif mnemo == "ble":
+            taken, reason = v0 <= v1, "{:s}<={:s} (signed)".format(ops[0], ops[1])
+        elif mnemo == "bleu":
+            taken, reason = v0u <= v1u, "{:s}<={:s} (unsigned)".format(ops[0], ops[1])
+        elif mnemo == "blt":
+            taken, reason = v0 < v1, "{:s}<{:s} (signed)".format(ops[0], ops[1])
+        elif mnemo == "bltu":
+            taken, reason = v0u < v1u, "{:s}<{:s} (unsigned)".format(ops[0], ops[1])
+        return taken, reason
+
+    def get_ra(self, insn, frame):
+        ra = None
+        try:
+            if self.is_ret(insn):
+                ra = get_register("$ra")
+            elif frame.older():
+                ra = frame.older().pc()
+        except Exception:
+            pass
+        return ra
+
+    mprotect_asm = None
+
+    @classmethod
+    def mprotect_asm_raw(cls, addr, size, perm):
+        _NR_mprotect = 226
+
+        def op_i(op, reg1, reg2, imm):
+            fmt = "0b{:05b}_{:05b}_{:016b}_{:06b}"
+            val = fmt.format(reg1, reg2, imm, op)
+            return p32(int(val, 2))
+
+        insns = [
+            op_i(0x34, 0, 4, (addr >> 16) & 0xffff), # orhi r0, r4, addr[31:16]
+            op_i(0x14, 4, 4, (addr >> 0) & 0xffff), # ori r4, r4, addr[15:0]
+
+            op_i(0x34, 0, 5, (size >> 16) & 0xffff), # orhi r0, r5, size[31:16]
+            op_i(0x14, 5, 5, (size >> 0) & 0xffff), # ori r5, r5, size[15:0]
+
+            op_i(0x34, 0, 6, (perm >> 16) & 0xffff), # orhi r0, r6, perm[31:16]
+            op_i(0x14, 6, 6, (perm >> 0) & 0xffff), # ori r6, r6, perm[15:0]
+
+            op_i(0x14, 0, 2, _NR_mprotect), # ori r0, r2, _NR_mprotect
+            b"\x3a\x68\x3b\x00", # trap 0
+        ]
+        return b''.join(insns)
+
+
 # The prototype for new architecture.
 #
 #class XXX(Architecture):
@@ -6124,6 +6254,8 @@ def only_if_specific_arch(arch=[]):
                     return f(*args, **kwargs)
                 elif a == "OR1K" and is_or1k():
                     return f(*args, **kwargs)
+                elif a == "NIOS2" and is_nios2():
+                    return f(*args, **kwargs)
             else:
                 warn("This command cannot work under this architecture.")
                 return
@@ -6195,6 +6327,9 @@ def exclude_specific_arch(arch=[]):
                     warn("This command cannot work under this architecture.")
                     return
                 elif a == "OR1K" and is_or1k():
+                    warn("This command cannot work under this architecture.")
+                    return
+                elif a == "NIOS2" and is_nios2():
                     warn("This command cannot work under this architecture.")
                     return
             else:
@@ -7343,6 +7478,14 @@ def is_or1k():
         return False
 
 
+def is_nios2():
+    """Checks if current target is nios2."""
+    try:
+        return current_arch.arch == "NIOS2" and current_arch.mode == "NIOS2"
+    except Exception:
+        return False
+
+
 @functools.lru_cache(maxsize=None)
 def is_static(filename=None):
     if filename is None:
@@ -7395,6 +7538,7 @@ def set_arch(arch=None, default=None):
         "ALPHA:EV5": ALPHA, "ALPHA;EV6": ALPHA,
         Elf.PARISC: HPPA, "HPPA1.0": HPPA, "HPPA1.1": HPPA,
         Elf.OR1K: OR1K, "OR1K": OR1K,
+        Elf.NIOS2: NIOS2, "NIOS2": NIOS2, "NIOS2:R1": NIOS2, "NIOS2:R2": NIOS2,
     }
     global current_arch, current_elf
 
@@ -10706,7 +10850,7 @@ class UnicornEmulateCommand(GenericCommand):
 
     @only_if_gdb_running
     @only_if_not_qemu_system
-    @exclude_specific_arch(arch=["PPC64", "MIPS64", "S390X", "SH4", "ALPHA", "HPPA32", "HPPA64", "OR1K"])
+    @exclude_specific_arch(arch=["PPC64", "MIPS64", "S390X", "SH4", "ALPHA", "HPPA32", "HPPA64", "OR1K", "NIOS2"])
     @load_capstone
     @load_unicorn
     def do_invoke(self, argv):
@@ -13160,6 +13304,7 @@ class ElfInfoCommand(GenericCommand):
             Elf.ALPHA_UNOFFICIAL  : "alpha-unofficial",
             Elf.PARISC            : "PA-RISC(HP/PA)",
             Elf.OR1K              : "OpenRISC 1000",
+            Elf.NIOS2             : "Nios II",
         }
 
         if "-h" in argv:
@@ -19955,7 +20100,8 @@ class SyscallSearchCommand(GenericCommand):
     _example_ += '{:s} -a ALPHA -m ALPHA   "^writev?" # alpha\n'.format(_cmdline_)
     _example_ += '{:s} -a HPPA -m HPPA32   "^writev?" # hppa32\n'.format(_cmdline_)
     _example_ += '{:s} -a HPPA -m HPPA64   "^writev?" # hppa64\n'.format(_cmdline_)
-    _example_ += '{:s} -a OR1K -m OR1K     "^writev?" # or1k'.format(_cmdline_)
+    _example_ += '{:s} -a OR1K -m OR1K     "^writev?" # or1k\n'.format(_cmdline_)
+    _example_ += '{:s} -a NIOS2 -m NIOS2   "^writev?" # nios2'.format(_cmdline_)
     _category_ = "Misc"
 
     def print_legend(self):
@@ -28234,6 +28380,323 @@ or1k_syscall_tbl = """
 """
 
 
+# Nios II
+#
+# [How to make]
+# cd /path/to/linux-6.*/
+# gcc -I `pwd`/include/uapi/ -E -D__SYSCALL=SYSCALL arch/nios2/include/uapi/asm/unistd.h \
+# | grep ^SYSCALL | sed -e 's/SYSCALL(//;s/[,)]//g' > /tmp/a
+# grep -oP "__NR\S+\s+\d+$" include/uapi/asm-generic/unistd.h | grep -v __NR_sync_file_range2 > /tmp/b
+# join -2 2 -o 1.1,1.10,2.1,1.2 -e nios2 /tmp/a /tmp/b | sed -e 's/\(__NR_\|__NR3264_\)//g' | column -t
+#
+nios2_syscall_tbl = """
+0    nios2  io_setup                 sys_io_setup
+1    nios2  io_destroy               sys_io_destroy
+2    nios2  io_submit                sys_io_submit
+3    nios2  io_cancel                sys_io_cancel
+4    nios2  io_getevents             sys_io_getevents
+5    nios2  setxattr                 sys_setxattr
+6    nios2  lsetxattr                sys_lsetxattr
+7    nios2  fsetxattr                sys_fsetxattr
+8    nios2  getxattr                 sys_getxattr
+9    nios2  lgetxattr                sys_lgetxattr
+10   nios2  fgetxattr                sys_fgetxattr
+11   nios2  listxattr                sys_listxattr
+12   nios2  llistxattr               sys_llistxattr
+13   nios2  flistxattr               sys_flistxattr
+14   nios2  removexattr              sys_removexattr
+15   nios2  lremovexattr             sys_lremovexattr
+16   nios2  fremovexattr             sys_fremovexattr
+17   nios2  getcwd                   sys_getcwd
+18   nios2  lookup_dcookie           sys_lookup_dcookie
+19   nios2  eventfd2                 sys_eventfd2
+20   nios2  epoll_create1            sys_epoll_create1
+21   nios2  epoll_ctl                sys_epoll_ctl
+22   nios2  epoll_pwait              sys_epoll_pwait
+23   nios2  dup                      sys_dup
+24   nios2  dup3                     sys_dup3
+25   nios2  fcntl                    sys_fcntl
+26   nios2  inotify_init1            sys_inotify_init1
+27   nios2  inotify_add_watch        sys_inotify_add_watch
+28   nios2  inotify_rm_watch         sys_inotify_rm_watch
+29   nios2  ioctl                    sys_ioctl
+30   nios2  ioprio_set               sys_ioprio_set
+31   nios2  ioprio_get               sys_ioprio_get
+32   nios2  flock                    sys_flock
+33   nios2  mknodat                  sys_mknodat
+34   nios2  mkdirat                  sys_mkdirat
+35   nios2  unlinkat                 sys_unlinkat
+36   nios2  symlinkat                sys_symlinkat
+37   nios2  linkat                   sys_linkat
+38   nios2  renameat                 sys_renameat
+39   nios2  umount2                  sys_umount
+40   nios2  mount                    sys_mount
+41   nios2  pivot_root               sys_pivot_root
+42   nios2  nfsservctl               sys_ni_syscall
+43   nios2  statfs                   sys_statfs
+44   nios2  fstatfs                  sys_fstatfs
+45   nios2  truncate                 sys_truncate
+46   nios2  ftruncate                sys_ftruncate
+47   nios2  fallocate                sys_fallocate
+48   nios2  faccessat                sys_faccessat
+49   nios2  chdir                    sys_chdir
+50   nios2  fchdir                   sys_fchdir
+51   nios2  chroot                   sys_chroot
+52   nios2  fchmod                   sys_fchmod
+53   nios2  fchmodat                 sys_fchmodat
+54   nios2  fchownat                 sys_fchownat
+55   nios2  fchown                   sys_fchown
+56   nios2  openat                   sys_openat
+57   nios2  close                    sys_close
+58   nios2  vhangup                  sys_vhangup
+59   nios2  pipe2                    sys_pipe2
+60   nios2  quotactl                 sys_quotactl
+61   nios2  getdents64               sys_getdents64
+62   nios2  lseek                    sys_lseek
+63   nios2  read                     sys_read
+64   nios2  write                    sys_write
+65   nios2  readv                    sys_readv
+66   nios2  writev                   sys_writev
+67   nios2  pread64                  sys_pread64
+68   nios2  pwrite64                 sys_pwrite64
+69   nios2  preadv                   sys_preadv
+70   nios2  pwritev                  sys_pwritev
+71   nios2  sendfile                 sys_sendfile64
+72   nios2  pselect6                 sys_pselect6
+73   nios2  ppoll                    sys_ppoll
+74   nios2  signalfd4                sys_signalfd4
+75   nios2  vmsplice                 sys_vmsplice
+76   nios2  splice                   sys_splice
+77   nios2  tee                      sys_tee
+78   nios2  readlinkat               sys_readlinkat
+79   nios2  fstatat                  sys_newfstatat
+80   nios2  fstat                    sys_newfstat
+81   nios2  sync                     sys_sync
+82   nios2  fsync                    sys_fsync
+83   nios2  fdatasync                sys_fdatasync
+84   nios2  sync_file_range          sys_sync_file_range
+85   nios2  timerfd_create           sys_timerfd_create
+86   nios2  timerfd_settime          sys_timerfd_settime
+87   nios2  timerfd_gettime          sys_timerfd_gettime
+88   nios2  utimensat                sys_utimensat
+89   nios2  acct                     sys_acct
+90   nios2  capget                   sys_capget
+91   nios2  capset                   sys_capset
+92   nios2  personality              sys_personality
+93   nios2  exit                     sys_exit
+94   nios2  exit_group               sys_exit_group
+95   nios2  waitid                   sys_waitid
+96   nios2  set_tid_address          sys_set_tid_address
+97   nios2  unshare                  sys_unshare
+98   nios2  futex                    sys_futex
+99   nios2  set_robust_list          sys_set_robust_list
+100  nios2  get_robust_list          sys_get_robust_list
+101  nios2  nanosleep                sys_nanosleep
+102  nios2  getitimer                sys_getitimer
+103  nios2  setitimer                sys_setitimer
+104  nios2  kexec_load               sys_kexec_load
+105  nios2  init_module              sys_init_module
+106  nios2  delete_module            sys_delete_module
+107  nios2  timer_create             sys_timer_create
+108  nios2  timer_gettime            sys_timer_gettime
+109  nios2  timer_getoverrun         sys_timer_getoverrun
+110  nios2  timer_settime            sys_timer_settime
+111  nios2  timer_delete             sys_timer_delete
+112  nios2  clock_settime            sys_clock_settime
+113  nios2  clock_gettime            sys_clock_gettime
+114  nios2  clock_getres             sys_clock_getres
+115  nios2  clock_nanosleep          sys_clock_nanosleep
+116  nios2  syslog                   sys_syslog
+117  nios2  ptrace                   sys_ptrace
+118  nios2  sched_setparam           sys_sched_setparam
+119  nios2  sched_setscheduler       sys_sched_setscheduler
+120  nios2  sched_getscheduler       sys_sched_getscheduler
+121  nios2  sched_getparam           sys_sched_getparam
+122  nios2  sched_setaffinity        sys_sched_setaffinity
+123  nios2  sched_getaffinity        sys_sched_getaffinity
+124  nios2  sched_yield              sys_sched_yield
+125  nios2  sched_get_priority_max   sys_sched_get_priority_max
+126  nios2  sched_get_priority_min   sys_sched_get_priority_min
+127  nios2  sched_rr_get_interval    sys_sched_rr_get_interval
+128  nios2  restart_syscall          sys_restart_syscall
+129  nios2  kill                     sys_kill
+130  nios2  tkill                    sys_tkill
+131  nios2  tgkill                   sys_tgkill
+132  nios2  sigaltstack              sys_sigaltstack
+133  nios2  rt_sigsuspend            sys_rt_sigsuspend
+134  nios2  rt_sigaction             sys_rt_sigaction
+135  nios2  rt_sigprocmask           sys_rt_sigprocmask
+136  nios2  rt_sigpending            sys_rt_sigpending
+137  nios2  rt_sigtimedwait          sys_rt_sigtimedwait
+138  nios2  rt_sigqueueinfo          sys_rt_sigqueueinfo
+139  nios2  rt_sigreturn             sys_rt_sigreturn
+140  nios2  setpriority              sys_setpriority
+141  nios2  getpriority              sys_getpriority
+142  nios2  reboot                   sys_reboot
+143  nios2  setregid                 sys_setregid
+144  nios2  setgid                   sys_setgid
+145  nios2  setreuid                 sys_setreuid
+146  nios2  setuid                   sys_setuid
+147  nios2  setresuid                sys_setresuid
+148  nios2  getresuid                sys_getresuid
+149  nios2  setresgid                sys_setresgid
+150  nios2  getresgid                sys_getresgid
+151  nios2  setfsuid                 sys_setfsuid
+152  nios2  setfsgid                 sys_setfsgid
+153  nios2  times                    sys_times
+154  nios2  setpgid                  sys_setpgid
+155  nios2  getpgid                  sys_getpgid
+156  nios2  getsid                   sys_getsid
+157  nios2  setsid                   sys_setsid
+158  nios2  getgroups                sys_getgroups
+159  nios2  setgroups                sys_setgroups
+160  nios2  uname                    sys_newuname
+161  nios2  sethostname              sys_sethostname
+162  nios2  setdomainname            sys_setdomainname
+163  nios2  getrlimit                sys_getrlimit
+164  nios2  setrlimit                sys_setrlimit
+165  nios2  getrusage                sys_getrusage
+166  nios2  umask                    sys_umask
+167  nios2  prctl                    sys_prctl
+168  nios2  getcpu                   sys_getcpu
+169  nios2  gettimeofday             sys_gettimeofday
+170  nios2  settimeofday             sys_settimeofday
+171  nios2  adjtimex                 sys_adjtimex
+172  nios2  getpid                   sys_getpid
+173  nios2  getppid                  sys_getppid
+174  nios2  getuid                   sys_getuid
+175  nios2  geteuid                  sys_geteuid
+176  nios2  getgid                   sys_getgid
+177  nios2  getegid                  sys_getegid
+178  nios2  gettid                   sys_gettid
+179  nios2  sysinfo                  sys_sysinfo
+180  nios2  mq_open                  sys_mq_open
+181  nios2  mq_unlink                sys_mq_unlink
+182  nios2  mq_timedsend             sys_mq_timedsend
+183  nios2  mq_timedreceive          sys_mq_timedreceive
+184  nios2  mq_notify                sys_mq_notify
+185  nios2  mq_getsetattr            sys_mq_getsetattr
+186  nios2  msgget                   sys_msgget
+187  nios2  msgctl                   sys_msgctl
+188  nios2  msgrcv                   sys_msgrcv
+189  nios2  msgsnd                   sys_msgsnd
+190  nios2  semget                   sys_semget
+191  nios2  semctl                   sys_semctl
+192  nios2  semtimedop               sys_semtimedop
+193  nios2  semop                    sys_semop
+194  nios2  shmget                   sys_shmget
+195  nios2  shmctl                   sys_shmctl
+196  nios2  shmat                    sys_shmat
+197  nios2  shmdt                    sys_shmdt
+198  nios2  socket                   sys_socket
+199  nios2  socketpair               sys_socketpair
+200  nios2  bind                     sys_bind
+201  nios2  listen                   sys_listen
+202  nios2  accept                   sys_accept
+203  nios2  connect                  sys_connect
+204  nios2  getsockname              sys_getsockname
+205  nios2  getpeername              sys_getpeername
+206  nios2  sendto                   sys_sendto
+207  nios2  recvfrom                 sys_recvfrom
+208  nios2  setsockopt               sys_setsockopt
+209  nios2  getsockopt               sys_getsockopt
+210  nios2  shutdown                 sys_shutdown
+211  nios2  sendmsg                  sys_sendmsg
+212  nios2  recvmsg                  sys_recvmsg
+213  nios2  readahead                sys_readahead
+214  nios2  brk                      sys_brk
+215  nios2  munmap                   sys_munmap
+216  nios2  mremap                   sys_mremap
+217  nios2  add_key                  sys_add_key
+218  nios2  request_key              sys_request_key
+219  nios2  keyctl                   sys_keyctl
+220  nios2  clone                    sys_clone
+221  nios2  execve                   sys_execve
+222  nios2  mmap                     sys_mmap
+223  nios2  fadvise64                sys_fadvise64_64
+224  nios2  swapon                   sys_swapon
+225  nios2  swapoff                  sys_swapoff
+226  nios2  mprotect                 sys_mprotect
+227  nios2  msync                    sys_msync
+228  nios2  mlock                    sys_mlock
+229  nios2  munlock                  sys_munlock
+230  nios2  mlockall                 sys_mlockall
+231  nios2  munlockall               sys_munlockall
+232  nios2  mincore                  sys_mincore
+233  nios2  madvise                  sys_madvise
+234  nios2  remap_file_pages         sys_remap_file_pages
+235  nios2  mbind                    sys_mbind
+236  nios2  get_mempolicy            sys_get_mempolicy
+237  nios2  set_mempolicy            sys_set_mempolicy
+238  nios2  migrate_pages            sys_migrate_pages
+239  nios2  move_pages               sys_move_pages
+240  nios2  rt_tgsigqueueinfo        sys_rt_tgsigqueueinfo
+241  nios2  perf_event_open          sys_perf_event_open
+242  nios2  accept4                  sys_accept4
+243  nios2  recvmmsg                 sys_recvmmsg
+260  nios2  wait4                    sys_wait4
+261  nios2  prlimit64                sys_prlimit64
+262  nios2  fanotify_init            sys_fanotify_init
+263  nios2  fanotify_mark            sys_fanotify_mark
+264  nios2  name_to_handle_at        sys_name_to_handle_at
+265  nios2  open_by_handle_at        sys_open_by_handle_at
+266  nios2  clock_adjtime            sys_clock_adjtime
+267  nios2  syncfs                   sys_syncfs
+268  nios2  setns                    sys_setns
+269  nios2  sendmmsg                 sys_sendmmsg
+270  nios2  process_vm_readv         sys_process_vm_readv
+271  nios2  process_vm_writev        sys_process_vm_writev
+272  nios2  kcmp                     sys_kcmp
+273  nios2  finit_module             sys_finit_module
+274  nios2  sched_setattr            sys_sched_setattr
+275  nios2  sched_getattr            sys_sched_getattr
+276  nios2  renameat2                sys_renameat2
+277  nios2  seccomp                  sys_seccomp
+278  nios2  getrandom                sys_getrandom
+279  nios2  memfd_create             sys_memfd_create
+280  nios2  bpf                      sys_bpf
+281  nios2  execveat                 sys_execveat
+282  nios2  userfaultfd              sys_userfaultfd
+283  nios2  membarrier               sys_membarrier
+284  nios2  mlock2                   sys_mlock2
+285  nios2  copy_file_range          sys_copy_file_range
+286  nios2  preadv2                  sys_preadv2
+287  nios2  pwritev2                 sys_pwritev2
+288  nios2  pkey_mprotect            sys_pkey_mprotect
+289  nios2  pkey_alloc               sys_pkey_alloc
+290  nios2  pkey_free                sys_pkey_free
+291  nios2  statx                    sys_statx
+292  nios2  io_pgetevents            sys_io_pgetevents
+293  nios2  rseq                     sys_rseq
+294  nios2  kexec_file_load          sys_kexec_file_load
+424  nios2  pidfd_send_signal        sys_pidfd_send_signal
+425  nios2  io_uring_setup           sys_io_uring_setup
+426  nios2  io_uring_enter           sys_io_uring_enter
+427  nios2  io_uring_register        sys_io_uring_register
+428  nios2  open_tree                sys_open_tree
+429  nios2  move_mount               sys_move_mount
+430  nios2  fsopen                   sys_fsopen
+431  nios2  fsconfig                 sys_fsconfig
+432  nios2  fsmount                  sys_fsmount
+433  nios2  fspick                   sys_fspick
+434  nios2  pidfd_open               sys_pidfd_open
+436  nios2  close_range              sys_close_range
+437  nios2  openat2                  sys_openat2
+438  nios2  pidfd_getfd              sys_pidfd_getfd
+439  nios2  faccessat2               sys_faccessat2
+440  nios2  process_madvise          sys_process_madvise
+441  nios2  epoll_pwait2             sys_epoll_pwait2
+442  nios2  mount_setattr            sys_mount_setattr
+443  nios2  quotactl_fd              sys_quotactl_fd
+444  nios2  landlock_create_ruleset  sys_landlock_create_ruleset
+445  nios2  landlock_add_rule        sys_landlock_add_rule
+446  nios2  landlock_restrict_self   sys_landlock_restrict_self
+448  nios2  process_mrelease         sys_process_mrelease
+449  nios2  futex_waitv              sys_futex_waitv
+450  nios2  set_mempolicy_home_node  sys_set_mempolicy_home_node
+"""
+
+
 def parse_syscall_table_defs(table_defs):
     table = []
     for line in table_defs.splitlines():
@@ -28424,6 +28887,8 @@ def get_syscall_table(arch=None, mode=None):
             arch, mode = "HPPA", "HPPA64"
         elif is_or1k():
             arch, mode = "OR1K", "OR1K"
+        elif is_nios2():
+            arch, mode = "NIOS2", "NIOS2"
         else:
             raise
 
@@ -29781,6 +30246,40 @@ def get_syscall_table(arch=None, mode=None):
                 err("Not found: {:s}".format(func))
                 raise
             syscall_list.append([nr, name, sc_def[func]])
+
+    elif arch == "NIOS2" and mode == "NIOS2":
+        register_list = NIOS2().syscall_parameters
+        sc_def = parse_common_syscall_defs()
+        tbl = parse_syscall_table_defs(nios2_syscall_tbl)
+        arch_specific_dic = {
+            'sys_rt_sigreturn': [], # arch/nios2/kernel/entry.S
+            'sys_clone': [
+                'unsigned long clone_flags', 'unsigned long newsp',
+                'int __user *parent_tidptr', 'int __user *child_tidptr', 'int tls_val',
+            ], # arch/nios2/kernel/entry.S
+            'sys_mmap': [
+                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
+                'unsigned long flags', 'unsigned long fd', 'off_t pgoff',
+            ], # include/asm-generic/syscalls.h
+        }
+
+        syscall_list = []
+        for entry in tbl:
+            nr, abi, name, func = entry
+            if abi != "nios2":
+                continue
+            # special case
+            if func in arch_specific_dic:
+                syscall_list.append([nr, name, arch_specific_dic[func]])
+                continue
+            # common case
+            if func == 'sys_ni_syscall':
+                continue
+            if func not in sc_def:
+                err("Not found: {:s}".format(func))
+                raise
+            syscall_list.append([nr, name, sc_def[func]])
+
     else:
         raise
 
