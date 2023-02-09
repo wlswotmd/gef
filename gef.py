@@ -24,7 +24,7 @@
 #   * aarch64 (armv8)
 #   * mips & mips64
 #   * powerpc & powerpc64
-#   * sparc & sparc64(v9)
+#   * sparc & sparc64
 #   * riscv32 & riscv64
 #   * s390x
 #   * sh4
@@ -471,8 +471,9 @@ class Address:
         return value
 
     def is_in_text_segment(self):
-        return (hasattr(self.info, "name") and ".text" in self.info.name) or \
-            (hasattr(self.section, "path") and get_filepath(for_vmmap=True) == self.section.path and self.section.is_executable())
+        a = hasattr(self.info, "name") and ".text" in self.info.name
+        b = hasattr(self.section, "is_executable") and self.section.is_executable()
+        return a or b
 
     def is_in_stack_segment(self):
         return hasattr(self.section, "path") and "[stack]" == self.section.path
@@ -556,13 +557,16 @@ class Section:
         return
 
     def is_readable(self):
-        return self.permission.value and self.permission.value & Permission.READ
+        v = self.permission.value
+        return v and bool(v & Permission.READ)
 
     def is_writable(self):
-        return self.permission.value and self.permission.value & Permission.WRITE
+        v = self.permission.value
+        return v and bool(v & Permission.WRITE)
 
     def is_executable(self):
-        return self.permission.value and self.permission.value & Permission.EXECUTE
+        v = self.permission.value
+        return v and bool(v & Permission.EXECUTE)
 
     @property
     def size(self):
@@ -1996,7 +2000,7 @@ def gdb_disassemble(start_pc, **kwargs):
         asm = insn["asm"].rstrip().split(None, 1)
         if len(asm) > 1:
             mnemo, operands = asm
-            operands = operands.split(",")
+            operands = [x.strip() for x in operands.split(",")]
         else:
             mnemo, operands = asm[0], []
 
@@ -2615,7 +2619,6 @@ class RISCV(Architecture):
     function_parameters = ["$a0", "$a1", "$a2", "$a3", "$a4", "$a5", "$a6", "$a7"]
     syscall_register = "$a7"
     syscall_parameters = ["$a0", "$a1", "$a2", "$a3", "$a4", "$a5"]
-    syscall_instructions = ["ecall"]
 
     instruction_length = None # variable length
     has_delay_slot = False
@@ -2631,7 +2634,7 @@ class RISCV(Architecture):
     syscall_insn = b"\x73\x00\x00\x00" # ecall
 
     def is_syscall(self, insn):
-        return insn.mnemonic in self.syscall_instructions
+        return insn.mnemonic in ["ecall"]
 
     def is_call(self, insn):
         if self.is_ret(insn):
@@ -2652,7 +2655,7 @@ class RISCV(Architecture):
         if mnemo == "ret":
             return True
         elif mnemo == "jalr":
-            return insn.operands[0] == "zero" and insn.operands[1] == "ra" and insn.operands[2] == 0
+            return insn.operands[:3] == ["zero", "ra", "0"]
         elif mnemo == "c.jalr":
             return insn.operands[0] == "ra"
         return False
@@ -2900,7 +2903,6 @@ class ARM(Architecture):
     function_parameters = ["$r0", "$r1", "$r2", "$r3"]
     syscall_register = "$r7"
     syscall_parameters = ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6"]
-    syscall_instructions = ["svc 0x0", "swi 0x0"]
 
     def is_thumb(self):
         """Determine if the machine is currently in THUMB mode."""
@@ -3007,7 +3009,7 @@ class ARM(Architecture):
         if insn.mnemonic in ["b", "b.n", "b.w", "bx", "bx.n", "bx.w"]:
             return insn.operands[0] == "lr"
         if insn.mnemonic in ["mov", "mov.n", "mov.w"]:
-            return insn.operands[0] == "pc" and insn.operands[1] == "lr"
+            return insn.operands[:2] == ["pc", "lr"]
         if insn.mnemonic == "rfe":
             return True
         return False
@@ -3162,7 +3164,6 @@ class AARCH64(ARM):
     function_parameters = ["$x0", "$x1", "$x2", "$x3", "$x4", "$x5", "$x6", "$x7"]
     syscall_register = "$x8"
     syscall_parameters = ["$x0", "$x1", "$x2", "$x3", "$x4", "$x5"]
-    syscall_instructions = ["svc #0x0"]
 
     nop_insn = b"\x1f\x20\x03\xd5" # nop
     infloop_insn = b"\x00\x00\x00\x14" # b #0
@@ -3171,7 +3172,7 @@ class AARCH64(ARM):
     syscall_insn = b"\x01\x00\x00\xd4" # svc #0x0
 
     def is_syscall(self, insn):
-        return insn.mnemonic == "svc" and insn.operands == ["#0x0"]
+        return insn.mnemonic == "svc" and insn.operands[0] == "#0x0"
 
     def is_call(self, insn):
         return insn.mnemonic in ["bl", "blr"]
@@ -3247,17 +3248,15 @@ class AARCH64(ARM):
                 else:
                     taken, reason = False, "{}!=0".format(reg)
             elif mnemo == "tbnz":
-                # operands[1] has one or more white spaces in front, then a #, then the number
-                # so we need to eliminate them
-                i = int(operands[1].strip().lstrip("#"))
+                # operands[1] has a #, then the number
+                i = int(operands[1].lstrip("#"))
                 if (op & (1 << i)) != 0:
                     taken, reason = True, "{}&1<<{}!=0".format(reg, i)
                 else:
                     taken, reason = False, "{}&1<<{}==0".format(reg, i)
             elif mnemo == "tbz":
-                # operands[1] has one or more white spaces in front, then a #, then the number
-                # so we need to eliminate them
-                i = int(operands[1].strip().lstrip("#"))
+                # operands[1] has a #, then the number
+                i = int(operands[1].lstrip("#"))
                 if (op & (1 << i)) == 0:
                     taken, reason = True, "{}&1<<{}==0".format(reg, i)
                 else:
@@ -3304,7 +3303,6 @@ class X86(Architecture):
     function_parameters = ["$esp"] # but unused because x86 uses stack
     syscall_register = "$eax"
     syscall_parameters = ["$ebx", "$ecx", "$edx", "$esi", "$edi", "$ebp"]
-    syscall_instructions = ["sysenter", "syscall", "int 0x80"]
 
     instruction_length = None # variable length
     has_delay_slot = False
@@ -3449,9 +3447,11 @@ class X86_64(X86):
     function_parameters = ["$rdi", "$rsi", "$rdx", "$rcx", "$r8", "$r9"]
     syscall_register = "$rax"
     syscall_parameters = ["$rdi", "$rsi", "$rdx", "$r10", "$r8", "$r9"]
-    syscall_instructions = ["syscall", "sysenter"]
 
     syscall_insn = b"\x0f\x05" # syscall
+
+    def is_syscall(self, insn):
+        return insn.mnemonic in ["sysenter", "syscall"]
 
     def get_ith_parameter(self, i, in_func=True):
         if i < len(self.function_parameters):
@@ -3511,7 +3511,6 @@ class PPC(Architecture):
     function_parameters = ["$r3", "$r4", "$r5", "$r6", "$r7", "$r8", "$r9", "$r10"]
     syscall_register = "$r0"
     syscall_parameters = ["$r3", "$r4", "$r5", "$r6", "$r7", "$r8", "$r9"]
-    syscall_instructions = ["sc"]
 
     instruction_length = 4
     has_delay_slot = False
@@ -3534,7 +3533,7 @@ class PPC(Architecture):
         return flags_to_human(val, self.flags_table)
 
     def is_syscall(self, insn):
-        return insn.mnemonic in self.syscall_instructions
+        return insn.mnemonic in ["sc"]
 
     def is_call(self, insn):
         conditions = [
@@ -3762,7 +3761,6 @@ class SPARC(Architecture):
     function_parameters = ["$o0", "$o1", "$o2", "$o3", "$o4", "$o5"]
     syscall_register = "$g1"
     syscall_parameters = ["$o0", "$o1", "$o2", "$o3", "$o4", "$o5"]
-    syscall_instructions = ["ta 0x10"]
 
     instruction_length = 4
     has_delay_slot = True
@@ -3773,7 +3771,7 @@ class SPARC(Architecture):
 
     nop_insn = b"\x00\x00\x00\x01" # nop
     infloop_insn = b"\x00\x00\x80\x10" + nop_insn # b #0 (+ delay slot)
-    trap_insn = None # trap does not exist
+    trap_insn = None
     ret_insn = b"\x08\xe0\xc7\x81" + nop_insn # ret (+ delay slot)
     syscall_insn = b"\x10\x20\xd0\x91" + nop_insn # trap 0x10 (+ delay slot)
 
@@ -3785,7 +3783,7 @@ class SPARC(Architecture):
         return flags_to_human(val, self.flags_table)
 
     def is_syscall(self, insn):
-        return insn.mnemonic == "ta" and insn.operands == ["0x10"]
+        return insn.mnemonic == "ta" and insn.operands[0] == "0x10"
 
     def is_call(self, insn):
         return insn.mnemonic in ["jmpl", "call"]
@@ -3925,16 +3923,15 @@ class SPARC64(SPARC):
         33: "overflow",
         32: "carry",
     }
-    syscall_instructions = ["ta 0x6d"]
 
     nop_insn = b"\x00\x00\x00\x01" # nop
     infloop_insn = b"\x00\x00\x80\x10" + nop_insn # b #0 (+ delay slot)
-    trap_insn = None # trap does not exist
+    trap_insn = None
     ret_insn = b"\x08\xe0\xc7\x81" + nop_insn # ret (+ delay slot)
     syscall_insn = b"\x6d\x20\xd0\x91" + nop_insn # trap 0x6d (+ delay slot)
 
     def is_syscall(self, insn):
-        return insn.mnemonic == "ta" and insn.operands == ["0x6d"]
+        return insn.mnemonic == "ta" and insn.operands[0] == "0x6d"
 
     def get_ith_parameter(self, i, in_func=True):
         if i < len(self.function_parameters):
@@ -4003,7 +4000,6 @@ class MIPS(Architecture):
     syscall_register = "$v0"
     syscall_parameters_o32 = ["$a0", "$a1", "$a2", "$a3", "$sp+0x10", "$sp+0x14", "$sp+0x18", "$sp+0x1c"]
     syscall_parameters_n32 = ["$a0", "$a1", "$a2", "$a3", "$a4", "$a5"]
-    syscall_instructions = ["syscall"]
 
     instruction_length = 4
     has_delay_slot = True
@@ -4019,7 +4015,7 @@ class MIPS(Architecture):
     syscall_insn = b"\x0c\x00\x00\x00" + nop_insn # syscall (+ delay slot)
 
     def is_syscall(self, insn):
-        return insn.mnemonic in self.syscall_instructions
+        return insn.mnemonic in ["syscall"]
 
     def is_call(self, insn):
         branch_mnemos = [
@@ -4238,7 +4234,6 @@ class S390X(Architecture):
     syscall_register = r"svc\s+(\d+)"
     syscall_register2 = "$r1" # used when NR > 127
     syscall_parameters = ["$r2", "$r3", "$r4", "$r5", "$r6", "$r7"]
-    syscall_instructions = ["svc NR", "svc 0"]
 
     instruction_length = None # variable length
     has_delay_slot = False
@@ -4249,7 +4244,7 @@ class S390X(Architecture):
 
     nop_insn = b"\x07\x07" # bcr 0, %r7
     infloop_insn = b"\x00\x00\xf4\xa7" # j 0
-    trap_insn = b"\xff\x01" # trap2 (not SIGTRAP, but SIGILL)
+    trap_insn = None
     ret_insn = b"\xfe\x07" # br %r14
     syscall_insn = b"\x00\x0a" # svc 0x0
 
@@ -4582,7 +4577,6 @@ class SH4(Architecture):
     function_parameters = ["$r4", "$r5", "$r6", "$r7"]
     syscall_register = "$r3"
     syscall_parameters = ["$r4", "$r5", "$r6", "$r7", "$r0", "$r1", "$r2"]
-    syscall_instructions = ["trapa #19"]
 
     instruction_length = 2
     has_delay_slot = True
@@ -4595,10 +4589,10 @@ class SH4(Architecture):
     infloop_insn = b"\xfe\xaf" + nop_insn # bra 0
     trap_insn = None
     ret_insn = b"\x0b\x00" + nop_insn # rts
-    syscall_insn = b"\x13\xc3" # trapa #19
+    syscall_insn = b"\x13\xc3" + nop_insn # trapa #19
 
     def is_syscall(self, insn):
-        return insn.mnemonic == "trapa" and insn.operands == ["#19"]
+        return insn.mnemonic == "trapa" and insn.operands[0] == "#19"
 
     def is_call(self, insn):
         return insn.mnemonic in ["bsr", "bsrf", "jsr"]
@@ -4759,7 +4753,6 @@ class M68K(Architecture):
     function_parameters = ["$sp"] # but unused because m68k uses stack
     syscall_register = "$d0"
     syscall_parameters = ["$d1", "$d2", "$d3", "$d4", "$d5", "$a0"]
-    syscall_instructions = ["trap #0"]
 
     instruction_length = None # variable length
     has_delay_slot = False
@@ -4775,7 +4768,7 @@ class M68K(Architecture):
     syscall_insn = b"\x40\x4e" # trap #0
 
     def is_syscall(self, insn):
-        return insn.mnemonic == "trap" and insn.operands == ["#0"]
+        return insn.mnemonic == "trap" and insn.operands[0] == "#0"
 
     def is_call(self, insn):
         return insn.mnemonic in ["bsrs", "bsrw", "bsrl", "jsr"]
@@ -4991,7 +4984,6 @@ class ALPHA(Architecture):
     function_parameters = ["$a0", "$a1", "$a2", "$a3", "$a4", "$a5"]
     syscall_register = "$v0"
     syscall_parameters = ["$a0", "$a1", "$a2", "$a3", "$a4", "$a5"]
-    syscall_instructions = ["callsys"]
 
     instruction_length = 4
     has_delay_slot = False
@@ -5007,7 +4999,7 @@ class ALPHA(Architecture):
     syscall_insn = b"\x83\x00\x00\x00" # callsys
 
     def is_syscall(self, insn):
-        return insn.mnemonic in self.syscall_instructions
+        return insn.mnemonic in ["callsys"]
 
     def is_call(self, insn):
         return insn.mnemonic in ["br", "bsr", "jsr"]
@@ -5146,7 +5138,6 @@ class HPPA(Architecture):
     function_parameters = ["$r26", "$r25", "$r24", "$r23"]
     syscall_register = "$r20"
     syscall_parameters = ["$r26", "$r25", "$r24", "$r23", "$r22", "$r21"]
-    syscall_instructions = ["be,l 100(sr2, r0), sr0, r31"]
 
     instruction_length = 4
     has_delay_slot = True
@@ -5156,13 +5147,13 @@ class HPPA(Architecture):
     unicorn_support = False
 
     nop_insn = b"\x40\x02\x00\x08" # nop
-    infloop_insn = b"\xf7\x1f\x1f\xe8" # b,l,n self, r0
-    trap_insn = None # trap does not exist
-    ret_insn = b"\x02\xc0\x40\xe8" # bv.n r0(rp)
-    syscall_insn = b"\x00\x82\x00\xe4" # be,l 100(sr2, r0), sr0, r31
+    infloop_insn = b"\xf7\x1f\x1f\xe8" + nop_insn # b,l,n self, r0 (+delay slot)
+    trap_insn = None
+    ret_insn = b"\x02\xc0\x40\xe8" + nop_insn # bv.n r0(rp) (+delay slot)
+    syscall_insn = b"\x00\x82\x00\xe4" + nop_insn # be,l 100(sr2, r0), sr0, r31 (+delay slot)
 
     def is_syscall(self, insn):
-        return insn.mnemonic == "be,l" and insn.operands == ["100(sr2", "r0)", "sr0", "r31"]
+        return insn.mnemonic == "be,l" and insn.operands[:4] == ["100(sr2", "r0)", "sr0", "r31"]
 
     def is_call(self, insn):
         if self.is_syscall(insn):
@@ -5496,7 +5487,6 @@ class OR1K(Architecture):
     function_parameters = ["$r3", "$r4", "$r5", "$r6", "$r7", "$r8"]
     syscall_register = "$r11"
     syscall_parameters = ["$r3", "$r4", "$r5", "$r6", "$r7", "$r8"]
-    syscall_instructions = ["l.sys 0x1"]
 
     instruction_length = 4
     has_delay_slot = True
@@ -5612,7 +5602,6 @@ class NIOS2(Architecture):
     function_parameters = ["$r4", "$r5", "$r6", "$r7"]
     syscall_register = "$r2"
     syscall_parameters = ["$r4", "$r5", "$r6", "$r7", "$r8", "$r9"]
-    syscall_instructions = ["trap 0"]
 
     instruction_length = 4
     has_delay_slot = False
@@ -5628,7 +5617,7 @@ class NIOS2(Architecture):
     syscall_insn = b"\x3a\x68\x3b\x00" # trap 0
 
     def is_syscall(self, insn):
-        return insn.mnemonic == "trap" and insn.operands == ["0"]
+        return insn.mnemonic == "trap" and insn.operands[0] == "0"
 
     def is_call(self, insn):
         return insn.mnemonic in ["call", "callr"]
@@ -5740,7 +5729,6 @@ class NIOS2(Architecture):
 #    #function_parameters = ["$r1", "$r2", "$r3", "$r4", "$r5", "$r6"]
 #    #syscall_register = "$r0"
 #    #syscall_parameters = ["$r1", "$r2", "$r3", "$r4", "$r5", "$r6"]
-#    #syscall_instructions = ["syscall"]
 #
 #    #instruction_length = 4
 #    #has_delay_slot = False
@@ -5756,7 +5744,7 @@ class NIOS2(Architecture):
 #    #syscall_insn = b"\x33\x33" # ecall
 #
 #    #def is_syscall(self, insn):
-#    #    return insn.mnemonic in self.syscall_instructions
+#    #    return insn.mnemonic in []
 #
 #    #def is_call(self, insn):
 #    #    return insn.mnemonic in []

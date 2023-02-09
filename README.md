@@ -168,10 +168,10 @@ All of these features are experimental. Tested on Ubuntu 22.04.
 #### General
 * Supported architectures
     * x86/x64
-    * ARM(EABI)/Thumb2(EABI)/Aarch64
+    * ARM/Thumb2/Aarch64
     * PPC32/PPC64
-    * MIPS32(o32)/MIPS32(n32)/MIPS64(n64)
-    * SPARC32(v8)/SPARC64(v9)
+    * MIPS32/MIPS64
+    * SPARC32/SPARC64
     * RISCV32/RISCV64
     * s390x
     * sh4
