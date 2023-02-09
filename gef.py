@@ -7188,7 +7188,7 @@ def is_32bit():
 
 
 def is_x86_64():
-    """Checks if current target is x86-64"""
+    """Checks if current target is x86-64."""
     try:
         return current_arch.arch == "X86" and current_arch.mode == "64"
     except Exception:
@@ -7196,7 +7196,7 @@ def is_x86_64():
 
 
 def is_x86_32():
-    """Checks if current target is an x86-32"""
+    """Checks if current target is x86-32."""
     try:
         return current_arch.arch == "X86" and current_arch.mode == "32"
     except Exception:
@@ -7208,7 +7208,7 @@ def is_x86():
 
 
 def is_arm32():
-    """Checks if current target is an arm-32"""
+    """Checks if current target is arm-32."""
     try:
         return current_arch.arch == "ARM"
     except Exception:
@@ -7216,7 +7216,7 @@ def is_arm32():
 
 
 def is_arm64():
-    """Checks if current target is an aarch64"""
+    """Checks if current target is aarch64."""
     try:
         return current_arch.arch == "ARM64"
     except Exception:
@@ -7224,7 +7224,7 @@ def is_arm64():
 
 
 def is_mips32():
-    """Checks if current target is an mips-32"""
+    """Checks if current target is mips-32."""
     try:
         return current_arch.arch == "MIPS" and current_arch.mode == "MIPS32"
     except Exception:
@@ -7232,7 +7232,7 @@ def is_mips32():
 
 
 def is_mips64():
-    """Checks if current target is an mips-64"""
+    """Checks if current target is mips-64."""
     try:
         return current_arch.arch == "MIPS" and current_arch.mode == "MIPS64"
     except Exception:
@@ -7240,7 +7240,7 @@ def is_mips64():
 
 
 def is_ppc32():
-    """Checks if current target is an powerpc-32"""
+    """Checks if current target is powerpc-32."""
     try:
         return current_arch.arch == "PPC" and current_arch.mode == "PPC32"
     except Exception:
@@ -7248,7 +7248,7 @@ def is_ppc32():
 
 
 def is_ppc64():
-    """Checks if current target is an powerpc-64"""
+    """Checks if current target is powerpc-64."""
     try:
         return current_arch.arch == "PPC" and current_arch.mode == "PPC64"
     except Exception:
@@ -7256,7 +7256,7 @@ def is_ppc64():
 
 
 def is_sparc32():
-    """Checks if current target is an sparc-32"""
+    """Checks if current target is sparc-32."""
     try:
         return current_arch.arch == "SPARC" and current_arch.mode == "SPARC32"
     except Exception:
@@ -7264,7 +7264,7 @@ def is_sparc32():
 
 
 def is_sparc64():
-    """Checks if current target is an sparc-64"""
+    """Checks if current target is sparc-64."""
     try:
         return current_arch.arch == "SPARC" and current_arch.mode == "SPARC64"
     except Exception:
@@ -7272,7 +7272,7 @@ def is_sparc64():
 
 
 def is_riscv32():
-    """Checks if current target is an riscv-32"""
+    """Checks if current target is riscv-32."""
     try:
         return current_arch.arch == "RISCV" and current_arch.mode == "RISCV32"
     except Exception:
@@ -7280,7 +7280,7 @@ def is_riscv32():
 
 
 def is_riscv64():
-    """Checks if current target is an riscv-64"""
+    """Checks if current target is riscv-64."""
     try:
         return current_arch.arch == "RISCV" and current_arch.mode == "RISCV64"
     except Exception:
@@ -7288,7 +7288,7 @@ def is_riscv64():
 
 
 def is_s390x():
-    """Checks if current target is an s390x"""
+    """Checks if current target is s390x."""
     try:
         return current_arch.arch == "S390X" and current_arch.mode == "S390X"
     except Exception:
@@ -7296,7 +7296,7 @@ def is_s390x():
 
 
 def is_sh4():
-    """Checks if current target is an sh4"""
+    """Checks if current target is sh4."""
     try:
         return current_arch.arch == "SH4" and current_arch.mode == "SH4"
     except Exception:
@@ -7304,7 +7304,7 @@ def is_sh4():
 
 
 def is_m68k():
-    """Checks if current target is an m68k"""
+    """Checks if current target is m68k."""
     try:
         return current_arch.arch == "M68K" and current_arch.mode == "M68K"
     except Exception:
@@ -7312,7 +7312,7 @@ def is_m68k():
 
 
 def is_alpha():
-    """Checks if current target is an alpha"""
+    """Checks if current target is alpha."""
     try:
         return current_arch.arch == "ALPHA" and current_arch.mode == "ALPHA"
     except Exception:
@@ -7320,7 +7320,7 @@ def is_alpha():
 
 
 def is_hppa32():
-    """Checks if current target is an hppa-32"""
+    """Checks if current target is hppa-32."""
     try:
         return current_arch.arch == "HPPA" and current_arch.mode == "HPPA32"
     except Exception:
@@ -7328,7 +7328,7 @@ def is_hppa32():
 
 
 def is_hppa64():
-    """Checks if current target is an hppa-64"""
+    """Checks if current target is hppa-64."""
     try:
         return current_arch.arch == "HPPA" and current_arch.mode == "HPPA64"
     except Exception:
@@ -7336,7 +7336,7 @@ def is_hppa64():
 
 
 def is_or1k():
-    """Checks if current target is an or1k"""
+    """Checks if current target is or1k."""
     try:
         return current_arch.arch == "OR1K" and current_arch.mode == "OR1K"
     except Exception:
