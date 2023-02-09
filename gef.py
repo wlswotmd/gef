@@ -2720,33 +2720,46 @@ class RISCV(Architecture):
 
     @classmethod
     def mprotect_asm_raw(cls, addr, size, perm):
+
         def p(x):
             return p32(int(x, 2))
 
+        def xor(reg1, reg2, reg3):
+            fmt = "0b00000_00_{:05b}_{:05b}_100_{:05b}_01100_11"
+            return p(fmt.format(reg3, reg2, reg1))
+
+        def slli(reg1, reg2, imm):
+            fmt = "0b00000_{:07b}_{:05b}_001_{:05b}_00100_11"
+            return p(fmt.format(imm, reg2, reg1))
+
+        def addi(reg1, reg2, imm):
+            fmt = "0b{:012b}_{:05b}_000_{:05b}_00100_11"
+            return p(fmt.format(imm, reg2, reg1))
+
         _NR_mprotect = 226
         insns = [
-            p("0b00000_00_{:05b}_{:05b}_100_{:05b}_01100_11".format(10, 10, 10)), # xor a0, a0, a0
-            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 20) & 0xfff, 10, 10)), # addi a0, a0, addr[31:20]
-            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 10, 10)), # slli a0, a0, 12
-            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 8) & 0xfff, 10, 10)), # addi a0, a0, addr[19:8]
-            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(8, 10, 10)), # slli a0, a0, 8
-            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 0) & 0xff, 10, 10)), # addi a0, a0, addr[7:0]
+            xor(10, 10, 10), # xor a0, a0, a0
+            addi(10, 10, (addr >> 20) & 0xfff), # addi a0, a0, addr[31:20]
+            slli(10, 10, 12), # slli a0, a0, 12
+            addi(10, 10, (addr >> 8) & 0xfff), # addi a0, a0, addr[19:8]
+            slli(10, 10, 8), # slli a0, a0, 8
+            addi(10, 10, (addr >> 0) & 0xff), # addi a0, a0, addr[7:0]
 
-            p("0b00000_00_{:05b}_{:05b}_100_{:05b}_01100_11".format(11, 11, 11)), # xor a1, a1, a1
-            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 20) & 0xfff, 11, 11)), # addi a1, a1, size[31:20]
-            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 11, 11)), # slli a0, a0, 12
-            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 8) & 0xfff, 11, 11)), # addi a1, a1, size[19:8]
-            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(8, 11, 11)), # slli a0, a0, 12
-            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 0) & 0xff, 11, 11)), # addi a1, a1, size[7:0]
+            xor(11, 11, 11), # xor a1, a1, a1
+            addi(11, 11, (size >> 20) & 0xfff), # addi a1, a1, size[31:20]
+            slli(11, 11, 12), # slli a1, a1, 12
+            addi(11, 11, (size >> 8) & 0xfff), # addi a1, a1, size[19:8]
+            slli(11, 11, 8), # slli a1, a1, 8
+            addi(11, 11, (size >> 0) & 0xff), # addi a1, a1, size[7:0]
 
-            p("0b00000_00_{:05b}_{:05b}_100_{:05b}_01100_11".format(12, 12, 12)), # xor a2, a2, a2
-            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 20) & 0xfff, 12, 12)), # addi a2, a2, perm[31:20]
-            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 12, 12)), # slli a0, a0, 12
-            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 8) & 0xfff, 12, 12)), # addi a2, a2, perm[19:8]
-            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(8, 12, 12)), # slli a0, a0, 12
-            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 0) & 0xff, 12, 12)), # addi a2, a2, perm[7:0]
+            xor(12, 12, 12), # xor a2, a2, a2
+            addi(12, 12, (perm >> 20) & 0xfff), # addi a2, a2, perm[31:20]
+            slli(12, 12, 12), # slli a2, a2, 12
+            addi(12, 12, (perm >> 8) & 0xfff), # addi a2, a2, perm[19:8]
+            slli(12, 12, 8), # slli a2, a2, 8
+            addi(12, 12, (perm >> 0) & 0xff), # addi a2, a2, perm[7:0]
 
-            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format(_NR_mprotect, 0, 17)), # addi a7, zero, _NR_mprotect
+            addi(17, 0, _NR_mprotect), # addi a7, zero, _NR_mprotect
             p("0b00000_00_00000_00000_000_00000_11100_11"), # ecall
         ]
         return b''.join(insns)
@@ -2758,51 +2771,64 @@ class RISCV64(RISCV):
 
     @classmethod
     def mprotect_asm_raw(cls, addr, size, perm):
+
         def p(x):
             return p32(int(x, 2))
 
+        def xor(reg1, reg2, reg3):
+            fmt = "0b00000_00_{:05b}_{:05b}_100_{:05b}_01100_11"
+            return p(fmt.format(reg3, reg2, reg1))
+
+        def slli(reg1, reg2, imm):
+            fmt = "0b00000_{:07b}_{:05b}_001_{:05b}_00100_11"
+            return p(fmt.format(imm, reg2, reg1))
+
+        def addi(reg1, reg2, imm):
+            fmt = "0b{:012b}_{:05b}_000_{:05b}_00100_11"
+            return p(fmt.format(imm, reg2, reg1))
+
         _NR_mprotect = 226
         insns = [
-            p("0b00000_00_{:05b}_{:05b}_100_{:05b}_01100_11".format(10, 10, 10)), # xor a0, a0, a0
-            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 52) & 0xfff, 10, 10)), # addi a0, a0, addr[63:52]
-            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 10, 10)), # slli a0, a0, 12
-            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 40) & 0xfff, 10, 10)), # addi a0, a0, addr[51:40]
-            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 10, 10)), # slli a0, a0, 12
-            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 28) & 0xfff, 10, 10)), # addi a0, a0, addr[39:28]
-            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 10, 10)), # slli a0, a0, 12
-            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 16) & 0xfff, 10, 10)), # addi a0, a0, addr[27:16]
-            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 10, 10)), # slli a0, a0, 12
-            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 4) & 0xfff, 10, 10)), # addi a0, a0, addr[15:4]
-            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(4, 10, 10)), # slli a0, a0, 12
-            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((addr >> 0) & 0xf, 10, 10)), # addi a0, a0, addr[3:0]
+            xor(10, 10, 10), # xor a0, a0, a0
+            addi(10, 10, (addr >> 52) & 0xfff), # addi a0, a0, addr[63:52]
+            slli(10, 10, 12), # slli a0, a0, 12
+            addi(10, 10, (addr >> 40) & 0xfff), # addi a0, a0, addr[51:40]
+            slli(10, 10, 12), # slli a0, a0, 12
+            addi(10, 10, (addr >> 28) & 0xfff), # addi a0, a0, addr[39:28]
+            slli(10, 10, 12), # slli a0, a0, 12
+            addi(10, 10, (addr >> 16) & 0xfff), # addi a0, a0, addr[27:16]
+            slli(10, 10, 12), # slli a0, a0, 12
+            addi(10, 10, (addr >> 4) & 0xfff), # addi a0, a0, addr[15:4]
+            slli(10, 10, 4), # slli a0, a0, 4
+            addi(10, 10, (addr >> 0) & 0xf), # addi a0, a0, addr[3:0]
 
-            p("0b00000_00_{:05b}_{:05b}_100_{:05b}_01100_11".format(11, 11, 11)), # xor a1, a1, a1
-            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 52) & 0xfff, 11, 11)), # addi a1, a1, size[63:52]
-            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 11, 11)), # slli a0, a0, 12
-            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 40) & 0xfff, 11, 11)), # addi a1, a1, size[51:40]
-            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 11, 11)), # slli a0, a0, 12
-            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 28) & 0xfff, 11, 11)), # addi a1, a1, size[39:28]
-            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 11, 11)), # slli a0, a0, 12
-            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 16) & 0xfff, 11, 11)), # addi a1, a1, size[27:16]
-            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 11, 11)), # slli a0, a0, 12
-            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 4) & 0xfff, 11, 11)), # addi a1, a1, size[15:4]
-            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(4, 11, 11)), # slli a0, a0, 12
-            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((size >> 0) & 0xf, 11, 11)), # addi a1, a1, size[3:0]
+            xor(11, 11, 11), # xor a1, a1, a1
+            addi(11, 11, (size >> 52) & 0xfff), # addi a1, a1, size[63:52]
+            slli(11, 11, 12), # slli a1, a1, 12
+            addi(11, 11, (size >> 40) & 0xfff), # addi a1, a1, size[51:40]
+            slli(11, 11, 12), # slli a1, a1, 12
+            addi(11, 11, (size >> 28) & 0xfff), # addi a1, a1, size[39:28]
+            slli(11, 11, 12), # slli a1, a1, 12
+            addi(11, 11, (size >> 16) & 0xfff), # addi a1, a1, size[27:16]
+            slli(11, 11, 12), # slli a1, a1, 12
+            addi(11, 11, (size >> 4) & 0xfff), # addi a1, a1, size[15:4]
+            slli(11, 11, 4), # slli a1, a1, 4
+            addi(11, 11, (size >> 0) & 0xf), # addi a1, a1, size[3:0]
 
-            p("0b00000_00_{:05b}_{:05b}_100_{:05b}_01100_11".format(12, 12, 12)), # xor a2, a2, a2
-            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 52) & 0xfff, 12, 12)), # addi a2, a2, perm[63:52]
-            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 12, 12)), # slli a0, a0, 12
-            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 40) & 0xfff, 12, 12)), # addi a2, a2, perm[51:40]
-            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 12, 12)), # slli a0, a0, 12
-            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 28) & 0xfff, 12, 12)), # addi a2, a2, perm[39:28]
-            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 12, 12)), # slli a0, a0, 12
-            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 16) & 0xfff, 12, 12)), # addi a2, a2, perm[27:16]
-            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(12, 12, 12)), # slli a0, a0, 12
-            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 4) & 0xfff, 12, 12)), # addi a2, a2, perm[15:4]
-            p("0b00000_{:07b}_{:05b}_001_{:05b}_00100_11".format(4, 12, 12)), # slli a0, a0, 12
-            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format((perm >> 0) & 0xf, 12, 12)), # addi a2, a2, perm[3:0]
+            xor(12, 12, 12), # xor a2, a2, a2
+            addi(12, 12, (perm >> 52) & 0xfff), # addi a2, a2, perm[63:52]
+            slli(12, 12, 12), # slli a2, a2, 12
+            addi(12, 12, (perm >> 40) & 0xfff), # addi a2, a2, perm[51:40]
+            slli(12, 12, 12), # slli a2, a2, 12
+            addi(12, 12, (perm >> 28) & 0xfff), # addi a2, a2, perm[39:28]
+            slli(12, 12, 12), # slli a2, a2, 12
+            addi(12, 12, (perm >> 16) & 0xfff), # addi a2, a2, perm[27:16]
+            slli(12, 12, 12), # slli a2, a2, 12
+            addi(12, 12, (perm >> 4) & 0xfff), # addi a2, a2, perm[15:4]
+            slli(12, 12, 4), # slli a2, a2, 4
+            addi(12, 12, (perm >> 0) & 0xf), # addi a2, a2, perm[3:0]
 
-            p("0b{:012b}_{:05b}_000_{:05b}_00100_11".format(_NR_mprotect, 0, 17)), # addi a7, zero, _NR_mprotect
+            addi(17, 0, _NR_mprotect), # addi a7, zero, _NR_mprotect
             p("0b00000_00_00000_00000_000_00000_11100_11"), # ecall
         ]
         return b''.join(insns)
