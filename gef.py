@@ -4233,8 +4233,7 @@ class S390X(Architecture):
     }
     return_register = "$r2"
     function_parameters = ["$r2", "$r3", "$r4", "$r5", "$r6"]
-    syscall_register = r"svc\s+(\d+)"
-    syscall_register2 = "$r1" # used when NR > 127
+    syscall_register = [r"svc\s+(\d+)", "$r1"] # $r1 is used when NR > 127
     syscall_parameters = ["$r2", "$r3", "$r4", "$r5", "$r6", "$r7"]
 
     instruction_length = None # variable length
@@ -5067,54 +5066,68 @@ class ALPHA(Architecture):
     @classmethod
     def mprotect_asm_raw(cls, addr, size, perm):
         _NR_mprotect = 74
+
+        def lda_v0(x):
+            return p32(0x201f0000 | x)
+
+        def op_ii(op, reg1, imm, reg2):
+            fmt = "0b{:06b}_{:05b}_{:08b}_1_0111001_{:05b}"
+            val = fmt.format(op, reg1, imm, reg2)
+            return p32(int(val, 2))
+
+        def op_ir(op, reg1, reg2, reg3):
+            fmt = "0b{:06b}_{:05b}_{:05b}_000_0_0100000_{:05b}"
+            val = fmt.format(op, reg1, reg2, reg3)
+            return p32(int(val, 2))
+
         insns = [
-            p16((addr >> 49) & 0x7fff) + b"\x1f\x20", # lda v0, addr[63:49]
-            b"\x10\x04\x00\x46", # or a0,v0,a0
-            b"\x30\xf7\x01\x4a", # sll a0,0xf,a0
-            p16((addr >> 34) & 0x7fff) + b"\x1f\x20", # lda v0, addr[48:34]
-            b"\x10\x04\x00\x46", # or a0,v0,a0
-            b"\x30\xf7\x01\x4a", # sll a0,0xf,a0
-            p16((addr >> 19) & 0x7fff) + b"\x1f\x20", # lda v0, addr[33:19]
-            b"\x10\x04\x00\x46", # or a0,v0,a0
-            b"\x30\xf7\x01\x4a", # sll a0,0xf,a0
-            p16((addr >> 4) & 0x7fff) + b"\x1f\x20", # lda v0, addr[18:4]
-            b"\x10\x04\x00\x46", # or a0,v0,a0
-            b"\x30\x97\x00\x4a", # sll a0,0x4,a0
-            p16((addr >> 0) & 0xf) + b"\x1f\x20", # lda v0, addr[3:0]
-            b"\x10\x04\x00\x46", # or a0,v0,a0
+            lda_v0((addr >> 49) & 0x7fff), # lda v0, addr[63:49]
+            op_ir(0x11, 16, 0, 16), # or a0, v0, a0
+            op_ii(0x12, 16, 0xf, 16), # sll a0, 0xf, a0
+            lda_v0((addr >> 34) & 0x7fff), # lda v0, addr[48:34]
+            op_ir(0x11, 16, 0, 16), # or a0, v0, a0
+            op_ii(0x12, 16, 0xf, 16), # sll a0, 0xf, a0
+            lda_v0((addr >> 19) & 0x7fff), # lda v0, addr[33:19]
+            op_ir(0x11, 16, 0, 16), # or a0, v0, a0
+            op_ii(0x12, 16, 0xf, 16), # sll a0, 0xf, a0
+            lda_v0((addr >> 4) & 0x7fff), # lda v0, addr[18:4]
+            op_ir(0x11, 16, 0, 16), # or a0, v0, a0
+            op_ii(0x12, 16, 0x4, 16), # sll a0, 0x4, a0
+            lda_v0((addr >> 0) & 0xf), # lda v0, addr[3:0]
+            op_ir(0x11, 16, 0, 16), # or a0, v0, a0
 
-            p16((size >> 49) & 0x7fff) + b"\x1f\x20", # lda v0, addr[63:49]
-            b"\x11\x04\x20\x46", # or a1,v0,a1
-            b"\x31\xf7\x21\x4a", # sll a1,0xf,a1
-            p16((size >> 34) & 0x7fff) + b"\x1f\x20", # lda v0, addr[48:34]
-            b"\x11\x04\x20\x46", # or a1,v0,a1
-            b"\x31\xf7\x21\x4a", # sll a1,0xf,a1
-            p16((size >> 19) & 0x7fff) + b"\x1f\x20", # lda v0, addr[33:19]
-            b"\x11\x04\x20\x46", # or a1,v0,a1
-            b"\x31\xf7\x21\x4a", # sll a1,0xf,a1
-            p16((size >> 4) & 0x7fff) + b"\x1f\x20", # lda v0, addr[18:4]
-            b"\x11\x04\x20\x46", # or a1,v0,a1
-            b"\x31\x97\x20\x4a", # sll a1,0x4,a1
-            p16((size >> 0) & 0xf) + b"\x1f\x20", # lda v0, addr[3:0]
-            b"\x11\x04\x20\x46", # or a1,v0,a1
+            lda_v0((size >> 49) & 0x7fff), # lda v0, size[63:49]
+            op_ir(0x11, 17, 0, 17), # or a1, v0, a1
+            op_ii(0x12, 17, 0xf, 17), # sll a1, 0xf, a1
+            lda_v0((size >> 34) & 0x7fff), # lda v0, size[48:34]
+            op_ir(0x11, 17, 0, 17), # or a1, v0, a1
+            op_ii(0x12, 17, 0xf, 17), # sll a1, 0xf, a1
+            lda_v0((size >> 19) & 0x7fff), # lda v0, size[33:19]
+            op_ir(0x11, 17, 0, 17), # or a1, v0, a1
+            op_ii(0x12, 17, 0xf, 17), # sll a1, 0xf, a1
+            lda_v0((size >> 4) & 0x7fff), # lda v0, size[18:4]
+            op_ir(0x11, 17, 0, 17), # or a1, v0, a1
+            op_ii(0x12, 17, 0x4, 17), # sll a1, 0x4, a1
+            lda_v0((size >> 0) & 0xf), # lda v0, size[3:0]
+            op_ir(0x11, 17, 0, 17), # or a1, v0, a1
 
-            p16((perm >> 49) & 0x7fff) + b"\x1f\x20", # lda v0, addr[63:49]
-            b"\x12\x04\x40\x46", # or a2,v0,a2
-            b"\x32\xf7\x41\x4a", # sll a2,0xf,a2
-            p16((perm >> 34) & 0x7fff) + b"\x1f\x20", # lda v0, addr[48:34]
-            b"\x12\x04\x40\x46", # or a2,v0,a2
-            b"\x32\xf7\x41\x4a", # sll a2,0xf,a2
-            p16((perm >> 19) & 0x7fff) + b"\x1f\x20", # lda v0, addr[33:19]
-            b"\x12\x04\x40\x46", # or a2,v0,a2
-            b"\x32\xf7\x41\x4a", # sll a2,0xf,a2
-            p16((perm >> 4) & 0x7fff) + b"\x1f\x20", # lda v0, addr[18:4]
-            b"\x12\x04\x40\x46", # or a2,v0,a2
-            b"\x32\x97\x40\x4a", # sll a2,0x4,a2
-            p16((perm >> 0) & 0xf) + b"\x1f\x20", # lda v0, addr[3:0]
-            b"\x12\x04\x40\x46", # or a2,v0,a2
+            lda_v0((perm >> 49) & 0x7fff), # lda v0, perm[63:49]
+            op_ir(0x11, 18, 0, 18), # or a2, v0, a2
+            op_ii(0x12, 18, 0xf, 18), # sll a2, 0xf, a2
+            lda_v0((perm >> 34) & 0x7fff), # lda v0, perm[48:34]
+            op_ir(0x11, 18, 0, 18), # or a2, v0, a2
+            op_ii(0x12, 18, 0xf, 18), # sll a2, 0xf, a2
+            lda_v0((perm >> 19) & 0x7fff), # lda v0, perm[33:19]
+            op_ir(0x11, 18, 0, 18), # or a2, v0, a2
+            op_ii(0x12, 18, 0xf, 18), # sll a2, 0xf, a2
+            lda_v0((perm >> 4) & 0x7fff), # lda v0, perm[18:4]
+            op_ir(0x11, 18, 0, 18), # or a2, v0, a2
+            op_ii(0x12, 18, 0xf, 18), # sll a2, 0xf, a2
+            lda_v0((perm >> 0) & 0xf), # lda v0, perm[3:0]
+            op_ir(0x11, 18, 0, 18), # or a2, v0, a2
 
-            p8(_NR_mprotect) + b"\x00\x1f\x20", # lda v0, _NR_mprotect
-            b"\x83\x00\x00\x00", # callsys
+            lda_v0(_NR_mprotect), # lda v0, _NR_mprotect
+            p32(0x00000083), # callsys
         ]
         return b''.join(insns)
 
@@ -5441,17 +5454,27 @@ class HPPA(Architecture):
             rest <<= 1
             return "{:014b}".format(rest | sign)
 
+        def ldil(reg, imm):
+            fmt = "0b001000_{:05b}_{:s}"
+            val = fmt.format(reg, asm21(imm))
+            return p32(int(val, 2))
+
+        def ldo(reg1, reg2, imm):
+            fmt = "0b001101_{:05b}_{:05b}_00_{:s}"
+            val = fmt.format(reg1, reg2, imm14(imm))
+            return p32(int(val, 2))
+
         _NR_mprotect = 125
         insns = [
-            p32(int("0b001000_{:05b}_{:s}".format(26, asm21(addr >> 11)), 2)),
-            p32(int("0b001101_{:05b}_{:05b}_00_{:s}".format(26, 26, imm14(addr & 0x7ff)), 2)),
-            p32(int("0b001000_{:05b}_{:s}".format(25, asm21(size >> 11)), 2)),
-            p32(int("0b001101_{:05b}_{:05b}_00_{:s}".format(25, 25, imm14(size & 0x7ff)), 2)),
-            p32(int("0b001000_{:05b}_{:s}".format(24, asm21(perm >> 11)), 2)),
-            p32(int("0b001101_{:05b}_{:05b}_00_{:s}".format(24, 24, imm14(perm & 0x7ff)), 2)),
-            p32(int("0b001000_{:05b}_{:s}".format(20, asm21(_NR_mprotect >> 11)), 2)),
-            p32(int("0b001101_{:05b}_{:05b}_00_{:s}".format(20, 20, imm14(_NR_mprotect & 0x7ff)), 2)),
-            b"\xe4\x00\x82\x00" # be,l 100(sr2, r0), sr0, r31
+            ldil(26, addr >> 11), # ldil L%addr[31:11], r26
+            ldo(26, 26, addr & 0x7ff), # ldo addr[10:0](r26), r26
+            ldil(25, size >> 11), # ldil L%size[31:11], r25
+            ldo(25, 25, size & 0x7ff), # ldo size[10:0](r25), r25
+            ldil(24, perm >> 11), # ldil L%perm[31:11], r24
+            ldo(24, 24, perm & 0x7ff), # ldo perm[10:0](r24), r24
+            ldil(20, _NR_mprotect >> 11), # ldil L%_NR_mprotect[31:11], r20
+            ldo(20, 20, _NR_mprotect & 0x7ff), # ldo _NR_mprotect[10:0](r20), r20
+            p32(0xe4008200), # be,l 100(sr2, r0), sr0, r31
         ]
         return b''.join(insns)
 
@@ -5561,22 +5584,22 @@ class OR1K(Architecture):
     def mprotect_asm_raw(cls, addr, size, perm):
         _NR_mprotect = 226
         insns = [
-            b"\xa8\x60" + p16(addr >> 16), # l.ori r3, r0, addr[31:16]
-            b"\xb8\x63\x00\x10", # l.slli r3, r3, 16
-            b"\xa8\x63" + p16(addr & 0xffff), # l.ori r3, r6, addr[15:0]
+            p32(0xa8600000 | (addr >> 16)), # l.ori r3, r0, addr[31:16]
+            p32(0xb8630010), # l.slli r3, r3, 16
+            p32(0xa8630000 | (addr & 0xffff)), # l.ori r3, r6, addr[15:0]
 
-            b"\xa8\x80" + p16(size >> 16), # l.ori r4, r0, size[31:16]
-            b"\xb8\x84\x00\x10", # l.slli r4, r4, 16
-            b"\xa8\x84" + p16(size & 0xffff), # l.ori r4, r6, size[15:0]
+            p32(0xa8800000 | (size >> 16)), # l.ori r4, r0, size[31:16]
+            p32(0xb8840010), # l.slli r4, r4, 16
+            p32(0xa8840000 | (size & 0xffff)), # l.ori r4, r6, size[15:0]
 
-            b"\xa8\xa0" + p16(perm >> 16), # l.ori r5, r0, perm[31:16]
-            b"\xb8\xa5\x00\x10", # l.slli r5, r5, 16
-            b"\xa8\xa5" + p16(perm & 0xffff), # l.ori r5, r6, perm[15:0]
+            p32(0xa8a00000 | (perm >> 16)), # l.ori r5, r0, perm[31:16]
+            p32(0xb8a50010), # l.slli r5, r5, 16
+            p32(0xa8a50000 | (perm & 0xffff)), # l.ori r5, r6, perm[15:0]
 
-            b"\xa9\x60" + p16(_NR_mprotect), # l.ori r11, r0, _NR_mprotect
+            p32(0xa9600000 | _NR_mprotect), # l.ori r11, r0, _NR_mprotect
 
-            b"\x20\x00\x00\x01", # l.sys 0x1
-            b"\x15\x00\x00\x00", # l.nop 0x0 (delay slot)
+            p32(0x20000001), # l.sys 0x1
+            p32(0x15000000), # l.nop 0x0 (delay slot)
         ]
         return b''.join(insns)
 
@@ -5703,7 +5726,7 @@ class NIOS2(Architecture):
             op_i(0x14, 6, 6, (perm >> 0) & 0xffff), # ori r6, r6, perm[15:0]
 
             op_i(0x14, 0, 2, _NR_mprotect), # ori r0, r2, _NR_mprotect
-            b"\x3a\x68\x3b\x00", # trap 0
+            p32(0x003b683a), # trap 0
         ]
         return b''.join(insns)
 
@@ -5846,8 +5869,8 @@ class MICROBLAZE(Architecture):
 
             op_i(0xc, 12, 0, _NR_mprotect), # addik r12, r0, _NR_mprotect
 
-            b"\x08\x00\xcc\xb9", # brki r14,8
-            b"\x00\x00\x00\x80", # or r0, r0, r0 # delay slot
+            p32(0xb9cc0008), # brki r14,8
+            p32(0x80000000), # or r0, r0, r0 # delay slot
         ]
         return b''.join(insns)
 
@@ -13374,8 +13397,9 @@ class ArchInfoCommand(GenericCommand):
         fparams = ', '.join(current_arch.function_parameters)
         if len(current_arch.function_parameters) == 1:
             fparams += "(passing via stack)"
+        gef_print("{:28s} {:s} {:s}".format("return register", RIGHT_ARROW, current_arch.return_register))
         gef_print("{:28s} {:s} {:s}".format("function parameters", RIGHT_ARROW, fparams))
-        gef_print("{:28s} {:s} {:s}".format("syscall register", RIGHT_ARROW, current_arch.syscall_register))
+        gef_print("{:28s} {:s} {:s}".format("syscall register", RIGHT_ARROW, str(current_arch.syscall_register)))
         sparams = ', '.join(current_arch.syscall_parameters)
         gef_print("{:28s} {:s} {:s}".format("syscall parameters", RIGHT_ARROW, sparams))
         gef_print("{:28s} {:s} {:s}".format("32bit-emulated (compat mode)", RIGHT_ARROW, str(self.is_emulated32())))
@@ -30988,33 +31012,32 @@ class SyscallArgsCommand(GenericCommand):
     _category_ = "Debugging Support"
 
     def get_nr(self):
+        # str or list
         syscall_register = current_arch.syscall_register
 
         # hppa specific. hppa syscall instruction has a delay slot and _NR may be set there.
         if is_hppa32() or is_hppa64():
             next_insn = gef_instruction_n(current_arch.pc, 1)
             if next_insn.mnemonic == "ldi" and next_insn.operands[1] == "r20":
-                nr = int(next_insn.operands[0], 0)
+                nr = int(next_insn.operands[0], 16)
             else:
                 # already set
                 nr = get_register(syscall_register)
 
-        # normal pattern
-        elif syscall_register.startswith("$"):
-            nr = get_register(syscall_register)
-
-        # extract by PCRE if syscall number is embedded in the instruction
-        else:
+        # s390x specific. s390x syscall number may be embedded in the instruction.
+        elif is_s390x():
             insn = gef_current_instruction(current_arch.pc)
-            r = re.search(syscall_register, str(insn))
-            if r:
-                nr = int(r.group(1), 0)
-            else:
-                warn("Failed to recognize the syscall number.")
-                return
-            if is_s390x() and nr == 0:
-                syscall_register = current_arch.syscall_register2
+            r = re.search(syscall_register[0], str(insn))
+            nr = int(r.group(1), 0)
+            if nr == 0:
+                syscall_register = syscall_register[1] # use $r1
                 nr = get_register(syscall_register)
+            else:
+                syscall_register = syscall_register[0]
+
+        # normal pattern
+        else:
+            nr = get_register(syscall_register)
 
         return syscall_register, nr
 
