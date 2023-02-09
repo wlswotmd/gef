@@ -8717,9 +8717,9 @@ class GenericCommand(gdb.Command):
 
     def usage(self):
         if self._example_:
-            err("Syntax\n{}\n\nExample\n{}".format(self._syntax_, self._example_.lstrip()))
+            err("Syntax\n{}\n\nExample\n{}".format(self._syntax_.lstrip(), self._example_.lstrip()))
         else:
-            err("Syntax\n{}".format(self._syntax_))
+            err("Syntax\n{}".format(self._syntax_.lstrip()))
         return
 
     @abc.abstractproperty
@@ -16837,7 +16837,8 @@ class HexdumpByteCommand(HexdumpCommand):
 class PatchCommand(GenericCommand):
     """Write specified values to the specified address."""
     _cmdline_ = "patch"
-    _syntax_ = "{:s} qword|dword|word|byte [-h] [-e] [--phys] LOCATION VALUES\n".format(_cmdline_)
+    _syntax_ = "\n"
+    _syntax_ += "{:s} qword|dword|word|byte [-h] [-e] [--phys] LOCATION VALUES\n".format(_cmdline_)
     _syntax_ += '{:s} string [-h] [--phys] LOCATION "double-escaped string" [LENGTH]\n'.format(_cmdline_)
     _syntax_ += '{:s} hexstring [-h] [--phys] LOCATION "hex-string" [LENGTH]\n'.format(_cmdline_)
     _syntax_ += "{:s} pattern [-h] [--phys] LOCATION LENGTH\n".format(_cmdline_)
