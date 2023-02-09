@@ -10850,11 +10850,14 @@ class UnicornEmulateCommand(GenericCommand):
 
     @only_if_gdb_running
     @only_if_not_qemu_system
-    @exclude_specific_arch(arch=["PPC64", "MIPS64", "S390X", "SH4", "ALPHA", "HPPA32", "HPPA64", "OR1K", "NIOS2"])
     @load_capstone
     @load_unicorn
     def do_invoke(self, argv):
         self.dont_repeat()
+
+        if current_arch.unicorn_support is False:
+            warn("This command cannot work under this architecture.")
+            return
 
         start_insn = None
         end_insn = -1
