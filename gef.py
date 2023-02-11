@@ -6763,6 +6763,9 @@ def clear_explored_regions():
 def __get_explored_regions():
     """Return sections from auxv exploring"""
 
+    if current_arch is None:
+        return []
+
     regions = []
 
     def is_exist_page(addr):
@@ -6806,6 +6809,8 @@ def __get_explored_regions():
         return region_start, region_end
 
     def make_regions(addr, label, perm="rw-"):
+        if addr is None:
+            return []
         # check if already in region
         for rg in regions:
             if rg.page_start <= addr < rg.page_end:
@@ -7011,7 +7016,7 @@ def __get_explored_regions():
             break
         else:
             stack_permission = "rwx" # no GNU_STACK phdr means no-NX
-    regions += make_regions(get_register("$sp"), "[stack]", stack_permission)
+    regions += make_regions(current_arch.sp, "[stack]", stack_permission)
 
     # registers
     for regname in current_arch.all_registers:
@@ -7021,12 +7026,13 @@ def __get_explored_regions():
             pass
 
     # walk from stack top
-    sp = get_register("$sp")
+    sp = current_arch.sp
     data = None
-    try:
-        data = read_memory(sp & gef_getpagesize_mask(), gef_getpagesize())
-    except gdb.MemoryError:
-        pass
+    if sp is not None:
+        try:
+            data = read_memory(sp & gef_getpagesize_mask(), gef_getpagesize())
+        except gdb.MemoryError:
+            pass
     if data:
         data = slice_unpack(data, current_arch.ptrsize)
         data = list(set(data))
@@ -8017,7 +8023,7 @@ AT_CONSTANTS = {
 def get_auxiliary_walk(offset=0):
     """Find AUXV by walking stack"""
 
-    addr = get_register("$sp") & ~(DEFAULT_PAGE_SIZE - 1)
+    addr = current_arch.sp & ~(DEFAULT_PAGE_SIZE - 1)
 
     # check readable or not
     try:
@@ -9244,7 +9250,7 @@ class CanaryCommand(GenericCommand):
         if is_x86():
             tls = TlsCommand.get_tls()
 
-        sp = get_register("$sp")
+        sp = current_arch.sp
         for m in vmmap:
             if not (m.permission & Permission.READ) or not (m.permission & Permission.WRITE):
                 continue
@@ -15754,17 +15760,19 @@ class ContextCommand(GenericCommand):
             err("Missing info about architecture. Please set: `file /path/to/target_binary`")
             return
 
-        try:
-            sp = current_arch.sp
-            if show_raw is True:
-                mem = read_memory(sp, 0x10 * nb_lines)
-                gef_print(hexdump(mem, base=sp))
-            else:
-                gdb.execute("dereference {:#x} l{:d}".format(sp, nb_lines))
+        sp = current_arch.sp
+        if sp is not None:
+            try:
+                if show_raw is True:
+                    mem = read_memory(sp, 0x10 * nb_lines)
+                    gef_print(hexdump(mem, base=sp))
+                else:
+                    gdb.execute("dereference {:#x} l{:d}".format(sp, nb_lines))
+            except gdb.MemoryError:
+                err("Cannot read memory from $SP (corrupted stack pointer?)")
 
-        except gdb.MemoryError:
-            err("Cannot read memory from $SP (corrupted stack pointer?)")
-
+        else:
+            err("Failed to get value of $SP")
         return
 
     def addr_has_breakpoint(self, address, bp_locations):
@@ -33026,6 +33034,9 @@ class VersionCommand(GenericCommand):
 
         if is_qemu_system():
             gef_print("qemu:          \t{:s}".format(self.qemu_version()))
+
+        gef_print(titlify("gdb configuration"))
+        gdb.execute("show configuration")
         return
 
 
@@ -35297,8 +35308,8 @@ class CetStatusCommand(GenericCommand):
 
     def get_state(self, code_len):
         d = {}
-        d["pc"] = get_register("$pc")
-        d["sp"] = get_register("$sp")
+        d["pc"] = current_arch.pc
+        d["sp"] = current_arch.sp
         d["code"] = read_memory(d["pc"], code_len)
         d["reg"] = {}
         for reg in current_arch.gpr_registers:
