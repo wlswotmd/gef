@@ -94,6 +94,7 @@ import io
 import itertools
 import json
 import math
+import multiprocessing
 import os
 import platform
 import re
@@ -105,7 +106,6 @@ import subprocess
 import sys
 import tempfile
 import time
-import timeout
 import traceback
 import urllib.request
 
@@ -6517,6 +6517,38 @@ def only_if_gdb_version_higher_than(required_gdb_version):
     return wrapper
 
 
+def timeout(duration):
+    def wrapper(function):
+        queue = multiprocessing.Queue(maxsize=1)
+
+        def run_function(function, *args, **kwargs):
+            try:
+                result = function(*args, **kwargs)
+            except Exception as e:
+                queue.put((False, e))
+            else:
+                queue.put((True, result))
+
+        def inner_f(*args, **kwargs):
+            fargs = [function] + list(args)
+            p = multiprocessing.Process(target=run_function, args=fargs, kwargs=kwargs)
+            p.start()
+            p.join(duration)
+            if p.is_alive():
+                p.kill()
+                raise multiprocessing.TimeoutError
+            assert queue.full()
+            success, result = queue.get()
+            if success:
+                return result
+            else:
+                raise result
+
+        return inner_f
+
+    return wrapper
+
+
 def use_stdtype():
     if is_32bit():
         return "uint32_t"
@@ -7478,7 +7510,8 @@ def keystone_assemble(code, arch, mode, *args, **kwargs):
     code = gef_pybytes(code)
     addr = kwargs.get("addr", 0x1000)
 
-    @timeout.timeout(duration=1)
+    # `asm "[]"` returns no response
+    @timeout(duration=1)
     def ks_asm(code, addr):
         return ks.asm(code, addr)
 
@@ -7488,7 +7521,7 @@ def keystone_assemble(code, arch, mode, *args, **kwargs):
     except keystone.KsError as e:
         err("Keystone assembler error: {:s}".format(str(e)))
         return None
-    except timeout.TimeoutException:
+    except multiprocessing.TimeoutError:
         err("Keystone assembler timeout error")
         return None
 

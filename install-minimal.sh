@@ -7,10 +7,7 @@ fi
 
 echo "[+] apt"
 apt-get update
-apt-get install -y gdb-multiarch python3-pip binutils gcc file git
-
-echo "[+] pip3"
-pip3 install rpyc py-timeout
+apt-get install -y gdb-multiarch binutils gcc file git
 
 echo "[+] download gef"
 wget -q https://raw.githubusercontent.com/bata24/gef/dev/gef.py -O /root/.gdbinit-gef.py
