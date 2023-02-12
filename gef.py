@@ -96,7 +96,6 @@ import json
 import math
 import os
 import platform
-import psutil
 import re
 import site
 import socket
@@ -6634,6 +6633,56 @@ def is_qemu_system():
     return 'received: ""' in response
 
 
+def get_tcp_sess(pid):
+    # get inode information from opened file descriptor
+    inodes = []
+    for openfd in os.listdir("/proc/{:d}/fd".format(pid)):
+        try:
+            fdname = os.readlink("/proc/{:d}/fd/{:s}".format(pid, openfd))
+        except (FileNotFoundError, ProcessLookupError, OSError):
+            continue
+        if fdname.startswith("socket:["):
+            inode = fdname[8:-1]
+            inodes.append(inode)
+
+    def decode(addr):
+        ip, port = addr.split(":")
+        ip = socket.inet_ntop(socket.AF_INET, bytes.fromhex(ip)[::-1])
+        port = int(port, 16)
+        return (ip, port)
+
+    # get connection information
+    sessions = []
+    with open("/proc/{:d}/net/tcp".format(pid)) as fd:
+        for line in fd.readlines()[1:]:
+            _, laddr, raddr, status, _, _, _, _, _, inode = line.split()[:10]
+            if status != "01": # ESTABLISHED
+                continue
+            if inode not in inodes:
+                continue
+            laddr = decode(laddr)
+            raddr = decode(raddr)
+            sessions.append({"laddr": laddr, "raddr": raddr})
+    return sessions
+
+
+def get_gdb_tcp_sess():
+    gdb_pid = os.getpid()
+    return get_tcp_sess(gdb_pid)
+
+
+def get_all_process():
+    pids = [int(x) for x in os.listdir("/proc") if x.isdigit()]
+    process = []
+    for pid in pids:
+        try:
+            filepath = os.readlink("/proc/{:d}/exe".format(pid))
+        except (FileNotFoundError, ProcessLookupError, OSError):
+            continue
+        process.append({"pid": pid, "filepath": os.path.basename(filepath)})
+    return process
+
+
 @functools.lru_cache(maxsize=None)
 def get_pid():
     """Return the PID of the debuggee process."""
@@ -6645,22 +6694,18 @@ def get_pid():
         return None
 
     def get_pid_from_tcp_session(filepath, match_prefix_only=False):
-        gdb_tcp_sess = list(c.raddr for c in psutil.Process().connections())
+        gdb_tcp_sess = [x["raddr"] for x in get_gdb_tcp_sess()]
         if not gdb_tcp_sess:
             err("gdb has no tcp session")
             return None
-        for process in psutil.process_iter():
-            if match_prefix_only is True and not process.name().startswith(filepath):
+        for process in get_all_process():
+            if match_prefix_only is True and not process["filepath"].startswith(filepath):
                 continue
-            if match_prefix_only is False and process.name() != os.path.basename(filepath):
+            if match_prefix_only is False and process["filepath"] != os.path.basename(filepath):
                 continue
-            try:
-                connections = process.connections()
-            except Exception:
-                continue
-            for c in connections:
-                if c.laddr in gdb_tcp_sess:
-                    return process.pid
+            for c in get_tcp_sess(process["pid"]):
+                if c["laddr"] in gdb_tcp_sess:
+                    return process["pid"]
         return None
 
     if is_pin():
@@ -7900,8 +7945,8 @@ def is_remote_debug():
 
 @functools.lru_cache(maxsize=None)
 def is_remote_but_same_host():
-    connections = psutil.Process().connections()
-    for ip, port in list(c.raddr for c in connections):
+    gdb_tcp_sess = [x["raddr"] for x in get_gdb_tcp_sess()]
+    for ip, port in gdb_tcp_sess:
         if ip == "127.0.0.1":
             return True
     return False

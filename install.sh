@@ -10,7 +10,7 @@ apt-get update
 apt-get install -y gdb-multiarch python3-pip binutils gcc ruby-dev file git
 
 echo "[+] pip3"
-pip3 install rpyc psutil crccheck unicorn capstone ropper keystone-engine py-timeout
+pip3 install rpyc crccheck unicorn capstone ropper keystone-engine py-timeout
 
 echo "[+] install seccomp-tools, one_gadget"
 if [ "x$(which seccomp-tools)" = "x" ]; then
