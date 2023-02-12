@@ -9632,15 +9632,25 @@ class ProcessStatusCommand(GenericCommand):
 
     def show_info_proc_ns(self):
         info("Process Information in Namespace")
+
         pid = get_pid()
-        if len(self.get_state_of(pid)['NSpid'].split()) == 1:
-            gef_print("  No namespace")
-            return
+        gdb_pid = os.getpid()
+        ns_symbols = ["cgroup", "ipc", "mnt", "net", "pid", "time", "user", "uts"]
+        for ns in ns_symbols:
+            sym1 = os.readlink("/proc/{:d}/ns/{:s}".format(pid, ns))
+            sym2 = os.readlink("/proc/{:d}/ns/{:s}".format(gdb_pid, ns))
+            m = "{:s} namespace separation".format(ns.upper())
+            gef_print("  {:32s} {} {}".format(m, RIGHT_ARROW, str(sym1 != sym2)))
+
+        info("Process Information in Namespace (PID)")
         state = self.get_state_of(pid)
-        gef_print("  {:32s} {} {}".format("Host PID  : Namespace PID", RIGHT_ARROW, re.sub(r"\s+", " : ", state['NSpid'])))
-        gef_print("  {:32s} {} {}".format("Host PGID : Namespace PGID", RIGHT_ARROW, re.sub(r"\s+", " : ", state['NSpgid'])))
-        gef_print("  {:32s} {} {}".format("Host SID  : Namespace SID", RIGHT_ARROW, re.sub(r"\s+", " : ", state['NSsid'])))
-        gef_print("  {:32s} {} {}".format("Host TGID : Namespace TGID", RIGHT_ARROW, re.sub(r"\s+", " : ", state['NStgid'])))
+        if len(state['NSpid'].split()) > 1:
+            gef_print("  {:32s} {} {}".format("Host PID  : Namespace PID", RIGHT_ARROW, re.sub(r"\s+", " : ", state['NSpid'])))
+            gef_print("  {:32s} {} {}".format("Host PGID : Namespace PGID", RIGHT_ARROW, re.sub(r"\s+", " : ", state['NSpgid'])))
+            gef_print("  {:32s} {} {}".format("Host SID  : Namespace SID", RIGHT_ARROW, re.sub(r"\s+", " : ", state['NSsid'])))
+            gef_print("  {:32s} {} {}".format("Host TGID : Namespace TGID", RIGHT_ARROW, re.sub(r"\s+", " : ", state['NStgid'])))
+
+        info("Process Information in Namespace (USER)")
         for u in self.get_uid_map(pid):
             gef_print("  {:32s} {} [{} : {} : {}]".format("UID_MAP [NS : Host : Range]", RIGHT_ARROW, u[0], u[1], u[2]))
         for g in self.get_gid_map(pid):
