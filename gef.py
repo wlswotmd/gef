@@ -2143,9 +2143,9 @@ def capstone_disassemble(location, nb_insn, **kwargs):
         return Instruction(cs_insn.address, loc, cs_insn.mnemonic, ops, cs_insn.bytes)
 
     capstone = sys.modules["capstone"]
-    _arch=kwargs.get("arch", None)
-    _mode=kwargs.get("mode", None)
-    _endian=kwargs.get("endian", None)
+    _arch = kwargs.get("arch", None)
+    _mode = kwargs.get("mode", None)
+    _endian = kwargs.get("endian", None)
     arch, mode = get_capstone_arch(arch=_arch, mode=_mode, endian=_endian)
     try:
         cs = capstone.Cs(arch, mode)
@@ -9324,10 +9324,6 @@ class CanaryCommand(GenericCommand):
         vmmap = get_process_maps()
         unpack = u32 if current_arch.ptrsize == 4 else u64
 
-        tls = None
-        if is_x86():
-            tls = TlsCommand.get_tls()
-
         sp = current_arch.sp
         for m in vmmap:
             if not (m.permission & Permission.READ) or not (m.permission & Permission.WRITE):
@@ -16156,7 +16152,7 @@ class ContextCommand(GenericCommand):
                     return "{:#x}".format(addr)
                 else:
                     return addr
-            except:
+            except Exception:
                 pass
 
         # is there a immediate? (absolute)
