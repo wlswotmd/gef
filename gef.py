@@ -1980,6 +1980,21 @@ def load_keystone(f):
     return wrapper
 
 
+def load_ropper(f):
+    """Decorator wrapper to load ropper."""
+
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        try:
+            __import__("ropper")
+            return f(*args, **kwargs)
+        except ImportError:
+            msg = "Missing `ropper` package, install with: `pip install ropper`."
+            raise ImportWarning(msg)
+
+    return wrapper
+
+
 def gdb_disassemble(start_pc, **kwargs):
     """Disassemble instructions from `start_pc` (Integer). Accepts the following named parameters:
     - `end_pc` (Integer) only instructions whose start address fall in the interval from start_pc to end_pc are returned.
@@ -12898,14 +12913,11 @@ class RopperCommand(GenericCommand):
 
     @only_if_gdb_running
     @only_if_not_qemu_system
+    @load_ropper
     def do_invoke(self, argv):
         self.dont_repeat()
 
-        try:
-            ropper = __import__("ropper")
-        except ImportError:
-            msg = "Missing `ropper` package for Python, install with: `pip install ropper`."
-            raise ImportWarning(msg)
+        ropper = sys.modules["ropper"]
 
         if "-h" in argv:
             os.system("ropper --help")
@@ -13751,9 +13763,9 @@ class ArchInfoCommand(GenericCommand):
         gef_print("{:28s} {:s} {:s}".format("syscall parameters", RIGHT_ARROW, sparams))
         gef_print("{:28s} {:s} {:s}".format("32bit-emulated (compat mode)", RIGHT_ARROW, str(self.is_emulated32())))
         gef_print("{:28s} {:s} {:s}".format("Has a delay slot", RIGHT_ARROW, str(current_arch.has_delay_slot)))
-        gef_print("{:28s} {:s} {:s}".format("keystone_support", RIGHT_ARROW, str(current_arch.keystone_support)))
-        gef_print("{:28s} {:s} {:s}".format("capstone_support", RIGHT_ARROW, str(current_arch.capstone_support)))
-        gef_print("{:28s} {:s} {:s}".format("unicorn_support", RIGHT_ARROW, str(current_arch.unicorn_support)))
+        gef_print("{:28s} {:s} {:s}".format("keystone support", RIGHT_ARROW, str(current_arch.keystone_support)))
+        gef_print("{:28s} {:s} {:s}".format("capstone support", RIGHT_ARROW, str(current_arch.capstone_support)))
+        gef_print("{:28s} {:s} {:s}".format("unicorn support", RIGHT_ARROW, str(current_arch.unicorn_support)))
         return
 
 
@@ -33746,6 +33758,7 @@ class VersionCommand(GenericCommand):
         except KeyError:
             return 'not found'
 
+    @load_ropper
     def ropper_version(self):
         try:
             ropper = sys.modules['ropper']
@@ -33823,6 +33836,7 @@ class VersionCommand(GenericCommand):
     def do_invoke(self, argv):
         self.dont_repeat()
 
+        gef_print(titlify("versions"))
         gef_print("OS:            \t{:s}".format(self.os_version()))
         gef_print("Kernel:        \t{:s}".format(self.kernel_version()))
         gef_print("GEF:           \t{:s}".format(self.gef_version()))
@@ -33841,7 +33855,7 @@ class VersionCommand(GenericCommand):
         if is_qemu_system():
             gef_print("qemu:          \t{:s}".format(self.qemu_version()))
 
-        gef_print(titlify("gdb configuration"))
+        gef_print(titlify("gdb build config"))
         gdb.execute("show configuration")
         return
 
