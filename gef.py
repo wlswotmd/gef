@@ -9683,11 +9683,24 @@ class GetFileCommand(GenericCommand):
     _syntax_ = _cmdline_
     _category_ = "Process Information"
 
-    @only_if_gdb_target_local
     @only_if_not_qemu_system
     def do_invoke(self, argv):
         self.dont_repeat()
-        gef_print(repr(gdb.current_progspace().filename))
+
+        filepath = get_filepath()
+        if filepath:
+            gef_print(repr(filepath))
+            return
+
+        elif is_remote_debug():
+            filepath = gdb.current_progspace().filename
+            if filepath and filepath.startswith("target:"):
+                filepath = filepath[7:]
+            if filepath:
+                gef_print(repr(filepath))
+                return
+
+        err("Failed to get filename")
         return
 
 
