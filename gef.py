@@ -6575,7 +6575,7 @@ def only_if_gdb_target_local(f):
 
     @functools.wraps(f)
     def wrapper(*args, **kwargs):
-        if not is_remote_debug() or is_remote_but_same_host():
+        if not is_remote_debug():
             return f(*args, **kwargs)
         else:
             warn("This command cannot work for remote sessions.")
@@ -6979,7 +6979,7 @@ def get_all_process():
 
 
 @functools.lru_cache(maxsize=None)
-def get_pid():
+def get_pid(remote=False):
     """Return the PID of the debuggee process."""
     def get_filepath_from_info_files():
         response = gdb.execute('info files', to_string=True)
@@ -7013,6 +7013,9 @@ def get_pid():
     elif is_qemu_usermode() or is_qemu_system():
         return get_pid_from_tcp_session("qemu", match_prefix_only=True)
 
+    elif remote is False and is_remote_debug():
+        return None # gdbserver etc.
+
     return gdb.selected_inferior().pid
 
 
@@ -7024,7 +7027,12 @@ def get_filepath(for_vmmap=False):
     def append_proc_root(filepath):
         if filepath is None:
             return None
-        prefix = "/proc/{}/root".format(get_pid())
+        pid = get_pid()
+        if pid is None:
+            return None
+        if pid == 0: # under gdbserver, when target exited then pid is 0
+            return None
+        prefix = "/proc/{}/root".format(pid)
         relative_path = filepath.lstrip("/")
         return os.path.join(prefix, relative_path)
 
@@ -7064,12 +7072,34 @@ def get_filename():
     return os.path.basename(filename)
 
 
-def get_process_maps_linux(pid):
+def read_remote_file(filepath, as_byte=True):
+    TMP_NAME = "/tmp/gef.tmp"
+    try:
+        gdb.execute("remote get {:s} {:s}".format(filepath, TMP_NAME), to_string=True)
+    except gdb.error:
+        return ""
+    if as_byte:
+        data = open(TMP_NAME, "rb").read()
+    else:
+        data = open(TMP_NAME, "r").read()
+    os.unlink(TMP_NAME)
+    return data
+
+
+def get_process_maps_linux(pid, remote=False):
     """Parse the Linux process `/proc/pid/maps` file."""
     proc_map_file = "/proc/{:d}/maps".format(pid)
+    if remote:
+        data = read_remote_file(proc_map_file, as_byte=False)
+        if not data:
+            return []
+        lines = data.splitlines()
+        tls = None
+    else:
+        lines = open(proc_map_file, "r").readlines()
+        tls = TlsCommand.get_tls()
     maps = []
-    tls = TlsCommand.get_tls()
-    for line in open(proc_map_file, "r"):
+    for line in lines:
         line = line.strip()
         addr, perm, off, _, rest = line.split(" ", 4)
         rest = rest.split(" ", 1)
@@ -7291,6 +7321,15 @@ def __get_explored_regions():
 
         return linkmap
 
+    def _get_filepath():
+        filepath = get_filepath()
+        if filepath:
+            return filepath
+        filepath = gdb.current_progspace().filename
+        if filepath and filepath.startswith("target:"):
+            filepath = filepath[7:]
+        return filepath
+
     def parse_region_from_linkmap(linkmap):
         current = linkmap
 
@@ -7301,7 +7340,7 @@ def __get_explored_regions():
             l_next = read_int_from_memory(current + current_arch.ptrsize * 3)
             name = read_cstring_from_memory(l_name)
             if not name:
-                name = get_filepath() or "[code]"
+                name = _get_filepath() or "[code]"
             regions += parse_region_from_ehdr(l_addr, name)
             if l_next == 0:
                 break
@@ -7321,9 +7360,9 @@ def __get_explored_regions():
     elif auxv:
         # code
         if "AT_PHDR" in auxv:
-            regions += parse_region_from_ehdr(auxv["AT_PHDR"], get_filepath() or "[code]")
+            regions += parse_region_from_ehdr(auxv["AT_PHDR"], _get_filepath() or "[code]")
         elif "AT_ENTRY" in auxv:
-            regions += parse_region_from_ehdr(auxv["AT_ENTRY"], get_filepath() or "[code]")
+            regions += parse_region_from_ehdr(auxv["AT_ENTRY"], _get_filepath() or "[code]")
         # linker
         if "AT_BASE" in auxv:
             regions += parse_region_from_ehdr(auxv["AT_BASE"], get_linker(codebase) or "[linker]")
@@ -7391,42 +7430,35 @@ def __get_explored_regions():
 
 
 @functools.lru_cache(maxsize=None)
-def get_info_sections():
-    """Retrieve the debuggee sections."""
-    lines = gdb.execute("maintenance info sections", to_string=True).splitlines()
-    maps = []
-    for line in lines:
-        if not line:
-            break
-        try:
-            parts = [x.strip() for x in line.split()]
-            addr_start, addr_end = [int(x, 16) for x in parts[1].split("->")]
-            off = int(parts[3][:-1], 16)
-            path = parts[4]
-            perm = Permission.from_info_sections(parts[5:])
-            sect = Section(page_start=addr_start, page_end=addr_end, offset=off, permission=perm, path=path)
-            maps.append(sect)
-        except IndexError:
-            continue
-        except ValueError:
-            continue
-    return maps
-
-
-@functools.lru_cache(maxsize=None)
 def get_process_maps(outer=False):
     """Return the mapped memory sections"""
-    if is_qemu_usermode() and not outer:
-        return __get_explored_regions()
+    if is_qemu_usermode():
+        if outer:
+            pid = get_pid()
+            if pid:
+                return get_process_maps_linux(pid)
+        else: # scan heuristic
+            return __get_explored_regions()
 
-    pid = get_pid() # get_pid() returns pid of qemu-user if outer
-    if pid is not None:
-        try:
+    elif is_pin():
+        pid = get_pid()
+        if pid:
             return get_process_maps_linux(pid)
-        except FileNotFoundError as e:
-            warn("Failed to read /proc/<PID>/maps, using GDB sections info: {}".format(e))
 
-    return get_info_sections()
+    elif is_qemu_system():
+        return []
+
+    elif is_remote_debug():
+        remote_pid = get_pid(remote=True)
+        if remote_pid:
+            return get_process_maps_linux(remote_pid, remote=True)
+
+    else: # normal pattern
+        pid = get_pid()
+        if pid:
+            return get_process_maps_linux(pid)
+
+    return __get_explored_regions() # scan heuristic
 
 
 @functools.lru_cache(maxsize=None)
@@ -8246,15 +8278,6 @@ def is_remote_debug():
     """"Return True is the current debugging session is running through GDB remote session."""
     res = gdb.execute("maintenance print target-stack", to_string=True)
     return "remote" in res
-
-
-@functools.lru_cache(maxsize=None)
-def is_remote_but_same_host():
-    gdb_tcp_sess = [x["raddr"] for x in get_gdb_tcp_sess()]
-    for ip, port in gdb_tcp_sess:
-        if ip == "127.0.0.1":
-            return True
-    return False
 
 
 def de_bruijn(alphabet, n):
@@ -19075,7 +19098,7 @@ class ChecksecCommand(GenericCommand):
             gef_print("{:<30s}: {:s}".format("Clang SafeStack", get_colored_msg(sec["Clang SafeStack"])))
 
         # System-ASLR
-        if not is_remote_debug() or is_remote_but_same_host():
+        if not is_remote_debug():
             try:
                 system_aslr = int(open("/proc/sys/kernel/randomize_va_space").read())
                 if system_aslr == 0:
@@ -36027,7 +36050,7 @@ class ArgvCommand(GenericCommand):
             info("__libc_argv @ {:#x}".format(paddr2))
             self.print_from_mem(addr2, verbose)
 
-        if not is_remote_debug() or is_remote_but_same_host():
+        if not is_remote_debug():
             gef_print(titlify("ARGV from /proc/{:d}/cmdline".format(get_pid())))
             self.print_from_proc("/proc/{:d}/cmdline".format(get_pid()), verbose)
         else:
@@ -36111,7 +36134,7 @@ class EnvpCommand(GenericCommand):
                 info("to see the result of putenv(), use `envp libc`")
                 return
 
-            if not is_remote_debug() or is_remote_but_same_host():
+            if not is_remote_debug():
                 gef_print(titlify("ENVP from /proc/{:d}/environ".format(get_pid())))
                 return self.print_from_proc("/proc/{:d}/environ".format(get_pid()), verbose)
         err("Not found envp")
