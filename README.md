@@ -164,37 +164,10 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * Listen with `pin -appdebug -appdebug_server_port 1234 -t obj-intel64/inscount0.so -- /bin/ls`.
 * Intel SDE is supported.
     * Listen with `sde64 -debug -debug-port 1234 -- /bin/ls`.
+* Supported architectures
+    * See [SUPPORTED_ARCH.md](https://github.com/bata24/gef/blob/dev/SUPPORTED_ARCH.md)
 
 #### General
-* Supported architectures
-    * x86/x64
-    * ARM/Aarch64
-    * PPC32/PPC64
-    * MIPS32/MIPS64
-    * SPARC32
-        * The toolchain is not available through apt. Use https://toolchains.bootlin.com/
-    * SPARC64
-        * The toolchain can be obtained with apt, but it seems to be broken because the built ELF always SIGSEGV. Use https://toolchains.bootlin.com/
-    * RISCV64
-    * RISCV32
-        * The toolchain is not available through apt. Use https://toolchains.bootlin.com/
-    * s390x
-    * sh4
-        * The toolchain can be obtained with apt, but it seems to be broken because static build is failed. Use https://toolchains.bootlin.com/
-    * m68k
-    * alpha
-    * HPPA(PA-RISC)
-    * OR1K(OpenRISC 1000)
-        * The toolchain is not available through apt. Use https://toolchains.bootlin.com/
-        * gdb-multiarch does not support this architecture. Build gdb from source with `./configure --enable-targets=all --with-python=/usr/bin/python3`.
-    * Nios2
-        * The toolchain is not available through apt. Use https://toolchains.bootlin.com/
-        * gdb-multiarch does not support this architecture. Build gdb from source with `./configure --enable-targets=all --with-python=/usr/bin/python3`.
-    * MicroBlaze
-        * The toolchain is not available through apt. Use https://toolchains.bootlin.com/
-        * gdb-multiarch does not support this architecture. Build gdb from source with `./configure --enable-targets=all --with-python=/usr/bin/python3`.
-    * Xtensa
-        * The toolchain can be obtained with apt, but it seems to be broken because c header is unavailable. Use https://toolchains.bootlin.com/ and it also includes gdb.
 * `vmmap`: is improved.
     * It displays the meomry map information even when connecting to gdb stub like qemu-user (heuristic), intel pin and intel SDE.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmmap-qemu-user.png)
