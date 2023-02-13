@@ -389,10 +389,10 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/syscall-search.png)
 * `dwarf-exception-handler`: dumps the DWARF exception handler informations.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dwarf-exception-handler.png)
-* `dynamic`: dumps the DYNAMIC area.
+* `dynamic`: dumps the `_DYNAMIC` area.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dynamic.png)
-* `linkmap`: dumps the linkmap with iterating.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/linkmap.png)
+* `link-map`: dumps the `link_map` with iterating.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/link-map.png)
 * `ret2dl-hint`: shows the structure used by Return-to-dl-resolve as hint.
 * `srop-hint`: shows the code for Sigreturn-Oriented-Programming as hint.
 * `dtor-dump`: dumps some destructor functions list.

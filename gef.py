@@ -7572,7 +7572,7 @@ def __get_explored_regions():
         linker = read_cstring_from_memory(vaddr)
         return linker
 
-    def get_linkmap(addr):
+    def get_link_map(addr):
         if addr is None:
             return None
 
@@ -7598,13 +7598,13 @@ def __get_explored_regions():
             # not found
             return None
 
-        # get linkmap
+        # get link_map
         try:
-            linkmap = read_int_from_memory(dt_debug + current_arch.ptrsize)
+            link_map = read_int_from_memory(dt_debug + current_arch.ptrsize)
         except Exception:
             return None
 
-        return linkmap
+        return link_map
 
     def _get_filepath():
         filepath = get_filepath()
@@ -7615,8 +7615,8 @@ def __get_explored_regions():
             filepath = filepath[7:]
         return filepath
 
-    def parse_region_from_linkmap(linkmap):
-        current = linkmap
+    def parse_region_from_link_map(link_map):
+        current = link_map
 
         regions = []
         while True:
@@ -7636,10 +7636,10 @@ def __get_explored_regions():
     auxv = gef_get_auxiliary_values()
     codebase = auxv.get("AT_PHDR", None) or auxv.get("AT_ENTRY", None)
 
-    # plan1: from linkmap info (code, all loaded shared library)
-    linkmap = get_linkmap(codebase)
-    if linkmap:
-        regions += parse_region_from_linkmap(linkmap)
+    # plan1: from link_map info (code, all loaded shared library)
+    link_map = get_link_map(codebase)
+    if link_map:
+        regions += parse_region_from_link_map(link_map)
 
     # plan2: use each auxv info (for code, linker)
     elif auxv:
@@ -20038,26 +20038,31 @@ class Ret2dlHintCommand(GenericCommand):
             s += "                                                                        | ...                |\n"
             s += "                                                                        +--------------------+\n"
         s += "\n"
-        s += "Use `dynamic` and `linkmap` to display the structure.\n"
+        s += "Use `dynamic` and `link-map` to display the structure.\n"
         gef_print(s.rstrip())
         return
 
 
 @register_command
-class LinkmapCommand(GenericCommand):
+class LinkMapCommand(GenericCommand):
     """Dump link_map with iterating."""
-    _cmdline_ = "linkmap"
-    _syntax_ = "{:s} [-h] [-a LINK_MAP_ADDRESS]".format(_cmdline_)
+    _cmdline_ = "link-map"
+    _syntax_ = "{:s} [-h] [-a ELF_ADDRESS|-l LINK_MAP_ADDRESS]".format(_cmdline_)
     _example_ = "\n"
     _example_ += "{:s} # dump itself\n".format(_cmdline_)
-    _example_ += "{:s} -a 0x00007ffff7ffe190 # dump specified address".format(_cmdline_)
+    _example_ += "{:s} -a 0x555555554000 # dump specified address as elf\n".format(_cmdline_)
+    _example_ += "{:s} -l 0x7ffff7ffe2e0 # dump specified address as link_map".format(_cmdline_)
     _category_ = "Process Information"
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         return
 
-    def dump_linkmap(self, link_map):
+    def dump_link_map(self, link_map):
+        if link_map is None:
+            info("link_map is 0.")
+            return
+
         section = process_lookup_address(link_map)
         info("link_map: {:#x} [{:s}]".format(link_map, str(section.permission)))
 
@@ -20094,8 +20099,8 @@ class LinkmapCommand(GenericCommand):
         return
 
     @staticmethod
-    def get_linkmap(filename, silent=False):
-        current = dynamic = DynamicCommand.get_dynamic(filename, silent)
+    def get_link_map(filename_or_addr, silent=False):
+        current = dynamic = DynamicCommand.get_dynamic(filename_or_addr, silent)
         while True:
             tag = read_int_from_memory(current)
             current += current_arch.ptrsize
@@ -20118,7 +20123,6 @@ class LinkmapCommand(GenericCommand):
         return link_map
 
     @only_if_gdb_running
-    @only_if_gdb_target_local
     @only_if_not_qemu_system
     def do_invoke(self, argv):
         self.dont_repeat()
@@ -20128,22 +20132,39 @@ class LinkmapCommand(GenericCommand):
             return
 
         filename = None
-        link_map = None
 
-        if "-a" in argv:
+        if "-l" in argv:
             try:
-                idx = argv.index("-a")
+                idx = argv.index("-l")
                 link_map = int(argv[idx + 1], 0)
                 argv = argv[:idx] + argv[idx + 2:]
             except Exception:
                 self.usage()
                 return
-        else:
-            filename = get_filepath()
 
-        if argv:
+        elif "-a" in argv:
+            try:
+                idx = argv.index("-a")
+                elf_addr = int(argv[idx + 1], 0)
+                argv = argv[:idx] + argv[idx + 2:]
+            except Exception:
+                self.usage()
+                return
+            try:
+                link_map = self.get_link_map(elf_addr)
+            except Exception:
+                err("Failed to get link_map.")
+                return
+
+        elif argv:
             self.usage()
             return
+
+        else:
+            filename = get_filepath()
+            if filename is None:
+                err("Failed to get filename.")
+                return
 
         if filename:
             if not os.path.exists(filename):
@@ -20153,19 +20174,15 @@ class LinkmapCommand(GenericCommand):
                 info("The binary is static build. There is no link_map.")
                 return
             try:
-                link_map = self.get_linkmap(filename)
+                link_map = self.get_link_map(filename)
             except Exception:
                 err("Failed to get link_map.")
                 return
 
-        if link_map is None:
-            info("link_map is 0.")
-            return
-
         try:
-            self.dump_linkmap(link_map)
+            self.dump_link_map(link_map)
         except Exception:
-            err("Failed to parse.")
+            err("Failed to parse link_map.")
         return
 
 
@@ -20173,11 +20190,12 @@ class LinkmapCommand(GenericCommand):
 class DynamicCommand(GenericCommand):
     """Display current status of the _DYNAMIC area."""
     _cmdline_ = "dynamic"
-    _syntax_ = "{:s} [-h] [-a DYNAMIC_ADDRESS|-f FILENAME]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] -f FILENAME|-a ELF_ADDRESS|-d DYNAMIC_ADDRESS]".format(_cmdline_)
     _example_ = "\n"
     _example_ += "{:s} # dump itself\n".format(_cmdline_)
-    _example_ += "{:s} -f /lib/x86_64-linux-gnu/libc-2.31.so # dump specified binary\n".format(_cmdline_)
-    _example_ += "{:s} -a 0x403de0 # dump specified address".format(_cmdline_)
+    _example_ += "{:s} -f /usr/lib/x86_64-linux-gnu/libc.so.6 # dump specified binary\n".format(_cmdline_)
+    _example_ += "{:s} -a 0x555555554000 # dump specified address as elf\n".format(_cmdline_)
+    _example_ += "{:s} -d 0x555555575a98 # dump specified address as dynamic".format(_cmdline_)
     _category_ = "Process Information"
 
     DT_TABLE = {
@@ -20277,6 +20295,10 @@ class DynamicCommand(GenericCommand):
         return
 
     def dump_dynamic(self, dynamic):
+        if dynamic is None:
+            info("_DYNAMIC is not found.")
+            return
+
         current = dynamic
         while True:
             addr = current
@@ -20295,20 +20317,29 @@ class DynamicCommand(GenericCommand):
         return
 
     @staticmethod
-    def get_dynamic(filename, silent=False):
+    def get_dynamic(filename_or_addr, silent=False):
         if not silent:
-            info("filename: {:s}".format(filename))
-        elf = Elf(filename)
+            if isinstance(filename_or_addr, str):
+                info("filename: {:s}".format(filename_or_addr))
+            else:
+                info("address: {:#x}".format(filename_or_addr))
 
+        elf = Elf(filename_or_addr)
         phdrs = [phdr for phdr in elf.phdrs if phdr.p_type == Phdr.PT_DYNAMIC]
         if len(phdrs) == 0:
             return None
 
-        if is_pie(filename):
-            load_base = get_section_base_address(filename)
-            dynamic = phdrs[0].p_vaddr + load_base
+        if isinstance(filename_or_addr, str):
+            if is_pie(filename_or_addr):
+                load_base = get_section_base_address(filename_or_addr)
+                dynamic = phdrs[0].p_vaddr + load_base
+            else:
+                dynamic = phdrs[0].p_vaddr
         else:
-            dynamic = phdrs[0].p_vaddr
+            if phdrs[0].p_vaddr < filename_or_addr:
+                dynamic = phdrs[0].p_vaddr + filename_or_addr
+            else:
+                dynamic = phdrs[0].p_vaddr
 
         if not silent:
             section = process_lookup_address(dynamic)
@@ -20316,7 +20347,6 @@ class DynamicCommand(GenericCommand):
         return dynamic
 
     @only_if_gdb_running
-    @only_if_gdb_target_local
     @only_if_not_qemu_system
     def do_invoke(self, argv):
         self.dont_repeat()
@@ -20326,16 +20356,30 @@ class DynamicCommand(GenericCommand):
             return
 
         filename = None
-        dynamic = None
 
-        if "-a" in argv:
+        if "-d" in argv:
             try:
-                idx = argv.index("-a")
+                idx = argv.index("-d")
                 dynamic = int(argv[idx + 1], 0)
                 argv = argv[:idx] + argv[idx + 2:]
             except Exception:
                 self.usage()
                 return
+
+        elif "-a" in argv:
+            try:
+                idx = argv.index("-a")
+                elf_addr = int(argv[idx + 1], 0)
+                argv = argv[:idx] + argv[idx + 2:]
+            except Exception:
+                self.usage()
+                return
+            try:
+                dynamic = self.get_dynamic(elf_addr)
+            except Exception:
+                err("Failed to get _DYNAMIC.")
+                return
+
         elif "-f" in argv:
             try:
                 idx = argv.index("-f")
@@ -20344,12 +20388,16 @@ class DynamicCommand(GenericCommand):
             except Exception:
                 self.usage()
                 return
-        else:
-            filename = get_filepath()
 
-        if argv:
+        elif argv:
             self.usage()
             return
+
+        else:
+            filename = get_filepath()
+            if filename is None:
+                err("Failed to get filename")
+                return
 
         if filename:
             if not os.path.exists(filename):
@@ -20366,10 +20414,6 @@ class DynamicCommand(GenericCommand):
             except Exception:
                 err("Failed to get _DYNAMIC.")
                 return
-
-        if dynamic is None:
-            info("_DYNAMIC is not found.")
-            return
 
         try:
             self.dump_dynamic(dynamic)
@@ -20522,8 +20566,8 @@ class DestructorDumpCommand(GenericCommand):
             gef_print("{} dso_handle:{:#x}".format(" " * len(fns), dso_handle))
         return
 
-    def yield_linkmap(self):
-        link_map = LinkmapCommand.get_linkmap(get_filepath(), silent=True)
+    def yield_link_map(self):
+        link_map = LinkMapCommand.get_link_map(get_filepath(), silent=True)
         while link_map:
             dic = {}
             dic["load_address"] = read_int_from_memory(link_map)
@@ -20538,7 +20582,7 @@ class DestructorDumpCommand(GenericCommand):
 
     def dump_sections_not_array(self, section_name):
         if not is_static(get_filepath()):
-            for link_map in self.yield_linkmap():
+            for link_map in self.yield_link_map():
                 if not os.path.exists(link_map["name"]):
                     continue
                 elf = Elf(link_map["name"])
@@ -20570,7 +20614,7 @@ class DestructorDumpCommand(GenericCommand):
 
     def dump_sections(self, section_name):
         if not is_static(get_filepath()):
-            for link_map in self.yield_linkmap():
+            for link_map in self.yield_link_map():
                 if not os.path.exists(link_map["name"]):
                     continue
                 elf = Elf(link_map["name"])
