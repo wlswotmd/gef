@@ -6355,6 +6355,24 @@ def read_ascii_string(address):
     return None
 
 
+def strings(data, length=8):
+    string_printable = string.printable.replace("\n", "").encode()
+    strings_data = []
+    current_str = ""
+    i = 0
+    while i < len(data):
+        if data[i] in string_printable:
+            current_str += chr(data[i])
+        else:
+            if len(current_str) >= length:
+                strings_data.append(current_str)
+            current_str = ""
+        i += 1
+    if len(current_str) >= length:
+        strings_data.append(current_str)
+    return strings_data
+
+
 def read_physmem_secure(paddr, size):
     sm_base, sm_size = XSecureMemAddrCommand.get_secure_memory_base_and_size()
     if sm_base is None or sm_size is None:
@@ -7020,22 +7038,23 @@ def get_pid(remote=False):
     return gdb.selected_inferior().pid
 
 
+def append_proc_root(filepath):
+    if filepath is None:
+        return None
+    pid = get_pid()
+    if pid is None:
+        return None
+    if pid == 0: # under gdbserver, when target exited then pid is 0
+        return None
+    prefix = "/proc/{}/root".format(pid)
+    relative_path = filepath.lstrip("/")
+    return os.path.join(prefix, relative_path)
+
+
 @functools.lru_cache(maxsize=None)
 def get_filepath(for_vmmap=False):
     """Return the local absolute path of the file currently debugged."""
     filepath = gdb.current_progspace().filename
-
-    def append_proc_root(filepath):
-        if filepath is None:
-            return None
-        pid = get_pid()
-        if pid is None:
-            return None
-        if pid == 0: # under gdbserver, when target exited then pid is 0
-            return None
-        prefix = "/proc/{}/root".format(pid)
-        relative_path = filepath.lstrip("/")
-        return os.path.join(prefix, relative_path)
 
     if is_remote_debug():
         if filepath is None:
@@ -7514,7 +7533,7 @@ def process_lookup_path(names, perm=Permission.ALL):
         return None
 
     if isinstance(names, str):
-        names = (names) # make tuple to iterate
+        names = tuple([names]) # make tuple to iterate
 
     for sect in get_process_maps():
         for name in names:
@@ -8279,6 +8298,11 @@ def is_remote_debug():
     """"Return True is the current debugging session is running through GDB remote session."""
     res = gdb.execute("maintenance print target-stack", to_string=True)
     return "remote" in res
+
+
+@functools.lru_cache(maxsize=None)
+def is_container_attach():
+    return not is_remote_debug() and gdb.current_progspace().filename.startswith("target:")
 
 
 def de_bruijn(alphabet, n):
@@ -32068,7 +32092,6 @@ class CodebaseCommand(GenericCommand):
     _category_ = "Process Information"
 
     @only_if_gdb_running
-    @only_if_gdb_target_local
     @only_if_not_qemu_system
     def do_invoke(self, argv):
         self.dont_repeat()
@@ -32077,13 +32100,15 @@ class CodebaseCommand(GenericCommand):
         if codebase is None:
             codebase = get_section_base_address(get_path_from_info_proc())
         if codebase is None:
-            gef_print("codebase not found")
+            gef_print("Codebase is not found")
             return
+
         gef_print(titlify("Code base"))
         gdb.execute(f"set $codebase = {codebase}")
         gef_print(f"$codebase = {codebase:#x}")
 
-        if is_pie(get_filepath()):
+        filepath = get_filepath()
+        if filepath and is_pie(filepath):
             gdb.execute(f"set $piebase = {codebase}")
             gef_print(f"$piebase = {codebase:#x}")
         return
@@ -32107,14 +32132,13 @@ class HeapbaseCommand(GenericCommand):
         return get_section_base_address("[heap]")
 
     @only_if_gdb_running
-    @only_if_gdb_target_local
     @only_if_not_qemu_system
     def do_invoke(self, argv):
         self.dont_repeat()
 
         heap = HeapbaseCommand.heap_base()
         if heap is None:
-            gef_print("heap not found")
+            gef_print("Heap is not found")
             return
 
         gef_print(titlify("Heap base"))
@@ -32131,7 +32155,6 @@ class LibcCommand(GenericCommand):
     _category_ = "Process Information"
 
     @only_if_gdb_running
-    @only_if_gdb_target_local
     @only_if_not_qemu_system
     def do_invoke(self, argv):
         self.dont_repeat()
@@ -32140,30 +32163,39 @@ class LibcCommand(GenericCommand):
         if libc is None:
             err("libc is not found")
             return
+
         gef_print(titlify("libc info"))
         gdb.execute(f"set $libc = {libc}")
         gef_print(f"$libc = {libc:#x}")
 
         libc = process_lookup_path(("libc-2.", "libc.so.6"))
-        if not os.path.exists(libc.path):
-            return
+        libc_path = libc.path
 
-        gef_print("path:\t" + libc.path)
-        data = open(libc.path, "rb").read()
+        if is_container_attach():
+            libc_path = append_proc_root(libc_path)
+            if not os.path.exists(libc_path):
+                return
+            data = open(libc_path, "rb").read()
 
-        gef_print("sha512:\t" + hashlib.sha512(data).hexdigest())
-        gef_print("sha256:\t" + hashlib.sha256(data).hexdigest())
-        gef_print("sha1:\t" + hashlib.sha1(data).hexdigest())
-        gef_print("md5:\t" + hashlib.md5(data).hexdigest())
+        elif is_remote_debug():
+            data = read_remote_file(libc_path)
+            if not data:
+                return
+        else:
+            if not os.path.exists(libc_path):
+                return
+            data = open(libc_path, "rb").read()
 
-        try:
-            strings = which("strings")
-        except IOError:
-            err("Missing `strings`")
-            return
-        result = gef_execute_external([strings, "-a", libc.path], as_list=True)
-        version = [line for line in result if line.startswith("GNU C Library")]
-        gef_print("ver:\t" + version[0])
+        gef_print("path{:s}:\t{:s}".format(" (remote)" if is_remote_debug() else "", libc_path))
+        gef_print("sha512:\t{:s}".format(hashlib.sha512(data).hexdigest()))
+        gef_print("sha256:\t{:s}".format(hashlib.sha256(data).hexdigest()))
+        gef_print("sha1:\t{:s}".format(hashlib.sha1(data).hexdigest()))
+        gef_print("md5:\t{:s}".format(hashlib.md5(data).hexdigest()))
+
+        strings_list = strings(data)
+        version = [line for line in strings_list if line.startswith("GNU C Library")]
+        if version:
+            gef_print("ver:\t{:s}".format(version[0]))
         return
 
 
@@ -32175,7 +32207,6 @@ class LdCommand(GenericCommand):
     _category_ = "Process Information"
 
     @only_if_gdb_running
-    @only_if_gdb_target_local
     @only_if_not_qemu_system
     def do_invoke(self, argv):
         self.dont_repeat()
@@ -32189,15 +32220,33 @@ class LdCommand(GenericCommand):
         gef_print(f"$ld = {ld:#x}")
 
         ld = process_lookup_path(("ld-2.", "ld-linux-"))
-        if not os.path.exists(ld.path):
-            return
+        ld_path = ld.path
 
-        gef_print("path:\t" + ld.path)
-        data = open(ld.path, "rb").read()
-        gef_print("sha512:\t" + hashlib.sha512(data).hexdigest())
-        gef_print("sha256:\t" + hashlib.sha256(data).hexdigest())
-        gef_print("sha1:\t" + hashlib.sha1(data).hexdigest())
-        gef_print("md5:\t" + hashlib.md5(data).hexdigest())
+        if is_container_attach():
+            ld_path = append_proc_root(ld_path)
+            if not os.path.exists(ld_path):
+                return
+            data = open(ld_path, "rb").read()
+
+        elif is_remote_debug():
+            data = read_remote_file(ld_path)
+            if not data:
+                return
+        else:
+            if not os.path.exists(ld_path):
+                return
+            data = open(ld_path, "rb").read()
+
+        gef_print("path{:s}:\t{:s}".format(" (remote)" if is_remote_debug() else "", ld_path))
+        gef_print("sha512:\t{:s}".format(hashlib.sha512(data).hexdigest()))
+        gef_print("sha256:\t{:s}".format(hashlib.sha256(data).hexdigest()))
+        gef_print("sha1:\t{:s}".format(hashlib.sha1(data).hexdigest()))
+        gef_print("md5:\t{:s}".format(hashlib.md5(data).hexdigest()))
+
+        strings_list = strings(data)
+        version = [line for line in strings_list if (line.startswith("ld.so") and "version" in line)]
+        if version:
+            gef_print("ver:\t{:s}".format(version[0]))
         return
 
 
