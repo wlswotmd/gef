@@ -9614,7 +9614,7 @@ class CanaryCommand(GenericCommand):
 
         canary, location = res
         info("Found AT_RANDOM at {:#x}, reading {} bytes".format(location, current_arch.ptrsize))
-        info("The canary of process {:d} is {:s}".format(get_pid(), Color.boldify("{:#x}".format(canary))))
+        info("The canary is {:s}".format(Color.boldify("{:#x}".format(canary))))
         gef_print(titlify("found canary"))
 
         vmmap = get_process_maps()
