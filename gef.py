@@ -9654,15 +9654,25 @@ class PidCommand(GenericCommand):
     _category_ = "Process Information"
 
     @only_if_gdb_running
-    @only_if_gdb_target_local
     @only_if_not_qemu_system
     def do_invoke(self, argv):
         self.dont_repeat()
+
         pid = get_pid()
-        if pid is None:
-            err("Unsupported")
+        if pid:
+            if is_qemu_usermode():
+                gef_print("Local qemu PID: {:d}".format(pid))
+            else:
+                gef_print("Local PID: {:d}".format(pid))
             return
-        gef_print(pid)
+
+        if is_remote_debug():
+            pid = get_pid(remote=True)
+            if pid:
+                gef_print("Remote PID: {:d}".format(pid))
+                return
+
+        err("Failed to get pid")
         return
 
 
