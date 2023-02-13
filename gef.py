@@ -10247,7 +10247,6 @@ class SmartMemoryDumpCommand(GenericCommand):
     _category_ = "Misc"
 
     @only_if_gdb_running
-    @only_if_gdb_target_local
     @only_if_not_qemu_system
     def do_invoke(self, argv):
         self.dont_repeat()
@@ -10257,7 +10256,7 @@ class SmartMemoryDumpCommand(GenericCommand):
             idx = argv.index("--prefix")
             prefix = "_" + argv[idx + 1] + "_"
 
-        pid = get_pid()
+        pid = get_pid(remote=True)
         if pid is None:
             err("Failed to get pid")
             return
