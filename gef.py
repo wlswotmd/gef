@@ -6298,12 +6298,13 @@ def read_memory(addr, length):
     """Return a `length` long byte array with the copy of the process memory at `addr`."""
     if is_pin():
         # Memory read of pin is very slow, so speed it up
-        with open("/proc/{:d}/mem".format(get_pid()), "rb") as fd:
-            try:
+        try:
+            pid = get_pid()
+            with open("/proc/{:d}/mem".format(pid), "rb") as fd:
                 fd.seek(addr)
                 return fd.read(length)
-            except Exception:
-                pass
+        except Exception:
+            pass
     return gdb.selected_inferior().read_memory(addr, length).tobytes()
 
 
