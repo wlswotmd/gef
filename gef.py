@@ -13988,12 +13988,11 @@ class ElfInfoCommand(GenericCommand):
             Shdr.SHT_GNU_versym     : "GNU_versym",
         }
 
-        name_width = max([len(s.sh_name) for s in elf.shdrs])
-
         gef_print(titlify("Section Header"))
         if not elf.shdrs:
             gef_print("Not loaded")
         else:
+            name_width = max([len(s.sh_name) for s in elf.shdrs])
             fmt = "[{:>2s}] {:{:d}s} {:>15s} {:>12s} {:>12s} {:>12s} {:>12s} {:>5s} {:>5s} {:>5s} {:>8s}"
             legend = ["#", "Name", name_width, "Type", "Address", "Offset", "Size", "EntSiz", "Flags", "Link", "Info", "Align"]
             gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
