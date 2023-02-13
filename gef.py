@@ -11556,10 +11556,17 @@ class UnicornEmulateCommand(GenericCommand):
         cs_arch, cs_mode = get_capstone_arch(to_string=True)
 
         pythonbin = which("python3")
+        if is_remote_debug():
+            filepath = gdb.current_progspace().filename
+            if filepath.startswith("target:"):
+                filepath = filepath[7:]
+            filename = os.path.basename(filepath)
+        else:
+            filename = get_filename()
 
         content = "#!{:s} -i\n".format(pythonbin)
         content += "#\n"
-        content += "# Emulation script for '{:s}'".format(get_filename())
+        content += "# Emulation script for '{:s}'".format(filename)
         if kwargs["nb_gadget"]:
             content += " from {:#x} to after {:#x} gadgets\n".format(start_insn_addr, kwargs["nb_gadget"])
         else:
@@ -11800,7 +11807,7 @@ class UnicornEmulateCommand(GenericCommand):
 
             if sect.permission & Permission.READ:
                 code = read_memory(sect.page_start, sect.size)
-                loc = "/tmp/gef-{:s}-{:#x}.raw".format(get_filename(), sect.page_start)
+                loc = "/tmp/gef-{:s}-{:#x}.raw".format(filename, sect.page_start)
                 open(loc, "wb").write(bytes(code))
                 content += "    emu.mem_write({:#x}, open('{:s}', 'rb').read())\n".format(sect.page_start, loc)
                 content += "\n"
