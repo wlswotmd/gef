@@ -586,71 +586,301 @@ class Elf:
     - http://www.skyfree.org/linux/references/ELF_Format.pdf
     - http://refspecs.freestandards.org/elf/elfspec_ppc.pdf
     - http://refspecs.linuxfoundation.org/ELF/ppc64/PPC-elf64abi.html"""
-    LITTLE_ENDIAN     = 1
-    BIG_ENDIAN        = 2
+    # e_ident[EI_MAG0:EI_MAG3]
+    ELF_MAGIC                = 0x7f454c46
 
-    ELF_32_BITS       = 0x01
-    ELF_64_BITS       = 0x02
-    ELF_MAGIC         = 0x7f454c46
+    # e_ident[EI_CLASS]
+    ELF_CLASS_NONE           = 0
+    ELF_32_BITS              = 1
+    ELF_64_BITS              = 2
 
-    X86_64            = 0x3e
-    X86_32            = 0x03
-    ARM               = 0x28
-    MIPS              = 0x08
-    POWERPC           = 0x14
-    POWERPC64         = 0x15
-    SPARC             = 0x02
-    SPARC32PLUS       = 0x12
-    SPARC64           = 0x2b
-    AARCH64           = 0xb7
-    RISCV             = 0xf3
-    IA64              = 0x32
-    S390X             = 0x16
-    SH4               = 0x2a
-    M68K              = 0x04
-    ALPHA             = 0x29
-    ALPHA_UNOFFICIAL  = 0x9026
-    PARISC            = 0x0f
-    OR1K              = 0x5c
-    NIOS2             = 0x71
-    MICROBLAZE        = 0xbd
-    XTENSA            = 0x5e
+    # e_ident[EI_DATA]
+    ELF_DATA_NONE            = 0
+    LITTLE_ENDIAN            = 1
+    BIG_ENDIAN               = 2
 
-    ET_RELOC          = 1
-    ET_EXEC           = 2
-    ET_DYN            = 3
-    ET_CORE           = 4
+    # e_ident[EI_OSABI]
+    OSABI_SYSTEMV            = 0 # UNIX System V ABI
+    OSABI_HPUX               = 1 # Hewlett-Packard HP-UX
+    OSABI_NETBSD             = 2 # NetBSD
+    OSABI_LINUX              = 3 # GNU Linux
+    OSABI_HURD               = 4 # GNU Hurd
+    OSABI_86OPEN             = 5 # 86Open Common IA32 ABI
+    OSABI_SOLARIS            = 6 # Sun Solaris
+    OSABI_AIX                = 7 # IBM AIX
+    OSABI_IRIX               = 8 # SGI Irix
+    OSABI_FREEBSD            = 9 # FreeBSD
+    OSABI_TRU64              = 10 # Compaq TRU64 UNIX
+    OSABI_MODESTO            = 11 # Novell Modesto
+    OSABI_OPENBSD            = 12 # OpenBSD
+    OSABI_OPENVMS            = 13 # OpenVMS
+    OSABI_NSK                = 14 # Hewlett-Packard Non-Stop Kernel
+    OSABI_AROS               = 15 # Amiga Research OS
+    OSABI_FENIXOS            = 16 # The FenixOS highly scalable multi-core OS
+    OSABI_CLOUDABI           = 17 # Nuxi CloudABI
+    OSABI_OPENVOS            = 18 # Stratus Technologies OpenVOS
+    OSABI_ARM_AEABI          = 64 # ARM EABI
+    OSABI_ARM                = 97 # ARM
+    OSABI_STANDALONE         = 255 # Standalone (embedded) application
 
-    OSABI_SYSTEMV     = 0x00
-    OSABI_HPUX        = 0x01
-    OSABI_NETBSD      = 0x02
-    OSABI_LINUX       = 0x03
-    OSABI_SOLARIS     = 0x06
-    OSABI_AIX         = 0x07
-    OSABI_IRIX        = 0x08
-    OSABI_FREEBSD     = 0x09
-    OSABI_OPENBSD     = 0x0C
+    # e_type
+    ET_NONE                  = 0
+    ET_REL                   = 1
+    ET_EXEC                  = 2
+    ET_DYN                   = 3
+    ET_CORE                  = 4
 
-    e_magic           = ELF_MAGIC
-    e_class           = ELF_32_BITS
-    e_endianness      = LITTLE_ENDIAN
-    e_eiversion       = None
-    e_osabi           = None
-    e_abiversion      = None
-    e_pad             = None
-    e_type            = ET_EXEC
-    e_machine         = X86_32
-    e_version         = None
-    e_entry           = 0x00
-    e_phoff           = None
-    e_shoff           = None
-    e_flags           = None
-    e_ehsize          = None
-    e_phentsize       = None
-    e_phnum           = None
-    e_shentsize       = None
-    e_shnum           = None
-    e_shstrndx        = None
+    # e_machine
+    EM_NONE                  = 0 # No machine
+    EM_M32                   = 1 # AT&T WE 32100
+    EM_SPARC                 = 2 # SUN SPARC
+    EM_386                   = 3 # Intel 80386
+    EM_68K                   = 4 # Motorola m68k family
+    EM_88K                   = 5 # Motorola m88k family
+    EM_IAMCU                 = 6 # Intel MCU
+    EM_860                   = 7 # Intel 80860
+    EM_MIPS                  = 8 # MIPS R3000 big-endian
+    EM_S370                  = 9 # IBM System/370 Processor
+    EM_MIPS_RS3_LE           = 10 # MIPS RS3000 Little-endian
+    #                          11-14 # Reserved for future use
+    EM_PARISC                = 15 # Hewlett-Packard PA-RISC
+    #                          16 # Reserved for future use
+    EM_VPP500                = 17 # Fujitsu VPP500
+    EM_SPARC32PLUS           = 18 # Enhanced instruction set SPARC
+    EM_960                   = 19 # Intel 80960
+    EM_PPC                   = 20 # PowerPC
+    EM_PPC64                 = 21 # 64-bit PowerPC
+    EM_S390                  = 22 # IBM System/390 Processor
+    EM_SPU                   = 23 # IBM SPU/SPC
+    #                          24-35 # Reserved for future use
+    EM_V800                  = 36 # NEC V800
+    EM_FR20                  = 37 # Fujitsu FR20
+    EM_RH32                  = 38 # TRW RH-32
+    EM_RCE                   = 39 # Motorola RCE
+    EM_ARM                   = 40 # ARM 32-bit architecture (AARCH32)
+    EM_ALPHA                 = 41 # Digital Alpha
+    EM_SH                    = 42 # Hitachi SH
+    EM_SPARCV9               = 43 # SPARC Version 9
+    EM_TRICORE               = 44 # Siemens TriCore embedded processor
+    EM_ARC                   = 45 # Argonaut RISC Core, Argonaut Technologies Inc.
+    EM_H8_300                = 46 # Hitachi H8/300
+    EM_H8_300H               = 47 # Hitachi H8/300H
+    EM_H8S                   = 48 # Hitachi H8S
+    EM_H8_500                = 49 # Hitachi H8/500
+    EM_IA_64                 = 50 # Intel IA-64 processor architecture
+    EM_MIPS_X                = 51 # Stanford MIPS-X
+    EM_COLDFIRE              = 52 # Motorola ColdFire
+    EM_68HC12                = 53 # Motorola M68HC12
+    EM_MMA                   = 54 # Fujitsu MMA Multimedia Accelerator
+    EM_PCP                   = 55 # Siemens PCP
+    EM_NCPU                  = 56 # Sony nCPU embedded RISC processor
+    EM_NDR1                  = 57 # Denso NDR1 microprocessor
+    EM_STARCORE              = 58 # Motorola Star*Core processor
+    EM_ME16                  = 59 # Toyota ME16 processor
+    EM_ST100                 = 60 # STMicroelectronics ST100 processor
+    EM_TINYJ                 = 61 # Advanced Logic Corp. TinyJ embedded processor family
+    EM_X86_64                = 62 # AMD x86-64 architecture
+    EM_PDSP                  = 63 # Sony DSP Processor
+    EM_PDP10                 = 64 # Digital Equipment Corp. PDP-10
+    EM_PDP11                 = 65 # Digital Equipment Corp. PDP-11
+    EM_FX66                  = 66 # Siemens FX66 microcontroller
+    EM_ST9PLUS               = 67 # STMicroelectronics ST9+ 8/16 bit microcontroller
+    EM_ST7                   = 68 # STMicroelectronics ST7 8-bit microcontroller
+    EM_68HC16                = 69 # Motorola MC68HC16 Microcontroller
+    EM_68HC11                = 70 # Motorola MC68HC11 Microcontroller
+    EM_68HC08                = 71 # Motorola MC68HC08 Microcontroller
+    EM_68HC05                = 72 # Motorola MC68HC05 Microcontroller
+    EM_SVX                   = 73 # Silicon Graphics SVx
+    EM_ST19                  = 74 # STMicroelectronics ST19 8-bit microcontroller
+    EM_VAX                   = 75 # Digital VAX
+    EM_CRIS                  = 76 # Axis Communications 32-bit embedded processor
+    EM_JAVELIN               = 77 # Infineon Technologies 32-bit embedded processor
+    EM_FIREPATH              = 78 # Element 14 64-bit DSP Processor
+    EM_ZSP                   = 79 # LSI Logic 16-bit DSP Processor
+    EM_MMIX                  = 80 # Donald Knuth's educational 64-bit processor
+    EM_HUANY                 = 81 # Harvard University machine-independent object files
+    EM_PRISM                 = 82 # SiTera Prism
+    EM_AVR                   = 83 # Atmel AVR 8-bit microcontroller
+    EM_FR30                  = 84 # Fujitsu FR30
+    EM_D10V                  = 85 # Mitsubishi D10V
+    EM_D30V                  = 86 # Mitsubishi D30V
+    EM_V850                  = 87 # NEC v850
+    EM_M32R                  = 88 # Mitsubishi M32R
+    EM_MN10300               = 89 # Matsushita MN10300
+    EM_MN10200               = 90 # Matsushita MN10200
+    EM_PJ                    = 91 # picoJava
+    EM_OPENRISC              = 92 # OpenRISC 32-bit embedded processor
+    EM_ARC_COMPACT           = 93 # ARC International ARCompact processor (old spelling/synonym: EM_ARC_A5)
+    EM_XTENSA                = 94 # Tensilica Xtensa Architecture
+    EM_VIDEOCORE             = 95 # Alphamosaic VideoCore processor
+    EM_TMM_GPP               = 96 # Thompson Multimedia General Purpose Processor
+    EM_NS32K                 = 97 # National Semiconductor 32000 series
+    EM_TPC                   = 98 # Tenor Network TPC processor
+    EM_SNP1K                 = 99 # Trebia SNP 1000 processor
+    EM_ST200                 = 100 # STMicroelectronics ST200 microcontroller
+    EM_IP2K                  = 101 # Ubicom IP2xxx microcontroller family
+    EM_MAX                   = 102 # MAX Processor
+    EM_CR                    = 103 # National Semiconductor CompactRISC microprocessor
+    EM_F2MC16                = 104 # Fujitsu F2MC16
+    EM_MSP430                = 105 # Texas Instruments embedded microcontroller msp430
+    EM_BLACKFIN              = 106 # Analog Devices Blackfin (DSP) processor
+    EM_SE_C33                = 107 # S1C33 Family of Seiko Epson processors
+    EM_SEP                   = 108 # Sharp embedded microprocessor
+    EM_ARCA                  = 109 # Arca RISC Microprocessor
+    EM_UNICORE               = 110 # Microprocessor series from PKU-Unity Ltd. and MPRC of Peking University
+    EM_EXCESS                = 111 # eXcess: 16/32/64-bit configurable embedded CPU
+    EM_DXP                   = 112 # Icera Semiconductor Inc. Deep Execution Processor
+    EM_ALTERA_NIOS2          = 113 # Altera Nios II soft-core processor
+    EM_CRX                   = 114 # National Semiconductor CompactRISC CRX microprocessor
+    EM_XGATE                 = 115 # Motorola XGATE embedded processor
+    EM_C166                  = 116 # Infineon C16x/XC16x processor
+    EM_M16C                  = 117 # Renesas M16C series microprocessors
+    EM_DSPIC30F              = 118 # Microchip Technology dsPIC30F Digital Signal Controller
+    EM_CE                    = 119 # Freescale Communication Engine RISC core
+    EM_M32C                  = 120 # Renesas M32C series microprocessors
+    #                          121-130 # Reserved for future use
+    EM_TSK3000               = 131 # Altium TSK3000 core
+    EM_RS08                  = 132 # Freescale RS08 embedded processor
+    EM_SHARC                 = 133 # Analog Devices SHARC family of 32-bit DSP processors
+    EM_ECOG2                 = 134 # Cyan Technology eCOG2 microprocessor
+    EM_SCORE7                = 135 # Sunplus S+core7 RISC processor
+    EM_DSP24                 = 136 # New Japan Radio (NJR) 24-bit DSP Processor
+    EM_VIDEOCORE3            = 137 # Broadcom VideoCore III processor
+    EM_LATTICEMICO32         = 138 # RISC processor for Lattice FPGA architecture
+    EM_SE_C17                = 139 # Seiko Epson C17 family
+    EM_TI_C6000              = 140 # The Texas Instruments TMS320C6000 DSP family
+    EM_TI_C2000              = 141 # The Texas Instruments TMS320C2000 DSP family
+    EM_TI_C5500              = 142 # The Texas Instruments TMS320C55x DSP family
+    EM_TI_ARP32              = 143 # Texas Instruments Application Specific RISC Processor, 32bit fetch
+    EM_TI_PRU                = 144 # Texas Instruments Programmable Realtime Unit
+    #                          145-159 # Reserved for future use
+    EM_MMDSP_PLUS            = 160 # STMicroelectronics 64bit VLIW Data Signal Processor
+    EM_CYPRESS_M8C           = 161 # Cypress M8C microprocessor
+    EM_R32C                  = 162 # Renesas R32C series microprocessors
+    EM_TRIMEDIA              = 163 # NXP Semiconductors TriMedia architecture family
+    EM_QDSP6                 = 164 # QUALCOMM DSP6 Processor
+    EM_8051                  = 165 # Intel 8051 and variants
+    EM_STXP7X                = 166 # STMicroelectronics STxP7x family of configurable and extensible RISC processors
+    EM_NDS32                 = 167 # Andes Technology compact code size embedded RISC processor family
+    EM_ECOG1                 = 168 # Cyan Technology eCOG1X family
+    EM_ECOG1X                = 168 # Cyan Technology eCOG1X family
+    EM_MAXQ30                = 169 # Dallas Semiconductor MAXQ30 Core Micro-controllers
+    EM_XIMO16                = 170 # New Japan Radio (NJR) 16-bit DSP Processor
+    EM_MANIK                 = 171 # M2000 Reconfigurable RISC Microprocessor
+    EM_CRAYNV2               = 172 # Cray Inc. NV2 vector architecture
+    EM_RX                    = 173 # Renesas RX family
+    EM_METAG                 = 174 # Imagination Technologies META processor architecture
+    EM_MCST_ELBRUS           = 175 # MCST Elbrus general purpose hardware architecture
+    EM_ECOG16                = 176 # Cyan Technology eCOG16 family
+    EM_CR16                  = 177 # National Semiconductor CompactRISC CR16 16-bit microprocessor
+    EM_ETPU                  = 178 # Freescale Extended Time Processing Unit
+    EM_SLE9X                 = 179 # Infineon Technologies SLE9X core
+    EM_L10M                  = 180 # Intel L10M
+    EM_K10M                  = 181 # Intel K10M
+    #                          182 # Reserved for future Intel use
+    EM_AARCH64               = 183 # ARM 64-bit architecture (AARCH64)
+    #                          184 # Reserved for future ARM use
+    EM_AVR32                 = 185 # Atmel Corporation 32-bit microprocessor family
+    EM_STM8                  = 186 # STMicroeletronics STM8 8-bit microcontroller
+    EM_TILE64                = 187 # Tilera TILE64 multicore architecture family
+    EM_TILEPRO               = 188 # Tilera TILEPro multicore architecture family
+    EM_MICROBLAZE            = 189 # Xilinx MicroBlaze 32-bit RISC soft processor core
+    EM_CUDA                  = 190 # NVIDIA CUDA architecture
+    EM_TILEGX                = 191 # Tilera TILE-Gx multicore architecture family
+    EM_CLOUDSHIELD           = 192 # CloudShield architecture family
+    EM_COREA_1ST             = 193 # KIPO-KAIST Core-A 1st generation processor family
+    EM_COREA_2ND             = 194 # KIPO-KAIST Core-A 2nd generation processor family
+    EM_ARC_COMPACT2          = 195 # Synopsys ARCompact V2
+    EM_OPEN8                 = 196 # Open8 8-bit RISC soft processor core
+    EM_RL78                  = 197 # Renesas RL78 family
+    EM_VIDEOCORE5            = 198 # Broadcom VideoCore V processor
+    EM_78KOR                 = 199 # Renesas 78KOR family
+    EM_56800EX               = 200 # Freescale 56800EX Digital Signal Controller (DSC)
+    EM_BA1                   = 201 # Beyond BA1 CPU architecture
+    EM_BA2                   = 202 # Beyond BA2 CPU architecture
+    EM_XCORE                 = 203 # XMOS xCORE processor family
+    EM_MCHP_PIC              = 204 # Microchip 8-bit PIC(r) family
+    EM_INTEL205              = 205 # Reserved by Intel
+    EM_INTEL206              = 206 # Reserved by Intel
+    EM_INTEL207              = 207 # Reserved by Intel
+    EM_INTEL208              = 208 # Reserved by Intel
+    EM_INTEL209              = 209 # Reserved by Intel
+    EM_KM32                  = 210 # KM211 KM32 32-bit processor
+    EM_KMX32                 = 211 # KM211 KMX32 32-bit processor
+    EM_KMX16                 = 212 # KM211 KMX16 16-bit processor
+    EM_KMX8                  = 213 # KM211 KMX8 8-bit processor
+    EM_KVARC                 = 214 # KM211 KVARC processor
+    EM_CDP                   = 215 # Paneve CDP architecture family
+    EM_COGE                  = 216 # Cognitive Smart Memory Processor
+    EM_COOL                  = 217 # Bluechip Systems CoolEngine
+    EM_NORC                  = 218 # Nanoradio Optimized RISC
+    EM_CSR_KALIMBA           = 219 # CSR Kalimba architecture family
+    EM_Z80                   = 220 # Zilog Z80
+    EM_VISIUM                = 221 # Controls and Data Services VISIUMcore processor
+    EM_FT32                  = 222 # FTDI Chip FT32 high performance 32-bit RISC architecture
+    EM_MOXIE                 = 223 # Moxie processor family
+    EM_AMDGPU                = 224 # AMD GPU architecture
+    #                          225-242 # Reserved
+    EM_RISCV                 = 243 # RISC-V
+    EM_LANAI                 = 244 # Lanai 32-bit processor
+    EM_BPF                   = 247 # Linux BPF -- in-kernel virtual machine
+    EM_LOONGARCH             = 258 # LoongArch
+
+    EM_AVR_UNOFFICIAL        = 0x1057 # AVR (unofficial)
+    EM_MSP430_UNOFFICIAL     = 0x1059 # MSP430 (unofficial)
+    EM_EPIPHANY_UNOFFICIAL   = 0x1223 # Adapteva Epiphany (unofficial)
+    EM_AVR32_UNOFFICIAL      = 0x18ad # Atmel AVR32 (unofficial)
+    EM_MT_UNOFFICIAL         = 0x2530 # Morpho MT (unofficial)
+    EM_FR30_UNOFFICIAL       = 0x3330 # FR30 (unofficial)
+    EM_OPENRISC_OLD          = 0x3426 # OpenRISC (obsolete)
+    EM_C166_UNOFFICIAL       = 0x4688 # Infineon C166 (unofficial)
+    EM_FRV_UNOFFICIAL        = 0x5441 # Cygnus FR-V (unofficial)
+    EM_DLX_UNOFFICIAL        = 0x5aa5 # DLX (unofficial)
+    EM_D10V_UNOFFICIAL       = 0x7650 # Cygnus D10V (unofficial)
+    EM_D30V_UNOFFICIAL       = 0x7676 # Cygnus D30V (unofficial)
+    EM_IP2K_UNOFFICIAL       = 0x8217 # Ubicom IP2xxx (unofficial)
+    EM_OPENRISC_OLD2         = 0x8472 # OpenRISC (obsolete)
+    EM_PPC_UNOFFICIAL        = 0x9025 # Cygnus PowerPC (unofficial)
+    EM_ALPHA_UNOFFICIAL      = 0x9026 # Digital Alpha (unofficial)
+    EM_M32R_UNOFFICIAL       = 0x9041 # Cygnus M32R (unofficial)
+    EM_V850_UNOFFICIAL       = 0x9080 # Cygnus V859 (unofficial)
+    EM_S390_OLD              = 0xa390 # IBM S/390 (obsolete)
+    EM_XTENSA_UNOFFICIAL     = 0xabc7 # Old Xtensa (unofficial)
+    EM_XSTORMY_UNOFFICIAL    = 0xad45 # xstormy16 (unofficial)
+    EM_MICROBLAZE_UNOFFICIAL = 0xbaab # Old MicroBlaze (unofficial)
+    EM_MN10300_UNOFFICIAL    = 0xbeef # Cygnus MN10300 (unofficial)
+    EM_MN10200_UNOFFICIAL    = 0xdead # Cygnus MN10200 (unofficial)
+    EM_MEP_UNOFFICIAL        = 0xf00d # Toshiba MeP (unofficial)
+    EM_M32C_UNOFFICIAL       = 0xfeb0 # Renesas M32C (unofficial)
+    EM_IQ2000_UNOFFICIAL     = 0xfeba # Vitesse IQ2000 (unofficial)
+    EM_NIOS_UNOFFICIAL       = 0xfebb # NIOS (unofficial)
+    EM_MOXIE_UNOFFICIAL      = 0xfeed # Moxie (unofficial)
+
+    # e_version
+    EV_NONE                  = 0
+    EV_CURRENT               = 1
+
+    # default values
+    e_magic                  = ELF_MAGIC
+    e_class                  = ELF_64_BITS
+    e_endianness             = LITTLE_ENDIAN
+    e_eiversion              = None
+    e_osabi                  = None
+    e_abiversion             = None
+    e_pad                    = None
+    e_type                   = ET_EXEC
+    e_machine                = EM_X86_64
+    e_version                = None
+    e_entry                  = 0x00
+    e_phoff                  = None
+    e_shoff                  = None
+    e_flags                  = None
+    e_ehsize                 = None
+    e_phentsize              = None
+    e_phnum                  = None
+    e_shentsize              = None
+    e_shnum                  = None
+    e_shstrndx               = None
 
     def __init__(self, elf="", minimalist=False):
         """Instantiate an ELF object. The default behavior is to create the object by parsing the ELF file.
@@ -8089,35 +8319,35 @@ def set_arch(arch=None, default=None):
     If that fails, and default is specified, select and set that arch.
     Return the selected arch, or raise an OSError."""
     arches = {
-        Elf.ARM: ARM, "ARM": ARM, "ARM_ANY": ARM, "ARMV2": ARM, "ARMV2A": ARM, "ARMV3": ARM,
+        Elf.EM_ARM: ARM, "ARM": ARM, "ARM_ANY": ARM, "ARMV2": ARM, "ARMV2A": ARM, "ARMV3": ARM,
         "ARMV4": ARM, "ARMV4T": ARM, "ARMV5": ARM, "ARMV5T": ARM, "ARMV5TE": ARM, "ARMV5TEJ": ARM,
         "ARMV6": ARM, "ARMV6K": ARM, "ARMV6KZ": ARM, "ARMV6T2": ARM, "ARMV7": ARM,
-        Elf.AARCH64: AARCH64, "AARCH64": AARCH64, "ARM64": AARCH64, "ARMV8": AARCH64, "ARMV8-A": AARCH64,
+        Elf.EM_AARCH64: AARCH64, "AARCH64": AARCH64, "ARM64": AARCH64, "ARMV8": AARCH64, "ARMV8-A": AARCH64,
         "ARMV9": AARCH64, "ARMV9-A": AARCH64,
-        Elf.X86_32: X86, "X86": X86, "I386": X86, "I386:INTEL": X86, "I8086": X86,
-        Elf.X86_64: X86_64, "X64": X86_64, "AMD64": X86_64, "X86_64": X86_64, "X86-64": X86_64,
+        Elf.EM_386: X86, "X86": X86, "I386": X86, "I386:INTEL": X86, "I8086": X86,
+        Elf.EM_X86_64: X86_64, "X64": X86_64, "AMD64": X86_64, "X86_64": X86_64, "X86-64": X86_64,
         "I386:X86-64": X86_64, "I386:X86-64:INTEL": X86_64,
-        Elf.POWERPC: PPC, "POWERPC": PPC, "PPC": PPC, "PPC32": PPC, "POWERPC:COMMON": PPC,
-        Elf.POWERPC64: PPC64, "POWERPC64": PPC64, "PPC64": PPC64, "POWERPC:COMMON64": PPC64,
+        Elf.EM_PPC: PPC, "POWERPC": PPC, "PPC": PPC, "PPC32": PPC, "POWERPC:COMMON": PPC,
+        Elf.EM_PPC64: PPC64, "POWERPC64": PPC64, "PPC64": PPC64, "POWERPC:COMMON64": PPC64,
         "RISCV": RISCV, "RISCV32": RISCV, "RISCV:RV32": RISCV, "RISCV64": RISCV64, "RISCV:RV64": RISCV64,
-        Elf.SPARC: SPARC, "SPARC": SPARC, "SPARC32": SPARC, "SPARC:V8": SPARC,
-        Elf.SPARC64: SPARC64, "SPARC64": SPARC64, "SPARC:V9": SPARC64,
-        Elf.SPARC32PLUS: SPARC64, "SPARC:V8PLUS": SPARC64, "SPARC:V8PLUSA": SPARC64,
+        Elf.EM_SPARC: SPARC, "SPARC": SPARC, "SPARC32": SPARC, "SPARC:V8": SPARC,
+        Elf.EM_SPARCV9: SPARC64, "SPARC64": SPARC64, "SPARC:V9": SPARC64,
+        Elf.EM_SPARC32PLUS: SPARC64, "SPARC:V8PLUS": SPARC64, "SPARC:V8PLUSA": SPARC64,
         "MIPS": MIPS, "MIPS:ISA32": MIPS, "MIPS:ISA32R2": MIPS, "MIPS:ISA32R3": MIPS,
         "MIPS:ISA32R5": MIPS, "MIPS:ISA32R6": MIPS,
         "MIPS64": MIPS64, "MIPS:ISA64": MIPS64, "MIPS:ISA64R2": MIPS64, "MIPS:ISA64R3": MIPS64,
         "MIPS:ISA64R5": MIPS64, "MIPS:ISA64R6": MIPS64,
-        Elf.S390X: S390X, "S390X": S390X, "S390:64-BIT": S390X,
-        Elf.SH4: SH4, "SH4": SH4, "SH4-NOFPU": SH4, "SH4A": SH4, "SH4A-NOFPU": SH4,
-        Elf.M68K: M68K, "M68K": M68K, "M68K:68000": M68K, "M68K:68008": M68K, "M68K:68010": M68K,
+        Elf.EM_S390: S390X, "S390X": S390X, "S390:64-BIT": S390X,
+        Elf.EM_SH: SH4, "SH4": SH4, "SH4-NOFPU": SH4, "SH4A": SH4, "SH4A-NOFPU": SH4,
+        Elf.EM_68K: M68K, "M68K": M68K, "M68K:68000": M68K, "M68K:68008": M68K, "M68K:68010": M68K,
         "M68K:68020": M68K, "M68K:68030": M68K, "M68K:68040": M68K, "M68K:68060": M68K,
-        Elf.ALPHA: ALPHA, Elf.ALPHA_UNOFFICIAL: ALPHA, "ALPHA": ALPHA, "ALPHA:EV4": ALPHA,
+        Elf.EM_ALPHA: ALPHA, Elf.EM_ALPHA_UNOFFICIAL: ALPHA, "ALPHA": ALPHA, "ALPHA:EV4": ALPHA,
         "ALPHA:EV5": ALPHA, "ALPHA;EV6": ALPHA,
-        Elf.PARISC: HPPA, "HPPA1.0": HPPA, "HPPA1.1": HPPA,
-        Elf.OR1K: OR1K, "OR1K": OR1K,
-        Elf.NIOS2: NIOS2, "NIOS2": NIOS2, "NIOS2:R1": NIOS2, "NIOS2:R2": NIOS2,
-        Elf.MICROBLAZE: MICROBLAZE, "MICROBLAZE": MICROBLAZE,
-        Elf.XTENSA: XTENSA, "XTENSA": XTENSA,
+        Elf.EM_PARISC: HPPA, "HPPA1.0": HPPA, "HPPA1.1": HPPA,
+        Elf.EM_OPENRISC: OR1K, "OR1K": OR1K,
+        Elf.EM_ALTERA_NIOS2: NIOS2, "NIOS2": NIOS2, "NIOS2:R1": NIOS2, "NIOS2:R2": NIOS2,
+        Elf.EM_MICROBLAZE: MICROBLAZE, "MICROBLAZE": MICROBLAZE,
+        Elf.EM_XTENSA: XTENSA, "XTENSA": XTENSA,
     }
     global current_arch, current_elf
 
@@ -8142,7 +8372,7 @@ def set_arch(arch=None, default=None):
                 current_elf = None
 
         try:
-            if current_elf and current_elf.e_machine not in [Elf.MIPS, Elf.RISCV]:
+            if current_elf and current_elf.e_machine not in [Elf.EM_MIPS, Elf.EM_RISCV]:
                 current_arch = arches[current_elf.e_machine]()
             else:
                 # MIPS32/64 and RISCV32/64  are indistinguishable because e_machine of the ELF header
@@ -13853,141 +14083,324 @@ class ElfInfoCommand(GenericCommand):
     """Display a limited subset of ELF header information. If no argument is provided,
     the command will show information about the current ELF being debugged."""
     _cmdline_ = "elf-info"
-    _syntax_ = "{:s} [-h] [-r] [FILE|ADDRESS]".format(_cmdline_)
-    _example_ = "{:s}                # parse binary itself\n".format(_cmdline_)
-    _example_ += "{:s} /bin/ls        # parse binary specified\n".format(_cmdline_)
-    _example_ += "{:s} 0x555555554000 # parse memory\n".format(_cmdline_)
-    _example_ += "{:s} -r /bin/ls     # show `readelf -a FILE | less`".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [-e] [-f FILE [-r]|-a ADDRESS]".format(_cmdline_)
+    _example_ = "{:s}                   # parse binary itself\n".format(_cmdline_)
+    _example_ += "{:s} -f /bin/ls        # parse binary\n".format(_cmdline_)
+    _example_ += "{:s} -f /bin/ls -r     # parse remote binary\n".format(_cmdline_)
+    _example_ += "{:s} -a 0x555555554000 # parse memory\n".format(_cmdline_)
+    _example_ += "{:s} -e -f /bin/ls     # show `readelf -a FILE | less`".format(_cmdline_)
     _category_ = "Process Information"
 
     def __init__(self, *args, **kwargs):
         super().__init__(complete=gdb.COMPLETE_FILENAME)
         return
 
-    def do_invoke(self, argv):
-        self.dont_repeat()
-
+    def elf_info(self, elf, orig_filepath=None):
         # http://www.sco.com/developers/gabi/latest/ch4.eheader.html
         classes = {
-            Elf.ELF_32_BITS       : "32-bit",
-            Elf.ELF_64_BITS       : "64-bit",
+            Elf.ELF_CLASS_NONE : "Unknown",
+            Elf.ELF_32_BITS    : "32-bit",
+            Elf.ELF_64_BITS    : "64-bit",
         }
 
         endianness = {
-            Elf.LITTLE_ENDIAN     : "Little-Endian",
-            Elf.BIG_ENDIAN        : "Big-Endian",
+            Elf.ELF_DATA_NONE : "Unknown",
+            Elf.LITTLE_ENDIAN : "Little-Endian",
+            Elf.BIG_ENDIAN    : "Big-Endian",
         }
 
-        osabi = {
-            Elf.OSABI_SYSTEMV     : "System V",
-            Elf.OSABI_HPUX        : "HP-UX",
-            Elf.OSABI_NETBSD      : "NetBSD",
-            Elf.OSABI_LINUX       : "Linux",
-            Elf.OSABI_SOLARIS     : "Solaris",
-            Elf.OSABI_AIX         : "AIX",
-            Elf.OSABI_IRIX        : "IRIX",
-            Elf.OSABI_FREEBSD     : "FreeBSD",
-            Elf.OSABI_OPENBSD     : "OpenBSD",
+        osabis = {
+            Elf.OSABI_SYSTEMV    : "UNIX System V ABI",
+            Elf.OSABI_HPUX       : "Hewlett-Packard HP-UX",
+            Elf.OSABI_NETBSD     : "NetBSD",
+            Elf.OSABI_LINUX      : "GNU Linux",
+            Elf.OSABI_HURD       : "GNU Hurd",
+            Elf.OSABI_86OPEN     : "86Open Common IA32 ABI",
+            Elf.OSABI_SOLARIS    : "Sun Solaris",
+            Elf.OSABI_AIX        : "IBM AIX",
+            Elf.OSABI_IRIX       : "SGI IRIX",
+            Elf.OSABI_FREEBSD    : "FreeBSD",
+            Elf.OSABI_TRU64      : "Compaq TRU64 UNIX",
+            Elf.OSABI_MODESTO    : "Novell Modesto",
+            Elf.OSABI_OPENBSD    : "OpenBSD",
+            Elf.OSABI_OPENVMS    : "OpenVMS",
+            Elf.OSABI_NSK        : "Hewlett-Packard Non-Stop Kernel",
+            Elf.OSABI_AROS       : "Amiga Research OS",
+            Elf.OSABI_FENIXOS    : "The FenixOS highly scalable multi-core OS",
+            Elf.OSABI_CLOUDABI   : "Nuxi CloudABI",
+            Elf.OSABI_OPENVOS    : "Stratus Technologies OpenVOS",
+            Elf.OSABI_ARM_AEABI  : "ARM EABI",
+            Elf.OSABI_ARM        : "ARM",
+            Elf.OSABI_STANDALONE : "Standalone (embedded) application",
         }
 
         types = {
-            Elf.ET_RELOC          : "Relocatable",
-            Elf.ET_EXEC           : "Executable",
-            Elf.ET_DYN            : "Shared",
-            Elf.ET_CORE           : "Core",
+            Elf.ET_NONE : "No file type",
+            Elf.ET_REL  : "Relocatable",
+            Elf.ET_EXEC : "Executable",
+            Elf.ET_DYN  : "Shared",
+            Elf.ET_CORE : "Core",
         }
 
         machines = {
-            Elf.X86_64            : "x86-64",
-            Elf.X86_32            : "x86",
-            Elf.ARM               : "ARM",
-            Elf.MIPS              : "MIPS",
-            Elf.POWERPC           : "PowerPC",
-            Elf.POWERPC64         : "PowerPC64",
-            Elf.SPARC             : "SPARC",
-            Elf.SPARC32PLUS       : "SPARC32PLUS",
-            Elf.SPARC64           : "SPARC64",
-            Elf.AARCH64           : "AArch64",
-            Elf.RISCV             : "RISC-V",
-            Elf.IA64              : "IA-64",
-            Elf.S390X             : "s390x",
-            Elf.SH4               : "sh4",
-            Elf.M68K              : "m68k",
-            Elf.ALPHA             : "alpha",
-            Elf.ALPHA_UNOFFICIAL  : "alpha-unofficial",
-            Elf.PARISC            : "PA-RISC(HP/PA)",
-            Elf.OR1K              : "OpenRISC 1000",
-            Elf.NIOS2             : "Nios II",
-            Elf.MICROBLAZE        : "MicroBlaze",
-            Elf.XTENSA            : "Xtensa",
+            Elf.EM_NONE                  : "No machine",
+            Elf.EM_M32                   : "AT&T WE 32100",
+            Elf.EM_SPARC                 : "SUN SPARC",
+            Elf.EM_386                   : "Intel 80386",
+            Elf.EM_68K                   : "Motorola m68k family",
+            Elf.EM_88K                   : "Motorola m88k family",
+            Elf.EM_IAMCU                 : "Intel MCU",
+            Elf.EM_860                   : "Intel 80860",
+            Elf.EM_MIPS                  : "MIPS R3000 big-endian",
+            Elf.EM_S370                  : "IBM System/370 Processor",
+            Elf.EM_MIPS_RS3_LE           : "MIPS RS3000 Little-endian",
+            Elf.EM_PARISC                : "Hewlett-Packard PA-RISC",
+            Elf.EM_VPP500                : "Fujitsu VPP500",
+            Elf.EM_SPARC32PLUS           : "Enhanced instruction set SPARC",
+            Elf.EM_960                   : "Intel 80960",
+            Elf.EM_PPC                   : "PowerPC",
+            Elf.EM_PPC64                 : "64-bit PowerPC",
+            Elf.EM_S390                  : "IBM System/390 Processor",
+            Elf.EM_SPU                   : "IBM SPU/SPC",
+            Elf.EM_V800                  : "NEC V800",
+            Elf.EM_FR20                  : "Fujitsu FR20",
+            Elf.EM_RH32                  : "TRW RH-32",
+            Elf.EM_RCE                   : "Motorola RCE",
+            Elf.EM_ARM                   : "ARM 32-bit architecture (AARCH32)",
+            Elf.EM_ALPHA                 : "Digital Alpha",
+            Elf.EM_SH                    : "Hitachi SH",
+            Elf.EM_SPARCV9               : "SPARC Version 9",
+            Elf.EM_TRICORE               : "Siemens TriCore embedded processor",
+            Elf.EM_ARC                   : "Argonaut RISC Core, Argonaut Technologies Inc.",
+            Elf.EM_H8_300                : "Hitachi H8/300",
+            Elf.EM_H8_300H               : "Hitachi H8/300H",
+            Elf.EM_H8S                   : "Hitachi H8S",
+            Elf.EM_H8_500                : "Hitachi H8/500",
+            Elf.EM_IA_64                 : "Intel IA-64 processor architecture",
+            Elf.EM_MIPS_X                : "Stanford MIPS-X",
+            Elf.EM_COLDFIRE              : "Motorola ColdFire",
+            Elf.EM_68HC12                : "Motorola M68HC12",
+            Elf.EM_MMA                   : "Fujitsu MMA Multimedia Accelerator",
+            Elf.EM_PCP                   : "Siemens PCP",
+            Elf.EM_NCPU                  : "Sony nCPU embedded RISC processor",
+            Elf.EM_NDR1                  : "Denso NDR1 microprocessor",
+            Elf.EM_STARCORE              : "Motorola Star*Core processor",
+            Elf.EM_ME16                  : "Toyota ME16 processor",
+            Elf.EM_ST100                 : "STMicroelectronics ST100 processor",
+            Elf.EM_TINYJ                 : "Advanced Logic Corp. TinyJ embedded processor family",
+            Elf.EM_X86_64                : "AMD x86-64 architecture",
+            Elf.EM_PDSP                  : "Sony DSP Processor",
+            Elf.EM_PDP10                 : "Digital Equipment Corp. PDP-10",
+            Elf.EM_PDP11                 : "Digital Equipment Corp. PDP-11",
+            Elf.EM_FX66                  : "Siemens FX66 microcontroller",
+            Elf.EM_ST9PLUS               : "STMicroelectronics ST9+ 8/16 bit microcontroller",
+            Elf.EM_ST7                   : "STMicroelectronics ST7 8-bit microcontroller",
+            Elf.EM_68HC16                : "Motorola MC68HC16 Microcontroller",
+            Elf.EM_68HC11                : "Motorola MC68HC11 Microcontroller",
+            Elf.EM_68HC08                : "Motorola MC68HC08 Microcontroller",
+            Elf.EM_68HC05                : "Motorola MC68HC05 Microcontroller",
+            Elf.EM_SVX                   : "Silicon Graphics SVx",
+            Elf.EM_ST19                  : "STMicroelectronics ST19 8-bit microcontroller",
+            Elf.EM_VAX                   : "Digital VAX",
+            Elf.EM_CRIS                  : "Axis Communications 32-bit embedded processor",
+            Elf.EM_JAVELIN               : "Infineon Technologies 32-bit embedded processor",
+            Elf.EM_FIREPATH              : "Element 14 64-bit DSP Processor",
+            Elf.EM_ZSP                   : "LSI Logic 16-bit DSP Processor",
+            Elf.EM_MMIX                  : "Donald Knuth's educational 64-bit processor",
+            Elf.EM_HUANY                 : "Harvard University machine-independent object files",
+            Elf.EM_PRISM                 : "SiTera Prism",
+            Elf.EM_AVR                   : "Atmel AVR 8-bit microcontroller",
+            Elf.EM_FR30                  : "Fujitsu FR30",
+            Elf.EM_D10V                  : "Mitsubishi D10V",
+            Elf.EM_D30V                  : "Mitsubishi D30V",
+            Elf.EM_V850                  : "NEC v850",
+            Elf.EM_M32R                  : "Mitsubishi M32R",
+            Elf.EM_MN10300               : "Matsushita MN10300",
+            Elf.EM_MN10200               : "Matsushita MN10200",
+            Elf.EM_PJ                    : "picoJava",
+            Elf.EM_OPENRISC              : "OpenRISC 32-bit embedded processor",
+            Elf.EM_ARC_COMPACT           : "ARC International ARCompact processor (old spelling/synonym: EM_ARC_A5)",
+            Elf.EM_XTENSA                : "Tensilica Xtensa Architecture",
+            Elf.EM_VIDEOCORE             : "Alphamosaic VideoCore processor",
+            Elf.EM_TMM_GPP               : "Thompson Multimedia General Purpose Processor",
+            Elf.EM_NS32K                 : "National Semiconductor 32000 series",
+            Elf.EM_TPC                   : "Tenor Network TPC processor",
+            Elf.EM_SNP1K                 : "Trebia SNP 1000 processor",
+            Elf.EM_ST200                 : "STMicroelectronics ST200 microcontroller",
+            Elf.EM_IP2K                  : "Ubicom IP2xxx microcontroller family",
+            Elf.EM_MAX                   : "MAX Processor",
+            Elf.EM_CR                    : "National Semiconductor CompactRISC microprocessor",
+            Elf.EM_F2MC16                : "Fujitsu F2MC16",
+            Elf.EM_MSP430                : "Texas Instruments embedded microcontroller msp430",
+            Elf.EM_BLACKFIN              : "Analog Devices Blackfin (DSP) processor",
+            Elf.EM_SE_C33                : "S1C33 Family of Seiko Epson processors",
+            Elf.EM_SEP                   : "Sharp embedded microprocessor",
+            Elf.EM_ARCA                  : "Arca RISC Microprocessor",
+            Elf.EM_UNICORE               : "Microprocessor series from PKU-Unity Ltd. and MPRC of Peking University",
+            Elf.EM_EXCESS                : "eXcess: 16/32/64-bit configurable embedded CPU",
+            Elf.EM_DXP                   : "Icera Semiconductor Inc. Deep Execution Processor",
+            Elf.EM_ALTERA_NIOS2          : "Altera Nios II soft-core processor",
+            Elf.EM_CRX                   : "National Semiconductor CompactRISC CRX microprocessor",
+            Elf.EM_XGATE                 : "Motorola XGATE embedded processor",
+            Elf.EM_C166                  : "Infineon C16x/XC16x processor",
+            Elf.EM_M16C                  : "Renesas M16C series microprocessors",
+            Elf.EM_DSPIC30F              : "Microchip Technology dsPIC30F Digital Signal Controller",
+            Elf.EM_CE                    : "Freescale Communication Engine RISC core",
+            Elf.EM_M32C                  : "Renesas M32C series microprocessors",
+            Elf.EM_TSK3000               : "Altium TSK3000 core",
+            Elf.EM_RS08                  : "Freescale RS08 embedded processor",
+            Elf.EM_SHARC                 : "Analog Devices SHARC family of 32-bit DSP processors",
+            Elf.EM_ECOG2                 : "Cyan Technology eCOG2 microprocessor",
+            Elf.EM_SCORE7                : "Sunplus S+core7 RISC processor",
+            Elf.EM_DSP24                 : "New Japan Radio (NJR) 24-bit DSP Processor",
+            Elf.EM_VIDEOCORE3            : "Broadcom VideoCore III processor",
+            Elf.EM_LATTICEMICO32         : "RISC processor for Lattice FPGA architecture",
+            Elf.EM_SE_C17                : "Seiko Epson C17 family",
+            Elf.EM_TI_C6000              : "The Texas Instruments TMS320C6000 DSP family",
+            Elf.EM_TI_C2000              : "The Texas Instruments TMS320C2000 DSP family",
+            Elf.EM_TI_C5500              : "The Texas Instruments TMS320C55x DSP family",
+            Elf.EM_TI_ARP32              : "Texas Instruments Application Specific RISC Processor, 32bit fetch",
+            Elf.EM_TI_PRU                : "Texas Instruments Programmable Realtime Unit",
+            Elf.EM_MMDSP_PLUS            : "STMicroelectronics 64bit VLIW Data Signal Processor",
+            Elf.EM_CYPRESS_M8C           : "Cypress M8C microprocessor",
+            Elf.EM_R32C                  : "Renesas R32C series microprocessors",
+            Elf.EM_TRIMEDIA              : "NXP Semiconductors TriMedia architecture family",
+            Elf.EM_QDSP6                 : "QUALCOMM DSP6 Processor",
+            Elf.EM_8051                  : "Intel 8051 and variants",
+            Elf.EM_STXP7X                : "STMicroelectronics STxP7x family of configurable and extensible RISC processors",
+            Elf.EM_NDS32                 : "Andes Technology compact code size embedded RISC processor family",
+            Elf.EM_ECOG1                 : "Cyan Technology eCOG1X family",
+            Elf.EM_ECOG1X                : "Cyan Technology eCOG1X family",
+            Elf.EM_MAXQ30                : "Dallas Semiconductor MAXQ30 Core Micro-controllers",
+            Elf.EM_XIMO16                : "New Japan Radio (NJR) 16-bit DSP Processor",
+            Elf.EM_MANIK                 : "M2000 Reconfigurable RISC Microprocessor",
+            Elf.EM_CRAYNV2               : "Cray Inc. NV2 vector architecture",
+            Elf.EM_RX                    : "Renesas RX family",
+            Elf.EM_METAG                 : "Imagination Technologies META processor architecture",
+            Elf.EM_MCST_ELBRUS           : "MCST Elbrus general purpose hardware architecture",
+            Elf.EM_ECOG16                : "Cyan Technology eCOG16 family",
+            Elf.EM_CR16                  : "National Semiconductor CompactRISC CR16 16-bit microprocessor",
+            Elf.EM_ETPU                  : "Freescale Extended Time Processing Unit",
+            Elf.EM_SLE9X                 : "Infineon Technologies SLE9X core",
+            Elf.EM_L10M                  : "Intel L10M",
+            Elf.EM_K10M                  : "Intel K10M",
+            182                          : "Reserved for future Intel use",
+            Elf.EM_AARCH64               : "ARM 64-bit architecture (AARCH64)",
+            184                          : "Reserved for future ARM use",
+            Elf.EM_AVR32                 : "Atmel Corporation 32-bit microprocessor family",
+            Elf.EM_STM8                  : "STMicroeletronics STM8 8-bit microcontroller",
+            Elf.EM_TILE64                : "Tilera TILE64 multicore architecture family",
+            Elf.EM_TILEPRO               : "Tilera TILEPro multicore architecture family",
+            Elf.EM_MICROBLAZE            : "Xilinx MicroBlaze 32-bit RISC soft processor core",
+            Elf.EM_CUDA                  : "NVIDIA CUDA architecture",
+            Elf.EM_TILEGX                : "Tilera TILE-Gx multicore architecture family",
+            Elf.EM_CLOUDSHIELD           : "CloudShield architecture family",
+            Elf.EM_COREA_1ST             : "KIPO-KAIST Core-A 1st generation processor family",
+            Elf.EM_COREA_2ND             : "KIPO-KAIST Core-A 2nd generation processor family",
+            Elf.EM_ARC_COMPACT2          : "Synopsys ARCompact V2",
+            Elf.EM_OPEN8                 : "Open8 8-bit RISC soft processor core",
+            Elf.EM_RL78                  : "Renesas RL78 family",
+            Elf.EM_VIDEOCORE5            : "Broadcom VideoCore V processor",
+            Elf.EM_78KOR                 : "Renesas 78KOR family",
+            Elf.EM_56800EX               : "Freescale 56800EX Digital Signal Controller (DSC)",
+            Elf.EM_BA1                   : "Beyond BA1 CPU architecture",
+            Elf.EM_BA2                   : "Beyond BA2 CPU architecture",
+            Elf.EM_XCORE                 : "XMOS xCORE processor family",
+            Elf.EM_MCHP_PIC              : "Microchip 8-bit PIC(r) family",
+            Elf.EM_INTEL205              : "Reserved by Intel",
+            Elf.EM_INTEL206              : "Reserved by Intel",
+            Elf.EM_INTEL207              : "Reserved by Intel",
+            Elf.EM_INTEL208              : "Reserved by Intel",
+            Elf.EM_INTEL209              : "Reserved by Intel",
+            Elf.EM_KM32                  : "KM211 KM32 32-bit processor",
+            Elf.EM_KMX32                 : "KM211 KMX32 32-bit processor",
+            Elf.EM_KMX16                 : "KM211 KMX16 16-bit processor",
+            Elf.EM_KMX8                  : "KM211 KMX8 8-bit processor",
+            Elf.EM_KVARC                 : "KM211 KVARC processor",
+            Elf.EM_CDP                   : "Paneve CDP architecture family",
+            Elf.EM_COGE                  : "Cognitive Smart Memory Processor",
+            Elf.EM_COOL                  : "Bluechip Systems CoolEngine",
+            Elf.EM_NORC                  : "Nanoradio Optimized RISC",
+            Elf.EM_CSR_KALIMBA           : "CSR Kalimba architecture family",
+            Elf.EM_Z80                   : "Zilog Z80",
+            Elf.EM_VISIUM                : "Controls and Data Services VISIUMcore processor",
+            Elf.EM_FT32                  : "FTDI Chip FT32 high performance 32-bit RISC architecture",
+            Elf.EM_MOXIE                 : "Moxie processor family",
+            Elf.EM_AMDGPU                : "AMD GPU architecture",
+            Elf.EM_RISCV                 : "RISC-V",
+            Elf.EM_LANAI                 : "Lanai 32-bit processor",
+            Elf.EM_BPF                   : "Linux BPF -- in-kernel virtual machine",
+            Elf.EM_LOONGARCH             : "LoongArch",
+
+            Elf.EM_AVR_UNOFFICIAL        : "AVR (unofficial)",
+            Elf.EM_MSP430_UNOFFICIAL     : "MSP430 (unofficial)",
+            Elf.EM_EPIPHANY_UNOFFICIAL   : "Adapteva Epiphany (unofficial)",
+            Elf.EM_AVR32_UNOFFICIAL      : "Atmel AVR32 (unofficial)",
+            Elf.EM_MT_UNOFFICIAL         : "Morpho MT (unofficial)",
+            Elf.EM_FR30_UNOFFICIAL       : "FR30 (unofficial)",
+            Elf.EM_OPENRISC_OLD          : "OpenRISC (obsolete)",
+            Elf.EM_C166_UNOFFICIAL       : "Infineon C166 (unofficial)",
+            Elf.EM_FRV_UNOFFICIAL        : "Cygnus FR-V (unofficial)",
+            Elf.EM_DLX_UNOFFICIAL        : "DLX (unofficial)",
+            Elf.EM_D10V_UNOFFICIAL       : "Cygnus D10V (unofficial)",
+            Elf.EM_D30V_UNOFFICIAL       : "Cygnus D30V (unofficial)",
+            Elf.EM_IP2K_UNOFFICIAL       : "Ubicom IP2xxx (unofficial)",
+            Elf.EM_OPENRISC_OLD2         : "OpenRISC (obsolete)",
+            Elf.EM_PPC_UNOFFICIAL        : "Cygnus PowerPC (unofficial)",
+            Elf.EM_ALPHA_UNOFFICIAL      : "Digital Alpha (unofficial)",
+            Elf.EM_M32R_UNOFFICIAL       : "Cygnus M32R (unofficial)",
+            Elf.EM_V850_UNOFFICIAL       : "Cygnus V859 (unofficial)",
+            Elf.EM_S390_OLD              : "IBM S/390 (obsolete)",
+            Elf.EM_XTENSA_UNOFFICIAL     : "Old Xtensa (unofficial)",
+            Elf.EM_XSTORMY_UNOFFICIAL    : "xstormy16 (unofficial)",
+            Elf.EM_MICROBLAZE_UNOFFICIAL : "Old MicroBlaze (unofficial)",
+            Elf.EM_MN10300_UNOFFICIAL    : "Cygnus MN10300 (unofficial)",
+            Elf.EM_MN10200_UNOFFICIAL    : "Cygnus MN10200 (unofficial)",
+            Elf.EM_MEP_UNOFFICIAL        : "Toshiba MeP (unofficial)",
+            Elf.EM_M32C_UNOFFICIAL       : "Renesas M32C (unofficial)",
+            Elf.EM_IQ2000_UNOFFICIAL     : "Vitesse IQ2000 (unofficial)",
+            Elf.EM_NIOS_UNOFFICIAL       : "NIOS (unofficial)",
+            Elf.EM_MOXIE_UNOFFICIAL      : "Moxie (unofficial)",
         }
 
-        if "-h" in argv:
-            self.usage()
-            return
+        versions = {
+            Elf.EV_NONE    : "Invalid version",
+            Elf.EV_CURRENT : "Current version",
+        }
 
-        use_readelf = False
-        if "-r" in argv:
-            argv.remove("-r")
-            use_readelf = True
-
-        if argv == []:
-            if is_qemu_system():
-                err("Argument-less calls are unsupported under qemu-system.")
-                return
-
-            filename = get_filepath()
-            if filename is None:
-                self.usage()
-                return
-            if use_readelf:
-                os.system("readelf -a '{:s}' | less".format(filename))
-                return
-            elf = get_elf_headers(filename)
-
-        else:
-            filename = argv[0]
-            if os.path.exists(filename):
-                if use_readelf:
-                    os.system("readelf -a '{:s}' | less".format(filename))
-                    return
-                elf = get_elf_headers(filename)
-            elif use_readelf:
-                self.usage()
-                return
+        if elf.filename:
+            if orig_filepath:
+                filename = "{:s} (remote: {:s})".format(elf.filename, orig_filepath)
             else:
-                try:
-                    addr = int(argv[0], 0)
-                    elf = Elf(addr)
-                except Exception:
-                    self.usage()
-                    return
+                filename = elf.filename
+        elif elf.addr is not None:
+            filename = "{:#x}".format(elf.addr)
+        gef_print(titlify("ELF Header - {:s}".format(filename)))
 
-        if elf is None or not elf.is_valid():
-            return
-
+        magic_hex = hexdump(struct.pack(">I", elf.e_magic), show_raw=True)
+        magic_str = repr(p32(elf.e_magic).decode()[::-1])
         data = [
-            ("Magic", "{0!s}".format(hexdump(struct.pack(">I", elf.e_magic), show_raw=True))),
-            ("Class", "{0:#x} - {1}".format(elf.e_class, classes[elf.e_class])),
-            ("Endianness", "{0:#x} - {1}".format(elf.e_endianness, endianness[elf.e_endianness])),
-            ("ELF Version", "{:#x}".format(elf.e_version)),
-            ("OS ABI", "{0:#x} - {1}".format(elf.e_osabi, osabi[elf.e_osabi])),
+            ("Magic", "{:s} ({:s})".format(magic_hex, magic_str)),
+            ("Class", "{:#x} - {:s}".format(elf.e_class, classes[elf.e_class])),
+            ("Endianness", "{:#x} - {:s}".format(elf.e_endianness, endianness[elf.e_endianness])),
+            ("ELF Version", "{:#x} - {:s}".format(elf.e_eiversion, versions[elf.e_eiversion])),
+            ("OS ABI", "{:#x} - {:s}".format(elf.e_osabi, osabis[elf.e_osabi])),
             ("ABI Version", "{:#x}".format(elf.e_abiversion)),
-            ("Type", "{0:#x} - {1}".format(elf.e_type, types[elf.e_type])),
-            ("Machine", "{0:#x} - {1}".format(elf.e_machine, machines[elf.e_machine])),
-            ("Version", "{:#x}".format(elf.e_eiversion)),
-            ("Entry point", "{}".format(format_address(elf.e_entry))),
-            ("Program Header Table" , "{}".format(format_address(elf.e_phoff))),
-            ("Program Header Entry Size" , "{0} ({0:#x})".format(elf.e_phentsize)),
-            ("Number of Program Headers" , "{}".format(elf.e_phnum)),
-            ("Section Header Table" , "{}".format(format_address(elf.e_shoff))),
-            ("Section Header Entry Size" , "{0} ({0:#x})".format(elf.e_shentsize)),
-            ("Number of Section Headers" , "{}".format(elf.e_shnum)),
-            ("ELF Header Size" , "{0} ({0:#x})".format(elf.e_ehsize)),
-            ("Section Header String Table Index" , "{}".format(elf.e_shstrndx)),
+            ("Type", "{:#x} - {:s}".format(elf.e_type, types[elf.e_type])),
+            ("Machine", "{:#x} - {:s}".format(elf.e_machine, machines.get(elf.e_machine, "Unknown"))),
+            ("Version", "{:#x} - {:s}".format(elf.e_version, versions[elf.e_version])),
+            ("Entry point", "{:s}".format(format_address(elf.e_entry))),
+            ("Program Header Table", "{:s}".format(format_address(elf.e_phoff))),
+            ("Program Header Entry Size", "{0:d} ({0:#x})".format(elf.e_phentsize)),
+            ("Number of Program Headers", "{:d}".format(elf.e_phnum)),
+            ("Section Header Table", "{:s}".format(format_address(elf.e_shoff))),
+            ("Section Header Entry Size", "{0:d} ({0:#x})".format(elf.e_shentsize)),
+            ("Number of Section Headers", "{:d}".format(elf.e_shnum)),
+            ("ELF Header Size", "{0:d} ({0:#x})".format(elf.e_ehsize)),
+            ("Section Header String Table Index", "{0:d} ({0:#x})".format(elf.e_shstrndx)),
+            ("Processor Specific Flags", "{:#x}".format(elf.e_flags)),
         ]
 
-        gef_print(titlify("ELF Header"))
         for title, content in data:
             gef_print("{:<34s}: {}".format(title, content))
 
@@ -14024,15 +14437,21 @@ class ElfInfoCommand(GenericCommand):
 
         name_width = max([len(ptype.get(p.p_type, "UNKNOWN")) for p in elf.phdrs])
 
-        gef_print(titlify("Program Header"))
+        gef_print(titlify("Program Header - {:s}".format(filename)))
         fmt = "[{:>2s}] {:{:d}s} {:>12s} {:>12s} {:>12s} {:>12s} {:>12s} {:5s} {:>8s}"
-        legend = ["#", "Type", name_width, "Offset", "Virtaddr", "Physaddr", "FileSiz", "MemSiz", "Flags", "Align"]
+        legend = [
+            "#", "Type", name_width, "Offset", "Virtaddr",
+            "Physaddr", "FileSiz", "MemSiz", "Flags", "Align",
+        ]
         gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
         for i, p in enumerate(elf.phdrs):
             p_type = ptype[p.p_type] if p.p_type in ptype else "UNKNOWN"
             p_flags = pflags[p.p_flags] if p.p_flags in pflags else "???"
             fmt = "[{:2d}] {:{:d}s} {:#12x} {:#12x} {:#12x} {:#12x} {:#12x} {:5s} {:#8x}"
-            args = [i, p_type, name_width, p.p_offset, p.p_vaddr, p.p_paddr, p.p_filesz, p.p_memsz, p_flags, p.p_align]
+            args = [
+                i, p_type, name_width, p.p_offset, p.p_vaddr,
+                p.p_paddr, p.p_filesz, p.p_memsz, p_flags, p.p_align,
+            ]
             gef_print(fmt.format(*args))
 
         stype = {
@@ -14067,7 +14486,7 @@ class ElfInfoCommand(GenericCommand):
             Shdr.SHT_GNU_versym     : "GNU_versym",
         }
 
-        gef_print(titlify("Section Header"))
+        gef_print(titlify("Section Header - {:s}".format(filename)))
         if not elf.shdrs:
             gef_print("Not loaded")
         else:
@@ -14109,6 +14528,92 @@ class ElfInfoCommand(GenericCommand):
                     s.sh_entsize, sh_flags, s.sh_link, s.sh_info, s.sh_addralign,
                 ]
                 gef_print(fmt.format(*args))
+        return
+
+    def do_invoke(self, argv):
+        self.dont_repeat()
+
+        if "-h" in argv:
+            self.usage()
+            return
+
+        use_readelf = False
+        if "-e" in argv:
+            argv.remove("-e")
+            use_readelf = True
+
+        remote = False
+        if "-r" in argv:
+            argv.remove("-r")
+            remote = True
+
+        elf = None
+        filepath = None
+        memaddr = None
+        tmp_filepath = None
+        orig_filepath = None
+
+        if "-f" in argv:
+            try:
+                idx = argv.index("-f")
+                filepath = argv[idx + 1]
+                argv = argv[:idx] + argv[idx + 2:]
+            except Exception:
+                self.usage()
+                return
+
+        if "-a" in argv:
+            try:
+                idx = argv.index("-a")
+                memaddr = int(argv[idx + 1], 0)
+                argv = argv[:idx] + argv[idx + 2:]
+            except Exception:
+                self.usage()
+                return
+
+        if argv:
+            self.usage()
+            return
+
+        if filepath is None and memaddr is None:
+            if is_qemu_system():
+                err("Argument-less calls are unsupported under qemu-system.")
+                return
+
+            filepath = get_filepath()
+            if filepath is None:
+                err("Failed to get filepath")
+                return
+
+        if filepath and remote:
+            if not is_remote_debug():
+                err("-r option is allowed only remote debug.")
+                return
+            data = read_remote_file(filepath, as_byte=True)
+            if not data:
+                err("Failed to read remote filepath")
+                return
+            orig_filepath = filepath
+            tmp_filepath = filepath = "/tmp/gef-elf.elf"
+            open(filepath, "wb").write(data)
+
+        if use_readelf:
+            if filepath:
+                os.system("readelf -a '{:s}' | less".format(filepath))
+            else:
+                err("Failed to get filepath")
+        else:
+            if filepath is not None:
+                elf = get_elf_headers(filepath)
+            elif memaddr is not None:
+                elf = Elf(memaddr)
+            if elf is None or not elf.is_valid():
+                err("Failed to parse elf")
+            else:
+                self.elf_info(elf, orig_filepath)
+
+        if tmp_filepath and os.path.exists(tmp_filepath):
+            os.unlink(tmp_filepath)
         return
 
 
@@ -14762,7 +15267,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
     DW_CFA_high_user                    = 0x3f
 
     def get_register_name(self, reg):
-        if self.elf.e_machine == Elf.X86_64:
+        if self.elf.e_machine == Elf.EM_X86_64:
             REG_LIST = [
                 "rax", "rdx", "rcx", "rbx", "rsi", "rdi", "rbp", "rsp",
                 "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
@@ -14774,7 +15279,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                 "???", "fs.base", "gs.base", "???", "???", "tr", "ldtr", "mxcsr",
                 "fcw", "fsw",
             ]
-        elif self.elf.e_machine == Elf.X86_32:
+        elif self.elf.e_machine == Elf.EM_386:
             REG_LIST = [
                 "eax", "ecx", "edx", "rbx", "esp", "ebp", "esi", "edi",
                 "eip", "eflags", "trapno", "st0", "st1", "st2", "st3", "st4",
@@ -14783,7 +15288,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                 "mm3", "mm4", "mm5", "mm6", "mm7", "fctrl", "fstat", "mxcsr",
                 "es", "cs", "ss", "ds", "fs", "gs",
             ]
-        elif self.elf.e_machine == Elf.ARM:
+        elif self.elf.e_machine == Elf.EM_ARM:
             REG_LIST = [
                 "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7",
                 "r8", "r9", "r10", "r11", "r12", "sp", "lr", "pc",
@@ -14805,7 +15310,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
             ] + ["???"] * 26 + [
                 "wc0", "wc1", "wc2", "wc3", "wc4", "wc5", "wc6", "wc7",
             ]
-        elif self.elf.e_machine == Elf.AARCH64:
+        elif self.elf.e_machine == Elf.EM_AARCH64:
             REG_LIST = [
                 "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7",
                 "x8", "x9", "x10", "x11", "x12", "x13", "x14", "x15",
@@ -14949,7 +15454,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                         pc += op1 * code_align
                         entries.append([pos, data[pos:new_pos], indent + "MIPS_advance_loc8 {:#x} to {:#x}".format(op1, pc), None, ""])
                     elif opcode == self.DW_CFA_GNU_window_save:
-                        if self.elf.e_machine == Elf.AARCH64:
+                        if self.elf.e_machine == Elf.EM_AARCH64:
                             entries.append([pos, data[pos:new_pos], indent + "AARCH64_negate_ra_state", None, ""])
                         else:
                             entries.append([pos, data[pos:new_pos], indent + "GNU_window_save", None, ""])
