@@ -203,6 +203,10 @@ highlight_table = {}
 ANSI_SPLIT_RE = r"(\033\[[\d;]*m)"
 
 
+if not os.path.exists(GEF_TEMP_DIR):
+    os.mkdir(GEF_TEMP_DIR)
+
+
 def perf_enable(f):
     """Decorator wrapper to perf."""
 
@@ -2464,7 +2468,7 @@ def gef_execute_external(command, as_list=False, *args, **kwargs):
 def gef_execute_gdb_script(commands):
     """Execute the parameter `source` as GDB command. This is done by writing `commands` to
     a temporary file, which is then executed via GDB `source` command. The tempfile is then deleted."""
-    fd, fname = tempfile.mkstemp(suffix=".gdb", prefix="gef_")
+    fd, fname = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".gdb", prefix="gef_")
     with os.fdopen(fd, "w") as f:
         f.write(commands)
         f.flush()
@@ -7323,16 +7327,16 @@ def get_filename():
 
 
 def read_remote_file(filepath, as_byte=True):
-    TMP_NAME = "/tmp/gef.tmp"
+    tmp_name = os.path.join(GEF_TEMP_DIR, "read_remote_file.tmp")
     try:
-        gdb.execute("remote get {:s} {:s}".format(filepath, TMP_NAME), to_string=True)
+        gdb.execute("remote get {:s} {:s}".format(filepath, tmp_name), to_string=True)
     except gdb.error:
         return ""
     if as_byte:
-        data = open(TMP_NAME, "rb").read()
+        data = open(tmp_name, "rb").read()
     else:
-        data = open(TMP_NAME, "r").read()
-    os.unlink(TMP_NAME)
+        data = open(tmp_name, "r").read()
+    os.unlink(tmp_name)
     return data
 
 
@@ -10543,8 +10547,11 @@ class SmartMemoryDumpCommand(GenericCommand):
             except gdb.MemoryError:
                 continue
 
-            dumpfile_name = "{:05d}{:s}{:0{}x}-{:0{}x}_{:s}_{:s}.raw".format(pid, prefix, start, addr_len, end, addr_len, perm, path)
-            open(dumpfile_name, "wb").write(data)
+            fmt = "{:05d}{:s}{:0{}x}-{:0{}x}_{:s}_{:s}.raw"
+            dumpfile_name = fmt.format(pid, prefix, start, addr_len, end, addr_len, perm, path)
+            filepath = os.path.join(GEF_TEMP_DIR, dumpfile_name)
+            open(filepath, "wb").write(data)
+            info("Saved to {:s}".format(filepath))
         return
 
 
@@ -12037,7 +12044,7 @@ class UnicornEmulateCommand(GenericCommand):
 
             if sect.permission & Permission.READ:
                 code = read_memory(sect.page_start, sect.size)
-                loc = "/tmp/gef-{:s}-{:#x}.raw".format(filename, sect.page_start)
+                loc = os.path.join(GEF_TEMP_DIR, "unicorn-emulate-{:s}-{:#x}.raw".format(filename, sect.page_start))
                 open(loc, "wb").write(bytes(code))
                 content += "    emu.mem_write({:#x}, open('{:s}', 'rb').read())\n".format(sect.page_start, loc)
                 content += "\n"
@@ -12082,7 +12089,7 @@ class UnicornEmulateCommand(GenericCommand):
             tmp_fd_ = open(kwargs["to_file"], "w")
             tmp_fd = tmp_fd_.fileno()
         else:
-            tmp_fd, tmp_filename = tempfile.mkstemp(suffix=".py", prefix="gef-uc-")
+            tmp_fd, tmp_filename = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".py", prefix="gef-uc-")
         os.write(tmp_fd, gef_pybytes(content))
         os.close(tmp_fd)
         if kwargs["to_file"]:
@@ -13278,6 +13285,7 @@ class RpCommand(GenericCommand):
 
     def exec_rp(self, ropN):
         out = "rop{}_{}_v{}.txt".format(ropN, os.path.basename(self.path), self.rp_version)
+        out = os.path.join(GEF_TEMP_DIR, out)
         cmd = f"{self.rp} --file='{self.path}' --rop={ropN} --unique > {out}"
         gef_print(titlify(cmd))
         if not os.path.exists(out):
@@ -13290,7 +13298,7 @@ class RpCommand(GenericCommand):
             return
         lines = open(out, "r").read()
 
-        _, tmp_path = tempfile.mkstemp()
+        _, tmp_path = tempfile.mkstemp(dir=GEF_TEMP_DIR)
         fp = open(tmp_path, "w")
         for line in lines.splitlines():
             line = re.sub(r"\x1B\[([0-9]{1,2}(;[0-9]{1,2})*)?m", "", line) # remove color
@@ -13386,8 +13394,8 @@ class RpCommand(GenericCommand):
         if is_qemu_system():
             if argv[0] == "kernel":
                 # dump kernel then apply vmlinux-to-elf
-                dump_mem_file = "/tmp/gef-dump-memory.raw"
-                self.path = symboled_vmlinux_file = "/tmp/gef-dump-memory.elf"
+                dump_mem_file = os.path.join(GEF_TEMP_DIR, "rp-dump-memory.raw")
+                self.path = symboled_vmlinux_file = os.path.join(GEF_TEMP_DIR, "rp-dump-memory.elf")
                 addrs = VmlinuxToElfApplyCommand().dump_kernel_elf(dump_mem_file, symboled_vmlinux_file)
                 if addrs is None:
                     err("Failed to get symboled ELF")
@@ -13919,7 +13927,7 @@ class AsmListCommand(GenericCommand):
             # not filtered
             text += line + "\n"
 
-        _, tmp_path = tempfile.mkstemp()
+        _, tmp_path = tempfile.mkstemp(dir=GEF_TEMP_DIR)
         open(tmp_path, "w").write(text.rstrip())
         os.system(f"{less} -R {tmp_path}")
         os.unlink(tmp_path)
@@ -14049,32 +14057,33 @@ class ArchInfoCommand(GenericCommand):
 
         gef_print(titlify("GDB/ELF settings"))
         show_arch = gdb.execute("show architecture", to_string=True).rstrip()
-        gef_print("{:28s} {:s} {:s}".format("show architecture", RIGHT_ARROW, show_arch))
-        gef_print("{:28s} {:s} {:s}".format("bit", RIGHT_ARROW, ["32-bit", "64-bit"][is_64bit()]))
-        gef_print("{:28s} {:s} {:s}".format("endian", RIGHT_ARROW, ["little", "big"][is_big_endian()]))
+        gef_print("{:30s} {:s} {:s}".format("show architecture", RIGHT_ARROW, show_arch))
+        gef_print("{:30s} {:s} {:s}".format("bit", RIGHT_ARROW, ["32-bit", "64-bit"][is_64bit()]))
+        gef_print("{:30s} {:s} {:s}".format("endian", RIGHT_ARROW, ["little", "big"][is_big_endian()]))
         gef_print(titlify("GDB mode"))
-        gef_print("{:28s} {:s} {:s}".format("is_remote_debug()", RIGHT_ARROW, str(is_remote_debug())))
-        gef_print("{:28s} {:s} {:s}".format("is_qemu_usermode()", RIGHT_ARROW, str(is_qemu_usermode())))
-        gef_print("{:28s} {:s} {:s}".format("is_qemu_system()", RIGHT_ARROW, str(is_qemu_system())))
-        gef_print("{:28s} {:s} {:s}".format("is_pin()", RIGHT_ARROW, str(is_pin())))
+        gef_print("{:30s} {:s} {:s}".format("is_remote_debug()", RIGHT_ARROW, str(is_remote_debug())))
+        gef_print("{:30s} {:s} {:s}".format("is_container_attach()", RIGHT_ARROW, str(is_container_attach())))
+        gef_print("{:30s} {:s} {:s}".format("is_qemu_system()", RIGHT_ARROW, str(is_qemu_system())))
+        gef_print("{:30s} {:s} {:s}".format("is_qemu_usermode()", RIGHT_ARROW, str(is_qemu_usermode())))
+        gef_print("{:30s} {:s} {:s}".format("is_pin() (Intel PIN/Intel SDE)", RIGHT_ARROW, str(is_pin())))
         gef_print(titlify("GEF settings"))
-        gef_print("{:28s} {:s} {:s}".format("current_arch.arch", RIGHT_ARROW, current_arch.arch))
-        gef_print("{:28s} {:s} {:s}".format("current_arch.mode", RIGHT_ARROW, current_arch.mode))
+        gef_print("{:30s} {:s} {:s}".format("current_arch.arch", RIGHT_ARROW, current_arch.arch))
+        gef_print("{:30s} {:s} {:s}".format("current_arch.mode", RIGHT_ARROW, current_arch.mode))
         instlen = str(current_arch.instruction_length) if current_arch.instruction_length else "variable length"
-        gef_print("{:28s} {:s} {:s}".format("instruction length", RIGHT_ARROW, instlen))
+        gef_print("{:30s} {:s} {:s}".format("instruction length", RIGHT_ARROW, instlen))
         fparams = ', '.join(current_arch.function_parameters)
         if len(current_arch.function_parameters) == 1:
             fparams += "(passing via stack)"
-        gef_print("{:28s} {:s} {:s}".format("return register", RIGHT_ARROW, current_arch.return_register))
-        gef_print("{:28s} {:s} {:s}".format("function parameters", RIGHT_ARROW, fparams))
-        gef_print("{:28s} {:s} {:s}".format("syscall register", RIGHT_ARROW, str(current_arch.syscall_register)))
+        gef_print("{:30s} {:s} {:s}".format("return register", RIGHT_ARROW, current_arch.return_register))
+        gef_print("{:30s} {:s} {:s}".format("function parameters", RIGHT_ARROW, fparams))
+        gef_print("{:30s} {:s} {:s}".format("syscall register", RIGHT_ARROW, str(current_arch.syscall_register)))
         sparams = ', '.join(current_arch.syscall_parameters)
-        gef_print("{:28s} {:s} {:s}".format("syscall parameters", RIGHT_ARROW, sparams))
-        gef_print("{:28s} {:s} {:s}".format("32bit-emulated (compat mode)", RIGHT_ARROW, str(self.is_emulated32())))
-        gef_print("{:28s} {:s} {:s}".format("Has a delay slot", RIGHT_ARROW, str(current_arch.has_delay_slot)))
-        gef_print("{:28s} {:s} {:s}".format("keystone support", RIGHT_ARROW, str(current_arch.keystone_support)))
-        gef_print("{:28s} {:s} {:s}".format("capstone support", RIGHT_ARROW, str(current_arch.capstone_support)))
-        gef_print("{:28s} {:s} {:s}".format("unicorn support", RIGHT_ARROW, str(current_arch.unicorn_support)))
+        gef_print("{:30s} {:s} {:s}".format("syscall parameters", RIGHT_ARROW, sparams))
+        gef_print("{:30s} {:s} {:s}".format("32bit-emulated (compat mode)", RIGHT_ARROW, str(self.is_emulated32())))
+        gef_print("{:30s} {:s} {:s}".format("Has a delay slot", RIGHT_ARROW, str(current_arch.has_delay_slot)))
+        gef_print("{:30s} {:s} {:s}".format("keystone support", RIGHT_ARROW, str(current_arch.keystone_support)))
+        gef_print("{:30s} {:s} {:s}".format("capstone support", RIGHT_ARROW, str(current_arch.capstone_support)))
+        gef_print("{:30s} {:s} {:s}".format("unicorn support", RIGHT_ARROW, str(current_arch.unicorn_support)))
         return
 
 
@@ -14594,7 +14603,7 @@ class ElfInfoCommand(GenericCommand):
                 err("Failed to read remote filepath")
                 return
             orig_filepath = filepath
-            tmp_filepath = filepath = "/tmp/gef-elf.elf"
+            tmp_filepath = filepath = os.path.join(GEF_TEMP_DIR, "elf-info.elf")
             open(filepath, "wb").write(data)
 
         if use_readelf:
@@ -16354,7 +16363,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
         out += self.format_entry(gcc_except_table, gcc_except_table_entries)
 
         # print
-        _, tmp_path = tempfile.mkstemp()
+        _, tmp_path = tempfile.mkstemp(dir=GEF_TEMP_DIR)
         open(tmp_path, "w").write('\n'.join(out))
         os.system(f"{less} -R {tmp_path}")
         os.unlink(tmp_path)
@@ -39528,9 +39537,9 @@ class VmlinuxToElfApplyCommand(GenericCommand):
             self.usage()
             return
 
-        DUMPED_MEM_FILE = "/tmp/gef-dump-memory.raw"
-        SYMBOLED_VMLINUX_FILE = "/tmp/gef-dump-memory.elf"
-        dic = self.dump_kernel_elf(DUMPED_MEM_FILE, SYMBOLED_VMLINUX_FILE, force=force_reparse)
+        dumped_mem_file = os.path.join(GEF_TEMP_DIR, "vmlinux-to-elf-dump-memory.raw")
+        symboled_vmlinux_file = os.path.join(GEF_TEMP_DIR, "vmlinux-to-elf-dump-memory.elf")
+        dic = self.dump_kernel_elf(dumped_mem_file, symboled_vmlinux_file, force=force_reparse)
         if dic is None:
             err("Failed to create kernel ELF")
             return
@@ -39542,7 +39551,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
         #   gdb 8.x: Usage: add-symbol-file FILE ADDR [-readnow | -readnever | -s SECT-NAME SECT-ADDR]...
         # But the created ELF has no .text, only a .kernel
         # Applying an empty symbol has no effect, so tentatively specify the same address as the .kernel.
-        cmd = "add-symbol-file {} {:#x} -s .kernel {:#x}".format(SYMBOLED_VMLINUX_FILE, dic['kbase'], dic['kbase'])
+        cmd = "add-symbol-file {} {:#x} -s .kernel {:#x}".format(symboled_vmlinux_file, dic['kbase'], dic['kbase'])
         info(cmd)
         gdb.execute(cmd)
         return
@@ -49309,7 +49318,7 @@ class AddSymbolTemporaryCommand(GenericCommand):
                 open(cache["fname"], "wb").write(cache["data"])
                 return cache["fname"]
             # create light ELF
-            fd, fname = tempfile.mkstemp(dir="/tmp", suffix=".c")
+            fd, fname = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".c")
             os.fdopen(fd, "w").write("int main() {}")
             os.system(f"{gcc} '{fname}' -no-pie -o '{fname}.debug'")
             os.unlink(f"{fname}")
@@ -49808,7 +49817,7 @@ class BytearrayCommand(GenericCommand):
                 arraytable.append(hexbyte)
                 binarray.append(intbyte)
 
-        info("Dumping table to file")
+        info("Dumping table")
         output = ""
         cnt = 0
         outputline = '"'
@@ -49830,8 +49839,8 @@ class BytearrayCommand(GenericCommand):
         gef_print(output)
 
         if dump:
-            binfilename = "bytearray.bin"
-            arrayfile = "bytearray.txt"
+            binfilename = os.path.join(GEF_TEMP_DIR, "bytearray.bin")
+            arrayfile = os.path.join(GEF_TEMP_DIR, "bytearray.txt")
             binfile = open(binfilename, "wb")
             binfile.write(binarray)
             binfile.close()
@@ -50824,7 +50833,7 @@ class GefTmuxSetup(gdb.Command):
         sty = os.getenv("STY")
         ok("screen session found, splitting window...")
         fd_script, script_path = tempfile.mkstemp()
-        fd_tty, tty_path = tempfile.mkstemp()
+        fd_tty, tty_path = tempfile.mkstemp(dir=GEF_TEMP_DIR)
         os.close(fd_tty)
 
         with os.fdopen(fd_script, "w") as f:
