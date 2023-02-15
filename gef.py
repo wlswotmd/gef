@@ -7361,7 +7361,7 @@ def append_proc_root(filepath):
 
 
 @functools.lru_cache(maxsize=None)
-def get_filepath(for_vmmap=False):
+def get_filepath(append_proc_root_prefix=True):
     """Return the local absolute path of the file currently debugged."""
     filepath = gdb.current_progspace().filename
 
@@ -7378,14 +7378,14 @@ def get_filepath(for_vmmap=False):
         # inferior probably did not have name, extract cmdline from info proc
         if filepath is None:
             filepath = get_path_from_info_proc()
-            if not for_vmmap:
+            if append_proc_root_prefix:
                 # maybe different mnt namespace, so use /proc/<PID>/root
                 filepath = append_proc_root(filepath)
         # not remote, but different PID namespace and attaching by pid. it shows with `target:`
         elif filepath.startswith("target:"):
             # /proc/PID/root is not given when used for purposes such as comparing with entry in vmmap
             filepath = filepath[len("target:"):]
-            if not for_vmmap:
+            if append_proc_root_prefix:
                 # maybe different mnt namespace, so use /proc/<PID>/root
                 filepath = append_proc_root(filepath)
         # normal path
@@ -7803,7 +7803,7 @@ def get_info_files():
         elif len(blobs) == 7:
             filepath = blobs[6]
         else:
-            filepath = get_filepath(for_vmmap=True)
+            filepath = get_filepath(append_proc_root_prefix=False)
         Zone = collections.namedtuple("Zone", ["name", "zone_start", "zone_end", "filename"])
         info = Zone(section_name, addr_start, addr_end, filepath)
         info_files.append(info)
@@ -10768,10 +10768,10 @@ class ScanSectionCommand(GenericCommand):
              .format(Color.yellowify(haystack), Color.yellowify(needle)))
 
         if haystack in ["binary", "bin"]:
-            haystack = get_filepath(for_vmmap=True)
+            haystack = get_filepath(append_proc_root_prefix=False)
 
         if needle in ["binary", "bin"]:
-            needle = get_filepath(for_vmmap=True)
+            needle = get_filepath(append_proc_root_prefix=False)
 
         needle_sections = []
         haystack_sections = []
@@ -11045,7 +11045,7 @@ class SearchPatternCommand(GenericCommand):
                 # section name -> call search wrapper
                 section_name = argv[2]
                 if section_name in ["binary", "bin"] and not is_qemu_system():
-                    section_name = get_filepath(for_vmmap=True)
+                    section_name = get_filepath(append_proc_root_prefix=False)
 
                 info("Searching '{:s}' in {:s}".format(Color.yellowify(pattern), section_name))
                 self.search_pattern(pattern, section_name)
@@ -13309,7 +13309,8 @@ class RopperCommand(GenericCommand):
             if is_qemu_usermode():
                 sect = next(filter(lambda x: x.path == "[code]", get_process_maps()))
             else:
-                sect = next(filter(lambda x: x.path == get_filepath(for_vmmap=True), get_process_maps()))
+                filepath = get_filepath(append_proc_root_prefix=False)
+                sect = next(filter(lambda x: x.path == filepath, get_process_maps()))
             argv.append("-I")
             argv.append("{:#x}".format(sect.page_start))
 
@@ -16531,7 +16532,8 @@ class EntryPointBreakCommand(GenericCommand):
         unhide_context()
         gdb.execute("set stop-on-solib-events 0")
         vmmap = get_process_maps()
-        base_address = [x.page_start for x in vmmap if x.path == get_filepath(for_vmmap=True)][0]
+        filepath = get_filepath(append_proc_root_prefix=False)
+        base_address = [x.page_start for x in vmmap if x.path == filepath][0]
         return self.set_init_tbreak(base_address + addr)
 
 
@@ -21079,7 +21081,7 @@ class GotCommand(GenericCommand):
         else:
             # use main binary
             self.filename = get_filepath() # /proc/<PID>/root/path/to/binary if another mnt namespace
-            self.filename_vmmap = get_filepath(for_vmmap=True)
+            self.filename_vmmap = get_filepath(append_proc_root_prefix=False)
             if self.filename is None:
                 err("Missing info about architecture. Please set: `file /path/to/target_binary`")
                 return
@@ -32744,7 +32746,7 @@ class CodebaseCommand(GenericCommand):
     def do_invoke(self, argv):
         self.dont_repeat()
 
-        codebase = get_section_base_address(get_filepath(for_vmmap=True))
+        codebase = get_section_base_address(get_filepath(append_proc_root_prefix=False))
         if codebase is None:
             codebase = get_section_base_address(get_path_from_info_proc())
         if codebase is None:
@@ -32958,7 +32960,7 @@ class MagicCommand(GenericCommand):
         return
 
     def magic(self):
-        codebase = get_section_base_address(get_filepath(for_vmmap=True))
+        codebase = get_section_base_address(get_filepath(append_proc_root_prefix=False))
         libc = get_section_base_address_by_list(("libc-2.", "libc.so.6"))
         ld = get_section_base_address_by_list(("ld-2.", "ld-linux-", "ld-linux.so.2"))
         if libc is None or ld is None:
@@ -40508,7 +40510,7 @@ class PartitionAllocDumpCommand(GenericCommand):
         """searches for fast_malloc_root, array_buffer_root_ and buffer_root_"""
         # the pointers to each root are in the RW area.
         # first, we list up the RW area.
-        filepath = get_filepath(for_vmmap=True)
+        filepath = get_filepath(append_proc_root_prefix=False)
         if is_64bit():
             codebase = get_section_base_address(filepath)
             mask = 0x0000ffff00000000
