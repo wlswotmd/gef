@@ -49596,9 +49596,9 @@ class KsymaddrRemoteApplyCommand(GenericCommand):
 
 
 @register_command
-class LinklistWalkCommand(GenericCommand):
-    """Link list walk."""
-    _cmdline_ = "linklist-walk"
+class WalkLinkListCommand(GenericCommand):
+    """Walk the link list"""
+    _cmdline_ = "walk-link-list"
     _syntax_ = "{:s} [-o OFFSET] ADDRESS".format(_cmdline_)
     _example_ = "{:s} 0xffff9c60800597e0 # walk list_head.next\n".format(_cmdline_)
     _example_ += "{:s} -o 8 0xffff9c60800597e0 # walk list_head.prev".format(_cmdline_)

@@ -397,8 +397,8 @@ All of these features are experimental. Tested on Ubuntu 22.04.
 * `srop-hint`: shows the code for Sigreturn-Oriented-Programming as hint.
 * `dtor-dump`: dumps some destructor functions list.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dtor-dump.png)
-* `linklist-walk`: walks link list.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/linklist-walk.png)
+* `walk-link-list`: walks the link list.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/walk-link-list.png)
 * `ptr-demangle`: shows the demangled value of the value mangled by `PTR_MANGLE`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ptr-demangle.png)
 * `search-mangled-ptr`: searches the mangled value from RW memory.
