@@ -1138,7 +1138,11 @@ class Instruction:
         #   mnemo: "lea"
         #   operands: ['rcx', '[rip+0x11ee5]        # 0x55555556c69a']
         #   opcodes: b'H\x8d\r\xe5\x1e\x01\x00'
-        self.address, self.location, self.mnemonic, self.operands, self.opcodes = address, location, mnemo, operands, opcodes
+        self.address = address
+        self.location = location
+        self.mnemonic = mnemo
+        self.operands = operands
+        self.opcodes = opcodes
         return
 
     # Allow formatting an instruction with {:o} to show opcodes.
@@ -1236,7 +1240,8 @@ class Instruction:
 
         # formatting
         fmt = "{:#10x} {:{:d}}   {:20}   {:6} {:s} {:s}"
-        return fmt.format(self.address, opcodes_text, opcodes_len * 2, location, self.mnemonic, operands, sym)
+        length = opcodes_len * 2
+        return fmt.format(self.address, opcodes_text, length, location, self.mnemonic, operands, sym)
 
     def __str__(self):
         location = self.smartify_text(self.location)
@@ -1311,7 +1316,8 @@ def search_for_main_arena():
 
 
 class MallocStateStruct:
-    """GEF representation of malloc_state from https://github.com/bminor/glibc/blob/glibc-2.28/malloc/malloc.c#L1658"""
+    """GEF representation of malloc_state from
+    https://github.com/bminor/glibc/blob/glibc-2.28/malloc/malloc.c#L1658"""
     def __init__(self, addr):
         try:
             self.__addr = parse_address("&{}".format(addr))
@@ -1497,9 +1503,10 @@ class GlibcArena:
         if self.heap_base is None:
             return None
         if get_libc_version() < (2, 30):
-            addr = dereference(self.heap_base + 0x10 + self.TCACHE_MAX_BINS + i * current_arch.ptrsize)
+            offset = 0x10 + self.TCACHE_MAX_BINS + i * current_arch.ptrsize
         else:
-            addr = dereference(self.heap_base + 0x10 + 2 * self.TCACHE_MAX_BINS + i * current_arch.ptrsize)
+            offset = 0x10 + 2 * self.TCACHE_MAX_BINS + i * current_arch.ptrsize
+        addr = dereference(self.heap_base + offset)
         if not addr:
             return None
         return GlibcChunk(int(addr))
@@ -1917,16 +1924,17 @@ def show_last_exception():
         if not code or not code.strip():
             code = _show_code_line(filename, lineno)
 
-        gef_print("""{} File "{}", line {:d}, in {}()""".format(DOWN_ARROW, Color.yellowify(filename),
-                                                                lineno, Color.greenify(method)))
+        filename_c = Color.yellowify(filename)
+        method_c = Color.greenify(method)
+        gef_print('{} File "{}", line {:d}, in {}()'.format(DOWN_ARROW, filename_c, lineno, method_c))
         gef_print("   {}    {}".format(RIGHT_ARROW, code))
 
     gef_print(" Last 10 GDB commands ".center(80, HORIZONTAL_LINE))
     gdb.execute("show commands")
     gef_print(" Runtime environment ".center(80, HORIZONTAL_LINE))
     gef_print("* GDB: {}".format(gdb.VERSION))
-    gef_print("* Python: {:d}.{:d}.{:d} - {:s}".format(sys.version_info.major, sys.version_info.minor,
-                                                       sys.version_info.micro, sys.version_info.releaselevel))
+    v = sys.version_info
+    gef_print("* Python: {:d}.{:d}.{:d} - {:s}".format(v.major, v.minor, v.micro, v.releaselevel))
     gef_print("* OS: {:s} - {:s} ({:s})".format(platform.system(), platform.release(), platform.machine()))
 
     gef_print(" lsb_release -a ".center(80, HORIZONTAL_LINE))
@@ -4587,7 +4595,10 @@ class S390X(Architecture):
         def is_insn_condition_type1(insn):
             if insn.mnemonic in ["bc", "bcr", "brc", "brcl"]:
                 return True
-            conditions = ["h", "l", "e", "nh", "nl", "ne", "p", "m", "z", "o", "np", "nm", "nz", "no"]
+            conditions = [
+                "h", "l", "e", "nh", "nl", "ne", "p", "m",
+                "z", "o", "np", "nm", "nz", "no",
+            ]
             for cc in conditions:
                 if insn.mnemonic == f"b{cc}": # alias for `bc N, ...`
                     return True
@@ -4752,7 +4763,11 @@ class S390X(Architecture):
         if get_register("$pswm"):
             addressing0 = (get_register("$pswm") >> 31) & 1
             addressing1 = (get_register("$pswm") >> 32) & 1
-            addressing_mode = {(0, 0): "24-bit", (0, 1): "31-bit", (1, 1): "64-bit"}[addressing0, addressing1]
+            addressing_mode = {
+                (0, 0): "24-bit",
+                (0, 1): "31-bit",
+                (1, 1): "64-bit",
+            }[addressing0, addressing1]
             extra_msg += "AddressingMode={:s}, ".format(addressing_mode)
 
         cc1 = (val >> flags["cc1"]) & 1
@@ -4896,7 +4911,8 @@ class SH4(Architecture):
     def mprotect_asm_raw(cls, addr, size, perm):
         _NR_mprotect = 125
         insns = [
-            # In sh4, r0-r7 cannot be set from gdb. Since it can be set to r8-r15, save it there.
+            # In sh4, r0-r7 cannot be set from gdb.
+            # Since it can be set to r8-r15, save it there.
             b"\x03\x68", # mov r0, r8
             b"\x33\x69", # mov r3, r9
             b"\x43\x6a", # mov r4, r10
@@ -5498,27 +5514,36 @@ class HPPA(Architecture):
                     taken, reason = val1 <= val2, "{:s}<={:s}".format(name1, name2)
                 else:
                     taken, reason = val1 > val2, "{:s}>{:s}".format(name1, name2)
-            elif c == 4: # < (unsigend)
-                mask = [32, 64][is_64bit()]
-                val1 &= (1 << mask) - 1
-                val2 &= (1 << mask) - 1
+            elif c == 4: # < (unsigned)
+                if is_64bit():
+                    shift = 64
+                else:
+                    shift = 32
+                val1 &= (1 << shift) - 1
+                val2 &= (1 << shift) - 1
                 if not f:
                     taken, reason = val1 < val2, "{:s}<{:s} (unsigned)".format(name1, name2)
                 else:
                     taken, reason = val1 >= val2, "{:s}>={:s} (unsigned)".format(name1, name2)
             elif c == 5: # <= (unsigned)
-                mask = [32, 64][is_64bit()]
-                val1 &= (1 << mask) - 1
-                val2 &= (1 << mask) - 1
+                if is_64bit():
+                    shift = 64
+                else:
+                    shift = 32
+                val1 &= (1 << shift) - 1
+                val2 &= (1 << shift) - 1
                 if not f:
                     taken, reason = val1 <= val2, "{:s}<={:s} (unsigned)".format(name1, name2)
                 else:
                     taken, reason = val1 > val2, "{:s}>{:s} (unsigned)".format(name1, name2)
             elif c == 6: # SV
-                mask = [31, 63][is_64bit()]
-                val1_sign = (val1 >> mask) & 1
-                val2_sign = (val2 >> mask) & 1
-                ans_sign = ((val1 - val2) >> mask) & 1
+                if is_64bit():
+                    shift = 63
+                else:
+                    shift = 31
+                val1_sign = (val1 >> shift) & 1
+                val2_sign = (val2 >> shift) & 1
+                ans_sign = ((val1 - val2) >> shift) & 1
                 overflow = (val1_sign != val2_sign) and (val1_sign != ans_sign) # subtract overflow
                 if not f:
                     taken, reason = overflow, "{:s}-{:s} overflows".format(name1, name2)
@@ -5553,24 +5578,30 @@ class HPPA(Architecture):
                 else:
                     taken, reason = val1 > -val2, "{:s}>-{:s} (signed)".format(name1, name2)
             elif c == 4: # NUV (unsigned)
-                mask = [31, 63][is_64bit()]
-                val1 &= (1 << (mask + 1)) - 1
-                val2 &= (1 << (mask + 1)) - 1
-                val1_sign = (val1 >> mask) & 1
-                val2_sign = (val2 >> mask) & 1
-                ans_sign = ((val1 + val2) >> mask) & 1
+                if is_64bit():
+                    shift = 63
+                else:
+                    shift = 31
+                val1 &= (1 << (shift + 1)) - 1
+                val2 &= (1 << (shift + 1)) - 1
+                val1_sign = (val1 >> shift) & 1
+                val2_sign = (val2 >> shift) & 1
+                ans_sign = ((val1 + val2) >> shift) & 1
                 overflow = (val1_sign == val2_sign) and (val1_sign != ans_sign) # addition overflow
                 if not f:
                     taken, reason = not overflow, "{:s}+{:s} does not overflow (unsigned)".format(name1, name2)
                 else:
                     taken, reason = overflow, "{:s}+{:s} overflows (unsigned)".format(name1, name2)
             elif c == 5: # ZNV (unsigned)
-                mask = [31, 63][is_64bit()]
-                val1 &= (1 << (mask + 1)) - 1
-                val2 &= (1 << (mask + 1)) - 1
-                val1_sign = (val1 >> mask) & 1
-                val2_sign = (val2 >> mask) & 1
-                ans_sign = ((val1 + val2) >> mask) & 1
+                if is_64bit():
+                    shift = 63
+                else:
+                    shift = 31
+                val1 &= (1 << (shift + 1)) - 1
+                val2 &= (1 << (shift + 1)) - 1
+                val1_sign = (val1 >> shift) & 1
+                val2_sign = (val2 >> shift) & 1
+                ans_sign = ((val1 + val2) >> shift) & 1
                 overflow = (val1_sign == val2_sign) and (val1_sign != ans_sign) # addition overflow
                 zero = (val1 + val2) == 0
                 if not f:
@@ -5578,10 +5609,13 @@ class HPPA(Architecture):
                 else:
                     taken, reason = not zero and overflow, "{:s}+{:s} is nonzero and overflows (unsigned)".format(name1, name2)
             elif c == 6: # SV (signed)
-                mask = [31, 63][is_64bit()]
-                val1_sign = (val1 >> mask) & 1
-                val2_sign = (val2 >> mask) & 1
-                ans_sign = ((val1 + val2) >> mask) & 1
+                if is_64bit():
+                    shift = 63
+                else:
+                    shift = 31
+                val1_sign = (val1 >> shift) & 1
+                val2_sign = (val2 >> shift) & 1
+                ans_sign = ((val1 + val2) >> shift) & 1
                 overflow = (val1_sign == val2_sign) and (val1_sign != ans_sign) # addition overflow
                 if not f:
                     taken, reason = overflow, "{:s}+{:s} overflows (signed)".format(name1, name2)
@@ -5595,8 +5629,11 @@ class HPPA(Architecture):
             return taken, reason
 
         def check_cond_bit(c, name1, val1, name2, val2):
-            mask = [31, 63][is_64bit()]
-            bit_on = ((val1 >> (mask - val2)) & 1) == 1
+            if is_64bit():
+                shift = 63
+            else:
+                shift = 31
+            bit_on = ((val1 >> (shift - val2)) & 1) == 1
             if c == 2: # <
                 taken, reason = bit_on, "{:s}.bit({:s})==1".format(name1, name2)
             elif c == 6: # >=
@@ -6320,19 +6357,19 @@ class XTENSA(Architecture):
             fmt = "0b{:04b}_0010_1010_{:04b}_{:08b}"
             val = fmt.format(reg, (imm >> 8) & 0xf, imm & 0xff)
             val = int(val, 2)
-            return bytes([(val>> 16) & 0xff, (val >> 8) & 0xff,  val & 0xff])
+            return bytes([(val >> 16) & 0xff, (val >> 8) & 0xff,  val & 0xff])
 
         def slli(reg1, reg2, imm):
             fmt = "0b{:04b}_0000_{:04b}_{:04b}_000{:01b}_0001"
             val = fmt.format((32 - imm) & 0xf, reg1, reg2, ((32 - imm) >> 4) & 1)
             val = int(val, 2)
-            return bytes([(val>> 16) & 0xff, (val >> 8) & 0xff,  val & 0xff])
+            return bytes([(val >> 16) & 0xff, (val >> 8) & 0xff,  val & 0xff])
 
         def orr(reg1, reg2, reg3):
             fmt = "0b{:04b}_0000_{:04b}_{:04b}_0010_0000"
             val = fmt.format(reg3, reg1, reg2)
             val = int(val, 2)
-            return bytes([(val>> 16) & 0xff, (val >> 8) & 0xff,  val & 0xff])
+            return bytes([(val >> 16) & 0xff, (val >> 8) & 0xff,  val & 0xff])
 
         insns = [
             movi(2, (addr >> 21) & 0x7ff), # mov a2, addr[31:21]
@@ -10590,7 +10627,7 @@ class GefThemeCommand(GenericCommand):
         self.add_setting("dereference_string", "yellow", "Color of dereferenced string")
         self.add_setting("dereference_code", "gray", "Color of dereferenced code")
         self.add_setting("dereference_base_address", "cyan", "Color of dereferenced address")
-        self.add_setting("dereference_register_value", "bold blue" , "Color of dereferenced register")
+        self.add_setting("dereference_register_value", "bold blue", "Color of dereferenced register")
         self.add_setting("registers_register_name", "blue", "Color of the register name in the register window")
         self.add_setting("registers_value_changed", "bold red", "Color of the changed register in the register window")
         self.add_setting("address_stack", "pink", "Color to use when a stack address is found")
@@ -11333,7 +11370,10 @@ class FlagsCommand(GenericCommand):
 
         def c(msg):
             mask = int(msg.split()[0], 16)
-            color = ["bold", ""][(eflags & mask) == 0]
+            if eflags & mask:
+                color = "bold"
+            else:
+                color = ""
             return Color.colorify(msg, color)
 
         gef_print(" " * 14 + "|| |||| |||| |||| |||| |||+- " + c("0x000001 [CF]   Carry flag"))
@@ -11370,7 +11410,10 @@ class FlagsCommand(GenericCommand):
 
         def c(msg):
             mask = int(msg.split()[0], 16)
-            color = ["bold", ""][(cpsr & mask) == 0]
+            if cpsr & mask:
+                color = "bold"
+            else:
+                color = ""
             return Color.colorify(msg, color)
 
         gef_print("  |||| |||| |||| |||| |||| |||| |||+-++++- " + c("0x0000001f [M]  Mode field (5bit)"))
@@ -11405,7 +11448,10 @@ class FlagsCommand(GenericCommand):
 
         def c(msg):
             mask = int(msg.split()[0], 16)
-            color = ["bold", ""][(cpsr & mask) == 0]
+            if cpsr & mask:
+                color = "bold"
+            else:
+                color = ""
             return Color.colorify(msg, color)
 
         if ((cpsr >> 4) & 1) == 0: # AArch64 state
@@ -14693,37 +14739,37 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
     _example_ += "                                                         |\n"
     _example_ += "                           +-----------------------------+\n"
     _example_ += "                           |\n"
-    _example_ += ".eh_frame_hdr              |      .eh_frame                                             .gcc_except_table\n"
-    _example_ += "+----------------------+ <-+  +-> +-CIE---------------------+ <-+                   +-> +-LSDA-----------------+\n"
-    _example_ += "| version              |      |   | length                  |   |                   |   | lpstart_enc          |\n"
-    _example_ += "| eh_frame_ptr_enc     |      |   | cie_id (=0)             |   |                   |   | ttype_enc            |\n"
-    _example_ += "| fde_count_enc        |      |   | version                 |   |                   |   | ttype_off            |\n"
-    _example_ += "| table_enc            |      |   | augmentation_string     |   |                   |   | call_site_encoding   |\n"
-    _example_ += "| eh_frame_ptr         |------+   | code_alignment_factor   |   |                   |   | call_site_table_len  |\n"
-    _example_ += "| fde_count            |          | data_alignment_factor   |   |                   |   |+-CallSite-----------+|\n"
-    _example_ += "| Table[0] initial_loc |          | return_address_register |   |                   |   || call_site_start    || try_start\n"
-    _example_ += "| Table[0] fde         |---+      | augmentation_len        |   |                   |   || call_site_length   || try_end\n"
-    _example_ += "| Table[1] initial_loc |   |      | augmentation_data[0]    |   |                   |   || landing_pad        || catch_start\n"
-    _example_ += "| Table[1] fde         |   |      | ...                     |-(augmentation=='P')-+ |   || action             ||---+\n"
-    _example_ += "| ...                  |   |      | ...                     |   |                 | |   |+-CallSite-----------+|   |\n"
-    _example_ += "| Table[N] initial_loc |   |      | augmentation_data[N]    |   |                 | |   || ...                ||   |\n"
-    _example_ += "| Table[N] fde         |   |      | program                 |   |                 | |   |+-ActionTable--------+| <-+\n"
-    _example_ += "+----------------------+   +----> +-FDE---------------------+   |                 | |   || ar_filter          ||---+\n"
-    _example_ += "                                  | length                  |   |                 | |   || ar_disp            ||   |\n"
-    _example_ += "                                  | cie_pointer (!=0)       |---+                 | |   |+-ActionTable--------+|   |\n"
-    _example_ += "                                  | pc_begin                | try_catch_base      | |   || ...                ||   |\n"
-    _example_ += "                                  | pc_range                |                     | |   |+-TTypeTable---------+|   |\n"
-    _example_ += "                                  | augmentation_len        |                     | |   || ...(stored upward) ||   |\n"
-    _example_ += "                                  | augmentation_data[0]    |                     | |   |+-TTypeTable---------+| <-+\n"
-    _example_ += "                                  | ...                     |-(augmentation=='L')-|-+   || ttype              ||---> type_info\n"
-    _example_ += "                                  | augmentation_data[N]    |                     |     |+--------------------+|\n"
-    _example_ += "                                  | program                 |                     |     +-LSDA-----------------+\n"
-    _example_ += "                                  +-CIE---------------------+   +-----------------+     | ...                  |\n"
-    _example_ += "                                  | ...                     |   |                       +----------------------+\n"
-    _example_ += "                                  +-FDE---------------------+   |\n"
-    _example_ += "                                  | ...                     |   |\n"
-    _example_ += "                                  +-------------------------+   |\n"
-    _example_ += "                                                                +----> personality_routine(=__gxx_personality_v0@libstdc++.so)"
+    _example_ += ".eh_frame_hdr              |      .eh_frame                                           .gcc_except_table\n"
+    _example_ += "+----------------------+ <-+  +-> +-CIE-------------------+ <-+                   +-> +-LSDA-----------------+\n"
+    _example_ += "| version              |      |   | length                |   |                   |   | lpstart_enc          |\n"
+    _example_ += "| eh_frame_ptr_enc     |      |   | cie_id (=0)           |   |                   |   | ttype_enc            |\n"
+    _example_ += "| fde_count_enc        |      |   | version               |   |                   |   | ttype_off            |\n"
+    _example_ += "| table_enc            |      |   | augmentation_string   |   |                   |   | call_site_encoding   |\n"
+    _example_ += "| eh_frame_ptr         |------+   | code_alignment_factor |   |                   |   | call_site_table_len  |\n"
+    _example_ += "| fde_count            |          | data_alignment_factor |   |                   |   |+-CallSite-----------+|\n"
+    _example_ += "| Table[0] initial_loc |          | retaddr_register      |   |                   |   || call_site_start    || try_start\n"
+    _example_ += "| Table[0] fde         |---+      | augmentation_len      |   |                   |   || call_site_length   || try_end\n"
+    _example_ += "| Table[1] initial_loc |   |      | augmentation_data[0]  |   |                   |   || landing_pad        || catch_start\n"
+    _example_ += "| Table[1] fde         |   |      | ...                   |-(augmentation=='P')-+ |   || action             ||---+\n"
+    _example_ += "| ...                  |   |      | ...                   |   |                 | |   |+-CallSite-----------+|   |\n"
+    _example_ += "| Table[N] initial_loc |   |      | augmentation_data[N]  |   |                 | |   || ...                ||   |\n"
+    _example_ += "| Table[N] fde         |   |      | program               |   |                 | |   |+-ActionTable--------+| <-+\n"
+    _example_ += "+----------------------+   +----> +-FDE-------------------+   |                 | |   || ar_filter          ||---+\n"
+    _example_ += "                                  | length                |   |                 | |   || ar_disp            ||   |\n"
+    _example_ += "                                  | cie_pointer (!=0)     |---+                 | |   |+-ActionTable--------+|   |\n"
+    _example_ += "                                  | pc_begin              | try_catch_base      | |   || ...                ||   |\n"
+    _example_ += "                                  | pc_range              |                     | |   |+-TTypeTable---------+|   |\n"
+    _example_ += "                                  | augmentation_len      |                     | |   || ...(stored upward) ||   |\n"
+    _example_ += "                                  | augmentation_data[0]  |                     | |   |+-TTypeTable---------+| <-+\n"
+    _example_ += "                                  | ...                   |-(augmentation=='L')-|-+   || ttype              ||---> type_info\n"
+    _example_ += "                                  | augmentation_data[N]  |                     |     |+--------------------+|\n"
+    _example_ += "                                  | program               |                     |     +-LSDA-----------------+\n"
+    _example_ += "                                  +-CIE-------------------+   +-----------------+     | ...                  |\n"
+    _example_ += "                                  | ...                   |   |                       +----------------------+\n"
+    _example_ += "                                  +-FDE-------------------+   |\n"
+    _example_ += "                                  | ...                   |   |\n"
+    _example_ += "                                  +-----------------------+   |\n"
+    _example_ += "                                                              +----> personality_routine(=__gxx_personality_v0@libstdc++.so)"
     _category_ = "Process Information"
 
     # FDE data encoding
@@ -36252,7 +36298,7 @@ class KernelCharacterDevicesCommand(GenericCommand):
             unsigned int baseminor;
             int minorct;
             char name[64];
-            struct cdev *cdev;		/* will die */
+            struct cdev *cdev; /* will die */
         } *chrdevs[CHRDEV_MAJOR_HASH_SIZE];
         """
         chrdevs = KernelAddressHeuristicFinder.get_chrdevs()
@@ -36683,14 +36729,16 @@ class ArgvCommand(GenericCommand):
     def print_from_mem(self, array, verbose):
         i = 0
         while True:
-            addr = read_int_from_memory(array + i * current_arch.ptrsize)
+            pos = array + i * current_arch.ptrsize
+            addr = read_int_from_memory(pos)
             if addr == 0:
                 break
             if not verbose and i > 99:
                 gef_print("...")
                 break
             s = read_cstring_from_memory(addr, gef_getpagesize())
-            gef_print("[{:3d}]: {:#x}: {:#x}{:s}{:s}".format(i, array + i * current_arch.ptrsize, addr, RIGHT_ARROW, Color.yellowify(repr(s))))
+            s = Color.yellowify(repr(s))
+            gef_print("[{:3d}]: {:#x}: {:#x}{:s}{:s}".format(i, pos, addr, RIGHT_ARROW, s))
             i += 1
         return
 
@@ -36710,7 +36758,11 @@ class ArgvCommand(GenericCommand):
     def do_invoke(self, argv):
         self.dont_repeat()
 
-        verbose = (argv and argv[0] == "-v")
+        if "-h" in argv:
+            self.usage()
+            return
+
+        verbose = "-v" in argv
 
         paddr1 = self.get_address_from_symbol("&_dl_argv")
         addr1 = self.get_address_from_symbol("_dl_argv")
@@ -38498,7 +38550,10 @@ class SlubDumpCommand(GenericCommand):
         return read_int_from_memory(addr + self.kmem_cache_cpu_offset_freelist)
 
     def byteswap(self, x):
-        bits = 64 if is_64bit() else 32
+        if is_64bit():
+            bits = 64
+        else:
+            bits = 32
         s = 0
         for i in range(0, bits, 8):
             s += ((x >> i) & 0xff) << (bits - (i + 8))
@@ -38511,7 +38566,10 @@ class SlubDumpCommand(GenericCommand):
         def pattern2(addr, chunk, cache):
             return chunk ^ self.byteswap(addr) ^ cache['random']
 
-        shift_bits = 48 if is_64bit() else 24
+        if is_64bit():
+            shift_bits = 48
+        else:
+            shift_bits = 24
 
         if self.swap is False:
             chunk = pattern1(addr, chunk, cache)
