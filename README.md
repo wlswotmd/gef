@@ -1,5 +1,5 @@
 ## Table of Contents
-* [What is this](#what-is-this)
+* [What is this?](#what-is-this)
 * [Setup](#setup)
     * [Install](#install)
     * [Upgrade (replace itself)](#upgrade-replace-itself)
@@ -10,16 +10,15 @@
         * [General](#general)
         * [Linux specific](#linux-specific)
         * [Arch specific](#arch-specific)
-        * [Other](#other)
     * [Qemu-user cooperation](#qemu-user-cooperation)
         * [General](#general-1)
     * [Heap dump features](#heap-dump-features)
     * [Other improved features](#other-improved-features)
     * [Other new features](#other-new-features)
-    * [Other](#other-1)
+    * [Other](#other)
 * [Memo (Japanese)](#memo-japanese)
 
-## What is this
+## What is this?
 This is a fork of [GEF](https://github.com/hugsy/gef).
 However, it is specialized for x86 / x64 / ARM / AArch64, and various features are added.
 I hope you find it useful for CTF player, reverser, exploit developer, and so on.
@@ -42,6 +41,7 @@ python3 /root/.gdbinit-gef.py --upgrade
 
 ```bash
 rm -f /root/.gdbinit-gef.py /root/.gef.rc
+sed -i -e '/source \/root\/.gdbinit-gef.py/d' /root/.gdbinit
 ```
 
 ### Dependency
@@ -175,16 +175,16 @@ All of these features are experimental. Tested on Ubuntu 22.04.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmmap-sde.png)
     * It is redirected to `pagewalk` when connecting to gdb stub of qemu-system.
 * `si`/`ni`: are the wrapper for native `si`/`ni`.
-    * On some architectures such as s390x, a `PC not saved` error may be output when executing "stepi/nexti".
+    * On some architectures such as s390x, a `PC not saved` error may be output when executing `stepi`/`nexti`.
     * But the execution itself is fine, so this command ignores this error and executes `context` normally.
-    * On or1k, branch operations don't work well, so use breakpoints to simulate.
-    * If you want native `si`/`ni`, use the full form `stepi`/`nexti`.
+    * On openrisc architecture, branch operations don't work well, so use breakpoints to simulate.
+    * If you want to use native `si`/`ni`, use the full form `stepi`/`nexti`.
 * `c`: is the wrapper for native `c`.
-    * When connecting to qemu-user's gdb stub, gdb does not trap SIGINT during "continue".
+    * When connecting to qemu-user's gdb stub, gdb does not trap SIGINT during `continue`.
     * If you want to trap, you need to issue SIGINT on the qemu-user side, but switching screens is troublesome.
     * This command realizes a pseudo SIGINT trap by trapping SIGINT on the python side and throwing SIGINT back to qemu-user.
     * It works local qemu-user only.
-    * If you want native `c`, use the full form `continue`.
+    * If you want to use native `c`, use the full form `continue`.
 
 ### Heap dump features
 * `partition-alloc-dump-stable`: dumps partition-alloc free-list (heuristic).
@@ -253,7 +253,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * It shows whether Static or Dynamic.
     * It shows whether Stripped or not.
     * It detects canary against static stripped binary.
-    * It shows whether Intel CET instructions (endbr64/endbr32) is found or not.
+    * It shows whether Intel CET instructions (`endbr64`/`endbr32`) is found or not.
     * It shows whether RPATH/RUNPATH is set or not.
     * It shows if Clang CFI/SafeStack is used or not.
     * It shows whether System-ASLR is enabled or not.
@@ -328,7 +328,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
         * ret
         * indirect-branch (x86/x64 only)
         * all-branch (call || jmp || ret)
-        * memory-access (detect "[")
+        * memory-access (detect `[`)
         * specified-keyword-regex
         * specified-condition (expressions using register or memory values)
     * Please note that this command temporarily closes stdin and stderr on gdb.
@@ -360,7 +360,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
 * `ii`: is a shortcut for `x/50i $pc`.
     * It prints the value if it is memory access operation.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ii.png)
-* `version`: shows software version that gef used.
+* `version`: shows software versions that gef used.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/version.png)
 * `follow`: changes `follow-fork-mode` setting.
 * `smart-cpp-function-name`: toggles `context.smart_cpp_function_name` setting.
@@ -369,7 +369,8 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/onegadget.png)
 * `ls`/`cat`: invokes `ls`/`cat` directly.
 * `smart-memory-dump`: dumps all regions of the memory to each file.
-* `mmap`: allocates a new memory (syntax sugar of `call mmap(...)`).
+* `mmap`: allocates a new memory if `mmap` symbol exists.
+    * This is syntax sugar of `call mmap(...)`.
 * `constgrep`: invokes `grep` under `/usr/include`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/constgrep.png)
 * `time`: measures the time of the GDB command.
@@ -377,7 +378,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
 * `multi-line`: executes multiple GDB commands in sequence.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/multi-line.png)
 * `rp`,`rp2`: invokes `rp++` with commonly used options.
-    * Supports both rp++ v1 and v2.
+    * They correspond to `rp++` v1 and v2 respectively.
 * `cpuid`: shows the result of cpuid(eax=0,1,2...).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/cpuid.png)
 * `dasm`: disassembles the code by capstone.
@@ -394,7 +395,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
 * `link-map`: dumps the `link_map` with iterating.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/link-map.png)
 * `ret2dl-hint`: shows the structure used by Return-to-dl-resolve as hint.
-* `srop-hint`: shows the code for Sigreturn-Oriented-Programming as hint.
+* `srop-hint`: shows the code for SigReturn-Oriented-Programming as hint.
 * `dtor-dump`: dumps some destructor functions list.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dtor-dump.png)
 * `walk-link-list`: walks the link list.
@@ -405,7 +406,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/search-mangled-ptr.png)
 * `capability`: shows the capabilities of the debugging process.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/capability.png)
-* `arch-info`: shows architecture information.
+* `arch-info`: shows architecture information used in gef.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/arch-info.png)
 
 ### Other
@@ -422,7 +423,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
 * Many bugs fix / formatting / made it easy for me to use.
 
 ## Memo (Japanese)
-* Why i decided to make this
+* Why I decided to make this
     * [gefを改造した話](https://hackmd.io/@bata24/rJVtBJsrP)
 * The story behind each command, etc.
     * [bata24/gefの機能紹介とか](https://hackmd.io/@bata24/SycIO4qPi)

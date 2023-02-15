@@ -44,7 +44,15 @@
 #######################################################################################
 #
 # gef is distributed under the MIT License (MIT)
-# Copyright (c) 2013-2022 crazy rabbidz
+#
+# Copyright (c) 2021-2023 bata24 (@bata_24)
+#
+# This is a fork of GEF (https://github.com/hugsy/gef).
+# However, it is specialized for x86 / x64 / ARM / AArch64, and various
+# features are added. I hope you find it useful for CTF player, reverser,
+# exploit developer, and so on.
+#
+# Copyright (c) 2013-2023 crazy rabbidz
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
