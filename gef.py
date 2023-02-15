@@ -7205,6 +7205,11 @@ def is_remote_debug():
     return "remote" in res
 
 
+# Removed is_remote_same_host.
+# It can detect that gdb connects to a process in the same host.
+# However, it cannot detect that traffic is being redirected to another host.
+
+
 @functools.lru_cache(maxsize=None)
 def is_normal_run():
     ret = gdb.execute("info files", to_string=True)
