@@ -12678,7 +12678,10 @@ class GlibcHeapBinsCommand(GenericCommand):
         if fw == head and not verbose:
             return nb_chunk
 
-        bin_info = get_binsize_table()[bin_name][index]
+        bin_table = get_binsize_table()[bin_name]
+        if index not in bin_table:
+            return 0
+        bin_info = bin_table[index]
         if "size" in bin_info:
             size_str = "{:#x}".format(bin_info["size"])
         elif "size_min" in bin_info and "size_max" in bin_info:
@@ -12892,11 +12895,14 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
                 except gdb.MemoryError:
                     m.append("{:s} [Corrupted chunk at {:#x}]".format(LEFT_ARROW, chunk.address))
                     break
+
             if m or verbose:
-                size = get_binsize_table()["fastbins"][i]["size"]
-                ok("Fastbins[idx={:d}, size={:#x}] ".format(i, size))
-                if m:
-                    gef_print("\n".join(m))
+                bin_table = get_binsize_table()["fastbins"]
+                if i in bin_table:
+                    size = bin_table[i]["size"]
+                    ok("Fastbins[idx={:d}, size={:#x}] ".format(i, size))
+                    if m:
+                        gef_print("\n".join(m))
 
         info("Found {:d} chunks in fastbin.".format(nb_chunk))
         return
@@ -13088,7 +13094,11 @@ def __get_binsize_table():
     # "MALLOC_ALIGNMENT is changed from libc 2.26,
     # for 32 bit arch, tcache 0x8 align is no longer used.
     for i in range(64):
-        size = i * 0x10 + [0x10, 0x20][is_64bit()]
+        if is_64bit():
+            min_size = 0x20
+        else:
+            min_size = 0x10
+        size = i * 0x10 + min_size
         table["tcache"][i] = {"size": size}
 
     # fastbins
@@ -13109,9 +13119,12 @@ def __get_binsize_table():
 
     # smallbins
     if is_64bit():
-        for i in range(1, 63):
-            size = (i - 1) * 0x10 + [0x10, 0x20][is_64bit()]
-            table["small_bins"][i] = {"size": size}
+        min_size = 0x20
+    else:
+        min_size = 0x10
+    for i in range(1, 63):
+        size = (i - 1) * 0x10 + min_size
+        table["small_bins"][i] = {"size": size}
 
     # largebins
     if is_64bit():
@@ -13181,6 +13194,7 @@ def __get_binsize_table():
         table["large_bins"][91] = {"size_min": 0xac0, "size_max": 0xb00}
         table["large_bins"][92] = {"size_min": 0xb00, "size_max": 0xb40}
         table["large_bins"][93] = {"size_min": 0xb40, "size_max": 0xb80}
+        # table["large_bins"][94] is unused
         table["large_bins"][95] = {"size_min": 0xb80, "size_max": 0xc00}
         table["large_bins"][96] = {"size_min": 0xc00, "size_max": 0xe00}
 
