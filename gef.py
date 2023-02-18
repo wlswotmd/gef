@@ -3249,7 +3249,8 @@ class ARM(Architecture):
             "mi", "pl", "hi", "ls", "cs", "cc", "hs", "lo", "al",
         ]
         for cc in conditions:
-            return insn.mnemonic in [f"bl{cc}", f"bl{cc}.n", f"bl{cc}.w", f"blx{cc}", f"blx{cc}.n", f"blx{cc}.w"]
+            if insn.mnemonic in [f"bl{cc}", f"bl{cc}.n", f"bl{cc}.w", f"blx{cc}", f"blx{cc}.n", f"blx{cc}.w"]:
+                return True
         return False
 
     def is_jump(self, insn):
@@ -3259,7 +3260,7 @@ class ARM(Architecture):
             return True
         if insn.mnemonic in ["b", "b.n", "b.w", "bx", "bx.n", "bx.w"]:
             return True
-        if insn.mnemonic == ["mov", "mov.n", "mov.w", "ldr", "ldr.n", "ldr.w", "add", "add.n", "add.w"]:
+        if insn.mnemonic in ["mov", "mov.n", "mov.w", "ldr", "ldr.n", "ldr.w", "add", "add.n", "add.w"]:
             return insn.operands[0] == "pc"
         return False
 
@@ -3290,10 +3291,12 @@ class ARM(Architecture):
         for cc in conditions:
             if insn.mnemonic in [f"b{cc}", f"b{cc}.n", f"b{cc}.w", f"bx{cc}", f"bx{cc}.n", f"bx{cc}.w"]:
                 return True
+        if insn.mnemonic in ["cbnz", "cbz", "tbnz", "tbz"]:
+            return True
         return False
 
     def is_branch_taken(self, insn):
-        mnemo = insn.mnemonic
+        mnemo, operands = insn.mnemonic, insn.operands
         # ref: http://www.davespace.co.uk/arm/introduction-to-arm/conditional.html
         flags = dict((self.flags_table[k], k) for k in self.flags_table)
         val = get_register(self.flag_register)
@@ -3304,7 +3307,34 @@ class ARM(Architecture):
         overflow = bool(val & (1 << flags["overflow"]))
         carry = bool(val & (1 << flags["carry"]))
 
-        if mnemo.endswith("eq"):
+        if mnemo in ["cbnz", "cbz", "tbnz", "tbz"]:
+            reg = operands[0]
+            op = get_register(reg)
+            if mnemo == "cbnz":
+                if op != 0:
+                    taken, reason = True, "{}!=0".format(reg)
+                else:
+                    taken, reason = False, "{}==0".format(reg)
+            elif mnemo == "cbz":
+                if op == 0:
+                    taken, reason = True, "{}==0".format(reg)
+                else:
+                    taken, reason = False, "{}!=0".format(reg)
+            elif mnemo == "tbnz":
+                # operands[1] has a #, then the number
+                i = int(operands[1].lstrip("#"))
+                if (op & (1 << i)) != 0:
+                    taken, reason = True, "{}&1<<{}!=0".format(reg, i)
+                else:
+                    taken, reason = False, "{}&1<<{}==0".format(reg, i)
+            elif mnemo == "tbz":
+                # operands[1] has a #, then the number
+                i = int(operands[1].lstrip("#"))
+                if (op & (1 << i)) == 0:
+                    taken, reason = True, "{}&1<<{}==0".format(reg, i)
+                else:
+                    taken, reason = False, "{}&1<<{}!=0".format(reg, i)
+        elif mnemo.endswith("eq"):
             taken, reason = zero, "Z"
         elif mnemo.endswith("ne"):
             taken, reason = not zero, "!Z"
@@ -3446,10 +3476,27 @@ class AARCH64(ARM):
         return insn.mnemonic in ["bl", "blr"]
 
     def is_jump(self, insn):
-        return insn.mnemonic in ["b", "br"] or self.is_conditional_branch(insn)
+        if self.is_conditional_branch(insn):
+            return True
+        return insn.mnemonic in ["b", "br"]
 
     def is_ret(self, insn):
-        return (insn.mnemonic in ["ret", "eret"]) or (insn.mnemonic == "ldp" and "pc" in insn.operands)
+        if insn.mnemonic in ["ret", "eret"]:
+            return True
+        if insn.mnemonic == "ldp" and "pc" in insn.operands:
+            return True
+        return False
+
+    def is_conditional_branch(self, insn):
+        # https://www.element14.com/community/servlet/JiveServlet/previewBody/41836-102-1-229511/ARM.Reference_Manual.pdf
+        # sect. 5.1.1
+        if insn.mnemonic in ["cbnz", "cbz", "tbnz", "tbz"]:
+            return True
+        if insn.mnemonic.startswith("b."):
+            return True
+        return False
+
+    # is_branch_taken is the same as ARM
 
     __SCR_EL3_available = None
 
@@ -3490,49 +3537,6 @@ class AARCH64(ARM):
             "svc 0",
         ]
         return "; ".join(insns)
-
-    def is_conditional_branch(self, insn):
-        # https://www.element14.com/community/servlet/JiveServlet/previewBody/41836-102-1-229511/ARM.Reference_Manual.pdf
-        # sect. 5.1.1
-        mnemo = insn.mnemonic
-        branch_mnemos = ["cbnz", "cbz", "tbnz", "tbz"]
-        return mnemo.startswith("b.") or mnemo in branch_mnemos
-
-    def is_branch_taken(self, insn):
-        mnemo, operands = insn.mnemonic, insn.operands
-        taken, reason = False, ""
-
-        if mnemo in ["cbnz", "cbz", "tbnz", "tbz"]:
-            reg = operands[0]
-            op = get_register(reg)
-            if mnemo == "cbnz":
-                if op != 0:
-                    taken, reason = True, "{}!=0".format(reg)
-                else:
-                    taken, reason = False, "{}==0".format(reg)
-            elif mnemo == "cbz":
-                if op == 0:
-                    taken, reason = True, "{}==0".format(reg)
-                else:
-                    taken, reason = False, "{}!=0".format(reg)
-            elif mnemo == "tbnz":
-                # operands[1] has a #, then the number
-                i = int(operands[1].lstrip("#"))
-                if (op & (1 << i)) != 0:
-                    taken, reason = True, "{}&1<<{}!=0".format(reg, i)
-                else:
-                    taken, reason = False, "{}&1<<{}==0".format(reg, i)
-            elif mnemo == "tbz":
-                # operands[1] has a #, then the number
-                i = int(operands[1].lstrip("#"))
-                if (op & (1 << i)) == 0:
-                    taken, reason = True, "{}&1<<{}==0".format(reg, i)
-                else:
-                    taken, reason = False, "{}&1<<{}!=0".format(reg, i)
-
-        if not reason:
-            taken, reason = super().is_branch_taken(insn)
-        return taken, reason
 
 
 class X86(Architecture):
