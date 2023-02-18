@@ -16852,7 +16852,10 @@ class ContextCommand(GenericCommand):
                 line = ""
                 is_taken = False
                 target = None
-                bp_prefix = Color.redify(BP_GLYPH) if self.addr_has_breakpoint(insn.address, bp_locations) else " "
+                if self.addr_has_breakpoint(insn.address, bp_locations):
+                    bp_prefix = Color.redify(BP_GLYPH)
+                else:
+                    bp_prefix = " "
 
                 if show_opcodes_size == 0:
                     text = str(insn)
@@ -16890,6 +16893,7 @@ class ContextCommand(GenericCommand):
 
                 # add extra branch info
                 if target:
+                    # for delay slot
                     try:
                         if current_arch.has_delay_slot:
                             next_insn = list(instruction_iterator(insn.address, 2))[-1]
@@ -16904,6 +16908,9 @@ class ContextCommand(GenericCommand):
                     except Exception:
                         pass
 
+                    # branch target address
+
+                    once = 0
                     try:
                         for i, tinsn in enumerate(instruction_iterator(target, nb_insn)):
                             if show_opcodes_size == 0:
@@ -16911,10 +16918,14 @@ class ContextCommand(GenericCommand):
                             else:
                                 text = insn_fmt.format(tinsn)
                             text = "   {}  {}".format(DOWN_ARROW if i == 0 else " ", text)
+                            if once == 0:
+                                gef_print("")
+                                once = 1
                             gef_print(text)
+                        if once == 1:
+                            gef_print("")
                     except Exception:
                         pass
-                    break
 
             self.context_memory_access()
             self.context_memory_access2() # for x86/x64 - fs/gs
