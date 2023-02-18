@@ -2726,6 +2726,14 @@ class Architecture:
         pass
 
     @abc.abstractproperty
+    def has_syscall_delay_slot(self):
+        pass
+
+    @abc.abstractproperty
+    def has_ret_delay_slot(self):
+        pass
+
+    @abc.abstractproperty
     def nop_insn(self):
         pass
 
@@ -2890,6 +2898,8 @@ class RISCV(Architecture):
 
     instruction_length = None # variable length
     has_delay_slot = False
+    has_syscall_delay_slot = False
+    has_ret_delay_slot = False
 
     keystone_support = False
     capstone_support = True
@@ -3192,6 +3202,8 @@ class ARM(Architecture):
             return 4
 
     has_delay_slot = False
+    has_syscall_delay_slot = False
+    has_ret_delay_slot = False
 
     keystone_support = True
     capstone_support = True
@@ -3578,6 +3590,8 @@ class X86(Architecture):
 
     instruction_length = None # variable length
     has_delay_slot = False
+    has_syscall_delay_slot = False
+    has_ret_delay_slot = False
 
     keystone_support = True
     capstone_support = True
@@ -3786,6 +3800,8 @@ class PPC(Architecture):
 
     instruction_length = 4
     has_delay_slot = False
+    has_syscall_delay_slot = False
+    has_ret_delay_slot = False
 
     keystone_support = True
     capstone_support = True
@@ -4036,16 +4052,18 @@ class SPARC(Architecture):
 
     instruction_length = 4
     has_delay_slot = True
+    has_syscall_delay_slot = True
+    has_ret_delay_slot = True
 
     keystone_support = True
     capstone_support = True
     unicorn_support = True
 
     nop_insn = b"\x00\x00\x00\x01" # nop
-    infloop_insn = b"\x00\x00\x80\x10" + nop_insn # b #0 (+ delay slot)
+    infloop_insn = b"\x00\x00\x80\x10" # b self
     trap_insn = None
-    ret_insn = b"\x08\xe0\xc7\x81" + nop_insn # ret (+ delay slot)
-    syscall_insn = b"\x10\x20\xd0\x91" + nop_insn # trap 0x10 (+ delay slot)
+    ret_insn = b"\x08\xe0\xc7\x81" # ret
+    syscall_insn = b"\x10\x20\xd0\x91" # trap 0x10
 
     def flag_register_to_human(self, val=None):
         # http://www.gaisler.com/doc/sparcv8.pdf
@@ -4197,10 +4215,10 @@ class SPARC64(SPARC):
     }
 
     nop_insn = b"\x00\x00\x00\x01" # nop
-    infloop_insn = b"\x00\x00\x80\x10" + nop_insn # b #0 (+ delay slot)
+    infloop_insn = b"\x00\x00\x80\x10" # b self
     trap_insn = None
-    ret_insn = b"\x08\xe0\xc7\x81" + nop_insn # ret (+ delay slot)
-    syscall_insn = b"\x6d\x20\xd0\x91" + nop_insn # trap 0x6d (+ delay slot)
+    ret_insn = b"\x08\xe0\xc7\x81" # ret
+    syscall_insn = b"\x6d\x20\xd0\x91" # trap 0x6d
 
     def is_syscall(self, insn):
         return insn.mnemonic == "ta" and insn.operands[0] == "0x6d"
@@ -4275,16 +4293,18 @@ class MIPS(Architecture):
 
     instruction_length = 4
     has_delay_slot = True
+    has_syscall_delay_slot = True
+    has_ret_delay_slot = True
 
     keystone_support = True
     capstone_support = True
     unicorn_support = True
 
     nop_insn = b"\x00\x00\x00\x00" # nop
-    infloop_insn = b"\xff\xff\x00\x10" + nop_insn # b 0 (+ delay slot)
-    trap_insn = b"\x0d\x00\x00\x00" + nop_insn # break (+ delay slot)
-    ret_insn = b"\x08\x00\xe0\x03" + nop_insn # jr $ra (+ delay slot)
-    syscall_insn = b"\x0c\x00\x00\x00" + nop_insn # syscall (+ delay slot)
+    infloop_insn = b"\xff\xff\x00\x10" # b self
+    trap_insn = b"\x0d\x00\x00\x00" # break
+    ret_insn = b"\x08\x00\xe0\x03" # jr $ra
+    syscall_insn = b"\x0c\x00\x00\x00" # syscall
 
     def is_syscall(self, insn):
         return insn.mnemonic in ["syscall"]
@@ -4508,6 +4528,8 @@ class S390X(Architecture):
 
     instruction_length = None # variable length
     has_delay_slot = False
+    has_syscall_delay_slot = True
+    has_ret_delay_slot = False
 
     keystone_support = True
     capstone_support = True
@@ -4858,16 +4880,18 @@ class SH4(Architecture):
 
     instruction_length = 2
     has_delay_slot = True
+    has_syscall_delay_slot = True
+    has_ret_delay_slot = True
 
     keystone_support = False
     capstone_support = False
     unicorn_support = False
 
     nop_insn = b"\x09\x00" # nop
-    infloop_insn = b"\xfe\xaf" + nop_insn # bra 0
+    infloop_insn = b"\xfe\xaf" # bra self
     trap_insn = None
-    ret_insn = b"\x0b\x00" + nop_insn # rts
-    syscall_insn = b"\x13\xc3" + nop_insn # trapa #19
+    ret_insn = b"\x0b\x00" # rts
+    syscall_insn = b"\x13\xc3" # trapa #19
 
     def is_syscall(self, insn):
         return insn.mnemonic == "trapa" and insn.operands[0] == "#19"
@@ -5035,6 +5059,8 @@ class M68K(Architecture):
 
     instruction_length = None # variable length
     has_delay_slot = False
+    has_syscall_delay_slot = False
+    has_ret_delay_slot = False
 
     keystone_support = False
     capstone_support = True
@@ -5266,6 +5292,8 @@ class ALPHA(Architecture):
 
     instruction_length = 4
     has_delay_slot = False
+    has_syscall_delay_slot = False
+    has_ret_delay_slot = False
 
     keystone_support = False
     capstone_support = False
@@ -5434,16 +5462,18 @@ class HPPA(Architecture):
 
     instruction_length = 4
     has_delay_slot = True
+    has_syscall_delay_slot = True
+    has_ret_delay_slot = True
 
     keystone_support = False
     capstone_support = False
     unicorn_support = False
 
     nop_insn = b"\x40\x02\x00\x08" # nop
-    infloop_insn = b"\xf7\x1f\x1f\xe8" + nop_insn # b,l,n self, r0 (+delay slot)
+    infloop_insn = b"\xf7\x1f\x1f\xe8" # b,l,n self, r0
     trap_insn = None
-    ret_insn = b"\x02\xc0\x40\xe8" + nop_insn # bv.n r0(rp) (+delay slot)
-    syscall_insn = b"\x00\x82\x00\xe4" + nop_insn # be,l 100(sr2, r0), sr0, r31 (+delay slot)
+    ret_insn = b"\x02\xc0\x40\xe8" # bv.n r0(rp)
+    syscall_insn = b"\x00\x82\x00\xe4" # be,l 100(sr2, r0), sr0, r31
 
     def is_syscall(self, insn):
         return insn.mnemonic == "be,l" and insn.operands[:4] == ["100(sr2", "r0)", "sr0", "r31"]
@@ -5814,16 +5844,18 @@ class OR1K(Architecture):
 
     instruction_length = 4
     has_delay_slot = True
+    has_syscall_delay_slot = True
+    has_ret_delay_slot = True
 
     keystone_support = False
     capstone_support = False
     unicorn_support = False
 
     nop_insn = b"\x00\x00\x00\x15" # l.nop 0x0
-    infloop_insn = b"\x00\x00\x00\x00" + nop_insn # l.j self (+ delay slot)
+    infloop_insn = b"\x00\x00\x00\x00" # l.j self
     trap_insn = None
-    ret_insn = b"\x00\x48\x00\x44" + nop_insn  # l.jr r9 (+ delay slot)
-    syscall_insn = b"\x01\x00\x00\x20" + nop_insn # l.sys 0x1 (+delay slot)
+    ret_insn = b"\x00\x48\x00\x44" # l.jr r9
+    syscall_insn = b"\x01\x00\x00\x20" # l.sys 0x1
 
     def is_syscall(self, insn):
         return insn.mnemonic == "l.sys" and insn.operands[0] == "0x1"
@@ -5929,6 +5961,8 @@ class NIOS2(Architecture):
 
     instruction_length = 4
     has_delay_slot = False
+    has_syscall_delay_slot = False
+    has_ret_delay_slot = False
 
     keystone_support = False
     capstone_support = False
@@ -6053,16 +6087,18 @@ class MICROBLAZE(Architecture):
 
     instruction_length = 4
     has_delay_slot = True
+    has_syscall_delay_slot = True
+    has_ret_delay_slot = True
 
     keystone_support = False
     capstone_support = False
     unicorn_support = False
 
     nop_insn = b"\x00\x00\x00\x80" # or r0, r0, r0
-    infloop_insn = b"\x00\x00\x00\xb8" + nop_insn # bri self (+delay slot)
+    infloop_insn = b"\x00\x00\x00\xb8" # bri self
     trap_insn = None
-    ret_insn = b"\x08\x00\x0f\xb6" + nop_insn # rtsd r15, 8 (+delay slot)
-    syscall_insn = b"\x08\x00\xcc\xb9" + nop_insn # brki r14,8 (+delay slot)
+    ret_insn = b"\x08\x00\x0f\xb6" # rtsd r15, 8
+    syscall_insn = b"\x08\x00\xcc\xb9" # brki r14,8
 
     def is_syscall(self, insn):
         return insn.mnemonic == "brki" and insn.operands[:2] == ["r14", "8"]
@@ -6197,6 +6233,8 @@ class XTENSA(Architecture):
 
     instruction_length = None # variable length
     has_delay_slot = False
+    has_syscall_delay_slot = False
+    has_ret_delay_slot = False
 
     keystone_support = False
     capstone_support = False
@@ -6441,6 +6479,8 @@ class XTENSA(Architecture):
 #
 #    #instruction_length = 4
 #    #has_delay_slot = False
+#    #has_syscall_delay_slot = False
+#    #has_ret_delay_slot = False
 #
 #    #keystone_support = False
 #    #capstone_support = False
@@ -7231,9 +7271,7 @@ def is_normal_run():
 @functools.lru_cache(maxsize=None)
 def is_attach():
     ret = gdb.execute("info files", to_string=True)
-    a = "Using the running image of attached" in ret
-    b = "Debugging a target over a serial line" in ret
-    return a or b
+    return "Using the running image of attached" in ret
 
 
 @functools.lru_cache(maxsize=None)
@@ -11657,6 +11695,213 @@ class ChangePermissionCommand(GenericCommand):
 
 
 @register_command
+class CallSyscallCommand(GenericCommand):
+    """wrapper for syscall."""
+    _cmdline_ = "call-syscall"
+    _syntax_ = "{:s} [-h] SYSCALL_NAME [arg1[,arg2[,...]]]".format(_cmdline_)
+    _example_ = "{:s} write 1 *(void**)($rsp+0x18) 15".format(_cmdline_)
+    _category_ = "Debugging Support"
+
+    def get_state(self, code_len):
+        d = {}
+
+        # pc
+        d["pc"] = current_arch.pc
+        if is_arm32() and current_arch.is_thumb() and d["pc"] & 1:
+            d["pc"] -= 1
+
+        # code
+        d["code"] = read_memory(d["pc"], code_len)
+
+        # reg
+        d["reg"] = {}
+        for reg in current_arch.all_registers:
+            d["reg"][reg] = get_register(reg)
+
+        # mem
+        if is_mips32():
+            d["mem"] = {}
+            for offset in [0x10, 0x14, 0x18, 0x1c]:
+                d["mem"][offset] = read_memory(current_arch.sp + offset, 4)
+        return d
+
+    def revert_state(self, d):
+        # code
+        write_memory(d["pc"], d["code"], len(d["code"]))
+
+        # reg
+        for reg, v in d["reg"].items():
+            if get_register(reg) == v:
+                continue
+            if is_sh4() and reg in ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7"]:
+                reg = reg + "b0" # since r0-r7 cannot be changed directly, use bank 0
+            try:
+                gdb.execute("set {:s} = {:#x}".format(reg, v), to_string=True)
+            except Exception:
+                info("set {:s} = {:#x} is failed".format(reg, v))
+                pass
+
+        # mem
+        if is_mips32():
+            for offset in [0x10, 0x14, 0x18, 0x1c]:
+                if read_memory(current_arch.sp + offset, 4) == d["mem"][offset]:
+                    continue
+                write_memory(current_arch.sp + offset, d["mem"][offset], 4)
+        return
+
+    def close_stdout(self):
+        self.stdout = 1
+        self.stdout_bak = os.dup(self.stdout)
+        f = open("/dev/null")
+        os.dup2(f.fileno(), self.stdout)
+        f.close()
+        return
+
+    def revert_stdout(self):
+        os.dup2(self.stdout_bak, self.stdout)
+        os.close(self.stdout_bak)
+        return
+
+    def syscall_execute(self, nr, syscall_args):
+        if is_big_endian():
+            code = current_arch.infloop_insn[::-1] # to stop another thread
+            if current_arch.has_delay_slot:
+                code += current_arch.nop_insn[::-1]
+            code += current_arch.syscall_insn[::-1]
+            if is_s390x() and nr <= 127:
+                code = code[:-1] + bytes([nr])
+            if current_arch.has_syscall_delay_slot:
+                code += current_arch.nop_insn[::-1]
+        else:
+            code = current_arch.infloop_insn # to stop another thread
+            if current_arch.has_delay_slot:
+                code += current_arch.nop_insn
+            code += current_arch.syscall_insn
+            if current_arch.has_syscall_delay_slot:
+                code += current_arch.nop_insn
+
+        # backup
+        gef_on_stop_unhook(hook_stop_handler)
+        d = self.get_state(len(code))
+
+        # modify syscall args
+        if is_mips32():
+            syscall_parameters = current_arch.syscall_parameters_o32
+        else:
+            syscall_parameters = current_arch.syscall_parameters
+        for reg, val in zip(syscall_parameters, syscall_args):
+            if is_mips32() and "+" in reg:
+                reg, off = reg.split("+")
+                write_memory(get_register(reg) + int(off, 16), p32(val), 4)
+            else:
+                if is_sh4() and reg in ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7"]:
+                    reg = reg + "b0" # since r0-r7 cannot be changed directly, use bank 0
+                gdb.execute("set {:s} = {:#x}".format(reg, val), to_string=True)
+
+        # modify syscall register
+        if is_s390x():
+            if nr > 127: # embedded in instruction
+                reg = current_arch.syscall_register[1]
+                gdb.execute("set {:s} = {:#x}".format(reg, nr), to_string=True)
+        else:
+            reg = current_arch.syscall_register
+            if is_sh4() and reg in ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7"]:
+                reg = reg + "b0" # since r0-r7 cannot be changed directly, use bank 0
+            gdb.execute("set {:s} = {:#x}".format(reg, nr), to_string=True)
+
+        # modify code
+        write_memory(d["pc"], code, len(code))
+
+        # skip infloop
+        dst = d["pc"] + len(current_arch.infloop_insn)
+        if current_arch.has_delay_slot:
+            dst += len(current_arch.nop_insn)
+
+        if is_hppa32() or is_hppa64():
+            gdb.execute("set $pcoqh = {:#x}".format(dst), to_string=True)
+            dst2 = dst + len(current_arch.syscall_insn)
+            gdb.execute("set $pcoqt = {:#x}".format(dst2), to_string=True)
+        elif is_sparc32() or is_sparc64():
+            gdb.execute("set $pc = {:#x}".format(dst), to_string=True)
+            dst2 = dst + len(current_arch.syscall_insn)
+            gdb.execute("set $npc = {:#x}".format(dst2), to_string=True)
+        else:
+            gdb.execute("set $pc = {:#x}".format(dst), to_string=True)
+
+        # exec
+        self.close_stdout()
+        if is_hppa32() or is_hppa64():
+            step = 3 # syscall, delay slot, trampoline
+        else:
+            step = 1
+        gdb.execute("stepi {:d}".format(step), to_string=True)
+        ret = get_register(current_arch.return_register)
+
+        # revert
+        self.revert_stdout()
+        self.revert_state(d)
+        gef_on_stop_hook(hook_stop_handler)
+        return ret
+
+    @only_if_gdb_running
+    @only_if_not_qemu_system
+    def do_invoke(self, argv):
+        if current_arch is None:
+            err("current_arch is not set.")
+            return
+
+        if "-h" in argv:
+            self.usage()
+            return
+
+        if not argv:
+            self.usage()
+            return
+
+        try:
+            syscall_table = get_syscall_table(None, None)
+        except Exception:
+            err("syscall table does not exist")
+            return
+
+        syscall_name = argv[0]
+        syscall_args = []
+        for x in argv[1:]:
+            try:
+                v = to_unsigned_long(safe_parse_and_eval(x))
+                syscall_args.append(v)
+                continue
+            except Exception:
+                err("Could not parse `{:s}`".format(x))
+                return
+
+        for key, entry in syscall_table.items():
+            if key in ["arch", "mode"]:
+                continue
+            if is_mips32() and key > 6000: # force use o32
+                continue
+            if syscall_name == entry.name:
+                syscall_params = entry.params
+                nr = key
+                break
+        else:
+            err("`{:s}` system call is not found.".format(syscall_name))
+            return
+
+        if len(syscall_params) != len(syscall_args):
+            err("Argument count mismatch.")
+            params = "(" + ', '.join([param.param for param in syscall_params]) + ");"
+            gef_print("Prototype: {:s}{:s}".format(Color.boldify(syscall_name), params))
+            return
+
+        title = "{:s}({:s})".format(syscall_name, ', '.join(["{:#x}".format(x) for x in syscall_args]))
+        gef_print(titlify(title))
+        ret = self.syscall_execute(nr, syscall_args)
+        gef_print("{:s} = {:#x}".format(current_arch.return_register, ret))
+        return
+
+
+@register_command
 class MmapMemoryCommand(GenericCommand):
     """Allocate a new memory (syntax sugar of `call mmap(...)`)."""
     _cmdline_ = "mmap"
@@ -11686,7 +11931,10 @@ class MmapMemoryCommand(GenericCommand):
         location = 0
         size = gef_getpagesize()
         perm = Permission.READ | Permission.WRITE | Permission.EXECUTE
+
         flags = 0x22 # MAP_ANONYMOUS | MAP_PRIVATE
+        if is_mips32() or is_mips64():
+            flags |= 0x800 # MAP_DENYWRITE (why?)
 
         if len(argv) >= 1:
             location = safe_parse_and_eval(argv[0])
@@ -14174,7 +14422,7 @@ class ArchInfoCommand(GenericCommand):
         gef_print(titlify("GEF settings"))
         gef_print("{:30s} {:s} {:s}".format("current_arch.arch", RIGHT_ARROW, current_arch.arch))
         gef_print("{:30s} {:s} {:s}".format("current_arch.mode", RIGHT_ARROW, current_arch.mode))
-        if current_arch.instruction_length:
+        if current_arch.instruction_length is None:
             inst_len = "variable length"
         else:
             inst_len = str(current_arch.instruction_length)
@@ -14188,7 +14436,9 @@ class ArchInfoCommand(GenericCommand):
         sparams = ', '.join(current_arch.syscall_parameters)
         gef_print("{:30s} {:s} {:s}".format("syscall parameters", RIGHT_ARROW, sparams))
         gef_print("{:30s} {:s} {:s}".format("32bit-emulated (compat mode)", RIGHT_ARROW, str(self.is_emulated32())))
-        gef_print("{:30s} {:s} {:s}".format("Has a delay slot", RIGHT_ARROW, str(current_arch.has_delay_slot)))
+        gef_print("{:30s} {:s} {:s}".format("Has a call/jump delay slot", RIGHT_ARROW, str(current_arch.has_delay_slot)))
+        gef_print("{:30s} {:s} {:s}".format("Has a syscall delay slot", RIGHT_ARROW, str(current_arch.has_syscall_delay_slot)))
+        gef_print("{:30s} {:s} {:s}".format("Has a ret delay slot", RIGHT_ARROW, str(current_arch.has_ret_delay_slot)))
         gef_print("{:30s} {:s} {:s}".format("keystone support", RIGHT_ARROW, str(current_arch.keystone_support)))
         gef_print("{:30s} {:s} {:s}".format("capstone support", RIGHT_ARROW, str(current_arch.capstone_support)))
         gef_print("{:30s} {:s} {:s}".format("unicorn support", RIGHT_ARROW, str(current_arch.unicorn_support)))
@@ -16490,7 +16740,11 @@ class EntryPointBreakCommand(GenericCommand):
 
     def __init__(self, *args, **kwargs):
         super().__init__()
-        self.add_setting("entrypoint_symbols", "main _main __libc_start_main __uClibc_main start _start", "Possible symbols for entry points")
+        self.add_setting(
+            "entrypoint_symbols",
+            "main _main __libc_start_main __uClibc_main start _start __start", # __start is used by MIPS
+            "Possible symbols for entry points",
+        )
         return
 
     @only_if_not_qemu_system
@@ -16870,6 +17124,7 @@ class ContextCommand(GenericCommand):
                 line = ""
                 is_taken = False
                 target = None
+                delay_slot = None
                 if self.addr_has_breakpoint(insn.address, bp_locations):
                     bp_prefix = Color.redify(BP_GLYPH)
                 else:
@@ -16894,15 +17149,19 @@ class ContextCommand(GenericCommand):
                             target = self.get_branch_addr(insn)
                             reason = "[Reason: {:s}]".format(reason) if reason else ""
                             line += Color.colorify("\tTAKEN {:s}".format(reason), "bold green")
+                            delay_slot = current_arch.has_delay_slot
                         else:
                             reason = "[Reason: !({:s})]".format(reason) if reason else ""
                             line += Color.colorify("\tNOT taken {:s}".format(reason), "bold red")
                     elif current_arch.is_jump(insn):
                         target = self.get_branch_addr(insn)
+                        delay_slot = current_arch.has_delay_slot
                     elif current_arch.is_call(insn) and self.get_setting("peek_calls") is True:
                         target = self.get_branch_addr(insn)
+                        delay_slot = current_arch.has_delay_slot
                     elif current_arch.is_ret(insn) and self.get_setting("peek_ret") is True:
                         target = current_arch.get_ra(insn, frame)
+                        delay_slot = current_arch.has_ret_delay_slot
 
                 else:
                     line += "{}{}{}".format(bp_prefix, " " * len(RIGHT_ARROW[1:]), text)
@@ -16913,7 +17172,7 @@ class ContextCommand(GenericCommand):
                 if target:
                     # for delay slot
                     try:
-                        if current_arch.has_delay_slot:
+                        if delay_slot:
                             next_insn = list(instruction_iterator(insn.address, 2))[-1]
                             if show_opcodes_size == 0:
                                 text = str(next_insn)
@@ -18311,17 +18570,18 @@ class PatchNopCommand(PatchCommand):
             return
 
         count = num_bytes // nop_op_len
-        real_num_bytes = nop_op_len * count
+        patch_bytes = nop_op_len * count
 
-        if real_num_bytes != num_bytes:
+        if patch_bytes != num_bytes:
             err("Cannot patch instruction at {:#x} (nop instruction does not evenly fit in requested size)".format(addr))
             return
 
         if is_big_endian():
-            insn = b''.join([x[::-1] for x in slicer(current_arch.nop_insn, 4)])
+            insn = current_arch.nop_insn[::-1]
         else:
             insn = current_arch.nop_insn
-        self.patch(addr, insn * count, real_num_bytes)
+
+        self.patch(addr, insn * count, patch_bytes)
         return
 
     @only_if_gdb_running
@@ -18412,14 +18672,16 @@ class PatchInfloopCommand(PatchCommand):
         if is_arm32() and current_arch.is_thumb() and addr & 1:
             addr -= 1
 
-        num_bytes = len(current_arch.infloop_insn)
-
         if is_big_endian():
-            insn = b''.join([x[::-1] for x in slicer(current_arch.infloop_insn, 4)])
+            insn = current_arch.infloop_insn[::-1]
+            if current_arch.has_delay_slot:
+                insn += current_arch.nop_insn[::-1]
         else:
             insn = current_arch.infloop_insn
+            if current_arch.has_delay_slot:
+                insn += current_arch.nop_insn
 
-        self.patch(addr, insn, num_bytes)
+        self.patch(addr, insn, len(insn))
         return
 
     @only_if_gdb_running
@@ -18483,14 +18745,16 @@ class PatchTrapCommand(PatchCommand):
         if is_arm32() and current_arch.is_thumb() and addr & 1:
             addr -= 1
 
-        num_bytes = len(current_arch.trap_insn)
-
         if is_big_endian():
-            insn = b''.join([x[::-1] for x in slicer(current_arch.trap_insn, 4)])
+            insn = current_arch.trap_insn[::-1]
+            if current_arch.has_delay_slot:
+                insn += current_arch.nop_insn[::-1]
         else:
             insn = current_arch.trap_insn
+            if current_arch.has_delay_slot:
+                insn += current_arch.nop_insn
 
-        self.patch(addr, insn, num_bytes)
+        self.patch(addr, insn, len(insn))
         return
 
     @only_if_gdb_running
@@ -18554,14 +18818,16 @@ class PatchRetCommand(PatchCommand):
         if is_arm32() and current_arch.is_thumb() and addr & 1:
             addr -= 1
 
-        num_bytes = len(current_arch.ret_insn)
-
         if is_big_endian():
-            insn = b''.join([x[::-1] for x in slicer(current_arch.ret_insn, 4)])
+            insn = current_arch.ret_insn[::-1]
+            if current_arch.has_delay_slot:
+                insn += current_arch.nop_insn[::-1]
         else:
             insn = current_arch.ret_insn
+            if current_arch.has_delay_slot:
+                insn += current_arch.nop_insn
 
-        self.patch(addr, insn, num_bytes)
+        self.patch(addr, insn, len(insn))
         return
 
     @only_if_gdb_running
@@ -18572,7 +18838,7 @@ class PatchRetCommand(PatchCommand):
             self.usage()
             return
 
-        if current_arch.nop_insn is None:
+        if current_arch.ret_insn is None:
             err("This command cannot work under this architecture.")
             return
 
@@ -18625,14 +18891,16 @@ class PatchSyscallCommand(PatchCommand):
         if is_arm32() and current_arch.is_thumb() and addr & 1:
             addr -= 1
 
-        num_bytes = len(current_arch.syscall_insn)
-
         if is_big_endian():
-            insn = b''.join([x[::-1] for x in slicer(current_arch.syscall_insn, 4)])
+            insn = current_arch.syscall_insn[::-1]
+            if current_arch.has_syscall_delay_slot:
+                insn += current_arch.nop_insn[::-1]
         else:
             insn = current_arch.syscall_insn
+            if current_arch.has_syscall_delay_slot:
+                insn += current_arch.nop_insn
 
-        self.patch(addr, insn, num_bytes)
+        self.patch(addr, insn, len(insn))
         return
 
     @only_if_gdb_running
