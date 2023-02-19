@@ -50196,7 +50196,7 @@ class BytearrayCommand(GenericCommand):
         dump = False
 
         try:
-            opts, args = getopt.getopt(argv, "b:cdh")
+            opts, args = getopt.getopt(argv, "b:dh")
             for o, a in opts:
                 if o == "-b":
                     badchars = a
@@ -50350,7 +50350,7 @@ class BincompareCommand(GenericCommand):
         memory_data = None
 
         try:
-            opts, args = getopt.getopt(argv, "f:a:ch")
+            opts, args = getopt.getopt(argv, "f:a:h")
             for o, a in opts:
                 if o == "-f":
                     filename = a
