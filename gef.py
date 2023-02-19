@@ -11571,14 +11571,13 @@ class FlagsCommand(GenericCommand):
 
 
 @register_command
-class ChangePermissionCommand(GenericCommand):
+class MprotectCommand(GenericCommand):
     """Change a page permission. By default, it will change it to RWX."""
-    _cmdline_ = "set-permission"
-    _syntax_ = "{:s} [-h] [--only-patch] LOCATION [PERMISSION]".format(_cmdline_)
+    _cmdline_ = "mprotect"
+    _syntax_ = "{:s} [-h] [--patch-only] LOCATION [PERMISSION]".format(_cmdline_)
     _example_ = "{:s} $sp 7\n".format(_cmdline_)
     _example_ += "{:s} $sp rwx".format(_cmdline_)
     _category_ = "Debugging Support"
-    _aliases_ = ["mprotect"]
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
@@ -11594,10 +11593,10 @@ class ChangePermissionCommand(GenericCommand):
             self.usage()
             return
 
-        only_patch = False
-        if "--only-patch" in argv:
-            only_patch = True
-            argv.remove("--only-patch")
+        patch_only = False
+        if "--patch-only" in argv:
+            patch_only = True
+            argv.remove("--patch-only")
 
         if len(argv) not in (1, 2):
             self.usage()
@@ -11677,7 +11676,7 @@ class ChangePermissionCommand(GenericCommand):
             err("Failed to write memory (qemu doesn't support writing to code area?)")
             return
 
-        if not only_patch:
+        if not patch_only:
             info("Resuming execution")
             gdb.execute("continue")
         return
