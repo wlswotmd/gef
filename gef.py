@@ -9589,7 +9589,7 @@ class NiCommand(GenericCommand):
     _syntax_ = _cmdline_
     _category_ = "Debugging Support"
 
-    def pre_ni_or1k(self, argv):
+    def ni_set_bp_for_branch(self):
         insn = get_insn()
         insn_next = get_insn_next()
         target = None
@@ -9613,7 +9613,7 @@ class NiCommand(GenericCommand):
 
     def do_invoke(self, argv):
         if is_or1k():
-            self.pre_ni_or1k(argv)
+            self.ni_set_bp_for_branch()
 
         cmd = "nexti " + ' '.join(argv)
         try:
@@ -9636,7 +9636,7 @@ class SiCommand(GenericCommand):
     _syntax_ = _cmdline_
     _category_ = "Debugging Support"
 
-    def pre_si_or1k(self, argv):
+    def si_set_bp_for_branch(self):
         insn = get_insn()
         insn_next = get_insn_next()
         target = None
@@ -9647,7 +9647,7 @@ class SiCommand(GenericCommand):
             # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
             frame = None
 
-        if insn and current_arch.is_jump(insn) or current_arch.is_call(insn):
+        if insn and current_arch.is_jump(insn) or current_arch.is_call(insn): # si also stops at `call` target
             target = ContextCommand.get_branch_addr(insn)
         elif insn and current_arch.is_ret(insn):
             target = current_arch.get_ra(insn, frame)
@@ -9660,7 +9660,7 @@ class SiCommand(GenericCommand):
 
     def do_invoke(self, argv):
         if is_or1k():
-            self.pre_si_or1k(argv)
+            self.si_set_bp_for_branch()
 
         cmd = "stepi " + ' '.join(argv)
         try:
