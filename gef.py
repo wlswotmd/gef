@@ -48587,8 +48587,8 @@ class ExecNextCommand(GenericCommand):
         else:
             next_addr = gdb_get_nth_next_instruction_address(current_arch.pc, 2)
         # `until` command has a bug(?) because sometimes fail. we use `tbreak` and `continue` instead of `until`.
-        gdb.execute("tbreak *{:#x}".format(next_addr))
-        gdb.execute("continue")
+        gdb.Breakpoint("*{:#x}".format(next_addr), gdb.BP_BREAKPOINT, internal=True, temporary=True)
+        gdb.execute("c") # use c wrapper
         return
 
 
