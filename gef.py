@@ -6539,7 +6539,19 @@ def read_memory(addr, length):
                 return fd.read(length)
         except Exception:
             pass
+
+    # Don't include it in a try-cach, as we might expect a memory error on read_memory.
     return gdb.selected_inferior().read_memory(addr, length).tobytes()
+
+
+def is_valid_addr(addr):
+    if addr < 0:
+        return False
+    try:
+        gdb.selected_inferior().read_memory(addr, 1)
+        return True
+    except gdb.MemoryError:
+        return False
 
 
 def read_int_from_memory(addr):
@@ -7418,16 +7430,9 @@ def __get_explored_regions():
 
     regions = []
 
-    def is_exist_page(addr):
-        try:
-            read_memory(addr, 1)
-            return True
-        except gdb.MemoryError:
-            return False
-
     def get_region_start_end(addr):
         addr &= gef_getpagesize_mask()
-        if not is_exist_page(addr):
+        if not is_valid_addr(addr):
             return None, None
         region_start = addr
         region_end = addr + gef_getpagesize()
@@ -7442,7 +7447,7 @@ def __get_explored_regions():
                 break
             if region_start in end_addrs:
                 break
-            if not is_exist_page(region_start - gef_getpagesize()):
+            if not is_valid_addr(region_start - gef_getpagesize()):
                 break
             region_start -= gef_getpagesize()
 
@@ -7453,7 +7458,7 @@ def __get_explored_regions():
                 break
             if region_end in start_addrs:
                 break
-            if not is_exist_page(region_end):
+            if not is_valid_addr(region_end):
                 break
             region_end += gef_getpagesize()
         return region_start, region_end
@@ -8672,9 +8677,7 @@ def get_auxiliary_walk(offset=0):
     addr = current_arch.sp & ~(DEFAULT_PAGE_SIZE - 1)
 
     # check readable or not
-    try:
-        read_memory(addr, 1)
-    except gdb.MemoryError:
+    if not is_valid_addr(addr):
         return None
 
     # find stack bottom
@@ -8688,9 +8691,8 @@ def get_auxiliary_walk(offset=0):
     current = addr - current_arch.ptrsize * 2 - offset
 
     # check readable or not again
-    try:
-        read_memory(current, 1)
-    except gdb.MemoryError: # something is wrong, maybe stack is pivoted
+    if not is_valid_addr(addr):
+        # something is wrong, maybe stack is pivoted
         return None
 
     # find auxv end
@@ -11102,10 +11104,9 @@ class DemanglePtrCommand(GenericCommand):
         decoded = self.decode(target, cookie)
         color_decoded = Color.colorify("{:#x}".format(decoded), "white bold")
         decoded_sym = get_symbol_string(decoded)
-        try:
-            read_memory(decoded, 1)
+        if is_valid_addr(decoded):
             valid_msg = Color.colorify("valid", "bold green")
-        except gdb.MemoryError:
+        else:
             valid_msg = Color.colorify("invalid", "bold red")
         info("Decoded value is {:s}{:s} [{:s}]".format(color_decoded, decoded_sym, valid_msg))
         return
@@ -20446,10 +20447,9 @@ class DestructorDumpCommand(GenericCommand):
             sym = get_symbol_string(decoded_fn)
             decoded_fn_s = Color.boldify("{:#x}".format(decoded_fn))
 
-            try:
-                read_memory(decoded_fn, 1)
+            if is_valid_addr(decoded_fn):
                 valid_msg = Color.colorify("valid", "bold green")
-            except gdb.MemoryError:
+            else:
                 valid_msg = Color.colorify("invalid", "bold red")
 
             fmt = "    -> func:     {:#x}{:s}: {:#x} (={:s}{:s}) [{:s}]"
@@ -20510,10 +20510,9 @@ class DestructorDumpCommand(GenericCommand):
             sym = get_symbol_string(decoded_fn)
             decoded_fn_s = Color.boldify("{:#x}".format(decoded_fn))
 
-            try:
-                read_memory(decoded_fn, 1)
+            if is_valid_addr(decoded_fn):
                 valid_msg = Color.colorify("valid", "bold green")
-            except gdb.MemoryError:
+            else:
                 valid_msg = Color.colorify("invalid", "bold red")
 
             fns = "       fns[{:#x}]:{:#x}{:s}:".format(i, addr, self.perm(addr))
