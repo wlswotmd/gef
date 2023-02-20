@@ -10085,7 +10085,6 @@ class ProcessStatusCommand(GenericCommand):
     @only_if_not_qemu_system
     def do_invoke(self, argv):
         self.dont_repeat()
-        gef_print(titlify("Process information"))
         self.show_info_proc()
         self.show_info_proc_extra()
         self.show_parent()
@@ -10225,94 +10224,98 @@ class ProcessStatusCommand(GenericCommand):
             return "Not Found"
 
     def show_info_proc(self):
-        info("Process Information")
+        gef_print(titlify("Process Information"))
+
         pid = get_pid()
         executable = self.get_process_path_of(pid)
         cmdline = self.get_cmdline_of(pid)
         cwd = self.get_process_cwd(pid)
         root = self.get_process_root(pid)
-        gef_print("  {:32s} {} {}".format("PID", RIGHT_ARROW, pid))
-        gef_print("  {:32s} {} {}".format("  Executable", RIGHT_ARROW, repr(executable)))
-        gef_print("  {:32s} {} {}".format("  Command Line", RIGHT_ARROW, repr(cmdline)))
-        gef_print("  {:32s} {} {}".format("  Current Working Directory", RIGHT_ARROW, repr(cwd)))
-        gef_print("  {:32s} {} {}".format("  Root Directory", RIGHT_ARROW, repr(root)))
+        gef_print("{:32s} {} {}".format("PID", RIGHT_ARROW, pid))
+        gef_print("{:32s} {} {}".format("  Executable", RIGHT_ARROW, repr(executable)))
+        gef_print("{:32s} {} {}".format("  Command Line", RIGHT_ARROW, repr(cmdline)))
+        gef_print("{:32s} {} {}".format("  Current Working Directory", RIGHT_ARROW, repr(cwd)))
+        gef_print("{:32s} {} {}".format("  Root Directory", RIGHT_ARROW, repr(root)))
         uids = re.sub(r"\s+", " : ", self.get_state_of(pid)['Uid'])
         gids = re.sub(r"\s+", " : ", self.get_state_of(pid)['Gid'])
-        gef_print("  {:32s} {} {}".format("  RUID : EUID : SavedUID : FSUID", RIGHT_ARROW, uids))
-        gef_print("  {:32s} {} {}".format("  RGID : EGID : SavedGID : FSGID", RIGHT_ARROW, gids))
+        gef_print("{:32s} {} {}".format("  RUID : EUID : SavedUID : FSUID", RIGHT_ARROW, uids))
+        gef_print("{:32s} {} {}".format("  RGID : EGID : SavedGID : FSGID", RIGHT_ARROW, gids))
         seccomp_n = self.get_state_of(pid)['Seccomp']
         seccomp_s = {'0': 'Disabled', '1': 'Strict', '2': 'Filter'}[seccomp_n]
-        gef_print("  {:32s} {} {} ({})".format("  Seccomp Mode", RIGHT_ARROW, seccomp_n, seccomp_s))
+        gef_print("{:32s} {} {} ({})".format("  Seccomp Mode", RIGHT_ARROW, seccomp_n, seccomp_s))
         return
 
     def show_info_proc_extra(self):
-        info("Process Information Additional")
+        gef_print(titlify("Process Information Additional"))
+
         pid = get_pid()
         pgid = self.get_stat_of(pid)[4]
         pgid_exec = self.get_process_path_of(pgid)
         pgid_cmdline = self.get_cmdline_of(pgid)
-        gef_print("  {:32s} {} {}".format("Process Group ID", RIGHT_ARROW, pgid))
-        gef_print("  {:32s} {} {}".format("  Executable", RIGHT_ARROW, repr(pgid_exec)))
-        gef_print("  {:32s} {} {}".format("  Command Line", RIGHT_ARROW, repr(pgid_cmdline)))
+        gef_print("{:32s} {} {}".format("Process Group ID", RIGHT_ARROW, pgid))
+        gef_print("{:32s} {} {}".format("  Executable", RIGHT_ARROW, repr(pgid_exec)))
+        gef_print("{:32s} {} {}".format("  Command Line", RIGHT_ARROW, repr(pgid_cmdline)))
         sid = self.get_stat_of(pid)[5]
         sid_exec = self.get_process_path_of(sid)
         sid_cmdline = self.get_cmdline_of(sid)
-        gef_print("  {:32s} {} {}".format("Session ID", RIGHT_ARROW, sid))
-        gef_print("  {:32s} {} {}".format("  Executable", RIGHT_ARROW, repr(sid_exec)))
-        gef_print("  {:32s} {} {}".format("  Command Line", RIGHT_ARROW, repr(sid_cmdline)))
+        gef_print("{:32s} {} {}".format("Session ID", RIGHT_ARROW, sid))
+        gef_print("{:32s} {} {}".format("  Executable", RIGHT_ARROW, repr(sid_exec)))
+        gef_print("{:32s} {} {}".format("  Command Line", RIGHT_ARROW, repr(sid_cmdline)))
         tpgid = self.get_stat_of(pid)[7]
         tpgid_exec = self.get_process_path_of(tpgid)
         tpgid_cmdline = self.get_cmdline_of(tpgid)
-        gef_print("  {:32s} {} {}".format("TTY Process Group ID", RIGHT_ARROW, tpgid))
-        gef_print("  {:32s} {} {}".format("  Executable", RIGHT_ARROW, repr(tpgid_exec)))
-        gef_print("  {:32s} {} {}".format("  Command Line", RIGHT_ARROW, repr(tpgid_cmdline)))
+        gef_print("{:32s} {} {}".format("TTY Process Group ID", RIGHT_ARROW, tpgid))
+        gef_print("{:32s} {} {}".format("  Executable", RIGHT_ARROW, repr(tpgid_exec)))
+        gef_print("{:32s} {} {}".format("  Command Line", RIGHT_ARROW, repr(tpgid_cmdline)))
         ttynr = self.get_stat_of(pid)[6]
         major, minor = (ttynr >> 8) & 0xff, ((ttynr >> 20) << 8) | (ttynr & 0xff)
         ttystr = self.get_tty_str(major, minor)
-        gef_print("  {:32s} {} {} ({})".format("  TTY Device Number", RIGHT_ARROW, ttynr, repr(ttystr)))
+        gef_print("{:32s} {} {} ({})".format("  TTY Device Number", RIGHT_ARROW, ttynr, repr(ttystr)))
         return
 
     def show_parent(self):
-        info("Parent Process Information")
+        gef_print(titlify("Parent Process Information"))
         ppid = int(self.get_state_of(get_pid())["PPid"])
         ppid_exec = self.get_process_path_of(ppid)
         ppid_cmdline = self.get_cmdline_of(ppid)
-        gef_print("  {:32s} {} {}".format("Parent PID", RIGHT_ARROW, ppid))
-        gef_print("  {:32s} {} {}".format("  Executable", RIGHT_ARROW, repr(ppid_exec)))
-        gef_print("  {:32s} {} {}".format("  Command Line", RIGHT_ARROW, repr(ppid_cmdline)))
+        gef_print("{:32s} {} {}".format("Parent PID", RIGHT_ARROW, ppid))
+        gef_print("{:32s} {} {}".format("  Executable", RIGHT_ARROW, repr(ppid_exec)))
+        gef_print("{:32s} {} {}".format("  Command Line", RIGHT_ARROW, repr(ppid_cmdline)))
         return
 
     def show_childs(self):
-        info("Children Process Information")
+        gef_print(titlify("Children Process Information"))
+
         children = self.get_children_pids(get_pid())
         if not children:
-            gef_print("  No child process")
+            gef_print("No child process")
             return
 
         for i, cpid in enumerate(children, start=1):
             cpid_exec = self.get_process_path_of(cpid)
             cpid_cmdline = self.get_cmdline_of(cpid)
-            gef_print("  {:32s} {} {}".format("Child {} PID".format(i), RIGHT_ARROW, cpid))
-            gef_print("  {:32s} {} {}".format("  Executable", RIGHT_ARROW, repr(cpid_exec)))
-            gef_print("  {:32s} {} {}".format("  Command Line", RIGHT_ARROW, repr(cpid_cmdline)))
+            gef_print("{:32s} {} {}".format("Child {} PID".format(i), RIGHT_ARROW, cpid))
+            gef_print("{:32s} {} {}".format("  Executable", RIGHT_ARROW, repr(cpid_exec)))
+            gef_print("{:32s} {} {}".format("  Command Line", RIGHT_ARROW, repr(cpid_cmdline)))
         return
 
     def show_info_thread(self):
-        info("Thread Information")
+        gef_print(titlify("Thread Information"))
+
         pid = get_pid()
         nthreads = self.get_state_of(pid)['Threads']
         tgid = self.get_state_of(pid)['Tgid']
-        gef_print("  {:32s} {} {}".format("Num of Threads", RIGHT_ARROW, nthreads))
-        gef_print("  {:32s} {} {}".format("Thread Group ID", RIGHT_ARROW, tgid))
+        gef_print("{:32s} {} {}".format("Num of Threads", RIGHT_ARROW, nthreads))
+        gef_print("{:32s} {} {}".format("Thread Group ID", RIGHT_ARROW, tgid))
         tids = self.get_thread_ids(pid)
         split = 8
-        gef_print("  {:32s} {} {}".format("Thread ID List", RIGHT_ARROW, tids[:split]))
+        gef_print("{:32s} {} {}".format("Thread ID List", RIGHT_ARROW, tids[:split]))
         for i in range(split, len(tids), split):
-            gef_print("  {:32s} {} {}".format("", RIGHT_ARROW, tids[i:i + split]))
+            gef_print("{:32s} {} {}".format("", RIGHT_ARROW, tids[i:i + split]))
         return
 
     def show_info_proc_ns(self):
-        info("Process Information in Namespace")
+        gef_print(titlify("Namespace Information"))
 
         pid = get_pid()
         gdb_pid = os.getpid()
@@ -10321,38 +10324,41 @@ class ProcessStatusCommand(GenericCommand):
             sym1 = os.readlink("/proc/{:d}/ns/{:s}".format(pid, ns))
             sym2 = os.readlink("/proc/{:d}/ns/{:s}".format(gdb_pid, ns))
             m = "{:s} namespace separation".format(ns.upper())
-            gef_print("  {:32s} {} {}".format(m, RIGHT_ARROW, str(sym1 != sym2)))
+            gef_print("{:32s} {} {}".format(m, RIGHT_ARROW, str(sym1 != sym2)))
 
-        info("Process Information in Namespace (PID)")
+        gef_print(titlify("Pid Namespace Information"))
         state = self.get_state_of(pid)
         if len(state['NSpid'].split()) > 1:
-            gef_print("  {:32s} {} {}".format("Host PID  : Namespace PID", RIGHT_ARROW, re.sub(r"\s+", " : ", state['NSpid'])))
-            gef_print("  {:32s} {} {}".format("Host PGID : Namespace PGID", RIGHT_ARROW, re.sub(r"\s+", " : ", state['NSpgid'])))
-            gef_print("  {:32s} {} {}".format("Host SID  : Namespace SID", RIGHT_ARROW, re.sub(r"\s+", " : ", state['NSsid'])))
-            gef_print("  {:32s} {} {}".format("Host TGID : Namespace TGID", RIGHT_ARROW, re.sub(r"\s+", " : ", state['NStgid'])))
+            gef_print("{:32s} {} {}".format("Host PID  : Namespace PID", RIGHT_ARROW, re.sub(r"\s+", " : ", state['NSpid'])))
+            gef_print("{:32s} {} {}".format("Host PGID : Namespace PGID", RIGHT_ARROW, re.sub(r"\s+", " : ", state['NSpgid'])))
+            gef_print("{:32s} {} {}".format("Host SID  : Namespace SID", RIGHT_ARROW, re.sub(r"\s+", " : ", state['NSsid'])))
+            gef_print("{:32s} {} {}".format("Host TGID : Namespace TGID", RIGHT_ARROW, re.sub(r"\s+", " : ", state['NStgid'])))
+        else:
+            gef_print("{:32s}".format("No pid namespace"))
 
-        info("Process Information in Namespace (USER)")
+        gef_print(titlify("User Namespace Information"))
         for u in self.get_uid_map(pid):
-            gef_print("  {:32s} {} [{} : {} : {}]".format("UID_MAP [NS : Host : Range]", RIGHT_ARROW, u[0], u[1], u[2]))
+            gef_print("{:32s} {} [{} : {} : {}]".format("UID_MAP [NS : Host : Range]", RIGHT_ARROW, u[0], u[1], u[2]))
         for g in self.get_gid_map(pid):
-            gef_print("  {:32s} {} [{} : {} : {}]".format("GID_MAP [NS : Host : Range]", RIGHT_ARROW, g[0], g[1], g[2]))
+            gef_print("{:32s} {} [{} : {} : {}]".format("GID_MAP [NS : Host : Range]", RIGHT_ARROW, g[0], g[1], g[2]))
         return
 
     def show_fds(self):
+        gef_print(titlify("File Descriptors"))
+
         pid = get_pid()
         path = "/proc/{:d}/fd".format(pid)
 
-        info("File Descriptors:")
-        gef_print("  {:32s} {} {}".format("Num of FD slots", RIGHT_ARROW, self.get_state_of(pid)['FDSize']))
+        gef_print("{:32s} {} {}".format("Num of FD slots", RIGHT_ARROW, self.get_state_of(pid)['FDSize']))
         items = os.listdir(path)
         if not items:
-            gef_print("  No FD opened")
+            gef_print("No FD opened")
             return
 
         for fname in items:
             fullpath = os.path.join(path, fname)
             if os.path.islink(fullpath):
-                gef_print("  {:32s} {:s} {:s}".format(fullpath, RIGHT_ARROW, os.readlink(fullpath)))
+                gef_print("{:32s} {:s} {:s}".format(fullpath, RIGHT_ARROW, os.readlink(fullpath)))
         return
 
     def list_sockets(self, pid):
@@ -10371,6 +10377,8 @@ class ProcessStatusCommand(GenericCommand):
         return socket.inet_ntoa(struct.pack("<I", int(ip, 16))), int(port, 16)
 
     def show_connections(self):
+        gef_print(titlify("Network Connections"))
+
         # https://github.com/torvalds/linux/blob/v4.7/include/net/tcp_states.h#L16
         tcp_states_str = {
             0x01: "TCP_ESTABLISHED",
@@ -10391,11 +10399,10 @@ class ProcessStatusCommand(GenericCommand):
             0x07: "UDP_LISTEN",
         }
 
-        info("Network Connections")
         pid = get_pid()
         sockets = self.list_sockets(pid)
         if not sockets:
-            gef_print("  No open connections")
+            gef_print("No open connections")
             return
 
         entries = {}
@@ -10414,7 +10421,7 @@ class ProcessStatusCommand(GenericCommand):
 
                     conn_local = "{}:{}".format(local[0], local[1])
                     conn_remote = "{}:{}".format(remote[0], remote[1])
-                    gef_print("  {:32s} {} {} ({})".format(conn_local, RIGHT_ARROW, conn_remote, state_str))
+                    gef_print("{:32s} {} {} ({})".format(conn_local, RIGHT_ARROW, conn_remote, state_str))
         return
 
 
