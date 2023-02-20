@@ -7535,7 +7535,7 @@ def __get_explored_regions():
         # up search
         lower_bound = 0
         while True:
-            if region_start < lower_bound:
+            if region_start <= lower_bound:
                 break
             if region_start in end_addrs:
                 break
