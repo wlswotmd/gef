@@ -7150,6 +7150,32 @@ def get_os():
 
 
 @functools.lru_cache(maxsize=None)
+def is_remote_debug():
+    """"Return True is the current debugging session is running through GDB remote session."""
+    res = gdb.execute("maintenance print target-stack", to_string=True)
+    return "remote" in res
+
+
+@functools.lru_cache(maxsize=None)
+def is_normal_run():
+    ret = gdb.execute("info files", to_string=True)
+    return "Using the running image of child" in ret
+
+
+@functools.lru_cache(maxsize=None)
+def is_attach():
+    ret = gdb.execute("info files", to_string=True)
+    a = "Using the running image of attached" in ret
+    b = "Debugging a target over a serial line" in ret
+    return a or b
+
+
+@functools.lru_cache(maxsize=None)
+def is_container_attach():
+    return not is_remote_debug() and is_attach() and gdb.current_progspace().filename.startswith("target:")
+
+
+@functools.lru_cache(maxsize=None)
 def is_pin():
     if not is_remote_debug():
         return False
@@ -8525,18 +8551,6 @@ def is_in_x86_kernel(address):
 @functools.lru_cache(maxsize=None)
 def endian_str():
     return "<" if is_little_endian() else ">"
-
-
-@functools.lru_cache(maxsize=None)
-def is_remote_debug():
-    """"Return True is the current debugging session is running through GDB remote session."""
-    res = gdb.execute("maintenance print target-stack", to_string=True)
-    return "remote" in res
-
-
-@functools.lru_cache(maxsize=None)
-def is_container_attach():
-    return not is_remote_debug() and gdb.current_progspace().filename.startswith("target:")
 
 
 def de_bruijn(alphabet, n):
@@ -14058,19 +14072,34 @@ class ArchInfoCommand(GenericCommand):
         gef_print(titlify("GDB/ELF settings"))
         show_arch = gdb.execute("show architecture", to_string=True).rstrip()
         gef_print("{:30s} {:s} {:s}".format("show architecture", RIGHT_ARROW, show_arch))
-        gef_print("{:30s} {:s} {:s}".format("bit", RIGHT_ARROW, ["32-bit", "64-bit"][is_64bit()]))
-        gef_print("{:30s} {:s} {:s}".format("endian", RIGHT_ARROW, ["little", "big"][is_big_endian()]))
+        if is_64bit():
+            bit_str = "64-bit"
+        else:
+            bit_str = "32-bit"
+        if is_big_endian():
+            endian_str = "big"
+        else:
+            endian_str = "little"
+        gef_print("{:30s} {:s} {:s}".format("bit", RIGHT_ARROW, bit_str))
+        gef_print("{:30s} {:s} {:s}".format("endian", RIGHT_ARROW, endian_str))
+
         gef_print(titlify("GDB mode"))
+        gef_print("{:30s} {:s} {:s}".format("is_normal_run()", RIGHT_ARROW, str(is_normal_run())))
+        gef_print("{:30s} {:s} {:s}".format("is_attach()", RIGHT_ARROW, str(is_attach())))
         gef_print("{:30s} {:s} {:s}".format("is_remote_debug()", RIGHT_ARROW, str(is_remote_debug())))
         gef_print("{:30s} {:s} {:s}".format("is_container_attach()", RIGHT_ARROW, str(is_container_attach())))
         gef_print("{:30s} {:s} {:s}".format("is_qemu_system()", RIGHT_ARROW, str(is_qemu_system())))
         gef_print("{:30s} {:s} {:s}".format("is_qemu_usermode()", RIGHT_ARROW, str(is_qemu_usermode())))
-        gef_print("{:30s} {:s} {:s}".format("is_pin() (Intel PIN/Intel SDE)", RIGHT_ARROW, str(is_pin())))
+        gef_print("{:30s} {:s} {:s}".format("is_pin()", RIGHT_ARROW, str(is_pin())))
+
         gef_print(titlify("GEF settings"))
         gef_print("{:30s} {:s} {:s}".format("current_arch.arch", RIGHT_ARROW, current_arch.arch))
         gef_print("{:30s} {:s} {:s}".format("current_arch.mode", RIGHT_ARROW, current_arch.mode))
-        instlen = str(current_arch.instruction_length) if current_arch.instruction_length else "variable length"
-        gef_print("{:30s} {:s} {:s}".format("instruction length", RIGHT_ARROW, instlen))
+        if current_arch.instruction_length:
+            inst_len = "variable length"
+        else:
+            inst_len = str(current_arch.instruction_length)
+        gef_print("{:30s} {:s} {:s}".format("instruction length", RIGHT_ARROW, inst_len))
         fparams = ', '.join(current_arch.function_parameters)
         if len(current_arch.function_parameters) == 1:
             fparams += "(passing via stack)"
@@ -19607,9 +19636,11 @@ class ChecksecCommand(GenericCommand):
 
         # Stripped
         if sec["Stripped"]:
-            gef_print("{:<30s}: {:s}".format("Stripped", Color.colorify("Yes", "green bold")))
+            msg = Color.colorify("Yes", "green bold")
+            gef_print("{:<30s}: {:s}".format("Stripped", msg))
         else:
-            gef_print("{:<30s}: {:s}".format("Stripped", Color.colorify("No", "red bold") + " (The symbol remains)"))
+            msg = Color.colorify("No", "red bold") + " (The symbol remains)"
+            gef_print("{:<30s}: {:s}".format("Stripped", msg))
 
         # Canary
         msg = get_colored_msg(sec["Canary"])
@@ -19643,9 +19674,11 @@ class ChecksecCommand(GenericCommand):
 
         # CET
         if sec["Intel CET"]:
-            gef_print("{:<30s}: {:s}".format("Intel CET", Color.colorify("Found", "green bold") + " (endbr64/endbr32 is found)"))
+            msg = Color.colorify("Found", "green bold") + " (endbr64/endbr32 is found)"
+            gef_print("{:<30s}: {:s}".format("Intel CET", msg))
         else:
-            gef_print("{:<30s}: {:s}".format("Intel CET", Color.colorify("Not Found", "red bold") + " (endbr64/endbr32 is not found)"))
+            msg = Color.colorify("Not Found", "red bold") + " (endbr64/endbr32 is not found)"
+            gef_print("{:<30s}: {:s}".format("Intel CET", msg))
 
         # RPATH
         if not sec["RPATH"]:
@@ -19668,35 +19701,40 @@ class ChecksecCommand(GenericCommand):
             gef_print("{:<30s}: {:s}".format("Clang SafeStack", get_colored_msg(sec["Clang SafeStack"])))
 
         # System-ASLR
-        if not is_remote_debug():
+        if is_remote_debug():
+            msg = Color.colorify("Unknown", "gray bold")
+            gef_print("{:<30s}: {:s} (remote process)".format("System-ASLR", msg))
+        else:
             try:
                 system_aslr = int(open("/proc/sys/kernel/randomize_va_space").read())
                 if system_aslr == 0:
-                    gef_print("{:<30s}: {:s} (randomize_va_space: 0)".format("System ASLR", Color.colorify("Disabled", "red bold")))
+                    msg = Color.colorify("Disabled", "red bold")
+                    gef_print("{:<30s}: {:s} (randomize_va_space: 0)".format("System ASLR", msg))
                 elif system_aslr == 1:
-                    gef_print("{:<30s}: {:s} (randomize_va_space: 1)".format("System ASLR", Color.colorify("Partially Enabled", "yellow bold")))
+                    msg = Color.colorify("Partially Enabled", "yellow bold")
+                    gef_print("{:<30s}: {:s} (randomize_va_space: 1)".format("System ASLR", msg))
                 elif system_aslr == 2:
-                    gef_print("{:<30s}: {:s} (randomize_va_space: 2)".format("System ASLR", Color.colorify("Enabled", "green bold")))
+                    msg = Color.colorify("Enabled", "green bold")
+                    gef_print("{:<30s}: {:s} (randomize_va_space: 2)".format("System ASLR", msg))
             except Exception:
-                gef_print("{:<30s}: {:s} (randomize_va_space: error)".format("System-ASLR", Color.colorify("Unknown", "gray bold")))
-        else:
-            gef_print("{:<30s}: {:s} (attached remote process)".format("System-ASLR", Color.colorify("Unknown", "gray bold")))
+                msg = Color.colorify("Unknown", "gray bold")
+                gef_print("{:<30s}: {:s} (randomize_va_space: error)".format("System-ASLR", msg))
 
-        # attached or not
-        ret = gdb.execute("info files", to_string=True)
-        if "Using the running image of child Thread" in ret or "Using the running image of child process" in ret:
-            # gdb ASLR
+        # gdb ASLR
+        if is_attach() or is_remote_debug():
+            msg = Color.colorify("Ignored", "gray bold")
+            gef_print("{:<30s}: {:s} (attached or remote process)".format("GDB ASLR setting", msg))
+        else:
             ret = gdb.execute("show disable-randomization", to_string=True)
             if "virtual address space is on." in ret:
-                gef_print("{:<30s}: {:s} (disable-randomization: on)".format("GDB ASLR setting", Color.colorify("Disabled", "red bold")))
+                msg = Color.colorify("Disabled", "red bold")
+                gef_print("{:<30s}: {:s} (disable-randomization: on)".format("GDB ASLR setting", msg))
             elif "virtual address space is off." in ret:
-                gef_print("{:<30s}: {:s} (disable-randomization: off)".format("GDB ASLR setting", Color.colorify("Enabled", "green bold")))
+                msg = Color.colorify("Enabled", "green bold")
+                gef_print("{:<30s}: {:s} (disable-randomization: off)".format("GDB ASLR setting", msg))
             else:
-                gef_print("{:<30s}: {:s}".format("GDB ASLR setting", Color.colorify("Unknown", "gray bold")))
-        elif "Using the running image of attached process" in ret:
-            gef_print("{:<30s}: {:s} (attached process)".format("GDB ASLR setting", Color.colorify("Ignored", "gray bold")))
-        elif "Debugging a target over a serial line." in ret:
-            gef_print("{:<30s}: {:s} (attached process)".format("GDB ASLR setting", Color.colorify("Ignored", "gray bold")))
+                msg = Color.colorify("Unknown", "gray bold")
+                gef_print("{:<30s}: {:s}".format("GDB ASLR setting", msg))
         return
 
     def print_security_properties_qemu_system(self):
