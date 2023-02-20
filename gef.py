@@ -19993,19 +19993,7 @@ class ChecksecCommand(GenericCommand):
             err("checksec is failed")
             return
 
-        # Static
-        if sec["Static"]:
-            gef_print("{:<30s}: {:s}".format("Static/Dynamic", "Static"))
-        else:
-            gef_print("{:<30s}: {:s}".format("Static/Dynamic", "Dynamic"))
-
-        # Stripped
-        if sec["Stripped"]:
-            msg = Color.colorify("Yes", "green bold")
-            gef_print("{:<30s}: {:s}".format("Stripped", msg))
-        else:
-            msg = Color.colorify("No", "red bold") + " (The symbol remains)"
-            gef_print("{:<30s}: {:s}".format("Stripped", msg))
+        gef_print(titlify("Basic information"))
 
         # Canary
         msg = get_colored_msg(sec["Canary"])
@@ -20036,6 +20024,22 @@ class ChecksecCommand(GenericCommand):
             gef_print("{:<30s}: {:s}".format("Fortify", Color.colorify("Found", "green bold")))
         else:
             gef_print("{:<30s}: {:s}".format("Fortify", Color.colorify("Not Found", "red bold")))
+
+        gef_print(titlify("Additional information"))
+
+        # Static
+        if sec["Static"]:
+            gef_print("{:<30s}: {:s}".format("Static/Dynamic", "Static"))
+        else:
+            gef_print("{:<30s}: {:s}".format("Static/Dynamic", "Dynamic"))
+
+        # Stripped
+        if sec["Stripped"]:
+            msg = Color.colorify("Yes", "green bold")
+            gef_print("{:<30s}: {:s}".format("Stripped", msg))
+        else:
+            msg = Color.colorify("No", "red bold") + " (The symbol remains)"
+            gef_print("{:<30s}: {:s}".format("Stripped", msg))
 
         # CET
         if sec["Intel CET"]:
