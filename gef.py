@@ -35,6 +35,7 @@
 #   * nios2
 #   * microblaze
 #   * xtensa
+#   * cris
 #
 # For GEF with Python2 (only) support was moved to the GEF-Legacy
 # (https://github.com/hugsy/gef-legacy)
@@ -6453,6 +6454,161 @@ class XTENSA(Architecture):
         return b''.join(insns)
 
 
+class CRIS(Architecture):
+    arch = "CRIS"
+    mode = "CRIS"
+
+    # https://www.axis.com/dam/public/25/67/ab/etrax-100lx-programmer%E2%80%99s-manual-en-US-33419.pdf
+    all_registers = [
+        "$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7",
+        "$r8", "$r9", "$r10", "$r11", "$r12", "$r13", "$sp", "$pc",
+        "$srp", "$ccr",
+    ]
+    alias_registers = {
+        "$sp": "$r14", "$pc": "$r15",
+    }
+    flag_register = "$ccr"
+    flags_table = {
+        9: "write-fail",
+        3: "negative",
+        2: "zero",
+        1: "overflow",
+        0: "carry",
+    }
+    return_register = "$r10"
+    function_parameters = ["$r10", "$r11", "$r12", "$r13"]
+    # As of linux 4.17, cris is no longer supported.
+    syscall_register = "$r9"
+    syscall_parameters = ["$r10", "$r11", "$r12", "$r13", "$dcr1/mof", "$sp+0x4"]
+
+    instruction_length = None # variable length
+    has_delay_slot = True
+    has_syscall_delay_slot = True
+    has_ret_delay_slot = True
+
+    keystone_support = False
+    capstone_support = False
+    unicorn_support = False
+
+    nop_insn = b"\x0f\x05" # nop
+    infloop_insn = b"\xff\xe0" # ba self
+    trap_insn = None
+    ret_insn = b"\x7f\xb6" # ret
+    syscall_insn = b"\x3d\xe9" # break 13
+
+    def is_syscall(self, insn):
+        return insn.mnemonic == "break" and insn.operands[0] == "13"
+
+    def is_call(self, insn):
+        return insn.mnemonic in ["jsr", "jsrc"]
+
+    def is_jump(self, insn):
+        if self.is_conditional_branch(insn):
+            return True
+        return insn.mnemonic in ["ba", "jmpu", "jump"]
+
+    def is_ret(self, insn):
+        return insn.mnemonic == "ret"
+
+    def is_conditional_branch(self, insn):
+        conditions = [
+            "cc", "cs", "ne", "eq", "vc", "vs", "pl", "mi",
+            "ls", "hi", "ge", "lt", "gt", "le", "wf"
+        ]
+        for cc in conditions:
+            if insn.mnemonic in [f"b{cc}"]:
+                return True
+        return False
+
+    def is_branch_taken(self, insn):
+        mnemo = insn.mnemonic
+        val = get_register(self.flag_register)
+        flags = dict((self.flags_table[k], k) for k in self.flags_table)
+        taken, reason = False, ""
+
+        zero = bool(val & (1 << flags["zero"]))
+        negative = bool(val & (1 << flags["negative"]))
+        overflow = bool(val & (1 << flags["overflow"]))
+        carry = bool(val & (1 << flags["carry"]))
+        write_fail = bool(val & (1 << flags["write-fail"]))
+
+        if mnemo == "bcc":
+            taken, reason = not carry, "!C"
+        elif mnemo == "bcs":
+            taken, reason = carry, "C"
+        elif mnemo == "bne":
+            taken, reason = not zero, "!Z"
+        elif mnemo == "beq":
+            taken, reason = zero, "Z"
+        elif mnemo == "bvc":
+            taken, reason = not overflow, "!V"
+        elif mnemo == "bvs":
+            taken, reason = overflow, "V"
+        elif mnemo == "bpl":
+            taken, reason = not negative, "!N"
+        elif mnemo == "bmi":
+            taken, reason = negative, "N"
+        elif mnemo == "bls":
+            taken, reason = carry or zero, "C || Z"
+        elif mnemo == "bhi":
+            taken, reason = not carry and not zero, "!C && !Z"
+        elif mnemo == "bge":
+            taken, reason = (negative and overflow) or (not negative and not overflow), "(N && V) || (!N && !V)"
+        elif mnemo == "blt":
+            taken, reason = (negative and not overflow) or (not negative and overflow), "(N && !V) || (!N && V)"
+        elif mnemo == "bgt":
+            taken = (negative and overflow and not zero) or (not negative and not overflow and not zero)
+            reason = "(N && V && !Z) || (!N && !V && !Z)"
+        elif mnemo == "ble":
+            taken, reason = zero or (negative and not overflow) or (not negative and overflow), "Z || (N && !V) || (!N && V)"
+        elif mnemo == "bwf":
+            taken, reason = write_fail, "WF"
+        return taken, reason
+
+    def flag_register_to_human(self, val=None):
+        if not val:
+            reg = self.flag_register
+            val = get_register(reg)
+        return flags_to_human(val, self.flags_table)
+
+    def get_ith_parameter(self, i, in_func=True):
+        if i < len(self.function_parameters):
+            reg = self.function_parameters[i]
+            val = get_register(reg)
+            key = reg
+            return key, val
+        else:
+            i -= len(self.function_parameters)
+            sp = current_arch.sp
+            sz = current_arch.ptrsize
+            loc = sp + (i * sz)
+            val = read_int_from_memory(loc)
+            key = "[sp + {:#x}]".format(i * sz)
+            return key, val
+
+    def get_ra(self, insn, frame):
+        ra = None
+        try:
+            if self.is_ret(insn):
+                ra = get_register("$srp")
+            elif frame.older():
+                ra = frame.older().pc()
+        except Exception:
+            pass
+        return ra
+
+    mprotect_asm = None
+
+    @classmethod
+    def mprotect_asm_raw(cls, addr, size, perm):
+        return None
+        #_NR_mprotect = 125
+        #insns = [
+        #    b"\x0f\x05", # nop
+        #]
+        #return b''.join(insns)
+
+
 # The prototype for new architecture.
 #
 #class XXX(Architecture):
@@ -7028,6 +7184,8 @@ def only_if_specific_arch(arch=[]):
                     return f(*args, **kwargs)
                 elif a == "XTENSA" and is_xtensa():
                     return f(*args, **kwargs)
+                elif a == "CRIS" and is_cris():
+                    return f(*args, **kwargs)
             else:
                 warn("This command cannot work under this architecture.")
                 return
@@ -7108,6 +7266,9 @@ def exclude_specific_arch(arch=[]):
                     warn("This command cannot work under this architecture.")
                     return
                 elif a == "XTENSA" and is_xtensa():
+                    warn("This command cannot work under this architecture.")
+                    return
+                elif a == "CRIS" and is_cris():
                     warn("This command cannot work under this architecture.")
                     return
             else:
@@ -8420,6 +8581,14 @@ def is_xtensa():
         return False
 
 
+def is_cris():
+    """Checks if current target is cris."""
+    try:
+        return current_arch.arch == "CRIS" and current_arch.mode == "CRIS"
+    except Exception:
+        return False
+
+
 @functools.lru_cache(maxsize=None)
 def is_static(filename=None):
     if filename is None:
@@ -8475,6 +8644,7 @@ def set_arch(arch=None, default=None):
         Elf.EM_ALTERA_NIOS2: NIOS2, "NIOS2": NIOS2, "NIOS2:R1": NIOS2, "NIOS2:R2": NIOS2,
         Elf.EM_MICROBLAZE: MICROBLAZE, "MICROBLAZE": MICROBLAZE,
         Elf.EM_XTENSA: XTENSA, "XTENSA": XTENSA,
+        Elf.EM_CRIS: CRIS, "CRIS": CRIS,
     }
     global current_arch, current_elf
 
@@ -9413,6 +9583,19 @@ class NamedBreakpoint(gdb.Breakpoint):
         return True
 
 
+class SecondBreakpoint(gdb.Breakpoint):
+    """Breakpoint which sets a 2nd breakpoint, when hit."""
+    def __init__(self, loc, second_loc):
+        self.second_loc = second_loc
+        super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=True, temporary=True)
+        return
+
+    def stop(self):
+        reset_all_caches()
+        gdb.Breakpoint("*{:#x}".format(self.second_loc), gdb.BP_BREAKPOINT, internal=True, temporary=True)
+        return True
+
+
 #
 # Commands
 #
@@ -9584,15 +9767,15 @@ class GenericCommand(gdb.Command):
 class NiCommand(GenericCommand):
     """nexti wrapper for specific arch.
     s390x: sometimes returns `PC not saved` when nexti command is executed.
-    or1k: branch operations don't work well, so use breakpoints to simulate."""
+    or1k: branch operations don't work well, so use breakpoints to simulate.
+    cris: si/ni commands don't work well. so use breakpoints to simulate."""
     _cmdline_ = "ni"
     _syntax_ = _cmdline_
     _category_ = "Debugging Support"
 
     def ni_set_bp_for_branch(self):
-        insn = get_insn()
-        insn_next = get_insn_next()
         target = None
+        delay_slot = False
 
         try:
             frame = gdb.selected_frame()
@@ -9600,18 +9783,41 @@ class NiCommand(GenericCommand):
             # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
             frame = None
 
+        insn = get_insn()
+        insn_next = get_insn_next()
+
         if insn and current_arch.is_jump(insn):
             target = ContextCommand.get_branch_addr(insn)
+            delay_slot = current_arch.has_delay_slot
         elif insn and current_arch.is_ret(insn):
             target = current_arch.get_ra(insn, frame)
+            delay_slot = current_arch.has_ret_delay_slot
 
-        if target is not None:
-            gdb.Breakpoint("*{:#x}".format(target), gdb.BP_BREAKPOINT, internal=True, temporary=True)
-            # delay slot
+        if target is None:
+            return
+
+        # something wrong if infinity loop under cris architecture
+        if is_cris() and target == insn.address:
+            SecondBreakpoint(loc=insn_next.address, second_loc=target)
+            return
+
+        gdb.Breakpoint("*{:#x}".format(target), gdb.BP_BREAKPOINT, internal=True, temporary=True)
+        if delay_slot:
             gdb.Breakpoint("*{:#x}".format(insn_next.address), gdb.BP_BREAKPOINT, internal=True, temporary=True)
         return
 
+    def ni_set_bp_next(self):
+        insn_next = get_insn_next()
+        gdb.Breakpoint("*{:#x}".format(insn_next.address), gdb.BP_BREAKPOINT, internal=True, temporary=True)
+        return
+
     def do_invoke(self, argv):
+        if is_cris():
+            self.ni_set_bp_for_branch()
+            self.ni_set_bp_next()
+            gdb.execute("c") # use c wrapper
+            return
+
         if is_or1k():
             self.ni_set_bp_for_branch()
 
@@ -9631,15 +9837,15 @@ class NiCommand(GenericCommand):
 class SiCommand(GenericCommand):
     """stepi wrapper for specific arch.
     s390x: sometimes returns `PC not saved` when stepi command is executed.
-    or1k: branch operations don't work well, so use breakpoints to simulate."""
+    or1k: branch operations don't work well, so use breakpoints to simulate.
+    cris: si/ni commands don't work well. so use breakpoints to simulate."""
     _cmdline_ = "si"
     _syntax_ = _cmdline_
     _category_ = "Debugging Support"
 
     def si_set_bp_for_branch(self):
-        insn = get_insn()
-        insn_next = get_insn_next()
         target = None
+        delay_slot = False
 
         try:
             frame = gdb.selected_frame()
@@ -9647,18 +9853,41 @@ class SiCommand(GenericCommand):
             # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
             frame = None
 
+        insn = get_insn()
+        insn_next = get_insn_next()
+
         if insn and current_arch.is_jump(insn) or current_arch.is_call(insn): # si also stops at `call` target
             target = ContextCommand.get_branch_addr(insn)
+            delay_slot = current_arch.has_delay_slot
         elif insn and current_arch.is_ret(insn):
             target = current_arch.get_ra(insn, frame)
+            delay_slot = current_arch.has_ret_delay_slot
 
-        if target is not None:
-            gdb.Breakpoint("*{:#x}".format(target), gdb.BP_BREAKPOINT, internal=True, temporary=True)
-            # delay slot
+        if target is None:
+            return
+
+        # something wrong if infinity loop under cris architecture
+        if is_cris() and target == insn.address:
+            SecondBreakpoint(loc=insn_next.address, second_loc=target)
+            return
+
+        gdb.Breakpoint("*{:#x}".format(target), gdb.BP_BREAKPOINT, internal=True, temporary=True)
+        if delay_slot:
             gdb.Breakpoint("*{:#x}".format(insn_next.address), gdb.BP_BREAKPOINT, internal=True, temporary=True)
         return
 
+    def si_set_bp_next(self):
+        insn_next = get_insn_next()
+        gdb.Breakpoint("*{:#x}".format(insn_next.address), gdb.BP_BREAKPOINT, internal=True, temporary=True)
+        return
+
     def do_invoke(self, argv):
+        if is_cris():
+            self.si_set_bp_for_branch()
+            self.si_set_bp_next()
+            gdb.execute("c") # use c wrapper
+            return
+
         if is_or1k():
             self.si_set_bp_for_branch()
 
@@ -11729,6 +11958,10 @@ class CallSyscallCommand(GenericCommand):
             d["mem"] = {}
             for offset in [0x10, 0x14, 0x18, 0x1c]:
                 d["mem"][offset] = read_memory(current_arch.sp + offset, 4)
+        if is_cris():
+            d["mem"] = {}
+            for offset in [0x1c]:
+                d["mem"][offset] = read_memory(current_arch.sp + offset, 4)
         return d
 
     def revert_state(self, d):
@@ -11750,6 +11983,11 @@ class CallSyscallCommand(GenericCommand):
         # mem
         if is_mips32():
             for offset in [0x10, 0x14, 0x18, 0x1c]:
+                if read_memory(current_arch.sp + offset, 4) == d["mem"][offset]:
+                    continue
+                write_memory(current_arch.sp + offset, d["mem"][offset], 4)
+        if is_cris():
+            for offset in [0x1c]:
                 if read_memory(current_arch.sp + offset, 4) == d["mem"][offset]:
                     continue
                 write_memory(current_arch.sp + offset, d["mem"][offset], 4)
@@ -21707,7 +21945,8 @@ class SyscallSearchCommand(GenericCommand):
     _example_ += '{:s} -a OR1K -m OR1K              "^writev?" # or1k\n'.format(_cmdline_)
     _example_ += '{:s} -a NIOS2 -m NIOS2            "^writev?" # nios2\n'.format(_cmdline_)
     _example_ += '{:s} -a MICROBLAZE -m MICROBLAZE  "^writev?" # microblaze\n'.format(_cmdline_)
-    _example_ += '{:s} -a XTENSA -m XTENSA          "^writev?" # xtensa'.format(_cmdline_)
+    _example_ += '{:s} -a XTENSA -m XTENSA          "^writev?" # xtensa\n'.format(_cmdline_)
+    _example_ += '{:s} -a CRIS -m CRIS              "^writev?" # cris'.format(_cmdline_)
     _category_ = "Misc"
 
     def print_legend(self):
@@ -31191,6 +31430,374 @@ xtensa_syscall_tbl = """
 450     common  set_mempolicy_home_node         sys_set_mempolicy_home_node
 """
 
+# CRIS
+# [How to make]
+# cd /path/to/linux-4.16.18/
+# awk '/sys_call_table:/,/^$/' arch/cris/arch-v10/kernel/entry.S \
+# | grep -o "\.long \w*" | nl -v0 | awk '{print $1" cris "substr($3,5)" "$3}' |column -t
+cris_syscall_tbl = """
+0    cris  restart_syscall         sys_restart_syscall
+1    cris  exit                    sys_exit
+2    cris  fork                    sys_fork
+3    cris  read                    sys_read
+4    cris  write                   sys_write
+5    cris  open                    sys_open
+6    cris  close                   sys_close
+7    cris  waitpid                 sys_waitpid
+8    cris  creat                   sys_creat
+9    cris  link                    sys_link
+10   cris  unlink                  sys_unlink
+11   cris  execve                  sys_execve
+12   cris  chdir                   sys_chdir
+13   cris  time                    sys_time
+14   cris  mknod                   sys_mknod
+15   cris  chmod                   sys_chmod
+16   cris  lchown16                sys_lchown16
+17   cris  ni_syscall              sys_ni_syscall
+18   cris  stat                    sys_stat
+19   cris  lseek                   sys_lseek
+20   cris  getpid                  sys_getpid
+21   cris  mount                   sys_mount
+22   cris  oldumount               sys_oldumount
+23   cris  setuid16                sys_setuid16
+24   cris  getuid16                sys_getuid16
+25   cris  stime                   sys_stime
+26   cris  ptrace                  sys_ptrace
+27   cris  alarm                   sys_alarm
+28   cris  fstat                   sys_fstat
+29   cris  pause                   sys_pause
+30   cris  utime                   sys_utime
+31   cris  ni_syscall              sys_ni_syscall
+32   cris  ni_syscall              sys_ni_syscall
+33   cris  access                  sys_access
+34   cris  nice                    sys_nice
+35   cris  ni_syscall              sys_ni_syscall
+36   cris  sync                    sys_sync
+37   cris  kill                    sys_kill
+38   cris  rename                  sys_rename
+39   cris  mkdir                   sys_mkdir
+40   cris  rmdir                   sys_rmdir
+41   cris  dup                     sys_dup
+42   cris  pipe                    sys_pipe
+43   cris  times                   sys_times
+44   cris  ni_syscall              sys_ni_syscall
+45   cris  brk                     sys_brk
+46   cris  setgid16                sys_setgid16
+47   cris  getgid16                sys_getgid16
+48   cris  signal                  sys_signal
+49   cris  geteuid16               sys_geteuid16
+50   cris  getegid16               sys_getegid16
+51   cris  acct                    sys_acct
+52   cris  umount                  sys_umount
+53   cris  ni_syscall              sys_ni_syscall
+54   cris  ioctl                   sys_ioctl
+55   cris  fcntl                   sys_fcntl
+56   cris  ni_syscall              sys_ni_syscall
+57   cris  setpgid                 sys_setpgid
+58   cris  ni_syscall              sys_ni_syscall
+59   cris  ni_syscall              sys_ni_syscall
+60   cris  umask                   sys_umask
+61   cris  chroot                  sys_chroot
+62   cris  ustat                   sys_ustat
+63   cris  dup2                    sys_dup2
+64   cris  getppid                 sys_getppid
+65   cris  getpgrp                 sys_getpgrp
+66   cris  setsid                  sys_setsid
+67   cris  sigaction               sys_sigaction
+68   cris  sgetmask                sys_sgetmask
+69   cris  ssetmask                sys_ssetmask
+70   cris  setreuid16              sys_setreuid16
+71   cris  setregid16              sys_setregid16
+72   cris  sigsuspend              sys_sigsuspend
+73   cris  sigpending              sys_sigpending
+74   cris  sethostname             sys_sethostname
+75   cris  setrlimit               sys_setrlimit
+76   cris  old_getrlimit           sys_old_getrlimit
+77   cris  getrusage               sys_getrusage
+78   cris  gettimeofday            sys_gettimeofday
+79   cris  settimeofday            sys_settimeofday
+80   cris  getgroups16             sys_getgroups16
+81   cris  setgroups16             sys_setgroups16
+82   cris  select                  sys_select
+83   cris  symlink                 sys_symlink
+84   cris  lstat                   sys_lstat
+85   cris  readlink                sys_readlink
+86   cris  uselib                  sys_uselib
+87   cris  swapon                  sys_swapon
+88   cris  reboot                  sys_reboot
+89   cris  old_readdir             sys_old_readdir
+90   cris  old_mmap                sys_old_mmap
+91   cris  munmap                  sys_munmap
+92   cris  truncate                sys_truncate
+93   cris  ftruncate               sys_ftruncate
+94   cris  fchmod                  sys_fchmod
+95   cris  fchown16                sys_fchown16
+96   cris  getpriority             sys_getpriority
+97   cris  setpriority             sys_setpriority
+98   cris  ni_syscall              sys_ni_syscall
+99   cris  statfs                  sys_statfs
+100  cris  fstatfs                 sys_fstatfs
+101  cris  ni_syscall              sys_ni_syscall
+102  cris  socketcall              sys_socketcall
+103  cris  syslog                  sys_syslog
+104  cris  setitimer               sys_setitimer
+105  cris  getitimer               sys_getitimer
+106  cris  newstat                 sys_newstat
+107  cris  newlstat                sys_newlstat
+108  cris  newfstat                sys_newfstat
+109  cris  ni_syscall              sys_ni_syscall
+110  cris  ni_syscall              sys_ni_syscall
+111  cris  vhangup                 sys_vhangup
+112  cris  ni_syscall              sys_ni_syscall
+113  cris  ni_syscall              sys_ni_syscall
+114  cris  wait4                   sys_wait4
+115  cris  swapoff                 sys_swapoff
+116  cris  sysinfo                 sys_sysinfo
+117  cris  ipc                     sys_ipc
+118  cris  fsync                   sys_fsync
+119  cris  sigreturn               sys_sigreturn
+120  cris  clone                   sys_clone
+121  cris  setdomainname           sys_setdomainname
+122  cris  newuname                sys_newuname
+123  cris  ni_syscall              sys_ni_syscall
+124  cris  adjtimex                sys_adjtimex
+125  cris  mprotect                sys_mprotect
+126  cris  sigprocmask             sys_sigprocmask
+127  cris  ni_syscall              sys_ni_syscall
+128  cris  init_module             sys_init_module
+129  cris  delete_module           sys_delete_module
+130  cris  ni_syscall              sys_ni_syscall
+131  cris  quotactl                sys_quotactl
+132  cris  getpgid                 sys_getpgid
+133  cris  fchdir                  sys_fchdir
+134  cris  bdflush                 sys_bdflush
+135  cris  sysfs                   sys_sysfs
+136  cris  personality             sys_personality
+137  cris  ni_syscall              sys_ni_syscall
+138  cris  setfsuid16              sys_setfsuid16
+139  cris  setfsgid16              sys_setfsgid16
+140  cris  llseek                  sys_llseek
+141  cris  getdents                sys_getdents
+142  cris  select                  sys_select
+143  cris  flock                   sys_flock
+144  cris  msync                   sys_msync
+145  cris  readv                   sys_readv
+146  cris  writev                  sys_writev
+147  cris  getsid                  sys_getsid
+148  cris  fdatasync               sys_fdatasync
+149  cris  sysctl                  sys_sysctl
+150  cris  mlock                   sys_mlock
+151  cris  munlock                 sys_munlock
+152  cris  mlockall                sys_mlockall
+153  cris  munlockall              sys_munlockall
+154  cris  sched_setparam          sys_sched_setparam
+155  cris  sched_getparam          sys_sched_getparam
+156  cris  sched_setscheduler      sys_sched_setscheduler
+157  cris  sched_getscheduler      sys_sched_getscheduler
+158  cris  sched_yield             sys_sched_yield
+159  cris  sched_get_priority_max  sys_sched_get_priority_max
+160  cris  sched_get_priority_min  sys_sched_get_priority_min
+161  cris  sched_rr_get_interval   sys_sched_rr_get_interval
+162  cris  nanosleep               sys_nanosleep
+163  cris  mremap                  sys_mremap
+164  cris  setresuid16             sys_setresuid16
+165  cris  getresuid16             sys_getresuid16
+166  cris  ni_syscall              sys_ni_syscall
+167  cris  ni_syscall              sys_ni_syscall
+168  cris  poll                    sys_poll
+169  cris  ni_syscall              sys_ni_syscall
+170  cris  setresgid16             sys_setresgid16
+171  cris  getresgid16             sys_getresgid16
+172  cris  prctl                   sys_prctl
+173  cris  rt_sigreturn            sys_rt_sigreturn
+174  cris  rt_sigaction            sys_rt_sigaction
+175  cris  rt_sigprocmask          sys_rt_sigprocmask
+176  cris  rt_sigpending           sys_rt_sigpending
+177  cris  rt_sigtimedwait         sys_rt_sigtimedwait
+178  cris  rt_sigqueueinfo         sys_rt_sigqueueinfo
+179  cris  rt_sigsuspend           sys_rt_sigsuspend
+180  cris  pread64                 sys_pread64
+181  cris  pwrite64                sys_pwrite64
+182  cris  chown16                 sys_chown16
+183  cris  getcwd                  sys_getcwd
+184  cris  capget                  sys_capget
+185  cris  capset                  sys_capset
+186  cris  sigaltstack             sys_sigaltstack
+187  cris  sendfile                sys_sendfile
+188  cris  ni_syscall              sys_ni_syscall
+189  cris  ni_syscall              sys_ni_syscall
+190  cris  vfork                   sys_vfork
+191  cris  getrlimit               sys_getrlimit
+192  cris  mmap2                   sys_mmap2
+193  cris  truncate64              sys_truncate64
+194  cris  ftruncate64             sys_ftruncate64
+195  cris  stat64                  sys_stat64
+196  cris  lstat64                 sys_lstat64
+197  cris  fstat64                 sys_fstat64
+198  cris  lchown                  sys_lchown
+199  cris  getuid                  sys_getuid
+200  cris  getgid                  sys_getgid
+201  cris  geteuid                 sys_geteuid
+202  cris  getegid                 sys_getegid
+203  cris  setreuid                sys_setreuid
+204  cris  setregid                sys_setregid
+205  cris  getgroups               sys_getgroups
+206  cris  setgroups               sys_setgroups
+207  cris  fchown                  sys_fchown
+208  cris  setresuid               sys_setresuid
+209  cris  getresuid               sys_getresuid
+210  cris  setresgid               sys_setresgid
+211  cris  getresgid               sys_getresgid
+212  cris  chown                   sys_chown
+213  cris  setuid                  sys_setuid
+214  cris  setgid                  sys_setgid
+215  cris  setfsuid                sys_setfsuid
+216  cris  setfsgid                sys_setfsgid
+217  cris  pivot_root              sys_pivot_root
+218  cris  mincore                 sys_mincore
+219  cris  madvise                 sys_madvise
+220  cris  getdents64              sys_getdents64
+221  cris  fcntl64                 sys_fcntl64
+222  cris  ni_syscall              sys_ni_syscall
+223  cris  ni_syscall              sys_ni_syscall
+224  cris  gettid                  sys_gettid
+225  cris  readahead               sys_readahead
+226  cris  setxattr                sys_setxattr
+227  cris  lsetxattr               sys_lsetxattr
+228  cris  fsetxattr               sys_fsetxattr
+229  cris  getxattr                sys_getxattr
+230  cris  lgetxattr               sys_lgetxattr
+231  cris  fgetxattr               sys_fgetxattr
+232  cris  listxattr               sys_listxattr
+233  cris  llistxattr              sys_llistxattr
+234  cris  flistxattr              sys_flistxattr
+235  cris  removexattr             sys_removexattr
+236  cris  lremovexattr            sys_lremovexattr
+237  cris  fremovexattr            sys_fremovexattr
+238  cris  tkill                   sys_tkill
+239  cris  sendfile64              sys_sendfile64
+240  cris  futex                   sys_futex
+241  cris  sched_setaffinity       sys_sched_setaffinity
+242  cris  sched_getaffinity       sys_sched_getaffinity
+243  cris  ni_syscall              sys_ni_syscall
+244  cris  ni_syscall              sys_ni_syscall
+245  cris  io_setup                sys_io_setup
+246  cris  io_destroy              sys_io_destroy
+247  cris  io_getevents            sys_io_getevents
+248  cris  io_submit               sys_io_submit
+249  cris  io_cancel               sys_io_cancel
+250  cris  fadvise64               sys_fadvise64
+251  cris  ni_syscall              sys_ni_syscall
+252  cris  exit_group              sys_exit_group
+253  cris  lookup_dcookie          sys_lookup_dcookie
+254  cris  epoll_create            sys_epoll_create
+255  cris  epoll_ctl               sys_epoll_ctl
+256  cris  epoll_wait              sys_epoll_wait
+257  cris  remap_file_pages        sys_remap_file_pages
+258  cris  set_tid_address         sys_set_tid_address
+259  cris  timer_create            sys_timer_create
+260  cris  timer_settime           sys_timer_settime
+261  cris  timer_gettime           sys_timer_gettime
+262  cris  timer_getoverrun        sys_timer_getoverrun
+263  cris  timer_delete            sys_timer_delete
+264  cris  clock_settime           sys_clock_settime
+265  cris  clock_gettime           sys_clock_gettime
+266  cris  clock_getres            sys_clock_getres
+267  cris  clock_nanosleep         sys_clock_nanosleep
+268  cris  statfs64                sys_statfs64
+269  cris  fstatfs64               sys_fstatfs64
+270  cris  tgkill                  sys_tgkill
+271  cris  utimes                  sys_utimes
+272  cris  fadvise64_64            sys_fadvise64_64
+273  cris  ni_syscall              sys_ni_syscall
+274  cris  ni_syscall              sys_ni_syscall
+275  cris  ni_syscall              sys_ni_syscall
+276  cris  ni_syscall              sys_ni_syscall
+277  cris  mq_open                 sys_mq_open
+278  cris  mq_unlink               sys_mq_unlink
+279  cris  mq_timedsend            sys_mq_timedsend
+280  cris  mq_timedreceive         sys_mq_timedreceive
+281  cris  mq_notify               sys_mq_notify
+282  cris  mq_getsetattr           sys_mq_getsetattr
+283  cris  ni_syscall              sys_ni_syscall
+284  cris  waitid                  sys_waitid
+285  cris  ni_syscall              sys_ni_syscall
+286  cris  add_key                 sys_add_key
+287  cris  request_key             sys_request_key
+288  cris  keyctl                  sys_keyctl
+289  cris  ioprio_set              sys_ioprio_set
+290  cris  ioprio_get              sys_ioprio_get
+291  cris  inotify_init            sys_inotify_init
+292  cris  inotify_add_watch       sys_inotify_add_watch
+293  cris  inotify_rm_watch        sys_inotify_rm_watch
+294  cris  migrate_pages           sys_migrate_pages
+295  cris  openat                  sys_openat
+296  cris  mkdirat                 sys_mkdirat
+297  cris  mknodat                 sys_mknodat
+298  cris  fchownat                sys_fchownat
+299  cris  futimesat               sys_futimesat
+300  cris  fstatat64               sys_fstatat64
+301  cris  unlinkat                sys_unlinkat
+302  cris  renameat                sys_renameat
+303  cris  linkat                  sys_linkat
+304  cris  symlinkat               sys_symlinkat
+305  cris  readlinkat              sys_readlinkat
+306  cris  fchmodat                sys_fchmodat
+307  cris  faccessat               sys_faccessat
+308  cris  pselect6                sys_pselect6
+309  cris  ppoll                   sys_ppoll
+310  cris  unshare                 sys_unshare
+311  cris  set_robust_list         sys_set_robust_list
+312  cris  get_robust_list         sys_get_robust_list
+313  cris  splice                  sys_splice
+314  cris  sync_file_range         sys_sync_file_range
+315  cris  tee                     sys_tee
+316  cris  vmsplice                sys_vmsplice
+317  cris  move_pages              sys_move_pages
+318  cris  getcpu                  sys_getcpu
+319  cris  epoll_pwait             sys_epoll_pwait
+320  cris  utimensat               sys_utimensat
+321  cris  signalfd                sys_signalfd
+322  cris  timerfd_create          sys_timerfd_create
+323  cris  eventfd                 sys_eventfd
+324  cris  fallocate               sys_fallocate
+325  cris  timerfd_settime         sys_timerfd_settime
+326  cris  timerfd_gettime         sys_timerfd_gettime
+327  cris  signalfd4               sys_signalfd4
+328  cris  eventfd2                sys_eventfd2
+329  cris  epoll_create1           sys_epoll_create1
+330  cris  dup3                    sys_dup3
+331  cris  pipe2                   sys_pipe2
+332  cris  inotify_init1           sys_inotify_init1
+333  cris  preadv                  sys_preadv
+334  cris  pwritev                 sys_pwritev
+335  cris  setns                   sys_setns
+336  cris  name_to_handle_at       sys_name_to_handle_at
+337  cris  open_by_handle_at       sys_open_by_handle_at
+338  cris  rt_tgsigqueueinfo       sys_rt_tgsigqueueinfo
+339  cris  perf_event_open         sys_perf_event_open
+340  cris  recvmmsg                sys_recvmmsg
+341  cris  accept4                 sys_accept4
+342  cris  fanotify_init           sys_fanotify_init
+343  cris  fanotify_mark           sys_fanotify_mark
+344  cris  prlimit64               sys_prlimit64
+345  cris  clock_adjtime           sys_clock_adjtime
+346  cris  syncfs                  sys_syncfs
+347  cris  sendmmsg                sys_sendmmsg
+348  cris  process_vm_readv        sys_process_vm_readv
+349  cris  process_vm_writev       sys_process_vm_writev
+350  cris  kcmp                    sys_kcmp
+351  cris  finit_module            sys_finit_module
+352  cris  sched_setattr           sys_sched_setattr
+353  cris  sched_getattr           sys_sched_getattr
+354  cris  renameat2               sys_renameat2
+355  cris  seccomp                 sys_seccomp
+356  cris  getrandom               sys_getrandom
+357  cris  memfd_create            sys_memfd_create
+358  cris  bpf                     sys_bpf
+359  cris  execveat                sys_execveat
+"""
+
 
 def parse_syscall_table_defs(table_defs):
     table = []
@@ -31388,6 +31995,8 @@ def get_syscall_table(arch=None, mode=None):
             arch, mode = "MICROBLAZE", "MICROBLAZE"
         elif is_xtensa():
             arch, mode = "XTENSA", "XTENSA"
+        elif is_cris():
+            arch, mode = "CRIS", "CRIS"
         else:
             raise
 
@@ -32850,6 +33459,47 @@ def get_syscall_table(arch=None, mode=None):
                 err("Not found: {:s}".format(func))
                 raise
             syscall_list.append([nr, name, sc_def[func]])
+
+    elif arch == "CRIS" and mode == "CRIS":
+        register_list = CRIS().syscall_parameters
+        sc_def = parse_common_syscall_defs()
+        tbl = parse_syscall_table_defs(cris_syscall_tbl)
+        arch_specific_dic = {
+            'sys_sigreturn': [], # arch/cris/arch-v10/kernel/signal.c
+            'sys_clone': [
+                'unsigned long clone_flags', 'unsigned long newsp', 'int stack_size',
+                'int __user *parent_tidptr', 'int __user *child_tidptr', 'unsigned long tls',
+            ], # kernel/fork.c (CONFIG_CLONE_BACKWARDS2)
+            'sys_bdflush': [
+                'int func', 'long data',
+            ], # include/linux/syscalls.h
+            'sys_sysctl': [
+                'struct __sysctl_args __user *args',
+            ], # include/linux/syscalls.h
+            'sys_rt_sigreturn': [], # arch/cris/arch-v10/kernel/signal.c
+            'sys_mmap2': [
+                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
+                'unsigned long flags', 'unsigned long fd', 'unsigned long pgoff',
+            ], # arch/cris/kernel/sys_cris.c
+        }
+
+        syscall_list = []
+        for entry in tbl:
+            nr, abi, name, func = entry
+            if abi != "cris":
+                continue
+            # special case
+            if func in arch_specific_dic:
+                syscall_list.append([nr, name, arch_specific_dic[func]])
+                continue
+            # common case
+            if func == 'sys_ni_syscall':
+                continue
+            if func not in sc_def:
+                err("Not found: {:s}".format(func))
+                raise
+            syscall_list.append([nr, name, sc_def[func]])
+
     else:
         raise
 

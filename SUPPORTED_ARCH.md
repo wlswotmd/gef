@@ -99,3 +99,17 @@ I also list the tools I used.
         * Because neither `gdb-multiarch` nor `gdb` built from source support this architecture.
         * The toolchain also includes `xtensa-linux-gdb`, so I used it.
         * The readline seems to be broken so workaround is here: `LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libncurses.so.6 xtensa-linux-gdb`.
+* Cris
+    * gcc: `x86_64-gcc-7.3.0-nolibc_cris-linux.tar.xz` from http://ftp.iij.ad.jp/pub/linux/kernel/tools/crosstool/
+        * Because the toolchain is not available through apt.
+        * `cd /lib/x86_64-linux-gnu && ln -s libisl.so.{23,15} && ln -s libmpfr.so.{6,4}`
+    * lib: `cris-dist_1.64-1_i386.deb` from https://www.axis.com/ftp/pub/axis/tools/cris/compiler-kit/
+        * `mkdir dist && dpkg-deb -x cris-dist_1.64-1_i386.deb dist`
+        * `cris-linux-gcc -B/PATH/TO/dist/usr/local/cris/cris-axis-linux-gnu/lib -I/PATH/TO/dist/usr/local/cris/cris-axis-linux-gnu/sys-include -static ./test.c`
+    * qemu: `qemu-cris` via apt.
+        * Need `-cpu` option like `qemu-cris -cpu crisv17 -g 1234 ./a.out`.
+        * Could not use `-cpu crisv32` because gdb does not support it.
+            * `Remote 'g' packet reply is too long (expected 106 bytes, got 185 bytes)` error was occured.
+            * Tested command is `/usr/local/bin/gdb -ex 'set architecture crisv32' -ex 'target remote localhost:1234'`.
+    * gdb: `gdb` built from source with `./configure --enable-targets=all --with-python=/usr/bin/python3`.
+        * Because `gdb-multiarch` does not support this architecture.
