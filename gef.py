@@ -19158,13 +19158,23 @@ def dereference_from(addr):
 
 @functools.lru_cache(maxsize=512)
 def to_string_dereference_from(value, join_start_idx=0):
-    """Create link list string like 0xXXXXXXXX -> 0xYYYYYYYY -> 0xZZZZZZZZ -> '...'"""
+    """Create link list string like
+    0xXXXXXXXX(value) -> 0xYYYYYYYY(deref) -> 0xZZZZZZZZ(deref_deref) -> '...'"""
     # dereference
     addrs = dereference_from(value)
 
-    # value is not address
+    # value is not valid address
     if join_start_idx == 0 and len(addrs) == 1:
         return hex(value)
+
+    # for example, 1st element is address and 2nd element is "[...]".
+    # In this case we don't omit the 1st element even if join_start_idx==1
+    if join_start_idx >= 1:
+        try:
+            if addrs[join_start_idx].startswith("["):
+                join_start_idx -= 1
+        except Exception:
+            pass
 
     # create link list
     link = ""
