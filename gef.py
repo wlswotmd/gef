@@ -7225,7 +7225,7 @@ def get_register(regname):
         if (is_hppa32() or is_hppa64()) and regname == "$r0":
             return 0
         try:
-            value = gdb.selected_frame().read_register(regname)
+            value = gdb.selected_frame().read_register(regname[1:])
             return int(value)
         except ValueError:
             return None
