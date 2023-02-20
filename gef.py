@@ -48604,7 +48604,7 @@ class ExecUntilCommand(GenericCommand):
     _example_ += "{:s} syscall # execute until syscall instruction\n".format(_cmdline_)
     _example_ += "{:s} ret # execute until ret instruction\n".format(_cmdline_)
     _example_ += "{:s} all-branch # execute until call/jmp/ret instruction\n".format(_cmdline_)
-    _example_ += "{:s} indirect-branch # execute until indirect branch instruction\n".format(_cmdline_)
+    _example_ += "{:s} indirect-branch # execute until indirect branch instruction (x86/x64 only)\n".format(_cmdline_)
     _example_ += "{:s} memaccess # execute until '[' is included by the instruction\n".format(_cmdline_)
     _example_ += '{:s} keyword "call +r[ab]x" # execute until specified keyword (regex)\n'.format(_cmdline_)
     _example_ += '{:s} cond "$rax==0xdead && $rbx==0xcafe" # execute until specified condition is filled\n'.format(_cmdline_)
@@ -48724,9 +48724,9 @@ class ExecUntilCommand(GenericCommand):
                 # execute 1 instruction
                 insn = gef_current_instruction(current_arch.pc)
                 if self.skip_lib and "@plt>" in str(insn):
-                    gdb.execute("nexti")
+                    gdb.execute("ni") # use ni wrapper
                 else:
-                    gdb.execute("stepi")
+                    gdb.execute("si") # use si wrapper
 
                 # check breakpoint
                 insn = gef_current_instruction(current_arch.pc)
@@ -48856,7 +48856,7 @@ class ExecUntilIndirectBranchCommand(ExecUntilCommand):
     """Execute until next indirect call/jmp instruction (x86/x64 only)."""
     _cmdline_ = "exec-until indirect-branch"
     _syntax_ = "{:s} [-h] [--print-insn] [--skip-lib]".format(_cmdline_)
-    _example_ = "{:s} # execute until indirect branch instruction\n".format(_cmdline_)
+    _example_ = "{:s} # execute until indirect branch instruction (x86/x64 only)\n".format(_cmdline_)
     _example_ += "\n"
     _example_ += "THIS FEATURE IS VERY SLOW. Consider using the `--skip-lib` option.\n"
     _example_ += "(it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
