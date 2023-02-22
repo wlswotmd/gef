@@ -10241,17 +10241,22 @@ class PrintFormatCommand(GenericCommand):
 
 @register_command
 class CanaryCommand(GenericCommand):
-    """Shows the canary value of the current process. Apply the techique detailed in
-    https://www.elttam.com.au/blog/playing-with-canaries/ to show the canary."""
+    """Show the canary value of the current process from auxv information."""
     _cmdline_ = "canary"
-    _syntax_ = _cmdline_
     _category_ = "Process Information"
 
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
+        self.dump_canary()
+        return
 
+    def dump_canary(self):
         filepath = get_filepath()
         if filepath is None:
             err("Missing info about architecture. Please set: `file /path/to/target_binary`")
@@ -10269,13 +10274,13 @@ class CanaryCommand(GenericCommand):
             return
 
         canary, location = res
+        gef_print(titlify("canary value"))
         info("Found AT_RANDOM at {:#x}, reading {} bytes".format(location, current_arch.ptrsize))
         info("The canary is {:s}".format(Color.boldify("{:#x}".format(canary))))
-        gef_print(titlify("found canary"))
 
+        gef_print(titlify("found canary"))
         vmmap = get_process_maps()
         unpack = u32 if current_arch.ptrsize == 4 else u64
-
         sp = current_arch.sp
         for m in vmmap:
             if not (m.permission & Permission.READ) or not (m.permission & Permission.WRITE):
@@ -10304,20 +10309,211 @@ class CanaryCommand(GenericCommand):
 
 
 @register_command
-class PidCommand(GenericCommand):
-    """Show pid."""
-    _cmdline_ = "pid"
-    _syntax_ = _cmdline_
+class AuxvCommand(GenericCommand):
+    """Show ELF auxiliary vectors."""
+    _cmdline_ = "auxv"
     _category_ = "Process Information"
 
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        auxval = gef_get_auxiliary_values()
+        if not auxval:
+            return None
+
+        gef_print(titlify("ELF auxiliary vector"))
+        for k, v in auxval.items():
+            for num, name in AT_CONSTANTS.items():
+                if k == name:
+                    break
+            else:
+                num = -1
+            if k == "AT_NULL":
+                gef_print("[{:#4x}] {:16s} {:#x} (End of vector)".format(num, k + ":", v))
+            elif k in ["AT_EXECFN", "AT_PLATFORM"]:
+                s = read_cstring_from_memory(v)
+                gef_print("[{:#4x}] {:16s} {:#x}{:s}{}".format(num, k + ":", v, RIGHT_ARROW, Color.yellowify(repr(s))))
+            elif k in ["AT_RANDOM"]:
+                s = read_int_from_memory(v)
+                gef_print("[{:#4x}] {:16s} {:#x}{:s}{:#x}".format(num, k + ":", v, RIGHT_ARROW, s))
+            else:
+                gef_print("[{:#4x}] {:16s} {:#x}".format(num, k + ":", v))
+        return
+
+
+@register_command
+class ArgvCommand(GenericCommand):
+    """Show argv."""
+    _cmdline_ = "argv"
+    _category_ = "Process Information"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-v', dest='verbose', action='store_true', help='print all elements. (default: outputs up to 100).')
+    _syntax_ = parser.format_help()
+
+    def get_address_from_symbol(self, symbol):
+        try:
+            return parse_address(symbol)
+        except Exception:
+            return None
+
+    def print_from_mem(self, array, verbose):
+        i = 0
+        while True:
+            pos = array + i * current_arch.ptrsize
+            addr = read_int_from_memory(pos)
+            if addr == 0:
+                break
+            if not verbose and i > 99:
+                gef_print("...")
+                break
+            s = read_cstring_from_memory(addr, gef_getpagesize())
+            s = Color.yellowify(repr(s))
+            gef_print("[{:3d}]: {:#x}: {:#x}{:s}{:s}".format(i, pos, addr, RIGHT_ARROW, s))
+            i += 1
+        return
+
+    def print_from_proc(self, filename, verbose):
+        lines = open(filename).read()
+        for i, elem in enumerate(lines.split("\0")):
+            if not elem:
+                break
+            if not verbose and i > 99:
+                gef_print("...")
+                break
+            gef_print("[{:3d}]: {:s}".format(i, repr(elem)))
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_not_qemu_system
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        paddr1 = self.get_address_from_symbol("&_dl_argv")
+        addr1 = self.get_address_from_symbol("_dl_argv")
+        if paddr1 and addr1:
+            gef_print(titlify("ARGV from _dl_argv"))
+            info("_dl_argv @ {:#x}".format(paddr1))
+            self.print_from_mem(addr1, args.verbose)
+
+        paddr2 = self.get_address_from_symbol("&__libc_argv")
+        addr2 = self.get_address_from_symbol("__libc_argv")
+        if paddr2 and addr2:
+            gef_print(titlify("ARGV from __libc_argv"))
+            info("__libc_argv @ {:#x}".format(paddr2))
+            self.print_from_mem(addr2, args.verbose)
+
+        if not is_remote_debug():
+            gef_print(titlify("ARGV from /proc/{:d}/cmdline".format(get_pid())))
+            self.print_from_proc("/proc/{:d}/cmdline".format(get_pid()), args.verbose)
+        else:
+            if not (paddr1 or paddr2):
+                err("Not found argv")
+        return
+
+
+@register_command
+class EnvpCommand(GenericCommand):
+    """Show initial envp from __environ@ld, or modified envp from last_environ@libc."""
+    _cmdline_ = "envp"
+    _category_ = "Process Information"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-v', dest='verbose', action='store_true', help='print all elements. (default: outputs up to 100).')
+    _syntax_ = parser.format_help()
+
+    def get_address_from_symbol(self, symbol):
+        try:
+            return parse_address(symbol)
+        except Exception:
+            return None
+
+    def print_from_mem(self, array, verbose):
+        i = 0
+        while True:
+            pos = array + i * current_arch.ptrsize
+            addr = read_int_from_memory(pos)
+            if addr == 0:
+                break
+            if not verbose and i > 99:
+                gef_print("...")
+                break
+            s = read_cstring_from_memory(addr, gef_getpagesize())
+            s = Color.yellowify(repr(s))
+            gef_print("[{:3d}]: {:#x}: {:#x}{:s}{:s}".format(i, pos, addr, RIGHT_ARROW, s))
+            i += 1
+        return
+
+    def print_from_proc(self, filename, verbose):
+        lines = open(filename).read()
+        for i, elem in enumerate(lines.split("\0")):
+            if not elem:
+                break
+            if not verbose and i > 99:
+                gef_print("...")
+                break
+            gef_print("[{:3d}]: {:s}".format(i, repr(elem)))
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_not_qemu_system
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        gef_print(titlify("ENVP from __environ"))
+        paddr = self.get_address_from_symbol("&__environ")
+        addr = self.get_address_from_symbol("__environ")
+        if paddr and addr:
+            info("__environ @ {:#x}".format(paddr))
+            self.print_from_mem(addr, args.verbose)
+        elif addr == 0:
+            err("___environ is 0x0")
+        else:
+            err("Not found __environ")
+
+        gef_print(titlify("ENVP from last_environ (for putenv, etc.)"))
+        paddr = self.get_address_from_symbol("&last_environ")
+        addr = self.get_address_from_symbol("last_environ")
+        if paddr and addr:
+            info("last_environ @ {:#x}".format(paddr))
+            self.print_from_mem(addr, args.verbose)
+        elif addr == 0:
+            err("last_environ is 0x0")
+        else:
+            err("Not found last_environ")
+
+        if not is_remote_debug():
+            gef_print(titlify("ENVP from /proc/{:d}/environ".format(get_pid())))
+            self.print_from_proc("/proc/{:d}/environ".format(get_pid()), args.verbose)
+        return
+
+
+@register_command
+class PidCommand(GenericCommand):
+    """The PID of the local process will be displayed if it can be acquired. If the acquisition fails,
+    the PID of the remote process will be displayed if it can be acquired."""
+    _cmdline_ = "pid"
+    _category_ = "Process Information"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
         self.dont_repeat()
 
         pid = get_pid()
         if pid:
-            if is_qemu_usermode():
+            if is_qemu_usermode() or is_qemu_system():
                 gef_print("Local qemu PID: {:d}".format(pid))
             else:
                 gef_print("Local PID: {:d}".format(pid))
@@ -10334,14 +10530,17 @@ class PidCommand(GenericCommand):
 
 
 @register_command
-class GetFileCommand(GenericCommand):
+class FilenameCommand(GenericCommand):
     """Show current debugged filename."""
     _cmdline_ = "filename"
-    _syntax_ = _cmdline_
     _category_ = "Process Information"
 
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    @parse_args
     @only_if_not_qemu_system
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         filepath = get_filepath()
@@ -37648,198 +37847,6 @@ class SyscallTableViewCommand(GenericCommand):
             self.syscall_table_view(KernelAddressHeuristicFinder.get_sys_call_table_arm64())
             gef_print(titlify("compat_sys_call_table (arm32)"))
             self.syscall_table_view(KernelAddressHeuristicFinder.get_sys_call_table_arm64_compat())
-        return
-
-
-@register_command
-class AuxvCommand(GenericCommand):
-    """Show ELF auxiliary vectors."""
-    _cmdline_ = "auxv"
-    _syntax_ = _cmdline_
-    _category_ = "Process Information"
-
-    @only_if_gdb_running
-    @only_if_not_qemu_system
-    def do_invoke(self, argv):
-        self.dont_repeat()
-
-        auxval = gef_get_auxiliary_values()
-        if not auxval:
-            return None
-
-        gef_print(titlify("ELF auxiliary vector"))
-        for k, v in auxval.items():
-            for num, name in AT_CONSTANTS.items():
-                if k == name:
-                    break
-            else:
-                num = -1
-            if k == "AT_NULL":
-                gef_print("[{:#4x}] {:16s} {:#x} (End of vector)".format(num, k + ":", v))
-            elif k in ["AT_EXECFN", "AT_PLATFORM"]:
-                s = read_cstring_from_memory(v)
-                gef_print("[{:#4x}] {:16s} {:#x}{:s}{}".format(num, k + ":", v, RIGHT_ARROW, Color.yellowify(repr(s))))
-            elif k in ["AT_RANDOM"]:
-                s = read_int_from_memory(v)
-                gef_print("[{:#4x}] {:16s} {:#x}{:s}{:#x}".format(num, k + ":", v, RIGHT_ARROW, s))
-            else:
-                gef_print("[{:#4x}] {:16s} {:#x}".format(num, k + ":", v))
-        return
-
-
-@register_command
-class ArgvCommand(GenericCommand):
-    """Show argv."""
-    _cmdline_ = "argv"
-    _syntax_ = "{:s} [-v]".format(_cmdline_)
-    _category_ = "Process Information"
-
-    def get_address_from_symbol(self, symbol):
-        try:
-            return parse_address(symbol)
-        except Exception:
-            return None
-
-    def print_from_mem(self, array, verbose):
-        i = 0
-        while True:
-            pos = array + i * current_arch.ptrsize
-            addr = read_int_from_memory(pos)
-            if addr == 0:
-                break
-            if not verbose and i > 99:
-                gef_print("...")
-                break
-            s = read_cstring_from_memory(addr, gef_getpagesize())
-            s = Color.yellowify(repr(s))
-            gef_print("[{:3d}]: {:#x}: {:#x}{:s}{:s}".format(i, pos, addr, RIGHT_ARROW, s))
-            i += 1
-        return
-
-    def print_from_proc(self, filename, verbose):
-        lines = open(filename).read()
-        for i, elem in enumerate(lines.split("\0")):
-            if not elem:
-                break
-            if not verbose and i > 99:
-                gef_print("...")
-                break
-            gef_print("[{:3d}]: {:s}".format(i, repr(elem)))
-        return
-
-    @only_if_gdb_running
-    @only_if_not_qemu_system
-    def do_invoke(self, argv):
-        self.dont_repeat()
-
-        if "-h" in argv:
-            self.usage()
-            return
-
-        verbose = "-v" in argv
-
-        paddr1 = self.get_address_from_symbol("&_dl_argv")
-        addr1 = self.get_address_from_symbol("_dl_argv")
-        if paddr1 and addr1:
-            gef_print(titlify("ARGV from _dl_argv"))
-            info("_dl_argv @ {:#x}".format(paddr1))
-            self.print_from_mem(addr1, verbose)
-
-        paddr2 = self.get_address_from_symbol("&__libc_argv")
-        addr2 = self.get_address_from_symbol("__libc_argv")
-        if paddr2 and addr2:
-            gef_print(titlify("ARGV from __libc_argv"))
-            info("__libc_argv @ {:#x}".format(paddr2))
-            self.print_from_mem(addr2, verbose)
-
-        if not is_remote_debug():
-            gef_print(titlify("ARGV from /proc/{:d}/cmdline".format(get_pid())))
-            self.print_from_proc("/proc/{:d}/cmdline".format(get_pid()), verbose)
-        else:
-            if not (paddr1 or paddr2):
-                err("Not found argv")
-        return
-
-
-@register_command
-class EnvpCommand(GenericCommand):
-    """Show initial envp from __environ@ld, or modified envp from last_environ@libc."""
-    _cmdline_ = "envp"
-    _syntax_ = "{:s} [-h] [-v] [libc]".format(_cmdline_)
-    _category_ = "Process Information"
-
-    def get_address_from_symbol(self, symbol):
-        try:
-            return parse_address(symbol)
-        except Exception:
-            return None
-
-    def print_from_mem(self, array, verbose):
-        i = 0
-        while True:
-            pos = array + i * current_arch.ptrsize
-            addr = read_int_from_memory(pos)
-            if addr == 0:
-                break
-            if not verbose and i > 99:
-                gef_print("...")
-                break
-            s = read_cstring_from_memory(addr, gef_getpagesize())
-            s = Color.yellowify(repr(s))
-            gef_print("[{:3d}]: {:#x}: {:#x}{:s}{:s}".format(i, pos, addr, RIGHT_ARROW, s))
-            i += 1
-        return
-
-    def print_from_proc(self, filename, verbose):
-        lines = open(filename).read()
-        for i, elem in enumerate(lines.split("\0")):
-            if not elem:
-                break
-            if not verbose and i > 99:
-                gef_print("...")
-                break
-            gef_print("[{:3d}]: {:s}".format(i, repr(elem)))
-        return
-
-    @only_if_gdb_running
-    @only_if_not_qemu_system
-    def do_invoke(self, argv):
-        self.dont_repeat()
-
-        if "-h" in argv:
-            self.usage()
-            return
-
-        verbose = "-v" in argv
-
-        if "libc" in argv:
-            paddr = self.get_address_from_symbol("&last_environ")
-            addr = self.get_address_from_symbol("last_environ")
-            if paddr and addr:
-                gef_print(titlify("ENVP from last_environ"))
-                info("last_environ @ {:#x}".format(paddr))
-                return self.print_from_mem(addr, verbose)
-            else:
-                if addr is None:
-                    err("Not found last_environ")
-                    return
-                if addr == 0:
-                    err("last_environ is 0x0")
-                    return
-        else:
-            paddr = self.get_address_from_symbol("&__environ")
-            addr = self.get_address_from_symbol("__environ")
-            if paddr and addr:
-                gef_print(titlify("ENVP from __environ"))
-                info("__environ @ {:#x}".format(paddr))
-                self.print_from_mem(addr, verbose)
-                info("to see the result of putenv(), use `envp libc`")
-                return
-
-            if not is_remote_debug():
-                gef_print(titlify("ENVP from /proc/{:d}/environ".format(get_pid())))
-                return self.print_from_proc("/proc/{:d}/environ".format(get_pid()), verbose)
-        err("Not found envp")
         return
 
 
