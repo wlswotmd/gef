@@ -18044,7 +18044,7 @@ class ContextCommand(GenericCommand):
             if fmt == "pointers":
                 gdb.execute("dereference {address:#x} L{size:d}".format(address=address, size=sz,))
             else:
-                gdb.execute("hexdump {fmt:s} {address:#x} {size:d}".format(address=address, size=sz, fmt=fmt,))
+                gdb.execute("hexdump {fmt:s} {address:#x} {size:d} --no-pager".format(address=address, size=sz, fmt=fmt,))
         return
 
     @classmethod
@@ -18208,12 +18208,13 @@ class MemoryWatchListCommand(GenericCommand):
 class HexdumpCommand(GenericCommand):
     """Display SIZE lines of hexdump from the memory location pointed by ADDRESS."""
     _cmdline_ = "hexdump"
-    _syntax_ = "{:s} [-h] qword|dword|word|byte [--phys] [ADDRESS [SIZE]] [REVERSE] [FULL]".format(_cmdline_)
-    _example_ = "{:s} byte                  # dump from $sp as byte (0x10 bytes)\n".format(_cmdline_)
-    _example_ += "{:s} qword                 # dump from $sp as qword (0x100 bytes)\n".format(_cmdline_)
-    _example_ += "{:s} byte $rax 0x64        # dump from $rax as byte (100 bytes)\n".format(_cmdline_)
-    _example_ += "{:s} byte $rax 100 FULL    # print the same line without omitting (byte mode only)\n".format(_cmdline_)
-    _example_ += "{:s} byte $rax 100 REVERSE # print in reverse order line by line".format(_cmdline_)
+    _syntax_ = "{:s} [-h] qword|dword|word|byte [--phys] [ADDRESS [SIZE]] [--reverse] [--full] [--no-pager]".format(_cmdline_)
+    _example_ = "{:s} byte                     # dump from $sp as byte (0x10 bytes)\n".format(_cmdline_)
+    _example_ += "{:s} qword                    # dump from $sp as qword (0x100 bytes)\n".format(_cmdline_)
+    _example_ += "{:s} byte $rsp 128            # dump from $rsp as byte (128 bytes)\n".format(_cmdline_)
+    _example_ += "{:s} byte $rsp 128 --full     # print the same line without omitting (byte mode only)\n".format(_cmdline_)
+    _example_ += "{:s} byte $rsp 128 --reverse  # print in reverse order line by line".format(_cmdline_)
+    _example_ += "{:s} byte $rsp 128 --no-pager # do not use less".format(_cmdline_)
     _category_ = "Show/Modify Memory"
 
     def __init__(self, *args, **kwargs):
@@ -18240,6 +18241,7 @@ class HexdumpCommand(GenericCommand):
         read_len = None
         reverse = False
         full_mode = False
+        no_pager = False
 
         self.phys_mode = False
         if "--phys" in argv:
@@ -18255,11 +18257,14 @@ class HexdumpCommand(GenericCommand):
                 if arg_lower in valid_formats:
                     fmt = arg_lower
                     continue
-                if "reverse" == arg_lower:
+                if "--reverse" == arg_lower:
                     reverse = True
                     continue
-                if "full" == arg_lower:
+                if "--full" == arg_lower:
                     full_mode = True
+                    continue
+                if "--no-pager" == arg_lower:
+                    no_pager = True
                     continue
                 if target:
                     if read_len:
@@ -18290,7 +18295,7 @@ class HexdumpCommand(GenericCommand):
             lines.reverse()
 
         if lines:
-            gef_print("\n".join(lines))
+            gef_print("\n".join(lines), less=not no_pager)
         return
 
     def _hexdump_byte(self, read_from, read_len, full):
@@ -18395,8 +18400,8 @@ class HexdumpCommand(GenericCommand):
 class HexdumpQwordCommand(HexdumpCommand):
     """Display SIZE lines of hexdump as QWORD from the memory location pointed by ADDRESS."""
     _cmdline_ = "hexdump qword"
-    _syntax_ = "{:s} [-h] [--phys] [ADDRESS [SIZE]] [REVERSE]".format(_cmdline_)
-    _example_ = "{:s} qword $rsp 16 REVERSE".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [--phys] [ADDRESS [SIZE]] [--reverse]".format(_cmdline_)
+    _example_ = "{:s} $rsp 16 --reverse".format(_cmdline_)
     _category_ = "Show/Modify Memory"
 
     def __init__(self):
@@ -18409,8 +18414,8 @@ class HexdumpQwordCommand(HexdumpCommand):
 class HexdumpDwordCommand(HexdumpCommand):
     """Display SIZE lines of hexdump as DWORD from the memory location pointed by ADDRESS."""
     _cmdline_ = "hexdump dword"
-    _syntax_ = "{:s} [-h] [--phys] [ADDRESS [SIZE]] [REVERSE]".format(_cmdline_)
-    _example_ = "{:s} $esp 16 REVERSE".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [--phys] [ADDRESS [SIZE]] [--reverse]".format(_cmdline_)
+    _example_ = "{:s} $rsp 128 --reverse".format(_cmdline_)
     _category_ = "Show/Modify Memory"
 
     def __init__(self):
@@ -18423,8 +18428,8 @@ class HexdumpDwordCommand(HexdumpCommand):
 class HexdumpWordCommand(HexdumpCommand):
     """Display SIZE lines of hexdump as WORD from the memory location pointed by ADDRESS."""
     _cmdline_ = "hexdump word"
-    _syntax_ = "{:s} [-h] [--phys] [ADDRESS [SIZE]] [REVERSE]".format(_cmdline_)
-    _example_ = "{:s} $esp 16 REVERSE".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [--phys] [ADDRESS [SIZE]] [--reverse]".format(_cmdline_)
+    _example_ = "{:s} $rsp 128 --reverse".format(_cmdline_)
     _category_ = "Show/Modify Memory"
 
     def __init__(self):
@@ -18437,8 +18442,10 @@ class HexdumpWordCommand(HexdumpCommand):
 class HexdumpByteCommand(HexdumpCommand):
     """Display SIZE lines of hexdump as BYTE from the memory location pointed by ADDRESS."""
     _cmdline_ = "hexdump byte"
-    _syntax_ = "{:s} [-h] [--phys] [ADDRESS [SIZE]] [REVERSE] [FULL]".format(_cmdline_)
-    _example_ = "{:s} $rsp 16".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [--phys] [ADDRESS [SIZE]] [--reverse] [--full]".format(_cmdline_)
+    _example_ = "{:s} $rsp 128\n".format(_cmdline_)
+    _example_ += "{:s} $rsp 128 --full    # print the same line without omitting (byte mode only)\n".format(_cmdline_)
+    _example_ += "{:s} $rsp 128 --reverse # print in reverse order line by line".format(_cmdline_)
     _aliases_ = ["xxd", ]
     _category_ = "Show/Modify Memory"
 
