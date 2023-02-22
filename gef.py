@@ -203,13 +203,12 @@ GEF_MAX_STRING_LENGTH           = 0x50
 GDB_MIN_VERSION                 = (7, 7)
 GDB_VERSION                     = tuple(map(int, re.search(r"(\d+)[^\d]+(\d+)", gdb.VERSION).groups()))
 
-current_elf  = None
-current_arch = None
+ANSI_SPLIT_RE                   = r"(\033\[[\d;]*m)"
 
-libc_args_definitions = {}
-
-highlight_table = {}
-ANSI_SPLIT_RE = r"(\033\[[\d;]*m)"
+current_elf                     = None
+current_arch                    = None
+libc_args_definitions           = {}
+highlight_table                 = {}
 
 
 if not os.path.exists(GEF_TEMP_DIR):
@@ -1545,7 +1544,7 @@ class GlibcArena:
         return GlibcArena("*{:#x} ".format(addr_next))
 
     def __str__(self):
-        arena_c = Color.colorify("Arena", "yellow bold underline")
+        arena_c = Color.colorify("Arena", "bold yellow underline")
         fmt = "{:s}(base={:s}, top={:#x}, last_remainder={:#x}, next={:#x}, next_free={:#x}, system_mem={:#x})"
         addr = Color.boldify("{:#x}".format(self.__addr))
         return fmt.format(arena_c, addr, self.top, self.last_remainder, self.n, self.nfree, self.sysmem)
@@ -1800,15 +1799,15 @@ class GlibcChunk:
     def flags_as_string(self):
         flags = []
         if self.has_p_bit():
-            flags.append(Color.colorify("PREV_INUSE", "red bold"))
+            flags.append(Color.colorify("PREV_INUSE", "bold red"))
         if self.has_m_bit():
-            flags.append(Color.colorify("IS_MMAPPED", "blue bold"))
+            flags.append(Color.colorify("IS_MMAPPED", "bold blue"))
         if self.has_n_bit():
-            flags.append(Color.colorify("NON_MAIN_ARENA", "yellow bold"))
+            flags.append(Color.colorify("NON_MAIN_ARENA", "bold yellow"))
         return "|".join(flags)
 
     def __str__(self):
-        chunk_c = Color.colorify("Chunk", "yellow bold underline")
+        chunk_c = Color.colorify("Chunk", "bold yellow underline")
         size_c = Color.colorify("{:#x}".format(self.get_chunk_size()), "bold pink")
         addr = Color.boldify("{:#x}".format(int(self.address)))
         if (is_32bit() and self.size < 0x3f0) or (is_64bit() and self.size < 0x400):
@@ -1924,7 +1923,7 @@ def show_last_exception():
     exc_type, exc_value, exc_traceback = sys.exc_info()
 
     gef_print(" Exception raised ".center(80, HORIZONTAL_LINE))
-    gef_print("{}: {}".format(Color.colorify(exc_type.__name__, "bold underline red"), exc_value))
+    gef_print("{}: {}".format(Color.colorify(exc_type.__name__, "bold red underline"), exc_value))
     gef_print(" Detailed stacktrace ".center(80, HORIZONTAL_LINE))
 
     for fs in traceback.extract_tb(exc_traceback)[::-1]:
@@ -1949,7 +1948,7 @@ def show_last_exception():
     gef_print(" lsb_release -a ".center(80, HORIZONTAL_LINE))
     try:
         lsb_release = which("lsb_release")
-        gdb.execute("!{} -a".format(lsb_release,))
+        gdb.execute("!{} -a".format(lsb_release))
     except FileNotFoundError as e:
         gef_print("Cannot collect additional debug information: {}".format(e))
 
@@ -9244,7 +9243,7 @@ class FormatStringBreakpoint(gdb.Breakpoint):
         if addr.section.permission.value & Permission.WRITE:
             content = read_cstring_from_memory(addr.value)
             name = addr.info.name if addr.info else addr.section.path
-            msg.append(Color.colorify("Format string helper", "yellow bold"))
+            msg.append(Color.colorify("Format string helper", "bold yellow"))
             m = "Possible insecure format string: {:s}('{:s}' {:s} {:#x}: '{:s}')"
             msg.append(m.format(self.location, ptr, RIGHT_ARROW, addr.value, content))
             m = "Reason: Call to '{:s}()' with format string argument in position "
@@ -9309,8 +9308,11 @@ class TraceMallocBreakpoint(gdb.Breakpoint):
     def stop(self):
         # The first call to malloc calls malloc twice internally, like malloc-> malloc_hook_ini-> malloc.
         # You need to prevent the breakpoint from being set twice.
-        if hasattr(self, "retbp") and self.retbp.enabled:
-            return False
+        if hasattr(self, "retbp"):
+            # The retbp is `gdb.FinishBreakpoint`, not `gdb.Breakpoint`.
+            # so it is deleted automatically if out of scope, so it must be checked by is_valid().
+            if self.retbp.is_valid() and self.retbp.enabled:
+                return False
         reset_all_caches()
         _, size = current_arch.get_ith_parameter(0)
         self.retbp = TraceMallocRetBreakpoint(size, self.name)
@@ -9335,7 +9337,7 @@ class TraceMallocRetBreakpoint(gdb.FinishBreakpoint):
             loc = parse_address(current_arch.return_register)
 
         size = self.size
-        ok("{} - {}({})={:#x}".format(Color.colorify("Heap-Analysis", "yellow bold"), self.name, size, loc))
+        ok("{} - {}({})={:#x}".format(Color.colorify("Heap-Analysis", "bold yellow"), self.name, size, loc))
         check_heap_overlap = get_gef_setting("heap-analysis-helper.check_heap_overlap")
 
         # pop from free-ed list if it was in it
@@ -9375,7 +9377,7 @@ class TraceMallocRetBreakpoint(gdb.FinishBreakpoint):
                 if offset < 0:
                     continue # false positive, discard
 
-                msg.append(Color.colorify("Heap-Analysis", "yellow bold"))
+                msg.append(Color.colorify("Heap-Analysis", "bold yellow"))
                 msg.append("Possible heap overlap detected")
                 fmt = "Reason {} new allocated chunk {:#x} (of size {:d}) overlaps in-used chunk {:#x} (of size {:#x})"
                 msg.append(fmt.format(RIGHT_ARROW, loc, size, chunk_addr, current_chunk_size))
@@ -9421,14 +9423,15 @@ class TraceReallocRetBreakpoint(gdb.FinishBreakpoint):
         else:
             newloc = parse_address(current_arch.return_register)
 
-        if newloc != self:
-            ok("{} - realloc({:#x}, {})={}".format(Color.colorify("Heap-Analysis", "yellow bold"),
-                                                   self.ptr, self.size,
-                                                   Color.colorify("{:#x}".format(newloc), "green"),))
+        if newloc != self.ptr:
+            msg = Color.redify("{:#x} (return another chunk)".format(newloc))
         else:
-            ok("{} - realloc({:#x}, {})={}".format(Color.colorify("Heap-Analysis", "yellow bold"),
-                                                   self.ptr, self.size,
-                                                   Color.colorify("{:#x}".format(newloc), "red"),))
+            msg = Color.greenify("{:#x} (return same chunk)".format(newloc))
+        args = [
+            Color.colorify("Heap-Analysis", "bold yellow"),
+            self.ptr, self.size, msg,
+        ]
+        ok("{} - realloc({:#x}, {})={}".format(*args))
 
         item = (newloc, self.size)
 
@@ -9463,10 +9466,10 @@ class TraceFreeBreakpoint(gdb.Breakpoint):
         check_weird_free = get_gef_setting("heap-analysis-helper.check_weird_free")
         check_uaf = get_gef_setting("heap-analysis-helper.check_uaf")
 
-        ok("{} - free({:#x})".format(Color.colorify("Heap-Analysis", "yellow bold"), addr))
+        ok("{} - free({:#x})".format(Color.colorify("Heap-Analysis", "bold yellow"), addr))
         if addr == 0:
             if check_free_null:
-                msg.append(Color.colorify("Heap-Analysis", "yellow bold"))
+                msg.append(Color.colorify("Heap-Analysis", "bold yellow"))
                 msg.append("Attempting to free(NULL) at {:#x}".format(current_arch.pc))
                 msg.append("Reason: if NULL page is allocatable, this can lead to code execution.")
                 push_context_message("warn", "\n".join(msg))
@@ -9475,7 +9478,7 @@ class TraceFreeBreakpoint(gdb.Breakpoint):
 
         if addr in [x for (x, y) in __heap_freed_list__]:
             if check_double_free:
-                msg.append(Color.colorify("Heap-Analysis", "yellow bold"))
+                msg.append(Color.colorify("Heap-Analysis", "bold yellow"))
                 fmt = "Double-free detected {} free({:#x}) is called at {:#x} but is already in the free-ed list"
                 msg.append(fmt.format(RIGHT_ARROW, addr, current_arch.pc))
                 msg.append("Execution will likely crash...")
@@ -9492,7 +9495,7 @@ class TraceFreeBreakpoint(gdb.Breakpoint):
 
         except ValueError:
             if check_weird_free:
-                msg.append(Color.colorify("Heap-Analysis", "yellow bold"))
+                msg.append(Color.colorify("Heap-Analysis", "bold yellow"))
                 msg.append("Heap inconsistency detected:")
                 msg.append("Attempting to free an unknown value: {:#x}".format(addr))
                 push_context_message("warn", "\n".join(msg))
@@ -9548,10 +9551,11 @@ class UafWatchpoint(gdb.Breakpoint):
         pc = gdb_get_nth_previous_instruction_address(current_arch.pc, 2)
         insn = gef_current_instruction(pc)
         msg = []
-        msg.append(Color.colorify("Heap-Analysis", "yellow bold"))
-        msg.append("Possible Use-after-Free in '{:s}': pointer {:#x} was freed, but is attempted to be used at {:#x}"
-                   .format(get_filepath(), self.address, pc))
-        msg.append("{:#x}   {:s} {:s}".format(insn.address, insn.mnemonic, Color.yellowify(", ".join(insn.operands))))
+        msg.append(Color.colorify("Heap-Analysis", "bold yellow"))
+        fmt = "Possible Use-after-Free in '{:s}': pointer {:#x} was freed, but is attempted to be used at {:#x}"
+        msg.append(fmt.format(get_filepath(), self.address, pc))
+        fmt = "{:#x}   {:s} {:s}"
+        msg.append(fmt.format(insn.address, insn.mnemonic, Color.yellowify(", ".join(insn.operands))))
         push_context_message("warn", "\n".join(msg))
         return True
 
@@ -9579,7 +9583,8 @@ class NamedBreakpoint(gdb.Breakpoint):
 
     def stop(self):
         reset_all_caches()
-        push_context_message("info", "Hit breakpoint {} ({})".format(self.loc, Color.colorify(self.name, "red bold")))
+        msg = "Hit breakpoint {} ({})".format(self.loc, Color.colorify(self.name, "bold red"))
+        push_context_message("info", msg)
         return True
 
 
@@ -10912,7 +10917,7 @@ class GefThemeCommand(GenericCommand):
         self.add_setting("context_title_message", "cyan", "Color of the title in context window")
         self.add_setting("default_title_line", "gray", "Default color of borders")
         self.add_setting("default_title_message", "cyan", "Default color of title")
-        self.add_setting("table_heading", "blue bold", "Color of the column headings to tables (e.g. vmmap)")
+        self.add_setting("table_heading", "bold blue", "Color of the column headings to tables (e.g. vmmap)")
         self.add_setting("old_context", "gray", "Color to use to show things such as code that is not immediately relevant")
         self.add_setting("disassemble_current_instruction", "green", "Color to use to highlight the current $pc when disassembling")
         self.add_setting("dereference_string", "yellow", "Color of dereferenced string")
@@ -11430,13 +11435,13 @@ class DemanglePtrCommand(GenericCommand):
             self.usage()
             return
         decoded = self.decode(target, cookie)
-        color_decoded = Color.colorify("{:#x}".format(decoded), "white bold")
         decoded_sym = get_symbol_string(decoded)
         if is_valid_addr(decoded):
             valid_msg = Color.colorify("valid", "bold green")
         else:
             valid_msg = Color.colorify("invalid", "bold red")
-        info("Decoded value is {:s}{:s} [{:s}]".format(color_decoded, decoded_sym, valid_msg))
+        decoded = Color.boldify("{:#x}".format(decoded))
+        info("Decoded value is {:s}{:s} [{:s}]".format(decoded, decoded_sym, valid_msg))
         return
 
 
@@ -11471,7 +11476,7 @@ class SearchMangledPtrCommand(GenericCommand):
             valid_msg = Color.colorify("valid", "bold green")
         except gdb.MemoryError:
             valid_msg = Color.colorify("invalid", "bold red")
-        decoded = Color.colorify("{:#x}".format(decoded), "white bold")
+        decoded = Color.boldify("{:#x}".format(decoded))
         gef_print("  {:#x}{:s}: {:#x} (={:s}{:s}) [{:s}]".format(addr, addr_sym, value, decoded, decoded_sym, valid_msg))
         return
 
@@ -17424,7 +17429,7 @@ class ContextCommand(GenericCommand):
                                 insn_fmt = "{{:{}o}}".format(show_opcodes_size)
                                 text = insn_fmt.format(next_insn)
                             text = "{}{}{}".format(bp_prefix, " " * len(RIGHT_ARROW[1:]), text)
-                            text += Color.colorify("\t Maybe delay-slot", "yellow bold")
+                            text += Color.colorify("\t Maybe delay-slot", "bold yellow")
                             gef_print(text)
                     except Exception:
                         pass
@@ -20261,17 +20266,17 @@ class ChecksecCommand(GenericCommand):
 
         # RELRO
         if sec["Full RELRO"]:
-            gef_print("{:<30s}: {:s}".format("RELRO", Color.colorify("Full RELRO", "green bold")))
+            gef_print("{:<30s}: {:s}".format("RELRO", Color.colorify("Full RELRO", "bold green")))
         elif sec["Partial RELRO"]:
-            gef_print("{:<30s}: {:s}".format("RELRO", Color.colorify("Partial RELRO", "yellow bold")))
+            gef_print("{:<30s}: {:s}".format("RELRO", Color.colorify("Partial RELRO", "bold yellow")))
         else:
-            gef_print("{:<30s}: {:s}".format("RELRO", Color.colorify("No RELRO", "red bold")))
+            gef_print("{:<30s}: {:s}".format("RELRO", Color.colorify("No RELRO", "bold red")))
 
         # Fortify
         if sec["Fortify"]:
-            gef_print("{:<30s}: {:s}".format("Fortify", Color.colorify("Found", "green bold")))
+            gef_print("{:<30s}: {:s}".format("Fortify", Color.colorify("Found", "bold green")))
         else:
-            gef_print("{:<30s}: {:s}".format("Fortify", Color.colorify("Not Found", "red bold")))
+            gef_print("{:<30s}: {:s}".format("Fortify", Color.colorify("Not Found", "bold red")))
 
         gef_print(titlify("Additional information"))
 
@@ -20283,31 +20288,31 @@ class ChecksecCommand(GenericCommand):
 
         # Stripped
         if sec["Stripped"]:
-            msg = Color.colorify("Yes", "green bold")
+            msg = Color.colorify("Yes", "bold green")
             gef_print("{:<30s}: {:s}".format("Stripped", msg))
         else:
-            msg = Color.colorify("No", "red bold") + " (The symbol remains)"
+            msg = Color.colorify("No", "bold red") + " (The symbol remains)"
             gef_print("{:<30s}: {:s}".format("Stripped", msg))
 
         # CET
         if sec["Intel CET"]:
-            msg = Color.colorify("Found", "green bold") + " (endbr64/endbr32 is found)"
+            msg = Color.colorify("Found", "bold green") + " (endbr64/endbr32 is found)"
             gef_print("{:<30s}: {:s}".format("Intel CET", msg))
         else:
-            msg = Color.colorify("Not Found", "red bold") + " (endbr64/endbr32 is not found)"
+            msg = Color.colorify("Not Found", "bold red") + " (endbr64/endbr32 is not found)"
             gef_print("{:<30s}: {:s}".format("Intel CET", msg))
 
         # RPATH
         if not sec["RPATH"]:
-            gef_print("{:<30s}: {:s}".format("RPATH", Color.colorify("Not Found", "green bold")))
+            gef_print("{:<30s}: {:s}".format("RPATH", Color.colorify("Not Found", "bold green")))
         else:
-            gef_print("{:<30s}: {:s}".format("RPATH", Color.colorify("Found", "red bold")))
+            gef_print("{:<30s}: {:s}".format("RPATH", Color.colorify("Found", "bold red")))
 
         # RUNPATH
         if not sec["RUNPATH"]:
-            gef_print("{:<30s}: {:s}".format("RUNPATH", Color.colorify("Not Found", "green bold")))
+            gef_print("{:<30s}: {:s}".format("RUNPATH", Color.colorify("Not Found", "bold green")))
         else:
-            gef_print("{:<30s}: {:s}".format("RUNPATH", Color.colorify("Found", "red bold")))
+            gef_print("{:<30s}: {:s}".format("RUNPATH", Color.colorify("Found", "bold red")))
 
         # Clang CFI
         if sec["Clang CFI"]:
@@ -20319,38 +20324,38 @@ class ChecksecCommand(GenericCommand):
 
         # System-ASLR
         if is_remote_debug():
-            msg = Color.colorify("Unknown", "gray bold")
+            msg = Color.colorify("Unknown", "bold gray")
             gef_print("{:<30s}: {:s} (remote process)".format("System-ASLR", msg))
         else:
             try:
                 system_aslr = int(open("/proc/sys/kernel/randomize_va_space").read())
                 if system_aslr == 0:
-                    msg = Color.colorify("Disabled", "red bold")
+                    msg = Color.colorify("Disabled", "bold red")
                     gef_print("{:<30s}: {:s} (randomize_va_space: 0)".format("System ASLR", msg))
                 elif system_aslr == 1:
-                    msg = Color.colorify("Partially Enabled", "yellow bold")
+                    msg = Color.colorify("Partially Enabled", "bold yellow")
                     gef_print("{:<30s}: {:s} (randomize_va_space: 1)".format("System ASLR", msg))
                 elif system_aslr == 2:
-                    msg = Color.colorify("Enabled", "green bold")
+                    msg = Color.colorify("Enabled", "bold green")
                     gef_print("{:<30s}: {:s} (randomize_va_space: 2)".format("System ASLR", msg))
             except Exception:
-                msg = Color.colorify("Unknown", "gray bold")
+                msg = Color.colorify("Unknown", "bold gray")
                 gef_print("{:<30s}: {:s} (randomize_va_space: error)".format("System-ASLR", msg))
 
         # gdb ASLR
         if is_attach() or is_remote_debug():
-            msg = Color.colorify("Ignored", "gray bold")
+            msg = Color.colorify("Ignored", "bold gray")
             gef_print("{:<30s}: {:s} (attached or remote process)".format("GDB ASLR setting", msg))
         else:
             ret = gdb.execute("show disable-randomization", to_string=True)
             if "virtual address space is on." in ret:
-                msg = Color.colorify("Disabled", "red bold")
+                msg = Color.colorify("Disabled", "bold red")
                 gef_print("{:<30s}: {:s} (disable-randomization: on)".format("GDB ASLR setting", msg))
             elif "virtual address space is off." in ret:
-                msg = Color.colorify("Enabled", "green bold")
+                msg = Color.colorify("Enabled", "bold green")
                 gef_print("{:<30s}: {:s} (disable-randomization: off)".format("GDB ASLR setting", msg))
             else:
-                msg = Color.colorify("Unknown", "gray bold")
+                msg = Color.colorify("Unknown", "bold gray")
                 gef_print("{:<30s}: {:s}".format("GDB ASLR setting", msg))
         return
 
@@ -21736,7 +21741,7 @@ class HighlightAddCommand(GenericCommand):
     _cmdline_ = "highlight add"
     _syntax_ = "{:s} MATCH COLOR".format(_cmdline_)
     _aliases_ = ["highlight set"]
-    _example_ = "{:s} \"call   rcx\" yellow bold\n".format(_cmdline_)
+    _example_ = "{:s} \"call   rcx\" bold yellow\n".format(_cmdline_)
     _example_ += "use config `gef config highlight.regex true` if need regex"
     _category_ = "GEF Maintenance Command"
 
@@ -21813,13 +21818,11 @@ class FormatStringSearchCommand(GenericCommand):
 class HeapAnalysisCommand(GenericCommand):
     """Heap vulnerability analysis helper: this command aims to track dynamic heap allocation
     done through malloc()/free() to provide some insights on possible heap vulnerabilities. The
-    following vulnerabilities are checked:
-    - NULL free
-    - Use-after-Free
-    - Double Free
-    - Heap overlap"""
+    following vulnerabilities are checked: NULL free, Use-after-Free, Double Free, Heap overlap."""
     _cmdline_ = "heap-analysis-helper"
-    _syntax_ = "{:s} [show]".format(_cmdline_)
+    _syntax_ = "{:s} [show]\n".format(_cmdline_)
+    _syntax_ += "\n"
+    _syntax_ += "Behavior changes are made in the config."
     _category_ = "Heap"
 
     def __init__(self, *args, **kwargs):
@@ -21847,6 +21850,12 @@ class HeapAnalysisCommand(GenericCommand):
             self.dump_tracked_allocations()
         else:
             self.usage()
+            gef_print("")
+            gdb.execute("gef config heap-analysis-helper.check_free_null")
+            gdb.execute("gef config heap-analysis-helper.check_double_free")
+            gdb.execute("gef config heap-analysis-helper.check_weird_free")
+            gdb.execute("gef config heap-analysis-helper.check_uaf")
+            gdb.execute("gef config heap-analysis-helper.check_heap_overlap")
         return
 
     def setup(self):
@@ -21862,8 +21871,8 @@ class HeapAnalysisCommand(GenericCommand):
         gdb.execute("set can-use-hw-watchpoints 0")
 
         info("Dynamic breakpoints correctly setup, GEF will break execution if a possible vulnerabity is found.")
-        warn("{}: The heap analysis slows down the execution noticeably.".format(
-            Color.colorify("Note", "bold underline yellow")))
+        msg = "{}: The heap analysis slows down the execution noticeably."
+        warn(msg.format(Color.colorify("Note", "bold underline yellow")))
 
         # when inferior quits, we need to clean everything for a next execution
         gef_on_exit_hook(self.clean)
@@ -21890,7 +21899,7 @@ class HeapAnalysisCommand(GenericCommand):
     def clean(self, event):
         global __heap_allocated_list__, __heap_freed_list__, __heap_uaf_watchpoints__
 
-        ok("{} - Cleaning up".format(Color.colorify("Heap-Analysis", "yellow bold"),))
+        ok("{} - Cleaning up".format(Color.colorify("Heap-Analysis", "bold yellow")))
         for bp in [self.bp_malloc, self.bp_calloc, self.bp_free, self.bp_realloc]:
             if hasattr(bp, "retbp") and bp.retbp:
                 try:
@@ -21909,7 +21918,7 @@ class HeapAnalysisCommand(GenericCommand):
         __heap_freed_list__ = []
         __heap_uaf_watchpoints__ = []
 
-        ok("{} - Re-enabling hardware watchpoints".format(Color.colorify("Heap-Analysis", "yellow bold"),))
+        ok("{} - Re-enabling hardware watchpoints".format(Color.colorify("Heap-Analysis", "bold yellow")))
         gdb.execute("set can-use-hw-watchpoints 1")
 
         gef_on_exit_unhook(self.clean)
@@ -34355,23 +34364,24 @@ class MmxSetCommand(GenericCommand):
 
     def execute_movq_mm(self, value, reg):
         REG_CODE = {
-            "$mm0": b"\x0f\x6f\x00",
-            "$mm1": b"\x0f\x6f\x08",
-            "$mm2": b"\x0f\x6f\x10",
-            "$mm3": b"\x0f\x6f\x08",
-            "$mm4": b"\x0f\x6f\x20",
-            "$mm5": b"\x0f\x6f\x28",
-            "$mm6": b"\x0f\x6f\x30",
-            "$mm7": b"\x0f\x6f\x38",
+            "$mm0": b"\x0f\x6f\x00", # movq  mm0, qword ptr [rax]
+            "$mm1": b"\x0f\x6f\x08", # movq  mm1, qword ptr [rax]
+            "$mm2": b"\x0f\x6f\x10", # movq  mm2, qword ptr [rax]
+            "$mm3": b"\x0f\x6f\x08", # movq  mm3, qword ptr [rax]
+            "$mm4": b"\x0f\x6f\x20", # movq  mm4, qword ptr [rax]
+            "$mm5": b"\x0f\x6f\x28", # movq  mm5, qword ptr [rax]
+            "$mm6": b"\x0f\x6f\x30", # movq  mm6, qword ptr [rax]
+            "$mm7": b"\x0f\x6f\x38", # movq  mm7, qword ptr [rax]
         }
         code = b"\xeb\xfe" + REG_CODE[reg] + p64(value) # inf-loop (to stop another thread); movq mm0, [rax]; db value
         gef_on_stop_unhook(hook_stop_handler)
         d = self.get_state(len(code))
         write_memory(d["pc"], code, len(code))
         if is_x86_64():
-            gdb.execute("set $rax = {:#x}".format(d["pc"] + 5), to_string=True) # points to p64(value)
+            ax = "rax"
         else:
-            gdb.execute("set $eax = {:#x}".format(d["pc"] + 5), to_string=True) # points to p64(value)
+            ax = "eax"
+        gdb.execute("set ${:s} = {:#x}".format(ax, d["pc"] + 5), to_string=True) # points to p64(value)
         gdb.execute("set $pc = {:#x}".format(d["pc"] + 2), to_string=True) # skip "\xeb\xfe"
         self.close_stdout()
         gdb.execute("stepi", to_string=True)
@@ -34429,7 +34439,7 @@ class MmxCommand(GenericCommand):
         fmt = "{:5s}: {:s}"
         legend = ["Name", "64-bit hex"]
         gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
-        red = lambda x: Color.colorify("{:4s}".format(x), "red bold")
+        red = lambda x: Color.colorify("{:4s}".format(x), "bold red")
         for i in range(len(regs)):
             regname = "$mm{:d}".format(i)
             reghex = ""
@@ -34510,7 +34520,7 @@ class SseCommand(GenericCommand):
         fmt = "{:7s}: {:s}"
         legend = ["Name", "128-bit hex"]
         gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
-        red = lambda x: Color.colorify("{:4s}".format(x), "red bold")
+        red = lambda x: Color.colorify("{:4s}".format(x), "bold red")
         for i in range(len(regs)):
             if i == 8:
                 gef_print("* xmm8-15 are introduced by AVX")
@@ -34588,7 +34598,7 @@ class AvxCommand(GenericCommand):
             fmt = "{:7s}: {:s}"
             legend = ["Name", "256-bit hex"]
             gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
-            red = lambda x: Color.colorify("{:4s}".format(x), "red bold")
+            red = lambda x: Color.colorify("{:4s}".format(x), "bold red")
             for i in range(len(regs)):
                 regname = "$ymm{:<2d}".format(i)
                 reghex = ""
@@ -34655,7 +34665,7 @@ class FpuCommand(GenericCommand):
         return "0b" + out[1:]
 
     def print_fpu_arm(self):
-        red = lambda x: Color.colorify("{:4s}".format(x), "red bold")
+        red = lambda x: Color.colorify("{:4s}".format(x), "bold red")
 
         # s0-s31, d0-d31, q0-q15
         gef_print(titlify("FPU/NEON Data Register"))
@@ -34693,7 +34703,7 @@ class FpuCommand(GenericCommand):
         return
 
     def print_fpu_x86(self):
-        red = lambda x: Color.colorify("{:4s}".format(x), "red bold")
+        red = lambda x: Color.colorify("{:4s}".format(x), "bold red")
 
         # st0-7
         gef_print(titlify("FPU Data Register"))
@@ -37947,14 +37957,14 @@ class CetStatusCommand(GenericCommand):
 
         gef_print("ShadowStack/IndirectBranchTracking status: {:#x}".format(r["data"][0]))
         if r["data"][0] & 0b10:
-            msg = Color.colorify("Enabled", "green bold")
+            msg = Color.colorify("Enabled", "bold green")
         else:
-            msg = Color.colorify("Disabled", "red bold")
+            msg = Color.colorify("Disabled", "bold red")
         gef_print("  ShadowStack: {:s}".format(msg))
         if r["data"][0] & 0b01:
-            msg = Color.colorify("Enabled", "green bold")
+            msg = Color.colorify("Enabled", "bold green")
         else:
-            msg = Color.colorify("Disabled", "red bold")
+            msg = Color.colorify("Disabled", "bold red")
         gef_print("  IndirectBrannchTracking: {:s}".format(msg))
         gef_print("ShadowStack Base Address: {:#x}".format(r["data"][1]))
         gef_print("ShadowStack Size: {:#x}".format(r["data"][2]))
@@ -38145,7 +38155,7 @@ class GdtInfoCommand(GenericCommand):
         if not is_alive():
             return
         gef_print(titlify("Current register values"))
-        red = lambda x: Color.colorify("{:4s}".format(x), "red bold")
+        red = lambda x: Color.colorify("{:4s}".format(x), "bold red")
         for k in ['cs', 'ds', 'es', 'fs', 'gs', 'ss']:
             v = get_register(k)
             gef_print("{:s}: {:s}".format(red(k), self.seg2str(v)))
@@ -40771,7 +40781,7 @@ class TcmallocDumpCommand(GenericCommand):
                 seen.append(chunk)
                 # print threshold check
                 if real_length < self.FreeList_print_threshold:
-                    chunklist_string += " -> " + Color.colorify(f"{chunk:#x}", "yellow bold underline")
+                    chunklist_string += " -> " + Color.colorify(f"{chunk:#x}", "bold yellow underline")
                 else:
                     if not chunklist_string.endswith(" -> ..."):
                         chunklist_string += " -> ..."
@@ -40780,8 +40790,8 @@ class TcmallocDumpCommand(GenericCommand):
                     chunk = read_int_from_memory(chunk)
                 except Exception:
                     if chunklist_string.endswith(" -> ..."):
-                        chunklist_string += " -> " + Color.colorify(f"{seen[-2]:#x}", "yellow bold underline")
-                        chunklist_string += " -> " + Color.colorify(f"{chunk:#x}", "red bold underline")
+                        chunklist_string += " -> " + Color.colorify(f"{seen[-2]:#x}", "bold yellow underline")
+                        chunklist_string += " -> " + Color.colorify(f"{chunk:#x}", "bold red underline")
                     chunklist_string += " (corrupted)"
                     error = True
                     break
@@ -40789,7 +40799,7 @@ class TcmallocDumpCommand(GenericCommand):
                 chunk ^= self.get_heap_key()
                 # loop check
                 if chunk in seen:
-                    chunklist_string += " -> " + Color.colorify(f"{chunk:#x}", "red bold underline") + " (loop)"
+                    chunklist_string += " -> " + Color.colorify(f"{chunk:#x}", "bold red underline") + " (loop)"
                     error = True
                     break
             # corrupted length check
@@ -40856,7 +40866,7 @@ class TcmallocDumpCommand(GenericCommand):
                 seen.append(chunk)
                 # print threshold check
                 if real_length < self.FreeList_print_threshold:
-                    chunklist_string += " -> " + Color.colorify(f"{chunk:#x}", "yellow bold underline")
+                    chunklist_string += " -> " + Color.colorify(f"{chunk:#x}", "bold yellow underline")
                 else:
                     if not chunklist_string.endswith(" -> ..."):
                         chunklist_string += " -> ..."
@@ -40865,15 +40875,15 @@ class TcmallocDumpCommand(GenericCommand):
                     chunk = read_int_from_memory(chunk)
                 except Exception:
                     if chunklist_string.endswith(" -> ..."):
-                        chunklist_string += " -> " + Color.colorify(f"{seen[-2]:#x}", "yellow bold underline")
-                        chunklist_string += " -> " + Color.colorify(f"{chunk:#x}", "red bold underline")
+                        chunklist_string += " -> " + Color.colorify(f"{seen[-2]:#x}", "bold yellow underline")
+                        chunklist_string += " -> " + Color.colorify(f"{chunk:#x}", "bold red underline")
                     chunklist_string += " (corrupted)"
                     break
                 # heap key decode
                 chunk ^= self.get_heap_key()
                 # loop check
                 if chunk in seen:
-                    chunklist_string += " -> " + Color.colorify(f"{chunk:#x}", "red bold underline") + " (loop)"
+                    chunklist_string += " -> " + Color.colorify(f"{chunk:#x}", "bold red underline") + " (loop)"
                     break
             # print
             gef_print(f"central_cache_[{_i}].tc_slot[{_j}] @ {freelist:#x}{chunklist_string}")
@@ -41977,7 +41987,7 @@ class PartitionAllocDumpCommand(GenericCommand):
                 gef_print("           root:{:<#14x} ".format(extent["root"]))
                 super_page_info = "{:<#14x} - {:<#14x}".format(extent["super_page_base"], extent["super_page_end"])
                 page_info = "(total 0x200000(2MB) * {:d} pages)".format(extent["number_of_consecutive_super_pages"])
-                gef_print("           super_page:{:s} {:s}".format(Color.colorify(super_page_info, "yellow bold"), page_info))
+                gef_print("           super_page:{:s} {:s}".format(Color.colorify(super_page_info, "bold yellow"), page_info))
                 gef_print("           non_empty_slot_spans:{:d} ".format(extent["number_of_nonempty_slot_spans"]))
                 gef_print("           next:{:<#14x}".format(extent["next"]))
                 current = extent["next"]
@@ -42077,20 +42087,20 @@ class PartitionAllocDumpCommand(GenericCommand):
                 text += " " * 23
 
             if chunk in seen:
-                text += Color.colorify("-> {:<#14x} (loop) ".format(chunk), "red bold")
+                text += Color.colorify("-> {:<#14x} (loop) ".format(chunk), "bold red")
                 break
 
             if not ((page_start <= chunk < page_end) and ((chunk - page_start) % slot_size == 0)):
-                text += Color.colorify("-> {:<#14x} (corrupted) ".format(chunk), "red bold")
+                text += Color.colorify("-> {:<#14x} (corrupted) ".format(chunk), "bold red")
                 break
 
             try:
                 next_chunk = self.byteswap(read_int_from_memory(chunk))
             except Exception:
-                text += Color.colorify("-> {:<#14x} (corrupted) ".format(chunk), "red bold")
+                text += Color.colorify("-> {:<#14x} (corrupted) ".format(chunk), "bold red")
                 break
 
-            text += "-> " + Color.colorify("{:<#14x} ".format(chunk), "yellow bold")
+            text += "-> " + Color.colorify("{:<#14x} ".format(chunk), "bold yellow")
             cnt += 1
             seen.append(chunk)
             chunk = next_chunk
@@ -43346,9 +43356,9 @@ class OpteeBgetDumpCommand(GenericCommand):
         gef_print("flink:    {:#x}".format(malloc_ctx["flink"]))
         for chunk in malloc_ctx["flink_list"]:
             if isinstance(chunk, str):
-                gef_print("  -> {:s}".format(Color.colorify(chunk, "red bold")))
+                gef_print("  -> {:s}".format(Color.colorify(chunk, "bold red")))
             else:
-                chunk_addr = Color.colorify("{:#010x}".format(chunk["_addr"]), "yellow bold")
+                chunk_addr = Color.colorify("{:#010x}".format(chunk["_addr"]), "bold yellow")
                 fmt = "  -> {:s}: (prevfree:{:#x}  bsize:{:#010x}  flink:{:#010x}  blink:{:#010x}"
                 fmt += "  next_prevfree:{:#010x}  next_bsize:{:#010x}({:#010x}))"
                 gef_print(fmt.format(chunk_addr, chunk["prevfree"], chunk["bsize"], chunk["flink"], chunk["blink"],
@@ -43356,9 +43366,9 @@ class OpteeBgetDumpCommand(GenericCommand):
         gef_print("blink:    {:#x}".format(malloc_ctx["blink"]))
         for chunk in malloc_ctx["blink_list"]:
             if isinstance(chunk, str):
-                gef_print("  -> {:s}".format(Color.colorify(chunk, "red bold")))
+                gef_print("  -> {:s}".format(Color.colorify(chunk, "bold red")))
             else:
-                chunk_addr = Color.colorify("{:#010x}".format(chunk["_addr"]), "yellow bold")
+                chunk_addr = Color.colorify("{:#010x}".format(chunk["_addr"]), "bold yellow")
                 fmt = "  -> {:s}: (prevfree:{:#x}  bsize:{:#010x}  flink:{:#010x}  blink:{:#010x}"
                 fmt += "  next_prevfree:{:#010x}  next_bsize:{:#010x}({:#010x}))"
                 gef_print(fmt.format(chunk_addr, chunk["prevfree"], chunk["bsize"], chunk["flink"], chunk["blink"],
@@ -43380,11 +43390,11 @@ class OpteeBgetDumpCommand(GenericCommand):
 
             chunk = pool_start
             used = Color.colorify("used", "green underline")
-            freed = Color.colorify("free", "grey bold")
+            freed = Color.colorify("free", "bold grey")
             seen = []
             while chunk < pool_end:
                 if chunk in seen:
-                    gef_print(Color.colorify("loop detected", "red bold"))
+                    gef_print(Color.colorify("loop detected", "bold red"))
                     break
                 seen.append(chunk)
                 try:
@@ -43393,9 +43403,9 @@ class OpteeBgetDumpCommand(GenericCommand):
                     flink = read_int_from_memory(chunk + current_arch.ptrsize * 2)
                     blink = read_int_from_memory(chunk + current_arch.ptrsize * 3)
                 except Exception:
-                    gef_print(Color.colorify("unaligned orrupted", "red bold"))
+                    gef_print(Color.colorify("unaligned orrupted", "bold red"))
                     break
-                chunk_addr = Color.colorify("{:#010x}".format(chunk), "yellow bold")
+                chunk_addr = Color.colorify("{:#010x}".format(chunk), "bold yellow")
                 bsize_inv = (-bsize) & 0xffffffff
                 if bsize_inv < 0x80000000: # used
                     fmt = "{:s} {:s}: prevfree:{:#010x}  bsize:{:#010x}({:#010x})"
@@ -43406,7 +43416,7 @@ class OpteeBgetDumpCommand(GenericCommand):
                     gef_print(fmt.format(freed, chunk_addr, prevfree, bsize, flink, blink))
                     chunk += bsize
                 if chunk % 8:
-                    gef_print(Color.colorify("unaligned orrupted", "red bold"))
+                    gef_print(Color.colorify("unaligned orrupted", "bold red"))
                     break
             return
 
@@ -43546,7 +43556,7 @@ class CpuidCommand(GenericCommand):
             val = (reg >> shift) & mask
             msg = msg + " (={:#x})".format(val)
             if val:
-                return Color.colorify(msg, "white bold")
+                return Color.boldify(msg)
             else:
                 return msg
 
@@ -44976,12 +44986,12 @@ class PrintBitInfo:
         return "0b" + out[1:]
 
     def print_value(self, regval, split=True):
-        regname = Color.colorify(self.name, "red bold")
+        regname = Color.colorify(self.name, "bold red")
         if split:
-            value_str = Color.colorify("{:#x} (={:s})".format(regval, self.bits_split(regval)), "yellow bold")
+            value_str = Color.colorify("{:#x} (={:s})".format(regval, self.bits_split(regval)), "bold yellow")
             gef_print("{:s} = {:s}".format(regname, value_str))
         else:
-            value_str = Color.colorify("{:#x}".format(regval), "yellow bold")
+            value_str = Color.colorify("{:#x}".format(regval), "bold yellow")
             gef_print("{:s} = {:s}".format(regname, value_str))
         return
 
@@ -45092,8 +45102,8 @@ class QemuRegistersCommand(GenericCommand):
 
     def qregisters_x86_x64(self):
         res = gdb.execute("monitor info registers", to_string=True)
-        red = lambda x: Color.colorify(x, "red bold")
-        yellow = lambda x: Color.colorify(x, "yellow bold")
+        red = lambda x: Color.colorify(x, "bold red")
+        yellow = lambda x: Color.colorify(x, "bold yellow")
 
         # CR0
         gef_print(titlify("CR0 (Control Register 0)"))
