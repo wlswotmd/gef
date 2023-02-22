@@ -136,7 +136,7 @@ def http_get(url):
     try:
         req = urllib.request.Request(url)
         req.add_header('Cache-Control', 'no-cache, no-store')
-        http = urllib.request.urlopen(req)
+        http = urllib.request.urlopen(req, timeout=5)
         if http.getcode() != 200:
             return None
         return http.read()
@@ -7332,6 +7332,7 @@ def timeout(duration):
                 queue.put((False, e))
             else:
                 queue.put((True, result))
+            return
 
         def inner_f(*args, **kwargs):
             fargs = [function] + list(args)
@@ -14301,11 +14302,10 @@ class DisassembleCommand(GenericCommand):
 class AsmListCommand(GenericCommand):
     """List up general instructions by capstone (x64/x86 only)."""
     _cmdline_ = "asm-list"
-    _syntax_ = "{:s} [-h] [-a ARCH] [-m MODE] [-e] [-n NBYTE] [-f INCLUDE] [-v EXCLUDE] [-s]\n".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [-a ARCH] [-m MODE] [-e] [-n NBYTE] [-f INCLUDE] [-v EXCLUDE]\n".format(_cmdline_)
     _syntax_ += "  -a ARCH      specify the architecture\n"
     _syntax_ += "  -m MODE      specify the mode\n"
     _syntax_ += "  -e           use big-endian (for future update)\n"
-    _syntax_ += "  -s           use simple mode; exclude x87 fpu, SSE, etc.\n"
     _syntax_ += "  -n NBYE      filter by asm byte length\n"
     _syntax_ += "  -f INCLUDE   filter by string\n"
     _syntax_ += "  -v EXCLUDE   filter by string"
@@ -14387,12 +14387,25 @@ class AsmListCommand(GenericCommand):
                 bytecodes.append(bytecode)
             return [''.join(b) for b in itertools.product(*bytecodes)]
 
+
+        # load capstone
+        capstone = sys.modules["capstone"]
+        try:
+            cs = capstone.Cs(arch, mode)
+        except capstone.CsError:
+            err("CsError")
+            return None
+
         # download defines
         url = 'https://raw.githubusercontent.com/bata24/gef/dev/asmdb/x86data.js'
         x86 = http_get(url)
+        if x86 is None:
+            err("Connection timed out: {:s}".format(url))
+            return None
         x86 = x86.split(b"// ${JSON:BEGIN}")[1].split(b"// ${JSON:END}")[0]
         x86 = json.loads(x86)
 
+        # manually added
         x86_insns = x86["instructions"]
         # [opcode_str, unused, unused, opcodes, attr]
         x86_insns.append(["icebp", "", "", "F1", "Undocumented"])
@@ -14406,12 +14419,7 @@ class AsmListCommand(GenericCommand):
         #x86_insns.append(["xbts", "", "", "0F A6", "Undocumented"]) # removed now
         #x86_insns.append(["ibts", "", "", "0F A7", "Undocumented"]) # removed now
 
-        capstone = sys.modules["capstone"]
-        try:
-            cs = capstone.Cs(arch, mode)
-        except capstone.CsError:
-            err("CsError")
-            return []
+        # parse it
         valid_patterns = []
         seen_patterns = []
         for insn in x86_insns:
@@ -14451,12 +14459,6 @@ class AsmListCommand(GenericCommand):
     @load_capstone
     def do_invoke(self, argv):
         self.dont_repeat()
-
-        try:
-            less = which("less")
-        except FileNotFoundError as e:
-            err("{}".format(e))
-            return
 
         arch_s, mode_s, big_endian = None, None, False
         nbyte = None
@@ -14513,6 +14515,10 @@ class AsmListCommand(GenericCommand):
             err("Unsupported")
             return
 
+        if patterns is None:
+            err("Failed to listup")
+            return
+
         # filter and print
         fmt = "{:22s} {:60s} {:22s} {}\n"
         legend = ["Hex code", "Assembly code", "Opcode", "Attributes"]
@@ -14532,10 +14538,7 @@ class AsmListCommand(GenericCommand):
             # not filtered
             text += line + "\n"
 
-        _, tmp_path = tempfile.mkstemp(dir=GEF_TEMP_DIR)
-        open(tmp_path, "w").write(text.rstrip())
-        os.system(f"{less} -R {tmp_path}")
-        os.unlink(tmp_path)
+        gef_print(text.rstrip(), less=True)
         return
 
 
