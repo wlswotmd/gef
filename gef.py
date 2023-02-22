@@ -320,12 +320,27 @@ def highlight_text(text):
     return "".join(ansiSplit)
 
 
-def gef_print(x="", *args, **kwargs):
+def gef_print(x="", less=False, *args, **kwargs):
     """Wrapper around print(), using string buffering feature."""
     x = highlight_text(x)
+
+    if less:
+        try:
+            less = which("less")
+        except FileNotFoundError:
+            less = False
+    if less:
+        _, tmp_path = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".txt", prefix="gef_print_")
+        open(tmp_path, "wb").write(str2bytes(x))
+        os.system(f"{less} -R {tmp_path}")
+        os.unlink(tmp_path)
+        return
+
     if __gef_int_stream_buffer__ and not is_debug():
-        return __gef_int_stream_buffer__.write(x + kwargs.get("end", "\n"))
-    return print(x, *args, **kwargs)
+        __gef_int_stream_buffer__.write(x + kwargs.get("end", "\n"))
+    else:
+        print(x, *args, **kwargs)
+    return
 
 
 def bufferize(f):
@@ -1969,6 +1984,18 @@ def gef_pystring(x):
 def gef_pybytes(x):
     """Returns an immutable bytes list from the string given as input."""
     return bytes(str(x), encoding="utf-8")
+
+
+def str2bytes(x):
+    if isinstance(x, str):
+        x = bytes([ord(xx) for xx in x])
+    return x
+
+
+def bytes2str(x):
+    if isinstance(x, bytes):
+        x = ''.join(chr(xx) for xx in x)
+    return x
 
 
 def slicer(data, n):
