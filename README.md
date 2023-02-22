@@ -422,7 +422,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
 * The system-call table used by `syscall-args` is moved from gef-extras.
     * It was updated up to linux kernel 6.0.10 for each architecture.
 * Removed some features I don't use.
-    * `ida-interact`, `gef-remote`, `pie`, `pcustom`, `ksymaddr` and `shellcode`.
+    * `$`, `ida-interact`, `gef-remote`, `pie`, `pcustom`, `ksymaddr` and `shellcode`.
 * Many bugs fix / formatting / made it easy for me to use.
 
 ## Memo (Japanese)
