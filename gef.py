@@ -10561,18 +10561,21 @@ class FilenameCommand(GenericCommand):
 
 
 @register_command
-class ProcessStatusCommand(GenericCommand):
+class ProcInfoCommand(GenericCommand):
     """Extends the info given by GDB `info proc`, by giving an exhaustive description of the
     process status (file descriptors, parent, childs, etc.)."""
-    _cmdline_ = "process-status"
-    _syntax_ = _cmdline_
-    _aliases_ = ["status", "procinfo", "pr"]
+    _cmdline_ = "procinfo"
+    _aliases_ = ["pr"]
     _category_ = "Process Information"
 
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    @parse_args
     @only_if_gdb_running
     @only_if_gdb_target_local
     @only_if_not_qemu_system
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
         self.show_info_proc()
         self.show_info_proc_extra()
@@ -10727,10 +10730,10 @@ class ProcessStatusCommand(GenericCommand):
         gef_print("{:32s} {} {}".format("  Root Directory", RIGHT_ARROW, repr(root)))
         uids = re.sub(r"\s+", " : ", self.get_state_of(pid)['Uid'])
         gids = re.sub(r"\s+", " : ", self.get_state_of(pid)['Gid'])
-        gef_print("{:32s} {} {}".format("  RUID : EUID : SavedUID : FSUID", RIGHT_ARROW, uids))
-        gef_print("{:32s} {} {}".format("  RGID : EGID : SavedGID : FSGID", RIGHT_ARROW, gids))
+        gef_print("{:32s} {} {}".format("  RUID:EUID:SavedUID:FSUID", RIGHT_ARROW, uids))
+        gef_print("{:32s} {} {}".format("  RGID:EGID:SavedGID:FSGID", RIGHT_ARROW, gids))
         seccomp_n = self.get_state_of(pid)['Seccomp']
-        seccomp_s = {'0': 'Disabled', '1': 'Strict', '2': 'Filter'}[seccomp_n]
+        seccomp_s = {'0': 'Disabled', '1': 'Strict', '2': 'CustomFilter'}[seccomp_n]
         gef_print("{:32s} {} {} ({})".format("  Seccomp Mode", RIGHT_ARROW, seccomp_n, seccomp_s))
         return
 
@@ -10827,9 +10830,9 @@ class ProcessStatusCommand(GenericCommand):
 
         gef_print(titlify("User Namespace Information"))
         for u in self.get_uid_map(pid):
-            gef_print("{:32s} {} [{} : {} : {}]".format("UID_MAP [NS : Host : Range]", RIGHT_ARROW, u[0], u[1], u[2]))
+            gef_print("{:32s} {} [{:#x} : {:#x} : {:#x}]".format("UID_MAP [NameSpace:Host:Range]", RIGHT_ARROW, u[0], u[1], u[2]))
         for g in self.get_gid_map(pid):
-            gef_print("{:32s} {} [{} : {} : {}]".format("GID_MAP [NS : Host : Range]", RIGHT_ARROW, g[0], g[1], g[2]))
+            gef_print("{:32s} {} [{:#x} : {:#x} : {:#x}]".format("GID_MAP [NameSpace:Host:Range]", RIGHT_ARROW, g[0], g[1], g[2]))
         return
 
     def show_fds(self):
@@ -10918,8 +10921,12 @@ class ProcessStatusCommand(GenericCommand):
 class CapabilityCommand(GenericCommand):
     """Show the capabilities of the debugging process."""
     _cmdline_ = "capability"
-    _syntax_ = "{:s} [-v]".format(_cmdline_)
     _category_ = "Process Information"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-v', dest='verbose', action='store_true',
+                        help='also display detailed bit information other than cap_eff.')
+    _syntax_ = parser.format_help()
 
     def get_thread_ids(self, pid):
         try:
@@ -10975,7 +10982,7 @@ class CapabilityCommand(GenericCommand):
         PrintBitInfo(name, 64, None, bit_info).print(cap)
         return
 
-    def print_capability_from_pid(self):
+    def print_capability_from_pid(self, verbose):
         pid = get_pid()
         if pid is None:
             return
@@ -11010,17 +11017,17 @@ class CapabilityCommand(GenericCommand):
             if "cap_prm" in caps:
                 msg = "Capability set that Effective and Inheritable are allowed to have"
                 gef_print("Permitted  : {:#018x} - {:s}".format(caps["cap_prm"], msg))
-                if self.verbose:
+                if verbose:
                     self.print_cap_details("cap_prm", caps["cap_prm"])
             if "cap_inh" in caps:
                 msg = "Capability set that can be inherited when execve(2)"
                 gef_print("Inheritable: {:#018x} - {:s}".format(caps["cap_inh"], msg))
-                if self.verbose:
+                if verbose:
                     self.print_cap_details("cap_inh", caps["cap_inh"])
             if "cap_amb" in caps:
                 msg = "Capability set that inherited when execve(2) not suid/sgid program"
                 gef_print("Ambient    : {:#018x} - {:s}".format(caps["cap_amb"], msg))
-                if self.verbose:
+                if verbose:
                     self.print_cap_details("cap_amb", caps["cap_amb"])
             if "cap_eff" in caps:
                 msg = "Capability set that kernel actually uses to determine privileges"
@@ -11029,11 +11036,11 @@ class CapabilityCommand(GenericCommand):
             if "cap_bnd" in caps:
                 msg = "Capability set that limits the capabilities set that can be acquired"
                 gef_print("Bounding   : {:#018x} - {:s}".format(caps["cap_bnd"], msg))
-                if self.verbose:
+                if verbose:
                     self.print_cap_details("cap_bnd", caps["cap_bnd"])
         return
 
-    def print_capability_from_file(self):
+    def print_capability_from_file(self, verbose):
         filepath = get_filepath()
         if filepath is None:
             return
@@ -11075,30 +11082,25 @@ class CapabilityCommand(GenericCommand):
         if "cap_prm" in caps:
             msg = "Capability set that permitted to the thread, regardless of the thread's cap_inh"
             gef_print("Permitted  : {:#018x} - {:s}".format(caps["cap_prm"], msg))
-            if self.verbose:
+            if verbose:
                 self.print_cap_details("cap_prm", caps["cap_prm"])
         if "cap_inh" in caps:
             msg = "Capability set that is ANDed with thread cap_inh to determine cap_inh after execve(2)"
             gef_print("Inheritable: {:#018x} - {:s}".format(caps["cap_inh"], msg))
-            if self.verbose:
+            if verbose:
                 self.print_cap_details("cap_inh", caps["cap_inh"])
         if "rootid" in caps:
             msg = "UID of root in user namespace"
             gef_print("Root ID    : {:#010x} - {:s}".format(caps["rootid"], msg))
         return
 
+    @parse_args
     @only_if_gdb_target_local
     @only_if_not_qemu_system
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
-
-        self.verbose = False
-        if "-v" in argv:
-            self.verbose = True
-            argv.remove("-v")
-
-        self.print_capability_from_pid()
-        self.print_capability_from_file()
+        self.print_capability_from_pid(args.verbose)
+        self.print_capability_from_file(args.verbose)
         return
 
 
