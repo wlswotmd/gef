@@ -13901,22 +13901,21 @@ class RpCommand(GenericCommand):
         return
 
     def exec_rp(self, ropN):
-        out = "rop{}_{}_v{}.txt".format(ropN, os.path.basename(self.path), self.rp_version)
-        out = os.path.join(GEF_TEMP_DIR, out)
-        cmd = f"{self.rp} --file='{self.path}' --rop={ropN} --unique > {out}"
+        output_file = "rop{}_{}_v{}.txt".format(ropN, os.path.basename(self.path), self.rp_version)
+        output_path = os.path.join(GEF_TEMP_DIR, output_file)
+        cmd = f"{self.rp} --file='{self.path}' --rop={ropN} --unique > {output_path}"
         gef_print(titlify(cmd))
-        if not os.path.exists(out):
+        if not os.path.exists(output_path):
             os.system(cmd)
-        return out
+        return output_path
 
-    def apply_filter(self, out, filter_patterns, base_address):
-        if not os.path.exists(out):
-            err(f"{out} is not found")
+    def apply_filter(self, rp_output_path, filter_patterns, base_address):
+        if not os.path.exists(rp_output_path):
+            err(f"{rp_output_path} is not found")
             return
-        lines = open(out, "r").read()
+        lines = open(rp_output_path, "r").read()
 
-        _, tmp_path = tempfile.mkstemp(dir=GEF_TEMP_DIR)
-        fp = open(tmp_path, "w")
+        out = []
         for line in lines.splitlines():
             line = re.sub(r"\x1B\[([0-9]{1,2}(;[0-9]{1,2})*)?m", "", line) # remove color
 
@@ -13934,9 +13933,8 @@ class RpCommand(GenericCommand):
                     x = Color.redify("{:#08x}".format(addr)) + ":" + gadget # repaint color
                 else:
                     x = line
-                fp.write(x + "\n")
-        fp.close()
-        return tmp_path
+                out.append(x)
+        return '\n'.join(out)
 
     @only_if_gdb_running
     @only_if_specific_arch(arch=["x86_32", "x86_64"])
@@ -13960,13 +13958,6 @@ class RpCommand(GenericCommand):
             except FileNotFoundError as e1:
                 err("{}".format(e1))
                 return
-
-        # load less path
-        try:
-            less = which("less")
-        except FileNotFoundError as e:
-            err("{}".format(e))
-            return
 
         # parse args
         try:
@@ -14042,17 +14033,14 @@ class RpCommand(GenericCommand):
             base_address = 0
 
         # invoke rp++
-        out = self.exec_rp(ropN)
+        rp_output_path = self.exec_rp(ropN)
 
         # filtering
-        tmp_path = self.apply_filter(out, filter_patterns, base_address)
-        if tmp_path is None:
-            return
+        out = self.apply_filter(rp_output_path, filter_patterns, base_address)
 
         # print
         if do_print:
-            os.system(f"{less} -R {tmp_path}")
-            os.unlink(tmp_path)
+            gef_print(out, less=True)
         return
 
 
