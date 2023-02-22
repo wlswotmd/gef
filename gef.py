@@ -13963,7 +13963,7 @@ class RpCommand(GenericCommand):
 
         # load less path
         try:
-            self.less = which("less")
+            less = which("less")
         except FileNotFoundError as e:
             err("{}".format(e))
             return
@@ -14051,7 +14051,7 @@ class RpCommand(GenericCommand):
 
         # print
         if do_print:
-            os.system(f"{self.less} -R {tmp_path}")
+            os.system(f"{less} -R {tmp_path}")
             os.unlink(tmp_path)
         return
 
@@ -38828,7 +38828,7 @@ class FindFakeFastCommand(GenericCommand):
 class VisualHeapCommand(GenericCommand):
     """Visualize top 10 chunks on a heap (default: main_arena)."""
     _cmdline_ = "visual-heap"
-    _syntax_ = "{:s} [-h] [DUMP_START_ADDRESS] [-c CHUNK_PRINT_COUNT|all] [-a ARENA_ADDRESS] [-v]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [DUMP_START_ADDRESS] [-c CHUNK_PRINT_COUNT] [-a ARENA_ADDRESS] [-v]".format(_cmdline_)
     _category_ = "Heap"
 
     def __init__(self):
@@ -38856,7 +38856,7 @@ class VisualHeapCommand(GenericCommand):
             s += "{} {}".format(LEFT_ARROW, "top chunk")
         return s
 
-    def print_chunk(self, chunk, color_func):
+    def generate_visual_chunk(self, chunk, color_func):
         ptrsize = current_arch.ptrsize
         unpack = u32 if ptrsize == 4 else u64
         data = slicer(chunk.data, ptrsize * 2)
@@ -38864,7 +38864,6 @@ class VisualHeapCommand(GenericCommand):
 
         addr = chunk.chunk_base_address
         width = ptrsize * 2 + 2
-        dump = ""
         done = False
         for blk, blks in itertools.groupby(data):
             repeat_count = len(list(blks))
@@ -38873,40 +38872,48 @@ class VisualHeapCommand(GenericCommand):
 
             if repeat_count < group_line_threshold or self.verbose:
                 for i in range(repeat_count):
-                    dump += f"{addr:#x}: {d1:#0{width:d}x} {d2:#0{width:d}x} | {dascii:s} | " + self.subinfo(addr) + "\n"
+                    sub_info = self.subinfo(addr)
+                    dump = f"{addr:#x}: {d1:#0{width:d}x} {d2:#0{width:d}x} | {dascii:s} | {sub_info:s}"
+                    self.out.append(color_func(dump))
                     addr += ptrsize * 2
                     if addr > self.top + ptrsize * 4:
-                        dump += "..."
+                        dump = Color.boldify("...")
+                        self.out.append(dump)
                         done = True
                         break
             else:
-                dump += f"{addr:#x}: {d1:#0{width:d}x} {d2:#0{width:d}x} | {dascii:s} | " + self.subinfo(addr) + "\n"
-                dump += "* {:#d} lines, {:#x} bytes \n".format(repeat_count - 1, (repeat_count - 1) * ptrsize * 2)
+                sub_info = self.subinfo(addr)
+                dump = f"{addr:#x}: {d1:#0{width:d}x} {d2:#0{width:d}x} | {dascii:s} | {sub_info:s}"
+                self.out.append(color_func(dump))
+                dump = "* {:#d} lines, {:#x} bytes".format(repeat_count - 1, (repeat_count - 1) * ptrsize * 2)
+                self.out.append(color_func(dump))
                 addr += ptrsize * 2 * repeat_count
 
             if done:
                 break
 
-        gef_print(color_func(dump.rstrip()))
         return
 
-    def print_heap(self):
+    def generate_visual_heap(self):
         sect = process_lookup_address(self.dump_start)
         addr = self.dump_start
         i = 0
         color = [Color.redify, Color.greenify, Color.blueify, Color.yellowify]
+        self.out = []
         while addr < sect.page_end and (self.count is None or i < self.count):
             chunk = GlibcChunk(addr + current_arch.ptrsize * 2)
             # corrupt check
             if addr != self.top and addr + chunk.size > self.top:
-                err("Corrupted (addr + chunk.size > self.top)")
+                msg = "{} Corrupted (addr + chunk.size > self.top)".format(Color.colorify("[!]", "bold red"))
+                self.out.append(msg)
                 chunk.data = read_memory(addr, self.top - addr + 0x10)
-                self.print_chunk(chunk, Color.grayify)
+                self.generate_visual_chunk(chunk, Color.grayify)
                 break
             elif addr + chunk.size > sect.page_end:
-                err("Corrupted (addr + chunk.size > sect.page_end)")
+                msg = "{} Corrupted (addr + chunk.size > sect.page_end)".format(Color.colorify("[!]", "bold red"))
+                self.out.append(msg)
                 chunk.data = read_memory(addr, self.top - addr + 0x10)
-                self.print_chunk(chunk, Color.grayify)
+                self.generate_visual_chunk(chunk, Color.grayify)
                 break
             # maybe not corrupted
             try:
@@ -38914,7 +38921,7 @@ class VisualHeapCommand(GenericCommand):
             except gdb.MemoryError:
                 break
             color_func = color[i % len(color)]
-            self.print_chunk(chunk, color_func)
+            self.generate_visual_chunk(chunk, color_func)
             addr += chunk.size
             i += 1
         return
@@ -38960,16 +38967,13 @@ class VisualHeapCommand(GenericCommand):
         if "-c" in argv:
             try:
                 idx = argv.index("-c")
-                if argv[idx + 1] == "all":
-                    self.count = None
-                else:
-                    self.count = int(argv[idx + 1], 0)
+                self.count = int(argv[idx + 1], 0)
                 argv = argv[:idx] + argv[idx + 2:]
             except Exception:
                 self.usage()
                 return
         else:
-            self.count = 10
+            self.count = None
 
         # parse start address
         if len(argv) == 1:
@@ -38996,9 +39000,10 @@ class VisualHeapCommand(GenericCommand):
         self.top = int(self.arena.top) if self.arena else None
 
         try:
-            self.print_heap()
+            self.generate_visual_heap()
         except Exception:
             pass
+        gef_print('\n'.join(self.out), less=True)
         return
 
 
