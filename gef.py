@@ -11108,24 +11108,31 @@ class CapabilityCommand(GenericCommand):
 class SmartMemoryDumpCommand(GenericCommand):
     """Smart dump the process memory."""
     _cmdline_ = "smart-memory-dump"
-    _syntax_ = "{:s} [--prefix PREFIX]".format(_cmdline_)
     _category_ = "Misc"
 
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('--prefix', help='use this name for the dump destination file prefix. (default: PID)')
+    _syntax_ = parser.format_help()
+
+    @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        prefix = "_"
-        if "--prefix" in argv:
-            idx = argv.index("--prefix")
-            prefix = "_" + argv[idx + 1] + "_"
+        if args.prefix is None:
+            pid = get_pid(remote=True)
+            if pid is None:
+                prefix = "{:05d}".format(0)
+            else:
+                prefix = "{:05d}".format(pid)
+        else:
+            prefix = args.prefix
 
-        pid = get_pid(remote=True)
-        if pid is None:
-            err("Failed to get pid")
-            return
+        self.smart_memory_dump(prefix)
+        return
 
+    def smart_memory_dump(self, prefix):
         maps = get_process_maps()
         if maps is None:
             err("Failed to get maps")
@@ -11153,8 +11160,8 @@ class SmartMemoryDumpCommand(GenericCommand):
             except gdb.MemoryError:
                 continue
 
-            fmt = "{:05d}{:s}{:0{}x}-{:0{}x}_{:s}_{:s}.raw"
-            dumpfile_name = fmt.format(pid, prefix, start, addr_len, end, addr_len, perm, path)
+            fmt = "{:s}-{:0{}x}-{:0{}x}_{:s}_{:s}.raw"
+            dumpfile_name = fmt.format(prefix, start, addr_len, end, addr_len, perm, path)
             filepath = os.path.join(GEF_TEMP_DIR, dumpfile_name)
             open(filepath, "wb").write(data)
             info("Saved to {:s}".format(filepath))
