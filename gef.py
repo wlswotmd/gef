@@ -17334,7 +17334,7 @@ class ContextCommand(GenericCommand):
                     mem = read_memory(sp, 0x10 * nb_lines)
                     gef_print(hexdump(mem, base=sp))
                 else:
-                    gdb.execute("dereference {:#x} l{:d}".format(sp, nb_lines))
+                    gdb.execute("telescope {:#x} {:d} --no-pager".format(sp, nb_lines))
             except gdb.MemoryError:
                 err("Cannot read memory from $SP (corrupted stack pointer?)")
 
@@ -17542,7 +17542,7 @@ class ContextCommand(GenericCommand):
                 # some binary fails to resolve "(long)"
                 addr = parse_address(code_orig)
             self.context_title(f"memory access: {code_orig} = {addr:#x}")
-            gdb.execute(f"telescope {addr:#x} 4")
+            gdb.execute(f"telescope {addr:#x} 4 --no-pager")
         return
 
     def context_memory_access2(self):
@@ -17572,7 +17572,7 @@ class ContextCommand(GenericCommand):
             mask = ((1 << 32) - 1) if is_32bit() else ((1 << 64) - 1)
             addr = (tls + offset) & mask
             self.context_title(f"memory access: {code} = {addr:#x}")
-            gdb.execute(f"telescope {addr:#x} 4")
+            gdb.execute(f"telescope {addr:#x} 4 --no-pager")
         return
 
     def context_memory_access3(self):
@@ -17599,7 +17599,7 @@ class ContextCommand(GenericCommand):
             addr = ''.join(addr)
             addr = parse_address(addr)
             self.context_title(f"memory access: {code} = {addr:#x}")
-            gdb.execute(f"telescope {addr:#x} 4")
+            gdb.execute(f"telescope {addr:#x} 4 --no-pager")
         return
 
     @staticmethod
@@ -18042,7 +18042,7 @@ class ContextCommand(GenericCommand):
             sz, fmt = opt[0:2]
             self.context_title("memory:{:#x}".format(address))
             if fmt == "pointers":
-                gdb.execute("dereference {address:#x} L{size:d}".format(address=address, size=sz,))
+                gdb.execute("telescope {address:#x} {size:d} --no-pager".format(address=address, size=sz,))
             else:
                 gdb.execute("hexdump {fmt:s} {address:#x} {size:d} --no-pager".format(address=address, size=sz, fmt=fmt,))
         return
@@ -19452,7 +19452,7 @@ class DereferenceCommand(GenericCommand):
     """Dereference recursively from an address and display information.
     This acts like WinDBG `dps` command."""
     _cmdline_ = "dereference"
-    _syntax_ = "{:s} [-h] [LOCATION] [[L]NUM]".format(_cmdline_)
+    _syntax_ = "{:s} [-h] [LOCATION] [[L]NUM] [--no-pager]".format(_cmdline_)
     _example_ = "\n"
     _example_ += "{:s} $sp L20 # print 20 lines from $sp\n".format(_cmdline_)
     _example_ += "{:s} $sp 20 # same as above".format(_cmdline_)
@@ -19550,12 +19550,15 @@ class DereferenceCommand(GenericCommand):
 
         target = "$sp"
         nb = 10
+        no_pager = False
 
         for arg in argv:
             if arg.isdigit():
                 nb = int(arg)
             elif arg[0] in ("l", "L") and arg[1:].isdigit():
                 nb = int(arg[1:])
+            elif arg == "--no-pager":
+                no_pager = True
             else:
                 target = arg
 
@@ -19574,14 +19577,18 @@ class DereferenceCommand(GenericCommand):
             to_insnum = nb * (self.repeat_count + 1)
             insnum_step = 1
 
+        out = []
         for idx in range(from_insnum, to_insnum, insnum_step):
             try:
                 line = DereferenceCommand.pprint_dereferenced(start_address, idx)
-                gef_print(line)
+                out.append(line)
             except Exception:
                 # ex: nop DWORD PTR [rax+rax*1+0x0]
-                err("Cannot access memory at address {:#x}".format(start_address + idx * current_arch.ptrsize))
+                msg = "Cannot access memory at address {:#x}".format(start_address + idx * current_arch.ptrsize)
+                out.append("{} {}".format(Color.colorify("[!]", "bold red"), msg))
                 break
+
+        gef_print('\n'.join(out), not no_pager)
         return
 
 
@@ -33961,7 +33968,7 @@ class MagicCommand(GenericCommand):
         except Exception:
             return
 
-        gdb.execute("telescope {:#x} 22".format(vtable))
+        gdb.execute("telescope {:#x} 22 --no-pager".format(vtable))
         return
 
     def magic(self):
@@ -38080,18 +38087,18 @@ class TlsCommand(GenericCommand):
             fsvalue = self.getfs()
             if fsvalue:
                 gef_print(titlify("TLS-0x80"))
-                gdb.execute("telescope {:#x} 16".format(fsvalue - 0x80))
+                gdb.execute("telescope {:#x} 16 --no-pager".format(fsvalue - 0x80))
                 gef_print(titlify("TLS"))
-                gdb.execute("telescope {:#x} 16".format(fsvalue))
+                gdb.execute("telescope {:#x} 16 --no-pager".format(fsvalue))
                 gef_print("set $tls = {:#x}".format(fsvalue))
                 gdb.execute("set $tls = {:#x}".format(fsvalue))
         elif is_x86_32():
             gsvalue = self.getgs()
             if gsvalue:
                 gef_print(titlify("TLS-0x40"))
-                gdb.execute("telescope {:#x} 16".format(gsvalue - 0x40))
+                gdb.execute("telescope {:#x} 16 --no-pager".format(gsvalue - 0x40))
                 gef_print(titlify("TLS"))
-                gdb.execute("telescope {:#x} 16".format(gsvalue))
+                gdb.execute("telescope {:#x} 16 --no-pager".format(gsvalue))
                 gef_print("set $tls = {:#x}".format(gsvalue))
                 gdb.execute("set $tls = {:#x}".format(gsvalue))
         elif is_arm32():
@@ -38102,17 +38109,17 @@ class TlsCommand(GenericCommand):
             tls = gdb.execute("p $tls = (unsigned int)__aeabi_read_tp()", to_string=True)
             if tls:
                 gef_print(titlify("TLS-0x40"))
-                gdb.execute("telescope $tls-0x40 16")
+                gdb.execute("telescope $tls-0x40 16 --no-pager")
                 gef_print(titlify("TLS"))
-                gdb.execute("telescope $tls 16")
+                gdb.execute("telescope $tls 16 --no-pager")
         elif is_arm64():
             gef_print("p $tls = $TPIDR_EL0")
             tls = gdb.execute("p $tls = $TPIDR_EL0", to_string=True)
             if tls:
                 gef_print(titlify("TLS-0x80"))
-                gdb.execute("telescope $tls-0x80 16")
+                gdb.execute("telescope $tls-0x80 16 --no-pager")
                 gef_print(titlify("TLS"))
-                gdb.execute("telescope $tls 16")
+                gdb.execute("telescope $tls 16 --no-pager")
         return
 
 
