@@ -16934,12 +16934,6 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
             self.usage()
             return
 
-        try:
-            less = which("less")
-        except FileNotFoundError as e:
-            err("{}".format(e))
-            return
-
         # with hexdump or not
         if "-x" in argv:
             idx = argv.index("-x")
@@ -16988,10 +16982,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
         out += self.format_entry(gcc_except_table, gcc_except_table_entries)
 
         # print
-        _, tmp_path = tempfile.mkstemp(dir=GEF_TEMP_DIR)
-        open(tmp_path, "w").write('\n'.join(out))
-        os.system(f"{less} -R {tmp_path}")
-        os.unlink(tmp_path)
+        gef_print('\n'.join(out), less=True)
         return
 
 
