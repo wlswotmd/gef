@@ -9908,12 +9908,16 @@ class GefThemeCommand(GenericCommand):
 @register_command
 class NiCommand(GenericCommand):
     """nexti wrapper for specific arch.
-    s390x: sometimes returns `PC not saved` when nexti command is executed.
+    s390x: it sometimes returns `PC not saved` when nexti command is executed.
     or1k: branch operations don't work well, so use breakpoints to simulate.
     cris: si/ni commands don't work well. so use breakpoints to simulate."""
     _cmdline_ = "ni"
-    _syntax_ = _cmdline_
     _category_ = "Debugging Support"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('args', metavar='ARGS', nargs='*',
+                        help='An array of arguments to pass as is to the nexti command. (default: %(default)s)')
+    _syntax_ = parser.format_help()
 
     def ni_set_bp_for_branch(self):
         target = None
@@ -9953,7 +9957,9 @@ class NiCommand(GenericCommand):
         gdb.Breakpoint("*{:#x}".format(insn_next.address), gdb.BP_BREAKPOINT, internal=True, temporary=True)
         return
 
-    def do_invoke(self, argv):
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
         if is_cris():
             self.ni_set_bp_for_branch()
             self.ni_set_bp_next()
@@ -9963,7 +9969,7 @@ class NiCommand(GenericCommand):
         if is_or1k():
             self.ni_set_bp_for_branch()
 
-        cmd = "nexti " + ' '.join(argv)
+        cmd = "nexti " + ' '.join(args.args)
         try:
             gdb.execute(cmd.rstrip())
         except gdb.error:
@@ -9978,12 +9984,16 @@ class NiCommand(GenericCommand):
 @register_command
 class SiCommand(GenericCommand):
     """stepi wrapper for specific arch.
-    s390x: sometimes returns `PC not saved` when stepi command is executed.
+    s390x: it sometimes returns `PC not saved` when stepi command is executed.
     or1k: branch operations don't work well, so use breakpoints to simulate.
     cris: si/ni commands don't work well. so use breakpoints to simulate."""
     _cmdline_ = "si"
-    _syntax_ = _cmdline_
     _category_ = "Debugging Support"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('args', metavar='ARGS', nargs='*',
+                        help='An array of arguments to pass as is to the stepi command. (default: %(default)s)')
+    _syntax_ = parser.format_help()
 
     def si_set_bp_for_branch(self):
         target = None
@@ -10023,7 +10033,9 @@ class SiCommand(GenericCommand):
         gdb.Breakpoint("*{:#x}".format(insn_next.address), gdb.BP_BREAKPOINT, internal=True, temporary=True)
         return
 
-    def do_invoke(self, argv):
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
         if is_cris():
             self.si_set_bp_for_branch()
             self.si_set_bp_next()
@@ -10033,7 +10045,7 @@ class SiCommand(GenericCommand):
         if is_or1k():
             self.si_set_bp_for_branch()
 
-        cmd = "stepi " + ' '.join(argv)
+        cmd = "stepi " + ' '.join(args.args)
         try:
             gdb.execute(cmd.rstrip())
         except gdb.error:
@@ -10050,46 +10062,53 @@ class ContCommand(GenericCommand):
     """qemu-user does not trap SIGINT during "continue". Realize a pseudo SIGINT trap by trapping
     SIGINT on the python side and throwing SIGINT back to qemu-user."""
     _cmdline_ = "c"
-    _syntax_ = _cmdline_
     _category_ = "Debugging Support"
 
-    def do_invoke(self, argv):
-        self.dont_repeat()
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('args', metavar='ARGS', nargs='*',
+                        help='An array of arguments to pass as is to the continue command. (default: %(default)s)')
+    _syntax_ = parser.format_help()
 
+    def continue_for_qemu(self):
+        import threading
+        import signal
+        thread_started = False
+        thread_finished = False
+
+        def continue_thread():
+            nonlocal thread_started, thread_finished
+            thread_started = True
+            try:
+                gdb.execute("continue")
+            except gdb.error:
+                exc_type, exc_value, exc_traceback = sys.exc_info()
+                err(exc_value)
+            thread_finished = True
+            return
+
+        def sig_handler(signum, frame):
+            os.kill(get_pid(), signal.SIGINT)
+            return
+
+        th = threading.Thread(target=continue_thread, daemon=True)
+        th.start()
+        while thread_started is False:
+            time.sleep(0.1)
+        old = signal.signal(signal.SIGINT, sig_handler)
+        while thread_finished is False:
+            time.sleep(0.1)
+        th.join()
+        signal.signal(signal.SIGINT, old)
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
         if is_qemu_usermode() and get_pid():
-
-            import threading
-            import signal
-            thread_started = False
-            thread_finished = False
-
-            def continue_thread():
-                nonlocal thread_started, thread_finished
-                thread_started = True
-                try:
-                    gdb.execute("continue")
-                except gdb.error:
-                    exc_type, exc_value, exc_traceback = sys.exc_info()
-                    err(exc_value)
-                thread_finished = True
-                return
-
-            def sig_handler(signum, frame):
-                os.kill(get_pid(), signal.SIGINT)
-                return
-
-            th = threading.Thread(target=continue_thread, daemon=True)
-            th.start()
-            while thread_started is False:
-                time.sleep(0.1)
-            old = signal.signal(signal.SIGINT, sig_handler)
-            while thread_finished is False:
-                time.sleep(0.1)
-            th.join()
-            signal.signal(signal.SIGINT, old)
+            self.continue_for_qemu()
         else:
             try:
-                cmd = "continue " + ' '.join(argv)
+                cmd = "continue " + ' '.join(args.args)
                 gdb.execute(cmd.rstrip())
             except gdb.error:
                 exc_type, exc_value, exc_traceback = sys.exc_info()
