@@ -11353,27 +11353,28 @@ class HijackFdCommand(GenericCommand):
 class ScanSectionCommand(GenericCommand):
     """Search for addresses that are located in a memory mapping (haystack) that belonging
     to another (needle)."""
-    _cmdline_ = "scan"
-    _syntax_ = "{:s} HAYSTACK NEEDLE".format(_cmdline_)
-    _example_ = "\n"
-    _example_ += "{:s} stack binary # scan binary address from stack\n".format(_cmdline_)
-    _example_ += "{:s} stack libc # scan libc address from stack\n".format(_cmdline_)
-    _example_ += "{:s} stack heap # scan heap address from stack\n".format(_cmdline_)
-    _example_ += "{:s} heap libc # scan libc address from heap\n".format(_cmdline_)
-    _example_ += "{:s} 0x0000555555772000-0x0000555555774000 libc".format(_cmdline_)
+    _cmdline_ = "scan-section"
     _category_ = "Show/Modify Memory"
-    _aliases_ = ["lookup"]
 
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('haystack', metavar='HAYSTACK', help='where to search for the needle.')
+    parser.add_argument('needle', metavar='NEEDLE', help='what to explore.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} stack binary # scan binary address from stack\n".format(_cmdline_)
+    _example_ += "{:s} stack libc   # scan libc address from stack\n".format(_cmdline_)
+    _example_ += "{:s} stack heap   # scan heap address from stack\n".format(_cmdline_)
+    _example_ += "{:s} heap libc    # scan libc address from heap\n".format(_cmdline_)
+    _example_ += "{:s} 0x0000555555772000-0x0000555555774000 libc".format(_cmdline_)
+
+    @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
-        if len(argv) != 2:
-            self.usage()
-            return
 
-        haystack = argv[0]
-        needle = argv[1]
+        haystack = args.haystack
+        needle = args.needle
 
         info("Searching for addresses in '{:s}' that point to '{:s}'"
              .format(Color.yellowify(haystack), Color.yellowify(needle)))
@@ -11384,6 +11385,10 @@ class ScanSectionCommand(GenericCommand):
         if needle in ["binary", "bin"]:
             needle = get_filepath(append_proc_root_prefix=False)
 
+        self.scan(haystack, needle)
+        return
+
+    def scan(self, haystack, needle):
         needle_sections = []
         haystack_sections = []
 
@@ -11432,21 +11437,30 @@ class ScanSectionCommand(GenericCommand):
 
 @register_command
 class SearchPatternCommand(GenericCommand):
-    """SearchPatternCommand: search a pattern in memory. If given an hex value (starting with 0x)
+    """Search a pattern in memory. If given an hex value (starting with 0x)
     the command will also try to look for upwards cross-references to this address."""
     _cmdline_ = "search-pattern"
-    _syntax_ = "{:s} [-h] PATTERN|--hex=PATTERN [little|big] [section] [--aligned N] [-v] [--disable-utf16]".format(_cmdline_)
-    _example_ = "\n"
-    _example_ += "{:s} AAAAAAAA # search 'AAAAAAAA' from whole memory\n".format(_cmdline_)
-    _example_ += "{:s} 0x555555554000 little stack # search 0x555555554000 (6byte) from stack\n".format(_cmdline_)
-    _example_ += "{:s} 0x0000555555554000 little stack # search 0x0000555555554000 (8byte) from stack\n".format(_cmdline_)
-    _example_ += "{:s} 0x079ee018 little 0x600000-0x601000 # hex must start by '0x' with ** 0-padding **\n".format(_cmdline_)
-    _example_ += "{:s} AAAA little binary # 'binary' means executable mapped area itself (supported only usermode)\n".format(_cmdline_)
-    _example_ += "{:s} AAAA little heap --aligned 16 # search with aligned\n".format(_cmdline_)
-    _example_ += "{:s} --hex=\"00 00 00 00\" little stack # another valid format (invalid char is ignored)\n".format(_cmdline_)
-    _example_ += "{:s} AAAA -v # verbose output".format(_cmdline_)
     _category_ = "Show/Modify Memory"
     _aliases_ = ["find"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('pattern', metavar='PATTERN', help='search target value. "double-espaced string" or 0xXXXXXXXX style.')
+    parser.add_argument('--hex', action='store_true', help="interpret PATTERN as hex. invalid character is ignored.")
+    parser.add_argument('--big', action='store_true', help="interpret PATTERN as big endian if PATTERN is 0xXXXXXXXX style.")
+    parser.add_argument('section', metavar='SECTION', nargs="?", help="range to search.")
+    parser.add_argument('--aligned', type=int, default=1, help="alignment unit. (default: %(default)s)")
+    parser.add_argument('-v', dest='verbose', action='store_true', help='shows the section you are currently searching.')
+    parser.add_argument('--disable-utf16', action='store_true', help='disable utf16 search if PATTERN is ascii string.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} AAAA                       # search 'AAAA' from whole memory\n".format(_cmdline_)
+    _example_ += "{:s} 0x41414141                 # search 0x41414141 from whole memory.\n".format(_cmdline_)
+    _example_ += '{:s} --hex "41 41 41 41" stack  # another valid format\n'.format(_cmdline_)
+    _example_ += "{:s} 0x555555554000 stack       # search 0x555555554000 (6byte) from stack\n".format(_cmdline_)
+    _example_ += "{:s} 0x0000555555554000 stack   # search 0x0000555555554000 (8byte) from stack\n".format(_cmdline_)
+    _example_ += "{:s} AAAA binary                # 'binary' means the area executable itself. (only usermode)\n".format(_cmdline_)
+    _example_ += "{:s} AAAA 0x400000-0x404000     # search 'AAAA' from specific range\n".format(_cmdline_)
+    _example_ += "{:s} AAAA heap --aligned 16     # search with aligned".format(_cmdline_)
 
     def print_section(self, section):
         if isinstance(section, Address):
@@ -11524,7 +11538,7 @@ class SearchPatternCommand(GenericCommand):
                 perm = Permission.from_process_maps(perm.lower())
             yield Section(page_start=addr_start, page_end=addr_end, permission=perm)
 
-    def search_pattern(self, pattern, section_name):
+    def search_pattern(self, pattern, section_name=""):
         """Search a pattern within the whole userland memory."""
         if is_qemu_system():
             maps_generator = self.get_process_maps_qemu_system()
@@ -11562,78 +11576,48 @@ class SearchPatternCommand(GenericCommand):
         val = codecs.escape_decode(string)[0]
         return all([0x20 <= c < 0x7f for c in val])
 
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if "-h" in argv:
-            self.usage()
-            return
-
-        self.verbose = False
-        if "-v" in argv:
-            self.verbose = True
-            argv.remove("-v")
-
-        self.aligned = None
-        if "--aligned" in argv:
-            idx = argv.index("--aligned")
-            self.aligned = int(argv[idx + 1])
-            argv = argv[:idx] + argv[idx + 2:]
-
-        self.disable_utf16 = False
-        if "--disable-utf16" in argv:
-            self.disable_utf16 = True
-            argv.remove("--disable-utf16")
-
-        if len(argv) < 1:
-            self.usage()
-            return
-
-        # endianness
-        if len(argv) >= 2:
-            if argv[1].lower() == "big":
-                endian = Elf.BIG_ENDIAN
-            elif argv[1].lower() == "little":
-                endian = Elf.LITTLE_ENDIAN
-            else:
-                self.usage()
-                return
-        else:
-            endian = get_endian()
+        self.verbose = args.verbose
+        self.aligned = args.aligned
 
         # pattern replace
-        pattern = argv[0]
-        if pattern.startswith("--hex="): # "--hex=41414141" -> "\x41\x41\x41\x41"
+        if args.hex: # "41414141" -> "\x41\x41\x41\x41"
             _pattern = ""
-            for c in pattern[6:].lower():
+            for c in args.pattern.lower():
                 if c in '0123456789abcdef':
                     _pattern += c
             if len(_pattern) % 2 != 0:
-                self.usage()
+                err("hex pattern length is odd")
                 return
             pattern = "".join(["\\x" + _pattern[i:i + 2] for i in range(0, len(_pattern), 2)])
-        elif is_hex(pattern): # "0x41414141" -> "\x41\x41\x41\x41"
-            if endian == Elf.BIG_ENDIAN:
-                pattern = "".join(["\\x" + pattern[i:i + 2] for i in range(2, len(pattern), 2)])
+
+        elif is_hex(args.pattern): # "0x41414141" -> "\x41\x41\x41\x41"
+            if args.big or is_big_endian():
+                pattern = "".join(["\\x" + args.pattern[i:i + 2] for i in range(2, len(args.pattern), 2)])
             else:
-                pattern = "".join(["\\x" + pattern[i:i + 2] for i in range(len(pattern) - 2, 0, -2)])
+                pattern = "".join(["\\x" + args.pattern[i:i + 2] for i in range(len(args.pattern) - 2, 0, -2)])
+        else:
+            pattern = args.pattern
 
         # create utf16 pattern
         pattern_utf16 = None
-        if not self.disable_utf16 and self.isascii(pattern):
+        if not args.disable_utf16 and self.isascii(pattern) and "\\" not in pattern:
             pattern_utf16 = "".join([x + "\\x00" for x in pattern])
 
-        if len(argv) == 3:
-            if re.match(r"(0x)?[0-9a-fA-F]+-(0x)?[0-9a-fA-F]+", argv[2]):
+        # section replace
+        if args.section:
+            if re.match(r"(0x)?[0-9a-fA-F]+-(0x)?[0-9a-fA-F]+", args.section):
                 # specified range -> call search_pattern_by_address directly
-                search_area = argv[2]
-                info("Searching '{:s}' in {:s}".format(Color.yellowify(pattern), search_area))
-                start, end = parse_string_range(search_area)
+                info("Searching '{:s}' in {:s}".format(Color.yellowify(pattern), args.section))
+                start, end = parse_string_range(args.section)
 
                 loc = lookup_address(start)
                 if loc.valid:
-                    if self.verbose:
+                    if args.verbose:
                         self.print_section(loc) # verbose: always print section before search
                 else:
                     err("Not found valid memory area")
@@ -11641,22 +11625,23 @@ class SearchPatternCommand(GenericCommand):
 
                 ret = self.search_pattern_by_address(pattern, start, end) # search
 
-                if ret and not self.verbose:
+                if ret and not args.verbose:
                     self.print_section(loc) # default: print section if found
 
                 for found_loc in ret:
                     self.print_loc(found_loc)
 
                 if pattern_utf16 is not None:
-                    info("Searching '{:s}' in {:s}".format(Color.yellowify(pattern_utf16), search_area))
+                    info("Searching '{:s}' in {:s}".format(Color.yellowify(pattern_utf16), args.section))
                     ret = self.search_pattern_by_address(pattern_utf16, start, end)
                     for found_loc in ret:
                         self.print_loc(found_loc)
             else:
                 # section name -> call search wrapper
-                section_name = argv[2]
-                if section_name in ["binary", "bin"] and not is_qemu_system():
+                if args.section in ["binary", "bin"] and not is_qemu_system():
                     section_name = get_filepath(append_proc_root_prefix=False)
+                else:
+                    section_name = args.section
 
                 info("Searching '{:s}' in {:s}".format(Color.yellowify(pattern), section_name))
                 self.search_pattern(pattern, section_name)
@@ -11667,10 +11652,10 @@ class SearchPatternCommand(GenericCommand):
         else:
             # whole memory -> call search wrapper
             info("Searching '{:s}' in memory".format(Color.yellowify(pattern)))
-            self.search_pattern(pattern, "")
+            self.search_pattern(pattern)
             if pattern_utf16 is not None:
                 info("Searching '{:s}' in memory".format(Color.yellowify(pattern_utf16)))
-                self.search_pattern(pattern_utf16, "")
+                self.search_pattern(pattern_utf16)
         return
 
 
