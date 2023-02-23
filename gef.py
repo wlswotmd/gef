@@ -2524,16 +2524,7 @@ def gef_execute_gdb_script(commands):
 @functools.lru_cache(maxsize=None)
 def checksec(filename):
     """Check the security property of the ELF binary. The following properties are:
-    - Static
-    - Stripped
-    - Canary
-    - NX
-    - PIE
-    - RELRO
-    - Fortify
-    - Intel CET
-    - RPATH/RUNPATH
-    - Clang CFI/SafeStack
+    Canary, NX, PIE, RELRO, Fortify, Static, Stripped, Intel CET, RPATH/RUNPATH, and Clang CFI/SafeStack.
     Return a dict() with the different keys mentioned above, and the boolean
     associated whether the protection was found."""
 
