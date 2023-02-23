@@ -86,9 +86,9 @@ I also list the tools I used.
     * gdb: `gdb` built from source with `./configure --enable-targets=all --with-python=/usr/bin/python3`.
         * Because `gdb-multiarch` does not support this architecture.
 * MicroBlaze
-    * gcc: `microblazeel--glibc--stable-2022.08-1` and `microblazebe--glibc--stable-2022.08-1` from https://toolchains.bootlin.com/
+    * gcc: `microblazebe--glibc--stable-2022.08-1` from https://toolchains.bootlin.com/
         * Because the toolchain is not available through apt.
-    * qemu: `qemu-microblazeel` and `qemu-microblaze` via apt.
+    * qemu: `qemu-microblaze` via apt.
     * gdb: `gdb` built from source with `./configure --enable-targets=all --with-python=/usr/bin/python3`.
         * Because `gdb-multiarch` does not support this architecture.
 * Xtensa
