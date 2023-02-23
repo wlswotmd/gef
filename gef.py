@@ -4046,7 +4046,7 @@ class SPARC(Architecture):
         7: "supervisor",
         5: "trap",
     }
-    return_register = "$i0"
+    return_register = "$o0"
     function_parameters = ["$o0", "$o1", "$o2", "$o3", "$o4", "$o5"]
     syscall_register = "$g1"
     syscall_parameters = ["$o0", "$o1", "$o2", "$o3", "$o4", "$o5"]
