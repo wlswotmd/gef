@@ -3794,7 +3794,7 @@ class PPC(Architecture):
         29: "equal[7]",
         28: "overflow[7]",
     }
-    return_register = "$r0"
+    return_register = "$r3"
     function_parameters = ["$r3", "$r4", "$r5", "$r6", "$r7", "$r8", "$r9", "$r10"]
     syscall_register = "$r0"
     syscall_parameters = ["$r3", "$r4", "$r5", "$r6", "$r7", "$r8", "$r9"]
