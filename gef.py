@@ -12919,33 +12919,26 @@ class StubCommand(GenericCommand):
     """Stub out the specified function. This function is useful when needing to skip one
     function to be called and disrupt your runtime flow (ex. fork)."""
     _cmdline_ = "stub"
-    _syntax_ = "{:s} [-h] [-r RETVAL] [LOCATION]\n".format(_cmdline_)
-    _syntax_ += "  LOCATION   address/symbol to stub out\n"
-    _syntax_ += "  -r RETVAL  Set the return value"
-    _example_ = "{:s} -r 0 fork".format(_cmdline_)
     _category_ = "Debugging Support"
     _aliases_ = ["deactive"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-r', dest='retval', type=int, default=0, help='the return value from stub. (default: %(default)s)')
+    parser.add_argument('location', metavar='LOCATION', type=parse_address, help='address/symbol to stub out.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} -r 0 fork".format(_cmdline_)
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         return
 
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
-
-        try:
-            opts, args = getopt.getopt(argv, "r:")
-            retval = 0
-            for o, a in opts:
-                if o == "-r":
-                    retval = int(a, 0)
-        except getopt.GetoptError:
-            self.usage()
-            return
-
-        loc = args[0] if args else "*{:#x}".format(current_arch.pc)
-        StubBreakpoint(loc, retval)
+        loc = "*{:#x}".format(args.location)
+        StubBreakpoint(loc, args.retval)
         return
 
 
