@@ -12498,91 +12498,55 @@ class UnicornEmulateCommand(GenericCommand):
     instruction can be changed via arguments to the command line. By default, it will emulate
     the next instruction from current PC."""
     _cmdline_ = "unicorn-emulate"
-    _syntax_ = "{:s} [-h] [-f LOCATION] [-t LOCATION] [-n NB_INSTRUCTION] [-s] [-o PATH]\n".format(_cmdline_)
-    _syntax_ += "  -f LOCATION            specifies the start address of the emulated run (default $pc).\n"
-    _syntax_ += "  -t LOCATION            specifies the end address of the emulated run.\n"
-    _syntax_ += "  -s                     do not execute the script once generated.\n"
-    _syntax_ += "  -o /PATH/TO/SCRIPT.py  writes the persistent Unicorn script into this file.\n"
-    _syntax_ += "  -n NB_INSTRUCTION      indicates the number of instructions to execute (mutually exclusive with `-t` and `-g`).\n"
-    _syntax_ += "  -g NB_GADGET           indicates the number of gadgets to execute (mutually exclusive with `-t` and `-n`).\n"
-    _syntax_ += "  -v                     displays the registers for each instruction.\n"
-    _syntax_ += "  -q                     quiet execution.\n"
-    _syntax_ += "Additional options can be setup via `gef config unicorn-emulate`\n"
-    _syntax_ += "\n"
-    _syntax_ += "NOTE\n"
-    _syntax_ += "* unicorn does not support some instructions (ex: xsavec, xrstor, vpbroadcastb, etc)\n"
-    _syntax_ += "* unicorn does not emulate ARM kernel-provided-user-helpers like $pc=0xffff0fe0, 0xffff0fc0, etc.\n"
-    _syntax_ += "  see: https://www.kernel.org/doc/Documentation/arm/kernel_user_helpers.txt\n"
-    _example_ = "\n"
-    _example_ += "{:s} -n 5 # from $pc to 5 later asm\n".format(_cmdline_)
-    _example_ += "{:s} -g 4 # from $pc to the point where 4 instructions are executed\n".format(_cmdline_)
-    _example_ += "{:s} -f 0x8056770c -t 0x805678a4 -o /tmp/emu.py # from/to specified address with saving script".format(_cmdline_)
     _category_ = "Debugging Support"
     _aliases_ = ["emulate"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-f', dest='from_location', type=parse_address,
+                        help='specifies the start address of the emulated run. (default: current_arch.pc)')
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('-t', dest='to_location', type=parse_address,
+                       help='specifies the end address of the emulated run.')
+    group.add_argument('-n', dest='nb_insn', type=parse_address,
+                       help='indicates the number of instructions to execute.')
+    group.add_argument('-g', dest='nb_gadget', type=parse_address,
+                       help='indicates the number of gadgets to execute.')
+    parser.add_argument('-o', dest='output_path',
+                        help='writes the persistent Unicorn script into this file. (default: %(default)s)')
+    parser.add_argument('-s', dest='skip_emulation', action='store_true',
+                        help='do not run it, just script it. (default: %(default)s)')
+    parser.add_argument('-v', dest='verbose', action='store_true',
+                        help='displays the register values for each instruction is executed. (default: %(default)s)')
+    parser.add_argument('-q', dest='quiet', action='store_true',
+                        help='quiet execution. (default: %(default)s)')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} -n 5                         # from $pc to 5 later asm\n".format(_cmdline_)
+    _example_ += "{:s} -g 4                         # from $pc to the point where 4 instructions are executed\n".format(_cmdline_)
+    _example_ += "{:s} -t 0x805678a4 -o /tmp/emu.py # from/to specified address with saving script\n".format(_cmdline_)
+    _example_ += "\n"
+    _example_ += "NOTE:\n"
+    _example_ += "* unicorn does not support some instructions (ex: xsavec, xrstor, vpbroadcastb, etc)\n"
+    _example_ += "* unicorn does not emulate ARM kernel-provided-user-helpers like $pc=0xffff0fe0, 0xffff0fc0, etc.\n"
+    _example_ += "  see: https://www.kernel.org/doc/Documentation/arm/kernel_user_helpers.txt"
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         return
 
+    @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
     @load_capstone
     @load_unicorn
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         if current_arch.unicorn_support is False:
             warn("This command cannot work under this architecture.")
             return
 
-        start_insn = None
-        end_insn = -1
-        nb_insn = -1
-        nb_gadget = -1
-        to_file = None
-        skip_emulation = False
-        verbose = False
-        quiet = False
-        try:
-            opts = getopt.getopt(argv, "f:t:n:g:so:vqh")[0]
-            for o, a in opts:
-                if o == "-f":
-                    start_insn = int(a, 16)
-
-                elif o == "-t":
-                    end_insn = int(a, 16)
-                    nb_insn = -1
-                    nb_gadget = -1
-
-                elif o == "-n":
-                    end_insn = -1
-                    nb_insn = int(a)
-                    nb_gadget = -1
-
-                elif o == "-g":
-                    end_insn = -1
-                    nb_insn = -1
-                    nb_gadget = int(a)
-
-                elif o == "-s":
-                    skip_emulation = True
-
-                elif o == "-o":
-                    to_file = a
-
-                elif o == "-v":
-                    verbose = True
-
-                elif o == "-q":
-                    quiet = True
-
-                elif o == "-h":
-                    self.usage()
-                    return
-        except Exception:
-            self.usage()
-            return
-
+        start_insn = args.from_location
         if start_insn is None:
             start_insn = current_arch.pc
 
@@ -12590,32 +12554,29 @@ class UnicornEmulateCommand(GenericCommand):
         if is_arm32():
             thumb_mode = start_insn & 1
 
-        if end_insn < 0 and nb_insn < 0 and nb_gadget < 0:
+        if args.to_location is None and args.nb_insn is None and args.nb_gadget is None:
             err("No stop condition (-t|-n|-g) defined.")
             return
 
+        end_insn = args.to_location
+        if args.nb_insn is not None:
+            end_insn = self.get_unicorn_end_addr(start_insn, args.nb_insn)
+
         kwargs = {
-            "skip_emulation": skip_emulation,
-            "to_file": to_file,
-            "verbose": verbose,
-            "nb_gadget": nb_gadget,
-            "quiet": quiet,
+            "skip_emulation": args.skip_emulation,
+            "to_file": args.output_path,
+            "verbose": args.verbose,
+            "nb_gadget": args.nb_gadget,
+            "quiet": args.quiet,
             "thumb_mode": thumb_mode,
         }
 
-        if end_insn > 0:
+        if end_insn is not None:
             self.run_unicorn(start_insn, end_insn, **kwargs)
-
-        elif nb_insn > 0:
-            end_insn = self.get_unicorn_end_addr(start_insn, nb_insn)
-            self.run_unicorn(start_insn, end_insn, **kwargs)
-
-        elif nb_gadget > 0:
-            end_insn = 0x0
-            self.run_unicorn(start_insn, end_insn, **kwargs)
-
+        elif args.nb_gadget is not None:
+            self.run_unicorn(start_insn, 0, **kwargs)
         else:
-            raise Exception("Should never be here")
+            err("Invalid argumetns")
         return
 
     def get_unicorn_end_addr(self, start_addr, nb):
@@ -12915,7 +12876,7 @@ class UnicornEmulateCommand(GenericCommand):
         content += "\n"
         content += "\n"
         content += "uc = reset()\n"
-        content += "emulate(uc, {:#x}, {:#x}, {:#x})\n".format(start_insn_addr, end_insn_addr, kwargs["nb_gadget"])
+        content += "emulate(uc, {:#x}, {:#x}, {:#x})\n".format(start_insn_addr, end_insn_addr, kwargs["nb_gadget"] or -1)
         content += "\n"
         content += "\n"
         content += "# unicorn-engine script generated by gef\n"
@@ -12928,14 +12889,14 @@ class UnicornEmulateCommand(GenericCommand):
             tmp_fd, tmp_filename = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".py", prefix="gef-uc-")
         os.write(tmp_fd, gef_pybytes(content))
         os.close(tmp_fd)
-        if kwargs["to_file"]:
+        if kwargs["to_file"] or kwargs["skip_emulation"]:
             info("Unicorn script generated as '{:s}'".format(tmp_filename))
             os.chmod(tmp_filename, 0o700)
 
         if kwargs["skip_emulation"]:
             return
 
-        if kwargs["nb_gadget"] == -1:
+        if kwargs["nb_gadget"] is None:
             fmt = "Starting emulation: {:#x} {:s} {:#x}"
             ok(fmt.format(start_insn_addr, RIGHT_ARROW, end_insn_addr))
         else:
