@@ -91,6 +91,7 @@ from __future__ import print_function, division, absolute_import
 print("Loading GEF...")
 
 import abc
+import argparse
 import binascii
 import codecs
 import collections
@@ -7083,6 +7084,24 @@ def is_alive():
     return False
 
 
+def parse_args(f):
+    """Decorator wrapper to parse args for command."""
+
+    @functools.wraps(f)
+    def wrapper(self, argv, **kwargs):
+        try:
+            args = self.parser.parse_args(argv)
+        except SystemExit:
+            self.usage(omit_syntax=True)
+            return
+        except Exception:
+            err("Invalid argument")
+            return
+        return f(self, args, **kwargs)
+
+    return wrapper
+
+
 def only_if_gdb_running(f):
     """Decorator wrapper to check if GDB is running."""
 
@@ -9663,10 +9682,20 @@ class GenericCommand(gdb.Command):
 
     def __init__(self, *args, **kwargs):
         self.pre_load()
-        syntax = Color.yellowify("\nSyntax: ") + self._syntax_
-        example = Color.yellowify("\nExample: ") + self._example_ if self._example_ else ""
-        aliases = Color.yellowify("\nAliases: ") + str(self._aliases_) if hasattr(self, "_aliases_") else ""
-        self.__doc__ = self.__doc__.replace(" " * 4, "") + syntax + example + aliases
+
+        self.__doc__ = self.__doc__.replace(" " * 4, "")
+        if self._syntax_:
+            syntax = Color.colorify("\nSyntax:\n", "bold yellow") + self._syntax_.strip()
+            self.__doc__ += syntax + "\n"
+
+        if self._example_:
+            example = Color.colorify("\nExample:\n", "bold yellow") + self._example_.strip()
+            self.__doc__ += example + "\n"
+
+        if hasattr(self, "_aliases_"):
+            aliases = Color.colorify("\nAliases:\n", "bold yellow") + str(self._aliases_)
+            self.__doc__ += aliases + "\n"
+
         self.repeat = False
         self.repeat_count = 0
         self.__last_command = None
@@ -9691,11 +9720,14 @@ class GenericCommand(gdb.Command):
                 err("Command '{:s}' failed to execute properly, reason: {:s}".format(self._cmdline_, str(e)))
         return
 
-    def usage(self):
-        if self._example_:
-            err("Syntax\n{}\n\nExample\n{}".format(self._syntax_.lstrip(), self._example_.lstrip()))
+    def usage(self, omit_syntax=False):
+        if omit_syntax is False:
+            gef_print("Syntax:\n{}".format(self._syntax_.strip()))
         else:
-            err("Syntax\n{}".format(self._syntax_.lstrip()))
+            gef_print("") # argparse don't print newline
+
+        if self._example_:
+            gef_print("Example:\n{}".format(self._example_.strip()))
         return
 
     @abc.abstractproperty
@@ -9776,13 +9808,20 @@ class GenericCommand(gdb.Command):
 # class TemplateCommand(GenericCommand):
 #     """TemplateCommand: description here will be seen in the help menu for the command."""
 #     _cmdline_ = "template-fake"
-#     _syntax_ = "{:s}".format(_cmdline_)
-#     _aliases_ = ["tpl-fk",]
 #     _category_ = "Misc"
+#     _aliases_ = ["tpl-fk"]
+#
+#    parser = argparse.ArgumentParser(prog=_cmdline_)
+#    _syntax_ = parser.format_help()
+#
+#     _example_ = "{:s}".format(_cmdline_)
+#
 #     def __init__(self):
 #         super().__init__(complete=gdb.COMPLETE_FILENAME)
 #         return
-#     def do_invoke(self, argv):
+#
+#     @parse_args
+#     def do_invoke(self, args):
 #         self.dont_repeat()
 #         return
 
