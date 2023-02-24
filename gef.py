@@ -12108,64 +12108,45 @@ class EditFlagsCommand(GenericCommand):
 class MprotectCommand(GenericCommand):
     """Change a page permission. By default, it will change it to RWX."""
     _cmdline_ = "mprotect"
-    _syntax_ = "{:s} [-h] [--patch-only] LOCATION [PERMISSION]".format(_cmdline_)
-    _example_ = "{:s} $sp 7\n".format(_cmdline_)
-    _example_ += "{:s} $sp rwx".format(_cmdline_)
     _category_ = "Debugging Support"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('location', metavar='LOCATION', type=parse_address, help='the address you want to change the permission.')
+    parser.add_argument('permission', metavar='PERMISSION', nargs='?', default="rwx",
+                        help='the permission you set to the LOCATION. (default: %(default)s)')
+    parser.add_argument('--patch-only', action='store_true', help='do not execute after patch.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} $sp rwx".format(_cmdline_)
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         return
 
+    @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
     @load_keystone
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if "-h" in argv:
-            self.usage()
-            return
-
-        patch_only = False
-        if "--patch-only" in argv:
-            patch_only = True
-            argv.remove("--patch-only")
-
-        if len(argv) not in (1, 2):
-            self.usage()
-            return
-
-        if len(argv) == 2:
-            if re.match(r"[rwx-]{3}", argv[1]):
-                perm = Permission.NONE
-                if argv[1][0] == "r":
-                    perm |= Permission.READ
-                if argv[1][1] == "w":
-                    perm |= Permission.WRITE
-                if argv[1][2] == "x":
-                    perm |= Permission.EXECUTE
-            else:
-                try:
-                    perm = int(argv[1])
-                except Exception:
-                    err("Invalid permission")
-                    return
+        if re.match(r"[rwx-]{3}", args.permission):
+            perm = Permission.NONE
+            if args.permission[0] == "r":
+                perm |= Permission.READ
+            if args.permission[1] == "w":
+                perm |= Permission.WRITE
+            if args.permission[2] == "x":
+                perm |= Permission.EXECUTE
         else:
-            perm = Permission.READ | Permission.WRITE | Permission.EXECUTE
-
-        loc = safe_parse_and_eval(argv[0])
-        if loc is None:
-            err("Invalid address")
+            err("Invalid permission")
             return
 
-        try:
-            loc = to_unsigned_long(loc)
-        except gdb.error:
-            err("Invalid address")
-            return
+        self.do_mprotect(args.location, perm, args.patch_only)
+        return
 
-        sect = process_lookup_address(loc)
+    def do_mprotect(self, location, perm, patch_only):
+        sect = process_lookup_address(location)
         if sect is None:
             err("Unmapped address")
             return
@@ -12203,16 +12184,18 @@ class MprotectCommand(GenericCommand):
         info("Setting a restore breakpoint at {:s}".format(bp_loc))
         ChangePermissionBreakpoint(bp_loc, original_code, original_pc, original_regs)
 
-        info("Overwriting current memory at {:#x} ({:d} bytes)".format(loc, len(stub)))
+        info("Overwriting current memory at {:#x} ({:d} bytes)".format(location, len(stub)))
         write_memory(original_pc, stub, len(stub))
         after_data = read_memory(original_pc, len(stub))
         if stub != after_data:
             err("Failed to write memory (qemu doesn't support writing to code area?)")
             return
 
-        if not patch_only:
-            info("Resuming execution")
-            gdb.execute("continue")
+        if patch_only:
+            return
+
+        info("Resuming execution")
+        gdb.execute("continue")
         return
 
     def get_stub_by_arch(self, addr, size, perm):
@@ -12231,9 +12214,16 @@ class MprotectCommand(GenericCommand):
 class CallSyscallCommand(GenericCommand):
     """wrapper for syscall."""
     _cmdline_ = "call-syscall"
-    _syntax_ = "{:s} [-h] SYSCALL_NAME [arg1[,arg2[,...]]]".format(_cmdline_)
-    _example_ = "{:s} write 1 *(void**)($rsp+0x18) 15".format(_cmdline_)
     _category_ = "Debugging Support"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('syscall_name', metavar='SYSCALL_NAME',
+                        help='system call name you want to invoke.')
+    parser.add_argument('syscall_args', metavar='SYSCALL_ARG', nargs='*', type=parse_address,
+                        help='arguments of system call.')
+    _syntax_ = parser.format_help()
+
+    _example_ = '{:s} write 1 "*(void**)($rsp+0x18)" 15'.format(_cmdline_)
 
     def get_state(self, code_len):
         d = {}
@@ -12385,19 +12375,12 @@ class CallSyscallCommand(GenericCommand):
         gef_on_stop_hook(hook_stop_handler)
         return ret
 
+    @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         if current_arch is None:
             err("current_arch is not set.")
-            return
-
-        if "-h" in argv:
-            self.usage()
-            return
-
-        if not argv:
-            self.usage()
             return
 
         try:
@@ -12406,16 +12389,8 @@ class CallSyscallCommand(GenericCommand):
             err("syscall table does not exist")
             return
 
-        syscall_name = argv[0]
-        syscall_args = []
-        for x in argv[1:]:
-            try:
-                v = to_unsigned_long(safe_parse_and_eval(x))
-                syscall_args.append(v)
-                continue
-            except Exception:
-                err("Could not parse `{:s}`".format(x))
-                return
+        syscall_name = args.syscall_name
+        syscall_args = args.syscall_args
 
         for key, entry in syscall_table.items():
             if key in ["arch", "mode"]:
@@ -12427,7 +12402,7 @@ class CallSyscallCommand(GenericCommand):
                 nr = key
                 break
         else:
-            err("`{:s}` system call is not found.".format(syscall_name))
+            err("System call `{:s}` is not found.".format(syscall_name))
             return
 
         if len(syscall_params) != len(syscall_args):
@@ -12447,76 +12422,69 @@ class CallSyscallCommand(GenericCommand):
 class MmapMemoryCommand(GenericCommand):
     """Allocate a new memory (syntax sugar of `call mmap(...)`)."""
     _cmdline_ = "mmap"
-    _syntax_ = "{:s} [-h] [LOCATION [SIZE [PERMISSION]]]".format(_cmdline_)
-    _example_ = "{:s} 0x10000 0x1000 rwx".format(_cmdline_)
     _category_ = "Debugging Support"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address, default=0,
+                        help='the address you want to allocate. (default: %(default)s)')
+    parser.add_argument('size', metavar='SIZE', nargs='?', type=parse_address, default=gef_getpagesize(),
+                        help='the size you want to allocate. (default: %(default)s)')
+    parser.add_argument('permission', metavar='PERMISSION', nargs='?', default="rwx",
+                        help='the permission you want to allocate. `_` is interpreted as `-`. (default: %(default)s)')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} 0x10000 0x1000 r-x\n".format(_cmdline_)
+    _example_ += "{:s} 0 0x1000 _wx".format(_cmdline_)
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         return
 
+    @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if "-h" in argv:
-            self.usage()
-            return
-
+        # get mmap symbol
         try:
             parse_address("mmap")
         except gdb.error:
             err("Not found mmap function")
             return
 
-        location = 0
-        size = gef_getpagesize()
-        perm = Permission.READ | Permission.WRITE | Permission.EXECUTE
+        # location
+        if args.location % gef_getpagesize():
+            err("Address is not a multiple of {:#x}".format(gef_getpagesize()))
+            return
 
+        # size
+        if args.size % gef_getpagesize():
+            err("Size is not a multiple of {:#x}".format(gef_getpagesize()))
+            return
+
+        # permission
+        if re.match(r"[-_r][-_w][-_x]", args.permission):
+            perm = Permission.NONE
+            if args.permission[0] == "r":
+                perm |= Permission.READ
+            if args.permission[1] == "w":
+                perm |= Permission.WRITE
+            if args.permission[2] == "x":
+                perm |= Permission.EXECUTE
+        else:
+            err("Invalid permission")
+            return
+
+        # flags
         flags = 0x22 # MAP_ANONYMOUS | MAP_PRIVATE
+        if args.location != 0:
+            flags |= 0x10 # MAP_FIXED
         if is_mips32() or is_mips64():
             flags |= 0x800 # MAP_DENYWRITE (why?)
 
-        if len(argv) >= 1:
-            location = safe_parse_and_eval(argv[0])
-            if location is None:
-                err("Invalid address")
-                return
-            location = to_unsigned_long(location)
-            if location % gef_getpagesize():
-                err("Address is not a multiple of {:#x}".format(gef_getpagesize()))
-                return
-            if location != 0:
-                flags |= 0x10 # MAP_FIXED
-
-        if len(argv) >= 2:
-            try:
-                size = int(argv[1], 0)
-            except Exception:
-                err("Invalid size")
-                return
-            if size % gef_getpagesize():
-                err("Size is not a multiple of {:#x}".format(gef_getpagesize()))
-                return
-
-        if len(argv) >= 3:
-            if re.match(r"[rwx-]{3}", argv[2]):
-                perm = Permission.NONE
-                if argv[2][0] == "r":
-                    perm |= Permission.READ
-                if argv[2][1] == "w":
-                    perm |= Permission.WRITE
-                if argv[2][2] == "x":
-                    perm |= Permission.EXECUTE
-            else:
-                try:
-                    perm = int(argv[2])
-                except Exception:
-                    err("Invalid permission")
-                    return
-
-        cmd = "call mmap({:#x}, {:#x}, {:#x}, {:#x}, -1, 0)".format(location, size, perm, flags)
+        # doit
+        cmd = "call mmap({:#x}, {:#x}, {:#x}, {:#x}, -1, 0)".format(args.location, args.size, perm, flags)
         gef_print(titlify(cmd))
         gdb.execute(cmd)
         reset_all_caches()
