@@ -11854,46 +11854,56 @@ class SearchMangledPtrCommand(GenericCommand):
 
 
 @register_command
-class FlagsCommand(GenericCommand):
+class EditFlagsCommand(GenericCommand):
     """Edit flags in a human friendly way."""
     _cmdline_ = "edit-flags"
-    _syntax_ = "{:s} [(+|-|~)FLAGNAME ...] [-v] [-h]".format(_cmdline_)
-    _example_ = "\n"
-    _example_ += "{:s}\n".format(_cmdline_)
-    _example_ += "{:s} +zero # sets ZERO flag\n".format(_cmdline_)
-    _example_ += "{:s} -direction # unsets DIRECTION flag\n".format(_cmdline_)
-    _example_ += "{:s} ~sign # toggle SIGN flag\n".format(_cmdline_)
-    _example_ += "{:s} -v # print verbose".format(_cmdline_)
     _category_ = "Show/Modify Register"
-    _aliases_ = ["flags"]
 
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('flagname', metavar='[FLAGNAME(+|-|~) ...]', nargs="*", help='the flag name you want to edit..')
+    parser.add_argument('-v', dest='verbose', action='store_true', help='show the bit informations of the flag register.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s}            # show the flag register\n".format(_cmdline_)
+    _example_ += "{:s} zero+      # set ZERO flag\n".format(_cmdline_)
+    _example_ += "{:s} direction- # unset DIRECTION flag\n".format(_cmdline_)
+    _example_ += "{:s} sign~      # toggle SIGN flag\n".format(_cmdline_)
+    _example_ += "{:s} -v         # verbose output".format(_cmdline_)
+
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
-
-        if "-h" in argv:
-            self.usage()
-            return
 
         if current_arch.flag_register is None:
             warn("This command cannot work under this architecture.")
             return
 
-        self.verbose = False
-        if "-v" in argv:
-            self.verbose = True
-            argv.remove("-v")
+        self.edit_flags(args.flagname)
 
-        for flag in argv:
+        gef_print(current_arch.flag_register_to_human())
+        if args.verbose:
+            if is_x86():
+                self.verbose_x86()
+            elif is_arm32():
+                self.verbose_arm32()
+            elif is_arm64():
+                self.verbose_arm64()
+        return
+
+    def edit_flags(self, flag_names):
+        for flag in flag_names:
             if len(flag) < 2:
-                continue
+                err("Too short length of the name")
+                return
 
-            action = flag[0]
-            if action not in ("+", "-", "~"):
+            if flag[-1] not in ("+", "-", "~"):
                 err("Invalid action for flag '{:s}'".format(flag))
-                continue
+                return
 
-            name = flag[1:].lower()
+        for flag in flag_names:
+            action = flag[-1]
+            name = flag[:-1].lower()
 
             if is_x86():
                 dic = {
@@ -11916,7 +11926,7 @@ class FlagsCommand(GenericCommand):
                     name = dic[name]
 
             if name not in current_arch.flags_table.values():
-                err("Invalid flag name '{:s}'".format(flag[1:]))
+                err("Invalid flag name '{:s}'".format(flag[:-1]))
                 continue
 
             for off in current_arch.flags_table:
@@ -11930,15 +11940,6 @@ class FlagsCommand(GenericCommand):
                         new_flags = old_flag ^ (1 << off)
 
                     gdb.execute("set ({:s}) = {:#x}".format(current_arch.flag_register, new_flags))
-
-        gef_print(current_arch.flag_register_to_human())
-        if self.verbose:
-            if is_x86():
-                self.verbose_x86()
-            elif is_arm32():
-                self.verbose_arm32()
-            elif is_arm64():
-                self.verbose_arm64()
         return
 
     def bits_split(self, x, bits=32):
