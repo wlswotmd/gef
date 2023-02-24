@@ -11660,11 +11660,16 @@ class SearchPatternCommand(GenericCommand):
 
 
 @register_command
-class DemanglePtrCommand(GenericCommand):
+class PtrDemangleCommand(GenericCommand):
     """Demangle a mangled value by PTR_MANGLE."""
     _cmdline_ = "ptr-demangle"
-    _syntax_ = "{:s} [-h] VALUE|--source".format(_cmdline_)
     _category_ = "Show/Modify Memory"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('value', metavar='VALUE', nargs='?', type=lambda x: int(x, 0), help='the value you want to demangle.')
+    group.add_argument('--source', action='store_true', help='shows the source instead of displaying demangled value.')
+    _syntax_ = parser.format_help()
 
     @staticmethod
     def get_cookie():
@@ -11710,17 +11715,14 @@ class DemanglePtrCommand(GenericCommand):
             decoded = value ^ cookie
         return decoded
 
+    @parse_args
     @only_if_gdb_running
     @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if "-h" in argv:
-            self.usage()
-            return
-
-        if "--source" in argv:
-            s = inspect.getsource(DemanglePtrCommand.decode).rstrip()
+        if args.source:
+            s = inspect.getsource(PtrDemangleCommand.decode).rstrip()
             gef_print(s)
             return
 
@@ -11729,12 +11731,7 @@ class DemanglePtrCommand(GenericCommand):
             return
         info("Cookie is {:#x}".format(cookie))
 
-        try:
-            target = int(argv[0], 0)
-        except Exception:
-            self.usage()
-            return
-        decoded = self.decode(target, cookie)
+        decoded = self.decode(args.value, cookie)
         decoded_sym = get_symbol_string(decoded)
         if is_valid_addr(decoded):
             valid_msg = Color.colorify("valid", "bold green")
@@ -11749,8 +11746,11 @@ class DemanglePtrCommand(GenericCommand):
 class SearchMangledPtrCommand(GenericCommand):
     """Search a mangled pointer value in memory."""
     _cmdline_ = "search-mangled-ptr"
-    _syntax_ = "{:s} [-h] [-v]".format(_cmdline_)
     _category_ = "Show/Modify Memory"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-v', dest='verbose', action='store_true', help='shows the section you are currently searching.')
+    _syntax_ = parser.format_help()
 
     def print_section(self, section):
         if isinstance(section, Address):
@@ -11801,7 +11801,7 @@ class SearchMangledPtrCommand(GenericCommand):
                 break
 
             for i, value in enumerate(slice_unpack(mem, current_arch.ptrsize)):
-                decoded = DemanglePtrCommand.decode(value, self.cookie)
+                decoded = PtrDemangleCommand.decode(value, self.cookie)
                 try:
                     read_memory(decoded, 1)
                 except gdb.MemoryError:
@@ -11811,22 +11811,14 @@ class SearchMangledPtrCommand(GenericCommand):
             del mem
         return locations
 
+    @parse_args
     @only_if_gdb_running
     @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if "-h" in argv:
-            self.usage()
-            return
-
-        self.verbose = False
-        if "-v" in argv:
-            self.verbose = True
-            argv.remove("-v")
-
         # init
-        self.cookie = DemanglePtrCommand.get_cookie()
+        self.cookie = PtrDemangleCommand.get_cookie()
         if self.cookie is None:
             return
         info("Cookie is {:#x}".format(self.cookie))
@@ -11841,7 +11833,7 @@ class SearchMangledPtrCommand(GenericCommand):
                 continue
             if not section.permission & Permission.WRITE:
                 continue
-            if self.verbose:
+            if args.verbose:
                 self.print_section(section) # verbose: always print section before search
 
             start = section.page_start
@@ -11849,7 +11841,7 @@ class SearchMangledPtrCommand(GenericCommand):
             ret = self.search_mangled_ptr(start, end)
 
             if ret:
-                if not self.verbose:
+                if not args.verbose:
                     self.print_section(section) # default: print section if found
 
             for loc in ret:
@@ -20949,12 +20941,17 @@ class Ret2dlHintCommand(GenericCommand):
 class LinkMapCommand(GenericCommand):
     """Dump link_map with iterating."""
     _cmdline_ = "link-map"
-    _syntax_ = "{:s} [-h] [-a ELF_ADDRESS|-l LINK_MAP_ADDRESS]".format(_cmdline_)
-    _example_ = "\n"
-    _example_ += "{:s} # dump itself\n".format(_cmdline_)
-    _example_ += "{:s} -a 0x555555554000 # dump specified address as elf\n".format(_cmdline_)
-    _example_ += "{:s} -l 0x7ffff7ffe2e0 # dump specified address as link_map".format(_cmdline_)
     _category_ = "Process Information"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('-e', dest='elf_address', type=parse_address, help='the elf address you want to parse.')
+    group.add_argument('-l', dest='link_map_address', type=parse_address, help='the link_map address you want to parse.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s}                   # dump itself\n".format(_cmdline_)
+    _example_ += "{:s} -e 0x555555554000 # dump specified address as elf\n".format(_cmdline_)
+    _example_ += "{:s} -l 0x7ffff7ffe2e0 # dump specified address as link_map".format(_cmdline_)
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
@@ -21024,57 +21021,37 @@ class LinkMapCommand(GenericCommand):
                 break
         return link_map
 
+    @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
-
-        if "-h" in argv:
-            self.usage()
-            return
 
         filename = None
 
-        if "-l" in argv:
-            try:
-                idx = argv.index("-l")
-                link_map = int(argv[idx + 1], 0)
-                argv = argv[:idx] + argv[idx + 2:]
-            except Exception:
-                self.usage()
-                return
+        if args.link_map_address:
+            link_map = args.link_map_address
 
-        elif "-a" in argv:
+        elif args.elf_address:
             try:
-                idx = argv.index("-a")
-                elf_addr = int(argv[idx + 1], 0)
-                argv = argv[:idx] + argv[idx + 2:]
-            except Exception:
-                self.usage()
-                return
-            try:
-                link_map = self.get_link_map(elf_addr)
+                link_map = self.get_link_map(args.elf_address)
             except Exception:
                 err("Failed to get link_map.")
                 return
-
-        elif argv:
-            self.usage()
-            return
-
         else:
             filename = get_filepath()
             if filename is None:
                 err("Failed to get filename.")
                 return
 
-        if filename:
             if not os.path.exists(filename):
                 err("{:s} is not found.".format(filename))
                 return
+
             if is_static(filename):
                 info("The binary is static build. There is no link_map.")
                 return
+
             try:
                 link_map = self.get_link_map(filename)
             except Exception:
@@ -21092,13 +21069,19 @@ class LinkMapCommand(GenericCommand):
 class DynamicCommand(GenericCommand):
     """Display current status of the _DYNAMIC area."""
     _cmdline_ = "dynamic"
-    _syntax_ = "{:s} [-h] -f FILENAME|-a ELF_ADDRESS|-d DYNAMIC_ADDRESS]".format(_cmdline_)
-    _example_ = "\n"
-    _example_ += "{:s} # dump itself\n".format(_cmdline_)
-    _example_ += "{:s} -f /usr/lib/x86_64-linux-gnu/libc.so.6 # dump specified binary\n".format(_cmdline_)
-    _example_ += "{:s} -a 0x555555554000 # dump specified address as elf\n".format(_cmdline_)
-    _example_ += "{:s} -d 0x555555575a98 # dump specified address as dynamic".format(_cmdline_)
     _category_ = "Process Information"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('-f', dest='filename', help='the filename you want to parse.')
+    group.add_argument('-e', dest='elf_address', type=parse_address, help='the elf address you want to parse.')
+    group.add_argument('-d', dest='dynamic_address', type=parse_address, help='the dynamic address you want to parse.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s}                                        # dump itself\n".format(_cmdline_)
+    _example_ += "{:s} -f /usr/lib/x86_64-linux-gnu/libc.so.6 # dump specified binary\n".format(_cmdline_)
+    _example_ += "{:s} -e 0x555555554000                      # dump specified address as elf\n".format(_cmdline_)
+    _example_ += "{:s} -d 0x555555575a98                      # dump specified address as dynamic".format(_cmdline_)
 
     DT_TABLE = {
         0: "DT_NULL",
@@ -21248,69 +21231,45 @@ class DynamicCommand(GenericCommand):
             info("_DNYAMIC: {:#x} [{:s}]".format(dynamic, str(section.permission)))
         return dynamic
 
+    @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
-
-        if "-h" in argv:
-            self.usage()
-            return
 
         filename = None
 
-        if "-d" in argv:
-            try:
-                idx = argv.index("-d")
-                dynamic = int(argv[idx + 1], 0)
-                argv = argv[:idx] + argv[idx + 2:]
-            except Exception:
-                self.usage()
-                return
+        if args.dynamic_address:
+            dynamic = args.dynamic_address
 
-        elif "-a" in argv:
+        elif args.elf_address:
             try:
-                idx = argv.index("-a")
-                elf_addr = int(argv[idx + 1], 0)
-                argv = argv[:idx] + argv[idx + 2:]
-            except Exception:
-                self.usage()
-                return
-            try:
-                dynamic = self.get_dynamic(elf_addr)
+                dynamic = self.get_dynamic(args.elf_address)
             except Exception:
                 err("Failed to get _DYNAMIC.")
                 return
 
-        elif "-f" in argv:
-            try:
-                idx = argv.index("-f")
-                filename = argv[idx + 1]
-                argv = argv[:idx] + argv[idx + 2:]
-            except Exception:
-                self.usage()
-                return
-
-        elif argv:
-            self.usage()
-            return
-
         else:
-            filename = get_filepath()
-            if filename is None:
-                err("Failed to get filename")
-                return
+            if args.filename:
+                filename = args.filename
+            else:
+                filename = get_filepath()
+                if filename is None:
+                    err("Failed to get filename.")
+                    return
 
-        if filename:
             if not os.path.exists(filename):
                 err("{:s} is not found.".format(filename))
                 return
+
             if is_static(filename):
                 info("The binary is static build. There is no _DYNAMIC.")
                 return
+
             if get_section_base_address(filename) is None:
                 err("{:s} is not loeaded.".format(filename))
                 return
+
             try:
                 dynamic = self.get_dynamic(filename)
             except Exception:
@@ -21320,7 +21279,7 @@ class DynamicCommand(GenericCommand):
         try:
             self.dump_dynamic(dynamic)
         except Exception:
-            err("Failed to parse.")
+            err("Failed to parse _DYNAMIC.")
         return
 
 
@@ -21328,8 +21287,10 @@ class DynamicCommand(GenericCommand):
 class DestructorDumpCommand(GenericCommand):
     """Display registered destructor functions."""
     _cmdline_ = "dtor-dump"
-    _syntax_ = _cmdline_
     _category_ = "Process Information"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
 
     def ror(self, val, bits, arch_bits):
         new_val = (val >> bits) | (val << (arch_bits - bits))
@@ -21469,34 +21430,36 @@ class DestructorDumpCommand(GenericCommand):
         return
 
     def yield_link_map(self):
-        link_map = LinkMapCommand.get_link_map(get_filepath(), silent=True)
-        while link_map:
-            dic = {}
-            dic["load_address"] = read_int_from_memory(link_map)
-            name_ptr = read_int_from_memory(link_map + current_arch.ptrsize * 1)
-            dic["name"] = dic["name_org"] = read_cstring_from_memory(name_ptr)
-            if dic["name_org"] == "":
-                dic["name"] = "{:s}".format(get_filepath())
-            dic["dynamic"] = read_int_from_memory(link_map + current_arch.ptrsize * 2)
-            dic["next"] = read_int_from_memory(link_map + current_arch.ptrsize * 3)
-            yield dic
-            link_map = dic["next"]
+        current = LinkMapCommand.get_link_map(get_filepath(), silent=True)
+        while current:
+            _dic = {}
+            _dic["load_address"] = read_int_from_memory(current)
+            name_ptr = read_int_from_memory(current + current_arch.ptrsize * 1)
+            _dic["name"] = _dic["name_org"] = read_cstring_from_memory(name_ptr)
+            if _dic["name_org"] == "":
+                _dic["name"] = "{:s}".format(get_filepath())
+            _dic["dynamic"] = read_int_from_memory(current + current_arch.ptrsize * 2)
+            _dic["next"] = read_int_from_memory(current + current_arch.ptrsize * 3)
+            LinkMap = collections.namedtuple("LinkMap", _dic.keys())
+            link_map = LinkMap(*_dic.values())
+            yield link_map
+            current = _dic["next"]
 
     def dump_sections_not_array(self, section_name):
         if not is_static(get_filepath()):
             for link_map in self.yield_link_map():
-                if not os.path.exists(link_map["name"]):
+                if not os.path.exists(link_map.name):
                     continue
-                elf = Elf(link_map["name"])
+                elf = Elf(link_map.name)
                 try:
                     shdr = [s for s in elf.shdrs if s.sh_name == section_name][0]
                 except Exception:
                     continue
-                if is_pie(link_map["name"]):
-                    addr = shdr.sh_addr + link_map["load_address"]
+                if is_pie(link_map.name):
+                    addr = shdr.sh_addr + link_map.load_address
                 else:
                     addr = shdr.sh_addr
-                gef_print(link_map["name"])
+                gef_print(link_map.name)
                 sym = get_symbol_string(addr)
                 func_s = Color.boldify("{:#x}".format(addr))
                 gef_print("    -> {:s}{:s}".format(func_s, sym))
@@ -21517,17 +21480,17 @@ class DestructorDumpCommand(GenericCommand):
     def dump_sections(self, section_name):
         if not is_static(get_filepath()):
             for link_map in self.yield_link_map():
-                if not os.path.exists(link_map["name"]):
+                if not os.path.exists(link_map.name):
                     continue
-                elf = Elf(link_map["name"])
+                elf = Elf(link_map.name)
                 try:
                     shdr = [s for s in elf.shdrs if s.sh_name == section_name][0]
                 except Exception:
                     continue
                 entries = []
                 for i in range(shdr.sh_size // current_arch.ptrsize):
-                    if is_pie(link_map["name"]):
-                        addr = shdr.sh_addr + link_map["load_address"] + current_arch.ptrsize * i
+                    if is_pie(link_map.name):
+                        addr = shdr.sh_addr + link_map.load_address + current_arch.ptrsize * i
                     else:
                         addr = shdr.sh_addr + current_arch.ptrsize * i
                     func = read_int_from_memory(addr)
@@ -21538,7 +21501,7 @@ class DestructorDumpCommand(GenericCommand):
                     entries.append([addr, func])
                 if not entries:
                     continue
-                gef_print(link_map["name"])
+                gef_print(link_map.name)
                 for addr, func in entries:
                     sym = get_symbol_string(func)
                     func_s = Color.boldify("{:#x}".format(func))
@@ -21569,10 +21532,11 @@ class DestructorDumpCommand(GenericCommand):
                 gef_print("    -> {:#x}{:s}: {:s}{:s}".format(addr, self.perm(addr), func_s, sym))
         return
 
+    @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
     @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         # init
