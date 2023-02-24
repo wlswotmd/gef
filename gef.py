@@ -12946,76 +12946,74 @@ class StubCommand(GenericCommand):
 class CapstoneDisassembleCommand(GenericCommand):
     """Use capstone disassembly framework to disassemble code."""
     _cmdline_ = "capstone-disassemble"
-    _syntax_ = "{:s} [-h] [LOCATION] [[length=LENGTH] [OPCODES] [option=VALUE]] ".format(_cmdline_)
-    _example_ = "\n"
-    _example_ += "{:s} $pc length=50 # dump from $pc up to 50 lines later\n".format(_cmdline_)
-    _example_ += "{:s} $pc length=50 OPCODES # show opcodes\n".format(_cmdline_)
-    _example_ += "{:s} $pc length=50 OPCODES arch=ARM mode=ARM endian=1 # specify arch, mode and endian (1:big endian)\n".format(_cmdline_)
-    _example_ += "{:s} OPCODES code=\"9090\" # disassemble specified byte patterns ".format(_cmdline_)
     _category_ = "Assemble"
     _aliases_ = ["cs-dis"]
 
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
+                        help='the address you want to disassemble. (default: current_arch.pc)')
+    parser.add_argument('-l', dest='length', type=parse_address,
+                        help='the length you want to disassemble. (default: context.nb_lines_code)')
+    parser.add_argument('--code', help='disassemble specific code bytes.')
+    parser.add_argument('args', metavar='ARGS', nargs='*', help='arguments for capstone. see following example.')
+    _syntax_ = parser.format_help()
+
+    valid_arch_modes = {
+        "ARM" : ["ARM", "THUMB"],
+        "ARM64" : ["ARM"],
+        "MIPS" : ["MIPS32", "MIPS64"],
+        "PPC" : ["PPC32", "PPC64"],
+        "SPARC" : ["SPARC32", "SPARC64"],
+        "X86" : ["16", "32", "64"],
+    }
+
+    _example_ = "{:s} $pc -l 50                            # dump from $pc up to 50 lines later\n".format(_cmdline_)
+    _example_ += "{:s} $pc -l 50 arch=ARM mode=ARM endian=1 # specify arch, mode and endian (1:big endian)\n".format(_cmdline_)
+    _example_ += '{:s} code="9090"                          # disassemble specified byte patterns\n'.format(_cmdline_)
+    _example_ += "\n"
+    _example_ += "Available architectures and modes:\n"
+    for arch in valid_arch_modes:
+        _example_ += " - {:8s} {}\n".format(arch, " / ".join(valid_arch_modes[arch]))
+
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
-        self.valid_arch_modes = {
-            "ARM" : ["ARM", "THUMB"],
-            "ARM64" : ["ARM"],
-            "MIPS" : ["MIPS32", "MIPS64"],
-            "PPC" : ["PPC32", "PPC64"],
-            "SPARC" : ["SPARC32", "SPARC64"],
-            "X86" : ["16", "32", "64"],
-        }
         return
 
-    def help(self):
-        self.usage()
-        gef_print("\nAvailable architectures/modes:")
-        # for updates, see https://github.com/keystone-engine/keystone/blob/master/include/keystone/keystone.h
-        for arch in self.valid_arch_modes:
-            gef_print(" - {} ".format(arch))
-            gef_print("  * {}".format(" / ".join(self.valid_arch_modes[arch])))
-        return
-
+    @parse_args
     @only_if_gdb_running
     @load_capstone
-    def do_invoke(self, argv):
-        self.dont_repeat()
-
-        location = None
-        show_opcodes = False
-
-        if "-h" in argv:
-            self.help()
-            return
-
-        try:
-            kwargs = {}
-            for arg in argv:
-                if "=" in arg:
-                    key, value = arg.split("=", 1)
-                    kwargs[key] = value
-
-                elif "opcodes".startswith(arg.lower()):
-                    show_opcodes = True
-
-                elif location is None:
-                    location = parse_address(arg)
-        except Exception:
-            self.help()
-            return
-
-        if "code" in kwargs:
-            location = 0
+    def do_invoke(self, args):
+        if args.length is None:
+            length = int(get_gef_setting("context.nb_lines_code"))
         else:
-            location = location or current_arch.pc
-        length = int(kwargs.get("length", get_gef_setting("context.nb_lines_code")))
+            length = args.length
+
+        kwargs = {}
+        for arg in args.args:
+            if "=" in arg:
+                key, value = arg.split("=", 1)
+                kwargs[key] = value
+            else:
+                err("ARGS must be KEY=VALUE style")
+                return
+
+        if args.code:
+            kwargs["code"] = args.code
+            if args.location is None:
+                location = 0
+            else:
+                location = args.location
+        else:
+            if args.location is None:
+                location = current_arch.pc
+            else:
+                location = args.location
 
         try:
-            for insn in capstone_disassemble(location, length, skip=length * self.repeat_count, **kwargs):
-                insn_fmt = "{:12o}" if show_opcodes else "{}"
-                text_insn = insn_fmt.format(insn)
+            skip = length * self.repeat_count
+            for insn in capstone_disassemble(location, length, skip=skip, **kwargs):
+                text_insn = "{:12o}".format(insn)
                 msg = ""
-
                 if insn.address == current_arch.pc:
                     msg = Color.colorify("{}  {}".format(RIGHT_ARROW, text_insn), "bold red")
                     reason = self.capstone_analyze_pc(insn, length)[0]
@@ -13025,7 +13023,6 @@ class CapstoneDisassembleCommand(GenericCommand):
                         break
                 else:
                     msg = "{} {}".format(" " * 5, text_insn)
-
                 gef_print(msg)
         except AttributeError:
             err("Maybe unsupported architecture")
@@ -13055,6 +13052,36 @@ class CapstoneDisassembleCommand(GenericCommand):
                 pass
 
         return (False, "")
+
+
+@register_command
+class PdisasCommand(GenericCommand):
+    """Shortcut `cs-dis -l 50`."""
+    _cmdline_ = "pdisas"
+    _category_ = "Assemble"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
+                        help='the address you want to disassemble. (default: current_arch.pc)')
+    parser.add_argument('-l', dest='length', type=parse_address, default=50,
+                        help='the length you want to disassemble. (default: %(default)s)')
+    _syntax_ = parser.format_help()
+
+    def __init__(self):
+        super().__init__(complete=gdb.COMPLETE_LOCATION)
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        if args.location is None:
+            location = ""
+        else:
+            location = "{:#x}".format(args.location)
+        gdb.execute("cs-dis {:s} -l {:d}".format(location, args.length))
+        return
 
 
 @register_command
@@ -14573,7 +14600,6 @@ class AsmListCommand(GenericCommand):
                     bytecode = [operand]
                 bytecodes.append(bytecode)
             return [''.join(b) for b in itertools.product(*bytecodes)]
-
 
         # load capstone
         capstone = sys.modules["capstone"]
@@ -39119,39 +39145,6 @@ class CatCommand(GenericCommand):
                 gef_print(line.replace("\0", "\\x00"))
         except Exception:
             gef_print("file not found")
-        return
-
-
-@register_command
-class PdisasCommand(GenericCommand):
-    """Shortcut `cs-dis $pc LENGTH=50 OPCODES`."""
-    _cmdline_ = "pdisas"
-    _syntax_ = "{:s} [addr] [length]".format(_cmdline_)
-    _category_ = "Assemble"
-
-    def __init__(self):
-        super().__init__(complete=gdb.COMPLETE_LOCATION)
-        return
-
-    @only_if_gdb_running
-    def do_invoke(self, argv):
-        self.dont_repeat()
-
-        try:
-            if len(argv) >= 2:
-                length = int(argv[1], 0)
-            else:
-                length = 50
-
-            if len(argv) >= 1:
-                addr = argv[0]
-            else:
-                addr = "$pc"
-        except Exception:
-            self.usage()
-            return
-
-        gdb.execute("cs-dis {:s} length={:d} OPCODES".format(addr, length))
         return
 
 

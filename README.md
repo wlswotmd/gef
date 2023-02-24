@@ -356,7 +356,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
 * `memcpy`: copies the contents from address A to B, whether virtual or physical.
 * `is-mem-zero`: checks the contents of address range is all 0x00 or 0xff or not.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/is-mem-zero.png)
-* `pdisas`: is a shortcut for `cs-dis $pc LENGTH=50 OPCODES`.
+* `pdisas`: is a shortcut for `cs-dis -l 50`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pdisas.png)
 * `ii`: is a shortcut for `x/50i $pc`.
     * It prints the value if it is memory access operation.
