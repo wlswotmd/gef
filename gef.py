@@ -10120,19 +10120,20 @@ class ContCommand(GenericCommand):
 class PrintFormatCommand(GenericCommand):
     """Print bytes format in high level languages."""
     _cmdline_ = "print-format"
-    _syntax_ = "{:s} [-f FORMAT] [-b BITSIZE] [-l LENGTH] [-c] [-h] LOCATION\n".format(_cmdline_)
-    _syntax_ += "  -f FORMAT   specifies the output format, avaliable value: py, c, js, asm, hex (default py).\n"
-    _syntax_ += "  -b BITSIZE  sepecifies size of bit, avaliable values is 8, 16, 32, 64 (default is 8).\n"
-    _syntax_ += "  -l LENGTH   specifies length of array (default is 256).\n"
-    _syntax_ += "  -c          The result of data will copied to clipboard\n"
-    _syntax_ += "  LOCATION    specifies where the address of bytes is stored."
-    _example_ = "{:s} -f py -b 8 -l 256 $rsp".format(_cmdline_)
     _category_ = "Exploit Development"
     _aliases_ = ["pf"]
 
-    bitformat = {8: "<B", 16: "<H", 32: "<I", 64: "<Q"}
-    c_type = {8: "char", 16: "short", 32: "int", 64: "long long"}
-    asm_type = {8: "db", 16: "dw", 32: "dd", 64: "dq"}
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-f', dest='format', default='py', choices=['py', 'c', 'js', 'asm', 'hex'],
+                        help='the output format. (default: %(default)s)')
+    parser.add_argument('-b', dest='bitlen', type=int, default=8, choices=[8, 16, 32, 64],
+                        help='the size of bit. (default: %(default)s)')
+    parser.add_argument('-l', dest='length', type=parse_address, default=256, help='the length of array. (default: %(default)s)')
+    parser.add_argument('-c', dest='copy_to_clipboard', action='store_true', help='the result of data will copied to clipboard.')
+    parser.add_argument('location', metavar='LOCATION', type=parse_address, help='the address of data you want to dump.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} -f py -b 8 -l 256 $rsp".format(_cmdline_)
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
@@ -10170,91 +10171,65 @@ class PrintFormatCommand(GenericCommand):
         p.wait()
         return True
 
-    def do_invoke(self, argv):
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
         """Default value for print-format command."""
         self.dont_repeat()
-        lang = "py"
-        length = 256
-        bitlen = 8
-        copy_to_clipboard = False
-        supported_formats = ["py", "c", "js", "asm", "hex"]
 
-        try:
-            opts, args = getopt.getopt(argv, "f:l:b:ch")
-            for o, a in opts:
-                if o == "-f":
-                    lang = a
-                elif o == "-l":
-                    length = int(gdb.parse_and_eval(a))
-                elif o == "-b":
-                    bitlen = int(a)
-                elif o == "-c":
-                    copy_to_clipboard = True
-                elif o == "-h":
-                    self.usage()
-                    return
-        except Exception:
-            self.usage()
-            return
+        bitformat = {8: "<B", 16: "<H", 32: "<I", 64: "<Q"}
+        c_type = {8: "char", 16: "short", 32: "int", 64: "long long"}
+        asm_type = {8: "db", 16: "dw", 32: "dd", 64: "dq"}
 
-        if not args:
-            err("No address specified")
-            return
-
-        start_addr = int(gdb.parse_and_eval(args[0]))
-
-        if bitlen not in [8, 16, 32, 64]:
-            err("Size of bit must be in 8, 16, 32, or 64")
-            return
-
-        if lang == "hex" and bitlen != 8:
+        if args.format == "hex" and args.bitlen != 8:
             err("hex must be bit == 8")
             return
 
-        if lang not in supported_formats:
-            err("Language must be : {}".format(str(supported_formats)))
-            return
+        unit_size = args.bitlen // 8
+        start_addr = args.location
+        end_addr = start_addr + args.length * unit_size
+        bf = bitformat[args.bitlen]
 
-        size = int(bitlen / 8)
-        end_addr = start_addr + length * size
-        bf = self.bitformat[bitlen]
+        # extract memory
         data = []
-        out = ""
-
-        for address in range(start_addr, end_addr, size):
+        for address in range(start_addr, end_addr, unit_size):
             try:
-                mem = read_memory(address, size)
+                mem = read_memory(address, unit_size)
             except gdb.MemoryError:
                 err("Memory read error")
                 return None
             value = struct.unpack(bf, mem)[0]
-            data += [value]
+            data.append(value)
 
+        # parse data
         sdata = ""
-        if lang == "hex":
+        if args.format == "hex":
             for i, x in enumerate(data):
                 sdata += "{:02x}".format(x)
                 if (i % 16) == 15:
                     sdata += "\n"
         else:
             for i, x in enumerate(data):
-                sdata += "{:#0{}x}, ".format(x, bitlen // 4 + 2)
+                if (i % 8) == 0:
+                    sdata += "    "
+                sdata += "{:#0{}x}, ".format(x, args.bitlen // 4 + 2)
                 if (i % 8) == 7:
                     sdata += "\n"
         sdata = sdata.rstrip()
 
-        if lang == "py":
-            out = "buf = [\n{}\n]".format(sdata)
-        elif lang == "c":
-            out = "unsigned {0} buf[{1}] = {{\n{2}\n}};".format(self.c_type[bitlen], length, sdata)
-        elif lang == "js":
-            out = "var buf = [\n{}\n]".format(sdata)
-        elif lang == "asm":
-            out += "buf {0}\n{1}".format(self.asm_type[bitlen], sdata)
-        elif lang == "hex":
-            out += "{0}".format(sdata)
+        # make format
+        if args.format == "py":
+            out = "buf = [\n{:s}\n]".format(sdata)
+        elif args.format == "c":
+            out = "unsigned {:s} buf[{:d}] = {{\n{:s}\n}};".format(c_type[args.bitlen], args.length, sdata)
+        elif args.format == "js":
+            out = "var buf = [\n{:s}\n];".format(sdata)
+        elif args.format == "asm":
+            out = "buf {:s}\n{:s}".format(asm_type[args.bitlen], sdata)
+        elif args.format == "hex":
+            out = sdata
 
-        if copy_to_clipboard:
+        if args.copy_to_clipboard:
             if self.clip(bytes(out, "utf-8")):
                 info("Copied to clipboard")
             else:
