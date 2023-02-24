@@ -13978,24 +13978,33 @@ def get_binsize_table():
 class DetailRegistersCommand(GenericCommand):
     """Display full details on one, many or all registers value from current architecture."""
     _cmdline_ = "registers"
-    _syntax_ = "{:s} [[Register1][Register2] ... [RegisterN]]".format(_cmdline_)
-    _example_ = "\n"
-    _example_ += "{:s}\n".format(_cmdline_)
-    _example_ += "{:s} $eax $eip $esp".format(_cmdline_)
     _category_ = "Show/Modify Register"
 
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('registers', metavar='REGISTERS', nargs='*',
+                        help='An array of registers. (default: current_arch.all_registers)')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s}\n".format(_cmdline_)
+    _example_ += "{:s} $eax $eip $esp".format(_cmdline_)
+
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         unchanged_color = get_gef_setting("theme.registers_register_name")
         changed_color = get_gef_setting("theme.registers_value_changed")
 
-        if argv:
-            argv = [arg if arg.startswith("$") else "$" + arg for arg in argv]
-            regs = [reg for reg in current_arch.all_registers if reg in argv]
-            if not regs:
-                warn("No matching registers found")
+        if args.registers:
+            regs = []
+            for creg in current_arch.all_registers:
+                for reg in args.registers:
+                    if not reg.startswith("$"):
+                        reg = "$" + reg
+                    if reg == creg:
+                        regs.append(reg)
+                        break
         else:
             regs = current_arch.all_registers
 
@@ -17325,9 +17334,15 @@ class ContextCommand(GenericCommand):
     watchpoint, or any kind of interrupt. By default, it will show panes that contain the register
     states, the stack, and the disassembly code around $pc."""
     _cmdline_ = "context"
-    _syntax_ = "{:s} [legend|regs|stack|code|args|memory|source|trace|threads|extra]".format(_cmdline_)
-    _aliases_ = ["ctx"]
     _category_ = "Debugging Support"
+    _aliases_ = ["ctx"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('commands', nargs='*', default=[],
+                        choices=[[], 'legend', 'regs', 'stack', 'code', 'args', 'memory', 'source', 'trace', 'threads', 'extra'],
+                        metavar='{legend,regs,stack,code,args,memory,source,trace,threads,extra}',
+                        help='specifies which context to display.')
+    _syntax_ = parser.format_help()
 
     old_registers = {}
 
@@ -17395,19 +17410,16 @@ class ContextCommand(GenericCommand):
             ))
         return
 
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         if not self.get_setting("enable") or context_hidden:
             return
 
-        if not all(_ in self.layout_mapping for _ in argv):
-            self.usage()
-            return
-
-        if len(argv) > 0:
-            current_layout = argv
+        if len(args.commands) > 0:
+            current_layout = args.commands
         else:
             current_layout = self.get_setting("layout").strip().split()
 
@@ -17420,7 +17432,7 @@ class ContextCommand(GenericCommand):
         if redirect and os.access(redirect, os.W_OK):
             enable_redirect_output(to_file=redirect)
 
-        if self.get_setting("clear_screen") and len(argv) == 0:
+        if self.get_setting("clear_screen") and len(args.commands) == 0:
             clear_screen(redirect)
 
         for section in current_layout:
