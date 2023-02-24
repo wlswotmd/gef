@@ -14060,45 +14060,63 @@ class DetailRegistersCommand(GenericCommand):
 
 @register_command
 class RopperCommand(GenericCommand):
-    """Ropper (http://scoding.de/ropper) plugin."""
+    """Call ropper (http://scoding.de/ropper) plugin."""
     _cmdline_ = "ropper"
-    _syntax_ = "{:s} [-h] [ROPPER_OPTIONS]".format(_cmdline_)
     _category_ = "Exploit Development"
 
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('args', metavar='ROPPER_OPTIONS', nargs='*',
+                        help='An array of arguments to pass as is to the ropper command. (default: %(default)s)')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s}\n".format(_cmdline_)
+    _example_ += "{:s} -h                 # show detail of options\n".format(_cmdline_)
+    _example_ += '{:s} --jmp rax,rcx      # filter by jmp registers\n'.format(_cmdline_)
+    _example_ += '{:s} --search "pop r?x" # filter by pop registers\n'.format(_cmdline_)
+
+    _help_ = None
+    _help_examples_ = None
+
+    def print_help(self):
+        self.usage()
+
+        if self._help_ is None:
+            self._help_ = subprocess.check_output('ropper --help', shell=True).decode("utf-8")
+        if self._help_examples_ is None:
+            self._help_examples_ = subprocess.check_output('ropper --help-examples', shell=True).decode("utf-8")
+
+        help_text = titlify("gef --help")
+        help_text += self._help_
+        help_text += titlify("gef --help-examples")
+        help_text += self._help_examples_
+        gef_print(help_text, less=True)
+        return
+
+    # Need not @parse_args because argparse can't stop interpreting options for ropper.
     @only_if_gdb_running
     @only_if_not_qemu_system
     @load_ropper
     def do_invoke(self, argv):
         self.dont_repeat()
 
-        ropper = sys.modules["ropper"]
-
-        if "-h" in argv:
-            os.system("ropper --help")
-            os.system("ropper --help-examples")
+        if "-h" in argv or "--help" in argv:
+            self.print_help()
             return
 
         if "--file" not in argv:
-            path = get_filepath()
-            if path is None:
+            filepath = get_filepath()
+            if filepath is None:
                 err("Missing info about file. Please set: `file /path/to/target_binary`")
                 return
-            argv.append("--file")
-            argv.append(path)
-            if is_qemu_usermode():
-                sect = next(filter(lambda x: x.path == "[code]", get_process_maps()))
-            else:
-                filepath = get_filepath(append_proc_root_prefix=False)
-                sect = next(filter(lambda x: x.path == filepath, get_process_maps()))
-            argv.append("-I")
-            argv.append("{:#x}".format(sect.page_start))
+            argv.extend(["--file", filepath])
 
         # ropper set up own autocompleter after which gdb/gef autocomplete don't work
         # due to fork/waitpid, child will be broken but parent will not change
-        gef_print(titlify(path))
+        gef_print(titlify(filepath))
         pid = os.fork()
         if pid == 0:
             try:
+                ropper = sys.modules["ropper"]
                 ropper.start(argv)
             except Exception:
                 pass
@@ -14110,14 +14128,24 @@ class RopperCommand(GenericCommand):
 
 @register_command
 class RpCommand(GenericCommand):
-    """Exec `rp++`."""
+    """Invoke rp++ v1 command. x86/x64 only."""
     _cmdline_ = "rp"
-    _syntax_ = "{:s} bin|libc|FILENAME|kernel [-f|--filter REGEXP] [-r|--rop ROP_N] [--no-print] [...]".format(_cmdline_)
-    _example_ = "\n"
-    _example_ += "{:s} bin -f 'pop r[abcd]x'\n".format(_cmdline_)
-    _example_ += "{:s} libc -f '(xchg|mov) [re]sp, \\\\w+' -f 'ret'\n".format(_cmdline_)
-    _example_ += "{:s} kernel # under qemu-system (x86/x64) only".format(_cmdline_)
     _category_ = "Exploit Development"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('--bin', action='store_true', help='apply rp++ to binary itself.')
+    group.add_argument('--libc', action='store_true', help='apply rp++ to libc.so searched from vmmap.')
+    group.add_argument('--file', help='apply rp++ to specified file.')
+    group.add_argument('--kernel', action='store_true', help='dump kernel, then apply vmlinux-to-elf and rp++.')
+    parser.add_argument('-f', '--filter', action='append', default=[], help='REGEXP filter.')
+    parser.add_argument('-r', '--rop', dest='rop_N', default=3, help='the max length of rop gadget. (default: %(default)s)')
+    parser.add_argument('--no-print', action='store_true', help="run rp, create a temporary file, but don't display it.")
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} --bin -f 'pop r[abcd]x'\n".format(_cmdline_)
+    _example_ += "{:s} --libc -f '(xchg|mov) [re]sp, \\\\w+' -f 'ret'\n".format(_cmdline_)
+    _example_ += "{:s} --kernel # under qemu-system only".format(_cmdline_)
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_FILENAME)
@@ -14125,7 +14153,7 @@ class RpCommand(GenericCommand):
         return
 
     def exec_rp(self, ropN):
-        output_file = "rop{}_{}_v{}.txt".format(ropN, os.path.basename(self.path), self.rp_version)
+        output_file = "rp{}_rop{}_{}.txt".format(self.rp_version, ropN, os.path.basename(self.path))
         output_path = os.path.join(GEF_TEMP_DIR, output_file)
         cmd = f"{self.rp} --file='{self.path}' --rop={ropN} --unique > {output_path}"
         gef_print(titlify(cmd))
@@ -14160,9 +14188,10 @@ class RpCommand(GenericCommand):
                 out.append(x)
         return '\n'.join(out)
 
+    @parse_args
     @only_if_gdb_running
     @only_if_specific_arch(arch=["x86_32", "x86_64"])
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         # load rp path
@@ -14183,101 +14212,69 @@ class RpCommand(GenericCommand):
                 err("{}".format(e1))
                 return
 
-        # parse args
-        try:
-            ropN = 3
-            while "-r" in argv:
-                idx = argv.index("-r")
-                ropN = int(argv[idx + 1])
-                argv = argv[:idx] + argv[idx + 2:]
-            while "--rop" in argv:
-                idx = argv.index("--rop")
-                ropN = int(argv[idx + 1])
-                argv = argv[:idx] + argv[idx + 2:]
-        except Exception:
-            self.usage()
-            return
-
-        try:
-            filter_patterns = []
-            while "-f" in argv:
-                idx = argv.index("-f")
-                pattern = argv[idx + 1]
-                filter_patterns.append(pattern)
-                argv = argv[:idx] + argv[idx + 2:]
-            while "--filter" in argv:
-                idx = argv.index("--filter")
-                pattern = argv[idx + 1]
-                filter_patterns.append(pattern)
-                argv = argv[:idx] + argv[idx + 2:]
-        except Exception:
-            self.usage()
-            return
-
-        do_print = True
-        if "--no-print" in argv:
-            do_print = False
-            argv.remove("--no-print")
-
-        if len(argv) != 1:
-            self.usage()
-            return
-
-        if is_qemu_system():
-            if argv[0] == "kernel":
-                # dump kernel then apply vmlinux-to-elf
-                dump_mem_file = os.path.join(GEF_TEMP_DIR, "rp-dump-memory.raw")
-                self.path = symboled_vmlinux_file = os.path.join(GEF_TEMP_DIR, "rp-dump-memory.elf")
-                addrs = VmlinuxToElfApplyCommand().dump_kernel_elf(dump_mem_file, symboled_vmlinux_file)
-                if addrs is None:
-                    err("Failed to get symboled ELF")
-                    return
-                base_address = addrs["kbase"]
-            else:
-                self.usage()
+        base_address = 0
+        if args.libc:
+            libc = process_lookup_path(("libc-2.", "libc.so.6"))
+            if libc is None:
+                err("libc is not found")
                 return
-        else:
-            if argv[0] == "libc":
-                libc = process_lookup_path(("libc-2.", "libc.so.6"))
-                if libc is None:
-                    err("libc is not found")
-                    return
-                self.path = libc.path
-            elif argv[0] == "bin":
-                binary = get_filepath()
-                if binary is None:
-                    err("binary is not found")
-                    return
-                self.path = binary
-            else:
-                if not os.path.exists(argv[0]):
-                    err("{} is not found".format(argv[0]))
-                    return
-                self.path = argv[0]
-            base_address = 0
+            self.path = libc.path
+        elif args.bin:
+            binary = get_filepath()
+            if binary is None:
+                err("binary is not found")
+                return
+            self.path = binary
+        elif args.file:
+            if not os.path.exists(args.file):
+                err("{} is not found".format(args.file))
+                return
+            self.path = args.file
+        elif args.kernel:
+            if not is_qemu_system():
+                err("--kernel are supported only under qemu-system.")
+                return
+            # dump kernel then apply vmlinux-to-elf
+            dump_mem_file = os.path.join(GEF_TEMP_DIR, "rp-dump-memory.raw")
+            self.path = symboled_vmlinux_file = os.path.join(GEF_TEMP_DIR, "rp-dump-memory.elf")
+            addrs = VmlinuxToElfApplyCommand().dump_kernel_elf(dump_mem_file, symboled_vmlinux_file)
+            if addrs is None:
+                err("Failed to get symboled ELF")
+                return
+            base_address = addrs["kbase"]
 
         # invoke rp++
-        rp_output_path = self.exec_rp(ropN)
+        rp_output_path = self.exec_rp(args.rop_N)
 
         # filtering
-        out = self.apply_filter(rp_output_path, filter_patterns, base_address)
+        out = self.apply_filter(rp_output_path, args.filter, base_address)
 
         # print
-        if do_print:
+        if not args.no_print:
             gef_print(out, less=True)
         return
 
 
 @register_command
 class Rp2Command(RpCommand):
-    """Exec `rp++-v2`."""
+    """Invoke rp++ v2 command. x86/x64 only."""
     _cmdline_ = "rp2"
-    _syntax_ = "{:s} bin|libc|FILENAME|kernel [-f|--filter REGEXP] [-r|--rop ROP_N] [--no-print] [...]".format(_cmdline_)
-    _example_ = "\n"
-    _example_ += "{:s} bin -f 'pop r[abcd]x'\n".format(_cmdline_)
-    _example_ += "{:s} libc -f '(xchg|mov) [re]sp, \\\\w+' -f 'ret'\n".format(_cmdline_)
-    _example_ += "{:s} kernel # under qemu-system (x86/x64) only".format(_cmdline_)
     _category_ = "Exploit Development"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('--bin', action='store_true', help='apply rp++ to binary itself.')
+    group.add_argument('--libc', action='store_true', help='apply rp++ to libc.so searched from vmmap.')
+    group.add_argument('--file', help='apply rp++ to specified file.')
+    group.add_argument('--kernel', action='store_true', help='dump kernel, then apply vmlinux-to-elf and rp++.')
+    parser.add_argument('-f', '--filter', action='append', default=[], help='REGEXP filter.')
+    parser.add_argument('-r', '--rop', dest='rop_N', default=3, help='the max length of rop gadget. (default: %(default)s)')
+    parser.add_argument('--no-print', action='store_true', help="run rp, create a temporary file, but don't display it.")
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} --bin -f 'pop r[abcd]x'\n".format(_cmdline_)
+    _example_ += "{:s} --libc -f '(xchg|mov) [re]sp, \\\\w+' -f 'ret'\n".format(_cmdline_)
+    _example_ += "{:s} --kernel # under qemu-system only".format(_cmdline_)
 
     def __init__(self):
         super().__init__()
