@@ -15682,10 +15682,20 @@ class ChecksecCommand(GenericCommand):
 class DwarfExceptionHandlerInfoCommand(GenericCommand):
     """Dump the DWARF exception handler informations with the byte code itself."""
     _cmdline_ = "dwarf-exception-handler"
-    _syntax_ = "{:s} [-f FILENAME] [-x]".format(_cmdline_)
-    _example_ = "{:s} # parse loaded binary\n".format(_cmdline_)
+    _category_ = "Process Information"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-f', dest='file', help='the file path you want to parse.')
+    parser.add_argument('-r', dest='remote', action='store_true',
+                        help='parse remote binary if download feature is available. (default: %(default)s)')
+    parser.add_argument('-x', dest='hexdump', action='store_true', help='with hexdump. (default: %(default)s)')
+    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s}                    # parse loaded binary\n".format(_cmdline_)
+    _example_ += "{:s} -r                 # parse remote binary\n".format(_cmdline_)
     _example_ += "{:s} -f /path/to/binary # parse specified binary\n".format(_cmdline_)
-    _example_ += "{:s} -x # with hexdump\n".format(_cmdline_)
+    _example_ += "{:s} -x                 # with hexdump\n".format(_cmdline_)
     _example_ += "\n"
     _example_ += "Simplified DWARF Exception structure:\n"
     _example_ += "\n"
@@ -15746,7 +15756,6 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
     _example_ += "                                  | ...                   |   |\n"
     _example_ += "                                  +-----------------------+   |\n"
     _example_ += "                                                              +----> personality_routine(=__gxx_personality_v0@libstdc++.so)"
-    _category_ = "Process Information"
 
     # FDE data encoding
     DW_EH_PE_ptr      = 0x00
@@ -15771,11 +15780,11 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
 
     def format_entry(self, sec, entries):
         out = []
-        out.append(titlify(sec["name"]))
+        out.append(titlify(sec.name))
 
         # hexdump
         if self.hexdump:
-            out.append(hexdump(sec["data"], show_symbol=False, base=sec["offset"]))
+            out.append(hexdump(sec.data, show_symbol=False, base=sec.offset))
 
         # print details
         fmt = "[{:<8}|+{:<6}] {:<23s} {:<30s}: {:<18s}  |  {:s}"
@@ -15797,7 +15806,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
             elif len(entry) == 5: # data
                 pos, raw_data, name, value, extra = entry
 
-                pos_s = "[{:#08x}|+{:#06x}]".format(sec["offset"] + pos, pos)
+                pos_s = "[{:#08x}|+{:#06x}]".format(sec.offset + pos, pos)
 
                 if raw_data is None:
                     raw_data_s = ""
@@ -15973,7 +15982,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
         return 0
 
     def parse_eh_frame_hdr(self, eh_frame_hdr):
-        data = eh_frame_hdr["data"]
+        data = eh_frame_hdr.data
         shdr = [s for s in self.elf.shdrs if s.sh_name == ".eh_frame_hdr"][0]
         load_base = [phdr for phdr in self.elf.phdrs if phdr.p_type == Phdr.PT_LOAD][0].p_vaddr
 
@@ -16050,7 +16059,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
         return entries
 
     def parse_eh_frame(self, eh_frame):
-        data = eh_frame["data"]
+        data = eh_frame.data
         shdr = [s for s in self.elf.shdrs if s.sh_name == ".eh_frame"][0]
         load_base = [phdr for phdr in self.elf.phdrs if phdr.p_type == Phdr.PT_LOAD][0].p_vaddr
 
@@ -16200,24 +16209,26 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                                 entries.append([pos, data[pos:new_pos], "augmentation_data({:s})".format(cp), x, ""])
                                 pos = new_pos
                     if ptr_size == 4 or ptr_size == 8:
-                        cie = {}
-                        cie["cie_offset"] = offset
-                        cie["augmentation"] = augmentation
-                        cie["fde_encoding"] = fde_encoding
-                        cie["lsda_encoding"] = lsda_encoding
-                        cie["address_size"] = ptr_size
-                        cie["code_alignment_factor"] = code_alignment_factor
-                        cie["data_alignment_factor"] = data_alignment_factor
+                        _cie = {}
+                        _cie["cie_offset"] = offset
+                        _cie["augmentation"] = augmentation
+                        _cie["fde_encoding"] = fde_encoding
+                        _cie["lsda_encoding"] = lsda_encoding
+                        _cie["address_size"] = ptr_size
+                        _cie["code_alignment_factor"] = code_alignment_factor
+                        _cie["data_alignment_factor"] = data_alignment_factor
+                        Cie = collections.namedtuple("Cie", _cie.keys())
+                        cie = Cie(*_cie.values())
                         cies.append(cie)
 
                 else: # FDE parsing
-                    cie = [x for x in cies if start - cie_id == x["cie_offset"]][0]
+                    cie = [x for x in cies if start - cie_id == x.cie_offset][0]
 
                     entries.append([offset, "FDE", ""])
                     entries += tmp_entries # unit_length, cie_pointer
                     tmp_entries = []
 
-                    ptr_size = self.encoded_ptr_size(cie["fde_encoding"], cie["address_size"])
+                    ptr_size = self.encoded_ptr_size(cie.fde_encoding, cie.address_size)
                     base = pos
 
                     # parse pc_begin
@@ -16225,7 +16236,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                         new_pos, initial_location = self.read_4ubyte(data, pos)
                     elif ptr_size == 8:
                         new_pos, initial_location = self.read_8ubyte(data, pos)
-                    if (cie["fde_encoding"] & 0x70) == self.DW_EH_PE_pcrel:
+                    if (cie.fde_encoding & 0x70) == self.DW_EH_PE_pcrel:
                         vma_base = shdr.sh_offset + base + initial_location
                         if ptr_size == 4:
                             vma_base &= 0xffffffff
@@ -16245,7 +16256,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                         new_pos, pc_range = self.read_4ubyte(data, pos)
                     elif ptr_size == 8:
                         new_pos, pc_range = self.read_8ubyte(data, pos)
-                    if (cie["fde_encoding"] & 0x70) == self.DW_EH_PE_pcrel:
+                    if (cie.fde_encoding & 0x70) == self.DW_EH_PE_pcrel:
                         end_off = vma_base + pc_range
                     else:
                         end_off = initial_location + pc_range
@@ -16261,17 +16272,17 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                     pos = new_pos
 
                     # parse augmentation
-                    if cie["augmentation"][0] == "z":
+                    if cie.augmentation[0] == "z":
                         new_pos, augmentation_len = self.get_uleb128(data, pos)
                         entries.append([pos, data[pos:new_pos], "augmentation_len", augmentation_len, ""])
                         pos = new_pos
 
                         aug_end = pos + augmentation_len
                         if augmentation_len:
-                            for cp in cie["augmentation"][1:]:
+                            for cp in cie.augmentation[1:]:
                                 if cp == "L":
-                                    new_pos, lsda_pointer = self.read_encoded(cie["lsda_encoding"], data, pos)
-                                    if (cie["lsda_encoding"] & 0x70) == self.DW_EH_PE_pcrel:
+                                    new_pos, lsda_pointer = self.read_encoded(cie.lsda_encoding, data, pos)
+                                    if (cie.lsda_encoding & 0x70) == self.DW_EH_PE_pcrel:
                                         lsda_pointer += shdr.sh_offset + pos
                                         if self.is_pie:
                                             extra_s = "LSDA pointer vma: $codebase+{:#x}".format(load_base + lsda_pointer)
@@ -16393,10 +16404,10 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
         return "???"
 
     def parse_cfa_program(self, data, pos, pos_end, vma_base, version, cie):
-        encoding = cie["fde_encoding"]
-        ptr_size = cie["address_size"]
-        code_align = cie["code_alignment_factor"]
-        data_align = cie["data_alignment_factor"]
+        encoding = cie.fde_encoding
+        ptr_size = cie.address_size
+        code_align = cie.code_alignment_factor
+        data_align = cie.data_alignment_factor
         pc = vma_base
         indent = " " * 4
 
@@ -17160,8 +17171,8 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                     dic[value - load_base] = pc_begin + load_base
             return dic
 
-        section_base = gcc_except_table["offset"]
-        data = gcc_except_table["data"]
+        section_base = gcc_except_table.offset
+        data = gcc_except_table.data
         shdr = [s for s in self.elf.shdrs if s.sh_name == ".gcc_except_table"][0]
         load_base = [phdr for phdr in self.elf.phdrs if phdr.p_type == Phdr.PT_LOAD][0].p_vaddr
         ptr_size = 4 if self.elf.e_class == Elf.ELF_32_BITS else 8
@@ -17349,54 +17360,88 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
             data = f.read(s.sh_size)
             f.close()
             info("Found {} section".format(section_name))
-            return {"name": section_name, "offset": s.sh_offset, "data": data}
+
+            _dic = {"name": section_name, "offset": s.sh_offset, "data": data}
+            Section = collections.namedtuple(section_name.lstrip("."), _dic.keys())
+            return Section(*_dic.values())
         err("Not found {} section".format(section_name))
         return None
 
+    @parse_args
     @only_if_not_qemu_system
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if "-h" in argv:
-            self.usage()
-            return
+        local_filepath = None
+        remote_filepath = None
+        tmp_filepath = None
+        self.hexdump = args.hexdump
 
-        # with hexdump or not
-        if "-x" in argv:
-            idx = argv.index("-x")
-            self.hexdump = True
-            argv = argv[:idx] + argv[idx + 1:]
-        else:
-            self.hexdump = False
-
-        # read file
-        if "-f" in argv:
-            idx = argv.index("-f")
-            filename = argv[idx + 1]
-            argv = argv[:idx] + argv[idx + 2:]
-        else:
-            filename = get_filepath()
-            if filename is None:
-                err("No executable/library specified")
+        if args.remote:
+            if not is_remote_debug():
+                err("-r option is allowed only remote debug.")
                 return
-        if not os.path.exists(filename):
-            err("{} is not found".format(filename))
+
+            if args.file:
+                remote_filepath = args.file # if specified, assume it is remote
+            elif gdb.current_progspace().filename:
+                f = gdb.current_progspace().filename
+                if f.startswith("target:"): # gdbserver
+                    f = f[7:]
+                remote_filepath = f
+            elif get_pid(remote=True):
+                remote_filepath = "/proc/{:d}/exe".format(get_pid(remote=True))
+            else:
+                err("File name could not be determined.")
+                return
+
+            data = read_remote_file(remote_filepath, as_byte=True) # qemu-user is failed here, it is ok
+            if not data:
+                err("Failed to read remote filepath")
+                return
+            tmp_fd, tmp_filepath = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".elf", prefix="dwarf-exception-handler-")
+            os.write(tmp_fd, data)
+            os.close(tmp_fd)
+            local_filepath = tmp_filepath
+            del data
+
+        elif args.file:
+            local_filepath = args.file
+
+        elif args.file is None:
+            if is_qemu_system():
+                err("Argument-less calls are unsupported under qemu-system.")
+                return
+            local_filepath = get_filepath()
+
+        if local_filepath is None:
+            err("File name could not be determined.")
             return
-        self.elf = get_elf_headers(filename)
-        self.is_pie = is_pie(filename)
-        if not self.elf.is_valid():
-            err("Elf parsing error")
+
+        self.elf = get_elf_headers(local_filepath)
+        if self.elf is None or not self.elf.is_valid():
+            err("Failed to parse elf.")
+            if tmp_filepath and os.path.exists(tmp_filepath):
+                os.unlink(tmp_filepath)
             return
+
+        self.is_pie = is_pie(local_filepath)
 
         # read section
         eh_frame_hdr = self.read_section(".eh_frame_hdr")
         if eh_frame_hdr is None:
+            if tmp_filepath and os.path.exists(tmp_filepath):
+                os.unlink(tmp_filepath)
             return
         eh_frame = self.read_section(".eh_frame")
         if eh_frame is None:
+            if tmp_filepath and os.path.exists(tmp_filepath):
+                os.unlink(tmp_filepath)
             return
         gcc_except_table = self.read_section(".gcc_except_table")
         if gcc_except_table is None:
+            if tmp_filepath and os.path.exists(tmp_filepath):
+                os.unlink(tmp_filepath)
             return
 
         # parse section
@@ -17409,7 +17454,10 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
         out += self.format_entry(gcc_except_table, gcc_except_table_entries)
 
         # print
-        gef_print('\n'.join(out), less=True)
+        gef_print('\n'.join(out), less=not args.no_pager)
+
+        if tmp_filepath and os.path.exists(tmp_filepath):
+            os.unlink(tmp_filepath)
         return
 
 
