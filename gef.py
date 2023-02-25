@@ -18688,96 +18688,54 @@ class MemoryWatchListCommand(GenericCommand):
 
 @register_command
 class HexdumpCommand(GenericCommand):
-    """Display SIZE lines of hexdump from the memory location pointed by ADDRESS."""
+    """Display the hexdump from the memory location specified."""
     _cmdline_ = "hexdump"
-    _syntax_ = "{:s} [-h] qword|dword|word|byte [--phys] [ADDRESS [SIZE]] [--reverse] [--full] [--no-pager]".format(_cmdline_)
-    _example_ = "{:s} byte                     # dump from $sp as byte (0x10 bytes)\n".format(_cmdline_)
-    _example_ += "{:s} qword                    # dump from $sp as qword (0x100 bytes)\n".format(_cmdline_)
-    _example_ += "{:s} byte $rsp 128            # dump from $rsp as byte (128 bytes)\n".format(_cmdline_)
-    _example_ += "{:s} byte $rsp 128 --full     # print the same line without omitting (byte mode only)\n".format(_cmdline_)
-    _example_ += "{:s} byte $rsp 128 --reverse  # print in reverse order line by line".format(_cmdline_)
-    _example_ += "{:s} byte $rsp 128 --no-pager # do not use less".format(_cmdline_)
     _category_ = "Show/Modify Memory"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    subparsers = parser.add_subparsers(title='command', required=True)
+    subparsers.add_parser('byte')
+    subparsers.add_parser('word')
+    subparsers.add_parser('dword')
+    subparsers.add_parser('qword')
+    _syntax_ = parser.format_help()
 
     def __init__(self, *args, **kwargs):
         prefix = kwargs.get("prefix", True)
         complete_type = kwargs.get("complete", gdb.COMPLETE_NONE)
         super().__init__(prefix=prefix, complete=complete_type)
-        self.add_setting("always_show_ascii", False, "If true, hexdump will always display the ASCII dump")
+        self.add_setting("always_show_ascii", True, "If true, hexdump will always display the ASCII dump")
         self.format = None
         return
 
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
-        if "-h" in argv:
-            self.usage()
-            return
-
+    def do_invoke(self, args):
         if not self.format:
             err("Incomplete command")
             return
 
-        fmt = self.format
-        target = ""
-        valid_formats = ["byte", "word", "dword", "qword"]
-        read_len = None
-        reverse = False
-        full_mode = False
-        no_pager = False
-
-        self.phys_mode = False
-        if "--phys" in argv:
+        if args.phys:
             if not is_qemu_system():
-                err("Unsupported")
+                err("Unsupported. Check qemu version (at least: 4.1.0-rc0~, recommend: 5.x~)")
                 return
-            self.phys_mode = True
-            argv.remove("--phys")
+        self.phys_mode = args.phys
 
-        try:
-            for arg in argv:
-                arg_lower = arg.lower()
-                if arg_lower in valid_formats:
-                    fmt = arg_lower
-                    continue
-                if "--reverse" == arg_lower:
-                    reverse = True
-                    continue
-                if "--full" == arg_lower:
-                    full_mode = True
-                    continue
-                if "--no-pager" == arg_lower:
-                    no_pager = True
-                    continue
-                if target:
-                    if read_len:
-                        self.usage()
-                        return
-                    read_len = int(arg_lower, 0)
-                    continue
-                target = arg
-
-            if not target:
-                target = "$sp"
-
-            start_addr = parse_address(target)
-            read_from = align_address(start_addr)
-        except Exception:
-            self.usage()
-            return
-
-        if not read_len:
-            read_len = 0x100 if fmt == "byte" else 0x10
-
-        if fmt == "byte":
-            lines = self._hexdump_byte(read_from, read_len, full_mode)
+        if args.location:
+            read_from = align_address(args.location)
         else:
-            lines = self._hexdump(read_from, read_len, fmt)
+            read_from = current_arch.sp
 
-        if reverse:
+        if self.format == "byte":
+            lines = self._hexdump_byte(read_from, args.count, args.full)
+        else:
+            lines = self._hexdump(read_from, args.count, self.format)
+
+        if args.reverse:
             lines.reverse()
 
         if lines:
-            gef_print("\n".join(lines), less=not no_pager)
+            gef_print("\n".join(lines), less=not args.no_pager)
         return
 
     def _hexdump_byte(self, read_from, read_len, full):
@@ -18822,6 +18780,8 @@ class HexdumpCommand(GenericCommand):
         except Exception:
             pass
 
+        # If you get an error, you probably read outside a valid memory page.
+        # Read in page size units.
         read_end = read_from + read_len
         read_end &= gef_getpagesize_mask()
         while read_end - read_from > 0:
@@ -18851,7 +18811,7 @@ class HexdumpCommand(GenericCommand):
         }
 
         spec, sz = formats[arrange_as]
-        fmt_str = "{{base}}{v}+{{offset:#06x}}   {{sym}}{{val:#0{prec}x}}   {{text}}".format(v=VERTICAL_LINE, prec=sz * 2 + 2)
+        fmt_str = "{{base}}{v}+{{offset:#06x}}{v}{{idx:03d}}: {{sym}}{{val:#0{prec}x}}  {{text}}".format(v=VERTICAL_LINE, prec=sz * 2 + 2)
         fmt_pack = endianness + spec
         lines = []
 
@@ -18872,7 +18832,7 @@ class HexdumpCommand(GenericCommand):
             if show_ascii:
                 text = "".join([chr(b) if 0x20 <= b < 0x7F else "." for b in mem])
             cur_addr_c = Color.colorify(format_address(cur_addr), base_address_color)
-            line = fmt_str.format(base=cur_addr_c, offset=(i + offset) * sz, sym=sym, val=val, text=text)
+            line = fmt_str.format(base=cur_addr_c, offset=(i + offset) * sz, idx=i, sym=sym, val=val, text=text)
             lines.append(line)
             i += 1
         return lines
@@ -18880,11 +18840,21 @@ class HexdumpCommand(GenericCommand):
 
 @register_command
 class HexdumpQwordCommand(HexdumpCommand):
-    """Display SIZE lines of hexdump as QWORD from the memory location pointed by ADDRESS."""
+    """Display hexdump as QWORD from the memory location specifed."""
     _cmdline_ = "hexdump qword"
-    _syntax_ = "{:s} [-h] [--phys] [ADDRESS [SIZE]] [--reverse]".format(_cmdline_)
-    _example_ = "{:s} $rsp 16 --reverse".format(_cmdline_)
     _category_ = "Show/Modify Memory"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
+                        help='the memory address you want to dump. (default: current_arch.sp)')
+    parser.add_argument('count', metavar='COUNT', nargs='?', type=lambda x: int(x, 0), default=0x10,
+                        help='the count of displayed units. (default: %(default)s)')
+    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
+    parser.add_argument('--reverse', action='store_true', help='display in reverse order line by line.')
+    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} $rsp 16".format(_cmdline_)
 
     def __init__(self):
         super().__init__(prefix=False, complete=gdb.COMPLETE_LOCATION)
@@ -18894,11 +18864,21 @@ class HexdumpQwordCommand(HexdumpCommand):
 
 @register_command
 class HexdumpDwordCommand(HexdumpCommand):
-    """Display SIZE lines of hexdump as DWORD from the memory location pointed by ADDRESS."""
+    """Display hexdump as DWORD from the memory location specifed."""
     _cmdline_ = "hexdump dword"
-    _syntax_ = "{:s} [-h] [--phys] [ADDRESS [SIZE]] [--reverse]".format(_cmdline_)
-    _example_ = "{:s} $rsp 128 --reverse".format(_cmdline_)
     _category_ = "Show/Modify Memory"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
+                        help='the memory address you want to dump. (default: current_arch.sp)')
+    parser.add_argument('count', metavar='COUNT', nargs='?', type=lambda x: int(x, 0), default=0x10,
+                        help='the count of displayed units. (default: %(default)s)')
+    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
+    parser.add_argument('--reverse', action='store_true', help='display in reverse order line by line.')
+    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} $esp 16".format(_cmdline_)
 
     def __init__(self):
         super().__init__(prefix=False, complete=gdb.COMPLETE_LOCATION)
@@ -18908,11 +18888,21 @@ class HexdumpDwordCommand(HexdumpCommand):
 
 @register_command
 class HexdumpWordCommand(HexdumpCommand):
-    """Display SIZE lines of hexdump as WORD from the memory location pointed by ADDRESS."""
+    """Display hexdump as WORD from the memory location specifed."""
     _cmdline_ = "hexdump word"
-    _syntax_ = "{:s} [-h] [--phys] [ADDRESS [SIZE]] [--reverse]".format(_cmdline_)
-    _example_ = "{:s} $rsp 128 --reverse".format(_cmdline_)
     _category_ = "Show/Modify Memory"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
+                        help='the memory address you want to dump. (default: current_arch.sp)')
+    parser.add_argument('count', metavar='COUNT', nargs='?', type=lambda x: int(x, 0), default=0x10,
+                        help='the count of displayed units. (default: %(default)s)')
+    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
+    parser.add_argument('--reverse', action='store_true', help='display in reverse order line by line.')
+    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} $rsp 16".format(_cmdline_)
 
     def __init__(self):
         super().__init__(prefix=False, complete=gdb.COMPLETE_LOCATION)
@@ -18922,14 +18912,24 @@ class HexdumpWordCommand(HexdumpCommand):
 
 @register_command
 class HexdumpByteCommand(HexdumpCommand):
-    """Display SIZE lines of hexdump as BYTE from the memory location pointed by ADDRESS."""
+    """Display hexdump as BYTE from the memory location specifed."""
     _cmdline_ = "hexdump byte"
-    _syntax_ = "{:s} [-h] [--phys] [ADDRESS [SIZE]] [--reverse] [--full]".format(_cmdline_)
-    _example_ = "{:s} $rsp 128\n".format(_cmdline_)
-    _example_ += "{:s} $rsp 128 --full    # print the same line without omitting (byte mode only)\n".format(_cmdline_)
-    _example_ += "{:s} $rsp 128 --reverse # print in reverse order line by line".format(_cmdline_)
-    _aliases_ = ["xxd", ]
     _category_ = "Show/Modify Memory"
+    _aliases_ = ["xxd"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
+                        help='the memory address you want to dump. (default: current_arch.sp)')
+    parser.add_argument('count', metavar='COUNT', nargs='?', type=lambda x: int(x, 0), default=0x100,
+                        help='the count of displayed units. (default: %(default)s)')
+    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
+    parser.add_argument('--reverse', action='store_true', help='display in reverse order line by line.')
+    parser.add_argument('--full', action='store_true', help='display the same line without omitting (byte mode only).')
+    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} $rsp 128\n".format(_cmdline_)
+    _example_ += "{:s} $rsp 128 --full\n".format(_cmdline_)
 
     def __init__(self):
         super().__init__(prefix=False, complete=gdb.COMPLETE_LOCATION)
