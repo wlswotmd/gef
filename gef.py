@@ -14284,17 +14284,20 @@ class Rp2Command(RpCommand):
 
 @register_command
 class AssembleCommand(GenericCommand):
-    """Inline code assemble by keystone. Architecture can be set in GEF runtime config (default x86-64). """
+    """Inline code assemble by keystone. Architecture can be set in GEF runtime config."""
     _cmdline_ = "asm"
-    _syntax_ = "{:s} [-h] [-a ARCH] [-m MODE] [-e] [-s] [-l LOCATION] instruction;[instruction;...instruction;]\n".format(_cmdline_)
-    _syntax_ += "  -a ARCH      specify the architecture\n"
-    _syntax_ += "  -m MODE      specify the mode\n"
-    _syntax_ += "  -e           use big-endian\n"
-    _syntax_ += "  -s           output like shellcode style\n"
-    _syntax_ += "  -l LOCATION  write to memory address"
-    # for updates, see https://github.com/keystone-engine/keystone/blob/master/include/keystone/keystone.h
-    _example_ = "\n"
-    _example_ += '{:s} -a X86 -m 64 "mov rax, qword ptr [rax] ; inc rax ;"\n'.format(_cmdline_)
+    _category_ = "Assemble"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-a', dest='arch', help='specify the architecture. (default: current_arch.arch)')
+    parser.add_argument('-m', dest='mode', help='specify the mode. (default: current_arch.mode)')
+    parser.add_argument('-e', dest='big_endian', action='store_true', help='use big-endian. (default: %(default)s)')
+    parser.add_argument('-s', dest='as_shellcode', action='store_true', help='output like shellcode style. (default: %(default)s)')
+    parser.add_argument('-l', dest='overwrite_location', metavar='LOCATION', type=parse_address, help='write to memory address.')
+    parser.add_argument("instruction", metavar='INSTRUCTION', nargs='+', help='the code you want to assemble')
+    _syntax_ = parser.format_help()
+
+    _example_ = '{:s} -a X86 -m 64 "mov rax, qword ptr [rax] ; inc rax ;"\n'.format(_cmdline_)
     _example_ += '{:s} -a X86 -m 32 "mov eax, dword ptr [eax] ; inc eax ;"\n'.format(_cmdline_)
     _example_ += '{:s} -a X86 -m 16 "mov ax, word ptr [ax] ; inc ax"\n'.format(_cmdline_)
     _example_ += '{:s} -a ARM -m ARM      "sub r1, r2, r3"\n'.format(_cmdline_)
@@ -14312,74 +14315,49 @@ class AssembleCommand(GenericCommand):
     _example_ += '{:s} -a SPARC -m SPARC32 -e "add %g1, %g2, %g3"\n'.format(_cmdline_)
     _example_ += '{:s} -a SPARC -m SPARC64 -e "add %g1, %g2, %g3"\n'.format(_cmdline_)
     _example_ += '{:s} -a S390X -m S390X -e "a %r0, 4095(%r15,%r1)"'.format(_cmdline_)
-    _category_ = "Assemble"
 
+    @parse_args
     @load_keystone
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        arch_s, mode_s, big_endian, as_shellcode, overwrite_location = None, None, False, False, None
-        try:
-            opts, args = getopt.getopt(argv, "a:m:l:esh")
-            for o, a in opts:
-                if o == "-a":
-                    arch_s = a.upper()
-                if o == "-m":
-                    mode_s = a.upper()
-                if o == "-e":
-                    big_endian = True
-                if o == "-s":
-                    as_shellcode = True
-                if o == "-l":
-                    overwrite_location = int(gdb.parse_and_eval(a))
-                if o == "-h":
-                    self.usage()
-                    return
-        except Exception:
-            self.usage()
-            return
-
-        if not args:
-            self.usage()
-            return
-
-        if (arch_s, mode_s) == (None, None):
+        if (args.arch, args.mode) == (None, None):
             if is_alive():
-                arch_s, mode_s = current_arch.arch, current_arch.mode
+                arch, mode = get_keystone_arch(arch=current_arch.arch, mode=current_arch.mode, endian=is_big_endian())
+                arch_mode_s = ":".join([current_arch.arch, current_arch.mode])
                 endian_s = "big" if is_big_endian() else "little"
-                arch, mode = get_keystone_arch(arch=arch_s, mode=mode_s, endian=is_big_endian())
             else:
                 # if not alive, defaults to x86-64
-                arch_s, mode_s = "X86", "64"
+                arch, mode = get_keystone_arch(arch="X86", mode="64", endian=False)
+                arch_mode_s = "X86:64"
                 endian_s = "little"
-                arch, mode = get_keystone_arch(arch=arch_s, mode=mode_s, endian=False)
-        elif not arch_s:
+        elif not args.arch:
             err("An architecture (-a) must be provided")
             return
-        elif not mode_s:
+        elif not args.mode:
             # keystone gives no error so check here
             err("A mode (-m) must be provided")
             return
-        elif arch_s in ["SPARC", "S390X"] and big_endian is False:
+        elif args.arch in ["SPARC", "S390X"] and args.big_endian is False:
             # keystone gives no error so check here
             err("A big endian flag (-e) must be provided")
             return
         else:
-            endian_s = "big" if big_endian else "little"
             try:
-                arch, mode = get_keystone_arch(arch=arch_s, mode=mode_s, endian=big_endian)
+                arch, mode = get_keystone_arch(arch=args.arch, mode=args.mode, endian=args.big_endian)
+                arch_mode_s = ":".join([args.arch, args.mode])
+                endian_s = "big" if args.big_endian else "little"
             except AttributeError:
                 self.usage()
                 return
 
-        insns = " ".join(args)
+        insns = " ".join(args.instruction)
         insns = [x.strip() for x in insns.split(";") if x is not None and x.strip() != ""]
 
-        arch_mode_s = ":".join([str(arch_s), str(mode_s)])
         info("Assembling {} instruction{} for {} ({} endian)".format(len(insns), "s" if len(insns) > 1 else "", arch_mode_s, endian_s))
 
-        if as_shellcode:
-            gef_print("""sc="" """)
+        if args.as_shellcode:
+            gef_print('sc = ""')
 
         raw = b""
         for insn in insns:
@@ -14388,7 +14366,7 @@ class AssembleCommand(GenericCommand):
                 gef_print("(Invalid)")
                 continue
 
-            if overwrite_location:
+            if args.overwrite_location is not None:
                 raw += res
                 continue
 
@@ -14396,15 +14374,14 @@ class AssembleCommand(GenericCommand):
             res = b"\\x" + b"\\x".join([s[i:i + 2] for i in range(0, len(s), 2)])
             res = res.decode("utf-8")
 
-            if as_shellcode:
-                res = """sc+="{0:s}" """.format(res)
+            if args.as_shellcode:
+                res = 'sc += "{:s}"'.format(res)
 
-            gef_print("{0:60s} # {1}".format(res, insn))
+            gef_print("{:60s} # {:s}".format(res, insn))
 
-        if overwrite_location:
-            raw_sz = len(raw)
-            info("Overwriting {:d} bytes at {:s}".format(raw_sz, format_address(overwrite_location)))
-            write_memory(overwrite_location, raw, raw_sz)
+        if args.overwrite_location is not None:
+            hex_code = binascii.hexlify(raw).decode()
+            gdb.execute("patch hexstring {:#x} {:s}".format(args.overwrite_location, hex_code))
         return
 
 
@@ -14412,12 +14389,16 @@ class AssembleCommand(GenericCommand):
 class DisassembleCommand(GenericCommand):
     """Inline code disassemble by capstone. Architecture can be set in GEF runtime config (default x86-64). """
     _cmdline_ = "dasm"
-    _syntax_ = "{:s} [-h] [-a ARCH] [-m MODE] [-e] hex-byte-code\n".format(_cmdline_)
-    _syntax_ += "  -a ARCH      specify the architecture\n"
-    _syntax_ += "  -m MODE      specify the mode\n"
-    _syntax_ += "  -e           use big-endian"
-    _example_ = "\n"
-    _example_ += '{:s} -a X86 -m 64 "488b00 48ffc0"\n'.format(_cmdline_)
+    _category_ = "Assemble"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-a', dest='arch', help='specify the architecture. (default: current_arch.arch)')
+    parser.add_argument('-m', dest='mode', help='specify the mode. (default: current_arch.mode)')
+    parser.add_argument('-e', dest='big_endian', action='store_true', help='use big-endian. (default: %(default)s)')
+    parser.add_argument("hex_code", metavar='HEX_CODE', nargs='+', help='the hex code you want to disassemble')
+    _syntax_ = parser.format_help()
+
+    _example_ = '{:s} -a X86 -m 64 "488b00 48ffc0"\n'.format(_cmdline_)
     _example_ += '{:s} -a X86 -m 32 "8b00 40"\n'.format(_cmdline_)
     _example_ += '{:s} -a X86 -m 16 "8b00 40"\n'.format(_cmdline_)
     _example_ += '{:s} -a ARM -m ARM      "031042e0"\n'.format(_cmdline_)
@@ -14438,62 +14419,42 @@ class DisassembleCommand(GenericCommand):
     _example_ += '{:s} -a RISCV -m RISCV64 "97c10600"\n'.format(_cmdline_)
     _example_ += '{:s} -a S390X -m S390X -e "5a0f1fff"\n'.format(_cmdline_)
     _example_ += '{:s} -a M68K -m M68K -e "9dce"'.format(_cmdline_)
-    _category_ = "Assemble"
 
+    @parse_args
     @load_capstone
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        arch_s, mode_s, big_endian = None, None, False
-        try:
-            opts, args = getopt.getopt(argv, "a:m:eh")
-            for o, a in opts:
-                if o == "-a":
-                    arch_s = a.upper()
-                if o == "-m":
-                    mode_s = a.upper()
-                if o == "-e":
-                    big_endian = True
-                if o == "-h":
-                    self.usage()
-                    return
-        except Exception:
-            self.usage()
-            return
-
-        if not args:
-            self.usage()
-            return
-
-        if (arch_s, mode_s) == (None, None):
+        if (args.arch, args.mode) == (None, None):
             if is_alive():
-                arch_s, mode_s = current_arch.arch, current_arch.mode
+                arch, mode = get_capstone_arch(arch=current_arch.arch, mode=current_arch.mode, endian=is_big_endian())
+                arch_mode_s = ":".join([current_arch.arch, current_arch.mode])
                 endian_s = "big" if is_big_endian() else "little"
-                arch, mode = get_capstone_arch(arch=arch_s, mode=mode_s, endian=is_big_endian())
             else:
                 # if not alive, defaults to x86-64
-                arch_s, mode_s = "X86", "64"
+                arch, mode = get_capstone_arch(arch="X86", mode="64", endian=False)
+                arch_mode_s = "X86:64"
                 endian_s = "little"
-                arch, mode = get_capstone_arch(arch=arch_s, mode=mode_s, endian=False)
-        elif not arch_s:
+        elif not args.arch:
             err("An architecture (-a) must be provided")
             return
-        elif not mode_s:
+        elif not args.mode:
             err("A mode (-m) must be provided")
             return
-        elif arch_s in ["SPARC", "S390X"] and big_endian is False:
+        elif args.arch in ["SPARC", "S390X"] and args.big_endian is False:
             # capstone gives no error so check here
             err("A big endian flag (-e) must be provided")
             return
         else:
-            endian_s = "big" if big_endian else "little"
             try:
-                arch, mode = get_capstone_arch(arch=arch_s, mode=mode_s, endian=big_endian)
+                arch, mode = get_capstone_arch(arch=args.arch, mode=args.mode, endian=args.big_endian)
+                arch_mode_s = ":".join([args.arch, args.mode])
+                endian_s = "big" if args.big_endian else "little"
             except AttributeError:
                 self.usage()
                 return
 
-        insns = " ".join(args)
+        insns = " ".join(args.hex_code)
         insns = insns.replace(" ", "").replace("\t", "")
         try:
             insns = binascii.unhexlify(insns)
@@ -14501,7 +14462,6 @@ class DisassembleCommand(GenericCommand):
             err("Invalid format")
             return
 
-        arch_mode_s = ":".join([str(arch_s), str(mode_s)])
         info("Disassembling {} bytes for {} ({} endian)".format(len(insns), arch_mode_s, endian_s))
 
         capstone = sys.modules["capstone"]
@@ -14522,15 +14482,18 @@ class DisassembleCommand(GenericCommand):
 class AsmListCommand(GenericCommand):
     """List up general instructions by capstone (x64/x86 only)."""
     _cmdline_ = "asm-list"
-    _syntax_ = "{:s} [-h] [-a ARCH] [-m MODE] [-e] [-n NBYTE] [-f INCLUDE] [-v EXCLUDE]\n".format(_cmdline_)
-    _syntax_ += "  -a ARCH      specify the architecture\n"
-    _syntax_ += "  -m MODE      specify the mode\n"
-    _syntax_ += "  -e           use big-endian (for future update)\n"
-    _syntax_ += "  -n NBYE      filter by asm byte length\n"
-    _syntax_ += "  -f INCLUDE   filter by string\n"
-    _syntax_ += "  -v EXCLUDE   filter by string"
-    _example_ = "\n"
-    _example_ += '{:s} -a X86 -m 64\n'.format(_cmdline_)
+    _category_ = "Assemble"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-a', dest='arch', help='specify the architecture. (default: current_arch.arch)')
+    parser.add_argument('-m', dest='mode', help='specify the mode. (default: current_arch.mode)')
+    parser.add_argument('-e', dest='big_endian', action='store_true', help='use big-endian. (default: %(default)s)')
+    parser.add_argument("-n", dest='nbyte', type=int, help='filter by the length of asm byte.')
+    parser.add_argument("-f", dest='include', action='append', help='filter by specified string.')
+    parser.add_argument("-v", dest='exclude', action='append', help='filter by specified string.')
+    _syntax_ = parser.format_help()
+
+    _example_ = '{:s} -a X86 -m 64\n'.format(_cmdline_)
     _example_ += '{:s} -a X86 -m 32\n'.format(_cmdline_)
     _example_ += '{:s} -a X86 -m 16\n'.format(_cmdline_)
     _example_ += '  F0 (LOCK prefix) is ignored\n'
@@ -14543,7 +14506,6 @@ class AsmListCommand(GenericCommand):
     _example_ += '  C4/C5 (VEX prefix) are ignored\n'
     _example_ += '  8F (XOP prefix) is ignored\n'
     _example_ += '  62 (EVEX prefix) is ignored'
-    _category_ = "Assemble"
 
     def listup_x86(self, arch, mode):
         DISP64 = "1122334455667788"
@@ -14675,60 +14637,44 @@ class AsmListCommand(GenericCommand):
                 seen_patterns.append(hex_code)
         return valid_patterns
 
+    @parse_args
     @load_capstone
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        arch_s, mode_s, big_endian = None, None, False
-        nbyte = None
-        filter_include = []
-        filter_exclude = []
-        try:
-            opts, args = getopt.getopt(argv, "a:m:n:f:v:eh")
-            for o, a in opts:
-                if o == "-a":
-                    arch_s = a.upper()
-                if o == "-m":
-                    mode_s = a.upper()
-                if o == "-e":
-                    big_endian = True
-                if o == "-n":
-                    nbyte = int(a)
-                if o == "-f":
-                    filter_include.append(a)
-                if o == "-v":
-                    filter_exclude.append(a)
-                if o == "-h":
-                    self.usage()
-                    return
-        except Exception:
-            self.usage()
-            return
-
-        if (arch_s, mode_s) == (None, None):
+        if (args.arch, args.mode) == (None, None):
             if is_alive():
-                arch_s, mode_s = current_arch.arch, current_arch.mode
+                arch, mode = get_capstone_arch(arch=args.arch, mode=args.mode, endian=is_big_endian())
+                arch_mode_s = ":".join([current_arch.arch, current_arch.mode])
                 endian_s = "big" if is_big_endian() else "little"
-                arch, mode = get_capstone_arch(arch=arch_s, mode=mode_s, endian=is_big_endian())
             else:
                 # if not alive, defaults to x86-64
-                arch_s, mode_s = "X86", "64"
+                arch, mode = get_capstone_arch(arch="X86", mode="64", endian=False)
+                arch_mode_s = "X86:64"
                 endian_s = "little"
-                arch, mode = get_capstone_arch(arch=arch_s, mode=mode_s, endian=False)
-        elif not arch_s:
+        elif not args.arch:
             err("An architecture (-a) must be provided")
             return
-        elif not mode_s:
+        elif not args.mode:
             err("A mode (-m) must be provided")
             return
+        elif args.arch in ["SPARC", "S390X"] and args.big_endian is False:
+            # capstone gives no error so check here
+            err("A big endian flag (-e) must be provided")
+            return
         else:
-            endian_s = "big" if big_endian else "little"
-            arch, mode = get_capstone_arch(arch=arch_s, mode=mode_s, endian=big_endian)
+            try:
+                arch, mode = get_capstone_arch(arch=args.arch, mode=args.mode, endian=args.big_endian)
+                arch_mode_s = ":".join([args.arch, args.mode])
+                endian_s = "big" if args.big_endian else "little"
+            except AttributeError:
+                self.usage()
+                return
 
         endian_s # for future update
 
         # list up bytecode pattern
-        if arch_s == "X86":
+        if arch_mode_s.startswith("X86:"):
             patterns = self.listup_x86(arch, mode)
         else:
             err("Unsupported")
@@ -14744,14 +14690,14 @@ class AsmListCommand(GenericCommand):
         text = Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading"))
         for hex_code, opstr, opcodes, attr in patterns:
             # byte length filter
-            if nbyte is not None and nbyte * 2 != len(hex_code):
+            if args.nbyte is not None and args.nbyte * 2 != len(hex_code):
                 continue
 
             # keyword filter
             line = "{:22s} {:60s} {:22s} {}".format(hex_code, opstr, opcodes, ','.join(attr))
-            if any([f not in line for f in filter_include]):
+            if args.include and any([f not in line for f in args.include]):
                 continue
-            if any([f in line for f in filter_exclude]):
+            if args.exclude and any([f in line for f in args.exclude]):
                 continue
 
             # not filtered
