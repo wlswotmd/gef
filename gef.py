@@ -14812,8 +14812,10 @@ class ProcessListingCommand(GenericCommand):
 class ArchInfoCommand(GenericCommand):
     """Show current architecture information."""
     _cmdline_ = "arch-info"
-    _syntax_ = _cmdline_
     _category_ = "Process Information"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
 
     def is_emulated32(self):
         if is_64bit():
@@ -14842,7 +14844,7 @@ class ArchInfoCommand(GenericCommand):
         else:
             return False # by default it considers on native
 
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         if current_arch is None:
@@ -14888,7 +14890,8 @@ class ArchInfoCommand(GenericCommand):
         gef_print("{:30s} {:s} {:s}".format("syscall register", RIGHT_ARROW, str(current_arch.syscall_register)))
         sparams = ', '.join(current_arch.syscall_parameters)
         gef_print("{:30s} {:s} {:s}".format("syscall parameters", RIGHT_ARROW, sparams))
-        gef_print("{:30s} {:s} {:s}".format("32bit-emulated (compat mode)", RIGHT_ARROW, str(self.is_emulated32())))
+        if is_x86() or is_arm32() or is_arm64():
+            gef_print("{:30s} {:s} {:s}".format("32bit-emulated (compat mode)", RIGHT_ARROW, str(self.is_emulated32())))
         gef_print("{:30s} {:s} {:s}".format("Has a call/jump delay slot", RIGHT_ARROW, str(current_arch.has_delay_slot)))
         gef_print("{:30s} {:s} {:s}".format("Has a syscall delay slot", RIGHT_ARROW, str(current_arch.has_syscall_delay_slot)))
         gef_print("{:30s} {:s} {:s}".format("Has a ret delay slot", RIGHT_ARROW, str(current_arch.has_ret_delay_slot)))
@@ -14903,13 +14906,21 @@ class ElfInfoCommand(GenericCommand):
     """Display a limited subset of ELF header information. If no argument is provided,
     the command will show information about the current ELF being debugged."""
     _cmdline_ = "elf-info"
-    _syntax_ = "{:s} [-h] [-e] [-f FILE [-r]|-a ADDRESS]".format(_cmdline_)
+    _category_ = "Process Information"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-e', dest='use_readelf', action='store_true', help='use readelf. (default: %(default)s)')
+    parser.add_argument('-r', dest='remote', action='store_true',
+                        help='parse remote binary if download feature is available. (default: %(default)s)')
+    parser.add_argument('-f', dest='file', help='the file path you want to parse.')
+    parser.add_argument('-a', dest='address', type=parse_address, help='the memory address you want to parse.')
+    _syntax_ = parser.format_help()
+
     _example_ = "{:s}                   # parse binary itself\n".format(_cmdline_)
     _example_ += "{:s} -f /bin/ls        # parse binary\n".format(_cmdline_)
     _example_ += "{:s} -f /bin/ls -r     # parse remote binary\n".format(_cmdline_)
     _example_ += "{:s} -a 0x555555554000 # parse memory\n".format(_cmdline_)
     _example_ += "{:s} -e -f /bin/ls     # show `readelf -a FILE | less`".format(_cmdline_)
-    _category_ = "Process Information"
 
     def __init__(self, *args, **kwargs):
         super().__init__(complete=gdb.COMPLETE_FILENAME)
@@ -15350,90 +15361,320 @@ class ElfInfoCommand(GenericCommand):
                 gef_print(fmt.format(*args))
         return
 
-    def do_invoke(self, argv):
+    @parse_args
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if "-h" in argv:
-            self.usage()
-            return
-
-        use_readelf = False
-        if "-e" in argv:
-            argv.remove("-e")
-            use_readelf = True
-
-        remote = False
-        if "-r" in argv:
-            argv.remove("-r")
-            remote = True
-
-        elf = None
-        filepath = None
-        memaddr = None
+        local_filepath = None
+        remote_filepath = None
         tmp_filepath = None
-        orig_filepath = None
 
-        if "-f" in argv:
-            try:
-                idx = argv.index("-f")
-                filepath = argv[idx + 1]
-                argv = argv[:idx] + argv[idx + 2:]
-            except Exception:
-                self.usage()
-                return
-
-        if "-a" in argv:
-            try:
-                idx = argv.index("-a")
-                memaddr = int(argv[idx + 1], 0)
-                argv = argv[:idx] + argv[idx + 2:]
-            except Exception:
-                self.usage()
-                return
-
-        if argv:
-            self.usage()
+        # memory parse pattern
+        if args.address is not None:
+            elf = Elf(args.address)
+            if elf is None or not elf.is_valid():
+                err("Failed to parse elf.")
+            else:
+                self.elf_info(elf)
             return
 
-        if filepath is None and memaddr is None:
-            if is_qemu_system():
-                err("Argument-less calls are unsupported under qemu-system.")
-                return
-
-            filepath = get_filepath()
-            if filepath is None:
-                err("Failed to get filepath")
-                return
-
-        if filepath and remote:
+        # file parse pattern
+        if args.remote:
             if not is_remote_debug():
                 err("-r option is allowed only remote debug.")
                 return
-            data = read_remote_file(filepath, as_byte=True)
+            if is_qemu_system():
+                err("-r option is unsupported under qemu-system.")
+                return
+
+            if args.file:
+                remote_filepath = args.file # if specified, assume it is remote
+            elif gdb.current_progspace().filename:
+                f = gdb.current_progspace().filename
+                if f.startswith("target:"): # gdbserver
+                    f = f[7:]
+                remote_filepath = f
+            elif get_pid(remote=True):
+                remote_filepath = "/proc/{:d}/exe".format(get_pid(remote=True))
+            else:
+                err("File name could not be determined.")
+                return
+
+            data = read_remote_file(remote_filepath, as_byte=True) # qemu-user is failed here, it is ok
             if not data:
                 err("Failed to read remote filepath")
                 return
-            orig_filepath = filepath
-            tmp_filepath = filepath = os.path.join(GEF_TEMP_DIR, "elf-info.elf")
-            open(filepath, "wb").write(data)
+            tmp_fd, tmp_filepath = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".elf", prefix="elf-info-")
+            os.write(tmp_fd, data)
+            os.close(tmp_fd)
+            local_filepath = tmp_filepath
+            del data
 
-        if use_readelf:
-            if filepath:
-                os.system("readelf -a '{:s}' | less".format(filepath))
-            else:
-                err("Failed to get filepath")
+        elif args.file:
+            local_filepath = args.file
+
+        elif args.file is None:
+            if is_qemu_system():
+                err("Argument-less calls are unsupported under qemu-system.")
+                return
+            local_filepath = get_filepath()
+
+        if local_filepath is None:
+            err("File name could not be determined.")
+            return
+
+        # readelf pattern
+        if args.use_readelf:
+            os.system("readelf -a '{:s}' | less".format(local_filepath))
+            if tmp_filepath and os.path.exists(tmp_filepath):
+                os.unlink(tmp_filepath)
+            return
+
+        # self parse pattern
+        elf = get_elf_headers(local_filepath)
+        if elf is None or not elf.is_valid():
+            err("Failed to parse elf.")
         else:
-            if filepath is not None:
-                elf = get_elf_headers(filepath)
-            elif memaddr is not None:
-                elf = Elf(memaddr)
-            if elf is None or not elf.is_valid():
-                err("Failed to parse elf")
-            else:
-                self.elf_info(elf, orig_filepath)
+            data = open(local_filepath, "rb").read()
+            info("size: {:d} bytes, sha1: {:s}".format(len(data), hashlib.sha1(data).hexdigest()))
+            self.elf_info(elf, remote_filepath)
 
         if tmp_filepath and os.path.exists(tmp_filepath):
             os.unlink(tmp_filepath)
+        return
+
+
+@register_command
+class ChecksecCommand(GenericCommand):
+    """Checksec the security properties of the current executable or passed as argument.
+    This command checks for the following protections:
+    Static/Dynamic, Stripped, Canary, NX, PIE, RELRO, FORTIFY_SOURCE, CET, RPATH, RUNPATH, ASLR"""
+    _cmdline_ = "checksec"
+    _category_ = "Process Information"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-r', dest='remote', action='store_true',
+                        help='parse remote binary if download feature is available. (default: %(default)s)')
+    parser.add_argument('-f', dest='file', help='the file path you want to parse.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} -f /bin/ls\n".format(_cmdline_)
+    _example_ += "{:s} -r".format(_cmdline_)
+
+    def __init__(self):
+        super().__init__(complete=gdb.COMPLETE_FILENAME)
+        return
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        if is_qemu_system():
+            self.print_security_properties_qemu_system()
+            return
+
+        local_filepath = None
+        remote_filepath = None
+        tmp_filepath = None
+
+        if args.remote:
+            if not is_remote_debug():
+                err("-r option is allowed only remote debug.")
+                return
+
+            if args.file:
+                remote_filepath = args.file # if specified, assume it is remote
+            elif gdb.current_progspace().filename:
+                f = gdb.current_progspace().filename
+                if f.startswith("target:"): # gdbserver
+                    f = f[7:]
+                remote_filepath = f
+            elif get_pid(remote=True):
+                remote_filepath = "/proc/{:d}/exe".format(get_pid(remote=True))
+            else:
+                err("File name could not be determined.")
+                return
+
+            data = read_remote_file(remote_filepath, as_byte=True) # qemu-user is failed here, it is ok
+            if not data:
+                err("Failed to read remote filepath")
+                return
+            tmp_fd, tmp_filepath = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".elf", prefix="checksec-")
+            os.write(tmp_fd, data)
+            os.close(tmp_fd)
+            local_filepath = tmp_filepath
+            del data
+
+        elif args.file:
+            local_filepath = args.file
+
+        elif args.file is None:
+            if is_qemu_system():
+                err("Argument-less calls are unsupported under qemu-system.")
+                return
+            local_filepath = get_filepath()
+
+        if local_filepath is None:
+            err("File name could not be determined.")
+            return
+
+        if remote_filepath:
+            print_filename = "{:s} (remote: {:s})".format(local_filepath, remote_filepath)
+        else:
+            print_filename = local_filepath
+        gef_print(titlify("checksec - {:s}".format(print_filename)))
+
+        self.print_security_properties(local_filepath)
+
+        if tmp_filepath and os.path.exists(tmp_filepath):
+            os.unlink(tmp_filepath)
+        return
+
+    def print_security_properties(self, filename):
+
+        def get_colored_msg(val):
+            if val is True:
+                msg = Color.greenify(Color.boldify("Enabled"))
+            elif val is False:
+                msg = Color.redify(Color.boldify("Disabled"))
+            elif val is None:
+                msg = Color.grayify(Color.boldify("Unknown"))
+            return msg
+
+        sec = checksec(filename)
+        if sec is False:
+            err("checksec is failed")
+            return
+
+        gef_print(titlify("Basic information"))
+
+        # Canary
+        msg = get_colored_msg(sec["Canary"])
+        if sec["Canary"] is True and is_alive():
+            res = gef_read_canary()
+            if not res:
+                msg += " (Could not get the canary value)"
+            else:
+                msg += " (value: {:#x})".format(res[0])
+        gef_print("{:<30s}: {:s}".format("Canary", msg))
+
+        # NX
+        gef_print("{:<30s}: {:s}".format("NX", get_colored_msg(sec["NX"])))
+
+        # PIE
+        gef_print("{:<30s}: {:s}".format("PIE", get_colored_msg(sec["PIE"])))
+
+        # RELRO
+        if sec["Full RELRO"]:
+            gef_print("{:<30s}: {:s}".format("RELRO", Color.colorify("Full RELRO", "bold green")))
+        elif sec["Partial RELRO"]:
+            gef_print("{:<30s}: {:s}".format("RELRO", Color.colorify("Partial RELRO", "bold yellow")))
+        else:
+            gef_print("{:<30s}: {:s}".format("RELRO", Color.colorify("No RELRO", "bold red")))
+
+        # Fortify
+        if sec["Fortify"]:
+            gef_print("{:<30s}: {:s}".format("Fortify", Color.colorify("Found", "bold green")))
+        else:
+            gef_print("{:<30s}: {:s}".format("Fortify", Color.colorify("Not Found", "bold red")))
+
+        gef_print(titlify("Additional information"))
+
+        # Static
+        if sec["Static"]:
+            gef_print("{:<30s}: {:s}".format("Static/Dynamic", "Static"))
+        else:
+            gef_print("{:<30s}: {:s}".format("Static/Dynamic", "Dynamic"))
+
+        # Stripped
+        if sec["Stripped"]:
+            msg = Color.colorify("Yes", "bold green")
+            gef_print("{:<30s}: {:s}".format("Stripped", msg))
+        else:
+            msg = Color.colorify("No", "bold red") + " (The symbol remains)"
+            gef_print("{:<30s}: {:s}".format("Stripped", msg))
+
+        # CET
+        if sec["Intel CET"]:
+            msg = Color.colorify("Found", "bold green") + " (endbr64/endbr32 is found)"
+            gef_print("{:<30s}: {:s}".format("Intel CET", msg))
+        else:
+            msg = Color.colorify("Not Found", "bold red") + " (endbr64/endbr32 is not found)"
+            gef_print("{:<30s}: {:s}".format("Intel CET", msg))
+
+        # RPATH
+        if not sec["RPATH"]:
+            gef_print("{:<30s}: {:s}".format("RPATH", Color.colorify("Not Found", "bold green")))
+        else:
+            gef_print("{:<30s}: {:s}".format("RPATH", Color.colorify("Found", "bold red")))
+
+        # RUNPATH
+        if not sec["RUNPATH"]:
+            gef_print("{:<30s}: {:s}".format("RUNPATH", Color.colorify("Not Found", "bold green")))
+        else:
+            gef_print("{:<30s}: {:s}".format("RUNPATH", Color.colorify("Found", "bold red")))
+
+        # Clang CFI
+        if sec["Clang CFI"]:
+            gef_print("{:<30s}: {:s}".format("Clang CFI", get_colored_msg(sec["Clang CFI"])))
+
+        # Clang SafeStack
+        if sec["Clang SafeStack"]:
+            gef_print("{:<30s}: {:s}".format("Clang SafeStack", get_colored_msg(sec["Clang SafeStack"])))
+
+        # System-ASLR
+        if is_remote_debug():
+            msg = Color.colorify("Unknown", "bold gray")
+            gef_print("{:<30s}: {:s} (remote process)".format("System-ASLR", msg))
+        else:
+            try:
+                system_aslr = int(open("/proc/sys/kernel/randomize_va_space").read())
+                if system_aslr == 0:
+                    msg = Color.colorify("Disabled", "bold red")
+                    gef_print("{:<30s}: {:s} (randomize_va_space: 0)".format("System ASLR", msg))
+                elif system_aslr == 1:
+                    msg = Color.colorify("Partially Enabled", "bold yellow")
+                    gef_print("{:<30s}: {:s} (randomize_va_space: 1)".format("System ASLR", msg))
+                elif system_aslr == 2:
+                    msg = Color.colorify("Enabled", "bold green")
+                    gef_print("{:<30s}: {:s} (randomize_va_space: 2)".format("System ASLR", msg))
+            except Exception:
+                msg = Color.colorify("Unknown", "bold gray")
+                gef_print("{:<30s}: {:s} (randomize_va_space: error)".format("System-ASLR", msg))
+
+        # gdb ASLR
+        if is_attach() or is_remote_debug():
+            msg = Color.colorify("Ignored", "bold gray")
+            gef_print("{:<30s}: {:s} (attached or remote process)".format("GDB ASLR setting", msg))
+        else:
+            ret = gdb.execute("show disable-randomization", to_string=True)
+            if "virtual address space is on." in ret:
+                msg = Color.colorify("Disabled", "bold red")
+                gef_print("{:<30s}: {:s} (disable-randomization: on)".format("GDB ASLR setting", msg))
+            elif "virtual address space is off." in ret:
+                msg = Color.colorify("Enabled", "bold green")
+                gef_print("{:<30s}: {:s} (disable-randomization: off)".format("GDB ASLR setting", msg))
+            else:
+                msg = Color.colorify("Unknown", "bold gray")
+                gef_print("{:<30s}: {:s}".format("GDB ASLR setting", msg))
+        return
+
+    def print_security_properties_qemu_system(self):
+        if not is_x86():
+            return
+        ret = gdb.execute("qreg -v", to_string=True)
+        flag = False
+        for line in ret.splitlines():
+            if "CR0 (Control Register 0)" in line:
+                flag = True
+            if "CR1 (Control Register 1)" in line:
+                flag = False
+            if "CR4 (Control Register 4)" in line:
+                flag = True
+            if "DR0-DR3 (Debug Address Register 0-3)" in line:
+                flag = False
+            if flag:
+                gef_print(line)
         return
 
 
@@ -20376,203 +20617,6 @@ class PatternSearchCommand(GenericCommand):
 
         if not found:
             err("Pattern '{}' not found".format(pattern))
-        return
-
-
-@register_command
-class ChecksecCommand(GenericCommand):
-    """Checksec the security properties of the current executable or passed as argument.
-    This command checks for the following protections:
-    Static/Dynamic, Stripped, Canary, NX, PIE, RELRO, FORTIFY_SOURCE, CET, RPATH, RUNPATH, ASLR"""
-    _cmdline_ = "checksec"
-    _syntax_ = "{:s} [-h] [FILENAME]".format(_cmdline_)
-    _example_ = "{:s} /bin/ls".format(_cmdline_)
-    _category_ = "Process Information"
-
-    def __init__(self):
-        super().__init__(complete=gdb.COMPLETE_FILENAME)
-        return
-
-    def do_invoke(self, argv):
-        self.dont_repeat()
-
-        if "-h" in argv:
-            self.usage()
-            return
-
-        if is_qemu_system():
-            self.print_security_properties_qemu_system()
-            return
-
-        argc = len(argv)
-
-        if argc == 0:
-            filename = get_filepath()
-            if filename is None or open(filename, "rb").read(4) != b"\x7fELF":
-                if is_qemu_usermode():
-                    err("Missing info about architecture. Please set: `file /path/to/target_binary`")
-                    return
-                else:
-                    err("No executable/library specified")
-                    return
-        elif argc == 1:
-            filename = os.path.realpath(os.path.expanduser(argv[0]))
-            if not os.access(filename, os.R_OK):
-                err("Invalid filename")
-                return
-        else:
-            self.usage()
-            return
-
-        info("{:s} for '{:s}'".format(self._cmdline_, filename))
-        self.print_security_properties(filename)
-        return
-
-    def print_security_properties(self, filename):
-
-        def get_colored_msg(val):
-            if val is True:
-                msg = Color.greenify(Color.boldify("Enabled"))
-            elif val is False:
-                msg = Color.redify(Color.boldify("Disabled"))
-            elif val is None:
-                msg = Color.grayify(Color.boldify("Unknown"))
-            return msg
-
-        sec = checksec(filename)
-        if sec is False:
-            err("checksec is failed")
-            return
-
-        gef_print(titlify("Basic information"))
-
-        # Canary
-        msg = get_colored_msg(sec["Canary"])
-        if sec["Canary"] is True and is_alive():
-            res = gef_read_canary()
-            if not res:
-                msg += " (Could not get the canary value)"
-            else:
-                msg += " (value: {:#x})".format(res[0])
-        gef_print("{:<30s}: {:s}".format("Canary", msg))
-
-        # NX
-        gef_print("{:<30s}: {:s}".format("NX", get_colored_msg(sec["NX"])))
-
-        # PIE
-        gef_print("{:<30s}: {:s}".format("PIE", get_colored_msg(sec["PIE"])))
-
-        # RELRO
-        if sec["Full RELRO"]:
-            gef_print("{:<30s}: {:s}".format("RELRO", Color.colorify("Full RELRO", "bold green")))
-        elif sec["Partial RELRO"]:
-            gef_print("{:<30s}: {:s}".format("RELRO", Color.colorify("Partial RELRO", "bold yellow")))
-        else:
-            gef_print("{:<30s}: {:s}".format("RELRO", Color.colorify("No RELRO", "bold red")))
-
-        # Fortify
-        if sec["Fortify"]:
-            gef_print("{:<30s}: {:s}".format("Fortify", Color.colorify("Found", "bold green")))
-        else:
-            gef_print("{:<30s}: {:s}".format("Fortify", Color.colorify("Not Found", "bold red")))
-
-        gef_print(titlify("Additional information"))
-
-        # Static
-        if sec["Static"]:
-            gef_print("{:<30s}: {:s}".format("Static/Dynamic", "Static"))
-        else:
-            gef_print("{:<30s}: {:s}".format("Static/Dynamic", "Dynamic"))
-
-        # Stripped
-        if sec["Stripped"]:
-            msg = Color.colorify("Yes", "bold green")
-            gef_print("{:<30s}: {:s}".format("Stripped", msg))
-        else:
-            msg = Color.colorify("No", "bold red") + " (The symbol remains)"
-            gef_print("{:<30s}: {:s}".format("Stripped", msg))
-
-        # CET
-        if sec["Intel CET"]:
-            msg = Color.colorify("Found", "bold green") + " (endbr64/endbr32 is found)"
-            gef_print("{:<30s}: {:s}".format("Intel CET", msg))
-        else:
-            msg = Color.colorify("Not Found", "bold red") + " (endbr64/endbr32 is not found)"
-            gef_print("{:<30s}: {:s}".format("Intel CET", msg))
-
-        # RPATH
-        if not sec["RPATH"]:
-            gef_print("{:<30s}: {:s}".format("RPATH", Color.colorify("Not Found", "bold green")))
-        else:
-            gef_print("{:<30s}: {:s}".format("RPATH", Color.colorify("Found", "bold red")))
-
-        # RUNPATH
-        if not sec["RUNPATH"]:
-            gef_print("{:<30s}: {:s}".format("RUNPATH", Color.colorify("Not Found", "bold green")))
-        else:
-            gef_print("{:<30s}: {:s}".format("RUNPATH", Color.colorify("Found", "bold red")))
-
-        # Clang CFI
-        if sec["Clang CFI"]:
-            gef_print("{:<30s}: {:s}".format("Clang CFI", get_colored_msg(sec["Clang CFI"])))
-
-        # Clang SafeStack
-        if sec["Clang SafeStack"]:
-            gef_print("{:<30s}: {:s}".format("Clang SafeStack", get_colored_msg(sec["Clang SafeStack"])))
-
-        # System-ASLR
-        if is_remote_debug():
-            msg = Color.colorify("Unknown", "bold gray")
-            gef_print("{:<30s}: {:s} (remote process)".format("System-ASLR", msg))
-        else:
-            try:
-                system_aslr = int(open("/proc/sys/kernel/randomize_va_space").read())
-                if system_aslr == 0:
-                    msg = Color.colorify("Disabled", "bold red")
-                    gef_print("{:<30s}: {:s} (randomize_va_space: 0)".format("System ASLR", msg))
-                elif system_aslr == 1:
-                    msg = Color.colorify("Partially Enabled", "bold yellow")
-                    gef_print("{:<30s}: {:s} (randomize_va_space: 1)".format("System ASLR", msg))
-                elif system_aslr == 2:
-                    msg = Color.colorify("Enabled", "bold green")
-                    gef_print("{:<30s}: {:s} (randomize_va_space: 2)".format("System ASLR", msg))
-            except Exception:
-                msg = Color.colorify("Unknown", "bold gray")
-                gef_print("{:<30s}: {:s} (randomize_va_space: error)".format("System-ASLR", msg))
-
-        # gdb ASLR
-        if is_attach() or is_remote_debug():
-            msg = Color.colorify("Ignored", "bold gray")
-            gef_print("{:<30s}: {:s} (attached or remote process)".format("GDB ASLR setting", msg))
-        else:
-            ret = gdb.execute("show disable-randomization", to_string=True)
-            if "virtual address space is on." in ret:
-                msg = Color.colorify("Disabled", "bold red")
-                gef_print("{:<30s}: {:s} (disable-randomization: on)".format("GDB ASLR setting", msg))
-            elif "virtual address space is off." in ret:
-                msg = Color.colorify("Enabled", "bold green")
-                gef_print("{:<30s}: {:s} (disable-randomization: off)".format("GDB ASLR setting", msg))
-            else:
-                msg = Color.colorify("Unknown", "bold gray")
-                gef_print("{:<30s}: {:s}".format("GDB ASLR setting", msg))
-        return
-
-    def print_security_properties_qemu_system(self):
-        if not is_x86():
-            return
-        ret = gdb.execute("qreg -v", to_string=True)
-        flag = False
-        for line in ret.splitlines():
-            if "CR0 (Control Register 0)" in line:
-                flag = True
-            if "CR1 (Control Register 1)" in line:
-                flag = False
-            if "CR4 (Control Register 4)" in line:
-                flag = True
-            if "DR0-DR3 (Debug Address Register 0-3)" in line:
-                flag = False
-            if flag:
-                gef_print(line)
         return
 
 

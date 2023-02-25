@@ -248,8 +248,9 @@ All of these features are experimental. Tested on Ubuntu 22.04.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/procinfo.png)
 * `elf-info`: is improved.
     * It displays Program Header and Section Header.
-        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/elf-info.png)
     * It supports parsing from memory.
+    * It supports parsing remote binary (if download feature is available).
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/elf-info.png)
 * `checksec`: is improved.
     * It shows whether Static or Dynamic.
     * It shows whether Stripped or not.
@@ -259,6 +260,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * It shows if Clang CFI/SafeStack is used or not.
     * It shows whether System-ASLR is enabled or not.
     * It shows whether GDB ASLR setting is enabled or not.
+    * It supports parsing remote binary (if download feature is available).
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/checksec.png)
 * `got`: is improved.
     * It displays not only GOT address but also PLT address.
