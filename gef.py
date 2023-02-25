@@ -10565,8 +10565,8 @@ class ProcInfoCommand(GenericCommand):
     """Extends the info given by GDB `info proc`, by giving an exhaustive description of the
     process status (file descriptors, parent, childs, etc.)."""
     _cmdline_ = "procinfo"
-    _aliases_ = ["pr"]
     _category_ = "Process Information"
+    _aliases_ = ["pr"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -14712,10 +14712,17 @@ class ProcessListingCommand(GenericCommand):
     """List and filter process. If a PATTERN is given as argument, results shown will be grepped
     by this pattern."""
     _cmdline_ = "process-search"
-    _syntax_ = "{:s} [REGEX_PATTERN]".format(_cmdline_)
-    _example_ = "{:s} gdb.*".format(_cmdline_)
     _category_ = "Misc"
     _aliases_ = ["ps"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('pattern', metavar='REGEX_PATTERN', nargs='?', help='filter by regex.')
+    parser.add_argument('-a', dest='do_attach', action='store_true', help='attach it. (default: %(default)s)')
+    parser.add_argument('-s', dest='smart_scan', action='store_true',
+                        help='filter kernel thread, socat, grep, gdb, sshd, bash, systemd, etc. (default: %(default)s)')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} gdb.*".format(_cmdline_)
 
     def __init__(self):
         super().__init__()
@@ -14723,25 +14730,15 @@ class ProcessListingCommand(GenericCommand):
         self.add_setting("ps_command", "{:s} auxww".format(ps), "`ps` command to get process information")
         return
 
+    @parse_args
     @only_if_not_qemu_system
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        do_attach = False
-        smart_scan = False
-
-        try:
-            opts, args = getopt.getopt(argv, "as")
-            for o, _ in opts:
-                if o == "-a":
-                    do_attach = True
-                if o == "-s":
-                    smart_scan = True
-        except Exception:
-            self.usage()
-            return
-
-        pattern = re.compile("^.*$") if not args else re.compile(args[0])
+        if args.pattern:
+            pattern = re.compile(args.pattern)
+        else:
+            pattern = re.compile("^.*$")
 
         for process in self.get_processes():
             pid = int(process["pid"])
@@ -14751,8 +14748,8 @@ class ProcessListingCommand(GenericCommand):
             if not re.search(pattern, command):
                 continue
 
-            if smart_scan:
-                if command.startswith("[") and command.endswith("]"):
+            if args.smart_scan:
+                if command.startswith("[") and command.endswith("]"): # kernel thread
                     continue
                 if command.startswith("socat "):
                     continue
@@ -14760,15 +14757,39 @@ class ProcessListingCommand(GenericCommand):
                     continue
                 if command.startswith("gdb "):
                     continue
+                if command.startswith("-bash"):
+                    continue
+                if command.startswith("sshd: "):
+                    continue
+                if command.startswith("avahi-daemon: "):
+                    continue
+                if command.startswith("@dbus-daemon "):
+                    continue
+                if command.startswith("(sd-pam)"):
+                    continue
+                if command.startswith("/lib/systemd/"):
+                    continue
+                if command.startswith("vmhgfs-fuse "):
+                    continue
+                if command.startswith("vmware-vmblock-fuse "):
+                    continue
+                if command.startswith("fusermount3 "):
+                    continue
+                if command.startswith("/usr/bin/vmtoolsd "):
+                    continue
+                if command.startswith("/usr/libexec/"):
+                    continue
+                if command.startswith("/snap/"):
+                    continue
 
-            if args and do_attach:
+            if args and args.do_attach:
                 ok("Attaching to process='{:s}' pid={:d}".format(process["command"], pid))
                 gdb.execute("attach {:d}".format(pid))
-                return None
+                return
 
             line = [process[i] for i in ("pid", "user", "cpu", "mem", "tty", "command")]
             gef_print("\t".join(line))
-        return None
+        return
 
     def get_processes(self):
         output = gef_execute_external(self.get_setting("ps_command").split(), True)
