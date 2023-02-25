@@ -188,7 +188,6 @@ __heap_freed_list__             = []
 __heap_uaf_watchpoints__        = []
 __pie_breakpoints__             = {}
 __pie_counter__                 = 1
-__gef_qemu_mode__               = False
 __gef_default_main_arena__      = "main_arena"
 __gef_int_stream_buffer__       = None
 __gef_redirect_output_fd__      = None
@@ -2691,11 +2690,11 @@ def get_endian():
 @functools.lru_cache(maxsize=None)
 def get_entry_point():
     """Return the binary entry point."""
-    for line in gdb.execute("info target", to_string=True).split("\n"):
-        if "Entry point:" in line:
-            return int(line.strip().split(" ")[-1], 16)
     for line in gdb.execute("elf-info", to_string=True).split("\n"):
         if "Entry point" in line:
+            return int(line.strip().split(" ")[-1], 16)
+    for line in gdb.execute("info target", to_string=True).split("\n"):
+        if "Entry point:" in line:
             return int(line.strip().split(" ")[-1], 16)
     return None
 
@@ -8178,9 +8177,7 @@ def new_objfile_handler(event):
 
 def exit_handler(event):
     """GDB event handler for exit cases."""
-    global __gef_qemu_mode__
     reset_all_caches(all=True)
-    __gef_qemu_mode__ = False
     return
 
 
@@ -9613,7 +9610,7 @@ class EntryBreakBreakpoint(gdb.Breakpoint):
 class NamedBreakpoint(gdb.Breakpoint):
     """Breakpoint which shows a specified name, when hit."""
     def __init__(self, location, name):
-        super().__init__(spec=location, type=gdb.BP_BREAKPOINT, internal=False, temporary=False)
+        super().__init__(location, gdb.BP_BREAKPOINT, internal=False, temporary=False)
         self.name = name
         self.loc = location
 
@@ -17467,9 +17464,11 @@ class EntryPointBreakCommand(GenericCommand):
     well-known symbols for entry points, such as `main`, `_main`, `__libc_start_main`, etc. defined by
     the setting `entrypoint_symbols`."""
     _cmdline_ = "entry-break"
-    _syntax_ = _cmdline_
-    _aliases_ = ["start"]
     _category_ = "Debugging Support"
+    _aliases_ = ["start"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_, add_help=False)
+    _syntax_ = parser.format_help()
 
     def __init__(self, *args, **kwargs):
         super().__init__()
@@ -17480,6 +17479,7 @@ class EntryPointBreakCommand(GenericCommand):
         )
         return
 
+    # Need not @parse_args because argparse can't stop interpreting argument for start.
     @only_if_not_qemu_system
     def do_invoke(self, argv):
         self.dont_repeat()
@@ -17493,7 +17493,7 @@ class EntryPointBreakCommand(GenericCommand):
             warn("The file '{}' is not executable.".format(fpath))
             return
 
-        if is_alive() and not __gef_qemu_mode__:
+        if is_alive():
             warn("gdb is already running")
             return
 
@@ -17558,25 +17558,28 @@ class EntryPointBreakCommand(GenericCommand):
 @register_command
 class NamedBreakpointCommand(GenericCommand):
     """Sets a breakpoint and assigns a name to it, which will be shown, when it's hit."""
-    _cmdline_ = "name-break"
-    _syntax_ = "{:s} NAME [LOCATION]".format(_cmdline_)
-    _example_ = "{:s} main *0x4008a9".format(_cmdline_)
+    _cmdline_ = "named-break"
     _category_ = "Debugging Support"
     _aliases_ = ["nb"]
 
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('name', metavar='NAME', help='the name you want to assign.')
+    parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
+                        help='the address you want to set breakpoint. (default: current_arch.pc)')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} main *0x4008a9".format(_cmdline_)
+
+    @parse_args
     @only_if_not_qemu_system
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if not argv:
-            err("Missing name for breakpoint")
-            self.usage()
-            return
-
-        name = argv[0]
-        location = argv[1] if len(argv) > 1 else "*{}".format(hex(current_arch.pc))
-
-        NamedBreakpoint(location, name)
+        if args.location is not None:
+            location = "*{:#x}".format(args.location)
+        else:
+            location = "*{:#x}".format(current_arch.pc)
+        NamedBreakpoint(location, args.name)
         return
 
 
