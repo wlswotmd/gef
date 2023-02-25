@@ -18520,12 +18520,12 @@ class ContextCommand(GenericCommand):
     def context_memory(self):
         global __watches__
         for address, opt in sorted(__watches__.items()):
-            sz, fmt = opt[0:2]
+            count, fmt = opt[0:2]
             self.context_title("memory:{:#x}".format(address))
             if fmt == "pointers":
-                gdb.execute("telescope {address:#x} {size:d} --no-pager".format(address=address, size=sz,))
+                gdb.execute("telescope {:#x} {:d} --no-pager".format(address, count))
             else:
-                gdb.execute("hexdump {fmt:s} {address:#x} {size:d} --no-pager".format(address=address, size=sz, fmt=fmt,))
+                gdb.execute("hexdump {:s} {:#x} {:d} --no-pager".format(fmt, address, count))
         return
 
     @classmethod
@@ -18550,17 +18550,24 @@ class ContextCommand(GenericCommand):
 class MemoryCommand(GenericCommand):
     """Add or remove address ranges to the memory view."""
     _cmdline_ = "memory"
-    _syntax_ = "{:s} (watch|unwatch|reset|list)".format(_cmdline_)
     _category_ = "Debugging Support"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    subparsers = parser.add_subparsers(title='command', required=True)
+    subparsers.add_parser('watch')
+    subparsers.add_parser('unwatch')
+    subparsers.add_parser('reset')
+    subparsers.add_parser('list')
+    _syntax_ = parser.format_help()
 
     def __init__(self):
         super().__init__(prefix=True)
         return
 
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
-        self.usage()
         return
 
 
@@ -18568,48 +18575,34 @@ class MemoryCommand(GenericCommand):
 class MemoryWatchCommand(GenericCommand):
     """Adds address ranges to the memory view."""
     _cmdline_ = "memory watch"
-    _syntax_ = "{:s} ADDRESS [SIZE] [(qword|dword|word|byte|pointers)]".format(_cmdline_)
-    _example_ = "\n"
-    _example_ += "{:s} 0x603000 0x100 byte\n".format(_cmdline_)
-    _example_ += "{:s} $sp".format(_cmdline_)
     _category_ = "Debugging Support"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('address', metavar='ADDRESS', type=parse_address,
+                        help='the memory address you want to register for display in `context memory`.')
+    parser.add_argument('count', metavar='COUNT', nargs='?', type=lambda x: int(x, 0), default=0x10,
+                        help='the count of displayed units. (default: %(default)s)')
+    parser.add_argument('unit', nargs='?', default="pointers",
+                        choices=['byte', 'word', 'dword', 'qword', 'pointers'],
+                        help='the size of unit. (default: %(default)s)')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} 0x603000 0x100 byte\n".format(_cmdline_)
+    _example_ += "{:s} $sp".format(_cmdline_)
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         return
 
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         global __watches__
 
-        if len(argv) not in (1, 2, 3):
-            self.usage()
-            return
-
-        try:
-            address = parse_address(argv[0])
-            size = parse_address(argv[1]) if len(argv) > 1 else 0x10
-        except Exception:
-            self.usage()
-            return
-        group = "byte"
-
-        if len(argv) == 3:
-            group = argv[2].lower()
-            if group not in ("qword", "dword", "word", "byte", "pointers"):
-                warn("Unexpected grouping '{}'".format(group))
-                self.usage()
-                return
-        else:
-            if current_arch.ptrsize == 4:
-                group = "dword"
-            elif current_arch.ptrsize == 8:
-                group = "qword"
-
-        __watches__[address] = (size, group)
-        ok("Adding memwatch to {:#x}".format(address))
+        __watches__[args.address] = (args.count, args.unit)
+        ok("Adding memwatch to {:#x}".format(args.address))
         return
 
 
@@ -18617,31 +18610,32 @@ class MemoryWatchCommand(GenericCommand):
 class MemoryUnwatchCommand(GenericCommand):
     """Removes address ranges to the memory view."""
     _cmdline_ = "memory unwatch"
-    _syntax_ = "{:s} ADDRESS".format(_cmdline_)
-    _example_ = "\n"
-    _example_ += "{:s} 0x603000\n".format(_cmdline_)
-    _example_ += "{:s} $sp".format(_cmdline_)
     _category_ = "Debugging Support"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('address', metavar='ADDRESS', type=parse_address,
+                        help='the memory address you want to deregister for display in `context memory`.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} 0x603000\n".format(_cmdline_)
+    _example_ += "{:s} $sp".format(_cmdline_)
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         return
 
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         global __watches__
-        if not argv:
-            self.usage()
-            return
 
-        address = parse_address(argv[0])
-        res = __watches__.pop(address, None)
+        res = __watches__.pop(args.address, None)
         if not res:
-            warn("You weren't watching {:#x}".format(address))
+            warn("You weren't watching {:#x}".format(args.address))
         else:
-            ok("Removed memwatch of {:#x}".format(address))
+            ok("Removed memwatch of {:#x}".format(args.address))
         return
 
 
@@ -18649,14 +18643,18 @@ class MemoryUnwatchCommand(GenericCommand):
 class MemoryWatchResetCommand(GenericCommand):
     """Removes all watchpoints."""
     _cmdline_ = "memory reset"
-    _syntax_ = "{:s}".format(_cmdline_)
     _category_ = "Debugging Support"
 
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         global __watches__
+
         __watches__.clear()
         ok("Memory watches cleared")
         return
@@ -18666,11 +18664,14 @@ class MemoryWatchResetCommand(GenericCommand):
 class MemoryWatchListCommand(GenericCommand):
     """Lists all watchpoints to display in context layout."""
     _cmdline_ = "memory list"
-    _syntax_ = "{:s}".format(_cmdline_)
     _category_ = "Debugging Support"
 
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         global __watches__
