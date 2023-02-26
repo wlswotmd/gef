@@ -9843,6 +9843,68 @@ class ResetCacheCommand(GenericCommand):
         return
 
 
+@register_priority_command
+class GefThemeCommand(GenericCommand):
+    """Customize GEF appearance."""
+    _cmdline_ = "theme"
+    _category_ = "GEF Maintenance Command"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('key', metavar='KEY', nargs='?', help='color theme key. (default: %(default)s)')
+    parser.add_argument('value', metavar='VALUE', nargs='*', help='color theme value. (default: %(default)s)')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s}                        # show all theme settings\n".format(_cmdline_)
+    _example_ += "{:s} address_code           # show specified theme setting\n".format(_cmdline_)
+    _example_ += "{:s} address_code bold cyan # set new theme".format(_cmdline_)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        self.add_setting("context_title_line", "gray", "Color of the borders in context window")
+        self.add_setting("context_title_message", "cyan", "Color of the title in context window")
+        self.add_setting("default_title_line", "gray", "Default color of borders")
+        self.add_setting("default_title_message", "cyan", "Default color of title")
+        self.add_setting("table_heading", "bold blue", "Color of the column headings to tables (e.g. vmmap)")
+        self.add_setting("old_context", "gray", "Color to use to show things such as code that is not immediately relevant")
+        self.add_setting("disassemble_current_instruction", "green", "Color to use to highlight the current $pc when disassembling")
+        self.add_setting("dereference_string", "yellow", "Color of dereferenced string")
+        self.add_setting("dereference_code", "gray", "Color of dereferenced code")
+        self.add_setting("dereference_base_address", "cyan", "Color of dereferenced address")
+        self.add_setting("dereference_register_value", "bold blue", "Color of dereferenced register")
+        self.add_setting("registers_register_name", "blue", "Color of the register name in the register window")
+        self.add_setting("registers_value_changed", "bold red", "Color of the changed register in the register window")
+        self.add_setting("address_stack", "pink", "Color to use when a stack address is found")
+        self.add_setting("address_heap", "green", "Color to use when a heap address is found")
+        self.add_setting("address_code", "red", "Color to use when a code address is found")
+        self.add_setting("source_current_line", "green", "Color to use for the current code line in the source window")
+        return
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        if args.key is None:
+            for setting in sorted(self.settings):
+                value = self.get_setting(setting)
+                value = Color.colorify(value, value)
+                gef_print("{:40s}: {:s}".format(setting, value))
+            return
+
+        if not self.has_setting(args.key):
+            err("Invalid key")
+            return
+
+        if args.value == []:
+            value = self.get_setting(args.key)
+            value = Color.colorify(value, value)
+            gef_print("{:40s}: {:s}".format(args.key, value))
+            return
+
+        val = [x for x in args.value if x in Color.colors]
+        self.add_setting(args.key, " ".join(val))
+        return
+
+
 @register_command
 class NiCommand(GenericCommand):
     """nexti wrapper for specific arch.
@@ -10901,61 +10963,6 @@ class SmartMemoryDumpCommand(GenericCommand):
             filepath = os.path.join(GEF_TEMP_DIR, dumpfile_name)
             open(filepath, "wb").write(data)
             info("Saved to {:s}".format(filepath))
-        return
-
-
-@register_priority_command
-class GefThemeCommand(GenericCommand):
-    """Customize GEF appearance."""
-    _cmdline_ = "theme"
-    _syntax_ = "{:s} [KEY [VALUE]]".format(_cmdline_)
-    _category_ = "GEF Maintenance Command"
-
-    def __init__(self, *args, **kwargs):
-        super().__init__()
-        self.add_setting("context_title_line", "gray", "Color of the borders in context window")
-        self.add_setting("context_title_message", "cyan", "Color of the title in context window")
-        self.add_setting("default_title_line", "gray", "Default color of borders")
-        self.add_setting("default_title_message", "cyan", "Default color of title")
-        self.add_setting("table_heading", "bold blue", "Color of the column headings to tables (e.g. vmmap)")
-        self.add_setting("old_context", "gray", "Color to use to show things such as code that is not immediately relevant")
-        self.add_setting("disassemble_current_instruction", "green", "Color to use to highlight the current $pc when disassembling")
-        self.add_setting("dereference_string", "yellow", "Color of dereferenced string")
-        self.add_setting("dereference_code", "gray", "Color of dereferenced code")
-        self.add_setting("dereference_base_address", "cyan", "Color of dereferenced address")
-        self.add_setting("dereference_register_value", "bold blue", "Color of dereferenced register")
-        self.add_setting("registers_register_name", "blue", "Color of the register name in the register window")
-        self.add_setting("registers_value_changed", "bold red", "Color of the changed register in the register window")
-        self.add_setting("address_stack", "pink", "Color to use when a stack address is found")
-        self.add_setting("address_heap", "green", "Color to use when a heap address is found")
-        self.add_setting("address_code", "red", "Color to use when a code address is found")
-        self.add_setting("source_current_line", "green", "Color to use for the current code line in the source window")
-        return
-
-    def do_invoke(self, args):
-        self.dont_repeat()
-        argc = len(args)
-
-        if argc == 0:
-            for setting in sorted(self.settings):
-                value = self.get_setting(setting)
-                value = Color.colorify(value, value)
-                gef_print("{:40s}: {:s}".format(setting, value))
-            return
-
-        setting = args[0]
-        if not self.has_setting(setting):
-            err("Invalid key")
-            return
-
-        if argc == 1:
-            value = self.get_setting(setting)
-            value = Color.colorify(value, value)
-            gef_print("{:40s}: {:s}".format(setting, value))
-            return
-
-        val = [x for x in args[1:] if x in Color.colors]
-        self.add_setting(setting, " ".join(val))
         return
 
 
