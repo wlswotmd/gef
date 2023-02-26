@@ -11169,78 +11169,184 @@ class SmartMemoryDumpCommand(GenericCommand):
 
 
 @register_command
-class ChangeFdCommand(GenericCommand):
-    """ChangeFdCommand: redirect file descriptor during runtime."""
+class HijackFdCommand(GenericCommand):
+    """Redirect file descriptor during runtime."""
     _cmdline_ = "hijack-fd"
-    _syntax_ = "{:s} FD_NUM NEW_OUTPUT".format(_cmdline_)
-    _example_ = "{:s} 2 /tmp/stderr_output.txt".format(_cmdline_)
     _category_ = "Debugging Support"
 
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('old_fd', metavar='OLD_FD', type=int, help='file descriptor number you want to redirect.')
+    parser.add_argument('new_output', metavar='NEW_OUTPUT', type=str, help='the location redirected data is stored.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} 2 /tmp/stderr_output.txt\n".format(_cmdline_)
+    _example_ += "{:s} 2 localhost:8000".format(_cmdline_)
+
+    @parse_args
     @only_if_gdb_running
-    @only_if_gdb_target_local
     @only_if_not_qemu_system
-    def do_invoke(self, argv):
+    @exclude_specific_arch(['CRIS'])
+    def do_invoke(self, args):
         self.dont_repeat()
-        if len(argv) != 2:
-            self.usage()
-            return
 
-        if not os.access("/proc/{:d}/fd/{:s}".format(get_pid(), argv[0]), os.R_OK):
-            self.usage()
-            return
+        self.fd_adjust_connect = 0
+        self.fd_adjust_dup3 = 0
+        # On certain architectures on qemu fd is slightly off.
+        if is_qemu_usermode():
+            if is_x86_32():
+                self.fd_adjust_connect = 80
+                self.fd_adjust_dup3 = 80
 
-        old_fd = int(argv[0])
-        new_output = argv[1]
+        self.AF_INET = 2
+        self.SOCK_STREAM = 1
+        self.O_APPEND = 0o2000
+        self.O_CREAT = 0o100
+        self.O_RDWR = 0o2
+        # some architecture use different consts.
+        if is_mips32() or is_mips64():
+            # /usr/mipsel-linux-gnu/include/bits/socket_type.h
+            # /usr/mips64el-linux-gnuabi64/include/bits/socket_type.h
+            self.SOCK_STREAM = 2
+            # /usr/mipsel-linux-gnu/include/bits/fcntl.h
+            # /usr/mips64el-linux-gnuabi64/include/bits/fcntl.h
+            self.O_APPEND = 0x0008
+            self.O_CREAT = 0x0100
+        elif is_sparc32() or is_sparc64():
+            # sparcv8--uclibc--stable-2022.08-1/sparc-buildroot-linux-uclibc/sysroot/usr/include/bits/fcntl.h
+            # sparc64--glibc--stable-2022.08-1/sparc64-buildroot-linux-gnu/sysroot/usr/include/bits/fcntl.h
+            self.O_APPEND = 0x0008
+            self.O_CREAT = 0x0200
+        elif is_alpha():
+            # /usr/alpha-linux-gnu/include/bits/fcntl.h
+            self.O_APPEND = 0o0010
+            self.O_CREAT = 0o1000
+        elif is_hppa32() or is_hppa64():
+            # /usr/hppa-linux-gnu/include/bits/fcntl.h
+            self.O_APPEND = 0o0010
+            self.O_CREAT = 0o0400
 
-        if ":" in new_output:
-            address = socket.gethostbyname(new_output.split(":")[0])
-            port = int(new_output.split(":")[1])
+        self.hijack_fd(args)
+        return
 
-            AF_INET = 2
-            SOCK_STREAM = 1
-            res = gdb.execute("""call (int)socket({}, {}, 0)""".format(AF_INET, SOCK_STREAM), to_string=True)
-            new_fd = self.get_fd_from_result(res)
+    def call_syscall(self, syscall_name, args):
+        args = ' '.join(["{:#x}".format(x) for x in args])
+        cmd = "call-syscall {:s} {}".format(syscall_name, args)
+        info(cmd)
+        res = gdb.execute(cmd, to_string=True)
+        output_line = res.splitlines()[-1]
+        info(output_line)
+        return int(output_line.split()[2], 0)
 
-            # fill in memory with sockaddr_in struct contents
-            # we will do this in the stack, since connect() wants a pointer to a struct
-            vmmap = get_process_maps()
-            stack_addr = [entry.page_start for entry in vmmap if entry.path == "[stack]"][0]
-            original_contents = read_memory(stack_addr, 8)
-
-            write_memory(stack_addr, "\x02\x00", 2)
-            write_memory(stack_addr + 0x2, struct.pack("<H", socket.htons(port)), 2)
-            write_memory(stack_addr + 0x4, socket.inet_aton(address), 4)
-
-            info("Trying to connect to {}".format(new_output))
-            res = gdb.execute("""call (int)connect({}, {}, {})""".format(new_fd, stack_addr, 16), to_string=True)
-
-            # recover stack state
-            write_memory(stack_addr, original_contents, 8)
-
-            res = self.get_fd_from_result(res)
-            if res == -1:
-                err("Failed to connect to {}:{}".format(address, port))
-                return
-
-            info("Connected to {}".format(new_output))
+    def hijack_fd(self, args):
+        if ":" in args.new_output:
+            new_fd = self.get_fd_from_connect_server(args)
         else:
-            res = gdb.execute("""call (int)open("{:s}", 66, 0666)""".format(new_output), to_string=True)
-            new_fd = self.get_fd_from_result(res)
+            new_fd = self.get_fd_from_file_open(args)
+        if new_fd is None:
+            return
 
-        info("Opened '{:s}' as fd #{:d}".format(new_output, new_fd))
-        gdb.execute("""call (int)dup2({:d}, {:d})""".format(new_fd, old_fd), to_string=True)
-        info("Duplicated fd #{:d}{:s}#{:d}".format(new_fd, RIGHT_ARROW, old_fd))
-        gdb.execute("""call (int)close({:d})""".format(new_fd), to_string=True)
+        # call dup3
+        # dup2 does not exist in aarch64. So use dup3 instead of dup2.
+        dup3_result = self.call_syscall("dup3", [new_fd - self.fd_adjust_dup3, args.old_fd, 0])
+        if dup3_result - self.fd_adjust_dup3 != args.old_fd:
+            err("Failed to dup3 (result {:d} != fd #{:d})".format(dup3_result, args.old_fd))
+            return
+        info("Duplicated fd #{:d}{:s}#{:d}".format(new_fd, RIGHT_ARROW, args.old_fd))
+
+        # call close
+        close_result = self.call_syscall("close", [new_fd])
+        if close_result == -1:
+            err("Failed to close fd #{:d}".format(new_fd))
+            return
         info("Closed extra fd #{:d}".format(new_fd))
+
         ok("Success")
         return
 
-    def get_fd_from_result(self, res):
-        # Output example: $1 = 3
-        res = int(res.split()[2], 0)
-        res = gdb.execute("""p/d {}""".format(res), to_string=True)
-        res = int(res.split()[2], 0)
-        return res
+    def write_stack(self, data):
+        data = str2bytes(data)
+
+        # get stack address
+        vmmap = get_process_maps()
+        stack_addrs = [entry.page_start for entry in vmmap if entry.path == "[stack]"]
+        if len(stack_addrs) == 0:
+            err("Not found stack")
+            return None, None
+        stack_addr = stack_addrs[0]
+
+        # read original contents
+        try:
+            original_contents = read_memory(stack_addr, len(data))
+        except gdb.MemoryError:
+            err("Failed to read stack")
+            return None, None
+
+        info("original contents: {}".format(original_contents))
+        info("overwrite data: {}".format(data))
+
+        # overwrite it
+        try:
+            write_memory(stack_addr, data, len(data))
+        except Exception:
+            err("Failed to write stack")
+            return None, None
+
+        # read again and check
+        if read_memory(stack_addr, len(data)) != data:
+            err("Failed to write stack")
+            return None, None
+
+        return stack_addr, original_contents
+
+    def get_fd_from_file_open(self, args):
+        # call open
+        stack_addr, original_contents = self.write_stack(args.new_output + "\0")
+        if stack_addr is None:
+            return None
+
+        info("Trying to open {}".format(args.new_output))
+
+        AT_FDCWD = -100
+        flags = self.O_APPEND | self.O_CREAT | self.O_RDWR
+        mode = 0o666
+        # open does not exist in aarch64. So use openat instead of open.
+        open_fd = self.call_syscall("openat", [AT_FDCWD, stack_addr, flags, mode])
+        write_memory(stack_addr, original_contents, len(original_contents)) # revert
+
+        if open_fd == -1:
+            err("Failed to open {}".format(args.new_output))
+            return None
+
+        info("Opened {} with 0o666 as fd #{:d}".format(args.new_output, open_fd))
+        return open_fd
+
+    def get_fd_from_connect_server(self, args):
+        address = socket.gethostbyname(args.new_output.split(":")[0])
+        port = int(args.new_output.split(":")[1])
+
+        # call socket
+        sock_fd = self.call_syscall("socket", [self.AF_INET, self.SOCK_STREAM, 0])
+        if sock_fd == -1:
+            err("Failed to socket")
+            return None
+        info("Created socket fd #{:d}".format(sock_fd))
+
+        # call connect (Also supports big endian)
+        sockaddr_in = p16(self.AF_INET) + struct.pack("<H", socket.htons(port)) + socket.inet_aton(address)
+        stack_addr, original_contents = self.write_stack(sockaddr_in)
+        if stack_addr is None:
+            return None
+
+        info("Trying to connect to {}".format(args.new_output))
+        connect_result = self.call_syscall("connect", [sock_fd - self.fd_adjust_connect, stack_addr, 16])
+        write_memory(stack_addr, original_contents, len(original_contents)) # revert
+
+        if connect_result == -1:
+            err("Failed to connect to {}:{}".format(address, port))
+            return
+
+        info("Connected to {} as fd #{:d}".format(args.new_output, sock_fd))
+        return sock_fd
 
 
 @register_command
