@@ -20011,16 +20011,20 @@ class ASLRCommand(GenericCommand):
     """View/modify the ASLR setting of GDB. By default, GDB will disable ASLR when it starts
     the process (i.e. not attached). This command allows to change that setting."""
     _cmdline_ = "aslr"
-    _syntax_ = "{:s} (on|off)".format(_cmdline_)
     _category_ = "Process Information"
 
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('command', nargs='?', default=None, choices=[None, 'on', 'off'], metavar='{on,off}',
+                        help='set gdb aslr settings.')
+    _syntax_ = parser.format_help()
+
+    @parse_args
     @only_if_not_qemu_system
-    def do_invoke(self, argv):
+    @only_if_gdb_target_local
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        argc = len(argv)
-
-        if argc == 0:
+        if args.command is None:
             ret = gdb.execute("show disable-randomization", to_string=True)
             i = ret.find("virtual address space is ")
             if i < 0:
@@ -20031,19 +20035,67 @@ class ASLRCommand(GenericCommand):
             else:
                 msg += Color.greenify("enabled")
             gef_print(msg)
-            return
+        elif args.command == "on":
+            info("Enabling ASLR")
+            gdb.execute("set disable-randomization off")
+        elif args.command == "off":
+            info("Disabling ASLR")
+            gdb.execute("set disable-randomization on")
+        return
 
-        elif argc == 1:
-            if argv[0] == "on":
-                info("Enabling ASLR")
-                gdb.execute("set disable-randomization off")
-                return
-            elif argv[0] == "off":
-                info("Disabling ASLR")
-                gdb.execute("set disable-randomization on")
-                return
-            warn("Invalid command")
-        self.usage()
+
+@register_command
+class FollowCommand(GenericCommand):
+    """View/modify the follow-fork-mode setting of GDB. By default, GDB will follow parent
+    when it starts the process. This command allows to change that setting."""
+    _cmdline_ = "follow"
+    _category_ = "Misc"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('command', nargs='?', default=None, choices=[None, 'child', 'parent'], metavar='{child,parent}',
+                        help='set gdb follow settings.')
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_not_qemu_system
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        if args.command is None:
+            ret = gdb.execute("show follow-fork-mode", to_string=True)
+            i = ret.find("\"child\"")
+            if i >= 0:
+                msg = "follow " + Color.redify("Child")
+            else:
+                msg = "follow " + Color.redify("Parent")
+            gef_print(msg)
+        elif args.command == "child":
+            info("Follow child")
+            gdb.execute("set follow-fork-mode child")
+        elif args.command == "parent":
+            info("Follow parent")
+            gdb.execute("set follow-fork-mode parent")
+        return
+
+
+@register_command
+class SmartCppFunctionNameCommand(GenericCommand):
+    """Toggle the setting of `config context.smart_cpp_function_name`."""
+    _cmdline_ = "smart-cpp-function-name"
+    _category_ = "Misc"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        setting = gdb.execute("gef config context.smart_cpp_function_name", to_string=True)
+        if "False" in setting:
+            gdb.execute("gef config context.smart_cpp_function_name true", to_string=True)
+        else:
+            gdb.execute("gef config context.smart_cpp_function_name false", to_string=True)
         return
 
 
@@ -33864,61 +33916,6 @@ def get_section_base_address_by_list(names):
         if page_start is not None:
             return page_start
     return None
-
-
-@register_command
-class SmartCppFunctionNameCommand(GenericCommand):
-    """Toggle the setting of `config context.smart_cpp_function_name`."""
-    _cmdline_ = "smart-cpp-function-name"
-    _syntax_ = "{:s}".format(_cmdline_)
-    _category_ = "Misc"
-
-    def do_invoke(self, argv):
-        self.dont_repeat()
-        setting = gdb.execute("gef config context.smart_cpp_function_name", to_string=True)
-        if "False" in setting:
-            gdb.execute("gef config context.smart_cpp_function_name true", to_string=True)
-        else:
-            gdb.execute("gef config context.smart_cpp_function_name false", to_string=True)
-        return
-
-
-@register_command
-class FollowCommand(GenericCommand):
-    """View/modify the follow-fork-mode setting of GDB. By default, GDB will follow parent
-    when it starts the process. This command allows to change that setting."""
-    _cmdline_ = "follow"
-    _syntax_ = "{:s} (child|parent)".format(_cmdline_)
-    _category_ = "Misc"
-
-    @only_if_not_qemu_system
-    def do_invoke(self, argv):
-        self.dont_repeat()
-
-        argc = len(argv)
-
-        if argc == 0:
-            ret = gdb.execute("show follow-fork-mode", to_string=True)
-            i = ret.find("\"child\"")
-            if i >= 0:
-                msg = "follow " + Color.redify("Child")
-            else:
-                msg = "follow " + Color.redify("Parent")
-            gef_print(msg)
-            return
-
-        elif argc == 1:
-            if argv[0] == "child":
-                info("Follow child")
-                gdb.execute("set follow-fork-mode child")
-                return
-            elif argv[0] == "parent":
-                info("Follow parent")
-                gdb.execute("set follow-fork-mode parent")
-                return
-            warn("Invalid command")
-        self.usage()
-        return
 
 
 @register_command
