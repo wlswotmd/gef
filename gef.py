@@ -20236,21 +20236,24 @@ class XFilesCommand(GenericCommand):
     `info files`, by retrieving more information from extra sources, and providing a better
     display with REGEX filtering."""
     _cmdline_ = "xfiles"
-    _syntax_ = "{:s} [REGEX]".format(_cmdline_)
-    _example_ = "\n"
-    _example_ += "{:s} libc\n".format(_cmdline_)
-    _example_ += "{:s} IO_vtables".format(_cmdline_)
     _category_ = "Process Information"
 
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('filter', metavar='FILTER', nargs='*', help='regex filter string.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} libc\n".format(_cmdline_)
+    _example_ += "{:s} got plt\n".format(_cmdline_)
+    _example_ += "{:s} IO_vtables".format(_cmdline_)
+
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         headers = ["Start", "End", "Name", "File"]
         legend = "{:<{w}s}{:<{w}s}{:<21s} {:s}".format(*headers, w=get_memory_alignment() * 2 + 3)
         gef_print(Color.colorify(legend, get_gef_setting("theme.table_heading")))
-
-        filter_patterns = argv
 
         for xfile in get_info_files():
             lines = []
@@ -20260,45 +20263,45 @@ class XFilesCommand(GenericCommand):
             lines.append(xfile.filename)
             line = " ".join(lines)
 
-            if not filter_patterns:
+            if not args.filter:
                 gef_print(line)
             else:
-                for filt in filter_patterns:
+                for filt in args.filter:
                     if re.search(filt, line):
                         gef_print(line)
+                        break
         return
 
 
 @register_command
-class XAddressInfoCommand(GenericCommand):
+class XInfoCommand(GenericCommand):
     """Retrieve and display runtime information for the location(s) given as parameter."""
     _cmdline_ = "xinfo"
-    _syntax_ = "{:s} LOCATION".format(_cmdline_)
-    _example_ = "{:s} $pc".format(_cmdline_)
     _category_ = "Process Information"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('location', metavar='LOCATION', nargs='+', type=parse_address,
+                        help='the memory address you want to show the map information.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} $pc".format(_cmdline_)
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         return
 
+    @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if not argv:
-            err("At least one valid address must be specified")
-            self.usage()
-            return
-
-        for sym in argv:
+        for location in args.location:
             try:
-                addr = align_address(parse_address(sym))
-                gef_print(titlify("xinfo: {:#x}".format(addr)))
-                self.infos(addr)
-
-            except gdb.error as gdb_err:
-                err("{:s}".format(str(gdb_err)))
+                gef_print(titlify("xinfo: {:#x}".format(location)))
+                self.infos(location)
+            except gdb.error as gdb_error:
+                err(str(gdb_error))
         return
 
     def infos(self, address):
