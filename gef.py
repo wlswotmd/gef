@@ -21606,30 +21606,27 @@ class DestructorDumpCommand(GenericCommand):
 class GotCommand(GenericCommand):
     """Display current status of the got/plt inside the process."""
     _cmdline_ = "got"
-    _syntax_ = "{:s} [-h] [-f FILE_NAME] [-a LOADED_BASE_ADDRESS] [FILTER, ...] ".format(_cmdline_)
-    _example_ = "{:s} read print # filter specified keyword\n".format(_cmdline_)
-    _example_ += "{:s} -f /usr/lib/x86_64-linux-gnu/libc.so.6 # target the library's GOT\n".format(_cmdline_)
-    _example_ += "{:s} -f /bin/ls -a 0x4000000000 # use specified address, it is useful under qemu".format(_cmdline_)
     _category_ = "Process Information"
     _aliases_ = ["plt"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-f', dest='file', help='the filename you want to parse.')
+    parser.add_argument('-e', dest='elf_address', type=parse_address, help='the elf address you want to parse.')
+    parser.add_argument('-r', dest='remote', action='store_true',
+                        help='parse remote binary if download feature is available. (default: %(default)s)')
+    parser.add_argument('-v', dest='verbose', action='store_true', help='verbose output.')
+    parser.add_argument('filter', metavar='FILTER', nargs='*', help='filter string')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} read print                              # filter specified keyword\n".format(_cmdline_)
+    _example_ += "{:s} -f /usr/lib/x86_64-linux-gnu/libc.so.6 # target the library's GOT\n".format(_cmdline_)
+    _example_ += "{:s} -f /bin/ls -e 0x4000000000             # use specified address, it is useful under qemu".format(_cmdline_)
 
     def __init__(self, *args, **kwargs):
         super().__init__(complete=gdb.COMPLETE_FILENAME)
         self.add_setting("function_resolved", "green", "Line color of the got command output if the function has been resolved")
         self.add_setting("function_not_resolved", "yellow", "Line color of the got command output if the function has not been resolved")
         return
-
-    def get_base_address(self):
-        if self.base_address_hint:
-            return self.base_address_hint
-        # getting vmmap to understand the boundaries of the binary
-        # we will use this info to understand if a function has been resolved or not.
-        vmmap = get_process_maps()
-        try:
-            return min([x.page_start for x in vmmap if x.path == self.filename_vmmap])
-        except Exception:
-            # not found
-            return None
 
     def get_jmp_slots(self):
         try:
@@ -21684,7 +21681,7 @@ class GotCommand(GenericCommand):
 
             # fix address
             if checksec(self.filename)["PIE"]:
-                address += self.get_base_address()
+                address += self.base_address
 
             # save
             array = output.get(type, [])
@@ -21713,7 +21710,7 @@ class GotCommand(GenericCommand):
 
             # fix addreess
             if checksec(self.filename)["PIE"]:
-                address += self.get_base_address()
+                address += self.base_address
 
             # save
             # Since DT_REL (used at i386) has no r_addend, the information of identification does not exist.
@@ -21734,8 +21731,8 @@ class GotCommand(GenericCommand):
 
         # fix address
         if checksec(self.filename)["PIE"]:
-            plt_begin += self.get_base_address()
-            plt_end += self.get_base_address()
+            plt_begin += self.base_address
+            plt_end += self.base_address
 
         return plt_begin, plt_end
 
@@ -21752,8 +21749,8 @@ class GotCommand(GenericCommand):
             sh_start = shdr.sh_addr
             sh_end = shdr.sh_addr + shdr.sh_size
             if checksec(self.filename)["PIE"]:
-                sh_start += self.get_base_address()
-                sh_end += self.get_base_address()
+                sh_start += self.base_address
+                sh_end += self.base_address
             ranges.append([shdr.sh_name, sh_start, sh_end])
         return ranges
 
@@ -21774,12 +21771,6 @@ class GotCommand(GenericCommand):
             return ""
 
     def print_plt_got(self):
-        # retrieve base address
-        base_address = self.get_base_address()
-        if base_address is None:
-            err("Not found {:s} in memory".format(self.filename_vmmap))
-            return
-
         # retrieve jump slots using readelf
         jmpslots = self.get_jmp_slots()
 
@@ -21790,13 +21781,18 @@ class GotCommand(GenericCommand):
         plt_begin, plt_end = self.get_plt_range()
 
         # print legend
-        gef_print(titlify("{:s}".format(self.filename)))
-        fmt = "{:>9s} {:s} {:>14s} @ {:12s} ({:>8s}) {:>9s} {:s} {:>14s} @ {:12s} ({:>8s}) {:s}"
-        legend = [
-            "TYPE", VERTICAL_LINE,
-            "PLT", "Section", "Offset", "reloc_arg", VERTICAL_LINE,
-            "GOT", "Section", "Offset", "Symbol -> GOTvalue",
-        ]
+        if self.verbose:
+            fmt = "{:>9s} {:s} {:>14s} @ {:12s} {:>8s} {:>9s} {:s} {:>14s} @ {:12s} {:>8s} {:s}"
+            legend = [
+                "TYPE", VERTICAL_LINE,
+                "PLT", "Section", "Offset", "reloc_arg", VERTICAL_LINE,
+                "GOT", "Section", "Offset", "Symbol -> GOTvalue",
+            ]
+        else:
+            fmt = "{:>14s} {:s} {:>14s} {:s}"
+            legend = [
+                "PLT", VERTICAL_LINE, "GOT", "Symbol -> GOTvalue",
+            ]
         gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
         # link each PLT entries and each GOT entries
@@ -21812,9 +21808,9 @@ class GotCommand(GenericCommand):
                 plt_address = plt_address.pop(0)
 
             # resolve offset from absolute address
-            got_offset = got_address - base_address
+            got_offset = got_address - self.base_address
             if plt_address:
-                plt_offset = plt_address - base_address
+                plt_offset = plt_address - self.base_address
 
             # read the address of the function
             try:
@@ -21828,7 +21824,7 @@ class GotCommand(GenericCommand):
                 got_value_sym = ""
             elif plt_begin <= got_value < plt_end: # Non-PIE
                 got_value_sym = self.get_section_sym(got_value)
-            elif plt_begin - base_address <= got_value < plt_end - base_address: # PIE
+            elif plt_begin - self.base_address <= got_value < plt_end - self.base_address: # PIE
                 got_value_sym = self.get_section_sym(got_value)
             else:
                 got_value_sym = get_symbol_string(got_value)
@@ -21838,7 +21834,7 @@ class GotCommand(GenericCommand):
                 color = self.get_setting("function_resolved") # something is wrong
             elif plt_begin <= got_value < plt_end: # Non-PIE
                 color = self.get_setting("function_not_resolved") # function hasn't already been resolved
-            elif plt_begin - base_address <= got_value < plt_end - base_address: # PIE
+            elif plt_begin - self.base_address <= got_value < plt_end - self.base_address: # PIE
                 color = self.get_setting("function_not_resolved") # function hasn't already been resolved
             else:
                 color = self.get_setting("function_resolved") # function has already been resolved
@@ -21850,19 +21846,32 @@ class GotCommand(GenericCommand):
                 reloc_arg_info = "{:#9x}".format(reloc_arg)
 
             # make plt info
-            if plt_address:
-                plt_section = self.get_section_name(plt_address) + self.perm(plt_address)
-                plt_info = "{:#14x} @{:13s} ({:#8x}) {:9s}".format(plt_address, plt_section, plt_offset, reloc_arg_info)
+            if self.verbose:
+                if plt_address:
+                    plt_section = self.get_section_name(plt_address) + self.perm(plt_address)
+                    plt_info = "{:#14x} @{:13s} {:#8x} {:9s}".format(plt_address, plt_section, plt_offset, reloc_arg_info)
+                else:
+                    plt_info = "{:>14s}  {:13s} {:>8s} {:9s}".format("Not found", "", "", reloc_arg_info)
             else:
-                plt_info = "{:>14s}  {:13s}  {:>8s}  {:9s}".format("Not found", "", "", reloc_arg_info)
+                if plt_address:
+                    plt_info = "{:#14x}".format(plt_address)
+                else:
+                    plt_info = "{:>14s}".format("Not found")
 
             # make got info
-            got_section = self.get_section_name(got_address) + self.perm(got_address)
-            got_value_c = Color.colorify("{:s} {:s} {:#x}{:s}".format(name, RIGHT_ARROW, got_value, got_value_sym), color)
-            got_info = "{:#14x} @{:13s} ({:#8x}) {:s}".format(got_address, got_section, got_offset, got_value_c)
+            if self.verbose:
+                got_section = self.get_section_name(got_address) + self.perm(got_address)
+                got_value_c = Color.colorify("{:s} {:s} {:#x}{:s}".format(name, RIGHT_ARROW, got_value, got_value_sym), color)
+                got_info = "{:#14x} @{:13s} {:#8x} {:s}".format(got_address, got_section, got_offset, got_value_c)
+            else:
+                got_value_c = Color.colorify("{:s} {:s} {:#x}{:s}".format(name, RIGHT_ARROW, got_value, got_value_sym), color)
+                got_info = "{:#14x} {:s}".format(got_address, got_value_c)
 
             # make line
-            line = "{:>9s} {:s} {:s} {:s} {:s}".format(type, VERTICAL_LINE, plt_info, VERTICAL_LINE, got_info)
+            if self.verbose:
+                line = "{:>9s} {:s} {:s} {:s} {:s}".format(type, VERTICAL_LINE, plt_info, VERTICAL_LINE, got_info)
+            else:
+                line = "{:s} {:s} {:s}".format(plt_info, VERTICAL_LINE, got_info)
 
             # save
             resolved_info.append([got_address, section_name, line])
@@ -21884,15 +21893,11 @@ class GotCommand(GenericCommand):
             gef_print(line)
         return
 
+    @parse_args
     @only_if_gdb_running
-    @only_if_gdb_target_local
     @only_if_not_qemu_system
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
-
-        if "-h" in argv:
-            self.usage()
-            return
 
         # setup readelf/objdump
         try:
@@ -21902,37 +21907,85 @@ class GotCommand(GenericCommand):
             err("{}".format(e))
             return
 
-        # get filename
-        if "-f" in argv:
-            # use specified file
-            idx = argv.index("-f")
-            self.filename_vmmap = self.filename = argv[idx + 1]
-            argv = argv[:idx] + argv[idx + 2:]
-        else:
-            # use main binary
-            self.filename = get_filepath() # /proc/<PID>/root/path/to/binary if another mnt namespace
-            self.filename_vmmap = get_filepath(append_proc_root_prefix=False)
-            if self.filename is None:
-                err("Missing info about architecture. Please set: `file /path/to/target_binary`")
+        local_filepath = None
+        vmmap_filepath = None
+        remote_filepath = None
+        tmp_filepath = None
+
+        if args.remote:
+            if not is_remote_debug():
+                err("-r option is allowed only remote debug.")
                 return
-        if not os.path.exists(self.filename):
-            err("{:s} does not exist".format(self.filename))
+
+            if args.file:
+                remote_filepath = args.file # if specified, assume it is remote
+                vmmap_filepath = args.file
+            elif gdb.current_progspace().filename:
+                f = gdb.current_progspace().filename
+                if f.startswith("target:"): # gdbserver
+                    f = f[7:]
+                remote_filepath = f
+                vmmap_filepath = f
+            elif get_pid(remote=True):
+                remote_filepath = "/proc/{:d}/exe".format(get_pid(remote=True))
+            else:
+                err("File name could not be determined.")
+                return
+
+            data = read_remote_file(remote_filepath, as_byte=True) # qemu-user is failed here, it is ok
+            if not data:
+                err("Failed to read remote filepath")
+                return
+            tmp_fd, tmp_filepath = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".elf", prefix="got-")
+            os.write(tmp_fd, data)
+            os.close(tmp_fd)
+            local_filepath = tmp_filepath
+            del data
+
+        elif args.file:
+            local_filepath = args.file
+
+        elif args.file is None:
+            local_filepath = get_filepath() # /proc/<PID>/root/path/to/binary if another mnt namespace
+            vmmap_filepath = get_filepath(append_proc_root_prefix=False)
+
+        if local_filepath is None:
+            err("File name could not be determined.")
             return
 
+        if not os.path.exists(local_filepath):
+            err("{:s} does not exist".format(local_filepath))
+            return
+
+        if remote_filepath:
+            print_filename = "{:s} (remote: {:s})".format(local_filepath, remote_filepath)
+        else:
+            print_filename = local_filepath
+        gef_print(titlify("PLT / GOT - {:s}".format(print_filename)))
+
         # get base address
-        self.base_address_hint = None
-        if "-a" in argv:
-            idx = argv.index("-a")
-            self.base_address_hint = int(argv[idx + 1], 0)
-            argv = argv[:idx] + argv[idx + 2:]
+        if args.elf_address:
+            base_address = args.elf_address
+        else:
+            vmmap = get_process_maps()
+            target_filepath = vmmap_filepath or local_filepath
+            try:
+                base_address = min([x.page_start for x in vmmap if x.path == target_filepath])
+            except Exception:
+                err("Not found {:s} in memory".format(target_filepath))
+                return
 
         # get the filtering parameter
-        self.filter = []
-        if argv:
-            self.filter = argv
+        self.filter = args.filter or []
+        self.filename = local_filepath
+        self.base_address = base_address
+        self.verbose = args.verbose
 
         # doit
         self.print_plt_got()
+
+        if tmp_filepath and os.path.exists(tmp_filepath):
+            os.unlink(tmp_filepath)
         return
 
 
