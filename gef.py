@@ -9827,6 +9827,23 @@ class GenericCommand(gdb.Command):
 
 
 @register_command
+class ResetCacheCommand(GenericCommand):
+    """Reset cache of all stored data. This command is here for debugging and test purposes,
+    GEF handles properly the cache reset under "normal" scenario."""
+    _cmdline_ = "reset-cache"
+    _category_ = "GEF Maintenance Command"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    def do_invoke(self, argv):
+        self.dont_repeat()
+        reset_all_caches(all=True)
+        return
+
+
+@register_command
 class NiCommand(GenericCommand):
     """nexti wrapper for specific arch.
     s390x: sometimes returns `PC not saved` when nexti command is executed.
@@ -19585,20 +19602,6 @@ class ASLRCommand(GenericCommand):
                 return
             warn("Invalid command")
         self.usage()
-        return
-
-
-@register_command
-class ResetCacheCommand(GenericCommand):
-    """Reset cache of all stored data. This command is here for debugging and test purposes, GEF
-    handles properly the cache reset under "normal" scenario."""
-    _cmdline_ = "reset-cache"
-    _syntax_ = _cmdline_
-    _category_ = "GEF Maintenance Command"
-
-    def do_invoke(self, argv):
-        self.dont_repeat()
-        reset_all_caches()
         return
 
 
