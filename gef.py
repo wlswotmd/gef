@@ -20104,40 +20104,40 @@ class VMMapCommand(GenericCommand):
     """Display a comprehensive layout of the virtual memory mapping. If a filter argument, GEF will
     filter out the mapping whose pathname do not match that filter."""
     _cmdline_ = "vmmap"
-    _syntax_ = "{:s} [--outer] [-v] [FILTER]".format(_cmdline_)
-    _example_ = "\n"
-    _example_ += "{:s} libc # print entry only `libc`\n".format(_cmdline_)
-    _example_ += "{:s} --outer # show qemu-user memory map; only valid in qemu-user mode\n".format(_cmdline_)
-    _example_ += "{:s} -v # show register info".format(_cmdline_)
     _category_ = "Process Information"
 
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-v', dest='verbose', action='store_true',
+                        help='also display pointed registers. (default: %(default)s)')
+    parser.add_argument('--outer', action='store_true',
+                        help="display qemu-user's memory map instead of emulated process's memory map. (default: %(default)s)")
+    parser.add_argument('filter', metavar='FILTER', nargs='?', help='filter string')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} libc             # show only lines containing the string `libc`\n".format(_cmdline_)
+    _example_ += "{:s} 0x555555577ab0   # show only lines included specified address\n".format(_cmdline_)
+    _example_ += "{:s} --outer          # show qemu-user memory map; only valid in qemu-user mode\n".format(_cmdline_)
+    _example_ += "{:s} -v               # show with registers".format(_cmdline_)
+
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         if is_qemu_system():
             info("Redirect to pagewalk")
-            gdb.execute("pagewalk {:s} {:s}".format(current_arch.arch.lower(), ' '.join(argv)))
+            gdb.execute("pagewalk")
             return
 
-        outer = False
-        if "--outer" in argv:
-            argv.remove("--outer")
-            if is_qemu_usermode():
-                outer = True
-            else:
-                err("Unsupported")
-                return
-
-        self.verbose = False
-        if "-v" in argv:
-            argv.remove("-v")
-            self.verbose = True
+        if args.outer and not is_qemu_usermode():
+            err("Unsupported")
+            return
 
         if is_qemu_usermode():
+            # the memory map may be changed, so retry memory exploring in get_process_maps()
             reset_all_caches(all=True)
 
-        vmmap = get_process_maps(outer)
+        vmmap = get_process_maps(args.outer)
         if not vmmap:
             for line in gdb.execute('info files', to_string=True).splitlines():
                 if line.startswith("Symbols from"):
@@ -20155,22 +20155,22 @@ class VMMapCommand(GenericCommand):
         gef_print(Color.colorify(legend, get_gef_setting("theme.table_heading")))
 
         for entry in vmmap:
-            if not argv:
-                self.print_entry(entry, outer)
+            if not args.filter:
+                self.print_entry(entry, args.outer, args.verbose)
                 continue
-            if argv[0] in entry.path:
-                self.print_entry(entry, outer)
-            elif self.is_integer(argv[0]):
-                addr = int(argv[0], 0)
+            if args.filter in entry.path:
+                self.print_entry(entry, args.outer, args.verbose)
+            elif self.is_integer(args.filter):
+                addr = int(args.filter, 0)
                 if addr >= entry.page_start and addr < entry.page_end:
-                    self.print_entry(entry, outer)
+                    self.print_entry(entry, args.outer, args.verbose)
 
-        if is_qemu_usermode() and not outer:
+        if is_qemu_usermode() and not args.outer:
             info("Searched from auxv, registers and stack values. There may be areas that cannot be detected.")
             info("Permission is based on ELF header or default value `rw-`. Dynamic permission changes cannot be detected.")
         return
 
-    def print_entry(self, entry, outer):
+    def print_entry(self, entry, outer, verbose):
         line_color = ""
         if entry.path == "[stack]":
             line_color = get_gef_setting("theme.address_stack")
@@ -20196,7 +20196,7 @@ class VMMapCommand(GenericCommand):
         line = " ".join(lines)
 
         # register info
-        if self.verbose:
+        if verbose:
             register_hints = []
             for regname in current_arch.all_registers:
                 regvalue = get_register(regname)
