@@ -18941,22 +18941,26 @@ class HexdumpByteCommand(HexdumpCommand):
 class PatchCommand(GenericCommand):
     """Write specified values to the specified address."""
     _cmdline_ = "patch"
-    _syntax_ = "\n"
-    _syntax_ += "{:s} qword|dword|word|byte [-h] [-e] [--phys] LOCATION VALUES\n".format(_cmdline_)
-    _syntax_ += '{:s} string [-h] [--phys] LOCATION "double-escaped string" [LENGTH]\n'.format(_cmdline_)
-    _syntax_ += '{:s} hexstring [-h] [--phys] LOCATION "hex-string" [LENGTH]\n'.format(_cmdline_)
-    _syntax_ += "{:s} pattern [-h] [--phys] LOCATION LENGTH\n".format(_cmdline_)
-    _syntax_ += "{:s} nop [-h] [--phys] [LOCATION] [-b BYTE_LENGTH|-i INST_COUNT]\n".format(_cmdline_)
-    _syntax_ += "{:s} inf|trap|ret|syscall [-h] [--phys] [LOCATION]\n".format(_cmdline_)
-    _syntax_ += "{:s} history [-h] \n".format(_cmdline_)
-    _syntax_ += "{:s} revert [-h] HISTORY_NUMBER".format(_cmdline_)
     _category_ = "Show/Modify Memory"
-    SUPPORTED_SIZES = {
-        "qword": (8, "Q"),
-        "dword": (4, "L"),
-        "word": (2, "H"),
-        "byte": (1, "B"),
-    }
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    subparsers = parser.add_subparsers(title='command', required=True)
+    subparsers.add_parser('byte')
+    subparsers.add_parser('word')
+    subparsers.add_parser('dword')
+    subparsers.add_parser('qword')
+    subparsers.add_parser('string')
+    subparsers.add_parser('hexstring')
+    subparsers.add_parser('pattern')
+    subparsers.add_parser('nop')
+    subparsers.add_parser('inf')
+    subparsers.add_parser('trap')
+    subparsers.add_parser('ret')
+    subparsers.add_parser('syscall')
+    subparsers.add_parser('history')
+    subparsers.add_parser('revert')
+    _syntax_ = parser.format_help()
+
     history = []
 
     def __init__(self, *args, **kwargs):
@@ -18982,57 +18986,41 @@ class PatchCommand(GenericCommand):
         ok("Patching {:d} bytes from {:s}".format(length, format_address(addr)))
         return
 
+    # for qword, dword, word, byte sub-commands
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if "-h" in argv:
+        SUPPORTED_SIZES = {
+            "qword": (8, "Q"),
+            "dword": (4, "L"),
+            "word": (2, "H"),
+            "byte": (1, "B"),
+        }
+        if self.format not in SUPPORTED_SIZES:
             self.usage()
             return
 
-        if not self.format:
-            self.usage()
-            return
-
-        phys_mode = False
-        if "--phys" in argv:
-            if not is_supported_physmode():
+        if args.phys:
+            if not is_qemu_system():
                 err("Unsupported. Check qemu version (at least: 4.1.0-rc0~, recommend: 5.x~)")
                 return
-            phys_mode = True
             orig_mode = get_current_mmu_mode()
-            argv.remove("--phys")
 
-        endian_reverse = False
-        if "-e" in argv:
-            endian_reverse = True
-            argv.remove("-e")
-
-        argc = len(argv)
-        if argc < 2:
-            self.usage()
-            return
-
-        location, values = argv[0], argv[1:]
-        fmt = self.format
-        if fmt not in self.SUPPORTED_SIZES:
-            self.usage()
-            return
-
-        if phys_mode:
             if orig_mode == "virt":
                 enable_phys()
 
         try:
-            addr = align_address(parse_address(location))
-            size, fcode = self.SUPPORTED_SIZES[fmt]
+            addr = args.location
+            size, fcode = SUPPORTED_SIZES[self.format]
 
-            if endian_reverse is False:
+            if args.endian_reverse is False:
                 d = "<" if is_little_endian() else ">"
             else:
                 d = ">" if is_little_endian() else "<"
 
-            for value in values:
+            for value in args.values:
                 value = parse_address(value) & ((1 << size * 8) - 1)
                 vstr = struct.pack(d + fcode, value)
                 self.patch(addr, vstr, size)
@@ -19041,7 +19029,7 @@ class PatchCommand(GenericCommand):
             self.usage()
 
         finally:
-            if phys_mode:
+            if args.phys:
                 if orig_mode == "virt":
                     disable_phys()
         return
@@ -19051,10 +19039,17 @@ class PatchCommand(GenericCommand):
 class PatchQwordCommand(PatchCommand):
     """Write specified QWORD to the specified address."""
     _cmdline_ = "patch qword"
-    _syntax_ = "{:s} [-h] [-e] [--phys] LOCATION QWORD1 [QWORD2 [QWORD3 ...]]".format(_cmdline_)
-    _example_ = "{:s}    $rip 0x4142434445464748 # write `HGFEDCBA` to [rip]\n".format(_cmdline_)
-    _example_ = "{:s} -e $rip 0x4142434445464748 # write `ABCDEFGH` to [rip]".format(_cmdline_)
     _category_ = "Show/Modify Memory"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-e", dest='endian_reverse', action='store_true', help='reverse endian. (default: %(default)s)')
+    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
+    parser.add_argument('location', metavar='LOCATION', type=parse_address, help='the memory address you want to patch.')
+    parser.add_argument('values', metavar='QWORD', nargs='*', help='the value you want to patch')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s}    $rip 0x4142434445464748 # write `HGFEDCBA` to [rip]\n".format(_cmdline_)
+    _example_ += "{:s} -e $rip 0x4142434445464748 # write `ABCDEFGH` to [rip]".format(_cmdline_)
 
     def __init__(self):
         super().__init__(prefix=False, complete=gdb.COMPLETE_LOCATION)
@@ -19066,10 +19061,17 @@ class PatchQwordCommand(PatchCommand):
 class PatchDwordCommand(PatchCommand):
     """Write specified DWORD to the specified address."""
     _cmdline_ = "patch dword"
-    _syntax_ = "{:s} [-h] [-e] [--phys] LOCATION DWORD1 [DWORD2 [DWORD3 ...]]".format(_cmdline_)
-    _example_ = "{:s}    $rip 0x41424344 # write `DCBA` to [rip]\n".format(_cmdline_)
-    _example_ = "{:s} -e $rip 0x41424344 # write `ABCD` to [rip]".format(_cmdline_)
     _category_ = "Show/Modify Memory"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-e", dest='endian_reverse', action='store_true', help='reverse endian. (default: %(default)s)')
+    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
+    parser.add_argument('location', metavar='LOCATION', type=parse_address, help='the memory address you want to patch.')
+    parser.add_argument('values', metavar='DWORD', nargs='*', help='the value you want to patch')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s}    $rip 0x41424344 # write `DCBA` to [rip]\n".format(_cmdline_)
+    _example_ += "{:s} -e $rip 0x41424344 # write `ABCD` to [rip]".format(_cmdline_)
 
     def __init__(self):
         super().__init__(prefix=False, complete=gdb.COMPLETE_LOCATION)
@@ -19081,10 +19083,17 @@ class PatchDwordCommand(PatchCommand):
 class PatchWordCommand(PatchCommand):
     """Write specified WORD to the specified address."""
     _cmdline_ = "patch word"
-    _syntax_ = "{:s} [-h] [-e] [--phys] LOCATION WORD1 [WORD2 [WORD3 ...]]".format(_cmdline_)
-    _example_ = "{:s}    $rip 0x4142 # write `BA` to [rip]\n".format(_cmdline_)
-    _example_ = "{:s} -e $rip 0x4142 # write `AB` to [rip]".format(_cmdline_)
     _category_ = "Show/Modify Memory"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-e", dest='endian_reverse', action='store_true', help='reverse endian. (default: %(default)s)')
+    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
+    parser.add_argument('location', metavar='LOCATION', type=parse_address, help='the memory address you want to patch.')
+    parser.add_argument('values', metavar='WORD', nargs='*', help='the value you want to patch')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s}    $rip 0x4142 # write `BA` to [rip]\n".format(_cmdline_)
+    _example_ += "{:s} -e $rip 0x4142 # write `AB` to [rip]".format(_cmdline_)
 
     def __init__(self):
         super().__init__(prefix=False, complete=gdb.COMPLETE_LOCATION)
@@ -19096,10 +19105,17 @@ class PatchWordCommand(PatchCommand):
 class PatchByteCommand(PatchCommand):
     """Write specified BYTE to the specified address."""
     _cmdline_ = "patch byte"
-    _syntax_ = "{:s} [-h] [-e] [--phys] LOCATION BYTE1 [BYTE2 [BYTE3 ...]]".format(_cmdline_)
-    _example_ = "{:s}    $rip 0x41 0x41 0x41 0x41 0x41\n".format(_cmdline_)
-    _example_ = "{:s} -e $rip 0x41 0x41 0x41 0x41 0x41 # -e is ignored".format(_cmdline_)
     _category_ = "Show/Modify Memory"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-e", dest='endian_reverse', action='store_true', help='reverse endian. (default: %(default)s)')
+    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
+    parser.add_argument('location', metavar='LOCATION', type=parse_address, help='the memory address you want to patch.')
+    parser.add_argument('values', metavar='BYTE', nargs='*', help='the value you want to patch')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s}    $rip 0x41 0x41 0x41 0x41 0x41\n".format(_cmdline_)
+    _example_ += "{:s} -e $rip 0x41 0x41 0x41 0x41 0x41 # -e is ignored".format(_cmdline_)
 
     def __init__(self):
         super().__init__(prefix=False, complete=gdb.COMPLETE_LOCATION)
@@ -19111,61 +19127,47 @@ class PatchByteCommand(PatchCommand):
 class PatchStringCommand(PatchCommand):
     """Write specified string to the specified memory location pointed by LOCATION."""
     _cmdline_ = "patch string"
-    _syntax_ = '{:s} [-h] [--phys] LOCATION "double backslash-escaped string" [LENGTH]'.format(_cmdline_)
-    _example_ = '{:s} $sp "AAAABBBB"'.format(_cmdline_)
     _category_ = "Show/Modify Memory"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
+    parser.add_argument('location', metavar='LOCATION', type=parse_address, help='the memory address you want to patch.')
+    parser.add_argument('vstr', metavar='"double backslash-escaped string"', type=lambda x: codecs.escape_decode(x)[0],
+                        help='the string you want to patch.')
+    parser.add_argument('length', metavar='LENGTH', nargs='?',
+                        type=lambda x: int(x, 0), help='the length of repeat. (default: %(default)s)')
+    _syntax_ = parser.format_help()
+
+    _example_ = '{:s} $sp "AAAABBBB"\n'.format(_cmdline_)
+    _example_ += '{:s} $sp "\\\\x41\\\\x41\\\\x41\\\\x41\\\\x42\\\\x42\\\\x42\\\\x42"'.format(_cmdline_)
 
     def __init__(self):
         super().__init__(prefix=False, complete=gdb.COMPLETE_LOCATION)
         return
 
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if "-h" in argv:
-            self.usage()
-            return
-
-        phys_mode = False
-        if "--phys" in argv:
-            if not is_supported_physmode():
+        if args.phys:
+            if not is_qemu_system():
                 err("Unsupported. Check qemu version (at least: 4.1.0-rc0~, recommend: 5.x~)")
                 return
-            phys_mode = True
             orig_mode = get_current_mmu_mode()
-            argv.remove("--phys")
 
-        length = None
-        if len(argv) == 3:
-            length = int(argv[-1], 0)
-            argv = argv[:-1]
-
-        argc = len(argv)
-        if argc != 2:
-            self.usage()
-            return
-
-        if phys_mode:
             if orig_mode == "virt":
                 enable_phys()
 
-        location, s = argv[0:2]
-        addr = align_address(parse_address(location))
+        if args.length:
+            vstr = args.vstr * (args.length // len(args.vstr) + 1)
+            vstr = vstr[:args.length]
+        else:
+            vstr = args.vstr
 
-        try:
-            s = codecs.escape_decode(s)[0]
-        except ValueError:
-            err("Could not decode string.")
-            return
+        self.patch(args.location, vstr, len(vstr))
 
-        if length:
-            s = s * (length // len(s) + 1)
-            s = s[:length]
-
-        self.patch(addr, s, len(s))
-
-        if phys_mode:
+        if args.phys:
             if orig_mode == "virt":
                 disable_phys()
         return
@@ -19175,61 +19177,46 @@ class PatchStringCommand(PatchCommand):
 class PatchHexStringCommand(PatchCommand):
     """Write specified string to the specified memory location pointed by LOCATION."""
     _cmdline_ = "patch hexstring"
-    _syntax_ = '{:s} [-h] [--phys] LOCATION "hex-string" [LENGTH]'.format(_cmdline_)
-    _example_ = '{:s} $sp "4141414142424242"'.format(_cmdline_)
     _category_ = "Show/Modify Memory"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
+    parser.add_argument('location', metavar='LOCATION', type=parse_address, help='the memory address you want to patch.')
+    parser.add_argument('hstr', metavar='"hex-string"', type=lambda x: bytes.fromhex(x),
+                        help='the string you want to patch.')
+    parser.add_argument('length', metavar='LENGTH', nargs='?',
+                        type=lambda x: int(x, 0), help='the length of repeat. (default: %(default)s)')
+    _syntax_ = parser.format_help()
+
+    _example_ = '{:s} $sp "4141414142424242"'.format(_cmdline_)
 
     def __init__(self):
         super().__init__(prefix=False, complete=gdb.COMPLETE_LOCATION)
         return
 
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if "-h" in argv:
-            self.usage()
-            return
-
-        phys_mode = False
-        if "--phys" in argv:
-            if not is_supported_physmode():
+        if args.phys:
+            if not is_qemu_system():
                 err("Unsupported. Check qemu version (at least: 4.1.0-rc0~, recommend: 5.x~)")
                 return
-            phys_mode = True
             orig_mode = get_current_mmu_mode()
-            argv.remove("--phys")
 
-        length = None
-        if len(argv) == 3:
-            length = int(argv[-1], 0)
-            argv = argv[:-1]
-
-        argc = len(argv)
-        if argc != 2:
-            self.usage()
-            return
-
-        if phys_mode:
             if orig_mode == "virt":
                 enable_phys()
 
-        location, s = argv[0:2]
-        addr = align_address(parse_address(location))
+        if args.length:
+            hstr = args.hstr * (args.length // len(args.hstr) + 1)
+            hstr = hstr[:args.length]
+        else:
+            hstr = args.hstr
 
-        try:
-            s = bytes.fromhex(s)
-        except ValueError:
-            err("Could not decode hex-string.")
-            return
+        self.patch(args.location, hstr, len(hstr))
 
-        if length:
-            s = s * (length // len(s) + 1)
-            s = s[:length]
-
-        self.patch(addr, s, len(s))
-
-        if phys_mode:
+        if args.phys:
             if orig_mode == "virt":
                 disable_phys()
         return
@@ -19239,47 +19226,39 @@ class PatchHexStringCommand(PatchCommand):
 class PatchPatternCommand(PatchCommand):
     """Write pattern string to the specified memory location pointed by LOCATION."""
     _cmdline_ = "patch pattern"
-    _syntax_ = "{:s} [-h] [--phys] LOCATION LENGTH".format(_cmdline_)
-    _example_ = "{:s} $sp 128".format(_cmdline_)
     _category_ = "Show/Modify Memory"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
+    parser.add_argument('location', metavar='LOCATION', type=parse_address, help='the memory address you want to patch.')
+    parser.add_argument('length', metavar='LENGTH', type=lambda x: int(x, 0), help='the length of repeat. (default: %(default)s)')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} $sp 128".format(_cmdline_)
 
     def __init__(self):
         super().__init__(prefix=False, complete=gdb.COMPLETE_LOCATION)
         return
 
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if "-h" in argv:
-            self.usage()
-            return
-
-        phys_mode = False
-        if "--phys" in argv:
-            if not is_supported_physmode():
+        if args.phys:
+            if not is_qemu_system():
                 err("Unsupported. Check qemu version (at least: 4.1.0-rc0~, recommend: 5.x~)")
                 return
-            phys_mode = True
             orig_mode = get_current_mmu_mode()
-            argv.remove("--phys")
 
-        argc = len(argv)
-        if argc != 2:
-            self.usage()
-            return
-
-        if phys_mode:
             if orig_mode == "virt":
                 enable_phys()
 
-        location, length = argv[0:2]
-        addr = align_address(parse_address(location))
-        s = gef_pystring(generate_cyclic_pattern(int(length, 0)))
+        pats = bytes(generate_cyclic_pattern(args.length))
 
-        self.patch(addr, s, len(s))
+        self.patch(args.location, pats, len(pats))
 
-        if phys_mode:
+        if args.phys:
             if orig_mode == "virt":
                 disable_phys()
         return
@@ -19287,12 +19266,23 @@ class PatchPatternCommand(PatchCommand):
 
 @register_command
 class PatchNopCommand(PatchCommand):
-    """Patch the instruction(s) pointed by parameters with NOP. Note: this command is architecture aware."""
+    """Patch the instruction(s) pointed by parameters with NOP."""
     _cmdline_ = "patch nop"
-    _syntax_ = "{:s} [-h] [--phys] [LOCATION] [-b BYTE_LENGTH|-i INST_COUNT]".format(_cmdline_)
-    _example_ = "{:s} $pc -i 2".format(_cmdline_)
     _category_ = "Show/Modify Memory"
-    _aliases_ = ["nop", ]
+    _aliases_ = ["nop"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
+    parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
+                        help='the memory address you want to patch. (default: current_arch.pc)')
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('-b', dest='byte_length', type=lambda x: int(x, 0),
+                       help='the patch length of byte (mutually exclusive with `-i`). (default: %(default)s)')
+    group.add_argument('-i', dest='inst_count', type=lambda x: int(x, 0), default=1,
+                       help='the patch length of instruction (mutually exclusive with `-b`). (default: 1)')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} $pc -i 2".format(_cmdline_)
 
     def __init__(self):
         super().__init__(prefix=False, complete=gdb.COMPLETE_LOCATION)
@@ -19331,73 +19321,47 @@ class PatchNopCommand(PatchCommand):
         self.patch(addr, insn * count, patch_bytes)
         return
 
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
-
-        if "-h" in argv:
-            self.usage()
-            return
 
         if current_arch.nop_insn is None:
             err("This command cannot work under this architecture.")
             return
 
-        phys_mode = False
-        if "--phys" in argv:
-            if not is_supported_physmode():
+        if args.phys:
+            if not is_qemu_system():
                 err("Unsupported. Check qemu version (at least: 4.1.0-rc0~, recommend: 5.x~)")
                 return
-            phys_mode = True
             orig_mode = get_current_mmu_mode()
-            argv.remove("--phys")
 
-        num_bytes = None
-        num_insts = None
-        if "-b" in argv:
-            try:
-                idx = argv.index("-b")
-                num_bytes = int(argv[idx + 1], 0)
-                argv = argv[:idx] + argv[idx + 2:]
-            except Exception:
-                self.usage()
-                return
-        elif "-i" in argv:
-            try:
-                idx = argv.index("-i")
-                num_insts = int(argv[idx + 1], 0)
-                argv = argv[:idx] + argv[idx + 2:]
-            except Exception:
-                self.usage()
-                return
-        else:
-            num_insts = 1
-
-        if phys_mode:
             if orig_mode == "virt":
                 enable_phys()
 
-        if argv:
-            try:
-                addr = parse_address(' '.join(argv))
-            except Exception:
-                self.usage()
-                if phys_mode:
-                    if orig_mode == "virt":
-                        disable_phys()
-                return
+        if args.location is None:
+            location = current_arch.pc
         else:
-            addr = current_arch.pc
+            location = args.location
 
-        if num_insts:
-            try:
-                num_bytes = self.get_insns_size(addr, num_insts)
-            except Exception:
-                self.usage()
-                return
-        self.patch_nop(addr, num_bytes)
+        try:
+            if args.inst_count:
+                num_bytes = self.get_insns_size(location, args.inst_count)
+            else:
+                num_bytes = args.byte_length
+        except Exception:
+            err("Failed to get patch bytes.")
+            if args.phys:
+                if orig_mode == "virt":
+                    disable_phys()
+            return
 
-        if phys_mode:
+        try:
+            self.patch_nop(location, num_bytes)
+        except Exception:
+            err("Failed to patch.")
+
+        if args.phys:
             if orig_mode == "virt":
                 disable_phys()
         return
@@ -19407,9 +19371,15 @@ class PatchNopCommand(PatchCommand):
 class PatchInfloopCommand(PatchCommand):
     """Patch the instruction(s) pointed by parameters with Infinity loop. Note: this command is architecture aware."""
     _cmdline_ = "patch inf"
-    _syntax_ = "{:s} [-h] [--phys] [LOCATION]".format(_cmdline_)
-    _example_ = "{:s} $pc".format(_cmdline_)
     _category_ = "Show/Modify Memory"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
+    parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
+                        help='the memory address you want to patch. (default: current_arch.pc)')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} $pc".format(_cmdline_)
 
     def __init__(self):
         super().__init__(prefix=False, complete=gdb.COMPLETE_LOCATION)
@@ -19431,46 +19401,35 @@ class PatchInfloopCommand(PatchCommand):
         self.patch(addr, insn, len(insn))
         return
 
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
-
-        if "-h" in argv:
-            self.usage()
-            return
 
         if current_arch.infloop_insn is None:
             err("This command cannot work under this architecture.")
             return
 
-        phys_mode = False
-        if "--phys" in argv:
-            if not is_supported_physmode():
+        if args.phys:
+            if not is_qemu_system():
                 err("Unsupported. Check qemu version (at least: 4.1.0-rc0~, recommend: 5.x~)")
                 return
-            phys_mode = True
             orig_mode = get_current_mmu_mode()
-            argv.remove("--phys")
 
-        if phys_mode:
             if orig_mode == "virt":
                 enable_phys()
 
-        if argv:
-            try:
-                addr = parse_address(' '.join(argv))
-            except Exception:
-                self.usage()
-                if phys_mode:
-                    if orig_mode == "virt":
-                        disable_phys()
-                return
+        if args.location is None:
+            location = current_arch.pc
         else:
-            addr = current_arch.pc
+            location = args.location
 
-        self.patch_infloop(addr)
+        try:
+            self.patch_infloop(location)
+        except Exception:
+            err("Failed to patch.")
 
-        if phys_mode:
+        if args.phys:
             if orig_mode == "virt":
                 disable_phys()
         return
@@ -19478,11 +19437,17 @@ class PatchInfloopCommand(PatchCommand):
 
 @register_command
 class PatchTrapCommand(PatchCommand):
-    """Patch the instruction(s) pointed by parameters with BKPT. Note: this command is architecture aware."""
+    """Patch the instruction(s) pointed by parameters with BKPT."""
     _cmdline_ = "patch trap"
-    _syntax_ = "{:s} [-h] [--phys] [LOCATION]".format(_cmdline_)
-    _example_ = "{:s} $pc".format(_cmdline_)
     _category_ = "Show/Modify Memory"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
+    parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
+                        help='the memory address you want to patch. (default: current_arch.pc)')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} $pc".format(_cmdline_)
 
     def __init__(self):
         super().__init__(prefix=False, complete=gdb.COMPLETE_LOCATION)
@@ -19504,46 +19469,35 @@ class PatchTrapCommand(PatchCommand):
         self.patch(addr, insn, len(insn))
         return
 
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
-
-        if "-h" in argv:
-            self.usage()
-            return
 
         if current_arch.trap_insn is None:
             err("This command cannot work under this architecture.")
             return
 
-        phys_mode = False
-        if "--phys" in argv:
-            if not is_supported_physmode():
+        if args.phys:
+            if not is_qemu_system():
                 err("Unsupported. Check qemu version (at least: 4.1.0-rc0~, recommend: 5.x~)")
                 return
-            phys_mode = True
             orig_mode = get_current_mmu_mode()
-            argv.remove("--phys")
 
-        if phys_mode:
             if orig_mode == "virt":
                 enable_phys()
 
-        if argv:
-            try:
-                addr = parse_address(' '.join(argv))
-            except Exception:
-                self.usage()
-                if phys_mode:
-                    if orig_mode == "virt":
-                        disable_phys()
-                return
+        if args.location is None:
+            location = current_arch.pc
         else:
-            addr = current_arch.pc
+            location = args.location
 
-        self.patch_trap(addr)
+        try:
+            self.patch_trap(location)
+        except Exception:
+            err("Failed to patch.")
 
-        if phys_mode:
+        if args.phys:
             if orig_mode == "virt":
                 disable_phys()
         return
@@ -19551,11 +19505,17 @@ class PatchTrapCommand(PatchCommand):
 
 @register_command
 class PatchRetCommand(PatchCommand):
-    """Patch the instruction(s) pointed by parameters with RET. Note: this command is architecture aware."""
+    """Patch the instruction(s) pointed by parameters with RET."""
     _cmdline_ = "patch ret"
-    _syntax_ = "{:s} [-h] [--phys] [LOCATION]".format(_cmdline_)
-    _example_ = "{:s} $pc".format(_cmdline_)
     _category_ = "Show/Modify Memory"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
+    parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
+                        help='the memory address you want to patch. (default: current_arch.pc)')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} $pc".format(_cmdline_)
 
     def __init__(self):
         super().__init__(prefix=False, complete=gdb.COMPLETE_LOCATION)
@@ -19577,46 +19537,35 @@ class PatchRetCommand(PatchCommand):
         self.patch(addr, insn, len(insn))
         return
 
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
-
-        if "-h" in argv:
-            self.usage()
-            return
 
         if current_arch.ret_insn is None:
             err("This command cannot work under this architecture.")
             return
 
-        phys_mode = False
-        if "--phys" in argv:
-            if not is_supported_physmode():
+        if args.phys:
+            if not is_qemu_system():
                 err("Unsupported. Check qemu version (at least: 4.1.0-rc0~, recommend: 5.x~)")
                 return
-            phys_mode = True
             orig_mode = get_current_mmu_mode()
-            argv.remove("--phys")
 
-        if phys_mode:
             if orig_mode == "virt":
                 enable_phys()
 
-        if argv:
-            try:
-                addr = parse_address(' '.join(argv))
-            except Exception:
-                self.usage()
-                if phys_mode:
-                    if orig_mode == "virt":
-                        disable_phys()
-                return
+        if args.location is None:
+            location = current_arch.pc
         else:
-            addr = current_arch.pc
+            location = args.location
 
-        self.patch_ret(addr)
+        try:
+            self.patch_ret(location)
+        except Exception:
+            err("Failed to patch.")
 
-        if phys_mode:
+        if args.phys:
             if orig_mode == "virt":
                 disable_phys()
         return
@@ -19626,9 +19575,15 @@ class PatchRetCommand(PatchCommand):
 class PatchSyscallCommand(PatchCommand):
     """Patch the instruction(s) pointed by parameters with syscall. Note: this command is architecture aware."""
     _cmdline_ = "patch syscall"
-    _syntax_ = "{:s} [-h] [--phys] [LOCATION]".format(_cmdline_)
-    _example_ = "{:s} $pc".format(_cmdline_)
     _category_ = "Show/Modify Memory"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
+    parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
+                        help='the memory address you want to patch. (default: current_arch.pc)')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} $pc".format(_cmdline_)
 
     def __init__(self):
         super().__init__(prefix=False, complete=gdb.COMPLETE_LOCATION)
@@ -19650,46 +19605,35 @@ class PatchSyscallCommand(PatchCommand):
         self.patch(addr, insn, len(insn))
         return
 
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
-
-        if "-h" in argv:
-            self.usage()
-            return
 
         if current_arch.syscall_insn is None:
             err("This command cannot work under this architecture.")
             return
 
-        phys_mode = False
-        if "--phys" in argv:
-            if not is_supported_physmode():
+        if args.phys:
+            if not is_qemu_system():
                 err("Unsupported. Check qemu version (at least: 4.1.0-rc0~, recommend: 5.x~)")
                 return
-            phys_mode = True
             orig_mode = get_current_mmu_mode()
-            argv.remove("--phys")
 
-        if phys_mode:
             if orig_mode == "virt":
                 enable_phys()
 
-        if argv:
-            try:
-                addr = parse_address(' '.join(argv))
-            except Exception:
-                self.usage()
-                if phys_mode:
-                    if orig_mode == "virt":
-                        disable_phys()
-                return
+        if args.location is None:
+            location = current_arch.pc
         else:
-            addr = current_arch.pc
+            location = args.location
 
-        self.patch_syscall(addr)
+        try:
+            self.patch_syscall(location)
+        except Exception:
+            err("Failed to patch.")
 
-        if phys_mode:
+        if args.phys:
             if orig_mode == "virt":
                 disable_phys()
         return
@@ -19699,19 +19643,22 @@ class PatchSyscallCommand(PatchCommand):
 class PatchHistoryCommand(PatchCommand):
     """Show patch history."""
     _cmdline_ = "patch history"
-    _syntax_ = _cmdline_
     _category_ = "Show/Modify Memory"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
 
     def __init__(self):
         super().__init__(prefix=False)
         return
 
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         if self.history:
-            gef_print("[Newer]")
+            gef_print("[NEW]")
             for i, hist in enumerate(self.history):
                 b = ' '.join(["{:02x}".format(x) for x in hist["before_data"][:0x10]])
                 if len(hist["before_data"]) > 0x10:
@@ -19722,7 +19669,7 @@ class PatchHistoryCommand(PatchCommand):
                 sym = get_symbol_string(hist["addr"])
                 i_str = Color.boldify("{:d}".format(i))
                 gef_print("[{:s}] {:#x}{:s}: {:s} -> {:s}".format(i_str, hist["addr"], sym, b, a))
-            gef_print("[Older]")
+            gef_print("[OLD]")
         else:
             info("Patch history is empty.")
         return
@@ -19732,8 +19679,13 @@ class PatchHistoryCommand(PatchCommand):
 class PatchRevertCommand(PatchCommand):
     """Revert patch history."""
     _cmdline_ = "patch revert"
-    _syntax_ = "{:s} [-h] HISTORY_NUMBER".format(_cmdline_)
     _category_ = "Show/Modify Memory"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('revert_target', metavar='REVERT_TARGET_HISTORY', type=int,
+                        help='the history index number you want to revert.')
+    _syntax_ = parser.format_help()
+
     _example_ = "{:s} 0 # revert to patch history stack[0]\n".format(_cmdline_)
     _example_ += "{:s} 3 # revert to patch history stack[3] ([0]-[2] are also reverted)".format(_cmdline_)
 
@@ -19741,27 +19693,18 @@ class PatchRevertCommand(PatchCommand):
         super().__init__(prefix=False)
         return
 
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if "-h" in argv:
-            self.usage()
-            return
-
-        try:
-            revert_target = int(argv[0])
-        except Exception:
-            self.usage()
+        if not (0 <= args.revert_target < len(self.history)):
+            err("Invalid target index")
             gef_print(titlify("Patch history"))
             gdb.execute("patch history")
             return
 
-        if not (0 <= revert_target < len(self.history)):
-            err("Invalid target index")
-            return
-
-        revert_count = revert_target + 1
+        revert_count = args.revert_target + 1
         while self.history and revert_count > 0:
             hist = self.history.pop(0)
             b = ' '.join(["{:02x}".format(x) for x in hist["before_data"][:0x10]])
