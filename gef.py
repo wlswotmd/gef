@@ -8128,13 +8128,6 @@ def lookup_address(address):
     return Address(value=address, section=sect, info=info)
 
 
-def xor(data, key):
-    """Return `data` xor-ed with `key`."""
-    key = key.removeprefix("0x")
-    key = binascii.unhexlify(key)
-    return bytearray([x ^ y for x, y in zip(data, itertools.cycle(key))])
-
-
 def is_hex(pattern):
     """Return whether provided string is a hexadecimal value."""
     if not pattern.startswith("0x") and not pattern.startswith("0X"):
@@ -20343,94 +20336,109 @@ class XInfoCommand(GenericCommand):
 
 @register_command
 class XorMemoryCommand(GenericCommand):
-    """XOR a block of memory. The command allows to simply display the result, or patch it
-    runtime at runtime."""
+    """XOR a block of memory. The command allows to simply display the result, or patch it at runtime."""
     _cmdline_ = "xor-memory"
-    _syntax_ = "{:s} (display|patch) ADDRESS SIZE KEY".format(_cmdline_)
     _category_ = "Show/Modify Memory"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    subparsers = parser.add_subparsers(title='command', required=True)
+    subparsers.add_parser('display')
+    subparsers.add_parser('patch')
+    _syntax_ = parser.format_help()
 
     def __init__(self):
         super().__init__(prefix=True)
         return
 
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
-        self.usage()
         return
 
 
 @register_command
 class XorMemoryDisplayCommand(GenericCommand):
-    """Display a block of memory pointed by ADDRESS by xor-ing each byte with KEY. The key must be
+    """Display a block of memory by xor-ing each byte with specified key. The key must be
     provided in hexadecimal format."""
     _cmdline_ = "xor-memory display"
-    _syntax_ = "{:s} ADDRESS SIZE KEY".format(_cmdline_)
-    _example_ = "{:s} $sp 16 41414141".format(_cmdline_)
     _category_ = "Show/Modify Memory"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('location', metavar='LOCATION', type=parse_address,
+                        help='the address of data you want to xor.')
+    parser.add_argument('size', metavar='SIZE', type=parse_address,
+                        help='the size of data you want to xor.')
+    parser.add_argument('key', metavar='KEY', type=lambda x: bytes.fromhex(x),
+                        help='the data you want to xor as key.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} $sp 16 41414141".format(_cmdline_)
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         return
 
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if len(argv) != 3:
-            self.usage()
-            return
-
-        address = parse_address(argv[0])
-        length = int(argv[1], 0)
-        key = argv[2]
+        start_addr = args.location
+        end_addr = args.location + args.size
         try:
-            block = read_memory(address, length)
+            block = read_memory(start_addr, args.size)
         except gdb.MemoryError:
             err("Failed to read memory")
             return
-        info("Displaying XOR-ing {:#x}-{:#x} with {:s}".format(address, address + len(block), repr(key)))
+        info("Displaying XOR-ing {:#x}-{:#x} with {:s}".format(start_addr, end_addr, repr(args.key)))
 
         gef_print(titlify("Original block"))
-        gef_print(hexdump(block, base=address))
+        gef_print(hexdump(block, base=start_addr))
 
         gef_print(titlify("XOR-ed block"))
-        gef_print(hexdump(xor(block, key), base=address))
+        xored_block = bytearray([x ^ y for x, y in zip(block, itertools.cycle(args.key))])
+        gef_print(hexdump(xored_block, base=start_addr))
         return
 
 
 @register_command
 class XorMemoryPatchCommand(GenericCommand):
-    """Patch a block of memory pointed by ADDRESS by xor-ing each byte with KEY. The key must be
+    """Patch a block of memory by xor-ing each byte with specified key. The key must be
     provided in hexadecimal format."""
     _cmdline_ = "xor-memory patch"
-    _syntax_ = "{:s} ADDRESS SIZE KEY".format(_cmdline_)
-    _example_ = "{:s} $sp 16 41414141".format(_cmdline_)
     _category_ = "Show/Modify Memory"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('location', metavar='LOCATION', type=parse_address,
+                        help='the address of data you want to xor.')
+    parser.add_argument('size', metavar='SIZE', type=parse_address,
+                        help='the size of data you want to xor.')
+    parser.add_argument('key', metavar='KEY', type=lambda x: bytes.fromhex(x),
+                        help='the data you want to xor as key.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} $sp 16 41414141".format(_cmdline_)
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         return
 
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if len(argv) != 3:
-            self.usage()
-            return
-
-        address = parse_address(argv[0])
-        length = int(argv[1], 0)
-        key = argv[2]
+        start_addr = args.location
+        end_addr = args.location + args.size
         try:
-            block = read_memory(address, length)
+            block = read_memory(start_addr, args.size)
         except gdb.MemoryError:
             err("Failed to read memory")
             return
-        info("Patching XOR-ing {:#x}-{:#x} with '{:s}'".format(address, address + len(block), key))
-        xored_block = xor(block, key)
-        write_memory(address, xored_block, length)
+        info("Patching XOR-ing {:#x}-{:#x} with '{:s}'".format(start_addr, end_addr, repr(args.key)))
+        xored_block = bytearray([x ^ y for x, y in zip(block, itertools.cycle(args.key))])
+        gdb.execute("patch hexstring {:#x} {:s}".format(start_addr, xored_block.hex()))
         return
 
 
@@ -38652,6 +38660,111 @@ class MemoryCopyCommand(GenericCommand):
 
 
 @register_command
+class HashMemoryCommand(GenericCommand):
+    """Caluculate memory hash."""
+    _cmdline_ = "hash-memory"
+    _category_ = "Misc"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('location', metavar='LOCATION', type=parse_address, help='start address for hash calculation.')
+    parser.add_argument('size', metavar='SIZE', type=parse_address, help='the size for hash calculation.')
+    parser.add_argument('-v', dest='verbose', action='store_true', help='also print crc.')
+    _syntax_ = parser.format_help()
+
+    def __init__(self):
+        super().__init__(complete=gdb.COMPLETE_LOCATION)
+        return
+
+    def calc_hash(self, type, h, start_address, end_address):
+        step = 0x400 * gef_getpagesize()
+        if is_qemu_system():
+            step = gef_getpagesize()
+
+        for chunk_addr in range(start_address, end_address, step):
+            if chunk_addr + step > end_address:
+                chunk_size = end_address - chunk_addr
+            else:
+                chunk_size = step
+
+            try:
+                mem = read_memory(chunk_addr, chunk_size)
+            except gdb.MemoryError:
+                err("Memory read error")
+                return False
+
+            try:
+                if type == 1:
+                    h.update(mem)
+                elif type == 2:
+                    h.process(mem)
+            except ValueError:
+                return None
+
+            del mem
+        if type == 1:
+            return h.hexdigest()
+        elif type == 2:
+            return h.finalhex()
+        return None
+
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        gef_print("Address: {:#x}".format(args.location))
+        gef_print("Size: {:#x}".format(args.size))
+
+        # common
+        hash_dic1 = {
+            "md5": hashlib.md5(),
+            "sha1": hashlib.sha1(),
+            "sha224": hashlib.sha224(),
+            "sha256": hashlib.sha256(),
+            "sha384": hashlib.sha384(),
+            "sha512": hashlib.sha512(),
+            "sha3-224": hashlib.sha3_224(),
+            "sha3-256": hashlib.sha3_256(),
+            "sha3-384": hashlib.sha3_384(),
+            "sha3-512": hashlib.sha3_512(),
+        }
+        for hname, hfunc in hash_dic1.items():
+            h = self.calc_hash(1, hfunc, args.location, args.location + args.size)
+            if h is False:
+                return
+            if h is None:
+                continue
+            gef_print("{:20s}: {:s} ({:d}-bit)".format(hname, h, len(h) * 4))
+
+        if not args.verbose:
+            return
+
+        # crc
+        try:
+            crccheck = __import__("crccheck")
+        except ImportError:
+            msg = "Missing `crccheck` package for Python, install with: `pip install crccheck`."
+            raise ImportWarning(msg)
+
+        for name in crccheck.crc.__dict__:
+            if not name.startswith("Crc"):
+                continue
+            if name.startswith("Crccheck"):
+                continue
+            try:
+                hfunc = getattr(crccheck.crc, name)()
+            except TypeError:
+                continue
+            h = self.calc_hash(2, hfunc, args.location, args.location + args.size)
+            if h is False:
+                return
+            if h is None:
+                continue
+            gef_print("{:20s}: {:s} ({:d}-bit)".format(name, h, len(h) * 4))
+        return
+
+
+@register_command
 class IsMemoryZeroCommand(GenericCommand):
     """Checks if all the memory in the specified range is 0x00, 0xff."""
     _cmdline_ = "is-mem-zero"
@@ -49130,105 +49243,6 @@ class SwitchELCommand(GenericCommand):
         else:
             self.target_el = None
         self.switch_el()
-        return
-
-
-@register_command
-class MemoryHashCommand(GenericCommand):
-    """Caluculate memory hash."""
-    _cmdline_ = "hash-memory"
-    _syntax_ = "{:s} [-h] md5|sha1|sha224|sha256|sha384|sha512|crc16|crc32|crc64 ADDRESS SIZE".format(_cmdline_)
-    _category_ = "Misc"
-
-    def __init__(self):
-        super().__init__(complete=gdb.COMPLETE_LOCATION)
-        return
-
-    def calc_hash(self, type, h, start_address, end_address):
-        step = 0x400 * gef_getpagesize()
-        if is_qemu_system():
-            step = gef_getpagesize()
-
-        for chunk_addr in range(start_address, end_address, step):
-            if chunk_addr + step > end_address:
-                chunk_size = end_address - chunk_addr
-            else:
-                chunk_size = step
-
-            try:
-                mem = read_memory(chunk_addr, chunk_size)
-            except gdb.MemoryError:
-                err("Memory read error")
-                return None
-
-            if type == 1:
-                h.update(mem)
-            elif type == 2:
-                h.process(mem)
-
-            del mem
-        if type == 1:
-            return h.hexdigest()
-        elif type == 2:
-            return h.finalhex()
-        return None
-
-    @only_if_gdb_running
-    def do_invoke(self, argv):
-        self.dont_repeat()
-
-        if "-h" in argv:
-            self.usage()
-            return
-
-        if len(argv) != 3:
-            self.usage()
-            return
-
-        hashes = ["md5", "sha1", "sha224", "sha256", "sha384", "sha512", "crc16", "crc32", "crc64"]
-        if not argv[0] in hashes:
-            self.usage()
-            return
-
-        try:
-            address = int(argv[1], 0)
-            size = int(argv[2], 0)
-        except Exception:
-            self.usage()
-            return
-
-        gef_print("Address: {:#x}".format(address))
-        gef_print("Size: {:#x}".format(size))
-
-        if argv[0] == "md5":
-            h = self.calc_hash(1, hashlib.md5(), address, address + size)
-        elif argv[0] == "sha1":
-            h = self.calc_hash(1, hashlib.sha1(), address, address + size)
-        elif argv[0] == "sha224":
-            h = self.calc_hash(1, hashlib.sha224(), address, address + size)
-        elif argv[0] == "sha256":
-            h = self.calc_hash(1, hashlib.sha256(), address, address + size)
-        elif argv[0] == "sha384":
-            h = self.calc_hash(1, hashlib.sha384(), address, address + size)
-        elif argv[0] == "sha512":
-            h = self.calc_hash(1, hashlib.sha512(), address, address + size)
-        else:
-            try:
-                crccheck = __import__("crccheck")
-            except ImportError:
-                msg = "Missing `crccheck` package for Python, install with: `pip install crccheck`."
-                raise ImportWarning(msg)
-            if argv[0] == "crc16":
-                h = self.calc_hash(2, crccheck.crc.Crc16(), address, address + size)
-            elif argv[0] == "crc32":
-                h = self.calc_hash(2, crccheck.crc.Crc32(), address, address + size)
-            elif argv[0] == "crc64":
-                h = self.calc_hash(2, crccheck.crc.Crc64(), address, address + size)
-
-        if h is None:
-            return
-
-        gef_print("{:s} ({:d}-bit)".format(h, len(h) * 4))
         return
 
 

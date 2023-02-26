@@ -349,8 +349,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/tohex-unhex.png)
 * `byteswap`: shows transformation little-endian <-> big-endian.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/byteswap.png)
-* `hash-memory`: calculates the hash.
-    * Supported: md5, sha1, sha224, sha256, sha384, sha512, crc16, crc32, crc64.
+* `hash-memory`: calculates various hashes/CRCs.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hash-memory.png)
 * `memcmp`: compares the contents of address A and B, whether virtual or physical.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/memcmp.png)
