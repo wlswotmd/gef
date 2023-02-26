@@ -20667,23 +20667,18 @@ class PatternSearchCommand(GenericCommand):
 class SropHintCommand(GenericCommand):
     """Hint for sigreturn oriented programming."""
     _cmdline_ = "srop-hint"
-    _syntax_ = "{:s} [-a x86|x64|arm|aarch64]".format(_cmdline_)
     _category_ = "Exploit Development"
 
-    def do_invoke(self, argv):
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-a', '--arch', choices=['x86', 'x64', 'arm', 'aarch64'],
+                        help='the target architecture.')
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if "-h" in argv:
-            self.usage()
-            return
-
-        if len(argv) >= 2:
-            if argv[0] == "-a" and argv[1] in ["x86", "x64", "arm", "aarch64"]:
-                mode = argv[1]
-            else:
-                self.usage()
-                return
-        else:
+        if args.arch is None:
             if is_x86_64():
                 mode = "x64"
             elif is_x86_32():
@@ -20693,7 +20688,9 @@ class SropHintCommand(GenericCommand):
             elif is_arm64():
                 mode = "aarch64"
             else:
-                mode = "x64"
+                mode = "x64" # default
+        else:
+            mode = args.arch
 
         s = ""
         if mode == "x64":
@@ -20846,10 +20843,13 @@ class SropHintCommand(GenericCommand):
 class Ret2dlHintCommand(GenericCommand):
     """Hint for ret2dl."""
     _cmdline_ = "ret2dl-hint"
-    _syntax_ = "{:s}".format(_cmdline_)
     _category_ = "Exploit Development"
 
-    def do_invoke(self, argv):
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    def do_invoke(self, args):
         self.dont_repeat()
 
         s = ""
