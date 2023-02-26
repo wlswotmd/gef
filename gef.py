@@ -9896,6 +9896,117 @@ class GefThemeCommand(GenericCommand):
 
 
 @register_command
+class HighlightCommand(GenericCommand):
+    """This command highlights user defined text matches which modifies GEF output universally."""
+    _cmdline_ = "highlight"
+    _category_ = "GEF Maintenance Command"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    subparsers = parser.add_subparsers(title='command', required=True)
+    subparsers.add_parser('add')
+    subparsers.add_parser('remove')
+    subparsers.add_parser('list')
+    subparsers.add_parser('clear')
+    _syntax_ = parser.format_help()
+
+    def __init__(self):
+        super().__init__(prefix=True)
+        self.add_setting("regex", False, "Enable regex highlighting")
+        return
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+        return
+
+
+@register_command
+class HighlightListCommand(GenericCommand):
+    """Show the current highlight table with matches to colors."""
+    _cmdline_ = "highlight list"
+    _category_ = "GEF Maintenance Command"
+    _aliases_ = ["highlight ls"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    def print_highlight_table(self):
+        if not highlight_table:
+            err("no matches found")
+            return
+
+        left_pad = max(map(len, highlight_table.keys()))
+        for match, color in sorted(highlight_table.items()):
+            gef_print("{} {} {}".format(Color.colorify(match.ljust(left_pad), color), VERTICAL_LINE, Color.colorify(color, color)))
+        return
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+        self.print_highlight_table()
+        return
+
+
+@register_command
+class HighlightClearCommand(GenericCommand):
+    """Clear the highlight table, remove all matches."""
+    _cmdline_ = "highlight clear"
+    _category_ = "GEF Maintenance Command"
+    _aliases_ = ["highlight reset"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+        highlight_table.clear()
+        return
+
+
+@register_command
+class HighlightAddCommand(GenericCommand):
+    """Add a match to the highlight table."""
+    _cmdline_ = "highlight add"
+    _category_ = "GEF Maintenance Command"
+    _aliases_ = ["highlight set"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('match', metavar='MATCH', help='the keyword phrase you want to highlight.')
+    parser.add_argument('color', metavar='COLOR', nargs='+', help='the color you want use to highlight.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} \"call   rcx\" bold yellow\n".format(_cmdline_)
+    _example_ += "use config `gef config highlight.regex true` if need regex"
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+        highlight_table[args.match] = ' '.join(args.color)
+        return
+
+
+@register_command
+class HighlightRemoveCommand(GenericCommand):
+    """Remove a match in the highlight table."""
+    _cmdline_ = "highlight remove"
+    _category_ = "GEF Maintenance Command"
+    _aliases_ = ["highlight del", "highlight unset", "highlight rm"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('match', metavar='MATCH', help='the keyword phrase you want to remove from highlight.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} \"call   rcx\"".format(_cmdline_)
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+        highlight_table.pop(args.match, None)
+        return
+
+
+@register_command
 class NiCommand(GenericCommand):
     """nexti wrapper for specific arch.
     s390x: it sometimes returns `PC not saved` when nexti command is executed.
@@ -21986,104 +22097,6 @@ class GotCommand(GenericCommand):
 
         if tmp_filepath and os.path.exists(tmp_filepath):
             os.unlink(tmp_filepath)
-        return
-
-
-@register_command
-class HighlightCommand(GenericCommand):
-    """This command highlights user defined text matches which modifies GEF output universally."""
-    _cmdline_ = "highlight"
-    _syntax_ = "{:s} (add|remove|list|clear)".format(_cmdline_)
-    _category_ = "GEF Maintenance Command"
-
-    def __init__(self):
-        super().__init__(prefix=True)
-        self.add_setting("regex", False, "Enable regex highlighting")
-        return
-
-    def do_invoke(self, argv):
-        self.dont_repeat()
-        self.usage()
-        return
-
-
-@register_command
-class HighlightListCommand(GenericCommand):
-    """Show the current highlight table with matches to colors."""
-    _cmdline_ = "highlight list"
-    _aliases_ = ["highlight ls"]
-    _syntax_ = _cmdline_
-    _category_ = "GEF Maintenance Command"
-
-    def print_highlight_table(self):
-        if not highlight_table:
-            err("no matches found")
-            return
-
-        left_pad = max(map(len, highlight_table.keys()))
-        for match, color in sorted(highlight_table.items()):
-            gef_print("{} {} {}".format(Color.colorify(match.ljust(left_pad), color), VERTICAL_LINE, Color.colorify(color, color)))
-        return
-
-    def do_invoke(self, argv):
-        self.dont_repeat()
-        self.print_highlight_table()
-        return
-
-
-@register_command
-class HighlightClearCommand(GenericCommand):
-    """Clear the highlight table, remove all matches."""
-    _cmdline_ = "highlight clear"
-    _aliases_ = ["highlight reset"]
-    _syntax_ = _cmdline_
-    _category_ = "GEF Maintenance Command"
-
-    def do_invoke(self, argv):
-        self.dont_repeat()
-        highlight_table.clear()
-        return
-
-
-@register_command
-class HighlightAddCommand(GenericCommand):
-    """Add a match to the highlight table."""
-    _cmdline_ = "highlight add"
-    _syntax_ = "{:s} MATCH COLOR".format(_cmdline_)
-    _aliases_ = ["highlight set"]
-    _example_ = "{:s} \"call   rcx\" bold yellow\n".format(_cmdline_)
-    _example_ += "use config `gef config highlight.regex true` if need regex"
-    _category_ = "GEF Maintenance Command"
-
-    def do_invoke(self, argv):
-        self.dont_repeat()
-
-        if len(argv) < 2:
-            self.usage()
-            return
-
-        match, color = argv[0], ' '.join(argv[1:])
-        highlight_table[match] = color
-        return
-
-
-@register_command
-class HighlightRemoveCommand(GenericCommand):
-    """Remove a match in the highlight table."""
-    _cmdline_ = "highlight remove"
-    _syntax_ = "{:s} MATCH".format(_cmdline_)
-    _aliases_ = ["highlight del", "highlight unset", "highlight rm"]
-    _example_ = "{:s} \"call   rcx\"".format(_cmdline_)
-    _category_ = "GEF Maintenance Command"
-
-    def do_invoke(self, argv):
-        self.dont_repeat()
-
-        if not argv:
-            self.usage()
-            return
-
-        highlight_table.pop(argv[0], None)
         return
 
 
