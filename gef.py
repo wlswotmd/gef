@@ -255,7 +255,7 @@ def perf_by_line_enable(f):
     return wrapper
 
 
-def reset_all_caches(all=False):
+def reset_gef_caches(all=False):
     """Free all caches. If an object is cached, it will have a callable attribute `cache_clear`
     which will be invoked to purge the function cache. Exceptionally, functions with names
     starting with `__` do not call `clear_cache`."""
@@ -2140,7 +2140,7 @@ def set_gef_setting(name, value, _type=None, _desc=None):
     """Set global gef settings.
     Raise ValueError if `name` doesn't exist and `type` and `desc`
     are not provided."""
-    reset_all_caches()
+    reset_gef_caches()
 
     global __config__
     if name not in __config__:
@@ -7701,9 +7701,9 @@ def get_process_maps_linux(pid, remote=False):
 
 # __get_explored_regions (used at qemu-user mode) is very slow,
 # Because it repeats read_memory many times to find the upper and lower bounds of the page.
-# functools.lru_cache() is not effective as-is, as it is cleared by reset_all_caches() each time the stepi runs.
+# functools.lru_cache() is not effective as-is, as it is cleared by reset_gef_caches() each time the stepi runs.
 # Fortunately, memory maps rarely change.
-# I decided to make it a cache clear mechanism independent of reset_all_caches() and
+# I decided to make it a cache clear mechanism independent of reset_gef_caches() and
 # introduce a mechanism to forcibly clear it with calling vmmap command.
 def clear_explored_regions():
     sys.modules["__main__"].__get_explored_regions.cache_clear()
@@ -8152,7 +8152,7 @@ check_info_file = True
 
 def hook_stop_handler(event):
     """GDB event handler for stop cases."""
-    reset_all_caches()
+    reset_gef_caches()
     if current_arch is None:
         set_arch(get_arch())
     gdb.execute("context")
@@ -8169,7 +8169,7 @@ def hook_stop_handler(event):
 
 def new_objfile_handler(event):
     """GDB event handler for new object file cases."""
-    reset_all_caches(all=True)
+    reset_gef_caches(all=True)
     set_arch()
     load_libc_args()
     return
@@ -8177,19 +8177,19 @@ def new_objfile_handler(event):
 
 def exit_handler(event):
     """GDB event handler for exit cases."""
-    reset_all_caches(all=True)
+    reset_gef_caches(all=True)
     return
 
 
 def memchanged_handler(event):
     """GDB event handler for mem changes cases."""
-    reset_all_caches()
+    reset_gef_caches()
     return
 
 
 def regchanged_handler(event):
     """GDB event handler for reg changes cases."""
-    reset_all_caches()
+    reset_gef_caches()
     return
 
 
@@ -9042,9 +9042,9 @@ def get_auxiliary_walk(offset=0):
 
 # __gef_get_auxiliary_values (under qemu-user mode) is very slow,
 # Because it may call __get_auxiliary_walk that repeats read_memory many times to find the auxv value.
-# functools.lru_cache() is not effective as-is, as it is cleared by reset_all_caches() each time you stepi runs.
+# functools.lru_cache() is not effective as-is, as it is cleared by reset_gef_caches() each time you stepi runs.
 # Fortunately, auxv rarely changes.
-# I decided to make it a cache clear mechanism independent of reset_all_caches().
+# I decided to make it a cache clear mechanism independent of reset_gef_caches().
 def clear_auxv_cache():
     sys.modules["__main__"].__gef_get_auxiliary_values.cache_clear()
     return
@@ -9267,7 +9267,7 @@ class FormatStringBreakpoint(gdb.Breakpoint):
         return
 
     def stop(self):
-        reset_all_caches()
+        reset_gef_caches()
         msg = []
         ptr, addr = current_arch.get_ith_parameter(self.num_args)
         addr = lookup_address(addr)
@@ -9348,7 +9348,7 @@ class TraceMallocBreakpoint(gdb.Breakpoint):
             # so it is deleted automatically if out of scope, so it must be checked by is_valid().
             if self.retbp.is_valid() and self.retbp.enabled:
                 return False
-        reset_all_caches()
+        reset_gef_caches()
         _, size = current_arch.get_ith_parameter(0)
         self.retbp = TraceMallocRetBreakpoint(size, self.name)
         return False
@@ -9493,7 +9493,7 @@ class TraceFreeBreakpoint(gdb.Breakpoint):
         return
 
     def stop(self):
-        reset_all_caches()
+        reset_gef_caches()
         _, addr = current_arch.get_ith_parameter(0)
         msg = []
         check_free_null = get_gef_setting("heap-analysis-helper.check_free_null")
@@ -9556,7 +9556,7 @@ class TraceFreeRetBreakpoint(gdb.FinishBreakpoint):
         return
 
     def stop(self):
-        reset_all_caches()
+        reset_gef_caches()
         wp = UafWatchpoint(self.addr)
         __heap_uaf_watchpoints__.append(wp)
         return False
@@ -9573,7 +9573,7 @@ class UafWatchpoint(gdb.Breakpoint):
 
     def stop(self):
         """If this method is triggered, we likely have a UaF. Break the execution and report it."""
-        reset_all_caches()
+        reset_gef_caches()
         try:
             frame = gdb.selected_frame()
         except Exception:
@@ -9603,7 +9603,7 @@ class EntryBreakBreakpoint(gdb.Breakpoint):
         return
 
     def stop(self):
-        reset_all_caches()
+        reset_gef_caches()
         return True
 
 
@@ -9617,7 +9617,7 @@ class NamedBreakpoint(gdb.Breakpoint):
         return
 
     def stop(self):
-        reset_all_caches()
+        reset_gef_caches()
         msg = "Hit breakpoint {} ({})".format(self.loc, Color.colorify(self.name, "bold red"))
         push_context_message("info", msg)
         return True
@@ -9631,7 +9631,7 @@ class SecondBreakpoint(gdb.Breakpoint):
         return
 
     def stop(self):
-        reset_all_caches()
+        reset_gef_caches()
         gdb.Breakpoint("*{:#x}".format(self.second_loc), gdb.BP_BREAKPOINT, internal=True, temporary=True)
         return True
 
@@ -9836,7 +9836,7 @@ class ResetCacheCommand(GenericCommand):
     @parse_args
     def do_invoke(self, argv):
         self.dont_repeat()
-        reset_all_caches(all=True)
+        reset_gef_caches(all=True)
         return
 
 
@@ -12484,7 +12484,7 @@ class MmapMemoryCommand(GenericCommand):
         cmd = "call mmap({:#x}, {:#x}, {:#x}, {:#x}, -1, 0)".format(args.location, args.size, perm, flags)
         gef_print(titlify(cmd))
         gdb.execute(cmd)
-        reset_all_caches()
+        reset_gef_caches()
         return
 
 
@@ -12818,7 +12818,7 @@ class UnicornEmulateCommand(GenericCommand):
             content += "    emu.reg_write({:s}, {:#x})\n".format(unicorn_registers[r], gregval)
         content += "\n"
 
-        reset_all_caches(all=True)
+        reset_gef_caches(all=True)
 
         vmmap = get_process_maps()
         if not vmmap:
@@ -20135,7 +20135,7 @@ class VMMapCommand(GenericCommand):
 
         if is_qemu_usermode():
             # the memory map may be changed, so retry memory exploring in get_process_maps()
-            reset_all_caches(all=True)
+            reset_gef_caches(all=True)
 
         vmmap = get_process_maps(args.outer)
         if not vmmap:
@@ -51583,7 +51583,7 @@ class GefConfigCommand(gdb.Command):
             err("{} expects type '{}'".format(argv[0], _type.__name__))
             return
 
-        reset_all_caches()
+        reset_gef_caches()
         __config__[argv[0]][0] = _newval
         get_gef_setting.cache_clear()
         return
