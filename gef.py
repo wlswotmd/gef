@@ -19877,13 +19877,19 @@ class DereferenceCommand(GenericCommand):
     """Dereference recursively from an address and display information.
     This acts like WinDBG `dps` command."""
     _cmdline_ = "dereference"
-    _syntax_ = "{:s} [-h] [LOCATION] [[L]NUM] [--no-pager]".format(_cmdline_)
-    _example_ = "\n"
-    _example_ += "{:s} $sp L20 # print 20 lines from $sp\n".format(_cmdline_)
-    _example_ += "{:s} $sp 20 # same as above".format(_cmdline_)
+    _aliases_ = ["telescope"]
     _category_ = "Show/Modify Memory"
-    _aliases_ = ["telescope", ]
     _repeat_ = True
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
+                        help='the memory address you want to dump. (default: current_arch.sp)')
+    parser.add_argument('nb_lines', metavar='NB_LINES', nargs='?', type=lambda x: int(x, 0), default=0x10,
+                        help='the count of lines. (default: %(default)s)')
+    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} $sp 20".format(_cmdline_)
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
@@ -19967,53 +19973,36 @@ class DereferenceCommand(GenericCommand):
 
         return line
 
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
-        if "-h" in argv:
-            self.usage()
-            return
+    def do_invoke(self, args):
 
-        target = "$sp"
-        nb = 10
-        no_pager = False
-
-        for arg in argv:
-            if arg.isdigit():
-                nb = int(arg)
-            elif arg[0] in ("l", "L") and arg[1:].isdigit():
-                nb = int(arg[1:])
-            elif arg == "--no-pager":
-                no_pager = True
-            else:
-                target = arg
-
-        try:
-            start_address = to_unsigned_long(safe_parse_and_eval(target))
-        except Exception:
-            err("Invalid address")
-            return
+        if args.location is None:
+            start_address = current_arch.sp
+        else:
+            start_address = args.location
 
         if get_gef_setting("context.grow_stack_down") is True:
-            from_insnum = nb * (self.repeat_count + 1) - 1
-            to_insnum = self.repeat_count * nb - 1
-            insnum_step = -1
+            from_address = args.nb_lines * (self.repeat_count + 1) - 1
+            to_address = self.repeat_count * args.nb_lines - 1
+            step = -1
         else:
-            from_insnum = 0 + self.repeat_count * nb
-            to_insnum = nb * (self.repeat_count + 1)
-            insnum_step = 1
+            from_address = 0 + self.repeat_count * args.nb_lines
+            to_address = args.nb_lines * (self.repeat_count + 1)
+            step = 1
 
         out = []
-        for idx in range(from_insnum, to_insnum, insnum_step):
+        for idx in range(from_address, to_address, step):
             try:
                 line = DereferenceCommand.pprint_dereferenced(start_address, idx)
                 out.append(line)
-            except Exception:
+            except RuntimeError:
                 # ex: nop DWORD PTR [rax+rax*1+0x0]
                 msg = "Cannot access memory at address {:#x}".format(start_address + idx * current_arch.ptrsize)
                 out.append("{} {}".format(Color.colorify("[!]", "bold red"), msg))
                 break
 
-        gef_print('\n'.join(out), not no_pager)
+        gef_print('\n'.join(out), less=not args.no_pager)
         return
 
 
