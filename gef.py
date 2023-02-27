@@ -34205,11 +34205,12 @@ class LdCommand(GenericCommand):
 class MagicCommand(GenericCommand):
     """Show Magic addresses / offsets."""
     _cmdline_ = "magic"
-    _syntax_ = "{:s} [-h] [--fj] [FILTER]".format(_cmdline_)
-    _example_ = "{:s}\n".format(_cmdline_)
-    _example_ += "{:s} --fj    # print _IO_xxx_jumps functions\n".format(_cmdline_)
-    _example_ += "{:s} system  # filtering by keyword (grep)".format(_cmdline_)
     _category_ = "Exploit Development"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("--fj", action='store_true', help='print _IO_xxx_jumps functions')
+    parser.add_argument('filter', metavar='FILTER', nargs='*', help='filter string')
+    _syntax_ = parser.format_help()
 
     def should_be_print(self, sym):
         if not self.filter:
@@ -34376,6 +34377,7 @@ class MagicCommand(GenericCommand):
         gef_print(titlify("Destructor"))
         self.resolve_and_print("_rtld_global->_dl_rtld_lock_recursive", ld)
         self.resolve_and_print("_rtld_global->_dl_rtld_unlock_recursive", ld)
+        self.resolve_and_print("error_print_progname", libc)
         gef_print(titlify("Unwind"))
         self.resolve_and_print("'DW.ref.__gxx_personality_v0'", codebase)
         return
@@ -34502,21 +34504,13 @@ class MagicCommand(GenericCommand):
         self.resolve_and_print_kernel("mmap_min_addr", kbase, maps, KernelAddressHeuristicFinder.get_mmap_min_addr)
         return
 
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if "-h" in argv:
-            self.usage()
-            return
-
-        if "--fj" in argv:
-            argv.remove("--fj")
-            self.print_file_jumps = True
-        else:
-            self.print_file_jumps = False
-
-        self.filter = argv
+        self.print_file_jumps = args.fj
+        self.filter = args.filter
 
         if is_qemu_system():
             self.magic_kernel()
