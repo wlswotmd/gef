@@ -38104,8 +38104,10 @@ class CetStatusCommand(GenericCommand):
 class TlsCommand(GenericCommand):
     """Show TLS base address."""
     _cmdline_ = "tls"
-    _syntax_ = _cmdline_
     _category_ = "Process Information"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
 
     @staticmethod
     def getfsgs_qemu_usermode():
@@ -38182,11 +38184,12 @@ class TlsCommand(GenericCommand):
             return TlsCommand.getgs()
         return None
 
+    @parse_args
     @only_if_gdb_running
     @only_if_gdb_target_local
     @only_if_not_qemu_system
     @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         if is_x86_64():
@@ -38233,14 +38236,17 @@ class TlsCommand(GenericCommand):
 class FsbaseCommand(GenericCommand):
     """Show fsbase address."""
     _cmdline_ = "fsbase"
-    _syntax_ = _cmdline_
     _category_ = "Process Information"
 
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    @parse_args
     @only_if_gdb_running
     @only_if_gdb_target_local
     @only_if_not_qemu_system
     @only_if_specific_arch(arch=["x86_32", "x86_64"])
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
         fs_base = TlsCommand.getfs()
         gef_print("$fs_base = {:#x}".format(fs_base))
@@ -38251,14 +38257,17 @@ class FsbaseCommand(GenericCommand):
 class GsbaseCommand(GenericCommand):
     """Show gsbase address."""
     _cmdline_ = "gsbase"
-    _syntax_ = _cmdline_
     _category_ = "Process Information"
 
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    @parse_args
     @only_if_gdb_running
     @only_if_gdb_target_local
     @only_if_not_qemu_system
     @only_if_specific_arch(arch=["x86_32", "x86_64"])
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
         gs_base = TlsCommand.getgs()
         gef_print("$gs_base = {:#x}".format(gs_base))
