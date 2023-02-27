@@ -35298,8 +35298,13 @@ class FpuCommand(GenericCommand):
 class ErrnoCommand(GenericCommand):
     """Converts errno (or argument) to its string representation."""
     _cmdline_ = "errno"
-    _syntax_ = "{:s} [errno] [all]".format(_cmdline_)
     _category_ = "Process Information"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('errno', metavar='ERRNO', nargs='?', type=lambda x: int(x, 0),
+                        help='show specific errno definitions.')
+    parser.add_argument('--all', action='store_true', help='show all errno definitions.')
+    _syntax_ = parser.format_help()
 
     # /usr/include/asm-generic/errno.h
     ERRNO_DICT = {
@@ -35437,26 +35442,26 @@ class ErrnoCommand(GenericCommand):
         133 : ["EHWPOISON",       "Memory page has hardware error"],
     }
 
-    def do_invoke(self, argv):
+    @parse_args
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if "all" in argv:
+        if args.all:
             for val, es in sorted(self.ERRNO_DICT.items()):
                 gef_print("{:3d} (={:#4x}): {:<15s}: \"{:s}\"".format(val, val, es[0], es[1]))
             return
 
-        try:
-            if len(argv) == 0:
-                if is_alive():
-                    val = parse_address("*__errno_location()")
-                else:
-                    warn("No debugging session active")
-                    return
-            else:
-                val = int(argv[0], 0)
-        except Exception:
-            self.usage()
-            return
+        if args.errno is None:
+            if not is_alive():
+                warn("No debugging session active")
+                return
+            try:
+                val = parse_address("*__errno_location()")
+            except:
+                err("Failed to get *__errno_location()")
+                return
+        else:
+            val = args.errno
 
         if val > 0xffff:
             if current_arch and current_arch.ptrsize == 4:
