@@ -34523,13 +34523,16 @@ class MagicCommand(GenericCommand):
 class OneGadgetCommand(GenericCommand):
     """Exec `one_gadget`."""
     _cmdline_ = "onegadget"
-    _syntax_ = _cmdline_
     _category_ = "Exploit Development"
 
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    @parse_args
     @only_if_gdb_running
     @only_if_gdb_target_local
     @only_if_not_qemu_system
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         libc = process_lookup_path(("libc-2.", "libc.so.6"))
@@ -34550,13 +34553,16 @@ class OneGadgetCommand(GenericCommand):
 class SeccompCommand(GenericCommand):
     """Exec `seccomp-tools`."""
     _cmdline_ = "seccomp"
-    _syntax_ = _cmdline_
     _category_ = "Exploit Development"
 
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    @parse_args
     @only_if_gdb_running
     @only_if_gdb_target_local
     @only_if_not_qemu_system
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         path = get_filepath()
