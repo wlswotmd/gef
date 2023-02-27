@@ -37991,8 +37991,10 @@ class SyscallTableViewCommand(GenericCommand):
 class CetStatusCommand(GenericCommand):
     """Show Intel CET settings."""
     _cmdline_ = "cet-status"
-    _syntax_ = _cmdline_
     _category_ = "Process Information"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
 
     def get_state(self, code_len):
         d = {}
@@ -38065,10 +38067,11 @@ class CetStatusCommand(GenericCommand):
         gef_on_stop_hook(hook_stop_handler)
         return r
 
+    @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
     @only_if_specific_arch(arch=["x86_32", "x86_64"])
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         try:
