@@ -34579,10 +34579,13 @@ class SeccompCommand(GenericCommand):
 class SysregCommand(GenericCommand):
     """Pretty-print system registers (not general parpose) from `info regiser`."""
     _cmdline_ = "sysreg"
-    _syntax_ = "{:s} [-h] [FILTER[, FILTER, ...]]".format(_cmdline_)
     _category_ = "Show/Modify Register"
 
-    def get_non_generic_regs(self, filt):
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('filter', metavar='FILTER', nargs='*', help='filter string')
+    _syntax_ = parser.format_help()
+
+    def get_non_generic_regs(self):
         res = gdb.execute("info register", to_string=True)
         res = res.strip()
         regs = {}
@@ -34591,14 +34594,14 @@ class SysregCommand(GenericCommand):
             if not m:
                 continue
             regname, regvalue = m.group(1), m.group(2)
-            if filt and not any([f.lower() in regname.lower() for f in filt]):
+            if self.filter and not any([f.lower() in regname.lower() for f in self.filter]):
                 continue
             regs[regname] = int(regvalue, 16)
         regs = list(filter(lambda x: "$" + x[0] not in current_arch.all_registers, sorted(regs.items())))
         return regs # [[regname, regvalue], ...]
 
-    def print_sysreg_compact(self, filt):
-        regs = self.get_non_generic_regs(filt)
+    def print_sysreg_compact(self):
+        regs = self.get_non_generic_regs()
         if regs:
             gef_print(titlify("System registers"))
         else:
@@ -34623,15 +34626,13 @@ class SysregCommand(GenericCommand):
             gef_print("  |  ".join(out))
         return
 
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if "-h" in argv:
-            self.usage()
-            return
-
-        self.print_sysreg_compact(argv)
+        self.filter = args.filter
+        self.print_sysreg_compact()
         return
 
 
@@ -34639,8 +34640,13 @@ class SysregCommand(GenericCommand):
 class MmxSetCommand(GenericCommand):
     """Simply set the value to mm."""
     _cmdline_ = "mmxset"
-    _syntax_ = "{:s} $mm0=0x1122334455667788".format(_cmdline_)
     _category_ = "Show/Modify Register"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('reg_and_value', metavar='REG=VALUE', help='MMX register and value you want to set.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} $mm0=0x1122334455667788".format(_cmdline_)
 
     def get_state(self, code_len):
         d = {}
@@ -34702,14 +34708,15 @@ class MmxSetCommand(GenericCommand):
         gef_on_stop_hook(hook_stop_handler)
         return
 
+    @parse_args
     @only_if_gdb_running
     @only_if_specific_arch(arch=["x86_32", "x86_64"])
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         # arg parse
         try:
-            reg, value = ''.join(argv).split("=")
+            reg, value = args.reg_and_value.split("=")
             value = int(value, 0)
         except Exception:
             self.usage()
@@ -34729,8 +34736,10 @@ class MmxSetCommand(GenericCommand):
 class MmxCommand(GenericCommand):
     """Show MMX registers."""
     _cmdline_ = "mmx"
-    _syntax_ = _cmdline_
     _category_ = "Show/Modify Register"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
 
     def print_mmx(self):
         gef_print(titlify("MMX Register (from fpu register)"))
@@ -34761,9 +34770,10 @@ class MmxCommand(GenericCommand):
             gef_print("{:s} : {:#018x}  |  {:s}".format(red(regname), regs[i], reghex))
         return
 
+    @parse_args
     @only_if_gdb_running
     @only_if_specific_arch(arch=["x86_32", "x86_64"])
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
         self.print_mmx()
         return
@@ -34773,17 +34783,23 @@ class MmxCommand(GenericCommand):
 class XmmSetCommand(GenericCommand):
     """Simply set the value to xmm / ymm."""
     _cmdline_ = "xmmset"
-    _syntax_ = "{:s} $ymm0=0x11223344556677889900aabbccddeeff9876543210".format(_cmdline_)
     _category_ = "Show/Modify Register"
 
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('reg_and_value', metavar='REG=VALUE', help='XMM/YMM register and value you want to set.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} $ymm0=0x11223344556677889900aabbccddeeff9876543210".format(_cmdline_)
+
+    @parse_args
     @only_if_gdb_running
     @only_if_specific_arch(arch=["x86_32", "x86_64"])
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         # arg parse
         try:
-            reg, value = ''.join(argv).split("=")
+            reg, value = args.reg_and_value.split("=")
             value = int(value, 0)
         except Exception:
             self.usage()
@@ -34814,9 +34830,12 @@ class XmmSetCommand(GenericCommand):
 class SseCommand(GenericCommand):
     """Show SSE registers."""
     _cmdline_ = "sse"
-    _syntax_ = "{:s} [-h] [-v]".format(_cmdline_)
-    _aliases_ = ["xmm"]
     _category_ = "Show/Modify Register"
+    _aliases_ = ["xmm"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-v', dest='verbose', action='store_true', help='also display bit information of mxcsr registers.')
+    _syntax_ = parser.format_help()
 
     def print_sse(self):
         gef_print(titlify("SSE Data Register"))
@@ -34889,9 +34908,11 @@ class SseCommand(GenericCommand):
 class AvxCommand(GenericCommand):
     """Show AVX registers."""
     _cmdline_ = "avx"
-    _syntax_ = _cmdline_
-    _aliases_ = ["ymm"]
     _category_ = "Show/Modify Register"
+    _aliases_ = ["ymm"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
 
     def print_avx(self):
         regs = []
@@ -34922,9 +34943,10 @@ class AvxCommand(GenericCommand):
             err("Not found avx registers")
         return
 
+    @parse_args
     @only_if_gdb_running
     @only_if_specific_arch(arch=["x86_32", "x86_64"])
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
         self.print_avx()
         return
@@ -34934,8 +34956,11 @@ class AvxCommand(GenericCommand):
 class FpuCommand(GenericCommand):
     """Show fpu registers (x86/x64:x87-fpu, ARM/ARM64:vfp-d16)."""
     _cmdline_ = "fpu"
-    _syntax_ = "{:s} [-h] [-v]".format(_cmdline_)
     _category_ = "Show/Modify Register"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-v', dest='verbose', action='store_true', help='also display bit information of fpu control registers.')
+    _syntax_ = parser.format_help()
 
     def f2u(self, a):
         u = lambda a: struct.unpack("<I", a)[0]
@@ -35246,21 +35271,18 @@ class FpuCommand(GenericCommand):
         PrintBitInfo("$fop", 11, None, bit_info=[]).print(reg, split=False)
         return
 
+    @parse_args
     @only_if_gdb_running
     @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
-
-        if "-h" in argv:
-            self.usage()
-            return
 
         if is_x86():
             self.print_fpu_x86()
         elif is_arm32() or is_arm64():
             self.print_fpu_arm()
 
-        if "-v" in argv:
+        if args.verbose:
             if is_x86():
                 self.print_fpu_x86_other()
             elif is_arm32():
