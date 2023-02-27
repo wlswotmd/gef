@@ -35490,9 +35490,15 @@ class ExtractHeapAddrCommand(GenericCommand):
     """Extract heap address from protected `fd` pointer of single linked-list.
     This will be introduced from glibc 2.32."""
     _cmdline_ = "extract-heap-addr"
-    _syntax_ = "{:s} [-h] VALUE|--source".format(_cmdline_)
-    _example_ = "{:s} 0x000055500000C7F9".format(_cmdline_)
     _category_ = "Heap"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('value', metavar='VALUE', nargs='?', type=lambda x: int(x, 0), help='the value you want to extract.')
+    group.add_argument('--source', action='store_true', help='shows the source instead of displaying extractedd value.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} 0x000055500000C7F9".format(_cmdline_)
 
     def reveal(self, fd):
         # https://smallkirby.hatenablog.com/entry/safeunlinking
@@ -35503,24 +35509,17 @@ class ExtractHeapAddrCommand(GenericCommand):
             L = (L << 8) + element
         return L << 12
 
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if not argv:
-            self.usage()
-            return
-
-        if "-h" in argv:
-            self.usage()
-            return
-
-        if "--source" in argv:
+        if args.source:
             s = inspect.getsource(ExtractHeapAddrCommand.reveal).rstrip()
             gef_print(s)
             return
 
-        ptr = int(argv[0], 16)
+        ptr = args.value
         extracted_ptr = self.reveal(ptr)
         gef_print("Protected fd pointer: {:#x} -> Extracted heap address: {:#x} (=fd & ~0xfff)".format(ptr, extracted_ptr))
         return
