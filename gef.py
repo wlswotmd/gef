@@ -39177,9 +39177,12 @@ class VisualHeapCommand(GenericCommand):
 class MultiLineCommand(GenericCommand):
     """Execute multiple GDB commands in sequence."""
     _cmdline_ = "multi-line"
-    _syntax_ = "{:s} [-h] GDB_CMD [; GDB_CMD [; GDB_CMD [...]]]".format(_cmdline_)
     _category_ = "Misc"
     _aliases_ = ["ml"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('cmd', metavar='GDB_CMD;', nargs='+', help='semicolon-separated gdb command.')
+    _syntax_ = parser.format_help()
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_COMMAND)
@@ -39210,7 +39213,10 @@ class MultiLineCommand(GenericCommand):
             return False # fail
         return True
 
+    # Need not @parse_args because argparse can't stop interpreting options for user specified command.
     def do_invoke(self, argv):
+        self.dont_repeat()
+
         if len(argv) == 1 and argv[0] == "-h":
             self.usage()
             return
@@ -39242,15 +39248,24 @@ class MultiLineCommand(GenericCommand):
 class TimeCommand(GenericCommand):
     """Measures the time of the GDB command."""
     _cmdline_ = "time"
-    _syntax_ = "{:s} GDB_CMD [, ARG]".format(_cmdline_)
     _category_ = "Misc"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('cmd', metavar='GDB_CMD', help='gdb command.')
+    parser.add_argument('arg', metavar='ARG', nargs='*', help='arguments of gdb command.')
+    _syntax_ = parser.format_help()
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_COMMAND)
         return
 
+    # Need not @parse_args because argparse can't stop interpreting options for user specified command.
     def do_invoke(self, argv):
         self.dont_repeat()
+
+        if len(argv) == 1 and argv[0] == "-h":
+            self.usage()
+            return
 
         start_time_real = time.perf_counter()
         start_time_proc = time.process_time()
@@ -39283,15 +39298,23 @@ class TimeCommand(GenericCommand):
 class LsCommand(GenericCommand):
     """`ls` command wrapper."""
     _cmdline_ = "ls"
-    _syntax_ = "{:s} [filename|dirname, ...]".format(_cmdline_)
     _category_ = "Misc"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('arg', metavar='ARG', nargs='*', help='arguments of ls command.')
+    _syntax_ = parser.format_help()
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_FILENAME)
         return
 
+    # Need not @parse_args because argparse can't stop interpreting options for user specified command.
     def do_invoke(self, argv):
         self.dont_repeat()
+
+        if len(argv) == 1 and argv[0] == "-h":
+            self.usage()
+            return
 
         try:
             ls = which("ls")
@@ -39312,18 +39335,27 @@ class LsCommand(GenericCommand):
 class CatCommand(GenericCommand):
     """`cat` command wrapper."""
     _cmdline_ = "cat"
-    _syntax_ = "{:s} filename [filename, ...]".format(_cmdline_)
     _category_ = "Misc"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('arg', metavar='ARG', nargs='*', help='arguments of cat command.')
+    _syntax_ = parser.format_help()
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_FILENAME)
         return
 
+    # Need not @parse_args because argparse can't stop interpreting options for user specified command.
     def do_invoke(self, argv):
         self.dont_repeat()
 
+        if len(argv) == 1 and argv[0] == "-h":
+            self.usage()
+            return
+
         if len(argv) == 0:
             return
+
         try:
             cat = which("cat")
         except Exception:
@@ -39343,8 +39375,11 @@ class CatCommand(GenericCommand):
 class IiCommand(GenericCommand):
     """Shortcut `x/50i $pc`."""
     _cmdline_ = "ii"
-    _syntax_ = "{:s} [addr]".format(_cmdline_)
     _category_ = "Assemble"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address, help='the dump start adress.')
+    _syntax_ = parser.format_help()
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
@@ -39386,21 +39421,19 @@ class IiCommand(GenericCommand):
             gef_print(line)
         return
 
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         N = 50
         try:
-            if len(argv) == 0:
+            if args.location is None:
                 self.ii("$pc", N)
             else:
-                try:
-                    self.ii(int(argv[0], 16), N)
-                except Exception:
-                    self.ii(argv[0], N)
-        except Exception:
-            self.usage()
+                self.ii(args.location, N)
+        except gdb.MemoryError:
+            err("Memory read error")
         return
 
 
