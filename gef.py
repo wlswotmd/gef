@@ -9893,6 +9893,163 @@ class GefThemeCommand(GenericCommand):
 
 
 @register_command
+class VersionCommand(GenericCommand):
+    """Display GEF version info."""
+    _cmdline_ = "version"
+    _category_ = "GEF Maintenance Command"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    def gef_version(self):
+        gef_fpath = os.path.abspath(os.path.realpath(os.path.expanduser(inspect.stack()[0][1])))
+        gef_dir = os.path.dirname(gef_fpath)
+        gef_hash = hashlib.sha1(open(gef_fpath, "rb").read()).hexdigest()
+
+        if os.access("{}/.git".format(gef_dir), os.X_OK):
+            ver = subprocess.check_output('git log --format="%H" -n 1 HEAD', cwd=gef_dir, shell=True).decode("utf8").strip()
+            extra = "dirty" if len(subprocess.check_output('git ls-files -m', cwd=gef_dir, shell=True).decode("utf8").strip()) else "clean"
+            return "rev:{} (Git - {}) SHA1: {}".format(ver, extra, gef_hash)
+        else:
+            return "(Standalone) SHA1:{}".format(gef_hash)
+
+    def gdb_version(self):
+        try:
+            return gdb.VERSION # GDB >= 8.1 (or earlier?)
+        except AttributeError:
+            return gdb.execute('show version', to_string=True).split('\n')[0]
+
+    def python_version(self):
+        return sys.version.replace('\n', ' ')
+
+    @load_capstone
+    def capstone_version(self):
+        try:
+            capstone = sys.modules['capstone']
+            return '.'.join(map(str, capstone.cs_version()))
+        except KeyError:
+            return 'not found'
+
+    @load_keystone
+    def keystone_version(self):
+        try:
+            keystone = sys.modules['keystone']
+            return '.'.join(map(str, keystone.ks_version()))
+        except KeyError:
+            return 'not found'
+
+    @load_unicorn
+    def unicorn_version(self):
+        try:
+            unicorn = sys.modules['unicorn']
+            return unicorn.__version__
+        except KeyError:
+            return 'not found'
+
+    @load_ropper
+    def ropper_version(self):
+        try:
+            ropper = sys.modules['ropper']
+            return '.'.join(map(str, ropper.VERSION))
+        except KeyError:
+            return 'not found'
+
+    def readelf_version(self):
+        try:
+            command = which("readelf")
+            res = gef_execute_external([command, "-v"], as_list=True)
+            return res[0]
+        except IOError:
+            return 'not found'
+
+    def objdump_version(self):
+        try:
+            command = which("objdump")
+            res = gef_execute_external([command, "-v"], as_list=True)
+            return res[0]
+        except IOError:
+            return 'not found'
+
+    def seccomp_tools_version(self):
+        try:
+            command = which("seccomp-tools")
+            res = gef_execute_external([command, "--version"], as_list=True)
+            return res[0]
+        except IOError:
+            return 'not found'
+
+    def one_gadget_version(self):
+        try:
+            command = which("one_gadget")
+            res = gef_execute_external([command, "--version"], as_list=True)
+            return res[0]
+        except IOError:
+            return 'not found'
+
+    def rp_version(self):
+        try:
+            command = which("rp-lin-x64")
+        except IOError:
+            try:
+                command = which("rp-lin-x86")
+            except IOError:
+                return 'not found'
+        try:
+            res = gef_execute_external([command, "--version"], as_list=True)
+            return res[0]
+        except IOError:
+            return 'not found'
+
+    def qemu_version(self):
+        return gdb.execute('monitor info version', to_string=True).strip()
+
+    def kernel_version(self):
+        try:
+            command = which("uname")
+            res = gef_execute_external([command, "-a"], as_list=True)
+            return res[0]
+        except IOError:
+            return 'not found'
+
+    def os_version(self):
+        try:
+            command = which("lsb_release")
+            res = gef_execute_external([command, "-d"], as_list=True)
+            for line in res:
+                if line.startswith("Description:"):
+                    return line.split(":")[1].strip("\\t")
+        except IOError:
+            return 'not found'
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        gef_print(titlify("versions"))
+        gef_print("OS:            \t{:s}".format(self.os_version()))
+        gef_print("Kernel:        \t{:s}".format(self.kernel_version()))
+        gef_print("GEF:           \t{:s}".format(self.gef_version()))
+        gef_print("Gdb:           \t{:s}".format(self.gdb_version()))
+        gef_print("Python:        \t{:s}".format(self.python_version()))
+        gef_print("Capstone:      \t{:s}".format(self.capstone_version()))
+        gef_print("Keystone:      \t{:s}".format(self.keystone_version()))
+        gef_print("Unicorn:       \t{:s}".format(self.unicorn_version()))
+        gef_print("Ropper:        \t{:s}".format(self.ropper_version()))
+        gef_print("readelf:       \t{:s}".format(self.readelf_version()))
+        gef_print("objdump:       \t{:s}".format(self.objdump_version()))
+        gef_print("seccomp-tools: \t{:s}".format(self.seccomp_tools_version()))
+        gef_print("one_gadget:    \t{:s}".format(self.one_gadget_version()))
+        gef_print("rp:            \t{:s}".format(self.rp_version()))
+
+        if is_qemu_system():
+            gef_print("qemu:          \t{:s}".format(self.qemu_version()))
+
+        gef_print(titlify("gdb build config"))
+        gdb.execute("show configuration")
+        return
+
+
+@register_command
 class HighlightCommand(GenericCommand):
     """This command highlights user defined text matches which modifies GEF output universally."""
     _cmdline_ = "highlight"
@@ -35746,161 +35903,6 @@ class ByteswapCommand(GenericCommand):
 
         gef_print("{:#x} -> 64bit byteswap -> {:#x}".format(args.value, converted64))
         gef_print("{:#x} -> 32bit byteswap -> {:#x}".format(args.value & 0xffffffff, converted32))
-        return
-
-
-@register_command
-class VersionCommand(GenericCommand):
-    """Display GEF version info."""
-    _cmdline_ = "version"
-    _syntax_ = "{:s}".format(_cmdline_)
-    _example_ = "{:s}".format(_cmdline_)
-    _category_ = "GEF Maintenance Command"
-
-    def gef_version(self):
-        gef_fpath = os.path.abspath(os.path.realpath(os.path.expanduser(inspect.stack()[0][1])))
-        gef_dir = os.path.dirname(gef_fpath)
-        gef_hash = hashlib.sha1(open(gef_fpath, "rb").read()).hexdigest()
-
-        if os.access("{}/.git".format(gef_dir), os.X_OK):
-            ver = subprocess.check_output('git log --format="%H" -n 1 HEAD', cwd=gef_dir, shell=True).decode("utf8").strip()
-            extra = "dirty" if len(subprocess.check_output('git ls-files -m', cwd=gef_dir, shell=True).decode("utf8").strip()) else "clean"
-            return "rev:{} (Git - {}) SHA1: {}".format(ver, extra, gef_hash)
-        else:
-            return "(Standalone) SHA1:{}".format(gef_hash)
-
-    def gdb_version(self):
-        try:
-            return gdb.VERSION # GDB >= 8.1 (or earlier?)
-        except AttributeError:
-            return gdb.execute('show version', to_string=True).split('\n')[0]
-
-    def python_version(self):
-        return sys.version.replace('\n', ' ')
-
-    @load_capstone
-    def capstone_version(self):
-        try:
-            capstone = sys.modules['capstone']
-            return '.'.join(map(str, capstone.cs_version()))
-        except KeyError:
-            return 'not found'
-
-    @load_keystone
-    def keystone_version(self):
-        try:
-            keystone = sys.modules['keystone']
-            return '.'.join(map(str, keystone.ks_version()))
-        except KeyError:
-            return 'not found'
-
-    @load_unicorn
-    def unicorn_version(self):
-        try:
-            unicorn = sys.modules['unicorn']
-            return unicorn.__version__
-        except KeyError:
-            return 'not found'
-
-    @load_ropper
-    def ropper_version(self):
-        try:
-            ropper = sys.modules['ropper']
-            return '.'.join(map(str, ropper.VERSION))
-        except KeyError:
-            return 'not found'
-
-    def readelf_version(self):
-        try:
-            command = which("readelf")
-            res = gef_execute_external([command, "-v"], as_list=True)
-            return res[0]
-        except IOError:
-            return 'not found'
-
-    def objdump_version(self):
-        try:
-            command = which("objdump")
-            res = gef_execute_external([command, "-v"], as_list=True)
-            return res[0]
-        except IOError:
-            return 'not found'
-
-    def seccomp_tools_version(self):
-        try:
-            command = which("seccomp-tools")
-            res = gef_execute_external([command, "--version"], as_list=True)
-            return res[0]
-        except IOError:
-            return 'not found'
-
-    def one_gadget_version(self):
-        try:
-            command = which("one_gadget")
-            res = gef_execute_external([command, "--version"], as_list=True)
-            return res[0]
-        except IOError:
-            return 'not found'
-
-    def rp_version(self):
-        try:
-            command = which("rp-lin-x64")
-        except IOError:
-            try:
-                command = which("rp-lin-x86")
-            except IOError:
-                return 'not found'
-        try:
-            res = gef_execute_external([command, "--version"], as_list=True)
-            return res[0]
-        except IOError:
-            return 'not found'
-
-    def qemu_version(self):
-        return gdb.execute('monitor info version', to_string=True).strip()
-
-    def kernel_version(self):
-        try:
-            command = which("uname")
-            res = gef_execute_external([command, "-a"], as_list=True)
-            return res[0]
-        except IOError:
-            return 'not found'
-
-    def os_version(self):
-        try:
-            command = which("lsb_release")
-            res = gef_execute_external([command, "-d"], as_list=True)
-            for line in res:
-                if line.startswith("Description:"):
-                    return line.split(":")[1].strip("\\t")
-        except IOError:
-            return 'not found'
-
-    def do_invoke(self, argv):
-        self.dont_repeat()
-
-        gef_print(titlify("versions"))
-        gef_print("OS:            \t{:s}".format(self.os_version()))
-        gef_print("Kernel:        \t{:s}".format(self.kernel_version()))
-        gef_print("GEF:           \t{:s}".format(self.gef_version()))
-        gef_print("Gdb:           \t{:s}".format(self.gdb_version()))
-        gef_print("Python:        \t{:s}".format(self.python_version()))
-        gef_print("Capstone:      \t{:s}".format(self.capstone_version()))
-        gef_print("Keystone:      \t{:s}".format(self.keystone_version()))
-        gef_print("Unicorn:       \t{:s}".format(self.unicorn_version()))
-        gef_print("Ropper:        \t{:s}".format(self.ropper_version()))
-        gef_print("readelf:       \t{:s}".format(self.readelf_version()))
-        gef_print("objdump:       \t{:s}".format(self.objdump_version()))
-        gef_print("seccomp-tools: \t{:s}".format(self.seccomp_tools_version()))
-        gef_print("one_gadget:    \t{:s}".format(self.one_gadget_version()))
-        gef_print("rp:            \t{:s}".format(self.rp_version()))
-
-        if is_qemu_system():
-            gef_print("qemu:          \t{:s}".format(self.qemu_version()))
-
-        gef_print(titlify("gdb build config"))
-        gdb.execute("show configuration")
         return
 
 
