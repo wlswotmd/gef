@@ -38278,8 +38278,11 @@ class GsbaseCommand(GenericCommand):
 class GdtInfoCommand(GenericCommand):
     """Print GDT entries sample."""
     _cmdline_ = "gdtinfo"
-    _syntax_ = "{:s} [-h] [-v]".format(_cmdline_)
     _category_ = "Misc"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-v', dest='verbose', action='store_true', help='also display bit information of gdt entries.')
+    _syntax_ = parser.format_help()
 
     @staticmethod
     def seg2str(v):
@@ -38316,94 +38319,91 @@ class GdtInfoCommand(GenericCommand):
             val = vals # for normal
 
         # parse
-        d = {}
-        d['_value'] = val
+        _gdt = {}
+        _gdt['value'] = val
 
-        d['limit0'] = val & 0xffff
-        d['base0'] = (val >> 16) & 0xffff
-        d['base1'] = (val >> 32) & 0xff
-        d['_access_bytes'] = (val >> 40) & 0xff
-        d['limit1'] = (val >> 48) & 0x0f
-        d['_flag_bytes'] = (val >> 52) & 0x0f
-        d['base2'] = (val >> 56) & 0xff
+        _gdt['limit0'] = val & 0xffff
+        _gdt['base0'] = (val >> 16) & 0xffff
+        _gdt['base1'] = (val >> 32) & 0xff
+        _gdt['access_bytes'] = (val >> 40) & 0xff
+        _gdt['limit1'] = (val >> 48) & 0x0f
+        _gdt['flag_bytes'] = (val >> 52) & 0x0f
+        _gdt['base2'] = (val >> 56) & 0xff
 
-        d['p'] = (d['_access_bytes'] >> 7) & 0x01
-        d['dpl'] = (d['_access_bytes'] >> 5) & 0x03
-        d['s'] = (d['_access_bytes'] >> 4) & 0x01
-        d['_type_bytes'] = d['_access_bytes'] & 0x0f
-        d['ex'] = (d['_access_bytes'] >> 3) & 0x01
-        d['dc'] = (d['_access_bytes'] >> 2) & 0x01
-        d['rw'] = (d['_access_bytes'] >> 1) & 0x01
-        d['ac'] = (d['_access_bytes'] >> 0) & 0x01
+        _gdt['p'] = (_gdt['access_bytes'] >> 7) & 0x01
+        _gdt['dpl'] = (_gdt['access_bytes'] >> 5) & 0x03
+        _gdt['s'] = (_gdt['access_bytes'] >> 4) & 0x01
+        _gdt['type_bytes'] = _gdt['access_bytes'] & 0x0f
+        _gdt['ex'] = (_gdt['access_bytes'] >> 3) & 0x01
+        _gdt['dc'] = (_gdt['access_bytes'] >> 2) & 0x01
+        _gdt['rw'] = (_gdt['access_bytes'] >> 1) & 0x01
+        _gdt['ac'] = (_gdt['access_bytes'] >> 0) & 0x01
 
-        d['gr'] = (d['_flag_bytes'] >> 3) & 0x01
-        d['db'] = (d['_flag_bytes'] >> 2) & 0x01
-        d['l'] = (d['_flag_bytes'] >> 1) & 0x01
-        d['avl'] = (d['_flag_bytes'] >> 0) & 0x01
-        d['_FLAGS'] = (d['_flag_bytes'] << 12) | d['_access_bytes'] # for easy use
+        _gdt['gr'] = (_gdt['flag_bytes'] >> 3) & 0x01
+        _gdt['db'] = (_gdt['flag_bytes'] >> 2) & 0x01
+        _gdt['l'] = (_gdt['flag_bytes'] >> 1) & 0x01
+        _gdt['avl'] = (_gdt['flag_bytes'] >> 0) & 0x01
+        _gdt['FLAGS'] = (_gdt['flag_bytes'] << 12) | _gdt['access_bytes'] # for easy use
 
-        grsize = {0: 1, 1: 4096}[d['gr']]
-        d['_limit'] = ((d['limit1'] << 16) | d['limit0']) * grsize
-        d['_base'] = (d['base2'] << 24) | (d['base1'] << 16) | d['base0']
+        grsize = {0: 1, 1: 4096}[_gdt['gr']]
+        _gdt['limit'] = ((_gdt['limit1'] << 16) | _gdt['limit0']) * grsize
+        _gdt['base'] = (_gdt['base2'] << 24) | (_gdt['base1'] << 16) | _gdt['base0']
 
         # create memo
-        if d['ex'] == 0: # data
-            d['_exs'] = "DATA"
-            d['_rws'] = ["RO", "RW"][d['rw']]
-            d['_dcs'] = ["UP", "DN"][d['dc']]
+        if _gdt['ex'] == 0: # data
+            _gdt['ex_s'] = "DATA"
+            _gdt['rw_s'] = ["RO", "RW"][_gdt['rw']]
+            _gdt['dc_s'] = ["UP", "DN"][_gdt['dc']]
         else: # code
-            d['_exs'] = "CODE"
-            d['_rws'] = ["RO", "RX"][d['rw']]
-            d['_dcs'] = ["NC", "CO"][d['dc']]
+            _gdt['ex_s'] = "CODE"
+            _gdt['rw_s'] = ["RO", "RX"][_gdt['rw']]
+            _gdt['dc_s'] = ["NC", "CO"][_gdt['dc']]
 
-        d['_ss'] = ["SYS", "C/D"][d['s']]
-        dbl = (d['db'] << 1) | d['l']
-        d['_dbl'] = "{:d}".format(dbl)
-        d['_dbls'] = ["16bit", "64bit", "32bit", "(N/A)"][dbl]
+        _gdt['s_s'] = ["SYS", "C/D"][_gdt['s']]
+        dbl = (_gdt['db'] << 1) | _gdt['l']
+        _gdt['dbl'] = "{:d}".format(dbl)
+        _gdt['dbl_s'] = ["16bit", "64bit", "32bit", "(N/A)"][dbl]
 
         # for TSS/LDT
         if isinstance(vals, list):
             val = vals[1]
-            d['_value2'] = d['_value']
-            d['_value'] = val
-            d['base3'] = val & 0xffffffff
-            d['_base'] = (d['base3'] << 32) | d['_base']
-        return d
+            _gdt['value2'] = _gdt['value']
+            _gdt['value'] = val
+            _gdt['base3'] = val & 0xffffffff
+            _gdt['base'] = (_gdt['base3'] << 32) | _gdt['base']
+
+        Gdt = collections.namedtuple("Gdt", _gdt.keys())
+        return Gdt(*_gdt.values())
 
     @staticmethod
-    def segval2str(d, value_only=False, color=False):
+    def segval2str(value, value_only=False, color=False):
         c = Color.boldify if color else lambda x: x
         if value_only:
-            return c(f"{d:#018x}")
-        d = GdtInfoCommand.gdt_unpack(d)
-        if d['_value'] == 0:
-            return c(f"{d['_value']:#018x}")
+            return c("{:#018x}".format(value))
+        gdt = GdtInfoCommand.gdt_unpack(value)
+        if gdt.value == 0:
+            return c("{:#018x}".format(gdt.value))
         else:
             fmt = ""
-            fmt += c(f"{d['_value']:#018x}") + " : "
-            fmt += c(f"{d['_base']:>#18x}") + " "
-            fmt += c(f"{d['_limit']:>#10x}") + " "
-            fmt += c(f"{d['gr']:>2d}") + " "
-            fmt += c(f"{d['_dbl']:}") + f"({d['_dbls']:s}) "
-            fmt += c(f"{d['avl']:>3d}") + " "
-            fmt += c(f"{d['p']:d}") + " "
-            fmt += c(f"{d['dpl']:>3}") + " "
-            fmt += c(f"{d['s']:d}") + f"({d['_ss']:s}) "
-            fmt += c(f"{d['ex']:d}") + f"({d['_exs']:s}) "
-            fmt += c(f"{d['dc']:d}") + f"({d['_dcs']:s}) "
-            fmt += c(f"{d['rw']:d}") + f"({d['_rws']:s}) "
-            fmt += c(f"{d['ac']:d}")
+            fmt += c("{:#018x}".format(gdt.value)) + " : "
+            fmt += c("{:>#18x}".format(gdt.base)) + " "
+            fmt += c("{:>#10x}".format(gdt.limit)) + " "
+            fmt += c("{:>2d}".format(gdt.gr)) + " "
+            fmt += c("{:s}".format(gdt.dbl)) + "({:s}) ".format(gdt.dbl_s)
+            fmt += c("{:>3d}".format(gdt.avl)) + " "
+            fmt += c("{:d}".format(gdt.p)) + " "
+            fmt += c("{:>3}".format(gdt.dpl)) + " "
+            fmt += c("{:d}".format(gdt.s)) + "({:s}) ".format(gdt.s_s)
+            fmt += c("{:d}".format(gdt.ex)) + "({:s}) ".format(gdt.ex_s)
+            fmt += c("{:d}".format(gdt.dc)) + "({:s}) ".format(gdt.dc_s)
+            fmt += c("{:d}".format(gdt.rw)) + "({:s}) ".format(gdt.rw_s)
+            fmt += c("{:d}".format(gdt.ac))
             return fmt
 
     @staticmethod
     def segval2str_legend():
-        legend = "[ #] "
-        legend += f"{'segment name':20}: "
-        legend += f"{'value':18} : {'base':>18} {'limit/size':} "
-        legend += f"{'gr':} {'dbl':}      {'avl':>} "
-        legend += f"{'p':} {'dpl':} {'s':}      "
-        legend += f"{'ex':}      {'dc':}    {'rw':}    {'ac':}"
-        return legend
+        fmt = "[ #] {:20s}: {:18s} : {:>18s} {:s} {:s} {:s}      {:>s} {:s} {:s} {:s}      {:s}      {:s}    {:s}    {:s}"
+        return fmt.format("segment name", "value", "base", "limit/size", "gr", "dbl", "avl", "p", "dpl", "s", "ex", "dc", "rw", "ac")
 
     @staticmethod
     def get_segreg_list():
@@ -38456,9 +38456,9 @@ class GdtInfoCommand(GenericCommand):
                 reglist = LEFT_ARROW + reglist
             # decode and print
             if print_flag:
-                fmt = f"[{i:>2}] {segname:20}: " + self.segval2str(value) + " " + Color.colorify(f"{reglist:s}", registers_color)
+                fmt = "[{:>2d}] {:20s}: ".format(i, segname) + self.segval2str(value) + " " + Color.colorify(f"{reglist:s}", registers_color)
             else:
-                fmt = f"[{i:>2}] {segname:20}: {value:#018x} " + Color.colorify(f"{reglist:s}", registers_color)
+                fmt = "[{:>2d}] {:20s}: {:#018x} ".format(i, segname, value) + Color.colorify(f"{reglist:s}", registers_color)
             gef_print(fmt)
         return
 
@@ -38511,7 +38511,7 @@ class GdtInfoCommand(GenericCommand):
         gef_print(" * limit (ldt)        : (LDT entries * 8) - 1")
         return
 
-    def print_gdt(self):
+    def print_gdt(self, print_flags_info):
         self.print_seg_info()
         if is_x86_64() or self.is_emulated32():
             self.print_gdt_entry([
@@ -38568,22 +38568,17 @@ class GdtInfoCommand(GenericCommand):
                 (30,   True,       "UNUSED",            0x0000000000000000),
                 (31,   True,       "DOUBLEFAULT_TSS",   0xc40089706000206b),
             ])
-        if self.print_flags_info:
+        if print_flags_info:
             self.print_gdt_entry_legend()
         else:
             info("for flags description, use `-v`")
         return
 
+    @parse_args
     @only_if_specific_arch(arch=["x86_32", "x86_64"])
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
-
-        if "-h" in argv:
-            self.usage()
-            return
-
-        self.print_flags_info = "-v" in argv
-        self.print_gdt()
+        self.print_gdt(args.verbose)
         info("if qemu-system, use `qreg -v` to confirm real GDT value")
         return
 
