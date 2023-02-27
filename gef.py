@@ -35529,13 +35529,16 @@ class ExtractHeapAddrCommand(GenericCommand):
 class U2dCommand(GenericCommand):
     """Translate type (unsigned long <-> double/float)."""
     _cmdline_ = "u2d"
-    _syntax_ = "{:s} [-h] [HEX_VALUE|DOUBLE_VALUE]".format(_cmdline_)
-    _example_ = "\n"
-    _example_ += "{:s} 0xdeadbeef\n".format(_cmdline_)
+    _category_ = "Misc"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('value', metavar='VALUE', help='the hex value or double value.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} 0xdeadbeef\n".format(_cmdline_)
     _example_ += "{:s} 0.12345\n".format(_cmdline_)
     _example_ += "{:s} 1.2345e-1\n".format(_cmdline_)
     _example_ += " * only ~64bit supported (Unsupported 80bit, 128bit)"
-    _category_ = "Misc"
 
     def f2u(self, x):
         u = lambda a: struct.unpack("<I", a)[0]
@@ -35586,23 +35589,16 @@ class U2dCommand(GenericCommand):
         gef_print("  {:#010x} ---> {:#010x}".format(n, int(self.u2f(n))))
         return
 
-    def do_invoke(self, argv):
+    @parse_args
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if len(argv) == 0:
-            self.usage()
-            return
-
-        if "-h" in argv:
-            self.usage()
-            return
-
         try:
-            if "." in argv[0]:
-                n = float(argv[0])
+            if "." in args.value:
+                n = float(args.value)
                 self.translate_from_float(n)
             else:
-                n = int(argv[0], 0)
+                n = int(args.value, 0)
                 self.translate_from_int(n)
         except Exception:
             self.usage()
@@ -35613,39 +35609,31 @@ class U2dCommand(GenericCommand):
 class PackCommand(GenericCommand):
     """Translate integer -> string."""
     _cmdline_ = "pack"
-    _syntax_ = "{:s} [-h] VALUE".format(_cmdline_)
-    _example_ = "{:s} 0xdeadbeef".format(_cmdline_)
     _category_ = "Misc"
 
-    def do_invoke(self, argv):
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('value', metavar='VALUE', type=lambda x: int(x, 0), help='the value you want to translate.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} 0xdeadbeef".format(_cmdline_)
+
+    @parse_args
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if len(argv) == 0:
-            self.usage()
-            return
-
-        if "-h" in argv:
-            self.usage()
-            return
-
-        try:
-            value = int(argv[0], 0)
-        except Exception:
-            self.usage()
-            return
-        gef_print("pack8:   {}".format(p8(value & 0xff)))
-        gef_print("pack16:  {}".format(p16(value & 0xffff)))
-        gef_print("pack32:  {}".format(p32(value & 0xffffffff)))
-        gef_print("pack64:  {}".format(p64(value & 0xffffffffffffffff)))
-        low = value & 0xffffffffffffffff
-        high = (value >> 64) & 0xffffffffffffffff
+        gef_print("pack8:   {}".format(p8(args.value & 0xff)))
+        gef_print("pack16:  {}".format(p16(args.value & 0xffff)))
+        gef_print("pack32:  {}".format(p32(args.value & 0xffffffff)))
+        gef_print("pack64:  {}".format(p64(args.value & 0xffffffffffffffff)))
+        low = args.value & 0xffffffffffffffff
+        high = (args.value >> 64) & 0xffffffffffffffff
         val128 = p64(low) + p64(high)
         gef_print("pack128: {}".format(val128))
 
-        gef_print("pack8-hex:   {}".format(p8(value & 0xff).hex()))
-        gef_print("pack16-hex:  {}".format(p16(value & 0xffff).hex()))
-        gef_print("pack32-hex:  {}".format(p32(value & 0xffffffff).hex()))
-        gef_print("pack64-hex:  {}".format(p64(value & 0xffffffffffffffff).hex()))
+        gef_print("pack8-hex:   {}".format(p8(args.value & 0xff).hex()))
+        gef_print("pack16-hex:  {}".format(p16(args.value & 0xffff).hex()))
+        gef_print("pack32-hex:  {}".format(p32(args.value & 0xffffffff).hex()))
+        gef_print("pack64-hex:  {}".format(p64(args.value & 0xffffffffffffffff).hex()))
         gef_print("pack128-hex: {}".format(val128.hex()))
         return
 
@@ -35654,25 +35642,22 @@ class PackCommand(GenericCommand):
 class UnpackCommand(GenericCommand):
     """Translate string -> integer."""
     _cmdline_ = "unpack"
-    _syntax_ = '{:s} [-h] "double-escaped string"'.format(_cmdline_)
-    _example_ = '{:s} "\\\\x41\\\\x42\\\\x43\\\\x44"'.format(_cmdline_)
     _category_ = "Misc"
 
-    def do_invoke(self, argv):
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('value', metavar='"double-escaped string"', help='the value you want to translate.')
+    _syntax_ = parser.format_help()
+
+    _example_ = '{:s} "\\\\x41\\\\x42\\\\x43\\\\x44"'.format(_cmdline_)
+
+    @parse_args
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if len(argv) == 0:
-            self.usage()
-            return
-
-        if "-h" in argv:
-            self.usage()
-            return
-
         try:
-            value = codecs.escape_decode(argv[0])[0] + b"\0" * 16
+            value = codecs.escape_decode(args.value)[0] + b"\0" * 16
         except binascii.Error:
-            gef_print("Could not decode '\\xXX' encoded string \"{}\"".format(argv[0]))
+            gef_print("Could not decode '\\xXX' encoded string \"{}\"".format(args.value))
             return
         gef_print("unpack8:   {:#04x}".format(u8(value[:1])))
         gef_print("unpack16:  {:#06x}".format(u16(value[:2])))
@@ -35687,25 +35672,22 @@ class UnpackCommand(GenericCommand):
 class TohexCommand(GenericCommand):
     """Translate bytes -> hex."""
     _cmdline_ = "tohex"
-    _syntax_ = '{:s} [-h] "double-escaped string"'.format(_cmdline_)
-    _example_ = '{:s} "\\\\x41\\\\x42\\\\x43\\\\x44"'.format(_cmdline_)
     _category_ = "Misc"
 
-    def do_invoke(self, argv):
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('value', metavar='"double-escaped string"', help='the value you want to translate.')
+    _syntax_ = parser.format_help()
+
+    _example_ = '{:s} "\\\\x41\\\\x42\\\\x43\\\\x44"'.format(_cmdline_)
+
+    @parse_args
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if len(argv) == 0:
-            self.usage()
-            return
-
-        if "-h" in argv:
-            self.usage()
-            return
-
         try:
-            value = codecs.escape_decode(argv[0])[0]
+            value = codecs.escape_decode(args.value)[0]
         except binascii.Error:
-            gef_print("Could not decode '\\xXX' encoded string \"{}\"".format(argv[0]))
+            gef_print("Could not decode '\\xXX' encoded string \"{}\"".format(args.value))
             return
 
         gef_print(binascii.hexlify(value))
@@ -35716,22 +35698,19 @@ class TohexCommand(GenericCommand):
 class UnhexCommand(GenericCommand):
     """Translate hex -> bytes."""
     _cmdline_ = "unhex"
-    _syntax_ = '{:s} [-h] "hex string"'.format(_cmdline_)
-    _example_ = "{:s} 41414242 43434444".format(_cmdline_)
     _category_ = "Misc"
 
-    def do_invoke(self, argv):
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('value', metavar='"hex-string"', help='the value you want to translate.')
+    _syntax_ = parser.format_help()
+
+    _example_ = '{:s} "41414242 43434444"'.format(_cmdline_)
+
+    @parse_args
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if len(argv) == 0:
-            self.usage()
-            return
-
-        if "-h" in argv:
-            self.usage()
-            return
-
-        code = argv[0].replace(" ", "")
+        code = args.value.replace(" ", "")
         try:
             value = binascii.unhexlify(code)
         except binascii.Error:
@@ -35746,36 +35725,27 @@ class UnhexCommand(GenericCommand):
 class ByteswapCommand(GenericCommand):
     """Translate endian (little-endian <-> big-endian)."""
     _cmdline_ = "byteswap"
-    _syntax_ = "{:s} [-h] VALUE".format(_cmdline_)
-    _example_ = "{:s} 0xdeadbeef".format(_cmdline_)
     _category_ = "Misc"
 
-    def do_invoke(self, argv):
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('value', metavar='VALUE', type=lambda x: int(x, 0), help='the value you want to translate.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} 0xdeadbeef".format(_cmdline_)
+
+    @parse_args
+    def do_invoke(self, args):
         self.dont_repeat()
-
-        if len(argv) == 0:
-            self.usage()
-            return
-
-        if "-h" in argv:
-            self.usage()
-            return
-
-        try:
-            x = int(argv[0], 0)
-        except Exception:
-            self.usage()
-            return
 
         p = lambda a: struct.pack("<I", a & 0xffffffff)
         ube = lambda a: struct.unpack(">I", a)[0]
         pQ = lambda a: struct.pack("<Q", a & 0xffffffffffffffff)
         uQbe = lambda a: struct.unpack(">Q", a)[0]
-        converted32 = ube(p(x))
-        converted64 = uQbe(pQ(x))
+        converted32 = ube(p(args.value))
+        converted64 = uQbe(pQ(args.value))
 
-        gef_print("{:#x} -> 64bit byteswap -> {:#x}".format(x, converted64))
-        gef_print("{:#x} -> 32bit byteswap -> {:#x}".format(x & 0xffffffff, converted32))
+        gef_print("{:#x} -> 64bit byteswap -> {:#x}".format(args.value, converted64))
+        gef_print("{:#x} -> 32bit byteswap -> {:#x}".format(args.value & 0xffffffff, converted32))
         return
 
 
