@@ -36953,8 +36953,10 @@ class KernelAddressHeuristicFinder:
 class KernelbaseCommand(GenericCommand):
     """Show kernel base address."""
     _cmdline_ = "kbase"
-    _syntax_ = _cmdline_
     _category_ = "Qemu-system Cooperation"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
 
     @staticmethod
     @functools.lru_cache(maxsize=None)
@@ -37109,9 +37111,10 @@ class KernelbaseCommand(GenericCommand):
 
         return dic
 
+    @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         # resolve kbase, krobase
@@ -37131,9 +37134,10 @@ class KernelbaseCommand(GenericCommand):
 class KernelVersionCommand(GenericCommand):
     """Display kernel version string under qemu-system."""
     _cmdline_ = "kversion"
-    _syntax_ = "{:s}".format(_cmdline_)
-    _example_ = "{:s}".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
 
     def kernel_version(self):
         info("Wait for memory scan")
@@ -37167,9 +37171,10 @@ class KernelVersionCommand(GenericCommand):
             return start + idx, kernel_version_string
         return None
 
+    @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         ret = self.kernel_version()
@@ -37186,9 +37191,10 @@ class KernelVersionCommand(GenericCommand):
 class KernelCmdlineCommand(GenericCommand):
     """Display kernel cmdline string under qemu-system."""
     _cmdline_ = "kcmdline"
-    _syntax_ = "{:s}".format(_cmdline_)
-    _example_ = "{:s}".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
 
     def kernel_cmdline(self):
         saved_command_line = KernelAddressHeuristicFinder.get_saved_command_line()
@@ -37201,9 +37207,10 @@ class KernelCmdlineCommand(GenericCommand):
         except Exception:
             return None
 
+    @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         info("Wait for memory scan")
@@ -37222,9 +37229,10 @@ class KernelCmdlineCommand(GenericCommand):
 class KernelTaskCommand(GenericCommand):
     """Display process list under qemu-system."""
     _cmdline_ = "ktask"
-    _syntax_ = "{:s}".format(_cmdline_)
-    _example_ = "{:s}".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
 
     def get_task_list(self):
         init_task = KernelAddressHeuristicFinder.get_init_task()
@@ -37348,9 +37356,10 @@ class KernelTaskCommand(GenericCommand):
         info("offsetof(cred, uid): {:#x}".format(offset_uid))
         return offset_uid
 
+    @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         info("Wait for memory scan")
@@ -37387,9 +37396,10 @@ class KernelTaskCommand(GenericCommand):
 class KernelModuleCommand(GenericCommand):
     """Display module list under qemu-system."""
     _cmdline_ = "kmod"
-    _syntax_ = "{:s}".format(_cmdline_)
-    _example_ = "{:s}".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
 
     def get_modules_list(self):
         modules = KernelAddressHeuristicFinder.get_modules()
@@ -37550,9 +37560,10 @@ class KernelModuleCommand(GenericCommand):
         err("Not found module->init_layout")
         return None
 
+    @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         info("Wait for memory scan")
@@ -37584,9 +37595,10 @@ class KernelModuleCommand(GenericCommand):
 class KernelCharacterDevicesCommand(GenericCommand):
     """Display character device list under qemu-system."""
     _cmdline_ = "kcdev"
-    _syntax_ = "{:s}".format(_cmdline_)
-    _example_ = "{:s}".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
 
     # character device is managed at chrdevs[] and cdev_map.
     # we use each of them for getting structure information.
@@ -37728,9 +37740,10 @@ class KernelCharacterDevicesCommand(GenericCommand):
         err("Not found offsetof(cdev, ops)")
         return None
 
+    @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         info("Wait for memory scan")
@@ -37809,9 +37822,11 @@ class KernelCharacterDevicesCommand(GenericCommand):
 class KernelFopsCommand(GenericCommand):
     """Display fops members under qemu-system."""
     _cmdline_ = "kfops"
-    _syntax_ = "{:s} [ADDRESS]".format(_cmdline_)
-    _example_ = "{:s}".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("address", metavar='ADDRESS', nargs='?', type=parse_address, help='the address interpreted as fops.')
+    _syntax_ = parser.format_help()
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
@@ -37855,26 +37870,28 @@ class KernelFopsCommand(GenericCommand):
         ]
         return members
 
+    @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         members = self.get_member()
 
-        if argv:
+        if args.address:
             try:
-                addr = int(argv[0], 16)
-                addrs = [read_int_from_memory(addr + current_arch.ptrsize * i) for i in range(len(members))]
-            except Exception:
-                self.usage()
+                addrs = [read_int_from_memory(args.address + current_arch.ptrsize * i) for i in range(len(members))]
+            except gdb.MemoryError:
+                err("Memory read error")
                 return
+
             fmt = "[{:3s}] {:<10s} {:<20s} {:s}"
             legend = ["idx", "type", "name", "value"]
             gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
             for idx, ((type, name), address) in enumerate(zip(members, addrs)):
                 sym = get_symbol_string(address)
                 gef_print("[{:3d}] {:10s} {:20s} {:#018x}{:s}".format(idx, type, name, address, sym))
+
         else:
             fmt = "[{:3s}] {:<10s} {:<20s}"
             legend = ["idx", "type", "name"]
