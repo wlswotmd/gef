@@ -37905,11 +37905,14 @@ class KernelFopsCommand(GenericCommand):
 class SyscallTableViewCommand(GenericCommand):
     """Display syscall_table entries under qemu-system."""
     _cmdline_ = "syscall-table-view"
-    _syntax_ = "{:s} [-h] [--filter REGEX]".format(_cmdline_)
-    _example_ = "\n"
-    _example_ += "{:s}\n".format(_cmdline_)
-    _example_ += "{:s} --filter write".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-f', '--filter', action='append', default=[], help='REGEXP filter.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s}\n".format(_cmdline_)
+    _example_ += "{:s} --filter write".format(_cmdline_)
 
     def syscall_table_view(self, sys_call_table_addr):
         if sys_call_table_addr is None:
@@ -37954,26 +37957,14 @@ class SyscallTableViewCommand(GenericCommand):
                         gef_print(msg)
         return
 
+    @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
     @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if "-h" in argv:
-            self.usage()
-            return
-
-        self.filter = []
-        while "--filter" in argv:
-            idx = argv.index("--filter")
-            pattern = argv[idx + 1]
-            self.filter.append(pattern)
-            argv = argv[:idx] + argv[idx + 2:]
-
-        if argv:
-            self.usage()
-            return
+        self.filter = args.filter
 
         if is_x86_32():
             gef_print(titlify("sys_call_table (x86)"))
