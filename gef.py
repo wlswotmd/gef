@@ -35614,7 +35614,7 @@ class ErrnoCommand(GenericCommand):
                 return
             try:
                 val = parse_address("*__errno_location()")
-            except:
+            except Exception:
                 err("Failed to get *__errno_location()")
                 return
         else:
@@ -38587,17 +38587,42 @@ class GdtInfoCommand(GenericCommand):
 class MemoryCompareCommand(GenericCommand):
     """Memory Compare."""
     _cmdline_ = "memcmp"
-    _syntax_ = "{:s} [-h] [--phys] ADDRESS1 [--phys] ADDRESS2 SIZE".format(_cmdline_)
     _category_ = "Misc"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('--phys1', action='store_true', help='treat LOCATION1 as a physical address.')
+    parser.add_argument('location1', metavar='LOCATION1', type=parse_address, help='first address for comparison.')
+    parser.add_argument('--phys2', action='store_true', help='treat LOCATION2 as a physical address.')
+    parser.add_argument('location2', metavar='LOCATION2', type=parse_address, help='second address for comparison.')
+    parser.add_argument('size', metavar='SIZE', type=parse_address, help='the size for comparison.')
+    _syntax_ = parser.format_help()
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         return
 
-    def diff(self, from1data, from2data):
+    def memcmp(self, from1_phys, from1, from2_phys, from2, size):
+        try:
+            if from1_phys:
+                from1data = read_physmem(from1, size)
+            else:
+                from1data = read_memory(from1, size)
+        except Exception:
+            err("Read error {:#x}".format(from1))
+            return
+
+        try:
+            if from2_phys:
+                from2data = read_physmem(from2, size)
+            else:
+                from2data = read_memory(from2, size)
+        except Exception:
+            err("Read error {:#x}".format(from2))
+            return
+
         diff_found = False
         asterisk = True
-        for pos in range(0, self.size, 16):
+        for pos in range(0, size, 16):
             f1_bin = from1data[pos : pos + 16]
             f2_bin = from2data[pos : pos + 16]
             if f1_bin == f2_bin:
@@ -38606,8 +38631,8 @@ class MemoryCompareCommand(GenericCommand):
                     asterisk = True
                 continue
 
-            addr1 = self.from1 + pos
-            addr2 = self.from2 + pos
+            addr1 = from1 + pos
+            addr2 = from2 + pos
 
             diff_found = True
             asterisk = False
@@ -38635,68 +38660,20 @@ class MemoryCompareCommand(GenericCommand):
             info("Not found diff")
         return
 
-    def memcmp(self):
-        try:
-            if self.from1_phys:
-                from1data = read_physmem(self.from1, self.size)
-            else:
-                from1data = read_memory(self.from1, self.size)
-        except Exception:
-            err("Read error {:#x}".format(self.from1))
-            return
-
-        try:
-            if self.from2_phys:
-                from2data = read_physmem(self.from2, self.size)
-            else:
-                from2data = read_memory(self.from2, self.size)
-        except Exception:
-            err("Read error {:#x}".format(self.from2))
-            return
-
-        self.diff(from1data, from2data)
-        return
-
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if "--phys" in argv and not is_qemu_system():
-            err("Unsupported")
-            return
+        if args.phys1 or args.phys2:
+            if not is_qemu_system():
+                err("Unsupported")
+                return
 
-        if "-h" in argv:
-            self.usage()
-            return
-
-        try:
-            if argv[0] == "--phys":
-                self.from1_phys = True
-                self.from1 = parse_address(argv[1])
-                argv = argv[2:]
-            else:
-                self.from1_phys = False
-                self.from1 = parse_address(argv[0])
-                argv = argv[1:]
-
-            if argv[0] == "--phys":
-                self.from2_phys = True
-                self.from2 = parse_address(argv[1])
-                argv = argv[2:]
-            else:
-                self.from2_phys = False
-                self.from2 = parse_address(argv[0])
-                argv = argv[1:]
-
-            self.size = int(argv[0], 0)
-        except Exception:
-            self.usage()
-            return
-
-        if self.size == 0:
+        if args.size == 0:
             info("The size is zero, maybe wrong.")
 
-        self.memcmp()
+        self.memcmp(args.phys1, args.location1, args.phys2, args.location2, args.size)
         return
 
 
@@ -38704,77 +38681,58 @@ class MemoryCompareCommand(GenericCommand):
 class MemoryCopyCommand(GenericCommand):
     """Memory Copy."""
     _cmdline_ = "memcpy"
-    _syntax_ = "{:s} [-h] [--phys] TO [--phys] FROM SIZE".format(_cmdline_)
     _category_ = "Misc"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('--phys1', action='store_true', help='treat TO_ADDRESS as a physical address.')
+    parser.add_argument('to_addr', metavar='TO_ADDRESS', type=parse_address, help='destionation of memcmp.')
+    parser.add_argument('--phys2', action='store_true', help='treat FROM_ADDRESS as a physical address.')
+    parser.add_argument('from_addr', metavar='FROM_ADDRESS', type=parse_address, help='source of memcmp.')
+    parser.add_argument('size', metavar='SIZE', type=parse_address, help='the size for memcmp.')
+    _syntax_ = parser.format_help()
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         return
 
-    def memcpy(self):
+    def memcpy(self, to_phys, to_addr, from_phys, from_addr, size):
         try:
-            if self.from_phys:
-                data = read_physmem(self.from_addr, self.size)
+            if from_phys:
+                data = read_physmem(from_addr, size)
             else:
-                data = read_memory(self.from_addr, self.size)
+                data = read_memory(from_addr, size)
         except Exception:
-            err("Read error {:#x}".format(self.from_addr))
+            err("Read error {:#x}".format(from_addr))
             return
 
         info("Read count: {:#x}".format(len(data)))
 
         try:
-            if self.to_phys:
-                written = write_physmem(self.to_addr, data)
+            if to_phys:
+                written = write_physmem(to_addr, data)
             else:
-                written = write_memory(self.to_addr, data, len(data))
+                written = write_memory(to_addr, data, len(data))
         except Exception:
-            err("Write error {:#x}".format(self.to_addr))
+            err("Write error {:#x}".format(to_addr))
             return
 
         info("Write count: {:#x}".format(written))
         return
 
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if "--phys" in argv and not is_qemu_system():
-            err("Unsupported")
-            return
+        if args.phys1 or args.phys2:
+            if not is_qemu_system():
+                err("Unsupported")
+                return
 
-        if "-h" in argv:
-            self.usage()
-            return
-
-        try:
-            if argv[0] == "--phys":
-                self.to_phys = True
-                self.to_addr = parse_address(argv[1])
-                argv = argv[2:]
-            else:
-                self.to_phys = False
-                self.to_addr = parse_address(argv[0])
-                argv = argv[1:]
-
-            if argv[0] == "--phys":
-                self.from_phys = True
-                self.from_addr = parse_address(argv[1])
-                argv = argv[2:]
-            else:
-                self.from_phys = False
-                self.from_addr = parse_address(argv[0])
-                argv = argv[1:]
-
-            self.size = int(argv[0], 0)
-        except Exception:
-            self.usage()
-            return
-
-        if self.size == 0:
+        if args.size == 0:
             info("The size is zero, maybe wrong.")
 
-        self.memcpy()
+        self.memcpy(args.phys1, args.to_addr, args.phys2, args.from_addr, args.size)
         return
 
 
@@ -38887,27 +38845,33 @@ class HashMemoryCommand(GenericCommand):
 class IsMemoryZeroCommand(GenericCommand):
     """Checks if all the memory in the specified range is 0x00, 0xff."""
     _cmdline_ = "is-mem-zero"
-    _syntax_ = "{:s} [-h] [--phys] ADDRESS SIZE".format(_cmdline_)
     _category_ = "Misc"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('--phys', action='store_true', help='treat ADDRESS as a physical address.')
+    parser.add_argument('addr', metavar='ADDRESS', type=parse_address, help='target address for checking.')
+    parser.add_argument('size', metavar='SIZE', type=parse_address, help='the size for checking.')
+    _syntax_ = parser.format_help()
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         return
 
-    def memcheck(self):
-        current = self.addr
-        end = self.addr + self.size
+    def memcheck(self, phys_mode, addr, size):
+        start = addr
+        end = addr + size
         is_zero = True
         is_ff = True
+        current = addr
         while current < end:
             read_size = min(end - current, 0x1000)
             try:
-                if self.phys_mode:
+                if phys_mode:
                     data = read_physmem(current, read_size)
                 else:
                     data = read_memory(current, read_size)
             except Exception:
-                err("Read error {:#x}".format(self.addr))
+                err("Read error {:#x}".format(addr))
                 return
             if data == b"\0" * len(data):
                 is_ff = False
@@ -38921,36 +38885,27 @@ class IsMemoryZeroCommand(GenericCommand):
             current += 0x1000
 
         if is_zero:
-            info("{:#x} - {:#x} is {:s}".format(self.addr, self.addr + self.size, Color.colorify("All 0x00", "bold yellow")))
+            info("{:#x} - {:#x} is {:s}".format(start, end, Color.colorify("All 0x00", "bold yellow")))
         elif is_ff:
-            info("{:#x} - {:#x} is {:s}".format(self.addr, self.addr + self.size, Color.colorify("All 0xFF", "bold yellow")))
+            info("{:#x} - {:#x} is {:s}".format(start, end, Color.colorify("All 0xFF", "bold yellow")))
         else:
-            info("{:#x} - {:#x} is {:s}".format(self.addr, self.addr + self.size, Color.colorify("NON-ZERO", "bold yellow")))
+            info("{:#x} - {:#x} is {:s}".format(start, end, Color.colorify("NON-ZERO", "bold red")))
         return
 
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if "-h" in argv:
-            self.usage()
-            return
-
-        self.phys_mode = False
-        if "--phys" in argv:
+        if args.phys:
             if not is_qemu_system():
                 err("Unsupported")
                 return
-            self.phys_mode = True
-            argv.remove("--phys")
 
-        if len(argv) < 2:
-            self.usage()
-            return
-        self.size = int(argv[-1], 16)
-        self.addr = int(argv[-2], 16)
+        if args.size == 0:
+            info("The size is zero, maybe wrong.")
 
-        self.memcheck()
+        self.memcheck(args.phys, args.addr, args.size)
         return
 
 
