@@ -34027,12 +34027,15 @@ def get_section_base_address_by_list(names):
 class CodebaseCommand(GenericCommand):
     """Show code base address."""
     _cmdline_ = "codebase"
-    _syntax_ = _cmdline_
     _category_ = "Process Information"
 
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         codebase = get_section_base_address(get_filepath(append_proc_root_prefix=False))
@@ -34057,8 +34060,10 @@ class CodebaseCommand(GenericCommand):
 class HeapbaseCommand(GenericCommand):
     """Show heap base address."""
     _cmdline_ = "heapbase"
-    _syntax_ = _cmdline_
     _category_ = "Process Information"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
 
     @staticmethod
     def heap_base():
@@ -34070,9 +34075,10 @@ class HeapbaseCommand(GenericCommand):
             pass
         return get_section_base_address("[heap]")
 
+    @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         heap = HeapbaseCommand.heap_base()
@@ -34090,12 +34096,15 @@ class HeapbaseCommand(GenericCommand):
 class LibcCommand(GenericCommand):
     """Show `libc.so` base address."""
     _cmdline_ = "libc"
-    _syntax_ = _cmdline_
     _category_ = "Process Information"
 
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         libc = get_section_base_address_by_list(("libc-2.", "libc.so.6"))
@@ -34142,12 +34151,15 @@ class LibcCommand(GenericCommand):
 class LdCommand(GenericCommand):
     """Show `ld.so` base address."""
     _cmdline_ = "ld"
-    _syntax_ = _cmdline_
     _category_ = "Process Information"
 
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         ld = get_section_base_address_by_list(("ld-2.", "ld-linux-"))
