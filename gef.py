@@ -12490,9 +12490,7 @@ class CallSyscallCommand(GenericCommand):
         syscall_name = args.syscall_name
         syscall_args = args.syscall_args
 
-        for key, entry in syscall_table.items():
-            if key in ["arch", "mode"]:
-                continue
+        for key, entry in syscall_table.table.items():
             if is_mips32() and key > 6000: # force use o32
                 continue
             if syscall_name == entry.name:
@@ -22328,9 +22326,16 @@ class HeapAnalysisCommand(GenericCommand):
 class SyscallSearchCommand(GenericCommand):
     """Search the syscall number for specified architecture."""
     _cmdline_ = "syscall-search"
-    _syntax_ = "{:s} [-h] [-v] [-a ARCH] [-m MODE] SYSCALL_NAME_REGEX_SEARCH_PATTERN|SYSCALL_NUM".format(_cmdline_)
-    _example_ = "\n"
-    _example_ += '{:s} -a X86 -m 64                 "^writev?" # amd64\n'.format(_cmdline_)
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-a', dest='arch', help='specify the architecture. (default: current_arch.arch)')
+    parser.add_argument('-m', dest='mode', help='specify the mode. (default: current_arch.mode)')
+    parser.add_argument('-v', dest='verbose', action='store_true', help='display prototype of syscall.')
+    parser.add_argument('search_pattern', metavar='SYSCALL_NAME|SYSCALL_NUM',
+                        help='syscall name or number you want to search. Regex is available.')
+    _syntax_ = parser.format_help()
+
+    _example_ = '{:s} -a X86 -m 64                 "^writev?" # amd64\n'.format(_cmdline_)
     _example_ += '{:s} -a X86 -m 32                 "^writev?" # i386 on amd64\n'.format(_cmdline_)
     _example_ += '{:s} -a X86 -m N32                "^writev?" # i386 native\n'.format(_cmdline_)
     _example_ += '{:s} -a ARM64                     "^writev?" # arm64\n'.format(_cmdline_)
@@ -22367,11 +22372,9 @@ class SyscallSearchCommand(GenericCommand):
         return
 
     def print_syscall(self, syscall_table, syscall_num, syscall_name_pattern):
-        gef_print(titlify("arch={:s}, mode={:s}".format(syscall_table["arch"], syscall_table["mode"])))
+        gef_print(titlify("arch={:s}, mode={:s}".format(syscall_table.arch, syscall_table.mode)))
         gef_print(Color.colorify("{:<17}{:s}".format("Syscall-num", "Syscall-name"), get_gef_setting("theme.table_heading")))
-        for key, entry in syscall_table.items():
-            if key in ["arch", "mode"]:
-                continue
+        for key, entry in syscall_table.table.items():
             nr = key
             if not re.search(syscall_name_pattern, entry.name):
                 continue
@@ -22383,49 +22386,22 @@ class SyscallSearchCommand(GenericCommand):
             gef_print("NR={:<#14x}{:s}{:s}".format(nr, Color.boldify(entry.name), params))
         return
 
-    def do_invoke(self, argv):
+    @parse_args
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if "-h" in argv:
-            self.usage()
-            return
-
-        self.verbose = False
-        if "-v" in argv:
-            self.verbose = True
-            argv.remove("-v")
-
-        try:
-            arch = None
-            if "-a" in argv:
-                idx = argv.index("-a")
-                arch = argv[idx + 1]
-                argv = argv[:idx] + argv[idx + 2:]
-        except Exception:
-            self.usage()
-            return
-
-        try:
-            mode = None
-            if "-m" in argv:
-                idx = argv.index("-m")
-                mode = argv[idx + 1]
-                argv = argv[:idx] + argv[idx + 2:]
-        except Exception:
-            self.usage()
-            return
+        self.verbose = args.verbose
 
         syscall_num = None
         syscall_name_pattern = ".*"
 
-        if len(argv) > 0:
-            try:
-                syscall_num = int(argv[0], 0)
-            except ValueError:
-                syscall_name_pattern = argv[0]
+        try:
+            syscall_num = int(args.search_pattern, 0)
+        except ValueError:
+            syscall_name_pattern = args.search_pattern
 
         try:
-            syscall_table = get_syscall_table(arch, mode)
+            syscall_table = get_syscall_table(args.arch, args.mode)
         except Exception:
             self.usage()
             return
@@ -32361,52 +32337,32 @@ def get_syscall_table(arch=None, mode=None):
         if is_x86_64():
             arch, mode = "X86", "64"
         elif is_x86_32():
-            arch, mode = "X86", ["N32", "32"][is_emulated32()]
+            if is_emulated32():
+                arch, mode = "X86", "Emulated-32"
+            else:
+                arch, mode = "X86", "Native-32"
         elif is_arm64():
-            arch, mode = "ARM64", ["ARM", "S"][is_secure()]
+            if is_secure():
+                arch, mode = "ARM64", "Secure-World"
+            else:
+                arch, mode = "ARM64", "ARM"
         elif is_arm32():
-            arch, mode = "ARM", [["N32", "32"][is_emulated32()], "S"][is_secure()]
-        # TODO: Supports native and emulated differences
-        elif is_mips32():
-            arch, mode = "MIPS", "MIPS32"
-        elif is_mips64():
-            arch, mode = "MIPS", "MIPS64"
-        elif is_ppc32():
-            arch, mode = "PPC", "PPC32"
-        elif is_ppc64():
-            arch, mode = "PPC", "PPC64"
-        elif is_sparc32():
-            arch, mode = "SPARC", "SPARC32"
-        elif is_sparc64():
-            arch, mode = "SPARC", "SPARC64"
-        elif is_riscv32():
-            arch, mode = "RISCV", "RISCV32"
-        elif is_riscv64():
-            arch, mode = "RISCV", "RISCV64"
-        elif is_s390x():
-            arch, mode = "S390X", "S390X"
-        elif is_sh4():
-            arch, mode = "SH4", "SH4"
-        elif is_m68k():
-            arch, mode = "M68K", "M68K"
-        elif is_alpha():
-            arch, mode = "ALPHA", "ALPHA"
-        elif is_hppa32():
-            arch, mode = "HPPA", "HPPA32"
-        elif is_hppa64():
-            arch, mode = "HPPA", "HPPA64"
-        elif is_or1k():
-            arch, mode = "OR1K", "OR1K"
-        elif is_nios2():
-            arch, mode = "NIOS2", "NIOS2"
-        elif is_microblaze():
-            arch, mode = "MICROBLAZE", "MICROBLAZE"
-        elif is_xtensa():
-            arch, mode = "XTENSA", "XTENSA"
-        elif is_cris():
-            arch, mode = "CRIS", "CRIS"
+            if is_secure():
+                arch, mode = "ARM", "Secure-World"
+            elif is_emulated32():
+                arch, mode = "ARM", "Emulated-32"
+            else:
+                arch, mode = "ARM", "Native-32"
         else:
-            raise
+            arch = current_arch.arch
+            mode = current_arch.mode
+
+    if arch in ["ARM", "ARM64"] and mode == "S":
+        mode = "Secure-World"
+    if arch in ["X86", "ARM"] and mode == "32":
+        mode = "Emulated-32"
+    elif arch in ["X86", "ARM"] and mode == "N32":
+        mode = "Native-32"
 
     global cached_syscall_table
     if (arch, mode) in cached_syscall_table:
@@ -32461,7 +32417,7 @@ def get_syscall_table(arch=None, mode=None):
             if abi in ["common", "x32"]:
                 syscall_list.append([nr + 0x40000000, name, sc_def[func]])
 
-    elif arch == "X86" and mode == "32":
+    elif arch == "X86" and mode == "Emulated-32":
         register_list = X86().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(x86_syscall_tbl)
@@ -32556,7 +32512,7 @@ def get_syscall_table(arch=None, mode=None):
                 raise
             syscall_list.append([nr, name, sc_def[func]])
 
-    elif arch == "X86" and mode == "N32":
+    elif arch == "X86" and mode == "Native-32":
         register_list = X86().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(x86_syscall_tbl)
@@ -32672,7 +32628,7 @@ def get_syscall_table(arch=None, mode=None):
                 raise
             syscall_list.append([nr, name, sc_def[func]])
 
-    elif arch == "ARM" and mode == "32": # support EABI only
+    elif arch == "ARM" and mode == "Emulated-32": # support EABI only
         register_list = ARM().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(arm_compat_syscall_tbl)
@@ -32755,7 +32711,7 @@ def get_syscall_table(arch=None, mode=None):
         ]
         syscall_list += arch_specific_extra
 
-    elif arch == "ARM" and mode == "N32": # support EABI only
+    elif arch == "ARM" and mode == "Native-32": # support EABI only
         register_list = ARM().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(arm_native_syscall_tbl)
@@ -32812,7 +32768,7 @@ def get_syscall_table(arch=None, mode=None):
         ]
         syscall_list += arch_specific_extra
 
-    elif arch in ["ARM64", "ARM"] and mode == "S":
+    elif arch in ["ARM64", "ARM"] and mode == "Secure-World":
         if arch == "ARM64":
             register_list = AARCH64().syscall_parameters + ["$x6"] # OPTEE uses 7 args
         else:
@@ -33911,20 +33867,19 @@ def get_syscall_table(arch=None, mode=None):
     else:
         raise
 
-    # common process
-    if mode == "S":
-        mode_str = "Secure-World"
-    elif mode == "N32":
-        mode_str = "Native-32"
-    elif mode == "32":
-        mode_str = "Emulated-32"
-    else:
-        mode_str = mode
-    syscall_table = {"arch": arch, "mode": mode_str}
-
-    syscall_list = sorted(syscall_list, key=lambda x: x[0])
+    Table = collections.namedtuple('Table', 'arch mode table')
     Entry = collections.namedtuple('Entry', 'name params')
     Param = collections.namedtuple('Param', 'reg param')
+    syscall_table = Table(arch=arch, mode=mode, table={})
+
+    # example:
+    #   syscall_table.arch: 'X86'
+    #   syscall_table.mode: '64'
+    #   syscall_table.table[0].name: 'read'
+    #   syscall_table.table[0].params[0].reg: '$rdi'
+    #   syscall_table.table[0].params[0].param: 'unsigned int fd'
+
+    syscall_list = sorted(syscall_list, key=lambda x: x[0])
     for nr, name, args in syscall_list:
         if arch == "MIPS" and mode == "MIPS32":
             if nr >= 6000:
@@ -33933,7 +33888,7 @@ def get_syscall_table(arch=None, mode=None):
                 args = list(zip(o32_register_list[:len(args)], args))
         else:
             args = list(zip(register_list[:len(args)], args))
-        syscall_table[nr] = Entry(name, [Param(*p) for p in args])
+        syscall_table.table[nr] = Entry(name, [Param(*p) for p in args])
 
     cached_syscall_table[arch, mode] = syscall_table
     return syscall_table
@@ -33943,8 +33898,12 @@ def get_syscall_table(arch=None, mode=None):
 class SyscallArgsCommand(GenericCommand):
     """Gets the syscall name and arguments based on the register values in the current state."""
     _cmdline_ = "syscall-args"
-    _syntax_ = "{:s} [-h] [SYSCALL_NUM]".format(_cmdline_)
     _category_ = "Debugging Support"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('syscall_num', metavar='SYSCALL_NUM', nargs='?', type=lambda x: int(x, 0),
+                        help='syscall number you want to search.')
+    _syntax_ = parser.format_help()
 
     def get_nr(self):
         # str or list
@@ -33986,14 +33945,14 @@ class SyscallArgsCommand(GenericCommand):
                 values.append(read_int_from_memory(get_register(_reg) + int(_off, 0)))
         return values
 
-    def print_syscall(self, syscall_register, nr, syscall_table):
+    def print_syscall(self, syscall_table, syscall_register, nr):
         if syscall_table:
-            syscall_name = syscall_table[nr].name
-            parameters = [s.param for s in syscall_table[nr].params]
+            syscall_name = syscall_table.table[nr].name
+            parameters = [s.param for s in syscall_table.table[nr].params]
             param_names = [re.split(r" |\*", p)[-1] for p in parameters]
-            registers = [s.reg for s in syscall_table[nr].params]
-            arch = syscall_table["arch"]
-            mode = syscall_table["mode"]
+            registers = [s.reg for s in syscall_table.table[nr].params]
+            arch = syscall_table.arch
+            mode = syscall_table.mode
         else:
             syscall_name = None
             registers = current_arch.syscall_parameters
@@ -34009,6 +33968,7 @@ class SyscallArgsCommand(GenericCommand):
 
         headers = ["Parameter", "Register", "Value"]
         info(Color.colorify("{:<20} {:<20} {}".format(*headers), get_gef_setting("theme.table_heading")))
+        gef_print("    {:<20} {:<20} {:<20}".format("RET", current_arch.return_register, "-"))
         gef_print("    {:<20} {:<20} {:#x}".format("_NR", syscall_register, nr))
 
         values = self.get_values(registers)
@@ -34019,29 +33979,25 @@ class SyscallArgsCommand(GenericCommand):
             gef_print(line)
         return
 
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if "-h" in argv:
-            self.usage()
-            return
-
-        if len(argv) == 1:
-            syscall_register = "-"
-            nr = int(argv[0], 0)
+        if args.syscall_num is not None:
+            syscall_register, nr = "-", args.syscall_num
         else:
             syscall_register, nr = self.get_nr()
 
         try:
             syscall_table = get_syscall_table()
-            if nr not in syscall_table:
+            if nr not in syscall_table.table:
                 warn("There is no system call for {:#x}".format(nr))
                 return
         except Exception:
             syscall_table = None
 
-        self.print_syscall(syscall_register, nr, syscall_table)
+        self.print_syscall(syscall_table, syscall_register, nr)
         return
 
 
