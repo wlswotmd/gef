@@ -22212,12 +22212,15 @@ class FormatStringSearchCommand(GenericCommand):
 class HeapAnalysisCommand(GenericCommand):
     """Heap vulnerability analysis helper: this command aims to track dynamic heap allocation
     done through malloc()/free() to provide some insights on possible heap vulnerabilities. The
-    following vulnerabilities are checked: NULL free, Use-after-Free, Double Free, Heap overlap."""
+    following vulnerabilities are checked: NULL free, Use-after-Free, Double Free, Heap overlap.
+    Behavior changes are made in the config."""
     _cmdline_ = "heap-analysis-helper"
-    _syntax_ = "{:s} [show]\n".format(_cmdline_)
-    _syntax_ += "\n"
-    _syntax_ += "Behavior changes are made in the config."
     _category_ = "Heap"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("--show", action='store_true', help='show the tracked allocations.')
+    parser.add_argument("--config", action='store_true', help='show the config for settings.')
+    _syntax_ = parser.format_help()
 
     def __init__(self, *args, **kwargs):
         super().__init__()
@@ -22232,24 +22235,26 @@ class HeapAnalysisCommand(GenericCommand):
         self.bp_realloc = None
         return
 
+    @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
     @experimental_feature
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if not argv:
-            self.setup()
-        elif argv[0] == "show":
+        if args.show:
             self.dump_tracked_allocations()
-        else:
-            self.usage()
-            gef_print("")
+            return
+
+        if args.config:
             gdb.execute("gef config heap-analysis-helper.check_free_null")
             gdb.execute("gef config heap-analysis-helper.check_double_free")
             gdb.execute("gef config heap-analysis-helper.check_weird_free")
             gdb.execute("gef config heap-analysis-helper.check_uaf")
             gdb.execute("gef config heap-analysis-helper.check_heap_overlap")
+            return
+
+        self.setup()
         return
 
     def setup(self):
