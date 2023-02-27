@@ -39439,11 +39439,15 @@ class IiCommand(GenericCommand):
 
 @register_command
 class ConstGrepCommand(GenericCommand):
-    """Grep from `/usr/include`."""
+    """Grep for lines with #define in files under /usr/include."""
     _cmdline_ = "constgrep"
-    _syntax_ = "{:s} GREP_PATTERN".format(_cmdline_)
-    _example_ = "constgrep '__NR_*'"
     _category_ = "Misc"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('pattern', metavar='GREP_PATTERN', help='filter by regex.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "constgrep '__NR_*'"
 
     def read_normalize(self, path):
         try:
@@ -39462,15 +39466,12 @@ class ConstGrepCommand(GenericCommand):
             return None
         return content
 
-    def do_invoke(self, argv):
+    @parse_args
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if len(argv) == 0:
-            self.usage()
-            return
-
         srcdir = "/usr/include"
-        pattern = re.compile(r"^#define\s+\S*" + argv[0])
+        pattern = re.compile(r"^#define\s+\S*" + args.pattern)
         for cur, dirs, files in os.walk(srcdir):
             for f in files:
                 path = os.path.join(cur, f)
