@@ -188,11 +188,11 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * If you want to use native `c`, use the full form `continue`.
 
 ### Heap dump features
-* `partition-alloc-dump-stable`: dumps partition-alloc free-list (heuristic).
+* `partition-alloc-dump`: dumps partition-alloc free-list (heuristic).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/partition-alloc-dump.png)
     * This command is reserved for the implementation of latest stable version of chromium.
-        * Currently tested: v111.x / 1097615 / 3ac59a6729cdb287a7ee629a0004c907ec1b06dc
-        * https://commondatastorage.googleapis.com/chromium-browser-snapshots/index.html?prefix=Linux_x64/1097615/
+        * Currently tested: v112.x / 1105590 / f9f4f27f5b0b8c7ecb72b82d4bc832fff24a7f2f
+        * https://commondatastorage.googleapis.com/chromium-browser-snapshots/index.html?prefix=Linux_x64/1105590/
     * Supported on x64 only (maybe it works on x86/ARM/ARM64, but not tested).
     * It will try heuristic search if binary has no symbol.
 * `tcmalloc-dump`: dumps tcmalloc free-list (heuristic).
