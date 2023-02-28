@@ -39489,12 +39489,19 @@ class SlubDumpCommand(GenericCommand):
     """Dump slab freelist with kenrel memory scanning."""
     # Thanks to https://github.com/PaoloMonti42/salt
     _cmdline_ = "slub-dump"
-    _syntax_ = "{:s} [-h] [SLAB_CACHE_NAME] [--cpu N] [--no-xor] [--list]".format(_cmdline_)
-    _example_ = "\n"
-    _example_ += "{:s} kmalloc-256 # dump kmalloc-256 from all cpus\n".format(_cmdline_)
-    _example_ += "{:s} kmalloc-256 --cpu 1 # dump kmalloc-256 from cpu 1\n".format(_cmdline_)
+    _category_ = "Qemu-system Cooperation"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('cache_name', metavar='SLUB_CACHE_NAME', nargs='*', help='filter by specific slub cache name.')
+    parser.add_argument('--cpu', type=int, help="filter by specific cpu.")
+    parser.add_argument('--no-xor', action='store_true', help='skip xor to chunk->next.')
+    parser.add_argument('--list', action='store_true', help='list up all slub cache names.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} kmalloc-256          # dump kmalloc-256 from all cpus\n".format(_cmdline_)
+    _example_ += "{:s} kmalloc-256 --cpu 1  # dump kmalloc-256 from cpu 1\n".format(_cmdline_)
     _example_ += "{:s} kmalloc-256 --no-xor # skip xor to chunk->next\n".format(_cmdline_)
-    _example_ += "{:s} --list # list up slab cache names\n".format(_cmdline_)
+    _example_ += "{:s} --list               # list up slab cache names\n".format(_cmdline_)
     _example_ += "\n"
     _example_ += "Search flow:\n"
     _example_ += "1. get address of `__per_cpu_offset`\n"
@@ -39533,7 +39540,6 @@ class SlubDumpCommand(GenericCommand):
     _example_ += "                          1. next\n"
     _example_ += "                          2. xor(next, random)\n"
     _example_ += "                          3. xor(byteswap(next), random)"
-    _category_ = "Qemu-system Cooperation"
 
     """
     struct kmem_cache {
@@ -39860,7 +39866,7 @@ class SlubDumpCommand(GenericCommand):
 
     def dump_names(self):
         gef_print(Color.colorify("Object Size              : Name", get_gef_setting("theme.table_heading")))
-        for c in sorted(self.parsed_caches[1:], key=lambda x: x['name']):
+        for c in sorted(self.parsed_caches[1:], key=lambda x: x['objsize']):
             gef_print("{:5d} byte ({:#6x} bytes): {:s}".format(c['objsize'], c['objsize'], c['name']))
         return
 
@@ -39888,40 +39894,21 @@ class SlubDumpCommand(GenericCommand):
                 err("CPU number is invalid (valid range:{:d}-{:d})".format(0, len(self.cpu_offset) - 1))
         return
 
+    @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
     @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if "-h" in argv:
-            self.usage()
-            return
-
-        try:
-            self.cpuN = None
-            while "--cpu" in argv:
-                idx = argv.index("--cpu")
-                self.cpuN = int(argv[idx + 1])
-                argv = argv[:idx] + argv[idx + 2:]
-        except Exception:
-            self.usage()
-            return
-
-        self.no_xor = False
-        if "--no-xor" in argv:
-            self.no_xor = True
-            argv.remove("--no-xor")
-
-        self.listup = False
-        if "--list" in argv:
-            self.listup = True
-            argv.remove("--list")
+        self.cpuN = args.cpu
+        self.no_xor = args.no_xor
+        self.listup = args.list
 
         info("Wait for memory scan")
 
         try:
-            self.slabwalk(argv)
+            self.slabwalk(args.cache_name)
         except Exception:
             err("Memory corrupted")
         return
@@ -50691,10 +50678,16 @@ class KsymaddrRemoteApplyCommand(GenericCommand):
 class WalkLinkListCommand(GenericCommand):
     """Walk the link list"""
     _cmdline_ = "walk-link-list"
-    _syntax_ = "{:s} [-o OFFSET] ADDRESS".format(_cmdline_)
-    _example_ = "{:s} 0xffff9c60800597e0 # walk list_head.next\n".format(_cmdline_)
-    _example_ += "{:s} -o 8 0xffff9c60800597e0 # walk list_head.prev".format(_cmdline_)
     _category_ = "Show/Modify Memory"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-o', dest='next_offset', type=parse_address, default=0,
+                        help="offset of the next(or prev) poiter in the target structure.")
+    parser.add_argument('address', metavar='ADDRESS', type=parse_address, help="start address you want to walk.")
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} 0xffff9c60800597e0      # walk list_head.next\n".format(_cmdline_)
+    _example_ += "{:s} -o 8 0xffff9c60800597e0 # walk list_head.prev".format(_cmdline_)
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
@@ -50723,23 +50716,12 @@ class WalkLinkListCommand(GenericCommand):
             idx += 1
         return
 
-    def do_invoke(self, argv):
+    @parse_args
+    def do_invoke(self, args):
         self.dont_repeat()
-
-        try:
-            offset = 0
-            if "-o" in argv:
-                idx = argv.index("-o")
-                offset = int(argv[idx + 1], 0)
-                argv = argv[:idx] + argv[idx + 2:]
-            head = parse_address(''.join(argv))
-        except Exception:
-            self.usage()
-            return
-
-        info("head address: {:#x}".format(head))
-        info("list offset: {:#x}".format(offset))
-        self.walk_link_list(head, offset)
+        info("head address: {:#x}".format(args.address))
+        info("next pointer offset: {:#x}".format(args.next_offset))
+        self.walk_link_list(args.address, args.next_offset)
         return
 
 
