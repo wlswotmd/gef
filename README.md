@@ -416,7 +416,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/gef-help.png)
 * Combined into one file (from gef-extra).
     * The followings are moved from gef-extras.
-        * `peek-pointers`, `current-stack-frame`, `xref-telescope`, `bytearray`, `bincompare`, `ftrace` and `v8deref`
+        * `peek-pointers`, `current-stack-frame`, `xref-telescope`, `bytearray`, and `bincompare`.
     * This is because a single file is more attractive than ease of maintenance.
 * The system-call table used by `syscall-args` is moved from gef-extras.
     * It was updated up to linux kernel 6.0.10 for each architecture.
