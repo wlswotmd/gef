@@ -197,11 +197,10 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * It will try heuristic search if binary has no symbol.
 * `tcmalloc-dump`: dumps tcmalloc free-list (heuristic).
     * For tcmalloc, there are 3 major versions.
-        1. tcmalloc that is a part of gperftools published in 2005: supported.
-        2. tcmalloc that is included in chromium: supported. (For the implementation in 2020 Jun).
-        3. tcmalloc that is maintained in Google Inc. published in 2020: unsupported.
+        1. tcmalloc that is a part of gperftools published in 2005 (gperftools-2.5): supported.
+        2. tcmalloc that is included in chromium (the implementation in 2020 Jun): supported.
+        3. tcmalloc that is maintained in Google Inc. published in 2020 (gperftools-2.9.1 via apt named `libgoogle-perftools{4,-dev}`): supported.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/tcmalloc-dump.png)
-    * Not maintained for a while.
 * `musl-dump`: dumps musl-libc unused chunks (heuristic).
     * Supported on x64/x86, based on musl-libc v1.2.2.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/musl-dump.png)

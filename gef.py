@@ -40850,17 +40850,14 @@ class VmlinuxToElfApplyCommand(GenericCommand):
 class TcmallocDumpCommand(GenericCommand):
     """tcmalloc thread_heap freelist viewer (supported x86_64 only)."""
     _cmdline_ = "tcmalloc-dump"
-    _syntax_ = "{:s} old|chrome [-h] [self|all|NAME[,NAME,..]|central] [--th PRINT_THRESHOLD] [--idx PRINT_TARGET_IDX]".format(_cmdline_)
-    _example_ = "\n"
-    _example_ += "{:s} chrome\n".format(_cmdline_)
-    _example_ += "{:s} chrome self # (default) print freelist of thread cache for current thread\n".format(_cmdline_)
-    _example_ += "{:s} chrome all # print freelist of thread cache for all thread\n".format(_cmdline_)
-    _example_ += "{:s} chrome \"Chrome_DevTools,Bluez D-Bus thr\" # print freelist of thread cache for specified thread\n".format(_cmdline_)
-    _example_ += "{:s} chrome central # print freelist of central cache\n".format(_cmdline_)
-    _example_ += "{:s} chrome --th 10 --idx 32 # Number of chunks to display per freelist = 10, target idx = 32.\n".format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "THIS FEATURE IS EXPERIMENTAL AND HEURISTIC."
     _category_ = "Heap"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    subparsers = parser.add_subparsers(title='command', required=True)
+    subparsers.add_parser('chrome')
+    subparsers.add_parser('old')
+    subparsers.add_parser('now')
+    _syntax_ = parser.format_help()
 
     def __init__(self, *args, **kwargs):
         prefix = kwargs.get("prefix", True)
@@ -40914,7 +40911,7 @@ class TcmallocDumpCommand(GenericCommand):
         lines = gdb.execute("info threads", to_string=True)
         dic = {}
         for line in lines.splitlines():
-            r = re.findall(r'\(LWP (\d+)\) "(.+?)"', line)
+            r = re.findall(r'\(?LWP (\d+)\)? "(.+?)"', line)
             if not r:
                 continue
             lwpid, name = int(r[0][0]), r[0][1]
@@ -41069,6 +41066,7 @@ class TcmallocDumpCommand(GenericCommand):
 
             # calc class -> size
             size_class = read_int_from_memory(central_cache_i + self.CentralCache_offset_size_class_)
+            print("size_class @ {:#x} = {:#x}".format(central_cache_i + self.CentralCache_offset_size_class_, size_class))
             class_to_size_array = [
                 0,     16,    32,    48,    64,   80,    96,    112,   128,   144,
                 160,   176,   192,   208,   224,  240,   256,   288,   320,   352,
@@ -41087,9 +41085,10 @@ class TcmallocDumpCommand(GenericCommand):
                 self.dump_central_cache_freelist_single(addr, i, j)
         return
 
+    @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         if not self.initialized:
@@ -41100,40 +41099,17 @@ class TcmallocDumpCommand(GenericCommand):
             err("Unsupported")
             return
 
-        if "-h" in argv:
-            self.usage()
-            return
+        self.FreeList_print_threshold = args.print_threshold
+        self.FreeList_print_target_index = args.target_idx
 
-        self.FreeList_print_threshold = 5
-        if "--th" in argv:
-            try:
-                idx = argv.index("--th")
-                self.FreeList_print_threshold = int(argv[idx + 1], 0)
-                argv = argv[:idx] + argv[idx + 2:]
-            except Exception:
-                self.usage()
-                return
-
-        self.FreeList_print_target_index = None
-        if "--idx" in argv:
-            try:
-                idx = argv.index("--idx")
-                self.FreeList_print_target_index = int(argv[idx + 1], 0)
-                argv = argv[:idx] + argv[idx + 2:]
-            except Exception:
-                self.usage()
-                return
-
-        if argv and argv[0] == "central":
+        if args.name == "central":
             self.dump_central_cache()
             return
 
-        self.FreeList_print_target_thread = "self"
-        if argv:
-            if argv[0] in ['all', 'self']:
-                self.FreeList_print_target_thread = argv[0]
-            else:
-                self.FreeList_print_target_thread = argv[0].split(",")
+        if args.name in ["all", "self"]:
+            self.FreeList_print_target_thread = args.name
+        else:
+            self.FreeList_print_target_thread = args.name.split(",")
         self.dump_thread_heaps()
         return
 
@@ -41142,15 +41118,30 @@ class TcmallocDumpCommand(GenericCommand):
 class TcmallocDumpChromeCommand(TcmallocDumpCommand):
     """tcmalloc (chrome edition (improved from google-perftools-2.5)) freelist viewer (supported x86_64 only)."""
     _cmdline_ = "tcmalloc-dump chrome"
-    _syntax_ = "tcmalloc-dump chrome [-h] [self|all|NAME[,NAME,..]|central] [--th PRINT_THRESHOLD] [--idx PRINT_TARGET_IDX]"
     _category_ = "Heap"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('--th', dest='print_threshold', type=int, default=5,
+                        help='number of chunks to display per freelist. (default: %(default)s)')
+    parser.add_argument('--idx', dest='target_idx', type=int, help='dump target index.')
+    parser.add_argument('name', metavar='self|all|central|NAME', nargs='?', default='self', help='target thread cache name')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s}\n".format(_cmdline_)
+    _example_ += "{:s} self                              # (default) print freelist of thread cache for current thread\n".format(_cmdline_)
+    _example_ += "{:s} all                               # print freelist of thread cache for all thread\n".format(_cmdline_)
+    _example_ += '{:s} "Chrome_DevTools,Bluez D-Bus thr" # print freelist of thread cache for specified thread(s)\n'.format(_cmdline_)
+    _example_ += "{:s} central                           # print freelist of central cache\n".format(_cmdline_)
+    _example_ += "{:s} --th 10 --idx 32                  # Number of chunks to display per freelist = 10, target idx = 32.\n".format(_cmdline_)
+    _example_ += "\n"
+    _example_ += "THIS FEATURE IS EXPERIMENTAL AND HEURISTIC."
 
     def __init__(self):
         super().__init__(prefix=False)
         # chromium/third_party/tcmalloc/chromium/src/common.h
-        self.kClassSizesMax = 96
-        self.kMaxSize = 32 * 1024
-        self.kClassArraySize = ((self.kMaxSize + 127 + (120 << 7)) >> 7) + 1
+        kClassSizesMax = 96
+        kMaxSize = 32 * 1024
+        kClassArraySize = ((kMaxSize + 127 + (120 << 7)) >> 7) + 1
         # chromium/third_party/tcmalloc/chromium/src/thread_cache.h
         """
         00000000 ThreadCache     struc ; (sizeof=0xC48, align=0x8)
@@ -41170,7 +41161,7 @@ class TcmallocDumpChromeCommand(TcmallocDumpCommand):
         self.ThreadCache_offset_next = 0xc38
         self.ThreadCache_offset_freelist_array = 0x0
         self.ThreadCache_offset_tls = 0xc28 # actually this is not tid, but TLS base address
-        self.ThreadCache_freelist_slot_count = self.kClassSizesMax
+        self.ThreadCache_freelist_slot_count = kClassSizesMax
         # chromium/third_party/tcmalloc/chromium/src/thread_cache.h
         """
         00000000 FreeList        struc ; (sizeof=0x20, align=0x8)
@@ -41188,10 +41179,10 @@ class TcmallocDumpChromeCommand(TcmallocDumpCommand):
         self.FreeList_offset_length = 0x8
         self.FreeList_offset_size = 0x18
         # chromium/third_party/tcmalloc/chromium/src/central_freelist.h
-        self.kMaxNumTransferEntries = 64
-        self.CentralCache_freelist_slot_count = self.kMaxNumTransferEntries
+        kMaxNumTransferEntries = 64
+        self.CentralCache_freelist_slot_count = kMaxNumTransferEntries
         # chromium/third_party/tcmalloc/chromium/src/static_vars.cc
-        self.CentralCache_array_count = self.kClassSizesMax
+        self.CentralCache_array_count = kClassSizesMax
         # chromium/third_party/tcmalloc/chromium/src/central_freelist.h
         """
         struct TCEntry {
@@ -41235,17 +41226,32 @@ class TcmallocDumpChromeCommand(TcmallocDumpCommand):
 class TcmallocDumpOldCommand(TcmallocDumpCommand):
     """tcmalloc (google-perftools-2.5 edition) freelist viewer (supported x86_64 only)."""
     _cmdline_ = "tcmalloc-dump old"
-    _syntax_ = "tcmalloc-dump old [-h] [self|all|NAME[,NAME,..]|central] [--th PRINT_THRESHOLD] [--idx PRINT_TARGET_IDX]"
     _category_ = "Heap"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('--th', dest='print_threshold', type=int, default=5,
+                        help='number of chunks to display per freelist. (default: %(default)s)')
+    parser.add_argument('--idx', dest='target_idx', type=int, help='dump target index.')
+    parser.add_argument('name', metavar='self|all|central|NAME', nargs='?', default='self', help='target thread cache name')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s}\n".format(_cmdline_)
+    _example_ += "{:s} self                              # (default) print freelist of thread cache for current thread\n".format(_cmdline_)
+    _example_ += "{:s} all                               # print freelist of thread cache for all thread\n".format(_cmdline_)
+    _example_ += '{:s} "Chrome_DevTools,Bluez D-Bus thr" # print freelist of thread cache for specified thread(s)\n'.format(_cmdline_)
+    _example_ += "{:s} central                           # print freelist of central cache\n".format(_cmdline_)
+    _example_ += "{:s} --th 10 --idx 32                  # Number of chunks to display per freelist = 10, target idx = 32.\n".format(_cmdline_)
+    _example_ += "\n"
+    _example_ += "THIS FEATURE IS EXPERIMENTAL AND HEURISTIC."
 
     def __init__(self):
         super().__init__(prefix=False)
         # google-perftools-2.5/src/common.h
-        self.kBaseClasses = 9 # or 16
-        self.kNumClasses = self.kBaseClasses + 79 # or 73 or 69
-        self.kMaxSize = 256 * 1024
-        self.kClassArraySize = ((self.kMaxSize + 127 + (120 << 7)) >> 7) + 1
-        self.kClassSizesMax = 128
+        kBaseClasses = 9 # or 16
+        kNumClasses = kBaseClasses + 79 # or 73 or 69
+        kMaxSize = 256 * 1024
+        kClassArraySize = ((kMaxSize + 127 + (120 << 7)) >> 7) + 1
+        kClassSizesMax = 88 # 128
         # google-perftools-2.5/src/thread_cache.h
         """
         00000000 ThreadCache     struc ; (sizeof=0x880)
@@ -41263,7 +41269,7 @@ class TcmallocDumpOldCommand(TcmallocDumpCommand):
         self.ThreadCache_offset_next = 0x0
         self.ThreadCache_offset_freelist_array = 0x30
         self.ThreadCache_offset_tls = 0x870 # actually this is not tid, but TLS base address
-        self.ThreadCache_freelist_slot_count = self.kNumClasses
+        self.ThreadCache_freelist_slot_count = kNumClasses
         # google-perftools-2.5/src/thread_cache.h
         """
         00000000 FreeList        struc ; (sizeof=0x18)
@@ -41287,13 +41293,13 @@ class TcmallocDumpOldCommand(TcmallocDumpCommand):
         00000CA0 class_to_pages_ dq 88 dup(?) # kNumClasses
         00000F60 SizeMap         ends
         """
-        self.SizeMap_offset_class_array = self.kNumClasses * 4
-        self.SizeMap_offset_class_to_size = self.SizeMap_offset_class_array + ((self.kClassArraySize + 7) // 8 * 8)
+        self.SizeMap_offset_class_array = kNumClasses * 4
+        self.SizeMap_offset_class_to_size = self.SizeMap_offset_class_array + ((kClassArraySize + 7) // 8 * 8)
         # google-perftools-2.5/src/central_freelist.h
-        self.kMaxNumTransferEntries = 64
-        self.CentralCache_freelist_slot_count = self.kMaxNumTransferEntries
-        # google-perftools-2.5//src/static_vars.cc
-        self.CentralCache_array_count = self.kClassSizesMax
+        kMaxNumTransferEntries = 64
+        self.CentralCache_freelist_slot_count = kMaxNumTransferEntries
+        # google-perftools-2.5/src/static_vars.cc
+        self.CentralCache_array_count = kClassSizesMax
         # google-perftools-2.5/src/central_freelist.h
         """
         struct TCEntry {
@@ -41332,6 +41338,156 @@ class TcmallocDumpOldCommand(TcmallocDumpCommand):
             return None
         size = read_int_from_memory(sizemap + self.SizeMap_offset_class_to_size + 8 * t)
         return size
+
+
+@register_command
+class TcmallocDumpNewCommand(TcmallocDumpCommand):
+    """tcmalloc (google-perftools-2.9.1 edition) freelist viewer (supported x86_64 only)."""
+    _cmdline_ = "tcmalloc-dump new"
+    _category_ = "Heap"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('--th', dest='print_threshold', type=int, default=5,
+                        help='number of chunks to display per freelist. (default: %(default)s)')
+    parser.add_argument('--idx', dest='target_idx', type=int, help='dump target index.')
+    parser.add_argument('name', metavar='self|all|central|NAME', nargs='?', default='self', help='target thread cache name')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s}\n".format(_cmdline_)
+    _example_ += "{:s} self                              # (default) print freelist of thread cache for current thread\n".format(_cmdline_)
+    _example_ += "{:s} all                               # print freelist of thread cache for all thread\n".format(_cmdline_)
+    _example_ += '{:s} "Chrome_DevTools,Bluez D-Bus thr" # print freelist of thread cache for specified thread(s)\n'.format(_cmdline_)
+    _example_ += "{:s} central                           # print freelist of central cache\n".format(_cmdline_)
+    _example_ += "{:s} --th 10 --idx 32                  # Number of chunks to display per freelist = 10, target idx = 32.\n".format(_cmdline_)
+    _example_ += "\n"
+    _example_ += "THIS FEATURE IS EXPERIMENTAL AND HEURISTIC."
+
+    def __init__(self):
+        super().__init__(prefix=False)
+        # google-perftools-2.9.1/src/common.h
+        kClassSizesMax = 128
+        kMaxSize = 256 * 1024
+        kClassArraySize = ((kMaxSize + 127 + (120 << 7)) >> 7) + 1
+        # google-perftools-2.9.1/src/thread_cache.h
+        """
+        00000000 ThreadCache     struc ; (sizeof=0x1040, align=0x8)
+        00000000 list_           FreeList 128 dup(?) # kClassSizesMax
+        00001000 size_           dd ?
+        00001004 max_size_       dd ?
+        00001008 sampler_        Sampler ?
+        00001020 tid_            dq ?
+        00001028 in_setspecific_ db ?
+        00001029 unused          db 7 dup(?)
+        00001030 next_           dq ?
+        00001038 prev_           dq ?
+        00001040 ThreadCache     ends
+        """
+        self.ThreadCache_offset_next = 0x1030
+        self.ThreadCache_offset_freelist_array = 0x0
+        self.ThreadCache_offset_tls = 0x1020 # actually this is not tid, but TLS base address
+        self.ThreadCache_freelist_slot_count = kClassSizesMax
+        # google-perftools-2.9.1/src/thread_cache.h
+        """
+        00000000 FreeList        struc ; (sizeof=0x20, align=0x8)
+        00000000 list_           dq ?
+        00000008 length_         dd ?
+        0000000C lowater_        dd ?
+        00000010 max_length_     dd ?
+        00000014 length_overages_ dd ?
+        00000018 size_           dd ?
+        0000001C unused          dd ?
+        00000020 FreeList        ends
+        """
+        self.sizeof_FreeList = 0x20
+        self.FreeList_offset_list = 0x0
+        self.FreeList_offset_length = 0x8
+        self.FreeList_offset_size = 0x18
+        # google-perftools-2.9.1/src/central_freelist.h
+        kMaxNumTransferEntries = 64
+        self.CentralCache_freelist_slot_count = kMaxNumTransferEntries
+        # google-perftools-2.9.1/src/static_vars.cc
+        self.CentralCache_array_count = kClassSizesMax
+        # google-perftools-2.9.1/src/central_freelist.h
+        """
+        struct TCEntry {
+          void *head;  // Head of chain of objects.
+          void *tail;  // Tail of chain of objects.
+        };
+        class central_cache_[kClassSizesMax=128]
+          0x0   SpinLock lock_;
+          0x8   size_t   size_class_;     // My size class
+          0x10  Span     empty_;          // Dummy header for list of empty spans
+          0x40  Span     nonempty_;       // Dummy header for list of non-empty spans
+          0x70  size_t   num_spans_;      // Number of spans in empty_ plus nonempty_
+          0x78  size_t   counter_;        // Number of free objects in cache entry
+          0x80  TCEntry tc_slots_[kMaxNumTransferEntries=64]
+          0x480 int32_t used_slots_;
+          0x484 int32_t cache_size_;
+          0x488 int32_t max_cache_size_;
+          0x48c char pad[0x34];
+        } // size:0x4c0, total_size:0x26000
+        """
+        self.sizeof_TCEntry = 0x10
+        self.sizeof_CentralCache = 0x4c0
+        self.CentralCache_offset_size_class_ = 0x8
+        self.CentralCache_offset_tc_slots_ = 0x80
+        self.CentralCache_offset_used_slots_ = 0x480
+        # settings
+        self.initialized = True
+        return
+
+    def get_heap_key(self):
+        return 0
+
+    def index_to_size(self, freelist, t): # freelist_index -> chunk_size
+        size = read_int_from_memory(freelist + self.FreeList_offset_size)
+        return size
+
+    def get_central_cache_(self):
+        # central_caches_ has ATTRIBUTE_HIDDEN, so the symbol is removed. so we need heuristic search.
+        #
+        # In the source code, there is size_map_ just above.
+        #
+        #   google-perftools-2.9.1/src/static_vars.cc
+        #     ...
+        #     SizeMap Static::sizemap_; <----- here
+        #     CentralFreeListPadded Static::central_cache_[kClassSizesMax];
+        #     ...
+        #
+        # And sizemap_ is initialized at the beginning of tcmalloc::Static::InitStaticVars(),
+        # so the addresses are loaded.
+        #
+        #   google-perftools-2.9.1/src/static_vars.cc
+        #   ...
+        #   void Static::InitStaticVars() {
+        #     sizemap_.Init(); <----- here
+        #     span_allocator_.Init();
+        #   ...
+        #
+        # This is a sample.
+        #   0x7ffff7c26110 <tcmalloc::Static::InitStaticVars()>:      endbr64
+        #   0x7ffff7c26114 <tcmalloc::Static::InitStaticVars()+4>:    push   rbp
+        #   0x7ffff7c26115 <tcmalloc::Static::InitStaticVars()+5>:    lea    rdi,[rip+0x1d1dc4]   # 0x7ffff7df7ee0 <----- here
+        #   0x7ffff7c2611c <tcmalloc::Static::InitStaticVars()+12>:   push   rbx
+        #   0x7ffff7c2611d <tcmalloc::Static::InitStaticVars()+13>:   sub    rsp,0x8
+        #   0x7ffff7c26121 <tcmalloc::Static::InitStaticVars()+17>:   call   0x7ffff7c20d80 <tcmalloc::SizeMap::Init()>
+        #   ...
+        #
+        # The size of central_cache_ is 0x26000, so 0x7ffff7df7ee0 - 0x26000 is central_cache_.
+
+        try:
+            init_static_vars = parse_address("&'tcmalloc::Static::InitStaticVars()'")
+        except Exception:
+            return None
+        res = gdb.execute("x/10i {:#x}".format(init_static_vars), to_string=True)
+        sizeof_central_cache_ = 0x26000
+        for line in res.splitlines():
+            m = re.search(r"\[rip\+0x\w+\].*#\s*(0x\w+)", line) # maybe size_map
+            if m:
+                v = int(m.group(1), 16) & 0xffffffffffffffff
+                return v - sizeof_central_cache_
+        else:
+            return None
 
 
 isolate_root = None
