@@ -39918,11 +39918,20 @@ class SlubDumpCommand(GenericCommand):
 class KsymaddrRemoteCommand(GenericCommand):
     """Solve kernel symbols from kallsyms table using kenrel memory scanning."""
     _cmdline_ = "ksymaddr-remote"
-    _syntax_ = "{:s} [-h] KEYWORD|--print-all [--head N] [--silent] [--exact] [--meta]".format(_cmdline_)
-    _example_ = "\n"
-    _example_ += "{:s} --print-all # print all symbols found\n".format(_cmdline_)
-    _example_ += "{:s} cred --head 30 # print symbols included \"cred\" with only first 30 hit\n".format(_cmdline_)
-    _example_ += "{:s} cred --silent # print symbols included \"cred\" with quiet mode\n".format(_cmdline_)
+    _category_ = "Qemu-system Cooperation"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('keyword', metavar='KEYWORD', nargs='*', help='filter by specific symbol name.')
+    parser.add_argument('--print-all', action='store_true', help='print all symbols found.')
+    parser.add_argument('--head', metavar='N', type=int, default=-1, help="filter by first N hit.")
+    parser.add_argument('--exact', action='store_true', help='use exact match.')
+    parser.add_argument('--meta', action='store_true', help='print meta data for debug.')
+    parser.add_argument('--silent', action='store_true', help='enable quiet mode.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} --print-all                      # print all symbols found\n".format(_cmdline_)
+    _example_ += "{:s} cred --head 30                   # print symbols included `cred` with only first 30 hit\n".format(_cmdline_)
+    _example_ += "{:s} cred --silent                    # print symbols included `cred` with quiet mode\n".format(_cmdline_)
     _example_ += "{:s} commit_creds prepare_kernel_cred # OR search\n".format(_cmdline_)
     _example_ += "Search flow:\n"
     _example_ += "1. get address of kernel_base\n"
@@ -39934,7 +39943,6 @@ class KsymaddrRemoteCommand(GenericCommand):
     _example_ += "7. get address of kallsyms_token_index\n"
     _example_ += "8. walk kallsyms\n"
     _example_ += "THIS FEATURE IS EXPERIMENTAL AND HEURISTIC."
-    _category_ = "Qemu-system Cooperation"
 
     def __init__(self, *args, **kwargs):
         super().__init__()
@@ -40678,57 +40686,25 @@ class KsymaddrRemoteCommand(GenericCommand):
         self.print_meta()
         return True if res else False
 
+    @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
     @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if not argv:
-            self.usage()
-            return
-
-        if "-h" in argv:
-            self.usage()
-            return
-
-        self.meta = False
-        if "--meta" in argv:
-            self.meta = True
-            argv.remove("--meta")
-
-        self.silent = False
-        if "--silent" in argv:
-            self.silent = True
-            argv.remove("--silent")
-
-        self.exact = False
-        if "--exact" in argv:
-            self.exact = True
-            argv.remove("--exact")
-
-        self.head = -1
-        if "--head" in argv:
-            try:
-                idx = argv.index("--head")
-                headN = argv[idx + 1]
-                self.head = int(headN)
-                argv = argv[:idx] + argv[idx + 2:]
-            except Exception:
-                self.usage()
-                return
-
-        self.print_all = False
-        if "--print-all" in argv:
-            self.print_all = True
-            argv.remove("--print-all")
-        if argv == []:
+        self.meta = args.meta
+        self.silent = args.silent
+        self.exact = args.exact
+        self.head = args.head
+        self.print_all = args.print_all
+        if args.keyword == []:
             self.print_all = True
 
         if not self.initialize():
             return
         self.resolve_kallsyms()
-        self.print_kallsyms(argv)
+        self.print_kallsyms(args.keyword)
         return
 
 
@@ -40736,8 +40712,12 @@ class KsymaddrRemoteCommand(GenericCommand):
 class VmlinuxToElfApplyCommand(GenericCommand):
     """Apply symbol from kallsyms in memory using vmlinux-to-elf (too slow but more accurate)."""
     _cmdline_ = "vmlinux-to-elf-apply"
-    _syntax_ = "{:s} [--reparse]".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('--reparse', action='store_true',
+                        help='force applying vmlinux-to-elf again. (default: reuse if vmlinux-to-elf-dump-memory.elf exists')
+    _syntax_ = parser.format_help()
 
     @staticmethod
     def dump_kernel_elf(dumped_mem_file, symboled_vmlinux_file, force=False):
@@ -40839,24 +40819,16 @@ class VmlinuxToElfApplyCommand(GenericCommand):
         # Success
         return dic
 
+    @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
     @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
-
-        force_reparse = False
-        if "--reparse" in argv:
-            force_reparse = True
-            argv.remove("--reparse")
-
-        if argv:
-            self.usage()
-            return
 
         dumped_mem_file = os.path.join(GEF_TEMP_DIR, "vmlinux-to-elf-dump-memory.raw")
         symboled_vmlinux_file = os.path.join(GEF_TEMP_DIR, "vmlinux-to-elf-dump-memory.elf")
-        dic = self.dump_kernel_elf(dumped_mem_file, symboled_vmlinux_file, force=force_reparse)
+        dic = self.dump_kernel_elf(dumped_mem_file, symboled_vmlinux_file, force=args.reparse)
         if dic is None:
             err("Failed to create kernel ELF")
             return
