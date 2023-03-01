@@ -42510,8 +42510,14 @@ class MuslDumpCommand(GenericCommand):
     """musl heap reusable chunks viewer (supported on x64/x86, based on musl libc v1.2.2; src/malloc/mallocng).
     See https://h-noson.hatenablog.jp/entry/2021/05/03/161933#-177pts-mooosl"""
     _cmdline_ = "musl-dump"
-    _syntax_ = "{:s} ctx|unused [-v] [-a ACTIVE_IDX]".format(_cmdline_)
     _category_ = "Heap"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('command', nargs='?', default='unused', choices=['ctx', 'unused'],
+                        help='dump mode (default: %(default)s).')
+    parser.add_argument('--idx', type=int, help='the active index of dump target.')
+    parser.add_argument('-v', dest='verbose', action='store_true', help='also dump an empty active index.')
+    _syntax_ = parser.format_help()
 
     def get_malloc_context_heuristic(self):
         try:
@@ -42577,7 +42583,7 @@ class MuslDumpCommand(GenericCommand):
                0x7ffff7d8e45c <__malloc_alloc_meta+2>:      push   rbp
                0x7ffff7d8e45d <__malloc_alloc_meta+3>:      push   rbx
                0x7ffff7d8e45e <__malloc_alloc_meta+4>:      sub    rsp,0x10
-               0x7ffff7d8e462 <__malloc_alloc_meta+8>:      cmp    DWORD PTR [rip+0x26d67f],0x0        # 0x7ffff7ffbae8 <__malloc_context+8>
+               0x7ffff7d8e462 <__malloc_alloc_meta+8>:      cmp    DWORD PTR [rip+0x26d67f],0x0  # 0x7ffff7ffbae8 <__malloc_context+8>
 
             [patttern 2]
                0x7ffff7f72290:      endbr64
@@ -42588,7 +42594,7 @@ class MuslDumpCommand(GenericCommand):
                0x7ffff7f7229c:      mov    rax,QWORD PTR fs:0x28
                0x7ffff7f722a5:      mov    QWORD PTR [rsp+0x8],rax
                0x7ffff7f722aa:      xor    eax,eax
-               0x7ffff7f722ac:      mov    eax,DWORD PTR [rip+0x89816]        # 0x7ffff7ffbac8
+               0x7ffff7f722ac:      mov    eax,DWORD PTR [rip+0x89816]  # 0x7ffff7ffbac8
                0x7ffff7f722b2:      test   eax,eax
 
             [pattern 3]
@@ -42662,8 +42668,8 @@ class MuslDumpCommand(GenericCommand):
 
     def read_ctx(self):
         ptrsize = current_arch.ptrsize
-        ctx = {}
-        ctx["addr"] = current = self.get_malloc_context()
+        _ctx = {}
+        _ctx["addr"] = current = self.get_malloc_context()
         if current is None:
             return None
         """
@@ -42690,84 +42696,86 @@ class MuslDumpCommand(GenericCommand):
             uintptr_t brk;
         };
         """
-        ctx["secret"] = u64(read_memory(current, 8))
+        _ctx["secret"] = u64(read_memory(current, 8))
         current += 8
         x = read_int_from_memory(current)
         if x == gef_getpagesize():
-            ctx["pagesize"] = x
+            _ctx["pagesize"] = x
             current += ptrsize
         else:
-            ctx["pagesize"] = None
+            _ctx["pagesize"] = None
 
-        ctx["init_done"] = u32(read_memory(current, 4))
+        _ctx["init_done"] = u32(read_memory(current, 4))
         current += 4
-        ctx["mmap_counter"] = u32(read_memory(current, 4))
+        _ctx["mmap_counter"] = u32(read_memory(current, 4))
         current += 4
-        ctx["free_meta_head"] = read_int_from_memory(current)
+        _ctx["free_meta_head"] = read_int_from_memory(current)
         current += ptrsize
-        ctx["avail_meta"] = read_int_from_memory(current)
+        _ctx["avail_meta"] = read_int_from_memory(current)
         current += ptrsize
-        ctx["avail_meta_count"] = read_int_from_memory(current)
+        _ctx["avail_meta_count"] = read_int_from_memory(current)
         current += ptrsize
-        ctx["avail_meta_area_count"] = read_int_from_memory(current)
+        _ctx["avail_meta_area_count"] = read_int_from_memory(current)
         current += ptrsize
-        ctx["alloc_shift"] = read_int_from_memory(current)
+        _ctx["alloc_shift"] = read_int_from_memory(current)
         current += ptrsize
-        ctx["meta_area_head"] = read_int_from_memory(current)
+        _ctx["meta_area_head"] = read_int_from_memory(current)
         current += ptrsize
-        ctx["meta_area_tail"] = read_int_from_memory(current)
+        _ctx["meta_area_tail"] = read_int_from_memory(current)
         current += ptrsize
-        ctx["avail_meta_areas"] = read_int_from_memory(current)
+        _ctx["avail_meta_areas"] = read_int_from_memory(current)
         current += ptrsize
-        ctx["active"] = []
+        _ctx["active"] = []
         for i in range(48):
-            ctx["active"].append(read_int_from_memory(current))
+            _ctx["active"].append(read_int_from_memory(current))
             current += ptrsize
-        ctx["usage_by_class"] = []
+        _ctx["usage_by_class"] = []
         for i in range(48):
-            ctx["usage_by_class"].append(read_int_from_memory(current))
+            _ctx["usage_by_class"].append(read_int_from_memory(current))
             current += ptrsize
-        ctx["unmap_seq"] = read_memory(current, 32)
+        _ctx["unmap_seq"] = read_memory(current, 32)
         current += 32
-        ctx["bounces"] = read_memory(current, 32)
+        _ctx["bounces"] = read_memory(current, 32)
         current += 32
-        ctx["seq"] = ord(read_memory(current, 1))
+        _ctx["seq"] = ord(read_memory(current, 1))
         current += ptrsize # with padding
-        ctx["brk"] = read_int_from_memory(current)
+        _ctx["brk"] = read_int_from_memory(current)
         current += ptrsize
-        return ctx
+
+        Ctx = collections.namedtuple("Ctx", _ctx.keys())
+        return Ctx(*_ctx.values())
 
     def print_ctx(self, ctx):
-        gef_print(titlify("__malloc_context: {:#x}".format(ctx["addr"])))
-        gef_print("  uint64_t secret:                    {:#x}".format(ctx["secret"]))
-        if ctx["pagesize"]:
-            gef_print("  size_t pagesize:                    {:#x}".format(ctx["pagesize"]))
-        gef_print("  int init_done:                      {:#x}".format(ctx["init_done"]))
-        gef_print("  unsigned int mmap_counter:          {:#x}".format(ctx["mmap_counter"]))
-        gef_print("  struct meta* free_meta_head:        {:#x}".format(ctx["free_meta_head"]))
-        gef_print("  struct meta* avail_meta:            {:#x}".format(ctx["avail_meta"]))
-        gef_print("  size_t avail_meta_count:            {:#x}".format(ctx["avail_meta_count"]))
-        gef_print("  size_t avail_meta_area_count:       {:#x}".format(ctx["avail_meta_area_count"]))
-        gef_print("  size_t alloc_shift:                 {:#x}".format(ctx["alloc_shift"]))
-        gef_print("  struct meta_area* meta_area_head:   {:#x}".format(ctx["meta_area_head"]))
-        gef_print("  struct meta_area* meta_area_tail:   {:#x}".format(ctx["meta_area_tail"]))
-        gef_print("  unsigned char* avail_meta_areas:    {:#x}".format(ctx["avail_meta_areas"]))
+        gef_print(titlify("__malloc_context: {:#x}".format(ctx.addr)))
+        gef_print("  uint64_t secret:                    {:#x}".format(ctx.secret))
+        if ctx.pagesize:
+            gef_print("  size_t pagesize:                    {:#x}".format(ctx.pagesize))
+        gef_print("  int init_done:                      {:#x}".format(ctx.init_done))
+        gef_print("  unsigned int mmap_counter:          {:#x}".format(ctx.mmap_counter))
+        gef_print("  struct meta* free_meta_head:        {:#x}".format(ctx.free_meta_head))
+        gef_print("  struct meta* avail_meta:            {:#x}".format(ctx.avail_meta))
+        gef_print("  size_t avail_meta_count:            {:#x}".format(ctx.avail_meta_count))
+        gef_print("  size_t avail_meta_area_count:       {:#x}".format(ctx.avail_meta_area_count))
+        gef_print("  size_t alloc_shift:                 {:#x}".format(ctx.alloc_shift))
+        gef_print("  struct meta_area* meta_area_head:   {:#x}".format(ctx.meta_area_head))
+        gef_print("  struct meta_area* meta_area_tail:   {:#x}".format(ctx.meta_area_tail))
+        gef_print("  unsigned char* avail_meta_areas:    {:#x}".format(ctx.avail_meta_areas))
         gef_print("  struct meta* active[48]:")
         for i in range(48):
-            gef_print("     active[{:2d}] (for chunk_size={:#7x}):     {:#x}".format(i, self.class_to_size(i), ctx["active"][i]))
+            gef_print("     active[{:2d}] (for chunk_size={:#7x}):     {:#x}".format(i, self.class_to_size(i), ctx.active[i]))
         gef_print("  size_t usage_by_class[48]:")
         for i in range(48):
-            gef_print("     usage_by_class[{:2d}]:                     {:#x}".format(i, ctx["usage_by_class"][i]))
-        gef_print("  uint8_t unmap_seq[32]:              {}".format(' '.join(["%02x" % x for x in ctx["unmap_seq"]])))
-        gef_print("  uint8_t bounces[32]:                {}".format(' '.join(["%02x" % x for x in ctx["bounces"]])))
-        gef_print("  uint8_t seq:                        {:#x}".format(ctx["seq"]))
-        gef_print("  uintptr_t brk:                      {:#x}".format(ctx["brk"]))
+            gef_print("     usage_by_class[{:2d}]:                     {:#x}".format(i, ctx.usage_by_class[i]))
+        gef_print("  uint8_t unmap_seq[32]:              {}".format(' '.join(["%02x" % x for x in ctx.unmap_seq])))
+        gef_print("  uint8_t bounces[32]:                {}".format(' '.join(["%02x" % x for x in ctx.bounces])))
+        gef_print("  uint8_t seq:                        {:#x}".format(ctx.seq))
+        gef_print("  uintptr_t brk:                      {:#x}".format(ctx.brk))
         return
 
     def read_meta(self, addr):
         ptrsize = current_arch.ptrsize
-        meta = {}
-        meta["addr"] = current = addr
+        _meta = {}
+        _meta["addr"] = current = addr
         """
         struct meta {
             struct meta *prev;
@@ -42781,31 +42789,32 @@ class MuslDumpCommand(GenericCommand):
             uintptr_t maplen:8*sizeof(uintptr_t)-12;
         };
         """
-        meta["prev"] = read_int_from_memory(current)
+        _meta["prev"] = read_int_from_memory(current)
         current += ptrsize
-        meta["next"] = read_int_from_memory(current)
+        _meta["next"] = read_int_from_memory(current)
         current += ptrsize
-        meta["mem"] = read_int_from_memory(current)
+        _meta["mem"] = read_int_from_memory(current)
         current += ptrsize
-        meta["avail_mask"] = u32(read_memory(current, 4))
+        _meta["avail_mask"] = u32(read_memory(current, 4))
         current += 4
-        meta["freed_mask"] = u32(read_memory(current, 4))
+        _meta["freed_mask"] = u32(read_memory(current, 4))
         current += 4
         x = read_int_from_memory(current)
-        meta["last_idx"] = x & 0b11111
-        meta["freeable"] = (x >> 5) & 0b1
-        meta["sizeclass"] = (x >> 6) & 0b111111
-        meta["maplen"] = (x >> 12)
+        _meta["last_idx"] = x & 0b11111
+        _meta["freeable"] = (x >> 5) & 0b1
+        _meta["sizeclass"] = (x >> 6) & 0b111111
+        _meta["maplen"] = (x >> 12)
         current += ptrsize
-        return meta
+
+        Meta = collections.namedtuple("Meta", _meta.keys())
+        return Meta(*_meta.values())
 
     def make_state(self, meta):
-        avail_mask = meta["avail_mask"]
-        freed_mask = meta["freed_mask"]
-        last_idx = meta["last_idx"]
+        avail_mask = meta.avail_mask
+        freed_mask = meta.freed_mask
 
         text = ""
-        for i in range(last_idx + 1):
+        for i in range(meta.last_idx + 1):
             if avail_mask & 1:
                 text = "A" + text
             elif freed_mask & 1:
@@ -42818,9 +42827,9 @@ class MuslDumpCommand(GenericCommand):
 
     def read_group(self, meta, offset):
         ptrsize = current_arch.ptrsize
-        group = {}
-        group["addr"] = current = meta["mem"] + offset
-        group["data"] = read_memory(group["addr"], self.class_to_size(meta["sizeclass"]))
+        _group = {}
+        _group["addr"] = current = meta.mem + offset
+        _group["data"] = read_memory(_group["addr"], self.class_to_size(meta.sizeclass))
         """
         from source code:
         struct group {
@@ -42840,29 +42849,31 @@ class MuslDumpCommand(GenericCommand):
             unsigned short slot_offset16;
         }
         """
-        group["meta"] = read_int_from_memory(current)
+        _group["meta"] = read_int_from_memory(current)
         current += ptrsize
         x = u32(read_memory(current, 4))
         current += 4 if is_x86_64() else 8
         y = u32(read_memory(current, 4))
-        group["reserved"] = (x >> 13) & 0b111
-        group["slot_idx"] = (y >> 8) & 0b11111
+        _group["reserved"] = (x >> 13) & 0b111
+        _group["slot_idx"] = (y >> 8) & 0b11111
         if y & 0xff:
-            group["slot_offset"] = x
+            _group["slot_offset"] = x
         else:
-            group["slot_offset"] = (y >> 16) & 0xffff
+            _group["slot_offset"] = (y >> 16) & 0xffff
         current += ptrsize
-        return group
+
+        Group = collections.namedtuple("Group", _group.keys())
+        return Group(*_group.values())
 
     def dump_chunk(self, group, state):
         ptrsize = current_arch.ptrsize
 
-        subinfo = "state:{:5s} meta:{:<#14x} reserved:{:#x}".format(state, group["meta"], group["reserved"])
+        subinfo = "state:{:5s} meta:{:<#14x} reserved:{:#x}".format(state, group.meta, group.reserved)
         if state == "Used":
-            subinfo += " slot_idx:{:<#3x} slot_offset:{:#x}".format(group["slot_idx"], group["slot_offset"])
+            subinfo += " slot_idx:{:<#3x} slot_offset:{:#x}".format(group.slot_idx, group.slot_offset)
 
-        data = slicer(group["data"], ptrsize * 2)
-        addr = group["addr"]
+        data = slicer(group.data, ptrsize * 2)
+        addr = group.addr
         group_line_threshold = 8
 
         # create dump text
@@ -42905,9 +42916,9 @@ class MuslDumpCommand(GenericCommand):
 
         # iterate __malloc_context.active
         for idx in range(48):
-            if self.active_idx and idx != self.active_idx:
+            if self.active_idx is not None and idx != self.active_idx:
                 continue
-            current = ctx["active"][idx]
+            current = ctx.active[idx]
             if current == 0:
                 continue
 
@@ -42917,61 +42928,46 @@ class MuslDumpCommand(GenericCommand):
             seen = []
             while current not in seen:
                 meta = self.read_meta(current)
-                gef_print("meta @ {:#x}".format(meta["addr"]))
+                gef_print("meta @ {:#x}".format(meta.addr))
                 text = "  "
-                text += "prev:{:#x} next:{:#x} ".format(meta["prev"], meta["next"])
-                text += Color.colorify("mem:{:#x} ".format(meta["mem"]), "bold cyan")
-                text += "avail_mask:{:#x} freed_mask:{:#x} ".format(meta["avail_mask"], meta["freed_mask"])
-                text += "last_idx:{:#x} freeable:{:#x} ".format(meta["last_idx"], meta["freeable"])
-                text += "sizeclass:{:#x} maplen:{:#x}".format(meta["sizeclass"], meta["maplen"])
+                text += "prev:{:#x} next:{:#x} ".format(meta.prev, meta.next)
+                text += Color.colorify("mem:{:#x} ".format(meta.mem), "bold cyan")
+                text += "avail_mask:{:#x} freed_mask:{:#x} ".format(meta.avail_mask, meta.freed_mask)
+                text += "last_idx:{:#x} freeable:{:#x} ".format(meta.last_idx, meta.freeable)
+                text += "sizeclass:{:#x} maplen:{:#x}".format(meta.sizeclass, meta.maplen)
                 gef_print(text)
 
                 state = self.make_state(meta)
                 gef_print("  Unused chunks list: {}".format(repr(state)))
 
                 # dump chunks
-                if self.verbose:
+                if state != "F" or self.verbose:
                     dic = {"A": "Avail", "F": "Freed", "U": "Used"}
-                    for i in range(meta["last_idx"] + 1):
+                    for i in range(meta.last_idx + 1):
                         offset = self.class_to_size(idx) * i
                         group = self.read_group(meta, offset)
                         self.dump_chunk(group, dic[state[-i - 1]])
                     gef_print("")
 
                 seen.append(current)
-                current = meta["next"]
+                current = meta.next
         return
 
+    @parse_args
     @only_if_gdb_running
     @only_if_specific_arch(arch=["x86_32", "x86_64"])
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        self.verbose = False
-        if "-v" in argv:
-            self.verbose = True
-            argv.remove("-v")
-
-        try:
-            self.active_idx = False
-            while "-a" in argv:
-                idx = argv.index("-a")
-                self.active_idx = int(argv[idx + 1])
-                argv = argv[:idx] + argv[idx + 2:]
-        except Exception:
-            self.usage()
-            return
-
-        if not argv:
-            self.usage()
-            return
+        self.verbose = args.verbose
+        self.active_idx = args.idx
 
         ctx = self.read_ctx()
         if ctx is None:
             return
-        if argv[0] == "ctx":
+        if args.command == "ctx":
             self.print_ctx(ctx)
-        elif argv[0] == "unused":
+        elif args.command == "unused":
             self.print_meta(ctx)
         return
 
