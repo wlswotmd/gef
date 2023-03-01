@@ -42976,22 +42976,21 @@ class MuslDumpCommand(GenericCommand):
 class XphysAddrCommand(GenericCommand):
     """Dump physical memory via qemu-monitor."""
     _cmdline_ = "xp"
-    _syntax_ = "{:s} [-h] [OPTION] ADDRESS".format(_cmdline_)
-    _example_ = "{:s} /16xg 0x11223344".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
 
-    def dump_physmem(self, argv):
-        result = gdb.execute("monitor xp {:s}".format(' '.join(argv)), to_string=True)
-        gef_print(result.strip())
-        return
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('option', metavar='OPTION', nargs='*', help='the argument of xp.')
+    parser.add_argument('address', metavar='ADDRESS', type=parse_address, help='dump target address.')
+    _syntax_ = parser.format_help()
 
+    _example_ = "{:s} /16xg 0x11223344".format(_cmdline_)
+
+    @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
-    def do_invoke(self, argv):
-        if "-h" in argv:
-            self.usage()
-            return
-        self.dump_physmem(argv)
+    def do_invoke(self, args):
+        result = gdb.execute("monitor xp {:s} {:#x}".format(' '.join(args.option), args.address), to_string=True)
+        gef_print(result.strip())
         return
 
 
@@ -42999,12 +42998,21 @@ class XphysAddrCommand(GenericCommand):
 class XSecureMemAddrCommand(GenericCommand):
     """Dump secure memory via qemu-system memory map."""
     _cmdline_ = "xsm"
-    _syntax_ = "{:s} [-h] [-v] /FMT --phys|--off|--virt ADDRESS".format(_cmdline_)
-    _example_ = "\n"
-    _example_ += "{:s} /16xw --phys 0xe11e3d0 # absolute (physical/non-ASLR) address of secure memory\n".format(_cmdline_)
-    _example_ += "{:s} /16xw --off 0x11e3d0 # the offset from secure memory area\n".format(_cmdline_)
-    _example_ += "{:s} /16xw --virt 0x783ae3d0 # secure memory ASLR is supported".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('--phys', action='store_true', help='treat ADDRESS as physical address.')
+    group.add_argument('--off', action='store_true', help='treat ADDRESS as offset of secure memory top.')
+    group.add_argument('--virt', action='store_true', help='treat ADDRESS as virtual address.')
+    parser.add_argument("format", metavar='/FMT', help='specified output format.')
+    parser.add_argument('location', metavar='ADDRESS', type=parse_address, help='dump target address.')
+    parser.add_argument('-v', dest='verbose', action='store_true', help='verbose output.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} /16xw --phys 0xe11e3d0  # absolute (physical/non-ASLR) address of secure memory\n".format(_cmdline_)
+    _example_ += "{:s} /16xw --off 0x11e3d0    # the offset from secure memory area\n".format(_cmdline_)
+    _example_ += "{:s} /16xw --virt 0x783ae3d0 # secure memory ASLR is supported".format(_cmdline_)
 
     @staticmethod
     def get_secure_memory_base_and_size(verbose=False):
@@ -43141,85 +43149,66 @@ class XSecureMemAddrCommand(GenericCommand):
             pass
         return
 
+    @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
     @only_if_specific_arch(arch=["ARM32", "ARM64"])
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
-
-        # arg parse
-        if "-h" in argv:
-            self.usage()
-            return
-
-        verbose = False
-        if "-v" in argv:
-            verbose = True
-            argv.remove("-v")
 
         self.dump_type = "x"
         self.dump_unit = current_arch.ptrsize
         self.dump_count = 1
-        if argv and argv[0].startswith("/"):
-            m = re.search(r"/(\d*)(\S*)", argv[0])
-            if m:
-                if m.group(1):
-                    self.dump_count = int(m.group(1))
-                for c in m.group(2):
-                    if c in ["x", "i"]:
-                        self.dump_type = c
-                    elif c in ["b", "h", "w", "g"]:
-                        self.dump_unit = {"b": 1, "h": 2, "w": 4, "g": 8}[c]
-                    else:
-                        err("Unsupported format: {}".format(c))
-                        return
-            argv = argv[1:]
-
-        if argv and argv[0] in ["--phys", "--off", "--virt"]:
-            addr_type = argv[0]
-            argv = argv[1:]
+        if args.format:
+            if args.format.startswith("/"):
+                m = re.search(r"/(\d*)(\S*)", args.format)
+                if m:
+                    if m.group(1):
+                        self.dump_count = int(m.group(1))
+                    for c in m.group(2):
+                        if c in ["x", "i"]:
+                            self.dump_type = c
+                        elif c in ["b", "h", "w", "g"]:
+                            self.dump_unit = {"b": 1, "h": 2, "w": 4, "g": 8}[c]
+                        else:
+                            err("Unsupported format: {}".format(c))
+                            return
         else:
             self.usage()
             return
 
-        try:
-            target = int(gdb.parse_and_eval(''.join(argv)))
-        except Exception:
-            self.usage()
-            return
-
         # initialize
-        sm_base, sm_size = self.get_secure_memory_base_and_size(verbose)
+        sm_base, sm_size = self.get_secure_memory_base_and_size(args.verbose)
         if sm_base is None or sm_size is None:
             err("Not found memory tree of secure memory (see monitor info mtree -f)")
             return
-        sm = self.get_secure_memory_qemu_map(sm_base, sm_size, verbose)
+        sm = self.get_secure_memory_qemu_map(sm_base, sm_size, args.verbose)
         if sm is None:
             err("Not found secure memory maps")
             return
 
         # dump
-        if addr_type == "--phys":
-            if sm_base <= target < sm_base + sm_size:
-                target_offset = target - sm_base
+        if args.phys:
+            if sm_base <= args.location < sm_base + sm_size:
+                target_offset = args.location - sm_base
             else:
-                err("Phys {:#x} is not default secure memory (unsupported)".format(target))
+                err("Phys {:#x} is not default secure memory (unsupported)".format(args.location))
                 return
-        elif addr_type == "--off":
-            if 0 <= target < sm_size:
-                target_offset = target
+        elif args.off:
+            if 0 <= args.location < sm_size:
+                target_offset = args.location
             else:
-                err("Offset {:#x} is not default secure memory (unsupported)".format(target))
+                err("Offset {:#x} is not default secure memory (unsupported)".format(args.location))
                 return
-        elif addr_type == "--virt":
-            target_phys = self.virt2phys(target, verbose)
+        elif args.virt:
+            target_phys = self.virt2phys(args.location, args.verbose)
             if target_phys is None:
                 err("Not found physical address")
                 return
             if sm_base <= target_phys < sm_base + sm_size:
                 target_offset = target_phys - sm_base
             else:
-                err("Virt {:#x} is not default secure memory (unsupported)".format(target))
+                err("Virt {:#x} is not default secure memory (unsupported)".format(args.location))
                 return
 
         if self.dump_type == "x":
@@ -43228,16 +43217,16 @@ class XSecureMemAddrCommand(GenericCommand):
             dump_size = self.dump_count * 4 # ARM opcode is at most 4byte
             if target_offset & 1:
                 target_offset -= 1
-        data = self.read_secure_memory(sm, target_offset, dump_size, verbose)
+        data = self.read_secure_memory(sm, target_offset, dump_size, args.verbose)
         if data is None:
             err("Read error")
             return
 
         # print
         if self.dump_type == "x":
-            self.print_secure_memory_x(target, data)
+            self.print_secure_memory_x(args.location, data)
         elif self.dump_type == "i":
-            self.print_secure_memory_i(target, data)
+            self.print_secure_memory_i(args.location, data)
         return
 
 
@@ -43259,13 +43248,24 @@ class TemporaryDummyBreakpoint(gdb.Breakpoint):
 class WSecureMemAddrCommand(GenericCommand):
     """Write secure memory via qemu-system memory map."""
     _cmdline_ = "wsm"
-    _syntax_ = "{:s} [-h] [-v] -b byte|short|dword|qword|string|hex VALUE --phys|--off|--virt ADDRESS".format(_cmdline_)
-    _example_ = "\n"
-    _example_ += "{:s} -b dword 0x41414141 --phys 0xe11e3d0 # absolute (physical/non-ASLR) address of secure memory\n".format(_cmdline_)
-    _example_ += "{:s} -b string \"\\\\x41\\\\x41\\\\x41\\\\x41\" --off 0x11e3d0 # the offset of secure memory\n".format(_cmdline_)
-    _example_ += "{:s} -b hex \"4141 4141\" --off 0x11e3d0 # hex string is supported (invalid character is ignored)\n".format(_cmdline_)
-    _example_ += "{:s} -b byte 0x41 --virt 0x783ae3d0 # secure memory ASLR is supported".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('mode', choices=['byte', 'short', 'dword', 'qword', 'string', 'hex'],
+                        help='The mode that represents the value of the argument. You have to choose one or the other.')
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('--phys', action='store_true', help='treat ADDRESS as physical address.')
+    group.add_argument('--off', action='store_true', help='treat ADDRESS as offset of secure memory top.')
+    group.add_argument('--virt', action='store_true', help='treat ADDRESS as virtual address.')
+    parser.add_argument('value', metavar='VALUE', help='write value.')
+    parser.add_argument('location', metavar='ADDRESS', type=parse_address, help='write target address.')
+    parser.add_argument('-v', dest='verbose', action='store_true', help='verbose output.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} dword 0x41414141 --phys 0xe11e3d0            # absolute (physical/non-ASLR) address of secure memory\n".format(_cmdline_)
+    _example_ += '{:s} string "\\\\x41\\\\x41\\\\x41\\\\x41" --off 0x11e3d0 # the offset of secure memory\n'.format(_cmdline_)
+    _example_ += '{:s} hex "4141 4141" --off 0x11e3d0               # hex string is supported (invalid character is ignored)\n'.format(_cmdline_)
+    _example_ += "{:s} byte 0x41 --virt 0x783ae3d0                  # secure memory ASLR is supported".format(_cmdline_)
 
     @staticmethod
     def write_secure_memory(sm, offset, data, verbose=False):
@@ -43301,102 +43301,74 @@ class WSecureMemAddrCommand(GenericCommand):
             set_gef_setting("context.use_capstone", True)
         return ret
 
+    @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
     @only_if_specific_arch(arch=["ARM32", "ARM64"])
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        # arg parse
-        if "-h" in argv:
-            self.usage()
-            return
-
-        verbose = False
-        if "-v" in argv:
-            verbose = True
-            argv.remove("-v")
-
-        if len(argv) >= 3 and argv[0] == "-b":
-            try:
-                if argv[1] == "byte":
-                    data = p8(int(argv[2], 0))
-                elif argv[1] == "short":
-                    data = p16(int(argv[2], 0))
-                elif argv[1] == "dword":
-                    data = p32(int(argv[2], 0))
-                elif argv[1] == "qword":
-                    data = p64(int(argv[2], 0))
-                elif argv[1] == "string":
-                    try:
-                        data = codecs.escape_decode(argv[2])[0]
-                    except binascii.Error:
-                        gef_print("Could not decode '\\xXX' encoded string \"{}\"".format(data))
-                        return
-                elif argv[1] == "hex":
-                    _data = ""
-                    for c in argv[2].lower():
-                        if c in '0123456789abcdef':
-                            _data += c
-                    data = bytes.fromhex(_data)
-                else:
-                    self.usage()
-                    return
-                argv = argv[3:]
-            except Exception:
-                self.usage()
-                return
-
-        if argv and argv[0] in ["--phys", "--off", "--virt"]:
-            addr_type = argv[0]
-            argv = argv[1:]
-        else:
-            self.usage()
-            return
-
         try:
-            target = int(gdb.parse_and_eval(''.join(argv)))
+            if args.mode == "byte":
+                data = p8(int(args.value, 0))
+            elif args.mode == "short":
+                data = p16(int(args.value, 0))
+            elif args.mode == "dword":
+                data = p32(int(args.value, 0))
+            elif args.mode == "qword":
+                data = p64(int(args.value, 0))
+            elif args.mode == "string":
+                try:
+                    data = codecs.escape_decode(args.value)[0]
+                except binascii.Error:
+                    gef_print("Could not decode '\\xXX' encoded string")
+                    return
+            elif args.mode == "hex":
+                _data = ""
+                for c in args.value.lower():
+                    if c in '0123456789abcdef':
+                        _data += c
+                data = bytes.fromhex(_data)
         except Exception:
             self.usage()
             return
 
         # initialize
-        sm_base, sm_size = XSecureMemAddrCommand.get_secure_memory_base_and_size(verbose)
+        sm_base, sm_size = XSecureMemAddrCommand.get_secure_memory_base_and_size(args.verbose)
         if sm_base is None or sm_size is None:
             err("Not found memory tree of secure memory (see monitor info mtree -f)")
             return
-        sm = XSecureMemAddrCommand.get_secure_memory_qemu_map(sm_base, sm_size, verbose)
+        sm = XSecureMemAddrCommand.get_secure_memory_qemu_map(sm_base, sm_size, args.verbose)
         if sm is None:
             err("Not found secure memory maps")
             return
 
         # write
-        if addr_type == "--phys":
-            if sm_base <= target < sm_base + sm_size:
-                target_offset = target - sm_base
+        if args.phys:
+            if sm_base <= args.location < sm_base + sm_size:
+                target_offset = args.location - sm_base
             else:
-                err("Phys {:#x} is not default secure memory (unsupported)".format(target))
+                err("Phys {:#x} is not default secure memory (unsupported)".format(args.location))
                 return
-        elif addr_type == "--off":
-            if 0 <= target < sm_size:
-                target_offset = target
+        elif args.off:
+            if 0 <= args.location < sm_size:
+                target_offset = args.location
             else:
-                err("Offset {:#x} is not default secure memory (unsupported)".format(target))
+                err("Offset {:#x} is not default secure memory (unsupported)".format(args.location))
                 return
-        elif addr_type == "--virt":
-            target_phys = XSecureMemAddrCommand.virt2phys(target, verbose)
+        elif args.virt:
+            target_phys = XSecureMemAddrCommand.virt2phys(args.location, args.verbose)
             if target_phys is None:
                 err("Not found physical address")
                 return
             if sm_base <= target_phys < sm_base + sm_size:
                 target_offset = target_phys - sm_base
             else:
-                err("Virt {:#x} is not default secure memory (unsupported)".format(target))
+                err("Virt {:#x} is not default secure memory (unsupported)".format(args.location))
                 return
-        ret = self.write_secure_memory(sm, target_offset, data, verbose)
+        ret = self.write_secure_memory(sm, target_offset, data, args.verbose)
         if ret is None:
-            err("Write error")
-            return
+            err("Write memory error")
         return
 
 
@@ -43404,36 +43376,25 @@ class WSecureMemAddrCommand(GenericCommand):
 class BreakSecureMemAddrCommand(GenericCommand):
     """Set a breakpoint in virtual memory by specifying the physical memory of the secure world."""
     _cmdline_ = "bsm"
-    _syntax_ = "{:s} [-h] [-v] PHYS_ADDRESS".format(_cmdline_)
-    _example_ = "{:s} 0xe1008d8".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
 
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('location', metavar='PHYS_ADDRESS', type=parse_address,
+                        help='the target physical address you want to set a breakpoint.')
+    parser.add_argument('-v', dest='verbose', action='store_true', help='verbose output.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} 0xe1008d8".format(_cmdline_)
+
+    @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
     @only_if_specific_arch(arch=["ARM32", "ARM64"])
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
-
-        if "-h" in argv:
-            self.usage()
-            return
-
-        # arg parse
-        verbose = False
-        if "-v" in argv:
-            verbose = True
-            argv.remove("-v")
-
-        try:
-            phys_addr = parse_address(' '.join(argv))
-            if verbose:
-                info("phys address: {:#x}".format(phys_addr))
-        except Exception:
-            self.usage()
-            return
-
-        virt_addrs = XSecureMemAddrCommand.phys2virt(phys_addr, verbose)
-
+        if args.verbose:
+            info("phys address: {:#x}".format(args.location))
+        virt_addrs = XSecureMemAddrCommand.phys2virt(args.location, args.verbose)
         for virt_addr in virt_addrs:
             gdb.execute("break *{:#x}".format(virt_addr))
         return
@@ -43497,49 +43458,33 @@ class OpteeThreadEnterUserModeBreakpoint(gdb.Breakpoint):
 class OpteeBreakTaAddrCommand(GenericCommand):
     """Set a breakpoint to OPTEE-TA."""
     _cmdline_ = "optee-break-ta"
-    _syntax_ = "{:s} [-h] [-v] ADDR_thread_enter_user_mode TA_OFFSET\n".format(_cmdline_)
-    _syntax_ += "  ADDR_thread_enter_user_mode: The physical address of `thread_enter_user_mode` at OPTEE-OS\n"
-    _syntax_ += "  TA_OFFSET:                   The breakpoint target offset of OPTEE-TA"
-    _example_ = "{:s} 0xe137c78 0x2784".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
 
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('thread_enter_user_mode', metavar='PHYS_ADDR_thread_enter_user_mode', type=parse_address,
+                        help='The physical address of `thread_enter_user_mode` in OPTEE-OS.')
+    parser.add_argument('ta_offset', metavar='TA_OFFSET', type=parse_address,
+                        help="The breakpoint target offset of OPTEE-TA.")
+    parser.add_argument('-v', dest='verbose', action='store_true', help='verbose output.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} 0xe137c78 0x2784".format(_cmdline_)
+
+    @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
     @only_if_specific_arch(arch=["ARM32", "ARM64"])
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if "-h" in argv:
-            self.usage()
-            return
+        if args.verbose:
+            info("thread_enter_user_mode @ OPTEE-OS: {:#x}".format(args.thread_enter_user_mode))
+            info("breakpoint target offset of TA: {:#x}".format(args.ta_offset))
 
-        # arg parse
-        verbose = False
-        if "-v" in argv:
-            verbose = True
-            argv.remove("-v")
-
-        try:
-            thread_enter_user_mode = parse_address(argv[0])
-            if verbose:
-                info("thread_enter_user_mode @ OPTEE-OS: {:#x}".format(thread_enter_user_mode))
-            argv = argv[1:]
-        except Exception:
-            self.usage()
-            return
-
-        try:
-            ta_offset = parse_address(' '.join(argv))
-            if verbose:
-                info("breakpoint target offset of TA: {:#x}".format(ta_offset))
-        except Exception:
-            self.usage()
-            return
-
-        thread_enter_user_mode_virt = XSecureMemAddrCommand.phys2virt(thread_enter_user_mode, verbose)
+        thread_enter_user_mode_virt = XSecureMemAddrCommand.phys2virt(args.thread_enter_user_mode, args.verbose)
 
         for vaddr in thread_enter_user_mode_virt:
-            OpteeThreadEnterUserModeBreakpoint(vaddr, ta_offset)
+            OpteeThreadEnterUserModeBreakpoint(vaddr, args.ta_offset)
             info("Temporarily breakpoint at {:#x}".format(vaddr))
         return
 
@@ -43548,8 +43493,14 @@ class OpteeBreakTaAddrCommand(GenericCommand):
 class OpteeBgetDumpCommand(GenericCommand):
     """Dump bget allocator of OPTEE-Trusted-App."""
     _cmdline_ = "optee-bget-dump"
-    _syntax_ = "{:s} [-h] [-v] OFFSET_malloc_ctx\n".format(_cmdline_)
-    _syntax_ += "  OFFSET_malloc_ctx:   The offset of `malloc_ctx` at OPTEE-TA"
+    _category_ = "Qemu-system Cooperation"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('malloc_ctx', metavar='OFFSET_malloc_ctx', type=parse_address,
+                        help='The offset of `malloc_ctx` at OPTEE-TA.')
+    parser.add_argument('-v', dest='verbose', action='store_true', help='verbose output.')
+    _syntax_ = parser.format_help()
+
     _example_ = "{:s} 0x2a408\n".format(_cmdline_)
     _example_ += "\n"
     _example_ += "Simplified heap structure\n"
@@ -43575,7 +43526,6 @@ class OpteeBgetDumpCommand(GenericCommand):
     _example_ += "| size_t pool_len              |\n"
     _example_ += "| (struct malloc_stats mstats) |\n"
     _example_ += "+------------------------------+"
-    _category_ = "Qemu-system Cooperation"
 
     def is_readable_virt_memory(self, addr):
         if is_arm32():
@@ -43612,8 +43562,10 @@ class OpteeBgetDumpCommand(GenericCommand):
             if flink % 8 or blink % 8 or bsize % 8 or next_prevfree % 8 or next_bsize % 8:
                 flinks.append("unaligned corrupted")
                 break
-            flinks.append({"_addr": current, "prevfree": prevfree, "bsize": bsize, "flink": flink, "blink": blink,
-                           "next_prevfree": next_prevfree, "next_bsize": next_bsize})
+            _chunk = {"addr": current, "prevfree": prevfree, "bsize": bsize, "flink": flink, "blink": blink,
+                      "next_prevfree": next_prevfree, "next_bsize": next_bsize}
+            Chunk = collections.namedtuple("Chunk", _chunk.keys())
+            flinks.append(Chunk(*_chunk.values()))
             if flink == head:
                 break
             if flink in seen[1:]:
@@ -43641,8 +43593,10 @@ class OpteeBgetDumpCommand(GenericCommand):
             if flink % 8 or blink % 8 or bsize % 8 or next_prevfree % 8 or next_bsize % 8:
                 blinks.append("unaligned corrupted")
                 break
-            blinks.append({"_addr": current, "prevfree": prevfree, "bsize": bsize, "flink": flink, "blink": blink,
-                           "next_prevfree": next_prevfree, "next_bsize": next_bsize})
+            _chunk = {"addr": current, "prevfree": prevfree, "bsize": bsize, "flink": flink, "blink": blink,
+                      "next_prevfree": next_prevfree, "next_bsize": next_bsize}
+            Chunk = collections.namedtuple("Chunk", _chunk.keys())
+            blinks.append(Chunk(*_chunk.values()))
             if blink == head:
                 break
             if blink in seen[1:]:
@@ -43653,18 +43607,18 @@ class OpteeBgetDumpCommand(GenericCommand):
         return blinks
 
     def parse_malloc_ctx(self, malloc_ctx_addr):
-        malloc_ctx = {}
-        malloc_ctx["_addr"] = current = malloc_ctx_addr
+        _malloc_ctx = {}
+        _malloc_ctx["addr"] = current = malloc_ctx_addr
 
-        malloc_ctx["prevfree"] = read_int_from_memory(current)
+        _malloc_ctx["prevfree"] = read_int_from_memory(current)
         current += current_arch.ptrsize
-        malloc_ctx["bsize"] = read_int_from_memory(current)
+        _malloc_ctx["bsize"] = read_int_from_memory(current)
         current += current_arch.ptrsize
-        malloc_ctx["flink"] = read_int_from_memory(current)
-        malloc_ctx["flink_list"] = self.parse_flink(malloc_ctx["flink"])
+        _malloc_ctx["flink"] = read_int_from_memory(current)
+        _malloc_ctx["flink_list"] = self.parse_flink(_malloc_ctx["flink"])
         current += current_arch.ptrsize
-        malloc_ctx["blink"] = read_int_from_memory(current)
-        malloc_ctx["blink_list"] = self.parse_blink(malloc_ctx["blink"])
+        _malloc_ctx["blink"] = read_int_from_memory(current)
+        _malloc_ctx["blink_list"] = self.parse_blink(_malloc_ctx["blink"])
         current += current_arch.ptrsize
 
         # search pool
@@ -43672,60 +43626,63 @@ class OpteeBgetDumpCommand(GenericCommand):
             pool_candidate = read_int_from_memory(current)
             current += current_arch.ptrsize
             if self.is_readable_virt_memory(pool_candidate):
-                malloc_ctx["pool"] = pool_candidate
+                _malloc_ctx["pool"] = pool_candidate
                 break
         else:
             err("Not found malloc_ctx->pool")
             return None
 
-        malloc_ctx["pool_len"] = read_int_from_memory(current)
+        _malloc_ctx["pool_len"] = read_int_from_memory(current)
         current += current_arch.ptrsize
 
-        malloc_ctx["pool_list"] = []
-        for i in range(malloc_ctx["pool_len"]):
-            buf = read_int_from_memory(malloc_ctx["pool"] + (i * 2) * current_arch.ptrsize)
-            size = read_int_from_memory(malloc_ctx["pool"] + (i * 2 + 1) * current_arch.ptrsize)
-            malloc_ctx["pool_list"].append({"buf": buf, "len": size})
+        _malloc_ctx["pool_list"] = []
+        for i in range(_malloc_ctx["pool_len"]):
+            buf = read_int_from_memory(_malloc_ctx["pool"] + (i * 2) * current_arch.ptrsize)
+            size = read_int_from_memory(_malloc_ctx["pool"] + (i * 2 + 1) * current_arch.ptrsize)
+            _pool = {"buf": buf, "len": size}
+            Pool = collections.namedtuple("Pool", _pool.keys())
+            _malloc_ctx["pool_list"].append(Pool(*_pool.values()))
 
-        return malloc_ctx
+        MallocCtx = collections.namedtuple("MallocCtx", _malloc_ctx.keys())
+        return MallocCtx(*_malloc_ctx.values())
 
     def print_malloc_ctx(self, malloc_ctx):
-        gef_print(titlify("malloc_ctx @ {:#x}".format(malloc_ctx["_addr"])))
-        gef_print("prevfree: {:#x}".format(malloc_ctx["prevfree"]))
-        gef_print("bsize:    {:#x}".format(malloc_ctx["bsize"]))
-        gef_print("flink:    {:#x}".format(malloc_ctx["flink"]))
-        for chunk in malloc_ctx["flink_list"]:
+        gef_print(titlify("malloc_ctx @ {:#x}".format(malloc_ctx.addr)))
+        gef_print("prevfree: {:#x}".format(malloc_ctx.prevfree))
+        gef_print("bsize:    {:#x}".format(malloc_ctx.bsize))
+        gef_print("flink:    {:#x}".format(malloc_ctx.flink))
+        for chunk in malloc_ctx.flink_list:
             if isinstance(chunk, str):
                 gef_print("  -> {:s}".format(Color.colorify(chunk, "bold red")))
             else:
-                chunk_addr = Color.colorify("{:#010x}".format(chunk["_addr"]), "bold yellow")
+                chunk_addr = Color.colorify("{:#010x}".format(chunk.addr), "bold yellow")
                 fmt = "  -> {:s}: (prevfree:{:#x}  bsize:{:#010x}  flink:{:#010x}  blink:{:#010x}"
                 fmt += "  next_prevfree:{:#010x}  next_bsize:{:#010x}({:#010x}))"
-                gef_print(fmt.format(chunk_addr, chunk["prevfree"], chunk["bsize"], chunk["flink"], chunk["blink"],
-                                     chunk["next_prevfree"], chunk["next_bsize"], (-chunk["next_bsize"]) & 0xffffffff))
-        gef_print("blink:    {:#x}".format(malloc_ctx["blink"]))
-        for chunk in malloc_ctx["blink_list"]:
+                gef_print(fmt.format(chunk_addr, chunk.prevfree, chunk.bsize, chunk.flink, chunk.blink,
+                                     chunk.next_prevfree, chunk.next_bsize, (-chunk.next_bsize) & 0xffffffff))
+        gef_print("blink:    {:#x}".format(malloc_ctx.blink))
+        for chunk in malloc_ctx.blink_list:
             if isinstance(chunk, str):
                 gef_print("  -> {:s}".format(Color.colorify(chunk, "bold red")))
             else:
-                chunk_addr = Color.colorify("{:#010x}".format(chunk["_addr"]), "bold yellow")
+                chunk_addr = Color.colorify("{:#010x}".format(chunk.addr), "bold yellow")
                 fmt = "  -> {:s}: (prevfree:{:#x}  bsize:{:#010x}  flink:{:#010x}  blink:{:#010x}"
                 fmt += "  next_prevfree:{:#010x}  next_bsize:{:#010x}({:#010x}))"
-                gef_print(fmt.format(chunk_addr, chunk["prevfree"], chunk["bsize"], chunk["flink"], chunk["blink"],
-                                     chunk["next_prevfree"], chunk["next_bsize"], (-chunk["next_bsize"]) & 0xffffffff))
-        gef_print("pool:     {:#x}".format(malloc_ctx["pool"]))
-        gef_print("pool_len: {:#x}".format(malloc_ctx["pool_len"]))
+                gef_print(fmt.format(chunk_addr, chunk.prevfree, chunk.bsize, chunk.flink, chunk.blink,
+                                     chunk.next_prevfree, chunk.next_bsize, (-chunk.next_bsize) & 0xffffffff))
+        gef_print("pool:     {:#x}".format(malloc_ctx.pool))
+        gef_print("pool_len: {:#x}".format(malloc_ctx.pool_len))
 
-        for i in range(malloc_ctx["pool_len"]):
-            pool = malloc_ctx["pool_list"][i]
-            gef_print("  pool[{:d}]  buf:{:#x}  size:{:#x}".format(i, pool["buf"], pool["len"]))
+        for i in range(malloc_ctx.pool_len):
+            pool = malloc_ctx.pool_list[i]
+            gef_print("  pool[{:d}]  buf:{:#x}  size:{:#x}".format(i, pool.buf, pool.len))
         return
 
     def print_chunk_list(self, malloc_ctx):
-        for i in range(malloc_ctx["pool_len"]):
-            pool = malloc_ctx["pool_list"][i]
-            pool_start = pool["buf"]
-            pool_end = pool["buf"] + pool["len"]
+        for i in range(malloc_ctx.pool_len):
+            pool = malloc_ctx.pool_list[i]
+            pool_start = pool.buf
+            pool_end = pool.buf + pool.len
             gef_print(titlify("pool[{:d}] @ {:#x} - {:#x}".format(i, pool_start, pool_end)))
 
             chunk = pool_start
@@ -43760,46 +43717,34 @@ class OpteeBgetDumpCommand(GenericCommand):
                     break
             return
 
+    @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
     @only_if_specific_arch(arch=["ARM32", "ARM64"])
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        # arg parse
-        if "-h" in argv:
-            self.usage()
-            return
-
-        verbose = False
-        if "-v" in argv:
-            verbose = True
-            argv.remove("-v")
-
-        try:
-            malloc_ctx_offset = parse_address(argv[0])
-            if verbose:
-                info("offset of malloc_ctx: {:#x}".format(malloc_ctx_offset))
-        except Exception:
-            self.usage()
-            return
+        if args.verbose:
+            info("offset of malloc_ctx: {:#x}".format(args.malloc_ctx))
 
         ta_address_map = OpteeThreadEnterUserModeBreakpoint.get_ta_loaded_address()
         if ta_address_map is None:
             err("TA address is not found")
             return
+
         ta_address = ta_address_map[0]
-        if verbose:
+        if args.verbose:
             info("TA loaded address: {:#x}".format(ta_address))
 
-        malloc_ctx_addr = ta_address + malloc_ctx_offset
-        if verbose:
+        malloc_ctx_addr = ta_address + args.malloc_ctx
+        if args.verbose:
             info("malloc_ctx: {:#x}".format(malloc_ctx_addr))
 
         malloc_ctx = self.parse_malloc_ctx(malloc_ctx_addr)
         if malloc_ctx is None:
             err("parse failed")
             return
+
         self.print_malloc_ctx(malloc_ctx)
         self.print_chunk_list(malloc_ctx)
         return
@@ -45835,13 +45780,20 @@ def get_maps_by_pagewalk(command):
 class V2PCommand(GenericCommand):
     """Transfer from virtual address to physical address."""
     _cmdline_ = "v2p"
-    _syntax_ = "{:s} [-h] [-s|-S] ADDRESS".format(_cmdline_)
-    _example_ = ""
-    _example_ += "{:s} 0xa31dd000\n".format(_cmdline_)
-    _example_ += "{:s} 0xa31dd000 -S # use TTBRn_ELm_S for parsing start register (ARMv7)\n".format(_cmdline_)
-    _example_ += "                  # heuristic search the memory of qemu-system (ARMv8)\n"
-    _example_ += "{:s} 0xa31dd000 -s # use TTBRn_ELm for parsing start register (ARMv7/v8)".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('-S', dest='force_secure', action='store_true',
+                       help='ARMv7: use TTBRn_ELm_S for parsing start register. ARMv8: heuristic search the memory of qemu-system.')
+    group.add_argument('-s', dest='force_normal', action='store_true',
+                       help='ARMv7/v8: use TTBRn_ELm for parsing start register.')
+    parser.add_argument('address', metavar='ADDRESS', type=parse_address, help='the address of data you want to translate.')
+    parser.add_argument('-v', dest='verbose', action='store_true', help='verbose output.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} 0xa31dd000\n".format(_cmdline_)
+    _example_ += "{:s} 0xa31dd000 -S".format(_cmdline_)
 
     @staticmethod
     def get_maps(FORCE_PREFIX_S, verbose=False):
@@ -45878,43 +45830,28 @@ class V2PCommand(GenericCommand):
             return None
         return maps
 
+    @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
     @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
-
-        if "-h" in argv:
-            self.usage()
-            return
-
-        if not argv:
-            self.usage()
-            return
 
         FORCE_PREFIX_S = None
         if is_arm32() or is_arm64():
-            if "-s" in argv:
+            if args.force_normal:
                 FORCE_PREFIX_S = False
-                argv.remove("-s")
-            elif "-S" in argv:
+            elif args.force_secure:
                 FORCE_PREFIX_S = True
-                argv.remove("-S")
-
-        try:
-            addr = int(gdb.parse_and_eval(' '.join(argv)))
-        except Exception:
-            self.usage()
-            return
 
         maps = self.get_maps(FORCE_PREFIX_S)
         if maps is None:
             return
         for vstart, vend, pstart, pend in maps:
-            if vstart <= addr < vend:
-                offset = addr - vstart
+            if vstart <= args.address < vend:
+                offset = args.address - vstart
                 paddr = pstart + offset
-                gef_print("Virt: {:#x} -> Phys: {:#x}".format(addr, paddr))
+                gef_print("Virt: {:#x} -> Phys: {:#x}".format(args.address, paddr))
         return
 
 
@@ -45922,48 +45859,42 @@ class V2PCommand(GenericCommand):
 class P2VCommand(GenericCommand):
     """Transfer from physical address to virtual address."""
     _cmdline_ = "p2v"
-    _syntax_ = "{:s} [-h] [-s|-S] ADDRESS".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
 
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('-S', dest='force_secure', action='store_true',
+                       help='ARMv7: use TTBRn_ELm_S for parsing start register. ARMv8: heuristic search the memory of qemu-system.')
+    group.add_argument('-s', dest='force_normal', action='store_true',
+                       help='ARMv7/v8: use TTBRn_ELm for parsing start register.')
+    parser.add_argument('address', metavar='ADDRESS', type=parse_address, help='the address of data you want to translate.')
+    parser.add_argument('-v', dest='verbose', action='store_true', help='verbose output.')
+    _syntax_ = parser.format_help()
+
+    @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
     @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
-
-        if "-h" in argv:
-            self.usage()
-            return
-
-        if not argv:
-            self.usage()
-            return
 
         FORCE_PREFIX_S = None
         if is_arm32() or is_arm64():
-            if "-s" in argv:
+            if args.force_normal:
                 FORCE_PREFIX_S = False
-                argv.remove("-s")
-            elif "-S" in argv:
+            elif args.force_secure:
                 FORCE_PREFIX_S = True
-                argv.remove("-S")
-
-        try:
-            addr = int(gdb.parse_and_eval(' '.join(argv)))
-        except Exception:
-            self.usage()
-            return
 
         maps = V2PCommand.get_maps(FORCE_PREFIX_S)
         if maps is None:
             return
         count = 0
         for vstart, vend, pstart, pend in maps:
-            if pstart <= addr < pend:
-                offset = addr - pstart
+            if pstart <= args.address < pend:
+                offset = args.address - pstart
                 vaddr = vstart + offset
                 if count < 10:
-                    gef_print("Phys: {:#x} -> Virt: {:#x}".format(addr, vaddr))
+                    gef_print("Phys: {:#x} -> Virt: {:#x}".format(args.address, vaddr))
                 count += 1
         if count:
             gef_print("Total {:d} results are found".format(count))
@@ -45976,8 +45907,15 @@ class P2VCommand(GenericCommand):
 class PagewalkCommand(GenericCommand):
     """Get physical memory info via qemu-monitor. Currently, x64, x86, arm and arm64 are supported."""
     _cmdline_ = "pagewalk"
-    _syntax_ = "{:s}".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    subparsers = parser.add_subparsers(title='command')
+    subparsers.add_parser('x64')
+    subparsers.add_parser('x86')
+    subparsers.add_parser('arm')
+    subparsers.add_parser('arm64')
+    _syntax_ = parser.format_help()
 
     def __init__(self, *args, **kwargs):
         prefix = kwargs.get("prefix", True)
@@ -46109,33 +46047,37 @@ class PagewalkCommand(GenericCommand):
         return
 
     def vrange_filter(self):
-        filterd_mappings = []
-        for addr in self.vrange:
-            for mapping in self.mappings:
-                va, _, size, cnt = mapping[:4]
-                if isinstance(va, str) and "*" in va:
-                    start = int(va.replace("*", "0"), 16)
-                    end = int(va.replace("*", "f"), 16)
-                    if start <= addr and addr < end + size * cnt:
-                        filterd_mappings.append(mapping)
-                else:
-                    if isinstance(va, str):
-                        va = int(va, 16)
-                    if va <= addr and addr < va + size * cnt:
-                        filterd_mappings.append(mapping)
-        self.mappings = sorted(filterd_mappings)
+        filtered_mappings = []
+        for mapping in self.mappings:
+            va, _, size, cnt = mapping[:4]
+            if isinstance(va, str) and "*" in va:
+                start = int(va.replace("*", "0"), 16)
+                end = int(va.replace("*", "f"), 16)
+                for addr in self.vrange:
+                    if start <= addr < end + size * cnt:
+                        filtered_mappings.append(mapping)
+                        break
+            else:
+                if isinstance(va, str):
+                    va = int(va, 16)
+                for addr in self.vrange:
+                    if va <= addr < va + size * cnt:
+                        filtered_mappings.append(mapping)
+                        break
+        self.mappings = sorted(filtered_mappings)
         return
 
     def prange_filter(self):
-        filterd_mappings = []
-        for addr in self.prange:
-            for mapping in self.mappings:
-                _, pa, size, cnt = mapping[:4]
-                if isinstance(pa, str):
-                    pa = int(pa, 16)
-                if pa <= addr and addr < pa + size * cnt:
-                    filterd_mappings.append(mapping)
-        self.mappings = sorted(filterd_mappings)
+        filtered_mappings = []
+        for mapping in self.mappings:
+            _, pa, size, cnt = mapping[:4]
+            if isinstance(pa, str):
+                pa = int(pa, 16)
+            for addr in self.prange:
+                if pa <= addr < pa + size * cnt:
+                    filtered_mappings.append(mapping)
+                    break
+        self.mappings = sorted(filtered_mappings)
         return
 
     def format_legend(self):
@@ -46191,13 +46133,13 @@ class PagewalkCommand(GenericCommand):
         if self.vrange != []:
             self.vrange_filter()
             if not self.quiet:
-                info("PT Entry (filterd by virtual address range): {:d}".format(len(self.mappings)))
+                info("PT Entry (filtered by virtual address range): {:d}".format(len(self.mappings)))
 
         # filter by physical address range
         if self.prange != []:
             self.prange_filter()
             if not self.quiet:
-                info("PT Entry (filterd by physical address range): {:d}".format(len(self.mappings)))
+                info("PT Entry (filtered by physical address range): {:d}".format(len(self.mappings)))
 
         # create output
         lines = []
@@ -46212,9 +46154,10 @@ class PagewalkCommand(GenericCommand):
                 for filt in self.filter:
                     if re.search(filt, line):
                         filtered_lines.append(line)
+                        break
             lines = filtered_lines
             if not self.quiet:
-                info("PT Entry (filterd by keyword): {:d}".format(len(lines)))
+                info("PT Entry (filtered by keyword): {:d}".format(len(lines)))
 
         # sort by phys
         if self.sort_by_phys:
@@ -46248,65 +46191,7 @@ class PagewalkCommand(GenericCommand):
                 return False
         return True
 
-    def parse_common_args(self, argv):
-        self.quiet = False
-        if "-q" in argv:
-            self.quiet = True
-            argv.remove("-q")
-
-        self.print_each_level = False
-        if "--print-each-level" in argv:
-            self.print_each_level = True
-            argv.remove("--print-each-level")
-
-        self.no_merge = False
-        if "--no-merge" in argv:
-            self.no_merge = True
-            argv.remove("--no-merge")
-
-        self.sort_by_phys = False
-        if "--sort-by-phys" in argv:
-            self.sort_by_phys = True
-            argv.remove("--sort-by-phys")
-
-        self.simple = False
-        if "--simple" in argv:
-            self.simple = True
-            argv.remove("--simple")
-
-        self.filter = []
-        while "--filter" in argv:
-            idx = argv.index("--filter")
-            pattern = argv[idx + 1]
-            self.filter.append(pattern)
-            argv = argv[:idx] + argv[idx + 2:]
-
-        self.vrange = []
-        while "--vrange" in argv:
-            idx = argv.index("--vrange")
-            vrange_addr = int(argv[idx + 1], 16)
-            self.vrange.append(vrange_addr)
-            argv = argv[:idx] + argv[idx + 2:]
-
-        self.prange = []
-        while "--prange" in argv:
-            idx = argv.index("--prange")
-            prange_addr = int(argv[idx + 1], 16)
-            self.prange.append(prange_addr)
-            argv = argv[:idx] + argv[idx + 2:]
-
-        self.trace = []
-        while "--trace" in argv:
-            idx = argv.index("--trace")
-            trace_addr = int(argv[idx + 1], 16)
-            self.trace.append(trace_addr)
-            self.vrange.append(trace_addr) # also set --vrange
-            argv = argv[:idx] + argv[idx + 2:]
-            self.print_each_level = True # overwrite
-
-        self.cache = {}
-        return argv
-
+    # Need not @parse_args because argparse can't stop interpreting options for pagewalk sub-command.
     @only_if_gdb_running
     @only_if_qemu_system
     @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
@@ -46327,20 +46212,23 @@ class PagewalkCommand(GenericCommand):
 class PagewalkX64Command(PagewalkCommand):
     """Dump pagetable for x64/x86 using qemu-monitor."""
     _cmdline_ = "pagewalk x64"
-    _syntax_ = "{:s} [-h] [-q] [--print-each-level] [--no-merge] [--filter REGEX] ".format(_cmdline_)
-    _syntax_ += "[--vrange ADDR] [--prange ADDR] [--sort-by-phys] [--simple] [--trace ADDR]"
-    _example_ = "\n"
-    _example_ += "{:s} --print-each-level # show all level pagetables\n".format(_cmdline_)
-    _example_ += "{:s} --no-merge         # do not merge similar/consecutive address\n".format(_cmdline_)
-    _example_ += "{:s} --filter 0xabc     # grep by REGEX pattern\n".format(_cmdline_)
-    _example_ += "{:s} --vrange 0x7fff00  # filter by map included specified virtual address\n".format(_cmdline_)
-    _example_ += "{:s} --prange 0x7fff00  # filter by map included specified physical address\n".format(_cmdline_)
-    _example_ += "{:s} --sort-by-phys     # sort by physical address\n".format(_cmdline_)
-    _example_ += "{:s} --simple           # merge with ignoring physical address consecutivness\n".format(_cmdline_)
-    _example_ += "{:s} --trace 0x7fff00   # show all level pagetables only associated specified address\n".format(_cmdline_)
-    _example_ += "{:s} -q                 # show result only (quiet)".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
     _aliases_ = ["pagewalk x86"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-q', dest='quiet', action='store_true', help='show result only.')
+    parser.add_argument('--print-each_level', action='store_true', help='show all level pagetables.')
+    parser.add_argument('--no-merge', action='store_true', help='do not merge similar/consecutive address.')
+    parser.add_argument('--sort-by-phys', action='store_true', help='sort by physical address.')
+    parser.add_argument('--simple', action='store_true', help='merge with ignoring physical address consecutivness.')
+    parser.add_argument('--filter', metavar='REGEX', default=[], action='append', help='filter by REGEX pattern.')
+    parser.add_argument('--vrange', metavar='VADDR', default=[], action='append', type=lambda x: int(x, 16),
+                        help='filter by map included specified virtual address.')
+    parser.add_argument('--prange', metavar='PADDR', default=[], action='append', type=lambda x: int(x, 16),
+                        help='filter by map included specified physical address.')
+    parser.add_argument('--trace', metavar='VADDR', default=[], action='append', type=lambda x: int(x, 16),
+                        help='show all level pagetables only associated specified address.')
+    _syntax_ = parser.format_help()
 
     def __init__(self):
         super().__init__(prefix=False)
@@ -46803,23 +46691,27 @@ class PagewalkX64Command(PagewalkCommand):
         self.print_page()
         return
 
+    @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
     @only_if_specific_arch(arch=["x86_32", "x86_64"])
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if "-h" in argv:
-            self.usage()
-            return
+        self.quiet = args.quiet
+        self.print_each_level = args.print_each_level
+        self.no_merge = args.no_merge
+        self.sort_by_phys = args.sort_by_phys
+        self.simple = args.simple
+        self.filter = args.filter
+        self.vrange = args.vrange
+        self.prange = args.prange
+        self.trace = args.trace
+        if self.trace:
+            self.vrange.extend(self.trace) # also set --vrange
+            self.print_each_level = True # overwrite
+        self.cache = {}
 
-        try:
-            argv = self.parse_common_args(argv)
-            if argv:
-                raise
-        except Exception:
-            self.usage()
-            return
         self.mappings = None
         self.pagewalk()
         self.cache = {}
@@ -46828,24 +46720,28 @@ class PagewalkX64Command(PagewalkCommand):
 
 @register_command
 class PagewalkArmCommand(PagewalkCommand):
-    """Dump pagetable for ARM (Cortex-A only) using qemu-monitor."""
+    """Dump pagetable for ARM (Cortex-A only) using qemu-monitor. PL2 pagewalk is unsupported"""
+
     _cmdline_ = "pagewalk arm"
-    _syntax_ = "{:s} [-h] [-q] [-S|-s] [--print-each-level] [--no-merge] [--filter REGEX] ".format(_cmdline_)
-    _syntax_ += "[--vrange ADDR] [--prange ADDR] [--sort-by-phys] [--simple] [--trace ADDR]"
-    _example_ = "\n"
-    _example_ += "{:s} --print-each-level # show all level pagetables\n".format(_cmdline_)
-    _example_ += "{:s} --no-merge         # do not merge similar/consecutive address\n".format(_cmdline_)
-    _example_ += "{:s} --filter 0xabc     # grep by REGEX pattern\n".format(_cmdline_)
-    _example_ += "{:s} --vrange 0x7fff00  # filter by map included specified virtual address\n".format(_cmdline_)
-    _example_ += "{:s} --prange 0x7fff00  # filter by map included specified physical address\n".format(_cmdline_)
-    _example_ += "{:s} --sort-by-phys     # sort by physical address\n".format(_cmdline_)
-    _example_ += "{:s} --simple           # merge with ignoring physical address consecutivness\n".format(_cmdline_)
-    _example_ += "{:s} --trace 0x7fff00   # show all level pagetables only associated specified address\n".format(_cmdline_)
-    _example_ += "{:s} -q                 # show result only (quiet)\n".format(_cmdline_)
-    _example_ += "{:s} -S                 # use TTBRn_ELm_S for parsing start register\n".format(_cmdline_)
-    _example_ += "{:s} -s                 # use TTBRn_ELm for parsing start register\n".format(_cmdline_)
-    _example_ += "PL2 pagewalk is unsupported"
     _category_ = "Qemu-system Cooperation"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-q', dest='quiet', action='store_true', help='show result only.')
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('-S', dest='force_secure', action='store_true', help='use TTBRn_ELm_S for parsing start register.')
+    group.add_argument('-s', dest='force_normal', action='store_true', help='use TTBRn_ELm for parsing start register.')
+    parser.add_argument('--print-each_level', action='store_true', help='show all level pagetables.')
+    parser.add_argument('--no-merge', action='store_true', help='do not merge similar/consecutive address.')
+    parser.add_argument('--sort-by-phys', action='store_true', help='sort by physical address.')
+    parser.add_argument('--simple', action='store_true', help='merge with ignoring physical address consecutivness.')
+    parser.add_argument('--filter', metavar='REGEX', default=[], action='append', help='filter by REGEX pattern.')
+    parser.add_argument('--vrange', metavar='VADDR', default=[], action='append', type=lambda x: int(x, 16),
+                        help='filter by map included specified virtual address.')
+    parser.add_argument('--prange', metavar='PADDR', default=[], action='append', type=lambda x: int(x, 16),
+                        help='filter by map included specified physical address.')
+    parser.add_argument('--trace', metavar='VADDR', default=[], action='append', type=lambda x: int(x, 16),
+                        help='show all level pagetables only associated specified address.')
+    _syntax_ = parser.format_help()
 
     def __init__(self):
         super().__init__(prefix=False)
@@ -47726,37 +47622,33 @@ class PagewalkArmCommand(PagewalkCommand):
             self.pagewalk_short()
         return
 
+    @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
-    def do_invoke(self, argv):
+    @only_if_specific_arch(arch=["ARM32"])
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if "-h" in argv:
-            self.usage()
-            return
-
-        if not is_arm32():
-            err("Unsupported")
-            return
-
         self.FORCE_PREFIX_S = None
-        if "-S" in argv and "-s" in argv:
-            self.usage()
-            return
-        elif "-S" in argv:
+        if args.force_secure:
             self.FORCE_PREFIX_S = True
-            argv.remove("-S")
-        elif "-s" in argv:
+        elif args.force_normal:
             self.FORCE_PREFIX_S = False
-            argv.remove("-s")
 
-        try:
-            argv = self.parse_common_args(argv)
-            if argv:
-                raise
-        except Exception:
-            self.usage()
-            return
+        self.quiet = args.quiet
+        self.print_each_level = args.print_each_level
+        self.no_merge = args.no_merge
+        self.sort_by_phys = args.sort_by_phys
+        self.simple = args.simple
+        self.filter = args.filter
+        self.vrange = args.vrange
+        self.prange = args.prange
+        self.trace = args.trace
+        if self.trace:
+            self.vrange.extend(self.trace) # also set --vrange
+            self.print_each_level = True # overwrite
+        self.cache = {}
+
         self.mappings = None
         self.pagewalk()
         self.cache = {}
@@ -47765,21 +47657,25 @@ class PagewalkArmCommand(PagewalkCommand):
 
 @register_command
 class PagewalkArm64Command(PagewalkCommand):
-    """Dump pagetable for ARM64 using qemu-monitor (for ARMv8.3)."""
+    """Dump pagetable for ARM64 using qemu-monitor (for ARMv8.7)."""
     _cmdline_ = "pagewalk arm64"
-    _syntax_ = "{:s} [-h] [-q] [TARGET_EL] [--print-each-level] [--no-merge] [--filter REGEX] ".format(_cmdline_)
-    _syntax_ += "[--vrange ADDR] [--prange ADDR] [--sort-by-phys] [--simple] [--trace ADDR]"
-    _example_ = "\n"
-    _example_ += "{:s} --print-each-level # for current EL, show all level pagetables\n".format(_cmdline_)
-    _example_ += "{:s} 1 --no-merge       # for EL1+0, do not merge similar/consecutive address\n".format(_cmdline_)
-    _example_ += "{:s} 2 --filter 0xabc   # for EL2, grep by REGEX pattern\n".format(_cmdline_)
-    _example_ += "{:s} --vrange 0x7fff00  # filter by map included specified virtual address\n".format(_cmdline_)
-    _example_ += "{:s} --prange 0x7fff00  # filter by map included specified physical address\n".format(_cmdline_)
-    _example_ += "{:s} --sort-by-phys     # for current EL, sort by physical address\n".format(_cmdline_)
-    _example_ += "{:s} --simple           # for current EL, merge with ignoring physical address consecutivness\n".format(_cmdline_)
-    _example_ += "{:s} --trace 0x7fff00   # for current EL, show all level pagetables only associated specified address\n".format(_cmdline_)
-    _example_ += "{:s} -q                 # show result only (quiet)".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-q', dest='quiet', action='store_true', help='show result only.')
+    parser.add_argument("target_el", metavar='TARGET_EL', nargs='?', type=int, help='target EL. (default: current EL)')
+    parser.add_argument('--print-each_level', action='store_true', help='show all level pagetables.')
+    parser.add_argument('--no-merge', action='store_true', help='do not merge similar/consecutive address.')
+    parser.add_argument('--sort-by-phys', action='store_true', help='sort by physical address.')
+    parser.add_argument('--simple', action='store_true', help='merge with ignoring physical address consecutivness.')
+    parser.add_argument('--filter', metavar='REGEX', default=[], action='append', help='filter by REGEX pattern.')
+    parser.add_argument('--vrange', metavar='VADDR', default=[], action='append', type=lambda x: int(x, 16),
+                        help='filter by map included specified virtual address.')
+    parser.add_argument('--prange', metavar='PADDR', default=[], action='append', type=lambda x: int(x, 16),
+                        help='filter by map included specified physical address.')
+    parser.add_argument('--trace', metavar='VADDR', default=[], action='append', type=lambda x: int(x, 16),
+                        help='show all level pagetables only associated specified address.')
+    _syntax_ = parser.format_help()
 
     # If you want to dump the secure world memory map, you need to break in the secure world.
     # This is because unlike ARMv7, TTBR0_EL1_S and TTBR1_EL1_S do not exist.
@@ -49395,32 +49291,32 @@ class PagewalkArm64Command(PagewalkCommand):
                 info("EL3 translation is unused")
         return
 
+    @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
-    def do_invoke(self, argv):
+    @only_if_specific_arch(arch=["ARM64"])
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if "-h" in argv:
-            self.usage()
-            return
+        if args.target_el is None:
+            CPSR = get_register('$cpsr')
+            self.TargetEL = (CPSR >> 2) & 0b11
+        else:
+            self.TargetEL = args.target_el
 
-        if not is_arm64():
-            err("Unsupported")
-            return
-
-        try:
-            argv = self.parse_common_args(argv)
-            if argv:
-                self.TargetEL = int(argv[-1])
-                argv = argv[:-1]
-                if argv:
-                    raise
-            else:
-                CPSR = int(gdb.parse_and_eval('$cpsr'))
-                self.TargetEL = (CPSR >> 2) & 0b11
-        except Exception:
-            self.usage()
-            return
+        self.quiet = args.quiet
+        self.print_each_level = args.print_each_level
+        self.no_merge = args.no_merge
+        self.sort_by_phys = args.sort_by_phys
+        self.simple = args.simple
+        self.filter = args.filter
+        self.vrange = args.vrange
+        self.prange = args.prange
+        self.trace = args.trace
+        if self.trace:
+            self.vrange.extend(self.trace) # also set --vrange
+            self.print_each_level = True # overwrite
+        self.cache = {}
 
         self.silent = False
         self.mappings = None
@@ -49434,12 +49330,15 @@ class PagewalkArm64Command(PagewalkCommand):
 class SwitchELCommand(GenericCommand):
     """Switch EL (Exception Level) on ARM64 architecture."""
     _cmdline_ = "switch-el"
-    _syntax_ = "{:s} [-h] [TARGET_EL]".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("target_el", metavar='TARGET_EL', nargs='?', type=int, help='Exception Level to change to.')
+    _syntax_ = parser.format_help()
 
     def switch_el(self):
         # current EL
-        CPSR = int(gdb.parse_and_eval('$cpsr')) & 0xffffffff
+        CPSR = get_register('$cpsr') & 0xffffffff
         CurrentEL = (CPSR >> 2) & 0b11
 
         # check argv
@@ -49471,21 +49370,13 @@ class SwitchELCommand(GenericCommand):
         info('$cpsr = 0x%x (EL%d)' % (CPSR, CurrentEL))
         return
 
+    @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
-    def do_invoke(self, argv):
+    @only_if_specific_arch(arch=["ARM64"])
+    def do_invoke(self, args):
         self.dont_repeat()
-
-        if "-h" in argv:
-            self.usage()
-            return
-        if not is_arm64():
-            err("Unsupported")
-            return
-        if argv:
-            self.target_el = int(argv[0])
-        else:
-            self.target_el = None
+        self.target_el = args.target_el
         self.switch_el()
         return
 
