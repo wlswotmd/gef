@@ -43754,11 +43754,14 @@ class OpteeBgetDumpCommand(GenericCommand):
 class CpuidCommand(GenericCommand):
     """Get cpuid result."""
     _cmdline_ = "cpuid"
-    _syntax_ = "{:s}".format(_cmdline_)
+    _category_ = "Show/Modify Register"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
     _example_ = "{:s}\n".format(_cmdline_)
     _example_ += "\n"
     _example_ += "DISABLE `-enbale-kvm` option for qemu-system; This command will be aborted if the option is set"
-    _category_ = "Show/Modify Register"
 
     def get_state(self, code_len):
         d = {}
@@ -44634,15 +44637,20 @@ class CpuidCommand(GenericCommand):
 class MsrCommand(GenericCommand):
     """Get MSR via kernel."""
     _cmdline_ = "msr"
-    _syntax_ = "{:s} [-h] [-l] MSR_VALUE|MSR_NAME".format(_cmdline_)
-    _example_ = "\n"
-    _example_ += "{:s} 0xc0000080 # rcx value\n".format(_cmdline_)
-    _example_ += "{:s} MSR_EFER # another valid format\n".format(_cmdline_)
-    _example_ += "{:s} -l # list known MSR const values\n".format(_cmdline_)
-    _example_ += "{:s} -l MSR_EFER MSR_GS_BASE MSR_FS_BASE # show specified MSR const value\n".format(_cmdline_)
+    _category_ = "Show/Modify Register"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('-l', dest='filter', nargs='*', help='list up known MSR values.')
+    group.add_argument('msr_target', metavar='MSR_VALUE|MSR_NAME', nargs='?', help='the msr value/name you want to know real value.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} 0xc0000080              # rcx value\n".format(_cmdline_)
+    _example_ += "{:s} MSR_EFER                # another valid format\n".format(_cmdline_)
+    _example_ += "{:s} -l                      # list up known MSR const values\n".format(_cmdline_)
+    _example_ += "{:s} -l MSR_EFER MSR_GS_BASE # show specified MSR const value\n".format(_cmdline_)
     _example_ += "\n"
     _example_ += "DISABLE `-enbale-kvm` option for qemu-system; This command will be aborted if the option is set"
-    _category_ = "Show/Modify Register"
 
     msr_table = [
         ["MSR_EFER",                         0xc0000080, "Extended feature register"],
@@ -45217,18 +45225,14 @@ class MsrCommand(GenericCommand):
         gef_print("{:s} ({:#x}): {:#x} (={:s})".format(name, num, val, self.bits_split(val)))
         return
 
+    @parse_args
     @only_if_gdb_running
     @only_if_specific_arch(arch=["x86_32", "x86_64"])
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if "-h" in argv or not argv:
-            self.usage()
-            return
-
-        if "-l" in argv:
-            argv.remove("-l")
-            self.print_const_table(argv)
+        if args.filter:
+            self.print_const_table(args.filter)
             return
 
         ring = get_register("$cs") & 0b11
@@ -45237,10 +45241,10 @@ class MsrCommand(GenericCommand):
             return
 
         # search const table
-        num = self.lookup_name2val(argv[0])
+        num = self.lookup_name2val(args.msr_target)
         if num is None:
             try:
-                num = int(argv[0], 16)
+                num = int(args.target, 0)
             except Exception:
                 self.usage()
                 return
