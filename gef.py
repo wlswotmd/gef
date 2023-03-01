@@ -49389,11 +49389,14 @@ class SwitchELCommand(GenericCommand):
 class ExecNextCommand(GenericCommand):
     """Execute until next address. This command is used for rep prefix."""
     _cmdline_ = "exec-next"
-    _syntax_ = "{:s}".format(_cmdline_)
     _category_ = "Debugging Support"
 
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         if is_arm32() or is_arm64():
             next_addr = gdb_get_nth_next_instruction_address(current_arch.pc, 1)
         else:
@@ -49408,21 +49411,30 @@ class ExecNextCommand(GenericCommand):
 class ExecUntilCommand(GenericCommand):
     """Execute until next call/jmp/syscall/ret/mem-access/specified-keyword instruction."""
     _cmdline_ = "exec-until"
-    _syntax_ = "{:s} [-h] call|jmp|syscall|ret|all-branch|indirect-branch|memaccess|keyword|cond ".format(_cmdline_)
-    _syntax_ += "[ARGS] [--print-insn] [--skip-lib]"
-    _example_ = "\n"
-    _example_ += "{:s} call # execute until call instruction\n".format(_cmdline_)
-    _example_ += "{:s} jmp # execute until jmp instruction\n".format(_cmdline_)
-    _example_ += "{:s} syscall # execute until syscall instruction\n".format(_cmdline_)
-    _example_ += "{:s} ret # execute until ret instruction\n".format(_cmdline_)
-    _example_ += "{:s} all-branch # execute until call/jmp/ret instruction\n".format(_cmdline_)
-    _example_ += "{:s} indirect-branch # execute until indirect branch instruction (x86/x64 only)\n".format(_cmdline_)
-    _example_ += "{:s} memaccess # execute until '[' is included by the instruction\n".format(_cmdline_)
-    _example_ += '{:s} keyword "call +r[ab]x" # execute until specified keyword (regex)\n'.format(_cmdline_)
-    _example_ += '{:s} cond "$rax==0xdead && $rbx==0xcafe" # execute until specified condition is filled\n'.format(_cmdline_)
-    _example_ += "THIS FEATURE IS VERY SLOW. Consider using the `--skip-lib` option.\n"
-    _example_ += "(it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Debugging Support"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    subparsers = parser.add_subparsers(title='command', required=True)
+    subparsers.add_parser('call')
+    subparsers.add_parser('jmp')
+    subparsers.add_parser('syscall')
+    subparsers.add_parser('ret')
+    subparsers.add_parser('all-branch')
+    subparsers.add_parser('indirect-branch')
+    subparsers.add_parser('memaccess')
+    subparsers.add_parser('keyword')
+    subparsers.add_parser('cond')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} call                                # execute until call instruction\n".format(_cmdline_)
+    _example_ += "{:s} jmp                                 # execute until jmp instruction\n".format(_cmdline_)
+    _example_ += "{:s} syscall                             # execute until syscall instruction\n".format(_cmdline_)
+    _example_ += "{:s} ret                                 # execute until ret instruction\n".format(_cmdline_)
+    _example_ += "{:s} all-branch                          # execute until call/jmp/ret instruction\n".format(_cmdline_)
+    _example_ += "{:s} indirect-branch                     # execute until indirect branch instruction (x86/x64 only)\n".format(_cmdline_)
+    _example_ += "{:s} memaccess                           # execute until '[' is included by the instruction\n".format(_cmdline_)
+    _example_ += '{:s} keyword "call +r[ab]x"              # execute until specified keyword (regex)\n'.format(_cmdline_)
+    _example_ += '{:s} cond "$rax==0xdead && $rbx==0xcafe" # execute until specified condition is filled'.format(_cmdline_)
 
     def __init__(self, *args, **kwargs):
         prefix = kwargs.get("prefix", True)
@@ -49563,11 +49575,10 @@ class ExecUntilCommand(GenericCommand):
                     self.force_write_stdout((str(insn) + "\n").encode())
 
                 # found and break
-                if current_arch.pc not in self.filter:
-                    if self.is_target_insn(insn):
-                        if not self.print_insn:
-                            self.force_write_stdout(b"\r \r")
-                        break
+                if self.is_target_insn(insn):
+                    if not self.print_insn:
+                        self.force_write_stdout(b"\r \r")
+                    break
 
                 count += 1
 
@@ -49590,37 +49601,14 @@ class ExecUntilCommand(GenericCommand):
                 gdb.execute("context")
         return
 
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
-        if "-h" in argv:
-            self.usage()
-            return
-
+    def do_invoke(self, args):
         if self.mode is None:
             self.usage()
             return
-
-        self.print_insn = False
-        if "--print-insn" in argv:
-            argv.remove("--print-insn")
-            self.print_insn = True
-
-        self.skip_lib = False
-        if "--skip-lib" in argv:
-            argv.remove("--skip-lib")
-            self.skip_lib = True
-
-        self.filter = []
-        while "-v" in argv:
-            idx = argv.index("-v")
-            filter_address = int(argv[idx + 1], 16)
-            self.filter.append(filter_address)
-            argv = argv[:idx] + argv[idx + 2:]
-
-        if argv:
-            self.usage()
-            return
-
+        self.print_insn = args.print_insn
+        self.skip_lib = args.skip_lib
         self.exec_next()
         return
 
@@ -49629,14 +49617,15 @@ class ExecUntilCommand(GenericCommand):
 class ExecUntilCallCommand(ExecUntilCommand):
     """Execute until next call instruction."""
     _cmdline_ = "exec-until call"
-    _syntax_ = "{:s} [-h] [--print-insn] [--skip-lib]".format(_cmdline_)
-    _example_ = "{:s} # execute until call instruction\n".format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "THIS FEATURE IS VERY SLOW. Consider using the `--skip-lib` option.\n"
-    _example_ += "(it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Debugging Support"
     _aliases_ = ["next-call"]
     _repeat_ = True
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('--print-insn', action='store_true', help='print each instruction during execution.')
+    parser.add_argument('--skip-lib', action='store_true', help='uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.')
+    _syntax_ = parser.format_help()
+    _example_ = None
 
     def __init__(self):
         super().__init__(prefix=False)
@@ -49648,14 +49637,15 @@ class ExecUntilCallCommand(ExecUntilCommand):
 class ExecUntilJumpCommand(ExecUntilCommand):
     """Execute until next jmp instruction."""
     _cmdline_ = "exec-until jmp"
-    _syntax_ = "{:s} [-h] [--print-insn] [--skip-lib]".format(_cmdline_)
-    _example_ = "{:s} # execute until jmp instruction\n".format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "THIS FEATURE IS VERY SLOW. Consider using the `--skip-lib` option.\n"
-    _example_ += "(it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Debugging Support"
     _aliases_ = ["next-jmp"]
     _repeat_ = True
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('--print-insn', action='store_true', help='print each instruction during execution.')
+    parser.add_argument('--skip-lib', action='store_true', help='uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.')
+    _syntax_ = parser.format_help()
+    _example_ = None
 
     def __init__(self):
         super().__init__(prefix=False)
@@ -49667,48 +49657,27 @@ class ExecUntilJumpCommand(ExecUntilCommand):
 class ExecUntilIndirectBranchCommand(ExecUntilCommand):
     """Execute until next indirect call/jmp instruction (x86/x64 only)."""
     _cmdline_ = "exec-until indirect-branch"
-    _syntax_ = "{:s} [-h] [--print-insn] [--skip-lib]".format(_cmdline_)
-    _example_ = "{:s} # execute until indirect branch instruction (x86/x64 only)\n".format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "THIS FEATURE IS VERY SLOW. Consider using the `--skip-lib` option.\n"
-    _example_ += "(it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Debugging Support"
     _aliases_ = ["next-indirect-branch"]
     _repeat_ = True
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('--print-insn', action='store_true', help='print each instruction during execution.')
+    parser.add_argument('--skip-lib', action='store_true', help='uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.')
+    _syntax_ = parser.format_help()
+    _example_ = None
 
     def __init__(self):
         super().__init__(prefix=False)
         self.mode = "indirect-branch"
         return
 
+    @parse_args
     @only_if_gdb_running
     @only_if_specific_arch(arch=["x86_32", "x86_64"])
-    def do_invoke(self, argv):
-        if "-h" in argv:
-            self.usage()
-            return
-
-        self.print_insn = False
-        if "--print-insn" in argv:
-            argv.remove("--print-insn")
-            self.print_insn = True
-
-        self.skip_lib = False
-        if "--skip-lib" in argv:
-            argv.remove("--skip-lib")
-            self.skip_lib = True
-
-        self.filter = []
-        while "-v" in argv:
-            idx = argv.index("-v")
-            filter_address = int(argv[idx + 1], 16)
-            self.filter.append(filter_address)
-            argv = argv[:idx] + argv[idx + 2:]
-
-        if argv:
-            self.usage()
-            return
-
+    def do_invoke(self, args):
+        self.print_insn = args.print_insn
+        self.skip_lib = args.skip_lib
         self.exec_next()
         return
 
@@ -49717,14 +49686,15 @@ class ExecUntilIndirectBranchCommand(ExecUntilCommand):
 class ExecUntilAllBranchCommand(ExecUntilCommand):
     """Execute until next call/jump/ret instruction."""
     _cmdline_ = "exec-until all-branch"
-    _syntax_ = "{:s} [-h] [--print-insn] [--skip-lib]".format(_cmdline_)
-    _example_ = "{:s} # execute until call/jmp/ret instruction\n".format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "THIS FEATURE IS VERY SLOW. Consider using the `--skip-lib` option.\n"
-    _example_ += "(it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Debugging Support"
     _aliases_ = ["next-all-branch"]
     _repeat_ = True
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('--print-insn', action='store_true', help='print each instruction during execution.')
+    parser.add_argument('--skip-lib', action='store_true', help='uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.')
+    _syntax_ = parser.format_help()
+    _example_ = None
 
     def __init__(self):
         super().__init__(prefix=False)
@@ -49736,14 +49706,15 @@ class ExecUntilAllBranchCommand(ExecUntilCommand):
 class ExecUntilSyscallCommand(ExecUntilCommand):
     """Execute until next syscall instruction."""
     _cmdline_ = "exec-until syscall"
-    _syntax_ = "{:s} [-h] [--print-insn] [--skip-lib]".format(_cmdline_)
-    _example_ = "{:s} # execute until syscall instruction\n".format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "THIS FEATURE IS VERY SLOW. Consider using the `--skip-lib` option.\n"
-    _example_ += "(it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Debugging Support"
     _aliases_ = ["next-syscall"]
     _repeat_ = True
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('--print-insn', action='store_true', help='print each instruction during execution.')
+    parser.add_argument('--skip-lib', action='store_true', help='uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.')
+    _syntax_ = parser.format_help()
+    _example_ = None
 
     def __init__(self):
         super().__init__(prefix=False)
@@ -49755,14 +49726,15 @@ class ExecUntilSyscallCommand(ExecUntilCommand):
 class ExecUntilRetCommand(ExecUntilCommand):
     """Execute until next ret instruction."""
     _cmdline_ = "exec-until ret"
-    _syntax_ = "{:s} [-h] [--print-insn] [--skip-lib]".format(_cmdline_)
-    _example_ = "{:s} # execute until ret instruction\n".format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "THIS FEATURE IS VERY SLOW. Consider using the `--skip-lib` option.\n"
-    _example_ += "(it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Debugging Support"
     _aliases_ = ["next-ret"]
     _repeat_ = True
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('--print-insn', action='store_true', help='print each instruction during execution.')
+    parser.add_argument('--skip-lib', action='store_true', help='uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.')
+    _syntax_ = parser.format_help()
+    _example_ = None
 
     def __init__(self):
         super().__init__(prefix=False)
@@ -49774,14 +49746,15 @@ class ExecUntilRetCommand(ExecUntilCommand):
 class ExecUntilMemaccessCommand(ExecUntilCommand):
     """Execute until next mem-access instruction."""
     _cmdline_ = "exec-until memaccess"
-    _syntax_ = "{:s} [-h] [--print-insn] [--skip-lib]".format(_cmdline_)
-    _example_ = "{:s} # execute until '[' is included by the instruction\n".format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "THIS FEATURE IS VERY SLOW. Consider using the `--skip-lib` option.\n"
-    _example_ += "(it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Debugging Support"
     _aliases_ = ["next-mem"]
     _repeat_ = True
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('--print-insn', action='store_true', help='print each instruction during execution.')
+    parser.add_argument('--skip-lib', action='store_true', help='uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.')
+    _syntax_ = parser.format_help()
+    _example_ = None
 
     def __init__(self):
         super().__init__(prefix=False)
@@ -49793,51 +49766,31 @@ class ExecUntilMemaccessCommand(ExecUntilCommand):
 class ExecUntilKeywordReCommand(ExecUntilCommand):
     """Execute until specified keyword instruction."""
     _cmdline_ = "exec-until keyword"
-    _syntax_ = "{:s} [-h] KEYWORD [KEYWORD ...] [--print-insn] [--skip-lib]".format(_cmdline_)
-    _example_ = "\n"
-    _example_ += '{:s} "call +r[ab]x" # execute until specified keyword (regex)\n'.format(_cmdline_)
-    _example_ += '{:s} "(push|pop) +(r[a-d]x|r[ds]i|r[sb]p|r[89]|r1[0-5])" # another exsample\n'.format(_cmdline_)
-    _example_ += '{:s} "mov +rax, QWORD PTR \\\\[" # another exsample (need double escape if use)\n'.format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "THIS FEATURE IS VERY SLOW. Consider using the `--skip-lib` option.\n"
-    _example_ += "(it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Debugging Support"
     _aliases_ = ["next-keyword"]
     _repeat_ = True
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('--print-insn', action='store_true', help='print each instruction during execution.')
+    parser.add_argument('--skip-lib', action='store_true', help='uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.')
+    parser.add_argument('keyword', metavar='KEYWORD', nargs='+', help='filter by specified regex keyword.')
+    _syntax_ = parser.format_help()
+
+    _example_ = '{:s} "call +r[ab]x"                                      # execute until specified keyword\n'.format(_cmdline_)
+    _example_ += '{:s} "(push|pop) +(r[a-d]x|r[ds]i|r[sb]p|r[89]|r1[0-5])" # another exsample\n'.format(_cmdline_)
+    _example_ += '{:s} "mov +rax, QWORD PTR \\\\["                           # another exsample (need double escape if use)'.format(_cmdline_)
 
     def __init__(self):
         super().__init__(prefix=False)
         self.mode = "keyword"
         return
 
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
-        if "-h" in argv:
-            self.usage()
-            return
-
-        self.print_insn = False
-        if "--print-insn" in argv:
-            argv.remove("--print-insn")
-            self.print_insn = True
-
-        self.skip_lib = False
-        if "--skip-lib" in argv:
-            argv.remove("--skip-lib")
-            self.skip_lib = True
-
-        self.filter = []
-        while "-v" in argv:
-            idx = argv.index("-v")
-            filter_address = int(argv[idx + 1], 16)
-            self.filter.append(filter_address)
-            argv = argv[:idx] + argv[idx + 2:]
-
-        if len(argv) == 0:
-            self.usage()
-            return
-
-        self.keyword = argv
+    def do_invoke(self, args):
+        self.print_insn = args.print_insn
+        self.skip_lib = args.skip_lib
+        self.keyword = args.keyword
         self.exec_next()
         return
 
@@ -49846,51 +49799,32 @@ class ExecUntilKeywordReCommand(ExecUntilCommand):
 class ExecUntilCondCommand(ExecUntilCommand):
     """Execute until specified condition is filled."""
     _cmdline_ = "exec-until cond"
-    _syntax_ = "{:s} [-h] CONDITION [--print-insn] [--skip-lib]".format(_cmdline_)
-    _example_ = "\n"
-    _example_ += '{:s} "$rax==0xdead && $rbx==0xcafe" # execute until specified condition is filled\n'.format(_cmdline_)
-    _example_ += '{:s} "$rax==0x123 && *(long*)$rbx==0x4" # multiple condition and memory access is supported\n'.format(_cmdline_)
-    _example_ += '{:s} "$ALL_REG==0x1234" # compare with all registers. ex: `($rax==0x1234 || $rbx==0x1234 || ...)`\n'.format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "THIS FEATURE IS TOO SLOW. Consider using the `--skip-lib` option.\n"
-    _example_ += "(it uses `nexti` instead of `stepi` if instruction is `call xxx@plt`)"
     _category_ = "Debugging Support"
     _aliases_ = ["next-cond"]
     _repeat_ = True
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('--print-insn', action='store_true', help='print each instruction during execution.')
+    parser.add_argument('--skip-lib', action='store_true', help='uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.')
+    parser.add_argument('condition', metavar='CONDITION', help='filter by codition.')
+    _syntax_ = parser.format_help()
+
+    _example_ = '{:s} "$rax==0xdead && $rbx==0xcafe"     # execute until specified condition is filled\n'.format(_cmdline_)
+    _example_ += '{:s} "$rax==0x123 && *(long*)$rbx==0x4" # multiple condition and memory access is supported\n'.format(_cmdline_)
+    _example_ += '{:s} "$ALL_REG==0x1234"                 # compare with all registers. ex: `($rax==0x1234 || $rbx==0x1234 || ...)`\n'.format(_cmdline_)
 
     def __init__(self):
         super().__init__(prefix=False)
         self.mode = "cond"
         return
 
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
-        if "-h" in argv:
-            self.usage()
-            return
+    def do_invoke(self, args):
+        self.print_insn = args.print_insn
+        self.skip_lib = args.skip_lib
 
-        self.print_insn = False
-        if "--print-insn" in argv:
-            argv.remove("--print-insn")
-            self.print_insn = True
-
-        self.skip_lib = False
-        if "--skip-lib" in argv:
-            argv.remove("--skip-lib")
-            self.skip_lib = True
-
-        self.filter = []
-        while "-v" in argv:
-            idx = argv.index("-v")
-            filter_address = int(argv[idx + 1], 16)
-            self.filter.append(filter_address)
-            argv = argv[:idx] + argv[idx + 2:]
-
-        if len(argv) == 0:
-            self.usage()
-            return
-
-        condition = argv[0]
+        condition = args.condition
         if re.search(r"[^><!=]=[^=]", condition):
             err("Should not use `=` since it will be replace register/memory value. Use `==`.")
             return
