@@ -50010,8 +50010,10 @@ class UefiOvmfInfoCommand(GenericCommand):
     # https://github.com/tianocore/edk2/blob/master/MdeModulePkg/Universal/BdsDxe/BdsEntry.c
     # https://uefi.org/sites/default/files/resources/UEFI_Spec_2_8_final.pdf
     _cmdline_ = "uefi-ovmf-info"
-    _syntax_ = "{:s}".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
 
     def check_crc32(self, addr):
         try:
@@ -50473,10 +50475,11 @@ class UefiOvmfInfoCommand(GenericCommand):
         gef_print("RUNTIME: It will be mapped by OS when SetVirtualAddressMap() is called")
         return
 
+    @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
     @only_if_specific_arch(arch=["x86_32", "x86_64"])
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
         info("This command is very slow. Wait a few tens of seconds")
         gef_print(titlify("SEC (Security) phase variables"))
