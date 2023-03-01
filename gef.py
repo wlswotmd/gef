@@ -49878,12 +49878,15 @@ class CallUsermodehelperSetupBreakpoint(gdb.Breakpoint):
 class UsermodehelperHunterCommand(GenericCommand):
     """Collects and displays information that is executed by call_usermodehelper_setup."""
     _cmdline_ = "usermodehelper-hunter"
-    _syntax_ = "{:s} [-h]".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
 
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         info("Resolving the function addresses")
@@ -49969,13 +49972,16 @@ class ThunkHunterCommand(GenericCommand):
     """Collects and displays the thunk addresses that are called automatically.
     If this address comes from RW area, this is useful for getting RIP.(x64/x86 only)"""
     _cmdline_ = "thunk-hunter"
-    _syntax_ = "{:s} [-h]".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
 
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
     @only_if_specific_arch(arch=["x86_32", "x86_64"])
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         info("Wait for memory scan")
