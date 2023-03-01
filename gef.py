@@ -45437,8 +45437,11 @@ class PrintBitInfo:
 class QemuRegistersCommand(GenericCommand):
     """Get regisers via qemu-monitor."""
     _cmdline_ = "qreg"
-    _syntax_ = "{:s} [-h] [-v]".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-v', dest='verbose', action='store_true', help='also display detailed bit information.')
+    _syntax_ = parser.format_help()
 
     def qregisters_x86_x64(self):
         res = gdb.execute("monitor info registers", to_string=True)
@@ -45729,20 +45732,12 @@ class QemuRegistersCommand(GenericCommand):
                 self.qregisters_x86_x64()
         return
 
+    @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
-
-        if "-h" in argv:
-            self.usage()
-            return
-
-        self.add_info = False
-        if "-v" in argv:
-            self.add_info = True
-            argv.remove("-v")
-
+        self.add_info = args.verbose
         self.qregisters()
         return
 
