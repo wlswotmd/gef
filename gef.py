@@ -14490,11 +14490,11 @@ class RpCommand(GenericCommand):
             # dump kernel then apply vmlinux-to-elf
             dump_mem_file = os.path.join(GEF_TEMP_DIR, "rp-dump-memory.raw")
             self.path = symboled_vmlinux_file = os.path.join(GEF_TEMP_DIR, "rp-dump-memory.elf")
-            addrs = VmlinuxToElfApplyCommand().dump_kernel_elf(dump_mem_file, symboled_vmlinux_file)
-            if addrs is None:
+            kinfo = VmlinuxToElfApplyCommand().dump_kernel_elf(dump_mem_file, symboled_vmlinux_file)
+            if kinfo is None:
                 err("Failed to get symboled ELF")
                 return
-            base_address = addrs["kbase"]
+            base_address = kinfo.kbase
 
         # invoke rp++
         rp_output_path = self.exec_rp(args.rop_N)
@@ -34580,10 +34580,10 @@ class MagicCommand(GenericCommand):
     def magic_kernel(self):
         info("Wait for memory scan")
 
-        dic = KernelbaseCommand.get_kernel_base()
-        maps = dic["maps"]
-        kbase = dic["kbase"]
-        kbase_size = dic["kbase_size"]
+        kinfo = KernelbaseCommand.get_kernel_base()
+        maps = kinfo.maps
+        kbase = kinfo.kbase
+        kbase_size = kinfo.kbase_size
         if maps is None or kbase is None or kbase_size is None:
             return
         gef_print("{:42s}: {:#x} ({:#x} bytes)".format("kernel_base", kbase, kbase_size))
@@ -37021,11 +37021,14 @@ class KernelbaseCommand(GenericCommand):
             "krobase_size": None,
             "krwbase": None,
             "krwbase_size": None,
+            "has_none": False,
         }
+        Kinfo = collections.namedtuple("Kinfo", dic.keys())
 
         # maps is not found, so fast return
         if dic["maps"] is None:
-            return dic
+            dic["has_none"] = None in dic.values()
+            return Kinfo(*dic.values())
 
         # search kbase
         for i, (vaddr, size, perm) in enumerate(dic["maps"]):
@@ -37044,7 +37047,8 @@ class KernelbaseCommand(GenericCommand):
                     break
             else:
                 # Not found, so fast return
-                return dic
+                dic["has_none"] = None in dic.values()
+                return Kinfo(*dic.values())
 
         # search kernel RO base - logic 1
         for i, (vaddr, size, perm) in enumerate(maps_after_kbase):
@@ -37082,7 +37086,8 @@ class KernelbaseCommand(GenericCommand):
                     maps_after_krobase = maps_after_kbase
                     break
             else:
-                return dic
+                dic["has_none"] = None in dic.values()
+                return Kinfo(*dic.values())
 
         # search kernel RW base
         def search_perm(target_perm):
@@ -37109,7 +37114,8 @@ class KernelbaseCommand(GenericCommand):
                 # Not found
                 pass
 
-        return dic
+        dic["has_none"] = None in dic.values()
+        return Kinfo(*dic.values())
 
     @parse_args
     @only_if_gdb_running
@@ -37119,14 +37125,14 @@ class KernelbaseCommand(GenericCommand):
 
         # resolve kbase, krobase
         info("Wait for memory scan")
-        dic = self.get_kernel_base()
-        if None in dic.values():
+        kinfo = self.get_kernel_base()
+        if kinfo.has_none:
             err("Failed to resolve")
             return
         gef_print(titlify("Kernel base (heuristic)"))
-        gef_print("kernel text:   {:#x} ({:#x} bytes)".format(dic["kbase"], dic["kbase_size"]))
-        gef_print("kernel rodata: {:#x} ({:#x} bytes)".format(dic["krobase"], dic["krobase_size"]))
-        gef_print("kernel data:   {:#x} ({:#x} bytes)".format(dic["krwbase"], dic["krwbase_size"]))
+        gef_print("kernel text:   {:#x} ({:#x} bytes)".format(kinfo.kbase, kinfo.kbase_size))
+        gef_print("kernel rodata: {:#x} ({:#x} bytes)".format(kinfo.krobase, kinfo.krobase_size))
+        gef_print("kernel data:   {:#x} ({:#x} bytes)".format(kinfo.krwbase, kinfo.krwbase_size))
         return
 
 
@@ -37141,17 +37147,17 @@ class KernelVersionCommand(GenericCommand):
 
     def kernel_version(self):
         info("Wait for memory scan")
-        dic = KernelbaseCommand.get_kernel_base()
-        if None in dic.values():
+        kinfo = KernelbaseCommand.get_kernel_base()
+        if kinfo.has_none:
             err("Failed to resolve")
             return None
 
         # resolve area
         area = []
-        for addr in dic["maps"]:
-            if addr[0] < dic["kbase"]:
+        for addr in kinfo.maps:
+            if addr[0] < kinfo.kbase:
                 continue
-            if addr[0] >= dic["krwbase"]:
+            if addr[0] >= kinfo.krwbase:
                 continue
             area.append([addr[0], addr[0] + addr[1]])
         if area == []:
@@ -40650,15 +40656,15 @@ class KsymaddrRemoteCommand(GenericCommand):
         # get kernel memory maps
         if not self.silent:
             info("Wait for memory scan")
-        dic = KernelbaseCommand.get_kernel_base()
-        if None in dic.values():
+        kinfo = KernelbaseCommand.get_kernel_base()
+        if kinfo.has_none:
             err("Failed to resolve")
             return None
-        self.maps = dic["maps"]
-        self.kbase = dic["kbase"]
-        self.kbase_size = dic["kbase_size"]
-        self.krobase = dic["krobase"]
-        self.krobase_size = dic["krobase_size"]
+        self.maps = kinfo.maps
+        self.kbase = kinfo.kbase
+        self.kbase_size = kinfo.kbase_size
+        self.krobase = kinfo.krobase
+        self.krobase_size = kinfo.krobase_size
         # resolve some address
         if is_32bit():
             res = self.initialize32()
@@ -40732,21 +40738,20 @@ class VmlinuxToElfApplyCommand(GenericCommand):
         # resolve kbase, krobase
         info("Wait for memory scan")
 
-        dic = KernelbaseCommand.get_kernel_base()
-        if None in dic.values():
+        kinfo = KernelbaseCommand.get_kernel_base()
+        if kinfo.has_none:
             err("Failed to resolve")
             return None
-
-        gef_print("kernel base:   {:#x} ({:#x} bytes)".format(dic["kbase"], dic["kbase_size"]))
-        gef_print("kernel rodata: {:#x} ({:#x} bytes)".format(dic["krobase"], dic["krobase_size"]))
-        gef_print("kernel data:   {:#x} ({:#x} bytes)".format(dic["krwbase"], dic["krwbase_size"]))
+        gef_print("kernel base:   {:#x} ({:#x} bytes)".format(kinfo.kbase, kinfo.kbase_size))
+        gef_print("kernel rodata: {:#x} ({:#x} bytes)".format(kinfo.krobase, kinfo.krobase_size))
+        gef_print("kernel data:   {:#x} ({:#x} bytes)".format(kinfo.krwbase, kinfo.krwbase_size))
 
         # resolve area
         area = []
-        for addr in dic['maps']:
-            if addr[0] < dic['kbase']:
+        for addr in kinfo.maps:
+            if addr[0] < kinfo.kbase:
                 continue
-            if addr[0] >= dic['krwbase']:
+            if addr[0] >= kinfo.krwbase:
                 continue
             area.append([addr[0], addr[0] + addr[1]])
         if area == []:
@@ -40759,7 +40764,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
             data = ''.join([chr(x) for x in data])
             r1 = re.findall(r"(Linux version (?:\d+\.[\d.]*\d)[ -~]+)", data)
 
-            data = read_memory(dic["krobase"], dic["krobase_size"])
+            data = read_memory(kinfo.krobase, kinfo.krobase_size)
             data = ''.join([chr(x) for x in data])
             r2 = re.findall(r"(Linux version (?:\d+\.[\d.]*\d)[ -~]+)", data)
 
@@ -40804,8 +40809,9 @@ class VmlinuxToElfApplyCommand(GenericCommand):
 
         # apply vmlinux-to-elf
         if force or not os.path.exists(symboled_vmlinux_file):
-            info("Execute `{} '{}' '{}' --base-address={:#x}`".format(vmlinux2elf, dumped_mem_file, symboled_vmlinux_file, dic["kbase"]))
-            os.system("{} '{}' '{}' --base-address={:#x}".format(vmlinux2elf, dumped_mem_file, symboled_vmlinux_file, dic["kbase"]))
+            cmd = "{} '{}' '{}' --base-address={:#x}".format(vmlinux2elf, dumped_mem_file, symboled_vmlinux_file, kinfo.kbase)
+            info("Execute `{:s}`".format(cmd))
+            os.system(cmd)
         else:
             # reuse by default
             pass
@@ -40817,7 +40823,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
             return None
 
         # Success
-        return dic
+        return kinfo
 
     @parse_args
     @only_if_gdb_running
@@ -40828,8 +40834,8 @@ class VmlinuxToElfApplyCommand(GenericCommand):
 
         dumped_mem_file = os.path.join(GEF_TEMP_DIR, "vmlinux-to-elf-dump-memory.raw")
         symboled_vmlinux_file = os.path.join(GEF_TEMP_DIR, "vmlinux-to-elf-dump-memory.elf")
-        dic = self.dump_kernel_elf(dumped_mem_file, symboled_vmlinux_file, force=args.reparse)
-        if dic is None:
+        kinfo = self.dump_kernel_elf(dumped_mem_file, symboled_vmlinux_file, force=args.reparse)
+        if kinfo is None:
             err("Failed to create kernel ELF")
             return
 
@@ -40840,7 +40846,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
         #   gdb 8.x: Usage: add-symbol-file FILE ADDR [-readnow | -readnever | -s SECT-NAME SECT-ADDR]...
         # But the created ELF has no .text, only a .kernel
         # Applying an empty symbol has no effect, so tentatively specify the same address as the .kernel.
-        cmd = "add-symbol-file {} {:#x} -s .kernel {:#x}".format(symboled_vmlinux_file, dic['kbase'], dic['kbase'])
+        cmd = "add-symbol-file {} {:#x} -s .kernel {:#x}".format(symboled_vmlinux_file, kinfo.kbase, kinfo.kbase)
         info(cmd)
         gdb.execute(cmd)
         return
