@@ -50715,58 +50715,48 @@ class PeekPointersCommand(GenericCommand):
     """Command to help find pointers belonging to other memory regions helpful in case
     of OOB Read when looking for specific pointers."""
     _cmdline_ = "peek-pointers"
-    _syntax_ = "{:s} starting_address <object_name> <all>".format(_cmdline_)
-    _example_ = "\n"
-    _example_ += "{:s} 0x00007ffffffde000          # begin address of stack region\n".format(_cmdline_)
-    _example_ += "{:s} 0x00007ffffffde000 vdso     # grep by `vdso`\n".format(_cmdline_)
-    _example_ += "{:s} 0x00007ffffffde000 vdso all # show all found address".format(_cmdline_)
     _category_ = "Show/Modify Memory"
 
-    def __init__(self):
-        super().__init__(complete=gdb.COMPLETE_LOCATION)
-        return
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('address', metavar='ADDRESS', type=parse_address, help="search start address.")
+    parser.add_argument('name', metavar='NAME', nargs='?', help="what area to search. (default: all area)")
+    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    _syntax_ = parser.format_help()
 
+    _example_ = "{:s} 0x00007ffffffde000          # begin address of stack region\n".format(_cmdline_)
+    _example_ += "{:s} 0x00007ffffffde000 vdso     # grep by `vdso` area".format(_cmdline_)
+
+    @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        argc = len(argv)
-        if argc not in (1, 2, 3):
-            self.usage()
-            return
-
-        try:
-            addr = lookup_address(int(argv[0], 16))
-        except Exception:
-            self.usage()
-            return
+        addr = lookup_address(args.address)
         if (addr.value % gef_getpagesize()):
-            err("<starting_address> must be aligned to a page")
+            err("address must be aligned to a page")
             return
         if addr.section is None:
             err("{:#x} does not exist".format(addr.value))
             return
 
-        unique = True if "all" not in argv else False
         vmmap = get_process_maps()
 
-        if argc >= 2 :
-            section_name = argv[1].lower()
+        if args.name:
+            section_name = args.name
             if section_name == "stack":
                 sections = [(s.path, s.page_start, s.page_end) for s in vmmap if s.path == "[stack]"]
             elif section_name == "heap":
                 sections = [(s.path, s.page_start, s.page_end) for s in vmmap if s.path == "[heap]"]
-            elif section_name != "all":
-                sections = [(s.path, s.page_start, s.page_end) for s in vmmap if section_name in s.path]
             else:
-                sections = [(s.path, s.page_start, s.page_end) for s in vmmap]
+                sections = [(s.path, s.page_start, s.page_end) for s in vmmap if section_name in s.path]
         else:
             sections = [(s.path, s.page_start, s.page_end) for s in vmmap]
 
         data = read_memory(addr.section.page_start, addr.section.size)
         data = slice_unpack(data, current_arch.ptrsize)
 
+        out = []
         for off, addr_value in enumerate(data):
             addr_v = lookup_address(addr_value)
             if not addr_v:
@@ -50783,11 +50773,24 @@ class PeekPointersCommand(GenericCommand):
                 elif len(name) == 0:
                     name = get_filename()
                 addr_pos = addr.value + off * current_arch.ptrsize
-                perm = str(addr_v.section.permission)
-                ok("Found at {:#x} to {:#x} {:s} ('{:s}', perm: {:s})".format(addr_pos, addr_value, sym, name, perm))
-                if unique:
-                    del sections[i]
+                perm = addr_v.section.permission
+                perm_s = str(perm)
+
+                line_color = ""
+                if name == "[stack]":
+                    line_color = get_gef_setting("theme.address_stack")
+                elif name == "[heap]":
+                    line_color = get_gef_setting("theme.address_heap")
+                elif perm.value & Permission.READ and perm.value & Permission.EXECUTE:
+                    line_color = get_gef_setting("theme.address_code")
+
+                search_area = "Found at {:#x}".format(addr_pos)
+                found_area = "{:#x} {:s} ('{:s}', perm: {:s})".format(addr_value, sym, name, perm_s)
+                found_area = Color.colorify(found_area, line_color)
+                out.append("{:s} {:s}".format(search_area, found_area))
                 break
+
+        gef_print('\n'.join(out), less=not args.no_pager)
         return
 
 
@@ -50795,13 +50798,15 @@ class PeekPointersCommand(GenericCommand):
 class CurrentFrameStackCommand(GenericCommand):
     """Show the entire stack of the current frame."""
     _cmdline_ = "current-stack-frame"
-    _syntax_ = "{:s}".format(_cmdline_)
-    _example_ = "{:s}".format(_cmdline_)
     _category_ = "Show/Modify Memory"
     _aliases_ = ["stack", "full-stack"]
 
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         ptrsize = current_arch.ptrsize
@@ -50849,14 +50854,20 @@ class CurrentFrameStackCommand(GenericCommand):
 class XRefTelescopeCommand(SearchPatternCommand):
     """Recursively search for cross-references to a pattern in memory."""
     _cmdline_ = "xref-telescope"
-    _syntax_ = "{:s} PATTERN [depth]".format(_cmdline_)
-    _example_ = "\n"
-    _example_ += "{:s} AAAAAAAA\n".format(_cmdline_)
-    _example_ += "{:s} 0x555555554000 15".format(_cmdline_)
     _category_ = "Show/Modify Memory"
     _aliases_ = []
 
-    def xref_telescope_(self, pattern, depth, tree_heading):
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('pattern', metavar='PATTERN', help="search pattern.")
+    parser.add_argument('depth', metavar='DEPTH', nargs='?', type=int, default=3,
+                        help="max recursive depth. (default: %(default)s)")
+    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} AAAAAAAA\n".format(_cmdline_)
+    _example_ += "{:s} 0x555555554000 15".format(_cmdline_)
+
+    def xref_telescope(self, pattern, depth, tree_heading):
         """Recursively search a pattern within the whole userland memory."""
         if depth <= 0:
             return
@@ -50879,7 +50890,7 @@ class XRefTelescopeCommand(SearchPatternCommand):
 
             locs += self.search_pattern_by_address(pattern, start, end)
         if tree_heading == "":
-            gef_print(" .")
+            self.out.append(" .")
         for i, loc in enumerate(locs):
             addr_loc_start = lookup_address(loc[0])
             path = addr_loc_start.section.path
@@ -50891,30 +50902,21 @@ class XRefTelescopeCommand(SearchPatternCommand):
                 tree_suffix_pre = " +--"
                 tree_suffix_post = " |  "
 
-            gef_print('{} {:#x} {} {} "{}"'.format(tree_heading + tree_suffix_pre, loc[0], Color.blueify(path), perm, Color.pinkify(loc[2])))
-            self.xref_telescope_(hex(loc[0]), depth - 1, tree_heading + tree_suffix_post)
+            fmt = '{} {:#x} {} {} "{}"'
+            msg = fmt.format(tree_heading + tree_suffix_pre, loc[0], Color.blueify(path), perm, Color.pinkify(loc[2]))
+            self.out.append(msg)
+            self.xref_telescope(hex(loc[0]), depth - 1, tree_heading + tree_suffix_post)
+        return
 
-    def xref_telescope(self, pattern, depth):
-        self.xref_telescope_(pattern, depth, "")
-
+    @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
-
-        argc = len(argv)
-        if argc < 1:
-            self.usage()
-            return
-
-        pattern = argv[0]
-        try:
-            depth = int(argv[1])
-        except (IndexError, ValueError):
-            depth = 3
-
-        info("Recursively searching '{:s}' in memory".format(Color.yellowify(pattern)))
-        self.xref_telescope(pattern, depth)
+        self.out = []
+        self.out.append("Recursively searching '{:s}' in memory".format(Color.yellowify(args.pattern)))
+        self.xref_telescope(args.pattern, args.depth, "")
+        gef_print('\n'.join(self.out), less=not args.no_pager)
         return
 
 
@@ -50922,218 +50924,154 @@ class XRefTelescopeCommand(SearchPatternCommand):
 class BytearrayCommand(GenericCommand):
     """Generate a bytearray to be compared with possible badchars (ported from mona.py)."""
     _cmdline_ = "bytearray"
-    _syntax_ = "{:s} [-b badchars] [-d]".format(_cmdline_)
-    _example_ = "\n"
-    _example_ += "{:s} -b 414243 # exclude 41,42,43\n".format(_cmdline_)
-    _example_ += "{:s} -b 41..49 # exclude 41,42,43,...,49\n".format(_cmdline_)
-    _example_ += "{:s} -d # dump to ./bytearray.txt, ./bytearray.bin".format(_cmdline_)
     _category_ = "Misc"
 
-    def __init__(self):
-        super().__init__(complete=gdb.COMPLETE_FILENAME)
-        return
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-b', dest='badchars', default=[], action='append', help='characters to exclude.')
+    parser.add_argument('-d', dest='dump', action='store_true', help='dump to /tmp/gef/bytearray.{txt,bin}.')
+    _syntax_ = parser.format_help()
 
-    def do_invoke(self, argv):
+    _example_ = "{:s} -b 414243 -b 51-53 -b 61..63".format(_cmdline_)
+
+    def expand_hex(self, x):
+        """4142..45 -> 4142434445"""
+        if ".." not in x:
+            return x
+
+        if len(x) < 6:
+            return False
+
+        if "..." in x:
+            return False
+
+        while ".." in x:
+            pos = x.find("..")
+            if pos % 2 != 0:
+                return False
+
+            if pos < 2 or len(x) - 4 < pos:
+                return False
+
+            xa, xb = int(x[pos - 2:pos], 16), int(x[pos + 2:pos + 4], 16)
+            if xa >= xb:
+                return False
+            middle = ''.join("{:02x}".format(c) for c in range(xa, xb))
+            x = x[:pos - 2] + middle + x[pos + 2:]
+        return x
+
+    @parse_args
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        badchars = ""
-        bytesperline = 32
-        startval = 0
-        endval = 255
-        dump = False
+        excluded = set()
+        for b in args.badchars:
+            b = b.lower().replace("-", "..")
 
-        try:
-            opts, args = getopt.getopt(argv, "b:dh")
-            for o, a in opts:
-                if o == "-b":
-                    badchars = a
-                elif o == "-h":
-                    self.usage()
-                    return
-                elif o == "-d":
-                    dump = True
-        except Exception:
-            self.usage()
-            return
+            if not re.match(r"[0-9a-f]+", b):
+                err("{:s} is not valid hex (not match `[0-9a-f]+`)".format(b))
+                return
 
-        badchars = self.cleanHex(badchars)
+            if (len(b) % 2) != 0:
+                err("{:s} is not valid hex (odd length)".format(b))
+                return
 
-        try:
-            # see if we need to expand ..
-            bpos = 0
-            newbadchars = ""
-            while bpos < len(badchars):
-                curchar = badchars[bpos] + badchars[bpos + 1]
-                if curchar == "..":
-                    pos = bpos
-                    if pos > 1 and pos <= len(badchars) - 4:
-                        # get byte before and after ..
-                        bytebefore = badchars[pos - 2] + badchars[pos - 1]
-                        byteafter = badchars[pos + 2] + badchars[pos + 3]
-                        bbefore = int(bytebefore, 16)
-                        bafter = int(byteafter, 16)
-                        if bbefore > bafter:
-                            bbefore, bafter = bafter, bbefore
-                        insertbytes = ""
-                        bbefore += 1
-                        while bbefore < bafter:
-                            insertbytes += "%02x" % bbefore
-                            bbefore += 1
-                        newbadchars += insertbytes
-                else:
-                    newbadchars += curchar
-                bpos += 2
-            badchars = newbadchars
+            eb = self.expand_hex(b)
+            if eb is False:
+                err("{:s} is not valid hex (failed to expand `..`)".format(b))
+                return
 
-            cnt = 0
-            excluded = []
-            while cnt < len(badchars):
-                excluded.append(self.hex2bin(badchars[cnt] + badchars[cnt + 1]))
-                cnt = cnt + 2
-        except Exception:
-            self.usage()
-            return
+            excluded |= set([int(c, 16) for c in slicer(eb, 2)])
 
         info("Generating table, excluding {:d} bad chars...".format(len(excluded)))
-        arraytable = []
-        binarray = bytearray()
 
-        # handle range() last value
-        if endval > startval:
-            increment = 1
-            endval += 1
-        else:
-            endval += -1
-            increment = -1
+        included = set(range(0, 256)) - excluded
+        included = sorted(list(included))
 
-        # create bytearray
-        for thisval in range(startval, endval, increment):
-            hexbyte = "{:02x}".format(thisval)
-            binbyte = self.hex2bin(hexbyte)
-            intbyte = self.hex2int(hexbyte)
-            if binbyte not in excluded:
-                arraytable.append(hexbyte)
-                binarray.append(intbyte)
+        if len(included) == 0:
+            info("Nothing to dump")
+            return
 
-        info("Dumping table")
-        output = ""
-        cnt = 0
-        outputline = '"'
-        totalbytes = len(arraytable)
-        tablecnt = 0
-        while tablecnt < totalbytes:
-            if (cnt < bytesperline):
-                outputline += "\\x" + arraytable[tablecnt]
-            else:
-                outputline += '"\n'
-                cnt = 0
-                output += outputline
-                outputline = '"\\x' + arraytable[tablecnt]
-            tablecnt += 1
-            cnt += 1
-        if (cnt - 1) < bytesperline:
-            outputline += '"'
-        output += outputline
-        gef_print(output)
+        info("Dumping table.")
+        outt_arr = []
+        outb_arr = []
+        for c in included:
+            outt_arr.append("\\x{:02x}".format(c))
+            outb_arr.append(bytes([c]))
 
-        if dump:
-            binfilename = os.path.join(GEF_TEMP_DIR, "bytearray.bin")
+        bytesperline = 32
+        outt = ""
+        for s in slicer(outt_arr, bytesperline):
+            outt += '"{:s}"\n'.format("".join(s))
+        outb = b"".join(outb_arr)
+
+        gef_print(outt.rstrip())
+
+        if args.dump:
             arrayfile = os.path.join(GEF_TEMP_DIR, "bytearray.txt")
-            binfile = open(binfilename, "wb")
-            binfile.write(binarray)
-            binfile.close()
-
-            txtfile = open(arrayfile, "w+")
-            txtfile.write(output)
-            txtfile.close()
-
-            info("Done, wrote {:d} bytes to file {:s}".format(len(arraytable), arrayfile))
+            open(arrayfile, "w").write(outt)
+            info("Done, wrote {:d} bytes to file {:s}".format(len(outt_arr), arrayfile))
+            binfilename = os.path.join(GEF_TEMP_DIR, "bytearray.bin")
+            open(binfilename, "wb").write(outb)
             info("Binary output saved in {:s}".format(binfilename))
         return
-
-    def hex2bin(self, pattern):
-        """Converts a hex string (\\x??\\x??\\x??\\x??) to real hex bytes
-        Arguments: pattern - A string representing the bytes to convert
-        Return: the bytes"""
-        pattern = pattern.replace("\\x", "")
-        pattern = pattern.replace("\"", "")
-        pattern = pattern.replace("\'", "")
-        return binascii.unhexlify(pattern)
-
-    def cleanHex(self, hex):
-        return "".join(filter(self.permitted_char, hex))
-
-    def hex2int(self, hex):
-        return int(hex, 16)
-
-    def permitted_char(self, s):
-        if bool(re.match("^[A-Fa-f0-9.]", s)):
-            return True
-        else:
-            return False
 
 
 @register_command
 class BincompareCommand(GenericCommand):
     """BincompareCommand: compare an binary file with the memory position looking for badchars."""
     _cmdline_ = "bincompare"
-    _syntax_ = "{:s} [-h] -f FILE -a MEMORY_ADDRESS\n".format(_cmdline_)
-    _syntax_ += "  -f FILE            specifies the binary file to be compared.\n"
-    _syntax_ += "  -a MEMORY_ADDRESS  sepecifies the memory address."
     _category_ = "Misc"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('filename', metavar='FILENAME', help="specifies the binary file to be compared")
+    parser.add_argument('address', metavar='ADDRESS', type=parse_address, help="sepecifies the memory address.")
+    parser.add_argument('size', metavar='SIZE', nargs='?', type=parse_address, help="sepecifies the size.")
+    parser.add_argument('--file-offset', type=parse_address, help="sepecifies the file offset.")
+    _syntax_ = parser.format_help()
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_FILENAME)
         return
 
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        filename = None
-        start_addr = None
-        size = 0
-        file_data = None
-        memory_data = None
+        # file_data
+        if not os.path.isfile(args.filename):
+            err("Especified file '{:s}' not exists".format(args.filename))
+            return
+        file_data = open(args.filename, "rb").read()
+        if args.file_offset:
+            file_data = file_data[args.file_offset:]
+        file_size = len(file_data)
 
+        # size
+        if args.size is None:
+            size = file_size
+        else:
+            if args.size > file_size:
+                err("file size is too short")
+                return
+            size = args.size
+            file_data = file_data[:size]
+
+        if size == 0:
+            err("comparing size is 0, nothing to do.")
+            return
+
+        # memory_data
         try:
-            opts, args = getopt.getopt(argv, "f:a:h")
-            for o, a in opts:
-                if o == "-f":
-                    filename = a
-                elif o == "-a":
-                    start_addr = int(gdb.parse_and_eval(a))
-                elif o == "-h":
-                    self.usage()
-                    return
-        except Exception:
-            self.usage()
-            return
-
-        if not filename or not start_addr:
-            err("No file and/or address specified")
-            return
-
-        if not os.path.isfile(filename):
-            err("Especified file '{:s}' not exists".format(filename))
-            return
-
-        f = open(filename, "rb")
-        file_data = f.read()
-        f.close()
-
-        size = len(file_data)
-
-        if size < 8:
-            err("Error - file does not contain enough bytes (min 8 bytes needed)")
-            return
-
-        try:
-            memory_data = read_memory(start_addr, size)
+            memory_data = read_memory(args.address, size)
         except gdb.MemoryError:
-            err("Cannot reach memory {:#x}".format(start_addr))
+            err("Cannot reach memory {:#x}".format(args.address))
             return
 
+        self.compare(file_data, memory_data)
+        return
+
+    def compare(self, file_data, memory_data):
         result_table = []
         badchars = ""
         cnt = 0
