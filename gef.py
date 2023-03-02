@@ -98,7 +98,6 @@ import collections
 import configparser
 import ctypes
 import functools
-import getopt
 import hashlib
 import inspect
 import itertools
