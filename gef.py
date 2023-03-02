@@ -50504,8 +50504,12 @@ class UefiOvmfInfoCommand(GenericCommand):
 class AddSymbolTemporaryCommand(GenericCommand):
     """Add symbol from command temporarily."""
     _cmdline_ = "add-symbol-temporary"
-    _syntax_ = "{:s} FUNCTION_NAME ADDRESS".format(_cmdline_)
     _category_ = "Misc"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('function_name', metavar='FUNCTION_NAME', help='new symbol you want to add.')
+    parser.add_argument('function_addr', metavar='ADDRESS', type=parse_address, help="new symbol's address you want to add.")
+    _syntax_ = parser.format_help()
 
     @staticmethod
     def add_symbol_temp(function_info):
@@ -50602,30 +50606,21 @@ class AddSymbolTemporaryCommand(GenericCommand):
         info("{:d} entries were processed".format(i + 1))
         return
 
+    @parse_args
     @only_if_gdb_running
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
-        if len(argv) != 2:
-            self.usage()
-            return
-
-        try:
-            function_name = argv[0]
-            function_addr = int(gdb.parse_and_eval(argv[1]))
-        except Exception:
-            self.usage()
-            return
-
-        if is_32bit() and function_addr > 0xffffffff:
+        if is_32bit() and args.function_addr > 0xffffffff:
             err("function address must be 0xffffffff or less")
             return
-        if is_64bit() and function_addr > 0xffffffffffffffff:
+        if is_64bit() and args.function_addr > 0xffffffffffffffff:
             err("function address must be 0xffffffffffffffff or less")
             return
 
         function_info = []
-        function_info.append((function_name, function_addr, None))
+        typ = None
+        function_info.append((args.function_name, args.function_addr, typ))
         self.add_symbol_temp(function_info)
         return
 
@@ -50634,12 +50629,15 @@ class AddSymbolTemporaryCommand(GenericCommand):
 class KsymaddrRemoteApplyCommand(GenericCommand):
     """Apply symbol from kallsyms in memory."""
     _cmdline_ = "ksymaddr-remote-apply"
-    _syntax_ = "{:s}".format(_cmdline_)
     _category_ = "Qemu-system Cooperation"
 
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         info("Wait for memory scan")
