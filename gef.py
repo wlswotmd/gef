@@ -388,7 +388,7 @@ class Color:
     """Used to colorify terminal output."""
     colors = {
         "normal"         : "\033[0m",
-        "gray"           : "\033[1;38;5;240m",
+        "gray"           : "\033[1;30m",
         "light_gray"     : "\033[0;37m",
         "red"            : "\033[31m",
         "green"          : "\033[32m",
