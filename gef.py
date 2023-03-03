@@ -211,10 +211,6 @@ libc_args_definitions           = {}
 highlight_table                 = {}
 
 
-if not os.path.exists(GEF_TEMP_DIR):
-    os.mkdir(GEF_TEMP_DIR)
-
-
 def perf_enable(f):
     """Decorator wrapper to perf."""
 
@@ -52088,6 +52084,10 @@ def main():
             sys.path.extend(SITE_PACKAGES_DIRS)
     except FileNotFoundError:
         pass
+
+    # create tmp dir
+    if not os.path.exists(GEF_TEMP_DIR):
+        os.mkdir(GEF_TEMP_DIR)
 
     # setup prompt
     gdb.prompt_hook = __gef_prompt__
