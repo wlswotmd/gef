@@ -101,7 +101,6 @@ import functools
 import getopt
 import hashlib
 import inspect
-import io
 import itertools
 import json
 import math
@@ -332,51 +331,6 @@ def gef_print(x="", less=False, *args, **kwargs):
 
     print(x, *args, **kwargs)
     return
-
-
-def bufferize(f):
-    """Store the content to be printed for a function in memory, and flush it on function exit."""
-    @functools.wraps(f)
-    def wrapper(*args, **kwargs):
-        global __gef_int_stream_buffer__, __gef_redirect_output_fd__
-
-        if __gef_int_stream_buffer__:
-            return f(*args, **kwargs)
-
-        __gef_int_stream_buffer__ = io.StringIO()
-        try:
-            rv = f(*args, **kwargs)
-        finally:
-            redirect = get_gef_setting("context.redirect")
-            if redirect.startswith("/dev/pts/"):
-                if not __gef_redirect_output_fd__:
-                    # if the FD has never been open, open it
-                    fd = open(redirect, "wt")
-                    __gef_redirect_output_fd__ = fd
-                elif redirect != __gef_redirect_output_fd__.name:
-                    # if the user has changed the redirect setting during runtime, update the state
-                    __gef_redirect_output_fd__.close()
-                    fd = open(redirect, "wt")
-                    __gef_redirect_output_fd__ = fd
-                else:
-                    # otherwise, keep using it
-                    fd = __gef_redirect_output_fd__
-            else:
-                fd = sys.stdout
-                __gef_redirect_output_fd__ = None
-
-            if __gef_redirect_output_fd__ and fd.closed:
-                # if the tty was closed, revert back to stdout
-                fd = sys.stdout
-                __gef_redirect_output_fd__ = None
-                set_gef_setting("context.redirect", "")
-
-            fd.write(__gef_int_stream_buffer__.getvalue())
-            fd.flush()
-            __gef_int_stream_buffer__ = None
-        return rv
-
-    return wrapper
 
 
 class Color:
@@ -9794,7 +9748,7 @@ class GenericCommand(gdb.Command):
         try:
             argv = gdb.string_to_argv(args)
             self.__set_repeat_count(argv, from_tty)
-            bufferize(self.do_invoke)(argv)
+            self.do_invoke(argv)
         except Exception as e:
             # Note: since we are intercepting cleaning exceptions here, commands preferably should avoid
             # catching generic Exception, but rather specific ones. This is allows a much cleaner use.
