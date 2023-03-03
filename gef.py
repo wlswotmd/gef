@@ -189,8 +189,6 @@ __heap_uaf_watchpoints__        = []
 __pie_breakpoints__             = {}
 __pie_counter__                 = 1
 __gef_default_main_arena__      = "main_arena"
-__gef_int_stream_buffer__       = None
-__gef_redirect_output_fd__      = None
 __gef_prev_arch__               = None
 
 DEFAULT_PAGE_ALIGN_SHIFT        = 12
@@ -332,10 +330,7 @@ def gef_print(x="", less=False, *args, **kwargs):
         os.unlink(tmp_path)
         return
 
-    if __gef_int_stream_buffer__ and not is_debug():
-        __gef_int_stream_buffer__.write(x + kwargs.get("end", "\n"))
-    else:
-        print(x, *args, **kwargs)
+    print(x, *args, **kwargs)
     return
 
 
@@ -2231,22 +2226,6 @@ def hide_context():
 def unhide_context():
     global context_hidden
     context_hidden = False
-    return
-
-
-def enable_redirect_output(to_file="/dev/null"):
-    """Redirect all GDB output to `to_file` parameter. By default, `to_file` redirects to `/dev/null`."""
-    gdb.execute("set logging overwrite")
-    gdb.execute("set logging file {:s}".format(to_file))
-    gdb.execute("set logging redirect on")
-    gdb.execute("set logging on")
-    return
-
-
-def disable_redirect_output():
-    """Disable the output redirection, if any."""
-    gdb.execute("set logging off")
-    gdb.execute("set logging redirect off")
     return
 
 
@@ -8870,22 +8849,10 @@ def get_memory_alignment(in_bits=False):
     raise EnvironmentError("GEF is running under an unsupported mode")
 
 
-def clear_screen(tty=""):
+def clear_screen():
     """Clear the screen."""
-    if not tty:
-        # this is more faster than executing "shell clear -x"
-        print("\x1b[H\x1b[2J", end="")
-        return
-
-    # Since the tty can be closed at any time, a PermissionError exception can
-    # occur when `clear_screen` is called. We handle this scenario properly
-    try:
-        with open(tty, "wt") as f:
-            f.write("\x1b[H\x1b[2J")
-    except PermissionError:
-        global __gef_redirect_output_fd__
-        __gef_redirect_output_fd__ = None
-        set_gef_setting("context.redirect", "")
+    # this is more faster than executing "shell clear -x"
+    print("\x1b[H\x1b[2J", end="")
     return
 
 
@@ -18034,7 +18001,6 @@ class ContextCommand(GenericCommand):
         self.add_setting("clear_screen", True, "Clear the screen before printing the context")
         default_legend = "legend regs stack code args source memory threads trace extra"
         self.add_setting("layout", default_legend, "Change the order/presence of the context sections")
-        self.add_setting("redirect", "", "Redirect the context information to another TTY")
         self.add_setting("libc_args", False, "Show libc function call args description")
         self.add_setting("libc_args_path", "", "Path to libc function call args json files, provided via gef-extras")
         self.add_setting("smart_cpp_function_name", False, "Print cpp function name without args if demangled")
@@ -18095,12 +18061,8 @@ class ContextCommand(GenericCommand):
 
         self.tty_rows, self.tty_columns = get_terminal_size()
 
-        redirect = self.get_setting("redirect")
-        if redirect and os.access(redirect, os.W_OK):
-            enable_redirect_output(to_file=redirect)
-
         if self.get_setting("clear_screen") and len(args.commands) == 0:
-            clear_screen(redirect)
+            clear_screen()
 
         for section in current_layout:
             if section[0] == "-":
@@ -18111,9 +18073,6 @@ class ContextCommand(GenericCommand):
                 # a MemoryError will happen when $pc is corrupted (invalid address)
                 err(str(e))
         self.context_title("")
-
-        if redirect and os.access(redirect, os.W_OK):
-            disable_redirect_output()
         return
 
     def context_title(self, m):
