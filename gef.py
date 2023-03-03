@@ -51550,82 +51550,6 @@ class AliasesListCommand(AliasesCommand):
         return
 
 
-class GefTmuxSetup(gdb.Command):
-    """Setup a confortable tmux debugging environment."""
-    def __init__(self):
-        super().__init__("tmux-setup", gdb.COMMAND_NONE, gdb.COMPLETE_NONE)
-        GefAlias("screen-setup", "tmux-setup")
-        return
-
-    def invoke(self, args, from_tty):
-        self.dont_repeat()
-
-        tmux = os.getenv("TMUX")
-        if tmux:
-            self.tmux_setup()
-            return
-        screen = os.getenv("TERM")
-        if screen is not None and screen == "screen":
-            self.screen_setup()
-            return
-        warn("Not in a tmux/screen session")
-        return
-
-    def tmux_setup(self):
-        """Prepare the tmux environment by vertically splitting the current pane, and
-        forcing the context to be redirected there."""
-        try:
-            tmux = which("tmux")
-        except FileNotFoundError as e:
-            err("{}".format(e))
-            return
-
-        ok("tmux session found, splitting window...")
-        old_ptses = set(os.listdir("/dev/pts"))
-        gdb.execute("! {} split-window -h 'clear ; cat'".format(tmux))
-        gdb.execute("! {} select-pane -L".format(tmux))
-        new_ptses = set(os.listdir("/dev/pts"))
-        pty = list(new_ptses - old_ptses)[0]
-        pty = "/dev/pts/{}".format(pty)
-        ok("Setting `context.redirect` to '{}'...".format(pty))
-        gdb.execute("gef config context.redirect {}".format(pty))
-        ok("Done!")
-        return
-
-    def screen_setup(self):
-        """Hackish equivalent of the tmux_setup() function for screen."""
-        try:
-            screen = which("screen")
-        except FileNotFoundError as e:
-            err("{}".format(e))
-            return
-
-        sty = os.getenv("STY")
-        ok("screen session found, splitting window...")
-        fd_script, script_path = tempfile.mkstemp()
-        fd_tty, tty_path = tempfile.mkstemp(dir=GEF_TEMP_DIR)
-        os.close(fd_tty)
-
-        with os.fdopen(fd_script, "w") as f:
-            f.write("startup_message off\n")
-            f.write("split -v\n")
-            f.write("focus right\n")
-            f.write("screen bash -c 'tty > {}; clear; cat'\n".format(tty_path))
-            f.write("focus left\n")
-
-        gdb.execute("""! {} -r {} -m -d -X source {}""".format(screen, sty, script_path))
-        # artificial delay to make sure `tty_path` is populated
-        time.sleep(0.25)
-        with open(tty_path, "r") as f:
-            pty = f.read().strip()
-        ok("Setting `context.redirect` to '{}'...".format(pty))
-        gdb.execute("gef config context.redirect {}".format(pty))
-        ok("Done!")
-        os.unlink(script_path)
-        os.unlink(tty_path)
-        return
-
-
 def __gef_prompt__(current_prompt):
     """GEF custom prompt function."""
     if get_gef_setting("gef.readline_compat") is True:
@@ -51745,8 +51669,6 @@ def main():
         # if here, we are sourcing gef from a gdb session already attached
         # we must force a call to the new_objfile handler (see issue #278)
         new_objfile_handler(None)
-
-    GefTmuxSetup()
     return
 
 
