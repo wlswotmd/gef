@@ -9868,7 +9868,7 @@ class ResetCacheCommand(GenericCommand):
     """Reset cache of all stored data. This command is here for debugging and test purposes,
     GEF handles properly the cache reset under "normal" scenario."""
     _cmdline_ = "reset-cache"
-    _category_ = "GEF Maintenance Command"
+    _category_ = "99. GEF Maintenance Command"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -9884,7 +9884,7 @@ class ResetCacheCommand(GenericCommand):
 class GefThemeCommand(GenericCommand):
     """Customize GEF appearance."""
     _cmdline_ = "theme"
-    _category_ = "GEF Maintenance Command"
+    _category_ = "99. GEF Maintenance Command"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('key', metavar='KEY', nargs='?', help='color theme key. (default: %(default)s)')
@@ -9946,7 +9946,7 @@ class GefThemeCommand(GenericCommand):
 class VersionCommand(GenericCommand):
     """Display GEF version info."""
     _cmdline_ = "version"
-    _category_ = "GEF Maintenance Command"
+    _category_ = "99. GEF Maintenance Command"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -10103,7 +10103,7 @@ class VersionCommand(GenericCommand):
 class HighlightCommand(GenericCommand):
     """This command highlights user defined text matches which modifies GEF output universally."""
     _cmdline_ = "highlight"
-    _category_ = "GEF Maintenance Command"
+    _category_ = "01-f. Debugging Support - Context Extension"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     subparsers = parser.add_subparsers(title='command', required=True)
@@ -10128,7 +10128,7 @@ class HighlightCommand(GenericCommand):
 class HighlightListCommand(GenericCommand):
     """Show the current highlight table with matches to colors."""
     _cmdline_ = "highlight list"
-    _category_ = "GEF Maintenance Command"
+    _category_ = "01-f. Debugging Support - Context Extension"
     _aliases_ = ["highlight ls"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -10155,7 +10155,7 @@ class HighlightListCommand(GenericCommand):
 class HighlightClearCommand(GenericCommand):
     """Clear the highlight table, remove all matches."""
     _cmdline_ = "highlight clear"
-    _category_ = "GEF Maintenance Command"
+    _category_ = "01-f. Debugging Support - Context Extension"
     _aliases_ = ["highlight reset"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -10172,7 +10172,7 @@ class HighlightClearCommand(GenericCommand):
 class HighlightAddCommand(GenericCommand):
     """Add a match to the highlight table."""
     _cmdline_ = "highlight add"
-    _category_ = "GEF Maintenance Command"
+    _category_ = "01-f. Debugging Support - Context Extension"
     _aliases_ = ["highlight set"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -10194,7 +10194,7 @@ class HighlightAddCommand(GenericCommand):
 class HighlightRemoveCommand(GenericCommand):
     """Remove a match in the highlight table."""
     _cmdline_ = "highlight remove"
-    _category_ = "GEF Maintenance Command"
+    _category_ = "01-f. Debugging Support - Context Extension"
     _aliases_ = ["highlight del", "highlight unset", "highlight rm"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -10217,7 +10217,7 @@ class NiCommand(GenericCommand):
     or1k: branch operations don't work well, so use breakpoints to simulate.
     cris: si/ni commands don't work well. so use breakpoints to simulate."""
     _cmdline_ = "ni"
-    _category_ = "Debugging Support"
+    _category_ = "01-c. Debugging Support - Basic Command Extension"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('args', metavar='ARGS', nargs='*',
@@ -10293,7 +10293,7 @@ class SiCommand(GenericCommand):
     or1k: branch operations don't work well, so use breakpoints to simulate.
     cris: si/ni commands don't work well. so use breakpoints to simulate."""
     _cmdline_ = "si"
-    _category_ = "Debugging Support"
+    _category_ = "01-c. Debugging Support - Basic Command Extension"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('args', metavar='ARGS', nargs='*',
@@ -10367,7 +10367,7 @@ class ContCommand(GenericCommand):
     """qemu-user does not trap SIGINT during "continue". Realize a pseudo SIGINT trap by trapping
     SIGINT on the python side and throwing SIGINT back to qemu-user."""
     _cmdline_ = "c"
-    _category_ = "Debugging Support"
+    _category_ = "01-c. Debugging Support - Basic Command Extension"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('args', metavar='ARGS', nargs='*',
@@ -10425,7 +10425,7 @@ class ContCommand(GenericCommand):
 class PrintFormatCommand(GenericCommand):
     """Print bytes format in high level languages."""
     _cmdline_ = "print-format"
-    _category_ = "Exploit Development"
+    _category_ = "09-c. Misc - Generation"
     _aliases_ = ["pf"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -10548,7 +10548,7 @@ class PrintFormatCommand(GenericCommand):
 class CanaryCommand(GenericCommand):
     """Show the canary value of the current process from auxv information."""
     _cmdline_ = "canary"
-    _category_ = "Process Information"
+    _category_ = "02-f. Process Information - Security"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -10617,7 +10617,7 @@ class CanaryCommand(GenericCommand):
 class AuxvCommand(GenericCommand):
     """Show ELF auxiliary vectors."""
     _cmdline_ = "auxv"
-    _category_ = "Process Information"
+    _category_ = "02-d. Process Information - Trivial Information"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -10656,7 +10656,7 @@ class AuxvCommand(GenericCommand):
 class ArgvCommand(GenericCommand):
     """Show argv."""
     _cmdline_ = "argv"
-    _category_ = "Process Information"
+    _category_ = "02-d. Process Information - Trivial Information"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-v', dest='verbose', action='store_true', help='print all elements. (default: outputs up to 100).')
@@ -10728,7 +10728,7 @@ class ArgvCommand(GenericCommand):
 class EnvpCommand(GenericCommand):
     """Show initial envp from __environ@ld, or modified envp from last_environ@libc."""
     _cmdline_ = "envp"
-    _category_ = "Process Information"
+    _category_ = "02-d. Process Information - Trivial Information"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-v', dest='verbose', action='store_true', help='print all elements. (default: outputs up to 100).')
@@ -10806,7 +10806,7 @@ class PidCommand(GenericCommand):
     """The PID of the local process will be displayed if it can be acquired. If the acquisition fails,
     the PID of the remote process will be displayed if it can be acquired."""
     _cmdline_ = "pid"
-    _category_ = "Process Information"
+    _category_ = "02-d. Process Information - Trivial Information"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -10838,7 +10838,7 @@ class PidCommand(GenericCommand):
 class FilenameCommand(GenericCommand):
     """Show current debugged filename."""
     _cmdline_ = "filename"
-    _category_ = "Process Information"
+    _category_ = "02-d. Process Information - Trivial Information"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -10870,7 +10870,7 @@ class ProcInfoCommand(GenericCommand):
     """Extends the info given by GDB `info proc`, by giving an exhaustive description of the
     process status (file descriptors, parent, childs, etc.)."""
     _cmdline_ = "procinfo"
-    _category_ = "Process Information"
+    _category_ = "02-a. Process Information - General"
     _aliases_ = ["pr"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -11226,7 +11226,7 @@ class ProcInfoCommand(GenericCommand):
 class CapabilityCommand(GenericCommand):
     """Show the capabilities of the debugging process."""
     _cmdline_ = "capability"
-    _category_ = "Process Information"
+    _category_ = "02-f. Process Information - Security"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-v', dest='verbose', action='store_true', help='also display detailed bit information other than cap_eff.')
@@ -11412,7 +11412,7 @@ class CapabilityCommand(GenericCommand):
 class SmartMemoryDumpCommand(GenericCommand):
     """Smart dump the process memory."""
     _cmdline_ = "smart-memory-dump"
-    _category_ = "Misc"
+    _category_ = "03-e. Memory - Dump"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('--prefix', help='use this name for the dump destination file prefix. (default: PID)')
@@ -11476,7 +11476,7 @@ class SmartMemoryDumpCommand(GenericCommand):
 class HijackFdCommand(GenericCommand):
     """Redirect file descriptor during runtime."""
     _cmdline_ = "hijack-fd"
-    _category_ = "Debugging Support"
+    _category_ = "01-g. Debugging Support - Other"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('old_fd', metavar='OLD_FD', type=int, help='file descriptor number you want to redirect.')
@@ -11658,7 +11658,7 @@ class ScanSectionCommand(GenericCommand):
     """Search for addresses that are located in a memory mapping (haystack) that belonging
     to another (needle)."""
     _cmdline_ = "scan-section"
-    _category_ = "Show/Modify Memory"
+    _category_ = "03-a. Memory - Search"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('haystack', metavar='HAYSTACK', help='where to search for the needle.')
@@ -11744,7 +11744,7 @@ class SearchPatternCommand(GenericCommand):
     """Search a pattern in memory. If given an hex value (starting with 0x)
     the command will also try to look for upwards cross-references to this address."""
     _cmdline_ = "search-pattern"
-    _category_ = "Show/Modify Memory"
+    _category_ = "03-a. Memory - Search"
     _aliases_ = ["find"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -11967,7 +11967,7 @@ class SearchPatternCommand(GenericCommand):
 class PtrDemangleCommand(GenericCommand):
     """Demangle a mangled value by PTR_MANGLE."""
     _cmdline_ = "ptr-demangle"
-    _category_ = "Show/Modify Memory"
+    _category_ = "02-f. Process Information - Security"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     group = parser.add_mutually_exclusive_group(required=True)
@@ -12050,7 +12050,7 @@ class PtrDemangleCommand(GenericCommand):
 class SearchMangledPtrCommand(GenericCommand):
     """Search a mangled pointer value in memory."""
     _cmdline_ = "search-mangled-ptr"
-    _category_ = "Show/Modify Memory"
+    _category_ = "02-f. Process Information - Security"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-v', dest='verbose', action='store_true', help='shows the section you are currently searching.')
@@ -12161,7 +12161,7 @@ class SearchMangledPtrCommand(GenericCommand):
 class EditFlagsCommand(GenericCommand):
     """Edit flags in a human friendly way."""
     _cmdline_ = "edit-flags"
-    _category_ = "Show/Modify Register"
+    _category_ = "04-b. Register - Modify"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('flagname', metavar='[FLAGNAME(+|-|~) ...]', nargs="*", help='the flag name you want to edit..')
@@ -12412,7 +12412,7 @@ class EditFlagsCommand(GenericCommand):
 class MprotectCommand(GenericCommand):
     """Change a page permission. By default, it will change it to RWX."""
     _cmdline_ = "mprotect"
-    _category_ = "Debugging Support"
+    _category_ = "05-a. Syscall - Invoke"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('location', metavar='LOCATION', type=parse_address, help='the address you want to change the permission.')
@@ -12516,9 +12516,9 @@ class MprotectCommand(GenericCommand):
 
 @register_command
 class CallSyscallCommand(GenericCommand):
-    """wrapper for syscall."""
+    """Wrapper for syscall."""
     _cmdline_ = "call-syscall"
-    _category_ = "Debugging Support"
+    _category_ = "05-a. Syscall - Invoke"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('syscall_name', metavar='SYSCALL_NAME',
@@ -12724,7 +12724,7 @@ class CallSyscallCommand(GenericCommand):
 class MmapMemoryCommand(GenericCommand):
     """Allocate a new memory (syntax sugar of `call mmap(...)`)."""
     _cmdline_ = "mmap"
-    _category_ = "Debugging Support"
+    _category_ = "05-a. Syscall - Invoke"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address, default=0,
@@ -12800,7 +12800,7 @@ class UnicornEmulateCommand(GenericCommand):
     instruction can be changed via arguments to the command line. By default, it will emulate
     the next instruction from current PC."""
     _cmdline_ = "unicorn-emulate"
-    _category_ = "Debugging Support"
+    _category_ = "01-d. Debugging Support - Execution"
     _aliases_ = ["emulate"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -13214,7 +13214,7 @@ class StubCommand(GenericCommand):
     """Stub out the specified function. This function is useful when needing to skip one
     function to be called and disrupt your runtime flow (ex. fork)."""
     _cmdline_ = "stub"
-    _category_ = "Debugging Support"
+    _category_ = "03-c. Memory - Patch"
     _aliases_ = ["deactive"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -13241,7 +13241,7 @@ class StubCommand(GenericCommand):
 class CapstoneDisassembleCommand(GenericCommand):
     """Use capstone disassembly framework to disassemble code."""
     _cmdline_ = "capstone-disassemble"
-    _category_ = "Assemble"
+    _category_ = "01-e. Debugging Support - Assemble"
     _aliases_ = ["cs-dis"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -13353,7 +13353,7 @@ class CapstoneDisassembleCommand(GenericCommand):
 class PdisasCommand(GenericCommand):
     """Shortcut `cs-dis -l 50`."""
     _cmdline_ = "pdisas"
-    _category_ = "Assemble"
+    _category_ = "01-e. Debugging Support - Assemble"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
@@ -13383,7 +13383,7 @@ class PdisasCommand(GenericCommand):
 class GlibcHeapCommand(GenericCommand):
     """Base command to get information about the Glibc heap structure."""
     _cmdline_ = "heap"
-    _category_ = "Heap"
+    _category_ = "06-a. Heap - Glibc"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     subparsers = parser.add_subparsers(title='command', required=True)
@@ -13410,7 +13410,7 @@ class GlibcHeapCommand(GenericCommand):
 class GlibcHeapArenasCommand(GenericCommand):
     """List up heap arenas."""
     _cmdline_ = "heap arenas"
-    _category_ = "Heap"
+    _category_ = "06-a. Heap - Glibc"
     _aliases_ = ["arenas"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -13444,7 +13444,7 @@ class GlibcHeapArenasCommand(GenericCommand):
 class GlibcHeapArenaCommand(GenericCommand):
     """Display information on a heap arena."""
     _cmdline_ = "heap arena"
-    _category_ = "Heap"
+    _category_ = "06-a. Heap - Glibc"
     _aliases_ = ["arena"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -13547,7 +13547,7 @@ class GlibcHeapChunkCommand(GenericCommand):
     """Display information on a heap chunk.
     See https://github.com/sploitfun/lsploits/blob/master/glibc/malloc/malloc.c#L1123."""
     _cmdline_ = "heap chunk"
-    _category_ = "Heap"
+    _category_ = "06-a. Heap - Glibc"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('location', metavar='LOCATION', type=parse_address,
@@ -13580,7 +13580,7 @@ class GlibcHeapChunkCommand(GenericCommand):
 class GlibcHeapChunksCommand(GenericCommand):
     """Display information all heap chunks."""
     _cmdline_ = "heap chunks"
-    _category_ = "Heap"
+    _category_ = "06-a. Heap - Glibc"
     _aliases_ = ["chunks"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -13702,7 +13702,7 @@ class GlibcHeapBinsCommand(GenericCommand):
     """Display information on the bins on an arena (default: main_arena).
     See https://github.com/sploitfun/lsploits/blob/master/glibc/malloc/malloc.c#L1123."""
     _cmdline_ = "heap bins"
-    _category_ = "Heap"
+    _category_ = "06-a. Heap - Glibc"
     _aliases_ = ["bins"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -13804,7 +13804,7 @@ class GlibcHeapBinsCommand(GenericCommand):
 class GlibcHeapTcachebinsCommand(GenericCommand):
     """Display information on the Tcache on an arena."""
     _cmdline_ = "heap bins tcache"
-    _category_ = "Heap"
+    _category_ = "06-a. Heap - Glibc"
     _aliases_ = ["tcache"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -13898,7 +13898,7 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
 class GlibcHeapFastbinsYCommand(GenericCommand):
     """Display information on the fastbinsY on an arena."""
     _cmdline_ = "heap bins fast"
-    _category_ = "Heap"
+    _category_ = "06-a. Heap - Glibc"
     _aliases_ = ["fastbins"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -13993,7 +13993,7 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
 class GlibcHeapUnsortedBinsCommand(GenericCommand):
     """Display information on the Unsorted Bins of an arena."""
     _cmdline_ = "heap bins unsorted"
-    _category_ = "Heap"
+    _category_ = "06-a. Heap - Glibc"
     _aliases_ = ["unsortedbin"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -14037,7 +14037,7 @@ class GlibcHeapUnsortedBinsCommand(GenericCommand):
 class GlibcHeapSmallBinsCommand(GenericCommand):
     """Display information on the Small Bins of an arena."""
     _cmdline_ = "heap bins small"
-    _category_ = "Heap"
+    _category_ = "06-a. Heap - Glibc"
     _aliases_ = ["smallbin"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -14087,7 +14087,7 @@ class GlibcHeapSmallBinsCommand(GenericCommand):
 class GlibcHeapLargeBinsCommand(GenericCommand):
     """Display information on the Large Bins of an arena."""
     _cmdline_ = "heap bins large"
-    _category_ = "Heap"
+    _category_ = "06-a. Heap - Glibc"
     _aliases_ = ["largebin"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -14292,7 +14292,7 @@ def get_binsize_table():
 class DetailRegistersCommand(GenericCommand):
     """Display full details on one, many or all registers value from current architecture."""
     _cmdline_ = "registers"
-    _category_ = "Show/Modify Register"
+    _category_ = "01-a. Debugging Support - Context"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('registers', metavar='REGISTERS', nargs='*',
@@ -14376,7 +14376,7 @@ class DetailRegistersCommand(GenericCommand):
 class RopperCommand(GenericCommand):
     """Call ropper (http://scoding.de/ropper) plugin."""
     _cmdline_ = "ropper"
-    _category_ = "Exploit Development"
+    _category_ = "07-b. External Command - Exploit Development"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('args', metavar='ROPPER_OPTIONS', nargs='*',
@@ -14444,7 +14444,7 @@ class RopperCommand(GenericCommand):
 class RpCommand(GenericCommand):
     """Invoke rp++ v1 command. x86/x64 only."""
     _cmdline_ = "rp"
-    _category_ = "Exploit Development"
+    _category_ = "07-b. External Command - Exploit Development"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     group = parser.add_mutually_exclusive_group(required=True)
@@ -14573,7 +14573,7 @@ class RpCommand(GenericCommand):
 class Rp2Command(RpCommand):
     """Invoke rp++ v2 command. x86/x64 only."""
     _cmdline_ = "rp2"
-    _category_ = "Exploit Development"
+    _category_ = "07-b. External Command - Exploit Development"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     group = parser.add_mutually_exclusive_group(required=True)
@@ -14600,7 +14600,7 @@ class Rp2Command(RpCommand):
 class AssembleCommand(GenericCommand):
     """Inline code assemble by keystone. Architecture can be set in GEF runtime config."""
     _cmdline_ = "asm"
-    _category_ = "Assemble"
+    _category_ = "01-e. Debugging Support - Assemble"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-a', dest='arch', help='specify the architecture. (default: current_arch.arch)')
@@ -14703,7 +14703,7 @@ class AssembleCommand(GenericCommand):
 class DisassembleCommand(GenericCommand):
     """Inline code disassemble by capstone. Architecture can be set in GEF runtime config (default x86-64). """
     _cmdline_ = "dasm"
-    _category_ = "Assemble"
+    _category_ = "01-e. Debugging Support - Assemble"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-a', dest='arch', help='specify the architecture. (default: current_arch.arch)')
@@ -14796,7 +14796,7 @@ class DisassembleCommand(GenericCommand):
 class AsmListCommand(GenericCommand):
     """List up general instructions by capstone (x64/x86 only)."""
     _cmdline_ = "asm-list"
-    _category_ = "Assemble"
+    _category_ = "01-e. Debugging Support - Assemble"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-a', dest='arch', help='specify the architecture. (default: current_arch.arch)')
@@ -15026,7 +15026,7 @@ class ProcessListingCommand(GenericCommand):
     """List and filter process. If a PATTERN is given as argument, results shown will be grepped
     by this pattern."""
     _cmdline_ = "process-search"
-    _category_ = "Misc"
+    _category_ = "09-b. Misc - Search"
     _aliases_ = ["ps"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -15126,7 +15126,7 @@ class ProcessListingCommand(GenericCommand):
 class ArchInfoCommand(GenericCommand):
     """Show current architecture information."""
     _cmdline_ = "arch-info"
-    _category_ = "Process Information"
+    _category_ = "02-a. Process Information - General"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -15220,7 +15220,7 @@ class ElfInfoCommand(GenericCommand):
     """Display a limited subset of ELF header information. If no argument is provided,
     the command will show information about the current ELF being debugged."""
     _cmdline_ = "elf-info"
-    _category_ = "Process Information"
+    _category_ = "02-a. Process Information - General"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-e', dest='use_readelf', action='store_true', help='use readelf. (default: %(default)s)')
@@ -15764,7 +15764,7 @@ class ChecksecCommand(GenericCommand):
     This command checks for the following protections:
     Static/Dynamic, Stripped, Canary, NX, PIE, RELRO, FORTIFY_SOURCE, CET, RPATH, RUNPATH, ASLR"""
     _cmdline_ = "checksec"
-    _category_ = "Process Information"
+    _category_ = "02-f. Process Information - Security"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-r', dest='remote', action='store_true',
@@ -15996,7 +15996,7 @@ class ChecksecCommand(GenericCommand):
 class DwarfExceptionHandlerInfoCommand(GenericCommand):
     """Dump the DWARF exception handler informations with the byte code itself."""
     _cmdline_ = "dwarf-exception-handler"
-    _category_ = "Process Information"
+    _category_ = "02-e. Process Information - Complex Structure Information"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-f', dest='file', help='the file path you want to parse.')
@@ -17781,7 +17781,7 @@ class EntryPointBreakCommand(GenericCommand):
     well-known symbols for entry points, such as `main`, `_main`, `__libc_start_main`, etc. defined by
     the setting `entrypoint_symbols`."""
     _cmdline_ = "entry-break"
-    _category_ = "Debugging Support"
+    _category_ = "01-b. Debugging Support - Breakpoint"
     _aliases_ = ["start"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_, add_help=False)
@@ -17876,7 +17876,7 @@ class EntryPointBreakCommand(GenericCommand):
 class NamedBreakpointCommand(GenericCommand):
     """Sets a breakpoint and assigns a name to it, which will be shown, when it's hit."""
     _cmdline_ = "named-break"
-    _category_ = "Debugging Support"
+    _category_ = "01-b. Debugging Support - Breakpoint"
     _aliases_ = ["nb"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -17907,7 +17907,7 @@ class ContextCommand(GenericCommand):
     watchpoint, or any kind of interrupt. By default, it will show panes that contain the register
     states, the stack, and the disassembly code around $pc."""
     _cmdline_ = "context"
-    _category_ = "Debugging Support"
+    _category_ = "01-a. Debugging Support - Context"
     _aliases_ = ["ctx"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -18859,7 +18859,7 @@ class ContextCommand(GenericCommand):
 class MemoryCommand(GenericCommand):
     """Add or remove address ranges to the memory view."""
     _cmdline_ = "memory"
-    _category_ = "Debugging Support"
+    _category_ = "01-f. Debugging Support - Context Extension"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     subparsers = parser.add_subparsers(title='command', required=True)
@@ -18884,7 +18884,7 @@ class MemoryCommand(GenericCommand):
 class MemoryWatchCommand(GenericCommand):
     """Adds address ranges to the memory view."""
     _cmdline_ = "memory watch"
-    _category_ = "Debugging Support"
+    _category_ = "01-f. Debugging Support - Context Extension"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('address', metavar='ADDRESS', type=parse_address,
@@ -18919,7 +18919,7 @@ class MemoryWatchCommand(GenericCommand):
 class MemoryUnwatchCommand(GenericCommand):
     """Removes address ranges to the memory view."""
     _cmdline_ = "memory unwatch"
-    _category_ = "Debugging Support"
+    _category_ = "01-f. Debugging Support - Context Extension"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('address', metavar='ADDRESS', type=parse_address,
@@ -18952,7 +18952,7 @@ class MemoryUnwatchCommand(GenericCommand):
 class MemoryWatchResetCommand(GenericCommand):
     """Removes all watchpoints."""
     _cmdline_ = "memory reset"
-    _category_ = "Debugging Support"
+    _category_ = "01-f. Debugging Support - Context Extension"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -18973,7 +18973,7 @@ class MemoryWatchResetCommand(GenericCommand):
 class MemoryWatchListCommand(GenericCommand):
     """Lists all watchpoints to display in context layout."""
     _cmdline_ = "memory list"
-    _category_ = "Debugging Support"
+    _category_ = "01-f. Debugging Support - Context Extension"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -18999,7 +18999,7 @@ class MemoryWatchListCommand(GenericCommand):
 class HexdumpCommand(GenericCommand):
     """Display the hexdump from the memory location specified."""
     _cmdline_ = "hexdump"
-    _category_ = "Show/Modify Memory"
+    _category_ = "03-b. Memory - View"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     subparsers = parser.add_subparsers(title='command', required=True)
@@ -19151,7 +19151,7 @@ class HexdumpCommand(GenericCommand):
 class HexdumpQwordCommand(HexdumpCommand):
     """Display hexdump as QWORD from the memory location specifed."""
     _cmdline_ = "hexdump qword"
-    _category_ = "Show/Modify Memory"
+    _category_ = "03-b. Memory - View"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
@@ -19175,7 +19175,7 @@ class HexdumpQwordCommand(HexdumpCommand):
 class HexdumpDwordCommand(HexdumpCommand):
     """Display hexdump as DWORD from the memory location specifed."""
     _cmdline_ = "hexdump dword"
-    _category_ = "Show/Modify Memory"
+    _category_ = "03-b. Memory - View"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
@@ -19199,7 +19199,7 @@ class HexdumpDwordCommand(HexdumpCommand):
 class HexdumpWordCommand(HexdumpCommand):
     """Display hexdump as WORD from the memory location specifed."""
     _cmdline_ = "hexdump word"
-    _category_ = "Show/Modify Memory"
+    _category_ = "03-b. Memory - View"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
@@ -19223,7 +19223,7 @@ class HexdumpWordCommand(HexdumpCommand):
 class HexdumpByteCommand(HexdumpCommand):
     """Display hexdump as BYTE from the memory location specifed."""
     _cmdline_ = "hexdump byte"
-    _category_ = "Show/Modify Memory"
+    _category_ = "03-b. Memory - View"
     _aliases_ = ["xxd"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -19250,7 +19250,7 @@ class HexdumpByteCommand(HexdumpCommand):
 class PatchCommand(GenericCommand):
     """Write specified values to the specified address."""
     _cmdline_ = "patch"
-    _category_ = "Show/Modify Memory"
+    _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     subparsers = parser.add_subparsers(title='command', required=True)
@@ -19348,7 +19348,7 @@ class PatchCommand(GenericCommand):
 class PatchQwordCommand(PatchCommand):
     """Write specified QWORD to the specified address."""
     _cmdline_ = "patch qword"
-    _category_ = "Show/Modify Memory"
+    _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-e", dest='endian_reverse', action='store_true', help='reverse endian. (default: %(default)s)')
@@ -19370,7 +19370,7 @@ class PatchQwordCommand(PatchCommand):
 class PatchDwordCommand(PatchCommand):
     """Write specified DWORD to the specified address."""
     _cmdline_ = "patch dword"
-    _category_ = "Show/Modify Memory"
+    _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-e", dest='endian_reverse', action='store_true', help='reverse endian. (default: %(default)s)')
@@ -19392,7 +19392,7 @@ class PatchDwordCommand(PatchCommand):
 class PatchWordCommand(PatchCommand):
     """Write specified WORD to the specified address."""
     _cmdline_ = "patch word"
-    _category_ = "Show/Modify Memory"
+    _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-e", dest='endian_reverse', action='store_true', help='reverse endian. (default: %(default)s)')
@@ -19414,7 +19414,7 @@ class PatchWordCommand(PatchCommand):
 class PatchByteCommand(PatchCommand):
     """Write specified BYTE to the specified address."""
     _cmdline_ = "patch byte"
-    _category_ = "Show/Modify Memory"
+    _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-e", dest='endian_reverse', action='store_true', help='reverse endian. (default: %(default)s)')
@@ -19436,7 +19436,7 @@ class PatchByteCommand(PatchCommand):
 class PatchStringCommand(PatchCommand):
     """Write specified string to the specified memory location pointed by LOCATION."""
     _cmdline_ = "patch string"
-    _category_ = "Show/Modify Memory"
+    _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
@@ -19486,7 +19486,7 @@ class PatchStringCommand(PatchCommand):
 class PatchHexStringCommand(PatchCommand):
     """Write specified string to the specified memory location pointed by LOCATION."""
     _cmdline_ = "patch hexstring"
-    _category_ = "Show/Modify Memory"
+    _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
@@ -19535,7 +19535,7 @@ class PatchHexStringCommand(PatchCommand):
 class PatchPatternCommand(PatchCommand):
     """Write pattern string to the specified memory location pointed by LOCATION."""
     _cmdline_ = "patch pattern"
-    _category_ = "Show/Modify Memory"
+    _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
@@ -19577,7 +19577,7 @@ class PatchPatternCommand(PatchCommand):
 class PatchNopCommand(PatchCommand):
     """Patch the instruction(s) pointed by parameters with NOP."""
     _cmdline_ = "patch nop"
-    _category_ = "Show/Modify Memory"
+    _category_ = "03-c. Memory - Patch"
     _aliases_ = ["nop"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -19680,7 +19680,7 @@ class PatchNopCommand(PatchCommand):
 class PatchInfloopCommand(PatchCommand):
     """Patch the instruction(s) pointed by parameters with Infinity loop. Note: this command is architecture aware."""
     _cmdline_ = "patch inf"
-    _category_ = "Show/Modify Memory"
+    _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
@@ -19748,7 +19748,7 @@ class PatchInfloopCommand(PatchCommand):
 class PatchTrapCommand(PatchCommand):
     """Patch the instruction(s) pointed by parameters with BKPT."""
     _cmdline_ = "patch trap"
-    _category_ = "Show/Modify Memory"
+    _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
@@ -19816,7 +19816,7 @@ class PatchTrapCommand(PatchCommand):
 class PatchRetCommand(PatchCommand):
     """Patch the instruction(s) pointed by parameters with RET."""
     _cmdline_ = "patch ret"
-    _category_ = "Show/Modify Memory"
+    _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
@@ -19884,7 +19884,7 @@ class PatchRetCommand(PatchCommand):
 class PatchSyscallCommand(PatchCommand):
     """Patch the instruction(s) pointed by parameters with syscall. Note: this command is architecture aware."""
     _cmdline_ = "patch syscall"
-    _category_ = "Show/Modify Memory"
+    _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
@@ -19952,7 +19952,7 @@ class PatchSyscallCommand(PatchCommand):
 class PatchHistoryCommand(PatchCommand):
     """Show patch history."""
     _cmdline_ = "patch history"
-    _category_ = "Show/Modify Memory"
+    _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -19988,7 +19988,7 @@ class PatchHistoryCommand(PatchCommand):
 class PatchRevertCommand(PatchCommand):
     """Revert patch history."""
     _cmdline_ = "patch revert"
-    _category_ = "Show/Modify Memory"
+    _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('revert_target', metavar='REVERT_TARGET_HISTORY', type=int,
@@ -20187,7 +20187,7 @@ class DereferenceCommand(GenericCommand):
     This acts like WinDBG `dps` command."""
     _cmdline_ = "dereference"
     _aliases_ = ["telescope"]
-    _category_ = "Show/Modify Memory"
+    _category_ = "01-a. Debugging Support - Context"
     _repeat_ = True
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -20320,7 +20320,7 @@ class ASLRCommand(GenericCommand):
     """View/modify the ASLR setting of GDB. By default, GDB will disable ASLR when it starts
     the process (i.e. not attached). This command allows to change that setting."""
     _cmdline_ = "aslr"
-    _category_ = "Process Information"
+    _category_ = "02-f. Process Information - Security"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('command', nargs='?', default=None, choices=[None, 'on', 'off'], metavar='{on,off}',
@@ -20358,7 +20358,7 @@ class FollowCommand(GenericCommand):
     """View/modify the follow-fork-mode setting of GDB. By default, GDB will follow parent
     when it starts the process. This command allows to change that setting."""
     _cmdline_ = "follow"
-    _category_ = "Misc"
+    _category_ = "01-g. Debugging Support - Other"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('command', nargs='?', default=None, choices=[None, 'child', 'parent'], metavar='{child,parent}',
@@ -20391,7 +20391,7 @@ class FollowCommand(GenericCommand):
 class SmartCppFunctionNameCommand(GenericCommand):
     """Toggle the setting of `config context.smart_cpp_function_name`."""
     _cmdline_ = "smart-cpp-function-name"
-    _category_ = "Misc"
+    _category_ = "01-f. Debugging Support - Context Extension"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -20413,7 +20413,7 @@ class VMMapCommand(GenericCommand):
     """Display a comprehensive layout of the virtual memory mapping. If a filter argument, GEF will
     filter out the mapping whose pathname do not match that filter."""
     _cmdline_ = "vmmap"
-    _category_ = "Process Information"
+    _category_ = "02-c. Process Information - Memory/Section"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-v', dest='verbose', action='store_true', help='also display pointed registers.')
@@ -20543,7 +20543,7 @@ class XFilesCommand(GenericCommand):
     `info files`, by retrieving more information from extra sources, and providing a better
     display with REGEX filtering."""
     _cmdline_ = "xfiles"
-    _category_ = "Process Information"
+    _category_ = "02-c. Process Information - Memory/Section"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('filter', metavar='FILTER', nargs='*', help='regex filter string.')
@@ -20584,7 +20584,7 @@ class XFilesCommand(GenericCommand):
 class XInfoCommand(GenericCommand):
     """Retrieve and display runtime information for the location(s) given as parameter."""
     _cmdline_ = "xinfo"
-    _category_ = "Process Information"
+    _category_ = "02-c. Process Information - Memory/Section"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('location', metavar='LOCATION', nargs='+', type=parse_address,
@@ -20652,7 +20652,7 @@ class XInfoCommand(GenericCommand):
 class XorMemoryCommand(GenericCommand):
     """XOR a block of memory. The command allows to simply display the result, or patch it at runtime."""
     _cmdline_ = "xor-memory"
-    _category_ = "Show/Modify Memory"
+    _category_ = "03-d. Memory - Calculation"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     subparsers = parser.add_subparsers(title='command', required=True)
@@ -20676,7 +20676,7 @@ class XorMemoryDisplayCommand(GenericCommand):
     """Display a block of memory by xor-ing each byte with specified key. The key must be
     provided in hexadecimal format."""
     _cmdline_ = "xor-memory display"
-    _category_ = "Show/Modify Memory"
+    _category_ = "03-d. Memory - Calculation"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('location', metavar='LOCATION', type=parse_address,
@@ -20721,7 +20721,7 @@ class XorMemoryPatchCommand(GenericCommand):
     """Patch a block of memory by xor-ing each byte with specified key. The key must be
     provided in hexadecimal format."""
     _cmdline_ = "xor-memory patch"
-    _category_ = "Show/Modify Memory"
+    _category_ = "03-d. Memory - Calculation"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('location', metavar='LOCATION', type=parse_address,
@@ -20762,7 +20762,7 @@ class PatternCommand(GenericCommand):
     determining the offset in memory. The algorithm used is the same as the one
     used by pwntools, and can therefore be used in conjunction."""
     _cmdline_ = "pattern"
-    _category_ = "Exploit Development"
+    _category_ = "09-c. Misc - Generation"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     subparsers = parser.add_subparsers(title='command', required=True)
@@ -20788,7 +20788,7 @@ class PatternCreateCommand(GenericCommand):
     equal to sizeof(void*).
     Note: This algorithm is the same than the one used by pwntools library."""
     _cmdline_ = "pattern create"
-    _category_ = "Exploit Development"
+    _category_ = "09-c. Misc - Generation"
     _aliases_ = ["pattc"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -20815,7 +20815,7 @@ class PatternSearchCommand(GenericCommand):
     """Search for the cyclic de Bruijn pattern generated by the `pattern create` command. The
     PATTERN argument can be a GDB symbol (such as a register name) or an hexadecimal value."""
     _cmdline_ = "pattern search"
-    _category_ = "Exploit Development"
+    _category_ = "09-c. Misc - Generation"
     _aliases_ = ["patto"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -20891,7 +20891,7 @@ class PatternSearchCommand(GenericCommand):
 class SropHintCommand(GenericCommand):
     """Hint for sigreturn oriented programming."""
     _cmdline_ = "srop-hint"
-    _category_ = "Exploit Development"
+    _category_ = "09-d. Misc - Show Example"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-a', '--arch', choices=['x86', 'x64', 'arm', 'aarch64'],
@@ -21067,7 +21067,7 @@ class SropHintCommand(GenericCommand):
 class Ret2dlHintCommand(GenericCommand):
     """Hint for ret2dl."""
     _cmdline_ = "ret2dl-hint"
-    _category_ = "Exploit Development"
+    _category_ = "09-d. Misc - Show Example"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -21177,7 +21177,7 @@ class Ret2dlHintCommand(GenericCommand):
 class LinkMapCommand(GenericCommand):
     """Dump link_map with iterating."""
     _cmdline_ = "link-map"
-    _category_ = "Process Information"
+    _category_ = "02-e. Process Information - Complex Structure Information"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     group = parser.add_mutually_exclusive_group()
@@ -21305,7 +21305,7 @@ class LinkMapCommand(GenericCommand):
 class DynamicCommand(GenericCommand):
     """Display current status of the _DYNAMIC area."""
     _cmdline_ = "dynamic"
-    _category_ = "Process Information"
+    _category_ = "02-e. Process Information - Complex Structure Information"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     group = parser.add_mutually_exclusive_group()
@@ -21523,7 +21523,7 @@ class DynamicCommand(GenericCommand):
 class DestructorDumpCommand(GenericCommand):
     """Display registered destructor functions."""
     _cmdline_ = "dtor-dump"
-    _category_ = "Process Information"
+    _category_ = "02-e. Process Information - Complex Structure Information"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -21830,7 +21830,7 @@ class DestructorDumpCommand(GenericCommand):
 class GotCommand(GenericCommand):
     """Display current status of the got/plt inside the process."""
     _cmdline_ = "got"
-    _category_ = "Process Information"
+    _category_ = "02-e. Process Information - Complex Structure Information"
     _aliases_ = ["plt"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -22219,7 +22219,7 @@ class FormatStringSearchCommand(GenericCommand):
     holding the format string is writable, and therefore susceptible to format string
     attacks if an attacker can control its content."""
     _cmdline_ = "format-string-helper"
-    _category_ = "Debugging Support"
+    _category_ = "01-g. Debugging Support - Other"
     _aliases_ = ["fmtstr-helper"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -22330,7 +22330,7 @@ class HeapAnalysisCommand(GenericCommand):
     following vulnerabilities are checked: NULL free, Use-after-Free, Double Free, Heap overlap.
     Behavior changes are made in the config."""
     _cmdline_ = "heap-analysis-helper"
-    _category_ = "Heap"
+    _category_ = "06-a. Heap - Glibc"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--show", action='store_true', help='show the tracked allocations.')
@@ -22443,6 +22443,7 @@ class HeapAnalysisCommand(GenericCommand):
 class SyscallSearchCommand(GenericCommand):
     """Search the syscall number for specified architecture."""
     _cmdline_ = "syscall-search"
+    _category_ = "05-b. Syscall - Search"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-a', dest='arch', help='specify the architecture. (default: current_arch.arch)')
@@ -22477,7 +22478,6 @@ class SyscallSearchCommand(GenericCommand):
     _example_ += '{:s} -a MICROBLAZE -m MICROBLAZE  "^writev?" # microblaze\n'.format(_cmdline_)
     _example_ += '{:s} -a XTENSA -m XTENSA          "^writev?" # xtensa\n'.format(_cmdline_)
     _example_ += '{:s} -a CRIS -m CRIS              "^writev?" # cris'.format(_cmdline_)
-    _category_ = "Misc"
 
     def print_legend(self):
         if self.verbose:
@@ -34015,7 +34015,7 @@ def get_syscall_table(arch=None, mode=None):
 class SyscallArgsCommand(GenericCommand):
     """Gets the syscall name and arguments based on the register values in the current state."""
     _cmdline_ = "syscall-args"
-    _category_ = "Debugging Support"
+    _category_ = "01-a. Debugging Support - Context"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('syscall_num', metavar='SYSCALL_NUM', nargs='?', type=lambda x: int(x, 0),
@@ -34144,7 +34144,7 @@ def get_section_base_address_by_list(names):
 class CodebaseCommand(GenericCommand):
     """Show code base address."""
     _cmdline_ = "codebase"
-    _category_ = "Process Information"
+    _category_ = "02-b. Process Information - Base Address"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -34177,7 +34177,7 @@ class CodebaseCommand(GenericCommand):
 class HeapbaseCommand(GenericCommand):
     """Show heap base address."""
     _cmdline_ = "heapbase"
-    _category_ = "Process Information"
+    _category_ = "02-b. Process Information - Base Address"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -34213,7 +34213,7 @@ class HeapbaseCommand(GenericCommand):
 class LibcCommand(GenericCommand):
     """Show `libc.so` base address."""
     _cmdline_ = "libc"
-    _category_ = "Process Information"
+    _category_ = "02-b. Process Information - Base Address"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -34268,7 +34268,7 @@ class LibcCommand(GenericCommand):
 class LdCommand(GenericCommand):
     """Show `ld.so` base address."""
     _cmdline_ = "ld"
-    _category_ = "Process Information"
+    _category_ = "02-b. Process Information - Base Address"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -34322,7 +34322,7 @@ class LdCommand(GenericCommand):
 class MagicCommand(GenericCommand):
     """Show Magic addresses / offsets."""
     _cmdline_ = "magic"
-    _category_ = "Exploit Development"
+    _category_ = "02-f. Process Information - Symbol"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--fj", action='store_true', help='print _IO_xxx_jumps functions')
@@ -34640,7 +34640,7 @@ class MagicCommand(GenericCommand):
 class OneGadgetCommand(GenericCommand):
     """Exec `one_gadget`."""
     _cmdline_ = "onegadget"
-    _category_ = "Exploit Development"
+    _category_ = "07-b. External Command - Exploit Development"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -34670,7 +34670,7 @@ class OneGadgetCommand(GenericCommand):
 class SeccompCommand(GenericCommand):
     """Exec `seccomp-tools`."""
     _cmdline_ = "seccomp"
-    _category_ = "Exploit Development"
+    _category_ = "07-b. External Command - Exploit Development"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -34696,7 +34696,7 @@ class SeccompCommand(GenericCommand):
 class SysregCommand(GenericCommand):
     """Pretty-print system registers (not general parpose) from `info regiser`."""
     _cmdline_ = "sysreg"
-    _category_ = "Show/Modify Register"
+    _category_ = "04-a. Register - View"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('filter', metavar='FILTER', nargs='*', help='filter string')
@@ -34757,7 +34757,7 @@ class SysregCommand(GenericCommand):
 class MmxSetCommand(GenericCommand):
     """Simply set the value to mm."""
     _cmdline_ = "mmxset"
-    _category_ = "Show/Modify Register"
+    _category_ = "04-b. Register - Modify"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('reg_and_value', metavar='REG=VALUE', help='MMX register and value you want to set.')
@@ -34853,7 +34853,7 @@ class MmxSetCommand(GenericCommand):
 class MmxCommand(GenericCommand):
     """Show MMX registers."""
     _cmdline_ = "mmx"
-    _category_ = "Show/Modify Register"
+    _category_ = "04-a. Register - View"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -34900,7 +34900,7 @@ class MmxCommand(GenericCommand):
 class XmmSetCommand(GenericCommand):
     """Simply set the value to xmm / ymm."""
     _cmdline_ = "xmmset"
-    _category_ = "Show/Modify Register"
+    _category_ = "04-b. Register - Modify"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('reg_and_value', metavar='REG=VALUE', help='XMM/YMM register and value you want to set.')
@@ -34947,7 +34947,7 @@ class XmmSetCommand(GenericCommand):
 class SseCommand(GenericCommand):
     """Show SSE registers."""
     _cmdline_ = "sse"
-    _category_ = "Show/Modify Register"
+    _category_ = "04-a. Register - View"
     _aliases_ = ["xmm"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -35025,7 +35025,7 @@ class SseCommand(GenericCommand):
 class AvxCommand(GenericCommand):
     """Show AVX registers."""
     _cmdline_ = "avx"
-    _category_ = "Show/Modify Register"
+    _category_ = "04-a. Register - View"
     _aliases_ = ["ymm"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -35073,7 +35073,7 @@ class AvxCommand(GenericCommand):
 class FpuCommand(GenericCommand):
     """Show fpu registers (x86/x64:x87-fpu, ARM/ARM64:vfp-d16)."""
     _cmdline_ = "fpu"
-    _category_ = "Show/Modify Register"
+    _category_ = "04-a. Register - View"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-v', dest='verbose', action='store_true', help='also display bit information of fpu control registers.')
@@ -35415,7 +35415,7 @@ class FpuCommand(GenericCommand):
 class ErrnoCommand(GenericCommand):
     """Converts errno (or argument) to its string representation."""
     _cmdline_ = "errno"
-    _category_ = "Process Information"
+    _category_ = "02-d. Process Information - Trivial Information"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('errno', metavar='ERRNO', nargs='?', type=lambda x: int(x, 0),
@@ -35607,7 +35607,7 @@ class ExtractHeapAddrCommand(GenericCommand):
     """Extract heap address from protected `fd` pointer of single linked-list.
     This will be introduced from glibc 2.32."""
     _cmdline_ = "extract-heap-addr"
-    _category_ = "Heap"
+    _category_ = "06-a. Heap - Glibc"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     group = parser.add_mutually_exclusive_group(required=True)
@@ -35646,7 +35646,7 @@ class ExtractHeapAddrCommand(GenericCommand):
 class FindFakeFastCommand(GenericCommand):
     """Find candidate fake fast chunks from rw memory."""
     _cmdline_ = "find-fake-fast"
-    _category_ = "Heap"
+    _category_ = "06-a. Heap - Glibc"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('--include-heap', action='store_true', help='heap is also included in the search target.')
@@ -35715,7 +35715,7 @@ class FindFakeFastCommand(GenericCommand):
 class VisualHeapCommand(GenericCommand):
     """Visualize top 10 chunks on a heap (default: main_arena)."""
     _cmdline_ = "visual-heap"
-    _category_ = "Heap"
+    _category_ = "06-a. Heap - Glibc"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
@@ -35878,7 +35878,7 @@ class VisualHeapCommand(GenericCommand):
 class U2dCommand(GenericCommand):
     """Translate type (unsigned long <-> double/float)."""
     _cmdline_ = "u2d"
-    _category_ = "Misc"
+    _category_ = "09-a. Misc - Translation"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('value', metavar='VALUE', help='the hex value or double value.')
@@ -35958,7 +35958,7 @@ class U2dCommand(GenericCommand):
 class PackCommand(GenericCommand):
     """Translate integer -> string."""
     _cmdline_ = "pack"
-    _category_ = "Misc"
+    _category_ = "09-a. Misc - Translation"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('value', metavar='VALUE', type=lambda x: int(x, 0), help='the value you want to translate.')
@@ -35991,7 +35991,7 @@ class PackCommand(GenericCommand):
 class UnpackCommand(GenericCommand):
     """Translate string -> integer."""
     _cmdline_ = "unpack"
-    _category_ = "Misc"
+    _category_ = "09-a. Misc - Translation"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('value', metavar='"double-escaped string"', help='the value you want to translate.')
@@ -36021,7 +36021,7 @@ class UnpackCommand(GenericCommand):
 class TohexCommand(GenericCommand):
     """Translate bytes -> hex."""
     _cmdline_ = "tohex"
-    _category_ = "Misc"
+    _category_ = "09-a. Misc - Translation"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('value', metavar='"double-escaped string"', help='the value you want to translate.')
@@ -36047,7 +36047,7 @@ class TohexCommand(GenericCommand):
 class UnhexCommand(GenericCommand):
     """Translate hex -> bytes."""
     _cmdline_ = "unhex"
-    _category_ = "Misc"
+    _category_ = "09-a. Misc - Translation"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('value', metavar='"hex-string"', help='the value you want to translate.')
@@ -36074,7 +36074,7 @@ class UnhexCommand(GenericCommand):
 class ByteswapCommand(GenericCommand):
     """Translate endian (little-endian <-> big-endian)."""
     _cmdline_ = "byteswap"
-    _category_ = "Misc"
+    _category_ = "09-a. Misc - Translation"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('value', metavar='VALUE', type=lambda x: int(x, 0), help='the value you want to translate.')
@@ -37145,7 +37145,7 @@ class KernelAddressHeuristicFinder:
 class KernelbaseCommand(GenericCommand):
     """Show kernel base address."""
     _cmdline_ = "kbase"
-    _category_ = "Qemu-system Cooperation"
+    _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -37332,7 +37332,7 @@ class KernelbaseCommand(GenericCommand):
 class KernelVersionCommand(GenericCommand):
     """Display kernel version string under qemu-system."""
     _cmdline_ = "kversion"
-    _category_ = "Qemu-system Cooperation"
+    _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -37389,7 +37389,7 @@ class KernelVersionCommand(GenericCommand):
 class KernelCmdlineCommand(GenericCommand):
     """Display kernel cmdline string under qemu-system."""
     _cmdline_ = "kcmdline"
-    _category_ = "Qemu-system Cooperation"
+    _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -37427,7 +37427,7 @@ class KernelCmdlineCommand(GenericCommand):
 class KernelTaskCommand(GenericCommand):
     """Display process list under qemu-system."""
     _cmdline_ = "ktask"
-    _category_ = "Qemu-system Cooperation"
+    _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -37594,7 +37594,7 @@ class KernelTaskCommand(GenericCommand):
 class KernelModuleCommand(GenericCommand):
     """Display module list under qemu-system."""
     _cmdline_ = "kmod"
-    _category_ = "Qemu-system Cooperation"
+    _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -37793,7 +37793,7 @@ class KernelModuleCommand(GenericCommand):
 class KernelCharacterDevicesCommand(GenericCommand):
     """Display character device list under qemu-system."""
     _cmdline_ = "kcdev"
-    _category_ = "Qemu-system Cooperation"
+    _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -38020,7 +38020,7 @@ class KernelCharacterDevicesCommand(GenericCommand):
 class KernelFopsCommand(GenericCommand):
     """Display fops members under qemu-system."""
     _cmdline_ = "kfops"
-    _category_ = "Qemu-system Cooperation"
+    _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("address", metavar='ADDRESS', nargs='?', type=parse_address, help='the address interpreted as fops.')
@@ -38103,7 +38103,7 @@ class KernelFopsCommand(GenericCommand):
 class AsciiSearchCommand(GenericCommand):
     """Search ASCII string recursively from specific location."""
     _cmdline_ = "ascii-search"
-    _category_ = "Show/Modify Memory"
+    _category_ = "03-a. Memory - Search"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('location', metavar='LOCATION', type=parse_address,
@@ -38150,7 +38150,7 @@ class AsciiSearchCommand(GenericCommand):
 class SyscallTableViewCommand(GenericCommand):
     """Display syscall_table entries under qemu-system."""
     _cmdline_ = "syscall-table-view"
-    _category_ = "Qemu-system Cooperation"
+    _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-f', '--filter', action='append', default=[], help='REGEXP filter.')
@@ -38236,7 +38236,7 @@ class SyscallTableViewCommand(GenericCommand):
 class CetStatusCommand(GenericCommand):
     """Show Intel CET settings."""
     _cmdline_ = "cet-status"
-    _category_ = "Process Information"
+    _category_ = "02-f. Process Information - Security"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -38349,7 +38349,7 @@ class CetStatusCommand(GenericCommand):
 class TlsCommand(GenericCommand):
     """Show TLS base address."""
     _cmdline_ = "tls"
-    _category_ = "Process Information"
+    _category_ = "02-b. Process Information - Base Address"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -38481,7 +38481,7 @@ class TlsCommand(GenericCommand):
 class FsbaseCommand(GenericCommand):
     """Show fsbase address."""
     _cmdline_ = "fsbase"
-    _category_ = "Process Information"
+    _category_ = "02-b. Process Information - Base Address"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -38502,7 +38502,7 @@ class FsbaseCommand(GenericCommand):
 class GsbaseCommand(GenericCommand):
     """Show gsbase address."""
     _cmdline_ = "gsbase"
-    _category_ = "Process Information"
+    _category_ = "02-b. Process Information - Base Address"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -38523,7 +38523,7 @@ class GsbaseCommand(GenericCommand):
 class GdtInfoCommand(GenericCommand):
     """Print GDT entries sample."""
     _cmdline_ = "gdtinfo"
-    _category_ = "Misc"
+    _category_ = "04-a. Register - View"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-v', dest='verbose', action='store_true', help='also display bit information of gdt entries.')
@@ -38832,7 +38832,7 @@ class GdtInfoCommand(GenericCommand):
 class MemoryCompareCommand(GenericCommand):
     """Memory Compare."""
     _cmdline_ = "memcmp"
-    _category_ = "Misc"
+    _category_ = "03-b. Memory - View"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('--phys1', action='store_true', help='treat LOCATION1 as a physical address.')
@@ -38926,7 +38926,7 @@ class MemoryCompareCommand(GenericCommand):
 class MemoryCopyCommand(GenericCommand):
     """Memory Copy."""
     _cmdline_ = "memcpy"
-    _category_ = "Misc"
+    _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('--phys1', action='store_true', help='treat TO_ADDRESS as a physical address.')
@@ -38985,7 +38985,7 @@ class MemoryCopyCommand(GenericCommand):
 class HashMemoryCommand(GenericCommand):
     """Caluculate memory hash."""
     _cmdline_ = "hash-memory"
-    _category_ = "Misc"
+    _category_ = "03-d. Memory - Calculation"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('location', metavar='LOCATION', type=parse_address, help='start address for hash calculation.')
@@ -39090,7 +39090,7 @@ class HashMemoryCommand(GenericCommand):
 class IsMemoryZeroCommand(GenericCommand):
     """Checks if all the memory in the specified range is 0x00, 0xff."""
     _cmdline_ = "is-mem-zero"
-    _category_ = "Misc"
+    _category_ = "03-d. Memory - Calculation"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('--phys', action='store_true', help='treat ADDRESS as a physical address.')
@@ -39158,7 +39158,7 @@ class IsMemoryZeroCommand(GenericCommand):
 class MultiLineCommand(GenericCommand):
     """Execute multiple GDB commands in sequence."""
     _cmdline_ = "multi-line"
-    _category_ = "Misc"
+    _category_ = "01-c. Debugging Support - Basic Command Extension"
     _aliases_ = ["ml"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -39229,7 +39229,7 @@ class MultiLineCommand(GenericCommand):
 class TimeCommand(GenericCommand):
     """Measures the time of the GDB command."""
     _cmdline_ = "time"
-    _category_ = "Misc"
+    _category_ = "01-c. Debugging Support - Basic Command Extension"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('cmd', metavar='GDB_CMD', help='gdb command.')
@@ -39279,7 +39279,7 @@ class TimeCommand(GenericCommand):
 class LsCommand(GenericCommand):
     """`ls` command wrapper."""
     _cmdline_ = "ls"
-    _category_ = "Misc"
+    _category_ = "07-a. External Command - General"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('arg', metavar='ARG', nargs='*', help='arguments of ls command.')
@@ -39316,7 +39316,7 @@ class LsCommand(GenericCommand):
 class CatCommand(GenericCommand):
     """`cat` command wrapper."""
     _cmdline_ = "cat"
-    _category_ = "Misc"
+    _category_ = "07-a. External Command - General"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('arg', metavar='ARG', nargs='*', help='arguments of cat command.')
@@ -39356,7 +39356,7 @@ class CatCommand(GenericCommand):
 class IiCommand(GenericCommand):
     """Shortcut `x/50i $pc`."""
     _cmdline_ = "ii"
-    _category_ = "Assemble"
+    _category_ = "01-e. Debugging Support - Assemble"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address, help='the dump start adress.')
@@ -39422,7 +39422,7 @@ class IiCommand(GenericCommand):
 class ConstGrepCommand(GenericCommand):
     """Grep for lines with #define in files under /usr/include."""
     _cmdline_ = "constgrep"
-    _category_ = "Misc"
+    _category_ = "09-b. Misc - Search"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('pattern', metavar='GREP_PATTERN', help='filter by regex.')
@@ -39470,7 +39470,7 @@ class SlubDumpCommand(GenericCommand):
     """Dump slab freelist with kenrel memory scanning."""
     # Thanks to https://github.com/PaoloMonti42/salt
     _cmdline_ = "slub-dump"
-    _category_ = "Qemu-system Cooperation"
+    _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('cache_name', metavar='SLUB_CACHE_NAME', nargs='*', help='filter by specific slub cache name.')
@@ -39899,7 +39899,7 @@ class SlubDumpCommand(GenericCommand):
 class KsymaddrRemoteCommand(GenericCommand):
     """Solve kernel symbols from kallsyms table using kenrel memory scanning."""
     _cmdline_ = "ksymaddr-remote"
-    _category_ = "Qemu-system Cooperation"
+    _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('keyword', metavar='KEYWORD', nargs='*', help='filter by specific symbol name.')
@@ -40693,7 +40693,7 @@ class KsymaddrRemoteCommand(GenericCommand):
 class VmlinuxToElfApplyCommand(GenericCommand):
     """Apply symbol from kallsyms in memory using vmlinux-to-elf (too slow but more accurate)."""
     _cmdline_ = "vmlinux-to-elf-apply"
-    _category_ = "Qemu-system Cooperation"
+    _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('--reparse', action='store_true',
@@ -40831,7 +40831,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
 class TcmallocDumpCommand(GenericCommand):
     """tcmalloc thread_heap freelist viewer (supported x86_64 only)."""
     _cmdline_ = "tcmalloc-dump"
-    _category_ = "Heap"
+    _category_ = "06-b. Heap - Other"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     subparsers = parser.add_subparsers(title='command', required=True)
@@ -41099,7 +41099,7 @@ class TcmallocDumpCommand(GenericCommand):
 class TcmallocDumpChromeCommand(TcmallocDumpCommand):
     """tcmalloc (chrome edition (improved from google-perftools-2.5)) freelist viewer (supported x86_64 only)."""
     _cmdline_ = "tcmalloc-dump chrome"
-    _category_ = "Heap"
+    _category_ = "06-b. Heap - Other"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('--th', dest='print_threshold', type=int, default=5,
@@ -41207,7 +41207,7 @@ class TcmallocDumpChromeCommand(TcmallocDumpCommand):
 class TcmallocDumpOldCommand(TcmallocDumpCommand):
     """tcmalloc (google-perftools-2.5 edition) freelist viewer (supported x86_64 only)."""
     _cmdline_ = "tcmalloc-dump old"
-    _category_ = "Heap"
+    _category_ = "06-b. Heap - Other"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('--th', dest='print_threshold', type=int, default=5,
@@ -41325,7 +41325,7 @@ class TcmallocDumpOldCommand(TcmallocDumpCommand):
 class TcmallocDumpNewCommand(TcmallocDumpCommand):
     """tcmalloc (google-perftools-2.9.1 edition) freelist viewer (supported x86_64 only)."""
     _cmdline_ = "tcmalloc-dump new"
-    _category_ = "Heap"
+    _category_ = "06-b. Heap - Other"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('--th', dest='print_threshold', type=int, default=5,
@@ -41475,7 +41475,7 @@ class TcmallocDumpNewCommand(TcmallocDumpCommand):
 class PartitionAllocDumpCommand(GenericCommand):
     """PartitionAlloc freelist viewer for chromium stable (supported x64/x86/ARM64/ARM only)."""
     _cmdline_ = "partition-alloc-dump"
-    _category_ = "Heap"
+    _category_ = "06-b. Heap - Other"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('target_buffer_root', choices=['fast_malloc', 'array_buffer', 'buffer', 'fm', 'ab', 'b'],
@@ -42257,7 +42257,7 @@ class MuslDumpCommand(GenericCommand):
     """musl heap reusable chunks viewer (supported on x64/x86, based on musl libc v1.2.2; src/malloc/mallocng).
     See https://h-noson.hatenablog.jp/entry/2021/05/03/161933#-177pts-mooosl"""
     _cmdline_ = "musl-dump"
-    _category_ = "Heap"
+    _category_ = "06-b. Heap - Other"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('command', nargs='?', default='unused', choices=['ctx', 'unused'],
@@ -42723,7 +42723,7 @@ class MuslDumpCommand(GenericCommand):
 class XphysAddrCommand(GenericCommand):
     """Dump physical memory via qemu-monitor."""
     _cmdline_ = "xp"
-    _category_ = "Qemu-system Cooperation"
+    _category_ = "08-a. Qemu-system Cooperation - General"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('option', metavar='OPTION', nargs='*', help='the argument of xp.')
@@ -42745,7 +42745,7 @@ class XphysAddrCommand(GenericCommand):
 class XSecureMemAddrCommand(GenericCommand):
     """Dump secure memory via qemu-system memory map."""
     _cmdline_ = "xsm"
-    _category_ = "Qemu-system Cooperation"
+    _category_ = "08-c. Qemu-system Cooperation - TrustZone"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     group = parser.add_mutually_exclusive_group(required=True)
@@ -42995,7 +42995,7 @@ class TemporaryDummyBreakpoint(gdb.Breakpoint):
 class WSecureMemAddrCommand(GenericCommand):
     """Write secure memory via qemu-system memory map."""
     _cmdline_ = "wsm"
-    _category_ = "Qemu-system Cooperation"
+    _category_ = "08-c. Qemu-system Cooperation - TrustZone"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('mode', choices=['byte', 'short', 'dword', 'qword', 'string', 'hex'],
@@ -43123,7 +43123,7 @@ class WSecureMemAddrCommand(GenericCommand):
 class BreakSecureMemAddrCommand(GenericCommand):
     """Set a breakpoint in virtual memory by specifying the physical memory of the secure world."""
     _cmdline_ = "bsm"
-    _category_ = "Qemu-system Cooperation"
+    _category_ = "08-c. Qemu-system Cooperation - TrustZone"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('location', metavar='PHYS_ADDRESS', type=parse_address,
@@ -43205,7 +43205,7 @@ class OpteeThreadEnterUserModeBreakpoint(gdb.Breakpoint):
 class OpteeBreakTaAddrCommand(GenericCommand):
     """Set a breakpoint to OPTEE-TA."""
     _cmdline_ = "optee-break-ta"
-    _category_ = "Qemu-system Cooperation"
+    _category_ = "08-c. Qemu-system Cooperation - TrustZone"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('thread_enter_user_mode', metavar='PHYS_ADDR_thread_enter_user_mode', type=parse_address,
@@ -43240,7 +43240,7 @@ class OpteeBreakTaAddrCommand(GenericCommand):
 class OpteeBgetDumpCommand(GenericCommand):
     """Dump bget allocator of OPTEE-Trusted-App."""
     _cmdline_ = "optee-bget-dump"
-    _category_ = "Qemu-system Cooperation"
+    _category_ = "08-c. Qemu-system Cooperation - TrustZone"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('malloc_ctx', metavar='OFFSET_malloc_ctx', type=parse_address,
@@ -43501,7 +43501,7 @@ class OpteeBgetDumpCommand(GenericCommand):
 class CpuidCommand(GenericCommand):
     """Get cpuid result."""
     _cmdline_ = "cpuid"
-    _category_ = "Show/Modify Register"
+    _category_ = "04-a. Register - View"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -44384,7 +44384,7 @@ class CpuidCommand(GenericCommand):
 class MsrCommand(GenericCommand):
     """Get MSR via kernel."""
     _cmdline_ = "msr"
-    _category_ = "Show/Modify Register"
+    _category_ = "04-a. Register - View"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     group = parser.add_mutually_exclusive_group(required=True)
@@ -45133,7 +45133,7 @@ class PrintBitInfo:
 class QemuRegistersCommand(GenericCommand):
     """Get regisers via qemu-monitor."""
     _cmdline_ = "qreg"
-    _category_ = "Qemu-system Cooperation"
+    _category_ = "08-a. Qemu-system Cooperation - General"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-v', dest='verbose', action='store_true', help='also display detailed bit information.')
@@ -45531,7 +45531,7 @@ def get_maps_by_pagewalk(command):
 class V2PCommand(GenericCommand):
     """Transfer from virtual address to physical address."""
     _cmdline_ = "v2p"
-    _category_ = "Qemu-system Cooperation"
+    _category_ = "08-a. Qemu-system Cooperation - General"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     group = parser.add_mutually_exclusive_group()
@@ -45610,7 +45610,7 @@ class V2PCommand(GenericCommand):
 class P2VCommand(GenericCommand):
     """Transfer from physical address to virtual address."""
     _cmdline_ = "p2v"
-    _category_ = "Qemu-system Cooperation"
+    _category_ = "08-a. Qemu-system Cooperation - General"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     group = parser.add_mutually_exclusive_group()
@@ -45658,7 +45658,7 @@ class P2VCommand(GenericCommand):
 class PagewalkCommand(GenericCommand):
     """Get physical memory info via qemu-monitor. Currently, x64, x86, arm and arm64 are supported."""
     _cmdline_ = "pagewalk"
-    _category_ = "Qemu-system Cooperation"
+    _category_ = "08-a. Qemu-system Cooperation - General"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     subparsers = parser.add_subparsers(title='command')
@@ -45963,7 +45963,7 @@ class PagewalkCommand(GenericCommand):
 class PagewalkX64Command(PagewalkCommand):
     """Dump pagetable for x64/x86 using qemu-monitor."""
     _cmdline_ = "pagewalk x64"
-    _category_ = "Qemu-system Cooperation"
+    _category_ = "08-a. Qemu-system Cooperation - General"
     _aliases_ = ["pagewalk x86"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -46474,7 +46474,7 @@ class PagewalkArmCommand(PagewalkCommand):
     """Dump pagetable for ARM (Cortex-A only) using qemu-monitor. PL2 pagewalk is unsupported"""
 
     _cmdline_ = "pagewalk arm"
-    _category_ = "Qemu-system Cooperation"
+    _category_ = "08-a. Qemu-system Cooperation - General"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-q', dest='quiet', action='store_true', help='show result only.')
@@ -47410,7 +47410,7 @@ class PagewalkArmCommand(PagewalkCommand):
 class PagewalkArm64Command(PagewalkCommand):
     """Dump pagetable for ARM64 using qemu-monitor (for ARMv8.7)."""
     _cmdline_ = "pagewalk arm64"
-    _category_ = "Qemu-system Cooperation"
+    _category_ = "08-a. Qemu-system Cooperation - General"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-q', dest='quiet', action='store_true', help='show result only.')
@@ -49081,7 +49081,7 @@ class PagewalkArm64Command(PagewalkCommand):
 class SwitchELCommand(GenericCommand):
     """Switch EL (Exception Level) on ARM64 architecture."""
     _cmdline_ = "switch-el"
-    _category_ = "Qemu-system Cooperation"
+    _category_ = "08-a. Qemu-system Cooperation - General"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("target_el", metavar='TARGET_EL', nargs='?', type=int, help='Exception Level to change to.')
@@ -49136,7 +49136,7 @@ class SwitchELCommand(GenericCommand):
 class ExecNextCommand(GenericCommand):
     """Execute until next address. This command is used for rep prefix."""
     _cmdline_ = "exec-next"
-    _category_ = "Debugging Support"
+    _category_ = "01-d. Debugging Support - Execution"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -49158,7 +49158,7 @@ class ExecNextCommand(GenericCommand):
 class ExecUntilCommand(GenericCommand):
     """Execute until next call/jmp/syscall/ret/mem-access/specified-keyword instruction."""
     _cmdline_ = "exec-until"
-    _category_ = "Debugging Support"
+    _category_ = "01-d. Debugging Support - Execution"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     subparsers = parser.add_subparsers(title='command', required=True)
@@ -49625,7 +49625,7 @@ class CallUsermodehelperSetupBreakpoint(gdb.Breakpoint):
 class UsermodehelperHunterCommand(GenericCommand):
     """Collects and displays information that is executed by call_usermodehelper_setup."""
     _cmdline_ = "usermodehelper-hunter"
-    _category_ = "Qemu-system Cooperation"
+    _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -49719,7 +49719,7 @@ class ThunkHunterCommand(GenericCommand):
     """Collects and displays the thunk addresses that are called automatically.
     If this address comes from RW area, this is useful for getting RIP.(x64/x86 only)"""
     _cmdline_ = "thunk-hunter"
-    _category_ = "Qemu-system Cooperation"
+    _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -49757,7 +49757,7 @@ class UefiOvmfInfoCommand(GenericCommand):
     # https://github.com/tianocore/edk2/blob/master/MdeModulePkg/Universal/BdsDxe/BdsEntry.c
     # https://uefi.org/sites/default/files/resources/UEFI_Spec_2_8_final.pdf
     _cmdline_ = "uefi-ovmf-info"
-    _category_ = "Qemu-system Cooperation"
+    _category_ = "08-d. Qemu-system Cooperation - Bootloader"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -50251,7 +50251,7 @@ class UefiOvmfInfoCommand(GenericCommand):
 class AddSymbolTemporaryCommand(GenericCommand):
     """Add symbol from command temporarily."""
     _cmdline_ = "add-symbol-temporary"
-    _category_ = "Misc"
+    _category_ = "01-g. Debugging Support - Other"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('function_name', metavar='FUNCTION_NAME', help='new symbol you want to add.')
@@ -50376,7 +50376,7 @@ class AddSymbolTemporaryCommand(GenericCommand):
 class KsymaddrRemoteApplyCommand(GenericCommand):
     """Apply symbol from kallsyms in memory."""
     _cmdline_ = "ksymaddr-remote-apply"
-    _category_ = "Qemu-system Cooperation"
+    _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -50410,7 +50410,7 @@ class KsymaddrRemoteApplyCommand(GenericCommand):
 class WalkLinkListCommand(GenericCommand):
     """Walk the link list"""
     _cmdline_ = "walk-link-list"
-    _category_ = "Show/Modify Memory"
+    _category_ = "03-a. Memory - Search"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-o', dest='next_offset', type=parse_address, default=0,
@@ -50462,7 +50462,7 @@ class PeekPointersCommand(GenericCommand):
     """Command to help find pointers belonging to other memory regions helpful in case
     of OOB Read when looking for specific pointers."""
     _cmdline_ = "peek-pointers"
-    _category_ = "Show/Modify Memory"
+    _category_ = "03-a. Memory - Search"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('address', metavar='ADDRESS', type=parse_address, help="search start address.")
@@ -50545,7 +50545,7 @@ class PeekPointersCommand(GenericCommand):
 class CurrentFrameStackCommand(GenericCommand):
     """Show the entire stack of the current frame."""
     _cmdline_ = "current-stack-frame"
-    _category_ = "Show/Modify Memory"
+    _category_ = "02-d. Process Information - Trivial Information"
     _aliases_ = ["stack", "full-stack"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -50601,7 +50601,7 @@ class CurrentFrameStackCommand(GenericCommand):
 class XRefTelescopeCommand(SearchPatternCommand):
     """Recursively search for cross-references to a pattern in memory."""
     _cmdline_ = "xref-telescope"
-    _category_ = "Show/Modify Memory"
+    _category_ = "03-a. Memory - Search"
     _aliases_ = []
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -50671,7 +50671,7 @@ class XRefTelescopeCommand(SearchPatternCommand):
 class BytearrayCommand(GenericCommand):
     """Generate a bytearray to be compared with possible badchars (ported from mona.py)."""
     _cmdline_ = "bytearray"
-    _category_ = "Misc"
+    _category_ = "09-c. Misc - Generation"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-b', dest='badchars', default=[], action='append', help='characters to exclude.')
@@ -50765,9 +50765,9 @@ class BytearrayCommand(GenericCommand):
 
 @register_command
 class BincompareCommand(GenericCommand):
-    """BincompareCommand: compare an binary file with the memory position looking for badchars."""
+    """Compare an binary file with the memory position looking for badchars."""
     _cmdline_ = "bincompare"
-    _category_ = "Misc"
+    _category_ = "03-d. Memory - Calculation"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('filename', metavar='FILENAME', help="specifies the binary file to be compared")
@@ -50919,7 +50919,7 @@ class GefFunctionsCommand(GenericCommand):
     """List the convenience functions provided by GEF."""
     _cmdline_ = "functions"
     _syntax_ = _cmdline_
-    _category_ = "Misc"
+    _category_ = "99. GEF Maintenance Command"
 
     def __init__(self):
         super().__init__()
@@ -50957,7 +50957,7 @@ class GefCommand(gdb.Command):
     """GEF main command: view all new commands by typing `gef`."""
     _cmdline_ = "gef"
     _syntax_ = "{:s} (missing|config|save|restore|set|run)".format(_cmdline_)
-    _category_ = "GEF Maintenance Command"
+    _category_ = "99. GEF Maintenance Command"
 
     def __init__(self):
         super().__init__(self._cmdline_, gdb.COMMAND_SUPPORT, gdb.COMPLETE_NONE, True)
@@ -51122,7 +51122,7 @@ class GefHelpCommand(gdb.Command):
     """GEF help sub-command."""
     _cmdline_ = "gef help"
     _syntax_ = _cmdline_
-    _category_ = "GEF Maintenance Command"
+    _category_ = "99. GEF Maintenance Command"
 
     def __init__(self, commands, *args, **kwargs):
         super().__init__(self._cmdline_, gdb.COMMAND_SUPPORT, gdb.COMPLETE_NONE, False)
@@ -51165,6 +51165,8 @@ class GefHelpCommand(gdb.Command):
         newdoc = ""
         old_category = None
         for category, msg in sorted(self.docs):
+            if old_category is None or old_category.split("-")[0] != category.split("-")[0]:
+                newdoc += titlify(category.split(". ")[1].split(" - ")[0]) + "\n"
             if old_category != category:
                 newdoc += "[{:s}]\n".format(Color.colorify(category, "bold yellow"))
             old_category = category
@@ -51181,7 +51183,7 @@ class GefConfigCommand(gdb.Command):
     `gef restore` (refer help)."""
     _cmdline_ = "gef config"
     _syntax_ = "{:s} [setting_name] [setting_value]".format(_cmdline_)
-    _category_ = "GEF Maintenance Command"
+    _category_ = "99. GEF Maintenance Command"
 
     def __init__(self, loaded_commands, *args, **kwargs):
         super().__init__(self._cmdline_, gdb.COMMAND_NONE, prefix=False)
@@ -51298,6 +51300,7 @@ class GefSaveCommand(gdb.Command):
     Saves the current configuration of GEF to disk (by default in file '~/.gef.rc')."""
     _cmdline_ = "gef save"
     _syntax_ = _cmdline_
+    _category_ = "99. GEF Maintenance Command"
 
     def __init__(self, *args, **kwargs):
         super().__init__(self._cmdline_, gdb.COMMAND_SUPPORT, gdb.COMPLETE_NONE, False)
@@ -51337,6 +51340,7 @@ class GefRestoreCommand(gdb.Command):
     Loads settings from file '~/.gef.rc' and apply them to the configuration of GEF."""
     _cmdline_ = "gef restore"
     _syntax_ = _cmdline_
+    _category_ = "99. GEF Maintenance Command"
 
     def __init__(self, *args, **kwargs):
         super().__init__(self._cmdline_, gdb.COMMAND_SUPPORT, gdb.COMPLETE_NONE, False)
@@ -51389,6 +51393,7 @@ class GefMissingCommand(gdb.Command):
     they could not be loaded."""
     _cmdline_ = "gef missing"
     _syntax_ = _cmdline_
+    _category_ = "99. GEF Maintenance Command"
 
     def __init__(self, *args, **kwargs):
         super().__init__(self._cmdline_, gdb.COMMAND_SUPPORT, gdb.COMPLETE_NONE, False)
@@ -51410,6 +51415,7 @@ class GefSetCommand(gdb.Command):
     """Override GDB set commands with the context from GEF."""
     _cmdline_ = "gef set"
     _syntax_ = "{:s} [GDB_SET_ARGUMENTS]".format(_cmdline_)
+    _category_ = "99. GEF Maintenance Command"
 
     def __init__(self, *args, **kwargs):
         super().__init__(self._cmdline_, gdb.COMMAND_SUPPORT, gdb.COMPLETE_SYMBOL, False)
@@ -51435,6 +51441,7 @@ class GefRunCommand(gdb.Command):
     Simple wrapper for GDB run command to use arguments set from `gef set args`. """
     _cmdline_ = "gef run"
     _syntax_ = "{:s} [GDB_RUN_ARGUMENTS]".format(_cmdline_)
+    _category_ = "99. GEF Maintenance Command"
 
     def __init__(self, *args, **kwargs):
         super().__init__(self._cmdline_, gdb.COMMAND_SUPPORT, gdb.COMPLETE_FILENAME, False)
@@ -51454,6 +51461,8 @@ class GefRunCommand(gdb.Command):
 
 class GefAlias(gdb.Command):
     """Simple aliasing wrapper because GDB doesn't do what it should."""
+    _category_ = "99. GEF Maintenance Command"
+
     def __init__(self, alias, command, repeat=False, completer_class=gdb.COMPLETE_NONE, command_class=gdb.COMMAND_NONE):
         p = command.split()
         if not p:
@@ -51498,7 +51507,7 @@ class AliasesCommand(GenericCommand):
     """Base command to add, remove, or list aliases."""
     _cmdline_ = "aliases"
     _syntax_ = "{:s} (add|rm|ls)".format(_cmdline_)
-    _category_ = "GEF Maintenance Command"
+    _category_ = "99. GEF Maintenance Command"
 
     def __init__(self, *args, **kwargs):
         prefix = kwargs.get("prefix", True)
@@ -51517,7 +51526,7 @@ class AliasesAddCommand(AliasesCommand):
     _cmdline_ = "aliases add"
     _syntax_ = "{:s} [ALIAS] [COMMAND]".format(_cmdline_)
     _example_ = "{:s} scope telescope".format(_cmdline_)
-    _category_ = "GEF Maintenance Command"
+    _category_ = "99. GEF Maintenance Command"
 
     def __init__(self):
         super().__init__(prefix=False)
@@ -51537,7 +51546,7 @@ class AliasesRmCommand(AliasesCommand):
     """Command to remove aliases."""
     _cmdline_ = "aliases rm"
     _syntax_ = "{:s} [ALIAS]".format(_cmdline_)
-    _category_ = "GEF Maintenance Command"
+    _category_ = "99. GEF Maintenance Command"
 
     def __init__(self):
         super().__init__(prefix=False)
@@ -51564,7 +51573,7 @@ class AliasesListCommand(AliasesCommand):
     """Command to list aliases."""
     _cmdline_ = "aliases ls"
     _syntax_ = _cmdline_
-    _category_ = "GEF Maintenance Command"
+    _category_ = "99. GEF Maintenance Command"
 
     def __init__(self):
         super().__init__(prefix=False)
