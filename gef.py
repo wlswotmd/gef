@@ -38100,6 +38100,53 @@ class KernelFopsCommand(GenericCommand):
 
 
 @register_command
+class AsciiSearchCommand(GenericCommand):
+    """Search ASCII string recursively from specific location."""
+    _cmdline_ = "ascii-search"
+    _category_ = "Show/Modify Memory"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('location', metavar='LOCATION', type=parse_address,
+                        help='the location you want to search from.')
+    parser.add_argument('-f', '--filter', action='append', default=[], help='REGEXP filter.')
+    parser.add_argument('-d', '--depth', default=3, type=int, help='recursive depth. (default: %(default)s)')
+    parser.add_argument('-r', '--range', default=0x40, type=lambda x: int(x, 16), help='search range. (default: %(default)s)')
+    _syntax_ = parser.format_help()
+
+    def search_ascii(self, locations, search_range, depth, max_depth):
+        if depth == 0:
+            return
+        for offset in range(0, search_range, current_arch.ptrsize):
+            target = locations[-1] + offset
+            if not is_valid_addr(target):
+                continue
+
+            cstr = None
+            try:
+                cstr = read_ascii_string(target)
+            except UnicodeDecodeError:
+                pass
+
+            if cstr:
+                if not self.filter or any([re.search(filt, cstr) for filt in self.filter]):
+                    for d, loc in enumerate(locations):
+                        gef_print("{:s}{:#x}".format("  " * d, loc))
+                    gef_print("{:s}{:#x}: {:s}".format("  " * (d + 1), target, repr(cstr)))
+            v = read_int_from_memory(target)
+            if is_valid_addr(v):
+                self.search_ascii(locations + [v], search_range, depth - 1, max_depth)
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
+        self.dont_repeat()
+        self.filter = args.filter
+        self.search_ascii([args.location], args.range, args.depth, args.depth)
+        return
+
+
+@register_command
 class SyscallTableViewCommand(GenericCommand):
     """Display syscall_table entries under qemu-system."""
     _cmdline_ = "syscall-table-view"
