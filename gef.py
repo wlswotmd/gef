@@ -11229,8 +11229,7 @@ class CapabilityCommand(GenericCommand):
     _category_ = "Process Information"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-v', dest='verbose', action='store_true',
-                        help='also display detailed bit information other than cap_eff.')
+    parser.add_argument('-v', dest='verbose', action='store_true', help='also display detailed bit information other than cap_eff.')
     _syntax_ = parser.format_help()
 
     def get_thread_ids(self, pid):
@@ -12808,20 +12807,13 @@ class UnicornEmulateCommand(GenericCommand):
     parser.add_argument('-f', dest='from_location', type=parse_address,
                         help='specifies the start address of the emulated run. (default: current_arch.pc)')
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument('-t', dest='to_location', type=parse_address,
-                       help='specifies the end address of the emulated run.')
-    group.add_argument('-n', dest='nb_insn', type=parse_address,
-                       help='indicates the number of instructions to execute.')
-    group.add_argument('-g', dest='nb_gadget', type=parse_address,
-                       help='indicates the number of gadgets to execute.')
-    parser.add_argument('-o', dest='output_path',
-                        help='writes the persistent Unicorn script into this file. (default: %(default)s)')
-    parser.add_argument('-s', dest='skip_emulation', action='store_true',
-                        help='do not run it, just script it. (default: %(default)s)')
-    parser.add_argument('-v', dest='verbose', action='store_true',
-                        help='displays the register values for each instruction is executed. (default: %(default)s)')
-    parser.add_argument('-q', dest='quiet', action='store_true',
-                        help='quiet execution. (default: %(default)s)')
+    group.add_argument('-t', dest='to_location', type=parse_address, help='specifies the end address of the emulated run.')
+    group.add_argument('-n', dest='nb_insn', type=parse_address, help='indicates the number of instructions to execute.')
+    group.add_argument('-g', dest='nb_gadget', type=parse_address, help='indicates the number of gadgets to execute.')
+    parser.add_argument('-o', dest='output_path', help='writes the persistent Unicorn script into this file.')
+    parser.add_argument('-s', dest='skip_emulation', action='store_true', help='do not run it, just script it.')
+    parser.add_argument('-v', dest='verbose', action='store_true', help='displays the register values for each instruction is executed.')
+    parser.add_argument('-q', dest='quiet', action='store_true', help='quiet execution.')
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} -n 5                         # from $pc to 5 later asm\n".format(_cmdline_)
@@ -13716,8 +13708,7 @@ class GlibcHeapBinsCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-a', dest='arena_addr', type=parse_address,
                         help='the address you want to interpret as an arena. (default: main_arena)')
-    parser.add_argument('-v', dest='verbose', action='store_true',
-                        help='display empty bins. (default: %(default)s)')
+    parser.add_argument('-v', dest='verbose', action='store_true', help='display empty bins.')
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}\n".format(_cmdline_)
@@ -13819,8 +13810,7 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-a', dest='arena_addr', type=parse_address,
                         help='the address you want to interpret as an arena. (default: main_arena)')
-    parser.add_argument('-v', dest='verbose', action='store_true',
-                        help='display empty bins. (default: %(default)s)')
+    parser.add_argument('-v', dest='verbose', action='store_true', help='display empty bins.')
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -13914,8 +13904,7 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-a', dest='arena_addr', type=parse_address,
                         help='the address you want to interpret as an arena. (default: main_arena)')
-    parser.add_argument('-v', dest='verbose', action='store_true',
-                        help='display empty bins. (default: %(default)s)')
+    parser.add_argument('-v', dest='verbose', action='store_true', help='display empty bins.')
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -14010,8 +13999,7 @@ class GlibcHeapUnsortedBinsCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-a', dest='arena_addr', type=parse_address,
                         help='the address you want to interpret as an arena. (default: main_arena)')
-    parser.add_argument('-v', dest='verbose', action='store_true',
-                        help='display empty bins. (default: %(default)s)')
+    parser.add_argument('-v', dest='verbose', action='store_true', help='display empty bins.')
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -14055,8 +14043,7 @@ class GlibcHeapSmallBinsCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-a', dest='arena_addr', type=parse_address,
                         help='the address you want to interpret as an arena. (default: main_arena)')
-    parser.add_argument('-v', dest='verbose', action='store_true',
-                        help='display empty bins. (default: %(default)s)')
+    parser.add_argument('-v', dest='verbose', action='store_true', help='display empty bins.')
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -14106,8 +14093,7 @@ class GlibcHeapLargeBinsCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-a', dest='arena_addr', type=parse_address,
                         help='the address you want to interpret as an arena. (default: main_arena)')
-    parser.add_argument('-v', dest='verbose', action='store_true',
-                        help='display empty bins. (default: %(default)s)')
+    parser.add_argument('-v', dest='verbose', action='store_true', help='display empty bins.')
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -20430,10 +20416,8 @@ class VMMapCommand(GenericCommand):
     _category_ = "Process Information"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-v', dest='verbose', action='store_true',
-                        help='also display pointed registers. (default: %(default)s)')
-    parser.add_argument('--outer', action='store_true',
-                        help="display qemu-user's memory map instead of emulated process's memory map. (default: %(default)s)")
+    parser.add_argument('-v', dest='verbose', action='store_true', help='also display pointed registers.')
+    parser.add_argument('--outer', action='store_true', help="display qemu-user's memory map instead of emulated process's memory map.")
     parser.add_argument('filter', metavar='FILTER', nargs='?', help='filter string')
     _syntax_ = parser.format_help()
 
@@ -21852,8 +21836,7 @@ class GotCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-f', dest='file', help='the filename you want to parse.')
     parser.add_argument('-e', dest='elf_address', type=parse_address, help='the elf address you want to parse.')
-    parser.add_argument('-r', dest='remote', action='store_true',
-                        help='parse remote binary if download feature is available. (default: %(default)s)')
+    parser.add_argument('-r', dest='remote', action='store_true', help='parse remote binary if download feature is available.')
     parser.add_argument('-v', dest='verbose', action='store_true', help='verbose output.')
     parser.add_argument('filter', metavar='FILTER', nargs='*', help='filter string')
     _syntax_ = parser.format_help()
@@ -41445,7 +41428,7 @@ class TcmallocDumpNewCommand(TcmallocDumpCommand):
 class PartitionAllocDumpCommand(GenericCommand):
     """PartitionAlloc freelist viewer for chromium stable (supported x64/x86/ARM64/ARM only)."""
     _cmdline_ = "partition-alloc-dump"
-    _category_ = "Chrome"
+    _category_ = "Heap"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('target_buffer_root', choices=['fast_malloc', 'array_buffer', 'buffer', 'fm', 'ab', 'b'],
