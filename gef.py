@@ -1958,16 +1958,19 @@ def get_thread_arena(address):
 def titlify(text, color=None, msg_color=None):
     """Print a centered title."""
     cols = get_terminal_size()[1]
-    nb = (cols - len(text) - 2) // 2
     if color is None:
         color = __config__.get("theme.default_title_line")[0]
     if msg_color is None:
         msg_color = __config__.get("theme.default_title_message")[0]
 
     msg = []
-    msg.append(Color.colorify("{} ".format(HORIZONTAL_LINE * nb), color))
-    msg.append(Color.colorify(text, msg_color))
-    msg.append(Color.colorify(" {}".format(HORIZONTAL_LINE * nb), color))
+    if text:
+        nb = (cols - len(text) - 2) // 2
+        msg.append(Color.colorify("{} ".format(HORIZONTAL_LINE * nb), color))
+        msg.append(Color.colorify(text, msg_color))
+        msg.append(Color.colorify(" {}".format(HORIZONTAL_LINE * nb), color))
+    else:
+        msg.append(Color.colorify("{}".format(HORIZONTAL_LINE * cols), color))
     return "".join(msg)
 
 
@@ -37430,16 +37433,12 @@ class KernelTaskCommand(GenericCommand):
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-f', '--filter', action='append', default=[], help='REGEXP filter.')
+    parser.add_argument('-m', dest='mm', action='store_true', help='print memory map each process.')
+    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
     _syntax_ = parser.format_help()
 
-    def get_task_list(self):
-        init_task = KernelAddressHeuristicFinder.get_init_task()
-        if init_task is None:
-            err("Not found symbol")
-            return None
-        gef_print(titlify("Kernel tasks (heuristic)"))
-        info("init_task: {:#x}".format(init_task))
-
+    def get_offset_task(self, init_task):
         # search init_task->tasks
         for i in range(0x200):
             offset_tasks = i * current_arch.ptrsize
@@ -37466,10 +37465,49 @@ class KernelTaskCommand(GenericCommand):
                 value_list.append(pos)
             if found:
                 info("offsetof(task_struct, tasks): {:#x}".format(offset_tasks))
-                info("Number of tasks: {:d}".format(len(value_list)))
-                return [x - offset_tasks for x in value_list]
+                return offset_tasks
         err("Not found init_task->tasks")
         return None
+
+    def get_task_list(self, init_task, offset_tasks):
+        pos = init_task + offset_tasks
+        task_list = [pos]
+        # validating candidate offset
+        while True:
+            pos = read_int_from_memory(pos)
+            if pos in task_list:
+                break
+            task_list.append(pos)
+        info("Number of tasks: {:d}".format(len(task_list)))
+        return [x - offset_tasks for x in task_list]
+
+    def get_offset_mm(self, task_addr, offset_tasks):
+        """
+            struct list_head        tasks;
+        #ifdef CONFIG_SMP
+            struct plist_node {
+                int              prio;
+                struct list_head prio_list;
+                struct list_head node_list;
+            }                       pushable_tasks;
+
+            struct rb_node {
+                unsigned long  __rb_parent_color;
+                struct rb_node *rb_right;
+                struct rb_node *rb_left;
+            }                       pushable_dl_tasks;
+        #endif
+
+            struct mm_struct        *mm;
+            struct mm_struct        *active_mm;
+        """
+        offset_mm = offset_tasks + 2 * current_arch.ptrsize
+        r = read_int_from_memory(task_addr + offset_mm)
+        if 0 < r <= 0xffffffff:
+            # maybe prio, so CONFIG_SMP is y
+            offset_mm = offset_tasks + 10 * current_arch.ptrsize
+        info("offsetof(task_struct, mm): {:#x}".format(offset_mm))
+        return offset_mm
 
     def get_offset_comm(self, task_addrs):
         for i in range(0x300):
@@ -37554,6 +37592,161 @@ class KernelTaskCommand(GenericCommand):
         info("offsetof(cred, uid): {:#x}".format(offset_uid))
         return offset_uid
 
+    def get_mm(self, task, offset_mm):
+        mm = read_int_from_memory(task + offset_mm)
+        if mm == 0:
+            return []
+
+        vm_area_struct = read_int_from_memory(mm) # vm_area_struct
+
+        """
+        struct vm_area_struct {
+            /* The first cache line has the info for VMA tree walking. */
+
+            unsigned long vm_start;          /* Our start address within vm_mm. */
+            unsigned long vm_end;            /* The first byte after our end address within vm_mm. */
+
+            struct vm_area_struct *vm_next, *vm_prev;
+            struct rb_node vm_rb;
+            unsigned long rb_subtree_gap;
+            struct mm_struct *vm_mm;         /* The address space we belong to. */
+
+            pgprot_t vm_page_prot;
+            unsigned long vm_flags;          /* Flags, see mm.h. */
+
+            struct {
+                struct rb_node rb;
+                unsigned long rb_subtree_last;
+            } shared;
+
+            struct list_head anon_vma_chain; /* Serialized by mmap_lock & page_table_lock */
+            struct anon_vma *anon_vma;       /* Serialized by page_table_lock */
+            const struct vm_operations_struct *vm_ops; /* Function pointers to deal with this struct. */
+            unsigned long vm_pgoff;          /* Offset (within vm_file) in PAGE_SIZE units */
+            struct file * vm_file;           /* File we map to (can be NULL). */
+        """
+
+        if self.offset_vm_flags is None:
+            current = vm_area_struct
+            while True:
+                x = read_int_from_memory(current)
+                if x == mm:
+                    break
+                current += current_arch.ptrsize
+            offset_vm_mm = current - vm_area_struct
+            info("offsetof(vm_area_struct, vm_mm): {:#x}".format(offset_vm_mm))
+
+            # now, `current` points vm_mm
+            while True:
+                x = read_int_from_memory(current + current_arch.ptrsize) # read one unit ahead
+                if is_32bit():
+                    mask = 0xc000_0000
+                else:
+                    mask = 0xffff_0000_0000_0000
+                if (x & mask) == mask:
+                    break
+                current += current_arch.ptrsize
+            offset_vm_flags = current - vm_area_struct
+            info("offsetof(vm_area_struct, vm_flags): {:#x}".format(offset_vm_flags))
+            self.offset_vm_flags = offset_vm_flags
+
+            # now, `current` points vm_flags
+            current += current_arch.ptrsize
+            while True:
+                x = read_int_from_memory(current)
+                y = read_int_from_memory(current + current_arch.ptrsize) # read one unit ahead
+                if is_32bit():
+                    mask = 0xc000_0000
+                else:
+                    mask = 0xffff_0000_0000_0000
+                if (x & mask) == (y & mask) == mask and x == y:
+                    break
+                current += current_arch.ptrsize
+
+            # now, `current` points anon_vma_chain
+            offset_anon_vma_chain = current - vm_area_struct
+            offset_vm_file = offset_anon_vma_chain + current_arch.ptrsize * 5
+            info("offsetof(vm_area_struct, vm_file): {:#x}".format(offset_vm_file))
+            self.offset_vm_file = offset_vm_file
+
+        vm_areas = []
+        VmArea = collections.namedtuple("VmArea", "start end flags file")
+        current = vm_area_struct
+        while current:
+            vm_start = read_int_from_memory(current)
+            vm_end = read_int_from_memory(current + current_arch.ptrsize)
+            vm_flags =  read_int_from_memory(current + self.offset_vm_flags)
+            vm_file =  read_int_from_memory(current + self.offset_vm_file)
+            filepath = self.get_filepath(vm_file)
+            perm = Permission(value=vm_flags)
+            vm_areas.append(VmArea(vm_start, vm_end, str(perm), filepath))
+            current = read_int_from_memory(current + current_arch.ptrsize * 2)
+        return vm_areas
+
+    def get_filepath(self, location):
+        if not is_valid_addr(location):
+            return ""
+
+        """
+        struct file {
+            union {
+                struct llist_node   fu_llist;
+                struct rcu_head     fu_rcuhead;
+            } f_u;
+            struct path {
+                struct vfsmount *mnt;
+                struct dentry   *dentry;
+            } f_path;
+        """
+        dentry = read_int_from_memory(location + current_arch.ptrsize * 3)
+
+
+        """
+        struct dentry {
+            /* RCU lookup touched fields */
+            unsigned int d_flags;           /* protected by d_lock */
+            seqcount_spinlock_t d_seq;      /* per dentry seqlock */
+            struct hlist_bl_node d_hash;    /* lookup hash list */
+            struct dentry *d_parent;        /* parent directory */
+            struct qstr d_name;
+            struct inode *d_inode;          /* Where the name belongs to - NULL is negative */
+            unsigned char d_iname[DNAME_INLINE_LEN];    /* small names */
+        """
+        if self.offset_d_iname is None:
+            current = dentry
+            while True:
+                x = read_int_from_memory(current)
+                if 0 < x - current <= 0x20:
+                    self.offset_d_iname = x - dentry
+                    break
+                current += current_arch.ptrsize
+            info("offsetof(dentry, d_iname): {:#x}".format(self.offset_d_iname))
+
+            current -= current_arch.ptrsize
+            # now, `current` points qstr.size
+            while True:
+                x = read_int_from_memory(current)
+                if is_32bit():
+                    mask = 0xc000_0000
+                else:
+                    mask = 0xffff_0000_0000_0000
+                if (x & mask) == mask:
+                    self.offset_d_parent = current - dentry
+                    break
+                current -= current_arch.ptrsize
+            info("offsetof(dentry, d_parent): {:#x}".format(self.offset_d_parent))
+
+        filepath = []
+        current = dentry
+        while True:
+            name = read_cstring_from_memory(current + self.offset_d_iname)
+            d_parent = read_int_from_memory(current + self.offset_d_parent)
+            filepath.append(name)
+            if d_parent == current:
+                break
+            current = d_parent
+        return os.path.join(*filepath[::-1])
+
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
@@ -37562,9 +37755,29 @@ class KernelTaskCommand(GenericCommand):
 
         info("Wait for memory scan")
 
-        task_addrs = self.get_task_list()
+        init_task = KernelAddressHeuristicFinder.get_init_task()
+        if init_task is None:
+            err("Not found symbol")
+            return
+        gef_print(titlify("Kernel tasks (heuristic)"))
+        info("init_task: {:#x}".format(init_task))
+
+        offset_task = self.get_offset_task(init_task)
+        if offset_task is None:
+            return
+
+        task_addrs = self.get_task_list(init_task, offset_task)
         if task_addrs is None:
             return
+
+        if args.mm:
+            self.offset_vm_flags = None
+            self.offset_vm_file = None
+            self.offset_d_iname = None
+            self.offset_d_parent = None
+            offset_mm = self.get_offset_mm(task_addrs[0], offset_task)
+            if offset_mm is None:
+                return
 
         offset_comm = self.get_offset_comm(task_addrs)
         if offset_comm is None:
@@ -37578,15 +37791,29 @@ class KernelTaskCommand(GenericCommand):
         if offset_uid is None:
             return
 
+        out = []
         ids_str = ','.join(["uid", "gid", "suid", "sgid", "euid", "egid", "fsuid", "fsgid"])
         fmt = "{:<18s}: {:<16s} {:<18s} [{}]"
         legend = ["task", "task->comm", "task->cred", ids_str]
-        gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+        out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
         for task in task_addrs:
             comm_string = read_cstring_from_memory(task + offset_comm)
+            if args.filter:
+                if not any([re.search(f, comm_string) for f in args.filter]):
+                    continue
             cred = read_int_from_memory(task + offset_cred)
             uids = [u32(read_memory(cred + offset_uid + j * 4, 4)) for j in range(8)]
-            gef_print("{:#018x}: {:<16s} {:#018x} {}".format(task, comm_string, cred, uids))
+            out.append("{:#018x}: {:<16s} {:#018x} {}".format(task, comm_string, cred, uids))
+
+            if args.mm:
+                mms = self.get_mm(task, offset_mm)
+                if mms:
+                    out.append(titlify("memory map of `{:s}`".format(comm_string)))
+                for mm in mms:
+                    out.append("  {:#018x}-{:#018x} {:s} {:s}".format(mm.start, mm.end, mm.flags, mm.file))
+                if mms:
+                    out.append(titlify(""))
+        gef_print('\n'.join(out), less=not args.no_pager)
         return
 
 

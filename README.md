@@ -119,6 +119,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
 * `kcmdline`: displays the debugged kernel startup cmdline.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kcmdline.png)
 * `ktask`: displays each task address.
+    * It also displays the memory of the user-land process.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ktask.png)
 * `kmod`: displays each module address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmod.png)
