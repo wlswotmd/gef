@@ -7144,14 +7144,19 @@ def is_alive():
     return False
 
 
+class ArgparseExitProxyException(Exception):
+    pass
+
+
 def parse_args(f):
     """Decorator wrapper to parse args for command."""
 
     @functools.wraps(f)
     def wrapper(self, argv, **kwargs):
         try:
+            self.parser.exit = lambda *_: exec('raise(ArgparseExitProxyException())')
             args = self.parser.parse_args(argv)
-        except SystemExit:
+        except ArgparseExitProxyException:
             self.usage(omit_syntax=True)
             return
         except Exception:
