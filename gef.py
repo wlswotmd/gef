@@ -45884,6 +45884,23 @@ class PagewalkCommand(GenericCommand):
         self.cache[key] = out
         return out
 
+    def gef_print(self, msg):
+        if self.use_pager:
+            self.out.append(msg)
+        gef_print(msg)
+        return
+
+    def quiet_info(self, msg):
+        if not self.quiet:
+            msg = "{} {}".format(Color.colorify("[+]", "bold blue"), msg)
+            self.gef_print(msg)
+        return
+
+    def quiet_gef_print(self, msg):
+        if not self.quiet:
+            self.gef_print(msg)
+        return
+
     # merge pages that points same phys page
     # for example, there are 16 pages,
     #    virt: 0xffffffff11107000  -> phys:0xabcd000
@@ -46077,23 +46094,19 @@ class PagewalkCommand(GenericCommand):
             pass
         else:
             self.merge1()
-            if not self.quiet:
-                info("PT Entry (merged similar pages that refer the same physpage): {:d}".format(len(self.mappings)))
+            self.quiet_info("PT Entry (merged similar pages that refer the same physpage): {:d}".format(len(self.mappings)))
             self.merge2()
-            if not self.quiet:
-                info("PT Entry (merged consecutive pages): {:d}".format(len(self.mappings)))
+            self.quiet_info("PT Entry (merged consecutive pages): {:d}".format(len(self.mappings)))
 
         # filter by virtual address range
         if self.vrange != []:
             self.vrange_filter()
-            if not self.quiet:
-                info("PT Entry (filtered by virtual address range): {:d}".format(len(self.mappings)))
+            self.quiet_info("PT Entry (filtered by virtual address range): {:d}".format(len(self.mappings)))
 
         # filter by physical address range
         if self.prange != []:
             self.prange_filter()
-            if not self.quiet:
-                info("PT Entry (filtered by physical address range): {:d}".format(len(self.mappings)))
+            self.quiet_info("PT Entry (filtered by physical address range): {:d}".format(len(self.mappings)))
 
         # create output
         lines = []
@@ -46110,8 +46123,7 @@ class PagewalkCommand(GenericCommand):
                         filtered_lines.append(line)
                         break
             lines = filtered_lines
-            if not self.quiet:
-                info("PT Entry (filtered by keyword): {:d}".format(len(lines)))
+            self.quiet_info("PT Entry (filtered by keyword): {:d}".format(len(lines)))
 
         # sort by phys
         if self.sort_by_phys:
@@ -46123,10 +46135,16 @@ class PagewalkCommand(GenericCommand):
             return
 
         # print
-        gef_print(titlify("Memory map"))
-        gef_print(Color.colorify(self.format_legend(), get_gef_setting("theme.table_heading")))
-        for line in lines:
-            gef_print(line)
+        if self.use_pager:
+            self.out.append(titlify("Memory map"))
+            self.out.append(Color.colorify(self.format_legend(), get_gef_setting("theme.table_heading")))
+            self.out.extend(lines)
+        else:
+            out = self.out.copy()
+            out.append(titlify("Memory map"))
+            out.append(Color.colorify(self.format_legend(), get_gef_setting("theme.table_heading")))
+            out.extend(lines)
+            gef_print('\n'.join(out))
         return
 
     def is_not_trace_target(self, va_start, va_end):
@@ -46182,6 +46200,7 @@ class PagewalkX64Command(PagewalkCommand):
                         help='filter by map included specified physical address.')
     parser.add_argument('--trace', metavar='VADDR', default=[], action='append', type=lambda x: int(x, 16),
                         help='show all level pagetables only associated specified address.')
+    parser.add_argument('-p', '--use-pager', action='store_true', help='use pager (less).')
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -46211,8 +46230,7 @@ class PagewalkX64Command(PagewalkCommand):
         return ' '.join(flags)
 
     def pagewalk_PML5T(self):
-        if not self.quiet:
-            gef_print(titlify("PML5E: Page Map Level 5 Entry"))
+        self.quiet_gef_print(titlify("PML5E: Page Map Level 5 Entry"))
         PML5E = []
         COUNT = 0
         for va_base, table_base, parent_flags in self.TABLES:
@@ -46257,18 +46275,16 @@ class PagewalkX64Command(PagewalkCommand):
                     line = fmt.format(addr, entry, new_va, new_va_end, entry_type, ' '.join(flags))
                     if self.is_not_filter_target(line):
                         continue
-                    gef_print(line)
+                    self.gef_print(line)
 
-        if not self.quiet:
-            info("Number of entries: {:d}".format(COUNT))
-            info("PML5 Entry: {:d}".format(len(PML5E)))
-            info("Invalid entries: {:d}".format(COUNT - len(PML5E)))
+        self.quiet_info("Number of entries: {:d}".format(COUNT))
+        self.quiet_info("PML5 Entry: {:d}".format(len(PML5E)))
+        self.quiet_info("Invalid entries: {:d}".format(COUNT - len(PML5E)))
         self.TABLES = PML5E
         return
 
     def pagewalk_PML4T(self):
-        if not self.quiet:
-            gef_print(titlify("PML4E: Page Map Level 4 Entry"))
+        self.quiet_gef_print(titlify("PML4E: Page Map Level 4 Entry"))
         PML4E = []
         COUNT = 0
         for va_base, table_base, parent_flags in self.TABLES:
@@ -46317,18 +46333,16 @@ class PagewalkX64Command(PagewalkCommand):
                     line = fmt.format(addr, entry, new_va, new_va_end, entry_type, ' '.join(flags))
                     if self.is_not_filter_target(line):
                         continue
-                    gef_print(line)
+                    self.gef_print(line)
 
-        if not self.quiet:
-            info("Number of entries: {:d}".format(COUNT))
-            info("PML4 Entry: {:d}".format(len(PML4E)))
-            info("Invalid entries: {:d}".format(COUNT - len(PML4E)))
+        self.quiet_info("Number of entries: {:d}".format(COUNT))
+        self.quiet_info("PML4 Entry: {:d}".format(len(PML4E)))
+        self.quiet_info("Invalid entries: {:d}".format(COUNT - len(PML4E)))
         self.TABLES = PML4E
         return
 
     def pagewalk_PDPT(self):
-        if not self.quiet:
-            gef_print(titlify("PDPE: Page Directory Pointer Entry"))
+        self.quiet_gef_print(titlify("PDPE: Page Directory Pointer Entry"))
 
         def is_set_PS(entry):
             return ((entry >> 7) & 1) == 1
@@ -46394,20 +46408,18 @@ class PagewalkX64Command(PagewalkCommand):
                     line = fmt.format(addr, entry, new_va, new_va_end, entry_type, ' '.join(flags))
                     if self.is_not_filter_target(line):
                         continue
-                    gef_print(line)
+                    self.gef_print(line)
 
-        if not self.quiet:
-            info("Number of entries: {:d}".format(COUNT))
-            info("PDPT Entry: {:d}".format(len(PDPTE)))
-            info("PT Entry (1GB): {:d}".format(len(PTE)))
-            info("Invalid entries: {:d}".format(COUNT - len(PDPTE) - len(PTE)))
+        self.quiet_info("Number of entries: {:d}".format(COUNT))
+        self.quiet_info("PDPT Entry: {:d}".format(len(PDPTE)))
+        self.quiet_info("PT Entry (1GB): {:d}".format(len(PTE)))
+        self.quiet_info("Invalid entries: {:d}".format(COUNT - len(PDPTE) - len(PTE)))
         self.TABLES = PDPTE
         self.PTE += PTE
         return
 
     def pagewalk_PDT(self):
-        if not self.quiet:
-            gef_print(titlify("PDE: Page Directory Entry"))
+        self.quiet_gef_print(titlify("PDE: Page Directory Entry"))
 
         def is_set_PS(entry):
             return ((entry >> 7) & 1) == 1
@@ -46478,20 +46490,18 @@ class PagewalkX64Command(PagewalkCommand):
                     line = fmt.format(addr, entry, new_va, new_va_end, entry_type, ' '.join(flags))
                     if self.is_not_filter_target(line):
                         continue
-                    gef_print(line)
+                    self.gef_print(line)
 
-        if not self.quiet:
-            info("Number of entries: {:d}".format(COUNT))
-            info("PD Entry: {:d}".format(len(PDE)))
-            info("PT Entry ({:d}MB): {:d}".format(2 if self.PAE else 4, len(PTE)))
-            info("Invalid entries: {:d}".format(COUNT - len(PDE) - len(PTE)))
+        self.quiet_info("Number of entries: {:d}".format(COUNT))
+        self.quiet_info("PD Entry: {:d}".format(len(PDE)))
+        self.quiet_info("PT Entry ({:d}MB): {:d}".format(2 if self.PAE else 4, len(PTE)))
+        self.quiet_info("Invalid entries: {:d}".format(COUNT - len(PDE) - len(PTE)))
         self.TABLES = PDE
         self.PTE += PTE
         return
 
     def pagewalk_PT(self):
-        if not self.quiet:
-            gef_print(titlify("PTE: Page Table Entry"))
+        self.quiet_gef_print(titlify("PTE: Page Table Entry"))
         PTE = []
         COUNT = 0
         for va_base, table_base, parent_flags in self.TABLES:
@@ -46540,12 +46550,11 @@ class PagewalkX64Command(PagewalkCommand):
                     line = fmt.format(addr, entry, virt_addr, virt_addr_end, entry_type, ' '.join(flags))
                     if self.is_not_filter_target(line):
                         continue
-                    gef_print(line)
+                    self.gef_print(line)
 
-        if not self.quiet:
-            info("Number of entries: {:d}".format(COUNT))
-            info("PT Entry (4KB): {:d}".format(len(PTE)))
-            info("Invalid entries: {:d}".format(COUNT - len(PTE)))
+        self.quiet_info("Number of entries: {:d}".format(COUNT))
+        self.quiet_info("PT Entry (4KB): {:d}".format(len(PTE)))
+        self.quiet_info("Invalid entries: {:d}".format(COUNT - len(PTE)))
         self.PTE += PTE
         return
 
@@ -46555,9 +46564,8 @@ class PagewalkX64Command(PagewalkCommand):
         res = gdb.execute("monitor info registers", to_string=True)
         cr3 = int(re.search(r"CR3=(\S+)", res).group(1), 16)
         cr4 = int(re.search(r"CR4=(\S+)", res).group(1), 16)
-        if not self.quiet:
-            info("cr3: {:#018x}".format(cr3))
-            info("cr4: {:#018x}".format(cr4))
+        self.quiet_info("cr3: {:#018x}".format(cr3))
+        self.quiet_info("cr4: {:#018x}".format(cr4))
 
         # virtual address base
         va_base = 0
@@ -46581,8 +46589,7 @@ class PagewalkX64Command(PagewalkCommand):
                 # 64bit 5-level(4KB): 9,9,9,9,9,12
                 # 64bit 5-level(2MB): 9,9,9,9,0,21
                 # 64bit 5-level(1GB): 9,9,9,0,0,30
-                if not self.quiet:
-                    info("64-bit 5 level page table")
+                self.quiet_info("64-bit 5 level page table")
                 self.bits = {
                     "ENTRY_SIZE": 8,
                     "PML5T_BITS": 9, "PML4T_BITS": 9, "PDPT_BITS": 9, "PDT_BITS": 9, "PT_BITS": 9, "OFFSET": 12,
@@ -46597,8 +46604,7 @@ class PagewalkX64Command(PagewalkCommand):
                 # 64bit 4-level(4KB): 9,9,9,9,12
                 # 64bit 4-level(2MB): 9,9,9,0,21
                 # 64bit 4-level(1GB): 9,9,0,0,30
-                if not self.quiet:
-                    info("64-bit 4 level page table")
+                self.quiet_info("64-bit 4 level page table")
                 self.bits = {
                     "ENTRY_SIZE": 8,
                     "PML4T_BITS": 9, "PDPT_BITS": 9, "PDT_BITS": 9, "PT_BITS": 9, "OFFSET": 12,
@@ -46612,8 +46618,7 @@ class PagewalkX64Command(PagewalkCommand):
             if (cr4 >> 5) & 1: # PAE check
                 # 32bit PAE(4KB): 2,9,9,12 (PTE Size: 64bit)
                 # 32bit PAE(2MB): 2,9,0,21 (PTE Size: 64bit)
-                if not self.quiet:
-                    info("32-bit {:s} page table".format(Color.boldify("PAE")))
+                self.quiet_info("32-bit {:s} page table".format(Color.boldify("PAE")))
                 self.bits = {
                     "ENTRY_SIZE": 8,
                     "PDPT_BITS": 2, "PDT_BITS": 9, "PT_BITS": 9, "OFFSET": 12,
@@ -46625,8 +46630,7 @@ class PagewalkX64Command(PagewalkCommand):
             else:
                 # 32bit(4KB): 10,10,12
                 # 32bit(4MB): 10,0,22
-                if not self.quiet:
-                    info("32-bit Non-PAE page table")
+                self.quiet_info("32-bit Non-PAE page table")
                 self.bits = {
                     "ENTRY_SIZE": 4,
                     "PDT_BITS": 10, "PT_BITS": 10, "OFFSET": 12,
@@ -46638,9 +46642,8 @@ class PagewalkX64Command(PagewalkCommand):
             err("Unsupported")
             return
 
-        if not self.quiet:
-            gef_print(titlify("Total"))
-            info("PT Entry (Total): {:d}".format(len(self.PTE)))
+        self.quiet_gef_print(titlify("Total"))
+        self.quiet_info("PT Entry (Total): {:d}".format(len(self.PTE)))
         self.mappings = self.PTE
         self.print_page()
         return
@@ -46664,11 +46667,16 @@ class PagewalkX64Command(PagewalkCommand):
         if self.trace:
             self.vrange.extend(self.trace) # also set --vrange
             self.print_each_level = True # overwrite
+        self.use_pager = args.use_pager
         self.cache = {}
 
         self.mappings = None
+        self.out = []
         self.pagewalk()
         self.cache = {}
+
+        if self.out:
+            gef_print('\n'.join(self.out), less=self.use_pager)
         return
 
 
@@ -46695,6 +46703,7 @@ class PagewalkArmCommand(PagewalkCommand):
                         help='filter by map included specified physical address.')
     parser.add_argument('--trace', metavar='VADDR', default=[], action='append', type=lambda x: int(x, 16),
                         help='show all level pagetables only associated specified address.')
+    parser.add_argument('-p', '--use-pager', action='store_true', help='use pager (less).')
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -46932,8 +46941,7 @@ class PagewalkArmCommand(PagewalkCommand):
             return (entry & 0b11) in [0b10, 0b11]
 
         # 1st level parse
-        if not self.quiet:
-            gef_print(titlify("LEVEL 1"))
+        self.quiet_gef_print(titlify("LEVEL 1"))
         LEVEL1 = []
         SECTION = []
         SUPER_SECTION = []
@@ -47040,19 +47048,17 @@ class PagewalkArmCommand(PagewalkCommand):
                 line = fmt.format(addr, entry, new_va, new_va_end, entry_type, ' '.join(flags))
                 if self.is_not_filter_target(line):
                     continue
-                gef_print(line)
+                self.gef_print(line)
 
-        if not self.quiet:
-            info("Number of entries: {:d}".format(COUNT))
-            info("Level 1 Entry: {:d}".format(len(LEVEL1)))
-            info("PT Entry (supersection; 16MB): {:d}".format(len(SUPER_SECTION)))
-            info("PT Entry (section; 1MB): {:d}".format(len(SECTION)))
-            info("Invalid entries: {:d}".format(COUNT - len(LEVEL1) - len(SUPER_SECTION) - len(SECTION)))
+        self.quiet_info("Number of entries: {:d}".format(COUNT))
+        self.quiet_info("Level 1 Entry: {:d}".format(len(LEVEL1)))
+        self.quiet_info("PT Entry (supersection; 16MB): {:d}".format(len(SUPER_SECTION)))
+        self.quiet_info("PT Entry (section; 1MB): {:d}".format(len(SECTION)))
+        self.quiet_info("Invalid entries: {:d}".format(COUNT - len(LEVEL1) - len(SUPER_SECTION) - len(SECTION)))
         self.mappings += SECTION + SUPER_SECTION
 
         # 2nd level parse
-        if not self.quiet:
-            gef_print(titlify("LEVEL 2"))
+        self.quiet_gef_print(titlify("LEVEL 2"))
         LARGE = []
         SMALL = []
         COUNT = 0
@@ -47133,18 +47139,16 @@ class PagewalkArmCommand(PagewalkCommand):
                     line = fmt.format(addr, entry, virt_addr, virt_addr_end, entry_type, ' '.join(flags))
                     if self.is_not_filter_target(line):
                         continue
-                    gef_print(line)
+                    self.gef_print(line)
 
-        if not self.quiet:
-            info("Number of entries: {:d}".format(COUNT))
-            info("PT Entry (large; 64KB): {:d}".format(len(LARGE)))
-            info("PT Entry (small; 4KB): {:d}".format(len(SMALL)))
-            info("Invalid entries: {:d}".format(COUNT - len(LARGE) - len(SMALL)))
+        self.quiet_info("Number of entries: {:d}".format(COUNT))
+        self.quiet_info("PT Entry (large; 64KB): {:d}".format(len(LARGE)))
+        self.quiet_info("PT Entry (small; 4KB): {:d}".format(len(SMALL)))
+        self.quiet_info("Invalid entries: {:d}".format(COUNT - len(LARGE) - len(SMALL)))
         self.mappings += LARGE + SMALL
 
-        if not self.quiet:
-            gef_print(titlify("Total"))
-            info("PT Entry (Total): {:d}".format(len(self.mappings)))
+        self.quiet_gef_print(titlify("Total"))
+        self.quiet_info("PT Entry (Total): {:d}".format(len(self.mappings)))
         self.mappings = sorted(self.mappings)
         return
 
@@ -47160,8 +47164,7 @@ class PagewalkArmCommand(PagewalkCommand):
         def is_2MB_page(entry):
             return (entry & 0b11) == 0b01
 
-        if not self.quiet:
-            gef_print(titlify("LEVEL 1"))
+        self.quiet_gef_print(titlify("LEVEL 1"))
         if self.N < 2:
             # 1st level parse
             LEVEL1 = []
@@ -47233,23 +47236,20 @@ class PagewalkArmCommand(PagewalkCommand):
                     line = fmt.format(addr, entry, new_va, new_va_end, entry_type, ' '.join(flags))
                     if self.is_not_filter_target(line):
                         continue
-                    gef_print(line)
+                    self.gef_print(line)
 
-            if not self.quiet:
-                info("Number of entries: {:d}".format(COUNT))
-                info("Level 1 Entry: {:d}".format(len(LEVEL1)))
-                info("PT Entry (1GB): {:d}".format(len(GB)))
-                info("Invalid entries: {:d}".format(COUNT - len(LEVEL1) - len(GB)))
+            self.quiet_info("Number of entries: {:d}".format(COUNT))
+            self.quiet_info("Level 1 Entry: {:d}".format(len(LEVEL1)))
+            self.quiet_info("PT Entry (1GB): {:d}".format(len(GB)))
+            self.quiet_info("Invalid entries: {:d}".format(COUNT - len(LEVEL1) - len(GB)))
             self.mappings += GB
         else:
-            if not self.quiet:
-                info("LEVEL 1 is skipped")
+            self.quiet_info("LEVEL 1 is skipped")
             flags = []
             LEVEL1 = [[va_base, table_base, flags]]
 
         # 2nd level parse
-        if not self.quiet:
-            gef_print(titlify("LEVEL 2"))
+        self.quiet_gef_print(titlify("LEVEL 2"))
         LEVEL2 = []
         MB = []
         COUNT = 0
@@ -47320,18 +47320,16 @@ class PagewalkArmCommand(PagewalkCommand):
                     line = fmt.format(addr, entry, new_va, new_va_end, entry_type, ' '.join(flags))
                     if self.is_not_filter_target(line):
                         continue
-                    gef_print(line)
+                    self.gef_print(line)
 
-        if not self.quiet:
-            info("Number of entries: {:d}".format(COUNT))
-            info("Level 2 Entry: {:d}".format(len(LEVEL2)))
-            info("PT Entry (2MB): {:d}".format(len(MB)))
-            info("Invalid entries: {:d}".format(COUNT - len(LEVEL2) - len(MB)))
+        self.quiet_info("Number of entries: {:d}".format(COUNT))
+        self.quiet_info("Level 2 Entry: {:d}".format(len(LEVEL2)))
+        self.quiet_info("PT Entry (2MB): {:d}".format(len(MB)))
+        self.quiet_info("Invalid entries: {:d}".format(COUNT - len(LEVEL2) - len(MB)))
         self.mappings += MB
 
         # 3rd level parse
-        if not self.quiet:
-            gef_print(titlify("LEVEL 3"))
+        self.quiet_gef_print(titlify("LEVEL 3"))
         KB = []
         COUNT = 0
         for va_base, table_base, parent_flags in LEVEL2:
@@ -47383,22 +47381,20 @@ class PagewalkArmCommand(PagewalkCommand):
                     line = fmt.format(addr, entry, virt_addr, virt_addr_end, entry_type, ' '.join(flags))
                     if self.is_not_filter_target(line):
                         continue
-                    gef_print(line)
+                    self.gef_print(line)
 
-        if not self.quiet:
-            info("Number of entries: {:d}".format(COUNT))
-            info("PT Entry (4KB): {:d}".format(len(KB)))
-            info("Invalid entries: {:d}".format(COUNT - len(KB)))
+        self.quiet_info("Number of entries: {:d}".format(COUNT))
+        self.quiet_info("PT Entry (4KB): {:d}".format(len(KB)))
+        self.quiet_info("Invalid entries: {:d}".format(COUNT - len(KB)))
         self.mappings += KB
 
-        if not self.quiet:
-            gef_print(titlify("Total"))
-            info("PT Entry (Total): {:d}".format(len(self.mappings)))
+        self.quiet_gef_print(titlify("Total"))
+        self.quiet_info("PT Entry (Total): {:d}".format(len(self.mappings)))
         self.mappings = sorted(self.mappings)
         return
 
     def pagewalk_short(self):
-        gef_print(titlify("$TTBR0_EL1{}".format(self.suffix)))
+        self.gef_print(titlify("$TTBR0_EL1{}".format(self.suffix)))
 
         TTBR0_EL1 = get_register('$TTBR0_EL1{}'.format(self.suffix))
         if TTBR0_EL1 is None:
@@ -47419,15 +47415,14 @@ class PagewalkArmCommand(PagewalkCommand):
         self.N = TTBCR & 0b111
         ml = 14 - self.N
         pl0_base = ((TTBR0_EL1 & ((1 << 32) - 1)) >> ml) << ml
-        if not self.quiet:
-            info("$TTBR0_EL1{}: {:#x}".format(self.suffix, TTBR0_EL1))
-            info("$TTBCR{}: {:#x}".format(self.suffix, TTBCR))
-            info("PL0 base: {:#x}".format(pl0_base))
+        self.quiet_info("$TTBR0_EL1{}: {:#x}".format(self.suffix, TTBR0_EL1))
+        self.quiet_info("$TTBCR{}: {:#x}".format(self.suffix, TTBCR))
+        self.quiet_info("PL0 base: {:#x}".format(pl0_base))
         self.do_pagewalk_short(pl0_base)
         self.print_page()
 
         # pagewalk TTBR1_EL1
-        gef_print(titlify("$TTBR1_EL1{}".format(self.suffix)))
+        self.gef_print(titlify("$TTBR1_EL1{}".format(self.suffix)))
         if self.suffix:
             pl1_vabase = 0 # I don't know why, but vabase of PL1 seems to be 0x0 when using TTBR1_EL1_S.
         else:
@@ -47438,20 +47433,18 @@ class PagewalkArmCommand(PagewalkCommand):
         pl1_base = ((TTBR1_EL1 & ((1 << 32) - 1)) >> ml) << ml
         self.N = 0 # Whenever TTBCR.N is nonzero, the size of the translation table addressed by TTBR1 is 16KB (N=0).
         if pl1_vabase is not None:
-            if not self.quiet:
-                info("$TTBR1_EL1{}: {:#x}".format(self.suffix, TTBR1_EL1))
-                info("$TTBCR{}: {:#x}".format(self.suffix, TTBCR))
-                info("PL1 base: {:#x}".format(pl1_base))
-                info("PL1 va_base: {:#x}".format(pl1_vabase))
+            self.quiet_info("$TTBR1_EL1{}: {:#x}".format(self.suffix, TTBR1_EL1))
+            self.quiet_info("$TTBCR{}: {:#x}".format(self.suffix, TTBCR))
+            self.quiet_info("PL1 base: {:#x}".format(pl1_base))
+            self.quiet_info("PL1 va_base: {:#x}".format(pl1_vabase))
             self.do_pagewalk_short(pl1_base, pl1_vabase)
             self.print_page()
         else:
-            if not self.quiet:
-                info("$TTBR1_EL1{} is unused".format(self.suffix))
+            self.quiet_info("$TTBR1_EL1{} is unused".format(self.suffix))
         return
 
     def pagewalk_long(self):
-        gef_print(titlify("$TTBR0_EL1{}".format(self.suffix)))
+        self.gef_print(titlify("$TTBR0_EL1{}".format(self.suffix)))
 
         TTBR0_EL1 = get_register('$TTBR0_EL1{}'.format(self.suffix))
         if TTBR0_EL1 is None:
@@ -47473,15 +47466,14 @@ class PagewalkArmCommand(PagewalkCommand):
         T1SZ = (TTBCR >> 16) & 0b111
         self.N = T0SZ
         pl0_base = TTBR0_EL1 & ((1 << 40) - 1)
-        if not self.quiet:
-            info("$TTBR0_EL1{}: {:#x}".format(self.suffix, TTBR0_EL1))
-            info("$TTBCR{}: {:#x}".format(self.suffix, TTBCR))
-            info("PL0 base: {:#x}".format(pl0_base))
+        self.quiet_info("$TTBR0_EL1{}: {:#x}".format(self.suffix, TTBR0_EL1))
+        self.quiet_info("$TTBCR{}: {:#x}".format(self.suffix, TTBCR))
+        self.quiet_info("PL0 base: {:#x}".format(pl0_base))
         self.do_pagewalk_long(pl0_base)
         self.print_page()
 
         # pagewalk TTBR1_EL1
-        gef_print(titlify("$TTBR1_EL1{}".format(self.suffix)))
+        self.gef_print(titlify("$TTBR1_EL1{}".format(self.suffix)))
         if T0SZ != 0 or T1SZ != 0:
             self.N = T1SZ
             pl1_base = TTBR1_EL1 & ((1 << 40) - 1)
@@ -47489,15 +47481,13 @@ class PagewalkArmCommand(PagewalkCommand):
                 pl1_vabase = 2 ** (32 - T0SZ)
             else:
                 pl1_vabase = (2 ** 32) - (2 ** (32 - T1SZ))
-            if not self.quiet:
-                info("$TTBR1_EL1{}: {:#x}".format(self.suffix, TTBR1_EL1))
-                info("PL1 base: {:#x}".format(pl1_base))
-                info("PL1 va_base: {:#x}".format(pl1_vabase))
+            self.quiet_info("$TTBR1_EL1{}: {:#x}".format(self.suffix, TTBR1_EL1))
+            self.quiet_info("PL1 base: {:#x}".format(pl1_base))
+            self.quiet_info("PL1 va_base: {:#x}".format(pl1_vabase))
             self.do_pagewalk_long(pl1_base, pl1_vabase)
             self.print_page()
         else:
-            if not self.quiet:
-                info("$TTBR1_EL1{} is unused".format(self.suffix))
+            self.quiet_info("$TTBR1_EL1{} is unused".format(self.suffix))
         return
 
     def pagewalk(self):
@@ -47533,8 +47523,7 @@ class PagewalkArmCommand(PagewalkCommand):
             else:
                 self.SECURE = False
             self.suffix = ""
-        if not self.quiet:
-            info("Secure world: {}".format(self.SECURE))
+        self.quiet_info("Secure world: {}".format(self.SECURE))
 
         # check AFE
         SCTLR = get_register('$SCTLR{}'.format(self.suffix))
@@ -47558,21 +47547,18 @@ class PagewalkArmCommand(PagewalkCommand):
         else:
             self.PXN = False
 
-        if not self.quiet:
-            if self.PXN:
-                info("{:s} is supported".format(Color.boldify("PXN")))
-            else:
-                info("PXN is unsupported")
-            info("PAN is unimplemented on all ARMv7")
+        if self.PXN:
+            self.quiet_info("{:s} is supported".format(Color.boldify("PXN")))
+        else:
+            self.quiet_info("PXN is unsupported")
+        self.quiet_info("PAN is unimplemented on all ARMv7")
 
         # pagewalk
         if self.LPAE:
-            if not self.quiet:
-                info("{:s} is enabled (using long description)".format(Color.boldify("LPAE")))
+            self.quiet_info("{:s} is enabled (using long description)".format(Color.boldify("LPAE")))
             self.pagewalk_long()
         else:
-            if not self.quiet:
-                info("LPAE is disabled (using short description)")
+            self.quiet_info("LPAE is disabled (using short description)")
             self.pagewalk_short()
         return
 
@@ -47601,11 +47587,16 @@ class PagewalkArmCommand(PagewalkCommand):
         if self.trace:
             self.vrange.extend(self.trace) # also set --vrange
             self.print_each_level = True # overwrite
+        self.use_pager = args.use_pager
         self.cache = {}
 
         self.mappings = None
+        self.out = []
         self.pagewalk()
         self.cache = {}
+
+        if self.out:
+            gef_print('\n'.join(self.out), less=self.use_pager)
         return
 
 
@@ -47629,6 +47620,7 @@ class PagewalkArm64Command(PagewalkCommand):
                         help='filter by map included specified physical address.')
     parser.add_argument('--trace', metavar='VADDR', default=[], action='append', type=lambda x: int(x, 16),
                         help='show all level pagetables only associated specified address.')
+    parser.add_argument('-p', '--use-pager', action='store_true', help='use pager (less).')
     _syntax_ = parser.format_help()
 
     # If you want to dump the secure world memory map, you need to break in the secure world.
@@ -48000,14 +47992,14 @@ class PagewalkArm64Command(PagewalkCommand):
                 err("Unsupported granule_bits")
             return
 
-        if not self.silent and not self.quiet:
-            info("granule_bits: {:d}".format(granule_bits))
-            info("LEVELM1_BIT_RANGE: " + str(self.LEVELM1_BIT_RANGE))
-            info("LEVEL0_BIT_RANGE: " + str(self.LEVEL0_BIT_RANGE))
-            info("LEVEL1_BIT_RANGE: " + str(self.LEVEL1_BIT_RANGE))
-            info("LEVEL2_BIT_RANGE: " + str(self.LEVEL2_BIT_RANGE))
-            info("LEVEL3_BIT_RANGE: " + str(self.LEVEL3_BIT_RANGE))
-            info("OFFSET_BIT_RANGE: " + str(self.OFFSET_BIT_RANGE))
+        if not self.silent:
+            self.quiet_info("granule_bits: {:d}".format(granule_bits))
+            self.quiet_info("LEVELM1_BIT_RANGE: " + str(self.LEVELM1_BIT_RANGE))
+            self.quiet_info("LEVEL0_BIT_RANGE: " + str(self.LEVEL0_BIT_RANGE))
+            self.quiet_info("LEVEL1_BIT_RANGE: " + str(self.LEVEL1_BIT_RANGE))
+            self.quiet_info("LEVEL2_BIT_RANGE: " + str(self.LEVEL2_BIT_RANGE))
+            self.quiet_info("LEVEL3_BIT_RANGE: " + str(self.LEVEL3_BIT_RANGE))
+            self.quiet_info("OFFSET_BIT_RANGE: " + str(self.OFFSET_BIT_RANGE))
         return
 
     def do_pagewalk(self, table_base, granule_bits, region_start, start_level=0, is_stage2=False, is_2VAranges=False):
@@ -48024,8 +48016,8 @@ class PagewalkArm64Command(PagewalkCommand):
 
         def get_entries_per_table(BIT_RANGE):
             entries_per_table = 2 ** (BIT_RANGE[1] - BIT_RANGE[0])
-            if not self.silent and not self.quiet:
-                info("Entries per table: {:d}".format(entries_per_table))
+            if not self.silent:
+                self.quiet_info("Entries per table: {:d}".format(entries_per_table))
             return entries_per_table
 
         def has_next_level(entry): # for Level0, 1, 2 but not Level3
@@ -48035,8 +48027,8 @@ class PagewalkArm64Command(PagewalkCommand):
         TABLE_BASE = [[region_start, table_base, flags]]
 
         # level -1 parse for 4KB granule
-        if not self.silent and not self.quiet:
-            gef_print(titlify("LEVEL -1"))
+        if not self.silent:
+            self.quiet_gef_print(titlify("LEVEL -1"))
         if self.LEVELM1_BIT_RANGE is not None and start_level == -1:
             entries_per_table = get_entries_per_table(self.LEVELM1_BIT_RANGE)
             LEVELM1 = []
@@ -48101,21 +48093,21 @@ class PagewalkArm64Command(PagewalkCommand):
                         line = fmt.format(addr, entry, new_va, new_va_end, entry_type, ' '.join(flags))
                         if self.is_not_filter_target(line):
                             continue
-                        gef_print(line)
+                        self.gef_print(line)
 
-            if not self.silent and not self.quiet:
-                info("Number of entries: {:d}".format(COUNT))
-                info("Level -1 Entry: {:d}".format(len(LEVELM1)))
-                info("Invalid entries: {:d}".format(COUNT - len(LEVELM1)))
+            if not self.silent:
+                self.quiet_info("Number of entries: {:d}".format(COUNT))
+                self.quiet_info("Level -1 Entry: {:d}".format(len(LEVELM1)))
+                self.quiet_info("Invalid entries: {:d}".format(COUNT - len(LEVELM1)))
             self.mappings += []
         else:
-            if not self.silent and not self.quiet:
-                info("LEVEL -1 is skipped")
+            if not self.silent:
+                self.quiet_info("LEVEL -1 is skipped")
             LEVELM1 = TABLE_BASE
 
         # level 0 parse for 4KB/16KB granule
-        if not self.silent and not self.quiet:
-            gef_print(titlify("LEVEL 0"))
+        if not self.silent:
+            self.quiet_gef_print(titlify("LEVEL 0"))
         if self.LEVEL0_BIT_RANGE is not None and start_level <= 0:
             entries_per_table = get_entries_per_table(self.LEVEL0_BIT_RANGE)
             LEVEL0 = []
@@ -48248,22 +48240,22 @@ class PagewalkArm64Command(PagewalkCommand):
                         line = fmt.format(addr, entry, new_va, new_va_end, entry_type, ' '.join(flags))
                         if self.is_not_filter_target(line):
                             continue
-                        gef_print(line)
+                        self.gef_print(line)
 
-            if not self.silent and not self.quiet:
-                info("Number of entries: {:d}".format(COUNT))
-                info("Level 0 Entry: {:d}".format(len(LEVEL0)))
-                info("PT Entry (512GB): {:d}".format(len(GB512)))
-                info("Invalid entries: {:d}".format(COUNT - len(LEVEL0) - len(GB512)))
+            if not self.silent:
+                self.quiet_info("Number of entries: {:d}".format(COUNT))
+                self.quiet_info("Level 0 Entry: {:d}".format(len(LEVEL0)))
+                self.quiet_info("PT Entry (512GB): {:d}".format(len(GB512)))
+                self.quiet_info("Invalid entries: {:d}".format(COUNT - len(LEVEL0) - len(GB512)))
             self.mappings += GB512
         else:
-            if not self.silent and not self.quiet:
-                info("LEVEL 0 is skipped")
+            if not self.silent:
+                self.quiet_info("LEVEL 0 is skipped")
             LEVEL0 = TABLE_BASE
 
         # level 1 parse for 4KB/16KB/64KB granule
-        if not self.silent and not self.quiet:
-            gef_print(titlify("LEVEL 1"))
+        if not self.silent:
+            self.quiet_gef_print(titlify("LEVEL 1"))
         if self.LEVEL1_BIT_RANGE is not None and start_level <= 1:
             entries_per_table = get_entries_per_table(self.LEVEL1_BIT_RANGE)
             LEVEL1 = []
@@ -48409,24 +48401,24 @@ class PagewalkArm64Command(PagewalkCommand):
                         line = fmt.format(addr, entry, new_va, new_va_end, entry_type, ' '.join(flags))
                         if self.is_not_filter_target(line):
                             continue
-                        gef_print(line)
+                        self.gef_print(line)
 
-            if not self.silent and not self.quiet:
-                info("Number of entries: {:d}".format(COUNT))
-                info("Level 1 Entry: {:d}".format(len(LEVEL1)))
-                info("PT Entry (1GB): {:d}".format(len(GB1)))
-                info("PT Entry (64GB): {:d}".format(len(GB64)))
-                info("PT Entry (4TB): {:d}".format(len(TB4)))
-                info("Invalid entries: {:d}".format(COUNT - len(LEVEL1) - len(GB1) - len(GB64) - len(TB4)))
+            if not self.silent:
+                self.quiet_info("Number of entries: {:d}".format(COUNT))
+                self.quiet_info("Level 1 Entry: {:d}".format(len(LEVEL1)))
+                self.quiet_info("PT Entry (1GB): {:d}".format(len(GB1)))
+                self.quiet_info("PT Entry (64GB): {:d}".format(len(GB64)))
+                self.quiet_info("PT Entry (4TB): {:d}".format(len(TB4)))
+                self.quiet_info("Invalid entries: {:d}".format(COUNT - len(LEVEL1) - len(GB1) - len(GB64) - len(TB4)))
             self.mappings += GB1 + GB64 + TB4
         else:
-            if not self.silent and not self.quiet:
-                info("LEVEL 1 is skipped")
+            if not self.silent:
+                self.quiet_info("LEVEL 1 is skipped")
             LEVEL1 = LEVEL0
 
         # level 2 parse for 4KB/16KB/64KB granule
-        if not self.silent and not self.quiet:
-            gef_print(titlify("LEVEL 2"))
+        if not self.silent:
+            self.quiet_gef_print(titlify("LEVEL 2"))
         if self.LEVEL2_BIT_RANGE is not None and start_level <= 2:
             entries_per_table = get_entries_per_table(self.LEVEL2_BIT_RANGE)
             LEVEL2 = []
@@ -48572,24 +48564,24 @@ class PagewalkArm64Command(PagewalkCommand):
                         line = fmt.format(addr, entry, new_va, new_va_end, entry_type, ' '.join(flags))
                         if self.is_not_filter_target(line):
                             continue
-                        gef_print(line)
+                        self.gef_print(line)
 
-            if not self.silent and not self.quiet:
-                info("Number of entries: {:d}".format(COUNT))
-                info("Level 2 Entry: {:d}".format(len(LEVEL2)))
-                info("PT Entry (2MB): {:d}".format(len(MB2)))
-                info("PT Entry (32MB): {:d}".format(len(MB32)))
-                info("PT Entry (512MB): {:d}".format(len(MB512)))
-                info("Invalid entries: {:d}".format(COUNT - len(LEVEL2) - len(MB2) - len(MB32) - len(MB512)))
+            if not self.silent:
+                self.quiet_info("Number of entries: {:d}".format(COUNT))
+                self.quiet_info("Level 2 Entry: {:d}".format(len(LEVEL2)))
+                self.quiet_info("PT Entry (2MB): {:d}".format(len(MB2)))
+                self.quiet_info("PT Entry (32MB): {:d}".format(len(MB32)))
+                self.quiet_info("PT Entry (512MB): {:d}".format(len(MB512)))
+                self.quiet_info("Invalid entries: {:d}".format(COUNT - len(LEVEL2) - len(MB2) - len(MB32) - len(MB512)))
             self.mappings += MB2 + MB32 + MB512
         else:
-            if not self.silent and not self.quiet:
-                info("LEVEL 2 is skipped")
+            if not self.silent:
+                self.quiet_info("LEVEL 2 is skipped")
             LEVEL2 = LEVEL1
 
         # level 3 parse for 4KB/16KB/64KB granule
-        if not self.silent and not self.quiet:
-            gef_print(titlify("LEVEL 3"))
+        if not self.silent:
+            self.quiet_gef_print(titlify("LEVEL 3"))
         if self.LEVEL3_BIT_RANGE is not None and start_level <= 3:
             entries_per_table = get_entries_per_table(self.LEVEL3_BIT_RANGE)
             KB4 = []
@@ -48714,23 +48706,23 @@ class PagewalkArm64Command(PagewalkCommand):
                         line = fmt.format(addr, entry, virt_addr, virt_addr_end, entry_type, ' '.join(flags))
                         if self.is_not_filter_target(line):
                             continue
-                        gef_print(line)
+                        self.gef_print(line)
 
-            if not self.silent and not self.quiet:
-                info("Number of entries: {:d}".format(COUNT))
-                info("PT Entry (4KB): {:d}".format(len(KB4)))
-                info("PT Entry (16KB): {:d}".format(len(KB16)))
-                info("PT Entry (64KB): {:d}".format(len(KB64)))
-                info("Invalid entries: {:d}".format(COUNT - len(KB4) - len(KB16) - len(KB64)))
+            if not self.silent:
+                self.quiet_info("Number of entries: {:d}".format(COUNT))
+                self.quiet_info("PT Entry (4KB): {:d}".format(len(KB4)))
+                self.quiet_info("PT Entry (16KB): {:d}".format(len(KB16)))
+                self.quiet_info("PT Entry (64KB): {:d}".format(len(KB64)))
+                self.quiet_info("Invalid entries: {:d}".format(COUNT - len(KB4) - len(KB16) - len(KB64)))
             self.mappings += KB4 + KB16 + KB64
         else:
-            if not self.silent and not self.quiet:
-                info("LEVEL 3 is skipped")
+            if not self.silent:
+                self.quiet_info("LEVEL 3 is skipped")
 
         # Finalize
-        if not self.silent and not self.quiet:
-            gef_print(titlify("Total"))
-            info("PT Entry (Total): {:d}".format(len(self.mappings)))
+        if not self.silent:
+            self.quiet_gef_print(titlify("Total"))
+            self.quiet_info("PT Entry (Total): {:d}".format(len(self.mappings)))
         self.mappings = sorted(self.mappings)
         return
 
@@ -48748,8 +48740,7 @@ class PagewalkArm64Command(PagewalkCommand):
                 CPSR = CPSR & ~(0b11 << 2) # clear EL
                 CPSR |= self.TargetEL << 2 # set desired EL
                 gdb.parse_and_eval('$cpsr = 0x%08x' % CPSR)
-                if not self.quiet:
-                    info('Moving to EL%d' % (self.TargetEL))
+                self.quiet_info('Moving to EL%d' % (self.TargetEL))
         except ValueError:
             err("Invalid argument (ELx integer required)")
             return
@@ -48759,20 +48750,18 @@ class PagewalkArm64Command(PagewalkCommand):
         # reload CPSR
         CPSR = get_register('$cpsr') & 0xffffffff
         CurrentEL = int((CPSR >> 2) & 0b11)
-        if not self.quiet:
-            info('CPSR: EL%d' % (CurrentEL))
+        self.quiet_info('CPSR: EL%d' % (CurrentEL))
         return True
 
     def revert_el(self):
         if self.SAVED_CPSR:
             gdb.parse_and_eval('$cpsr = 0x%08x' % self.SAVED_CPSR)
             SavedEL = (self.SAVED_CPSR >> 2) & 0b11
-            if not self.quiet:
-                info('Moving back to EL%d' % (SavedEL))
+            self.quiet_info('Moving back to EL%d' % (SavedEL))
         return
 
     def pagewalk_TTBR0_EL1(self):
-        gef_print(titlify("$TTBR0_EL1"))
+        self.gef_print(titlify("$TTBR0_EL1"))
 
         TTBR0_EL1 = get_register('$TTBR0_EL1')
         TCR_EL1 = get_register('$TCR_EL1')
@@ -48803,12 +48792,11 @@ class PagewalkArm64Command(PagewalkCommand):
         else:
             translation_base_addr = TTBR0_EL1 & 0xfffffffffffe
 
-        if not self.quiet:
-            info('$TTBR0_EL1: {:#x}'.format(TTBR0_EL1))
-            info('$TCR_EL1: {:#x}'.format(TCR_EL1))
-            info('Intermediate Physical Address Size: {:d} bits'.format(intermediate_pa_size))
-            info('EL1 User Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end - 1, region_bits))
-            info('EL1 User Page Size: {:d}KB (per page)'.format(page_size))
+        self.quiet_info('$TTBR0_EL1: {:#x}'.format(TTBR0_EL1))
+        self.quiet_info('$TCR_EL1: {:#x}'.format(TCR_EL1))
+        self.quiet_info('Intermediate Physical Address Size: {:d} bits'.format(intermediate_pa_size))
+        self.quiet_info('EL1 User Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end - 1, region_bits))
+        self.quiet_info('EL1 User Page Size: {:d}KB (per page)'.format(page_size))
 
         self.parse_bit_range(granule_bits, region_bits)
         self.do_pagewalk(translation_base_addr, granule_bits, region_start, is_2VAranges=True)
@@ -48816,7 +48804,7 @@ class PagewalkArm64Command(PagewalkCommand):
         return
 
     def pagewalk_TTBR1_EL1(self):
-        gef_print(titlify("$TTBR1_EL1"))
+        self.gef_print(titlify("$TTBR1_EL1"))
 
         TTBR1_EL1 = get_register('$TTBR1_EL1')
         TCR_EL1 = get_register('$TCR_EL1')
@@ -48847,12 +48835,11 @@ class PagewalkArm64Command(PagewalkCommand):
         else:
             translation_base_addr = TTBR1_EL1 & 0xfffffffffffe
 
-        if not self.quiet:
-            info('$TTBR1_EL1: {:#x}'.format(TTBR1_EL1))
-            info('$TCR_EL1: {:#x}'.format(TCR_EL1))
-            info('Intermediate Physical Address Size: {:d} bits'.format(intermediate_pa_size))
-            info('EL1 Kernel Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end - 1, region_bits))
-            info('EL1 Kernel Page Size: {:d}KB (per page)'.format(page_size))
+        self.quiet_info('$TTBR1_EL1: {:#x}'.format(TTBR1_EL1))
+        self.quiet_info('$TCR_EL1: {:#x}'.format(TCR_EL1))
+        self.quiet_info('Intermediate Physical Address Size: {:d} bits'.format(intermediate_pa_size))
+        self.quiet_info('EL1 Kernel Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end - 1, region_bits))
+        self.quiet_info('EL1 Kernel Page Size: {:d}KB (per page)'.format(page_size))
 
         self.parse_bit_range(granule_bits, region_bits)
         self.do_pagewalk(translation_base_addr, granule_bits, region_start, is_2VAranges=True)
@@ -48861,7 +48848,7 @@ class PagewalkArm64Command(PagewalkCommand):
 
     def pagewalk_VTTBR_EL2(self):
         if not self.silent:
-            gef_print(titlify("$VTTBR_EL2"))
+            self.gef_print(titlify("$VTTBR_EL2"))
 
         VTTBR_EL2 = get_register('$VTTBR_EL2')
         VTCR_EL2 = get_register('$VTCR_EL2')
@@ -48957,13 +48944,13 @@ class PagewalkArm64Command(PagewalkCommand):
         else:
             translation_base_addr = VTTBR_EL2 & 0xfffffffffffe
 
-        if not self.silent and not self.quiet:
-            info('$VTTBR_EL2: {:#x}'.format(VTTBR_EL2))
-            info('$VTCR_EL2: {:#x}'.format(VTCR_EL2))
-            info('Physical Address Size: {:d} bits'.format(pa_size))
-            info('EL2 Starting Level: {:d}'.format(SL0))
-            info('EL2 Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end - 1, region_bits))
-            info('EL2 Page Size: {:d}KB (per page)'.format(page_size))
+        if not self.silent:
+            self.quiet_info('$VTTBR_EL2: {:#x}'.format(VTTBR_EL2))
+            self.quiet_info('$VTCR_EL2: {:#x}'.format(VTCR_EL2))
+            self.quiet_info('Physical Address Size: {:d} bits'.format(pa_size))
+            self.quiet_info('EL2 Starting Level: {:d}'.format(SL0))
+            self.quiet_info('EL2 Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end - 1, region_bits))
+            self.quiet_info('EL2 Page Size: {:d}KB (per page)'.format(page_size))
 
         self.parse_bit_range(granule_bits, region_bits)
         self.do_pagewalk(translation_base_addr, granule_bits, region_start, start_level=stage2_start_level, is_stage2=True)
@@ -48972,7 +48959,7 @@ class PagewalkArm64Command(PagewalkCommand):
         return
 
     def pagewalk_TTBR0_EL2(self):
-        gef_print(titlify("$TTBR0_EL2"))
+        self.gef_print(titlify("$TTBR0_EL2"))
 
         TTBR0_EL2 = get_register('$TTBR0_EL2')
         TCR_EL2 = get_register('$TCR_EL2')
@@ -49015,19 +49002,18 @@ class PagewalkArm64Command(PagewalkCommand):
         else:
             translation_base_addr = TTBR0_EL2 & 0xfffffffffffe
 
-        if not self.quiet:
-            info('$TTBR0_EL2: {:#x}'.format(TTBR0_EL2))
-            info('$TCR_EL2: {:#x}'.format(TCR_EL2))
-            if self.EL2_E2H:
-                info('Intermediate Physical Address Size: {:d} bits'.format(intermediate_pa_size))
-            else:
-                info('Physical Address Size: {:d} bits'.format(pa_size))
-            if self.EL2_M20:
-                info('EL2 User Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end - 1, region_bits))
-                info('EL2 USer Page Size: {:d}KB (per page)'.format(page_size))
-            else:
-                info('EL2 Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end - 1, region_bits))
-                info('EL2 Page Size: {:d}KB (per page)'.format(page_size))
+        self.quiet_info('$TTBR0_EL2: {:#x}'.format(TTBR0_EL2))
+        self.quiet_info('$TCR_EL2: {:#x}'.format(TCR_EL2))
+        if self.EL2_E2H:
+            self.quiet_info('Intermediate Physical Address Size: {:d} bits'.format(intermediate_pa_size))
+        else:
+            self.quiet_info('Physical Address Size: {:d} bits'.format(pa_size))
+        if self.EL2_M20:
+            self.quiet_info('EL2 User Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end - 1, region_bits))
+            self.quiet_info('EL2 USer Page Size: {:d}KB (per page)'.format(page_size))
+        else:
+            self.quiet_info('EL2 Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end - 1, region_bits))
+            self.quiet_info('EL2 Page Size: {:d}KB (per page)'.format(page_size))
 
         self.parse_bit_range(granule_bits, region_bits)
         self.do_pagewalk(translation_base_addr, granule_bits, region_start, is_2VAranges=self.EL2_M20)
@@ -49035,7 +49021,7 @@ class PagewalkArm64Command(PagewalkCommand):
         return
 
     def pagewalk_TTBR1_EL2(self):
-        gef_print(titlify("$TTBR1_EL2"))
+        self.gef_print(titlify("$TTBR1_EL2"))
 
         TTBR1_EL2 = get_register('$TTBR1_EL2')
         TCR_EL2 = get_register('$TCR_EL2')
@@ -49066,12 +49052,11 @@ class PagewalkArm64Command(PagewalkCommand):
         else:
             translation_base_addr = TTBR1_EL2 & 0xfffffffffffe
 
-        if not self.quiet:
-            info('$TTBR1_EL2: {:#x}'.format(TTBR1_EL2))
-            info('$TCR_EL2: {:#x}'.format(TCR_EL2))
-            info('Intermediate Physical Address Size: {:d} bits'.format(intermediate_pa_size))
-            info('EL2 Kernel Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end - 1, region_bits))
-            info('EL2 Kernel Page Size: {:d}KB (per page)'.format(page_size))
+        self.quiet_info('$TTBR1_EL2: {:#x}'.format(TTBR1_EL2))
+        self.quiet_info('$TCR_EL2: {:#x}'.format(TCR_EL2))
+        self.quiet_info('Intermediate Physical Address Size: {:d} bits'.format(intermediate_pa_size))
+        self.quiet_info('EL2 Kernel Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end - 1, region_bits))
+        self.quiet_info('EL2 Kernel Page Size: {:d}KB (per page)'.format(page_size))
 
         self.parse_bit_range(granule_bits, region_bits)
         self.do_pagewalk(translation_base_addr, granule_bits, region_start, is_2VAranges=self.EL2_M20)
@@ -49079,7 +49064,7 @@ class PagewalkArm64Command(PagewalkCommand):
         return
 
     def pagewalk_TTBR0_EL3(self):
-        gef_print(titlify("$TTBR0_EL3"))
+        self.gef_print(titlify("$TTBR0_EL3"))
 
         TTBR0_EL3 = get_register('$TTBR0_EL3')
         TCR_EL3 = get_register('$TCR_EL3')
@@ -49110,12 +49095,11 @@ class PagewalkArm64Command(PagewalkCommand):
         else:
             translation_base_addr = TTBR0_EL3 & 0xfffffffffffe
 
-        if not self.quiet:
-            info('$TTBR0_EL3: {:#x}'.format(TTBR0_EL3))
-            info('$TCR_EL3: {:#x}'.format(TCR_EL3))
-            info('Physical Address Size: {:d} bits'.format(pa_size))
-            info('EL3 Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end - 1, region_bits))
-            info('EL3 Page Size: {:d}KB (per page)'.format(page_size))
+        self.quiet_info('$TTBR0_EL3: {:#x}'.format(TTBR0_EL3))
+        self.quiet_info('$TCR_EL3: {:#x}'.format(TCR_EL3))
+        self.quiet_info('Physical Address Size: {:d} bits'.format(pa_size))
+        self.quiet_info('EL3 Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end - 1, region_bits))
+        self.quiet_info('EL3 Page Size: {:d}KB (per page)'.format(page_size))
 
         self.parse_bit_range(granule_bits, region_bits)
         self.do_pagewalk(translation_base_addr, granule_bits, region_start)
@@ -49183,12 +49167,11 @@ class PagewalkArm64Command(PagewalkCommand):
             self.FEAT_PAN = ((ID_AA64MMFR1_EL1 >> 20) & 0b1111) != 0b0000
         else:
             self.FEAT_PAN = False
-        if not self.quiet:
-            info("{:s} is supported on all ARMv8".format(Color.boldify("PXN")))
-            if self.FEAT_PAN:
-                info("{:s} is supported".format(Color.boldify("PAN")))
-            else:
-                info("PAN is unsupported")
+        self.quiet_info("{:s} is supported on all ARMv8".format(Color.boldify("PXN")))
+        if self.FEAT_PAN:
+            self.quiet_info("{:s} is supported".format(Color.boldify("PAN")))
+        else:
+            self.quiet_info("PAN is unsupported")
 
         ID_AA64MMFR2_EL1 = get_register('$ID_AA64MMFR2_EL1')
         if ID_AA64MMFR2_EL1 is not None:
@@ -49221,28 +49204,24 @@ class PagewalkArm64Command(PagewalkCommand):
             self.pagewalk_TTBR0_EL1()
             self.pagewalk_TTBR1_EL1()
         if self.TargetEL == 1 and not self.EL1_M:
-            if not self.quiet:
-                info("EL1/0 translation is unused")
+            self.quiet_info("EL1/0 translation is unused")
         if self.TargetEL == 2 and self.EL2_VM:
             self.pagewalk_VTTBR_EL2()
         if self.TargetEL == 2 and not self.EL2_VM:
-            if not self.quiet:
-                info("EL2(as stage2) translation is unused")
+            self.quiet_info("EL2(as stage2) translation is unused")
         if self.TargetEL == 2 and self.EL2_M:
             self.pagewalk_TTBR0_EL2()
             if self.EL2_M20:
                 self.pagewalk_TTBR1_EL2()
         if self.TargetEL == 2 and self.EL2_VM:
-            if not self.quiet:
-                info("EL2(as stage1) translation is unused")
+            self.quiet_info("EL2(as stage1) translation is unused")
         if self.TargetEL == 3 and self.EL3_M:
             if not self.switch_el():
                 return
             self.pagewalk_TTBR0_EL3()
             self.revert_el()
         if self.TargetEL == 3 and not self.EL3_M:
-            if not self.quiet:
-                info("EL3 translation is unused")
+            self.quiet_info("EL3 translation is unused")
         return
 
     @parse_args
@@ -49270,13 +49249,18 @@ class PagewalkArm64Command(PagewalkCommand):
         if self.trace:
             self.vrange.extend(self.trace) # also set --vrange
             self.print_each_level = True # overwrite
+        self.use_pager = args.use_pager
         self.cache = {}
 
         self.silent = False
         self.mappings = None
         self.el2_mappings = None
+        self.out = []
         self.pagewalk()
         self.cache = {}
+
+        if self.out:
+            gef_print('\n'.join(self.out), less=self.use_pager)
         return
 
 
