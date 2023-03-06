@@ -13668,10 +13668,6 @@ class GlibcHeapChunksCommand(GenericCommand):
 
             line = str(current_chunk)
 
-            # peek nbyte
-            if nb:
-                line += "\n    [" + hexdump(read_memory(current_chunk.address, nb), nb, base=current_chunk.address) + "]"
-
             # in or not in free-list
             for k, v in tcache_list.items():
                 if current_chunk.address in v:
@@ -13688,6 +13684,12 @@ class GlibcHeapChunksCommand(GenericCommand):
             for k, v in largebin_list.items():
                 if current_chunk.address in v:
                     line += " {} {}".format(LEFT_ARROW, Color.colorify("largebin[{}]".format(k), "bold blue"))
+
+            # peek nbyte
+            if nb:
+                peeked_data = read_memory(current_chunk.chunk_base_address, nb)
+                h = hexdump(peeked_data, 0x10, base=current_chunk.chunk_base_address)
+                line += "\n{:s}".format(h.replace("\n", "     \n"))
 
             gef_print(line)
             next_chunk = current_chunk.get_next_chunk()
@@ -51481,7 +51483,7 @@ class GefConfigCommand(gdb.Command):
             err("Invalid command format")
             return
 
-        loaded_commands = [x[0] for x in __gef__.loaded_commands] + ["gef"]
+        loaded_commands = [x[0].replace(" ", "-") for x in __gef__.loaded_commands] + ["gef"]
         plugin_name = argv[0].split(".", 1)[0]
         if plugin_name not in loaded_commands:
             err("Unknown plugin '{:s}'".format(plugin_name))
