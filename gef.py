@@ -9868,8 +9868,7 @@ class GenericCommand(gdb.Command):
 
 @register_command
 class ResetCacheCommand(GenericCommand):
-    """Reset cache of all stored data. This command is here for debugging and test purposes,
-    GEF handles properly the cache reset under "normal" scenario."""
+    """Reset cache of all stored data for debugging and test purposes."""
     _cmdline_ = "reset-cache"
     _category_ = "99. GEF Maintenance Command"
 
@@ -10215,7 +10214,7 @@ class HighlightRemoveCommand(GenericCommand):
 
 @register_command
 class NiCommand(GenericCommand):
-    """nexti wrapper for specific arch.
+    """`ni` wrapper for specific arch.
     s390x: it sometimes returns `PC not saved` when nexti command is executed.
     or1k: branch operations don't work well, so use breakpoints to simulate.
     cris: si/ni commands don't work well. so use breakpoints to simulate."""
@@ -10291,7 +10290,7 @@ class NiCommand(GenericCommand):
 
 @register_command
 class SiCommand(GenericCommand):
-    """stepi wrapper for specific arch.
+    """`si` wrapper for specific arch.
     s390x: it sometimes returns `PC not saved` when stepi command is executed.
     or1k: branch operations don't work well, so use breakpoints to simulate.
     cris: si/ni commands don't work well. so use breakpoints to simulate."""
@@ -10367,8 +10366,7 @@ class SiCommand(GenericCommand):
 
 @register_command
 class ContCommand(GenericCommand):
-    """qemu-user does not trap SIGINT during "continue". Realize a pseudo SIGINT trap by trapping
-    SIGINT on the python side and throwing SIGINT back to qemu-user."""
+    """`c` wraper to solve the problem that Ctrl+C cannot interrupt when using qemu-user gdb stub."""
     _cmdline_ = "c"
     _category_ = "01-c. Debugging Support - Basic Command Extension"
 
@@ -10806,8 +10804,7 @@ class EnvpCommand(GenericCommand):
 
 @register_command
 class PidCommand(GenericCommand):
-    """The PID of the local process will be displayed if it can be acquired. If the acquisition fails,
-    the PID of the remote process will be displayed if it can be acquired."""
+    """Show the local PID or remote PID."""
     _cmdline_ = "pid"
     _category_ = "02-d. Process Information - Trivial Information"
 
@@ -10870,8 +10867,7 @@ class FilenameCommand(GenericCommand):
 
 @register_command
 class ProcInfoCommand(GenericCommand):
-    """Extends the info given by GDB `info proc`, by giving an exhaustive description of the
-    process status (file descriptors, parent, childs, etc.)."""
+    """Extends the info given by GDB `info proc`."""
     _cmdline_ = "procinfo"
     _category_ = "02-a. Process Information - General"
     _aliases_ = ["pr"]
@@ -11658,8 +11654,7 @@ class HijackFdCommand(GenericCommand):
 
 @register_command
 class ScanSectionCommand(GenericCommand):
-    """Search for addresses that are located in a memory mapping (haystack) that belonging
-    to another (needle)."""
+    """Search for addresses that are located in a memory mapping (haystack) that belonging to another (needle)."""
     _cmdline_ = "scan-section"
     _category_ = "03-a. Memory - Search"
 
@@ -11744,8 +11739,7 @@ class ScanSectionCommand(GenericCommand):
 
 @register_command
 class SearchPatternCommand(GenericCommand):
-    """Search a pattern in memory. If given an hex value (starting with 0x)
-    the command will also try to look for upwards cross-references to this address."""
+    """Search a pattern in memory."""
     _cmdline_ = "search-pattern"
     _category_ = "03-a. Memory - Search"
     _aliases_ = ["find"]
@@ -12519,7 +12513,7 @@ class MprotectCommand(GenericCommand):
 
 @register_command
 class CallSyscallCommand(GenericCommand):
-    """Wrapper for syscall."""
+    """A wrapper for calling syscall easily."""
     _cmdline_ = "call-syscall"
     _category_ = "05-a. Syscall - Invoke"
 
@@ -12798,10 +12792,7 @@ class MmapMemoryCommand(GenericCommand):
 
 @register_command
 class UnicornEmulateCommand(GenericCommand):
-    """Use Unicorn-Engine to emulate the behavior of the binary, without affecting the GDB runtime.
-    By default the command will emulate only the next instruction, but location and number of
-    instruction can be changed via arguments to the command line. By default, it will emulate
-    the next instruction from current PC."""
+    """Use Unicorn-Engine to emulate the behavior of the binary."""
     _cmdline_ = "unicorn-emulate"
     _category_ = "01-d. Debugging Support - Execution"
     _aliases_ = ["emulate"]
@@ -13214,8 +13205,7 @@ class UnicornEmulateCommand(GenericCommand):
 
 @register_command
 class StubCommand(GenericCommand):
-    """Stub out the specified function. This function is useful when needing to skip one
-    function to be called and disrupt your runtime flow (ex. fork)."""
+    """Stub out the specified function to skip it. (ex: fork)."""
     _cmdline_ = "stub"
     _category_ = "03-c. Memory - Patch"
     _aliases_ = ["deactive"]
@@ -14379,7 +14369,7 @@ class DetailRegistersCommand(GenericCommand):
 
 @register_command
 class RopperCommand(GenericCommand):
-    """Call ropper (http://scoding.de/ropper) plugin."""
+    """Invoke ropper to search rop gadgets."""
     _cmdline_ = "ropper"
     _category_ = "07-b. External Command - Exploit Development"
 
@@ -14447,7 +14437,7 @@ class RopperCommand(GenericCommand):
 
 @register_command
 class RpCommand(GenericCommand):
-    """Invoke rp++ v1 command. x86/x64 only."""
+    """Invoke rp++ v1 command to search rop gadgets. (x64/x86 only)"""
     _cmdline_ = "rp"
     _category_ = "07-b. External Command - Exploit Development"
 
@@ -14576,7 +14566,7 @@ class RpCommand(GenericCommand):
 
 @register_command
 class Rp2Command(RpCommand):
-    """Invoke rp++ v2 command. x86/x64 only."""
+    """Invoke rp++ v2 command to search rop gadgets. (x64/x86 only)"""
     _cmdline_ = "rp2"
     _category_ = "07-b. External Command - Exploit Development"
 
@@ -14603,7 +14593,7 @@ class Rp2Command(RpCommand):
 
 @register_command
 class AssembleCommand(GenericCommand):
-    """Inline code assemble by keystone. Architecture can be set in GEF runtime config."""
+    """Inline code assemble by keystone."""
     _cmdline_ = "asm"
     _category_ = "01-e. Debugging Support - Assemble"
 
@@ -14706,7 +14696,7 @@ class AssembleCommand(GenericCommand):
 
 @register_command
 class DisassembleCommand(GenericCommand):
-    """Inline code disassemble by capstone. Architecture can be set in GEF runtime config (default x86-64). """
+    """Inline code disassemble by capstone."""
     _cmdline_ = "dasm"
     _category_ = "01-e. Debugging Support - Assemble"
 
@@ -15028,8 +15018,7 @@ class AsmListCommand(GenericCommand):
 
 @register_command
 class ProcessListingCommand(GenericCommand):
-    """List and filter process. If a PATTERN is given as argument, results shown will be grepped
-    by this pattern."""
+    """List and filter processes."""
     _cmdline_ = "process-search"
     _category_ = "09-b. Misc - Search"
     _aliases_ = ["ps"]
@@ -15222,8 +15211,7 @@ class ArchInfoCommand(GenericCommand):
 
 @register_command
 class ElfInfoCommand(GenericCommand):
-    """Display a limited subset of ELF header information. If no argument is provided,
-    the command will show information about the current ELF being debugged."""
+    """Display a limited subset of ELF header information."""
     _cmdline_ = "elf-info"
     _category_ = "02-a. Process Information - General"
 
@@ -15765,9 +15753,7 @@ class ElfInfoCommand(GenericCommand):
 
 @register_command
 class ChecksecCommand(GenericCommand):
-    """Checksec the security properties of the current executable or passed as argument.
-    This command checks for the following protections:
-    Static/Dynamic, Stripped, Canary, NX, PIE, RELRO, FORTIFY_SOURCE, CET, RPATH, RUNPATH, ASLR"""
+    """Checksec the security properties of the current executable or passed as argument."""
     _cmdline_ = "checksec"
     _category_ = "02-f. Process Information - Security"
 
@@ -17907,10 +17893,7 @@ class NamedBreakpointCommand(GenericCommand):
 
 @register_command
 class ContextCommand(GenericCommand):
-    """Displays a comprehensive and modular summary of runtime context. Unless setting `enable` is
-    set to False, this command will be spawned automatically every time GDB hits a breakpoint, a
-    watchpoint, or any kind of interrupt. By default, it will show panes that contain the register
-    states, the stack, and the disassembly code around $pc."""
+    """Displays various information every time GDB hits a breakpoint."""
     _cmdline_ = "context"
     _category_ = "01-a. Debugging Support - Context"
     _aliases_ = ["ctx"]
@@ -20322,8 +20305,7 @@ class DereferenceCommand(GenericCommand):
 
 @register_command
 class ASLRCommand(GenericCommand):
-    """View/modify the ASLR setting of GDB. By default, GDB will disable ASLR when it starts
-    the process (i.e. not attached). This command allows to change that setting."""
+    """View/modify the ASLR setting of GDB."""
     _cmdline_ = "aslr"
     _category_ = "02-f. Process Information - Security"
 
@@ -20360,8 +20342,7 @@ class ASLRCommand(GenericCommand):
 
 @register_command
 class FollowCommand(GenericCommand):
-    """View/modify the follow-fork-mode setting of GDB. By default, GDB will follow parent
-    when it starts the process. This command allows to change that setting."""
+    """View/modify the follow-fork-mode setting of GDB."""
     _cmdline_ = "follow"
     _category_ = "01-g. Debugging Support - Other"
 
@@ -20415,8 +20396,7 @@ class SmartCppFunctionNameCommand(GenericCommand):
 
 @register_command
 class VMMapCommand(GenericCommand):
-    """Display a comprehensive layout of the virtual memory mapping. If a filter argument, GEF will
-    filter out the mapping whose pathname do not match that filter."""
+    """Display a comprehensive layout of the virtual memory mapping."""
     _cmdline_ = "vmmap"
     _category_ = "02-c. Process Information - Memory/Section"
 
@@ -20544,9 +20524,7 @@ class VMMapCommand(GenericCommand):
 
 @register_command
 class XFilesCommand(GenericCommand):
-    """Shows all libraries (and sections) loaded by binary. This command extends the GDB command
-    `info files`, by retrieving more information from extra sources, and providing a better
-    display with REGEX filtering."""
+    """Shows all libraries (and sections) loaded by binary."""
     _cmdline_ = "xfiles"
     _category_ = "02-c. Process Information - Memory/Section"
 
@@ -20655,7 +20633,7 @@ class XInfoCommand(GenericCommand):
 
 @register_command
 class XorMemoryCommand(GenericCommand):
-    """XOR a block of memory. The command allows to simply display the result, or patch it at runtime."""
+    """XOR a block of memory, then display or patch it."""
     _cmdline_ = "xor-memory"
     _category_ = "03-d. Memory - Calculation"
 
@@ -20763,9 +20741,7 @@ class XorMemoryPatchCommand(GenericCommand):
 
 @register_command
 class PatternCommand(GenericCommand):
-    """This command will create or search a De Bruijn cyclic pattern to facilitate
-    determining the offset in memory. The algorithm used is the same as the one
-    used by pwntools, and can therefore be used in conjunction."""
+    """Create or search a De Bruijn cyclic pattern to facilitate determining the offset in memory."""
     _cmdline_ = "pattern"
     _category_ = "09-c. Misc - Generation"
 
@@ -21070,7 +21046,7 @@ class SropHintCommand(GenericCommand):
 
 @register_command
 class Ret2dlHintCommand(GenericCommand):
-    """Hint for ret2dl."""
+    """Hint for return-to-dl-resolve."""
     _cmdline_ = "ret2dl-hint"
     _category_ = "09-d. Misc - Show Example"
 
@@ -22219,10 +22195,7 @@ class GotCommand(GenericCommand):
 
 @register_command
 class FormatStringSearchCommand(GenericCommand):
-    """Exploitable format-string helper: this command will set up specific breakpoints
-    at well-known dangerous functions (printf, snprintf, etc.), and check if the pointer
-    holding the format string is writable, and therefore susceptible to format string
-    attacks if an attacker can control its content."""
+    """The helper to search exploitable format-string."""
     _cmdline_ = "format-string-helper"
     _category_ = "01-g. Debugging Support - Other"
     _aliases_ = ["fmtstr-helper"]
@@ -22330,10 +22303,7 @@ class FormatStringSearchCommand(GenericCommand):
 
 @register_command
 class HeapAnalysisCommand(GenericCommand):
-    """Heap vulnerability analysis helper: this command aims to track dynamic heap allocation
-    done through malloc()/free() to provide some insights on possible heap vulnerabilities. The
-    following vulnerabilities are checked: NULL free, Use-after-Free, Double Free, Heap overlap.
-    Behavior changes are made in the config."""
+    """Trace malloc/free to check heap integrity for NULL free, Use-after-Free, Double Free, Heap overlap."""
     _cmdline_ = "heap-analysis-helper"
     _category_ = "06-a. Heap - Glibc"
 
@@ -34327,7 +34297,7 @@ class LdCommand(GenericCommand):
 class MagicCommand(GenericCommand):
     """Show Magic addresses / offsets."""
     _cmdline_ = "magic"
-    _category_ = "02-f. Process Information - Symbol"
+    _category_ = "02-g. Process Information - Symbol"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--fj", action='store_true', help='print _IO_xxx_jumps functions')
@@ -35609,8 +35579,7 @@ class ErrnoCommand(GenericCommand):
 
 @register_command
 class ExtractHeapAddrCommand(GenericCommand):
-    """Extract heap address from protected `fd` pointer of single linked-list.
-    This will be introduced from glibc 2.32."""
+    """Extract heap address from protected `fd` pointer of single linked-list. (introduced from glibc 2.32)"""
     _cmdline_ = "extract-heap-addr"
     _category_ = "06-a. Heap - Glibc"
 
@@ -35718,7 +35687,7 @@ class FindFakeFastCommand(GenericCommand):
 
 @register_command
 class VisualHeapCommand(GenericCommand):
-    """Visualize top 10 chunks on a heap (default: main_arena)."""
+    """Visualize chunks on a heap."""
     _cmdline_ = "visual-heap"
     _category_ = "06-a. Heap - Glibc"
 
@@ -39059,7 +39028,7 @@ class GdtInfoCommand(GenericCommand):
 
 @register_command
 class MemoryCompareCommand(GenericCommand):
-    """Memory Compare."""
+    """Compares the memory contents of two locations."""
     _cmdline_ = "memcmp"
     _category_ = "03-b. Memory - View"
 
@@ -39153,7 +39122,7 @@ class MemoryCompareCommand(GenericCommand):
 
 @register_command
 class MemoryCopyCommand(GenericCommand):
-    """Memory Copy."""
+    """Copies the contents of one memory to another."""
     _cmdline_ = "memcpy"
     _category_ = "03-c. Memory - Patch"
 
@@ -42483,8 +42452,8 @@ class PartitionAllocDumpCommand(GenericCommand):
 
 @register_command
 class MuslDumpCommand(GenericCommand):
-    """musl heap reusable chunks viewer (supported on x64/x86, based on musl libc v1.2.2; src/malloc/mallocng).
-    See https://h-noson.hatenablog.jp/entry/2021/05/03/161933#-177pts-mooosl"""
+    """musl v1.2.2 (src/malloc/mallocng) heap reusable chunks viewer. (x64/x86 only)"""
+    # See https://h-noson.hatenablog.jp/entry/2021/05/03/161933#-177pts-mooosl
     _cmdline_ = "musl-dump"
     _category_ = "06-b. Heap - Other"
 
@@ -49945,8 +49914,7 @@ class ThunkBreakpoint(gdb.Breakpoint):
 
 @register_command
 class ThunkHunterCommand(GenericCommand):
-    """Collects and displays the thunk addresses that are called automatically.
-    If this address comes from RW area, this is useful for getting RIP.(x64/x86 only)"""
+    """Collects and displays the thunk addresses that are called automatically. (x64/x86 only)"""
     _cmdline_ = "thunk-hunter"
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
@@ -50637,7 +50605,7 @@ class KsymaddrRemoteApplyCommand(GenericCommand):
 
 @register_command
 class WalkLinkListCommand(GenericCommand):
-    """Walk the link list"""
+    """Walk the link list."""
     _cmdline_ = "walk-link-list"
     _category_ = "03-a. Memory - Search"
 
@@ -50688,8 +50656,7 @@ class WalkLinkListCommand(GenericCommand):
 
 @register_command
 class PeekPointersCommand(GenericCommand):
-    """Command to help find pointers belonging to other memory regions helpful in case
-    of OOB Read when looking for specific pointers."""
+    """Find pointers belonging to other memory regions.."""
     _cmdline_ = "peek-pointers"
     _category_ = "03-a. Memory - Search"
 
