@@ -18407,7 +18407,7 @@ class ContextCommand(GenericCommand):
 
         # x86/x64: call ... PTR [rbx]
         if is_x86():
-            if " PTR " in ops:
+            if " PTR [" in ops:
                 addr = re.sub(r".* PTR \[(.+?)\].*", r"\1", ops)
                 for gr in current_arch.gpr_registers:
                     addr = addr.replace(gr.replace("$", ""), gr)
@@ -18420,6 +18420,40 @@ class ContextCommand(GenericCommand):
                 except gdb.MemoryError:
                     if to_str:
                         return "*{:#x}".format(ptr)
+                    else:
+                        return None
+
+        # x64: call ... PTR fs:0x10
+        if is_x86_64():
+            if " PTR fs:" in ops:
+                ofs = re.sub(r".* PTR fs:(0x[a-fA-F0-9]*).*", r"\1", ops)
+                ofs = to_unsigned_long(gdb.parse_and_eval(ofs))
+                fs = TlsCommand.getfs()
+                try:
+                    if to_str:
+                        return "{:#x}".format(read_int_from_memory(fs + ofs))
+                    else:
+                        return read_int_from_memory(fs + ofs)
+                except gdb.MemoryError:
+                    if to_str:
+                        return "*{:#x}".format(fs + ofs)
+                    else:
+                        return None
+
+        # x86: call ... PTR gs:0x10
+        if is_x86_32():
+            if " PTR gs:" in ops:
+                ofs = re.sub(r".* PTR gs:(0x[a-fA-F0-9]*).*", r"\1", ops)
+                ofs = to_unsigned_long(gdb.parse_and_eval(ofs))
+                gs = TlsCommand.getgs()
+                try:
+                    if to_str:
+                        return "{:#x}".format(read_int_from_memory(gs + ofs))
+                    else:
+                        return read_int_from_memory(gs + ofs)
+                except gdb.MemoryError:
+                    if to_str:
+                        return "*{:#x}".format(gs + ofs)
                     else:
                         return None
 
