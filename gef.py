@@ -10568,17 +10568,6 @@ class CanaryCommand(GenericCommand):
         return
 
     def dump_canary(self):
-        filepath = get_filepath()
-        if filepath is None:
-            err("Missing info about architecture. Please set: `file /path/to/target_binary`")
-            return
-
-        res = checksec(filepath)
-        has_canary = res["Canary"]
-        if not has_canary:
-            warn("This binary was not compiled with SSP.")
-            return
-
         res = gef_read_canary()
         if not res:
             err("Failed to get the canary")
@@ -32428,7 +32417,7 @@ arm_ldelf_syscall_list = [
 ]
 
 
-# This cache is not cleared when reset_cache() is run.
+# This cache is not cleared when reset_gef_cache() is run.
 cached_syscall_table = {}
 
 
@@ -38592,25 +38581,58 @@ class TlsCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     @staticmethod
-    def getfsgs_qemu_usermode():
+    def get_tls_heuristic():
+        reset_gef_caches(all=True)
         vmmap = get_process_maps()
         for m in vmmap[::-1]:
-            if m.path != "<explored>":
+            if m.path != "<explored>" and m.path.startswith(("/", "[")):
                 continue
             data = read_memory(m.page_start, m.size)
             data = slice_unpack(data, current_arch.ptrsize)
             addr = [x for x in range(m.page_start, m.page_end, current_arch.ptrsize)]
             assert len(data) == len(addr)
+            """
+            x86
+            0x3f7a4040|+0x0000|000: 0x3f7a4040  ->  [loop detected]
+            0x3f7a4044|+0x0004|001: 0x3f7a45b8  ->  0x00000001
+            0x3f7a4048|+0x0008|002: 0x3f7a4040  ->  [loop detected]
+            0x3f7a404c|+0x000c|003: 0x00000000
+            0x3f7a4050|+0x0010|004: 0x3f7e3810  ->  0x8dc380cd
+            0x3f7a4054|+0x0014|005: 0xb5653400  <-  canary
+            0x3f7a4058|+0x0018|006: 0x9dd17d94
+
+            x64
+            0x0000004001a8c0c0|+0x0000|000: 0x0000004001a8c0c0  ->  [loop detected]
+            0x0000004001a8c0c8|+0x0008|001: 0x0000004001a8cad0  ->  0x0000000000000001
+            0x0000004001a8c0d0|+0x0010|002: 0x0000004001a8c0c0  ->  [loop detected]
+            0x0000004001a8c0d8|+0x0018|003: 0x0000000000000000
+            0x0000004001a8c0e0|+0x0020|004: 0x0000000000000000
+            0x0000004001a8c0e8|+0x0028|005: 0xaef406f5ae952a00  <-  canary
+            0x0000004001a8c0f0|+0x0030|006: 0x0dc290ff2805b4c8
+            """
             for i in range(len(data) - 2):
-                if data[i] == addr[i] and data[i + 2] == addr[i] and (data[i + 5] & 0xff) == 0 and data[i + 5] != 0:
-                    return addr[i]
+                if data[i] != addr[i]:
+                    continue
+                if data[i + 2] != addr[i]:
+                    continue
+
+                canary = gef_read_canary()
+                if canary:
+                    # if canary is found, use it to check
+                    if data[i + 5] != canary[0]:
+                        continue
+                else:
+                    # if canary is not found, maybe not yet initialized
+                    return 0
+                return addr[i]
+
         return 0
 
     @staticmethod
     def getfs():
-        if is_qemu_usermode():
+        if is_remote_debug():
             if is_x86_64():
-                return TlsCommand.getfsgs_qemu_usermode()
+                return TlsCommand.get_tls_heuristic()
             else:
                 return 0
         # fast path
@@ -38633,11 +38655,11 @@ class TlsCommand(GenericCommand):
 
     @staticmethod
     def getgs():
-        if is_qemu_usermode():
-            if is_x86_64():
-                return 0
+        if is_remote_debug():
+            if is_x86_32():
+                return TlsCommand.get_tls_heuristic()
             else:
-                return TlsCommand.getfsgs_qemu_usermode()
+                return 0
         # fast path
         gs = get_register("$gs_base")
         if gs is not None:
@@ -38668,7 +38690,6 @@ class TlsCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_gdb_target_local
     @only_if_not_qemu_system
     @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
     def do_invoke(self, args):
@@ -38725,7 +38746,6 @@ class FsbaseCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_gdb_target_local
     @only_if_not_qemu_system
     @only_if_specific_arch(arch=["x86_32", "x86_64"])
     def do_invoke(self, args):
@@ -38746,7 +38766,6 @@ class GsbaseCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_gdb_target_local
     @only_if_not_qemu_system
     @only_if_specific_arch(arch=["x86_32", "x86_64"])
     def do_invoke(self, args):
