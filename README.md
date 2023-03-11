@@ -54,7 +54,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
 
 ### Qemu-system cooperation
 * It works with any version qemu-system, but qemu-6.x or higher is recommended.
-    * Start qemu with the `-s` option and listen on `localhost:1234`.
+    * Start qemu-system with the `-s` option and listen on `localhost:1234`.
     * Attach with `gdb-multiarch -ex 'target remote localhost:1234'`.
     * Or `gdb-multiarch -ex 'set architecture TARGET_ARCH' -ex 'target remote localhost:1234'`.
 
@@ -119,8 +119,9 @@ All of these features are experimental. Tested on Ubuntu 22.04.
 * `kcmdline`: displays the debugged kernel startup cmdline.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kcmdline.png)
 * `ktask`: displays each task address.
-    * It also displays the memory of the user-land process.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ktask.png)
+    * It also displays the memory of the user-land process.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ktask-maps.png)
 * `kcurrent`: displays current task address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kcurrent.png)
 * `kmod`: displays each module address.
@@ -160,7 +161,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
 
 ### Qemu-user cooperation
 * It works with any version qemu-user, but qemu-6.x or higher is recommended.
-    * Start qemu with the `-g 1234` option and listen on `localhost:1234`.
+    * Start qemu-user with the `-g 1234` option and listen on `localhost:1234`.
     * Attach with `gdb-multiarch -ex 'file /PATH/TO/BINARY' -ex 'target remote localhost:1234'`.
     * Or `gdb-multiarch -ex 'set architecture TARGET_ARCH' -ex 'target remote localhost:1234'`.
 * Intel pin is supported.
@@ -172,9 +173,11 @@ All of these features are experimental. Tested on Ubuntu 22.04.
 
 #### General
 * `vmmap`: is improved.
-    * It displays the meomry map information even when connecting to gdb stub like qemu-user (heuristic), intel pin and intel SDE.
+    * It displays the meomry map information even when connecting to gdb stub like qemu-user (heuristic).
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmmap-qemu-user.png)
+    * Intel pin is supported.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmmap-pin.png)
+    * Intel SDE is supported.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmmap-sde.png)
     * It is redirected to `pagewalk` when connecting to gdb stub of qemu-system.
 * `si`/`ni`: are the wrapper for native `si`/`ni`.
