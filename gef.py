@@ -14791,9 +14791,10 @@ class AsmListCommand(GenericCommand):
     parser.add_argument('-a', dest='arch', help='specify the architecture. (default: current_arch.arch)')
     parser.add_argument('-m', dest='mode', help='specify the mode. (default: current_arch.mode)')
     parser.add_argument('-e', dest='big_endian', action='store_true', help='use big-endian.')
-    parser.add_argument("-n", dest='nbyte', type=int, help='filter by the length of asm byte.')
+    parser.add_argument("-b", dest='nbyte', type=int, help='filter by the length of asm byte.')
     parser.add_argument("-f", dest='include', action='append', help='filter by specified string.')
     parser.add_argument("-v", dest='exclude', action='append', help='filter by specified string.')
+    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
     _syntax_ = parser.format_help()
 
     _example_ = '{:s} -a X86 -m 64\n'.format(_cmdline_)
@@ -14947,7 +14948,7 @@ class AsmListCommand(GenericCommand):
 
         if (args.arch, args.mode) == (None, None):
             if is_alive():
-                arch, mode = get_capstone_arch(arch=args.arch, mode=args.mode, endian=is_big_endian())
+                arch, mode = get_capstone_arch(arch=current_arch.arch, mode=current_arch.mode, endian=is_big_endian())
                 arch_mode_s = ":".join([current_arch.arch, current_arch.mode])
                 endian_s = "big" if is_big_endian() else "little"
             else:
@@ -15006,7 +15007,7 @@ class AsmListCommand(GenericCommand):
             # not filtered
             text += line + "\n"
 
-        gef_print(text.rstrip(), less=True)
+        gef_print(text.rstrip(), less=not args.no_pager)
         return
 
 
