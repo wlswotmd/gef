@@ -38122,7 +38122,7 @@ class KernelModuleCommand(GenericCommand):
         for module in module_addrs:
             name_string = read_cstring_from_memory(module + offset_name)
             base = read_int_from_memory(module + offset_layout)
-            size = u32(read_memory(module + offset_layout + 4, 4))
+            size = u32(read_memory(module + offset_layout + current_arch.ptrsize, 4))
             gef_print("{:#018x}: {:<18s} {:#018x} {:#018x}".format(module, name_string, base, size))
         return
 
