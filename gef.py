@@ -38421,19 +38421,19 @@ class KernelFopsCommand(GenericCommand):
                 err("Memory read error")
                 return
 
-            fmt = "[{:3s}] {:<10s} {:<20s} {:s}"
-            legend = ["idx", "type", "name", "value"]
+            fmt = "{:5s} {:<10s} {:<20s} {:s}"
+            legend = ["Index", "Type", "Name", "Value"]
             gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
             for idx, ((type, name), address) in enumerate(zip(members, addrs)):
                 sym = get_symbol_string(address)
-                gef_print("[{:3d}] {:10s} {:20s} {:#018x}{:s}".format(idx, type, name, address, sym))
+                gef_print("[{:03d}] {:10s} {:20s} {:#018x}{:s}".format(idx, type, name, address, sym))
 
         else:
-            fmt = "[{:3s}] {:<10s} {:<20s}"
-            legend = ["idx", "type", "name"]
+            fmt = "{:5s} {:<10s} {:<20s}"
+            legend = ["Idx", "Type", "Name"]
             gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
             for idx, (type, name) in enumerate(members):
-                gef_print("[{:3d}] {:10s} {:20s}".format(idx, type, name))
+                gef_print("[{:03d}] {:10s} {:20s}".format(idx, type, name))
         return
 
 
