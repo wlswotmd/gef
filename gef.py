@@ -34622,6 +34622,7 @@ class MagicCommand(GenericCommand):
         gef_print(titlify("Others"))
         self.resolve_and_print_kernel("do_fchmodat", kbase, maps)
         self.resolve_and_print_kernel("mmap_min_addr", kbase, maps, KernelAddressHeuristicFinder.get_mmap_min_addr)
+        self.resolve_and_print_kernel("__per_cpu_offset", kbase, maps, KernelAddressHeuristicFinder.get_per_cpu_offset)
         return
 
     @parse_args
