@@ -37660,23 +37660,26 @@ class KernelTaskCommand(GenericCommand):
     def get_offset_uid(self, init_task_cred_ptr):
         """
         struct cred {
-            atomic_t    usage;
+            atomic_t       usage;
         #ifdef CONFIG_DEBUG_CREDENTIALS
-            atomic_t    subscribers;    /* number of processes subscribed */
-            void        *put_addr;
-            unsigned    magic;
+            atomic_t       subscribers;     /* number of processes subscribed */
+            void           *put_addr;
+            unsigned       magic;
         #endif
-            kuid_t        uid;         /* real UID of the task */
-            kgid_t        gid;         /* real GID of the task */
-            kuid_t        suid;        /* saved UID of the task */
-            kgid_t        sgid;        /* saved GID of the task */
-            kuid_t        euid;        /* effective UID of the task */
-            kgid_t        egid;        /* effective GID of the task */
-            kuid_t        fsuid;       /* UID for VFS ops */
-            kgid_t        fsgid;       /* GID for VFS ops */
-            unsigned    securebits;    /* SUID-less security management */
-            kernel_cap_t    cap_inheritable; /* caps our children can inherit */
-            kernel_cap_t    cap_permitted;    /* caps we're permitted */
+            kuid_t         uid;             /* real UID of the task */
+            kgid_t         gid;             /* real GID of the task */
+            kuid_t         suid;            /* saved UID of the task */
+            kgid_t         sgid;            /* saved GID of the task */
+            kuid_t         euid;            /* effective UID of the task */
+            kgid_t         egid;            /* effective GID of the task */
+            kuid_t         fsuid;           /* UID for VFS ops */
+            kgid_t         fsgid;           /* GID for VFS ops */
+            unsigned       securebits;      /* SUID-less security management */
+            kernel_cap_t   cap_inheritable; /* caps our children can inherit */
+            kernel_cap_t   cap_permitted;   /* caps we're permitted */
+	        kernel_cap_t   cap_effective;   /* caps we can actually use */
+	        kernel_cap_t   cap_bset;        /* capability bounding set */
+	        kernel_cap_t   cap_ambient;     /* Ambient capability set */
 
         [Example x64]
             0xffffffff820460c0:     0x0000000000000004      0x0000000000000000
@@ -37897,9 +37900,9 @@ class KernelTaskCommand(GenericCommand):
             return
 
         out = []
-        ids_str = ','.join(["uid", "gid", "suid", "sgid", "euid", "egid", "fsuid", "fsgid"])
-        fmt = "{:<18s}: {:<16s} {:<18s} [{}]"
-        legend = ["task", "task->comm", "task->cred", ids_str]
+        ids_str = ["uid", "gid", "suid", "sgid", "euid", "egid", "fsuid", "fsgid"]
+        fmt = "{:<18s}: {:<16s} {:<18s} [{:>5s} {:>5s} {:>5s} {:>5s} {:>5s} {:>5s} {:>5s} {:>5s}] {:<10s}"
+        legend = ["task", "task->comm", "task->cred", *ids_str, "securebits"]
         out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
         for task in task_addrs:
             comm_string = read_cstring_from_memory(task + offset_comm)
@@ -37908,14 +37911,16 @@ class KernelTaskCommand(GenericCommand):
                     continue
             cred = read_int_from_memory(task + offset_cred)
             uids = [u32(read_memory(cred + offset_uid + j * 4, 4)) for j in range(8)]
-            out.append("{:#018x}: {:<16s} {:#018x} {}".format(task, comm_string, cred, uids))
+            securebits = u32(read_memory(cred + offset_uid + 32, 4))
+            fmt = "{:#018x}: {:<16s} {:#018x} [{:>5d},{:>5d},{:>5d},{:>5d},{:>5d},{:>5d},{:>5d},{:>5d}] {:#10x}"
+            out.append(fmt.format(task, comm_string, cred, *uids, securebits))
 
             if args.mm:
                 mms = self.get_mm(task, offset_mm)
                 if mms:
                     out.append(titlify("memory map of `{:s}`".format(comm_string)))
                 for mm in mms:
-                    out.append("  {:#018x}-{:#018x} {:s} {:s}".format(mm.start, mm.end, mm.flags, mm.file))
+                    out.append("{:#018x}-{:#018x} {:s} {:s}".format(mm.start, mm.end, mm.flags, mm.file))
                 if mms:
                     out.append(titlify(""))
         gef_print('\n'.join(out), less=not args.no_pager)
