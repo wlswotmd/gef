@@ -36148,6 +36148,40 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    def get_current_task():
+        if is_x86():
+            # plan 1 (directly)
+            current_task = get_ksymaddr("current_task")
+            if current_task:
+                return current_task
+
+            # plan 2 (available v4.1-rc1 or later)
+            common_cpu_up = get_ksymaddr("common_cpu_up")
+            if common_cpu_up:
+                res = gdb.execute("x/30i {:#x}".format(common_cpu_up), to_string=True)
+                if is_x86_64():
+                    for line in res.splitlines():
+                        m = re.search(r"mov\s+\w+,(0x\w+)", line)
+                        if m:
+                            v = int(m.group(1), 16) & 0xffffffffffffffff
+                            if v != 0:
+                                return v
+                elif is_x86_32():
+                    for line in res.splitlines():
+                        m = re.search(r"mov\s+\w+,(0x\w+)", line)
+                        if m:
+                            v = int(m.group(1), 16) & 0xffffffff
+                            if v != 0:
+                                return v
+        elif is_arm32():
+            current_thread_info = current_arch.sp & ~0x1fff
+            v = read_int_from_memory(current_thread_info + current_arch.ptrsize * 3)
+            return v
+        elif is_arm64():
+            return get_register("$SP_EL0")
+        return None
+
+    @staticmethod
     def get_init_task():
         # plan 1 (directly)
         init_task = get_ksymaddr("init_task")
@@ -36567,24 +36601,27 @@ class KernelAddressHeuristicFinder:
         nr_iowait_cpu = get_ksymaddr("nr_iowait_cpu")
         if nr_iowait_cpu:
             res = gdb.execute("x/10i {:#x}".format(nr_iowait_cpu), to_string=True)
-            if is_x86():
+            if is_x86_64():
                 # pattern 1
                 for line in res.splitlines():
-                    m = re.search(r"add.*[DQ]WORD PTR \[.*([-+]0x\S+)\]", line)
+                    m = re.search(r"add.*QWORD PTR \[.*([-+]0x\S+)\]", line)
                     if m:
-                        if is_64bit():
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if v != 0:
-                                return v
-                        else:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            if v != 0:
-                                return v
+                        v = int(m.group(1), 16) & 0xffffffffffffffff
+                        if v != 0:
+                            return v
                 # pattern 2
                 for line in res.splitlines():
                     m = re.search(r"DWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
                     if m:
                         v = int(m.group(1), 16) & 0xffffffffffffffff
+                        if v != 0:
+                            return v
+            elif is_x86_32():
+                # pattern 1
+                for line in res.splitlines():
+                    m = re.search(r"DWORD PTR \[.*([-+]0x\S+)\]", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffff
                         if v != 0:
                             return v
             elif is_arm64():
@@ -37422,6 +37459,75 @@ class KernelCmdlineCommand(GenericCommand):
         addr, kernel_cmdline_string = ret
         gef_print(titlify("Kernel cmdline (heuristic)"))
         gef_print("{:#x}: '{:s}'".format(addr, kernel_cmdline_string))
+        return
+
+
+@register_command
+class KernelCurrentCommand(GenericCommand):
+    """Display current task under qemu-system."""
+    _cmdline_ = "kcurrent"
+    _category_ = "08-b. Qemu-system Cooperation - Linux"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    def get_cpu_offset(self):
+        # resolve __per_cpu_offset
+        self.__per_cpu_offset = KernelAddressHeuristicFinder.get_per_cpu_offset()
+        if self.__per_cpu_offset is None:
+            err("Failed to resolve `__per_cpu_offset`")
+            return False
+        else:
+            info("__per_cpu_offset: {:#x}".format(self.__per_cpu_offset))
+
+        # resolve each cpu_offset
+        self.cpu_offset = [read_int_from_memory(self.__per_cpu_offset)]
+        i = 1
+        while True:
+            off = read_int_from_memory(self.__per_cpu_offset + i * 8)
+            if off == self.cpu_offset[-1]:
+                self.cpu_offset = self.cpu_offset[:-1]
+                break
+            self.cpu_offset.append(off)
+            i += 1
+        return True
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_qemu_system
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        info("Wait for memory scan")
+        current_task = KernelAddressHeuristicFinder.get_current_task()
+        if current_task is None:
+            err("Failed to resolve `current_task`")
+            return
+        info("current_task: {:#x}".format(current_task))
+
+        if is_arm32() or is_arm64():
+            gef_print(titlify("Kernel current task_struct (heuristic)"))
+            gef_print("current: {:#x}".format(current_task))
+            return
+
+        elif is_x86():
+            if is_32bit():
+                mask = 0x80000000
+            else:
+                mask = 0x80000000_00000000
+            if (current_task & mask) == mask:
+                task = read_int_from_memory(current_task)
+                if is_valid_addr(task):
+                    gef_print(titlify("Kernel current task_struct (heuristic)"))
+                    gef_print("current: {:#x}".format(task))
+                    return
+
+            if not self.get_cpu_offset():
+                return
+            gef_print(titlify("Kernel current task_struct (heuristic)"))
+            for i, offset in enumerate(self.cpu_offset):
+                task = read_int_from_memory(current_task + offset)
+                gef_print("current (cpu{:d}): {:#x}".format(i, task))
         return
 
 

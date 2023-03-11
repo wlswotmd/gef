@@ -121,6 +121,8 @@ All of these features are experimental. Tested on Ubuntu 22.04.
 * `ktask`: displays each task address.
     * It also displays the memory of the user-land process.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ktask.png)
+* `kcurrent`: displays current task address.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kcurrent.png)
 * `kmod`: displays each module address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmod.png)
 * `kcdev`: displays each character device information.
