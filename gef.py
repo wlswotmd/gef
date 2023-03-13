@@ -39929,14 +39929,20 @@ class SlubDumpCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('cache_name', metavar='SLUB_CACHE_NAME', nargs='*', help='filter by specific slub cache name.')
     parser.add_argument('--cpu', type=int, help="filter by specific cpu.")
-    parser.add_argument('--no-xor', action='store_true', help='skip xor to chunk->next.')
+    parser.add_argument('--no-xor', action='store_true',
+                        help='skip xor to chunk->next. it is used when `kmem_cache.random` is falsely detected.')
+    parser.add_argument('--offset-random', type=lambda x: int(x, 16),
+                        help='specified offsetof(kmem_cache, random). it is used when `kmem_cache.random` is falsely detected.')
+    parser.add_argument('--no-byte-swap', action='store_true',
+                        help='skip byteswap to chunk->next. it is used when `kmem_cache.random` is falsely detected.')
     parser.add_argument('--list', action='store_true', help='list up all slub cache names.')
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} kmalloc-256          # dump kmalloc-256 from all cpus\n".format(_cmdline_)
-    _example_ += "{:s} kmalloc-256 --cpu 1  # dump kmalloc-256 from cpu 1\n".format(_cmdline_)
-    _example_ += "{:s} kmalloc-256 --no-xor # skip xor to chunk->next\n".format(_cmdline_)
-    _example_ += "{:s} --list               # list up slab cache names\n".format(_cmdline_)
+    _example_ = "{:s} kmalloc-256                                      # dump kmalloc-256 from all cpus\n".format(_cmdline_)
+    _example_ += "{:s} kmalloc-256 --cpu 1                              # dump kmalloc-256 from cpu 1\n".format(_cmdline_)
+    _example_ += "{:s} kmalloc-256 --no-xor                             # skip xor to chunk->next\n".format(_cmdline_)
+    _example_ += "{:s} kmalloc-256 --offset-random 0xb8 --no-byte-swap  # specified pattern of xor to chunk->next\n".format(_cmdline_)
+    _example_ += "{:s} --list                                           # list up slab cache names\n".format(_cmdline_)
     _example_ += "\n"
     _example_ += "Search flow:\n"
     _example_ += "1. get address of `__per_cpu_offset`\n"
@@ -40101,6 +40107,8 @@ class SlubDumpCommand(GenericCommand):
         # offsetof(kmem_cache, random)
         if self.no_xor:
             self.kmem_cache_offset_random = None
+        elif self.offset_random is not None:
+            self.kmem_cache_offset_random = self.offset_random
         else:
             current = top
             for i in range(64): # walk from list for heuristic search
@@ -40223,7 +40231,6 @@ class SlubDumpCommand(GenericCommand):
     def walk_caches(self, cpu):
         current_kmem_cache = self.get_next_kmem_cache(self.slab_caches, point_to_base=False)
         self.parsed_caches = [{'name': 'slab_caches', 'next': current_kmem_cache}]
-        self.swap = None
 
         while current_kmem_cache + self.kmem_cache_offset_list != self.slab_caches:
             new_cache = {}
@@ -40339,6 +40346,11 @@ class SlubDumpCommand(GenericCommand):
         self.cpuN = args.cpu
         self.no_xor = args.no_xor
         self.listup = args.list
+        self.offset_random = args.offset_random
+        if args.no_byte_swap is None:
+            self.swap = None
+        else:
+            self.swap = not args.no_byte_swap
 
         info("Wait for memory scan")
 
