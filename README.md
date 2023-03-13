@@ -267,6 +267,8 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * It shows whether GDB ASLR setting is enabled or not.
     * It supports parsing remote binary (if download feature is available).
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/checksec.png)
+    * It supports kernel security. (only x86/x64)
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/checksec-kernel.png)
 * `got`: is improved.
     * It displays not only GOT address but also PLT address.
     * It scans `.plt.sec` section if Intel CET is enabled.

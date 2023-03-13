@@ -15962,19 +15962,103 @@ class ChecksecCommand(GenericCommand):
     def print_security_properties_qemu_system(self):
         if not is_x86():
             return
-        ret = gdb.execute("qreg -v", to_string=True)
-        flag = False
-        for line in ret.splitlines():
-            if "CR0 (Control Register 0)" in line:
-                flag = True
-            if "CR1 (Control Register 1)" in line:
-                flag = False
-            if "CR4 (Control Register 4)" in line:
-                flag = True
-            if "DR0-DR3 (Debug Address Register 0-3)" in line:
-                flag = False
-            if flag:
-                gef_print(line)
+
+        info("Wait for memory scan")
+
+        # KASLR
+        kinfo = KernelbaseCommand.get_kernel_base()
+        if is_x86_64():
+            if kinfo.kbase != 0xffffffff81000000:
+                gef_print("{:<30s}: {:s} (base: {:#x})".format("KASLR", Color.colorify("Enabled", "bold green"), kinfo.kbase))
+            else:
+                gef_print("{:<30s}: {:s} (base: {:#x})".format("KASLR", Color.colorify("Disabled", "bold red"), kinfo.kbase))
+        elif is_x86_32():
+            if kinfo.kbase != 0xc1000000:
+                gef_print("{:<30s}: {:s} (base: {:#x})".format("KASLR", Color.colorify("Enabled", "bold green"), kinfo.kbase))
+            else:
+                gef_print("{:<30s}: {:s} (base: {:#x})".format("KASLR", Color.colorify("Disabled", "bold red"), kinfo.kbase))
+
+        # WP
+        cr0 = get_register("$cr0")
+        if (cr0 >> 16) & 1:
+            gef_print("{:<30s}: {:s}".format("Write Protection (CR0 bit 16)", Color.colorify("Enabled", "bold green")))
+        else:
+            gef_print("{:<30s}: {:s}".format("Write Protection (CR0 bit 16)", Color.colorify("Disabled", "bold red")))
+
+        # PAE
+        cr4 = get_register("$cr4")
+        if (cr4 >> 5) & 1:
+            gef_print("{:<30s}: {:s} (NX is supported)".format("PAE (CR4 bit 5)", Color.colorify("Enabled", "bold green")))
+        else:
+            gef_print("{:<30s}: {:s} (NX is unsupported)".format("PAE (CR4 bit 5)", Color.colorify("Disabled", "bold red")))
+
+        # SMEP
+        if (cr4 >> 20) & 1:
+            gef_print("{:<30s}: {:s}".format("SMEP (CR4 bit 20)", Color.colorify("Enabled", "bold green")))
+        else:
+            gef_print("{:<30s}: {:s}".format("SMEP (CR4 bit 20)", Color.colorify("Disabled", "bold red")))
+
+        # SMAP
+        if (cr4 >> 21) & 1:
+            gef_print("{:<30s}: {:s}".format("SMAP (CR4 bit 21)", Color.colorify("Enabled", "bold green")))
+        else:
+            gef_print("{:<30s}: {:s}".format("SMAP (CR4 bit 21)", Color.colorify("Disabled", "bold red")))
+
+        # KPTI
+        ret = KernelCmdlineCommand.kernel_cmdline()
+        if ret and "nopti" in ret[1]:
+            gef_print("{:<30s}: {:s}".format("KPTI", Color.colorify("Disabled", "bold red")))
+        elif (get_register("$cs") & 0b11) == 3:
+            gef_print("{:<30s}: {:s}".format("KPTI", Color.colorify("Unknown", "bold gray")))
+        else:
+            maps = gdb.execute("pagewalk -q", to_string=True).splitlines()
+            maps = [x for x in maps if "USER" in x]
+            if len(maps) == 0:
+                gef_print("{:<30s}: {:s}".format("KPTI", Color.colorify("Unknown", "bold gray")))
+            else:
+                if is_x86_64():
+                    mask = 1 << 63
+                elif is_x86_32():
+                    mask = 1 << 31
+                for m in maps:
+                    vaddr = int(m.split("-")[0], 16)
+                    if (vaddr & mask) == 0:
+                        perm = m.split("[")[1][:3]
+                        if "X" in perm:
+                            gef_print("{:<30s}: {:s}".format("KPTI", Color.colorify("Disabled", "bold red")))
+                            break
+                else:
+                    gef_print("{:<30s}: {:s}".format("KPTI", Color.colorify("Enabled", "bold green")))
+
+        # CONFIG_STATIC_USERMODEHELPER
+        if (get_register("$cs") & 0b11) == 3:
+            gef_print("{:<30s}: {:s}".format("CONFIG_STATIC_USERMODEHELPER", Color.colorify("Unknown", "bold gray")))
+        else:
+            mp = KernelAddressHeuristicFinder.get_modprobe_path()
+            if mp is None:
+                gef_print("{:<30s}: {:s}".format("CONFIG_STATIC_USERMODEHELPER", Color.colorify("Not found", "bold gray")))
+            else:
+                for vaddr, size, perm in kinfo.maps:
+                    if vaddr <= mp < vaddr + size:
+                        if not "W" in perm:
+                            gef_print("{:<30s}: {:s} ({:s})".format("CONFIG_STATIC_USERMODEHELPER", Color.colorify("Enabled", "bold green"), perm))
+                        else:
+                            gef_print("{:<30s}: {:s} ({:s})".format("CONFIG_STATIC_USERMODEHELPER", Color.colorify("Disabled", "bold red"), perm))
+                        break
+                else:
+                    gef_print("{:<30s}: {:s}".format("CONFIG_STATIC_USERMODEHELPER", Color.colorify("Not found maps", "bold gray")))
+
+        # CONFIG_SLAB_FREELIST_HARDENED
+        if (get_register("$cs") & 0b11) == 3:
+            gef_print("{:<30s}: {:s}".format("CONFIG_SLAB_FREELIST_HARDENED", Color.colorify("Unknown", "bold gray")))
+        else:
+            ret = gdb.execute("slub-dump kmalloc-8 kmalloc-16 kmalloc-32 kmalloc-64 kmalloc-96 kmalloc-128 kmalloc-192 kmalloc-256", to_string=True)
+            r = re.search(r"offsetof\(kmem_cache, random\): (0x\S+)", ret)
+            if r and "Corrupted" not in ret:
+                gef_print("{:<30s}: {:s} (offset: {:s})".format("CONFIG_SLAB_FREELIST_HARDENED", Color.colorify("Enabled", "bold green"), r.group(1)))
+            else:
+                gef_print("{:<30s}: {:s}".format("CONFIG_SLAB_FREELIST_HARDENED", Color.colorify("Disabled", "bold red")))
+
         return
 
 
@@ -37435,7 +37519,8 @@ class KernelCmdlineCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
 
-    def kernel_cmdline(self):
+    @staticmethod
+    def kernel_cmdline():
         saved_command_line = KernelAddressHeuristicFinder.get_saved_command_line()
         if saved_command_line is None:
             return None
@@ -37454,7 +37539,7 @@ class KernelCmdlineCommand(GenericCommand):
 
         info("Wait for memory scan")
 
-        ret = self.kernel_cmdline()
+        ret = KernelCmdlineCommand.kernel_cmdline()
         if ret is None:
             err("Parse failed")
             return
