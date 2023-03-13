@@ -15960,7 +15960,8 @@ class ChecksecCommand(GenericCommand):
         return
 
     def print_security_properties_qemu_system(self):
-        if not is_x86():
+        if not is_x86() and not is_arm32() and not is_arm64():
+            err("Unsupported")
             return
 
         info("Wait for memory scan")
@@ -15977,61 +15978,99 @@ class ChecksecCommand(GenericCommand):
                 gef_print("{:<30s}: {:s} (base: {:#x})".format("KASLR", Color.colorify("Enabled", "bold green"), kinfo.kbase))
             else:
                 gef_print("{:<30s}: {:s} (base: {:#x})".format("KASLR", Color.colorify("Disabled", "bold red"), kinfo.kbase))
+        elif is_arm32():
+            if kinfo.kbase not in [0xc0400000, 0x80100000]:
+                gef_print("{:<30s}: {:s} (base: {:#x})".format("KASLR", Color.colorify("Enabled", "bold green"), kinfo.kbase))
+            else:
+                gef_print("{:<30s}: {:s} (base: {:#x})".format("KASLR", Color.colorify("Disabled", "bold red"), kinfo.kbase))
+        elif is_arm64():
+            if kinfo.kbase != 0xffff800010000000:
+                gef_print("{:<30s}: {:s} (base: {:#x})".format("KASLR", Color.colorify("Enabled", "bold green"), kinfo.kbase))
+            else:
+                gef_print("{:<30s}: {:s} (base: {:#x})".format("KASLR", Color.colorify("Disabled", "bold red"), kinfo.kbase))
 
-        # WP
-        cr0 = get_register("$cr0")
-        if (cr0 >> 16) & 1:
-            gef_print("{:<30s}: {:s}".format("Write Protection (CR0 bit 16)", Color.colorify("Enabled", "bold green")))
-        else:
-            gef_print("{:<30s}: {:s}".format("Write Protection (CR0 bit 16)", Color.colorify("Disabled", "bold red")))
+        if is_x86():
+            # WP
+            cr0 = get_register("$cr0")
+            if (cr0 >> 16) & 1:
+                gef_print("{:<30s}: {:s}".format("Write Protection (CR0 bit 16)", Color.colorify("Enabled", "bold green")))
+            else:
+                gef_print("{:<30s}: {:s}".format("Write Protection (CR0 bit 16)", Color.colorify("Disabled", "bold red")))
 
-        # PAE
-        cr4 = get_register("$cr4")
-        if (cr4 >> 5) & 1:
-            gef_print("{:<30s}: {:s} (NX is supported)".format("PAE (CR4 bit 5)", Color.colorify("Enabled", "bold green")))
-        else:
-            gef_print("{:<30s}: {:s} (NX is unsupported)".format("PAE (CR4 bit 5)", Color.colorify("Disabled", "bold red")))
+            # PAE
+            cr4 = get_register("$cr4")
+            if (cr4 >> 5) & 1:
+                gef_print("{:<30s}: {:s} (NX is supported)".format("PAE (CR4 bit 5)", Color.colorify("Enabled", "bold green")))
+            else:
+                gef_print("{:<30s}: {:s} (NX is unsupported)".format("PAE (CR4 bit 5)", Color.colorify("Disabled", "bold red")))
 
-        # SMEP
-        if (cr4 >> 20) & 1:
-            gef_print("{:<30s}: {:s}".format("SMEP (CR4 bit 20)", Color.colorify("Enabled", "bold green")))
-        else:
-            gef_print("{:<30s}: {:s}".format("SMEP (CR4 bit 20)", Color.colorify("Disabled", "bold red")))
+            # SMEP
+            if (cr4 >> 20) & 1:
+                gef_print("{:<30s}: {:s}".format("SMEP (CR4 bit 20)", Color.colorify("Enabled", "bold green")))
+            else:
+                gef_print("{:<30s}: {:s}".format("SMEP (CR4 bit 20)", Color.colorify("Disabled", "bold red")))
 
-        # SMAP
-        if (cr4 >> 21) & 1:
-            gef_print("{:<30s}: {:s}".format("SMAP (CR4 bit 21)", Color.colorify("Enabled", "bold green")))
-        else:
-            gef_print("{:<30s}: {:s}".format("SMAP (CR4 bit 21)", Color.colorify("Disabled", "bold red")))
+            # SMAP
+            if (cr4 >> 21) & 1:
+                gef_print("{:<30s}: {:s}".format("SMAP (CR4 bit 21)", Color.colorify("Enabled", "bold green")))
+            else:
+                gef_print("{:<30s}: {:s}".format("SMAP (CR4 bit 21)", Color.colorify("Disabled", "bold red")))
 
-        # KPTI
-        ret = KernelCmdlineCommand.kernel_cmdline()
-        if ret and "nopti" in ret[1]:
-            gef_print("{:<30s}: {:s}".format("KPTI", Color.colorify("Disabled", "bold red")))
-        elif (get_register("$cs") & 0b11) == 3:
-            gef_print("{:<30s}: {:s}".format("KPTI", Color.colorify("Unknown", "bold gray")))
-        else:
-            maps = gdb.execute("pagewalk -q -n -c", to_string=True).splitlines()
-            maps = [x for x in maps if "USER" in x]
-            if len(maps) == 0:
+            # KPTI
+            ret = KernelCmdlineCommand.kernel_cmdline()
+            if ret and "nopti" in ret[1]:
+                gef_print("{:<30s}: {:s}".format("KPTI", Color.colorify("Disabled", "bold red")))
+            elif (get_register("$cs") & 0b11) == 3:
                 gef_print("{:<30s}: {:s}".format("KPTI", Color.colorify("Unknown", "bold gray")))
             else:
-                if is_x86_64():
-                    mask = 1 << 63
-                elif is_x86_32():
-                    mask = 1 << 31
-                for m in maps:
-                    vaddr = int(m.split("-")[0], 16)
-                    if (vaddr & mask) == 0:
-                        perm = m.split("[")[1][:3]
-                        if "X" in perm:
-                            gef_print("{:<30s}: {:s}".format("KPTI", Color.colorify("Disabled", "bold red")))
-                            break
+                maps = gdb.execute("pagewalk -q -n -c", to_string=True).splitlines()
+                maps = [x for x in maps if "USER" in x]
+                if len(maps) == 0:
+                    gef_print("{:<30s}: {:s}".format("KPTI", Color.colorify("Unknown", "bold gray")))
                 else:
-                    gef_print("{:<30s}: {:s}".format("KPTI", Color.colorify("Enabled", "bold green")))
+                    if is_x86_64():
+                        mask = 1 << 63
+                    elif is_x86_32():
+                        mask = 1 << 31
+                    for m in maps:
+                        vaddr = int(m.split("-")[0], 16)
+                        if (vaddr & mask) == 0:
+                            perm = m.split("[")[1][:3]
+                            if "X" in perm:
+                                gef_print("{:<30s}: {:s}".format("KPTI", Color.colorify("Disabled", "bold red")))
+                                break
+                    else:
+                        gef_print("{:<30s}: {:s}".format("KPTI", Color.colorify("Enabled", "bold green")))
+
+        elif is_arm32():
+            # PXN
+            ID_MMFR0 = get_register('$ID_MMFR0')
+            ID_MMFR0_S = get_register('$ID_MMFR0_S')
+            if ID_MMFR0 is not None and (ID_MMFR0 >> 2) & 1:
+                gef_print("{:<30s}: {:s}".format("PXN", Color.colorify("Enabled", "bold green")))
+            elif ID_MMFR0_S is not None and (ID_MMFR0_S >> 2) & 1:
+                gef_print("{:<30s}: {:s}".format("PXN", Color.colorify("Enabled", "bold green")))
+            else:
+                gef_print("{:<30s}: {:s}".format("PXN", Color.colorify("Disabled", "bold red")))
+            # PAN
+            gef_print("{:<30s}: {:s} (all ARMv7 is unsupported)".format("PAN", Color.colorify("Disabled", "bold red")))
+
+        elif is_arm64():
+            # PXN
+            gef_print("{:<30s}: {:s} (all ARMv8~ is supported)".format("PXN", Color.colorify("Enabled", "bold green")))
+            # PAN
+            ID_AA64MMFR1_EL1 = get_register('$ID_AA64MMFR1_EL1')
+            if ID_AA64MMFR1_EL1 is not None and ((ID_AA64MMFR1_EL1 >> 20) & 0b1111) != 0b0000:
+                gef_print("{:<30s}: {:s}".format("PAN", Color.colorify("Enabled", "bold green")))
+            else:
+                gef_print("{:<30s}: {:s}".format("PAN", Color.colorify("Disabled", "bold red")))
 
         # CONFIG_STATIC_USERMODEHELPER
-        if (get_register("$cs") & 0b11) == 3:
+        if is_x86() and (get_register("$cs") & 0b11) == 3:
+            gef_print("{:<30s}: {:s}".format("CONFIG_STATIC_USERMODEHELPER", Color.colorify("Unknown", "bold gray")))
+        elif is_arm32() and (get_register(current_arch.flag_register) & 0b11111) in [0b10000, 0b11010]:
+            gef_print("{:<30s}: {:s}".format("CONFIG_STATIC_USERMODEHELPER", Color.colorify("Unknown", "bold gray")))
+        elif is_arm64() and ((get_register(current_arch.flag_register) >> 2) & 0b11) != 1:
             gef_print("{:<30s}: {:s}".format("CONFIG_STATIC_USERMODEHELPER", Color.colorify("Unknown", "bold gray")))
         else:
             mp = KernelAddressHeuristicFinder.get_modprobe_path()
@@ -16049,15 +16088,36 @@ class ChecksecCommand(GenericCommand):
                     gef_print("{:<30s}: {:s}".format("CONFIG_STATIC_USERMODEHELPER", Color.colorify("Not found maps", "bold gray")))
 
         # CONFIG_SLAB_FREELIST_HARDENED
-        if (get_register("$cs") & 0b11) == 3:
+        if is_x86() and (get_register("$cs") & 0b11) == 3:
+            gef_print("{:<30s}: {:s}".format("CONFIG_SLAB_FREELIST_HARDENED", Color.colorify("Unknown", "bold gray")))
+        elif is_arm32() and (get_register(current_arch.flag_register) & 0b11111) in [0b10000, 0b11010]:
+            gef_print("{:<30s}: {:s}".format("CONFIG_SLAB_FREELIST_HARDENED", Color.colorify("Unknown", "bold gray")))
+        elif is_arm64() and ((get_register(current_arch.flag_register) >> 2) & 0b11) != 1:
             gef_print("{:<30s}: {:s}".format("CONFIG_SLAB_FREELIST_HARDENED", Color.colorify("Unknown", "bold gray")))
         else:
             ret = gdb.execute("slub-dump kmalloc-8 kmalloc-16 kmalloc-32 kmalloc-64 kmalloc-96 kmalloc-128 kmalloc-192 kmalloc-256", to_string=True)
             r = re.search(r"offsetof\(kmem_cache, random\): (0x\S+)", ret)
-            if r and "Corrupted" not in ret:
+            if "Corrupted" in ret:
+                gef_print("{:<30s}: {:s}".format("CONFIG_SLAB_FREELIST_HARDENED", Color.colorify("Unknown", "bold gray")))
+            elif r:
                 gef_print("{:<30s}: {:s} (offset: {:s})".format("CONFIG_SLAB_FREELIST_HARDENED", Color.colorify("Enabled", "bold green"), r.group(1)))
             else:
                 gef_print("{:<30s}: {:s}".format("CONFIG_SLAB_FREELIST_HARDENED", Color.colorify("Disabled", "bold red")))
+
+        # CONFIG_STACKPROTECTOR
+        if is_x86() and (get_register("$cs") & 0b11) == 3:
+            gef_print("{:<30s}: {:s}".format("CONFIG_STACKPROTECTOR", Color.colorify("Unknown", "bold gray")))
+        elif is_arm32() and (get_register(current_arch.flag_register) & 0b11111) in [0b10000, 0b11010]:
+            gef_print("{:<30s}: {:s}".format("CONFIG_STACKPROTECTOR", Color.colorify("Unknown", "bold gray")))
+        elif is_arm64() and ((get_register(current_arch.flag_register) >> 2) & 0b11) != 1:
+            gef_print("{:<30s}: {:s}".format("CONFIG_STACKPROTECTOR", Color.colorify("Unknown", "bold gray")))
+        else:
+            ret = gdb.execute("ktask -n", to_string=True)
+            r = re.search(r"offsetof\(task_struct, stack_canary\): (0x\S+)", ret)
+            if r:
+                gef_print("{:<30s}: {:s} (offset: {:s})".format("CONFIG_STACKPROTECTOR", Color.colorify("Enabled", "bold green"), r.group(1)))
+            else:
+                gef_print("{:<30s}: {:s}".format("CONFIG_STACKPROTECTOR", Color.colorify("Disabled", "bold red")))
 
         return
 
@@ -36260,6 +36320,11 @@ class KernelAddressHeuristicFinder:
                             if v != 0:
                                 return v
         elif is_arm32():
+            # plan 1
+            r = get_register("$TPIDRURO")
+            if r and is_valid_addr(r):
+                return r
+            # plan 2
             current_thread_info = current_arch.sp & ~0x1fff
             v = read_int_from_memory(current_thread_info + current_arch.ptrsize * 3)
             return v
@@ -36274,52 +36339,94 @@ class KernelAddressHeuristicFinder:
         if init_task:
             return init_task
 
-        # plan 2 (available v2.6.29.3 or later)
-        chroot_fs_refs = get_ksymaddr("chroot_fs_refs")
-        if chroot_fs_refs:
-            res = gdb.execute("x/30i {:#x}".format(chroot_fs_refs), to_string=True)
+        # plan 2 (available v3.4-rc1 or later)
+        do_exit = get_ksymaddr("do_exit")
+        if do_exit:
+            res = gdb.execute("x/600i {:#x}".format(do_exit), to_string=True)
             if is_x86_64():
                 for line in res.splitlines():
-                    m = re.search(r"QWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
+                    m = re.search(r"cmp\s+\S+,\s*(0x\w+)", line)
                     if m:
                         v = int(m.group(1), 16) & 0xffffffffffffffff
-                        if v != 0:
+                        if v & 0x8000000000000000:
                             return v
             elif is_x86_32():
                 for line in res.splitlines():
-                    m = re.search(r"ds:(0x\w+)", line)
+                    m = re.search(r"cmp\s+\S+,\s*(0x\w+)", line)
                     if m:
                         v = int(m.group(1), 16) & 0xffffffff
-                        if v != 0:
+                        if v & 0x80000000:
                             return v
             elif is_arm64():
-                count = 0
-                base = None
-                for line in res.splitlines():
-                    if base is None:
-                        m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
-                        if m:
-                            base = int(m.group(1), 16)
-                    else:
-                        m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
-                        if m:
-                            addr = base + int(m.group(1), 16) # add 1 time
-                            if count == 1:
-                                return addr # 2nd pair of (adrp + add) is target
+                adrp = None
+                add = None
+                for i, line in enumerate(res.splitlines()):
+                    m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
+                    if m:
+                        adrp = int(m.group(1), 16)
+                        adrp_idx = i
+                    m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
+                    if m:
+                        add = int(m.group(1), 16)
+                        add_idx = i
+                    if adrp and add:
+                        if abs(adrp_idx - add_idx) > 2:
+                            if adrp_idx < add_idx:
+                                adrp = None
                             else:
-                                base = None
-                                count += 1
+                                add = None
+                            continue
+                        candidate = adrp + add
+                        adrp = None
+                        add = None
+                        if not is_valid_addr(candidate):
+                            continue
+                        v1 = read_int_from_memory(candidate)
+                        v2 = read_int_from_memory(candidate + current_arch.ptrsize)
+                        if v1 == v2 and v1 != 0:
+                            continue
+                        if is_valid_addr(v1):
+                            continue
+                        if len(read_cstring_from_memory(candidate)) > 5:
+                            continue
+                        if read_memory(candidate, 0x20) == b"\0" * 0x20:
+                            continue
+                        return candidate
             elif is_arm32():
-                base = None
-                for line in res.splitlines():
-                    if base is None:
-                        m = re.search(r"movw.*;\s*(0x\S+)", line)
-                        if m:
-                            base = int(m.group(1), 16)
-                    else:
-                        m = re.search(r"movt.*;\s*(0x\S+)", line)
-                        if m:
-                            return base + (int(m.group(1), 16) << 16)
+                movw = None
+                movt = None
+                for i, line in enumerate(res.splitlines()):
+                    m = re.search(r"movw.*;\s*(0x\S+)", line)
+                    if m:
+                        movw = int(m.group(1), 16)
+                        movw_idx = i
+                    m = re.search(r"movt.*;\s*(0x\S+)", line)
+                    if m:
+                        movt = int(m.group(1), 16)
+                        movt_idx = i
+                    if movw and movt:
+                        if abs(movw_idx - movt_idx) > 2:
+                            if movw_idx < movt_idx:
+                                movw = None
+                            else:
+                                movt = None
+                            continue
+                        candidate = (movt << 16) | movw
+                        movw = None
+                        movt = None
+                        if not is_valid_addr(candidate):
+                            continue
+                        v1 = read_int_from_memory(candidate)
+                        v2 = read_int_from_memory(candidate + current_arch.ptrsize)
+                        if v1 == v2 and v1 != 0:
+                            continue
+                        if is_valid_addr(v1):
+                            continue
+                        if len(read_cstring_from_memory(candidate)) > 5:
+                            continue
+                        if read_memory(candidate, 0x20) == b"\0" * 0x20:
+                            continue
+                        return candidate
         return None
 
     @staticmethod
@@ -37626,7 +37733,7 @@ class KernelTaskCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-f', '--filter', action='append', default=[], help='REGEXP filter.')
-    parser.add_argument('-m', dest='mm', action='store_true', help='print memory map each process.')
+    parser.add_argument('-m', '--print-maps', action='store_true', help='print memory map each process.')
     parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
     _syntax_ = parser.format_help()
 
@@ -37743,6 +37850,110 @@ class KernelTaskCommand(GenericCommand):
                     return offset_cred
         err("Not found task->cred")
         return None
+
+    def get_offset_stack(self, task_addrs):
+        """
+        #ifdef CONFIG_THREAD_INFO_IN_TASK
+            struct thread_info  thread_info;
+        #endif
+            volatile long       state;
+            void                *stack;
+        """
+        for i in range(0x100):
+            found = False
+            for task in task_addrs:
+                v = read_int_from_memory(task + current_arch.ptrsize * i)
+                if (v & 0x1fff) != 0:
+                    break
+                if not is_valid_addr(v):
+                    break
+            else:
+                found = True
+
+            if found is False:
+                continue
+
+            offset_stack = current_arch.ptrsize * i
+            info("offsetof(task_struct, stack): {:#x}".format(offset_stack))
+            return offset_stack
+
+        err("Not found task->stack")
+        return None
+
+    def get_offset_pid(self, task_addrs):
+        """
+            pid_t               pid;
+            pid_t               tgid;
+
+        0xc6d1e888:     0xc6d1f048      0xc6d1c1c8      0x0000008c      0xc6d1e894
+        0xc6d1e898:     0xc6d1e894      0xc6d1e89c      0xc6d1e89c      0xc6d1e8a4
+        0xc6d1e8a8:     0x00000000      0x00000000      0xc7830660      0xc7830660
+        0xc6d1e8b8:     0x00000008      0x00000000      0xc6d51300      0x00000000
+        0xc6d1e8c8:     0x00000000      0xc6d514e0      0x00000017      0x000000a9
+        0xc6d1e8d8:     0x00000005      0x00000000      0x00000000      0x00000000
+        0xc6d1e8e8:     0x00000000      0x00000011      0x00000000      0x00000000
+        0xc6d1e8f8:     0x00000000      0x00000000      0x00000000      0x00000000
+        0xc6d1e908:     0xc245a8d0      0x00000000      0x00000000      0x00000000
+        0xc6d1e918:     0x00000000      0x00000000      0x00000000      0x00000000
+        0xc6d1e928:     0x00000031*     0x00000031      0xc7834000      0xc7834000
+        """
+        pid_max = 0x400000 if is_64bit() else 0x8000
+        for i in range(0x400):
+            found = False
+            seen_pid = set()
+            for task in task_addrs[1:]: # swapper/0 has pid 0. Don't use it as it will cause false positives.
+                v1 = u32(read_memory(task + (i + 0) * 4, 4))
+                v2 = u32(read_memory(task + (i + 1) * 4, 4))
+                if v1 == 0 or pid_max < v1: # pid is 1 ~ pid_max
+                    break
+                if v2 == 0 or pid_max < v2: # tgid is 1 ~ pid_max
+                    break
+                if v1 in seen_pid:
+                    break
+                seen_pid.add(v1)
+            else:
+                found = True
+
+            if found is False:
+                continue
+
+            offset_pid = i * 4
+            info("offsetof(task_struct, pid): {:#x}".format(offset_pid))
+            return offset_pid
+
+        err("Not found task->pid")
+        return None
+
+    def get_offset_canary(self, task_addrs, offset_pid):
+        """
+            pid_t               pid;
+            pid_t               tgid;
+        #ifdef CONFIG_STACKPROTECTOR
+            unsigned long       stack_canary;
+        #endif
+            struct task_struct __rcu    *real_parent;
+            struct task_struct __rcu    *parent;
+        """
+        offset_stack_canary = offset_pid + 4 + 4
+        found = True
+        for task in task_addrs:
+            v1 = read_int_from_memory(task + offset_stack_canary)
+            v2 = read_int_from_memory(task + offset_stack_canary + current_arch.ptrsize)
+
+            if v1 == v2: # stack canary != real_parent
+                found = False
+                break
+
+            if is_64bit() and (v1 & 0xff) != 0: # 32-bit canary does not have 0xXXXXXX00
+                found = False
+                break
+
+        if found:
+            info("offsetof(task_struct, stack_canary): {:#x}".format(offset_stack_canary))
+            return offset_stack_canary
+        else:
+            info("offsetof(task_struct, stack_canary): None")
+            return None
 
     def get_offset_uid(self, init_task_cred_ptr):
         """
@@ -37965,14 +38176,25 @@ class KernelTaskCommand(GenericCommand):
         if task_addrs is None:
             return
 
-        if args.mm:
+        if args.print_maps:
+            offset_mm = self.get_offset_mm(task_addrs[0], offset_task)
+            if offset_mm is None:
+                return
+            # for get_mm and reuse
             self.offset_vm_flags = None
             self.offset_vm_file = None
             self.offset_d_iname = None
             self.offset_d_parent = None
-            offset_mm = self.get_offset_mm(task_addrs[0], offset_task)
-            if offset_mm is None:
-                return
+
+        offset_stack = self.get_offset_stack(task_addrs)
+        if offset_stack is None:
+            return
+
+        offset_pid = self.get_offset_pid(task_addrs)
+        if offset_pid is None:
+            return
+
+        offset_kcanary = self.get_offset_canary(task_addrs, offset_pid)
 
         offset_comm = self.get_offset_comm(task_addrs)
         if offset_comm is None:
@@ -37988,21 +38210,28 @@ class KernelTaskCommand(GenericCommand):
 
         out = []
         ids_str = ["uid", "gid", "suid", "sgid", "euid", "egid", "fsuid", "fsgid"]
-        fmt = "{:<18s}: {:<16s} {:<18s} [{:>5s} {:>5s} {:>5s} {:>5s} {:>5s} {:>5s} {:>5s} {:>5s}] {:<10s}"
-        legend = ["task", "task->comm", "task->cred", *ids_str, "securebits"]
+        fmt = "{:<18s}: {:<7s} {:<16s} {:<18s} [{:>5s} {:>5s} {:>5s} {:>5s} {:>5s} {:>5s} {:>5s} {:>5s}] {:<10s} {:<18s} {:<18s}"
+        legend = ["task", "pid", "task->comm", "task->cred", *ids_str, "securebits", "kstack", "kcanary"]
         out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
         for task in task_addrs:
             comm_string = read_cstring_from_memory(task + offset_comm)
             if args.filter:
                 if not any([re.search(f, comm_string) for f in args.filter]):
                     continue
+            kstack = read_int_from_memory(task + offset_stack)
+            pid = u32(read_memory(task + offset_pid, 4))
             cred = read_int_from_memory(task + offset_cred)
             uids = [u32(read_memory(cred + offset_uid + j * 4, 4)) for j in range(8)]
             securebits = u32(read_memory(cred + offset_uid + 32, 4))
-            fmt = "{:#018x}: {:<16s} {:#018x} [{:>5d},{:>5d},{:>5d},{:>5d},{:>5d},{:>5d},{:>5d},{:>5d}] {:#10x}"
-            out.append(fmt.format(task, comm_string, cred, *uids, securebits))
+            fmt = "{:#018x}: {:<7d} {:<16s} {:#018x} [{:>5d},{:>5d},{:>5d},{:>5d},{:>5d},{:>5d},{:>5d},{:>5d}] {:#10x} {:#018x} {:<18s}"
+            if offset_kcanary:
+                kcanary = read_int_from_memory(task + offset_kcanary)
+                kcanary = "{:#018x}".format(kcanary)
+            else:
+                kcanary = "None"
+            out.append(fmt.format(task, pid, comm_string, cred, *uids, securebits, kstack, kcanary))
 
-            if args.mm:
+            if args.print_maps:
                 mms = self.get_mm(task, offset_mm)
                 if mms:
                     out.append(titlify("memory map of `{:s}`".format(comm_string)))
@@ -40099,7 +40328,7 @@ class SlubDumpCommand(GenericCommand):
         objsize = u32(read_memory(top + current_arch.ptrsize * 3 + 4, 4))
         maybe_recip = u32(read_memory(top + current_arch.ptrsize * 3 + 4 + 4, 4))
         if objsize < maybe_recip or (maybe_recip % 8) != 0:
-            self.kmem_cache_offset_offset = current_arch.ptrsize * 3 + 4 + 4 + current_arch.ptrsize
+            self.kmem_cache_offset_offset = current_arch.ptrsize * 3 + 4 + 4 + 8
         else:
             self.kmem_cache_offset_offset = current_arch.ptrsize * 3 + 4 + 4
         info("offsetof(kmem_cache, offset): {:#x}".format(self.kmem_cache_offset_offset))
@@ -40107,8 +40336,10 @@ class SlubDumpCommand(GenericCommand):
         # offsetof(kmem_cache, random)
         if self.no_xor:
             self.kmem_cache_offset_random = None
+            info("offsetof(kmem_cache, random): None")
         elif self.offset_random is not None:
             self.kmem_cache_offset_random = self.offset_random
+            info("offsetof(kmem_cache, random): {:#x}".format(self.kmem_cache_offset_random))
         else:
             current = top
             for i in range(64): # walk from list for heuristic search
@@ -40122,6 +40353,8 @@ class SlubDumpCommand(GenericCommand):
                         continue
                     if "{:064b}".format(val).count("1") > 64 - 6: # low entrorpy is not `random`
                         continue
+                    if (val & 0xffffffff) == maybe_recip:
+                        continue
                     self.kmem_cache_offset_random = i * current_arch.ptrsize
                     info("offsetof(kmem_cache, random): {:#x}".format(self.kmem_cache_offset_random))
                     break
@@ -40133,6 +40366,8 @@ class SlubDumpCommand(GenericCommand):
                     if "{:032b}".format(val).count("1") < 6: # low entrorpy is not `random`
                         continue
                     if "{:032b}".format(val).count("1") > 32 - 6: # low entrorpy is not `random`
+                        continue
+                    if val == maybe_recip:
                         continue
                     if (val & 0xf) % 4 != 0: # not aligned, it is maybe `random`
                         self.kmem_cache_offset_random = i * current_arch.ptrsize
@@ -40282,7 +40517,7 @@ class SlubDumpCommand(GenericCommand):
             gef_print(' |   kmem_cache_cpu (cpu{:d}): {:#x}'.format(cpu, c['kmem_cache_cpu']))
             gef_print(' |   offset (offset to next pointer in chunk): {:#x}'.format(c['offset']))
             gef_print(' |   objsize: {:s}'.format(Color.colorify("{:#x}".format(c['objsize']), "bold pink")))
-            if c['random']:
+            if c['random'] is not None:
                 if self.no_xor is False and self.swap is True:
                     gef_print(' |   random (xor key): {:#x} ^ byteswap(address of chunk->next)'.format(c['random']))
                 else:
