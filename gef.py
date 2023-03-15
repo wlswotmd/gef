@@ -38839,12 +38839,18 @@ class AsciiSearchCommand(GenericCommand):
     parser.add_argument('-r', '--range', default=0x40, type=lambda x: int(x, 16), help='search range. (default: %(default)s)')
     _syntax_ = parser.format_help()
 
+    seen = set()
+
     def search_ascii(self, locations, search_range, depth, max_depth):
         if depth == 0:
             return
-        for offset in range(0, search_range, current_arch.ptrsize):
+
+        old_locations = []
+        offset = 0
+        while offset < search_range:
             target = locations[-1] + offset
             if not is_valid_addr(target):
+                offset += current_arch.ptrsize
                 continue
 
             cstr = None
@@ -38855,12 +38861,21 @@ class AsciiSearchCommand(GenericCommand):
 
             if cstr:
                 if not self.filter or any([re.search(filt, cstr) for filt in self.filter]):
-                    for d, loc in enumerate(locations):
-                        gef_print("{:s}{:#x}".format("  " * d, loc))
-                    gef_print("{:s}{:#x}: {:s}".format("  " * (d + 1), target, repr(cstr)))
+                    if target not in self.seen:
+                        for d, loc in enumerate(locations):
+                            if old_locations != locations:
+                                gef_print("{:s}{:#x}".format("  " * d, loc))
+                        old_locations = locations.copy()
+                        gef_print("{:s}{:#x}: {:s}".format("  " * (d + 1), target, repr(cstr)))
+                        self.seen.add(target)
+                offset += len(cstr) + 1
+                continue
+
             v = read_int_from_memory(target)
             if is_valid_addr(v):
                 self.search_ascii(locations + [v], search_range, depth - 1, max_depth)
+
+            offset += current_arch.ptrsize
         return
 
     @parse_args

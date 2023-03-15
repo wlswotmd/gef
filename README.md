@@ -419,6 +419,8 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/arch-info.png)
 * `call-syscall`: calls system call with specified values.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/call-syscall.png)
+* `ascii-search`: searches ASCII string recursively from specific location.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ascii-search.png)
 
 ### Other
 * The category is introduced in `gef help`.
