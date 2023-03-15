@@ -79,6 +79,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
         * Secure memory scanning is supported, but you have to break in the secure world.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm64.png)
     * ARM (Cortex-A only, LPAE/Non-LPAE, PL0/PL1)
+        * ARM v7 base.
         * PL2 is NOT supported.
         * Secure memory scanning is supported, you don't have to break in the secure world (use register with `_S` suffix).
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm.png)
