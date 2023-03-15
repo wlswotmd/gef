@@ -36251,7 +36251,7 @@ class KernelAddressHeuristicFinder:
 
     @staticmethod
     def get_saved_command_line():
-        # plan 1
+        # plan 1 (available v2.6.28-rc1 or later)
         cmdline_proc_show = get_ksymaddr("cmdline_proc_show")
         if cmdline_proc_show:
             res = gdb.execute("x/10i {:#x}".format(cmdline_proc_show), to_string=True)
@@ -36324,6 +36324,7 @@ class KernelAddressHeuristicFinder:
             r = get_register("$TPIDRURO")
             if r and is_valid_addr(r):
                 return r
+
             # plan 2
             current_thread_info = current_arch.sp & ~0x1fff
             v = read_int_from_memory(current_thread_info + current_arch.ptrsize * 3)
@@ -36436,6 +36437,78 @@ class KernelAddressHeuristicFinder:
         if init_cred:
             return init_cred
 
+        # plan 2
+        prepare_kernel_cred = get_ksymaddr("prepare_kernel_cred")
+        if prepare_kernel_cred:
+            res = gdb.execute("x/100i {:#x}".format(prepare_kernel_cred), to_string=True)
+            if is_x86_64():
+                for line in res.splitlines():
+                    m = re.search(r"WORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffffffffffff
+                        if v != 0 and is_valid_addr(v) and read_int_from_memory(v) == 4:
+                            return v
+            elif is_x86_32():
+                for line in res.splitlines():
+                    m = re.search(r"ds:(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffff
+                        if v != 0 and is_valid_addr(v) and read_int_from_memory(v) == 4:
+                            return v
+            elif is_arm64():
+                adrp = None
+                add = None
+                for i, line in enumerate(res.splitlines()):
+                    m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
+                    if m:
+                        adrp = int(m.group(1), 16)
+                        adrp_idx = i
+                    m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
+                    if m:
+                        add = int(m.group(1), 16)
+                        add_idx = i
+                    if adrp and add:
+                        if abs(adrp_idx - add_idx) > 2:
+                            if adrp_idx < add_idx:
+                                adrp = None
+                            else:
+                                add = None
+                            continue
+                        candidate = adrp + add
+                        adrp = None
+                        add = None
+                        if not is_valid_addr(candidate):
+                            continue
+                        if read_int_from_memory(candidate) == 4:
+                            return candidate
+            elif is_arm32():
+                movw = None
+                movt = None
+                for i, line in enumerate(res.splitlines()):
+                    m = re.search(r"movw.*;\s*(0x\S+)", line)
+                    if m:
+                        movw = int(m.group(1), 16)
+                        movw_idx = i
+                    m = re.search(r"movt.*;\s*(0x\S+)", line)
+                    if m:
+                        movt = int(m.group(1), 16)
+                        movt_idx = i
+                    if movw and movt:
+                        if abs(movw_idx - movt_idx) > 2:
+                            if movw_idx < movt_idx:
+                                movw = None
+                            else:
+                                movt = None
+                            continue
+                        candidate = (movt << 16) | movw
+                        movw = None
+                        movt = None
+                        if not is_valid_addr(candidate):
+                            continue
+                        if read_int_from_memory(candidate) == 4:
+                            return candidate
+        return None
+
     @staticmethod
     def get_modules():
         # plan 1 (directly)
@@ -36517,7 +36590,7 @@ class KernelAddressHeuristicFinder:
         if chrdevs:
             return chrdevs
 
-        # plan 2
+        # plan 2 (available v2.6.16.12 or later)
         chrdev_show = get_ksymaddr("chrdev_show")
         if chrdev_show:
             res = gdb.execute("x/30i {:#x}".format(chrdev_show), to_string=True)
@@ -36583,7 +36656,7 @@ class KernelAddressHeuristicFinder:
         if cdev_map:
             return cdev_map
 
-        # plan 2
+        # plan 2 (available v2.5.70 or later)
         cdev_del = get_ksymaddr("cdev_del")
         if cdev_del:
             res = gdb.execute("x/30i {:#x}".format(cdev_del), to_string=True)
@@ -36790,7 +36863,7 @@ class KernelAddressHeuristicFinder:
         if __per_cpu_offset:
             return __per_cpu_offset
 
-        # plan 2
+        # plan 2 (available v3.3-rc1 or later)
         nr_iowait_cpu = get_ksymaddr("nr_iowait_cpu")
         if nr_iowait_cpu:
             res = gdb.execute("x/10i {:#x}".format(nr_iowait_cpu), to_string=True)
