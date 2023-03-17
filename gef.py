@@ -16783,6 +16783,8 @@ class ChecksecCommand(GenericCommand):
             ret = KernelCmdlineCommand.kernel_cmdline()
             if ret and "nopti" in ret[1]:
                 gef_print("{:<30s}: {:s}".format("KPTI", Color.colorify("Disabled", "bold red")))
+            elif ret and "pti=on" in ret[1]:
+                gef_print("{:<30s}: {:s}".format("KPTI", Color.colorify("Enabled", "bold green")))
             elif (get_register("$cs") & 0b11) == 3:
                 gef_print("{:<30s}: {:s}".format("KPTI", Color.colorify("Unknown", "bold gray")))
             else:
@@ -37641,35 +37643,53 @@ class KernelAddressHeuristicFinder:
                     m = re.search(r"add.*QWORD PTR \[.*([-+]0x\S+)\]", line)
                     if m:
                         v = int(m.group(1), 16) & 0xffffffffffffffff
-                        if v != 0:
-                            return v
+                        if is_valid_addr(v):
+                            cpu0 = read_int_from_memory(v)
+                            if cpu0 and (cpu0 & 0xfff) == 0:
+                                return v
                 # pattern 2
                 for line in res.splitlines():
                     m = re.search(r"DWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
                     if m:
                         v = int(m.group(1), 16) & 0xffffffffffffffff
-                        if v != 0:
-                            return v
+                        if is_valid_addr(v):
+                            cpu0 = read_int_from_memory(v)
+                            if cpu0 and (cpu0 & 0xfff) == 0:
+                                return v
             elif is_x86_32():
                 # pattern 1
                 for line in res.splitlines():
                     m = re.search(r"DWORD PTR \[.*([-+]0x\S+)\]", line)
                     if m:
                         v = int(m.group(1), 16) & 0xffffffff
-                        if v != 0:
-                            return v
+                        if is_valid_addr(v):
+                            cpu0 = read_int_from_memory(v)
+                            if cpu0 and (cpu0 & 0xfff) == 0:
+                                return v
             elif is_arm64():
-                base = None
+                # pattern 1
+                bases = {}
                 for line in res.splitlines():
-                    if base is None:
-                        m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
-                        if m:
-                            base = int(m.group(1), 16)
-                    else:
-                        m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
-                        if m:
-                            return base + int(m.group(1), 16)
+                    m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        base = int(m.group(2), 16)
+                        bases[reg] = base
+                        continue
+                    m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\S+)", line)
+                    if m:
+                        dstreg = m.group(1)
+                        srcreg = m.group(2)
+                        add = int(m.group(3), 16)
+                        if srcreg in bases:
+                            v = bases[srcreg] + add
+                            if is_valid_addr(v):
+                                cpu0 = read_int_from_memory(v)
+                                if cpu0 and (cpu0 & 0xfff) == 0:
+                                    return v
+                            del bases[srcreg]
             elif is_arm32():
+                # pattern 1
                 base = None
                 for line in res.splitlines():
                     if base is None:
@@ -37679,7 +37699,11 @@ class KernelAddressHeuristicFinder:
                     else:
                         m = re.search(r"movt.*;\s*(0x\S+)", line)
                         if m:
-                            return base + (int(m.group(1), 16) << 16)
+                            v = base + (int(m.group(1), 16) << 16)
+                            if is_valid_addr(v):
+                                cpu0 = read_int_from_memory(v)
+                                if cpu0 and (cpu0 & 0xfff) == 0:
+                                    return v
         return None
 
     @staticmethod
@@ -41037,7 +41061,7 @@ class SlubDumpCommand(GenericCommand):
                         help='skip xor to chunk->next. it is used when `kmem_cache.random` is falsely detected.')
     parser.add_argument('--offset-random', type=lambda x: int(x, 16),
                         help='specified offsetof(kmem_cache, random). it is used when `kmem_cache.random` is falsely detected.')
-    parser.add_argument('--no-byte-swap', action='store_true',
+    parser.add_argument('--no-byte-swap', action='store_true', default=None,
                         help='skip byteswap to chunk->next. it is used when `kmem_cache.random` is falsely detected.')
     parser.add_argument('--list', action='store_true', help='list up all slub cache names.')
     _syntax_ = parser.format_help()
@@ -41099,8 +41123,9 @@ class SlubDumpCommand(GenericCommand):
         } reciprocal_size;                       // if kernel >= 5.9-rc1
         unsigned int offset;
         unsigned int cpu_partial;                // if CONFIG_SLUB_CPU_PARTIAL=y
+        unsigned int cpu_partial_slabs;          // if CONFIG_SLUB_CPU_PARTIAL=y && kernel >= 5.16-rc1
         struct kmem_cache_order_objects oo;
-        struct kmem_cache_order_objects max;
+        struct kmem_cache_order_objects max;     // if kernel < 5.19-rc1
         struct kmem_cache_order_objects min;
         gfp_t allocflags;
         int refcount;
@@ -41118,7 +41143,11 @@ class SlubDumpCommand(GenericCommand):
         unsigned long random;                    // if CONFIG_SLAB_FREELIST_HARDENED=y
         unsigned int remote_node_defrag_ratio;   // if CONFIG_NUMA=y
         unsigned int *random_seq;                // if CONFIG_SLAB_FREELIST_RANDOM=y
-        struct kasan_cache kasan_info;           // if CONFIG_KASAN=y
+        struct kasan_cache {
+            int alloc_meta_offset;
+            int free_meta_offset;
+            bool is_kmalloc;
+        } kasan_info;                            // if CONFIG_KASAN=y
         unsigned int useroffset;
         unsigned int usersize;
         struct kmem_cache_node *node[64];
@@ -41127,31 +41156,19 @@ class SlubDumpCommand(GenericCommand):
     struct kmem_cache_cpu {
         void **freelist;
         unsigned long tid;
-        struct page *page;
+        struct slab *slab;                       // if kernel >= 5.17-rc1
+        struct page *page;                       // if kernel < 5.17-rc1
         struct page *partial;                    // if CONFIG_SLUB_CPU_PARTIAL=y
+        local_lock_t lock;                       // if kernel >= 5.15-rc1
         unsigned stat[NR_SLUB_STAT_ITEMS];       // if CONFIG_SLUB_STATS=y
     }
     """
 
     def init_offset(self):
-        # resolve __per_cpu_offset
-        self.__per_cpu_offset = KernelAddressHeuristicFinder.get_per_cpu_offset()
-        if self.__per_cpu_offset is None:
-            err("Failed to resolve `__per_cpu_offset`")
-            return False
+        if is_64bit():
+            mask = 0x8000000000000000
         else:
-            info("__per_cpu_offset: {:#x}".format(self.__per_cpu_offset))
-
-        # resolve each cpu_offset
-        self.cpu_offset = [read_int_from_memory(self.__per_cpu_offset)]
-        i = 1
-        while True:
-            off = read_int_from_memory(self.__per_cpu_offset + i * 8)
-            if off == self.cpu_offset[-1]:
-                self.cpu_offset = self.cpu_offset[:-1]
-                break
-            self.cpu_offset.append(off)
-            i += 1
+            mask = 0x80000000
 
         # resolve slab_caches
         self.slab_caches = KernelAddressHeuristicFinder.get_slab_caches()
@@ -41161,45 +41178,68 @@ class SlubDumpCommand(GenericCommand):
         else:
             info("slab_caches: {:#x}".format(self.slab_caches))
 
-        # offsetof(kmem_cache, list)
-        current = list_next = read_int_from_memory(self.slab_caches)
-        for off in range(0, 0x70, current_arch.ptrsize): # backward search for the start of `struct kmem_cache`
-            val = read_int_from_memory(current - off)
-            # search condition 1 (rare case)
-            if (is_32bit() and (val & 0x80000000)) or (is_64bit() and (val & 0x8000000000000000)):
-                try:
-                    b = read_memory(val, 0x100)
-                    if b == b"\x00" * 0x100: # read ok, but data is none. `off` just points `struct kmem_cache->cpu_slab`
-                        break
-                except gdb.MemoryError: # read error, so this is not address. `off` just points `struct kmem_cache->cpu_slab`
+        seen = [self.slab_caches]
+        current = self.slab_caches
+        while True:
+            current = read_int_from_memory(current)
+            if current in seen:
+                break
+            seen.append(current)
+        kmem_caches = seen[1:]
+
+        # resolve __per_cpu_offset
+        __per_cpu_offset = KernelAddressHeuristicFinder.get_per_cpu_offset()
+        if __per_cpu_offset is None:
+            info("__per_cpu_offset: Not found")
+            self.cpu_offset = []
+        else:
+            info("__per_cpu_offset: {:#x}".format(__per_cpu_offset))
+            # resolve each cpu_offset
+            self.cpu_offset = [read_int_from_memory(__per_cpu_offset)]
+            i = 1
+            while True:
+                off = read_int_from_memory(__per_cpu_offset + i * 8)
+                if off == self.cpu_offset[-1]:
+                    self.cpu_offset = self.cpu_offset[:-1]
                     break
-            # search condition 2 (normal case)
-            a = read_int_from_memory(current - off - current_arch.ptrsize * 1)
-            b = read_int_from_memory(current - off - current_arch.ptrsize * 2)
-            if (a == b == 0) or (a == b == 0xcccccccc) or (a == b == 0xcccccccccccccccc):
-                # normal case: [..., 0x0, 0x0, struct kmem_cache, ...]
-                # rare case: [..., 0xcccccccc, 0xcccccccc, struct kmem_cache, ...]
-                # rare case: [..., 0xcccccccccccccccc, 0xcccccccccccccccc, struct kmem_caches, ...]
+                self.cpu_offset.append(off)
+                i += 1
+
+        # offsetof(kmem_cache, list)
+        for candidate_offset in range(current_arch.ptrsize * 2, 0x70, current_arch.ptrsize):
+            # backward search for the start of `struct kmem_cache`
+            found = True
+            seen = []
+            for kmem_cache in kmem_caches:
+                val = read_int_from_memory(kmem_cache - candidate_offset)
+                if val in [0, 0xffffffff, 0xffffffffffffffff]:
+                    found = False
+                    break
+                if val in seen:
+                    found = False
+                    break
+                else:
+                    seen.append(val)
+
+                for cpuoff in self.cpu_offset:
+                    if not is_valid_addr(align_address(val + cpuoff)):
+                        found = False
+                        break
+
+            if found:
+                self.kmem_cache_offset_list = candidate_offset
+                info("offsetof(kmem_cache, list): {:#x}".format(self.kmem_cache_offset_list))
                 break
         else:
-            # not found, so try x64 specific condition
-            for diff in [0, 0x40]: # 0x80 or 0x40 align
-                off = (current & 0x7f) + diff
-                flags = read_int_from_memory(current - off + current_arch.ptrsize)
-                if is_x86_64() and (flags & 0xfffffffffbf00fff) == 0x0000000040000000: # heuristic flags value
-                    break
-            else:
-                err("offsetof(kmem_cache, list): Not Found")
-                raise
-        self.kmem_cache_offset_list = off
-        info("offsetof(kmem_cache, list): {:#x}".format(self.kmem_cache_offset_list))
+            info("offsetof(kmem_cache, list): Not found")
+            return False
 
         # offsetof(kmem_cache, name)
         self.kmem_cache_offset_name = self.kmem_cache_offset_list - current_arch.ptrsize
         info("offsetof(kmem_cache, name): {:#x}".format(self.kmem_cache_offset_name))
 
         # offsetof(kmem_cache, offset)
-        top = list_next - self.kmem_cache_offset_list
+        top = read_int_from_memory(self.slab_caches) - self.kmem_cache_offset_list
         objsize = u32(read_memory(top + current_arch.ptrsize * 3 + 4, 4))
         maybe_recip = u32(read_memory(top + current_arch.ptrsize * 3 + 4 + 4, 4))
         if objsize < maybe_recip or (maybe_recip % 8) != 0:
@@ -41207,6 +41247,12 @@ class SlubDumpCommand(GenericCommand):
         else:
             self.kmem_cache_offset_offset = current_arch.ptrsize * 3 + 4 + 4
         info("offsetof(kmem_cache, offset): {:#x}".format(self.kmem_cache_offset_offset))
+
+        # offsetof(kmem_cache, cpu_slab)
+        self.kmem_cache_offset_cpu_slab = 0
+        # offsetof(kmem_cache, object_size)
+        self.kmem_cache_offset_object_size = current_arch.ptrsize * 3 + 4
+        info("offsetof(kmem_cache, object_size): {:#x}".format(self.kmem_cache_offset_object_size))
 
         # offsetof(kmem_cache, random)
         if self.no_xor:
@@ -41216,53 +41262,66 @@ class SlubDumpCommand(GenericCommand):
             self.kmem_cache_offset_random = self.offset_random
             info("offsetof(kmem_cache, random): {:#x}".format(self.kmem_cache_offset_random))
         else:
-            current = top
-            for i in range(64): # walk from list for heuristic search
-                val = read_int_from_memory(current + i * current_arch.ptrsize)
-                if is_64bit():
-                    if (val >> 48) in [0, 0xffff, 0xfffe, 0xdead, current >> 48]: # for la57: current >> 48
-                        continue
-                    if (val >> 32) == (val & 0xffffffff):
-                        continue
-                    if "{:064b}".format(val).count("1") < 6: # low entrorpy is not `random`
-                        continue
-                    if "{:064b}".format(val).count("1") > 64 - 6: # low entrorpy is not `random`
-                        continue
-                    if (val & 0xffffffff) == maybe_recip:
-                        continue
-                    self.kmem_cache_offset_random = i * current_arch.ptrsize
+            for i in range(2, 0x40): # walk from list for heuristic search
+                candidate_offset = current_arch.ptrsize * i
+                found = True
+                count = 0
+                seen = []
+                for kmem_cache in kmem_caches:
+                    val = read_int_from_memory(kmem_cache + candidate_offset)
+                    if is_valid_addr(val):
+                        count += 1
+                        if count >= 3:
+                            found = False
+                            break
+                    else:
+                        if val > 0xffffff:
+                            count -= 1
+
+                    if val != 0:
+                        if val in seen:
+                            found = False
+                            break
+                        seen.append(val)
+
+                if found:
+                    # Too few random numbers.
+                    if len(seen) < 10:
+                        found = False
+
+                    # Ocurrences of non-negative small integers are stochastically rare.
+                    elif sum([0 < x < 0x100000 for x in seen]) >= 3:
+                        found = False
+
+                    # Ocurrences of big integers are stochastically rare.
+                    elif sum([0xffff000000000000 < x <= 0xffffffffffffffff for x in seen]) >= 3:
+                        found = False
+
+                    # Occurrences of 0xXXXX000 are stochastically rare.
+                    elif sum([x and (x & 0xfff) == 0 for x in seen]) >= 3:
+                        found = False
+
+                if found:
+                    # search `struct kmem_cache_node *node` or `unsigned int *random_seq`
+                    for i in range(1, 9):
+                        maybe_ptrs = []
+                        for kmem_cache in kmem_caches:
+                            v = read_int_from_memory(kmem_cache + candidate_offset + current_arch.ptrsize * i)
+                            maybe_ptrs.append(v)
+                        # they should be at the same offset
+                        if all([is_valid_addr(p) for p in maybe_ptrs]):
+                            break
+                    else:
+                        found = False
+
+                if found:
+                    self.kmem_cache_offset_random = self.kmem_cache_offset_list + candidate_offset
                     info("offsetof(kmem_cache, random): {:#x}".format(self.kmem_cache_offset_random))
                     break
-                elif is_32bit():
-                    if (val >> 8) in [0, 0xffffff]: # 0x000000**, 0xffffff** are not `random`
-                        continue
-                    if (val & ~0x0f0ff000) == 0x40000000: # flag are not `random`
-                        continue
-                    if "{:032b}".format(val).count("1") < 6: # low entrorpy is not `random`
-                        continue
-                    if "{:032b}".format(val).count("1") > 32 - 6: # low entrorpy is not `random`
-                        continue
-                    if val == maybe_recip:
-                        continue
-                    if (val & 0xf) % 4 != 0: # not aligned, it is maybe `random`
-                        self.kmem_cache_offset_random = i * current_arch.ptrsize
-                        info("offsetof(kmem_cache, random): {:#x}".format(self.kmem_cache_offset_random))
-                        break
-                    try:
-                        read_int_from_memory(val) # if no error, it is not `random`
-                        continue
-                    except Exception:
-                        self.kmem_cache_offset_random = i * current_arch.ptrsize
-                        info("offsetof(kmem_cache, random): {:#x}".format(self.kmem_cache_offset_random))
-                        break
             else:
                 info("offsetof(kmem_cache, random): Not found")
                 self.kmem_cache_offset_random = None # maybe CONFIG_SLAB_FREELIST_HARDENED=n
 
-        # offsetof(kmem_cache, cpu_slab)
-        self.kmem_cache_offset_cpu_slab = 0
-        # offsetof(kmem_cache, object_size)
-        self.kmem_cache_offset_object_size = current_arch.ptrsize * 3 + 4
         # offsetof(kmem_cache_cpu, freelist)
         self.kmem_cache_cpu_offset_freelist = 0
         return True
@@ -41290,7 +41349,10 @@ class SlubDumpCommand(GenericCommand):
 
     def get_kmem_cache_cpu(self, addr, cpu):
         cpu_slab = read_int_from_memory(addr + self.kmem_cache_offset_cpu_slab)
-        kmem_cache_cpu = cpu_slab + self.cpu_offset[cpu]
+        if len(self.cpu_offset) > 0:
+            kmem_cache_cpu = cpu_slab + self.cpu_offset[cpu]
+        else:
+            kmem_cache_cpu = cpu_slab
         if is_64bit():
             return kmem_cache_cpu & 0xffffffffffffffff
         else:
@@ -41392,11 +41454,12 @@ class SlubDumpCommand(GenericCommand):
             gef_print(' |   kmem_cache_cpu (cpu{:d}): {:#x}'.format(cpu, c['kmem_cache_cpu']))
             gef_print(' |   offset (offset to next pointer in chunk): {:#x}'.format(c['offset']))
             gef_print(' |   objsize: {:s}'.format(Color.colorify("{:#x}".format(c['objsize']), "bold pink")))
-            if c['random'] is not None:
-                if self.no_xor is False and self.swap is True:
-                    gef_print(' |   random (xor key): {:#x} ^ byteswap(address of chunk->next)'.format(c['random']))
-                else:
-                    gef_print(' |   random (xor key): {:#x} ^ address of chunk->next'.format(c['random']))
+            if self.kmem_cache_offset_random is not None:
+                if self.no_xor is False:
+                    if self.swap is True:
+                        gef_print(' |   random (xor key): {:#x} ^ byteswap(address of chunk->next)'.format(c['random']))
+                    else:
+                        gef_print(' |   random (xor key): {:#x} ^ address of chunk->next'.format(c['random']))
             if len(c['freelist']) > 0:
                 if isinstance(c['freelist'][0], str):
                     gef_print(' |   freelist:   {:s}'.format(c['freelist'][0]))
@@ -41433,17 +41496,17 @@ class SlubDumpCommand(GenericCommand):
             return
 
         if self.cpuN is None:
-            for i in range(len(self.cpu_offset)):
+            for i in range(len(self.cpu_offset) or 1):
                 gef_print(titlify("CPU {:d}".format(i)))
                 self.walk_caches(i)
                 self.dump_caches(targets, i)
         else:
-            if len(self.cpu_offset) > self.cpuN:
+            if (len(self.cpu_offset) or 1) > self.cpuN:
                 gef_print(titlify("CPU {:d}".format(self.cpuN)))
                 self.walk_caches(self.cpuN)
                 self.dump_caches(targets, self.cpuN)
             else:
-                err("CPU number is invalid (valid range:{:d}-{:d})".format(0, len(self.cpu_offset) - 1))
+                err("CPU number is invalid (valid range:{:d}-{:d})".format(0, (len(self.cpu_offset) or 1) - 1))
         return
 
     @parse_args
@@ -41464,10 +41527,12 @@ class SlubDumpCommand(GenericCommand):
 
         info("Wait for memory scan")
 
-        try:
-            self.slabwalk(args.cache_name)
-        except Exception:
-            err("Memory corrupted")
+        r = gdb.execute("ksymaddr-remote --silent slub_", to_string=True)
+        if not r:
+            err("Unsupported SLAB, SLOB")
+            return
+
+        self.slabwalk(args.cache_name)
         return
 
 
