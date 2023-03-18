@@ -11677,9 +11677,13 @@ class ScanSectionCommand(GenericCommand):
 
         if haystack in ["binary", "bin"]:
             haystack = get_filepath(append_proc_root_prefix=False)
+        if is_qemu_usermode() and haystack is None:
+            haystack = "[code]"
 
         if needle in ["binary", "bin"]:
             needle = get_filepath(append_proc_root_prefix=False)
+        if is_qemu_usermode() and needle is None:
+            needle = "[code]"
 
         self.scan(haystack, needle)
         return
