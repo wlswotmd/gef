@@ -18466,13 +18466,16 @@ class ContextCommand(GenericCommand):
         if not is_x86():
             return
 
-        inst_iter = gef_disassemble(current_arch.pc, 1)
+        inst_iter = gef_disassemble(current_arch.pc, 2)
         insn_here = inst_iter.__next__()
         if insn_here.operands == []:
             return
 
         insn = ','.join(insn_here.operands)
         insn = re.sub(r"<.+>", "", insn)
+
+        insn_next = inst_iter.__next__()
+        codesize = insn_next.address - insn_here.address
 
         r = re.findall(r"((fs|gs):\[?([^,\]]+)\]?)", str(insn))
         if r:
@@ -18485,6 +18488,8 @@ class ContextCommand(GenericCommand):
             offset = offset.split()
             offset = ["$" + x if x.isalpha() or re.match(r"r\d+d?", x) else x for x in offset]
             offset = ''.join(offset)
+            # $rip/$eip points next instruction
+            offset = offset.replace("$rip", f"$rip+{codesize:#x}")
             offset = parse_address(offset)
             mask = ((1 << 32) - 1) if is_32bit() else ((1 << 64) - 1)
             addr = (tls + offset) & mask
@@ -39145,53 +39150,71 @@ class TlsCommand(GenericCommand):
 
     @staticmethod
     def getfs():
-        if is_remote_debug():
-            if is_x86_64():
-                return TlsCommand.get_tls_heuristic()
-            else:
-                return 0
         # fast path
         fs = get_register("$fs_base")
         if fs is not None:
             return fs
-        # slow path
-        PTRACE_ARCH_PRCTL = 30
-        ARCH_GET_FS = 0x1003
-        pid, lwpid, tid = gdb.selected_thread().ptid
-        ppvoid = ctypes.POINTER(ctypes.c_void_p)
-        value = ppvoid(ctypes.c_void_p())
-        value.contents.value = 0
-        libc = ctypes.CDLL('libc.so.6')
-        result = libc.ptrace(PTRACE_ARCH_PRCTL, lwpid, value, ARCH_GET_FS)
-        if result == 0:
-            return value.contents.value or 0
+
+        if (get_register("$cs") & 0b11) == 3:
+            # remote
+            if is_remote_debug():
+                if is_x86_64():
+                    return TlsCommand.get_tls_heuristic()
+                else:
+                    return 0
+            # slow path
+            PTRACE_ARCH_PRCTL = 30
+            ARCH_GET_FS = 0x1003
+            pid, lwpid, tid = gdb.selected_thread().ptid
+            ppvoid = ctypes.POINTER(ctypes.c_void_p)
+            value = ppvoid(ctypes.c_void_p())
+            value.contents.value = 0
+            libc = ctypes.CDLL('libc.so.6')
+            result = libc.ptrace(PTRACE_ARCH_PRCTL, lwpid, value, ARCH_GET_FS)
+            if result == 0:
+                return value.contents.value or 0
+            else:
+                return 0
         else:
-            return 0
+            r = gdb.execute("msr MSR_FS_BASE -q", to_string=True)
+            if r:
+                return int(r, 16)
+            else:
+                return 0
 
     @staticmethod
     def getgs():
-        if is_remote_debug():
-            if is_x86_32():
-                return TlsCommand.get_tls_heuristic()
-            else:
-                return 0
         # fast path
         gs = get_register("$gs_base")
         if gs is not None:
             return gs
-        # slow path
-        PTRACE_ARCH_PRCTL = 30
-        ARCH_GET_GS = 0x1004
-        pid, lwpid, tid = gdb.selected_thread().ptid
-        ppvoid = ctypes.POINTER(ctypes.c_void_p)
-        value = ppvoid(ctypes.c_void_p())
-        value.contents.value = 0
-        libc = ctypes.CDLL('libc.so.6')
-        result = libc.ptrace(PTRACE_ARCH_PRCTL, lwpid, value, ARCH_GET_GS)
-        if result == 0:
-            return value.contents.value or 0
+
+        if (get_register("$cs") & 0b11) == 3:
+            # remote
+            if is_remote_debug():
+                if is_x86_32():
+                    return TlsCommand.get_tls_heuristic()
+                else:
+                    return 0
+            # slow path
+            PTRACE_ARCH_PRCTL = 30
+            ARCH_GET_GS = 0x1004
+            pid, lwpid, tid = gdb.selected_thread().ptid
+            ppvoid = ctypes.POINTER(ctypes.c_void_p)
+            value = ppvoid(ctypes.c_void_p())
+            value.contents.value = 0
+            libc = ctypes.CDLL('libc.so.6')
+            result = libc.ptrace(PTRACE_ARCH_PRCTL, lwpid, value, ARCH_GET_GS)
+            if result == 0:
+                return value.contents.value or 0
+            else:
+                return 0
         else:
-            return 0
+            r = gdb.execute("msr MSR_GS_BASE -q", to_string=True)
+            if r:
+                return int(r, 16)
+            else:
+                return 0
 
     @staticmethod
     def get_tls():
@@ -45179,6 +45202,7 @@ class MsrCommand(GenericCommand):
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('-l', dest='filter', nargs='*', help='list up known MSR values.')
     group.add_argument('msr_target', metavar='MSR_VALUE|MSR_NAME', nargs='?', help='the msr value/name you want to know real value.')
+    parser.add_argument('-q', '--quiet', action='store_true', help='quiet mode.')
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} 0xc0000080              # rcx value\n".format(_cmdline_)
@@ -45736,7 +45760,7 @@ class MsrCommand(GenericCommand):
         os.close(self.stdout_bak)
         return
 
-    def read_msr_core(self, num):
+    def read_msr(self, num):
         code = b"\xeb\xfe\x0f\x32" # inf-loop (to stop another thread); rdmsr
         gef_on_stop_unhook(hook_stop_handler)
         d = self.get_state(len(code))
@@ -45754,12 +45778,6 @@ class MsrCommand(GenericCommand):
         self.revert_state(d)
         gef_on_stop_hook(hook_stop_handler)
         return ((edx << 32) | eax) & 0xffffffffffffffff
-
-    def read_msr(self, num):
-        val = self.read_msr_core(num)
-        name = self.lookup_val2name(num)
-        gef_print("{:s} ({:#x}): {:#x} (={:s})".format(name, num, val, self.bits_split(val)))
-        return
 
     @parse_args
     @only_if_gdb_running
@@ -45784,7 +45802,13 @@ class MsrCommand(GenericCommand):
             except Exception:
                 self.usage()
                 return
-        self.read_msr(num)
+
+        val = self.read_msr(num)
+        name = self.lookup_val2name(num)
+        if args.quiet:
+            gef_print("{:#x}".format(val))
+        else:
+            gef_print("{:s} ({:#x}): {:#x} (={:s})".format(name, num, val, self.bits_split(val)))
         return
 
 
