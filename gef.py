@@ -7989,53 +7989,53 @@ def __get_explored_regions():
 
     # auxv parse
     auxv = gef_get_auxiliary_values()
-    codebase = auxv.get("AT_PHDR", None) or auxv.get("AT_ENTRY", None)
-
-    # plan1: from link_map info (code, all loaded shared library)
-    link_map = get_link_map(codebase)
-    if link_map:
-        regions += parse_region_from_link_map(link_map)
-
-    # plan2: use each auxv info (for code, linker)
-    elif auxv:
-        # code
-        if "AT_PHDR" in auxv:
-            regions += parse_region_from_ehdr(auxv["AT_PHDR"], _get_filepath() or "[code]")
-        elif "AT_ENTRY" in auxv:
-            regions += parse_region_from_ehdr(auxv["AT_ENTRY"], _get_filepath() or "[code]")
-        # linker
-        if "AT_BASE" in auxv:
-            regions += parse_region_from_ehdr(auxv["AT_BASE"], get_linker(codebase) or "[linker]")
-
-    # vdso
     if auxv:
+        codebase = auxv.get("AT_PHDR", None) or auxv.get("AT_ENTRY", None)
+
+        # plan1: from link_map info (code, all loaded shared library)
+        link_map = get_link_map(codebase)
+        if link_map:
+            regions += parse_region_from_link_map(link_map)
+
+        # plan2: use each auxv info (for code, linker)
+        else:
+            # code
+            if "AT_PHDR" in auxv:
+                regions += parse_region_from_ehdr(auxv["AT_PHDR"], _get_filepath() or "[code]")
+            elif "AT_ENTRY" in auxv:
+                regions += parse_region_from_ehdr(auxv["AT_ENTRY"], _get_filepath() or "[code]")
+            # linker
+            if "AT_BASE" in auxv:
+                regions += parse_region_from_ehdr(auxv["AT_BASE"], get_linker(codebase) or "[linker]")
+
+        # vdso
         if "AT_SYSINFO_EHDR" in auxv:
             regions += parse_region_from_ehdr(auxv["AT_SYSINFO_EHDR"], "[vdso]")
         elif "AT_SYSINFO" in auxv:
             regions += parse_region_from_ehdr(auxv["AT_SYSINFO"], "[vdso]")
 
-    # stack registers
-    stack_permission = "rw-"
-    if auxv and "AT_PHDR" in auxv:
-        elf = get_ehdr(auxv["AT_PHDR"] & gef_getpagesize_mask())
-        for phdr in elf.phdrs:
-            if phdr.p_type != Phdr.PT_GNU_STACK:
-                continue
-            pflags = {
-                0                                 : "---",
-                Phdr.PF_X                         : "--x",
-                Phdr.PF_W                         : "-w-",
-                Phdr.PF_R                         : "r--",
-                Phdr.PF_W | Phdr.PF_X             : "-wx",
-                Phdr.PF_R | Phdr.PF_X             : "r-x",
-                Phdr.PF_R | Phdr.PF_W             : "rw-",
-                Phdr.PF_R | Phdr.PF_W | Phdr.PF_X : "rwx",
-            }
-            stack_permission = pflags[phdr.p_flags]
-            break
-        else:
-            stack_permission = "rwx" # no GNU_STACK phdr means no-NX
-    regions += make_regions(current_arch.sp, "[stack]", stack_permission)
+        # stack registers
+        stack_permission = "rw-"
+        if auxv and "AT_PHDR" in auxv:
+            elf = get_ehdr(auxv["AT_PHDR"] & gef_getpagesize_mask())
+            for phdr in elf.phdrs:
+                if phdr.p_type != Phdr.PT_GNU_STACK:
+                    continue
+                pflags = {
+                    0                                 : "---",
+                    Phdr.PF_X                         : "--x",
+                    Phdr.PF_W                         : "-w-",
+                    Phdr.PF_R                         : "r--",
+                    Phdr.PF_W | Phdr.PF_X             : "-wx",
+                    Phdr.PF_R | Phdr.PF_X             : "r-x",
+                    Phdr.PF_R | Phdr.PF_W             : "rw-",
+                    Phdr.PF_R | Phdr.PF_W | Phdr.PF_X : "rwx",
+                }
+                stack_permission = pflags[phdr.p_flags]
+                break
+            else:
+                stack_permission = "rwx" # no GNU_STACK phdr means no-NX
+        regions += make_regions(current_arch.sp, "[stack]", stack_permission)
 
     # registers
     for regname in current_arch.all_registers:
@@ -9034,7 +9034,7 @@ def get_auxiliary_walk(offset=0):
     current = addr - current_arch.ptrsize * 2 - offset
 
     # check readable or not again
-    if not is_valid_addr(addr):
+    if not is_valid_addr(current):
         # something is wrong, maybe stack is pivoted
         return None
 
