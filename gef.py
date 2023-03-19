@@ -6910,7 +6910,10 @@ def read_cstring_from_memory(address, max_length=GEF_MAX_STRING_LENGTH):
 
     # treat as utf-8
     res = res.split(b"\x00")[0]
-    ustr = res.decode("utf-8")
+    try:
+        ustr = res.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
     if len(ustr) > max_length:
         ustr = "{}[...]".format(ustr[:max_length])
     return ustr
@@ -41609,19 +41612,20 @@ class KsymaddrRemoteCommand(GenericCommand):
 
     # 32bit is very complicated. 64bit is simple
     def initialize32_kallsyms_relative_base(self):
+
         # 1. find kbase from rodata
         if is_x86_32():
             # recent kernel (buildroot:5.4.58, debian11.3:5.10.0-13)
-            for idx, tmp in enumerate(self.RO_REGION_u32[:-1]):
-                if tmp & 0xfff: # should be aligned
+            for idx, val in enumerate(self.RO_REGION_u32[:-1]):
+                if val & 0xfff: # should be aligned
                     continue
-                if (tmp & 0xffff0000) != (self.kbase & 0xffff0000): # holds around kbase
+                if (val & 0xffff0000) != (self.kbase & 0xffff0000): # holds around kbase
                     continue
                 if self.RO_REGION_u32[idx + 1] > 0x4ffff: # next address is kallsyms_num_syms. too large number is fail
                     continue
                 if 0 < self.RO_REGION_u32[idx + 1] < 0x100 : # next address is kallsyms_num_syms. too small number is fail
                     continue
-                self.kallsyms_relative_base = tmp
+                self.kallsyms_relative_base = val
                 self.kallsyms_relative_base_off = idx
                 self.kallsyms_relative_base_addr = self.krobase + self.kallsyms_relative_base_off * 4
                 return
@@ -41640,16 +41644,16 @@ class KsymaddrRemoteCommand(GenericCommand):
 
         elif is_arm32():
             # recent kernel (debian 11.3:5.10.0-14)
-            for idx, tmp in enumerate(self.RO_REGION_u32[:-1]):
-                if tmp & 0xfff: # should be aligned
+            for idx, val in enumerate(self.RO_REGION_u32[:-1]):
+                if val & 0xfff: # should be aligned
                     continue
-                if (tmp & 0xffff0000) != (self.kbase & 0xffff0000): # holds around kbase
+                if (val & 0xffff0000) != (self.kbase & 0xffff0000): # holds around kbase
                     continue
                 if self.RO_REGION_u32[idx + 1] > 0x4ffff: # next address is kallsyms_num_syms. too large number is fail
                     continue
                 if 0 < self.RO_REGION_u32[idx + 1] < 0x100 : # next address is kallsyms_num_syms. too small number is fail
                     continue
-                self.kallsyms_relative_base = tmp
+                self.kallsyms_relative_base = val
                 self.kallsyms_relative_base_off = idx
                 self.kallsyms_relative_base_addr = self.krobase + self.kallsyms_relative_base_off * 4
                 return
@@ -41668,8 +41672,6 @@ class KsymaddrRemoteCommand(GenericCommand):
                     pass
 
         # not found
-        if not self.silent:
-            err("Failed to identified kallsyms_relative_base (not found kernel_base in kernel_robase)")
         self.kallsyms_relative_base = None
         self.kallsyms_relative_base_off = None
         self.kallsyms_relative_base_addr = None
@@ -41692,7 +41694,10 @@ class KsymaddrRemoteCommand(GenericCommand):
         # 1. walk to prev and found non-zero value
         # 2. if the MSB of the element is on, then it is pattern 4 at kallsyms_sym_address() in root/kernel/kallsyms.c.
         #    so not pattern 2, therefore, CONFIG_KALLSYMS_ABSOLUTE_PERCPU = True
-        pos = self.kallsyms_relative_base_off - 4
+        if self.kallsyms_relative_base_off:
+            pos = self.kallsyms_relative_base_off - 4
+        else:
+            pos = self.kallsyms_num_syms - 4
         while self.RO_REGION_u32[pos] == 0:
             pos -= 1
         self.CONFIG_KALLSYMS_ABSOLUTE_PERCPU = (((self.RO_REGION_u32[pos] >> 31) & 1) == 1)
@@ -41762,7 +41767,10 @@ class KsymaddrRemoteCommand(GenericCommand):
         # 1. prev to it
         # 2. if the MSB of the element is on, then it is pattern 4 at kallsyms_sym_address() in root/kernel/kallsyms.c.
         #    so not pattern 2, therefore, CONFIG_KALLSYMS_ABSOLUTE_PERCPU = True
-        pos = self.kallsyms_relative_base_off - 4
+        if self.kallsyms_relative_base_off:
+            pos = self.kallsyms_relative_base_off - 4
+        else:
+            pos = self.kallsyms_num_syms - 4
         self.CONFIG_KALLSYMS_ABSOLUTE_PERCPU = (((self.RO_REGION_u32[pos] >> 31) & 1) == 1)
         return
 
@@ -41822,19 +41830,19 @@ class KsymaddrRemoteCommand(GenericCommand):
 
     def initialize64_kallsyms_relative_base(self):
         # 1. find kbase from rodata
-        for idx, tmp in enumerate(self.RO_REGION_u64[:-1]):
-            if tmp & 0xffff: # kbase should be aligned
+        for idx, val in enumerate(self.RO_REGION_u64[:-1]):
+            if val & 0xfff: # kbase should be aligned
                 continue
-            if (tmp & 0xfffffffffff00000) != (self.kbase & 0xfffffffffff00000): # the candidate holds around kbase (usually just kbase)
+            if (val & 0xfffffffffff00000) != (self.kbase & 0xfffffffffff00000): # holds around kbase (usually just kbase or _stext)
                 continue
             if self.RO_REGION_u64[idx + 1] > 0x4ffff: # next element is kallsyms_num_syms. too large number is fail
                 continue
-            self.kallsyms_relative_base = tmp
+            if self.RO_REGION_u64[idx + 1] < 0x1000: # next element is kallsyms_num_syms. too small number is fail
+                continue
+            self.kallsyms_relative_base = val
             self.kallsyms_relative_base_off = idx
             self.kallsyms_relative_base_addr = self.krobase + self.kallsyms_relative_base_off * 8
             return
-        if not self.silent:
-            err("Failed to identified kallsyms_relative_base (not found kernel_base in kernel_robase)")
         self.kallsyms_relative_base = None
         self.kallsyms_relative_base_off = None
         self.kallsyms_relative_base_addr = None
@@ -41857,7 +41865,10 @@ class KsymaddrRemoteCommand(GenericCommand):
         # 1. walk to prev and found non-zero value
         # 2. if the MSB of the element is on, then it is pattern 4 at kallsyms_sym_address() in root/kernel/kallsyms.c.
         #    so not pattern 2, therefore, CONFIG_KALLSYMS_ABSOLUTE_PERCPU = True
-        pos = self.kallsyms_relative_base_off * 2 - 4 # from u64 pos to u32 pos
+        if self.kallsyms_relative_base_off:
+            pos = self.kallsyms_relative_base_off * 2 - 4 # from u64 pos to u32 pos
+        else:
+            pos = self.kallsyms_num_syms * 2 - 4 # from u64 pos to u32 pos
         while self.RO_REGION_u32[pos] == 0:
             pos -= 1
         self.CONFIG_KALLSYMS_ABSOLUTE_PERCPU = (((self.RO_REGION_u32[pos] >> 31) & 1) == 1)
@@ -41927,7 +41938,10 @@ class KsymaddrRemoteCommand(GenericCommand):
         # 1. prev to it
         # 2. if the MSB of the element is on, then it is pattern 4 at kallsyms_sym_address() in root/kernel/kallsyms.c.
         #    so not pattern 2, therefore, CONFIG_KALLSYMS_ABSOLUTE_PERCPU = True
-        pos = self.kallsyms_relative_base_off * 2 - 4 # from u64 pos to u32 pos
+        if self.kallsyms_relative_base_off:
+            pos = self.kallsyms_relative_base_off * 2 - 4 # from u64 pos to u32 pos
+        else:
+            pos = self.kallsyms_num_syms * 2 - 4 # from u64 pos to u32 pos
         self.CONFIG_KALLSYMS_ABSOLUTE_PERCPU = (((self.RO_REGION_u32[pos] >> 31) & 1) == 1)
         return
 
@@ -42047,6 +42061,51 @@ class KsymaddrRemoteCommand(GenericCommand):
             pos += 1
         return
 
+    def initialize32_kallsyms_num_syms_3(self):
+        """
+        0xc02e56e0: 0xc0008400      0xc0008400      0xc0008400      0xc0008418
+        0xc02e56f0: 0xc00085f4      0xc0008620      0xc00086b8      0xc0008750
+        0xc02e5700: 0xc00087e8      0xc0008888      0xc0008888      0xc000889c
+        ...
+        0xc02fe030: 0xc03bc5a8      0xc03bc5fc      0xc03bc6d4      0xc03bc744
+        0xc02fe040: 0xc03bc864      0xc03bc914      0xc03bc95c      0xc03bc964
+        0xc02fe050: 0x0000625c *    0x00000000      0x00000000      0x00000000
+        0xc02fe060: 0xd7ad5408      0x5249cf64      0xf2540551      0x0c7478b5
+        """
+
+        for idx, val in enumerate(self.RO_REGION_u32):
+            if idx < 0x1000 or len(self.RO_REGION_u32) - 0x10 <= idx:
+                continue
+            if val < 0x1000 or idx < val:
+                continue
+            if val in [0x7fff, 0xffff, 0x7ffff, 0xffffffff]:
+                continue
+
+            current = self.krobase + idx * 4
+            maybe_addresses = current - val * 4
+            unsuitable = False
+
+            x = read_int_from_memory(maybe_addresses - 0x10)
+            if is_valid_addr(x):
+                continue
+
+            for i in range(16):
+                x = read_int_from_memory(maybe_addresses + i * 4)
+                if (x & 1) or not is_valid_addr(x):
+                    unsuitable = True
+                    break
+            if unsuitable:
+                continue
+
+            if sum((self.RO_REGION_u32[idx + 4 + i] >> 16) < 0x1000 for i in range(0, 16)) > 2:
+                continue
+
+            self.kallsyms_num_syms_addr = self.krobase + idx * 4
+            self.kallsyms_num_syms_off = idx
+            self.kallsyms_num_syms = val
+            break
+        return
+
     def initialize64_kallsyms_num_syms_2(self):
         # 1. walk next
         # because used aboslute value, similar addresses are lined up
@@ -42061,13 +42120,85 @@ class KsymaddrRemoteCommand(GenericCommand):
             pos += 1
         return
 
+    def initialize64_kallsyms_num_syms_3(self):
+        """
+        0xffffffff81ae3cb8:     0x0000000000000000      0x0000000000000000
+        0xffffffff81ae3cc8:     0x0000000000004000      0x0000000000009000
+        0xffffffff81ae3cd8:     0x000000000000a000      0x000000000000a008
+        ...
+        0xffffffff81b99458:     0xffffffff82211000      0xffffffff82221000
+        0xffffffff81b99468:     0xffffffff82227000      0xffffffff82227000
+        0xffffffff81b99478:     0x0000000000016af8 *    0xe0cf632771b04109
+        """
+
+        for idx, val in enumerate(self.RO_REGION_u64):
+            if idx < 0x1000 or len(self.RO_REGION_u64) - 0x10 <= idx:
+                continue
+            if val == 0 or (val >> 32) != 0:
+                continue
+            if val < 0x1000 or 0x10000000 < val:
+                continue
+
+            if any(self.RO_REGION_u64[idx + i] in [0, val, 0xffffffffffffffff] for i in range(1, 16)):
+                continue
+            if any(self.RO_REGION_u64[idx + i] == self.RO_REGION_u64[idx + i + 1] for i in range(1, 16)):
+                continue
+            if any((self.RO_REGION_u64[idx + i] >> 32) < 0x10000 for i in range(1, 16)):
+                continue
+            if any((self.RO_REGION_u64[idx + i] >> 32) == 0xffffffff for i in range(1, 16)):
+                continue
+            if any((self.RO_REGION_u64[idx + i] & 0xffffffff) < 0x100000 for i in range(1, 16)):
+                continue
+            if any((self.RO_REGION_u64[idx + i] & 0xffffffff) == 0xffffffff for i in range(1, 16)):
+                continue
+            if any((self.RO_REGION_u64[idx + i] & 0xfff) == 0 for i in range(1, 16)):
+                continue
+            if is_valid_addr(self.RO_REGION_u64[idx + 1]):
+                continue
+            if is_valid_addr(self.RO_REGION_u64[idx + 2]):
+                continue
+            if is_valid_addr(self.RO_REGION_u64[idx + 3]):
+                continue
+            if is_valid_addr(self.RO_REGION_u64[idx + 4]):
+                continue
+            if any(self.RO_REGION_u64[idx - i] == 0 for i in range(1, 16)):
+                continue
+
+            current = self.krobase + (idx + 1) * 8
+            unsuitable = False
+            while True:
+                cstr = read_cstring_from_memory(current)
+                if cstr is None:
+                    break
+                if len(cstr) > 8:
+                    unsuitable = True
+                    break
+                current += len(cstr) + 1
+            if unsuitable:
+                continue
+            self.kallsyms_num_syms_addr = self.krobase + idx * 8
+            self.kallsyms_num_syms_off = idx
+            self.kallsyms_num_syms = val
+            break
+        return
+
     def initialize32(self):
         self.RO_REGION = read_memory(self.krobase, self.krobase_size)
         self.RO_REGION_u32 = [u32(self.RO_REGION[i:i + 4]) for i in range(0, len(self.RO_REGION), 4)]
         self.initialize32_kallsyms_relative_base()
 
         if self.kallsyms_relative_base_off is None:
-            return None
+            self.initialize32_kallsyms_num_syms_3()
+            self.CONFIG_KALLSYMS_BASE_RELATIVE = True
+            self.initialize32_sparse_kallsyms_names()
+            self.initialize32_sparse_CONFIG_KALLSYMS_ABSOLUTE_PERCPU()
+            # Actually, it is kallsyms_addresses instead of kallsyms_offsets,
+            # but it is used because the method of obtaining and using it is the same.
+            self.initialize32_sparse_kallsyms_offsets()
+            self.initialize32_sparse_kallsyms_markers()
+            self.initialize32_sparse_kallsyms_token_table()
+            self.initialize32_sparse_kallsyms_token_index()
+            return True
 
         # rare case (maybe no kASLR kernel)
         if self.RO_REGION_u32[self.kallsyms_relative_base_off + 1] == self.RO_REGION_u32[self.kallsyms_relative_base_off]:
@@ -42121,6 +42252,19 @@ class KsymaddrRemoteCommand(GenericCommand):
         self.RO_REGION_u64 = [u64(self.RO_REGION[i:i + 8]) for i in range(0, len(self.RO_REGION), 8)]
         self.RO_REGION_u32 = [u32(self.RO_REGION[i:i + 4]) for i in range(0, len(self.RO_REGION), 4)]
         self.initialize64_kallsyms_relative_base()
+
+        if self.kallsyms_relative_base_off is None:
+            self.initialize64_kallsyms_num_syms_3()
+            self.CONFIG_KALLSYMS_BASE_RELATIVE = True
+            self.initialize64_normal_kallsyms_names()
+            self.initialize64_sparse_CONFIG_KALLSYMS_ABSOLUTE_PERCPU()
+            # Actually, it is kallsyms_addresses instead of kallsyms_offsets,
+            # but it is used because the method of obtaining and using it is the same.
+            self.initialize64_normal_kallsyms_offsets()
+            self.initialize64_normal_kallsyms_markers()
+            self.initialize64_normal_kallsyms_token_table()
+            self.initialize64_normal_kallsyms_token_index()
+            return True
 
         if self.RO_REGION_u64[self.kallsyms_relative_base_off + 1] == self.RO_REGION_u64[self.kallsyms_relative_base_off]: # rare case
             self.initialize64_kallsyms_num_syms_2() # common to sparse and normal
@@ -42184,7 +42328,10 @@ class KsymaddrRemoteCommand(GenericCommand):
                 info("kallsyms_names          {:#x}".format(self.kallsyms_names_addr)) # to lookup symbol
                 gdb.execute("x/8x{} {}".format(["w", "g"][is_64bit()], self.kallsyms_names_addr - 0x10))
                 info("CONFIG_KALLSYMS_ABSOLUTE_PERCPU: {:d}".format(self.CONFIG_KALLSYMS_ABSOLUTE_PERCPU)) # to calculate address
-                info("kallsyms_offsets:       {:#x}".format(self.kallsyms_offsets_addr)) # to lookup symbol
+                if hasattr(self, "CONFIG_KALLSYMS_BASE_RELATIVE") and self.CONFIG_KALLSYMS_BASE_RELATIVE:
+                    info("kallsyms_addresses:       {:#x}".format(self.kallsyms_offsets_addr)) # to lookup symbol
+                else:
+                    info("kallsyms_offsets:       {:#x}".format(self.kallsyms_offsets_addr)) # to lookup symbol
                 gdb.execute("x/8x{} {}".format(["w", "g"][is_64bit()], self.kallsyms_offsets_addr - 0x10))
                 info("kallsyms_markers:       {:#x}".format(self.kallsyms_markers_addr)) # to search kallsyms_*
                 gdb.execute("x/8x{} {}".format(["w", "g"][is_64bit()], self.kallsyms_markers_addr - 0x10))
