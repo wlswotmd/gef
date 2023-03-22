@@ -48469,7 +48469,7 @@ class PagewalkArmCommand(PagewalkCommand):
             return (entry & 0b11) in [0b10, 0b11] and ((entry >> 18) & 1) == 0
 
         def is_super_section(entry):
-            return (entry & 0b11) in [0b10, 0b11] and ((entry >> 18) & 1) == 1
+            return self.XP and (entry & 0b11) in [0b10, 0b11] and ((entry >> 18) & 1) == 1
 
         def is_large_page(entry):
             return (entry & 0b11) == 0b01
@@ -48498,9 +48498,9 @@ class PagewalkArmCommand(PagewalkCommand):
             # calc flags
             flags = []
             if has_next_level(entry):
-                if ((entry >> 2) & 1) == 1:
+                if self.XP and ((entry >> 2) & 1) == 1:
                     flags.append("PXN")
-                if ((entry >> 3) & 1) == 1:
+                if self.XP and ((entry >> 3) & 1) == 1:
                     flags.append("NS")
                 flags.append("domain={:#x}".format((entry >> 5) & 0b1111))
             elif is_section(entry):
@@ -48510,7 +48510,7 @@ class PagewalkArmCommand(PagewalkCommand):
                     flags.append("B")
                 if ((entry >> 3) & 1) == 1:
                     flags.append("C")
-                if ((entry >> 4) & 1) == 1:
+                if self.XP and ((entry >> 4) & 1) == 1:
                     flags.append("XN")
                 flags.append("domain={:#x}".format((entry >> 5) & 0b1111))
                 ap = (((entry >> 15) & 1) << 2) + ((entry >> 10) & 0b11)
@@ -48519,11 +48519,11 @@ class PagewalkArmCommand(PagewalkCommand):
                 else: # AP[2:0] access permissions model
                     flags.append("AP={:03b}".format(ap))
                 flags.append("TEX={:#x}".format((entry >> 12) & 0b111))
-                if ((entry >> 16) & 1) == 1:
+                if self.XP and ((entry >> 16) & 1) == 1:
                     flags.append("S")
-                if ((entry >> 17) & 1) == 1:
+                if self.XP and ((entry >> 17) & 1) == 1:
                     flags.append("nG")
-                if ((entry >> 19) & 1) == 1:
+                if self.XP and ((entry >> 19) & 1) == 1:
                     flags.append("NS")
             elif is_super_section(entry):
                 if ((entry >> 0) & 1) == 1:
@@ -48546,6 +48546,8 @@ class PagewalkArmCommand(PagewalkCommand):
                     flags.append("nG")
                 if ((entry >> 19) & 1) == 1:
                     flags.append("NS")
+            else:
+                raise
 
             # calc next table (drop the flag bits)
             if has_next_level(entry):
@@ -48935,15 +48937,14 @@ class PagewalkArmCommand(PagewalkCommand):
 
         TTBR0_EL1 = get_register('$TTBR0_EL1{}'.format(self.suffix))
         if TTBR0_EL1 is None:
+            TTBR0_EL1 = get_register('$TTBR0', use_mbed_exec=True)
+        if TTBR0_EL1 is None:
             self.err('$TTBR0_EL1{} is not found'.format(self.suffix))
             return
 
-        TTBR1_EL1 = get_register('$TTBR1_EL1{}'.format(self.suffix))
-        if TTBR1_EL1 is None:
-            self.err('$TTBR1_EL1{} is not found'.format(self.suffix))
-            return
-
         TTBCR = get_register('$TTBCR{}'.format(self.suffix))
+        if TTBCR is None:
+            TTBCR = get_register('$TTBCR', use_mbed_exec=True)
         if TTBCR is None:
             self.err('$TTBCR{} is not found'.format(self.suffix))
             return
@@ -48963,6 +48964,14 @@ class PagewalkArmCommand(PagewalkCommand):
 
         # pagewalk TTBR1_EL1
         self.add_out(titlify("$TTBR1_EL1{}".format(self.suffix)))
+
+        TTBR1_EL1 = get_register('$TTBR1_EL1{}'.format(self.suffix))
+        if TTBR1_EL1 is None:
+            TTBR1_EL1 = get_register('$TTBR1', use_mbed_exec=True)
+        if TTBR1_EL1 is None:
+            self.err('$TTBR1_EL1{} is not found'.format(self.suffix))
+            return
+
         if self.suffix:
             pl1_vabase = 0 # I don't know why, but vabase of PL1 seems to be 0x0 when using TTBR1_EL1_S.
         else:
@@ -48991,15 +49000,14 @@ class PagewalkArmCommand(PagewalkCommand):
 
         TTBR0_EL1 = get_register('$TTBR0_EL1{}'.format(self.suffix))
         if TTBR0_EL1 is None:
+            TTBR0_EL1 = get_register('$TTBR0', use_mbed_exec=True)
+        if TTBR0_EL1 is None:
             self.err('$TTBR0_EL1{} is not found'.format(self.suffix))
             return
 
-        TTBR1_EL1 = get_register('$TTBR1_EL1{}'.format(self.suffix))
-        if TTBR1_EL1 is None:
-            self.err('$TTBR1_EL1{} is not found'.format(self.suffix))
-            return
-
         TTBCR = get_register('$TTBCR{}'.format(self.suffix))
+        if TTBCR is None:
+            TTBCR = get_register('$TTBCR', use_mbed_exec=True)
         if TTBCR is None:
             self.err('$TTBCR{} is not found'.format(self.suffix))
             return
@@ -49020,6 +49028,14 @@ class PagewalkArmCommand(PagewalkCommand):
 
         # pagewalk TTBR1_EL1
         self.add_out(titlify("$TTBR1_EL1{}".format(self.suffix)))
+
+        TTBR1_EL1 = get_register('$TTBR1_EL1{}'.format(self.suffix))
+        if TTBR1_EL1 is None:
+            TTBR1_EL1 = get_register('$TTBR1', use_mbed_exec=True)
+        if TTBR1_EL1 is None:
+            self.err('$TTBR1_EL1{} is not found'.format(self.suffix))
+            return
+
         if T0SZ != 0 or T1SZ != 0:
             self.N = T1SZ
             pl1_base = TTBR1_EL1 & ((1 << 40) - 1)
@@ -49040,49 +49056,76 @@ class PagewalkArmCommand(PagewalkCommand):
         return
 
     def pagewalk(self):
-        res = gdb.execute("info registers", to_string=True)
-        if "TTBR" not in res:
-            self.err("Not found system registers. Check qemu version (at least: 3.x~, recommend: 5.x~).")
-            return
-
-        # check Secure mode
+        # check use the register with`_S` suffix or not, and Seucre mode or not
         if self.FORCE_PREFIX_S is None:
             # auto detect
-            SCR = get_register('$SCR_S')
-            if SCR is None:
-                SCR = get_register('$SCR')
-            if SCR is not None:
+            SCR_S = get_register('$SCR_S')
+            SCR = get_register('$SCR')
+
+            if (SCR, SCR_S) == (None, None):
+                SCR = get_register('$SCR', use_mbed_exec=True)
+                if SCR is not None:
+                    self.SECURE = (SCR & 0x1) == 0 # NS bit
+                else:
+                    self.SECURE = False
+                self.suffix = ""
+
+            elif SCR is not None and SCR_S is None:
+                # do not use "_S"
                 self.SECURE = (SCR & 0x1) == 0 # NS bit
-            else:
-                self.SECURE = False
-            self.suffix = "_S" if self.SECURE else ""
+                self.suffix = ""
+
+            elif SCR is None and SCR_S is not None:
+                # use "_S"
+                self.SECURE = (SCR_S & 0x1) == 0 # NS bit
+                self.suffix = "_S"
+
+            elif SCR is not None and SCR_S is not None:
+                r = gdb.execute("monitor info mtree -f", to_string=True)
+                if "virt.secure-ram" in r:
+                    # do not use "_S"
+                    self.SECURE = (SCR & 0x1) == 0 # NS bit
+                    self.suffix = ""
+                else:
+                    # use "_S"
+                    self.SECURE = (SCR_S & 0x1) == 0 # NS bit
+                    self.suffix = "_S"
+
         elif self.FORCE_PREFIX_S is True:
             # use "_S"
-            SCR = get_register('$SCR_S')
-            if SCR is not None:
-                self.SECURE = (SCR & 0x1) == 0 # NS bit
+            SCR_S = get_register('$SCR_S')
+            if SCR_S is not None:
+                self.SECURE = (SCR_S & 0x1) == 0 # NS bit
             else:
                 self.SECURE = False
             self.suffix = "_S"
+
         elif self.FORCE_PREFIX_S is False:
             # do not use "_S"
-            SCR = get_register('$SCR')
+            SCR = get_register('$SCR', use_mbed_exec=True)
             if SCR is not None:
                 self.SECURE = (SCR & 0x1) == 0 # NS bit
             else:
                 self.SECURE = False
             self.suffix = ""
-        self.quiet_info("Secure world: {}".format(self.SECURE))
 
-        # check AFE
-        SCTLR = get_register('$SCTLR{}'.format(self.suffix))
+        # check XP, AFE
+        SCTLR = get_register('$SCTLR{}'.format(self.suffix), use_mbed_exec=True)
         if SCTLR is not None:
+            self.XP = ((SCTLR >> 23) & 0x1) == 1
             self.AFE = ((SCTLR >> 29) & 0x1) == 1
         else:
+            self.XP = False
             self.AFE = False
 
+        if not self.XP:
+            self.quiet_info("VMSAv6 subpages is enabled")
+            self.SECURE = False
+        else:
+            self.quiet_info("Secure world: {}".format(self.SECURE))
+
         # check enabled LPAE
-        TTBCR = get_register('$TTBCR{}'.format(self.suffix))
+        TTBCR = get_register('$TTBCR{}'.format(self.suffix), use_mbed_exec=True)
         if TTBCR is not None:
             self.LPAE = ((TTBCR >> 31) & 0x1) == 1
             self.PTE_SIZE = 8 if self.LPAE else 4
@@ -49090,7 +49133,7 @@ class PagewalkArmCommand(PagewalkCommand):
             self.LPAE = False
 
         # check PXN supported
-        ID_MMFR0 = get_register('$ID_MMFR0{}'.format(self.suffix))
+        ID_MMFR0 = get_register('$ID_MMFR0{}'.format(self.suffix), use_mbed_exec=True)
         if ID_MMFR0 is not None:
             self.PXN = ((ID_MMFR0 >> 2) & 0x1) == 1
         else:
