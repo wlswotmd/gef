@@ -38553,6 +38553,7 @@ class KernelCurrentCommand(GenericCommand):
             if (current_task & mask) == mask:
                 task = read_int_from_memory(current_task)
                 if is_valid_addr(task):
+                    info("__per_cpu_offset is not used")
                     gef_print(titlify("Kernel current task_struct (heuristic)"))
                     gef_print("current: {:#x}".format(task))
                     return
