@@ -7470,7 +7470,7 @@ def to_unsigned_long(v):
     return int(v.cast(gdb.Value(mask).type)) & mask
 
 
-def get_register(regname):
+def get_register(regname, use_mbed_exec=False):
     """Return a register's value."""
     if regname[0] in ["%", "@"]:
         regname = "$" + regname[1:]
@@ -7490,10 +7490,14 @@ def get_register(regname):
         try:
             value = gdb.selected_frame().read_register(regname[1:])
             return int(value)
-        except ValueError:
-            return None
-        except gdb.error:
-            return None
+        except (ValueError, gdb.error):
+            pass
+
+    if use_mbed_exec:
+        r = gdb.execute("read-system-register {:s}".format(regname), to_string=True)
+        if r:
+            return int(r.split("=")[1], 16)
+    return None
 
 
 def get_path_from_info_proc():
@@ -12785,6 +12789,758 @@ class MmapMemoryCommand(GenericCommand):
         gef_print(titlify(cmd))
         gdb.execute(cmd)
         reset_gef_caches()
+        return
+
+
+@register_command
+class ReadSystemRegisterCommand(GenericCommand):
+    """Read system register for old qemu."""
+    _cmdline_ = "read-system-register"
+    _category_ = "04-a. Register - View"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('reg_name', metavar='REGISTER_NAME', help='register name you want to read a value.')
+    _syntax_ = parser.format_help()
+
+    # thanks to https://github.com/gdelugre/ida-arm-system-highlight
+    # Extracted from the XML specifications for v8.7-A (2021-06).
+    AARCH32_COPROC_REGISTERS = {
+        ( "p15", "c0", 0, "c0", 0 )   : ( "MIDR", "Main ID Register" ),
+        ( "p15", "c0", 0, "c0", 1 )   : ( "CTR", "Cache Type Register" ),
+        ( "p15", "c0", 0, "c0", 2 )   : ( "TCMTR", "TCM Type Register" ),
+        ( "p15", "c0", 0, "c0", 3 )   : ( "TLBTR", "TLB Type Register" ),
+        ( "p15", "c0", 0, "c0", 5 )   : ( "MPIDR", "Multiprocessor Affinity Register" ),
+        ( "p15", "c0", 0, "c0", 6 )   : ( "REVIDR", "Revision ID Register" ),
+
+        # Aliases
+        ( "p15", "c0", 0, "c0", 4 )   : ( "MIDR", "Main ID Register" ),
+        ( "p15", "c0", 0, "c0", 7 )   : ( "MIDR", "Main ID Register" ),
+
+        # CPUID registers
+        ( "p15", "c0", 0, "c1", 0 )   : ( "ID_PFR0", "Processor Feature Register 0" ),
+        ( "p15", "c0", 0, "c1", 1 )   : ( "ID_PFR1", "Processor Feature Register 1" ),
+        ( "p15", "c0", 0, "c3", 4 )   : ( "ID_PFR2", "Processor Feature Register 2" ),
+        ( "p15", "c0", 0, "c1", 2 )   : ( "ID_DFR0", "Debug Feature Register 0" ),
+        ( "p15", "c0", 0, "c1", 3 )   : ( "ID_AFR0", "Auxiliary Feature Register 0" ),
+        ( "p15", "c0", 0, "c1", 4 )   : ( "ID_MMFR0", "Memory Model Feature Register 0" ),
+        ( "p15", "c0", 0, "c1", 5 )   : ( "ID_MMFR1", "Memory Model Feature Register 1" ),
+        ( "p15", "c0", 0, "c1", 6 )   : ( "ID_MMFR2", "Memory Model Feature Register 2" ),
+        ( "p15", "c0", 0, "c1", 7 )   : ( "ID_MMFR3", "Memory Model Feature Register 3" ),
+        ( "p15", "c0", 0, "c2", 6 )   : ( "ID_MMFR4", "Memory Model Feature Register 4" ),
+        ( "p15", "c0", 0, "c3", 6 )   : ( "ID_MMFR5", "Memory Model Feature Register 5" ),
+        ( "p15", "c0", 0, "c2", 0 )   : ( "ID_ISAR0", "Instruction Set Attribute Register 0" ),
+        ( "p15", "c0", 0, "c2", 1 )   : ( "ID_ISAR1", "Instruction Set Attribute Register 1" ),
+        ( "p15", "c0", 0, "c2", 2 )   : ( "ID_ISAR2", "Instruction Set Attribute Register 2" ),
+        ( "p15", "c0", 0, "c2", 3 )   : ( "ID_ISAR3", "Instruction Set Attribute Register 3" ),
+        ( "p15", "c0", 0, "c2", 4 )   : ( "ID_ISAR4", "Instruction Set Attribute Register 4" ),
+        ( "p15", "c0", 0, "c2", 5 )   : ( "ID_ISAR5", "Instruction Set Attribute Register 5" ),
+        ( "p15", "c0", 0, "c2", 7 )   : ( "ID_ISAR6", "Instruction Set Attribute Register 6" ),
+
+        ( "p15", "c0", 1, "c0", 0 )   : ( "CCSIDR", "Current Cache Size ID Register" ),
+        ( "p15", "c0", 1, "c0", 2 )   : ( "CCSIDR2", "Current Cache Size ID Register 2" ),
+        ( "p15", "c0", 1, "c0", 1 )   : ( "CLIDR", "Cache Level ID Register" ),
+        ( "p15", "c0", 1, "c0", 7 )   : ( "AIDR", "Auxiliary ID Register" ),
+        ( "p15", "c0", 2, "c0", 0 )   : ( "CSSELR", "Cache Size Selection Register" ),
+        ( "p15", "c0", 4, "c0", 0 )   : ( "VPIDR", "Virtualization Processor ID Register" ),
+        ( "p15", "c0", 4, "c0", 5 )   : ( "VMPIDR", "Virtualization Multiprocessor ID Register" ),
+
+        # System control registers
+        ( "p15", "c1", 0, "c0", 0 )   : ( "SCTLR", "System Control Register" ),
+        ( "p15", "c1", 0, "c0", 1 )   : ( "ACTLR", "Auxiliary Control Register" ),
+        ( "p15", "c1", 0, "c0", 3 )   : ( "ACTLR2", "Auxiliary Control Register 2" ),
+        ( "p15", "c1", 0, "c0", 2 )   : ( "CPACR", "Architectural Feature Access Control Register" ),
+        ( "p15", "c1", 0, "c1", 0 )   : ( "SCR", "Secure Configuration Register" ),
+        ( "p15", "c1", 0, "c1", 1 )   : ( "SDER", "Secure Debug Enable Register" ),
+        ( "p15", "c1", 0, "c3", 1 )   : ( "SDCR", "Secure Debug Control Register" ),
+        ( "p15", "c1", 0, "c1", 2 )   : ( "NSACR", "Non-Secure Access Control Register" ),
+        ( "p15", "c1", 4, "c0", 0 )   : ( "HSCTLR", "Hyp System Control Register" ),
+        ( "p15", "c1", 4, "c0", 1 )   : ( "HACTLR", "Hyp Auxiliary Control Register" ),
+        ( "p15", "c1", 4, "c0", 3 )   : ( "HACTLR2", "Hyp Auxiliary Control Register 2" ),
+        ( "p15", "c1", 4, "c1", 0 )   : ( "HCR", "Hyp Configuration Register" ),
+        ( "p15", "c1", 4, "c1", 4 )   : ( "HCR2", "Hyp Configuration Register 2" ),
+        ( "p15", "c1", 4, "c1", 1 )   : ( "HDCR", "Hyp Debug Control Register" ),
+        ( "p15", "c1", 4, "c1", 2 )   : ( "HCPTR", "Hyp Architectural Feature Trap Register" ),
+        ( "p15", "c1", 4, "c1", 3 )   : ( "HSTR", "Hyp System Trap Register" ),
+        ( "p15", "c1", 4, "c1", 7 )   : ( "HACR", "Hyp Auxiliary Configuration Register" ),
+
+        # Translation Table Base Registers
+        ( "p15", "c2", 0, "c0", 0 )   : ( "TTBR0", "Translation Table Base Register 0" ),
+        ( "p15", "c2", 0, "c0", 1 )   : ( "TTBR1", "Translation Table Base Register 1" ),
+        ( "p15", "c2", 4, "c0", 2 )   : ( "HTCR", "Hyp Translation Control Register" ),
+        ( "p15", "c2", 4, "c1", 2 )   : ( "VTCR", "Virtualization Translation Control Register" ),
+        ( "p15", "c2", 0, "c0", 2 )   : ( "TTBCR", "Translation Table Base Control Register" ),
+        ( "p15", "c2", 0, "c0", 3 )   : ( "TTBCR2", "Translation Table Base Control Register 2" ),
+
+        # Domain Access Control registers
+        ( "p15", "c3", 0, "c0", 0 )   : ( "DACR", "Domain Access Control Register" ),
+
+        # Fault Status registers
+        ( "p15", "c5", 0, "c0", 0 )   : ( "DFSR", "Data Fault Status Register" ),
+        ( "p15", "c5", 0, "c0", 1 )   : ( "IFSR", "Instruction Fault Status Register" ),
+        ( "p15", "c5", 0, "c1", 0 )   : ( "ADFSR", "Auxiliary Data Fault Status Register" ),
+        ( "p15", "c5", 0, "c1", 1 )   : ( "AIFSR", "Auxiliary Instruction Fault Status Register" ),
+        ( "p15", "c5", 4, "c1", 0 )   : ( "HADFSR", "Hyp Auxiliary Data Fault Status Register" ),
+        ( "p15", "c5", 4, "c1", 1 )   : ( "HAIFSR", "Hyp Auxiliary Instruction Fault Status Register" ),
+        ( "p15", "c5", 4, "c2", 0 )   : ( "HSR", "Hyp Syndrome Register" ),
+
+        # Fault Address registers
+        ( "p15", "c6", 0, "c0", 0 )   : ( "DFAR", "Data Fault Address Register" ),
+        ( "p15", "c6", 0, "c0", 1 )   : ( "N/A", "Watchpoint Fault Address" ), # ARM11
+        ( "p15", "c6", 0, "c0", 2 )   : ( "IFAR", "Instruction Fault Address Register" ),
+        ( "p15", "c6", 4, "c0", 0 )   : ( "HDFAR", "Hyp Data Fault Address Register" ),
+        ( "p15", "c6", 4, "c0", 2 )   : ( "HIFAR", "Hyp Instruction Fault Address Register" ),
+        ( "p15", "c6", 4, "c0", 4 )   : ( "HPFAR", "Hyp IPA Fault Address Register" ),
+
+        # Cache maintenance registers
+        ( "p15", "c7", 0, "c0", 4 )   : ( "NOP", "No Operation / Wait For Interrupt" ),
+        ( "p15", "c7", 0, "c1", 0 )   : ( "ICIALLUIS", "Instruction Cache Invalidate All to PoU, Inner Shareable" ),
+        ( "p15", "c7", 0, "c1", 6 )   : ( "BPIALLIS", "Branch Predictor Invalidate All, Inner Shareable" ),
+        ( "p15", "c7", 0, "c4", 0 )   : ( "PAR", "Physical Address Register" ),
+        ( "p15", "c7", 0, "c5", 0 )   : ( "ICIALLU", "Instruction Cache Invalidate All to PoU" ),
+        ( "p15", "c7", 0, "c5", 1 )   : ( "ICIMVAU", "Instruction Cache line Invalidate by VA to PoU" ),
+        ( "p15", "c7", 0, "c5", 2 )   : ( "N/A", "Invalidate all instruction caches by set/way" ), # ARM11
+        ( "p15", "c7", 0, "c5", 4 )   : ( "CP15ISB", "Instruction Synchronization Barrier System instruction" ),
+        ( "p15", "c7", 0, "c5", 6 )   : ( "BPIALL", "Branch Predictor Invalidate All" ),
+        ( "p15", "c7", 0, "c5", 7 )   : ( "BPIMVA", "Branch Predictor Invalidate by VA" ),
+        ( "p15", "c7", 0, "c6", 0 )   : ( "N/A", "Invalidate entire data cache" ),
+        ( "p15", "c7", 0, "c6", 1 )   : ( "DCIMVAC", "Data Cache line Invalidate by VA to PoC" ),
+        ( "p15", "c7", 0, "c6", 2 )   : ( "DCISW", "Data Cache line Invalidate by Set/Way" ),
+        ( "p15", "c7", 0, "c7", 0 )   : ( "N/A", "Invalidate instruction cache and data cache" ), # ARM11
+        ( "p15", "c7", 0, "c8", 0 )   : ( "ATS1CPR", "Address Translate Stage 1 Current state PL1 Read" ),
+        ( "p15", "c7", 0, "c8", 1 )   : ( "ATS1CPW", "Address Translate Stage 1 Current state PL1 Write" ),
+        ( "p15", "c7", 0, "c8", 2 )   : ( "ATS1CUR", "Address Translate Stage 1 Current state Unprivileged Read" ),
+        ( "p15", "c7", 0, "c8", 3 )   : ( "ATS1CUW", "Address Translate Stage 1 Current state Unprivileged Write" ),
+        ( "p15", "c7", 0, "c8", 4 )   : ( "ATS12NSOPR", "Address Translate Stages 1 and 2 Non-secure Only PL1 Read" ),
+        ( "p15", "c7", 0, "c8", 5 )   : ( "ATS12NSOPW", "Address Translate Stages 1 and 2 Non-secure Only PL1 Write" ),
+        ( "p15", "c7", 0, "c8", 6 )   : ( "ATS12NSOUR", "Address Translate Stages 1 and 2 Non-secure Only Unprivileged Read" ),
+        ( "p15", "c7", 0, "c8", 7 )   : ( "ATS12NSOUW", "Address Translate Stages 1 and 2 Non-secure Only Unprivileged Write" ),
+        ( "p15", "c7", 0, "c9", 0 )   : ( "ATS1CPRP", "Address Translate Stage 1 Current state PL1 Read PAN" ),
+        ( "p15", "c7", 0, "c9", 1 )   : ( "ATS1CPWP", "Address Translate Stage 1 Current state PL1 Write PAN" ),
+        ( "p15", "c7", 0, "c10", 0 )  : ( "N/A", "Clean entire data cache" ), # ARM11
+        ( "p15", "c7", 0, "c10", 1 )  : ( "DCCMVAC", "Data Cache line Clean by VA to PoC" ),
+        ( "p15", "c7", 0, "c10", 2 )  : ( "DCCSW", "Data Cache line Clean by Set/Way" ),
+        ( "p15", "c7", 0, "c10", 3 )  : ( "N/A", "Test and clean data cache" ), # ARM9
+        ( "p15", "c7", 0, "c10", 4 )  : ( "CP15DSB", "Data Synchronization Barrier System instruction" ),
+        ( "p15", "c7", 0, "c10", 5 )  : ( "CP15DMB", "Data Memory Barrier System instruction" ),
+        ( "p15", "c7", 0, "c10", 6 )  : ( "N/A", "Read Cache Dirty Status Register" ), # ARM11
+        ( "p15", "c7", 0, "c11", 1 )  : ( "DCCMVAU", "Data Cache line Clean by VA to PoU" ),
+        ( "p15", "c7", 0, "c12", 4 )  : ( "N/A", "Read Block Transfer Status Register" ), # ARM11
+        ( "p15", "c7", 0, "c12", 5 )  : ( "N/A", "Stop Prefetch Range" ), # ARM11
+        ( "p15", "c7", 0, "c13", 1 )  : ( "NOP", "No Operation / Prefetch Instruction Cache Line" ),
+        ( "p15", "c7", 0, "c14", 0 )  : ( "N/A", "Clean and invalidate entire data cache" ), # ARM11
+        ( "p15", "c7", 0, "c14", 1 )  : ( "DCCIMVAC", "Data Cache line Clean and Invalidate by VA to PoC" ),
+        ( "p15", "c7", 0, "c14", 2 )  : ( "DCCISW", "Data Cache line Clean and Invalidate by Set/Way" ),
+        ( "p15", "c7", 0, "c14", 3 )  : ( "N/A", "Test, clean, and invalidate data cache" ), # ARM9
+        ( "p15", "c7", 4, "c8", 0 )   : ( "ATS1HR", "Address Translate Stage 1 Hyp mode Read" ),
+        ( "p15", "c7", 4, "c8", 1 )   : ( "ATS1HW", "Stage 1 Hyp mode write" ),
+
+        # TLB maintenance operations
+        ( "p15", "c8", 0, "c3", 0 )   : ( "TLBIALLIS", "TLB Invalidate All, Inner Shareable" ),
+        ( "p15", "c8", 0, "c3", 1 )   : ( "TLBIMVAIS", "TLB Invalidate by VA, Inner Shareable" ),
+        ( "p15", "c8", 0, "c3", 2 )   : ( "TLBIASIDIS", "TLB Invalidate by ASID match, Inner Shareable" ),
+        ( "p15", "c8", 0, "c3", 3 )   : ( "TLBIMVAAIS", "TLB Invalidate by VA, All ASID, Inner Shareable" ),
+        ( "p15", "c8", 0, "c3", 5 )   : ( "TLBIMVALIS", "TLB Invalidate by VA, Last level, Inner Shareable" ),
+        ( "p15", "c8", 0, "c3", 7 )   : ( "TLBIMVAALIS", "TLB Invalidate by VA, All ASID, Last level, Inner Shareable" ),
+        ( "p15", "c8", 0, "c5", 0 )   : ( "ITLBIALL", "Instruction TLB Invalidate All" ),
+        ( "p15", "c8", 0, "c5", 1 )   : ( "ITLBIMVA", "Instruction TLB Invalidate by VA" ),
+        ( "p15", "c8", 0, "c5", 2 )   : ( "ITLBIASID", "Instruction TLB Invalidate by ASID match" ),
+        ( "p15", "c8", 0, "c6", 0 )   : ( "DTLBIALL", "Data TLB Invalidate All" ),
+        ( "p15", "c8", 0, "c6", 1 )   : ( "DTLBIMVA", "Data TLB Invalidate by VA" ),
+        ( "p15", "c8", 0, "c6", 2 )   : ( "DTLBIASID", "Data TLB Invalidate by ASID match" ),
+        ( "p15", "c8", 0, "c7", 0 )   : ( "TLBIALL", "TLB Invalidate All" ),
+        ( "p15", "c8", 0, "c7", 1 )   : ( "TLBIMVA", "TLB Invalidate by VA" ),
+        ( "p15", "c8", 0, "c7", 2 )   : ( "TLBIASID", "TLB Invalidate by ASID match" ),
+        ( "p15", "c8", 0, "c7", 3 )   : ( "TLBIMVAA", "TLB Invalidate by VA, All ASID" ),
+        ( "p15", "c8", 0, "c7", 5 )   : ( "TLBIMVAL", "TLB Invalidate by VA, Last level" ),
+        ( "p15", "c8", 0, "c7", 7 )   : ( "TLBIMVAAL", "TLB Invalidate by VA, All ASID, Last level" ),
+        ( "p15", "c8", 4, "c0", 1 )   : ( "TLBIIPAS2IS", "TLB Invalidate by Intermediate Physical Address, Stage 2, Inner Shareable" ),
+        ( "p15", "c8", 4, "c0", 5 )   : ( "TLBIIPAS2LIS", "TLB Invalidate by Intermediate Physical Address, Stage 2, Last level, Inner Shareable" ),
+        ( "p15", "c8", 4, "c3", 0 )   : ( "TLBIALLHIS", "TLB Invalidate All, Hyp mode, Inner Shareable" ),
+        ( "p15", "c8", 4, "c3", 1 )   : ( "TLBIMVAHIS", "TLB Invalidate by VA, Hyp mode, Inner Shareable" ),
+        ( "p15", "c8", 4, "c3", 4 )   : ( "TLBIALLNSNHIS", "TLB Invalidate All, Non-Secure Non-Hyp, Inner Shareable" ),
+        ( "p15", "c8", 4, "c3", 5 )   : ( "TLBIMVALHIS", "TLB Invalidate by VA, Last level, Hyp mode, Inner Shareable" ),
+        ( "p15", "c8", 4, "c4", 1 )   : ( "TLBIIPAS2", "TLB Invalidate by Intermediate Physical Address, Stage 2" ),
+        ( "p15", "c8", 4, "c4", 5 )   : ( "TLBIIPAS2L", "TLB Invalidate by Intermediate Physical Address, Stage 2, Last level" ),
+        ( "p15", "c8", 4, "c7", 0 )   : ( "TLBIALLH", "TLB Invalidate All, Hyp mode" ),
+        ( "p15", "c8", 4, "c7", 1 )   : ( "TLBIMVAH", "TLB Invalidate by VA, Hyp mode" ),
+        ( "p15", "c8", 4, "c7", 4 )   : ( "TLBIALLNSNH", "TLB Invalidate All, Non-Secure Non-Hyp" ),
+        ( "p15", "c8", 4, "c7", 5 )   : ( "TLBIMVALH", "TLB Invalidate by VA, Last level, Hyp mode" ),
+
+        ( "p15", "c9", 0, "c0", 0 )   : ( "N/A", "Data Cache Lockdown" ), # ARM11
+        ( "p15", "c9", 0, "c0", 1 )   : ( "N/A", "Instruction Cache Lockdown" ), # ARM11
+        ( "p15", "c9", 0, "c1", 0 )   : ( "N/A", "Data TCM Region" ), # ARM11
+        ( "p15", "c9", 0, "c1", 1 )   : ( "N/A", "Instruction TCM Region" ), # ARM11
+        ( "p15", "c9", 1, "c0", 2 )   : ( "L2CTLR", "L2 Control Register" ),
+        ( "p15", "c9", 1, "c0", 3 )   : ( "L2ECTLR", "L2 Extended Control Register" ),
+
+        # Performance monitor registers
+        ( "p15", "c9", 0, "c12", 0 )  : ( "PMCR", "Performance Monitors Control Register" ),
+        ( "p15", "c9", 0, "c12", 1)   : ( "PMCNTENSET", "Performance Monitor Count Enable Set Register" ),
+        ( "p15", "c9", 0, "c12", 2)   : ( "PMCNTENCLR", "Performance Monitor Control Enable Clear Register" ),
+        ( "p15", "c9", 0, "c12", 3 )  : ( "PMOVSR", "Performance Monitors Overflow Flag Status Register" ),
+        ( "p15", "c9", 0, "c12", 4 )  : ( "PMSWINC", "Performance Monitors Software Increment register" ),
+        ( "p15", "c9", 0, "c12", 5 )  : ( "PMSELR", "Performance Monitors Event Counter Selection Register" ),
+        ( "p15", "c9", 0, "c12", 6 )  : ( "PMCEID0", "Performance Monitors Common Event Identification register 0" ),
+        ( "p15", "c9", 0, "c12", 7 )  : ( "PMCEID1", "Performance Monitors Common Event Identification register 1" ),
+        ( "p15", "c9", 0, "c13", 0 )  : ( "PMCCNTR", "Performance Monitors Cycle Count Register" ),
+        ( "p15", "c9", 0, "c13", 1 )  : ( "PMXEVTYPER", "Performance Monitors Selected Event Type Register" ),
+        ( "p15", "c9", 0, "c13", 2 )  : ( "PMXEVCNTR", "Performance Monitors Selected Event Count Register" ),
+        ( "p15", "c9", 0, "c14", 0 )  : ( "PMUSERENR", "Performance Monitors User Enable Register" ),
+        ( "p15", "c9", 0, "c14", 1 )  : ( "PMINTENSET", "Performance Monitors Interrupt Enable Set register" ),
+        ( "p15", "c9", 0, "c14", 2 )  : ( "PMINTENCLR", "Performance Monitors Interrupt Enable Clear register" ),
+        ( "p15", "c9", 0, "c14", 3 )  : ( "PMOVSSET", "Performance Monitors Overflow Flag Status Set register" ),
+        ( "p15", "c9", 0, "c14", 4 )  : ( "PMCEID2", "Performance Monitors Common Event Identification register 2" ),
+        ( "p15", "c9", 0, "c14", 5 )  : ( "PMCEID3", "Performance Monitors Common Event Identification register 3" ),
+        ( "p15", "c9", 0, "c14", 6 )  : ( "PMMIR", "Performance Monitors Machine Identification Register" ),
+        ( "p15", "c14", 0, "c8", 0 )  : ( "PMEVCNTR0", "Performance Monitors Event Count Register 0" ),
+        ( "p15", "c14", 0, "c8", 1 )  : ( "PMEVCNTR1", "Performance Monitors Event Count Register 1" ),
+        ( "p15", "c14", 0, "c8", 2 )  : ( "PMEVCNTR2", "Performance Monitors Event Count Register 2" ),
+        ( "p15", "c14", 0, "c8", 3 )  : ( "PMEVCNTR3", "Performance Monitors Event Count Register 3" ),
+        ( "p15", "c14", 0, "c8", 4 )  : ( "PMEVCNTR4", "Performance Monitors Event Count Register 4" ),
+        ( "p15", "c14", 0, "c8", 5 )  : ( "PMEVCNTR5", "Performance Monitors Event Count Register 5" ),
+        ( "p15", "c14", 0, "c8", 6 )  : ( "PMEVCNTR6", "Performance Monitors Event Count Register 6" ),
+        ( "p15", "c14", 0, "c8", 7 )  : ( "PMEVCNTR7", "Performance Monitors Event Count Register 7" ),
+        ( "p15", "c14", 0, "c9", 0 )  : ( "PMEVCNTR8", "Performance Monitors Event Count Register 8" ),
+        ( "p15", "c14", 0, "c9", 1 )  : ( "PMEVCNTR9", "Performance Monitors Event Count Register 9" ),
+        ( "p15", "c14", 0, "c9", 2 )  : ( "PMEVCNTR10", "Performance Monitors Event Count Register 10" ),
+        ( "p15", "c14", 0, "c9", 3 )  : ( "PMEVCNTR11", "Performance Monitors Event Count Register 11" ),
+        ( "p15", "c14", 0, "c9", 4 )  : ( "PMEVCNTR12", "Performance Monitors Event Count Register 12" ),
+        ( "p15", "c14", 0, "c9", 5 )  : ( "PMEVCNTR13", "Performance Monitors Event Count Register 13" ),
+        ( "p15", "c14", 0, "c9", 6 )  : ( "PMEVCNTR14", "Performance Monitors Event Count Register 14" ),
+        ( "p15", "c14", 0, "c9", 7 )  : ( "PMEVCNTR15", "Performance Monitors Event Count Register 15" ),
+        ( "p15", "c14", 0, "c10", 0 ) : ( "PMEVCNTR16", "Performance Monitors Event Count Register 16" ),
+        ( "p15", "c14", 0, "c10", 1 ) : ( "PMEVCNTR17", "Performance Monitors Event Count Register 17" ),
+        ( "p15", "c14", 0, "c10", 2 ) : ( "PMEVCNTR18", "Performance Monitors Event Count Register 18" ),
+        ( "p15", "c14", 0, "c10", 3 ) : ( "PMEVCNTR19", "Performance Monitors Event Count Register 19" ),
+        ( "p15", "c14", 0, "c10", 4 ) : ( "PMEVCNTR20", "Performance Monitors Event Count Register 20" ),
+        ( "p15", "c14", 0, "c10", 5 ) : ( "PMEVCNTR21", "Performance Monitors Event Count Register 21" ),
+        ( "p15", "c14", 0, "c10", 6 ) : ( "PMEVCNTR22", "Performance Monitors Event Count Register 22" ),
+        ( "p15", "c14", 0, "c10", 7 ) : ( "PMEVCNTR23", "Performance Monitors Event Count Register 23" ),
+        ( "p15", "c14", 0, "c11", 0 ) : ( "PMEVCNTR24", "Performance Monitors Event Count Register 24" ),
+        ( "p15", "c14", 0, "c11", 1 ) : ( "PMEVCNTR25", "Performance Monitors Event Count Register 25" ),
+        ( "p15", "c14", 0, "c11", 2 ) : ( "PMEVCNTR26", "Performance Monitors Event Count Register 26" ),
+        ( "p15", "c14", 0, "c11", 3 ) : ( "PMEVCNTR27", "Performance Monitors Event Count Register 27" ),
+        ( "p15", "c14", 0, "c11", 4 ) : ( "PMEVCNTR28", "Performance Monitors Event Count Register 28" ),
+        ( "p15", "c14", 0, "c11", 5 ) : ( "PMEVCNTR29", "Performance Monitors Event Count Register 29" ),
+        ( "p15", "c14", 0, "c11", 6 ) : ( "PMEVCNTR30", "Performance Monitors Event Count Register 30" ),
+        ( "p15", "c14", 0, "c12", 0 ) : ( "PMEVTYPER0", "Performance Monitors Event Type Register 0" ),
+        ( "p15", "c14", 0, "c12", 1 ) : ( "PMEVTYPER1", "Performance Monitors Event Type Register 1" ),
+        ( "p15", "c14", 0, "c12", 2 ) : ( "PMEVTYPER2", "Performance Monitors Event Type Register 2" ),
+        ( "p15", "c14", 0, "c12", 3 ) : ( "PMEVTYPER3", "Performance Monitors Event Type Register 3" ),
+        ( "p15", "c14", 0, "c12", 4 ) : ( "PMEVTYPER4", "Performance Monitors Event Type Register 4" ),
+        ( "p15", "c14", 0, "c12", 5 ) : ( "PMEVTYPER5", "Performance Monitors Event Type Register 5" ),
+        ( "p15", "c14", 0, "c12", 6 ) : ( "PMEVTYPER6", "Performance Monitors Event Type Register 6" ),
+        ( "p15", "c14", 0, "c12", 7 ) : ( "PMEVTYPER7", "Performance Monitors Event Type Register 7" ),
+        ( "p15", "c14", 0, "c13", 0 ) : ( "PMEVTYPER8", "Performance Monitors Event Type Register 8" ),
+        ( "p15", "c14", 0, "c13", 1 ) : ( "PMEVTYPER9", "Performance Monitors Event Type Register 9" ),
+        ( "p15", "c14", 0, "c13", 2 ) : ( "PMEVTYPER10", "Performance Monitors Event Type Register 10" ),
+        ( "p15", "c14", 0, "c13", 3 ) : ( "PMEVTYPER11", "Performance Monitors Event Type Register 11" ),
+        ( "p15", "c14", 0, "c13", 4 ) : ( "PMEVTYPER12", "Performance Monitors Event Type Register 12" ),
+        ( "p15", "c14", 0, "c13", 5 ) : ( "PMEVTYPER13", "Performance Monitors Event Type Register 13" ),
+        ( "p15", "c14", 0, "c13", 6 ) : ( "PMEVTYPER14", "Performance Monitors Event Type Register 14" ),
+        ( "p15", "c14", 0, "c13", 7 ) : ( "PMEVTYPER15", "Performance Monitors Event Type Register 15" ),
+        ( "p15", "c14", 0, "c14", 0 ) : ( "PMEVTYPER16", "Performance Monitors Event Type Register 16" ),
+        ( "p15", "c14", 0, "c14", 1 ) : ( "PMEVTYPER17", "Performance Monitors Event Type Register 17" ),
+        ( "p15", "c14", 0, "c14", 2 ) : ( "PMEVTYPER18", "Performance Monitors Event Type Register 18" ),
+        ( "p15", "c14", 0, "c14", 3 ) : ( "PMEVTYPER19", "Performance Monitors Event Type Register 19" ),
+        ( "p15", "c14", 0, "c14", 4 ) : ( "PMEVTYPER20", "Performance Monitors Event Type Register 20" ),
+        ( "p15", "c14", 0, "c14", 5 ) : ( "PMEVTYPER21", "Performance Monitors Event Type Register 21" ),
+        ( "p15", "c14", 0, "c14", 6 ) : ( "PMEVTYPER22", "Performance Monitors Event Type Register 22" ),
+        ( "p15", "c14", 0, "c14", 7 ) : ( "PMEVTYPER23", "Performance Monitors Event Type Register 23" ),
+        ( "p15", "c14", 0, "c15", 0 ) : ( "PMEVTYPER24", "Performance Monitors Event Type Register 24" ),
+        ( "p15", "c14", 0, "c15", 1 ) : ( "PMEVTYPER25", "Performance Monitors Event Type Register 25" ),
+        ( "p15", "c14", 0, "c15", 2 ) : ( "PMEVTYPER26", "Performance Monitors Event Type Register 26" ),
+        ( "p15", "c14", 0, "c15", 3 ) : ( "PMEVTYPER27", "Performance Monitors Event Type Register 27" ),
+        ( "p15", "c14", 0, "c15", 4 ) : ( "PMEVTYPER28", "Performance Monitors Event Type Register 28" ),
+        ( "p15", "c14", 0, "c15", 5 ) : ( "PMEVTYPER29", "Performance Monitors Event Type Register 29" ),
+        ( "p15", "c14", 0, "c15", 6 ) : ( "PMEVTYPER30", "Performance Monitors Event Type Register 30" ),
+        ( "p15", "c14", 0, "c15", 7 ) : ( "PMCCFILTR", "Performance Monitors Cycle Count Filter Register" ),
+
+        # Activity Monitors
+        ( "p15", "c13", 0, "c2", 1 )  : ( "AMCFGR", "Activity Monitors Configuration Register" ),
+        ( "p15", "c13", 0, "c2", 2 )  : ( "AMCGCR", "Activity Monitors Counter Group Configuration Register" ),
+        ( "p15", "c13", 0, "c2", 4 )  : ( "AMCNTENCLR0", "Activity Monitors Count Enable Clear Register 0" ),
+        ( "p15", "c13", 0, "c3", 0 )  : ( "AMCNTENCLR1", "Activity Monitors Count Enable Clear Register 1" ),
+        ( "p15", "c13", 0, "c2", 5 )  : ( "AMCNTENSET0", "Activity Monitors Count Enable Set Register 0" ),
+        ( "p15", "c13", 0, "c3", 1 )  : ( "AMCNTENSET1", "Activity Monitors Count Enable Set Register 1" ),
+        ( "p15", "c13", 0, "c2", 0 )  : ( "AMCR", "Activity Monitors Control Register" ),
+        ( "p15", "c13", 0, "c6", 0 )  : ( "AMEVTYPER00", "Activity Monitors Event Type Registers 0" ),
+        ( "p15", "c13", 0, "c6", 1 )  : ( "AMEVTYPER01", "Activity Monitors Event Type Registers 0" ),
+        ( "p15", "c13", 0, "c6", 2 )  : ( "AMEVTYPER02", "Activity Monitors Event Type Registers 0" ),
+        ( "p15", "c13", 0, "c14", 0 ) : ( "AMEVTYPER10", "Activity Monitors Event Type Registers 1" ),
+        ( "p15", "c13", 0, "c14", 1 ) : ( "AMEVTYPER11", "Activity Monitors Event Type Registers 1" ),
+        ( "p15", "c13", 0, "c14", 2 ) : ( "AMEVTYPER12", "Activity Monitors Event Type Registers 1" ),
+        ( "p15", "c13", 0, "c14", 3 ) : ( "AMEVTYPER13", "Activity Monitors Event Type Registers 1" ),
+        ( "p15", "c13", 0, "c14", 4 ) : ( "AMEVTYPER14", "Activity Monitors Event Type Registers 1" ),
+        ( "p15", "c13", 0, "c14", 5 ) : ( "AMEVTYPER15", "Activity Monitors Event Type Registers 1" ),
+        ( "p15", "c13", 0, "c14", 6 ) : ( "AMEVTYPER16", "Activity Monitors Event Type Registers 1" ),
+        ( "p15", "c13", 0, "c14", 7 ) : ( "AMEVTYPER17", "Activity Monitors Event Type Registers 1" ),
+        ( "p15", "c13", 0, "c15", 0 ) : ( "AMEVTYPER18", "Activity Monitors Event Type Registers 1" ),
+        ( "p15", "c13", 0, "c15", 1 ) : ( "AMEVTYPER19", "Activity Monitors Event Type Registers 1" ),
+        ( "p15", "c13", 0, "c15", 2 ) : ( "AMEVTYPER110", "Activity Monitors Event Type Registers 1" ),
+        ( "p15", "c13", 0, "c15", 3 ) : ( "AMEVTYPER111", "Activity Monitors Event Type Registers 1" ),
+        ( "p15", "c13", 0, "c15", 4 ) : ( "AMEVTYPER112", "Activity Monitors Event Type Registers 1" ),
+        ( "p15", "c13", 0, "c15", 5 ) : ( "AMEVTYPER113", "Activity Monitors Event Type Registers 1" ),
+        ( "p15", "c13", 0, "c15", 6 ) : ( "AMEVTYPER114", "Activity Monitors Event Type Registers 1" ),
+        ( "p15", "c13", 0, "c2", 3 )  : ( "AMUSERENR", "Activity Monitors User Enable Register" ),
+
+        # Reliability
+        ( "p15", "c12", 0, "c1", 1 )  : ( "DISR", "Deferred Interrupt Status Register" ),
+        ( "p15", "c5", 0, "c3", 0 )   : ( "ERRIDR", "Error Record ID Register" ),
+        ( "p15", "c5", 0, "c3", 1 )   : ( "ERRSELR", "Error Record Select Register" ),
+        ( "p15", "c5", 0, "c4", 3 )   : ( "ERXADDR", "Selected Error Record Address Register" ),
+        ( "p15", "c5", 0, "c4", 7 )   : ( "ERXADDR2", "Selected Error Record Address Register 2" ),
+        ( "p15", "c5", 0, "c4", 1 )   : ( "ERXCTLR", "Selected Error Record Control Register" ),
+        ( "p15", "c5", 0, "c4", 5 )   : ( "ERXCTLR2", "Selected Error Record Control Register 2" ),
+        ( "p15", "c5", 0, "c4", 0 )   : ( "ERXFR", "Selected Error Record Feature Register" ),
+        ( "p15", "c5", 0, "c4", 4 )   : ( "ERXFR2", "Selected Error Record Feature Register 2" ),
+        ( "p15", "c5", 0, "c5", 0 )   : ( "ERXMISC0", "Selected Error Record Miscellaneous Register 0" ),
+        ( "p15", "c5", 0, "c5", 1 )   : ( "ERXMISC1", "Selected Error Record Miscellaneous Register 1" ),
+        ( "p15", "c5", 0, "c5", 4 )   : ( "ERXMISC2", "Selected Error Record Miscellaneous Register 2" ),
+        ( "p15", "c5", 0, "c5", 5 )   : ( "ERXMISC3", "Selected Error Record Miscellaneous Register 3" ),
+        ( "p15", "c5", 0, "c5", 2 )   : ( "ERXMISC4", "Selected Error Record Miscellaneous Register 4" ),
+        ( "p15", "c5", 0, "c5", 3 )   : ( "ERXMISC5", "Selected Error Record Miscellaneous Register 5" ),
+        ( "p15", "c5", 0, "c5", 6 )   : ( "ERXMISC6", "Selected Error Record Miscellaneous Register 6" ),
+        ( "p15", "c5", 0, "c5", 7 )   : ( "ERXMISC7", "Selected Error Record Miscellaneous Register 7" ),
+        ( "p15", "c5", 0, "c4", 2 )   : ( "ERXSTATUS", "Selected Error Record Primary Status Register" ),
+        ( "p15", "c5", 4, "c2", 3 )   : ( "VDFSR", "Virtual SError Exception Syndrome Register" ),
+        ( "p15", "c12", 4, "c1", 1 )   : ( "VDISR", "Virtual Deferred Interrupt Status Register" ),
+
+        # Memory attribute registers
+        ( "p15", "c10", 0, "c0", 0 )  : ( "N/A", "TLB Lockdown" ), # ARM11
+        ( "p15", "c10", 0, "c2", 0 )  : ( "MAIR0", "Memory Attribute Indirection Register 0",
+                                          "PRRR", "Primary Region Remap Register" ),
+        ( "p15", "c10", 0, "c2", 1 )  : ( "MAIR1", "Memory Attribute Indirection Register 1",
+                                          "NMRR", "Normal Memory Remap Register" ),
+        ( "p15", "c10", 0, "c3", 0 )  : ( "AMAIR0", "Auxiliary Memory Attribute Indirection Register 0" ),
+        ( "p15", "c10", 0, "c3", 1 )  : ( "AMAIR1", "Auxiliary Memory Attribute Indirection Register 1" ),
+        ( "p15", "c10", 4, "c2", 0 )  : ( "HMAIR0", "Hyp Memory Attribute Indirection Register 0" ),
+        ( "p15", "c10", 4, "c2", 1 )  : ( "HMAIR1", "Hyp Memory Attribute Indirection Register 1" ),
+        ( "p15", "c10", 4, "c3", 0 )  : ( "HAMAIR0", "Hyp Auxiliary Memory Attribute Indirection Register 0" ),
+        ( "p15", "c10", 4, "c3", 1 )  : ( "HAMAIR1", "Hyp Auxiliary Memory Attribute Indirection Register 1" ),
+
+        # DMA registers (ARM11)
+        ( "p15", "c11", 0, "c0", 0 )  : ( "N/A", "DMA Identification and Status (Present)" ),
+        ( "p15", "c11", 0, "c0", 1 )  : ( "N/A", "DMA Identification and Status (Queued)" ),
+        ( "p15", "c11", 0, "c0", 2 )  : ( "N/A", "DMA Identification and Status (Running)" ),
+        ( "p15", "c11", 0, "c0", 3 )  : ( "N/A", "DMA Identification and Status (Interrupting)" ),
+        ( "p15", "c11", 0, "c1", 0 )  : ( "N/A", "DMA User Accessibility" ),
+        ( "p15", "c11", 0, "c2", 0 )  : ( "N/A", "DMA Channel Number" ),
+        ( "p15", "c11", 0, "c3", 0 )  : ( "N/A", "DMA Enable (Stop)" ),
+        ( "p15", "c11", 0, "c3", 1 )  : ( "N/A", "DMA Enable (Start)" ),
+        ( "p15", "c11", 0, "c3", 2 )  : ( "N/A", "DMA Enable (Clear)" ),
+        ( "p15", "c11", 0, "c4", 0 )  : ( "N/A", "DMA Control" ),
+        ( "p15", "c11", 0, "c5", 0 )  : ( "N/A", "DMA Internal Start Address" ),
+        ( "p15", "c11", 0, "c6", 0 )  : ( "N/A", "DMA External Start Address" ),
+        ( "p15", "c11", 0, "c7", 0 )  : ( "N/A", "DMA Internal End Address" ),
+        ( "p15", "c11", 0, "c8", 0 )  : ( "N/A", "DMA Channel Status" ),
+        ( "p15", "c11", 0, "c15", 0)  : ( "N/A", "DMA Context ID" ),
+
+        # Reset management registers.
+        ( "p15", "c12", 0, "c0", 0 )  : ( "VBAR", "Vector Base Address Register" ),
+        ( "p15", "c12", 0, "c0", 1 )  : ( "RVBAR", "Reset Vector Base Address Register" ,
+                                          "MVBAR", "Monitor Vector Base Address Register" ),
+        ( "p15", "c12", 0, "c0", 2 )  : ( "RMR", "Reset Management Register" ),
+        ( "p15", "c12", 4, "c0", 2 )  : ( "HRMR", "Hyp Reset Management Register" ),
+
+        ( "p15", "c12", 0, "c1", 0 )  : ( "ISR", "Interrupt Status Register" ),
+        ( "p15", "c12", 4, "c0", 0 )  : ( "HVBAR", "Hyp Vector Base Address Register" ),
+
+        ( "p15", "c13", 0, "c0", 0 )  : ( "FCSEIDR", "FCSE Process ID register" ),
+        ( "p15", "c13", 0, "c0", 1 )  : ( "CONTEXTIDR", "Context ID Register" ),
+        ( "p15", "c13", 0, "c0", 2 )  : ( "TPIDRURW", "PL0 Read/Write Software Thread ID Register" ),
+        ( "p15", "c13", 0, "c0", 3 )  : ( "TPIDRURO", "PL0 Read-Only Software Thread ID Register" ),
+        ( "p15", "c13", 0, "c0", 4 )  : ( "TPIDRPRW", "PL1 Software Thread ID Register" ),
+        ( "p15", "c13", 4, "c0", 2 )  : ( "HTPIDR", "Hyp Software Thread ID Register" ),
+
+        # Generic timer registers.
+        ( "p15", "c14", 0, "c0", 0 )  : ( "CNTFRQ", "Counter-timer Frequency register" ),
+        ( "p15", "c14", 0, "c1", 0 )  : ( "CNTKCTL", "Counter-timer Kernel Control register" ),
+        ( "p15", "c14", 0, "c2", 0 )  : ( "CNTP_TVAL", "Counter-timer Physical Timer TimerValue register",
+                                          "CNTHP_TVAL", "Counter-timer Hyp Physical Timer TimerValue register",
+                                          "CNTHPS_TVAL", "Counter-timer Secure Physical Timer TimerValue Register (EL2)" ),
+        ( "p15", "c14", 0, "c2", 1 )  : ( "CNTP_CTL", "Counter-timer Physical Timer Control register",
+                                          "CNTHP_CTL", "Counter-timer Hyp Physical Timer Control register",
+                                          "CNTHPS_CTL", "Counter-timer Secure Physical Timer Control Register (EL2)" ),
+        ( "p15", "c14", 0, "c3", 0 )  : ( "CNTV_TVAL", "Counter-timer Virtual Timer TimerValue register",
+                                          "CNTHV_TVAL", "Counter-timer Virtual Timer TimerValue register (EL2)",
+                                          "CNTHVS_TVAL", "Counter-timer Secure Virtual Timer TimerValue Register (EL2)" ),
+        ( "p15", "c14", 0, "c3", 1 )  : ( "CNTV_CTL", "Counter-timer Virtual Timer Control register",
+                                          "CNTHV_CTL", "Counter-timer Virtual Timer Control register (EL2)",
+                                          "CNTHVS_CTL", "Counter-timer Secure Virtual Timer Control Register (EL2)" ),
+        ( "p15", "c14", 4, "c1", 0 )  : ( "CNTHCTL", "Counter-timer Hyp Control register" ),
+        ( "p15", "c14", 4, "c2", 0 )  : ( "CNTHP_TVAL", "Counter-timer Hyp Physical Timer TimerValue register" ),
+        ( "p15", "c14", 4, "c2", 1 )  : ( "CNTHP_CTL", "Counter-timer Hyp Physical Timer Control register" ),
+
+        # Generic interrupt controller registers.
+        ( "p15", "c4", 0, "c6", 0 )   : ( "ICC_PMR", "Interrupt Controller Interrupt Priority Mask Register",
+                                          "ICV_PMR", "Interrupt Controller Virtual Interrupt Priority Mask Register" ),
+        ( "p15", "c12", 0, "c8", 0 )  : ( "ICC_IAR0", "Interrupt Controller Interrupt Acknowledge Register 0",
+                                          "ICV_IAR0", "Interrupt Controller Virtual Interrupt Acknowledge Register 0" ),
+        ( "p15", "c12", 0, "c8", 1 )  : ( "ICC_EOIR0", "Interrupt Controller End Of Interrupt Register 0",
+                                          "ICV_EOIR0", "Interrupt Controller Virtual End Of Interrupt Register 0" ),
+        ( "p15", "c12", 0, "c8", 2 )  : ( "ICC_HPPIR0", "Interrupt Controller Highest Priority Pending Interrupt Register 0",
+                                          "ICV_HPPIR0", "Interrupt Controller Virtual Highest Priority Pending Interrupt Register 0" ),
+        ( "p15", "c12", 0, "c8", 3 )  : ( "ICC_BPR0", "Interrupt Controller Binary Point Register 0",
+                                          "ICV_BPR0", "Interrupt Controller Virtual Binary Point Register 0" ),
+        ( "p15", "c12", 0, "c8", 4 )  : ( "ICC_AP0R0", "Interrupt Controller Active Priorities Group 0 Register 0",
+                                          "ICV_AP0R0", "Interrupt Controller Virtual Active Priorities Group 0 Register 0" ),
+        ( "p15", "c12", 0, "c8", 5 )  : ( "ICC_AP0R1", "Interrupt Controller Active Priorities Group 0 Register 1",
+                                          "ICV_AP0R1", "Interrupt Controller Virtual Active Priorities Group 0 Register 1" ),
+        ( "p15", "c12", 0, "c8", 6 )  : ( "ICC_AP0R2", "Interrupt Controller Active Priorities Group 0 Register 2",
+                                          "ICV_AP0R2", "Interrupt Controller Virtual Active Priorities Group 0 Register 2" ),
+        ( "p15", "c12", 0, "c8", 7 )  : ( "ICC_AP0R3", "Interrupt Controller Active Priorities Group 0 Register 3",
+                                          "ICV_AP0R3", "Interrupt Controller Virtual Active Priorities Group 0 Register 3" ),
+        ( "p15", "c12", 0, "c9", 0 )  : ( "ICC_AP1R0", "Interrupt Controller Active Priorities Group 1 Register 0",
+                                          "ICV_AP1R0", "Interrupt Controller Virtual Active Priorities Group 1 Register 0" ),
+        ( "p15", "c12", 0, "c9", 1 )  : ( "ICC_AP1R1", "Interrupt Controller Active Priorities Group 1 Register 1",
+                                          "ICV_AP1R1", "Interrupt Controller Virtual Active Priorities Group 1 Register 1" ),
+        ( "p15", "c12", 0, "c9", 2 )  : ( "ICC_AP1R2", "Interrupt Controller Active Priorities Group 1 Register 2",
+                                          "ICV_AP1R2", "Interrupt Controller Virtual Active Priorities Group 1 Register 2" ),
+        ( "p15", "c12", 0, "c9", 3 )  : ( "ICC_AP1R3", "Interrupt Controller Active Priorities Group 1 Register 3",
+                                          "ICV_AP1R3", "Interrupt Controller Virtual Active Priorities Group 1 Register 3" ),
+        ( "p15", "c12", 0, "c11", 1 ) : ( "ICC_DIR", "Interrupt Controller Deactivate Interrupt Register",
+                                          "ICV_DIR", "Interrupt Controller Deactivate Virtual Interrupt Register" ),
+        ( "p15", "c12", 0, "c11", 3 ) : ( "ICC_RPR", "Interrupt Controller Running Priority Register",
+                                          "ICV_RPR", "Interrupt Controller Virtual Running Priority Register" ),
+        ( "p15", "c12", 0, "c12", 0 ) : ( "ICC_IAR1", "Interrupt Controller Interrupt Acknowledge Register 1",
+                                          "ICV_IAR1", "Interrupt Controller Virtual Interrupt Acknowledge Register 1" ),
+        ( "p15", "c12", 0, "c12", 1 ) : ( "ICC_EOIR1", "Interrupt Controller End Of Interrupt Register 1",
+                                          "ICV_EOIR1", "Interrupt Controller Virtual End Of Interrupt Register 1" ),
+        ( "p15", "c12", 0, "c12", 2 ) : ( "ICC_HPPIR1", "Interrupt Controller Highest Priority Pending Interrupt Register 1",
+                                          "ICV_HPPIR1", "Interrupt Controller Virtual Highest Priority Pending Interrupt Register 1" ),
+        ( "p15", "c12", 0, "c12", 3 ) : ( "ICC_BPR1", "Interrupt Controller Binary Point Register 1",
+                                          "ICV_BPR1", "Interrupt Controller Virtual Binary Point Register 1" ),
+        ( "p15", "c12", 0, "c12", 4 ) : ( "ICC_CTLR", "Interrupt Controller Control Register",
+                                          "ICV_CTLR", "Interrupt Controller Virtual Control Register" ),
+        ( "p15", "c12", 0, "c12", 5 ) : ( "ICC_SRE", "Interrupt Controller System Register Enable register" ),
+        ( "p15", "c12", 0, "c12", 6 ) : ( "ICC_IGRPEN0", "Interrupt Controller Interrupt Group 0 Enable register",
+                                          "ICV_IGRPEN0", "Interrupt Controller Virtual Interrupt Group 0 Enable register" ),
+        ( "p15", "c12", 0, "c12", 7 ) : ( "ICC_IGRPEN1", "Interrupt Controller Interrupt Group 1 Enable register",
+                                          "ICV_IGRPEN1", "Interrupt Controller Virtual Interrupt Group 1 Enable register" ),
+        ( "p15", "c12", 4, "c8", 0 )  : ( "ICH_AP0R0", "Interrupt Controller Hyp Active Priorities Group 0 Register 0" ),
+        ( "p15", "c12", 4, "c8", 1 )  : ( "ICH_AP0R1", "Interrupt Controller Hyp Active Priorities Group 0 Register 1" ),
+        ( "p15", "c12", 4, "c8", 2 )  : ( "ICH_AP0R2", "Interrupt Controller Hyp Active Priorities Group 0 Register 2" ),
+        ( "p15", "c12", 4, "c8", 3 )  : ( "ICH_AP0R3", "Interrupt Controller Hyp Active Priorities Group 0 Register 3" ),
+        ( "p15", "c12", 4, "c9", 0 )  : ( "ICH_AP1R0", "Interrupt Controller Hyp Active Priorities Group 1 Register 0" ),
+        ( "p15", "c12", 4, "c9", 1 )  : ( "ICH_AP1R1", "Interrupt Controller Hyp Active Priorities Group 1 Register 1" ),
+        ( "p15", "c12", 4, "c9", 2 )  : ( "ICH_AP1R2", "Interrupt Controller Hyp Active Priorities Group 1 Register 2" ),
+        ( "p15", "c12", 4, "c9", 3 )  : ( "ICH_AP1R3", "Interrupt Controller Hyp Active Priorities Group 1 Register 3" ),
+        ( "p15", "c12", 4, "c9", 5 )  : ( "ICC_HSRE", "Interrupt Controller Hyp System Register Enable register" ),
+        ( "p15", "c12", 4, "c11", 0 ) : ( "ICH_HCR", "Interrupt Controller Hyp Control Register" ),
+        ( "p15", "c12", 4, "c11", 1 ) : ( "ICH_VTR", "Interrupt Controller VGIC Type Register" ),
+        ( "p15", "c12", 4, "c11", 2 ) : ( "ICH_MISR", "Interrupt Controller Maintenance Interrupt State Register" ),
+        ( "p15", "c12", 4, "c11", 3 ) : ( "ICH_EISR", "Interrupt Controller End of Interrupt Status Register" ),
+        ( "p15", "c12", 4, "c11", 5 ) : ( "ICH_ELRSR", "Interrupt Controller Empty List Register Status Register" ),
+        ( "p15", "c12", 4, "c11", 7 ) : ( "ICH_VMCR", "Interrupt Controller Virtual Machine Control Register" ),
+        ( "p15", "c12", 4, "c12", 0 ) : ( "ICH_LR0", "Interrupt Controller List Register 0" ),
+        ( "p15", "c12", 4, "c12", 1 ) : ( "ICH_LR1", "Interrupt Controller List Register 1" ),
+        ( "p15", "c12", 4, "c12", 2 ) : ( "ICH_LR2", "Interrupt Controller List Register 2" ),
+        ( "p15", "c12", 4, "c12", 3 ) : ( "ICH_LR3", "Interrupt Controller List Register 3" ),
+        ( "p15", "c12", 4, "c12", 4 ) : ( "ICH_LR4", "Interrupt Controller List Register 4" ),
+        ( "p15", "c12", 4, "c12", 5 ) : ( "ICH_LR5", "Interrupt Controller List Register 5" ),
+        ( "p15", "c12", 4, "c12", 6 ) : ( "ICH_LR6", "Interrupt Controller List Register 6" ),
+        ( "p15", "c12", 4, "c12", 7 ) : ( "ICH_LR7", "Interrupt Controller List Register 7" ),
+        ( "p15", "c12", 4, "c13", 0 ) : ( "ICH_LR8", "Interrupt Controller List Register 8" ),
+        ( "p15", "c12", 4, "c13", 1 ) : ( "ICH_LR9", "Interrupt Controller List Register 9" ),
+        ( "p15", "c12", 4, "c13", 2 ) : ( "ICH_LR10", "Interrupt Controller List Register 10" ),
+        ( "p15", "c12", 4, "c13", 3 ) : ( "ICH_LR11", "Interrupt Controller List Register 11" ),
+        ( "p15", "c12", 4, "c13", 4 ) : ( "ICH_LR12", "Interrupt Controller List Register 12" ),
+        ( "p15", "c12", 4, "c13", 5 ) : ( "ICH_LR13", "Interrupt Controller List Register 13" ),
+        ( "p15", "c12", 4, "c13", 6 ) : ( "ICH_LR14", "Interrupt Controller List Register 14" ),
+        ( "p15", "c12", 4, "c13", 7 ) : ( "ICH_LR15", "Interrupt Controller List Register 15" ),
+        ( "p15", "c12", 4, "c14", 0 ) : ( "ICH_LRC0", "Interrupt Controller List Register 0" ),
+        ( "p15", "c12", 4, "c14", 1 ) : ( "ICH_LRC1", "Interrupt Controller List Register 1" ),
+        ( "p15", "c12", 4, "c14", 2 ) : ( "ICH_LRC2", "Interrupt Controller List Register 2" ),
+        ( "p15", "c12", 4, "c14", 3 ) : ( "ICH_LRC3", "Interrupt Controller List Register 3" ),
+        ( "p15", "c12", 4, "c14", 4 ) : ( "ICH_LRC4", "Interrupt Controller List Register 4" ),
+        ( "p15", "c12", 4, "c14", 5 ) : ( "ICH_LRC5", "Interrupt Controller List Register 5" ),
+        ( "p15", "c12", 4, "c14", 6 ) : ( "ICH_LRC6", "Interrupt Controller List Register 6" ),
+        ( "p15", "c12", 4, "c14", 7 ) : ( "ICH_LRC7", "Interrupt Controller List Register 7" ),
+        ( "p15", "c12", 4, "c15", 0 ) : ( "ICH_LRC8", "Interrupt Controller List Register 8" ),
+        ( "p15", "c12", 4, "c15", 1 ) : ( "ICH_LRC9", "Interrupt Controller List Register 9" ),
+        ( "p15", "c12", 4, "c15", 2 ) : ( "ICH_LRC10", "Interrupt Controller List Register 10" ),
+        ( "p15", "c12", 4, "c15", 3 ) : ( "ICH_LRC11", "Interrupt Controller List Register 11" ),
+        ( "p15", "c12", 4, "c15", 4 ) : ( "ICH_LRC12", "Interrupt Controller List Register 12" ),
+        ( "p15", "c12", 4, "c15", 5 ) : ( "ICH_LRC13", "Interrupt Controller List Register 13" ),
+        ( "p15", "c12", 4, "c15", 6 ) : ( "ICH_LRC14", "Interrupt Controller List Register 14" ),
+        ( "p15", "c12", 4, "c15", 7 ) : ( "ICH_LRC15", "Interrupt Controller List Register 15" ),
+        ( "p15", "c12", 6, "c12", 4 ) : ( "ICC_MCTLR", "Interrupt Controller Monitor Control Register" ),
+        ( "p15", "c12", 6, "c12", 5 ) : ( "ICC_MSRE", "Interrupt Controller Monitor System Register Enable register" ),
+        ( "p15", "c12", 6, "c12", 7 ) : ( "ICC_MGRPEN1", "Interrupt Controller Monitor Interrupt Group 1 Enable register" ),
+
+        ( "p15", "c15", 0, "c0", 0 )  : ( "IL1Data0", "Instruction L1 Data n Register" ),
+        ( "p15", "c15", 0, "c0", 1 )  : ( "IL1Data1", "Instruction L1 Data n Register" ),
+        ( "p15", "c15", 0, "c0", 2 )  : ( "IL1Data2", "Instruction L1 Data n Register" ),
+        ( "p15", "c15", 0, "c1", 0 )  : ( "DL1Data0", "Data L1 Data n Register" ),
+        ( "p15", "c15", 0, "c1", 1 )  : ( "DL1Data1", "Data L1 Data n Register" ),
+        ( "p15", "c15", 0, "c1", 2 )  : ( "DL1Data2", "Data L1 Data n Register" ),
+        ( "p15", "c15", 0, "c2", 0 )  : ( "N/A", "Data Memory Remap" ), # ARM11
+        ( "p15", "c15", 0, "c2", 1 )  : ( "N/A", "Instruction Memory Remap" ), # ARM11
+        ( "p15", "c15", 0, "c2", 2 )  : ( "N/A", "DMA Memory Remap" ), # ARM11
+        ( "p15", "c15", 0, "c2", 3 )  : ( "N/A", "Peripheral Port Memory Remap" ), # ARM11
+        ( "p15", "c15", 0, "c4", 0 )  : ( "RAMINDEX", "RAM Index Register" ),
+        ( "p15", "c15", 0, "c12", 0 ) : ( "N/A", "Performance Monitor Control" ), #ARM11
+        ( "p15", "c15", 0, "c12", 1 ) : ( "CCNT", "Cycle Counter" ), #ARM11
+        ( "p15", "c15", 0, "c12", 2 ) : ( "PMN0", "Count 0" ), #ARM11
+        ( "p15", "c15", 0, "c12", 3 ) : ( "PMN1", "Count 1" ), #ARM11
+        ( "p15", "c15", 1, "c0", 0 )  : ( "L2ACTLR", "L2 Auxiliary Control Register" ),
+        ( "p15", "c15", 1, "c0", 3 )  : ( "L2FPR", "L2 Prefetch Control Register" ),
+        ( "p15", "c15", 3, "c0", 0 )  : ( "N/A", "Data Debug Cache" ), # ARM11
+        ( "p15", "c15", 3, "c0", 1 )  : ( "N/A", "Instruction Debug Cache" ), # ARM11
+        ( "p15", "c15", 3, "c2", 0 )  : ( "N/A", "Data Tag RAM Read Operation" ), # ARM11
+        ( "p15", "c15", 3, "c2", 1 )  : ( "N/A", "Instruction Tag RAM Read Operation" ), # ARM11
+        ( "p15", "c15", 4, "c0", 0 )  : ( "CBAR", "Configuration Base Address Register" ),
+        ( "p15", "c15", 5, "c4", 0 )  : ( "N/A", "Data MicroTLB Index" ), # ARM11
+        ( "p15", "c15", 5, "c4", 1 )  : ( "N/A", "Instruction MicroTLB Index" ), # ARM11
+        ( "p15", "c15", 5, "c4", 2 )  : ( "N/A", "Read Main TLB Entry" ), # ARM11
+        ( "p15", "c15", 5, "c4", 4 )  : ( "N/A", "Write Main TLB Entry" ), # ARM11
+        ( "p15", "c15", 5, "c5", 0 )  : ( "N/A", "Data MicroTLB VA" ), # ARM11
+        ( "p15", "c15", 5, "c5", 1 )  : ( "N/A", "Instruction MicroTLB VA" ), # ARM11
+        ( "p15", "c15", 5, "c5", 2 )  : ( "N/A", "Main TLB VA" ), # ARM11
+        ( "p15", "c15", 5, "c7", 0 )  : ( "N/A", "Data MicroTLB Attribute" ), # ARM11
+        ( "p15", "c15", 5, "c7", 1 )  : ( "N/A", "Instruction MicroTLB Attribute" ), # ARM11
+        ( "p15", "c15", 5, "c7", 2 )  : ( "N/A", "Main TLB Attribute" ), # ARM11
+        ( "p15", "c15", 7, "c0", 0 )  : ( "N/A", "Cache Debug Control" ), # ARM11
+        ( "p15", "c15", 7, "c1", 0 )  : ( "N/A", "TLB Debug Control" ), # ARM11
+
+        # Preload Engine control registers
+        ( "p15", "c11", 0, "c0", 0 )   : ( "PLEIDR", "Preload Engine ID Register" ),
+        ( "p15", "c11", 0, "c0", 2 )   : ( "PLEASR", "Preload Engine Activity Status Register" ),
+        ( "p15", "c11", 0, "c0", 4 )   : ( "PLEFSR", "Preload Engine FIFO Status Register" ),
+        ( "p15", "c11", 0, "c1", 0 )   : ( "PLEUAR", "Preload Engine User Accessibility Register" ),
+        ( "p15", "c11", 0, "c1", 1 )   : ( "PLEPCR", "Preload Engine Parameters Control Register" ),
+
+        # Preload Engine operations
+        ( "p15", "c11", 0, "c2", 1 )   : ( "PLEFF", "Preload Engine FIFO flush operation" ),
+        ( "p15", "c11", 0, "c3", 0 )   : ( "PLEPC", "Preload Engine pause channel operation" ),
+        ( "p15", "c11", 0, "c3", 1 )   : ( "PLERC", "Preload Engine resume channel operation" ),
+        ( "p15", "c11", 0, "c3", 2 )   : ( "PLEKC", "Preload Engine kill channel operation" ),
+
+        # Jazelle registers
+        ( "p14", "c0", 7, "c0", 0 )   : ( "JIDR", "Jazelle ID Register" ),
+        ( "p14", "c1", 7, "c0", 0 )   : ( "JOSCR", "Jazelle OS Control Register" ),
+        ( "p14", "c2", 7, "c0", 0 )   : ( "JMCR", "Jazelle Main Configuration Register" ),
+
+        # Debug registers
+        ( "p15", "c4", 3, "c5", 0 )   : ( "DSPSR", "Debug Saved Program Status Register" ),
+        ( "p15", "c4", 3, "c5", 1 )   : ( "DLR", "Debug Link Register" ),
+        ( "p15", "c0", 0, "c3", 5 )   : ( "ID_DFR1", "Debug Feature Register 1" ),
+        ( "p14", "c0", 0, "c0", 0 )   : ( "DBGDIDR", "Debug ID Register" ),
+        ( "p14", "c0", 0, "c6", 0 )   : ( "DBGWFAR", "Debug Watchpoint Fault Address Register" ),
+        ( "p14", "c0", 0, "c6", 2 )   : ( "DBGOSECCR", "Debug OS Lock Exception Catch Control Register" ),
+        ( "p14", "c0", 0, "c7", 0 )   : ( "DBGVCR", "Debug Vector Catch Register" ),
+        ( "p14", "c0", 0, "c0", 2 )   : ( "DBGDTRRXext", "Debug OS Lock Data Transfer Register, Receive, External View" ),
+        ( "p14", "c0", 0, "c2", 0 )   : ( "DBGDCCINT", "DCC Interrupt Enable Register" ),
+        ( "p14", "c0", 0, "c2", 2 )   : ( "DBGDSCRext", "Debug Status and Control Register, External View" ),
+        ( "p14", "c0", 0, "c3", 2 )   : ( "DBGDTRTXext", "Debug OS Lock Data Transfer Register, Transmit" ),
+        ( "p14", "c0", 0, "c0", 4 )   : ( "DBGBVR0", "Debug Breakpoint Value Register 0" ),
+        ( "p14", "c0", 0, "c1", 4 )   : ( "DBGBVR1", "Debug Breakpoint Value Register 1" ),
+        ( "p14", "c0", 0, "c2", 4 )   : ( "DBGBVR2", "Debug Breakpoint Value Register 2" ),
+        ( "p14", "c0", 0, "c3", 4 )   : ( "DBGBVR3", "Debug Breakpoint Value Register 3" ),
+        ( "p14", "c0", 0, "c4", 4 )   : ( "DBGBVR4", "Debug Breakpoint Value Register 4" ),
+        ( "p14", "c0", 0, "c5", 4 )   : ( "DBGBVR5", "Debug Breakpoint Value Register 5" ),
+        ( "p14", "c0", 0, "c6", 4 )   : ( "DBGBVR6", "Debug Breakpoint Value Register 6" ),
+        ( "p14", "c0", 0, "c7", 4 )   : ( "DBGBVR7", "Debug Breakpoint Value Register 7" ),
+        ( "p14", "c0", 0, "c8", 4 )   : ( "DBGBVR8", "Debug Breakpoint Value Register 8" ),
+        ( "p14", "c0", 0, "c9", 4 )   : ( "DBGBVR9", "Debug Breakpoint Value Register 9" ),
+        ( "p14", "c0", 0, "c10", 4 )  : ( "DBGBVR10", "Debug Breakpoint Value Register 10" ),
+        ( "p14", "c0", 0, "c11", 4 )  : ( "DBGBVR11", "Debug Breakpoint Value Register 11" ),
+        ( "p14", "c0", 0, "c12", 4 )  : ( "DBGBVR12", "Debug Breakpoint Value Register 12" ),
+        ( "p14", "c0", 0, "c13", 4 )  : ( "DBGBVR13", "Debug Breakpoint Value Register 13" ),
+        ( "p14", "c0", 0, "c14", 4 )  : ( "DBGBVR14", "Debug Breakpoint Value Register 14" ),
+        ( "p14", "c0", 0, "c15", 4 )  : ( "DBGBVR15", "Debug Breakpoint Value Register 15" ),
+        ( "p14", "c0", 0, "c0", 5 )   : ( "DBGBCR0", "Debug Breakpoint Control Register 0" ),
+        ( "p14", "c0", 0, "c1", 5 )   : ( "DBGBCR1", "Debug Breakpoint Control Register 1" ),
+        ( "p14", "c0", 0, "c2", 5 )   : ( "DBGBCR2", "Debug Breakpoint Control Register 2" ),
+        ( "p14", "c0", 0, "c3", 5 )   : ( "DBGBCR3", "Debug Breakpoint Control Register 3" ),
+        ( "p14", "c0", 0, "c4", 5 )   : ( "DBGBCR4", "Debug Breakpoint Control Register 4" ),
+        ( "p14", "c0", 0, "c5", 5 )   : ( "DBGBCR5", "Debug Breakpoint Control Register 5" ),
+        ( "p14", "c0", 0, "c6", 5 )   : ( "DBGBCR6", "Debug Breakpoint Control Register 6" ),
+        ( "p14", "c0", 0, "c7", 5 )   : ( "DBGBCR7", "Debug Breakpoint Control Register 7" ),
+        ( "p14", "c0", 0, "c8", 5 )   : ( "DBGBCR8", "Debug Breakpoint Control Register 8" ),
+        ( "p14", "c0", 0, "c9", 5 )   : ( "DBGBCR9", "Debug Breakpoint Control Register 9" ),
+        ( "p14", "c0", 0, "c10", 5 )  : ( "DBGBCR10", "Debug Breakpoint Control Register 10" ),
+        ( "p14", "c0", 0, "c11", 5 )  : ( "DBGBCR11", "Debug Breakpoint Control Register 11" ),
+        ( "p14", "c0", 0, "c12", 5 )  : ( "DBGBCR12", "Debug Breakpoint Control Register 12" ),
+        ( "p14", "c0", 0, "c13", 5 )  : ( "DBGBCR13", "Debug Breakpoint Control Register 13" ),
+        ( "p14", "c0", 0, "c14", 5 )  : ( "DBGBCR14", "Debug Breakpoint Control Register 14" ),
+        ( "p14", "c0", 0, "c15", 5 )  : ( "DBGBCR15", "Debug Breakpoint Control Register 15" ),
+        ( "p14", "c0", 0, "c0", 6 )   : ( "DBGWVR0", "Debug Watchpoint Value Register 0" ),
+        ( "p14", "c0", 0, "c1", 6 )   : ( "DBGWVR1", "Debug Watchpoint Value Register 1" ),
+        ( "p14", "c0", 0, "c2", 6 )   : ( "DBGWVR2", "Debug Watchpoint Value Register 2" ),
+        ( "p14", "c0", 0, "c3", 6 )   : ( "DBGWVR3", "Debug Watchpoint Value Register 3" ),
+        ( "p14", "c0", 0, "c4", 6 )   : ( "DBGWVR4", "Debug Watchpoint Value Register 4" ),
+        ( "p14", "c0", 0, "c5", 6 )   : ( "DBGWVR5", "Debug Watchpoint Value Register 5" ),
+        ( "p14", "c0", 0, "c6", 6 )   : ( "DBGWVR6", "Debug Watchpoint Value Register 6" ),
+        ( "p14", "c0", 0, "c7", 6 )   : ( "DBGWVR7", "Debug Watchpoint Value Register 7" ),
+        ( "p14", "c0", 0, "c8", 6 )   : ( "DBGWVR8", "Debug Watchpoint Value Register 8" ),
+        ( "p14", "c0", 0, "c9", 6 )   : ( "DBGWVR9", "Debug Watchpoint Value Register 9" ),
+        ( "p14", "c0", 0, "c10", 6 )  : ( "DBGWVR10", "Debug Watchpoint Value Register 10" ),
+        ( "p14", "c0", 0, "c11", 6 )  : ( "DBGWVR11", "Debug Watchpoint Value Register 11" ),
+        ( "p14", "c0", 0, "c12", 6 )  : ( "DBGWVR12", "Debug Watchpoint Value Register 12" ),
+        ( "p14", "c0", 0, "c13", 6 )  : ( "DBGWVR13", "Debug Watchpoint Value Register 13" ),
+        ( "p14", "c0", 0, "c14", 6 )  : ( "DBGWVR14", "Debug Watchpoint Value Register 14" ),
+        ( "p14", "c0", 0, "c15", 6 )  : ( "DBGWVR15", "Debug Watchpoint Value Register 15" ),
+        ( "p14", "c0", 0, "c0", 7 )   : ( "DBGWCR0", "Debug Watchpoint Control Register 0" ),
+        ( "p14", "c0", 0, "c1", 7 )   : ( "DBGWCR1", "Debug Watchpoint Control Register 1" ),
+        ( "p14", "c0", 0, "c2", 7 )   : ( "DBGWCR2", "Debug Watchpoint Control Register 2" ),
+        ( "p14", "c0", 0, "c3", 7 )   : ( "DBGWCR3", "Debug Watchpoint Control Register 3" ),
+        ( "p14", "c0", 0, "c4", 7 )   : ( "DBGWCR4", "Debug Watchpoint Control Register 4" ),
+        ( "p14", "c0", 0, "c5", 7 )   : ( "DBGWCR5", "Debug Watchpoint Control Register 5" ),
+        ( "p14", "c0", 0, "c6", 7 )   : ( "DBGWCR6", "Debug Watchpoint Control Register 6" ),
+        ( "p14", "c0", 0, "c7", 7 )   : ( "DBGWCR7", "Debug Watchpoint Control Register 7" ),
+        ( "p14", "c0", 0, "c8", 7 )   : ( "DBGWCR8", "Debug Watchpoint Control Register 8" ),
+        ( "p14", "c0", 0, "c9", 7 )   : ( "DBGWCR9", "Debug Watchpoint Control Register 9" ),
+        ( "p14", "c0", 0, "c10", 7 )  : ( "DBGWCR10", "Debug Watchpoint Control Register 10" ),
+        ( "p14", "c0", 0, "c11", 7 )  : ( "DBGWCR11", "Debug Watchpoint Control Register 11" ),
+        ( "p14", "c0", 0, "c12", 7 )  : ( "DBGWCR12", "Debug Watchpoint Control Register 12" ),
+        ( "p14", "c0", 0, "c13", 7 )  : ( "DBGWCR13", "Debug Watchpoint Control Register 13" ),
+        ( "p14", "c0", 0, "c14", 7 )  : ( "DBGWCR14", "Debug Watchpoint Control Register 14" ),
+        ( "p14", "c0", 0, "c15", 7 )  : ( "DBGWCR15", "Debug Watchpoint Control Register 15" ),
+        ( "p14", "c1", 0, "c0", 1 )   : ( "DBGBXVR0", "Debug Breakpoint Extended Value Register 0" ),
+        ( "p14", "c1", 0, "c1", 1 )   : ( "DBGBXVR1", "Debug Breakpoint Extended Value Register 1" ),
+        ( "p14", "c1", 0, "c2", 1 )   : ( "DBGBXVR2", "Debug Breakpoint Extended Value Register 2" ),
+        ( "p14", "c1", 0, "c3", 1 )   : ( "DBGBXVR3", "Debug Breakpoint Extended Value Register 3" ),
+        ( "p14", "c1", 0, "c4", 1 )   : ( "DBGBXVR4", "Debug Breakpoint Extended Value Register 4" ),
+        ( "p14", "c1", 0, "c5", 1 )   : ( "DBGBXVR5", "Debug Breakpoint Extended Value Register 5" ),
+        ( "p14", "c1", 0, "c6", 1 )   : ( "DBGBXVR6", "Debug Breakpoint Extended Value Register 6" ),
+        ( "p14", "c1", 0, "c7", 1 )   : ( "DBGBXVR7", "Debug Breakpoint Extended Value Register 7" ),
+        ( "p14", "c1", 0, "c8", 1 )   : ( "DBGBXVR8", "Debug Breakpoint Extended Value Register 8" ),
+        ( "p14", "c1", 0, "c9", 1 )   : ( "DBGBXVR9", "Debug Breakpoint Extended Value Register 9" ),
+        ( "p14", "c1", 0, "c10", 1 )  : ( "DBGBXVR10", "Debug Breakpoint Extended Value Register 10" ),
+        ( "p14", "c1", 0, "c11", 1 )  : ( "DBGBXVR11", "Debug Breakpoint Extended Value Register 11" ),
+        ( "p14", "c1", 0, "c12", 1 )  : ( "DBGBXVR12", "Debug Breakpoint Extended Value Register 12" ),
+        ( "p14", "c1", 0, "c13", 1 )  : ( "DBGBXVR13", "Debug Breakpoint Extended Value Register 13" ),
+        ( "p14", "c1", 0, "c14", 1 )  : ( "DBGBXVR14", "Debug Breakpoint Extended Value Register 14" ),
+        ( "p14", "c1", 0, "c15", 1 )  : ( "DBGBXVR15", "Debug Breakpoint Extended Value Register 15" ),
+        ( "p14", "c1", 0, "c0", 4 )   : ( "DBGOSLAR", "Debug OS Lock Access Register" ),
+        ( "p14", "c1", 0, "c1", 4 )   : ( "DBGOSLSR", "Debug OS Lock Status Register" ),
+        ( "p14", "c1", 0, "c4", 4 )   : ( "DBGPRCR", "Debug Power Control Register" ),
+        ( "p14", "c7", 0, "c14", 6 )  : ( "DBGAUTHSTATUS", "Debug Authentication Status register" ),
+        ( "p14", "c7", 0, "c0", 7 )   : ( "DBGDEVID2", "Debug Device ID register 2" ),
+        ( "p14", "c7", 0, "c1", 7 )   : ( "DBGDEVID1", "Debug Device ID register 1" ),
+        ( "p14", "c7", 0, "c2", 7 )   : ( "DBGDEVID", "Debug Device ID register 0" ),
+        ( "p14", "c7", 0, "c8", 6 )   : ( "DBGCLAIMSET", "Debug Claim Tag Set register" ),
+        ( "p14", "c7", 0, "c9", 6 )   : ( "DBGCLAIMCLR", "Debug Claim Tag Clear register" ),
+        ( "p14", "c0", 0, "c1", 0 )   : ( "DBGDSCRint", "Debug Status and Control Register, Internal View" ),
+        ( "p14", "c0", 0, "c5", 0 )   : ( "DBGDTRRXint", "Debug Data Transfer Register, Receive",
+                                          "DBGDTRTXint", "Debug Data Transfer Register, Transmit" ),
+        ( "p14", "c1", 0, "c0", 0 )   : ( "DBGDRAR", "Debug ROM Address Register" ),
+        ( "p14", "c1", 0, "c3", 4 )   : ( "DBGOSDLR", "Debug OS Double Lock Register" ),
+        ( "p14", "c2", 0, "c0", 0 )   : ( "DBGDSAR", "Debug Self Address Register" ),
+        ( "p15", "c1", 4, "c2", 1 )   : ( "HTRFCR", "Hyp Trace Filter Control Register" ),
+        ( "p15", "c1", 0, "c2", 1 )   : ( "TRFCR", "Trace Filter Control Register" ),
+    }
+
+    def get_state(self, code_len):
+        d = {}
+
+        # pc
+        d["pc"] = current_arch.pc
+        if current_arch.is_thumb() and d["pc"] & 1:
+            d["pc"] -= 1
+
+        # code
+        d["code"] = read_memory(d["pc"], code_len)
+
+        # reg
+        d["reg"] = {}
+        for reg in current_arch.all_registers:
+            d["reg"][reg] = get_register(reg)
+        return d
+
+    def revert_state(self, d):
+        # code
+        write_memory(d["pc"], d["code"], len(d["code"]))
+
+        # reg
+        for reg, v in d["reg"].items():
+            if get_register(reg) == v:
+                continue
+            try:
+                gdb.execute("set {:s} = {:#x}".format(reg, v), to_string=True)
+            except Exception:
+                info("set {:s} = {:#x} is failed".format(reg, v))
+                pass
+        return
+
+    def close_stdout(self):
+        self.stdout = 1
+        self.stdout_bak = os.dup(self.stdout)
+        f = open("/dev/null")
+        os.dup2(f.fileno(), self.stdout)
+        f.close()
+        return
+
+    def revert_stdout(self):
+        os.dup2(self.stdout_bak, self.stdout)
+        os.close(self.stdout_bak)
+        return
+
+    def get_coproc_info(self, target_reg_name):
+       for k, v in self.AARCH32_COPROC_REGISTERS.items():
+           for reg_name, desc in slicer(v, 2):
+               if target_reg_name == reg_name:
+                   return k
+       return None
+
+    def get_mrc_code(self, cp_info):
+        code = "mrc {:s}, {:d}, r0, {:s}, {:s}, {:d}".format(cp_info[0], cp_info[2], cp_info[1], cp_info[3], cp_info[4])
+        arch, mode = get_keystone_arch()
+        raw_insns = keystone_assemble(code, arch, mode, raw=True)
+        return raw_insns
+
+    def mrc_execute(self, reg_name):
+        cp_info = self.get_coproc_info(reg_name)
+        if cp_info is None:
+            return None
+
+        if is_big_endian():
+            code = current_arch.infloop_insn[::-1] # to stop another thread
+            code += self.get_mrc_code(cp_info)[::-1]
+        else:
+            code = current_arch.infloop_insn # to stop another thread
+            code += self.get_mrc_code(cp_info)
+
+        # backup
+        gef_on_stop_unhook(hook_stop_handler)
+        d = self.get_state(len(code))
+
+        # modify code
+        write_memory(d["pc"], code, len(code))
+
+        # skip infloop
+        dst = d["pc"] + len(current_arch.infloop_insn)
+        gdb.execute("set $pc = {:#x}".format(dst), to_string=True)
+
+        # exec
+        self.close_stdout()
+        gdb.execute("stepi", to_string=True)
+        ret = get_register(current_arch.return_register)
+
+        # revert
+        self.revert_stdout()
+        self.revert_state(d)
+        gef_on_stop_hook(hook_stop_handler)
+        return ret
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_qemu_system
+    @only_if_specific_arch(arch=["ARM32"])
+    def do_invoke(self, args):
+        if current_arch is None:
+            err("current_arch is not set.")
+            return
+
+        reg_name = args.reg_name
+        if reg_name.startswith("$"):
+            reg_name = reg_name[1:].upper()
+
+        ret = self.mrc_execute(reg_name)
+        if ret is not None:
+            gef_print("{:s} = {:#x}".format(reg_name, ret))
         return
 
 

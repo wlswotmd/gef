@@ -421,6 +421,8 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/call-syscall.png)
 * `ascii-search`: searches ASCII string recursively from specific location.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ascii-search.png)
+* `read-system-register`: reads system register for old qemu.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/read-system-register.png)
 
 ### Other
 * The category is introduced in `gef help`.
