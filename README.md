@@ -386,8 +386,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/time.png)
 * `multi-line`: executes multiple GDB commands in sequence.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/multi-line.png)
-* `rp`,`rp2`: invokes `rp++` with commonly used options.
-    * They correspond to `rp++` v1 and v2 respectively.
+* `rp`: invokes `rp++` with commonly used options.
 * `cpuid`: shows the result of cpuid(eax=0,1,2...).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/cpuid.png)
 * `dasm`: disassembles the code by capstone.

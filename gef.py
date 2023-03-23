@@ -10050,20 +10050,6 @@ class VersionCommand(GenericCommand):
         except IOError:
             return 'not found'
 
-    def rp_version(self):
-        try:
-            command = which("rp-lin-x64")
-        except IOError:
-            try:
-                command = which("rp-lin-x86")
-            except IOError:
-                return 'not found'
-        try:
-            res = gef_execute_external([command, "--version"], as_list=True)
-            return res[0]
-        except IOError:
-            return 'not found'
-
     def qemu_version(self):
         return gdb.execute('monitor info version', to_string=True).strip()
 
@@ -10103,7 +10089,6 @@ class VersionCommand(GenericCommand):
         gef_print("objdump:       \t{:s}".format(self.objdump_version()))
         gef_print("seccomp-tools: \t{:s}".format(self.seccomp_tools_version()))
         gef_print("one_gadget:    \t{:s}".format(self.one_gadget_version()))
-        gef_print("rp:            \t{:s}".format(self.rp_version()))
 
         if is_qemu_system():
             gef_print("qemu:          \t{:s}".format(self.qemu_version()))
@@ -15194,7 +15179,7 @@ class RopperCommand(GenericCommand):
 
 @register_command
 class RpCommand(GenericCommand):
-    """Invoke rp++ v1 command to search rop gadgets. (x64/x86 only)"""
+    """Invoke rp++ (v2) command to search rop gadgets. (x64/x86 only)"""
     _cmdline_ = "rp"
     _category_ = "07-b. External Command - Exploit Development"
 
@@ -15215,11 +15200,10 @@ class RpCommand(GenericCommand):
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_FILENAME)
-        self.rp_version = 1
         return
 
     def exec_rp(self, ropN):
-        output_file = "rp{}_rop{}_{}.txt".format(self.rp_version, ropN, os.path.basename(self.path))
+        output_file = "rp{}_rop_{}.txt".format(ropN, os.path.basename(self.path))
         output_path = os.path.join(GEF_TEMP_DIR, output_file)
         cmd = f"{self.rp} --file='{self.path}' --rop={ropN} --unique > {output_path}"
         gef_print(titlify(cmd))
@@ -15261,22 +15245,11 @@ class RpCommand(GenericCommand):
         self.dont_repeat()
 
         # load rp path
-        if self.rp_version == 1:
-            try:
-                self.rp = which("rp-lin-x64")
-            except FileNotFoundError as e1:
-                try:
-                    self.rp = which("rp-lin-x86")
-                except FileNotFoundError as e2:
-                    err("{}".format(e1))
-                    err("{}".format(e2))
-                    return
-        elif self.rp_version == 2:
-            try:
-                self.rp = which("rp-lin-x64-v2")
-            except FileNotFoundError as e1:
-                err("{}".format(e1))
-                return
+        try:
+            self.rp = which("rp-lin")
+        except FileNotFoundError as e:
+            err("{}".format(e))
+            return
 
         base_address = 0
         if args.libc:
@@ -15318,33 +15291,6 @@ class RpCommand(GenericCommand):
         # print
         if not args.no_print:
             gef_print(out, less=True)
-        return
-
-
-@register_command
-class Rp2Command(RpCommand):
-    """Invoke rp++ v2 command to search rop gadgets. (x64/x86 only)"""
-    _cmdline_ = "rp2"
-    _category_ = "07-b. External Command - Exploit Development"
-
-    parser = argparse.ArgumentParser(prog=_cmdline_)
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument('--bin', action='store_true', help='apply rp++ to binary itself.')
-    group.add_argument('--libc', action='store_true', help='apply rp++ to libc.so searched from vmmap.')
-    group.add_argument('--file', help='apply rp++ to specified file.')
-    group.add_argument('--kernel', action='store_true', help='dump kernel, then apply vmlinux-to-elf and rp++.')
-    parser.add_argument('-f', '--filter', action='append', default=[], help='REGEXP filter.')
-    parser.add_argument('-r', '--rop', dest='rop_N', default=3, help='the max length of rop gadget. (default: %(default)s)')
-    parser.add_argument('--no-print', action='store_true', help="run rp, create a temporary file, but don't display it.")
-    _syntax_ = parser.format_help()
-
-    _example_ = "{:s} --bin -f 'pop r[abcd]x'\n".format(_cmdline_)
-    _example_ += "{:s} --libc -f '(xchg|mov) [re]sp, \\\\w+' -f 'ret'\n".format(_cmdline_)
-    _example_ += "{:s} --kernel # under qemu-system only".format(_cmdline_)
-
-    def __init__(self):
-        super().__init__()
-        self.rp_version = 2
         return
 
 

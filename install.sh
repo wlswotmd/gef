@@ -23,24 +23,11 @@ fi
 
 echo "[+] install rp++"
 if [ "x$(uname -m)" = "xx86_64" ]; then
-  if [ "x$(getconf LONG_BIT)" = "x64" ]; then
-    if [ "x$(which rp-lin-x64)" = "x" ]; then
-      wget -q https://github.com/0vercl0k/rp/releases/download/v1/rp-lin-x64 -O /usr/local/bin/rp-lin-x64
-      chmod +x /usr/local/bin/rp-lin-x64
-    fi
-    if [ "x$(which rp-lin-x64-v2)" = "x" ]; then
-      wget -q https://github.com/0vercl0k/rp/releases/download/v2.0.2/rp-lin-x64 -O /usr/local/bin/rp-lin-x64-v2
-      chmod +x /usr/local/bin/rp-lin-x64-v2
-    fi
-  fi
-fi
-
-if [ "x$(uname -m)" = "xx86_64" ] || [ "x$(uname -m)" = "xi686" ]; then
-  if [ "x$(getconf LONG_BIT)" = "x32" ]; then
-    if [ "x$(which rp-lin-x86)" = "x" ]; then
-      wget -q https://github.com/0vercl0k/rp/releases/download/v1/rp-lin-x86 -O /usr/local/bin/rp-lin-x86
-      chmod +x /usr/local/bin/rp-lin-x86
-    fi
+  if [ "x$(which rp-lin)" = "x" ]; then
+    wget -q https://github.com/0vercl0k/rp/releases/download/v2.1.1/rp-lin-clang.zip -P /tmp
+    unzip /tmp/rp-lin-clang.zip -d /usr/local/bin/
+    chmod +x /usr/local/bin/rp-lin
+    rm /tmp/rp-lin-clang.zip
   fi
 fi
 
