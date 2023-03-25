@@ -42428,7 +42428,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('--reparse', action='store_true',
-                        help='force applying vmlinux-to-elf again. (default: reuse if vmlinux-to-elf-dump-memory.elf exists')
+                        help='force applying vmlinux-to-elf again. (default: reuse if vmlinux-to-elf-dump-memory.elf exists)')
     _syntax_ = parser.format_help()
 
     @staticmethod
@@ -42542,7 +42542,10 @@ class VmlinuxToElfApplyCommand(GenericCommand):
         symboled_vmlinux_file = os.path.join(GEF_TEMP_DIR, "vmlinux-to-elf-dump-memory.elf")
         kinfo = self.dump_kernel_elf(dumped_mem_file, symboled_vmlinux_file, force=args.reparse)
         if kinfo is None:
-            err("Failed to create kernel ELF")
+            err("Failed to create kernel ELF. try to re-parse...")
+            kinfo = self.dump_kernel_elf(dumped_mem_file, symboled_vmlinux_file, force=True)
+        if kinfo is None:
+            err("Failed to create kernel ELF.")
             return
 
         # load symbol
