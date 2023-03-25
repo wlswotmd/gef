@@ -275,6 +275,8 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * It scans `.plt.sec` section if Intel CET is enabled.
     * It can also display the GOT of the library.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/got.png)
+    * It can also display `type`, `offset`, `reloc_arg`, `section` and `permission`.
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/got-v.png)
 * `canary`: is improved.
     * It displays all canary positions in memory.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/canary.png)
