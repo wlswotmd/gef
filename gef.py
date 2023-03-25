@@ -5802,7 +5802,7 @@ class HPPA(Architecture):
             v2 = insn.operands[1] # source2
             vbit = (insn.opcodes[0] >> 2) & 1
             if vbit:
-                taken, reason = check_cond_bit(c, v1, get_register(v1), v2, int(v2, 16)) # bv,cond,n
+                taken, reason = check_cond_bit(c, v1, get_register(v1), v2, int(v2, 16)) # bb,cond,n
             else:
                 taken, reason = check_cond_bit(c, v1, get_register(v1), v2, get_register(v2)) # bvb,cond,n
 
