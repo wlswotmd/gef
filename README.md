@@ -137,6 +137,8 @@ All of these features are experimental. Tested on Ubuntu 22.04.
 * `magic`: displays useful addresses in kernel. Of cource, it also supports in userland.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/magic2.png)
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/magic1.png)
+* `kparam-sysctl`: dump kernel (sysctl) parameter (heuristic).
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kparam-sysctl.png)
 
 #### Arch specific
 * `uefi-ovmf-info`: dumps addresses of some important structures in each boot phase of UEFI when OVMF is used (heuristic).
