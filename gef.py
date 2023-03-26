@@ -16669,45 +16669,37 @@ class ChecksecCommand(GenericCommand):
         return
 
     def print_security_properties_qemu_system(self):
-        if not is_x86() and not is_arm32() and not is_arm64():
+        if is_x86():
+            if (get_register("$cs") & 0b11) == 3:
+                err("Run in kernel space.")
+                return
+        elif is_arm32():
+            if (get_register(current_arch.flag_register) & 0b11111) in [0b10000, 0b11010]:
+                err("Run in kernel space.")
+                return
+        elif is_arm64():
+            if ((get_register(current_arch.flag_register) >> 2) & 0b11) != 1:
+                err("Run in kernel space.")
+                return
+        else:
             err("Unsupported")
             return
 
-        info("Wait for memory scan")
+        gef_print(titlify("Register settings"))
 
-        # KASLR
-        kinfo = KernelbaseCommand.get_kernel_base()
-        if is_x86_64():
-            if kinfo.kbase != 0xffffffff81000000:
-                gef_print("{:<30s}: {:s} (base: {:#x})".format("KASLR", Color.colorify("Enabled", "bold green"), kinfo.kbase))
-            else:
-                gef_print("{:<30s}: {:s} (base: {:#x})".format("KASLR", Color.colorify("Disabled", "bold red"), kinfo.kbase))
-        elif is_x86_32():
-            if kinfo.kbase != 0xc1000000:
-                gef_print("{:<30s}: {:s} (base: {:#x})".format("KASLR", Color.colorify("Enabled", "bold green"), kinfo.kbase))
-            else:
-                gef_print("{:<30s}: {:s} (base: {:#x})".format("KASLR", Color.colorify("Disabled", "bold red"), kinfo.kbase))
-        elif is_arm32():
-            if kinfo.kbase not in [0xc0400000, 0x80100000]:
-                gef_print("{:<30s}: {:s} (base: {:#x})".format("KASLR", Color.colorify("Enabled", "bold green"), kinfo.kbase))
-            else:
-                gef_print("{:<30s}: {:s} (base: {:#x})".format("KASLR", Color.colorify("Disabled", "bold red"), kinfo.kbase))
-        elif is_arm64():
-            if kinfo.kbase != 0xffff800010000000:
-                gef_print("{:<30s}: {:s} (base: {:#x})".format("KASLR", Color.colorify("Enabled", "bold green"), kinfo.kbase))
-            else:
-                gef_print("{:<30s}: {:s} (base: {:#x})".format("KASLR", Color.colorify("Disabled", "bold red"), kinfo.kbase))
-
+        # Arch Specific
         if is_x86():
+            res = gdb.execute("monitor info registers", to_string=True)
+            cr0 = int(re.search(r"CR0=(\S+)", res).group(1), 16)
+            cr4 = int(re.search(r"CR4=(\S+)", res).group(1), 16)
+
             # WP
-            cr0 = get_register("$cr0")
             if (cr0 >> 16) & 1:
                 gef_print("{:<30s}: {:s}".format("Write Protection (CR0 bit 16)", Color.colorify("Enabled", "bold green")))
             else:
                 gef_print("{:<30s}: {:s}".format("Write Protection (CR0 bit 16)", Color.colorify("Disabled", "bold red")))
 
             # PAE
-            cr4 = get_register("$cr4")
             if (cr4 >> 5) & 1:
                 gef_print("{:<30s}: {:s} (NX is supported)".format("PAE (CR4 bit 5)", Color.colorify("Enabled", "bold green")))
             else:
@@ -16725,37 +16717,9 @@ class ChecksecCommand(GenericCommand):
             else:
                 gef_print("{:<30s}: {:s}".format("SMAP (CR4 bit 21)", Color.colorify("Disabled", "bold red")))
 
-            # KPTI
-            ret = KernelCmdlineCommand.kernel_cmdline()
-            if ret and "nopti" in ret[1]:
-                gef_print("{:<30s}: {:s}".format("KPTI", Color.colorify("Disabled", "bold red")))
-            elif ret and "pti=on" in ret[1]:
-                gef_print("{:<30s}: {:s}".format("KPTI", Color.colorify("Enabled", "bold green")))
-            elif (get_register("$cs") & 0b11) == 3:
-                gef_print("{:<30s}: {:s}".format("KPTI", Color.colorify("Unknown", "bold gray")))
-            else:
-                maps = gdb.execute("pagewalk -q -n -c", to_string=True).splitlines()
-                maps = [x for x in maps if "USER" in x]
-                if len(maps) == 0:
-                    gef_print("{:<30s}: {:s}".format("KPTI", Color.colorify("Unknown", "bold gray")))
-                else:
-                    if is_x86_64():
-                        mask = 1 << 63
-                    elif is_x86_32():
-                        mask = 1 << 31
-                    for m in maps:
-                        vaddr = int(m.split("-")[0], 16)
-                        if (vaddr & mask) == 0:
-                            perm = m.split("[")[1][:3]
-                            if "X" in perm:
-                                gef_print("{:<30s}: {:s}".format("KPTI", Color.colorify("Disabled", "bold red")))
-                                break
-                    else:
-                        gef_print("{:<30s}: {:s}".format("KPTI", Color.colorify("Enabled", "bold green")))
-
         elif is_arm32():
             # PXN
-            ID_MMFR0 = get_register('$ID_MMFR0')
+            ID_MMFR0 = get_register('$ID_MMFR0', use_mbed_exec=True)
             ID_MMFR0_S = get_register('$ID_MMFR0_S')
             if ID_MMFR0 is not None and (ID_MMFR0 >> 2) & 1:
                 gef_print("{:<30s}: {:s}".format("PXN", Color.colorify("Enabled", "bold green")))
@@ -16763,12 +16727,14 @@ class ChecksecCommand(GenericCommand):
                 gef_print("{:<30s}: {:s}".format("PXN", Color.colorify("Enabled", "bold green")))
             else:
                 gef_print("{:<30s}: {:s}".format("PXN", Color.colorify("Disabled", "bold red")))
+
             # PAN
             gef_print("{:<30s}: {:s} (all ARMv7 is unsupported)".format("PAN", Color.colorify("Disabled", "bold red")))
 
         elif is_arm64():
             # PXN
             gef_print("{:<30s}: {:s} (all ARMv8~ is supported)".format("PXN", Color.colorify("Enabled", "bold green")))
+
             # PAN
             ID_AA64MMFR1_EL1 = get_register('$ID_AA64MMFR1_EL1')
             if ID_AA64MMFR1_EL1 is not None and ((ID_AA64MMFR1_EL1 >> 20) & 0b1111) != 0b0000:
@@ -16776,59 +16742,294 @@ class ChecksecCommand(GenericCommand):
             else:
                 gef_print("{:<30s}: {:s}".format("PAN", Color.colorify("Disabled", "bold red")))
 
-        # CONFIG_STATIC_USERMODEHELPER
-        if is_x86() and (get_register("$cs") & 0b11) == 3:
-            gef_print("{:<30s}: {:s}".format("CONFIG_STATIC_USERMODEHELPER", Color.colorify("Unknown", "bold gray")))
-        elif is_arm32() and (get_register(current_arch.flag_register) & 0b11111) in [0b10000, 0b11010]:
-            gef_print("{:<30s}: {:s}".format("CONFIG_STATIC_USERMODEHELPER", Color.colorify("Unknown", "bold gray")))
-        elif is_arm64() and ((get_register(current_arch.flag_register) >> 2) & 0b11) != 1:
-            gef_print("{:<30s}: {:s}".format("CONFIG_STATIC_USERMODEHELPER", Color.colorify("Unknown", "bold gray")))
-        else:
-            mp = KernelAddressHeuristicFinder.get_modprobe_path()
-            if mp is None:
-                gef_print("{:<30s}: {:s}".format("CONFIG_STATIC_USERMODEHELPER", Color.colorify("Not found", "bold gray")))
+        gef_print(titlify("Memory settings"))
+        kinfo = KernelbaseCommand.get_kernel_base()
+        if kinfo.kbase is None:
+            err("kbasel is not found (get_kernel_base is failed)")
+            return
+        _stext = get_ksymaddr("_stext")
+        if _stext is None:
+            err("_stext is not found (ksymaddr-remote is failed)")
+            return
+
+        # KASLR
+        r = gdb.execute("ksymaddr-remote --quiet kaslr_", to_string=True)
+        ret = KernelCmdlineCommand.kernel_cmdline()
+        cfg = "CONFIG_RANDOMIZE_BASE (KASLR)"
+        address_info = "kbase: {:#x}, _stext:{:#x}".format(kinfo.kbase, _stext)
+        if r:
+            if ret and "nokaslr" in ret[1]:
+                gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), address_info))
             else:
-                for vaddr, size, perm in kinfo.maps:
-                    if vaddr <= mp < vaddr + size:
-                        if not "W" in perm:
-                            gef_print("{:<30s}: {:s} ({:s})".format("CONFIG_STATIC_USERMODEHELPER", Color.colorify("Enabled", "bold green"), perm))
-                        else:
-                            gef_print("{:<30s}: {:s} ({:s})".format("CONFIG_STATIC_USERMODEHELPER", Color.colorify("Disabled", "bold red"), perm))
-                        break
+                gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), address_info))
+        else:
+            gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Unsupported", "bold red"), address_info))
+
+        # FGKASLR
+        swapgs_restore_regs_and_return_to_usermode = get_ksymaddr("swapgs_restore_regs_and_return_to_usermode")
+        commit_creds = get_ksymaddr("commit_creds")
+        ret = KernelCmdlineCommand.kernel_cmdline()
+        cfg = "CONFIG_FG_KASLR"
+        if swapgs_restore_regs_and_return_to_usermode:
+            # swapgs_restore_regs_and_return_to_usermode is in a fixed location.
+            # commit_creds are placed dynamically.
+            if swapgs_restore_regs_and_return_to_usermode < commit_creds:
+                if ret and "nofgkaslr" in ret[1]:
+                    gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
                 else:
-                    gef_print("{:<30s}: {:s}".format("CONFIG_STATIC_USERMODEHELPER", Color.colorify("Not found maps", "bold gray")))
+                    gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
+            else:
+                gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Unsupported", "bold red")))
+        else:
+            if commit_creds:
+                gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Unsupported", "bold red")))
+            else:
+                gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
+
+        # KPTI
+        cfg = "CONFIG_PAGE_TABLE_ISOLATION"
+        if is_x86():
+            pti_init = get_ksymaddr("pti_init")
+            ret = KernelCmdlineCommand.kernel_cmdline()
+            if pti_init:
+                if ret and "nopti" in ret[1]:
+                    gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+                elif ret and "pti=off" in ret[1]:
+                    gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+                elif ret and "mitigations=off" in ret[1]:
+                    gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+                elif ret and "pti=on" in ret[1]:
+                    gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
+                else:
+                    # here is kernel context
+                    lines = get_maps_by_pagewalk("pagewalk -q --simple -n").splitlines()
+                    for line in lines:
+                        if "USER" in line and "R-X" in line:
+                            gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+                            break
+                    else:
+                        gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
+            else:
+                gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Unsupported", "bold red")))
+
+        elif is_arm32():
+            gef_print("{:<30s}: {:s} (ARMv7 is unsupported)".format(cfg, Color.colorify("Unsupported", "bold red")))
+
+        elif is_arm64():
+            pti_init = get_ksymaddr("pti_init")
+            ret = KernelCmdlineCommand.kernel_cmdline()
+            if pti_init:
+                if ret and "kpti=0" in ret[1]:
+                    gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+                elif ret and "mitigations=off" in ret[1] and "nokaslr" in ret[1]:
+                    gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+                elif ret and "mitigations=off" in ret[1] and "nokaslr" not in ret[1]:
+                    gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
+                elif ret and "kpti=1" in ret[1]:
+                    gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
+                else:
+                    gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Enabled (maybe)", "bold green")))
+            else:
+                gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Unsupported", "bold red")))
+
+        # Secure-world
+        if is_arm32() or is_arm64():
+            r = gdb.execute("monitor info mtree -f", to_string=True)
+            if "virt.secure-ram" in r:
+                gef_print("{:<30s}: {:s}".format("Secure-World", Color.colorify("Exist", "bold green")))
+            else:
+                gef_print("{:<30s}: {:s}".format("Secure-World", Color.colorify("Not exist", "bold red")))
+
+        gef_print(titlify("Symbol"))
+
+        # CONFIG_KALLSYMS_ALL
+        modprobe_path = get_ksymaddr("modprobe_path")
+        cfg = "CONFIG_KALLSYMS_ALL"
+        if modprobe_path:
+            gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Enabled", "bold red")))
+        else:
+            gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Disabled", "bold green")))
+
+        gef_print(titlify("Read-only"))
+
+        # CONFIG_STATIC_USERMODEHELPER
+        mp = KernelAddressHeuristicFinder.get_modprobe_path()
+        cfg = "CONFIG_STATIC_USERMODEHELPER"
+        if mp is None:
+            gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Not found", "bold gray")))
+        else:
+            for vaddr, size, perm in kinfo.maps:
+                if vaddr <= mp < vaddr + size:
+                    if not "W" in perm:
+                        gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), perm))
+                    else:
+                        gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), perm))
+                    break
+            else:
+                gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Not found maps", "bold gray")))
+
+        gef_print(titlify("Allocator"))
+
+        # SLUB/SLAB/SLOB
+        allocator = False
+        r = gdb.execute("ksymaddr-remote --quiet slub_", to_string=True)
+        if r:
+            gef_print("{:<30s}: {:s}".format("Allocator", Color.colorify("SLUB", "bold green")))
+            allocator = "SLUB"
+        else:
+            r = gdb.execute("ksymaddr-remote --quiet slab_prepare_cpu", to_string=True)
+            if r:
+                gef_print("{:<30s}: {:s}".format("Allocator", Color.colorify("SLAB", "bold green")))
+                allocator = "SLAB"
+            else:
+                gef_print("{:<30s}: {:s}".format("Allocator", Color.colorify("SLOB", "bold green")))
+                allocator = "SLOB"
 
         # CONFIG_SLAB_FREELIST_HARDENED
-        if is_x86() and (get_register("$cs") & 0b11) == 3:
-            gef_print("{:<30s}: {:s}".format("CONFIG_SLAB_FREELIST_HARDENED", Color.colorify("Unknown", "bold gray")))
-        elif is_arm32() and (get_register(current_arch.flag_register) & 0b11111) in [0b10000, 0b11010]:
-            gef_print("{:<30s}: {:s}".format("CONFIG_SLAB_FREELIST_HARDENED", Color.colorify("Unknown", "bold gray")))
-        elif is_arm64() and ((get_register(current_arch.flag_register) >> 2) & 0b11) != 1:
-            gef_print("{:<30s}: {:s}".format("CONFIG_SLAB_FREELIST_HARDENED", Color.colorify("Unknown", "bold gray")))
-        else:
-            ret = gdb.execute("slub-dump kmalloc-8 kmalloc-16 kmalloc-32 kmalloc-64 kmalloc-96 kmalloc-128 kmalloc-192 kmalloc-256", to_string=True)
+        if allocator == "SLUB":
+            ret = gdb.execute("slub-dump kmalloc-8 kmalloc-16 kmalloc-32 kmalloc-64", to_string=True)
             r = re.search(r"offsetof\(kmem_cache, random\): (0x\S+)", ret)
+            cfg = "CONFIG_SLAB_FREELIST_HARDENED"
             if "Corrupted" in ret:
-                gef_print("{:<30s}: {:s}".format("CONFIG_SLAB_FREELIST_HARDENED", Color.colorify("Unknown", "bold gray")))
+                gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
             elif r:
-                gef_print("{:<30s}: {:s} (offset: {:s})".format("CONFIG_SLAB_FREELIST_HARDENED", Color.colorify("Enabled", "bold green"), r.group(1)))
+                additional = "offset: {:s}".format(r.group(1))
+                gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
             else:
-                gef_print("{:<30s}: {:s}".format("CONFIG_SLAB_FREELIST_HARDENED", Color.colorify("Disabled", "bold red")))
+                gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+
+        gef_print(titlify("Stack"))
 
         # CONFIG_STACKPROTECTOR
-        if is_x86() and (get_register("$cs") & 0b11) == 3:
-            gef_print("{:<30s}: {:s}".format("CONFIG_STACKPROTECTOR", Color.colorify("Unknown", "bold gray")))
-        elif is_arm32() and (get_register(current_arch.flag_register) & 0b11111) in [0b10000, 0b11010]:
-            gef_print("{:<30s}: {:s}".format("CONFIG_STACKPROTECTOR", Color.colorify("Unknown", "bold gray")))
-        elif is_arm64() and ((get_register(current_arch.flag_register) >> 2) & 0b11) != 1:
-            gef_print("{:<30s}: {:s}".format("CONFIG_STACKPROTECTOR", Color.colorify("Unknown", "bold gray")))
+        ret = gdb.execute("ktask -n", to_string=True)
+        r = re.search(r"offsetof\(task_struct, stack_canary\): (0x\S+)", ret)
+        cfg = "CONFIG_STACKPROTECTOR"
+        if r:
+            additional = "offset: {:s}".format(r.group(1))
+            gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
         else:
-            ret = gdb.execute("ktask -n", to_string=True)
-            r = re.search(r"offsetof\(task_struct, stack_canary\): (0x\S+)", ret)
-            if r:
-                gef_print("{:<30s}: {:s} (offset: {:s})".format("CONFIG_STACKPROTECTOR", Color.colorify("Enabled", "bold green"), r.group(1)))
+            gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+
+        gef_print(titlify("Dangerous system call"))
+
+        # unprivileged_userfaultfd
+        cfg = "unprivileged_userfaultfd"
+        r1 = gdb.execute("syscall-table-view -f userfaultfd -n -q", to_string=True)
+        if "invalid userfaultfd" in r1:
+            additional = "userfaultfd syscall is disabled"
+            gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("None", "bold green"), additional))
+        else:
+            sysctl_unprivileged_userfaultfd = KernelAddressHeuristicFinder.get_sysctl_unprivileged_userfaultfd()
+            if sysctl_unprivileged_userfaultfd is None:
+                gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
             else:
-                gef_print("{:<30s}: {:s}".format("CONFIG_STACKPROTECTOR", Color.colorify("Disabled", "bold red")))
+                v = u32(read_memory(sysctl_unprivileged_userfaultfd, 4))
+                additional = "sysctl_unprivileged_userfaultfd: {:d}".format(v)
+                if v == 0:
+                    gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold green"), additional))
+                else:
+                    gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold red"), additional))
+
+        # unprivileged_bpf_disabled
+        cfg = "unprivileged_bpf_disabled"
+        r1 = gdb.execute("syscall-table-view -f bpf -n -q", to_string=True)
+        if "invalid bpf" in r1:
+            additional = "bpf syscall is disabled"
+            gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("None", "bold green"), additional))
+        else:
+            sysctl_unprivileged_bpf_disabled = KernelAddressHeuristicFinder.get_sysctl_unprivileged_bpf_disabled()
+            if sysctl_unprivileged_bpf_disabled is None:
+                gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
+            else:
+                v = u32(read_memory(sysctl_unprivileged_bpf_disabled, 4))
+                additional = "sysctl_unprivileged_bpf_disabled: {:d}".format(v)
+                if v == 0:
+                    gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
+                else:
+                    gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
+
+        # kexec_load_disabled
+        cfg = "kexec_load_disabled"
+        r1 = gdb.execute("syscall-table-view -f kexec_load -n -q", to_string=True)
+        r2 = gdb.execute("syscall-table-view -f kexec_file_load -n -q", to_string=True)
+        if "invalid kexec_load" in r1 and "invalid kexec_file_load" in r2:
+            additional = "kexec_load, kexec_file_load syscalls are disabled"
+            gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("None", "bold green"), additional))
+        else:
+            kexec_load_disabled = KernelAddressHeuristicFinder.get_kexec_load_disabled()
+            if kexec_load_disabled is None:
+                gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
+            else:
+                v1 = u32(read_memory(kexec_load_disabled, 4))
+                additional = "kexec_load_disabled: {:d}".format(v1)
+                if v1 == 0:
+                    gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
+                else:
+                    gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
+
+        gef_print(titlify("Other"))
+
+        # mmap_min_addr
+        mmap_min_addr = KernelAddressHeuristicFinder.get_mmap_min_addr()
+        cfg = "mmap_min_addr"
+        if mmap_min_addr is None:
+            gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
+        else:
+            val = read_int_from_memory(mmap_min_addr)
+            if val:
+                gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("{:#x}".format(val), "bold green")))
+            else:
+                gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("{:#x}".format(val), "bold red")))
+
+        # KADR (kallsyms)
+        kptr_restrict = KernelAddressHeuristicFinder.get_kptr_restrict()
+        sysctl_perf_event_paranoid = KernelAddressHeuristicFinder.get_sysctl_perf_event_paranoid()
+        cfg = "KADR (kallsyms)"
+        if kptr_restrict is None:
+            gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
+        else:
+            kversion = float(re.search(r"Linux version (\d\.\d+).\d+", gdb.execute("kversion", to_string=True)).group(1))
+            if kversion < 4.15:
+                v1 = u32(read_memory(kptr_restrict, 4))
+                additional = "kptr_restrict: {:d}".format(v1)
+                if v1 == 0:
+                    gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
+                else:
+                    gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
+            else:
+                v1 = u32(read_memory(kptr_restrict, 4))
+                v2 = u32(read_memory(sysctl_perf_event_paranoid, 4))
+                additional = "kptr_restrict: {:d}, sysctl_perf_event_paranoid: {:d}".format(v1, v2)
+                if v1 == 0 and v2 == 0:
+                    gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
+                else:
+                    gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
+
+        # KADR (dmesg)
+        dmesg_restrict = KernelAddressHeuristicFinder.get_dmesg_restrict()
+        cfg = "KADR (dmesg)"
+        if dmesg_restrict is None:
+            gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
+        else:
+            v1 = u32(read_memory(dmesg_restrict, 4))
+            additional = "dmesg_restrict: {:d}".format(v1)
+            if v1 == 0:
+                gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
+            else:
+                gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
+
+        # ptrace_scope
+        ptrace_scope = KernelAddressHeuristicFinder.get_ptrace_scope()
+        cfg = "ptrace_scope"
+        if ptrace_scope is None:
+            gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
+        else:
+            v1 = u32(read_memory(ptrace_scope, 4))
+            additional = "ptrace_scope: {:d}".format(v1)
+            if v1 == 0:
+                gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
+            else:
+                gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
 
         return
 
@@ -37747,7 +37948,7 @@ class KernelAddressHeuristicFinder:
         # plan 2 (available v3.11-rc1 or later)
         request_module = get_ksymaddr("__request_module")
         if request_module:
-            res = gdb.execute("x/30i {:#x}".format(request_module), to_string=True)
+            res = gdb.execute("x/40i {:#x}".format(request_module), to_string=True)
             if is_x86_64():
                 for line in res.splitlines():
                     m = re.search(r"BYTE PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
@@ -38157,6 +38358,381 @@ class KernelAddressHeuristicFinder:
                         m = re.search(r"movt.*;\s*(0x\S+)", line)
                         if m:
                             return base + (int(m.group(1), 16) << 16)
+        return None
+
+    @staticmethod
+    def get_sysctl_unprivileged_userfaultfd():
+        # plan 1 (directly)
+        sysctl_unprivileged_userfaultfd = get_ksymaddr("sysctl_unprivileged_userfaultfd")
+        if sysctl_unprivileged_userfaultfd:
+            return sysctl_unprivileged_userfaultfd
+
+        # plan 2 (available v5.2-rc1 or later)
+        proc_dointvec_minmax = get_ksymaddr("proc_dointvec_minmax")
+        if proc_dointvec_minmax:
+            kinfo = KernelbaseCommand.get_kernel_base()
+            mem = read_memory(kinfo.krwbase, min(kinfo.krwbase_size, 0x1000000))
+            mem = slice_unpack(mem, current_arch.ptrsize)
+
+            idx = -1
+            while True:
+                try:
+                    idx = mem.index(proc_dointvec_minmax, idx + 1)
+                except ValueError:
+                    break
+                proc_handler_addr = kinfo.krwbase + current_arch.ptrsize * idx
+                for i in [4, 5]: # 64bit: 4, 32bit:5 ?
+                    procname_addr = proc_handler_addr - current_arch.ptrsize * i
+                    procname = read_int_from_memory(procname_addr)
+                    if read_cstring_from_memory(procname) == "unprivileged_userfaultfd":
+                        return read_int_from_memory(procname_addr + current_arch.ptrsize)
+        return None
+
+    @staticmethod
+    def get_sysctl_unprivileged_bpf_disabled():
+        # plan 1 (directly)
+        sysctl_unprivileged_bpf_disabled = get_ksymaddr("sysctl_unprivileged_bpf_disabled")
+        if sysctl_unprivileged_bpf_disabled:
+            return sysctl_unprivileged_bpf_disabled
+
+        # plan 2 (available v4.9.91 ~ v5.18.19)
+        __do_sys_bpf = get_ksymaddr("__do_sys_bpf")
+        if __do_sys_bpf:
+            res = gdb.execute("x/20i {:#x}".format(__do_sys_bpf), to_string=True)
+            if is_x86_64():
+                for line in res.splitlines():
+                    m = re.search(r"DWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffffffffffff
+                        if v != 0:
+                            return v
+            elif is_x86_32():
+                for line in res.splitlines():
+                    m = re.search(r"ds:(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffff
+                        if v != 0:
+                            return v
+            elif is_arm64():
+                bases = {}
+                for line in res.splitlines():
+                    m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        base = int(m.group(2), 16)
+                        bases[reg] = base
+                        continue
+                    m = re.search(r"ldr\s+\S+,\s*\[(\S+),\s*#(\d+)\]", line)
+                    if m:
+                        reg = m.group(1)
+                        v = int(m.group(2), 0)
+                        if reg in bases:
+                            return bases[reg] + v
+            elif is_arm32():
+                bases = {}
+                add1time = {}
+                for line in res.splitlines():
+                    m = re.search(r"movw\s+(\S+),.+;\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        base = int(m.group(2), 16)
+                        bases[reg] = base
+                        continue
+                    m = re.search(r"movt\s+(\S+),.+;\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        v = int(m.group(2), 16) << 16
+                        if reg in bases:
+                            return bases[reg] + v
+        return None
+
+    @staticmethod
+    def get_kptr_restrict():
+        # plan 1 (directly)
+        kptr_restrict = get_ksymaddr("kptr_restrict")
+        if kptr_restrict:
+            return kptr_restrict
+
+        # plan 2 (available v5.17-rc1 or later)
+        proc_dointvec_minmax_sysadmin = get_ksymaddr("proc_dointvec_minmax_sysadmin")
+        if proc_dointvec_minmax_sysadmin:
+            kinfo = KernelbaseCommand.get_kernel_base()
+            mem = read_memory(kinfo.krwbase, min(kinfo.krwbase_size, 0x1000000))
+            mem = slice_unpack(mem, current_arch.ptrsize)
+
+            idx = -1
+            while True:
+                try:
+                    idx = mem.index(proc_dointvec_minmax_sysadmin, idx + 1)
+                except ValueError:
+                    break
+                proc_handler_addr = kinfo.krwbase + current_arch.ptrsize * idx
+                for i in [4, 5]: # 64bit: 4, 32bit:5 ?
+                    procname_addr = proc_handler_addr - current_arch.ptrsize * i
+                    procname = read_int_from_memory(procname_addr)
+                    if read_cstring_from_memory(procname) == "kptr_restrict":
+                        return read_int_from_memory(procname_addr + current_arch.ptrsize)
+
+        # plan 3 (available v4.15-rc1 or later)
+        kallsyms_show_value = get_ksymaddr("kallsyms_show_value")
+        if kallsyms_show_value:
+            res = gdb.execute("x/20i {:#x}".format(kallsyms_show_value), to_string=True)
+            if is_x86_64():
+                for line in res.splitlines():
+                    m = re.search(r"DWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffffffffffff
+                        if v != 0:
+                            return v
+            elif is_x86_32():
+                for line in res.splitlines():
+                    m = re.search(r"ds:(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffff
+                        if v != 0:
+                            return v
+            elif is_arm64():
+                bases = {}
+                for line in res.splitlines():
+                    m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        base = int(m.group(2), 16)
+                        bases[reg] = base
+                        continue
+                    m = re.search(r"ldr\s+\S+,\s*\[(\S+),\s*#(\d+)\]", line)
+                    if m:
+                        reg = m.group(1)
+                        v = int(m.group(2), 0)
+                        if reg in bases:
+                            return bases[reg] + v
+            elif is_arm32():
+                bases = {}
+                add1time = {}
+                for line in res.splitlines():
+                    m = re.search(r"movw\s+(\S+),.+;\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        base = int(m.group(2), 16)
+                        bases[reg] = base
+                        continue
+                    m = re.search(r"movt\s+(\S+),.+;\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        v = int(m.group(2), 16) << 16
+                        if reg in bases:
+                            return bases[reg] + v
+        return None
+
+    @staticmethod
+    def get_sysctl_perf_event_paranoid():
+        # plan 1 (directly)
+        get_sysctl_perf_event_paranoid = get_ksymaddr("sysctl_perf_event_paranoid")
+        if get_sysctl_perf_event_paranoid:
+            return get_sysctl_perf_event_paranoid
+
+        # plan 2 (available v4.15-rc1 or later)
+        kallsyms_show_value = get_ksymaddr("kallsyms_show_value")
+        if kallsyms_show_value:
+            res = gdb.execute("x/20i {:#x}".format(kallsyms_show_value), to_string=True)
+            if is_x86_64():
+                count = 0
+                for line in res.splitlines():
+                    m = re.search(r"DWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffffffffffff
+                        if v != 0:
+                            count += 1
+                            if count == 2:
+                                return v
+            elif is_x86_32():
+                count = 0
+                for line in res.splitlines():
+                    m = re.search(r"ds:(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffff
+                        if v != 0:
+                            count += 1
+                            if count == 2:
+                                return v
+            elif is_arm64():
+                count = 0
+                bases = {}
+                for line in res.splitlines():
+                    m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        base = int(m.group(2), 16)
+                        bases[reg] = base
+                        continue
+                    m = re.search(r"ldr\s+\S+,\s*\[(\S+),\s*#(\d+)\]", line)
+                    if m:
+                        reg = m.group(1)
+                        v = int(m.group(2), 0)
+                        if reg in bases:
+                            count += 1
+                            if count == 2:
+                                return bases[reg] + v
+            elif is_arm32():
+                count = 0
+                bases = {}
+                add1time = {}
+                for line in res.splitlines():
+                    m = re.search(r"movw\s+(\S+),.+;\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        base = int(m.group(2), 16)
+                        bases[reg] = base
+                        continue
+                    m = re.search(r"movt\s+(\S+),.+;\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        v = int(m.group(2), 16) << 16
+                        if reg in bases:
+                            count += 1
+                            if count == 2:
+                                return bases[reg] + v
+        return None
+
+    @staticmethod
+    def get_dmesg_restrict():
+        # plan 1 (directly)
+        get_dmesg_restrict = get_ksymaddr("dmesg_restrict")
+        if get_dmesg_restrict:
+            return get_dmesg_restrict
+
+        # plan 2 (available v5.17-rc1 or later)
+        proc_dointvec_minmax_sysadmin = get_ksymaddr("proc_dointvec_minmax_sysadmin")
+        if proc_dointvec_minmax_sysadmin:
+            kinfo = KernelbaseCommand.get_kernel_base()
+            mem = read_memory(kinfo.krwbase, min(kinfo.krwbase_size, 0x1000000))
+            mem = slice_unpack(mem, current_arch.ptrsize)
+
+            idx = -1
+            while True:
+                try:
+                    idx = mem.index(proc_dointvec_minmax_sysadmin, idx + 1)
+                except ValueError:
+                    break
+                proc_handler_addr = kinfo.krwbase + current_arch.ptrsize * idx
+                for i in [4, 5]: # 64bit: 4, 32bit:5 ?
+                    procname_addr = proc_handler_addr - current_arch.ptrsize * i
+                    procname = read_int_from_memory(procname_addr)
+                    if read_cstring_from_memory(procname) == "dmesg_restrict":
+                        return read_int_from_memory(procname_addr + current_arch.ptrsize)
+
+        # plan 3 (available v3.11-rc4 or later)
+        check_syslog_permissions = get_ksymaddr("check_syslog_permissions")
+        if check_syslog_permissions:
+            res = gdb.execute("x/20i {:#x}".format(check_syslog_permissions), to_string=True)
+            if is_x86_64():
+                for line in res.splitlines():
+                    m = re.search(r"DWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffffffffffff
+                        if v != 0:
+                            return v
+            elif is_x86_32():
+                for line in res.splitlines():
+                    m = re.search(r"ds:(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffff
+                        if v != 0:
+                            return v
+            elif is_arm64():
+                bases = {}
+                for line in res.splitlines():
+                    m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        base = int(m.group(2), 16)
+                        bases[reg] = base
+                        continue
+                    m = re.search(r"ldr\s+\S+,\s*\[(\S+),\s*#(\d+)\]", line)
+                    if m:
+                        reg = m.group(1)
+                        v = int(m.group(2), 0)
+                        if reg in bases:
+                            return bases[reg] + v
+            elif is_arm32():
+                bases = {}
+                add1time = {}
+                for line in res.splitlines():
+                    m = re.search(r"movw\s+(\S+),.+;\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        base = int(m.group(2), 16)
+                        bases[reg] = base
+                        continue
+                    m = re.search(r"movt\s+(\S+),.+;\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        v = int(m.group(2), 16) << 16
+                        if reg in bases:
+                            add1time[reg] = bases[reg] + v
+                            continue
+                    m = re.search(r"ldr\s+\S+,\s*\[(\S+),\s*#(\d+)\]", line)
+                    if m:
+                        reg = m.group(1)
+                        v = int(m.group(2), 0)
+                        if reg in add1time:
+                            return add1time[reg] + v
+        return None
+
+    @staticmethod
+    def get_kexec_load_disabled():
+        # plan 1 (directly)
+        kexec_load_disabled = get_ksymaddr("kexec_load_disabled")
+        if kexec_load_disabled:
+            return kexec_load_disabled
+
+        # plan 2 (available v5.19-rc1 or later)
+        proc_dointvec_minmax = get_ksymaddr("proc_dointvec_minmax")
+        if proc_dointvec_minmax:
+            kinfo = KernelbaseCommand.get_kernel_base()
+            mem = read_memory(kinfo.krwbase, min(kinfo.krwbase_size, 0x1000000))
+            mem = slice_unpack(mem, current_arch.ptrsize)
+
+            idx = -1
+            while True:
+                try:
+                    idx = mem.index(proc_dointvec_minmax, idx + 1)
+                except ValueError:
+                    break
+                proc_handler_addr = kinfo.krwbase + current_arch.ptrsize * idx
+                for i in [4, 5]: # 64bit: 4, 32bit:5 ?
+                    procname_addr = proc_handler_addr - current_arch.ptrsize * i
+                    procname = read_int_from_memory(procname_addr)
+                    if read_cstring_from_memory(procname) == "kexec_load_disabled":
+                        return read_int_from_memory(procname_addr + current_arch.ptrsize)
+        return None
+
+    @staticmethod
+    def get_ptrace_scope():
+        # plan 1 (directly)
+        ptrace_scope = get_ksymaddr("ptrace_scope")
+        if ptrace_scope:
+            return ptrace_scope
+
+        # plan 2 (available v3.4-rc1 or later)
+        yama_dointvec_minmax = get_ksymaddr("yama_dointvec_minmax")
+        if yama_dointvec_minmax:
+            kinfo = KernelbaseCommand.get_kernel_base()
+            mem = read_memory(kinfo.krwbase, min(kinfo.krwbase_size, 0x1000000))
+            mem = slice_unpack(mem, current_arch.ptrsize)
+
+            idx = -1
+            while True:
+                try:
+                    idx = mem.index(yama_dointvec_minmax, idx + 1)
+                except ValueError:
+                    break
+                proc_handler_addr = kinfo.krwbase + current_arch.ptrsize * idx
+                for i in [4, 5]: # 64bit: 4, 32bit:5 ?
+                    procname_addr = proc_handler_addr - current_arch.ptrsize * i
+                    procname = read_int_from_memory(procname_addr)
+                    if read_cstring_from_memory(procname) == "ptrace_scope":
+                        return read_int_from_memory(procname_addr + current_arch.ptrsize)
         return None
 
     @staticmethod
