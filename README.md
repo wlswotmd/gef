@@ -431,7 +431,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
         * `peek-pointers`, `current-stack-frame`, `xref-telescope`, `bytearray`, and `bincompare`.
     * This is because a single file is more attractive than ease of maintenance.
 * The system-call table used by `syscall-args` is moved from gef-extras.
-    * It was updated up to linux kernel 6.0.10 for each architecture.
+    * It was updated up to linux kernel 6.2.8 for each architecture.
 * Removed some features I don't use.
     * `$`, `ida-interact`, `gef-remote`, `pie`, `pcustom`, `ksymaddr`, `trace-run`, `bufferize`, `output redirect` and `shellcode`.
 * Many bugs fix / formatting / made it easy for me to use.
