@@ -91,22 +91,16 @@ All of these features are experimental. Tested on Ubuntu 22.04.
 
 #### Linux specific
 * `ksymaddr-remote`: displays kallsyms information from scanning kernel memory (heuristic).
-    * Supported: the symbol of kernel itself.
-    * Unsupported: the symbol of kernel modules.
-    * Supported on x64/x86/ARM64/ARM.
-    * Supported on both kASLR is enabled or not.
-    * Unsupported: to resolve no-function address when kernel built as `CONFIG_KALLSYMS_ALL=n`.
-    * This command is faster than `vmlinux-to-elf`, but it fails to parse depending on the in-memory layout.
+    * Original code: [kallsyms_finder.py](https://github.com/marin-m/vmlinux-to-elf/blob/master/vmlinux_to_elf/kallsyms_finder.py)
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksymaddr-remote.png)
 * `ksymaddr-remote-apply`: applies kallsyms information obtained by `ksymaddr-remote` to gdb.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksymaddr-remote-apply.png)
 * `vmlinux-to-elf-apply`: applies kallsyms information obtained by `vmlinux-to-elf` to gdb.
-    * Very slow, but probably more accurate than my implementation.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmlinux-to-elf-apply1.png)
     * Once you get symboled vmlinux file, you can reuse and apply it automatically even after rebooting qemu-system.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmlinux-to-elf-apply2.png)
 * `slub-dump`: dumps slub free-list (heuristic).
-    * Original code: https://github.com/PaoloMonti42/salt
+    * Original code: [salt](https://github.com/PaoloMonti42/salt)
     * Supported on x64/x86/ARM64/ARM + SLUB.
     * Unsupported: SLAB, SLOB.
     * Supported on both kASLR is enabled or not.

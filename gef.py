@@ -8891,7 +8891,7 @@ def get_ksymaddr(sym):
         pass
     # use ksymaddr-remote
     try:
-        res = gdb.execute("ksymaddr-remote --silent --exact {:s}".format(sym), to_string=True)
+        res = gdb.execute("ksymaddr-remote --quiet --exact {:s}".format(sym), to_string=True)
         return int(res.split()[0], 16)
     except Exception:
         return None
@@ -41541,7 +41541,7 @@ class SlubDumpCommand(GenericCommand):
 
         info("Wait for memory scan")
 
-        r = gdb.execute("ksymaddr-remote --silent slub_", to_string=True)
+        r = gdb.execute("ksymaddr-remote --quiet slub_", to_string=True)
         if not r:
             err("Unsupported SLAB, SLOB")
             return
@@ -41553,94 +41553,76 @@ class SlubDumpCommand(GenericCommand):
 @register_command
 class KsymaddrRemoteCommand(GenericCommand):
     """Solve kernel symbols from kallsyms table using kenrel memory scanning."""
+    # Thanks to https://github.com/marin-m/vmlinux-to-elf
     _cmdline_ = "ksymaddr-remote"
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('keyword', metavar='KEYWORD', nargs='*', help='filter by specific symbol name.')
-    parser.add_argument('--print-all', action='store_true', help='print all symbols found.')
-    parser.add_argument('--head', metavar='N', type=int, default=-1, help="filter by first N hit.")
     parser.add_argument('--exact', action='store_true', help='use exact match.')
-    parser.add_argument('--meta', action='store_true', help='print meta data for debug.')
-    parser.add_argument('--silent', action='store_true', help='enable quiet mode.')
+    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
+    parser.add_argument('-v', '--verbose', action='store_true', help='enable verbose mode.')
+    parser.add_argument('-r', '--reparse', action='store_true', help='do not use cache.')
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} --print-all                      # print all symbols found\n".format(_cmdline_)
-    _example_ += "{:s} cred --head 30                   # print symbols included `cred` with only first 30 hit\n".format(_cmdline_)
-    _example_ += "{:s} cred --silent                    # print symbols included `cred` with quiet mode\n".format(_cmdline_)
-    _example_ += "{:s} commit_creds prepare_kernel_cred # OR search\n".format(_cmdline_)
-    _example_ += "Search flow:\n"
-    _example_ += "1. get address of kernel_base\n"
-    _example_ += "2. get address of kernel_base_rodata\n"
-    _example_ += "3. get address of kallsyms_relative_base\n"
-    _example_ += "4. get address of kallsyms_names\n"
-    _example_ += "5. get address of kallsyms_offsets\n"
-    _example_ += "6. get address of kallsyms_token_table\n"
-    _example_ += "7. get address of kallsyms_token_index\n"
-    _example_ += "8. walk kallsyms\n"
-    _example_ += "THIS FEATURE IS EXPERIMENTAL AND HEURISTIC."
+    _example_ = "{:s} commit_creds prepare_kernel_cred # OR search\n".format(_cmdline_)
 
     def __init__(self, *args, **kwargs):
         super().__init__()
-        self.initialized = False
-        self.maps = None
         self.kallsyms = []
         return
 
-    def expand_symbol(self, off):
-        data = off
-        len_ = self.kallsyms_names[data]
-        data += 1
+    def verbose_info(self, msg):
+        if self.verbose:
+            msg = "{} {}".format(Color.colorify("[+]", "bold blue"), msg)
+            gef_print(msg)
+        return
 
-        symbol = ""
-        skipped_first = False
-        off = len_ + 1
-        while len_:
-            tptr = self.kallsyms_token_index[self.kallsyms_names[data]]
-            data += 1
-            len_ -= 1
+    def quiet_info(self, msg):
+        if not self.quiet:
+            msg = "{} {}".format(Color.colorify("[+]", "bold blue"), msg)
+            gef_print(msg)
+        return
 
-            while True:
-                c = self.kallsyms_token_table[tptr]
-                if c == 0:
-                    break
-                if skipped_first:
-                    symbol += chr(c)
-                else:
-                    skipped_first = True
-                tptr += 1
-        return off, symbol
+    def quiet_err(self, msg):
+        if not self.quiet:
+            msg = "{} {}".format(Color.colorify("[+]", "bold red"), msg)
+            gef_print(msg)
+        return
 
-    def kallsyms_sym_address(self, idx):
-        if self.kallsyms_relative_base is None:
-            relative_base = 0
-        else:
-            relative_base = self.kallsyms_relative_base
-
-        val = self.kallsyms_offsets[idx]
-        if not self.CONFIG_KALLSYMS_ABSOLUTE_PERCPU:
-            return relative_base + val
-        if val >= 0:
-            return val
-        else:
-            return relative_base - 1 - val
-
-    def kallsyms_get_symbol_type(self, off):
-        idx1 = self.kallsyms_names[off + 1]
-        idx2 = self.kallsyms_token_index[idx1]
-        typ = self.kallsyms_token_table[idx2]
-        return chr(typ)
+    def get_token_table(self):
+        # Parse symbol name tokens
+        tokens = []
+        position = self.kallsyms_token_table__offset
+        for num_token in range(256):
+            token = ''
+            while self.kernel_img[position]:
+                token += chr(self.kernel_img[position])
+                position += 1
+            position += 1
+            tokens.append(token)
+        return tokens
 
     def resolve_kallsyms(self):
         if self.kallsyms != []: # resolved already
             return
-        off = 0
-        for i in range(self.kallsyms_num_syms):
-            offdiff, symbol = self.expand_symbol(off)
-            typ = self.kallsyms_get_symbol_type(off)
-            off += offdiff
-            addr = self.kallsyms_sym_address(i)
-            self.kallsyms.append([addr, symbol, typ])
+
+        tokens = self.get_token_table()
+        symbol_names = []
+        position = self.kallsyms_names__offset
+        for num_symbol in range(self.num_symbols):
+            symbol_name = ''
+            length = self.kernel_img[position]
+            position += 1
+            for i in range(length):
+                symbol_token_index = self.kernel_img[position]
+                symbol_token = tokens[symbol_token_index]
+                position += 1
+                symbol_name += symbol_token
+            symbol_names.append(symbol_name)
+
+        for addr, name in zip(self.kernel_addresses, symbol_names):
+            self.kallsyms.append([addr, name[1:], name[0]])
         return
 
     def print_kallsyms(self, keywords):
@@ -41648,841 +41630,408 @@ class KsymaddrRemoteCommand(GenericCommand):
             fmt = "{:#010x} {:s} {:s}"
         else:
             fmt = "{:#018x} {:s} {:s}"
-        print_count = 0
+
         for addr, symbol, typ in self.kallsyms:
-            if print_count == self.head:
-                break
-            if self.print_all:
+            if not keywords:
                 gef_print(fmt.format(addr, typ, symbol))
-                print_count += 1
-            else:
-                for k in keywords:
-                    text = fmt.format(addr, typ, symbol)
-                    if self.exact and k == symbol:
+                continue
+
+            for k in keywords:
+                text = fmt.format(addr, typ, symbol)
+                if self.exact:
+                    if k == symbol:
                         gef_print(text)
-                        print_count += 1
                         break
-                    elif not self.exact and k in text:
+                else:
+                    if k in text:
                         gef_print(text)
-                        print_count += 1
                         break
-        return
-
-    # Initialize variables in different ways, depending on the situation.
-    #
-    # The variables need to find are as follows.
-    # 1. kallsyms_relative_base
-    # 2. kallsyms_num_syms
-    # 3. kallsyms_names
-    # 4. CONFIG_KALLSYMS_ABSOLUTE_PERCPU is enabled or not
-    # 5. kallsyms_offsets
-    # 6. kallsyms_markers
-    # 7. kallsyms_token_table
-    # 8. kallsyms_token_index
-    #
-    # The method for searching the above variables is different for 64bit / 32bit.
-    # It also depends on whether each variable in memory has a large padding (called sparse) or not (called normal).
-    #
-    # Variables to use
-    #   self.kbase:         address of kernel .text
-    #   self.krobase:       address of kernel .rodata
-    #   self.RO_REGION:     data of .rodata; bytes([0xef, 0xbe, 0xad, 0xde...])
-    #   self.RO_REGION_u32: data of .rodata; [0xdeadbeef, ...]
-    #   self.RO_REGION_u64: data of .rodata; [0x00000000deadbeef, ...]
-
-    # 32bit is very complicated. 64bit is simple
-    def initialize32_kallsyms_relative_base(self):
-
-        # 1. find kbase from rodata
-        if is_x86_32():
-            # recent kernel (buildroot:5.4.58, debian11.3:5.10.0-13)
-            for idx, val in enumerate(self.RO_REGION_u32[:-1]):
-                if val & 0xfff: # should be aligned
-                    continue
-                if (val & 0xffff0000) != (self.kbase & 0xffff0000): # holds around kbase
-                    continue
-                if self.RO_REGION_u32[idx + 1] > 0x4ffff: # next address is kallsyms_num_syms. too large number is fail
-                    continue
-                if 0 < self.RO_REGION_u32[idx + 1] < 0x100 : # next address is kallsyms_num_syms. too small number is fail
-                    continue
-                self.kallsyms_relative_base = val
-                self.kallsyms_relative_base_off = idx
-                self.kallsyms_relative_base_addr = self.krobase + self.kallsyms_relative_base_off * 4
-                return
-
-            # i386 (ooofs:4.4.223)
-            for i, val in enumerate(self.RO_REGION_u32[::-1]): # use backward search because if found multiple then select the last one
-                if val == self.kbase:
-                    pos = len(self.RO_REGION_u32) - i - 1
-                    # found contiguous, go prev as possilbe
-                    while self.RO_REGION_u32[pos] == self.RO_REGION_u32[pos - 1]:
-                        pos -= 1
-                    self.kallsyms_relative_base = self.kbase
-                    self.kallsyms_relative_base_off = pos
-                    self.kallsyms_relative_base_addr = self.krobase + self.kallsyms_relative_base_off * 4
-                    return
-
-        elif is_arm32():
-            # recent kernel (debian 11.3:5.10.0-14)
-            for idx, val in enumerate(self.RO_REGION_u32[:-1]):
-                if val & 0xfff: # should be aligned
-                    continue
-                if (val & 0xffff0000) != (self.kbase & 0xffff0000): # holds around kbase
-                    continue
-                if self.RO_REGION_u32[idx + 1] > 0x4ffff: # next address is kallsyms_num_syms. too large number is fail
-                    continue
-                if 0 < self.RO_REGION_u32[idx + 1] < 0x100 : # next address is kallsyms_num_syms. too small number is fail
-                    continue
-                self.kallsyms_relative_base = val
-                self.kallsyms_relative_base_off = idx
-                self.kallsyms_relative_base_addr = self.krobase + self.kallsyms_relative_base_off * 4
-                return
-
-            # ARM has specific relative_base (buildroot:5.4.58, debian10.4:4.19.0-9)
-            for i in range(4):
-                try:
-                    kbase_diff = -(0x100000 * i + 0xf8000)
-                    self.kallsyms_relative_base = self.kbase + kbase_diff
-                    self.kallsyms_relative_base_off = self.RO_REGION_u32.index(self.kallsyms_relative_base)
-                    self.kallsyms_relative_base_addr = self.krobase + self.kallsyms_relative_base_off * 4
-                    if self.meta:
-                        info("kbase difference is {:#x}".format(kbase_diff))
-                    return
-                except Exception:
-                    pass
-
-        # not found
-        self.kallsyms_relative_base = None
-        self.kallsyms_relative_base_off = None
-        self.kallsyms_relative_base_addr = None
-        return
-
-    def initialize32_sparse_kallsyms_num_syms(self):
-        # 1. next to it (16 bytes aligned)
-        self.kallsyms_num_syms_addr = self.kallsyms_relative_base_addr + 0x10
-        self.kallsyms_num_syms_off = self.kallsyms_relative_base_off + 4
-        self.kallsyms_num_syms = self.RO_REGION_u32[self.kallsyms_num_syms_off]
-        return
-
-    def initialize32_sparse_kallsyms_names(self):
-        # 1. next to it (16 bytes aligned)
-        self.kallsyms_names_addr = self.kallsyms_num_syms_addr + 0x10
-        self.kallsyms_names_off = self.kallsyms_num_syms_off + 4
-        return
-
-    def initialize32_sparse_CONFIG_KALLSYMS_ABSOLUTE_PERCPU(self):
-        # 1. walk to prev and found non-zero value
-        # 2. if the MSB of the element is on, then it is pattern 4 at kallsyms_sym_address() in root/kernel/kallsyms.c.
-        #    so not pattern 2, therefore, CONFIG_KALLSYMS_ABSOLUTE_PERCPU = True
-        if self.kallsyms_relative_base_off:
-            pos = self.kallsyms_relative_base_off - 4
-        else:
-            pos = self.kallsyms_num_syms - 4
-        while self.RO_REGION_u32[pos] == 0:
-            pos -= 1
-        self.CONFIG_KALLSYMS_ABSOLUTE_PERCPU = (((self.RO_REGION_u32[pos] >> 31) & 1) == 1)
-        return
-
-    def initialize32_sparse_kallsyms_offsets(self):
-        # 1. calc
-        if self.kallsyms_relative_base is None:
-            self.kallsyms_offsets_addr = self.kallsyms_num_syms_addr - self.kallsyms_num_syms * 4
-        else:
-            self.kallsyms_offsets_addr = self.kallsyms_relative_base_addr - self.kallsyms_num_syms * 4
-        self.kallsyms_offsets_addr &= ~0xf # 16 bytes aligned
-        return
-
-    def initialize32_sparse_kallsyms_markers(self):
-        # 1. walk to next until zero value
-        # 2. align
-        pos = self.kallsyms_names_off
-        while True:
-            if self.RO_REGION_u32[pos] == 0 and pos % 4 == 0:
-                self.kallsyms_markers_off = pos
-                self.kallsyms_markers_addr = self.krobase + pos * 4
-                break
-            pos += 1
-        return
-
-    def initialize32_sparse_kallsyms_token_table(self):
-        # 1. walk to next until zero value
-        # 2. align
-        pos = self.kallsyms_markers_off
-        while True: # use pos above
-            v = self.RO_REGION_u32[pos]
-            if v & 0xff000000 > 0 or (self.RO_REGION_u32[pos - 1] > 0 and self.RO_REGION_u32[pos - 1] * 4 < v):
-                self.kallsyms_token_table_addr = self.krobase + pos * 4
-                break
-            pos += 4
-        return
-
-    def initialize32_sparse_kallsyms_token_index(self):
-        # 1. walk to next until contiguous zero value. it is end of marker of kallsyms_token_table
-        # 2. align
-        pos = self.kallsyms_token_table_addr - self.krobase
-        while True:
-            if self.RO_REGION[pos] == 0 and self.RO_REGION[pos + 1] == 0:
-                pos += 1
-                while pos % 16: # need align
-                    pos += 1
-                self.kallsyms_token_index_addr = self.krobase + pos
-                break
-            pos += 1
-        return
-
-    def initialize32_normal_kallsyms_num_syms(self):
-        # 1. next to it
-        self.kallsyms_num_syms_addr = self.kallsyms_relative_base_addr + 0x4
-        self.kallsyms_num_syms_off = self.kallsyms_relative_base_off + 1
-        self.kallsyms_num_syms = self.RO_REGION_u32[self.kallsyms_num_syms_off]
-        return
-
-    def initialize32_normal_kallsyms_names(self):
-        # 1. next to it
-        self.kallsyms_names_addr = self.kallsyms_num_syms_addr + 0x4
-        self.kallsyms_names_off = self.kallsyms_num_syms_off + 1
-        return
-
-    def initialize32_normal_CONFIG_KALLSYMS_ABSOLUTE_PERCPU(self):
-        # 1. prev to it
-        # 2. if the MSB of the element is on, then it is pattern 4 at kallsyms_sym_address() in root/kernel/kallsyms.c.
-        #    so not pattern 2, therefore, CONFIG_KALLSYMS_ABSOLUTE_PERCPU = True
-        if self.kallsyms_relative_base_off:
-            pos = self.kallsyms_relative_base_off - 4
-        else:
-            pos = self.kallsyms_num_syms - 4
-        self.CONFIG_KALLSYMS_ABSOLUTE_PERCPU = (((self.RO_REGION_u32[pos] >> 31) & 1) == 1)
-        return
-
-    def initialize32_normal_kallsyms_offsets(self):
-        # 1. calc
-        if self.kallsyms_relative_base is None:
-            self.kallsyms_offsets_addr = self.kallsyms_num_syms_addr - self.kallsyms_num_syms * 4
-        else:
-            self.kallsyms_offsets_addr = self.kallsyms_relative_base_addr - self.kallsyms_num_syms * 4
-        return
-
-    def initialize32_normal_kallsyms_markers(self):
-        # 1. walk to next until zero value
-        # 2. align
-        pos = self.kallsyms_names_off
-        while True:
-            if self.RO_REGION_u32[pos] == 0: # search kallsyms_markers
-                self.kallsyms_markers_off = pos
-                self.kallsyms_markers_addr = self.krobase + pos * 4 # need not align
-                break
-            pos += 1
-        return
-
-    def initialize32_normal_kallsyms_token_table(self):
-        # 1. walk to next until specific value
-        # 2. align
-        pos = self.kallsyms_markers_off
-        pos += 1 # skip first zero
-        while True:
-            v = self.RO_REGION_u32[pos]
-            """
-            0xcc7c3ee0:     0x00069468      0x0006a096      0x0006aebe      0x0006baaa
-            0xcc7c3ef0:     0x0006c5b4      0x0006d186      0x0006dc59     [0x005f7366] <-- begining of kallsyms_token_table
-            0xcc7c3f00:     0x00657374      0x61007474      0x7400646e      0x006e6f69      (heuristic: prev_value * 4 < this_value)
-            0xcc7c3f10:     0x66006f66      0x5f656572      0x65735f00      0x656d0074
-            0xcc7c3f20:     0x6474006d      0x005f7200      0x74006354      0x63005f6f
-            """
-            if v == 0 or (v & 0xff000000) > 0 or (self.RO_REGION_u32[pos - 1] > 0 and self.RO_REGION_u32[pos - 1] * 4 < v) :
-                self.kallsyms_token_table_addr = self.krobase + pos * 4 # need not align
-                break
-            pos += 1
-        return
-
-    def initialize32_normal_kallsyms_token_index(self):
-        # 1. walk to next until contiguous zero value. it is end of marker of kallsyms_token_table
-        # 2. align
-        pos = self.kallsyms_token_table_addr - self.krobase
-        while True:
-            if self.RO_REGION[pos] == 0 and self.RO_REGION[pos + 1] == 0:
-                pos += 1
-                while pos % 4: # need align
-                    pos += 1
-                self.kallsyms_token_index_addr = self.krobase + pos
-                break
-            pos += 1
-        return
-
-    def initialize64_kallsyms_relative_base(self):
-        # 1. find kbase from rodata
-        for idx, val in enumerate(self.RO_REGION_u64[:-1]):
-            if val & 0xfff: # kbase should be aligned
-                continue
-            if (val & 0xfffffffffff00000) != (self.kbase & 0xfffffffffff00000): # holds around kbase (usually just kbase or _stext)
-                continue
-            if self.RO_REGION_u64[idx + 1] > 0x4ffff: # next element is kallsyms_num_syms. too large number is fail
-                continue
-            if self.RO_REGION_u64[idx + 1] < 0x1000: # next element is kallsyms_num_syms. too small number is fail
-                continue
-            self.kallsyms_relative_base = val
-            self.kallsyms_relative_base_off = idx
-            self.kallsyms_relative_base_addr = self.krobase + self.kallsyms_relative_base_off * 8
-            return
-        self.kallsyms_relative_base = None
-        self.kallsyms_relative_base_off = None
-        self.kallsyms_relative_base_addr = None
-        return
-
-    def initialize64_sparse_kallsyms_num_syms(self):
-        # 1. next to it (256 bytes aligned)
-        self.kallsyms_num_syms_addr = self.kallsyms_relative_base_addr + 0x100
-        self.kallsyms_num_syms_off = self.kallsyms_relative_base_off + 32
-        self.kallsyms_num_syms = self.RO_REGION_u64[self.kallsyms_num_syms_off]
-        return
-
-    def initialize64_sparse_kallsyms_names(self):
-        # 1. next to it (256 bytes aligned)
-        self.kallsyms_names_addr = self.kallsyms_num_syms_addr + 0x100
-        self.kallsyms_names_off = self.kallsyms_num_syms_off + 32
-        return
-
-    def initialize64_sparse_CONFIG_KALLSYMS_ABSOLUTE_PERCPU(self):
-        # 1. walk to prev and found non-zero value
-        # 2. if the MSB of the element is on, then it is pattern 4 at kallsyms_sym_address() in root/kernel/kallsyms.c.
-        #    so not pattern 2, therefore, CONFIG_KALLSYMS_ABSOLUTE_PERCPU = True
-        if self.kallsyms_relative_base_off:
-            pos = self.kallsyms_relative_base_off * 2 - 4 # from u64 pos to u32 pos
-        else:
-            pos = self.kallsyms_num_syms * 2 - 4 # from u64 pos to u32 pos
-        while self.RO_REGION_u32[pos] == 0:
-            pos -= 1
-        self.CONFIG_KALLSYMS_ABSOLUTE_PERCPU = (((self.RO_REGION_u32[pos] >> 31) & 1) == 1)
-        return
-
-    def initialize64_sparse_kallsyms_offsets(self):
-        # 1. calc
-        if self.kallsyms_relative_base is None:
-            self.kallsyms_offsets_addr = self.kallsyms_num_syms_addr - self.kallsyms_num_syms * 8
-        else:
-            self.kallsyms_offsets_addr = self.kallsyms_relative_base_addr - self.kallsyms_num_syms * 4
-        self.kallsyms_offsets_addr &= ~0xff # 256 bytes aligned
-        return
-
-    def initialize64_sparse_kallsyms_markers(self):
-        # 1. walk to next until zero value
-        # 2. align
-        pos = self.kallsyms_names_off
-        while True:
-            if self.RO_REGION_u64[pos] == 0 and pos % 32 == 0:
-                self.kallsyms_markers_off = pos
-                self.kallsyms_markers_addr = self.krobase + pos * 8
-                break
-            pos += 1
-        return
-
-    def initialize64_sparse_kallsyms_token_table(self):
-        # 1. walk to next until zero value
-        # 2. align
-        pos = self.kallsyms_markers_off
-        while True: # use pos above
-            v = self.RO_REGION_u64[pos]
-            if v & 0xffffffffff000000 > 0 or (self.RO_REGION_u64[pos - 1] > 0 and self.RO_REGION_u64[pos - 1] * 4 < v):
-                self.kallsyms_token_table_addr = self.krobase + pos * 8
-                break
-            pos += 32
-        return
-
-    def initialize64_sparse_kallsyms_token_index(self):
-        # 1. walk to next until contiguous zero value. it is end of marker of kallsyms_token_table
-        # 2. align
-        pos = self.kallsyms_token_table_addr - self.krobase
-        while True:
-            if self.RO_REGION[pos] == 0 and self.RO_REGION[pos + 1] == 0:
-                pos += 1
-                while pos % 256: # need align
-                    pos += 1
-                self.kallsyms_token_index_addr = self.krobase + pos
-                break
-            pos += 1
-        return
-
-    def initialize64_normal_kallsyms_num_syms(self):
-        # 1. next to it
-        self.kallsyms_num_syms_addr = self.kallsyms_relative_base_addr + 0x8
-        self.kallsyms_num_syms_off = self.kallsyms_relative_base_off + 1
-        self.kallsyms_num_syms = self.RO_REGION_u64[self.kallsyms_num_syms_off]
-        return
-
-    def initialize64_normal_kallsyms_names(self):
-        # 1. next to it
-        self.kallsyms_names_addr = self.kallsyms_num_syms_addr + 0x8
-        self.kallsyms_names_off = self.kallsyms_num_syms_off + 1
-        return
-
-    def initialize64_normal_CONFIG_KALLSYMS_ABSOLUTE_PERCPU(self):
-        # 1. prev to it
-        # 2. if the MSB of the element is on, then it is pattern 4 at kallsyms_sym_address() in root/kernel/kallsyms.c.
-        #    so not pattern 2, therefore, CONFIG_KALLSYMS_ABSOLUTE_PERCPU = True
-        if self.kallsyms_relative_base_off:
-            pos = self.kallsyms_relative_base_off * 2 - 4 # from u64 pos to u32 pos
-        else:
-            pos = self.kallsyms_num_syms * 2 - 4 # from u64 pos to u32 pos
-        self.CONFIG_KALLSYMS_ABSOLUTE_PERCPU = (((self.RO_REGION_u32[pos] >> 31) & 1) == 1)
-        return
-
-    def initialize64_normal_kallsyms_offsets(self):
-        # 1. calc
-        # 2. align
-        if self.kallsyms_relative_base is None:
-            self.kallsyms_offsets_addr = self.kallsyms_num_syms_addr - self.kallsyms_num_syms * 8
-        else:
-            self.kallsyms_offsets_addr = self.kallsyms_relative_base_addr - self.kallsyms_num_syms * 4
-        self.kallsyms_offsets_addr &= ~0x7
-        return
-
-    def initialize64_normal_kallsyms_markers(self):
-        # 1. walk to next until zero value
-        # 2. align
-        pos = self.kallsyms_names_off * 2 # needs twice to use RO_REGION_u32
-        while True:
-            if self.RO_REGION_u32[pos] == 0: # search kallsyms_markers
-                while pos % 2: # need align
-                    pos += 1
-                self.kallsyms_markers_off = pos
-                self.kallsyms_markers_addr = self.krobase + pos * 4
-                break
-            pos += 1
-        return
-
-    def initialize64_normal_kallsyms_token_table(self):
-        # 1. check array type is u32 or u64
-        # 2. walk to next until specific value
-        # 3. align
-        pos = self.kallsyms_markers_off
-        if self.RO_REGION_u32[pos] == 0 and self.RO_REGION_u32[pos + 1] == 0: # u64 mode
-            if self.meta:
-                info("u64 mode at initialize64_normal_kallsyms_token_table")
-            """
-                0xffffffff987aaf80:     0x0000000000086329      0x000000000008724d
-                0xffffffff987aaf90:     0x3131323038656565 *    0x6572007365725f00
-                0xffffffff987aafa0:     0x65735f0074736967      0x6c6261005f360074
-                0xffffffff987aafb0:     0x656565006c660065      0x2e00656b00647400
-            """
-            pos = pos // 2 + 1 # skip first zero
-            while True:
-                if self.RO_REGION_u64[pos] == 0 or (self.RO_REGION_u64[pos] & 0xffffffffff000000) > 0:
-                    self.kallsyms_token_table_addr = self.krobase + pos * 8
-                    break
-                pos += 1
-        else: # u32 mode
-            if self.meta:
-                info("u32 mode at initialize64_normal_kallsyms_token_table")
-            """
-            [pattern 1 krce]
-                0xffffffffbd101840:     0x000595e8      0x0005a026      0x0005a966      0x00000000
-                0xffffffffbd101850:     0x00686361 *    0x00706572      0x63007674      0x00636568
-                0xffffffffbd101860:     0x7465735f      0x34367800      0x0079735f      0x00343678
-                0xffffffffbd101870:     0x00726f63      0x66006354      0x6900726f      0x74005f63
-            [pattern 2 poe]
-                0xffffffff9a866400:     0x0010c631      0x0010d091      0x0010db64      0x0010e677
-                0xffffffff9a866410:     0x0010f0f2      0x00000000      0x00646e61 *    0x61727474
-                0xffffffff9a866420:     0x005f6563      0x69676572      0x72657473      0x6f74005f
-                0xffffffff9a866430:     0x332e005f      0x6e696600      0x74786500      0x78005f34
-            [pattern 3 own buildroot]
-                0xffffffff9d0e9dd0:     0x000506f3      0x00051205      0x00051dfc      0x000529fc
-                0xffffffff9d0e9de0:     0x0005354d      0x00053fdc      0x00054a51      0x000554e1
-                0xffffffff9d0e9df0:     0x6c006563 *    0x62740061      0x00767400      0x7465735f
-                0xffffffff9d0e9e00:     0x666e6900      0x676e6900      0x006c6f00      0x00726f66
-            [pattern 4 kone_gadget]
-                0xffffffff81cfbff0:     0x00056381      0x00056f2b      0x00057a59      0x00058451
-                0xffffffff81cfc000:     0x00058ebd      0x0005994f      0x00686361 *    0x7465735f
-                0xffffffff81cfc010:     0x65686300      0x6f630063      0x76740072      0x70657200
-                0xffffffff81cfc020:     0x726f6600      0x34367800      0x0079735f      0x00343678
-            """
-            pos += 1 # skip first zero
-            pos += 2 # we want to use (pos, pos-1, pos-2), so avoid bug
-            while True:
-                if self.RO_REGION_u32[pos] == 0: # pattern 1, 2
-                    self.kallsyms_token_table_addr = self.krobase + (pos + 1) * 4
-                    break
-                diff1 = self.RO_REGION_u32[pos - 1] - self.RO_REGION_u32[pos - 2]
-                diff2 = self.RO_REGION_u32[pos - 0] - self.RO_REGION_u32[pos - 1]
-                if diff1 * 100 < diff2: # pattern 3, 4
-                    self.kallsyms_token_table_addr = self.krobase + pos * 4
-                    break
-                pos += 1
-        return
-
-    def initialize64_normal_kallsyms_token_index(self):
-        # 1. walk to next until contiguous zero value. it is end of marker of kallsyms_token_table
-        # 2. align
-        pos = self.kallsyms_token_table_addr - self.krobase
-        while True:
-            if self.RO_REGION[pos] == 0 and self.RO_REGION[pos + 1] == 0:
-                pos += 1
-                while pos % 8: # need align
-                    pos += 1
-                self.kallsyms_token_index_addr = self.krobase + pos
-                break
-            pos += 1
-        return
-
-    def initialize32_kallsyms_num_syms_2(self):
-        # 1. walk next
-        # because used aboslute value, similar addresses are lined up
-        # 0xc1940888:     0xc1000000      0xc1000000      0xc10000bc      0xc10000cc
-        # 0xc1940898:     0xc10000ed      0xc1000165      0xc10001e7      0xc1000239
-        # ...
-        # 0xc198f0ac:     0xc1e85000      0xc1e95000      0xc1e9b000      0xc1e9b000
-        # 0xc198f0bc:     0x00013a0d <- kallsyms_num_syms_addr
-        pos = self.kallsyms_relative_base_off
-        while True:
-            val = self.RO_REGION_u32[pos]
-            if val != 0 and (val >> 20) == 0:
-                self.kallsyms_num_syms_addr = self.krobase + pos * 4
-                self.kallsyms_num_syms_off = pos
-                self.kallsyms_num_syms = val
-                break
-            pos += 1
-        return
-
-    def initialize32_kallsyms_num_syms_3(self):
-        """
-        0xc02e56e0: 0xc0008400      0xc0008400      0xc0008400      0xc0008418
-        0xc02e56f0: 0xc00085f4      0xc0008620      0xc00086b8      0xc0008750
-        0xc02e5700: 0xc00087e8      0xc0008888      0xc0008888      0xc000889c
-        ...
-        0xc02fe030: 0xc03bc5a8      0xc03bc5fc      0xc03bc6d4      0xc03bc744
-        0xc02fe040: 0xc03bc864      0xc03bc914      0xc03bc95c      0xc03bc964
-        0xc02fe050: 0x0000625c *    0x00000000      0x00000000      0x00000000
-        0xc02fe060: 0xd7ad5408      0x5249cf64      0xf2540551      0x0c7478b5
-        """
-
-        for idx, val in enumerate(self.RO_REGION_u32):
-            if idx < 0x1000 or len(self.RO_REGION_u32) - 0x10 <= idx:
-                continue
-            if val < 0x1000 or idx < val:
-                continue
-            if val in [0x7fff, 0xffff, 0x7ffff, 0xffffffff]:
-                continue
-
-            current = self.krobase + idx * 4
-            maybe_addresses = current - val * 4
-            unsuitable = False
-
-            x = read_int_from_memory(maybe_addresses - 0x10)
-            if is_valid_addr(x):
-                continue
-
-            for i in range(16):
-                x = read_int_from_memory(maybe_addresses + i * 4)
-                if (x & 1) or not is_valid_addr(x):
-                    unsuitable = True
-                    break
-            if unsuitable:
-                continue
-
-            if sum((self.RO_REGION_u32[idx + 4 + i] >> 16) < 0x1000 for i in range(0, 16)) > 2:
-                continue
-
-            self.kallsyms_num_syms_addr = self.krobase + idx * 4
-            self.kallsyms_num_syms_off = idx
-            self.kallsyms_num_syms = val
-            break
-        return
-
-    def initialize64_kallsyms_num_syms_2(self):
-        # 1. walk next
-        # because used aboslute value, similar addresses are lined up
-        pos = self.kallsyms_relative_base_off
-        while True:
-            val = self.RO_REGION_u64[pos]
-            if val != 0 and (val >> 32) == 0:
-                self.kallsyms_num_syms_addr = self.krobase + pos * 8
-                self.kallsyms_num_syms_off = pos
-                self.kallsyms_num_syms = val
-                break
-            pos += 1
-        return
-
-    def initialize64_kallsyms_num_syms_3(self):
-        """
-        0xffffffff81ae3cb8:     0x0000000000000000      0x0000000000000000
-        0xffffffff81ae3cc8:     0x0000000000004000      0x0000000000009000
-        0xffffffff81ae3cd8:     0x000000000000a000      0x000000000000a008
-        ...
-        0xffffffff81b99458:     0xffffffff82211000      0xffffffff82221000
-        0xffffffff81b99468:     0xffffffff82227000      0xffffffff82227000
-        0xffffffff81b99478:     0x0000000000016af8 *    0xe0cf632771b04109
-        """
-
-        for idx, val in enumerate(self.RO_REGION_u64):
-            if idx < 0x1000 or len(self.RO_REGION_u64) - 0x10 <= idx:
-                continue
-            if val == 0 or (val >> 32) != 0:
-                continue
-            if val < 0x1000 or 0x10000000 < val:
-                continue
-
-            if any(self.RO_REGION_u64[idx + i] in [0, val, 0xffffffffffffffff] for i in range(1, 16)):
-                continue
-            if any(self.RO_REGION_u64[idx + i] == self.RO_REGION_u64[idx + i + 1] for i in range(1, 16)):
-                continue
-            if any((self.RO_REGION_u64[idx + i] >> 32) < 0x10000 for i in range(1, 16)):
-                continue
-            if any((self.RO_REGION_u64[idx + i] >> 32) == 0xffffffff for i in range(1, 16)):
-                continue
-            if any((self.RO_REGION_u64[idx + i] & 0xffffffff) < 0x100000 for i in range(1, 16)):
-                continue
-            if any((self.RO_REGION_u64[idx + i] & 0xffffffff) == 0xffffffff for i in range(1, 16)):
-                continue
-            if any((self.RO_REGION_u64[idx + i] & 0xfff) == 0 for i in range(1, 16)):
-                continue
-            if is_valid_addr(self.RO_REGION_u64[idx + 1]):
-                continue
-            if is_valid_addr(self.RO_REGION_u64[idx + 2]):
-                continue
-            if is_valid_addr(self.RO_REGION_u64[idx + 3]):
-                continue
-            if is_valid_addr(self.RO_REGION_u64[idx + 4]):
-                continue
-            if any(self.RO_REGION_u64[idx - i] == 0 for i in range(1, 16)):
-                continue
-
-            current = self.krobase + (idx + 1) * 8
-            unsuitable = False
-            while True:
-                cstr = read_cstring_from_memory(current)
-                if cstr is None:
-                    break
-                if len(cstr) > 8:
-                    unsuitable = True
-                    break
-                current += len(cstr) + 1
-            if unsuitable:
-                continue
-            self.kallsyms_num_syms_addr = self.krobase + idx * 8
-            self.kallsyms_num_syms_off = idx
-            self.kallsyms_num_syms = val
-            break
-        return
-
-    def initialize32(self):
-        self.RO_REGION = read_memory(self.krobase, self.krobase_size)
-        self.RO_REGION_u32 = [u32(self.RO_REGION[i:i + 4]) for i in range(0, len(self.RO_REGION), 4)]
-        self.initialize32_kallsyms_relative_base()
-
-        if self.kallsyms_relative_base_off is None:
-            self.initialize32_kallsyms_num_syms_3()
-            self.CONFIG_KALLSYMS_BASE_RELATIVE = True
-            self.initialize32_sparse_kallsyms_names()
-            self.initialize32_sparse_CONFIG_KALLSYMS_ABSOLUTE_PERCPU()
-            # Actually, it is kallsyms_addresses instead of kallsyms_offsets,
-            # but it is used because the method of obtaining and using it is the same.
-            self.initialize32_sparse_kallsyms_offsets()
-            self.initialize32_sparse_kallsyms_markers()
-            self.initialize32_sparse_kallsyms_token_table()
-            self.initialize32_sparse_kallsyms_token_index()
-            return True
-
-        # rare case (maybe no kASLR kernel)
-        if self.RO_REGION_u32[self.kallsyms_relative_base_off + 1] == self.RO_REGION_u32[self.kallsyms_relative_base_off]:
-            self.initialize32_kallsyms_num_syms_2() # common to sparse and normal
-            # do not use kallsyms_relative_base, use absolute value
-            self.kallsyms_relative_base = None
-            if self.RO_REGION_u32[self.kallsyms_num_syms_off + 1] == 0: # sparse mode (rare case)
-                if self.meta:
-                    info("does not detect relative_base. treat as sparse mode (rare case)")
-                # all variables placed as 16 bytes aligned
-                self.initialize32_sparse_kallsyms_names()
-                self.initialize32_sparse_CONFIG_KALLSYMS_ABSOLUTE_PERCPU()
-                self.initialize32_sparse_kallsyms_offsets()
-                self.initialize32_sparse_kallsyms_markers()
-                self.initialize32_sparse_kallsyms_token_table()
-                self.initialize32_sparse_kallsyms_token_index()
-            else: # normal mode (rare case)
-                if self.meta:
-                    info("does not detect relative_base, treat as normal mode (rare case)")
-                self.initialize32_normal_kallsyms_names()
-                self.initialize32_normal_CONFIG_KALLSYMS_ABSOLUTE_PERCPU()
-                self.initialize32_normal_kallsyms_offsets()
-                self.initialize32_normal_kallsyms_markers()
-                self.initialize32_normal_kallsyms_token_table()
-                self.initialize32_normal_kallsyms_token_index()
-        elif self.RO_REGION_u32[self.kallsyms_relative_base_off + 1] == 0: # sparse mode
-            if self.meta:
-                info("detect relative_base, treat as sparse mode")
-            # all variables placed as 16 bytes aligned
-            self.initialize32_sparse_kallsyms_num_syms()
-            self.initialize32_sparse_kallsyms_names()
-            self.initialize32_sparse_CONFIG_KALLSYMS_ABSOLUTE_PERCPU()
-            self.initialize32_sparse_kallsyms_offsets()
-            self.initialize32_sparse_kallsyms_markers()
-            self.initialize32_sparse_kallsyms_token_table()
-            self.initialize32_sparse_kallsyms_token_index()
-        else: # normal mode
-            if self.meta:
-                info("detect relative_base, treat as normal mode")
-            self.initialize32_normal_kallsyms_num_syms()
-            self.initialize32_normal_kallsyms_names()
-            self.initialize32_normal_CONFIG_KALLSYMS_ABSOLUTE_PERCPU()
-            self.initialize32_normal_kallsyms_offsets()
-            self.initialize32_normal_kallsyms_markers()
-            self.initialize32_normal_kallsyms_token_table()
-            self.initialize32_normal_kallsyms_token_index()
-        return True
-
-    def initialize64(self):
-        self.RO_REGION = read_memory(self.krobase, self.krobase_size)
-        self.RO_REGION_u64 = [u64(self.RO_REGION[i:i + 8]) for i in range(0, len(self.RO_REGION), 8)]
-        self.RO_REGION_u32 = [u32(self.RO_REGION[i:i + 4]) for i in range(0, len(self.RO_REGION), 4)]
-        self.initialize64_kallsyms_relative_base()
-
-        if self.kallsyms_relative_base_off is None:
-            self.initialize64_kallsyms_num_syms_3()
-            self.CONFIG_KALLSYMS_BASE_RELATIVE = True
-            self.initialize64_normal_kallsyms_names()
-            self.initialize64_sparse_CONFIG_KALLSYMS_ABSOLUTE_PERCPU()
-            # Actually, it is kallsyms_addresses instead of kallsyms_offsets,
-            # but it is used because the method of obtaining and using it is the same.
-            self.initialize64_normal_kallsyms_offsets()
-            self.initialize64_normal_kallsyms_markers()
-            self.initialize64_normal_kallsyms_token_table()
-            self.initialize64_normal_kallsyms_token_index()
-            return True
-
-        if self.RO_REGION_u64[self.kallsyms_relative_base_off + 1] == self.RO_REGION_u64[self.kallsyms_relative_base_off]: # rare case
-            self.initialize64_kallsyms_num_syms_2() # common to sparse and normal
-            # do not use kallsyms_relative_base, use absolute value
-            self.kallsyms_relative_base = None
-            if self.RO_REGION_u64[self.kallsyms_num_syms_off + 1] == 0: # sparse mode (rare case)
-                if self.meta:
-                    info("does not detect relative_base, treat as sparse mode (rare case)")
-                # all variables placed as 256 bytes aligned
-                self.initialize64_sparse_kallsyms_names()
-                self.initialize64_sparse_CONFIG_KALLSYMS_ABSOLUTE_PERCPU()
-                self.initialize64_sparse_kallsyms_offsets()
-                self.initialize64_sparse_kallsyms_markers()
-                self.initialize64_sparse_kallsyms_token_table()
-                self.initialize64_sparse_kallsyms_token_index()
-            else: # normal mode (rare case)
-                if self.meta:
-                    info("does not detect relative_base, treat as normal mode (rare case)")
-                self.initialize64_normal_kallsyms_names()
-                self.initialize64_normal_CONFIG_KALLSYMS_ABSOLUTE_PERCPU()
-                self.initialize64_normal_kallsyms_offsets()
-                self.initialize64_normal_kallsyms_markers()
-                self.initialize64_normal_kallsyms_token_table()
-                self.initialize64_normal_kallsyms_token_index()
-        elif self.RO_REGION_u64[self.kallsyms_relative_base_off + 1] == 0: # sparse mode
-            if self.meta:
-                info("detect relative_base, treat as sparse mode")
-            # all variables placed as 256 bytes aligned
-            self.initialize64_sparse_kallsyms_num_syms()
-            self.initialize64_sparse_kallsyms_names()
-            self.initialize64_sparse_CONFIG_KALLSYMS_ABSOLUTE_PERCPU()
-            self.initialize64_sparse_kallsyms_offsets()
-            self.initialize64_sparse_kallsyms_markers()
-            self.initialize64_sparse_kallsyms_token_table()
-            self.initialize64_sparse_kallsyms_token_index()
-        else: # normal mode
-            if self.meta:
-                info("detect relative_base, treat as normal mode")
-            self.initialize64_normal_kallsyms_num_syms()
-            self.initialize64_normal_kallsyms_names()
-            self.initialize64_normal_CONFIG_KALLSYMS_ABSOLUTE_PERCPU()
-            self.initialize64_normal_kallsyms_offsets()
-            self.initialize64_normal_kallsyms_markers()
-            self.initialize64_normal_kallsyms_token_table()
-            self.initialize64_normal_kallsyms_token_index()
-        return True
-
-    def print_meta(self, force=False):
-        if self.meta or force:
-            try:
-                info("kernel_base:            {:#x}".format(self.kbase)) # to search kallsyms_*
-                info("kernel_robase:          {:#x}".format(self.krobase)) # to search kallsyms_*
-                if self.kallsyms_relative_base:
-                    info("kallsyms_relative_base: {:#x}: {:#x}".format(self.kallsyms_relative_base_addr, self.kallsyms_relative_base))
-                    info("kallsyms_num_syms:      {:#x}: {:#x}".format(self.kallsyms_num_syms_addr, self.kallsyms_num_syms))
-                    gdb.execute("x/4x{} {}".format(["w", "g"][is_64bit()], self.kallsyms_relative_base_addr))
-                else:
-                    info("kallsyms_relative_base: None")
-                    info("kallsyms_num_syms:      {:#x}: {:#x}".format(self.kallsyms_num_syms_addr, self.kallsyms_num_syms))
-                    gdb.execute("x/4x{} {}".format(["w", "g"][is_64bit()], self.kallsyms_num_syms_addr))
-                info("kallsyms_names          {:#x}".format(self.kallsyms_names_addr)) # to lookup symbol
-                gdb.execute("x/8x{} {}".format(["w", "g"][is_64bit()], self.kallsyms_names_addr - 0x10))
-                info("CONFIG_KALLSYMS_ABSOLUTE_PERCPU: {:d}".format(self.CONFIG_KALLSYMS_ABSOLUTE_PERCPU)) # to calculate address
-                if hasattr(self, "CONFIG_KALLSYMS_BASE_RELATIVE") and self.CONFIG_KALLSYMS_BASE_RELATIVE:
-                    info("kallsyms_addresses:       {:#x}".format(self.kallsyms_offsets_addr)) # to lookup symbol
-                else:
-                    info("kallsyms_offsets:       {:#x}".format(self.kallsyms_offsets_addr)) # to lookup symbol
-                gdb.execute("x/8x{} {}".format(["w", "g"][is_64bit()], self.kallsyms_offsets_addr - 0x10))
-                info("kallsyms_markers:       {:#x}".format(self.kallsyms_markers_addr)) # to search kallsyms_*
-                gdb.execute("x/8x{} {}".format(["w", "g"][is_64bit()], self.kallsyms_markers_addr - 0x10))
-                info("kallsyms_token_table:   {:#x}".format(self.kallsyms_token_table_addr)) # to calculate address
-                gdb.execute("x/8x{} {}".format(["w", "g"][is_64bit()], self.kallsyms_token_table_addr - 0x10))
-                info("kallsyms_token_index:   {:#x}".format(self.kallsyms_token_index_addr)) # to calculate address
-                gdb.execute("x/8x{} {}".format(["w", "g"][is_64bit()], self.kallsyms_token_index_addr - 0x10))
-            except Exception:
-                pass
         return
 
     def initialize(self):
-        if self.initialized:
-            self.print_meta()
-            return True
-        # get kernel memory maps
-        if not self.silent:
-            info("Wait for memory scan")
-        kinfo = KernelbaseCommand.get_kernel_base()
-        if kinfo.has_none:
-            err("Failed to resolve")
-            return None
-        self.maps = kinfo.maps
-        self.kbase = kinfo.kbase
-        self.kbase_size = kinfo.kbase_size
-        self.krobase = kinfo.krobase
-        self.krobase_size = kinfo.krobase_size
-        # resolve some address
-        if is_32bit():
-            res = self.initialize32()
-        elif is_64bit():
-            res = self.initialize64()
-        if res:
-            # prepare each byte array
-            if self.kallsyms_relative_base is None:
-                r = self.RO_REGION[self.kallsyms_offsets_addr - self.krobase: self.kallsyms_num_syms_addr - self.krobase]
-                if is_64bit():
-                    self.kallsyms_offsets = [u64(r[i:i + 8]) for i in range(0, len(r), 8)] # unsigned 64bit
-                else:
-                    self.kallsyms_offsets = [u32(r[i:i + 4]) for i in range(0, len(r), 4)] # unsigned 32bit
+        if is_big_endian():
+            endianness_marker = '>'
+        else:
+            endianness_marker = '<'
+
+        # find kallsyms_token_table
+
+        position = 0
+        candidates_offsets = []
+        candidates_offsets_followed_with_ascii = []
+        seq_to_find = b'0\x001\x002\x003\x004\x005\x006\x007\x008\x009\x00'
+        seq_to_avoid = [b':\0', b'\0\0', b'\0\1', b'\0\2', b'ASCII\0']
+
+        while True:
+            position = self.kernel_img.find(seq_to_find, position + 1)
+            if position == -1:
+                break
+
+            for seq in seq_to_avoid:
+                pos = position + len(seq_to_find)
+                if self.kernel_img[pos:pos + len(seq)] == seq:
+                    break
             else:
-                r = self.RO_REGION[self.kallsyms_offsets_addr - self.krobase: self.kallsyms_relative_base_addr - self.krobase]
-                self.kallsyms_offsets = [u32(r[i:i + 4], s=True) for i in range(0, len(r), 4)] # signed 32bit
-            r = self.RO_REGION[self.kallsyms_names_addr - self.krobase: self.kallsyms_markers_addr - self.krobase]
-            self.kallsyms_names = [u8(r[i:i + 1]) for i in range(0, len(r), 1)] # 8bit
-            r = self.RO_REGION[self.kallsyms_token_table_addr - self.krobase: self.kallsyms_token_index_addr - self.krobase]
-            self.kallsyms_token_table = [u8(r[i:i + 1]) for i in range(0, len(r), 1)] # 8bit
-            r = self.RO_REGION[self.kallsyms_token_index_addr - self.krobase:][:0x100 * 2] # fixed table size
-            self.kallsyms_token_index = [u16(r[i:i + 2]) for i in range(0, len(r), 2)] # 16bit
-            self.initialized = True
-        # finish
-        self.print_meta()
-        return True if res else False
+                candidates_offsets.append(position)
+                if self.kernel_img[pos:pos + 1].isalnum():
+                    candidates_offsets_followed_with_ascii.append(position)
+
+        if len(candidates_offsets) != 1:
+            if len(candidates_offsets_followed_with_ascii) == 1:
+                candidates_offsets = candidates_offsets_followed_with_ascii
+            else:
+                self.quiet_err('{:d} candidates for kallsyms_token_table in kernel image'.format(len(candidates_offsets)))
+                return False
+        position = candidates_offsets[0]
+
+        # Get back to the beginning of the table
+        current_index_in_array = ord('0')
+        position -= 1
+        if position < 0 or self.kernel_img[position] != 0:
+            self.quiet_err('Could not find kallsyms_token_table')
+            return False
+
+        for tokens_backwards in range(current_index_in_array):
+            for chars_in_token_backwards in range(50):
+                position -= 1
+                if position < 0:
+                    self.quiet_err('Could not find kallsyms_token_table')
+                    return False
+                # we may overlap on "kallsyms_markers" for the last entry, so also check for high-range characters
+                if self.kernel_img[position] == 0 or self.kernel_img[position] > ord('z'):
+                    break
+                if chars_in_token_backwards >= 50 - 1:
+                    self.quiet_err('This structure is not a kallsyms_token_table')
+                    return False
+        position += 1
+        position += -position % 4
+        self.kallsyms_token_table__offset = position
+        self.verbose_info('kallsyms_token_table: {:#x}'.format(self.krobase + self.kallsyms_token_table__offset))
+
+        # find kallsyms_token_index
+
+        # Get to the end of the kallsyms_token_table
+        current_index_in_array = 0
+        position = self.kallsyms_token_table__offset
+        all_token_offsets = []
+        position -= 1
+
+        for tokens_forward in range(256):
+            position += 1
+            all_token_offsets.append(position - self.kallsyms_token_table__offset)
+            for chars_in_token_forward in range(50):
+                position += 1
+                if self.kernel_img[position] == 0:
+                    break
+                if chars_in_token_forward >= 50 - 1:
+                    self.quiet_err('This structure is not a kallsyms_token_table')
+                    return False
+
+        # Find kallsyms_token_index through the offset through searching
+        # the reconstructed structure, also use this to guess endianness
+        MAX_ALIGNMENT = 256
+        KALLSYMS_TOKEN_INDEX__SIZE = 256 * 2
+        memory_to_search = bytes(self.kernel_img[position:position + KALLSYMS_TOKEN_INDEX__SIZE + MAX_ALIGNMENT])
+
+        if is_big_endian():
+            offsets = struct.pack('>{:d}H'.format(len(all_token_offsets)), *all_token_offsets)
+        else:
+            offsets = struct.pack('<{:d}H'.format(len(all_token_offsets)), *all_token_offsets)
+
+        found_position = memory_to_search.find(offsets)
+        if found_position == -1:
+            self.quiet_err('The value of kallsyms_token_index was not found')
+            return False
+        self.kallsyms_token_index__offset = position + found_position
+        self.verbose_info('kallsyms_token_index: {:#x}'.format(self.krobase + self.kallsyms_token_index__offset))
+
+        # find kallsyms_markers
+
+        max_number_of_space_between_two_nulls = 0
+        position = self.kallsyms_token_table__offset
+
+        # Go just before the first chunk of non-null bytes
+        while position > 0 and self.kernel_img[position - 1] == 0:
+            position -= 1
+
+        for null_separated_bytes_chunks in range(20):
+            num_non_null_bytes = 1 # we always start at a non-null byte in this loop
+            num_null_bytes = 1 # we will at least encounter one null byte before the end of this loop
+            while True:
+                position -= 1
+                if position < 0:
+                    self.quiet_err('Could not find kallsyms_markers')
+                    return False
+                if self.kernel_img[position] == 0:
+                    break
+                num_non_null_bytes += 1
+            while True:
+                position -= 1
+                if position < 0:
+                    self.quiet_err('Could not find kallsyms_markers')
+                    return False
+                if self.kernel_img[position] != 0:
+                    break
+                num_null_bytes += 1
+            max_number_of_space_between_two_nulls = max(
+                max_number_of_space_between_two_nulls,
+                num_non_null_bytes + num_null_bytes)
+        if max_number_of_space_between_two_nulls % 2 == 1: # There may be a leap to a shorter offset in the latest processed entries
+            max_number_of_space_between_two_nulls -= 1
+        if max_number_of_space_between_two_nulls not in (2, 4, 8):
+            self.quiet_err('Could not guess the architecture register size for kernel')
+            return False
+
+        self.offset_table_element_size = max_number_of_space_between_two_nulls
+        # Once the size of a long has been guessed, use it to find
+        # the first offset (0)
+        position = self.kallsyms_token_table__offset
+        MAX_ARRAY_SIZE = 3000 * self.offset_table_element_size
+
+        position -= 1
+        while position > 0 and self.kernel_img[position] == 0:
+            position -= 1
+
+        needle = self.kernel_img.rfind(b'\x00' * self.offset_table_element_size, position - MAX_ARRAY_SIZE, position)
+        if needle == -1:
+            self.quiet_err('Could not find kallsyms_markers')
+            return False
+        position = needle
+        position -= position % self.offset_table_element_size
+
+        self.kallsyms_markers__offset = position
+        self.verbose_info('kallsyms_markers: {:#x}'.format(self.krobase + self.kallsyms_markers__offset))
+
+        # find kallsyms_names
+
+        position = self.kallsyms_markers__offset
+
+        # Approximate the position of kallsyms_names based on the last entry of "kallsyms_markers"
+        # - we'll determine the precise position in the next method
+        long_size_marker = {2: 'H', 4: 'I', 8: 'Q'}[self.offset_table_element_size]
+        size_of_kallsyms_markers_entries = self.kallsyms_token_table__offset - self.kallsyms_markers__offset
+        num_of_kallsyms_markers_entries = size_of_kallsyms_markers_entries // self.offset_table_element_size
+        unpack_fmt = endianness_marker + str(num_of_kallsyms_markers_entries) + long_size_marker
+        kallsyms_markers_entries = struct.unpack_from(unpack_fmt, self.kernel_img, self.kallsyms_markers__offset)
+        last_kallsyms_markers_entry = list(filter(None, kallsyms_markers_entries))[-1]
+        position -= last_kallsyms_markers_entry
+        position += -position % self.offset_table_element_size
+
+        if position <= 0:
+            self.quiet_err('Could not find kallsyms_names')
+            return False
+
+        self.kallsyms_names__offset = position
+        # Guessing continues in the function below (in order to handle the absence of padding)
+
+        # find kallsyms_num_syms
+
+        needle = -1
+        token_table = self.get_token_table()
+        possible_symbol_types = list('ABDRTVWGINPCSUuvw-?')
+        dp = []
+        while needle == -1:
+            position = self.kallsyms_names__offset
+
+            # Check whether this looks like the correct symbol table, first depending on the beginning of the
+            # first symbol (as this is where an uncertain gap of 4 padding bytes may be present depending on
+            # versions or builds), then thorough the whole table. Raise an issue further in the code (in
+            # another function) if an exotic kind of symbol is found somewhere else than in the first entry.
+
+            first_token_index_of_first_name = self.kernel_img[position + 1]
+            first_token_of_first_name = token_table[first_token_index_of_first_name]
+
+            x = first_token_of_first_name[0]
+            if not (x.lower() in 'uvw' and x in possible_symbol_types) and x.upper() not in possible_symbol_types:
+                self.kallsyms_names__offset -= 4
+                if self.kallsyms_names__offset < 0:
+                    self.quiet_err('Could not find kallsyms_names')
+                    return False
+                continue
+
+            # Each entry in the symbol table starts with a u8 size followed by the contents.
+            # The table ends with an entry of size 0, and must lie before kallsyms_markers.
+            # This for loop uses a bottom-up DP approach to calculate the numbers of symbols without recalculations.
+            # dp[i] is the length of the symbol table given a starting position of "kallsyms_markers - i"
+            # If the table position is invalid, i.e. it reaches out of bounds, the length is marked as -1.
+            # The loop ends with the number of symbols for the current position in the last entry of dp.
+
+            for i in range(len(dp), self.kallsyms_markers__offset - position + 1):
+                symbol_size = self.kernel_img[self.kallsyms_markers__offset - i]
+                next_i = i - symbol_size - 1
+                if symbol_size == 0:
+                    # Last entry of the symbol table
+                    dp.append(0)
+                elif next_i < 0 or dp[next_i] == -1:
+                    # If table would exceed kallsyms_markers, mark as invalid
+                    dp.append(-1)
+                else:
+                    dp.append(dp[next_i] + 1)
+            num_symbols = dp[-1]
+
+            if num_symbols < 256:
+                self.kallsyms_names__offset -= 4
+                if self.kallsyms_names__offset < 0:
+                    self.quiet_err('Could not find kallsyms_names')
+                    return False
+                continue
+            self.num_symbols = num_symbols
+
+            # Find the long or PTR (it should be the same size as a kallsyms_marker entry)
+            # encoding the number of symbols right before kallsyms_names
+            long_size_marker = {2: 'H', 4: 'I', 8: 'Q'}[self.offset_table_element_size]
+            MAX_ALIGNMENT = 256
+            encoded_num_symbols = struct.pack(endianness_marker + long_size_marker, num_symbols)
+            start = max(0, self.kallsyms_names__offset - MAX_ALIGNMENT - 20)
+            needle = self.kernel_img.rfind(encoded_num_symbols, start, self.kallsyms_names__offset)
+
+            # There may be no padding between kallsyms_names and kallsyms_num_syms,
+            # if the alignment is already correct: in this case: try other offsets for "kallsyms_names"
+            if needle == -1:
+                self.kallsyms_names__offset -= 4
+                if self.kallsyms_names__offset < 0:
+                    self.quiet_err('Could not find kallsyms_names')
+                    return False
+
+        self.verbose_info('kallsyms_names: {:#x}'.format(self.krobase + self.kallsyms_names__offset))
+        position = needle
+        self.kallsyms_num_syms__offset = position
+        self.verbose_info('kallsyms_num_syms: {:#x}'.format(self.krobase + self.kallsyms_num_syms__offset))
+
+        # find kallsyms_addresses_or_symbols
+
+        regex_match = re.search(b'Linux version (\d+\.[\d.]*\d)[ -~]+', self.kernel_img)
+        version_string = regex_match.group(0).decode('ascii')
+        version_number = regex_match.group(1).decode('ascii')
+        kernel_major = int(version_number.split('.')[0])
+        kernel_minor = int(version_number.split('.')[1])
+
+        # Is CONFIG_KALLSYMS_BASE_RELATIVE ?
+        likely_has_base_relative = False
+        if kernel_major > 4 or (kernel_major == 4 and kernel_minor >= 6):
+            if 'ia64' not in version_string.lower() and 'itanium' not in version_string.lower():
+                likely_has_base_relative = True
+
+        # Is CONFIG_KALLSYMS_ABSOLUTE_PERCPU ?
+        # We'll guess through looking for negative symbol values. Try different possibilities heuristically:
+        for (has_base_relative, can_skip) in (
+            [(True, True), (False, False)]
+            if likely_has_base_relative else
+            [(False, True), (False, False)]
+        ):
+            position = self.kallsyms_num_syms__offset
+            if is_64bit():
+                address_byte_size = 8
+            else:
+                address_byte_size = self.offset_table_element_size
+            offset_byte_size = min(4, self.offset_table_element_size) # Size of an assembly ".long"
+
+            # Go right after the previous address
+            while True:
+                previous_word = self.kernel_img[position - address_byte_size:position]
+                if previous_word != address_byte_size * b'\x00':
+                    break
+                position -= address_byte_size
+
+            if has_base_relative:
+                self.has_base_relative = True
+                position -= address_byte_size
+
+                # Parse the base_relative value
+                if is_big_endian():
+                    endian_str = 'big'
+                else:
+                    endian_str = 'little'
+                self.relative_base_address = int.from_bytes(self.kernel_img[position:position + address_byte_size], endian_str)
+
+                # Go right after the previous offset
+                while True:
+                    previous_word = self.kernel_img[position - offset_byte_size:position]
+                    if previous_word != offset_byte_size * b'\x00':
+                        break
+                    position -= offset_byte_size
+                position -= self.num_symbols * offset_byte_size
+
+            else:
+                self.has_base_relative = False
+                position -= self.num_symbols * address_byte_size
+
+            self.kallsyms_addresses_or_offsets__offset = position
+
+            # Check the obtained values
+            if self.has_base_relative:
+                # offsets may be negative, contrary to addresses
+                long_size_marker = {2: 'h', 4: 'i'}[offset_byte_size]
+            else:
+                long_size_marker = {2: 'H', 4: 'I', 8: 'Q'}[address_byte_size]
+
+            # Parse symbols addresses
+            fmt = endianness_marker + str(self.num_symbols) + long_size_marker
+            unpacked = struct.unpack_from(fmt, self.kernel_img, self.kallsyms_addresses_or_offsets__offset)
+            tentative_addresses_or_offsets_ = list(unpacked)
+
+            if self.has_base_relative:
+                number_of_negative_items = len([offset for offset in tentative_addresses_or_offsets_ if offset < 0])
+                # Non-absolute symbols are negative with CONFIG_KALLSYMS_ABSOLUTE_PERCPU
+                if number_of_negative_items / len(tentative_addresses_or_offsets_) >= 0.5:
+                    self.has_absolute_percpu = True
+                    tentative_addresses_or_offsets = []
+                    for offset in tentative_addresses_or_offsets_:
+                        if offset < 0:
+                            x = self.relative_base_address - 1 - offset
+                            tentative_addresses_or_offsets.append(x)
+                        else:
+                            tentative_addresses_or_offsets.append(offset)
+                else:
+                    self.has_absolute_percpu = False
+                    tentative_addresses_or_offsets = []
+                    for offset in tentative_addresses_or_offsets_:
+                        x = offset + self.relative_base_address
+                        tentative_addresses_or_offsets.append(x)
+            else:
+                self.has_absolute_percpu = False
+                tentative_addresses_or_offsets = tentative_addresses_or_offsets_
+
+            number_of_null_items = len([address for address in tentative_addresses_or_offsets if address == 0])
+            # If there are too much null symbols we have likely tried to parse the wrong integer size
+            if number_of_null_items / len(tentative_addresses_or_offsets) >= 0.2:
+                if can_skip:
+                    continue
+
+            if self.has_base_relative:
+                self.verbose_info('kallsyms_offsets: {:#x}'.format(self.krobase + self.kallsyms_addresses_or_offsets__offset))
+            else:
+                self.verbose_info('kallsyms_addresses: {:#x}'.format(self.krobase + self.kallsyms_addresses_or_offsets__offset))
+            self.kernel_addresses = tentative_addresses_or_offsets
+            break
+        return True
 
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
-    @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
     def do_invoke(self, args):
         self.dont_repeat()
 
-        self.meta = args.meta
-        self.silent = args.silent
+        self.verbose = args.verbose
+        self.quiet = args.quiet
         self.exact = args.exact
-        self.head = args.head
-        self.print_all = args.print_all
-        if args.keyword == []:
-            self.print_all = True
+        if args.reparse:
+            self.kallsyms = []
 
-        if not self.initialize():
-            return
+        if self.kallsyms == []:
+            self.quiet_info("Wait for memory scan")
+            kinfo = KernelbaseCommand.get_kernel_base()
+            if kinfo.has_none:
+                self.quiet_err("Failed to resolve")
+                return
+            self.krobase = kinfo.krobase
+            self.krobase_size = kinfo.krobase_size
+
+            self.kernel_img = read_memory(self.krobase, self.krobase_size)
+            ret = self.initialize()
+            if not ret:
+                return
+
         self.resolve_kallsyms()
         self.print_kallsyms(args.keyword)
         return
@@ -52278,7 +51827,7 @@ class KsymaddrRemoteApplyCommand(GenericCommand):
         self.dont_repeat()
 
         info("Wait for memory scan")
-        res = gdb.execute("ksymaddr-remote --print-all", to_string=True)
+        res = gdb.execute("ksymaddr-remote --quiet", to_string=True)
         function_info = []
         for entry in res.splitlines():
             r = re.findall(r"(0x\w+) (\w) (\w+)", entry)
