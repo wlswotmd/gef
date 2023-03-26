@@ -47652,12 +47652,45 @@ class PagewalkCommand(GenericCommand):
             va, other = entry[0], tuple(entry[1:])
             if other not in tmp:
                 tmp[other] = []
-            tmp[other].append("{:016x}".format(va))
+            tmp[other].append(va)
+
+        # internal merge function
+        def recursive_merge(d):
+            if d == {}:
+                return [""]
+            out = []
+            if len(d) == 16:
+                tmp = list(d.values())
+                if tmp.count(tmp[0]) == 16:
+                    for vv in recursive_merge(tmp[0]):
+                        out.append("*" + vv)
+                    return out
+            for k, v in d.items():
+                for vv in recursive_merge(v):
+                    out.append(k + vv)
+            return out
 
         # merge if possible
         merged_mappings = []
         for other, va_array in tmp.items():
-            queue = va_array
+
+            # usually go through this path
+            if len(va_array) < 16:
+                for va in va_array:
+                    merged_mappings.append(["{:016x}".format(va)] + list(other))
+                continue
+
+            # fast path for x64
+            if len(va_array) == 0x10000:
+                va_sorted = sorted([x >> 16 for x in va_array])
+                if va_sorted[0] + 0xffff == va_sorted[-1]:
+                    new_va_str = "{:016x}".format(va_array[0])
+                    new_va_str = new_va_str[:8] + "****" + new_va_str[12:]
+                    merged_mappings.append([new_va_str] + list(other))
+                    continue
+
+            # slow path
+            queue = ["{:016x}".format(x) for x in va_array]
             # extract
             dic = {}
             for q in queue:
@@ -47671,21 +47704,6 @@ class PagewalkCommand(GenericCommand):
                     dst[q[i]] = src
 
             # merge
-            def recursive_merge(d):
-                if d == {}:
-                    return [""]
-                out = []
-                if len(d) == 16:
-                    tmp = list(d.values())
-                    if tmp.count(tmp[0]) == 16:
-                        for vv in recursive_merge(tmp[0]):
-                            out.append("*" + vv)
-                        return out
-                for k, v in d.items():
-                    for vv in recursive_merge(v):
-                        out.append(k + vv)
-                return out
-
             for d in recursive_merge(dic):
                 merged_mappings.append([d] + list(other))
 
