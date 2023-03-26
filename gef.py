@@ -37951,7 +37951,12 @@ class KernelAddressHeuristicFinder:
         if modprobe_path:
             return modprobe_path
 
-        # plan 2 (available v3.11-rc1 or later)
+        # plan 2
+        modprobe = get_kparam("kernel.modprobe")
+        if modprobe:
+            return modprobe
+
+        # plan 3 (available v3.11-rc1 or later)
         request_module = get_ksymaddr("__request_module")
         if request_module:
             res = gdb.execute("x/40i {:#x}".format(request_module), to_string=True)
@@ -38004,7 +38009,12 @@ class KernelAddressHeuristicFinder:
         if poweroff_cmd:
             return poweroff_cmd
 
-        # plan 2 (available v4.1-rc1 or later)
+        # plan 2
+        poweroff_cmd = get_kparam("kernel.poweroff_cmd")
+        if poweroff_cmd:
+            return poweroff_cmd
+
+        # plan 3 (available v4.1-rc1 or later)
         poweroff_work_func = get_ksymaddr("poweroff_work_func")
         if poweroff_work_func:
             res = gdb.execute("x/20i {:#x}".format(poweroff_work_func), to_string=True)
@@ -38122,7 +38132,12 @@ class KernelAddressHeuristicFinder:
         if core_pattern:
             return core_pattern
 
-        # plan 2 (available v3.6-rc1 or later)
+        # plan 2
+        core_pattern = get_kparam("kernel.core_pattern")
+        if core_pattern:
+            return core_pattern
+
+        # plan 3 (available v3.6-rc1 or later)
         validate_coredump_safety = get_ksymaddr("validate_coredump_safety.part.0")
         if validate_coredump_safety:
             res = gdb.execute("x/10i {:#x}".format(validate_coredump_safety), to_string=True)
@@ -38324,7 +38339,12 @@ class KernelAddressHeuristicFinder:
         if mmap_min_addr:
             return mmap_min_addr
 
-        # plan 2 (available v4.19.27 or later)
+        # plan 2
+        mmap_min_addr = get_kparam("vm.mmap_min_addr")
+        if mmap_min_addr:
+            return mmap_min_addr
+
+        # plan 3 (available v4.19.27 or later)
         expand_downwards = get_ksymaddr("expand_downwards")
         if expand_downwards:
             res = gdb.execute("x/20i {:#x}".format(expand_downwards), to_string=True)
@@ -38373,25 +38393,10 @@ class KernelAddressHeuristicFinder:
         if sysctl_unprivileged_userfaultfd:
             return sysctl_unprivileged_userfaultfd
 
-        # plan 2 (available v5.2-rc1 or later)
-        proc_dointvec_minmax = get_ksymaddr("proc_dointvec_minmax")
-        if proc_dointvec_minmax:
-            kinfo = KernelbaseCommand.get_kernel_base()
-            mem = read_memory(kinfo.krwbase, min(kinfo.krwbase_size, 0x1000000))
-            mem = slice_unpack(mem, current_arch.ptrsize)
-
-            idx = -1
-            while True:
-                try:
-                    idx = mem.index(proc_dointvec_minmax, idx + 1)
-                except ValueError:
-                    break
-                proc_handler_addr = kinfo.krwbase + current_arch.ptrsize * idx
-                for i in [4, 5]: # 64bit: 4, 32bit:5 ?
-                    procname_addr = proc_handler_addr - current_arch.ptrsize * i
-                    procname = read_int_from_memory(procname_addr)
-                    if read_cstring_from_memory(procname) == "unprivileged_userfaultfd":
-                        return read_int_from_memory(procname_addr + current_arch.ptrsize)
+        # plan 2
+        unprivileged_userfaultfd = get_kparam("vm.unprivileged_userfaultfd")
+        if unprivileged_userfaultfd:
+            return unprivileged_userfaultfd
         return None
 
     @staticmethod
@@ -38401,7 +38406,12 @@ class KernelAddressHeuristicFinder:
         if sysctl_unprivileged_bpf_disabled:
             return sysctl_unprivileged_bpf_disabled
 
-        # plan 2 (available v4.9.91 ~ v5.18.19)
+        # plan 2
+        unprivileged_bpf_disabled = get_kparam("kernel.unprivileged_bpf_disabled")
+        if unprivileged_bpf_disabled:
+            return unprivileged_bpf_disabled
+
+        # plan 3 (available v4.9.91 ~ v5.18.19)
         __do_sys_bpf = get_ksymaddr("__do_sys_bpf")
         if __do_sys_bpf:
             res = gdb.execute("x/20i {:#x}".format(__do_sys_bpf), to_string=True)
@@ -38459,25 +38469,10 @@ class KernelAddressHeuristicFinder:
         if kptr_restrict:
             return kptr_restrict
 
-        # plan 2 (available v5.17-rc1 or later)
-        proc_dointvec_minmax_sysadmin = get_ksymaddr("proc_dointvec_minmax_sysadmin")
-        if proc_dointvec_minmax_sysadmin:
-            kinfo = KernelbaseCommand.get_kernel_base()
-            mem = read_memory(kinfo.krwbase, min(kinfo.krwbase_size, 0x1000000))
-            mem = slice_unpack(mem, current_arch.ptrsize)
-
-            idx = -1
-            while True:
-                try:
-                    idx = mem.index(proc_dointvec_minmax_sysadmin, idx + 1)
-                except ValueError:
-                    break
-                proc_handler_addr = kinfo.krwbase + current_arch.ptrsize * idx
-                for i in [4, 5]: # 64bit: 4, 32bit:5 ?
-                    procname_addr = proc_handler_addr - current_arch.ptrsize * i
-                    procname = read_int_from_memory(procname_addr)
-                    if read_cstring_from_memory(procname) == "kptr_restrict":
-                        return read_int_from_memory(procname_addr + current_arch.ptrsize)
+        # plan 2
+        kptr_restrict = get_kparam("kernel.kptr_restrict")
+        if kptr_restrict:
+            return kptr_restrict
 
         # plan 3 (available v4.15-rc1 or later)
         kallsyms_show_value = get_ksymaddr("kallsyms_show_value")
@@ -38533,11 +38528,16 @@ class KernelAddressHeuristicFinder:
     @staticmethod
     def get_sysctl_perf_event_paranoid():
         # plan 1 (directly)
-        get_sysctl_perf_event_paranoid = get_ksymaddr("sysctl_perf_event_paranoid")
-        if get_sysctl_perf_event_paranoid:
-            return get_sysctl_perf_event_paranoid
+        sysctl_perf_event_paranoid = get_ksymaddr("sysctl_perf_event_paranoid")
+        if sysctl_perf_event_paranoid:
+            return sysctl_perf_event_paranoid
 
-        # plan 2 (available v4.15-rc1 or later)
+        # plan 2
+        perf_event_paranoid = get_kparam("kernel.perf_event_paranoid")
+        if perf_event_paranoid:
+            return perf_event_paranoid
+
+        # plan 3 (available v4.15-rc1 or later)
         kallsyms_show_value = get_ksymaddr("kallsyms_show_value")
         if kallsyms_show_value:
             res = gdb.execute("x/20i {:#x}".format(kallsyms_show_value), to_string=True)
@@ -38607,25 +38607,10 @@ class KernelAddressHeuristicFinder:
         if get_dmesg_restrict:
             return get_dmesg_restrict
 
-        # plan 2 (available v5.17-rc1 or later)
-        proc_dointvec_minmax_sysadmin = get_ksymaddr("proc_dointvec_minmax_sysadmin")
-        if proc_dointvec_minmax_sysadmin:
-            kinfo = KernelbaseCommand.get_kernel_base()
-            mem = read_memory(kinfo.krwbase, min(kinfo.krwbase_size, 0x1000000))
-            mem = slice_unpack(mem, current_arch.ptrsize)
-
-            idx = -1
-            while True:
-                try:
-                    idx = mem.index(proc_dointvec_minmax_sysadmin, idx + 1)
-                except ValueError:
-                    break
-                proc_handler_addr = kinfo.krwbase + current_arch.ptrsize * idx
-                for i in [4, 5]: # 64bit: 4, 32bit:5 ?
-                    procname_addr = proc_handler_addr - current_arch.ptrsize * i
-                    procname = read_int_from_memory(procname_addr)
-                    if read_cstring_from_memory(procname) == "dmesg_restrict":
-                        return read_int_from_memory(procname_addr + current_arch.ptrsize)
+        # plan 2
+        dmesg_restrict = get_kparam("kernel.dmesg_restrict")
+        if dmesg_restrict:
+            return dmesg_restrict
 
         # plan 3 (available v3.11-rc4 or later)
         check_syslog_permissions = get_ksymaddr("check_syslog_permissions")
@@ -38692,25 +38677,10 @@ class KernelAddressHeuristicFinder:
         if kexec_load_disabled:
             return kexec_load_disabled
 
-        # plan 2 (available v5.19-rc1 or later)
-        proc_dointvec_minmax = get_ksymaddr("proc_dointvec_minmax")
-        if proc_dointvec_minmax:
-            kinfo = KernelbaseCommand.get_kernel_base()
-            mem = read_memory(kinfo.krwbase, min(kinfo.krwbase_size, 0x1000000))
-            mem = slice_unpack(mem, current_arch.ptrsize)
-
-            idx = -1
-            while True:
-                try:
-                    idx = mem.index(proc_dointvec_minmax, idx + 1)
-                except ValueError:
-                    break
-                proc_handler_addr = kinfo.krwbase + current_arch.ptrsize * idx
-                for i in [4, 5]: # 64bit: 4, 32bit:5 ?
-                    procname_addr = proc_handler_addr - current_arch.ptrsize * i
-                    procname = read_int_from_memory(procname_addr)
-                    if read_cstring_from_memory(procname) == "kexec_load_disabled":
-                        return read_int_from_memory(procname_addr + current_arch.ptrsize)
+        # plan 2
+        kexec_load_disabled = get_kparam("kernel.kexec_load_disabled")
+        if kexec_load_disabled:
+            return kexec_load_disabled
         return None
 
     @staticmethod
@@ -38720,25 +38690,10 @@ class KernelAddressHeuristicFinder:
         if ptrace_scope:
             return ptrace_scope
 
-        # plan 2 (available v3.4-rc1 or later)
-        yama_dointvec_minmax = get_ksymaddr("yama_dointvec_minmax")
-        if yama_dointvec_minmax:
-            kinfo = KernelbaseCommand.get_kernel_base()
-            mem = read_memory(kinfo.krwbase, min(kinfo.krwbase_size, 0x1000000))
-            mem = slice_unpack(mem, current_arch.ptrsize)
-
-            idx = -1
-            while True:
-                try:
-                    idx = mem.index(yama_dointvec_minmax, idx + 1)
-                except ValueError:
-                    break
-                proc_handler_addr = kinfo.krwbase + current_arch.ptrsize * idx
-                for i in [4, 5]: # 64bit: 4, 32bit:5 ?
-                    procname_addr = proc_handler_addr - current_arch.ptrsize * i
-                    procname = read_int_from_memory(procname_addr)
-                    if read_cstring_from_memory(procname) == "ptrace_scope":
-                        return read_int_from_memory(procname_addr + current_arch.ptrsize)
+        # plan 2
+        ptrace_scope = get_kparam("kernel.ptrace_scope")
+        if ptrace_scope:
+            return ptrace_scope
         return None
 
     @staticmethod
