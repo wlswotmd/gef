@@ -38333,6 +38333,60 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    def get_sysctl_table_root():
+        # plan 1 (directly)
+        sysctl_table_root = get_ksymaddr("sysctl_table_root")
+        if sysctl_table_root:
+            return sysctl_table_root
+
+        # plan 2
+        register_sysctl = get_ksymaddr("register_sysctl")
+        if register_sysctl:
+            res = gdb.execute("x/20i {:#x}".format(register_sysctl), to_string=True)
+            if is_x86_64():
+                for line in res.splitlines():
+                    m = re.search(r"mov\s+rdi\s*,\s*(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffffffffffff
+                        if v != 0:
+                            return v
+            elif is_x86_32():
+                for line in res.splitlines():
+                    m = re.search(r"mov\s+e[a-d]x\s*,\s*(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffff
+                        if v != 0:
+                            return v
+            elif is_arm64():
+                bases = {}
+                for line in res.splitlines():
+                    m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        base = int(m.group(2), 16)
+                        bases[reg] = base
+                        continue
+                    m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
+                    if m:
+                        srcreg = m.group(2)
+                        v = int(m.group(3), 16)
+                        if srcreg in bases:
+                            return bases[srcreg] + v
+                        continue
+            elif is_arm32():
+                base = None
+                for line in res.splitlines():
+                    if base is None:
+                        m = re.search(r"movw.*;\s*(0x\S+)", line)
+                        if m:
+                            base = int(m.group(1), 16)
+                    else:
+                        m = re.search(r"movt.*;\s*(0x\S+)", line)
+                        if m:
+                            return base + (int(m.group(1), 16) << 16)
+        return None
+
+    @staticmethod
     def get_mmap_min_addr():
         # plan 1 (directly)
         mmap_min_addr = get_ksymaddr("mmap_min_addr")
@@ -40115,1053 +40169,157 @@ class KernelParamSysctlCommand(GenericCommand):
     parser.add_argument('--exact', action='store_true', help='use exact match.')
     _syntax_ = parser.format_help()
 
-    params = [
-        # https://www.kernel.org/doc/html/latest/admin-guide/sysctl/kernel.html
-        # param_name,                                                 param_handler_name,                             param_type
-        #["net.ipv4.conf.all.accept_local",                            "devinet_conf_proc",                            "int" ],
-        #["net.ipv4.conf.all.accept_redirects",                        "devinet_conf_proc",                            "int" ],
-        #["net.ipv4.conf.all.accept_source_route",                     "devinet_conf_proc",                            "int" ],
-        #["net.ipv4.conf.all.arp_accept",                              "devinet_conf_proc",                            "int" ],
-        #["net.ipv4.conf.all.arp_announce",                            "devinet_conf_proc",                            "int" ],
-        #["net.ipv4.conf.all.arp_evict_nocarrier",                     "devinet_conf_proc",                            "int" ],
-        #["net.ipv4.conf.all.arp_filter",                              "devinet_conf_proc",                            "int" ],
-        #["net.ipv4.conf.all.arp_ignore",                              "devinet_conf_proc",                            "int" ],
-        #["net.ipv4.conf.all.arp_notify",                              "devinet_conf_proc",                            "int" ],
-        #["net.ipv4.conf.all.bc_forwarding",                           "devinet_conf_proc",                            "int" ],
-        #["net.ipv4.conf.all.bootp_relay",                             "devinet_conf_proc",                            "int" ],
-        #["net.ipv4.conf.all.disable_policy",                          "ipv4_doint_and_flush",                         "int" ],
-        #["net.ipv4.conf.all.disable_xfrm",                            "ipv4_doint_and_flush",                         "int" ],
-        #["net.ipv4.conf.all.drop_gratuitous_arp",                     "devinet_conf_proc",                            "int" ],
-        #["net.ipv4.conf.all.drop_unicast_in_l2_multicast",            "ipv4_doint_and_flush",                         "int" ],
-        #["net.ipv4.conf.all.force_igmp_version",                      "devinet_conf_proc",                            "int" ],
-        #["net.ipv4.conf.all.forwarding",                              "devinet_sysctl_forward",                       "int" ],
-        #["net.ipv4.conf.all.igmpv2_unsolicited_report_interval",      "devinet_conf_proc",                            "int" ],
-        #["net.ipv4.conf.all.igmpv3_unsolicited_report_interval",      "devinet_conf_proc",                            "int" ],
-        #["net.ipv4.conf.all.ignore_routes_with_linkdown",             "devinet_conf_proc",                            "int" ],
-        #["net.ipv4.conf.all.log_martians",                            "devinet_conf_proc",                            "int" ],
-        #["net.ipv4.conf.all.mc_forwarding",                           "devinet_conf_proc",                            "int" ],
-        #["net.ipv4.conf.all.medium_id",                               "devinet_conf_proc",                            "int" ],
-        #["net.ipv4.conf.all.promote_secondaries",                     "ipv4_doint_and_flush",                         "int" ],
-        #["net.ipv4.conf.all.proxy_arp",                               "devinet_conf_proc",                            "int" ],
-        #["net.ipv4.conf.all.proxy_arp_pvlan",                         "devinet_conf_proc",                            "int" ],
-        #["net.ipv4.conf.all.route_localnet",                          "ipv4_doint_and_flush",                         "int" ],
-        #["net.ipv4.conf.all.rp_filter",                               "devinet_conf_proc",                            "int" ],
-        #["net.ipv4.conf.all.secure_redirects",                        "devinet_conf_proc",                            "int" ],
-        #["net.ipv4.conf.all.send_redirects",                          "devinet_conf_proc",                            "int" ],
-        #["net.ipv4.conf.all.shared_media",                            "devinet_conf_proc",                            "int" ],
-        #["net.ipv4.conf.all.src_valid_mark",                          "devinet_conf_proc",                            "int" ],
-        #["net.ipv4.conf.all.tag",                                     "devinet_conf_proc",                            "int" ],
-        #["net.ipv6.conf.all.accept_dad",                              "proc_dointvec",                                "int" ],
-        #["net.ipv6.conf.all.accept_ra",                               "proc_dointvec",                                "int" ],
-        #["net.ipv6.conf.all.accept_ra_defrtr",                        "proc_dointvec",                                "int" ],
-        #["net.ipv6.conf.all.accept_ra_from_local",                    "proc_dointvec",                                "int" ],
-        #["net.ipv6.conf.all.accept_ra_min_hop_limit",                 "proc_dointvec",                                "int" ],
-        #["net.ipv6.conf.all.accept_ra_mtu",                           "proc_dointvec",                                "int" ],
-        #["net.ipv6.conf.all.accept_ra_pinfo",                         "proc_dointvec",                                "int" ],
-        #["net.ipv6.conf.all.accept_ra_rt_info_max_plen",              "proc_dointvec",                                "int" ],
-        #["net.ipv6.conf.all.accept_ra_rt_info_min_plen",              "proc_dointvec",                                "int" ],
-        #["net.ipv6.conf.all.accept_ra_rtr_pref",                      "proc_dointvec",                                "int" ],
-        #["net.ipv6.conf.all.accept_redirects",                        "proc_dointvec",                                "int" ],
-        #["net.ipv6.conf.all.accept_source_route",                     "proc_dointvec",                                "int" ],
-        #["net.ipv6.conf.all.accept_untracked_na",                     "proc_dointvec_minmax",                         "int" ],
-        #["net.ipv6.conf.all.addr_gen_mode",                           "addrconf_sysctl_addr_gen_mode",                "int" ],
-        #["net.ipv6.conf.all.autoconf",                                "proc_dointvec",                                "int" ],
-        #["net.ipv6.conf.all.dad_transmits",                           "proc_dointvec",                                "int" ],
-        #["net.ipv6.conf.all.disable_ipv6",                            "addrconf_sysctl_disable",                      "int" ],
-        #["net.ipv6.conf.all.disable_policy",                          "addrconf_sysctl_disable_policy",               "int" ],
-        #["net.ipv6.conf.all.drop_unicast_in_l2_multicast",            "proc_dointvec",                                "int" ],
-        #["net.ipv6.conf.all.drop_unsolicited_na",                     "proc_dointvec",                                "int" ],
-        #["net.ipv6.conf.all.enhanced_dad",                            "proc_dointvec",                                "int" ],
-        #["net.ipv6.conf.all.force_mld_version",                       "proc_dointvec",                                "int" ],
-        #["net.ipv6.conf.all.force_tllao",                             "proc_dointvec",                                "int" ],
-        #["net.ipv6.conf.all.forwarding",                              "addrconf_sysctl_forward",                      "int" ],
-        #["net.ipv6.conf.all.hop_limit",                               "proc_dointvec_minmax",                         "int" ],
-        #["net.ipv6.conf.all.ignore_routes_with_linkdown",             "addrconf_sysctl_ignore_routes_with_linkdown",  "int" ],
-        #["net.ipv6.conf.all.ioam6_enabled",                           "proc_dou8vec_minmax",                          "char"],
-        #["net.ipv6.conf.all.ioam6_id",                                "proc_douintvec_minmax",                        "int" ],
-        #["net.ipv6.conf.all.ioam6_id_wide",                           "proc_douintvec",                               "int" ],
-        #["net.ipv6.conf.all.keep_addr_on_down",                       "proc_dointvec",                                "int" ],
-        #["net.ipv6.conf.all.max_addresses",                           "proc_dointvec",                                "int" ],
-        #["net.ipv6.conf.all.max_desync_factor",                       "proc_dointvec",                                "int" ],
-        #["net.ipv6.conf.all.mc_forwarding",                           "proc_dointvec",                                "int" ],
-        #["net.ipv6.conf.all.mldv1_unsolicited_report_interval",       "proc_dointvec_ms_jiffies",                     "int" ],
-        #["net.ipv6.conf.all.mldv2_unsolicited_report_interval",       "proc_dointvec_ms_jiffies",                     "int" ],
-        #["net.ipv6.conf.all.mtu",                                     "addrconf_sysctl_mtu",                          "int" ],
-        #["net.ipv6.conf.all.ndisc_evict_nocarrier",                   "proc_dou8vec_minmax",                          "char"],
-        #["net.ipv6.conf.all.ndisc_notify",                            "proc_dointvec",                                "int" ],
-        #["net.ipv6.conf.all.ndisc_tclass",                            "proc_dointvec_minmax",                         "int" ],
-        #["net.ipv6.conf.all.optimistic_dad",                          "proc_dointvec",                                "int" ],
-        #["net.ipv6.conf.all.proxy_ndp",                               "addrconf_sysctl_proxy_ndp",                    "int" ],
-        #["net.ipv6.conf.all.ra_defrtr_metric",                        "proc_douintvec_minmax",                        "int" ],
-        #["net.ipv6.conf.all.regen_max_retry",                         "proc_dointvec",                                "int" ],
-        #["net.ipv6.conf.all.router_probe_interval",                   "proc_dointvec_jiffies",                        "int" ],
-        #["net.ipv6.conf.all.router_solicitation_delay",               "proc_dointvec_jiffies",                        "int" ],
-        #["net.ipv6.conf.all.router_solicitation_interval",            "proc_dointvec_jiffies",                        "int" ],
-        #["net.ipv6.conf.all.router_solicitation_max_interval",        "proc_dointvec_jiffies",                        "int" ],
-        #["net.ipv6.conf.all.router_solicitations",                    "proc_dointvec_minmax",                         "int" ],
-        #["net.ipv6.conf.all.rpl_seg_enabled",                         "proc_dointvec",                                "int" ],
-        #["net.ipv6.conf.all.seg6_enabled",                            "proc_dointvec",                                "int" ],
-        #["net.ipv6.conf.all.seg6_require_hmac",                       "proc_dointvec",                                "int" ],
-        #["net.ipv6.conf.all.stable_secret",                           "addrconf_sysctl_stable_secret",                "str" ],
-        #["net.ipv6.conf.all.suppress_frag_ndisc",                     "proc_dointvec",                                "int" ],
-        #["net.ipv6.conf.all.temp_prefered_lft",                       "proc_dointvec",                                "int" ],
-        #["net.ipv6.conf.all.temp_valid_lft",                          "proc_dointvec",                                "int" ],
-        #["net.ipv6.conf.all.use_oif_addrs_only",                      "proc_dointvec",                                "int" ],
-        #["net.ipv6.conf.all.use_optimistic",                          "proc_dointvec",                                "int" ],
-        #["net.ipv6.conf.all.use_tempaddr",                            "proc_dointvec",                                "int" ],
-        ["abi.sme_default_vector_length",                             "vec_proc_do_default_vl",                       "int" ],
-        ["abi.sve_default_vector_length",                             "vec_proc_do_default_vl",                       "int" ],
-        ["abi.tagged_addr_disabled",                                  "proc_dointvec_minmax",                         "int" ],
-        ["abi.vsyscall32",                                            "proc_dointvec_minmax",                         "int" ],
-        ["appldata.interval",                                         "appldata_interval_handler",                    "int" ],
-        ["appldata.timer",                                            "appldata_timer_handler",                       "int" ],
-        ["bus.isa.membase",                                           "proc_dointvec",                                "int" ],
-        ["bus.isa.portbase",                                          "proc_dointvec",                                "int" ],
-        ["bus.isa.portshift",                                         "proc_dointvec",                                "int" ],
-        ["cachefiles.error_injection",                                "proc_douintvec",                               "int" ],
-        ["coda.fake_statfs",                                          "proc_douintvec",                               "int" ],
-        ["coda.hard",                                                 "proc_douintvec",                               "int" ],
-        ["coda.timeout",                                              "proc_douintvec",                               "int" ],
-        ["crypto.fips_enabled",                                       "proc_dointvec",                                "int" ],
-        ["crypto.fips_name",                                          "proc_dointvec",                                "int" ],
-        ["crypto.fips_version",                                       "proc_dointvec",                                "int" ],
-        ["csky.csky_alignment.kernel_count",                          "proc_dointvec",                                "int" ],
-        ["csky.csky_alignment.kernel_enable",                         "proc_dointvec",                                "int" ],
-        ["csky.csky_alignment.user_count",                            "proc_dointvec",                                "int" ],
-        ["csky.csky_alignment.user_enable",                           "proc_dointvec",                                "int" ],
-        ["debug.exception-trace",                                     "proc_dointvec",                                "int" ],
-        ["debug.kprobes-optimization",                                "proc_kprobes_optimization_handler",            "int" ],
-        ["dev.cdrom.autoclose",                                       "cdrom_sysctl_handler",                         "int" ],
-        ["dev.cdrom.autoeject",                                       "cdrom_sysctl_handler",                         "int" ],
-        ["dev.cdrom.check_media",                                     "cdrom_sysctl_handler",                         "int" ],
-        ["dev.cdrom.debug",                                           "cdrom_sysctl_handler",                         "int" ],
-        ["dev.cdrom.info",                                            "cdrom_sysctl_info",                            "str" ],
-        ["dev.cdrom.lock",                                            "cdrom_sysctl_handler",                         "int" ],
-        ["dev.hpet.max-user-freq",                                    "proc_dointvec",                                "int" ],
-        ["dev.i915.oa_max_sample_rate",                               "proc_dointvec_minmax",                         "int" ],
-        ["dev.i915.perf_stream_paranoid",                             "proc_dointvec_minmax",                         "int" ],
-        ["dev.ipmi.poweroff_powercycle",                              "proc_dointvec",                                "int" ],
-        ["dev.mac_hid.mouse_button2_keycode",                         "proc_dointvec",                                "int" ],
-        ["dev.mac_hid.mouse_button3_keycode",                         "proc_dointvec",                                "int" ],
-        ["dev.mac_hid.mouse_button_emulation",                        "mac_hid_toggle_emumouse",                      "int" ],
-        ["dev.parport.default.spintime",                              "proc_dointvec_minmax",                         "int" ],
-        ["dev.parport.default.timeslice",                             "proc_doulongvec_ms_jiffies_minmax",            "long"],
-        ["dev.raid.speed_limit_max",                                  "proc_dointvec",                                "int" ],
-        ["dev.raid.speed_limit_min",                                  "proc_dointvec",                                "int" ],
-        ["dev.scsi.logging_level",                                    "proc_dointvec",                                "int" ],
-        ["dev.tty.ldisc_autoload",                                    "proc_dointvec",                                "int" ],
-        ["dev.tty.legacy_tiocsti",                                    "proc_dobool",                                  "char"],
-        ["fs.aio-max-nr",                                             "proc_doulongvec_minmax",                       "long"],
-        ["fs.aio-nr",                                                 "proc_doulongvec_minmax",                       "long"],
-        ["fs.dentry-state",                                           "proc_nr_dentry",                               "long"],
-        ["fs.dir-notify-enable",                                      "proc_dointvec",                                "int" ],
-        ["fs.epoll.max_user_watches",                                 "proc_doulongvec_minmax",                       "long"],
-        ["fs.fanotify.max_queued_events",                             "proc_dointvec_minmax",                         "int" ],
-        ["fs.fanotify.max_user_groups",                               "proc_doulongvec_minmax",                       "long"],
-        ["fs.fanotify.max_user_marks",                                "proc_doulongvec_minmax",                       "long"],
-        ["fs.file-max",                                               "proc_doulongvec_minmax",                       "long"],
-        ["fs.file-nr",                                                "proc_nr_files",                                "int" ],
-        ["fs.inode-nr",                                               "proc_nr_inodes",                               "long"],
-        ["fs.inode-state",                                            "proc_nr_inodes",                               "long"],
-        ["fs.inotify.max_queued_events",                              "proc_dointvec_minmax",                         "int" ],
-        ["fs.inotify.max_user_instances",                             "proc_doulongvec_minmax",                       "long"],
-        ["fs.inotify.max_user_watches",                               "proc_doulongvec_minmax",                       "long"],
-        ["fs.lease-break-time",                                       "proc_dointvec",                                "int" ],
-        ["fs.leases-enable",                                          "proc_dointvec",                                "int" ],
-        ["fs.mount-max",                                              "proc_dointvec_minmax",                         "int" ],
-        ["fs.mqueue.msg_default",                                     "proc_dointvec_minmax",                         "int" ],
-        ["fs.mqueue.msg_default",                                     "proc_dointvec_minmax",                         "int" ],
-        ["fs.mqueue.msg_max",                                         "proc_dointvec_minmax",                         "int" ],
-        ["fs.mqueue.msgsize_max",                                     "proc_dointvec_minmax",                         "int" ],
-        ["fs.mqueue.queues_max",                                      "proc_dointvec",                                "int" ],
-        ["fs.nfs.idmap_cache_timeout",                                "proc_dointvec",                                "int" ],
-        ["fs.nfs.nfs_callback_tcpport",                               "proc_dointvec_minmax",                         "int" ],
-        ["fs.nfs.nfs_congestion_kb",                                  "proc_dointvec",                                "int" ],
-        ["fs.nfs.nfs_mountpoint_timeout",                             "proc_dointvec_jiffies",                        "int" ],
-        ["fs.nfs.nlm_grace_period",                                   "proc_doulongvec_minmax",                       "long"],
-        ["fs.nfs.nlm_tcpport",                                        "proc_dointvec_minmax",                         "int" ],
-        ["fs.nfs.nlm_timeout",                                        "proc_doulongvec_minmax",                       "long"],
-        ["fs.nfs.nlm_udpport",                                        "proc_dointvec_minmax",                         "int" ],
-        ["fs.nfs.nsm_local_state",                                    "proc_dointvec",                                "int" ],
-        ["fs.nfs.nsm_use_hostnames",                                  "proc_dobool",                                  "char"],
-        ["fs.nr_open",                                                "proc_dointvec_minmax",                         "int" ],
-        ["fs.ntfs-debug",                                             "proc_dointvec",                                "int" ],
-        ["fs.ocfs2.nm.hb_ctl_path",                                   "proc_dostring",                                "str" ],
-        ["fs.overflowgid",                                            "proc_dointvec_minmax",                         "int" ],
-        ["fs.overflowuid",                                            "proc_dointvec_minmax",                         "int" ],
-        ["fs.pipe-max-size",                                          "proc_dopipe_max_size",                         "int" ],
-        ["fs.pipe-user-pages-hard",                                   "proc_doulongvec_minmax",                       "long"],
-        ["fs.pipe-user-pages-soft",                                   "proc_doulongvec_minmax",                       "long"],
-        ["fs.protected_fifos",                                        "proc_dointvec_minmax",                         "int" ],
-        ["fs.protected_hardlinks",                                    "proc_dointvec_minmax",                         "int" ],
-        ["fs.protected_regular",                                      "proc_dointvec_minmax",                         "int" ],
-        ["fs.protected_symlinks",                                     "proc_dointvec_minmax",                         "int" ],
-        ["fs.quota.allocated_dquots",                                 "do_proc_dqstats",                              "long"],
-        ["fs.quota.cache_hits",                                       "do_proc_dqstats",                              "long"],
-        ["fs.quota.drops",                                            "do_proc_dqstats",                              "long"],
-        ["fs.quota.free_dquots",                                      "do_proc_dqstats",                              "long"],
-        ["fs.quota.lookups",                                          "do_proc_dqstats",                              "long"],
-        ["fs.quota.reads",                                            "do_proc_dqstats",                              "long"],
-        ["fs.quota.syncs",                                            "do_proc_dqstats",                              "long"],
-        ["fs.quota.warnings",                                         "proc_dointvec",                                "int" ],
-        ["fs.quota.writes",                                           "do_proc_dqstats",                              "long"],
-        ["fs.suid_dumpable",                                          "proc_dointvec_minmax_coredump",                "int" ],
-        ["fs.verity.require_signatures",                              "proc_dointvec_minmax",                         "int" ],
-        ["fs.xfs.error_level",                                        "proc_dointvec_minmax",                         "int" ],
-        ["fs.xfs.filestream_centisecs",                               "proc_dointvec_minmax",                         "int" ],
-        ["fs.xfs.inherit_noatime",                                    "proc_dointvec_minmax",                         "int" ],
-        ["fs.xfs.inherit_nodefrag",                                   "proc_dointvec_minmax",                         "int" ],
-        ["fs.xfs.inherit_nodump",                                     "proc_dointvec_minmax",                         "int" ],
-        ["fs.xfs.inherit_nosymlinks",                                 "proc_dointvec_minmax",                         "int" ],
-        ["fs.xfs.inherit_sync",                                       "proc_dointvec_minmax",                         "int" ],
-        ["fs.xfs.irix_sgid_inherit",                                  "xfs_deprecated_dointvec_minmax",               "int" ],
-        ["fs.xfs.irix_symlink_mode",                                  "xfs_deprecated_dointvec_minmax",               "int" ],
-        ["fs.xfs.panic_mask",                                         "xfs_panic_mask_proc_handler",                  "int" ],
-        ["fs.xfs.rotorstep",                                          "proc_dointvec_minmax",                         "int" ],
-        ["fs.xfs.speculative_cow_prealloc_lifetime",                  "xfs_deprecated_dointvec_minmax",               "int" ],
-        ["fs.xfs.speculative_prealloc_lifetime",                      "proc_dointvec_minmax",                         "int" ],
-        ["fs.xfs.stats_clear",                                        "xfs_stats_clear_proc_handler",                 "int" ],
-        ["fs.xfs.xfssyncd_centisecs",                                 "proc_dointvec_minmax",                         "int" ],
-        ["kernel.acct",                                               "proc_dointvec",                                "int" ],
-        ["kernel.acpi_video_flags",                                   "proc_doulongvec_minmax",                       "long"],
-        ["kernel.apparmor_display_secid_mode",                        "apparmor_dointvec",                            "int" ],
-        ["kernel.arch",                                               "proc_do_uts_string",                           "str" ],
-        ["kernel.auto_msgmni",                                        "proc_ipc_auto_msgmni",                         "int" ],
-        ["kernel.bootloader_type",                                    "proc_dointvec",                                "int" ],
-        ["kernel.bootloader_version",                                 "proc_dointvec",                                "int" ],
-        ["kernel.bpf_stats_enabled",                                  "bpf_stats_handler",                            "int" ],
-        ["kernel.cad_pid",                                            "proc_do_cad_pid",                              "int" ],
-        ["kernel.cap_last_cap",                                       "proc_dointvec",                                "int" ],
-        ["kernel.core_pattern",                                       "proc_dostring_coredump",                       "str" ],
-        ["kernel.core_pipe_limit",                                    "proc_dointvec",                                "int" ],
-        ["kernel.core_uses_pid",                                      "proc_dointvec",                                "int" ],
-        ["kernel.ctrl-alt-del",                                       "proc_dointvec",                                "int" ],
-        ["kernel.dmesg_restrict",                                     "proc_dointvec_minmax_sysadmin",                "int" ],
-        ["kernel.domainname",                                         "proc_do_uts_string",                           "str" ],
-        ["kernel.firmware_config.force_sysfs_fallback",               "proc_douintvec_minmax",                        "int" ],
-        ["kernel.firmware_config.ignore_sysfs_fallback",              "proc_douintvec_minmax",                        "int" ],
-        ["kernel.ftrace_dump_on_oops",                                "proc_dointvec",                                "int" ],
-        ["kernel.ftrace_enabled",                                     "ftrace_enable_sysctl",                         "int" ],
-        ["kernel.hardlockup_all_cpu_backtrace",                       "proc_dointvec_minmax",                         "int" ],
-        ["kernel.hardlockup_panic",                                   "proc_dointvec_minmax",                         "int" ],
-        ["kernel.hostname",                                           "proc_do_uts_string",                           "str" ],
-        ["kernel.hotplug",                                            "proc_dostring",                                "str" ],
-        ["kernel.hung_task_all_cpu_backtrace",                        "proc_dointvec_minmax",                         "int" ],
-        ["kernel.hung_task_check_count",                              "proc_dointvec_minmax",                         "int" ],
-        ["kernel.hung_task_check_interval_secs",                      "proc_dohung_task_timeout_secs",                "long"],
-        ["kernel.hung_task_panic",                                    "proc_dointvec_minmax",                         "int" ],
-        ["kernel.hung_task_timeout_secs",                             "proc_dohung_task_timeout_secs",                "long"],
-        ["kernel.hung_task_warnings",                                 "proc_dointvec_minmax",                         "int" ],
-        ["kernel.hyperv_record_panic_msg",                            "proc_dointvec_minmax",                         "int" ],
-        ["kernel.ignore-unaligned-usertrap",                          "proc_dointvec",                                "int" ],
-        ["kernel.io_delay_type",                                      "proc_dointvec",                                "int" ],
-        ["kernel.kdump_on_fatal_mca",                                 "proc_dointvec",                                "int" ],
-        ["kernel.kdump_on_init",                                      "proc_dointvec",                                "int" ],
-        ["kernel.kexec_load_disabled",                                "proc_dointvec_minmax",                         "int" ],
-        ["kernel.keys.gc_delay",                                      "proc_dointvec_minmax",                         "int" ],
-        ["kernel.keys.maxbytes",                                      "proc_dointvec_minmax",                         "int" ],
-        ["kernel.keys.maxkeys",                                       "proc_dointvec_minmax",                         "int" ],
-        ["kernel.keys.persistent_keyring_expiry",                     "proc_dointvec_minmax",                         "int" ],
-        ["kernel.keys.root_maxbytes",                                 "proc_dointvec_minmax",                         "int" ],
-        ["kernel.keys.root_maxkeys",                                  "proc_dointvec_minmax",                         "int" ],
-        ["kernel.kptr_restrict",                                      "proc_dointvec_minmax_sysadmin",                "int" ],
-        ["kernel.latencytop",                                         "sysctl_latencytop",                            "int" ],
-        ["kernel.loadpin.enforce",                                    "proc_dointvec_minmax",                         "int" ],
-        ["kernel.lock_stat",                                          "proc_dointvec",                                "int" ],
-        ["kernel.max_lock_depth",                                     "proc_dointvec",                                "int" ],
-        ["kernel.max_rcu_stall_to_panic",                             "proc_dointvec_minmax",                         "int" ],
-        ["kernel.modprobe",                                           "proc_dostring",                                "str" ],
-        ["kernel.modules_disabled",                                   "proc_dointvec_minmax",                         "int" ],
-        ["kernel.msg_next_id",                                        "proc_dointvec_minmax",                         "int" ],
-        ["kernel.msg_next_id",                                        "proc_ipc_dointvec_minmax",                     "int" ],
-        ["kernel.msgmax",                                             "proc_dointvec_minmax",                         "int" ],
-        ["kernel.msgmax",                                             "proc_ipc_dointvec_minmax",                     "int" ],
-        ["kernel.msgmnb",                                             "proc_dointvec_minmax",                         "int" ],
-        ["kernel.msgmnb",                                             "proc_ipc_dointvec_minmax",                     "int" ],
-        ["kernel.msgmni",                                             "proc_dointvec_minmax",                         "int" ],
-        ["kernel.msgmni",                                             "proc_ipc_dointvec_minmax",                     "int" ],
-        ["kernel.ngroups_max",                                        "proc_dointvec",                                "int" ],
-        ["kernel.nmi_watchdog",                                       "proc_nmi_watchdog",                            "int" ],
-        ["kernel.nmi_wd_lpm_factor",                                  "proc_douintvec_minmax",                        "int" ],
-        ["kernel.ns_last_pid",                                        "pid_ns_ctl_handler",                           "int" ],
-        ["kernel.numa_balancing",                                     "sysctl_numa_balancing",                        "int" ],
-        ["kernel.numa_balancing_promote_rate_limit_MBps",             "proc_dointvec_minmax",                         "int" ],
-        ["kernel.oops_all_cpu_backtrace",                             "proc_dointvec_minmax",                         "int" ],
-        ["kernel.oops_limit",                                         "proc_douintvec",                               "int" ],
-        ["kernel.osrelease",                                          "proc_do_uts_string",                           "str" ],
-        ["kernel.ostype",                                             "proc_do_uts_string",                           "str" ],
-        ["kernel.overflowgid",                                        "proc_dointvec_minmax",                         "int" ],
-        ["kernel.overflowuid",                                        "proc_dointvec_minmax",                         "int" ],
-        ["kernel.panic",                                              "proc_dointvec",                                "int" ],
-        ["kernel.panic_on_io_nmi",                                    "proc_dointvec",                                "int" ],
-        ["kernel.panic_on_oops",                                      "proc_dointvec",                                "int" ],
-        ["kernel.panic_on_rcu_stall",                                 "proc_dointvec_minmax",                         "int" ],
-        ["kernel.panic_on_stackoverflow",                             "proc_dointvec",                                "int" ],
-        ["kernel.panic_on_unrecovered_nmi",                           "proc_dointvec",                                "int" ],
-        ["kernel.panic_on_warn",                                      "proc_dointvec_minmax",                         "int" ],
-        ["kernel.panic_print",                                        "proc_doulongvec_minmax",                       "long"],
-        ["kernel.perf_cpu_time_max_percent",                          "perf_cpu_time_max_percent_handler",            "int" ],
-        ["kernel.perf_event_max_contexts_per_stack",                  "perf_event_max_stack_handler",                 "int" ],
-        ["kernel.perf_event_max_sample_rate",                         "perf_proc_update_handler",                     "int" ],
-        ["kernel.perf_event_max_stack",                               "perf_event_max_stack_handler",                 "int" ],
-        ["kernel.perf_event_mlock_kb",                                "proc_dointvec",                                "int" ],
-        ["kernel.perf_event_paranoid",                                "proc_dointvec",                                "int" ],
-        ["kernel.perf_user_access",                                   "armv8pmu_proc_user_access_handler",            "int" ],
-        ["kernel.pid_max",                                            "proc_dointvec_minmax",                         "int" ],
-        ["kernel.poweroff_cmd",                                       "proc_dostring",                                "str" ],
-        ["kernel.powersave-nap",                                      "proc_dointvec",                                "int" ],
-        ["kernel.print-fatal-signals",                                "proc_dointvec",                                "int" ],
-        ["kernel.printk",                                             "proc_dointvec",                                "int" ],
-        ["kernel.printk_delay",                                       "proc_dointvec_minmax",                         "int" ],
-        ["kernel.printk_devkmsg",                                     "devkmsg_sysctl_set_loglvl",                    "str" ],
-        ["kernel.printk_ratelimit",                                   "proc_dointvec_jiffies",                        "int" ],
-        ["kernel.printk_ratelimit_burst",                             "proc_dointvec",                                "int" ],
-        ["kernel.prove_locking",                                      "proc_dointvec",                                "int" ],
-        ["kernel.pty.max",                                            "proc_dointvec_minmax",                         "int" ],
-        ["kernel.pty.nr",                                             "proc_dointvec",                                "int" ],
-        ["kernel.pty.reserve",                                        "proc_dointvec_minmax",                         "int" ],
-        ["kernel.random.add_interrupt_avg_cycles",                    "proc_doulongvec_minmax",                       "long"],
-        ["kernel.random.add_interrupt_avg_deviation",                 "proc_doulongvec_minmax",                       "long"],
-        ["kernel.random.boot_id",                                     "proc_do_uuid",                                 "int" ],
-        ["kernel.random.entropy_avail",                               "proc_do_entropy",                              "int" ],
-        ["kernel.random.entropy_avail",                               "proc_dointvec",                                "int" ],
-        ["kernel.random.poolsize",                                    "proc_dointvec",                                "int" ],
-        ["kernel.random.read_wakeup_threshold",                       "proc_dointvec_minmax",                         "int" ],
-        ["kernel.random.urandom_min_reseed_secs",                     "proc_do_rointvec",                             "int" ],
-        ["kernel.random.urandom_min_reseed_secs",                     "proc_dointvec",                                "int" ],
-        ["kernel.random.uuid",                                        "proc_do_uuid",                                 "int" ],
-        ["kernel.random.write_wakeup_threshold",                      "proc_do_rointvec",                             "int" ],
-        ["kernel.random.write_wakeup_threshold",                      "proc_dointvec_minmax",                         "int" ],
-        ["kernel.randomize_va_space",                                 "proc_dointvec",                                "int" ],
-        ["kernel.real-root-dev",                                      "proc_dointvec",                                "int" ],
-        ["kernel.reboot-cmd",                                         "proc_dostring",                                "str" ],
-        ["kernel.sched_autogroup_enabled",                            "proc_dointvec_minmax",                         "int" ],
-        ["kernel.sched_cfs_bandwidth_slice_us",                       "proc_dointvec_minmax",                         "int" ],
-        ["kernel.sched_child_runs_first",                             "proc_dointvec",                                "int" ],
-        ["kernel.sched_deadline_period_max_us",                       "proc_douintvec_minmax",                        "int" ],
-        ["kernel.sched_deadline_period_min_us",                       "proc_douintvec_minmax",                        "int" ],
-        ["kernel.sched_energy_aware",                                 "sched_energy_aware_handler",                   "int" ],
-        ["kernel.sched_itmt_enabled",                                 "sched_itmt_update_handler",                    "int" ],
-        ["kernel.sched_rr_timeslice_ms",                              "sched_rr_handler",                             "int" ],
-        ["kernel.sched_rt_period_us",                                 "sched_rt_handler",                             "int" ],
-        ["kernel.sched_rt_runtime_us",                                "sched_rt_handler",                             "int" ],
-        ["kernel.sched_schedstats",                                   "sysctl_schedstats",                            "int" ],
-        ["kernel.sched_util_clamp_max",                               "sysctl_sched_uclamp_handler",                  "int" ],
-        ["kernel.sched_util_clamp_min",                               "sysctl_sched_uclamp_handler",                  "int" ],
-        ["kernel.sched_util_clamp_min_rt_default",                    "sysctl_sched_uclamp_handler",                  "int" ],
-        ["kernel.scons-poweroff",                                     "proc_dointvec",                                "int" ],
-        ["kernel.seccomp.actions_avail",                              "proc_dostring",                                "str" ],
-        ["kernel.seccomp.actions_logged",                             "seccomp_actions_logged_handler",               "str" ],
-        ["kernel.sem",                                                "proc_ipc_sem_dointvec",                        "int" ],
-        ["kernel.sem_next_id",                                        "proc_dointvec_minmax",                         "int" ],
-        ["kernel.sem_next_id",                                        "proc_ipc_dointvec_minmax",                     "int" ],
-        ["kernel.sem_next_id",                                        "proc_ipc_dointvec_minmax",                     "int" ],
-        ["kernel.sg-big-buff",                                        "proc_dointvec",                                "int" ],
-        ["kernel.shm_next_id",                                        "proc_dointvec_minmax",                         "int" ],
-        ["kernel.shm_rmid_forced",                                    "proc_ipc_dointvec_minmax_orphans",             "int" ],
-        ["kernel.shmall",                                             "proc_doulongvec_minmax",                       "long"],
-        ["kernel.shmall",                                             "proc_ipc_doulongvec_minmax",                   "long"],
-        ["kernel.shmmax",                                             "proc_doulongvec_minmax",                       "long"],
-        ["kernel.shmmax",                                             "proc_ipc_doulongvec_minmax",                   "long"],
-        ["kernel.shmmni",                                             "proc_ipc_dointvec_minmax",                     "int" ],
-        ["kernel.soft-power",                                         "proc_dointvec",                                "int" ],
-        ["kernel.soft_watchdog",                                      "proc_soft_watchdog",                           "int" ],
-        ["kernel.softlockup_all_cpu_backtrace",                       "proc_dointvec_minmax",                         "int" ],
-        ["kernel.softlockup_panic",                                   "proc_dointvec_minmax",                         "int" ],
-        ["kernel.spin_retry",                                         "proc_dointvec",                                "int" ],
-        ["kernel.split_lock_mitigate",                                "proc_douintvec_minmax",                        "int" ],
-        ["kernel.stack_erasing",                                      "stack_erasing_sysctl",                         "int" ],
-        ["kernel.stack_tracer_enabled",                               "stack_trace_sysctl",                           "int" ],
-        ["kernel.stop-a",                                             "proc_dointvec",                                "int" ],
-        ["kernel.sysctl_writes_strict",                               "proc_dointvec_minmax",                         "int" ],
-        ["kernel.sysrq",                                              "sysrq_sysctl_handler",                         "int" ],
-        ["kernel.tainted",                                            "proc_taint",                                   "long"],
-        ["kernel.task_delayacct",                                     "sysctl_delayacct",                             "int" ],
-        ["kernel.threads-max",                                        "sysctl_max_threads",                           "int" ],
-        ["kernel.timer_migration",                                    "timer_migration_handler",                      "int" ],
-        ["kernel.traceoff_on_warning",                                "proc_dointvec",                                "int" ],
-        ["kernel.tracepoint_printk",                                  "proc_dointvec",                                "int" ],
-        ["kernel.tsb-ratio",                                          "proc_dointvec",                                "int" ],
-        ["kernel.unaligned-dump-stack",                               "proc_dointvec",                                "int" ],
-        ["kernel.unaligned-trap",                                     "proc_dointvec",                                "int" ],
-        ["kernel.unknown_nmi_panic",                                  "proc_dointvec",                                "int" ],
-        ["kernel.unprivileged_bpf_disabled",                          "bpf_unpriv_handler",                           "int" ],
-        ["kernel.unprivileged_userns_apparmor_policy",                "apparmor_dointvec",                            "int" ],
-        ["kernel.usermodehelper.bset",                                "proc_cap_handler",                             "long"],
-        ["kernel.usermodehelper.inheritable",                         "proc_cap_handler",                             "long"],
-        ["kernel.userprocess_debug",                                  "proc_dointvec",                                "int" ],
-        ["kernel.version",                                            "proc_do_uts_string",                           "str" ],
-        ["kernel.warn_limit",                                         "proc_douintvec",                               "int" ],
-        ["kernel.watchdog",                                           "proc_watchdog",                                "int" ],
-        ["kernel.watchdog_cpumask",                                   "proc_watchdog_cpumask",                        "int" ],
-        ["kernel.watchdog_thresh",                                    "proc_watchdog_thresh",                         "int" ],
-        ["kernel.yama.ptrace_scope",                                  "yama_dointvec_minmax",                         "int" ],
-        ["net.appletalk.aarp-expiry-time",                            "proc_dointvec_jiffies",                        "int" ],
-        ["net.appletalk.aarp-resolve-time",                           "proc_dointvec_jiffies",                        "int" ],
-        ["net.appletalk.aarp-retransmit-limit",                       "proc_dointvec",                                "int" ],
-        ["net.appletalk.aarp-tick-time",                              "proc_dointvec_jiffies",                        "int" ],
-        ["net.ax25.ax25_default_mode",                                "proc_dointvec_minmax",                         "int" ],
-        ["net.ax25.backoff_type",                                     "proc_dointvec_minmax",                         "int" ],
-        ["net.ax25.connect_mode",                                     "proc_dointvec_minmax",                         "int" ],
-        ["net.ax25.dama_slave_timeout",                               "proc_dointvec_minmax",                         "int" ],
-        ["net.ax25.extended_window_size",                             "proc_dointvec_minmax",                         "int" ],
-        ["net.ax25.idle_timeout",                                     "proc_dointvec_minmax",                         "int" ],
-        ["net.ax25.ip_default_mode",                                  "proc_dointvec_minmax",                         "int" ],
-        ["net.ax25.maximum_packet_length",                            "proc_dointvec_minmax",                         "int" ],
-        ["net.ax25.maximum_retry_count",                              "proc_dointvec_minmax",                         "int" ],
-        ["net.ax25.protocol",                                         "proc_dointvec_minmax",                         "int" ],
-        ["net.ax25.standard_window_size",                             "proc_dointvec_minmax",                         "int" ],
-        ["net.ax25.t1_timeout",                                       "proc_dointvec_minmax",                         "int" ],
-        ["net.ax25.t2_timeout",                                       "proc_dointvec_minmax",                         "int" ],
-        ["net.ax25.t3_timeout",                                       "proc_dointvec_minmax",                         "int" ],
-        ["net.bridge.bridge-nf-call-arptables",                       "brnf_sysctl_call_tables",                      "int" ],
-        ["net.bridge.bridge-nf-call-ip6tables",                       "brnf_sysctl_call_tables",                      "int" ],
-        ["net.bridge.bridge-nf-call-iptables",                        "brnf_sysctl_call_tables",                      "int" ],
-        ["net.bridge.bridge-nf-filter-pppoe-tagged",                  "brnf_sysctl_call_tables",                      "int" ],
-        ["net.bridge.bridge-nf-filter-vlan-tagged",                   "brnf_sysctl_call_tables",                      "int" ],
-        ["net.bridge.bridge-nf-pass-vlan-input-dev",                  "brnf_sysctl_call_tables",                      "int" ],
-        ["net.core.bpf_jit_enable",                                   "proc_dointvec_minmax_bpf_enable",              "int" ],
-        ["net.core.bpf_jit_harden",                                   "proc_dointvec_minmax_bpf_restricted",          "int" ],
-        ["net.core.bpf_jit_kallsyms",                                 "proc_dointvec_minmax_bpf_restricted",          "int" ],
-        ["net.core.bpf_jit_limit",                                    "proc_dointvec_minmax_bpf_restricted",          "int" ],
-        ["net.core.busy_poll",                                        "proc_dointvec_minmax",                         "int" ],
-        ["net.core.busy_read",                                        "proc_dointvec_minmax",                         "int" ],
-        ["net.core.default_qdisc",                                    "set_default_qdisc",                            "str" ],
-        ["net.core.dev_weight",                                       "proc_do_dev_weight",                           "int" ],
-        ["net.core.dev_weight_rx_bias",                               "proc_do_dev_weight",                           "int" ],
-        ["net.core.dev_weight_tx_bias",                               "proc_do_dev_weight",                           "int" ],
-        ["net.core.devconf_inherit_init_net",                         "proc_dointvec_minmax",                         "int" ],
-        ["net.core.fb_tunnels_only_for_init_net",                     "proc_dointvec_minmax",                         "int" ],
-        ["net.core.flow_limit_cpu_bitmap",                            "flow_limit_cpu_sysctl",                        "int" ],
-        ["net.core.flow_limit_table_len",                             "flow_limit_table_len_sysctl",                  "int" ],
-        ["net.core.gro_normal_batch",                                 "proc_dointvec_minmax",                         "int" ],
-        ["net.core.high_order_alloc_disable",                         "proc_do_static_key",                           "int" ],
-        ["net.core.max_skb_frags",                                    "proc_dointvec_minmax",                         "int" ],
-        ["net.core.message_burst",                                    "proc_dointvec",                                "int" ],
-        ["net.core.message_cost",                                     "proc_dointvec_jiffies",                        "int" ],
-        ["net.core.netdev_budget",                                    "proc_dointvec",                                "int" ],
-        ["net.core.netdev_budget_usecs",                              "proc_dointvec_minmax",                         "int" ],
-        ["net.core.netdev_max_backlog",                               "proc_dointvec",                                "int" ],
-        ["net.core.netdev_rss_key",                                   "proc_do_rss_key",                              "int" ],
-        ["net.core.netdev_tstamp_prequeue",                           "proc_dointvec",                                "int" ],
-        ["net.core.netdev_unregister_timeout_secs",                   "proc_dointvec_minmax",                         "int" ],
-        ["net.core.optmem_max",                                       "proc_dointvec",                                "int" ],
-        ["net.core.rmem_default",                                     "proc_dointvec_minmax",                         "int" ],
-        ["net.core.rmem_max",                                         "proc_dointvec_minmax",                         "int" ],
-        ["net.core.rps_sock_flow_entries",                            "rps_sock_flow_sysctl",                         "int" ],
-        ["net.core.skb_defer_max",                                    "proc_dointvec_minmax",                         "int" ],
-        ["net.core.somaxconn",                                        "proc_dointvec_minmax",                         "int" ],
-        ["net.core.tstamp_allow_data",                                "proc_dointvec_minmax",                         "int" ],
-        ["net.core.txrehash",                                         "proc_dou8vec_minmax",                          "char"],
-        ["net.core.warnings",                                         "proc_dointvec",                                "int" ],
-        ["net.core.wmem_default",                                     "proc_dointvec_minmax",                         "int" ],
-        ["net.core.wmem_max",                                         "proc_dointvec_minmax",                         "int" ],
-        ["net.core.xfrm_acq_expires",                                 "proc_dointvec",                                "int" ],
-        ["net.core.xfrm_aevent_etime",                                "proc_douintvec",                               "int" ],
-        ["net.core.xfrm_aevent_rseqth",                               "proc_douintvec",                               "int" ],
-        ["net.core.xfrm_larval_drop",                                 "proc_dointvec",                                "int" ],
-        ["net.dccp.default.request_retries",                          "proc_dointvec_minmax",                         "int" ],
-        ["net.dccp.default.retries1",                                 "proc_dointvec_minmax",                         "int" ],
-        ["net.dccp.default.retries2",                                 "proc_dointvec_minmax",                         "int" ],
-        ["net.dccp.default.rx_ccid",                                  "proc_dointvec_minmax",                         "int" ],
-        ["net.dccp.default.seq_window",                               "proc_doulongvec_minmax",                       "long"],
-        ["net.dccp.default.sync_ratelimit",                           "proc_dointvec_ms_jiffies",                     "int" ],
-        ["net.dccp.default.tx_ccid",                                  "proc_dointvec_minmax",                         "int" ],
-        ["net.dccp.default.tx_qlen",                                  "proc_dointvec_minmax",                         "int" ],
-        ["net.ieee802154.6lowpan.6lowpanfrag_high_thresh",            "proc_doulongvec_minmax",                       "long"],
-        ["net.ieee802154.6lowpan.6lowpanfrag_low_thresh",             "proc_doulongvec_minmax",                       "long"],
-        ["net.ieee802154.6lowpan.6lowpanfrag_secret_interval",        "proc_dointvec_jiffies",                        "int" ],
-        ["net.ieee802154.6lowpan.6lowpanfrag_time",                   "proc_dointvec_jiffies",                        "int" ],
-        ["net.ipv4.cipso_cache_bucket_size",                          "proc_dointvec",                                "int" ],
-        ["net.ipv4.cipso_cache_enable",                               "proc_dointvec",                                "int" ],
-        ["net.ipv4.cipso_rbm_optfmt",                                 "proc_dointvec",                                "int" ],
-        ["net.ipv4.cipso_rbm_strictvalid",                            "proc_dointvec",                                "int" ],
-        ["net.ipv4.fib_multipath_hash_fields",                        "proc_fib_multipath_hash_fields",               "int" ],
-        ["net.ipv4.fib_multipath_hash_policy",                        "proc_fib_multipath_hash_policy",               "char"],
-        ["net.ipv4.fib_multipath_use_neigh",                          "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.fib_notify_on_flag_change",                        "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.fib_sync_mem",                                     "proc_douintvec_minmax",                        "int" ],
-        ["net.ipv4.fwmark_reflect",                                   "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.icmp_echo_enable_probe",                           "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.icmp_echo_ignore_all",                             "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.icmp_echo_ignore_all",                             "proc_dointvec",                                "int" ],
-        ["net.ipv4.icmp_echo_ignore_broadcasts",                      "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.icmp_echo_ignore_broadcasts",                      "proc_dointvec",                                "int" ],
-        ["net.ipv4.icmp_errors_use_inbound_ifaddr",                   "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.icmp_errors_use_inbound_ifaddr",                   "proc_dointvec",                                "int" ],
-        ["net.ipv4.icmp_ignore_bogus_error_responses",                "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.icmp_ignore_bogus_error_responses",                "proc_dointvec",                                "int" ],
-        ["net.ipv4.icmp_msgs_burst",                                  "proc_dointvec_minmax",                         "int" ],
-        ["net.ipv4.icmp_msgs_per_sec",                                "proc_dointvec_minmax",                         "int" ],
-        ["net.ipv4.icmp_ratelimit",                                   "proc_dointvec_ms_jiffies",                     "int" ],
-        ["net.ipv4.icmp_ratemask",                                    "proc_dointvec",                                "int" ],
-        ["net.ipv4.igmp_link_local_mcast_reports",                    "proc_dointvec",                                "int" ],
-        ["net.ipv4.igmp_link_local_mcast_reports",                    "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.igmp_max_memberships",                             "proc_dointvec",                                "int" ],
-        ["net.ipv4.igmp_max_msf",                                     "proc_dointvec",                                "int" ],
-        ["net.ipv4.igmp_qrv",                                         "proc_dointvec_minmax",                         "int" ],
-        ["net.ipv4.inet_peer_maxttl",                                 "proc_dointvec_jiffies",                        "int" ],
-        ["net.ipv4.inet_peer_minttl",                                 "proc_dointvec_jiffies",                        "int" ],
-        ["net.ipv4.inet_peer_threshold",                              "proc_dointvec",                                "int" ],
-        ["net.ipv4.ip_autobind_reuse",                                "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.ip_default_ttl",                                   "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.ip_dynaddr",                                       "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.ip_early_demux",                                   "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.ip_forward",                                       "devinet_sysctl_forward",                       "int" ],
-        ["net.ipv4.ip_forward_update_priority",                       "ipv4_fwd_update_priority",                     "char"],
-        ["net.ipv4.ip_forward_use_pmtu",                              "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.ip_local_port_range",                              "ipv4_local_port_range",                        "int" ],
-        ["net.ipv4.ip_local_reserved_ports",                          "proc_do_large_bitmap",                         "str" ],
-        ["net.ipv4.ip_no_pmtu_disc",                                  "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.ip_nonlocal_bind",                                 "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.ip_unprivileged_port_start",                       "ipv4_privileged_ports",                        "int" ],
-        ["net.ipv4.ipfrag_high_thresh",                               "proc_doulongvec_minmax",                       "long"],
-        ["net.ipv4.ipfrag_low_thresh",                                "proc_doulongvec_minmax",                       "long"],
-        ["net.ipv4.ipfrag_max_dist",                                  "proc_dointvec_minmax",                         "int" ],
-        ["net.ipv4.ipfrag_secret_interval",                           "proc_dointvec_jiffies",                        "int" ],
-        ["net.ipv4.ipfrag_time",                                      "proc_dointvec_jiffies",                        "int" ],
-        ["net.ipv4.nexthop_compat_mode",                              "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.ping_group_range",                                 "ipv4_ping_group_range",                        "int" ],
-        ["net.ipv4.raw_l3mdev_accept",                                "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.route.error_burst",                                "proc_dointvec",                                "int" ],
-        ["net.ipv4.route.error_cost",                                 "proc_dointvec",                                "int" ],
-        ["net.ipv4.route.flush",                                      "ipv4_sysctl_rtcache_flush",                    "int" ],
-        ["net.ipv4.route.gc_elasticity",                              "proc_dointvec",                                "int" ],
-        ["net.ipv4.route.gc_interval",                                "proc_dointvec_jiffies",                        "int" ],
-        ["net.ipv4.route.gc_min_interval",                            "proc_dointvec_jiffies",                        "int" ],
-        ["net.ipv4.route.gc_min_interval_ms",                         "proc_dointvec_ms_jiffies",                     "int" ],
-        ["net.ipv4.route.gc_thresh",                                  "proc_dointvec",                                "int" ],
-        ["net.ipv4.route.gc_timeout",                                 "proc_dointvec_jiffies",                        "int" ],
-        ["net.ipv4.route.max_size",                                   "proc_dointvec",                                "int" ],
-        ["net.ipv4.route.min_adv_mss",                                "proc_dointvec",                                "int" ],
-        ["net.ipv4.route.min_pmtu",                                   "proc_dointvec_minmax",                         "int" ],
-        ["net.ipv4.route.mtu_expires",                                "proc_dointvec_jiffies",                        "int" ],
-        ["net.ipv4.route.redirect_load",                              "proc_dointvec",                                "int" ],
-        ["net.ipv4.route.redirect_number",                            "proc_dointvec",                                "int" ],
-        ["net.ipv4.route.redirect_silence",                           "proc_dointvec",                                "int" ],
-        ["net.ipv4.tcp_abort_on_overflow",                            "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_adv_win_scale",                                "proc_dointvec_minmax",                         "int" ],
-        ["net.ipv4.tcp_allowed_congestion_control",                   "proc_allowed_congestion_control",              "str" ],
-        ["net.ipv4.tcp_app_win",                                      "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_autocorking",                                  "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_available_congestion_control",                 "proc_tcp_available_congestion_control",        "str" ],
-        ["net.ipv4.tcp_available_ulp",                                "proc_tcp_available_ulp",                       "str" ],
-        ["net.ipv4.tcp_base_mss",                                     "proc_dointvec",                                "int" ],
-        ["net.ipv4.tcp_challenge_ack_limit",                          "proc_dointvec",                                "int" ],
-        ["net.ipv4.tcp_child_ehash_entries",                          "proc_douintvec_minmax",                        "int" ],
-        ["net.ipv4.tcp_comp_sack_delay_ns",                           "proc_doulongvec_minmax",                       "long"],
-        ["net.ipv4.tcp_comp_sack_nr",                                 "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_comp_sack_slack_ns",                           "proc_doulongvec_minmax",                       "long"],
-        ["net.ipv4.tcp_congestion_control",                           "proc_tcp_congestion_control",                  "bytes16"],
-        ["net.ipv4.tcp_dsack",                                        "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_early_demux",                                  "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_early_retrans",                                "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_ecn",                                          "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_ecn_fallback",                                 "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_ehash_entries",                                "proc_tcp_ehash_entries",                       "int" ],
-        ["net.ipv4.tcp_fack",                                         "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_fastopen",                                     "proc_dointvec",                                "int" ],
-        ["net.ipv4.tcp_fastopen_blackhole_timeout_sec",               "proc_tfo_blackhole_detect_timeout",            "int" ],
-        ["net.ipv4.tcp_fastopen_key",                                 "proc_tcp_fastopen_key",                        "bytes74"],
-        ["net.ipv4.tcp_fin_timeout",                                  "proc_dointvec_jiffies",                        "int" ],
-        ["net.ipv4.tcp_frto",                                         "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_fwmark_accept",                                "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_invalid_ratelimit",                            "proc_dointvec_ms_jiffies",                     "int" ],
-        ["net.ipv4.tcp_keepalive_intvl",                              "proc_dointvec_jiffies",                        "int" ],
-        ["net.ipv4.tcp_keepalive_probes",                             "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_keepalive_time",                               "proc_dointvec_jiffies",                        "int" ],
-        ["net.ipv4.tcp_l3mdev_accept",                                "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_limit_output_bytes",                           "proc_dointvec",                                "int" ],
-        ["net.ipv4.tcp_low_latency",                                  "proc_dointvec",                                "int" ],
-        ["net.ipv4.tcp_max_orphans",                                  "proc_dointvec",                                "int" ],
-        ["net.ipv4.tcp_max_reordering",                               "proc_dointvec",                                "int" ],
-        ["net.ipv4.tcp_max_syn_backlog",                              "proc_dointvec",                                "int" ],
-        ["net.ipv4.tcp_max_tw_buckets",                               "proc_dointvec",                                "int" ],
-        ["net.ipv4.tcp_mem",                                          "proc_doulongvec_minmax",                       "long"],
-        ["net.ipv4.tcp_migrate_req",                                  "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_min_rtt_wlen",                                 "proc_dointvec_minmax",                         "int" ],
-        ["net.ipv4.tcp_min_snd_mss",                                  "proc_dointvec_minmax",                         "int" ],
-        ["net.ipv4.tcp_min_tso_segs",                                 "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_moderate_rcvbuf",                              "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_mtu_probe_floor",                              "proc_dointvec_minmax",                         "int" ],
-        ["net.ipv4.tcp_mtu_probing",                                  "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_no_metrics_save",                              "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_no_ssthresh_metrics_save",                     "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_notsent_lowat",                                "proc_douintvec",                               "int" ],
-        ["net.ipv4.tcp_orphan_retries",                               "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_pacing_ca_ratio",                              "proc_dointvec_minmax",                         "int" ],
-        ["net.ipv4.tcp_pacing_ss_ratio",                              "proc_dointvec_minmax",                         "int" ],
-        ["net.ipv4.tcp_plb_cong_thresh",                              "proc_dointvec_minmax",                         "int" ],
-        ["net.ipv4.tcp_plb_enabled",                                  "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_plb_idle_rehash_rounds",                       "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_plb_rehash_rounds",                            "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_plb_suspend_rto_sec",                          "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_probe_interval",                               "proc_douintvec_minmax",                        "int" ],
-        ["net.ipv4.tcp_probe_threshold",                              "proc_dointvec",                                "int" ],
-        ["net.ipv4.tcp_recovery",                                     "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_reflect_tos",                                  "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_reordering",                                   "proc_dointvec",                                "int" ],
-        ["net.ipv4.tcp_retrans_collapse",                             "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_retries1",                                     "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_retries2",                                     "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_rfc1337",                                      "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_rmem",                                         "proc_dointvec_minmax",                         "int" ],
-        ["net.ipv4.tcp_sack",                                         "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_slow_start_after_idle",                        "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_stdurg",                                       "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_syn_retries",                                  "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_synack_retries",                               "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_syncookies",                                   "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_thin_linear_timeouts",                         "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_timestamps",                                   "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_tso_rtt_log",                                  "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_tso_win_divisor",                              "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_tw_reuse",                                     "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_window_scaling",                               "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.tcp_wmem",                                         "proc_dointvec_minmax",                         "int" ],
-        ["net.ipv4.tcp_workaround_signed_windows",                    "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.udp_child_hash_entries",                           "proc_douintvec_minmax",                        "int" ],
-        ["net.ipv4.udp_early_demux",                                  "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.udp_hash_entries",                                 "proc_udp_hash_entries",                        "int" ],
-        ["net.ipv4.udp_l3mdev_accept",                                "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv4.udp_mem",                                          "proc_doulongvec_minmax",                       "long"],
-        ["net.ipv4.udp_rmem_min",                                     "proc_dointvec_minmax",                         "int" ],
-        ["net.ipv4.udp_wmem_min",                                     "proc_dointvec_minmax",                         "int" ],
-        ["net.ipv4.vs.am_droprate",                                   "proc_dointvec",                                "int" ],
-        ["net.ipv4.vs.amemthresh",                                    "proc_dointvec",                                "int" ],
-        ["net.ipv4.vs.backup_only",                                   "proc_dointvec",                                "int" ],
-        ["net.ipv4.vs.cache_bypass",                                  "proc_dointvec",                                "int" ],
-        ["net.ipv4.vs.conn_reuse_mode",                               "proc_dointvec",                                "int" ],
-        ["net.ipv4.vs.conntrack",                                     "proc_dointvec",                                "int" ],
-        ["net.ipv4.vs.debug_level",                                   "proc_dointvec",                                "int" ],
-        ["net.ipv4.vs.drop_entry",                                    "proc_do_defense_mode",                         "int" ],
-        ["net.ipv4.vs.drop_packet",                                   "proc_do_defense_mode",                         "int" ],
-        ["net.ipv4.vs.est_cpulist",                                   "ipvs_proc_est_cpulist",                        "int" ],
-        ["net.ipv4.vs.est_nice",                                      "ipvs_proc_est_nice",                           "int" ],
-        ["net.ipv4.vs.expire_nodest_conn",                            "proc_dointvec",                                "int" ],
-        ["net.ipv4.vs.expire_quiescent_template",                     "proc_dointvec",                                "int" ],
-        ["net.ipv4.vs.ignore_tunneled",                               "proc_dointvec",                                "int" ],
-        ["net.ipv4.vs.lblc_expiration",                               "proc_dointvec_jiffies",                        "int" ],
-        ["net.ipv4.vs.lblcr_expiration",                              "proc_dointvec_jiffies",                        "int" ],
-        ["net.ipv4.vs.nat_icmp_send",                                 "proc_dointvec",                                "int" ],
-        ["net.ipv4.vs.pmtu_disc",                                     "proc_dointvec",                                "int" ],
-        ["net.ipv4.vs.run_estimation",                                "ipvs_proc_run_estimation",                     "int" ],
-        ["net.ipv4.vs.schedule_icmp",                                 "proc_dointvec",                                "int" ],
-        ["net.ipv4.vs.secure_tcp",                                    "proc_do_defense_mode",                         "int" ],
-        ["net.ipv4.vs.sloppy_sctp",                                   "proc_dointvec",                                "int" ],
-        ["net.ipv4.vs.sloppy_tcp",                                    "proc_dointvec",                                "int" ],
-        ["net.ipv4.vs.snat_reroute",                                  "proc_dointvec",                                "int" ],
-        ["net.ipv4.vs.sync_persist_mode",                             "proc_dointvec",                                "int" ],
-        ["net.ipv4.vs.sync_ports",                                    "proc_do_sync_ports",                           "int" ],
-        ["net.ipv4.vs.sync_qlen_max",                                 "proc_doulongvec_minmax",                       "long"],
-        ["net.ipv4.vs.sync_refresh_period",                           "proc_dointvec_jiffies",                        "int" ],
-        ["net.ipv4.vs.sync_retries",                                  "proc_dointvec_minmax",                         "int" ],
-        ["net.ipv4.vs.sync_sock_size",                                "proc_dointvec",                                "int" ],
-        ["net.ipv4.vs.sync_threshold",                                "proc_do_sync_threshold",                       "long"],
-        ["net.ipv4.vs.sync_version",                                  "proc_dointvec_minmax",                         "int" ],
-        ["net.ipv4.xfrm4_gc_thresh",                                  "proc_dointvec",                                "int" ],
-        ["net.ipv6.anycast_src_echo_reply",                           "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv6.auto_flowlabels",                                  "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv6.bindv6only",                                       "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv6.calipso_cache_bucket_size",                        "proc_dointvec",                                "int" ],
-        ["net.ipv6.calipso_cache_enable",                             "proc_dointvec",                                "int" ],
-        ["net.ipv6.fib_multipath_hash_fields",                        "proc_rt6_multipath_hash_fields",               "int" ],
-        ["net.ipv6.fib_multipath_hash_policy",                        "proc_rt6_multipath_hash_policy",               "char"],
-        ["net.ipv6.fib_notify_on_flag_change",                        "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv6.flowlabel_consistency",                            "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv6.flowlabel_reflect",                                "proc_dointvec_minmax",                         "int" ],
-        ["net.ipv6.flowlabel_state_ranges",                           "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv6.fwmark_reflect",                                   "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv6.icmp.echo_ignore_all",                             "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv6.icmp.echo_ignore_anycast",                         "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv6.icmp.echo_ignore_multicast",                       "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv6.icmp.ratelimit",                                   "proc_dointvec_ms_jiffies",                     "int" ],
-        ["net.ipv6.icmp.ratemask",                                    "proc_do_large_bitmap",                         "bytes256"],
-        ["net.ipv6.idgen_delay",                                      "proc_dointvec_jiffies",                        "int" ],
-        ["net.ipv6.idgen_retries",                                    "proc_dointvec",                                "int" ],
-        ["net.ipv6.ioam6_id",                                         "proc_douintvec_minmax",                        "int" ],
-        ["net.ipv6.ioam6_id_wide",                                    "proc_doulongvec_minmax",                       "long"],
-        ["net.ipv6.ip6frag_high_thresh",                              "proc_doulongvec_minmax",                       "long"],
-        ["net.ipv6.ip6frag_low_thresh",                               "proc_doulongvec_minmax",                       "long"],
-        ["net.ipv6.ip6frag_secret_interval",                          "proc_dointvec_jiffies",                        "int" ],
-        ["net.ipv6.ip6frag_time",                                     "proc_dointvec_jiffies",                        "int" ],
-        ["net.ipv6.ip_nonlocal_bind",                                 "proc_dou8vec_minmax",                          "char"],
-        ["net.ipv6.max_dst_opts_length",                              "proc_dointvec",                                "int" ],
-        ["net.ipv6.max_dst_opts_number",                              "proc_dointvec",                                "int" ],
-        ["net.ipv6.max_hbh_length",                                   "proc_dointvec",                                "int" ],
-        ["net.ipv6.max_hbh_opts_number",                              "proc_dointvec",                                "int" ],
-        ["net.ipv6.mld_max_msf",                                      "proc_dointvec",                                "int" ],
-        ["net.ipv6.mld_qrv",                                          "proc_dointvec_minmax",                         "int" ],
-        ["net.ipv6.route.flush",                                      "ipv6_sysctl_rtcache_flush",                    "int" ],
-        ["net.ipv6.route.gc_elasticity",                              "proc_dointvec_jiffies",                        "int" ],
-        ["net.ipv6.route.gc_interval",                                "proc_dointvec_jiffies",                        "int" ],
-        ["net.ipv6.route.gc_min_interval",                            "proc_dointvec_jiffies",                        "int" ],
-        ["net.ipv6.route.gc_min_interval_ms",                         "proc_dointvec_ms_jiffies",                     "int" ],
-        ["net.ipv6.route.gc_thresh",                                  "proc_dointvec",                                "int" ],
-        ["net.ipv6.route.gc_timeout",                                 "proc_dointvec_jiffies",                        "int" ],
-        ["net.ipv6.route.max_size",                                   "proc_dointvec",                                "int" ],
-        ["net.ipv6.route.min_adv_mss",                                "proc_dointvec",                                "int" ],
-        ["net.ipv6.route.mtu_expires",                                "proc_dointvec_jiffies",                        "int" ],
-        ["net.ipv6.route.skip_notify_on_dev_down",                    "proc_dointvec_minmax",                         "int" ],
-        ["net.ipv6.seg6_flowlabel",                                   "proc_dointvec",                                "int" ],
-        ["net.ipv6.xfrm6_gc_thresh",                                  "proc_dointvec",                                "int" ],
-        ["net.iw_cm.default_backlog",                                 "proc_dointvec",                                "int" ],
-        ["net.llc.llc2.timeout.ack",                                  "proc_dointvec_jiffies",                        "int" ],
-        ["net.llc.llc2.timeout.busy",                                 "proc_dointvec_jiffies",                        "int" ],
-        ["net.llc.llc2.timeout.p",                                    "proc_dointvec_jiffies",                        "int" ],
-        ["net.llc.llc2.timeout.rej",                                  "proc_dointvec_jiffies",                        "int" ],
-        ["net.mpls.conf.dev.input",                                   "mpls_conf_proc",                               "int" ],
-        ["net.mpls.conf.input",                                       "mpls_conf_proc",                               "int" ],
-        ["net.mpls.default_ttl",                                      "proc_dointvec_minmax",                         "int" ],
-        ["net.mpls.ip_ttl_propagate",                                 "proc_dointvec_minmax",                         "int" ],
-        ["net.mpls.platform_labels",                                  "mpls_platform_labels",                         "int" ],
-        ["net.mptcp.add_addr_timeout",                                "proc_dointvec_jiffies",                        "int" ],
-        ["net.mptcp.allow_join_initial_addr_port",                    "proc_dou8vec_minmax",                          "char"],
-        ["net.mptcp.checksum_enabled",                                "proc_dou8vec_minmax",                          "char"],
-        ["net.mptcp.enabled",                                         "proc_dou8vec_minmax",                          "char"],
-        ["net.mptcp.pm_type",                                         "proc_dou8vec_minmax",                          "char"],
-        ["net.mptcp.stale_loss_cnt",                                  "proc_douintvec_minmax",                        "int" ],
-        ["net.neigh.anycast_delay",                                   "neigh_proc_dointvec_userhz_jiffies",           "int" ],
-        ["net.neigh.app_solicit",                                     "neigh_proc_dointvec_zero_intmax",              "int" ],
-        ["net.neigh.base_reachable_time",                             "neigh_proc_dointvec_jiffies",                  "int" ],
-        ["net.neigh.base_reachable_time_ms",                          "neigh_proc_dointvec_ms_jiffies",               "int" ],
-        ["net.neigh.delay_first_probe_time",                          "neigh_proc_dointvec_jiffies",                  "int" ],
-        ["net.neigh.gc_interval",                                     "proc_dointvec_jiffies",                        "int" ],
-        ["net.neigh.gc_stale_time",                                   "neigh_proc_dointvec_jiffies",                  "int" ],
-        ["net.neigh.gc_thresh1",                                      "proc_dointvec_jiffies",                        "int" ],
-        ["net.neigh.gc_thresh2",                                      "proc_dointvec_jiffies",                        "int" ],
-        ["net.neigh.gc_thresh3",                                      "proc_dointvec_jiffies",                        "int" ],
-        ["net.neigh.interval_probe_time_ms",                          "neigh_proc_dointvec_ms_jiffies_positive",      "int" ],
-        ["net.neigh.locktime",                                        "neigh_proc_dointvec_userhz_jiffies",           "int" ],
-        ["net.neigh.mcast_resolicit",                                 "neigh_proc_dointvec_zero_intmax",              "int" ],
-        ["net.neigh.mcast_solicit",                                   "neigh_proc_dointvec_zero_intmax",              "int" ],
-        ["net.neigh.proxy_delay",                                     "neigh_proc_dointvec_userhz_jiffies",           "int" ],
-        ["net.neigh.proxy_qlen",                                      "neigh_proc_dointvec_zero_intmax",              "int" ],
-        ["net.neigh.retrans_time",                                    "neigh_proc_dointvec_userhz_jiffies",           "int" ],
-        ["net.neigh.retrans_time_ms",                                 "neigh_proc_dointvec_ms_jiffies",               "int" ],
-        ["net.neigh.ucast_solicit",                                   "neigh_proc_dointvec_zero_intmax",              "int" ],
-        ["net.neigh.unres_qlen",                                      "neigh_proc_dointvec_unres_qlen",               "int" ],
-        ["net.neigh.unres_qlen_bytes",                                "neigh_proc_dointvec_zero_intmax",              "int" ],
-        ["net.netfilter.nf_conntrack_acct",                           "proc_dou8vec_minmax",                          "char"],
-        ["net.netfilter.nf_conntrack_buckets",                        "nf_conntrack_hash_sysctl",                     "int" ],
-        ["net.netfilter.nf_conntrack_checksum",                       "proc_dou8vec_minmax",                          "char"],
-        ["net.netfilter.nf_conntrack_count",                          "proc_dointvec",                                "int" ],
-        ["net.netfilter.nf_conntrack_dccp_loose",                     "proc_dou8vec_minmax",                          "char"],
-        ["net.netfilter.nf_conntrack_dccp_timeout_closereq",          "proc_dointvec_jiffies",                        "int" ],
-        ["net.netfilter.nf_conntrack_dccp_timeout_closing",           "proc_dointvec_jiffies",                        "int" ],
-        ["net.netfilter.nf_conntrack_dccp_timeout_open",              "proc_dointvec_jiffies",                        "int" ],
-        ["net.netfilter.nf_conntrack_dccp_timeout_partopen",          "proc_dointvec_jiffies",                        "int" ],
-        ["net.netfilter.nf_conntrack_dccp_timeout_request",           "proc_dointvec_jiffies",                        "int" ],
-        ["net.netfilter.nf_conntrack_dccp_timeout_respond",           "proc_dointvec_jiffies",                        "int" ],
-        ["net.netfilter.nf_conntrack_dccp_timeout_timewait",          "proc_dointvec_jiffies",                        "int" ],
-        ["net.netfilter.nf_conntrack_events",                         "proc_dou8vec_minmax",                          "char"],
-        ["net.netfilter.nf_conntrack_expect_max",                     "proc_dointvec",                                "int" ],
-        ["net.netfilter.nf_conntrack_frag6_high_thresh",              "proc_doulongvec_minmax",                       "long"],
-        ["net.netfilter.nf_conntrack_frag6_low_thresh",               "proc_doulongvec_minmax",                       "long"],
-        ["net.netfilter.nf_conntrack_frag6_timeout",                  "proc_dointvec_jiffies",                        "int" ],
-        ["net.netfilter.nf_conntrack_generic_timeout",                "proc_dointvec_jiffies",                        "int" ],
-        ["net.netfilter.nf_conntrack_gre_timeout",                    "proc_dointvec_jiffies",                        "int" ],
-        ["net.netfilter.nf_conntrack_gre_timeout_stream",             "proc_dointvec_jiffies",                        "int" ],
-        ["net.netfilter.nf_conntrack_icmp_timeout",                   "proc_dointvec_jiffies",                        "int" ],
-        ["net.netfilter.nf_conntrack_icmpv6_timeout",                 "proc_dointvec_jiffies",                        "int" ],
-        ["net.netfilter.nf_conntrack_log_invalid",                    "proc_dou8vec_minmax",                          "char"],
-        ["net.netfilter.nf_conntrack_max",                            "proc_dointvec",                                "int" ],
-        ["net.netfilter.nf_conntrack_max",                            "proc_dointvec",                                "int" ],
-        ["net.netfilter.nf_conntrack_sctp_timeout_closed",            "proc_dointvec_jiffies",                        "int" ],
-        ["net.netfilter.nf_conntrack_sctp_timeout_cookie_echoed",     "proc_dointvec_jiffies",                        "int" ],
-        ["net.netfilter.nf_conntrack_sctp_timeout_cookie_wait",       "proc_dointvec_jiffies",                        "int" ],
-        ["net.netfilter.nf_conntrack_sctp_timeout_established",       "proc_dointvec_jiffies",                        "int" ],
-        ["net.netfilter.nf_conntrack_sctp_timeout_heartbeat_sent",    "proc_dointvec_jiffies",                        "int" ],
-        ["net.netfilter.nf_conntrack_sctp_timeout_shutdown_ack_sent", "proc_dointvec_jiffies",                        "int" ],
-        ["net.netfilter.nf_conntrack_sctp_timeout_shutdown_recd",     "proc_dointvec_jiffies",                        "int" ],
-        ["net.netfilter.nf_conntrack_sctp_timeout_shutdown_sent",     "proc_dointvec_jiffies",                        "int" ],
-        ["net.netfilter.nf_conntrack_tcp_be_liberal",                 "proc_dou8vec_minmax",                          "char"],
-        ["net.netfilter.nf_conntrack_tcp_ignore_invalid_rst",         "proc_dou8vec_minmax",                          "char"],
-        ["net.netfilter.nf_conntrack_tcp_loose",                      "proc_dou8vec_minmax",                          "char"],
-        ["net.netfilter.nf_conntrack_tcp_max_retrans",                "proc_dou8vec_minmax",                          "char"],
-        ["net.netfilter.nf_conntrack_tcp_timeout_close",              "proc_dointvec_jiffies",                        "int" ],
-        ["net.netfilter.nf_conntrack_tcp_timeout_close_wait",         "proc_dointvec_jiffies",                        "int" ],
-        ["net.netfilter.nf_conntrack_tcp_timeout_established",        "proc_dointvec_jiffies",                        "int" ],
-        ["net.netfilter.nf_conntrack_tcp_timeout_fin_wait",           "proc_dointvec_jiffies",                        "int" ],
-        ["net.netfilter.nf_conntrack_tcp_timeout_last_ack",           "proc_dointvec_jiffies",                        "int" ],
-        ["net.netfilter.nf_conntrack_tcp_timeout_max_retrans",        "proc_dointvec_jiffies",                        "int" ],
-        ["net.netfilter.nf_conntrack_tcp_timeout_syn_recv",           "proc_dointvec_jiffies",                        "int" ],
-        ["net.netfilter.nf_conntrack_tcp_timeout_syn_sent",           "proc_dointvec_jiffies",                        "int" ],
-        ["net.netfilter.nf_conntrack_tcp_timeout_time_wait",          "proc_dointvec_jiffies",                        "int" ],
-        ["net.netfilter.nf_conntrack_tcp_timeout_unacknowledged",     "proc_dointvec_jiffies",                        "int" ],
-        ["net.netfilter.nf_conntrack_timestamp",                      "proc_dou8vec_minmax",                          "char"],
-        ["net.netfilter.nf_conntrack_udp_timeout",                    "proc_dointvec_jiffies",                        "int" ],
-        ["net.netfilter.nf_conntrack_udp_timeout_stream",             "proc_dointvec_jiffies",                        "int" ],
-        ["net.netfilter.nf_flowtable_tcp_timeout",                    "proc_dointvec_jiffies",                        "int" ],
-        ["net.netfilter.nf_flowtable_udp_timeout",                    "proc_dointvec_jiffies",                        "int" ],
-        ["net.netfilter.nf_hooks_lwtunnel",                           "nf_hooks_lwtunnel_sysctl_handler",             "int" ],
-        ["net.netfilter.nf_log_all_netns",                            "proc_dointvec",                                "int" ],
-        ["net.netrom.default_path_quality",                           "proc_dointvec_minmax",                         "int" ],
-        ["net.netrom.link_fails_count",                               "proc_dointvec_minmax",                         "int" ],
-        ["net.netrom.network_ttl_initialiser",                        "proc_dointvec_minmax",                         "int" ],
-        ["net.netrom.obsolescence_count_initialiser",                 "proc_dointvec_minmax",                         "int" ],
-        ["net.netrom.reset",                                          "proc_dointvec_minmax",                         "int" ],
-        ["net.netrom.routing_control",                                "proc_dointvec_minmax",                         "int" ],
-        ["net.netrom.transport_acknowledge_delay",                    "proc_dointvec_minmax",                         "int" ],
-        ["net.netrom.transport_busy_delay",                           "proc_dointvec_minmax",                         "int" ],
-        ["net.netrom.transport_maximum_tries",                        "proc_dointvec_minmax",                         "int" ],
-        ["net.netrom.transport_no_activity_timeout",                  "proc_dointvec_minmax",                         "int" ],
-        ["net.netrom.transport_requested_window_size",                "proc_dointvec_minmax",                         "int" ],
-        ["net.netrom.transport_timeout",                              "proc_dointvec_minmax",                         "int" ],
-        ["net.phonet.local_port_range",                               "proc_local_port_range",                        "long"],
-        ["net.rdma_ucm.max_backlog",                                  "proc_dointvec",                                "int" ],
-        ["net.rds.ib.flow_control",                                   "proc_dointvec",                                "int" ],
-        ["net.rds.ib.max_recv_allocation",                            "proc_doulongvec_minmax",                       "long"],
-        ["net.rds.ib.max_recv_wr",                                    "proc_doulongvec_minmax",                       "long"],
-        ["net.rds.ib.max_send_wr",                                    "proc_doulongvec_minmax",                       "long"],
-        ["net.rds.ib.max_unsignaled_wr",                              "proc_doulongvec_minmax",                       "long"],
-        ["net.rds.max_unacked_bytes",                                 "proc_dointvec",                                "int" ],
-        ["net.rds.max_unacked_packets",                               "proc_dointvec",                                "int" ],
-        ["net.rds.ping_enable",                                       "proc_dointvec",                                "int" ],
-        ["net.rds.reconnect_max_delay_ms",                            "proc_doulongvec_ms_jiffies_minmax",            "long"],
-        ["net.rds.reconnect_min_delay_ms",                            "proc_doulongvec_ms_jiffies_minmax",            "long"],
-        ["net.rds.tcp.rds_tcp_rcvbuf",                                "rds_tcp_skbuf_handler",                        "int" ],
-        ["net.rds.tcp.rds_tcp_sndbuf",                                "rds_tcp_skbuf_handler",                        "int" ],
-        ["net.rose.acknowledge_hold_back_timeout",                    "proc_dointvec_minmax",                         "int" ],
-        ["net.rose.call_request_timeout",                             "proc_dointvec_minmax",                         "int" ],
-        ["net.rose.clear_request_timeout",                            "proc_dointvec_minmax",                         "int" ],
-        ["net.rose.link_fail_timeout",                                "proc_dointvec_minmax",                         "int" ],
-        ["net.rose.maximum_virtual_circuits",                         "proc_dointvec_minmax",                         "int" ],
-        ["net.rose.no_activity_timeout",                              "proc_dointvec_minmax",                         "int" ],
-        ["net.rose.reset_request_timeout",                            "proc_dointvec_minmax",                         "int" ],
-        ["net.rose.restart_request_timeout",                          "proc_dointvec_minmax",                         "int" ],
-        ["net.rose.routing_control",                                  "proc_dointvec_minmax",                         "int" ],
-        ["net.rose.window_size",                                      "proc_dointvec_minmax",                         "int" ],
-        ["net.rxrpc.idle_ack_delay",                                  "proc_doulongvec_ms_jiffies_minmax",            "long"],
-        ["net.rxrpc.idle_conn_expiry",                                "proc_doulongvec_ms_jiffies_minmax",            "long"],
-        ["net.rxrpc.idle_conn_fast_expiry",                           "proc_doulongvec_ms_jiffies_minmax",            "long"],
-        ["net.rxrpc.max_backlog",                                     "proc_dointvec_minmax",                         "int" ],
-        ["net.rxrpc.reap_client_conns",                               "proc_dointvec_minmax",                         "int" ],
-        ["net.rxrpc.rx_jumbo_max",                                    "proc_dointvec_minmax",                         "int" ],
-        ["net.rxrpc.rx_mtu",                                          "proc_dointvec_minmax",                         "int" ],
-        ["net.rxrpc.rx_window_size",                                  "proc_dointvec_minmax",                         "int" ],
-        ["net.rxrpc.soft_ack_delay",                                  "proc_doulongvec_ms_jiffies_minmax",            "long"],
-        ["net.sctp.addip_enable",                                     "proc_dointvec",                                "int" ],
-        ["net.sctp.addip_noauth_enable",                              "proc_dointvec",                                "int" ],
-        ["net.sctp.addr_scope_policy",                                "proc_dointvec_minmax",                         "int" ],
-        ["net.sctp.association_max_retrans",                          "proc_dointvec_minmax",                         "int" ],
-        ["net.sctp.auth_enable",                                      "proc_sctp_do_auth",                            "int" ],
-        ["net.sctp.cookie_hmac_alg",                                  "proc_sctp_do_hmac_alg",                        "int" ],
-        ["net.sctp.cookie_preserve_enable",                           "proc_dointvec",                                "int" ],
-        ["net.sctp.default_auto_asconf",                              "proc_dointvec",                                "int" ],
-        ["net.sctp.ecn_enable",                                       "proc_dointvec",                                "int" ],
-        ["net.sctp.encap_port",                                       "proc_dointvec_minmax",                         "int" ],
-        ["net.sctp.hb_interval",                                      "proc_dointvec_minmax",                         "int" ],
-        ["net.sctp.intl_enable",                                      "proc_dointvec",                                "int" ],
-        ["net.sctp.l3mdev_accept",                                    "proc_dointvec_minmax",                         "int" ],
-        ["net.sctp.max_autoclose",                                    "proc_doulongvec_minmax",                       "long"],
-        ["net.sctp.max_burst",                                        "proc_dointvec_minmax",                         "int" ],
-        ["net.sctp.max_init_retransmits",                             "proc_dointvec_minmax",                         "int" ],
-        ["net.sctp.path_max_retrans",                                 "proc_dointvec_minmax",                         "int" ],
-        ["net.sctp.pf_enable",                                        "proc_dointvec_minmax",                         "int" ],
-        ["net.sctp.pf_expose",                                        "proc_dointvec_minmax",                         "int" ],
-        ["net.sctp.pf_retrans",                                       "proc_dointvec_minmax",                         "int" ],
-        ["net.sctp.plpmtud_probe_interval",                           "proc_sctp_do_probe_interval",                  "int" ],
-        ["net.sctp.prsctp_enable",                                    "proc_dointvec",                                "int" ],
-        ["net.sctp.ps_retrans",                                       "proc_dointvec_minmax",                         "int" ],
-        ["net.sctp.rcvbuf_policy",                                    "proc_dointvec",                                "int" ],
-        ["net.sctp.reconf_enable",                                    "proc_dointvec",                                "int" ],
-        ["net.sctp.rto_alpha_exp_divisor",                            "proc_sctp_do_alpha_beta",                      "int" ],
-        ["net.sctp.rto_beta_exp_divisor",                             "proc_sctp_do_alpha_beta",                      "int" ],
-        ["net.sctp.rto_initial",                                      "proc_dointvec_minmax",                         "int" ],
-        ["net.sctp.rto_max",                                          "proc_sctp_do_rto_max",                         "int" ],
-        ["net.sctp.rto_min",                                          "proc_sctp_do_rto_min",                         "int" ],
-        ["net.sctp.rwnd_update_shift",                                "proc_dointvec_minmax",                         "int" ],
-        ["net.sctp.sack_timeout",                                     "proc_dointvec_minmax",                         "int" ],
-        ["net.sctp.sctp_mem",                                         "proc_doulongvec_minmax",                       "long"],
-        ["net.sctp.sctp_rmem",                                        "proc_dointvec_minmax",                         "int" ],
-        ["net.sctp.sctp_wmem",                                        "proc_dointvec_minmax",                         "int" ],
-        ["net.sctp.sndbuf_policy",                                    "proc_dointvec",                                "int" ],
-        ["net.sctp.udp_port",                                         "proc_sctp_do_udp_port",                        "int" ],
-        ["net.sctp.valid_cookie_life",                                "proc_dointvec_minmax",                         "int" ],
-        ["net.smc.autocorking_size",                                  "proc_douintvec",                               "int" ],
-        ["net.smc.rmem",                                              "proc_dointvec_minmax",                         "int" ],
-        ["net.smc.smcr_buf_type",                                     "proc_douintvec_minmax",                        "int" ],
-        ["net.smc.smcr_testlink_time",                                "proc_dointvec_jiffies",                        "int" ],
-        ["net.smc.wmem",                                              "proc_dointvec_minmax",                         "int" ],
-        ["net.tipc.bc_retruni",                                       "proc_doulongvec_minmax",                       "long"],
-        ["net.tipc.key_exchange_enabled",                             "proc_dointvec_minmax",                         "int" ],
-        ["net.tipc.max_tfms",                                         "proc_dointvec_minmax",                         "int" ],
-        ["net.tipc.named_timeout",                                    "proc_dointvec_minmax",                         "int" ],
-        ["net.tipc.sk_filter",                                        "proc_doulongvec_minmax",                       "long"],
-        ["net.tipc.tipc_rmem",                                        "proc_dointvec_minmax",                         "int" ],
-        ["net.unix.max_dgram_qlen",                                   "proc_dointvec",                                "int" ],
-        ["net.vrf.strict_mode",                                       "vrf_shared_table_handler",                     "int" ],
-        ["net.x25.acknowledgement_hold_back_timeout",                 "proc_dointvec_minmax",                         "int" ],
-        ["net.x25.call_request_timeout",                              "proc_dointvec_minmax",                         "int" ],
-        ["net.x25.clear_request_timeout",                             "proc_dointvec_minmax",                         "int" ],
-        ["net.x25.reset_request_timeout",                             "proc_dointvec_minmax",                         "int" ],
-        ["net.x25.restart_request_timeout",                           "proc_dointvec_minmax",                         "int" ],
-        ["net.x25.x25_forward",                                       "proc_dointvec",                                "int" ],
-        ["s390.topology",                                             "topology_ctl_handler",                         "int" ],
-        ["s390dbf.debug_active",                                      "s390dbf_procactive",                           "int" ],
-        ["s390dbf.debug_stoppable",                                   "proc_dointvec",                                "int" ],
-        ["sunrpc.max_resvport",                                       "proc_dointvec_minmax",                         "int" ],
-        ["sunrpc.min_resvport",                                       "proc_dointvec_minmax",                         "int" ],
-        ["sunrpc.nfs_debug",                                          "proc_dodebug",                                 "int" ],
-        ["sunrpc.nfsd_debug",                                         "proc_dodebug",                                 "int" ],
-        ["sunrpc.nlm_debug",                                          "proc_dodebug",                                 "int" ],
-        ["sunrpc.rdma_inline_write_padding",                          "proc_dointvec_minmax",                         "int" ],
-        ["sunrpc.rdma_max_inline_read",                               "proc_dointvec_minmax",                         "int" ],
-        ["sunrpc.rdma_max_inline_write",                              "proc_dointvec_minmax",                         "int" ],
-        ["sunrpc.rdma_memreg_strategy",                               "proc_dointvec_minmax",                         "int" ],
-        ["sunrpc.rdma_pad_optimize",                                  "proc_dointvec",                                "int" ],
-        ["sunrpc.rdma_slot_table_entries",                            "proc_dointvec_minmax",                         "int" ],
-        ["sunrpc.rpc_debug",                                          "proc_dodebug",                                 "int" ],
-        ["sunrpc.svc_rdma.max_outbound_read_requests",                "proc_dointvec_minmax",                         "int" ],
-        ["sunrpc.svc_rdma.max_req_size",                              "proc_dointvec_minmax",                         "int" ],
-        ["sunrpc.svc_rdma.max_requests",                              "proc_dointvec_minmax",                         "int" ],
-        ["sunrpc.svc_rdma.rdma_stat_read",                            "svcrdma_counter_handler",                      "int" ],
-        ["sunrpc.svc_rdma.rdma_stat_recv",                            "svcrdma_counter_handler",                      "int" ],
-        ["sunrpc.svc_rdma.rdma_stat_rq_poll",                         "proc_dointvec_minmax",                         "int" ],
-        ["sunrpc.svc_rdma.rdma_stat_rq_prod",                         "proc_dointvec_minmax",                         "int" ],
-        ["sunrpc.svc_rdma.rdma_stat_rq_starve",                       "proc_dointvec_minmax",                         "int" ],
-        ["sunrpc.svc_rdma.rdma_stat_sq_poll",                         "proc_dointvec_minmax",                         "int" ],
-        ["sunrpc.svc_rdma.rdma_stat_sq_prod",                         "proc_dointvec_minmax",                         "int" ],
-        ["sunrpc.svc_rdma.rdma_stat_sq_starve",                       "svcrdma_counter_handler",                      "int" ],
-        ["sunrpc.svc_rdma.rdma_stat_write",                           "svcrdma_counter_handler",                      "int" ],
-        ["sunrpc.tcp_fin_timeout",                                    "proc_dointvec_jiffies",                        "int" ],
-        ["sunrpc.tcp_max_slot_table_entries",                         "proc_dointvec_minmax",                         "int" ],
-        ["sunrpc.tcp_slot_table_entries",                             "proc_dointvec_minmax",                         "int" ],
-        ["sunrpc.transports",                                         "proc_do_xprt",                                 "int" ],
-        ["sunrpc.udp_slot_table_entries",                             "proc_dointvec_minmax",                         "int" ],
-        ["user.max_cgroup_namespaces",                                "proc_doulongvec_minmax",                       "long"],
-        ["user.max_fanotify_groups",                                  "proc_doulongvec_minmax",                       "long"],
-        ["user.max_fanotify_marks",                                   "proc_doulongvec_minmax",                       "long"],
-        ["user.max_inotify_instances",                                "proc_doulongvec_minmax",                       "long"],
-        ["user.max_inotify_watches",                                  "proc_doulongvec_minmax",                       "long"],
-        ["user.max_ipc_namespaces",                                   "proc_doulongvec_minmax",                       "long"],
-        ["user.max_mnt_namespaces",                                   "proc_doulongvec_minmax",                       "long"],
-        ["user.max_net_namespaces",                                   "proc_doulongvec_minmax",                       "long"],
-        ["user.max_pid_namespaces",                                   "proc_doulongvec_minmax",                       "long"],
-        ["user.max_time_namespaces",                                  "proc_doulongvec_minmax",                       "long"],
-        ["user.max_user_namespaces",                                  "proc_doulongvec_minmax",                       "long"],
-        ["user.max_uts_namespaces",                                   "proc_doulongvec_minmax",                       "long"],
-        ["vm.admin_reserve_kbytes",                                   "proc_doulongvec_minmax",                       "long"],
-        ["vm.allocate_pgste",                                         "proc_dointvec_minmax",                         "int" ],
-        ["vm.cmm_pages",                                              "cmm_pages_handler",                            "int" ],
-        ["vm.cmm_timed_pages",                                        "cmm_timed_pages_handler",                      "int" ],
-        ["vm.cmm_timeout",                                            "cmm_timeout_handler",                          "int" ],
-        ["vm.compact_memory",                                         "sysctl_compaction_handler",                    "int" ],
-        ["vm.compact_unevictable_allowed",                            "proc_dointvec_minmax_warn_RT_change",          "int" ],
-        ["vm.compaction_proactiveness",                               "compaction_proactiveness_sysctl_handler",      "int" ],
-        ["vm.dirty_background_bytes",                                 "dirty_background_bytes_handler",               "int" ],
-        ["vm.dirty_background_ratio",                                 "dirty_background_ratio_handler",               "int" ],
-        ["vm.dirty_bytes",                                            "dirty_bytes_handler",                          "int" ],
-        ["vm.dirty_expire_centisecs",                                 "proc_dointvec_minmax",                         "int" ],
-        ["vm.dirty_ratio",                                            "dirty_ratio_handler",                          "int" ],
-        ["vm.dirty_writeback_centisecs",                              "dirty_writeback_centisecs_handler",            "int" ],
-        ["vm.dirtytime_expire_seconds",                               "dirtytime_interval_handler",                   "int" ],
-        ["vm.drop_caches",                                            "drop_caches_sysctl_handler",                   "int" ],
-        ["vm.extfrag_threshold",                                      "proc_dointvec_minmax",                         "int" ],
-        ["vm.highmem_is_dirtyable",                                   "proc_dointvec_minmax",                         "int" ],
-        ["vm.hugetlb_optimize_vmemmap",                               "proc_dobool",                                  "char"],
-        ["vm.hugetlb_shm_group",                                      "proc_dointvec",                                "int" ],
-        ["vm.laptop_mode",                                            "proc_dointvec_jiffies",                        "int" ],
-        ["vm.legacy_va_layout",                                       "proc_dointvec_minmax",                         "int" ],
-        ["vm.lowmem_reserve_ratio",                                   "lowmem_reserve_ratio_sysctl_handler",          "int" ],
-        ["vm.max_map_count",                                          "proc_dointvec_minmax",                         "int" ],
-        ["vm.memory_failure_early_kill",                              "proc_dointvec_minmax",                         "int" ],
-        ["vm.memory_failure_recovery",                                "proc_dointvec_minmax",                         "int" ],
-        ["vm.min_free_kbytes",                                        "min_free_kbytes_sysctl_handler",               "int" ],
-        ["vm.min_slab_ratio",                                         "sysctl_min_slab_ratio_sysctl_handler",         "int" ],
-        ["vm.min_unmapped_ratio",                                     "sysctl_min_unmapped_ratio_sysctl_handler",     "int" ],
-        ["vm.mmap_min_addr",                                          "mmap_min_addr_handler",                        "long"],
-        ["vm.mmap_rnd_bits",                                          "proc_dointvec_minmax",                         "int" ],
-        ["vm.mmap_rnd_compat_bits",                                   "proc_dointvec_minmax",                         "int" ],
-        ["vm.nr_hugepages",                                           "hugetlb_sysctl_handler",                       "long"],
-        ["vm.nr_overcommit_hugepages",                                "hugetlb_overcommit_handler",                   "long"],
-        ["vm.nr_trim_pages",                                          "proc_dointvec_minmax",                         "int" ],
-        ["vm.numa_stat",                                              "sysctl_vm_numa_stat_handler",                  "int" ],
-        ["vm.numa_zonelist_order",                                    "numa_zonelist_order_handler",                  "str" ],
-        ["vm.oom_dump_tasks",                                         "proc_dointvec",                                "int" ],
-        ["vm.oom_kill_allocating_task",                               "proc_dointvec",                                "int" ],
-        ["vm.overcommit_kbytes",                                      "overcommit_kbytes_handler",                    "int" ],
-        ["vm.overcommit_memory",                                      "overcommit_policy_handler",                    "int" ],
-        ["vm.overcommit_ratio",                                       "overcommit_ratio_handler",                     "int" ],
-        ["vm.page-cluster",                                           "proc_dointvec_minmax",                         "int" ],
-        ["vm.page_lock_unfairness",                                   "proc_dointvec_minmax",                         "int" ],
-        ["vm.panic_on_oom",                                           "proc_dointvec_minmax",                         "int" ],
-        ["vm.percpu_pagelist_high_fraction",                          "percpu_pagelist_high_fraction_sysctl_handler", "int" ],
-        ["vm.stat_interval",                                          "proc_dointvec_jiffies",                        "int" ],
-        ["vm.stat_refresh",                                           "vmstat_refresh",                               None  ],
-        ["vm.swappiness",                                             "proc_dointvec_minmax",                         "int" ],
-        ["vm.unprivileged_userfaultfd",                               "proc_dointvec_minmax",                         "int" ],
-        ["vm.user_reserve_kbytes",                                    "proc_doulongvec_minmax",                       "long"],
-        ["vm.vdso_enabled",                                           "proc_dointvec",                                "int" ],
-        ["vm.vfs_cache_pressure",                                     "proc_dointvec_minmax",                         "int" ],
-        ["vm.watermark_boost_factor",                                 "proc_dointvec_minmax",                         "int" ],
-        ["vm.watermark_scale_factor",                                 "watermark_scale_factor_sysctl_handler",        "int" ],
-        ["vm.zone_reclaim_mode",                                      "proc_dointvec_minmax",                         "int" ],
-        ["xen.balloon.hotplug_unpopulated",                           "proc_dointvec_minmax",                         "int" ],
-        ["xpc.disengage_timelimit",                                   "proc_dointvec_minmax",                         "int" ],
-        ["xpc.hb.hb_check_interval",                                  "proc_dointvec_minmax",                         "int" ],
-        ["xpc.hb.hb_interval",                                        "proc_dointvec_minmax",                         "int" ],
-    ]
-
     def __init__(self):
         super().__init__()
-        self.kinfo = None
-        self.mem = None
-        self.param_addr_cache = {}
-        self.param_handler_idx_cache = {}
-        self.procname_ptr_cache = {}
+        self.initialized = False
         return
 
-    def search_param(self, param_name, param_handler_name):
-        if param_name in self.param_addr_cache:
-            return self.param_addr_cache[param_name]
+    def should_be_print(self, procname):
+        if self.filter == []:
+            return True
 
-        param_handler = get_ksymaddr(param_handler_name)
-        if param_handler is None:
-            return None
+        if self.exact:
+            for filt in self.filter:
+                if filt == procname:
+                    return True
+            return False
 
-        queue = self.param_handler_idx_cache.get(param_handler_name, []).copy()
-        param_basename = param_name.split(".")[-1]
-        idx = -1
-        while True:
-            if queue:
-                idx = queue.pop(0)
-                if idx is None:
+        else:
+            for filt in self.filter:
+                if re.search(filt, procname):
+                    return True
+            return False
+
+    def sysctl_dump(self, rb_node):
+        right = read_int_from_memory(rb_node + current_arch.ptrsize * 1) & ~1 # remove RB_BLACK
+        left = read_int_from_memory(rb_node + current_arch.ptrsize * 2) & ~1 # remove RB_BLACK
+        ctl_dir = read_int_from_memory(rb_node + current_arch.ptrsize * 3)
+
+        if ctl_dir not in self.seen_ctl_dir:
+            self.seen_ctl_dir.append(ctl_dir)
+
+            # parent
+            parent = read_int_from_memory(ctl_dir + self.OFFSET_parent)
+            parent_path = self.parent_paths.get(parent, "")
+
+            # ctl_table(s)
+            ctl_table = read_int_from_memory(ctl_dir)
+            while True:
+                # procname
+                procname = read_int_from_memory(ctl_table)
+                if procname == 0:
                     break
-            else:
-                try:
-                    idx = self.mem.index(param_handler, idx + 1)
-                    if param_handler_name in self.param_handler_idx_cache:
-                        self.param_handler_idx_cache[param_handler_name].append(idx)
-                    else:
-                        self.param_handler_idx_cache[param_handler_name] = [idx]
-                except ValueError:
-                    if param_handler_name in self.param_handler_idx_cache:
-                        self.param_handler_idx_cache[param_handler_name].append(None)
-                    else:
-                        self.param_handler_idx_cache[param_handler_name] = [None]
-                    break
+                procname_str = read_cstring_from_memory(procname)
+                param_path = (parent_path + "." + procname_str).lstrip(".")
+                self.parent_paths[ctl_dir] = param_path
 
-            proc_handler_ptr_addr = self.kinfo.krwbase + current_arch.ptrsize * idx
-            for i in [4, 5]: # 64bit: 4, 32bit:5 ?
-                procname_ptr_addr = proc_handler_ptr_addr - current_arch.ptrsize * i
+                if self.should_be_print(param_path):
+                    # mode
+                    mode = u32(read_memory(ctl_table + self.OFFSET_mode, 4))
 
-                if procname_ptr_addr in self.procname_ptr_cache:
-                    cstring = self.procname_ptr_cache[procname_ptr_addr]
-                else:
-                    procname_ptr = read_int_from_memory(procname_ptr_addr)
-                    cstring = read_cstring_from_memory(procname_ptr)
-                    self.procname_ptr_cache[procname_ptr_addr] = cstring
+                    if (mode & 0o0040000) == 0: # not directory
+                        # data
+                        data_addr = read_int_from_memory(ctl_table + current_arch.ptrsize)
+                        if data_addr and is_valid_addr(data_addr):
+                            # type from handler
+                            handler = read_int_from_memory(ctl_table + self.OFFSET_handler)
+                            # data length
+                            maxlen = u32(read_memory(ctl_table + self.OFFSET_maxlen, 4))
 
-                if cstring == param_basename:
-                    param_addr = read_int_from_memory(procname_ptr_addr + current_arch.ptrsize)
-                    self.param_addr_cache[param_name] = param_addr
-                    self.param_handler_idx_cache[param_handler_name].remove(idx)
-                    return param_addr
+                            if handler in self.str_types:
+                                data_val = read_cstring_from_memory(data_addr)
+                                fmt = "{:<55s}: {:#018x} {:#06x} {:#010o} {:s}"
+                                self.out.append(fmt.format(param_path, data_addr, maxlen, mode, data_val))
+                            elif maxlen == 4:
+                                data_val = u32(read_memory(data_addr, 4))
+                                fmt = "{:<55s}: {:#018x} {:#06x} {:#010o} {:#018x}"
+                                self.out.append(fmt.format(param_path, data_addr, maxlen, mode, data_val))
+                            elif maxlen == 8:
+                                data_val = u64(read_memory(data_addr, 8))
+                                fmt = "{:<55s}: {:#018x} {:#06x} {:#010o} {:#018x}"
+                                self.out.append(fmt.format(param_path, data_addr, maxlen, mode, data_val))
+                            elif maxlen == 1:
+                                data_val = u8(read_memory(data_addr, 1))
+                                fmt = "{:<55s}: {:#018x} {:#06x} {:#010o} {:#018x}"
+                                self.out.append(fmt.format(param_path, data_addr, maxlen, mode, data_val))
+                            elif maxlen == 0:
+                                if self.verbose:
+                                    fmt = "{:<55s}: {:#018x} {:#06x} {:#010o}"
+                                    self.out.append(fmt.format(param_path, data_addr, maxlen, mode))
+                            else:
+                                # type from heuristic
+                                data_val = read_cstring_from_memory(data_addr)
+                                if data_val and data_val.isprintable() and len(data_val) >= 2:
+                                    fmt = "{:<55s}: {:#018x} {:#06x} {:#010o} {:s}"
+                                    self.out.append(fmt.format(param_path, data_addr, maxlen, mode, data_val))
+                                else:
+                                    data_val = read_int_from_memory(data_addr)
+                                    fmt = "{:<55s}: {:#018x} {:#06x} {:#010o} {:#018x}"
+                                    self.out.append(fmt.format(param_path, data_addr, maxlen, mode, data_val))
+                        else:
+                            if self.verbose:
+                                fmt = "{:<55s}: {:#018x} {:#05x} {:#010o}"
+                                self.out.append(fmt.format(param_path, data_addr, maxlen, mode))
 
-        self.param_addr_cache[param_name] = None
-        return None
+                # goto next
+                ctl_table += self.SIZEOF_ctl_table
+
+            rb_node = read_int_from_memory(ctl_dir + self.OFFSET_rb_node) & ~1 # remove RB_BLACK
+            if rb_node:
+                self.sysctl_dump(rb_node)
+
+        if right:
+            self.sysctl_dump(right)
+        if left:
+            self.sysctl_dump(left)
+        return
+
+    def initialize(self):
+        if self.initialized:
+            return
+
+        if is_64bit():
+            # struct ctl_dir
+            self.OFFSET_rb_node = 0x50
+            self.OFFSET_parent = 0x38
+            # struct ctl_table
+            self.OFFSET_maxlen = 0x10
+            self.OFFSET_mode = 0x14
+            self.OFFSET_handler = 0x20
+            self.SIZEOF_ctl_table = 0x40
+        else:
+            # struct ctl_dir
+            self.OFFSET_rb_node = 0x2c
+            self.OFFSET_parent = 0x20
+            # struct ctl_table
+            self.OFFSET_maxlen = 0x8
+            self.OFFSET_mode = 0xc
+            self.OFFSET_handler = 0x14
+            self.SIZEOF_ctl_table = 0x24
+
+        known_str_types_handlers = [
+            "addrconf_sysctl_stable_secret",
+            "cdrom_sysctl_info",
+            "devkmsg_sysctl_set_loglvl",
+            "numa_zonelist_order_handler",
+            "proc_allowed_congestion_control",
+            "proc_do_large_bitmap",
+            "proc_do_uts_string",
+            "proc_dostring",
+            "proc_dostring_coredump",
+            "proc_tcp_available_congestion_control",
+            "proc_tcp_available_ulp",
+            "seccomp_actions_logged_handler",
+            "set_default_qdisc",
+        ]
+        self.str_types = []
+        for handler in known_str_types_handlers:
+            handler_addr = get_ksymaddr(handler)
+            if handler_addr:
+                self.str_types.append(handler_addr)
+
+        self.initialized = True
+        return
 
     @parse_args
     @only_if_gdb_running
@@ -41169,81 +40327,47 @@ class KernelParamSysctlCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        if self.kinfo is None:
-            self.kinfo = KernelbaseCommand.get_kernel_base()
-        if self.mem is None:
-            mem = read_memory(self.kinfo.krwbase, min(self.kinfo.krwbase_size, 0x1000000))
-            self.mem = slice_unpack(mem, current_arch.ptrsize)
+        self.filter = args.filter
+        self.exact = args.exact
+        self.verbose = args.verbose
 
-        out = []
         if not args.quiet:
-            fmt = "{:<55s}: {:<18s} {:<18s}"
-            legend = ["ParamName", "ParamAddress", "ParamValue"]
-            out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+            info("Wait for memory scan")
 
-        duplication_check_list = ["{:s}_{:s}".format(n.split(".")[-1], h) for n, h, _ in self.params]
-
-        for param_name, param_handler_name, param_type in sorted(self.params):
-            # target filtering
-            if args.filter:
-                if args.exact:
-                    if not any(filt == param_name for filt in args.filter):
-                        continue
-                else:
-                    if not any(re.search(filt, param_name) for filt in args.filter):
-                        continue
-
-            # deduplication
-            if duplication_check_list.count("{:s}_{:s}".format(param_name.split(".")[-1], param_handler_name)) > 1:
-                if args.verbose and not args.quiet:
-                    msg = "{:<55s}: Cannot be uniquely identified due to duplicates".format(param_name)
-                    out.append(msg)
-                continue
-
-            # search
+        sysctl_table_root = KernelAddressHeuristicFinder.get_sysctl_table_root()
+        if sysctl_table_root is None:
             if not args.quiet:
-                gef_print("  searching {:s}".format(param_name))
-            param_addr = self.search_param(param_name, param_handler_name)
-            if param_addr is None:
-                if args.verbose and not args.quiet:
-                    msg = "{:<55s}: Not found".format(param_name)
-                    out.append(msg)
-                continue
+                err("Not found sysctl_table_root")
+            return
 
-            # read value and print
-            msg = "{:<55s}: {:#018x}".format(param_name, param_addr)
-            if not is_valid_addr(param_addr):
-                out.append(msg)
-                continue
-
-            if param_type is None:
-                msg += " -"
-            elif param_type == "long":
-                param_value = read_int_from_memory(param_addr)
-                msg += " {:#018x}".format(param_value)
-            elif param_type == "int":
-                param_value = u32(read_memory(param_addr, 4))
-                msg += " {:#018x}".format(param_value)
-            elif param_type == "char":
-                param_value = u8(read_memory(param_addr, 1))
-                msg += " {:#018x}".format(param_value)
-            elif param_type == "str":
-                param_value = read_cstring_from_memory(param_addr)
-                msg += " {:s}".format(param_value)
-            elif param_type.startswith("bytes"):
-                param_type_length = int(param_type[5:])
-                param_value = read_memory(param_addr, param_type_length)
-                msg += " {:s}".format(param_value.hex())
-            else:
-                raise
-            out.append(msg)
-
+        self.out = []
         if not args.quiet:
-            msg = "{} {}".format(Color.colorify("[+]", "bold blue"), "Only showing found values.")
-            out.append(msg)
+            fmt = "{:<55s}: {:<18s} {:<6s} {:<10s} {:<18s}"
+            legend = ["ParamName", "ParamAddress", "MaxLen", "Mode", "ParamValue"]
+            self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
-        if out:
-            gef_print('\n'.join(out), less=not args.no_pager)
+        self.initialize()
+
+        root_ctl_dir = sysctl_table_root + current_arch.ptrsize
+        root_rb_node = read_int_from_memory(root_ctl_dir + self.OFFSET_rb_node)
+
+        # fix for old kernel
+        if not is_valid_addr(root_rb_node):
+            # ctl_dir.header.inodes does not exist
+            self.OFFSET_rb_node -= current_arch.ptrsize
+            root_rb_node = read_int_from_memory(root_ctl_dir + self.OFFSET_rb_node)
+
+        self.seen_ctl_dir = []
+        self.parent_paths = {root_ctl_dir: ""}
+        try:
+            self.sysctl_dump(root_rb_node)
+        except gdb.MemoryError:
+            if not args.quiet:
+                err("Memory error")
+            return
+
+        if self.out:
+            gef_print('\n'.join(self.out), less=not args.no_pager)
         return
 
 
