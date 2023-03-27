@@ -54272,8 +54272,8 @@ class GefHelpCommand(gdb.Command):
 
     def invoke(self, args, from_tty):
         self.dont_repeat()
-        gef_print(titlify("GEF - GDB Enhanced Features"))
-        gef_print(self.__doc__)
+        msg = titlify("GEF - GDB Enhanced Features") + "\n" + self.__doc__
+        gef_print(msg, less=True)
         return
 
     def generate_help(self, commands):
