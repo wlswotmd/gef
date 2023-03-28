@@ -16838,6 +16838,15 @@ class ChecksecCommand(GenericCommand):
             else:
                 gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Unsupported", "bold red")))
 
+        # RWX kernel page
+        cfg = "RWX kernel page"
+        for m in kinfo.maps:
+            if m[2] == "RWX":
+                gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Found", "bold red")))
+                break
+        else:
+            gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Not found", "bold green")))
+
         # Secure-world
         if is_arm32() or is_arm64():
             r = gdb.execute("monitor info mtree -f", to_string=True)
@@ -16930,7 +16939,7 @@ class ChecksecCommand(GenericCommand):
                 gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
             else:
                 v = u32(read_memory(sysctl_unprivileged_userfaultfd, 4))
-                additional = "sysctl_unprivileged_userfaultfd: {:d}".format(v)
+                additional = "unprivileged_userfaultfd: {:d}".format(v)
                 if v == 0:
                     gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold green"), additional))
                 else:
@@ -16948,7 +16957,7 @@ class ChecksecCommand(GenericCommand):
                 gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
             else:
                 v = u32(read_memory(sysctl_unprivileged_bpf_disabled, 4))
-                additional = "sysctl_unprivileged_bpf_disabled: {:d}".format(v)
+                additional = "unprivileged_bpf_disabled: {:d}".format(v)
                 if v == 0:
                     gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
                 else:
@@ -17005,7 +17014,7 @@ class ChecksecCommand(GenericCommand):
             else:
                 v1 = u32(read_memory(kptr_restrict, 4))
                 v2 = u32(read_memory(sysctl_perf_event_paranoid, 4))
-                additional = "kptr_restrict: {:d}, sysctl_perf_event_paranoid: {:d}".format(v1, v2)
+                additional = "kptr_restrict: {:d}, perf_event_paranoid: {:d}".format(v1, v2)
                 if v1 == 0 and v2 == 0:
                     gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
                 else:
