@@ -35890,7 +35890,7 @@ class MmxSetCommand(GenericCommand):
             "$mm6": b"\x0f\x6f\x30", # movq  mm6, qword ptr [rax]
             "$mm7": b"\x0f\x6f\x38", # movq  mm7, qword ptr [rax]
         }
-        code = b"\xeb\xfe" + REG_CODE[reg] + p64(value) # inf-loop (to stop another thread); movq mm0, [rax]; db value
+        code = current_arch.infloop_insn + REG_CODE[reg] + p64(value) # inf-loop (to stop another thread); movq mm0, [rax]; db value
         gef_on_stop_unhook(hook_stop_handler)
         d = self.get_state(len(code))
         write_memory(d["pc"], code, len(code))
