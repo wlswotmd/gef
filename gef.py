@@ -16876,7 +16876,7 @@ class ChecksecCommand(GenericCommand):
         else:
             for vaddr, size, perm in kinfo.maps:
                 if vaddr <= mp < vaddr + size:
-                    if not "W" in perm:
+                    if "W" not in perm:
                         gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), perm))
                     else:
                         gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), perm))
@@ -37841,7 +37841,6 @@ class KernelAddressHeuristicFinder:
                         continue
                     m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\S+)", line)
                     if m:
-                        dstreg = m.group(1)
                         srcreg = m.group(2)
                         add = int(m.group(3), 16)
                         if srcreg in bases:
@@ -38510,7 +38509,6 @@ class KernelAddressHeuristicFinder:
                             return bases[reg] + v
             elif is_arm32():
                 bases = {}
-                add1time = {}
                 for line in res.splitlines():
                     m = re.search(r"movw\s+(\S+),.+;\s*(0x\S+)", line)
                     if m:
@@ -38573,7 +38571,6 @@ class KernelAddressHeuristicFinder:
                             return bases[reg] + v
             elif is_arm32():
                 bases = {}
-                add1time = {}
                 for line in res.splitlines():
                     m = re.search(r"movw\s+(\S+),.+;\s*(0x\S+)", line)
                     if m:
@@ -38646,7 +38643,6 @@ class KernelAddressHeuristicFinder:
             elif is_arm32():
                 count = 0
                 bases = {}
-                add1time = {}
                 for line in res.splitlines():
                     m = re.search(r"movw\s+(\S+),.+;\s*(0x\S+)", line)
                     if m:
