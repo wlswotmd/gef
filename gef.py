@@ -42707,7 +42707,7 @@ class KsymaddrRemoteCommand(GenericCommand):
 
         # find kallsyms_addresses_or_symbols
 
-        regex_match = re.search(b'Linux version (\d+\.[\d.]*\d)[ -~]+', self.kernel_img)
+        regex_match = re.search(rb'Linux version (\d+\.[\d.]*\d)[ -~]+', self.kernel_img)
         version_string = regex_match.group(0).decode('ascii')
         version_number = regex_match.group(1).decode('ascii')
         kernel_major = int(version_number.split('.')[0])
