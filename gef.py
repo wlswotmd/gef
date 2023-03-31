@@ -41991,11 +41991,6 @@ class SlubDumpCommand(GenericCommand):
     """
 
     def init_offset(self):
-        if is_64bit():
-            mask = 0x8000000000000000
-        else:
-            mask = 0x80000000
-
         # resolve slab_caches
         self.slab_caches = KernelAddressHeuristicFinder.get_slab_caches()
         if self.slab_caches is None:
