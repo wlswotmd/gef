@@ -40648,10 +40648,7 @@ class CetStatusCommand(GenericCommand):
         return r
 
     def execute_get_cet_status(self):
-        if is_x86_64():
-            code = b"\xeb\xfe\x0f\x05" # inf-loop (to stop another thread); syscall
-        else:
-            code = b"\xeb\xfe\xcd\x80" # inf-loop (to stop another thread); int 0x80
+        code = current_arch.infloop_insn + current_arch.syscall_insn # inf-loop (to stop another thread); syscall/int0x80
         gef_on_stop_unhook(hook_stop_handler)
         d = self.get_state(len(code))
         write_memory(d["pc"], code, len(code))
