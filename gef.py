@@ -46553,7 +46553,6 @@ class MsrCommand(GenericCommand):
 
     _example_ = "{:s} 0xc0000080              # rcx value\n".format(_cmdline_)
     _example_ += "{:s} MSR_EFER                # another valid format\n".format(_cmdline_)
-    _example_ += "{:s} -l                      # list up known MSR const values\n".format(_cmdline_)
     _example_ += "{:s} -l MSR_EFER MSR_GS_BASE # show specified MSR const value\n".format(_cmdline_)
     _example_ += "\n"
     _example_ += "DISABLE `-enbale-kvm` option for qemu-system; This command will be aborted if the option is set"
@@ -47107,7 +47106,7 @@ class MsrCommand(GenericCommand):
         return
 
     def read_msr(self, num):
-        code = b"\xeb\xfe\x0f\x32" # inf-loop (to stop another thread); rdmsr
+        code = current_arch.infloop_insn + b"\x0f\x32" # inf-loop (to stop another thread); rdmsr
         gef_on_stop_unhook(hook_stop_handler)
         d = self.get_state(len(code))
         write_memory(d["pc"], code, len(code))
