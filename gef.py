@@ -39384,9 +39384,9 @@ class KernelTaskCommand(GenericCommand):
             unsigned       securebits;      /* SUID-less security management */
             kernel_cap_t   cap_inheritable; /* caps our children can inherit */
             kernel_cap_t   cap_permitted;   /* caps we're permitted */
-	        kernel_cap_t   cap_effective;   /* caps we can actually use */
-	        kernel_cap_t   cap_bset;        /* capability bounding set */
-	        kernel_cap_t   cap_ambient;     /* Ambient capability set */
+            kernel_cap_t   cap_effective;   /* caps we can actually use */
+            kernel_cap_t   cap_bset;        /* capability bounding set */
+            kernel_cap_t   cap_ambient;     /* Ambient capability set */
 
         [Example x64]
             0xffffffff820460c0:     0x0000000000000004      0x0000000000000000
@@ -39490,8 +39490,8 @@ class KernelTaskCommand(GenericCommand):
         while current:
             vm_start = read_int_from_memory(current)
             vm_end = read_int_from_memory(current + current_arch.ptrsize)
-            vm_flags =  read_int_from_memory(current + self.offset_vm_flags)
-            vm_file =  read_int_from_memory(current + self.offset_vm_file)
+            vm_flags = read_int_from_memory(current + self.offset_vm_flags)
+            vm_file = read_int_from_memory(current + self.offset_vm_file)
             filepath = self.get_filepath(vm_file)
             perm = Permission(value=vm_flags)
             vm_areas.append(VmArea(vm_start, vm_end, str(perm), filepath))
@@ -39514,7 +39514,6 @@ class KernelTaskCommand(GenericCommand):
             } f_path;
         """
         dentry = read_int_from_memory(location + current_arch.ptrsize * 3)
-
 
         """
         struct dentry {
