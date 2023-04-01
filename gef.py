@@ -42284,7 +42284,8 @@ class SlubDumpCommand(GenericCommand):
     def dump_names(self):
         gef_print(Color.colorify("Object Size              : Name", get_gef_setting("theme.table_heading")))
         for c in sorted(self.parsed_caches[1:], key=lambda x: x['objsize']):
-            gef_print("{:5d} byte ({:#6x} bytes): {:s}".format(c['objsize'], c['objsize'], c['name']))
+            fmt = "{:5d} byte ({:#6x} bytes): {:30s} kmem_cache:{:#x}"
+            gef_print(fmt.format(c['objsize'], c['objsize'], c['name'], c['address']))
         return
 
     def slabwalk(self, targets):
