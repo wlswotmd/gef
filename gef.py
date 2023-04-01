@@ -189,6 +189,8 @@ __pie_breakpoints__             = {}
 __pie_counter__                 = 1
 __gef_default_main_arena__      = "main_arena"
 __gef_prev_arch__               = None
+__gef_check_info_file__         = True
+__gef_context_hidden__          = False
 
 DEFAULT_PAGE_ALIGN_SHIFT        = 12
 DEFAULT_PAGE_SIZE               = 1 << DEFAULT_PAGE_ALIGN_SHIFT
@@ -206,6 +208,7 @@ current_elf                     = None
 current_arch                    = None
 libc_args_definitions           = {}
 highlight_table                 = {}
+cached_syscall_table            = {}
 
 
 def perf_enable(f):
@@ -2171,18 +2174,15 @@ def is_debug():
     return get_gef_setting("gef.debug") is True
 
 
-context_hidden = False
-
-
 def hide_context():
-    global context_hidden
-    context_hidden = True
+    global __gef_context_hidden__
+    __gef_context_hidden__ = True
     return
 
 
 def unhide_context():
-    global context_hidden
-    context_hidden = False
+    global __gef_context_hidden__
+    __gef_context_hidden__ = False
     return
 
 
@@ -8290,9 +8290,6 @@ def continue_handler(event):
     return
 
 
-check_info_file = True
-
-
 def hook_stop_handler(event):
     """GDB event handler for stop cases."""
     reset_gef_caches()
@@ -8300,13 +8297,13 @@ def hook_stop_handler(event):
         set_arch(get_arch())
     gdb.execute("context")
 
-    global check_info_file
-    if check_info_file:
+    global __gef_check_info_file__
+    if __gef_check_info_file__:
         response = gdb.execute('info files', to_string=True)
         if "Symbols from" not in response:
             err("Missing info about architecture. Please set: `file /path/to/target_binary`")
             err("Some architectures may not be automatically recognized. Set it manually with `set architecture YOUR_ARCH`.")
-        check_info_file = False
+        __gef_check_info_file__ = False
     return
 
 
@@ -19141,7 +19138,7 @@ class ContextCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        if not self.get_setting("enable") or context_hidden:
+        if not self.get_setting("enable") or __gef_context_hidden__:
             return
 
         if len(args.commands) > 0:
@@ -33592,10 +33589,6 @@ arm_ldelf_syscall_list = [
     [0x0a, 'ldelf_syscall_remap', ['unsigned long old_va', 'addr_t *new_va', 'size_t num_bytes', 'size_t pad_begin', 'size_t pad_end']],
     [0x0b, 'ldelf_syscall_gen_rnd_num', ['void *buf', 'size_t num_bytes']],
 ]
-
-
-# This cache is not cleared when reset_gef_cache() is run.
-cached_syscall_table = {}
 
 
 def get_syscall_table(arch=None, mode=None):
