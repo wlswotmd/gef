@@ -40745,7 +40745,6 @@ class TlsCommand(GenericCommand):
                     # if canary is not found, maybe not yet initialized
                     return 0
                 return addr[i]
-
         return 0
 
     @staticmethod
@@ -40755,7 +40754,11 @@ class TlsCommand(GenericCommand):
         if fs is not None:
             return fs
 
-        if (get_register("$cs") & 0b11) == 3:
+        if (get_register("$cs") & 0b11) != 3:
+            # kernel
+            # The values you can get with MSR_FS_BASE are apparently different.
+            return 0
+        else:
             # remote
             if is_remote_debug():
                 if is_x86_64():
@@ -40775,12 +40778,6 @@ class TlsCommand(GenericCommand):
                 return value.contents.value or 0
             else:
                 return 0
-        else:
-            r = gdb.execute("msr MSR_FS_BASE -q", to_string=True)
-            if r:
-                return int(r, 16)
-            else:
-                return 0
 
     @staticmethod
     def getgs():
@@ -40789,7 +40786,11 @@ class TlsCommand(GenericCommand):
         if gs is not None:
             return gs
 
-        if (get_register("$cs") & 0b11) == 3:
+        if (get_register("$cs") & 0b11) != 3:
+            # kernel
+            # The values you can get with MSR_GS_BASE are apparently different.
+            return 0
+        else:
             # remote
             if is_remote_debug():
                 if is_x86_32():
@@ -40807,12 +40808,6 @@ class TlsCommand(GenericCommand):
             result = libc.ptrace(PTRACE_ARCH_PRCTL, lwpid, value, ARCH_GET_GS)
             if result == 0:
                 return value.contents.value or 0
-            else:
-                return 0
-        else:
-            r = gdb.execute("msr MSR_GS_BASE -q", to_string=True)
-            if r:
-                return int(r, 16)
             else:
                 return 0
 
