@@ -48657,7 +48657,6 @@ class PagewalkX64Command(PagewalkCommand):
 @register_command
 class PagewalkArmCommand(PagewalkCommand):
     """Dump pagetable for ARM (Cortex-A only) using qemu-monitor. PL2 pagewalk is unsupported"""
-
     _cmdline_ = "pagewalk arm"
     _category_ = "08-a. Qemu-system Cooperation - General"
 
