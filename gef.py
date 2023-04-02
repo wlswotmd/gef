@@ -17050,6 +17050,118 @@ class ChecksecCommand(GenericCommand):
                 else:
                     gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
 
+        gef_print(titlify("Security Module"))
+
+        # SELinux
+        cfg = "SELinux"
+        # SELinux does not support building format as a kernel module.
+        # Therefore, only symbols in the kernel can be used to determine whether or not support.
+        selinux_init = get_ksymaddr("selinux_init")
+        if selinux_init is None:
+            additional = "kernel does not support"
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unsupported", "bold red"), additional))
+
+        elif kversion.major < 4 or (kversion.major == 4 and kversion.minor < 17):
+            selinux_enabled_addr = get_ksymaddr("selinux_enabled")
+            selinux_enforcing_addr = get_ksymaddr("selinux_enforcing")
+
+            if selinux_enabled_addr is None:
+                additional = "seliux_enabled is not found"
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unknown", "bold gray"), additional))
+            elif selinux_enforcing_addr is None:
+                additional = "seliux_enforcing is not found"
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unknown", "bold gray"), additional))
+            else:
+                selinux_enabled = u32(read_memory(selinux_enabled_addr, 4))
+                selinux_enforcing = u32(read_memory(selinux_enforcing_addr, 4))
+                if selinux_enabled == 0:
+                    additional = "selinux_enabled == 0"
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
+                elif selinux_enforcing == 0:
+                    additional = "selinux_enforcing == 0"
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Permissive", "bold red"), additional))
+                else:
+                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enforcing", "bold green")))
+
+        else: # kernel >= 4.17-rc1
+            """
+            struct selinux_state {
+            #ifdef CONFIG_SECURITY_SELINUX_DISABLE
+                abool disabled;
+            #endif
+            #ifdef CONFIG_SECURITY_SELINUX_DEVELOP
+                abool enforcing;
+            #endif
+                abool checkreqprot;
+                abool initialized;
+                abool policycap[__POLICYDB_CAP_MAX]; # __POLICYDB_CAP_MAX:6 ~ 8 bytes
+                astruct page *status_page;
+                astruct mutex status_lock;
+                astruct selinux_avc *avc;
+                astruct selinux_policy __rcu *policy;
+                astruct mutex policy_mutex;
+            } __randomize_layout;
+
+            x64 sample
+            gef> x/16xg 0xffffffff8ba20740
+            0xffffffff8ba20740:     0x0100010101010001      0x0000000000000001
+            0xffffffff8ba20750:     0xffffe3bc00215140      0x0000000000000000
+            0xffffffff8ba20760:     0x0000000000000000      0xffffffff8ba20768
+            0xffffffff8ba20770:     0xffffffff8ba20768      0xffffffff8ba1ef20
+            0xffffffff8ba20780:     0xffff8ecc7fe62800      0x0000000000000000
+            """
+
+            selinux_state = KernelAddressHeuristicFinder.get_selinux_state()
+
+            if selinux_state is None:
+                additional = "selinux_state is not found"
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unknown", "bold gray"), additional))
+
+            elif u64(read_memory(selinux_state, 8)) == 0:
+                additional = "selinux_state is not initialized"
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
+
+            else:
+                selinux_disable = get_ksymaddr("selinux_disable")
+                CONFIG_SECURITY_SELINUX_DISABLE = selinux_disable is not None
+                enforcing_setup = get_ksymaddr("enforcing_setup")
+                CONFIG_SECURITY_SELINUX_DEVELOP = enforcing_setup is not None
+
+                # selinux_state.disabled
+                if CONFIG_SECURITY_SELINUX_DISABLE:
+                    selinux_disabled = u8(read_memory(selinux_state, 1)) != 0
+                else:
+                    selinux_disabled = False
+
+                # selinux_state.enforcing
+                if CONFIG_SECURITY_SELINUX_DEVELOP and CONFIG_SECURITY_SELINUX_DISABLE:
+                    selinux_enforcing = u8(read_memory(selinux_state + 1, 1)) != 0
+                elif CONFIG_SECURITY_SELINUX_DEVELOP and not CONFIG_SECURITY_SELINUX_DISABLE:
+                    selinux_enforcing = u8(read_memory(selinux_state, 1)) != 0
+                else:
+                    selinux_enforcing = True
+
+                if selinux_disabled is True:
+                    additional = "selinux_state.disable != 0"
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
+                elif selinux_enforcing is False:
+                    additional = "selinux_state.enforcing == 0"
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Permissive", "bold red"), additional))
+                elif selinux_enforcing is True:
+                    if CONFIG_SECURITY_SELINUX_DEVELOP:
+                        additional = "selinux_state.enforcing != 0"
+                    else:
+                        additional = "selinux_state.enforcing does not exist"
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enforcing", "bold green"), additional))
+
+        # LKRG
+        cfg = "Linux Kernel Runtime Guard (LKRG)"
+        kmod_ret = gdb.execute("kmod -q", to_string=True)
+        if ": lkrg " in kmod_ret:
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), "Loaded"))
+        else:
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), "Not loaded"))
+
         gef_print(titlify("Other"))
 
         # CONFIG_KALLSYMS_ALL
@@ -38489,6 +38601,62 @@ class KernelAddressHeuristicFinder:
                         m = re.search(r"movt.*;\s*(0x\S+)", line)
                         if m:
                             return base + (int(m.group(1), 16) << 16)
+        return None
+
+    @staticmethod
+    def get_selinux_state():
+        # plan 1 (directly)
+        selinux_state = get_ksymaddr("selinux_state")
+        if selinux_state:
+            return selinux_state
+
+        # plan 2 (available v5.0-rc1 or later)
+        show_sid = get_ksymaddr("show_sid")
+        if show_sid:
+            res = gdb.execute("x/20i {:#x}".format(show_sid), to_string=True)
+            if is_x86_64():
+                for line in res.splitlines():
+                    m = re.search(r"mov\s+rdi\s*,\s*(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffffffffffff
+                        if v != 0:
+                            return v
+            elif is_x86_32():
+                for line in res.splitlines():
+                    m = re.search(r"mov\s+e[a-d]x\s*,\s*(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffff
+                        if v != 0:
+                            return v
+            elif is_arm64():
+                bases = {}
+                for line in res.splitlines():
+                    m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        base = int(m.group(2), 16)
+                        bases[reg] = base
+                        continue
+                    m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
+                    if m:
+                        dstreg = m.group(1)
+                        srcreg = m.group(2)
+                        v = int(m.group(3), 16)
+                        if srcreg in bases:
+                            if dstreg == "x0":
+                                return bases[srcreg] + v
+                            else:
+                                bases[dstreg] = bases[srcreg] + v
+                        continue
+            elif is_arm32():
+                for line in res.splitlines():
+                    m = re.search(r"ldr\s+r0,.*;\s*(0x\S+)", line)
+                    if m:
+                        addr = int(m.group(1), 16)
+                        try:
+                            return read_int_from_memory(addr)
+                        except Exception:
+                            pass
         return None
 
     @staticmethod
