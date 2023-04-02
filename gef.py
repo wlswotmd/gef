@@ -209,6 +209,8 @@ current_arch                    = None
 libc_args_definitions           = {}
 highlight_table                 = {}
 cached_syscall_table            = {}
+cached_kernel_info              = None
+cached_kernel_version           = None
 
 
 def perf_enable(f):
@@ -16854,14 +16856,15 @@ class ChecksecCommand(GenericCommand):
         if _stext is None:
             err("_stext is not found (ksymaddr-remote is failed)")
             return
+        kcmdline = KernelCmdlineCommand.kernel_cmdline()
+        kversion = KernelVersionCommand.kernel_version()
 
         # KASLR
         r = gdb.execute("ksymaddr-remote --quiet kaslr_", to_string=True)
-        ret = KernelCmdlineCommand.kernel_cmdline()
         cfg = "CONFIG_RANDOMIZE_BASE (KASLR)"
         address_info = "kbase: {:#x}, _stext:{:#x}".format(kinfo.kbase, _stext)
         if r:
-            if ret and "nokaslr" in ret[1]:
+            if kcmdline and "nokaslr" in kcmdline.cmdline:
                 gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), address_info))
             else:
                 gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), address_info))
@@ -16871,13 +16874,12 @@ class ChecksecCommand(GenericCommand):
         # FGKASLR
         swapgs_restore_regs_and_return_to_usermode = get_ksymaddr("swapgs_restore_regs_and_return_to_usermode")
         commit_creds = get_ksymaddr("commit_creds")
-        ret = KernelCmdlineCommand.kernel_cmdline()
         cfg = "CONFIG_FG_KASLR"
         if swapgs_restore_regs_and_return_to_usermode:
             # swapgs_restore_regs_and_return_to_usermode is in a fixed location.
             # commit_creds are placed dynamically.
             if swapgs_restore_regs_and_return_to_usermode < commit_creds:
-                if ret and "nofgkaslr" in ret[1]:
+                if kcmdline and "nofgkaslr" in kcmdline.cmdline:
                     gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
                 else:
                     gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
@@ -16893,15 +16895,14 @@ class ChecksecCommand(GenericCommand):
         cfg = "CONFIG_PAGE_TABLE_ISOLATION"
         if is_x86():
             pti_init = get_ksymaddr("pti_init")
-            ret = KernelCmdlineCommand.kernel_cmdline()
             if pti_init:
-                if ret and "nopti" in ret[1]:
+                if kcmdline and "nopti" in kcmdline.cmdline:
                     gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
-                elif ret and "pti=off" in ret[1]:
+                elif kcmdline and "pti=off" in kcmdline.cmdline:
                     gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
-                elif ret and "mitigations=off" in ret[1]:
+                elif kcmdline and "mitigations=off" in kcmdline.cmdline:
                     gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
-                elif ret and "pti=on" in ret[1]:
+                elif kcmdline and "pti=on" in kcmdline.cmdline:
                     gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
                 else:
                     # here is kernel context
@@ -16920,15 +16921,14 @@ class ChecksecCommand(GenericCommand):
 
         elif is_arm64():
             pti_init = get_ksymaddr("pti_init")
-            ret = KernelCmdlineCommand.kernel_cmdline()
             if pti_init:
-                if ret and "kpti=0" in ret[1]:
+                if kcmdline and "kpti=0" in kcmdline.cmdline:
                     gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
-                elif ret and "mitigations=off" in ret[1] and "nokaslr" in ret[1]:
+                elif kcmdline and "mitigations=off" in kcmdline.cmdline and "nokaslr" in kcmdline.cmdline:
                     gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
-                elif ret and "mitigations=off" in ret[1] and "nokaslr" not in ret[1]:
+                elif kcmdline and "mitigations=off" in kcmdline.cmdline and "nokaslr" not in kcmdline.cmdline:
                     gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
-                elif ret and "kpti=1" in ret[1]:
+                elif kcmdline and "kpti=1" in kcmdline.cmdline:
                     gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
                 else:
                     gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Enabled (maybe)", "bold green")))
@@ -38937,6 +38937,10 @@ class KernelbaseCommand(GenericCommand):
 
     @staticmethod
     def get_kernel_base():
+        global cached_kernel_info
+        if cached_kernel_info is not None:
+            return cached_kernel_info
+
         dic = {
             "maps": KernelbaseCommand.get_maps(),
             "kbase": None,
@@ -39039,7 +39043,8 @@ class KernelbaseCommand(GenericCommand):
                 pass
 
         dic["has_none"] = None in dic.values()
-        return Kinfo(*dic.values())
+        cached_kernel_info = Kinfo(*dic.values())
+        return cached_kernel_info
 
     @parse_args
     @only_if_gdb_running
@@ -39069,11 +39074,14 @@ class KernelVersionCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
 
-    def kernel_version(self):
-        info("Wait for memory scan")
+    @staticmethod
+    def kernel_version():
+        global cached_kernel_version
+        if cached_kernel_version is not None:
+            return cached_kernel_version
+
         kinfo = KernelbaseCommand.get_kernel_base()
         if kinfo.has_none:
-            err("Failed to resolve")
             return None
 
         # resolve area
@@ -39096,9 +39104,16 @@ class KernelVersionCommand(GenericCommand):
             r = re.findall(r"(Linux version (?:\d+\.[\d.]*\d)[ -~]+)", data)
             if not r:
                 continue
-            kernel_version_string = r[0]
-            idx = data.find(kernel_version_string)
-            return start + idx, kernel_version_string
+
+            version_string = r[0]
+            address = start + data.find(version_string)
+
+            r = re.search(r"Linux version (\d)\.(\d+)", version_string)
+            major, minor = int(r.group(1)), int(r.group(2))
+
+            Kversion = collections.namedtuple("Kversion", ["address", "version_string", "major", "minor"])
+            cached_kernel_version = Kversion(address, version_string, major, minor)
+            return cached_kernel_version
         return None
 
     @parse_args
@@ -39107,13 +39122,13 @@ class KernelVersionCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        ret = self.kernel_version()
-        if ret is None:
-            err("Parse failed")
+        info("Wait for memory scan")
+        kversion = KernelVersionCommand.kernel_version()
+        if kversion is None:
+            err("Failed to resolve")
             return
-        addr, kernel_version_string = ret
         gef_print(titlify("Kernel version (heuristic)"))
-        gef_print("{:#x}: {:s}".format(addr, kernel_version_string))
+        gef_print("{:#x}: {:s}".format(kversion.address, kversion.version_string))
         return
 
 
@@ -39134,7 +39149,8 @@ class KernelCmdlineCommand(GenericCommand):
         try:
             ptr = read_int_from_memory(saved_command_line)
             cmdline = read_cstring_from_memory(ptr)
-            return ptr, cmdline
+            Kcmdline = collections.namedtuple("Kcmdline", ["address", "cmdline"])
+            return Kcmdline(ptr, cmdline)
         except Exception:
             return None
 
@@ -39146,13 +39162,12 @@ class KernelCmdlineCommand(GenericCommand):
 
         info("Wait for memory scan")
 
-        ret = KernelCmdlineCommand.kernel_cmdline()
-        if ret is None:
+        kcmdline = KernelCmdlineCommand.kernel_cmdline()
+        if kcmdline is None:
             err("Parse failed")
             return
-        addr, kernel_cmdline_string = ret
         gef_print(titlify("Kernel cmdline (heuristic)"))
-        gef_print("{:#x}: '{:s}'".format(addr, kernel_cmdline_string))
+        gef_print("{:#x}: '{:s}'".format(kcmdline.address, kcmdline.cmdline))
         return
 
 
