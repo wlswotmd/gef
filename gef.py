@@ -39770,7 +39770,10 @@ class KernelModuleCommand(GenericCommand):
         module_addrs = []
         current = modules
         while True:
-            addr = read_int_from_memory(current)
+            try:
+                addr = read_int_from_memory(current)
+            except gdb.MemoryError:
+                break
             if addr == modules:
                 break
             module_addrs.append(addr)
