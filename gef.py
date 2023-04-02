@@ -7576,6 +7576,7 @@ def get_register(regname, use_mbed_exec=False):
             pass
 
     if use_mbed_exec:
+        # Note that attempting to read a non-existent register will jump to an Undefined exception
         r = gdb.execute("read-system-register {:s}".format(regname), to_string=True)
         if r:
             return int(r.split("=")[1], 16)
@@ -12864,7 +12865,7 @@ class MmapMemoryCommand(GenericCommand):
 
 @register_command
 class ReadSystemRegisterCommand(GenericCommand):
-    """Read system register for old qemu."""
+    """Read system register for old qemu. Attempting to read a non-existing register raises an Undefined exception."""
     _cmdline_ = "read-system-register"
     _category_ = "04-a. Register - View"
 
@@ -13588,11 +13589,19 @@ class ReadSystemRegisterCommand(GenericCommand):
         self.close_stdout()
         gdb.execute("stepi", to_string=True)
         ret = get_register(current_arch.return_register)
+        stepped_pc = current_arch.pc
 
         # revert
         self.revert_stdout()
         self.revert_state(d)
         gef_on_stop_hook(hook_stop_handler)
+
+        # check
+        # Jumps to the Undefined exception vector if an attempt is made to a register that does not exist.
+        # Even though I just stepped through it, the PC register values are very different.
+        if abs(stepped_pc - d["pc"]) > 0x10:
+            err("Undefined register. It probably crashes the kernel.")
+            return None
         return ret
 
     @parse_args
@@ -16824,7 +16833,7 @@ class ChecksecCommand(GenericCommand):
 
         elif is_arm32():
             # PXN
-            ID_MMFR0 = get_register('$ID_MMFR0', use_mbed_exec=True)
+            ID_MMFR0 = get_register('$ID_MMFR0')
             ID_MMFR0_S = get_register('$ID_MMFR0_S')
             if ID_MMFR0 is not None and (ID_MMFR0 >> 2) & 1:
                 gef_print("{:<40s}: {:s}".format("PXN", Color.colorify("Enabled", "bold green")))
@@ -49519,11 +49528,7 @@ class PagewalkArmCommand(PagewalkCommand):
             SCR = get_register('$SCR')
 
             if (SCR, SCR_S) == (None, None):
-                SCR = get_register('$SCR', use_mbed_exec=True)
-                if SCR is not None:
-                    self.SECURE = (SCR & 0x1) == 0 # NS bit
-                else:
-                    self.SECURE = False
+                self.SECURE = False
                 self.suffix = ""
 
             elif SCR is not None and SCR_S is None:
@@ -49558,7 +49563,7 @@ class PagewalkArmCommand(PagewalkCommand):
 
         elif self.FORCE_PREFIX_S is False:
             # do not use "_S"
-            SCR = get_register('$SCR', use_mbed_exec=True)
+            SCR = get_register('$SCR')
             if SCR is not None:
                 self.SECURE = (SCR & 0x1) == 0 # NS bit
             else:
@@ -49566,7 +49571,7 @@ class PagewalkArmCommand(PagewalkCommand):
             self.suffix = ""
 
         # check XP, AFE
-        SCTLR = get_register('$SCTLR{}'.format(self.suffix), use_mbed_exec=True)
+        SCTLR = get_register('$SCTLR{}'.format(self.suffix))
         if SCTLR is not None:
             self.XP = ((SCTLR >> 23) & 0x1) == 1
             self.AFE = ((SCTLR >> 29) & 0x1) == 1
@@ -49581,7 +49586,7 @@ class PagewalkArmCommand(PagewalkCommand):
             self.quiet_info("Secure world: {}".format(self.SECURE))
 
         # check enabled LPAE
-        TTBCR = get_register('$TTBCR{}'.format(self.suffix), use_mbed_exec=True)
+        TTBCR = get_register('$TTBCR{}'.format(self.suffix))
         if TTBCR is not None:
             self.LPAE = ((TTBCR >> 31) & 0x1) == 1
             self.PTE_SIZE = 8 if self.LPAE else 4
@@ -49589,7 +49594,7 @@ class PagewalkArmCommand(PagewalkCommand):
             self.LPAE = False
 
         # check PXN supported
-        ID_MMFR0 = get_register('$ID_MMFR0{}'.format(self.suffix), use_mbed_exec=True)
+        ID_MMFR0 = get_register('$ID_MMFR0{}'.format(self.suffix))
         if ID_MMFR0 is not None:
             self.PXN = ((ID_MMFR0 >> 2) & 0x1) == 1
         else:
