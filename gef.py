@@ -16647,124 +16647,124 @@ class ChecksecCommand(GenericCommand):
                 msg += " (Could not get the canary value)"
             else:
                 msg += " (value: {:#x})".format(res[0])
-        gef_print("{:<30s}: {:s}".format("Canary", msg))
+        gef_print("{:<40s}: {:s}".format("Canary", msg))
 
         # NX
-        gef_print("{:<30s}: {:s}".format("NX", get_colored_msg(sec["NX"])))
+        gef_print("{:<40s}: {:s}".format("NX", get_colored_msg(sec["NX"])))
 
         # PIE
-        gef_print("{:<30s}: {:s}".format("PIE", get_colored_msg(sec["PIE"])))
+        gef_print("{:<40s}: {:s}".format("PIE", get_colored_msg(sec["PIE"])))
 
         # RELRO
         if sec["Full RELRO"]:
-            gef_print("{:<30s}: {:s}".format("RELRO", Color.colorify("Full RELRO", "bold green")))
+            gef_print("{:<40s}: {:s}".format("RELRO", Color.colorify("Full RELRO", "bold green")))
         elif sec["Partial RELRO"]:
-            gef_print("{:<30s}: {:s}".format("RELRO", Color.colorify("Partial RELRO", "bold yellow")))
+            gef_print("{:<40s}: {:s}".format("RELRO", Color.colorify("Partial RELRO", "bold yellow")))
         else:
-            gef_print("{:<30s}: {:s}".format("RELRO", Color.colorify("No RELRO", "bold red")))
+            gef_print("{:<40s}: {:s}".format("RELRO", Color.colorify("No RELRO", "bold red")))
 
         # Fortify
         if sec["Fortify"]:
-            gef_print("{:<30s}: {:s}".format("Fortify", Color.colorify("Found", "bold green")))
+            gef_print("{:<40s}: {:s}".format("Fortify", Color.colorify("Found", "bold green")))
         else:
-            gef_print("{:<30s}: {:s}".format("Fortify", Color.colorify("Not Found", "bold red")))
+            gef_print("{:<40s}: {:s}".format("Fortify", Color.colorify("Not Found", "bold red")))
 
         gef_print(titlify("Additional information"))
 
         # Static
         if sec["Static"]:
-            gef_print("{:<30s}: {:s}".format("Static/Dynamic", "Static"))
+            gef_print("{:<40s}: {:s}".format("Static/Dynamic", "Static"))
         else:
-            gef_print("{:<30s}: {:s}".format("Static/Dynamic", "Dynamic"))
+            gef_print("{:<40s}: {:s}".format("Static/Dynamic", "Dynamic"))
 
         # Stripped
         if sec["Stripped"]:
             msg = Color.colorify("Yes", "bold green")
-            gef_print("{:<30s}: {:s}".format("Stripped", msg))
+            gef_print("{:<40s}: {:s}".format("Stripped", msg))
         else:
             msg = Color.colorify("No", "bold red") + " (The symbol remains)"
-            gef_print("{:<30s}: {:s}".format("Stripped", msg))
+            gef_print("{:<40s}: {:s}".format("Stripped", msg))
 
         # CET opcode
         if sec["Intel CET"]:
-            gef_print("{:<30s}: {:s}".format("Intel CET endbr64/endbr32", Color.colorify("Found", "bold green")))
+            gef_print("{:<40s}: {:s}".format("Intel CET endbr64/endbr32", Color.colorify("Found", "bold green")))
         else:
-            gef_print("{:<30s}: {:s}".format("Intel CET endbr64/endbr32", Color.colorify("Not Found", "bold red")))
+            gef_print("{:<40s}: {:s}".format("Intel CET endbr64/endbr32", Color.colorify("Not Found", "bold red")))
 
         # CET Status
         if is_alive() and is_x86():
             r = CetStatus().get_cet_status()
             if r is None:
-                msg = Color.colorify("Disabled", "bold red") + " (OS does not support)"
-                gef_print("{:<30s}: {:s}".format("Intel CET IBT", msg))
-                gef_print("{:<30s}: {:s}".format("Intel CET SHSTK", msg))
+                msg = Color.colorify("Disabled", "bold red") + " (kernel does not support)"
+                gef_print("{:<40s}: {:s}".format("Intel CET IBT", msg))
+                gef_print("{:<40s}: {:s}".format("Intel CET SHSTK", msg))
             else:
                 if r["data"][0] & 0b01:
-                    gef_print("{:<30s}: {:s}".format("Intel CET IBT", Color.colorify("Enabled", "bold green")))
+                    gef_print("{:<40s}: {:s}".format("Intel CET IBT", Color.colorify("Enabled", "bold green")))
                 else:
-                    msg = Color.colorify("Disabled", "bold red") + " (OS supports but disabled)"
-                    gef_print("{:<30s}: {:s}".format("Intel CET IBT", msg))
+                    msg = Color.colorify("Disabled", "bold red") + " (kernel supports but disabled)"
+                    gef_print("{:<40s}: {:s}".format("Intel CET IBT", msg))
                 if r["data"][0] & 0b10:
-                    gef_print("{:<30s}: {:s}".format("Intel CET SHSTK", Color.colorify("Enabled", "bold green")))
+                    gef_print("{:<40s}: {:s}".format("Intel CET SHSTK", Color.colorify("Enabled", "bold green")))
                 else:
-                    msg = Color.colorify("Disabled", "bold red") + " (OS supports but disabled)"
-                    gef_print("{:<30s}: {:s}".format("Intel CET SHSTK", msg))
+                    msg = Color.colorify("Disabled", "bold red") + " (kernel supports but disabled)"
+                    gef_print("{:<40s}: {:s}".format("Intel CET SHSTK", msg))
 
         # RPATH
         if not sec["RPATH"]:
-            gef_print("{:<30s}: {:s}".format("RPATH", Color.colorify("Not Found", "bold green")))
+            gef_print("{:<40s}: {:s}".format("RPATH", Color.colorify("Not Found", "bold green")))
         else:
-            gef_print("{:<30s}: {:s}".format("RPATH", Color.colorify("Found", "bold red")))
+            gef_print("{:<40s}: {:s}".format("RPATH", Color.colorify("Found", "bold red")))
 
         # RUNPATH
         if not sec["RUNPATH"]:
-            gef_print("{:<30s}: {:s}".format("RUNPATH", Color.colorify("Not Found", "bold green")))
+            gef_print("{:<40s}: {:s}".format("RUNPATH", Color.colorify("Not Found", "bold green")))
         else:
-            gef_print("{:<30s}: {:s}".format("RUNPATH", Color.colorify("Found", "bold red")))
+            gef_print("{:<40s}: {:s}".format("RUNPATH", Color.colorify("Found", "bold red")))
 
         # Clang CFI
         if sec["Clang CFI"]:
-            gef_print("{:<30s}: {:s}".format("Clang CFI", get_colored_msg(sec["Clang CFI"])))
+            gef_print("{:<40s}: {:s}".format("Clang CFI", get_colored_msg(sec["Clang CFI"])))
 
         # Clang SafeStack
         if sec["Clang SafeStack"]:
-            gef_print("{:<30s}: {:s}".format("Clang SafeStack", get_colored_msg(sec["Clang SafeStack"])))
+            gef_print("{:<40s}: {:s}".format("Clang SafeStack", get_colored_msg(sec["Clang SafeStack"])))
 
         # System-ASLR
         if is_remote_debug():
             msg = Color.colorify("Unknown", "bold gray")
-            gef_print("{:<30s}: {:s} (remote process)".format("System-ASLR", msg))
+            gef_print("{:<40s}: {:s} (remote process)".format("System-ASLR", msg))
         else:
             try:
                 system_aslr = int(open("/proc/sys/kernel/randomize_va_space").read())
                 if system_aslr == 0:
                     msg = Color.colorify("Disabled", "bold red")
-                    gef_print("{:<30s}: {:s} (randomize_va_space: 0)".format("System ASLR", msg))
+                    gef_print("{:<40s}: {:s} (randomize_va_space: 0)".format("System ASLR", msg))
                 elif system_aslr == 1:
                     msg = Color.colorify("Partially Enabled", "bold yellow")
-                    gef_print("{:<30s}: {:s} (randomize_va_space: 1)".format("System ASLR", msg))
+                    gef_print("{:<40s}: {:s} (randomize_va_space: 1)".format("System ASLR", msg))
                 elif system_aslr == 2:
                     msg = Color.colorify("Enabled", "bold green")
-                    gef_print("{:<30s}: {:s} (randomize_va_space: 2)".format("System ASLR", msg))
+                    gef_print("{:<40s}: {:s} (randomize_va_space: 2)".format("System ASLR", msg))
             except Exception:
                 msg = Color.colorify("Unknown", "bold gray")
-                gef_print("{:<30s}: {:s} (randomize_va_space: error)".format("System-ASLR", msg))
+                gef_print("{:<40s}: {:s} (randomize_va_space: error)".format("System-ASLR", msg))
 
         # gdb ASLR
         if is_attach() or is_remote_debug():
             msg = Color.colorify("Ignored", "bold gray")
-            gef_print("{:<30s}: {:s} (attached or remote process)".format("GDB ASLR setting", msg))
+            gef_print("{:<40s}: {:s} (attached or remote process)".format("GDB ASLR setting", msg))
         else:
             ret = gdb.execute("show disable-randomization", to_string=True)
             if "virtual address space is on." in ret:
                 msg = Color.colorify("Disabled", "bold red")
-                gef_print("{:<30s}: {:s} (disable-randomization: on)".format("GDB ASLR setting", msg))
+                gef_print("{:<40s}: {:s} (disable-randomization: on)".format("GDB ASLR setting", msg))
             elif "virtual address space is off." in ret:
                 msg = Color.colorify("Enabled", "bold green")
-                gef_print("{:<30s}: {:s} (disable-randomization: off)".format("GDB ASLR setting", msg))
+                gef_print("{:<40s}: {:s} (disable-randomization: off)".format("GDB ASLR setting", msg))
             else:
                 msg = Color.colorify("Unknown", "bold gray")
-                gef_print("{:<30s}: {:s}".format("GDB ASLR setting", msg))
+                gef_print("{:<40s}: {:s}".format("GDB ASLR setting", msg))
         return
 
     def print_security_properties_qemu_system(self):
@@ -16794,60 +16794,61 @@ class ChecksecCommand(GenericCommand):
 
             # WP
             if (cr0 >> 16) & 1:
-                gef_print("{:<30s}: {:s}".format("Write Protection (CR0 bit 16)", Color.colorify("Enabled", "bold green")))
+                gef_print("{:<40s}: {:s}".format("Write Protection (CR0 bit 16)", Color.colorify("Enabled", "bold green")))
             else:
-                gef_print("{:<30s}: {:s}".format("Write Protection (CR0 bit 16)", Color.colorify("Disabled", "bold red")))
+                gef_print("{:<40s}: {:s}".format("Write Protection (CR0 bit 16)", Color.colorify("Disabled", "bold red")))
 
             # PAE
             if (cr4 >> 5) & 1:
-                gef_print("{:<30s}: {:s} (NX is supported)".format("PAE (CR4 bit 5)", Color.colorify("Enabled", "bold green")))
+                gef_print("{:<40s}: {:s} (NX is supported)".format("PAE (CR4 bit 5)", Color.colorify("Enabled", "bold green")))
             else:
-                gef_print("{:<30s}: {:s} (NX is unsupported)".format("PAE (CR4 bit 5)", Color.colorify("Disabled", "bold red")))
+                gef_print("{:<40s}: {:s} (NX is unsupported)".format("PAE (CR4 bit 5)", Color.colorify("Disabled", "bold red")))
 
             # SMEP
             if (cr4 >> 20) & 1:
-                gef_print("{:<30s}: {:s}".format("SMEP (CR4 bit 20)", Color.colorify("Enabled", "bold green")))
+                gef_print("{:<40s}: {:s}".format("SMEP (CR4 bit 20)", Color.colorify("Enabled", "bold green")))
             else:
-                gef_print("{:<30s}: {:s}".format("SMEP (CR4 bit 20)", Color.colorify("Disabled", "bold red")))
+                gef_print("{:<40s}: {:s}".format("SMEP (CR4 bit 20)", Color.colorify("Disabled", "bold red")))
 
             # SMAP
             if (cr4 >> 21) & 1:
-                gef_print("{:<30s}: {:s}".format("SMAP (CR4 bit 21)", Color.colorify("Enabled", "bold green")))
+                gef_print("{:<40s}: {:s}".format("SMAP (CR4 bit 21)", Color.colorify("Enabled", "bold green")))
             else:
-                gef_print("{:<30s}: {:s}".format("SMAP (CR4 bit 21)", Color.colorify("Disabled", "bold red")))
+                gef_print("{:<40s}: {:s}".format("SMAP (CR4 bit 21)", Color.colorify("Disabled", "bold red")))
 
             # CET
             if (cr4 >> 23) & 1:
-                gef_print("{:<30s}: {:s}".format("CET (CR4 bit 23)", Color.colorify("Enabled", "bold green")))
+                gef_print("{:<40s}: {:s}".format("CET (CR4 bit 23)", Color.colorify("Enabled", "bold green")))
             else:
-                gef_print("{:<30s}: {:s}".format("CET (CR4 bit 23)", Color.colorify("Disabled", "bold red")))
+                gef_print("{:<40s}: {:s}".format("CET (CR4 bit 23)", Color.colorify("Disabled", "bold red")))
 
         elif is_arm32():
             # PXN
             ID_MMFR0 = get_register('$ID_MMFR0', use_mbed_exec=True)
             ID_MMFR0_S = get_register('$ID_MMFR0_S')
             if ID_MMFR0 is not None and (ID_MMFR0 >> 2) & 1:
-                gef_print("{:<30s}: {:s}".format("PXN", Color.colorify("Enabled", "bold green")))
+                gef_print("{:<40s}: {:s}".format("PXN", Color.colorify("Enabled", "bold green")))
             elif ID_MMFR0_S is not None and (ID_MMFR0_S >> 2) & 1:
-                gef_print("{:<30s}: {:s}".format("PXN", Color.colorify("Enabled", "bold green")))
+                gef_print("{:<40s}: {:s}".format("PXN", Color.colorify("Enabled", "bold green")))
             else:
-                gef_print("{:<30s}: {:s}".format("PXN", Color.colorify("Disabled", "bold red")))
+                gef_print("{:<40s}: {:s}".format("PXN", Color.colorify("Disabled", "bold red")))
 
             # PAN
-            gef_print("{:<30s}: {:s} (all ARMv7 is unsupported)".format("PAN", Color.colorify("Disabled", "bold red")))
+            gef_print("{:<40s}: {:s} (all ARMv7 is unsupported)".format("PAN", Color.colorify("Disabled", "bold red")))
 
         elif is_arm64():
             # PXN
-            gef_print("{:<30s}: {:s} (all ARMv8~ is supported)".format("PXN", Color.colorify("Enabled", "bold green")))
+            gef_print("{:<40s}: {:s} (all ARMv8~ is supported)".format("PXN", Color.colorify("Enabled", "bold green")))
 
             # PAN
             ID_AA64MMFR1_EL1 = get_register('$ID_AA64MMFR1_EL1')
             if ID_AA64MMFR1_EL1 is not None and ((ID_AA64MMFR1_EL1 >> 20) & 0b1111) != 0b0000:
-                gef_print("{:<30s}: {:s}".format("PAN", Color.colorify("Enabled", "bold green")))
+                gef_print("{:<40s}: {:s}".format("PAN", Color.colorify("Enabled", "bold green")))
             else:
-                gef_print("{:<30s}: {:s}".format("PAN", Color.colorify("Disabled", "bold red")))
+                gef_print("{:<40s}: {:s}".format("PAN", Color.colorify("Disabled", "bold red")))
 
         gef_print(titlify("Memory settings"))
+
         kinfo = KernelbaseCommand.get_kernel_base()
         if kinfo.kbase is None:
             err("kbasel is not found (get_kernel_base is failed)")
@@ -16860,36 +16861,36 @@ class ChecksecCommand(GenericCommand):
         kversion = KernelVersionCommand.kernel_version()
 
         # KASLR
-        r = gdb.execute("ksymaddr-remote --quiet kaslr_", to_string=True)
         cfg = "CONFIG_RANDOMIZE_BASE (KASLR)"
+        ksym_ret = gdb.execute("ksymaddr-remote --quiet kaslr_", to_string=True)
         address_info = "kbase: {:#x}, _stext:{:#x}".format(kinfo.kbase, _stext)
-        if r:
+        if ksym_ret:
             if kcmdline and "nokaslr" in kcmdline.cmdline:
-                gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), address_info))
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), address_info))
             else:
-                gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), address_info))
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), address_info))
         else:
-            gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Unsupported", "bold red"), address_info))
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unsupported", "bold red"), address_info))
 
         # FGKASLR
+        cfg = "CONFIG_FG_KASLR"
         swapgs_restore_regs_and_return_to_usermode = get_ksymaddr("swapgs_restore_regs_and_return_to_usermode")
         commit_creds = get_ksymaddr("commit_creds")
-        cfg = "CONFIG_FG_KASLR"
         if swapgs_restore_regs_and_return_to_usermode:
             # swapgs_restore_regs_and_return_to_usermode is in a fixed location.
             # commit_creds are placed dynamically.
             if swapgs_restore_regs_and_return_to_usermode < commit_creds:
                 if kcmdline and "nofgkaslr" in kcmdline.cmdline:
-                    gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
                 else:
-                    gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
+                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
             else:
-                gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Unsupported", "bold red")))
+                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unsupported", "bold red")))
         else:
             if commit_creds:
-                gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Unsupported", "bold red")))
+                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unsupported", "bold red")))
             else:
-                gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
+                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
 
         # KPTI
         cfg = "CONFIG_PAGE_TABLE_ISOLATION"
@@ -16897,88 +16898,60 @@ class ChecksecCommand(GenericCommand):
             pti_init = get_ksymaddr("pti_init")
             if pti_init:
                 if kcmdline and "nopti" in kcmdline.cmdline:
-                    gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
                 elif kcmdline and "pti=off" in kcmdline.cmdline:
-                    gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
                 elif kcmdline and "mitigations=off" in kcmdline.cmdline:
-                    gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
                 elif kcmdline and "pti=on" in kcmdline.cmdline:
-                    gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
+                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
                 else:
                     # here is kernel context
                     lines = get_maps_by_pagewalk("pagewalk -q --simple -n").splitlines()
                     for line in lines:
                         if "USER" in line and "R-X" in line:
-                            gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+                            gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
                             break
                     else:
-                        gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
+                        gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
             else:
-                gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Unsupported", "bold red")))
+                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unsupported", "bold red")))
 
         elif is_arm32():
-            gef_print("{:<30s}: {:s} (ARMv7 is unsupported)".format(cfg, Color.colorify("Unsupported", "bold red")))
+            gef_print("{:<40s}: {:s} (ARMv7 is unsupported)".format(cfg, Color.colorify("Unsupported", "bold red")))
 
         elif is_arm64():
             pti_init = get_ksymaddr("pti_init")
             if pti_init:
                 if kcmdline and "kpti=0" in kcmdline.cmdline:
-                    gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
                 elif kcmdline and "mitigations=off" in kcmdline.cmdline and "nokaslr" in kcmdline.cmdline:
-                    gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
                 elif kcmdline and "mitigations=off" in kcmdline.cmdline and "nokaslr" not in kcmdline.cmdline:
-                    gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
+                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
                 elif kcmdline and "kpti=1" in kcmdline.cmdline:
-                    gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
+                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
                 else:
-                    gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Enabled (maybe)", "bold green")))
+                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enabled (maybe)", "bold green")))
             else:
-                gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Unsupported", "bold red")))
+                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unsupported", "bold red")))
 
         # RWX kernel page
         cfg = "RWX kernel page"
         for m in kinfo.maps:
             if m[2] == "RWX":
-                gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Found", "bold red")))
+                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Found", "bold red")))
                 break
         else:
-            gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Not found", "bold green")))
+            gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Not found", "bold green")))
 
         # Secure-world
         if is_arm32() or is_arm64():
-            r = gdb.execute("monitor info mtree -f", to_string=True)
-            if "virt.secure-ram" in r:
-                gef_print("{:<30s}: {:s}".format("Secure-World", Color.colorify("Exist", "bold green")))
+            mtree_ret = gdb.execute("monitor info mtree -f", to_string=True)
+            if "virt.secure-ram" in mtree_ret:
+                gef_print("{:<40s}: {:s}".format("Secure-World", Color.colorify("Exist", "bold green")))
             else:
-                gef_print("{:<30s}: {:s}".format("Secure-World", Color.colorify("Not exist", "bold red")))
-
-        gef_print(titlify("Symbol"))
-
-        # CONFIG_KALLSYMS_ALL
-        modprobe_path = get_ksymaddr("modprobe_path")
-        cfg = "CONFIG_KALLSYMS_ALL"
-        if modprobe_path:
-            gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Enabled", "bold red")))
-        else:
-            gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Disabled", "bold green")))
-
-        gef_print(titlify("Read-only"))
-
-        # CONFIG_STATIC_USERMODEHELPER
-        mp = KernelAddressHeuristicFinder.get_modprobe_path()
-        cfg = "CONFIG_STATIC_USERMODEHELPER"
-        if mp is None:
-            gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Not found", "bold gray")))
-        else:
-            for vaddr, size, perm in kinfo.maps:
-                if vaddr <= mp < vaddr + size:
-                    if "W" not in perm:
-                        gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), perm))
-                    else:
-                        gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), perm))
-                    break
-            else:
-                gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Not found maps", "bold gray")))
+                gef_print("{:<40s}: {:s}".format("Secure-World", Color.colorify("Not exist", "bold red")))
 
         gef_print(titlify("Allocator"))
 
@@ -16986,79 +16959,68 @@ class ChecksecCommand(GenericCommand):
         allocator = False
         r = gdb.execute("ksymaddr-remote --quiet slub_", to_string=True)
         if r:
-            gef_print("{:<30s}: {:s}".format("Allocator", Color.colorify("SLUB", "bold green")))
+            gef_print("{:<40s}: {:s}".format("Allocator", Color.colorify("SLUB", "bold green")))
             allocator = "SLUB"
         else:
             r = gdb.execute("ksymaddr-remote --quiet slab_prepare_cpu", to_string=True)
             if r:
-                gef_print("{:<30s}: {:s}".format("Allocator", Color.colorify("SLAB", "bold green")))
+                gef_print("{:<40s}: {:s}".format("Allocator", Color.colorify("SLAB", "bold green")))
                 allocator = "SLAB"
             else:
-                gef_print("{:<30s}: {:s}".format("Allocator", Color.colorify("SLOB", "bold green")))
+                gef_print("{:<40s}: {:s}".format("Allocator", Color.colorify("SLOB", "bold green")))
                 allocator = "SLOB"
 
         # CONFIG_SLAB_FREELIST_HARDENED
         if allocator == "SLUB":
-            ret = gdb.execute("slub-dump kmalloc-8 kmalloc-16 kmalloc-32 kmalloc-64", to_string=True)
-            r = re.search(r"offsetof\(kmem_cache, random\): (0x\S+)", ret)
             cfg = "CONFIG_SLAB_FREELIST_HARDENED"
-            if "Corrupted" in ret:
-                gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
-            elif r:
-                additional = "offset: {:s}".format(r.group(1))
-                gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
+            slub_dump_ret = gdb.execute("slub-dump kmalloc-8 kmalloc-16 kmalloc-32 kmalloc-64", to_string=True)
+            if "Corrupted" in slub_dump_ret:
+                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
             else:
-                gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
-
-        gef_print(titlify("Stack"))
-
-        # CONFIG_STACKPROTECTOR
-        ret = gdb.execute("ktask -n", to_string=True)
-        r = re.search(r"offsetof\(task_struct, stack_canary\): (0x\S+)", ret)
-        cfg = "CONFIG_STACKPROTECTOR"
-        if r:
-            additional = "offset: {:s}".format(r.group(1))
-            gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
-        else:
-            gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+                r = re.search(r"offsetof\(kmem_cache, random\): (0x\S+)", slub_dump_ret)
+                if r:
+                    additional = "offsetof(kmem_cache, random): {:s}".format(r.group(1))
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
+                else:
+                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
 
         gef_print(titlify("Dangerous system call"))
 
         # unprivileged_userfaultfd
         cfg = "unprivileged_userfaultfd"
-        r1 = gdb.execute("syscall-table-view -f userfaultfd -n -q", to_string=True)
-        if "invalid userfaultfd" in r1:
+        stv_uff_ret = gdb.execute("syscall-table-view -f userfaultfd -n -q", to_string=True)
+        if "invalid userfaultfd" in stv_uff_ret:
             additional = "userfaultfd syscall is disabled"
-            gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("None", "bold green"), additional))
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("None", "bold green"), additional))
         else:
             sysctl_unprivileged_userfaultfd = KernelAddressHeuristicFinder.get_sysctl_unprivileged_userfaultfd()
             if sysctl_unprivileged_userfaultfd is None:
-                gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
+                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
             else:
                 v = u32(read_memory(sysctl_unprivileged_userfaultfd, 4))
                 additional = "unprivileged_userfaultfd: {:d}".format(v)
                 if v == 0:
-                    gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold green"), additional))
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold green"), additional))
                 else:
-                    gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold red"), additional))
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold red"), additional))
 
         # unprivileged_bpf_disabled
         cfg = "unprivileged_bpf_disabled"
-        r1 = gdb.execute("syscall-table-view -f bpf -n -q", to_string=True)
-        if "invalid bpf" in r1:
+        stv_bpf_ret = gdb.execute("syscall-table-view -f bpf -n -q", to_string=True)
+        if "invalid bpf" in stv_bpf_ret:
             additional = "bpf syscall is disabled"
-            gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("None", "bold green"), additional))
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("None", "bold green"), additional))
         else:
             sysctl_unprivileged_bpf_disabled = KernelAddressHeuristicFinder.get_sysctl_unprivileged_bpf_disabled()
             if sysctl_unprivileged_bpf_disabled is None:
-                gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
+                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
             else:
                 v = u32(read_memory(sysctl_unprivileged_bpf_disabled, 4))
                 additional = "unprivileged_bpf_disabled: {:d}".format(v)
                 if v == 0:
-                    gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
                 else:
-                    gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
 
         # kexec_load_disabled
         cfg = "kexec_load_disabled"
@@ -17066,82 +17028,115 @@ class ChecksecCommand(GenericCommand):
         r2 = gdb.execute("syscall-table-view -f kexec_file_load -n -q", to_string=True)
         if "invalid kexec_load" in r1 and "invalid kexec_file_load" in r2:
             additional = "kexec_load, kexec_file_load syscalls are disabled"
-            gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("None", "bold green"), additional))
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("None", "bold green"), additional))
         else:
             kexec_load_disabled = KernelAddressHeuristicFinder.get_kexec_load_disabled()
             if kexec_load_disabled is None:
-                gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
+                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
             else:
                 v1 = u32(read_memory(kexec_load_disabled, 4))
                 additional = "kexec_load_disabled: {:d}".format(v1)
                 if v1 == 0:
-                    gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
                 else:
-                    gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
 
         gef_print(titlify("Other"))
 
-        # mmap_min_addr
-        mmap_min_addr = KernelAddressHeuristicFinder.get_mmap_min_addr()
-        cfg = "mmap_min_addr"
-        if mmap_min_addr is None:
-            gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
+        # CONFIG_KALLSYMS_ALL
+        cfg = "CONFIG_KALLSYMS_ALL"
+        modprobe_path = get_ksymaddr("modprobe_path")
+        if modprobe_path:
+            gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enabled", "bold red")))
         else:
-            val = read_int_from_memory(mmap_min_addr)
-            if val:
-                gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("{:#x}".format(val), "bold green")))
+            gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold green")))
+
+        # CONFIG_STATIC_USERMODEHELPER
+        cfg = "CONFIG_STATIC_USERMODEHELPER"
+        mp = KernelAddressHeuristicFinder.get_modprobe_path()
+        if mp is None:
+            gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Not found", "bold gray")))
+        else:
+            for vaddr, size, perm in kinfo.maps:
+                if vaddr <= mp < vaddr + size:
+                    if "W" not in perm:
+                        gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), perm))
+                    else:
+                        gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), perm))
+                    break
             else:
-                gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("{:#x}".format(val), "bold red")))
+                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Not found maps", "bold gray")))
+
+        # CONFIG_STACKPROTECTOR
+        cfg = "CONFIG_STACKPROTECTOR"
+        ktask_ret = gdb.execute("ktask -n", to_string=True)
+        r = re.search(r"offsetof\(task_struct, stack_canary\): (0x\S+)", ktask_ret)
+        if r:
+            additional = "offsetof(task_struct, stack_canary): {:s}".format(r.group(1))
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
+        else:
+            gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
 
         # KADR (kallsyms)
+        cfg = "KADR (kallsyms)"
         kptr_restrict = KernelAddressHeuristicFinder.get_kptr_restrict()
         sysctl_perf_event_paranoid = KernelAddressHeuristicFinder.get_sysctl_perf_event_paranoid()
-        cfg = "KADR (kallsyms)"
         if kptr_restrict is None:
-            gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
+            gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
         else:
-            kversion = float(re.search(r"Linux version (\d\.\d+).\d+", gdb.execute("kversion", to_string=True)).group(1))
-            if kversion < 4.15:
+            if kversion.major <= 3 or (kversion.major == 4 and kversion.minor < 15):
                 v1 = u32(read_memory(kptr_restrict, 4))
                 additional = "kptr_restrict: {:d}".format(v1)
                 if v1 == 0:
-                    gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
                 else:
-                    gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
             else:
                 v1 = u32(read_memory(kptr_restrict, 4))
                 v2 = u32(read_memory(sysctl_perf_event_paranoid, 4))
                 additional = "kptr_restrict: {:d}, perf_event_paranoid: {:d}".format(v1, v2)
                 if v1 == 0 and v2 == 0:
-                    gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
                 else:
-                    gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
 
         # KADR (dmesg)
         dmesg_restrict = KernelAddressHeuristicFinder.get_dmesg_restrict()
         cfg = "KADR (dmesg)"
         if dmesg_restrict is None:
-            gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
+            gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
         else:
             v1 = u32(read_memory(dmesg_restrict, 4))
             additional = "dmesg_restrict: {:d}".format(v1)
             if v1 == 0:
-                gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
             else:
-                gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
 
         # ptrace_scope
-        ptrace_scope = KernelAddressHeuristicFinder.get_ptrace_scope()
         cfg = "ptrace_scope"
+        ptrace_scope = KernelAddressHeuristicFinder.get_ptrace_scope()
         if ptrace_scope is None:
-            gef_print("{:<30s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
+            gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
         else:
             v1 = u32(read_memory(ptrace_scope, 4))
             additional = "ptrace_scope: {:d}".format(v1)
             if v1 == 0:
-                gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
             else:
-                gef_print("{:<30s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
+
+        # mmap_min_addr
+        cfg = "mmap_min_addr"
+        mmap_min_addr = KernelAddressHeuristicFinder.get_mmap_min_addr()
+        if mmap_min_addr is None:
+            gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
+        else:
+            val = read_int_from_memory(mmap_min_addr)
+            if val:
+                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("{:#x}".format(val), "bold green")))
+            else:
+                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("{:#x}".format(val), "bold red")))
 
         return
 
@@ -39765,15 +39760,19 @@ class KernelModuleCommand(GenericCommand):
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
     _syntax_ = parser.format_help()
 
     def get_modules_list(self):
         modules = KernelAddressHeuristicFinder.get_modules()
         if modules is None:
-            err("Not found symbol")
+            if not self.quiet:
+                err("Not found symbol")
             return None
-        gef_print(titlify("Kernel modules (heuristic)"))
-        info("modules: {:#x}".format(modules))
+
+        if not self.quiet:
+            gef_print(titlify("Kernel modules (heuristic)"))
+            info("modules: {:#x}".format(modules))
 
         module_addrs = []
         current = modules
@@ -39801,9 +39800,12 @@ class KernelModuleCommand(GenericCommand):
                     valid = False
                     break
             if valid:
-                info("offsetof(module, name): {:#x}".format(offset_name))
+                if not self.quiet:
+                    info("offsetof(module, name): {:#x}".format(offset_name))
                 return offset_name
-        err("Not found module->name[MODULE_NAME_LEN]]")
+
+        if not self.quiet:
+            err("Not found module->name[MODULE_NAME_LEN]]")
         return None
 
     def get_offset_layout(self, module_addrs):
@@ -39924,9 +39926,12 @@ class KernelModuleCommand(GenericCommand):
                     valid = False
                     break
             if valid:
-                info("offsetof(module, init_layout): {:#x}".format(offset_layout))
+                if not self.quiet:
+                    info("offsetof(module, init_layout): {:#x}".format(offset_layout))
                 return offset_layout
-        err("Not found module->init_layout")
+
+        if not self.quiet:
+            err("Not found module->init_layout")
         return None
 
     @parse_args
@@ -39935,7 +39940,10 @@ class KernelModuleCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        info("Wait for memory scan")
+        self.quiet = args.quiet
+
+        if not self.quiet:
+            info("Wait for memory scan")
 
         module_addrs = self.get_modules_list()
         if module_addrs is None:
@@ -39949,9 +39957,10 @@ class KernelModuleCommand(GenericCommand):
         if offset_layout is None:
             return
 
-        fmt = "{:<18s}: {:<18s} {:<18s} {:<18s}"
-        legend = ["module", "module->name", "base", "size"]
-        gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+        if not self.quiet:
+            fmt = "{:<18s}: {:<18s} {:<18s} {:<18s}"
+            legend = ["module", "module->name", "base", "size"]
+            gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
         for module in module_addrs:
             name_string = read_cstring_from_memory(module + offset_name)
             base = read_int_from_memory(module + offset_layout)
