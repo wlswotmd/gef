@@ -12603,6 +12603,7 @@ class CallSyscallCommand(GenericCommand):
         d = {}
 
         # pc
+        # This value is used to point to the code location. It is not used to restore registers.
         d["pc"] = current_arch.pc
         if is_arm32() and current_arch.is_thumb() and d["pc"] & 1:
             d["pc"] -= 1
@@ -13508,6 +13509,7 @@ class ReadSystemRegisterCommand(GenericCommand):
         d = {}
 
         # pc
+        # This value is used to point to the code location. It is not used to restore registers.
         d["pc"] = current_arch.pc
         if current_arch.is_thumb() and d["pc"] & 1:
             d["pc"] -= 1
