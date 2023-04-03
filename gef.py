@@ -17098,6 +17098,16 @@ class ChecksecCommand(GenericCommand):
                 elif selinux_enforcing:
                     gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enforcing", "bold green"), additional))
 
+        # SMACK
+        cfg = "SMACK"
+        smack_init = get_ksymaddr("smack_init")
+        if smack_init is None:
+            additional = "smack_init: Not found"
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unsupported", "bold red"), additional))
+        else:
+            additional = "smack_init: Found"
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, "Supported", additional))
+
         # AppArmor
         cfg = "AppArmor"
         apparmor_init = get_ksymaddr("apparmor_init")
@@ -17142,6 +17152,94 @@ class ChecksecCommand(GenericCommand):
                     gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
                 else:
                     gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
+
+        # Yama (ptrace_scope)
+        cfg = "Yama (ptrace_scope)"
+        yama_init = get_ksymaddr("yama_init")
+        if yama_init is None:
+            additional = "yama_init: Not found"
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unsupported", "bold red"), additional))
+        else:
+            ptrace_scope_addr = KernelAddressHeuristicFinder.get_ptrace_scope()
+            if ptrace_scope_addr is None:
+                additional = "kernel.yama.ptrace_scope: Not found"
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, "Supported", additional))
+            else:
+                ptrace_scope = u32(read_memory(ptrace_scope_addr, 4))
+                additional = "kernel.yama.ptrace_scope: {:d}".format(ptrace_scope)
+                if ptrace_scope == 0:
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
+                else:
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
+
+        # Integrity
+        cfg = "Integrity"
+        integrity_iintcache_init = get_ksymaddr("integrity_iintcache_init")
+        if integrity_iintcache_init is None:
+            additional = "integrity_iintcache_init: Not found"
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unsupported", "bold red"), additional))
+        else:
+            additional = "integrity_iintcache_init: Found"
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, "Supported", additional))
+
+        # LoadPin
+        cfg = "LoadPin"
+        loadpin_init = get_ksymaddr("loadpin_init")
+        if loadpin_init is None:
+            additional = "loadpin_init: Not found"
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unsupported", "bold red"), additional))
+        else:
+            loadpin_enabled_addr = KernelAddressHeuristicFinder.get_loadpin_enabled()
+            if loadpin_enabled_addr is None:
+                additional = "kernel.loadpin.enabled: Not found"
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, "Supported", additional))
+            else:
+                loadpin_enabled = u32(read_memory(loadpin_enabled_addr, 4))
+                additional = "kernel.loadpin.enabled: {:d}".format(loadpin_enabled)
+                if loadpin_enabled == 0:
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
+                else:
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
+
+        # SafeSetID
+        cfg = "SafeSetID"
+        safesetid_security_init = get_ksymaddr("safesetid_security_init")
+        if safesetid_security_init is None:
+            additional = "safesetid_security_init: Not found"
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unsupported", "bold red"), additional))
+        else:
+            additional = "safesetid_security_init: Found"
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, "Supported", additional))
+
+        # Lockdown
+        cfg = "Lockdown"
+        lockdown_lsm_init = get_ksymaddr("lockdown_lsm_init")
+        if lockdown_lsm_init is None:
+            additional = "lockdown_lsm_init: Not found"
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unsupported", "bold red"), additional))
+        else:
+            additional = "lockdown_lsm_init: Found"
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, "Supported", additional))
+
+        # BPF
+        cfg = "BPF"
+        bpf_lsm_init = get_ksymaddr("bpf_lsm_init")
+        if bpf_lsm_init is None:
+            additional = "bpf_lsm_init: Not found"
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unsupported", "bold red"), additional))
+        else:
+            additional = "bpf_lsm_init: Found"
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, "Supported", additional))
+
+        # Landlock
+        cfg = "Landlock"
+        landlock_init = get_ksymaddr("landlock_init")
+        if landlock_init is None:
+            additional = "landlock_init: Not found"
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unsupported", "bold red"), additional))
+        else:
+            additional = "landlock_init: Found"
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, "Supported", additional))
 
         # LKRG
         cfg = "Linux Kernel Runtime Guard (LKRG)"
@@ -17275,19 +17373,6 @@ class ChecksecCommand(GenericCommand):
         else:
             v1 = u32(read_memory(dmesg_restrict, 4))
             additional = "dmesg_restrict: {:d}".format(v1)
-            if v1 == 0:
-                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
-            else:
-                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
-
-        # ptrace_scope
-        cfg = "ptrace_scope"
-        ptrace_scope = KernelAddressHeuristicFinder.get_ptrace_scope()
-        if ptrace_scope is None:
-            gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
-        else:
-            v1 = u32(read_memory(ptrace_scope, 4))
-            additional = "ptrace_scope: {:d}".format(v1)
             if v1 == 0:
                 gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
             else:
@@ -39191,6 +39276,14 @@ class KernelAddressHeuristicFinder:
         kexec_load_disabled = get_kparam("kernel.kexec_load_disabled")
         if kexec_load_disabled:
             return kexec_load_disabled
+        return None
+
+    @staticmethod
+    def get_loadpin_enabled():
+        # plan 1
+        loadpin_enabled = get_kparam("kernel.loadpin.enabled")
+        if loadpin_enabled:
+            return loadpin_enabled
         return None
 
     @staticmethod
