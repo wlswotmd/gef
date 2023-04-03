@@ -17003,7 +17003,7 @@ class ChecksecCommand(GenericCommand):
         # Therefore, only symbols in the kernel can be used to determine whether or not support.
         selinux_init = get_ksymaddr("selinux_init")
         if selinux_init is None:
-            additional = "kernel does not support"
+            additional = "selinux_init: Not found"
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unsupported", "bold red"), additional))
 
         elif kversion.major < 4 or (kversion.major == 4 and kversion.minor < 17):
@@ -17011,19 +17011,19 @@ class ChecksecCommand(GenericCommand):
             selinux_enforcing_addr = get_ksymaddr("selinux_enforcing")
 
             if selinux_enabled_addr is None:
-                additional = "seliux_enabled is not found"
-                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unknown", "bold gray"), additional))
+                additional = "seliux_enabled: Not found"
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, "Supported", additional))
             elif selinux_enforcing_addr is None:
-                additional = "seliux_enforcing is not found"
-                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unknown", "bold gray"), additional))
+                additional = "seliux_enforcing: Not found"
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, "Supported", additional))
             else:
                 selinux_enabled = u32(read_memory(selinux_enabled_addr, 4))
                 selinux_enforcing = u32(read_memory(selinux_enforcing_addr, 4))
                 if selinux_enabled == 0:
-                    additional = "selinux_enabled == 0"
+                    additional = "selinux_enabled: {:d}".format(selinux_enabled)
                     gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
                 elif selinux_enforcing == 0:
-                    additional = "selinux_enforcing == 0"
+                    additional = "selinux_enforcing: {:d}".format(selinux_enforcing)
                     gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Permissive", "bold red"), additional))
                 else:
                     gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enforcing", "bold green")))
@@ -17059,11 +17059,11 @@ class ChecksecCommand(GenericCommand):
             selinux_state = KernelAddressHeuristicFinder.get_selinux_state()
 
             if selinux_state is None:
-                additional = "selinux_state is not found"
-                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unknown", "bold gray"), additional))
+                additional = "selinux_state: Not found"
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, "Supported", additional))
 
             elif u64(read_memory(selinux_state, 8)) == 0:
-                additional = "selinux_state is not initialized"
+                additional = "selinux_state: Not initialized"
                 gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
 
             else:
@@ -17074,79 +17074,73 @@ class ChecksecCommand(GenericCommand):
 
                 # selinux_state.disabled
                 if CONFIG_SECURITY_SELINUX_DISABLE:
-                    selinux_disabled = u8(read_memory(selinux_state, 1)) != 0
+                    selinux_disabled = u8(read_memory(selinux_state, 1))
+                    additional = "selinux_state.disable: {:d}".format(selinux_disabled)
                 else:
-                    selinux_disabled = False
+                    selinux_disabled = None
+                    additional = "selinux_state.disable: Not found"
 
                 # selinux_state.enforcing
                 if CONFIG_SECURITY_SELINUX_DEVELOP and CONFIG_SECURITY_SELINUX_DISABLE:
-                    selinux_enforcing = u8(read_memory(selinux_state + 1, 1)) != 0
+                    selinux_enforcing = u8(read_memory(selinux_state + 1, 1))
+                    additional += ", selinux_state.enforcing: {:d}".format(selinux_enforcing)
                 elif CONFIG_SECURITY_SELINUX_DEVELOP and not CONFIG_SECURITY_SELINUX_DISABLE:
                     selinux_enforcing = u8(read_memory(selinux_state, 1)) != 0
+                    additional += ", selinux_state.enforcing: {:d}".format(selinux_enforcing)
                 else:
                     selinux_enforcing = True
+                    additional += ", selinux_state.enforcing: Not found"
 
-                if selinux_disabled is True:
-                    additional = "selinux_state.disable != 0"
+                if selinux_disabled:
                     gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
-                elif selinux_enforcing is False:
-                    additional = "selinux_state.enforcing == 0"
+                elif not selinux_enforcing:
                     gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Permissive", "bold red"), additional))
-                elif selinux_enforcing is True:
-                    if CONFIG_SECURITY_SELINUX_DEVELOP:
-                        additional = "selinux_state.enforcing != 0"
-                    else:
-                        additional = "selinux_state.enforcing does not exist"
+                elif selinux_enforcing:
                     gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enforcing", "bold green"), additional))
 
         # AppArmor
         cfg = "AppArmor"
         apparmor_init = get_ksymaddr("apparmor_init")
         if apparmor_init is None:
-            additional = "kernel does not support"
+            additional = "apparmor_init: Not found"
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unsupported", "bold red"), additional))
         else:
             apparmor_enabled_addr = KernelAddressHeuristicFinder.get_apparmor_enabled()
             apparmor_initialized_addr = KernelAddressHeuristicFinder.get_apparmor_initialized()
-
             if apparmor_enabled_addr is None:
-                additional = "apparmor_enabled is not found"
-                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unknown", "bold gray"), additional))
+                additional = "apparmor_enabled: Not found"
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, "Supported", additional))
             elif apparmor_initialized_addr is None:
-                additional = "apparmor_initialized is not found"
-                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unknown", "bold gray"), additional))
+                additional = "apparmor_initialized: Not found"
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, "Supported", additional))
             else:
                 apparmor_enabled = u32(read_memory(apparmor_enabled_addr, 4))
                 apparmor_initialized = u32(read_memory(apparmor_initialized_addr, 4))
+                additional = "apparmor_initialized:{:d}, apparmor_enabled: {:d}".format(apparmor_initialized, apparmor_enabled)
                 if apparmor_enabled == 0:
-                    additional = "apparmor_enabled == 0"
                     gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
                 elif apparmor_initialized == 0:
-                    additional = "apparmor_initialized == 0"
                     gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
                 else:
-                    additional = "apparmor_initialized != 0 && apparmor_enabled != 0"
                     gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
 
         # TOMOYO
         cfg = "TOMOYO"
         tomoyo_init = get_ksymaddr("tomoyo_init")
         if tomoyo_init is None:
-            additional = "kernel does not support"
+            additional = "tomoyo_init: Not found"
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unsupported", "bold red"), additional))
         else:
             tomoyo_enabled_addr = KernelAddressHeuristicFinder.get_tomoyo_enabled()
-
             if tomoyo_enabled_addr is None:
-                additional = "tomoyo_enabled is not found"
-                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unknown", "bold gray"), additional))
+                additional = "tomoyo_enabled: Not found"
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, "Supported", additional))
             else:
                 tomoyo_enabled = u32(read_memory(tomoyo_enabled_addr, 4))
+                additional = "tomoyo_enabled: {:d}".format(tomoyo_enabled)
                 if tomoyo_enabled == 0:
-                    additional = "tomoyo_enabled == 0"
                     gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
                 else:
-                    additional = "tomoyo_enabled != 0"
                     gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
 
         # LKRG
