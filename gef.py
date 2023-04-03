@@ -17185,6 +17185,27 @@ class ChecksecCommand(GenericCommand):
                     additional = "apparmor_initialized != 0 && apparmor_enabled != 0"
                     gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
 
+        # TOMOYO
+        cfg = "TOMOYO"
+        tomoyo_init = get_ksymaddr("tomoyo_init")
+        if tomoyo_init is None:
+            additional = "kernel does not support"
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unsupported", "bold red"), additional))
+        else:
+            tomoyo_enabled_addr = KernelAddressHeuristicFinder.get_tomoyo_enabled()
+
+            if tomoyo_enabled_addr is None:
+                additional = "tomoyo_enabled is not found"
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unknown", "bold gray"), additional))
+            else:
+                tomoyo_enabled = u32(read_memory(tomoyo_enabled_addr, 4))
+                if tomoyo_enabled == 0:
+                    additional = "tomoyo_enabled == 0"
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
+                else:
+                    additional = "tomoyo_enabled != 0"
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
+
         # LKRG
         cfg = "Linux Kernel Runtime Guard (LKRG)"
         kmod_ret = gdb.execute("kmod -q", to_string=True)
@@ -38818,6 +38839,16 @@ class KernelAddressHeuristicFinder:
                             if count == 1:
                                 return bases[reg] + v
                             count += 1
+        return None
+
+    @staticmethod
+    def get_tomoyo_enabled():
+        # plan 1 (directly)
+        tomoyo_enabled = get_ksymaddr("tomoyo_enabled")
+        if tomoyo_enabled:
+            return tomoyo_enabled
+
+        # plan 2 nothing
         return None
 
     @staticmethod
