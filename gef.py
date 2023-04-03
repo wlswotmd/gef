@@ -17156,6 +17156,35 @@ class ChecksecCommand(GenericCommand):
                         additional = "selinux_state.enforcing does not exist"
                     gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enforcing", "bold green"), additional))
 
+        # AppArmor
+        cfg = "AppArmor"
+        apparmor_init = get_ksymaddr("apparmor_init")
+        if apparmor_init is None:
+            additional = "kernel does not support"
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unsupported", "bold red"), additional))
+        else:
+            apparmor_enabled_addr = KernelAddressHeuristicFinder.get_apparmor_enabled()
+            apparmor_initialized_addr = KernelAddressHeuristicFinder.get_apparmor_initialized()
+
+            if apparmor_enabled_addr is None:
+                additional = "apparmor_enabled is not found"
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unknown", "bold gray"), additional))
+            elif apparmor_initialized_addr is None:
+                additional = "apparmor_initialized is not found"
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unknown", "bold gray"), additional))
+            else:
+                apparmor_enabled = u32(read_memory(apparmor_enabled_addr, 4))
+                apparmor_initialized = u32(read_memory(apparmor_initialized_addr, 4))
+                if apparmor_enabled == 0:
+                    additional = "apparmor_enabled == 0"
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
+                elif apparmor_initialized == 0:
+                    additional = "apparmor_initialized == 0"
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
+                else:
+                    additional = "apparmor_initialized != 0 && apparmor_enabled != 0"
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
+
         # LKRG
         cfg = "Linux Kernel Runtime Guard (LKRG)"
         kmod_ret = gdb.execute("kmod -q", to_string=True)
@@ -38659,6 +38688,136 @@ class KernelAddressHeuristicFinder:
                             return read_int_from_memory(addr)
                         except Exception:
                             pass
+        return None
+
+    @staticmethod
+    def get_apparmor_enabled():
+        # plan 1 (directly)
+        apparmor_enabled = get_ksymaddr("apparmor_enabled")
+        if apparmor_enabled:
+            return apparmor_enabled
+
+        # plan 2 (available v4.12-rc1 or later)
+        param_get_aauint = get_ksymaddr("param_get_aauint")
+        if param_get_aauint:
+            res = gdb.execute("x/20i {:#x}".format(param_get_aauint), to_string=True)
+            if is_x86_64():
+                for line in res.splitlines():
+                    m = re.search(r"DWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffffffffffff
+                        return v
+            elif is_x86_32():
+                for line in res.splitlines():
+                    m = re.search(r"ds:(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffff
+                        return v
+            elif is_arm64():
+                bases = {}
+                for line in res.splitlines():
+                    m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        base = int(m.group(2), 16)
+                        bases[reg] = base
+                        continue
+                    m = re.search(r"ldr\s+\S+,\s*\[(\S+),\s*#(\d+)\]", line)
+                    if m:
+                        reg = m.group(1)
+                        v = int(m.group(2), 0)
+                        if reg in bases:
+                            return bases[reg] + v
+            elif is_arm32():
+                bases = {}
+                add1time = {}
+                for line in res.splitlines():
+                    m = re.search(r"movw\s+(\S+),.+;\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        base = int(m.group(2), 16)
+                        bases[reg] = base
+                        continue
+                    m = re.search(r"movt\s+(\S+),.+;\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        v = int(m.group(2), 16) << 16
+                        if reg in bases:
+                            add1time[reg] = bases[reg] + v
+                            continue
+                    m = re.search(r"ldr\s+\S+,\s*\[(\S+),\s*#(\d+)\]", line)
+                    if m:
+                        reg = m.group(1)
+                        v = int(m.group(2), 0)
+                        if reg in add1time:
+                            return add1time[reg] + v
+        return None
+
+    @staticmethod
+    def get_apparmor_initialized():
+        # plan 1 (directly)
+        apparmor_initialized = get_ksymaddr("apparmor_initialized")
+        if apparmor_initialized:
+            return apparmor_initialized
+
+        # plan 2 (available v4.12-rc1 or later)
+        param_get_aauint = get_ksymaddr("param_get_aauint")
+        if param_get_aauint:
+            res = gdb.execute("x/20i {:#x}".format(param_get_aauint), to_string=True)
+            if is_x86_64():
+                count = 0
+                for line in res.splitlines():
+                    m = re.search(r"DWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffffffffffff
+                        if count == 1:
+                            return v
+                        count += 1
+            elif is_x86_32():
+                count = 0
+                for line in res.splitlines():
+                    m = re.search(r"ds:(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffff
+                        if count == 1:
+                            return v
+                        count += 1
+            elif is_arm64():
+                bases = {}
+                count = 0
+                for line in res.splitlines():
+                    m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        base = int(m.group(2), 16)
+                        bases[reg] = base
+                        continue
+                    m = re.search(r"ldr\s+\S+,\s*\[(\S+),\s*#(\d+)\]", line)
+                    if m:
+                        reg = m.group(1)
+                        v = int(m.group(2), 0)
+                        if reg in bases:
+                            if count == 1:
+                                return bases[reg] + v
+                            count += 1
+            elif is_arm32():
+                bases = {}
+                count = 0
+                for line in res.splitlines():
+                    m = re.search(r"movw\s+(\S+),.+;\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        base = int(m.group(2), 16)
+                        bases[reg] = base
+                        continue
+                    m = re.search(r"movt\s+(\S+),.+;\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        v = int(m.group(2), 16) << 16
+                        if reg in bases:
+                            if count == 1:
+                                return bases[reg] + v
+                            count += 1
         return None
 
     @staticmethod
