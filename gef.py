@@ -16884,7 +16884,7 @@ class ChecksecCommand(GenericCommand):
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unsupported", "bold red"), address_info))
 
         # FGKASLR
-        cfg = "CONFIG_FG_KASLR"
+        cfg = "CONFIG_FG_KASLR (FGKASLR)"
         swapgs_restore_regs_and_return_to_usermode = get_ksymaddr("swapgs_restore_regs_and_return_to_usermode")
         commit_creds = get_ksymaddr("commit_creds")
         if swapgs_restore_regs_and_return_to_usermode:
@@ -16904,7 +16904,7 @@ class ChecksecCommand(GenericCommand):
                 gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
 
         # KPTI
-        cfg = "CONFIG_PAGE_TABLE_ISOLATION"
+        cfg = "CONFIG_PAGE_TABLE_ISOLATION (KPTI)"
         if is_x86():
             pti_init = get_ksymaddr("pti_init")
             if pti_init:
@@ -16994,63 +16994,6 @@ class ChecksecCommand(GenericCommand):
                     gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
                 else:
                     gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
-
-        gef_print(titlify("Dangerous system call"))
-
-        # unprivileged_userfaultfd
-        cfg = "unprivileged_userfaultfd"
-        stv_uff_ret = gdb.execute("syscall-table-view -f userfaultfd -n -q", to_string=True)
-        if "invalid userfaultfd" in stv_uff_ret:
-            additional = "userfaultfd syscall is disabled"
-            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("None", "bold green"), additional))
-        else:
-            sysctl_unprivileged_userfaultfd = KernelAddressHeuristicFinder.get_sysctl_unprivileged_userfaultfd()
-            if sysctl_unprivileged_userfaultfd is None:
-                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
-            else:
-                v = u32(read_memory(sysctl_unprivileged_userfaultfd, 4))
-                additional = "unprivileged_userfaultfd: {:d}".format(v)
-                if v == 0:
-                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold green"), additional))
-                else:
-                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold red"), additional))
-
-        # unprivileged_bpf_disabled
-        cfg = "unprivileged_bpf_disabled"
-        stv_bpf_ret = gdb.execute("syscall-table-view -f bpf -n -q", to_string=True)
-        if "invalid bpf" in stv_bpf_ret:
-            additional = "bpf syscall is disabled"
-            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("None", "bold green"), additional))
-        else:
-            sysctl_unprivileged_bpf_disabled = KernelAddressHeuristicFinder.get_sysctl_unprivileged_bpf_disabled()
-            if sysctl_unprivileged_bpf_disabled is None:
-                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
-            else:
-                v = u32(read_memory(sysctl_unprivileged_bpf_disabled, 4))
-                additional = "unprivileged_bpf_disabled: {:d}".format(v)
-                if v == 0:
-                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
-                else:
-                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
-
-        # kexec_load_disabled
-        cfg = "kexec_load_disabled"
-        r1 = gdb.execute("syscall-table-view -f kexec_load -n -q", to_string=True)
-        r2 = gdb.execute("syscall-table-view -f kexec_file_load -n -q", to_string=True)
-        if "invalid kexec_load" in r1 and "invalid kexec_file_load" in r2:
-            additional = "kexec_load, kexec_file_load syscalls are disabled"
-            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("None", "bold green"), additional))
-        else:
-            kexec_load_disabled = KernelAddressHeuristicFinder.get_kexec_load_disabled()
-            if kexec_load_disabled is None:
-                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
-            else:
-                v1 = u32(read_memory(kexec_load_disabled, 4))
-                additional = "kexec_load_disabled: {:d}".format(v1)
-                if v1 == 0:
-                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
-                else:
-                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
 
         gef_print(titlify("Security Module"))
 
@@ -17214,6 +17157,63 @@ class ChecksecCommand(GenericCommand):
         else:
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), "Not loaded"))
 
+        gef_print(titlify("Dangerous system call"))
+
+        # vm.unprivileged_userfaultfd
+        cfg = "vm.unprivileged_userfaultfd"
+        stv_uff_ret = gdb.execute("syscall-table-view -f userfaultfd -n -q", to_string=True)
+        if "invalid userfaultfd" in stv_uff_ret:
+            additional = "userfaultfd syscall is disabled"
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("None", "bold green"), additional))
+        else:
+            sysctl_unprivileged_userfaultfd = KernelAddressHeuristicFinder.get_sysctl_unprivileged_userfaultfd()
+            if sysctl_unprivileged_userfaultfd is None:
+                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
+            else:
+                v = u32(read_memory(sysctl_unprivileged_userfaultfd, 4))
+                additional = "unprivileged_userfaultfd: {:d}".format(v)
+                if v == 0:
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold green"), additional))
+                else:
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold red"), additional))
+
+        # kernel.unprivileged_bpf_disabled
+        cfg = "kernel.unprivileged_bpf_disabled"
+        stv_bpf_ret = gdb.execute("syscall-table-view -f bpf -n -q", to_string=True)
+        if "invalid bpf" in stv_bpf_ret:
+            additional = "bpf syscall is disabled"
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("None", "bold green"), additional))
+        else:
+            sysctl_unprivileged_bpf_disabled = KernelAddressHeuristicFinder.get_sysctl_unprivileged_bpf_disabled()
+            if sysctl_unprivileged_bpf_disabled is None:
+                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
+            else:
+                v = u32(read_memory(sysctl_unprivileged_bpf_disabled, 4))
+                additional = "unprivileged_bpf_disabled: {:d}".format(v)
+                if v == 0:
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
+                else:
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
+
+        # kernel.kexec_load_disabled
+        cfg = "kernel.kexec_load_disabled"
+        r1 = gdb.execute("syscall-table-view -f kexec_load -n -q", to_string=True)
+        r2 = gdb.execute("syscall-table-view -f kexec_file_load -n -q", to_string=True)
+        if "invalid kexec_load" in r1 and "invalid kexec_file_load" in r2:
+            additional = "kexec_load, kexec_file_load syscalls are disabled"
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("None", "bold green"), additional))
+        else:
+            kexec_load_disabled = KernelAddressHeuristicFinder.get_kexec_load_disabled()
+            if kexec_load_disabled is None:
+                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
+            else:
+                v1 = u32(read_memory(kexec_load_disabled, 4))
+                additional = "kexec_load_disabled: {:d}".format(v1)
+                if v1 == 0:
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
+                else:
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
+
         gef_print(titlify("Other"))
 
         # CONFIG_KALLSYMS_ALL
@@ -17299,8 +17299,8 @@ class ChecksecCommand(GenericCommand):
             else:
                 gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
 
-        # mmap_min_addr
-        cfg = "mmap_min_addr"
+        # vm.mmap_min_addr
+        cfg = "vm.mmap_min_addr"
         mmap_min_addr = KernelAddressHeuristicFinder.get_mmap_min_addr()
         if mmap_min_addr is None:
             gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
