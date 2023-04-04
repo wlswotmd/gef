@@ -40236,7 +40236,7 @@ class KernelModuleCommand(GenericCommand):
             try:
                 addr = read_int_from_memory(current)
             except gdb.MemoryError:
-                break
+                return None
             if addr == modules:
                 break
             module_addrs.append(addr)
@@ -40266,54 +40266,43 @@ class KernelModuleCommand(GenericCommand):
 
     def get_offset_layout(self, module_addrs):
         """
-            struct module {
-                enum module_state state;
-                /* Member of list of modules */
-                struct list_head list;
-                /* Unique handle for this module */
-                char name[MODULE_NAME_LEN];
-            #ifdef CONFIG_STACKTRACE_BUILD_ID
-                /* Module build ID */
-                unsigned char build_id[BUILD_ID_SIZE_MAX];
-            #endif
-                /* Sysfs stuff. */
-                struct module_kobject mkobj;
-                struct module_attribute *modinfo_attrs;
-                const char *version;
-                const char *srcversion;
-                struct kobject *holders_dir;
-                /* Exported symbols */
-                const struct kernel_symbol *syms;
-                const s32 *crcs;
-                unsigned int num_syms;
-            #ifdef CONFIG_CFI_CLANG
-                cfi_check_fn cfi_check;
-            #endif
-                /* Kernel parameters. */
-            #ifdef CONFIG_SYSFS
-                struct mutex param_lock;
-            #endif
-                struct kernel_param *kp;
-                unsigned int num_kp;
-                /* GPL-only exported symbols. */
-                unsigned int num_gpl_syms;
-                const struct kernel_symbol *gpl_syms;
-                const s32 *gpl_crcs;
-                bool using_gplonly_symbols;
-            #ifdef CONFIG_MODULE_SIG
-                /* Signature was verified. */
-                bool sig_ok;
-            #endif
-                bool async_probe_requested;
-                /* Exception table */
-                unsigned int num_exentries;
-                struct exception_table_entry *extable;
-                /* Startup function. */
-                int (*init)(void);
-                /* Core layout: rbtree is accessed frequently, so keep together. */
-                struct module_layout core_layout __module_layout_align;
-                struct module_layout init_layout;
-                ...
+        struct module { // kernel v4.5-rc1 ~
+            enum module_state state;
+            struct list_head list;
+            char name[MODULE_NAME_LEN];
+        #ifdef CONFIG_STACKTRACE_BUILD_ID
+            unsigned char build_id[BUILD_ID_SIZE_MAX];
+        #endif
+            struct module_kobject mkobj;
+            struct module_attribute *modinfo_attrs;
+            const char *version;
+            const char *srcversion;
+            struct kobject *holders_dir;
+            const struct kernel_symbol *syms;
+            const s32 *crcs;
+            unsigned int num_syms;
+        #ifdef CONFIG_CFI_CLANG
+            cfi_check_fn cfi_check;
+        #endif
+        #ifdef CONFIG_SYSFS
+            struct mutex param_lock;
+        #endif
+            struct kernel_param *kp;
+            unsigned int num_kp;
+            unsigned int num_gpl_syms;
+            const struct kernel_symbol *gpl_syms;
+            const s32 *gpl_crcs;
+            bool using_gplonly_symbols;
+        #ifdef CONFIG_MODULE_SIG
+            bool sig_ok;
+        #endif
+            bool async_probe_requested;
+            unsigned int num_exentries;
+            struct exception_table_entry *extable;
+            int (*init)(void);
+            struct module_layout core_layout __module_layout_align;
+            struct module_layout init_layout;
+            ...
         }
 
         struct module_layout {
@@ -40390,6 +40379,93 @@ class KernelModuleCommand(GenericCommand):
             err("Not found module->init_layout")
         return None
 
+    def get_offset_module_core(self, module_addrs):
+        """
+        struct module { // ~ kernel 4.5-rc1
+            enum module_state state;
+            struct list_head list;
+            char name[MODULE_NAME_LEN];
+            struct module_kobject mkobj;
+            struct module_attribute *modinfo_attrs;
+            const char *version;
+            const char *srcversion;
+            struct kobject *holders_dir;
+            const struct kernel_symbol *syms;
+            const unsigned long *crcs;
+            unsigned int num_syms;
+        #ifdef CONFIG_SYSFS
+            struct mutex param_lock;
+        #endif
+            struct kernel_param *kp;
+            unsigned int num_kp;
+            unsigned int num_gpl_syms;
+            const struct kernel_symbol *gpl_syms;
+            const unsigned long *gpl_crcs;
+        #ifdef CONFIG_UNUSED_SYMBOLS
+            const struct kernel_symbol *unused_syms;
+            const unsigned long *unused_crcs;
+            unsigned int num_unused_syms;
+            unsigned int num_unused_gpl_syms;
+            const struct kernel_symbol *unused_gpl_syms;
+            const unsigned long *unused_gpl_crcs;
+        #endif
+        #ifdef CONFIG_MODULE_SIG
+            bool sig_ok;
+        #endif
+            bool async_probe_requested;
+            const struct kernel_symbol *gpl_future_syms;
+            const unsigned long *gpl_future_crcs;
+            unsigned int num_gpl_future_syms;
+            unsigned int num_exentries;
+            struct exception_table_entry *extable;
+            int (*init)(void);
+            void *module_init    ____cacheline_aligned;
+            /* Here is the actual code + data, vfree'd on unload. */
+            void *module_core;
+            /* Here are the sizes of the init and core sections */
+            unsigned int init_size, core_size;
+            /* The size of the executable code in each section.  */
+            unsigned int init_text_size, core_text_size;
+            ...
+        """
+        for i in range(300):
+            offset_module_core = i * current_arch.ptrsize
+            valid = True
+            for module in module_addrs:
+                # module_core align check
+                cand_module_core = read_int_from_memory(module + offset_module_core)
+                if cand_module_core == 0 or cand_module_core & 0xfff:
+                    valid = False
+                    break
+                # init_size check
+                cand_init_size = u32(read_memory(module + offset_module_core + current_arch.ptrsize + 4 * 0, 4))
+                if cand_init_size > 0x100000:
+                    valid = False
+                    break
+                # core_size check
+                cand_core_size = u32(read_memory(module + offset_module_core + current_arch.ptrsize + 4 * 1, 4))
+                if cand_core_size == 0 or cand_core_size > 0x100000:
+                    valid = False
+                    break
+                # init_text_size check
+                cand_init_text_size = u32(read_memory(module + offset_module_core + current_arch.ptrsize + 4 * 2, 4))
+                if cand_init_text_size > 0x100000:
+                    valid = False
+                    break
+                # core_text_size check
+                cand_core_text_size = u32(read_memory(module + offset_module_core + current_arch.ptrsize + 4 * 3, 4))
+                if cand_core_text_size == 0 or  cand_core_text_size > 0x100000:
+                    valid = False
+                    break
+            if valid:
+                if not self.quiet:
+                    info("offsetof(module, module_core): {:#x}".format(offset_module_core))
+                return offset_module_core
+
+        if not self.quiet:
+            err("Not found module->module_core")
+        return None
+
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
@@ -40409,9 +40485,15 @@ class KernelModuleCommand(GenericCommand):
         if offset_name is None:
             return
 
-        offset_layout = self.get_offset_layout(module_addrs)
-        if offset_layout is None:
-            return
+        kversion = KernelVersionCommand.kernel_version()
+        if kversion.major > 4 or (kversion.major == 4 and kversion.minor >= 5):
+            offset_layout = self.get_offset_layout(module_addrs)
+            if offset_layout is None:
+                return
+        else:
+            offset_module_core = self.get_offset_module_core(module_addrs)
+            if offset_module_core is None:
+                return
 
         if not self.quiet:
             fmt = "{:<18s}: {:<18s} {:<18s} {:<18s}"
@@ -40419,8 +40501,12 @@ class KernelModuleCommand(GenericCommand):
             gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
         for module in module_addrs:
             name_string = read_cstring_from_memory(module + offset_name)
-            base = read_int_from_memory(module + offset_layout)
-            size = u32(read_memory(module + offset_layout + current_arch.ptrsize, 4))
+            if kversion.major > 4 or (kversion.major == 4 and kversion.minor >= 5):
+                base = read_int_from_memory(module + offset_layout)
+                size = u32(read_memory(module + offset_layout + current_arch.ptrsize, 4))
+            else:
+                base = read_int_from_memory(module + offset_module_core)
+                size = u32(read_memory(module + offset_module_core + current_arch.ptrsize + 4, 4))
             gef_print("{:#018x}: {:<18s} {:#018x} {:#018x}".format(module, name_string, base, size))
         return
 
