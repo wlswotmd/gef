@@ -211,6 +211,7 @@ highlight_table                 = {}
 cached_syscall_table            = {}
 cached_kernel_info              = None
 cached_kernel_version           = None
+cached_kernel_cmdline           = None
 
 
 def perf_enable(f):
@@ -39331,6 +39332,7 @@ class KernelbaseCommand(GenericCommand):
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-r', '--reparse', action='store_true', help='do not use cache.')
     _syntax_ = parser.format_help()
 
     @staticmethod
@@ -39503,6 +39505,10 @@ class KernelbaseCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
+        if args.reparse:
+            global cached_kernel_info
+            cached_kernel_info = None
+
         # resolve kbase, krobase
         info("Wait for memory scan")
         kinfo = self.get_kernel_base()
@@ -39523,6 +39529,7 @@ class KernelVersionCommand(GenericCommand):
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-r', '--reparse', action='store_true', help='do not use cache.')
     _syntax_ = parser.format_help()
 
     @staticmethod
@@ -39531,13 +39538,22 @@ class KernelVersionCommand(GenericCommand):
         if cached_kernel_version is not None:
             return cached_kernel_version
 
+        # fast path
+        linux_banner = get_ksymaddr("linux_banner")
+        if linux_banner:
+            version_string = read_cstring_from_memory(linux_banner, 0x200).rstrip()
+            r = re.search(r"Linux version (\d)\.(\d+)", version_string)
+            major, minor = int(r.group(1)), int(r.group(2))
+            Kversion = collections.namedtuple("Kversion", ["address", "version_string", "major", "minor"])
+            cached_kernel_version = Kversion(linux_banner, version_string, major, minor)
+            return cached_kernel_version
+
+        # slow path
         kinfo = KernelbaseCommand.get_kernel_base()
         if kinfo.has_none:
             return None
-
-        # resolve area
         area = []
-        for addr in kinfo.maps:
+        for addr in kinfo.maps: # resolve search range
             if addr[0] < kinfo.kbase:
                 continue
             if addr[0] >= kinfo.krwbase:
@@ -39545,8 +39561,7 @@ class KernelVersionCommand(GenericCommand):
             area.append([addr[0], addr[0] + addr[1]])
         if area == []:
             return None
-
-        for start, end in area:
+        for start, end in area: # find version string
             try:
                 data = read_memory(start, end - start)
             except gdb.MemoryError:
@@ -39565,6 +39580,7 @@ class KernelVersionCommand(GenericCommand):
             Kversion = collections.namedtuple("Kversion", ["address", "version_string", "major", "minor"])
             cached_kernel_version = Kversion(address, version_string, major, minor)
             return cached_kernel_version
+
         return None
 
     @parse_args
@@ -39572,6 +39588,10 @@ class KernelVersionCommand(GenericCommand):
     @only_if_qemu_system
     def do_invoke(self, args):
         self.dont_repeat()
+
+        if args.reparse:
+            global cached_kernel_version
+            cached_kernel_version = None
 
         info("Wait for memory scan")
         kversion = KernelVersionCommand.kernel_version()
@@ -39590,10 +39610,15 @@ class KernelCmdlineCommand(GenericCommand):
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-r', '--reparse', action='store_true', help='do not use cache.')
     _syntax_ = parser.format_help()
 
     @staticmethod
     def kernel_cmdline():
+        global cached_kernel_cmdline
+        if cached_kernel_cmdline is not None:
+            return cached_kernel_cmdline
+
         saved_command_line = KernelAddressHeuristicFinder.get_saved_command_line()
         if saved_command_line is None:
             return None
@@ -39601,7 +39626,8 @@ class KernelCmdlineCommand(GenericCommand):
             ptr = read_int_from_memory(saved_command_line)
             cmdline = read_cstring_from_memory(ptr)
             Kcmdline = collections.namedtuple("Kcmdline", ["address", "cmdline"])
-            return Kcmdline(ptr, cmdline)
+            cached_kernel_cmdline = Kcmdline(ptr, cmdline)
+            return cached_kernel_cmdline
         except Exception:
             return None
 
@@ -39611,8 +39637,11 @@ class KernelCmdlineCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        info("Wait for memory scan")
+        if args.reparse:
+            global cached_kernel_cmdline
+            cached_kernel_cmdline = None
 
+        info("Wait for memory scan")
         kcmdline = KernelCmdlineCommand.kernel_cmdline()
         if kcmdline is None:
             err("Parse failed")
