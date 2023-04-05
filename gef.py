@@ -53324,7 +53324,7 @@ class GefFunctionsCommand(GenericCommand):
 class GefCommand(gdb.Command):
     """GEF main command: view all new commands by typing `gef`."""
     _cmdline_ = "gef"
-    _syntax_ = "{:s} (missing|config|save|restore|set|run)".format(_cmdline_)
+    _syntax_ = "{:s} (missing|config|save|restore|set|run|reload)".format(_cmdline_)
     _category_ = "99. GEF Maintenance Command"
 
     def __init__(self):
@@ -53351,6 +53351,7 @@ class GefCommand(gdb.Command):
         GefMissingCommand()
         GefSetCommand()
         GefRunCommand()
+        GefReloadCommand()
 
         # load the saved settings
         gdb.execute("gef restore")
@@ -53824,6 +53825,33 @@ class GefRunCommand(gdb.Command):
         argv = args.split()
         gdb.execute("gef set args {:s}".format(" ".join(argv)))
         gdb.execute("run")
+        return
+
+
+class GefReloadCommand(gdb.Command):
+    """GEF Reload sub-command."""
+    _cmdline_ = "gef reload"
+    _syntax_ = _cmdline_
+    _category_ = "99. GEF Maintenance Command"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(self._cmdline_, gdb.COMMAND_SUPPORT, gdb.COMPLETE_NONE, False)
+        return
+
+    def invoke(self, args, from_tty):
+        self.dont_repeat()
+
+        reset_gef_caches(all=True)
+        src = inspect.getsourcefile(http_get)
+        info("Reload {:s}".format(src))
+        s = gdb.execute("source {:s}".format(src), to_string=True)
+        for line in s.splitlines():
+            if ".gnu_debugaltlink" in line:
+                continue
+            print(line)
+
+        if current_arch is None:
+            set_arch(get_arch())
         return
 
 
