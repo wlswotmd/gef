@@ -41080,8 +41080,6 @@ class AsciiSearchCommand(GenericCommand):
     parser.add_argument('-r', '--range', default=0x40, type=lambda x: int(x, 16), help='search range. (default: %(default)s)')
     _syntax_ = parser.format_help()
 
-    seen = set()
-
     def search_ascii(self, locations, search_range, depth, max_depth):
         if depth == 0:
             return
@@ -41124,6 +41122,7 @@ class AsciiSearchCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
         self.filter = args.filter
+        self.seen = set()
         self.search_ascii([args.location], args.range, args.depth, args.depth)
         return
 
