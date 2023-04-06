@@ -17106,8 +17106,17 @@ class ChecksecCommand(GenericCommand):
             additional = "smack_init: Not found"
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unsupported", "bold red"), additional))
         else:
-            additional = "smack_init: Found"
-            gef_print("{:<40s}: {:s} ({:s})".format(cfg, "Supported", additional))
+            kfilesystems_ret = gdb.execute("kfilesystem -n -q", to_string=True)
+            if not kfilesystems_ret:
+                additional = "smack_init: Found"
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, "Supported", additional))
+            else:
+                if "smackfs" in kfilesystems_ret:
+                    additional = "smackfs: Mounted"
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
+                else:
+                    additional = "smackfs: Not mounted"
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
 
         # AppArmor
         cfg = "AppArmor"
