@@ -40950,8 +40950,8 @@ class KernelParamSysctlCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-f', '--filter', action='append', default=[], help='REGEXP filter.')
-    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
     parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
     parser.add_argument('-v', '--verbose', action='store_true', help='enable verbose mode.')
     parser.add_argument('--exact', action='store_true', help='use exact match.')
     _syntax_ = parser.format_help()
