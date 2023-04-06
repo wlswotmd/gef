@@ -16985,7 +16985,7 @@ class ChecksecCommand(GenericCommand):
         # CONFIG_SLAB_FREELIST_HARDENED
         if allocator == "SLUB":
             cfg = "CONFIG_SLAB_FREELIST_HARDENED"
-            slub_dump_ret = gdb.execute("slub-dump kmalloc-8 kmalloc-16 kmalloc-32 kmalloc-64", to_string=True)
+            slub_dump_ret = gdb.execute("slub-dump -n -q kmalloc-8 kmalloc-16 kmalloc-32 kmalloc-64", to_string=True)
             if "Corrupted" in slub_dump_ret:
                 gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
             else:
@@ -42553,6 +42553,8 @@ class SlubDumpCommand(GenericCommand):
     parser.add_argument('--no-byte-swap', action='store_true', default=None,
                         help='skip byteswap to chunk->next. it is used when `kmem_cache.random` is falsely detected.')
     parser.add_argument('--list', action='store_true', help='list up all slub cache names.')
+    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} kmalloc-256                                      # dump kmalloc-256 from all cpus\n".format(_cmdline_)
@@ -42657,10 +42659,12 @@ class SlubDumpCommand(GenericCommand):
         # resolve slab_caches
         self.slab_caches = KernelAddressHeuristicFinder.get_slab_caches()
         if self.slab_caches is None:
-            err("Failed to resolve `slab_caches`")
+            if not self.quiet:
+                err("Failed to resolve `slab_caches`")
             return False
         else:
-            info("slab_caches: {:#x}".format(self.slab_caches))
+            if not self.quiet:
+                info("slab_caches: {:#x}".format(self.slab_caches))
 
         seen = [self.slab_caches]
         current = self.slab_caches
@@ -42674,10 +42678,12 @@ class SlubDumpCommand(GenericCommand):
         # resolve __per_cpu_offset
         __per_cpu_offset = KernelAddressHeuristicFinder.get_per_cpu_offset()
         if __per_cpu_offset is None:
-            info("__per_cpu_offset: Not found")
+            if not self.quiet:
+                info("__per_cpu_offset: Not found")
             self.cpu_offset = []
         else:
-            info("__per_cpu_offset: {:#x}".format(__per_cpu_offset))
+            if not self.quiet:
+                info("__per_cpu_offset: {:#x}".format(__per_cpu_offset))
             # resolve each cpu_offset
             self.cpu_offset = [read_int_from_memory(__per_cpu_offset)]
             i = 1
@@ -42712,15 +42718,18 @@ class SlubDumpCommand(GenericCommand):
 
             if found:
                 self.kmem_cache_offset_list = candidate_offset
-                info("offsetof(kmem_cache, list): {:#x}".format(self.kmem_cache_offset_list))
+                if not self.quiet:
+                    info("offsetof(kmem_cache, list): {:#x}".format(self.kmem_cache_offset_list))
                 break
         else:
-            info("offsetof(kmem_cache, list): Not found")
+            if not self.quiet:
+                info("offsetof(kmem_cache, list): Not found")
             return False
 
         # offsetof(kmem_cache, name)
         self.kmem_cache_offset_name = self.kmem_cache_offset_list - current_arch.ptrsize
-        info("offsetof(kmem_cache, name): {:#x}".format(self.kmem_cache_offset_name))
+        if not self.quiet:
+            info("offsetof(kmem_cache, name): {:#x}".format(self.kmem_cache_offset_name))
 
         # offsetof(kmem_cache, offset)
         top = read_int_from_memory(self.slab_caches) - self.kmem_cache_offset_list
@@ -42730,21 +42739,25 @@ class SlubDumpCommand(GenericCommand):
             self.kmem_cache_offset_offset = current_arch.ptrsize * 3 + 4 + 4 + 8
         else:
             self.kmem_cache_offset_offset = current_arch.ptrsize * 3 + 4 + 4
-        info("offsetof(kmem_cache, offset): {:#x}".format(self.kmem_cache_offset_offset))
+        if not self.quiet:
+            info("offsetof(kmem_cache, offset): {:#x}".format(self.kmem_cache_offset_offset))
 
         # offsetof(kmem_cache, cpu_slab)
         self.kmem_cache_offset_cpu_slab = 0
         # offsetof(kmem_cache, object_size)
         self.kmem_cache_offset_object_size = current_arch.ptrsize * 3 + 4
-        info("offsetof(kmem_cache, object_size): {:#x}".format(self.kmem_cache_offset_object_size))
+        if not self.quiet:
+            info("offsetof(kmem_cache, object_size): {:#x}".format(self.kmem_cache_offset_object_size))
 
         # offsetof(kmem_cache, random)
         if self.no_xor:
             self.kmem_cache_offset_random = None
-            info("offsetof(kmem_cache, random): None")
+            if not self.quiet:
+                info("offsetof(kmem_cache, random): None")
         elif self.offset_random is not None:
             self.kmem_cache_offset_random = self.offset_random
-            info("offsetof(kmem_cache, random): {:#x}".format(self.kmem_cache_offset_random))
+            if not self.quiet:
+                info("offsetof(kmem_cache, random): {:#x}".format(self.kmem_cache_offset_random))
         else:
             for i in range(2, 0x40): # walk from list for heuristic search
                 candidate_offset = current_arch.ptrsize * i
@@ -42800,10 +42813,12 @@ class SlubDumpCommand(GenericCommand):
 
                 if found:
                     self.kmem_cache_offset_random = self.kmem_cache_offset_list + candidate_offset
-                    info("offsetof(kmem_cache, random): {:#x}".format(self.kmem_cache_offset_random))
+                    if not self.quiet:
+                        info("offsetof(kmem_cache, random): {:#x}".format(self.kmem_cache_offset_random))
                     break
             else:
-                info("offsetof(kmem_cache, random): Not found")
+                if not self.quiet:
+                    info("offsetof(kmem_cache, random): Not found")
                 self.kmem_cache_offset_random = None # maybe CONFIG_SLAB_FREELIST_HARDENED=n
 
         # offsetof(kmem_cache_cpu, freelist)
@@ -42922,57 +42937,59 @@ class SlubDumpCommand(GenericCommand):
         return
 
     def dump_caches(self, targets, cpu):
-        gef_print('  ' + '-' * 14)
-        gef_print(' | ' + ' ' * 11 + ' |')
-        gef_print(' |        slab_caches @ {:#x}'.format(self.slab_caches))
-        gef_print(' | ' + ' ' * 11 + ' |')
+        self.out.append('  ' + '-' * 14)
+        self.out.append(' | ' + ' ' * 11 + ' |')
+        self.out.append(' |        slab_caches @ {:#x}'.format(self.slab_caches))
+        self.out.append(' | ' + ' ' * 11 + ' |')
         if targets != []:
-            gef_print(' | ' + ' ' * 10 + ' ...')
-            gef_print(' | ' + ' ' * 11 + ' |')
-        gef_print(' | ' + ' ' * 11 + ' v')
+            self.out.append(' | ' + ' ' * 10 + ' ...')
+            self.out.append(' | ' + ' ' * 11 + ' |')
+        self.out.append(' | ' + ' ' * 11 + ' v')
         for c in self.parsed_caches[1:]:
             if targets != [] and not c['name'] in targets:
                 continue
-            gef_print(' |   name: {:s}'.format(c['name']))
-            gef_print(' |   kmem_cache: {:#x}'.format(c['address']))
-            gef_print(' |   kmem_cache_cpu (cpu{:d}): {:#x}'.format(cpu, c['kmem_cache_cpu']))
-            gef_print(' |   offset (offset to next pointer in chunk): {:#x}'.format(c['offset']))
-            gef_print(' |   objsize: {:s}'.format(Color.colorify("{:#x}".format(c['objsize']), "bold pink")))
+            self.out.append(' |   name: {:s}'.format(c['name']))
+            self.out.append(' |   kmem_cache: {:#x}'.format(c['address']))
+            self.out.append(' |   kmem_cache_cpu (cpu{:d}): {:#x}'.format(cpu, c['kmem_cache_cpu']))
+            self.out.append(' |   offset (offset to next pointer in chunk): {:#x}'.format(c['offset']))
+            self.out.append(' |   objsize: {:s}'.format(Color.colorify("{:#x}".format(c['objsize']), "bold pink")))
             if self.kmem_cache_offset_random is not None:
                 if self.no_xor is False:
                     if self.swap is True:
-                        gef_print(' |   random (xor key): {:#x} ^ byteswap(address of chunk->next)'.format(c['random']))
+                        self.out.append(' |   random (xor key): {:#x} ^ byteswap(address of chunk->next)'.format(c['random']))
                     else:
-                        gef_print(' |   random (xor key): {:#x} ^ address of chunk->next'.format(c['random']))
+                        self.out.append(' |   random (xor key): {:#x} ^ address of chunk->next'.format(c['random']))
             if len(c['freelist']) > 0:
                 if isinstance(c['freelist'][0], str):
-                    gef_print(' |   freelist:   {:s}'.format(c['freelist'][0]))
+                    self.out.append(' |   freelist:   {:s}'.format(c['freelist'][0]))
                 else:
-                    gef_print(' |   freelist:   {:s}'.format(Color.colorify("{:#x}".format(c['freelist'][0]), "bold yellow")))
+                    self.out.append(' |   freelist:   {:s}'.format(Color.colorify("{:#x}".format(c['freelist'][0]), "bold yellow")))
                 for f in c['freelist'][1:]:
                     if isinstance(f, str):
-                        gef_print(' | ' + ' ' * 14 + '{:s}'.format(f))
+                        self.out.append(' | ' + ' ' * 14 + '{:s}'.format(f))
                     else:
-                        gef_print(' | ' + ' ' * 14 + '{:s}'.format(Color.colorify("{:#x}".format(f), "bold yellow")))
-            gef_print(' |   next: {:#x}'.format(c['next']))
-            gef_print(' | ' + ' ' * 11 + ' |')
+                        self.out.append(' | ' + ' ' * 14 + '{:s}'.format(Color.colorify("{:#x}".format(f), "bold yellow")))
+            self.out.append(' |   next: {:#x}'.format(c['next']))
+            self.out.append(' | ' + ' ' * 11 + ' |')
             if targets != []:
-                gef_print(' | ' + ' ' * 10 + ' ...')
-            gef_print(' | ' + ' ' * 11 + ' |')
-            gef_print(' | ' + ' ' * 11 + ' v')
-        gef_print('  <' + '-' * 13)
+                self.out.append(' | ' + ' ' * 10 + ' ...')
+            self.out.append(' | ' + ' ' * 11 + ' |')
+            self.out.append(' | ' + ' ' * 11 + ' v')
+        self.out.append('  <' + '-' * 13)
         return
 
     def dump_names(self):
-        gef_print(Color.colorify("Object Size              : Name", get_gef_setting("theme.table_heading")))
+        if not self.quiet:
+            self.out.append(Color.colorify("Object Size              : Name", get_gef_setting("theme.table_heading")))
         for c in sorted(self.parsed_caches[1:], key=lambda x: x['objsize']):
             fmt = "{:5d} byte ({:#6x} bytes): {:30s} kmem_cache:{:#x}"
-            gef_print(fmt.format(c['objsize'], c['objsize'], c['name'], c['address']))
+            self.out.append(fmt.format(c['objsize'], c['objsize'], c['name'], c['address']))
         return
 
     def slabwalk(self, targets):
         if self.init_offset() is False:
-            err("Initialize failed")
+            if not self.quiet:
+                err("Initialize failed")
             return
 
         if self.listup:
@@ -42982,16 +42999,17 @@ class SlubDumpCommand(GenericCommand):
 
         if self.cpuN is None:
             for i in range(len(self.cpu_offset) or 1):
-                gef_print(titlify("CPU {:d}".format(i)))
+                self.out.append(titlify("CPU {:d}".format(i)))
                 self.walk_caches(i)
                 self.dump_caches(targets, i)
         else:
             if (len(self.cpu_offset) or 1) > self.cpuN:
-                gef_print(titlify("CPU {:d}".format(self.cpuN)))
+                self.out.append(titlify("CPU {:d}".format(self.cpuN)))
                 self.walk_caches(self.cpuN)
                 self.dump_caches(targets, self.cpuN)
             else:
-                err("CPU number is invalid (valid range:{:d}-{:d})".format(0, (len(self.cpu_offset) or 1) - 1))
+                if not self.quiet:
+                    err("CPU number is invalid (valid range:{:d}-{:d})".format(0, (len(self.cpu_offset) or 1) - 1))
         return
 
     @parse_args
@@ -43005,19 +43023,25 @@ class SlubDumpCommand(GenericCommand):
         self.no_xor = args.no_xor
         self.listup = args.list
         self.offset_random = args.offset_random
+        self.quiet = args.quiet
         if args.no_byte_swap is None:
             self.swap = None
         else:
             self.swap = not args.no_byte_swap
 
-        info("Wait for memory scan")
+        if not self.quiet:
+            info("Wait for memory scan")
 
         r = gdb.execute("ksymaddr-remote --quiet --no-pager slub_", to_string=True)
         if not r:
-            err("Unsupported SLAB, SLOB")
+            if not self.quiet:
+                err("Unsupported SLAB, SLOB")
             return
 
+        self.out = []
         self.slabwalk(args.cache_name)
+        if self.out:
+            gef_print('\n'.join(self.out), less=not args.no_pager)
         return
 
 
