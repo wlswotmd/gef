@@ -40858,6 +40858,8 @@ class KernelFopsCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("address", metavar='ADDRESS', nargs='?', type=parse_address, help='the address interpreted as fops.')
+    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -40910,26 +40912,33 @@ class KernelFopsCommand(GenericCommand):
 
         members = self.get_member()
 
+        self.out = []
         if args.address:
             try:
                 addrs = [read_int_from_memory(args.address + current_arch.ptrsize * i) for i in range(len(members))]
             except gdb.MemoryError:
-                err("Memory read error")
+                if not args.quiet:
+                    err("Memory read error")
                 return
 
-            fmt = "{:5s} {:<10s} {:<20s} {:s}"
-            legend = ["Index", "Type", "Name", "Value"]
-            gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+            if not args.quiet:
+                fmt = "{:5s} {:<10s} {:<20s} {:s}"
+                legend = ["Index", "Type", "Name", "Value"]
+                self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
             for idx, ((type, name), address) in enumerate(zip(members, addrs)):
                 sym = get_symbol_string(address)
-                gef_print("[{:03d}] {:10s} {:20s} {:#018x}{:s}".format(idx, type, name, address, sym))
+                self.out.append("[{:03d}] {:10s} {:20s} {:#018x}{:s}".format(idx, type, name, address, sym))
 
         else:
-            fmt = "{:5s} {:<10s} {:<20s}"
-            legend = ["Idx", "Type", "Name"]
-            gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+            if not args.quiet:
+                fmt = "{:5s} {:<10s} {:<20s}"
+                legend = ["Idx", "Type", "Name"]
+                self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
             for idx, (type, name) in enumerate(members):
-                gef_print("[{:03d}] {:10s} {:20s}".format(idx, type, name))
+                self.out.append("[{:03d}] {:10s} {:20s}".format(idx, type, name))
+
+        if self.out:
+            gef_print('\n'.join(self.out), less=not args.no_pager)
         return
 
 
