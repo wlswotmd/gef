@@ -39625,6 +39625,7 @@ class KernelCmdlineCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-r', '--reparse', action='store_true', help='do not use cache.')
+    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
     _syntax_ = parser.format_help()
 
     @staticmethod
@@ -39654,14 +39655,20 @@ class KernelCmdlineCommand(GenericCommand):
         if args.reparse:
             global cached_kernel_cmdline
             cached_kernel_cmdline = None
+            reset_gef_caches()
 
-        info("Wait for memory scan")
+        if not args.quiet:
+            info("Wait for memory scan")
         kcmdline = KernelCmdlineCommand.kernel_cmdline()
         if kcmdline is None:
-            err("Parse failed")
+            if not args.quiet:
+                err("Failed to resolve")
             return
-        gef_print(titlify("Kernel cmdline (heuristic)"))
-        gef_print("{:#x}: '{:s}'".format(kcmdline.address, kcmdline.cmdline))
+
+        self.out = []
+        self.out.append("{:#x}: '{:s}'".format(kcmdline.address, kcmdline.cmdline))
+        if self.out:
+            gef_print('\n'.join(self.out))
         return
 
 
