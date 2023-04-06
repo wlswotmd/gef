@@ -39324,6 +39324,62 @@ class KernelAddressHeuristicFinder:
                             return base + int(m.group(1), 0)
         return None
 
+    @staticmethod
+    def get_file_systems():
+        # plan 1 (directly)
+        file_systems = get_ksymaddr("file_systems")
+        if file_systems:
+            return file_systems
+
+        # plan 2 (available v2.5.7 or later)
+        unregister_filesystem = get_ksymaddr("unregister_filesystem")
+        if unregister_filesystem:
+            res = gdb.execute("x/20i {:#x}".format(unregister_filesystem), to_string=True)
+            if is_x86_64():
+                for line in res.splitlines():
+                    m = re.search(r"QWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffffffffffff
+                        return v
+            elif is_x86_32():
+                for line in res.splitlines():
+                    m = re.search(r"ds:(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffff
+                        if v != 0:
+                            return v
+            elif is_arm64():
+                bases = {}
+                for line in res.splitlines():
+                    m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        base = int(m.group(2), 16)
+                        bases[reg] = base
+                        continue
+                    m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
+                    if m:
+                        srcreg = m.group(2)
+                        v = int(m.group(3), 16)
+                        if srcreg in bases:
+                            return bases[srcreg] + v
+            elif is_arm32():
+                bases = {}
+                for line in res.splitlines():
+                    m = re.search(r"movw\s+(\S+),.+;\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        base = int(m.group(2), 16)
+                        bases[reg] = base
+                        continue
+                    m = re.search(r"movt\s+(\S+),.+;\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        v = int(m.group(2), 16) << 16
+                        if reg in bases:
+                            return bases[reg] + v
+        return None
+
 
 @register_command
 class KernelbaseCommand(GenericCommand):
@@ -41152,6 +41208,88 @@ class KernelParamSysctlCommand(GenericCommand):
             if not args.quiet:
                 err("Memory error")
             return
+
+        if self.out:
+            gef_print('\n'.join(self.out), less=not args.no_pager)
+        return
+
+
+@register_command
+class KernelFileSystemsCommand(GenericCommand):
+    """Dump /proc/filesystems using kenrel memory scanning."""
+    _cmdline_ = "kfilesystems"
+    _category_ = "08-b. Qemu-system Cooperation - Linux"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
+    _syntax_ = parser.format_help()
+
+    def get_offset_next(self, file_systems):
+        for i in range(10):
+            offset_next = i * current_arch.ptrsize
+            valid = True
+            current = read_int_from_memory(file_systems)
+            seen = []
+            while current != 0:
+                if not is_valid_addr(current):
+                    valid = False
+                    break
+                seen.append(current)
+                name_addr = read_int_from_memory(current)
+                if not is_valid_addr(name_addr):
+                    valid = False
+                    break
+                name = read_cstring_from_memory(name_addr)
+                if len(name) == 0:
+                    valid = False
+                    break
+                current = read_int_from_memory(current + offset_next)
+                if current in seen:
+                    valid = False
+                    break
+
+            if len(seen) == 1:
+                valid = False
+
+            if valid:
+                return offset_next
+        return None
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_qemu_system
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        if not args.quiet:
+            info("Wait for memory scan")
+
+        file_systems = KernelAddressHeuristicFinder.get_file_systems()
+        if file_systems is None:
+            if not args.quiet:
+                err("Not found file_systems")
+            return
+        if not args.quiet:
+            info("file_systems: {:#x}".format(file_systems))
+
+        offset_next = self.get_offset_next(file_systems)
+        if offset_next is None:
+            return
+        if not args.quiet:
+            info("offsetof(file_systems, next): {:#x}".format(offset_next))
+
+        self.out = []
+        if not args.quiet:
+            fmt = "{:<18s} {:s}"
+            legend = ["file_system_type", "name"]
+            self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+        current = read_int_from_memory(file_systems)
+        while current != 0:
+            name_addr = read_int_from_memory(current)
+            name = read_cstring_from_memory(name_addr)
+            self.out.append("{:#018x} {:s}".format(current, name))
+            current = read_int_from_memory(current + offset_next)
 
         if self.out:
             gef_print('\n'.join(self.out), less=not args.no_pager)
