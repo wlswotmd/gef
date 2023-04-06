@@ -42753,6 +42753,7 @@ class SlubDumpCommand(GenericCommand):
     parser.add_argument('--list', action='store_true', help='list up all slub cache names.')
     parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
     parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
+    parser.add_argument('-v', '--verbose', action='store_true', help='enable verbose mode.')
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} kmalloc-256                                      # dump kmalloc-256 from all cpus\n".format(_cmdline_)
@@ -42781,23 +42782,29 @@ class SlubDumpCommand(GenericCommand):
     _example_ += "    +-__per_cpu_offset-+                  | |\n"
     _example_ += "    | cpu0_offset      |---+--------------+ |\n"
     _example_ += "    | cpu1_offset      |   |                |\n"
-    _example_ += "    | cpu2_offset      |   |        +-------+\n"
-    _example_ += "    | ...              |   |        |\n"
-    _example_ += "    +------------------+   |        |\n"
-    _example_ += "                           |        |\n"
-    _example_ += "      +--------------------+        |\n"
-    _example_ += "      |                             |\n"
-    _example_ += "      |                 +-chunk--------+  +-chunk--------+  +-chunk--------+\n"
-    _example_ += "      |                 | ^         |  |  | ^            |  | ^            |\n"
-    _example_ += "      v                 | |offset <-+  |  | |offset      |  | |offset      |\n"
-    _example_ += "    +-kmem_cache_cpu-+  | v            |  | v            |  | v            |\n"
-    _example_ += "    | freelist       |->| next         |->| next         |->| next         |->NULL\n"
-    _example_ += "    |                |  |              |  |              |  |              |\n"
-    _example_ += "    +----------------+  +--------------+  +--------------+  +--------------+\n"
-    _example_ += "                        * next has 3 patterns.\n"
-    _example_ += "                          1. next\n"
-    _example_ += "                          2. xor(next, random)\n"
-    _example_ += "                          3. xor(byteswap(next), random)"
+    _example_ += "    | cpu2_offset      |   |             +--+\n"
+    _example_ += "    | ...              |   |             |\n"
+    _example_ += "    +------------------+   |             |\n"
+    _example_ += "                           |             |\n"
+    _example_ += "      +--------------------+             |\n"
+    _example_ += "      |                                  |\n"
+    _example_ += "      |                      +-chunk-------+  +-chunk-------+  +-chunk-------+\n"
+    _example_ += "      |                      | ^         | |  | ^           |  | ^           |\n"
+    _example_ += "      v                      | |offset <-+ |  | |offset     |  | |offset     |\n"
+    _example_ += "    +-kmem_cache_cpu-+       | v           |  | v           |  | v           |\n"
+    _example_ += "    | freelist       |------>| next        |->| next        |->| next        |->NULL\n"
+    _example_ += "    | page           |       |             |  |             |  |             |\n"
+    _example_ += "    | partial        |       +-------------+  +-------------+  +-------------+\n"
+    _example_ += "    +----------------+       * next has 3 patterns.\n"
+    _example_ += "                               1. next\n"
+    _example_ += "                               2. xor(next, random)\n"
+    _example_ += "                               3. xor(byteswap(next), random)"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        self.initialized = False
+        self.initialized_verbose = False
+        return
 
     """
     struct kmem_cache {
@@ -42847,13 +42854,47 @@ class SlubDumpCommand(GenericCommand):
         unsigned long tid;
         struct slab *slab;                       // if kernel >= 5.17-rc1
         struct page *page;                       // if kernel < 5.17-rc1
-        struct page *partial;                    // if CONFIG_SLUB_CPU_PARTIAL=y
+        struct slab *partial;                    // if kernel >= 5.17-rc1 && CONFIG_SLUB_CPU_PARTIAL=y
+        struct page *partial;                    // if kernel < 5.17-rc1 && CONFIG_SLUB_CPU_PARTIAL=y
         local_lock_t lock;                       // if kernel >= 5.15-rc1
         unsigned stat[NR_SLUB_STAT_ITEMS];       // if CONFIG_SLUB_STATS=y
+    }
+
+    struct page {                                // if kernel < 4.18-rc1
+        unsigned long flags;
+        union { };                               // long
+        void *freelist;
+        unsigned inuse:16, objects:15, frozen:1;
+        atomic_t refcount;                       // if kernel < 4.16-rc1
+        struct page *next;
+        ...
+    }
+
+    struct page {                                // if 4.18-rc1 <= kernel < 5.17-rc1
+        unsigned long flags;
+        struct page *next;
+        int pages;                               // if 64bit else `short pages`
+        int pobjects;                            // if 64bit else `short pobjects`
+        struct kmem_cache *slab_cache;
+        void *freelist;
+        ...
+    }
+
+    struct slab {                                // if kernel >= 5.17-rc1
+        unsigned long __page_flags;
+        struct kmem_cache *slab_cache;           // if kernel >= 6.2-rc1
+        struct slab *next;                       // if CONFIG_SLUB_CPU_PARTIAL=y
+        int slabs;                               // if CONFIG_SLUB_CPU_PARTIAL=y
+        struct kmem_cache *slab_cache;           // if kernel < 6.2-rc1
+        void *freelist;
+        ...
     }
     """
 
     def init_offset(self):
+        if self.initialized:
+            return True
+
         # resolve slab_caches
         self.slab_caches = KernelAddressHeuristicFinder.get_slab_caches()
         if self.slab_caches is None:
@@ -42942,6 +42983,9 @@ class SlubDumpCommand(GenericCommand):
 
         # offsetof(kmem_cache, cpu_slab)
         self.kmem_cache_offset_cpu_slab = 0
+        if not self.quiet:
+            info("offsetof(kmem_cache, cpu_slab): {:#x}".format(self.kmem_cache_offset_cpu_slab))
+
         # offsetof(kmem_cache, object_size)
         self.kmem_cache_offset_object_size = current_arch.ptrsize * 3 + 4
         if not self.quiet:
@@ -43021,6 +43065,74 @@ class SlubDumpCommand(GenericCommand):
 
         # offsetof(kmem_cache_cpu, freelist)
         self.kmem_cache_cpu_offset_freelist = 0
+        if not self.quiet:
+            info("offsetof(kmem_cache_cpu, freelist): {:#x}".format(self.kmem_cache_cpu_offset_freelist))
+
+        self.initialized = True
+        return True
+
+    def init_offset_verbose(self):
+        if self.initialized_verbose:
+            return True
+
+        # offsetof(kmem_cache_cpu, page or slab)
+        self.kmem_cache_cpu_offset_page = current_arch.ptrsize * 2
+        if not self.quiet:
+            info("offsetof(kmem_cache_cpu, page): {:#x}".format(self.kmem_cache_cpu_offset_page))
+
+        # offsetof(kmem_cache_cpu, partial)
+        self.kmem_cache_cpu_offset_partial = current_arch.ptrsize * 3
+        if not self.quiet:
+            info("offsetof(kmem_cache_cpu, partial): {:#x}".format(self.kmem_cache_cpu_offset_partial))
+
+        # offsetof(page, next)
+        kversion = KernelVersionCommand.kernel_version()
+        if kversion.major < 4 or (kversion.major == 4 and kversion.minor < 18):
+            self.page_offset_next = current_arch.ptrsize * 4
+        elif kversion.major < 5 or (kversion.major == 5 and kversion.minor < 17):
+            self.page_offset_next = current_arch.ptrsize
+        elif kversion.major < 6 or (kversion.major == 6 and kversion.minor < 2):
+            self.page_offset_next = current_arch.ptrsize
+        else:
+            self.page_offset_next = current_arch.ptrsize * 2
+        if not self.quiet:
+            info("offsetof(page, next): {:#x}".format(self.page_offset_next))
+
+        # offsetof(page, freelist)
+        if kversion.major < 4 or (kversion.major == 4 and kversion.minor < 16):
+            self.page_offset_freelist = current_arch.ptrsize * 2
+        elif kversion.major < 5 or (kversion.major == 5 and kversion.minor < 17):
+            self.page_offset_freelist = current_arch.ptrsize * 4
+        elif kversion.major < 6 or (kversion.major == 6 and kversion.minor < 2):
+            self.page_offset_freelist = current_arch.ptrsize * 4
+        else:
+            self.page_offset_freelist = current_arch.ptrsize * 5
+        if not self.quiet:
+            info("offsetof(page, freelist): {:#x}".format(self.page_offset_freelist))
+
+        # vmemmap
+        self.vmemmap = None
+        if is_x86_64():
+            # CONFIG_SPARSEMEM_VMEMMAP
+            vmemmap_base = get_ksymaddr("vmemmap_base")
+            if vmemmap_base:
+                self.vmemmap = read_int_from_memory(vmemmap_base)
+            else:
+                kinfo = KernelbaseCommand.get_kernel_base()
+                if not kinfo.has_none:
+                    found_kbase = False
+                    for vaddr, size, perm in kinfo.maps[::-1]:
+                        if found_kbase and size >= 0x200000:
+                            self.vmemmap = vaddr
+                            break
+                        if vaddr == kinfo.kbase:
+                            found_kbase = True
+                            continue
+        if not self.quiet:
+            if self.vmemmap:
+                info("vmemmap: {:#x}".format(self.vmemmap))
+
+        self.initialized_verbose = True
         return True
 
     def get_next_kmem_cache(self, addr, point_to_base=True):
@@ -43057,6 +43169,37 @@ class SlubDumpCommand(GenericCommand):
 
     def get_freelist(self, addr):
         return read_int_from_memory(addr + self.kmem_cache_cpu_offset_freelist)
+
+    def get_page(self, addr):
+        return read_int_from_memory(addr + self.kmem_cache_cpu_offset_page)
+
+    def get_partial(self, addr):
+        return read_int_from_memory(addr + self.kmem_cache_cpu_offset_partial)
+
+    def get_next_page(self, addr):
+        return read_int_from_memory(addr + self.page_offset_next)
+
+    def get_freelist_page(self, addr):
+        return read_int_from_memory(addr + self.page_offset_freelist)
+
+    def page2virt(self, page):
+        # https://qiita.com/akachochin/items/121d2bf3aa1cfc9bb95a
+
+        if is_x86_64():
+            if not self.vmemmap:
+                return None
+            if self.maps is None:
+                self.maps = V2PCommand.get_maps(None)
+
+            # CONFIG_SPARSEMEM_VMEMMAP
+            paddr = (page - self.vmemmap) << 6
+            for vstart, vend, pstart, pend in self.maps:
+               if pstart <= paddr < pend:
+                   offset = paddr - pstart
+                   vaddr = vstart + offset
+                   return vaddr
+
+        return None
 
     def byteswap(self, x):
         if is_64bit():
@@ -43097,38 +43240,60 @@ class SlubDumpCommand(GenericCommand):
                 self.swap = True
         return chunk
 
-    def walk_caches(self, cpu):
+    def walk_freelist(self, chunk, new_cache):
+        freelist = [chunk]
+        while chunk:
+            try:
+                addr = chunk + new_cache['offset']
+                chunk = read_int_from_memory(addr) # get next chunk
+            except Exception:
+                freelist.append("{:s}".format(Color.colorify("Corrupted (Memory access denied)", "bold yellow")))
+                break
+            if self.kmem_cache_offset_random is not None: # fix if randomized
+                chunk = self.pointer_xor(addr, chunk, new_cache)
+            if chunk % 8:
+                freelist.append("{:#x}: {:s}".format(chunk, Color.colorify("Corrupted (Not aligned)", "bold yellow")))
+                break
+            if chunk in freelist:
+                freelist.append("{:#x}: {:s}".format(chunk, Color.colorify("Corrupted (Loop detected)", "bold yellow")))
+                break
+            freelist.append(chunk)
+        return freelist
+
+    def walk_caches(self, targets, cpu):
         current_kmem_cache = self.get_next_kmem_cache(self.slab_caches, point_to_base=False)
         self.parsed_caches = [{'name': 'slab_caches', 'next': current_kmem_cache}]
 
         while current_kmem_cache + self.kmem_cache_offset_list != self.slab_caches:
             new_cache = {}
             # parse member
+            new_cache['name'] = self.get_name(current_kmem_cache)
+            if targets != [] and not new_cache['name'] in targets:
+                current_kmem_cache = self.get_next_kmem_cache(current_kmem_cache)
+                continue
             new_cache['address'] = current_kmem_cache
             new_cache['objsize'] = self.get_objsize(current_kmem_cache)
             new_cache['offset'] = self.get_offset(current_kmem_cache)
-            new_cache['name'] = self.get_name(current_kmem_cache)
             new_cache['random'] = self.get_random(current_kmem_cache)
             # parse free_list
             new_cache['kmem_cache_cpu'] = self.get_kmem_cache_cpu(current_kmem_cache, cpu)
             chunk = self.get_freelist(new_cache['kmem_cache_cpu'])
-            new_cache['freelist'] = [chunk]
-            while chunk:
-                try:
-                    addr = chunk + new_cache['offset']
-                    chunk = read_int_from_memory(addr) # get next chunk
-                except Exception:
-                    new_cache['freelist'].append("{:s}".format(Color.colorify("Corrupted (Memory access denied)", "bold yellow")))
-                    break
-                if self.kmem_cache_offset_random is not None: # fix if randomized
-                    chunk = self.pointer_xor(addr, chunk, new_cache)
-                if chunk % 8:
-                    new_cache['freelist'].append("{:#x}: {:s}".format(chunk, Color.colorify("Corrupted (Not aligned)", "bold yellow")))
-                    break
-                if chunk in new_cache['freelist']:
-                    new_cache['freelist'].append("{:#x}: {:s}".format(chunk, Color.colorify("Corrupted (Loop detected)", "bold yellow")))
-                    break
-                new_cache['freelist'].append(chunk)
+            new_cache['freelist'] = self.walk_freelist(chunk, new_cache)
+            # parse page
+            if self.verbose:
+                new_cache['page'] = self.get_page(new_cache['kmem_cache_cpu'])
+            # parse partial
+            if self.verbose:
+                new_cache['partial'] = []
+                current_page = self.get_partial(new_cache['kmem_cache_cpu'])
+                while is_valid_addr(current_page):
+                    partial_chunk = self.get_freelist_page(current_page)
+                    partial_freelist = self.walk_freelist(partial_chunk, new_cache)
+                    new_cache['partial'].append([current_page, partial_freelist])
+                    next_page = self.get_next_page(current_page)
+                    if next_page in [x[0] for x in new_cache['partial']]:
+                        break
+                    current_page = next_page
             # goto next
             new_cache['next'] = current_kmem_cache = self.get_next_kmem_cache(current_kmem_cache)
             self.parsed_caches.append(new_cache)
@@ -43157,6 +43322,14 @@ class SlubDumpCommand(GenericCommand):
                         self.out.append(' |   random (xor key): {:#x} ^ byteswap(address of chunk->next)'.format(c['random']))
                     else:
                         self.out.append(' |   random (xor key): {:#x} ^ address of chunk->next'.format(c['random']))
+            if self.verbose:
+                if c['page']:
+                    page_virt = self.page2virt(c['page'])
+                    if page_virt is None:
+                        self.out.append(' |   page: {:#x} (virt: ???)'.format(c['page']))
+                    else:
+                        page_virt_s = Color.boldify("{:#x}".format(page_virt))
+                        self.out.append(' |   page: {:#x} (virt: {:s})'.format(c['page'], page_virt_s))
             if len(c['freelist']) > 0:
                 if isinstance(c['freelist'][0], str):
                     self.out.append(' |   freelist:   {:s}'.format(c['freelist'][0]))
@@ -43167,6 +43340,24 @@ class SlubDumpCommand(GenericCommand):
                         self.out.append(' | ' + ' ' * 14 + '{:s}'.format(f))
                     else:
                         self.out.append(' | ' + ' ' * 14 + '{:s}'.format(Color.colorify("{:#x}".format(f), "bold yellow")))
+            if self.verbose:
+                for partial, partial_freelist in c['partial']:
+                    partial_virt = self.page2virt(partial)
+                    if partial_virt is None:
+                        self.out.append(' |   partial page: {:#x} (virt: ???)'.format(partial))
+                    else:
+                        partial_virt_s = Color.boldify("{:#x}".format(partial_virt))
+                        self.out.append(' |   partial page: {:#x} (virt: {:s})'.format(partial, partial_virt_s))
+                    if len(partial_freelist) > 0:
+                        if isinstance(partial_freelist[0], str):
+                            self.out.append(' |   freelist:   {:s}'.format(partial_freelist[0]))
+                        else:
+                            self.out.append(' |   freelist:   {:s}'.format(Color.colorify("{:#x}".format(partial_freelist[0]), "bold yellow")))
+                        for f in partial_freelist[1:]:
+                            if isinstance(f, str):
+                                self.out.append(' | ' + ' ' * 14 + '{:s}'.format(f))
+                            else:
+                                self.out.append(' | ' + ' ' * 14 + '{:s}'.format(Color.colorify("{:#x}".format(f), "bold yellow")))
             self.out.append(' |   next: {:#x}'.format(c['next']))
             self.out.append(' | ' + ' ' * 11 + ' |')
             if targets != []:
@@ -43184,27 +43375,34 @@ class SlubDumpCommand(GenericCommand):
             self.out.append(fmt.format(c['objsize'], c['objsize'], c['name'], c['address']))
         return
 
-    def slabwalk(self, targets):
+    def slabwalk(self, targets, cpu):
         if self.init_offset() is False:
             if not self.quiet:
                 err("Initialize failed")
             return
 
+        if self.verbose:
+            if self.init_offset_verbose() is False:
+                if not self.quiet:
+                    err("Initialize failed")
+                return
+
         if self.listup:
-            self.walk_caches(0)
+            self.walk_caches(targets, cpu=0)
             self.dump_names()
             return
 
-        if self.cpuN is None:
+        if cpu is None:
+            # dump all cpu
             for i in range(len(self.cpu_offset) or 1):
                 self.out.append(titlify("CPU {:d}".format(i)))
-                self.walk_caches(i)
-                self.dump_caches(targets, i)
+                self.walk_caches(targets, cpu=i)
+                self.dump_caches(targets, cpu=i)
         else:
-            if (len(self.cpu_offset) or 1) > self.cpuN:
-                self.out.append(titlify("CPU {:d}".format(self.cpuN)))
-                self.walk_caches(self.cpuN)
-                self.dump_caches(targets, self.cpuN)
+            if (len(self.cpu_offset) or 1) > cpu:
+                self.out.append(titlify("CPU {:d}".format(cpu)))
+                self.walk_caches(targets, cpu=cpu)
+                self.dump_caches(targets, cpu=cpu)
             else:
                 if not self.quiet:
                     err("CPU number is invalid (valid range:{:d}-{:d})".format(0, (len(self.cpu_offset) or 1) - 1))
@@ -43217,11 +43415,12 @@ class SlubDumpCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        self.cpuN = args.cpu
         self.no_xor = args.no_xor
         self.listup = args.list
         self.offset_random = args.offset_random
         self.quiet = args.quiet
+        self.verbose = args.verbose
+
         if args.no_byte_swap is None:
             self.swap = None
         else:
@@ -43236,8 +43435,9 @@ class SlubDumpCommand(GenericCommand):
                 err("Unsupported SLAB, SLOB")
             return
 
+        self.maps = None
         self.out = []
-        self.slabwalk(args.cache_name)
+        self.slabwalk(args.cache_name, args.cpu)
         if self.out:
             gef_print('\n'.join(self.out), less=not args.no_pager)
         return
