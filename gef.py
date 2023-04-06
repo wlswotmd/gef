@@ -39758,6 +39758,7 @@ class KernelTaskCommand(GenericCommand):
     parser.add_argument('-f', '--filter', action='append', default=[], help='REGEXP filter.')
     parser.add_argument('-m', '--print-maps', action='store_true', help='print memory map each process.')
     parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
     _syntax_ = parser.format_help()
 
     def get_offset_task(self, init_task):
@@ -39786,9 +39787,12 @@ class KernelTaskCommand(GenericCommand):
                     break
                 value_list.append(pos)
             if found:
-                info("offsetof(task_struct, tasks): {:#x}".format(offset_tasks))
+                if not self.quiet:
+                    info("offsetof(task_struct, tasks): {:#x}".format(offset_tasks))
                 return offset_tasks
-        err("Not found init_task->tasks")
+
+        if not self.quiet:
+            err("Not found init_task->tasks")
         return None
 
     def get_task_list(self, init_task, offset_tasks):
@@ -39800,7 +39804,9 @@ class KernelTaskCommand(GenericCommand):
             if pos in task_list:
                 break
             task_list.append(pos)
-        info("Number of tasks: {:d}".format(len(task_list)))
+
+        if not self.quiet:
+            info("Number of tasks: {:d}".format(len(task_list)))
         return [x - offset_tasks for x in task_list]
 
     def get_offset_mm(self, task_addr, offset_tasks):
@@ -39828,7 +39834,9 @@ class KernelTaskCommand(GenericCommand):
         if 0 < r <= 0xffffffff:
             # maybe prio, so CONFIG_SMP is y
             offset_mm = offset_tasks + 10 * current_arch.ptrsize
-        info("offsetof(task_struct, mm): {:#x}".format(offset_mm))
+
+        if not self.quiet:
+            info("offsetof(task_struct, mm): {:#x}".format(offset_mm))
         return offset_mm
 
     def get_offset_comm(self, task_addrs):
@@ -39846,9 +39854,12 @@ class KernelTaskCommand(GenericCommand):
                     valid = False
                     break
             if valid:
-                info("offsetof(task_struct, comm): {:#x}".format(offset_comm))
+                if not self.quiet:
+                    info("offsetof(task_struct, comm): {:#x}".format(offset_comm))
                 return offset_comm
-        err("Not found task->comm[TASK_CMM_LEN]")
+
+        if not self.quiet:
+            err("Not found task->comm[TASK_CMM_LEN]")
         return None
 
     def get_offset_cred(self, task_addrs, offset_comm):
@@ -39869,9 +39880,12 @@ class KernelTaskCommand(GenericCommand):
                 val1 = read_int_from_memory(task + offset_cred)
                 val2 = read_int_from_memory(task + offset_cred - current_arch.ptrsize)
                 if val1 == val2 and val1 != 0:
-                    info("offsetof(task_struct, cred): {:#x}".format(offset_cred))
+                    if not self.quiet:
+                        info("offsetof(task_struct, cred): {:#x}".format(offset_cred))
                     return offset_cred
-        err("Not found task->cred")
+
+        if not self.quiet:
+            err("Not found task->cred")
         return None
 
     def get_offset_stack(self, task_addrs):
@@ -39897,10 +39911,12 @@ class KernelTaskCommand(GenericCommand):
                 continue
 
             offset_stack = current_arch.ptrsize * i
-            info("offsetof(task_struct, stack): {:#x}".format(offset_stack))
+            if not self.quiet:
+                info("offsetof(task_struct, stack): {:#x}".format(offset_stack))
             return offset_stack
 
-        err("Not found task->stack")
+        if not self.quiet:
+            err("Not found task->stack")
         return None
 
     def get_offset_pid(self, task_addrs):
@@ -39941,10 +39957,12 @@ class KernelTaskCommand(GenericCommand):
                 continue
 
             offset_pid = i * 4
-            info("offsetof(task_struct, pid): {:#x}".format(offset_pid))
+            if not self.quiet:
+                info("offsetof(task_struct, pid): {:#x}".format(offset_pid))
             return offset_pid
 
-        err("Not found task->pid")
+        if not self.quiet:
+            err("Not found task->pid")
         return None
 
     def get_offset_canary(self, task_addrs, offset_pid):
@@ -39972,10 +39990,12 @@ class KernelTaskCommand(GenericCommand):
                 break
 
         if found:
-            info("offsetof(task_struct, stack_canary): {:#x}".format(offset_stack_canary))
+            if not self.quiet:
+                info("offsetof(task_struct, stack_canary): {:#x}".format(offset_stack_canary))
             return offset_stack_canary
         else:
-            info("offsetof(task_struct, stack_canary): None")
+            if not self.quiet:
+                info("offsetof(task_struct, stack_canary): None")
             return None
 
     def get_offset_uid(self, init_task_cred_ptr):
@@ -40018,7 +40038,9 @@ class KernelTaskCommand(GenericCommand):
             pass
         else:
             offset_uid += 4 + current_arch.ptrsize + 4
-        info("offsetof(cred, uid): {:#x}".format(offset_uid))
+
+        if not self.quiet:
+            info("offsetof(cred, uid): {:#x}".format(offset_uid))
         return offset_uid
 
     def get_mm(self, task, offset_mm):
@@ -40063,7 +40085,8 @@ class KernelTaskCommand(GenericCommand):
                     break
                 current += current_arch.ptrsize
             offset_vm_mm = current - vm_area_struct
-            info("offsetof(vm_area_struct, vm_mm): {:#x}".format(offset_vm_mm))
+            if not self.quiet:
+                info("offsetof(vm_area_struct, vm_mm): {:#x}".format(offset_vm_mm))
 
             # now, `current` points vm_mm
             while True:
@@ -40076,7 +40099,8 @@ class KernelTaskCommand(GenericCommand):
                     break
                 current += current_arch.ptrsize
             offset_vm_flags = current - vm_area_struct
-            info("offsetof(vm_area_struct, vm_flags): {:#x}".format(offset_vm_flags))
+            if not self.quiet:
+                info("offsetof(vm_area_struct, vm_flags): {:#x}".format(offset_vm_flags))
             self.offset_vm_flags = offset_vm_flags
 
             # now, `current` points vm_flags
@@ -40095,7 +40119,8 @@ class KernelTaskCommand(GenericCommand):
             # now, `current` points anon_vma_chain
             offset_anon_vma_chain = current - vm_area_struct
             offset_vm_file = offset_anon_vma_chain + current_arch.ptrsize * 5
-            info("offsetof(vm_area_struct, vm_file): {:#x}".format(offset_vm_file))
+            if not self.quiet:
+                info("offsetof(vm_area_struct, vm_file): {:#x}".format(offset_vm_file))
             self.offset_vm_file = offset_vm_file
 
         vm_areas = []
@@ -40148,7 +40173,8 @@ class KernelTaskCommand(GenericCommand):
                     self.offset_d_iname = x - dentry
                     break
                 current += current_arch.ptrsize
-            info("offsetof(dentry, d_iname): {:#x}".format(self.offset_d_iname))
+            if not self.quiet:
+                info("offsetof(dentry, d_iname): {:#x}".format(self.offset_d_iname))
 
             current -= current_arch.ptrsize
             # now, `current` points qstr.size
@@ -40162,7 +40188,8 @@ class KernelTaskCommand(GenericCommand):
                     self.offset_d_parent = current - dentry
                     break
                 current -= current_arch.ptrsize
-            info("offsetof(dentry, d_parent): {:#x}".format(self.offset_d_parent))
+            if not self.quiet:
+                info("offsetof(dentry, d_parent): {:#x}".format(self.offset_d_parent))
 
         filepath = []
         current = dentry
@@ -40181,14 +40208,18 @@ class KernelTaskCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        info("Wait for memory scan")
+        self.quiet = args.quiet
+
+        if not self.quiet:
+            info("Wait for memory scan")
 
         init_task = KernelAddressHeuristicFinder.get_init_task()
         if init_task is None:
-            err("Not found symbol")
+            if not self.quiet:
+                err("Not found symbol")
             return
-        gef_print(titlify("Kernel tasks (heuristic)"))
-        info("init_task: {:#x}".format(init_task))
+        if not self.quiet:
+            info("init_task: {:#x}".format(init_task))
 
         offset_task = self.get_offset_task(init_task)
         if offset_task is None:
@@ -40231,10 +40262,11 @@ class KernelTaskCommand(GenericCommand):
             return
 
         out = []
-        ids_str = ["uid", "gid", "suid", "sgid", "euid", "egid", "fsuid", "fsgid"]
-        fmt = "{:<18s}: {:<7s} {:<16s} {:<18s} [{:>5s} {:>5s} {:>5s} {:>5s} {:>5s} {:>5s} {:>5s} {:>5s}] {:<10s} {:<18s} {:<18s}"
-        legend = ["task", "pid", "task->comm", "task->cred", *ids_str, "securebits", "kstack", "kcanary"]
-        out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+        if not self.quiet:
+            ids_str = ["uid", "gid", "suid", "sgid", "euid", "egid", "fsuid", "fsgid"]
+            fmt = "{:<18s}: {:<7s} {:<16s} {:<18s} [{:>5s} {:>5s} {:>5s} {:>5s} {:>5s} {:>5s} {:>5s} {:>5s}] {:<10s} {:<18s} {:<18s}"
+            legend = ["task", "pid", "task->comm", "task->cred", *ids_str, "securebits", "kstack", "kcanary"]
+            out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
         for task in task_addrs:
             comm_string = read_cstring_from_memory(task + offset_comm)
             if args.filter:
