@@ -39333,6 +39333,7 @@ class KernelbaseCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-r', '--reparse', action='store_true', help='do not use cache.')
+    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
     _syntax_ = parser.format_help()
 
     @staticmethod
@@ -39508,17 +39509,23 @@ class KernelbaseCommand(GenericCommand):
         if args.reparse:
             global cached_kernel_info
             cached_kernel_info = None
+            reset_gef_caches()
 
         # resolve kbase, krobase
-        info("Wait for memory scan")
+        if not args.quiet:
+            info("Wait for memory scan")
         kinfo = self.get_kernel_base()
         if kinfo.has_none:
-            err("Failed to resolve")
+            if not args.quiet:
+                err("Failed to resolve")
             return
-        gef_print(titlify("Kernel base (heuristic)"))
-        gef_print("kernel text:   {:#x} ({:#x} bytes)".format(kinfo.kbase, kinfo.kbase_size))
-        gef_print("kernel rodata: {:#x} ({:#x} bytes)".format(kinfo.krobase, kinfo.krobase_size))
-        gef_print("kernel data:   {:#x} ({:#x} bytes)".format(kinfo.krwbase, kinfo.krwbase_size))
+
+        self.out = []
+        self.out.append("kernel text:   {:#x} ({:#x} bytes)".format(kinfo.kbase, kinfo.kbase_size))
+        self.out.append("kernel rodata: {:#x} ({:#x} bytes)".format(kinfo.krobase, kinfo.krobase_size))
+        self.out.append("kernel data:   {:#x} ({:#x} bytes)".format(kinfo.krwbase, kinfo.krwbase_size))
+        if self.out:
+            gef_print('\n'.join(self.out))
         return
 
 
