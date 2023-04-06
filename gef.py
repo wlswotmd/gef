@@ -17244,7 +17244,7 @@ class ChecksecCommand(GenericCommand):
 
         # LKRG
         cfg = "Linux Kernel Runtime Guard (LKRG)"
-        kmod_ret = gdb.execute("kmod -q", to_string=True)
+        kmod_ret = gdb.execute("kmod -n -q", to_string=True)
         if ": lkrg " in kmod_ret:
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), "Loaded"))
         else:
@@ -40304,6 +40304,7 @@ class KernelModuleCommand(GenericCommand):
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
     parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
     _syntax_ = parser.format_help()
 
@@ -40315,7 +40316,6 @@ class KernelModuleCommand(GenericCommand):
             return None
 
         if not self.quiet:
-            gef_print(titlify("Kernel modules (heuristic)"))
             info("modules: {:#x}".format(modules))
 
         module_addrs = []
@@ -40583,10 +40583,12 @@ class KernelModuleCommand(GenericCommand):
             if offset_module_core is None:
                 return
 
+        self.out = []
         if not self.quiet:
             fmt = "{:<18s}: {:<18s} {:<18s} {:<18s}"
             legend = ["module", "module->name", "base", "size"]
-            gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+            self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+
         for module in module_addrs:
             name_string = read_cstring_from_memory(module + offset_name)
             if kversion.major > 4 or (kversion.major == 4 and kversion.minor >= 5):
@@ -40595,7 +40597,10 @@ class KernelModuleCommand(GenericCommand):
             else:
                 base = read_int_from_memory(module + offset_module_core)
                 size = u32(read_memory(module + offset_module_core + current_arch.ptrsize + 4, 4))
-            gef_print("{:#018x}: {:<18s} {:#018x} {:#018x}".format(module, name_string, base, size))
+            self.out.append("{:#018x}: {:<18s} {:#018x} {:#018x}".format(module, name_string, base, size))
+
+        if self.out:
+            gef_print('\n'.join(self.out), less=not args.no_pager)
         return
 
 
