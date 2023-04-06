@@ -40611,6 +40611,8 @@ class KernelCharacterDevicesCommand(GenericCommand):
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
     _syntax_ = parser.format_help()
 
     # character device is managed at chrdevs[] and cdev_map.
@@ -40630,10 +40632,11 @@ class KernelCharacterDevicesCommand(GenericCommand):
         """
         chrdevs = KernelAddressHeuristicFinder.get_chrdevs()
         if chrdevs is None:
-            err("Not found symbol")
+            if not self.quiet:
+                err("Not found symbol")
             return None
-        gef_print(titlify("Kernel character devices (heuristic)"))
-        info("chrdevs: {:#x}".format(chrdevs))
+        if not self.quiet:
+            info("chrdevs: {:#x}".format(chrdevs))
 
         chrdev_addrs = []
         for i in range(255):
@@ -40688,15 +40691,19 @@ class KernelCharacterDevicesCommand(GenericCommand):
         """
         cdev_map = KernelAddressHeuristicFinder.get_cdev_map()
         if cdev_map is None:
-            err("Not found symbol")
+            if not self.quiet:
+                err("Not found symbol")
             return None
-        info("cdev_map: {:#x}".format(cdev_map))
+        if not self.quiet:
+            info("cdev_map: {:#x}".format(cdev_map))
 
         try:
             cdev_map_ = read_int_from_memory(cdev_map)
-            info("*cdev_map: {:#x}".format(cdev_map_))
+            if not self.quiet:
+                info("*cdev_map: {:#x}".format(cdev_map_))
         except Exception:
-            err("cdev_map is not initialized")
+            if not self.quiet:
+                err("cdev_map is not initialized")
             return None
 
         cdev_addrs = []
@@ -40748,9 +40755,12 @@ class KernelCharacterDevicesCommand(GenericCommand):
                 # for loop is finished until last element
                 if valid:
                     offset_ops = offset_list - current_arch.ptrsize
-                    info("offsetof(cdev, ops): {:#x}".format(offset_ops))
+                    if not self.quiet:
+                        info("offsetof(cdev, ops): {:#x}".format(offset_ops))
                     return offset_ops
-        err("Not found offsetof(cdev, ops)")
+
+        if not self.quiet:
+            err("Not found offsetof(cdev, ops)")
         return None
 
     @parse_args
@@ -40759,7 +40769,10 @@ class KernelCharacterDevicesCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        info("Wait for memory scan")
+        self.quiet = args.quiet
+
+        if not self.quiet:
+            info("Wait for memory scan")
 
         chrdev_addrs = self.get_chrdev_list()
         if chrdev_addrs is None:
@@ -40822,12 +40835,18 @@ class KernelCharacterDevicesCommand(GenericCommand):
                 merged[k]["parent_name"] = "<None>"
 
         # print
-        fmt = "{:<18s}: {:<18s} {:<6s} {:<6s} {:<18s} {:<18s} {:18s} {:<s}"
-        legend = ["chrdev", "name", "major", "minor", "cdev", "cdev->kobj.parent", "parent_name", "cdev->ops"]
-        gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+        self.out = []
+        if not self.quiet:
+            fmt = "{:<18s}: {:<18s} {:<6s} {:<6s} {:<18s} {:<18s} {:18s} {:<s}"
+            legend = ["chrdev", "name", "major", "minor", "cdev", "cdev->kobj.parent", "parent_name", "cdev->ops"]
+            self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+
         for (major, minor), m in sorted(merged.items()):
             fmt = "{:#018x}: {:<18s} {:<6d} {:<6d} {:#018x} {:#018x} {:<18s} {:#018x}{:s}"
-            gef_print(fmt.format(m["chrdev"], m["name"], major, minor, m["cdev"], m["parent"], m["parent_name"], m["ops"], m["ops_sym"]))
+            self.out.append(fmt.format(m["chrdev"], m["name"], major, minor, m["cdev"], m["parent"], m["parent_name"], m["ops"], m["ops_sym"]))
+
+        if self.out:
+            gef_print('\n'.join(self.out), less=not args.no_pager)
         return
 
 
