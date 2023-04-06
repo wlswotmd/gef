@@ -52727,10 +52727,11 @@ class AddSymbolTemporaryCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('function_name', metavar='FUNCTION_NAME', help='new symbol you want to add.')
     parser.add_argument('function_addr', metavar='ADDRESS', type=parse_address, help="new symbol's address you want to add.")
+    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
     _syntax_ = parser.format_help()
 
     @staticmethod
-    def add_symbol_temp(function_info):
+    def add_symbol_temp(function_info, quiet=False):
         try:
             gcc = which("gcc")
             objcopy = which("objcopy")
@@ -52779,7 +52780,8 @@ class AddSymbolTemporaryCommand(GenericCommand):
             os.unlink(fname)
             return
 
-        info("{:d} entries will be added".format(len(function_info)))
+        if not quiet:
+            info("{:d} entries will be added".format(len(function_info)))
 
         if is_64bit():
             text_base = 0xffff000000000000
@@ -52791,7 +52793,8 @@ class AddSymbolTemporaryCommand(GenericCommand):
         for i, (fn, fa, typ) in enumerate(function_info):
             # debug print
             if i > 1 and i % 10000 == 0:
-                info("{:d} entries were processed".format(i))
+                if not quiet:
+                    info("{:d} entries were processed".format(i))
 
             if typ in ["T", "t", "W", None]:
                 type_flag = "function"
@@ -52821,7 +52824,8 @@ class AddSymbolTemporaryCommand(GenericCommand):
         if cmd_string_arr:
             apply_symbol(fname, cmd_string_arr, text_base)
 
-        info("{:d} entries were processed".format(i + 1))
+        if not quiet:
+            info("{:d} entries were processed".format(i + 1))
         return
 
     @parse_args
@@ -52830,16 +52834,18 @@ class AddSymbolTemporaryCommand(GenericCommand):
         self.dont_repeat()
 
         if is_32bit() and args.function_addr > 0xffffffff:
-            err("function address must be 0xffffffff or less")
+            if not args.quiet:
+                err("function address must be 0xffffffff or less")
             return
         if is_64bit() and args.function_addr > 0xffffffffffffffff:
-            err("function address must be 0xffffffffffffffff or less")
+            if not args.quiet:
+                err("function address must be 0xffffffffffffffff or less")
             return
 
         function_info = []
         typ = None
         function_info.append((args.function_name, args.function_addr, typ))
-        self.add_symbol_temp(function_info)
+        self.add_symbol_temp(function_info, args.quiet)
         return
 
 
@@ -52850,6 +52856,7 @@ class KsymaddrRemoteApplyCommand(GenericCommand):
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
     _syntax_ = parser.format_help()
 
     @parse_args
@@ -52858,7 +52865,8 @@ class KsymaddrRemoteApplyCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        info("Wait for memory scan")
+        if not args.quiet:
+            info("Wait for memory scan")
         res = gdb.execute("ksymaddr-remote --quiet --no-pager", to_string=True)
         function_info = []
         for entry in res.splitlines():
@@ -52872,8 +52880,9 @@ class KsymaddrRemoteApplyCommand(GenericCommand):
                 continue
             function_info.append((func_name, addr, typ))
         if len(function_info) > 0:
-            AddSymbolTemporaryCommand.add_symbol_temp(function_info)
-            info("Done. Try `p FUNCTION_NAME`")
+            AddSymbolTemporaryCommand.add_symbol_temp(function_info, quiet=args.quiet)
+            if not args.quiet:
+                info("Done. Try `p FUNCTION_NAME`")
         return
 
 
