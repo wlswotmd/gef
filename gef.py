@@ -8969,7 +8969,7 @@ def get_ksymaddr(sym):
         pass
     # use ksymaddr-remote
     try:
-        res = gdb.execute("ksymaddr-remote --quiet --exact {:s}".format(sym), to_string=True)
+        res = gdb.execute("ksymaddr-remote --quiet --no-pager --exact {:s}".format(sym), to_string=True)
         return int(res.split()[0], 16)
     except Exception:
         return None
@@ -16874,7 +16874,7 @@ class ChecksecCommand(GenericCommand):
 
         # KASLR
         cfg = "CONFIG_RANDOMIZE_BASE (KASLR)"
-        ksym_ret = gdb.execute("ksymaddr-remote --quiet kaslr_", to_string=True)
+        ksym_ret = gdb.execute("ksymaddr-remote --quiet --no-pager kaslr_", to_string=True)
         address_info = "kbase: {:#x}, _stext:{:#x}".format(kinfo.kbase, _stext)
         if ksym_ret:
             if kcmdline and "nokaslr" in kcmdline.cmdline:
@@ -16969,12 +16969,12 @@ class ChecksecCommand(GenericCommand):
 
         # SLUB/SLAB/SLOB
         allocator = False
-        r = gdb.execute("ksymaddr-remote --quiet slub_", to_string=True)
+        r = gdb.execute("ksymaddr-remote --quiet --no-pager slub_", to_string=True)
         if r:
             gef_print("{:<40s}: {:s}".format("Allocator", Color.colorify("SLUB", "bold green")))
             allocator = "SLUB"
         else:
-            r = gdb.execute("ksymaddr-remote --quiet slab_prepare_cpu", to_string=True)
+            r = gdb.execute("ksymaddr-remote --quiet --no-pager slab_prepare_cpu", to_string=True)
             if r:
                 gef_print("{:<40s}: {:s}".format("Allocator", Color.colorify("SLAB", "bold green")))
                 allocator = "SLAB"
@@ -43012,7 +43012,7 @@ class SlubDumpCommand(GenericCommand):
 
         info("Wait for memory scan")
 
-        r = gdb.execute("ksymaddr-remote --quiet slub_", to_string=True)
+        r = gdb.execute("ksymaddr-remote --quiet --no-pager slub_", to_string=True)
         if not r:
             err("Unsupported SLAB, SLOB")
             return
@@ -43031,6 +43031,7 @@ class KsymaddrRemoteCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('keyword', metavar='KEYWORD', nargs='*', help='filter by specific symbol name.')
     parser.add_argument('--exact', action='store_true', help='use exact match.')
+    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
     parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
     parser.add_argument('-v', '--verbose', action='store_true', help='enable verbose mode.')
     parser.add_argument('-r', '--reparse', action='store_true', help='do not use cache.')
@@ -43102,20 +43103,21 @@ class KsymaddrRemoteCommand(GenericCommand):
         else:
             fmt = "{:#018x} {:s} {:s}"
 
+        self.out = []
         for addr, symbol, typ in self.kallsyms:
             if not keywords:
-                gef_print(fmt.format(addr, typ, symbol))
+                self.out.append(fmt.format(addr, typ, symbol))
                 continue
 
             for k in keywords:
                 text = fmt.format(addr, typ, symbol)
                 if self.exact:
                     if k == symbol:
-                        gef_print(text)
+                        self.out.append(text)
                         break
                 else:
                     if k in text:
-                        gef_print(text)
+                        self.out.append(text)
                         break
         return
 
@@ -43486,6 +43488,8 @@ class KsymaddrRemoteCommand(GenericCommand):
         self.verbose = args.verbose
         self.quiet = args.quiet
         self.exact = args.exact
+        self.no_pager = args.no_pager
+
         if args.reparse:
             self.kallsyms = []
 
@@ -43505,6 +43509,12 @@ class KsymaddrRemoteCommand(GenericCommand):
 
         self.resolve_kallsyms()
         self.print_kallsyms(args.keyword)
+
+        if self.out:
+            if len(self.out) < 10:
+                gef_print('\n'.join(self.out))
+            else:
+                gef_print('\n'.join(self.out), less=not args.no_pager)
         return
 
 
@@ -52849,7 +52859,7 @@ class KsymaddrRemoteApplyCommand(GenericCommand):
         self.dont_repeat()
 
         info("Wait for memory scan")
-        res = gdb.execute("ksymaddr-remote --quiet", to_string=True)
+        res = gdb.execute("ksymaddr-remote --quiet --no-pager", to_string=True)
         function_info = []
         for entry in res.splitlines():
             r = re.findall(r"(0x\w+) (\w) (\w+)", entry)
