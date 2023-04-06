@@ -39537,6 +39537,7 @@ class KernelVersionCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-r', '--reparse', action='store_true', help='do not use cache.')
+    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
     _syntax_ = parser.format_help()
 
     @staticmethod
@@ -39599,14 +39600,20 @@ class KernelVersionCommand(GenericCommand):
         if args.reparse:
             global cached_kernel_version
             cached_kernel_version = None
+            reset_gef_caches()
 
-        info("Wait for memory scan")
+        if not args.quiet:
+            info("Wait for memory scan")
         kversion = KernelVersionCommand.kernel_version()
         if kversion is None:
-            err("Failed to resolve")
+            if not args.quiet:
+                err("Failed to resolve")
             return
-        gef_print(titlify("Kernel version (heuristic)"))
-        gef_print("{:#x}: {:s}".format(kversion.address, kversion.version_string))
+
+        self.out = []
+        self.out.append("{:#x}: {:s}".format(kversion.address, kversion.version_string))
+        if self.out:
+            gef_print('\n'.join(self.out))
         return
 
 
