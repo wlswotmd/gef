@@ -39679,16 +39679,19 @@ class KernelCurrentCommand(GenericCommand):
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
     _syntax_ = parser.format_help()
 
     def get_cpu_offset(self):
         # resolve __per_cpu_offset
         self.__per_cpu_offset = KernelAddressHeuristicFinder.get_per_cpu_offset()
         if self.__per_cpu_offset is None:
-            err("Failed to resolve `__per_cpu_offset`")
+            if not self.quiet:
+                err("Failed to resolve `__per_cpu_offset`")
             return False
         else:
-            info("__per_cpu_offset: {:#x}".format(self.__per_cpu_offset))
+            if not self.quiet:
+                info("__per_cpu_offset: {:#x}".format(self.__per_cpu_offset))
 
         # resolve each cpu_offset
         self.cpu_offset = [read_int_from_memory(self.__per_cpu_offset)]
@@ -39708,15 +39711,19 @@ class KernelCurrentCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        info("Wait for memory scan")
+        self.quiet = args.quiet
+
+        if not self.quiet:
+            info("Wait for memory scan")
         current_task = KernelAddressHeuristicFinder.get_current_task()
         if current_task is None:
-            err("Failed to resolve `current_task`")
+            if not self.quiet:
+                err("Failed to resolve `current_task`")
             return
-        info("current_task: {:#x}".format(current_task))
+        if not self.quiet:
+            info("current_task: {:#x}".format(current_task))
 
         if is_arm32() or is_arm64():
-            gef_print(titlify("Kernel current task_struct (heuristic)"))
             gef_print("current: {:#x}".format(current_task))
             return
 
@@ -39728,14 +39735,13 @@ class KernelCurrentCommand(GenericCommand):
             if (current_task & mask) == mask:
                 task = read_int_from_memory(current_task)
                 if is_valid_addr(task):
-                    info("__per_cpu_offset is not used")
-                    gef_print(titlify("Kernel current task_struct (heuristic)"))
+                    if not self.quiet:
+                        info("__per_cpu_offset is not used")
                     gef_print("current: {:#x}".format(task))
                     return
 
             if not self.get_cpu_offset():
                 return
-            gef_print(titlify("Kernel current task_struct (heuristic)"))
             for i, offset in enumerate(self.cpu_offset):
                 task = read_int_from_memory(current_task + offset)
                 gef_print("current (cpu{:d}): {:#x}".format(i, task))
