@@ -16573,7 +16573,8 @@ class ChecksecCommand(GenericCommand):
         self.dont_repeat()
 
         if is_qemu_system():
-            self.print_security_properties_qemu_system()
+            info("Redirect to kchecksec")
+            gdb.execute("kchecksec")
             return
 
         local_filepath = None
@@ -16779,7 +16780,22 @@ class ChecksecCommand(GenericCommand):
                 gef_print("{:<40s}: {:s}".format("GDB ASLR setting", msg))
         return
 
-    def print_security_properties_qemu_system(self):
+
+@register_command
+class KernelChecksecCommand(GenericCommand):
+    """Checksec the security properties of the current kernel."""
+    _cmdline_ = "kchecksec"
+    _category_ = "08-b. Qemu-system Cooperation - Linux"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_qemu_system
+    def do_invoke(self, args):
+        self.dont_repeat()
+
         if is_x86():
             if (get_register("$cs") & 0b11) == 3:
                 err("Run in kernel space.")
@@ -16796,6 +16812,10 @@ class ChecksecCommand(GenericCommand):
             err("Unsupported")
             return
 
+        self.print_security_properties_qemu_system()
+        return
+
+    def print_security_properties_qemu_system(self):
         gef_print(titlify("Register settings"))
 
         # Arch Specific
@@ -17136,7 +17156,7 @@ class ChecksecCommand(GenericCommand):
             else:
                 apparmor_enabled = u32(read_memory(apparmor_enabled_addr, 4))
                 apparmor_initialized = u32(read_memory(apparmor_initialized_addr, 4))
-                additional = "apparmor_initialized:{:d}, apparmor_enabled: {:d}".format(apparmor_initialized, apparmor_enabled)
+                additional = "apparmor_initialized: {:d}, apparmor_enabled: {:d}".format(apparmor_initialized, apparmor_enabled)
                 if apparmor_enabled == 0:
                     gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
                 elif apparmor_initialized == 0:
