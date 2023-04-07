@@ -75,14 +75,18 @@ All of these features are experimental. Tested on Ubuntu 22.04.
         * ARM v8.7 base.
         * 32bit mode is NOT supported.
         * PAC/MTE are NOT supported.
-        * For stage2 translation, you have to do `pagewalk arm64 1` then `pagewalk arm64 2`.
-        * Secure memory scanning is supported, but you have to break in the secure world.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm64.png)
+        * Supported stage2 translation. This is EL1/EL2/EL3 pagewalk sample (HITCON CTF 2018 super_hexagon).
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm64-el123.png)
+        * Secure memory scanning is supported, but you have to break in the secure world.
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm64-secure.png)
+        * Pseudo page tables without detailed flags and permission can be output even in the normal world.
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm64-secure-pseudo.png)
     * ARM (Cortex-A only, LPAE/Non-LPAE, PL0/PL1)
         * ARM v7 base.
         * PL2 is NOT supported.
-        * Secure memory scanning is supported, you don't have to break in the secure world (use register with `_S` suffix).
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm.png)
+        * Secure memory scanning is supported, you don't have to break in the secure world (use register with `_S` suffix).
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm-secure.png)
 * `v2p`, `p2v`: displays transformation virtual address <-> physical address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/v2p-p2v.png)
@@ -134,11 +138,14 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/thunk-hunter.png)
 * `usermodehelper-hunter`: collects and displays the information that is executed by `call_usermodehelper_setup`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/usermodehelper-hunter.png)
-* `magic`: displays useful addresses in kernel. Of cource, it also supports in userland.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/magic2.png)
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/magic1.png)
-* `kparam-sysctl`: dump kernel (sysctl) parameter (heuristic).
+* `kmagic`: displays useful addresses in kernel.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmagic.png)
+* `kchecksec`: checks kernel security.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kchecksec.png)
+* `kparam-sysctl`: dumps sysctl parameters (heuristic).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kparam-sysctl.png)
+* `kfilesystems`: dumps supported file systems.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kfilesystems.png)
 
 #### Arch specific
 * `uefi-ovmf-info`: dumps addresses of some important structures in each boot phase of UEFI when OVMF is used (heuristic).
@@ -265,8 +272,6 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * It shows whether GDB ASLR setting is enabled or not.
     * It supports parsing remote binary (if download feature is available).
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/checksec.png)
-    * It supports kernel security. (only x86/x64/ARM/ARM64)
-        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/checksec-kernel.png)
 * `got`: is improved.
     * It displays not only GOT address but also PLT address.
     * It scans `.plt.sec` section if Intel CET is enabled.
@@ -397,6 +402,8 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/syscall-search.png)
 * `dwarf-exception-handler`: dumps the DWARF exception handler informations.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dwarf-exception-handler.png)
+* `magic`: displays useful addresses in glibc etc.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/magic.png)
 * `dynamic`: dumps the `_DYNAMIC` area.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dynamic.png)
 * `link-map`: dumps the `link_map` with iterating.
