@@ -48157,7 +48157,7 @@ class V2PCommand(GenericCommand):
             elif args.force_secure:
                 FORCE_PREFIX_S = True
 
-        maps = self.get_maps(FORCE_PREFIX_S)
+        maps = self.get_maps(FORCE_PREFIX_S, args.verbose)
         if maps is None:
             return
         for vstart, vend, pstart, pend in maps:
@@ -48198,7 +48198,7 @@ class P2VCommand(GenericCommand):
             elif args.force_secure:
                 FORCE_PREFIX_S = True
 
-        maps = V2PCommand.get_maps(FORCE_PREFIX_S)
+        maps = V2PCommand.get_maps(FORCE_PREFIX_S, args.verbose)
         if maps is None:
             return
         count = 0
