@@ -50066,6 +50066,7 @@ class PagewalkArm64Command(PagewalkCommand):
                         help='filter by map included specified physical address.')
     parser.add_argument('--trace', metavar='VADDR', default=[], action='append', type=lambda x: int(x, 16),
                         help='show all level pagetables only associated specified address.')
+    parser.add_argument('--optee', action='store_true', help='show the secure world memory maps if used OP-TEE.')
     parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
     parser.add_argument('-c', '--use-cache', action='store_true', help='use before result.')
     _syntax_ = parser.format_help()
@@ -51708,6 +51709,11 @@ class PagewalkArm64Command(PagewalkCommand):
     @only_if_specific_arch(arch=["ARM64"])
     def do_invoke(self, args):
         self.dont_repeat()
+
+        if args.optee:
+            get_maps_arm64_optee_secure_memory.cache_clear()
+            get_maps_arm64_optee_secure_memory(True)
+            return
 
         if args.target_el is None:
             CPSR = get_register('$cpsr')
