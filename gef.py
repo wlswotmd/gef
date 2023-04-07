@@ -35949,6 +35949,42 @@ class MagicCommand(GenericCommand):
         self.resolve_and_print("'DW.ref.__gxx_personality_v0'", codebase)
         return
 
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        self.print_file_jumps = args.fj
+        self.filter = args.filter
+
+        if is_qemu_system():
+            info("Redirect to kmagic")
+            gdb.execute("kmagic {:s}".format(" ".join(args.filter)))
+            return
+
+        self.magic()
+        return
+
+
+@register_command
+class KernelMagicCommand(GenericCommand):
+    """Show Magic addresses / offsets."""
+    _cmdline_ = "kmagic"
+    _category_ = "08-b. Qemu-system Cooperation - Linux"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('filter', metavar='FILTER', nargs='*', help='filter string')
+    _syntax_ = parser.format_help()
+
+    def should_be_print(self, sym):
+        if not self.filter:
+            return True
+
+        for filt in self.filter:
+            if filt in sym:
+                return True
+        return False
+
     def resolve_and_print_kernel(self, sym, base, maps, external_func=None):
         def get_permission(addr, maps):
             for vaddr, size, perm in maps:
@@ -36074,16 +36110,11 @@ class MagicCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
+    @only_if_qemu_system
     def do_invoke(self, args):
         self.dont_repeat()
-
-        self.print_file_jumps = args.fj
         self.filter = args.filter
-
-        if is_qemu_system():
-            self.magic_kernel()
-        else:
-            self.magic()
+        self.magic_kernel()
         return
 
 
