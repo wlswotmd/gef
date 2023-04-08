@@ -2662,6 +2662,39 @@ class CetStatus:
         return r
 
 
+class MteStatus:
+    def get_mte_status(self):
+        auxv = gef_get_auxiliary_values()
+        HWCAP2_MTE = 1 << 18
+        if auxv and "AT_HWCAP2" in auxv and (auxv["AT_HWCAP2"] & HWCAP2_MTE) == 0:
+            return None # Unsupported
+        res = gdb.execute("call-syscall prctl 0x38 0 0 0 0", to_string=True) # PR_GET_TAGGED_ADDR_CTRL
+        output_line = res.splitlines()[-1]
+        ret = int(output_line.split()[2], 0)
+
+        pQ = lambda a: struct.pack("<Q", a & 0xffffffffffffffff)
+        uq = lambda a: struct.unpack("<q", a)[0]
+        u2i = lambda a: uq(pQ(a))
+        return u2i(ret)
+
+
+class PacStatus:
+    def get_pac_status(self):
+        auxv = gef_get_auxiliary_values()
+        HWCAP_PACA = 1 << 30
+        HWCAP_PACG = 1 << 31
+        if auxv and "AT_HWCAP" in auxv and (auxv["AT_HWCAP"] & (HWCAP_PACA | HWCAP_PACG)) == 0:
+            return None # Unsupported
+        res = gdb.execute("call-syscall prctl 0x3d 0 0 0 0", to_string=True) # PR_PAC_GET_ENABLED_KEYS
+        output_line = res.splitlines()[-1]
+        ret = int(output_line.split()[2], 0)
+
+        pQ = lambda a: struct.pack("<Q", a & 0xffffffffffffffff)
+        uq = lambda a: struct.unpack("<q", a)[0]
+        u2i = lambda a: uq(pQ(a))
+        return u2i(ret)
+
+
 @functools.lru_cache(maxsize=None)
 def checksec(filename):
     """Check the security property of the ELF binary. The following properties are:
@@ -2751,23 +2784,44 @@ def checksec(filename):
         results["Fortify"] = __check_security_property("-rs", filename, r"_chk@GLIBC") is True
 
     # CET
-    if not is_x86():
-        results["Intel CET"] = False
-    elif not is_stripped(filename) and not is_static(filename):
-        results["Intel CET"] = __check_security_property("-S", filename, r"\.plt\.sec") is True
-    else: # static or stripped
-        cmd = [objdump, "-d", "-j", ".plt", filename] # check only .plt section for speed up
+    if is_x86():
+        if not is_stripped(filename) and not is_static(filename):
+            results["Intel CET"] = __check_security_property("-S", filename, r"\.plt\.sec") is True
+        else: # static or stripped
+            cmd = [objdump, "-d", "-j", ".plt", filename] # check only .plt section for speed up
+            out = gef_execute_external(cmd, as_list=True)
+            results["Intel CET"] = False
+            for line in out:
+                line = line.strip()
+                if not line:
+                    continue
+                if is_x86_64() and line.endswith("endbr64"):
+                    results["Intel CET"] = True
+                    break
+                elif is_x86_32() and line.endswith("endbr32"):
+                    results["Intel CET"] = True
+                    break
+
+    # PAC
+    if is_arm64():
+        pac_ops = [
+            "paciasp", "pacia", "pacibsp", "pacib", "pacda", "pacdb", "pacga",
+            "autiasp", "autia", "autibsp", "autib", "autda", "autdb",
+            "retaa", "retab", "braa", "brab", "blraa", "blrab",
+            "eretaa", "eretab", "ldraa", "ldrab"
+        ]
+        cmd = ["sh", "-c", "{:s} -d {:s} | head -100000".format(objdump, filename)]
         out = gef_execute_external(cmd, as_list=True)
-        results["Intel CET"] = False
+        results["PAC"] = False
         for line in out:
             line = line.strip()
             if not line:
                 continue
-            if is_x86_64() and line.endswith("endbr64"):
-                results["Intel CET"] = True
-                break
-            elif is_x86_32() and line.endswith("endbr32"):
-                results["Intel CET"] = True
+            for op in pac_ops:
+                if line.endswith(op):
+                    results["PAC"] = True
+                    break
+            if results["PAC"]:
                 break
 
     # RPATH
@@ -16724,13 +16778,14 @@ class ChecksecCommand(GenericCommand):
             gef_print("{:<40s}: {:s}".format("Stripped", msg))
 
         # CET opcode
-        if sec["Intel CET"]:
-            gef_print("{:<40s}: {:s}".format("Intel CET endbr64/endbr32", Color.colorify("Found", "bold green")))
-        else:
-            gef_print("{:<40s}: {:s}".format("Intel CET endbr64/endbr32", Color.colorify("Not Found", "bold red")))
+        if is_x86():
+            if sec["Intel CET"]:
+                gef_print("{:<40s}: {:s}".format("Intel CET endbr64/endbr32", Color.colorify("Found", "bold green")))
+            else:
+                gef_print("{:<40s}: {:s}".format("Intel CET endbr64/endbr32", Color.colorify("Not Found", "bold red")))
 
         # CET Status
-        if is_alive() and is_x86():
+        if is_x86() and is_alive():
             r = CetStatus().get_cet_status()
             if r is None:
                 msg = Color.colorify("Disabled", "bold red") + " (kernel does not support)"
@@ -16747,6 +16802,45 @@ class ChecksecCommand(GenericCommand):
                 else:
                     msg = Color.colorify("Disabled", "bold red") + " (kernel supports but disabled)"
                     gef_print("{:<40s}: {:s}".format("Intel CET SHSTK", msg))
+
+        # PAC opcode
+        if is_arm64():
+            if sec["PAC"]:
+                gef_print("{:<40s}: {:s}".format("PAC opcode", Color.colorify("Found", "bold green")))
+            else:
+                gef_print("{:<40s}: {:s}".format("PAC opcode", Color.colorify("Not Found", "bold red")))
+
+        # PAC status
+        if is_alive() and is_arm64():
+            r = PacStatus().get_pac_status()
+            if r is None:
+                msg = Color.colorify("Disabled", "bold red") + " (kernel does not support)"
+                gef_print("{:<40s}: {:s}".format("PAC", msg))
+            elif r < 0:
+                msg = Color.colorify("Disabled", "bold red") + " (kernel supports but disabled)"
+                gef_print("{:<40s}: {:s}".format("PAC", msg))
+            elif r == 0:
+                msg = Color.colorify("Disabled", "bold red") + " (kernel supports but no keys have been set)"
+                gef_print("{:<40s}: {:s}".format("PAC", msg))
+            elif r > 0:
+                msg = Color.colorify("Enabled", "bold green") + " (kernel supports and some keys have been set)"
+                gef_print("{:<40s}: {:s}".format("PAC", msg))
+
+        # MTE status
+        if is_alive() and is_arm64():
+            r = MteStatus().get_mte_status()
+            if r is None:
+                msg = Color.colorify("Disabled", "bold red") + " (kernel does not support)"
+                gef_print("{:<40s}: {:s}".format("MTE", msg))
+            elif r < 0:
+                msg = Color.colorify("Disabled", "bold red") + " (kernel supports but disabled)"
+                gef_print("{:<40s}: {:s}".format("MTE", msg))
+            elif r == 0:
+                msg = Color.colorify("Disabled", "bold red") + " (kernel supports but no tags have been set)"
+                gef_print("{:<40s}: {:s}".format("MTE", msg))
+            elif r > 0:
+                msg = Color.colorify("Enabled", "bold green") + " (kernel supports and some tags have been set)"
+                gef_print("{:<40s}: {:s}".format("MTE", msg))
 
         # RPATH
         if not sec["RPATH"]:

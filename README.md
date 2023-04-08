@@ -266,6 +266,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * It detects canary against static stripped binary.
     * It shows whether Intel CET instructions (`endbr64`/`endbr32`) is found or not.
     * It shows whether Intel CET IBT/SHSTK is enabled or not.
+    * It shows whether ARMv8 PAC / MTE is enabled or not.
     * It shows whether RPATH/RUNPATH is set or not.
     * It shows if Clang CFI/SafeStack is used or not.
     * It shows whether System-ASLR is enabled or not.
