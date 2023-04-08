@@ -7306,6 +7306,31 @@ def only_if_not_qemu_system(f):
     return wrapper
 
 
+def only_if_in_kernel(f):
+    """Decorator wrapper to check if context is in kernel."""
+
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        if is_x86():
+            if (get_register("$cs") & 0b11) == 3:
+                warn("Run in kernel context.")
+                return
+        elif is_arm32():
+            if (get_register(current_arch.flag_register) & 0b11111) in [0b10000, 0b11010]:
+                warn("Run in kernel context.")
+                return
+        elif is_arm64():
+            if ((get_register(current_arch.flag_register) >> 2) & 0b11) != 1:
+                warn("Run in kernel context.")
+                return
+        else:
+            warn("Unsupported architecture.")
+            return
+        return f(*args, **kwargs)
+
+    return wrapper
+
+
 def experimental_feature(f):
     """Decorator to add a warning when a feature is experimental."""
 
@@ -16793,25 +16818,9 @@ class KernelChecksecCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
+    @only_if_in_kernel
     def do_invoke(self, args):
         self.dont_repeat()
-
-        if is_x86():
-            if (get_register("$cs") & 0b11) == 3:
-                err("Run in kernel space.")
-                return
-        elif is_arm32():
-            if (get_register(current_arch.flag_register) & 0b11111) in [0b10000, 0b11010]:
-                err("Run in kernel space.")
-                return
-        elif is_arm64():
-            if ((get_register(current_arch.flag_register) >> 2) & 0b11) != 1:
-                err("Run in kernel space.")
-                return
-        else:
-            err("Unsupported")
-            return
-
         self.print_security_properties_qemu_system()
         return
 
@@ -36111,6 +36120,7 @@ class KernelMagicCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
+    @only_if_in_kernel
     def do_invoke(self, args):
         self.dont_repeat()
         self.filter = args.filter
@@ -39619,6 +39629,7 @@ class KernelbaseCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
+    @only_if_in_kernel
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -39710,6 +39721,7 @@ class KernelVersionCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
+    @only_if_in_kernel
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -39765,6 +39777,7 @@ class KernelCmdlineCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
+    @only_if_in_kernel
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -39824,6 +39837,7 @@ class KernelCurrentCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
+    @only_if_in_kernel
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -40321,6 +40335,7 @@ class KernelTaskCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
+    @only_if_in_kernel
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -40673,6 +40688,7 @@ class KernelModuleCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
+    @only_if_in_kernel
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -40882,6 +40898,7 @@ class KernelCharacterDevicesCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
+    @only_if_in_kernel
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -41023,6 +41040,7 @@ class KernelFopsCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
+    @only_if_in_kernel
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -41227,6 +41245,7 @@ class KernelParamSysctlCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
+    @only_if_in_kernel
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -41319,6 +41338,7 @@ class KernelFileSystemsCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
+    @only_if_in_kernel
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -41519,6 +41539,7 @@ class SyscallTableViewCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
+    @only_if_in_kernel
     @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
     def do_invoke(self, args):
         self.dont_repeat()
@@ -43411,6 +43432,7 @@ class SlubDumpCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
+    @only_if_in_kernel
     @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
     def do_invoke(self, args):
         self.dont_repeat()
@@ -43904,6 +43926,7 @@ class KsymaddrRemoteCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
+    @only_if_in_kernel
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -44054,6 +44077,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
+    @only_if_in_kernel
     @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
     def do_invoke(self, args):
         self.dont_repeat()
@@ -52533,6 +52557,7 @@ class UsermodehelperHunterCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
+    @only_if_in_kernel
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -52626,6 +52651,7 @@ class ThunkHunterCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
+    @only_if_in_kernel
     @only_if_specific_arch(arch=["x86_32", "x86_64"])
     def do_invoke(self, args):
         self.dont_repeat()
@@ -53290,6 +53316,7 @@ class KsymaddrRemoteApplyCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
+    @only_if_in_kernel
     def do_invoke(self, args):
         self.dont_repeat()
 
