@@ -10132,15 +10132,8 @@ class VersionCommand(GenericCommand):
 
     def gef_version(self):
         gef_fpath = os.path.abspath(os.path.realpath(os.path.expanduser(inspect.stack()[0][1])))
-        gef_dir = os.path.dirname(gef_fpath)
         gef_hash = hashlib.sha1(open(gef_fpath, "rb").read()).hexdigest()
-
-        if os.access("{}/.git".format(gef_dir), os.X_OK):
-            ver = subprocess.check_output('git log --format="%H" -n 1 HEAD', cwd=gef_dir, shell=True).decode("utf8").strip()
-            extra = "dirty" if len(subprocess.check_output('git ls-files -m', cwd=gef_dir, shell=True).decode("utf8").strip()) else "clean"
-            return "rev:{} (Git - {}) SHA1: {}".format(ver, extra, gef_hash)
-        else:
-            return "(Standalone) SHA1:{}".format(gef_hash)
+        return "(Standalone) SHA1:{}".format(gef_hash)
 
     def gdb_version(self):
         try:
@@ -10151,37 +10144,46 @@ class VersionCommand(GenericCommand):
     def python_version(self):
         return sys.version.replace('\n', ' ')
 
-    @load_capstone
     def capstone_version(self):
-        try:
+        @load_capstone
+        def _capstone_version():
             capstone = sys.modules['capstone']
             return '.'.join(map(str, capstone.cs_version()))
-        except KeyError:
-            return 'not found'
-
-    @load_keystone
-    def keystone_version(self):
         try:
+            return _capstone_version()
+        except (KeyError, ImportWarning):
+            return 'Not found'
+
+    def keystone_version(self):
+        @load_keystone
+        def _keystone_version():
             keystone = sys.modules['keystone']
             return '.'.join(map(str, keystone.ks_version()))
-        except KeyError:
-            return 'not found'
-
-    @load_unicorn
-    def unicorn_version(self):
         try:
+            return _keystone_version()
+        except (KeyError, ImportWarning):
+            return 'Not found'
+
+    def unicorn_version(self):
+        @load_unicorn
+        def _unicorn_version():
             unicorn = sys.modules['unicorn']
             return unicorn.__version__
-        except KeyError:
-            return 'not found'
-
-    @load_ropper
-    def ropper_version(self):
         try:
+            return _unicorn_version()
+        except (KeyError, ImportWarning):
+            return 'Not found'
+
+    def ropper_version(self):
+        @load_ropper
+        def _ropper_version():
             ropper = sys.modules['ropper']
             return '.'.join(map(str, ropper.VERSION))
-        except KeyError:
-            return 'not found'
+
+        try:
+            return _ropper_version()
+        except (KeyError, ImportWarning):
+            return 'Not found'
 
     def readelf_version(self):
         try:
@@ -10189,7 +10191,7 @@ class VersionCommand(GenericCommand):
             res = gef_execute_external([command, "-v"], as_list=True)
             return res[0]
         except IOError:
-            return 'not found'
+            return 'Not found'
 
     def objdump_version(self):
         try:
@@ -10197,7 +10199,7 @@ class VersionCommand(GenericCommand):
             res = gef_execute_external([command, "-v"], as_list=True)
             return res[0]
         except IOError:
-            return 'not found'
+            return 'Not found'
 
     def seccomp_tools_version(self):
         try:
@@ -10205,7 +10207,7 @@ class VersionCommand(GenericCommand):
             res = gef_execute_external([command, "--version"], as_list=True)
             return res[0]
         except IOError:
-            return 'not found'
+            return 'Not found'
 
     def one_gadget_version(self):
         try:
@@ -10213,7 +10215,7 @@ class VersionCommand(GenericCommand):
             res = gef_execute_external([command, "--version"], as_list=True)
             return res[0]
         except IOError:
-            return 'not found'
+            return 'Not found'
 
     def qemu_version(self):
         return gdb.execute('monitor info version', to_string=True).strip()
@@ -10224,7 +10226,7 @@ class VersionCommand(GenericCommand):
             res = gef_execute_external([command, "-a"], as_list=True)
             return res[0]
         except IOError:
-            return 'not found'
+            return 'Not found'
 
     def os_version(self):
         try:
@@ -10234,7 +10236,7 @@ class VersionCommand(GenericCommand):
                 if line.startswith("Description:"):
                     return line.split(":")[1].strip("\\t")
         except IOError:
-            return 'not found'
+            return 'Not found'
 
     @parse_args
     def do_invoke(self, args):
