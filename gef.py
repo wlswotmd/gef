@@ -7911,7 +7911,7 @@ def get_process_maps_linux(pid, remote=False):
         tls = None
     else:
         lines = open(proc_map_file, "r").readlines()
-        tls = TlsCommand.get_tls()
+        tls = TlsCommand.get_tls(use_heuristic=False)
     maps = []
     for line in lines:
         line = line.strip()
@@ -41745,7 +41745,7 @@ class TlsCommand(GenericCommand):
         return 0
 
     @staticmethod
-    def getfs():
+    def getfs(use_heuristic=True):
         # fast path
         fs = get_register("$fs_base")
         if fs is not None:
@@ -41758,7 +41758,7 @@ class TlsCommand(GenericCommand):
         else:
             # remote
             if is_remote_debug():
-                if is_x86_64():
+                if is_x86_64() and use_heuristic:
                     return TlsCommand.get_tls_heuristic()
                 else:
                     return 0
@@ -41777,7 +41777,7 @@ class TlsCommand(GenericCommand):
                 return 0
 
     @staticmethod
-    def getgs():
+    def getgs(use_heuristic=True):
         # fast path
         gs = get_register("$gs_base")
         if gs is not None:
@@ -41790,7 +41790,7 @@ class TlsCommand(GenericCommand):
         else:
             # remote
             if is_remote_debug():
-                if is_x86_32():
+                if is_x86_32() and use_heuristic:
                     return TlsCommand.get_tls_heuristic()
                 else:
                     return 0
@@ -41809,13 +41809,13 @@ class TlsCommand(GenericCommand):
                 return 0
 
     @staticmethod
-    def get_tls():
+    def get_tls(use_heuristic=True):
         if is_qemu_system():
             return None
         elif is_x86_64():
-            return TlsCommand.getfs()
+            return TlsCommand.getfs(use_heuristic)
         elif is_x86_32():
-            return TlsCommand.getgs()
+            return TlsCommand.getgs(use_heuristic)
         return None
 
     @parse_args
