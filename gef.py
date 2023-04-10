@@ -189,7 +189,7 @@ __pie_breakpoints__             = {}
 __pie_counter__                 = 1
 __gef_default_main_arena__      = "main_arena"
 __gef_prev_arch__               = None
-__gef_check_info_file__         = True
+__gef_check_once__              = True
 __gef_context_hidden__          = False
 
 DEFAULT_PAGE_ALIGN_SHIFT        = 12
@@ -8380,13 +8380,21 @@ def hook_stop_handler(event):
         set_arch(get_arch())
     gdb.execute("context")
 
-    global __gef_check_info_file__
-    if __gef_check_info_file__:
+    global __gef_check_once__
+    if __gef_check_once__:
+        # Message if file not loaded.
         response = gdb.execute('info files', to_string=True)
         if "Symbols from" not in response:
             err("Missing info about architecture. Please set: `file /path/to/target_binary`")
             err("Some architectures may not be automatically recognized. Set it manually with `set architecture YOUR_ARCH`.")
-        __gef_check_info_file__ = False
+
+        # Ubuntu 20.04 and earlier seem to have a bug (?) in libpython
+        # that prevents SIGINTs with no destination from being handled correctly at `c` command.
+        # To work around this issue, override the c command again with the `continue` command if neither qemu-user nor pin.
+        if not (is_qemu_usermode() or is_pin()):
+            gdb.execute("define c\ncontinue\nend")
+
+        __gef_check_once__ = False
     return
 
 
@@ -10530,13 +10538,11 @@ class SiCommand(GenericCommand):
 
 @register_command
 class ContCommand(GenericCommand):
-    """`c` wraper to solve the problem that Ctrl+C cannot interrupt when using qemu-user gdb stub."""
+    """`c` wraper to solve the problem that Ctrl+C cannot interrupt when using gdb stub of qemu-user or pin."""
     _cmdline_ = "c"
     _category_ = "01-c. Debugging Support - Basic Command Extension"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('args', metavar='ARGS', nargs='*',
-                        help='An array of arguments to pass as is to the continue command. (default: %(default)s)')
     _syntax_ = parser.format_help()
 
     def continue_for_qemu(self):
@@ -10574,15 +10580,18 @@ class ContCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        if is_qemu_usermode() and get_pid():
-            self.continue_for_qemu()
-        else:
-            try:
-                cmd = "continue " + ' '.join(args.args)
-                gdb.execute(cmd.rstrip())
-            except gdb.error:
-                exc_type, exc_value, exc_traceback = sys.exc_info()
-                err(exc_value)
+        if is_qemu_usermode() or is_pin():
+            if get_pid():
+                self.continue_for_qemu()
+                return
+
+        # Maybe unused, since `c` command is re-override if neither qemu-system nor pin.
+        try:
+            cmd = "continue " + ' '.join(args.args)
+            gdb.execute(cmd.rstrip())
+        except gdb.error:
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            err(exc_value)
         return
 
 

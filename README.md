@@ -191,10 +191,10 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * On cris architecture, `stepi`/`nexti` commands don't work well, so use breakpoints to simulate.
     * If you want to use native `si`/`ni`, use the full form `stepi`/`nexti`.
 * `c`: is the wrapper for native `c`.
-    * When connecting to qemu-user's gdb stub, gdb does not trap SIGINT during `continue`.
-    * If you want to trap, you need to issue SIGINT on the qemu-user side, but switching screens is troublesome.
-    * This command realizes a pseudo SIGINT trap by trapping SIGINT on the python side and throwing SIGINT back to qemu-user.
-    * It works local qemu-user only.
+    * When connecting to gdb stub of qemu-user or pin, gdb does not trap SIGINT during `continue`.
+    * If you want to trap, you need to issue SIGINT on the qemu-user or pin side, but switching screens is troublesome.
+    * This command realizes a pseudo SIGINT trap by trapping SIGINT on the python side and throwing SIGINT back to qemu-user or pin.
+    * It works local qemu-user or pin only.
     * If you want to use native `c`, use the full form `continue`.
 
 ### Heap dump features
