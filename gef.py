@@ -17547,7 +17547,7 @@ class KernelChecksecCommand(GenericCommand):
 
         # CONFIG_STACKPROTECTOR
         cfg = "CONFIG_STACKPROTECTOR"
-        ktask_ret = gdb.execute("ktask -n", to_string=True)
+        ktask_ret = gdb.execute("ktask --meta", to_string=True)
         r = re.search(r"offsetof\(task_struct, stack_canary\): (0x\S+)", ktask_ret)
         if r:
             additional = "offsetof(task_struct, stack_canary): {:s}".format(r.group(1))
@@ -40096,6 +40096,7 @@ class KernelTaskCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-f', '--filter', action='append', default=[], help='REGEXP filter.')
     parser.add_argument('-m', '--print-maps', action='store_true', help='print memory map each process.')
+    parser.add_argument('--meta', action='store_true', help='display offset information.')
     parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
     parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
     _syntax_ = parser.format_help()
@@ -40599,6 +40600,9 @@ class KernelTaskCommand(GenericCommand):
 
         offset_uid = self.get_offset_uid(task_addrs[0] + offset_cred)
         if offset_uid is None:
+            return
+
+        if args.meta:
             return
 
         out = []
