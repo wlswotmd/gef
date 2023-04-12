@@ -106,10 +106,11 @@ All of these features are experimental. Tested on Ubuntu 22.04.
 * `slub-dump`: dumps slub free-list (heuristic).
     * Original code: [salt](https://github.com/PaoloMonti42/salt)
     * Supported on x64/x86/ARM64/ARM + SLUB.
-    * Unsupported: SLAB, SLOB.
     * Supported on both kASLR is enabled or not.
     * Supported on both `CONFIG_SLAB_FREELIST_HARDENED` is `y` or `n`.
     * Supported on both the vmlinux symbol exists or not.
+    * It supports to dump partial pages (`-v`/`--verbose`/`--partial`) and NUMA node pages (`-vv`/`--vverbose`/`--node`).
+    * Since `page_to_virt` is difficult to implement, it will heuristically determine the virtual address from the freelist.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slub-dump.png)
 * `kbase`: displays the kernel base address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kbase.png)
