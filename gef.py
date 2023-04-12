@@ -175,7 +175,6 @@ except ImportError:
 
 __gef__                         = None
 __commands__                    = []
-__functions__                   = []
 __aliases__                     = []
 __config__                      = {}
 __watches__                     = {}
@@ -9908,13 +9907,6 @@ def register_priority_command(cls):
     loaded before the other generic commands."""
     global __commands__
     __commands__.insert(0, cls)
-    return cls
-
-
-def register_function(cls):
-    """Decorator for registering a new convenience function to GDB."""
-    global __functions__
-    __functions__.append(cls)
     return cls
 
 
@@ -54067,45 +54059,6 @@ class GenericFunction(gdb.Function):
         return
 
 
-@register_command
-class GefFunctionsCommand(GenericCommand):
-    """List the convenience functions provided by GEF."""
-    _cmdline_ = "functions"
-    _syntax_ = _cmdline_
-    _category_ = "99. GEF Maintenance Command"
-
-    def __init__(self):
-        super().__init__()
-        self.docs = []
-        self.setup()
-        return
-
-    def setup(self):
-        global __gef__
-        for function in __gef__.loaded_functions:
-            self.add_function_to_doc(function)
-        self.__doc__ = "\n".join(sorted(self.docs))
-        return
-
-    def add_function_to_doc(self, function):
-        """Add function to documentation."""
-        doc = getattr(function, "__doc__", "").lstrip()
-        doc = "\n                         ".join(doc.split("\n"))
-        syntax = getattr(function, "_syntax_", "").lstrip()
-        msg = "{syntax:<25s} -- {help:s}".format(syntax=syntax, help=Color.greenify(doc))
-        self.docs.append(msg)
-        return
-
-    def do_invoke(self, argv):
-        self.dont_repeat()
-        gef_print(titlify("GEF - Convenience Functions"))
-        gef_print("These functions can be used as arguments to other "
-                  "commands to dynamically calculate values, eg: {:s}\n"
-                  .format(Color.colorify("deref $_heap(0x20)", "yellow")))
-        gef_print(self.__doc__)
-        return
-
-
 class GefCommand(gdb.Command):
     """GEF main command: view all new commands by typing `gef`."""
     _cmdline_ = "gef"
@@ -54122,7 +54075,6 @@ class GefCommand(gdb.Command):
         set_gef_setting("gef.disable_color", False, bool, "Disable all colors in GEF")
         set_gef_setting("gef.tempdir", GEF_TEMP_DIR, str, "Directory to use for temporary/cache content")
         self.loaded_commands = []
-        self.loaded_functions = []
         self.missing_commands = {}
         return
 
@@ -54205,10 +54157,6 @@ class GefCommand(gdb.Command):
         """Load all the commands and functions defined by GEF into GDB."""
         nb_missing = 0
         self.commands = [(x._cmdline_, x) for x in __commands__]
-
-        # load all of the functions
-        for function_class_name in __functions__:
-            self.loaded_functions.append(function_class_name())
 
         def is_loaded(x):
             return any(filter(lambda u: x == u[0], self.loaded_commands))
