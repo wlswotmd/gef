@@ -54574,10 +54574,26 @@ class GefReloadCommand(gdb.Command):
     def invoke(self, args, from_tty):
         self.dont_repeat()
 
+        gef_fpath = os.path.abspath(os.path.realpath(os.path.expanduser(inspect.stack()[0][1])))
+
+        info("Check syntax {:s}".format(gef_fpath))
+        pythonbin = which("python3")
+        try:
+            subprocess.check_output([pythonbin, gef_fpath])
+        except subprocess.CalledProcessError:
+            err("Reload aborted")
+            return
+
+        gef_on_continue_unhook(continue_handler)
+        gef_on_stop_unhook(hook_stop_handler)
+        gef_on_new_unhook(new_objfile_handler)
+        gef_on_exit_unhook(exit_handler)
+        gef_on_memchanged_unhook(memchanged_handler)
+        gef_on_regchanged_unhook(regchanged_handler)
         reset_gef_caches(all=True)
-        src = inspect.getsourcefile(http_get)
-        info("Reload {:s}".format(src))
-        s = gdb.execute("source {:s}".format(src), to_string=True)
+
+        info("Reload {:s}".format(gef_fpath))
+        s = gdb.execute("source {:s}".format(gef_fpath), to_string=True)
         for line in s.splitlines():
             if ".gnu_debugaltlink" in line:
                 continue
@@ -54585,6 +54601,9 @@ class GefReloadCommand(gdb.Command):
 
         if current_arch is None:
             set_arch(get_arch())
+
+        if not (is_qemu_usermode() or is_pin()):
+            gdb.execute("define c\ncontinue\nend")
         return
 
 
