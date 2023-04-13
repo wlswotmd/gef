@@ -44161,7 +44161,10 @@ class KsymaddrRemoteCommand(GenericCommand):
             if not ret:
                 return
 
-        self.resolve_kallsyms()
+            self.resolve_kallsyms()
+            self.kernel_img = None
+            kinfo = None
+
         self.print_kallsyms(args.keyword)
 
         if self.out:
