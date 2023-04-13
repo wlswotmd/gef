@@ -50671,6 +50671,11 @@ class PagewalkArm64Command(PagewalkCommand):
             return self.read_physmem_cache(addr, size)
 
     def format_flags_stage2(self, flag_info):
+        flag_info_key = tuple(flag_info)
+        x = self.flags_strings_cache.get(flag_info_key, None)
+        if x is not None:
+            return x
+
         flags = []
 
         XN1 = "XN1" in flag_info
@@ -50716,9 +50721,20 @@ class PagewalkArm64Command(PagewalkCommand):
         if "DBM" in flag_info:
             flags += ['DIRTY']
         # stage2 has no `nG` bit
-        return ' '.join(flags)
+
+        flag_string = ' '.join(flags)
+        self.flags_strings_cache[flag_info_key] = flag_string
+        return flag_string
 
     def format_flags(self, flag_info):
+        return self.__format_flags(flag_info, self.TargetEL, self.EL1_WXN, self.EL2_WXN, self.EL2_M20, self.EL3_WXN)
+
+    def __format_flags(self, flag_info, TargetEL, EL1_WXN, EL2_WXN, EL2_M20, EL3_WXN):
+        flag_info_key = tuple([tuple(flag_info), TargetEL, EL1_WXN, EL2_WXN, EL2_M20, EL3_WXN])
+        x = self.flags_strings_cache.get(flag_info_key, None)
+        if x is not None:
+            return x
+
         flags = []
 
         # AP/APTable parsing
@@ -50793,16 +50809,16 @@ class PagewalkArm64Command(PagewalkCommand):
         NS |= "NSTable0" in flag_info
         NS |= "NSTable-1" in flag_info
 
-        if self.TargetEL == 1:
+        if TargetEL == 1:
             # always support 2VA ranges
             if UXN is False and PXN is False:
                 if disable_write_access == 0 and enable_unpriv_access == 0:
-                    if not self.EL1_WXN:
+                    if not EL1_WXN:
                         flags += ['EL0/--X', 'EL1/RWX']
                     else:
                         flags += ['EL0/--X', 'EL1/RW-']
                 elif disable_write_access == 0 and enable_unpriv_access == 1:
-                    if not self.EL1_WXN:
+                    if not EL1_WXN:
                         flags += ['EL0/RWX', 'EL1/RW-']
                     else:
                         flags += ['EL0/RW-', 'EL1/RW-']
@@ -50814,7 +50830,7 @@ class PagewalkArm64Command(PagewalkCommand):
                 if disable_write_access == 0 and enable_unpriv_access == 0:
                     flags += ['EL0/--X', 'EL1/RW-']
                 elif disable_write_access == 0 and enable_unpriv_access == 1:
-                    if not self.EL1_WXN:
+                    if not EL1_WXN:
                         flags += ['EL0/RWX', 'EL1/RW-']
                     else:
                         flags += ['EL0/RW-', 'EL1/RW-']
@@ -50824,7 +50840,7 @@ class PagewalkArm64Command(PagewalkCommand):
                     flags += ['EL0/R-X', 'EL1/R--']
             elif UXN is True and PXN is False:
                 if disable_write_access == 0 and enable_unpriv_access == 0:
-                    if not self.EL1_WXN:
+                    if not EL1_WXN:
                         flags += ['EL0/---', 'EL1/RWX']
                     else:
                         flags += ['EL0/---', 'EL1/RW-']
@@ -50843,17 +50859,17 @@ class PagewalkArm64Command(PagewalkCommand):
                     flags += ['EL0/---', 'EL1/R--']
                 elif disable_write_access == 1 and enable_unpriv_access == 1:
                     flags += ['EL0/R--', 'EL1/R--']
-        elif self.TargetEL == 2:
-            if self.EL2_M20:
+        elif TargetEL == 2:
+            if EL2_M20:
                 # support 2VA ranges if HCR_EL2.{TGE,E2H} == {1,1}
                 if UXN is False and PXN is False:
                     if disable_write_access == 0 and enable_unpriv_access == 0:
-                        if not self.EL2_WXN:
+                        if not EL2_WXN:
                             flags += ['EL0/--X', 'EL2/RWX']
                         else:
                             flags += ['EL0/--X', 'EL2/RW-']
                     elif disable_write_access == 0 and enable_unpriv_access == 1:
-                        if not self.EL2_WXN:
+                        if not EL2_WXN:
                             flags += ['EL0/RWX', 'EL2/RW-']
                         else:
                             flags += ['EL0/RW-', 'EL2/RW-']
@@ -50865,7 +50881,7 @@ class PagewalkArm64Command(PagewalkCommand):
                     if disable_write_access == 0 and enable_unpriv_access == 0:
                         flags += ['EL0/--X', 'EL2/RW-']
                     elif disable_write_access == 0 and enable_unpriv_access == 1:
-                        if not self.EL2_WXN:
+                        if not EL2_WXN:
                             flags += ['EL0/RWX', 'EL2/RW-']
                         else:
                             flags += ['EL0/RW-', 'EL2/RW-']
@@ -50875,7 +50891,7 @@ class PagewalkArm64Command(PagewalkCommand):
                         flags += ['EL0/R-X', 'EL2/R--']
                 elif UXN is True and PXN is False:
                     if disable_write_access == 0 and enable_unpriv_access == 0:
-                        if not self.EL2_WXN:
+                        if not EL2_WXN:
                             flags += ['EL0/---', 'EL2/RWX']
                         else:
                             flags += ['EL0/---', 'EL2/RW-']
@@ -50898,7 +50914,7 @@ class PagewalkArm64Command(PagewalkCommand):
                 # not support 2VA ranges if HCR_EL2.{TGE,E2H} != {1,1}
                 if XN is False:
                     if disable_write_access == 0:
-                        if not self.EL2_WXN:
+                        if not EL2_WXN:
                             flags += ['EL2/RWX']
                         else:
                             flags += ['EL2/RW-']
@@ -50909,10 +50925,10 @@ class PagewalkArm64Command(PagewalkCommand):
                         flags += ['EL2/RW-']
                     elif disable_write_access == 1:
                         flags += ['EL2/R--']
-        elif self.TargetEL == 3:
+        elif TargetEL == 3:
             if XN is False:
                 if disable_write_access == 0:
-                    if not self.EL3_WXN:
+                    if not EL3_WXN:
                         flags += ['EL3/RWX']
                     else:
                         flags += ['EL3/RW-']
@@ -50931,9 +50947,14 @@ class PagewalkArm64Command(PagewalkCommand):
             flags += ['DIRTY']
         if "nG" not in flag_info:
             flags += ["GLOBAL"]
-        return ' '.join(flags)
+
+        flag_string = ' '.join(flags)
+        self.flags_strings_cache[flag_info_key] = flag_string
+        return flag_string
 
     """
+    Relation diagram when CPU uses
+
      Stage1                   |     Stage2
     -------------------------------------------------------
     +----------------------+  |   +----------------------+
@@ -50952,6 +50973,7 @@ class PagewalkArm64Command(PagewalkCommand):
       TTBR0_EL3               |
                               |
 
+    Since it is an implementation that dumps for each EL, consider as follows.
 
       TargetEL=1              |    TargetEL=2              |    TargetEL=3
     ---------------------------------------------------------------------------------
@@ -51005,11 +51027,12 @@ class PagewalkArm64Command(PagewalkCommand):
         return
 
     def do_pagewalk(self, table_base, granule_bits, region_start, start_level=0, is_stage2=False, is_2VAranges=False):
-        # table_base: The start address of pagewalk
+        # table_base: The start address of pagewalk.
         # granule_bits: One of [12, 14, 16]; It specifies how to separate the bits used for address translation.
-        # region_start: The base address of translated address
-        # start_level: Only used at stage2. In stage2, the starting level will fluctuate
-        # is_stage2: Affects how the bitfield of each entry is interpreted
+        # region_start: The base address of translated address.
+        # start_level: Only used at stage2. In stage2, the starting level will fluctuate.
+        # is_stage2: Whether VTTBR0_EL2 or not. Affects how the bitfield of each entry is interpreted.
+        # is_2VAranges: Whether the target EL has TTBR0 and TTBR1. Affects how the bitfield of each entry is interpreted.
         self.mappings = []
 
         is_4k_granule = granule_bits == 12
@@ -51052,7 +51075,8 @@ class PagewalkArm64Command(PagewalkCommand):
                     flags = parent_flags.copy()
                     if has_next_level(entry):
                         if is_stage2:
-                            pass
+                            # VTTBR_EL2 does not have level -1
+                            raise
                         elif is_2VAranges:
                             if ((entry >> 59) & 1) == 1:
                                 flags.append("PXNTable-1")
@@ -51132,6 +51156,7 @@ class PagewalkArm64Command(PagewalkCommand):
                     flags = parent_flags.copy()
                     if has_next_level(entry):
                         if is_stage2:
+                            # There are no flags in the table for VTTBR0_EL2.
                             pass
                         elif is_2VAranges:
                             if ((entry >> 59) & 1) == 1:
@@ -51282,6 +51307,7 @@ class PagewalkArm64Command(PagewalkCommand):
                     flags = parent_flags.copy()
                     if has_next_level(entry):
                         if is_stage2:
+                            # There are no flags in the table for VTTBR0_EL2.
                             pass
                         elif is_2VAranges:
                             if ((entry >> 59) & 1) == 1:
@@ -51381,11 +51407,7 @@ class PagewalkArm64Command(PagewalkCommand):
                         virt_addr = new_va
                         page_count = 1
                         flag_string = self.format_flags_stage2(flags) if is_stage2 else self.format_flags(flags)
-                        if is_64k_granule:
-                            page_size = 4 * 1024 * 1024 * 1024 * 1024
-                            TB4.append([virt_addr, phys_addr, page_size, page_count, flag_string])
-                            entry_type = "4TB-PAGE"
-                        elif is_4k_granule:
+                        if is_4k_granule:
                             page_size = 1 * 1024 * 1024 * 1024
                             GB1.append([virt_addr, phys_addr, page_size, page_count, flag_string])
                             entry_type = "1GB-PAGE"
@@ -51393,6 +51415,10 @@ class PagewalkArm64Command(PagewalkCommand):
                             page_size = 64 * 1024 * 1024 * 1024
                             GB64.append([virt_addr, phys_addr, page_size, page_count, flag_string])
                             entry_type = "64GB-PAGE"
+                        elif is_64k_granule:
+                            page_size = 4 * 1024 * 1024 * 1024 * 1024
+                            TB4.append([virt_addr, phys_addr, page_size, page_count, flag_string])
+                            entry_type = "4TB-PAGE"
 
                     # dump
                     if self.print_each_level:
@@ -51445,6 +51471,7 @@ class PagewalkArm64Command(PagewalkCommand):
                     flags = parent_flags.copy()
                     if has_next_level(entry):
                         if is_stage2:
+                            # There are no flags in the table for VTTBR0_EL2.
                             pass
                         elif is_2VAranges:
                             if ((entry >> 59) & 1) == 1:
@@ -51544,18 +51571,18 @@ class PagewalkArm64Command(PagewalkCommand):
                         virt_addr = new_va
                         page_count = 1
                         flag_string = self.format_flags_stage2(flags) if is_stage2 else self.format_flags(flags)
-                        if is_64k_granule:
-                            page_size = 512 * 1024 * 1024
-                            MB512.append([virt_addr, phys_addr, page_size, page_count, flag_string])
-                            entry_type = "512MB-PAGE"
+                        if is_4k_granule:
+                            page_size = 2 * 1024 * 1024
+                            MB2.append([virt_addr, phys_addr, page_size, page_count, flag_string])
+                            entry_type = "2MB-PAGE"
                         elif is_16k_granule:
                             page_size = 32 * 1024 * 1024
                             MB32.append([virt_addr, phys_addr, page_size, page_count, flag_string])
                             entry_type = "32MB-PAGE"
-                        elif is_4k_granule:
-                            page_size = 2 * 1024 * 1024
-                            MB2.append([virt_addr, phys_addr, page_size, page_count, flag_string])
-                            entry_type = "2MB-PAGE"
+                        elif is_64k_granule:
+                            page_size = 512 * 1024 * 1024
+                            MB512.append([virt_addr, phys_addr, page_size, page_count, flag_string])
+                            entry_type = "512MB-PAGE"
 
                     # dump
                     if self.print_each_level:
@@ -51590,6 +51617,7 @@ class PagewalkArm64Command(PagewalkCommand):
             KB16 = []
             KB64 = []
             COUNT = 0
+            flag_cache = {}
             for va_base, table_base, parent_flags in LEVEL2:
                 entries = self.read_mem_wrapper(table_base, 8 * entries_per_table)
                 entries = slice_unpack(entries, 8)
@@ -51619,28 +51647,37 @@ class PagewalkArm64Command(PagewalkCommand):
                             flags.append("XN={:02b}".format((entry >> 53) & 0b11)) # Use XN, not UXN
                             flags.append("PBHA={:#x}".format((entry >> 59) & 0b1111))
                         elif is_2VAranges:
-                            flags.append("AttrIndx={:03b}".format((entry >> 2) & 0b111))
-                            if ((entry >> 5) & 1) == 1:
-                                flags.append("NS")
-                            flags.append("AP={:02b}".format((entry >> 6) & 0b11))
-                            flags.append("SH={:02b}".format((entry >> 8) & 0b11))
-                            if ((entry >> 10) & 1) == 1:
-                                flags.append("AF")
-                            if ((entry >> 11) & 1) == 1:
-                                flags.append("nG")
-                            if ((entry >> 16) & 1) == 1:
-                                flags.append("nT")
-                            if ((entry >> 50) & 1) == 1:
-                                flags.append("GP")
-                            if ((entry >> 51) & 1) == 1:
-                                flags.append("DBM")
-                            if ((entry >> 52) & 1) == 1:
-                                flags.append("Contiguous")
-                            if ((entry >> 53) & 1) == 1:
-                                flags.append("PXN")
-                            if ((entry >> 54) & 1) == 1:
-                                flags.append("UXN")
-                            flags.append("PBHA={:#x}".format((entry >> 59) & 0b1111))
+                            # This route passes many times, so make a memo
+                            entry_flags_key = entry & 0x787c000000010ffc
+                            x = flag_cache.get(entry_flags_key, None)
+                            if x is not None:
+                                flags.extend(x)
+                            else:
+                                _flags = []
+                                _flags.append("AttrIndx={:03b}".format((entry >> 2) & 0b111))
+                                if ((entry >> 5) & 1) == 1:
+                                    _flags.append("NS")
+                                _flags.append("AP={:02b}".format((entry >> 6) & 0b11))
+                                _flags.append("SH={:02b}".format((entry >> 8) & 0b11))
+                                if ((entry >> 10) & 1) == 1:
+                                    _flags.append("AF")
+                                if ((entry >> 11) & 1) == 1:
+                                    _flags.append("nG")
+                                if ((entry >> 16) & 1) == 1:
+                                    _flags.append("nT")
+                                if ((entry >> 50) & 1) == 1:
+                                    _flags.append("GP")
+                                if ((entry >> 51) & 1) == 1:
+                                    _flags.append("DBM")
+                                if ((entry >> 52) & 1) == 1:
+                                    _flags.append("Contiguous")
+                                if ((entry >> 53) & 1) == 1:
+                                    _flags.append("PXN")
+                                if ((entry >> 54) & 1) == 1:
+                                    _flags.append("UXN")
+                                _flags.append("PBHA={:#x}".format((entry >> 59) & 0b1111))
+                                flag_cache[entry_flags_key] = _flags
+                                flags.extend(_flags)
                         else:
                             flags.append("AttrIndx={:03b}".format((entry >> 2) & 0b111))
                             if ((entry >> 5) & 1) == 1:
@@ -51686,18 +51723,18 @@ class PagewalkArm64Command(PagewalkCommand):
                     # make entry
                     page_count = 1
                     flag_string = self.format_flags_stage2(flags) if is_stage2 else self.format_flags(flags)
-                    if is_64k_granule:
-                        page_size = 64 * 1024
-                        KB64.append([virt_addr, phys_addr, page_size, page_count, flag_string])
-                        entry_type = "64KB-PAGE"
+                    if is_4k_granule:
+                        page_size = 4 * 1024
+                        KB4.append([virt_addr, phys_addr, page_size, page_count, flag_string])
+                        entry_type = "4KB-PAGE"
                     elif is_16k_granule:
                         page_size = 16 * 1024
                         KB16.append([virt_addr, phys_addr, page_size, page_count, flag_string])
                         entry_type = "16KB-PAGE"
-                    elif is_4k_granule:
-                        page_size = 4 * 1024
-                        KB4.append([virt_addr, phys_addr, page_size, page_count, flag_string])
-                        entry_type = "4KB-PAGE"
+                    elif is_64k_granule:
+                        page_size = 64 * 1024
+                        KB64.append([virt_addr, phys_addr, page_size, page_count, flag_string])
+                        entry_type = "64KB-PAGE"
 
                     # dump
                     if self.print_each_level:
@@ -51802,7 +51839,9 @@ class PagewalkArm64Command(PagewalkCommand):
 
         self.parse_bit_range(granule_bits, region_bits)
         if not self.use_cache or not self.ttbr0el1_mappings:
+            self.flags_strings_cache = {}
             self.do_pagewalk(translation_base_addr, granule_bits, region_start, is_2VAranges=True)
+            self.flags_strings_cache = None
             self.merging()
             self.ttbr0el1_mappings = self.mappings.copy()
         self.make_out(self.ttbr0el1_mappings)
@@ -51848,7 +51887,9 @@ class PagewalkArm64Command(PagewalkCommand):
 
         self.parse_bit_range(granule_bits, region_bits)
         if not self.use_cache or not self.ttbr1el1_mappings:
+            self.flags_strings_cache = {}
             self.do_pagewalk(translation_base_addr, granule_bits, region_start, is_2VAranges=True)
+            self.flags_strings_cache = None
             self.merging()
             self.ttbr1el1_mappings = self.mappings.copy()
         self.make_out(self.ttbr1el1_mappings)
@@ -51962,7 +52003,9 @@ class PagewalkArm64Command(PagewalkCommand):
 
         self.parse_bit_range(granule_bits, region_bits)
         if not self.use_cache or not self.vttbrel2_mappings:
+            self.flags_strings_cache = {}
             self.do_pagewalk(translation_base_addr, granule_bits, region_start, start_level=stage2_start_level, is_stage2=True)
+            self.flags_strings_cache = None
             if not self.silent:
                 self.merging()
                 self.vttbrel2_mappings = self.mappings.copy()
@@ -52030,7 +52073,9 @@ class PagewalkArm64Command(PagewalkCommand):
 
         self.parse_bit_range(granule_bits, region_bits)
         if not self.use_cache or not self.ttbr1el2_mappings:
+            self.flags_strings_cache = {}
             self.do_pagewalk(translation_base_addr, granule_bits, region_start, is_2VAranges=self.EL2_M20)
+            self.flags_strings_cache = None
             self.merging()
             self.ttbr1el2_mappings = self.mappings.copy()
         self.make_out(self.ttbr1el2_mappings)
@@ -52076,7 +52121,9 @@ class PagewalkArm64Command(PagewalkCommand):
 
         self.parse_bit_range(granule_bits, region_bits)
         if not self.use_cache or not self.ttbr1el2_mappings:
+            self.flags_strings_cache = {}
             self.do_pagewalk(translation_base_addr, granule_bits, region_start, is_2VAranges=self.EL2_M20)
+            self.flags_strings_cache = None
             self.merging()
             self.ttbr1el2_mappings = self.mappings.copy()
         self.make_out(self.ttbr1el2_mappings)
@@ -52122,7 +52169,9 @@ class PagewalkArm64Command(PagewalkCommand):
 
         self.parse_bit_range(granule_bits, region_bits)
         if not self.use_cache or not self.ttbr0el3_mappings:
+            self.flags_strings_cache = {}
             self.do_pagewalk(translation_base_addr, granule_bits, region_start)
+            self.flags_strings_cache = None
             self.merging()
             self.ttbr0el3_mappings = self.mappings.copy()
         self.make_out(self.ttbr0el3_mappings)
