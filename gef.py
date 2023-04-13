@@ -1875,24 +1875,24 @@ class GlibcChunk:
         flags = self.flags_as_string()
 
         if is_valid_addr(self.fd):
-            fd = Color.greenify("{:#x}".format(self.fd))
+            fd = Color.colorify("{:#x}".format(self.fd), "bold green")
         else:
-            fd = Color.redify("{:#x}".format(self.fd))
+            fd = "{:#x}".format(self.fd)
 
         if is_valid_addr(self.bk):
-            bk = Color.greenify("{:#x}".format(self.bk))
+            bk = Color.colorify("{:#x}".format(self.bk), "bold green")
         else:
-            bk = Color.redify("{:#x}".format(self.bk))
+            bk = "{:#x}".format(self.bk)
 
         if is_valid_addr(self.fd_nextsize):
-            fd_nextsize = Color.greenify("{:#x}".format(self.fd_nextsize))
+            fd_nextsize = Color.colorify("{:#x}".format(self.fd_nextsize), "bold green")
         else:
-            fd_nextsize = Color.redify("{:#x}".format(self.fd_nextsize))
+            fd_nextsize = "{:#x}".format(self.fd_nextsize)
 
         if is_valid_addr(self.bk_nextsize):
-            bk_nextsize = Color.greenify("{:#x}".format(self.bk_nextsize))
+            bk_nextsize = Color.colorify("{:#x}".format(self.bk_nextsize), "bold green")
         else:
-            bk_nextsize = Color.redify("{:#x}".format(self.bk_nextsize))
+            bk_nextsize = "{:#x}".format(self.bk_nextsize)
 
         if (is_32bit() and self.size < 0x3f0) or (is_64bit() and self.size < 0x400):
             fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={:s}, bk={:s})"
@@ -14630,6 +14630,7 @@ class GlibcHeapBinsCommand(GenericCommand):
     parser.add_argument('-a', dest='arena_addr', type=parse_address,
                         help='the address you want to interpret as an arena. (default: main_arena)')
     parser.add_argument('-v', dest='verbose', action='store_true', help='display empty bins.')
+    parser.add_argument('--all', action='store_true', help='dump all arenas.')
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}\n".format(_cmdline_)
@@ -14664,13 +14665,21 @@ class GlibcHeapBinsCommand(GenericCommand):
         else:
             verbose = ""
 
+        arenas = [arena]
+        if args.all:
+            while arena:
+                arena = arena.get_next()
+                if arena:
+                    arenas.append(arena)
+
         # doit
         bin_types = ["tcache", "fast", "unsorted", "small", "large"]
-        for bin_t in bin_types:
-            if arena.is_main_arena():
-                gdb.execute("heap bins {:s} {:s}".format(bin_t, verbose))
-            else:
-                gdb.execute("heap bins {:s} -a {:#x} {:s}".format(bin_t, arena.addr, verbose))
+        for arena in arenas:
+            for bin_t in bin_types:
+                if arena.is_main_arena():
+                    gdb.execute("heap bins {:s} {:s}".format(bin_t, verbose))
+                else:
+                    gdb.execute("heap bins {:s} -a {:#x} {:s}".format(bin_t, arena.addr, verbose))
         return
 
     @staticmethod
@@ -14732,6 +14741,7 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
     parser.add_argument('-a', dest='arena_addr', type=parse_address,
                         help='the address you want to interpret as an arena. (default: main_arena)')
     parser.add_argument('-v', dest='verbose', action='store_true', help='display empty bins.')
+    parser.add_argument('--all', action='store_true', help='dump all arenas.')
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -14763,8 +14773,16 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
             err("Heap is not initialized")
             return
 
+        arenas = [arena]
+        if args.all:
+            while arena:
+                arena = arena.get_next()
+                if arena:
+                    arenas.append(arena)
+
         # doit
-        self.print_tcache(arena, args.verbose)
+        for arena in arenas:
+            self.print_tcache(arena, args.verbose)
         return
 
     def print_tcache(self, arena, verbose):
@@ -14826,6 +14844,7 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
     parser.add_argument('-a', dest='arena_addr', type=parse_address,
                         help='the address you want to interpret as an arena. (default: main_arena)')
     parser.add_argument('-v', dest='verbose', action='store_true', help='display empty bins.')
+    parser.add_argument('--all', action='store_true', help='dump all arenas.')
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -14852,8 +14871,16 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
             err("Heap is not initialized")
             return
 
+        arenas = [arena]
+        if args.all:
+            while arena:
+                arena = arena.get_next()
+                if arena:
+                    arenas.append(arena)
+
         # doit
-        self.print_fastbin(arena, args.verbose)
+        for arena in arenas:
+            self.print_fastbin(arena, args.verbose)
         return
 
     def print_fastbin(self, arena, verbose):
@@ -14921,6 +14948,7 @@ class GlibcHeapUnsortedBinsCommand(GenericCommand):
     parser.add_argument('-a', dest='arena_addr', type=parse_address,
                         help='the address you want to interpret as an arena. (default: main_arena)')
     parser.add_argument('-v', dest='verbose', action='store_true', help='display empty bins.')
+    parser.add_argument('--all', action='store_true', help='dump all arenas.')
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -14947,10 +14975,18 @@ class GlibcHeapUnsortedBinsCommand(GenericCommand):
             err("Heap is not initialized")
             return
 
+        arenas = [arena]
+        if args.all:
+            while arena:
+                arena = arena.get_next()
+                if arena:
+                    arenas.append(arena)
+
         # doit
-        gef_print(titlify("Unsorted Bin for arena '{:s}'".format(arena.name)))
-        nb_chunk = GlibcHeapBinsCommand.pprint_bin(arena, 0, "unsorted_bins", args.verbose)
-        info("Found {:d} chunks in unsorted bin.".format(nb_chunk))
+        for arena in arenas:
+            gef_print(titlify("Unsorted Bin for arena '{:s}'".format(arena.name)))
+            nb_chunk = GlibcHeapBinsCommand.pprint_bin(arena, 0, "unsorted_bins", args.verbose)
+            info("Found {:d} chunks in unsorted bin.".format(nb_chunk))
         return
 
 
@@ -14965,6 +15001,7 @@ class GlibcHeapSmallBinsCommand(GenericCommand):
     parser.add_argument('-a', dest='arena_addr', type=parse_address,
                         help='the address you want to interpret as an arena. (default: main_arena)')
     parser.add_argument('-v', dest='verbose', action='store_true', help='display empty bins.')
+    parser.add_argument('--all', action='store_true', help='dump all arenas.')
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -14991,16 +15028,24 @@ class GlibcHeapSmallBinsCommand(GenericCommand):
             err("Heap is not initialized")
             return
 
+        arenas = [arena]
+        if args.all:
+            while arena:
+                arena = arena.get_next()
+                if arena:
+                    arenas.append(arena)
+
         # doit
-        gef_print(titlify("Small Bins for arena '{:s}'".format(arena.name)))
-        bins = {}
-        for i in range(1, 63):
-            nb_chunk = GlibcHeapBinsCommand.pprint_bin(arena, i, "small_bins", args.verbose)
-            if nb_chunk < 0:
-                break
-            if nb_chunk > 0:
-                bins[i] = nb_chunk
-        info("Found {:d} chunks in {:d} small non-empty bins.".format(sum(bins.values()), len(bins)))
+        for arena in arenas:
+            gef_print(titlify("Small Bins for arena '{:s}'".format(arena.name)))
+            bins = {}
+            for i in range(1, 63):
+                nb_chunk = GlibcHeapBinsCommand.pprint_bin(arena, i, "small_bins", args.verbose)
+                if nb_chunk < 0:
+                    break
+                if nb_chunk > 0:
+                    bins[i] = nb_chunk
+            info("Found {:d} chunks in {:d} small non-empty bins.".format(sum(bins.values()), len(bins)))
         return
 
 
@@ -15015,6 +15060,7 @@ class GlibcHeapLargeBinsCommand(GenericCommand):
     parser.add_argument('-a', dest='arena_addr', type=parse_address,
                         help='the address you want to interpret as an arena. (default: main_arena)')
     parser.add_argument('-v', dest='verbose', action='store_true', help='display empty bins.')
+    parser.add_argument('--all', action='store_true', help='dump all arenas.')
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -15041,16 +15087,24 @@ class GlibcHeapLargeBinsCommand(GenericCommand):
             err("Heap is not initialized")
             return
 
+        arenas = [arena]
+        if args.all:
+            while arena:
+                arena = arena.get_next()
+                if arena:
+                    arenas.append(arena)
+
         # doit
-        gef_print(titlify("Large Bins for arena '{:s}'".format(arena.name)))
-        bins = {}
-        for i in range(63, 126):
-            nb_chunk = GlibcHeapBinsCommand.pprint_bin(arena, i, "large_bins", args.verbose)
-            if nb_chunk < 0:
-                break
-            if nb_chunk > 0:
-                bins[i] = nb_chunk
-        info("Found {:d} chunks in {:d} large non-empty bins.".format(sum(bins.values()), len(bins)))
+        for arena in arenas:
+            gef_print(titlify("Large Bins for arena '{:s}'".format(arena.name)))
+            bins = {}
+            for i in range(63, 126):
+                nb_chunk = GlibcHeapBinsCommand.pprint_bin(arena, i, "large_bins", args.verbose)
+                if nb_chunk < 0:
+                    break
+                if nb_chunk > 0:
+                    bins[i] = nb_chunk
+            info("Found {:d} chunks in {:d} large non-empty bins.".format(sum(bins.values()), len(bins)))
         return
 
 
