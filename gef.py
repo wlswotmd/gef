@@ -48816,18 +48816,19 @@ class PagewalkCommand(GenericCommand):
             self.add_out(msg)
         return
 
-    # merge pages that points same phys page
-    # for example, there are 16 pages,
-    #    virt: 0xffffffff11107000  -> phys:0xabcd000
-    #    virt: 0xffffffff11117000  -> phys;0xabcd000
-    #    virt: 0xffffffff11127000  -> phys;0xabcd000
-    #    ...
-    #    virt: 0xffffffff111d7000  -> phys;0xabcd000
-    #    virt: 0xffffffff111e7000  -> phys;0xabcd000
-    #    virt: 0xffffffff111f7000  -> phys;0xabcd000
-    # they will be merged by "*". type is changed from int to string.
-    #    virt:"0xffffffff111*7000" -> phys:0xabcd000
     def merge1(self, mappings):
+        # merge pages that points same phys page
+        # for example, there are 16 pages,
+        #    virt: 0xffffffff11107000  -> phys:0xabcd000
+        #    virt: 0xffffffff11117000  -> phys;0xabcd000
+        #    virt: 0xffffffff11127000  -> phys;0xabcd000
+        #    ...
+        #    virt: 0xffffffff111d7000  -> phys;0xabcd000
+        #    virt: 0xffffffff111e7000  -> phys;0xabcd000
+        #    virt: 0xffffffff111f7000  -> phys;0xabcd000
+        # they will be merged by "*". type is changed from int to string.
+        #    virt:"0xffffffff111*7000" -> phys:0xabcd000
+
         # group entries that refer to the same phys page
         tmp = {}
         for entry in mappings: # [virt_addr, phys_addr, page_size, page_count, flags]
@@ -48855,7 +48856,6 @@ class PagewalkCommand(GenericCommand):
         # merge if possible
         merged_mappings = []
         for other, va_array in tmp.items():
-
             # usually go through this path
             if len(va_array) < 16:
                 for va in va_array:
@@ -48897,9 +48897,8 @@ class PagewalkCommand(GenericCommand):
         merged_mappings = []
         prev = None
         for now in mappings: # [virt_addr_string, phys_addr, page_size, page_count, flags]
-
             # specific case
-            if "*" in now[0]:
+            if isinstance(now[0], str) and "*" in now[0]:
                 if prev:
                     merged_mappings += [prev]
                 merged_mappings += [now]
@@ -49018,8 +49017,9 @@ class PagewalkCommand(GenericCommand):
         if self.no_merge:
             pass
         else:
-            self.mappings = self.merge1(self.mappings)
-            self.quiet_info("PT Entry (merged similar pages that refer the same physpage): {:d}".format(len(self.mappings)))
+            if is_x86_64():
+                self.mappings = self.merge1(self.mappings)
+                self.quiet_info("PT Entry (merged similar pages that refer the same physpage): {:d}".format(len(self.mappings)))
             self.mappings = self.merge2(self.mappings)
             self.quiet_info("PT Entry (merged consecutive pages): {:d}".format(len(self.mappings)))
         return
