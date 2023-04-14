@@ -49674,11 +49674,18 @@ class PagewalkArmCommand(PagewalkCommand):
         return
 
     def format_flags_short(self, flag_info):
+        return self.__format_flags_short(flag_info, self.PXN)
+
+    def __format_flags_short(self, flag_info, PXN):
+        flag_info_key = tuple([tuple(flag_info), PXN])
+        x = self.flags_strings_cache.get(flag_info_key, None)
+        if x is not None:
+            return x
+
         flags = []
 
         XN = "XN" in flag_info
-        PXN = "PXN" in flag_info
-        PXN &= self.PXN
+        PXN = ("PXN" in flag_info) & PXN
 
         # AP[2:0] access permissions model
         if "AP=000" in flag_info:
@@ -49789,9 +49796,20 @@ class PagewalkArmCommand(PagewalkCommand):
         # short description has no `AF` bit
         if "nG" not in flag_info:
             flags += ["GLOBAL"]
-        return ' '.join(flags)
+
+        flag_string = ' '.join(flags)
+        self.flags_strings_cache[flag_info_key] = flag_string
+        return flag_string
 
     def format_flags_long(self, flag_info):
+        return self.__format_flags_long(flag_info, self.PXN)
+
+    def __format_flags_long(self, flag_info, _PXN):
+        flag_info_key = tuple([tuple(flag_info), _PXN])
+        x = self.flags_strings_cache.get(flag_info_key, None)
+        if x is not None:
+            return x
+
         flags = []
 
         # AP/APTable parsing
@@ -49834,7 +49852,7 @@ class PagewalkArmCommand(PagewalkCommand):
         PXN = "PXN" in flag_info
         PXN |= "PXNTable2" in flag_info
         PXN |= "PXNTable1" in flag_info
-        PXN &= self.PXN
+        PXN &= _PXN
         NS = "NS" in flag_info
         NS |= "NSTable2" in flag_info
         NS |= "NSTable1" in flag_info
@@ -49883,7 +49901,10 @@ class PagewalkArmCommand(PagewalkCommand):
             flags += ['ACCESSED']
         if "nG" not in flag_info:
             flags += ["GLOBAL"]
-        return ' '.join(flags)
+
+        flag_string = ' '.join(flags)
+        self.flags_strings_cache[flag_info_key] = flag_string
+        return flag_string
 
     def do_pagewalk_short(self, table_base, va_base=0):
         self.mappings = []
@@ -50383,7 +50404,9 @@ class PagewalkArmCommand(PagewalkCommand):
         self.quiet_info("$TTBCR{}: {:#x}".format(self.suffix, TTBCR))
         self.quiet_info("PL0 base: {:#x}".format(pl0_base))
         if not self.use_cache or not self.ttbr0_mappings:
+            self.flags_strings_cache = {}
             self.do_pagewalk_short(pl0_base)
+            self.flags_strings_cache = None
             self.merging()
             self.ttbr0_mappings = self.mappings.copy()
         self.make_out(self.ttbr0_mappings)
@@ -50413,7 +50436,9 @@ class PagewalkArmCommand(PagewalkCommand):
             self.quiet_info("PL1 base: {:#x}".format(pl1_base))
             self.quiet_info("PL1 va_base: {:#x}".format(pl1_vabase))
             if not self.use_cache or not self.ttbr1_mappings:
+                self.flags_strings_cache = {}
                 self.do_pagewalk_short(pl1_base, pl1_vabase)
+                self.flags_strings_cache = None
                 self.merging()
                 self.ttbr1_mappings = self.mappings.copy()
             self.make_out(self.ttbr1_mappings)
@@ -50447,7 +50472,9 @@ class PagewalkArmCommand(PagewalkCommand):
         self.quiet_info("$TTBCR{}: {:#x}".format(self.suffix, TTBCR))
         self.quiet_info("PL0 base: {:#x}".format(pl0_base))
         if not self.use_cache or not self.ttbr0_mappings:
+            self.flags_strings_cache = {}
             self.do_pagewalk_long(pl0_base)
+            self.flags_strings_cache = None
             self.merging()
             self.ttbr0_mappings = self.mappings.copy()
         self.make_out(self.ttbr0_mappings)
@@ -50473,7 +50500,9 @@ class PagewalkArmCommand(PagewalkCommand):
             self.quiet_info("PL1 base: {:#x}".format(pl1_base))
             self.quiet_info("PL1 va_base: {:#x}".format(pl1_vabase))
             if not self.use_cache or not self.ttbr1_mappings:
+                self.flags_strings_cache = {}
                 self.do_pagewalk_long(pl1_base, pl1_vabase)
+                self.flags_strings_cache = None
                 self.merging()
                 self.ttbr1_mappings = self.mappings.copy()
             self.make_out(self.ttbr1_mappings)
