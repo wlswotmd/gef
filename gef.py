@@ -41344,6 +41344,8 @@ class KernelParamSysctlCommand(GenericCommand):
                 if procname == 0:
                     break
                 procname_str = read_cstring_from_memory(procname)
+                if procname_str is None:
+                    break
                 param_path = (parent_path + "." + procname_str).lstrip(".")
                 self.parent_paths[ctl_dir] = param_path
 
@@ -41352,14 +41354,13 @@ class KernelParamSysctlCommand(GenericCommand):
                     mode = u32(read_memory(ctl_table + self.OFFSET_mode, 4))
 
                     if (mode & 0o0040000) == 0: # not directory
+                        maxlen = u32(read_memory(ctl_table + self.OFFSET_maxlen, 4))
                         # data
                         data_addr = read_int_from_memory(ctl_table + current_arch.ptrsize)
                         if data_addr and is_valid_addr(data_addr):
                             # type from handler
                             handler = read_int_from_memory(ctl_table + self.OFFSET_handler)
                             # data length
-                            maxlen = u32(read_memory(ctl_table + self.OFFSET_maxlen, 4))
-
                             if handler in self.str_types:
                                 data_val = read_cstring_from_memory(data_addr)
                                 fmt = "{:<55s}: {:#018x} {:#06x} {:#010o} {:s}"
@@ -41392,7 +41393,7 @@ class KernelParamSysctlCommand(GenericCommand):
                                     self.out.append(fmt.format(param_path, data_addr, maxlen, mode, data_val))
                         else:
                             if self.verbose:
-                                fmt = "{:<55s}: {:#018x} {:#05x} {:#010o}"
+                                fmt = "{:<55s}: {:#018x} {:#06x} {:#010o}"
                                 self.out.append(fmt.format(param_path, data_addr, maxlen, mode))
 
                 # goto next
@@ -41411,6 +41412,65 @@ class KernelParamSysctlCommand(GenericCommand):
     def initialize(self):
         if self.initialized:
             return
+
+        """
+        struct ctl_table_root {
+            struct ctl_table_set {
+                int (*is_seen)(struct ctl_table_set *);
+                struct ctl_dir dir;
+            } default_set;
+            struct ctl_table_set *(*lookup)(struct ctl_table_root *root);
+            void (*set_ownership)(struct ctl_table_header *head, struct ctl_table *table, kuid_t *uid, kgid_t *gid);
+            int (*permissions)(struct ctl_table_header *head, struct ctl_table *table);
+        };
+
+        struct ctl_dir {
+            struct ctl_table_header {
+                union {
+                    struct {
+                        struct ctl_table *ctl_table;
+                        int used;
+                        int count;
+                        int nreg;
+                    };
+                    struct rcu_head {
+                        struct callback_head *next;
+                        void (*func)(struct callback_head *head);
+                    } rcu;
+                };
+                struct completion *unregistering;
+                struct ctl_table *ctl_table_arg;
+                struct ctl_table_root *root;
+                struct ctl_table_set *set;
+                struct ctl_dir *parent;
+                struct ctl_node *node;
+                struct hlist_head {
+                    struct hlist_node *first;
+                } inodes;                        // 4.11-rc1 ~
+            } header;
+            struct rb_root {
+                struct rb_node *rb_node;
+            } root;
+        };
+
+        struct rb_node {
+            unsigned long  __rb_parent_color;
+            struct rb_node *rb_right;
+            struct rb_node *rb_left;
+        };
+
+        struct ctl_table {
+            const char *procname;
+            void *data;
+            int maxlen;
+            umode_t mode;
+            struct ctl_table *child;
+            proc_handler *proc_handler;
+            struct ctl_table_poll *poll;
+            void *extra1;
+            void *extra2;
+        };
+        """
 
         if is_64bit():
             # struct ctl_dir
@@ -41474,6 +41534,8 @@ class KernelParamSysctlCommand(GenericCommand):
             if not args.quiet:
                 err("Not found sysctl_table_root")
             return
+        if not args.quiet:
+            info("sysctl_table_root: {:#x}".format(sysctl_table_root))
 
         self.out = []
         if not args.quiet:
@@ -41491,6 +41553,10 @@ class KernelParamSysctlCommand(GenericCommand):
             # ctl_dir.header.inodes does not exist
             self.OFFSET_rb_node -= current_arch.ptrsize
             root_rb_node = read_int_from_memory(root_ctl_dir + self.OFFSET_rb_node)
+
+        if not args.quiet:
+            info("root_ctl_dir: {:#x}".format(root_ctl_dir))
+            info("root_rb_node: {:#x}".format(root_rb_node))
 
         self.seen_ctl_dir = []
         self.parent_paths = {root_ctl_dir: ""}
