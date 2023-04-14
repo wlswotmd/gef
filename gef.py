@@ -44324,7 +44324,7 @@ class TcmallocDumpCommand(GenericCommand):
     subparsers = parser.add_subparsers(title='command', required=True)
     subparsers.add_parser('chrome')
     subparsers.add_parser('old')
-    subparsers.add_parser('now')
+    subparsers.add_parser('new')
     _syntax_ = parser.format_help()
 
     def __init__(self, *args, **kwargs):
@@ -44404,7 +44404,7 @@ class TcmallocDumpCommand(GenericCommand):
                 seen.append(chunk)
                 # print threshold check
                 if real_length < self.FreeList_print_threshold:
-                    chunklist_string += " -> " + Color.colorify(f"{chunk:#x}", "bold yellow underline")
+                    chunklist_string += " -> " + Color.colorify(f"{chunk:#x}", "bold yellow")
                 else:
                     if not chunklist_string.endswith(" -> ..."):
                         chunklist_string += " -> ..."
@@ -44413,8 +44413,8 @@ class TcmallocDumpCommand(GenericCommand):
                     chunk = read_int_from_memory(chunk)
                 except Exception:
                     if chunklist_string.endswith(" -> ..."):
-                        chunklist_string += " -> " + Color.colorify(f"{seen[-2]:#x}", "bold yellow underline")
-                        chunklist_string += " -> " + Color.colorify(f"{chunk:#x}", "bold red underline")
+                        chunklist_string += " -> " + Color.colorify(f"{seen[-2]:#x}", "bold yellow")
+                        chunklist_string += " -> " + Color.colorify(f"{chunk:#x}", "bold red")
                     chunklist_string += " (corrupted)"
                     error = True
                     break
@@ -44422,7 +44422,7 @@ class TcmallocDumpCommand(GenericCommand):
                 chunk ^= self.get_heap_key()
                 # loop check
                 if chunk in seen:
-                    chunklist_string += " -> " + Color.colorify(f"{chunk:#x}", "bold red underline") + " (loop)"
+                    chunklist_string += " -> " + Color.colorify(f"{chunk:#x}", "bold red") + " (loop)"
                     error = True
                     break
             # corrupted length check
@@ -44489,7 +44489,7 @@ class TcmallocDumpCommand(GenericCommand):
                 seen.append(chunk)
                 # print threshold check
                 if real_length < self.FreeList_print_threshold:
-                    chunklist_string += " -> " + Color.colorify(f"{chunk:#x}", "bold yellow underline")
+                    chunklist_string += " -> " + Color.colorify(f"{chunk:#x}", "bold yellow")
                 else:
                     if not chunklist_string.endswith(" -> ..."):
                         chunklist_string += " -> ..."
@@ -44498,15 +44498,15 @@ class TcmallocDumpCommand(GenericCommand):
                     chunk = read_int_from_memory(chunk)
                 except Exception:
                     if chunklist_string.endswith(" -> ..."):
-                        chunklist_string += " -> " + Color.colorify(f"{seen[-2]:#x}", "bold yellow underline")
-                        chunklist_string += " -> " + Color.colorify(f"{chunk:#x}", "bold red underline")
+                        chunklist_string += " -> " + Color.colorify(f"{seen[-2]:#x}", "bold yellow")
+                        chunklist_string += " -> " + Color.colorify(f"{chunk:#x}", "bold red")
                     chunklist_string += " (corrupted)"
                     break
                 # heap key decode
                 chunk ^= self.get_heap_key()
                 # loop check
                 if chunk in seen:
-                    chunklist_string += " -> " + Color.colorify(f"{chunk:#x}", "bold red underline") + " (loop)"
+                    chunklist_string += " -> " + Color.colorify(f"{chunk:#x}", "bold red") + " (loop)"
                     break
             # print
             gef_print(f"central_cache_[{_i}].tc_slot[{_j}] @ {freelist:#x}{chunklist_string}")
