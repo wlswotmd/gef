@@ -49136,6 +49136,11 @@ class PagewalkX64Command(PagewalkCommand):
         return
 
     def format_flags(self, flag_info):
+        flag_info_key = tuple(flag_info)
+        x = self.flags_strings_cache.get(flag_info_key, None)
+        if x is not None:
+            return x
+
         flags = []
         if "NO_RW" in flag_info and "XD" in flag_info:
             flags += ["R--"]
@@ -49155,7 +49160,10 @@ class PagewalkX64Command(PagewalkCommand):
             flags += ["DIRTY"]
         if "G" in flag_info:
             flags += ["GLOBAL"]
-        return ' '.join(flags)
+
+        flag_string = ' '.join(flags)
+        self.flags_strings_cache[flag_info_key] = flag_string
+        return flag_string
 
     def pagewalk_PML5T(self):
         self.quiet_add_out(titlify("PML5E: Page Map Level 5 Entry"))
@@ -49432,6 +49440,7 @@ class PagewalkX64Command(PagewalkCommand):
         self.quiet_add_out(titlify("PTE: Page Table Entry"))
         PTE = []
         COUNT = 0
+        flag_cache = {}
         for va_base, table_base, parent_flags in self.TABLES:
             entries = self.read_physmem_cache(table_base, 2 ** self.bits["PT_BITS"] * self.bits["ENTRY_SIZE"])
             entries = slice_unpack(entries, self.bits["ENTRY_SIZE"])
@@ -49447,18 +49456,27 @@ class PagewalkX64Command(PagewalkCommand):
 
                 # calc flags
                 flags = parent_flags.copy()
-                if ((entry >> 1) & 1) == 0:
-                    flags.append("NO_RW")
-                if ((entry >> 2) & 1) == 0:
-                    flags.append("NO_US")
-                if ((entry >> 5) & 1) == 1:
-                    flags.append("A")
-                if ((entry >> 6) & 1) == 1:
-                    flags.append("D")
-                if ((entry >> 8) & 1) == 1:
-                    flags.append("G")
-                if self.PAE and ((entry >> 63) & 1) == 1:
-                    flags.append("XD")
+                # This route passes many times, so make a memo
+                entry_flags_key = entry & 0x8000000000000166
+                x = flag_cache.get(entry_flags_key, None)
+                if x is not None:
+                    flags.extend(x)
+                else:
+                    _flags = []
+                    if ((entry >> 1) & 1) == 0:
+                        _flags.append("NO_RW")
+                    if ((entry >> 2) & 1) == 0:
+                        _flags.append("NO_US")
+                    if ((entry >> 5) & 1) == 1:
+                        _flags.append("A")
+                    if ((entry >> 6) & 1) == 1:
+                        _flags.append("D")
+                    if ((entry >> 8) & 1) == 1:
+                        _flags.append("G")
+                    if self.PAE and ((entry >> 63) & 1) == 1:
+                        _flags.append("XD")
+                    flag_cache[entry_flags_key] = _flags
+                    flags.extend(_flags)
 
                 # calc physical addr (drop the flag bits)
                 phys_addr = entry & 0x000ffffffffff000
@@ -49516,6 +49534,7 @@ class PagewalkX64Command(PagewalkCommand):
         # do pagewalk
         self.PTE = []
         self.TABLES = [(va_base, pagewalk_base, flags)]
+        self.flags_strings_cache = {}
         if is_x86_64():
             if (cr4 >> 12) & 1: # PML5T check
                 # 64bit 5-level(4KB): 9,9,9,9,9,12
@@ -49586,6 +49605,7 @@ class PagewalkX64Command(PagewalkCommand):
             self.err("Unsupported")
             return
 
+        self.flags_strings_cache = None
         self.make_out(self.mappings)
         return
 
