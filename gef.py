@@ -40777,29 +40777,33 @@ class KernelModuleCommand(GenericCommand):
             offset_layout = i * current_arch.ptrsize
             valid = True
             for module in module_addrs:
+                # memory access check
+                if not is_valid_addr(module + offset_layout):
+                    valid = False
+                    break
                 # base align check
                 cand_base = read_int_from_memory(module + offset_layout)
                 if cand_base == 0 or cand_base & 0xfff:
                     valid = False
                     break
-                # size align check
+                # size check
                 cand_size = u32(read_memory(module + offset_layout + current_arch.ptrsize + 4 * 0, 4))
-                if cand_size == 0 or cand_size & 0xfff:
+                if cand_size == 0 or cand_size > 0x100000:
                     valid = False
                     break
-                # text_size align check
+                # text_size check
                 cand_text_size = u32(read_memory(module + offset_layout + current_arch.ptrsize + 4 * 1, 4))
-                if cand_text_size == 0 or cand_text_size & 0xfff:
+                if cand_text_size == 0 or cand_text_size > 0x100000:
                     valid = False
                     break
-                # ro_size align check
+                # ro_size check
                 cand_ro_size = u32(read_memory(module + offset_layout + current_arch.ptrsize + 4 * 2, 4))
-                if cand_ro_size == 0 or cand_ro_size & 0xfff:
+                if cand_ro_size == 0 or cand_ro_size > 0x100000:
                     valid = False
                     break
-                # ro_after_init_size align check
+                # ro_after_init_size check
                 cand_ro_after_init_size = u32(read_memory(module + offset_layout + current_arch.ptrsize + 4 * 3, 4))
-                if cand_ro_after_init_size == 0 or cand_ro_after_init_size & 0xfff:
+                if cand_ro_after_init_size == 0 or cand_ro_after_init_size > 0x100000:
                     valid = False
                     break
             if valid:
@@ -40864,6 +40868,10 @@ class KernelModuleCommand(GenericCommand):
             offset_module_core = i * current_arch.ptrsize
             valid = True
             for module in module_addrs:
+                # memory access check
+                if not is_valid_addr(module + offset_module_core):
+                    valid = False
+                    break
                 # module_core align check
                 cand_module_core = read_int_from_memory(module + offset_module_core)
                 if cand_module_core == 0 or cand_module_core & 0xfff:
@@ -40886,7 +40894,7 @@ class KernelModuleCommand(GenericCommand):
                     break
                 # core_text_size check
                 cand_core_text_size = u32(read_memory(module + offset_module_core + current_arch.ptrsize + 4 * 3, 4))
-                if cand_core_text_size == 0 or  cand_core_text_size > 0x100000:
+                if cand_core_text_size == 0 or cand_core_text_size > 0x100000:
                     valid = False
                     break
             if valid:
