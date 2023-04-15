@@ -23659,6 +23659,8 @@ class GotCommand(GenericCommand):
             return ""
 
     def print_plt_got(self):
+        width = 10 if is_32bit() else 18
+
         # retrieve jump slots using readelf
         jmpslots = self.get_jmp_slots()
 
@@ -23668,18 +23670,27 @@ class GotCommand(GenericCommand):
         # retrieve the end of plt from elf parsing
         plt_begin, plt_end = self.get_plt_range()
 
+        # calc name_width
+        name_width = 0
+        for _, name, _, _, _ in jmpslots:
+            if len(name) > name_width:
+                name_width = len(name)
+
         # print legend
         if self.verbose:
-            fmt = "{:>9s} {:s} {:>14s} @ {:12s} {:>8s} {:>9s} {:s} {:>14s} @ {:12s} {:>8s} {:s}"
+            fmt = "{:{:d}} {:s} {:9s} {:s} {:{:d}s} @ {:12s} {:>8s} {:>9s} {:s} {:{:d}s} @ {:12s} {:>8s} {:s} {:{:d}}"
             legend = [
-                "TYPE", VERTICAL_LINE,
-                "PLT", "Section", "Offset", "reloc_arg", VERTICAL_LINE,
-                "GOT", "Section", "Offset", "Symbol -> GOTvalue",
+                "Name", name_width, VERTICAL_LINE,
+                "Type", VERTICAL_LINE,
+                "PLT", width, "Section", "Offset", "reloc_arg", VERTICAL_LINE,
+                "GOT", width, "Section", "Offset", VERTICAL_LINE, "GOT value", width,
             ]
         else:
-            fmt = "{:>14s} {:s} {:>14s} {:s}"
+            fmt = "{:{:d}s} {:s} {:{:d}s} {:s} {:{:d}s} {:s} {:{:d}}"
             legend = [
-                "PLT", VERTICAL_LINE, "GOT", "Symbol -> GOTvalue",
+                "Name", name_width,  VERTICAL_LINE,
+                "PLT", width, VERTICAL_LINE,
+                "GOT", width, VERTICAL_LINE, "GOT value", width,
             ]
         gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
@@ -23733,43 +23744,52 @@ class GotCommand(GenericCommand):
             else:
                 reloc_arg_info = "{:#9x}".format(reloc_arg)
 
+            # make name info
+            name_info = "{:{:d}s}".format(name, name_width)
+
             # make plt info
             if self.verbose:
                 if plt_address:
                     plt_section = self.get_section_name(plt_address) + self.perm(plt_address)
-                    plt_info = "{:#14x} @{:13s} {:#8x} {:9s}".format(plt_address, plt_section, plt_offset, reloc_arg_info)
+                    plt_address = lookup_address(plt_address)
+                    plt_info = "{:s} @{:13s} {:#8x} {:9s}".format(str(plt_address), plt_section, plt_offset, reloc_arg_info)
                 else:
-                    plt_info = "{:>14s}  {:13s} {:>8s} {:9s}".format("Not found", "", "", reloc_arg_info)
+                    plt_info = "{:{:d}s}  {:13s} {:>8s} {:9s}".format("Not found", width, "", "", reloc_arg_info)
             else:
                 if plt_address:
-                    plt_info = "{:#14x}".format(plt_address)
+                    plt_address = lookup_address(plt_address)
+                    plt_info = "{:s}".format(str(plt_address))
                 else:
-                    plt_info = "{:>14s}".format("Not found")
+                    plt_info = "{:{:d}s}".format("Not found", width)
 
             # make got info
             if self.verbose:
                 got_section = self.get_section_name(got_address) + self.perm(got_address)
-                got_value_c = Color.colorify("{:s} {:s} {:#x}{:s}".format(name, RIGHT_ARROW, got_value, got_value_sym), color)
-                got_info = "{:#14x} @{:13s} {:#8x} {:s}".format(got_address, got_section, got_offset, got_value_c)
+                got_address = lookup_address(got_address)
+                got_info = "{:s} @{:13s} {:#8x}".format(str(got_address), got_section, got_offset)
             else:
-                got_value_c = Color.colorify("{:s} {:s} {:#x}{:s}".format(name, RIGHT_ARROW, got_value, got_value_sym), color)
-                got_info = "{:#14x} {:s}".format(got_address, got_value_c)
+                got_address = lookup_address(got_address)
+                got_info = "{:s}".format(str(got_address))
+            got_value_info = Color.colorify("{:#0{:d}x}{:s}".format(got_value, width, got_value_sym), color)
 
             # make line
             if self.verbose:
-                line = "{:>9s} {:s} {:s} {:s} {:s}".format(type, VERTICAL_LINE, plt_info, VERTICAL_LINE, got_info)
+                type_info = "{:9s}".format(type)
+                line_element = [name_info, type_info, plt_info, got_info, got_value_info]
             else:
-                line = "{:s} {:s} {:s}".format(plt_info, VERTICAL_LINE, got_info)
+                line_element = [name_info, plt_info, got_info, got_value_info]
+            delim = " {:s} ".format(VERTICAL_LINE)
+            line = delim.join(line_element)
 
             # save
-            resolved_info.append([got_address, section_name, line])
+            resolved_info.append([got_address.value, section_name, line])
 
         # sort by GOT address
         resolved_info = sorted(resolved_info)
 
         # print
         prev_section = None
-        for got_address, section_name, line in sorted(resolved_info):
+        for _, section_name, line in sorted(resolved_info):
             # print section name
             if prev_section != section_name:
                 gef_print(titlify(section_name))
