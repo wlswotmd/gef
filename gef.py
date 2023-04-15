@@ -22840,52 +22840,51 @@ class LinkMapCommand(GenericCommand):
         return
 
     def dump_link_map(self, link_map):
+        def C(x):
+            base_address_color = get_gef_setting("theme.dereference_base_address")
+            return Color.colorify("{:#0{:d}x}".format(x, 10 if is_32bit() else 18), base_address_color)
+
         if link_map is None:
             info("link_map is 0.")
             return
 
-        section = process_lookup_address(link_map)
-        info("link_map: {:#x} [{:s}]".format(link_map, str(section.permission)))
+        info("link_map: {:s} [{:s}]".format(str(link_map), str(link_map.section.permission)))
 
-        current = link_map
+        current = link_map.value
         while True:
             addr = current
-            l_addr = read_int_from_memory(current)
+            l_addr = lookup_address(read_int_from_memory(current))
             current += current_arch.ptrsize
-            l_name = read_int_from_memory(current)
-            name = read_cstring_from_memory(l_name)
+            l_name = lookup_address(read_int_from_memory(current))
+            name = read_cstring_from_memory(l_name.value)
             current += current_arch.ptrsize
-            l_ld = read_int_from_memory(current)
+            l_ld = lookup_address(read_int_from_memory(current))
             current += current_arch.ptrsize
-            l_next = read_int_from_memory(current)
+            l_next = lookup_address(read_int_from_memory(current))
             current += current_arch.ptrsize
-            l_prev = read_int_from_memory(current)
+            l_prev = lookup_address(read_int_from_memory(current))
             current += current_arch.ptrsize
 
             if not name:
                 name = "(binary itself)"
             gef_print(titlify(name))
-            if is_32bit():
-                gef_print("{:#010x}:  {:#010x} {:#010x}  |  load_address, name".format(addr, l_addr, l_name))
-                gef_print("{:#010x}:  {:#010x} {:#010x}  |  dynamic, next".format(addr + current_arch.ptrsize * 2, l_ld, l_next))
-                gef_print("{:#010x}:  {:#010x} {:10s}  |  prev".format(addr + current_arch.ptrsize * 4, l_prev, ""))
-            else:
-                gef_print("{:#018x}:  {:#018x} {:#018x}  |  load_address, name".format(addr, l_addr, l_name))
-                gef_print("{:#018x}:  {:#018x} {:#018x}  |  dynamic, next".format(addr + current_arch.ptrsize * 2, l_ld, l_next))
-                gef_print("{:#018x}:  {:#018x} {:18s}  |  prev".format(addr + current_arch.ptrsize * 4, l_prev, ""))
+            gef_print("{:s}: {:s} {:s}  |  load_address, name".format(C(addr), str(l_addr), str(l_name)))
+            gef_print("{:s}: {:s} {:s}  |  dynamic, next".format(C(addr + current_arch.ptrsize * 2), str(l_ld), str(l_next)))
+            gef_print("{:s}: {:s} {:{:d}s}  |  prev".format(C(addr + current_arch.ptrsize * 4), str(l_prev), "", 10 if is_32bit() else 18))
 
-            if l_next == 0:
+            if l_next.value == 0:
                 break
-            current = l_next
+            current = l_next.value
         return
 
     @staticmethod
     def get_link_map(filename_or_addr, silent=False):
-        current = dynamic = DynamicCommand.get_dynamic(filename_or_addr, silent)
+        dynamic = DynamicCommand.get_dynamic(filename_or_addr, silent)
+        current = dynamic.value
         while True:
             tag = read_int_from_memory(current)
             current += current_arch.ptrsize
-            val = read_int_from_memory(current)
+            val = lookup_address(read_int_from_memory(current))
             current += current_arch.ptrsize
             if tag not in DynamicCommand.DT_TABLE:
                 link_map = None
@@ -22894,12 +22893,14 @@ class LinkMapCommand(GenericCommand):
                 break
             if DynamicCommand.DT_TABLE[tag] == "DT_DEBUG":
                 dt_debug = val
-                val_addr = current - current_arch.ptrsize
+                val_addr = lookup_address(current - current_arch.ptrsize)
+                val_addr_offset = val_addr.value - dynamic.value
                 if not silent:
-                    info("_DYNAMIC+{:#x}(=DT_DEBUG): {:#x} -> {:#x}".format(val_addr - dynamic, val_addr, dt_debug))
-                link_map = read_int_from_memory(dt_debug + current_arch.ptrsize)
+                    info("_DYNAMIC+{:#x}(=DT_DEBUG): {:s} -> {:s}".format(val_addr_offset, str(val_addr), str(dt_debug)))
+                link_map_ptr = lookup_address(dt_debug.value + current_arch.ptrsize)
+                link_map = lookup_address(read_int_from_memory(link_map_ptr.value))
                 if not silent:
-                    info("DT_DEBUG+{:#x}: {:#x} -> {:#x}".format(current_arch.ptrsize, dt_debug + current_arch.ptrsize, link_map))
+                    info("DT_DEBUG+{:#x}: {:s} -> {:s}".format(current_arch.ptrsize, str(link_map_ptr), str(link_map)))
                 break
         return link_map
 
@@ -23062,11 +23063,15 @@ class DynamicCommand(GenericCommand):
         return
 
     def dump_dynamic(self, dynamic):
+        def C(x):
+            base_address_color = get_gef_setting("theme.dereference_base_address")
+            return Color.colorify("{:#0{:d}x}".format(addr, 10 if is_32bit() else 18), base_address_color)
+
         if dynamic is None:
             info("_DYNAMIC is not found.")
             return
 
-        current = dynamic
+        current = dynamic.value
         while True:
             addr = current
             tag = read_int_from_memory(current)
@@ -23077,10 +23082,8 @@ class DynamicCommand(GenericCommand):
             if tag not in self.DT_TABLE:
                 break
 
-            if is_32bit():
-                gef_print("{:#010x}:  {:#010x} {:#010x}  |  tag:{:s}".format(addr, tag, val, self.DT_TABLE[tag]))
-            else:
-                gef_print("{:#018x}:  {:#018x} {:#018x}  |  tag:{:s}".format(addr, tag, val, self.DT_TABLE[tag]))
+            val = lookup_address(val)
+            gef_print("{:s}: {:#0{:d}x} {:s}  |  tag:{:s}".format(C(addr), tag, 10 if is_32bit() else 18, str(val), self.DT_TABLE[tag]))
         return
 
     @staticmethod
@@ -23108,9 +23111,9 @@ class DynamicCommand(GenericCommand):
             else:
                 dynamic = phdrs[0].p_vaddr
 
+        dynamic = lookup_address(dynamic)
         if not silent:
-            section = process_lookup_address(dynamic)
-            info("_DNYAMIC: {:#x} [{:s}]".format(dynamic, str(section.permission)))
+            info("_DNYAMIC: {:s} [{:s}]".format(str(dynamic), str(dynamic.section.permission)))
         return dynamic
 
     @parse_args
@@ -23312,7 +23315,8 @@ class DestructorDumpCommand(GenericCommand):
         return
 
     def yield_link_map(self):
-        current = LinkMapCommand.get_link_map(get_filepath(), silent=True)
+        link_map = LinkMapCommand.get_link_map(get_filepath(), silent=True)
+        current = link_map.value
         while current:
             _dic = {}
             _dic["load_address"] = read_int_from_memory(current)
