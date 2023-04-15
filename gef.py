@@ -23191,11 +23191,14 @@ class DestructorDumpCommand(GenericCommand):
             decoded_fn = fn ^ self.cookie
         return decoded_fn
 
-    def perm(self, addr):
+    def C(self, addr):
+        base_address_color = get_gef_setting("theme.dereference_base_address")
+        a = Color.colorify("{:#0{:d}x}".format(addr, 10 if is_32bit() else 18), base_address_color)
         try:
-            return "[{:s}]".format(str(lookup_address(addr).section.permission))
+            b = "[{:s}]".format(str(lookup_address(addr).section.permission))
+            return a + b
         except Exception:
-            return "[???]"
+            return a + "[???]"
 
     def dump_tls_dtors(self):
         if not self.tls:
@@ -23211,21 +23214,20 @@ class DestructorDumpCommand(GenericCommand):
         elif is_arm64():
             head_p = self.tls + 0x40
 
-        current = head = read_int_from_memory(head_p)
-        if head:
-            fmt = "{:s}: {:#x}{:s}: {:#x}{:s}"
-            gef_print(fmt.format("tls_dtor_list", head_p, self.perm(head_p), head, self.perm(head)))
+        head = lookup_address(read_int_from_memory(head_p))
+        current = head.value
+        if head.section is None:
+            gef_print("{:s}: {:s}: {:s}".format("tls_dtor_list", self.C(head_p), str(head)))
         else:
-            fmt = "{:s}: {:#x}{:s}: {:#x}"
-            gef_print(fmt.format("tls_dtor_list", head_p, self.perm(head_p), head))
+            gef_print("{:s}: {:s}: {:s}[{:s}]".format("tls_dtor_list", self.C(head_p), str(head), str(head.section.permission)))
 
         ptrsize = current_arch.ptrsize
 
         def read_fns(addr):
-            func = read_int_from_memory(current)
-            obj = read_int_from_memory(current + ptrsize * 1)
-            link_map = read_int_from_memory(current + ptrsize * 2)
-            next_ = read_int_from_memory(current + ptrsize * 3)
+            func = lookup_address(read_int_from_memory(current))
+            obj = lookup_address(read_int_from_memory(current + ptrsize * 1))
+            link_map = lookup_address(read_int_from_memory(current + ptrsize * 2))
+            next_ = lookup_address(read_int_from_memory(current + ptrsize * 3))
             return func, obj, link_map, next_
 
         while current:
@@ -23235,7 +23237,7 @@ class DestructorDumpCommand(GenericCommand):
                 err("Memory access error at {:#x}".format(current))
                 break
 
-            decoded_fn = self.decode_function(func)
+            decoded_fn = self.decode_function(func.value)
             sym = get_symbol_string(decoded_fn)
             decoded_fn_s = Color.boldify("{:#x}".format(decoded_fn))
 
@@ -23244,15 +23246,15 @@ class DestructorDumpCommand(GenericCommand):
             else:
                 valid_msg = Color.colorify("invalid", "bold red")
 
-            fmt = "    -> func:     {:#x}{:s}: {:#x} (={:s}{:s}) [{:s}]"
-            gef_print(fmt.format(current, self.perm(current), func, decoded_fn_s, sym, valid_msg))
-            fmt = "       obj:      {:#x}{:s}: {:#x}"
-            gef_print(fmt.format(current + ptrsize * 1, self.perm(current + ptrsize * 1), obj))
-            fmt = "       link_map: {:#x}{:s}: {:#x}"
-            gef_print(fmt.format(current + ptrsize * 2, self.perm(current + ptrsize * 2), link_map))
-            fmt = "       next:     {:#x}{:s}: {:#x}"
-            gef_print(fmt.format(current + ptrsize * 3, self.perm(current + ptrsize * 3), next_))
-            current = next_
+            fmt = "    -> func:     {:s}: {:s} (={:s}{:s}) [{:s}]"
+            gef_print(fmt.format(self.C(current), str(func), decoded_fn_s, sym, valid_msg))
+            fmt = "       obj:      {:s}: {:s}"
+            gef_print(fmt.format(self.C(current + ptrsize * 1), str(obj)))
+            fmt = "       link_map: {:s}: {:s}"
+            gef_print(fmt.format(self.C(current + ptrsize * 2), str(link_map)))
+            fmt = "       next:     {:s}: {:s}"
+            gef_print(fmt.format(self.C(current + ptrsize * 3), str(next_)))
+            current = next_.value
         return
 
     def dump_exit_funcs(self, name):
@@ -23262,24 +23264,32 @@ class DestructorDumpCommand(GenericCommand):
             err("Not found symbol ({:s})".format(name))
             return
 
-        current = head = read_int_from_memory(head_p)
-        gef_print("{:s}: {:#x}{:s}: {:#x}{:s}".format(name, head_p, self.perm(head_p), head, self.perm(head)))
-        if not current:
+        head = lookup_address(read_int_from_memory(head_p))
+        current = head.value
+        if head.section is None:
+            gef_print("{:s}: {:s}: {:s}".format(name, self.C(head_p), str(head)))
+        else:
+            gef_print("{:s}: {:s}: {:s}[{:s}]".format(name, self.C(head_p), str(head), str(head.section.permission)))
+        if current == 0:
             return
 
         ptrsize = current_arch.ptrsize
 
-        next_ = read_int_from_memory(current)
-        idx = read_int_from_memory(current + ptrsize)
+        try:
+            next_ = lookup_address(read_int_from_memory(current))
+            idx = lookup_address(read_int_from_memory(current + ptrsize))
+        except Exception:
+            err("Memory access error at {:#x}".format(current))
+            return
         current += ptrsize * 2
-        gef_print("    -> next:  {:#x}{:s}: {:#x}".format(head + ptrsize * 0, self.perm(head + ptrsize * 0), next_))
-        gef_print("       idx:   {:#x}{:s}: {:#x}".format(head + ptrsize * 1, self.perm(head + ptrsize * 1), idx))
+        gef_print("    -> next:     {:s}: {:s}".format(self.C(head.value + ptrsize * 0), str(next_)))
+        gef_print("       idx:      {:s}: {:s}".format(self.C(head.value + ptrsize * 1), str(idx)))
 
         def read_fns(addr):
-            flavor = read_int_from_memory(addr)
-            fn = read_int_from_memory(addr + ptrsize * 1)
-            arg = read_int_from_memory(addr + ptrsize * 2)
-            dso_handle = read_int_from_memory(addr + ptrsize * 3)
+            flavor = lookup_address(read_int_from_memory(addr))
+            fn = lookup_address(read_int_from_memory(addr + ptrsize * 1))
+            arg = lookup_address(read_int_from_memory(addr + ptrsize * 2))
+            dso_handle = lookup_address(read_int_from_memory(addr + ptrsize * 3))
             return flavor, fn, arg, dso_handle
 
         fns_size = ptrsize * 4 # flavor, fn, arg, dso_handle
@@ -23289,16 +23299,16 @@ class DestructorDumpCommand(GenericCommand):
         else:
             mask = (1 << 64) - 1
 
-        for i in range(idx, -1, -1):
+        for i in range(idx.value, -1, -1):
             addr = (current + fns_size * i) & mask
             try:
                 flavor, fn, arg, dso_handle = read_fns(addr)
             except Exception:
                 err("Memory access error at {:#x}".format(addr))
                 break
-            if fn == 0:
+            if fn.value == 0:
                 continue
-            decoded_fn = self.decode_function(fn)
+            decoded_fn = self.decode_function(fn.value)
             sym = get_symbol_string(decoded_fn)
             decoded_fn_s = Color.boldify("{:#x}".format(decoded_fn))
 
@@ -23307,11 +23317,12 @@ class DestructorDumpCommand(GenericCommand):
             else:
                 valid_msg = Color.colorify("invalid", "bold red")
 
-            fns = "       fns[{:#x}]:{:#x}{:s}:".format(i, addr, self.perm(addr))
-            gef_print("{} flavor:{:#x}".format(fns, flavor))
-            gef_print("{} func:{:#x} (={:s}{:s}) [{:s}]".format(" " * len(fns), fn, decoded_fn_s, sym, valid_msg))
-            gef_print("{} arg:{:#x}".format(" " * len(fns), arg))
-            gef_print("{} dso_handle:{:#x}".format(" " * len(fns), dso_handle))
+            fns = "       fns[{:#x}]: {:s}:".format(i, self.C(addr))
+            width = len(fns) - 9
+            gef_print("{} flavor:     {:s}".format(fns, str(flavor)))
+            gef_print("{} func:       {:s} (={:s}{:s}) [{:s}]".format(" " * width, str(fn), decoded_fn_s, sym, valid_msg))
+            gef_print("{} arg:        {:s}".format(" " * width, str(arg)))
+            gef_print("{} dso_handle: {:s}".format(" " * width, str(dso_handle)))
         return
 
     def yield_link_map(self):
@@ -23391,7 +23402,7 @@ class DestructorDumpCommand(GenericCommand):
                 for addr, func in entries:
                     sym = get_symbol_string(func)
                     func_s = Color.boldify("{:#x}".format(func))
-                    gef_print("    -> {:#x}{:s}: {:s}{:s}".format(addr, self.perm(addr), func_s, sym))
+                    gef_print("    -> {:s}: {:s}{:s}".format(self.C(addr), func_s, sym))
         else:
             elf = Elf(get_filepath())
             try:
@@ -23415,7 +23426,7 @@ class DestructorDumpCommand(GenericCommand):
             for addr, func in entries:
                 sym = get_symbol_string(func)
                 func_s = Color.boldify("{:#x}".format(func))
-                gef_print("    -> {:#x}{:s}: {:s}{:s}".format(addr, self.perm(addr), func_s, sym))
+                gef_print("    -> {:s}: {:s}{:s}".format(self.C(addr), func_s, sym))
         return
 
     @parse_args
