@@ -12259,7 +12259,11 @@ class SearchMangledPtrCommand(GenericCommand):
         except gdb.MemoryError:
             valid_msg = Color.colorify("invalid", "bold red")
         decoded = Color.boldify("{:#x}".format(decoded))
-        gef_print("  {:#x}{:s}: {:#x} (={:s}{:s}) [{:s}]".format(addr, addr_sym, value, decoded, decoded_sym, valid_msg))
+
+        base_address_color = get_gef_setting("theme.dereference_base_address")
+        addr = Color.colorify("{:#0{:d}x}".format(addr, 10 if is_32bit() else 18), base_address_color)
+
+        gef_print("  {:s}{:s}: {:#x} (={:s}{:s}) [{:s}]".format(addr, addr_sym, value, decoded, decoded_sym, valid_msg))
         return
 
     def search_mangled_ptr(self, start_address, end_address):
