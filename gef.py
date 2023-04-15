@@ -36212,32 +36212,34 @@ class KernelMagicCommand(GenericCommand):
         if not self.should_be_print(sym):
             return
 
-        try:
-            if external_func:
-                addr = external_func()
-            else:
-                if isinstance(sym, str):
-                    addr = get_ksymaddr(sym)
-                    if addr is None:
-                        raise # goto Not found/recognized
-                elif isinstance(sym, list):
-                    for s in sym:
-                        addr = get_ksymaddr(s)
-                        if addr:
-                            sym = s
-                            break
-                    else: # Not found
-                        sym = sym[0]
-                        raise # goto Not found/recognized
-            perm = get_permission(addr, maps)
-            if is_ascii_string(addr):
-                val = read_ascii_string(addr)
-                gef_print(f"{sym:42s}: {addr:#18x} [{perm:3s}] ({base:#18x} + {addr - base:#10x}) -> {val:>18s}")
-            else:
-                val = read_int_from_memory(addr)
-                gef_print(f"{sym:42s}: {addr:#18x} [{perm:3s}] ({base:#18x} + {addr - base:#10x}) -> {val:#18x}")
-        except Exception:
-            gef_print(f"{sym:42s}: {'Not found/recognized':>18s}")
+        width = 10 if is_32bit() else 18
+        if external_func:
+            addr = external_func()
+        else:
+            if isinstance(sym, str):
+                addr = get_ksymaddr(sym)
+                if addr is None:
+                    gef_print("{:42s}: {:>{:d}s}".format(sym, "Not found", width))
+                    return
+            elif isinstance(sym, list):
+                for s in sym:
+                    addr = get_ksymaddr(s)
+                    if addr:
+                        sym = s
+                        break
+                else:
+                    sym = sym[0]
+                    gef_print("{:42s}: {:>{:d}s}".format(sym, "Not found", width))
+                    return
+        perm = get_permission(addr, maps)
+        if is_ascii_string(addr):
+            val = read_ascii_string(addr)
+            fmt = "{:42s}: {:#0{:d}x} [{:3s}] ({:#0{:d}x} + {:#010x}) -> {:s}"
+            gef_print(fmt.format(sym, addr, width, perm, base, width, addr - base, val))
+        else:
+            val = read_int_from_memory(addr)
+            fmt = "{:42s}: {:#0{:d}x} [{:3s}] ({:#0{:d}x} + {:#010x}) -> {:#0{:d}x}"
+            gef_print(fmt.format(sym, addr, width, perm, base, width, addr - base, val, width))
         return
 
     def magic_kernel(self):
@@ -36252,8 +36254,10 @@ class KernelMagicCommand(GenericCommand):
         gef_print("{:42s}: {:#x} ({:#x} bytes)".format("kernel_base", kbase, kbase_size))
 
         gef_print(titlify("Legend"))
-        msg = f"{'symbol':42s}: {'addr':>18s} {'perm':5s} ({'base':>18s} + {'offset':>10s}) -> {'val':>18s}"
-        gef_print(Color.colorify(msg, get_gef_setting("theme.table_heading")))
+        fmt = "{:42s}: {:{:d}s} {:5s} ({:{:d}s} + {:10s}) -> {:{:d}s}"
+        width = current_arch.ptrsize * 2 + 2
+        legend = ["symbol", "addr", width, "perm", "base", width, "offset", "val", width]
+        gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
         gef_print(titlify("Credential"))
         self.resolve_and_print_kernel("commit_creds", kbase, maps)
