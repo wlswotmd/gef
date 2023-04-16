@@ -326,14 +326,16 @@ def gef_print(x="", less=False, *args, **kwargs):
             less = which("less")
         except FileNotFoundError:
             less = False
+
     if less:
+        if not x:
+            return
         _, tmp_path = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".txt", prefix="gef_print_")
         open(tmp_path, "wb").write(str2bytes(x))
         os.system(f"{less} -R {tmp_path}")
         os.unlink(tmp_path)
-        return
-
-    print(x, *args, **kwargs)
+    else:
+        print(x, *args, **kwargs)
     return
 
 
