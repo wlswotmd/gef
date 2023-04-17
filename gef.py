@@ -183,8 +183,6 @@ __context_messages__            = []
 __heap_allocated_list__         = []
 __heap_freed_list__             = []
 __heap_uaf_watchpoints__        = []
-__pie_breakpoints__             = {}
-__pie_counter__                 = 1
 __gef_default_main_arena__      = "main_arena"
 __gef_prev_arch__               = None
 __gef_check_once__              = True
@@ -9351,11 +9349,6 @@ def gef_read_canary():
         return None
 
 
-def gef_get_pie_breakpoint(num):
-    global __pie_breakpoints__
-    return __pie_breakpoints__[num]
-
-
 @functools.lru_cache(maxsize=None)
 def gef_getpagesize():
     """Get the page size from auxiliary values."""
@@ -9449,54 +9442,6 @@ def gef_on_regchanged_hook(func):
 @only_if_events_supported("register_changed")
 def gef_on_regchanged_unhook(func):
     return gdb.events.register_changed.disconnect(func)
-
-#
-# Virtual breakpoints
-#
-
-
-class PieVirtualBreakpoint:
-    """PIE virtual breakpoint (not real breakpoint)."""
-    def __init__(self, set_func, vbp_num, addr):
-        # set_func(base): given a base address return a
-        # "set breakpoint" gdb command string
-        self.set_func = set_func
-        self.vbp_num = vbp_num
-        # breakpoint num, 0 represents not instantiated yet
-        self.bp_num = 0
-        self.bp_addr = 0
-        # this address might be a symbol, just to know where to break
-        if isinstance(addr, int):
-            self.addr = hex(addr)
-        else:
-            self.addr = addr
-        return
-
-    def instantiate(self, base):
-        if self.bp_num:
-            self.destroy()
-
-        try:
-            res = gdb.execute(self.set_func(base), to_string=True)
-        except gdb.error as e:
-            err(e)
-            return
-
-        if "Breakpoint" not in res:
-            err(res)
-            return
-        res_list = res.split()
-        self.bp_num = res_list[1]
-        self.bp_addr = res_list[3]
-        return
-
-    def destroy(self):
-        if not self.bp_num:
-            err("Destroy PIE breakpoint not even set")
-            return
-        gdb.execute("delete {}".format(self.bp_num))
-        self.bp_num = 0
-        return
 
 #
 # Breakpoints
@@ -10606,6 +10551,35 @@ class ContCommand(GenericCommand):
         except gdb.error:
             exc_type, exc_value, exc_traceback = sys.exc_info()
             err(exc_value)
+        return
+
+
+@register_command
+class BreakRelativeVirtualAddressCommand(GenericCommand):
+    """Set a breakpoint at relative offset from codebase."""
+    _cmdline_ = "brva"
+    _category_ = "01-b. Debugging Support - Breakpoint"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('offset', metavar='OFFSET', type=parse_address,  help='the offset from codebase you want to set a breakpoint.')
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        filepath = get_filepath()
+        if filepath and not is_pie(filepath):
+            err("No-PIE elf is unsupported")
+            return
+
+        codebase = get_section_base_address(get_filepath(append_proc_root_prefix=False))
+        if codebase is None:
+            codebase = get_section_base_address(get_path_from_info_proc())
+        if codebase is None:
+            gef_print("Codebase is not found")
+            return
+        gdb.execute("b *{:#x}".format(codebase + args.offset))
         return
 
 

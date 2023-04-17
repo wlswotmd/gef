@@ -329,6 +329,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/fsbase_gsbase.png)
 * `libc`/`ld`/`heapbase`/`codebase`: displays each of the base address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/base.png)
+* `brva`: sets a breakpoint at relative offset from codebase.
 * `fpu`/`mmx`/`sse`/`avx`: pretty prints FPU/MMX/SSE/AVX registers.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/fpu-mmx-sse-avx.png)
 * `xmmset`: sets the value to xmm/ymm register simply.
