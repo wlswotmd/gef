@@ -19428,13 +19428,13 @@ class EntryPointBreakCommand(GenericCommand):
             warn("gdb is already running")
             return
 
+        # use symbol if loaded
         bp = None
         entrypoints = self.get_setting("entrypoint_symbols").split()
-
         for sym in entrypoints:
             try:
                 value = parse_address(sym)
-                info("Breaking at '{:s}'".format(str(value)))
+                info("Breaking at {:#x} ({:s})".format(value, sym))
                 bp = EntryBreakBreakpoint(sym)
                 gdb.execute("run {}".format(" ".join(argv)))
                 return
@@ -19445,12 +19445,11 @@ class EntryPointBreakCommand(GenericCommand):
                     gdb.execute("continue")
                     return
                 continue
-
         # if here, clear the breakpoint if any set
         if bp:
             bp.delete()
 
-        # break at entry point
+        # no symbols. use elf entry point
         entry = get_entry_point()
         if entry is None:
             return
