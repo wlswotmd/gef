@@ -10291,7 +10291,10 @@ class HighlightCommand(GenericCommand):
     _category_ = "01-f. Debugging Support - Context Extension"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    subparsers = parser.add_subparsers(title='command', required=True)
+    if sys.version_info.minor >= 7:
+        subparsers = parser.add_subparsers(title='command', required=True)
+    else:
+        subparsers = parser.add_subparsers(title='command')
     subparsers.add_parser('add')
     subparsers.add_parser('remove')
     subparsers.add_parser('list')
@@ -14320,7 +14323,10 @@ class GlibcHeapCommand(GenericCommand):
     _category_ = "06-a. Heap - Glibc"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    subparsers = parser.add_subparsers(title='command', required=True)
+    if sys.version_info.minor >= 7:
+        subparsers = parser.add_subparsers(title='command', required=True)
+    else:
+        subparsers = parser.add_subparsers(title='command')
     subparsers.add_parser('arena')
     subparsers.add_parser('arenas')
     subparsers.add_parser('bins')
@@ -20514,7 +20520,10 @@ class MemoryCommand(GenericCommand):
     _category_ = "01-f. Debugging Support - Context Extension"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    subparsers = parser.add_subparsers(title='command', required=True)
+    if sys.version_info.minor >= 7:
+        subparsers = parser.add_subparsers(title='command', required=True)
+    else:
+        subparsers = parser.add_subparsers(title='command')
     subparsers.add_parser('watch')
     subparsers.add_parser('unwatch')
     subparsers.add_parser('reset')
@@ -20654,7 +20663,10 @@ class HexdumpCommand(GenericCommand):
     _category_ = "03-b. Memory - View"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    subparsers = parser.add_subparsers(title='command', required=True)
+    if sys.version_info.minor >= 7:
+        subparsers = parser.add_subparsers(title='command', required=True)
+    else:
+        subparsers = parser.add_subparsers(title='command')
     subparsers.add_parser('byte')
     subparsers.add_parser('word')
     subparsers.add_parser('dword')
@@ -20905,7 +20917,10 @@ class PatchCommand(GenericCommand):
     _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    subparsers = parser.add_subparsers(title='command', required=True)
+    if sys.version_info.minor >= 7:
+        subparsers = parser.add_subparsers(title='command', required=True)
+    else:
+        subparsers = parser.add_subparsers(title='command')
     subparsers.add_parser('byte')
     subparsers.add_parser('word')
     subparsers.add_parser('dword')
@@ -22300,7 +22315,10 @@ class XorMemoryCommand(GenericCommand):
     _category_ = "03-d. Memory - Calculation"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    subparsers = parser.add_subparsers(title='command', required=True)
+    if sys.version_info.minor >= 7:
+        subparsers = parser.add_subparsers(title='command', required=True)
+    else:
+        subparsers = parser.add_subparsers(title='command')
     subparsers.add_parser('display')
     subparsers.add_parser('patch')
     _syntax_ = parser.format_help()
@@ -22408,7 +22426,10 @@ class PatternCommand(GenericCommand):
     _category_ = "09-c. Misc - Generation"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    subparsers = parser.add_subparsers(title='command', required=True)
+    if sys.version_info.minor >= 7:
+        subparsers = parser.add_subparsers(title='command', required=True)
+    else:
+        subparsers = parser.add_subparsers(title='command')
     subparsers.add_parser('create')
     subparsers.add_parser('search')
     _syntax_ = parser.format_help()
@@ -44405,7 +44426,10 @@ class TcmallocDumpCommand(GenericCommand):
     _category_ = "06-b. Heap - Other"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    subparsers = parser.add_subparsers(title='command', required=True)
+    if sys.version_info.minor >= 7:
+        subparsers = parser.add_subparsers(title='command', required=True)
+    else:
+        subparsers = parser.add_subparsers(title='command')
     subparsers.add_parser('chrome')
     subparsers.add_parser('old')
     subparsers.add_parser('new')
@@ -52476,7 +52500,10 @@ class ExecUntilCommand(GenericCommand):
     _category_ = "01-d. Debugging Support - Execution"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    subparsers = parser.add_subparsers(title='command', required=True)
+    if sys.version_info.minor >= 7:
+        subparsers = parser.add_subparsers(title='command', required=True)
+    else:
+        subparsers = parser.add_subparsers(title='command')
     subparsers.add_parser('call')
     subparsers.add_parser('jmp')
     subparsers.add_parser('syscall')
