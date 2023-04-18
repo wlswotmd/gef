@@ -437,21 +437,30 @@ class Address:
 
     def __str__(self):
         value = format_address(self.value)
-        if self.is_in_text_segment():
-            code_color = get_gef_setting("theme.address_code")
-            return Color.colorify(value, code_color)
-        if self.is_in_heap_segment():
-            heap_color = get_gef_setting("theme.address_heap")
-            return Color.colorify(value, heap_color)
+        if not self.valid:
+            return value
         if self.is_in_stack_segment():
             stack_color = get_gef_setting("theme.address_stack")
+            if self.is_rwx():
+                stack_color += " " + get_gef_setting("theme.address_rwx")
             return Color.colorify(value, stack_color)
+        if self.is_in_heap_segment():
+            heap_color = get_gef_setting("theme.address_heap")
+            if self.is_rwx():
+                heap_color += " " + get_gef_setting("theme.address_rwx")
+            return Color.colorify(value, heap_color)
+        if self.is_in_text_segment():
+            code_color = get_gef_setting("theme.address_code")
+            if self.is_rwx():
+                code_color += " " + get_gef_setting("theme.address_rwx")
+            return Color.colorify(value, code_color)
         return value
 
-    def is_in_text_segment(self):
-        a = hasattr(self.info, "name") and ".text" in self.info.name
-        b = hasattr(self.section, "is_executable") and self.section.is_executable()
-        return a or b
+    def is_rwx(self):
+        r = hasattr(self.section, "is_readable") and self.section.is_readable()
+        w = hasattr(self.section, "is_writable") and self.section.is_writable()
+        x = hasattr(self.section, "is_executable") and self.section.is_executable()
+        return r and w and x
 
     def is_in_stack_segment(self):
         return hasattr(self.section, "path") and "[stack]" == self.section.path
@@ -459,10 +468,19 @@ class Address:
     def is_in_heap_segment(self):
         return hasattr(self.section, "path") and "[heap]" == self.section.path
 
+    def is_in_text_segment(self):
+        a = hasattr(self.info, "name") and ".text" in self.info.name
+        b = hasattr(self.section, "is_executable") and self.section.is_executable()
+        return a or b
+
     def dereference(self):
+        # Even if the valid flag is not set, it still dereferences.
+        # This is because the valid flag is not set during kernel debugging.
         addr = align_address(int(self.value))
         derefed = dereference(addr)
-        return None if derefed is None else int(derefed)
+        if derefed is None:
+            return None
+        return int(derefed)
 
 
 class Permission:
@@ -10091,7 +10109,6 @@ class GefThemeCommand(GenericCommand):
         self.add_setting("old_context", "gray", "Color to use to show things such as code that is not immediately relevant")
         self.add_setting("disassemble_current_instruction", "green", "Color to use to highlight the current $pc when disassembling")
         self.add_setting("dereference_string", "yellow", "Color of dereferenced string")
-        self.add_setting("dereference_code", "gray", "Color of dereferenced code")
         self.add_setting("dereference_base_address", "cyan", "Color of dereferenced address")
         self.add_setting("dereference_register_value", "bold blue", "Color of dereferenced register")
         self.add_setting("registers_register_name", "blue", "Color of the register name in the register window")
@@ -10099,6 +10116,7 @@ class GefThemeCommand(GenericCommand):
         self.add_setting("address_stack", "pink", "Color to use when a stack address is found")
         self.add_setting("address_heap", "green", "Color to use when a heap address is found")
         self.add_setting("address_code", "red", "Color to use when a code address is found")
+        self.add_setting("address_rwx", "underline", "Color to use when a RWX address is found")
         self.add_setting("source_current_line", "green", "Color to use for the current code line in the source window")
         return
 
@@ -19561,20 +19579,23 @@ class ContextCommand(GenericCommand):
         return
 
     def show_legend(self):
-        if get_gef_setting("gef.disable_color") is not True:
-            str_color = get_gef_setting("theme.dereference_string")
-            code_addr_color = get_gef_setting("theme.address_code")
-            stack_addr_color = get_gef_setting("theme.address_stack")
-            heap_addr_color = get_gef_setting("theme.address_heap")
-            changed_register_color = get_gef_setting("theme.registers_value_changed")
+        if not is_qemu_system():
+            if get_gef_setting("gef.disable_color") is not True:
+                str_color = get_gef_setting("theme.dereference_string")
+                code_addr_color = get_gef_setting("theme.address_code")
+                stack_addr_color = get_gef_setting("theme.address_stack")
+                heap_addr_color = get_gef_setting("theme.address_heap")
+                rwx_addr_color = get_gef_setting("theme.address_rwx")
+                changed_register_color = get_gef_setting("theme.registers_value_changed")
 
-            gef_print("[ Legend: {} | {} | {} | {} | {} ]".format(
-                Color.colorify("Modified register", changed_register_color),
-                Color.colorify("Code", code_addr_color),
-                Color.colorify("Heap", heap_addr_color),
-                Color.colorify("Stack", stack_addr_color),
-                Color.colorify("String", str_color)
-            ))
+                gef_print("[ Legend: {} | {} | {} | {} | {} | {} ]".format(
+                    Color.colorify("Modified register", changed_register_color),
+                    Color.colorify("Code", code_addr_color),
+                    Color.colorify("Heap", heap_addr_color),
+                    Color.colorify("Stack", stack_addr_color),
+                    Color.colorify("RWX", rwx_addr_color),
+                    Color.colorify("String", str_color)
+                ))
         return
 
     @parse_args
@@ -22047,7 +22068,6 @@ class VMMapCommand(GenericCommand):
     _category_ = "02-c. Process Information - Memory/Section"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-v', dest='verbose', action='store_true', help='also display pointed registers.')
     parser.add_argument('--outer', action='store_true', help="display qemu-user's memory map instead of emulated process's memory map.")
     parser.add_argument('filter', metavar='FILTER', nargs='?', help='filter string')
     _syntax_ = parser.format_help()
@@ -22094,28 +22114,31 @@ class VMMapCommand(GenericCommand):
 
         for entry in vmmap:
             if not args.filter:
-                self.print_entry(entry, args.outer, args.verbose)
+                self.print_entry(entry, args.outer)
                 continue
             if args.filter in entry.path:
-                self.print_entry(entry, args.outer, args.verbose)
+                self.print_entry(entry, args.outer)
             elif self.is_integer(args.filter):
                 addr = int(args.filter, 0)
                 if addr >= entry.page_start and addr < entry.page_end:
-                    self.print_entry(entry, args.outer, args.verbose)
+                    self.print_entry(entry, args.outer)
 
         if is_qemu_usermode() and not args.outer:
             info("Searched from auxv, registers and stack values. There may be areas that cannot be detected.")
             info("Permission is based on ELF header or default value `rw-`. Dynamic permission changes cannot be detected.")
         return
 
-    def print_entry(self, entry, outer, verbose):
+    def print_entry(self, entry, outer):
         line_color = ""
         if entry.path == "[stack]":
             line_color = get_gef_setting("theme.address_stack")
         elif entry.path == "[heap]":
             line_color = get_gef_setting("theme.address_heap")
-        elif entry.permission.value & Permission.READ and entry.permission.value & Permission.EXECUTE:
+        elif entry.permission.value & Permission.EXECUTE:
             line_color = get_gef_setting("theme.address_code")
+
+        if entry.permission.value == (Permission.READ | Permission.WRITE | Permission.EXECUTE):
+            line_color += " " + get_gef_setting("theme.address_rwx")
 
         lines = []
         # if qemu-xxx(32bit arch) runs on x86-64 machine, memalign_size does not match get_memory_alignment()
@@ -22124,26 +22147,20 @@ class VMMapCommand(GenericCommand):
         lines.append(Color.colorify(format_address(entry.page_end, memalign_size), line_color))
         lines.append(Color.colorify(format_address(entry.size, memalign_size), line_color))
         lines.append(Color.colorify(format_address(entry.offset, memalign_size), line_color))
-
-        if entry.permission.value == (Permission.READ | Permission.WRITE | Permission.EXECUTE):
-            lines.append(Color.colorify(str(entry.permission), "underline " + line_color))
-        else:
-            lines.append(Color.colorify(str(entry.permission), line_color))
-
+        lines.append(Color.colorify(str(entry.permission), line_color))
         lines.append(Color.colorify(entry.path, line_color))
         line = " ".join(lines)
 
         # register info
-        if verbose:
-            register_hints = []
-            for regname in current_arch.all_registers:
-                regvalue = get_register(regname)
-                if entry.page_start <= regvalue < entry.page_end:
-                    register_hints.append(regname)
-            if register_hints:
-                m = " {:s} {:s}".format(LEFT_ARROW, ", ".join(list(register_hints)))
-                registers_color = get_gef_setting("theme.dereference_register_value")
-                line += Color.colorify(m, registers_color)
+        register_hints = []
+        for regname in current_arch.all_registers:
+            regvalue = get_register(regname)
+            if entry.page_start <= regvalue < entry.page_end:
+                register_hints.append(regname)
+        if register_hints:
+            m = " {:s} {:s}".format(LEFT_ARROW, ", ".join(list(register_hints)))
+            registers_color = get_gef_setting("theme.dereference_register_value")
+            line += Color.colorify(m, registers_color)
 
         gef_print(line)
         return
@@ -22152,12 +22169,14 @@ class VMMapCommand(GenericCommand):
         code_addr_color = get_gef_setting("theme.address_code")
         stack_addr_color = get_gef_setting("theme.address_stack")
         heap_addr_color = get_gef_setting("theme.address_heap")
+        rwx_addr_color = get_gef_setting("theme.address_rwx")
 
         code = Color.colorify("Code", code_addr_color)
         heap = Color.colorify("Heap", heap_addr_color)
         stack = Color.colorify("Stack", stack_addr_color)
+        rwx = Color.colorify("RWX", rwx_addr_color)
 
-        gef_print("[ Legend:  {} | {} | {} ]".format(code, heap, stack))
+        gef_print("[ Legend:  {} | {} | {} | {} ]".format(code, heap, stack, rwx))
         return
 
     def is_integer(self, n):
@@ -53620,8 +53639,11 @@ class PeekPointersCommand(GenericCommand):
                     line_color = get_gef_setting("theme.address_stack")
                 elif name == "[heap]":
                     line_color = get_gef_setting("theme.address_heap")
-                elif perm.value & Permission.READ and perm.value & Permission.EXECUTE:
+                elif perm.value & Permission.EXECUTE:
                     line_color = get_gef_setting("theme.address_code")
+
+                if perm.value == (Permission.READ | Permission.WRITE | Permission.EXECUTE):
+                    line_color += " " + get_gef_setting("theme.address_rwx")
 
                 search_area = "Found at {:#x}".format(addr_pos)
                 found_area = "{:#x} {:s} ('{:s}', perm: {:s})".format(addr_value, sym, name, perm_s)
