@@ -112,6 +112,11 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * It supports to dump partial pages (`-v`/`--verbose`/`--partial`) and NUMA node pages (`-vv`/`--vverbose`/`--node`).
     * Since `page_to_virt` is difficult to implement, it will heuristically determine the virtual address from the freelist.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slub-dump.png)
+* `slab-dump`: dumps slab free-list (heuristic).
+    * Supported on x64 + SLAB.
+    * Supported on both kASLR is enabled or not.
+    * Supported on both the vmlinux symbol exists or not.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slab-dump.png)
 * `kbase`: displays the kernel base address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kbase.png)
 * `kversion`: displays the debugged kernel version.
