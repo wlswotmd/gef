@@ -2278,10 +2278,11 @@ def get_symbol_string(addr, nosymbol_string=""):
             addr = re.sub(r"\x1B\[([0-9]{1,2}(;[0-9]{1,2})*)?m", "", addr) # remove color
             addr = int(addr, 16)
         ret = gdb_get_location_from_symbol(addr)
+        if ret is None:
+            raise
     except Exception:
         return nosymbol_string
-    if ret is None:
-        return nosymbol_string
+
     sym_name, sym_offset = ret[0], ret[1]
     sym_name = Instruction.smartify_text(sym_name)
     if sym_offset == 0:
@@ -9075,6 +9076,15 @@ def get_ksymaddr(sym):
     try:
         res = gdb.execute("ksymaddr-remote --quiet --no-pager --exact {:s}".format(sym), to_string=True)
         return int(res.split()[0], 16)
+    except Exception:
+        return None
+
+
+def get_ksymaddr_symbol(addr):
+    try:
+        res = gdb.execute("ksymaddr-remote --quiet --no-pager {:#x}".format(addr), to_string=True)
+        res = res.splitlines()[-1]
+        return res.split()[2]
     except Exception:
         return None
 
@@ -38399,19 +38409,36 @@ class KernelAddressHeuristicFinder:
             return sys_call_table
 
         # plan 2 (available v3.7-rc1 or later)
-        el0_svc = get_ksymaddr("do_el0_svc") or get_ksymaddr("el0_svc")
+        el0_svc = get_ksymaddr("do_el0_svc") # 5.6-rc1 <= kernel
+        if el0_svc is None:
+            el0_svc = get_ksymaddr("el0_svc_handler") # 4.18-rc1 <= kernel < 5.6-rc1
+        if el0_svc is None:
+            el0_svc = get_ksymaddr("el0_svc") # 3.7-rc1 <= kernel < 4.18-rc1
         if el0_svc:
-            res = gdb.execute("x/20i {:#x}".format(el0_svc), to_string=True)
-            base = None
-            for line in res.splitlines():
-                if base is None:
-                    m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
-                    if m:
-                        base = int(m.group(1), 16)
-                else:
-                    m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
-                    if m:
-                        return base + int(m.group(1), 16)
+            res = gdb.execute("x/100i {:#x}".format(el0_svc), to_string=True)
+            adrp = None
+            add = None
+            for i, line in enumerate(res.splitlines()):
+                m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
+                if m:
+                    adrp = int(m.group(1), 16)
+                    adrp_idx = i
+                m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
+                if m:
+                    add = int(m.group(1), 16)
+                    add_idx = i
+                if adrp and add:
+                    if abs(adrp_idx - add_idx) > 2:
+                        if adrp_idx < add_idx:
+                            adrp = None
+                        else:
+                            add = None
+                        continue
+                    candidate = adrp + add
+                    adrp = None
+                    add = None
+                    if is_valid_addr(candidate) and is_valid_addr(read_int_from_memory(candidate)):
+                        return candidate
         return None
 
     @staticmethod
@@ -38425,19 +38452,36 @@ class KernelAddressHeuristicFinder:
             return sys_call_table
 
         # plan 2 (available v3.7-rc1 or later)
-        el0_svc_compat = get_ksymaddr("do_el0_svc_compat") or get_ksymaddr("el0_svc_compat")
+        el0_svc_compat = get_ksymaddr("do_el0_svc_compat") # 5.6-rc1 <= kernel
+        if el0_svc_compat is None:
+            el0_svc_compat = get_ksymaddr("el0_svc_compat_handler") # 4.18-rc1 <= kernel < 5.6-rc1
+        if el0_svc_compat is None:
+            el0_svc_compat = get_ksymaddr("el0_svc_compat") # 3.7-rc1 <= kenrel < 4.18-rc1
         if el0_svc_compat:
-            res = gdb.execute("x/20i {:#x}".format(el0_svc_compat), to_string=True)
-            base = None
-            for line in res.splitlines():
-                if base is None:
-                    m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
-                    if m:
-                        base = int(m.group(1), 16)
-                else:
-                    m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
-                    if m:
-                        return base + int(m.group(1), 16)
+            res = gdb.execute("x/100i {:#x}".format(el0_svc_compat), to_string=True)
+            adrp = None
+            add = None
+            for i, line in enumerate(res.splitlines()):
+                m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
+                if m:
+                    adrp = int(m.group(1), 16)
+                    adrp_idx = i
+                m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
+                if m:
+                    add = int(m.group(1), 16)
+                    add_idx = i
+                if adrp and add:
+                    if abs(adrp_idx - add_idx) > 2:
+                        if adrp_idx < add_idx:
+                            adrp = None
+                        else:
+                            add = None
+                        continue
+                    candidate = adrp + add
+                    adrp = None
+                    add = None
+                    if is_valid_addr(candidate) and is_valid_addr(read_int_from_memory(candidate)):
+                        return candidate
         return None
 
     @staticmethod
@@ -41791,14 +41835,16 @@ class SyscallTableViewCommand(GenericCommand):
         self.cached_table = {}
         return
 
-    def syscall_table_view(self, tag, sys_call_table_addr, syscall_list, nr_base=0):
+    def syscall_table_view(self, _tag, sys_call_table_addr, syscall_list, nr_base=0):
         if sys_call_table_addr is None:
             if not self.quiet:
                 self.out.append("{} {}".format(Color.colorify("[+]", "bold red"), "Not found symbol"))
             return
 
         if safe_parse_and_eval("_stext"):
-            tag = "symboled" + tag
+            tag = "symboled" + _tag
+        else:
+            tag = _tag
 
         if tag not in self.cached_table:
             # scan
@@ -41806,17 +41852,21 @@ class SyscallTableViewCommand(GenericCommand):
             i = 0
             while True:
                 addr = sys_call_table_addr + i * current_arch.ptrsize
-                try:
-                    syscall_function_addr = read_int_from_memory(addr)
-                except gdb.MemoryError:
+                if not is_valid_addr(addr):
                     break
-                if is_x86() and syscall_function_addr % 0x10: # should be aligned
+                syscall_function_addr = read_int_from_memory(addr)
+                if (is_arm32() or is_arm64()) and syscall_function_addr % 4: # should be aligned
                     break
-                elif (is_arm32() or is_arm64()) and syscall_function_addr % 4: # should be aligned
+                if not is_valid_addr(syscall_function_addr): # if entry is valid, no error
                     break
-                try:
-                    read_int_from_memory(syscall_function_addr) # if entry is valid, no error
-                except gdb.MemoryError:
+
+                # check symbol
+                symbol = get_symbol_string(syscall_function_addr)
+                if symbol is None:
+                    symbol = get_ksymaddr_symbol(syscall_function_addr)
+                    if symbol is None:
+                        symbol = " <NO_SYMBOL>"
+                elif "+" in symbol:
                     break
 
                 # check if valid syscall
@@ -41833,14 +41883,20 @@ class SyscallTableViewCommand(GenericCommand):
                     if len(insn.operands) == 2 and insn.operands[-1] == '0xffffffda' and \
                        len(insn2.operands) == 0 and insn2.mnemonic == 'ret':
                         is_valid = False
-                symbol = get_symbol_string(syscall_function_addr, nosymbol_string=" <NO_SYMBOL>")
+                if is_arm64():
+                    if len(insn.operands) == 2 and insn.operands[-1].split("\t")[0].strip() == '#0xffffffffffffffda':
+                        is_valid = False
+                    if insn.mnemonic == 'bti' and \
+                       len(insn2.operands) == 2 and insn2.operands[-1].split("\t")[0].strip() == '#0xffffffffffffffda':
+                        is_valid = False
+
                 self.cached_table[tag].append([i, addr, syscall_function_addr, symbol, is_valid])
                 i += 1
 
         # print legend
         if not self.quiet:
-            fmt = "{:5s} {:<7s} {:<30s} {:18s}: {:18s} {:s}"
-            legend = ["Index", "IsValid", "Syscall Name", "Table Address", "Function Address", "Symbol"]
+            fmt = "{:8s} {:5s} {:7s} {:30s} {:18s}: {:18s} {:s}"
+            legend = ["Tag", "Index", "IsValid", "Syscall Name", "Table Address", "Function Address", "Symbol"]
             self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
         # for duplication check
@@ -41855,11 +41911,11 @@ class SyscallTableViewCommand(GenericCommand):
             else:
                 expected_name = "<None>"
 
-            fmt = "[{:03d}] {:<7s} {:<30s} {:#018x}: {:#018x}{:s}"
+            fmt = "{:8s} [{:03d}] {:7s} {:30s} {:#018x}: {:#018x}{:s}"
             if seen_count[syscall_function_addr] == 1 and is_valid: # valid entry
-                msg = fmt.format(i, "valid", expected_name, addr, syscall_function_addr, symbol)
+                msg = fmt.format(_tag, i, "valid", expected_name, addr, syscall_function_addr, symbol)
             if seen_count[syscall_function_addr] > 1 or not is_valid: # invalid entry
-                msg = fmt.format(i, "invalid", expected_name, addr, syscall_function_addr, symbol)
+                msg = fmt.format(_tag, i, "invalid", expected_name, addr, syscall_function_addr, symbol)
                 msg = Color.grayify(msg)
 
             if not self.filter:
