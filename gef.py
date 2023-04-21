@@ -8399,10 +8399,11 @@ def hook_stop_handler(event):
     global __gef_check_once__
     if __gef_check_once__:
         # Message if file not loaded.
-        response = gdb.execute('info files', to_string=True)
-        if "Symbols from" not in response:
-            err("Missing info about architecture. Please set: `file /path/to/target_binary`")
-            err("Some architectures may not be automatically recognized. Set it manually with `set architecture YOUR_ARCH`.")
+        if not is_qemu_system():
+            response = gdb.execute('info files', to_string=True)
+            if "Symbols from" not in response:
+                err("Missing info about architecture. Please set: `file /path/to/target_binary`")
+                err("Some architectures may not be automatically recognized. Set it manually with `set architecture YOUR_ARCH`.")
 
         # Ubuntu 20.04 and earlier seem to have a bug (?) in libpython
         # that prevents SIGINTs with no destination from being handled correctly at `c` command.
