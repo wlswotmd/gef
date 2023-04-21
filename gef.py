@@ -44639,17 +44639,13 @@ class VmlinuxToElfApplyCommand(GenericCommand):
         gef_print("kernel rodata: {:#x} ({:#x} bytes)".format(kinfo.krobase, kinfo.krobase_size))
         gef_print("kernel data:   {:#x} ({:#x} bytes)".format(kinfo.krwbase, kinfo.krwbase_size))
 
-        # resolve area
-        area = []
-        for addr in kinfo.maps:
-            if addr[0] < kinfo.kbase:
-                continue
-            if addr[0] >= kinfo.krwbase:
-                continue
-            area.append([addr[0], addr[0] + addr[1]])
-        if area == []:
-            err("area is blank")
-            return None
+        # rodata size detection may be inaccurate on kernels with RWX attribute regions.
+        # Since they tend to be very large, we put a size cap on the rodata to make it faster.
+        if kinfo.rwx:
+            # The number 0x400000 has no basis.
+            fixed_krobase_size = min(0x400000, kinfo.krobase_size)
+        else:
+            fixed_krobase_size = kinfo.krobase_size
 
         # check if it can be reused
         if not force and os.path.exists(symboled_vmlinux_file):
@@ -44657,7 +44653,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
             data = ''.join([chr(x) for x in data])
             r1 = re.findall(r"(Linux version (?:\d+\.[\d.]*\d)[ -~]+)", data)
 
-            data = read_memory(kinfo.krobase, kinfo.krobase_size)
+            data = read_memory(kinfo.krobase, fixed_krobase_size)
             data = ''.join([chr(x) for x in data])
             r2 = re.findall(r"(Linux version (?:\d+\.[\d.]*\d)[ -~]+)", data)
 
@@ -44672,29 +44668,35 @@ class VmlinuxToElfApplyCommand(GenericCommand):
                 info("Remove old {}".format(dumped_mem_file))
                 os.unlink(dumped_mem_file)
 
-            # dump
+            # dump text
             info("Dumping memory")
-            old_end_addr = None
-            for i, (start_addr, end_addr) in enumerate(area):
-                if i == 0:
-                    gef_print("Dumping area:     {:#x} - {:#x}".format(start_addr, end_addr))
-                    try:
-                        gdb.execute("dump memory {} {:#x} {:#x}".format(dumped_mem_file, start_addr, end_addr), to_string=True)
-                    except gdb.MemoryError:
-                        err("Memory read error. Make sure the context is in supervisor mode / Ring-0")
-                        return None
-                else:
-                    size_diff = start_addr - old_end_addr
-                    if size_diff:
-                        gef_print("Non-mapping area: {:#x} - {:#x} (ZERO fill)".format(old_end_addr, start_addr))
-                        open(dumped_mem_file, "a").write("\0" * size_diff)
-                    gef_print("Dumping area:     {:#x} - {:#x}".format(start_addr, end_addr))
-                    try:
-                        gdb.execute("append memory {} {:#x} {:#x}".format(dumped_mem_file, start_addr, end_addr), to_string=True)
-                    except gdb.MemoryError:
-                        err("Memory read error. Make sure the context is in supervisor mode / Ring-0")
-                        return None
-                old_end_addr = end_addr
+
+            start = kinfo.kbase
+            end = start + kinfo.kbase_size
+            gef_print("Dumping .text area:   {:#x} - {:#x}".format(start, end))
+            try:
+                gdb.execute("dump memory {} {:#x} {:#x}".format(dumped_mem_file, start, end), to_string=True)
+            except gdb.MemoryError:
+                err("Memory read error. Make sure the context is in supervisor mode / Ring-0")
+                return None
+
+            # dump sparse
+            kbase_end = kinfo.kbase + kinfo.kbase_size
+            unmapped_size = kinfo.krobase - kbase_end
+            if unmapped_size:
+                gef_print("Non-mapping area:     {:#x} - {:#x} (ZERO fill)".format(kbase_end, kinfo.krobase))
+                open(dumped_mem_file, "a").write("\0" * unmapped_size)
+
+            # dump rodata
+            start = kinfo.krobase
+            end = start + fixed_krobase_size
+            gef_print("Dumping .rodata area: {:#x} - {:#x}".format(start, end))
+            try:
+                gdb.execute("append memory {} {:#x} {:#x}".format(dumped_mem_file, start, end), to_string=True)
+            except gdb.MemoryError:
+                err("Memory read error. Make sure the context is in supervisor mode / Ring-0")
+                return None
+
             gef_print("Dumped to {}".format(dumped_mem_file))
         else:
             # reuse by default
