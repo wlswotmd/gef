@@ -39822,6 +39822,7 @@ class KernelbaseCommand(GenericCommand):
             "krobase_size": None,
             "krwbase": None,
             "krwbase_size": None,
+            "rwx": False,
             "has_none": False,
         }
         Kinfo = collections.namedtuple("Kinfo", dic.keys())
@@ -39851,7 +39852,7 @@ class KernelbaseCommand(GenericCommand):
                 dic["has_none"] = None in dic.values()
                 return Kinfo(*dic.values())
 
-        # search kernel RO base - logic 1
+        # search kernel RO base
         for i, (vaddr, size, perm) in enumerate(maps_after_kbase):
             if perm == "R--":
                 if dic["krobase"] is None:
@@ -39865,55 +39866,51 @@ class KernelbaseCommand(GenericCommand):
                 else:
                     break
 
-        # search kernel RO base - logic 2
-        if dic["krobase"] is None:
+        # search kernel RW base
+        if dic["krobase"] is not None:
+            rw = None
+            for vaddr, size, perm in maps_after_krobase:
+                if perm == "RW-":
+                    if rw is None:
+                        if size > 0x1000:
+                            rw = [vaddr, size]
+                    elif rw[0] + rw[1] == vaddr:
+                        rw = [rw[0], rw[1] + size] # merge contiguous region
+            if rw:
+                dic["krwbase"] = rw[0]
+                dic["krwbase_size"] = rw[1]
+
+        # search kernel RO/RW base for old kernel
+        else:
+            dic["rwx"] = True
+            # Even if it is wrong, it is about to misdetect the front to some extent.
+            # Since ksymaddr-remote knows the exact value, we don't ask for accuracy any further.
+
             # maybe old kernel (no-NX)
             # Detected kbase(R-X) range already includes rodata, so use heuristic search
-            #    [  .text  ] <- maybe .text is larger than 0x3000 (it fails in certain cases if 0x2000)
+            #    [  .text  ] <- maybe .text is larger than 0x8000 (it fails in certain cases if 0x7000)
             #    [  .text  ]
             #    [  .text  ]
             #    [  .text  ] <- end of this area has [0x00, 0x00, 0x00, ...]
             #    [  .rodata  ]
             #    [  .rodata  ]
             #    [  .rodata  ]
-            start = dic["kbase"] + gef_getpagesize() * 3
+            start = dic["kbase"] + gef_getpagesize() * 8
             end = dic["kbase"] + dic["kbase_size"]
+            block_size = 0x20
+            zero_data = b"\0" * block_size
             for addr in range(start, end, gef_getpagesize()):
-                data = read_memory(addr - 0x20, 0x20)
-                if data == b"\0" * 0x20:
+                data = read_memory(addr - block_size, block_size)
+                if data == zero_data:
                     dic["krobase"] = addr
-                    dic["krobase_size"] = end - dic["krobase"]
+                    dic["krobase_size"] = end - addr
                     dic["kbase_size"] -= dic["krobase_size"]
-                    maps_after_krobase = maps_after_kbase
+                    dic["krwbase"] = 0
+                    dic["krwbase_size"] = 0
                     break
             else:
                 dic["has_none"] = None in dic.values()
                 return Kinfo(*dic.values())
-
-        # search kernel RW base
-        def search_perm(target_perm):
-            rw = None
-            for vaddr, size, perm in maps_after_krobase:
-                if perm == target_perm:
-                    if rw is None:
-                        if size > 0x1000:
-                            rw = [vaddr, size]
-                    elif rw[0] + rw[1] == vaddr:
-                        rw = [rw[0], rw[1] + size] # merge contiguous region
-            return rw
-
-        res = search_perm("RW-")
-        if res:
-            dic["krwbase"] = res[0]
-            dic["krwbase_size"] = res[1]
-        else:
-            res = search_perm("RWX") # old x86/arm kernel
-            if res:
-                dic["krwbase"] = res[0]
-                dic["krwbase_size"] = res[1]
-            else:
-                # Not found
-                pass
 
         dic["has_none"] = None in dic.values()
         cached_kernel_info = Kinfo(*dic.values())
@@ -44222,7 +44219,6 @@ class KsymaddrRemoteCommand(GenericCommand):
             if len(candidates_offsets_followed_with_ascii) == 1:
                 candidates_offsets = candidates_offsets_followed_with_ascii
             else:
-                self.quiet_err('{:d} candidates for kallsyms_token_table in kernel image'.format(len(candidates_offsets)))
                 return False
         position = candidates_offsets[0]
 
@@ -44569,13 +44565,33 @@ class KsymaddrRemoteCommand(GenericCommand):
             if kinfo.has_none:
                 self.quiet_err("Failed to resolve")
                 return
-            self.krobase = kinfo.krobase
-            self.krobase_size = kinfo.krobase_size
 
-            self.kernel_img = read_memory(self.krobase, self.krobase_size)
-            ret = self.initialize()
-            if not ret:
-                return
+            if kinfo.rwx:
+                # Older kernels with the RWX attribute don't trust krobase.
+                # Since krobase can be very large, the range of krobase is gradually increased while searching.
+                # This alone can speed things up several times.
+                self.krobase = kinfo.krobase
+                base_size = 0x100000
+                step = 0x100000
+                for candidate_size in range(base_size, kinfo.krobase_size, step):
+                    self.krobase_size = candidate_size
+                    self.kernel_img = read_memory(self.krobase, self.krobase_size)
+                    ret = self.initialize()
+                    if ret:
+                        # found
+                        break
+                else:
+                    # not found
+                    return
+            else:
+                # Modern kernels only probe once because krobase is trustworthy.
+                self.krobase = kinfo.krobase
+                self.krobase_size = kinfo.krobase_size
+                self.kernel_img = read_memory(self.krobase, self.krobase_size)
+                ret = self.initialize()
+                if not ret:
+                    # not found
+                    return
 
             self.resolve_kallsyms()
             self.kernel_img = None
