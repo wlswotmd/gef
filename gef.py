@@ -39043,6 +39043,14 @@ class KernelAddressHeuristicFinder:
                         m = re.search(r"movt.*;\s*(0x\S+)", line)
                         if m:
                             return base + (int(m.group(1), 16) << 16)
+                for line in res.splitlines():
+                    m = re.search(r"ldr\s+r0,.*;\s*(0x\S+)", line)
+                    if m:
+                        addr = int(m.group(1), 16)
+                        try:
+                            return read_int_from_memory(addr)
+                        except Exception:
+                            pass
         return None
 
     @staticmethod
@@ -41483,9 +41491,8 @@ class KernelParamSysctlCommand(GenericCommand):
                 struct ctl_table_set *set;
                 struct ctl_dir *parent;
                 struct ctl_node *node;
-                struct hlist_head {
-                    struct hlist_node *first;
-                } inodes;                        // 4.11-rc1 ~
+                struct hlist_head inodes;                 // 4.12.2 <= kernel
+                struct list_head inodes;                  // 4.11-rc1 <= kenrel < 4.12.2
             } header;
             struct rb_root {
                 struct rb_node *rb_node;
@@ -41511,9 +41518,17 @@ class KernelParamSysctlCommand(GenericCommand):
         };
         """
 
+        kversion = KernelVersionCommand.kernel_version()
+
         if is_64bit():
             # struct ctl_dir
-            self.OFFSET_rb_node = 0x50
+            if kversion.major < 3 or (kversion.major == 4 and kversion.minor < 11):
+                self.OFFSET_rb_node = 0x48
+            elif (kversion.major == 4 and kversion.minor < 12) or \
+                 (kversion.major == 4 and kversion.minor == 12 and kversion.patch < 2):
+                self.OFFSET_rb_node = 0x58
+            else:
+                self.OFFSET_rb_node = 0x50
             self.OFFSET_parent = 0x38
             # struct ctl_table
             self.OFFSET_maxlen = 0x10
@@ -41522,7 +41537,13 @@ class KernelParamSysctlCommand(GenericCommand):
             self.SIZEOF_ctl_table = 0x40
         else:
             # struct ctl_dir
-            self.OFFSET_rb_node = 0x2c
+            if kversion.major < 3 or (kversion.major == 4 and kversion.minor < 11):
+                self.OFFSET_rb_node = 0x28
+            elif (kversion.major == 4 and kversion.minor < 12) or \
+                 (kversion.major == 4 and kversion.minor == 12 and kversion.patch < 2):
+                self.OFFSET_rb_node = 0x30
+            else:
+                self.OFFSET_rb_node = 0x2c
             self.OFFSET_parent = 0x20
             # struct ctl_table
             self.OFFSET_maxlen = 0x8
@@ -41586,12 +41607,6 @@ class KernelParamSysctlCommand(GenericCommand):
 
         root_ctl_dir = sysctl_table_root + current_arch.ptrsize
         root_rb_node = read_int_from_memory(root_ctl_dir + self.OFFSET_rb_node)
-
-        # fix for old kernel
-        if not is_valid_addr(root_rb_node):
-            # ctl_dir.header.inodes does not exist
-            self.OFFSET_rb_node -= current_arch.ptrsize
-            root_rb_node = read_int_from_memory(root_ctl_dir + self.OFFSET_rb_node)
 
         if not args.quiet:
             info("root_ctl_dir: {:#x}".format(root_ctl_dir))
