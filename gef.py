@@ -49423,14 +49423,16 @@ class PagewalkX64Command(PagewalkCommand):
             return x
 
         flags = []
-        if "NO_RW" in flag_info and "XD" in flag_info:
-            flags += ["R--"]
-        elif "NO_RW" in flag_info and "XD" not in flag_info:
-            flags += ["R-X"]
-        elif "NO_RW" not in flag_info and "XD" in flag_info:
-            flags += ["RW-"]
-        elif "NO_RW" not in flag_info and "XD" not in flag_info:
-            flags += ["RWX"]
+        if "NO_RW" in flag_info:
+            if "XD" in flag_info:
+                flags += ["R--"]
+            else:
+                flags += ["R-X"]
+        else:
+            if "XD" in flag_info:
+                flags += ["RW-"]
+            else:
+                flags += ["RWX"]
         if "NO_US" in flag_info:
             flags += ["KERN"]
         else:
