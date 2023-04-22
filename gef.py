@@ -44947,6 +44947,408 @@ class SlabDumpCommand(GenericCommand):
 
 
 @register_command
+class SlobDumpCommand(GenericCommand):
+    """Dump slob freelist with kenrel memory scanning."""
+    _cmdline_ = "slob-dump"
+    _category_ = "08-b. Qemu-system Cooperation - Linux"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('cache_name', metavar='SLOB_CACHE_NAME', nargs='*', help='filter by specific slob cache name.')
+    parser.add_argument('--list', action='store_true', help='list up all slob cache names.')
+    parser.add_argument('--meta', action='store_true', help='display offset information.')
+    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} kmalloc-256  # dump kmalloc-256 kmem_cache and all freelists\n".format(_cmdline_)
+    _example_ += "{:s} --list       # list up slob cache names\n".format(_cmdline_)
+    _example_ += "\n"
+    _example_ += "Simplified SLOB structure:\n"
+    _example_ += "                         +-kmem_cache--+   +-kmem_cache--+   +-kmem_cache--+\n"
+    _example_ += "                         | object_size |   | object_size |   | object_size |\n"
+    _example_ += "                         | size        |   | size        |   | size        |\n"
+    _example_ += "                         | flags       |   | flags       |   | flags       |\n"
+    _example_ += "       +-slab_caches-+   | name        |   | name        |   | name        |\n"
+    _example_ += " ...<->| list_head   |<->| list_head   |<->| list_head   |<->| list_head   |<-> ...\n"
+    _example_ += "       +-------------+   +-------------+   +-------------+   +-------------+\n"
+    _example_ += "\n"
+    _example_ += "\n"
+    _example_ += "   +-free_slob_large--+              +-page----------+           +-page----------+\n"
+    _example_ += "   | list_head        |<---------+   |               |           |               |\n"
+    _example_ += "   +-free_slob_medium-+          |   | freelist      |-----+     | freelist      |\n"
+    _example_ += "   | list_head        |-->...    |   | units (total) |     |     | units (total) |\n"
+    _example_ += "   +-free_slob_small--+          +-->| list_head     |<----|---->| list_head     |<->...\n"
+    _example_ += "   | list_head        |-->...        +---------------+     |     +---------------+\n"
+    _example_ += "   +------------------+                                    |\n"
+    _example_ += "   small : size < 0x100                  +-----------------+\n"
+    _example_ += "   medium: 0x100 <= size < 0x400         |\n"
+    _example_ += "   large : 0x400 <= size < 0x1000        |   +-chunk-----+   +-chunk-----+\n"
+    _example_ += "                                         +-->| units     |-->| -offset   |-->...\n"
+    _example_ += "                                             | offset    |   +-----------+\n"
+    _example_ += "                                             +-----------+   (when units=1)\n"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        self.initialized = False
+        return
+
+    """
+    struct kmem_cache {
+        unsigned int object_size;
+        unsigned int size;
+        unsigned int align;
+        slab_flags_t flags;                      // unsigned int
+        unsigned int useroffset;                 // if 4.16-rc1 <= kernel
+        unsigned int usersize;                   // if 4.16-rc1 <= kernel
+        const char *name;
+        int refcount;
+        void (*ctor)(void *);
+        struct list_head list;
+    };
+
+    struct page {                                // if kernel < 4.18-rc1
+        unsigned long flags;
+        void *__unused_1;
+        void *freelist;
+        int units;
+        atomic_t refcount;                       // if kernel < 4.16-rc1
+        struct list_head lru;
+        ...
+    }
+
+    struct page {                                // if 4.18-rc1 <= kernel < 5.17-rc1
+        unsigned long flags;
+        struct list_head lru;
+        struct kmem_cache *__unused_1;
+        void *freelist;
+        void *__unused_2;
+        int units;
+        ...
+    }
+
+    struct slab {                                // if kernel >= 5.17-rc1
+        unsigned long __page_flags;
+        struct list_head slab_list;
+        void *__unused_1;
+        void *freelist
+        long units;
+        unsigned int __unused_2;
+    }
+    """
+
+    def init_offset(self, force=False):
+        if not force and self.initialized:
+            return True
+
+        # resolve slab_caches
+        self.slab_caches = KernelAddressHeuristicFinder.get_slab_caches()
+        if self.slab_caches is None:
+            if not self.quiet:
+                err("Failed to resolve `slab_caches`")
+            return False
+        else:
+            if not self.quiet:
+                info("slab_caches: {:#x}".format(self.slab_caches))
+
+        # resolve global freelists
+        self.free_slob_large = get_ksymaddr("free_slob_large")
+        if self.free_slob_large is None:
+            if not self.quiet:
+                err("Failed to resolve `free_slob_large`")
+            return False
+        else:
+            if not self.quiet:
+                info("free_slob_large: {:#x}".format(self.free_slob_large))
+
+        self.free_slob_medium = get_ksymaddr("free_slob_medium")
+        if self.free_slob_medium is None:
+            if not self.quiet:
+                err("Failed to resolve `free_slob_medium`")
+            return False
+        else:
+            if not self.quiet:
+                info("free_slob_medium: {:#x}".format(self.free_slob_medium))
+
+        self.free_slob_small = get_ksymaddr("free_slob_small")
+        if self.free_slob_small is None:
+            if not self.quiet:
+                err("Failed to resolve `free_slob_small`")
+            return False
+        else:
+            if not self.quiet:
+                info("free_slob_small: {:#x}".format(self.free_slob_small))
+
+        # offsetof(kmem_cache, list)
+        kversion = KernelVersionCommand.kernel_version()
+        if kversion.major < 4 or (kversion.major == 4 and kversion.minor < 16):
+            self.kmem_cache_offset_list = current_arch.ptrsize * 3 + 4 * 4
+        else:
+            self.kmem_cache_offset_list = current_arch.ptrsize * 3 + 4 * 6
+        if not self.quiet:
+            info("offsetof(kmem_cache, list): {:#x}".format(self.kmem_cache_offset_list))
+
+        # offsetof(kmem_cache, name)
+        self.kmem_cache_offset_name = self.kmem_cache_offset_list - current_arch.ptrsize * 3
+        if not self.quiet:
+            info("offsetof(kmem_cache, name): {:#x}".format(self.kmem_cache_offset_name))
+
+        # offsetof(kmem_cache, object_size)
+        self.kmem_cache_offset_object_size = 0
+        if not self.quiet:
+            info("offsetof(kmem_cache, object_size): {:#x}".format(self.kmem_cache_offset_object_size))
+
+        # offsetof(kmem_cache, size)
+        self.kmem_cache_offset_size = 4
+        if not self.quiet:
+            info("offsetof(kmem_cache, size): {:#x}".format(self.kmem_cache_offset_size))
+
+        # offsetof(kmem_cache, flags)
+        self.kmem_cache_offset_flags = 4 * 3
+        if not self.quiet:
+            info("offsetof(kmem_cache, flags): {:#x}".format(self.kmem_cache_offset_flags))
+
+        # offsetof(page, next)
+        kversion = KernelVersionCommand.kernel_version()
+        if kversion.major < 4 or (kversion.major == 4 and kversion.minor < 16):
+            self.page_offset_next = current_arch.ptrsize * 3 + 4 * 2
+        elif kversion.major == 4 and kversion.minor < 18:
+            self.page_offset_next = current_arch.ptrsize * 4
+        elif kversion.major < 5 or (kversion.major == 5 and kversion.minor < 17):
+            self.page_offset_next = current_arch.ptrsize
+        else:
+            self.page_offset_next = current_arch.ptrsize
+        if not self.quiet:
+            info("offsetof(page, next): {:#x}".format(self.page_offset_next))
+
+        # offsetof(page, freelist)
+        if kversion.major < 4 or (kversion.major == 4 and kversion.minor < 18):
+            self.page_offset_freelist = current_arch.ptrsize * 2
+        elif kversion.major < 5 or (kversion.major == 5 and kversion.minor < 17):
+            self.page_offset_freelist = current_arch.ptrsize * 4
+        else:
+            self.page_offset_freelist = current_arch.ptrsize * 4
+        if not self.quiet:
+            info("offsetof(page, freelist): {:#x}".format(self.page_offset_freelist))
+
+        # offsetof(page, units)
+        if kversion.major < 4 or (kversion.major == 4 and kversion.minor < 18):
+            self.page_offset_units = current_arch.ptrsize * 3
+        elif kversion.major < 5 or (kversion.major == 5 and kversion.minor < 17):
+            self.page_offset_freelist = current_arch.ptrsize * 6
+        else:
+            self.page_offset_freelist = current_arch.ptrsize * 5
+        if not self.quiet:
+            info("offsetof(page, units): {:#x}".format(self.page_offset_units))
+
+        self.initialized = True
+        return True
+
+    def get_flags_str(self, flags_value):
+        _flags = {
+            "__OBJECT_POISON":         0x80000000,
+            "__CMPXCHG_DOUBLE":        0x40000000,
+            "SLAB_SKIP_KFENCE":        0x20000000,
+            "SLAB_NO_USER_FLAGS":      0x10000000,
+            "SLAB_KASAN":              0x08000000,
+            "SLAB_ACCOUNT":            0x04000000,
+            "SLAB_FAILSLAB":           0x02000000,
+            "SLAB_NOTRACK":            0x01000000,
+            "SLAB_NOLEAKTRACE":        0x00800000,
+            "SLAB_DEBUG_OBJECTS":      0x00400000,
+            "SLAB_TRACE":              0x00200000,
+            "SLAB_MEM_SPREAD":         0x00100000,
+            "SLAB_TYPESAFE_BY_RCU":    0x00080000,
+            "SLAB_PANIC":              0x00040000,
+            "SLAB_RECLAIM_ACCOUNT":    0x00020000,
+            "SLAB_STORE_USER":         0x00010000,
+            "SLAB_CACHE_DMA32":        0x00008000,
+            "SLAB_CACHE_DMA":          0x00004000,
+            "SLAB_HWCACHE_ALIGN":      0x00002000,
+            "SLAB_KMALLOC":            0x00001000,
+            "SLAB_POISON":             0x00000800,
+            "SLAB_RED_ZONE":           0x00000400,
+            "SLAB_DEBUG_INITIAL":      0x00000200, # kernel < v2.6.22
+            "SLAB_CONSISTENCY_CHECKS": 0x00000100,
+        }
+        flags = []
+        for k, v in _flags.items():
+            if flags_value & v:
+                flags.append(k)
+
+        flags_str = " | ".join(flags)
+        if flags_str == "":
+            flags_str = "none"
+        return flags_str
+
+    def get_next_kmem_cache(self, addr, point_to_base=True):
+        if point_to_base:
+            addr += self.kmem_cache_offset_list
+        return read_int_from_memory(addr) - self.kmem_cache_offset_list
+
+    def get_name(self, addr):
+        name_addr = read_int_from_memory(addr + self.kmem_cache_offset_name)
+        return read_cstring_from_memory(name_addr)
+
+    def walk_freelist(self, head, page):
+        freelist = []
+        current = head
+        while True:
+            base = current & gef_getpagesize_mask()
+            units = struct.unpack("<h", read_memory(current, 2))[0]
+            if units < 0:
+                next = -units
+                units = 1
+            else:
+                next = struct.unpack("<h", read_memory(current + 2, 2))[0]
+            freelist.append([current, units])
+            current = base + next * 2
+            if (current & 0xfff) == 0:
+                break
+        return freelist
+
+    def walk_page_freelist(self, head):
+        seen = [head]
+        page_freelist = []
+        current = read_int_from_memory(head)
+        while True:
+            seen.append(current)
+            page = {}
+            page['address'] = current - self.page_offset_next
+            page['units'] = u32(read_memory(page['address'] + self.page_offset_units, 4))
+            freelist_head = read_int_from_memory(page['address'] + self.page_offset_freelist)
+            page['virt_addr'] = freelist_head & gef_getpagesize_mask()
+            page['num_pages'] = 1
+            page['freelist'] = self.walk_freelist(freelist_head, page)
+            page['next'] = next = read_int_from_memory(current)
+            page_freelist.append(page)
+            if next in seen:
+                break
+            current = next
+        return page_freelist
+
+    def walk_caches(self, target_names):
+        current_kmem_cache = self.get_next_kmem_cache(self.slab_caches, point_to_base=False)
+        parsed_caches = [{'name': 'slab_caches', 'next': current_kmem_cache}]
+
+        while current_kmem_cache + self.kmem_cache_offset_list != self.slab_caches:
+            kmem_cache = {}
+
+            # parse member
+            kmem_cache['name'] = self.get_name(current_kmem_cache)
+            if target_names != [] and not kmem_cache['name'] in target_names:
+                current_kmem_cache = self.get_next_kmem_cache(current_kmem_cache)
+                continue
+            kmem_cache['address'] = current_kmem_cache
+            kmem_cache['flags'] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_flags, 4))
+            kmem_cache['flags_str'] = self.get_flags_str(kmem_cache['flags'])
+            kmem_cache['size'] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_size, 4))
+            kmem_cache['object_size'] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_object_size, 4))
+
+            # goto next
+            kmem_cache['next'] = current_kmem_cache = self.get_next_kmem_cache(current_kmem_cache)
+            parsed_caches.append(kmem_cache)
+
+        parsed_freelist = {}
+        parsed_freelist['large'] = self.walk_page_freelist(self.free_slob_large)
+        parsed_freelist['medium'] = self.walk_page_freelist(self.free_slob_medium)
+        parsed_freelist['small'] = self.walk_page_freelist(self.free_slob_small)
+
+        return parsed_caches, parsed_freelist
+
+    def dump_freelist(self, tag, page_freelist):
+        self.out.append(titlify(tag))
+        self.out.append('{:s} @ {:#x}'.format(tag, getattr(self, tag)))
+
+        for page in page_freelist:
+            self.out.append("")
+            self.out.append('  page: {:#x}'.format(page['address']))
+            self.out.append('    virtual address: {:s}'.format(Color.boldify("{:#x}".format(page['virt_addr']))))
+            self.out.append('    num pages: {:d}'.format(page['num_pages']))
+            self.out.append('    total units: {:#x}'.format(page['units']))
+            for i, (chunk, units) in enumerate(page['freelist']):
+                msg = Color.colorify("{:#x}".format(chunk), "bold yellow")
+                self.out.append('    {:9s} {:s} (units: {:#x}, size: {:#x})'.format("freelist:" if i == 0 else "", msg, units, units * 2))
+            self.out.append('    next: {:#x}'.format(page['next']))
+        return
+
+    def dump_caches(self, target_names, parsed_caches, parsed_freelist):
+        self.out.append('slab_caches @ {:#x}'.format(self.slab_caches))
+        for kmem_cache in parsed_caches[1:]:
+            if target_names != [] and not kmem_cache['name'] in target_names:
+                continue
+            self.out.append("")
+            self.out.append('  kmem_cache: {:#x}'.format(kmem_cache['address']))
+            self.out.append('    name: {:s}'.format(Color.boldify(kmem_cache['name'])))
+            self.out.append('    flags: {:#x} ({:s})'.format(kmem_cache['flags'], kmem_cache['flags_str']))
+            object_size_s = Color.colorify("{:#x}".format(kmem_cache['object_size']), "bold pink")
+            self.out.append('    object size: {:s} (chunk size: {:#x})'.format(object_size_s, kmem_cache['size']))
+            self.out.append('    next: {:#x}'.format(kmem_cache['next']))
+
+        self.dump_freelist("free_slob_large", parsed_freelist['large'])
+        self.dump_freelist("free_slob_medium", parsed_freelist['medium'])
+        self.dump_freelist("free_slob_small", parsed_freelist['small'])
+        return
+
+    def dump_names(self, parsed_caches):
+        if not self.quiet:
+            fmt = "{:<30s}: {:<30s}: {:30s} {:20s}"
+            legend = ["Object Size", "Chunk Size", "Name", "kmem_cache"]
+            self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+        for kmem_cache in sorted(parsed_caches[1:], key=lambda x: x['object_size']):
+            fmt = "{:8d} byte ({:#9x} byte): {:8d} byte ({:#9x} byte): {:30s} {:#x}"
+            objsz = kmem_cache['object_size']
+            chunksz = kmem_cache['size']
+            self.out.append(fmt.format(objsz, objsz, chunksz, chunksz, kmem_cache['name'], kmem_cache['address']))
+        return
+
+    def slobwalk(self, target_names):
+        if self.init_offset(force=self.meta) is False:
+            if not self.quiet:
+                err("Initialize failed")
+            return
+
+        if self.meta:
+            return
+
+        if self.listup:
+            parsed_caches, _ = self.walk_caches(target_names)
+            self.dump_names(parsed_caches)
+            return
+
+        parsed_caches, parsed_freelist = self.walk_caches(target_names)
+        self.dump_caches(target_names, parsed_caches, parsed_freelist)
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_qemu_system
+    @only_if_in_kernel
+    @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        self.listup = args.list
+        self.meta = args.meta
+        self.quiet = args.quiet
+
+        if not self.quiet:
+            info("Wait for memory scan")
+
+        r = gdb.execute("ksymaddr-remote --quiet --no-pager slob_", to_string=True)
+        if not r:
+            if not self.quiet:
+                err("Unsupported SLUB, SLAB")
+            return
+
+        self.maps = None
+        self.out = []
+        self.slobwalk(args.cache_name)
+        if self.out:
+            gef_print('\n'.join(self.out), less=not args.no_pager)
+        return
+
+
+@register_command
 class KsymaddrRemoteCommand(GenericCommand):
     """Solve kernel symbols from kallsyms table using kenrel memory scanning."""
     # Thanks to https://github.com/marin-m/vmlinux-to-elf

@@ -104,19 +104,17 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * Once you get symboled vmlinux file, you can reuse and apply it automatically even after rebooting qemu-system.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmlinux-to-elf-apply2.png)
 * `slub-dump`: dumps slub free-list (heuristic).
-    * Original code: [salt](https://github.com/PaoloMonti42/salt)
-    * Supported on x64/x86/ARM64/ARM + SLUB.
-    * Supported on both kASLR is enabled or not.
+    * Supported on x64/x86/ARM64/ARM + SLUB + no-symbol + kASLR.
     * Supported on both `CONFIG_SLAB_FREELIST_HARDENED` is `y` or `n`.
-    * Supported on both the vmlinux symbol exists or not.
-    * It supports to dump partial pages (`-v`/`--verbose`/`--partial`) and NUMA node pages (`-vv`/`--vverbose`/`--node`).
+    * It supports to dump partial pages (`-v`) and NUMA node pages (`-vv`).
     * Since `page_to_virt` is difficult to implement, it will heuristically determine the virtual address from the freelist.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slub-dump.png)
 * `slab-dump`: dumps slab free-list (heuristic).
-    * Supported on x64 + SLAB.
-    * Supported on both kASLR is enabled or not.
-    * Supported on both the vmlinux symbol exists or not.
+    * Supported on x64 + SLAB + no-symbol + kASLR.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slab-dump.png)
+* `slob-dump`: dumps slob free-list (heuristic).
+    * Supported on x64 + SLOB + no-symbol + kASLR.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slob-dump.png)
 * `kbase`: displays the kernel base address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kbase.png)
 * `kversion`: displays the debugged kernel version.
