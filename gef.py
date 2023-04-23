@@ -7014,7 +7014,7 @@ def read_memory(addr, length):
         except Exception:
             pass
 
-    # Don't include it in a try-cach, as we might expect a memory error on read_memory.
+    # Don't include it in a try-catch, as we might expect a memory error on read_memory.
     return gdb.selected_inferior().read_memory(addr, length).tobytes()
 
 
@@ -48769,7 +48769,7 @@ class CpuidCommand(GenericCommand):
 
     _example_ = "{:s}\n".format(_cmdline_)
     _example_ += "\n"
-    _example_ += "DISABLE `-enbale-kvm` option for qemu-system; This command will be aborted if the option is set"
+    _example_ += "DISABLE `-enable-kvm` option for qemu-system; This command will be aborted if the option is set"
 
     def get_state(self, code_len):
         d = {}
@@ -49657,7 +49657,7 @@ class MsrCommand(GenericCommand):
     _example_ = "{:s} 0xc0000080              # rcx value\n".format(_cmdline_)
     _example_ += "{:s} MSR_EFER                # another valid format\n".format(_cmdline_)
     _example_ += "\n"
-    _example_ += "DISABLE `-enbale-kvm` option for qemu-system; This command will be aborted if the option is set"
+    _example_ += "DISABLE `-enable-kvm` option for qemu-system; This command will be aborted if the option is set"
 
     msr_table = [
         ["MSR_EFER",                         0xc0000080, "Extended feature register"],
