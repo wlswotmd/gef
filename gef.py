@@ -1598,11 +1598,11 @@ class GlibcArena:
         addr = Color.boldify("{:#x}".format(self.__addr))
         top = Color.boldify("{:#x}".format(self.top))
         last_remainder = Color.boldify("{:#x}".format(self.last_remainder))
-        next_ = Color.boldify("{:#x}".format(self.n))
+        next = Color.boldify("{:#x}".format(self.n))
         next_free = Color.boldify("{:#x}".format(self.nfree))
         sysmem = Color.boldify("{:#x}".format(self.sysmem))
         fmt = "{:s}(addr={:s}, heap_base={:s}, top={:s}, last_remainder={:s}, next={:s}, next_free={:s}, system_mem={:s})"
-        return fmt.format(arena, addr, heap_base, top, last_remainder, next_, next_free, sysmem)
+        return fmt.format(arena, addr, heap_base, top, last_remainder, next, next_free, sysmem)
 
     def tcache_list(self):
         if get_libc_version() < (2, 26):
@@ -19360,9 +19360,9 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
             f.close()
             info("Found {} section".format(section_name))
 
-            _dic = {"name": section_name, "offset": s.sh_offset, "data": data}
-            Section = collections.namedtuple(section_name.lstrip("."), _dic.keys())
-            return Section(*_dic.values())
+            dic = {"name": section_name, "offset": s.sh_offset, "data": data}
+            Section = collections.namedtuple(section_name.lstrip("."), dic.keys())
+            return Section(*dic.values())
         err("Not found {} section".format(section_name))
         return None
 
@@ -19975,7 +19975,7 @@ class ContextCommand(GenericCommand):
                 code = ["$" + x if x.isalpha() or re.match(r"r\d+d?", x) else x for x in code]
                 code = ''.join(code)
                 # $rip/$eip points next instruction
-                code_orig, code = code, code.replace("$rip", f"$rip+{codesize:#x}")
+                code_orig, code = code, code.replace("$rip", "$rip+{:#x}".format(codesize))
 
             elif is_arm32():
                 # add "$" to resiter
@@ -19988,7 +19988,7 @@ class ContextCommand(GenericCommand):
                     code = code[:-2] + ["(" + code[-2] + code[-1] + ")"]
                 code = '+'.join(code)
                 # $pc points next next instruction
-                code_orig, code = code, code.replace("$pc", f"$pc+{codesize*2:#x}")
+                code_orig, code = code, code.replace("$pc", "$pc+{:#x}".format(codesize * 2))
 
             elif is_arm64():
                 # add "$" to resiter
@@ -20006,7 +20006,7 @@ class ContextCommand(GenericCommand):
                     code = code[:-2] + ["(" + code[-2] + code[-1] + ")"]
                 code = '+'.join(code)
                 # $pc points next next instruction
-                code_orig, code = code, code.replace("$pc", f"$pc+{codesize*2:#x}")
+                code_orig, code = code, code.replace("$pc", "$pc+{:#x}".format(codesize * 2))
 
             # print
             try:
@@ -20015,8 +20015,8 @@ class ContextCommand(GenericCommand):
             except Exception:
                 # some binary fails to resolve "(long)"
                 addr = parse_address(code_orig)
-            self.context_title(f"memory access: {code_orig} = {addr:#x}")
-            gdb.execute(f"telescope {addr:#x} 4 --no-pager")
+            self.context_title("memory access: {:s} = {:#x}".format(code_orig, addr))
+            gdb.execute("telescope {:#x} 4 --no-pager".format(addr))
         return
 
     def context_memory_access2(self):
@@ -20046,12 +20046,11 @@ class ContextCommand(GenericCommand):
             offset = ["$" + x if x.isalpha() or re.match(r"r\d+d?", x) else x for x in offset]
             offset = ''.join(offset)
             # $rip/$eip points next instruction
-            offset = offset.replace("$rip", f"$rip+{codesize:#x}")
+            offset = offset.replace("$rip", "$rip+{:#x}".format(codesize))
             offset = parse_address(offset)
-            mask = ((1 << 32) - 1) if is_32bit() else ((1 << 64) - 1)
-            addr = (tls + offset) & mask
-            self.context_title(f"memory access: {code} = {addr:#x}")
-            gdb.execute(f"telescope {addr:#x} 4 --no-pager")
+            addr = align_address(tls + offset)
+            self.context_title("memory access: {:s} = {:#x}".format(code, addr))
+            gdb.execute("telescope {:#x} 4 --no-pager".format(addr))
         return
 
     def context_memory_access3(self):
@@ -20075,10 +20074,9 @@ class ContextCommand(GenericCommand):
             addr = addr.replace("eiz", " 0 ") # $eiz is always 0x0
             addr = addr.split()
             addr = ["$" + x if x.isalpha() or re.match(r"r\d+d?", x) else x for x in addr]
-            addr = ''.join(addr)
-            addr = parse_address(addr)
-            self.context_title(f"memory access: {code} = {addr:#x}")
-            gdb.execute(f"telescope {addr:#x} 4 --no-pager")
+            addr = parse_address(''.join(addr))
+            self.context_title("memory access: {:s} = {:#x}".format(code, addr))
+            gdb.execute("telescope {:#x} 4 --no-pager".format(addr))
         return
 
     @staticmethod
@@ -23310,12 +23308,12 @@ class DestructorDumpCommand(GenericCommand):
             func = lookup_address(read_int_from_memory(current))
             obj = lookup_address(read_int_from_memory(current + ptrsize * 1))
             link_map = lookup_address(read_int_from_memory(current + ptrsize * 2))
-            next_ = lookup_address(read_int_from_memory(current + ptrsize * 3))
-            return func, obj, link_map, next_
+            next = lookup_address(read_int_from_memory(current + ptrsize * 3))
+            return func, obj, link_map, next
 
         while current:
             try:
-                func, obj, link_map, next_ = read_fns(current)
+                func, obj, link_map, next = read_fns(current)
             except Exception:
                 err("Memory access error at {:#x}".format(current))
                 break
@@ -23336,8 +23334,8 @@ class DestructorDumpCommand(GenericCommand):
             fmt = "       link_map: {:s}: {:s}"
             gef_print(fmt.format(self.C(current + ptrsize * 2), str(link_map)))
             fmt = "       next:     {:s}: {:s}"
-            gef_print(fmt.format(self.C(current + ptrsize * 3), str(next_)))
-            current = next_.value
+            gef_print(fmt.format(self.C(current + ptrsize * 3), str(next)))
+            current = next.value
         return
 
     def dump_exit_funcs(self, name):
@@ -23359,13 +23357,13 @@ class DestructorDumpCommand(GenericCommand):
         ptrsize = current_arch.ptrsize
 
         try:
-            next_ = lookup_address(read_int_from_memory(current))
+            next = lookup_address(read_int_from_memory(current))
             idx = lookup_address(read_int_from_memory(current + ptrsize))
         except Exception:
             err("Memory access error at {:#x}".format(current))
             return
         current += ptrsize * 2
-        gef_print("    -> next:     {:s}: {:s}".format(self.C(head.value + ptrsize * 0), str(next_)))
+        gef_print("    -> next:     {:s}: {:s}".format(self.C(head.value + ptrsize * 0), str(next)))
         gef_print("       idx:      {:s}: {:s}".format(self.C(head.value + ptrsize * 1), str(idx)))
 
         def read_fns(addr):
@@ -23377,13 +23375,8 @@ class DestructorDumpCommand(GenericCommand):
 
         fns_size = ptrsize * 4 # flavor, fn, arg, dso_handle
 
-        if is_32bit():
-            mask = (1 << 32) - 1
-        else:
-            mask = (1 << 64) - 1
-
         for i in range(idx.value, -1, -1):
-            addr = (current + fns_size * i) & mask
+            addr = align_address(current + fns_size * i)
             try:
                 flavor, fn, arg, dso_handle = read_fns(addr)
             except Exception:
@@ -23412,18 +23405,18 @@ class DestructorDumpCommand(GenericCommand):
         link_map = LinkMapCommand.get_link_map(get_filepath(), silent=True)
         current = link_map.value
         while current:
-            _dic = {}
-            _dic["load_address"] = read_int_from_memory(current)
+            dic = {}
+            dic["load_address"] = read_int_from_memory(current)
             name_ptr = read_int_from_memory(current + current_arch.ptrsize * 1)
-            _dic["name"] = _dic["name_org"] = read_cstring_from_memory(name_ptr)
-            if _dic["name_org"] == "":
-                _dic["name"] = "{:s}".format(get_filepath())
-            _dic["dynamic"] = read_int_from_memory(current + current_arch.ptrsize * 2)
-            _dic["next"] = read_int_from_memory(current + current_arch.ptrsize * 3)
-            LinkMap = collections.namedtuple("LinkMap", _dic.keys())
-            link_map = LinkMap(*_dic.values())
+            dic["name"] = dic["name_org"] = read_cstring_from_memory(name_ptr)
+            if dic["name_org"] == "":
+                dic["name"] = "{:s}".format(get_filepath())
+            dic["dynamic"] = read_int_from_memory(current + current_arch.ptrsize * 2)
+            dic["next"] = read_int_from_memory(current + current_arch.ptrsize * 3)
+            LinkMap = collections.namedtuple("LinkMap", dic.keys())
+            link_map = LinkMap(*dic.values())
             yield link_map
-            current = _dic["next"]
+            current = dic["next"]
 
     def dump_sections_not_array(self, section_name):
         if not is_static(get_filepath()):
