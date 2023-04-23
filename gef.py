@@ -43185,7 +43185,6 @@ class ConstGrepCommand(GenericCommand):
 @register_command
 class SlubDumpCommand(GenericCommand):
     """Dump slub freelist with kenrel memory scanning."""
-    # Thanks to https://github.com/PaoloMonti42/salt
     _cmdline_ = "slub-dump"
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
@@ -43210,7 +43209,7 @@ class SlubDumpCommand(GenericCommand):
     _example_ += "{:s} kmalloc-256 --cpu 1                              # dump kmalloc-256 from cpu 1\n".format(_cmdline_)
     _example_ += "{:s} kmalloc-256 --no-xor                             # skip xor to chunk->next\n".format(_cmdline_)
     _example_ += "{:s} kmalloc-256 --offset-random 0xb8 --no-byte-swap  # specified pattern of xor to chunk->next\n".format(_cmdline_)
-    _example_ += "{:s} --list                                           # list up slab cache names\n".format(_cmdline_)
+    _example_ += "{:s} --list                                           # list up slub cache names\n".format(_cmdline_)
     _example_ += "\n"
     _example_ += "Simplified SLUB structure:\n"
     _example_ += "                         +-kmem_cache--+          +-kmem_cache--+   +-kmem_cache--+\n"
@@ -43843,7 +43842,7 @@ class SlubDumpCommand(GenericCommand):
                 current_kmem_cache = self.get_next_kmem_cache(current_kmem_cache)
                 continue
             kmem_cache['address'] = current_kmem_cache
-            kmem_cache['flags'] = read_int_from_memory(current_kmem_cache + self.kmem_cache_offset_flags)
+            kmem_cache['flags'] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_flags, 4))
             kmem_cache['flags_str'] = self.get_flags_str(kmem_cache['flags'])
             kmem_cache['size'] = chunk_size = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_size, 4))
             kmem_cache['object_size'] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_object_size, 4))
