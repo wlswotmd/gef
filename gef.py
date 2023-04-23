@@ -7018,6 +7018,7 @@ def read_memory(addr, length):
     return gdb.selected_inferior().read_memory(addr, length).tobytes()
 
 
+@functools.lru_cache(maxsize=None)
 def is_valid_addr(addr):
     if addr < 0:
         return False
@@ -41837,6 +41838,75 @@ class KernelFileSystemsCommand(GenericCommand):
             name = read_cstring_from_memory(name_addr)
             self.out.append("{:#018x} {:s}".format(current, name))
             current = read_int_from_memory(current + offset_next)
+
+        if self.out:
+            gef_print('\n'.join(self.out), less=not args.no_pager)
+        return
+
+
+@register_command
+class KernelSearchCodePtrCommand(GenericCommand):
+    """Search the code pointer in kernel data area."""
+    _cmdline_ = "ksearch-code-ptr"
+    _category_ = "08-b. Qemu-system Cooperation - Linux"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-d', '--depth', default=0, type=int, help='specify reference depth. (default: %(default)s)')
+    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_qemu_system
+    @only_if_in_kernel
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        info("Wait for memory scan")
+
+        kinfo = KernelbaseCommand.get_kernel_base()
+        if kinfo.has_none or kinfo.rwx:
+            err("Unsupported")
+            return
+
+        def get_permission(addr, maps):
+            for vaddr, size, perm in maps:
+                if vaddr <= addr and addr < vaddr + size:
+                    return perm
+            return "???"
+
+        self.out = []
+        data = read_memory(kinfo.krwbase, kinfo.krwbase_size)
+        data = slice_unpack(data, current_arch.ptrsize)
+        for i, d in enumerate(data):
+            # check
+            valid = True
+            cur = d
+            for depth in range(args.depth):
+                if not is_valid_addr(cur):
+                    valid = False
+                    break
+                cur = read_int_from_memory(cur)
+
+            if not valid:
+                continue
+
+            if not (kinfo.kbase <= cur < kinfo.kbase + kinfo.kbase_size):
+                continue
+
+            # found
+            msg = []
+            rw_addr = kinfo.krwbase + i * current_arch.ptrsize
+            rw_addr_sym = get_symbol_string(rw_addr, nosymbol_string=" <NO_SYMBOL>")
+            msg.append("{:#x}{:s} [{:s}]".format(rw_addr, rw_addr_sym, get_permission(rw_addr, kinfo.maps)))
+
+            cur = d
+            for depth in range(args.depth + 1):
+                cur_sym = get_symbol_string(cur, nosymbol_string=" <NO_SYMBOL>")
+                msg.append("{:#x}{:s} [{:s}]".format(cur, cur_sym, get_permission(cur, kinfo.maps)))
+                cur = read_int_from_memory(cur)
+
+            self.out.append(' -> '.join(msg))
 
         if self.out:
             gef_print('\n'.join(self.out), less=not args.no_pager)

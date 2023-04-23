@@ -150,6 +150,8 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kparam-sysctl.png)
 * `kfilesystems`: dumps supported file systems.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kfilesystems.png)
+* `ksearch-code-ptr`: searches the code pointer in kernel data area.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksearch-code-ptr.png)
 
 #### Arch specific
 * `uefi-ovmf-info`: dumps addresses of some important structures in each boot phase of UEFI when OVMF is used (heuristic).
