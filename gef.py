@@ -36294,6 +36294,9 @@ class KernelMagicCommand(GenericCommand):
         width = 10 if is_32bit() else 18
         if external_func:
             addr = external_func()
+            if addr is None:
+                gef_print("{:42s}: {:>{:d}s}".format(sym, "Not found", width))
+                return
         else:
             if isinstance(sym, str):
                 addr = get_ksymaddr(sym)
