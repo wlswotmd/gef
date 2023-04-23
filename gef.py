@@ -50506,8 +50506,8 @@ class PagewalkCommand(GenericCommand):
             self.add_out(msg)
         return
 
+    # merge pages that points same phys page
     def merge1(self, mappings):
-        # merge pages that points same phys page
         # for example, there are 16 pages,
         #    virt: 0xffffffff11107000  -> phys:0xabcd000
         #    virt: 0xffffffff11117000  -> phys;0xabcd000
