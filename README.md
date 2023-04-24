@@ -329,6 +329,8 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/envp.png)
 * `gdtinfo`: pretty prints GDT sample.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/gdtinfo.png)
+* `idtinfo`: pretty prints IDT sample.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/idtinfo.png)
 * `tls`: pretty prints TLS area.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/tls.png)
 * `fsbase`,`gsbase`: pretty prints `$fs_base`, `$gs_base`.

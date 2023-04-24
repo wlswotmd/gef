@@ -2107,6 +2107,8 @@ def slice_unpack(data, n):
         return [u64(data[i:i + 8]) for i in range(0, len(data), 8)]
     elif n == 4:
         return [u32(data[i:i + 4]) for i in range(0, len(data), 4)]
+    elif n == 16:
+        return [u128(data[i:i + 16]) for i in range(0, len(data), 16)]
     else:
         raise
 
@@ -7280,6 +7282,14 @@ def u64(x, s=False):
         return struct.unpack("{}Q".format(endian_str()), x)[0]
     else:
         return struct.unpack("{}q".format(endian_str()), x)[0]
+
+
+@functools.lru_cache(maxsize=None)
+def u128(x):
+    """Unpack one oword respecting the current architecture endianness."""
+    upper = struct.unpack("{}Q".format(endian_str()), x[8:])[0]
+    lower = struct.unpack("{}Q".format(endian_str()), x[:8])[0]
+    return (upper << 64) | lower
 
 
 def is_ascii_string(address):
@@ -42368,14 +42378,67 @@ class GdtInfoCommand(GenericCommand):
     parser.add_argument('-v', dest='verbose', action='store_true', help='also display bit information of gdt entries.')
     _syntax_ = parser.format_help()
 
+    # arch/x86/include/asm/segment.h
+    _SEGMENT_DESCRIPTION_64_ = {
+        0: "NULL",
+        1: "KERNEL32_CS",
+        2: "KERNEL_CS",
+        3: "KERNEL_DS",
+        4: "DEFAULT_USER32_CS",
+        5: "DEFAULT_USER_DS",
+        6: "DEFAULT_USER_CS",
+        7: "",
+        8: "TSS-part1",
+        9: "TSS-part2",
+        10: "LDT-part1",
+        11: "LDT-part2",
+        12: "TLS_#1",
+        13: "TLS_#2",
+        14: "TLS_#3",
+        15: "CPUNODE",
+    }
+    _SEGMENT_DESCRIPTION_32_ = {
+        0: "NULL",
+        1: "RESERVED",
+        2: "RESERVED",
+        3: "RESERVED",
+        4: "UNUSED",
+        5: "UNUSED",
+        6: "TLS_#1",
+        7: "TLS_#2",
+        8: "TLS_#3",
+        9: "RESERVED",
+        10: "RESERVED",
+        11: "RESERVED",
+        12: "KERNEL_CS",
+        13: "KERNEL_DS",
+        14: "DEFAULT_USER_CS",
+        15: "DEFAULT_USER_DS",
+        16: "TSS",
+        17: "LDT",
+        18: "PNPBIOS_CS32",
+        19: "PNPBIOS_CS16",
+        20: "PNPBIOS_DS",
+        21: "PNPBIOS_TS1",
+        22: "PNPBIOS_TS2",
+        23: "APMBIOS_BASE",
+        24: "APMBIOS",
+        25: "APMBIOS",
+        26: "ESPFIX_SS",
+        27: "PERCPU",
+        28: "STACK_CANARY",
+        29: "UNUSED",
+        30: "UNUSED",
+        31: "DOUBLEFAULT_TSS",
+    }
+
     @staticmethod
     def seg2str(v):
         rpl = v & 0b11
         ti = (v >> 2) & 0b1
         index = (v >> 3)
-        return f"{v:#4x} (=rpl:{rpl}, ti:{ti}, index:{index})"
+        return "{:#4x} (=rpl:{:d}, ti:{:d}, index:{:d})".format(v, rpl, ti, index)
 
-    # dump segment register
     def print_seg_info(self):
         if not is_alive():
             return
@@ -42394,7 +42457,6 @@ class GdtInfoCommand(GenericCommand):
         gef_print("   - x86 code (native): 0x73")
         return
 
-    # struct desc_struct -> dictionary(each value)
     @staticmethod
     def gdt_unpack(vals):
         if isinstance(vals, list):
@@ -42460,34 +42522,42 @@ class GdtInfoCommand(GenericCommand):
         return Gdt(*_gdt.values())
 
     @staticmethod
-    def segval2str(value, value_only=False, color=False):
-        c = Color.boldify if color else lambda x: x
+    def gdtval2str(value, value_only=False):
         if value_only:
-            return c("{:#018x}".format(value))
+            return "{:#018x}".format(value)
         gdt = GdtInfoCommand.gdt_unpack(value)
         if gdt.value == 0:
-            return c("{:#018x}".format(gdt.value))
+            return "{:#018x}".format(gdt.value)
         else:
-            fmt = ""
-            fmt += c("{:#018x}".format(gdt.value)) + " : "
-            fmt += c("{:>#18x}".format(gdt.base)) + " "
-            fmt += c("{:>#10x}".format(gdt.limit)) + " "
-            fmt += c("{:>2d}".format(gdt.gr)) + " "
-            fmt += c("{:s}".format(gdt.dbl)) + "({:s}) ".format(gdt.dbl_s)
-            fmt += c("{:>3d}".format(gdt.avl)) + " "
-            fmt += c("{:d}".format(gdt.p)) + " "
-            fmt += c("{:>3}".format(gdt.dpl)) + " "
-            fmt += c("{:d}".format(gdt.s)) + "({:s}) ".format(gdt.s_s)
-            fmt += c("{:d}".format(gdt.ex)) + "({:s}) ".format(gdt.ex_s)
-            fmt += c("{:d}".format(gdt.dc)) + "({:s}) ".format(gdt.dc_s)
-            fmt += c("{:d}".format(gdt.rw)) + "({:s}) ".format(gdt.rw_s)
-            fmt += c("{:d}".format(gdt.ac))
-            return fmt
+            out = ""
+            out += "{:#018x} ".format(gdt.value)
+            out += "{:#018x} ".format(gdt.base)
+            out += "{:<#10x} ".format(gdt.limit)
+            out += "{:<2d} ".format(gdt.gr)
+            out += "{:s}({:s}) ".format(gdt.dbl, gdt.dbl_s)
+            out += "{:<3d} ".format(gdt.avl)
+            out += "{:d} ".format(gdt.p)
+            out += "{:<3d} ".format(gdt.dpl)
+            out += "{:d}({:s}) ".format(gdt.s, gdt.s_s)
+            out += "{:d}({:s}) ".format(gdt.ex, gdt.ex_s)
+            out += "{:d}({:s}) ".format(gdt.dc, gdt.dc_s)
+            out += "{:d}({:s}) ".format(gdt.rw, gdt.rw_s)
+            out += "{:d}".format(gdt.ac)
+            return out
 
     @staticmethod
-    def segval2str_legend():
-        fmt = "[ #] {:20s}: {:18s} : {:>18s} {:s} {:s} {:s}      {:>s} {:s} {:s} {:s}      {:s}      {:s}    {:s}    {:s}"
-        return fmt.format("segment name", "value", "base", "limit/size", "gr", "dbl", "avl", "p", "dpl", "s", "ex", "dc", "rw", "ac")
+    def gdtval2str_legend():
+        fmt = "[ #] {:20s} {:18s} {:18s} "
+        fmt += "{:s} {:s} {:s}      "
+        fmt += "{:s} {:s} {:s} {:s}      "
+        fmt += "{:s}      {:s}    {:s}    {:s}"
+        legs = [
+            "segment name", "value", "base",
+            "limit/size", "gr", "dbl",
+            "avl", "p", "dpl", "s",
+            "ex", "dc", "rw", "ac",
+        ]
+        return fmt.format(*legs)
 
     @staticmethod
     def get_segreg_list():
@@ -42502,6 +42572,7 @@ class GdtInfoCommand(GenericCommand):
         return regs
 
     @staticmethod
+    @functools.lru_cache(maxsize=None)
     def is_emulated32():
         if is_qemu_usermode():
             return False
@@ -42519,31 +42590,37 @@ class GdtInfoCommand(GenericCommand):
         else:
             return False # by default it considers on native
 
-    # print useful gdt fixed entry
     def print_gdt_entry(self, entries):
         if is_x86_64() or self.is_emulated32():
             gef_print(titlify("GDT Entry (x64 sample)"))
+            segm_desc = GdtInfoCommand._SEGMENT_DESCRIPTION_64_
         else:
             gef_print(titlify("GDT Entry (x86 sample)"))
+            segm_desc = GdtInfoCommand._SEGMENT_DESCRIPTION_32_
         info("*** This is an {:s} (GDT/LDT exist per-CPU) ***".format(Color.boldify("EXAMPLE")))
         registers_color = get_gef_setting("theme.dereference_register_value")
+
         # print legend
-        legend = self.segval2str_legend()
+        legend = self.gdtval2str_legend()
         gef_print(Color.colorify(legend, get_gef_setting("theme.table_heading")))
+
         # regs check
         regs = self.get_segreg_list()
+
         # parse entry
-        for (i, print_flag, segname, value) in entries:
+        for i, value in entries:
             # get segment regs value
             reglist = ', '.join(regs.get(i, []))
             if reglist:
                 reglist = LEFT_ARROW + reglist
-            # decode and print
-            if print_flag:
-                fmt = "[{:>2d}] {:20s}: ".format(i, segname) + self.segval2str(value) + " " + Color.colorify(f"{reglist:s}", registers_color)
-            else:
-                fmt = "[{:>2d}] {:20s}: {:#018x} ".format(i, segname, value) + Color.colorify(f"{reglist:s}", registers_color)
-            gef_print(fmt)
+            regstr = Color.colorify(reglist, registers_color)
+
+            # decode
+            segname = segm_desc.get(i, "Undefined")
+            is_part1 = segname == "TSS-part1" or segname == "LDT-part1"
+            valstr = self.gdtval2str(value, value_only=is_part1)
+
+            gef_print("[{:>2d}] {:20s} {:s} {:s}".format(i, segname, valstr, regstr))
         return
 
     @staticmethod
@@ -42561,6 +42638,12 @@ class GdtInfoCommand(GenericCommand):
         gef_print("------------------------------------------------------------------------")
         gef_print(" * base               : Start address")
         gef_print(" * limit              : Segment size (4KB unit if gr==1)")
+        gef_print(" * flag_bytes")
+        gef_print("   * gr               : Granularity Flag (0:SegLimitAsByte, 1:SegLimitAs4KB)")
+        gef_print("   * db               : Default Operation size (0:16bitSeg, 1:32bitSeg)")
+        gef_print("   * l (Code Seg)     : 64-bits Code Segment Flag (0:32bit, 1:64bit)")
+        gef_print("   * l (Data Seg)     : Reserved (0)")
+        gef_print("   * avl              : Available bit (0)")
         gef_print(" * access_bytes")
         gef_print("   * p                : Segment Present Flag (0:SegmentNotInMemory, 1:SegmentInMemory)")
         gef_print("   * dpl              : Descriptor Privilege Level (0:Ring0, 3:Ring3)")
@@ -42572,12 +42655,6 @@ class GdtInfoCommand(GenericCommand):
         gef_print("     * rw (Code Seg)  : Read/Exec bit (0:ReadOnly, 1:Read/Exec)")
         gef_print("     * rw (Data Seg)  : Read/Write bit (0:ReadOnly, 1:Read/Write)")
         gef_print("     * ac             : Access bit (0:NotAccessed, 1:Accessed)")
-        gef_print(" * flag_bytes")
-        gef_print("   * gr               : Granularity Flag (0:SegLimitAsByte, 1:SegLimitAs4KB)")
-        gef_print("   * db               : Default Operation size (0:16bitSeg, 1:32bitSeg)")
-        gef_print("   * l (Code Seg)     : 64-bits Code Segment Flag (0:32bit, 1:64bit)")
-        gef_print("   * l (Data Seg)     : Reserved (0)")
-        gef_print("   * avl              : Available bit (0)")
         gef_print(titlify("legend (GDT entry for TSS/LDT)"))
         gef_print("31            23          19       15                    7             0bit")
         gef_print("------------------------------------------------------------------------")
@@ -42595,64 +42672,65 @@ class GdtInfoCommand(GenericCommand):
         gef_print(" * limit (ldt)        : (LDT entries * 8) - 1")
         return
 
-    def print_gdt(self, print_flags_info):
+    def print_gdt(self):
         self.print_seg_info()
         if is_x86_64() or self.is_emulated32():
             self.print_gdt_entry([
-                # idx, print flag, segment name,        value
-                (0,    True,       "NULL",              0x0000000000000000),
-                (1,    True,       "KERNEL32_CS",       0x00cf9b000000ffff),
-                (2,    True,       "KERNEL_CS",         0x00af9b000000ffff),
-                (3,    True,       "KERNEL_DS",         0x00cf93000000ffff),
-                (4,    True,       "DEFAULT_USER32_CS", 0x00cffb000000ffff),
-                (5,    True,       "DEFAULT_USER_DS",   0x00cff3000000ffff),
-                (6,    True,       "DEFAULT_USER_CS",   0x00affb000000ffff),
-                (8,    False,      "TSS-part1",         0x00008b000000206f),
-                (9,    True,       "TSS-part2",         [0x00008b000000206f, 0x00000000fffffe00]),
-                (10,   True,       "LDT-part1",         0x0000000000000000),
-                (11,   True,       "LDT-part2",         0x0000000000000000),
-                (12,   True,       "TLS_#1",            0x0000000000000000),
-                (13,   True,       "TLS_#2",            0x0000000000000000),
-                (14,   True,       "TLS_#3",            0x0000000000000000),
-                (15,   True,       "CPUNODE",           0x0040f50000000000),
+                # idx, value
+                (0,    0x0000000000000000),
+                (1,    0x00cf9b000000ffff),
+                (2,    0x00af9b000000ffff),
+                (3,    0x00cf93000000ffff),
+                (4,    0x00cffb000000ffff),
+                (5,    0x00cff3000000ffff),
+                (6,    0x00affb000000ffff),
+                (7,    0x0000000000000000),
+                (8,    0x00008b000000206f),
+                (9,    [0x00008b000000206f, 0x00000000fffffe00]),
+                (10,   0x0000000000000000),
+                (11,   0x0000000000000000),
+                (12,   0x0000000000000000),
+                (13,   0x0000000000000000),
+                (14,   0x0000000000000000),
+                (15,   0x0040f50000000000),
             ])
         else:
             self.print_gdt_entry([
-                # idx, print flag, segment name,        value
-                (0,    True,       "NULL",              0x0000000000000000),
-                (1,    True,       "RESERVED",          0x0000000000000000),
-                (2,    True,       "RESERVED",          0x0000000000000000),
-                (3,    True,       "RESERVED",          0x0000000000000000),
-                (4,    True,       "UNUSED",            0x0000000000000000),
-                (5,    True,       "UNUSED",            0x0000000000000000),
-                (6,    True,       "TLS#1",             0x0000000000000000),
-                (7,    True,       "TLS#2",             0x0000000000000000),
-                (8,    True,       "TLS#3",             0x0000000000000000),
-                (9,    True,       "RESERVED",          0x0000000000000000),
-                (10,   True,       "RESERVED",          0x0000000000000000),
-                (11,   True,       "RESERVED",          0x0000000000000000),
-                (12,   True,       "KERNEL_CS",         0x00cf9a000000ffff),
-                (13,   True,       "KERNEL_DS",         0x00cf93000000ffff),
-                (14,   True,       "DEFAULT_USER_CS",   0x00cffa000000ffff),
-                (15,   True,       "DEFAULT_USER_DS",   0x00cff3000000ffff),
-                (16,   True,       "TSS",               0xff008b804000206b),
-                (17,   True,       "LDT",               0x0000000000000000),
-                (18,   True,       "PNPBIOS_CS32",      0x00409a000000ffff),
-                (19,   True,       "PNPBIOS_CS16",      0x00009a000000ffff),
-                (20,   True,       "PNPBIOS_DS",        0x000092000000ffff),
-                (21,   True,       "PNPBIOS_TS1",       0x0000920000000000),
-                (22,   True,       "PNPBIOS_TS2",       0x0000920000000000),
-                (23,   True,       "APMBIOS_BASE",      0x00409a000000ffff),
-                (24,   True,       "APMBIOS",           0x00009a000000ffff),
-                (25,   True,       "APMBIOS",           0x004092000000ffff),
-                (26,   True,       "ESPFIX_SS",         0x00cf92000000ffff),
-                (27,   True,       "PERCPU",            0x038f93708000ffff),
-                (28,   True,       "STACK_CANARY",      0x0000000000000000),
-                (29,   True,       "UNUSED",            0x0000000000000000),
-                (30,   True,       "UNUSED",            0x0000000000000000),
-                (31,   True,       "DOUBLEFAULT_TSS",   0xc40089706000206b),
+                # idx, value
+                (0,    0x0000000000000000),
+                (1,    0x0000000000000000),
+                (2,    0x0000000000000000),
+                (3,    0x0000000000000000),
+                (4,    0x0000000000000000),
+                (5,    0x0000000000000000),
+                (6,    0x0000000000000000),
+                (7,    0x0000000000000000),
+                (8,    0x0000000000000000),
+                (9,    0x0000000000000000),
+                (10,   0x0000000000000000),
+                (11,   0x0000000000000000),
+                (12,   0x00cf9a000000ffff),
+                (13,   0x00cf93000000ffff),
+                (14,   0x00cffa000000ffff),
+                (15,   0x00cff3000000ffff),
+                (16,   0xff008b804000206b),
+                (17,   0x0000000000000000),
+                (18,   0x00409a000000ffff),
+                (19,   0x00009a000000ffff),
+                (20,   0x000092000000ffff),
+                (21,   0x0000920000000000),
+                (22,   0x0000920000000000),
+                (23,   0x00409a000000ffff),
+                (24,   0x00009a000000ffff),
+                (25,   0x004092000000ffff),
+                (26,   0x00cf92000000ffff),
+                (27,   0x038f93708000ffff),
+                (28,   0x0000000000000000),
+                (29,   0x0000000000000000),
+                (30,   0x0000000000000000),
+                (31,   0xc40089706000206b),
             ])
-        if print_flags_info:
+        if self.verbose:
             self.print_gdt_entry_legend()
         else:
             info("for flags description, use `-v`")
@@ -42662,8 +42740,205 @@ class GdtInfoCommand(GenericCommand):
     @only_if_specific_arch(arch=["x86_32", "x86_64"])
     def do_invoke(self, args):
         self.dont_repeat()
-        self.print_gdt(args.verbose)
+        self.verbose = args.verbose
+        self.print_gdt()
         info("if qemu-system, use `qreg -v` to confirm real GDT value")
+        return
+
+
+@register_command
+class IdtInfoCommand(GenericCommand):
+    """Print IDT entries sample."""
+    _cmdline_ = "idtinfo"
+    _category_ = "04-a. Register - View"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-v', dest='verbose', action='store_true', help='also display bit information of idt entries.')
+    _syntax_ = parser.format_help()
+
+    # arch/x86/include/asm/trapnr.h
+    _INTERRUPT_DESCRIPTION_ = {
+        0: "#DE: Divide-by-zero",
+        1: "#DB: Debug",
+        2: "#NMI: Non-maskable Interrupt",
+        3: "#BP: Breakpoint",
+        4: "#OF: Overflow" ,
+        5: "#BR: BOUND Range Exceeded",
+        6: "#UD: Invalid Opcode",
+        7: "#NM: Device Not Available",
+        8: "#DF: Double Fault",
+        9: "#OLD_MF: Coprocessor Segment Overrun",
+        10: "#TS: Invalid TSS",
+        11: "#NP: Segment Not Present",
+        12: "#SS: Stack Segment Fault",
+        13: "#GP: General Protection Fault",
+        14: "#PF: Page Fault",
+        15: "#SPRIOUS: Spurious Interrupt",
+        16: "#MF: x87 Floating-Point Exception",
+        17: "#AC: Alignment Check",
+        18: "#MC: Machine-Check",
+        19: "#XF: SIMD Floating-Point Exception",
+        20: "#VE: Virtualization Exception",
+        21: "#CP: Control Protection Exception",
+        29: "#VC: VMM Communication Exception",
+        32: "#IRET: IRET Exception",
+    }
+
+    @staticmethod
+    def idt_unpack(val):
+        _idt = {}
+        _idt['value'] = val
+
+        _idt['offset'] = val & 0xffff
+        _idt['offset'] = _idt['offset'] | ((val >> 32) & (0xffff0000))
+        _idt['offset'] = ((val >> 32) & (0xffffffff00000000)) | _idt['offset']
+        _idt['segment'] = (val >> 16) & 0xffff
+        _idt['ist'] = (val >> 32) & 0b111
+        _idt['gate_type'] = (val >> 40) & (0b1111)
+        _idt['dpl'] = (val >> 45) & (0b11)
+        _idt['present'] = (val >> 47) & (0b1)
+
+        Idt = collections.namedtuple("Idt", _idt.keys())
+        return Idt(*_idt.values())
+
+    @staticmethod
+    def idtval2str(value):
+        val_width = current_arch.ptrsize * 4 + 2
+        ofs_width = current_arch.ptrsize * 2 + 2
+
+        idt = IdtInfoCommand.idt_unpack(value)
+        if idt.present == 0:
+            return "(none)"
+        else:
+            out = ""
+            out += "{:#0{:d}x} ".format(idt.value, val_width)
+            out += "{:#03x} ".format(idt.gate_type)
+            out += "{:#03x} ".format(idt.ist)
+            out += "{:#03x} ".format(idt.dpl)
+            out += "{:#03x} ".format(idt.present)
+            out += "{:#06x}:{:#0{:d}x}".format(idt.segment, idt.offset, ofs_width)
+            return out
+
+    @staticmethod
+    def idtval2str_legend():
+        val_width = current_arch.ptrsize * 4 + 2
+        ofs_width = current_arch.ptrsize * 2 + 2
+        fmt = "[  #] {:36s} {:{:d}s} {:3s} {:3s} {:3s} {:3s} {:6s}:{:{:d}s}"
+        return fmt.format("name", "value", val_width, "typ", "ist", "dpl", "p", "segm", "offset", ofs_width)
+
+    def print_idt_entry(self, entries):
+        if is_x86_64() or GdtInfoCommand.is_emulated32():
+            gef_print(titlify("IDT Entry (x64 sample)"))
+        else:
+            gef_print(titlify("IDT Entry (x86 sample)"))
+        info("*** This is an {:s} (IDT exist per-CPU) ***".format(Color.boldify("EXAMPLE")))
+
+        # print legend
+        legend = self.idtval2str_legend()
+        gef_print(Color.colorify(legend, get_gef_setting("theme.table_heading")))
+
+        # parse entry
+        for i, value in entries:
+            if value != 0:
+                int_name = IdtInfoCommand._INTERRUPT_DESCRIPTION_.get(i, "User defined Interrupt {:#x}".format(i))
+                gef_print("[{:3d}] {:36s} {:s}".format(i, int_name, self.idtval2str(value)))
+        return
+
+    @staticmethod
+    def print_idt_entry_legend():
+        gef_print(titlify("legend (Normal IDT entry)"))
+        gef_print("31                                 15  14    13  12     8       3      0bit")
+        gef_print("------------------------------------------------------------------------")
+        gef_print("|                              RESERVED                                | 12byte")
+        gef_print("------------------------------------------------------------------------")
+        gef_print("|                            OFFSET2 63:32                             | 8byte")
+        gef_print("------------------------------------------------------------------------")
+        gef_print("|         OFFSET1 31:16            | P | DPL | 0 | Type | 00000 | IST  | 4byte")
+        gef_print("------------------------------------------------------------------------")
+        gef_print("|         Segment Selector         |           OFFSET0 15:0            | 0byte")
+        gef_print("------------------------------------------------------------------------")
+        gef_print(" * segment selector : Segment Selector for destination code segment")
+        gef_print(" * offset           : Offset to handler procedure entry point")
+        gef_print(" * ist              : Interrupt Stack Table")
+        gef_print(" * type             : one of following")
+        gef_print("                        0x5: Task Gate")
+        gef_print("                        0xC: Call Gate")
+        gef_print("                        0xE: 32/64-bit Interrupt Gate")
+        gef_print("                        0xF: 32/64-bit Trap Gate")
+        gef_print(" * dpl              : Descriptor Privilege Level")
+        gef_print(" * p                : Segment Present Flag")
+        return
+
+    def print_idt(self):
+        if is_x86_64() or GdtInfoCommand.is_emulated32():
+            self.print_idt_entry([
+                # idx, value
+                [0,    0x0000000000ffffffff81608e0000100c30],
+                [1,    0x0000000000ffffffff81608e0300100f00],
+                [2,    0x0000000000ffffffff81608e02001012f0],
+                [3,    0x0000000000ffffffff8160ee0000100f60],
+                [4,    0x0000000000ffffffff8160ee0000100c60],
+                [5,    0x0000000000ffffffff81608e0000100c90],
+                [6,    0x0000000000ffffffff81608e0000100cc0],
+                [7,    0x0000000000ffffffff81608e0000100cf0],
+                [8,    0x0000000000ffffffff81608e0100100d20],
+                [9,    0x0000000000ffffffff81608e0000100d50],
+                [10,   0x0000000000ffffffff81608e0000100d80],
+                [11,   0x0000000000ffffffff81608e0000100db0],
+                [12,   0x0000000000ffffffff81608e0000100fb0],
+                [13,   0x0000000000ffffffff81608e0000100fe0],
+                [14,   0x0000000000ffffffff81608e0000101010],
+                [15,   0x0000000000ffffffff81608e0000100de0],
+                [16,   0x0000000000ffffffff81608e0000100e10],
+                [17,   0x0000000000ffffffff81608e0000100e40],
+                [18,   0x0000000000ffffffff81608e0400101090],
+                [19,   0x0000000000ffffffff81608e0000100e70],
+                [20,   0x0000000000ffffffff81c98e000010f0b4],
+                [21,   0x0000000000ffffffff81c98e000010f0bd],
+                [29,   0x0000000000ffffffff81c98e000010f105],
+                [32,   0x0000000000ffffffff81608e0000100b90],
+            ])
+        else:
+            self.print_idt_entry([
+                # idx, value
+                [0,    0x00c3788e0000605974],
+                [1,    0x00c3788e0000605c4c],
+                [2,    0x00c3788e0000605c5c],
+                [3,    0x00c378ee0000605ef8],
+                [4,    0x00c378ee00006058f4],
+                [5,    0x00c3788e0000605904],
+                [6,    0x00c3788e0000605914],
+                [7,    0x00c3788e00006058e0],
+                [8,    0x000000850000f80000],
+                [9,    0x00c3788e0000605924],
+                [10,   0x00c3788e0000605934],
+                [11,   0x00c3788e0000605944],
+                [12,   0x00c3788e0000605954],
+                [13,   0x00c3788e0000605ffc],
+                [14,   0x00c3788e00006059a4],
+                [15,   0x00c3788e0000605994],
+                [16,   0x00c3788e00006058c0],
+                [17,   0x00c3788e0000605964],
+                [18,   0x00c3788e0000605984],
+                [19,   0x00c3788e00006058d0],
+                [20,   0x00c3958e00006030bc],
+                [21,   0x00c3958e00006030c5],
+                [29,   0x00c3958e000060310d],
+                [32,   0x00c3788e0000604b90],
+            ])
+        if self.verbose:
+            self.print_idt_entry_legend()
+        else:
+            info("for flags description, use `-v`")
+        return
+
+    @parse_args
+    @only_if_specific_arch(arch=["x86_32", "x86_64"])
+    def do_invoke(self, args):
+        self.dont_repeat()
+        self.verbose = args.verbose
+        self.print_idt()
+        info("if qemu-system, use `qreg -v` to confirm real IDT value")
         return
 
 
@@ -49825,15 +50100,15 @@ class PrintBitInfo:
         regname = Color.colorify(self.name, "bold red")
         if split:
             value_str = Color.colorify("{:#x} (={:s})".format(regval, self.bits_split(regval)), "bold yellow")
-            gef_print("{:s} = {:s}".format(regname, value_str))
+            self.out.append("{:s} = {:s}".format(regname, value_str))
         else:
             value_str = Color.colorify("{:#x}".format(regval), "bold yellow")
-            gef_print("{:s} = {:s}".format(regname, value_str))
+            self.out.append("{:s} = {:s}".format(regname, value_str))
         return
 
     def print_description(self):
         if self.description:
-            gef_print(self.description)
+            self.out.append(self.description)
         return
 
     def print_bitinfo(self, regval):
@@ -49913,20 +50188,32 @@ class PrintBitInfo:
                 raise
 
             if val:
-                colored_val = Color.colorify(f"{val:>#{max_width_val}x}", "bold")
+                colored_val = Color.colorify("{:>#{:d}x}".format(val, max_width_val), "bold")
             else:
-                colored_val = f"{val:>#{max_width_val}x}"
+                colored_val = "{:>#{:d}x}".format(val, max_width_val)
             if sym is not None and sdesc is not None:
-                gef_print(f"bit{b:>{max_width_bits}s}: {colored_val:s} [{sym:{max_width_sym}s}: {sdesc:{max_width_sdesc}s}]: {ldesc}")
+                fmt = "bit{:>{:d}s}: {:s} [{:{:d}s}: {:{:d}s}]: {:s}"
+                self.out.append(fmt.format(b, max_width_bits, colored_val, sym, max_width_sym, sdesc, max_width_sdesc, ldesc))
             else:
-                gef_print(f"bit{b:>{max_width_bits}s}: {colored_val:s}: {ldesc}")
+                fmt = "bit{:>{:d}s}: {:s} {:s}"
+                self.out.append(fmt.format(b, max_width_bits, colored_val, ldesc))
         return
 
     def print(self, regval, split=True):
+        self.out = []
         self.print_value(regval, split)
         self.print_description()
         self.print_bitinfo(regval)
+        if self.out:
+            gef_print('\n'.join(self.out))
         return
+
+    def make_out(self, regval, split=True):
+        self.out = []
+        self.print_value(regval, split)
+        self.print_description()
+        self.print_bitinfo(regval)
+        return self.out
 
 
 @register_command
@@ -49937,7 +50224,13 @@ class QemuRegistersCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-v', dest='verbose', action='store_true', help='also display detailed bit information.')
+    parser.add_argument('-n', '--no-pager', action='store_true', default=None, help='do not use less.')
     _syntax_ = parser.format_help()
+
+    def info(self, msg):
+        msg = "{} {}".format(Color.colorify("[+]", "bold blue"), msg)
+        self.out.append(msg)
+        return
 
     def qregisters_x86_x64(self):
         res = gdb.execute("monitor info registers", to_string=True)
@@ -49945,7 +50238,7 @@ class QemuRegistersCommand(GenericCommand):
         yellow = lambda x: Color.colorify(x, "bold yellow")
 
         # CR0
-        gef_print(titlify("CR0 (Control Register 0)"))
+        self.out.append(titlify("CR0 (Control Register 0)"))
         desc = "It contains system control flags that control operating mode and states of the processor"
         bit_info = [
             [31, "PG", "Paging", "If 1, enable paging and use CR3 register, else disable paging"],
@@ -49961,20 +50254,20 @@ class QemuRegistersCommand(GenericCommand):
             [0, "PE", "Protected mode enable", "If 1, system is in protected mode, else system is in real mode"],
         ]
         cr0 = int(re.search(r"CR0=(\S+)", res).group(1), 16)
-        PrintBitInfo("CR0", 32, desc, bit_info).print(cr0)
+        self.out.extend(PrintBitInfo("CR0", 32, desc, bit_info).make_out(cr0))
 
         # CR1
-        gef_print(titlify("CR1 (Control Register 1)"))
-        gef_print("Reserved")
+        self.out.append(titlify("CR1 (Control Register 1)"))
+        self.out.append("Reserved")
 
         # CR2
-        gef_print(titlify("CR2 (Control Register 2)"))
+        self.out.append(titlify("CR2 (Control Register 2)"))
         desc = "When page fault, the address attempted to access is stored (PFLA: Page Fault Linear Address)"
         cr2 = int(re.search(r"CR2=(\S+)", res).group(1), 16)
-        PrintBitInfo("CR2", 64 if is_x86_64() else 32, desc, bit_info=[]).print(cr2, split=False)
+        self.out.extend(PrintBitInfo("CR2", ptr_width() * 8, desc, bit_info=[]).make_out(cr2, split=False))
 
         # CR3
-        gef_print(titlify("CR3 (Control Register 3)"))
+        self.out.append(titlify("CR3 (Control Register 3)"))
         desc = "It contains the physical address of the base of the paging-structure hierarchy and two flags"
         bit_info = [
             [list(range(12, 32)), None, None, "Base of page directory base, typically it points to PML4T if 4-level paging"],
@@ -49983,10 +50276,10 @@ class QemuRegistersCommand(GenericCommand):
             [3, "PWT", "Page-level Write-Through", "If 1, enable write through Page-Directory itself caching when CR4.PCIDE=0"],
         ]
         cr3 = int(re.search(r"CR3=(\S+)", res).group(1), 16)
-        PrintBitInfo("CR3", 64 if is_x86_64() else 32, desc, bit_info).print(cr3)
+        self.out.extend(PrintBitInfo("CR3", ptr_width() * 8, desc, bit_info).make_out(cr3))
 
         # CR4
-        gef_print(titlify("CR4 (Control Register 4)"))
+        self.out.append(titlify("CR4 (Control Register 4)"))
         desc = "It contains flags that enable some architectural extensions, and indicate OS or executive support for specific processor capabilities"
         bit_info = [
             [24, "PKS", "Enable protection keys for supervisor-mode pages", "If 1, enables PKS"],
@@ -50014,26 +50307,26 @@ class QemuRegistersCommand(GenericCommand):
             [0, "VME", "Virtual 8086 Mode Extensions", "If 1, enables support for the virtual interrupt flag (VIF) in virtual-8086 mode"],
         ]
         cr4 = int(re.search(r"CR4=(\S+)", res).group(1), 16)
-        PrintBitInfo("CR4", 64 if is_x86_64() else 32, desc, bit_info).print(cr4)
+        self.out.extend(PrintBitInfo("CR4", ptr_width() * 8, desc, bit_info).make_out(cr4))
 
         # DR0-DR3
-        gef_print(titlify("DR0-DR3 (Debug Address Register 0-3)"))
+        self.out.append(titlify("DR0-DR3 (Debug Address Register 0-3)"))
         desc = "Contain linear addresses of up to 4 hardware breakpoints. If paging is enabled, they are translated to physical addresses"
         dr0 = int(re.search(r"DR0=(\S+)", res).group(1), 16)
         dr1 = int(re.search(r"DR1=(\S+)", res).group(1), 16)
         dr2 = int(re.search(r"DR2=(\S+)", res).group(1), 16)
         dr3 = int(re.search(r"DR3=(\S+)", res).group(1), 16)
-        PrintBitInfo("DR0", 64 if is_x86_64() else 32, None, bit_info=[]).print(dr0, split=False)
-        PrintBitInfo("DR1", 64 if is_x86_64() else 32, None, bit_info=[]).print(dr1, split=False)
-        PrintBitInfo("DR2", 64 if is_x86_64() else 32, None, bit_info=[]).print(dr2, split=False)
-        PrintBitInfo("DR3", 64 if is_x86_64() else 32, desc, bit_info=[]).print(dr3, split=False)
+        self.out.extend(PrintBitInfo("DR0", ptr_width() * 8, None, bit_info=[]).make_out(dr0, split=False))
+        self.out.extend(PrintBitInfo("DR1", ptr_width() * 8, None, bit_info=[]).make_out(dr1, split=False))
+        self.out.extend(PrintBitInfo("DR2", ptr_width() * 8, None, bit_info=[]).make_out(dr2, split=False))
+        self.out.extend(PrintBitInfo("DR3", ptr_width() * 8, desc, bit_info=[]).make_out(dr3, split=False))
 
         # DR4-DR5
-        gef_print(titlify("DR4-DR5 (Debug Register 4-5)"))
-        gef_print("Reserved")
+        self.out.append(titlify("DR4-DR5 (Debug Register 4-5)"))
+        self.out.append("Reserved")
 
         # DR6
-        gef_print(titlify("DR6 (Debug Status Register 6)"))
+        self.out.append(titlify("DR6 (Debug Status Register 6)"))
         desc = "It permits the debugger to determine which debug conditions have occurred"
         bit_info = [
             [16, "RTM", "restricted transactional memory", "If 0, the debug exception or breakpoint exception occured inside an RTM region"],
@@ -50046,10 +50339,10 @@ class QemuRegistersCommand(GenericCommand):
             [0, "B0", "breakpoint condition detected", "If 1, breakpoint condition was met when a debug exception for DR0"],
         ]
         dr6 = int(re.search(r"DR6=(\S+)", res).group(1), 16)
-        PrintBitInfo("DR6", 32, desc, bit_info).print(dr6)
+        self.out.extend(PrintBitInfo("DR6", 32, desc, bit_info).make_out(dr6))
 
         # DR7
-        gef_print(titlify("DR7 (Debug Control Register 7)"))
+        self.out.append(titlify("DR7 (Debug Control Register 7)"))
         desc = "A local breakpoint bit deactivates on hardware task switches, while a global does not"
         bit_info = [
             [[30, 31], "LEN3", "Size of DR3 breakpoint", ""],
@@ -50074,10 +50367,10 @@ class QemuRegistersCommand(GenericCommand):
             [0, "L0", "Local DR0 breakpoint", ""],
         ]
         dr7 = int(re.search(r"DR7=(\S+)", res).group(1), 16)
-        PrintBitInfo("DR7", 64 if is_x86_64() else 32, desc, bit_info).print(dr7)
+        self.out.extend(PrintBitInfo("DR7", ptr_width() * 8, desc, bit_info).make_out(dr7))
 
         # EFER
-        gef_print(titlify("EFER (Extended Feature Enable Register; MSR_EFER:0xc0000080)"))
+        self.out.append(titlify("EFER (Extended Feature Enable Register; MSR_EFER:0xc0000080)"))
         efer = int(re.search(r"EFER=(\S+)", res).group(1), 16)
         bit_info = [
             [15, "TCE", "Translation Cache Extension", ""],
@@ -50093,139 +50386,98 @@ class QemuRegistersCommand(GenericCommand):
             [1, "DPE", "Data Prefetch Enable", "AMD K6 only"],
             [0, "SCE", "System Call Extensions", ""],
         ]
-        PrintBitInfo("EFER", 64 if is_x86_64() else 32, None, bit_info).print(efer)
+        self.out.extend(PrintBitInfo("EFER", ptr_width() * 8, None, bit_info).make_out(efer))
 
         # TR
-        gef_print(titlify("TR (Task Register)"))
+        self.out.append(titlify("TR (Task Register)"))
         tr = re.search(r"TR\s*=\s*(\S+) (\S+) (\S+) (\S+)", res)
         trseg, base, limit, attr = [int(tr.group(i), 16) for i in range(1, 5)]
-        gef_print("{:s} = {:s}".format(red("TR"), yellow("{:#x}".format(trseg))))
+        self.out.append("{:s} = {:s}".format(red("TR"), yellow("{:#x}".format(trseg))))
         regv = Color.boldify("{:#x} (rpl:{:d},ti:{:d},index:{:d})".format(trseg, trseg & 0b11, (trseg >> 2) & 1, trseg >> 3))
-        gef_print("seg: {:s}: segment selector for TSS (Task State Segment)".format(regv))
-        gef_print("  base : {:s}: starting address of TSS".format(Color.boldify("{:#x}".format(base))))
+        self.out.append("seg: {:s}: segment selector for TSS (Task State Segment)".format(regv))
+        self.out.append("  base : {:s}: starting address of TSS".format(Color.boldify("{:#x}".format(base))))
         limit_c = Color.boldify("{:#x}".format(limit))
-        gef_print("  limit: {:s}: segment limit or fixed value(=__KERNEL_TSS_LIMIT x64:0x206f/x86:0x206b)".format(limit_c))
-        gef_print("  attr : {:s}: attribute".format(Color.boldify("{:#x}".format(attr))))
+        self.out.append("  limit: {:s}: segment limit or fixed value(=__KERNEL_TSS_LIMIT x64:0x206f/x86:0x206b)".format(limit_c))
+        self.out.append("  attr : {:s}: attribute".format(Color.boldify("{:#x}".format(attr))))
 
         # GDTR
-        gef_print(titlify("GDTR (Global Descriptor Table Register)"))
+        self.out.append(titlify("GDTR (Global Descriptor Table Register)"))
         gdtr = re.search(r"GDT\s*=\s*(\S+) (\S+)", res)
         base, limit = [int(gdtr.group(i), 16) for i in range(1, 3)]
-        gef_print("{:s} = {:s}:{:s}".format(red("GDTR"), yellow("{:#x}".format(base)), yellow("{:#x}".format(limit))))
-        gef_print("base : {:s}: starting address of GDT (Global Descriptor Table)".format(Color.boldify("{:#x}".format(base))))
-        gef_print("limit: {:s}: (size of GDT) - 1".format(Color.boldify("{:#x}".format(limit))))
-        info("GDT entry")
-        regs = GdtInfoCommand.get_segreg_list()
-        legend = GdtInfoCommand.segval2str_legend()
-        gef_print(Color.colorify(legend, get_gef_setting("theme.table_heading")))
-        gdtinfo = read_memory(base, limit + 1)
-        # https://github.com/torvalds/linux/blob/master/arch/x86/include/asm/segment.h
+        self.out.append("{:s} = {:s}:{:s}".format(red("GDTR"), yellow("{:#x}".format(base)), yellow("{:#x}".format(limit))))
+        self.out.append("base : {:s}: starting address of GDT (Global Descriptor Table)".format(Color.boldify("{:#x}".format(base))))
+        self.out.append("limit: {:s}: (size of GDT) - 1".format(Color.boldify("{:#x}".format(limit))))
+
+        legend = GdtInfoCommand.gdtval2str_legend()
+        self.out.append(Color.colorify(legend, get_gef_setting("theme.table_heading")))
+
         if is_x86_64():
-            segname_info = [
-                "NULL",
-                "KERNEL_32_CS",
-                "KERNEL_CS",
-                "KERNEL_DS",
-                "DEFAULT_USER32_CS",
-                "DEFAULT_USER_DS",
-                "DEFAULT_USER_CS",
-                "",
-                "TSS-part1",
-                "TSS-part2",
-                "LDT-part1",
-                "LDT-part2",
-                "TLS_#1",
-                "TLS_#2",
-                "TLS_#3",
-                "CPUNODE",
-            ]
+            segm_desc = GdtInfoCommand._SEGMENT_DESCRIPTION_64_
         else:
-            segname_info = [
-                "NULL",
-                "RESERVED",
-                "RESERVED",
-                "RESERVED",
-                "UNUSED",
-                "UNUSED",
-                "TLS_#1",
-                "TLS_#2",
-                "TLS_#3",
-                "RESERVED",
-                "RESERVED",
-                "RESERVED",
-                "KERNEL_CS",
-                "KERNEL_DS",
-                "DEFAULT_USER_CS",
-                "DEFAULT_USER_DS",
-                "TSS",
-                "LDT",
-                "PNPBIOS_CS32",
-                "PNPBIOS_CS16",
-                "PNPBIOS_DS",
-                "PNPBIOS_TS1",
-                "PNPBIOS_TS2",
-                "APMBIOS_BASE",
-                "APMBIOS",
-                "APMBIOS",
-                "ESPFIX_SS",
-                "PERCPU",
-                "STACK_CANARY",
-                "UNUSED",
-                "UNUSED",
-                "DOUBLEFAULT_TSS",
-            ]
-        sliced = list(map(u64, [gdtinfo[i:i + 8] for i in range(0, len(gdtinfo), 8)]))
+            segm_desc = GdtInfoCommand._SEGMENT_DESCRIPTION_32_
+        gdtinfo = slice_unpack(read_memory(base, limit + 1), 8)
+        regs = GdtInfoCommand.get_segreg_list()
         registers_color = get_gef_setting("theme.dereference_register_value")
-        for i, b in enumerate(sliced):
+        for i, b in enumerate(gdtinfo):
             reglist = ', '.join(regs.get(i, []))
             if reglist:
                 reglist = LEFT_ARROW + reglist
             if is_x86_64() and i == (trseg >> 3): # for TSS
-                s = GdtInfoCommand.segval2str(b, value_only=True)
+                s = GdtInfoCommand.gdtval2str(b, value_only=True)
                 prev = b
                 reglist = reglist + ", tr" if reglist else LEFT_ARROW + "TR"
             elif is_x86_64() and i == (trseg >> 3) + 1: # for TSS
-                s = GdtInfoCommand.segval2str([prev, b])
+                s = GdtInfoCommand.gdtval2str([prev, b])
             elif is_x86_32() and i == (trseg >> 3): # for TSS
-                s = GdtInfoCommand.segval2str(b)
+                s = GdtInfoCommand.gdtval2str(b)
                 reglist = reglist + ", tr" if reglist else LEFT_ARROW + "TR"
             else:
-                s = GdtInfoCommand.segval2str(b)
-            gef_print("[{:02d}] {:20s}: {:s} {:s}".format(i, segname_info[i], s, Color.colorify(reglist, registers_color)))
-        info("more info, use `gdtinfo -v` command, it prints legend of GDT entry")
+                s = GdtInfoCommand.gdtval2str(b)
+            self.out.append("[{:2d}] {:20s} {:s} {:s}".format(i, segm_desc.get(i), s, Color.colorify(reglist, registers_color)))
 
         # IDTR
-        gef_print(titlify("IDTR (Interrupt Descriptor Table Register)"))
+        self.out.append(titlify("IDTR (Interrupt Descriptor Table Register)"))
         idtr = re.search(r"IDT\s*=\s*(\S+) (\S+)", res)
         base, limit = [int(idtr.group(i), 16) for i in range(1, 3)]
-        gef_print("{:s} = {:s}:{:s}".format(red("IDTR"), yellow("{:#x}".format(base)), yellow("{:#x}".format(limit))))
-        gef_print("base : {:s}: starting address of IDT (Interrupt Descriptor Table)".format(Color.boldify("{:#x}".format(base))))
-        gef_print("limit: {:s}: (size of IDT) - 1".format(Color.boldify("{:#x}".format(limit))))
+        self.out.append("{:s} = {:s}:{:s}".format(red("IDTR"), yellow("{:#x}".format(base)), yellow("{:#x}".format(limit))))
+        self.out.append("base : {:s}: starting address of IDT (Interrupt Descriptor Table)".format(Color.boldify("{:#x}".format(base))))
+        self.out.append("limit: {:s}: (size of IDT) - 1".format(Color.boldify("{:#x}".format(limit))))
+
+        legend = IdtInfoCommand.idtval2str_legend()
+        self.out.append(Color.colorify(legend, get_gef_setting("theme.table_heading")))
+
+        idtinfo = slice_unpack(read_memory(base, limit + 1), current_arch.ptrsize * 2)
+        for i, b in enumerate(idtinfo):
+            int_name = IdtInfoCommand._INTERRUPT_DESCRIPTION_.get(i, "User defined Interrupt {:#x}".format(i))
+            s = IdtInfoCommand.idtval2str(b)
+            sym = get_symbol_string(IdtInfoCommand.idt_unpack(b).offset, nosymbol_string=" <NO_SYMBOL>")
+            self.out.append("[{:#3d}] {:36s} {:s}{:s}".format(i, int_name, s, sym))
 
         # LDTR
-        gef_print(titlify("LDTR (Local Descriptor Table Register)"))
+        self.out.append(titlify("LDTR (Local Descriptor Table Register)"))
         ldtr = re.search(r"LDT\s*=\s*(\S+) (\S+) (\S+) (\S+)", res)
         seg, base, limit, attr = [int(ldtr.group(i), 16) for i in range(1, 5)]
-        gef_print("{:s} = {:s}".format(red("LDTR"), yellow("{:#x}".format(seg))))
+        self.out.append("{:s} = {:s}".format(red("LDTR"), yellow("{:#x}".format(seg))))
         regv = Color.boldify("{:#x} (rpl:{:d},ti:{:d},index:{:d})".format(seg, seg & 0b11, (seg >> 2) & 1, seg >> 3))
-        gef_print("seg: {:s}: segment selector for LDT (Local Descriptor Table)".format(regv))
-        gef_print("  base : {:s}: starting address of LDT".format(Color.boldify("{:#x}".format(base))))
-        gef_print("  limit: {:s}: segment limit".format(Color.boldify("{:#x}".format(limit))))
-        gef_print("  attr : {:s}: attribute".format(Color.boldify("{:#x}".format(attr))))
+        self.out.append("seg: {:s}: segment selector for LDT (Local Descriptor Table)".format(regv))
+        self.out.append("  base : {:s}: starting address of LDT".format(Color.boldify("{:#x}".format(base))))
+        self.out.append("  limit: {:s}: segment limit".format(Color.boldify("{:#x}".format(limit))))
+        self.out.append("  attr : {:s}: attribute".format(Color.boldify("{:#x}".format(attr))))
         return
 
     def qregisters(self):
         res = gdb.execute("monitor info registers", to_string=True)
-        gef_print(titlify("info register"))
+        self.out.append(titlify("info register"))
         for line in res.splitlines():
-            gef_print(line)
+            self.out.append(line)
 
         if is_x86():
             if not self.add_info:
-                info("use `-v` for print Additional info")
+                self.info("use `-v` for print Additional info")
             else:
-                info("Additional info")
+                self.info("Additional info")
                 self.qregisters_x86_x64()
+
         return
 
     @parse_args
@@ -50234,7 +50486,12 @@ class QemuRegistersCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
         self.add_info = args.verbose
+
+        self.out = []
         self.qregisters()
+
+        if self.out:
+            gef_print('\n'.join(self.out), less=not args.no_pager)
         return
 
 
