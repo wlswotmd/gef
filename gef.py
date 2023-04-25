@@ -15576,14 +15576,21 @@ class RpCommand(GenericCommand):
             if not is_qemu_system():
                 err("--kernel are supported only under qemu-system.")
                 return
+
+            info("Wait for memory scan")
             # dump kernel then apply vmlinux-to-elf
-            dump_mem_file = os.path.join(GEF_TEMP_DIR, "rp-dump-memory.raw")
-            self.path = symboled_vmlinux_file = os.path.join(GEF_TEMP_DIR, "rp-dump-memory.elf")
-            kinfo = VmlinuxToElfApplyCommand().dump_kernel_elf(dump_mem_file, symboled_vmlinux_file)
-            if kinfo is None:
-                err("Failed to get symboled ELF")
+            symboled_vmlinux_file = VmlinuxToElfApplyCommand.dump_kernel_elf()
+            if symboled_vmlinux_file is None:
+                err("Failed to create kernel ELF.")
                 return
-            base_address = kinfo.kbase
+            self.path = symboled_vmlinux_file
+
+            cmd = "nm '{:s}' | grep ' _stext$'".format(symboled_vmlinux_file)
+            out = gef_execute_external(cmd, as_list=True, shell=True)
+            if len(out) != 1:
+                err("Failed to resolve _stext")
+                return
+            base_address = int(out[0].split()[0], 16)
 
         # invoke rp++
         rp_output_path = self.exec_rp(args.rop_N)
@@ -46271,12 +46278,12 @@ class VmlinuxToElfApplyCommand(GenericCommand):
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--reparse', action='store_true',
+    parser.add_argument('-r', '--reparse', action='store_true',
                         help='force applying vmlinux-to-elf again. (default: reuse if vmlinux-to-elf-dump-memory.elf exists)')
     _syntax_ = parser.format_help()
 
     @staticmethod
-    def dump_kernel_elf(dumped_mem_file, symboled_vmlinux_file, force=False):
+    def dump_kernel_elf(reparse=False):
         """Dump the kernel from the memory, then apply vmlinux-to-elf to create symboled ELF."""
         # check
         try:
@@ -46285,17 +46292,26 @@ class VmlinuxToElfApplyCommand(GenericCommand):
             err("{}".format(e))
             return None
 
-        # resolve kbase, krobase
-        info("Wait for memory scan")
+        # resolve kversion for saved file name
+        kversion = KernelVersionCommand.kernel_version()
+        h = hashlib.sha256(str2bytes(kversion.version_string)).hexdigest()[-16:]
+        dumped_mem_file = os.path.join(GEF_TEMP_DIR, "dump-memory-{:s}.raw".format(h))
+        symboled_vmlinux_file = os.path.join(GEF_TEMP_DIR, "dump-memory-{:s}.elf".format(h))
 
+        # check if it can be reused
+        if (not reparse) and os.path.exists(symboled_vmlinux_file) and os.path.getsize(symboled_vmlinux_file) > 0:
+            info("A previously used file was found. reuse.")
+            return symboled_vmlinux_file
+
+        # resolve kbase, krobase
         kinfo = KernelbaseCommand.get_kernel_base()
-        if kinfo.has_none:
+        if None in (kinfo.kbase, kinfo.kbase_size, kinfo.krobase, kinfo.krobase_size):
             err("Failed to resolve")
             return None
         gef_print("kernel base:   {:#x} ({:#x} bytes)".format(kinfo.kbase, kinfo.kbase_size))
         gef_print("kernel rodata: {:#x} ({:#x} bytes)".format(kinfo.krobase, kinfo.krobase_size))
-        gef_print("kernel data:   {:#x} ({:#x} bytes)".format(kinfo.krwbase, kinfo.krwbase_size))
 
+        info("Start memory dump")
         # rodata size detection may be inaccurate on kernels with RWX attribute regions.
         # Since they tend to be very large, we put a size cap on the rodata to make it faster.
         if kinfo.rwx:
@@ -46304,78 +46320,65 @@ class VmlinuxToElfApplyCommand(GenericCommand):
         else:
             fixed_krobase_size = kinfo.krobase_size
 
-        # check if it can be reused
-        if not force and os.path.exists(symboled_vmlinux_file):
-            data = open(symboled_vmlinux_file, "rb").read()
-            data = ''.join([chr(x) for x in data])
-            r1 = re.findall(r"(Linux version (?:\d+\.[\d.]*\d)[ -~]+)", data)
+        # delete old file
+        if os.path.exists(dumped_mem_file):
+            gef_print("Delete old {}".format(dumped_mem_file))
+            os.unlink(dumped_mem_file)
+        if os.path.exists(symboled_vmlinux_file):
+            gef_print("Delete old {}".format(symboled_vmlinux_file))
+            os.unlink(symboled_vmlinux_file)
 
-            data = read_memory(kinfo.krobase, fixed_krobase_size)
-            data = ''.join([chr(x) for x in data])
-            r2 = re.findall(r"(Linux version (?:\d+\.[\d.]*\d)[ -~]+)", data)
+        # delete files related to old file
+        for f in os.listdir(GEF_TEMP_DIR):
+            if os.path.basename(dumped_mem_file) in f:
+                remove_file = os.path.join(GEF_TEMP_DIR, f)
+                gef_print("Delete old {}".format(remove_file))
+                os.unlink(remove_file)
+            if os.path.basename(symboled_vmlinux_file) in f:
+                remove_file = os.path.join(GEF_TEMP_DIR, f)
+                gef_print("Delete old {}".format(remove_file))
+                os.unlink(remove_file)
 
-            if r1 and r2 and r1[0] != r2[0]:
-                info("Run vmlinux-to-elf again because the kernel version is different")
-                force = True
+        # dump text
+        start = kinfo.kbase
+        end = start + kinfo.kbase_size
+        gef_print("Dumping .text area:   {:#x} - {:#x}".format(start, end))
+        try:
+            gdb.execute("dump memory {} {:#x} {:#x}".format(dumped_mem_file, start, end), to_string=True)
+        except gdb.MemoryError:
+            err("Memory read error. Make sure the context is in supervisor mode / Ring-0")
+            return None
 
-        # dump memory
-        if force or (not os.path.exists(dumped_mem_file) and not os.path.exists(symboled_vmlinux_file)):
-            # remove old file
-            if os.path.exists(dumped_mem_file):
-                info("Remove old {}".format(dumped_mem_file))
-                os.unlink(dumped_mem_file)
+        # dump sparse
+        kbase_end = kinfo.kbase + kinfo.kbase_size
+        unmapped_size = kinfo.krobase - kbase_end
+        if unmapped_size:
+            gef_print("Non-mapping area:     {:#x} - {:#x} (ZERO fill)".format(kbase_end, kinfo.krobase))
+            open(dumped_mem_file, "a").write("\0" * unmapped_size)
 
-            # dump text
-            info("Dumping memory")
+        # dump rodata
+        start = kinfo.krobase
+        end = start + fixed_krobase_size
+        gef_print("Dumping .rodata area: {:#x} - {:#x}".format(start, end))
+        try:
+            gdb.execute("append memory {} {:#x} {:#x}".format(dumped_mem_file, start, end), to_string=True)
+        except gdb.MemoryError:
+            err("Memory read error. Make sure the context is in supervisor mode / Ring-0")
+            return None
 
-            start = kinfo.kbase
-            end = start + kinfo.kbase_size
-            gef_print("Dumping .text area:   {:#x} - {:#x}".format(start, end))
-            try:
-                gdb.execute("dump memory {} {:#x} {:#x}".format(dumped_mem_file, start, end), to_string=True)
-            except gdb.MemoryError:
-                err("Memory read error. Make sure the context is in supervisor mode / Ring-0")
-                return None
-
-            # dump sparse
-            kbase_end = kinfo.kbase + kinfo.kbase_size
-            unmapped_size = kinfo.krobase - kbase_end
-            if unmapped_size:
-                gef_print("Non-mapping area:     {:#x} - {:#x} (ZERO fill)".format(kbase_end, kinfo.krobase))
-                open(dumped_mem_file, "a").write("\0" * unmapped_size)
-
-            # dump rodata
-            start = kinfo.krobase
-            end = start + fixed_krobase_size
-            gef_print("Dumping .rodata area: {:#x} - {:#x}".format(start, end))
-            try:
-                gdb.execute("append memory {} {:#x} {:#x}".format(dumped_mem_file, start, end), to_string=True)
-            except gdb.MemoryError:
-                err("Memory read error. Make sure the context is in supervisor mode / Ring-0")
-                return None
-
-            gef_print("Dumped to {}".format(dumped_mem_file))
-        else:
-            # reuse by default
-            pass
+        gef_print("Dumped to {}".format(dumped_mem_file))
 
         # apply vmlinux-to-elf
-        if force or not os.path.exists(symboled_vmlinux_file):
-            cmd = "{} '{}' '{}' --base-address={:#x}".format(vmlinux2elf, dumped_mem_file, symboled_vmlinux_file, kinfo.kbase)
-            info("Execute `{:s}`".format(cmd))
-            os.system(cmd)
-        else:
-            # reuse by default
-            pass
+        cmd = "{} '{}' '{}' --base-address={:#x}".format(vmlinux2elf, dumped_mem_file, symboled_vmlinux_file, kinfo.kbase)
+        warn("Execute `{:s}`".format(cmd))
+        os.system(cmd)
 
         # Error
-        if not os.path.exists(symboled_vmlinux_file):
-            return None
-        if os.path.getsize(symboled_vmlinux_file) == 0:
+        if not os.path.exists(symboled_vmlinux_file) or os.path.getsize(symboled_vmlinux_file) == 0:
             return None
 
         # Success
-        return kinfo
+        return symboled_vmlinux_file
 
     @parse_args
     @only_if_gdb_running
@@ -46385,13 +46388,15 @@ class VmlinuxToElfApplyCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        dumped_mem_file = os.path.join(GEF_TEMP_DIR, "vmlinux-to-elf-dump-memory.raw")
-        symboled_vmlinux_file = os.path.join(GEF_TEMP_DIR, "vmlinux-to-elf-dump-memory.elf")
-        kinfo = self.dump_kernel_elf(dumped_mem_file, symboled_vmlinux_file, force=args.reparse)
-        if kinfo is None:
-            err("Failed to create kernel ELF. try to re-parse...")
-            kinfo = self.dump_kernel_elf(dumped_mem_file, symboled_vmlinux_file, force=True)
-        if kinfo is None:
+        info("Wait for memory scan")
+
+        kinfo = KernelbaseCommand.get_kernel_base()
+        if kinfo.kbase is None:
+            err("Failed to resolve kbase")
+            return
+
+        symboled_vmlinux_file = self.dump_kernel_elf(args.reparse)
+        if symboled_vmlinux_file is None:
             err("Failed to create kernel ELF.")
             return
 
@@ -46403,7 +46408,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
         # But the created ELF has no .text, only a .kernel
         # Applying an empty symbol has no effect, so tentatively specify the same address as the .kernel.
         cmd = "add-symbol-file {} {:#x} -s .kernel {:#x}".format(symboled_vmlinux_file, kinfo.kbase, kinfo.kbase)
-        info(cmd)
+        warn("Execute `{:s}`".format(cmd))
         gdb.execute(cmd)
         return
 
