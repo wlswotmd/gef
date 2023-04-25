@@ -424,6 +424,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dtor-dump.png)
 * `walk-link-list`: walks the link list.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/walk-link-list.png)
+* `ptr-mangle`: shows the mangled value will be mangled by `PTR_MANGLE`.
 * `ptr-demangle`: shows the demangled value of the value mangled by `PTR_MANGLE`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ptr-demangle.png)
 * `search-mangled-ptr`: searches the mangled value from RW memory.

@@ -12218,6 +12218,54 @@ class PtrDemangleCommand(GenericCommand):
 
 
 @register_command
+class PtrMangleCommand(GenericCommand):
+    """Mangle a mangled value by PTR_MANGLE."""
+    _cmdline_ = "ptr-mangle"
+    _category_ = "02-f. Process Information - Security"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('value', metavar='VALUE', nargs='?', type=lambda x: int(x, 0), help='the value you want to mangle.')
+    group.add_argument('--source', action='store_true', help='shows the source instead of displaying mangled value.')
+    _syntax_ = parser.format_help()
+
+    @staticmethod
+    def encode(value, cookie):
+        def rol(val, bits, arch_bits):
+            new_val = (val << bits) | (val >> (arch_bits - bits))
+            mask = (1 << arch_bits) - 1
+            return new_val & mask
+
+        if is_x86_64():
+            encoded = rol(value ^ cookie, 17, 64)
+        elif is_x86_32():
+            encoded = rol(value ^ cookie, 9, 32)
+        elif is_arm32() or is_arm64():
+            encoded = value ^ cookie
+        return encoded
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        if args.source:
+            s = inspect.getsource(PtrMangleCommand.encode).rstrip()
+            gef_print(s)
+            return
+
+        cookie = PtrDemangleCommand.get_cookie()
+        if cookie is None:
+            return
+        info("Cookie is {:#x}".format(cookie))
+
+        encoded = self.encode(args.value, cookie)
+        info("Encoded value is {:#x}".format(encoded))
+        return
+
+
+@register_command
 class SearchMangledPtrCommand(GenericCommand):
     """Search a mangled pointer value in memory."""
     _cmdline_ = "search-mangled-ptr"
