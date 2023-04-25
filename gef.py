@@ -8417,6 +8417,9 @@ def hook_stop_handler(event):
                 err("Missing info about architecture. Please set: `file /path/to/target_binary`")
                 err("Some architectures may not be automatically recognized. Set it manually with `set architecture YOUR_ARCH`.")
 
+        if not is_qemu_system():
+            gdb.execute("codebase", to_string=True)
+
         # Ubuntu 20.04 and earlier seem to have a bug (?) in libpython
         # that prevents SIGINTs with no destination from being handled correctly at `c` command.
         # To work around this issue, override the c command again with the `continue` command if neither qemu-user nor pin.
