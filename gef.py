@@ -2527,62 +2527,75 @@ def capstone_disassemble(location, nb_insn, **kwargs):
     arch, mode = get_capstone_arch(arch=_arch, mode=_mode, endian=_endian)
     try:
         cs = capstone.Cs(arch, mode)
+        cs.detail = True
     except capstone.CsError:
         err("CsError")
         return
-    cs.detail = True
-    skip = int(kwargs.get("skip", 0))
 
-    if "code" in kwargs:
-        code = kwargs["code"].replace(" ", "")
-        code = binascii.unhexlify(code)
-        for insn in cs.disasm(code, location):
-            if skip:
-                skip -= 1
-                continue
-            nb_insn -= 1
-            yield Instruction(insn.address, "", insn.mnemonic, [] + insn.op_str.split(", "), insn.bytes)
-            if nb_insn == 0:
-                break
-        return
-    else:
-        pc = current_arch.pc
-        nb_prev = int(kwargs.get("nb_prev", 0))
-        if nb_prev > 0:
-            location = gdb_get_nth_previous_instruction_address(pc, nb_prev)
-            nb_insn += nb_prev
+    # fix location by nb_prev
+    nb_prev = kwargs.get("nb_prev", 0)
+    if nb_prev > 0:
+        location = gdb_get_nth_previous_instruction_address(location, nb_prev)
+        nb_insn += nb_prev
 
-        # split raeding by page_size
-        used_bytes = 0
-        code = b""
-        page_start = align_address_to_page(location)
-        offset = location - page_start
-        read_addr = location
-        if is_arm32() and read_addr & 1:
-            read_addr -= 1
-            offset -= 1
-        read_size = gef_getpagesize() - offset
-        while True:
+    # split raeding by page_size
+    read_addr = location
+    read_size = gef_getpagesize() - (location & (gef_getpagesize() - 1))
+
+    # fix for arm thumb2 mode
+    if is_arm32() and read_addr & 1:
+        read_addr -= 1
+        read_size += 1
+
+    skip = kwargs.get("skip", 0)
+    arch_inst_length = current_arch.instruction_length or 1
+    used_bytes = 0
+    code_remain = b""
+
+    # A loop to read the required memory until the specified length is reached
+    while True:
+        if len(code_remain) < gef_getpagesize():
+            # not enough code to disassemble, so read the memory to pool
             try:
                 read_data = read_memory(read_addr, read_size)
             except gdb.MemoryError:
                 err("Memory read error at {:#x}-{:#x}".format(read_addr, read_addr + read_size))
                 return
-            code += bytes(read_data)
-            for insn in cs.disasm(code, location):
+            code_remain += read_data
+
+        # cs.disasm will terminate disassemble if an invalid instruction is detected.
+        # This is a loop to display (bad) and increment and reinterpret code.
+        while True:
+            # disasm
+            for insn in cs.disasm(code_remain, location):
+                used_bytes += len(insn.bytes)
                 if skip:
                     skip -= 1
                     continue
-                nb_insn -= 1
-                used_bytes += len(insn.bytes)
                 yield cs_insn_to_gef_insn(insn)
+                nb_insn -= 1
                 if nb_insn == 0:
                     return
-            code = code[used_bytes:] # There may be instructions placed across page boundaries.
-            location += used_bytes
-            used_bytes = 0
-            read_addr += read_size # 1st loop is the offset size. 2nd~ loops are the page size.
-            read_size = gef_getpagesize()
+
+            # success (disassembled something)
+            if used_bytes > 0:
+                break
+
+            # failure (maybe the code is invalid)
+            yield Instruction(location, "", "(bad)", [], code_remain[:arch_inst_length])
+            nb_insn -= 1
+            if nb_insn == 0:
+                return
+            location += arch_inst_length
+            code_remain = code_remain[arch_inst_length:]
+
+        # go away only the size used
+        code_remain = code_remain[used_bytes:] # There may be instructions placed across page boundaries.
+        location += used_bytes
+        used_bytes = 0
+
+        read_addr += read_size # 1st loop is the offset size. 2nd~ loops are the page size.
+        read_size = gef_getpagesize()
     return
 
 
@@ -14226,14 +14239,14 @@ class CapstoneDisassembleCommand(GenericCommand):
     """Use capstone disassembly framework to disassemble code."""
     _cmdline_ = "capstone-disassemble"
     _category_ = "01-e. Debugging Support - Assemble"
-    _aliases_ = ["cs-dis"]
+    _aliases_ = ["cs-dis", "pdisas"]
+    _repeat_ = True
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
                         help='the address you want to disassemble. (default: current_arch.pc)')
     parser.add_argument('-l', dest='length', type=parse_address,
                         help='the length you want to disassemble. (default: context.nb_lines_code)')
-    parser.add_argument('--code', help='disassemble specific code bytes.')
     parser.add_argument('args', metavar='ARGS', nargs='*', help='arguments for capstone. see following example.')
     _syntax_ = parser.format_help()
 
@@ -14246,9 +14259,8 @@ class CapstoneDisassembleCommand(GenericCommand):
         "X86" : ["16", "32", "64"],
     }
 
-    _example_ = "{:s} $pc -l 50                            # dump from $pc up to 50 lines later\n".format(_cmdline_)
-    _example_ += "{:s} $pc -l 50 arch=ARM mode=ARM endian=1 # specify arch, mode and endian (1:big endian)\n".format(_cmdline_)
-    _example_ += '{:s} code="9090"                          # disassemble specified byte patterns\n'.format(_cmdline_)
+    _example_ = "{:s} -l 50 $pc                            # dump from $pc up to 50 lines later\n".format(_cmdline_)
+    _example_ += "{:s} -l 50 $pc arch=ARM mode=ARM endian=1 # specify arch, mode and endian (1:big endian)\n".format(_cmdline_)
     _example_ += "\n"
     _example_ += "Available architectures and modes:\n"
     for arch in valid_arch_modes:
@@ -14262,11 +14274,6 @@ class CapstoneDisassembleCommand(GenericCommand):
     @only_if_gdb_running
     @load_capstone
     def do_invoke(self, args):
-        if args.length is None:
-            length = int(get_gef_setting("context.nb_lines_code"))
-        else:
-            length = args.length
-
         kwargs = {}
         for arg in args.args:
             if "=" in arg:
@@ -14276,17 +14283,8 @@ class CapstoneDisassembleCommand(GenericCommand):
                 err("ARGS must be KEY=VALUE style")
                 return
 
-        if args.code:
-            kwargs["code"] = args.code
-            if args.location is None:
-                location = 0
-            else:
-                location = args.location
-        else:
-            if args.location is None:
-                location = current_arch.pc
-            else:
-                location = args.location
+        length = args.length or int(get_gef_setting("context.nb_lines_code"))
+        location = args.location or current_arch.pc
 
         try:
             skip = length * self.repeat_count
@@ -14331,36 +14329,6 @@ class CapstoneDisassembleCommand(GenericCommand):
                 pass
 
         return (False, "")
-
-
-@register_command
-class PdisasCommand(GenericCommand):
-    """Shortcut `cs-dis -l 50`."""
-    _cmdline_ = "pdisas"
-    _category_ = "01-e. Debugging Support - Assemble"
-
-    parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
-                        help='the address you want to disassemble. (default: current_arch.pc)')
-    parser.add_argument('-l', dest='length', type=parse_address, default=50,
-                        help='the length you want to disassemble. (default: %(default)s)')
-    _syntax_ = parser.format_help()
-
-    def __init__(self):
-        super().__init__(complete=gdb.COMPLETE_LOCATION)
-        return
-
-    @parse_args
-    @only_if_gdb_running
-    def do_invoke(self, args):
-        self.dont_repeat()
-
-        if args.location is None:
-            location = ""
-        else:
-            location = "{:#x}".format(args.location)
-        gdb.execute("cs-dis {:s} -l {:d}".format(location, args.length))
-        return
 
 
 @register_command
