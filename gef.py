@@ -318,24 +318,37 @@ def gef_print(x="", less=False, *args, **kwargs):
 
 class Color:
     """Used to colorify terminal output."""
+
     colors = {
-        "normal"         : "\033[0m",
-        "gray"           : "\033[1;30m",
-        "light_gray"     : "\033[0;37m",
-        "red"            : "\033[31m",
-        "green"          : "\033[32m",
-        "yellow"         : "\033[33m",
-        "blue"           : "\033[34m",
-        "pink"           : "\033[35m",
-        "cyan"           : "\033[36m",
-        "bold"           : "\033[1m",
-        "underline"      : "\033[4m",
-        "underline_off"  : "\033[24m",
-        "highlight"      : "\033[3m",
-        "highlight_off"  : "\033[23m",
-        "blink"          : "\033[5m",
-        "blink_off"      : "\033[25m",
+        "normal"          : "\033[0m",
+
+        "bold"            : "\033[1m",
+        "bold_off"        : "\033[21m",
+        "highlight"       : "\033[2m",
+        "highlight_off"   : "\033[22m",
+        "italic"          : "\033[3m",
+        "italic_off"      : "\033[23m",
+        "underline"       : "\033[4m",
+        "underline_off"   : "\033[24m",
+        "blink"           : "\033[5m",
+        "blink_off"       : "\033[25m",
+
+        "gray"            : "\033[1;30m",
+        "red"             : "\033[31m",
+        "green"           : "\033[32m",
+        "yellow"          : "\033[33m",
+        "blue"            : "\033[34m",
+        "pink"            : "\033[35m",
+        "cyan"            : "\033[36m",
     }
+
+    @staticmethod
+    def boldify(msg):
+        return Color.colorify(msg, "bold")
+
+    @staticmethod
+    def grayify(msg):
+        return Color.colorify(msg, "gray")
 
     @staticmethod
     def redify(msg):
@@ -346,20 +359,12 @@ class Color:
         return Color.colorify(msg, "green")
 
     @staticmethod
-    def blueify(msg):
-        return Color.colorify(msg, "blue")
-
-    @staticmethod
     def yellowify(msg):
         return Color.colorify(msg, "yellow")
 
     @staticmethod
-    def grayify(msg):
-        return Color.colorify(msg, "gray")
-
-    @staticmethod
-    def light_grayify(msg):
-        return Color.colorify(msg, "light_gray")
+    def blueify(msg):
+        return Color.colorify(msg, "blue")
 
     @staticmethod
     def pinkify(msg):
@@ -370,22 +375,6 @@ class Color:
         return Color.colorify(msg, "cyan")
 
     @staticmethod
-    def boldify(msg):
-        return Color.colorify(msg, "bold")
-
-    @staticmethod
-    def underlinify(msg):
-        return Color.colorify(msg, "underline")
-
-    @staticmethod
-    def highlightify(msg):
-        return Color.colorify(msg, "highlight")
-
-    @staticmethod
-    def blinkify(msg):
-        return Color.colorify(msg, "blink")
-
-    @staticmethod
     def colorify(text, attrs):
         """Color text according to the given attributes."""
         if get_gef_setting("gef.disable_color") is True:
@@ -394,8 +383,12 @@ class Color:
         colors = Color.colors
         msg = [colors[attr] for attr in attrs.split() if attr in colors]
         msg.append(str(text))
+        if colors["bold"] in msg:
+            msg.append(colors["bold_off"])
         if colors["highlight"] in msg:
             msg.append(colors["highlight_off"])
+        if colors["italic"] in msg:
+            msg.append(colors["italic_off"])
         if colors["underline"] in msg:
             msg.append(colors["underline_off"])
         if colors["blink"] in msg:
@@ -7584,6 +7577,7 @@ def timeout(duration):
 
         def run_function(function, *args, **kwargs):
             try:
+                # len(result) must be less than 0xffe8
                 result = function(*args, **kwargs)
             except Exception as e:
                 queue.put((False, e))
@@ -7695,12 +7689,6 @@ def get_path_from_info_proc():
 
 
 @functools.lru_cache(maxsize=None)
-def get_os():
-    """Return the current OS."""
-    return platform.system().lower()
-
-
-@functools.lru_cache(maxsize=None)
 def is_remote_debug():
     """"Return True is the current debugging session is running through GDB remote session."""
     res = gdb.execute("maintenance print target-stack", to_string=True)
@@ -7794,11 +7782,6 @@ def get_tcp_sess(pid):
     return sessions
 
 
-def get_gdb_tcp_sess():
-    gdb_pid = os.getpid()
-    return get_tcp_sess(gdb_pid)
-
-
 def get_all_process():
     pids = [int(x) for x in os.listdir("/proc") if x.isdigit()]
     process = []
@@ -7822,7 +7805,7 @@ def get_pid(remote=False):
         return None
 
     def get_pid_from_tcp_session(filepath, match_prefix_only=False):
-        gdb_tcp_sess = [x["raddr"] for x in get_gdb_tcp_sess()]
+        gdb_tcp_sess = [x["raddr"] for x in get_tcp_sess(os.getpid())]
         if not gdb_tcp_sess:
             err("gdb has no tcp session")
             return None
@@ -8412,8 +8395,7 @@ def hook_stop_handler(event):
         if not is_qemu_system():
             gdb.execute("codebase", to_string=True)
 
-        # Ubuntu 20.04 and earlier seem to have a bug (?) in libpython
-        # that prevents SIGINTs with no destination from being handled correctly at `c` command.
+        # Ubuntu 20.04 and earlier seem to have a bug (?) in libpython that mishandles SIGINT with no destination.
         # To work around this issue, override the c command again with the `continue` command if neither qemu-user nor pin.
         if not (is_qemu_usermode() or is_pin()):
             gdb.execute("define c\ncontinue\nend")
@@ -10111,6 +10093,31 @@ class VersionCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
 
+    def os_version(self):
+        try:
+            command = which("lsb_release")
+            res = gef_execute_external([command, "-d"], as_list=True)
+            for line in res:
+                if line.startswith("Description:"):
+                    return line.split(":")[1].strip("\\t")
+        except IOError:
+            pass
+
+        if os.path.exists("/etc/issue.net"):
+            return open("/etc/issue.net").read().strip()
+        return 'Not found'
+
+    def kernel_version(self):
+        try:
+            command = which("uname")
+            res = gef_execute_external([command, "-a"], as_list=True)
+            return res[0]
+        except IOError:
+            return 'Not found'
+
+    def qemu_version(self):
+        return gdb.execute('monitor info version', to_string=True).strip()
+
     def gef_version(self):
         gef_fpath = os.path.abspath(os.path.realpath(os.path.expanduser(inspect.stack()[0][1])))
         gef_hash = hashlib.sha1(open(gef_fpath, "rb").read()).hexdigest()
@@ -10198,27 +10205,6 @@ class VersionCommand(GenericCommand):
         except IOError:
             return 'Not found'
 
-    def qemu_version(self):
-        return gdb.execute('monitor info version', to_string=True).strip()
-
-    def kernel_version(self):
-        try:
-            command = which("uname")
-            res = gef_execute_external([command, "-a"], as_list=True)
-            return res[0]
-        except IOError:
-            return 'Not found'
-
-    def os_version(self):
-        try:
-            command = which("lsb_release")
-            res = gef_execute_external([command, "-d"], as_list=True)
-            for line in res:
-                if line.startswith("Description:"):
-                    return line.split(":")[1].strip("\\t")
-        except IOError:
-            return 'Not found'
-
     @parse_args
     def do_invoke(self, args):
         self.dont_repeat()
@@ -10226,6 +10212,8 @@ class VersionCommand(GenericCommand):
         gef_print(titlify("versions"))
         gef_print("OS:            \t{:s}".format(self.os_version()))
         gef_print("Kernel:        \t{:s}".format(self.kernel_version()))
+        if is_qemu_system():
+            gef_print("qemu:          \t{:s}".format(self.qemu_version()))
         gef_print("GEF:           \t{:s}".format(self.gef_version()))
         gef_print("Gdb:           \t{:s}".format(self.gdb_version()))
         gef_print("Python:        \t{:s}".format(self.python_version()))
@@ -10237,9 +10225,6 @@ class VersionCommand(GenericCommand):
         gef_print("objdump:       \t{:s}".format(self.objdump_version()))
         gef_print("seccomp-tools: \t{:s}".format(self.seccomp_tools_version()))
         gef_print("one_gadget:    \t{:s}".format(self.one_gadget_version()))
-
-        if is_qemu_system():
-            gef_print("qemu:          \t{:s}".format(self.qemu_version()))
 
         gef_print(titlify("gdb build config"))
         gdb.execute("show configuration")
@@ -56336,7 +56321,7 @@ class GefCommand(gdb.Command):
         if initial:
             gef_print("{:s} for {:s} ready, type `{:s}' to start, `{:s}' to configure".format(
                 Color.greenify("GEF"),
-                get_os(),
+                platform.system().lower(),
                 Color.colorify("gef", "underline yellow"),
                 Color.colorify("gef config", "underline pink")
             ))
