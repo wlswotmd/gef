@@ -210,28 +210,7 @@ cached_kernel_version           = None
 cached_kernel_cmdline           = None
 
 
-def perf_enable(f):
-    """Decorator wrapper to perf."""
-
-    @functools.wraps(f)
-    def wrapper(*args, **kwargs):
-        import cProfile, pstats, io
-        pr = cProfile.Profile()
-        pr.enable()
-        ret = f(*args, **kwargs)
-        pr.disable()
-        s = io.StringIO()
-        #sortby = pstats.SortKey.CUMULATIVE
-        sortby = pstats.SortKey.TIME
-        ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
-        ps.print_stats(20)
-        print(s.getvalue())
-        return ret
-
-    return wrapper
-
-
-def perf_by_line_enable(f):
+def perf(f):
     """Decorator wrapper to perf."""
 
     @functools.wraps(f)
