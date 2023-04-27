@@ -45605,7 +45605,8 @@ class SlobDumpCommand(GenericCommand):
             self.out.append('    total units: {:#x}'.format(page['units']))
             for i, (chunk, units) in enumerate(page['freelist']):
                 msg = Color.colorify("{:#x}".format(chunk), "bold yellow")
-                self.out.append('    {:9s} {:s} (units: {:#x}, size: {:#x})'.format("freelist:" if i == 0 else "", msg, units, units * 2))
+                msg_sz = Color.colorify("{:#x}".format(units * 2), "bold pink")
+                self.out.append('    {:9s} {:s} (units: {:#x}, size: {:s})'.format("freelist:" if i == 0 else "", msg, units, msg_sz))
             self.out.append('    next: {:#x}'.format(page['next']))
         return
 
