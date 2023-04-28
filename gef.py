@@ -21887,9 +21887,26 @@ def to_string_dereference_from(value, join_start_idx=0):
     # dereference
     addrs = dereference_from(value)
 
+    def to_ascii(v):
+        ascii = string.ascii_letters + string.digits + string.punctuation + " "
+        s = ""
+        while v & 0xff:
+            if chr(v & 0xff) in ascii:
+                s += chr(v & 0xff)
+            else:
+                s = ""
+                break
+            v >>= 8
+        return s
+
     # value is not valid address
     if join_start_idx == 0 and len(addrs) == 1:
-        return hex(value)
+        s = to_ascii(value)
+        if s:
+            s = Color.colorify(repr(s), get_gef_setting("theme.dereference_string"))
+            return "{:#x} ({:s}?)".format(value, s)
+        else:
+            return "{:#x}".format(value)
 
     # for example, 1st element is address and 2nd element is "[...]".
     # In this case we don't omit the 1st element even if join_start_idx==1
