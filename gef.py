@@ -73,18 +73,19 @@
 # SOFTWARE.
 #
 #######################################################################################
-# Use this command when check by flake8
-# flake8 gef.py --ignore E203,E221,E241,E261,E265,E401,E402,E501,E731,F601
-# E203: whitespace before ':'
-# E221: multiple spaces before operator
-# E241: multiple spaces after ','
-# E261: at least two spaces before inline comment
-# E265: block comment should start with '# '
-# E401: multiple imports on one line
+# Use this command when check by ruff
+# ruff check gef.py --select B,C4,E,F --ignore B905,C409,E402,E501,E731
+#
+# B905: `zip()` without an explicit `strict=` parameter
+#   -> The strict argument of zip() is from python3.10. Too new to apply.
+# C409: Unnecessary `list` literal passed to `tuple()`
+#   -> If the argument type is str or int, it must be list before.
 # E402: module level import not at top of file
+#   -> For faster startup speed, debug modules are loaded when needed.
 # E501: line too long (> 79 characters)
+#   -> I consider this rule to be nonsense in modern environment.
 # E731: do not assign a lambda expression, use a def
-# F601: dictionary key repeated with different values
+#   -> It can be written more cleanly using lambdas.
 #
 
 from __future__ import print_function, division, absolute_import
@@ -125,8 +126,8 @@ HORIZONTAL_LINE = "-"
 VERTICAL_LINE = "|"
 BP_GLYPH = "*"
 GEF_PROMPT = "gef> "
-GEF_PROMPT_ON = "\001\033[1;32m\002{0:s}\001\033[0m\002".format(GEF_PROMPT)
-GEF_PROMPT_OFF = "\001\033[1;31m\002{0:s}\001\033[0m\002".format(GEF_PROMPT)
+GEF_PROMPT_ON = "\001\033[1;32m\002{:s}\001\033[0m\002".format(GEF_PROMPT)
+GEF_PROMPT_OFF = "\001\033[1;31m\002{:s}\001\033[0m\002".format(GEF_PROMPT)
 
 
 def http_get(url):
@@ -215,7 +216,8 @@ def perf(f):
 
     @functools.wraps(f)
     def wrapper(*args, **kwargs):
-        import line_profiler, io
+        import io
+        import line_profiler
         pr = line_profiler.LineProfiler()
         pr.add_function(f)
         pr.enable()
@@ -856,7 +858,7 @@ class Elf:
 
         if isinstance(elf, str):
             if not os.access(elf, os.R_OK):
-                err("'{0}' not found/readable".format(elf))
+                err("'{:s}' not found/readable".format(elf))
                 err("Failed to get file debug information, most of gef features will not work")
                 self.e_magic = None
                 return
@@ -1829,14 +1831,14 @@ class GlibcChunk:
 
         msg = []
         try:
-            msg.append("  Forward pointer: {0:#x}".format(self.get_fwd_ptr(False)))
+            msg.append("  Forward pointer: {:#x}".format(self.get_fwd_ptr(False)))
         except gdb.MemoryError:
-            msg.append("  Forward pointer: {0:#x} (corrupted?)".format(fwd))
+            msg.append("  Forward pointer: {:#x} (corrupted?)".format(fwd))
 
         try:
-            msg.append("  Backward pointer: {0:#x}".format(self.get_bkw_ptr()))
+            msg.append("  Backward pointer: {:#x}".format(self.get_bkw_ptr()))
         except gdb.MemoryError:
-            msg.append("  Backward pointer: {0:#x} (corrupted?)".format(bkw))
+            msg.append("  Backward pointer: {:#x} (corrupted?)".format(bkw))
 
         return "\n".join(msg)
 
@@ -2273,9 +2275,9 @@ def load_capstone(f):
         try:
             __import__("capstone")
             return f(*args, **kwargs)
-        except ImportError:
+        except ImportError as err:
             msg = "Missing `capstone` package for Python. Install with `pip install capstone`."
-            raise ImportWarning(msg)
+            raise ImportWarning(msg) from err
 
     return wrapper
 
@@ -2291,9 +2293,9 @@ def load_unicorn(f):
             __import__("unicorn.riscv_const")
             __import__("unicorn.s390x_const")
             return f(*args, **kwargs)
-        except ImportError:
+        except ImportError as err:
             msg = "Missing `unicorn` package for Python. Install with `pip install unicorn`."
-            raise ImportWarning(msg)
+            raise ImportWarning(msg) from err
 
     return wrapper
 
@@ -2306,9 +2308,9 @@ def load_keystone(f):
         try:
             __import__("keystone")
             return f(*args, **kwargs)
-        except ImportError:
+        except ImportError as err:
             msg = "Missing `keystone-engine` package, install with: `pip install keystone-engine`."
-            raise ImportWarning(msg)
+            raise ImportWarning(msg) from err
 
     return wrapper
 
@@ -2321,9 +2323,9 @@ def load_ropper(f):
         try:
             __import__("ropper")
             return f(*args, **kwargs)
-        except ImportError:
+        except ImportError as err:
             msg = "Missing `ropper` package, install with: `pip install ropper`."
-            raise ImportWarning(msg)
+            raise ImportWarning(msg) from err
 
     return wrapper
 
@@ -2746,14 +2748,14 @@ def checksec(filename):
         results["Canary"] = None # it means unknown
         if is_x86_64():
             proc = subprocess.Popen([objdump, "-d", filename], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            for i in range(0x10000):
+            for _ in range(0x10000):
                 if b"%fs:0x28" in proc.stdout.readline():
                     results["Canary"] = True
                     break
             proc.kill()
         elif is_x86_32():
             proc = subprocess.Popen([objdump, "-d", filename], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            for i in range(0x10000):
+            for _ in range(0x10000):
                 if b"%gs:0x14" in proc.stdout.readline():
                     results["Canary"] = True
                     break
@@ -3527,7 +3529,7 @@ class ARM(Architecture):
     def is_branch_taken(self, insn):
         mnemo, operands = insn.mnemonic, insn.operands
         # ref: http://www.davespace.co.uk/arm/introduction-to-arm/conditional.html
-        flags = dict((self.flags_table[k], k) for k in self.flags_table)
+        flags = {self.flags_table[k]: k for k in self.flags_table}
         val = get_register(self.flag_register)
         taken, reason = False, ""
 
@@ -3855,7 +3857,7 @@ class X86(Architecture):
     def is_branch_taken(self, insn):
         mnemo = insn.mnemonic
         # all kudos to fG! (https://github.com/gdbinit/Gdbinit/blob/master/gdbinit#L1654)
-        flags = dict((self.flags_table[k], k) for k in self.flags_table)
+        flags = {self.flags_table[k]: k for k in self.flags_table}
         val = get_register(self.flag_register)
         taken, reason = False, ""
 
@@ -4111,7 +4113,7 @@ class PPC(Architecture):
 
     def is_branch_taken(self, insn):
         mnemo = insn.mnemonic
-        flags = dict((self.flags_table[k], k) for k in self.flags_table)
+        flags = {self.flags_table[k]: k for k in self.flags_table}
         val = get_register(self.flag_register)
         taken, reason = False, ""
 
@@ -4320,7 +4322,7 @@ class SPARC(Architecture):
 
     def is_branch_taken(self, insn):
         mnemo = insn.mnemonic
-        flags = dict((self.flags_table[k], k) for k in self.flags_table)
+        flags = {self.flags_table[k]: k for k in self.flags_table}
         val = get_register(self.flag_register)
         taken, reason = False, ""
 
@@ -4933,7 +4935,7 @@ class S390X(Architecture):
             mask = insn.opcodes[1] >> 4
 
             val = get_register(self.flag_register)
-            flags = dict((self.flags_table[k], k) for k in self.flags_table)
+            flags = {self.flags_table[k]: k for k in self.flags_table}
             cc1 = (val >> flags["cc1"]) & 1
             cc0 = (val >> flags["cc0"]) & 1
             cc = (cc1 << 1) + cc0
@@ -5008,7 +5010,7 @@ class S390X(Architecture):
         if not val:
             reg = self.flag_register
             val = get_register(reg)
-        flags = dict((self.flags_table[k], k) for k in self.flags_table)
+        flags = {self.flags_table[k]: k for k in self.flags_table}
 
         extra_msg = " ["
         if get_register("$pswm"):
@@ -5130,7 +5132,7 @@ class SH4(Architecture):
     def is_branch_taken(self, insn):
         mnemo = insn.mnemonic
         val = get_register(self.flag_register)
-        flags = dict((self.flags_table[k], k) for k in self.flags_table)
+        flags = {self.flags_table[k]: k for k in self.flags_table}
         taken, reason = False, ""
 
         t = bool(val & (1 << flags["t"]))
@@ -5333,7 +5335,7 @@ class M68K(Architecture):
 
     def is_branch_taken(self, insn):
         mnemo = insn.mnemonic
-        flags = dict((self.flags_table[k], k) for k in self.flags_table)
+        flags = {self.flags_table[k]: k for k in self.flags_table}
         val = get_register(self.flag_register)
         taken, reason = False, ""
 
@@ -6098,7 +6100,7 @@ class OR1K(Architecture):
     def is_branch_taken(self, insn):
         mnemo = insn.mnemonic
         val = get_register(self.flag_register)
-        flags = dict((self.flags_table[k], k) for k in self.flags_table)
+        flags = {self.flags_table[k]: k for k in self.flags_table}
         taken, reason = False, ""
 
         flag = bool(val & (1 << flags["flag"]))
@@ -6739,7 +6741,7 @@ class CRIS(Architecture):
     def is_branch_taken(self, insn):
         mnemo = insn.mnemonic
         val = get_register(self.flag_register)
-        flags = dict((self.flags_table[k], k) for k in self.flags_table)
+        flags = {self.flags_table[k]: k for k in self.flags_table}
         taken, reason = False, ""
 
         zero = bool(val & (1 << flags["zero"]))
@@ -7061,7 +7063,7 @@ def read_cstring_from_memory(address, max_length=GEF_MAX_STRING_LENGTH):
 def read_ascii_string(address):
     """Read an ASCII string from memory"""
     cstr = read_cstring_from_memory(address)
-    if cstr and all([x in string.printable for x in cstr]):
+    if cstr and all(x in string.printable for x in cstr):
         return cstr
     return None
 
@@ -7409,7 +7411,7 @@ def experimental_feature(f):
     return wrapper
 
 
-def only_if_specific_arch(arch=[]):
+def only_if_specific_arch(arch=()):
     """Decorator wrapper to check if the archtecture is specific."""
 
     def wrapper(f):
@@ -7471,7 +7473,7 @@ def only_if_specific_arch(arch=[]):
     return wrapper
 
 
-def exclude_specific_arch(arch=[]):
+def exclude_specific_arch(arch=()):
     """Decorator wrapper to check if the archtecture is specific."""
 
     def wrapper(f):
@@ -8005,7 +8007,7 @@ def __get_explored_regions():
 
     def get_ehdr(addr):
         upper_bound = (1 << 32) if is_32bit() else (1 << 64)
-        for i in range(128):
+        for _ in range(128):
             if addr < 0 or addr > upper_bound:
                 return None
             try:
@@ -8492,7 +8494,7 @@ def get_terminal_size():
             return 600, 100
 
 
-def get_generic_arch(module, prefix, arch, mode, big_endian, to_string=False, extra=[]):
+def get_generic_arch(module, prefix, arch, mode, big_endian, to_string=False, extra=()):
     """Retrieves architecture and mode from the arguments for use for the holy
     {cap,key}stone/unicorn trinity."""
     if to_string:
@@ -8554,7 +8556,7 @@ def get_capstone_arch(arch=None, mode=None, endian=None, to_string=False):
     if arch == "SPARC" and mode == "SPARC64":
         mode = "V9"
     if arch == "RISCV":
-        extra = ["RISCVC"]
+        extra = ("RISCVC")
     if arch == "S390X":
         arch = "SYSZ"
         mode = 0
@@ -8877,7 +8879,7 @@ def is_stripped(filename=None):
     file_bin = which("file")
     cmd = [file_bin, filename]
     out = gef_execute_external(cmd)
-    return not ("not stripped" in out)
+    return "not stripped" not in out
 
 
 def set_arch(arch=None, default=None):
@@ -8926,11 +8928,11 @@ def set_arch(arch=None, default=None):
             else:
                 current_arch = arches[arch]()
             return
-        except KeyError:
+        except KeyError as err:
             if isinstance(arch, str):
-                raise OSError("Specified arch {:s} is not supported".format(arch.upper()))
+                raise OSError("Specified arch {:s} is not supported".format(arch.upper())) from err
             else:
-                raise OSError("Specified arch {:d} is not supported".format(arch))
+                raise OSError("Specified arch {:d} is not supported".format(arch)) from err
     else:
         if not current_elf:
             elf = get_elf_headers()
@@ -8946,14 +8948,14 @@ def set_arch(arch=None, default=None):
                 # MIPS32/64 and RISCV32/64  are indistinguishable because e_machine of the ELF header
                 # has the same value, so we use the detection result of gdb
                 current_arch = arches[get_arch().upper()]()
-        except KeyError:
+        except KeyError as err:
             if default:
                 try:
                     current_arch = arches[default.upper()]()
-                except KeyError:
-                    raise OSError("CPU not supported, neither is default {:s}".format(default.upper()))
+                except KeyError as err2:
+                    raise OSError("CPU not supported, neither is default {:s}".format(default.upper())) from err2
             else:
-                raise OSError("CPU type is currently not supported: {:s}".format(get_arch().upper()))
+                raise OSError("CPU type is currently not supported: {:s}".format(get_arch().upper())) from err
         return
 
 
@@ -9242,7 +9244,7 @@ def get_auxiliary_walk(offset=0):
         current -= current_arch.ptrsize * 2
 
     # skip dummy null if exist
-    for i in range(1024):
+    for _ in range(1024):
         a = read_int_from_memory(current)
         if a == 7: # AT_BASE
             break
@@ -9371,7 +9373,7 @@ def only_if_events_supported(event_type):
 
     def wrap(f):
         def wrapped_f(*args, **kwargs):
-            if getattr(gdb, "events") and getattr(gdb.events, event_type):
+            if gdb.events and getattr(gdb.events, event_type):
                 return f(*args, **kwargs)
             warn("GDB events cannot be set")
         return wrapped_f
@@ -10507,8 +10509,8 @@ class ContCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     def continue_for_qemu(self):
-        import threading
         import signal
+        import threading
         thread_started = False
         thread_finished = False
 
@@ -10787,7 +10789,7 @@ class AuxvCommand(GenericCommand):
 
         gef_print(titlify("ELF auxiliary vector"))
         for k, v in auxval.items():
-            for num, name in AT_CONSTANTS.items():
+            for _num, name in AT_CONSTANTS.items():
                 if k == name:
                     break
             else:
@@ -11160,7 +11162,7 @@ class ProcInfoCommand(GenericCommand):
             else:
                 return "Not Found"
         elif os.path.isdir(name):
-            for root, dirs, files in os.walk(name, followlinks=False):
+            for root, _dirs, files in os.walk(name, followlinks=False):
                 for f in files:
                     path = os.path.join(root, f)
                     if os.path.islink(path):
@@ -12033,7 +12035,7 @@ class SearchPatternCommand(GenericCommand):
 
     def isascii(self, string):
         val = codecs.escape_decode(string)[0]
-        return all([0x20 <= c < 0x7f for c in val])
+        return all(0x20 <= c < 0x7f for c in val)
 
     @parse_args
     @only_if_gdb_running
@@ -12172,7 +12174,7 @@ class PtrDemangleCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -12226,7 +12228,7 @@ class PtrMangleCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -12320,7 +12322,7 @@ class SearchMangledPtrCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -13686,7 +13688,7 @@ class ReadSystemRegisterCommand(GenericCommand):
 
     def get_coproc_info(self, target_reg_name):
         for k, v in self.AARCH32_COPROC_REGISTERS.items():
-            for reg_name, desc in slicer(v, 2):
+            for reg_name, _desc in slicer(v, 2):
                 if target_reg_name == reg_name:
                     return k
         return None
@@ -13742,7 +13744,7 @@ class ReadSystemRegisterCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
-    @only_if_specific_arch(arch=["ARM32"])
+    @only_if_specific_arch(arch=("ARM32",))
     def do_invoke(self, args):
         if current_arch is None:
             err("current_arch is not set.")
@@ -14591,7 +14593,7 @@ class GlibcHeapChunksCommand(GenericCommand):
             for k, v in fastbin_list.items():
                 if current_chunk.address in v:
                     line += " {} {}".format(LEFT_ARROW, Color.colorify("fastbin[{}]".format(k), "bold blule"))
-            for k, v in unsortedbin_list.items():
+            for _k, v in unsortedbin_list.items():
                 if current_chunk.address in v:
                     line += " {} {}".format(LEFT_ARROW, Color.colorify("unsortedbin", "bold blue"))
             for k, v in smallbin_list.items():
@@ -15478,7 +15480,7 @@ class RpCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_arch(arch=["x86_32", "x86_64"])
+    @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -15806,7 +15808,7 @@ class AsmListCommand(GenericCommand):
 
         def get_typical_bytecodes(opcodes):
             bytecodes = []
-            for i, operand in enumerate(opcodes.split()):
+            for operand in opcodes.split():
                 if operand in ["ib", "cb"]:
                     bytecode = [DISP8]
                 elif operand in ["iw", "cw"]:
@@ -15929,10 +15931,11 @@ class AsmListCommand(GenericCommand):
                 self.usage()
                 return
 
-        endian_s # for future update
-
         # list up bytecode pattern
         if arch_mode_s.startswith("X86:"):
+            if endian_s == "big":
+                err("X86 is not big endian")
+                return
             patterns = self.listup_x86(arch, mode)
         else:
             err("Unsupported")
@@ -15953,9 +15956,9 @@ class AsmListCommand(GenericCommand):
 
             # keyword filter
             line = "{:22s} {:60s} {:22s} {}".format(hex_code, opstr, opcodes, ','.join(attr))
-            if args.include and any([f not in line for f in args.include]):
+            if args.include and any(f not in line for f in args.include):
                 continue
-            if args.exclude and any([f in line for f in args.exclude]):
+            if args.exclude and any(f in line for f in args.exclude):
                 continue
 
             # not filtered
@@ -23526,7 +23529,7 @@ class DestructorDumpCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
-    @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -23886,7 +23889,7 @@ class GotCommand(GenericCommand):
             prev_section = section_name
             # if we have a filter let's skip the entries that are not requested
             if self.filter:
-                if not any([pattern in line for pattern in self.filter]):
+                if not any(pattern in line for pattern in self.filter):
                     continue
             gef_print(line)
         return
@@ -24173,7 +24176,7 @@ class HeapAnalysisCommand(GenericCommand):
 
         if __heap_freed_list__:
             ok("Tracked as free-ed chunks:")
-            for addr, sz in __heap_freed_list__:
+            for addr, _sz in __heap_freed_list__:
                 gef_print("free({:#x})".format(addr))
         else:
             ok("No free() chunk tracked")
@@ -36515,7 +36518,7 @@ class SysregCommand(GenericCommand):
             if not m:
                 continue
             regname, regvalue = m.group(1), m.group(2)
-            if self.filter and not any([f.lower() in regname.lower() for f in self.filter]):
+            if self.filter and not any(f.lower() in regname.lower() for f in self.filter):
                 continue
             regs[regname] = int(regvalue, 16)
         regs = list(filter(lambda x: "$" + x[0] not in current_arch.all_registers, sorted(regs.items())))
@@ -36631,7 +36634,7 @@ class MmxSetCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_arch(arch=["x86_32", "x86_64"])
+    @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -36693,7 +36696,7 @@ class MmxCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_arch(arch=["x86_32", "x86_64"])
+    @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
         self.dont_repeat()
         self.print_mmx()
@@ -36714,7 +36717,7 @@ class XmmSetCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_arch(arch=["x86_32", "x86_64"])
+    @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -36809,7 +36812,7 @@ class SseCommand(GenericCommand):
         return
 
     @only_if_gdb_running
-    @only_if_specific_arch(arch=["x86_32", "x86_64"])
+    @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -36866,7 +36869,7 @@ class AvxCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_arch(arch=["x86_32", "x86_64"])
+    @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
         self.dont_repeat()
         self.print_avx()
@@ -37194,7 +37197,7 @@ class FpuCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -37543,7 +37546,7 @@ class VisualHeapCommand(GenericCommand):
         for k, v in self.fastbin_list.items():
             if addr in v:
                 s += "{} {}".format(LEFT_ARROW, "fastbin[{}]".format(k))
-        for k, v in self.unsortedbin_list.items():
+        for _k, v in self.unsortedbin_list.items():
             if addr in v:
                 s += "{} {}".format(LEFT_ARROW, "unsortedbin")
         for k, v in self.smallbin_list.items():
@@ -37568,12 +37571,13 @@ class VisualHeapCommand(GenericCommand):
         for blk, blks in itertools.groupby(data):
             repeat_count = len(list(blks))
             d1, d2 = unpack(blk[:ptrsize]), unpack(blk[ptrsize:])
-            dascii = ''.join(map(lambda x: chr(x) if 0x20 <= x < 0x7f else '.', blk))
+            dascii = ''.join([chr(x) if 0x20 <= x < 0x7f else '.' for x in blk])
 
+            fmt = "{:#x}: {:#0{:d}x} {:#0{:d}x} | {:s} | {:s}"
             if self.full or repeat_count < group_line_threshold:
-                for i in range(repeat_count):
+                for _ in range(repeat_count):
                     sub_info = self.subinfo(addr)
-                    dump = f"{addr:#x}: {d1:#0{width:d}x} {d2:#0{width:d}x} | {dascii:s} | {sub_info:s}"
+                    dump = fmt.format(addr, d1, width, d2, width, dascii, sub_info)
                     self.out.append(color_func(dump))
                     addr += ptrsize * 2
                     if addr > self.top + ptrsize * 4:
@@ -37583,7 +37587,7 @@ class VisualHeapCommand(GenericCommand):
                         break
             else:
                 sub_info = self.subinfo(addr)
-                dump = f"{addr:#x}: {d1:#0{width:d}x} {d2:#0{width:d}x} | {dascii:s} | {sub_info:s}"
+                dump = fmt.format(addr, d1, width, d2, width, dascii, sub_info)
                 self.out.append(color_func(dump))
                 dump = "* {:#d} lines, {:#x} bytes".format(repeat_count - 1, (repeat_count - 1) * ptrsize * 2)
                 self.out.append(color_func(dump))
@@ -40805,7 +40809,7 @@ class KernelTaskCommand(GenericCommand):
         for task in task_addrs:
             comm_string = read_cstring_from_memory(task + offset_comm)
             if args.filter:
-                if not any([re.search(f, comm_string) for f in args.filter]):
+                if not any(re.search(f, comm_string) for f in args.filter):
                     continue
             kstack = read_int_from_memory(task + offset_stack)
             pid = u32(read_memory(task + offset_pid, 4))
@@ -41899,7 +41903,7 @@ class KernelSearchCodePtrCommand(GenericCommand):
             # check
             valid = True
             cur = d
-            for depth in range(args.depth):
+            for _depth in range(args.depth):
                 if not is_valid_addr(cur):
                     valid = False
                     break
@@ -41918,7 +41922,7 @@ class KernelSearchCodePtrCommand(GenericCommand):
             msg.append("{:#x}{:s} [{:s}]".format(rw_addr, rw_addr_sym, get_permission(rw_addr, kinfo.maps)))
 
             cur = d
-            for depth in range(args.depth + 1):
+            for _depth in range(args.depth + 1):
                 cur_sym = get_symbol_string(cur, nosymbol_string=" <NO_SYMBOL>")
                 msg.append("{:#x}{:s} [{:s}]".format(cur, cur_sym, get_permission(cur, kinfo.maps)))
                 cur = read_int_from_memory(cur)
@@ -41963,7 +41967,7 @@ class AsciiSearchCommand(GenericCommand):
                 pass
 
             if cstr:
-                if not self.filter or any([re.search(filt, cstr) for filt in self.filter]):
+                if not self.filter or any(re.search(filt, cstr) for filt in self.filter):
                     if target not in self.seen:
                         for d, loc in enumerate(locations):
                             if old_locations != locations:
@@ -42106,7 +42110,7 @@ class SyscallTableViewCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_qemu_system
     @only_if_in_kernel
-    @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -42176,7 +42180,7 @@ class TlsCommand(GenericCommand):
                 continue
             data = read_memory(m.page_start, m.size)
             data = slice_unpack(data, current_arch.ptrsize)
-            addr = [x for x in range(m.page_start, m.page_end, current_arch.ptrsize)]
+            addr = list(range(m.page_start, m.page_end, current_arch.ptrsize))
             assert len(data) == len(addr)
             """
             x86
@@ -42291,7 +42295,7 @@ class TlsCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
-    @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -42347,7 +42351,7 @@ class FsbaseCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
-    @only_if_specific_arch(arch=["x86_32", "x86_64"])
+    @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
         self.dont_repeat()
         fs_base = TlsCommand.getfs()
@@ -42367,7 +42371,7 @@ class GsbaseCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
-    @only_if_specific_arch(arch=["x86_32", "x86_64"])
+    @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
         self.dont_repeat()
         gs_base = TlsCommand.getgs()
@@ -42744,7 +42748,7 @@ class GdtInfoCommand(GenericCommand):
         return
 
     @parse_args
-    @only_if_specific_arch(arch=["x86_32", "x86_64"])
+    @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
         self.dont_repeat()
         self.verbose = args.verbose
@@ -42940,7 +42944,7 @@ class IdtInfoCommand(GenericCommand):
         return
 
     @parse_args
-    @only_if_specific_arch(arch=["x86_32", "x86_64"])
+    @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
         self.dont_repeat()
         self.verbose = args.verbose
@@ -43185,9 +43189,9 @@ class HashMemoryCommand(GenericCommand):
         # crc
         try:
             crccheck = __import__("crccheck")
-        except ImportError:
+        except ImportError as err:
             msg = "Missing `crccheck` package for Python, install with: `pip install crccheck`."
-            raise ImportWarning(msg)
+            raise ImportWarning(msg) from err
 
         for name in crccheck.crc.__dict__:
             if not name.startswith("Crc"):
@@ -43574,7 +43578,7 @@ class ConstGrepCommand(GenericCommand):
 
         srcdir = "/usr/include"
         pattern = re.compile(r"^#define\s+\S*" + args.pattern)
-        for cur, dirs, files in os.walk(srcdir):
+        for cur, _dirs, files in os.walk(srcdir):
             for f in files:
                 path = os.path.join(cur, f)
                 content = self.read_normalize(path)
@@ -43929,7 +43933,7 @@ class SlubDumpCommand(GenericCommand):
                             v = read_int_from_memory(kmem_cache + candidate_offset + current_arch.ptrsize * i)
                             maybe_ptrs.append(v)
                         # they should be at the same offset
-                        if all([is_valid_addr(p) for p in maybe_ptrs]):
+                        if all(is_valid_addr(p) for p in maybe_ptrs):
                             break
                     else:
                         found = False
@@ -44037,7 +44041,7 @@ class SlubDumpCommand(GenericCommand):
                 kinfo = KernelbaseCommand.get_kernel_base()
                 if not kinfo.has_none:
                     found_kbase = False
-                    for vaddr, size, perm in kinfo.maps[::-1]:
+                    for vaddr, size, _perm in kinfo.maps[::-1]:
                         if found_kbase and size >= 0x200000:
                             self.vmemmap = vaddr
                             break
@@ -44119,7 +44123,7 @@ class SlubDumpCommand(GenericCommand):
                 self.maps = V2PCommand.get_maps(None)
             # CONFIG_SPARSEMEM_VMEMMAP
             paddr = (page['address'] - self.vmemmap) << 6
-            for vstart, vend, pstart, pend in self.maps:
+            for vstart, _vend, pstart, pend in self.maps:
                 if pstart <= paddr < pend:
                     offset = paddr - pstart
                     vaddr = vstart + offset
@@ -44242,7 +44246,7 @@ class SlubDumpCommand(GenericCommand):
 
             # parse member
             kmem_cache['name'] = self.get_name(current_kmem_cache)
-            if target_names != [] and not kmem_cache['name'] in target_names:
+            if target_names != [] and kmem_cache['name'] not in target_names:
                 current_kmem_cache = self.get_next_kmem_cache(current_kmem_cache)
                 continue
             kmem_cache['address'] = current_kmem_cache
@@ -44407,7 +44411,7 @@ class SlubDumpCommand(GenericCommand):
     def dump_caches(self, target_names, cpu, parsed_caches):
         self.out.append('slab_caches @ {:#x}'.format(self.slab_caches))
         for kmem_cache in parsed_caches[1:]:
-            if target_names != [] and not kmem_cache['name'] in target_names:
+            if target_names != [] and kmem_cache['name'] not in target_names:
                 continue
             self.out.append("")
             self.out.append('  kmem_cache: {:#x}'.format(kmem_cache['address']))
@@ -44496,7 +44500,7 @@ class SlubDumpCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_qemu_system
     @only_if_in_kernel
-    @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -45057,7 +45061,7 @@ class SlabDumpCommand(GenericCommand):
                 active = u32(read_memory(node_page['address'] + self.page_offset_active, 4))
                 if kversion.major > 3 or (kversion.major == 3 and kversion.minor >= 15):
                     freelist_byteseq = read_memory(freelist_addr, kmem_cache['objperslab'])
-                    node_page['freelist'] = [x for x in freelist_byteseq[active:]]
+                    node_page['freelist'] = list(freelist_byteseq[active:])
                 else:
                     freelist_intseq = read_memory(freelist_addr, kmem_cache['objperslab'] * 4)
                     node_page['freelist'] = slice_unpack(freelist_intseq, current_arch.ptrsize)[active:]
@@ -45078,7 +45082,7 @@ class SlabDumpCommand(GenericCommand):
 
             # parse member
             kmem_cache['name'] = self.get_name(current_kmem_cache)
-            if target_names != [] and not kmem_cache['name'] in target_names:
+            if target_names != [] and kmem_cache['name'] not in target_names:
                 current_kmem_cache = self.get_next_kmem_cache(current_kmem_cache)
                 continue
             kmem_cache['address'] = current_kmem_cache
@@ -45192,7 +45196,7 @@ class SlabDumpCommand(GenericCommand):
     def dump_caches(self, target_names, cpu, parsed_caches):
         self.out.append('slab_caches @ {:#x}'.format(self.slab_caches))
         for kmem_cache in parsed_caches[1:]:
-            if target_names != [] and not kmem_cache['name'] in target_names:
+            if target_names != [] and kmem_cache['name'] not in target_names:
                 continue
             self.out.append("")
             self.out.append('  kmem_cache: {:#x}'.format(kmem_cache['address']))
@@ -45276,7 +45280,7 @@ class SlabDumpCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_qemu_system
     @only_if_in_kernel
-    @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -45590,7 +45594,7 @@ class SlobDumpCommand(GenericCommand):
 
             # parse member
             kmem_cache['name'] = self.get_name(current_kmem_cache)
-            if target_names != [] and not kmem_cache['name'] in target_names:
+            if target_names != [] and kmem_cache['name'] not in target_names:
                 current_kmem_cache = self.get_next_kmem_cache(current_kmem_cache)
                 continue
             kmem_cache['address'] = current_kmem_cache
@@ -45630,7 +45634,7 @@ class SlobDumpCommand(GenericCommand):
     def dump_caches(self, target_names, parsed_caches, parsed_freelist):
         self.out.append('slab_caches @ {:#x}'.format(self.slab_caches))
         for kmem_cache in parsed_caches[1:]:
-            if target_names != [] and not kmem_cache['name'] in target_names:
+            if target_names != [] and kmem_cache['name'] not in target_names:
                 continue
             self.out.append("")
             self.out.append('  kmem_cache: {:#x}'.format(kmem_cache['address']))
@@ -45679,7 +45683,7 @@ class SlobDumpCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_qemu_system
     @only_if_in_kernel
-    @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -45749,7 +45753,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         # Parse symbol name tokens
         tokens = []
         position = self.kallsyms_token_table__offset
-        for num_token in range(256):
+        for _ in range(256):
             token = ''
             while self.kernel_img[position]:
                 token += chr(self.kernel_img[position])
@@ -45765,11 +45769,11 @@ class KsymaddrRemoteCommand(GenericCommand):
         tokens = self.get_token_table()
         symbol_names = []
         position = self.kallsyms_names__offset
-        for num_symbol in range(self.num_symbols):
+        for _ in range(self.num_symbols):
             symbol_name = ''
             length = self.kernel_img[position]
             position += 1
-            for i in range(length):
+            for _ in range(length):
                 symbol_token_index = self.kernel_img[position]
                 symbol_token = tokens[symbol_token_index]
                 position += 1
@@ -45846,8 +45850,8 @@ class KsymaddrRemoteCommand(GenericCommand):
             self.quiet_err('Could not find kallsyms_token_table')
             return False
 
-        for tokens_backwards in range(current_index_in_array):
-            for chars_in_token_backwards in range(50):
+        for _tokens_backward in range(current_index_in_array):
+            for chars_in_token_backward in range(50):
                 position -= 1
                 if position < 0:
                     self.quiet_err('Could not find kallsyms_token_table')
@@ -45855,7 +45859,7 @@ class KsymaddrRemoteCommand(GenericCommand):
                 # we may overlap on "kallsyms_markers" for the last entry, so also check for high-range characters
                 if self.kernel_img[position] == 0 or self.kernel_img[position] > ord('z'):
                     break
-                if chars_in_token_backwards >= 50 - 1:
+                if chars_in_token_backward >= 50 - 1:
                     self.quiet_err('This structure is not a kallsyms_token_table')
                     return False
         position += 1
@@ -45871,7 +45875,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         all_token_offsets = []
         position -= 1
 
-        for tokens_forward in range(256):
+        for _tokens_forward in range(256):
             position += 1
             all_token_offsets.append(position - self.kallsyms_token_table__offset)
             for chars_in_token_forward in range(50):
@@ -45909,7 +45913,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         while position > 0 and self.kernel_img[position - 1] == 0:
             position -= 1
 
-        for null_separated_bytes_chunks in range(20):
+        for _null_separated_bytes_chunks in range(20):
             num_non_null_bytes = 1 # we always start at a non-null byte in this loop
             num_null_bytes = 1 # we will at least encounter one null byte before the end of this loop
             while True:
@@ -46337,7 +46341,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_qemu_system
     @only_if_in_kernel
-    @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -47130,7 +47134,7 @@ class PartitionAllocDumpCommand(GenericCommand):
         for maps in chromium_rw_maps:
             # explode to each qword (if 64 bit arch) or dword (if 32 bit arch)
             datas = slice_unpack(read_memory(maps.page_start, maps.size), current_arch.ptrsize)
-            addrs = [x for x in range(maps.page_start, maps.page_end, current_arch.ptrsize)]
+            addrs = list(range(maps.page_start, maps.page_end, current_arch.ptrsize))
 
             """
             https://source.chromium.org/chromium/chromium/src/+/main:third_party/blink/renderer/platform/wtf/allocator/partitions.cc
@@ -47747,7 +47751,7 @@ class PartitionAllocDumpCommand(GenericCommand):
 
     @only_if_gdb_running
     @only_if_not_qemu_system
-    @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -47767,7 +47771,7 @@ class PartitionAllocDumpCommand(GenericCommand):
             self.usage()
             return
 
-        if not argv[0] in ["fast_malloc", "fm", "array_buffer", "ab", "buffer", "b", "all"]:
+        if argv[0] not in ["fast_malloc", "fm", "array_buffer", "ab", "buffer", "b", "all"]:
             self.usage()
             return
         target = argv[0]
@@ -48015,11 +48019,11 @@ class MuslDumpCommand(GenericCommand):
         _ctx["avail_meta_areas"] = read_int_from_memory(current)
         current += ptrsize
         _ctx["active"] = []
-        for i in range(48):
+        for _ in range(48):
             _ctx["active"].append(read_int_from_memory(current))
             current += ptrsize
         _ctx["usage_by_class"] = []
-        for i in range(48):
+        for _ in range(48):
             _ctx["usage_by_class"].append(read_int_from_memory(current))
             current += ptrsize
         _ctx["unmap_seq"] = read_memory(current, 32)
@@ -48103,7 +48107,7 @@ class MuslDumpCommand(GenericCommand):
         freed_mask = meta.freed_mask
 
         text = ""
-        for i in range(meta.last_idx + 1):
+        for _ in range(meta.last_idx + 1):
             if avail_mask & 1:
                 text = "A" + text
             elif freed_mask & 1:
@@ -48173,15 +48177,16 @@ class MuslDumpCommand(GenericCommand):
         for blk, blks in itertools.groupby(data):
             repeat_count = len(list(blks))
             d1, d2 = unpack(blk[:ptrsize]), unpack(blk[ptrsize:])
-            dascii = ''.join(list(map(lambda x: chr(x) if 0x20 <= x < 0x7f else '.', list(blk))))
+            dascii = ''.join([chr(x) if 0x20 <= x < 0x7f else '.' for x in blk])
+            fmt = "{:#x}: {:#0{:d}x} {:#0{:d}x} | {:s} | {:s}\n"
             if repeat_count < group_line_threshold:
-                for i in range(repeat_count):
-                    dump += f"{addr:#x}: {d1:#0{width:d}x} {d2:#0{width:d}x} | {dascii:s} | " + subinfo + "\n"
+                for _ in range(repeat_count):
+                    dump += fmt.format(addr, d1, width, d2, width, dascii, subinfo)
                     addr += ptrsize * 2
                     if subinfo:
                         subinfo = ""
             else:
-                dump += f"{addr:#x}: {d1:#0{width:d}x} {d2:#0{width:d}x} | {dascii:s} | " + subinfo + "\n"
+                dump += fmt.format(addr, d1, width, d2, width, dascii, subinfo)
                 dump += "* {:#d} lines, {:#x} bytes \n".format(repeat_count - 1, (repeat_count - 1) * ptrsize * 2)
                 addr += ptrsize * 2 * repeat_count
                 if subinfo:
@@ -48244,7 +48249,7 @@ class MuslDumpCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_arch(arch=["x86_32", "x86_64"])
+    @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -48352,7 +48357,7 @@ class XSecureMemAddrCommand(GenericCommand):
         maps = V2PCommand.get_maps(FORCE_PREFIX_S=True, verbose=verbose)
         if maps is None:
             return None
-        for vstart, vend, pstart, pend in maps:
+        for vstart, vend, pstart, _pend in maps:
             if vstart <= vaddr < vend:
                 offset = vaddr - vstart
                 paddr = pstart + offset
@@ -48367,7 +48372,7 @@ class XSecureMemAddrCommand(GenericCommand):
         if maps is None:
             return []
         result = []
-        for vstart, vend, pstart, pend in maps:
+        for vstart, _vend, pstart, pend in maps:
             if pstart <= paddr < pend:
                 offset = paddr - pstart
                 vaddr = vstart + offset
@@ -48441,7 +48446,7 @@ class XSecureMemAddrCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
-    @only_if_specific_arch(arch=["ARM32", "ARM64"])
+    @only_if_specific_arch(arch=("ARM32", "ARM64"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -48593,7 +48598,7 @@ class WSecureMemAddrCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
-    @only_if_specific_arch(arch=["ARM32", "ARM64"])
+    @only_if_specific_arch(arch=("ARM32", "ARM64"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -48678,7 +48683,7 @@ class BreakSecureMemAddrCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
-    @only_if_specific_arch(arch=["ARM32", "ARM64"])
+    @only_if_specific_arch(arch=("ARM32", "ARM64"))
     def do_invoke(self, args):
         self.dont_repeat()
         if args.verbose:
@@ -48762,7 +48767,7 @@ class OpteeBreakTaAddrCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
-    @only_if_specific_arch(arch=["ARM32", "ARM64"])
+    @only_if_specific_arch(arch=("ARM32", "ARM64"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -48911,7 +48916,7 @@ class OpteeBgetDumpCommand(GenericCommand):
         current += current_arch.ptrsize
 
         # search pool
-        for i in range(14):
+        for _ in range(14):
             pool_candidate = read_int_from_memory(current)
             current += current_arch.ptrsize
             if self.is_readable_virt_memory(pool_candidate):
@@ -49009,7 +49014,7 @@ class OpteeBgetDumpCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
-    @only_if_specific_arch(arch=["ARM32", "ARM64"])
+    @only_if_specific_arch(arch=("ARM32", "ARM64"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -49859,7 +49864,7 @@ class CpuidCommand(GenericCommand):
         return
 
     @only_if_gdb_running
-    @only_if_specific_arch(arch=["x86_32", "x86_64"])
+    @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -49953,13 +49958,13 @@ class MsrCommand(GenericCommand):
     ]
 
     def lookup_name2val(self, target_name):
-        for name, val, desc in self.msr_table:
+        for name, val, _desc in self.msr_table:
             if name == target_name:
                 return val
         return None
 
     def lookup_val2name(self, target_val):
-        for name, val, desc in self.msr_table:
+        for name, val, _desc in self.msr_table:
             if val == target_val:
                 return name
         return "Unknown"
@@ -50049,7 +50054,7 @@ class MsrCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_arch(arch=["x86_32", "x86_64"])
+    @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -50647,7 +50652,7 @@ class V2PCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
-    @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -50661,7 +50666,7 @@ class V2PCommand(GenericCommand):
         maps = self.get_maps(FORCE_PREFIX_S, args.verbose)
         if maps is None:
             return
-        for vstart, vend, pstart, pend in maps:
+        for vstart, vend, pstart, _pend in maps:
             if vstart <= args.address < vend:
                 offset = args.address - vstart
                 paddr = pstart + offset
@@ -50688,7 +50693,7 @@ class P2VCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
-    @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -50703,7 +50708,7 @@ class P2VCommand(GenericCommand):
         if maps is None:
             return
         count = 0
-        for vstart, vend, pstart, pend in maps:
+        for vstart, _vend, pstart, pend in maps:
             if pstart <= args.address < pend:
                 offset = args.address - pstart
                 vaddr = vstart + offset
@@ -51045,7 +51050,7 @@ class PagewalkCommand(GenericCommand):
     # Need not @parse_args because argparse can't stop interpreting options for pagewalk sub-command.
     @only_if_gdb_running
     @only_if_qemu_system
-    @only_if_specific_arch(arch=["x86_32", "x86_64", "ARM32", "ARM64"])
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     def do_invoke(self, argv):
         self.dont_repeat()
         if is_x86_32():
@@ -51567,7 +51572,7 @@ class PagewalkX64Command(PagewalkCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
-    @only_if_specific_arch(arch=["x86_32", "x86_64"])
+    @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -52563,7 +52568,7 @@ class PagewalkArmCommand(PagewalkCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
-    @only_if_specific_arch(arch=["ARM32"])
+    @only_if_specific_arch(arch=("ARM32",))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -54307,7 +54312,7 @@ class PagewalkArm64Command(PagewalkCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
-    @only_if_specific_arch(arch=["ARM64"])
+    @only_if_specific_arch(arch=("ARM64",))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -54394,7 +54399,7 @@ class SwitchELCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
-    @only_if_specific_arch(arch=["ARM64"])
+    @only_if_specific_arch(arch=("ARM64",))
     def do_invoke(self, args):
         self.dont_repeat()
         self.target_el = args.target_el
@@ -54694,7 +54699,7 @@ class ExecUntilIndirectBranchCommand(ExecUntilCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_arch(arch=["x86_32", "x86_64"])
+    @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
         self.print_insn = args.print_insn
         self.skip_lib = args.skip_lib
@@ -55001,7 +55006,7 @@ class ThunkHunterCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_qemu_system
     @only_if_in_kernel
-    @only_if_specific_arch(arch=["x86_32", "x86_64"])
+    @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -55039,9 +55044,9 @@ class UefiOvmfInfoCommand(GenericCommand):
     def check_crc32(self, addr):
         try:
             crccheck = __import__("crccheck")
-        except ImportError:
+        except ImportError as err:
             msg = "Missing `crccheck` package for Python, install with: `pip install crccheck`."
-            raise ImportWarning(msg)
+            raise ImportWarning(msg) from err
 
         size = u32(read_memory(addr + 0xc, 0x4))
         if size <= 0 or size > 0x1000:
@@ -55499,7 +55504,7 @@ class UefiOvmfInfoCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
-    @only_if_specific_arch(arch=["x86_32", "x86_64"])
+    @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
         self.dont_repeat()
         info("This command is very slow. Wait a few tens of seconds")
@@ -55792,7 +55797,7 @@ class PeekPointersCommand(GenericCommand):
             if not addr_v:
                 continue
 
-            for i, section in enumerate(sections):
+            for section in sections:
                 name, start_addr, end_addr = section
                 if not (start_addr <= addr_value < end_addr):
                     continue
@@ -56013,12 +56018,11 @@ class BytearrayCommand(GenericCommand):
                 err("{:s} is not valid hex (failed to expand `..`)".format(b))
                 return
 
-            excluded |= set([int(c, 16) for c in slicer(eb, 2)])
+            excluded |= {int(c, 16) for c in slicer(eb, 2)}
 
         info("Generating table, excluding {:d} bad chars...".format(len(excluded)))
 
-        included = set(range(0, 256)) - excluded
-        included = sorted(list(included))
+        included = sorted(set(range(0, 256)) - excluded)
 
         if len(included) == 0:
             info("Nothing to dump")
@@ -56158,8 +56162,7 @@ class BincompareCommand(GenericCommand):
         line = []
         for d in data:
             line.append(d)
-        r = 16 - len(line)
-        for i in range(0, r):
+        for _ in range(16 - len(line)):
             line.append("--")
 
         fmt = " {:s} |{:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s}| {:s}"
@@ -56317,10 +56320,10 @@ class GefCommand(gdb.Command):
 
                 repeat = False
                 if hasattr(class_name, "_repeat_"):
-                    repeat = getattr(class_name, "_repeat_")
+                    repeat = class_name._repeat_
 
                 if hasattr(class_name, "_aliases_"):
-                    aliases = getattr(class_name, "_aliases_")
+                    aliases = class_name._aliases_
                     for alias in aliases:
                         GefAlias(alias, cmd, repeat=repeat)
 
@@ -56851,7 +56854,7 @@ class AliasesRmCommand(AliasesCommand):
             alias_to_remove = next(filter(lambda x: x._alias == argv[0], __aliases__))
             __aliases__.remove(alias_to_remove)
         except (ValueError, StopIteration):
-            err("{0} not found in aliases.".format(argv[0]))
+            err("{:s} not found in aliases.".format(argv[0]))
             return
         gef_print("You must reload GEF for alias removals to apply.")
         return
