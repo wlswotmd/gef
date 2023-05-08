@@ -41872,9 +41872,50 @@ class KernelSearchCodePtrCommand(GenericCommand):
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-d', '--depth', default=0, type=int, help='specify reference depth. (default: %(default)s)')
+    parser.add_argument('-d', '--depth', default=1, type=int, help='depth of reference. (default: %(default)s)')
+    parser.add_argument('-r', '--max-range', default=0, type=lambda x: int(x, 16),
+                        help='allowable offset range for each reference. (default: %(default)s)')
     parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
     _syntax_ = parser.format_help()
+
+    def get_permission(self, addr):
+        for vaddr, size, perm in self.kinfo.maps:
+            if vaddr <= addr and addr < vaddr + size:
+                return perm
+        return "???"
+
+    def search(self, upper_addrs, addr, max_range, depth):
+        if depth == 0:
+            if not (self.ktext_start <= addr < self.ktext_end):
+                return False
+
+            new_upper_addrs = upper_addrs + [(addr, 0)]
+            msg = []
+            for addr, offset in new_upper_addrs:
+                addr_sym = get_symbol_string(addr + offset, nosymbol_string=" <NO_SYMBOL>")
+                m = "{:#x}+{:#x}{:s} [{:s}]".format(addr, offset, addr_sym, self.get_permission(addr + offset))
+                msg.append(m)
+            self.out.append('\n  -> '.join(msg))
+            return True
+
+        valid = False
+        if depth not in self.invalid_addrs:
+            self.invalid_addrs[depth] = []
+        for offset in range(0, max_range + current_arch.ptrsize, current_arch.ptrsize):
+            cur = align_address(addr + offset)
+            if (cur >> (current_arch.ptrsize * 8 - 1)) == 0:
+                continue
+            if not is_valid_addr(cur):
+                continue
+            v = read_int_from_memory(cur)
+            if v in self.invalid_addrs[depth]:
+                continue
+            new_upper_addrs = upper_addrs + [(addr, offset)]
+            ret = self.search(new_upper_addrs, v, max_range, depth - 1)
+            if ret is False:
+                self.invalid_addrs[depth].append(v)
+            valid |= ret
+        return valid
 
     @parse_args
     @only_if_gdb_running
@@ -41883,51 +41924,36 @@ class KernelSearchCodePtrCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        info("Wait for memory scan")
-
-        kinfo = KernelbaseCommand.get_kernel_base()
-        if kinfo.has_none or kinfo.rwx:
-            err("Unsupported")
+        if args.max_range and args.max_range % current_arch.ptrsize:
+            err("range must be a multiple of the pointer size.")
             return
 
-        def get_permission(addr, maps):
-            for vaddr, size, perm in maps:
-                if vaddr <= addr and addr < vaddr + size:
-                    return perm
-            return "???"
+        if args.depth <= 0:
+            err("depth must be larger than 0.")
+            return
 
+        info("Wait for memory scan")
+
+        self.kinfo = KernelbaseCommand.get_kernel_base()
+        if self.kinfo.has_none or self.kinfo.rwx:
+            err("Unsupported")
+            return
+        self.ktext_start = self.kinfo.kbase
+        self.ktext_end = self.kinfo.kbase + self.kinfo.kbase_size
+
+        self.invalid_addrs = {}
         self.out = []
-        data = read_memory(kinfo.krwbase, kinfo.krwbase_size)
-        data = slice_unpack(data, current_arch.ptrsize)
-        for i, d in enumerate(data):
-            # check
-            valid = True
-            cur = d
-            for _depth in range(args.depth):
-                if not is_valid_addr(cur):
-                    valid = False
-                    break
-                cur = read_int_from_memory(cur)
+        rw_data = read_memory(self.kinfo.krwbase, self.kinfo.krwbase_size)
+        rw_data = slice_unpack(rw_data, current_arch.ptrsize)
+        for i, rw_d in enumerate(rw_data):
+            if i % 100 == 0 or i == len(rw_data) - 1:
+                progress = i / len(rw_data) * 100
+                gef_print("\r{:7.3f}%".format(progress), end="")
 
-            if not valid:
-                continue
+            rw_addr = self.kinfo.krwbase + i * current_arch.ptrsize
+            self.search([(rw_addr, 0)], rw_d, args.max_range, args.depth - 1)
 
-            if not (kinfo.kbase <= cur < kinfo.kbase + kinfo.kbase_size):
-                continue
-
-            # found
-            msg = []
-            rw_addr = kinfo.krwbase + i * current_arch.ptrsize
-            rw_addr_sym = get_symbol_string(rw_addr, nosymbol_string=" <NO_SYMBOL>")
-            msg.append("{:#x}{:s} [{:s}]".format(rw_addr, rw_addr_sym, get_permission(rw_addr, kinfo.maps)))
-
-            cur = d
-            for _depth in range(args.depth + 1):
-                cur_sym = get_symbol_string(cur, nosymbol_string=" <NO_SYMBOL>")
-                msg.append("{:#x}{:s} [{:s}]".format(cur, cur_sym, get_permission(cur, kinfo.maps)))
-                cur = read_int_from_memory(cur)
-
-            self.out.append(' -> '.join(msg))
+        gef_print("\r")
 
         if self.out:
             gef_print('\n'.join(self.out), less=not args.no_pager)
