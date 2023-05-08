@@ -144,8 +144,8 @@ Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmod.png)
 * `kcdev`: displays each character device information.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kcdev.png)
-* `kfops`: displays each fops member.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kfops.png)
+* `kops`: displays each operations member.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kops.png)
 * `syscall-table-view`: displays system call table (x64/x86/ARM64/ARM only).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/syscall-table-view.png)
     * It also dumps ia32/x32 syscall table under x64.

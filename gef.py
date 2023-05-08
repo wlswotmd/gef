@@ -17223,7 +17223,7 @@ class KernelChecksecCommand(GenericCommand):
             additional = "selinux_init: Not found"
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unsupported", "bold red"), additional))
 
-        elif kversion.major < 4 or (kversion.major == 4 and kversion.minor < 17):
+        elif kversion <= "4.16":
             selinux_enabled_addr = get_ksymaddr("selinux_enabled")
             selinux_enforcing_addr = get_ksymaddr("selinux_enforcing")
 
@@ -17349,7 +17349,7 @@ class KernelChecksecCommand(GenericCommand):
                 additional = "apparmor_init: Found, apparmor_initialized: Not detected"
                 gef_print("{:<40s}: {:s} ({:s})".format(cfg, "Supported", additional))
             else:
-                if kversion.major < 5 or (kversion.major == 5 and kversion.minor <= 0):
+                if kversion <= "5.0":
                     apparmor_enabled = u8(read_memory(apparmor_enabled_addr, 1)) # bool
                 else:
                     apparmor_enabled = u32(read_memory(apparmor_enabled_addr, 4)) # int
@@ -17498,7 +17498,7 @@ class KernelChecksecCommand(GenericCommand):
         elif "invalid userfaultfd" in stv_uff_ret:
             additional = "userfaultfd syscall: Disabled"
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Syscall unsupported", "bold green"), additional))
-        elif kversion.major <= 4 or (kversion.major == 5 and kversion.minor < 2):
+        elif kversion <= "5.1":
             additional = "vm.unprivileged_userfaultfd: implemented from linux 5.1"
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unimplemented", "bold red"), additional))
         else:
@@ -17523,7 +17523,7 @@ class KernelChecksecCommand(GenericCommand):
         elif "invalid bpf" in stv_bpf_ret:
             additional = "bpf syscall: Disabled"
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Syscall unsupported", "bold green"), additional))
-        elif kversion.major <= 3 or (kversion.major == 4 and kversion.minor < 4):
+        elif kversion <= "4.3":
             additional = "kernel.unprivileged_bpf_disabled: implemented from linux 4.4"
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unimplemented", "bold red"), additional))
         else:
@@ -17554,7 +17554,7 @@ class KernelChecksecCommand(GenericCommand):
             elif "invalid kexec_file_load" in r2:
                 additional += ", " + "kexec_file_load syscall: Disabled"
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Syscall unsupported", "bold green"), additional))
-        elif kversion.major <= 2 or (kversion.major == 3 and kversion.minor < 14):
+        elif kversion <= "3.13":
             additional = "kernel.kexec_load_disabled: implemented from linux 3.14"
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unimplemented", "bold red"), additional))
         else:
@@ -17623,7 +17623,7 @@ class KernelChecksecCommand(GenericCommand):
 
         # KADR (kallsyms)
         cfg = "KADR (kallsyms)"
-        if kversion.major <= 3 or (kversion.major == 4 and kversion.minor < 15):
+        if kversion <= "4.14":
             kptr_restrict = KernelAddressHeuristicFinder.get_kptr_restrict()
             if kptr_restrict is None:
                 additional = "kernel.kptr_restrict: Not found"
@@ -40264,6 +40264,130 @@ class KernelbaseCommand(GenericCommand):
         return
 
 
+class KernelVersion:
+    def __init__(self, address, version_string, major, minor, patch):
+        self.address = address
+        self.version_string = version_string
+        self.major = major
+        self.minor = minor
+        self.patch = patch
+        return
+
+    def __ge__(self, _v):
+        if _v.count(".") == 1:
+            v = _v.split(".")
+            major, minor, patch = int(v[0]), int(v[1]), 0
+            if major < self.major:
+                return True
+            if major == self.major and minor <= self.minor:
+                return True
+            return False
+        elif _v.count(".") == 2:
+            v = _v.split(".")
+            major, minor, patch = int(v[0]), int(v[1]), int(v[2])
+            if major < self.major:
+                return True
+            if major == self.major and minor < self.minor:
+                return True
+            if major == self.major and minor == self.minor and patch <= self.patch:
+                return True
+            return False
+        raise
+
+    def __gt__(self, _v):
+        if _v.count(".") == 1:
+            v = _v.split(".")
+            major, minor, patch = int(v[0]), int(v[1]), 0
+            if major < self.major:
+                return True
+            if major == self.major and minor < self.minor:
+                return True
+            return False
+        elif _v.count(".") == 2:
+            v = _v.split(".")
+            major, minor, patch = int(v[0]), int(v[1]), int(v[2])
+            if major < self.major:
+                return True
+            if major == self.major and minor < self.minor:
+                return True
+            if major == self.major and minor == self.minor and patch < self.patch:
+                return True
+            return False
+        raise
+
+    def __le__(self, _v):
+        if _v.count(".") == 1:
+            v = _v.split(".")
+            major, minor, patch = int(v[0]), int(v[1]), 0
+            if major > self.major:
+                return True
+            if major == self.major and minor >= self.minor:
+                return True
+            return False
+        elif _v.count(".") == 2:
+            v = _v.split(".")
+            major, minor, patch = int(v[0]), int(v[1]), int(v[2])
+            if major > self.major:
+                return True
+            if major == self.major and minor > self.minor:
+                return True
+            if major == self.major and minor == self.minor and patch >= self.patch:
+                return True
+            return False
+        raise
+
+    def __lt__(self, _v):
+        if _v.count(".") == 1:
+            v = _v.split(".")
+            major, minor, patch = int(v[0]), int(v[1]), 0
+            if major > self.major:
+                return True
+            if major == self.major and minor > self.minor:
+                return True
+            return False
+        elif _v.count(".") == 2:
+            v = _v.split(".")
+            major, minor, patch = int(v[0]), int(v[1]), int(v[2])
+            if major > self.major:
+                return True
+            if major == self.major and minor > self.minor:
+                return True
+            if major == self.major and minor == self.minor and patch > self.patch:
+                return True
+            return False
+        raise
+
+    def __eq__(self, _v):
+        if _v.count(".") == 1:
+            v = _v.split(".")
+            major, minor, patch = int(v[0]), int(v[1]), 0
+            if major == self.major and minor == self.minor:
+                return True
+            return False
+        elif _v.count(".") == 2:
+            v = _v.split(".")
+            major, minor, patch = int(v[0]), int(v[1]), int(v[2])
+            if major == self.major and minor == self.minor and patch == self.patch:
+                return True
+            return False
+        raise
+
+    def __ne__(self, _v):
+        if _v.count(".") == 1:
+            v = _v.split(".")
+            major, minor, patch = int(v[0]), int(v[1]), 0
+            if major != self.major or minor != self.minor:
+                return True
+            return False
+        elif _v.count(".") == 2:
+            v = _v.split(".")
+            major, minor, patch = int(v[0]), int(v[1]), int(v[2])
+            if major != self.major or minor != self.minor or patch != self.patch:
+                return True
+            return False
+        raise
+
+
 @register_command
 class KernelVersionCommand(GenericCommand):
     """Display kernel version string under qemu-system."""
@@ -40287,8 +40411,7 @@ class KernelVersionCommand(GenericCommand):
             version_string = read_cstring_from_memory(linux_banner, 0x200).rstrip()
             r = re.search(r"Linux version (\d)\.(\d+)\.(\d+)", version_string)
             major, minor, patch = int(r.group(1)), int(r.group(2)), int(r.group(3))
-            Kversion = collections.namedtuple("Kversion", ["address", "version_string", "major", "minor", "patch"])
-            cached_kernel_version = Kversion(linux_banner, version_string, major, minor, patch)
+            cached_kernel_version = KernelVersion(linux_banner, version_string, major, minor, patch)
             return cached_kernel_version
 
         # slow path
@@ -40320,8 +40443,7 @@ class KernelVersionCommand(GenericCommand):
             r = re.search(r"Linux version (\d)\.(\d+)\.(\d+)", version_string)
             major, minor, patch = int(r.group(1)), int(r.group(2)), int(r.group(3))
 
-            Kversion = collections.namedtuple("Kversion", ["address", "version_string", "major", "minor", "patch"])
-            cached_kernel_version = Kversion(address, version_string, major, minor, patch)
+            cached_kernel_version = KernelVersion(address, version_string, major, minor, patch)
             return cached_kernel_version
 
         return None
@@ -41326,7 +41448,7 @@ class KernelModuleCommand(GenericCommand):
             return
 
         kversion = KernelVersionCommand.kernel_version()
-        if kversion.major > 4 or (kversion.major == 4 and kversion.minor >= 5):
+        if kversion >= "4.5":
             offset_layout = self.get_offset_layout(module_addrs)
             if offset_layout is None:
                 return
@@ -41343,7 +41465,7 @@ class KernelModuleCommand(GenericCommand):
 
         for module in module_addrs:
             name_string = read_cstring_from_memory(module + offset_name)
-            if kversion.major > 4 or (kversion.major == 4 and kversion.minor >= 5):
+            if kversion >= "4.5":
                 base = read_int_from_memory(module + offset_layout)
                 size = u32(read_memory(module + offset_layout + current_arch.ptrsize, 4))
             else:
@@ -41604,58 +41726,322 @@ class KernelCharacterDevicesCommand(GenericCommand):
 
 
 @register_command
-class KernelFopsCommand(GenericCommand):
-    """Display fops members under qemu-system."""
-    _cmdline_ = "kfops"
+class KernelOperationsCommand(GenericCommand):
+    """Display operations (like struct file_operations) under qemu-system."""
+    _cmdline_ = "kops"
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
+    types = ['file', 'tty', 'tty_ldisc', 'seq', 'inode', 'pernet', 'address_space', 'vm', 'super']
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("address", metavar='ADDRESS', nargs='?', type=parse_address, help='the address interpreted as fops.')
+    parser.add_argument('mode', choices=types, help='The structure type.')
+    parser.add_argument("address", metavar='ADDRESS', nargs='?', type=parse_address, help='the address interpreted as ops.')
     parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
     parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
     _syntax_ = parser.format_help()
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
+        self.initialized = False
         return
 
-    def get_member(self):
-        members = [
-            ["ptr", "owner"],
-            ["func_ptr", "llseek"],
-            ["func_ptr", "read"],
-            ["func_ptr", "write"],
-            ["func_ptr", "read_iter"],
-            ["func_ptr", "write_iter"],
-            ["func_ptr", "iopoll"],
-            ["func_ptr", "iterate"],
-            ["func_ptr", "iterate_shared"],
-            ["func_ptr", "poll"],
-            ["func_ptr", "unlocked_ioctl"],
-            ["func_ptr", "compat_ioctl"],
-            ["func_ptr", "mmap"],
-            ["ulong",    "mmap_supported_flags"],
-            ["func_ptr", "open"],
-            ["func_ptr", "flush"],
-            ["func_ptr", "release"],
-            ["func_ptr", "fsync"],
-            ["func_ptr", "fasync"],
-            ["func_ptr", "lock"],
-            ["func_ptr", "sendpage"],
-            ["func_ptr", "get_unmapped_area"],
-            ["func_ptr", "check_flags"],
-            ["func_ptr", "flock"],
-            ["func_ptr", "splice_write"],
-            ["func_ptr", "splice_read"],
-            ["func_ptr", "setlease"],
-            ["func_ptr", "fallocate"],
-            ["func_ptr", "show_fdinfo"],
-            ["(func_ptr)", "(mmap_capabilities)"], # only exists when CONFIG_MMU
-            ["func_ptr", "copy_file_range"],
-            ["func_ptr", "remap_file_range"],
-            ["func_ptr", "fadvise"],
+    def initialize(self):
+        if self.initialized:
+            return True
+
+        kversion = KernelVersionCommand.kernel_version()
+        if kversion.major < 3:
+            err("Unsupported")
+            return False
+
+        self.members = {}
+
+        def adapt_to_kernel_version(ops):
+            out = []
+            for typ, name, minver, maxver, enabled in ops:
+                if not enabled:
+                    continue
+                if minver and kversion < minver:
+                    continue
+                if maxver and kversion > maxver:
+                    continue
+                out.append((typ, name))
+            return out
+
+        file_operations = [
+            # type,      name                                     minver     maxver     additinoal_flag
+            ["ptr",      "owner",                                 None,      None,      True],
+            ["func_ptr", "llseek",                                None,      None,      True],
+            ["func_ptr", "read",                                  None,      None,      True],
+            ["func_ptr", "write",                                 None,      None,      True],
+            ["func_ptr", "aio_read",                              None,      "4.0",     True],
+            ["func_ptr", "aio_write",                             None,      "4.0",     True],
+            ["func_ptr", "read_iter",                             "3.16",    None,      True],
+            ["func_ptr", "write_iter",                            "3.16",    None,      True],
+            ["func_ptr", "readdir",                               None,      "3.10",    True],
+            ["func_ptr", "iopoll",                                "5.1",     None,      True],
+            ["func_ptr", "iterate",                               "3.11",    None,      True],
+            ["func_ptr", "iterate_shared",                        "4.7",     None,      True],
+            ["func_ptr", "poll",                                  None,      None,      True],
+            ["func_ptr", "unlocked_ioctl",                        None,      None,      True],
+            ["func_ptr", "compat_ioctl",                          None,      None,      True],
+            ["func_ptr", "mmap",                                  None,      None,      True],
+            ["func_ptr", "mremap",                                "3.19",    "4.2",     True],
+            ["ulong",    "mmap_supported_flags",                  "4.15",    None,      True],
+            ["func_ptr", "open",                                  None,      None,      True],
+            ["func_ptr", "flush",                                 None,      None,      True],
+            ["func_ptr", "release",                               None,      None,      True],
+            ["func_ptr", "fsync",                                 None,      None,      True],
+            ["func_ptr", "aio_fsync",                             None,      "4.8",     True],
+            ["func_ptr", "fasync",                                None,      None,      True],
+            ["func_ptr", "lock",                                  None,      None,      True],
+            ["func_ptr", "sendpage",                              None,      None,      True],
+            ["func_ptr", "get_unmapped_area",                     None,      None,      True],
+            ["func_ptr", "check_flags",                           None,      None,      True],
+            ["func_ptr", "flock",                                 None,      None,      True],
+            ["func_ptr", "splice_write",                          None,      None,      True],
+            ["func_ptr", "splice_read",                           None,      None,      True],
+            ["func_ptr", "setlease",                              None,      None,      True],
+            ["func_ptr", "fallocate",                             None,      None,      True],
+            ["func_ptr", "show_fdinfo",                           "3.8",     None,      True],
+            ["func_ptr", "copy_file_range",                       "4.5",     None,      True],
+            ["func_ptr", "clone_file_range",                      None,      "4.19",    True],
+            ["func_ptr", "dedupe_file_range",                     None,      "4.19",    True],
+            ["func_ptr", "remap_file_range",                      "4.20",    None,      True],
+            ["func_ptr", "fadvise",                               "4.19",    None,      True],
+            ["func_ptr", "uring_cmd",                             "5.19",    None,      True],
+            ["func_ptr", "uring_cmd_iopoll",                      "6.1",     None,      True],
         ]
-        return members
+        self.members["file"] = adapt_to_kernel_version(file_operations)
+
+        tty_operations = [
+            # type,      name                                     minver     maxver     additinoal_flag
+            ["func_ptr", "lookup",                                None,      None,      True],
+            ["func_ptr", "install",                               None,      None,      True],
+            ["func_ptr", "remove",                                None,      None,      True],
+            ["func_ptr", "open",                                  None,      None,      True],
+            ["func_ptr", "close",                                 None,      None,      True],
+            ["func_ptr", "shutdown",                              None,      None,      True],
+            ["func_ptr", "cleanup",                               None,      None,      True],
+            ["func_ptr", "write",                                 None,      None,      True],
+            ["func_ptr", "put_char",                              None,      None,      True],
+            ["func_ptr", "flush_chars",                           None,      None,      True],
+            ["func_ptr", "write_room",                            None,      None,      True],
+            ["func_ptr", "chars_in_buffer",                       None,      None,      True],
+            ["func_ptr", "ioctl",                                 None,      None,      True],
+            ["func_ptr", "compat_ioctl",                          None,      None,      True],
+            ["func_ptr", "set_termios",                           None,      None,      True],
+            ["func_ptr", "throttle",                              None,      None,      True],
+            ["func_ptr", "unthrottle",                            None,      None,      True],
+            ["func_ptr", "stop",                                  None,      None,      True],
+            ["func_ptr", "start",                                 None,      None,      True],
+            ["func_ptr", "hangup",                                None,      None,      True],
+            ["func_ptr", "break_ctl",                             None,      None,      True],
+            ["func_ptr", "flush_buffer",                          None,      None,      True],
+            ["func_ptr", "set_ldisc",                             None,      None,      True],
+            ["func_ptr", "wait_until_sent",                       None,      None,      True],
+            ["func_ptr", "send_xchar",                            None,      None,      True],
+            ["func_ptr", "tiocmget",                              None,      None,      True],
+            ["func_ptr", "tiocmset",                              None,      None,      True],
+            ["func_ptr", "resize",                                None,      None,      True],
+            ["func_ptr", "set_termiox",                           None,      "5.9",     True],
+            ["func_ptr", "get_icount",                            None,      None,      True],
+            ["func_ptr", "get_serial",                            "4.19",    None,      True],
+            ["func_ptr", "set_serial",                            "4.19",    None,      True],
+            ["func_ptr", "show_fdinfo",                           "4.14",    None,      True],
+            ["func_ptr", "poll_init (CONFIG_CONSOLE_POLL=y)",     None,      None,      True],
+            ["func_ptr", "poll_get_char (CONFIG_CONSOLE_POLL=y)", None,      None,      True],
+            ["func_ptr", "poll_put_char (CONFIG_CONSOLE_POLL=y",  None,      None,      True],
+            ["func_ptr", "proc_show",                             "4.18",    None,      True],
+            ["ptr",      "proc_fops",                             None,      "4.17",    True],
+        ]
+        self.members["tty"] = adapt_to_kernel_version(tty_operations)
+
+        tty_ldisc_ops = [
+            # type,      name                                     minver     maxver     additinoal_flag
+            ["int",      "magic",                                 None,      "5.12",    True],
+            ["char*",    "name",                                  None,      None,      True],
+            ["int",      "num",                                   "5.16",    None,      True],
+            ["int",      "num",                                   None,      "5.15",    is_32bit()],
+            ["int",      "flags",                                 None,      "5.15",    is_32bit()],
+            ["int, int", "flags, num",                            None,      "5.15",    is_64bit()],
+            ["func_ptr", "open",                                  None,      None,      True],
+            ["func_ptr", "close",                                 None,      None,      True],
+            ["func_ptr", "flush_buffer",                          None,      None,      True],
+            ["func_ptr", "read",                                  None,      None,      True],
+            ["func_ptr", "write",                                 None,      None,      True],
+            ["func_ptr", "ioctl",                                 None,      None,      True],
+            ["func_ptr", "compat_ioctl",                          None,      None,      True],
+            ["func_ptr", "set_termios",                           None,      None,      True],
+            ["func_ptr", "poll",                                  None,      None,      True],
+            ["func_ptr", "hangup",                                None,      None,      True],
+            ["func_ptr", "receive_buf",                           None,      None,      True],
+            ["func_ptr", "write_wakeup",                          None,      None,      True],
+            ["func_ptr", "dcd_change",                            None,      None,      True],
+            ["func_ptr", "fasync",                                "3.11",    "4.5",     True],
+            ["func_ptr", "receive_buf2",                          "3.12",    None,      True],
+            ["func_ptr", "lookahead_buf",                         "5.16",    None,      True],
+            ["ptr",      "owner",                                 None,      None,      True],
+            ["int",      "refcount",                              None,      "5.13",    True],
+        ]
+        self.members["tty_ldisc"] = adapt_to_kernel_version(tty_ldisc_ops)
+
+        seq_operations = [
+            # type,      name                                     minver     maxver     additinoal_flag
+            ["func_ptr", "start",                                 None,      None,      True],
+            ["func_ptr", "stop",                                  None,      None,      True],
+            ["func_ptr", "next",                                  None,      None,      True],
+            ["func_ptr", "show",                                  None,      None,      True],
+        ]
+        self.members["seq"] = adapt_to_kernel_version(seq_operations)
+
+        inode_operations = [
+            # type,      name                                     minver     maxver     additinoal_flag
+            ["func_ptr", "lookup",                                None,      None,      True],
+            ["func_ptr", "get_link",                              "4.5",     None,      True],
+            ["func_ptr", "follow_link",                           None,      "4.4",     True],
+            ["func_ptr", "permission",                            None,      None,      True],
+            ["func_ptr", "get_inode_acl",                         "6.2",     None,      True],
+            ["func_ptr", "get_acl",                               "3.1",     "6.1",     True],
+            ["func_ptr", "check_acl",                             None,      "3.0",     True],
+            ["func_ptr", "readlink",                              None,      None,      True],
+            ["func_ptr", "put_link",                              None,      "4.4",     True],
+            ["func_ptr", "create",                                None,      None,      True],
+            ["func_ptr", "link",                                  None,      None,      True],
+            ["func_ptr", "unlink",                                None,      None,      True],
+            ["func_ptr", "symlink",                               None,      None,      True],
+            ["func_ptr", "mkdir",                                 None,      None,      True],
+            ["func_ptr", "rmdir",                                 None,      None,      True],
+            ["func_ptr", "mknod",                                 None,      None,      True],
+            ["func_ptr", "rename",                                None,      None,      True],
+            ["func_ptr", "truncate",                              None,      "3.7",     True],
+            ["func_ptr", "rename2",                               "3.15",    "4.8",     True],
+            ["func_ptr", "setattr",                               None,      None,      True],
+            ["func_ptr", "getattr",                               None,      None,      True],
+            ["func_ptr", "setxattr",                              None,      "4.8",     True],
+            ["func_ptr", "getxattr",                              None,      "4.8",     True],
+            ["func_ptr", "listxattr",                             None,      None,      True],
+            ["func_ptr", "removexattr",                           None,      "4.8",     True],
+            ["func_ptr", "fiemap",                                None,      None,      True],
+            ["func_ptr", "update_time",                           "3.5",     None,      True],
+            ["func_ptr", "atomic_open",                           "3.6",     None,      True],
+            ["func_ptr", "tmpfile",                               "3.11",    None,      True],
+            ["func_ptr", "get_acl",                               "6.2",     None,      True],
+            ["func_ptr", "set_acl",                               "3.14",    None,      True],
+            ["func_ptr", "dentry_open",                           None,      "4.1",     True],
+            ["func_ptr", "fileattr_set",                          "5.13",    None,      True],
+            ["func_ptr", "fileattr_get",                          "5.13",    None,      True],
+        ]
+        self.members["inode"] = adapt_to_kernel_version(inode_operations)
+
+        pernet_operations = [
+            # type,      name                                     minver     maxver     additinoal_flag
+            ["ptr",      "list_head.next",                        None,      None,      True],
+            ["ptr",      "list_head.prev",                        None,      None,      True],
+            ["func_ptr", "init",                                  None,      None,      True],
+            ["func_ptr", "pre_exit",                              "5.3",     None,      True],
+            ["func_ptr", "exit",                                  None,      None,      True],
+            ["func_ptr", "exit_batch",                            None,      None,      True],
+            ["ptr",      "id",                                    None,      None,      True],
+            ["long",     "size",                                  None,      None,      True],
+        ]
+        self.members["pernet"] = adapt_to_kernel_version(pernet_operations)
+
+        address_space_operations = [
+            # type,      name                                     minver     maxver     additinoal_flag
+            ["func_ptr", "writepage",                             None,      None,      True],
+            ["func_ptr", "read_folio",                            "5.19",    None,      True],
+            ["func_ptr", "readpage",                              None,      "5.18",    True],
+            ["func_ptr", "writepages",                            None,      None,      True],
+            ["func_ptr", "dirty_folio",                           "5.18",    None,      True],
+            ["func_ptr", "set_page_dirty",                        None,      "5.17",    True],
+            ["func_ptr", "readpages",                             None,      "5.17",    True],
+            ["func_ptr", "readahead",                             "5.8",     None,      True],
+            ["func_ptr", "write_begin",                           None,      None,      True],
+            ["func_ptr", "write_end",                             None,      None,      True],
+            ["func_ptr", "bmap",                                  None,      None,      True],
+            ["func_ptr", "invalidate_folio",                      "5.18",    None,      True],
+            ["func_ptr", "invalidatepage",                        None,      "5.17",    True],
+            ["func_ptr", "release_folio",                         "5.19",    None,      True],
+            ["func_ptr", "releasepage",                           None,      "5.18",    True],
+            ["func_ptr", "free_folio",                            "5.19",    None,      True],
+            ["func_ptr", "freepage",                              None,      "5.18",    True],
+            ["func_ptr", "direct_IO",                             None,      None,      True],
+            ["func_ptr", "get_xip_mem",                           None,      "3.19",    True],
+            ["func_ptr", "migrate_folio",                         "6.0",     None,      True],
+            ["func_ptr", "migratepage",                           None,      "5.19",    True],
+            ["func_ptr", "isolate_page",                          "4.8",     "5.19",    True],
+            ["func_ptr", "putback_page",                          "4.8",     "5.19",    True],
+            ["func_ptr", "launder_folio",                         "5.18",    None,      True],
+            ["func_ptr", "launder_page",                          None,      "5.17",    True],
+            ["func_ptr", "is_partially_uptodate",                 None,      None,      True],
+            ["func_ptr", "is_dirty_writeback",                    "3.11",    None,      True],
+            ["func_ptr", "error_remove_page",                     None,      None,      True],
+            ["func_ptr", "swap_activate",                         "3.6",     None,      True],
+            ["func_ptr", "swap_deactivate",                       "3.6",     None,      True],
+            ["func_ptr", "swap_rw",                               "5.19",    None,      True],
+        ]
+        self.members["address_space"] = adapt_to_kernel_version(address_space_operations)
+
+        vm_operations_struct = [
+            # type,      name                                     minver     maxver     additinoal_flag
+            ["func_ptr", "open",                                  None,      None,      True],
+            ["func_ptr", "close",                                 None,      None,      True],
+            ["func_ptr", "may_split",                             "5.11",    None,      True],
+            ["func_ptr", "split",                                 "4.14",    "5.10",    True],
+            ["func_ptr", "mremap",                                "4.3",     None,      True],
+            ["func_ptr", "mprotect",                              "5.11",    None,      True],
+            ["func_ptr", "fault",                                 None,      None,      True],
+            ["func_ptr", "huge_fault",                            "4.11",    None,      True],
+            ["func_ptr", "pmd_fault",                             "4.3",     "4.10",    True],
+            ["func_ptr", "map_pages",                             "3.15",    None,      True],
+            ["func_ptr", "pagesize",                              "4.17",    None,      True],
+            ["func_ptr", "page_mkwrite",                          None,      None,      True],
+            ["func_ptr", "pfn_mkwrite",                           "4.1",     None,      True],
+            ["func_ptr", "access",                                None,      None,      True],
+            ["func_ptr", "name",                                  "3.16",    None,      True],
+            ["func_ptr", "set_policy (CONFIG_NUMA=y)",            None,      None,      True],
+            ["func_ptr", "get_policy (CONFIG_NUMA=y)",            None,      None,      True],
+            ["func_ptr", "migrate (CONFIG_NUMA=y)",               None,      "3.18",    True],
+            ["func_ptr", "find_special_page",                     "4.0",     None,      True],
+            ["func_ptr", "remap_pages",                           "3.17",    "3.19",    True],
+            ["func_ptr", "remap_pages",                           "3.7",     "3.16.58", True],
+        ]
+        self.members["vm"] = adapt_to_kernel_version(vm_operations_struct)
+
+        super_operations = [
+            # type,      name                                     minver     maxver     additinoal_flag
+            ["func_ptr", "alloc_inode",                           None,      None,      True],
+            ["func_ptr", "destroy_inode",                         None,      None,      True],
+            ["func_ptr", "free_inode",                            "5.2",     None,      True],
+            ["func_ptr", "dirty_inode",                           None,      None,      True],
+            ["func_ptr", "write_inode",                           None,      None,      True],
+            ["func_ptr", "drop_inode",                            None,      None,      True],
+            ["func_ptr", "evict_inode",                           None,      None,      True],
+            ["func_ptr", "put_super",                             None,      None,      True],
+            ["func_ptr", "write_super",                           None,      "3.5",     True],
+            ["func_ptr", "sync_fs",                               None,      None,      True],
+            ["func_ptr", "freeze_super",                          "3.19",    None,      True],
+            ["func_ptr", "freeze_fs",                             None,      None,      True],
+            ["func_ptr", "thaw_super",                            "3.19",    None,      True],
+            ["func_ptr", "unfreeze_fs",                           None,      None,      True],
+            ["func_ptr", "statfs",                                None,      None,      True],
+            ["func_ptr", "remount_fs",                            None,      None,      True],
+            ["func_ptr", "umount_begin",                          None,      None,      True],
+            ["func_ptr", "show_options",                          None,      None,      True],
+            ["func_ptr", "show_devname",                          None,      None,      True],
+            ["func_ptr", "show_path",                             None,      None,      True],
+            ["func_ptr", "show_stats",                            None,      None,      True],
+            ["func_ptr", "quota_read (CONFIG_QUOTA=y)",           None,      None,      True],
+            ["func_ptr", "quota_write (CONFIG_QUOTA=y)",          None,      None,      True],
+            ["func_ptr", "get_dquots (CONFIG_QUOTA=y)",           "3.19",    None,      True],
+            ["func_ptr", "bdev_try_to_free_page",                 None,      "5.13",    True],
+            ["func_ptr", "nr_cached_objects",                     "3.1",     None,      True],
+            ["func_ptr", "free_cached_objects",                   "3.1",     None,      True],
+        ]
+        self.members["super"] = adapt_to_kernel_version(super_operations)
+
+        self.initialized = True
+        return True
 
     @parse_args
     @only_if_gdb_running
@@ -41664,7 +42050,10 @@ class KernelFopsCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        members = self.get_member()
+        if self.initialize() is False:
+            return
+
+        members = self.members[args.mode]
 
         self.out = []
         if args.address:
@@ -41679,9 +42068,13 @@ class KernelFopsCommand(GenericCommand):
                 fmt = "{:5s} {:<10s} {:<20s} {:s}"
                 legend = ["Index", "Type", "Name", "Value"]
                 self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+            width = current_arch.ptrsize * 2 + 2
             for idx, ((type, name), address) in enumerate(zip(members, addrs)):
-                sym = get_symbol_string(address)
-                self.out.append("[{:03d}] {:10s} {:20s} {:#018x}{:s}".format(idx, type, name, address, sym))
+                if type == "char*":
+                    sym = " {!r}".format(read_cstring_from_memory(address))
+                else:
+                    sym = get_symbol_string(address)
+                self.out.append("[{:03d}] {:10s} {:20s} {:#0{:d}x}{:s}".format(idx, type, name, address, width, sym))
 
         else:
             if not args.quiet:
@@ -41882,10 +42275,9 @@ class KernelParamSysctlCommand(GenericCommand):
 
         if is_64bit():
             # struct ctl_dir
-            if kversion.major < 3 or (kversion.major == 4 and kversion.minor < 11):
+            if kversion <= "4.10":
                 self.OFFSET_rb_node = 0x48
-            elif (kversion.major == 4 and kversion.minor < 12) or \
-                 (kversion.major == 4 and kversion.minor == 12 and kversion.patch < 2):
+            elif kversion <= "4.12.1":
                 self.OFFSET_rb_node = 0x58
             else:
                 self.OFFSET_rb_node = 0x50
@@ -41897,10 +42289,9 @@ class KernelParamSysctlCommand(GenericCommand):
             self.SIZEOF_ctl_table = 0x40
         else:
             # struct ctl_dir
-            if kversion.major < 3 or (kversion.major == 4 and kversion.minor < 11):
+            if kversion <= "4.10":
                 self.OFFSET_rb_node = 0x28
-            elif (kversion.major == 4 and kversion.minor < 12) or \
-                 (kversion.major == 4 and kversion.minor == 12 and kversion.patch < 2):
+            elif kversion <= "4.12.1":
                 self.OFFSET_rb_node = 0x30
             else:
                 self.OFFSET_rb_node = 0x2c
@@ -44292,11 +44683,11 @@ class SlubDumpCommand(GenericCommand):
 
         # offsetof(page, next)
         kversion = KernelVersionCommand.kernel_version()
-        if kversion.major < 4 or (kversion.major == 4 and kversion.minor < 18):
+        if kversion <= "4.17":
             self.page_offset_next = current_arch.ptrsize * 4
-        elif kversion.major < 5 or (kversion.major == 5 and kversion.minor < 17):
+        elif kversion <= "5.16":
             self.page_offset_next = current_arch.ptrsize
-        elif kversion.major < 6 or (kversion.major == 6 and kversion.minor < 2):
+        elif kversion <= "6.1":
             self.page_offset_next = current_arch.ptrsize
         else:
             self.page_offset_next = current_arch.ptrsize * 2
@@ -44304,11 +44695,11 @@ class SlubDumpCommand(GenericCommand):
             info("offsetof(page, next): {:#x}".format(self.page_offset_next))
 
         # offsetof(page, freelist)
-        if kversion.major < 4 or (kversion.major == 4 and kversion.minor < 16):
+        if kversion <= "4.17":
             self.page_offset_freelist = current_arch.ptrsize * 2
-        elif kversion.major < 5 or (kversion.major == 5 and kversion.minor < 17):
+        elif kversion <= "5.16":
             self.page_offset_freelist = current_arch.ptrsize * 4
-        elif kversion.major < 6 or (kversion.major == 6 and kversion.minor < 2):
+        elif kversion <= "6.1":
             self.page_offset_freelist = current_arch.ptrsize * 4
         else:
             self.page_offset_freelist = current_arch.ptrsize * 4
@@ -45041,9 +45432,9 @@ class SlabDumpCommand(GenericCommand):
 
         # offsetof(kmem_cache, list)
         kversion = KernelVersionCommand.kernel_version()
-        if kversion.major < 3 or (kversion.major == 3 and kversion.minor < 18):
+        if kversion <= "3.17":
             self.kmem_cache_offset_list = current_arch.ptrsize * 6 + 4 * 10
-        elif kversion.major < 6 or (kversion.major == 6 and kversion.minor < 1):
+        elif kversion <= "6.0":
             self.kmem_cache_offset_list = current_arch.ptrsize * 7 + 4 * 10
         else:
             self.kmem_cache_offset_list = current_arch.ptrsize * 4 + 4 * 12
@@ -45056,7 +45447,7 @@ class SlabDumpCommand(GenericCommand):
             info("offsetof(kmem_cache, name): {:#x}".format(self.kmem_cache_offset_name))
 
         # offsetof(kmem_cache, size)
-        if kversion.major > 3 or (kversion.major == 3 and kversion.minor >= 18):
+        if kversion >= "3.18":
             self.kmem_cache_offset_size = current_arch.ptrsize + 4 * 3
         else:
             self.kmem_cache_offset_size = 4 * 3
@@ -45084,7 +45475,7 @@ class SlabDumpCommand(GenericCommand):
             info("offsetof(kmem_cache, object_size): {:#x}".format(self.kmem_cache_offset_object_size))
 
         # offsetof(kmem_cache, node)
-        if kversion.major < 4 or (kversion.major == 4 and kversion.minor < 16):
+        if kversion <= "4.15":
             self.kmem_cache_offset_node = self.kmem_cache_offset_object_size + 4 * 2 # heuristic could not use, so hard-coded
             if not self.quiet:
                 info("offsetof(kmem_cache, node): {:#x}".format(self.kmem_cache_offset_node))
@@ -45122,7 +45513,7 @@ class SlabDumpCommand(GenericCommand):
                 self.kmem_cache_offset_node = None
 
         # offsetof(kmem_cache, cpu_cache)
-        if kversion.major > 3 or (kversion.major == 3 and kversion.minor >= 18):
+        if kversion >= "3.18":
             self.kmem_cache_offset_cpu_cache = 0
         else:
             self.kmem_cache_offset_cpu_cache = self.kmem_cache_offset_node + current_arch.ptrsize
@@ -45131,13 +45522,13 @@ class SlabDumpCommand(GenericCommand):
 
         # offsetof(page, next)
         kversion = KernelVersionCommand.kernel_version()
-        if kversion.major < 4 or (kversion.major == 4 and kversion.minor < 16):
+        if kversion <= "4.15":
             self.page_offset_next = current_arch.ptrsize * 3 + 4 * 2
-        elif kversion.major == 4 and kversion.minor < 18:
+        elif kversion <= "4.17":
             self.page_offset_next = current_arch.ptrsize * 3 + 4
-        elif kversion.major < 5 or (kversion.major == 5 and kversion.minor < 17):
+        elif kversion <= "5.16":
             self.page_offset_next = current_arch.ptrsize
-        elif kversion.major < 6 or (kversion.major == 6 and kversion.minor < 2):
+        elif kversion <= "6.1":
             self.page_offset_next = current_arch.ptrsize
         else:
             self.page_offset_next = current_arch.ptrsize * 3
@@ -45145,11 +45536,11 @@ class SlabDumpCommand(GenericCommand):
             info("offsetof(page, next): {:#x}".format(self.page_offset_next))
 
         # offsetof(page, freelist)
-        if kversion.major < 4 or (kversion.major == 4 and kversion.minor < 18):
+        if kversion <= "4.17":
             self.page_offset_freelist = current_arch.ptrsize * 2
-        elif kversion.major < 5 or (kversion.major == 5 and kversion.minor < 17):
+        elif kversion <= "5.16":
             self.page_offset_freelist = current_arch.ptrsize * 4
-        elif kversion.major < 6 or (kversion.major == 6 and kversion.minor < 2):
+        elif kversion <= "6.1":
             self.page_offset_freelist = current_arch.ptrsize * 4
         else:
             self.page_offset_freelist = current_arch.ptrsize * 4
@@ -45157,11 +45548,11 @@ class SlabDumpCommand(GenericCommand):
             info("offsetof(page, freelist): {:#x}".format(self.page_offset_freelist))
 
         # offsetof(page, s_mem)
-        if kversion.major < 4 or (kversion.major == 4 and kversion.minor < 18):
+        if kversion <= "4.17":
             self.page_offset_s_mem = current_arch.ptrsize
-        elif kversion.major < 5 or (kversion.major == 5 and kversion.minor < 17):
+        elif kversion <= "5.16":
             self.page_offset_s_mem = current_arch.ptrsize * 5
-        elif kversion.major < 6 or (kversion.major == 6 and kversion.minor < 2):
+        elif kversion <= "6.1":
             self.page_offset_s_mem = 8 + current_arch.ptrsize * 5
         else:
             self.page_offset_s_mem = 8 + current_arch.ptrsize * 5
@@ -45169,11 +45560,11 @@ class SlabDumpCommand(GenericCommand):
             info("offsetof(page, s_mem): {:#x}".format(self.page_offset_s_mem))
 
         # offsetof(page, active)
-        if kversion.major < 4 or (kversion.major == 4 and kversion.minor < 18):
+        if kversion <= "4.17":
             self.page_offset_active = current_arch.ptrsize * 3
-        elif kversion.major < 5 or (kversion.major == 5 and kversion.minor < 17):
+        elif kversion <= "5.16":
             self.page_offset_active = current_arch.ptrsize * 6
-        elif kversion.major < 6 or (kversion.major == 6 and kversion.minor < 2):
+        elif kversion <= "6.1":
             self.page_offset_active = current_arch.ptrsize * 6
         else:
             self.page_offset_active = current_arch.ptrsize * 6
@@ -45186,7 +45577,7 @@ class SlabDumpCommand(GenericCommand):
             found = True
             for _kmem_cache in kmem_caches:
                 kmem_cache = _kmem_cache - self.kmem_cache_offset_list
-                if kversion.major > 3 or (kversion.major == 3 and kversion.minor >= 18):
+                if kversion >= "3.18":
                     kmem_cache_node_array = kmem_cache + self.kmem_cache_offset_node
                 else:
                     kmem_cache_node_array = read_int_from_memory(kmem_cache + self.kmem_cache_offset_node)
@@ -45258,7 +45649,7 @@ class SlabDumpCommand(GenericCommand):
             info("offsetof(array_cache, limit): {:#x}".format(self.array_cache_offset_limit))
 
         # offsetof(array_cache, entry)
-        if kversion.major > 3 or (kversion.major == 3 and kversion.minor >= 17):
+        if kversion >= "3.17":
             self.array_cache_offset_entry = 4 * 4
         else:
             sizeof_raw_spinlock_t = self.kmem_cache_node_offset_slabs_partial
@@ -45318,7 +45709,7 @@ class SlabDumpCommand(GenericCommand):
     def get_array_cache_cpu(self, addr, cpu):
         kversion = KernelVersionCommand.kernel_version()
         cpu_cache = read_int_from_memory(addr + self.kmem_cache_offset_cpu_cache)
-        if kversion.major > 3 or (kversion.major == 3 and kversion.minor >= 18):
+        if kversion >= "3.18":
             if len(self.cpu_offset) > 0:
                 array_cache_cpu = cpu_cache + self.cpu_offset[cpu]
             else:
@@ -45354,7 +45745,7 @@ class SlabDumpCommand(GenericCommand):
             freelist_addr = read_int_from_memory(node_page['address'] + self.page_offset_freelist)
             if is_valid_addr(freelist_addr):
                 active = u32(read_memory(node_page['address'] + self.page_offset_active, 4))
-                if kversion.major > 3 or (kversion.major == 3 and kversion.minor >= 15):
+                if kversion >= "3.15":
                     freelist_byteseq = read_memory(freelist_addr, kmem_cache['objperslab'])
                     node_page['freelist'] = list(freelist_byteseq[active:])
                 else:
@@ -45398,7 +45789,7 @@ class SlabDumpCommand(GenericCommand):
 
             # parse node
             kmem_cache['nodes'] = []
-            if kversion.major > 3 or (kversion.major == 3 and kversion.minor >= 18):
+            if kversion >= "3.18":
                 kmem_cache_node_array = current_kmem_cache + self.kmem_cache_offset_node
             else:
                 kmem_cache_node_array = read_int_from_memory(current_kmem_cache + self.kmem_cache_offset_node)
@@ -45734,7 +46125,7 @@ class SlobDumpCommand(GenericCommand):
 
         # offsetof(kmem_cache, list)
         kversion = KernelVersionCommand.kernel_version()
-        if kversion.major < 4 or (kversion.major == 4 and kversion.minor < 16):
+        if kversion <= "4.15":
             self.kmem_cache_offset_list = current_arch.ptrsize * 3 + 4 * 4
         else:
             self.kmem_cache_offset_list = current_arch.ptrsize * 3 + 4 * 6
@@ -45763,11 +46154,11 @@ class SlobDumpCommand(GenericCommand):
 
         # offsetof(page, next)
         kversion = KernelVersionCommand.kernel_version()
-        if kversion.major < 4 or (kversion.major == 4 and kversion.minor < 16):
+        if kversion <= "4.15":
             self.page_offset_next = current_arch.ptrsize * 3 + 4 * 2
-        elif kversion.major == 4 and kversion.minor < 18:
+        elif kversion <= "4.17":
             self.page_offset_next = current_arch.ptrsize * 4
-        elif kversion.major < 5 or (kversion.major == 5 and kversion.minor < 17):
+        elif kversion <= "5.16":
             self.page_offset_next = current_arch.ptrsize
         else:
             self.page_offset_next = current_arch.ptrsize
@@ -45775,9 +46166,9 @@ class SlobDumpCommand(GenericCommand):
             info("offsetof(page, next): {:#x}".format(self.page_offset_next))
 
         # offsetof(page, freelist)
-        if kversion.major < 4 or (kversion.major == 4 and kversion.minor < 18):
+        if kversion <= "4.17":
             self.page_offset_freelist = current_arch.ptrsize * 2
-        elif kversion.major < 5 or (kversion.major == 5 and kversion.minor < 17):
+        elif kversion <= "5.16":
             self.page_offset_freelist = current_arch.ptrsize * 4
         else:
             self.page_offset_freelist = current_arch.ptrsize * 4
@@ -45785,9 +46176,9 @@ class SlobDumpCommand(GenericCommand):
             info("offsetof(page, freelist): {:#x}".format(self.page_offset_freelist))
 
         # offsetof(page, units)
-        if kversion.major < 4 or (kversion.major == 4 and kversion.minor < 18):
+        if kversion <= "4.17":
             self.page_offset_units = current_arch.ptrsize * 3
-        elif kversion.major < 5 or (kversion.major == 5 and kversion.minor < 17):
+        elif kversion <= "5.16":
             self.page_offset_freelist = current_arch.ptrsize * 6
         else:
             self.page_offset_freelist = current_arch.ptrsize * 5
