@@ -23,7 +23,7 @@ fi
 
 echo "[+] install rp++"
 if [ "x$(uname -m)" = "xx86_64" ]; then
-  if [ "x$(which rp-lin)" = "x" ]; then
+  if [ "x$(which rp-lin)" = "x" ] && [ ! -e /usr/local/bin/rp-lin ]; then
     wget -q https://github.com/0vercl0k/rp/releases/download/v2.1.1/rp-lin-clang.zip -P /tmp
     unzip /tmp/rp-lin-clang.zip -d /usr/local/bin/
     chmod +x /usr/local/bin/rp-lin
@@ -32,7 +32,7 @@ if [ "x$(uname -m)" = "xx86_64" ]; then
 fi
 
 echo "[+] install vmlinux-to-elf"
-if [ "x$(which vmlinux-to-elf)" = "x" ]; then
+if [ "x$(which vmlinux-to-elf)" = "x" ] && [ ! -e /usr/local/bin/vmlinux-to-elf ]; then
   pip3 install --upgrade lz4 zstandard git+https://github.com/clubby789/python-lzo@b4e39df
   pip3 install --upgrade git+https://github.com/marin-m/vmlinux-to-elf
 fi

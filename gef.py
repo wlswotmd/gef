@@ -2099,9 +2099,11 @@ def which(program):
             return program
     else:
         env_path = os.getenv("PATH")
-        if env_path is None:
+        if not env_path:
             env_path = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-        for path in env_path.split(os.pathsep):
+        env_path_list = env_path.split(os.pathsep)
+        env_path_list += ["/usr/local/bin"] # for rp-lin, vmlinux-to-elf
+        for path in env_path_list:
             path = path.strip('"')
             exe_file = os.path.join(path, program)
             if is_exe(exe_file):

@@ -2,6 +2,7 @@
 * [What is this?](#what-is-this)
 * [Setup](#setup)
     * [Install](#install)
+    * [Install (Ubuntu 23.04)](#install-ubuntu-23.04)
     * [Upgrade (replace itself)](#upgrade-replace-itself)
     * [Uninstall](#uninstall)
     * [Dependency](#dependency)
@@ -20,8 +21,7 @@
 
 ## What is this?
 This is a fork of [GEF](https://github.com/hugsy/gef).
-However, it is specialized for x86 / x64 / ARM / AArch64, and various features are added.
-I hope you find it useful for CTF player, reverser, exploit developer, and so on.
+However, it is specialized for x86 / x64 / ARM / ARM64, and various features are added.
 
 ## Setup
 
@@ -30,6 +30,16 @@ I hope you find it useful for CTF player, reverser, exploit developer, and so on
 ```bash
 # Run with root user (sudo is NOT recommended)
 wget -q https://raw.githubusercontent.com/bata24/gef/dev/install.sh -O- | sh
+```
+
+GEF is installed under `/root` to simplify the installation script.
+If you want to change the location, please modify accordingly.
+
+### Install (Ubuntu 23.04)
+
+```bash
+# Ubuntu 23.04 restricts global installation with pip3, so you need --break-system-packages option.
+wget -q https://raw.githubusercontent.com/bata24/gef/dev/install.sh -O- |sed -e 's/\(pip3 install\)/\1 --break-system-packages/g' | sh
 ```
 
 ### Upgrade (replace itself)
@@ -50,13 +60,16 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 
 ## Added / Improved features
 
-All of these features are experimental. Tested on Ubuntu 22.04.
+All of these features are experimental.
+Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
 
 ### Qemu-system cooperation
 * It works with any version qemu-system, but qemu-6.x or higher is recommended.
     * Start qemu-system with the `-s` option and listen on `localhost:1234`.
     * Attach with `gdb-multiarch -ex 'target remote localhost:1234'`.
     * Or `gdb-multiarch -ex 'set architecture TARGET_ARCH' -ex 'target remote localhost:1234'`.
+* Supported architectures
+    * x86, x64, ARM and ARM64
 
 #### General
 * `qreg`: displays the register values from qemu-monitor (allows to get like `$cs` even under qemu 2.x).
@@ -74,7 +87,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
     * ARM64 (Supported: EL1&0-stage1/EL1&0-stage2/EL2&0-stage1/EL2-stage1/EL3-stage1)
         * ARM v8.7 base.
         * 32bit mode is NOT supported.
-        * PAC/MTE are NOT supported.
+        * PAC and MTE tags are not displayed.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm64.png)
         * Supported stage2 translation. This is EL1/EL2/EL3 pagewalk sample (HITCON CTF 2018 super_hexagon).
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm64-el123.png)
@@ -446,7 +459,7 @@ All of these features are experimental. Tested on Ubuntu 22.04.
         * `peek-pointers`, `current-stack-frame`, `xref-telescope`, `bytearray`, and `bincompare`.
     * This is because a single file is more attractive than ease of maintenance.
 * The system-call table used by `syscall-args` is moved from gef-extras.
-    * It was updated up to linux kernel 6.2.8 for each architecture.
+    * It was updated up to linux kernel 6.3.1 for each architecture.
 * Removed some features I don't use.
     * `$`, `ida-interact`, `gef-remote`, `pie`, `pcustom`, `ksymaddr`, `trace-run`, `bufferize`, `output redirect` and `shellcode`.
 * Many bugs fix / formatting / made it easy for me to use.
