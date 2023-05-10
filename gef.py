@@ -10747,7 +10747,7 @@ class CanaryCommand(GenericCommand):
         for m in vmmap:
             if not (m.permission & Permission.READ) or not (m.permission & Permission.WRITE):
                 continue
-            if m.path == "[vvar]":
+            if m.path in ["[vvar]", "[vsyscall]", "[vectors]", "[sigpage]"]:
                 continue
             try:
                 data = read_memory(m.page_start, m.page_end - m.page_start)
@@ -11603,7 +11603,7 @@ class SmartMemoryDumpCommand(GenericCommand):
             end = entry.page_end
             perm = str(entry.permission)
 
-            if entry.path in ["[vvar]", "[vsyscall]"]:
+            if entry.path in ["[vvar]", "[vsyscall]", "[vectors]", "[sigpage]"]:
                 continue
 
             if not entry.path.startswith("["):
@@ -12011,7 +12011,7 @@ class SearchPatternCommand(GenericCommand):
         for section in maps_generator:
             if not section.permission & Permission.READ:
                 continue
-            if section.path == "[vvar]":
+            if section.path in ["[vvar]", "[vsyscall]", "[vectors]", "[sigpage]"]:
                 continue
             if section_name not in section.path:
                 continue
@@ -14093,8 +14093,7 @@ class UnicornEmulateCommand(GenericCommand):
             info("Duplicating memory map")
 
         for sect in vmmap:
-            if sect.path == "[vvar]":
-                # this section is for GDB only, skip it
+            if sect.path in ["[vvar]", "[vectors]", "[sigpage]"]:
                 continue
 
             content += "    # Mapping {:s}: {:#x}-{:#x}\n".format(sect.path, sect.page_start, sect.page_end)
@@ -17103,25 +17102,26 @@ class KernelChecksecCommand(GenericCommand):
         else:
             gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unsupported", "bold red")))
 
-        # FGKASLR
-        cfg = "CONFIG_FG_KASLR (FGKASLR)"
-        swapgs_restore_regs_and_return_to_usermode = get_ksymaddr("swapgs_restore_regs_and_return_to_usermode")
-        commit_creds = get_ksymaddr("commit_creds")
-        if swapgs_restore_regs_and_return_to_usermode:
-            # swapgs_restore_regs_and_return_to_usermode is in a fixed location.
-            # commit_creds are placed dynamically.
-            if swapgs_restore_regs_and_return_to_usermode < commit_creds:
-                if kcmdline and "nofgkaslr" in kcmdline.cmdline:
-                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+        if is_x86_64():
+            # FGKASLR
+            cfg = "CONFIG_FG_KASLR (FGKASLR)"
+            swapgs_restore_regs_and_return_to_usermode = get_ksymaddr("swapgs_restore_regs_and_return_to_usermode")
+            commit_creds = get_ksymaddr("commit_creds")
+            if swapgs_restore_regs_and_return_to_usermode:
+                # swapgs_restore_regs_and_return_to_usermode is in a fixed location.
+                # commit_creds are placed dynamically.
+                if swapgs_restore_regs_and_return_to_usermode < commit_creds:
+                    if kcmdline and "nofgkaslr" in kcmdline.cmdline:
+                        gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+                    else:
+                        gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
                 else:
-                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
+                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unsupported", "bold red")))
             else:
-                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unsupported", "bold red")))
-        else:
-            if commit_creds:
-                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unsupported", "bold red")))
-            else:
-                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
+                if commit_creds:
+                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unsupported", "bold red")))
+                else:
+                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
 
         # KPTI
         cfg = "CONFIG_PAGE_TABLE_ISOLATION (KPTI)"
@@ -36304,7 +36304,7 @@ class KernelMagicCommand(GenericCommand):
                 return True
         return False
 
-    def resolve_and_print_kernel(self, sym, base, maps, external_func=None):
+    def resolve_and_print_kernel(self, sym, base, maps, external_func=None, to_string=False):
         def get_permission(addr, maps):
             for vaddr, size, perm in maps:
                 if vaddr <= addr and addr < vaddr + size:
@@ -36337,7 +36337,7 @@ class KernelMagicCommand(GenericCommand):
                     gef_print("{:42s}: {:>{:d}s}".format(sym, "Not found", width))
                     return
         perm = get_permission(addr, maps)
-        if is_ascii_string(addr):
+        if to_string:
             val = read_ascii_string(addr)
             fmt = "{:42s}: {:#0{:d}x} [{:3s}] ({:#0{:d}x} + {:#010x}) -> {:s}"
             gef_print(fmt.format(sym, addr, width, perm, base, width, addr - base, val))
@@ -36373,14 +36373,14 @@ class KernelMagicCommand(GenericCommand):
         gef_print(titlify("Usermode helper"))
         self.resolve_and_print_kernel("call_usermodehelper", kbase, maps)
         self.resolve_and_print_kernel("run_cmd", kbase, maps)
-        self.resolve_and_print_kernel("modprobe_path", kbase, maps, KernelAddressHeuristicFinder.get_modprobe_path)
+        self.resolve_and_print_kernel("modprobe_path", kbase, maps, KernelAddressHeuristicFinder.get_modprobe_path, to_string=True)
         self.resolve_and_print_kernel("orderly_poweroff", kbase, maps)
-        self.resolve_and_print_kernel("poweroff_cmd", kbase, maps, KernelAddressHeuristicFinder.get_poweroff_cmd)
+        self.resolve_and_print_kernel("poweroff_cmd", kbase, maps, KernelAddressHeuristicFinder.get_poweroff_cmd, to_string=True)
         self.resolve_and_print_kernel("orderly_reboot", kbase, maps)
-        self.resolve_and_print_kernel("reboot_cmd", kbase, maps, KernelAddressHeuristicFinder.get_reboot_cmd)
-        self.resolve_and_print_kernel("core_pattern", kbase, maps, KernelAddressHeuristicFinder.get_core_pattern)
+        self.resolve_and_print_kernel("reboot_cmd", kbase, maps, KernelAddressHeuristicFinder.get_reboot_cmd, to_string=True)
+        self.resolve_and_print_kernel("core_pattern", kbase, maps, KernelAddressHeuristicFinder.get_core_pattern, to_string=True)
         gef_print(titlify("ROP finalizer"))
-        if is_x86():
+        if is_x86_64():
             self.resolve_and_print_kernel("swapgs_restore_regs_and_return_to_usermode", kbase, maps)
         self.resolve_and_print_kernel("msleep", kbase, maps)
         gef_print(titlify("Memory protection modifier"))
@@ -36390,46 +36390,56 @@ class KernelMagicCommand(GenericCommand):
         self.resolve_and_print_kernel("set_memory_rw", kbase, maps)
         self.resolve_and_print_kernel("set_memory_x", kbase, maps)
         gef_print(titlify("Memory patcher"))
-        self.resolve_and_print_kernel("text_poke", kbase, maps)
+        if is_x86():
+            self.resolve_and_print_kernel("text_poke", kbase, maps)
         self.resolve_and_print_kernel("memcpy", kbase, maps)
-        self.resolve_and_print_kernel("_copy_to_user", kbase, maps)
-        self.resolve_and_print_kernel("_copy_from_user", kbase, maps)
-        if is_arm64():
+        if is_x86():
+            self.resolve_and_print_kernel("_copy_to_user", kbase, maps)
+            self.resolve_and_print_kernel("_copy_from_user", kbase, maps)
+        elif is_arm32():
+            self.resolve_and_print_kernel("arm_copy_to_user", kbase, maps)
+            self.resolve_and_print_kernel("arm_copy_from_user", kbase, maps)
+        elif is_arm64():
             self.resolve_and_print_kernel("__arch_copy_to_user", kbase, maps)
             self.resolve_and_print_kernel("__arch_copy_from_user", kbase, maps)
         gef_print(titlify("Memory remapper"))
-        self.resolve_and_print_kernel(["ioremap", "__ioremap"], kbase, maps)
+        self.resolve_and_print_kernel(["ioremap", "__ioremap", "ioremap_cache"], kbase, maps)
         self.resolve_and_print_kernel(["iounmap", "__iounmap"], kbase, maps)
-        self.resolve_and_print_kernel("phys_base", kbase, maps)
-        gef_print(titlify("Automatically called function pointer"))
-        self.resolve_and_print_kernel("kvm_clock", kbase, maps)
-        self.resolve_and_print_kernel("clocksource_tsc", kbase, maps)
+        if is_x86_64():
+            self.resolve_and_print_kernel("phys_base", kbase, maps, KernelAddressHeuristicFinder.get_phys_base)
+        if is_x86():
+            gef_print(titlify("Automatically called function pointer"))
+            self.resolve_and_print_kernel("kvm_clock", kbase, maps)
+            self.resolve_and_print_kernel("clocksource_tsc", kbase, maps, KernelAddressHeuristicFinder.get_clocksource_tsc)
         gef_print(titlify("Function pointer table"))
-        self.resolve_and_print_kernel("ptmx_fops", kbase, maps)
-        self.resolve_and_print_kernel("perf_fops", kbase, maps)
+        self.resolve_and_print_kernel("ptmx_fops", kbase, maps, KernelAddressHeuristicFinder.get_ptmx_fops)
         self.resolve_and_print_kernel("capability_hooks", kbase, maps)
         self.resolve_and_print_kernel("n_tty_ops", kbase, maps, KernelAddressHeuristicFinder.get_n_tty_ops)
         gef_print(titlify("Function pointer table array"))
         self.resolve_and_print_kernel("tty_ldiscs", kbase, maps, KernelAddressHeuristicFinder.get_tty_ldiscs)
-        gef_print(titlify("SLUB"))
+        gef_print(titlify("Allocator"))
         self.resolve_and_print_kernel("__kmalloc", kbase, maps)
-        self.resolve_and_print_kernel("kzalloc", kbase, maps)
+        self.resolve_and_print_kernel(["kzalloc", "kzalloc.constprop.0"], kbase, maps)
         self.resolve_and_print_kernel("kfree", kbase, maps)
-        self.resolve_and_print_kernel("kzfree", kbase, maps)
+        self.resolve_and_print_kernel(["kzfree", "kfree_sensitive"], kbase, maps)
         self.resolve_and_print_kernel("slab_caches", kbase, maps, KernelAddressHeuristicFinder.get_slab_caches)
         gef_print(titlify("Dynamic resolver"))
         self.resolve_and_print_kernel("kallsyms_lookup_name", kbase, maps)
         gef_print(titlify("vDSO"))
-        if is_x86():
-            self.resolve_and_print_kernel("vdso_image_64", kbase, maps)
-            self.resolve_and_print_kernel("vdso_image_32", kbase, maps)
-            self.resolve_and_print_kernel("vdso_image_x32", kbase, maps)
+        if is_x86_64():
+            self.resolve_and_print_kernel("vdso_image_64", kbase, maps, KernelAddressHeuristicFinder.get_vdso_image_64)
+            self.resolve_and_print_kernel("vdso_image_32", kbase, maps, KernelAddressHeuristicFinder.get_vdso_image_32)
+            self.resolve_and_print_kernel("vdso_image_x32", kbase, maps, KernelAddressHeuristicFinder.get_vdso_image_x32)
+        elif is_x86_32():
+            self.resolve_and_print_kernel("vdso_image_32", kbase, maps, KernelAddressHeuristicFinder.get_vdso_image_32)
         elif is_arm64():
             self.resolve_and_print_kernel("vdso_info", kbase, maps, KernelAddressHeuristicFinder.get_vdso_info)
+            self.resolve_and_print_kernel("vdso_start", kbase, maps)
+            self.resolve_and_print_kernel("vdso32_start", kbase, maps)
         elif is_arm32():
             self.resolve_and_print_kernel("vdso_start", kbase, maps)
         gef_print(titlify("Others"))
-        self.resolve_and_print_kernel("do_fchmodat", kbase, maps)
+        self.resolve_and_print_kernel(["do_fchmodat", "sys_fchmodat"], kbase, maps)
         self.resolve_and_print_kernel("mmap_min_addr", kbase, maps, KernelAddressHeuristicFinder.get_mmap_min_addr)
         self.resolve_and_print_kernel("__per_cpu_offset", kbase, maps, KernelAddressHeuristicFinder.get_per_cpu_offset)
         return
@@ -37486,7 +37496,7 @@ class FindFakeFastCommand(GenericCommand):
         for m in vmmap:
             if not (m.permission & Permission.READ) or not (m.permission & Permission.WRITE):
                 continue
-            if m.path == "[vvar]":
+            if m.path in ["[vvar]", "[vsyscall]", "[vectors]", "[sigpage]"]:
                 continue
             if not self.include_heap and m.path == "[heap]":
                 continue
@@ -39049,6 +39059,83 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    def get_phys_base():
+        # plan 1 (directly)
+        phys_base = get_ksymaddr("phys_base")
+        if phys_base:
+            return phys_base
+
+        # plan 2 (available v2.6.24 or later)
+        if is_x86_64():
+            secondary_startup_64 = get_ksymaddr("secondary_startup_64")
+            if secondary_startup_64:
+                res = gdb.execute("x/20i {:#x}".format(secondary_startup_64), to_string=True)
+                for line in res.splitlines():
+                    m = re.search(r"QWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffffffffffff
+                        return v
+        return None
+
+    @staticmethod
+    def get_clocksource_tsc():
+        # plan 1 (directly)
+        clocksource_tsc = get_ksymaddr("clocksource_tsc")
+        if clocksource_tsc:
+            return clocksource_tsc
+
+        # plan 2 (available v4.16.8 or later)
+        if is_x86_64():
+            mark_tsc_unstable_cold = get_ksymaddr("mark_tsc_unstable.part.0") or get_ksymaddr("mark_tsc_unstable.cold")
+            if mark_tsc_unstable_cold:
+                res = gdb.execute("x/20i {:#x}".format(mark_tsc_unstable_cold), to_string=True)
+                count = 0
+                for line in res.splitlines():
+                    m = re.search(r"mov\s+rdi\s*,\s*(0x\w+)", line)
+                    if m:
+                        if count == 2:
+                            v = int(m.group(1), 16) & 0xffffffffffffffff
+                            return v
+                        count += 1
+        elif is_x86_32():
+            mark_tsc_unstable_cold = get_ksymaddr("mark_tsc_unstable.part.0") or get_ksymaddr("mark_tsc_unstable.cold")
+            if mark_tsc_unstable_cold:
+                res = gdb.execute("x/20i {:#x}".format(mark_tsc_unstable_cold), to_string=True)
+                count = 0
+                for line in res.splitlines():
+                    m = re.search(r"mov\s+eax\s*,\s*(0x\w+)", line)
+                    if m:
+                        if count == 1:
+                            v = int(m.group(1), 16) & 0xffffffff
+                            return v
+                        count += 1
+        elif is_arm32():
+            # TODO
+            pass
+        elif is_arm64():
+            # TODO
+            pass
+        return None
+
+    @staticmethod
+    def get_ptmx_fops():
+        # plan 1 (directly)
+        ptmx_fops = get_ksymaddr("ptmx_fops")
+        if ptmx_fops:
+            return ptmx_fops
+
+        # plan 2
+        res = gdb.execute("kcdev -n -q", to_string=True)
+        for line in res.splitlines():
+            if "/dev/ptmx" not in line:
+                continue
+            elem = line.split()
+            if elem[-1].endswith(">"):
+                return int(elem[-2], 16)
+            return int(elem[-1], 16)
+        return None
+
+    @staticmethod
     def get_n_tty_ops():
         # plan 1 (directly)
         n_tty_ops = get_ksymaddr("n_tty_ops")
@@ -39780,6 +39867,90 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    def get_vdso_image_64():
+        # plan 1 (directly)
+        vdso_image_64 = get_ksymaddr("vdso_image_64")
+        if vdso_image_64:
+            return vdso_image_64
+
+        # plan 2 (available v4.2-rc1 or later)
+        if is_x86_64():
+            arch_setup_additional_pages = get_ksymaddr("arch_setup_additional_pages")
+            if arch_setup_additional_pages:
+                res = gdb.execute("x/40i {:#x}".format(arch_setup_additional_pages), to_string=True)
+                for line in res.splitlines():
+                    m = re.search(r"mov\s+rdi\s*,\s*(0x\w+)", line)
+                    if m:
+                        p = int(m.group(1), 16)
+                        if is_valid_addr(p):
+                            x = read_int_from_memory(p)
+                            if is_valid_addr(x):
+                                if read_memory(x, 4) == b"\x7fELF":
+                                    return p
+        return None
+
+    @staticmethod
+    def get_vdso_image_x32():
+        # plan 1 (directly)
+        vdso_image_x32 = get_ksymaddr("vdso_image_x32")
+        if vdso_image_x32:
+            return vdso_image_x32
+
+        # plan 2 (available v4.2-rc1 or later)
+        if is_x86_64():
+            compat_arch_setup_additional_pages = get_ksymaddr("compat_arch_setup_additional_pages")
+            if compat_arch_setup_additional_pages:
+                res = gdb.execute("x/20i {:#x}".format(compat_arch_setup_additional_pages), to_string=True)
+                for line in res.splitlines():
+                    m = re.search(r"mov\s+rdi\s*,\s*(0x\w+)", line)
+                    if m:
+                        p = int(m.group(1), 16)
+                        if is_valid_addr(p):
+                            x = read_int_from_memory(p)
+                            if is_valid_addr(x):
+                                if read_memory(x, 4) == b"\x7fELF":
+                                    if read_memory(x + 0x12, 1) == b"\x3e": # Elf.Machine
+                                        return p
+        return None
+
+    @staticmethod
+    def get_vdso_image_32():
+        # plan 1 (directly)
+        vdso_image_32 = get_ksymaddr("vdso_image_32")
+        if vdso_image_32:
+            return vdso_image_32
+
+        # plan 2 (available v4.2-rc1 or later)
+        if is_x86_64():
+            compat_arch_setup_additional_pages = get_ksymaddr("compat_arch_setup_additional_pages")
+            if compat_arch_setup_additional_pages:
+                res = gdb.execute("x/20i {:#x}".format(compat_arch_setup_additional_pages), to_string=True)
+                for line in res.splitlines():
+                    m = re.search(r"mov\s+rdi\s*,\s*(0x\w+)", line)
+                    if m:
+                        p = int(m.group(1), 16)
+                        if is_valid_addr(p):
+                            x = read_int_from_memory(p)
+                            if is_valid_addr(x):
+                                if read_memory(x, 4) == b"\x7fELF":
+                                    if read_memory(x + 0x12, 1) == b"\x03": # Elf.Machine
+                                        return p
+        elif is_x86_32():
+            arch_setup_additional_pages = get_ksymaddr("arch_setup_additional_pages")
+            if arch_setup_additional_pages:
+                res = gdb.execute("x/20i {:#x}".format(arch_setup_additional_pages), to_string=True)
+                for line in res.splitlines():
+                    m = re.search(r"mov\s+eax\s*,\s*(0x\w+)", line)
+                    if m:
+                        p = int(m.group(1), 16)
+                        if is_valid_addr(p):
+                            x = read_int_from_memory(p)
+                            if is_valid_addr(x):
+                                if read_memory(x, 4) == b"\x7fELF":
+                                    return p
+        return None
+
+    @staticmethod
     def get_vdso_info():
         # plan 1 (directly)
         vdso_info = get_ksymaddr("vdso_info")
@@ -40097,7 +40268,7 @@ class KernelVersionCommand(GenericCommand):
         for addr in kinfo.maps: # resolve search range
             if addr[0] < kinfo.kbase:
                 continue
-            if addr[0] >= kinfo.krwbase:
+            if kinfo.krwbase and addr[0] >= kinfo.krwbase:
                 continue
             area.append([addr[0], addr[0] + addr[1]])
         if area == []:
@@ -55948,7 +56119,7 @@ class XRefTelescopeCommand(SearchPatternCommand):
         for section in get_process_maps():
             if not section.permission & Permission.READ:
                 continue
-            if section.path == "[vvar]":
+            if section.path in ["[vvar]", "[vsyscall]", "[vectors]", "[sigpage]"]:
                 continue
 
             start = section.page_start
