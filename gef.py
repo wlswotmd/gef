@@ -39118,6 +39118,37 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    def get_clocksource_list():
+        # plan 1 (directly)
+        #clocksource_list = get_ksymaddr("clocksource_list")
+        #if clocksource_list:
+        #    return clocksource_list
+
+        # plan 2 (available v2.6.21-rc1 or later)
+        clocksource_enqueue = get_ksymaddr("clocksource_enqueue")
+        if clocksource_enqueue:
+            res = gdb.execute("x/20i {:#x}".format(clocksource_enqueue), to_string=True)
+            if is_x86_64():
+                for line in res.splitlines():
+                    m = re.search(r"QWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffffffffffff
+                        return v
+            elif is_x86_32():
+                for line in res.splitlines():
+                    m = re.search(r"DWORD PTR ds:(0x\w+)", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffff
+                        return v
+            elif is_arm32():
+                # TODO
+                pass
+            elif is_arm64():
+                # TODO
+                pass
+        return None
+
+    @staticmethod
     def get_ptmx_fops():
         # plan 1 (directly)
         ptmx_fops = get_ksymaddr("ptmx_fops")
@@ -42032,6 +42063,71 @@ class KernelFileSystemsCommand(GenericCommand):
             name = read_cstring_from_memory(name_addr)
             self.out.append("{:#018x} {:s}".format(current, name))
             current = read_int_from_memory(current + offset_next)
+
+        if self.out:
+            gef_print('\n'.join(self.out), less=not args.no_pager)
+        return
+
+
+@register_command
+class KernelClockSourceCommand(GenericCommand):
+    """Dump clock sources using kenrel memory scanning."""
+    _cmdline_ = "kclock-source"
+    _category_ = "08-b. Qemu-system Cooperation - Linux"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
+    _syntax_ = parser.format_help()
+
+    def get_offset_list(self, clocksource):
+        current = read_int_from_memory(clocksource)
+        for i in range(2, 20):
+            candidate_offset = i * current_arch.ptrsize
+            v = read_int_from_memory(current - candidate_offset)
+            if is_valid_addr(v):
+                return candidate_offset
+        return None
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_qemu_system
+    @only_if_in_kernel
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        if not args.quiet:
+            info("Wait for memory scan")
+
+        clocksource_list = KernelAddressHeuristicFinder.get_clocksource_list()
+        if clocksource_list is None:
+            if not args.quiet:
+                err("Not found clocksource_list")
+            return
+        if not args.quiet:
+            info("clocksource_list: {:#x}".format(clocksource_list))
+
+        offset_list = self.get_offset_list(clocksource_list)
+        if offset_list is None:
+            return
+        if not args.quiet:
+            info("offsetof(clocksource, list): {:#x}".format(offset_list))
+
+        self.out = []
+        width = current_arch.ptrsize * 2 + 2
+        if not args.quiet:
+            fmt = "{:<{:d}s} {:20s} {:<{:d}s}"
+            legend = ["address", width, "name", "read", width]
+            self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+        current = read_int_from_memory(clocksource_list)
+        while current != clocksource_list:
+            cs = current - offset_list
+            read = read_int_from_memory(cs)
+            read_sym = get_symbol_string(read, nosymbol_string=" <NO_SYMBOL>")
+            name_addr = read_int_from_memory(current - current_arch.ptrsize)
+            name = read_cstring_from_memory(name_addr)
+            self.out.append("{:#0{:d}x} {:20s} {:#0{:d}x}{:s}".format(cs, width, name, read, width, read_sym))
+            current = read_int_from_memory(current)
 
         if self.out:
             gef_print('\n'.join(self.out), less=not args.no_pager)

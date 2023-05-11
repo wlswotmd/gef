@@ -163,6 +163,8 @@ Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kparam-sysctl.png)
 * `kfilesystems`: dumps supported file systems.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kfilesystems.png)
+* `kclock-source`: dumps clocksource_list.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kclock-source.png)
 * `ksearch-code-ptr`: searches the code pointer in kernel data area.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksearch-code-ptr.png)
 
