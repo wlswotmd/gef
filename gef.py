@@ -7695,8 +7695,13 @@ def get_path_from_info_proc():
 @functools.lru_cache(maxsize=None)
 def is_remote_debug():
     """"Return True is the current debugging session is running through GDB remote session."""
-    res = gdb.execute("maintenance print target-stack", to_string=True)
-    return "remote" in res
+    try:
+        connection = gdb.selected_inferior().connection
+        return connection and connection.type == 'remote'
+    except AttributeError:
+        # xtensa-linux-gdb: AttributeError: 'gdb.Inferior' object has no attribute 'connection'
+        res = gdb.execute("maintenance print target-stack", to_string=True)
+        return "remote" in res
 
 
 # Removed is_remote_same_host.
