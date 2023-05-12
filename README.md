@@ -7,12 +7,14 @@
     * [Uninstall](#uninstall)
     * [Dependency](#dependency)
 * [Added / Improved features](#added--improved-features)
+    * [Supported mode](#supported-mode)
     * [Qemu-system cooperation](#qemu-system-cooperation)
         * [General](#general)
         * [Linux specific](#linux-specific)
         * [Arch specific](#arch-specific)
     * [Qemu-user cooperation](#qemu-user-cooperation)
         * [General](#general-1)
+    * [Other supported mode](#other-supported-mode)
     * [Heap dump features](#heap-dump-features)
     * [Other improved features](#other-improved-features)
     * [Other new features](#other-new-features)
@@ -62,6 +64,18 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 
 All of these features are experimental.
 Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
+
+### Supported mode
+
+* Normal debugging
+* Attach to process
+* Attach to process in another pid namespace
+* Connect to gdbserver
+* Connect to qemu-system gdb stub (over localhost:1234)
+* Connect to qemu-user gdb stub (over localhost:1234)
+* Connect to Intel pin gdb stub (over localhost:1234)
+* Connect to Intel SDE gdb stub (over localhost:1234)
+* Connect to KGDB gdb stub (over serial)
 
 ### Qemu-system cooperation
 * It works with any version qemu-system, but qemu-6.x or higher is recommended.
@@ -187,12 +201,8 @@ Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
 ### Qemu-user cooperation
 * It works with any version qemu-user, but qemu-6.x or higher is recommended.
     * Start qemu-user with the `-g 1234` option and listen on `localhost:1234`.
-    * Attach with `gdb-multiarch -ex 'file /PATH/TO/BINARY' -ex 'target remote localhost:1234'`.
+    * Attach with `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:1234'`.
     * Or `gdb-multiarch -ex 'set architecture TARGET_ARCH' -ex 'target remote localhost:1234'`.
-* Intel pin is supported.
-    * Listen with `pin -appdebug -appdebug_server_port 1234 -t obj-intel64/inscount0.so -- /bin/ls`.
-* Intel SDE is supported.
-    * Listen with `sde64 -debug -debug-port 1234 -- /bin/ls`.
 * Supported architectures
     * See [SUPPORTED_ARCH.md](https://github.com/bata24/gef/blob/dev/SUPPORTED_ARCH.md)
 
@@ -217,6 +227,24 @@ Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
     * This command realizes a pseudo SIGINT trap by trapping SIGINT on the python side and throwing SIGINT back to qemu-user or pin.
     * It works local qemu-user or pin only.
     * If you want to use native `c`, use the full form `continue`.
+
+### Other supported mode
+* Intel pin is supported.
+    * Listen with `pin -appdebug -appdebug_server_port 1234 -t obj-intel64/inscount0.so -- /bin/ls`.
+    * Attach with `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:1234'`.
+    * Or `gdb-multiarch -ex 'set architecture TARGET_ARCH' -ex 'target remote localhost:1234'`.
+    * It runs very slowly and is not recommended.
+* Intel SDE is supported.
+    * Listen with `sde64 -debug -debug-port 1234 -- /bin/ls`.
+    * Attach with `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:1234'`.
+    * Or `gdb-multiarch -ex 'set architecture TARGET_ARCH' -ex 'target remote localhost:1234'`.
+    * It runs very slowly and is not recommended.
+* KGDB is supported.
+    * Configure the serial port as a named pipe in your two (debugger/debuggee) virtual machine settings, such as VMware or VirtualBox.
+    * Debuggee: Edit `/etc/default/grub` and append `kgdboc=ttyS0,115200 kgdbwait` to the end of `GRUB_CMDLINE_LINUX_DEFAULT`, then `update-grub && reboot`.
+    * Debugger: `gdb-multiarch -ex 'target remote /dev/ttyS0'`.
+    * It runs very slowly and is not recommended.
+    * Commands for Qemu-system are not supported in KGDB mode (Because there is no way to access physical memory).
 
 ### Heap dump features
 * `partition-alloc-dump`: dumps partition-alloc free-list (heuristic).

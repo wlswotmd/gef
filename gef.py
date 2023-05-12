@@ -7034,8 +7034,14 @@ def read_cstring_from_memory(address, max_length=GEF_MAX_STRING_LENGTH):
     # for example 0xcccccccccccccccc....(too long), this is in kernel or firmware commonly.
     # to avoid this, gdb.Value().cast() is removed.
 
+    if is_kgdb():
+        # read_memory when kgdb is very slow, this is dirty hack
+        block_size = 1
+    else:
+        block_size = gef_getpagesize()
+
     # first, read to page boundary
-    length = gef_getpagesize() - (address % gef_getpagesize())
+    length = block_size - (address % block_size)
     try:
         res = read_memory(address, length)
     except gdb.MemoryError:
@@ -7046,7 +7052,7 @@ def read_cstring_from_memory(address, max_length=GEF_MAX_STRING_LENGTH):
         if b"\x00" in res:
             break
         try:
-            read_length = min(max_length - len(res), gef_getpagesize())
+            read_length = min(max_length - len(res), block_size)
             res += read_memory(address + len(res), read_length)
         except gdb.MemoryError:
             break
@@ -7758,6 +7764,19 @@ def is_qemu_system():
     return 'received: ""' in response
 
 
+@functools.lru_cache(maxsize=None)
+def is_over_serial():
+    if not is_remote_debug():
+        return False
+    dev = gdb.selected_inferior().connection.details
+    return dev.startswith(("/dev/ttyS", "/dev/ttyAMA"))
+
+
+@functools.lru_cache(maxsize=None)
+def is_kgdb():
+    return (is_x86() or is_arm32() or is_arm64()) and is_over_serial()
+
+
 def get_tcp_sess(pid):
     # get inode information from opened file descriptor
     inodes = []
@@ -8388,28 +8407,44 @@ def continue_handler(event):
 def hook_stop_handler(event):
     """GDB event handler for stop cases."""
     reset_gef_caches()
-    if current_arch is None:
-        set_arch(get_arch())
-    gdb.execute("context")
 
     global __gef_check_once__
     if __gef_check_once__:
-        # Message if file not loaded.
-        if not is_qemu_system():
-            response = gdb.execute('info files', to_string=True)
-            if "Symbols from" not in response:
-                err("Missing info about architecture. Please set: `file /path/to/target_binary`")
-                err("Some architectures may not be automatically recognized. Set it manually with `set architecture YOUR_ARCH`.")
-
-        if not is_qemu_system():
-            gdb.execute("codebase", to_string=True)
-
         # Ubuntu 20.04 and earlier seem to have a bug (?) in libpython that mishandles SIGINT with no destination.
         # To work around this issue, override the c command again with the `continue` command if neither qemu-user nor pin.
         if not (is_qemu_usermode() or is_pin()):
             gdb.execute("define c\ncontinue\nend")
 
+        # when kdb, assume x86-64 or ARM
+        if is_kgdb():
+            dev = gdb.selected_inferior().connection.details
+            if dev.startswith("/dev/ttyS"):
+                gdb.execute("set architecture i386:x86-64:intel", to_string=True)
+            elif dev.startswith("/dev/ttyAMA"):
+                gdb.execute("set architecture armv7", to_string=True)
+            else:
+                raise
+            reset_gef_caches()
+
+    if current_arch is None:
+        set_arch(get_arch())
+    gdb.execute("context")
+
+    if __gef_check_once__:
+        # resolve codebase, libc
+        if not is_qemu_system() and not is_kgdb():
+            gdb.execute("codebase", to_string=True)
+            gdb.execute("libc", to_string=True)
+
+        # Message if file not loaded.
+        if not is_qemu_system() and not is_kgdb():
+            response = gdb.execute('info files', to_string=True)
+            if "Symbols from" not in response:
+                err("Missing info about architecture. Please set: `file /path/to/target_binary`")
+                err("Some architectures may not be automatically recognized. Set it manually with `set architecture YOUR_ARCH`.")
+
         __gef_check_once__ = False
+
     return
 
 
@@ -9335,7 +9370,7 @@ def gef_get_auxiliary_values():
     Returns None if not running, or a dict() of values."""
     if not is_alive():
         return None
-    if is_qemu_system():
+    if is_qemu_system() or is_kgdb():
         return None
     return __gef_get_auxiliary_values()
 
@@ -16141,6 +16176,7 @@ class ArchInfoCommand(GenericCommand):
         gef_print("{:30s} {:s} {:s}".format("is_qemu_system()", RIGHT_ARROW, str(is_qemu_system())))
         gef_print("{:30s} {:s} {:s}".format("is_qemu_usermode()", RIGHT_ARROW, str(is_qemu_usermode())))
         gef_print("{:30s} {:s} {:s}".format("is_pin()", RIGHT_ARROW, str(is_pin())))
+        gef_print("{:30s} {:s} {:s}".format("is_kgdb()", RIGHT_ARROW, str(is_kgdb())))
 
         gef_print(titlify("GEF settings"))
         gef_print("{:30s} {:s} {:s}".format("current_arch.arch", RIGHT_ARROW, current_arch.arch))
@@ -20484,6 +20520,9 @@ class ContextCommand(GenericCommand):
                     return "SINGLE STEP"
 
             return "STOPPED"
+
+        if is_kgdb():
+            return
 
         self.context_title("threads")
 
