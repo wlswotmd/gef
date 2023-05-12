@@ -6,18 +6,18 @@
     * [Upgrade (replace itself)](#upgrade-replace-itself)
     * [Uninstall](#uninstall)
     * [Dependency](#dependency)
-* [Added / Improved features](#added--improved-features)
-    * [Supported mode](#supported-mode)
+* [Supported mode](#supported-mode)
     * [Qemu-system cooperation](#qemu-system-cooperation)
-        * [General](#general)
-        * [Linux specific](#linux-specific)
-        * [Arch specific](#arch-specific)
     * [Qemu-user cooperation](#qemu-user-cooperation)
-        * [General](#general-1)
     * [Other supported mode](#other-supported-mode)
+* [Added / Improved features](#added--improved-features)
+    * [Qemu-system cooperation - General](#qemu-system-cooperation---general)
+    * [Qemu-system cooperation - Linux specific](#qemu-system-cooperation---linux-specific)
+    * [Qemu-system cooperation - Arch specific](#qemu-system-cooperation---arch-specific)
+    * [Qemu-user cooperation - General](#qemu-user-cooperation---general)
     * [Heap dump features](#heap-dump-features)
-    * [Other improved features](#other-improved-features)
-    * [Other new features](#other-new-features)
+    * [Improved features](#improved-features)
+    * [New features](#new-features)
     * [Other](#other)
 * [Memo (Japanese)](#memo-japanese)
 
@@ -41,7 +41,7 @@ If you want to change the location, please modify accordingly.
 
 ```bash
 # Ubuntu 23.04 restricts global installation with pip3, so you need --break-system-packages option.
-wget -q https://raw.githubusercontent.com/bata24/gef/dev/install.sh -O- |sed -e 's/\(pip3 install\)/\1 --break-system-packages/g' | sh
+wget -q https://raw.githubusercontent.com/bata24/gef/dev/install.sh -O- | sed -e 's/\(pip3 install\)/\1 --break-system-packages/g' | sh
 ```
 
 ### Upgrade (replace itself)
@@ -60,22 +60,17 @@ sed -i -e '/source \/root\/.gdbinit-gef.py/d' /root/.gdbinit
 See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 [install-minimal.sh](https://github.com/bata24/gef/blob/dev/install-minimal.sh).
 
-## Added / Improved features
-
-All of these features are experimental.
-Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
-
-### Supported mode
+## Supported mode
 
 * Normal debugging
 * Attach to process
 * Attach to process in another pid namespace
 * Connect to gdbserver
-* Connect to qemu-system gdb stub (over localhost:1234)
-* Connect to qemu-user gdb stub (over localhost:1234)
-* Connect to Intel pin gdb stub (over localhost:1234)
-* Connect to Intel SDE gdb stub (over localhost:1234)
-* Connect to KGDB gdb stub (over serial)
+* Connect to the gdb stub of qemu-system (via localhost:1234)
+* Connect to the gdb stub of qemu-user (via localhost:1234)
+* Connect to the gdb stub of Intel pin (via localhost:1234)
+* Connect to the gdb stub of Intel SDE (via localhost:1234)
+* Connect to the gdb stub of KGDB (over serial)
 
 ### Qemu-system cooperation
 * It works with any version qemu-system, but qemu-6.x or higher is recommended.
@@ -85,7 +80,39 @@ Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
 * Supported architectures
     * x86, x64, ARM and ARM64
 
-#### General
+### Qemu-user cooperation
+* It works with any version qemu-user, but qemu-6.x or higher is recommended.
+    * Start qemu-user with the `-g 1234` option and listen on `localhost:1234`.
+    * Attach with `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:1234'`.
+    * Or `gdb-multiarch -ex 'set architecture TARGET_ARCH' -ex 'target remote localhost:1234'`.
+* Supported architectures
+    * See [SUPPORTED_ARCH.md](https://github.com/bata24/gef/blob/dev/SUPPORTED_ARCH.md)
+
+### Other supported mode
+* Intel pin is supported.
+    * Listen with `pin -appdebug -appdebug_server_port 1234 -t obj-intel64/inscount0.so -- /bin/ls`.
+    * Attach with `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:1234'`.
+    * Or `gdb-multiarch -ex 'set architecture TARGET_ARCH' -ex 'target remote localhost:1234'`.
+    * It runs very slowly and is not recommended.
+* Intel SDE is supported.
+    * Listen with `sde64 -debug -debug-port 1234 -- /bin/ls`.
+    * Attach with `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:1234'`.
+    * Or `gdb-multiarch -ex 'set architecture TARGET_ARCH' -ex 'target remote localhost:1234'`.
+    * It runs very slowly and is not recommended.
+* KGDB is supported.
+    * Build your kernel as `CONFIG_KGDB=y`. Ubuntu has supported it by default.
+    * Configure the serial port as a named pipe in your two (debugger/debuggee) virtual machine settings, such as VMware or VirtualBox.
+    * Debuggee: Edit `/etc/default/grub` and append `kgdboc=ttyS0,115200 kgdbwait` to the end of `GRUB_CMDLINE_LINUX_DEFAULT`, then `update-grub && reboot`.
+    * Debugger: `gdb-multiarch -ex 'target remote /dev/ttyS0'`.
+    * It runs very slowly and is not recommended.
+    * Commands for Qemu-system are not supported in KGDB mode (Because there is no way to access physical memory).
+
+## Added / Improved features
+
+All of these features are experimental.
+Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
+
+### Qemu-system cooperation - General
 * `qreg`: displays the register values from qemu-monitor (allows to get like `$cs` even under qemu 2.x).
     * It is shortcut for `monitor info registers`.
     * It also prints the details of the each bit of the system register when x64/x86.
@@ -109,7 +136,7 @@ Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm64-secure.png)
         * Pseudo page tables without detailed flags and permission can be output even in the normal world.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm64-secure-pseudo.png)
-    * ARM (Cortex-A only, LPAE/Non-LPAE, PL0/PL1)
+    * ARM (only Cortex-A, LPAE/Non-LPAE, PL0/PL1)
         * ARM v7 base.
         * PL2 is NOT supported.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm.png)
@@ -120,7 +147,7 @@ Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
 * `xp`: is a shortcut for physical memory dump.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xp.png)
 
-#### Linux specific
+### Qemu-system cooperation - Linux specific
 * `ksymaddr-remote`: displays kallsyms information from scanning kernel memory (heuristic).
     * Original code: [kallsyms_finder.py](https://github.com/marin-m/vmlinux-to-elf/blob/master/vmlinux_to_elf/kallsyms_finder.py)
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksymaddr-remote.png)
@@ -160,11 +187,11 @@ Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kcdev.png)
 * `kops`: displays each operations member.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kops.png)
-* `syscall-table-view`: displays system call table (x64/x86/ARM64/ARM only).
+* `syscall-table-view`: displays system call table.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/syscall-table-view.png)
     * It also dumps ia32/x32 syscall table under x64.
     * It also dumps compat syscall table under ARM64.
-* `thunk-hunter`: collects and displays the thunk function addresses that are called automatically (x64/x86 only).
+* `thunk-hunter`: collects and displays the thunk function addresses that are called automatically (only x64/x86).
     * If this address comes from RW area, this is useful for getting RIP.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/thunk-hunter.png)
 * `usermodehelper-hunter`: collects and displays the information that is executed by `call_usermodehelper_setup`.
@@ -177,14 +204,14 @@ Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kparam-sysctl.png)
 * `kfilesystems`: dumps supported file systems.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kfilesystems.png)
-* `kclock-source`: dumps clocksource_list.
+* `kclock-source`: dumps clocksource list.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kclock-source.png)
 * `ksearch-code-ptr`: searches the code pointer in kernel data area.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksearch-code-ptr.png)
 
-#### Arch specific
+### Qemu-system cooperation - Arch specific
 * `uefi-ovmf-info`: dumps addresses of some important structures in each boot phase of UEFI when OVMF is used (heuristic).
-    * Supported on x64 only.
+    * Supported on only x64.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/uefi-ovmf-info.png)
 * `msr`: displays MSR (Model Specific Registers) values by embedding/executing dynamic assembly.
     * Supported on x64/x86 WITHOUT `-enable-kvm`.
@@ -198,23 +225,7 @@ Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
 * `optee-break-ta`: sets the breakpoint to the offset of OPTEE-Trusted-App when gdb is in normal world.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/optee-break-ta.png)
 
-### Qemu-user cooperation
-* It works with any version qemu-user, but qemu-6.x or higher is recommended.
-    * Start qemu-user with the `-g 1234` option and listen on `localhost:1234`.
-    * Attach with `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:1234'`.
-    * Or `gdb-multiarch -ex 'set architecture TARGET_ARCH' -ex 'target remote localhost:1234'`.
-* Supported architectures
-    * See [SUPPORTED_ARCH.md](https://github.com/bata24/gef/blob/dev/SUPPORTED_ARCH.md)
-
-#### General
-* `vmmap`: is improved.
-    * It displays the meomry map information even when connecting to gdb stub like qemu-user (heuristic).
-        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmmap-qemu-user.png)
-    * Intel pin is supported.
-        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmmap-pin.png)
-    * Intel SDE is supported.
-        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmmap-sde.png)
-    * It is redirected to `pagewalk` when connecting to gdb stub of qemu-system.
+### Qemu-user cooperation - General
 * `si`/`ni`: are the wrapper for native `si`/`ni`.
     * On some architectures such as s390x, a `PC not saved` error may be output when executing `stepi`/`nexti`.
     * But the execution itself is fine, so this command ignores this error and executes `context` normally.
@@ -225,26 +236,8 @@ Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
     * When connecting to gdb stub of qemu-user or pin, gdb does not trap SIGINT during `continue`.
     * If you want to trap, you need to issue SIGINT on the qemu-user or pin side, but switching screens is troublesome.
     * This command realizes a pseudo SIGINT trap by trapping SIGINT on the python side and throwing SIGINT back to qemu-user or pin.
-    * It works local qemu-user or pin only.
+    * It works only local qemu-user or pin.
     * If you want to use native `c`, use the full form `continue`.
-
-### Other supported mode
-* Intel pin is supported.
-    * Listen with `pin -appdebug -appdebug_server_port 1234 -t obj-intel64/inscount0.so -- /bin/ls`.
-    * Attach with `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:1234'`.
-    * Or `gdb-multiarch -ex 'set architecture TARGET_ARCH' -ex 'target remote localhost:1234'`.
-    * It runs very slowly and is not recommended.
-* Intel SDE is supported.
-    * Listen with `sde64 -debug -debug-port 1234 -- /bin/ls`.
-    * Attach with `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:1234'`.
-    * Or `gdb-multiarch -ex 'set architecture TARGET_ARCH' -ex 'target remote localhost:1234'`.
-    * It runs very slowly and is not recommended.
-* KGDB is supported.
-    * Configure the serial port as a named pipe in your two (debugger/debuggee) virtual machine settings, such as VMware or VirtualBox.
-    * Debuggee: Edit `/etc/default/grub` and append `kgdboc=ttyS0,115200 kgdbwait` to the end of `GRUB_CMDLINE_LINUX_DEFAULT`, then `update-grub && reboot`.
-    * Debugger: `gdb-multiarch -ex 'target remote /dev/ttyS0'`.
-    * It runs very slowly and is not recommended.
-    * Commands for Qemu-system are not supported in KGDB mode (Because there is no way to access physical memory).
 
 ### Heap dump features
 * `partition-alloc-dump`: dumps partition-alloc free-list (heuristic).
@@ -252,7 +245,7 @@ Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
     * This command is reserved for the implementation of latest stable version of chromium.
         * Currently tested: v115.x / 1141961 / 3fcee01d5055203d6904fa08e84788d16009dc35
         * https://commondatastorage.googleapis.com/chromium-browser-snapshots/index.html?prefix=Linux_x64/1141961/
-    * Supported on x64 only (maybe it works on x86/ARM/ARM64, but not tested).
+    * Supported on only x64 (maybe it works on x86/ARM/ARM64, but not tested).
     * It will try heuristic search if binary has no symbol.
 * `tcmalloc-dump`: dumps tcmalloc free-list (heuristic).
     * For tcmalloc, there are 3 major versions.
@@ -266,9 +259,17 @@ Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
 * `optee-bget-dump`: dumps bget allocator of OPTEE-Trusted-App.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/optee-bget-dump.png)
 
-### Other improved features
+### Improved features
+* `vmmap`: is improved.
+    * It displays the meomry map information even when connecting to gdb stub like qemu-user (heuristic).
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmmap-qemu-user.png)
+    * Intel pin is supported.
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmmap-pin.png)
+    * Intel SDE is supported.
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmmap-sde.png)
+    * It is redirected to `pagewalk` when connecting to gdb stub of qemu-system.
 * Glibc heap commands are improved.
-    * Thread arena is supported for all heap commands.
+    * Thread arena is supported for all `heap` commands.
         * Use `-a` option.
     * They print info if the chunk is in free-list.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/heap-if-in-freelist.png)
@@ -360,7 +361,7 @@ Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
     * It also searches UTF-16 string if target string is ASCII.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/search-pattern.png)
 
-### Other new features
+### New features
 * `pid`: prints pid.
 * `filename`: prints filename.
 * `auxv`: pretty prints ELF auxiliary vector.
@@ -393,7 +394,7 @@ Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
         * jmp
         * syscall
         * ret
-        * indirect-branch (x86/x64 only)
+        * indirect-branch (only x86/x64)
         * all-branch (call || jmp || ret)
         * memory-access (detect `[`)
         * specified-keyword-regex

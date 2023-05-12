@@ -2544,8 +2544,9 @@ def show_last_exception():
 
     gef_print(" lsb_release -a ".center(80, HORIZONTAL_LINE))
     try:
-        lsb_release = which("lsb_release")
-        gdb.execute("!{} -a".format(lsb_release))
+        command = which("lsb_release")
+        res = gef_execute_external([command, "-a"], as_list=True)
+        gef_print("\n".join([line.replace("\\t", "\t") for line in res]))
     except FileNotFoundError as e:
         gef_print("Cannot collect additional debug information: {}".format(e))
 
@@ -3093,7 +3094,7 @@ def capstone_disassemble(location, nb_insn, **kwargs):
 def gef_execute_external(command, as_list=False, *args, **kwargs):
     """Execute an external command and return the result."""
     res = subprocess.check_output(command, stderr=subprocess.STDOUT, shell=kwargs.get("shell", False))
-    return [gef_pystring(_) for _ in res.splitlines()] if as_list else gef_pystring(res)
+    return [gef_pystring(x) for x in res.splitlines()] if as_list else gef_pystring(res)
 
 
 def gef_execute_gdb_script(commands):
@@ -7885,7 +7886,7 @@ def only_if_qemu_system(f):
         if is_qemu_system():
             return f(*args, **kwargs)
         else:
-            warn("This command can work under qemu-system only.")
+            warn("This command can work only under qemu-system.")
             return
 
     return wrapper
@@ -8354,15 +8355,15 @@ def get_pid(remote=False):
                 return line.split('"')[1]
         return None
 
-    def get_pid_from_tcp_session(filepath, match_prefix_only=False):
+    def get_pid_from_tcp_session(filepath, only_match_prefix=False):
         gdb_tcp_sess = [x["raddr"] for x in get_tcp_sess(os.getpid())]
         if not gdb_tcp_sess:
             err("gdb has no tcp session")
             return None
         for process in get_all_process():
-            if match_prefix_only is True and not process["filepath"].startswith(filepath):
+            if only_match_prefix is True and not process["filepath"].startswith(filepath):
                 continue
-            if match_prefix_only is False and process["filepath"] != os.path.basename(filepath):
+            if only_match_prefix is False and process["filepath"] != os.path.basename(filepath):
                 continue
             for c in get_tcp_sess(process["pid"]):
                 if c["laddr"] in gdb_tcp_sess:
@@ -8377,7 +8378,7 @@ def get_pid(remote=False):
         return get_pid_from_tcp_session(filepath)
 
     elif is_qemu_usermode() or is_qemu_system():
-        return get_pid_from_tcp_session("qemu", match_prefix_only=True)
+        return get_pid_from_tcp_session("qemu", only_match_prefix=True)
 
     elif remote is False and is_remote_debug():
         return None # gdbserver etc.
@@ -16059,7 +16060,7 @@ class RopperCommand(GenericCommand):
 
 @register_command
 class RpCommand(GenericCommand):
-    """Invoke rp++ (v2) command to search rop gadgets. (x64/x86 only)"""
+    """Invoke rp++ (v2) command to search rop gadgets. (only x64/x86)"""
     _cmdline_ = "rp"
     _category_ = "07-b. External Command - Exploit Development"
 
@@ -16076,7 +16077,7 @@ class RpCommand(GenericCommand):
 
     _example_ = "{:s} --bin -f 'pop r[abcd]x'\n".format(_cmdline_)
     _example_ += "{:s} --libc -f '(xchg|mov) [re]sp, \\\\w+' -f 'ret'\n".format(_cmdline_)
-    _example_ += "{:s} --kernel # under qemu-system only".format(_cmdline_)
+    _example_ += "{:s} --kernel # only under qemu-system".format(_cmdline_)
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_FILENAME)
@@ -16379,7 +16380,7 @@ class DisassembleCommand(GenericCommand):
 
 @register_command
 class AsmListCommand(GenericCommand):
-    """List up general instructions by capstone (x64/x86 only)."""
+    """List up general instructions by capstone (only x64/x86)."""
     _cmdline_ = "asm-list"
     _category_ = "01-e. Debugging Support - Assemble"
 
@@ -21360,7 +21361,7 @@ class HexdumpCommand(GenericCommand):
                         help='the memory address you want to dump. (default: current_arch.sp)')
     parser.add_argument('count', metavar='COUNT', nargs='?', type=lambda x: int(x, 0), default=0x100,
                         help='the count of displayed units. (default: %(default)s)')
-    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
+    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (only qemu-system).')
     parser.add_argument('--reverse', action='store_true', help='display in reverse order line by line.')
     parser.add_argument('--full', action='store_true', help='display the same line without omitting.')
     parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
@@ -21559,7 +21560,7 @@ class PatchQwordCommand(PatchCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-e", dest='endian_reverse', action='store_true', help='reverse endian. (default: %(default)s)')
-    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
+    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (only qemu-system).')
     parser.add_argument('location', metavar='LOCATION', type=parse_address, help='the memory address you want to patch.')
     parser.add_argument('values', metavar='QWORD', nargs='*', help='the value you want to patch')
     _syntax_ = parser.format_help()
@@ -21581,7 +21582,7 @@ class PatchDwordCommand(PatchCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-e", dest='endian_reverse', action='store_true', help='reverse endian. (default: %(default)s)')
-    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
+    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (only qemu-system).')
     parser.add_argument('location', metavar='LOCATION', type=parse_address, help='the memory address you want to patch.')
     parser.add_argument('values', metavar='DWORD', nargs='*', help='the value you want to patch')
     _syntax_ = parser.format_help()
@@ -21603,7 +21604,7 @@ class PatchWordCommand(PatchCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-e", dest='endian_reverse', action='store_true', help='reverse endian. (default: %(default)s)')
-    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
+    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (only qemu-system).')
     parser.add_argument('location', metavar='LOCATION', type=parse_address, help='the memory address you want to patch.')
     parser.add_argument('values', metavar='WORD', nargs='*', help='the value you want to patch')
     _syntax_ = parser.format_help()
@@ -21625,7 +21626,7 @@ class PatchByteCommand(PatchCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-e", dest='endian_reverse', action='store_true', help='reverse endian. (default: %(default)s)')
-    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
+    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (only qemu-system).')
     parser.add_argument('location', metavar='LOCATION', type=parse_address, help='the memory address you want to patch.')
     parser.add_argument('values', metavar='BYTE', nargs='*', help='the value you want to patch')
     _syntax_ = parser.format_help()
@@ -21646,7 +21647,7 @@ class PatchStringCommand(PatchCommand):
     _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
+    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (only qemu-system).')
     parser.add_argument('location', metavar='LOCATION', type=parse_address, help='the memory address you want to patch.')
     parser.add_argument('vstr', metavar='"double backslash-escaped string"', type=lambda x: codecs.escape_decode(x)[0],
                         help='the string you want to patch.')
@@ -21696,7 +21697,7 @@ class PatchHexStringCommand(PatchCommand):
     _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
+    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (only qemu-system).')
     parser.add_argument('location', metavar='LOCATION', type=parse_address, help='the memory address you want to patch.')
     parser.add_argument('hstr', metavar='"hex-string"', type=lambda x: bytes.fromhex(x),
                         help='the string you want to patch.')
@@ -21745,7 +21746,7 @@ class PatchPatternCommand(PatchCommand):
     _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
+    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (only qemu-system).')
     parser.add_argument('location', metavar='LOCATION', type=parse_address, help='the memory address you want to patch.')
     parser.add_argument('length', metavar='LENGTH', type=lambda x: int(x, 0), help='the length of repeat. (default: %(default)s)')
     _syntax_ = parser.format_help()
@@ -21788,7 +21789,7 @@ class PatchNopCommand(PatchCommand):
     _aliases_ = ["nop"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
+    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (only qemu-system).')
     parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
                         help='the memory address you want to patch. (default: current_arch.pc)')
     group = parser.add_mutually_exclusive_group()
@@ -21890,7 +21891,7 @@ class PatchInfloopCommand(PatchCommand):
     _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
+    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (only qemu-system).')
     parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
                         help='the memory address you want to patch. (default: current_arch.pc)')
     _syntax_ = parser.format_help()
@@ -21958,7 +21959,7 @@ class PatchTrapCommand(PatchCommand):
     _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
+    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (only qemu-system).')
     parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
                         help='the memory address you want to patch. (default: current_arch.pc)')
     _syntax_ = parser.format_help()
@@ -22026,7 +22027,7 @@ class PatchRetCommand(PatchCommand):
     _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
+    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (only qemu-system).')
     parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
                         help='the memory address you want to patch. (default: current_arch.pc)')
     _syntax_ = parser.format_help()
@@ -22094,7 +22095,7 @@ class PatchSyscallCommand(PatchCommand):
     _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (qemu-system only).')
+    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (only qemu-system).')
     parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
                         help='the memory address you want to patch. (default: current_arch.pc)')
     _syntax_ = parser.format_help()
@@ -34990,7 +34991,7 @@ def get_syscall_table(arch=None, mode=None):
                 raise
             syscall_list.append([nr, name, sc_def[func]])
 
-    elif arch == "ARM" and mode == "Emulated-32": # support EABI only
+    elif arch == "ARM" and mode == "Emulated-32": # only support EABI
         register_list = ARM().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(arm_compat_syscall_tbl)
@@ -35073,7 +35074,7 @@ def get_syscall_table(arch=None, mode=None):
         ]
         syscall_list += arch_specific_extra
 
-    elif arch == "ARM" and mode == "Native-32": # support EABI only
+    elif arch == "ARM" and mode == "Native-32": # only support EABI
         register_list = ARM().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(arm_native_syscall_tbl)
@@ -36789,7 +36790,7 @@ class KernelMagicCommand(GenericCommand):
         if not self.should_be_print(sym):
             return
 
-        width = 10 if is_32bit() else 18
+        width = current_arch.ptrsize * 2 + 2
         if external_func:
             addr = external_func()
             if addr is None:
@@ -43845,9 +43846,9 @@ class GdtInfoCommand(GenericCommand):
         gef_print(titlify("legend (GDT entry for TSS/LDT)"))
         gef_print("31            23          19       15                    7             0bit")
         gef_print("------------------------------------------------------------------------")
-        gef_print("|                           ZERO1 (x64 only)                           | 12byte")
+        gef_print("|                           ZERO1 (only x64)                           | 12byte")
         gef_print("------------------------------------------------------------------------")
-        gef_print("|                        BASE3 47:32 (x64 only)                        | 8byte")
+        gef_print("|                        BASE3 47:32 (only x64)                        | 8byte")
         gef_print("------------------------------------------------------------------------")
         gef_print("|             |G |        |        |  |   |  |E |D |W |A |             |")
         gef_print("| BASE2 31:24 |  | ZERO0  | LIMIT1 |P |DPL|S |  |  |  |  | BASE1 23:16 | 4byte")
@@ -47548,7 +47549,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
 
 @register_command
 class TcmallocDumpCommand(GenericCommand):
-    """tcmalloc thread_heap freelist viewer (supported x86_64 only)."""
+    """tcmalloc thread_heap freelist viewer (only x64)."""
     _cmdline_ = "tcmalloc-dump"
     _category_ = "06-b. Heap - Other"
 
@@ -47819,7 +47820,7 @@ class TcmallocDumpCommand(GenericCommand):
 
 @register_command
 class TcmallocDumpChromeCommand(TcmallocDumpCommand):
-    """tcmalloc (chrome edition (improved from google-perftools-2.5)) freelist viewer (supported x86_64 only)."""
+    """tcmalloc (chrome edition (improved from google-perftools-2.5)) freelist viewer (only x64)."""
     _cmdline_ = "tcmalloc-dump chrome"
     _category_ = "06-b. Heap - Other"
 
@@ -47927,7 +47928,7 @@ class TcmallocDumpChromeCommand(TcmallocDumpCommand):
 
 @register_command
 class TcmallocDumpOldCommand(TcmallocDumpCommand):
-    """tcmalloc (google-perftools-2.5 edition) freelist viewer (supported x86_64 only)."""
+    """tcmalloc (google-perftools-2.5 edition) freelist viewer (only x64)."""
     _cmdline_ = "tcmalloc-dump old"
     _category_ = "06-b. Heap - Other"
 
@@ -48045,7 +48046,7 @@ class TcmallocDumpOldCommand(TcmallocDumpCommand):
 
 @register_command
 class TcmallocDumpNewCommand(TcmallocDumpCommand):
-    """tcmalloc (google-perftools-2.9.1 edition) freelist viewer (supported x86_64 only)."""
+    """tcmalloc (google-perftools-2.9.1 edition) freelist viewer (only x64)."""
     _cmdline_ = "tcmalloc-dump new"
     _category_ = "06-b. Heap - Other"
 
@@ -49000,7 +49001,7 @@ class PartitionAllocDumpCommand(GenericCommand):
 
 @register_command
 class MuslDumpCommand(GenericCommand):
-    """musl v1.2.2 (src/malloc/mallocng) heap reusable chunks viewer. (x64/x86 only)"""
+    """musl v1.2.2 (src/malloc/mallocng) heap reusable chunks viewer. (only x64/x86)"""
     # See https://h-noson.hatenablog.jp/entry/2021/05/03/161933#-177pts-mooosl
     _cmdline_ = "musl-dump"
     _category_ = "06-b. Heap - Other"
@@ -51591,10 +51592,10 @@ class QemuRegistersCommand(GenericCommand):
             [11, "NXE", "No-Execute Enable", ""],
             [10, "LMA", "Long Mode Active", ""],
             [8, "LME", "Long Mode Enable", ""],
-            [4, "L2D", "L2 Cache Disable", "AMD K6 only"],
-            [3, "GEWBED", "Global EWBE# Disable", "AMD K6 only"],
-            [2, "SEWBED", "Speculative EWBE# Disable", "AMD K6 only"],
-            [1, "DPE", "Data Prefetch Enable", "AMD K6 only"],
+            [4, "L2D", "L2 Cache Disable", "only AMD K6"],
+            [3, "GEWBED", "Global EWBE# Disable", "only AMD K6"],
+            [2, "SEWBED", "Speculative EWBE# Disable", "only AMD K6"],
+            [1, "DPE", "Data Prefetch Enable", "only AMD K6"],
             [0, "SCE", "System Call Extensions", ""],
         ]
         self.out.extend(PrintBitInfo("EFER", ptr_width() * 8, None, bit_info).make_out(efer))
@@ -52803,7 +52804,7 @@ class PagewalkX64Command(PagewalkCommand):
 
 @register_command
 class PagewalkArmCommand(PagewalkCommand):
-    """Dump pagetable for ARM (Cortex-A only) using qemu-monitor. PL2 pagewalk is unsupported"""
+    """Dump pagetable for ARM (only Cortex-A) using qemu-monitor. PL2 pagewalk is unsupported"""
     _cmdline_ = "pagewalk arm"
     _category_ = "08-a. Qemu-system Cooperation - General"
 
@@ -55657,7 +55658,7 @@ class ExecUntilCommand(GenericCommand):
     _example_ += "{:s} syscall                             # execute until syscall instruction\n".format(_cmdline_)
     _example_ += "{:s} ret                                 # execute until ret instruction\n".format(_cmdline_)
     _example_ += "{:s} all-branch                          # execute until call/jmp/ret instruction\n".format(_cmdline_)
-    _example_ += "{:s} indirect-branch                     # execute until indirect branch instruction (x86/x64 only)\n".format(_cmdline_)
+    _example_ += "{:s} indirect-branch                     # execute until indirect branch instruction (only x86/x64)\n".format(_cmdline_)
     _example_ += "{:s} memaccess                           # execute until '[' is included by the instruction\n".format(_cmdline_)
     _example_ += '{:s} keyword "call +r[ab]x"              # execute until specified keyword (regex)\n'.format(_cmdline_)
     _example_ += '{:s} cond "$rax==0xdead && $rbx==0xcafe" # execute until specified condition is filled\n'.format(_cmdline_)
@@ -55888,7 +55889,7 @@ class ExecUntilJumpCommand(ExecUntilCommand):
 
 @register_command
 class ExecUntilIndirectBranchCommand(ExecUntilCommand):
-    """Execute until next indirect call/jmp instruction (x86/x64 only)."""
+    """Execute until next indirect call/jmp instruction (only x64/x86)."""
     _cmdline_ = "exec-until indirect-branch"
     _category_ = "Debugging Support"
     _aliases_ = ["next-indirect-branch"]
@@ -56241,7 +56242,7 @@ class ThunkBreakpoint(gdb.Breakpoint):
 
 @register_command
 class ThunkHunterCommand(GenericCommand):
-    """Collects and displays the thunk addresses that are called automatically. (x64/x86 only)"""
+    """Collects and displays the thunk addresses that are called automatically. (only x64/x86)"""
     _cmdline_ = "thunk-hunter"
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
