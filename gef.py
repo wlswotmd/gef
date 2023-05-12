@@ -10508,6 +10508,8 @@ class ContCommand(GenericCommand):
     _category_ = "01-c. Debugging Support - Basic Command Extension"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('args', metavar='ARGS', nargs='*',
+                        help='An array of arguments to pass as is to the continue command. (default: %(default)s)')
     _syntax_ = parser.format_help()
 
     def continue_for_qemu(self):
