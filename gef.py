@@ -10807,7 +10807,10 @@ class CanaryCommand(GenericCommand):
                     path = m.path
                 if prev_addr <= sp <= addr:
                     info("(Stack pointer is at {:#x})".format(sp))
-                info("Found at {:#x} in {:s}".format(addr, repr(path)))
+                if path == "[stack]":
+                    info("Found at {:#x} in {!r} (sp{:+#x})".format(addr, path, addr - sp))
+                else:
+                    info("Found at {:#x} in {!r}".format(addr, path))
                 prev_addr = addr
         return
 
