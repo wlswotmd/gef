@@ -398,6 +398,7 @@ Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
         * memory-access (detect `[`)
         * specified-keyword-regex
         * specified-condition (expressions using register or memory values)
+        * user-code
     * Please note that this command temporarily closes stdin and stderr on gdb.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/exec-until.png)
 * `exec-next`: executes until next address.

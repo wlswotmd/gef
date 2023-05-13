@@ -55181,6 +55181,7 @@ class ExecUntilCommand(GenericCommand):
     subparsers.add_parser('memaccess')
     subparsers.add_parser('keyword')
     subparsers.add_parser('cond')
+    subparsers.add_parser('user-code')
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} call                                # execute until call instruction\n".format(_cmdline_)
@@ -55191,7 +55192,8 @@ class ExecUntilCommand(GenericCommand):
     _example_ += "{:s} indirect-branch                     # execute until indirect branch instruction (x86/x64 only)\n".format(_cmdline_)
     _example_ += "{:s} memaccess                           # execute until '[' is included by the instruction\n".format(_cmdline_)
     _example_ += '{:s} keyword "call +r[ab]x"              # execute until specified keyword (regex)\n'.format(_cmdline_)
-    _example_ += '{:s} cond "$rax==0xdead && $rbx==0xcafe" # execute until specified condition is filled'.format(_cmdline_)
+    _example_ += '{:s} cond "$rax==0xdead && $rbx==0xcafe" # execute until specified condition is filled\n'.format(_cmdline_)
+    _example_ += "{:s} user-code                           # execute until user code".format(_cmdline_)
 
     def __init__(self, *args, **kwargs):
         prefix = kwargs.get("prefix", True)
@@ -55260,6 +55262,12 @@ class ExecUntilCommand(GenericCommand):
                 return True
             if v:
                 return True
+        elif self.mode == "user-code":
+            for p in self.code_addrs:
+                if p.page_start <= insn.address <= p.page_end:
+                    return True
+            else:
+                return False
         return False
 
     def get_breakpoint_list(self):
@@ -55604,6 +55612,44 @@ class ExecUntilCondCommand(ExecUntilCommand):
 
         info("Condition: {:s}".format(condition))
         self.condition = condition
+        self.exec_next()
+        return
+
+@register_command
+class ExecUntilUserCodeCommand(ExecUntilCommand):
+    """Execute until next user-code instruction."""
+    _cmdline_ = "exec-until user-code"
+    _category_ = "Debugging Support"
+    _aliases_ = ["next-user-code"]
+    _repeat_ = True
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('--print-insn', action='store_true', help='print each instruction during execution.')
+    parser.add_argument('--skip-lib', action='store_true', help='uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.')
+    _syntax_ = parser.format_help()
+    _example_ = None
+
+    def __init__(self):
+        super().__init__(prefix=False)
+        self.mode = "user-code"
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
+        if self.mode is None:
+            self.usage()
+            return
+        self.print_insn = args.print_insn
+        self.skip_lib = args.skip_lib
+
+        filepath = get_filepath(append_proc_root_prefix=False)
+        if not filepath and is_remote_debug():
+            filepath = gdb.current_progspace().filename
+            if filepath and filepath.startswith("target:"):
+                filepath = filepath[7:]
+
+        self.code_addrs = [p for p in get_process_maps() if p.permission.value & Permission.EXECUTE and p.path == filepath]
         self.exec_next()
         return
 
