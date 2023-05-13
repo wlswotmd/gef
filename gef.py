@@ -2896,9 +2896,13 @@ def get_endian():
 @functools.lru_cache(maxsize=None)
 def get_entry_point():
     """Return the binary entry point."""
-    for line in gdb.execute("elf-info", to_string=True).split("\n"):
-        if "Entry point" in line:
-            return int(line.strip().split(" ")[-1], 16)
+    if current_elf:
+        return current_elf.e_entry
+
+    elf = get_elf_headers()
+    if elf and elf.is_valid:
+        return elf.e_entry
+
     for line in gdb.execute("info target", to_string=True).split("\n"):
         if "Entry point:" in line:
             return int(line.strip().split(" ")[-1], 16)
@@ -2906,7 +2910,10 @@ def get_entry_point():
 
 
 def is_pie(fpath):
-    return checksec(fpath).get("PIE", False)
+    if current_elf:
+        return current_elf.e_type != Elf.ET_EXEC
+    elf = get_elf_headers()
+    return elf.e_type != Elf.ET_EXEC
 
 
 def is_big_endian():
