@@ -23563,14 +23563,14 @@ class GotCommand(GenericCommand):
                 continue
 
             # count up reloc_arg
-            if section_name in [".rel.plt", ".rela.plt"] and not checksec(self.filename)["Static"]:
+            if section_name in [".rel.plt", ".rela.plt"] and not is_static(self.filename):
                 reloc_arg = reloc_count * [1, 8][is_x86_32()]
                 reloc_count += 1
             else:
                 reloc_arg = None
 
             # fix address
-            if checksec(self.filename)["PIE"]:
+            if is_pie(self.filename):
                 address += self.base_address
 
             # save
@@ -23599,7 +23599,7 @@ class GotCommand(GenericCommand):
             address, func_name = int(r[0][0], 16), r[0][1]
 
             # fix addreess
-            if checksec(self.filename)["PIE"]:
+            if is_pie(self.filename):
                 address += self.base_address
 
             # save
@@ -23620,7 +23620,7 @@ class GotCommand(GenericCommand):
         plt_end = max([x.sh_addr + x.sh_size for x in sections])
 
         # fix address
-        if checksec(self.filename)["PIE"]:
+        if is_pie(self.filename):
             plt_begin += self.base_address
             plt_end += self.base_address
 
@@ -23638,7 +23638,7 @@ class GotCommand(GenericCommand):
         for shdr in elf.shdrs:
             sh_start = shdr.sh_addr
             sh_end = shdr.sh_addr + shdr.sh_size
-            if checksec(self.filename)["PIE"]:
+            if is_pie(self.filename):
                 sh_start += self.base_address
                 sh_end += self.base_address
             ranges.append([shdr.sh_name, sh_start, sh_end])
