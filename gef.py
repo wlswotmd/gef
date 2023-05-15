@@ -2092,16 +2092,14 @@ class GlibcArena:
             return None
 
     def __str__(self):
-        arena = Color.colorify("Arena", "bold yellow underline")
-        heap_base = Color.boldify("{:#x}".format(self.heap_base))
-        addr = Color.boldify("{:#x}".format(self.__addr))
-        top = Color.boldify("{:#x}".format(self.top))
-        last_remainder = Color.boldify("{:#x}".format(self.last_remainder))
-        next = Color.boldify("{:#x}".format(self.n))
-        next_free = Color.boldify("{:#x}".format(self.nfree))
-        sysmem = Color.boldify("{:#x}".format(self.sysmem))
-        fmt = "{:s}(addr={:s}, heap_base={:s}, top={:s}, last_remainder={:s}, next={:s}, next_free={:s}, system_mem={:s})"
-        return fmt.format(arena, addr, heap_base, top, last_remainder, next, next_free, sysmem)
+        arena = Color.colorify("Arena", get_gef_setting("theme.heap_arena_label"))
+        heap_base = str(lookup_address(self.heap_base))
+        arena_addr = str(lookup_address(self.__addr))
+        top = str(lookup_address(self.top))
+        last_remainder = str(lookup_address(self.last_remainder))
+        next = str(lookup_address(self.n))
+        fmt = "{:s}(addr={:s}, heap_base={:s}, top={:s}, last_remainder={:s}, next={:s}, next_free={:#x}, system_mem={:#x})"
+        return fmt.format(arena, arena_addr, heap_base, top, last_remainder, next, self.nfree, self.sysmem)
 
     def tcache_list(self):
         if get_libc_version() < (2, 26):
@@ -2376,38 +2374,23 @@ class GlibcChunk:
     def flags_as_string(self):
         flags = []
         if self.has_p_bit():
-            flags.append(Color.colorify("PREV_INUSE", "bold red"))
+            flags.append(Color.colorify("PREV_INUSE", get_gef_setting("theme.heap_chunk_flag_prev_inuse")))
         if self.has_m_bit():
-            flags.append(Color.colorify("IS_MMAPPED", "bold blue"))
+            flags.append(Color.colorify("IS_MMAPPED", get_gef_setting("theme.heap_chunk_flag_is_mmapped")))
         if self.has_n_bit():
-            flags.append(Color.colorify("NON_MAIN_ARENA", "bold yellow"))
+            flags.append(Color.colorify("NON_MAIN_ARENA", get_gef_setting("theme.heap_chunk_flag_non_main_arena")))
         return "|".join(flags)
 
     def __str__(self):
-        chunk_c = Color.colorify("Chunk", "bold yellow underline")
-        size_c = Color.colorify("{:#x}".format(self.get_chunk_size()), "bold magenta")
-        addr = Color.boldify("{:#x}".format(int(self.chunk_base_address)))
+        chunk_c = Color.colorify("Chunk", get_gef_setting("theme.heap_chunk_label"))
+        size_c = Color.colorify("{:#x}".format(self.get_chunk_size()), get_gef_setting("theme.heap_chunk_size"))
+        addr = str(lookup_address(self.chunk_base_address))
         flags = self.flags_as_string()
 
-        if is_valid_addr(self.fd):
-            fd = Color.colorify("{:#x}".format(self.fd), "bold green")
-        else:
-            fd = "{:#x}".format(self.fd)
-
-        if is_valid_addr(self.bk):
-            bk = Color.colorify("{:#x}".format(self.bk), "bold green")
-        else:
-            bk = "{:#x}".format(self.bk)
-
-        if is_valid_addr(self.fd_nextsize):
-            fd_nextsize = Color.colorify("{:#x}".format(self.fd_nextsize), "bold green")
-        else:
-            fd_nextsize = "{:#x}".format(self.fd_nextsize)
-
-        if is_valid_addr(self.bk_nextsize):
-            bk_nextsize = Color.colorify("{:#x}".format(self.bk_nextsize), "bold green")
-        else:
-            bk_nextsize = "{:#x}".format(self.bk_nextsize)
+        fd = str(lookup_address(self.fd))
+        bk = str(lookup_address(self.bk))
+        fd_nextsize = str(lookup_address(self.fd_nextsize))
+        bk_nextsize = str(lookup_address(self.bk_nextsize))
 
         if (is_32bit() and self.size < 0x3f0) or (is_64bit() and self.size < 0x400):
             fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={:s}, bk={:s})"
@@ -10669,6 +10652,20 @@ class GefThemeCommand(GenericCommand):
         self.add_setting("address_rwx", "underline", "Color to use when a RWX address is found")
         self.add_setting("address_valid_but_none", "gray", "Color to use when a --- address is found")
         self.add_setting("source_current_line", "green", "Color to use for the current code line in the source window")
+        self.add_setting("heap_arena_label", "bold cyan underline", "Color of the arena label used heap")
+        self.add_setting("heap_chunk_label", "bold cyan underline", "Color of the chunk label used heap")
+        self.add_setting("heap_label_active", "bold green underline", "Color of the (active) label used heap")
+        self.add_setting("heap_label_inactive", "bold red underline", "Color of the (inactive) label used heap")
+        self.add_setting("heap_chunk_address_used", "bold gray", "Color of the chunk address used heap")
+        self.add_setting("heap_chunk_address_freed", "bold yellow", "Color of the freed chunk address used heap")
+        self.add_setting("heap_chunk_size", "bold magenta", "Color of the size used heap")
+        self.add_setting("heap_chunk_flag_prev_inuse", "bold red", "Color of the prev_in_use flag used heap")
+        self.add_setting("heap_chunk_flag_non_main_arena", "bold yellow", "Color of the non_main_arena flag used heap")
+        self.add_setting("heap_chunk_flag_is_mmapped", "bold blue", "Color of the is_mmaped flag used heap")
+        self.add_setting("heap_freelist_hint", "bold blue", "Color of the freelist hint used heap")
+        self.add_setting("heap_page_address", "bold", "Color of the page address used heap")
+        self.add_setting("heap_management_address", "bright_blue", "Color of the management address used heap")
+        self.add_setting("heap_corrupted_msg", "bold red", "Color of the corrupted message used heap")
         return
 
     @parse_args
@@ -15196,6 +15193,7 @@ class GlibcHeapChunksCommand(GenericCommand):
             warn("arena.last_remainder is corrupted")
 
         nb = self.get_setting("peek_nb_byte")
+        freelist_hint_color = get_gef_setting("theme.heap_freelist_hint")
         current_chunk = GlibcChunk(dump_start, from_base=True)
 
         # Even if an error occurs during free-list parsing, It trust the free-list that has been parsed so far.
@@ -15207,7 +15205,7 @@ class GlibcHeapChunksCommand(GenericCommand):
 
         while True:
             if current_chunk.chunk_base_address == arena.top:
-                gef_print("{} {} {}".format(str(current_chunk), LEFT_ARROW, Color.colorify("top chunk", "bold blue")))
+                gef_print("{} {} {}".format(str(current_chunk), LEFT_ARROW, Color.colorify("top", freelist_hint_color)))
                 break
             if current_chunk.chunk_base_address > arena.top:
                 err("Corrupted: chunk > top")
@@ -15221,19 +15219,19 @@ class GlibcHeapChunksCommand(GenericCommand):
             # in or not in free-list
             for k, v in tcache_list.items():
                 if current_chunk.address in v:
-                    line += " {} {}".format(LEFT_ARROW, Color.colorify("tcache[{}]".format(k), "bold blue"))
+                    line += " {} {}".format(LEFT_ARROW, Color.colorify("tcache[{}]".format(k), freelist_hint_color))
             for k, v in fastbin_list.items():
                 if current_chunk.address in v:
-                    line += " {} {}".format(LEFT_ARROW, Color.colorify("fastbin[{}]".format(k), "bold blule"))
+                    line += " {} {}".format(LEFT_ARROW, Color.colorify("fastbin[{}]".format(k), freelist_hint_color))
             for _k, v in unsortedbin_list.items():
                 if current_chunk.address in v:
-                    line += " {} {}".format(LEFT_ARROW, Color.colorify("unsortedbin", "bold blue"))
+                    line += " {} {}".format(LEFT_ARROW, Color.colorify("unsortedbin", freelist_hint_color))
             for k, v in smallbin_list.items():
                 if current_chunk.address in v:
-                    line += " {} {}".format(LEFT_ARROW, Color.colorify("smallbin[{}]".format(k), "bold blue"))
+                    line += " {} {}".format(LEFT_ARROW, Color.colorify("smallbin[{}]".format(k), freelist_hint_color))
             for k, v in largebin_list.items():
                 if current_chunk.address in v:
-                    line += " {} {}".format(LEFT_ARROW, Color.colorify("largebin[{}]".format(k), "bold blue"))
+                    line += " {} {}".format(LEFT_ARROW, Color.colorify("largebin[{}]".format(k), freelist_hint_color))
 
             # peek nbyte
             if nb:
@@ -15320,18 +15318,19 @@ class GlibcHeapBinsCommand(GenericCommand):
     def pprint_bin(arena, index, bin_name, verbose=False):
         fw, bk = arena.bin(index)
 
-        if bk == 0x00 and fw == 0x00:
+        if bk == 0 and fw == 0:
             warn("Invalid backward and forward bin pointers(fd==bk==NULL)")
             return -1
 
-        nb_chunk = 0
-        head = GlibcChunk(bk, from_base=True).fwd
+        bin_addr = arena.bin_addr(index)
+        head = bin_addr - current_arch.ptrsize * 2
         if fw == head and not verbose:
-            return nb_chunk
+            return 0
 
         bin_table = get_binsize_table()[bin_name]
         if index not in bin_table:
             return 0
+
         bin_info = bin_table[index]
         if "size" in bin_info:
             size_str = "{:#x}".format(bin_info["size"])
@@ -15339,28 +15338,33 @@ class GlibcHeapBinsCommand(GenericCommand):
             size_str = "{:#x}-{:#x}".format(bin_info["size_min"], bin_info["size_max"])
         else:
             size_str = "any"
-        bin_addr = arena.bin_addr(index)
-        ok("{:s}[idx={:d}, size={:s}, @{:#x}]: fd={:#x}, bk={:#x}".format(bin_name, index, size_str, bin_addr, fw, bk))
 
         m = []
-        error = False
+        colored_bin_addr = str(lookup_address(bin_addr))
+        colored_fw = str(lookup_address(fw))
+        colored_bk = str(lookup_address(bk))
+        fmt = "{:s}[idx={:d}, size={:s}, @{:s}]: fd={:s}, bk={:s}"
+        m.append(fmt.format(bin_name, index, size_str, colored_bin_addr, colored_fw, colored_bk))
+        corrupted_msg_color = get_gef_setting("theme.heap_corrupted_msg")
+
         seen = []
+        nb_chunk = 0
         while fw != head:
             chunk = GlibcChunk(fw, from_base=True)
             if chunk.address in seen:
-                error = True
+                fmt = "{:s} {:#x} [loop detected]"
+                m.append(Color.colorify(fmt.format(RIGHT_ARROW, chunk.chunk_base_address), corrupted_msg_color))
                 break
             seen.append(chunk.address)
-            m.append("{:s} {:s}".format(RIGHT_ARROW, str(chunk)))
-            fw = chunk.fwd
-            if fw is None:
-                error = True
+            try:
+                m.append("{:s} {:s}".format(RIGHT_ARROW, str(chunk)))
+            except gdb.MemoryError:
+                m.append(Color.colorify("Read memory error (Corrupted?)", corrupted_msg_color))
                 break
+            fw = chunk.fwd
             nb_chunk += 1
         if m:
             gef_print("\n".join(m))
-        if error:
-            err("Read memory error (Corrupted?)")
         return nb_chunk
 
 
@@ -15424,6 +15428,7 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
         tcache_perthread_struct = arena.heap_base + 0x10
 
         gef_print(titlify("Tcachebins for arena '{:s}'".format(arena.name)))
+        corrupted_msg_color = get_gef_setting("theme.heap_corrupted_msg")
 
         nb_chunk = 0
         for i in range(GlibcArena.TCACHE_MAX_BINS):
@@ -15442,7 +15447,7 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
                 try:
                     m.append("{:s} {:s} ".format(RIGHT_ARROW, str(chunk)))
                     if chunk.address in chunks:
-                        m.append("{:s} [loop detected]".format(RIGHT_ARROW))
+                        m.append(Color.colorify("{:s} [loop detected]".format(RIGHT_ARROW), corrupted_msg_color))
                         break
 
                     chunks.add(chunk.address)
@@ -15454,12 +15459,13 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
 
                     chunk = GlibcChunk(next_chunk)
                 except gdb.MemoryError:
-                    m.append("{:s} [Corrupted chunk at {:#x}]".format(LEFT_ARROW, chunk.address))
+                    fmt = "{:s} [Corrupted chunk at {:#x}]"
+                    m.append(Color.colorify(fmt.format(LEFT_ARROW, chunk.address), corrupted_msg_color))
                     break
             if m or verbose:
                 size = get_binsize_table()["tcache"][i]["size"]
-                bin_addr = arena.tcachebin_addr(i)
-                ok("Tcachebins[idx={:d}, size={:#x}, @{:#x}] count={:d}".format(i, size, bin_addr, count))
+                colored_bin_addr = str(lookup_address(arena.tcachebin_addr(i)))
+                ok("Tcachebins[idx={:d}, size={:#x}, @{:s}] count={:d}".format(i, size, colored_bin_addr, count))
                 if m:
                     gef_print("\n".join(m))
 
@@ -15526,6 +15532,7 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
         NFASTBINS = fastbin_index(MAX_FAST_SIZE) - 1
 
         gef_print(titlify("Fastbins for arena '{:s}'".format(arena.name)))
+        corrupted_msg_color = get_gef_setting("theme.heap_corrupted_msg")
 
         nb_chunk = 0
         for i in range(NFASTBINS):
@@ -15540,11 +15547,11 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
                 try:
                     m.append("{:s} {:s} ".format(RIGHT_ARROW, str(chunk)))
                     if chunk.address in chunks:
-                        m.append("{:s} [loop detected]".format(RIGHT_ARROW))
+                        m.append(Color.colorify("{:s} [loop detected]".format(RIGHT_ARROW), corrupted_msg_color))
                         break
 
                     if fastbin_index(chunk.get_chunk_size()) != i:
-                        m.append("[incorrect fastbin_index]")
+                        m.append(Color.colorify("[incorrect fastbin_index]", corrupted_msg_color))
 
                     chunks.add(chunk.address)
                     nb_chunk += 1
@@ -15555,15 +15562,16 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
 
                     chunk = GlibcChunk(next_chunk, from_base=True)
                 except gdb.MemoryError:
-                    m.append("{:s} [Corrupted chunk at {:#x}]".format(LEFT_ARROW, chunk.address))
+                    fmt = "{:s} [Corrupted chunk at {:#x}]"
+                    m.append(Color.colorify(fmt.format(LEFT_ARROW, chunk.address), corrupted_msg_color))
                     break
 
             if m or verbose:
                 bin_table = get_binsize_table()["fastbins"]
                 if i in bin_table:
                     size = bin_table[i]["size"]
-                    bin_addr = arena.fastbin_addr(i)
-                    ok("Fastbins[idx={:d}, size={:#x}, @{:#x}] ".format(i, size, bin_addr))
+                    colored_bin_addr = str(lookup_address(arena.fastbin_addr(i)))
+                    ok("Fastbins[idx={:d}, size={:#x}, @{:s}] ".format(i, size, colored_bin_addr))
                     if m:
                         gef_print("\n".join(m))
 
