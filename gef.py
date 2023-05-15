@@ -37949,19 +37949,34 @@ class FindFakeFastCommand(GenericCommand):
 
     def print_result(self, m, pos, size_candidate):
         path = "unknown" if m.path == "" else m.path
-        info("Found at {:#x} in {:s} [{:s}]".format(m.page_start + pos, repr(path), str(m.permission)))
+        address = lookup_address(m.page_start + pos)
+        info("Found at {:s} in {:s} [{:s}]".format(str(address), repr(path), str(m.permission)))
 
-        if current_arch.ptrsize == 4:
-            res = gdb.execute("x/6xw {:#x}".format(m.page_start + pos), to_string=True)
+        if is_32bit():
+            res = gdb.execute("x/6xw {:#x}".format(address.value), to_string=True)
         else:
-            res = gdb.execute("x/6xg {:#x}".format(m.page_start + pos), to_string=True)
+            res = gdb.execute("x/6xg {:#x}".format(address.value), to_string=True)
+
         flag = []
-        flag += [Color.colorify("NON_MAIN_ARENA", "bold yellow") if (size_candidate & 0b100) else Color.colorify("NON_MAIN_ARENA", "normal")]
-        flag += [Color.colorify("IS_MMAPED", "bold blue") if (size_candidate & 0b10) else Color.colorify("IS_MMAPED", "normal")]
-        flag += [Color.colorify("PREV_INUSE", "bold red") if (size_candidate & 0b1) else Color.colorify("PREV_INUSED", "normal")]
+        if size_candidate & 0b100:
+            flag += [Color.colorify("NON_MAIN_ARENA", get_gef_setting("theme.heap_chunk_flag_non_main_arena"))]
+        else:
+            flag += ["NON_MAIN_ARENA"]
+
+        if size_candidate & 0b10:
+            flag += [Color.colorify("IS_MMAPED", get_gef_setting("theme.heap_chunk_flag_is_mmapped"))]
+        else:
+            flag += ["IS_MMAPED"]
+
+        if size_candidate & 0b1:
+            flag += [Color.colorify("PREV_INUSE", get_gef_setting("theme.heap_chunk_flag_prev_inuse"))]
+        else:
+            flag += ["PREV_INUSED"]
+
         gef_print("    [{:s}]".format(' '.join(flag)))
         for line in res.splitlines():
             gef_print("    {:s}".format(line))
+        return
 
     def find_fake_fast(self, target_size):
         mask = ~0x7 if current_arch.ptrsize == 4 else ~0xf
