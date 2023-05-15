@@ -49040,14 +49040,20 @@ class MuslDumpCommand(GenericCommand):
     parser.add_argument('command', nargs='?', default='unused', choices=['ctx', 'unused'],
                         help='dump mode (default: %(default)s).')
     parser.add_argument('--idx', type=int, help='the active index of dump target.')
+    parser.add_argument('-n', '--no-pager', action='store_true', default=None, help='do not use less.')
     parser.add_argument('-v', dest='verbose', action='store_true', help='also dump an empty active index.')
     _syntax_ = parser.format_help()
+
+    def info(self, msg):
+        msg = "{} {}".format(Color.colorify("[+]", "bold blue"), msg)
+        self.out.append(msg)
+        return
 
     def get_malloc_context_heuristic(self):
         try:
             # search malloc
             malloc = parse_address("malloc")
-            info("malloc: {:#x}".format(malloc))
+            self.info("malloc: {:#x}".format(malloc))
 
             # search __libc_malloc_impl
             """
@@ -49068,7 +49074,7 @@ class MuslDumpCommand(GenericCommand):
                     continue
                 __libc_malloc_impl = int(m.group(1), 16)
                 break
-            info("__libc_malloc_impl: {:#x}".format(__libc_malloc_impl))
+            self.info("__libc_malloc_impl: {:#x}".format(__libc_malloc_impl))
 
             # search __malloc_alloc_meta
             """
@@ -49132,7 +49138,7 @@ class MuslDumpCommand(GenericCommand):
                0xf7f8b44b:  cmp    DWORD PTR [ebx+0x708],0x0
             """
             for cand in __malloc_alloc_meta_candidate:
-                info("alloc_meta (candidate): {:#x}".format(cand))
+                self.info("alloc_meta (candidate): {:#x}".format(cand))
                 res = gdb.execute("x/10i {:#x}".format(cand), to_string=True)
                 for line in res.splitlines():
                     if is_x86_64():
@@ -49154,12 +49160,12 @@ class MuslDumpCommand(GenericCommand):
                     if value not in [0, 1]: # init_done is 1 or 0
                         continue
                     # found
-                    info("__malloc_context.init_done: {:#x}".format(__malloc_context_init_done))
+                    self.info("__malloc_context.init_done: {:#x}".format(__malloc_context_init_done))
                     __malloc_context = __malloc_context_init_done - current_arch.ptrsize
                     x = read_int_from_memory(__malloc_context)
                     if x == gef_getpagesize():
                         __malloc_context -= current_arch.ptrsize
-                    info("__malloc_context: {:#x}".format(__malloc_context))
+                    self.info("__malloc_context: {:#x}".format(__malloc_context))
                     return __malloc_context
             return None
         except Exception:
@@ -49170,7 +49176,7 @@ class MuslDumpCommand(GenericCommand):
         try:
             return parse_address("&__malloc_context")
         except Exception:
-            info("Symbol is not found. It will use heuristic search")
+            self.info("Symbol is not found. It will use heuristic search")
             return self.get_malloc_context_heuristic()
 
     def class_to_size(self, cl):
@@ -49269,31 +49275,31 @@ class MuslDumpCommand(GenericCommand):
         Ctx = collections.namedtuple("Ctx", _ctx.keys())
         return Ctx(*_ctx.values())
 
-    def print_ctx(self, ctx):
-        gef_print(titlify("__malloc_context: {:#x}".format(ctx.addr)))
-        gef_print("  uint64_t secret:                    {:#x}".format(ctx.secret))
+    def dump_ctx(self, ctx):
+        self.out.append(titlify("__malloc_context: {:#x}".format(ctx.addr)))
+        self.out.append("  uint64_t secret:                    {:#x}".format(ctx.secret))
         if ctx.pagesize:
-            gef_print("  size_t pagesize:                    {:#x}".format(ctx.pagesize))
-        gef_print("  int init_done:                      {:#x}".format(ctx.init_done))
-        gef_print("  unsigned int mmap_counter:          {:#x}".format(ctx.mmap_counter))
-        gef_print("  struct meta* free_meta_head:        {:#x}".format(ctx.free_meta_head))
-        gef_print("  struct meta* avail_meta:            {:#x}".format(ctx.avail_meta))
-        gef_print("  size_t avail_meta_count:            {:#x}".format(ctx.avail_meta_count))
-        gef_print("  size_t avail_meta_area_count:       {:#x}".format(ctx.avail_meta_area_count))
-        gef_print("  size_t alloc_shift:                 {:#x}".format(ctx.alloc_shift))
-        gef_print("  struct meta_area* meta_area_head:   {:#x}".format(ctx.meta_area_head))
-        gef_print("  struct meta_area* meta_area_tail:   {:#x}".format(ctx.meta_area_tail))
-        gef_print("  unsigned char* avail_meta_areas:    {:#x}".format(ctx.avail_meta_areas))
-        gef_print("  struct meta* active[48]:")
+            self.out.append("  size_t pagesize:                    {:#x}".format(ctx.pagesize))
+        self.out.append("  int init_done:                      {:#x}".format(ctx.init_done))
+        self.out.append("  unsigned int mmap_counter:          {:#x}".format(ctx.mmap_counter))
+        self.out.append("  struct meta* free_meta_head:        {:s}".format(str(lookup_address(ctx.free_meta_head))))
+        self.out.append("  struct meta* avail_meta:            {:s}".format(str(lookup_address(ctx.avail_meta))))
+        self.out.append("  size_t avail_meta_count:            {:#x}".format(ctx.avail_meta_count))
+        self.out.append("  size_t avail_meta_area_count:       {:#x}".format(ctx.avail_meta_area_count))
+        self.out.append("  size_t alloc_shift:                 {:#x}".format(ctx.alloc_shift))
+        self.out.append("  struct meta_area* meta_area_head:   {:s}".format(str(lookup_address(ctx.meta_area_head))))
+        self.out.append("  struct meta_area* meta_area_tail:   {:s}".format(str(lookup_address(ctx.meta_area_tail))))
+        self.out.append("  unsigned char* avail_meta_areas:    {:s}".format(str(lookup_address(ctx.avail_meta_areas))))
+        self.out.append("  struct meta* active[48]:")
         for i in range(48):
-            gef_print("     active[{:2d}] (for chunk_size={:#7x}):     {:#x}".format(i, self.class_to_size(i), ctx.active[i]))
-        gef_print("  size_t usage_by_class[48]:")
+            self.out.append("     active[{:2d}] (for chunk_size={:#7x}):     {:#x}".format(i, self.class_to_size(i), ctx.active[i]))
+        self.out.append("  size_t usage_by_class[48]:")
         for i in range(48):
-            gef_print("     usage_by_class[{:2d}]:                     {:#x}".format(i, ctx.usage_by_class[i]))
-        gef_print("  uint8_t unmap_seq[32]:              {}".format(' '.join(["%02x" % x for x in ctx.unmap_seq])))
-        gef_print("  uint8_t bounces[32]:                {}".format(' '.join(["%02x" % x for x in ctx.bounces])))
-        gef_print("  uint8_t seq:                        {:#x}".format(ctx.seq))
-        gef_print("  uintptr_t brk:                      {:#x}".format(ctx.brk))
+            self.out.append("     usage_by_class[{:2d}]:                     {:#x}".format(i, ctx.usage_by_class[i]))
+        self.out.append("  uint8_t unmap_seq[32]:              {}".format(' '.join(["%02x" % x for x in ctx.unmap_seq])))
+        self.out.append("  uint8_t bounces[32]:                {}".format(' '.join(["%02x" % x for x in ctx.bounces])))
+        self.out.append("  uint8_t seq:                        {:#x}".format(ctx.seq))
+        self.out.append("  uintptr_t brk:                      {:s}".format(str(lookup_address(ctx.brk))))
         return
 
     def read_meta(self, addr):
@@ -49390,36 +49396,44 @@ class MuslDumpCommand(GenericCommand):
         return Group(*_group.values())
 
     def dump_chunk(self, group, state):
-        ptrsize = current_arch.ptrsize
+        chunk_used_color = get_gef_setting("theme.heap_chunk_used")
+        chunk_freed_color = get_gef_setting("theme.heap_chunk_freed")
 
         subinfo = "state:{:5s} meta:{:<#14x} reserved:{:#x}".format(state, group.meta, group.reserved)
         if state == "Used":
             subinfo += " slot_idx:{:<#3x} slot_offset:{:#x}".format(group.slot_idx, group.slot_offset)
 
-        data = slicer(group.data, ptrsize * 2)
+        data = slicer(group.data, current_arch.ptrsize * 2)
         addr = group.addr
         group_line_threshold = 8
 
         # create dump text
-        unpack = u32 if ptrsize == 4 else u64
-        width = ptrsize * 2 + 2
-        dump = ""
+        unpack = u32 if current_arch.ptrsize == 4 else u64
+        width = current_arch.ptrsize * 2 + 2
         done = False
         for blk, blks in itertools.groupby(data):
             repeat_count = len(list(blks))
-            d1, d2 = unpack(blk[:ptrsize]), unpack(blk[ptrsize:])
+            d1, d2 = unpack(blk[:current_arch.ptrsize]), unpack(blk[current_arch.ptrsize:])
             dascii = ''.join([chr(x) if 0x20 <= x < 0x7f else '.' for x in blk])
-            fmt = "{:#x}: {:#0{:d}x} {:#0{:d}x} | {:s} | {:s}\n"
+            fmt = "{:#x}: {:#0{:d}x} {:#0{:d}x} | {:s} | {:s}"
             if repeat_count < group_line_threshold:
                 for _ in range(repeat_count):
-                    dump += fmt.format(addr, d1, width, d2, width, dascii, subinfo)
-                    addr += ptrsize * 2
+                    dump = fmt.format(addr, d1, width, d2, width, dascii, subinfo)
+                    if state == "Used":
+                        self.out.append(Color.colorify(dump, chunk_used_color))
+                    else:
+                        self.out.append(Color.colorify(dump, chunk_freed_color))
+                    addr += current_arch.ptrsize * 2
                     if subinfo:
                         subinfo = ""
             else:
-                dump += fmt.format(addr, d1, width, d2, width, dascii, subinfo)
-                dump += "* {:#d} lines, {:#x} bytes \n".format(repeat_count - 1, (repeat_count - 1) * ptrsize * 2)
-                addr += ptrsize * 2 * repeat_count
+                dump = fmt.format(addr, d1, width, d2, width, dascii, subinfo)
+                dump += "* {:#d} lines, {:#x} bytes".format(repeat_count - 1, (repeat_count - 1) * current_arch.ptrsize * 2)
+                if state == "Used":
+                    self.out.append(Color.colorify(dump, chunk_used_color))
+                else:
+                    self.out.append(Color.colorify(dump, chunk_freed_color))
+                addr += current_arch.ptrsize * 2 * repeat_count
                 if subinfo:
                     subinfo = ""
             if done:
@@ -49427,17 +49441,13 @@ class MuslDumpCommand(GenericCommand):
 
         # print
         dump = dump.rstrip()
-        if state == "Used":
-            gef_print(dump)
-        else:
-            gef_print(Color.grayify(dump))
         return
 
-    def print_meta(self, ctx):
-        gef_print(Color.colorify("Legend for `Unused chunks list`: A:Avail F:Freed U:Used", "yellow"))
-        gef_print(Color.colorify("  1. Search most right 'A' and return it", "yellow"))
-        gef_print(Color.colorify("  2. Search most right 'F' and return it", "yellow"))
-        gef_print(Color.colorify("  3. If nothing is found, create new meta", "yellow"))
+    def dump_meta(self, ctx):
+        self.out.append("Legend for `Unused chunks list`: A:Avail F:Freed U:Used")
+        self.out.append("  1. Search most right 'A' and return it")
+        self.out.append("  2. Search most right 'F' and return it")
+        self.out.append("  3. If nothing is found, create new meta")
 
         # iterate __malloc_context.active
         for idx in range(48):
@@ -49447,23 +49457,27 @@ class MuslDumpCommand(GenericCommand):
             if current == 0:
                 continue
 
-            gef_print(titlify("active[{:2d}] (chunk_size={:#x})".format(idx, self.class_to_size(idx))))
+            self.out.append(titlify("active[{:2d}] (chunk_size={:#x})".format(idx, self.class_to_size(idx))))
+            management_color = get_gef_setting("theme.heap_management_address")
 
             # iterate list of meta
             seen = []
             while current not in seen:
                 meta = self.read_meta(current)
-                gef_print("meta @ {:#x}".format(meta.addr))
+                self.out.append("meta @ {:s}".format(Color.colorify("{:#x}".format(meta.addr), management_color)))
                 text = "  "
-                text += "prev:{:#x} next:{:#x} ".format(meta.prev, meta.next)
-                text += Color.colorify("mem:{:#x} ".format(meta.mem), "bold cyan")
+                colored_prev = Color.colorify("{:#x}".format(meta.prev), management_color)
+                colored_next = Color.colorify("{:#x}".format(meta.next), management_color)
+                text += "prev:{:s} next:{:s} ".format(colored_prev, colored_next)
+                colored_mem = Color.colorify("{:#x}".format(meta.mem), management_color)
+                text += "meta:{:s} ".format(colored_mem)
                 text += "avail_mask:{:#x} freed_mask:{:#x} ".format(meta.avail_mask, meta.freed_mask)
                 text += "last_idx:{:#x} freeable:{:#x} ".format(meta.last_idx, meta.freeable)
                 text += "sizeclass:{:#x} maplen:{:#x}".format(meta.sizeclass, meta.maplen)
-                gef_print(text)
+                self.out.append(text)
 
                 state = self.make_state(meta)
-                gef_print("  Unused chunks list: {}".format(repr(state)))
+                self.out.append("  Unused chunks list: {}".format(repr(state)))
 
                 # dump chunks
                 if state != "F" or self.verbose:
@@ -49472,7 +49486,7 @@ class MuslDumpCommand(GenericCommand):
                         offset = self.class_to_size(idx) * i
                         group = self.read_group(meta, offset)
                         self.dump_chunk(group, dic[state[-i - 1]])
-                    gef_print("")
+                    self.out.append("")
 
                 seen.append(current)
                 current = meta.next
@@ -49486,14 +49500,17 @@ class MuslDumpCommand(GenericCommand):
 
         self.verbose = args.verbose
         self.active_idx = args.idx
+        self.out = []
 
         ctx = self.read_ctx()
         if ctx is None:
             return
         if args.command == "ctx":
-            self.print_ctx(ctx)
+            self.dump_ctx(ctx)
         elif args.command == "unused":
-            self.print_meta(ctx)
+            self.dump_meta(ctx)
+
+        gef_print('\n'.join(self.out), less=not args.no_pager)
         return
 
 
