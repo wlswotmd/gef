@@ -3782,11 +3782,11 @@ class X86(Architecture):
     all_registers = gpr_registers + [flag_register] + special_registers
     alias_registers = {}
     flags_table = {
-        21: "identification",
+        21: "ident",
         #20: "virtual_interrupt_pending",
         #19: "virtual_interrupt",
         18: "align",
-        17: "virtualx86",
+        17: "vx86",
         16: "resume",
         #15: N/A
         14: "nested",
