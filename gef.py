@@ -22641,12 +22641,18 @@ class VMMapCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('--outer', action='store_true', help="display qemu-user's memory map instead of emulated process's memory map.")
     parser.add_argument('filter', metavar='FILTER', nargs='?', help='filter string')
+    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} libc             # show only lines containing the string `libc`\n".format(_cmdline_)
+    _example_ += "{:s} binary           # 'binary' means the area executable itself\n".format(_cmdline_)
     _example_ += "{:s} 0x555555577ab0   # show only lines included specified address\n".format(_cmdline_)
-    _example_ += "{:s} --outer          # show qemu-user memory map; only valid in qemu-user mode\n".format(_cmdline_)
-    _example_ += "{:s} -v               # show with registers".format(_cmdline_)
+    _example_ += "{:s} --outer          # show qemu-user memory map; only valid in qemu-user mode".format(_cmdline_)
+
+    def info(self, msg):
+        msg = "{} {}".format(Color.colorify("[+]", "bold blue"), msg)
+        self.out.append(msg)
+        return
 
     @parse_args
     @only_if_gdb_running
@@ -22676,30 +22682,38 @@ class VMMapCommand(GenericCommand):
             err("No address mapping information found")
             return
 
+        self.out = []
         if not get_gef_setting("gef.disable_color"):
             self.show_legend()
 
         headers = ["Start", "End", "Size", "Offset", "Perm", "Path"]
-        legend = "{:<{w}s}{:<{w}s}{:<{w}s}{:<{w}s}{:<4s} {:s}".format(*headers, w=get_memory_alignment() * 2 + 3)
-        gef_print(Color.colorify(legend, get_gef_setting("theme.table_heading")))
+        legend = "{:{w}s}{:{w}s}{:{w}s}{:{w}s}{:4s} {:s}".format(*headers, w=get_memory_alignment() * 2 + 3)
+        self.out.append(Color.colorify(legend, get_gef_setting("theme.table_heading")))
 
         for entry in vmmap:
             if not args.filter:
-                self.print_entry(entry, args.outer)
+                self.dump_entry(entry, args.outer)
                 continue
-            if args.filter in entry.path:
-                self.print_entry(entry, args.outer)
+            if args.filter == "binary" and get_filepath(append_proc_root_prefix=False) == entry.path:
+                self.dump_entry(entry, args.outer)
+            elif args.filter in entry.path:
+                self.dump_entry(entry, args.outer)
             elif self.is_integer(args.filter):
                 addr = int(args.filter, 0)
                 if addr >= entry.page_start and addr < entry.page_end:
                     self.print_entry(entry, args.outer)
 
         if is_qemu_usermode() and not args.outer:
-            info("Searched from auxv, registers and stack values. There may be areas that cannot be detected.")
-            info("Permission is based on ELF header or default value `rw-`. Dynamic permission changes cannot be detected.")
+            self.info("Searched from auxv, registers and stack values. There may be areas that cannot be detected.")
+            self.info("Permission is based on ELF header or default value `rw-`. Dynamic permission changes cannot be detected.")
+
+        if len(self.out) > 60:
+            gef_print('\n'.join(self.out), less=not args.no_pager)
+        else:
+            gef_print('\n'.join(self.out), less=False)
         return
 
-    def print_entry(self, entry, outer):
+    def dump_entry(self, entry, outer):
         line_color = ""
         if entry.path == "[stack]":
             line_color = get_gef_setting("theme.address_stack")
@@ -22709,6 +22723,8 @@ class VMMapCommand(GenericCommand):
             line_color = get_gef_setting("theme.address_code")
         elif entry.permission.value & Permission.WRITE:
             line_color = get_gef_setting("theme.address_writable")
+        elif entry.permission.value == Permission.NONE:
+            line_color = get_gef_setting("theme.address_valid_but_none")
 
         if entry.permission.value == (Permission.READ | Permission.WRITE | Permission.EXECUTE):
             line_color += " " + get_gef_setting("theme.address_rwx")
@@ -22716,10 +22732,10 @@ class VMMapCommand(GenericCommand):
         lines = []
         # if qemu-xxx(32bit arch) runs on x86-64 machine, memalign_size does not match get_memory_alignment()
         memalign_size = 8 if outer else None
-        lines.append(Color.colorify(format_address(entry.page_start, memalign_size), line_color))
-        lines.append(Color.colorify(format_address(entry.page_end, memalign_size), line_color))
-        lines.append(Color.colorify(format_address(entry.size, memalign_size), line_color))
-        lines.append(Color.colorify(format_address(entry.offset, memalign_size), line_color))
+        lines.append(Color.colorify(format_address_long_fmt(entry.page_start, memalign_size), line_color))
+        lines.append(Color.colorify(format_address_long_fmt(entry.page_end, memalign_size), line_color))
+        lines.append(Color.colorify(format_address_long_fmt(entry.size, memalign_size), line_color))
+        lines.append(Color.colorify(format_address_long_fmt(entry.offset, memalign_size), line_color))
         lines.append(Color.colorify(str(entry.permission), line_color))
         lines.append(Color.colorify(entry.path, line_color))
         line = " ".join(lines)
@@ -22735,7 +22751,7 @@ class VMMapCommand(GenericCommand):
             registers_color = get_gef_setting("theme.dereference_register_value")
             line += Color.colorify(m, registers_color)
 
-        gef_print(line)
+        self.out.append(line)
         return
 
     def show_legend(self):
@@ -22743,15 +22759,17 @@ class VMMapCommand(GenericCommand):
         stack_addr_color = get_gef_setting("theme.address_stack")
         heap_addr_color = get_gef_setting("theme.address_heap")
         writable_addr_color = get_gef_setting("theme.address_writable")
+        none_addr_color = get_gef_setting("theme.address_valid_but_none")
         rwx_addr_color = get_gef_setting("theme.address_rwx")
 
         code = Color.colorify("Code", code_addr_color)
         heap = Color.colorify("Heap", heap_addr_color)
         stack = Color.colorify("Stack", stack_addr_color)
         writable = Color.colorify("Writable", writable_addr_color)
+        none = Color.colorify("NONE", none_addr_color)
         rwx = Color.colorify("RWX", rwx_addr_color)
 
-        gef_print("[ Legend:  {} | {} | {} | {} | {}]".format(code, heap, stack, writable, rwx))
+        self.out.append("[ Legend:  {} | {} | {} | {} | {} | {} ]".format(code, heap, stack, writable, none, rwx))
         return
 
     def is_integer(self, n):
