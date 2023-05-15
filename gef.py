@@ -13257,7 +13257,8 @@ class MprotectCommand(GenericCommand):
     parser.add_argument('--patch-only', action='store_true', help='do not execute after patch.')
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} $sp rwx".format(_cmdline_)
+    _example_ = "{:s} $sp rwx\n".format(_cmdline_)
+    _example_ += "{:s} 0x7ffff7e1b000 ___ # '_' means '-'.".format(_cmdline_)
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
@@ -13270,7 +13271,7 @@ class MprotectCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        if re.match(r"[rwx-]{3}", args.permission):
+        if re.match(r"[rwx_-]{3}", args.permission):
             perm = Permission.NONE
             if args.permission[0] == "r":
                 perm |= Permission.READ
