@@ -22341,7 +22341,7 @@ def dereference_from(addr):
                 if is_ascii_string(prev.value):
                     s = read_cstring_from_memory(prev.value)
                     if len(s) < get_memory_alignment():
-                        txt = '{:s} ({:s}?)'.format(format_address(addr.value), Color.colorify(repr(s), string_color))
+                        txt = '{:s} ({:s}?)'.format(format_address_long_fmt(addr.value), Color.colorify(repr(s), string_color))
                     elif len(s) > GEF_MAX_STRING_LENGTH:
                         txt = Color.colorify('{:s}[...]'.format(repr(s[:GEF_MAX_STRING_LENGTH])), string_color)
                     else:
@@ -22382,9 +22382,9 @@ def to_string_dereference_from(value, join_start_idx=0):
         s = to_ascii(value)
         if s:
             s = Color.colorify(repr(s), get_gef_setting("theme.dereference_string"))
-            return "{:#x} ({:s}?)".format(value, s)
+            return "{:s} ({:s}?)".format(format_address_long_fmt(value), s)
         else:
-            return "{:#x}".format(value)
+            return format_address_long_fmt(value)
 
     # for example, 1st element is address and 2nd element is "[...]".
     # In this case we don't omit the 1st element even if join_start_idx==1
@@ -22401,7 +22401,7 @@ def to_string_dereference_from(value, join_start_idx=0):
         if link:
             link += " {:s} ".format(RIGHT_ARROW)
         if isinstance(addr, Address):
-            link += str(addr) + get_symbol_string(addr.value)
+            link += addr.long_fmt() + get_symbol_string(addr.value)
         else:
             link += addr # actually this is msg
     return link
