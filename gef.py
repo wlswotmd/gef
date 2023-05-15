@@ -1576,19 +1576,34 @@ class Instruction:
     # Allow formatting an instruction with {:o} to show opcodes.
     # The number of bytes to display can be configured, e.g. {:4o} to only show 4 bytes of the opcodes
     def __format__(self, format_spec):
-        if len(format_spec) == 0 or format_spec[-1] != "o":  # format_spec example: "4o"
+        if len(format_spec) == 0 or format_spec[-1] not in ["o", "O"]:  # format_spec example: "4o"
             return str(self)
 
+        to_highlight = format_spec[-1] == "O"
+
+        # format address
+        if to_highlight:
+            color_address = get_gef_setting("theme.disassemble_address_highlight")
+        else:
+            color_address = get_gef_setting("theme.disassemble_address")
+        address = Color.colorify(hex(self.address), color_address)
+
         # format opcode
-        if format_spec == "o": # no specifed length
+        if format_spec in ["o", "O"]: # no specifed length
             opcodes_len = len(self.opcodes)
         else:
             opcodes_len = int(format_spec[:-1])
-        opcodes_text = "".join("{:02x}".format(b) for b in self.opcodes) # ex:"488d0de51e0100"
+
+        opcodes_text = "".join("{:02x}".format(b) for b in self.opcodes) # ex: "488d0de51e0100"
         # ex1: spec:"4o", opcodes:01020304   -> 01020304
         # ex2: spec:"4o", opcodes:0102030405 -> 010203..
         if opcodes_len < len(self.opcodes):
             opcodes_text = opcodes_text[:opcodes_len * 2 - 2] + ".."
+        if to_highlight:
+            color_opcode = get_gef_setting("theme.disassemble_opcode_highlight")
+        else:
+            color_opcode = get_gef_setting("theme.disassemble_opcode")
+        opcodes_text = Color.colorify("{:{:d}}".format(opcodes_text, opcodes_len * 2), color_opcode)
 
         # format location
         location = self.smartify_text(self.location)
@@ -1599,84 +1614,130 @@ class Instruction:
             if r:
                 location = "<{}+{:#x}>".format(r.group(1), int(r.group(2)))
 
+        # format mnemonic
+        if current_arch.is_syscall(self):
+            if to_highlight:
+                color_mnemonic = get_gef_setting("theme.disassemble_mnemonic_branch_highlight")
+            else:
+                color_mnemonic = get_gef_setting("theme.disassemble_mnemonic_branch")
+        elif current_arch.is_call(self):
+            if to_highlight:
+                color_mnemonic = get_gef_setting("theme.disassemble_mnemonic_branch_highlight")
+            else:
+                color_mnemonic = get_gef_setting("theme.disassemble_mnemonic_branch")
+        elif current_arch.is_jump(self):
+            if to_highlight:
+                color_mnemonic = get_gef_setting("theme.disassemble_mnemonic_branch_highlight")
+            else:
+                color_mnemonic = get_gef_setting("theme.disassemble_mnemonic_branch")
+        elif current_arch.is_ret(self):
+            if to_highlight:
+                color_mnemonic = get_gef_setting("theme.disassemble_mnemonic_branch_highlight")
+            else:
+                color_mnemonic = get_gef_setting("theme.disassemble_mnemonic_branch")
+        elif current_arch.is_conditional_branch(self):
+            if to_highlight:
+                color_mnemonic = get_gef_setting("theme.disassemble_mnemonic_branch_highlight")
+            else:
+                color_mnemonic = get_gef_setting("theme.disassemble_mnemonic_branch")
+        else:
+            if to_highlight:
+                color_mnemonic = get_gef_setting("theme.disassemble_mnemonic_normal_highlight")
+            else:
+                color_mnemonic = get_gef_setting("theme.disassemble_mnemonic_normal")
+        mnemonic = Color.colorify("{:6s}".format(self.mnemonic), color_mnemonic)
+
+        # break down last operands
+        operands = self.operands[::]
+
+        # ;, #, //
+        additional_1 = ""
+        if len(operands) > 0:
+            last_operands = operands[-1]
+            if is_x86_64():
+                r = re.match(r"(.*?)\s+(#.+)$", last_operands)
+                if r:
+                    last_operands = r.group(1)
+                    additional_1 = r.group(2)
+                    operands = operands[:-1] + [last_operands]
+            elif is_arm64() or is_microblaze():
+                r = re.match(r"//.+$", last_operands)
+                if r:
+                    additional_1 = last_operands
+                    operands = operands[:-1]
+            elif is_arm32():
+                r = re.match(r";.+$", last_operands)
+                if r:
+                    additional_1 = last_operands
+                    operands = operands[:-1]
+
+        def hexlify_symbol_offset(x):
+            r1 = re.match(r"(.*)<(.+?)>(.*)$", x)
+            if not r1:
+                return x
+            r2 = re.match(r"(\w+)\+(\d+)$", r1.group(2))
+            if r2:
+                sym_x = "{}+{:#x}".format(r2.group(1), int(r2.group(2)))
+            else:
+                sym_x = r1.group(2)
+            return "{:s}<{:s}>{:s}".format(r1.group(1), sym_x, r1.group(3))
+
+        additional_1 = hexlify_symbol_offset(additional_1)
+
         # format operands
-        operands = self.smartify_text(", ".join(self.operands))
-        r = re.search(r"^(.*?)<(.+)\+(\d+)>(.*)$", operands)
-        if r:
-            operands = "{}<{}+{:#x}>{}".format(r.group(1), r.group(2), int(r.group(3)), r.group(4))
-
-        # resolve symbol
-        sym = ""
-
-        # ex: call 0xXXXX
-        if sym == "" and (is_x86_32() or is_x86_64() or is_arm64()) and len(self.operands) > 0:
-            try:
-                reference_addr = self.operands[-1].replace("#", "")
-                ret = gdb_get_location_from_symbol(int(reference_addr, 0))
-                if ret is None:
-                    sym = ""
-                elif ret[1] == 0:
-                    sym = "<{}>".format(ret[0])
+        if to_highlight:
+            color_operands_normal = get_gef_setting("theme.disassemble_operands_normal_highlight")
+            color_operands_const = get_gef_setting("theme.disassemble_operands_const_highlight")
+            color_operands_symbol = get_gef_setting("theme.disassemble_operands_symbol_highlight")
+        else:
+            color_operands_normal = get_gef_setting("theme.disassemble_operands_normal")
+            color_operands_const = get_gef_setting("theme.disassemble_operands_const")
+            color_operands_symbol = get_gef_setting("theme.disassemble_operands_symbol")
+        colored_operands = []
+        for o1 in operands:
+            colored_o1 = []
+            # *, [, ], (, ), %, :, space
+            # not first +, - (without #, @)
+            # <...>
+            for _o2 in re.split(r"([*%\[\](): ]|(?<![#@%])(?<=.)[-+]|<.+?>)", o1):
+                o2 = _o2.strip()
+                if o2 == "":
+                    continue
+                if o2[0] == "<":
+                    colored_o1.append(hexlify_symbol_offset(o2))
+                    colored_o1.append(" ")
+                elif o2 in ["-", "+", "*"]:
+                    colored_o1.append(Color.colorify(o2, color_operands_symbol))
+                    colored_o1.append(" ")
+                elif o2 in [":", "%"]:
+                    if colored_o1 and colored_o1[-1] == " ":
+                        colored_o1 = colored_o1[:-1]
+                    colored_o1.append(Color.colorify(o2, color_operands_symbol))
+                elif o2 in ["[", "("]:
+                    colored_o1.append(Color.colorify(o2, color_operands_symbol))
+                elif o2 in ["]", ")"]:
+                    if colored_o1 and colored_o1[-1] == " ":
+                        colored_o1 = colored_o1[:-1]
+                    colored_o1.append(Color.colorify(o2, color_operands_symbol))
+                elif re.match(r"#?-?(0x[0-9a-f]+|\d+)", o2):
+                    colored_o1.append(Color.colorify(o2, color_operands_const))
+                    colored_o1.append(" ")
                 else:
-                    sym = "<{}+{:#x}>".format(ret[0], ret[1])
-            except Exception:
-                pass
-
-        # ex: lea rax, [rip + 0xXXXX]
-        if sym == "" and is_x86_64() and len(self.operands) > 0:
-            try:
-                m = re.match(r"\[rip \+ (0x\w+)\]", self.operands[-1])
-                reference_addr = self.address + len(self.opcodes) + int(m.group(1), 0)
-                ret = gdb_get_location_from_symbol(reference_addr)
-                if ret is None:
-                    sym = ""
-                elif ret[1] == 0:
-                    sym = "# {:#x} <{}>".format(reference_addr, ret[0])
-                else:
-                    sym = "# {:#x} <{}+{:#x}>".format(reference_addr, ret[0], ret[1])
-            except Exception:
-                pass
-
-        # ex: b #0xXXXX
-        if sym == "" and is_arm32() and len(self.operands) > 0:
-            try:
-                m = re.match(r"#(\w+)", self.operands[-1])
-                ret = gdb_get_location_from_symbol(int(m.group(1), 0))
-                if ret is None:
-                    sym = ""
-                elif ret[1] == 0:
-                    sym = "<{}>".format(ret[0])
-                else:
-                    sym = "<{}+{:#x}>".format(ret[0], ret[1])
-            except Exception:
-                pass
-
-        # ex: ldr r0, [pc, #0xXXXX]
-        if sym == "" and is_arm32() and len(self.operands) > 1:
-            try:
-                m = re.match(r"\[pc,#(\w+)\]", ','.join(self.operands[-2:]))
-                reference_addr = self.address + len(self.opcodes) + int(m.group(1), 0)
-                ret = gdb_get_location_from_symbol(reference_addr)
-                if ret is None:
-                    sym = ""
-                elif ret[1] == 0:
-                    sym = "; {:#x} <{}>".format(reference_addr, ret[0])
-                else:
-                    sym = "; {:#x} <{}+{:#x}>".format(reference_addr, ret[0], ret[1])
-            except Exception:
-                pass
+                    colored_o1.append(Color.colorify(o2, color_operands_normal))
+                    colored_o1.append(" ")
+            colored_operands.append(''.join(colored_o1).strip())
+        operands = Color.colorify(', ', color_operands_symbol).join(colored_operands)
 
         # formatting
-        fmt = "{:#10x} {:{:d}}   {:20}   {:6} {:s} {:s}"
-        length = opcodes_len * 2
-        return fmt.format(self.address, opcodes_text, length, location, self.mnemonic, operands, sym)
+        fmt = "{:s} {:s}   {:s}   {:s} {:s} {:s}"
+        return fmt.format(address, opcodes_text, location, mnemonic, operands, additional_1)
 
     def __str__(self):
         location = self.smartify_text(self.location)
         if not location:
             location = "<NO_SYMBOL>"
         operands = self.smartify_text(", ".join(self.operands))
-        fmt = "{:#10x} {:20} {:6} {:s}"
+        fmt = "{:#10x} {:20s} {:6s} {:s}"
         return fmt.format(self.address, location, self.mnemonic, operands)
 
     def is_valid(self):
@@ -2822,7 +2883,11 @@ def gdb_disassemble(start_pc, **kwargs):
         asm = insn["asm"].rstrip().split(None, 1)
         if len(asm) > 1:
             mnemo, operands = asm
-            operands = [x.strip() for x in operands.split(",")]
+            if "\t" in operands:
+                first, second = operands.rsplit("\t", 1)
+                operands = [x.strip() for x in first.split(",")] + [second]
+            else:
+                operands = [x.strip() for x in operands.split(",")]
         else:
             mnemo, operands = asm[0], []
 
@@ -9513,6 +9578,19 @@ def clear_screen():
     return
 
 
+@functools.lru_cache(maxsize=None)
+def is_in_kernel():
+    if is_x86():
+        return (get_register("$cs") & 0b11) != 3
+    elif is_arm32():
+        return (get_register(current_arch.flag_register) & 0b11111) not in [0b10000, 0b11010]
+    elif is_arm64():
+        return ((get_register(current_arch.flag_register) >> 2) & 0b11) == 1
+    else:
+        # assume it is userland
+        return False
+
+
 def format_address(addr, memalign_size=None):
     """Format the address according to its size."""
     # if qemu-xxx(32bit arch) runs on x86-64 machine, memalign_size does not match get_memory_alignment()
@@ -9521,28 +9599,30 @@ def format_address(addr, memalign_size=None):
         memalign_size = get_memory_alignment()
 
     if isinstance(addr, str):
-        if addr.startswith("0x"):
-            return addr
-        else:
-            return "0x" + addr
+        addr = int(addr, 16)
 
     addr = align_address(addr, memalign_size)
-
     if memalign_size == 4:
         return "{:#010x}".format(addr)
+    if is_in_kernel():
+        return "{:#018x}".format(addr)
+    return "{:#014x}".format(addr)
 
+
+def format_address_long_fmt(addr, memalign_size=None):
+    """Format the address according to its size."""
+    # if qemu-xxx(32bit arch) runs on x86-64 machine, memalign_size does not match get_memory_alignment()
+    # so use the value forcibly if memalign_size is not None
+    if memalign_size is None:
+        memalign_size = get_memory_alignment()
+
+    if isinstance(addr, str):
+        addr = int(addr, 16)
+
+    addr = align_address(addr, memalign_size)
+    if memalign_size == 4:
+        return "{:#010x}".format(addr)
     return "{:#018x}".format(addr)
-
-
-def format_address_spaces(addr, left=True):
-    """Format the address according to its size, but with spaces instead of zeroes."""
-    width = get_memory_alignment() * 2 + 2
-    addr = align_address(addr)
-
-    if not left:
-        return "{:#x}".format(addr).rjust(width)
-
-    return "{:#x}".format(addr).ljust(width)
 
 
 def align_address(address, memalign_size=None):
@@ -10557,13 +10637,26 @@ class GefThemeCommand(GenericCommand):
 
     def __init__(self, *args, **kwargs):
         super().__init__()
-        self.add_setting("context_title_line", "gray", "Color of the borders in context window")
+        self.add_setting("context_title_line", "cyan", "Color of the borders in context window")
         self.add_setting("context_title_message", "cyan", "Color of the title in context window")
-        self.add_setting("default_title_line", "gray", "Default color of borders")
+        self.add_setting("default_title_line", "cyan", "Default color of borders")
         self.add_setting("default_title_message", "cyan", "Default color of title")
         self.add_setting("table_heading", "bold blue", "Color of the column headings to tables (e.g. vmmap)")
         self.add_setting("old_context", "gray", "Color to use to show things such as code that is not immediately relevant")
-        self.add_setting("disassemble_current_instruction", "green", "Color to use to highlight the current $pc when disassembling")
+        self.add_setting("disassemble_address", "", "Color of address when disassembling")
+        self.add_setting("disassemble_address_highlight", "bold green", "Color of address when disassembling (=$pc)")
+        self.add_setting("disassemble_opcode", "bright_white", "Color of location when disassembling")
+        self.add_setting("disassemble_opcode_highlight", "bold white", "Color of location when disassembling (=$pc)")
+        self.add_setting("disassemble_mnemonic_normal", "yellow", "Color of normal mnemonic when disassembling")
+        self.add_setting("disassemble_mnemonic_normal_highlight", "bold bright_yellow", "Color of normal mnemonic when disassembling (=$pc)")
+        self.add_setting("disassemble_mnemonic_branch", "bold bright_yellow", "Color of branch mnemonic when disassembling")
+        self.add_setting("disassemble_mnemonic_branch_highlight", "bold bright_yellow", "Color of branch mnemonic when disassembling (=$pc)")
+        self.add_setting("disassemble_operands_normal", "cyan", "Color of normal operands when disassembling")
+        self.add_setting("disassemble_operands_normal_highlight", "bold cyan", "Color of normal operands when disassembling (=$pc)")
+        self.add_setting("disassemble_operands_const", "bright_blue", "Color of const operands when disassembling")
+        self.add_setting("disassemble_operands_const_highlight", "bold bright_blue", "Color of const operands when disassembling (=$pc)")
+        self.add_setting("disassemble_operands_symbol", "bright_white", "Color of symbol operands when disassembling)")
+        self.add_setting("disassemble_operands_symbol_highlight", "bold white", "Color of symbol operands when disassembling (=$pc)")
         self.add_setting("dereference_string", "yellow", "Color of dereferenced string")
         self.add_setting("dereference_base_address", "cyan", "Color of dereferenced address")
         self.add_setting("dereference_register_value", "bold blue", "Color of dereferenced register")
@@ -20373,9 +20466,7 @@ class ContextCommand(GenericCommand):
         nb_insn = self.get_setting("nb_lines_code")
         nb_insn_prev = self.get_setting("nb_lines_code_prev")
         use_capstone = self.has_setting("use_capstone") and self.get_setting("use_capstone")
-        past_insns_color = get_gef_setting("theme.old_context")
         show_opcodes_size = self.has_setting("show_opcodes_size") and self.get_setting("show_opcodes_size")
-        cur_insn_color = get_gef_setting("theme.disassemble_current_instruction")
 
         if current_arch is None and is_remote_debug():
             self.context_title("code")
@@ -20414,15 +20505,18 @@ class ContextCommand(GenericCommand):
                 if show_opcodes_size == 0:
                     text = str(insn)
                 else:
-                    insn_fmt = "{{:{}o}}".format(show_opcodes_size)
+                    if insn.address == pc:
+                        insn_fmt = "{{:{}O}}".format(show_opcodes_size)
+                    else:
+                        insn_fmt = "{{:{}o}}".format(show_opcodes_size)
                     text = insn_fmt.format(insn)
 
                 # coloring by address against pc
                 if insn.address < pc:
-                    line += "{}{}{}".format(bp_prefix, " " * len(RIGHT_ARROW[1:]), Color.colorify(text, past_insns_color))
+                    line += "{}{}{}".format(bp_prefix, " " * len(RIGHT_ARROW[1:]), text)
 
                 elif insn.address == pc:
-                    line += "{}{}".format(bp_prefix, Color.colorify("{:s}{:s}".format(RIGHT_ARROW[1:], text), cur_insn_color))
+                    line += "{}{}{}".format(bp_prefix, RIGHT_ARROW[1:], text)
 
                     if current_arch.is_conditional_branch(insn):
                         is_taken, reason = current_arch.is_branch_taken(insn)
@@ -20474,8 +20568,9 @@ class ContextCommand(GenericCommand):
                             if show_opcodes_size == 0:
                                 text = str(tinsn)
                             else:
+                                insn_fmt = "{{:{}o}}".format(show_opcodes_size)
                                 text = insn_fmt.format(tinsn)
-                            text = "   {}  {}".format(DOWN_ARROW if i == 0 else " ", text)
+                            text = "   {} {}".format(RIGHT_ARROW[1:-1] if i == 0 else "  ", text)
                             if once == 0:
                                 gef_print("")
                                 once = 1
