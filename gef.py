@@ -22800,13 +22800,14 @@ class XFilesCommand(GenericCommand):
         self.dont_repeat()
 
         headers = ["Start", "End", "Name", "File"]
-        legend = "{:<{w}s}{:<{w}s}{:<21s} {:s}".format(*headers, w=get_memory_alignment() * 2 + 3)
+        width = get_memory_alignment() * 2 + 2
+        legend = "{:{w:d}s} {:{w:d}s} {:<21s} {:s}".format(*headers, w=width)
         gef_print(Color.colorify(legend, get_gef_setting("theme.table_heading")))
 
         for xfile in get_info_files():
             lines = []
-            lines.append(format_address(xfile.zone_start))
-            lines.append(format_address(xfile.zone_end))
+            lines.append(str(lookup_address(xfile.zone_start)))
+            lines.append(str(lookup_address(xfile.zone_end)))
             lines.append("{:<21s}".format(xfile.name))
             lines.append(xfile.filename)
             line = " ".join(lines)
