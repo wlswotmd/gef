@@ -38058,7 +38058,7 @@ class VisualHeapCommand(GenericCommand):
             if addr in v:
                 s += "{} {}".format(LEFT_ARROW, "largebin[{}]".format(k))
         if addr == self.top:
-            s += "{} {}".format(LEFT_ARROW, "top chunk")
+            s += "{} {}".format(LEFT_ARROW, "top")
         return s
 
     def generate_visual_chunk(self, chunk, color_func):
