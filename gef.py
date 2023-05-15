@@ -20384,42 +20384,16 @@ class ContextCommand(GenericCommand):
             if regname in ignored_registers:
                 continue
 
-            try:
-                reg = gdb.parse_and_eval(regname)
-                if reg.type.code == gdb.TYPE_CODE_VOID:
-                    continue
-
-                new_value_type_flag = (reg.type.code == gdb.TYPE_CODE_FLAGS)
-                new_value = int(reg)
-
-            except (gdb.MemoryError, gdb.error):
-                # If this exception is triggered, it means that the current register
-                # is corrupted. Just use the register "raw" value (not eval-ed)
-                new_value = get_register(regname)
-                new_value_type_flag = False
-
-            except Exception:
-                new_value = 0
-                new_value_type_flag = False
-
             padreg = current_arch.get_aliased_registers()[regname].ljust(widest, " ")
+
+            new_value = get_register(regname)
             old_value = self.old_registers.get(regname, 0)
 
-            value = align_address(new_value)
-            old_value = align_address(old_value)
-
-            if value == old_value:
+            if new_value == old_value:
                 line += "{}: ".format(Color.colorify(padreg, regname_color))
             else:
                 line += "{}: ".format(Color.colorify(padreg, changed_color))
-            if new_value_type_flag:
-                line += "{:s} ".format(format_address_spaces(value))
-            else:
-                addr = lookup_address(align_address(int(value)))
-                if addr.valid:
-                    line += "{:s} ".format(str(addr))
-                else:
-                    line += "{:s} ".format(format_address_spaces(value))
+            line += "{:s} ".format(lookup_address(new_value).long_fmt())
 
             if i % nb == 0:
                 gef_print(line)
