@@ -22863,10 +22863,10 @@ class XInfoCommand(GenericCommand):
         info = addr.info
 
         if sect:
-            page_start = format_address(sect.page_start)
-            page_end = format_address(sect.page_end)
+            page_start = lookup_address(sect.page_start)
+            page_end = lookup_address(sect.page_end)
             page_size = sect.page_end - sect.page_start
-            gef_print("Page: {:s} {:s} {:s} (size={:#x})".format(page_start, RIGHT_ARROW, page_end, page_size))
+            gef_print("Page: {:s} {:s} {:s} (size={:#x})".format(str(page_start), RIGHT_ARROW, str(page_end), page_size))
             gef_print("Permissions: {}".format(sect.permission))
             gef_print("Pathname: {:s}".format(sect.path))
             gef_print("Offset (from page): {:#x}".format(addr.value - sect.page_start))
@@ -22874,9 +22874,9 @@ class XInfoCommand(GenericCommand):
                 gef_print("Inode: {:s}".format(sect.inode))
 
         if info:
-            zone_start = format_address(info.zone_start)
-            zone_end = format_address(info.zone_end)
-            gef_print("Segment: {:s} ({:s}-{:s})".format(info.name, zone_start, zone_end))
+            zone_start = lookup_address(info.zone_start)
+            zone_end = lookup_address(info.zone_end)
+            gef_print("Segment: {:s} ({:s}-{:s})".format(info.name, str(zone_start), str(zone_end)))
             gef_print("Offset (from segment): {:#x}".format(addr.value - info.zone_start))
 
         sym = gdb_get_location_from_symbol(address)
