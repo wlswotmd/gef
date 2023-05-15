@@ -57095,6 +57095,8 @@ class PeekPointersCommand(GenericCommand):
                     line_color = get_gef_setting("theme.address_code")
                 elif perm.value & Permission.WRITE:
                     line_color = get_gef_setting("theme.address_writable")
+                elif perm.value == Permission.NONE:
+                    line_color = get_gef_setting("theme.address_valid_but_none")
 
                 if perm.value == (Permission.READ | Permission.WRITE | Permission.EXECUTE):
                     line_color += " " + get_gef_setting("theme.address_rwx")
