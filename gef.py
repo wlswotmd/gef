@@ -21501,7 +21501,7 @@ class PatchCommand(GenericCommand):
             return
         history_info = {"addr": addr, "before_data": before_data, "after_data": after_data, "physmode": get_current_mmu_mode()}
         self.history.insert(0, history_info)
-        ok("Patching {:d} bytes from {:s}".format(length, format_address(addr)))
+        ok("Patching {:d} bytes from {:s}".format(length, str(lookup_address(addr))))
         return
 
     # for qword, dword, word, byte sub-commands
