@@ -46361,8 +46361,13 @@ class SlabDumpCommand(GenericCommand):
         return parsed_caches
 
     def dump_page(self, page, kmem_cache, tag, freelist=None):
+        heap_page_color = get_gef_setting("theme.heap_page_address")
+        label_inactive_color = get_gef_setting("theme.heap_label_inactive")
+        used_address_color = get_gef_setting("theme.heap_chunk_address_used")
+        freed_address_color = get_gef_setting("theme.heap_chunk_address_freed")
+
         # page address
-        tag_s = Color.colorify(tag, "bold red")
+        tag_s = Color.colorify(tag, label_inactive_color)
         self.out.append('      {:s}: {:#x}'.format(tag_s, page['address']))
 
         # fast return if invalid
@@ -46370,7 +46375,8 @@ class SlabDumpCommand(GenericCommand):
             return
 
         # print virtual address
-        self.out.append('        virtual address (s_mem): {:s}'.format(Color.boldify("{:#x}".format(page['s_mem']))))
+        colored_s_mem = Color.colorify("{:#x}".format(page['s_mem']), heap_page_color)
+        self.out.append('        virtual address (s_mem): {:s}'.format(colored_s_mem))
 
         # print info
         self.out.append('        num pages: {:d}'.format(kmem_cache['pagesperslab']))
@@ -46386,10 +46392,10 @@ class SlabDumpCommand(GenericCommand):
                 else:
                     next_idx = freelist[idxidx + 1]
                     next_msg = "next: {:#x}".format(next_idx)
-                chunk_s = Color.colorify("{:#x}".format(chunk), "bold yellow")
+                chunk_s = Color.colorify("{:#x}".format(chunk), freed_address_color)
             else:
                 next_msg = "in-use"
-                chunk_s = Color.grayify("{:#x}".format(chunk))
+                chunk_s = Color.colorify("{:#x}".format(chunk), used_address_color)
             self.out.append("        {:7s}   {:#04x} {:s} ({:s})".format("layout:" if idx == 0 else "", idx, chunk_s, next_msg))
 
         # print freelist
@@ -46398,12 +46404,15 @@ class SlabDumpCommand(GenericCommand):
         else:
             for i, idx in enumerate(freelist):
                 chunk = page['s_mem'] + kmem_cache['size'] * idx
-                msg = Color.colorify("{:#x}".format(chunk), "bold yellow")
+                msg = Color.colorify("{:#x}".format(chunk), freed_address_color)
                 self.out.append('        {:9s} {:#04x} {:s}'.format("freelist:" if i == 0 else "", idx, msg))
         return
 
     def dump_array_cache(self, cpu, kmem_cache):
-        tag_s = Color.colorify('array_cache (cpu{:d})'.format(cpu), "bold green")
+        label_active_color = get_gef_setting("theme.heap_label_active")
+        freed_address_color = get_gef_setting("theme.heap_chunk_address_freed")
+
+        tag_s = Color.colorify('array_cache (cpu{:d})'.format(cpu), label_active_color)
         self.out.append('      {:s}: {:#x}'.format(tag_s, kmem_cache['array_cache']['address']))
 
         self.out.append('        avail: {:d}'.format(kmem_cache['array_cache']['avail']))
@@ -46415,20 +46424,24 @@ class SlabDumpCommand(GenericCommand):
             for idx, f in enumerate(freelist):
                 if not is_valid_addr(f):
                     break
-                msg = Color.colorify("{:#x}".format(f), "bold yellow")
+                msg = Color.colorify("{:#x}".format(f), freed_address_color)
                 self.out.append('        {:6s} {:s}'.format("entry:" if idx == 0 else "", msg))
         return
 
     def dump_caches(self, target_names, cpu, parsed_caches):
+        chunk_label_color = get_gef_setting("theme.heap_chunk_label")
+        chunk_size_color = get_gef_setting("theme.heap_chunk_size")
+        label_inactive_color = get_gef_setting("theme.heap_label_inactive")
+
         self.out.append('slab_caches @ {:#x}'.format(self.slab_caches))
         for kmem_cache in parsed_caches[1:]:
             if target_names != [] and kmem_cache['name'] not in target_names:
                 continue
             self.out.append("")
             self.out.append('  kmem_cache: {:#x}'.format(kmem_cache['address']))
-            self.out.append('    name: {:s}'.format(Color.boldify(kmem_cache['name'])))
+            self.out.append('    name: {:s}'.format(Color.colorify(kmem_cache['name'], chunk_label_color)))
             self.out.append('    flags: {:#x} ({:s})'.format(kmem_cache['flags'], kmem_cache['flags_str']))
-            object_size_s = Color.colorify("{:#x}".format(kmem_cache['object_size']), "bold magenta")
+            object_size_s = Color.colorify("{:#x}".format(kmem_cache['object_size']), chunk_size_color)
             self.out.append('    object size: {:s} (chunk size: {:#x})'.format(object_size_s, kmem_cache['size']))
             self.out.append('    object per slab: {:#x}'.format(kmem_cache['objperslab']))
             self.out.append('    pages per slab: {:#x}'.format(kmem_cache['pagesperslab']))
@@ -46436,23 +46449,26 @@ class SlabDumpCommand(GenericCommand):
             self.dump_array_cache(cpu, kmem_cache)
 
             if len(kmem_cache['nodes']) == 0:
-                self.out.append("      {:s}: (none)".format(Color.colorify("node pages", "bold red")))
+                self.out.append("      {:s}: (none)".format(Color.colorify("node pages", label_inactive_color)))
             else:
                 for node_index, slabs_list in enumerate(kmem_cache['nodes']):
                     if len(slabs_list['slabs_partial']) == 0:
-                        self.out.append('      {:s}: (none)'.format(Color.colorify("node[{:d}].slabs_partial".format(node_index), "bold red")))
+                        tag = Color.colorify("node[{:d}].slabs_partial".format(node_index), label_inactive_color)
+                        self.out.append('      {:s}: (none)'.format(tag))
                     else:
                         for node_page in slabs_list['slabs_partial']:
                             self.dump_page(node_page, kmem_cache, tag="node[{:d}].slabs_partial".format(node_index))
 
                     if len(slabs_list['slabs_full']) == 0:
-                        self.out.append('      {:s}: (none)'.format(Color.colorify("node[{:d}].slabs_fulll".format(node_index), "bold red")))
+                        tag = Color.colorify("node[{:d}].slabs_fulll".format(node_index), label_inactive_color)
+                        self.out.append('      {:s}: (none)'.format(tag))
                     else:
                         for node_page in slabs_list['slabs_full']:
                             self.dump_page(node_page, kmem_cache, tag="node[{:d}].slabs_full".format(node_index))
 
                     if len(slabs_list['slabs_free']) == 0:
-                        self.out.append('      {:s}: (none)'.format(Color.colorify("node[{:d}].slabs_free".format(node_index), "bold red")))
+                        tag = Color.colorify("node[{:d}].slabs_free".format(node_index), label_inactive_color)
+                        self.out.append('      {:s}: (none)'.format(tag))
                     else:
                         for node_page in slabs_list['slabs_free']:
                             self.dump_page(node_page, kmem_cache, tag="node[{:d}].slabs_free".format(node_index))
