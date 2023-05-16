@@ -44837,7 +44837,7 @@ class SlubDumpCommand(GenericCommand):
     _example_ += " ...<->| list_head   |<->| list_head   |<-------->| list_head   |<->| list_head   |<-> ...\n"
     _example_ += "       +-------------+   | random      |   | |    | random      |   | random      |\n"
     _example_ += "                         | node[]      |-------+  | node[]      |   | node[]      |\n"
-    _example_ += "                         +-------------+   | | |  +------------^+   +-------------+\n"
+    _example_ += "                         +-------------+   | | |  +-------------+   +-------------+\n"
     _example_ += "    +-__per_cpu_offset-+                   | | |\n"
     _example_ += "    | cpu0_offset      |--+----------------+ | +------------------+\n"
     _example_ += "    | cpu1_offset      |  |                  |                   |\n"
@@ -45425,21 +45425,23 @@ class SlubDumpCommand(GenericCommand):
         return chunk
 
     def walk_freelist(self, chunk, kmem_cache):
+        corrupted_msg_color = get_gef_setting("theme.heap_corrupted_msg")
+
         freelist = [chunk]
         while chunk:
             try:
                 addr = chunk + kmem_cache['offset']
                 chunk = read_int_from_memory(addr) # get next chunk
             except Exception:
-                freelist.append("{:s}".format(Color.colorify("Corrupted (Memory access denied)", "bold yellow")))
+                freelist.append("{:s}".format(Color.colorify("Corrupted (Memory access denied)", corrupted_msg_color)))
                 break
             if self.kmem_cache_offset_random is not None: # fix if randomized
                 chunk = self.pointer_xor(addr, chunk, kmem_cache)
             if chunk % 8:
-                freelist.append("{:#x}: {:s}".format(chunk, Color.colorify("Corrupted (Not aligned)", "bold yellow")))
+                freelist.append("{:#x}: {:s}".format(chunk, Color.colorify("Corrupted (Not aligned)", corrupted_msg_color)))
                 break
             if chunk in freelist:
-                freelist.append("{:#x}: {:s}".format(chunk, Color.colorify("Corrupted (Loop detected)", "bold yellow")))
+                freelist.append("{:#x}: {:s}".format(chunk, Color.colorify("Corrupted (Loop detected)", corrupted_msg_color)))
                 break
             freelist.append(chunk)
         return freelist
@@ -45518,6 +45520,8 @@ class SlubDumpCommand(GenericCommand):
                         break
                     node_page_list = []
                     node_page_head = current_kmem_cache_node + self.kmem_cache_node_offset_partial
+                    if not is_valid_addr(node_page_head):
+                        break
                     current_node_page = read_int_from_memory(node_page_head)
                     while current_node_page != node_page_head:
                         node_page = {}
@@ -45544,11 +45548,17 @@ class SlubDumpCommand(GenericCommand):
         return parsed_caches
 
     def dump_page(self, page, kmem_cache, tag, freelist=None):
+        label_active_color = get_gef_setting("theme.heap_label_active")
+        label_inactive_color = get_gef_setting("theme.heap_label_inactive")
+        heap_page_color = get_gef_setting("theme.heap_page_address")
+        used_address_color = get_gef_setting("theme.heap_chunk_address_used")
+        freed_address_color = get_gef_setting("theme.heap_chunk_address_freed")
+
         # page address
         if tag == "active":
-            tag_s = Color.colorify("{:s} page".format(tag), "bold green")
+            tag_s = Color.colorify("{:s} page".format(tag), label_active_color)
         else:
-            tag_s = Color.colorify("{:s} page".format(tag), "bold red")
+            tag_s = Color.colorify("{:s} page".format(tag), label_inactive_color)
         self.out.append('      {:s}: {:#x}'.format(tag_s, page['address']))
 
         # fast return if invalid
@@ -45563,7 +45573,8 @@ class SlubDumpCommand(GenericCommand):
         if page['virt_addr'] is None:
             self.out.append('        virutal address: ???')
         else:
-            self.out.append('        virtual address: {:s}'.format(Color.boldify("{:#x}".format(page['virt_addr']))))
+            colored_virt_addr = Color.colorify("{:#x}".format(page['virt_addr']), heap_page_color)
+            self.out.append('        virtual address: {:s}'.format(colored_virt_addr))
 
         # print info
         self.out.append('        num pages: {:d}'.format(page['num_pages']))
@@ -45583,11 +45594,12 @@ class SlubDumpCommand(GenericCommand):
                 if chunk in freelist[:-1]:
                     next_chunk = freelist[freelist.index(chunk) + 1]
                     next_msg = "next: {:#x}".format(next_chunk)
-                    chunk_s = Color.colorify("{:#x}".format(chunk), "bold yellow")
+                    chunk_s = Color.colorify("{:#x}".format(chunk), freed_address_color)
                 else:
                     next_msg = "in-use"
-                    chunk_s = Color.grayify("{:#x}".format(chunk))
-                self.out.append("        {:7s}   {:#05x} {:s} ({:s})".format("layout" if idx == 0 else "", idx, chunk_s, next_msg))
+                    chunk_s = Color.colorify("{:#x}".format(chunk), used_address_color)
+                layout_msg = "layout:" if idx == 0 else ""
+                self.out.append("        {:7s}   {:#05x} {:s} ({:s})".format(layout_msg, idx, chunk_s, next_msg))
         else:
             self.out.append("        layout:   Failed to the get first page")
 
@@ -45595,36 +45607,42 @@ class SlubDumpCommand(GenericCommand):
         if freelist == [] or freelist == [0]:
             self.out.append('        freelist: (none)')
         else:
-            for idx, f in enumerate(freelist):
+            for idx, chunk_addr in enumerate(freelist):
                 if page['virt_addr'] is not None:
-                    if f == 0:
-                        chunk_idx = "{:5s}".format("----")
+                    if chunk_addr == 0:
+                        continue
                     else:
-                        chunk_idx = (f - page['virt_addr']) // kmem_cache['size']
+                        chunk_idx = (chunk_addr - page['virt_addr']) // kmem_cache['size']
                         chunk_idx = "{:#05x}".format(chunk_idx)
-                    if isinstance(f, str):
-                        msg = f
+                    if isinstance(chunk_addr, str):
+                        msg = chunk_addr
                     else:
-                        msg = Color.colorify("{:#x}".format(f), "bold yellow")
-                    self.out.append('        {:9s} {:5s} {:s}'.format("freelist:" if idx == 0 else "", chunk_idx, msg))
+                        msg = Color.colorify("{:#x}".format(chunk_addr), freed_address_color)
+                    freelist_msg = "freelist:" if idx == 0 else ""
+                    self.out.append('        {:9s} {:5s} {:s}'.format(freelist_msg, chunk_idx, msg))
                 else:
                     if isinstance(f, str):
-                        msg = f
+                        msg = chunk_addr
                     else:
-                        msg = Color.colorify("{:#x}".format(f), "bold yellow")
-                    self.out.append('        {:9s}       {:s}'.format("freelist:" if idx == 0 else "", msg))
+                        msg = Color.colorify("{:#x}".format(chunk_addr), freed_address_color)
+                    freelist_msg = "freelist:" if idx == 0 else ""
+                    self.out.append('        {:9s}       {:s}'.format(freelist_msg, msg))
         return
 
     def dump_caches(self, target_names, cpu, parsed_caches):
+        chunk_label_color = get_gef_setting("theme.heap_chunk_label")
+        chunk_size_color = get_gef_setting("theme.heap_chunk_size")
+        label_inactive_color = get_gef_setting("theme.heap_label_inactive")
+
         self.out.append('slab_caches @ {:#x}'.format(self.slab_caches))
         for kmem_cache in parsed_caches[1:]:
             if target_names != [] and kmem_cache['name'] not in target_names:
                 continue
             self.out.append("")
             self.out.append('  kmem_cache: {:#x}'.format(kmem_cache['address']))
-            self.out.append('    name: {:s}'.format(Color.boldify(kmem_cache['name'])))
+            self.out.append('    name: {:s}'.format(Color.colorify(kmem_cache['name'], chunk_label_color)))
             self.out.append('    flags: {:#x} ({:s})'.format(kmem_cache['flags'], kmem_cache['flags_str']))
-            object_size_s = Color.colorify("{:#x}".format(kmem_cache['object_size']), "bold magenta")
+            object_size_s = Color.colorify("{:#x}".format(kmem_cache['object_size']), chunk_size_color)
             self.out.append('    object size: {:s} (chunk size: {:#x})'.format(object_size_s, kmem_cache['size']))
             self.out.append('    offset (next pointer in chunk): {:#x}'.format(kmem_cache['offset']))
             if self.kmem_cache_offset_random is not None:
@@ -45656,7 +45674,8 @@ class SlubDumpCommand(GenericCommand):
                         self.dump_page(node_page, kmem_cache, tag="node[{:d}]".format(node_index))
                         printed_count += 1
                 if printed_count == 0:
-                    self.out.append("      {:s}: (none)".format(Color.colorify("node pages", "bold red")))
+                    tag = Color.colorify("node pages", label_inactive_color)
+                    self.out.append("      {:s}: (none)".format(tag))
 
             self.out.append('    next: {:#x}'.format(kmem_cache['next']))
         return
