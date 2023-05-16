@@ -24032,11 +24032,19 @@ class DestructorDumpCommand(GenericCommand):
 
         # init
         if is_x86_64():
-            self.tls = TlsCommand.getfs()
-            self.cookie = read_int_from_memory(self.tls + 0x30)
+            try:
+                self.tls = TlsCommand.getfs()
+                self.cookie = read_int_from_memory(self.tls + 0x30)
+            except gdb.MemoryError:
+                err("Not found tls")
+                return
         elif is_x86_32():
-            self.tls = TlsCommand.getgs()
-            self.cookie = read_int_from_memory(self.tls + 0x18)
+            try:
+                self.tls = TlsCommand.getgs()
+                self.cookie = read_int_from_memory(self.tls + 0x18)
+            except gdb.MemoryError:
+                err("Not found tls")
+                return
         elif is_arm32() or is_arm64():
             if is_arm32():
                 try:
