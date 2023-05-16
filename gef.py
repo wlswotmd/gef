@@ -46554,11 +46554,16 @@ class SlobDumpCommand(GenericCommand):
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('cache_name', metavar='SLOB_CACHE_NAME', nargs='*', help='filter by specific slob cache name.')
+    parser.add_argument('cache_name', metavar='SLOB_CACHE_NAME', nargs='*',
+                        help='filter by specific slob cache name (need -v option).')
     parser.add_argument('--list', action='store_true', help='list up all slob cache names.')
     parser.add_argument('--meta', action='store_true', help='display offset information.')
+    parser.add_argument('--large', action='store_true', help='display only free_slob_large.')
+    parser.add_argument('--medium', action='store_true', help='display only free_slob_medium.')
+    parser.add_argument('--small', action='store_true', help='display only free_slob_small.')
     parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
     parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
+    parser.add_argument('-v', '--verbose', action='store_true', help='enable verbose mode (print kmem_cache).')
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} kmalloc-256  # dump kmalloc-256 kmem_cache and all freelists\n".format(_cmdline_)
@@ -46572,7 +46577,7 @@ class SlobDumpCommand(GenericCommand):
     _example_ += "       +-slab_caches-+   | name        |   | name        |   | name        |\n"
     _example_ += " ...<->| list_head   |<->| list_head   |<->| list_head   |<->| list_head   |<-> ...\n"
     _example_ += "       +-------------+   +-------------+   +-------------+   +-------------+\n"
-    _example_ += "\n"
+    _example_ += "* slab_caches is not used when traversing the freelist\n"
     _example_ += "\n"
     _example_ += "   +-free_slob_large--+              +-page----------+           +-page----------+\n"
     _example_ += "   | list_head        |<---------+   |               |           |               |\n"
@@ -46850,50 +46855,76 @@ class SlobDumpCommand(GenericCommand):
             parsed_caches.append(kmem_cache)
 
         parsed_freelist = {}
-        parsed_freelist['large'] = self.walk_page_freelist(self.free_slob_large)
-        parsed_freelist['medium'] = self.walk_page_freelist(self.free_slob_medium)
-        parsed_freelist['small'] = self.walk_page_freelist(self.free_slob_small)
+        if (self.large, self.medium, self.small) == (None, None, None):
+            parsed_freelist['large'] = self.walk_page_freelist(self.free_slob_large)
+            parsed_freelist['medium'] = self.walk_page_freelist(self.free_slob_medium)
+            parsed_freelist['small'] = self.walk_page_freelist(self.free_slob_small)
+        else:
+            if self.large:
+                parsed_freelist['large'] = self.walk_page_freelist(self.free_slob_large)
+            if self.medium:
+                parsed_freelist['medium'] = self.walk_page_freelist(self.free_slob_medium)
+            if self.small:
+                parsed_freelist['small'] = self.walk_page_freelist(self.free_slob_small)
 
         return parsed_caches, parsed_freelist
 
     def dump_freelist(self, tag, page_freelist):
-        self.out.append(titlify(tag))
-        self.out.append('{:s} @ {:#x}'.format(tag, getattr(self, tag)))
+        chunk_size_color = get_gef_setting("theme.heap_chunk_size")
+        label_active_color = get_gef_setting("theme.heap_label_active")
+        heap_page_color = get_gef_setting("theme.heap_page_address")
+        freed_address_color = get_gef_setting("theme.heap_chunk_address_freed")
+
+        self.out.append(titlify('{:s} @ {:#x}'.format(tag, getattr(self, tag))))
 
         for page in page_freelist:
-            self.out.append("")
-            self.out.append('  page: {:#x}'.format(page['address']))
-            self.out.append('    virtual address: {:s}'.format(Color.boldify("{:#x}".format(page['virt_addr']))))
+            self.out.append('  {:s}: {:#x}'.format(Color.colorify("page", label_active_color), page['address']))
+            colored_virt_addr = Color.colorify("{:#x}".format(page['virt_addr']), heap_page_color)
+            self.out.append('    virtual address: {:s}'.format(colored_virt_addr))
             self.out.append('    num pages: {:d}'.format(page['num_pages']))
             self.out.append('    total units: {:#x}'.format(page['units']))
             for i, (chunk, units) in enumerate(page['freelist']):
-                msg = Color.colorify("{:#x}".format(chunk), "bold yellow")
-                msg_sz = Color.colorify("{:#x}".format(units * 2), "bold magenta")
+                msg = Color.colorify("{:#x}".format(chunk), freed_address_color)
+                msg_sz = Color.colorify("{:#x}".format(units * 2), chunk_size_color)
                 self.out.append('    {:9s} {:s} (units: {:#x}, size: {:s})'.format("freelist:" if i == 0 else "", msg, units, msg_sz))
             self.out.append('    next: {:#x}'.format(page['next']))
+            self.out.append("")
         return
 
     def dump_caches(self, target_names, parsed_caches, parsed_freelist):
-        self.out.append('slab_caches @ {:#x}'.format(self.slab_caches))
-        for kmem_cache in parsed_caches[1:]:
-            if target_names != [] and kmem_cache['name'] not in target_names:
-                continue
-            self.out.append("")
-            self.out.append('  kmem_cache: {:#x}'.format(kmem_cache['address']))
-            self.out.append('    name: {:s}'.format(Color.boldify(kmem_cache['name'])))
-            self.out.append('    flags: {:#x} ({:s})'.format(kmem_cache['flags'], kmem_cache['flags_str']))
-            object_size_s = Color.colorify("{:#x}".format(kmem_cache['object_size']), "bold magenta")
-            self.out.append('    object size: {:s} (chunk size: {:#x})'.format(object_size_s, kmem_cache['size']))
-            self.out.append('    next: {:#x}'.format(kmem_cache['next']))
+        chunk_label_color = get_gef_setting("theme.heap_chunk_label")
+        chunk_size_color = get_gef_setting("theme.heap_chunk_size")
 
-        self.dump_freelist("free_slob_large", parsed_freelist['large'])
-        self.dump_freelist("free_slob_medium", parsed_freelist['medium'])
-        self.dump_freelist("free_slob_small", parsed_freelist['small'])
+        if self.verbose:
+            self.out.append(titlify('{:s} @ {:#x}'.format("slab_caches", self.slab_caches)))
+            for kmem_cache in parsed_caches[1:]:
+                if target_names != [] and kmem_cache['name'] not in target_names:
+                    continue
+                self.out.append('  kmem_cache: {:#x}'.format(kmem_cache['address']))
+                colored_name = Color.colorify(kmem_cache['name'], chunk_label_color)
+                self.out.append('    name: {:s}'.format(colored_name))
+                self.out.append('    flags: {:#x} ({:s})'.format(kmem_cache['flags'], kmem_cache['flags_str']))
+                object_size_s = Color.colorify("{:#x}".format(kmem_cache['object_size']), chunk_size_color)
+                self.out.append('    object size: {:s} (chunk size: {:#x})'.format(object_size_s, kmem_cache['size']))
+                self.out.append('    next: {:#x}'.format(kmem_cache['next']))
+                self.out.append("")
+
+        if (self.large, self.medium, self.small) == (None, None, None):
+            self.dump_freelist("free_slob_large", parsed_freelist['large'])
+            self.dump_freelist("free_slob_medium", parsed_freelist['medium'])
+            self.dump_freelist("free_slob_small", parsed_freelist['small'])
+        else:
+            if self.large:
+                self.dump_freelist("free_slob_large", parsed_freelist['large'])
+            if self.medium:
+                self.dump_freelist("free_slob_medium", parsed_freelist['medium'])
+            if self.small:
+                self.dump_freelist("free_slob_small", parsed_freelist['small'])
         return
 
     def dump_names(self, parsed_caches):
         if not self.quiet:
-            fmt = "{:<30s}: {:<30s}: {:30s} {:20s}"
+            fmt = "{:30s}: {:30s}: {:30s} {:20s}"
             legend = ["Object Size", "Chunk Size", "Name", "kmem_cache"]
             self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
         for kmem_cache in sorted(parsed_caches[1:], key=lambda x: x['object_size']):
@@ -46932,6 +46963,10 @@ class SlobDumpCommand(GenericCommand):
         self.listup = args.list
         self.meta = args.meta
         self.quiet = args.quiet
+        self.verbose = args.verbose
+        self.large = args.large
+        self.medium = args.medium
+        self.small = args.small
 
         if not self.quiet:
             info("Wait for memory scan")
