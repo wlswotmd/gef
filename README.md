@@ -407,12 +407,8 @@ Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/errno.png)
 * `u2d`: shows cast/transformation u64 <-> double/float.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/u2d.png)
-* `pack`,`unpack`: shows transformation int <-> bytes/hex.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pack-unpack.png)
-* `tohex`,`unhex`: shows transformation hex <-> bytes.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/tohex-unhex.png)
-* `byteswap`: shows transformation little-endian <-> big-endian.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/byteswap.png)
+* `trans`: shows various transformation.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/trans.png)
 * `hash-memory`: calculates various hashes/CRCs.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hash-memory.png)
 * `memcmp`: compares the contents of address A and B, whether virtual or physical.
