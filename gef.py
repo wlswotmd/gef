@@ -20381,6 +20381,7 @@ class ContextCommand(GenericCommand):
             regs = set(current_arch.all_registers)
             printable_registers = " ".join(list(regs - ignored_registers))
             gdb.execute("registers {}".format(printable_registers))
+            self.context_extra_regs()
             return
 
         widest = x = current_arch.get_aliased_registers_name_max()
@@ -20417,6 +20418,59 @@ class ContextCommand(GenericCommand):
 
         if current_arch.flag_register:
             gef_print("Flags: {:s}".format(current_arch.flag_register_to_human()))
+
+        self.context_extra_regs()
+        return
+
+    def context_extra_regs(self):
+        if not is_x86():
+            return
+
+        insn = get_insn()
+        operands = ', '.join(insn.operands)
+        operands = re.sub(r"<.*?>", "", operands)
+        operands = re.sub(r"\[.*?\]", "", operands)
+
+        # sse register
+        r = re.findall(r"(xmm\d+)", operands)
+        if r:
+            ret = gdb.execute("xmm", to_string=True)
+            for reg in r:
+                for line in ret.splitlines():
+                    if ("$" + reg) in line.split(":")[0]:
+                        gef_print(line)
+                        break
+
+        # avx register
+        r = re.findall(r"(ymm\d+)", operands)
+        if r:
+            ret = gdb.execute("ymm", to_string=True)
+            for reg in r:
+                for line in ret.splitlines():
+                    if ("$" + reg) in line.split(":")[0]:
+                        gef_print(line)
+                        break
+
+        # mmx register
+        r = re.findall(r"([^xy]mm\d+)", operands)
+        if r:
+            ret = gdb.execute("mmx", to_string=True)
+            for reg in r:
+                for line in ret.splitlines():
+                    if ("$" + reg) in line.split(":")[0]:
+                        gef_print(line)
+                        break
+
+        # fpu register
+        if insn.mnemonic[0] == 'f':
+            r = re.findall(r"(st\(\d\))", operands)
+            if r:
+                ret = gdb.execute("fpu", to_string=True)
+                for reg in r:
+                    for line in ret.splitlines():
+                        if ("$" + re.sub(r"[()]", reg, "")) in line.split(":")[0]:
+                            gef_print(line)
+                            break
         return
 
     def context_stack(self):
@@ -37209,7 +37263,7 @@ class MmxCommand(GenericCommand):
             for j in range(8):
                 c = (regs[i] >> (8 * j)) & 0xff
                 reghex += chr(c) if 0x20 <= c < 0x7f else '.'
-            gef_print("{:s} : {:#018x}  |  {:s}".format(red(regname), regs[i], reghex))
+            gef_print("{:s} : {:#018x}  |  {:s}  |".format(red(regname), regs[i], reghex))
         return
 
     @parse_args
@@ -37302,7 +37356,7 @@ class SseCommand(GenericCommand):
                 c = (regs[i] >> (8 * j)) & 0xff
                 reghex += chr(c) if 0x20 <= c < 0x7f else '.'
             regname = "$xmm{:<2d}".format(i)
-            gef_print("{:s} : {:#034x}  |  {:s}".format(red(regname), regs[i], reghex))
+            gef_print("{:s} : {:#034x}  |  {:s}  |".format(red(regname), regs[i], reghex))
         return
 
     def print_sse_other(self):
@@ -37380,7 +37434,7 @@ class AvxCommand(GenericCommand):
                 for j in range(32):
                     c = (regs[i] >> (8 * j)) & 0xff
                     reghex += chr(c) if 0x20 <= c < 0x7f else '.'
-                gef_print("{:s} : {:#066x}  |  {:s}".format(red(regname), regs[i], reghex))
+                gef_print("{:s} : {:#066x}  |  {:s}  |".format(red(regname), regs[i], reghex))
         else:
             err("Not found avx registers")
         return
