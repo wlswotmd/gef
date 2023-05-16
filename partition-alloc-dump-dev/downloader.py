@@ -95,4 +95,4 @@ if __name__ == '__main__':
   print("  [term3 (for renderer process)]")
   print("""    gdb -q -p $(ps -ef | grep -- "--[t]ype=renderer" | awk '{print $2}')""")
   print("  [term3 (for browser process)]")
-  print("""    gdb -q -p $(ps -ef | grep ./chrome | grep -v type | awk '{print $2}')""")
+  print("""    gdb -q -p $(ps -ef | grep ./chrome | grep -v type | grep -v sudo | awk '{print $2}')""")

@@ -48186,7 +48186,8 @@ class PartitionAllocDumpCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('target_buffer_root', choices=['fast_malloc', 'array_buffer', 'buffer', 'fm', 'ab', 'b'],
-                        help='the target.buffer_root')
+                        help='the target buffer_root')
+    parser.add_argument('-n', '--no-pager', action='store_true', default=None, help='do not use less.')
     parser.add_argument('-v', dest='verbose', action='store_true', help='display also empty slots.')
     _syntax_ = parser.format_help()
 
@@ -48268,6 +48269,16 @@ class PartitionAllocDumpCommand(GenericCommand):
       4KB | Guard Page          |
           +---------------------+
     """
+
+    def warn(self, msg):
+        msg = "{} {}".format(Color.colorify("[+]", "bold yellow"), msg)
+        self.out.append(msg)
+        return
+
+    def err(self, msg):
+        msg = "{} {}".format(Color.colorify("[+]", "bold red"), msg)
+        self.out.append(msg)
+        return
 
     def get_roots_heuristic(self):
         """searches for fast_malloc_root, array_buffer_root_ and buffer_root_"""
@@ -48356,10 +48367,11 @@ class PartitionAllocDumpCommand(GenericCommand):
                 if read_memory(data[2], 64)[32:] != b"\0" * 32:
                     continue
                 # add candidate
+                Root = collections.namedtuple("Root", ["name", "address"])
                 root_candidate = [
-                    ["fast_malloc_root_", addr[0]],
-                    ["array_buffer_root_", addr[1]],
-                    ["buffer_root_", addr[2]],
+                    Root("fast_malloc_root_", addr[0]),
+                    Root("array_buffer_root_", addr[1]),
+                    Root("buffer_root_", addr[2]),
                 ]
                 roots.append(root_candidate)
 
@@ -48369,16 +48381,15 @@ class PartitionAllocDumpCommand(GenericCommand):
             return []
 
         elif len(roots) == 1:
-            root = roots[0]
-            for r in root:
-                info("found: {:s}: {:#x}".format(r[0], r[1]))
-            return roots[0] # [["fast_malloc_root_", addr], ["array_buffer_root_", addr], ["buffer_root_", addr]]
+            for r in roots[0]:
+                info("found: {:s}: {:#x}".format(r.name, r.address))
+            return roots[0]
 
         else:
             err("candidates for root are found in multiple places. try check code")
             for root in roots:
                 for r in root:
-                    gef_print("  candidate: {:20s} {:#x}".format(r[0], r[1]))
+                    gef_print("  candidate: {:20s} {:#x}".format(r.name, r.address))
                 gef_print()
             return []
 
@@ -48386,7 +48397,8 @@ class PartitionAllocDumpCommand(GenericCommand):
         def get_root(root_string):
             try:
                 root_addr = parse_address("&'WTF::Partitions::{:s}'".format(root_string))
-                return [[root_string, root_addr]]
+                Root = collections.namedtuple("Root", ["name", "address"])
+                return [Root(root_string, root_addr)]
             except Exception:
                 return []
 
@@ -48441,7 +48453,7 @@ class PartitionAllocDumpCommand(GenericCommand):
                 struct Flags {
                     QuarantineMode quarantine_mode; // uint8_t
                     ScanMode scan_mode;             // uint8_t
-                    BucketDistribution bucket_distribution = BucketDistribution::kCoarser; // uint8_t
+                    BucketDistribution bucket_distribution = BucketDistribution::kDefault; // uint8_t
                     bool with_thread_cache = false;
                     bool allow_aligned_alloc;
                     bool allow_cookie;
@@ -48449,7 +48461,9 @@ class PartitionAllocDumpCommand(GenericCommand):
                     bool brp_zapping_enabled_;
                     //bool mac11_malloc_size_hack_enabled_ = false;
                     bool use_configurable_pool;
-                    //int pkey;
+                    bool memory_tagging_enabled_;
+                    ThreadIsolationOption thread_isolation; // v115~
+                    //int pkey; // ~v114
                     //uint32_t extras_size;
                     //uint32_t extras_offset;
                 }
@@ -48485,8 +48499,6 @@ class PartitionAllocDumpCommand(GenericCommand):
             uintptr_t inverted_self = 0;
             std::atomic<int> thread_caches_being_constructed_{0};
             bool quarantine_always_for_testing = false;
-            //partition_alloc::PartitionTag current_partition_tag = 0; // if ARM MTE is enable
-            //uintptr_t next_tag_bitmap_page = 0; // if ARM MTE is enable
         }
         """
         x = u64(read_memory(current, 8))
@@ -48725,109 +48737,131 @@ class PartitionAllocDumpCommand(GenericCommand):
         slot_span = SlotSpan(*_slot_span.values())
         return slot_span, current
 
-    def print_root(self, root):
-        gef_print(titlify("*{} @ {:#x}".format(root.name, root.addr)))
-        gef_print("uint8_t one_cacheline[64]:                             ...")
-        gef_print("::partition_alloc::Lock lock_;                         {:#x}".format(root.lock_))
-        gef_print("Bucket buckets[{:3d}]:".format(len(root.buckets)))
+    def C(self, address):
+        management_color = get_gef_setting("theme.heap_management_address")
+        current = self.root.current_extent
+        while current:
+            extent, _ = self.read_extent(current)
+            if extent.super_page_base <= address < extent.super_page_end:
+                return Color.colorify("{:#x}".format(address), management_color)
+            current = extent.next
+        if is_valid_addr(address):
+            return str(lookup_address(address))
+        return "{:#x}".format(address)
+
+    def P(self, address):
+        page_address_color = get_gef_setting("theme.heap_page_address")
+        return Color.colorify("{:#x}".format(address), page_address_color)
+
+    def dump_root(self, root):
+        self.out.append(titlify("*{} @ {:#x}".format(root.name, root.addr)))
+        self.out.append("uint8_t one_cacheline[64]:                             ...")
+        self.out.append("::partition_alloc::Lock lock_;                         {:#x}".format(root.lock_))
+        self.out.append("Bucket buckets[{:3d}]:".format(len(root.buckets)))
         for idx, bucket in enumerate(root.buckets):
-            self.print_bucket(bucket, root, idx)
+            self.dump_bucket(bucket, root, idx)
         if self.verbose:
-            gef_print("Bucket sentinel_bucket:")
-            self.print_bucket(root.sentinel_bucket, root)
+            self.out.append("Bucket sentinel_bucket:")
+            self.dump_bucket(root.sentinel_bucket, root)
         else:
-            gef_print("Bucket sentinel_bucket:                                ...")
-        gef_print("bool initialized:                                      {:#x}".format(root.initialized))
-        gef_print("std::atomic<size_t> total_size_of_committed_pages:     {:#x}".format(root.total_size_of_committed_pages))
-        gef_print("std::atomic<size_t> max_size_of_committed_pages:       {:#x}".format(root.max_size_of_committed_pages))
-        gef_print("std::atomic<size_t> total_size_of_super_pages:         {:#x}".format(root.total_size_of_super_pages))
-        gef_print("std::atomic<size_t> total_size_of_direct_mapped_pages: {:#x}".format(root.total_size_of_direct_mapped_pages))
-        gef_print("size_t total_size_of_allocated_bytes:                  {:#x}".format(root.total_size_of_allocated_bytes))
-        gef_print("size_t max_size_of_allocated_bytes:                    {:#x}".format(root.max_size_of_allocated_bytes))
-        gef_print("std::atomic<uint64_t> syscall_count:                   {:#x}".format(root.syscall_count))
-        gef_print("std::atomic<uint64_t> syscall_total_time_ns:           {:#x}".format(root.syscall_total_time_ns))
-        gef_print("std::atomic<size_t> total_size_of_brp_quarantined_bytes:{:#x}".format(root.total_size_of_brp_quarantined_bytes))
-        gef_print("std::atomic<size_t> total_count_of_brp_quarantined_slots:{:#x}".format(root.total_count_of_brp_quarantined_slots))
-        gef_print("std::atomic<size_t> cumulative_size_of_brp_quarantined_bytes:{:#x}".format(root.cumulative_size_of_brp_quarantined_bytes))
-        gef_print("std::atomic<size_t> cumulative_count_of_brp_quarantined_slots:{:#x}".format(root.cumulative_count_of_brp_quarantined_slots))
-        gef_print("size_t empty_slot_spans_dirty_bytes:                   {:#x}".format(root.empty_slot_spans_dirty_bytes))
-        gef_print("int max_empty_slot_spans_dirty_bytes_shift:            {:#x}".format(root.max_empty_slot_spans_dirty_bytes_shift))
-        gef_print("uintptr_t next_super_page:                             {:#x}".format(root.next_super_page))
-        gef_print("uintptr_t next_partition_page:                         {:#x}".format(root.next_partition_page))
-        gef_print("uintptr_t next_partition_page_end:                     {:#x}".format(root.next_partition_page_end))
-        gef_print("SuperPageExtentEntry* current_extent:                  {:#x}".format(root.current_extent))
-        self.print_extent_list(root.current_extent)
-        gef_print("SuperPageExtentEntry* first_extent:                    {:#x}".format(root.first_extent))
-        self.print_extent_list(root.first_extent)
-        gef_print("DirectMapExtent* direct_map_list:                      {:#x}".format(root.direct_map_list))
-        self.print_direct_map_list(root.direct_map_list, root)
+            self.out.append("Bucket sentinel_bucket:                                ...")
+        self.out.append("bool initialized:                                      {:#x}".format(root.initialized))
+        self.out.append("std::atomic<size_t> total_size_of_committed_pages:     {:#x}".format(root.total_size_of_committed_pages))
+        self.out.append("std::atomic<size_t> max_size_of_committed_pages:       {:#x}".format(root.max_size_of_committed_pages))
+        self.out.append("std::atomic<size_t> total_size_of_super_pages:         {:#x}".format(root.total_size_of_super_pages))
+        self.out.append("std::atomic<size_t> total_size_of_direct_mapped_pages: {:#x}".format(root.total_size_of_direct_mapped_pages))
+        self.out.append("size_t total_size_of_allocated_bytes:                  {:#x}".format(root.total_size_of_allocated_bytes))
+        self.out.append("size_t max_size_of_allocated_bytes:                    {:#x}".format(root.max_size_of_allocated_bytes))
+        self.out.append("std::atomic<uint64_t> syscall_count:                   {:#x}".format(root.syscall_count))
+        self.out.append("std::atomic<uint64_t> syscall_total_time_ns:           {:#x}".format(root.syscall_total_time_ns))
+        self.out.append("std::atomic<size_t> total_size_of_brp_quarantined_bytes:{:#x}".format(root.total_size_of_brp_quarantined_bytes))
+        self.out.append("std::atomic<size_t> total_count_of_brp_quarantined_slots:{:#x}".format(root.total_count_of_brp_quarantined_slots))
+        self.out.append("std::atomic<size_t> cumulative_size_of_brp_quarantined_bytes:{:#x}".format(root.cumulative_size_of_brp_quarantined_bytes))
+        self.out.append("std::atomic<size_t> cumulative_count_of_brp_quarantined_slots:{:#x}".format(root.cumulative_count_of_brp_quarantined_slots))
+        self.out.append("size_t empty_slot_spans_dirty_bytes:                   {:#x}".format(root.empty_slot_spans_dirty_bytes))
+        self.out.append("int max_empty_slot_spans_dirty_bytes_shift:            {:#x}".format(root.max_empty_slot_spans_dirty_bytes_shift))
+        self.out.append("uintptr_t next_super_page:                             {:s}".format(self.P(root.next_super_page)))
+        self.out.append("uintptr_t next_partition_page:                         {:s}".format(self.P(root.next_partition_page)))
+        self.out.append("uintptr_t next_partition_page_end:                     {:s}".format(self.P(root.next_partition_page_end)))
+        self.out.append("SuperPageExtentEntry* current_extent:                  {:s}".format(self.C(root.current_extent)))
+        self.dump_extent_list(root.current_extent)
+        self.out.append("SuperPageExtentEntry* first_extent:                    {:s}".format(self.C(root.first_extent)))
+        self.dump_extent_list(root.first_extent)
+        self.out.append("DirectMapExtent* direct_map_list:                      {:s}".format(self.C(root.direct_map_list)))
+        self.dump_direct_map_list(root.direct_map_list, root)
         ring_len = len(root.global_empty_slot_span_ring)
         if self.verbose:
-            gef_print("SlotSpan* global_empty_slot_span_ring[{:2d}]:".format(ring_len))
+            self.out.append("SlotSpan* global_empty_slot_span_ring[{:3d}]:".format(ring_len))
             for i in range(len(root.global_empty_slot_span_ring)):
-                gef_print("    global_empty_slot_span_ring[{:2d}]:                       {:#x}".format(i, root.global_empty_slot_span_ring[i]))
+                colored_slot_span = self.C(root.global_empty_slot_span_ring[i])
+                self.out.append("    global_empty_slot_span_ring[{:3d}]:                       {:s}".format(i, colored_slot_span))
         else:
-            gef_print("SlotSpan* global_empty_slot_span_ring[{:2d}]:             ...".format(ring_len))
-        gef_print("int16_t global_empty_slot_span_ring_index:             {:#x}".format(root.global_empty_slot_span_ring_index))
-        gef_print("int16_t global_empty_slot_span_ring_size:              {:#x}".format(root.global_empty_slot_span_ring_size))
+            self.out.append("SlotSpan* global_empty_slot_span_ring[{:3d}]:             ...".format(ring_len))
+        self.out.append("int16_t global_empty_slot_span_ring_index:             {:#x}".format(root.global_empty_slot_span_ring_index))
+        self.out.append("int16_t global_empty_slot_span_ring_size:              {:#x}".format(root.global_empty_slot_span_ring_size))
         inv_inv = root.inverted_self ^ ((1 << (current_arch.ptrsize * 8)) - 1)
-        gef_print("uintptr_t inverted_self:                               {:#x} (=~{:#x})".format(root.inverted_self, inv_inv))
-        gef_print("std::atomic<int> thread_caches_being_constructed_:     {:#x}".format(root.thread_caches_being_constructed_))
-        gef_print("bool quarantine_always_for_testing:                    {:#x}".format(root.quarantine_always_for_testing))
+        inv_inv = str(lookup_address(inv_inv))
+        self.out.append("uintptr_t inverted_self:                               {:#x} (=~{:s})".format(root.inverted_self, inv_inv))
+        self.out.append("std::atomic<int> thread_caches_being_constructed_:     {:#x}".format(root.thread_caches_being_constructed_))
+        self.out.append("bool quarantine_always_for_testing:                    {:#x}".format(root.quarantine_always_for_testing))
         return
 
-    def print_extent_list(self, head):
+    def dump_extent_list(self, head):
         try:
             current = head
             while current:
                 extent, _ = self.read_extent(current)
-                gef_print("    -> extent @{:<#14x}".format(extent.addr))
-                gef_print("           root:{:<#14x} ".format(extent.root))
-                super_page_info = "{:<#14x} - {:<#14x}".format(extent.super_page_base, extent.super_page_end)
+                self.out.append("    -> extent @{:s}".format(self.C(extent.addr)))
+                self.out.append("           root:{:s} ".format(str(lookup_address(extent.root))))
+                super_page_info = "{:s} - {:s}".format(self.P(extent.super_page_base), self.P(extent.super_page_end))
                 page_info = "(total 0x200000(2MB) * {:d} pages)".format(extent.number_of_consecutive_super_pages)
-                gef_print("           super_page:{:s} {:s}".format(Color.colorify(super_page_info, "bold yellow"), page_info))
-                gef_print("           non_empty_slot_spans:{:d} ".format(extent.number_of_nonempty_slot_spans))
-                gef_print("           next:{:<#14x}".format(extent.next))
+                self.out.append("           super_page:{:s} {:s}".format(super_page_info, page_info))
+                self.out.append("           non_empty_slot_spans:{:d} ".format(extent.number_of_nonempty_slot_spans))
+                self.out.append("           next:{:s}".format(self.C(extent.next)))
                 current = extent.next
         except Exception:
-            err("Corrupted?")
+            self.err("Corrupted?")
         return
 
-    def print_direct_map_list(self, head, root):
+    def dump_direct_map_list(self, head, root):
         try:
             current = head
             while current:
                 direct_map, _ = self.read_direct_map(current)
-                gef_print("    -> direct_map @{:<#14x}: ".format(direct_map.addr))
-                gef_print("           next_extent:{:<#14x} ".format(direct_map.next_extent))
-                gef_print("           prev_extent:{:<#14x} ".format(direct_map.prev_extent))
-                gef_print("           bucket:{:<#14x} ".format(direct_map.bucket))
-                gef_print("           reservation_size:{:#x}".format(direct_map.reservation_size))
-                gef_print("           padding_for_alignment:{:#x}".format(direct_map.padding_for_alignment))
+                self.out.append("    -> direct_map @{:s}: ".format(self.C(direct_map.addr)))
+                self.out.append("           next_extent:{:s} ".format(self.C(direct_map.next_extent)))
+                self.out.append("           prev_extent:{:s} ".format(self.C(direct_map.prev_extent)))
+                self.out.append("           bucket:{:s} ".format(self.C(direct_map.bucket)))
+                self.out.append("           reservation_size:{:#x}".format(direct_map.reservation_size))
+                self.out.append("           padding_for_alignment:{:#x}".format(direct_map.padding_for_alignment))
                 bucket, _ = self.read_bucket(direct_map.bucket)
-                self.print_bucket(bucket, root)
+                self.dump_bucket(bucket, root)
                 current = direct_map.next_extent
         except Exception:
-            err("Corrupted?")
+            self.err("Corrupted?")
         return
 
-    def print_bucket(self, bucket, root, idx=None):
+    def dump_bucket(self, bucket, root, idx=None):
         sentinel1 = self.get_sentinel_slot_spans() # from symbol
         sentinel2 = [root.sentinel_bucket.active_slot_spans_head] # from heuristic search
-        sentinel = list(set(sentinel1 + sentinel2)) # uniq
+        sentinel_or_0 = set(sentinel1 + sentinel2 + [0x0]) # uniq
 
         if not self.verbose:
-            if bucket.active_slot_spans_head in sentinel + [0x0]:
+            if bucket.active_slot_spans_head in sentinel_or_0:
                 return # skip printing
 
-        slot_size = Color.colorify("{:#7x}".format(bucket.slot_size), "bold magenta")
+        chunk_size_color = get_gef_setting("theme.heap_chunk_size")
+        label_active_color = get_gef_setting("theme.heap_label_active")
+        label_inactive_color = get_gef_setting("theme.heap_label_inactive")
+
+        slot_size = Color.colorify("{:#7x}".format(bucket.slot_size), chunk_size_color)
         if idx is not None:
-            gef_print("    buckets[{:3d}](slot_size:{:s}) @{:<#14x}".format(idx, slot_size, bucket.addr))
+            self.out.append("    buckets[{:3d}](slot_size:{:s}) @{:s}".format(idx, slot_size, str(lookup_address(bucket.addr))))
         else:
-            gef_print("    bucket(slot_size:{:s}) @{:<#14x}".format(slot_size, bucket.addr))
-        gef_print("        num_system_pages_per_slot_span:{:<#4x} ".format(bucket.num_system_pages_per_slot_span))
-        gef_print("        num_full_slot_spans:{:<#4x} ".format(bucket.num_full_slot_spans))
-        gef_print("        slot_size_reciprocal:{:#x}".format(bucket.slot_size_reciprocal))
+            self.out.append("    bucket(slot_size:{:s}) @{:s}".format(slot_size, str(lookup_address(bucket.addr))))
+        self.out.append("        num_system_pages_per_slot_span:{:#x} ".format(bucket.num_system_pages_per_slot_span))
+        self.out.append("        num_full_slot_spans:{:#x} ".format(bucket.num_full_slot_spans))
+        self.out.append("        slot_size_reciprocal:{:#x}".format(bucket.slot_size_reciprocal))
 
         if self.verbose:
             target_list = ["active_slot_spans_head", "empty_slot_spans_head", "decommitted_slot_spans_head"]
@@ -48837,38 +48871,43 @@ class PartitionAllocDumpCommand(GenericCommand):
         for key in target_list:
             head = getattr(bucket, key)
             # sentinel can be ignored, so skip
-            if not self.verbose and (head in sentinel + [0x0]):
+            if not self.verbose and head in sentinel_or_0:
                 continue
-            if head in sentinel:
+            if head in sentinel_or_0:
                 # print sentinel (verbose)
-                gef_print("        {:s}:sentinel_pages".format(Color.colorify(key, "bold cyan underline")))
+                colored_key = Color.colorify(key, label_inactive_color)
+                self.out.append("        {:s}:sentinel_pages".format(colored_key))
             else:
                 # default
-                gef_print("        {:s}:{:<#14x}".format(Color.colorify(key, "bold cyan underline"), head))
-            self.print_slot_span(head, bucket)
+                colored_key = Color.colorify(key, label_active_color)
+                self.out.append("        {:s}:{:s}".format(colored_key, self.C(head)))
+            self.dump_slot_span(head, bucket)
         return
 
-    def print_slot_span(self, head, bucket):
+    def dump_slot_span(self, head, bucket):
         current = head
         while current:
             try:
                 slot_span, _ = self.read_slot_span(current)
             except Exception:
-                err("Corrupted?")
+                self.err("Corrupted?")
                 break
-            text_fmt = "            -> slot_span @{:<#14x} (#{:3d} of super_page @{:<#14x})"
-            gef_print(text_fmt.format(slot_span.addr, slot_span.partition_page_index, slot_span.super_page_addr))
-            gef_print("                   next_slot_span:{:<#14x} ".format(slot_span.next_slot_span))
-            page_start = slot_span.partition_page_start
-            page_end = slot_span.partition_page_start + bucket.num_system_pages_per_slot_span * gef_getpagesize()
-            gef_print("                   slot_span_area:{:#x}-{:#x} ".format(page_start, page_end))
-            gef_print("                   num_allocated_slots:{:#x}".format(slot_span.num_allocated_slots))
-            self.print_freelist(slot_span.freelist_head, bucket, slot_span)
+            fmt = "            -> slot_span @{:s} (#{:3d} of super_page @{:s})"
+            self.out.append(fmt.format(self.C(slot_span.addr), slot_span.partition_page_index, self.P(slot_span.super_page_addr)))
+            self.out.append("                   next_slot_span:{:s} ".format(self.C(slot_span.next_slot_span)))
+            colored_page_start = self.P(slot_span.partition_page_start)
+            colored_page_end = self.P(slot_span.partition_page_start + bucket.num_system_pages_per_slot_span * gef_getpagesize())
+            self.out.append("                   slot_span_area:{:s}-{:s} ".format(colored_page_start, colored_page_end))
+            self.out.append("                   num_allocated_slots:{:#x}".format(slot_span.num_allocated_slots))
+            self.dump_freelist(slot_span.freelist_head, bucket, slot_span)
             current = slot_span.next_slot_span
         return
 
-    def print_freelist(self, head, bucket, slot_span):
-        gef_print("                   freelist_head:{:<#14x} ".format(head))
+    def dump_freelist(self, head, bucket, slot_span):
+        corrupted_msg_color = get_gef_setting("theme.heap_corrupted_msg")
+        freed_address_color = get_gef_setting("theme.heap_chunk_address_freed")
+
+        self.out.append("                   freelist_head:{:s} ".format(self.C(head)))
 
         slot_size = bucket.slot_size
         page_start = slot_span.partition_page_start
@@ -48879,26 +48918,26 @@ class PartitionAllocDumpCommand(GenericCommand):
         chunk = head
         seen = []
         while chunk:
-            if cnt % 7 == 0:
+            if cnt % 6 == 0:
                 if cnt > 0:
                     text += "\n"
                 text += " " * 23
 
             if chunk in seen:
-                text += Color.colorify("-> {:<#14x} (loop) ".format(chunk), "bold red")
+                text += Color.colorify("-> {:#x} (loop) ".format(chunk), corrupted_msg_color)
                 break
 
             if not ((page_start <= chunk < page_end) and ((chunk - page_start) % slot_size == 0)):
-                text += Color.colorify("-> {:<#14x} (corrupted) ".format(chunk), "bold red")
+                text += Color.colorify("-> {:#x} (corrupted) ".format(chunk), corrupted_msg_color)
                 break
 
             try:
                 next_chunk = self.byteswap(read_int_from_memory(chunk))
             except Exception:
-                text += Color.colorify("-> {:<#14x} (corrupted) ".format(chunk), "bold red")
+                text += Color.colorify("-> {:#x} (corrupted) ".format(chunk), corrupted_msg_color)
                 break
 
-            text += "-> " + Color.colorify("{:<#14x} ".format(chunk), "bold yellow")
+            text += "-> " + Color.colorify("{:#x} ".format(chunk), freed_address_color)
             cnt += 1
             seen.append(chunk)
             chunk = next_chunk
@@ -48907,55 +48946,40 @@ class PartitionAllocDumpCommand(GenericCommand):
             text += "(num: {:#x})".format(cnt)
 
         if text:
-            gef_print(text)
+            self.out.append(text)
         return
 
+    @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
 
         if is_32bit():
             self.align_pad = None
+        self.verbose = args.verbose
 
-        if "-h" in argv:
-            self.usage()
-            return
-
-        self.verbose = False
-        if "-v" in argv:
-            self.verbose = True
-            argv.remove("-v")
-
-        if len(argv) != 1:
-            self.usage()
-            return
-
-        if argv[0] not in ["fast_malloc", "fm", "array_buffer", "ab", "buffer", "b", "all"]:
-            self.usage()
-            return
-        target = argv[0]
-
-        for name, addr in self.get_roots():
+        self.out = []
+        for r in self.get_roots():
             ok = False
-            if target == "all":
+            if args.target_buffer_root in ["fast_malloc", "fm"] and r.name == "fast_malloc_root_":
                 ok = True
-            elif target in ["fast_malloc", "fm"] and name == "fast_malloc_root_":
+            elif args.target_buffer_root in ["array_buffer", "ab"] and r.name == "array_buffer_root_":
                 ok = True
-            elif target in ["array_buffer", "ab"] and name == "array_buffer_root_":
-                ok = True
-            elif target in ["buffer", "b"] and name == "buffer_root_":
+            elif args.target_buffer_root in ["buffer", "b"] and r.name == "buffer_root_":
                 ok = True
 
             if ok:
                 try:
-                    root, _ = self.read_root(addr, name)
+                    root, _ = self.read_root(r.address, r.name)
                 except Exception:
-                    mem_value = read_int_from_memory(addr)
-                    err("Parse error {:s}: @ {:#x} -> {:#x}".format(name, addr, mem_value))
+                    mem_value = read_int_from_memory(r.address)
+                    err("Parse error {:s}: @ {:#x} -> {:#x}".format(r.name, r.address, mem_value))
                     continue
-                self.print_root(root)
+                self.root = root # for coloring
+                self.dump_root(root)
+        gef_print('\n'.join(self.out), less=not args.no_pager)
         return
 
 
