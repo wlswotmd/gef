@@ -10659,6 +10659,8 @@ class GefThemeCommand(GenericCommand):
         self.add_setting("heap_label_inactive", "bold red underline", "Color of the (inactive) label used heap")
         self.add_setting("heap_chunk_address_used", "bold gray", "Color of the chunk address used heap")
         self.add_setting("heap_chunk_address_freed", "bold yellow", "Color of the freed chunk address used heap")
+        self.add_setting("heap_chunk_used", "gray", "Color of the used chunk used heap")
+        self.add_setting("heap_chunk_freed", "yellow", "Color of the freed chunk used heap")
         self.add_setting("heap_chunk_size", "bold magenta", "Color of the size used heap")
         self.add_setting("heap_chunk_flag_prev_inuse", "bold red", "Color of the prev_in_use flag used heap")
         self.add_setting("heap_chunk_flag_non_main_arena", "bold yellow", "Color of the non_main_arena flag used heap")
@@ -50021,6 +50023,7 @@ class OpteeBgetDumpCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('malloc_ctx', metavar='OFFSET_malloc_ctx', type=parse_address,
                         help='The offset of `malloc_ctx` at OPTEE-TA.')
+    parser.add_argument('-n', '--no-pager', action='store_true', default=None, help='do not use less.')
     parser.add_argument('-v', dest='verbose', action='store_true', help='verbose output.')
     _syntax_ = parser.format_help()
 
@@ -50169,52 +50172,63 @@ class OpteeBgetDumpCommand(GenericCommand):
         MallocCtx = collections.namedtuple("MallocCtx", _malloc_ctx.keys())
         return MallocCtx(*_malloc_ctx.values())
 
-    def print_malloc_ctx(self, malloc_ctx):
-        gef_print(titlify("malloc_ctx @ {:#x}".format(malloc_ctx.addr)))
-        gef_print("prevfree: {:#x}".format(malloc_ctx.prevfree))
-        gef_print("bsize:    {:#x}".format(malloc_ctx.bsize))
-        gef_print("flink:    {:#x}".format(malloc_ctx.flink))
+    def dump_malloc_ctx(self, malloc_ctx):
+        freed_address_color = get_gef_setting("theme.heap_chunk_address_freed")
+        corrupted_msg_color = get_gef_setting("theme.heap_corrupted_msg")
+        chunk_size_color = get_gef_setting("theme.heap_chunk_size")
+
+        self.out.append(titlify("malloc_ctx @ {:#x}".format(malloc_ctx.addr)))
+        self.out.append("prevfree: {:#x}".format(malloc_ctx.prevfree))
+        self.out.append("bsize:    {:#x}".format(malloc_ctx.bsize))
+        self.out.append("flink:    {:#x}".format(malloc_ctx.flink))
         for chunk in malloc_ctx.flink_list:
             if isinstance(chunk, str):
-                gef_print("  -> {:s}".format(Color.colorify(chunk, "bold red")))
+                self.out.append("  -> {:s}".format(Color.colorify(chunk, corrupted_msg_color)))
             else:
-                chunk_addr = Color.colorify("{:#010x}".format(chunk.addr), "bold yellow")
-                fmt = "  -> {:s}: (prevfree:{:#x}  bsize:{:#010x}  flink:{:#010x}  blink:{:#010x}"
-                fmt += "  next_prevfree:{:#010x}  next_bsize:{:#010x}({:#010x}))"
-                gef_print(fmt.format(chunk_addr, chunk.prevfree, chunk.bsize, chunk.flink, chunk.blink,
+                chunk_addr = Color.colorify("{:#010x}".format(chunk.addr), freed_address_color)
+                colored_chunk_bsize = Color.colorify("{:#010x}".format(chunk.bsize), chunk_size_color)
+                fmt = "  -> {:s}: prevfree:{:#x}  bsize:{:s}  flink:{:#010x}  blink:{:#010x}"
+                fmt += "  next_prevfree:{:#010x}  next_bsize:{:#010x} (={:#010x})"
+                self.out.append(fmt.format(chunk_addr, chunk.prevfree, colored_chunk_bsize, chunk.flink, chunk.blink,
                                      chunk.next_prevfree, chunk.next_bsize, (-chunk.next_bsize) & 0xffffffff))
-        gef_print("blink:    {:#x}".format(malloc_ctx.blink))
+        self.out.append("blink:    {:#x}".format(malloc_ctx.blink))
         for chunk in malloc_ctx.blink_list:
             if isinstance(chunk, str):
-                gef_print("  -> {:s}".format(Color.colorify(chunk, "bold red")))
+                self.out.append("  -> {:s}".format(Color.colorify(chunk, corrupted_msg_color)))
             else:
-                chunk_addr = Color.colorify("{:#010x}".format(chunk.addr), "bold yellow")
-                fmt = "  -> {:s}: (prevfree:{:#x}  bsize:{:#010x}  flink:{:#010x}  blink:{:#010x}"
-                fmt += "  next_prevfree:{:#010x}  next_bsize:{:#010x}({:#010x}))"
-                gef_print(fmt.format(chunk_addr, chunk.prevfree, chunk.bsize, chunk.flink, chunk.blink,
+                chunk_addr = Color.colorify("{:#010x}".format(chunk.addr), freed_address_color)
+                colored_chunk_bsize = Color.colorify("{:#010x}".format(chunk.bsize), chunk_size_color)
+                fmt = "  -> {:s}: prevfree:{:#x}  bsize:{:s}  flink:{:#010x}  blink:{:#010x}"
+                fmt += "  next_prevfree:{:#010x}  next_bsize:{:#010x} (={:#010x})"
+                self.out.append(fmt.format(chunk_addr, chunk.prevfree, colored_chunk_bsize, chunk.flink, chunk.blink,
                                      chunk.next_prevfree, chunk.next_bsize, (-chunk.next_bsize) & 0xffffffff))
-        gef_print("pool:     {:#x}".format(malloc_ctx.pool))
-        gef_print("pool_len: {:#x}".format(malloc_ctx.pool_len))
+        self.out.append("pool:     {:#x}".format(malloc_ctx.pool))
+        self.out.append("pool_len: {:#x}".format(malloc_ctx.pool_len))
 
         for i in range(malloc_ctx.pool_len):
             pool = malloc_ctx.pool_list[i]
-            gef_print("  pool[{:d}]  buf:{:#x}  size:{:#x}".format(i, pool.buf, pool.len))
+            self.out.append("  pool[{:d}]  buf:{:#x}  size:{:#x}".format(i, pool.buf, pool.len))
         return
 
-    def print_chunk_list(self, malloc_ctx):
+    def dump_chunk_list(self, malloc_ctx):
+        freed_address_color = get_gef_setting("theme.heap_chunk_address_freed")
+        used_address_color = get_gef_setting("theme.heap_chunk_address_used")
+        corrupted_msg_color = get_gef_setting("theme.heap_corrupted_msg")
+        chunk_size_color = get_gef_setting("theme.heap_chunk_size")
+        chunk_used_color = get_gef_setting("theme.heap_chunk_used")
+        chunk_freed_color = get_gef_setting("theme.heap_chunk_freed")
+
         for i in range(malloc_ctx.pool_len):
             pool = malloc_ctx.pool_list[i]
             pool_start = pool.buf
             pool_end = pool.buf + pool.len
-            gef_print(titlify("pool[{:d}] @ {:#x} - {:#x}".format(i, pool_start, pool_end)))
+            self.out.append(titlify("pool[{:d}] @ {:#x} - {:#x}".format(i, pool_start, pool_end)))
 
             chunk = pool_start
-            used = Color.colorify("used", "green underline")
-            freed = Color.colorify("free", "bold grey")
             seen = []
             while chunk < pool_end:
                 if chunk in seen:
-                    gef_print(Color.colorify("loop detected", "bold red"))
+                    self.out.append(Color.colorify("loop detected", corrupted_msg_color))
                     break
                 seen.append(chunk)
                 try:
@@ -50223,20 +50237,25 @@ class OpteeBgetDumpCommand(GenericCommand):
                     flink = read_int_from_memory(chunk + current_arch.ptrsize * 2)
                     blink = read_int_from_memory(chunk + current_arch.ptrsize * 3)
                 except Exception:
-                    gef_print(Color.colorify("unaligned orrupted", "bold red"))
+                    self.out.append(Color.colorify("unaligned orrupted", corrupted_msg_color))
                     break
-                chunk_addr = Color.colorify("{:#010x}".format(chunk), "bold yellow")
                 bsize_inv = (-bsize) & 0xffffffff
                 if bsize_inv < 0x80000000: # used
-                    fmt = "{:s} {:s}: prevfree:{:#010x}  bsize:{:#010x}({:#010x})"
-                    gef_print(fmt.format(used, chunk_addr, prevfree, bsize, bsize_inv))
+                    fmt = "{:s} {:s}: prevfree:{:#010x}  bsize:{:#010x} ({:s})"
+                    used = Color.colorify("used", chunk_used_color)
+                    colored_chunk_addr = Color.colorify("{:#010x}".format(chunk), used_address_color)
+                    colored_bsize_inv = Color.colorify("{:#010x}".format(bsize_inv), chunk_size_color)
+                    self.out.append(fmt.format(used, colored_chunk_addr, prevfree, bsize, colored_bsize_inv))
                     chunk += bsize_inv
                 else: # freed
-                    fmt = "{:s} {:s}: prevfree:{:#010x}  bsize:{:#010x}              flink:{:#010x}  blink:{:#010x}"
-                    gef_print(fmt.format(freed, chunk_addr, prevfree, bsize, flink, blink))
+                    fmt = "{:s} {:s}: prevfree:{:#010x}  bsize:{:s}              flink:{:#010x}  blink:{:#010x}"
+                    freed = Color.colorify("free", chunk_freed_color)
+                    colored_chunk_addr = Color.colorify("{:#010x}".format(chunk), freed_address_color)
+                    colored_bsize = Color.colorify("{:#010x}".format(bsize), chunk_size_color)
+                    self.out.append(fmt.format(freed, colored_chunk_addr, prevfree, colored_bsize, flink, blink))
                     chunk += bsize
                 if chunk % 8:
-                    gef_print(Color.colorify("unaligned orrupted", "bold red"))
+                    self.out.append(Color.colorify("unaligned orrupted", corrupted_msg_color))
                     break
             return
 
@@ -50246,6 +50265,8 @@ class OpteeBgetDumpCommand(GenericCommand):
     @only_if_specific_arch(arch=("ARM32", "ARM64"))
     def do_invoke(self, args):
         self.dont_repeat()
+
+        self.out = []
 
         if args.verbose:
             info("offset of malloc_ctx: {:#x}".format(args.malloc_ctx))
@@ -50268,8 +50289,11 @@ class OpteeBgetDumpCommand(GenericCommand):
             err("parse failed")
             return
 
-        self.print_malloc_ctx(malloc_ctx)
-        self.print_chunk_list(malloc_ctx)
+        self.dump_malloc_ctx(malloc_ctx)
+        self.dump_chunk_list(malloc_ctx)
+
+        if self.out:
+            gef_print('\n'.join(self.out), less=not args.no_pager)
         return
 
 
