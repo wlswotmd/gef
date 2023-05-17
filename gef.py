@@ -3042,11 +3042,12 @@ def capstone_disassemble(location, nb_insn, **kwargs):
     skip = kwargs.get("skip", 0)
     arch_inst_length = current_arch.instruction_length or 1
     used_bytes = 0
-    code_remain = b""
+    code_remain = bytes.fromhex(kwargs.get("code", ""))
+    dont_read = "code" in kwargs
 
     # A loop to read the required memory until the specified length is reached
     while True:
-        if len(code_remain) < gef_getpagesize():
+        if not dont_read and len(code_remain) < gef_getpagesize():
             # not enough code to disassemble, so read the memory to pool
             try:
                 read_data = read_memory(read_addr, read_size)
@@ -49941,7 +49942,7 @@ class OpteeBgetDumpCommand(GenericCommand):
     _category_ = "08-c. Qemu-system Cooperation - TrustZone"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('malloc_ctx', metavar='OFFSET_malloc_ctx', type=parse_address,
+    parser.add_argument('-m', '--malloc_ctx', metavar='OFFSET_malloc_ctx', type=parse_address,
                         help='The offset of `malloc_ctx` at OPTEE-TA.')
     parser.add_argument('-n', '--no-pager', action='store_true', default=None, help='do not use less.')
     parser.add_argument('-v', dest='verbose', action='store_true', help='verbose output.')
@@ -49989,6 +49990,69 @@ class OpteeBgetDumpCommand(GenericCommand):
             if vstart <= addr < vend:
                 return True
         return False
+
+    def get_ta_rw_address(self, ta_loaded_rx_end):
+        if is_arm32():
+            res = get_maps_by_pagewalk("pagewalk -q -S -n")
+            res = sorted(set(res.splitlines()))
+        elif is_arm64():
+            res = get_maps_by_pagewalk("pagewalk 1 -q -n")
+            res = sorted(set(res.splitlines()))
+        for line in res:
+            if not re.search("[PE]L1/RW", line):
+                continue
+            vrange, prange, *_ = line.split()
+            vstart, vend = [int(x, 16) for x in vrange.split("-")]
+            pstart, pend = [int(x, 16) for x in prange.split("-")]
+            if vstart == ta_loaded_rx_end:
+                return (vstart, vend, pstart, pend)
+        return None
+
+    def get_malloc_ctx(self, ta_rw_address_map):
+        vstart = ta_rw_address_map[0]
+        vend = ta_rw_address_map[1]
+        data = read_memory(vstart, vend - vstart)
+        data = slice_unpack(data, current_arch.ptrsize)
+
+        candidate = []
+        for i in range(len(data) - 3):
+            if data[i] != 0 or data[i + 1] != 0: # should be 0
+                continue
+            if not is_valid_addr(data[i + 2]) or not is_valid_addr(data[i + 3]): # should be flink, blink
+                continue
+
+            addr = vstart + current_arch.ptrsize * i
+
+            flink_blink = read_int_from_memory(data[i + 2] + current_arch.ptrsize * 3)
+            blink_flink = read_int_from_memory(data[i + 3] + current_arch.ptrsize * 2)
+            if flink_blink != addr or blink_flink != addr:
+                continue
+
+            link_list_count = 1
+            flink_cur = data[i + 2]
+            blink_cur = data[i + 3]
+            flink_seen = []
+            blink_seen = []
+            while True:
+                if flink_cur in flink_seen:
+                    break
+                if blink_cur in blink_seen:
+                    break
+                flink_seen.append(flink_cur)
+                blink_seen.append(blink_cur)
+                try:
+                    flink_cur = read_int_from_memory(flink_cur + current_arch.ptrsize * 2)
+                    blink_cur = read_int_from_memory(blink_cur + current_arch.ptrsize * 3)
+                except gdb.MemoryError:
+                    link_list_count = -1
+                    break
+                link_list_count += 1
+
+            candidate.append((link_list_count, addr))
+
+        if len(candidate) == 0:
+            return None
+        return sorted(candidate, reverse=True)[0][1] # maybe the longest flink is malloc_ctx
 
     def parse_flink(self, head):
         current = head
@@ -50188,9 +50252,6 @@ class OpteeBgetDumpCommand(GenericCommand):
 
         self.out = []
 
-        if args.verbose:
-            info("offset of malloc_ctx: {:#x}".format(args.malloc_ctx))
-
         ta_address_map = OpteeThreadEnterUserModeBreakpoint.get_ta_loaded_address()
         if ta_address_map is None:
             err("TA address is not found")
@@ -50198,9 +50259,24 @@ class OpteeBgetDumpCommand(GenericCommand):
 
         ta_address = ta_address_map[0]
         if args.verbose:
-            info("TA loaded address: {:#x}".format(ta_address))
+            info("TA loaded address (RX): {:#x} - {:#x}".format(ta_address_map[0], ta_address_map[1]))
 
-        malloc_ctx_addr = ta_address + args.malloc_ctx
+        if args.malloc_ctx is None:
+            ta_rw_address_map = self.get_ta_rw_address(ta_address_map[1])
+            if ta_rw_address_map is None:
+                err("TA rw address is not found")
+                return
+            if args.verbose:
+                info("TA loaded address (RW): {:#x} - {:#x}".format(ta_rw_address_map[0], ta_rw_address_map[1]))
+            malloc_ctx_addr = self.get_malloc_ctx(ta_rw_address_map)
+            if malloc_ctx_addr is None:
+                err("malloc_ctx is not found")
+                return
+        else:
+            if args.verbose:
+                info("offset of malloc_ctx: {:#x}".format(args.malloc_ctx))
+            malloc_ctx_addr = ta_address + args.malloc_ctx
+
         if args.verbose:
             info("malloc_ctx: {:#x}".format(malloc_ctx_addr))
 
