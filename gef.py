@@ -36896,6 +36896,11 @@ class KernelMagicCommand(GenericCommand):
                     sym = sym[0]
                     gef_print("{:42s}: {:>{:d}s}".format(sym, "Not found", width))
                     return
+
+        if not is_valid_addr(addr):
+            gef_print("{:42s}: {:>{:d}s}".format(sym, "Not found", width))
+            return
+
         perm = get_permission(addr, maps)
         if to_string:
             val = read_ascii_string(addr)
