@@ -151,6 +151,7 @@ Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
 ### Qemu-system cooperation - Linux specific
 * `ksymaddr-remote`: displays kallsyms information from scanning kernel memory (heuristic).
     * Original code: [kallsyms_finder.py](https://github.com/marin-m/vmlinux-to-elf/blob/master/vmlinux_to_elf/kallsyms_finder.py)
+    * Supported kernel v6.2.0~ (slightly changed structure in memory).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksymaddr-remote.png)
 * `ksymaddr-remote-apply`: applies kallsyms information obtained by `ksymaddr-remote` to gdb.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksymaddr-remote-apply.png)
