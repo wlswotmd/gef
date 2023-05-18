@@ -2652,11 +2652,22 @@ def hexdump(source, length=0x10, separator=".", show_raw=False, show_symbol=True
     @param base is the start address of the block being hexdump
     @return a string with the hexdump"""
     result = []
-    align = get_memory_alignment() * 2 + 2 if is_alive() else 18
+
+    if is_alive():
+        align = get_memory_alignment() * 2 + 2
+    else:
+        align = 18
 
     for i in range(0, len(source), length):
         chunk = bytearray(source[i : i + length])
-        padlen = (0x10 - len(chunk)) * 3
+
+        if unit == 1:
+            padlen = (0x10 - len(chunk)) * 3
+        else:
+            padlen = (0x10 - len(chunk)) // unit * (unit * 2 + 3)
+            if len(chunk) % unit:
+                padlen += ((unit - len(chunk) % unit) * 2)
+
         hexa = [style_byte(b, color=not show_raw) for b in chunk]
         if unit > 1:
             hexa = ["0x" + "".join(x[::-1]) for x in slicer(hexa, unit)]
@@ -2667,14 +2678,16 @@ def hexdump(source, length=0x10, separator=".", show_raw=False, show_symbol=True
             continue
 
         text = "".join([chr(b) if 0x20 <= b < 0x7F else separator for b in chunk])
+        text_padlen = 0x10 - len(text)
+
         if show_symbol:
             sym = gdb_get_location_from_symbol(base + i)
             sym = "<{:s}+{:04x}>".format(*sym) if sym else ""
         else:
             sym = ""
 
-        fmt = "{addr:#0{aw}x} {sym}   {data}{pad}   {text}"
-        result.append(fmt.format(aw=align, addr=base + i, sym=sym, pad=" " * padlen, data=hexa, text=text))
+        fmt = "{addr:#0{aw}x}: {sym}   {data}{pad}    |  {text}{text_pad}  |"
+        result.append(fmt.format(aw=align, addr=base + i, sym=sym, pad=" " * padlen, data=hexa, text=text, text_pad=" " * text_padlen))
     return "\n".join(result)
 
 
@@ -21412,16 +21425,17 @@ class HexdumpCommand(GenericCommand):
     """Display the hexdump from the memory location specified."""
     _cmdline_ = "hexdump"
     _category_ = "03-b. Memory - View"
+    _aliases_ = ["xxd"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('format', choices=['byte', 'word', 'dword', 'qword'], help='dump mode.')
+    parser.add_argument('format', choices=['byte', 'word', 'dword', 'qword'], nargs='?', default='byte', help='dump mode.')
     parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
                         help='the memory address you want to dump. (default: current_arch.sp)')
     parser.add_argument('count', metavar='COUNT', nargs='?', type=lambda x: int(x, 0), default=0x100,
                         help='the count of displayed units. (default: %(default)s)')
     parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (only qemu-system).')
-    parser.add_argument('--reverse', action='store_true', help='display in reverse order line by line.')
-    parser.add_argument('--full', action='store_true', help='display the same line without omitting.')
+    parser.add_argument('-r', '--reverse', action='store_true', help='display in reverse order line by line.')
+    parser.add_argument('-f', '--full', action='store_true', help='display the same line without omitting.')
     parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
     _syntax_ = parser.format_help()
 
