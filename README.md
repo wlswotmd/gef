@@ -86,7 +86,7 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
     * Attach with `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:1234'`.
     * Or `gdb-multiarch -ex 'set architecture TARGET_ARCH' -ex 'target remote localhost:1234'`.
 * Supported architectures
-    * See [SUPPORTED_ARCH.md](https://github.com/bata24/gef/blob/dev/SUPPORTED_ARCH.md)
+    * See [QEMU_USER_SUPPORTED_ARCH.md](https://github.com/bata24/gef/blob/dev/QEMU_USER_SUPPORTED_ARCH.md)
 
 ### Other supported mode
 * Intel pin is supported.
