@@ -17846,7 +17846,13 @@ class KernelChecksecCommand(GenericCommand):
 
         # SLUB/SLAB/SLOB
         if gdb.execute("ksymaddr-remote --quiet --no-pager slub_", to_string=True):
-            allocator = "SLUB"
+            if kversion < "6.2":
+                allocator = "SLUB"
+            else:
+                if gdb.execute("ksymaddr-remote --quiet --no-pager deactivate_slab", to_string=True):
+                    allocator = "SLUB"
+                else:
+                    allocator = "SLUB_TINY"
         elif gdb.execute("ksymaddr-remote --quiet --no-pager cache_reap", to_string=True):
             allocator = "SLAB"
         elif gdb.execute("ksymaddr-remote --quiet --no-pager slob_", to_string=True):
@@ -45815,6 +45821,13 @@ class SlubDumpCommand(GenericCommand):
             if not self.quiet:
                 err("Unsupported SLAB, SLOB")
             return
+        kversion = KernelVersionCommand.kernel_version()
+        if kversion >= "6.2":
+            r = gdb.execute("ksymaddr-remote --quiet --no-pager deactivate_slab", to_string=True)
+            if not r:
+                if not self.quiet:
+                    err("Unsupported SLUB_TINY")
+                return
 
         self.maps = None
         self.out = []
