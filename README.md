@@ -171,6 +171,9 @@ Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
 * `slob-dump`: dumps slob free-list (heuristic).
     * Supported on x64 + SLOB + no-symbol + kASLR.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slob-dump.png)
+* `slub-tiny-dump`: dumps slub-tiny free-list (heuristic).
+    * Supported on x64/x86 + SLUB_TINY + no-symbol + kASLR.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slub-tiny-dump.png)
 * `kbase`: displays the kernel base address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kbase.png)
 * `kversion`: displays the debugged kernel version.
