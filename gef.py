@@ -44039,7 +44039,7 @@ class IdtInfoCommand(GenericCommand):
         12: "#SS: Stack Segment Fault",
         13: "#GP: General Protection Fault",
         14: "#PF: Page Fault",
-        15: "#SPRIOUS: Spurious Interrupt",
+        15: "#SPRIOUS: Sprious Interrupt",
         16: "#MF: x87 Floating-Point Exception",
         17: "#AC: Alignment Check",
         18: "#MC: Machine-Check",
