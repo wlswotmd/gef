@@ -8971,7 +8971,9 @@ def hook_stop_handler(event):
         # resolve codebase, libc
         if not is_qemu_system() and not is_kgdb():
             gdb.execute("codebase", to_string=True)
+            gdb.execute("heapbase", to_string=True)
             gdb.execute("libc", to_string=True)
+            gdb.execute("ld", to_string=True)
 
         # Message if file not loaded.
         if not is_qemu_system() and not is_kgdb():
@@ -36575,7 +36577,9 @@ class LibcCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        libc = get_section_base_address_by_list(("libc-2.", "libc.so.6"))
+        libc_targets = ("libc-2.", "libc.so.6", "libuClibc-")
+
+        libc = get_section_base_address_by_list(libc_targets)
         if libc is None:
             err("libc is not found")
             return
@@ -36584,7 +36588,7 @@ class LibcCommand(GenericCommand):
         gdb.execute(f"set $libc = {libc}")
         gef_print(f"$libc = {libc:#x}")
 
-        libc = process_lookup_path(("libc-2.", "libc.so.6"))
+        libc = process_lookup_path(libc_targets)
         libc_path = libc.path
 
         if is_container_attach():
@@ -36612,6 +36616,10 @@ class LibcCommand(GenericCommand):
         version = [line for line in strings_list if line.startswith("GNU C Library")]
         if version:
             gef_print("ver:\t{:s}".format(version[0]))
+        else:
+            version = [line for line in strings_list if line.startswith("uClibc-ng release")]
+            if version:
+                gef_print("ver:\t{:s}".format(version[0]))
         return
 
 
@@ -36630,7 +36638,9 @@ class LdCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        ld = get_section_base_address_by_list(("ld-2.", "ld-linux-"))
+        ld_targets = ("ld-2.", "ld-linux-", "ld64-uClibc-", "ld-uClibc-")
+
+        ld = get_section_base_address_by_list(ld_targets)
         if ld is None:
             gef_print("ld not found")
             return
@@ -36638,7 +36648,7 @@ class LdCommand(GenericCommand):
         gdb.execute(f"set $ld = {ld}")
         gef_print(f"$ld = {ld:#x}")
 
-        ld = process_lookup_path(("ld-2.", "ld-linux-"))
+        ld = process_lookup_path(ld_targets)
         ld_path = ld.path
 
         if is_container_attach():
