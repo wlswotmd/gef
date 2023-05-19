@@ -15485,7 +15485,7 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
             if m or verbose:
                 size = get_binsize_table()["tcache"][i]["size"]
                 colored_bin_addr = str(lookup_address(arena.tcachebin_addr(i)))
-                ok("Tcachebins[idx={:d}, size={:#x}, @{:s}] count={:d}".format(i, size, colored_bin_addr, count))
+                gef_print("Tcachebins[idx={:d}, size={:#x}, @{:s}] count={:d}".format(i, size, colored_bin_addr, count))
                 if m:
                     gef_print("\n".join(m))
 
@@ -15591,7 +15591,7 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
                 if i in bin_table:
                     size = bin_table[i]["size"]
                     colored_bin_addr = str(lookup_address(arena.fastbin_addr(i)))
-                    ok("Fastbins[idx={:d}, size={:#x}, @{:s}] ".format(i, size, colored_bin_addr))
+                    gef_print("Fastbins[idx={:d}, size={:#x}, @{:s}] ".format(i, size, colored_bin_addr))
                     if m:
                         gef_print("\n".join(m))
 
@@ -50274,6 +50274,562 @@ class MuslHeapDumpCommand(GenericCommand):
         elif args.command == "unused":
             self.dump_meta(ctx)
 
+        gef_print('\n'.join(self.out), less=not args.no_pager)
+        return
+
+
+class uClibcChunk:
+    """uClibc chunk class."""
+    def __init__(self, addr, from_base=False):
+        self.ptrsize = current_arch.ptrsize
+        if from_base:
+            self.chunk_base_address = addr
+            self.address = addr + 2 * self.ptrsize
+        else:
+            self.chunk_base_address = int(addr - 2 * self.ptrsize)
+            self.address = addr
+
+        self.size_addr = int(self.address - self.ptrsize)
+        self.prev_size_addr = self.chunk_base_address
+        return
+
+    def get_chunk_size(self):
+        return read_int_from_memory(self.size_addr) & (~0x03)
+
+    @property
+    def size(self):
+        return self.get_chunk_size()
+
+    def get_usable_size(self):
+        cursz = self.get_chunk_size()
+        if cursz == 0:
+            return cursz
+        if self.has_m_bit():
+            return cursz - 2 * self.ptrsize
+        return cursz - self.ptrsize
+
+    @property
+    def usable_size(self):
+        return self.get_usable_size()
+
+    def get_prev_chunk_size(self):
+        return read_int_from_memory(self.prev_size_addr)
+
+    def get_next_chunk(self):
+        try:
+            addr = self.address + self.get_chunk_size()
+            return uClibcChunk(addr)
+        except gdb.MemoryError:
+            return None
+
+    # if free-ed functions
+    def get_fwd_ptr(self, sll):
+        try:
+            # Not a single-linked-list (sll) or no Safe-Linking support yet
+            if not sll:
+                return read_int_from_memory(self.address)
+            # Unmask ("reveal") the Safe-Linking pointer
+            else:
+                return read_int_from_memory(self.address) ^ (self.address >> 12)
+        except gdb.MemoryError:
+            return None
+
+    @property
+    def fwd(self):
+        return self.get_fwd_ptr(False)
+
+    fd = fwd # for compat
+
+    def get_bkw_ptr(self):
+        return read_int_from_memory(self.address + self.ptrsize)
+
+    @property
+    def bck(self):
+        return self.get_bkw_ptr()
+
+    bk = bck # for compat
+    # endif free-ed functions
+
+    def has_p_bit(self):
+        return read_int_from_memory(self.size_addr) & 0x01
+
+    def has_m_bit(self):
+        return read_int_from_memory(self.size_addr) & 0x02
+
+    def is_used(self):
+        """Check if the current block is used by:
+        - checking the M bit is true
+        - or checking that next chunk PREV_INUSE flag is true"""
+        if self.has_m_bit():
+            return True
+        next_chunk = self.get_next_chunk()
+        return True if next_chunk.has_p_bit() else False
+
+    def str_chunk_size_flag(self):
+        msg = []
+        if self.has_p_bit():
+            msg.append("  PREV_INUSE flag: {}".format(Color.greenify("On")))
+        else:
+            msg.append("  PREV_INUSE flag: {}".format(Color.redify("Off")))
+        if self.has_m_bit():
+            msg.append("  IS_MMAPPED flag: {}".format(Color.greenify("On")))
+        else:
+            msg.append("  IS_MMAPPED flag: {}".format(Color.redify("Off")))
+        return "\n".join(msg)
+
+    def _str_sizes(self):
+        msg = []
+        failed = False
+
+        try:
+            msg.append("  Chunk size: {0:d} ({0:#x})".format(self.get_chunk_size()))
+            msg.append("  Usable size: {0:d} ({0:#x})".format(self.get_usable_size()))
+            failed = True
+        except gdb.MemoryError:
+            msg.append("  Chunk size: Cannot read at {:#x} (corrupted?)".format(self.size_addr))
+
+        try:
+            msg.append("  Previous chunk size: {0:d} ({0:#x})".format(self.get_prev_chunk_size()))
+            failed = True
+        except gdb.MemoryError:
+            msg.append("  Previous chunk size: Cannot read at {:#x} (corrupted?)".format(self.chunk_base_address))
+
+        if failed:
+            msg.append(self.str_chunk_size_flag())
+
+        return "\n".join(msg)
+
+    def _str_pointers(self):
+        fwd = self.address
+        bkw = self.address + self.ptrsize
+
+        msg = []
+        try:
+            msg.append("  Forward pointer: {:#x}".format(self.get_fwd_ptr(False)))
+        except gdb.MemoryError:
+            msg.append("  Forward pointer: {:#x} (corrupted?)".format(fwd))
+
+        try:
+            msg.append("  Backward pointer: {:#x}".format(self.get_bkw_ptr()))
+        except gdb.MemoryError:
+            msg.append("  Backward pointer: {:#x} (corrupted?)".format(bkw))
+
+        return "\n".join(msg)
+
+    def str_as_alloced(self):
+        return self._str_sizes()
+
+    def str_as_freed(self):
+        return "{}\n\n{}".format(self._str_sizes(), self._str_pointers())
+
+    def flags_as_string(self):
+        flags = []
+        if self.has_p_bit():
+            flags.append(Color.colorify("PREV_INUSE", get_gef_setting("theme.heap_chunk_flag_prev_inuse")))
+        if self.has_m_bit():
+            flags.append(Color.colorify("IS_MMAPPED", get_gef_setting("theme.heap_chunk_flag_is_mmapped")))
+        return "|".join(flags)
+
+    def __str__(self):
+        chunk_c = Color.colorify("Chunk", get_gef_setting("theme.heap_chunk_label"))
+        size_c = Color.colorify("{:#x}".format(self.get_chunk_size()), get_gef_setting("theme.heap_chunk_size"))
+        addr_c = Color.colorify("{:#x}".format(self.chunk_base_address), get_gef_setting("theme.heap_chunk_address_freed"))
+        flags = self.flags_as_string()
+
+        fd = str(lookup_address(self.fd))
+        bk = str(lookup_address(self.bk))
+
+        fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={:s}, bk={:s})"
+        msg = fmt.format(chunk_c, addr_c, size_c, flags, fd, bk)
+        return msg
+
+    def psprint(self):
+        msg = []
+        msg.append(str(self))
+        if self.is_used():
+            msg.append(self.str_as_alloced())
+        else:
+            msg.append(self.str_as_freed())
+        return "\n".join(msg)
+
+
+@register_command
+class UclibcNgHeapDumpCommand(GenericCommand):
+    """uclibc-ng v1.0.42 (libc/stdlib/malloc-standard) heap reusable chunks viewer. (only x64)"""
+    _cmdline_ = "uclibc-ng-heap-dump"
+    _category_ = "06-b. Heap - Other"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-n', '--no-pager', action='store_true', default=None, help='do not use less.')
+    parser.add_argument('-v', dest='verbose', action='store_true', help='also dump an empty active index.')
+    _syntax_ = parser.format_help()
+
+    fast_size_table = [
+        # 64bit  32bit
+        ["none", 0x10],
+        ["none", 0x18],
+        [0x20,   0x20],
+        ["none", 0x28],
+        [0x30,   0x30],
+        ["none", 0x38],
+        [0x40,   0x40],
+        ["none", 0x48],
+        [0x50,   "none"],
+        ["none", "none"],
+        ["none", None],
+    ]
+
+    size_table = [
+        # 64bit                32bit
+        ["none     ",          "none"],
+        ["any      ",          "any"],
+        ["none     ",          (0x10, 0x18)],
+        ["none     ",          (0x18, 0x20)],
+        [(0x20, 0x30),         (0x20, 0x28)],
+        ["none     ",          (0x28, 0x30)],
+        [(0x30, 0x40),         (0x30, 0x38)],
+        ["none     ",          (0x38, 0x40)],
+        [(0x40, 0x50),         (0x40, 0x48)],
+        ["none     ",          (0x48, 0x50)],
+        [(0x50, 0x60),         (0x50, 0x58)],
+        ["none     ",          (0x58, 0x60)],
+        [(0x60, 0x70),         (0x60, 0x68)],
+        ["none     ",          (0x68, 0x70)],
+        [(0x70, 0x80),         (0x70, 0x78)],
+        ["none     ",          (0x78, 0x80)],
+        [(0x80, 0x90),         (0x80, 0x88)],
+        ["none     ",          (0x88, 0x90)],
+        [(0x90, 0xa0),         (0x90, 0x98)],
+        ["none     ",          (0x98, 0xa0)],
+        [(0xa0, 0xb0),         (0xa0, 0xa8)],
+        ["none     ",          (0xa8, 0xb0)],
+        [(0xb0, 0xc0),         (0xb0, 0xb8)],
+        ["none     ",          (0xb8, 0xc0)],
+        [(0xc0, 0xd0),         (0xc0, 0xc8)],
+        ["none     ",          (0xc8, 0xd0)],
+        [(0xd0, 0xe0),         (0xd0, 0xd8)],
+        ["none     ",          (0xd8, 0xe0)],
+        [(0xe0, 0xf0),         (0xe0, 0xe8)],
+        ["none     ",          (0xe8, 0xf0)],
+        [(0xf0, 0x100),        (0xf0, 0xf8)],
+        ["none      ",         (0xf8, 0x100)],
+        [(0x100, 0x140),       (0x100, 0x140)],
+        [(0x140, 0x180),       (0x140, 0x180)],
+        [(0x180, 0x1c0),       (0x180, 0x1c0)],
+        [(0x1c0, 0x200),       (0x1c0, 0x200)],
+        [(0x200, 0x280),       (0x200, 0x280)],
+        [(0x280, 0x300),       (0x280, 0x300)],
+        [(0x300, 0x380),       (0x300, 0x380)],
+        [(0x380, 0x400),       (0x380, 0x400)],
+        [(0x400, 0x500),       (0x400, 0x500)],
+        [(0x500, 0x600),       (0x500, 0x600)],
+        [(0x600, 0x700),       (0x600, 0x700)],
+        [(0x700, 0x800),       (0x700, 0x800)],
+        [(0x800, 0xa00),       (0x800, 0xa00)],
+        [(0xa00, 0xc00),       (0xa00, 0xc00)],
+        [(0xc00, 0xe00),       (0xc00, 0xe00)],
+        [(0xe00, 0x1000),      (0xe00, 0x1000)],
+        [(0x1000, 0x1400),     (0x1000, 0x1400)],
+        [(0x1400, 0x1800),     (0x1400, 0x1800)],
+        [(0x1800, 0x1c00),     (0x1800, 0x1c00)],
+        [(0x1c00, 0x2000),     (0x1c00, 0x2000)],
+        [(0x2000, 0x2800),     (0x2000, 0x2800)],
+        [(0x2800, 0x3000),     (0x2800, 0x3000)],
+        [(0x3000, 0x3800),     (0x3000, 0x3800)],
+        [(0x3800, 0x4000),     (0x3800, 0x4000)],
+        [(0x4000, 0x5000),     (0x4000, 0x5000)],
+        [(0x5000, 0x6000),     (0x5000, 0x6000)],
+        [(0x6000, 0x7000),     (0x6000, 0x7000)],
+        [(0x7000, 0x8000),     (0x7000, 0x8000)],
+        [(0x8000, 0xa000),     (0x8000, 0xa000)],
+        [(0xa000, 0xc000),     (0xa000, 0xc000)],
+        [(0xc000, 0xe000),     (0xc000, 0xe000)],
+        [(0xe000, 0x10000),    (0xe000, 0x10000)],
+        [(0x10000, 0x14000),   (0x10000, 0x14000)],
+        [(0x14000, 0x18000),   (0x14000, 0x18000)],
+        [(0x18000, 0x1c000),   (0x18000, 0x1c000)],
+        [(0x1c000, 0x20000),   (0x1c000, 0x20000)],
+        [(0x20000, 0x28000),   (0x20000, 0x28000)],
+        [(0x28000, 0x30000),   (0x28000, 0x30000)],
+        [(0x30000, 0x38000),   (0x30000, 0x38000)],
+        [(0x38000, 0x40000),   (0x38000, 0x40000)],
+        [(0x40000, 0x50000),   (0x40000, 0x50000)],
+        [(0x50000, 0x60000),   (0x50000, 0x60000)],
+        [(0x60000, 0x70000),   (0x60000, 0x70000)],
+        [(0x70000, 0x80000),   (0x70000, 0x80000)],
+        [(0x80000, 0xa0000),   (0x80000, 0xa0000)],
+        [(0xa0000, 0xc0000),   (0xa0000, 0xc0000)],
+        [(0xc0000, 0xe0000),   (0xc0000, 0xe0000)],
+        [(0xe0000, 0x100000),  (0xe0000, 0x100000)],
+        [(0x100000, 0x140000), (0x100000, 0x140000)],
+        [(0x140000, 0x180000), (0x140000, 0x180000)],
+        [(0x180000, 0x1c0000), (0x180000, 0x1c0000)],
+        [(0x1c0000, 0x200000), (0x1c0000, 0x200000)],
+        [(0x200000, 0x280000), (0x200000, 0x280000)],
+        [(0x280000, 0x300000), (0x280000, 0x300000)],
+        [(0x300000, 0x380000), (0x300000, 0x380000)],
+        [(0x380000, 0x400000), (0x380000, 0x400000)],
+        [(0x400000, 0x500000), (0x400000, 0x500000)],
+        [(0x500000, 0x600000), (0x500000, 0x600000)],
+        [(0x600000, 0x700000), (0x600000, 0x700000)],
+        [(0x700000, 0x800000), (0x700000, 0x800000)],
+        [(0x800000, 0xa00000), (0x800000, 0xa00000)],
+        [(0xa00000, 0xc00000), (0xa00000, 0xc00000)],
+        [(0xc00000, 0xe00000), (0xc00000, 0xe00000)],
+        [(0xe00000, 0x0),      (0xe00000, 0x0)],
+    ]
+
+    def verbose_print(self, msg):
+        if self.verbose:
+            self.out.append(msg)
+        return
+
+    def read_malloc_state(self):
+        """
+        struct malloc_state {
+          /* The maximum chunk size to be eligible for fastbin */
+          size_t  max_fast;   /* low 2 bits used as flags */
+
+          /* Fastbins */
+          mfastbinptr      fastbins[NFASTBINS];
+
+          /* Base of the topmost chunk -- not otherwise kept in a bin */
+          mchunkptr        top;
+
+          /* The remainder from the most recent split of a small request */
+          mchunkptr        last_remainder;
+
+          /* Normal bins packed as described above */
+          mchunkptr        bins[NBINS * 2];
+
+          /* Bitmap of bins. Trailing zero map handles cases of largest binned size */
+          unsigned int     binmap[BINMAPSIZE+1];
+
+          /* Tunable parameters */
+          unsigned long     trim_threshold;
+          size_t  top_pad;
+          size_t  mmap_threshold;
+
+          /* Memory map support */
+          int              n_mmaps;
+          int              n_mmaps_max;
+          int              max_n_mmaps;
+
+          /* Cache malloc_getpagesize */
+          unsigned int     pagesize;
+
+          /* Track properties of MORECORE */
+          unsigned int     morecore_properties;
+
+          /* Statistics */
+          size_t  mmapped_mem;
+          size_t  sbrked_mem;
+          size_t  max_sbrked_mem;
+          size_t  max_mmapped_mem;
+          size_t  max_total_mem;
+        };
+        """
+
+        _malloc_state = {}
+        _malloc_state["address"] = current = parse_address("&__malloc_state")
+        if current is None:
+            return None
+        _malloc_state["max_fast"] = max_fast = read_int_from_memory(current)
+        current += current_arch.ptrsize
+
+        _malloc_state["max_fast_flags"] = []
+        if max_fast & 1:
+            _malloc_state["max_fast_flags"] += ["ANYCHUNKS_BIT"]
+        if max_fast & 2:
+            _malloc_state["max_fast_flags"] += ["FASTCHUNKS_BIT"]
+
+        if is_64bit():
+            self.NFASTBINS = 11
+        else:
+            self.NFASTBINS = 10
+        _malloc_state["fastbins"] = []
+        for i in range(self.NFASTBINS):
+            n = read_int_from_memory(current)
+            size = self.fast_size_table[i][is_32bit()]
+            _malloc_state["fastbins"].append((current, n, size))
+            current += current_arch.ptrsize
+
+        _malloc_state["top"] = read_int_from_memory(current)
+        current += current_arch.ptrsize
+        _malloc_state["last_remainder"] = read_int_from_memory(current)
+        current += current_arch.ptrsize
+
+        self.NBINS = 96
+        self.NSMALLBINS = 32
+        self.NLARGEBINS = self.NBINS - self.NSMALLBINS
+
+        _malloc_state["smallbins"] = []
+        for i in range(self.NSMALLBINS):
+            n = read_int_from_memory(current)
+            p = read_int_from_memory(current + current_arch.ptrsize)
+            size = self.size_table[i][is_32bit()]
+            _malloc_state["smallbins"].append((current, n, p, size))
+            current += current_arch.ptrsize * 2
+
+        _malloc_state["largebins"] = []
+        for i in range(self.NLARGEBINS):
+            n = read_int_from_memory(current)
+            p = read_int_from_memory(current + current_arch.ptrsize)
+            size = self.size_table[i + self.NSMALLBINS][is_32bit()]
+            _malloc_state["largebins"].append((current, n, p, size))
+            current += current_arch.ptrsize * 2
+
+        self.BINMAPSIZE = 3
+        _malloc_state["binmap"] = []
+        for _ in range(self.BINMAPSIZE + 1):
+            x = u32(read_memory(current, 4))
+            _malloc_state["binmap"].append(x)
+            current += 4
+
+        _malloc_state["trim_threshold"] = read_int_from_memory(current)
+        current += current_arch.ptrsize
+        _malloc_state["top_pad"] = read_int_from_memory(current)
+        current += current_arch.ptrsize
+        _malloc_state["mmap_threshold"] = read_int_from_memory(current)
+        current += current_arch.ptrsize
+        _malloc_state["n_mmaps"] = u32(read_memory(current, 4))
+        current += 4
+        _malloc_state["n_mmaps_max"] = u32(read_memory(current, 4))
+        current += 4
+        _malloc_state["max_n_mmaps"] = u32(read_memory(current, 4))
+        current += 4
+        _malloc_state["pagesize"] = u32(read_memory(current, 4))
+        current += 4
+        _malloc_state["morecore_properties"] = morecore_properties = u32(read_memory(current, 4))
+        current += 4
+        _malloc_state["morecore_properties_flags"] = []
+        if morecore_properties & 1:
+            _malloc_state["morecore_properties_flags"] += ["MORECORE_CONTIGUOUS_BIT"]
+        current += 4 # pad
+        _malloc_state["mmaped_mem"] = read_int_from_memory(current)
+        current += current_arch.ptrsize
+        _malloc_state["sbrked_mem"] = read_int_from_memory(current)
+        current += current_arch.ptrsize
+        _malloc_state["max_sbrked_mem"] = read_int_from_memory(current)
+        current += current_arch.ptrsize
+        _malloc_state["max_mmaped_mem"] = read_int_from_memory(current)
+        current += current_arch.ptrsize
+        _malloc_state["max_total_mem"] = read_int_from_memory(current)
+        current += current_arch.ptrsize
+
+        MallocState = collections.namedtuple("MallocState", _malloc_state.keys())
+        return MallocState(*_malloc_state.values())
+
+    def dump_malloc_state(self, malloc_state):
+        chunk_size_color = get_gef_setting("theme.heap_chunk_size")
+
+        self.verbose_print("malloc_state: {:s}".format(str(lookup_address(malloc_state.address))))
+        max_fast_flags = '|'.join(malloc_state.max_fast_flags)
+        self.verbose_print("max_fast:            {:#x} ({:s})".format(malloc_state.max_fast, max_fast_flags))
+
+        self.out.append(titlify("fastbins"))
+        for i in range(self.NFASTBINS):
+            addr, n, size = malloc_state.fastbins[i]
+            if n != 0 or self.verbose:
+                if isinstance(size, int):
+                    colored_size = Color.colorify("{:#4x}".format(size), chunk_size_color)
+                else:
+                    colored_size = Color.colorify(size, chunk_size_color)
+                colored_addr = str(lookup_address(addr))
+                colored_n = str(lookup_address(n))
+                fmt = "fastbins[idx={:2d}, size={:s}, @{:s}]: fd={:s}"
+                self.out.append(fmt.format(i, colored_size, colored_addr, colored_n))
+
+            if n != 0:
+                seen = []
+                while is_valid_addr(n) and n not in seen:
+                    seen.append(n)
+                    chunk = uClibcChunk(n, from_base=True)
+                    self.out.append(" -> {}".format(chunk))
+                    n = chunk.get_fwd_ptr(True)
+
+        self.verbose_print("top:                 {:s}".format(str(lookup_address(malloc_state.top))))
+        self.verbose_print("last_remainder:      {:s}".format(str(lookup_address(malloc_state.last_remainder))))
+
+        self.out.append(titlify("smallbins / unsortedbin"))
+        for i in range(len(malloc_state.smallbins)):
+            addr, n, p, size = malloc_state.smallbins[i]
+            if (n and addr - current_arch.ptrsize * 2 != n) or self.verbose:
+                if isinstance(size, tuple):
+                    colored_size = Color.colorify("{:#x}-{:#x}".format(*size), chunk_size_color)
+                else:
+                    colored_size = Color.colorify(size, chunk_size_color)
+                if i == 1:
+                    fmt = "unsortedbin[idx={:2d}; size={:s}, @{:s}]: fd={:s}, bk={:s}"
+                else:
+                    fmt = "smallbins  [idx={:2d}; size={:s}, @{:s}]: fd={:s}, bk={:s}"
+                colored_addr = str(lookup_address(addr))
+                colored_n = str(lookup_address(n))
+                colored_p = str(lookup_address(p))
+                self.out.append(fmt.format(i, colored_size, colored_addr, colored_n, colored_p))
+
+            if n and addr - current_arch.ptrsize * 2 != n:
+                seen = [addr - current_arch.ptrsize * 2]
+                while is_valid_addr(n) and n not in seen:
+                    seen.append(n)
+                    chunk = uClibcChunk(n, from_base=True)
+                    self.out.append(" -> {}".format(chunk))
+                    n = chunk.fwd
+
+        self.out.append(titlify("largebins"))
+        for i in range(len(malloc_state.largebins)):
+            addr, n, p, size = malloc_state.largebins[i]
+            if addr - current_arch.ptrsize * 2 != n or self.verbose:
+                if isinstance(size, tuple):
+                    colored_size = Color.colorify("{:#x}-{:#x}".format(*size), chunk_size_color)
+                else:
+                    colored_size = Color.colorify(size, chunk_size_color)
+                fmt = "largebins  [idx={:2d}; size={:s}, @{:s}]: fd={:s}, bk={:s}"
+                colored_addr = str(lookup_address(addr))
+                colored_n = str(lookup_address(n))
+                colored_p = str(lookup_address(p))
+                self.out.append(fmt.format(i + 32, colored_size, colored_addr, colored_n, colored_p))
+
+            if addr - current_arch.ptrsize * 2 != n:
+                seen = [addr - current_arch.ptrsize * 2]
+                while is_valid_addr(n) and n not in seen:
+                    seen.append(n)
+                    chunk = uClibcChunk(n, from_base=True)
+                    self.out.append(" -> {}".format(chunk))
+                    n = chunk.fwd
+
+        for i in range(self.BINMAPSIZE + 1):
+            self.verbose_print("binmap[{:d}]:           {:#x}".format(i, malloc_state.binmap[i]))
+        self.verbose_print("trim_threshold:      {:#x}".format(malloc_state.trim_threshold))
+        self.verbose_print("top_pad:             {:#x}".format(malloc_state.top_pad))
+        self.verbose_print("mmap_threshold:      {:#x}".format(malloc_state.mmap_threshold))
+        self.verbose_print("n_mmaps:             {:#x}".format(malloc_state.n_mmaps))
+        self.verbose_print("n_mmaps_max:         {:#x}".format(malloc_state.n_mmaps_max))
+        self.verbose_print("max_n_mmaps:         {:#x}".format(malloc_state.max_n_mmaps))
+        self.verbose_print("pagesize:            {:#x}".format(malloc_state.pagesize))
+        mp_flags = '|'.join(malloc_state.morecore_properties_flags)
+        self.verbose_print("morecore_properties: {:#x} ({:s})".format(malloc_state.morecore_properties, mp_flags))
+        self.verbose_print("mmaped_mem:          {:#x}".format(malloc_state.mmaped_mem))
+        self.verbose_print("sbrked_mem:          {:#x}".format(malloc_state.sbrked_mem))
+        self.verbose_print("max_sbrked_mem:      {:#x}".format(malloc_state.max_sbrked_mem))
+        self.verbose_print("max_mmaped_mem:      {:#x}".format(malloc_state.max_mmaped_mem))
+        self.verbose_print("max_total_mem:       {:#x}".format(malloc_state.max_total_mem))
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_arch(arch=("x86_32", "x86_64"))
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        self.verbose = args.verbose
+        self.out = []
+
+        malloc_state = self.read_malloc_state()
+        if malloc_state is None:
+            err("malloc_state is not found")
+            return
+        self.dump_malloc_state(malloc_state)
         gef_print('\n'.join(self.out), less=not args.no_pager)
         return
 
