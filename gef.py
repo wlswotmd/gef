@@ -11669,7 +11669,7 @@ class FilenameCommand(GenericCommand):
 @register_command
 class ProcInfoCommand(GenericCommand):
     """Extends the info given by GDB `info proc`."""
-    _cmdline_ = "procinfo"
+    _cmdline_ = "proc-info"
     _category_ = "02-a. Process Information - General"
     _aliases_ = ["pr"]
 
@@ -57683,6 +57683,10 @@ class GefHelpCommand(gdb.Command):
     _syntax_ = _cmdline_
     _category_ = "99. GEF Maintenance Command"
 
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    _syntax_ = parser.format_help()
+
     def __init__(self, commands, *args, **kwargs):
         super().__init__(self._cmdline_, gdb.COMMAND_SUPPORT, gdb.COMPLETE_NONE, False)
         self.docs = []
@@ -57690,10 +57694,19 @@ class GefHelpCommand(gdb.Command):
         self.refresh()
         return
 
-    def invoke(self, args, from_tty):
+    def invoke(self, argv, from_tty):
+        try:
+            self.parser.exit = lambda *_: exec('raise(ArgparseExitProxyException())')
+            args = self.parser.parse_args(gdb.string_to_argv(argv))
+        except ArgparseExitProxyException:
+            return
+        except Exception:
+            err("Invalid argument")
+            return
+
         self.dont_repeat()
         msg = titlify("GEF - GDB Enhanced Features") + "\n" + self.__doc__
-        gef_print(msg, less=True)
+        gef_print(msg, less=not args.no_pager)
         return
 
     def generate_help(self, commands):

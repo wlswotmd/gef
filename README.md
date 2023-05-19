@@ -300,9 +300,9 @@ Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/telescope.png)
     * It supports blacklist address features (to avoid dying when touching the address mapped to the serial device).
     * It also shows the symbol if available.
-* `procinfo`: is improved.
+* `proc-info`: is improved.
     * It displays some additional informations.
-        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/procinfo.png)
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/proc-info.png)
 * `elf-info`: is improved.
     * It displays Program Header and Section Header.
     * It supports parsing from memory.
