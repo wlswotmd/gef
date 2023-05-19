@@ -57033,7 +57033,7 @@ class WalkLinkListCommand(GenericCommand):
             except Exception:
                 err("memory corrupted")
                 return
-            gef_print("[{:d}]   -> {:#x}".format(idx, flink))
+            gef_print("[{:d}]   -> {:s}".format(idx, str(lookup_address(flink))))
             if flink == 0:
                 break
             if flink == head:
