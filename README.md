@@ -255,9 +255,9 @@ Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
 * `tcmalloc-dump`: dumps tcmalloc free-list (heuristic).
     * Supported on only x64, based on gperftools-2.9.1 (named `libgoogle-perftools{4,-dev}`)
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/tcmalloc-dump.png)
-* `musl-dump`: dumps musl-libc unused chunks (heuristic).
+* `musl-heap-dump`: dumps musl-libc unused chunks (heuristic).
     * Supported on x64/x86, based on musl-libc v1.2.2.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/musl-dump.png)
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/musl-heap-dump.png)
 * `optee-bget-dump`: dumps bget allocator of OPTEE-Trusted-App.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/optee-bget-dump.png)
 

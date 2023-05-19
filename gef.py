@@ -49784,10 +49784,10 @@ class PartitionAllocDumpCommand(GenericCommand):
 
 
 @register_command
-class MuslDumpCommand(GenericCommand):
+class MuslHeapDumpCommand(GenericCommand):
     """musl v1.2.2 (src/malloc/mallocng) heap reusable chunks viewer. (only x64/x86)"""
     # See https://h-noson.hatenablog.jp/entry/2021/05/03/161933#-177pts-mooosl
-    _cmdline_ = "musl-dump"
+    _cmdline_ = "musl-heap-dump"
     _category_ = "06-b. Heap - Other"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
