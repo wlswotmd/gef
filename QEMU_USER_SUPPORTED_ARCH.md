@@ -1,5 +1,5 @@
 # Supported architectures
-I also list the tools I used.
+I also list the tools I used in my Ubuntu 22.04 environment.
 
 * x86
     * gcc: `gcc` via apt with `-m32` option.
