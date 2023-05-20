@@ -57144,7 +57144,7 @@ class ExecUntilCommand(GenericCommand):
     subparsers.add_parser('keyword')
     subparsers.add_parser('cond')
     subparsers.add_parser('user-code')
-    subparsers.add_parser('libc')
+    subparsers.add_parser('libc-code')
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} call                                # execute until call instruction\n".format(_cmdline_)
@@ -57157,7 +57157,7 @@ class ExecUntilCommand(GenericCommand):
     _example_ += '{:s} keyword "call +r[ab]x"              # execute until specified keyword (regex)\n'.format(_cmdline_)
     _example_ += '{:s} cond "$rax==0xdead && $rbx==0xcafe" # execute until specified condition is filled\n'.format(_cmdline_)
     _example_ += "{:s} user-code                           # execute until user code\n".format(_cmdline_)
-    _example_ += "{:s} libc                                # execute until libc".format(_cmdline_)
+    _example_ += "{:s} libc-code                           # execute until libc code".format(_cmdline_)
 
     def __init__(self, *args, **kwargs):
         prefix = kwargs.get("prefix", True)
@@ -57232,7 +57232,7 @@ class ExecUntilCommand(GenericCommand):
                     return True
             else:
                 return False
-        elif self.mode == "libc":
+        elif self.mode == "libc-code":
             for p in self.libc_addrs:
                 if p.page_start <= insn.address <= p.page_end:
                     return True
@@ -57620,6 +57620,9 @@ class ExecUntilUserCodeCommand(ExecUntilCommand):
                 filepath = filepath[7:]
 
         self.code_addrs = [p for p in get_process_maps() if p.permission.value & Permission.EXECUTE and p.path == filepath]
+        if not self.code_addrs:
+            err("Not found code address")
+            return
         self.exec_next()
         return
 
@@ -57627,9 +57630,9 @@ class ExecUntilUserCodeCommand(ExecUntilCommand):
 @register_command
 class ExecUntilLibcCodeCommand(ExecUntilCommand):
     """Execute until next libc instruction."""
-    _cmdline_ = "exec-until libc"
+    _cmdline_ = "exec-until libc-code"
     _category_ = "Debugging Support"
-    _aliases_ = ["next-libc"]
+    _aliases_ = ["next-libc-code"]
     _repeat_ = True
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -57640,7 +57643,7 @@ class ExecUntilLibcCodeCommand(ExecUntilCommand):
 
     def __init__(self):
         super().__init__(prefix=False)
-        self.mode = "libc"
+        self.mode = "libc-code"
         return
 
     @parse_args
@@ -57655,6 +57658,9 @@ class ExecUntilLibcCodeCommand(ExecUntilCommand):
         libc_targets = ("libc-2.", "libc.so.6", "libuClibc-")
         libc = process_lookup_path(libc_targets)
         self.libc_addrs = [p for p in get_process_maps() if p.permission.value & Permission.EXECUTE and p.path == libc.path]
+        if not self.libc_addrs:
+            err("Not found libc address")
+            return
         self.exec_next()
         return
 
