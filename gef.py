@@ -24337,7 +24337,7 @@ class GotCommand(GenericCommand):
             return ""
 
     def print_plt_got(self):
-        width = 10 if is_32bit() else 18
+        width = 10 if is_32bit() else 14
 
         # retrieve jump slots using readelf
         jmpslots = self.get_jmp_slots()
