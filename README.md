@@ -274,10 +274,12 @@ Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmmap-sde.png)
     * It is redirected to `pagewalk` when connecting to gdb stub of qemu-system.
 * Glibc heap commands are improved.
-    * Thread arena is supported for all `heap` commands.
-        * Use `-a` option.
+    * It changes the color.
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/heap-bins.png)
     * They print info if the chunk is in free-list.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/heap-if-in-freelist.png)
+    * Thread arena is supported for all `heap` commands.
+        * Use `-a` option.
     * `find-fake-fast`: searches for a memory with a size-like value that can be linked to the fastbin free-list.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/find-fake-fast.png)
     * `visual-heap`: is colorized heap viewer.

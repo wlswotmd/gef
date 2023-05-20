@@ -2384,7 +2384,7 @@ class GlibcChunk:
     def __str__(self):
         chunk_c = Color.colorify("Chunk", get_gef_setting("theme.heap_chunk_label"))
         size_c = Color.colorify("{:#x}".format(self.get_chunk_size()), get_gef_setting("theme.heap_chunk_size"))
-        addr = str(lookup_address(self.chunk_base_address))
+        addr_c = Color.colorify("{:#x}".format(self.chunk_base_address), get_gef_setting("theme.heap_chunk_address_freed"))
         flags = self.flags_as_string()
 
         fd = str(lookup_address(self.fd))
@@ -2394,10 +2394,10 @@ class GlibcChunk:
 
         if (is_32bit() and self.size < 0x3f0) or (is_64bit() and self.size < 0x400):
             fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={:s}, bk={:s})"
-            msg = fmt.format(chunk_c, addr, size_c, flags, fd, bk)
+            msg = fmt.format(chunk_c, addr_c, size_c, flags, fd, bk)
         else:
             fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={:s}, bk={:s}, fd_nextsize={:s}, bk_nextsize={:s})"
-            msg = fmt.format(chunk_c, addr, size_c, flags, fd, bk, fd_nextsize, bk_nextsize)
+            msg = fmt.format(chunk_c, addr_c, size_c, flags, fd, bk, fd_nextsize, bk_nextsize)
         return msg
 
     def psprint(self):
