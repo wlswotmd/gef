@@ -2651,14 +2651,28 @@ def hexdump(source, length=0x10, separator=".", show_raw=False, show_symbol=True
     @param show_raw if True, do not add the line nor the text translation
     @param base is the start address of the block being hexdump
     @return a string with the hexdump"""
-    result = []
 
     if is_alive():
         align = get_memory_alignment() * 2 + 2
     else:
         align = 18
 
+    tmp = []
+    max_sym_width = 0
     for i in range(0, len(source), length):
+        addr = base + i
+
+        if show_symbol:
+            sym = gdb_get_location_from_symbol(addr)
+            if sym:
+                sym = " <{:s}+{:#x}>".format(*sym)
+            else:
+                sym = ""
+        else:
+            sym = ""
+        if len(sym) > max_sym_width:
+            max_sym_width = len(sym)
+
         chunk = bytearray(source[i : i + length])
 
         if unit == 1:
@@ -2672,22 +2686,22 @@ def hexdump(source, length=0x10, separator=".", show_raw=False, show_symbol=True
         if unit > 1:
             hexa = ["0x" + "".join(x[::-1]) for x in slicer(hexa, unit)]
         hexa = " ".join(hexa)
+        padded_hexa = hexa + " " * padlen
 
-        if show_raw:
-            result.append(hexa)
-            continue
-
-        text = "".join([chr(b) if 0x20 <= b < 0x7F else separator for b in chunk])
+        text = "".join([chr(b) if 0x20 <= b < 0x7f else separator for b in chunk])
         text_padlen = 0x10 - len(text)
+        padded_text = text + " " * text_padlen
 
-        if show_symbol:
-            sym = gdb_get_location_from_symbol(base + i)
-            sym = "<{:s}+{:04x}>".format(*sym) if sym else ""
-        else:
-            sym = ""
+        tmp.append([addr, sym, hexa, padded_hexa, padded_text])
 
-        fmt = "{addr:#0{aw}x}: {sym}   {data}{pad}    |  {text}{text_pad}  |"
-        result.append(fmt.format(aw=align, addr=base + i, sym=sym, pad=" " * padlen, data=hexa, text=text, text_pad=" " * text_padlen))
+    result = []
+    if show_raw:
+        for _, _, hexa, _, _ in tmp:
+            result.append(hexa)
+    else:
+        for addr, sym, _, data, text in tmp:
+            fmt = "{addr:#0{aw}x}:{sym:{sym_width}}    {data}    |  {text}  |"
+            result.append(fmt.format(aw=align, addr=addr, sym=sym, sym_width=max_sym_width, data=data, text=text))
     return "\n".join(result)
 
 
@@ -21454,6 +21468,7 @@ class HexdumpCommand(GenericCommand):
     parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (only qemu-system).')
     parser.add_argument('-r', '--reverse', action='store_true', help='display in reverse order line by line.')
     parser.add_argument('-f', '--full', action='store_true', help='display the same line without omitting.')
+    parser.add_argument('-s', '--symbol', action='store_true', help='display the symbol.')
     parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
     _syntax_ = parser.format_help()
 
@@ -21472,7 +21487,7 @@ class HexdumpCommand(GenericCommand):
         else:
             read_from = current_arch.sp
 
-        lines = self._hexdump(read_from, args.count, unit, args.full)
+        lines = self._hexdump(read_from, args.count, unit, args.full, args.symbol)
 
         if args.reverse:
             lines.reverse()
@@ -21481,13 +21496,13 @@ class HexdumpCommand(GenericCommand):
             gef_print("\n".join(lines), less=not args.no_pager)
         return
 
-    def _hexdump(self, read_from, read_len, unit, full):
+    def _hexdump(self, read_from, read_len, unit, full, with_symbol):
         read_from += self.repeat_count * read_len
         mem = self._read_memory(read_from, read_len)
         if mem is None:
             err("cannot access memory")
             return []
-        lines_unmerged = hexdump(mem, show_symbol=False, base=read_from, unit=unit).splitlines()
+        lines_unmerged = hexdump(mem, show_symbol=with_symbol, base=read_from, unit=unit).splitlines()
 
         if full:
             return lines_unmerged
@@ -21499,7 +21514,10 @@ class HexdumpCommand(GenericCommand):
             if lines == []:
                 lines.append(line)
                 continue
-            if lines[-1].split("    ")[1] == line.split("    ")[1]:
+            if "    " not in lines[-1] or "    " not in line:
+                lines.append(line)
+                continue
+            if re.split("    +", lines[-1])[1] == re.split("    +", line)[1]:
                 if not keep_asterisk:
                     keep_asterisk = True
             else:
