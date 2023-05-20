@@ -151,7 +151,7 @@ Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
 ### Qemu-system cooperation - Linux specific
 * `ksymaddr-remote`: displays kallsyms information from scanning kernel memory (heuristic).
     * Original code: [kallsyms_finder.py](https://github.com/marin-m/vmlinux-to-elf/blob/master/vmlinux_to_elf/kallsyms_finder.py)
-    * Supported kernel v6.2.0~ (slightly changed structure in memory).
+    * Supported kernel versions are not only before v6.1, but also after v6.2 (slightly changed structure in memory).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksymaddr-remote.png)
 * `ksymaddr-remote-apply`: applies kallsyms information obtained by `ksymaddr-remote` to gdb.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksymaddr-remote-apply.png)
@@ -175,17 +175,14 @@ Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
     * Supported on x64/x86 + SLUB_TINY + no-symbol + kASLR.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slub-tiny-dump.png)
 * `kbase`: displays the kernel base address.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kbase.png)
 * `kversion`: displays the debugged kernel version.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kversion.png)
 * `kcmdline`: displays the debugged kernel startup cmdline.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kcmdline.png)
+* `kcurrent`: displays current task address.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kbase-kversion-kcmdline-kcurrent.png)
 * `ktask`: displays each task address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ktask.png)
     * It also displays the memory of the user-land process.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ktask-maps.png)
-* `kcurrent`: displays current task address.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kcurrent.png)
 * `kmod`: displays each module address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmod.png)
 * `kcdev`: displays each character device information.
@@ -287,12 +284,9 @@ Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
     * `extract-heap-addr`: analyzes tcache-protected-fd introduced from glibc-2.32.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/extract-heap-addr.png)
 * `registers`: is improved.
-    * It also shows raw values of `$eflags` and `$cpsr`.
-    * It displays current ring for x64/x86 when prints `$eflags` (Ring state is from `$cs`).
+    * It also shows raw values of flag register, current ring, exception level, secure state, etc.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/registers-x64.png)
-    * It displays current exception level for ARM64 when prints `$cpsr` (Secure state is from `$SCR_EL3`).
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/registers-arm64.png)
-    * It displays current mode for ARM when prints `$cpsr` (Secure state is from `$SCR`).
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/registers-arm.png)
 * `context`: is improved.
     * It supports automatic display of system call arguments when calling a system call.
@@ -356,17 +350,17 @@ Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
     * It supports physical memory if under qemu-system.
     * It will retry with adjusting read size when failed reading memory.
     * By default, the same line is omitted.
-        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hexdump.png)
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hexdump.png)
 * `patch`: is improved.
     * It supports physical memory if under qemu-system.
     * Added some new modes: `pattern`, `hexstring`, `history`, `revert`, `nop`, `inf`, `trap`, `ret`, and `syscall`.
-        * `nop` command has been integrated into `patch` command.
+    * `nop` command has been integrated into `patch` command.
 * `search-pattern`: is improved.
     * It supports when under qemu-system (in short, it works without `/proc/self/maps`)
     * It supports aligned search.
     * It supports hex string specification.
     * It also searches UTF-16 string if target string is ASCII.
-        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/search-pattern.png)
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/search-pattern.png)
 
 ### New features
 * `pid`: prints pid.
@@ -375,9 +369,8 @@ Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
     * Supported also under qemu-user (heuristic).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/auxv.png)
 * `argv`: pretty prints argv.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/argv.png)
 * `envp`: pretty prints envp.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/envp.png)
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/argv-envp.png)
 * `gdtinfo`: pretty prints GDT sample.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/gdtinfo.png)
 * `idtinfo`: pretty prints IDT sample.
@@ -473,7 +466,7 @@ Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/walk-link-list.png)
 * `ptr-mangle`: shows the mangled value will be mangled by `PTR_MANGLE`.
 * `ptr-demangle`: shows the demangled value of the value mangled by `PTR_MANGLE`.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ptr-demangle.png)
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ptr-mangle-demangle.png)
 * `search-mangled-ptr`: searches the mangled value from RW memory.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/search-mangled-ptr.png)
 * `capability`: shows the capabilities of the debugging process.
@@ -490,9 +483,8 @@ Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
 ### Other
 * The category is introduced in `gef help`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/gef-help.png)
-* Combined into one file (from gef-extra).
-    * The followings are moved from gef-extras.
-        * `peek-pointers`, `current-stack-frame`, `xref-telescope`, `bytearray`, and `bincompare`.
+* Combined into one file (from gef-extra). The followings are moved from gef-extras.
+    * `peek-pointers`, `current-stack-frame`, `xref-telescope`, `bytearray`, and `bincompare`.
     * This is because a single file is more attractive than ease of maintenance.
 * The system-call table used by `syscall-args` is moved from gef-extras.
     * It was updated up to linux kernel 6.3.3 for each architecture.
