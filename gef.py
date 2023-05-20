@@ -58469,7 +58469,12 @@ class WalkLinkListCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-o', dest='next_offset', type=parse_address, default=0,
                         help="offset of the next(or prev) poiter in the target structure.")
+    parser.add_argument('-A', dest='dump_bytes_after', type=parse_address, default=0,
+                        help="dump bytes after link-list location.")
+    parser.add_argument('-B', dest='dump_bytes_before', type=parse_address, default=0,
+                        help="dump bytes before link-list location.")
     parser.add_argument('address', metavar='ADDRESS', type=parse_address, help="start address you want to walk.")
+    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} 0xffff9c60800597e0      # walk list_head.next\n".format(_cmdline_)
@@ -58479,23 +58484,44 @@ class WalkLinkListCommand(GenericCommand):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         return
 
+    def info(self, msg):
+        msg = "{} {}".format(Color.colorify("[+]", "bold blue"), msg)
+        self.out.append(msg)
+        return
+
+    def err(self, msg):
+        msg = "{} {}".format(Color.colorify("[+]", "bold red"), msg)
+        self.out.append(msg)
+        return
+
     def walk_link_list(self, head, offset):
+        indent = " " * 12
         current = head
         seen = [current]
         idx = 1
         while True:
             try:
                 flink = read_int_from_memory(current + offset)
-            except Exception:
-                err("memory corrupted")
+            except gdb.MemoryError:
+                self.err("memory corrupted")
                 return
-            gef_print("[{:d}]   -> {:s}".format(idx, str(lookup_address(flink))))
+            if self.dump_bytes_before:
+                source = read_memory(current - self.dump_bytes_before, self.dump_bytes_before)
+                dump = hexdump(source, base=current - self.dump_bytes_before, unit=current_arch.ptrsize)
+                for line in dump.splitlines():
+                    self.out.append(indent + line)
+            if self.dump_bytes_after:
+                source = read_memory(current, self.dump_bytes_after)
+                dump = hexdump(source, base=current, unit=current_arch.ptrsize)
+                for line in dump.splitlines():
+                    self.out.append(indent + line)
+            self.out.append("[{:d}] -> {:s}".format(idx, str(lookup_address(flink))))
             if flink == 0:
                 break
             if flink == head:
                 break
             if flink in seen[1:]:
-                err("loop detected")
+                self.err("loop detected")
                 break
             seen.append(current)
             current = flink
@@ -58505,9 +58531,16 @@ class WalkLinkListCommand(GenericCommand):
     @parse_args
     def do_invoke(self, args):
         self.dont_repeat()
-        info("head address: {:#x}".format(args.address))
-        info("next pointer offset: {:#x}".format(args.next_offset))
+
+        self.dump_bytes_before = args.dump_bytes_before
+        self.dump_bytes_after = args.dump_bytes_after
+
+        self.out = []
+        self.info("head address: {:#x}".format(args.address))
+        self.info("next pointer offset: {:#x}".format(args.next_offset))
         self.walk_link_list(args.address, args.next_offset)
+
+        gef_print('\n'.join(self.out), less=not args.no_pager)
         return
 
 
