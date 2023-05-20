@@ -57115,6 +57115,7 @@ class ExecUntilCommand(GenericCommand):
     subparsers.add_parser('keyword')
     subparsers.add_parser('cond')
     subparsers.add_parser('user-code')
+    subparsers.add_parser('libc')
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} call                                # execute until call instruction\n".format(_cmdline_)
@@ -57126,7 +57127,8 @@ class ExecUntilCommand(GenericCommand):
     _example_ += "{:s} memaccess                           # execute until '[' is included by the instruction\n".format(_cmdline_)
     _example_ += '{:s} keyword "call +r[ab]x"              # execute until specified keyword (regex)\n'.format(_cmdline_)
     _example_ += '{:s} cond "$rax==0xdead && $rbx==0xcafe" # execute until specified condition is filled\n'.format(_cmdline_)
-    _example_ += "{:s} user-code                           # execute until user code".format(_cmdline_)
+    _example_ += "{:s} user-code                           # execute until user code\n".format(_cmdline_)
+    _example_ += "{:s} libc                                # execute until libc".format(_cmdline_)
 
     def __init__(self, *args, **kwargs):
         prefix = kwargs.get("prefix", True)
@@ -57197,6 +57199,12 @@ class ExecUntilCommand(GenericCommand):
                 return True
         elif self.mode == "user-code":
             for p in self.code_addrs:
+                if p.page_start <= insn.address <= p.page_end:
+                    return True
+            else:
+                return False
+        elif self.mode == "libc":
+            for p in self.libc_addrs:
                 if p.page_start <= insn.address <= p.page_end:
                     return True
             else:
@@ -57474,9 +57482,9 @@ class ExecUntilKeywordReCommand(ExecUntilCommand):
     parser.add_argument('keyword', metavar='KEYWORD', nargs='+', help='filter by specified regex keyword.')
     _syntax_ = parser.format_help()
 
-    _example_ = '{:s} "call +r[ab]x"                                      # execute until specified keyword\n'.format(_cmdline_)
-    _example_ += '{:s} "(push|pop) +(r[a-d]x|r[ds]i|r[sb]p|r[89]|r1[0-5])" # another exsample\n'.format(_cmdline_)
-    _example_ += '{:s} "mov +rax, QWORD PTR \\\\["                           # another exsample (need double escape if use)'.format(_cmdline_)
+    _example_ = '{:s} "call +r[ab]x"                        # execute until specified keyword\n'.format(_cmdline_)
+    _example_ += '{:s} "(push|pop) +(r[a-d]x|r[ds]i|r[sb]p)" # another exsample\n'.format(_cmdline_)
+    _example_ += '{:s} "mov +rax, QWORD PTR \\\\["             # another exsample (need double escape)'.format(_cmdline_)
 
     def __init__(self):
         super().__init__(prefix=False)
@@ -57507,9 +57515,9 @@ class ExecUntilCondCommand(ExecUntilCommand):
     parser.add_argument('condition', metavar='CONDITION', help='filter by codition.')
     _syntax_ = parser.format_help()
 
-    _example_ = '{:s} "$rax==0xdead && $rbx==0xcafe"     # execute until specified condition is filled\n'.format(_cmdline_)
-    _example_ += '{:s} "$rax==0x123 && *(long*)$rbx==0x4" # multiple condition and memory access is supported\n'.format(_cmdline_)
-    _example_ += '{:s} "$ALL_REG==0x1234"                 # compare with all registers. ex: `($rax==0x1234 || $rbx==0x1234 || ...)`\n'.format(_cmdline_)
+    _example_ = '{:s} "$rax==0xdead && $rbx==0xcafe"    # execute until specified condition is filled\n'.format(_cmdline_)
+    _example_ += '{:s} "$rax==0x12 && *(int*)$rbx==0x34" # multiple condition and memory access is supported\n'.format(_cmdline_)
+    _example_ += '{:s} "$ALL_REG==0x1234"                # compare with all regs. ex: `($rax==0x1234 || $rbx==0x1234 || ...)`\n'.format(_cmdline_)
 
     def __init__(self):
         super().__init__(prefix=False)
@@ -57583,6 +57591,41 @@ class ExecUntilUserCodeCommand(ExecUntilCommand):
                 filepath = filepath[7:]
 
         self.code_addrs = [p for p in get_process_maps() if p.permission.value & Permission.EXECUTE and p.path == filepath]
+        self.exec_next()
+        return
+
+
+@register_command
+class ExecUntilLibcCodeCommand(ExecUntilCommand):
+    """Execute until next libc instruction."""
+    _cmdline_ = "exec-until libc"
+    _category_ = "Debugging Support"
+    _aliases_ = ["next-libc"]
+    _repeat_ = True
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('--print-insn', action='store_true', help='print each instruction during execution.')
+    parser.add_argument('--skip-lib', action='store_true', help='uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.')
+    _syntax_ = parser.format_help()
+    _example_ = None
+
+    def __init__(self):
+        super().__init__(prefix=False)
+        self.mode = "libc"
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
+        if self.mode is None:
+            self.usage()
+            return
+        self.print_insn = args.print_insn
+        self.skip_lib = args.skip_lib
+
+        libc_targets = ("libc-2.", "libc.so.6", "libuClibc-")
+        libc = process_lookup_path(libc_targets)
+        self.libc_addrs = [p for p in get_process_maps() if p.permission.value & Permission.EXECUTE and p.path == libc.path]
         self.exec_next()
         return
 
