@@ -232,10 +232,10 @@ Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
 
 ### Qemu-user cooperation - General
 * `si`/`ni`: are the wrapper for native `si`/`ni`.
-    * On some architectures such as s390x, a `PC not saved` error may be output when executing `stepi`/`nexti`.
+    * On s390x architecture, a `PC not saved` error may be output when executing `stepi`/`nexti`.
     * But the execution itself is fine, so this command ignores this error and executes `context` normally.
-    * On openrisc architecture, branch operations don't work well, so use breakpoints to simulate.
-    * On cris architecture, `stepi`/`nexti` commands don't work well, so use breakpoints to simulate.
+    * On OpenRISC architecture, branch operations don't work well, so use breakpoints to simulate.
+    * On Cris architecture, `stepi`/`nexti` commands don't work well, so use breakpoints to simulate.
     * If you want to use native `si`/`ni`, use the full form `stepi`/`nexti`.
 * `c`: is the wrapper for native `c`.
     * When connecting to gdb stub of qemu-user or pin, gdb does not trap SIGINT during `continue`.

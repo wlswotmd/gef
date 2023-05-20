@@ -10994,7 +10994,7 @@ class HighlightRemoveCommand(GenericCommand):
 @register_command
 class NiCommand(GenericCommand):
     """`ni` wrapper for specific arch.
-    s390x: it sometimes returns `PC not saved` when nexti command is executed.
+    s390x: it sometimes returns `PC not saved` when nexti command is executed, so ignore.
     or1k: branch operations don't work well, so use breakpoints to simulate.
     cris: si/ni commands don't work well. so use breakpoints to simulate."""
     _cmdline_ = "ni"
@@ -11070,7 +11070,7 @@ class NiCommand(GenericCommand):
 @register_command
 class SiCommand(GenericCommand):
     """`si` wrapper for specific arch.
-    s390x: it sometimes returns `PC not saved` when stepi command is executed.
+    s390x: it sometimes returns `PC not saved` when stepi command is executed, so ignore.
     or1k: branch operations don't work well, so use breakpoints to simulate.
     cris: si/ni commands don't work well. so use breakpoints to simulate."""
     _cmdline_ = "si"
