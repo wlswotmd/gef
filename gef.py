@@ -53246,11 +53246,11 @@ def get_maps_arm64_optee_secure_memory(verbose=False):
         maps.append([va, va + size, pa, pa + size])
         old_i = i
     if verbose:
-        fmt = "{:33s}  {:33s}  {:12s}"
+        fmt = "{:37s}  {:37s}  {:12s}"
         legend = ["Virtual address start-end", "Physical address start-end", "Total size"]
         gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
         for va_start, va_end, pa_start, pa_end in maps:
-            fmt = "{:016x}-{:016x}  {:016x}-{:016x}  {:<#12x}"
+            fmt = "{:#018x}-{:#018x}  {:#018x}-{:#018x}  {:<#12x}"
             gef_print(fmt.format(va_start, va_end, pa_start, pa_end, va_end - va_start))
     return maps
 
@@ -53604,7 +53604,7 @@ class PagewalkCommand(GenericCommand):
         return sorted(filtered_mappings)
 
     def format_legend(self):
-        fmt = "{:33s}  {:33s}  {:12s} {:11s} {:6s} {:s}"
+        fmt = "{:37s}  {:37s}  {:12s} {:11s} {:6s} {:s}"
         legend = ["Virtual address start-end", "Physical address start-end", "Total size", "Page size", "Count", "Flags"]
         return fmt.format(*legend)
 
@@ -53616,10 +53616,10 @@ class PagewalkCommand(GenericCommand):
                 vend = vend[:pos[0]] + "*" + vend[pos[1]:]
             pend = pa + size * cnt
             if self.simple:
-                fmt = "{:16s}-{:16s}  {:33s}  {:<#12x} {:<11s} {:<6s} [{:s}]"
+                fmt = "0x{:16s}-0x{:16s}  {:37s}  {:<#12x} {:<11s} {:<6s} [{:s}]"
                 text = fmt.format(va, vend, "-", size, "-", "-", flags)
             else:
-                fmt = "{:16s}-{:16s}  {:016x}-{:016x}  {:<#12x} {:<#11x} {:<6d} [{:s}]"
+                fmt = "0x{:16s}-0x{:16s}  {:#018x}-{:#018x}  {:<#12x} {:<#11x} {:<6d} [{:s}]"
                 text = fmt.format(va, vend, pa, pend, size * cnt, size, cnt, flags)
         else:
             if isinstance(va, str):
@@ -53627,10 +53627,10 @@ class PagewalkCommand(GenericCommand):
             vend = va + size * cnt
             pend = pa + size * cnt
             if self.simple:
-                fmt = "{:016x}-{:016x}  {:33s}  {:<#12x} {:<11s} {:<6s} [{:s}]"
+                fmt = "{:#018x}-{:#018x}  {:37s}  {:<#12x} {:<11s} {:<6s} [{:s}]"
                 text = fmt.format(va, vend, "-", size, "-", "-", flags)
             else:
-                fmt = "{:016x}-{:016x}  {:016x}-{:016x}  {:<#12x} {:<#11x} {:<6d} [{:s}]"
+                fmt = "{:#018x}-{:#018x}  {:#018x}-{:#018x}  {:<#12x} {:<#11x} {:<6d} [{:s}]"
                 text = fmt.format(va, vend, pa, pend, size * cnt, size, cnt, flags)
         return text
 
