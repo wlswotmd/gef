@@ -36713,7 +36713,7 @@ class MagicCommand(GenericCommand):
         if not self.should_be_print(sym):
             return
 
-        width = 10 if is_32bit() else 18
+        width = 10 if is_32bit() else 14
         try:
             addr = int(gdb.parse_and_eval(f"&{sym}"))
             addr = lookup_address(addr)
@@ -36756,7 +36756,7 @@ class MagicCommand(GenericCommand):
 
         gef_print(titlify("Legend"))
         fmt = "{:42s}: {:{:d}s} {:5s} ({:{:d}s} + {:10s}) -> {:{:d}s}"
-        width = 10 if is_32bit() else 18
+        width = 10 if is_32bit() else 14
         legend = ["symbol", "addr", width, "perm", "base", width, "offset", "val", width]
         gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
