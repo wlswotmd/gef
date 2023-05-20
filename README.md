@@ -256,7 +256,7 @@ Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
     * Supported on x64/x86, based on musl-libc v1.2.2.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/musl-heap-dump.png)
 * `uclibc-ng-heap-dump`: dumps uClibc-ng heap chunks (heuristic).
-    * Supported on x64/x86, based on uClibc-ng v1.0.42.
+    * Supported on x64/x86, based on uClibc-ng v1.0.42 malloc-standard.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/uclibc-ng-heap-dump.png)
 * `optee-bget-dump`: dumps bget allocator of OPTEE-Trusted-App.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/optee-bget-dump.png)

@@ -50465,7 +50465,7 @@ class uClibcChunk:
 
 @register_command
 class UclibcNgHeapDumpCommand(GenericCommand):
-    """uclibc-ng v1.0.42 (libc/stdlib/malloc-standard) heap reusable chunks viewer. (only x64)"""
+    """uclibc-ng v1.0.42 (libc/stdlib/malloc-standard) heap reusable chunks viewer. (only x64/x86)"""
     _cmdline_ = "uclibc-ng-heap-dump"
     _category_ = "06-b. Heap - Other"
 
@@ -50715,7 +50715,8 @@ class UclibcNgHeapDumpCommand(GenericCommand):
         _malloc_state["morecore_properties_flags"] = []
         if morecore_properties & 1:
             _malloc_state["morecore_properties_flags"] += ["MORECORE_CONTIGUOUS_BIT"]
-        current += 4 # pad
+        if is_64bit():
+            current += 4 # pad
         _malloc_state["mmaped_mem"] = read_int_from_memory(current)
         current += current_arch.ptrsize
         _malloc_state["sbrked_mem"] = read_int_from_memory(current)
