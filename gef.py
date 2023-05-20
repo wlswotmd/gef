@@ -11381,7 +11381,7 @@ class CanaryCommand(GenericCommand):
 
         canary, location = res
         gef_print(titlify("canary value"))
-        info("Found AT_RANDOM at {:#x}, reading {} bytes".format(location, current_arch.ptrsize))
+        info("Found AT_RANDOM at {:s}, reading {} bytes".format(str(lookup_address(location)), current_arch.ptrsize))
         info("The canary is {:s}".format(Color.boldify("{:#x}".format(canary))))
 
         gef_print(titlify("found canary"))
@@ -11408,11 +11408,11 @@ class CanaryCommand(GenericCommand):
                 else:
                     path = m.path
                 if prev_addr <= sp <= addr:
-                    info("(Stack pointer is at {:#x})".format(sp))
+                    info("(Stack pointer is at {:s})".format(str(lookup_address(sp))))
                 if path == "[stack]":
-                    info("Found at {:#x} in {!r} (sp{:+#x})".format(addr, path, addr - sp))
+                    info("Found at {:s} in {!r} (sp{:+#x})".format(str(lookup_address(addr)), path, addr - sp))
                 else:
-                    info("Found at {:#x} in {!r}".format(addr, path))
+                    info("Found at {:s} in {!r}".format(str(lookup_address(addr)), path))
                 prev_addr = addr
         return
 
