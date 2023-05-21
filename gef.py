@@ -2652,10 +2652,7 @@ def hexdump(source, length=0x10, separator=".", show_raw=False, show_symbol=True
     @param base is the start address of the block being hexdump
     @return a string with the hexdump"""
 
-    if is_alive():
-        align = get_memory_alignment() * 2 + 2
-    else:
-        align = 18
+    align = get_format_address_width()
 
     tmp = []
     max_sym_width = 0
@@ -9605,6 +9602,17 @@ def is_in_kernel():
         return False
 
 
+def get_format_address_width(memalign_size=None):
+    if not is_alive():
+        return 18
+    if is_32bit() or memalign_size == 4:
+        return 10
+    if not is_in_kernel():
+        return 14
+    else:
+        return 18
+
+
 def format_address(addr, memalign_size=None):
     """Format the address according to its size."""
     # if qemu-xxx(32bit arch) runs on x86-64 machine, memalign_size does not match get_memory_alignment()
@@ -11491,7 +11499,8 @@ class ArgvCommand(GenericCommand):
     _category_ = "02-d. Process Information - Trivial Information"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-v', dest='verbose', action='store_true', help='print all elements. (default: outputs up to 100).')
+    parser.add_argument('-v', dest='verbose', action='store_true',
+                        help='print all elements. (default: outputs up to 100).')
     _syntax_ = parser.format_help()
 
     def get_address_from_symbol(self, symbol):
@@ -11510,9 +11519,12 @@ class ArgvCommand(GenericCommand):
             if not verbose and i > 99:
                 gef_print("...")
                 break
+
+            colored_pos = str(lookup_address(pos))
+            colored_addr = str(lookup_address(addr))
             s = read_cstring_from_memory(addr, gef_getpagesize())
             s = Color.yellowify(repr(s))
-            gef_print("[{:3d}]: {:#x}: {:#x}{:s}{:s}".format(i, pos, addr, RIGHT_ARROW, s))
+            gef_print("[{:3d}]: {:s}: {:s}{:s}{:s}".format(i, colored_pos, colored_addr, RIGHT_ARROW, s))
             i += 1
         return
 
@@ -11537,14 +11549,14 @@ class ArgvCommand(GenericCommand):
         addr1 = self.get_address_from_symbol("_dl_argv")
         if paddr1 and addr1:
             gef_print(titlify("ARGV from _dl_argv"))
-            info("_dl_argv @ {:#x}".format(paddr1))
+            info("_dl_argv @ {}".format(lookup_address(paddr1)))
             self.print_from_mem(addr1, args.verbose)
 
         paddr2 = self.get_address_from_symbol("&__libc_argv")
         addr2 = self.get_address_from_symbol("__libc_argv")
         if paddr2 and addr2:
             gef_print(titlify("ARGV from __libc_argv"))
-            info("__libc_argv @ {:#x}".format(paddr2))
+            info("__libc_argv @ {}".format(lookup_address(paddr2)))
             self.print_from_mem(addr2, args.verbose)
 
         if not is_remote_debug():
@@ -11582,9 +11594,12 @@ class EnvpCommand(GenericCommand):
             if not verbose and i > 99:
                 gef_print("...")
                 break
+
+            colored_pos = str(lookup_address(pos))
+            colored_addr = str(lookup_address(addr))
             s = read_cstring_from_memory(addr, gef_getpagesize())
             s = Color.yellowify(repr(s))
-            gef_print("[{:3d}]: {:#x}: {:#x}{:s}{:s}".format(i, pos, addr, RIGHT_ARROW, s))
+            gef_print("[{:3d}]: {:s}: {:s}{:s}{:s}".format(i, colored_pos, colored_addr, RIGHT_ARROW, s))
             i += 1
         return
 
@@ -11609,7 +11624,7 @@ class EnvpCommand(GenericCommand):
         paddr = self.get_address_from_symbol("&__environ")
         addr = self.get_address_from_symbol("__environ")
         if paddr and addr:
-            info("__environ @ {:#x}".format(paddr))
+            info("__environ @ {}".format(lookup_address(paddr)))
             self.print_from_mem(addr, args.verbose)
         elif addr == 0:
             err("___environ is 0x0")
@@ -11620,7 +11635,7 @@ class EnvpCommand(GenericCommand):
         paddr = self.get_address_from_symbol("&last_environ")
         addr = self.get_address_from_symbol("last_environ")
         if paddr and addr:
-            info("last_environ @ {:#x}".format(paddr))
+            info("last_environ @ {}".format(lookup_address(paddr)))
             self.print_from_mem(addr, args.verbose)
         elif addr == 0:
             err("last_environ is 0x0")
@@ -12961,7 +12976,8 @@ class SearchMangledPtrCommand(GenericCommand):
         decoded = Color.boldify("{:#x}".format(decoded))
 
         base_address_color = get_gef_setting("theme.dereference_base_address")
-        addr = Color.colorify("{:#0{:d}x}".format(addr, 10 if is_32bit() else 18), base_address_color)
+        width = get_format_address_width()
+        addr = Color.colorify("{:#0{:d}x}".format(addr, width), base_address_color)
 
         gef_print("  {:s}{:s}: {:#x} (={:s}{:s}) [{:s}]".format(addr, addr_sym, value, decoded, decoded_sym, valid_msg))
         return
@@ -22912,7 +22928,7 @@ class XFilesCommand(GenericCommand):
         self.dont_repeat()
 
         headers = ["Start", "End", "Name", "File"]
-        width = get_memory_alignment() * 2 + 2
+        width = get_format_address_width()
         legend = "{:{w:d}s} {:{w:d}s} {:<21s} {:s}".format(*headers, w=width)
         gef_print(Color.colorify(legend, get_gef_setting("theme.table_heading")))
 
@@ -23552,9 +23568,7 @@ class LinkMapCommand(GenericCommand):
         return
 
     def dump_link_map(self, link_map):
-        def C(x):
-            base_address_color = get_gef_setting("theme.dereference_base_address")
-            return Color.colorify("{:#0{:d}x}".format(x, 10 if is_32bit() else 18), base_address_color)
+        base_address_color = get_gef_setting("theme.dereference_base_address")
 
         if link_map is None:
             info("link_map is 0.")
@@ -23580,9 +23594,14 @@ class LinkMapCommand(GenericCommand):
             if not name:
                 name = "(binary itself)"
             gef_print(titlify(name))
-            gef_print("{:s}: {:s} {:s}  |  load_address, name".format(C(addr), str(l_addr), str(l_name)))
-            gef_print("{:s}: {:s} {:s}  |  dynamic, next".format(C(addr + current_arch.ptrsize * 2), str(l_ld), str(l_next)))
-            gef_print("{:s}: {:s} {:{:d}s}  |  prev".format(C(addr + current_arch.ptrsize * 4), str(l_prev), "", 10 if is_32bit() else 14))
+
+            width = get_format_address_width()
+            colored_addr = Color.colorify("{:#0{:d}x}".format(addr, width), base_address_color)
+            gef_print("{:s}: {:s} {:s}  |  load_address, name".format(colored_addr, str(l_addr), str(l_name)))
+            colored_addr = Color.colorify("{:#0{:d}x}".format(addr + current_arch.ptrsize * 2, width), base_address_color)
+            gef_print("{:s}: {:s} {:s}  |  dynamic, next".format(colored_addr, str(l_ld), str(l_next)))
+            colored_addr = Color.colorify("{:#0{:d}x}".format(addr + current_arch.ptrsize * 4, width), base_address_color)
+            gef_print("{:s}: {:s} {:{:d}s}  |  prev".format(colored_addr, str(l_prev), "", width))
 
             if l_next.value == 0:
                 break
@@ -23775,9 +23794,7 @@ class DynamicCommand(GenericCommand):
         return
 
     def dump_dynamic(self, dynamic):
-        def C(x):
-            base_address_color = get_gef_setting("theme.dereference_base_address")
-            return Color.colorify("{:#0{:d}x}".format(addr, 10 if is_32bit() else 18), base_address_color)
+        base_address_color = get_gef_setting("theme.dereference_base_address")
 
         if dynamic is None:
             info("_DYNAMIC is not found.")
@@ -23795,7 +23812,9 @@ class DynamicCommand(GenericCommand):
                 break
 
             val = lookup_address(val)
-            gef_print("{:s}: {:#0{:d}x} {:s}  |  tag:{:s}".format(C(addr), tag, 10 if is_32bit() else 18, str(val), self.DT_TABLE[tag]))
+            width = get_format_address_width()
+            colored_addr = Color.colorify("{:#0{:d}x}".format(addr, width), base_address_color)
+            gef_print("{:s}: {:#0{:d}x} {:s}  |  tag:{:s}".format(colored_addr, tag, width, str(val), self.DT_TABLE[tag]))
         return
 
     @staticmethod
@@ -23905,7 +23924,7 @@ class DestructorDumpCommand(GenericCommand):
 
     def C(self, addr):
         base_address_color = get_gef_setting("theme.dereference_base_address")
-        a = Color.colorify("{:#0{:d}x}".format(addr, 10 if is_32bit() else 18), base_address_color)
+        a = Color.colorify("{:#0{:d}x}".format(addr, get_format_address_width()), base_address_color)
         try:
             b = "[{:s}]".format(str(lookup_address(addr).section.permission))
             return a + b
@@ -24370,7 +24389,7 @@ class GotCommand(GenericCommand):
             return ""
 
     def print_plt_got(self):
-        width = 10 if is_32bit() else 14
+        width = get_format_address_width()
 
         # retrieve jump slots using readelf
         jmpslots = self.get_jmp_slots()
@@ -36736,7 +36755,7 @@ class MagicCommand(GenericCommand):
         if not self.should_be_print(sym):
             return
 
-        width = 10 if is_32bit() else 14
+        width = get_format_address_width()
         try:
             addr = int(gdb.parse_and_eval(f"&{sym}"))
             addr = lookup_address(addr)
@@ -36749,7 +36768,7 @@ class MagicCommand(GenericCommand):
                 val = lookup_address(read_int_from_memory(addr.value))
                 val_sym = get_symbol_string(val.value)
                 fmt = "{:42s}: {:s} [{:3s}] ({:#0{:d}x} + {:#010x}) -> {:s}{:s}"
-                gef_print(fmt.format(sym, str(addr), str(perm), base, width, addr.value - base, str(val), val_sym))
+                gef_print(fmt.format(sym, str(addr), str(perm), base, width, addr.value - base, val.long_fmt(), val_sym))
         except Exception:
             gef_print("{:42s}: {:>{:d}s}".format(sym, "Not found", width))
         return
@@ -36779,7 +36798,7 @@ class MagicCommand(GenericCommand):
 
         gef_print(titlify("Legend"))
         fmt = "{:42s}: {:{:d}s} {:5s} ({:{:d}s} + {:10s}) -> {:{:d}s}"
-        width = 10 if is_32bit() else 14
+        width = get_format_address_width()
         legend = ["symbol", "addr", width, "perm", "base", width, "offset", "val", width]
         gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
@@ -36938,7 +36957,7 @@ class KernelMagicCommand(GenericCommand):
         if not self.should_be_print(sym):
             return
 
-        width = current_arch.ptrsize * 2 + 2
+        width = get_format_address_width()
         if external_func:
             addr = external_func()
             if addr is None:
@@ -36989,7 +37008,7 @@ class KernelMagicCommand(GenericCommand):
 
         gef_print(titlify("Legend"))
         fmt = "{:42s}: {:{:d}s} {:5s} ({:{:d}s} + {:10s}) -> {:{:d}s}"
-        width = current_arch.ptrsize * 2 + 2
+        width = get_format_address_width()
         legend = ["symbol", "addr", width, "perm", "base", width, "offset", "val", width]
         gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
@@ -39754,9 +39773,9 @@ class KernelAddressHeuristicFinder:
     @staticmethod
     def get_clocksource_list():
         # plan 1 (directly)
-        #clocksource_list = get_ksymaddr("clocksource_list")
-        #if clocksource_list:
-        #    return clocksource_list
+        clocksource_list = get_ksymaddr("clocksource_list")
+        if clocksource_list:
+            return clocksource_list
 
         # plan 2 (available v2.6.21-rc1 or later)
         clocksource_enqueue = get_ksymaddr("clocksource_enqueue")
@@ -42702,7 +42721,7 @@ class KernelOperationsCommand(GenericCommand):
                 fmt = "{:5s} {:<10s} {:<20s} {:s}"
                 legend = ["Index", "Type", "Name", "Value"]
                 self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
-            width = current_arch.ptrsize * 2 + 2
+            width = get_format_address_width()
             for idx, ((type, name), address) in enumerate(zip(members, addrs)):
                 if type == "char*":
                     sym = " {!r}".format(read_cstring_from_memory(address))
@@ -43139,7 +43158,7 @@ class KernelClockSourceCommand(GenericCommand):
             info("offsetof(clocksource, list): {:#x}".format(offset_list))
 
         self.out = []
-        width = current_arch.ptrsize * 2 + 2
+        width = get_format_address_width()
         if not args.quiet:
             fmt = "{:<{:d}s} {:20s} {:<{:d}s}"
             legend = ["address", width, "name", "read", width]

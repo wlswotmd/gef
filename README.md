@@ -242,7 +242,7 @@ Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
 ### Heap dump features
 * `partition-alloc-dump`: dumps partition-alloc free-list (heuristic).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/partition-alloc-dump.png)
-    * This command is reserved for the implementation of latest stable version of chromium.
+    * This command is reserved for the implementation of latest version of chromium.
         * Currently tested: v115.x / 1141961 / 3fcee01d5055203d6904fa08e84788d16009dc35
         * https://commondatastorage.googleapis.com/chromium-browser-snapshots/index.html?prefix=Linux_x64/1141961/
     * Supported on only x64 (maybe it works on x86/ARM/ARM64, but not tested).
