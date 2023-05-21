@@ -57818,15 +57818,15 @@ class UefiOvmfInfoCommand(GenericCommand):
             msg = "Missing `crccheck` package for Python, install with: `pip install crccheck`."
             raise ImportWarning(msg) from err
 
-        size = u32(read_memory(addr + 0xc, 0x4))
+        size = u32(read_physmem(addr + 0xc, 0x4))
         if size <= 0 or size > 0x1000:
             return False
-        crc = u64(read_memory(addr + 0x10, 0x8))
+        crc = u64(read_physmem(addr + 0x10, 0x8))
         if crc == 0:
             return False
-        data = read_memory(addr, 0x10)
+        data = read_physmem(addr, 0x10)
         data += p64(0x0) # crc is zero when calculate
-        data += read_memory(addr + 0x18, size - 0x18)
+        data += read_physmem(addr + 0x18, size - 0x18)
         calculated_crc = crccheck.crc.Crc32().calc(data)
         return calculated_crc == crc
 
@@ -57835,21 +57835,32 @@ class UefiOvmfInfoCommand(GenericCommand):
         d["__addr"] = addr
         for size, name in structure:
             unpack = u32 if size == 4 else u64
-            d[name] = unpack(read_memory(addr, size))
+            d[name] = unpack(read_physmem(addr, size))
             addr += size
         return d
 
-    def get_gPs(self):
-        result = gdb.execute("search-pattern 'PEI SERV' --disable-utf16", to_string=True) # EFI_TABLE_HEADER.Signature
-        result = filter(lambda x: "->" in x, result.splitlines())
-        result = [int(x.split()[0], 16) for x in result]
-        for addr in result[::-1]: # Higher address seems more likely
-            return addr
-        return None
+    def search_mem_backward_iter(self, keyword):
+        # search from higher address (0x800_0000), it is more likely
+        current = 0x8000000 - gef_getpagesize()
+        data = read_physmem(current, gef_getpagesize())
+        end = len(data)
+
+        while True:
+            pos = data.rfind(keyword, 0, end)
+            if pos == -1:
+                current -= gef_getpagesize()
+                if current < 0:
+                    return None
+                data = read_physmem(current, gef_getpagesize()) + data
+                end += gef_getpagesize()
+                continue
+            yield current + pos
+            end = pos
 
     def read_gPs(self):
-        addr = self.get_gPs()
-        if addr is None:
+        for addr in self.search_mem_backward_iter(b"PEI SERV"): # EFI_TABLE_HEADER.Signature
+            break
+        else:
             return None
         structure = [
             [8, "Hdr.Signature"],
@@ -57900,18 +57911,11 @@ class UefiOvmfInfoCommand(GenericCommand):
             gef_print("  {:40s}{:#x}".format(k + ":", v))
         return
 
-    def get_mBootServices(self):
-        result = gdb.execute("search-pattern BOOTSERV --disable-utf16", to_string=True) # EFI_TABLE_HEADER.Signature
-        result = filter(lambda x: "->" in x, result.splitlines())
-        result = [int(x.split()[0], 16) for x in result]
-        for addr in result[::-1]: # Higher address seems more likely
-            if self.check_crc32(addr):
-                return addr
-        return None
-
     def read_mBootServices(self):
-        addr = self.get_mBootServices()
-        if addr is None:
+        for addr in self.search_mem_backward_iter(b"BOOTSERV"): # EFI_TABLE_HEADER.Signature
+            if self.check_crc32(addr):
+                break
+        else:
             return None
         structure = [
             [8, "Hdr.Signature"],
@@ -57978,27 +57982,11 @@ class UefiOvmfInfoCommand(GenericCommand):
             gef_print("  {:40s}{:#x}".format(k + ":", v))
         return
 
-    def get_mDxeServices(self):
-        # fastpath maybe mDxeServices is next to mBootServices
-        if self.mBootServices:
-            addr = self.mBootServices["__addr"] + self.mBootServices["Hdr.HeaderSize"]
-            while addr % 0x10:
-                addr += 1
-            if read_memory(addr, 8) == b"DXE_SERV" and self.check_crc32(addr):
-                return addr
-
-        # slowpath
-        result = gdb.execute("search-pattern DXE_SERV --disable-utf16", to_string=True) # EFI_TABLE_HEADER.Signature
-        result = filter(lambda x: "->" in x, result.splitlines())
-        result = [int(x.split()[0], 16) for x in result]
-        for addr in result[::-1]: # Higher address seems more likely
-            if self.check_crc32(addr):
-                return addr
-        return None
-
     def read_mDxeServices(self):
-        addr = self.get_mDxeServices()
-        if addr is None:
+        for addr in self.search_mem_backward_iter(b"DXE_SERV"): # EFI_TABLE_HEADER.Signature
+            if self.check_crc32(addr):
+                break
+        else:
             return None
         structure = [
             [8, "Hdr.Signature"],
@@ -58039,18 +58027,11 @@ class UefiOvmfInfoCommand(GenericCommand):
             gef_print("  {:40s}{:#x}".format(k + ":", v))
         return
 
-    def get_mEfiSystemTable(self):
-        result = gdb.execute("search-pattern 'IBI SYST' --disable-utf16", to_string=True) # EFI_TABLE_HEADER.Signature
-        result = filter(lambda x: "->" in x, result.splitlines())
-        result = [int(x.split()[0], 16) for x in result]
-        for addr in result[::-1]: # Higher address seems more likely
-            if self.check_crc32(addr):
-                return addr
-        return None
-
     def read_mEfiSystemTable(self):
-        addr = self.get_mEfiSystemTable()
-        if addr is None:
+        for addr in self.search_mem_backward_iter(b"IBI SYST"): # EFI_TABLE_HEADER.Signature
+            if self.check_crc32(addr):
+                break
+        else:
             return None
         structure = [
             [8, "Hdr.Signature"],
@@ -58085,18 +58066,11 @@ class UefiOvmfInfoCommand(GenericCommand):
             gef_print("  {:40s}{:#x}".format(k + ":", v))
         return
 
-    def get_mEfiRuntimeServicesTable(self):
-        result = gdb.execute("search-pattern RUNTSERV --disable-utf16", to_string=True) # EFI_TABLE_HEADER.Signature
-        result = filter(lambda x: "->" in x, result.splitlines())
-        result = [int(x.split()[0], 16) for x in result]
-        for addr in result[::-1]: # Higher address seems more likely
-            if self.check_crc32(addr):
-                return addr
-        return None
-
     def read_mEfiRuntimeServicesTable(self):
-        addr = self.get_mEfiRuntimeServicesTable()
-        if addr is None:
+        for addr in self.search_mem_backward_iter(b"RUNTSERV"): # EFI_TABLE_HEADER.Signature
+            if self.check_crc32(addr):
+                break
+        else:
             return None
         structure = [
             [8, "Hdr.Signature"],
@@ -58133,32 +58107,28 @@ class UefiOvmfInfoCommand(GenericCommand):
             gef_print("  {:40s}{:#x}".format(k + ":", v))
         return
 
-    def get_gMemoryMap(self):
-        # gMemoryMap is just above mDxeServices
+    def read_gMemoryMap(self):
+        # gMemoryMap is just around mDxeServices
         if not self.mDxeServices:
             return None
-        addr = self.mDxeServices["__addr"]
-        while addr % 0x10:
-            addr -= 1
-        while self.mDxeServices["__addr"] - 0x1000 < addr:
-            try:
-                a = u64(read_memory(addr, 8))
-                b = u64(read_memory(a + 8, 8))
-                asig = u64(read_memory(a - 8, 8))
-                c = u64(read_memory(addr + 8, 8))
-                d = u64(read_memory(c, 8))
-                csig = u64(read_memory(c - 8, 8))
-                if addr == b == d and asig == csig == u32(b"mmap"):
-                    return addr
-            except Exception:
-                pass
-            addr -= 0x10
-        return None
+        base = self.mDxeServices["__addr"] & ~0xf
 
-    def read_gMemoryMap(self):
-        addr = self.get_gMemoryMap()
-        if addr is None:
+        for diff in range(-0x1000, 0x1000, 8):
+            addr = base + diff
+            try:
+                a = u64(read_physmem(addr, 8))
+                b = u64(read_physmem(a + 8, 8))
+                asig = u64(read_physmem(a - 8, 8))
+                c = u64(read_physmem(addr + 8, 8))
+                d = u64(read_physmem(c, 8))
+                csig = u64(read_physmem(c - 8, 8))
+                if addr == b == d and asig == csig == u32(b"mmap"):
+                    break
+            except (gdb.MemoryError, OverflowError):
+                pass
+        else:
             return None
+
         structure = [
             [8, "ForwardLink"],
             [8, "BackLink"],
@@ -58235,6 +58205,7 @@ class UefiOvmfInfoCommand(GenericCommand):
         gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
         current = self.gMemoryMap["ForwardLink"]
+        entries = set()
         while current != self.gMemoryMap["__addr"]:
             entry = self.read_Entry(current)
 
@@ -58247,12 +58218,16 @@ class UefiOvmfInfoCommand(GenericCommand):
             att = entry["Attribute"]
             att_s = att2str(att)
             fmt = "{:#010x}-{:#010x} {:#010x} {:#010x} {:#x}:{:26s} {:#x}:[{:s}]"
-            gef_print(fmt.format(paddr_s, paddr_e, vaddr, size, typ, memtype, att, att_s))
+            entry_text = fmt.format(paddr_s, paddr_e, vaddr, size, typ, memtype, att, att_s)
+            entries.add(entry_text)
 
             if entry["Signature"] != u32(b"mmap"):
-                gef_print("Signature does not match. Corrupted?")
+                err("Signature does not match. Corrupted?")
                 break
             current = entry["Link.ForwardLink"]
+
+        for entry_text in sorted(entries):
+            gef_print(entry_text)
 
         gef_print("Legend for attribute")
         gef_print("UC: It supports being configured as Un-Cacheable")
@@ -58277,7 +58252,6 @@ class UefiOvmfInfoCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
         self.dont_repeat()
-        info("This command is very slow. Wait a few tens of seconds")
         gef_print(titlify("SEC (Security) phase variables"))
         gef_print("Unimplemented")
         gef_print(titlify("PEI (Pre EFI Initialization) phase variables"))
