@@ -15396,14 +15396,15 @@ class GlibcHeapBinsCommand(GenericCommand):
         while fw != head:
             chunk = GlibcChunk(fw, from_base=True)
             if chunk.address in seen:
-                fmt = "{:s} {:#x} [loop detected]"
+                fmt = "{:s}{:#x} [loop detected]"
                 m.append(Color.colorify(fmt.format(RIGHT_ARROW, chunk.chunk_base_address), corrupted_msg_color))
                 break
             seen.append(chunk.address)
             try:
-                m.append("{:s} {:s}".format(RIGHT_ARROW, str(chunk)))
+                m.append("{:s}{:s}".format(RIGHT_ARROW, str(chunk)))
             except gdb.MemoryError:
-                m.append(Color.colorify("Read memory error (Corrupted?)", corrupted_msg_color))
+                fmt = "{:s}{:#x} [Corrupted chunk]"
+                m.append(Color.colorify(fmt.format(RIGHT_ARROW, chunk.chunk_base_address), corrupted_msg_color))
                 break
             fw = chunk.fwd
             nb_chunk += 1
@@ -15489,9 +15490,9 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
                 if chunk is None:
                     break
                 try:
-                    m.append("{:s} {:s} ".format(RIGHT_ARROW, str(chunk)))
+                    m.append("{:s}{:s}".format(RIGHT_ARROW, str(chunk)))
                     if chunk.address in chunks:
-                        m.append(Color.colorify("{:s} [loop detected]".format(RIGHT_ARROW), corrupted_msg_color))
+                        m.append(Color.colorify("{:s}{:#x} [loop detected]".format(RIGHT_ARROW, chunk.address), corrupted_msg_color))
                         break
 
                     chunks.add(chunk.address)
@@ -15503,8 +15504,8 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
 
                     chunk = GlibcChunk(next_chunk)
                 except gdb.MemoryError:
-                    fmt = "{:s} [Corrupted chunk at {:#x}]"
-                    m.append(Color.colorify(fmt.format(LEFT_ARROW, chunk.address), corrupted_msg_color))
+                    fmt = "{:s}{:#x} [Corrupted chunk]"
+                    m.append(Color.colorify(fmt.format(RIGHT_ARROW, chunk.address), corrupted_msg_color))
                     break
             if m or verbose:
                 size = get_binsize_table()["tcache"][i]["size"]
@@ -15589,9 +15590,9 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
                     break
 
                 try:
-                    m.append("{:s} {:s} ".format(RIGHT_ARROW, str(chunk)))
+                    m.append("{:s}{:s}".format(RIGHT_ARROW, str(chunk)))
                     if chunk.address in chunks:
-                        m.append(Color.colorify("{:s} [loop detected]".format(RIGHT_ARROW), corrupted_msg_color))
+                        m.append(Color.colorify("{:s}{:#x} [loop detected]".format(RIGHT_ARROW, chunk.address), corrupted_msg_color))
                         break
 
                     if fastbin_index(chunk.get_chunk_size()) != i:
@@ -15606,8 +15607,8 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
 
                     chunk = GlibcChunk(next_chunk, from_base=True)
                 except gdb.MemoryError:
-                    fmt = "{:s} [Corrupted chunk at {:#x}]"
-                    m.append(Color.colorify(fmt.format(LEFT_ARROW, chunk.address), corrupted_msg_color))
+                    fmt = "{:s}{:#x} [Corrupted chunk]"
+                    m.append(Color.colorify(fmt.format(RIGHT_ARROW, chunk.address), corrupted_msg_color))
                     break
 
             if m or verbose:
