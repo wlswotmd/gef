@@ -47847,8 +47847,10 @@ class KsymaddrRemoteCommand(GenericCommand):
     def initialize(self):
         if is_big_endian():
             endianness_marker = '>'
+            endian_str = 'big'
         else:
             endianness_marker = '<'
+            endian_str = 'little'
 
         # don't use KernelVersionCommand, since it refers ksymaddr-remote
         regex_match = re.search(rb'Linux version (\d+\.[\d.]*\d)[ -~]+', self.kernel_img)
@@ -47906,54 +47908,44 @@ class KsymaddrRemoteCommand(GenericCommand):
         0xc6e58fec:    5f 63 6f 6e 00 65 78 74 34 00 61 6d 00 41 00 42    |  _con.ext4.am.A.B  |
         """
 
-        position = 0
-        candidates_offsets = []
-        candidates_offsets_followed_with_ascii = []
+        # first, search unique bytes
         seq_to_find = b'0\x001\x002\x003\x004\x005\x006\x007\x008\x009\x00'
         seq_to_avoid = [b':\0', b'\0\0', b'\0\1', b'\0\2', b'ASCII\0']
+        target_pattern = seq_to_find + b'(?!' + b"|".join(seq_to_avoid) + b")"
 
-        while True:
-            position = self.kernel_img.find(seq_to_find, position + 1)
-            if position == -1:
-                break
+        unique_bytes_offset = []
+        for r in re.finditer(target_pattern, self.kernel_img):
+            unique_bytes_offset.append(r.span())
 
-            for seq in seq_to_avoid:
-                pos = position + len(seq_to_find)
-                if self.kernel_img[pos:pos + len(seq)] == seq:
-                    break
-            else:
-                candidates_offsets.append(position)
-                follow = self.kernel_img[pos:pos + 1]
-                if follow.isalnum() or follow == b"_":
-                    candidates_offsets_followed_with_ascii.append(position)
-
-        if len(candidates_offsets) != 1:
-            if len(candidates_offsets_followed_with_ascii) == 1:
-                candidates_offsets = candidates_offsets_followed_with_ascii
-            else:
-                self.quiet_err('Could not find kallsyms_token_table')
-                return False
-        position = candidates_offsets[0]
-
-        # Get back to the beginning of the table
-        current_index_in_array = ord('0')
-        position -= 1
-        if position < 0 or self.kernel_img[position] != 0:
-            self.quiet_err('Could not find kallsyms_token_table')
+        if len(unique_bytes_offset) == 0:
+            self.quiet_err('Could not find kallsyms_token_table (0 candidate)')
             return False
 
-        for _tokens_backward in range(current_index_in_array):
-            for chars_in_token_backward in range(50):
-                position -= 1
-                if position < 0:
-                    self.quiet_err('Could not find kallsyms_token_table')
-                    return False
-                # we may overlap on "kallsyms_markers" for the last entry, so also check for high-range characters
-                if self.kernel_img[position] == 0 or self.kernel_img[position] > ord('z'):
-                    break
-                if chars_in_token_backward >= 50 - 1:
-                    self.quiet_err('This structure is not a kallsyms_token_table')
-                    return False
+        if len(unique_bytes_offset) > 1:
+            for offsets in unique_bytes_offset.copy():
+                follow = self.kernel_img[offsets[1]:offsets[1] + 1]
+                if not (follow.isalnum() or follow == b"_"):
+                    unique_bytes_offset.remove(offsets)
+            if len(unique_bytes_offset) != 1:
+                self.quiet_err('Could not find kallsyms_token_table (multiple candidates)')
+                return False
+
+        position = unique_bytes_offset[0][0]
+
+        # second, backward search the top
+        prev_x = None
+        while True:
+            position -= 1
+            if position < 0:
+                self.quiet_err('Could not find kallsyms_token_table (failed to get top)')
+                return False
+            x = self.kernel_img[position:position + 1]
+            if x not in b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.\0":
+                break
+            if x == prev_x == b"\0": # \0\0 is inappropriate
+                break
+            prev_x = x
+
         position += 1
         position += -position % 4
         self.kallsyms_token_table__offset = position
@@ -48280,23 +48272,16 @@ class KsymaddrRemoteCommand(GenericCommand):
         """
 
         # Is CONFIG_KALLSYMS_BASE_RELATIVE ?
-        likely_has_base_relative = False
+        used_pattern = [(False, True), (False, False)]
         if kernel_major > 4 or (kernel_major == 4 and kernel_minor >= 6):
-            likely_has_base_relative = True
+            used_pattern = [(True, True), (False, False)]
+
+        address_byte_size = 8 if is_64bit() else self.offset_table_element_size
+        offset_byte_size = min(4, self.offset_table_element_size)
 
         # Is CONFIG_KALLSYMS_ABSOLUTE_PERCPU ?
-        # We'll guess through looking for negative symbol values. Try different possibilities heuristically:
-        for (has_base_relative, can_skip) in (
-            [(True, True), (False, False)]
-            if likely_has_base_relative else
-            [(False, True), (False, False)]
-        ):
+        for has_base_relative, can_skip in used_pattern:
             position = self.kallsyms_num_syms__offset
-            if is_64bit():
-                address_byte_size = 8
-            else:
-                address_byte_size = self.offset_table_element_size
-            offset_byte_size = min(4, self.offset_table_element_size) # Size of an assembly ".long"
 
             # Go right after the previous address
             while True:
@@ -48310,10 +48295,6 @@ class KsymaddrRemoteCommand(GenericCommand):
                 position -= address_byte_size
 
                 # Parse the base_relative value
-                if is_big_endian():
-                    endian_str = 'big'
-                else:
-                    endian_str = 'little'
                 self.relative_base_address = int.from_bytes(self.kernel_img[position:position + address_byte_size], endian_str)
 
                 # Go right after the previous offset
