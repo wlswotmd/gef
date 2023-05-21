@@ -93,12 +93,10 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 * Intel pin is supported.
     * Listen with `pin -appdebug -appdebug_server_port 1234 -t obj-intel64/inscount0.so -- /bin/ls`.
     * Attach with `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:1234'`.
-    * Or `gdb-multiarch -ex 'set architecture TARGET_ARCH' -ex 'target remote localhost:1234'`.
     * It runs very slowly and is not recommended.
 * Intel SDE is supported.
     * Listen with `sde64 -debug -debug-port 1234 -- /bin/ls`.
     * Attach with `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:1234'`.
-    * Or `gdb-multiarch -ex 'set architecture TARGET_ARCH' -ex 'target remote localhost:1234'`.
     * It runs very slowly and is not recommended.
 * KGDB is supported.
     * Build your kernel as `CONFIG_KGDB=y`. Ubuntu has supported it by default.
