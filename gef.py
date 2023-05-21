@@ -51593,22 +51593,22 @@ class OpteeBgetDumpCommand(GenericCommand):
         self.out.append("flink:    {:#x}".format(malloc_ctx.flink))
         for chunk in malloc_ctx.flink_list:
             if isinstance(chunk, str):
-                self.out.append("  -> {:s}".format(Color.colorify(chunk, corrupted_msg_color)))
+                self.out.append(" -> {:s}".format(Color.colorify(chunk, corrupted_msg_color)))
             else:
                 chunk_addr = Color.colorify("{:#010x}".format(chunk.addr), freed_address_color)
                 colored_chunk_bsize = Color.colorify("{:#010x}".format(chunk.bsize), chunk_size_color)
-                fmt = "  -> {:s}: prevfree:{:#x}  bsize:{:s}  flink:{:#010x}  blink:{:#010x}"
+                fmt = " -> {:s}: prevfree:{:#x}  bsize:{:s}  flink:{:#010x}  blink:{:#010x}"
                 fmt += "  next_prevfree:{:#010x}  next_bsize:{:#010x} (={:#010x})"
                 self.out.append(fmt.format(chunk_addr, chunk.prevfree, colored_chunk_bsize, chunk.flink, chunk.blink,
                                      chunk.next_prevfree, chunk.next_bsize, (-chunk.next_bsize) & 0xffffffff))
         self.out.append("blink:    {:#x}".format(malloc_ctx.blink))
         for chunk in malloc_ctx.blink_list:
             if isinstance(chunk, str):
-                self.out.append("  -> {:s}".format(Color.colorify(chunk, corrupted_msg_color)))
+                self.out.append(" -> {:s}".format(Color.colorify(chunk, corrupted_msg_color)))
             else:
                 chunk_addr = Color.colorify("{:#010x}".format(chunk.addr), freed_address_color)
                 colored_chunk_bsize = Color.colorify("{:#010x}".format(chunk.bsize), chunk_size_color)
-                fmt = "  -> {:s}: prevfree:{:#x}  bsize:{:s}  flink:{:#010x}  blink:{:#010x}"
+                fmt = " -> {:s}: prevfree:{:#x}  bsize:{:s}  flink:{:#010x}  blink:{:#010x}"
                 fmt += "  next_prevfree:{:#010x}  next_bsize:{:#010x} (={:#010x})"
                 self.out.append(fmt.format(chunk_addr, chunk.prevfree, colored_chunk_bsize, chunk.flink, chunk.blink,
                                      chunk.next_prevfree, chunk.next_bsize, (-chunk.next_bsize) & 0xffffffff))
