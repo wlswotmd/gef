@@ -38083,7 +38083,7 @@ class ExtractHeapAddrCommand(GenericCommand):
         extracted_ptr = self.reveal(ptr)
         colored_extracted_ptr = str(lookup_address(extracted_ptr))
         gef_print("Protected fd pointer: {:#x}".format(ptr))
-        gef_print("  -> Extracted heap address: {:s} (=fd & ~0xfff)".format(colored_extracted_ptr))
+        gef_print(" -> Extracted heap address: {:s} (=fd & ~0xfff)".format(colored_extracted_ptr))
         return
 
 
