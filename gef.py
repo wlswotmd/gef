@@ -9783,55 +9783,6 @@ def parse_string_range(s):
     return [int(x, 16) for x in addrs]
 
 
-AT_CONSTANTS = {
-    0  : 'AT_NULL',              # End of vector
-    1  : 'AT_IGNORE',            # Entry should be ignored
-    2  : 'AT_EXECFD',            # File descriptor of program
-    3  : 'AT_PHDR',              # Program headers for program
-    4  : 'AT_PHENT',             # Size of program header entry
-    5  : 'AT_PHNUM',             # Number of program headers
-    6  : 'AT_PAGESZ',            # System page size
-    7  : 'AT_BASE',              # Base address of interpreter
-    8  : 'AT_FLAGS',             # Flags
-    9  : 'AT_ENTRY',             # Entry point of program
-    10 : 'AT_NOTELF',            # Program is not ELF
-    11 : 'AT_UID',               # Real uid
-    12 : 'AT_EUID',              # Effective uid
-    13 : 'AT_GID',               # Real gid
-    14 : 'AT_EGID',              # Effective gid
-    15 : 'AT_PLATFORM',          # String identifying platform
-    16 : 'AT_HWCAP',             # Machine dependent hints about processor capabilities
-    17 : 'AT_CLKTCK',            # Frequency of times()
-    18 : 'AT_FPUCW',             #
-    19 : 'AT_DCACHEBSIZE',       #
-    20 : 'AT_ICACHEBSIZE',       #
-    21 : 'AT_UCACHEBSIZE',       #
-    22 : 'AT_IGNOREPPC',         # A special ignored type value for PPC, for glibc compatibility
-    23 : 'AT_SECURE',            #
-    24 : 'AT_BASE_PLATFORM',     # String identifying real platforms
-    25 : 'AT_RANDOM',            # Address of 16 random bytes
-    26 : 'AT_HWCAP2',            # extension of AT_HWCAP
-    27 : 'AT_RSEQ_FEATURE_SIZE', # seq supported feature size
-    28 : 'AT_RSEQ_ALIGN',        # rseq allocation alignment
-    31 : 'AT_EXECFN',            # Filename of executable
-    32 : 'AT_SYSINFO',           #
-    33 : 'AT_SYSINFO_EHDR',      #
-    34 : 'AT_L1I_CACHESHAPE',    #
-    35 : 'AT_L1D_CACHESHAPE',    #
-    36 : 'AT_L2_CACHESHAPE',     #
-    37 : 'AT_L3_CACHESHAPE',     #
-    40 : 'AT_L1I_CACHESIZE',     #
-    41 : 'AT_L1I_CACHEGEOMETRY', #
-    42 : 'AT_L1D_CACHESIZE',     #
-    43 : 'AT_L1D_CACHEGEOMETRY', #
-    44 : 'AT_L2_CACHESIZE',      #
-    45 : 'AT_L2_CACHEGEOMETRY',  #
-    46 : 'AT_L3_CACHESIZE',      #
-    47 : 'AT_L3_CACHEGEOMETRY',  #
-    51 : 'AT_MINSIGSTKSZ',       # stack needed for signal delivery
-}
-
-
 def get_auxiliary_walk(offset=0):
     """Find AUXV by walking stack"""
 
@@ -9883,9 +9834,9 @@ def get_auxiliary_walk(offset=0):
     while True:
         key = read_int_from_memory(current)
         val = read_int_from_memory(current + current_arch.ptrsize)
-        if key not in AT_CONSTANTS:
+        if key not in AuxvCommand.AT_CONSTANTS:
             break
-        res[AT_CONSTANTS[key]] = val
+        res[AuxvCommand.AT_CONSTANTS[key]] = val
         if key == 0:
             break
         current += current_arch.ptrsize * 2
@@ -11451,6 +11402,54 @@ class AuxvCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
 
+    AT_CONSTANTS = {
+        0  : 'AT_NULL',              # End of vector
+        1  : 'AT_IGNORE',            # Entry should be ignored
+        2  : 'AT_EXECFD',            # File descriptor of program
+        3  : 'AT_PHDR',              # Program headers for program
+        4  : 'AT_PHENT',             # Size of program header entry
+        5  : 'AT_PHNUM',             # Number of program headers
+        6  : 'AT_PAGESZ',            # System page size
+        7  : 'AT_BASE',              # Base address of interpreter
+        8  : 'AT_FLAGS',             # Flags
+        9  : 'AT_ENTRY',             # Entry point of program
+        10 : 'AT_NOTELF',            # Program is not ELF
+        11 : 'AT_UID',               # Real uid
+        12 : 'AT_EUID',              # Effective uid
+        13 : 'AT_GID',               # Real gid
+        14 : 'AT_EGID',              # Effective gid
+        15 : 'AT_PLATFORM',          # String identifying platform
+        16 : 'AT_HWCAP',             # Machine dependent hints about processor capabilities
+        17 : 'AT_CLKTCK',            # Frequency of times()
+        18 : 'AT_FPUCW',             #
+        19 : 'AT_DCACHEBSIZE',       #
+        20 : 'AT_ICACHEBSIZE',       #
+        21 : 'AT_UCACHEBSIZE',       #
+        22 : 'AT_IGNOREPPC',         # A special ignored type value for PPC, for glibc compatibility
+        23 : 'AT_SECURE',            #
+        24 : 'AT_BASE_PLATFORM',     # String identifying real platforms
+        25 : 'AT_RANDOM',            # Address of 16 random bytes
+        26 : 'AT_HWCAP2',            # extension of AT_HWCAP
+        27 : 'AT_RSEQ_FEATURE_SIZE', # seq supported feature size
+        28 : 'AT_RSEQ_ALIGN',        # rseq allocation alignment
+        31 : 'AT_EXECFN',            # Filename of executable
+        32 : 'AT_SYSINFO',           #
+        33 : 'AT_SYSINFO_EHDR',      #
+        34 : 'AT_L1I_CACHESHAPE',    #
+        35 : 'AT_L1D_CACHESHAPE',    #
+        36 : 'AT_L2_CACHESHAPE',     #
+        37 : 'AT_L3_CACHESHAPE',     #
+        40 : 'AT_L1I_CACHESIZE',     #
+        41 : 'AT_L1I_CACHEGEOMETRY', #
+        42 : 'AT_L1D_CACHESIZE',     #
+        43 : 'AT_L1D_CACHEGEOMETRY', #
+        44 : 'AT_L2_CACHESIZE',      #
+        45 : 'AT_L2_CACHEGEOMETRY',  #
+        46 : 'AT_L3_CACHESIZE',      #
+        47 : 'AT_L3_CACHEGEOMETRY',  #
+        51 : 'AT_MINSIGSTKSZ',       # stack needed for signal delivery
+    }
+
     @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
@@ -11461,22 +11460,27 @@ class AuxvCommand(GenericCommand):
         if not auxval:
             return None
 
-        reverse_AT_CONSTS = {v: hex(k) for k, v in AT_CONSTANTS.items()}
+        reverse_AT_CONSTS = {v: hex(k) for k, v in self.AT_CONSTANTS.items()}
 
         gef_print(titlify("ELF auxiliary vector"))
         for k, v in auxval.items():
             num = reverse_AT_CONSTS.get(k, "?")
+            additional_message = ""
             if k == "AT_NULL":
-                gef_print("[{:4s}] {:16s} {:#x} (End of vector)".format(num, k + ":", v))
+                additional_message = " (End of vector)"
             elif k in ["AT_EXECFN", "AT_PLATFORM"]:
                 s = read_cstring_from_memory(v)
                 s = Color.yellowify(repr(s))
-                gef_print("[{:4s}] {:16s} {:#x}{:s}{}".format(num, k + ":", v, RIGHT_ARROW, s))
+                additional_message = "{:s}{:s}".format(RIGHT_ARROW, s)
             elif k in ["AT_RANDOM"]:
                 s = read_int_from_memory(v)
-                gef_print("[{:4s}] {:16s} {:#x}{:s}{:#x}".format(num, k + ":", v, RIGHT_ARROW, s))
+                additional_message = "{:s}{:#x}".format(RIGHT_ARROW, s)
+
+            if is_valid_addr(v):
+                v = str(lookup_address(v))
             else:
-                gef_print("[{:4s}] {:16s} {:#x}".format(num, k + ":", v))
+                v = hex(v)
+            gef_print("[{:4s}] {:16s} {:s}{:s}".format(num, k + ":", v, additional_message))
         return
 
 
