@@ -58384,7 +58384,8 @@ class UefiOvmfInfoCommand(GenericCommand):
             end = pos
 
     def read_gPs(self):
-        for addr in self.search_mem_backward_iter(b"PEI SERV"): # EFI_TABLE_HEADER.Signature
+        for _addr in self.search_mem_backward_iter(b"PEI SERV"): # EFI_TABLE_HEADER.Signature
+            addr = _addr
             break
         else:
             return None
