@@ -113,3 +113,9 @@ I also list the tools I used in my Ubuntu 22.04 environment.
             * Tested command is `/usr/local/bin/gdb -ex 'set architecture crisv32' -ex 'target remote localhost:1234'`.
     * gdb: `gdb` built from source with `./configure --enable-targets=all --with-python=/usr/bin/python3`.
         * Because `gdb-multiarch` does not support this architecture.
+* Loongarch64
+    * gcc: https://github.com/loongson/build-tools/releases/download/2022.09.06/loongarch64-clfs-7.3-cross-tools-gcc-glibc.tar.xz
+        * Because the toolchain is not available through apt.
+    * qemu: Clone latest from git, then `./configure --target-list=loongarch64-linux-user && make` or use https://github.com/loongson/build-tools/releases/download/2022.09.06/qemu-loongarch64.bin
+    * gdb: `gdb` built from source with `./configure --enable-targets=all --with-python=/usr/bin/python3`
+        * Because `gdb-multiarch` does not support this architecture.

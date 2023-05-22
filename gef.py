@@ -1661,6 +1661,11 @@ class Instruction:
                     last_operands = r.group(1)
                     additional_1 = r.group(2)
                     operands = operands[:-1] + [last_operands]
+            elif is_loongarch64():
+                r = re.match(r"(# .*)$", last_operands)
+                if r:
+                    additional_1 = r.group(1)
+                    operands = operands[:-1]
             elif is_arm64() or is_microblaze():
                 r = re.match(r"//.+$", last_operands)
                 if r:
@@ -7371,11 +7376,137 @@ class CRIS(Architecture):
     @classmethod
     def mprotect_asm_raw(cls, addr, size, perm):
         return None
-        #_NR_mprotect = 125
-        #insns = [
-        #    b"\x0f\x05", # nop
-        #]
-        #return b''.join(insns)
+
+
+class LOONGARCH64(Architecture):
+    arch = "LOONGARCH"
+    mode = "LOONGARCH64"
+
+    # https://docs.kernel.org/loongarch/introduction.html
+    # https://loongson.github.io/LoongArch-Documentation/LoongArch-Vol1-EN.html
+    all_registers = [
+        "$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7",
+        "$r8", "$r9", "$r10", "$r11", "$r12", "$r13", "$r14", "$r15",
+        "$r16", "$r17", "$r18", "$r19", "$r20", "$r21", "$r22", "$r23",
+        "$r24", "$r25", "$r26", "$r27", "$r28", "$r29", "$r30", "$r31",
+        "$orig_a0", "$pc", "$badv",
+    ]
+    alias_registers = {
+        "$r0": "$zero", "$r1": "$ra", "$r3": "$sp",
+        "$r4": "$a0/$v0", "$r5": "$a1/$v1", "$r6": "$a2", "$r7": "$a3",
+        "$r8": "$a4", "$r9": "$a5", "$r10": "$a6", "$r11": "$a7",
+        "$r12": "$t0", "$r13": "$t1", "$r14": "$t2", "$r15": "$t3",
+        "$r16": "$t4", "$r17": "$t5", "$r18": "$t6", "$r19": "$t7", "$r20": "$t8",
+        "$r21": "$u0", "$r22": "$fp",
+        "$r23": "$s0", "$r24": "$s1", "$r25": "$s2", "$r26": "$s3",
+        "$r27": "$s4", "$r28": "$s5", "$r29": "$s6", "$r30": "$s7",
+    }
+    flag_register = None # LOONGARCH has no flags register
+    return_register = "$r4"
+    function_parameters = ["$r4", "$r5", "$r6", "$r7", "$r8", "$r9", "$r10", "$r11"]
+    syscall_register = "$r11"
+    syscall_parameters = ["$r4", "$r5", "$r6", "$r7", "$r8", "$r9"]
+
+    instruction_length = 4
+    has_delay_slot = False
+    has_syscall_delay_slot = False
+    has_ret_delay_slot = False
+
+    keystone_support = False
+    capstone_support = False
+    unicorn_support = False
+
+    nop_insn = b"\x00\x00\x40\x03" # andi $zero, $zero, 0x0
+    infloop_insn = b"\x00\x00\x00\x50" # b self
+    trap_insn = None
+    ret_insn = b"\x20\x00\x00\x4c" # jirl
+    syscall_insn = b"\x00\x00\x2b\x00" # syscall
+
+    def is_syscall(self, insn):
+        return insn.mnemonic in ["syscall"]
+
+    def is_call(self, insn):
+        return insn.mnemonic in ["bl"]
+
+    def is_jump(self, insn):
+        if self.is_conditional_branch(insn):
+            return True
+        return insn.mnemonic in ["b"]
+
+    def is_ret(self, insn):
+        return insn.mnemonic in ["jirl"]
+
+    def is_conditional_branch(self, insn):
+        return insn.mnemonic in ["beq", "bne", "bge", "bgeu", "blt", "bltu", "beqz", "bnez"]
+
+    def is_branch_taken(self, insn):
+        mnemo, ops = insn.mnemonic, insn.operands
+        alias_inverse = {}
+        for k, v in self.alias_registers.items():
+            for alias_reg in v.split("/"):
+                alias_inverse[alias_reg] = k
+
+        pQ = lambda a: struct.pack("<Q", a & 0xffffffffffffffff)
+        uq = lambda a: struct.unpack("<q", a)[0]
+        u2i = lambda a: uq(pQ(a))
+
+        v0 = get_register(alias_inverse.get(ops[0], ops[0]))
+        v0s = u2i(v0)
+
+        if mnemo not in ["beqz", "bnez"]:
+            v1 = get_register(alias_inverse.get(ops[1], ops[1]))
+            v1s = u2i(v1)
+
+        taken, reason = False, ""
+        if mnemo == "beq":
+            taken, reason = v0 == v1, "{:s}=={:s}".format(ops[0], ops[1])
+        elif mnemo == "bne":
+            taken, reason = v0 != v1, "{:s}!={:s}".format(ops[0], ops[1])
+        elif mnemo == "bge":
+            taken, reason = v0s >= v1s, "{:s}>={:s} (signed)".format(ops[0], ops[1])
+        elif mnemo == "bgeu":
+            taken, reason = v0 >= v1, "{:s}>={:s} (unsigned)".format(ops[0], ops[1])
+        elif mnemo == "blt":
+            taken, reason = v0s < v1s, "{:s}<{:s} (signed)".format(ops[0], ops[1])
+        elif mnemo == "bltu":
+            taken, reason = v0 < v1, "{:s}<{:s} (unsigned)".format(ops[0], ops[1])
+        elif mnemo == "beqz":
+            taken, reason = v0 == 0, "{:s}==0".format(ops[0])
+        elif mnemo == "bnez":
+            taken, reason = v0 != 0, "{:s}!=0".format(ops[0])
+        return taken, reason
+
+    def get_ith_parameter(self, i, in_func=True):
+        if i < len(self.function_parameters):
+            reg = self.function_parameters[i]
+            val = get_register(reg)
+            key = reg
+            return key, val
+        else:
+            i -= len(self.function_parameters)
+            sp = current_arch.sp
+            sz = current_arch.ptrsize
+            loc = sp + (i * sz)
+            val = read_int_from_memory(loc)
+            key = "[sp + {:#x}]".format(i * sz)
+            return key, val
+
+    def get_ra(self, insn, frame):
+        ra = None
+        try:
+            if self.is_ret(insn):
+                ra = get_register("$r1")
+            elif frame.older():
+                ra = frame.older().pc()
+        except Exception:
+            pass
+        return ra
+
+    mprotect_asm = None
+
+    @classmethod
+    def mprotect_asm_raw(cls, addr, size, perm):
+        return None
 
 
 # The prototype for new architecture.
@@ -8021,6 +8152,8 @@ def only_if_specific_arch(arch=()):
                     return f(*args, **kwargs)
                 elif a == "CRIS" and is_cris():
                     return f(*args, **kwargs)
+                elif a == "LOONGARCH64" and is_loongarch64():
+                    return f(*args, **kwargs)
             else:
                 warn("This command cannot work under this architecture.")
                 return
@@ -8104,6 +8237,9 @@ def exclude_specific_arch(arch=()):
                     warn("This command cannot work under this architecture.")
                     return
                 elif a == "CRIS" and is_cris():
+                    warn("This command cannot work under this architecture.")
+                    return
+                elif a == "LOONGARCH64" and is_loongarch64():
                     warn("This command cannot work under this architecture.")
                     return
             else:
@@ -9455,6 +9591,14 @@ def is_cris():
         return False
 
 
+def is_loongarch64():
+    """Checks if current target is loongarch64."""
+    try:
+        return current_arch.arch == "LOONGARCH" and current_arch.mode == "LOONGARCH64"
+    except Exception:
+        return False
+
+
 @functools.lru_cache(maxsize=None)
 def is_static(filename=None):
     if filename is None:
@@ -9511,6 +9655,7 @@ def set_arch(arch=None, default=None):
         Elf.EM_MICROBLAZE: MICROBLAZE, "MICROBLAZE": MICROBLAZE,
         Elf.EM_XTENSA: XTENSA, "XTENSA": XTENSA,
         Elf.EM_CRIS: CRIS, "CRIS": CRIS,
+        Elf.EM_LOONGARCH: LOONGARCH64, "LOONGARCH": LOONGARCH64,
     }
     global current_arch, current_elf
 
@@ -20837,7 +20982,7 @@ class ContextCommand(GenericCommand):
         ops = re.sub(r"<.*?>", "", ops)
 
         # x86/x64: call ... [rip+0x1111] # 0xAABBCCDD
-        if " # 0x" in ops:
+        if " # 0x" in ops and not is_loongarch64():
             addr = re.sub(r".*# (0x[a-fA-F0-9]*).*", r"\1", ops)
             ptr = to_unsigned_long(gdb.parse_and_eval(addr))
             try:
@@ -20850,6 +20995,15 @@ class ContextCommand(GenericCommand):
                     return "*{:#x}".format(ptr)
                 else:
                     return None
+
+        # loongarch64: bnez $t1, -8 (0x7ffff8) # 0x120000868
+        if " # 0x" in ops and is_loongarch64():
+            addr = re.sub(r".*# (0x[a-fA-F0-9]*).*", r"\1", ops)
+            ptr = to_unsigned_long(gdb.parse_and_eval(addr))
+            if to_str:
+                return "{:#x}".format(ptr)
+            else:
+                return ptr
 
         # x86/x64: call ... PTR [rbx]
         if is_x86():
@@ -24889,7 +25043,8 @@ class SyscallSearchCommand(GenericCommand):
     _example_ += '{:s} -a NIOS2 -m NIOS2            "^writev?" # nios2\n'.format(_cmdline_)
     _example_ += '{:s} -a MICROBLAZE -m MICROBLAZE  "^writev?" # microblaze\n'.format(_cmdline_)
     _example_ += '{:s} -a XTENSA -m XTENSA          "^writev?" # xtensa\n'.format(_cmdline_)
-    _example_ += '{:s} -a CRIS -m CRIS              "^writev?" # cris'.format(_cmdline_)
+    _example_ += '{:s} -a CRIS -m CRIS              "^writev?" # cris\n'.format(_cmdline_)
+    _example_ += '{:s} -a LOONGARCH -m LOONGARCH64  "^writev?" # loongarch'.format(_cmdline_)
 
     def print_legend(self):
         if self.verbose:
@@ -34711,6 +34866,317 @@ cris_syscall_tbl = """
 359  cris  execveat                sys_execveat
 """
 
+# Loongarch
+#
+# [How to make]
+# cd /path/to/linux-6.*/
+# gcc -I `pwd`/include/uapi/ -E -D__SYSCALL=SYSCALL arch/loongarch/include/uapi/asm/unistd.h | grep ^SYSCALL \
+# | sed -e 's/SYSCALL(//;s/[,)]//g' > /tmp/a
+# grep -oP "__NR\S+\s+\d+$" include/uapi/asm-generic/unistd.h | grep -v __NR_sync_file_range2 > /tmp/b
+# join -2 2 -o 1.1,1.10,2.1,1.2 -e loongarch /tmp/a /tmp/b | sed -e 's/\(__NR_\|__NR3264_\)//g' | column -t
+loongarch_syscall_tbl = """
+0    loongarch  io_setup                 sys_io_setup
+1    loongarch  io_destroy               sys_io_destroy
+2    loongarch  io_submit                sys_io_submit
+3    loongarch  io_cancel                sys_io_cancel
+4    loongarch  io_getevents             sys_io_getevents
+5    loongarch  setxattr                 sys_setxattr
+6    loongarch  lsetxattr                sys_lsetxattr
+7    loongarch  fsetxattr                sys_fsetxattr
+8    loongarch  getxattr                 sys_getxattr
+9    loongarch  lgetxattr                sys_lgetxattr
+10   loongarch  fgetxattr                sys_fgetxattr
+11   loongarch  listxattr                sys_listxattr
+12   loongarch  llistxattr               sys_llistxattr
+13   loongarch  flistxattr               sys_flistxattr
+14   loongarch  removexattr              sys_removexattr
+15   loongarch  lremovexattr             sys_lremovexattr
+16   loongarch  fremovexattr             sys_fremovexattr
+17   loongarch  getcwd                   sys_getcwd
+18   loongarch  lookup_dcookie           sys_lookup_dcookie
+19   loongarch  eventfd2                 sys_eventfd2
+20   loongarch  epoll_create1            sys_epoll_create1
+21   loongarch  epoll_ctl                sys_epoll_ctl
+22   loongarch  epoll_pwait              sys_epoll_pwait
+23   loongarch  dup                      sys_dup
+24   loongarch  dup3                     sys_dup3
+25   loongarch  fcntl                    sys_fcntl
+26   loongarch  inotify_init1            sys_inotify_init1
+27   loongarch  inotify_add_watch        sys_inotify_add_watch
+28   loongarch  inotify_rm_watch         sys_inotify_rm_watch
+29   loongarch  ioctl                    sys_ioctl
+30   loongarch  ioprio_set               sys_ioprio_set
+31   loongarch  ioprio_get               sys_ioprio_get
+32   loongarch  flock                    sys_flock
+33   loongarch  mknodat                  sys_mknodat
+34   loongarch  mkdirat                  sys_mkdirat
+35   loongarch  unlinkat                 sys_unlinkat
+36   loongarch  symlinkat                sys_symlinkat
+37   loongarch  linkat                   sys_linkat
+39   loongarch  umount2                  sys_umount
+40   loongarch  mount                    sys_mount
+41   loongarch  pivot_root               sys_pivot_root
+42   loongarch  nfsservctl               sys_ni_syscall
+43   loongarch  statfs                   sys_statfs
+44   loongarch  fstatfs                  sys_fstatfs
+45   loongarch  truncate                 sys_truncate
+46   loongarch  ftruncate                sys_ftruncate
+47   loongarch  fallocate                sys_fallocate
+48   loongarch  faccessat                sys_faccessat
+49   loongarch  chdir                    sys_chdir
+50   loongarch  fchdir                   sys_fchdir
+51   loongarch  chroot                   sys_chroot
+52   loongarch  fchmod                   sys_fchmod
+53   loongarch  fchmodat                 sys_fchmodat
+54   loongarch  fchownat                 sys_fchownat
+55   loongarch  fchown                   sys_fchown
+56   loongarch  openat                   sys_openat
+57   loongarch  close                    sys_close
+58   loongarch  vhangup                  sys_vhangup
+59   loongarch  pipe2                    sys_pipe2
+60   loongarch  quotactl                 sys_quotactl
+61   loongarch  getdents64               sys_getdents64
+62   loongarch  lseek                    sys_lseek
+63   loongarch  read                     sys_read
+64   loongarch  write                    sys_write
+65   loongarch  readv                    sys_readv
+66   loongarch  writev                   sys_writev
+67   loongarch  pread64                  sys_pread64
+68   loongarch  pwrite64                 sys_pwrite64
+69   loongarch  preadv                   sys_preadv
+70   loongarch  pwritev                  sys_pwritev
+71   loongarch  sendfile                 sys_sendfile64
+72   loongarch  pselect6                 sys_pselect6
+73   loongarch  ppoll                    sys_ppoll
+74   loongarch  signalfd4                sys_signalfd4
+75   loongarch  vmsplice                 sys_vmsplice
+76   loongarch  splice                   sys_splice
+77   loongarch  tee                      sys_tee
+78   loongarch  readlinkat               sys_readlinkat
+81   loongarch  sync                     sys_sync
+82   loongarch  fsync                    sys_fsync
+83   loongarch  fdatasync                sys_fdatasync
+84   loongarch  sync_file_range          sys_sync_file_range
+85   loongarch  timerfd_create           sys_timerfd_create
+86   loongarch  timerfd_settime          sys_timerfd_settime
+87   loongarch  timerfd_gettime          sys_timerfd_gettime
+88   loongarch  utimensat                sys_utimensat
+89   loongarch  acct                     sys_acct
+90   loongarch  capget                   sys_capget
+91   loongarch  capset                   sys_capset
+92   loongarch  personality              sys_personality
+93   loongarch  exit                     sys_exit
+94   loongarch  exit_group               sys_exit_group
+95   loongarch  waitid                   sys_waitid
+96   loongarch  set_tid_address          sys_set_tid_address
+97   loongarch  unshare                  sys_unshare
+98   loongarch  futex                    sys_futex
+99   loongarch  set_robust_list          sys_set_robust_list
+100  loongarch  get_robust_list          sys_get_robust_list
+101  loongarch  nanosleep                sys_nanosleep
+102  loongarch  getitimer                sys_getitimer
+103  loongarch  setitimer                sys_setitimer
+104  loongarch  kexec_load               sys_kexec_load
+105  loongarch  init_module              sys_init_module
+106  loongarch  delete_module            sys_delete_module
+107  loongarch  timer_create             sys_timer_create
+108  loongarch  timer_gettime            sys_timer_gettime
+109  loongarch  timer_getoverrun         sys_timer_getoverrun
+110  loongarch  timer_settime            sys_timer_settime
+111  loongarch  timer_delete             sys_timer_delete
+112  loongarch  clock_settime            sys_clock_settime
+113  loongarch  clock_gettime            sys_clock_gettime
+114  loongarch  clock_getres             sys_clock_getres
+115  loongarch  clock_nanosleep          sys_clock_nanosleep
+116  loongarch  syslog                   sys_syslog
+117  loongarch  ptrace                   sys_ptrace
+118  loongarch  sched_setparam           sys_sched_setparam
+119  loongarch  sched_setscheduler       sys_sched_setscheduler
+120  loongarch  sched_getscheduler       sys_sched_getscheduler
+121  loongarch  sched_getparam           sys_sched_getparam
+122  loongarch  sched_setaffinity        sys_sched_setaffinity
+123  loongarch  sched_getaffinity        sys_sched_getaffinity
+124  loongarch  sched_yield              sys_sched_yield
+125  loongarch  sched_get_priority_max   sys_sched_get_priority_max
+126  loongarch  sched_get_priority_min   sys_sched_get_priority_min
+127  loongarch  sched_rr_get_interval    sys_sched_rr_get_interval
+128  loongarch  restart_syscall          sys_restart_syscall
+129  loongarch  kill                     sys_kill
+130  loongarch  tkill                    sys_tkill
+131  loongarch  tgkill                   sys_tgkill
+132  loongarch  sigaltstack              sys_sigaltstack
+133  loongarch  rt_sigsuspend            sys_rt_sigsuspend
+134  loongarch  rt_sigaction             sys_rt_sigaction
+135  loongarch  rt_sigprocmask           sys_rt_sigprocmask
+136  loongarch  rt_sigpending            sys_rt_sigpending
+137  loongarch  rt_sigtimedwait          sys_rt_sigtimedwait
+138  loongarch  rt_sigqueueinfo          sys_rt_sigqueueinfo
+139  loongarch  rt_sigreturn             sys_rt_sigreturn
+140  loongarch  setpriority              sys_setpriority
+141  loongarch  getpriority              sys_getpriority
+142  loongarch  reboot                   sys_reboot
+143  loongarch  setregid                 sys_setregid
+144  loongarch  setgid                   sys_setgid
+145  loongarch  setreuid                 sys_setreuid
+146  loongarch  setuid                   sys_setuid
+147  loongarch  setresuid                sys_setresuid
+148  loongarch  getresuid                sys_getresuid
+149  loongarch  setresgid                sys_setresgid
+150  loongarch  getresgid                sys_getresgid
+151  loongarch  setfsuid                 sys_setfsuid
+152  loongarch  setfsgid                 sys_setfsgid
+153  loongarch  times                    sys_times
+154  loongarch  setpgid                  sys_setpgid
+155  loongarch  getpgid                  sys_getpgid
+156  loongarch  getsid                   sys_getsid
+157  loongarch  setsid                   sys_setsid
+158  loongarch  getgroups                sys_getgroups
+159  loongarch  setgroups                sys_setgroups
+160  loongarch  uname                    sys_newuname
+161  loongarch  sethostname              sys_sethostname
+162  loongarch  setdomainname            sys_setdomainname
+165  loongarch  getrusage                sys_getrusage
+166  loongarch  umask                    sys_umask
+167  loongarch  prctl                    sys_prctl
+168  loongarch  getcpu                   sys_getcpu
+169  loongarch  gettimeofday             sys_gettimeofday
+170  loongarch  settimeofday             sys_settimeofday
+171  loongarch  adjtimex                 sys_adjtimex
+172  loongarch  getpid                   sys_getpid
+173  loongarch  getppid                  sys_getppid
+174  loongarch  getuid                   sys_getuid
+175  loongarch  geteuid                  sys_geteuid
+176  loongarch  getgid                   sys_getgid
+177  loongarch  getegid                  sys_getegid
+178  loongarch  gettid                   sys_gettid
+179  loongarch  sysinfo                  sys_sysinfo
+180  loongarch  mq_open                  sys_mq_open
+181  loongarch  mq_unlink                sys_mq_unlink
+182  loongarch  mq_timedsend             sys_mq_timedsend
+183  loongarch  mq_timedreceive          sys_mq_timedreceive
+184  loongarch  mq_notify                sys_mq_notify
+185  loongarch  mq_getsetattr            sys_mq_getsetattr
+186  loongarch  msgget                   sys_msgget
+187  loongarch  msgctl                   sys_msgctl
+188  loongarch  msgrcv                   sys_msgrcv
+189  loongarch  msgsnd                   sys_msgsnd
+190  loongarch  semget                   sys_semget
+191  loongarch  semctl                   sys_semctl
+192  loongarch  semtimedop               sys_semtimedop
+193  loongarch  semop                    sys_semop
+194  loongarch  shmget                   sys_shmget
+195  loongarch  shmctl                   sys_shmctl
+196  loongarch  shmat                    sys_shmat
+197  loongarch  shmdt                    sys_shmdt
+198  loongarch  socket                   sys_socket
+199  loongarch  socketpair               sys_socketpair
+200  loongarch  bind                     sys_bind
+201  loongarch  listen                   sys_listen
+202  loongarch  accept                   sys_accept
+203  loongarch  connect                  sys_connect
+204  loongarch  getsockname              sys_getsockname
+205  loongarch  getpeername              sys_getpeername
+206  loongarch  sendto                   sys_sendto
+207  loongarch  recvfrom                 sys_recvfrom
+208  loongarch  setsockopt               sys_setsockopt
+209  loongarch  getsockopt               sys_getsockopt
+210  loongarch  shutdown                 sys_shutdown
+211  loongarch  sendmsg                  sys_sendmsg
+212  loongarch  recvmsg                  sys_recvmsg
+213  loongarch  readahead                sys_readahead
+214  loongarch  brk                      sys_brk
+215  loongarch  munmap                   sys_munmap
+216  loongarch  mremap                   sys_mremap
+217  loongarch  add_key                  sys_add_key
+218  loongarch  request_key              sys_request_key
+219  loongarch  keyctl                   sys_keyctl
+220  loongarch  clone                    sys_clone
+221  loongarch  execve                   sys_execve
+222  loongarch  mmap                     sys_mmap
+223  loongarch  fadvise64                sys_fadvise64_64
+224  loongarch  swapon                   sys_swapon
+225  loongarch  swapoff                  sys_swapoff
+226  loongarch  mprotect                 sys_mprotect
+227  loongarch  msync                    sys_msync
+228  loongarch  mlock                    sys_mlock
+229  loongarch  munlock                  sys_munlock
+230  loongarch  mlockall                 sys_mlockall
+231  loongarch  munlockall               sys_munlockall
+232  loongarch  mincore                  sys_mincore
+233  loongarch  madvise                  sys_madvise
+234  loongarch  remap_file_pages         sys_remap_file_pages
+235  loongarch  mbind                    sys_mbind
+236  loongarch  get_mempolicy            sys_get_mempolicy
+237  loongarch  set_mempolicy            sys_set_mempolicy
+238  loongarch  migrate_pages            sys_migrate_pages
+239  loongarch  move_pages               sys_move_pages
+240  loongarch  rt_tgsigqueueinfo        sys_rt_tgsigqueueinfo
+241  loongarch  perf_event_open          sys_perf_event_open
+242  loongarch  accept4                  sys_accept4
+243  loongarch  recvmmsg                 sys_recvmmsg
+260  loongarch  wait4                    sys_wait4
+261  loongarch  prlimit64                sys_prlimit64
+262  loongarch  fanotify_init            sys_fanotify_init
+263  loongarch  fanotify_mark            sys_fanotify_mark
+264  loongarch  name_to_handle_at        sys_name_to_handle_at
+265  loongarch  open_by_handle_at        sys_open_by_handle_at
+266  loongarch  clock_adjtime            sys_clock_adjtime
+267  loongarch  syncfs                   sys_syncfs
+268  loongarch  setns                    sys_setns
+269  loongarch  sendmmsg                 sys_sendmmsg
+270  loongarch  process_vm_readv         sys_process_vm_readv
+271  loongarch  process_vm_writev        sys_process_vm_writev
+272  loongarch  kcmp                     sys_kcmp
+273  loongarch  finit_module             sys_finit_module
+274  loongarch  sched_setattr            sys_sched_setattr
+275  loongarch  sched_getattr            sys_sched_getattr
+276  loongarch  renameat2                sys_renameat2
+277  loongarch  seccomp                  sys_seccomp
+278  loongarch  getrandom                sys_getrandom
+279  loongarch  memfd_create             sys_memfd_create
+280  loongarch  bpf                      sys_bpf
+281  loongarch  execveat                 sys_execveat
+282  loongarch  userfaultfd              sys_userfaultfd
+283  loongarch  membarrier               sys_membarrier
+284  loongarch  mlock2                   sys_mlock2
+285  loongarch  copy_file_range          sys_copy_file_range
+286  loongarch  preadv2                  sys_preadv2
+287  loongarch  pwritev2                 sys_pwritev2
+288  loongarch  pkey_mprotect            sys_pkey_mprotect
+289  loongarch  pkey_alloc               sys_pkey_alloc
+290  loongarch  pkey_free                sys_pkey_free
+291  loongarch  statx                    sys_statx
+292  loongarch  io_pgetevents            sys_io_pgetevents
+293  loongarch  rseq                     sys_rseq
+294  loongarch  kexec_file_load          sys_kexec_file_load
+424  loongarch  pidfd_send_signal        sys_pidfd_send_signal
+425  loongarch  io_uring_setup           sys_io_uring_setup
+426  loongarch  io_uring_enter           sys_io_uring_enter
+427  loongarch  io_uring_register        sys_io_uring_register
+428  loongarch  open_tree                sys_open_tree
+429  loongarch  move_mount               sys_move_mount
+430  loongarch  fsopen                   sys_fsopen
+431  loongarch  fsconfig                 sys_fsconfig
+432  loongarch  fsmount                  sys_fsmount
+433  loongarch  fspick                   sys_fspick
+434  loongarch  pidfd_open               sys_pidfd_open
+435  loongarch  clone3                   sys_clone3
+436  loongarch  close_range              sys_close_range
+437  loongarch  openat2                  sys_openat2
+438  loongarch  pidfd_getfd              sys_pidfd_getfd
+439  loongarch  faccessat2               sys_faccessat2
+440  loongarch  process_madvise          sys_process_madvise
+441  loongarch  epoll_pwait2             sys_epoll_pwait2
+442  loongarch  mount_setattr            sys_mount_setattr
+443  loongarch  quotactl_fd              sys_quotactl_fd
+444  loongarch  landlock_create_ruleset  sys_landlock_create_ruleset
+445  loongarch  landlock_add_rule        sys_landlock_add_rule
+446  loongarch  landlock_restrict_self   sys_landlock_restrict_self
+448  loongarch  process_mrelease         sys_process_mrelease
+449  loongarch  futex_waitv              sys_futex_waitv
+450  loongarch  set_mempolicy_home_node  sys_set_mempolicy_home_node
+"""
+
 
 def parse_syscall_table_defs(table_defs):
     table = []
@@ -36376,6 +36842,39 @@ def get_syscall_table(arch=None, mode=None):
         for entry in tbl:
             nr, abi, name, func = entry
             if abi != "cris":
+                continue
+            # special case
+            if func in arch_specific_dic:
+                syscall_list.append([nr, name, arch_specific_dic[func]])
+                continue
+            # common case
+            if func == 'sys_ni_syscall':
+                continue
+            if func not in sc_def:
+                err("Not found: {:s}".format(func))
+                raise
+            syscall_list.append([nr, name, sc_def[func]])
+
+    elif arch == "LOONGARCH" and mode == "LOONGARCH64":
+        register_list = LOONGARCH64().syscall_parameters
+        sc_def = parse_common_syscall_defs()
+        tbl = parse_syscall_table_defs(loongarch_syscall_tbl)
+        arch_specific_dic = {
+            'sys_clone': [
+                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
+                'int __user *child_tidptr', 'unsigned long tls',
+            ], # kernel/fork.c
+            'sys_rt_sigreturn': [], # arch/loongarch/kernel/signal.c
+            'sys_mmap': [
+                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
+                'unsigned long flags', 'unsigned long fd', 'off_t pgoff',
+            ], # arch/loongarch/kernel/syscall.c
+        }
+
+        syscall_list = []
+        for entry in tbl:
+            nr, abi, name, func = entry
+            if abi != "loongarch":
                 continue
             # special case
             if func in arch_specific_dic:
