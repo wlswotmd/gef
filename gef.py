@@ -306,7 +306,8 @@ def gef_print(x="", less=False, *args, **kwargs):
         except FileNotFoundError:
             less = False
 
-    if less:
+    always_no_pager = get_gef_setting("gef.always_no_pager")
+    if less and not always_no_pager:
         if not x:
             return
         _, tmp_path = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".txt", prefix="gef_print_")
@@ -22767,9 +22768,11 @@ class VMMapCommand(GenericCommand):
     _category_ = "02-c. Process Information - Memory/Section"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--outer', action='store_true', help="display qemu-user's memory map instead of emulated process's memory map.")
+    parser.add_argument('--outer', action='store_true',
+                        help="display qemu-user's memory map instead of emulated process's memory map.")
     parser.add_argument('filter', metavar='FILTER', nargs='?', help='filter string')
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    parser.add_argument('-n', '--no-pager', action='store_true',
+                        help='do not use less. (default: Use less for more than 60 lines)')
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} libc             # show only lines containing the string `libc`\n".format(_cmdline_)
@@ -59023,6 +59026,7 @@ class GefCommand(gdb.Command):
         set_gef_setting("gef.extra_plugins_dir", "", str, "Autoload additional GEF commands from external directory")
         set_gef_setting("gef.disable_color", False, bool, "Disable all colors in GEF")
         set_gef_setting("gef.tempdir", GEF_TEMP_DIR, str, "Directory to use for temporary/cache content")
+        set_gef_setting("gef.always_no_pager", False, bool, "Always disable pager in gef_print()")
         self.loaded_commands = []
         self.missing_commands = {}
         return
