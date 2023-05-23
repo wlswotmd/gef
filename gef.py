@@ -36,6 +36,7 @@
 #   * microblaze
 #   * xtensa
 #   * cris
+#   * loongarch64
 #
 # For GEF with Python2 (only) support was moved to the GEF-Legacy
 # (https://github.com/hugsy/gef-legacy)
@@ -2728,8 +2729,7 @@ def unhide_context():
 @functools.lru_cache(maxsize=None)
 def get_gef_setting(name):
     """Read global gef settings.
-    Return None if not found. A valid config setting can never return None,
-    but False, 0 or ""."""
+    Return None if not found. A valid config setting can never return None, but False, 0 or ""."""
     global __config__
     setting = __config__.get(name, None)
     if not setting:
@@ -2739,8 +2739,7 @@ def get_gef_setting(name):
 
 def set_gef_setting(name, value, _type=None, _desc=None):
     """Set global gef settings.
-    Raise ValueError if `name` doesn't exist and `type` and `desc`
-    are not provided."""
+    Raise ValueError if `name` doesn't exist and `type` and `desc` are not provided."""
     reset_gef_caches()
 
     global __config__
@@ -2940,7 +2939,7 @@ def gdb_get_nth_previous_instruction_address(addr, n):
 
         # If the list of instructions is longer than what we need, then we
         # could get lucky and already have more than what we need, so slice down
-        insns = insns[-n - 1 :]
+        insns = insns[-n - 1:]
 
         # 2. check that the sequence ends with the current address
         if insns[-1].address != cur_insn_addr:
@@ -4252,7 +4251,7 @@ class AARCH64(ARM):
 
     nop_insn = b"\x1f\x20\x03\xd5" # nop
     infloop_insn = b"\x00\x00\x00\x14" # b #0
-    trap_insn = b"\x00\x00\x20\xd4" # bkr #0
+    trap_insn = b"\x00\x00\x20\xd4" # brk #0
     ret_insn = b"\xc0\x03\x5f\xd6" # ret
     syscall_insn = b"\x01\x00\x00\xd4" # svc #0x0
 
@@ -6775,30 +6774,34 @@ class NIOS2(Architecture):
         mnemo, ops = insn.mnemonic, insn.operands
         v0 = get_register(ops[0])
         v1 = get_register(ops[1])
-        v0u = v0 & 0xffffffff
-        v1u = v1 & 0xffffffff
-        taken, reason = False, ""
 
+        pI = lambda a: struct.pack("<I", a & 0xffffffff)
+        ui = lambda a: struct.unpack("<i", a)[0]
+        u2i = lambda a: ui(pI(a))
+        v0s = u2i(v0)
+        v1s = u2i(v1)
+
+        taken, reason = False, ""
         if mnemo == "beq":
             taken, reason = v0 == v1, "{:s}=={:s}".format(ops[0], ops[1])
         elif mnemo == "bne":
             taken, reason = v0 != v1, "{:s}!={:s}".format(ops[0], ops[1])
         elif mnemo == "bge":
-            taken, reason = v0 >= v1, "{:s}>={:s} (signed)".format(ops[0], ops[1])
+            taken, reason = v0s >= v1s, "{:s}>={:s} (signed)".format(ops[0], ops[1])
         elif mnemo == "bgeu":
-            taken, reason = v0u >= v1u, "{:s}>={:s} (unsigned)".format(ops[0], ops[1])
+            taken, reason = v0 >= v1, "{:s}>={:s} (unsigned)".format(ops[0], ops[1])
         elif mnemo == "bgt":
-            taken, reason = v0 > v1, "{:s}>{:s} (signed)".format(ops[0], ops[1])
+            taken, reason = v0s > v1s, "{:s}>{:s} (signed)".format(ops[0], ops[1])
         elif mnemo == "bgtu":
-            taken, reason = v0u > v1u, "{:s}>{:s} (unsigned)".format(ops[0], ops[1])
+            taken, reason = v0 > v1, "{:s}>{:s} (unsigned)".format(ops[0], ops[1])
         elif mnemo == "ble":
-            taken, reason = v0 <= v1, "{:s}<={:s} (signed)".format(ops[0], ops[1])
+            taken, reason = v0s <= v1s, "{:s}<={:s} (signed)".format(ops[0], ops[1])
         elif mnemo == "bleu":
-            taken, reason = v0u <= v1u, "{:s}<={:s} (unsigned)".format(ops[0], ops[1])
+            taken, reason = v0 <= v1, "{:s}<={:s} (unsigned)".format(ops[0], ops[1])
         elif mnemo == "blt":
-            taken, reason = v0 < v1, "{:s}<{:s} (signed)".format(ops[0], ops[1])
+            taken, reason = v0s < v1s, "{:s}<{:s} (signed)".format(ops[0], ops[1])
         elif mnemo == "bltu":
-            taken, reason = v0u < v1u, "{:s}<{:s} (unsigned)".format(ops[0], ops[1])
+            taken, reason = v0 < v1, "{:s}<{:s} (unsigned)".format(ops[0], ops[1])
         return taken, reason
 
     def get_ra(self, insn, frame):
@@ -21084,8 +21087,8 @@ class ContextCommand(GenericCommand):
                 return to_unsigned_long(gdb.parse_and_eval(addr))
 
         # is there register(s)?
-        #   x86/x64  call   rax
-        #   s390x    basr   %lr, %r1
+        #   x86/x64: call   rax
+        #   s390x:   basr   %lr, %r1
         #   sh4:     jsr    @r1
         #   alpha:   jmp    (t0)
         maybe_reg = insn.operands[-1].split()[0]
@@ -23801,7 +23804,7 @@ class LinkMapCommand(GenericCommand):
         filename = None
 
         if args.link_map_address:
-            link_map = args.link_map_address
+            link_map = lookup_address(args.link_map_address)
 
         elif args.elf_address:
             try:
@@ -24013,7 +24016,7 @@ class DynamicCommand(GenericCommand):
         filename = None
 
         if args.dynamic_address:
-            dynamic = args.dynamic_address
+            dynamic = lookup_address(args.dynamic_address)
 
         elif args.elf_address:
             try:
@@ -46440,7 +46443,7 @@ class SlubTinyDumpCommand(GenericCommand):
     _example_ += "                       |\n"
     _example_ += "    +------------------+\n"
     _example_ += "    |\n"
-    _example_ += "    v\n"
+    _example_ += "    v                       [numa node partial page freelist]\n"
     _example_ += "  +-slub-----------+          +-chunk---+  +-chunk---+\n"
     _example_ += "  | freelist       |----+     | ^       |  | ^       |\n"
     _example_ += "  | next           |--+ |     | |offset |  | |offset |\n"
@@ -47865,18 +47868,17 @@ class SlobDumpCommand(GenericCommand):
     _example_ += "* slab_caches is not used when traversing the freelist\n"
     _example_ += "\n"
     _example_ += "   +-free_slob_large--+              +-page----------+           +-page----------+\n"
-    _example_ += "   | list_head        |<---------+   |               |           |               |\n"
-    _example_ += "   +-free_slob_medium-+          |   | freelist      |-----+     | freelist      |\n"
-    _example_ += "   | list_head        |-->...    |   | units (total) |     |     | units (total) |\n"
-    _example_ += "   +-free_slob_small--+          +-->| list_head     |<----|---->| list_head     |<->...\n"
-    _example_ += "   | list_head        |-->...        +---------------+     |     +---------------+\n"
-    _example_ += "   +------------------+                                    |\n"
-    _example_ += "   small : size < 0x100                  +-----------------+\n"
-    _example_ += "   medium: 0x100 <= size < 0x400         |\n"
-    _example_ += "   large : 0x400 <= size < 0x1000        |   +-chunk-----+   +-chunk-----+\n"
-    _example_ += "                                         +-->| units     |-->| -offset   |-->...\n"
-    _example_ += "                                             | offset    |   +-----------+\n"
-    _example_ += "                                             +-----------+   (when units=1)\n"
+    _example_ += "   | list_head        |<---------+   | freelist      |-----+     | freelist      |\n"
+    _example_ += "   +-free_slob_medium-+          |   | units (total) |     |     | units (total) |\n"
+    _example_ += "   | list_head        |-->...    +-->| list_head     |<----|---->| list_head     |<->...\n"
+    _example_ += "   +-free_slob_small--+              +---------------+     |     +---------------+\n"
+    _example_ += "   | list_head        |-->...                              |\n"
+    _example_ += "   +------------------+                      +-------------+\n"
+    _example_ += "   small : size < 0x100                      |\n"
+    _example_ += "   medium: 0x100 <= size < 0x400             |   +-chunk-----+   +-chunk-----+\n"
+    _example_ += "   large : 0x400 <= size < 0x1000            +-->| units     |-->| -offset   |-->...\n"
+    _example_ += "* size is only judged when first inserted,       | offset    |   +-----------+\n"
+    _example_ += "  so divided remainder is stay on                +-----------+   (when units=1, stored negative offset)\n"
 
     def __init__(self, *args, **kwargs):
         super().__init__()

@@ -2,7 +2,7 @@
 * [What is this?](#what-is-this)
 * [Setup](#setup)
     * [Install](#install)
-    * [Install (Ubuntu 23.04)](#install-ubuntu-23.04)
+    * [Install (Ubuntu 23.04)](#install-ubuntu-2304)
     * [Upgrade (replace itself)](#upgrade-replace-itself)
     * [Uninstall](#uninstall)
     * [Dependency](#dependency)
