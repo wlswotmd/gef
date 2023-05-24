@@ -109,7 +109,7 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 ## Added / Improved features
 
 All of these features are experimental.
-Tested on Ubuntu 22.04. It may works under Ubuntu 20.04 and 23.04.
+Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
 
 ### Qemu-system cooperation - General
 * `qreg`: displays the register values from qemu-monitor (allows to get like `$cs` even under qemu 2.x).
