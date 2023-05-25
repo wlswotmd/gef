@@ -195,7 +195,6 @@ DEFAULT_PAGE_SIZE               = 1 << DEFAULT_PAGE_ALIGN_SHIFT
 DEFAULT_PAGE_SIZE_MASK          = ~ (DEFAULT_PAGE_SIZE - 1)
 GEF_RC                          = os.getenv("GEF_RC") or os.path.join(os.getenv("HOME") or "~", ".gef.rc")
 GEF_TEMP_DIR                    = os.path.join(tempfile.gettempdir(), "gef")
-GEF_MAX_STRING_LENGTH           = 0x50
 
 GDB_MIN_VERSION                 = (7, 7)
 GDB_VERSION                     = tuple(map(int, re.search(r"(\d+)[^\d]+(\d+)", gdb.VERSION).groups()))
@@ -7711,11 +7710,14 @@ def read_int_from_memory(addr):
     return unpack(mem)
 
 
-def read_cstring_from_memory(address, max_length=GEF_MAX_STRING_LENGTH):
+def read_cstring_from_memory(address, max_length=None):
     """Return a C-string read from memory."""
     # original GEF uses gdb.Value().cast("char"), but this is too slow if string is too large.
     # for example 0xcccccccccccccccc....(too long), this is in kernel or firmware commonly.
     # to avoid this, gdb.Value().cast() is removed.
+
+    if max_length is None:
+        max_length = get_gef_setting("context.nb_max_string_length")
 
     if is_kgdb():
         # read_memory when kgdb is very slow, this is dirty hack
@@ -20483,6 +20485,7 @@ class ContextCommand(GenericCommand):
         self.add_setting("nb_lines_threads", -1, "Number of line in the threads pane")
         self.add_setting("nb_lines_code", 6, "Number of instruction after $pc")
         self.add_setting("nb_lines_code_prev", 3, "Number of instruction before $pc")
+        self.add_setting("nb_max_string_length", 0x40, "Number of bytes of strings to show")
         self.add_setting("ignore_registers", "", "Space-separated list of registers not to display (e.g. '$cs $ds $gs')")
         self.add_setting("clear_screen", True, "Clear the screen before printing the context")
         default_legend = "legend regs stack code args source memory threads trace extra"
@@ -21296,31 +21299,31 @@ class ContextCommand(GenericCommand):
         return []
 
     def context_trace(self):
+        self.context_title("trace")
+
+        nb_backtrace = self.get_setting("nb_lines_backtrace")
+        if nb_backtrace <= 0:
+            return
+
+        # backward compat for gdb (gdb < 7.10)
+        if not hasattr(gdb, "FrameDecorator"):
+            gdb.execute("backtrace {:d}".format(nb_backtrace))
+            return
+
         try:
-            self.context_title("trace")
+            orig_frame = gdb.selected_frame()
+            current_frame = gdb.newest_frame()
+        except Exception:
+            # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
+            err("Faild to get frame information.")
+            return
 
-            nb_backtrace = self.get_setting("nb_lines_backtrace")
-            if nb_backtrace <= 0:
-                return
+        frames = [current_frame]
+        while current_frame != orig_frame:
+            current_frame = current_frame.older()
+            frames.append(current_frame)
 
-            # backward compat for gdb (gdb < 7.10)
-            if not hasattr(gdb, "FrameDecorator"):
-                gdb.execute("backtrace {:d}".format(nb_backtrace))
-                return
-
-            try:
-                orig_frame = gdb.selected_frame()
-                current_frame = gdb.newest_frame()
-            except Exception:
-                # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
-                err("Faild to get frame information.")
-                return
-
-            frames = [current_frame]
-            while current_frame != orig_frame:
-                current_frame = current_frame.older()
-                frames.append(current_frame)
-
+        try:
             nb_backtrace_before = self.get_setting("nb_lines_backtrace_before")
             level = max(len(frames) - nb_backtrace_before - 1, 0)
             current_frame = frames[level]
@@ -21337,7 +21340,13 @@ class ContextCommand(GenericCommand):
                 if name:
                     frame_args = gdb.FrameDecorator.FrameDecorator(current_frame).frame_args() or []
                     m = Color.greenify(name)
-                    fargs = ["{}={!s}".format(Color.yellowify(x.sym), x.sym.value(current_frame)) for x in frame_args]
+                    fargs = []
+                    nb_max_string_length = get_gef_setting("context.nb_max_string_length")
+                    for x in frame_args:
+                        value = "{!s}".format(x.sym.value(current_frame))
+                        if len(value) > nb_max_string_length:
+                            value = "{}[...]".format(value[:nb_max_string_length])
+                        fargs.append("{}={:s}".format(Color.yellowify(x.sym), value))
                     m += "({})".format(", ".join(fargs))
                     items.append(m)
                 else:
@@ -22553,6 +22562,7 @@ def dereference_from(addr):
 
     string_color = get_gef_setting("theme.dereference_string")
     max_recursion = get_gef_setting("dereference.max_recursion") or 4
+    nb_max_string_length = get_gef_setting("context.nb_max_string_length")
     blacklist = get_dereference_from_blacklist()
     addr = lookup_address(align_address(int(addr)))
     msg = []
@@ -22628,8 +22638,8 @@ def dereference_from(addr):
                     s = read_cstring_from_memory(prev.value)
                     if len(s) < get_memory_alignment():
                         txt = '{:s} ({:s}?)'.format(format_address_long_fmt(addr.value), Color.colorify(repr(s), string_color))
-                    elif len(s) > GEF_MAX_STRING_LENGTH:
-                        txt = Color.colorify('{:s}[...]'.format(repr(s[:GEF_MAX_STRING_LENGTH])), string_color)
+                    elif len(s) > nb_max_string_length:
+                        txt = Color.colorify('{:s}[...]'.format(repr(s[:nb_max_string_length])), string_color)
                     else:
                         txt = Color.colorify('{:s}'.format(repr(s)), string_color)
                     msg.append(txt)
