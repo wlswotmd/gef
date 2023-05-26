@@ -9851,7 +9851,7 @@ def get_ksymaddr_symbol(addr):
 def get_kparam(sym):
     try:
         res = gdb.execute("kparam-sysctl --quiet --no-pager --exact --filter {:s}".format(sym), to_string=True)
-        return int(res.split()[2], 16)
+        return int(res.split()[1], 16)
     except Exception:
         return None
 
@@ -43331,37 +43331,37 @@ class KernelParamSysctlCommand(GenericCommand):
                             # data length
                             if handler in self.str_types:
                                 data_val = read_cstring_from_memory(data_addr)
-                                fmt = "{:<55s}: {:#018x} {:#06x} {:#010o} {:s}"
+                                fmt = "{:<55s} {:#018x} {:#06x} {:#010o} {:s}"
                                 self.out.append(fmt.format(param_path, data_addr, maxlen, mode, data_val))
                             elif maxlen == 4:
                                 data_val = u32(read_memory(data_addr, 4))
-                                fmt = "{:<55s}: {:#018x} {:#06x} {:#010o} {:#018x}"
+                                fmt = "{:<55s} {:#018x} {:#06x} {:#010o} {:#018x}"
                                 self.out.append(fmt.format(param_path, data_addr, maxlen, mode, data_val))
                             elif maxlen == 8:
                                 data_val = u64(read_memory(data_addr, 8))
-                                fmt = "{:<55s}: {:#018x} {:#06x} {:#010o} {:#018x}"
+                                fmt = "{:<55s} {:#018x} {:#06x} {:#010o} {:#018x}"
                                 self.out.append(fmt.format(param_path, data_addr, maxlen, mode, data_val))
                             elif maxlen == 1:
                                 data_val = u8(read_memory(data_addr, 1))
-                                fmt = "{:<55s}: {:#018x} {:#06x} {:#010o} {:#018x}"
+                                fmt = "{:<55s} {:#018x} {:#06x} {:#010o} {:#018x}"
                                 self.out.append(fmt.format(param_path, data_addr, maxlen, mode, data_val))
                             elif maxlen == 0:
                                 if self.verbose:
-                                    fmt = "{:<55s}: {:#018x} {:#06x} {:#010o}"
+                                    fmt = "{:<55s} {:#018x} {:#06x} {:#010o}"
                                     self.out.append(fmt.format(param_path, data_addr, maxlen, mode))
                             else:
                                 # type from heuristic
                                 data_val = read_cstring_from_memory(data_addr)
                                 if data_val and data_val.isprintable() and len(data_val) >= 2:
-                                    fmt = "{:<55s}: {:#018x} {:#06x} {:#010o} {:s}"
+                                    fmt = "{:<55s} {:#018x} {:#06x} {:#010o} {:s}"
                                     self.out.append(fmt.format(param_path, data_addr, maxlen, mode, data_val))
                                 else:
                                     data_val = read_int_from_memory(data_addr)
-                                    fmt = "{:<55s}: {:#018x} {:#06x} {:#010o} {:#018x}"
+                                    fmt = "{:<55s} {:#018x} {:#06x} {:#010o} {:#018x}"
                                     self.out.append(fmt.format(param_path, data_addr, maxlen, mode, data_val))
                         else:
                             if self.verbose:
-                                fmt = "{:<55s}: {:#018x} {:#06x} {:#010o}"
+                                fmt = "{:<55s} {:#018x} {:#06x} {:#010o}"
                                 self.out.append(fmt.format(param_path, data_addr, maxlen, mode))
 
                 # goto next
@@ -43518,7 +43518,7 @@ class KernelParamSysctlCommand(GenericCommand):
 
         self.out = []
         if not args.quiet:
-            fmt = "{:<55s}: {:<18s} {:<6s} {:<10s} {:<18s}"
+            fmt = "{:<55s} {:<18s} {:<6s} {:<10s} {:<18s}"
             legend = ["ParamName", "ParamAddress", "MaxLen", "Mode", "ParamValue"]
             self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
