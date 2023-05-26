@@ -48303,7 +48303,6 @@ class KsymaddrRemoteCommand(GenericCommand):
     def __init__(self, *args, **kwargs):
         super().__init__()
         self.kallsyms = []
-        self.token_table = []
         return
 
     def verbose_info(self, msg):
@@ -48325,8 +48324,6 @@ class KsymaddrRemoteCommand(GenericCommand):
         return
 
     def get_token_table(self):
-        if self.token_table:
-            return self.token_table
         # Parse symbol name tokens
         tokens = []
         position = self.offset_kallsyms_token_table
@@ -48337,8 +48334,7 @@ class KsymaddrRemoteCommand(GenericCommand):
                 position += 1
             position += 1
             tokens.append(token)
-        self.token_table = tokens
-        return self.token_table
+        return tokens
 
     def resolve_kallsyms(self):
         if self.kallsyms != []: # resolved already
