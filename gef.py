@@ -43789,6 +43789,214 @@ class KernelSearchCodePtrCommand(GenericCommand):
 
 
 @register_command
+class KernelDmesgCommand(GenericCommand):
+    """Dumps the ring buffer of dmesg area."""
+    _cmdline_ = "kdmesg"
+    _category_ = "08-b. Qemu-system Cooperation - Linux"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
+    _syntax_ = parser.format_help()
+
+    def dump_printk_ringbuffer(self, ring_buffer_name, ring_buffer_address):
+        """
+        struct printk_ringbuffer {
+            struct prb_desc_ring {
+                unsigned int        count_bits;
+                struct prb_desc*    descs;
+                struct printk_info* infos;
+                atomic_long_t       head_id;
+                atomic_long_t       tail_id;
+            } desc_ring;
+            struct prb_data_ring {
+                unsigned int        size_bits;
+                char*               data;
+                atomic_long_t       head_lpos;
+                atomic_long_t       tail_lpos;
+            } text_data_ring;
+            atomic_long_t           fail;
+        };
+
+        struct prb_desc {
+            atomic_long_t           state_var;
+            struct prb_data_blk_lpos {
+                unsigned long       begin;
+                unsigned long       next;
+            } text_blk_lpos;
+        };
+
+        struct printk_info {
+            u64                     seq;		/* sequence number */
+            u64                     ts_nsec;	/* timestamp in nanoseconds */
+            u16                     text_len;	/* length of text message */
+            u8                      facility;	/* syslog facility */
+            u8                      flags:5;	/* internal record flags */
+            u8                      level:3;	/* syslog level */
+            u32	                    caller_id;	/* thread id or processor id */
+        	struct dev_printk_info  dev_info;
+        };
+        """
+
+        current = ring_buffer_address
+        rb = {}
+        rb["desc_ring"] = {}
+        rb["desc_ring"]["count_bits"] = read_int_from_memory(current)
+        current += current_arch.ptrsize
+        rb["desc_ring"]["descs"] = read_int_from_memory(current)
+        current += current_arch.ptrsize
+        rb["desc_ring"]["infos"] = read_int_from_memory(current)
+        current += current_arch.ptrsize
+        rb["desc_ring"]["head_id"] = read_int_from_memory(current)
+        current += current_arch.ptrsize
+        rb["desc_ring"]["tail_id"] = read_int_from_memory(current)
+        current += current_arch.ptrsize
+        rb["text_data_ring"] = {}
+        size_bits = read_int_from_memory(current)
+        if size_bits > current_arch.ptrsize * 8:
+            current += current_arch.ptrsize
+            size_bits = read_int_from_memory(current)
+        rb["text_data_ring"]["size_bits"] = size_bits
+        current += current_arch.ptrsize
+        rb["text_data_ring"]["data"] = read_int_from_memory(current)
+        current += current_arch.ptrsize
+        rb["text_data_ring"]["head_lpos"] = read_int_from_memory(current)
+        current += current_arch.ptrsize
+        rb["text_data_ring"]["tail_lpos"] = read_int_from_memory(current)
+        current += current_arch.ptrsize
+        rb["fail"] = read_int_from_memory(current)
+
+        if not self.quiet:
+            info("name: {:s}".format(ring_buffer_name))
+            info("address: {:#x}".format(ring_buffer_address))
+            info("desc_ring.count_bits: {:#x}".format(rb["desc_ring"]["count_bits"]))
+            info("desc_ring.descs: {:#x}".format(rb["desc_ring"]["descs"]))
+            info("desc_ring.infos: {:#x}".format(rb["desc_ring"]["infos"]))
+            info("desc_ring.head_id: {:#x}".format(rb["desc_ring"]["head_id"]))
+            info("desc_ring.tail_id: {:#x}".format(rb["desc_ring"]["tail_id"]))
+            info("text_data_ring.size_bits: {:#x}".format(rb["text_data_ring"]["size_bits"]))
+            info("text_data_ring.data: {:#x}".format(rb["text_data_ring"]["data"]))
+            info("text_data_ring.head_lpos: {:#x}".format(rb["text_data_ring"]["head_lpos"]))
+            info("text_data_ring.tail_lpos: {:#x}".format(rb["text_data_ring"]["tail_lpos"]))
+            info("fail: {:#x}".format(rb["fail"]))
+
+        def read_desc_i(descs_addr, seq):
+            sizeof_desc = current_arch.ptrsize * 3
+            current = descs_addr + sizeof_desc * seq
+            if not is_valid_addr(current):
+                return False
+            desc = {}
+            desc["state_var"] = read_int_from_memory(current)
+            desc["text_blk_lpos"] = {}
+            current += current_arch.ptrsize
+            desc["text_blk_lpos"]["begin"] = read_int_from_memory(current)
+            current += current_arch.ptrsize
+            desc["text_blk_lpos"]["next"] = read_int_from_memory(current)
+            current += current_arch.ptrsize
+            return desc
+
+        def read_info_i(infos_addr, seq):
+            sizeof_info = 8 + 8 + 2 + 1 + 1 + 4 + 16 + 48
+            current = infos_addr + sizeof_info * seq
+            if not is_valid_addr(current):
+                return False
+            info = {}
+            info["seq"] = u64(read_memory(current, 8))
+            current += 8
+            info["ts_nsec"] = u64(read_memory(current, 8))
+            current += 8
+            info["text_len"] = u16(read_memory(current, 2))
+            current += 2
+            info["facility"] = u8(read_memory(current, 1))
+            current += 1
+            info["flags"] = u8(read_memory(current, 1)) & 0b11111
+            info["level"] = (u8(read_memory(current, 1)) >> 5) & 0b111
+            current += 1
+            info["caller_id"] = u32(read_memory(current, 4))
+            current += 4
+            info["dev_info"] = {}
+            info["dev_info"]["subsystem"] = read_memory(current, 16)
+            current += 16
+            info["dev_info"]["device"] = read_memory(current, 48)
+            current += 48
+            return info
+
+        seq_mask = (1 << rb["desc_ring"]["count_bits"]) - 1
+        state_var_id_mask = ~(3 << (current_arch.ptrsize * 8 - 2))
+        get_desc_state = lambda sv: (sv >> (current_arch.ptrsize * 8 - 2)) & 3
+        size_bits = rb["text_data_ring"]["size_bits"]
+        data_size_mask = (1 << size_bits) - 1
+
+        seq = 0
+        while True:
+            # prb_read
+            rdesc = read_desc_i(rb["desc_ring"]["descs"], seq & seq_mask)
+            rinfo = read_info_i(rb["desc_ring"]["infos"], seq & seq_mask)
+            id = rdesc["state_var"] & state_var_id_mask
+
+            # desc_read_finalized_seq, desc_read
+            desc = read_desc_i(rb["desc_ring"]["descs"], id & seq_mask)
+            info_tmp = read_info_i(rb["desc_ring"]["infos"], id & seq_mask)
+            if (desc["state_var"] & state_var_id_mask) != id: # desc_miss
+                break
+            if get_desc_state(desc["state_var"]) == [0, 1]: # desc_reserved, desc_commited
+                break
+            if info_tmp["seq"] != seq:
+                break
+            if get_desc_state(desc["state_var"]) == 2: # desc_reusable
+                if (desc["text_blk_lpos"]["begin"], desc["text_blk_lpos"]["next"]) == (1, 1):
+                    break
+
+            # copy_data, get_data
+            begin = desc["text_blk_lpos"]["begin"]
+            next = desc["text_blk_lpos"]["next"]
+            if (begin >> size_bits) == (next >> size_bits) and (begin < next):
+                src = rb["text_data_ring"]["data"] + (begin & data_size_mask)
+            elif ((begin + (1 << size_bits)) >> size_bits) == (next >> size_bits):
+                src = rb["text_data_ring"]["data"]
+            else:
+                raise
+            size = rinfo["text_len"]
+            src += current_arch.ptrsize
+            entry = bytes2str(read_memory(src, size))
+
+            sec = rinfo["ts_nsec"] // 1000 // 1000 // 1000
+            nsec = rinfo["ts_nsec"] % (1000 * 1000 * 1000)
+            nsec_str = "{:09d}".format(nsec)[:6]
+            formatted_entry = "[{:5d}.{:s}] {:s}".format(sec, nsec_str, entry)
+            self.out.append(formatted_entry)
+
+            seq += 1
+
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_qemu_system
+    @only_if_in_kernel
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        if not args.quiet:
+            info("Wait for memory scan")
+
+        self.quiet = args.quiet
+        self.out = []
+
+        printk_rb_static = get_ksymaddr("printk_rb_static")
+        if printk_rb_static is None:
+            err("Not found printk_rb_static")
+            return
+
+        self.dump_printk_ringbuffer("printk_rb_static", printk_rb_static)
+
+        if self.out:
+            gef_print('\n'.join(self.out), less=not args.no_pager)
+
+        return
+
+
+@register_command
 class AsciiSearchCommand(GenericCommand):
     """Search ASCII string recursively from specific location."""
     _cmdline_ = "ascii-search"
