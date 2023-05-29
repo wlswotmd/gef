@@ -45122,10 +45122,10 @@ class MemoryCopyCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('--phys1', action='store_true', help='treat TO_ADDRESS as a physical address.')
-    parser.add_argument('to_addr', metavar='TO_ADDRESS', type=parse_address, help='destionation of memcmp.')
+    parser.add_argument('to_addr', metavar='TO_ADDRESS', type=parse_address, help='destionation of memcpy.')
     parser.add_argument('--phys2', action='store_true', help='treat FROM_ADDRESS as a physical address.')
-    parser.add_argument('from_addr', metavar='FROM_ADDRESS', type=parse_address, help='source of memcmp.')
-    parser.add_argument('size', metavar='SIZE', type=parse_address, help='the size for memcmp.')
+    parser.add_argument('from_addr', metavar='FROM_ADDRESS', type=parse_address, help='source of memcpy.')
+    parser.add_argument('size', metavar='SIZE', type=parse_address, help='the size for memcpy.')
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -45170,6 +45170,87 @@ class MemoryCopyCommand(GenericCommand):
             info("The size is zero, maybe wrong.")
 
         self.memcpy(args.phys1, args.to_addr, args.phys2, args.from_addr, args.size)
+        return
+
+
+@register_command
+class MemorySwapCommand(GenericCommand):
+    """Swaps the contents of one memory to another."""
+    _cmdline_ = "memswap"
+    _category_ = "03-c. Memory - Patch"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('--phys1', action='store_true', help='treat SWAP_ADDRESS1 as a physical address.')
+    parser.add_argument('swap_addr1', metavar='SWAP_ADDRESS1', type=parse_address, help='swap target address.')
+    parser.add_argument('--phys2', action='store_true', help='treat SWAP_ADDRESS2 as a physical address.')
+    parser.add_argument('swap_addr2', metavar='SWAP_ADDRESS2', type=parse_address, help='another swap target address.')
+    parser.add_argument('size', metavar='SIZE', type=parse_address, help='the size for memory swap.')
+    _syntax_ = parser.format_help()
+
+    def __init__(self):
+        super().__init__(complete=gdb.COMPLETE_LOCATION)
+        return
+
+    def memswap(self, phys1, addr1, phys2, addr2, size):
+        try:
+            if phys1:
+                data1 = read_physmem(addr1, size)
+            else:
+                data1 = read_memory(addr1, size)
+        except Exception:
+            err("Read error {:#x}".format(addr1))
+            return
+
+        info("Read count: {:#x}".format(len(data1)))
+
+        try:
+            if phys2:
+                data2 = read_physmem(addr2, size)
+            else:
+                data2 = read_memory(addr2, size)
+        except Exception:
+            err("Read error {:#x}".format(addr2))
+            return
+
+        info("Read count: {:#x}".format(len(data2)))
+
+        try:
+            if phys2:
+                written2 = write_physmem(addr2, data1)
+            else:
+                written2 = write_memory(addr2, data1, len(data1))
+        except Exception:
+            err("Write error {:#x}".format(addr2))
+            return
+
+        info("Write count: {:#x}".format(written2))
+
+        try:
+            if phys1:
+                written1 = write_physmem(addr1, data2)
+            else:
+                written1 = write_memory(addr1, data2, len(data2))
+        except Exception:
+            err("Write error {:#x}".format(addr1))
+            return
+
+        info("Write count: {:#x}".format(written1))
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        if args.phys1 or args.phys2:
+            if not is_qemu_system():
+                err("Unsupported")
+                return
+
+        if args.size == 0:
+            info("The size is zero, maybe wrong.")
+
+        self.memswap(args.phys1, args.swap_addr1, args.phys2, args.swap_addr2, args.size)
         return
 
 
