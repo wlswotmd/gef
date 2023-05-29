@@ -52515,7 +52515,7 @@ class CpuidCommand(GenericCommand):
         return
 
     def execute_cpuid(self, num, subnum=0):
-        code = b"\xeb\xfe\x0f\xa2" # inf-loop (to stop another thread); cpuid
+        code = current_arch.infloop_insn + b"\x0f\xa2" # inf-loop (to stop another thread); cpuid
         gef_on_stop_unhook(hook_stop_handler)
         d = self.get_state(len(code))
         write_memory(d["pc"], code, len(code))
