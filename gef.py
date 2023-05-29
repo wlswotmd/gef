@@ -20463,9 +20463,11 @@ class ContextCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('commands', nargs='*', default=[],
-                        choices=[[], 'legend', 'regs', 'stack', 'code', 'args', 'memory', 'source', 'trace', 'threads', 'extra'],
-                        metavar='{legend,regs,stack,code,args,memory,source,trace,threads,extra}',
-                        help='specifies which context to display.')
+                        choices=[[], 'legend', 'regs', 'stack', 'code', 'args', 'memory',
+                                'source', 'trace', 'threads', 'extra', 'on', 'off'],
+                        metavar='{legend,regs,stack,code,args,memory,source,trace,threads,extra}|{on,off}',
+                        help='specifies which context to display. '
+                             'The on/off are syntax sugars of `gef config context.enable True/False`.')
     _syntax_ = parser.format_help()
 
     old_registers = {}
@@ -20545,6 +20547,13 @@ class ContextCommand(GenericCommand):
     @only_if_gdb_running
     def do_invoke(self, args):
         self.dont_repeat()
+
+        if "on" in args.commands:
+            gdb.execute("gef config context.enable True")
+            return
+        elif "off" in args.commands:
+            gdb.execute("gef config context.enable False")
+            return
 
         if not self.get_setting("enable") or __gef_context_hidden__:
             return
