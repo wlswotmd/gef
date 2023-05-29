@@ -37181,14 +37181,9 @@ class LibcCommand(GenericCommand):
         gef_print("sha1:\t{:s}".format(hashlib.sha1(data).hexdigest()))
         gef_print("md5:\t{:s}".format(hashlib.md5(data).hexdigest()))
 
-        strings_list = strings(data)
-        version = [line for line in strings_list if line.startswith("GNU C Library")]
-        if version:
-            gef_print("ver:\t{:s}".format(version[0]))
-        else:
-            version = [line for line in strings_list if line.startswith("uClibc-ng release")]
-            if version:
-                gef_print("ver:\t{:s}".format(version[0]))
+        pos = re.search(b"(GNU C Library|uClibc-ng release) [\x20-\x7e]*", data)
+        if pos:
+            gef_print("ver:\t{:s}".format(bytes2str(pos.group(0))))
         return
 
 
@@ -37241,10 +37236,9 @@ class LdCommand(GenericCommand):
         gef_print("sha1:\t{:s}".format(hashlib.sha1(data).hexdigest()))
         gef_print("md5:\t{:s}".format(hashlib.md5(data).hexdigest()))
 
-        strings_list = strings(data)
-        version = [line for line in strings_list if (line.startswith("ld.so") and "version" in line)]
-        if version:
-            gef_print("ver:\t{:s}".format(version[0]))
+        pos = re.search(b"ld.so [\x20-\x7e]+ version [\x20-\x7e]*", data)
+        if pos:
+            gef_print("ver:\t{:s}".format(bytes2str(pos.group(0))))
         return
 
 
