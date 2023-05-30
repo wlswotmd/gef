@@ -7614,66 +7614,85 @@ class LOONGARCH64(Architecture):
 #    #    return b''.join(insns)
 
 
+def write_memory_qemu_user(pid, address, buffer, length):
+    """Write `buffer` at address `address` for qemu-user or pin."""
+
+    def read_memory_via_proc_mem(pid, address, length):
+        with open("/proc/{:d}/mem".format(pid), "rb") as fd:
+            try:
+                fd.seek(address)
+                return fd.read(length)
+            except Exception:
+                return None
+
+    def write_memory_via_proc_mem(pid, address, buffer, length):
+        with open("/proc/{:d}/mem".format(pid), "wb") as fd:
+            try:
+                fd.seek(address)
+                ret = fd.write(buffer[:length])
+                fd.flush()
+                gdb.execute("maintenance flush dcache", to_string=True)
+                return ret
+            except Exception:
+                return None
+
+    def write_with_check(pid, address, buffer, length, offset=0):
+        before = read_memory_via_proc_mem(pid, address + offset, length)
+        if before is None:
+            return None
+
+        ret = write_memory_via_proc_mem(pid, address + offset, buffer, length)
+        after = read_memory(address, length)
+
+        if ret:
+            if after == buffer[:length]:
+                return ret
+            else:
+                # fail, revert
+                write_memory_via_proc_mem(pid, address + offset, before, length)
+                return None
+        return None
+
+    # qemu-user (32bit) maps the memory at +0x10000 (fast path)
+    if is_qemu_usermode() and is_32bit():
+        ret = write_with_check(pid, address, buffer, length, offset=0x10000)
+        if ret:
+            return ret
+
+    # we assume address is same
+    ret = write_with_check(pid, address, buffer, length)
+    if ret:
+        return ret
+
+    # heuristic address search and try use it
+    if is_qemu_usermode():
+        inner_section = lookup_address(address).section
+        target_path = inner_section.path
+
+        outer_maps = get_process_maps(outer=True)
+        for m in outer_maps:
+            if m.path != target_path:
+                continue
+            offset = m.page_start - inner_section.page_start
+            ret = write_with_check(pid, address, buffer, length, offset=offset)
+            if ret:
+                return ret
+
+    raise Exception("Write memory error for qemu-user or pin")
+
+
 def write_memory(address, buffer, length):
     """Write `buffer` at address `address`."""
     try:
         gdb.selected_inferior().write_memory(address, buffer, length)
-        ret = length
-        return ret
+        return length
     except gdb.MemoryError:
         pass
 
+    # Under qemu-user/pin, you may not be able to patch code areas, so we patch via /proc/pid/mem
     pid = get_pid()
     if pid and (is_qemu_usermode() or is_pin()):
-
-        def read_memory_via_proc_mem(pid, address, length):
-            with open("/proc/{:d}/mem".format(pid), "rb") as fd:
-                try:
-                    fd.seek(address)
-                    return fd.read(length)
-                except Exception:
-                    return None
-
-        def write_memory_via_proc_mem(pid, address, buffer, length):
-            with open("/proc/{:d}/mem".format(pid), "wb") as fd:
-                try:
-                    fd.seek(address)
-                    ret = fd.write(buffer[:length])
-                    fd.flush()
-                    gdb.execute("maintenance flush dcache", to_string=True)
-                    return ret
-                except Exception:
-                    return None
-
-        def write_with_check(pid, address, buffer, length, offset=0):
-            before = read_memory_via_proc_mem(pid, address + offset, length)
-            if before is None:
-                return None
-
-            ret = write_memory_via_proc_mem(pid, address + offset, buffer, length)
-            after = read_memory(address, length)
-
-            if ret:
-                if after == buffer[:length]:
-                    return ret
-                else:
-                    # fail, revert
-                    write_memory_via_proc_mem(pid, address + offset, before, length)
-                    return None
-            return None
-
-        # qemu-user (32bit) maps the memory at +0x10000
-        if is_qemu_usermode() and is_32bit():
-            ret = write_with_check(pid, address, buffer, length, offset=0x10000)
-            if ret:
-                return ret
-
-        # Under qemu-user/pin, you may not be able to patch code areas, so we patch via /proc/pid/mem
-        ret = write_with_check(pid, address, buffer, length)
-        if ret:
-            return ret
-
-        raise Exception("Unsupported before qemu 5.1")
+        return write_memory_qemu_user(pid, address, buffer, length)
 
     raise Exception("Write memory error")
 
@@ -21823,8 +21842,8 @@ class PatchCommand(GenericCommand):
         except gdb.MemoryError:
             err("Failed to access memory")
             return
-        if data != after_data:
-            err("Failed to write memory (qemu doesn't support writing to code area?)")
+        except Exception as e:
+            err(e)
             return
         history_info = {"addr": addr, "before_data": before_data, "after_data": after_data, "physmode": get_current_mmu_mode()}
         self.history.insert(0, history_info)
