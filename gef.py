@@ -23871,12 +23871,15 @@ class DynamicCommand(GenericCommand):
     group.add_argument('-f', dest='filename', help='the filename you want to parse.')
     group.add_argument('-e', dest='elf_address', type=parse_address, help='the elf address you want to parse.')
     group.add_argument('-d', dest='dynamic_address', type=parse_address, help='the dynamic address you want to parse.')
+    group.add_argument('--size', dest='dynamic_size', type=parse_address, nargs='?',
+                        help='use specified size of dynamic region.')
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}                                        # dump itself\n".format(_cmdline_)
     _example_ += "{:s} -f /usr/lib/x86_64-linux-gnu/libc.so.6 # dump specified binary\n".format(_cmdline_)
     _example_ += "{:s} -e 0x555555554000                      # dump specified address as elf\n".format(_cmdline_)
-    _example_ += "{:s} -d 0x555555575a98                      # dump specified address as dynamic".format(_cmdline_)
+    _example_ += "{:s} -d 0x555555575a98                      # dump specified address as dynamic\n".format(_cmdline_)
+    _example_ += "{:s} -d 0x555555575a98 --size 0x1c0         # dump specified address with specified size".format(_cmdline_)
 
     DT_TABLE = {
         0: "DT_NULL",
@@ -23974,7 +23977,7 @@ class DynamicCommand(GenericCommand):
         super().__init__(complete=gdb.COMPLETE_FILENAME)
         return
 
-    def dump_dynamic(self, dynamic):
+    def dump_dynamic(self, dynamic, remain_size):
         base_address_color = get_gef_setting("theme.dereference_base_address")
 
         if dynamic is None:
@@ -23989,13 +23992,21 @@ class DynamicCommand(GenericCommand):
             val = read_int_from_memory(current)
             current += current_arch.ptrsize
 
-            if tag not in self.DT_TABLE:
-                break
+            if remain_size is None:
+                if tag not in self.DT_TABLE:
+                    break
+            else:
+                remain_size -= current_arch.ptrsize * 2
 
             val = lookup_address(val)
             width = get_format_address_width()
+            tag_description = self.DT_TABLE.get(tag, "Unknown")
             colored_addr = Color.colorify("{:#0{:d}x}".format(addr, width), base_address_color)
-            gef_print("{:s}: {:#0{:d}x} {:s}  |  tag:{:s}".format(colored_addr, tag, width, str(val), self.DT_TABLE[tag]))
+            fmt = "{:s}: {:#0{:d}x} {:s}  |  tag:{:s}"
+            gef_print(fmt.format(colored_addr, tag, width, str(val), tag_description))
+
+            if remain_size is not None and remain_size <= 0:
+                break
         return
 
     @staticmethod
@@ -24074,7 +24085,7 @@ class DynamicCommand(GenericCommand):
                 return
 
         try:
-            self.dump_dynamic(dynamic)
+            self.dump_dynamic(dynamic, args.dynamic_size)
         except Exception:
             err("Failed to parse _DYNAMIC.")
         return
