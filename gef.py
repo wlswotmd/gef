@@ -1358,10 +1358,12 @@ class Elf:
             self.e_entry, self.e_phoff, self.e_shoff = struct.unpack("{}III".format(endian), self.read(12))
         self.e_flags, self.e_ehsize, self.e_phentsize, self.e_phnum = struct.unpack("{}IHHH".format(endian), self.read(10))
         self.e_shentsize, self.e_shnum, self.e_shstrndx = struct.unpack("{}HHH".format(endian), self.read(6))
+
         # phdr
         self.phdrs = []
         for i in range(self.e_phnum):
             self.phdrs.append(Phdr(self, self.e_phoff + self.e_phentsize * i))
+
         # shdr
         self.shdrs = []
         for i in range(self.e_shnum):
@@ -1540,6 +1542,7 @@ class Shdr:
             self.sh_size, self.sh_link, self.sh_info = struct.unpack("{}III".format(endian), elf.read(12))
             self.sh_addralign, self.sh_entsize = struct.unpack("{}II".format(endian), elf.read(8))
 
+        # name
         stroff = elf.e_shoff + elf.e_shentsize * elf.e_shstrndx
 
         if elf.e_class == Elf.ELF_64_BITS:
@@ -17032,6 +17035,8 @@ class ElfInfoCommand(GenericCommand):
                         help='parse remote binary if download feature is available.')
     parser.add_argument('-f', dest='file', help='the file path you want to parse.')
     parser.add_argument('-a', dest='address', type=parse_address, help='the memory address you want to parse.')
+    parser.add_argument('-v', dest='verbose', action='store_true', help='dump the content of each section.')
+    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}                   # parse binary itself\n".format(_cmdline_)
@@ -17324,7 +17329,7 @@ class ElfInfoCommand(GenericCommand):
                 filename = elf.filename
         elif elf.addr is not None:
             filename = "{:#x}".format(elf.addr)
-        gef_print(titlify("ELF Header - {:s}".format(filename)))
+        self.out.append(titlify("ELF Header - {:s}".format(filename)))
 
         magic_hex = hexdump(struct.pack(">I", elf.e_magic), show_raw=True)
         magic_str = repr(p32(elf.e_magic).decode()[::-1])
@@ -17351,7 +17356,7 @@ class ElfInfoCommand(GenericCommand):
         ]
 
         for title, content in data:
-            gef_print("{:<34s}: {}".format(title, content))
+            self.out.append("{:<34s}: {}".format(title, content))
 
         ptype = {
             Phdr.PT_NULL          : "NULL",
@@ -17386,13 +17391,13 @@ class ElfInfoCommand(GenericCommand):
 
         name_width = max([len(ptype.get(p.p_type, "UNKNOWN")) for p in elf.phdrs])
 
-        gef_print(titlify("Program Header - {:s}".format(filename)))
+        self.out.append(titlify("Program Header - {:s}".format(filename)))
         fmt = "[{:>2s}] {:{:d}s} {:>12s} {:>12s} {:>12s} {:>12s} {:>12s} {:5s} {:>8s}"
         legend = [
             "#", "Type", name_width, "Offset", "Virtaddr",
             "Physaddr", "FileSiz", "MemSiz", "Flags", "Align",
         ]
-        gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+        self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
         for i, p in enumerate(elf.phdrs):
             p_type = ptype[p.p_type] if p.p_type in ptype else "UNKNOWN"
             p_flags = pflags[p.p_flags] if p.p_flags in pflags else "???"
@@ -17401,7 +17406,7 @@ class ElfInfoCommand(GenericCommand):
                 i, p_type, name_width, p.p_offset, p.p_vaddr,
                 p.p_paddr, p.p_filesz, p.p_memsz, p_flags, p.p_align,
             ]
-            gef_print(fmt.format(*args))
+            self.out.append(fmt.format(*args))
 
         stype = {
             Shdr.SHT_NULL           : "NULL",
@@ -17435,14 +17440,14 @@ class ElfInfoCommand(GenericCommand):
             Shdr.SHT_GNU_versym     : "GNU_versym",
         }
 
-        gef_print(titlify("Section Header - {:s}".format(filename)))
+        self.out.append(titlify("Section Header - {:s}".format(filename)))
         if not elf.shdrs:
-            gef_print("Not loaded")
+            self.out.append("Not loaded")
         else:
             name_width = max([len(s.sh_name) for s in elf.shdrs])
             fmt = "[{:>2s}] {:{:d}s} {:>15s} {:>12s} {:>12s} {:>12s} {:>12s} {:>5s} {:>5s} {:>5s} {:>8s}"
             legend = ["#", "Name", name_width, "Type", "Address", "Offset", "Size", "EntSiz", "Flags", "Link", "Info", "Align"]
-            gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+            self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
             for i, s in enumerate(elf.shdrs):
                 sh_type = stype[s.sh_type] if s.sh_type in stype else "UNKNOWN"
                 sh_flags = ""
@@ -17476,7 +17481,16 @@ class ElfInfoCommand(GenericCommand):
                     i, s.sh_name, name_width, sh_type, s.sh_addr, s.sh_offset, s.sh_size,
                     s.sh_entsize, sh_flags, s.sh_link, s.sh_info, s.sh_addralign,
                 ]
-                gef_print(fmt.format(*args))
+                self.out.append(fmt.format(*args))
+
+                if self.verbose:
+                    if s.sh_size > 0x1000:
+                        self.out.append("Skip because too large ({:#x} > 0x1000)".format(s.sh_size))
+                    else:
+                        fd = open(elf.filename, "rb")
+                        fd.seek(s.sh_offset, 0)
+                        section_data = fd.read(s.sh_size)
+                        self.out.append(hexdump(section_data, show_symbol=False, base=s.sh_offset))
         return
 
     @parse_args
@@ -17486,6 +17500,8 @@ class ElfInfoCommand(GenericCommand):
         local_filepath = None
         remote_filepath = None
         tmp_filepath = None
+        self.verbose = args.verbose
+        self.out = []
 
         # memory parse pattern
         if args.address is not None:
@@ -17494,6 +17510,7 @@ class ElfInfoCommand(GenericCommand):
                 err("Failed to parse elf.")
             else:
                 self.elf_info(elf)
+                gef_print('\n'.join(self.out), less=not args.no_pager)
             return
 
         # file parse pattern
@@ -17543,7 +17560,10 @@ class ElfInfoCommand(GenericCommand):
 
         # readelf pattern
         if args.use_readelf:
-            os.system("readelf -a '{:s}' | less".format(local_filepath))
+            if args.no_pager:
+                os.system("readelf -a '{:s}'".format(local_filepath))
+            else:
+                os.system("readelf -a '{:s}' | less".format(local_filepath))
             if tmp_filepath and os.path.exists(tmp_filepath):
                 os.unlink(tmp_filepath)
             return
@@ -17554,8 +17574,9 @@ class ElfInfoCommand(GenericCommand):
             err("Failed to parse elf.")
         else:
             data = open(local_filepath, "rb").read()
-            info("size: {:d} bytes, sha1: {:s}".format(len(data), hashlib.sha1(data).hexdigest()))
+            self.out.append("size: {:d} bytes, sha1: {:s}".format(len(data), hashlib.sha1(data).hexdigest()))
             self.elf_info(elf, remote_filepath)
+            gef_print('\n'.join(self.out), less=not args.no_pager)
 
         if tmp_filepath and os.path.exists(tmp_filepath):
             os.unlink(tmp_filepath)
