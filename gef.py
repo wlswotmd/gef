@@ -58110,6 +58110,501 @@ class SwitchELCommand(GenericCommand):
 
 
 @register_command
+class PagewalkWithHintsCommand(GenericCommand):
+    """Add hint to the result of pagewalk. (x86-64, ARM64 only)"""
+    _cmdline_ = "pagewalk-with-hints"
+    _category_ = "08-a. Qemu-system Cooperation - General"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    parser.add_argument('-c', '--use-cache', action='store_true', help='use cache.')
+    parser.add_argument('-q', dest='quiet', action='store_true', help='quiet execution.')
+    _syntax_ = parser.format_help()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        self.prev_out = None
+        return
+
+    class Region:
+        def __init__(self, addr_start, addr_end, perm, description=""):
+            self.addr_start = addr_start
+            self.addr_end = addr_end
+            self.size = addr_end - addr_start
+            self.perm = perm
+            self.description = description
+            return
+
+        def add_description(self, description):
+            if self.description:
+                new_description = self.description + ", " + description
+            else:
+                new_description = description
+            self.description = new_description
+            return
+
+    def page_start_align(self, x):
+        return x & gef_getpagesize_mask()
+
+    def page_end_align(self, x):
+        if x & (gef_getpagesize() - 1):
+            return (x & gef_getpagesize_mask()) + gef_getpagesize()
+        else:
+            return x
+
+    def insert_region(self, to_insert_address, to_insert_size, description):
+        target_address_start = to_insert_address
+        target_address_end = to_insert_address + to_insert_size
+
+        for key, r in sorted(self.regions.items()):
+            # no overwrap
+            if r.addr_end <= target_address_start:
+                continue
+            if target_address_end <= r.addr_start:
+                break
+
+            # found, let's split
+            # pattern1
+            #   - target_address_start
+            #     (ignore)
+            #   - r.addr_start
+            #     (size_2nd)
+            #   - target_address_end
+            #     (size_3rd)
+            #   - r.addr_end
+
+            # pattern2
+            #   - target_address_start
+            #     (ignore)
+            #   - r.addr_start
+            #     (size_2nd)
+            #   - r.addr_end
+            #     (treat by next loop)
+            #   - target_address_end
+
+            # pattern3
+            #   - r.addr_start
+            #     (size_1st)
+            #   - target_address_start
+            #     (size_2nd)
+            #   - target_address_end
+            #     (size_3rd)
+            #   - r.addr_end
+
+            # pattern4
+            #   - r.addr_start
+            #     (size_1st)
+            #   - target_address_start
+            #     (size_2nd)
+            #   - r.addr_end
+            #     (treat by next loop)
+            #   - target_address_end
+
+            size_1st = max(target_address_start - r.addr_start, 0)
+            size_2nd = min(target_address_end, r.addr_end) - max(target_address_start, r.addr_start)
+            size_3rd = max(r.addr_end - target_address_end, 0)
+
+            # then insert (old one is overwritten)
+            if size_1st > 0:
+                addr_start_1st = r.addr_start
+                addr_end_1st = addr_start_1st + size_1st
+                self.regions[addr_start_1st] = self.Region(addr_start_1st, addr_end_1st, r.perm, r.description)
+            if size_2nd > 0:
+                addr_start_2nd = max(target_address_start, r.addr_start)
+                addr_end_2nd = addr_start_2nd + size_2nd
+                if r.description:
+                    new_description = r.description + ", " + description
+                else:
+                    new_description = description
+                self.regions[addr_start_2nd] = self.Region(addr_start_2nd, addr_end_2nd, r.perm, new_description)
+            if size_3rd > 0:
+                addr_start_3rd = target_address_end
+                addr_end_3rd = addr_start_3rd + size_3rd
+                self.regions[addr_start_3rd] = self.Region(addr_start_3rd, addr_end_3rd, r.perm, r.description)
+
+            if r.addr_end < target_address_end:
+                target_address_start = r.addr_end
+        return
+
+    def merge_region(self):
+        new_regions = {}
+        prev_key, prev_r = None, None
+        for key, r in sorted(self.regions.items()):
+            # for 1st element
+            if prev_key is None:
+                prev_key, prev_r = key, r
+                continue
+
+            # not macth, so append
+            if prev_r.addr_end != r.addr_start:
+                new_regions[prev_key] = prev_r
+                prev_key, prev_r = key, r
+                continue
+
+            if prev_r.perm != r.perm:
+                new_regions[prev_key] = prev_r
+                prev_key, prev_r = key, r
+                continue
+
+            if prev_r.description != r.description:
+                new_regions[prev_key] = prev_r
+                prev_key, prev_r = key, r
+                continue
+
+            # match, so let's merge
+            prev_r.size += r.size
+            prev_r.addr_end += r.size
+
+        # add last element
+        if prev_key is not None:
+            new_regions[prev_key] = prev_r
+
+        # replace
+        self.regions = new_regions
+        return
+
+    def get_maps(self):
+        res = get_maps_by_pagewalk("pagewalk -q -n")
+        res = sorted(set(res.splitlines()))
+        res = list(filter(lambda line: line.endswith("]"), res))
+        res = list(filter(lambda line: "[+]" not in line, res))
+        res = list(filter(lambda line: "*" not in line, res))
+
+        regions = {}
+        for line in res:
+            line = line.split()
+            addr_start, addr_end = [int(x, 16) for x in line[0].split("-")]
+            if (addr_start >> ((current_arch.ptrsize * 8) - 1)) != 1:
+                continue
+            if is_x86_64():
+                perm = Permission.from_process_maps(line[5][1:].lower())
+            elif is_arm64():
+                perm = Permission.from_process_maps(line[6][-3:].lower())
+            regions[addr_start] = self.Region(addr_start, addr_end, str(perm))
+        return regions
+
+    def resolve_kbase(self):
+        if not self.quiet:
+            info("resolve kbase")
+        kinfo = KernelbaseCommand.get_kernel_base()
+
+        # .text
+        _stext = get_ksymaddr("_stext")
+        _etext = get_ksymaddr("_etext")
+        if _stext and _etext:
+            _stext = self.page_start_align(_stext)
+            _etext = self.page_end_align(_etext)
+            self.insert_region(_stext, _etext - _stext, "kernel .text")
+        else:
+            if kinfo.kbase in self.regions:
+                self.regions[kinfo.kbase].add_description("maybe kernel .text")
+
+        # .rodata
+        __start_rodata = get_ksymaddr("__start_rodata")
+        __end_rodata = get_ksymaddr("__end_rodata")
+        if __start_rodata and __end_rodata:
+            __start_rodata = self.page_start_align(__start_rodata)
+            __end_rodata = self.page_end_align(__end_rodata)
+            self.insert_region(__start_rodata, __end_rodata - __start_rodata, "kernel .rodata")
+        else:
+            if kinfo.krobase in self.regions:
+                self.regions[kinfo.krobase].add_description("maybe kernel .rodata")
+
+        # .data
+        _sdata = get_ksymaddr("_sdata")
+        _edata = get_ksymaddr("_edata")
+        if _sdata and _edata:
+            _sdata = self.page_start_align(_sdata)
+            _edata = self.page_end_align(_edata)
+            self.insert_region(_sdata, _edata - _sdata, "kernel .data")
+        else:
+            if kinfo.krwbase in self.regions:
+                self.regions[kinfo.krwbase].add_description("maybe kernel .data")
+        return
+
+    def resolve_direct_map(self):
+        if not self.quiet:
+            info("resolve direct map")
+        page_offset_base = get_ksymaddr("page_offset_base")
+        if not page_offset_base:
+            return
+        vmalloc_base = get_ksymaddr("vmalloc_base")
+        if not vmalloc_base:
+            return
+
+        phys_page_start = read_int_from_memory(page_offset_base)
+        vmalloc_start_addr = read_int_from_memory(vmalloc_base)
+        phys_mem_size = vmalloc_start_addr - phys_page_start
+
+        self.insert_region(phys_page_start, phys_mem_size, "physmem direct map")
+        return
+
+    def resolve_vmalloc(self):
+        if not self.quiet:
+            info("resolve vmalloc")
+        vmalloc_base = get_ksymaddr("vmalloc_base")
+        if not vmalloc_base:
+            return
+        vmalloc_start_addr = read_int_from_memory(vmalloc_base)
+
+        res = gdb.execute("monitor info registers", to_string=True)
+        cr4 = int(re.search(r"CR4=(\S+)", res).group(1), 16)
+        if (cr4 >> 12) & 1: # PML5T check
+            VMALLOC_SIZE_TB = 12800
+        else:
+            VMALLOC_SIZE_TB = 32
+
+        vmalloc_region_size = VMALLOC_SIZE_TB << 40
+        self.insert_region(vmalloc_start_addr, vmalloc_region_size, "vmalloc area")
+        return
+
+    def resolve_page(self):
+        if not self.quiet:
+            info("resolve page")
+        vmemmap_base = get_ksymaddr("vmemmap_base")
+        if not vmemmap_base:
+            return
+
+        pages_start_addr = read_int_from_memory(vmemmap_base)
+        self.regions[pages_start_addr].add_description("struct page area")
+        return
+
+    def resolve_kstack(self):
+        if not self.quiet:
+            info("resolve kstack")
+        res = gdb.execute("ktask -n -q", to_string=True)
+
+        # calc kstack address pattern
+        kstacks = set()
+        for line in res.splitlines():
+            line = line.split()
+            kstack = int(line[-2], 16)
+            kstacks.add(kstack & 0xffff)
+
+        # calc kstack size
+        kstacks = sorted(kstacks)
+        diffs = []
+        for i in range(len(kstacks) - 1):
+            diff = kstacks[i + 1] - kstacks[i]
+            diffs.append(diff)
+        if len(diffs) == 0:
+            kstack_size = gef_getpagesize()
+        else:
+            kstack_size = min(diffs)
+
+        # kstack
+        for line in res.splitlines():
+            line = line.split()
+            pid, process_name, kstack = int(line[1]), line[2], int(line[-2], 16)
+            description = "kernel stack of PID:{:d} ({:s})".format(pid, process_name)
+            self.insert_region(kstack, kstack_size, description)
+        return
+
+    def resolve_slub(self):
+        if not self.quiet:
+            info("resolve slub")
+        res = gdb.execute("slub-dump -n -q -vv", to_string=True)
+        for line in res.splitlines():
+            r = re.search(r"name: (.+)", line)
+            if r:
+                name = re.sub(r"\x1B\[([0-9]{1,2}(;[0-9]{1,2})*)?m", "", r.group(1)) # remove color
+                continue
+            r = re.search(r"virtual address: (.+0x.+)", line)
+            if r:
+                address = re.sub(r"\x1B\[([0-9]{1,2}(;[0-9]{1,2})*)?m", "", r.group(1)) # remove color
+                address = int(address, 16)
+                continue
+            r = re.search(r"num pages: (\d+)", line)
+            if r:
+                size = int(r.group(1)) * gef_getpagesize()
+                description = "slab cache ({:s})".format(name)
+                if address:
+                    self.insert_region(address, size, description)
+                address, size = None, None # for detect logic error. name will be reused
+                continue
+        return
+
+    def resolve_slab(self):
+        if not self.quiet:
+            info("resolve slab")
+        res = gdb.execute("slab-dump -n -q", to_string=True)
+        for line in res.splitlines():
+            r = re.search(r"name: (.+)", line)
+            if r:
+                name = re.sub(r"\x1B\[([0-9]{1,2}(;[0-9]{1,2})*)?m", "", r.group(1)) # remove color
+                continue
+            r = re.search(r"virtual address \(s_mem\): (.+0x.+)", line)
+            if r:
+                address = re.sub(r"\x1B\[([0-9]{1,2}(;[0-9]{1,2})*)?m", "", r.group(1)) # remove color
+                address = int(address, 16)
+                continue
+            r = re.search(r"num pages: (\d+)", line)
+            if r:
+                size = int(r.group(1)) * gef_getpagesize()
+                description = "slab cache ({:s})".format(name)
+                if address:
+                    self.insert_region(address, size, description)
+                address, size = None, None # for detect logic error. name will be reused
+                continue
+        return
+
+    def resolve_slob(self):
+        if not self.quiet:
+            info("resolve slob")
+        res = gdb.execute("slob-dump -n -q", to_string=True)
+        for line in res.splitlines():
+            r = re.search(r"virtual address: (.+0x.+)", line)
+            if r:
+                address = re.sub(r"\x1B\[([0-9]{1,2}(;[0-9]{1,2})*)?m", "", r.group(1)) # remove color
+                address = int(address, 16)
+                continue
+            r = re.search(r"num pages: (\d+)", line)
+            if r:
+                size = int(r.group(1)) * gef_getpagesize()
+                description = "slab cache"
+                if address:
+                    self.insert_region(address, size, description)
+                address, size = None, None # for detect logic error
+                continue
+        return
+
+    def resolve_slub_tiny(self):
+        if not self.quiet:
+            info("resolve slub-tiny")
+        res = gdb.execute("slub-tiny-dump -n -q", to_string=True)
+        for line in res.splitlines():
+            r = re.search(r"name: (.+)", line)
+            if r:
+                name = re.sub(r"\x1B\[([0-9]{1,2}(;[0-9]{1,2})*)?m", "", r.group(1)) # remove color
+                continue
+            r = re.search(r"virtual address: (.+0x.+)", line)
+            if r:
+                address = re.sub(r"\x1B\[([0-9]{1,2}(;[0-9]{1,2})*)?m", "", r.group(1)) # remove color
+                address = int(address, 16)
+                continue
+            r = re.search(r"num pages: (\d+)", line)
+            if r:
+                size = int(r.group(1)) * gef_getpagesize()
+                description = "slab cache ({:s})".format(name)
+                if address:
+                    self.insert_region(address, size, description)
+                address, size = None, None # for detect logic error. name will be reused
+                continue
+        return
+
+    def resolve_each_slab(self):
+        if gdb.execute("ksymaddr-remote --quiet --no-pager slub_", to_string=True):
+            kversion = KernelVersionCommand.kernel_version()
+            if kversion < "6.2":
+                self.resolve_slub()
+            else:
+                if gdb.execute("ksymaddr-remote --quiet --no-pager deactivate_slab", to_string=True):
+                    self.resolve_slub()
+                else:
+                    self.resolve_slub_tiny()
+        elif gdb.execute("ksymaddr-remote --quiet --no-pager cache_reap", to_string=True):
+            self.resolve_slab()
+        elif gdb.execute("ksymaddr-remote --quiet --no-pager slob_", to_string=True):
+            self.resolve_slob()
+        return
+
+    def resolve_module(self):
+        if not self.quiet:
+            info("resolve module")
+        res = gdb.execute("kmod -n -q", to_string=True)
+        for line in res.splitlines():
+            line = line.split()
+            module_name = line[1]
+            module_base = int(line[2], 16)
+            module_size = int(line[3], 16)
+            description = "kernel module ({:s})".format(module_name)
+            self.insert_region(module_base, module_size, description)
+        return
+
+    def resolve_vdso(self):
+        if not self.quiet:
+            info("resolve vdso")
+        vdso_image_64 = KernelAddressHeuristicFinder.get_vdso_image_64()
+        if vdso_image_64:
+            vdso_start = read_int_from_memory(vdso_image_64)
+            vdso_size = read_int_from_memory(vdso_image_64 + current_arch.ptrsize)
+            self.insert_region(vdso_start, vdso_size, "vdso_image_64")
+        vdso_image_32 = KernelAddressHeuristicFinder.get_vdso_image_32()
+        if vdso_image_32:
+            vdso_start = read_int_from_memory(vdso_image_32)
+            vdso_size = read_int_from_memory(vdso_image_32 + current_arch.ptrsize)
+            self.insert_region(vdso_start, vdso_size, "vdso_image_32")
+        vdso_image_x32 = KernelAddressHeuristicFinder.get_vdso_image_x32()
+        if vdso_image_x32:
+            vdso_start = read_int_from_memory(vdso_image_x32)
+            vdso_size = read_int_from_memory(vdso_image_x32 + current_arch.ptrsize)
+            self.insert_region(vdso_start, vdso_size, "vdso_image_x32")
+        return
+
+    def detect_zero_page(self):
+        if not self.quiet:
+            info("detect zero page")
+        page_size = gef_getpagesize()
+        z10 = b"\0" * 0x10
+        ff10 = b"\xff" * 0x10
+        z1000 = b"\0" * page_size
+        ff1000 = b"\xff" * page_size
+
+        for key, r in self.regions.copy().items():
+            if r.description != "":
+                continue
+            if r.size >= page_size * 0x10:
+                continue
+            for addr in range(r.addr_start, r.addr_end, page_size):
+                try:
+                    x = read_memory(addr, 0x10)
+                except gdb.MemoryError:
+                    self.insert_region(addr, page_size, "can not access")
+                    continue
+
+                if x not in [z10, ff10]:
+                    continue
+                x = read_memory(addr, page_size)
+                if x == z1000:
+                    self.insert_region(addr, page_size, "0x00-filled")
+                elif x == ff1000:
+                    self.insert_region(addr, page_size, "0xff-filled")
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_qemu_system
+    @only_if_specific_arch(arch=("x86_64", "ARM64"))
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        if args.use_cache and self.prev_out:
+            gef_print('\n'.join(self.prev_out), less=not args.no_pager)
+            return
+
+        self.quiet = args.quiet
+        self.out = []
+        self.regions = self.get_maps()
+        self.resolve_kbase()
+        self.resolve_direct_map()
+        self.resolve_vmalloc()
+        self.resolve_page()
+        self.resolve_kstack()
+        self.resolve_each_slab()
+        self.resolve_module()
+        self.resolve_vdso()
+        self.detect_zero_page()
+        self.merge_region()
+        for _, r in sorted(self.regions.items()):
+            fmt = "{:#018x}-{:#018x} {:#018x} [{:s}] {:s}"
+            self.out.append(fmt.format(r.addr_start, r.addr_end, r.size, r.perm, r.description))
+        self.prev_out = self.out.copy()
+
+        gef_print('\n'.join(self.out), less=not args.no_pager)
+        return
+
+
+@register_command
 class ExecNextCommand(GenericCommand):
     """Execute until next address. This command is used for rep prefix."""
     _cmdline_ = "exec-next"

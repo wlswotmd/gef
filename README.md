@@ -209,6 +209,8 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksearch-code-ptr.png)
 * `kdmesg`: dumps the ring buffer of dmesg area.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kdmesg.png)
+* `pagewalk-with-hints`: prints pagetables with description.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-with-hints.png)
 
 ### Qemu-system cooperation - Arch specific
 * `uefi-ovmf-info`: dumps addresses of some important structures in each boot phase of UEFI when OVMF is used (heuristic).
