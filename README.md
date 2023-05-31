@@ -127,7 +127,6 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
     * ARM64 (Supported: EL1&0-stage1/EL1&0-stage2/EL2&0-stage1/EL2-stage1/EL3-stage1)
         * ARM v8.7 base.
         * 32bit mode is NOT supported.
-        * PAC and MTE tags are not displayed.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm64.png)
         * Supported stage2 translation. This is EL1/EL2/EL3 pagewalk sample (HITCON CTF 2018 super_hexagon).
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm64-el123.png)

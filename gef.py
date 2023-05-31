@@ -17788,32 +17788,53 @@ class ChecksecCommand(GenericCommand):
         if is_alive() and is_arm64():
             r = PacStatus().get_pac_status()
             if r is None:
-                msg = Color.colorify("Disabled", "bold red") + " (kernel does not support)"
+                msg = Color.colorify("Disabled", "bold red") + " (kernel does not support PAC)"
                 gef_print("{:<40s}: {:s}".format("PAC", msg))
             elif r < 0:
-                msg = Color.colorify("Disabled", "bold red") + " (kernel supports but disabled)"
+                msg = Color.colorify("Unknown", "bold gray") + " (kernel supports PAC but does not support PR_PAC_GET_ENABLED_KEYS prctl option)"
                 gef_print("{:<40s}: {:s}".format("PAC", msg))
             elif r == 0:
-                msg = Color.colorify("Disabled", "bold red") + " (kernel supports but no keys have been set)"
+                msg = Color.colorify("Disabled", "bold red") + " (kernel supports PAC but no keys are enabled)"
                 gef_print("{:<40s}: {:s}".format("PAC", msg))
             elif r > 0:
-                msg = Color.colorify("Enabled", "bold green") + " (kernel supports and some keys have been set)"
+                keys = []
+                if r & 0b00001:
+                    keys.append("APIAKEY")
+                if r & 0b00010:
+                    keys.append("APIBKEY")
+                if r & 0b00100:
+                    keys.append("APDAKEY")
+                if r & 0b01000:
+                    keys.append("APDBKEY")
+                if r & 0b10000:
+                    keys.append("APGAKEY")
+                keys = ', '.join(keys)
+                msg = Color.colorify("Enabled", "bold green") + " (enabled keys: {:s})".format(keys)
                 gef_print("{:<40s}: {:s}".format("PAC", msg))
 
         # MTE status
         if is_alive() and is_arm64():
             r = MteStatus().get_mte_status()
             if r is None:
-                msg = Color.colorify("Disabled", "bold red") + " (kernel does not support)"
+                msg = Color.colorify("Disabled", "bold red") + " (kernel does not support MTE)"
                 gef_print("{:<40s}: {:s}".format("MTE", msg))
             elif r < 0:
-                msg = Color.colorify("Disabled", "bold red") + " (kernel supports but disabled)"
+                msg = Color.colorify("Unknown", "bold gray") + " (kernel supports MTE but does not support PR_SET_TAGGED_ADDR_CTRL)"
                 gef_print("{:<40s}: {:s}".format("MTE", msg))
-            elif r == 0:
-                msg = Color.colorify("Disabled", "bold red") + " (kernel supports but no tags have been set)"
+            elif (r & 0b1) == 0:
+                msg = Color.colorify("Disabled", "bold red") + " (kernel supports MTE but disabled)"
                 gef_print("{:<40s}: {:s}".format("MTE", msg))
-            elif r > 0:
-                msg = Color.colorify("Enabled", "bold green") + " (kernel supports and some tags have been set)"
+            elif (r & 0b1) == 1 and (r & 0b110) == 0:
+                msg = Color.colorify("Disabled", "bold red") + " (MTE is enabled, but fault is ignored)"
+                gef_print("{:<40s}: {:s}".format("MTE", msg))
+            else:
+                keys = []
+                if r & 0b010:
+                    keys.append("PR_MTE_TCF_SYNC")
+                if r & 0b100:
+                    keys.append("PR_MTE_TCF_ASYNC")
+                keys = ', '.join(keys)
+                msg = Color.colorify("Enabled", "bold green") + " (MTE is enabled as: {:s})".format(keys)
                 gef_print("{:<40s}: {:s}".format("MTE", msg))
 
         # RPATH
