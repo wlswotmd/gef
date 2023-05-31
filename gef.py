@@ -48035,7 +48035,8 @@ class SlabDumpCommand(GenericCommand):
             if not is_valid_addr(node_page['address']):
                 node_page_list.append(node_page)
                 break
-            node_page['s_mem'] = read_int_from_memory(node_page['address'] + self.page_offset_s_mem)
+            s_mem = read_int_from_memory(node_page['address'] + self.page_offset_s_mem)
+            node_page['s_mem'] = s_mem & gef_getpagesize_mask()
 
             freelist_addr = read_int_from_memory(node_page['address'] + self.page_offset_freelist)
             if is_valid_addr(freelist_addr):
