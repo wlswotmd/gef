@@ -480,6 +480,7 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ascii-search.png)
 * `read-system-register`: reads system register for old qemu.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/read-system-register.png)
+* `pac-keys`: pretty prints ARM64 PAC keys.
 
 ### Other
 * The category is introduced in `gef help`.

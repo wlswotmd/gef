@@ -53751,6 +53751,33 @@ class MsrCommand(GenericCommand):
         return
 
 
+@register_command
+class PacKeysCommand(GenericCommand):
+    """Pretty print PAC keys from qemu registers."""
+    _cmdline_ = "pac-keys"
+    _category_ = "04-a. Register - View"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_arch(arch=("ARM64",))
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        for keyname in ["APIA", "APIB", "APDA", "APDB", "APGA"]:
+            try:
+                lo = get_register("{:s}KEYLO_EL1".format(keyname))
+                hi = get_register("{:s}KEYHI_EL1".format(keyname))
+                bs = ' '.join(slicer(p64(lo).hex() + p64(hi).hex(), 2))
+                gef_print("{:s}KEY: {:#018x} {:#018x} ({:s})".format(keyname, hi, lo, bs))
+            except Exception:
+                err("Failed to get the value of PAC keys")
+                break
+        return
+
+
 class PrintBitInfo:
     """Printing various bit informations of the register"""
 
