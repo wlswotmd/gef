@@ -48719,9 +48719,15 @@ class SlobDumpCommand(GenericCommand):
         self.meta = args.meta
         self.quiet = args.quiet
         self.verbose = args.verbose
-        self.large = args.large
-        self.medium = args.medium
-        self.small = args.small
+
+        if (args.large, args.medium, args.small) == (False, False, False):
+            self.large = True
+            self.medium = True
+            self.small = True
+        else:
+            self.large = args.large
+            self.medium = args.medium
+            self.small = args.small
 
         if not self.quiet:
             info("Wait for memory scan")
