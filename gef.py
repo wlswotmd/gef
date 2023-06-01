@@ -45255,6 +45255,97 @@ class MemorySwapCommand(GenericCommand):
 
 
 @register_command
+class MemoryInsertCommand(GenericCommand):
+    """Inserts the contents of one memory to another."""
+    _cmdline_ = "meminsert"
+    _category_ = "03-c. Memory - Patch"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('--phys1', action='store_true', help='treat TO_ADDRESS as a physical address.')
+    parser.add_argument('to_addr', metavar='TO_ADDRESS', type=parse_address, help='destionation of meminsert.')
+    parser.add_argument('--phys2', action='store_true', help='treat FROM_ADDRESS as a physical address.')
+    parser.add_argument('from_addr', metavar='FROM_ADDRESS', type=parse_address, help='source of meminsert.')
+    parser.add_argument('size1', metavar='SIZE1', type=parse_address, help='the pushed back size for meminsert.')
+    parser.add_argument('size2', metavar='SIZE2', type=parse_address, help='the inserted(slided) size for meminsert.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "memcpy dst src 8\n"
+    _example_ += "                                 <--size-->\n"
+    _example_ += "            dst                   src\n"
+    _example_ += "  Before: [ AAAAAAAA | BBBBBBBB | CCCCCCCC ]\n"
+    _example_ += "  After : [ CCCCCCCC | BBBBBBBB | CCCCCCCC ]\n"
+    _example_ += "\n"
+    _example_ += "memswap dst src 8\n"
+    _example_ += "                                 <--size-->\n"
+    _example_ += "            dst                   src\n"
+    _example_ += "  Before: [ AAAAAAAA | BBBBBBBB | CCCCCCCC ]\n"
+    _example_ += "  After : [ CCCCCCCC | BBBBBBBB | AAAAAAAA ]\n"
+    _example_ += "\n"
+    _example_ += "meminsert dst src 16 8\n"
+    _example_ += "           <-------size1-------> <--size2->\n"
+    _example_ += "            dst                   src\n"
+    _example_ += "  Before: [ AAAAAAAA | BBBBBBBB | CCCCCCCC ]\n"
+    _example_ += "  After : [ CCCCCCCC | AAAAAAAA | BBBBBBBB ]\n"
+
+    def __init__(self):
+        super().__init__(complete=gdb.COMPLETE_LOCATION)
+        return
+
+    def memrotate(self, phys1, addr1, size1, phys2, addr2, size2):
+        try:
+            if phys1:
+                data1 = read_physmem(addr1, size1)
+            else:
+                data1 = read_memory(addr1, size1)
+        except Exception:
+            err("Read error {:#x}".format(addr1))
+            return
+
+        info("Read count: {:#x}".format(len(data1)))
+
+        try:
+            if phys2:
+                data2 = read_physmem(addr2, size2)
+            else:
+                data2 = read_memory(addr2, size2)
+        except Exception:
+            err("Read error {:#x}".format(addr2))
+            return
+
+        info("Read count: {:#x}".format(len(data2)))
+
+        to_write_data = data2 + data1
+
+        try:
+            if phys1:
+                written = write_physmem(addr1, to_write_data)
+            else:
+                written = write_memory(addr1, to_write_data, len(to_write_data))
+        except Exception:
+            err("Write error {:#x}".format(addr))
+            return
+
+        info("Write count: {:#x}".format(written))
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        if args.phys1 or args.phys2:
+            if not is_qemu_system():
+                err("Unsupported")
+                return
+
+        if args.size2 == 0:
+            info("The size2 is zero, maybe wrong.")
+
+        self.memrotate(args.phys1, args.to_addr, args.size1, args.phys2, args.from_addr, args.size2)
+        return
+
+
+@register_command
 class HashMemoryCommand(GenericCommand):
     """Caluculate memory hash."""
     _cmdline_ = "hash-memory"

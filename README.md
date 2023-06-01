@@ -419,6 +419,7 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/memcmp.png)
 * `memcpy`: copies the contents from the address A to B, whether virtual or physical.
 * `memswap`: swaps the contents of the address A and B, whether virtual or physical.
+* `meminsert`: inserts the contents of the address A to B, whether virtual or physical.
 * `is-mem-zero`: checks the contents of address range is all 0x00 or 0xff or not.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/is-mem-zero.png)
 * `ii`: is a shortcut for `x/50i $pc`.
