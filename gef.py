@@ -46622,6 +46622,8 @@ class SlubDumpCommand(GenericCommand):
                     current_kmem_cache_node = read_int_from_memory(current_kmem_cache_node_ptr)
                     if current_kmem_cache_node == 0:
                         break
+                    if current_kmem_cache_node == current_kmem_cache_node_ptr:
+                        break
                     node_page_list = []
                     node_page_head = current_kmem_cache_node + self.kmem_cache_node_offset_partial
                     if not is_valid_addr(node_page_head):
