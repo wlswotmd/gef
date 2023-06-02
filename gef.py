@@ -37354,15 +37354,15 @@ class MagicCommand(GenericCommand):
             perm = addr.section.permission
             if is_ascii_string(addr.value):
                 val = read_ascii_string(addr.value)
-                fmt = "{:42s}: {:s} [{:3s}] (+{:#010x}) -> {:s}"
+                fmt = "{:42s} {:s} [{:3s}] (+{:#010x}) -> {:s}"
                 gef_print(fmt.format(sym, str(addr), str(perm), addr.value - base, val))
             else:
                 val = lookup_address(read_int_from_memory(addr.value))
                 val_sym = get_symbol_string(val.value)
-                fmt = "{:42s}: {:s} [{:3s}] (+{:#010x}) -> {:s}{:s}"
+                fmt = "{:42s} {:s} [{:3s}] (+{:#010x}) -> {:s}{:s}"
                 gef_print(fmt.format(sym, str(addr), str(perm), addr.value - base, val.long_fmt(), val_sym))
         except Exception:
-            gef_print("{:42s}: {:>{:d}s}".format(sym, "Not found", width))
+            gef_print("{:42s} {:>{:d}s}".format(sym, "Not found", width))
         return
 
     def print_file_jumps_func(self, sym):
@@ -37389,7 +37389,7 @@ class MagicCommand(GenericCommand):
             return
 
         gef_print(titlify("Legend"))
-        fmt = "{:42s}: {:{:d}s} {:5s} (+{:10s}) -> {:{:d}s}"
+        fmt = "{:42s} {:{:d}s} {:5s} (+{:10s}) -> {:{:d}s}"
         width = get_format_address_width()
         legend = ["symbol", "addr", width, "perm", "offset", "val", width]
         gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
