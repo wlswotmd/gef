@@ -42769,7 +42769,7 @@ class KernelModuleCommand(GenericCommand):
 
         self.out = []
         if not self.quiet:
-            fmt = "{:<18s}: {:<18s} {:<18s} {:<18s}"
+            fmt = "{:<18s} {:<18s} {:<18s} {:<18s}"
             legend = ["module", "module->name", "base", "size"]
             self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
@@ -42781,7 +42781,7 @@ class KernelModuleCommand(GenericCommand):
             else:
                 base = read_int_from_memory(module + offset_module_core)
                 size = u32(read_memory(module + offset_module_core + current_arch.ptrsize + 4, 4))
-            self.out.append("{:#018x}: {:<18s} {:#018x} {:#018x}".format(module, name_string, base, size))
+            self.out.append("{:#018x} {:<18s} {:#018x} {:#018x}".format(module, name_string, base, size))
 
         if self.out:
             gef_print('\n'.join(self.out), less=not args.no_pager)
