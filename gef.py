@@ -52662,8 +52662,8 @@ class OpteeBgetDumpCommand(GenericCommand):
             else:
                 chunk_addr = Color.colorify("{:#010x}".format(chunk.addr), freed_address_color)
                 colored_chunk_bsize = Color.colorify("{:#010x}".format(chunk.bsize), chunk_size_color)
-                fmt = " -> {:s}: prevfree:{:#x}  bsize:{:s}  flink:{:#010x}  blink:{:#010x}"
-                fmt += "  next_prevfree:{:#010x}  next_bsize:{:#010x} (={:#010x})"
+                fmt = " -> {:s}: prevfree:{:#x} bsize:{:s} flink:{:#010x} blink:{:#010x}"
+                fmt += " next_prevfree:{:#010x} next_bsize:{:#010x} (={:#010x})"
                 self.out.append(fmt.format(chunk_addr, chunk.prevfree, colored_chunk_bsize, chunk.flink, chunk.blink,
                                      chunk.next_prevfree, chunk.next_bsize, (-chunk.next_bsize) & 0xffffffff))
         self.out.append("blink:    {:#x}".format(malloc_ctx.blink))
@@ -52673,8 +52673,8 @@ class OpteeBgetDumpCommand(GenericCommand):
             else:
                 chunk_addr = Color.colorify("{:#010x}".format(chunk.addr), freed_address_color)
                 colored_chunk_bsize = Color.colorify("{:#010x}".format(chunk.bsize), chunk_size_color)
-                fmt = " -> {:s}: prevfree:{:#x}  bsize:{:s}  flink:{:#010x}  blink:{:#010x}"
-                fmt += "  next_prevfree:{:#010x}  next_bsize:{:#010x} (={:#010x})"
+                fmt = " -> {:s}: prevfree:{:#x} bsize:{:s} flink:{:#010x} blink:{:#010x}"
+                fmt += " next_prevfree:{:#010x} next_bsize:{:#010x} (={:#010x})"
                 self.out.append(fmt.format(chunk_addr, chunk.prevfree, colored_chunk_bsize, chunk.flink, chunk.blink,
                                      chunk.next_prevfree, chunk.next_bsize, (-chunk.next_bsize) & 0xffffffff))
         self.out.append("pool:     {:#x}".format(malloc_ctx.pool))
@@ -52716,14 +52716,14 @@ class OpteeBgetDumpCommand(GenericCommand):
                     break
                 bsize_inv = (-bsize) & 0xffffffff
                 if bsize_inv < 0x80000000: # used
-                    fmt = "{:s} {:s}: prevfree:{:#010x}  bsize:{:#010x} ({:s})"
+                    fmt = "{:s} {:s}: prevfree:{:#010x} bsize:{:#010x} ({:s})"
                     used = Color.colorify("used", chunk_used_color)
                     colored_chunk_addr = Color.colorify("{:#010x}".format(chunk), used_address_color)
                     colored_bsize_inv = Color.colorify("{:#010x}".format(bsize_inv), chunk_size_color)
                     self.out.append(fmt.format(used, colored_chunk_addr, prevfree, bsize, colored_bsize_inv))
                     chunk += bsize_inv
                 else: # freed
-                    fmt = "{:s} {:s}: prevfree:{:#010x}  bsize:{:s}              flink:{:#010x}  blink:{:#010x}"
+                    fmt = "{:s} {:s}: prevfree:{:#010x} bsize:{:s}              flink:{:#010x} blink:{:#010x}"
                     freed = Color.colorify("free", chunk_freed_color)
                     colored_chunk_addr = Color.colorify("{:#010x}".format(chunk), freed_address_color)
                     colored_bsize = Color.colorify("{:#010x}".format(bsize), chunk_size_color)
