@@ -11643,7 +11643,7 @@ class AuxvCommand(GenericCommand):
         if not auxval:
             return None
 
-        reverse_AT_CONSTS = {v: hex(k) for k, v in self.AT_CONSTANTS.items()}
+        reverse_AT_CONSTS = {v: "{:#04x}".format(k) for k, v in self.AT_CONSTANTS.items()}
 
         gef_print(titlify("ELF auxiliary vector"))
         for k, v in auxval.items():
