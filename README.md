@@ -369,8 +369,7 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
 * `auxv`: pretty prints ELF auxiliary vector.
     * Supported also under qemu-user (heuristic).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/auxv.png)
-* `argv`: pretty prints argv.
-* `envp`: pretty prints envp.
+* `argv`/`envp`: pretty prints argv and envp.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/argv-envp.png)
 * `gdtinfo`: pretty prints GDT sample.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/gdtinfo.png)

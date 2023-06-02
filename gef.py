@@ -11699,7 +11699,7 @@ class ArgvCommand(GenericCommand):
             colored_addr = str(lookup_address(addr))
             s = read_cstring_from_memory(addr, gef_getpagesize())
             s = Color.yellowify(repr(s))
-            gef_print("[{:3d}]: {:s}: {:s}{:s}{:s}".format(i, colored_pos, colored_addr, RIGHT_ARROW, s))
+            gef_print("[{:03d}]: {:s}: {:s}{:s}{:s}".format(i, colored_pos, colored_addr, RIGHT_ARROW, s))
             i += 1
         return
 
@@ -11711,7 +11711,7 @@ class ArgvCommand(GenericCommand):
             if not verbose and i > 99:
                 gef_print("...")
                 break
-            gef_print("[{:3d}]: {:s}".format(i, repr(elem)))
+            gef_print("[{:03d}]: {:s}".format(i, repr(elem)))
         return
 
     @parse_args
@@ -11774,7 +11774,7 @@ class EnvpCommand(GenericCommand):
             colored_addr = str(lookup_address(addr))
             s = read_cstring_from_memory(addr, gef_getpagesize())
             s = Color.yellowify(repr(s))
-            gef_print("[{:3d}]: {:s}: {:s}{:s}{:s}".format(i, colored_pos, colored_addr, RIGHT_ARROW, s))
+            gef_print("[{:03d}]: {:s}: {:s}{:s}{:s}".format(i, colored_pos, colored_addr, RIGHT_ARROW, s))
             i += 1
         return
 
@@ -11786,7 +11786,7 @@ class EnvpCommand(GenericCommand):
             if not verbose and i > 99:
                 gef_print("...")
                 break
-            gef_print("[{:3d}]: {:s}".format(i, repr(elem)))
+            gef_print("[{:03d}]: {:s}".format(i, repr(elem)))
         return
 
     @parse_args
