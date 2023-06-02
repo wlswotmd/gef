@@ -45056,7 +45056,7 @@ class IdtInfoCommand(GenericCommand):
         for i, value in entries:
             if value != 0:
                 int_name = IdtInfoCommand._INTERRUPT_DESCRIPTION_.get(i, "User defined Interrupt {:#x}".format(i))
-                gef_print("[{:3d}] {:36s} {:s}".format(i, int_name, self.idtval2str(value)))
+                gef_print("[{:03d}] {:36s} {:s}".format(i, int_name, self.idtval2str(value)))
         return
 
     @staticmethod
@@ -54233,7 +54233,7 @@ class QemuRegistersCommand(GenericCommand):
             int_name = IdtInfoCommand._INTERRUPT_DESCRIPTION_.get(i, "User defined Interrupt {:#x}".format(i))
             s = IdtInfoCommand.idtval2str(b)
             sym = get_symbol_string(IdtInfoCommand.idt_unpack(b).offset, nosymbol_string=" <NO_SYMBOL>")
-            self.out.append("[{:#3d}] {:36s} {:s}{:s}".format(i, int_name, s, sym))
+            self.out.append("[{:03d}] {:36s} {:s}{:s}".format(i, int_name, s, sym))
 
         # LDTR
         self.out.append(titlify("LDTR (Local Descriptor Table Register)"))
