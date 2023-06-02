@@ -58457,7 +58457,7 @@ class PagewalkWithHintsCommand(GenericCommand):
             diff = kstacks[i + 1] - kstacks[i]
             diffs.append(diff)
         if len(diffs) == 0:
-            kstack_size = gef_getpagesize()
+            kstack_size = gef_getpagesize() *2
         else:
             kstack_size = min(diffs)
 
@@ -58640,6 +58640,13 @@ class PagewalkWithHintsCommand(GenericCommand):
                     self.insert_region(addr, page_size, "0xff-filled")
         return
 
+    def add_legend(self):
+        if not self.quiet:
+            fmt = "{:37s} {:18s} {:5s} {:s}"
+            legend = ["Virtual address start-end", "Total size", "Flags", "Hint"]
+            self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+        return
+
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
@@ -58653,16 +58660,20 @@ class PagewalkWithHintsCommand(GenericCommand):
 
         self.quiet = args.quiet
         self.out = []
+
+        self.add_legend()
         self.regions = self.get_maps()
         self.resolve_kbase()
-        self.resolve_direct_map()
-        self.resolve_vmalloc()
-        self.resolve_page()
+        if is_x86_64():
+            self.resolve_direct_map()
+            self.resolve_vmalloc()
+            self.resolve_page()
         self.resolve_kstack()
         self.resolve_each_slab()
         self.resolve_module()
         self.resolve_vdso()
         self.detect_zero_page()
+
         self.merge_region()
         for _, r in sorted(self.regions.items()):
             fmt = "{:#018x}-{:#018x} {:#018x} [{:s}] {:s}"
