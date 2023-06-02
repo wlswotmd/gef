@@ -22829,9 +22829,12 @@ class DereferenceCommand(GenericCommand):
             frames = []
             try:
                 frame = gdb.newest_frame()
+                no_ret_addr = [0, 0xffffffff, 0xffffffffffffffff]
                 while frame:
                     pc = frame.pc()
-                    if pc == 0 or pc in frames:
+                    if pc in no_ret_addr:
+                        break
+                    if pc in frames:
                         break
                     frames.append(pc)
                     frame = frame.older()
@@ -22851,6 +22854,15 @@ class DereferenceCommand(GenericCommand):
             if current_address_value == canary:
                 m = " {:s} canary".format(LEFT_ARROW)
                 line += Color.colorify(m, registers_color)
+
+        # mangle cookie
+        if not is_qemu_system() and not is_in_kernel():
+            res = PtrDemangleCommand.get_cookie()
+            if res:
+                cookie = res
+                if current_address_value == cookie:
+                    m = " {:s} PTR_MANGLE cookie".format(LEFT_ARROW)
+                    line += Color.colorify(m, registers_color)
 
         # register info
         def get_register_values():
