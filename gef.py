@@ -53970,8 +53970,12 @@ class PrintBitInfo:
             else:
                 colored_val = "{:>#{:d}x}".format(val, max_width_val)
             if sym is not None and sdesc is not None:
-                fmt = "bit{:>{:d}s}: {:s} [{:{:d}s}: {:{:d}s}]: {:s}"
-                self.out.append(fmt.format(b, max_width_bits, colored_val, sym, max_width_sym, sdesc, max_width_sdesc, ldesc))
+                if ldesc:
+                    fmt = "bit{:>{:d}s}: {:s} [{:{:d}s}: {:{:d}s}]: {:s}"
+                    self.out.append(fmt.format(b, max_width_bits, colored_val, sym, max_width_sym, sdesc, max_width_sdesc, ldesc))
+                else:
+                    fmt = "bit{:>{:d}s}: {:s} [{:{:d}s}: {:{:d}s}]"
+                    self.out.append(fmt.format(b, max_width_bits, colored_val, sym, max_width_sym, sdesc, max_width_sdesc))
             else:
                 fmt = "bit{:>{:d}s}: {:s} {:s}"
                 self.out.append(fmt.format(b, max_width_bits, colored_val, ldesc))
