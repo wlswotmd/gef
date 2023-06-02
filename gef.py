@@ -44279,7 +44279,7 @@ class SyscallTableViewCommand(GenericCommand):
 
         # print legend
         if not self.quiet:
-            fmt = "{:8s} {:5s} {:7s} {:30s} {:18s}: {:18s} {:s}"
+            fmt = "{:8s} {:5s} {:7s} {:30s} {:18s} {:18s} {:s}"
             legend = ["Tag", "Index", "IsValid", "Syscall Name", "Table Address", "Function Address", "Symbol"]
             self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
@@ -44295,7 +44295,7 @@ class SyscallTableViewCommand(GenericCommand):
             else:
                 expected_name = "<None>"
 
-            fmt = "{:8s} [{:03d}] {:7s} {:30s} {:#018x}: {:#018x}{:s}"
+            fmt = "{:8s} [{:03d}] {:7s} {:30s} {:#018x} {:#018x}{:s}"
             if seen_count[syscall_function_addr] == 1 and is_valid: # valid entry
                 msg = fmt.format(_tag, i, "valid", expected_name, addr, syscall_function_addr, symbol)
             if seen_count[syscall_function_addr] > 1 or not is_valid: # invalid entry
