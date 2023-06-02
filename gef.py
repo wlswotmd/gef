@@ -37553,13 +37553,13 @@ class KernelMagicCommand(GenericCommand):
         if external_func:
             addr = external_func()
             if addr is None:
-                gef_print("{:42s}: {:>{:d}s}".format(sym, "Not found", width))
+                gef_print("{:42s} {:>{:d}s}".format(sym, "Not found", width))
                 return
         else:
             if isinstance(sym, str):
                 addr = get_ksymaddr(sym)
                 if addr is None:
-                    gef_print("{:42s}: {:>{:d}s}".format(sym, "Not found", width))
+                    gef_print("{:42s} {:>{:d}s}".format(sym, "Not found", width))
                     return
             elif isinstance(sym, list):
                 for s in sym:
@@ -37569,21 +37569,21 @@ class KernelMagicCommand(GenericCommand):
                         break
                 else:
                     sym = sym[0]
-                    gef_print("{:42s}: {:>{:d}s}".format(sym, "Not found", width))
+                    gef_print("{:42s} {:>{:d}s}".format(sym, "Not found", width))
                     return
 
         if not is_valid_addr(addr):
-            gef_print("{:42s}: {:>{:d}s}".format(sym, "Not found", width))
+            gef_print("{:42s} {:>{:d}s}".format(sym, "Not found", width))
             return
 
         perm = get_permission(addr, maps)
         if to_string:
             val = read_ascii_string(addr)
-            fmt = "{:42s}: {:#0{:d}x} [{:3s}] (+{:#010x}) -> {:s}"
+            fmt = "{:42s} {:#0{:d}x} [{:3s}] (+{:#010x}) -> {:s}"
             gef_print(fmt.format(sym, addr, width, perm, addr - base, val))
         else:
             val = read_int_from_memory(addr)
-            fmt = "{:42s}: {:#0{:d}x} [{:3s}] (+{:#010x}) -> {:#0{:d}x}"
+            fmt = "{:42s} {:#0{:d}x} [{:3s}] (+{:#010x}) -> {:#0{:d}x}"
             gef_print(fmt.format(sym, addr, width, perm, addr - base, val, width))
         return
 
@@ -37596,10 +37596,10 @@ class KernelMagicCommand(GenericCommand):
         kbase_size = kinfo.kbase_size
         if maps is None or kbase is None or kbase_size is None:
             return
-        gef_print("{:42s}: {:#x} ({:#x} bytes)".format("kernel_base", kbase, kbase_size))
+        gef_print("{:42s} {:#x} ({:#x} bytes)".format("kernel_base", kbase, kbase_size))
 
         gef_print(titlify("Legend"))
-        fmt = "{:42s}: {:{:d}s} {:5s} (+{:10s}) -> {:{:d}s}"
+        fmt = "{:42s} {:{:d}s} {:5s} (+{:10s}) -> {:{:d}s}"
         width = get_format_address_width()
         legend = ["symbol", "addr", width, "perm", "offset", "val", width]
         gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
