@@ -42439,7 +42439,7 @@ class KernelTaskCommand(GenericCommand):
         out = []
         if not self.quiet:
             ids_str = ["uid", "gid", "suid", "sgid", "euid", "egid", "fsuid", "fsgid"]
-            fmt = "{:<18s}: {:<7s} {:<16s} {:<18s} [{:>5s} {:>5s} {:>5s} {:>5s} {:>5s} {:>5s} {:>5s} {:>5s}] {:<10s} {:<18s} {:<18s}"
+            fmt = "{:<18s} {:<7s} {:<16s} {:<18s} [{:>5s} {:>5s} {:>5s} {:>5s} {:>5s} {:>5s} {:>5s} {:>5s}] {:<10s} {:<18s} {:<18s}"
             legend = ["task", "pid", "task->comm", "task->cred", *ids_str, "securebits", "kstack", "kcanary"]
             out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
         for task in task_addrs:
@@ -42452,7 +42452,7 @@ class KernelTaskCommand(GenericCommand):
             cred = read_int_from_memory(task + offset_cred)
             uids = [u32(read_memory(cred + offset_uid + j * 4, 4)) for j in range(8)]
             securebits = u32(read_memory(cred + offset_uid + 32, 4))
-            fmt = "{:#018x}: {:<7d} {:<16s} {:#018x} [{:>5d},{:>5d},{:>5d},{:>5d},{:>5d},{:>5d},{:>5d},{:>5d}] {:#10x} {:#018x} {:<18s}"
+            fmt = "{:#018x} {:<7d} {:<16s} {:#018x} [{:>5d},{:>5d},{:>5d},{:>5d},{:>5d},{:>5d},{:>5d},{:>5d}] {:#10x} {:#018x} {:<18s}"
             if offset_kcanary:
                 kcanary = read_int_from_memory(task + offset_kcanary)
                 kcanary = "{:#018x}".format(kcanary)
