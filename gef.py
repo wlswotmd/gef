@@ -44835,7 +44835,7 @@ class GdtInfoCommand(GenericCommand):
             is_part1 = segname == "TSS-part1" or segname == "LDT-part1"
             valstr = self.gdtval2str(value, value_only=is_part1)
 
-            gef_print("[{:>2d}] {:20s} {:s} {:s}".format(i, segname, valstr, regstr))
+            gef_print("[{:02d}] {:20s} {:s} {:s}".format(i, segname, valstr, regstr))
         return
 
     @staticmethod
@@ -54215,7 +54215,7 @@ class QemuRegistersCommand(GenericCommand):
                 reglist = reglist + ", tr" if reglist else LEFT_ARROW + "TR"
             else:
                 s = GdtInfoCommand.gdtval2str(b)
-            self.out.append("[{:2d}] {:20s} {:s} {:s}".format(i, segm_desc.get(i), s, Color.colorify(reglist, registers_color)))
+            self.out.append("[{:02d}] {:20s} {:s} {:s}".format(i, segm_desc.get(i), s, Color.colorify(reglist, registers_color)))
 
         # IDTR
         self.out.append(titlify("IDTR (Interrupt Descriptor Table Register)"))
