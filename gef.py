@@ -39189,11 +39189,11 @@ class TransCommand(GenericCommand):
             else:
                 value = binascii.unhexlify(args.value)
             self.out.append(titlify("unhex - XOR/ADD"))
-            l = len(value) * 4 + 3
+            ln = len(value) * 4 + 3
             for i in range(0x100):
                 xored = b"".join(bytes([x ^ i]) for x in value)
                 added = b"".join(bytes([(x + i) & 0xff]) for x in value)
-                self.out.append("xor/add-{:02X}:    {:{:d}s} {:{:d}s}".format(i, str(xored), l, str(added), l))
+                self.out.append("xor/add-{:02X}:    {:{:d}s} {:{:d}s}".format(i, str(xored), ln, str(added), ln))
 
             self.out.append(titlify("unhex - caesar"))
             for i in range(26):
@@ -39215,11 +39215,11 @@ class TransCommand(GenericCommand):
         try:
             value = codecs.escape_decode(args.value)[0]
             self.out.append(titlify("str - XOR/ADD"))
-            l = len(value) * 4 + 3
+            ln = len(value) * 4 + 3
             for i in range(0x100):
                 xored = b"".join(bytes([x ^ i]) for x in value)
                 added = b"".join(bytes([(x + i) & 0xff]) for x in value)
-                self.out.append("xor/add-{:02X}:    {:{:d}s} {:{:d}s}".format(i, str(xored), l, str(added), l))
+                self.out.append("xor/add-{:02X}:    {:{:d}s} {:{:d}s}".format(i, str(xored), ln, str(added), ln))
 
             self.out.append(titlify("str - caesar"))
             for i in range(26):
@@ -43984,14 +43984,14 @@ class KernelDmesgCommand(GenericCommand):
         };
 
         struct printk_info {
-            u64                     seq;		/* sequence number */
-            u64                     ts_nsec;	/* timestamp in nanoseconds */
-            u16                     text_len;	/* length of text message */
-            u8                      facility;	/* syslog facility */
-            u8                      flags:5;	/* internal record flags */
-            u8                      level:3;	/* syslog level */
-            u32	                    caller_id;	/* thread id or processor id */
-        	struct dev_printk_info  dev_info;
+            u64                     seq;        /* sequence number */
+            u64                     ts_nsec;    /* timestamp in nanoseconds */
+            u16                     text_len;   /* length of text message */
+            u8                      facility;   /* syslog facility */
+            u8                      flags:5;    /* internal record flags */
+            u8                      level:3;    /* syslog level */
+            u32                     caller_id;  /* thread id or processor id */
+            struct dev_printk_info  dev_info;
         };
         """
 
@@ -45474,7 +45474,7 @@ class MemoryInsertCommand(GenericCommand):
             else:
                 written = write_memory(addr1, to_write_data, len(to_write_data))
         except Exception:
-            err("Write error {:#x}".format(addr))
+            err("Write error {:#x}".format(addr1))
             return
 
         info("Write count: {:#x}".format(written))
@@ -58222,7 +58222,7 @@ class PagewalkWithHintsCommand(GenericCommand):
         target_address_start = to_insert_address
         target_address_end = to_insert_address + to_insert_size
 
-        for key, r in sorted(self.regions.items()):
+        for _key, r in sorted(self.regions.items()):
             # no overwrap
             if r.addr_end <= target_address_start:
                 continue
@@ -58612,7 +58612,7 @@ class PagewalkWithHintsCommand(GenericCommand):
         z1000 = b"\0" * page_size
         ff1000 = b"\xff" * page_size
 
-        for key, r in self.regions.copy().items():
+        for _key, r in self.regions.copy().items():
             if r.description != "":
                 continue
             if r.size >= page_size * 0x10:
