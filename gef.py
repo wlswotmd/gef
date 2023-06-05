@@ -51810,7 +51810,7 @@ class UclibcNgHeapDumpCommand(GenericCommand):
                     colored_size = Color.colorify(size, chunk_size_color)
                 colored_addr = str(lookup_address(addr))
                 colored_n = str(lookup_address(n))
-                fmt = "fastbins[idx={:2d}, size={:s}, @{:s}]: fd={:s}"
+                fmt = "fastbins[idx={:d}, size={:s}, @{:s}]: fd={:s}"
                 self.out.append(fmt.format(i, colored_size, colored_addr, colored_n))
 
             if n != 0:
@@ -51833,9 +51833,9 @@ class UclibcNgHeapDumpCommand(GenericCommand):
                 else:
                     colored_size = Color.colorify(size, chunk_size_color)
                 if i == 1:
-                    fmt = "unsortedbin[idx={:2d}; size={:s}, @{:s}]: fd={:s}, bk={:s}"
+                    fmt = "unsortedbin[idx={:d}; size={:s}, @{:s}]: fd={:s}, bk={:s}"
                 else:
-                    fmt = "smallbins  [idx={:2d}; size={:s}, @{:s}]: fd={:s}, bk={:s}"
+                    fmt = "smallbins  [idx={:d}; size={:s}, @{:s}]: fd={:s}, bk={:s}"
                 colored_addr = str(lookup_address(addr))
                 colored_n = str(lookup_address(n))
                 colored_p = str(lookup_address(p))
@@ -51857,7 +51857,7 @@ class UclibcNgHeapDumpCommand(GenericCommand):
                     colored_size = Color.colorify("{:#x}-{:#x}".format(*size), chunk_size_color)
                 else:
                     colored_size = Color.colorify(size, chunk_size_color)
-                fmt = "largebins  [idx={:2d}; size={:s}, @{:s}]: fd={:s}, bk={:s}"
+                fmt = "largebins  [idx={:d}; size={:s}, @{:s}]: fd={:s}, bk={:s}"
                 colored_addr = str(lookup_address(addr))
                 colored_n = str(lookup_address(n))
                 colored_p = str(lookup_address(p))
