@@ -41423,6 +41423,83 @@ class KernelAddressHeuristicFinder:
                             return bases[reg] + v
         return None
 
+    @staticmethod
+    def get_printk_rb_static():
+        # plan 1 (directly)
+        printk_rb_static = get_ksymaddr("printk_rb_static")
+        if printk_rb_static:
+            return printk_rb_static
+
+        # plan 2 (available v5.15-rc1 or later)
+        kmsg_dump_rewind = get_ksymaddr("kmsg_dump_rewind")
+        if kmsg_dump_rewind:
+            res = gdb.execute("x/30i {:#x}".format(kmsg_dump_rewind), to_string=True)
+            if is_x86_64():
+                for line in res.splitlines():
+                    m = re.search(r"QWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
+                    if m:
+                        prb = int(m.group(1), 16)
+                        if is_valid_addr(prb):
+                            printk_rb_static = read_int_from_memory(prb)
+                            if is_valid_addr(printk_rb_static):
+                                return printk_rb_static
+            elif is_x86_32():
+                for line in res.splitlines():
+                    m = re.search(r"ds:(0x\w+)", line)
+                    if m:
+                        prb = int(m.group(1), 16)
+                        if is_valid_addr(prb):
+                            printk_rb_static = read_int_from_memory(prb)
+                            if is_valid_addr(printk_rb_static):
+                                return printk_rb_static
+            elif is_arm64():
+                bases = {}
+                for line in res.splitlines():
+                    m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        base = int(m.group(2), 16)
+                        bases[reg] = base
+                        continue
+                    m = re.search(r"ldr\s+\S+,\s*\[(\S+),\s*#(\d+)\]", line)
+                    if m:
+                        reg = m.group(1)
+                        v = int(m.group(2), 0)
+                        if reg in bases:
+                            prb = bases[reg] + v
+                            if is_valid_addr(prb):
+                                printk_rb_static = read_int_from_memory(prb)
+                                if is_valid_addr(printk_rb_static):
+                                    return printk_rb_static
+            elif is_arm32():
+                bases = {}
+                add1time = {}
+                for line in res.splitlines():
+                    m = re.search(r"movw\s+(\S+),.+;\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        base = int(m.group(2), 16)
+                        bases[reg] = base
+                        continue
+                    m = re.search(r"movt\s+(\S+),.+;\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        v = int(m.group(2), 16) << 16
+                        if reg in bases:
+                            add1time[reg] = bases[reg] + v
+                            continue
+                    m = re.search(r"ldr\s+\S+,\s*\[(\S+),\s*#(\d+)\]", line)
+                    if m:
+                        reg = m.group(1)
+                        v = int(m.group(2), 0)
+                        if reg in add1time:
+                            prb = add1time[reg] + v
+                            if is_valid_addr(prb):
+                                printk_rb_static = read_int_from_memory(prb)
+                                if is_valid_addr(printk_rb_static):
+                                    return printk_rb_static
+        return None
+
 
 @register_command
 class KernelbaseCommand(GenericCommand):
@@ -44174,10 +44251,15 @@ class KernelDmesgCommand(GenericCommand):
         if not args.quiet:
             info("Wait for memory scan")
 
+        kversion = KernelVersionCommand.kernel_version()
+        if kversion < "5.10":
+            err("Unsupported kernel version (< 5.10)")
+            return
+
         self.quiet = args.quiet
         self.out = []
 
-        printk_rb_static = get_ksymaddr("printk_rb_static")
+        printk_rb_static = KernelAddressHeuristicFinder.get_printk_rb_static()
         if printk_rb_static is None:
             err("Not found printk_rb_static")
             return
