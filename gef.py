@@ -37689,8 +37689,8 @@ class KernelMagicCommand(GenericCommand):
             self.resolve_and_print_kernel("vdso_image_32", kbase, maps, KernelAddressHeuristicFinder.get_vdso_image_32)
         elif is_arm64():
             self.resolve_and_print_kernel("vdso_info", kbase, maps, KernelAddressHeuristicFinder.get_vdso_info)
-            self.resolve_and_print_kernel("vdso_start", kbase, maps)
-            self.resolve_and_print_kernel("vdso32_start", kbase, maps)
+            self.resolve_and_print_kernel("vdso_start", kbase, maps, KernelAddressHeuristicFinder.get_vdso_start)
+            self.resolve_and_print_kernel("vdso32_start", kbase, maps, KernelAddressHeuristicFinder.get_vdso32_start)
         elif is_arm32():
             self.resolve_and_print_kernel("vdso_start", kbase, maps)
         gef_print(titlify("Others"))
@@ -41328,6 +41328,43 @@ class KernelAddressHeuristicFinder:
                         m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
                         if m:
                             return base + int(m.group(1), 0)
+        return None
+
+    @staticmethod
+    def get_vdso_start():
+        # plan 1 (directly)
+        vdso_start = get_ksymaddr("vdso_start")
+        if vdso_start:
+            return vdso_start
+
+        # plan 2 (get from vdso_info)
+        if is_arm64():
+            vdso_info = KernelAddressHeuristicFinder.get_vdso_info()
+            if vdso_info and is_valid_addr(vdso_info):
+                vdso_name = read_int_from_memory(vdso_info)
+                if is_valid_addr(vdso_name):
+                    if "vdso" == read_cstring_from_memory(vdso_name):
+                        x = read_int_from_memory(vdso_info + current_arch.ptrsize)
+                        return x
+        return None
+
+    @staticmethod
+    def get_vdso32_start():
+        # plan 1 (directly)
+        vdso32_start = get_ksymaddr("vdso32_start")
+        if vdso32_start:
+            return vdso32_start
+
+        # plan 2 (get from vdso_info)
+        if is_arm64():
+            vdso_info = KernelAddressHeuristicFinder.get_vdso_info()
+            vdso_info_2 = vdso_info + current_arch.ptrsize * 6
+            if vdso_info_2 and is_valid_addr(vdso_info_2):
+                vdso_name = read_int_from_memory(vdso_info_2)
+                if is_valid_addr(vdso_name):
+                    if "vdso32" == read_cstring_from_memory(vdso_name):
+                        x = read_int_from_memory(vdso_info_2 + current_arch.ptrsize)
+                        return x
         return None
 
     @staticmethod
