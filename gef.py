@@ -1620,26 +1620,19 @@ class Instruction:
 
         # format mnemonic
         if current_arch.is_syscall(self):
-            if to_highlight:
-                color_mnemonic = get_gef_setting("theme.disassemble_mnemonic_branch_highlight")
-            else:
-                color_mnemonic = get_gef_setting("theme.disassemble_mnemonic_branch")
+            is_branch = True
         elif current_arch.is_call(self):
-            if to_highlight:
-                color_mnemonic = get_gef_setting("theme.disassemble_mnemonic_branch_highlight")
-            else:
-                color_mnemonic = get_gef_setting("theme.disassemble_mnemonic_branch")
+            is_branch = True
         elif current_arch.is_jump(self):
-            if to_highlight:
-                color_mnemonic = get_gef_setting("theme.disassemble_mnemonic_branch_highlight")
-            else:
-                color_mnemonic = get_gef_setting("theme.disassemble_mnemonic_branch")
+            is_branch = True
         elif current_arch.is_ret(self):
-            if to_highlight:
-                color_mnemonic = get_gef_setting("theme.disassemble_mnemonic_branch_highlight")
-            else:
-                color_mnemonic = get_gef_setting("theme.disassemble_mnemonic_branch")
+            is_branch = True
         elif current_arch.is_conditional_branch(self):
+            is_branch = True
+        else:
+            is_branch = False
+
+        if is_branch:
             if to_highlight:
                 color_mnemonic = get_gef_setting("theme.disassemble_mnemonic_branch_highlight")
             else:
@@ -1736,6 +1729,12 @@ class Instruction:
                     colored_o1.append(" ")
             colored_operands.append(''.join(colored_o1).strip())
         operands = Color.colorify(', ', color_operands_symbol).join(colored_operands)
+
+        # the case that gdb does not append symbol but symbol exists
+        if is_branch and "<" not in operands and self.operands and self.operands[-1]:
+            addr = ContextCommand.get_branch_addr(self)
+            sym = get_symbol_string(addr).lstrip()
+            additional_1 = sym
 
         # formatting
         fmt = "{:s} {:s}   {:s}   {:s} {:s} {:s}"
