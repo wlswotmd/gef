@@ -45221,6 +45221,7 @@ class MemoryCompareCommand(GenericCommand):
     parser.add_argument('--phys2', action='store_true', help='treat LOCATION2 as a physical address.')
     parser.add_argument('location2', metavar='LOCATION2', type=parse_address, help='second address for comparison.')
     parser.add_argument('size', metavar='SIZE', type=parse_address, help='the size for comparison.')
+    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -45253,7 +45254,7 @@ class MemoryCompareCommand(GenericCommand):
             f2_bin = from2data[pos : pos + 16]
             if f1_bin == f2_bin:
                 if asterisk is False:
-                    gef_print("*")
+                    self.out.append("*")
                     asterisk = True
                 continue
 
@@ -45279,8 +45280,8 @@ class MemoryCompareCommand(GenericCommand):
             f2_hex_s = ' '.join(f2_hex) + " " * ((16 - len(f2_hex)) * 3)
             f1_ascii_s = ''.join(f1_ascii) + " " * (16 - len(f1_ascii))
             f2_ascii_s = ''.join(f2_ascii) + " " * (16 - len(f2_ascii))
-            msg = "{:#018x}: {:s} | {:s} | {:#018x}: {:s} | {:s} |".format(addr1, f1_hex_s, f1_ascii_s, addr2, f2_hex_s, f2_ascii_s)
-            gef_print(msg)
+            fmt = "{:#018x}: {:s} | {:s} | {:#018x}: {:s} | {:s} |"
+            self.out.append(fmt.format(addr1, f1_hex_s, f1_ascii_s, addr2, f2_hex_s, f2_ascii_s))
 
         if diff_found is False:
             info("Not found diff")
@@ -45299,7 +45300,10 @@ class MemoryCompareCommand(GenericCommand):
         if args.size == 0:
             info("The size is zero, maybe wrong.")
 
+        self.out = []
         self.memcmp(args.phys1, args.location1, args.phys2, args.location2, args.size)
+        if self.out:
+            gef_print('\n'.join(self.out), less=not args.no_pager)
         return
 
 
