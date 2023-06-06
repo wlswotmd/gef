@@ -248,19 +248,30 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
 * `partition-alloc-dump`: dumps partition-alloc free-list (heuristic).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/partition-alloc-dump.png)
     * This command is reserved for the implementation of latest version of chromium.
-        * Currently tested: v115.x / 1141961 / 3fcee01d5055203d6904fa08e84788d16009dc35
-        * https://commondatastorage.googleapis.com/chromium-browser-snapshots/index.html?prefix=Linux_x64/1141961/
+        * Currently tested: v116.x / 1154341 / 8a942c7ef88b81643f77827fd3a16154bba4a600
+        * https://commondatastorage.googleapis.com/chromium-browser-snapshots/index.html?prefix=Linux_x64/1154341/
     * Supported on only x64 (maybe it works on x86/ARM/ARM64, but not tested).
     * It will try heuristic search if binary has no symbol.
+    * How to test:
+        * See [partition-alloc-dump-dev/downloader.py](https://github.com/bata24/gef/blob/dev/partition-alloc-dump-dev/downloader.py).
 * `tcmalloc-dump`: dumps tcmalloc free-list (heuristic).
     * Supported on only x64, based on gperftools-2.9.1 (named `libgoogle-perftools{4,-dev}`)
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/tcmalloc-dump.png)
+    * How to test:
+        * Execute as `LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libtcmalloc.so ./a.out`.
 * `musl-heap-dump`: dumps musl-libc heap chunks (heuristic).
-    * Supported on x64/x86, based on musl-libc v1.2.2.
+    * Supported on x64/x86, based on musl-libc v1.2.4.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/musl-heap-dump.png)
+    * How to test:
+        * Get and extract latest source, then `./configure && make install`.
+        * Build as `/usr/local/musl/bin/musl-gcc test.c`.
 * `uclibc-ng-heap-dump`: dumps uClibc-ng heap chunks (heuristic).
     * Supported on x64/x86, based on uClibc-ng v1.0.42 malloc-standard.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/uclibc-ng-heap-dump.png)
+    * How to test (x64):
+        * Download and extract `x86-64--uclibc--stable-2022.08-1.tar.bz2` from https://toolchains.bootlin.com/
+        * Add `/path/to/toolchain/bin` to `$PATH`, then `x86_64-linux-gcc test.c`.
+        * Fix interpreter by `patchelf --set-interpreter /PATH/TO/x86_64-buildroot-linux-uclibc/sysroot/lib/ld64-uClibc.so.0 a.out`.
 * `optee-bget-dump`: dumps bget allocator of OPTEE-Trusted-App.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/optee-bget-dump.png)
 
@@ -398,7 +409,7 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
         * ret
         * indirect-branch (only x86/x64)
         * all-branch (call || jmp || ret)
-        * memory-access (detect `[`)
+        * memory-access (detect just `[...]`)
         * specified-keyword-regex
         * specified-condition (expressions using register or memory values)
         * user-code
@@ -460,7 +471,7 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/magic.png)
 * `dynamic`: dumps the `_DYNAMIC` area.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dynamic.png)
-* `link-map`: dumps the `link_map` with iterating.
+* `link-map`: dumps useful members of `link_map` with iterating.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/link-map.png)
 * `ret2dl-hint`: shows the structure used by Return-to-dl-resolve as hint.
 * `srop-hint`: shows the code for SigReturn-Oriented-Programming as hint.

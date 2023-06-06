@@ -11945,7 +11945,7 @@ class FilenameCommand(GenericCommand):
 
 @register_command
 class ProcInfoCommand(GenericCommand):
-    """Extends the info given by GDB `info proc`."""
+    """Extend the info given by GDB `info proc`."""
     _cmdline_ = "proc-info"
     _category_ = "02-a. Process Information - General"
     _aliases_ = ["pr"]
@@ -20441,9 +20441,9 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
 
 @register_command
 class EntryPointBreakCommand(GenericCommand):
-    """Tries to find best entry point and sets a temporary breakpoint on it. The command will test for
+    """Try to find best entry point and set a temporary breakpoint on it. The command will test for
     well-known symbols for entry points, such as `main`, `_main`, `__libc_start_main`, etc. defined by
-    the setting `entrypoint_symbols`."""
+    the setting `entry-break.entrypoint_symbols`."""
     _cmdline_ = "entry-break"
     _category_ = "01-b. Debugging Support - Breakpoint"
     _aliases_ = ["start"]
@@ -20537,7 +20537,7 @@ class EntryPointBreakCommand(GenericCommand):
 
 @register_command
 class NamedBreakpointCommand(GenericCommand):
-    """Sets a breakpoint and assigns a name to it, which will be shown, when it's hit."""
+    """Set a breakpoint and assigns a name to it, which will be shown, when it's hit."""
     _cmdline_ = "named-break"
     _category_ = "01-b. Debugging Support - Breakpoint"
     _aliases_ = ["nb"]
@@ -20565,7 +20565,7 @@ class NamedBreakpointCommand(GenericCommand):
 
 @register_command
 class MessageBreakpointCommand(GenericCommand):
-    """Sets a breakpoint whith print user defined message, when it's hit."""
+    """Set a breakpoint whith print user defined message, when it's hit."""
     _cmdline_ = "message-break"
     _category_ = "01-b. Debugging Support - Breakpoint"
 
@@ -20591,7 +20591,7 @@ class MessageBreakpointCommand(GenericCommand):
 
 @register_command
 class ContextCommand(GenericCommand):
-    """Displays various information every time GDB hits a breakpoint."""
+    """Display various information every time GDB hits a breakpoint."""
     _cmdline_ = "context"
     _category_ = "01-a. Debugging Support - Context"
     _aliases_ = ["ctx"]
@@ -23087,7 +23087,7 @@ class FollowCommand(GenericCommand):
 
 @register_command
 class SmartCppFunctionNameCommand(GenericCommand):
-    """Toggle the setting of `config context.smart_cpp_function_name`."""
+    """Toggle the setting of `context.smart_cpp_function_name`."""
     _cmdline_ = "smart-cpp-function-name"
     _category_ = "01-f. Debugging Support - Context Extension"
 
@@ -23258,7 +23258,7 @@ class VMMapCommand(GenericCommand):
 
 @register_command
 class XFilesCommand(GenericCommand):
-    """Shows all libraries (and sections) loaded by binary."""
+    """Show all libraries (and sections) loaded by binary."""
     _cmdline_ = "xfiles"
     _category_ = "02-c. Process Information - Memory/Section"
 
@@ -23897,7 +23897,7 @@ class Ret2dlHintCommand(GenericCommand):
 
 @register_command
 class LinkMapCommand(GenericCommand):
-    """Dump link_map with iterating."""
+    """Dump useful members of link_map with iterating."""
     _cmdline_ = "link-map"
     _category_ = "02-e. Process Information - Complex Structure Information"
 
@@ -37122,7 +37122,7 @@ def get_syscall_table(arch=None, mode=None):
 
 @register_command
 class SyscallArgsCommand(GenericCommand):
-    """Gets the syscall name and arguments based on the register values in the current state."""
+    """Get the syscall name and arguments based on the register values in the current state."""
     _cmdline_ = "syscall-args"
     _category_ = "01-a. Debugging Support - Context"
 
@@ -38578,7 +38578,7 @@ class FpuCommand(GenericCommand):
 
 @register_command
 class ErrnoCommand(GenericCommand):
-    """Converts errno (or argument) to its string representation."""
+    """Convert errno (or argument) to its string representation."""
     _cmdline_ = "errno"
     _category_ = "02-d. Process Information - Trivial Information"
 
@@ -44297,6 +44297,7 @@ class KernelSearchCodePtrCommand(GenericCommand):
             self.invalid_addrs[depth] = []
         for offset in range(0, max_range + current_arch.ptrsize, current_arch.ptrsize):
             cur = align_address(addr + offset)
+            # TODO: more suitable check for kernel address
             if (cur >> (current_arch.ptrsize * 8 - 1)) == 0:
                 continue
             if not is_valid_addr(cur):
@@ -44356,7 +44357,7 @@ class KernelSearchCodePtrCommand(GenericCommand):
 
 @register_command
 class KernelDmesgCommand(GenericCommand):
-    """Dumps the ring buffer of dmesg area."""
+    """Dump the ring buffer of dmesg area."""
     _cmdline_ = "kdmesg"
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
@@ -45598,7 +45599,7 @@ class IdtInfoCommand(GenericCommand):
 
 @register_command
 class MemoryCompareCommand(GenericCommand):
-    """Compares the memory contents of two locations."""
+    """Compare the memory contents of two locations."""
     _cmdline_ = "memcmp"
     _category_ = "03-b. Memory - View"
 
@@ -45760,7 +45761,7 @@ class MemoryCopyCommand(GenericCommand):
 
 @register_command
 class MemorySwapCommand(GenericCommand):
-    """Swaps the contents of one memory to another."""
+    """Swap the contents of one memory to another."""
     _cmdline_ = "memswap"
     _category_ = "03-c. Memory - Patch"
 
@@ -45846,7 +45847,7 @@ class MemorySwapCommand(GenericCommand):
 
 @register_command
 class MemoryInsertCommand(GenericCommand):
-    """Inserts the contents of one memory to another."""
+    """Insert the contents of one memory to another."""
     _cmdline_ = "meminsert"
     _category_ = "03-c. Memory - Patch"
 
@@ -46047,7 +46048,7 @@ class HashMemoryCommand(GenericCommand):
 
 @register_command
 class IsMemoryZeroCommand(GenericCommand):
-    """Checks if all the memory in the specified range is 0x00, 0xff."""
+    """Check if all the memory in the specified range is 0x00, 0xff."""
     _cmdline_ = "is-mem-zero"
     _category_ = "03-d. Memory - Calculation"
 
@@ -46186,7 +46187,7 @@ class MultiLineCommand(GenericCommand):
 
 @register_command
 class TimeCommand(GenericCommand):
-    """Measures the time of the GDB command."""
+    """Measure the time of the GDB command."""
     _cmdline_ = "time"
     _category_ = "01-c. Debugging Support - Basic Command Extension"
 
@@ -54267,7 +54268,7 @@ class MsrCommand(GenericCommand):
 
 @register_command
 class PacKeysCommand(GenericCommand):
-    """Pretty print PAC keys from qemu registers."""
+    """Pretty-print PAC keys from qemu registers."""
     _cmdline_ = "pac-keys"
     _category_ = "04-a. Register - View"
 
@@ -58783,6 +58784,8 @@ class PagewalkWithHintsCommand(GenericCommand):
         for line in res:
             line = line.split()
             addr_start, addr_end = [int(x, 16) for x in line[0].split("-")]
+            # TODO: more suitable check for kernel address
+            # Currently only 64bit architecture is targeted, so this will work
             if (addr_start >> ((current_arch.ptrsize * 8) - 1)) != 1:
                 continue
             if is_x86_64():
@@ -59122,7 +59125,7 @@ class PagewalkWithHintsCommand(GenericCommand):
 
 @register_command
 class ExecNextCommand(GenericCommand):
-    """Execute until next address. This command is used for rep prefix."""
+    """Execute until next address. This command is useful for rep prefix, or the case of stepi/nexti failed."""
     _cmdline_ = "exec-next"
     _category_ = "01-d. Debugging Support - Execution"
 
@@ -59711,7 +59714,7 @@ class CallUsermodehelperSetupBreakpoint(gdb.Breakpoint):
 
 @register_command
 class UsermodehelperHunterCommand(GenericCommand):
-    """Collects and displays information that is executed by call_usermodehelper_setup."""
+    """Collect and displays information that is executed by call_usermodehelper_setup."""
     _cmdline_ = "usermodehelper-hunter"
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
@@ -59805,7 +59808,7 @@ class ThunkBreakpoint(gdb.Breakpoint):
 
 @register_command
 class ThunkHunterCommand(GenericCommand):
-    """Collects and displays the thunk addresses that are called automatically. (only x64/x86)"""
+    """Collect and displays the thunk addresses that are called automatically. (only x64/x86)"""
     _cmdline_ = "thunk-hunter"
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
