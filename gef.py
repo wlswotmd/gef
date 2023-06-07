@@ -338,7 +338,6 @@ class Color:
         "blink"                : "\033[5m",
         "blink_off"            : "\033[25m",
 
-        "gray"                 : "\033[1;30m",
         "black"                : "\033[30m",
         "red"                  : "\033[31m",
         "green"                : "\033[32m",
@@ -790,7 +789,7 @@ class Color:
 
     @staticmethod
     def grayify(msg):
-        return Color.colorify(msg, "gray")
+        return Color.colorify(msg, "bright_black")
 
     @staticmethod
     def redify(msg):
@@ -2633,7 +2632,7 @@ def style_byte(b, color=True):
     style = {
         "nonprintable": "yellow",
         "printable": "white",
-        "00": "gray",
+        "00": "bright_black",
         "0a": "blue",
         "ff": "green",
     }
@@ -10802,10 +10801,10 @@ class GefThemeCommand(GenericCommand):
         self.add_setting("default_title_line", "cyan", "Default color of borders")
         self.add_setting("default_title_message", "cyan", "Default color of title")
         self.add_setting("table_heading", "bold blue", "Color of the column headings to tables (e.g. vmmap)")
-        self.add_setting("old_context", "gray", "Color to use to show things such as code that is not immediately relevant")
+        self.add_setting("old_context", "bright_black", "Color to use to show things such as code that is not immediately relevant")
         self.add_setting("disassemble_address", "", "Color of address when disassembling")
         self.add_setting("disassemble_address_highlight", "bold green", "Color of address when disassembling (=$pc)")
-        self.add_setting("disassemble_opcode", "bright_white", "Color of location when disassembling")
+        self.add_setting("disassemble_opcode", "white", "Color of location when disassembling")
         self.add_setting("disassemble_opcode_highlight", "bold white", "Color of location when disassembling (=$pc)")
         self.add_setting("disassemble_mnemonic_normal", "yellow", "Color of normal mnemonic when disassembling")
         self.add_setting("disassemble_mnemonic_normal_highlight", "bold bright_yellow", "Color of normal mnemonic when disassembling (=$pc)")
@@ -10815,7 +10814,7 @@ class GefThemeCommand(GenericCommand):
         self.add_setting("disassemble_operands_normal_highlight", "bold cyan", "Color of normal operands when disassembling (=$pc)")
         self.add_setting("disassemble_operands_const", "bright_blue", "Color of const operands when disassembling")
         self.add_setting("disassemble_operands_const_highlight", "bold bright_blue", "Color of const operands when disassembling (=$pc)")
-        self.add_setting("disassemble_operands_symbol", "bright_white", "Color of symbol operands when disassembling)")
+        self.add_setting("disassemble_operands_symbol", "white", "Color of symbol operands when disassembling)")
         self.add_setting("disassemble_operands_symbol_highlight", "bold white", "Color of symbol operands when disassembling (=$pc)")
         self.add_setting("dereference_string", "yellow", "Color of dereferenced string")
         self.add_setting("dereference_base_address", "cyan", "Color of dereferenced address")
@@ -10827,15 +10826,15 @@ class GefThemeCommand(GenericCommand):
         self.add_setting("address_code", "red", "Color to use when a code address is found")
         self.add_setting("address_writable", "green", "Color to use when a RWX address is found")
         self.add_setting("address_rwx", "underline", "Color to use when a RWX address is found")
-        self.add_setting("address_valid_but_none", "gray", "Color to use when a --- address is found")
+        self.add_setting("address_valid_but_none", "bright_black", "Color to use when a --- address is found")
         self.add_setting("source_current_line", "green", "Color to use for the current code line in the source window")
         self.add_setting("heap_arena_label", "bold cyan underline", "Color of the arena label used heap")
         self.add_setting("heap_chunk_label", "bold cyan underline", "Color of the chunk label used heap")
         self.add_setting("heap_label_active", "bold green underline", "Color of the (active) label used heap")
         self.add_setting("heap_label_inactive", "bold red underline", "Color of the (inactive) label used heap")
-        self.add_setting("heap_chunk_address_used", "bold gray", "Color of the chunk address used heap")
+        self.add_setting("heap_chunk_address_used", "bright_black", "Color of the chunk address used heap")
         self.add_setting("heap_chunk_address_freed", "bold yellow", "Color of the freed chunk address used heap")
-        self.add_setting("heap_chunk_used", "gray", "Color of the used chunk used heap")
+        self.add_setting("heap_chunk_used", "bright_black", "Color of the used chunk used heap")
         self.add_setting("heap_chunk_freed", "yellow", "Color of the freed chunk used heap")
         self.add_setting("heap_chunk_size", "bold magenta", "Color of the size used heap")
         self.add_setting("heap_chunk_flag_prev_inuse", "bold red", "Color of the prev_in_use flag used heap")
@@ -17815,7 +17814,7 @@ class ChecksecCommand(GenericCommand):
                 msg = Color.colorify("Disabled", "bold red") + " (kernel does not support PAC)"
                 gef_print("{:<40s}: {:s}".format("PAC", msg))
             elif r < 0:
-                msg = Color.colorify("Unknown", "bold gray") + " (kernel supports PAC but does not support PR_PAC_GET_ENABLED_KEYS prctl option)"
+                msg = Color.grayify("Unknown") + " (kernel supports PAC but does not support PR_PAC_GET_ENABLED_KEYS prctl option)"
                 gef_print("{:<40s}: {:s}".format("PAC", msg))
             elif r == 0:
                 msg = Color.colorify("Disabled", "bold red") + " (kernel supports PAC but no keys are enabled)"
@@ -17843,7 +17842,7 @@ class ChecksecCommand(GenericCommand):
                 msg = Color.colorify("Disabled", "bold red") + " (kernel does not support MTE)"
                 gef_print("{:<40s}: {:s}".format("MTE", msg))
             elif r < 0:
-                msg = Color.colorify("Unknown", "bold gray") + " (kernel supports MTE but does not support PR_SET_TAGGED_ADDR_CTRL)"
+                msg = Color.grayify("Unknown") + " (kernel supports MTE but does not support PR_SET_TAGGED_ADDR_CTRL)"
                 gef_print("{:<40s}: {:s}".format("MTE", msg))
             elif (r & 0b1) == 0:
                 msg = Color.colorify("Disabled", "bold red") + " (kernel supports MTE but disabled)"
@@ -17883,7 +17882,7 @@ class ChecksecCommand(GenericCommand):
 
         # System-ASLR
         if is_remote_debug():
-            msg = Color.colorify("Unknown", "bold gray")
+            msg = Color.grayify("Unknown")
             gef_print("{:<40s}: {:s} (remote process)".format("System-ASLR", msg))
         else:
             try:
@@ -17898,12 +17897,12 @@ class ChecksecCommand(GenericCommand):
                     msg = Color.colorify("Enabled", "bold green")
                     gef_print("{:<40s}: {:s} (randomize_va_space: 2)".format("System ASLR", msg))
             except Exception:
-                msg = Color.colorify("Unknown", "bold gray")
+                msg = Color.grayify("Unknown")
                 gef_print("{:<40s}: {:s} (randomize_va_space: error)".format("System-ASLR", msg))
 
         # gdb ASLR
         if is_attach() or is_remote_debug():
-            msg = Color.colorify("Ignored", "bold gray")
+            msg = Color.grayify("Ignored")
             gef_print("{:<40s}: {:s} (attached or remote process)".format("GDB ASLR setting", msg))
         else:
             ret = gdb.execute("show disable-randomization", to_string=True)
@@ -17914,7 +17913,7 @@ class ChecksecCommand(GenericCommand):
                 msg = Color.colorify("Enabled", "bold green")
                 gef_print("{:<40s}: {:s} (disable-randomization: off)".format("GDB ASLR setting", msg))
             else:
-                msg = Color.colorify("Unknown", "bold gray")
+                msg = Color.grayify("Unknown")
                 gef_print("{:<40s}: {:s}".format("GDB ASLR setting", msg))
         return
 
@@ -18081,7 +18080,7 @@ class KernelChecksecCommand(GenericCommand):
                 if commit_creds:
                     gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unsupported", "bold red")))
                 else:
-                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
+                    gef_print("{:<40s}: {:s}".format(cfg, Color.grayify("Unknown")))
 
         # KPTI
         cfg = "CONFIG_PAGE_TABLE_ISOLATION (KPTI)"
@@ -18155,7 +18154,7 @@ class KernelChecksecCommand(GenericCommand):
             cfg = "CONFIG_SLAB_FREELIST_HARDENED"
             slub_dump_ret = gdb.execute("slub-dump --quiet --no-pager", to_string=True)
             if slub_dump_ret.count("Corrupted") >= 10:
-                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unknown", "bold gray")))
+                gef_print("{:<40s}: {:s}".format(cfg, Color.grayify("Unknown")))
             else:
                 slub_dump_ret = gdb.execute("slub-dump --meta", to_string=True)
                 r = re.search(r"offsetof\(kmem_cache, random\): (0x\S+)", slub_dump_ret)
@@ -18458,7 +18457,7 @@ class KernelChecksecCommand(GenericCommand):
             sysctl_unprivileged_userfaultfd = KernelAddressHeuristicFinder.get_sysctl_unprivileged_userfaultfd()
             if sysctl_unprivileged_userfaultfd is None:
                 additional = "vm.unprivileged_userfaultfd: Not found"
-                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unknown", "bold gray"), additional))
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
             else:
                 v = u32(read_memory(sysctl_unprivileged_userfaultfd, 4))
                 additional = "vm.unprivileged_userfaultfd: {:d}".format(v)
@@ -18483,7 +18482,7 @@ class KernelChecksecCommand(GenericCommand):
             sysctl_unprivileged_bpf_disabled = KernelAddressHeuristicFinder.get_sysctl_unprivileged_bpf_disabled()
             if sysctl_unprivileged_bpf_disabled is None:
                 additional = "kernel.unprivileged_bpf_disabled: Not found"
-                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unknown", "bold gray"), additional))
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
             else:
                 v = u32(read_memory(sysctl_unprivileged_bpf_disabled, 4))
                 additional = "kernel.unprivileged_bpf_disabled: {:d}".format(v)
@@ -18514,7 +18513,7 @@ class KernelChecksecCommand(GenericCommand):
             kexec_load_disabled = KernelAddressHeuristicFinder.get_kexec_load_disabled()
             if kexec_load_disabled is None:
                 additional = "kernel.kexec_load_disabled: Not found"
-                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unknown", "bold gray"), additional))
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
             else:
                 v1 = u32(read_memory(kexec_load_disabled, 4))
                 additional = "kernel.kexec_load_disabled: {:d}".format(v1)
@@ -18551,7 +18550,7 @@ class KernelChecksecCommand(GenericCommand):
         mp = KernelAddressHeuristicFinder.get_modprobe_path()
         if mp is None:
             additional = "modprobe_path: Not found"
-            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unknown", "bold gray"), additional))
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
         else:
             for vaddr, size, perm in kinfo.maps:
                 if vaddr <= mp < vaddr + size:
@@ -18562,7 +18561,7 @@ class KernelChecksecCommand(GenericCommand):
                         gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
                     break
             else:
-                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Not found maps", "bold gray")))
+                gef_print("{:<40s}: {:s}".format(cfg, Color.grayify("Not found maps")))
 
         # CONFIG_STACKPROTECTOR
         cfg = "CONFIG_STACKPROTECTOR"
@@ -18580,7 +18579,7 @@ class KernelChecksecCommand(GenericCommand):
             kptr_restrict = KernelAddressHeuristicFinder.get_kptr_restrict()
             if kptr_restrict is None:
                 additional = "kernel.kptr_restrict: Not found"
-                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unknown", "bold gray"), additional))
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
             else:
                 v1 = u32(read_memory(kptr_restrict, 4))
                 additional = "kernel.kptr_restrict: {:d}".format(v1)
@@ -18593,10 +18592,10 @@ class KernelChecksecCommand(GenericCommand):
             sysctl_perf_event_paranoid = KernelAddressHeuristicFinder.get_sysctl_perf_event_paranoid()
             if kptr_restrict is None:
                 additional = "kernel.kptr_restrict: Not found"
-                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unknown", "bold gray"), additional))
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
             elif sysctl_perf_event_paranoid is None:
                 additional = "kernel.perf_event_paranoid: Not found"
-                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unknown", "bold gray"), additional))
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
             else:
                 v1 = u32(read_memory(kptr_restrict, 4))
                 v2 = u32(read_memory(sysctl_perf_event_paranoid, 4))
@@ -18611,7 +18610,7 @@ class KernelChecksecCommand(GenericCommand):
         cfg = "KADR (dmesg)"
         if dmesg_restrict is None:
             additional = "kernel.dmesg_restrict: Not found"
-            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unknown", "bold gray"), additional))
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
         else:
             v1 = u32(read_memory(dmesg_restrict, 4))
             additional = "kernel.dmesg_restrict: {:d}".format(v1)
@@ -18625,7 +18624,7 @@ class KernelChecksecCommand(GenericCommand):
         mmap_min_addr = KernelAddressHeuristicFinder.get_mmap_min_addr()
         if mmap_min_addr is None:
             additional = "vm.mmap_min_addr: Not found"
-            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unknown", "bold gray"), additional))
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
         else:
             val = read_int_from_memory(mmap_min_addr)
             if val:
@@ -60394,7 +60393,7 @@ class CurrentFrameStackCommand(GenericCommand):
         for offset, address in enumerate(range(stack_lo, stack_hi, ptrsize)):
             pprint_str = DereferenceCommand.pprint_dereferenced(stack_lo, offset)
             if dereference(address) == saved_ip:
-                pprint_str += " " + Color.colorify("($savedip)", attrs="gray underline")
+                pprint_str += " ($savedip)"
             results.append(pprint_str)
 
         if should_stack_grow_down:
