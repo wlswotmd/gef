@@ -99,6 +99,7 @@ import codecs
 import collections
 import configparser
 import ctypes
+import datetime
 import functools
 import hashlib
 import inspect
@@ -10908,7 +10909,23 @@ class VersionCommand(GenericCommand):
             pass
 
         if os.path.exists("/etc/issue.net"):
-            return open("/etc/issue.net").read().strip()
+            content = open("/etc/issue.net").read().strip()
+            if content:
+                return content
+
+        if os.path.exists("/etc/issue"):
+            content = open("/etc/issue").read().strip()
+            content = content.replace(" \\n \\l", "")
+            if content:
+                return content
+
+        if os.path.exists("/etc/os-release"):
+            content = open("/etc/os-release").read()
+            for line in content.splitlines():
+                r = re.search(r"PRETTY_NAME=\"(.+)\"", line)
+                if r:
+                    return r.group(1)
+
         return 'Not found'
 
     def kernel_version(self):
@@ -10925,7 +10942,8 @@ class VersionCommand(GenericCommand):
     def gef_version(self):
         gef_fpath = os.path.abspath(os.path.realpath(os.path.expanduser(inspect.stack()[0][1])))
         gef_hash = hashlib.sha1(open(gef_fpath, "rb").read()).hexdigest()
-        return "(Standalone) SHA1:{}".format(gef_hash)
+        dt = datetime.datetime.fromtimestamp(os.stat(gef_fpath).st_mtime)
+        return "Last modified: {} SHA1: {}".format(dt.strftime('%Y-%m-%d %H:%M:%S'), gef_hash)
 
     def gdb_version(self):
         try:
