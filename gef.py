@@ -10788,6 +10788,7 @@ class GefThemeCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('key', metavar='KEY', nargs='?', help='color theme key. (default: %(default)s)')
     parser.add_argument('value', metavar='VALUE', nargs='*', help='color theme value. (default: %(default)s)')
+    parser.add_argument('--color-sample', action='store_true', help='print available name of colors.')
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}                        # show all theme settings\n".format(_cmdline_)
@@ -10854,24 +10855,30 @@ class GefThemeCommand(GenericCommand):
             gef_print(titlify("settings"))
             for setting in sorted(self.settings):
                 value = self.get_setting(setting)
-                value = Color.colorify(value, value)
-                gef_print("{:40s}: {:s}".format(setting, value))
-            gef_print(titlify("defined colors"))
+                if value:
+                    value = Color.colorify(value, value)
+                    gef_print("{:40s}: {:s}".format(setting, value))
+                else:
+                    gef_print("{:40s}: {:s}".format(setting, "None"))
 
-            i = 0
-            for k, v in Color.colors.items():
-                if k.endswith("_off") or k == "normal":
-                    continue
-                gef_print("{}{:20s}{}  ".format(v, k, Color.colors["normal"]), end='')
+            if args.color_sample:
+                gef_print(titlify("defined colors"))
+                i = 0
+                for k, v in Color.colors.items():
+                    if k.endswith("_off") or k == "normal":
+                        continue
+                    gef_print("{}{:20s}{}  ".format(v, k, Color.colors["normal"]), end='')
 
-                if k in ["blink", "cyan", "bright_white", "_black"]: # group terminators
-                    gef_print("")
-                    i = 0
-                    continue
+                    if k in ["blink", "cyan", "bright_white", "_black"]: # group terminators
+                        gef_print("")
+                        i = 0
+                        continue
 
-                if i % 5 == 4:
-                    gef_print("")
-                i += 1
+                    if i % 5 == 4:
+                        gef_print("")
+                    i += 1
+            else:
+                gef_print("* use --color-sample to see available color name")
             return
 
         if not self.has_setting(args.key):
