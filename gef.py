@@ -42041,6 +42041,15 @@ class KernelCurrentCommand(GenericCommand):
             i += 1
         return True
 
+    def get_comm_str(self, task_addr):
+        ret = gdb.execute("ktask -n -q", to_string=True)
+        for line in ret.splitlines():
+            line = line.split()
+            addr, comm = int(line[0], 16), line[2]
+            if task_addr == addr:
+                return "(comm: {:s})".format(comm)
+        return ""
+
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
@@ -42061,7 +42070,8 @@ class KernelCurrentCommand(GenericCommand):
             info("current_task: {:#x}".format(current_task))
 
         if is_arm32() or is_arm64():
-            gef_print("current: {:#x}".format(current_task))
+            task = read_int_from_memory(current_task)
+            gef_print("current: {:#x} {:s}".format(current_task, self.get_comm_str(task)))
             return
 
         elif is_x86():
@@ -42069,19 +42079,22 @@ class KernelCurrentCommand(GenericCommand):
                 mask = 0x80000000
             else:
                 mask = 0x80000000_00000000
+
+            # pattern1: do not use __per_cpu_offset
             if (current_task & mask) == mask:
                 task = read_int_from_memory(current_task)
                 if is_valid_addr(task):
                     if not self.quiet:
                         info("__per_cpu_offset is not used")
-                    gef_print("current: {:#x}".format(task))
+                    gef_print("current: {:#x} {:s}".format(task, self.get_comm_str(task)))
                     return
 
+            # pattern2: use __per_cpu_offset
             if not self.get_cpu_offset():
                 return
             for i, offset in enumerate(self.cpu_offset):
                 task = read_int_from_memory(current_task + offset)
-                gef_print("current (cpu{:d}): {:#x}".format(i, task))
+                gef_print("current (cpu{:d}): {:#x} {:s}".format(i, task, self.get_comm_str(task)))
         return
 
 
