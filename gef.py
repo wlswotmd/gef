@@ -906,6 +906,8 @@ class Address:
         return hasattr(self.section, "is_writable") and self.section.is_writable()
 
     def is_valid_but_none(self):
+        if self.section is None:
+            return False
         a = hasattr(self.section, "is_executable") and self.section.is_executable()
         b = hasattr(self.section, "is_writable") and self.section.is_writable()
         c = hasattr(self.section, "is_readable") and self.section.is_readable()
