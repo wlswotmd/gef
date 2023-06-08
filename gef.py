@@ -21449,8 +21449,8 @@ class ContextCommand(GenericCommand):
                 pc = current_frame.pc()
                 name = Instruction.smartify_text(current_frame.name())
                 items = []
-                items.append("{:#x}".format(pc))
                 if name:
+                    items.append("{:#x}".format(pc))
                     frame_args = gdb.FrameDecorator.FrameDecorator(current_frame).frame_args() or []
                     m = Color.greenify(name)
                     fargs = []
@@ -21467,6 +21467,8 @@ class ContextCommand(GenericCommand):
                         insn = next(gef_disassemble(pc, 1))
                     except gdb.MemoryError:
                         break
+                    sym = get_symbol_string(pc, nosymbol_string=" <NO_SYMBOL>")
+                    items.append("{:#x}{:s}".format(pc, sym))
                     items.append(Color.redify("{} {}".format(insn.mnemonic, ", ".join(insn.operands))))
 
                 idx = Color.colorify("#{}".format(level), "bold green" if current_frame == orig_frame else "bold magenta")
@@ -21544,17 +21546,16 @@ class ContextCommand(GenericCommand):
                     continue
                 try:
                     frame = gdb.selected_frame()
+                    pc = frame.pc()
+                    frame_name = Instruction.smartify_text(frame.name()) or "unknown_frame"
                 except Exception:
                     # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
                     # if failed, print thread information without frame (but with $pc).
-                    line += " {:s} in".format(Color.colorify("{:#x}".format(get_register("$pc")), "blue"))
-                    line += " {:s}".format(Color.colorify("unknown_frame", "bold yellow"))
-                    line += ", reason: {}".format(Color.colorify(reason(), "bold magenta"))
-                    gef_print(line)
-                    continue
-                frame_name = Instruction.smartify_text(frame.name())
-                line += " {:s} in".format(Color.colorify("{:#x}".format(frame.pc()), "blue"))
-                line += " {:s}".format(Color.colorify(frame_name or "unknown_frame", "bold yellow"))
+                    pc = get_register("$pc")
+                    frame_name = "unknown_frame"
+                sym = get_symbol_string(pc, nosymbol_string=" <NO_SYMBOL>")
+                line += " {:s}{:s} in".format(Color.colorify("{:#x}".format(pc), "blue"), sym)
+                line += " {:s}".format(Color.colorify(frame_name, "bold yellow"))
                 line += ", reason: {}".format(Color.colorify(reason(), "bold magenta"))
             elif thread.is_exited():
                 line += Color.colorify("exited", "bold yellow")
