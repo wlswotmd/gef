@@ -8371,6 +8371,8 @@ def to_unsigned_long(v):
     return int(v.cast(gdb.Value(mask).type)) & mask
 
 
+# Don't use lru_cache.
+# This is because there is a command that performs step execution internally.
 def get_register(regname, use_mbed_exec=False):
     """Return a register's value."""
     if regname[0] in ["%", "@"]:
@@ -8400,6 +8402,12 @@ def get_register(regname, use_mbed_exec=False):
         if r:
             return int(r.split("=")[1], 16)
     return None
+
+
+# If you want to use lru_cache, use this. An use_mbed_exec must not be supported.
+@functools.lru_cache(maxsize=None)
+def get_register_use_cache(regname):
+    return get_register(regname)
 
 
 def get_path_from_info_proc():
@@ -9048,9 +9056,6 @@ def process_lookup_address(address):
     if not is_alive():
         err("Process is not running")
         return None
-    if is_x86():
-        if is_in_x86_kernel(address):
-            return None
     for sect in get_process_maps():
         if sect.page_start <= address < sect.page_end:
             return sect
@@ -9881,12 +9886,6 @@ def get_kparam(sym):
         return int(res.split()[1], 16)
     except Exception:
         return None
-
-
-def is_in_x86_kernel(address):
-    address = align_address(address)
-    memalign = get_memory_alignment(in_bits=True) - 1
-    return (address >> memalign) == 0xF
 
 
 @functools.lru_cache(maxsize=None)
@@ -22911,7 +22910,7 @@ class DereferenceCommand(GenericCommand):
             regs = []
             for regname in current_arch.all_registers:
                 try:
-                    regvalue = get_register(regname)
+                    regvalue = get_register_use_cache(regname)
                 except Exception:
                     continue
                 regs.append([regname, regvalue])
