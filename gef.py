@@ -13040,22 +13040,9 @@ class PtrDemangleCommand(GenericCommand):
             tls = TlsCommand.getgs()
             cookie = read_int_from_memory(tls + 0x18)
         elif is_arm32() or is_arm64():
-            if is_arm32():
-                try:
-                    tls = parse_address("(unsigned int)__aeabi_read_tp()")
-                except Exception:
-                    err("Not found symbol (__aeabi_read_tp)")
-                    return None
-            else:
-                try:
-                    tls = get_register("$TPIDR_EL0")
-                except Exception:
-                    err("Fail reading $TPIDR_EL0 register")
-                    return None
             try:
                 cookie_ptr = parse_address("&__pointer_chk_guard_local")
             except Exception:
-                err("Not found symbol (__pointer_chk_guard_local)")
                 return None
             cookie = read_int_from_memory(cookie_ptr)
         return cookie
