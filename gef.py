@@ -186,6 +186,7 @@ __context_messages__            = []
 __heap_allocated_list__         = []
 __heap_freed_list__             = []
 __heap_uaf_watchpoints__        = []
+__patch_history__               = []
 __gef_default_main_arena__      = "main_arena"
 __gef_prev_arch__               = None
 __gef_check_once__              = True
@@ -21877,13 +21878,29 @@ class PatchCommand(GenericCommand):
     subparsers.add_parser('revert')
     _syntax_ = parser.format_help()
 
-    history = []
-
     def __init__(self, *args, **kwargs):
         prefix = kwargs.get("prefix", True)
         complete_type = kwargs.get("complete", gdb.COMPLETE_NONE)
         super().__init__(prefix=prefix, complete=complete_type)
         self.format = None
+        return
+
+    @staticmethod
+    def patch_insert(history_info):
+        global __patch_history__
+        assert isinstance(history_info, dict)
+        assert "addr" in history_info
+        assert "before_data" in history_info
+        assert "after_data" in history_info
+        if "physmode" not in history_info:
+            history_info["physmode"] = "virt"
+        elif isinstance(history_info["physmode"], bool):
+            if history_info["physmode"]:
+                history_info["physmode"] = "phys"
+            else:
+                history_info["physmode"] = "virt"
+        __patch_history__.insert(0, history_info)
+        ok("Inserted to patch history")
         return
 
     def patch(self, addr, data, length):
@@ -21898,7 +21915,8 @@ class PatchCommand(GenericCommand):
             err(e)
             return
         history_info = {"addr": addr, "before_data": before_data, "after_data": after_data, "physmode": get_current_mmu_mode()}
-        self.history.insert(0, history_info)
+        global __patch_history__
+        __patch_history__.insert(0, history_info)
         ok("Patching {:d} bytes from {:s}".format(length, str(lookup_address(addr))))
         return
 
@@ -22573,15 +22591,15 @@ class PatchHistoryCommand(PatchCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        if self.history:
+        if __patch_history__:
             gef_print("[NEW]")
-            for i, hist in enumerate(self.history):
-                b = ' '.join(["{:02x}".format(x) for x in hist["before_data"][:0x10]])
+            for i, hist in enumerate(__patch_history__):
+                b = " ".join(["{:02x}".format(x) for x in hist["before_data"][:0x10]])
                 if len(hist["before_data"]) > 0x10:
-                    b += "..."
-                a = ' '.join(["{:02x}".format(x) for x in hist["after_data"][:0x10]])
+                    b += " ..."
+                a = " ".join(["{:02x}".format(x) for x in hist["after_data"][:0x10]])
                 if len(hist["after_data"]) > 0x10:
-                    a += "..."
+                    a += " ..."
                 sym = get_symbol_string(hist["addr"])
                 i_str = Color.boldify("{:d}".format(i))
                 gef_print("[{:s}] {:#x}{:s}: {:s} -> {:s}".format(i_str, hist["addr"], sym, b, a))
@@ -22614,21 +22632,23 @@ class PatchRevertCommand(PatchCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        if not (0 <= args.revert_target < len(self.history)):
+        global __patch_history__
+
+        if not (0 <= args.revert_target < len(__patch_history__)):
             err("Invalid target index")
             gef_print(titlify("Patch history"))
             gdb.execute("patch history")
             return
 
         revert_count = args.revert_target + 1
-        while self.history and revert_count > 0:
-            hist = self.history.pop(0)
-            b = ' '.join(["{:02x}".format(x) for x in hist["before_data"][:0x10]])
+        while __patch_history__ and revert_count > 0:
+            hist = __patch_history__.pop(0)
+            b = " ".join(["{:02x}".format(x) for x in hist["before_data"][:0x10]])
             if len(hist["before_data"]) > 0x10:
-                b += "..."
-            a = ' '.join(["{:02x}".format(x) for x in hist["after_data"][:0x10]])
+                b += " ..."
+            a = " ".join(["{:02x}".format(x) for x in hist["after_data"][:0x10]])
             if len(hist["after_data"]) > 0x10:
-                a += "..."
+                a += " ..."
             sym = get_symbol_string(hist["addr"])
             info("revert {:#x}{:s}: {:s} -> {:s}".format(hist["addr"], sym, a, b))
 
@@ -45663,14 +45683,19 @@ class MemoryCopyCommand(GenericCommand):
 
         try:
             if to_phys:
+                before = read_physmem(to_addr, len(data))
                 written = write_physmem(to_addr, data)
             else:
+                before = read_memory(to_addr, len(data))
                 written = write_memory(to_addr, data, len(data))
         except Exception:
             err("Write error {:#x}".format(to_addr))
             return
 
         info("Write count: {:#x}".format(written))
+
+        history_info = {"addr": to_addr, "before_data": before, "after_data": data, "physmode": to_phys}
+        PatchCommand.patch_insert(history_info)
         return
 
     @parse_args
@@ -45752,6 +45777,11 @@ class MemorySwapCommand(GenericCommand):
             return
 
         info("Write count: {:#x}".format(written1))
+
+        history_info = {"addr": addr2, "before_data": data2, "after_data": data1, "physmode": phys2}
+        PatchCommand.patch_insert(history_info)
+        history_info = {"addr": addr1, "before_data": data1, "after_data": data2, "physmode": phys1}
+        PatchCommand.patch_insert(history_info)
         return
 
     @parse_args
@@ -45808,12 +45838,14 @@ class MemoryInsertCommand(GenericCommand):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         return
 
-    def memrotate(self, phys1, addr1, size1, phys2, addr2, size2):
+    def meminsert(self, phys1, addr1, size1, phys2, addr2, size2):
         try:
             if phys1:
-                data1 = read_physmem(addr1, size1)
+                before = read_physmem(addr1, size1 + size2)
+                data1 = before[:size1]
             else:
-                data1 = read_memory(addr1, size1)
+                before = read_memory(addr1, size1 + size2)
+                data1 = before[:size1]
         except Exception:
             err("Read error {:#x}".format(addr1))
             return
@@ -45843,6 +45875,9 @@ class MemoryInsertCommand(GenericCommand):
             return
 
         info("Write count: {:#x}".format(written))
+
+        history_info = {"addr": addr1, "before_data": before, "after_data": to_write_data, "physmode": phys1}
+        PatchCommand.patch_insert(history_info)
         return
 
     @parse_args
@@ -45858,7 +45893,7 @@ class MemoryInsertCommand(GenericCommand):
         if args.size2 == 0:
             info("The size2 is zero, maybe wrong.")
 
-        self.memrotate(args.phys1, args.to_addr, args.size1, args.phys2, args.from_addr, args.size2)
+        self.meminsert(args.phys1, args.to_addr, args.size1, args.phys2, args.from_addr, args.size2)
         return
 
 
