@@ -178,8 +178,10 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kbase-kversion-kcmdline-kcurrent.png)
 * `ktask`: displays each task address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ktask.png)
-    * It also displays the memory of the user-land process.
+    * It also displays the memory map of the user-land process.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ktask-maps.png)
+    * It also displays the register values saved on kstack of the user-land process.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ktask-regs.png)
 * `kmod`: displays each module address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmod.png)
 * `kcdev`: displays each character device information.

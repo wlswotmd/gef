@@ -42106,7 +42106,8 @@ class KernelTaskCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-f', '--filter', action='append', default=[], help='REGEXP filter.')
-    parser.add_argument('-m', '--print-maps', action='store_true', help='print memory map each process.')
+    parser.add_argument('-m', '--print-maps', action='store_true', help='print memory map for each user-land process.')
+    parser.add_argument('-r', '--print-regs', action='store_true', help='print general registers saved on kstack for each user-land process.')
     parser.add_argument('--meta', action='store_true', help='display offset information.')
     parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
     parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
@@ -42269,6 +42270,175 @@ class KernelTaskCommand(GenericCommand):
         if not self.quiet:
             err("Not found task->stack")
         return None
+
+    def get_offset_ptregs(self, task_addrs, offset_stack):
+        # calc kstack address pattern
+        kstacks = set()
+        kstacks_raw = []
+        for task in task_addrs:
+            kstack = read_int_from_memory(task + offset_stack)
+            kstacks.add(kstack & 0xffff)
+            kstacks_raw.append(kstack)
+
+        # calc kstack size
+        kstacks = sorted(kstacks)
+        diffs = []
+        for i in range(len(kstacks) - 1):
+            diff = kstacks[i + 1] - kstacks[i]
+            diffs.append(diff)
+        if len(diffs) == 0:
+            kstack_size = gef_getpagesize() * 2
+        else:
+            kstack_size = min(diffs)
+
+        # check
+        while True:
+            for kstack in kstacks_raw:
+                if not is_valid_addr(kstack + kstack_size - current_arch.ptrsize):
+                    kstack_size //= 2
+                    break # for, then retry while
+            else:
+                break # while
+
+        if not self.quiet:
+            info("kstack size: {:#x}".format(kstack_size))
+
+        if is_x86_64():
+            """
+            struct pt_regs {
+                unsigned long r15;
+                unsigned long r14;
+                unsigned long r13;
+                unsigned long r12;
+                unsigned long rbp;
+                unsigned long rbx;
+                unsigned long r11;
+                unsigned long r10;
+                unsigned long r9;
+                unsigned long r8;
+                unsigned long rax;
+                unsigned long rcx;
+                unsigned long rdx;
+                unsigned long rsi;
+                unsigned long rdi;
+                unsigned long orig_rax;
+                unsigned long rip;
+                unsigned long cs;
+                unsigned long eflags;
+                unsigned long rsp;
+                unsigned long ss;
+            };
+            """
+            ptregs_size = current_arch.ptrsize * 21
+            bottom_offset = 0
+        elif is_x86_32():
+            """
+            struct pt_regs {
+                long ebx;
+                long ecx;
+                long edx;
+                long esi;
+                long edi;
+                long ebp;
+                long eax;
+                int  xds;
+                int  xes;
+                int  xfs;
+                int  xgs;
+                long orig_eax;
+                long eip;
+                int  xcs;
+                long eflags;
+                long esp;
+                int  xss;
+            };
+            """
+            ptregs_size = current_arch.ptrsize * 17
+            bottom_offset = current_arch.ptrsize * 2 # ?
+        elif is_arm64():
+            """
+            struct pt_regs {
+                u64 regs[31];
+                u64 sp;
+                u64 pc;
+                u64 pstate;
+                u64 orig_x0;
+                u64 syscallno;
+                u64 orig_addr_limit;
+                u64 pmr_save;
+                u64 stackframe[2];
+                u64 lockdep_hardirqs;
+                u64 exit_rcu;
+            };
+            """
+            ptregs_size = current_arch.ptrsize * 35
+            bottom_offset = current_arch.ptrsize * 7
+        elif is_arm32():
+            """
+            struct pt_regs {
+                unsigned long uregs[18];
+            };
+            """
+            ptregs_size = current_arch.ptrsize * 18
+            bottom_offset = current_arch.ptrsize * 2 # ?
+        else:
+            return None
+
+        offset_ptregs = kstack_size - ptregs_size - bottom_offset
+        if not self.quiet:
+            info("offsetof(kstack_top, saved ptregs): {:#x}".format(offset_ptregs))
+        return offset_ptregs
+
+    def get_regs(self, kstack, offset_ptregs):
+        if is_x86_64():
+            regs_name = [
+                "r15", "r14", "r13", "r12", "rbp", "rbx", "r11", "r10",
+                "r9", "r8", "rax", "rcx", "rdx", "rsi", "rdi", "orig_rax",
+                "rip", "cs", "eflags", "rsp", "ss",
+            ]
+        elif is_x86_32():
+            regs_name = [
+                "ebx", "ecx", "edx", "esi", "edi", "ebp", "eax", "ds",
+                "es", "fs", "gs", "orig_eax", "eip", "cs", "eflags", "esp", "ss",
+            ]
+        elif is_arm64():
+            regs_name = [
+                "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7",
+                "x8", "x9", "x10", "x11", "x12", "x13", "x14", "x15",
+                "x16", "x17", "x18", "x19", "x20", "x21", "x22", "x23",
+                "x24", "x25", "x26", "x27", "x28", "x29", "x30",
+                "sp", "pc", "pstate", "orig_x0",
+            ]
+        elif is_arm32():
+            regs_name = [
+                "r0", "r1", "r2", "r3", "r4", "r5", "r6",
+                "r7", "r8", "r9", "r10", "r11", "r12",
+                "sp", "lr", "pc", "cpsr", "orig_r0",
+            ]
+
+        ptregs_addr = kstack + offset_ptregs
+        ptregs_size = len(regs_name) * current_arch.ptrsize
+        regs_data = read_memory(ptregs_addr, ptregs_size)
+
+        # maybe kernel thread
+        if is_x86():
+            if regs_data == b"\0" * len(regs_data):
+                return None
+        elif is_arm32():
+            kernel_thread_regs = p32(0) * (len(regs_name) - 2) + p32(0x13) + p32(0)
+            if regs_data == kernel_thread_regs:
+                return None
+        elif is_arm64():
+            kernel_thread_regs = p64(0) * (len(regs_name) - 2) + p64(0x5) + p64(0)
+            if regs_data == kernel_thread_regs:
+                return None
+
+        # get regs value
+        regs_data = slice_unpack(regs_data, current_arch.ptrsize)
+        regs = {}
+        for name, value in zip(regs_name, regs_data):
+            regs[name] = value
+        return regs
 
     def get_offset_pid(self, task_addrs):
         """
@@ -42595,6 +42765,9 @@ class KernelTaskCommand(GenericCommand):
         if offset_stack is None:
             return
 
+        if args.print_regs:
+            offset_ptregs = self.get_offset_ptregs(task_addrs, offset_stack)
+
         offset_pid = self.get_offset_pid(task_addrs)
         if offset_pid is None:
             return
@@ -42640,14 +42813,32 @@ class KernelTaskCommand(GenericCommand):
                 kcanary = "None"
             out.append(fmt.format(task, pid, comm_string, cred, *uids, securebits, kstack, kcanary))
 
+            if pid == 0: # skip print_maps and print_regs when swapper/0
+                continue
+
             if args.print_maps:
                 mms = self.get_mm(task, offset_mm)
                 if mms:
                     out.append(titlify("memory map of `{:s}`".format(comm_string)))
-                for mm in mms:
-                    out.append("{:#018x}-{:#018x} {:s} {:s}".format(mm.start, mm.end, mm.flags, mm.file))
-                if mms:
+                    for mm in mms:
+                        out.append("{:#018x}-{:#018x} {:s} {:s}".format(mm.start, mm.end, mm.flags, mm.file))
+                    if not args.print_regs:
+                        out.append(titlify(""))
+
+            if args.print_regs:
+                regs = self.get_regs(kstack, offset_ptregs)
+                syscall_table = get_syscall_table().table
+                syscall_nr_regs = ["orig_rax", "orig_eax", "r7", "x8"]
+                if regs:
+                    out.append(titlify("registers of `{:s}`".format(comm_string)))
+                    for k, v in regs.items():
+                        if k in syscall_nr_regs and v in syscall_table:
+                            syscall_name = syscall_table[v].name
+                            out.append("{:16s}: {:s} ({:s})".format(k, format_address_long_fmt(v), syscall_name))
+                        else:
+                            out.append("{:16s}: {:s}".format(k, format_address_long_fmt(v)))
                     out.append(titlify(""))
+
         gef_print('\n'.join(out), less=not args.no_pager)
         return
 
