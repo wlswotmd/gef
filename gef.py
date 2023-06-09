@@ -37833,7 +37833,7 @@ class SysregCommand(GenericCommand):
             for j in range(COLUMN):
                 if len(regs) > i + j * length_of_each_bank:
                     if is_32bit():
-                        msg = "{:16s} = {:#10x}".format(*regs[i + j * length_of_each_bank])
+                        msg = "{:16s} = {:#18x}".format(*regs[i + j * length_of_each_bank])
                     else:
                         msg = "{:25s} = {:#18x}".format(*regs[i + j * length_of_each_bank])
                     if regs[i + j * length_of_each_bank][1] > 0:
