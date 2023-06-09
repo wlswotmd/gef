@@ -11248,6 +11248,11 @@ class NiCommand(GenericCommand):
             exc_type, exc_value, exc_traceback = sys.exc_info()
             if str(exc_value) == "PC not saved":
                 gdb.execute("context")
+            elif str(exc_value).startswith("Cannot access memory at address"):
+                if is_valid_addr(current_arch.pc):
+                    gdb.execute("exec-next")
+                else:
+                    err(exc_value)
             else:
                 err(exc_value)
         return
@@ -11324,6 +11329,11 @@ class SiCommand(GenericCommand):
             exc_type, exc_value, exc_traceback = sys.exc_info()
             if str(exc_value) == "PC not saved":
                 gdb.execute("context")
+            elif str(exc_value).startswith("Cannot access memory at address"):
+                if is_valid_addr(current_arch.pc):
+                    gdb.execute("exec-next")
+                else:
+                    err(exc_value)
             else:
                 err(exc_value)
         return
