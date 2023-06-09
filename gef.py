@@ -3162,12 +3162,12 @@ class CetStatus:
         return d
 
     def revert_state(self, d):
-        write_memory(d["pc"], d["code"], len(d["code"]))
+        write_memory(d["pc"], d["code"])
         gdb.execute("set $pc = {:#x}".format(d["pc"]), to_string=True)
         for regname, regvalue in d["reg"].items():
             gdb.execute("set {:s} = {:#x}".format(regname, regvalue), to_string=True)
         for addr, value in d["stack"].items():
-            write_memory(addr, value, len(value))
+            write_memory(addr, value)
         return
 
     def close_stdout(self):
@@ -3197,7 +3197,7 @@ class CetStatus:
         code = current_arch.infloop_insn + current_arch.syscall_insn # inf-loop (to stop another thread); syscall/int0x80
         gef_on_stop_unhook(hook_stop_handler)
         d = self.get_state(len(code))
-        write_memory(d["pc"], code, len(code))
+        write_memory(d["pc"], code)
         if is_x86_64():
             gdb.execute("set $rax = 0x9e", to_string=True) # arch_prctl
             gdb.execute("set $rdi = 0x3001", to_string=True) # ARCH_CET_STATUS
@@ -7687,8 +7687,9 @@ def write_memory_qemu_user(pid, address, buffer, length):
     raise Exception("Write memory error for qemu-user or pin")
 
 
-def write_memory(address, buffer, length):
+def write_memory(address, buffer):
     """Write `buffer` at address `address`."""
+    length = len(buffer)
     try:
         gdb.selected_inferior().write_memory(address, buffer, length)
         return length
@@ -7882,7 +7883,7 @@ def write_physmem(paddr, buffer):
         orig_mode = get_current_mmu_mode()
         if orig_mode == "virt":
             enable_phys()
-        ret = write_memory(paddr, buffer, len(buffer))
+        ret = write_memory(paddr, buffer)
         if orig_mode == "virt":
             disable_phys()
     except Exception:
@@ -10274,7 +10275,7 @@ class ChangePermissionBreakpoint(gdb.Breakpoint):
 
     def stop(self):
         info("Restoring original context")
-        write_memory(self.original_pc, self.original_code, len(self.original_code))
+        write_memory(self.original_pc, self.original_code)
         info("Restoring registers")
         for k, v in self.original_regs.items():
             try:
@@ -12650,7 +12651,7 @@ class HijackFdCommand(GenericCommand):
 
         # overwrite it
         try:
-            write_memory(stack_addr, data, len(data))
+            write_memory(stack_addr, data)
         except Exception:
             err("Failed to write stack")
             return None, None
@@ -12675,7 +12676,7 @@ class HijackFdCommand(GenericCommand):
         mode = 0o666
         # open does not exist in aarch64. So use openat instead of open.
         open_fd = self.call_syscall("openat", [AT_FDCWD, stack_addr, flags, mode])
-        write_memory(stack_addr, original_contents, len(original_contents)) # revert
+        write_memory(stack_addr, original_contents) # revert
 
         if open_fd == -1:
             err("Failed to open {}".format(args.new_output))
@@ -12703,7 +12704,7 @@ class HijackFdCommand(GenericCommand):
 
         info("Trying to connect to {}".format(args.new_output))
         connect_result = self.call_syscall("connect", [sock_fd - self.fd_adjust_connect, stack_addr, 16])
-        write_memory(stack_addr, original_contents, len(original_contents)) # revert
+        write_memory(stack_addr, original_contents) # revert
 
         if connect_result == -1:
             err("Failed to connect to {}:{}".format(address, port))
@@ -13590,7 +13591,7 @@ class MprotectCommand(GenericCommand):
         ChangePermissionBreakpoint(bp_loc, original_code, original_pc, original_regs)
 
         info("Overwriting current memory at {:#x} ({:d} bytes)".format(location, len(stub)))
-        write_memory(original_pc, stub, len(stub))
+        write_memory(original_pc, stub)
         after_data = read_memory(original_pc, len(stub))
         if stub != after_data:
             err("Failed to write memory (qemu doesn't support writing to code area?)")
@@ -13660,7 +13661,7 @@ class CallSyscallCommand(GenericCommand):
 
     def revert_state(self, d):
         # code
-        write_memory(d["pc"], d["code"], len(d["code"]))
+        write_memory(d["pc"], d["code"])
 
         # reg
         for reg, v in d["reg"].items():
@@ -13679,12 +13680,12 @@ class CallSyscallCommand(GenericCommand):
             for offset in [0x10, 0x14, 0x18, 0x1c]:
                 if read_memory(current_arch.sp + offset, 4) == d["mem"][offset]:
                     continue
-                write_memory(current_arch.sp + offset, d["mem"][offset], 4)
+                write_memory(current_arch.sp + offset, d["mem"][offset])
         if is_cris():
             for offset in [0x1c]:
                 if read_memory(current_arch.sp + offset, 4) == d["mem"][offset]:
                     continue
-                write_memory(current_arch.sp + offset, d["mem"][offset], 4)
+                write_memory(current_arch.sp + offset, d["mem"][offset])
         return
 
     def close_stdout(self):
@@ -13730,7 +13731,7 @@ class CallSyscallCommand(GenericCommand):
         for reg, val in zip(syscall_parameters, syscall_args):
             if is_mips32() and "+" in reg:
                 reg, off = reg.split("+")
-                write_memory(get_register(reg) + int(off, 16), p32(val), 4)
+                write_memory(get_register(reg) + int(off, 16), p32(val))
             else:
                 if is_sh4() and reg in ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7"]:
                     reg = reg + "b0" # since r0-r7 cannot be changed directly, use bank 0
@@ -13748,7 +13749,7 @@ class CallSyscallCommand(GenericCommand):
             gdb.execute("set {:s} = {:#x}".format(reg, nr), to_string=True)
 
         # modify code
-        write_memory(d["pc"], code, len(code))
+        write_memory(d["pc"], code)
 
         # skip infloop
         dst = d["pc"] + len(current_arch.infloop_insn)
@@ -14556,7 +14557,7 @@ class ReadSystemRegisterCommand(GenericCommand):
 
     def revert_state(self, d):
         # code
-        write_memory(d["pc"], d["code"], len(d["code"]))
+        write_memory(d["pc"], d["code"])
 
         # reg
         for reg, v in d["reg"].items():
@@ -14612,7 +14613,7 @@ class ReadSystemRegisterCommand(GenericCommand):
         d = self.get_state(len(code))
 
         # modify code
-        write_memory(d["pc"], code, len(code))
+        write_memory(d["pc"], code)
 
         # skip infloop
         dst = d["pc"] + len(current_arch.infloop_insn)
@@ -21906,7 +21907,7 @@ class PatchCommand(GenericCommand):
     def patch(self, addr, data, length):
         try:
             before_data = read_memory(addr, length)
-            write_memory(addr, data, length)
+            write_memory(addr, data)
             after_data = read_memory(addr, length)
         except gdb.MemoryError:
             err("Failed to access memory")
@@ -22659,7 +22660,7 @@ class PatchRevertCommand(PatchCommand):
                 elif orig_mode == "phys" and hist["physmode"] == "virt":
                     disable_phys()
 
-            write_memory(hist["addr"], hist["before_data"], len(hist["before_data"]))
+            write_memory(hist["addr"], hist["before_data"])
 
             if is_supported_physmode():
                 if orig_mode == "virt" and get_current_mmu_mode() == "phys":
@@ -37898,7 +37899,7 @@ class MmxSetCommand(GenericCommand):
         return d
 
     def revert_state(self, d):
-        write_memory(d["pc"], d["code"], len(d["code"]))
+        write_memory(d["pc"], d["code"])
         gdb.execute("set $pc = {:#x}".format(d["pc"]), to_string=True)
         if is_x86_64():
             gdb.execute("set $rax = {:#x}".format(d["rax"]), to_string=True)
@@ -37933,7 +37934,7 @@ class MmxSetCommand(GenericCommand):
         code = current_arch.infloop_insn + REG_CODE[reg] + p64(value) # inf-loop (to stop another thread); movq mm0, [rax]; db value
         gef_on_stop_unhook(hook_stop_handler)
         d = self.get_state(len(code))
-        write_memory(d["pc"], code, len(code))
+        write_memory(d["pc"], code)
         if is_x86_64():
             ax = "rax"
         else:
@@ -45687,7 +45688,7 @@ class MemoryCopyCommand(GenericCommand):
                 written = write_physmem(to_addr, data)
             else:
                 before = read_memory(to_addr, len(data))
-                written = write_memory(to_addr, data, len(data))
+                written = write_memory(to_addr, data)
         except Exception:
             err("Write error {:#x}".format(to_addr))
             return
@@ -45760,7 +45761,7 @@ class MemorySwapCommand(GenericCommand):
             if phys2:
                 written2 = write_physmem(addr2, data1)
             else:
-                written2 = write_memory(addr2, data1, len(data1))
+                written2 = write_memory(addr2, data1)
         except Exception:
             err("Write error {:#x}".format(addr2))
             return
@@ -45771,7 +45772,7 @@ class MemorySwapCommand(GenericCommand):
             if phys1:
                 written1 = write_physmem(addr1, data2)
             else:
-                written1 = write_memory(addr1, data2, len(data2))
+                written1 = write_memory(addr1, data2)
         except Exception:
             err("Write error {:#x}".format(addr1))
             return
@@ -45869,7 +45870,7 @@ class MemoryInsertCommand(GenericCommand):
             if phys1:
                 written = write_physmem(addr1, to_write_data)
             else:
-                written = write_memory(addr1, to_write_data, len(to_write_data))
+                written = write_memory(addr1, to_write_data)
         except Exception:
             err("Write error {:#x}".format(addr1))
             return
@@ -53211,7 +53212,7 @@ class CpuidCommand(GenericCommand):
         return d
 
     def revert_state(self, d):
-        write_memory(d["pc"], d["code"], len(d["code"]))
+        write_memory(d["pc"], d["code"])
         gdb.execute("set $pc = {:#x}".format(d["pc"]), to_string=True)
         if is_x86_64():
             gdb.execute("set $rax = {:#x}".format(d["rax"]), to_string=True)
@@ -53242,7 +53243,7 @@ class CpuidCommand(GenericCommand):
         code = current_arch.infloop_insn + b"\x0f\xa2" # inf-loop (to stop another thread); cpuid
         gef_on_stop_unhook(hook_stop_handler)
         d = self.get_state(len(code))
-        write_memory(d["pc"], code, len(code))
+        write_memory(d["pc"], code)
         if is_x86_64():
             gdb.execute("set $rax = {:#x}".format(num), to_string=True)
             gdb.execute("set $rcx = {:#x}".format(subnum), to_string=True)
@@ -54145,7 +54146,7 @@ class MsrCommand(GenericCommand):
         return d
 
     def revert_state(self, d):
-        write_memory(d["pc"], d["code"], len(d["code"]))
+        write_memory(d["pc"], d["code"])
         gdb.execute("set $pc = {:#x}".format(d["pc"]), to_string=True)
         if is_x86_64():
             gdb.execute("set $rax = {:#x}".format(d["rax"]), to_string=True)
@@ -54174,7 +54175,7 @@ class MsrCommand(GenericCommand):
         code = current_arch.infloop_insn + b"\x0f\x32" # inf-loop (to stop another thread); rdmsr
         gef_on_stop_unhook(hook_stop_handler)
         d = self.get_state(len(code))
-        write_memory(d["pc"], code, len(code))
+        write_memory(d["pc"], code)
         if is_x86_64():
             gdb.execute("set $rcx = {:#x}".format(num), to_string=True)
         else:
