@@ -2596,10 +2596,10 @@ def slicer(data, n):
 
 
 def slice_unpack(data, n):
-    if n == 8:
-        return [u64(data[i:i + 8]) for i in range(0, len(data), 8)]
-    elif n == 4:
-        return [u32(data[i:i + 4]) for i in range(0, len(data), 4)]
+    if n in [1, 2, 4, 8]:
+        length = len(data) // n
+        fmt = "{:s}{:d}{:s}".format(endian_str(), length, {1: "B", 2: "H", 4: "I", 8: "Q"}[n])
+        return struct.unpack(fmt, data)
     elif n == 16:
         return [u128(data[i:i + 16]) for i in range(0, len(data), 16)]
     else:
