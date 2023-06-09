@@ -3926,6 +3926,7 @@ class ARM(Architecture):
             "$cpsr",
         ]
         alias_registers = {
+            "$r11": "$fp", "$r12": "$ip",
             "$sp": "$r13", "$lr": "$r14", "$pc": "$r15",
         }
         flag_register = "$cpsr"
@@ -3938,6 +3939,7 @@ class ARM(Architecture):
             "$msp", "$psp", "$primask", "$basepri", "$faultmask", "$control",
         ]
         alias_registers = {
+            "$r11": "$fp", "$r12": "$ip",
             "$sp": "$r13", "$lr": "$r14", "$pc": "$r15",
         }
         flag_register = "$xpsr"
