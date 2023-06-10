@@ -484,6 +484,8 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
 * `read-system-register`: reads system register for old qemu.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/read-system-register.png)
 * `pac-keys`: pretty prints ARM64 PAC keys.
+* `message-break`: sets a breakpoint with simple user defined message as f-string format.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/message-break.png)
 
 ### Other
 * The category is introduced in `gef help`.

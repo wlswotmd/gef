@@ -10589,6 +10589,22 @@ class SecondBreakpoint(gdb.Breakpoint):
         return True
 
 
+class MessageBreakpoint(gdb.Breakpoint):
+    """Breakpoint which print user defined message."""
+    def __init__(self, loc, msg):
+        super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=False, temporary=False)
+        self.loc = loc
+        self.msg = msg
+        return
+
+    def stop(self):
+        reset_gef_caches()
+        msg = re.sub(r"{([^}]+):", '{parse_address("\\1"):', self.msg)
+        msg = eval(f'f"""{msg}"""')
+        gef_print("{:#x}: {}".format(self.loc, msg))
+        return False
+
+
 #
 # Commands
 #
@@ -20532,7 +20548,7 @@ class NamedBreakpointCommand(GenericCommand):
                         help='the address you want to set breakpoint. (default: current_arch.pc)')
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} main *0x4008a9".format(_cmdline_)
+    _example_ = "{:s} main 0x4008a9".format(_cmdline_)
 
     @parse_args
     @only_if_not_qemu_system
@@ -20544,6 +20560,32 @@ class NamedBreakpointCommand(GenericCommand):
         else:
             location = "*{:#x}".format(current_arch.pc)
         NamedBreakpoint(location, args.name)
+        return
+
+
+@register_command
+class MessageBreakpointCommand(GenericCommand):
+    """Sets a breakpoint whith print user defined message, when it's hit."""
+    _cmdline_ = "message-break"
+    _category_ = "01-b. Debugging Support - Breakpoint"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
+                        help='the address you want to set breakpoint. (default: current_arch.pc)')
+    parser.add_argument('message', metavar='MESSAGE', type=str, help='the message printed if breakpoint is hit.')
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} 0x55555555aab9 \"RAX: {{$rax:#x}}\"\n".format(_cmdline_)
+    _example_ += "{:s} 0x55555555aaba \"RSP[0x20]: {{*(void**)($rsp + 0x20):#x}}\"".format(_cmdline_)
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        location = args.location
+        if location is None:
+            location = current_arch.pc
+        MessageBreakpoint(location, args.message)
         return
 
 
