@@ -184,6 +184,7 @@ __config__                      = {}
 __watches__                     = {}
 __gef_convenience_vars_index__  = 0
 __context_messages__            = []
+__highlight_table__             = {}
 __heap_allocated_list__         = []
 __heap_freed_list__             = []
 __heap_uaf_watchpoints__        = []
@@ -192,6 +193,13 @@ __gef_default_main_arena__      = "main_arena"
 __gef_prev_arch__               = None
 __gef_check_once__              = True
 __gef_context_hidden__          = False
+__libc_args_definitions__       = {}
+__cached_syscall_table__        = {}
+__cached_kernel_info__          = None
+__cached_kernel_version__       = None
+__cached_kernel_cmdline__       = None
+current_elf                     = None
+current_arch                    = None
 
 DEFAULT_PAGE_ALIGN_SHIFT        = 12
 DEFAULT_PAGE_SIZE               = 1 << DEFAULT_PAGE_ALIGN_SHIFT
@@ -203,15 +211,6 @@ GDB_MIN_VERSION                 = (7, 7)
 GDB_VERSION                     = tuple(map(int, re.search(r"(\d+)[^\d]+(\d+)", gdb.VERSION).groups()))
 
 ANSI_SPLIT_RE                   = r"(\033\[[\d;]*m)"
-
-current_elf                     = None
-current_arch                    = None
-libc_args_definitions           = {}
-highlight_table                 = {}
-cached_syscall_table            = {}
-cached_kernel_info              = None
-cached_kernel_version           = None
-cached_kernel_cmdline           = None
 
 
 def perf(f):
@@ -277,17 +276,17 @@ def highlight_text(text):
 
     If RegEx is disabled, split by ANSI codes and 'colorify' each match found
     within the specified string."""
-    if not highlight_table:
+    if not __highlight_table__:
         return text
 
     if get_gef_setting("highlight.regex"):
-        for match, color in highlight_table.items():
+        for match, color in __highlight_table__.items():
             text = re.sub("(" + match + ")", Color.colorify("\\1", color), text)
         return text
 
     ansiSplit = re.split(ANSI_SPLIT_RE, text)
 
-    for match, color in highlight_table.items():
+    for match, color in __highlight_table__.items():
         for index, val in enumerate(ansiSplit):
             found = val.find(match)
             if found > -1:
@@ -9220,21 +9219,21 @@ def load_libc_args():
     _arch_mode = "{}_{}".format(current_arch.arch.lower(), current_arch.mode)
     _libc_args_file = "{}/{}.json".format(path, _arch_mode)
 
-    global libc_args_definitions
+    global __libc_args_definitions__
 
     # current arch and mode already loaded
-    if _arch_mode in libc_args_definitions:
+    if _arch_mode in __libc_args_definitions__:
         return
 
-    libc_args_definitions[_arch_mode] = {}
+    __libc_args_definitions__[_arch_mode] = {}
     try:
         with open(_libc_args_file) as _libc_args:
-            libc_args_definitions[_arch_mode] = json.load(_libc_args)
+            __libc_args_definitions__[_arch_mode] = json.load(_libc_args)
     except FileNotFoundError:
-        del libc_args_definitions[_arch_mode]
+        del __libc_args_definitions__[_arch_mode]
         warn("Config context.libc_args is set but definition cannot be loaded: file {} not found".format(_libc_args_file))
     except json.decoder.JSONDecodeError as e:
-        del libc_args_definitions[_arch_mode]
+        del __libc_args_definitions__[_arch_mode]
         warn("Config context.libc_args is set but definition cannot be loaded from file {}: {}".format(_libc_args_file, e))
     return
 
@@ -11122,12 +11121,12 @@ class HighlightListCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     def print_highlight_table(self):
-        if not highlight_table:
+        if not __highlight_table__:
             err("no matches found")
             return
 
-        left_pad = max(map(len, highlight_table.keys()))
-        for match, color in sorted(highlight_table.items()):
+        left_pad = max(map(len, __highlight_table__.keys()))
+        for match, color in sorted(__highlight_table__.items()):
             gef_print("{} {} {}".format(Color.colorify(match.ljust(left_pad), color), VERTICAL_LINE, Color.colorify(color, color)))
         return
 
@@ -11151,7 +11150,7 @@ class HighlightClearCommand(GenericCommand):
     @parse_args
     def do_invoke(self, args):
         self.dont_repeat()
-        highlight_table.clear()
+        __highlight_table__.clear()
         return
 
 
@@ -11173,7 +11172,7 @@ class HighlightAddCommand(GenericCommand):
     @parse_args
     def do_invoke(self, args):
         self.dont_repeat()
-        highlight_table[args.match] = ' '.join(args.color)
+        __highlight_table__[args.match] = ' '.join(args.color)
         return
 
 
@@ -11193,7 +11192,7 @@ class HighlightRemoveCommand(GenericCommand):
     @parse_args
     def do_invoke(self, args):
         self.dont_repeat()
-        highlight_table.pop(args.match, None)
+        __highlight_table__.pop(args.match, None)
         return
 
 
@@ -21333,7 +21332,7 @@ class ContextCommand(GenericCommand):
         if function_name.endswith("@plt"):
             _function_name = function_name.split("@")[0]
             try:
-                nb_argument = len(libc_args_definitions[_arch_mode][_function_name])
+                nb_argument = len(__libc_args_definitions__[_arch_mode][_function_name])
             except KeyError:
                 pass
 
@@ -21345,7 +21344,7 @@ class ContextCommand(GenericCommand):
             except Exception:
                 break
             try:
-                libc_args_def = libc_args_definitions[_arch_mode][_function_name][_key]
+                libc_args_def = __libc_args_definitions__[_arch_mode][_function_name][_key]
                 args.append("{} = {} (def: {})".format(Color.colorify(_key, arg_key_color), _value, libc_args_def))
             except KeyError:
                 args.append("{} = {}".format(Color.colorify(_key, arg_key_color), _value))
@@ -35558,9 +35557,9 @@ def get_syscall_table(arch=None, mode=None):
     elif arch in ["X86", "ARM"] and mode == "N32":
         mode = "Native-32"
 
-    global cached_syscall_table
-    if (arch, mode) in cached_syscall_table:
-        return cached_syscall_table[arch, mode]
+    global __cached_syscall_table__
+    if (arch, mode) in __cached_syscall_table__:
+        return __cached_syscall_table__[arch, mode]
 
     if arch == "X86" and mode == "64":
         register_list = X86_64().syscall_parameters
@@ -37117,7 +37116,7 @@ def get_syscall_table(arch=None, mode=None):
             args = list(zip(register_list[:len(args)], args))
         syscall_table.table[nr] = Entry(name, [Param(*p) for p in args])
 
-    cached_syscall_table[arch, mode] = syscall_table
+    __cached_syscall_table__[arch, mode] = syscall_table
     return syscall_table
 
 
@@ -41659,9 +41658,9 @@ class KernelbaseCommand(GenericCommand):
 
     @staticmethod
     def get_kernel_base():
-        global cached_kernel_info
-        if cached_kernel_info is not None:
-            return cached_kernel_info
+        global __cached_kernel_info__
+        if __cached_kernel_info__ is not None:
+            return __cached_kernel_info__
 
         dic = {
             "maps": KernelbaseCommand.get_maps(),
@@ -41762,8 +41761,8 @@ class KernelbaseCommand(GenericCommand):
                 return Kinfo(*dic.values())
 
         dic["has_none"] = None in dic.values()
-        cached_kernel_info = Kinfo(*dic.values())
-        return cached_kernel_info
+        __cached_kernel_info__ = Kinfo(*dic.values())
+        return __cached_kernel_info__
 
     @parse_args
     @only_if_gdb_running
@@ -41773,8 +41772,8 @@ class KernelbaseCommand(GenericCommand):
         self.dont_repeat()
 
         if args.reparse:
-            global cached_kernel_info
-            cached_kernel_info = None
+            global __cached_kernel_info__
+            __cached_kernel_info__ = None
             reset_gef_caches()
 
         # resolve kbase, krobase
@@ -41932,9 +41931,9 @@ class KernelVersionCommand(GenericCommand):
 
     @staticmethod
     def kernel_version():
-        global cached_kernel_version
-        if cached_kernel_version is not None:
-            return cached_kernel_version
+        global __cached_kernel_version__
+        if __cached_kernel_version__ is not None:
+            return __cached_kernel_version__
 
         # fast path
         linux_banner = get_ksymaddr("linux_banner")
@@ -41942,8 +41941,8 @@ class KernelVersionCommand(GenericCommand):
             version_string = read_cstring_from_memory(linux_banner, 0x200).rstrip()
             r = re.search(r"Linux version (\d)\.(\d+)\.(\d+)", version_string)
             major, minor, patch = int(r.group(1)), int(r.group(2)), int(r.group(3))
-            cached_kernel_version = KernelVersion(linux_banner, version_string, major, minor, patch)
-            return cached_kernel_version
+            __cached_kernel_version__ = KernelVersion(linux_banner, version_string, major, minor, patch)
+            return __cached_kernel_version__
 
         # slow path
         kinfo = KernelbaseCommand.get_kernel_base()
@@ -41974,8 +41973,8 @@ class KernelVersionCommand(GenericCommand):
             r = re.search(r"Linux version (\d)\.(\d+)\.(\d+)", version_string)
             major, minor, patch = int(r.group(1)), int(r.group(2)), int(r.group(3))
 
-            cached_kernel_version = KernelVersion(address, version_string, major, minor, patch)
-            return cached_kernel_version
+            __cached_kernel_version__ = KernelVersion(address, version_string, major, minor, patch)
+            return __cached_kernel_version__
 
         return None
 
@@ -41987,8 +41986,8 @@ class KernelVersionCommand(GenericCommand):
         self.dont_repeat()
 
         if args.reparse:
-            global cached_kernel_version
-            cached_kernel_version = None
+            global __cached_kernel_version__
+            __cached_kernel_version__ = None
             reset_gef_caches()
 
         if not args.quiet:
@@ -42019,9 +42018,9 @@ class KernelCmdlineCommand(GenericCommand):
 
     @staticmethod
     def kernel_cmdline():
-        global cached_kernel_cmdline
-        if cached_kernel_cmdline is not None:
-            return cached_kernel_cmdline
+        global __cached_kernel_cmdline__
+        if __cached_kernel_cmdline__ is not None:
+            return __cached_kernel_cmdline__
 
         saved_command_line = KernelAddressHeuristicFinder.get_saved_command_line()
         if saved_command_line is None:
@@ -42030,8 +42029,8 @@ class KernelCmdlineCommand(GenericCommand):
             ptr = read_int_from_memory(saved_command_line)
             cmdline = read_cstring_from_memory(ptr, max_length=0x1000)
             Kcmdline = collections.namedtuple("Kcmdline", ["address", "cmdline"])
-            cached_kernel_cmdline = Kcmdline(ptr, cmdline)
-            return cached_kernel_cmdline
+            __cached_kernel_cmdline__ = Kcmdline(ptr, cmdline)
+            return __cached_kernel_cmdline__
         except Exception:
             return None
 
@@ -42043,8 +42042,8 @@ class KernelCmdlineCommand(GenericCommand):
         self.dont_repeat()
 
         if args.reparse:
-            global cached_kernel_cmdline
-            cached_kernel_cmdline = None
+            global __cached_kernel_cmdline__
+            __cached_kernel_cmdline__ = None
             reset_gef_caches()
 
         if not args.quiet:
