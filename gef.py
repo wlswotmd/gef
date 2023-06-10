@@ -44630,11 +44630,21 @@ class SyscallTableViewCommand(GenericCommand):
                     break
 
                 # check if valid syscall
-                is_valid = True
                 insn = get_insn(syscall_function_addr)
                 insn2 = get_insn_next(syscall_function_addr)
                 if insn is None or insn2 is None:
                     break
+
+                # detect endbr, so slide
+                if is_x86():
+                    if insn.mnemonic in ["endbr64", "endbr32"]:
+                        endbr_codelen = len(insn.opcodes)
+                        insn = get_insn(syscall_function_addr + endbr_codelen)
+                        insn2 = get_insn_next(syscall_function_addr + endbr_codelen)
+                        if insn is None or insn2 is None:
+                            break
+
+                is_valid = True
                 if is_x86_64():
                     if len(insn.operands) == 2 and insn.operands[-1] == '0xffffffffffffffda' and \
                        len(insn2.operands) == 0 and insn2.mnemonic == 'ret':
