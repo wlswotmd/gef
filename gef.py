@@ -61154,12 +61154,13 @@ class GefHelpCommand(gdb.Command):
             # do not print subcommands in gef help
             return
         doc = getattr(class_name, "__doc__", "").lstrip()
-        doc = "\n                         ".join(doc.split("\n"))
+        docs = [Color.greenify(x) for x in doc.split("\n")]
+        doc = "\n                         ".join(docs)
         if hasattr(class_name, "_aliases_") and class_name._aliases_ != []:
             aliases = " (alias: {:s})".format(", ".join(class_name._aliases_))
         else:
             aliases = ""
-        msg = "  {cmd:<23s} -- {help:s}{aliases:s}".format(cmd=cmd, help=Color.greenify(doc), aliases=aliases)
+        msg = "  {:<23s} -- {:s}{:s}".format(cmd, doc, aliases)
         category = class_name._category_ if hasattr(class_name, "_category_") else "Uncategorized"
         self.docs.append([category, msg])
         return
