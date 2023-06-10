@@ -11824,7 +11824,8 @@ class EnvpCommand(GenericCommand):
             if not verbose and i > 99:
                 gef_print("...")
                 break
-            gef_print("[{:03d}]: {:s}".format(i, repr(elem)))
+            elem = re.sub(r"^(.*?=)", Color.boldify("\\1"), elem)
+            gef_print("[{:03d}]: {:s}".format(i, elem))
         return
 
     @parse_args
