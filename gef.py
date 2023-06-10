@@ -178,6 +178,7 @@ except ImportError:
 
 __gef__                         = None
 __commands__                    = []
+__loaded_command_objs__         = [] # for debug access each objects
 __aliases__                     = []
 __config__                      = {}
 __watches__                     = {}
@@ -61184,6 +61185,10 @@ class GefCommand(gdb.Command):
                     "s" if nb_missing > 1 else "",
                     Color.colorify("gef missing", "underline magenta")
                 ))
+
+        # save globally for debug
+        global __loaded_command_objs__
+        __loaded_command_objs__ = self.loaded_commands[::]
         return
 
 
