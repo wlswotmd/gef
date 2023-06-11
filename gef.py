@@ -2692,6 +2692,8 @@ def hexdump(source, length=0x10, separator=".", show_raw=False, show_symbol=True
         hexa = [style_byte(b, color=not show_raw) for b in chunk]
         if unit > 1:
             hexa = ["0x" + "".join(x[::-1]) for x in slicer(hexa, unit)]
+        if not show_raw and unit == 1:
+            hexa[min(len(hexa), 8) - 1] += " " # double the blank at the 8th byte
         hexa = " ".join(hexa)
         padded_hexa = hexa + " " * padlen
 
