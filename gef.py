@@ -15117,7 +15117,7 @@ class CapstoneDisassembleCommand(GenericCommand):
     """Use capstone disassembly framework to disassemble code."""
     _cmdline_ = "capstone-disassemble"
     _category_ = "01-e. Debugging Support - Assemble"
-    _aliases_ = ["cs-dis", "pdisas"]
+    _aliases_ = ["cs-dis", "pdisas", "nearpc"]
     _repeat_ = True
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -49260,6 +49260,7 @@ class KsymaddrRemoteCommand(GenericCommand):
     # Thanks to https://github.com/marin-m/vmlinux-to-elf
     _cmdline_ = "ksymaddr-remote"
     _category_ = "08-b. Qemu-system Cooperation - Linux"
+    _aliases_ = ["ks"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('keyword', metavar='KEYWORD', nargs='*', help='filter by specific symbol name.')
