@@ -59236,13 +59236,13 @@ class ExecUntilCommand(GenericCommand):
                 if prev_prev_addr == prev_addr == current_arch.pc: # for faster, repeat insn is skip
                     # infinity self loop
                     if current_arch.is_call(insn) or current_arch.is_jump(insn) or current_arch.is_ret(insn):
-                        self.err = "Detected infinity loop prev_addr"
+                        self.err = "Detected infinity loop prev_addr ({:#x})".format(prev_addr)
                         break
                     # maybe rep prefix
                     gdb.execute("exec-next")
                     # recheck
                     if prev_prev_addr == prev_addr == current_arch.pc:
-                        self.err = "Detected infinity loop prev_addr"
+                        self.err = "Detected infinity loop prev_addr ({:#x})".format(prev_addr)
                         break
                     insn = gef_current_instruction(current_arch.pc)
 
@@ -59546,6 +59546,7 @@ class ExecUntilUserCodeCommand(ExecUntilCommand):
 
     @parse_args
     @only_if_gdb_running
+    @only_if_not_qemu_system
     def do_invoke(self, args):
         if self.mode is None:
             self.usage()
@@ -59588,6 +59589,7 @@ class ExecUntilLibcCodeCommand(ExecUntilCommand):
 
     @parse_args
     @only_if_gdb_running
+    @only_if_not_qemu_system
     def do_invoke(self, args):
         if self.mode is None:
             self.usage()
