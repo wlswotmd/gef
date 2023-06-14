@@ -2792,6 +2792,7 @@ def gdb_get_location_from_symbol(address):
     return name, offset
 
 
+@functools.lru_cache(maxsize=512)
 def get_symbol_string(addr, nosymbol_string=""):
     try:
         if isinstance(addr, str):
@@ -11721,8 +11722,7 @@ class ArgvCommand(GenericCommand):
     _category_ = "02-d. Process Information - Trivial Information"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-v', dest='verbose', action='store_true',
-                        help='print all elements. (default: outputs up to 100).')
+    parser.add_argument('-v', dest='verbose', action='store_true', help='print all elements. (default: outputs up to 100).')
     _syntax_ = parser.format_help()
 
     def get_address_from_symbol(self, symbol):
@@ -22854,7 +22854,8 @@ def to_string_dereference_from(value, join_start_idx=0):
         if link:
             link += " {:s} ".format(RIGHT_ARROW)
         if isinstance(addr, Address):
-            link += addr.long_fmt() + get_symbol_string(addr.value)
+            link += addr.long_fmt()
+            link += get_symbol_string(addr.value)
         else:
             link += addr # actually this is msg
     return link
