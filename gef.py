@@ -7643,7 +7643,7 @@ class LOONGARCH64(Architecture):
 
 
 def write_memory_qemu_user(pid, address, buffer, length):
-    """Write `buffer` at address `address` for qemu-user or pin."""
+    """Write `buffer` at address `address` for qemu-user or Intel Pin."""
 
     def read_memory_via_proc_mem(pid, address, length):
         with open("/proc/{:d}/mem".format(pid), "rb") as fd:
@@ -7706,7 +7706,7 @@ def write_memory_qemu_user(pid, address, buffer, length):
             if ret:
                 return ret
 
-    raise Exception("Write memory error for qemu-user or pin")
+    raise Exception("Write memory error for qemu-user or Intel Pin")
 
 
 def write_memory(address, buffer):
@@ -7729,7 +7729,7 @@ def write_memory(address, buffer):
 def read_memory(addr, length):
     """Return a `length` long byte array with the copy of the process memory at `addr`."""
     if is_pin():
-        # Memory read of pin is very slow, so speed it up
+        # Memory read of Intel Pin is very slow, so speed it up
         try:
             pid = get_pid()
             with open("/proc/{:d}/mem".format(pid), "rb") as fd:
@@ -9161,7 +9161,7 @@ def hook_stop_handler(event):
     global __gef_check_once__
     if __gef_check_once__:
         # Ubuntu 20.04 and earlier seem to have a bug (?) in libpython that mishandles SIGINT with no destination.
-        # To work around this issue, override the c command again with the `continue` command if neither qemu-user nor pin.
+        # To work around this issue, override the c command again with native `continue` command if neither qemu-user nor Intel Pin.
         if not (is_qemu_usermode() or is_pin()):
             gdb.execute("define c\ncontinue\nend")
 
@@ -9193,7 +9193,7 @@ def hook_stop_handler(event):
             response = gdb.execute('info files', to_string=True)
             if "Symbols from" not in response:
                 err("Missing info about architecture. Please set: `file /path/to/target_binary`")
-                err("Some architectures may not be automatically recognized. Set it manually with `set architecture YOUR_ARCH`.")
+                err("Some architectures may not be automatically recognized. Please set: `set architecture YOUR_ARCH`.")
 
         __gef_check_once__ = False
 
@@ -11382,7 +11382,7 @@ class SiCommand(GenericCommand):
 
 @register_command
 class ContCommand(GenericCommand):
-    """`c` wraper to solve the problem that Ctrl+C cannot interrupt when using gdb stub of qemu-user or pin."""
+    """`c` wraper to solve the problem that Ctrl+C cannot interrupt when using gdb stub of qemu-user or Intel Pin."""
     _cmdline_ = "c"
     _category_ = "01-c. Debugging Support - Basic Command Extension"
 
@@ -11431,7 +11431,7 @@ class ContCommand(GenericCommand):
                 self.continue_for_qemu()
                 return
 
-        # Maybe unused, since `c` command is re-override if neither qemu-system nor pin.
+        # Maybe unused, since `c` command is re-override if neither qemu-system nor Intel Pin.
         try:
             cmd = "continue " + ' '.join(args.args)
             gdb.execute(cmd.rstrip())

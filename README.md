@@ -9,7 +9,8 @@
 * [Supported mode](#supported-mode)
     * [Qemu-system cooperation](#qemu-system-cooperation)
     * [Qemu-user cooperation](#qemu-user-cooperation)
-    * [Other supported mode](#other-supported-mode)
+    * [Intel Pin/SDE cooperation](#intel-pinsde-cooperation)
+    * [KGDB cooperation](#kgdb-cooperation)
 * [Added / Improved features](#added--improved-features)
     * [Qemu-system cooperation - General](#qemu-system-cooperation---general)
     * [Qemu-system cooperation - Linux specific](#qemu-system-cooperation---linux-specific)
@@ -62,15 +63,15 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 
 ## Supported mode
 
-* Normal debugging
-* Attach to process
-* Attach to process in another pid namespace
+* Normal debugging (start under gdb)
+* Attach to the process
+* Attach to the process in another pid namespace
 * Connect to gdbserver
 * Connect to the gdb stub of qemu-system (via localhost:1234)
 * Connect to the gdb stub of qemu-user (via localhost:1234)
-* Connect to the gdb stub of Intel pin (via localhost:1234)
+* Connect to the gdb stub of Intel Pin (via localhost:1234)
 * Connect to the gdb stub of Intel SDE (via localhost:1234)
-* Connect to the gdb stub of KGDB (over serial)
+* Connect to the gdb stub of KGDB (over serial. currently, only gdb 12.x~ is supported)
 
 ### Qemu-system cooperation
 * It works with any version qemu-system, but qemu-6.x or higher is recommended.
@@ -89,16 +90,18 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 * Supported architectures
     * See [QEMU-USER-SUPPORTED-ARCH.md](https://github.com/bata24/gef/blob/dev/QEMU-USER-SUPPORTED-ARCH.md)
 
-### Other supported mode
-* Intel pin is supported.
+### Intel Pin/SDE cooperation
+* Intel Pin:
     * Listen with `pin -appdebug -appdebug_server_port 1234 -t obj-intel64/inscount0.so -- /bin/ls`.
     * Attach with `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:1234'`.
     * It runs very slowly and is not recommended.
-* Intel SDE is supported.
+* Intel SDE:
     * Listen with `sde64 -debug -debug-port 1234 -- /bin/ls`.
     * Attach with `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:1234'`.
     * It runs very slowly and is not recommended.
-* KGDB is supported.
+
+### KGDB cooperation
+* It works only gdb 12.x~.
     * Build your kernel as `CONFIG_KGDB=y`. Ubuntu has supported it by default.
     * Configure the serial port as a named pipe in your two (debugger/debuggee) virtual machine settings, such as VMware or VirtualBox.
     * Debuggee: Edit `/etc/default/grub` and append `kgdboc=ttyS0,115200 kgdbwait` to the end of `GRUB_CMDLINE_LINUX_DEFAULT`, then `update-grub && reboot`.
@@ -237,10 +240,10 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
     * On Cris architecture, `stepi`/`nexti` commands don't work well, so use breakpoints to simulate.
     * If you want to use native `si`/`ni`, use the full form `stepi`/`nexti`.
 * `c`: is the wrapper for native `c`.
-    * When connecting to gdb stub of qemu-user or pin, gdb does not trap SIGINT during `continue`.
+    * When connecting to gdb stub of qemu-user or Intel Pin, gdb does not trap SIGINT during `continue`.
     * If you want to trap, you need to issue SIGINT on the qemu-user or pin side, but switching screens is troublesome.
-    * This command realizes a pseudo SIGINT trap by trapping SIGINT on the python side and throwing SIGINT back to qemu-user or pin.
-    * It works only local qemu-user or pin.
+    * This command realizes a pseudo SIGINT trap by trapping SIGINT on the python side and throwing SIGINT back to qemu-user or Intel Pin.
+    * It works only local qemu-user or Intel Pin.
     * If you want to use native `c`, use the full form `continue`.
 
 ### Heap dump features
@@ -278,7 +281,7 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
 * `vmmap`: is improved.
     * It displays the meomry map information even when connecting to gdb stub like qemu-user (heuristic).
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmmap-qemu-user.png)
-    * Intel pin is supported.
+    * Intel Pin is supported.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmmap-pin.png)
     * Intel SDE is supported.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmmap-sde.png)
