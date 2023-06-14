@@ -2675,7 +2675,7 @@ def hexdump(source, length=0x10, separator=".", show_raw=False, show_symbol=True
         addr = base + i
 
         if show_symbol:
-            sym = gdb_get_location_from_symbol(addr)
+            sym = gdb_get_location(addr)
             if sym:
                 sym = " <{:s}+{:#x}>".format(*sym)
             else:
@@ -2775,7 +2775,7 @@ def gef_makedirs(path, mode=0o755):
 
 
 @functools.lru_cache(maxsize=512)
-def gdb_get_location_from_symbol(address):
+def gdb_get_location(address):
     """Retrieve the location of the `address` argument from the symbol table.
     Return a tuple with the name and offset if found, None otherwise."""
     # this is horrible, ugly hack and shitty perf...
@@ -2802,7 +2802,7 @@ def get_symbol_string(addr, nosymbol_string=""):
         if isinstance(addr, str):
             addr = Color.remove_color(addr)
             addr = int(addr, 16)
-        ret = gdb_get_location_from_symbol(addr)
+        ret = gdb_get_location(addr)
         if ret is None:
             raise
     except Exception:
@@ -2910,7 +2910,7 @@ def gdb_disassemble(start_pc, **kwargs):
         else:
             mnemo, operands = asm[0], []
 
-        loc = gdb_get_location_from_symbol(address)
+        loc = gdb_get_location(address)
         location = "<{}+{}>".format(*loc) if loc else ""
 
         if is_arm32() and insn["addr"] & 1:
@@ -3042,7 +3042,7 @@ def capstone_disassemble(location, nb_insn, **kwargs):
     `addr` using the Capstone-Engine disassembler, if available.
     Return an iterator of Instruction objects."""
     def cs_insn_to_gef_insn(cs_insn):
-        sym_info = gdb_get_location_from_symbol(cs_insn.address)
+        sym_info = gdb_get_location(cs_insn.address)
         loc = "<{}+{}>".format(*sym_info) if sym_info else ""
         ops = [] + cs_insn.op_str.split(", ")
         return Instruction(cs_insn.address, loc, cs_insn.mnemonic, ops, cs_insn.bytes)
@@ -23351,7 +23351,7 @@ class XInfoCommand(GenericCommand):
             gef_print("Segment: {:s} ({:s}-{:s})".format(info.name, str(zone_start), str(zone_end)))
             gef_print("Offset (from segment): {:#x}".format(addr.value - info.zone_start))
 
-        sym = gdb_get_location_from_symbol(address)
+        sym = gdb_get_location(address)
         if sym:
             name, offset = sym
             msg = "Symbol: {:s}".format(name)
@@ -60896,7 +60896,7 @@ class PeekPointersCommand(GenericCommand):
                 name, start_addr, end_addr = section
                 if not (start_addr <= addr_value < end_addr):
                     continue
-                sym = gdb_get_location_from_symbol(addr_value)
+                sym = gdb_get_location(addr_value)
                 sym = "<{:s}+{:04x}>".format(*sym) if sym else ''
                 if name.startswith("/"):
                     name = os.path.basename(name)
