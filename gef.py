@@ -2715,11 +2715,6 @@ def hexdump(source, length=0x10, separator=".", show_raw=False, show_symbol=True
     return "\n".join(result)
 
 
-def is_debug():
-    """Check if debug mode is enabled."""
-    return get_gef_setting("gef.debug") is True
-
-
 def hide_context():
     global __gef_context_hidden__
     __gef_context_hidden__ = True
@@ -10429,8 +10424,7 @@ class TraceReallocRetBreakpoint(gdb.FinishBreakpoint):
             # if so pop it out
             item = __heap_allocated_list__.pop(idx)
         except ValueError:
-            if is_debug():
-                warn("Chunk {:#x} was not in tracking list".format(self.ptr))
+            warn("Chunk {:#x} was not in tracking list".format(self.ptr))
         finally:
             # add new item to alloc-ed list
             __heap_allocated_list__.append(item)
@@ -10670,13 +10664,10 @@ class GenericCommand(gdb.Command):
             argv = gdb.string_to_argv(args)
             self.__set_repeat_count(argv, from_tty)
             self.do_invoke(argv)
-        except Exception as e:
+        except Exception:
             # Note: since we are intercepting cleaning exceptions here, commands preferably should avoid
             # catching generic Exception, but rather specific ones. This is allows a much cleaner use.
-            if is_debug():
-                show_last_exception()
-            else:
-                err("Command '{:s}' failed to execute properly, reason: {:s}".format(self._cmdline_, str(e)))
+            show_last_exception()
         return
 
     def usage(self, omit_syntax=False):
@@ -61316,7 +61307,6 @@ class GefCommand(gdb.Command):
         super().__init__(self._cmdline_, gdb.COMMAND_SUPPORT, gdb.COMPLETE_NONE, True)
         set_gef_setting("gef.follow_child", True, bool, "Automatically set GDB to follow child when forking")
         set_gef_setting("gef.readline_compat", False, bool, "Workaround for readline SOH/ETX issue (SEGV)")
-        set_gef_setting("gef.debug", True, bool, "Enable debug mode for gef")
         set_gef_setting("gef.autosave_breakpoints_file", "", str, "Automatically save and restore breakpoints")
         set_gef_setting("gef.extra_plugins_dir", "", str, "Autoload additional GEF commands from external directory")
         set_gef_setting("gef.disable_color", False, bool, "Disable all colors in GEF")
