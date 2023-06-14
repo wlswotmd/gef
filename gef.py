@@ -2774,8 +2774,16 @@ def gef_makedirs(path, mode=0o755):
 def gdb_get_location(address):
     """Retrieve the location of the `address` argument from the symbol table.
     Return a tuple with the name and offset if found, None otherwise."""
-    # this is horrible, ugly hack and shitty perf...
-    # find a *clean* way to get gdb.Location from an address
+
+    # fast path available gdb 13.x
+    if GDB_VERSION >= (13, 1):
+        sym = gdb.format_address(address)
+        r = re.match(r"0x[0-9a-f]+ <(.*)\+(.*)>", sym)
+        if not r:
+            return None
+        return r.group(1), int(r.group(2))
+
+    # slow path uses `info symbol command`
     name = None
     sym = gdb.execute("info symbol {:#x}".format(address), to_string=True)
     if sym.startswith("No symbol matches"):
@@ -2784,10 +2792,10 @@ def gdb_get_location(address):
     i = sym.find(" in section ")
     sym = sym[:i].split()
     if len(sym) >= 3 and sym[-1].isdigit():
-        name = ' '.join(sym[:-2])
+        name = " ".join(sym[:-2])
         offset = int(sym[-1])
     else:
-        name = ' '.join(sym)
+        name = " ".join(sym)
         offset = 0
     return name, offset
 
