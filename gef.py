@@ -2778,12 +2778,14 @@ def gdb_get_location(address):
     # fast path available gdb 13.x
     if GDB_VERSION >= (13, 1):
         sym = gdb.format_address(address)
-        r = re.match(r"0x[0-9a-f]+ <(.*)\+(.*)>", sym)
+        r = re.match(r"0x[0-9a-f]+ <(.*?)(\+.*)?>", sym)
         if not r:
             return None
+        if r.group(2) is None:
+            return r.group(1), 0
         return r.group(1), int(r.group(2))
 
-    # slow path uses `info symbol command`
+    # slow path uses `info symbol` command
     name = None
     sym = gdb.execute("info symbol {:#x}".format(address), to_string=True)
     if sym.startswith("No symbol matches"):
@@ -8436,7 +8438,7 @@ def is_remote_debug():
         connection = gdb.selected_inferior().connection
         return connection and connection.type == 'remote'
     except AttributeError:
-        # xtensa-linux-gdb: AttributeError: 'gdb.Inferior' object has no attribute 'connection'
+        # before gdb 11.x: AttributeError: 'gdb.Inferior' object has no attribute 'connection'
         res = gdb.execute("maintenance print target-stack", to_string=True)
         return "remote" in res
 
@@ -8503,6 +8505,7 @@ def is_over_serial():
         dev = gdb.selected_inferior().connection.details
         return dev.startswith(("/dev/ttyS", "/dev/ttyAMA"))
     except AttributeError:
+        # before gdb 11.x: AttributeError: 'gdb.Inferior' object has no attribute 'connection'
         return False
 
 
@@ -13071,6 +13074,7 @@ class PtrDemangleCommand(GenericCommand):
                 return None
             cookie = read_int_from_memory(cookie_ptr)
             return cookie
+        # All but the 4 basic architectures (x86/x64/ARM/ARM64) do not support discovery.
         return None
 
     @staticmethod
