@@ -2675,11 +2675,7 @@ def hexdump(source, length=0x10, separator=".", show_raw=False, show_symbol=True
         addr = base + i
 
         if show_symbol:
-            sym = gdb_get_location(addr)
-            if sym:
-                sym = " <{:s}+{:#x}>".format(*sym)
-            else:
-                sym = ""
+            sym = get_symbol_string(addr)
         else:
             sym = ""
         if len(sym) > max_sym_width:
