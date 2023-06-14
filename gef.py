@@ -838,6 +838,10 @@ class Color:
         msg.append(colors["normal"])
         return "".join(msg)
 
+    @staticmethod
+    def remove_color(text):
+        return re.sub(r"\x1B\[([0-9]{1,2}(;[0-9]{1,2})*)?m", "", text)
+
 
 class Address:
     """GEF representation of memory addresses."""
@@ -2796,7 +2800,7 @@ def gdb_get_location_from_symbol(address):
 def get_symbol_string(addr, nosymbol_string=""):
     try:
         if isinstance(addr, str):
-            addr = re.sub(r"\x1B\[([0-9]{1,2}(;[0-9]{1,2})*)?m", "", addr) # remove color
+            addr = Color.remove_color(addr)
             addr = int(addr, 16)
         ret = gdb_get_location_from_symbol(addr)
         if ret is None:
@@ -16374,7 +16378,7 @@ class RpCommand(GenericCommand):
 
         out = []
         for line in lines.splitlines():
-            line = re.sub(r"\x1B\[([0-9]{1,2}(;[0-9]{1,2})*)?m", "", line) # remove color
+            line = Color.remove_color(line)
 
             match = True
             for pat in filter_patterns:
@@ -59189,11 +59193,11 @@ class PagewalkWithHintsCommand(GenericCommand):
         for line in res.splitlines():
             r = re.search(r"name: (.+)", line)
             if r:
-                name = re.sub(r"\x1B\[([0-9]{1,2}(;[0-9]{1,2})*)?m", "", r.group(1)) # remove color
+                name = Color.remove_color(r.group(1))
                 continue
             r = re.search(r"virtual address: (.+0x.+)", line)
             if r:
-                address = re.sub(r"\x1B\[([0-9]{1,2}(;[0-9]{1,2})*)?m", "", r.group(1)) # remove color
+                address = Color.remove_color(r.group(1))
                 address = int(address, 16)
                 continue
             r = re.search(r"num pages: (\d+)", line)
@@ -59213,11 +59217,11 @@ class PagewalkWithHintsCommand(GenericCommand):
         for line in res.splitlines():
             r = re.search(r"name: (.+)", line)
             if r:
-                name = re.sub(r"\x1B\[([0-9]{1,2}(;[0-9]{1,2})*)?m", "", r.group(1)) # remove color
+                name = Color.remove_color(r.group(1))
                 continue
             r = re.search(r"virtual address \(s_mem\): (.+0x.+)", line)
             if r:
-                address = re.sub(r"\x1B\[([0-9]{1,2}(;[0-9]{1,2})*)?m", "", r.group(1)) # remove color
+                address = Color.remove_color(r.group(1))
                 address = int(address, 16)
                 continue
             r = re.search(r"num pages: (\d+)", line)
@@ -59237,7 +59241,7 @@ class PagewalkWithHintsCommand(GenericCommand):
         for line in res.splitlines():
             r = re.search(r"virtual address: (.+0x.+)", line)
             if r:
-                address = re.sub(r"\x1B\[([0-9]{1,2}(;[0-9]{1,2})*)?m", "", r.group(1)) # remove color
+                address = Color.remove_color(r.group(1))
                 address = int(address, 16)
                 continue
             r = re.search(r"num pages: (\d+)", line)
@@ -59257,11 +59261,11 @@ class PagewalkWithHintsCommand(GenericCommand):
         for line in res.splitlines():
             r = re.search(r"name: (.+)", line)
             if r:
-                name = re.sub(r"\x1B\[([0-9]{1,2}(;[0-9]{1,2})*)?m", "", r.group(1)) # remove color
+                name = Color.remove_color(r.group(1))
                 continue
             r = re.search(r"virtual address: (.+0x.+)", line)
             if r:
-                address = re.sub(r"\x1B\[([0-9]{1,2}(;[0-9]{1,2})*)?m", "", r.group(1)) # remove color
+                address = Color.remove_color(r.group(1))
                 address = int(address, 16)
                 continue
             r = re.search(r"num pages: (\d+)", line)
