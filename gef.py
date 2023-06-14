@@ -178,7 +178,7 @@ except ImportError:
 
 __gef__                         = None
 __commands__                    = []
-__loaded_command_objs__         = [] # for debug access each objects
+__LCO__                         = {} # for debug access each objects. (It means `loaded command objs`)
 __aliases__                     = []
 __config__                      = {}
 __watches__                     = {}
@@ -49756,7 +49756,7 @@ class KsymaddrRemoteCommand(GenericCommand):
 
             # 2: check the table (kallsyms_names) entirely.
             # Each element of kallsyms_names consists of {number of tokens, tokens[number of tokens]}.
-            # tokens[0] is symbole type.
+            # tokens[0][0] is symbole type.
             #
             # The following is an example of last elemnts of kallsyms_names.
             # gef> x/24xb 0xffffffffb46b4b48-0x10
@@ -49765,29 +49765,29 @@ class KsymaddrRemoteCommand(GenericCommand):
             # 0xffffffffb46b4b48: 0x00*  0x00   0x00   0x00   0xb0   0x0a   0x00   0x00 (*: start of kallsyms_marker)
             #
             # 0x0c: number of tokens
-            # gef> pi __loaded_command_objs__[99][2].get_token_table()[0x44]
-            # 'D'
-            # gef> pi __loaded_command_objs__[99][2].get_token_table()[0xff]
+            # gef> pi __LCO__["ksymaddr-remote"].get_token_table()[0x44]
+            # 'D' (= symbol type)
+            # gef> pi __LCO__["ksymaddr-remote"].get_token_table()[0xff]
             # '__'
-            # gef> pi __loaded_command_objs__[99][2].get_token_table()[0xf5]
+            # gef> pi __LCO__["ksymaddr-remote"].get_token_table()[0xf5]
             # 'in'
-            # gef> pi __loaded_command_objs__[99][2].get_token_table()[0x8d]
+            # gef> pi __LCO__["ksymaddr-remote"].get_token_table()[0x8d]
             # 'it_'
-            # gef> pi __loaded_command_objs__[99][2].get_token_table()[0x73]
+            # gef> pi __LCO__["ksymaddr-remote"].get_token_table()[0x73]
             # 's'
-            # gef> pi __loaded_command_objs__[99][2].get_token_table()[0x63]
+            # gef> pi __LCO__["ksymaddr-remote"].get_token_table()[0x63]
             # 'c'
-            # gef> pi __loaded_command_objs__[99][2].get_token_table()[0x72]
+            # gef> pi __LCO__["ksymaddr-remote"].get_token_table()[0x72]
             # 'r'
-            # gef> pi __loaded_command_objs__[99][2].get_token_table()[0xe8]
+            # gef> pi __LCO__["ksymaddr-remote"].get_token_table()[0xe8]
             # 'at'
-            # gef> pi __loaded_command_objs__[99][2].get_token_table()[0xbf]
+            # gef> pi __LCO__["ksymaddr-remote"].get_token_table()[0xbf]
             # 'ch'
-            # gef> pi __loaded_command_objs__[99][2].get_token_table()[0x5f]
+            # gef> pi __LCO__["ksymaddr-remote"].get_token_table()[0x5f]
             # '_'
-            # gef> pi __loaded_command_objs__[99][2].get_token_table()[0xee]
+            # gef> pi __LCO__["ksymaddr-remote"].get_token_table()[0xee]
             # 'en'
-            # gef> pi __loaded_command_objs__[99][2].get_token_table()[0x64]
+            # gef> pi __LCO__["ksymaddr-remote"].get_token_table()[0x64]
             # 'd'
             # (=`__init_scratch_end`)
             #
@@ -61388,8 +61388,9 @@ class GefCommand(gdb.Command):
                 ))
 
         # save globally for debug
-        global __loaded_command_objs__
-        __loaded_command_objs__ = self.loaded_commands[::]
+        global __LCO__
+        for commands in self.loaded_commands:
+            __LCO__[commands[0]] = commands[2]
         return
 
 
