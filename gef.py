@@ -41801,121 +41801,34 @@ class KernelVersion:
         self.major = major
         self.minor = minor
         self.patch = patch
+        self.version_tuple = (major, minor, patch)
         return
 
-    def __ge__(self, _v):
-        if _v.count(".") == 1:
-            v = _v.split(".")
-            major, minor, patch = int(v[0]), int(v[1]), 0
-            if major < self.major:
-                return True
-            if major == self.major and minor <= self.minor:
-                return True
-            return False
-        elif _v.count(".") == 2:
-            v = _v.split(".")
-            major, minor, patch = int(v[0]), int(v[1]), int(v[2])
-            if major < self.major:
-                return True
-            if major == self.major and minor < self.minor:
-                return True
-            if major == self.major and minor == self.minor and patch <= self.patch:
-                return True
-            return False
+    def to_version_tuple(self, _v):
+        v = _v.split(".")
+        if len(v) == 2:
+            return (int(v[0]), int(v[1]), 0)
+        elif len(v) == 3:
+            return (int(v[0]), int(v[1]), int(v[2]))
         raise
 
-    def __gt__(self, _v):
-        if _v.count(".") == 1:
-            v = _v.split(".")
-            major, minor, patch = int(v[0]), int(v[1]), 0
-            if major < self.major:
-                return True
-            if major == self.major and minor < self.minor:
-                return True
-            return False
-        elif _v.count(".") == 2:
-            v = _v.split(".")
-            major, minor, patch = int(v[0]), int(v[1]), int(v[2])
-            if major < self.major:
-                return True
-            if major == self.major and minor < self.minor:
-                return True
-            if major == self.major and minor == self.minor and patch < self.patch:
-                return True
-            return False
-        raise
+    def __ge__(self, v):
+        return self.to_version_tuple(v) <= self.version_tuple
 
-    def __le__(self, _v):
-        if _v.count(".") == 1:
-            v = _v.split(".")
-            major, minor, patch = int(v[0]), int(v[1]), 0
-            if major > self.major:
-                return True
-            if major == self.major and minor >= self.minor:
-                return True
-            return False
-        elif _v.count(".") == 2:
-            v = _v.split(".")
-            major, minor, patch = int(v[0]), int(v[1]), int(v[2])
-            if major > self.major:
-                return True
-            if major == self.major and minor > self.minor:
-                return True
-            if major == self.major and minor == self.minor and patch >= self.patch:
-                return True
-            return False
-        raise
+    def __gt__(self, v):
+        return self.to_version_tuple(v) < self.version_tuple
 
-    def __lt__(self, _v):
-        if _v.count(".") == 1:
-            v = _v.split(".")
-            major, minor, patch = int(v[0]), int(v[1]), 0
-            if major > self.major:
-                return True
-            if major == self.major and minor > self.minor:
-                return True
-            return False
-        elif _v.count(".") == 2:
-            v = _v.split(".")
-            major, minor, patch = int(v[0]), int(v[1]), int(v[2])
-            if major > self.major:
-                return True
-            if major == self.major and minor > self.minor:
-                return True
-            if major == self.major and minor == self.minor and patch > self.patch:
-                return True
-            return False
-        raise
+    def __le__(self, v):
+        return self.to_version_tuple(v) >= self.version_tuple
 
-    def __eq__(self, _v):
-        if _v.count(".") == 1:
-            v = _v.split(".")
-            major, minor, patch = int(v[0]), int(v[1]), 0
-            if major == self.major and minor == self.minor:
-                return True
-            return False
-        elif _v.count(".") == 2:
-            v = _v.split(".")
-            major, minor, patch = int(v[0]), int(v[1]), int(v[2])
-            if major == self.major and minor == self.minor and patch == self.patch:
-                return True
-            return False
-        raise
+    def __lt__(self, v):
+        return self.to_version_tuple(v) > self.version_tuple
 
-    def __ne__(self, _v):
-        if _v.count(".") == 1:
-            v = _v.split(".")
-            major, minor, patch = int(v[0]), int(v[1]), 0
-            if major != self.major or minor != self.minor:
-                return True
-            return False
-        elif _v.count(".") == 2:
-            v = _v.split(".")
-            major, minor, patch = int(v[0]), int(v[1]), int(v[2])
-            if major != self.major or minor != self.minor or patch != self.patch:
-                return True
-            return False
-        raise
+    def __eq__(self, v):
+        return self.to_version_tuple(v) == self.version_tuple
+
+    def __ne__(self, v):
+        return self.to_version_tuple(v) != self.version_tuple
 
 
 @register_command
