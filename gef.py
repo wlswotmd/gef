@@ -2844,9 +2844,25 @@ def load_unicorn(f):
     def wrapper(*args, **kwargs):
         try:
             __import__("unicorn")
-            __import__("unicorn.ppc_const")
-            __import__("unicorn.riscv_const")
-            __import__("unicorn.s390x_const")
+
+            if is_ppc32(): # unicorn does not support ppc64
+                try:
+                    __import__("unicorn.ppc_const")
+                except ImportError:
+                    pass
+
+            if is_riscv32() or is_riscv64():
+                try:
+                    __import__("unicorn.riscv_const")
+                except ImportError:
+                    pass
+
+            if is_s390x():
+                try:
+                    __import__("unicorn.s390x_const")
+                except ImportError:
+                    pass
+
             return f(*args, **kwargs)
         except ImportError as err:
             msg = "Missing `unicorn` package for Python. Install with `pip install unicorn`."
@@ -5321,7 +5337,7 @@ class S390X(Architecture):
 
     keystone_support = True
     capstone_support = True
-    unicorn_support = False
+    unicorn_support = False # for some reason it doesn't work
 
     nop_insn = b"\x07\x07" # bcr 0, %r7
     infloop_insn = b"\x00\x00\xf4\xa7" # j 0
