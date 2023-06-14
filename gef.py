@@ -8499,8 +8499,11 @@ def is_qemu_system():
 def is_over_serial():
     if not is_remote_debug():
         return False
-    dev = gdb.selected_inferior().connection.details
-    return dev.startswith(("/dev/ttyS", "/dev/ttyAMA"))
+    try:
+        dev = gdb.selected_inferior().connection.details
+        return dev.startswith(("/dev/ttyS", "/dev/ttyAMA"))
+    except AttributeError:
+        return False
 
 
 @functools.lru_cache(maxsize=None)
@@ -13056,16 +13059,19 @@ class PtrDemangleCommand(GenericCommand):
         if is_x86_64():
             tls = TlsCommand.getfs()
             cookie = read_int_from_memory(tls + 0x30)
+            return cookie
         elif is_x86_32():
             tls = TlsCommand.getgs()
             cookie = read_int_from_memory(tls + 0x18)
+            return cookie
         elif is_arm32() or is_arm64():
             try:
                 cookie_ptr = parse_address("&__pointer_chk_guard_local")
             except Exception:
                 return None
             cookie = read_int_from_memory(cookie_ptr)
-        return cookie
+            return cookie
+        return None
 
     @staticmethod
     def decode(value, cookie):
@@ -22951,12 +22957,15 @@ class DereferenceCommand(GenericCommand):
 
         # mangle cookie
         if not is_qemu_system() and not is_in_kernel():
-            res = PtrDemangleCommand.get_cookie()
-            if res:
-                cookie = res
-                if current_address_value == cookie:
-                    m = " {:s} PTR_MANGLE cookie".format(LEFT_ARROW)
-                    line += Color.colorify(m, registers_color)
+            try:
+                res = PtrDemangleCommand.get_cookie()
+                if res:
+                    cookie = res
+                    if current_address_value == cookie:
+                        m = " {:s} PTR_MANGLE cookie".format(LEFT_ARROW)
+                        line += Color.colorify(m, registers_color)
+            except gdb.MemoryError:
+                pass
 
         # register info
         def get_register_values():
