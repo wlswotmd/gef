@@ -38317,7 +38317,7 @@ class FpuCommand(GenericCommand):
 
         # s0-s31, d0-d31, q0-q15
         gef_print(titlify("FPU/NEON Data Register"))
-        fmt = "{:4s}: {:15s} {:10s} | {:4s}: {:28s} {:18s} | {:4s} {:34s}"
+        fmt = "{:4s}: {:15s} {:10s} | {:4s}: {:28s} {:18s} | {:4s}: {:34s}"
         legend = ["Name", "Value", "32-bit hex", "Name", "Value", "64-bit hex", "Name", "128-bit hex"]
         gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
         for i in range(32):
