@@ -49311,6 +49311,8 @@ class KsymaddrRemoteCommand(GenericCommand):
             self.verbose_err("Could not find kernel version")
             return False
         self.version_string = r.group(0)
+        self.version_string_offset = r.span()[0]
+        self.verbose_info("linux_banner: {:#x}".format(self.krobase + self.version_string_offset))
         version_number = r.group(1).decode("ascii")
         major = int(version_number.split(".")[0])
         minor = int(version_number.split(".")[1])
@@ -50074,6 +50076,61 @@ class KsymaddrRemoteCommand(GenericCommand):
         if not ret:
             return False
 
+        self.save_config("version_string")
+        self.save_config("version_string_offset")
+        self.save_config("krobase_size")
+        return True
+
+    def arm64_fast_path(self):
+        # This path is more faster because it does not use pagewalk.
+        # Instead of finding krobase from pagewalk results, it finds krobase by scanning the kernel version.
+        # It is especially beneficial for ARM64, because it tends to have a lot of pagetables and pagewalk take a long time.
+        # It may work on other architectures, but it's limited to ARM64 because other architectures don't benefit much.
+
+        # First, search the kernel version string from $pc.
+        # It is located at around top of krobase, and krobase is aligned by 0x10000.
+        current = (current_arch.pc & ~0xffff) + 0x10000 # Starting address to brute force krobase
+        step_size = 0x10000
+        while True:
+            try:
+                # As kernel version string is located at around top of krobase it is enough to check the first page.
+                candidate_rodata = read_memory(current, gef_getpagesize())
+            except gdb.MemoryError:
+                # reached to the end of krobase
+                return False
+
+            # '\n\0' is needed to avoid false positives in the dmesg buffer.
+            r = re.search(rb"Linux version (\d+\.[\d.]*\d)[ -~]+\n\0", candidate_rodata)
+            if r:
+                # Found kernel version string
+                version_string_address = current + r.span()[0]
+                self.version_string = r.group(0)[:-2]
+                break
+            current += step_size
+
+        # We can make the hash from the kernel version string and load from saved config.
+        # At this point, following two parameters are enough.
+        ret = self.get_saved_config([
+            "version_string_offset",
+            "krobase_size",
+        ])
+        if not ret:
+            self.quiet_info("Use slow path")
+            return False
+
+        # Restore krobase with considering kASLR.
+        self.quiet_info("Use fast path")
+        self.krobase = version_string_address - self.version_string_offset
+        self.verbose_info("krobase: {:#x}-{:#x}".format(self.krobase, self.krobase + self.krobase_size))
+
+        # doit
+        self.kernel_img = read_memory(self.krobase, self.krobase_size)
+        ret = self.initialize()
+        if not ret:
+            self.quiet_info("Use slow path")
+            return False
+
+        self.read_kallsyms()
         return True
 
     def parse_kallsyms(self):
@@ -50085,6 +50142,13 @@ class KsymaddrRemoteCommand(GenericCommand):
 
         self.quiet_info("Wait for memory scan")
 
+        # Fast path when reattaching GDB after executing this command once (only ARM64).
+        if is_arm64():
+            ret = self.arm64_fast_path()
+            if ret:
+                return True
+
+        # Slow path
         kinfo = KernelbaseCommand.get_kernel_base()
         if kinfo.has_none:
             return False
