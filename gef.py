@@ -41815,9 +41815,9 @@ class KernelbaseCommand(GenericCommand):
             return
 
         self.out = []
-        self.out.append("kernel text:   {:#x} ({:#x} bytes)".format(kinfo.kbase, kinfo.kbase_size))
-        self.out.append("kernel rodata: {:#x} ({:#x} bytes)".format(kinfo.krobase, kinfo.krobase_size))
-        self.out.append("kernel data:   {:#x} ({:#x} bytes)".format(kinfo.krwbase, kinfo.krwbase_size))
+        self.out.append("kernel text:   {:#x}-{:#x} ({:#x} bytes)".format(kinfo.kbase, kinfo.kbase + kinfo.kbase_size, kinfo.kbase_size))
+        self.out.append("kernel rodata: {:#x}-{:#x} ({:#x} bytes)".format(kinfo.krobase, kinfo.krobase + kinfo.krobase_size, kinfo.krobase_size))
+        self.out.append("kernel data:   {:#x}-{:#x} ({:#x} bytes)".format(kinfo.krwbase, kinfo.krwbase + kinfo.krwbase_size, kinfo.krwbase_size))
         if self.out:
             gef_print('\n'.join(self.out))
         return
@@ -50185,8 +50185,8 @@ class VmlinuxToElfApplyCommand(GenericCommand):
         if None in (kinfo.kbase, kinfo.kbase_size, kinfo.krobase, kinfo.krobase_size):
             err("Failed to resolve")
             return None
-        gef_print("kernel base:   {:#x} ({:#x} bytes)".format(kinfo.kbase, kinfo.kbase_size))
-        gef_print("kernel rodata: {:#x} ({:#x} bytes)".format(kinfo.krobase, kinfo.krobase_size))
+        gef_print("kernel base:   {:#x}-{:#x} ({:#x} bytes)".format(kinfo.kbase, kinfo.kbase + kinfo.kbase_size, kinfo.kbase_size))
+        gef_print("kernel rodata: {:#x}-{:#x} ({:#x} bytes)".format(kinfo.krobase, kinfo.krobase + kinfo.krobase_size, kinfo.krobase_size))
 
         info("Start memory dump")
         # rodata size detection may be inaccurate on kernels with RWX attribute regions.
