@@ -18118,8 +18118,10 @@ class KernelChecksecCommand(GenericCommand):
             if swapgs_restore_regs_and_return_to_usermode:
                 # swapgs_restore_regs_and_return_to_usermode is in a fixed location.
                 # commit_creds are placed dynamically.
-                if swapgs_restore_regs_and_return_to_usermode < commit_creds:
-                    if kcmdline and "nofgkaslr" in kcmdline.cmdline:
+                if swapgs_restore_regs_and_return_to_usermode < commit_creds: # For some reason this works fine
+                    if kcmdline and ("nokaslr" in kcmdline.cmdline or \
+                                   "nofgkaslr" in kcmdline.cmdline or \
+                                 "fgkaslr=off" in kcmdline.cmdline):
                         gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
                     else:
                         gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
