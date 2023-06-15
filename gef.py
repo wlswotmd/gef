@@ -59136,6 +59136,7 @@ class PagewalkWithHintsCommand(GenericCommand):
         if not self.quiet:
             info("resolve slub")
         res = gdb.execute("slub-dump -n -q -vv", to_string=True)
+        name, address, size = None, None, None
         for line in res.splitlines():
             r = re.search(r"name: (.+)", line)
             if r:
@@ -59160,6 +59161,7 @@ class PagewalkWithHintsCommand(GenericCommand):
         if not self.quiet:
             info("resolve slab")
         res = gdb.execute("slab-dump -n -q", to_string=True)
+        name, address, size = None, None, None
         for line in res.splitlines():
             r = re.search(r"name: (.+)", line)
             if r:
@@ -59184,6 +59186,7 @@ class PagewalkWithHintsCommand(GenericCommand):
         if not self.quiet:
             info("resolve slob")
         res = gdb.execute("slob-dump -n -q", to_string=True)
+        address, size = None, None, None
         for line in res.splitlines():
             r = re.search(r"virtual address: (.+0x.+)", line)
             if r:
@@ -59204,6 +59207,7 @@ class PagewalkWithHintsCommand(GenericCommand):
         if not self.quiet:
             info("resolve slub-tiny")
         res = gdb.execute("slub-tiny-dump -n -q", to_string=True)
+        name, address, size = None, None, None
         for line in res.splitlines():
             r = re.search(r"name: (.+)", line)
             if r:
