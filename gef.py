@@ -9124,6 +9124,9 @@ def file_lookup_name_path(name, path):
 def file_lookup_address(address):
     """Look up for a file by its address.
     Return a Zone object if found, None otherwise."""
+    if is_qemu_system():
+        # If FGKASLR is enabled, there are too many sections and it will take a long time, so skip them.
+        return None
     for info in get_info_files():
         if info.zone_start <= address < info.zone_end:
             return info
