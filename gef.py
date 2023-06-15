@@ -49312,8 +49312,9 @@ class KsymaddrRemoteCommand(GenericCommand):
             return False
         self.version_string = r.group(0)
         version_number = r.group(1).decode("ascii")
-        self.kernel_major = int(version_number.split(".")[0])
-        self.kernel_minor = int(version_number.split(".")[1])
+        major = int(version_number.split(".")[0])
+        minor = int(version_number.split(".")[1])
+        self.kernel_version = (major, minor)
         return True
 
     def get_cfg_name(self):
@@ -49520,7 +49521,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         return True
 
     def find_kallsyms_markers(self):
-        if self.kernel_major > 6 or self.kernel_major == 6 and self.kernel_minor >= 2:
+        if self.kernel_version >= (6, 2):
             ret = self.get_saved_config([
                 "offset_kallsyms_token_markers",
                 "kallsyms_markers_table_element_size",
@@ -49588,7 +49589,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         """
 
         # determines the size of table elements depended on kernel version.
-        if self.kernel_major < 4 or self.kernel_major == 4 and self.kernel_minor < 20:
+        if self.kernel_version < (4, 20):
             # kallsyms_markers is unsigned long[]
             self.kallsyms_markers_table_element_size = current_arch.ptrsize
         else:
@@ -49621,7 +49622,7 @@ class KsymaddrRemoteCommand(GenericCommand):
 
         # kallsyms_seqs_of_names is introduced from kernel 6.2-rc1
         # in this case, it finds kallsyms_seqs_of_names instead of kallsyms_markers, so search back through memory again.
-        if self.kernel_major > 6 or self.kernel_major == 6 and self.kernel_minor >= 2:
+        if self.kernel_version >= (6, 2):
             if u32(self.kernel_img[needle + 4:needle + 8]) & 0xfff00000: # false positive, search again
                 position = needle
                 # aligned search from memory
@@ -49641,7 +49642,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         self.verbose_info("kallsyms_markers: {:#x}".format(self.krobase + self.offset_kallsyms_markers))
 
         # find kallsyms_seqs_of_names
-        if self.kernel_major > 6 or self.kernel_major == 6 and self.kernel_minor >= 2:
+        if self.kernel_version >= (6, 2):
             # locate kallsyms_seqs_of_names to get the table size of kallsyms_markers (used after).
             position = self.offset_kallsyms_markers + 4
             while self.kernel_img[position + 3] == 0:
@@ -49954,13 +49955,13 @@ class KsymaddrRemoteCommand(GenericCommand):
         else:
             endianness_marker = "<"
             endian_str = "little"
-        address_byte_size = 8 if is_64bit() else self.kallsyms_markers_table_element_size
+
         offset_byte_size = 4
+        address_byte_size = current_arch.ptrsize
 
         def try_resolve_has_base_relative():
-            position = self.offset_kallsyms_num_syms
-
             # ignore the 0 immediately above offset_kallsyms_num_syms.
+            position = self.offset_kallsyms_num_syms
             while True:
                 previous_word = self.kernel_img[position - address_byte_size:position]
                 if previous_word != b"\0" * address_byte_size:
@@ -49978,10 +49979,9 @@ class KsymaddrRemoteCommand(GenericCommand):
             position -= self.num_symbols * offset_byte_size
 
             # Try to parse addresses or offsets.
-            long_size_marker = {4: "i"}[offset_byte_size]
-            fmt = endianness_marker + str(self.num_symbols) + long_size_marker
-            unpacked = struct.unpack_from(fmt, self.kernel_img, position)
-            ksym_offsets = list(unpacked)
+            fmt = "{:s}{:d}i".format(endianness_marker, self.num_symbols) # signed int
+            kallsyms_offsets_data = self.kernel_img[position:position + self.num_symbols * offset_byte_size]
+            ksym_offsets = struct.unpack(fmt, kallsyms_offsets_data)
 
             # Chek the ratio of the negative value
             number_of_negative_items = len([offset for offset in ksym_offsets if offset < 0])
@@ -50012,9 +50012,8 @@ class KsymaddrRemoteCommand(GenericCommand):
             return True
 
         def try_resolve_not_base_relative():
-            position = self.offset_kallsyms_num_syms
-
             # ignore the 0 immediately above offset_kallsyms_num_syms.
+            position = self.offset_kallsyms_num_syms
             while True:
                 previous_word = self.kernel_img[position - address_byte_size:position]
                 if previous_word != b"\0" * address_byte_size:
@@ -50025,15 +50024,17 @@ class KsymaddrRemoteCommand(GenericCommand):
             position -= self.num_symbols * address_byte_size
 
             # Try to parse addresses or offsets.
-            long_size_marker = {4: "I", 8: "Q"}[address_byte_size]
-            fmt = endianness_marker + str(self.num_symbols) + long_size_marker
-            unpacked = struct.unpack_from(fmt, self.kernel_img, position)
+            if address_byte_size == 8:
+                fmt = "{:s}{:d}Q".format(endianness_marker, self.num_symbols)
+            else:
+                fmt = "{:s}{:d}I".format(endianness_marker, self.num_symbols)
+            kallsyms_addresses_data = self.kernel_img[position:position + self.num_symbols * address_byte_size]
+            self.kernel_addresses = struct.unpack(fmt, kallsyms_addresses_data)
             self.offset_kallsyms_addresses_or_offsets = position
-            self.kernel_addresses = list(unpacked)
             return True
 
         # On modern kernels, first check the case CONFIG_KALLSYMS_BASE_RELATIVE=y.
-        if self.kernel_major > 4 or (self.kernel_major == 4 and self.kernel_minor >= 6):
+        if self.kernel_version >= (4, 6):
             ret = try_resolve_has_base_relative()
             if ret:
                 self.verbose_info("kallsyms_offsets: {:#x}".format(self.krobase + self.offset_kallsyms_addresses_or_offsets))
