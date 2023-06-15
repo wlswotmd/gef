@@ -4263,7 +4263,7 @@ class AARCH64(ARM):
         "$pc", "$cpsr", "$fpsr", "$fpcr",
     ]
     alias_registers = {
-        "$x30": "$lr",
+        "$x16": "$ip0", "$x17": "$ip1", "$x29": "$fp", "$x30": "$lr",
     }
     flag_register = "$cpsr"
     flags_table = {
