@@ -41597,6 +41597,216 @@ class KernelAddressHeuristicFinder:
                                     return printk_rb_static
         return None
 
+    @staticmethod
+    def get_log_first_idx():
+        # plan 1 (directly)
+        log_first_idx = get_ksymaddr("log_first_idx")
+        if log_first_idx:
+            return log_first_idx
+
+        # plan 2 (available v3.11-rc4 or later)
+        log_next_idx = KernelAddressHeuristicFinder.get_log_next_idx()
+        if log_next_idx:
+            return log_next_idx + 0x10 # u64 + u32 + pad32
+        return None
+
+    @staticmethod
+    def get_log_next_idx():
+        # plan 1 (directly)
+        log_next_idx = get_ksymaddr("log_next_idx")
+        if log_next_idx:
+            return log_next_idx
+
+        # plan 2 (available v3.11-rc4 or later)
+        kmsg_dump_rewind_nolock = get_ksymaddr("kmsg_dump_rewind_nolock")
+        if kmsg_dump_rewind_nolock:
+            res = gdb.execute("x/20i {:#x}".format(kmsg_dump_rewind_nolock), to_string=True)
+            if is_x86_64():
+                for line in res.splitlines():
+                    m = re.search(r"DWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
+                    if m:
+                        x = int(m.group(1), 16)
+                        continue
+                    if "ret" in line:
+                        return x
+            elif is_x86_32():
+                for line in res.splitlines():
+                    m = re.search(r"ds:(0x\w+)", line)
+                    if m:
+                        x = int(m.group(1), 16)
+                        continue
+                    if "ret" in line:
+                        return x
+            elif is_arm64():
+                bases = {}
+                add1time = {}
+                for line in res.splitlines():
+                    m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        base = int(m.group(2), 16)
+                        bases[reg] = base
+                        continue
+                    m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
+                    if m:
+                        dstreg = m.group(1)
+                        srcreg = m.group(2)
+                        v = int(m.group(3), 16)
+                        if srcreg in bases:
+                            add1time[dstreg] = bases[srcreg] + v
+                            continue
+                    m = re.search(r"ldr\s+w\d+,\s*\[(\S+),\s*#(\d+)\]", line)
+                    if m:
+                        srcreg = m.group(1)
+                        v = int(m.group(2), 0)
+                        if srcreg in add1time:
+                            x = add1time[srcreg] + v
+                            if is_valid_addr(x):
+                                y = u32(read_memory(x, 4))
+                                if y:
+                                    return x
+            elif is_arm32():
+                bases = {}
+                add1time = {}
+                for line in res.splitlines():
+                    m = re.search(r"movw\s+(\S+),.+;\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        base = int(m.group(2), 16)
+                        bases[reg] = base
+                        continue
+                    m = re.search(r"movt\s+(\S+),.+;\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        v = int(m.group(2), 16) << 16
+                        if reg in bases:
+                            add1time[reg] = bases[reg] + v
+                            continue
+                    m = re.search(r"ldr\s+\S+,\s*\[(\S+),\s*#(\d+)\]", line)
+                    if m:
+                        reg = m.group(1)
+                        v = int(m.group(2), 0)
+                        if reg in add1time:
+                            x = add1time[reg] + v
+                            if is_valid_addr(x):
+                                y = u32(read_memory(x, 4))
+                                if y:
+                                    return x
+        return None
+
+    @staticmethod
+    def get___log_buf():
+        # plan 1 (directly)
+        __log_buf = get_ksymaddr("__log_buf")
+        if __log_buf:
+            return __log_buf
+
+        # plan 2 (available v3.11-rc4 or later)
+        log_buf_len = KernelAddressHeuristicFinder.get_log_buf_len()
+        if log_buf_len:
+            __log_buf = read_int_from_memory(log_buf_len + 4)
+            if is_valid_addr(__log_buf):
+                return __log_buf
+
+            if is_64bit():
+                # maybe padding 0
+                __log_buf = read_int_from_memory(log_buf_len + 8)
+                if is_valid_addr(__log_buf):
+                    return __log_buf
+        return None
+
+    @staticmethod
+    def get_log_buf_len():
+        # plan 1 (directly)
+        log_buf_len = get_ksymaddr("log_buf_len")
+        if log_buf_len:
+            return log_buf_len
+
+        # plan 2 (available v3.17-rc1 or later)
+        log_buf_len_get = get_ksymaddr("log_buf_len_get")
+        if log_buf_len_get:
+            res = gdb.execute("x/10i {:#x}".format(log_buf_len_get), to_string=True)
+            if is_x86_64():
+                for line in res.splitlines():
+                    m = re.search(r"DWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
+                    if m:
+                        x = int(m.group(1), 16)
+                        if is_valid_addr(x):
+                            y = u32(read_memory(x, 4))
+                            if y and (y & 0xfff) == 0:
+                                return x
+            elif is_x86_32():
+                for line in res.splitlines():
+                    m = re.search(r"ds:(0x\w+)", line)
+                    if m:
+                        x = int(m.group(1), 16)
+                        if is_valid_addr(x):
+                            y = u32(read_memory(x, 4))
+                            if y and (y & 0xfff) == 0:
+                                return x
+            elif is_arm64():
+                bases = {}
+                for line in res.splitlines():
+                    m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        base = int(m.group(2), 16)
+                        bases[reg] = base
+                        continue
+                    m = re.search(r"ldr\s+\S+,\s*\[(\S+),\s*#(\d+)\]", line)
+                    if m:
+                        reg = m.group(1)
+                        v = int(m.group(2), 0)
+                        if reg in bases:
+                            x = bases[reg] + v
+                            if is_valid_addr(x):
+                                y = u32(read_memory(x, 4))
+                                if y and (y & 0xfff) == 0:
+                                    return x
+            elif is_arm32():
+                bases = {}
+                for line in res.splitlines():
+                    m = re.search(r"movw\s+(\S+),.+;\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        base = int(m.group(2), 16)
+                        bases[reg] = base
+                        continue
+                    m = re.search(r"movt\s+(\S+),.+;\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        v = int(m.group(2), 16) << 16
+                        if reg in bases:
+                            x = bases[reg] + v
+                            if is_valid_addr(x):
+                                y = u32(read_memory(x, 4))
+                                if y and (y & 0xfff) == 0:
+                                    return x
+
+        # plan 3 (available v3.11-rc4 or later)
+        do_syslog = get_ksymaddr("do_syslog")
+        if do_syslog:
+            res = gdb.execute("x/100i {:#x}".format(do_syslog), to_string=True)
+            if is_x86_64():
+                for line in res.splitlines():
+                    m = re.search(r"DWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
+                    if m:
+                        x = int(m.group(1), 16)
+                        if is_valid_addr(x):
+                            y = u32(read_memory(x, 4))
+                            if y and (y & 0xfff) == 0:
+                                return x
+            elif is_x86_32():
+                for line in res.splitlines():
+                    m = re.search(r"ds:(0x\w+)", line)
+                    if m:
+                        x = int(m.group(1), 16)
+                        if is_valid_addr(x):
+                            y = u32(read_memory(x, 4))
+                            if y and (y & 0xfff) == 0:
+                                return x
+        return None
+
 
 @register_command
 class KernelbaseCommand(GenericCommand):
@@ -44287,6 +44497,7 @@ class KernelDmesgCommand(GenericCommand):
 
     def dump_printk_ringbuffer(self, ring_buffer_name, ring_buffer_address):
         """
+        # linux 5.10.x ~
         struct printk_ringbuffer {
             struct prb_desc_ring {
                 unsigned int        count_bits;
@@ -44453,7 +44664,56 @@ class KernelDmesgCommand(GenericCommand):
             self.out.append(formatted_entry)
 
             seq += 1
+        return
 
+    def dump_printk_log_buffer(self, log_first_idx, log_end_idx, buf_start, buf_end):
+        """
+        # ~ linux 5.9.x
+        struct printk_log {
+            u64 ts_nsec;        /* timestamp in nanoseconds */
+            u16 len;            /* length of entire record */
+            u16 text_len;       /* length of text buffer */
+            u16 dict_len;       /* length of dictionary buffer */
+            u8 facility;        /* syslog facility */
+            u8 flags:5;         /* internal record flags */
+            u8 level:3;         /* syslog level */
+        #ifdef CONFIG_PRINTK_CALLER
+            u32 caller_id;      /* thread id or processor id */
+        #endif
+        }
+        """
+
+        CONFIG_PRINTK_CALLER = get_ksymaddr("print_caller") is not None
+        length_of_caller_id = 4 if CONFIG_PRINTK_CALLER else 0
+
+        pos = log_first_pos = buf_start + log_first_idx
+        log_end_pos = buf_start + log_end_idx
+
+        while pos != log_end_pos:
+            x = read_memory(pos, 16)
+            ts_nsec = u64(x[:8])
+            rec_len = u16(x[8:10])
+
+            if rec_len == 0:
+                pos = buf_start
+                continue
+
+            text_len = u16(x[10:12])
+            #dict_len = u16(x[12:14])
+            #facility = u8(x[14:15])
+            #flags = (u8(x[15:16]) >> 0) & 0b11111
+            #level = (u8(x[15:16]) >> 5) & 0b111
+            text = read_memory(pos + 16 + length_of_caller_id, text_len)
+
+            sec = ts_nsec // 1000 // 1000 // 1000
+            nsec = ts_nsec % (1000 * 1000 * 1000)
+            nsec_str = "{:09d}".format(nsec)[:6]
+            formatted_entry = "[{:5d}.{:s}] {:s}".format(sec, nsec_str, bytes2str(text))
+            self.out.append(formatted_entry)
+
+            pos += rec_len
+            if pos >= buf_end:
+                break # something is wrong
         return
 
     @parse_args
@@ -44466,24 +44726,49 @@ class KernelDmesgCommand(GenericCommand):
         if not args.quiet:
             info("Wait for memory scan")
 
-        kversion = KernelVersionCommand.kernel_version()
-        if kversion < "5.10":
-            err("Unsupported kernel version (< 5.10)")
-            return
-
         self.quiet = args.quiet
         self.out = []
+        kversion = KernelVersionCommand.kernel_version()
 
-        printk_rb_static = KernelAddressHeuristicFinder.get_printk_rb_static()
-        if printk_rb_static is None:
-            err("Not found printk_rb_static")
-            return
+        if kversion >= "5.10":
+            # new structure
+            printk_rb_static = KernelAddressHeuristicFinder.get_printk_rb_static()
+            if printk_rb_static is None:
+                err("Not found printk_rb_static")
+                return
+            self.dump_printk_ringbuffer("printk_rb_static", printk_rb_static)
 
-        self.dump_printk_ringbuffer("printk_rb_static", printk_rb_static)
+        else:
+            # old structure
+            log_first_idx_ptr = KernelAddressHeuristicFinder.get_log_first_idx()
+            if log_first_idx_ptr is None:
+                err("Not found log_first_idx")
+                return
+            log_next_idx_ptr = KernelAddressHeuristicFinder.get_log_next_idx()
+            if log_next_idx_ptr is None:
+                err("Not found log_next_idx")
+                return
+            log_buf_start = KernelAddressHeuristicFinder.get___log_buf()
+            if log_buf_start is None:
+                err("Not found __log_buf")
+                return
+            log_buf_len_ptr = KernelAddressHeuristicFinder.get_log_buf_len()
+            if log_buf_len_ptr is None:
+                err("Not found log_buf_len")
+                return
+            log_first_idx = read_int_from_memory(log_first_idx_ptr)
+            log_next_idx = read_int_from_memory(log_next_idx_ptr)
+            log_buf_len = u32(read_memory(log_buf_len_ptr, 4))
+            log_buf_end = log_buf_start + log_buf_len
+            if not self.quiet:
+                info("log_first_idx: {:#x}".format(log_first_idx))
+                info("log_next_idx: {:#x}".format(log_next_idx))
+                info("__log_buf: {:#x}".format(log_buf_start))
+                info("log_buf_len: {:#x}".format(log_buf_len))
+            self.dump_printk_log_buffer(log_first_idx, log_next_idx, log_buf_start, log_buf_end)
 
         if self.out:
             gef_print('\n'.join(self.out), less=not args.no_pager)
-
         return
 
 
