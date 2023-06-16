@@ -9297,7 +9297,7 @@ def get_generic_arch(module, prefix, arch, mode, big_endian, to_string=False, ex
     if to_string:
         arch = "{:s}.{:s}_ARCH_{:s}".format(module.__name__, prefix, arch)
         if mode:
-            mode = "{:s}.{:s}_MODE_{:s}".format(module.__name__, prefix, str(mode))
+            mode = "{:s}.{:s}_MODE_{!s}".format(module.__name__, prefix, mode)
         else:
             mode = "0"
         if big_endian:
@@ -9422,7 +9422,7 @@ def keystone_assemble(code, arch, mode, *args, **kwargs):
         ks = keystone.Ks(arch, mode)
         enc, cnt = ks_asm(code, addr)
     except keystone.KsError as e:
-        err("Keystone assembler error: {:s}".format(str(e)))
+        err("Keystone assembler error: {!s}".format(e))
         return None
     except multiprocessing.TimeoutError:
         err("Keystone assembler timeout error")
@@ -11621,7 +11621,7 @@ class CanaryCommand(GenericCommand):
 
         canary, location = res
         gef_print(titlify("canary value"))
-        info("Found AT_RANDOM at {:s}, reading {} bytes".format(str(lookup_address(location)), current_arch.ptrsize))
+        info("Found AT_RANDOM at {!s}, reading {} bytes".format(lookup_address(location), current_arch.ptrsize))
         info("The canary is {:s}".format(Color.boldify("{:#x}".format(canary))))
 
         gef_print(titlify("found canary"))
@@ -11648,11 +11648,11 @@ class CanaryCommand(GenericCommand):
                 else:
                     path = m.path
                 if prev_addr <= sp <= addr:
-                    info("(Stack pointer is at {:s})".format(str(lookup_address(sp))))
+                    info("(Stack pointer is at {!s})".format(lookup_address(sp)))
                 if path == "[stack]":
-                    info("Found at {:s} in {!r} (sp{:+#x})".format(str(lookup_address(addr)), path, addr - sp))
+                    info("Found at {!s} in {!r} (sp{:+#x})".format(lookup_address(addr), path, addr - sp))
                 else:
-                    info("Found at {:s} in {!r}".format(str(lookup_address(addr)), path))
+                    info("Found at {!s} in {!r}".format(lookup_address(addr), path))
                 prev_addr = addr
         return
 
@@ -12222,7 +12222,7 @@ class ProcInfoCommand(GenericCommand):
             sym1 = os.readlink("/proc/{:d}/ns/{:s}".format(pid, ns))
             sym2 = os.readlink("/proc/{:d}/ns/{:s}".format(gdb_pid, ns))
             m = "{:s} namespace separation".format(ns.upper())
-            gef_print("{:32s} {} {}".format(m, RIGHT_ARROW, str(sym1 != sym2)))
+            gef_print("{:32s} {:s} {!s}".format(m, RIGHT_ARROW, sym1 != sym2))
 
         gef_print(titlify("Pid Namespace Information"))
         state = self.get_state_of(pid)
@@ -13606,8 +13606,8 @@ class MprotectCommand(GenericCommand):
         if is_arm32() and current_arch.is_thumb():
             original_pc -= 1
 
-        fmt = "Generating sys_mprotect({:#x}, {:#x}, '{:s}') stub for arch {:s}"
-        info(fmt.format(sect.page_start, size, str(Permission(value=perm)), get_arch()))
+        fmt = "Generating sys_mprotect({:#x}, {:#x}, '{!s}') stub for arch {:s}"
+        info(fmt.format(sect.page_start, size, Permission(value=perm), get_arch()))
         stub = self.get_stub_by_arch(sect.page_start, size, perm)
         if stub is None:
             err("Failed to generate mprotect opcodes")
@@ -14830,8 +14830,8 @@ class UnicornEmulateCommand(GenericCommand):
             content += "    '{:s}': {:s},\n".format(r.strip(), unicorn_registers[r])
         content += "})\n"
         content += "uc = None\n"
-        content += "verbose = {:s}\n".format(str(kwargs["verbose"]))
-        content += "quiet = {:s}\n".format(str(kwargs["quiet"]))
+        content += "verbose = {!s}\n".format(kwargs["verbose"])
+        content += "quiet = {!s}\n".format(kwargs["quiet"])
         content += "syscall_register = '{:s}'\n".format(current_arch.syscall_register)
         content += "count = 0\n"
         content += "changed_mem = {}\n"
@@ -15195,16 +15195,11 @@ class CapstoneDisassembleCommand(GenericCommand):
         try:
             skip = length * self.repeat_count
             for insn in capstone_disassemble(location, length, skip=skip, **kwargs):
-                text_insn = "{:12o}".format(insn)
-                msg = ""
                 if insn.address == current_arch.pc:
-                    msg = Color.colorify("{}  {}".format(RIGHT_ARROW, text_insn), "bold red")
-                    reason = self.capstone_analyze_pc(insn, length)[0]
-                    if reason:
-                        gef_print(msg)
-                        gef_print(reason)
-                        break
+                    text_insn = "{:12O}".format(insn)
+                    msg = "{}  {}".format(RIGHT_ARROW, text_insn)
                 else:
+                    text_insn = "{:12o}".format(insn)
                     msg = "{} {}".format(" " * 5, text_insn)
                 gef_print(msg)
         except AttributeError:
@@ -15212,29 +15207,6 @@ class CapstoneDisassembleCommand(GenericCommand):
         except gdb.error:
             pass
         return
-
-    def capstone_analyze_pc(self, insn, nb_insn):
-        if current_arch.is_conditional_branch(insn):
-            is_taken, reason = current_arch.is_branch_taken(insn)
-            if is_taken:
-                reason = "[Reason: {:s}]".format(reason) if reason else ""
-                msg = Color.colorify("\tTAKEN {:s}".format(reason), "bold green")
-            else:
-                reason = "[Reason: !({:s})]".format(reason) if reason else ""
-                msg = Color.colorify("\tNOT taken {:s}".format(reason), "bold red")
-            return (is_taken, msg)
-
-        if current_arch.is_call(insn):
-            try:
-                target_address = int(insn.operands[-1].split()[0], 16)
-                msg = []
-                for i, new_insn in enumerate(capstone_disassemble(target_address, nb_insn)):
-                    msg.append("   {}  {}".format(DOWN_ARROW if i == 0 else " ", str(new_insn)))
-                return (True, "\n".join(msg))
-            except Exception:
-                pass
-
-        return (False, "")
 
 
 @register_command
@@ -15516,7 +15488,7 @@ class GlibcHeapChunksCommand(GenericCommand):
 
         while True:
             if current_chunk.chunk_base_address == arena.top:
-                gef_print("{} {} {}".format(str(current_chunk), LEFT_ARROW, Color.colorify("top", freelist_hint_color)))
+                gef_print("{!s} {} {}".format(current_chunk, LEFT_ARROW, Color.colorify("top", freelist_hint_color)))
                 break
             if current_chunk.chunk_base_address > arena.top:
                 err("Corrupted: chunk > top")
@@ -15668,7 +15640,7 @@ class GlibcHeapBinsCommand(GenericCommand):
                 break
             seen.append(chunk.address)
             try:
-                m.append("{:s}{:s}".format(RIGHT_ARROW, str(chunk)))
+                m.append("{:s}{!s}".format(RIGHT_ARROW, chunk))
             except gdb.MemoryError:
                 fmt = "{:s}{:#x} [Corrupted chunk]"
                 m.append(Color.colorify(fmt.format(RIGHT_ARROW, chunk.chunk_base_address), corrupted_msg_color))
@@ -15757,7 +15729,7 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
                 if chunk is None:
                     break
                 try:
-                    m.append("{:s}{:s}".format(RIGHT_ARROW, str(chunk)))
+                    m.append("{:s}{!s}".format(RIGHT_ARROW, chunk))
                     if chunk.address in chunks:
                         m.append(Color.colorify("{:s}{:#x} [loop detected]".format(RIGHT_ARROW, chunk.address), corrupted_msg_color))
                         break
@@ -15857,7 +15829,7 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
                     break
 
                 try:
-                    m.append("{:s}{:s}".format(RIGHT_ARROW, str(chunk)))
+                    m.append("{:s}{!s}".format(RIGHT_ARROW, chunk))
                     if chunk.address in chunks:
                         m.append(Color.colorify("{:s}{:#x} [loop detected]".format(RIGHT_ARROW, chunk.address), corrupted_msg_color))
                         break
@@ -17078,39 +17050,40 @@ class ArchInfoCommand(GenericCommand):
         gef_print("{:30s} {:s} {:s}".format("endian", RIGHT_ARROW, endian_str))
 
         gef_print(titlify("GDB mode"))
-        gef_print("{:30s} {:s} {:s}".format("is_normal_run()", RIGHT_ARROW, str(is_normal_run())))
-        gef_print("{:30s} {:s} {:s}".format("is_attach()", RIGHT_ARROW, str(is_attach())))
-        gef_print("{:30s} {:s} {:s}".format("is_remote_debug()", RIGHT_ARROW, str(is_remote_debug())))
-        gef_print("{:30s} {:s} {:s}".format("is_container_attach()", RIGHT_ARROW, str(is_container_attach())))
-        gef_print("{:30s} {:s} {:s}".format("is_qemu_system()", RIGHT_ARROW, str(is_qemu_system())))
-        gef_print("{:30s} {:s} {:s}".format("is_qemu_usermode()", RIGHT_ARROW, str(is_qemu_usermode())))
-        gef_print("{:30s} {:s} {:s}".format("is_pin()", RIGHT_ARROW, str(is_pin())))
-        gef_print("{:30s} {:s} {:s}".format("is_kgdb()", RIGHT_ARROW, str(is_kgdb())))
+        gef_print("{:30s} {:s} {!s}".format("is_normal_run()", RIGHT_ARROW, is_normal_run()))
+        gef_print("{:30s} {:s} {!s}".format("is_attach()", RIGHT_ARROW, is_attach()))
+        gef_print("{:30s} {:s} {!s}".format("is_remote_debug()", RIGHT_ARROW, is_remote_debug()))
+        gef_print("{:30s} {:s} {!s}".format("is_container_attach()", RIGHT_ARROW, is_container_attach()))
+        gef_print("{:30s} {:s} {!s}".format("is_qemu_system()", RIGHT_ARROW, is_qemu_system()))
+        gef_print("{:30s} {:s} {!s}".format("is_qemu_usermode()", RIGHT_ARROW, is_qemu_usermode()))
+        gef_print("{:30s} {:s} {!s}".format("is_pin()", RIGHT_ARROW, is_pin()))
+        gef_print("{:30s} {:s} {!s}".format("is_kgdb()", RIGHT_ARROW, is_kgdb()))
 
         gef_print(titlify("GEF settings"))
-        gef_print("{:30s} {:s} {:s}".format("current_arch.arch", RIGHT_ARROW, current_arch.arch))
-        gef_print("{:30s} {:s} {:s}".format("current_arch.mode", RIGHT_ARROW, current_arch.mode))
+        gef_print("{:30s} {:s} {!s}".format("current_arch.arch", RIGHT_ARROW, current_arch.arch))
+        gef_print("{:30s} {:s} {!s}".format("current_arch.mode", RIGHT_ARROW, current_arch.mode))
+        gef_print("{:30s} {:s} {!s}".format("current_arch.ptrsize", RIGHT_ARROW, current_arch.ptrsize))
         if current_arch.instruction_length is None:
             inst_len = "variable length"
         else:
             inst_len = str(current_arch.instruction_length)
-        gef_print("{:30s} {:s} {:s}".format("instruction length", RIGHT_ARROW, inst_len))
-        fparams = ', '.join(current_arch.function_parameters)
+        gef_print("{:30s} {:s} {!s}".format("instruction length", RIGHT_ARROW, inst_len))
+        fparams = ", ".join(current_arch.function_parameters)
         if len(current_arch.function_parameters) == 1:
             fparams += "(passing via stack)"
-        gef_print("{:30s} {:s} {:s}".format("return register", RIGHT_ARROW, current_arch.return_register))
-        gef_print("{:30s} {:s} {:s}".format("function parameters", RIGHT_ARROW, fparams))
-        gef_print("{:30s} {:s} {:s}".format("syscall register", RIGHT_ARROW, str(current_arch.syscall_register)))
+        gef_print("{:30s} {:s} {!s}".format("return register", RIGHT_ARROW, current_arch.return_register))
+        gef_print("{:30s} {:s} {!s}".format("function parameters", RIGHT_ARROW, fparams))
+        gef_print("{:30s} {:s} {!s}".format("syscall register", RIGHT_ARROW, current_arch.syscall_register))
         sparams = ', '.join(current_arch.syscall_parameters)
-        gef_print("{:30s} {:s} {:s}".format("syscall parameters", RIGHT_ARROW, sparams))
+        gef_print("{:30s} {:s} {!s}".format("syscall parameters", RIGHT_ARROW, sparams))
         if is_x86() or is_arm32() or is_arm64():
-            gef_print("{:30s} {:s} {:s}".format("32bit-emulated (compat mode)", RIGHT_ARROW, str(self.is_emulated32())))
-        gef_print("{:30s} {:s} {:s}".format("Has a call/jump delay slot", RIGHT_ARROW, str(current_arch.has_delay_slot)))
-        gef_print("{:30s} {:s} {:s}".format("Has a syscall delay slot", RIGHT_ARROW, str(current_arch.has_syscall_delay_slot)))
-        gef_print("{:30s} {:s} {:s}".format("Has a ret delay slot", RIGHT_ARROW, str(current_arch.has_ret_delay_slot)))
-        gef_print("{:30s} {:s} {:s}".format("keystone support", RIGHT_ARROW, str(current_arch.keystone_support)))
-        gef_print("{:30s} {:s} {:s}".format("capstone support", RIGHT_ARROW, str(current_arch.capstone_support)))
-        gef_print("{:30s} {:s} {:s}".format("unicorn support", RIGHT_ARROW, str(current_arch.unicorn_support)))
+            gef_print("{:30s} {:s} {!s}".format("32bit-emulated (compat mode)", RIGHT_ARROW, self.is_emulated32()))
+        gef_print("{:30s} {:s} {!s}".format("Has a call/jump delay slot", RIGHT_ARROW, current_arch.has_delay_slot))
+        gef_print("{:30s} {:s} {!s}".format("Has a syscall delay slot", RIGHT_ARROW, current_arch.has_syscall_delay_slot))
+        gef_print("{:30s} {:s} {!s}".format("Has a ret delay slot", RIGHT_ARROW, current_arch.has_ret_delay_slot))
+        gef_print("{:30s} {:s} {!s}".format("keystone support", RIGHT_ARROW, current_arch.keystone_support))
+        gef_print("{:30s} {:s} {!s}".format("capstone support", RIGHT_ARROW, current_arch.capstone_support))
+        gef_print("{:30s} {:s} {!s}".format("unicorn support", RIGHT_ARROW, current_arch.unicorn_support))
         return
 
 
@@ -17628,7 +17601,7 @@ class ElfInfoCommand(GenericCommand):
 
             data = read_remote_file(remote_filepath, as_byte=True) # qemu-user is failed here, it is ok
             if not data:
-                err("Failed to read remote filepath")
+                err("Failed to read remote filepath.")
                 return
             tmp_fd, tmp_filepath = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".elf", prefix="elf-info-")
             os.write(tmp_fd, data)
@@ -21990,7 +21963,7 @@ class PatchCommand(GenericCommand):
         history_info = {"addr": addr, "before_data": before_data, "after_data": after_data, "physmode": get_current_mmu_mode()}
         global __patch_history__
         __patch_history__.insert(0, history_info)
-        ok("Patching {:d} bytes from {:s}".format(length, str(lookup_address(addr))))
+        ok("Patching {:d} bytes from {!s}".format(length, lookup_address(addr)))
         return
 
     # for qword, dword, word, byte sub-commands
@@ -23170,7 +23143,7 @@ class VMMapCommand(GenericCommand):
         self.dont_repeat()
 
         if is_qemu_system():
-            info("Redirect to pagewalk")
+            info("Redirect to pagewalk (args are ignored)")
             gdb.execute("pagewalk")
             return
 
@@ -23376,7 +23349,7 @@ class XInfoCommand(GenericCommand):
             page_start = lookup_address(sect.page_start)
             page_end = lookup_address(sect.page_end)
             page_size = sect.page_end - sect.page_start
-            gef_print("Page: {:s} {:s} {:s} (size={:#x})".format(str(page_start), RIGHT_ARROW, str(page_end), page_size))
+            gef_print("Page: {!s} {:s} {!s} (size={:#x})".format(page_start, RIGHT_ARROW, page_end, page_size))
             gef_print("Permissions: {}".format(sect.permission))
             gef_print("Pathname: {:s}".format(sect.path))
             gef_print("Offset (from page): {:#x}".format(addr.value - sect.page_start))
@@ -23386,7 +23359,7 @@ class XInfoCommand(GenericCommand):
         if info:
             zone_start = lookup_address(info.zone_start)
             zone_end = lookup_address(info.zone_end)
-            gef_print("Segment: {:s} ({:s}-{:s})".format(info.name, str(zone_start), str(zone_end)))
+            gef_print("Segment: {:s} ({!s}-{!s})".format(info.name, zone_start, zone_end))
             gef_print("Offset (from segment): {:#x}".format(addr.value - info.zone_start))
 
         sym = gdb_get_location(address)
@@ -23956,7 +23929,7 @@ class LinkMapCommand(GenericCommand):
             info("link_map is 0.")
             return
 
-        info("link_map: {:s} [{:s}]".format(str(link_map), str(link_map.section.permission)))
+        info("link_map: {!s} [{!s}]".format(link_map, link_map.section.permission))
 
         current = link_map.value
         while True:
@@ -23979,11 +23952,11 @@ class LinkMapCommand(GenericCommand):
 
             width = get_format_address_width()
             colored_addr = Color.colorify("{:#0{:d}x}".format(addr, width), base_address_color)
-            gef_print("{:s}: {:s} {:s}  |  load_address, name".format(colored_addr, str(l_addr), str(l_name)))
+            gef_print("{:s}: {!s} {!s}  |  load_address, name".format(colored_addr, l_addr, l_name))
             colored_addr = Color.colorify("{:#0{:d}x}".format(addr + current_arch.ptrsize * 2, width), base_address_color)
-            gef_print("{:s}: {:s} {:s}  |  dynamic, next".format(colored_addr, str(l_ld), str(l_next)))
+            gef_print("{:s}: {!s} {!s}  |  dynamic, next".format(colored_addr, l_ld, l_next))
             colored_addr = Color.colorify("{:#0{:d}x}".format(addr + current_arch.ptrsize * 4, width), base_address_color)
-            gef_print("{:s}: {:s} {:{:d}s}  |  prev".format(colored_addr, str(l_prev), "", width))
+            gef_print("{:s}: {!s} {:{:d}s}  |  prev".format(colored_addr, l_prev, "", width))
 
             if l_next.value == 0:
                 break
@@ -24009,11 +23982,11 @@ class LinkMapCommand(GenericCommand):
                 val_addr = lookup_address(current - current_arch.ptrsize)
                 val_addr_offset = val_addr.value - dynamic.value
                 if not silent:
-                    info("_DYNAMIC+{:#x}(=DT_DEBUG): {:s} -> {:s}".format(val_addr_offset, str(val_addr), str(dt_debug)))
+                    info("_DYNAMIC+{:#x}(=DT_DEBUG): {!s} -> {!s}".format(val_addr_offset, val_addr, dt_debug))
                 link_map_ptr = lookup_address(dt_debug.value + current_arch.ptrsize)
                 link_map = lookup_address(read_int_from_memory(link_map_ptr.value))
                 if not silent:
-                    info("DT_DEBUG+{:#x}: {:s} -> {:s}".format(current_arch.ptrsize, str(link_map_ptr), str(link_map)))
+                    info("DT_DEBUG+{:#x}: {!s} -> {!s}".format(current_arch.ptrsize, link_map_ptr, link_map))
                 break
         return link_map
 
@@ -24203,8 +24176,7 @@ class DynamicCommand(GenericCommand):
             width = get_format_address_width()
             tag_description = self.DT_TABLE.get(tag, "Unknown")
             colored_addr = Color.colorify("{:#0{:d}x}".format(addr, width), base_address_color)
-            fmt = "{:s}: {:#0{:d}x} {:s}  |  tag:{:s}"
-            gef_print(fmt.format(colored_addr, tag, width, str(val), tag_description))
+            gef_print("{:s}: {:#0{:d}x} {!s}  |  tag:{:s}".format(colored_addr, tag, width, val, tag_description))
 
             if remain_size is not None and remain_size <= 0:
                 break
@@ -24237,7 +24209,7 @@ class DynamicCommand(GenericCommand):
 
         dynamic = lookup_address(dynamic)
         if not silent:
-            info("_DNYAMIC: {:s} [{:s}]".format(str(dynamic), str(dynamic.section.permission)))
+            info("_DNYAMIC: {!s} [{!s}]".format(dynamic, dynamic.section.permission))
         return dynamic
 
     @parse_args
@@ -24319,7 +24291,7 @@ class DestructorDumpCommand(GenericCommand):
         base_address_color = get_gef_setting("theme.dereference_base_address")
         a = Color.colorify("{:#0{:d}x}".format(addr, get_format_address_width()), base_address_color)
         try:
-            b = "[{:s}]".format(str(lookup_address(addr).section.permission))
+            b = "[{!s}]".format(lookup_address(addr).section.permission)
             return a + b
         except Exception:
             return a + "[???]"
@@ -24341,9 +24313,9 @@ class DestructorDumpCommand(GenericCommand):
         head = lookup_address(read_int_from_memory(head_p))
         current = head.value
         if head.section is None:
-            gef_print("{:s}: {:s}: {:s}".format("tls_dtor_list", self.C(head_p), str(head)))
+            gef_print("{:s}: {:s}: {!s}".format("tls_dtor_list", self.C(head_p), head))
         else:
-            gef_print("{:s}: {:s}: {:s}[{:s}]".format("tls_dtor_list", self.C(head_p), str(head), str(head.section.permission)))
+            gef_print("{:s}: {:s}: {!s}[{!s}]".format("tls_dtor_list", self.C(head_p), head, head.section.permission))
 
         ptrsize = current_arch.ptrsize
 
@@ -24370,14 +24342,14 @@ class DestructorDumpCommand(GenericCommand):
             else:
                 valid_msg = Color.colorify("invalid", "bold red")
 
-            fmt = "    -> func:     {:s}: {:s} (={:s}{:s}) [{:s}]"
-            gef_print(fmt.format(self.C(current), str(func), decoded_fn_s, sym, valid_msg))
-            fmt = "       obj:      {:s}: {:s}"
-            gef_print(fmt.format(self.C(current + ptrsize * 1), str(obj)))
-            fmt = "       link_map: {:s}: {:s}"
-            gef_print(fmt.format(self.C(current + ptrsize * 2), str(link_map)))
-            fmt = "       next:     {:s}: {:s}"
-            gef_print(fmt.format(self.C(current + ptrsize * 3), str(next)))
+            fmt = "    -> func:     {:s}: {!s} (={:s}{:s}) [{:s}]"
+            gef_print(fmt.format(self.C(current), func, decoded_fn_s, sym, valid_msg))
+            fmt = "       obj:      {:s}: {!s}"
+            gef_print(fmt.format(self.C(current + ptrsize * 1), obj))
+            fmt = "       link_map: {:s}: {!s}"
+            gef_print(fmt.format(self.C(current + ptrsize * 2), link_map))
+            fmt = "       next:     {:s}: {!s}"
+            gef_print(fmt.format(self.C(current + ptrsize * 3), next))
             current = next.value
         return
 
@@ -24391,9 +24363,9 @@ class DestructorDumpCommand(GenericCommand):
         head = lookup_address(read_int_from_memory(head_p))
         current = head.value
         if head.section is None:
-            gef_print("{:s}: {:s}: {:s}".format(name, self.C(head_p), str(head)))
+            gef_print("{:s}: {:s}: {!s}".format(name, self.C(head_p), head))
         else:
-            gef_print("{:s}: {:s}: {:s}[{:s}]".format(name, self.C(head_p), str(head), str(head.section.permission)))
+            gef_print("{:s}: {:s}: {!s}[{!s}]".format(name, self.C(head_p), head, head.section.permission))
         if current == 0:
             return
 
@@ -24406,8 +24378,8 @@ class DestructorDumpCommand(GenericCommand):
             err("Memory access error at {:#x}".format(current))
             return
         current += ptrsize * 2
-        gef_print("    -> next:     {:s}: {:s}".format(self.C(head.value + ptrsize * 0), str(next)))
-        gef_print("       idx:      {:s}: {:s}".format(self.C(head.value + ptrsize * 1), str(idx)))
+        gef_print("    -> next:     {:s}: {!s}".format(self.C(head.value + ptrsize * 0), next))
+        gef_print("       idx:      {:s}: {!s}".format(self.C(head.value + ptrsize * 1), idx))
 
         def read_fns(addr):
             flavor = lookup_address(read_int_from_memory(addr))
@@ -24438,10 +24410,10 @@ class DestructorDumpCommand(GenericCommand):
 
             fns = "       fns[{:#x}]: {:s}:".format(i, self.C(addr))
             width = len(fns) - 9
-            gef_print("{} flavor:     {:s}".format(fns, str(flavor)))
-            gef_print("{} func:       {:s} (={:s}{:s}) [{:s}]".format(" " * width, str(fn), decoded_fn_s, sym, valid_msg))
-            gef_print("{} arg:        {:s}".format(" " * width, str(arg)))
-            gef_print("{} dso_handle: {:s}".format(" " * width, str(dso_handle)))
+            gef_print("{} flavor:     {!s}".format(fns, flavor))
+            gef_print("{} func:       {!s} (={:s}{:s}) [{:s}]".format(" " * width, fn, decoded_fn_s, sym, valid_msg))
+            gef_print("{} arg:        {!s}".format(" " * width, arg))
+            gef_print("{} dso_handle: {!s}".format(" " * width, dso_handle))
         return
 
     def yield_link_map(self):
@@ -24749,7 +24721,7 @@ class GotCommand(GenericCommand):
 
     def perm(self, addr):
         try:
-            return "[{:s}]".format(str(lookup_address(addr).section.permission))
+            return "[{!s}]".format(lookup_address(addr).section.permission)
         except Exception:
             return "[???]"
 
@@ -24875,13 +24847,13 @@ class GotCommand(GenericCommand):
                 if plt_address:
                     plt_section = self.get_section_name(plt_address) + self.perm(plt_address)
                     plt_address = lookup_address(plt_address)
-                    plt_info = "{:s} @{:13s} {:#8x} {:9s}".format(str(plt_address), plt_section, plt_offset, reloc_arg_info)
+                    plt_info = "{!s} @{:13s} {:#8x} {:9s}".format(plt_address, plt_section, plt_offset, reloc_arg_info)
                 else:
                     plt_info = "{:{:d}s}  {:13s} {:>8s} {:9s}".format("Not found", width, "", "", reloc_arg_info)
             else:
                 if plt_address:
                     plt_address = lookup_address(plt_address)
-                    plt_info = "{:s}".format(str(plt_address))
+                    plt_info = "{!s}".format(plt_address)
                 else:
                     plt_info = "{:{:d}s}".format("Not found", width)
 
@@ -24889,10 +24861,10 @@ class GotCommand(GenericCommand):
             if self.verbose:
                 got_section = self.get_section_name(got_address) + self.perm(got_address)
                 got_address = lookup_address(got_address)
-                got_info = "{:s} @{:13s} {:#8x}".format(str(got_address), got_section, got_offset)
+                got_info = "{!s} @{:13s} {:#8x}".format(got_address, got_section, got_offset)
             else:
                 got_address = lookup_address(got_address)
-                got_info = "{:s}".format(str(got_address))
+                got_info = "{!s}".format(got_address)
             got_value_info = Color.colorify("{:#0{:d}x}{:s}".format(got_value, width, got_value_sym), color)
 
             # make line
@@ -37494,13 +37466,13 @@ class MagicCommand(GenericCommand):
             perm = addr.section.permission
             if is_ascii_string(addr.value):
                 val = read_ascii_string(addr.value)
-                fmt = "{:42s} {:s} [{:3s}] (+{:#010x}) -> {:s}"
-                gef_print(fmt.format(sym, str(addr), str(perm), addr.value - base, val))
+                fmt = "{:42s} {!s} [{!s}] (+{:#010x}) -> {:s}"
+                gef_print(fmt.format(sym, addr, perm, addr.value - base, val))
             else:
                 val = lookup_address(read_int_from_memory(addr.value))
                 val_sym = get_symbol_string(val.value)
-                fmt = "{:42s} {:s} [{:3s}] (+{:#010x}) -> {:s}{:s}"
-                gef_print(fmt.format(sym, str(addr), str(perm), addr.value - base, val.long_fmt(), val_sym))
+                fmt = "{:42s} {!s} [{!s}] (+{:#010x}) -> {:s}{:s}"
+                gef_print(fmt.format(sym, addr, perm, addr.value - base, val.long_fmt(), val_sym))
         except Exception:
             gef_print("{:42s} {:>{:d}s}".format(sym, "Not found", width))
         return
@@ -38857,7 +38829,7 @@ class FindFakeFastCommand(GenericCommand):
     def print_result(self, m, pos, size_candidate):
         path = "unknown" if m.path == "" else m.path
         address = lookup_address(m.page_start + pos)
-        info("Found at {:s} in {:s} [{:s}]".format(str(address), repr(path), str(m.permission)))
+        info("Found at {!s} in {!r} [{!s}]".format(address, path, m.permission))
 
         if is_32bit():
             res = gdb.execute("x/6xw {:#x}".format(address.value), to_string=True)
@@ -39318,7 +39290,7 @@ class TransCommand(GenericCommand):
             for i in range(0x100):
                 xored = b"".join(bytes([x ^ i]) for x in value)
                 added = b"".join(bytes([(x + i) & 0xff]) for x in value)
-                self.out.append("xor/add-{:02X}:    {:{:d}s} {:{:d}s}".format(i, str(xored), ln, str(added), ln))
+                self.out.append("xor/add-{:02X}:    {!s:{:d}} {!s:{:d}}".format(i, xored, ln, added, ln))
 
             self.out.append(titlify("unhex - caesar"))
             for i in range(26):
@@ -39333,7 +39305,7 @@ class TransCommand(GenericCommand):
                         if x > ord('z'):
                             x -= ord('z')
                     slided.append(x)
-                self.out.append("caesar-{:02d}:    {}".format(i, bytes(slided)))
+                self.out.append("caesar-{:02d}:     {}".format(i, bytes(slided)))
         except binascii.Error:
             pass
 
@@ -39359,7 +39331,7 @@ class TransCommand(GenericCommand):
                         if x > ord('z'):
                             x -= ord('z')
                     slided.append(x)
-                self.out.append("caesar-{:02d}:    {}".format(i, bytes(slided)))
+                self.out.append("caesar-{:02d}:     {}".format(i, bytes(slided)))
         except ValueError:
             pass
 
@@ -51427,7 +51399,7 @@ class PartitionAllocDumpCommand(GenericCommand):
             while current:
                 extent, _ = self.read_extent(current)
                 self.out.append("    -> extent @{:s}".format(self.C(extent.addr)))
-                self.out.append("           root:{:s} ".format(str(lookup_address(extent.root))))
+                self.out.append("           root:{!s} ".format(lookup_address(extent.root)))
                 super_page_info = "{:s} - {:s}".format(self.P(extent.super_page_base), self.P(extent.super_page_end))
                 page_info = "(total 0x200000(2MB) * {:d} pages)".format(extent.number_of_consecutive_super_pages)
                 self.out.append("           super_page:{:s} {:s}".format(super_page_info, page_info))
@@ -51471,9 +51443,9 @@ class PartitionAllocDumpCommand(GenericCommand):
 
         slot_size = Color.colorify("{:#7x}".format(bucket.slot_size), chunk_size_color)
         if idx is not None:
-            self.out.append("    buckets[{:3d}](slot_size:{:s}) @{:s}".format(idx, slot_size, str(lookup_address(bucket.addr))))
+            self.out.append("    buckets[{:3d}](slot_size:{:s}) @{!s}".format(idx, slot_size, lookup_address(bucket.addr)))
         else:
-            self.out.append("    bucket(slot_size:{:s}) @{:s}".format(slot_size, str(lookup_address(bucket.addr))))
+            self.out.append("    bucket(slot_size:{:s}) @{!s}".format(slot_size, lookup_address(bucket.addr)))
         self.out.append("        num_system_pages_per_slot_span:{:#x} ".format(bucket.num_system_pages_per_slot_span))
         self.out.append("        num_full_slot_spans:{:#x} ".format(bucket.num_full_slot_spans))
         self.out.append("        slot_size_reciprocal:{:#x}".format(bucket.slot_size_reciprocal))
@@ -51851,14 +51823,14 @@ class MuslHeapDumpCommand(GenericCommand):
             self.out.append("  size_t pagesize:                    {:#x}".format(ctx.pagesize))
         self.out.append("  int init_done:                      {:#x}".format(ctx.init_done))
         self.out.append("  unsigned int mmap_counter:          {:#x}".format(ctx.mmap_counter))
-        self.out.append("  struct meta* free_meta_head:        {:s}".format(str(lookup_address(ctx.free_meta_head))))
-        self.out.append("  struct meta* avail_meta:            {:s}".format(str(lookup_address(ctx.avail_meta))))
+        self.out.append("  struct meta* free_meta_head:        {!s}".format(lookup_address(ctx.free_meta_head)))
+        self.out.append("  struct meta* avail_meta:            {!s}".format(lookup_address(ctx.avail_meta)))
         self.out.append("  size_t avail_meta_count:            {:#x}".format(ctx.avail_meta_count))
         self.out.append("  size_t avail_meta_area_count:       {:#x}".format(ctx.avail_meta_area_count))
         self.out.append("  size_t alloc_shift:                 {:#x}".format(ctx.alloc_shift))
-        self.out.append("  struct meta_area* meta_area_head:   {:s}".format(str(lookup_address(ctx.meta_area_head))))
-        self.out.append("  struct meta_area* meta_area_tail:   {:s}".format(str(lookup_address(ctx.meta_area_tail))))
-        self.out.append("  unsigned char* avail_meta_areas:    {:s}".format(str(lookup_address(ctx.avail_meta_areas))))
+        self.out.append("  struct meta_area* meta_area_head:   {!s}".format(lookup_address(ctx.meta_area_head)))
+        self.out.append("  struct meta_area* meta_area_tail:   {!s}".format(lookup_address(ctx.meta_area_tail)))
+        self.out.append("  unsigned char* avail_meta_areas:    {!s}".format(lookup_address(ctx.avail_meta_areas)))
         self.out.append("  struct meta* active[48]:")
         for i in range(48):
             self.out.append("     active[{:2d}] (for chunk_size={:#7x}):     {:#x}".format(i, self.class_to_size(i), ctx.active[i]))
@@ -51868,7 +51840,7 @@ class MuslHeapDumpCommand(GenericCommand):
         self.out.append("  uint8_t unmap_seq[32]:              {}".format(' '.join(["%02x" % x for x in ctx.unmap_seq])))
         self.out.append("  uint8_t bounces[32]:                {}".format(' '.join(["%02x" % x for x in ctx.bounces])))
         self.out.append("  uint8_t seq:                        {:#x}".format(ctx.seq))
-        self.out.append("  uintptr_t brk:                      {:s}".format(str(lookup_address(ctx.brk))))
+        self.out.append("  uintptr_t brk:                      {!s}".format(lookup_address(ctx.brk)))
         return
 
     def read_meta(self, addr):
@@ -52529,8 +52501,8 @@ class UclibcNgHeapDumpCommand(GenericCommand):
     def dump_malloc_state(self, malloc_state):
         chunk_size_color = get_gef_setting("theme.heap_chunk_size")
 
-        self.verbose_print("malloc_state: {:s}".format(str(lookup_address(malloc_state.address))))
-        max_fast_flags = '|'.join(malloc_state.max_fast_flags)
+        self.verbose_print("malloc_state: {!s}".format(lookup_address(malloc_state.address)))
+        max_fast_flags = "|".join(malloc_state.max_fast_flags)
         self.verbose_print("max_fast:            {:#x} ({:s})".format(malloc_state.max_fast, max_fast_flags))
 
         self.out.append(titlify("fastbins"))
@@ -52554,8 +52526,8 @@ class UclibcNgHeapDumpCommand(GenericCommand):
                     self.out.append(" -> {}".format(chunk))
                     n = chunk.get_fwd_ptr(True)
 
-        self.verbose_print("top:                 {:s}".format(str(lookup_address(malloc_state.top))))
-        self.verbose_print("last_remainder:      {:s}".format(str(lookup_address(malloc_state.last_remainder))))
+        self.verbose_print("top:                 {!s}".format(lookup_address(malloc_state.top)))
+        self.verbose_print("last_remainder:      {!s}".format(lookup_address(malloc_state.last_remainder)))
 
         self.out.append(titlify("smallbins / unsortedbin"))
         for i in range(len(malloc_state.smallbins)):
@@ -60832,7 +60804,7 @@ class WalkLinkListCommand(GenericCommand):
                 dump = hexdump(source, base=current, unit=current_arch.ptrsize)
                 for line in dump.splitlines():
                     self.out.append(indent + line)
-            self.out.append("[{:d}] -> {:s}".format(idx, str(lookup_address(flink))))
+            self.out.append("[{:d}] -> {!s}".format(idx, lookup_address(flink)))
             if flink == 0:
                 break
             if flink == head:
@@ -61401,10 +61373,10 @@ class GefCommand(gdb.Command):
                                 gdb.execute("source {:s}".format(fpath))
             nb_added = len(self.loaded_commands) - nb_inital
             if nb_added > 0:
-                ok("{:s} extra commands added from '{:s}'".format(Color.colorify(nb_added, "bold green"),
-                                                                  Color.colorify(directories, "bold blue")))
+                fmt = "{:s} extra commands added from '{:s}'"
+                ok(fmt.format(Color.colorify(nb_added, "bold green"), Color.colorify(directories, "bold blue")))
         except gdb.error as e:
-            err("failed: {}".format(str(e)))
+            err("failed: {!s}".format(e))
         return nb_added
 
     @property
