@@ -18084,7 +18084,7 @@ class KernelChecksecCommand(GenericCommand):
             gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unsupported", "bold red")))
 
         if is_x86_64():
-            # FGKASLR
+            # FGKASLR (https://github.com/alobakin/linux/pull/3)
             cfg = "CONFIG_FG_KASLR (FGKASLR)"
             swapgs_restore_regs_and_return_to_usermode = get_ksymaddr("swapgs_restore_regs_and_return_to_usermode")
             commit_creds = get_ksymaddr("commit_creds")
