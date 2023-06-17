@@ -60872,127 +60872,116 @@ class AddSymbolTemporaryCommand(GenericCommand):
     _category_ = "01-g. Debugging Support - Other"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('function_name', metavar='FUNCTION_NAME', help='new symbol you want to add.')
-    parser.add_argument('function_addr', metavar='ADDRESS', type=parse_address, help="new symbol's address you want to add.")
+    parser.add_argument('function_name', metavar='FUNCTION_NAME', help='new symbol name you want to add.')
+    parser.add_argument('function_start', metavar='START_ADDR', type=parse_address,
+                        help="start address you want to add a symbol.")
+    parser.add_argument('function_end', metavar='END_ADDR', type=parse_address, nargs='?',
+                        help="end address you want to add a symbol.")
     parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
     _syntax_ = parser.format_help()
 
     @staticmethod
-    def add_symbol_temp(function_info, quiet=False):
+    def create_blank_elf(text_base, text_end):
         try:
             gcc = which("gcc")
             objcopy = which("objcopy")
         except FileNotFoundError as e:
             err("{}".format(e))
-            return
+            return None
 
-        cache = {}
+        # create light ELF
+        fd, fname = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".c")
+        blank_elf = fname + ".elf"
+        os.fdopen(fd, "w").write("int main() {}")
+        os.system(f"{gcc} '{fname}' -no-pie -o '{blank_elf}'")
+        os.unlink(f"{fname}")
+        # delete unneeded section for faster
+        os.system(f"{objcopy} --only-keep-debug '{blank_elf}'")
+        os.system(f"{objcopy} --strip-all '{blank_elf}'")
+        elf = get_elf_headers(blank_elf)
+        for s in elf.shdrs:
+            section_name = s.sh_name
+            if section_name == "": # null, skip
+                continue
+            if section_name == ".text": # .text is needed, don't remove
+                continue
+            if section_name == ".interp": # broken if remove
+                continue
+            if section_name == ".rela.dyn": # cannot remove
+                continue
+            if section_name == ".dynamic": # cannot remove
+                continue
+            if section_name == ".bss": # broken if remove
+                continue
+            os.system(f"{objcopy} --remove-section='{section_name}' '{blank_elf}' 2>/dev/null")
 
-        def create_blank_elf(text_base):
-            if cache:
-                open(cache["fname"], "wb").write(cache["data"])
-                return cache["fname"]
-            # create light ELF
-            fd, fname = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".c")
-            os.fdopen(fd, "w").write("int main() {}")
-            os.system(f"{gcc} '{fname}' -no-pie -o '{fname}.debug'")
-            os.unlink(f"{fname}")
-            # delete unneeded section for faster
-            os.system(f"{objcopy} --only-keep-debug '{fname}.debug'")
-            os.system(f"{objcopy} --strip-all '{fname}.debug'")
-            elf = get_elf_headers(f"{fname}.debug")
-            for s in elf.shdrs:
-                section_name = s.sh_name
-                if section_name == "": # null, skip
-                    continue
-                if section_name == ".text": # .text is needed, don't remove
-                    continue
-                if section_name == ".interp": # broken if removed
-                    continue
-                if section_name == ".rela.dyn": # cannot removed
-                    continue
-                if section_name == ".dynamic": # cannot removed
-                    continue
-                if section_name == ".bss": # broken if removed
-                    continue
-                os.system(f"{objcopy} --remove-section='{section_name}' '{fname}.debug' 2>/dev/null")
-            cache["fname"] = fname + ".debug"
-            cache["data"] = open(cache["fname"], "rb").read()
-            return cache["fname"]
+        # fix .text base address
+        os.system(f"{objcopy} --change-section-address .text={text_base:#x} '{blank_elf}' 2>/dev/null")
 
-        def apply_symbol(fname, cmd_string_arr, text_base):
-            cmd_string = ' '.join(cmd_string_arr)
-            os.system(f"{objcopy} {cmd_string} '{fname}'")
-            gdb.execute(f"add-symbol-file {fname} {text_base:#x}", to_string=True)
-            os.unlink(fname)
-            return
-
-        if not quiet:
-            info("{:d} entries will be added".format(len(function_info)))
-
-        if is_64bit():
-            text_base = 0xffff000000000000
+        # fix .text section size (objcopy doesn't support it, so fix it manually)
+        data = open(blank_elf, "rb").read()
+        new_size = text_end - text_base
+        if elf.e_class == Elf.ELF_64_BITS:
+            seq_to_find = p64(text_base)
+            target_offset = data.rfind(seq_to_find) + 0x10
+            seq_to_write = p64(new_size)
         else:
-            text_base = 0x80000000
-
-        cmd_string_arr = []
-        fname = create_blank_elf(text_base)
-        for i, (fn, fa, typ) in enumerate(function_info):
-            # debug print
-            if i > 1 and i % 10000 == 0:
-                if not quiet:
-                    info("{:d} entries were processed".format(i))
-
-            if typ in ["T", "t", "W", None]:
-                type_flag = "function"
-            else:
-                type_flag = "object"
-            if typ and typ in "abcdefghijklmnopqrstuvwxyz":
-                global_flag = "local"
-            else:
-                global_flag = "global"
-
-            if fa < text_base:
-                # lower address needs not relative, use absolute
-                cmd_string_arr.append(f"--add-symbol '{fn}'={fa:#x},{global_flag},{type_flag}")
-            else:
-                # higher address needs relative
-                relative_addr = fa - text_base
-                cmd_string_arr.append(f"--add-symbol '{fn}'=.text:{relative_addr:#x},{global_flag},{type_flag}")
-
-            if i > 1 and i % 1000 == 0:
-                # too long, so let's commit
-                apply_symbol(fname, cmd_string_arr, text_base)
-                # re-init
-                fname = create_blank_elf(text_base)
-                cmd_string_arr = []
-
-        # commit remain
-        if cmd_string_arr:
-            apply_symbol(fname, cmd_string_arr, text_base)
-
-        if not quiet:
-            info("{:d} entries were processed".format(i + 1))
-        return
+            if text_base > 0xffffffff:
+                err("Unsupported adding 64 bit guest symbols when you use 32 bit host.")
+                return None
+            seq_to_find = p32(text_base)
+            target_offset = data.rfind(seq_to_find) + 0x8
+            seq_to_write = p32(new_size)
+        data = data[:target_offset] + seq_to_write + data[target_offset + len(seq_to_write):]
+        open(blank_elf, "wb").write(data)
+        return blank_elf
 
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
         self.dont_repeat()
 
-        if is_32bit() and args.function_addr > 0xffffffff:
-            if not args.quiet:
-                err("function address must be 0xffffffff or less")
-            return
-        if is_64bit() and args.function_addr > 0xffffffffffffffff:
-            if not args.quiet:
-                err("function address must be 0xffffffffffffffff or less")
+        # check address validity
+        if is_32bit():
+            if args.function_start > 0xffffffff:
+                if not args.quiet:
+                    err("function start address must be 0xffffffff or less")
+                return
+            if args.function_end is not None and args.function_end > 0xffffffff:
+                if not args.quiet:
+                    err("function end address must be 0xffffffff or less")
+                return
+        elif is_64bit():
+            if args.function_start > 0xffffffffffffffff:
+                if not args.quiet:
+                    err("function start address must be 0xffffffffffffffff or less")
+                return
+            if args.function_end is not None and args.function_start > 0xffffffffffffffff:
+                if not args.quiet:
+                    err("function end address must be 0xffffffffffffffff or less")
+                return
+
+        # make blank elf
+        text_base = args.function_start & ~0xfff
+        sym_elf = self.create_blank_elf(text_base, args.function_end or args.function_start + 1)
+        if sym_elf is None:
+            err("Failed to create blank elf")
             return
 
-        function_info = []
-        typ = None
-        function_info.append((args.function_name, args.function_addr, typ))
-        self.add_symbol_temp(function_info, args.quiet)
+        if not args.quiet:
+            info("1 entries will be added")
+
+        # embedding symbols
+        objcopy = which("objcopy")
+        relative_addr = args.function_start - text_base
+        os.system(f"{objcopy} --add-symbol '{args.function_name}'=.text:{relative_addr:#x},global,function '{sym_elf}' 2>/dev/null")
+
+        if not args.quiet:
+            info("1 entries were processed")
+
+        # add symbol to gdb
+        gdb.execute(f"add-symbol-file {sym_elf} {text_base:#x}", to_string=True)
+        os.unlink(sym_elf)
         return
 
 
@@ -61001,6 +60990,7 @@ class KsymaddrRemoteApplyCommand(GenericCommand):
     """Apply symbol from kallsyms in memory."""
     _cmdline_ = "ksymaddr-remote-apply"
     _category_ = "08-b. Qemu-system Cooperation - Linux"
+    _aliases_ = ["ks-apply"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
@@ -61015,22 +61005,65 @@ class KsymaddrRemoteApplyCommand(GenericCommand):
 
         if not args.quiet:
             info("Wait for memory scan")
+
+        # get .kernel range
+        text_base = get_ksymaddr("_stext")
+        if text_base is None:
+            err("Failed to get kernel base (_stext)")
+            return
         res = gdb.execute("ksymaddr-remote --quiet --no-pager", to_string=True)
-        function_info = []
-        for entry in res.splitlines():
-            r = re.findall(r"(0x\w+) (\w) (\w+)", entry)
-            if not r:
+        text_end = int(res.splitlines()[-1].split()[0], 16)
+
+        # make blank elf
+        sym_elf = AddSymbolTemporaryCommand.create_blank_elf(text_base, text_end)
+        if sym_elf is None:
+            err("Failed to create blank elf")
+            return
+
+        # parse kernel symbol
+        cmd_string_arr = []
+        for line in res.splitlines():
+            addr, typ, func_name = line.split()
+            addr = int(addr, 16)
+
+            if addr < text_base:
+                # lower address is percpu-relative. It is meaningless to import the address, so it is skipped.
                 continue
-            addr = int(r[0][0], 16)
-            typ = r[0][1]
-            func_name = r[0][2]
-            if addr == 0:
-                continue
-            function_info.append((func_name, addr, typ))
-        if len(function_info) > 0:
-            AddSymbolTemporaryCommand.add_symbol_temp(function_info, quiet=args.quiet)
-            if not args.quiet:
-                info("Done. Try `p FUNCTION_NAME`")
+
+            if typ in ["T", "t", "W", None]:
+                type_flag = "function"
+            else:
+                type_flag = "object"
+            if typ and typ in "abcdefghijklmnopqrstuvwxyz":
+                global_flag = "local"
+            else:
+                global_flag = "global"
+
+            # higher address needs relative
+            relative_addr = addr - text_base
+            cmd_string_arr.append(f"--add-symbol '{func_name}'=.text:{relative_addr:#x},{global_flag},{type_flag}")
+
+        if not args.quiet:
+            info("{:d} entries will be added".format(len(cmd_string_arr)))
+
+        # embedding symbols
+        objcopy = which("objcopy")
+        processed_count = 0
+        for cmd_string_arr_sliced in slicer(cmd_string_arr, 1000):
+            cmd_string = " ".join(cmd_string_arr_sliced)
+            os.system(f"{objcopy} {cmd_string} '{sym_elf}'")
+            processed_count += len(cmd_string_arr_sliced)
+
+            # debug print
+            if not args.quiet and processed_count and processed_count % 10000 == 0:
+                info("{:d} entries were processed".format(processed_count))
+
+        # add symbol to gdb
+        gdb.execute(f"add-symbol-file {sym_elf} {text_base:#x}", to_string=True)
+        os.unlink(sym_elf)
+
+        if not args.quiet:
+            info("{:d} entries were processed".format(len(cmd_string_arr)))
         return
 
 
