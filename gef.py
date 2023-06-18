@@ -13304,8 +13304,10 @@ class EditFlagsCommand(GenericCommand):
     _category_ = "04-b. Register - Modify"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('flagname', metavar='[FLAGNAME(+|-|~) ...]', nargs="*", help='the flag name you want to edit..')
-    parser.add_argument('-v', dest='verbose', action='store_true', help='show the bit informations of the flag register.')
+    parser.add_argument('flagname', metavar='[FLAGNAME(+|-|~) ...]', nargs="*",
+                        help='the flag name you want to edit..')
+    parser.add_argument('-v', dest='verbose', action='store_true',
+                        help='show the bit informations of the flag register.')
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}            # show the flag register\n".format(_cmdline_)
@@ -13409,32 +13411,35 @@ class EditFlagsCommand(GenericCommand):
                 color = ""
             return Color.colorify(msg, color)
 
-        gef_print(" " * 14 + "|| |||| |||| |||| |||| |||+- " + c("0x000001 [CF]   Carry flag"))
-        gef_print(" " * 14 + "|| |||| |||| |||| |||| ||+-- " + c("0x000002        Reserved (always 1)"))
-        gef_print(" " * 14 + "|| |||| |||| |||| |||| |+--- " + c("0x000004 [PF]   Parity flag"))
-        gef_print(" " * 14 + "|| |||| |||| |||| |||| +---- " + c("0x000008        Reserved (always 0)"))
-        gef_print(" " * 14 + "|| |||| |||| |||| ||||")
-        gef_print(" " * 14 + "|| |||| |||| |||| |||+------ " + c("0x000010 [AF]   Adjust flag (for BCD calc)"))
-        gef_print(" " * 14 + "|| |||| |||| |||| ||+------- " + c("0x000020        Reserved (always 0)"))
-        gef_print(" " * 14 + "|| |||| |||| |||| |+-------- " + c("0x000040 [ZF]   Zero flag"))
-        gef_print(" " * 14 + "|| |||| |||| |||| +--------- " + c("0x000080 [SF]   Sign flag"))
-        gef_print(" " * 14 + "|| |||| |||| ||||")
-        gef_print(" " * 14 + "|| |||| |||| |||+----------- " + c("0x000100 [TF]   Trap flag (single step)"))
-        gef_print(" " * 14 + "|| |||| |||| ||+------------ " + c("0x000200 [IF]   Interrupt enable flag"))
-        gef_print(" " * 14 + "|| |||| |||| |+------------- " + c("0x000400 [DF]   Direction flag"))
-        gef_print(" " * 14 + "|| |||| |||| +-------------- " + c("0x000800 [OF]   Overflow flag"))
-        gef_print(" " * 14 + "|| |||| ||||")
-        gef_print(" " * 14 + "|| |||| ||++---------------- " + c("0x003000 [IOPL] I/O privilege level (2bit)"))
-        gef_print(" " * 14 + "|| |||| |+------------------ " + c("0x004000 [NT]   Nested task flag"))
-        gef_print(" " * 14 + "|| |||| +------------------- " + c("0x008000        Reserved (always 0)"))
-        gef_print(" " * 14 + "|| ||||")
-        gef_print(" " * 14 + "|| |||+--------------------- " + c("0x010000 [RF]   Resume flag"))
-        gef_print(" " * 14 + "|| ||+---------------------- " + c("0x020000 [VM]   Virtual 8086 mode flag"))
-        gef_print(" " * 14 + "|| |+----------------------- " + c("0x040000 [AC]   Alignment check flag"))
-        gef_print(" " * 14 + "|| +------------------------ " + c("0x080000 [VIF]  Virtual interrupt flag"))
-        gef_print(" " * 14 + "||")
-        gef_print(" " * 14 + "|+-------------------------- " + c("0x100000 [VIP]  Virtual interrupt pending"))
-        gef_print(" " * 14 + "+--------------------------- " + c("0x200000 [ID]   Able to use CPUID instruction"))
+        elements = [
+            "|| |||| |||| |||| |||| |||+- " + c("0x000001 [CF]   Carry flag"),
+            "|| |||| |||| |||| |||| ||+-- " + c("0x000002        Reserved (always 1)"),
+            "|| |||| |||| |||| |||| |+--- " + c("0x000004 [PF]   Parity flag"),
+            "|| |||| |||| |||| |||| +---- " + c("0x000008        Reserved (always 0)"),
+            "|| |||| |||| |||| ||||",
+            "|| |||| |||| |||| |||+------ " + c("0x000010 [AF]   Adjust flag (for BCD calc)"),
+            "|| |||| |||| |||| ||+------- " + c("0x000020        Reserved (always 0)"),
+            "|| |||| |||| |||| |+-------- " + c("0x000040 [ZF]   Zero flag"),
+            "|| |||| |||| |||| +--------- " + c("0x000080 [SF]   Sign flag"),
+            "|| |||| |||| ||||",
+            "|| |||| |||| |||+----------- " + c("0x000100 [TF]   Trap flag (single step)"),
+            "|| |||| |||| ||+------------ " + c("0x000200 [IF]   Interrupt enable flag"),
+            "|| |||| |||| |+------------- " + c("0x000400 [DF]   Direction flag"),
+            "|| |||| |||| +-------------- " + c("0x000800 [OF]   Overflow flag"),
+            "|| |||| ||||",
+            "|| |||| ||++---------------- " + c("0x003000 [IOPL] I/O privilege level (2bit)"),
+            "|| |||| |+------------------ " + c("0x004000 [NT]   Nested task flag"),
+            "|| |||| +------------------- " + c("0x008000        Reserved (always 0)"),
+            "|| ||||",
+            "|| |||+--------------------- " + c("0x010000 [RF]   Resume flag"),
+            "|| ||+---------------------- " + c("0x020000 [VM]   Virtual 8086 mode flag"),
+            "|| |+----------------------- " + c("0x040000 [AC]   Alignment check flag"),
+            "|| +------------------------ " + c("0x080000 [VIF]  Virtual interrupt flag"),
+            "||",
+            "|+-------------------------- " + c("0x100000 [VIP]  Virtual interrupt pending"),
+            "+--------------------------- " + c("0x200000 [ID]   Able to use CPUID instruction"),
+        ]
+        gef_print("\n".join([" " * 14 + e for e in elements]))
         return
 
     def verbose_arm32(self):
@@ -13449,30 +13454,33 @@ class EditFlagsCommand(GenericCommand):
                 color = ""
             return Color.colorify(msg, color)
 
-        gef_print("  |||| |||| |||| |||| |||| |||| |||+-++++- " + c("0x0000001f [M]  Mode field (5bit)"))
-        gef_print("  |||| |||| |||| |||| |||| |||| |||        " + "  User:0b10000 FIQ:0b10001 IRQ:0b10010")
-        gef_print("  |||| |||| |||| |||| |||| |||| |||        " + "  Supervisor:0b10011 Monitor:0b10110 Abort:0b10111")
-        gef_print("  |||| |||| |||| |||| |||| |||| |||        " + "  Hyp:0b11010 Undefined:0b11011 System:0b11111")
-        gef_print("  |||| |||| |||| |||| |||| |||| |||")
-        gef_print("  |||| |||| |||| |||| |||| |||| ||+------- " + c("0x00000020 [T]  Thumb execution state bit"))
-        gef_print("  |||| |||| |||| |||| |||| |||| |+-------- " + c("0x00000040 [F]  FIQ mask bit"))
-        gef_print("  |||| |||| |||| |||| |||| |||| +--------- " + c("0x00000080 [I]  IRQ mask bit"))
-        gef_print("  |||| |||| |||| |||| |||| ||||")
-        gef_print("  |||| |||| |||| |||| |||| |||+----------- " + c("0x00000100 [A]  Asynchronous abort mask bit"))
-        gef_print("  |||| |||| |||| |||| |||| ||+------------ " + c("0x00000200 [E]  Endianness execution state bit"))
-        gef_print("  |||| |++------------++++-++------------- " + c("0x0600fc00 [IT] If-Then execution state bits for Thumb IT instruction"))
-        gef_print("  |||| |  | |||| ||||")
-        gef_print("  |||| |  | |||| ++++--------------------- " + c("0x000f0000 [GE] Greater than or Equal flags for SIMD instruction"))
-        gef_print("  |||| |  | ||||")
-        gef_print("  |||| |  | ++++-------------------------- " + c("0x00f00000      Reserved"))
-        gef_print("  |||| |  |")
-        gef_print("  |||| |  +------------------------------- " + c("0x01000000 [J]  Jazelle bit"))
-        gef_print("  |||| +---------------------------------- " + c("0x08000000 [Q]  Cumulative saturation bit"))
-        gef_print("  ||||")
-        gef_print("  |||+------------------------------------ " + c("0x10000000 [V]  Overflow condition flag"))
-        gef_print("  ||+------------------------------------- " + c("0x20000000 [C]  Carry condition flag"))
-        gef_print("  |+-------------------------------------- " + c("0x40000000 [Z]  Zero condition flag"))
-        gef_print("  +--------------------------------------- " + c("0x80000000 [N]  Negative condition flag"))
+        elements = [
+            "|||| |||| |||| |||| |||| |||| |||+-++++- " + c("0x0000001f [M]  Mode field (5bit)"),
+            "|||| |||| |||| |||| |||| |||| |||        " + "  User:0b10000 FIQ:0b10001 IRQ:0b10010",
+            "|||| |||| |||| |||| |||| |||| |||        " + "  Supervisor:0b10011 Monitor:0b10110 Abort:0b10111",
+            "|||| |||| |||| |||| |||| |||| |||        " + "  Hyp:0b11010 Undefined:0b11011 System:0b11111",
+            "|||| |||| |||| |||| |||| |||| |||",
+            "|||| |||| |||| |||| |||| |||| ||+------- " + c("0x00000020 [T]  Thumb execution state bit"),
+            "|||| |||| |||| |||| |||| |||| |+-------- " + c("0x00000040 [F]  FIQ mask bit"),
+            "|||| |||| |||| |||| |||| |||| +--------- " + c("0x00000080 [I]  IRQ mask bit"),
+            "|||| |||| |||| |||| |||| ||||",
+            "|||| |||| |||| |||| |||| |||+----------- " + c("0x00000100 [A]  Asynchronous abort mask bit"),
+            "|||| |||| |||| |||| |||| ||+------------ " + c("0x00000200 [E]  Endianness execution state bit"),
+            "|||| |++------------++++-++------------- " + c("0x0600fc00 [IT] If-Then execution state bits for Thumb IT instruction"),
+            "|||| |  | |||| ||||",
+            "|||| |  | |||| ++++--------------------- " + c("0x000f0000 [GE] Greater than or Equal flags for SIMD instruction"),
+            "|||| |  | ||||",
+            "|||| |  | ++++-------------------------- " + c("0x00f00000      Reserved"),
+            "|||| |  |",
+            "|||| |  +------------------------------- " + c("0x01000000 [J]  Jazelle bit"),
+            "|||| +---------------------------------- " + c("0x08000000 [Q]  Cumulative saturation bit"),
+            "||||",
+            "|||+------------------------------------ " + c("0x10000000 [V]  Overflow condition flag"),
+            "||+------------------------------------- " + c("0x20000000 [C]  Carry condition flag"),
+            "|+-------------------------------------- " + c("0x40000000 [Z]  Zero condition flag"),
+            "+--------------------------------------- " + c("0x80000000 [N]  Negative condition flag"),
+        ]
+        gef_print("\n".join([" " * 2 + e for e in elements]))
         return
 
     def verbose_arm64(self):
@@ -13488,63 +13496,68 @@ class EditFlagsCommand(GenericCommand):
             return Color.colorify(msg, color)
 
         if ((cpsr >> 4) & 1) == 0: # AArch64 state
-            gef_print("  |||| |||| |||| |||| |||| |||| |||| ||++- " + c("0x00000003 [M.SP]  Selected stack pointer (2bit)"))
-            gef_print("  |||| |||| |||| |||| |||| |||| |||| ++--- " + c("0x0000000c [M.EL]  Exception level (2bit)"))
-            gef_print("  |||| |||| |||| |||| |||| |||| ||||")
-            gef_print("  |||| |||| |||| |||| |||| |||| |||+------ " + c("0x00000010 [M.S]   Execution state (AArch64:0, AArch32:1)"))
-            gef_print("  |||| |||| |||| |||| |||| |||| ||+------- " + c("0x00000020         Reserved (always 0)"))
-            gef_print("  |||| |||| |||| |||| |||| |||| |+-------- " + c("0x00000040 [F]     FIQ interrupt mask bit"))
-            gef_print("  |||| |||| |||| |||| |||| |||| +--------- " + c("0x00000080 [I]     IRQ interrupt mask bit"))
-            gef_print("  |||| |||| |||| |||| |||| ||||")
-            gef_print("  |||| |||| |||| |||| |||| |||+----------- " + c("0x00000100 [A]     SError interrupt mask bit"))
-            gef_print("  |||| |||| |||| |||| |||| ||+------------ " + c("0x00000200 [D]     Debug exception mask bit"))
-            gef_print("  |||| |||| |||| |||| |||| ++------------- " + c("0x00000c00 [BTYPE] Branch Type Indicator when FEAT_BTI is implemented"))
-            gef_print("  |||| |||| |||| |||| ||||")
-            gef_print("  |||| |||| |||| |||| |||+---------------- " + c("0x00001000 [SSBS]  Speculative Store Bypass when FEAT_SSBS is implemented"))
-            gef_print("  |||| |||| |||| ++++-+++----------------- " + c("0x000fe000         Reserved"))
-            gef_print("  |||| |||| ||||")
-            gef_print("  |||| |||| |||+-------------------------- " + c("0x00100000 [IL]    Illegal execution state"))
-            gef_print("  |||| |||| ||+--------------------------- " + c("0x00200000 [SS]    Software step flag"))
-            gef_print("  |||| |||| |+---------------------------- " + c("0x00400000 [PAN]   Privileged Access Never when FEAT_PAN is implemented"))
-            gef_print("  |||| |||| +----------------------------- " + c("0x00800000 [UAO]   User Access Override when FEAT_UAO is implemented"))
-            gef_print("  |||| ||||")
-            gef_print("  |||| |||+------------------------------- " + c("0x01000000 [DIT]   Data Independent Timing when FEAT_DIT is implemented"))
-            gef_print("  |||| ||+-------------------------------- " + c("0x02000000 [TCO]   Tag Check Override when FEAT_MTE is implemented"))
-            gef_print("  |||| ++--------------------------------- " + c("0x0c000000         Reserved"))
-            gef_print("  ||||")
-            gef_print("  |||+------------------------------------ " + c("0x10000000 [V]     Overflow condition flag"))
-            gef_print("  ||+------------------------------------- " + c("0x20000000 [C]     Carry condition flag"))
-            gef_print("  |+-------------------------------------- " + c("0x40000000 [Z]     Zero condition flag"))
-            gef_print("  +--------------------------------------- " + c("0x80000000 [N]     Negative condition flag"))
+            elements = [
+                "|||| |||| |||| |||| |||| |||| |||| ||++- " + c("0x00000003 [M.SP]  Selected stack pointer (2bit)"),
+                "|||| |||| |||| |||| |||| |||| |||| ++--- " + c("0x0000000c [M.EL]  Exception level (2bit)"),
+                "|||| |||| |||| |||| |||| |||| ||||",
+                "|||| |||| |||| |||| |||| |||| |||+------ " + c("0x00000010 [M.S]   Execution state (AArch64:0, AArch32:1)"),
+                "|||| |||| |||| |||| |||| |||| ||+------- " + c("0x00000020         Reserved (always 0)"),
+                "|||| |||| |||| |||| |||| |||| |+-------- " + c("0x00000040 [F]     FIQ interrupt mask bit"),
+                "|||| |||| |||| |||| |||| |||| +--------- " + c("0x00000080 [I]     IRQ interrupt mask bit"),
+                "|||| |||| |||| |||| |||| ||||",
+                "|||| |||| |||| |||| |||| |||+----------- " + c("0x00000100 [A]     SError interrupt mask bit"),
+                "|||| |||| |||| |||| |||| ||+------------ " + c("0x00000200 [D]     Debug exception mask bit"),
+                "|||| |||| |||| |||| |||| ++------------- " + c("0x00000c00 [BTYPE] Branch Type Indicator when FEAT_BTI is implemented"),
+                "|||| |||| |||| |||| ||||",
+                "|||| |||| |||| |||| |||+---------------- " + c("0x00001000 [SSBS]  Speculative Store Bypass when FEAT_SSBS is implemented"),
+                "|||| |||| |||| ++++-+++----------------- " + c("0x000fe000         Reserved"),
+                "|||| |||| ||||",
+                "|||| |||| |||+-------------------------- " + c("0x00100000 [IL]    Illegal execution state"),
+                "|||| |||| ||+--------------------------- " + c("0x00200000 [SS]    Software step flag"),
+                "|||| |||| |+---------------------------- " + c("0x00400000 [PAN]   Privileged Access Never when FEAT_PAN is implemented"),
+                "|||| |||| +----------------------------- " + c("0x00800000 [UAO]   User Access Override when FEAT_UAO is implemented"),
+                "|||| ||||",
+                "|||| |||+------------------------------- " + c("0x01000000 [DIT]   Data Independent Timing when FEAT_DIT is implemented"),
+                "|||| ||+-------------------------------- " + c("0x02000000 [TCO]   Tag Check Override when FEAT_MTE is implemented"),
+                "|||| ++--------------------------------- " + c("0x0c000000         Reserved"),
+                "||||",
+                "|||+------------------------------------ " + c("0x10000000 [V]     Overflow condition flag"),
+                "||+------------------------------------- " + c("0x20000000 [C]     Carry condition flag"),
+                "|+-------------------------------------- " + c("0x40000000 [Z]     Zero condition flag"),
+                "+--------------------------------------- " + c("0x80000000 [N]     Negative condition flag"),
+            ]
         else: # AArch32 state
-            gef_print("  |||| |||| |||| |||| |||| |||| |||| ++++- " + c("0x0000000f [M.A32] AArch32 mode (4bit)"))
-            gef_print("  |||| |||| |||| |||| |||| |||| ||||       " + "   User:0b0000 FIQ:0b0001 IRQ:0b0010")
-            gef_print("  |||| |||| |||| |||| |||| |||| ||||       " + "   Supervisor:0b0011 Monitor:0b0110 Abort:0b0111")
-            gef_print("  |||| |||| |||| |||| |||| |||| ||||       " + "   Hyp:0b1010 Undefined:0b1011 System:0b1111")
-            gef_print("  |||| |||| |||| |||| |||| |||| ||||")
-            gef_print("  |||| |||| |||| |||| |||| |||| |||+------ " + c("0x00000010 [M.S]   Execution state (AAch64:0, AArch32:1)"))
-            gef_print("  |||| |||| |||| |||| |||| |||| ||+------- " + c("0x00000020 [T]     T32 instruction set (Thumb) state bit"))
-            gef_print("  |||| |||| |||| |||| |||| |||| |+-------- " + c("0x00000040 [F]     FIQ interrupt mask bit"))
-            gef_print("  |||| |||| |||| |||| |||| |||| +--------- " + c("0x00000080 [I]     IRQ interrupt mask bit"))
-            gef_print("  |||| |||| |||| |||| |||| ||||")
-            gef_print("  |||| |||| |||| |||| |||| |||+----------- " + c("0x00000100 [A]     SError interrupt mask bit"))
-            gef_print("  |||| |||| |||| |||| |||| ||+------------ " + c("0x00000200 [E]     Endianness execution state bit"))
-            gef_print("  |||| |++------------++++-++------------- " + c("0x0600fc00 [IT]    If-Then execution state bits for Thumb IT instruction"))
-            gef_print("  |||| |  | |||| ||||")
-            gef_print("  |||| |  | |||| ++++--------------------- " + c("0x000f0000 [GE]    Greater than or Equal flags for SIMD instruction"))
-            gef_print("  |||| |  | ||||")
-            gef_print("  |||| |  | |||+-------------------------- " + c("0x00100000 [IL]    Illegal execution state"))
-            gef_print("  |||| |  | ||+--------------------------- " + c("0x00200000 [SS]    Software step flag"))
-            gef_print("  |||| |  | |+---------------------------- " + c("0x00400000 [PAN]   Privileged Access Never when FEAT_PAN is implemented"))
-            gef_print("  |||| |  | +----------------------------- " + c("0x00800000 [SSBS]  Speculative Store Bypass when FEAT_SBSS is implemented"))
-            gef_print("  |||| |  |")
-            gef_print("  |||| |  +------------------------------- " + c("0x01000000 [DIT]   Data Independent Timing when FEAT_DIT is implemented"))
-            gef_print("  |||| +---------------------------------- " + c("0x08000000 [Q]     Overflow or saturation flag"))
-            gef_print("  ||||")
-            gef_print("  |||+------------------------------------ " + c("0x10000000 [V]     Overflow condition flag"))
-            gef_print("  ||+------------------------------------- " + c("0x20000000 [C]     Carry condition flag"))
-            gef_print("  |+-------------------------------------- " + c("0x40000000 [Z]     Zero condition flag"))
-            gef_print("  +--------------------------------------- " + c("0x80000000 [N]     Negative condition flag"))
+            elements = [
+                "|||| |||| |||| |||| |||| |||| |||| ++++- " + c("0x0000000f [M.A32] AArch32 mode (4bit)"),
+                "|||| |||| |||| |||| |||| |||| ||||       " + "   User:0b0000 FIQ:0b0001 IRQ:0b0010",
+                "|||| |||| |||| |||| |||| |||| ||||       " + "   Supervisor:0b0011 Monitor:0b0110 Abort:0b0111",
+                "|||| |||| |||| |||| |||| |||| ||||       " + "   Hyp:0b1010 Undefined:0b1011 System:0b1111",
+                "|||| |||| |||| |||| |||| |||| ||||",
+                "|||| |||| |||| |||| |||| |||| |||+------ " + c("0x00000010 [M.S]   Execution state (AAch64:0, AArch32:1)"),
+                "|||| |||| |||| |||| |||| |||| ||+------- " + c("0x00000020 [T]     T32 instruction set (Thumb) state bit"),
+                "|||| |||| |||| |||| |||| |||| |+-------- " + c("0x00000040 [F]     FIQ interrupt mask bit"),
+                "|||| |||| |||| |||| |||| |||| +--------- " + c("0x00000080 [I]     IRQ interrupt mask bit"),
+                "|||| |||| |||| |||| |||| ||||",
+                "|||| |||| |||| |||| |||| |||+----------- " + c("0x00000100 [A]     SError interrupt mask bit"),
+                "|||| |||| |||| |||| |||| ||+------------ " + c("0x00000200 [E]     Endianness execution state bit"),
+                "|||| |++------------++++-++------------- " + c("0x0600fc00 [IT]    If-Then execution state bits for Thumb IT instruction"),
+                "|||| |  | |||| ||||",
+                "|||| |  | |||| ++++--------------------- " + c("0x000f0000 [GE]    Greater than or Equal flags for SIMD instruction"),
+                "|||| |  | ||||",
+                "|||| |  | |||+-------------------------- " + c("0x00100000 [IL]    Illegal execution state"),
+                "|||| |  | ||+--------------------------- " + c("0x00200000 [SS]    Software step flag"),
+                "|||| |  | |+---------------------------- " + c("0x00400000 [PAN]   Privileged Access Never when FEAT_PAN is implemented"),
+                "|||| |  | +----------------------------- " + c("0x00800000 [SSBS]  Speculative Store Bypass when FEAT_SBSS is implemented"),
+                "|||| |  |",
+                "|||| |  +------------------------------- " + c("0x01000000 [DIT]   Data Independent Timing when FEAT_DIT is implemented"),
+                "|||| +---------------------------------- " + c("0x08000000 [Q]     Overflow or saturation flag"),
+                "||||",
+                "|||+------------------------------------ " + c("0x10000000 [V]     Overflow condition flag"),
+                "||+------------------------------------- " + c("0x20000000 [C]     Carry condition flag"),
+                "|+-------------------------------------- " + c("0x40000000 [Z]     Zero condition flag"),
+                "+--------------------------------------- " + c("0x80000000 [N]     Negative condition flag"),
+            ]
+        gef_print("\n".join([" " * 2 + e for e in elements]))
         return
 
 
