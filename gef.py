@@ -10977,6 +10977,12 @@ class VersionCommand(GenericCommand):
         except IOError:
             return 'Not found'
 
+    def kernel_version_from_proc(self):
+        try:
+            return open("/proc/version").read().strip()
+        except Exception:
+            return 'Not found'
+
     def qemu_version(self):
         return gdb.execute('monitor info version', to_string=True).strip()
 
@@ -11036,6 +11042,14 @@ class VersionCommand(GenericCommand):
         except (KeyError, ImportWarning):
             return 'Not found'
 
+    def gcc_version(self):
+        try:
+            command = which("gcc")
+            res = gef_execute_external([command, "--version"], as_list=True)
+            return res[0]
+        except IOError:
+            return 'Not found'
+
     def readelf_version(self):
         try:
             command = which("readelf")
@@ -11073,21 +11087,23 @@ class VersionCommand(GenericCommand):
         self.dont_repeat()
 
         gef_print(titlify("versions"))
-        gef_print("OS:            \t{:s}".format(self.os_version()))
-        gef_print("Kernel:        \t{:s}".format(self.kernel_version()))
+        gef_print("OS:                     {:s}".format(self.os_version()))
+        gef_print("kernel (uname -a):      {:s}".format(self.kernel_version()))
+        gef_print("kernel (/proc/version): {:s}".format(self.kernel_version_from_proc()))
         if is_qemu_system():
-            gef_print("qemu:          \t{:s}".format(self.qemu_version()))
-        gef_print("GEF:           \t{:s}".format(self.gef_version()))
-        gef_print("Gdb:           \t{:s}".format(self.gdb_version()))
-        gef_print("Python:        \t{:s}".format(self.python_version()))
-        gef_print("Capstone:      \t{:s}".format(self.capstone_version()))
-        gef_print("Keystone:      \t{:s}".format(self.keystone_version()))
-        gef_print("Unicorn:       \t{:s}".format(self.unicorn_version()))
-        gef_print("Ropper:        \t{:s}".format(self.ropper_version()))
-        gef_print("readelf:       \t{:s}".format(self.readelf_version()))
-        gef_print("objdump:       \t{:s}".format(self.objdump_version()))
-        gef_print("seccomp-tools: \t{:s}".format(self.seccomp_tools_version()))
-        gef_print("one_gadget:    \t{:s}".format(self.one_gadget_version()))
+            gef_print("qemu:                   {:s}".format(self.qemu_version()))
+        gef_print("GEF:                    {:s}".format(self.gef_version()))
+        gef_print("gdb:                    {:s}".format(self.gdb_version()))
+        gef_print("python:                 {:s}".format(self.python_version()))
+        gef_print("capstone:               {:s}".format(self.capstone_version()))
+        gef_print("keystone:               {:s}".format(self.keystone_version()))
+        gef_print("unicorn:                {:s}".format(self.unicorn_version()))
+        gef_print("ropper:                 {:s}".format(self.ropper_version()))
+        gef_print("gcc:                    {:s}".format(self.gcc_version()))
+        gef_print("readelf:                {:s}".format(self.readelf_version()))
+        gef_print("objdump:                {:s}".format(self.objdump_version()))
+        gef_print("seccomp-tools:          {:s}".format(self.seccomp_tools_version()))
+        gef_print("one_gadget:             {:s}".format(self.one_gadget_version()))
 
         gef_print(titlify("gdb build config"))
         gdb.execute("show configuration")
