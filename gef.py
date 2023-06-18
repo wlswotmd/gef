@@ -15169,6 +15169,7 @@ class CapstoneDisassembleCommand(GenericCommand):
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
+        self.add_setting("nb_lines_code_default", 50, "Number of instruction if no length is specified.")
         return
 
     @parse_args
@@ -15184,7 +15185,7 @@ class CapstoneDisassembleCommand(GenericCommand):
                 err("ARGS must be KEY=VALUE style")
                 return
 
-        length = args.length or int(get_gef_setting("context.nb_lines_code"))
+        length = args.length or int(self.get_setting("nb_lines_code_default"))
         location = args.location or current_arch.pc
 
         try:
