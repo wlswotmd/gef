@@ -60421,7 +60421,9 @@ class UefiOvmfInfoCommand(GenericCommand):
 
     def search_mem_backward_iter(self, keyword):
         # search from higher address (0x800_0000), it is more likely
-        current = 0x8000000 - gef_getpagesize()
+        START_ADDR = 0x800_0000
+        END_ADDR = 0x700_0000
+        current = START_ADDR - gef_getpagesize()
         data = read_physmem(current, gef_getpagesize())
         end = len(data)
 
@@ -60429,10 +60431,16 @@ class UefiOvmfInfoCommand(GenericCommand):
             pos = data.rfind(keyword, 0, end)
             if pos == -1:
                 current -= gef_getpagesize()
-                if current < 0:
+                if current < END_ADDR:
                     return None
-                data = read_physmem(current, gef_getpagesize()) + data
-                end += gef_getpagesize()
+
+                if len(data) > len(keyword):
+                    size_of_cut = len(data) - len(keyword)
+                    data = read_physmem(current, gef_getpagesize()) + data[:len(keyword)]
+                    end += gef_getpagesize() - size_of_cut
+                else:
+                    data = read_physmem(current, gef_getpagesize()) + data
+                    end += gef_getpagesize()
                 continue
             yield current + pos
             end = pos
@@ -60489,7 +60497,10 @@ class UefiOvmfInfoCommand(GenericCommand):
         for k, v in self.gPs.items():
             if k.startswith("__"):
                 continue
-            gef_print("  {:40s}{:#x}".format(k + ":", v))
+            if k == "Hdr.Signature":
+                gef_print("  {:40s}{:#x} ({!s})".format(k + ":", v, p64(v)))
+            else:
+                gef_print("  {:40s}{:#x}".format(k + ":", v))
         return
 
     def read_mBootServices(self):
@@ -60560,7 +60571,10 @@ class UefiOvmfInfoCommand(GenericCommand):
         for k, v in self.mBootServices.items():
             if k.startswith("__"):
                 continue
-            gef_print("  {:40s}{:#x}".format(k + ":", v))
+            if k == "Hdr.Signature":
+                gef_print("  {:40s}{:#x} ({!s})".format(k + ":", v, p64(v)))
+            else:
+                gef_print("  {:40s}{:#x}".format(k + ":", v))
         return
 
     def read_mDxeServices(self):
@@ -60605,7 +60619,10 @@ class UefiOvmfInfoCommand(GenericCommand):
         for k, v in self.mDxeServices.items():
             if k.startswith("__"):
                 continue
-            gef_print("  {:40s}{:#x}".format(k + ":", v))
+            if k == "Hdr.Signature":
+                gef_print("  {:40s}{:#x} ({!s})".format(k + ":", v, p64(v)))
+            else:
+                gef_print("  {:40s}{:#x}".format(k + ":", v))
         return
 
     def read_mEfiSystemTable(self):
@@ -60644,7 +60661,10 @@ class UefiOvmfInfoCommand(GenericCommand):
         for k, v in self.mEfiSystemTable.items():
             if k.startswith("__"):
                 continue
-            gef_print("  {:40s}{:#x}".format(k + ":", v))
+            if k == "Hdr.Signature":
+                gef_print("  {:40s}{:#x} ({!s})".format(k + ":", v, p64(v)))
+            else:
+                gef_print("  {:40s}{:#x}".format(k + ":", v))
         return
 
     def read_mEfiRuntimeServicesTable(self):
@@ -60685,7 +60705,10 @@ class UefiOvmfInfoCommand(GenericCommand):
         for k, v in self.mEfiRuntimeServicesTable.items():
             if k.startswith("__"):
                 continue
-            gef_print("  {:40s}{:#x}".format(k + ":", v))
+            if k == "Hdr.Signature":
+                gef_print("  {:40s}{:#x} ({!s})".format(k + ":", v, p64(v)))
+            else:
+                gef_print("  {:40s}{:#x}".format(k + ":", v))
         return
 
     def read_gMemoryMap(self):
