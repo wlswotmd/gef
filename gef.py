@@ -11492,14 +11492,6 @@ class PrintFormatCommand(GenericCommand):
                 return False
             prog = [xclip, "-selection", "clipboard", "-i"] # For linux
 
-        elif sys.platform == "darwin":
-            try:
-                pbcopy = which("pbcopy")
-            except FileNotFoundError as e:
-                err("{}".format(e))
-                return False
-            prog = [pbcopy] # For OSX
-
         else:
             warn("Can't copy to clipboard, platform not supported")
             return False
