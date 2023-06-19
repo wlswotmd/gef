@@ -41996,43 +41996,6 @@ class KernelbaseCommand(GenericCommand):
         return
 
 
-class KernelVersion:
-    def __init__(self, address, version_string, major, minor, patch):
-        self.address = address
-        self.version_string = version_string
-        self.major = major
-        self.minor = minor
-        self.patch = patch
-        self.version_tuple = (major, minor, patch)
-        return
-
-    def to_version_tuple(self, _v):
-        v = _v.split(".")
-        if len(v) == 2:
-            return (int(v[0]), int(v[1]), 0)
-        elif len(v) == 3:
-            return (int(v[0]), int(v[1]), int(v[2]))
-        raise
-
-    def __ge__(self, v):
-        return self.to_version_tuple(v) <= self.version_tuple
-
-    def __gt__(self, v):
-        return self.to_version_tuple(v) < self.version_tuple
-
-    def __le__(self, v):
-        return self.to_version_tuple(v) >= self.version_tuple
-
-    def __lt__(self, v):
-        return self.to_version_tuple(v) > self.version_tuple
-
-    def __eq__(self, v):
-        return self.to_version_tuple(v) == self.version_tuple
-
-    def __ne__(self, v):
-        return self.to_version_tuple(v) != self.version_tuple
-
-
 @register_command
 class KernelVersionCommand(GenericCommand):
     """Display kernel version string under qemu-system."""
@@ -42043,6 +42006,45 @@ class KernelVersionCommand(GenericCommand):
     parser.add_argument('-r', '--reparse', action='store_true', help='do not use cache.')
     parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
     _syntax_ = parser.format_help()
+
+    class KernelVersion:
+        def __init__(self, address, version_string, major, minor, patch):
+            self.address = address
+            self.version_string = version_string
+            self.major = major
+            self.minor = minor
+            self.patch = patch
+            self.version_tuple = (major, minor, patch)
+            return
+
+        def to_version_tuple(self, _v):
+            v = _v.split(".")
+            if len(v) == 2:
+                return (int(v[0]), int(v[1]), 0)
+            elif len(v) == 3:
+                return (int(v[0]), int(v[1]), int(v[2]))
+            raise
+
+        def __ge__(self, v):
+            return self.to_version_tuple(v) <= self.version_tuple
+
+        def __gt__(self, v):
+            return self.to_version_tuple(v) < self.version_tuple
+
+        def __le__(self, v):
+            return self.to_version_tuple(v) >= self.version_tuple
+
+        def __lt__(self, v):
+            return self.to_version_tuple(v) > self.version_tuple
+
+        def __eq__(self, v):
+            return self.to_version_tuple(v) == self.version_tuple
+
+        def __ne__(self, v):
+            return self.to_version_tuple(v) != self.version_tuple
+
+        def __str__(self):
+            return "{:d}.{:d}.{:d}".format(*self.version_tuple)
 
     @staticmethod
     def kernel_version():
@@ -42056,7 +42058,7 @@ class KernelVersionCommand(GenericCommand):
             version_string = read_cstring_from_memory(linux_banner, 0x200).rstrip()
             r = re.search(r"Linux version (\d)\.(\d+)\.(\d+)", version_string)
             major, minor, patch = int(r.group(1)), int(r.group(2)), int(r.group(3))
-            __cached_kernel_version__ = KernelVersion(linux_banner, version_string, major, minor, patch)
+            __cached_kernel_version__ = KernelVersionCommand.KernelVersion(linux_banner, version_string, major, minor, patch)
             return __cached_kernel_version__
 
         # slow path
@@ -42088,7 +42090,7 @@ class KernelVersionCommand(GenericCommand):
             r = re.search(r"Linux version (\d)\.(\d+)\.(\d+)", version_string)
             major, minor, patch = int(r.group(1)), int(r.group(2)), int(r.group(3))
 
-            __cached_kernel_version__ = KernelVersion(address, version_string, major, minor, patch)
+            __cached_kernel_version__ = KernelVersionCommand.KernelVersion(address, version_string, major, minor, patch)
             return __cached_kernel_version__
 
         return None
