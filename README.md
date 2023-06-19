@@ -500,6 +500,8 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
 * `pac-keys`: pretty prints ARM64 PAC keys.
 * `message-break`: sets a breakpoint with simple user defined message as f-string format.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/message-break.png)
+* `hexdump-flexible`: displays the hexdump with user defined format.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hexdump-flexible.png)
 
 ### Other
 * The category is introduced in `gef help`.

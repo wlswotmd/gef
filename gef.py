@@ -21885,6 +21885,78 @@ class HexdumpCommand(GenericCommand):
 
 
 @register_command
+class HexdumpFlexibleCommand(GenericCommand):
+    """Display the hexdump with user defined format."""
+    _cmdline_ = "hexdump-flexible"
+    _category_ = "03-b. Memory - View"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument('format', metavar='FORMAT', help='dump format.')
+    parser.add_argument('location', metavar='LOCATION', type=parse_address, help='the memory address you want to dump.')
+    parser.add_argument('count', metavar='COUNT', nargs='?', type=lambda x: int(x, 0), default=1,
+                        help='the count of displayed units. (default: %(default)s)')
+    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (only qemu-system).')
+    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+
+    def extract_each_type(self, fmt):
+        out = []
+        repeat = 1
+        for r in re.split(r"(\d+|)", fmt):
+            if r == "":
+                continue
+            try:
+                repeat = int(r)
+                continue
+            except ValueError:
+                out.extend([r] * repeat)
+                repeat = 1
+        return out
+
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
+        if args.phys:
+            if not is_qemu_system():
+                err("Unsupported. Check qemu version (at least: 4.1.0-rc0~, recommend: 5.x~)")
+                return
+
+        fmt = args.format
+        if not fmt.startswith(("<", ">")):
+            fmt = endian_str() + fmt
+        size = struct.calcsize(fmt)
+
+        each_type = self.extract_each_type(args.format)
+
+        self.out = []
+        for i in range(args.count):
+            address = args.location + size * i
+            try:
+                if args.phys:
+                    data = read_physmem(address, size)
+                else:
+                    data = read_memory(address, size)
+            except gdb.MemoryError:
+                err("Failed to read memory")
+                break
+
+            values = struct.unpack(fmt, data)
+            line_elem = ["{:#x}:   ".format(address)]
+            for t, v in zip(each_type, values):
+                if t in "cBbHhIilLQq":
+                    line_elem.append("{:#0{:d}x}".format(v, 2 + struct.calcsize(t) * 2))
+                elif t in "fd":
+                    line_elem.append("{:20e}".format(v))
+                else:
+                    err("Unsupported format: {:s}".format(t))
+                    return
+            self.out.append(" ".join(line_elem))
+
+        if self.out:
+            gef_print("\n".join(self.out), less=not args.no_pager)
+        return
+
+
+@register_command
 class PatchCommand(GenericCommand):
     """Write specified values to the specified address."""
     _cmdline_ = "patch"
