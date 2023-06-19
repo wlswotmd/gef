@@ -186,6 +186,7 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ktask-regs.png)
 * `kmod`: displays each module address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmod.png)
+    * It also displays each module symbols.
 * `kcdev`: displays each character device information.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kcdev.png)
 * `kops`: displays each operations member.

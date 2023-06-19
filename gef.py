@@ -43019,6 +43019,7 @@ class KernelModuleCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    parser.add_argument('-s', '--resolve-symbol', action='store_true', help='try to resolve symbols.')
     parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
     _syntax_ = parser.format_help()
 
@@ -43063,7 +43064,7 @@ class KernelModuleCommand(GenericCommand):
                 return offset_name
 
         if not self.quiet:
-            err("Not found module->name[MODULE_NAME_LEN]]")
+            err("Not found module->name[MODULE_NAME_LEN]")
         return None
 
     def get_offset_layout(self, module_addrs):
@@ -43071,9 +43072,9 @@ class KernelModuleCommand(GenericCommand):
         struct module { // kernel v4.5-rc1 ~
             enum module_state state;
             struct list_head list;
-            char name[MODULE_NAME_LEN];
+            char name[MODULE_NAME_LEN]; // 64 - sizeof(unsigned long) bytes
         #ifdef CONFIG_STACKTRACE_BUILD_ID
-            unsigned char build_id[BUILD_ID_SIZE_MAX];
+            unsigned char build_id[BUILD_ID_SIZE_MAX]; // 20 bytes
         #endif
             struct module_kobject mkobj;
             struct module_attribute *modinfo_attrs;
@@ -43104,6 +43105,22 @@ class KernelModuleCommand(GenericCommand):
             int (*init)(void);
             struct module_layout core_layout __module_layout_align;
             struct module_layout init_layout;
+        #ifdef CONFIG_ARCH_WANTS_MODULES_DATA_IN_VMALLOC
+            struct module_layout data_layout;
+        #endif
+            struct mod_arch_specific arch;
+            unsigned long taints;
+        #ifdef CONFIG_GENERIC_BUG
+            unsigned num_bugs;
+            struct list_head bug_list;
+            struct bug_entry *bug_table;
+        #endif
+        #ifdef CONFIG_KALLSYMS
+            struct mod_kallsyms __rcu *kallsyms;
+            struct mod_kallsyms core_kallsyms;
+            struct module_sect_attrs *sect_attrs;
+            struct module_notes_attrs *notes_attrs;
+        #endif
             ...
         }
 
@@ -43225,13 +43242,31 @@ class KernelModuleCommand(GenericCommand):
             unsigned int num_exentries;
             struct exception_table_entry *extable;
             int (*init)(void);
-            void *module_init    ____cacheline_aligned;
+            void *module_init ____cacheline_aligned;
             /* Here is the actual code + data, vfree'd on unload. */
             void *module_core;
             /* Here are the sizes of the init and core sections */
             unsigned int init_size, core_size;
             /* The size of the executable code in each section.  */
             unsigned int init_text_size, core_text_size;
+        #ifdef CONFIG_MODULES_TREE_LOOKUP
+            struct mod_tree_node mtn_core;
+            struct mod_tree_node mtn_init;
+        #endif
+            unsigned int init_ro_size, core_ro_size;
+            struct mod_arch_specific arch;
+            unsigned int taints;
+        #ifdef CONFIG_GENERIC_BUG
+            unsigned num_bugs;
+            struct list_head bug_list;
+            struct bug_entry *bug_table;
+        #endif
+        #ifdef CONFIG_KALLSYMS
+            struct mod_kallsyms *kallsyms;
+            struct mod_kallsyms core_kallsyms;
+            struct module_sect_attrs *sect_attrs;
+            struct module_notes_attrs *notes_attrs;
+        #endif
             ...
         """
         for i in range(300):
@@ -43276,6 +43311,48 @@ class KernelModuleCommand(GenericCommand):
             err("Not found module->module_core")
         return None
 
+    def get_offset_kallsyms(self, module_addrs):
+        kversion = KernelVersionCommand.kernel_version()
+        for i in range(300):
+            offset_kallsyms = i * current_arch.ptrsize
+            valid = True
+            for module in module_addrs:
+                # access check
+                if not is_valid_addr(module + offset_kallsyms):
+                    valid = False
+                    break
+                # kallsyms access check
+                cand_kallsyms = read_int_from_memory(module + offset_kallsyms)
+                if not is_valid_addr(cand_kallsyms):
+                    valid = False
+                    break
+                # struct mod kallsyms member access check
+                cand_symtab = read_int_from_memory(cand_kallsyms)
+                if not is_valid_addr(cand_symtab):
+                    valid = False
+                    break
+                cand_num_symtab = read_int_from_memory(cand_kallsyms + current_arch.ptrsize * 1)
+                if is_valid_addr(cand_num_symtab):
+                    valid = False
+                    break
+                cand_strtab = read_int_from_memory(cand_kallsyms + current_arch.ptrsize * 2)
+                if not is_valid_addr(cand_strtab):
+                    valid = False
+                    break
+                if kversion >= "5.2":
+                    cand_typetab = read_int_from_memory(cand_kallsyms + current_arch.ptrsize * 3)
+                    if not is_valid_addr(cand_typetab):
+                        valid = False
+                        break
+            if valid:
+                if not self.quiet:
+                    info("offsetof(module, kallsyms): {:#x}".format(offset_kallsyms))
+                return offset_kallsyms
+
+        if not self.quiet:
+            err("Not found module->kallsyms")
+        return None
+
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
@@ -43306,6 +43383,11 @@ class KernelModuleCommand(GenericCommand):
             if offset_module_core is None:
                 return
 
+        if args.resolve_symbol:
+            offset_kallsyms = self.get_offset_kallsyms(module_addrs)
+            if offset_kallsyms is None:
+                return
+
         self.out = []
         if not self.quiet:
             fmt = "{:<18s} {:<18s} {:<18s} {:<18s}"
@@ -43322,8 +43404,41 @@ class KernelModuleCommand(GenericCommand):
                 size = u32(read_memory(module + offset_module_core + current_arch.ptrsize + 4, 4))
             self.out.append("{:#018x} {:<18s} {:#018x} {:#018x}".format(module, name_string, base, size))
 
-        if self.out:
+            if args.resolve_symbol:
+                self.out.append(titlify("module symbols"))
+                kallsyms = read_int_from_memory(module + offset_kallsyms)
+
+                symtab = read_int_from_memory(kallsyms + current_arch.ptrsize * 0)
+                sizeof_symtab_entry = 24 if is_64bit() else 16
+                num_symtab = read_int_from_memory(kallsyms + current_arch.ptrsize * 1)
+                strtab = read_int_from_memory(kallsyms + current_arch.ptrsize * 2)
+                strtab_pos = 0
+                if kversion >= "5.2":
+                    typetab = read_int_from_memory(kallsyms + current_arch.ptrsize * 3)
+
+                entries = []
+                for i in range(num_symtab):
+                    sym_addr = read_int_from_memory(symtab + sizeof_symtab_entry * i + current_arch.ptrsize)
+                    sym_name = read_cstring_from_memory(strtab + strtab_pos)
+                    strtab_pos += len(sym_name) + 1
+                    if kversion >= "5.2":
+                        sym_type = chr(u8(read_memory(typetab + i, 1)))
+                    else:
+                        if is_64bit():
+                            sym_type = chr(u8(read_memory(symtab + sizeof_symtab_entry * i + 4, 1)))
+                        else:
+                            sym_type = chr(u8(read_memory(symtab + sizeof_symtab_entry * i + 12, 1)))
+                    entries.append([sym_addr, sym_type, sym_name])
+
+                for sym_addr, sym_type, sym_name in sorted(entries):
+                    self.out.append("{:#018x} {:s} {:s}".format(sym_addr, sym_type, sym_name))
+
+                self.out.append(titlify(""))
+
+        if len(self.out) > 20:
             gef_print('\n'.join(self.out), less=not args.no_pager)
+        else:
+            gef_print('\n'.join(self.out), less=False)
         return
 
 
