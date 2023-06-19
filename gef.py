@@ -21792,8 +21792,7 @@ class HexdumpCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('format', choices=['byte', 'word', 'dword', 'qword'], nargs='?', default='byte', help='dump mode.')
-    parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
-                        help='the memory address you want to dump. (default: current_arch.sp)')
+    parser.add_argument('location', metavar='LOCATION', type=parse_address, help='the memory address you want to dump.')
     parser.add_argument('count', metavar='COUNT', nargs='?', type=lambda x: int(x, 0), default=0x100,
                         help='the count of displayed units. (default: %(default)s)')
     parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (only qemu-system).')
@@ -21812,12 +21811,7 @@ class HexdumpCommand(GenericCommand):
                 return
         self.phys_mode = args.phys
         unit = {"byte": 1, "word": 2, "dword": 4, "qword": 8}[args.format]
-
-        if args.location:
-            read_from = align_address(args.location)
-        else:
-            read_from = current_arch.sp
-
+        read_from = align_address(args.location)
         lines = self._hexdump(read_from, args.count, unit, args.full, args.symbol)
 
         if args.reverse:
