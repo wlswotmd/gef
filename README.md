@@ -158,6 +158,9 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmlinux-to-elf-apply1.png)
     * Once you get symboled vmlinux file, you can reuse and apply it automatically even after rebooting qemu-system.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmlinux-to-elf-apply2.png)
+    * TIPS: `vmlinux-to-elf-apply` and `ksymaddr-remote-apply` provide almost the same functionality.
+        * For normal use, I think `vmlinux-to-elf-apply` is preferable because reusing image makes it faster.
+        * For FGKASLR, I think `ksymaddr-remote-apply` is preferable because faster without reusing image.
 * `slub-dump`: dumps slub free-list (heuristic).
     * Supported on x64/x86/ARM64/ARM + SLUB + no-symbol + kASLR.
     * Supported on both `CONFIG_SLAB_FREELIST_HARDENED` is `y` or `n`.
@@ -187,6 +190,7 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
 * `kmod`: displays each module address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmod.png)
     * It also displays each module symbols.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmod-syms.png)
 * `kcdev`: displays each character device information.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kcdev.png)
 * `kops`: displays each operations member.
