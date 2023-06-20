@@ -44874,7 +44874,7 @@ class KernelDmesgCommand(GenericCommand):
         CONFIG_PRINTK_CALLER = get_ksymaddr("print_caller") is not None
         length_of_caller_id = 4 if CONFIG_PRINTK_CALLER else 0
 
-        pos = log_first_pos = buf_start + log_first_idx
+        pos = buf_start + log_first_idx
         log_end_pos = buf_start + log_end_idx
 
         while pos != log_end_pos:
