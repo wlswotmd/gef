@@ -14719,22 +14719,23 @@ class UnicornEmulateCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-f', dest='from_location', type=parse_address,
                         help='specifies the start address of the emulated run. (default: current_arch.pc)')
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument('-t', dest='to_location', type=parse_address, help='specifies the end address of the emulated run.')
-    group.add_argument('-n', dest='nb_insn', type=parse_address, help='indicates the number of instructions to execute.')
-    group.add_argument('-g', dest='nb_gadget', type=parse_address, help='indicates the number of gadgets to execute.')
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('-g', dest='nb_gadget', type=parse_address, help='the number of gadgets to execute. (default mode, NB_GADGET: 10)')
+    group.add_argument('-t', dest='to_location', type=parse_address, help='the end address of the emulated run.')
+    group.add_argument('-n', dest='nb_insn', type=parse_address, help='the number of instructions from `FROM_LOCATION`.')
     parser.add_argument('-o', dest='output_path', help='writes the persistent Unicorn script into this file.')
-    parser.add_argument('-s', dest='skip_emulation', action='store_true', help='do not run it, just script it.')
+    parser.add_argument('-s', dest='skip_emulation', action='store_true', help='do not run, just save the script.')
     parser.add_argument('-v', dest='verbose', action='store_true', help='displays the register values for each instruction is executed.')
     parser.add_argument('-q', dest='quiet', action='store_true', help='quiet execution.')
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} -n 5                         # from $pc to 5 later asm\n".format(_cmdline_)
-    _example_ += "{:s} -g 4                         # from $pc to the point where 4 instructions are executed\n".format(_cmdline_)
-    _example_ += "{:s} -t 0x805678a4 -o /tmp/emu.py # from/to specified address with saving script\n".format(_cmdline_)
+    _example_ = "{:s} -g 10                        # from $pc to the point where 4 instructions are executed\n".format(_cmdline_)
+    _example_ += "{:s} -n 5                         # from $pc to 5 later instructions (assume it is no branch)\n".format(_cmdline_)
+    _example_ += "{:s} -t 0x805678a4 -o /tmp/emu.py # from $pc to specified address with saving script\n".format(_cmdline_)
     _example_ += "\n"
     _example_ += "NOTE:\n"
-    _example_ += "* unicorn does not support some instructions (ex: xsavec, xrstor, vpbroadcastb, etc)\n"
+    _example_ += "* unicorn does not support emulating syscall.\n"
+    _example_ += "* unicorn does not support some instructions. (ex: xsavec, xrstor, vpbroadcastb, etc.)\n"
     _example_ += "* unicorn does not emulate ARM kernel-provided-user-helpers like $pc=0xffff0fe0, 0xffff0fc0, etc.\n"
     _example_ += "  see: https://www.kernel.org/doc/Documentation/arm/kernel_user_helpers.txt"
 
@@ -14762,9 +14763,10 @@ class UnicornEmulateCommand(GenericCommand):
         if is_arm32():
             thumb_mode = start_insn & 1
 
-        if args.to_location is None and args.nb_insn is None and args.nb_gadget is None:
-            err("No stop condition (-t|-n|-g) defined.")
-            return
+        if (args.to_location, args.nb_insn, args.nb_gadget) == (None, None, None):
+            nb_gadget = 10
+        else:
+            nb_gadget = args.nb_gadget
 
         end_insn = args.to_location
         if args.nb_insn is not None:
@@ -14774,14 +14776,14 @@ class UnicornEmulateCommand(GenericCommand):
             "skip_emulation": args.skip_emulation,
             "to_file": args.output_path,
             "verbose": args.verbose,
-            "nb_gadget": args.nb_gadget,
+            "nb_gadget": nb_gadget,
             "quiet": args.quiet,
             "thumb_mode": thumb_mode,
         }
 
         if end_insn is not None:
             self.run_unicorn(start_insn, end_insn, **kwargs)
-        elif args.nb_gadget is not None:
+        elif nb_gadget is not None:
             self.run_unicorn(start_insn, 0, **kwargs)
         else:
             err("Invalid argumetns")
