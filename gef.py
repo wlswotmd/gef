@@ -43117,6 +43117,7 @@ class KernelModuleCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
     parser.add_argument('-s', '--resolve-symbol', action='store_true', help='try to resolve symbols.')
+    parser.add_argument('--symbol-unsort', action='store_true', help='print resolved symbols without sorting by address.')
     parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
     _syntax_ = parser.format_help()
 
@@ -43520,14 +43521,25 @@ class KernelModuleCommand(GenericCommand):
                     strtab_pos += len(sym_name) + 1
                     if kversion >= "5.2":
                         sym_type = chr(u8(read_memory(typetab + i, 1)))
+                    elif kversion >= "5.0":
+                        # st_size
+                        if is_64bit():
+                            sym_type = chr(u8(read_memory(symtab + sizeof_symtab_entry * i + 16, 1)))
+                        else:
+                            sym_type = chr(u8(read_memory(symtab + sizeof_symtab_entry * i + 8, 1)))
                     else:
+                        # st_info
                         if is_64bit():
                             sym_type = chr(u8(read_memory(symtab + sizeof_symtab_entry * i + 4, 1)))
                         else:
                             sym_type = chr(u8(read_memory(symtab + sizeof_symtab_entry * i + 12, 1)))
                     entries.append([sym_addr, sym_type, sym_name])
 
-                for sym_addr, sym_type, sym_name in sorted(entries):
+                # symbol_unsort is used for debugging.
+                if not args.symbol_unsort:
+                    entries = sorted(entries)
+
+                for sym_addr, sym_type, sym_name in entries:
                     self.out.append("{:#018x} {:s} {:s}".format(sym_addr, sym_type, sym_name))
 
                 self.out.append(titlify(""))
