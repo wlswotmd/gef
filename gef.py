@@ -2952,7 +2952,7 @@ def gdb_get_nth_previous_instruction_address(addr, n):
         return max(0, addr - n * current_arch.instruction_length)
 
     # variable-length ABI
-    cur_insn_addr = gef_current_instruction(addr).address
+    cur_insn_addr = get_insn(addr).address
 
     # we try to find a good set of previous instructions by "guessing" disassembling backwards
     # the 15 comes from the longest instruction valid size
@@ -2998,38 +2998,22 @@ def gef_instruction_n(addr, n):
     return list(gdb_disassemble(addr, count=n + 1))[n]
 
 
-def gef_get_instruction_at(addr):
-    """Return the full Instruction found at the specified address."""
-    insn = next(gef_disassemble(addr, 1))
-    return insn
-
-
-def gef_current_instruction(addr):
+def get_insn(addr=None):
     """Return the current instruction as an Instruction object."""
+    if addr is None:
+        if not is_alive():
+            return None
+        addr = current_arch.pc
     return gef_instruction_n(addr, 0)
 
 
-def get_insn(addr=None):
-    """Wrapper of gef_current_instruction to use easy."""
-    if addr is None:
-        if not is_alive():
-            return None
-        addr = current_arch.pc
-    return gef_current_instruction(addr)
-
-
-def gef_next_instruction(addr):
-    """Return the next instruction as an Instruction object."""
-    return gef_instruction_n(addr, 1)
-
-
 def get_insn_next(addr=None):
-    """Wrapper of gef_next_instruction to use easy."""
+    """Return the next instruction as an Instruction object."""
     if addr is None:
         if not is_alive():
             return None
         addr = current_arch.pc
-    return gef_next_instruction(addr)
+    return gef_instruction_n(addr, 1)
 
 
 def gef_disassemble(addr, nb_insn, nb_prev=0):
@@ -10557,7 +10541,7 @@ class UafWatchpoint(gdb.Breakpoint):
         # software watchpoints stop after the next statement (see
         # https://sourceware.org/gdb/onlinedocs/gdb/Set-Watchpoints.html)
         pc = gdb_get_nth_previous_instruction_address(current_arch.pc, 2)
-        insn = gef_current_instruction(pc)
+        insn = get_insn()
         msg = []
         msg.append(Color.colorify("Heap-Analysis", "bold yellow"))
         fmt = "Possible Use-after-Free in '{:s}': pointer {:#x} was freed, but is attempted to be used at {:#x}"
@@ -21275,13 +21259,12 @@ class ContextCommand(GenericCommand):
             err("Missing info about architecture. Please set: `file /path/to/target_binary`")
             return
 
-        insn = gef_current_instruction(current_arch.pc)
+        insn = get_insn()
         if current_arch.is_syscall(insn):
             self.context_title("arguments")
             gdb.execute("syscall-args")
             return
 
-        insn = gef_current_instruction(current_arch.pc)
         if not current_arch.is_call(insn):
             return
 
@@ -37207,7 +37190,7 @@ class SyscallArgsCommand(GenericCommand):
 
         # s390x specific. s390x syscall number may be embedded in the instruction.
         elif is_s390x():
-            insn = gef_current_instruction(current_arch.pc)
+            insn = get_insn()
             r = re.search(syscall_register[0], str(insn))
             nr = int(r.group(1), 0)
             if nr == 0:
@@ -60032,14 +60015,14 @@ class ExecUntilCommand(GenericCommand):
                 prev_addr = current_arch.pc
 
                 # execute 1 instruction
-                insn = gef_current_instruction(current_arch.pc)
+                insn = get_insn()
                 if self.skip_lib and "@plt>" in str(insn):
                     gdb.execute("ni") # use ni wrapper
                 else:
                     gdb.execute("si") # use si wrapper
 
                 # check breakpoint
-                insn = gef_current_instruction(current_arch.pc)
+                insn = get_insn()
                 if current_arch.pc in bp_list:
                     break
 
@@ -60055,7 +60038,7 @@ class ExecUntilCommand(GenericCommand):
                     if prev_prev_addr == prev_addr == current_arch.pc:
                         self.err = "Detected infinity loop prev_addr ({:#x})".format(prev_addr)
                         break
-                    insn = gef_current_instruction(current_arch.pc)
+                    insn = get_insn()
 
                 if self.print_insn:
                     self.force_write_stdout((str(insn) + "\n").encode())
