@@ -9100,7 +9100,7 @@ def process_lookup_address(address):
 
 
 @functools.lru_cache(maxsize=None)
-def process_lookup_path(names, perm=Permission.ALL):
+def process_lookup_path(names, perm_mask=Permission.ALL):
     """Look up for paths in the process memory mapping.
     Return a Section object of load base if found, None otherwise."""
     if not is_alive():
@@ -9112,7 +9112,7 @@ def process_lookup_path(names, perm=Permission.ALL):
 
     for sect in get_process_maps():
         for name in names:
-            if name in sect.path and sect.permission.value & perm:
+            if name in sect.path and sect.permission.value & perm_mask:
                 return sect
     return None
 
@@ -20467,7 +20467,7 @@ class EntryPointBreakCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     def __init__(self, *args, **kwargs):
-        super().__init__()
+        super().__init__(complete=gdb.COMPLETE_FILENAME)
         self.add_setting(
             "entrypoint_symbols",
             "main _main __libc_start_main __uClibc_main start _start __start", # __start is used by MIPS
@@ -20480,6 +20480,10 @@ class EntryPointBreakCommand(GenericCommand):
     def do_invoke(self, argv):
         self.dont_repeat()
 
+        if is_alive():
+            warn("gdb is already running")
+            return
+
         fpath = get_filepath()
         if fpath is None:
             warn("No executable to debug, use `file` to load a binary")
@@ -20489,65 +20493,65 @@ class EntryPointBreakCommand(GenericCommand):
             warn("The file '{}' is not executable.".format(fpath))
             return
 
-        if is_alive():
-            warn("gdb is already running")
-            return
-
         # use symbol if loaded
-        bp = None
         entrypoints = self.get_setting("entrypoint_symbols").split()
         for sym in entrypoints:
             try:
                 value = parse_address(sym)
-                info("Breaking at {:#x} ({:s})".format(value, sym))
-                bp = EntryBreakBreakpoint(sym)
-                gdb.execute("run {}".format(" ".join(argv)))
-                return
-
-            except gdb.error as gdb_error:
-                if 'The "remote" target does not support "run".' in str(gdb_error):
-                    # this case can happen when doing remote debugging
-                    gdb.execute("continue")
-                    return
+            except gdb.error:
                 continue
-        # if here, clear the breakpoint if any set
-        if bp:
-            bp.delete()
+
+            # symbol found
+            info("Breaking at {:#x} ({:s})".format(value, sym))
+            EntryBreakBreakpoint(sym)
+            gdb.execute("run {}".format(" ".join(argv)))
+            return
 
         # no symbols. use elf entry point
-        entry = get_entry_point()
-        if entry is None:
+        # non-PIE
+        if not is_pie(fpath):
+            entry = get_entry_point()
+            info("Breaking at entry-point: {:#x}".format(entry))
+            EntryBreakBreakpoint("*{:#x}".format(entry))
+            gdb.execute("run {}".format(" ".join(argv)))
             return
 
-        if is_pie(fpath):
-            self.set_init_tbreak_pie(entry, argv)
-            try:
-                gdb.execute("continue")
-            except Exception:
-                exc_type, exc_value, exc_traceback = sys.exc_info()
-                err(exc_value)
-            return
-
-        self.set_init_tbreak(entry)
+        # PIE
+        warn("PIC binary detected, retrieving text base address")
+        # Some ELF does not use ld. (ex: ELF built by zig)
+        # So use gef_on_new_hook (use gdb.events.new_objfile internally),
+        # instead of `set stop-on-solib-events 1` because shared object are never loaded.
+        # At least gdb 10.1 (Ubuntu 18.04) supports gdb.events.new_objfile.
+        hide_context()
+        gef_on_new_hook(EntryPointBreakCommand.stop_callback)
         gdb.execute("run {}".format(" ".join(argv)))
         return
 
-    def set_init_tbreak(self, addr):
-        info("Breaking at entry-point: {:#x}".format(addr))
-        bp = EntryBreakBreakpoint("*{:#x}".format(addr))
-        return bp
-
-    def set_init_tbreak_pie(self, addr, argv):
-        warn("PIC binary detected, retrieving text base address")
-        gdb.execute("set stop-on-solib-events 1")
-        hide_context()
-        gdb.execute("run {}".format(" ".join(argv)))
+    @staticmethod
+    def stop_callback(_):
+        # unhook
+        gef_on_new_unhook(EntryPointBreakCommand.stop_callback)
         unhide_context()
-        gdb.execute("set stop-on-solib-events 0")
-        vmmap = get_process_maps()
-        filepath = get_filepath(append_proc_root_prefix=False)
-        base_address = [x.page_start for x in vmmap if x.path == filepath][0]
-        return self.set_init_tbreak(base_address + addr)
+
+        # get section
+        fpath = get_filepath()
+        executable_section = process_lookup_path(fpath, perm_mask=Permission.EXECUTE)
+
+        if executable_section.page_start <= current_arch.pc < executable_section.page_end:
+            # already stopped around entry point.
+            # However, it automatically resumes execution, so we need a breakpoint.
+            next_insn = get_insn_next(current_arch.pc)
+            info("Breaking at: {:#x}".format(next_insn.address))
+            EntryBreakBreakpoint("*{:#x}".format(next_insn.address))
+        else:
+            # stopped in ld, so continue to entry-point.
+            base_address = process_lookup_path(fpath).page_start
+            entry_address = base_address + get_entry_point()
+            info("Breaking at entry-point: {:#x}".format(entry_address))
+            EntryBreakBreakpoint("*{:#x}".format(entry_address))
+
+        # automatically continue
+        return
 
 
 @register_command
@@ -62492,7 +62496,7 @@ class AliasesListCommand(AliasesCommand):
         self.dont_repeat()
 
         ok("Aliases defined:")
-        for a in __aliases__:
+        for a in sorted(__aliases__, key=lambda a: a._alias):
             gef_print("{:30s} {} {}".format(a._alias, RIGHT_ARROW, a._command))
         return
 
