@@ -10666,7 +10666,7 @@ class GenericCommand(gdb.Command):
             example = Color.colorify("\nExample:\n", "bold yellow") + self._example_.strip()
             self.__doc__ += example + "\n"
 
-        if hasattr(self, "_aliases_"):
+        if hasattr(self, "_aliases_") and self._aliases_:
             aliases = Color.colorify("\nAliases:\n", "bold yellow") + str(self._aliases_)
             self.__doc__ += aliases + "\n"
 
@@ -61349,9 +61349,11 @@ class PeekPointersCommand(GenericCommand):
     """Find pointers belonging to other memory regions.."""
     _cmdline_ = "peek-pointers"
     _category_ = "03-a. Memory - Search"
+    _aliases_ = ["leakfind"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('address', metavar='ADDRESS', type=parse_address, help="search start address.")
+    parser.add_argument('address', metavar='ADDRESS', type=parse_address, nargs='?',
+                        help="search start address. (default: $sp)")
     parser.add_argument('name', metavar='NAME', nargs='?', help="what area to search. (default: all area)")
     parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
     _syntax_ = parser.format_help()
@@ -61365,72 +61367,65 @@ class PeekPointersCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        addr = lookup_address(args.address)
-        if (addr.value % gef_getpagesize()):
-            err("address must be aligned to a page")
-            return
-        if addr.section is None:
-            err("{:#x} does not exist".format(addr.value))
+        # get start address section
+        start_addr = args.address or current_arch.sp
+        start_addr = lookup_address(align_address_to_size(start_addr, current_arch.ptrsize))
+        if start_addr.section is None:
+            err("{:#x} does not exist".format(start_addr.value))
             return
 
+        # get target
         vmmap = get_process_maps()
-
         if args.name:
             section_name = args.name
             if section_name == "stack":
-                sections = [(s.path, s.page_start, s.page_end) for s in vmmap if s.path == "[stack]"]
+                sections = [[s.path, s.page_start, s.page_end] for s in vmmap if s.path == "[stack]"]
             elif section_name == "heap":
-                sections = [(s.path, s.page_start, s.page_end) for s in vmmap if s.path == "[heap]"]
+                sections = [[s.path, s.page_start, s.page_end] for s in vmmap if s.path == "[heap]"]
+            elif section_name == "binary":
+                sections = [[s.path, s.page_start, s.page_end] for s in vmmap if s.path == get_filepath()]
             else:
-                sections = [(s.path, s.page_start, s.page_end) for s in vmmap if section_name in s.path]
+                sections = [[s.path, s.page_start, s.page_end] for s in vmmap if section_name in s.path]
         else:
-            sections = [(s.path, s.page_start, s.page_end) for s in vmmap]
+            sections = [[s.path, s.page_start, s.page_end] for s in vmmap]
 
-        data = read_memory(addr.section.page_start, addr.section.size)
+        # fix pathname
+        for i in range(len(sections)):
+            name = sections[i][0]
+            if name.startswith("/"):
+                sections[i][0] = os.path.basename(name)
+
+        # read data
+        data = read_memory(start_addr.value, start_addr.section.page_end - start_addr.value)
         data = slice_unpack(data, current_arch.ptrsize)
 
+        # search
         out = []
-        for off, addr_value in enumerate(data):
-            addr_v = lookup_address(addr_value)
-            if not addr_v:
+        for off, value in enumerate(data):
+            value = lookup_address(value)
+            if not value:
                 continue
 
+            found = False
             for section in sections:
-                name, start_addr, end_addr = section
-                if not (start_addr <= addr_value < end_addr):
-                    continue
-                sym = gdb_get_location(addr_value)
-                sym = "<{:s}+{:04x}>".format(*sym) if sym else ''
-                if name.startswith("/"):
-                    name = os.path.basename(name)
-                elif len(name) == 0:
-                    name = get_filename()
-                addr_pos = addr.value + off * current_arch.ptrsize
-                perm = addr_v.section.permission
-                perm_s = str(perm)
+                sec_name, sec_start_addr, sec_end_addr = section
+                if sec_start_addr <= value.value < sec_end_addr:
+                    found = True
+                    break
+            if not found:
+                continue
 
-                line_color = ""
-                if name == "[stack]":
-                    line_color = get_gef_setting("theme.address_stack")
-                elif name == "[heap]":
-                    line_color = get_gef_setting("theme.address_heap")
-                elif perm.value & Permission.EXECUTE:
-                    line_color = get_gef_setting("theme.address_code")
-                elif perm.value & Permission.WRITE:
-                    line_color = get_gef_setting("theme.address_writable")
-                elif perm.value == Permission.NONE:
-                    line_color = get_gef_setting("theme.address_valid_but_none")
+            sym = get_symbol_string(value.value, " <NO_SYMBOL>")
+            found_offset = off * current_arch.ptrsize
+            found_addr = lookup_address(start_addr.value + found_offset)
+            perm = value.section.permission
+            fmt = "Found at {!s} (+{:#x}): {!s}{:s} ('{:s}', perm: {!s})"
+            out.append(fmt.format(found_addr, found_offset, value, sym, sec_name, perm))
 
-                if perm.value == (Permission.READ | Permission.WRITE | Permission.EXECUTE):
-                    line_color += " " + get_gef_setting("theme.address_rwx")
-
-                search_area = "Found at {:#x}".format(addr_pos)
-                found_area = "{:#x} {:s} ('{:s}', perm: {:s})".format(addr_value, sym, name, perm_s)
-                found_area = Color.colorify(found_area, line_color)
-                out.append("{:s} {:s}".format(search_area, found_area))
-                break
-
-        gef_print('\n'.join(out), less=not args.no_pager)
+        if len(out) > 0x10:
+            gef_print('\n'.join(out), less=not args.no_pager)
+        else:
+            gef_print('\n'.join(out), less=False)
         return
 
 
