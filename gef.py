@@ -3372,8 +3372,13 @@ def checksec(filename):
         if not is_stripped(filename) and not is_static(filename):
             results["Intel CET"] = __check_security_property("-S", filename, r"\.plt\.sec") is True
         else: # static or stripped
-            cmd = [objdump, "-d", "-j", ".plt", filename] # check only .plt section for speed up
-            out = gef_execute_external(cmd, as_list=True)
+            try:
+                cmd = [objdump, "-d", "-j", ".plt", filename] # check only .plt section for speed up
+                out = gef_execute_external(cmd, as_list=True)
+            except subprocess.CalledProcessError:
+                cmd = [objdump, "-d", filename] # no .plt section
+                out = gef_execute_external(cmd, as_list=True)
+
             results["Intel CET"] = False
             for line in out:
                 line = line.strip()
