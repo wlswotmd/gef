@@ -965,18 +965,6 @@ class Permission:
         return perm_str
 
     @staticmethod
-    def from_info_sections(*args):
-        perm = Permission()
-        for arg in args:
-            if "READONLY" in arg:
-                perm.value += Permission.READ
-            if "DATA" in arg:
-                perm.value += Permission.WRITE
-            if "CODE" in arg:
-                perm.value += Permission.EXECUTE
-        return perm
-
-    @staticmethod
     def from_process_maps(perm_str):
         perm = Permission()
         if perm_str[0] == "r":
@@ -2252,10 +2240,6 @@ class GlibcChunk:
         if self.has_m_bit():
             return cursz - 2 * self.ptrsize
         return cursz - self.ptrsize
-
-    @property
-    def usable_size(self):
-        return self.get_usable_size()
 
     def get_prev_chunk_size(self):
         return read_int_from_memory(self.prev_size_addr)
@@ -4770,7 +4754,7 @@ class PPC64(PPC):
         "$r24", "$r25", "$r26", "$r27", "$r28", "$r29", "$r30", "$r31",
         "$pc", "$msr", "$cr", "$lr", "$ctr", "$xer", "$fpscr", "$vscr", "$vrsave",
     ]
-    syscall_paramter_list = ["$r3", "$r4", "$r5", "$r6", "$r7", "$r8"]
+    syscall_parameters = ["$r3", "$r4", "$r5", "$r6", "$r7", "$r8"]
 
     unicorn_support = False
 
@@ -6878,7 +6862,7 @@ class MICROBLAZE(Architecture):
     alias_registers = {
         "$r0": "$zero", "$r1": "$sp", "$r15": "$ra",
     }
-    lag_register = None
+    flag_register = None
     return_register = "$r3"
     function_parameters = ["$r5", "$r6", "$r7", "$r8", "$r9", "$r10"]
     syscall_register = "$r12"
@@ -8297,22 +8281,6 @@ def exclude_specific_arch(arch=()):
     return wrapper
 
 
-def only_if_gdb_version_higher_than(required_gdb_version):
-    """Decorator to check whether current GDB version requirements."""
-
-    def wrapper(f):
-        def inner_f(*args, **kwargs):
-            if GDB_VERSION >= required_gdb_version:
-                return f(*args, **kwargs)
-            else:
-                reason = "GDB >= {} for this command".format(required_gdb_version)
-                raise EnvironmentError(reason)
-
-        return inner_f
-
-    return wrapper
-
-
 def timeout(duration):
     def wrapper(function):
         queue = multiprocessing.Queue(maxsize=1)
@@ -9101,16 +9069,6 @@ def process_lookup_path(names, perm_mask=Permission.ALL):
     return None
 
 
-@functools.lru_cache(maxsize=None)
-def file_lookup_name_path(name, path):
-    """Look up a file by name and path.
-    Return a Zone object if found, None otherwise."""
-    for xfile in get_info_files():
-        if path == xfile.filename and name == xfile.name:
-            return xfile
-    return None
-
-
 @functools.lru_cache(maxsize=512)
 def file_lookup_address(address):
     """Look up for a file by its address.
@@ -9143,12 +9101,12 @@ def is_hex(pattern):
     return len(pattern) % 2 == 0 and all(c in string.hexdigits for c in pattern[2:])
 
 
-def continue_handler(event):
+def continue_handler(_event):
     """GDB event handler for new object continue cases."""
     return
 
 
-def hook_stop_handler(event):
+def hook_stop_handler(_event):
     """GDB event handler for stop cases."""
     reset_gef_caches()
 
@@ -9194,7 +9152,7 @@ def hook_stop_handler(event):
     return
 
 
-def new_objfile_handler(event):
+def new_objfile_handler(_event):
     """GDB event handler for new object file cases."""
     reset_gef_caches(all=True)
     set_arch()
@@ -9202,19 +9160,19 @@ def new_objfile_handler(event):
     return
 
 
-def exit_handler(event):
+def exit_handler(_event):
     """GDB event handler for exit cases."""
     reset_gef_caches(all=True)
     return
 
 
-def memchanged_handler(event):
+def memchanged_handler(_event):
     """GDB event handler for mem changes cases."""
     reset_gef_caches()
     return
 
 
-def regchanged_handler(event):
+def regchanged_handler(_event):
     """GDB event handler for reg changes cases."""
     reset_gef_caches()
     return
@@ -11403,7 +11361,7 @@ class ContCommand(GenericCommand):
             thread_finished = True
             return
 
-        def sig_handler(signum, frame):
+        def sig_handler(_signum, _frame):
             os.kill(get_pid(), signal.SIGINT)
             return
 
@@ -21609,7 +21567,7 @@ class ContextCommand(GenericCommand):
         return
 
     @classmethod
-    def update_registers(cls, event):
+    def update_registers(cls, _event):
         try:
             for reg in current_arch.all_registers:
                 try:
@@ -21620,7 +21578,7 @@ class ContextCommand(GenericCommand):
         except Exception:
             return
 
-    def empty_extra_messages(self, event):
+    def empty_extra_messages(self, _event):
         global __context_messages__
         __context_messages__ = []
         return
@@ -25222,7 +25180,7 @@ class HeapAnalysisCommand(GenericCommand):
             ok("No free() chunk tracked")
         return
 
-    def clean(self, event):
+    def clean(self, _event):
         global __heap_allocated_list__, __heap_freed_list__, __heap_uaf_watchpoints__
 
         ok("{} - Cleaning up".format(Color.colorify("Heap-Analysis", "bold yellow")))
@@ -25291,15 +25249,6 @@ class SyscallSearchCommand(GenericCommand):
     _example_ += '{:s} -a XTENSA -m XTENSA          "^writev?" # xtensa\n'.format(_cmdline_)
     _example_ += '{:s} -a CRIS -m CRIS              "^writev?" # cris\n'.format(_cmdline_)
     _example_ += '{:s} -a LOONGARCH -m LOONGARCH64  "^writev?" # loongarch'.format(_cmdline_)
-
-    def print_legend(self):
-        if self.verbose:
-            headers = ["NR", "Name", "Parameter"]
-            gef_print(Color.colorify("{:<25} {:<25} {}".format(*headers), get_gef_setting("theme.table_heading")))
-        else:
-            headers = ["NR", "Name"]
-            gef_print(Color.colorify("{:<25} {:<25}".format(*headers), get_gef_setting("theme.table_heading")))
-        return
 
     def print_syscall(self, syscall_table, syscall_num, syscall_name_pattern):
         gef_print(titlify("arch={:s}, mode={:s}".format(syscall_table.arch, syscall_table.mode)))
@@ -50863,7 +50812,6 @@ class TcmallocDumpCommand(GenericCommand):
           0x48c char     pad[0x34];
         } // size:0x4c0, total_size:0x26000
         """
-        self.sizeof_TCEntry = 0x10
         self.sizeof_CentralCache = 0x4c0
         self.CentralCache_offset_size_class_ = 0x8
         self.CentralCache_offset_tc_slots_ = 0x80
@@ -52530,10 +52478,6 @@ class uClibcChunk:
         if self.has_m_bit():
             return cursz - 2 * self.ptrsize
         return cursz - self.ptrsize
-
-    @property
-    def usable_size(self):
-        return self.get_usable_size()
 
     def get_prev_chunk_size(self):
         return read_int_from_memory(self.prev_size_addr)
@@ -57459,7 +57403,6 @@ class PagewalkArmCommand(PagewalkCommand):
         TTBCR = get_register('$TTBCR{}'.format(self.suffix))
         if TTBCR is not None:
             self.LPAE = ((TTBCR >> 31) & 0x1) == 1
-            self.PTE_SIZE = 8 if self.LPAE else 4
         else:
             self.LPAE = False
 
@@ -59001,13 +58944,13 @@ class PagewalkArm64Command(PagewalkCommand):
             self.quiet_info('EL2 Page Size: {:d}KB (per page)'.format(page_size))
 
         self.parse_bit_range(granule_bits, region_bits)
-        if not self.use_cache or not self.ttbr1el2_mappings:
+        if not self.use_cache or not self.ttbr0el2_mappings:
             self.flags_strings_cache = {}
             self.do_pagewalk(translation_base_addr, granule_bits, region_start, is_2VAranges=self.EL2_M20)
             self.flags_strings_cache = None
             self.merging()
-            self.ttbr1el2_mappings = self.mappings.copy()
-        self.make_out(self.ttbr1el2_mappings)
+            self.ttbr0el2_mappings = self.mappings.copy()
+        self.make_out(self.ttbr0el2_mappings)
         return
 
     def pagewalk_TTBR1_EL2(self):
@@ -62484,7 +62427,7 @@ class AliasesListCommand(AliasesCommand):
         return
 
 
-def __gef_prompt__(current_prompt):
+def __gef_prompt__(_current_prompt):
     """GEF custom prompt function."""
     if get_gef_setting("gef.readline_compat") is True:
         return GEF_PROMPT
