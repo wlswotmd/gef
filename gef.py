@@ -21478,52 +21478,28 @@ class ContextCommand(GenericCommand):
             current_frame = current_frame.older()
             frames.append(current_frame)
 
-        try:
-            nb_backtrace_before = self.get_setting("nb_lines_backtrace_before")
-            level = max(len(frames) - nb_backtrace_before - 1, 0)
-            current_frame = frames[level]
+        nb_backtrace_before = self.get_setting("nb_lines_backtrace_before")
+        level = max(len(frames) - nb_backtrace_before - 1, 0)
+        current_frame = frames[level]
 
-            while current_frame:
-                current_frame.select()
-                if not current_frame.is_valid():
-                    continue
+        while current_frame and nb_backtrace:
+            current_frame.select()
+            if not current_frame.is_valid():
+                break
+            pc = current_frame.pc()
+            sym = get_symbol_string(pc, nosymbol_string=" <NO_SYMBOL>")
 
-                pc = current_frame.pc()
-                name = Instruction.smartify_text(current_frame.name())
-                items = []
-                if name:
-                    items.append("{:#x}".format(pc))
-                    frame_args = gdb.FrameDecorator.FrameDecorator(current_frame).frame_args() or []
-                    m = Color.greenify(name)
-                    fargs = []
-                    nb_max_string_length = get_gef_setting("context.nb_max_string_length")
-                    for x in frame_args:
-                        value = "{!s}".format(x.sym.value(current_frame))
-                        if len(value) > nb_max_string_length:
-                            value = "{}[...]".format(value[:nb_max_string_length])
-                        fargs.append("{}={:s}".format(Color.yellowify(x.sym), value))
-                    m += "({})".format(", ".join(fargs))
-                    items.append(m)
-                else:
-                    try:
-                        insn = next(gef_disassemble(pc, 1))
-                    except gdb.MemoryError:
-                        break
-                    sym = get_symbol_string(pc, nosymbol_string=" <NO_SYMBOL>")
-                    items.append("{:#x}{:s}".format(pc, sym))
-                    items.append(Color.redify("{} {}".format(insn.mnemonic, ", ".join(insn.operands))))
+            if current_frame == orig_frame:
+                idx = Color.colorify("#{}".format(level), "bold green")
+            else:
+                idx = Color.colorify("#{}".format(level), "bold magenta")
 
-                idx = Color.colorify("#{}".format(level), "bold green" if current_frame == orig_frame else "bold magenta")
-                gef_print("[{}] {}".format(idx, RIGHT_ARROW.join(items)))
-                current_frame = current_frame.older()
-                level += 1
-                nb_backtrace -= 1
-                if nb_backtrace == 0:
-                    break
+            gef_print("[{}] {!s}{:s}".format(idx, lookup_address(pc), sym))
+            current_frame = current_frame.older()
+            level += 1
+            nb_backtrace -= 1
 
-            orig_frame.select()
-        except Exception:
-            err("No such process")
+        orig_frame.select()
         return
 
     def context_threads(self):
@@ -21571,11 +21547,15 @@ class ContextCommand(GenericCommand):
             # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
             selected_frame = None
 
-        for i, thread in enumerate(threads):
-            line = "[{:s}]".format(Color.colorify("#{:d}".format(i), "bold green" if thread == selected_thread else "bold magenta"))
-            line += " Id {:d}, ".format(thread.num)
+        for thread in threads:
+            if thread == selected_thread:
+                line = "[{:s}] ".format(Color.colorify("Thread Id:{:d}".format(thread.num), "bold green"))
+            else:
+                line = "[{:s}] ".format(Color.colorify("Thread Id:{:d}".format(thread.num), "bold magenta"))
+
             if thread.name:
                 line += 'Name: "{:s}", '.format(thread.name)
+
             if thread.is_running():
                 line += Color.colorify("running", "bold green")
             elif thread.is_stopped():
