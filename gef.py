@@ -1405,6 +1405,7 @@ class Elf:
 
 
 class Phdr:
+    # p_type
     PT_NULL          = 0
     PT_LOAD          = 1
     PT_DYNAMIC       = 2
@@ -1424,14 +1425,43 @@ class Phdr:
     #PT_HIOS          = 0x6fffffff
     #PT_LOPROC        = 0x70000000
     #PT_HIPROC        = 0x7fffffff
+    # arch specific values
     PT_MIPS_REGINFO  = 0x70000000
     PT_MIPS_RTPROC   = 0x70000001
     PT_MIPS_OPTIONS  = 0x70000002
     PT_MIPS_ABIFLAGS = 0x70000003
+    PT_IA_64_UNWIND  = 0x70000001
+    PT_HP_TLS        = 0x60000000
+    PT_HP_CORE_NONE  = 0x60000001
+    PT_HP_CORE_VERSION = 0x60000002
+    PT_HP_CORE_KERNEL = 0x60000003
+    PT_HP_CORE_COMM  = 0x60000004
+    PT_HP_CORE_PROC  = 0x60000005
+    PT_HP_CORE_LOADABLE = 0x60000006
+    PT_HP_CORE_STACK = 0x60000007
+    PT_HP_CORE_SHM   = 0x60000008
+    PT_HP_CORE_MMF   = 0x60000009
+    PT_HP_PARALLEL   = 0x6000000a
+    PT_HP_FASTBIND   = 0x6000000b
+    PT_HP_OPT_ANNOT  = 0x6000000c
+    PT_HP_HSL_ANNOT  = 0x6000000d
+    PT_HP_STACK      = 0x6000000e
+    PT_PARISC_ARCHEXT = 0x70000000
+    PT_PARISC_UNWIND = 0x70000001
 
+    # p_flags
     PF_X             = 1
     PF_W             = 2
     PF_R             = 4
+    # arch specific values
+    PF_HP_PAGE_SIZE  = 0x00100000
+    PF_HP_FAR_SHARED = 0x00200000
+    PF_HP_NEAR_SHARED = 0x00400000
+    PF_HP_CODE       = 0x01000000
+    PF_HP_MODIFY     = 0x02000000
+    PF_HP_LAZYSWAP   = 0x04000000
+    PF_HP_SBP        = 0x08000000
+    PF_PARISC_SBP    = 0x08000000
 
     p_type           = None
     p_flags          = None
@@ -1458,6 +1488,7 @@ class Phdr:
 
 
 class Shdr:
+    # sh_type
     SHT_NULL             = 0
     SHT_PROGBITS         = 1
     SHT_SYMTAB           = 2
@@ -1495,7 +1526,50 @@ class Shdr:
     #SHT_HIPROC           = 0x7fffffff
     #SHT_LOUSER           = 0x80000000
     #SHT_HIUSER           = 0x8fffffff
+    # arch specific values
+    SHT_PARISC_EXT       = 0x70000000
+    SHT_PARISC_UNWIND    = 0x70000001
+    SHT_PARISC_DOC       = 0x70000002
+    SHT_MIPS_LIST        = 0x70000000
+    SHT_MIPS_CONFLICT    = 0x70000002
+    SHT_MIPS_GPTAB       = 0x70000003
+    SHT_MIPS_UCODE       = 0x70000004
+    SHT_MIPS_DEBUG       = 0x70000005
+    SHT_MIPS_REGINFO     = 0x70000006
+    SHT_MIPS_PACKAGE     = 0x70000007
+    SHT_MIPS_PACKSYM     = 0x70000008
+    SHT_MIPS_RELD        = 0x70000009
+    SHT_MIPS_IFACE       = 0x7000000b
+    SHT_MIPS_CONTENT     = 0x7000000c
+    SHT_MIPS_OPTIONS     = 0x7000000d
+    SHT_MIPS_SHDR        = 0x70000010
+    SHT_MIPS_FDESC       = 0x70000011
+    SHT_MIPS_EXTSYM      = 0x70000012
+    SHT_MIPS_DENSE       = 0x70000013
+    SHT_MIPS_PDESC       = 0x70000014
+    SHT_MIPS_LOCSYM      = 0x70000015
+    SHT_MIPS_AUXSYM      = 0x70000016
+    SHT_MIPS_OPTSYM      = 0x70000017
+    SHT_MIPS_LOCSTR      = 0x70000018
+    SHT_MIPS_LINE        = 0x70000019
+    SHT_MIPS_RFDESC      = 0x7000001a
+    SHT_MIPS_DELTASYM    = 0x7000001b
+    SHT_MIPS_DELTAINST   = 0x7000001c
+    SHT_MIPS_DELTACLASS  = 0x7000001d
+    SHT_MIPS_DWARF       = 0x7000001e
+    SHT_MIPS_DELTADECL   = 0x7000001f
+    SHT_MIPS_SYMBOL_LIB  = 0x70000020
+    SHT_MIPS_EVENTS      = 0x70000021
+    SHT_MIPS_TRANSLATE   = 0x70000022
+    SHT_MIPS_PIXIE       = 0x70000023
+    SHT_MIPS_XLATE       = 0x70000024
+    SHT_MIPS_XLATE_DEBUG = 0x70000025
+    SHT_MIPS_WHIRL       = 0x70000026
+    SHT_MIPS_EH_REGION   = 0x70000027
+    SHT_MIPS_XLATE_OLD   = 0x70000028
+    SHT_MIPS_PDR_EXCEPTION = 0x70000029
 
+    # sh_flags
     SHF_WRITE            = 1
     SHF_ALLOC            = 2
     SHF_EXECINSTR        = 4
@@ -1511,6 +1585,20 @@ class Shdr:
     SHF_RO_AFTER_INIT    = 0x00200000
     SHF_ORDERED          = 0x40000000
     SHF_EXCLUDE          = 0x80000000
+    # arch specific values
+    SHF_MIPS_NODUPES     = 0x01000000
+    SHF_MIPS_NAMES       = 0x02000000
+    SHF_MIPS_LOCAL       = 0x04000000
+    SHF_MIPS_NOSTRIP     = 0x08000000
+    SHF_MIPS_GPREL       = 0x10000000
+    SHF_MIPS_MERGE       = 0x20000000
+    SHF_MIPS_ADDR        = 0x40000000
+    SHF_MIPS_STRING      = 0x80000000
+    SHF_PARISC_SHORT     = 0x20000000
+    SHF_PARISC_HUGE      = 0x40000000
+    SHF_PARISC_SBP       = 0x80000000
+    SHF_ALPHA_GPREL      = 0x10000000
+    SHF_IA_64_SHORT      = 0x10000000
 
     sh_name              = None
     sh_type              = None
