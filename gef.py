@@ -11112,7 +11112,7 @@ class VersionCommand(GenericCommand):
 
 @register_command
 class HighlightCommand(GenericCommand):
-    """This command highlights user defined text matches which modifies GEF output universally."""
+    """Base command to highlight user defined text matches which modifies GEF output universally."""
     _cmdline_ = "highlight"
     _category_ = "01-f. Debugging Support - Context Extension"
 
@@ -15388,8 +15388,7 @@ class GlibcHeapArenaCommand(GenericCommand):
 
 @register_command
 class GlibcHeapChunkCommand(GenericCommand):
-    """Display information on a heap chunk.
-    See https://github.com/sploitfun/lsploits/blob/master/glibc/malloc/malloc.c#L1123."""
+    """Display information on a heap chunk."""
     _cmdline_ = "heap chunk"
     _category_ = "06-a. Heap - Glibc"
 
@@ -21637,7 +21636,7 @@ class ContextCommand(GenericCommand):
 
 @register_command
 class MemoryCommand(GenericCommand):
-    """Add or remove address ranges to the memory view."""
+    """Base command to watch the memory."""
     _cmdline_ = "memory"
     _category_ = "01-f. Debugging Support - Context Extension"
 
@@ -21953,7 +21952,7 @@ class HexdumpFlexibleCommand(GenericCommand):
 
 @register_command
 class PatchCommand(GenericCommand):
-    """Write specified values to the specified address."""
+    """Base command to write specified values to the specified address."""
     _cmdline_ = "patch"
     _category_ = "03-c. Memory - Patch"
 
@@ -23428,7 +23427,7 @@ class XInfoCommand(GenericCommand):
 
 @register_command
 class XorMemoryCommand(GenericCommand):
-    """XOR a block of memory, then display or patch it."""
+    """Base command to XOR a block of memory."""
     _cmdline_ = "xor-memory"
     _category_ = "03-d. Memory - Calculation"
 
@@ -23537,7 +23536,7 @@ class XorMemoryPatchCommand(GenericCommand):
 
 @register_command
 class PatternCommand(GenericCommand):
-    """Create or search a De Bruijn cyclic pattern to facilitate determining the offset in memory."""
+    """Base command to Create or search a De Bruijn cyclic pattern (used pwntools)."""
     _cmdline_ = "pattern"
     _category_ = "09-c. Misc - Generation"
 
@@ -23563,7 +23562,7 @@ class PatternCommand(GenericCommand):
 
 @register_command
 class PatternCreateCommand(GenericCommand):
-    """Generate a de Bruijn cyclic pattern. This algorithm is used pwntools."""
+    """Generate a de Bruijn cyclic pattern."""
     _cmdline_ = "pattern create"
     _category_ = "09-c. Misc - Generation"
     _aliases_ = ["pattc"]
@@ -38116,7 +38115,7 @@ class MmxCommand(GenericCommand):
 
 @register_command
 class XmmSetCommand(GenericCommand):
-    """Simply set the value to xmm / ymm."""
+    """Simply set the value to xmm or ymm."""
     _cmdline_ = "xmmset"
     _category_ = "04-b. Register - Modify"
 
@@ -55653,7 +55652,7 @@ class P2VCommand(GenericCommand):
 
 @register_command
 class PagewalkCommand(GenericCommand):
-    """Get physical memory info via qemu-monitor. Currently, x64, x86, arm and arm64 are supported."""
+    """Base command to get physical memory info via qemu-monitor. Currently, x64, x86, arm and arm64 are supported."""
     _cmdline_ = "pagewalk"
     _category_ = "08-a. Qemu-system Cooperation - General"
 
@@ -59868,7 +59867,7 @@ class ExecNextCommand(GenericCommand):
 
 @register_command
 class ExecUntilCommand(GenericCommand):
-    """Execute until next call/jmp/syscall/ret/mem-access/specified-keyword instruction."""
+    """Base command to execute until specific condition."""
     _cmdline_ = "exec-until"
     _category_ = "01-d. Debugging Support - Execution"
 
