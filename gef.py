@@ -42329,13 +42329,13 @@ class KernelCurrentCommand(GenericCommand):
         return True
 
     def get_comm_str(self, task_addr):
-        ret = gdb.execute("ktask -n -q", to_string=True)
-        for line in ret.splitlines():
-            line = line.split()
-            addr, comm = int(line[0], 16), line[2]
-            if task_addr == addr:
-                return "(comm: {:s})".format(comm)
-        return ""
+        ret = gdb.execute("ktask -n --meta", to_string=True)
+        r = re.search(r"offsetof\(task_struct, comm\): (0x\S+)", ret)
+        if r is None:
+            return ""
+        offset_comm = int(r.group(1), 16)
+        comm = read_cstring_from_memory(task_addr + offset_comm)
+        return comm
 
     @parse_args
     @only_if_gdb_running
