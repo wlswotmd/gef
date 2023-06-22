@@ -18136,18 +18136,29 @@ class KernelChecksecCommand(GenericCommand):
                 # swapgs_restore_regs_and_return_to_usermode is in a fixed location.
                 # commit_creds are placed dynamically.
                 if swapgs_restore_regs_and_return_to_usermode < commit_creds: # For some reason this works fine
-                    if kcmdline and ("nokaslr" in kcmdline.cmdline or \
-                                   "nofgkaslr" in kcmdline.cmdline or \
-                                 "fgkaslr=off" in kcmdline.cmdline):
+                    if kcmdline and "nokaslr" in kcmdline.cmdline:
+                        gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+                    elif kcmdline and "nofgkaslr" in kcmdline.cmdline:
+                        gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+                    elif kcmdline and "fgkaslr=off" in kcmdline.cmdline:
                         gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
                     else:
                         gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
                 else:
                     gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unsupported", "bold red")))
+                # Could not build detection logic for CONFIG_MODULE_FG_KASLR.
+                # But there is no way to disable it except at build time.
+                # It's included in the patch that introduces FGKASLR, so I'm assuming it's always enabled.
+                cfg = "CONFIG_MODULE_FG_KASLR (FGKASLR)"
+                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enabled (Maybe)", "bold green")))
             else:
                 if commit_creds:
                     gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unsupported", "bold red")))
+                    cfg = "CONFIG_MODULE_FG_KASLR (FGKASLR)"
+                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unsupported", "bold red")))
                 else:
+                    gef_print("{:<40s}: {:s}".format(cfg, Color.grayify("Unknown")))
+                    cfg = "CONFIG_MODULE_FG_KASLR (FGKASLR)"
                     gef_print("{:<40s}: {:s}".format(cfg, Color.grayify("Unknown")))
 
         # KPTI
