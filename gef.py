@@ -61328,6 +61328,8 @@ class WalkLinkListCommand(GenericCommand):
                         help="dump bytes after link-list location.")
     parser.add_argument('-B', dest='dump_bytes_before', type=parse_address, default=0,
                         help="dump bytes before link-list location.")
+    parser.add_argument('--adjust-output', type=parse_address, default=0,
+                        help="displays the result of subtracting a specific value to the output.")
     parser.add_argument('address', metavar='ADDRESS', type=parse_address, help="start address you want to walk.")
     parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
     _syntax_ = parser.format_help()
@@ -61370,7 +61372,12 @@ class WalkLinkListCommand(GenericCommand):
                 dump = hexdump(source, base=current, unit=current_arch.ptrsize)
                 for line in dump.splitlines():
                     self.out.append(indent + line)
-            self.out.append("[{:d}] -> {!s}".format(idx, lookup_address(flink)))
+            la_flink = lookup_address(flink)
+            if self.adjust_output:
+                la_flink_adjusted = lookup_address(flink - self.adjust_output)
+                self.out.append("[{:d}] -> {!s} (adjusted: {!s})".format(idx, la_flink, la_flink_adjusted))
+            else:
+                self.out.append("[{:d}] -> {!s}".format(idx, la_flink))
             if flink == 0:
                 break
             if flink == head:
@@ -61389,6 +61396,7 @@ class WalkLinkListCommand(GenericCommand):
 
         self.dump_bytes_before = args.dump_bytes_before
         self.dump_bytes_after = args.dump_bytes_after
+        self.adjust_output = args.adjust_output
 
         self.out = []
         self.info("head address: {:#x}".format(args.address))
