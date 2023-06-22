@@ -88,6 +88,23 @@
 # E731: do not assign a lambda expression, use a def
 #   -> It can be written more cleanly using lambdas.
 #
+#######################################################################################
+# Use this command when check by vulture
+# vulture gef.py --ignore-names="*Command,invoke"
+#
+# There is no problem even if the following items are detected.
+#   unused function 'perf' (60% confidence)
+#   unused attribute 'e_pad' (60% confidence)
+#   unused attribute 'detail' (60% confidence)
+#   unused property 'fp' (60% confidence)
+#   unused function 'strings' (60% confidence)
+#   unused function 'register_external_command' (60% confidence)
+#   unused method 'del_setting' (60% confidence)
+#   unused attribute 'detail' (60% confidence)
+#   unused class 'GenericFunction' (60% confidence)
+#   unused method 'arg_to_long' (60% confidence)
+#   unused attribute 'prompt_hook' (60% confidence)
+
 
 from __future__ import print_function, division, absolute_import
 print("Loading GEF...")
@@ -1297,7 +1314,7 @@ class Elf:
     e_eiversion              = None
     e_osabi                  = None
     e_abiversion             = None
-    e_pad                    = None
+    e_pad                    = None # noqa: F841
     e_type                   = ET_EXEC
     e_machine                = EM_X86_64
     e_version                = None
@@ -1430,38 +1447,38 @@ class Phdr:
     PT_MIPS_RTPROC   = 0x70000001
     PT_MIPS_OPTIONS  = 0x70000002
     PT_MIPS_ABIFLAGS = 0x70000003
-    PT_IA_64_UNWIND  = 0x70000001
-    PT_HP_TLS        = 0x60000000
-    PT_HP_CORE_NONE  = 0x60000001
-    PT_HP_CORE_VERSION = 0x60000002
-    PT_HP_CORE_KERNEL = 0x60000003
-    PT_HP_CORE_COMM  = 0x60000004
-    PT_HP_CORE_PROC  = 0x60000005
-    PT_HP_CORE_LOADABLE = 0x60000006
-    PT_HP_CORE_STACK = 0x60000007
-    PT_HP_CORE_SHM   = 0x60000008
-    PT_HP_CORE_MMF   = 0x60000009
-    PT_HP_PARALLEL   = 0x6000000a
-    PT_HP_FASTBIND   = 0x6000000b
-    PT_HP_OPT_ANNOT  = 0x6000000c
-    PT_HP_HSL_ANNOT  = 0x6000000d
-    PT_HP_STACK      = 0x6000000e
-    PT_PARISC_ARCHEXT = 0x70000000
-    PT_PARISC_UNWIND = 0x70000001
+    PT_IA_64_UNWIND  = 0x70000001 # noqa: F841
+    PT_HP_TLS        = 0x60000000 # noqa: F841
+    PT_HP_CORE_NONE  = 0x60000001 # noqa: F841
+    PT_HP_CORE_VERSION = 0x60000002 # noqa: F841
+    PT_HP_CORE_KERNEL = 0x60000003 # noqa: F841
+    PT_HP_CORE_COMM  = 0x60000004 # noqa: F841
+    PT_HP_CORE_PROC  = 0x60000005 # noqa: F841
+    PT_HP_CORE_LOADABLE = 0x60000006 # noqa: F841
+    PT_HP_CORE_STACK = 0x60000007 # noqa: F841
+    PT_HP_CORE_SHM   = 0x60000008 # noqa: F841
+    PT_HP_CORE_MMF   = 0x60000009 # noqa: F841
+    PT_HP_PARALLEL   = 0x6000000a # noqa: F841
+    PT_HP_FASTBIND   = 0x6000000b # noqa: F841
+    PT_HP_OPT_ANNOT  = 0x6000000c # noqa: F841
+    PT_HP_HSL_ANNOT  = 0x6000000d # noqa: F841
+    PT_HP_STACK      = 0x6000000ea # noqa: F841
+    PT_PARISC_ARCHEXT = 0x70000000 # noqa: F841
+    PT_PARISC_UNWIND = 0x70000001 # noqa: F841
 
     # p_flags
     PF_X             = 1
     PF_W             = 2
     PF_R             = 4
     # arch specific values
-    PF_HP_PAGE_SIZE  = 0x00100000
-    PF_HP_FAR_SHARED = 0x00200000
-    PF_HP_NEAR_SHARED = 0x00400000
-    PF_HP_CODE       = 0x01000000
-    PF_HP_MODIFY     = 0x02000000
-    PF_HP_LAZYSWAP   = 0x04000000
-    PF_HP_SBP        = 0x08000000
-    PF_PARISC_SBP    = 0x08000000
+    PF_HP_PAGE_SIZE  = 0x00100000 # noqa: F841
+    PF_HP_FAR_SHARED = 0x00200000 # noqa: F841
+    PF_HP_NEAR_SHARED = 0x00400000 # noqa: F841
+    PF_HP_CODE       = 0x01000000 # noqa: F841
+    PF_HP_MODIFY     = 0x02000000 # noqa: F841
+    PF_HP_LAZYSWAP   = 0x04000000 # noqa: F841
+    PF_HP_SBP        = 0x08000000 # noqa: F841
+    PF_PARISC_SBP    = 0x08000000 # noqa: F841
 
     p_type           = None
     p_flags          = None
@@ -1527,47 +1544,47 @@ class Shdr:
     #SHT_LOUSER           = 0x80000000
     #SHT_HIUSER           = 0x8fffffff
     # arch specific values
-    SHT_PARISC_EXT       = 0x70000000
-    SHT_PARISC_UNWIND    = 0x70000001
-    SHT_PARISC_DOC       = 0x70000002
-    SHT_MIPS_LIST        = 0x70000000
-    SHT_MIPS_CONFLICT    = 0x70000002
-    SHT_MIPS_GPTAB       = 0x70000003
-    SHT_MIPS_UCODE       = 0x70000004
-    SHT_MIPS_DEBUG       = 0x70000005
-    SHT_MIPS_REGINFO     = 0x70000006
-    SHT_MIPS_PACKAGE     = 0x70000007
-    SHT_MIPS_PACKSYM     = 0x70000008
-    SHT_MIPS_RELD        = 0x70000009
-    SHT_MIPS_IFACE       = 0x7000000b
-    SHT_MIPS_CONTENT     = 0x7000000c
-    SHT_MIPS_OPTIONS     = 0x7000000d
-    SHT_MIPS_SHDR        = 0x70000010
-    SHT_MIPS_FDESC       = 0x70000011
-    SHT_MIPS_EXTSYM      = 0x70000012
-    SHT_MIPS_DENSE       = 0x70000013
-    SHT_MIPS_PDESC       = 0x70000014
-    SHT_MIPS_LOCSYM      = 0x70000015
-    SHT_MIPS_AUXSYM      = 0x70000016
-    SHT_MIPS_OPTSYM      = 0x70000017
-    SHT_MIPS_LOCSTR      = 0x70000018
-    SHT_MIPS_LINE        = 0x70000019
-    SHT_MIPS_RFDESC      = 0x7000001a
-    SHT_MIPS_DELTASYM    = 0x7000001b
-    SHT_MIPS_DELTAINST   = 0x7000001c
-    SHT_MIPS_DELTACLASS  = 0x7000001d
-    SHT_MIPS_DWARF       = 0x7000001e
-    SHT_MIPS_DELTADECL   = 0x7000001f
-    SHT_MIPS_SYMBOL_LIB  = 0x70000020
-    SHT_MIPS_EVENTS      = 0x70000021
-    SHT_MIPS_TRANSLATE   = 0x70000022
-    SHT_MIPS_PIXIE       = 0x70000023
-    SHT_MIPS_XLATE       = 0x70000024
-    SHT_MIPS_XLATE_DEBUG = 0x70000025
-    SHT_MIPS_WHIRL       = 0x70000026
-    SHT_MIPS_EH_REGION   = 0x70000027
-    SHT_MIPS_XLATE_OLD   = 0x70000028
-    SHT_MIPS_PDR_EXCEPTION = 0x70000029
+    SHT_PARISC_EXT       = 0x70000000 # noqa: F841
+    SHT_PARISC_UNWIND    = 0x70000001 # noqa: F841
+    SHT_PARISC_DOC       = 0x70000002 # noqa: F841
+    SHT_MIPS_LIST        = 0x70000000 # noqa: F841
+    SHT_MIPS_CONFLICT    = 0x70000002 # noqa: F841
+    SHT_MIPS_GPTAB       = 0x70000003 # noqa: F841
+    SHT_MIPS_UCODE       = 0x70000004 # noqa: F841
+    SHT_MIPS_DEBUG       = 0x70000005 # noqa: F841
+    SHT_MIPS_REGINFO     = 0x70000006 # noqa: F841
+    SHT_MIPS_PACKAGE     = 0x70000007 # noqa: F841
+    SHT_MIPS_PACKSYM     = 0x70000008 # noqa: F841
+    SHT_MIPS_RELD        = 0x70000009 # noqa: F841
+    SHT_MIPS_IFACE       = 0x7000000b # noqa: F841
+    SHT_MIPS_CONTENT     = 0x7000000c # noqa: F841
+    SHT_MIPS_OPTIONS     = 0x7000000d # noqa: F841
+    SHT_MIPS_SHDR        = 0x70000010 # noqa: F841
+    SHT_MIPS_FDESC       = 0x70000011 # noqa: F841
+    SHT_MIPS_EXTSYM      = 0x70000012 # noqa: F841
+    SHT_MIPS_DENSE       = 0x70000013 # noqa: F841
+    SHT_MIPS_PDESC       = 0x70000014 # noqa: F841
+    SHT_MIPS_LOCSYM      = 0x70000015 # noqa: F841
+    SHT_MIPS_AUXSYM      = 0x70000016 # noqa: F841
+    SHT_MIPS_OPTSYM      = 0x70000017 # noqa: F841
+    SHT_MIPS_LOCSTR      = 0x70000018 # noqa: F841
+    SHT_MIPS_LINE        = 0x70000019 # noqa: F841
+    SHT_MIPS_RFDESC      = 0x7000001a # noqa: F841
+    SHT_MIPS_DELTASYM    = 0x7000001b # noqa: F841
+    SHT_MIPS_DELTAINST   = 0x7000001c # noqa: F841
+    SHT_MIPS_DELTACLASS  = 0x7000001d # noqa: F841
+    SHT_MIPS_DWARF       = 0x7000001e # noqa: F841
+    SHT_MIPS_DELTADECL   = 0x7000001f # noqa: F841
+    SHT_MIPS_SYMBOL_LIB  = 0x70000020 # noqa: F841
+    SHT_MIPS_EVENTS      = 0x70000021 # noqa: F841
+    SHT_MIPS_TRANSLATE   = 0x70000022 # noqa: F841
+    SHT_MIPS_PIXIE       = 0x70000023 # noqa: F841
+    SHT_MIPS_XLATE       = 0x70000024 # noqa: F841
+    SHT_MIPS_XLATE_DEBUG = 0x70000025 # noqa: F841
+    SHT_MIPS_WHIRL       = 0x70000026 # noqa: F841
+    SHT_MIPS_EH_REGION   = 0x70000027 # noqa: F841
+    SHT_MIPS_XLATE_OLD   = 0x70000028 # noqa: F841
+    SHT_MIPS_PDR_EXCEPTION = 0x70000029 # noqa: F841
 
     # sh_flags
     SHF_WRITE            = 1
@@ -1581,24 +1598,24 @@ class Shdr:
     SHF_GROUP            = 0x200
     SHF_TLS              = 0x400
     SHF_COMPRESSED       = 0x800
-    SHF_RELA_LIVEPATCH   = 0x00100000
-    SHF_RO_AFTER_INIT    = 0x00200000
-    SHF_ORDERED          = 0x40000000
+    SHF_RELA_LIVEPATCH   = 0x00100000 # noqa: F841
+    SHF_RO_AFTER_INIT    = 0x00200000 # noqa: F841
+    SHF_ORDERED          = 0x40000000 # noqa: F841
     SHF_EXCLUDE          = 0x80000000
     # arch specific values
-    SHF_MIPS_NODUPES     = 0x01000000
-    SHF_MIPS_NAMES       = 0x02000000
-    SHF_MIPS_LOCAL       = 0x04000000
-    SHF_MIPS_NOSTRIP     = 0x08000000
-    SHF_MIPS_GPREL       = 0x10000000
-    SHF_MIPS_MERGE       = 0x20000000
-    SHF_MIPS_ADDR        = 0x40000000
-    SHF_MIPS_STRING      = 0x80000000
-    SHF_PARISC_SHORT     = 0x20000000
-    SHF_PARISC_HUGE      = 0x40000000
-    SHF_PARISC_SBP       = 0x80000000
-    SHF_ALPHA_GPREL      = 0x10000000
-    SHF_IA_64_SHORT      = 0x10000000
+    SHF_MIPS_NODUPES     = 0x01000000 # noqa: F841
+    SHF_MIPS_NAMES       = 0x02000000 # noqa: F841
+    SHF_MIPS_LOCAL       = 0x04000000 # noqa: F841
+    SHF_MIPS_NOSTRIP     = 0x08000000 # noqa: F841
+    SHF_MIPS_GPREL       = 0x10000000 # noqa: F841
+    SHF_MIPS_MERGE       = 0x20000000 # noqa: F841
+    SHF_MIPS_ADDR        = 0x40000000 # noqa: F841
+    SHF_MIPS_STRING      = 0x80000000 # noqa: F841
+    SHF_PARISC_SHORT     = 0x20000000 # noqa: F841
+    SHF_PARISC_HUGE      = 0x40000000 # noqa: F841
+    SHF_PARISC_SBP       = 0x80000000 # noqa: F841
+    SHF_ALPHA_GPREL      = 0x10000000 # noqa: F841
+    SHF_IA_64_SHORT      = 0x10000000 # noqa: F841
 
     sh_name              = None
     sh_type              = None
@@ -9897,12 +9914,6 @@ def align_address(address, memalign_size=None):
 def align_address_to_size(address, align):
     """Align the address to the given size."""
     return address + ((align - (address % align)) % align)
-
-
-def align_address_to_page(address):
-    """Align the address to a page."""
-    a = align_address(address) >> DEFAULT_PAGE_ALIGN_SHIFT
-    return a << DEFAULT_PAGE_ALIGN_SHIFT
 
 
 def parse_address(address):
@@ -18799,7 +18810,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
     DW_EH_PE_udata2   = 0x02
     DW_EH_PE_udata4   = 0x03
     DW_EH_PE_udata8   = 0x04
-    DW_EH_PE_signed   = 0x08
+    DW_EH_PE_signed   = 0x08 # noqa: F841
     DW_EH_PE_sleb128  = 0x09
     DW_EH_PE_sdata2   = 0x0a
     DW_EH_PE_sdata4   = 0x0b
@@ -19366,13 +19377,13 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
     DW_CFA_val_offset                   = 0x14
     DW_CFA_val_offset_sf                = 0x15
     DW_CFA_val_expression               = 0x16
-    DW_CFA_low_user                     = 0x1c
+    DW_CFA_low_user                     = 0x1c # noqa: F841
     DW_CFA_MIPS_advance_loc8            = 0x1d
     DW_CFA_GNU_window_save              = 0x2d
-    DW_CFA_AARCH64_negate_ra_state      = 0x2d # dup
+    DW_CFA_AARCH64_negate_ra_state      = 0x2d # noqa: F841 # dup
     DW_CFA_GNU_args_size                = 0x2e
-    DW_CFA_GNU_negative_offset_extended = 0x2f
-    DW_CFA_high_user                    = 0x3f
+    DW_CFA_GNU_negative_offset_extended = 0x2f # noqa: F841
+    DW_CFA_high_user                    = 0x3f # noqa: F841
 
     def get_register_name(self, reg):
         if self.elf.e_machine == Elf.EM_X86_64:
@@ -19773,7 +19784,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
     DW_OP_GNU_const_index      = 0xfc  #
     DW_OP_GNU_variable_value   = 0xfd  #
     DW_OP_lo_user              = 0xe0  # Implementation-defined range start
-    DW_OP_hi_user              = 0xff  # Implementation-defined range end
+    DW_OP_hi_user              = 0xff  # noqa: F841 # Implementation-defined range end
 
     def dwarf_locexpr_opcode_string(self, code):
         DWARF_ONE_KNOWN_DW_OP = {
@@ -35570,7 +35581,7 @@ arm_OPTEE_syscall_list = [
 # ARM/ARM64 OP-TEE ldelf (at secure world)
 # - core/include/tee/tee_svc.h
 # - core/include/kernel/ldelf_syscalls.h
-arm_ldelf_syscall_list = [
+arm_ldelf_syscall_list = [ # noqa: F841
     [0x00, 'syscall_sys_return', ['unsigned long ret']],
     [0x01, 'syscall_log', ['const void *buf', 'size_t len']],
     [0x02, 'syscall_panic', ['unsigned long code']],
@@ -61973,7 +61984,8 @@ class GefCommand(gdb.Command):
                 self.missing_commands[cmd] = reason
                 nb_missing += 1
 
-        if False: # debug print
+        DEBUG = False
+        if DEBUG:
             print(titlify("Top 10 commands that took the longest to load"))
             for cmd, real, cpu in sorted(time_elapsed, key=lambda x: x[1], reverse=True)[:10]:
                 print("{:30s} Real:{:.10f} s, CPU:{:.10f} s".format(cmd, real, cpu))
