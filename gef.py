@@ -18688,9 +18688,9 @@ class KernelChecksecCommand(GenericCommand):
                 gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
             else:
                 v1 = u32(read_memory(kptr_restrict, 4))
-                v2 = u32(read_memory(sysctl_perf_event_paranoid, 4))
+                v2 = u32(read_memory(sysctl_perf_event_paranoid, 4), s=True)
                 additional = "kernel.kptr_restrict: {:d}, kernel.perf_event_paranoid: {:d}".format(v1, v2)
-                if v1 == 0 and v2 == 0:
+                if v1 == 0 and v2 <= 1:
                     gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
                 else:
                     gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
