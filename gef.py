@@ -51146,12 +51146,11 @@ class TcmallocDumpCommand(GenericCommand):
             chunksize = self.index_to_size(freelist, idx)
             colored_freelist_addr = str(lookup_address(freelist))
             if chunksize is None:
-                fmt = "freelist[idx={:2d}, size=unknown, len={:d}] @ {:s}{:s}"
-                self.out.append(fmt.format(idx, length, colored_freelist_addr, chunklist_string))
+                chunksize = Color.colorify("unknown", chunk_size_color)
             else:
                 chunksize = Color.colorify("{:#x}".format(chunksize), chunk_size_color)
-                fmt = "freelist[idx={:2d}, size={:s}, len={:d}] @ {:s}{:s}"
-                self.out.append(fmt.format(idx, chunksize, length, colored_freelist_addr, chunklist_string))
+            fmt = "freelist[idx={:d}, size={:s}, len={:d}] @ {:s}{:s}"
+            self.out.append(fmt.format(idx, chunksize, length, colored_freelist_addr, chunklist_string))
         return
 
     def dump_thread_heap_freelist_array(self, thread_heap):
