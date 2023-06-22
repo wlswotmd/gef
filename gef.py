@@ -59859,7 +59859,7 @@ class PagewalkWithHintsCommand(GenericCommand):
     def add_legend(self):
         if not self.quiet:
             fmt = "{:37s} {:18s} {:5s} {:s}"
-            legend = ["Virtual address start-end", "Total size", "Flags", "Hint"]
+            legend = ["Virtual address start-end", "Total size", "Perm", "Hint"]
             self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
         return
 
