@@ -74,6 +74,10 @@
 # SOFTWARE.
 #
 #######################################################################################
+# Use this command when check by vulture
+# vulture gef.py --ignore-names="*Command,invoke"
+#
+#######################################################################################
 # Use this command when check by ruff
 # ruff check gef.py --select B,C4,E,F --ignore B905,C409,E402,E501,E731
 #
@@ -88,22 +92,6 @@
 # E731: do not assign a lambda expression, use a def
 #   -> It can be written more cleanly using lambdas.
 #
-#######################################################################################
-# Use this command when check by vulture
-# vulture gef.py --ignore-names="*Command,invoke"
-#
-# There is no problem even if the following items are detected.
-#   unused function 'perf' (60% confidence)
-#   unused attribute 'e_pad' (60% confidence)
-#   unused attribute 'detail' (60% confidence)
-#   unused property 'fp' (60% confidence)
-#   unused function 'strings' (60% confidence)
-#   unused function 'register_external_command' (60% confidence)
-#   unused method 'del_setting' (60% confidence)
-#   unused attribute 'detail' (60% confidence)
-#   unused class 'GenericFunction' (60% confidence)
-#   unused method 'arg_to_long' (60% confidence)
-#   unused attribute 'prompt_hook' (60% confidence)
 
 
 from __future__ import print_function, division, absolute_import
@@ -249,6 +237,7 @@ def perf(f):
         print(s.getvalue())
         return ret
 
+    perf # avoid to be detected as unused # noqa: B018
     return wrapper
 
 
@@ -1361,6 +1350,7 @@ class Elf:
         self.e_osabi, self.e_abiversion = struct.unpack("{}BB".format(endian), self.read(2))
         # off 0x9
         self.e_pad = self.read(7)
+        self.e_pad # avoid to be detected as unused # noqa: B018
         # off 0x10
         self.e_type, self.e_machine, self.e_version = struct.unpack("{}HHI".format(endian), self.read(8))
         # off 0x18
@@ -3152,6 +3142,7 @@ def capstone_disassemble(location, nb_insn, **kwargs):
     try:
         cs = capstone.Cs(arch, mode)
         cs.detail = True
+        cs.detail # avoid to be detected as unused # noqa: B018
     except capstone.CsError:
         err("CsError")
         return
@@ -3700,10 +3691,6 @@ class Architecture:
     @property
     def sp(self):
         return get_register("$sp")
-
-    @property
-    def fp(self):
-        return get_register("$fp")
 
     @property
     def ptrsize(self):
@@ -7907,6 +7894,7 @@ def strings(data, length=8):
         i += 1
     if len(current_str) >= length:
         strings_data.append(current_str)
+    strings # avoid to be detected as unused # noqa: B018
     return strings_data
 
 
@@ -10670,16 +10658,6 @@ class MessageBreakpoint(gdb.Breakpoint):
 # Commands
 #
 
-def register_external_command(obj):
-    """Registering function for new GEF (sub-)command to GDB."""
-    global __commands__, __gef__
-    cls = obj.__class__
-    __commands__.append(cls)
-    __gef__.load(initial=False)
-    __gef__.doc.add_command_to_doc((cls._cmdline_, cls, None))
-    __gef__.doc.refresh()
-    return cls
-
 
 def register_command(cls):
     """Decorator for registering new GEF (sub-)command to GDB."""
@@ -10798,12 +10776,6 @@ class GenericCommand(gdb.Command):
             return
         key = self.__get_setting_name(name)
         __config__[key] = [value, type(value), description]
-        get_gef_setting.cache_clear()
-        return
-
-    def del_setting(self, name):
-        key = self.__get_setting_name(name)
-        del __config__[key]
         get_gef_setting.cache_clear()
         return
 
@@ -61830,39 +61802,6 @@ class BincompareCommand(GenericCommand):
         return
 
 
-class GenericFunction(gdb.Function):
-    """This is an abstract class for invoking convenience functions, should not be instantiated."""
-    __metaclass__ = abc.ABCMeta
-
-    @abc.abstractproperty
-    def _function_(self):
-        return
-
-    @property
-    def _syntax_(self):
-        return "${}([offset])".format(self._function_)
-
-    def __init__(self):
-        super().__init__(self._function_)
-        return
-
-    def invoke(self, *args):
-        if not is_alive():
-            raise gdb.GdbError("No debugging session active")
-        return int(self.do_invoke(args))
-
-    def arg_to_long(self, args, index, default=0):
-        try:
-            addr = args[index]
-            return int(addr) if addr.address is None else int(addr.address)
-        except IndexError:
-            return default
-
-    @abc.abstractmethod
-    def do_invoke(self, args):
-        return
-
-
 class GefCommand(gdb.Command):
     """GEF main command: view all new commands by typing `gef`."""
     _cmdline_ = "gef"
@@ -62611,6 +62550,7 @@ def main():
 
     # setup prompt
     gdb.prompt_hook = __gef_prompt__
+    gdb.prompt_hook # avoid to be detected as unused # noqa: B018
 
     # setup config
     gdb.execute("set confirm off")
