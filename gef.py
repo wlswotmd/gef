@@ -23268,7 +23268,7 @@ class VMMapCommand(GenericCommand):
             elif self.is_integer(args.filter):
                 addr = int(args.filter, 0)
                 if addr >= entry.page_start and addr < entry.page_end:
-                    self.print_entry(entry, args.outer)
+                    self.dump_entry(entry, args.outer)
 
         if is_qemu_usermode() and not args.outer:
             self.info("Searched from auxv, registers and stack values. There may be areas that cannot be detected.")
