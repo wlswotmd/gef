@@ -99,6 +99,7 @@ print("Loading GEF...")
 
 import abc
 import argparse
+import base64
 import binascii
 import codecs
 import collections
@@ -51249,6 +51250,53 @@ class TcmallocDumpCommand(GenericCommand):
             self.FreeList_print_target_thread = args.name
             self.dump_thread_heaps()
         gef_print('\n'.join(self.out), less=not args.no_pager)
+        return
+
+
+@register_command
+class V8Command(GenericCommand):
+    """Print v8 tagged object, or load more commands from internet."""
+    _cmdline_ = "v8"
+    _category_ = "09-e. Misc - V8"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('address', metavar='ADDRESS', type=parse_address, nargs='?', help='target map address.')
+    group.add_argument('-l', '--load-v8-gdbinit', action='store_true', help='load gdbinit for v8 from internet')
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_not_qemu_system
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        if args.load_v8_gdbinit:
+            gdbinit_filename = os.path.join(GEF_TEMP_DIR, "gdbinit-v8")
+            if not os.path.exists(gdbinit_filename):
+                # https://chromium.googlesource.com/v8/v8/+/refs/heads/main/tools/gdbinit
+                url = "https://chromium.googlesource.com/v8/v8/+/refs/heads/main/tools/gdbinit?format=TEXT"
+                gdbinit_data = http_get(url)
+                gdbinit_data = base64.b64decode(gdbinit_data)
+                open(gdbinit_filename, "wb").write(gdbinit_data)
+                info("download gdbinit from internet.")
+            else:
+                info("reuse gdbinit cached previouslly.")
+
+            try:
+                gdb.execute("source {:s}".format(gdbinit_filename))
+                info("Successfully loaded.")
+            except Exception:
+                err("Failed to load.")
+            return
+
+        if args.address:
+            try:
+                # Since this command is used so often, it can be implemented without loading from internet.
+                cmd = "call (void) _v8_internal_Print_Object((void*)({:#x}))".format(args.address)
+                gdb.execute(cmd)
+            except Exception:
+                pass
         return
 
 

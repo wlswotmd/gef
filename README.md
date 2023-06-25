@@ -506,6 +506,10 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/message-break.png)
 * `hexdump-flexible`: displays the hexdump with user defined format.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hexdump-flexible.png)
+* `v8`: displays v8 tagged object.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/v8.png)
+    * It also loads more commands from latest gdbinit for v8.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/v8-load.png)
 
 ### Other
 * The category is introduced in `gef help`.
