@@ -50830,7 +50830,7 @@ class TcmallocDumpCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('name', choices=['self', 'all', 'central'], nargs='?', default='self', help='target thread cache.')
-    parser.add_argument('-n', '--no-pager', action='store_true', default=None, help='do not use less.')
+    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}\n".format(_cmdline_)
@@ -51309,7 +51309,7 @@ class PartitionAllocDumpCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('target_buffer_root', choices=['fast_malloc', 'array_buffer', 'buffer', 'fm', 'ab', 'b'],
                         help='the target buffer_root')
-    parser.add_argument('-n', '--no-pager', action='store_true', default=None, help='do not use less.')
+    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
     parser.add_argument('-v', dest='verbose', action='store_true', help='display also empty slots.')
     _syntax_ = parser.format_help()
 
@@ -52116,7 +52116,7 @@ class MuslHeapDumpCommand(GenericCommand):
     parser.add_argument('command', nargs='?', default='unused', choices=['ctx', 'unused'],
                         help='dump mode (default: %(default)s).')
     parser.add_argument('--idx', type=int, help='the active index of dump target.')
-    parser.add_argument('-n', '--no-pager', action='store_true', default=None, help='do not use less.')
+    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
     parser.add_argument('-v', dest='verbose', action='store_true', help='also dump an empty active index.')
     _syntax_ = parser.format_help()
 
@@ -52768,7 +52768,7 @@ class UclibcNgHeapDumpCommand(GenericCommand):
     _category_ = "06-b. Heap - Other"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-n', '--no-pager', action='store_true', default=None, help='do not use less.')
+    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
     parser.add_argument('-v', dest='verbose', action='store_true', help='also dump an empty active index.')
     _syntax_ = parser.format_help()
 
@@ -53669,7 +53669,7 @@ class OpteeBgetDumpCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-m', '--malloc_ctx', metavar='OFFSET_malloc_ctx', type=parse_address,
                         help='The offset of `malloc_ctx` at OPTEE-TA.')
-    parser.add_argument('-n', '--no-pager', action='store_true', default=None, help='do not use less.')
+    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
     parser.add_argument('-v', dest='verbose', action='store_true', help='verbose output.')
     _syntax_ = parser.format_help()
 
@@ -55240,7 +55240,7 @@ class QemuRegistersCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument('-v', dest='verbose', action='store_true', help='also display detailed bit information.')
-    parser.add_argument('-n', '--no-pager', action='store_true', default=None, help='do not use less.')
+    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
     _syntax_ = parser.format_help()
 
     def info(self, msg):
