@@ -421,7 +421,6 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
         * specified-condition (expressions using register or memory values)
         * user-code
         * libc-code
-    * Please note that this command temporarily closes stdin and stderr on gdb.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/exec-until.png)
 * `exec-next`: executes until next address.
     * This is useful for the operation with `rep` prefix.
