@@ -145,7 +145,7 @@ def http_get(url):
     otherwise return None."""
     try:
         req = urllib.request.Request(url)
-        req.add_header('Cache-Control', 'no-cache, no-store')
+        req.add_header("Cache-Control", "no-cache, no-store")
         http = urllib.request.urlopen(req, timeout=5)
         if http.getcode() != 200:
             return None
@@ -1820,8 +1820,8 @@ class Instruction:
                 else:
                     colored_o1.append(Color.colorify(o2, color_operands_normal))
                     colored_o1.append(" ")
-            colored_operands.append(''.join(colored_o1).strip())
-        operands = Color.colorify(', ', color_operands_symbol).join(colored_operands)
+            colored_operands.append("".join(colored_o1).strip())
+        operands = Color.colorify(", ", color_operands_symbol).join(colored_operands)
 
         # the case that gdb does not append symbol but symbol exists
         if is_branch and "<" not in operands and self.operands and self.operands[-1]:
@@ -2674,7 +2674,7 @@ def str2bytes(x):
 
 def bytes2str(x):
     if isinstance(x, bytes):
-        x = ''.join(chr(xx) for xx in x)
+        x = "".join(chr(xx) for xx in x)
     return x
 
 
@@ -3919,7 +3919,7 @@ class RISCV(Architecture):
             addi(17, 0, _NR_mprotect), # addi a7, zero, _NR_mprotect
             p("0b00000_00_00000_00000_000_00000_11100_11"), # ecall
         ]
-        return b''.join(insns)
+        return b"".join(insns)
 
 
 class RISCV64(RISCV):
@@ -3988,7 +3988,7 @@ class RISCV64(RISCV):
             addi(17, 0, _NR_mprotect), # addi a7, zero, _NR_mprotect
             p("0b00000_00_00000_00000_000_00000_11100_11"), # ecall
         ]
-        return b''.join(insns)
+        return b"".join(insns)
 
 
 class ARM(Architecture):
@@ -5713,7 +5713,7 @@ class S390X(Architecture):
             ".byte 0x0a, {:#x}".format(_NR_mprotect), # svc 0x7d
             "bcr 0, %r7", # nop
         ]
-        return '; '.join(insns)
+        return "; ".join(insns)
 
 
 class SH4(Architecture):
@@ -5888,7 +5888,7 @@ class SH4(Architecture):
             b"\xb3\x65", # mov r11, r5
             b"\xc3\x66", # mov r12, r6
         ]
-        return b''.join(insns)
+        return b"".join(insns)
 
 
 class M68K(Architecture):
@@ -6120,7 +6120,7 @@ class M68K(Architecture):
             b"\x20\x3c" + p32(_NR_mprotect), # movel _NR_mprotect, %d0
             b"\x4e\x40", # trap #0
         ]
-        return b''.join(insns)
+        return b"".join(insns)
 
 
 class ALPHA(Architecture):
@@ -6210,7 +6210,7 @@ class ALPHA(Architecture):
         elif mnemo == "blt":
             taken, reason = regval < 0, "{:s} < 0".format(regname)
         elif mnemo == "blbc":
-            taken, reason = (regval & 1) == 0, "'({:s}&1) == 0".format(regname)
+            taken, reason = (regval & 1) == 0, "({:s}&1) == 0".format(regname)
         elif mnemo == "blbs":
             taken, reason = (regval & 1) == 1, "({:s}&1) == 1".format(regname)
 
@@ -6295,7 +6295,7 @@ class ALPHA(Architecture):
             lda_v0(_NR_mprotect), # lda v0, _NR_mprotect
             p32(0x00000083), # callsys
         ]
-        return b''.join(insns)
+        return b"".join(insns)
 
 
 class HPPA(Architecture):
@@ -6665,7 +6665,7 @@ class HPPA(Architecture):
             ldo(20, 20, _NR_mprotect & 0x7ff), # ldo _NR_mprotect[10:0](r20), r20
             p32(0xe4008200), # be,l 100(sr2, r0), sr0, r31
         ]
-        return b''.join(insns)
+        return b"".join(insns)
 
 
 class HPPA64(HPPA):
@@ -6792,7 +6792,7 @@ class OR1K(Architecture):
             p32(0x20000001), # l.sys 0x1
             p32(0x15000000), # l.nop 0x0 (delay slot)
         ]
-        return b''.join(insns)
+        return b"".join(insns)
 
 
 class NIOS2(Architecture):
@@ -6925,7 +6925,7 @@ class NIOS2(Architecture):
             op_i(0x14, 0, 2, _NR_mprotect), # ori r0, r2, _NR_mprotect
             p32(0x003b683a), # trap 0
         ]
-        return b''.join(insns)
+        return b"".join(insns)
 
 
 class MICROBLAZE(Architecture):
@@ -7071,7 +7071,7 @@ class MICROBLAZE(Architecture):
             p32(0xb9cc0008), # brki r14,8
             p32(0x80000000), # or r0, r0, r0 # delay slot
         ]
-        return b''.join(insns)
+        return b"".join(insns)
 
 
 class XTENSA(Architecture):
@@ -7314,7 +7314,7 @@ class XTENSA(Architecture):
 
             b"\x00\x50\x00", # syscall
         ]
-        return b''.join(insns)
+        return b"".join(insns)
 
 
 class CRIS(Architecture):
@@ -7695,7 +7695,7 @@ class LOONGARCH64(Architecture):
 #    #    insns = [
 #    #        b"\x00\x00", # nop
 #    #    ]
-#    #    return b''.join(insns)
+#    #    return b"".join(insns)
 
 
 def write_memory_qemu_user(pid, address, buffer, length):
@@ -7973,7 +7973,7 @@ def write_physmem(paddr, buffer):
 
 def get_current_mmu_mode():
     try:
-        response = gdb.execute('maintenance packet qqemu.PhyMemMode', to_string=True, from_tty=False)
+        response = gdb.execute("maintenance packet qqemu.PhyMemMode", to_string=True, from_tty=False)
         if 'received: "0"' in response:
             return "virt"
         elif 'received: "1"' in response:
@@ -7989,14 +7989,14 @@ def is_supported_physmode():
 
 
 def enable_phys():
-    response = gdb.execute('maintenance packet Qqemu.PhyMemMode:1', to_string=True, from_tty=False)
-    response = gdb.execute('maintenance packet qqemu.PhyMemMode', to_string=True, from_tty=False)
+    response = gdb.execute("maintenance packet Qqemu.PhyMemMode:1", to_string=True, from_tty=False)
+    response = gdb.execute("maintenance packet qqemu.PhyMemMode", to_string=True, from_tty=False)
     return 'received: "1"' in response
 
 
 def disable_phys():
-    response = gdb.execute('maintenance packet Qqemu.PhyMemMode:0', to_string=True, from_tty=False)
-    response = gdb.execute('maintenance packet qqemu.PhyMemMode', to_string=True, from_tty=False)
+    response = gdb.execute("maintenance packet Qqemu.PhyMemMode:0", to_string=True, from_tty=False)
+    response = gdb.execute("maintenance packet qqemu.PhyMemMode", to_string=True, from_tty=False)
     return 'received: "0"' in response
 
 
@@ -8107,7 +8107,7 @@ def parse_args(f):
     @functools.wraps(f)
     def wrapper(self, argv, **kwargs):
         try:
-            self.parser.exit = lambda *_: exec('raise(ArgparseExitProxyException())')
+            self.parser.exit = lambda *_: exec("raise(ArgparseExitProxyException())")
             args = self.parser.parse_args(argv)
         except ArgparseExitProxyException:
             self.usage(omit_syntax=True)
@@ -8445,7 +8445,7 @@ def get_register(regname, use_mbed_exec=False):
     if regname[0] in ["%", "@"]:
         regname = "$" + regname[1:]
 
-    if regname[0] != '$':
+    if regname[0] != "$":
         regname = "$" + regname
 
     try:
@@ -8493,7 +8493,7 @@ def is_remote_debug():
     """"Return True is the current debugging session is running through GDB remote session."""
     try:
         connection = gdb.selected_inferior().connection
-        return connection and connection.type == 'remote'
+        return connection and connection.type == "remote"
     except AttributeError:
         # before gdb 11.x: AttributeError: 'gdb.Inferior' object has no attribute 'connection'
         res = gdb.execute("maintenance print target-stack", to_string=True)
@@ -8526,31 +8526,31 @@ def is_container_attach():
 def is_pin():
     if not is_remote_debug():
         return False
-    response = gdb.execute('maintenance packet qSupported', to_string=True, from_tty=False)
-    return 'intel.name=' in response
+    response = gdb.execute("maintenance packet qSupported", to_string=True, from_tty=False)
+    return "intel.name=" in response
 
 
 @functools.lru_cache(maxsize=None)
 def is_qemu():
     if not is_remote_debug():
         return False
-    response = gdb.execute('maintenance packet Qqemu.sstepbits', to_string=True, from_tty=False)
-    return 'ENABLE=' in response
+    response = gdb.execute("maintenance packet Qqemu.sstepbits", to_string=True, from_tty=False)
+    return "ENABLE=" in response
 
 
 @functools.lru_cache(maxsize=None)
 def is_qemu_usermode():
     if is_qemu() is False:
         return False
-    response = gdb.execute('maintenance packet qOffsets', to_string=True, from_tty=False)
-    return 'Text=' in response
+    response = gdb.execute("maintenance packet qOffsets", to_string=True, from_tty=False)
+    return "Text=" in response
 
 
 @functools.lru_cache(maxsize=None)
 def is_qemu_system():
     if is_qemu() is False:
         return False
-    response = gdb.execute('maintenance packet qOffsets', to_string=True, from_tty=False)
+    response = gdb.execute("maintenance packet qOffsets", to_string=True, from_tty=False)
     return 'received: ""' in response
 
 
@@ -8620,7 +8620,7 @@ def get_all_process():
 def get_pid(remote=False):
     """Return the PID of the debuggee process."""
     def get_filepath_from_info_files():
-        response = gdb.execute('info files', to_string=True)
+        response = gdb.execute("info files", to_string=True)
         for line in response.splitlines():
             if line.startswith("Symbols from"):
                 return line.split('"')[1]
@@ -8831,7 +8831,7 @@ def __get_explored_regions():
             if addr < 0 or addr > upper_bound:
                 return None
             try:
-                if read_memory(addr, 4) == b'\x7FELF':
+                if read_memory(addr, 4) == b"\x7FELF":
                     return Elf(addr)
             except gdb.MemoryError:
                 return None
@@ -8865,30 +8865,30 @@ def __get_explored_regions():
             for page_addr in range(vaddr, vaddr_end, gef_getpagesize()):
                 # check already exist
                 for i, page in enumerate(pages):
-                    if page['vaddr'] == page_addr:
+                    if page["vaddr"] == page_addr:
                         # found, so fix flags
-                        if page['flags'] & 1: # already has PF_X
+                        if page["flags"] & 1: # already has PF_X
                             flags |= 1
-                        pages[i]['flags'] = flags # overwrite, because RELRO
+                        pages[i]["flags"] = flags # overwrite, because RELRO
                         break
                 else:
                     # not found, so add new page
                     page = {
-                        'vaddr': page_addr,
-                        'memsize': gef_getpagesize(),
-                        'flags': flags,
-                        'offset': offset + (page_addr - vaddr),
+                        "vaddr": page_addr,
+                        "memsize": gef_getpagesize(),
+                        "flags": flags,
+                        "offset": offset + (page_addr - vaddr),
                     }
                     pages.append(page)
 
-        pages = sorted(pages, key=lambda x: x['vaddr'])
+        pages = sorted(pages, key=lambda x: x["vaddr"])
 
         # merge contiguous
         prev = pages[0]
         for page in pages[1:]:
-            prev_vend = prev['vaddr'] + prev['memsize']
-            if prev['flags'] == page['flags'] and prev_vend == page['vaddr']:
-                prev['memsize'] += page['memsize']
+            prev_vend = prev["vaddr"] + prev["memsize"]
+            if prev["flags"] == page["flags"] and prev_vend == page["vaddr"]:
+                prev["memsize"] += page["memsize"]
                 pages.remove(page)
             else:
                 prev = page
@@ -8897,13 +8897,13 @@ def __get_explored_regions():
         sects = []
         for page in pages:
             perm = ""
-            perm += "r" if page['flags'] & 4 else "-"
-            perm += "w" if page['flags'] & 2 else "-"
-            perm += "x" if page['flags'] & 1 else "-"
+            perm += "r" if page["flags"] & 4 else "-"
+            perm += "w" if page["flags"] & 2 else "-"
+            perm += "x" if page["flags"] & 1 else "-"
             perm = Permission.from_process_maps(perm)
-            page_start = page['vaddr']
-            page_end = page['vaddr'] + page['memsize']
-            off = page['offset']
+            page_start = page["vaddr"]
+            page_end = page["vaddr"] + page["memsize"]
+            off = page["offset"]
             sect = Section(page_start=page_start, page_end=page_end, offset=off, permission=perm, path=label)
             sects.append(sect)
         return sects
@@ -9224,7 +9224,7 @@ def hook_stop_handler(_event):
 
         # Message if file not loaded.
         if not is_qemu_system() and not is_kgdb():
-            response = gdb.execute('info files', to_string=True)
+            response = gdb.execute("info files", to_string=True)
             if "Symbols from" not in response:
                 err("Missing info about architecture. Please set: `file /path/to/target_binary`")
                 err("Some architectures may not be automatically recognized. Please set: `set architecture YOUR_ARCH`.")
@@ -9903,7 +9903,7 @@ def parse_address(address):
 def get_ksymaddr(sym):
     # use available symbol
     try:
-        return parse_address('&' + sym)
+        return parse_address("&" + sym)
     except Exception:
         pass
     # use ksymaddr-remote
@@ -10832,9 +10832,9 @@ class GefThemeCommand(GenericCommand):
     _category_ = "99. GEF Maintenance Command"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('key', metavar='KEY', nargs='?', help='color theme key. (default: %(default)s)')
-    parser.add_argument('value', metavar='VALUE', nargs='*', help='color theme value. (default: %(default)s)')
-    parser.add_argument('--color-sample', action='store_true', help='print available name of colors.')
+    parser.add_argument("key", metavar="KEY", nargs="?", help="color theme key. (default: %(default)s)")
+    parser.add_argument("value", metavar="VALUE", nargs="*", help="color theme value. (default: %(default)s)")
+    parser.add_argument("--color-sample", action="store_true", help="print available name of colors.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}                        # show all theme settings\n".format(_cmdline_)
@@ -10913,7 +10913,7 @@ class GefThemeCommand(GenericCommand):
                 for k, v in Color.colors.items():
                     if k.endswith("_off") or k == "normal":
                         continue
-                    gef_print("{}{:20s}{}  ".format(v, k, Color.colors["normal"]), end='')
+                    gef_print("{}{:20s}{}  ".format(v, k, Color.colors["normal"]), end="")
 
                     if k in ["blink", "cyan", "bright_white", "_black"]: # group terminators
                         gef_print("")
@@ -10979,7 +10979,7 @@ class VersionCommand(GenericCommand):
                 if r:
                     return r.group(1)
 
-        return 'Not found'
+        return "Not found"
 
     def kernel_version(self):
         try:
@@ -10987,72 +10987,72 @@ class VersionCommand(GenericCommand):
             res = gef_execute_external([command, "-a"], as_list=True)
             return res[0]
         except IOError:
-            return 'Not found'
+            return "Not found"
 
     def kernel_version_from_proc(self):
         try:
             return open("/proc/version").read().strip()
         except Exception:
-            return 'Not found'
+            return "Not found"
 
     def qemu_version(self):
-        return gdb.execute('monitor info version', to_string=True).strip()
+        return gdb.execute("monitor info version", to_string=True).strip()
 
     def gef_version(self):
         gef_fpath = os.path.abspath(os.path.realpath(os.path.expanduser(inspect.stack()[0][1])))
         gef_hash = hashlib.sha1(open(gef_fpath, "rb").read()).hexdigest()
         dt = datetime.datetime.fromtimestamp(os.stat(gef_fpath).st_mtime)
-        return "Last modified: {} SHA1: {}".format(dt.strftime('%Y-%m-%d %H:%M:%S'), gef_hash)
+        return "Last modified: {} SHA1: {}".format(dt.strftime("%Y-%m-%d %H:%M:%S"), gef_hash)
 
     def gdb_version(self):
         try:
             return gdb.VERSION # GDB >= 8.1 (or earlier?)
         except AttributeError:
-            return gdb.execute('show version', to_string=True).split('\n')[0]
+            return gdb.execute("show version", to_string=True).split("\n")[0]
 
     def python_version(self):
-        return sys.version.replace('\n', ' ')
+        return sys.version.replace("\n", " ")
 
     def capstone_version(self):
         @load_capstone
         def _capstone_version():
-            capstone = sys.modules['capstone']
-            return '.'.join(map(str, capstone.cs_version()))
+            capstone = sys.modules["capstone"]
+            return ".".join(map(str, capstone.cs_version()))
         try:
             return _capstone_version()
         except (KeyError, ImportWarning):
-            return 'Not found'
+            return "Not found"
 
     def keystone_version(self):
         @load_keystone
         def _keystone_version():
-            keystone = sys.modules['keystone']
-            return '.'.join(map(str, keystone.ks_version()))
+            keystone = sys.modules["keystone"]
+            return ".".join(map(str, keystone.ks_version()))
         try:
             return _keystone_version()
         except (KeyError, ImportWarning):
-            return 'Not found'
+            return "Not found"
 
     def unicorn_version(self):
         @load_unicorn
         def _unicorn_version():
-            unicorn = sys.modules['unicorn']
+            unicorn = sys.modules["unicorn"]
             return unicorn.__version__
         try:
             return _unicorn_version()
         except (KeyError, ImportWarning):
-            return 'Not found'
+            return "Not found"
 
     def ropper_version(self):
         @load_ropper
         def _ropper_version():
-            ropper = sys.modules['ropper']
-            return '.'.join(map(str, ropper.VERSION))
+            ropper = sys.modules["ropper"]
+            return ".".join(map(str, ropper.VERSION))
 
         try:
             return _ropper_version()
         except (KeyError, ImportWarning):
-            return 'Not found'
+            return "Not found"
 
     def gcc_version(self):
         try:
@@ -11060,7 +11060,7 @@ class VersionCommand(GenericCommand):
             res = gef_execute_external([command, "--version"], as_list=True)
             return res[0]
         except IOError:
-            return 'Not found'
+            return "Not found"
 
     def readelf_version(self):
         try:
@@ -11068,7 +11068,7 @@ class VersionCommand(GenericCommand):
             res = gef_execute_external([command, "-v"], as_list=True)
             return res[0]
         except IOError:
-            return 'Not found'
+            return "Not found"
 
     def objdump_version(self):
         try:
@@ -11076,7 +11076,7 @@ class VersionCommand(GenericCommand):
             res = gef_execute_external([command, "-v"], as_list=True)
             return res[0]
         except IOError:
-            return 'Not found'
+            return "Not found"
 
     def seccomp_tools_version(self):
         try:
@@ -11084,7 +11084,7 @@ class VersionCommand(GenericCommand):
             res = gef_execute_external([command, "--version"], as_list=True)
             return res[0]
         except IOError:
-            return 'Not found'
+            return "Not found"
 
     def one_gadget_version(self):
         try:
@@ -11092,7 +11092,7 @@ class VersionCommand(GenericCommand):
             res = gef_execute_external([command, "--version"], as_list=True)
             return res[0]
         except IOError:
-            return 'Not found'
+            return "Not found"
 
     @parse_args
     def do_invoke(self, args):
@@ -11130,13 +11130,13 @@ class HighlightCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     if sys.version_info.minor >= 7:
-        subparsers = parser.add_subparsers(title='command', required=True)
+        subparsers = parser.add_subparsers(title="command", required=True)
     else:
-        subparsers = parser.add_subparsers(title='command')
-    subparsers.add_parser('add')
-    subparsers.add_parser('remove')
-    subparsers.add_parser('list')
-    subparsers.add_parser('clear')
+        subparsers = parser.add_subparsers(title="command")
+    subparsers.add_parser("add")
+    subparsers.add_parser("remove")
+    subparsers.add_parser("list")
+    subparsers.add_parser("clear")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -11202,17 +11202,17 @@ class HighlightAddCommand(GenericCommand):
     _aliases_ = ["highlight set"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('match', metavar='MATCH', help='the keyword phrase you want to highlight.')
-    parser.add_argument('color', metavar='COLOR', nargs='+', help='the color you want use to highlight.')
+    parser.add_argument("match", metavar="MATCH", help="the keyword phrase you want to highlight.")
+    parser.add_argument("color", metavar="COLOR", nargs="+", help="the color you want use to highlight.")
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} \"call   rcx\" bold yellow\n".format(_cmdline_)
+    _example_ = '{:s} "call   rcx" bold yellow\n'.format(_cmdline_)
     _example_ += "use config `gef config highlight.regex true` if need regex"
 
     @parse_args
     def do_invoke(self, args):
         self.dont_repeat()
-        __highlight_table__[args.match] = ' '.join(args.color)
+        __highlight_table__[args.match] = " ".join(args.color)
         return
 
 
@@ -11224,10 +11224,10 @@ class HighlightRemoveCommand(GenericCommand):
     _aliases_ = ["highlight del", "highlight unset", "highlight rm"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('match', metavar='MATCH', help='the keyword phrase you want to remove from highlight.')
+    parser.add_argument("match", metavar="MATCH", help="the keyword phrase you want to remove from highlight.")
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} \"call   rcx\"".format(_cmdline_)
+    _example_ = '{:s} "call   rcx"'.format(_cmdline_)
 
     @parse_args
     def do_invoke(self, args):
@@ -11246,8 +11246,8 @@ class NiCommand(GenericCommand):
     _category_ = "01-c. Debugging Support - Basic Command Extension"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('args', metavar='ARGS', nargs='*',
-                        help='An array of arguments to pass as is to the nexti command. (default: %(default)s)')
+    parser.add_argument("args", metavar="ARGS", nargs="*",
+                        help="An array of arguments to pass as is to the nexti command. (default: %(default)s)")
     _syntax_ = parser.format_help()
 
     def ni_set_bp_for_branch(self):
@@ -11300,7 +11300,7 @@ class NiCommand(GenericCommand):
         if is_or1k():
             self.ni_set_bp_for_branch()
 
-        cmd = "nexti " + ' '.join(args.args)
+        cmd = "nexti " + " ".join(args.args)
         try:
             gdb.execute(cmd.rstrip())
         except gdb.error:
@@ -11327,8 +11327,8 @@ class SiCommand(GenericCommand):
     _category_ = "01-c. Debugging Support - Basic Command Extension"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('args', metavar='ARGS', nargs='*',
-                        help='An array of arguments to pass as is to the stepi command. (default: %(default)s)')
+    parser.add_argument("args", metavar="ARGS", nargs="*",
+                        help="An array of arguments to pass as is to the stepi command. (default: %(default)s)")
     _syntax_ = parser.format_help()
 
     def si_set_bp_for_branch(self):
@@ -11381,7 +11381,7 @@ class SiCommand(GenericCommand):
         if is_or1k():
             self.si_set_bp_for_branch()
 
-        cmd = "stepi " + ' '.join(args.args)
+        cmd = "stepi " + " ".join(args.args)
         try:
             gdb.execute(cmd.rstrip())
         except gdb.error:
@@ -11405,8 +11405,8 @@ class ContCommand(GenericCommand):
     _category_ = "01-c. Debugging Support - Basic Command Extension"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('args', metavar='ARGS', nargs='*',
-                        help='An array of arguments to pass as is to the continue command. (default: %(default)s)')
+    parser.add_argument("args", metavar="ARGS", nargs="*",
+                        help="An array of arguments to pass as is to the continue command. (default: %(default)s)")
     _syntax_ = parser.format_help()
 
     def continue_for_qemu(self):
@@ -11451,7 +11451,7 @@ class ContCommand(GenericCommand):
 
         # Maybe unused, since `c` command is re-override if neither qemu-system nor Intel Pin.
         try:
-            cmd = "continue " + ' '.join(args.args)
+            cmd = "continue " + " ".join(args.args)
             gdb.execute(cmd.rstrip())
         except gdb.error:
             exc_type, exc_value, exc_traceback = sys.exc_info()
@@ -11466,7 +11466,7 @@ class BreakRelativeVirtualAddressCommand(GenericCommand):
     _category_ = "01-b. Debugging Support - Breakpoint"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('offset', metavar='OFFSET', type=parse_address,  help='the offset from codebase you want to set a breakpoint.')
+    parser.add_argument("offset", metavar="OFFSET", type=parse_address,  help="the offset from codebase you want to set a breakpoint.")
     _syntax_ = parser.format_help()
 
     @parse_args
@@ -11496,13 +11496,13 @@ class PrintFormatCommand(GenericCommand):
     _aliases_ = ["pf"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-f', dest='format', default='py', choices=['py', 'c', 'js', 'asm', 'hex'],
-                        help='the output format. (default: %(default)s)')
-    parser.add_argument('-b', dest='bitlen', type=int, default=8, choices=[8, 16, 32, 64],
-                        help='the size of bit. (default: %(default)s)')
-    parser.add_argument('-l', dest='length', type=parse_address, default=256, help='the length of array. (default: %(default)s)')
-    parser.add_argument('-c', dest='copy_to_clipboard', action='store_true', help='the result of data will copied to clipboard.')
-    parser.add_argument('location', metavar='LOCATION', type=parse_address, help='the address of data you want to dump.')
+    parser.add_argument("-f", dest="format", default="py", choices=["py", "c", "js", "asm", "hex"],
+                        help="the output format. (default: %(default)s)")
+    parser.add_argument("-b", dest="bitlen", type=int, default=8, choices=[8, 16, 32, 64],
+                        help="the size of bit. (default: %(default)s)")
+    parser.add_argument("-l", dest="length", type=parse_address, default=256, help="the length of array. (default: %(default)s)")
+    parser.add_argument("-c", dest="copy_to_clipboard", action="store_true", help="the result of data will copied to clipboard.")
+    parser.add_argument("location", metavar="LOCATION", type=parse_address, help="the address of data you want to dump.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} -f py -b 8 -l 256 $rsp".format(_cmdline_)
@@ -11674,51 +11674,51 @@ class AuxvCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     AT_CONSTANTS = {
-        0  : 'AT_NULL',              # End of vector
-        1  : 'AT_IGNORE',            # Entry should be ignored
-        2  : 'AT_EXECFD',            # File descriptor of program
-        3  : 'AT_PHDR',              # Program headers for program
-        4  : 'AT_PHENT',             # Size of program header entry
-        5  : 'AT_PHNUM',             # Number of program headers
-        6  : 'AT_PAGESZ',            # System page size
-        7  : 'AT_BASE',              # Base address of interpreter
-        8  : 'AT_FLAGS',             # Flags
-        9  : 'AT_ENTRY',             # Entry point of program
-        10 : 'AT_NOTELF',            # Program is not ELF
-        11 : 'AT_UID',               # Real uid
-        12 : 'AT_EUID',              # Effective uid
-        13 : 'AT_GID',               # Real gid
-        14 : 'AT_EGID',              # Effective gid
-        15 : 'AT_PLATFORM',          # String identifying platform
-        16 : 'AT_HWCAP',             # Machine dependent hints about processor capabilities
-        17 : 'AT_CLKTCK',            # Frequency of times()
-        18 : 'AT_FPUCW',             #
-        19 : 'AT_DCACHEBSIZE',       #
-        20 : 'AT_ICACHEBSIZE',       #
-        21 : 'AT_UCACHEBSIZE',       #
-        22 : 'AT_IGNOREPPC',         # A special ignored type value for PPC, for glibc compatibility
-        23 : 'AT_SECURE',            #
-        24 : 'AT_BASE_PLATFORM',     # String identifying real platforms
-        25 : 'AT_RANDOM',            # Address of 16 random bytes
-        26 : 'AT_HWCAP2',            # extension of AT_HWCAP
-        27 : 'AT_RSEQ_FEATURE_SIZE', # seq supported feature size
-        28 : 'AT_RSEQ_ALIGN',        # rseq allocation alignment
-        31 : 'AT_EXECFN',            # Filename of executable
-        32 : 'AT_SYSINFO',           #
-        33 : 'AT_SYSINFO_EHDR',      #
-        34 : 'AT_L1I_CACHESHAPE',    #
-        35 : 'AT_L1D_CACHESHAPE',    #
-        36 : 'AT_L2_CACHESHAPE',     #
-        37 : 'AT_L3_CACHESHAPE',     #
-        40 : 'AT_L1I_CACHESIZE',     #
-        41 : 'AT_L1I_CACHEGEOMETRY', #
-        42 : 'AT_L1D_CACHESIZE',     #
-        43 : 'AT_L1D_CACHEGEOMETRY', #
-        44 : 'AT_L2_CACHESIZE',      #
-        45 : 'AT_L2_CACHEGEOMETRY',  #
-        46 : 'AT_L3_CACHESIZE',      #
-        47 : 'AT_L3_CACHEGEOMETRY',  #
-        51 : 'AT_MINSIGSTKSZ',       # stack needed for signal delivery
+        0  : "AT_NULL",              # End of vector
+        1  : "AT_IGNORE",            # Entry should be ignored
+        2  : "AT_EXECFD",            # File descriptor of program
+        3  : "AT_PHDR",              # Program headers for program
+        4  : "AT_PHENT",             # Size of program header entry
+        5  : "AT_PHNUM",             # Number of program headers
+        6  : "AT_PAGESZ",            # System page size
+        7  : "AT_BASE",              # Base address of interpreter
+        8  : "AT_FLAGS",             # Flags
+        9  : "AT_ENTRY",             # Entry point of program
+        10 : "AT_NOTELF",            # Program is not ELF
+        11 : "AT_UID",               # Real uid
+        12 : "AT_EUID",              # Effective uid
+        13 : "AT_GID",               # Real gid
+        14 : "AT_EGID",              # Effective gid
+        15 : "AT_PLATFORM",          # String identifying platform
+        16 : "AT_HWCAP",             # Machine dependent hints about processor capabilities
+        17 : "AT_CLKTCK",            # Frequency of times()
+        18 : "AT_FPUCW",             #
+        19 : "AT_DCACHEBSIZE",       #
+        20 : "AT_ICACHEBSIZE",       #
+        21 : "AT_UCACHEBSIZE",       #
+        22 : "AT_IGNOREPPC",         # A special ignored type value for PPC, for glibc compatibility
+        23 : "AT_SECURE",            #
+        24 : "AT_BASE_PLATFORM",     # String identifying real platforms
+        25 : "AT_RANDOM",            # Address of 16 random bytes
+        26 : "AT_HWCAP2",            # extension of AT_HWCAP
+        27 : "AT_RSEQ_FEATURE_SIZE", # seq supported feature size
+        28 : "AT_RSEQ_ALIGN",        # rseq allocation alignment
+        31 : "AT_EXECFN",            # Filename of executable
+        32 : "AT_SYSINFO",           #
+        33 : "AT_SYSINFO_EHDR",      #
+        34 : "AT_L1I_CACHESHAPE",    #
+        35 : "AT_L1D_CACHESHAPE",    #
+        36 : "AT_L2_CACHESHAPE",     #
+        37 : "AT_L3_CACHESHAPE",     #
+        40 : "AT_L1I_CACHESIZE",     #
+        41 : "AT_L1I_CACHEGEOMETRY", #
+        42 : "AT_L1D_CACHESIZE",     #
+        43 : "AT_L1D_CACHEGEOMETRY", #
+        44 : "AT_L2_CACHESIZE",      #
+        45 : "AT_L2_CACHEGEOMETRY",  #
+        46 : "AT_L3_CACHESIZE",      #
+        47 : "AT_L3_CACHEGEOMETRY",  #
+        51 : "AT_MINSIGSTKSZ",       # stack needed for signal delivery
     }
 
     @parse_args
@@ -11762,7 +11762,7 @@ class ArgvCommand(GenericCommand):
     _category_ = "02-d. Process Information - Trivial Information"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-v', dest='verbose', action='store_true', help='print all elements. (default: outputs up to 100).')
+    parser.add_argument("-v", dest="verbose", action="store_true", help="print all elements. (default: outputs up to 100).")
     _syntax_ = parser.format_help()
 
     def get_address_from_symbol(self, symbol):
@@ -11837,7 +11837,7 @@ class EnvpCommand(GenericCommand):
     _category_ = "02-d. Process Information - Trivial Information"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-v', dest='verbose', action='store_true', help='print all elements. (default: outputs up to 100).')
+    parser.add_argument("-v", dest="verbose", action="store_true", help="print all elements. (default: outputs up to 100).")
     _syntax_ = parser.format_help()
 
     def get_address_from_symbol(self, symbol):
@@ -12141,12 +12141,12 @@ class ProcInfoCommand(GenericCommand):
         gef_print("{:32s} {} {}".format("  Command Line", RIGHT_ARROW, repr(cmdline)))
         gef_print("{:32s} {} {}".format("  Current Working Directory", RIGHT_ARROW, repr(cwd)))
         gef_print("{:32s} {} {}".format("  Root Directory", RIGHT_ARROW, repr(root)))
-        uids = re.sub(r"\s+", " : ", self.get_state_of(pid)['Uid'])
-        gids = re.sub(r"\s+", " : ", self.get_state_of(pid)['Gid'])
+        uids = re.sub(r"\s+", " : ", self.get_state_of(pid)["Uid"])
+        gids = re.sub(r"\s+", " : ", self.get_state_of(pid)["Gid"])
         gef_print("{:32s} {} {}".format("  RUID:EUID:SavedUID:FSUID", RIGHT_ARROW, uids))
         gef_print("{:32s} {} {}".format("  RGID:EGID:SavedGID:FSGID", RIGHT_ARROW, gids))
-        seccomp_n = self.get_state_of(pid)['Seccomp']
-        seccomp_s = {'0': 'Disabled', '1': 'Strict', '2': 'CustomFilter'}[seccomp_n]
+        seccomp_n = self.get_state_of(pid)["Seccomp"]
+        seccomp_s = {"0": "Disabled", "1": "Strict", "2": "CustomFilter"}[seccomp_n]
         gef_print("{:32s} {} {} ({})".format("  Seccomp Mode", RIGHT_ARROW, seccomp_n, seccomp_s))
         return
 
@@ -12208,8 +12208,8 @@ class ProcInfoCommand(GenericCommand):
         gef_print(titlify("Thread Information"))
 
         pid = get_pid()
-        nthreads = self.get_state_of(pid)['Threads']
-        tgid = self.get_state_of(pid)['Tgid']
+        nthreads = self.get_state_of(pid)["Threads"]
+        tgid = self.get_state_of(pid)["Tgid"]
         gef_print("{:32s} {} {}".format("Num of Threads", RIGHT_ARROW, nthreads))
         gef_print("{:32s} {} {}".format("Thread Group ID", RIGHT_ARROW, tgid))
         tids = self.get_thread_ids(pid)
@@ -12233,11 +12233,11 @@ class ProcInfoCommand(GenericCommand):
 
         gef_print(titlify("Pid Namespace Information"))
         state = self.get_state_of(pid)
-        if len(state['NSpid'].split()) > 1:
-            gef_print("{:32s} {} {}".format("Host PID  : Namespace PID", RIGHT_ARROW, re.sub(r"\s+", " : ", state['NSpid'])))
-            gef_print("{:32s} {} {}".format("Host PGID : Namespace PGID", RIGHT_ARROW, re.sub(r"\s+", " : ", state['NSpgid'])))
-            gef_print("{:32s} {} {}".format("Host SID  : Namespace SID", RIGHT_ARROW, re.sub(r"\s+", " : ", state['NSsid'])))
-            gef_print("{:32s} {} {}".format("Host TGID : Namespace TGID", RIGHT_ARROW, re.sub(r"\s+", " : ", state['NStgid'])))
+        if len(state["NSpid"].split()) > 1:
+            gef_print("{:32s} {} {}".format("Host PID  : Namespace PID", RIGHT_ARROW, re.sub(r"\s+", " : ", state["NSpid"])))
+            gef_print("{:32s} {} {}".format("Host PGID : Namespace PGID", RIGHT_ARROW, re.sub(r"\s+", " : ", state["NSpgid"])))
+            gef_print("{:32s} {} {}".format("Host SID  : Namespace SID", RIGHT_ARROW, re.sub(r"\s+", " : ", state["NSsid"])))
+            gef_print("{:32s} {} {}".format("Host TGID : Namespace TGID", RIGHT_ARROW, re.sub(r"\s+", " : ", state["NStgid"])))
         else:
             gef_print("{:32s}".format("No pid namespace"))
 
@@ -12254,7 +12254,7 @@ class ProcInfoCommand(GenericCommand):
         pid = get_pid()
         path = "/proc/{:d}/fd".format(pid)
 
-        gef_print("{:32s} {} {}".format("Num of FD slots", RIGHT_ARROW, self.get_state_of(pid)['FDSize']))
+        gef_print("{:32s} {} {}".format("Num of FD slots", RIGHT_ARROW, self.get_state_of(pid)["FDSize"]))
         items = os.listdir(path)
         if not items:
             gef_print("No FD opened")
@@ -12337,7 +12337,7 @@ class CapabilityCommand(GenericCommand):
     _category_ = "02-f. Process Information - Security"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-v', dest='verbose', action='store_true', help='also display detailed bit information other than cap_eff.')
+    parser.add_argument("-v", dest="verbose", action="store_true", help="also display detailed bit information other than cap_eff.")
     _syntax_ = parser.format_help()
 
     def get_thread_ids(self, pid):
@@ -12523,7 +12523,7 @@ class SmartMemoryDumpCommand(GenericCommand):
     _category_ = "03-e. Memory - Dump"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--prefix', help='use this name for the dump destination file prefix. (default: PID)')
+    parser.add_argument("--prefix", help="use this name for the dump destination file prefix. (default: PID)")
     _syntax_ = parser.format_help()
 
     @parse_args
@@ -12587,8 +12587,8 @@ class HijackFdCommand(GenericCommand):
     _category_ = "01-g. Debugging Support - Other"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('old_fd', metavar='OLD_FD', type=int, help='file descriptor number you want to redirect.')
-    parser.add_argument('new_output', metavar='NEW_OUTPUT', type=str, help='the location redirected data is stored.')
+    parser.add_argument("old_fd", metavar="OLD_FD", type=int, help="file descriptor number you want to redirect.")
+    parser.add_argument("new_output", metavar="NEW_OUTPUT", type=str, help="the location redirected data is stored.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} 2 /tmp/stderr_output.txt\n".format(_cmdline_)
@@ -12597,7 +12597,7 @@ class HijackFdCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
-    @exclude_specific_arch(['CRIS'])
+    @exclude_specific_arch(["CRIS"])
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -12641,7 +12641,7 @@ class HijackFdCommand(GenericCommand):
         return
 
     def call_syscall(self, syscall_name, args):
-        args = ' '.join(["{:#x}".format(x) for x in args])
+        args = " ".join(["{:#x}".format(x) for x in args])
         cmd = "call-syscall {:s} {}".format(syscall_name, args)
         info(cmd)
         res = gdb.execute(cmd, to_string=True)
@@ -12768,8 +12768,8 @@ class ScanSectionCommand(GenericCommand):
     _category_ = "03-a. Memory - Search"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('haystack', metavar='HAYSTACK', help='where to search for the needle.')
-    parser.add_argument('needle', metavar='NEEDLE', help='what to explore.')
+    parser.add_argument("haystack", metavar="HAYSTACK", help="where to search for the needle.")
+    parser.add_argument("needle", metavar="NEEDLE", help="what to explore.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} stack binary # scan binary address from stack\n".format(_cmdline_)
@@ -12858,14 +12858,14 @@ class SearchPatternCommand(GenericCommand):
     _aliases_ = ["find"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--hex', action='store_true', help="interpret PATTERN as hex. invalid character is ignored.")
-    parser.add_argument('--big', action='store_true', help="interpret PATTERN as big endian if PATTERN is 0xXXXXXXXX style.")
-    parser.add_argument('-a', '--aligned', type=int, default=1, help="alignment unit. (default: %(default)s)")
-    parser.add_argument('-d', '--disable-utf16', action='store_true', help='disable utf16 search if PATTERN is ascii string.')
-    parser.add_argument('-v', dest='verbose', action='store_true', help='shows the section you are currently searching.')
-    parser.add_argument('pattern', metavar='PATTERN', help='search target value. "double-espaced string" or 0xXXXXXXXX style.')
-    parser.add_argument('section', metavar='SECTION_OR_START_ADDR', nargs="?", help="section name or starting address of search range.")
-    parser.add_argument('size', metavar='SIZE', nargs="?", help="search range size. valid only when a start address is specified.")
+    parser.add_argument("--hex", action="store_true", help="interpret PATTERN as hex. invalid character is ignored.")
+    parser.add_argument("--big", action="store_true", help="interpret PATTERN as big endian if PATTERN is 0xXXXXXXXX style.")
+    parser.add_argument("-a", "--aligned", type=int, default=1, help="alignment unit. (default: %(default)s)")
+    parser.add_argument("-d", "--disable-utf16", action="store_true", help="disable utf16 search if PATTERN is ascii string.")
+    parser.add_argument("-v", dest="verbose", action="store_true", help="shows the section you are currently searching.")
+    parser.add_argument("pattern", metavar="PATTERN", help='search target value. "double-espaced string" or 0xXXXXXXXX style.')
+    parser.add_argument("section", metavar="SECTION_OR_START_ADDR", nargs="?", help="section name or starting address of search range.")
+    parser.add_argument("size", metavar="SIZE", nargs="?", help="search range size. valid only when a start address is specified.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} AAAA                       # search 'AAAA' from whole memory\n".format(_cmdline_)
@@ -12896,7 +12896,7 @@ class SearchPatternCommand(GenericCommand):
     def print_loc(self, loc):
         if self.aligned and loc[0] % self.aligned:
             return
-        gef_print('''  {:#x} - {:#x} {}  "{}"'''.format(loc[0], loc[1], RIGHT_ARROW, Color.magentaify(loc[2]),))
+        gef_print('  {:#x} - {:#x} {}  "{}"'.format(loc[0], loc[1], RIGHT_ARROW, Color.magentaify(loc[2]),))
         return
 
     def search_pattern_by_address(self, pattern, start_address, end_address):
@@ -13004,7 +13004,7 @@ class SearchPatternCommand(GenericCommand):
         if args.hex: # "41414141" -> "\x41\x41\x41\x41"
             _pattern = ""
             for c in args.pattern.lower():
-                if c in '0123456789abcdef':
+                if c in "0123456789abcdef":
                     _pattern += c
             if len(_pattern) % 2 != 0:
                 err("hex pattern length is odd")
@@ -13079,8 +13079,8 @@ class PtrDemangleCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument('value', metavar='VALUE', nargs='?', type=lambda x: int(x, 0), help='the value you want to demangle.')
-    group.add_argument('--source', action='store_true', help='shows the source instead of displaying demangled value.')
+    group.add_argument("value", metavar="VALUE", nargs="?", type=lambda x: int(x, 0), help="the value you want to demangle.")
+    group.add_argument("--source", action="store_true", help="shows the source instead of displaying demangled value.")
     _syntax_ = parser.format_help()
 
     @staticmethod
@@ -13153,8 +13153,8 @@ class PtrMangleCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument('value', metavar='VALUE', nargs='?', type=lambda x: int(x, 0), help='the value you want to mangle.')
-    group.add_argument('--source', action='store_true', help='shows the source instead of displaying mangled value.')
+    group.add_argument("value", metavar="VALUE", nargs="?", type=lambda x: int(x, 0), help="the value you want to mangle.")
+    group.add_argument("--source", action="store_true", help="shows the source instead of displaying mangled value.")
     _syntax_ = parser.format_help()
 
     @staticmethod
@@ -13200,7 +13200,7 @@ class SearchMangledPtrCommand(GenericCommand):
     _category_ = "02-f. Process Information - Security"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-v', dest='verbose', action='store_true', help='shows the section you are currently searching.')
+    parser.add_argument("-v", dest="verbose", action="store_true", help="shows the section you are currently searching.")
     _syntax_ = parser.format_help()
 
     def print_section(self, section):
@@ -13316,10 +13316,10 @@ class EditFlagsCommand(GenericCommand):
     _category_ = "04-b. Register - Modify"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('flagname', metavar='[FLAGNAME(+|-|~) ...]', nargs="*",
-                        help='the flag name you want to edit..')
-    parser.add_argument('-v', dest='verbose', action='store_true',
-                        help='show the bit informations of the flag register.')
+    parser.add_argument("flagname", metavar="[FLAGNAME(+|-|~) ...]", nargs="*",
+                        help="the flag name you want to edit..")
+    parser.add_argument("-v", dest="verbose", action="store_true",
+                        help="show the bit informations of the flag register.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}            # show the flag register\n".format(_cmdline_)
@@ -13580,10 +13580,10 @@ class MprotectCommand(GenericCommand):
     _category_ = "05-a. Syscall - Invoke"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('location', metavar='LOCATION', type=parse_address, help='the address you want to change the permission.')
-    parser.add_argument('permission', metavar='PERMISSION', nargs='?', default="rwx",
-                        help='the permission you set to the LOCATION. (default: %(default)s)')
-    parser.add_argument('--patch-only', action='store_true', help='do not execute after patch.')
+    parser.add_argument("location", metavar="LOCATION", type=parse_address, help="the address you want to change the permission.")
+    parser.add_argument("permission", metavar="PERMISSION", nargs="?", default="rwx",
+                        help="the permission you set to the LOCATION. (default: %(default)s)")
+    parser.add_argument("--patch-only", action="store_true", help="do not execute after patch.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} $sp rwx\n".format(_cmdline_)
@@ -13687,10 +13687,10 @@ class CallSyscallCommand(GenericCommand):
     _category_ = "05-a. Syscall - Invoke"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('syscall_name', metavar='SYSCALL_NAME',
-                        help='system call name you want to invoke.')
-    parser.add_argument('syscall_args', metavar='SYSCALL_ARG', nargs='*', type=parse_address,
-                        help='arguments of system call.')
+    parser.add_argument("syscall_name", metavar="SYSCALL_NAME",
+                        help="system call name you want to invoke.")
+    parser.add_argument("syscall_args", metavar="SYSCALL_ARG", nargs="*", type=parse_address,
+                        help="arguments of system call.")
     _syntax_ = parser.format_help()
 
     _example_ = '{:s} write 1 "*(void**)($rsp+0x18)" 15'.format(_cmdline_)
@@ -13876,11 +13876,11 @@ class CallSyscallCommand(GenericCommand):
 
         if len(syscall_params) != len(syscall_args):
             err("Argument count mismatch.")
-            params = "(" + ', '.join([param.param for param in syscall_params]) + ");"
+            params = "(" + ", ".join([param.param for param in syscall_params]) + ");"
             gef_print("Prototype: {:s}{:s}".format(Color.boldify(syscall_name), params))
             return
 
-        title = "{:s}({:s})".format(syscall_name, ', '.join(["{:#x}".format(x) for x in syscall_args]))
+        title = "{:s}({:s})".format(syscall_name, ", ".join(["{:#x}".format(x) for x in syscall_args]))
         gef_print(titlify(title))
         ret = self.syscall_execute(nr, syscall_args)
         gef_print("{:s} = {:#x}".format(current_arch.return_register, ret))
@@ -13894,12 +13894,12 @@ class MmapMemoryCommand(GenericCommand):
     _category_ = "05-a. Syscall - Invoke"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address, default=0,
-                        help='the address you want to allocate. (default: %(default)s)')
-    parser.add_argument('size', metavar='SIZE', nargs='?', type=parse_address, default=gef_getpagesize(),
-                        help='the size you want to allocate. (default: %(default)s)')
-    parser.add_argument('permission', metavar='PERMISSION', nargs='?', default="rwx",
-                        help='the permission you want to allocate. `_` is interpreted as `-`. (default: %(default)s)')
+    parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address, default=0,
+                        help="the address you want to allocate. (default: %(default)s)")
+    parser.add_argument("size", metavar="SIZE", nargs="?", type=parse_address, default=gef_getpagesize(),
+                        help="the size you want to allocate. (default: %(default)s)")
+    parser.add_argument("permission", metavar="PERMISSION", nargs="?", default="rwx",
+                        help="the permission you want to allocate. `_` is interpreted as `-`. (default: %(default)s)")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} 0x10000 0x1000 r-x\n".format(_cmdline_)
@@ -13967,7 +13967,7 @@ class ReadSystemRegisterCommand(GenericCommand):
     _category_ = "04-a. Register - View"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('reg_name', metavar='REGISTER_NAME', help='register name you want to read a value.')
+    parser.add_argument("reg_name", metavar="REGISTER_NAME", help="register name you want to read a value.")
     _syntax_ = parser.format_help()
 
     # thanks to https://github.com/gdelugre/ida-arm-system-highlight
@@ -14729,16 +14729,16 @@ class UnicornEmulateCommand(GenericCommand):
     _aliases_ = ["emulate"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-f', dest='from_location', type=parse_address,
-                        help='specifies the start address of the emulated run. (default: current_arch.pc)')
+    parser.add_argument("-f", dest="from_location", type=parse_address,
+                        help="specifies the start address of the emulated run. (default: current_arch.pc)")
     group = parser.add_mutually_exclusive_group()
-    group.add_argument('-g', dest='nb_gadget', type=parse_address, help='the number of gadgets to execute. (default mode, NB_GADGET: 10)')
-    group.add_argument('-t', dest='to_location', type=parse_address, help='the end address of the emulated run.')
-    group.add_argument('-n', dest='nb_insn', type=parse_address, help='the number of instructions from `FROM_LOCATION`.')
-    parser.add_argument('-o', dest='output_path', help='writes the persistent Unicorn script into this file.')
-    parser.add_argument('-s', dest='skip_emulation', action='store_true', help='do not run, just save the script.')
-    parser.add_argument('-v', dest='verbose', action='store_true', help='displays the register values for each instruction is executed.')
-    parser.add_argument('-q', dest='quiet', action='store_true', help='quiet execution.')
+    group.add_argument("-g", dest="nb_gadget", type=parse_address, help="the number of gadgets to execute. (default mode, NB_GADGET: 10)")
+    group.add_argument("-t", dest="to_location", type=parse_address, help="the end address of the emulated run.")
+    group.add_argument("-n", dest="nb_insn", type=parse_address, help="the number of instructions from `FROM_LOCATION`.")
+    parser.add_argument("-o", dest="output_path", help="writes the persistent Unicorn script into this file.")
+    parser.add_argument("-s", dest="skip_emulation", action="store_true", help="do not run, just save the script.")
+    parser.add_argument("-v", dest="verbose", action="store_true", help="displays the register values for each instruction is executed.")
+    parser.add_argument("-q", dest="quiet", action="store_true", help="quiet execution.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} -g 10                        # from $pc to the point where 4 instructions are executed\n".format(_cmdline_)
@@ -15143,8 +15143,8 @@ class StubCommand(GenericCommand):
     _aliases_ = ["deactive"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-r', dest='retval', type=int, default=0, help='the return value from stub. (default: %(default)s)')
-    parser.add_argument('location', metavar='LOCATION', type=parse_address, help='address/symbol to stub out.')
+    parser.add_argument("-r", dest="retval", type=int, default=0, help="the return value from stub. (default: %(default)s)")
+    parser.add_argument("location", metavar="LOCATION", type=parse_address, help="address/symbol to stub out.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} -r 0 fork".format(_cmdline_)
@@ -15171,11 +15171,11 @@ class CapstoneDisassembleCommand(GenericCommand):
     _repeat_ = True
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
-                        help='the address you want to disassemble. (default: current_arch.pc)')
-    parser.add_argument('-l', dest='length', type=parse_address,
-                        help='the length you want to disassemble. (default: context.nb_lines_code)')
-    parser.add_argument('args', metavar='ARGS', nargs='*', help='arguments for capstone. see following example.')
+    parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address,
+                        help="the address you want to disassemble. (default: current_arch.pc)")
+    parser.add_argument("-l", dest="length", type=parse_address,
+                        help="the length you want to disassemble. (default: context.nb_lines_code)")
+    parser.add_argument("args", metavar="ARGS", nargs="*", help="arguments for capstone. see following example.")
     _syntax_ = parser.format_help()
 
     valid_arch_modes = {
@@ -15240,14 +15240,14 @@ class GlibcHeapCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     if sys.version_info.minor >= 7:
-        subparsers = parser.add_subparsers(title='command', required=True)
+        subparsers = parser.add_subparsers(title="command", required=True)
     else:
-        subparsers = parser.add_subparsers(title='command')
-    subparsers.add_parser('arena')
-    subparsers.add_parser('arenas')
-    subparsers.add_parser('bins')
-    subparsers.add_parser('chunk')
-    subparsers.add_parser('chunks')
+        subparsers = parser.add_subparsers(title="command")
+    subparsers.add_parser("arena")
+    subparsers.add_parser("arenas")
+    subparsers.add_parser("bins")
+    subparsers.add_parser("chunk")
+    subparsers.add_parser("chunks")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -15304,9 +15304,9 @@ class GlibcHeapArenaCommand(GenericCommand):
     _aliases_ = ["arena"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-a', dest='arena_addr', type=parse_address,
-                        help='the address you want to interpret as an arena. (default: main_arena)')
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    parser.add_argument("-a", dest="arena_addr", type=parse_address,
+                        help="the address you want to interpret as an arena. (default: main_arena)")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
     def parse_arena(self, arena):
@@ -15394,7 +15394,7 @@ class GlibcHeapArenaCommand(GenericCommand):
             out[i] = re.sub("  ([a-zA-Z_]+) =", "  \033[36m\\1\033[0m =", out[i])
             out[i] = re.sub(" = (0x[0-9a-f]+)", " = \033[34m\\1\033[0m", out[i])
 
-        gef_print('\n'.join(out).rstrip(), less=not args.no_pager)
+        gef_print("\n".join(out).rstrip(), less=not args.no_pager)
         return
 
 
@@ -15405,8 +15405,8 @@ class GlibcHeapChunkCommand(GenericCommand):
     _category_ = "06-a. Heap - Glibc"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('location', metavar='LOCATION', type=parse_address,
-                        help='the address you want to interpret as a chunk.')
+    parser.add_argument("location", metavar="LOCATION", type=parse_address,
+                        help="the address you want to interpret as a chunk.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -15439,10 +15439,10 @@ class GlibcHeapChunksCommand(GenericCommand):
     _aliases_ = ["chunks"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
-                        help='the address you want to interpret as the beginning of a contiguous chunk. (default: arena.heap_base)')
-    parser.add_argument('-a', dest='arena_addr', type=parse_address,
-                        help='the address you want to interpret as an arena. (default: main_arena)')
+    parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address,
+                        help="the address you want to interpret as the beginning of a contiguous chunk. (default: arena.heap_base)")
+    parser.add_argument("-a", dest="arena_addr", type=parse_address,
+                        help="the address you want to interpret as an arena. (default: main_arena)")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}\n".format(_cmdline_)
@@ -15563,10 +15563,10 @@ class GlibcHeapBinsCommand(GenericCommand):
     _aliases_ = ["bins"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-a', dest='arena_addr', type=parse_address,
-                        help='the address you want to interpret as an arena. (default: main_arena)')
-    parser.add_argument('-v', dest='verbose', action='store_true', help='display empty bins.')
-    parser.add_argument('--all', action='store_true', help='dump all arenas.')
+    parser.add_argument("-a", dest="arena_addr", type=parse_address,
+                        help="the address you want to interpret as an arena. (default: main_arena)")
+    parser.add_argument("-v", dest="verbose", action="store_true", help="display empty bins.")
+    parser.add_argument("--all", action="store_true", help="dump all arenas.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}\n".format(_cmdline_)
@@ -15681,10 +15681,10 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
     _aliases_ = ["tcache"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-a', dest='arena_addr', type=parse_address,
-                        help='the address you want to interpret as an arena. (default: main_arena)')
-    parser.add_argument('-v', dest='verbose', action='store_true', help='display empty bins.')
-    parser.add_argument('--all', action='store_true', help='dump all arenas.')
+    parser.add_argument("-a", dest="arena_addr", type=parse_address,
+                        help="the address you want to interpret as an arena. (default: main_arena)")
+    parser.add_argument("-v", dest="verbose", action="store_true", help="display empty bins.")
+    parser.add_argument("--all", action="store_true", help="dump all arenas.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -15786,10 +15786,10 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
     _aliases_ = ["fastbins"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-a', dest='arena_addr', type=parse_address,
-                        help='the address you want to interpret as an arena. (default: main_arena)')
-    parser.add_argument('-v', dest='verbose', action='store_true', help='display empty bins.')
-    parser.add_argument('--all', action='store_true', help='dump all arenas.')
+    parser.add_argument("-a", dest="arena_addr", type=parse_address,
+                        help="the address you want to interpret as an arena. (default: main_arena)")
+    parser.add_argument("-v", dest="verbose", action="store_true", help="display empty bins.")
+    parser.add_argument("--all", action="store_true", help="dump all arenas.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -15892,10 +15892,10 @@ class GlibcHeapUnsortedBinsCommand(GenericCommand):
     _aliases_ = ["unsortedbin"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-a', dest='arena_addr', type=parse_address,
-                        help='the address you want to interpret as an arena. (default: main_arena)')
-    parser.add_argument('-v', dest='verbose', action='store_true', help='display empty bins.')
-    parser.add_argument('--all', action='store_true', help='dump all arenas.')
+    parser.add_argument("-a", dest="arena_addr", type=parse_address,
+                        help="the address you want to interpret as an arena. (default: main_arena)")
+    parser.add_argument("-v", dest="verbose", action="store_true", help="display empty bins.")
+    parser.add_argument("--all", action="store_true", help="dump all arenas.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -15945,10 +15945,10 @@ class GlibcHeapSmallBinsCommand(GenericCommand):
     _aliases_ = ["smallbin"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-a', dest='arena_addr', type=parse_address,
-                        help='the address you want to interpret as an arena. (default: main_arena)')
-    parser.add_argument('-v', dest='verbose', action='store_true', help='display empty bins.')
-    parser.add_argument('--all', action='store_true', help='dump all arenas.')
+    parser.add_argument("-a", dest="arena_addr", type=parse_address,
+                        help="the address you want to interpret as an arena. (default: main_arena)")
+    parser.add_argument("-v", dest="verbose", action="store_true", help="display empty bins.")
+    parser.add_argument("--all", action="store_true", help="dump all arenas.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -16004,10 +16004,10 @@ class GlibcHeapLargeBinsCommand(GenericCommand):
     _aliases_ = ["largebin"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-a', dest='arena_addr', type=parse_address,
-                        help='the address you want to interpret as an arena. (default: main_arena)')
-    parser.add_argument('-v', dest='verbose', action='store_true', help='display empty bins.')
-    parser.add_argument('--all', action='store_true', help='dump all arenas.')
+    parser.add_argument("-a", dest="arena_addr", type=parse_address,
+                        help="the address you want to interpret as an arena. (default: main_arena)")
+    parser.add_argument("-v", dest="verbose", action="store_true", help="display empty bins.")
+    parser.add_argument("--all", action="store_true", help="dump all arenas.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -16217,8 +16217,8 @@ class DetailRegistersCommand(GenericCommand):
     _category_ = "01-a. Debugging Support - Context"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('registers', metavar='REGISTERS', nargs='*',
-                        help='An array of registers. (default: current_arch.all_registers)')
+    parser.add_argument("registers", metavar="REGISTERS", nargs="*",
+                        help="An array of registers. (default: current_arch.all_registers)")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}\n".format(_cmdline_)
@@ -16301,13 +16301,13 @@ class RopperCommand(GenericCommand):
     _category_ = "07-b. External Command - Exploit Development"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('args', metavar='ROPPER_OPTIONS', nargs='*',
-                        help='An array of arguments to pass as is to the ropper command. (default: %(default)s)')
+    parser.add_argument("args", metavar="ROPPER_OPTIONS", nargs="*",
+                        help="An array of arguments to pass as is to the ropper command. (default: %(default)s)")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}\n".format(_cmdline_)
     _example_ += "{:s} -h                 # show detail of options\n".format(_cmdline_)
-    _example_ += '{:s} --jmp rax,rcx      # filter by jmp registers\n'.format(_cmdline_)
+    _example_ += '{:s} --jmp "rax,rcx"    # filter by jmp registers\n'.format(_cmdline_)
     _example_ += '{:s} --search "pop r?x" # filter by pop registers\n'.format(_cmdline_)
 
     _help_ = None
@@ -16317,9 +16317,9 @@ class RopperCommand(GenericCommand):
         self.usage()
 
         if self._help_ is None:
-            self._help_ = subprocess.check_output('ropper --help', shell=True).decode("utf-8")
+            self._help_ = subprocess.check_output("ropper --help", shell=True).decode("utf-8")
         if self._help_examples_ is None:
-            self._help_examples_ = subprocess.check_output('ropper --help-examples', shell=True).decode("utf-8")
+            self._help_examples_ = subprocess.check_output("ropper --help-examples", shell=True).decode("utf-8")
 
         help_text = titlify("gef --help")
         help_text += self._help_
@@ -16370,17 +16370,17 @@ class RpCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument('--bin', action='store_true', help='apply rp++ to binary itself.')
-    group.add_argument('--libc', action='store_true', help='apply rp++ to libc.so searched from vmmap.')
-    group.add_argument('--file', help='apply rp++ to specified file.')
-    group.add_argument('--kernel', action='store_true', help='dump kernel, then apply vmlinux-to-elf and rp++.')
-    parser.add_argument('-f', '--filter', action='append', default=[], help='REGEXP filter.')
-    parser.add_argument('-r', '--rop', dest='rop_N', default=3, help='the max length of rop gadget. (default: %(default)s)')
-    parser.add_argument('--no-print', action='store_true', help="run rp, create a temporary file, but don't display it.")
+    group.add_argument("--bin", action="store_true", help="apply rp++ to binary itself.")
+    group.add_argument("--libc", action="store_true", help="apply rp++ to libc.so searched from vmmap.")
+    group.add_argument("--file", help="apply rp++ to specified file.")
+    group.add_argument("--kernel", action="store_true", help="dump kernel, then apply vmlinux-to-elf and rp++.")
+    parser.add_argument("-f", "--filter", action="append", default=[], help="REGEXP filter.")
+    parser.add_argument("-r", "--rop", dest="rop_N", default=3, help="the max length of rop gadget. (default: %(default)s)")
+    parser.add_argument("--no-print", action="store_true", help="run rp, create a temporary file, but don't display it.")
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} --bin -f 'pop r[abcd]x'\n".format(_cmdline_)
-    _example_ += "{:s} --libc -f '(xchg|mov) [re]sp, \\\\w+' -f 'ret'\n".format(_cmdline_)
+    _example_ = '{:s} --bin -f "pop r[abcd]x"\n'.format(_cmdline_)
+    _example_ += '{:s} --libc -f "(xchg|mov) [re]sp, \\\\w+" -f "ret"\n'.format(_cmdline_)
     _example_ += "{:s} --kernel # only under qemu-system".format(_cmdline_)
 
     def __init__(self):
@@ -16415,13 +16415,13 @@ class RpCommand(GenericCommand):
             if match:
                 if line.startswith("0x"):
                     x = line.split(":")
-                    addr, gadget = int(x[0], 16), ':'.join(x[1:])
+                    addr, gadget = int(x[0], 16), ":".join(x[1:])
                     addr -= base_address # fix address
                     x = Color.redify("{:#08x}".format(addr)) + ":" + gadget # repaint color
                 else:
                     x = line
                 out.append(x)
-        return '\n'.join(out)
+        return "\n".join(out)
 
     @parse_args
     @only_if_gdb_running
@@ -16493,12 +16493,12 @@ class AssembleCommand(GenericCommand):
     _category_ = "01-e. Debugging Support - Assemble"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-a', dest='arch', help='specify the architecture. (default: current_arch.arch)')
-    parser.add_argument('-m', dest='mode', help='specify the mode. (default: current_arch.mode)')
-    parser.add_argument('-e', dest='big_endian', action='store_true', help='use big-endian.')
-    parser.add_argument('-s', dest='as_shellcode', action='store_true', help='output like shellcode style.')
-    parser.add_argument('-l', dest='overwrite_location', metavar='LOCATION', type=parse_address, help='write to memory address.')
-    parser.add_argument("instruction", metavar='INSTRUCTION', nargs='+', help='the code you want to assemble')
+    parser.add_argument("-a", dest="arch", help="specify the architecture. (default: current_arch.arch)")
+    parser.add_argument("-m", dest="mode", help="specify the mode. (default: current_arch.mode)")
+    parser.add_argument("-e", dest="big_endian", action="store_true", help="use big-endian.")
+    parser.add_argument("-s", dest="as_shellcode", action="store_true", help="output like shellcode style.")
+    parser.add_argument("-l", dest="overwrite_location", metavar="LOCATION", type=parse_address, help="write to memory address.")
+    parser.add_argument("instruction", metavar="INSTRUCTION", nargs="+", help="the code you want to assemble")
     _syntax_ = parser.format_help()
 
     _example_ = '{:s} -a X86 -m 64 "mov rax, qword ptr [rax] ; inc rax ;"\n'.format(_cmdline_)
@@ -16596,10 +16596,10 @@ class DisassembleCommand(GenericCommand):
     _category_ = "01-e. Debugging Support - Assemble"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-a', dest='arch', help='specify the architecture. (default: current_arch.arch)')
-    parser.add_argument('-m', dest='mode', help='specify the mode. (default: current_arch.mode)')
-    parser.add_argument('-e', dest='big_endian', action='store_true', help='use big-endian.')
-    parser.add_argument("hex_code", metavar='HEX_CODE', nargs='+', help='the hex code you want to disassemble')
+    parser.add_argument("-a", dest="arch", help="specify the architecture. (default: current_arch.arch)")
+    parser.add_argument("-m", dest="mode", help="specify the mode. (default: current_arch.mode)")
+    parser.add_argument("-e", dest="big_endian", action="store_true", help="use big-endian.")
+    parser.add_argument("hex_code", metavar="HEX_CODE", nargs="+", help="the hex code you want to disassemble")
     _syntax_ = parser.format_help()
 
     _example_ = '{:s} -a X86 -m 64 "488b00 48ffc0"\n'.format(_cmdline_)
@@ -16689,28 +16689,28 @@ class AsmListCommand(GenericCommand):
     _category_ = "01-e. Debugging Support - Assemble"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-a', dest='arch', help='specify the architecture. (default: current_arch.arch)')
-    parser.add_argument('-m', dest='mode', help='specify the mode. (default: current_arch.mode)')
-    parser.add_argument('-e', dest='big_endian', action='store_true', help='use big-endian.')
-    parser.add_argument("-b", dest='nbyte', type=int, help='filter by the length of asm byte.')
-    parser.add_argument("-f", dest='include', action='append', help='filter by specified string.')
-    parser.add_argument("-v", dest='exclude', action='append', help='filter by specified string.')
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    parser.add_argument("-a", dest="arch", help="specify the architecture. (default: current_arch.arch)")
+    parser.add_argument("-m", dest="mode", help="specify the mode. (default: current_arch.mode)")
+    parser.add_argument("-e", dest="big_endian", action="store_true", help="use big-endian.")
+    parser.add_argument("-b", dest="nbyte", type=int, help="filter by the length of asm byte.")
+    parser.add_argument("-f", dest="include", action="append", help="filter by specified string.")
+    parser.add_argument("-v", dest="exclude", action="append", help="filter by specified string.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
-    _example_ = '{:s} -a X86 -m 64\n'.format(_cmdline_)
-    _example_ += '{:s} -a X86 -m 32\n'.format(_cmdline_)
-    _example_ += '{:s} -a X86 -m 16\n'.format(_cmdline_)
-    _example_ += '  F0 (LOCK prefix) is ignored\n'
-    _example_ += '  F2/F3 (REPNE/REP prefix) are ignored\n'
-    _example_ += '  2E/36/3E/26/64/65 (CS/SS/DS/ES/FS/GS override prefix) are ignored\n'
-    _example_ += '  2E/3E (branch hint prefix) are ignored\n'
-    _example_ += '  66 (operand size prefix) is included\n'
-    _example_ += '  67 (address size prefix) is ignored\n'
-    _example_ += '  40-4F (REX prefix) are ignored\n'
-    _example_ += '  C4/C5 (VEX prefix) are ignored\n'
-    _example_ += '  8F (XOP prefix) is ignored\n'
-    _example_ += '  62 (EVEX prefix) is ignored'
+    _example_ = "{:s} -a X86 -m 64\n".format(_cmdline_)
+    _example_ += "{:s} -a X86 -m 32\n".format(_cmdline_)
+    _example_ += "{:s} -a X86 -m 16\n".format(_cmdline_)
+    _example_ += "  F0 (LOCK prefix) is ignored\n"
+    _example_ += "  F2/F3 (REPNE/REP prefix) are ignored\n"
+    _example_ += "  2E/36/3E/26/64/65 (CS/SS/DS/ES/FS/GS override prefix) are ignored\n"
+    _example_ += "  2E/3E (branch hint prefix) are ignored\n"
+    _example_ += "  66 (operand size prefix) is included\n"
+    _example_ += "  67 (address size prefix) is ignored\n"
+    _example_ += "  40-4F (REX prefix) are ignored\n"
+    _example_ += "  C4/C5 (VEX prefix) are ignored\n"
+    _example_ += "  8F (XOP prefix) is ignored\n"
+    _example_ += "  62 (EVEX prefix) is ignored"
 
     def listup_x86(self, arch, mode):
         DISP64 = "1122334455667788"
@@ -16721,20 +16721,20 @@ class AsmListCommand(GenericCommand):
         def get_typical_bytecodes_modrm(_reg):
             bytecodes = []
             for (mod, reg, rm) in itertools.product([0b00, 0b01, 0b10, 0b11], _reg, [0b000]):
-                modrm = "%02X" % ((mod << 6) | (reg << 3) | rm)
+                modrm = "{:02X}".format((mod << 6) | (reg << 3) | rm)
                 if mod == 0b00:
                     if rm == 0b101: # special case; [REG + disp32]
                         bytecode = modrm + DISP32
                     elif rm == 0b100: # use sib; [INDEX * SCALE + BASE]
                         for sib in filter(lambda x: x & 0b111 != 0b101, range(256)):
-                            bytecode = modrm + "%02X" % sib
+                            bytecode = modrm + "{:02X}".format(sib)
                     else: # [REG]
                         bytecode = modrm
                 elif mod == 0b01:
                     if rm == 0b100: # use sib; [INDEX * SCALE + BASE + disp8]
                         bytecode = []
                         for sib in filter(lambda x: x & 0b111 != 0b101, range(256)):
-                            b = modrm + ("%02X" % sib) + DISP8
+                            b = modrm + "{:02X}".format(sib) + DISP8
                             bytecode.append(b)
                     else: # [REG + disp8]
                         bytecode = modrm + DISP8
@@ -16742,7 +16742,7 @@ class AsmListCommand(GenericCommand):
                     if rm == 0b100: # use sib; [INDEX * SCALE + BASE + disp32]
                         bytecode = []
                         for sib in filter(lambda x: x & 0b111 != 0b101, range(256)):
-                            b = modrm + ("%02X" % sib) + DISP32
+                            b = modrm + "{:02X}".format(sib) + DISP32
                             bytecode.append(b)
                     else: # [REG + disp32]
                         bytecode = modrm + DISP32
@@ -16768,11 +16768,11 @@ class AsmListCommand(GenericCommand):
                     bytecode = get_typical_bytecodes_modrm(tuple([0]))
                 elif operand.endswith(("+r", "+i")):
                     b = int(operand.split("+")[0], 16)
-                    bytecode = ["%02X" % (b + x) for x in range(8)]
+                    bytecode = ["{:02X}".format(b + x) for x in range(8)]
                 else:
                     bytecode = [operand]
                 bytecodes.append(bytecode)
-            return [''.join(b) for b in itertools.product(*bytecodes)]
+            return ["".join(b) for b in itertools.product(*bytecodes)]
 
         # load capstone
         capstone = sys.modules["capstone"]
@@ -16783,7 +16783,7 @@ class AsmListCommand(GenericCommand):
             return None
 
         # download defines
-        url = 'https://raw.githubusercontent.com/bata24/gef/dev/asmdb/x86data.js'
+        url = "https://raw.githubusercontent.com/bata24/gef/dev/asmdb/x86data.js"
         x86 = http_get(url)
         if x86 is None:
             err("Connection timed out: {:s}".format(url))
@@ -16900,7 +16900,7 @@ class AsmListCommand(GenericCommand):
                 continue
 
             # keyword filter
-            line = "{:22s} {:60s} {:22s} {}".format(hex_code, opstr, opcodes, ','.join(attr))
+            line = "{:22s} {:60s} {:22s} {}".format(hex_code, opstr, opcodes, ",".join(attr))
             if args.include and any(f not in line for f in args.include):
                 continue
             if args.exclude and any(f in line for f in args.exclude):
@@ -16921,10 +16921,10 @@ class ProcessListingCommand(GenericCommand):
     _aliases_ = ["ps"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('pattern', metavar='REGEX_PATTERN', nargs='?', help='filter by regex.')
-    parser.add_argument('-a', dest='do_attach', action='store_true', help='attach it. (default: %(default)s)')
-    parser.add_argument('-s', dest='smart_scan', action='store_true',
-                        help='filter kernel thread, socat, grep, gdb, sshd, bash, systemd, etc. (default: %(default)s)')
+    parser.add_argument("pattern", metavar="REGEX_PATTERN", nargs="?", help="filter by regex.")
+    parser.add_argument("-a", dest="do_attach", action="store_true", help="attach it. (default: %(default)s)")
+    parser.add_argument("-s", dest="smart_scan", action="store_true",
+                        help="filter kernel thread, socat, grep, gdb, sshd, bash, systemd, etc. (default: %(default)s)")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} gdb.*".format(_cmdline_)
@@ -17095,7 +17095,7 @@ class ArchInfoCommand(GenericCommand):
         gef_print("{:30s} {:s} {!s}".format("return register", RIGHT_ARROW, current_arch.return_register))
         gef_print("{:30s} {:s} {!s}".format("function parameters", RIGHT_ARROW, fparams))
         gef_print("{:30s} {:s} {!s}".format("syscall register", RIGHT_ARROW, current_arch.syscall_register))
-        sparams = ', '.join(current_arch.syscall_parameters)
+        sparams = ", ".join(current_arch.syscall_parameters)
         gef_print("{:30s} {:s} {!s}".format("syscall parameters", RIGHT_ARROW, sparams))
         if is_x86() or is_arm32() or is_arm64():
             gef_print("{:30s} {:s} {!s}".format("32bit-emulated (compat mode)", RIGHT_ARROW, self.is_emulated32()))
@@ -17115,13 +17115,13 @@ class ElfInfoCommand(GenericCommand):
     _category_ = "02-a. Process Information - General"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-e', dest='use_readelf', action='store_true', help='use readelf.')
-    parser.add_argument('-r', dest='remote', action='store_true',
-                        help='parse remote binary if download feature is available.')
-    parser.add_argument('-f', dest='file', help='the file path you want to parse.')
-    parser.add_argument('-a', dest='address', type=parse_address, help='the memory address you want to parse.')
-    parser.add_argument('-v', dest='verbose', action='store_true', help='dump the content of each section.')
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    parser.add_argument("-e", dest="use_readelf", action="store_true", help="use readelf.")
+    parser.add_argument("-r", dest="remote", action="store_true",
+                        help="parse remote binary if download feature is available.")
+    parser.add_argument("-f", dest="file", help="the file path you want to parse.")
+    parser.add_argument("-a", dest="address", type=parse_address, help="the memory address you want to parse.")
+    parser.add_argument("-v", dest="verbose", action="store_true", help="dump the content of each section.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}                   # parse binary itself\n".format(_cmdline_)
@@ -17595,7 +17595,7 @@ class ElfInfoCommand(GenericCommand):
                 err("Failed to parse elf.")
             else:
                 self.elf_info(elf)
-                gef_print('\n'.join(self.out), less=not args.no_pager)
+                gef_print("\n".join(self.out), less=not args.no_pager)
             return
 
         # file parse pattern
@@ -17661,7 +17661,7 @@ class ElfInfoCommand(GenericCommand):
             data = open(local_filepath, "rb").read()
             self.out.append("size: {:d} bytes, sha1: {:s}".format(len(data), hashlib.sha1(data).hexdigest()))
             self.elf_info(elf, remote_filepath)
-            gef_print('\n'.join(self.out), less=not args.no_pager)
+            gef_print("\n".join(self.out), less=not args.no_pager)
 
         if tmp_filepath and os.path.exists(tmp_filepath):
             os.unlink(tmp_filepath)
@@ -17675,9 +17675,9 @@ class ChecksecCommand(GenericCommand):
     _category_ = "02-f. Process Information - Security"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-r', dest='remote', action='store_true',
-                        help='parse remote binary if download feature is available. (default: %(default)s)')
-    parser.add_argument('-f', dest='file', help='the file path you want to parse.')
+    parser.add_argument("-r", dest="remote", action="store_true",
+                        help="parse remote binary if download feature is available. (default: %(default)s)")
+    parser.add_argument("-f", dest="file", help="the file path you want to parse.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} -f /bin/ls\n".format(_cmdline_)
@@ -17874,7 +17874,7 @@ class ChecksecCommand(GenericCommand):
                     keys.append("APDBKEY")
                 if r & 0b10000:
                     keys.append("APGAKEY")
-                keys = ', '.join(keys)
+                keys = ", ".join(keys)
                 msg = Color.colorify("Enabled", "bold green") + " (enabled keys: {:s})".format(keys)
                 gef_print("{:<40s}: {:s}".format("PAC", msg))
 
@@ -17899,7 +17899,7 @@ class ChecksecCommand(GenericCommand):
                     keys.append("PR_MTE_TCF_SYNC")
                 if r & 0b100:
                     keys.append("PR_MTE_TCF_ASYNC")
-                keys = ', '.join(keys)
+                keys = ", ".join(keys)
                 msg = Color.colorify("Enabled", "bold green") + " (MTE is enabled as: {:s})".format(keys)
                 gef_print("{:<40s}: {:s}".format("MTE", msg))
 
@@ -18064,8 +18064,8 @@ class KernelChecksecCommand(GenericCommand):
 
         elif is_arm32():
             # PXN
-            ID_MMFR0 = get_register('$ID_MMFR0')
-            ID_MMFR0_S = get_register('$ID_MMFR0_S')
+            ID_MMFR0 = get_register("$ID_MMFR0")
+            ID_MMFR0_S = get_register("$ID_MMFR0_S")
             if ID_MMFR0 is not None and (ID_MMFR0 >> 2) & 1:
                 gef_print("{:<40s}: {:s}".format("PXN (ID_MMFR0 bit 2)", Color.colorify("Enabled", "bold green")))
             elif ID_MMFR0_S is not None and (ID_MMFR0_S >> 2) & 1:
@@ -18081,7 +18081,7 @@ class KernelChecksecCommand(GenericCommand):
             gef_print("{:<40s}: {:s} (all ARMv8~ is supported)".format("PXN", Color.colorify("Enabled", "bold green")))
 
             # PAN
-            ID_AA64MMFR1_EL1 = get_register('$ID_AA64MMFR1_EL1')
+            ID_AA64MMFR1_EL1 = get_register("$ID_AA64MMFR1_EL1")
             if ID_AA64MMFR1_EL1 is not None and ((ID_AA64MMFR1_EL1 >> 20) & 0b1111) != 0b0000:
                 gef_print("{:<40s}: {:s}".format("PAN (ID_AA64MMFR1_EL1 bit 23-20)", Color.colorify("Enabled", "bold green")))
             else:
@@ -18698,11 +18698,11 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
     _category_ = "02-e. Process Information - Complex Structure Information"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-f', dest='file', help='the file path you want to parse.')
-    parser.add_argument('-r', dest='remote', action='store_true',
-                        help='parse remote binary if download feature is available. (default: %(default)s)')
-    parser.add_argument('-x', dest='hexdump', action='store_true', help='with hexdump. (default: %(default)s)')
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    parser.add_argument("-f", dest="file", help="the file path you want to parse.")
+    parser.add_argument("-r", dest="remote", action="store_true",
+                        help="parse remote binary if download feature is available. (default: %(default)s)")
+    parser.add_argument("-x", dest="hexdump", action="store_true", help="with hexdump. (default: %(default)s)")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}                    # parse loaded binary\n".format(_cmdline_)
@@ -18826,7 +18826,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                 elif isinstance(raw_data, int):
                     raw_data_s = "{:02x}".format(raw_data)
                 elif isinstance(raw_data, bytes):
-                    raw_data_s = ' '.join(["{:02x}".format(x) for x in raw_data])
+                    raw_data_s = " ".join(["{:02x}".format(x) for x in raw_data])
                 else:
                     raise
 
@@ -18835,7 +18835,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                 elif isinstance(value, int):
                     value_s = "{:#018x}".format(value)
                 elif isinstance(value, list):
-                    value_s = ' '.join(["{:#018x}".format(x) for x in value])
+                    value_s = " ".join(["{:#018x}".format(x) for x in value])
 
                 if value is not None:
                     out.append("{:s} {:<23s} {:<30s}: {:<18s}  |  {:s}".format(pos_s, raw_data_s, name, value_s, extra))
@@ -18978,7 +18978,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
             s.append("aligned")
         if (fde_encoding & 0x80) == self.DW_EH_PE_indirect:
             s.append("indirect")
-        return ','.join(s)
+        return ",".join(s)
 
     def encoded_ptr_size(self, encoding, ptr_size):
         if (encoding & 0xf) == self.DW_EH_PE_ptr:
@@ -20097,7 +20097,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                     entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} [{:#x}]".format(offset, op_name, d), None, ""])
                 elif op in [self.DW_OP_implicit_value]:
                     new_pos, d = self.get_uleb128(data, new_pos)
-                    block_s = ' '.join(["{:02x}".format(x) for x in data[new_pos:new_pos + d]])
+                    block_s = " ".join(["{:02x}".format(x) for x in data[new_pos:new_pos + d]])
                     new_pos += d
                     entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} {:s}".format(offset, op_name, block_s), None, ""])
                 elif op in [self.DW_OP_implicit_pointer, self.DW_OP_GNU_implicit_pointer]:
@@ -20115,7 +20115,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                 elif op in [self.DW_OP_const_type, self.DW_OP_GNU_const_type]:
                     new_pos, d1 = self.get_uleb128(data, new_pos)
                     new_pos, d2 = self.read_1ubyte(data, new_pos)
-                    block_s = ' '.join(["{:02x}".format(x) for x in data[new_pos:new_pos + d2]])
+                    block_s = " ".join(["{:02x}".format(x) for x in data[new_pos:new_pos + d2]])
                     new_pos += d2
                     entries.append([pos, data[pos:new_pos], indent + "[{:#04x}] {:s} [{:#x}] {:s}".format(offset, op_name, d1, block_s), None, ""])
                 elif op in [self.DW_OP_regval_type, self.DW_OP_GNU_regval_type]:
@@ -20467,7 +20467,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
         out += self.format_entry(gcc_except_table, gcc_except_table_entries)
 
         # print
-        gef_print('\n'.join(out), less=not args.no_pager)
+        gef_print("\n".join(out), less=not args.no_pager)
 
         if tmp_filepath and os.path.exists(tmp_filepath):
             os.unlink(tmp_filepath)
@@ -20580,9 +20580,9 @@ class NamedBreakpointCommand(GenericCommand):
     _aliases_ = ["nb"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('name', metavar='NAME', help='the name you want to assign.')
-    parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
-                        help='the address you want to set breakpoint. (default: current_arch.pc)')
+    parser.add_argument("name", metavar="NAME", help="the name you want to assign.")
+    parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address,
+                        help="the address you want to set breakpoint. (default: current_arch.pc)")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} main 0x4008a9".format(_cmdline_)
@@ -20607,9 +20607,9 @@ class MessageBreakpointCommand(GenericCommand):
     _category_ = "01-b. Debugging Support - Breakpoint"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
-                        help='the address you want to set breakpoint. (default: current_arch.pc)')
-    parser.add_argument('message', metavar='MESSAGE', type=str, help='the message printed if breakpoint is hit.')
+    parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address,
+                        help="the address you want to set breakpoint. (default: current_arch.pc)")
+    parser.add_argument("message", metavar="MESSAGE", type=str, help="the message printed if breakpoint is hit.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} 0x55555555aab9 \"RAX: {{$rax:#x}}\"\n".format(_cmdline_)
@@ -20634,12 +20634,12 @@ class ContextCommand(GenericCommand):
     _aliases_ = ["ctx"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('commands', nargs='*', default=[],
-                        choices=[[], 'legend', 'regs', 'stack', 'code', 'args', 'memory',
-                                'source', 'trace', 'threads', 'extra', 'on', 'off'],
-                        metavar='{legend,regs,stack,code,args,memory,source,trace,threads,extra}|{on,off}',
-                        help='specifies which context to display. '
-                             'The on/off are syntax sugars of `gef config context.enable True/False`.')
+    parser.add_argument("commands", nargs="*", default=[],
+                        choices=[[], "legend", "regs", "stack", "code", "args", "memory",
+                                "source", "trace", "threads", "extra", "on", "off"],
+                        metavar="{legend,regs,stack,code,args,memory,source,trace,threads,extra}|{on,off}",
+                        help="specifies which context to display. "
+                             "The on/off are syntax sugars of `gef config context.enable True/False`.")
     _syntax_ = parser.format_help()
 
     old_registers = {}
@@ -20829,7 +20829,7 @@ class ContextCommand(GenericCommand):
             return
 
         insn = get_insn()
-        operands = ', '.join(insn.operands)
+        operands = ", ".join(insn.operands)
         operands = re.sub(r"<.*?>", "", operands)
         operands = re.sub(r"\[.*?\]", "", operands)
 
@@ -20864,7 +20864,7 @@ class ContextCommand(GenericCommand):
                         break
 
         # fpu register
-        if insn.mnemonic[0] == 'f':
+        if insn.mnemonic[0] == "f":
             r = re.findall(r"(st\(\d\))", operands)
             if r:
                 ret = gdb.execute("fpu", to_string=True)
@@ -21039,7 +21039,7 @@ class ContextCommand(GenericCommand):
         if insn_here.operands == []:
             return
 
-        insn = ','.join(insn_here.operands)
+        insn = ",".join(insn_here.operands)
         insn = re.sub(r"<.+>", "", insn)
         r = re.findall(r"[^:](\[.+?\])", str(insn)) # Unsupported: seg:[reg]
         if not r:
@@ -21059,7 +21059,7 @@ class ContextCommand(GenericCommand):
                 code = code.replace("eiz", " 0 ") # $eiz is always 0x0
                 code = code.split()
                 code = ["$" + x if x.isalpha() or re.match(r"r\d+d?", x) else x for x in code]
-                code = ''.join(code)
+                code = "".join(code)
                 # $rip/$eip points next instruction
                 code_orig, code = code, code.replace("$rip", "$rip+{:#x}".format(codesize))
 
@@ -21072,7 +21072,7 @@ class ContextCommand(GenericCommand):
                 code = ["$" + x if x.isalpha() or re.match(r"r\d+", x) else x for x in code]
                 if "<<" in code[-1]:
                     code = code[:-2] + ["(" + code[-2] + code[-1] + ")"]
-                code = '+'.join(code)
+                code = "+".join(code)
                 # $pc points next next instruction
                 code_orig, code = code, code.replace("$pc", "$pc+{:#x}".format(codesize * 2))
 
@@ -21090,7 +21090,7 @@ class ContextCommand(GenericCommand):
                     code[-1] += "0"
                 if "<<" in code[-1]:
                     code = code[:-2] + ["(" + code[-2] + code[-1] + ")"]
-                code = '+'.join(code)
+                code = "+".join(code)
                 # $pc points next next instruction
                 code_orig, code = code, code.replace("$pc", "$pc+{:#x}".format(codesize * 2))
 
@@ -21114,7 +21114,7 @@ class ContextCommand(GenericCommand):
         if insn_here.operands == []:
             return
 
-        insn = ','.join(insn_here.operands)
+        insn = ",".join(insn_here.operands)
         insn = re.sub(r"<.+>", "", insn)
 
         insn_next = inst_iter.__next__()
@@ -21130,7 +21130,7 @@ class ContextCommand(GenericCommand):
             offset = offset.replace("eiz", " 0 ") # $eiz is always 0x0
             offset = offset.split()
             offset = ["$" + x if x.isalpha() or re.match(r"r\d+d?", x) else x for x in offset]
-            offset = ''.join(offset)
+            offset = "".join(offset)
             # $rip/$eip points next instruction
             offset = offset.replace("$rip", "$rip+{:#x}".format(codesize))
             offset = parse_address(offset)
@@ -21148,7 +21148,7 @@ class ContextCommand(GenericCommand):
         if insn_here.operands == []:
             return
 
-        insn = ','.join(insn_here.operands)
+        insn = ",".join(insn_here.operands)
         insn = re.sub(r"<.+>", "", insn)
 
         r = re.findall(r"((es|ds|ss|cs):\[?([^,\]]+)\]?)", str(insn))
@@ -21160,7 +21160,7 @@ class ContextCommand(GenericCommand):
             addr = addr.replace("eiz", " 0 ") # $eiz is always 0x0
             addr = addr.split()
             addr = ["$" + x if x.isalpha() or re.match(r"r\d+d?", x) else x for x in addr]
-            addr = parse_address(''.join(addr))
+            addr = parse_address("".join(addr))
             self.context_title("memory access: {:s} = {:#x}".format(code, addr))
             gdb.execute("telescope {:#x} 4 --no-pager".format(addr))
         return
@@ -21313,7 +21313,7 @@ class ContextCommand(GenericCommand):
                 target = addr
             else:
                 # failed, use raw operands
-                target = ' '.join(insn.operands)
+                target = " ".join(insn.operands)
 
         # print
         sym = gdb.lookup_global_symbol(target)
@@ -21668,13 +21668,13 @@ class MemoryCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     if sys.version_info.minor >= 7:
-        subparsers = parser.add_subparsers(title='command', required=True)
+        subparsers = parser.add_subparsers(title="command", required=True)
     else:
-        subparsers = parser.add_subparsers(title='command')
-    subparsers.add_parser('watch')
-    subparsers.add_parser('unwatch')
-    subparsers.add_parser('reset')
-    subparsers.add_parser('list')
+        subparsers = parser.add_subparsers(title="command")
+    subparsers.add_parser("watch")
+    subparsers.add_parser("unwatch")
+    subparsers.add_parser("reset")
+    subparsers.add_parser("list")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -21695,13 +21695,13 @@ class MemoryWatchCommand(GenericCommand):
     _category_ = "01-f. Debugging Support - Context Extension"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('address', metavar='ADDRESS', type=parse_address,
-                        help='the memory address you want to register for display in `context memory`.')
-    parser.add_argument('count', metavar='COUNT', nargs='?', type=lambda x: int(x, 0), default=0x10,
-                        help='the count of displayed units. (default: %(default)s)')
-    parser.add_argument('unit', nargs='?', default="pointers",
-                        choices=['byte', 'word', 'dword', 'qword', 'pointers'],
-                        help='the size of unit. (default: %(default)s)')
+    parser.add_argument("address", metavar="ADDRESS", type=parse_address,
+                        help="the memory address you want to register for display in `context memory`.")
+    parser.add_argument("count", metavar="COUNT", nargs="?", type=lambda x: int(x, 0), default=0x10,
+                        help="the count of displayed units. (default: %(default)s)")
+    parser.add_argument("unit", nargs="?", default="pointers",
+                        choices=["byte", "word", "dword", "qword", "pointers"],
+                        help="the size of unit. (default: %(default)s)")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} 0x603000 0x100 byte\n".format(_cmdline_)
@@ -21730,8 +21730,8 @@ class MemoryUnwatchCommand(GenericCommand):
     _category_ = "01-f. Debugging Support - Context Extension"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('address', metavar='ADDRESS', type=parse_address,
-                        help='the memory address you want to deregister for display in `context memory`.')
+    parser.add_argument("address", metavar="ADDRESS", type=parse_address,
+                        help="the memory address you want to deregister for display in `context memory`.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} 0x603000\n".format(_cmdline_)
@@ -21811,15 +21811,15 @@ class HexdumpCommand(GenericCommand):
     _aliases_ = ["xxd"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('format', choices=['byte', 'word', 'dword', 'qword'], nargs='?', default='byte', help='dump mode.')
-    parser.add_argument('location', metavar='LOCATION', type=parse_address, help='the memory address you want to dump.')
-    parser.add_argument('count', metavar='COUNT', nargs='?', type=lambda x: int(x, 0), default=0x100,
-                        help='the count of displayed units. (default: %(default)s)')
-    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (only qemu-system).')
-    parser.add_argument('-r', '--reverse', action='store_true', help='display in reverse order line by line.')
-    parser.add_argument('-f', '--full', action='store_true', help='display the same line without omitting.')
-    parser.add_argument('-s', '--symbol', action='store_true', help='display the symbol.')
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    parser.add_argument("format", choices=["byte", "word", "dword", "qword"], nargs="?", default="byte", help="dump mode.")
+    parser.add_argument("location", metavar="LOCATION", type=parse_address, help="the memory address you want to dump.")
+    parser.add_argument("count", metavar="COUNT", nargs="?", type=lambda x: int(x, 0), default=0x100,
+                        help="the count of displayed units. (default: %(default)s)")
+    parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
+    parser.add_argument("-r", "--reverse", action="store_true", help="display in reverse order line by line.")
+    parser.add_argument("-f", "--full", action="store_true", help="display the same line without omitting.")
+    parser.add_argument("-s", "--symbol", action="store_true", help="display the symbol.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
     @parse_args
@@ -21911,12 +21911,12 @@ class HexdumpFlexibleCommand(GenericCommand):
     _category_ = "03-b. Memory - View"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('format', metavar='FORMAT', help='dump format.')
-    parser.add_argument('location', metavar='LOCATION', type=parse_address, help='the memory address you want to dump.')
-    parser.add_argument('count', metavar='COUNT', nargs='?', type=lambda x: int(x, 0), default=1,
-                        help='the count of displayed units. (default: %(default)s)')
-    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (only qemu-system).')
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    parser.add_argument("format", metavar="FORMAT", help="dump format.")
+    parser.add_argument("location", metavar="LOCATION", type=parse_address, help="the memory address you want to dump.")
+    parser.add_argument("count", metavar="COUNT", nargs="?", type=lambda x: int(x, 0), default=1,
+                        help="the count of displayed units. (default: %(default)s)")
+    parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
 
     def extract_each_type(self, fmt):
         out = []
@@ -21984,23 +21984,23 @@ class PatchCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     if sys.version_info.minor >= 7:
-        subparsers = parser.add_subparsers(title='command', required=True)
+        subparsers = parser.add_subparsers(title="command", required=True)
     else:
-        subparsers = parser.add_subparsers(title='command')
-    subparsers.add_parser('byte')
-    subparsers.add_parser('word')
-    subparsers.add_parser('dword')
-    subparsers.add_parser('qword')
-    subparsers.add_parser('string')
-    subparsers.add_parser('hexstring')
-    subparsers.add_parser('pattern')
-    subparsers.add_parser('nop')
-    subparsers.add_parser('inf')
-    subparsers.add_parser('trap')
-    subparsers.add_parser('ret')
-    subparsers.add_parser('syscall')
-    subparsers.add_parser('history')
-    subparsers.add_parser('revert')
+        subparsers = parser.add_subparsers(title="command")
+    subparsers.add_parser("byte")
+    subparsers.add_parser("word")
+    subparsers.add_parser("dword")
+    subparsers.add_parser("qword")
+    subparsers.add_parser("string")
+    subparsers.add_parser("hexstring")
+    subparsers.add_parser("pattern")
+    subparsers.add_parser("nop")
+    subparsers.add_parser("inf")
+    subparsers.add_parser("trap")
+    subparsers.add_parser("ret")
+    subparsers.add_parser("syscall")
+    subparsers.add_parser("history")
+    subparsers.add_parser("revert")
     _syntax_ = parser.format_help()
 
     def __init__(self, *args, **kwargs):
@@ -22101,10 +22101,10 @@ class PatchQwordCommand(PatchCommand):
     _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-e", dest='endian_reverse', action='store_true', help='reverse endian. (default: %(default)s)')
-    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (only qemu-system).')
-    parser.add_argument('location', metavar='LOCATION', type=parse_address, help='the memory address you want to patch.')
-    parser.add_argument('values', metavar='QWORD', nargs='*', help='the value you want to patch')
+    parser.add_argument("-e", dest="endian_reverse", action="store_true", help="reverse endian. (default: %(default)s)")
+    parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
+    parser.add_argument("location", metavar="LOCATION", type=parse_address, help="the memory address you want to patch.")
+    parser.add_argument("values", metavar="QWORD", nargs="*", help="the value you want to patch.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}    $rip 0x4142434445464748 # write `HGFEDCBA` to [rip]\n".format(_cmdline_)
@@ -22123,10 +22123,10 @@ class PatchDwordCommand(PatchCommand):
     _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-e", dest='endian_reverse', action='store_true', help='reverse endian. (default: %(default)s)')
-    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (only qemu-system).')
-    parser.add_argument('location', metavar='LOCATION', type=parse_address, help='the memory address you want to patch.')
-    parser.add_argument('values', metavar='DWORD', nargs='*', help='the value you want to patch')
+    parser.add_argument("-e", dest="endian_reverse", action="store_true", help="reverse endian. (default: %(default)s)")
+    parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
+    parser.add_argument("location", metavar="LOCATION", type=parse_address, help="the memory address you want to patch.")
+    parser.add_argument("values", metavar="DWORD", nargs="*", help="the value you want to patch.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}    $rip 0x41424344 # write `DCBA` to [rip]\n".format(_cmdline_)
@@ -22145,10 +22145,10 @@ class PatchWordCommand(PatchCommand):
     _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-e", dest='endian_reverse', action='store_true', help='reverse endian. (default: %(default)s)')
-    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (only qemu-system).')
-    parser.add_argument('location', metavar='LOCATION', type=parse_address, help='the memory address you want to patch.')
-    parser.add_argument('values', metavar='WORD', nargs='*', help='the value you want to patch')
+    parser.add_argument("-e", dest="endian_reverse", action="store_true", help="reverse endian. (default: %(default)s)")
+    parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
+    parser.add_argument("location", metavar="LOCATION", type=parse_address, help="the memory address you want to patch.")
+    parser.add_argument("values", metavar="WORD", nargs="*", help="the value you want to patch.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}    $rip 0x4142 # write `BA` to [rip]\n".format(_cmdline_)
@@ -22167,10 +22167,10 @@ class PatchByteCommand(PatchCommand):
     _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-e", dest='endian_reverse', action='store_true', help='reverse endian. (default: %(default)s)')
-    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (only qemu-system).')
-    parser.add_argument('location', metavar='LOCATION', type=parse_address, help='the memory address you want to patch.')
-    parser.add_argument('values', metavar='BYTE', nargs='*', help='the value you want to patch')
+    parser.add_argument("-e", dest="endian_reverse", action="store_true", help="reverse endian. (default: %(default)s)")
+    parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
+    parser.add_argument("location", metavar="LOCATION", type=parse_address, help="the memory address you want to patch.")
+    parser.add_argument("values", metavar="BYTE", nargs="*", help="the value you want to patch.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}    $rip 0x41 0x41 0x41 0x41 0x41\n".format(_cmdline_)
@@ -22189,12 +22189,12 @@ class PatchStringCommand(PatchCommand):
     _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (only qemu-system).')
-    parser.add_argument('location', metavar='LOCATION', type=parse_address, help='the memory address you want to patch.')
-    parser.add_argument('vstr', metavar='"double backslash-escaped string"', type=lambda x: codecs.escape_decode(x)[0],
-                        help='the string you want to patch.')
-    parser.add_argument('length', metavar='LENGTH', nargs='?',
-                        type=lambda x: int(x, 0), help='the length of repeat. (default: %(default)s)')
+    parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
+    parser.add_argument("location", metavar="LOCATION", type=parse_address, help="the memory address you want to patch.")
+    parser.add_argument("vstr", metavar='"double backslash-escaped string"', type=lambda x: codecs.escape_decode(x)[0],
+                        help="the string you want to patch.")
+    parser.add_argument("length", metavar="LENGTH", nargs="?",
+                        type=lambda x: int(x, 0), help="the length of repeat. (default: %(default)s)")
     _syntax_ = parser.format_help()
 
     _example_ = '{:s} $sp "AAAABBBB"\n'.format(_cmdline_)
@@ -22239,12 +22239,12 @@ class PatchHexStringCommand(PatchCommand):
     _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (only qemu-system).')
-    parser.add_argument('location', metavar='LOCATION', type=parse_address, help='the memory address you want to patch.')
-    parser.add_argument('hstr', metavar='"hex-string"', type=lambda x: bytes.fromhex(x),
-                        help='the string you want to patch.')
-    parser.add_argument('length', metavar='LENGTH', nargs='?',
-                        type=lambda x: int(x, 0), help='the length of repeat. (default: %(default)s)')
+    parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
+    parser.add_argument("location", metavar="LOCATION", type=parse_address, help="the memory address you want to patch.")
+    parser.add_argument("hstr", metavar='"hex-string"', type=lambda x: bytes.fromhex(x),
+                        help="the string you want to patch.")
+    parser.add_argument("length", metavar="LENGTH", nargs="?",
+                        type=lambda x: int(x, 0), help="the length of repeat. (default: %(default)s)")
     _syntax_ = parser.format_help()
 
     _example_ = '{:s} $sp "4141414142424242"'.format(_cmdline_)
@@ -22288,9 +22288,9 @@ class PatchPatternCommand(PatchCommand):
     _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (only qemu-system).')
-    parser.add_argument('location', metavar='LOCATION', type=parse_address, help='the memory address you want to patch.')
-    parser.add_argument('length', metavar='LENGTH', type=lambda x: int(x, 0), help='the length of repeat. (default: %(default)s)')
+    parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
+    parser.add_argument("location", metavar="LOCATION", type=parse_address, help="the memory address you want to patch.")
+    parser.add_argument("length", metavar="LENGTH", type=lambda x: int(x, 0), help="the length of repeat. (default: %(default)s)")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} $sp 128".format(_cmdline_)
@@ -22331,14 +22331,14 @@ class PatchNopCommand(PatchCommand):
     _aliases_ = ["nop"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (only qemu-system).')
-    parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
-                        help='the memory address you want to patch. (default: current_arch.pc)')
+    parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
+    parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address,
+                        help="the memory address you want to patch. (default: current_arch.pc)")
     group = parser.add_mutually_exclusive_group()
-    group.add_argument('-b', dest='byte_length', type=lambda x: int(x, 0),
-                       help='the patch length of byte (mutually exclusive with `-i`). (default: %(default)s)')
-    group.add_argument('-i', dest='inst_count', type=lambda x: int(x, 0), default=1,
-                       help='the patch length of instruction (mutually exclusive with `-b`). (default: 1)')
+    group.add_argument("-b", dest="byte_length", type=lambda x: int(x, 0),
+                       help="the patch length of byte (mutually exclusive with `-i`). (default: %(default)s)")
+    group.add_argument("-i", dest="inst_count", type=lambda x: int(x, 0), default=1,
+                       help="the patch length of instruction (mutually exclusive with `-b`). (default: 1)")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} $pc -i 2".format(_cmdline_)
@@ -22433,9 +22433,9 @@ class PatchInfloopCommand(PatchCommand):
     _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (only qemu-system).')
-    parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
-                        help='the memory address you want to patch. (default: current_arch.pc)')
+    parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
+    parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address,
+                        help="the memory address you want to patch. (default: current_arch.pc)")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} $pc".format(_cmdline_)
@@ -22501,9 +22501,9 @@ class PatchTrapCommand(PatchCommand):
     _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (only qemu-system).')
-    parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
-                        help='the memory address you want to patch. (default: current_arch.pc)')
+    parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
+    parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address,
+                        help="the memory address you want to patch. (default: current_arch.pc)")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} $pc".format(_cmdline_)
@@ -22569,9 +22569,9 @@ class PatchRetCommand(PatchCommand):
     _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (only qemu-system).')
-    parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
-                        help='the memory address you want to patch. (default: current_arch.pc)')
+    parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
+    parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address,
+                        help="the memory address you want to patch. (default: current_arch.pc)")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} $pc".format(_cmdline_)
@@ -22637,9 +22637,9 @@ class PatchSyscallCommand(PatchCommand):
     _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--phys', action='store_true', help='treat the address as physical memory (only qemu-system).')
-    parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
-                        help='the memory address you want to patch. (default: current_arch.pc)')
+    parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
+    parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address,
+                        help="the memory address you want to patch. (default: current_arch.pc)")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} $pc".format(_cmdline_)
@@ -22741,8 +22741,8 @@ class PatchRevertCommand(PatchCommand):
     _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('revert_target', metavar='REVERT_TARGET_HISTORY', type=int,
-                        help='the history index number you want to revert.')
+    parser.add_argument("revert_target", metavar="REVERT_TARGET_HISTORY", type=int,
+                        help="the history index number you want to revert.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} 0 # revert to patch history stack[0]\n".format(_cmdline_)
@@ -22885,11 +22885,11 @@ def dereference_from(addr):
                 if is_ascii_string(prev.value):
                     s = read_cstring_from_memory(prev.value)
                     if len(s) < get_memory_alignment():
-                        txt = '{:s} ({:s}?)'.format(format_address_long_fmt(addr.value), Color.colorify(repr(s), string_color))
+                        txt = "{:s} ({:s}?)".format(format_address_long_fmt(addr.value), Color.colorify(repr(s), string_color))
                     elif len(s) > nb_max_string_length:
-                        txt = Color.colorify('{:s}[...]'.format(repr(s[:nb_max_string_length])), string_color)
+                        txt = Color.colorify("{:s}[...]".format(repr(s[:nb_max_string_length])), string_color)
                     else:
-                        txt = Color.colorify('{:s}'.format(repr(s)), string_color)
+                        txt = Color.colorify("{:s}".format(repr(s)), string_color)
                     msg.append(txt)
                     return msg
 
@@ -22961,11 +22961,11 @@ class DereferenceCommand(GenericCommand):
     _repeat_ = True
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
-                        help='the memory address you want to dump. (default: current_arch.sp)')
-    parser.add_argument('nb_lines', metavar='NB_LINES', nargs='?', type=lambda x: int(x, 0), default=0x10,
-                        help='the count of lines. (default: %(default)s)')
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address,
+                        help="the memory address you want to dump. (default: current_arch.sp)")
+    parser.add_argument("nb_lines", metavar="NB_LINES", nargs="?", type=lambda x: int(x, 0), default=0x10,
+                        help="the count of lines. (default: %(default)s)")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} $sp 20".format(_cmdline_)
@@ -23096,7 +23096,7 @@ class DereferenceCommand(GenericCommand):
                 out.append("{} {}".format(Color.colorify("[!]", "bold red"), msg))
                 break
 
-        gef_print('\n'.join(out), less=not args.no_pager)
+        gef_print("\n".join(out), less=not args.no_pager)
         return
 
 
@@ -23107,8 +23107,8 @@ class ASLRCommand(GenericCommand):
     _category_ = "02-f. Process Information - Security"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('command', nargs='?', default=None, choices=[None, 'on', 'off'], metavar='{on,off}',
-                        help='set gdb aslr settings.')
+    parser.add_argument("command", nargs="?", default=None, choices=[None, "on", "off"], metavar="{on,off}",
+                        help="set gdb aslr settings.")
     _syntax_ = parser.format_help()
 
     @parse_args
@@ -23144,8 +23144,8 @@ class FollowCommand(GenericCommand):
     _category_ = "01-g. Debugging Support - Other"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('command', nargs='?', default=None, choices=[None, 'child', 'parent'], metavar='{child,parent}',
-                        help='set gdb follow settings.')
+    parser.add_argument("command", nargs="?", default=None, choices=[None, "child", "parent"], metavar="{child,parent}",
+                        help="set gdb follow settings.")
     _syntax_ = parser.format_help()
 
     @parse_args
@@ -23198,11 +23198,11 @@ class VMMapCommand(GenericCommand):
     _category_ = "02-c. Process Information - Memory/Section"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--outer', action='store_true',
+    parser.add_argument("--outer", action="store_true",
                         help="display qemu-user's memory map instead of emulated process's memory map.")
-    parser.add_argument('filter', metavar='FILTER', nargs='?', help='filter string')
-    parser.add_argument('-n', '--no-pager', action='store_true',
-                        help='do not use less. (default: Use less for more than 60 lines)')
+    parser.add_argument("filter", metavar="FILTER", nargs="?", help="filter string.")
+    parser.add_argument("-n", "--no-pager", action="store_true",
+                        help="do not use less. (default: Use less for more than 60 lines)")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} libc             # show only lines containing the string `libc`\n".format(_cmdline_)
@@ -23235,7 +23235,7 @@ class VMMapCommand(GenericCommand):
 
         vmmap = get_process_maps(args.outer)
         if not vmmap:
-            for line in gdb.execute('info files', to_string=True).splitlines():
+            for line in gdb.execute("info files", to_string=True).splitlines():
                 if line.startswith("Symbols from"):
                     break
             else:
@@ -23269,9 +23269,9 @@ class VMMapCommand(GenericCommand):
             self.info("Permission is based on ELF header or default value `rw-`. Dynamic permission changes cannot be detected.")
 
         if len(self.out) > 60:
-            gef_print('\n'.join(self.out), less=not args.no_pager)
+            gef_print("\n".join(self.out), less=not args.no_pager)
         else:
-            gef_print('\n'.join(self.out), less=False)
+            gef_print("\n".join(self.out), less=False)
         return
 
     def dump_entry(self, entry, outer):
@@ -23348,7 +23348,7 @@ class XFilesCommand(GenericCommand):
     _category_ = "02-c. Process Information - Memory/Section"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('filter', metavar='FILTER', nargs='*', help='regex filter string.')
+    parser.add_argument("filter", metavar="FILTER", nargs="*", help="regex filter string.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} libc\n".format(_cmdline_)
@@ -23390,8 +23390,8 @@ class XInfoCommand(GenericCommand):
     _category_ = "02-c. Process Information - Memory/Section"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('location', metavar='LOCATION', nargs='+', type=parse_address,
-                        help='the memory address you want to show the map information.')
+    parser.add_argument("location", metavar="LOCATION", nargs="+", type=parse_address,
+                        help="the memory address you want to show the map information.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} $pc".format(_cmdline_)
@@ -23459,11 +23459,11 @@ class XorMemoryCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     if sys.version_info.minor >= 7:
-        subparsers = parser.add_subparsers(title='command', required=True)
+        subparsers = parser.add_subparsers(title="command", required=True)
     else:
-        subparsers = parser.add_subparsers(title='command')
-    subparsers.add_parser('display')
-    subparsers.add_parser('patch')
+        subparsers = parser.add_subparsers(title="command")
+    subparsers.add_parser("display")
+    subparsers.add_parser("patch")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -23484,12 +23484,12 @@ class XorMemoryDisplayCommand(GenericCommand):
     _category_ = "03-d. Memory - Calculation"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('location', metavar='LOCATION', type=parse_address,
-                        help='the address of data you want to xor.')
-    parser.add_argument('size', metavar='SIZE', type=parse_address,
-                        help='the size of data you want to xor.')
-    parser.add_argument('key', metavar='KEY', type=lambda x: bytes.fromhex(x),
-                        help='the data you want to xor as key.')
+    parser.add_argument("location", metavar="LOCATION", type=parse_address,
+                        help="the address of data you want to xor.")
+    parser.add_argument("size", metavar="SIZE", type=parse_address,
+                        help="the size of data you want to xor.")
+    parser.add_argument("key", metavar="KEY", type=lambda x: bytes.fromhex(x),
+                        help="the data you want to xor as key.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} $sp 16 41414141".format(_cmdline_)
@@ -23528,12 +23528,12 @@ class XorMemoryPatchCommand(GenericCommand):
     _category_ = "03-d. Memory - Calculation"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('location', metavar='LOCATION', type=parse_address,
-                        help='the address of data you want to xor.')
-    parser.add_argument('size', metavar='SIZE', type=parse_address,
-                        help='the size of data you want to xor.')
-    parser.add_argument('key', metavar='KEY', type=lambda x: bytes.fromhex(x),
-                        help='the data you want to xor as key.')
+    parser.add_argument("location", metavar="LOCATION", type=parse_address,
+                        help="the address of data you want to xor.")
+    parser.add_argument("size", metavar="SIZE", type=parse_address,
+                        help="the size of data you want to xor.")
+    parser.add_argument("key", metavar="KEY", type=lambda x: bytes.fromhex(x),
+                        help="the data you want to xor as key.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} $sp 16 41414141".format(_cmdline_)
@@ -23568,11 +23568,11 @@ class PatternCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     if sys.version_info.minor >= 7:
-        subparsers = parser.add_subparsers(title='command', required=True)
+        subparsers = parser.add_subparsers(title="command", required=True)
     else:
-        subparsers = parser.add_subparsers(title='command')
-    subparsers.add_parser('create')
-    subparsers.add_parser('search')
+        subparsers = parser.add_subparsers(title="command")
+    subparsers.add_parser("create")
+    subparsers.add_parser("search")
     _syntax_ = parser.format_help()
 
     def __init__(self, *args, **kwargs):
@@ -23594,7 +23594,7 @@ class PatternCreateCommand(GenericCommand):
     _aliases_ = ["pattc"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('size', metavar='SIZE', type=parse_address, nargs='?', help='the size of pattern. (default: 1024)')
+    parser.add_argument("size", metavar="SIZE", type=parse_address, nargs="?", help="the size of pattern. (default: 1024)")
     _syntax_ = parser.format_help()
 
     @parse_args
@@ -23620,8 +23620,8 @@ class PatternSearchCommand(GenericCommand):
     _aliases_ = ["patto"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('pattern', metavar='PATTERN', help='the pattern you want to offset search.')
-    parser.add_argument('size', metavar='SIZE', type=parse_address, nargs='?', help='the size of pattern. (default: 1024)')
+    parser.add_argument("pattern", metavar="PATTERN", help="the pattern you want to offset search.")
+    parser.add_argument("size", metavar="SIZE", type=parse_address, nargs="?", help="the size of pattern. (default: 1024)")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} $pc\n".format(_cmdline_)
@@ -23695,8 +23695,8 @@ class SropHintCommand(GenericCommand):
     _category_ = "09-d. Misc - Show Example"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-a', '--arch', choices=['x86', 'x64', 'arm', 'aarch64'],
-                        help='the target architecture.')
+    parser.add_argument("-a", "--arch", choices=["x86", "x64", "arm", "aarch64"],
+                        help="the target architecture.")
     _syntax_ = parser.format_help()
 
     @parse_args
@@ -23982,8 +23982,8 @@ class LinkMapCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     group = parser.add_mutually_exclusive_group()
-    group.add_argument('-e', dest='elf_address', type=parse_address, help='the elf address you want to parse.')
-    group.add_argument('-l', dest='link_map_address', type=parse_address, help='the link_map address you want to parse.')
+    group.add_argument("-e", dest="elf_address", type=parse_address, help="the elf address you want to parse.")
+    group.add_argument("-l", dest="link_map_address", type=parse_address, help="the link_map address you want to parse.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}                   # dump itself\n".format(_cmdline_)
@@ -24114,11 +24114,11 @@ class DynamicCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     group = parser.add_mutually_exclusive_group()
-    group.add_argument('-f', dest='filename', help='the filename you want to parse.')
-    group.add_argument('-e', dest='elf_address', type=parse_address, help='the elf address you want to parse.')
-    group.add_argument('-d', dest='dynamic_address', type=parse_address, help='the dynamic address you want to parse.')
-    group.add_argument('--size', dest='dynamic_size', type=parse_address, nargs='?',
-                        help='use specified size of dynamic region.')
+    group.add_argument("-f", dest="filename", help="the filename you want to parse.")
+    group.add_argument("-e", dest="elf_address", type=parse_address, help="the elf address you want to parse.")
+    group.add_argument("-d", dest="dynamic_address", type=parse_address, help="the dynamic address you want to parse.")
+    group.add_argument("--size", dest="dynamic_size", type=parse_address, nargs="?",
+                        help="use specified size of dynamic region.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}                                        # dump itself\n".format(_cmdline_)
@@ -24666,11 +24666,11 @@ class GotCommand(GenericCommand):
     _aliases_ = ["plt"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-f', dest='file', help='the filename you want to parse.')
-    parser.add_argument('-e', dest='elf_address', type=parse_address, help='the elf address you want to parse.')
-    parser.add_argument('-r', dest='remote', action='store_true', help='parse remote binary if download feature is available.')
-    parser.add_argument('-v', dest='verbose', action='store_true', help='verbose output.')
-    parser.add_argument('filter', metavar='FILTER', nargs='*', help='filter string')
+    parser.add_argument("-f", dest="file", help="the filename you want to parse.")
+    parser.add_argument("-e", dest="elf_address", type=parse_address, help="the elf address you want to parse.")
+    parser.add_argument("-r", dest="remote", action="store_true", help="parse remote binary if download feature is available.")
+    parser.add_argument("-v", dest="verbose", action="store_true", help="verbose output.")
+    parser.add_argument("filter", metavar="FILTER", nargs="*", help="filter string.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} read print                              # filter specified keyword\n".format(_cmdline_)
@@ -24707,7 +24707,7 @@ class GotCommand(GenericCommand):
                 address = int(address, 16)
                 name = name.split("@")[0]
             # GOT entry pattern 2 (?)
-            elif 'GLOB_DAT' in line:
+            elif "GLOB_DAT" in line:
                 type = "GLOB_DAT"
                 address, _, _, _, name = line.split()[:5]
                 address = int(address, 16)
@@ -25179,8 +25179,8 @@ class HeapAnalysisCommand(GenericCommand):
     _category_ = "06-a. Heap - Glibc"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("--show", action='store_true', help='show the tracked allocations.')
-    parser.add_argument("--config", action='store_true', help='show the config for settings.')
+    parser.add_argument("--show", action="store_true", help="show the tracked allocations.")
+    parser.add_argument("--config", action="store_true", help="show the config for settings.")
     _syntax_ = parser.format_help()
 
     def __init__(self, *args, **kwargs):
@@ -25292,11 +25292,11 @@ class SyscallSearchCommand(GenericCommand):
     _category_ = "05-b. Syscall - Search"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-a', dest='arch', help='specify the architecture. (default: current_arch.arch)')
-    parser.add_argument('-m', dest='mode', help='specify the mode. (default: current_arch.mode)')
-    parser.add_argument('-v', dest='verbose', action='store_true', help='display prototype of syscall.')
-    parser.add_argument('search_pattern', metavar='SYSCALL_NAME|SYSCALL_NUM',
-                        help='syscall name or number you want to search. Regex is available.')
+    parser.add_argument("-a", dest="arch", help="specify the architecture. (default: current_arch.arch)")
+    parser.add_argument("-m", dest="mode", help="specify the mode. (default: current_arch.mode)")
+    parser.add_argument("-v", dest="verbose", action="store_true", help="display prototype of syscall.")
+    parser.add_argument("search_pattern", metavar="SYSCALL_NAME|SYSCALL_NUM",
+                        help="syscall name or number you want to search. Regex is available.")
     _syntax_ = parser.format_help()
 
     _example_ = '{:s} -a X86 -m 64                 "^writev?" # amd64\n'.format(_cmdline_)
@@ -25337,7 +25337,7 @@ class SyscallSearchCommand(GenericCommand):
                 continue
             params = ""
             if self.verbose:
-                params = "(" + ', '.join([param.param for param in entry.params]) + ");"
+                params = "(" + ", ".join([param.param for param in entry.params]) + ");"
             gef_print("NR={:<#14x}{:s}{:s}".format(nr, Color.boldify(entry.name), params))
         return
 
@@ -35470,77 +35470,77 @@ def parse_syscall_table_defs(table_defs):
 # - core/include/tee/tee_svc_storage.h
 # - core/include/tee/svc_cache.h
 arm_OPTEE_syscall_list = [
-    [0x00, 'syscall_sys_return', ['unsigned long ret']],
-    [0x01, 'syscall_log', ['const void *buf', 'size_t len']],
-    [0x02, 'syscall_panic', ['unsigned long code']],
-    [0x03, 'syscall_get_property', ['unsigned long prop_set', 'unsigned long index', 'void *name', 'uint32_t *name_len', 'void *buf', 'uint32_t *blen', 'uint32_t *prop_type']],
-    [0x04, 'syscall_get_property_name_to_index', ['unsigned long prop_set', 'void *name', 'unsigned long name_len', 'uint32_t *index']],
-    [0x05, 'syscall_open_ta_session', ['const TEE_UUID *dest', 'unsigned long cancel_req_to', 'struct utee_params *params', 'uint32_t *sess', 'uint32_t *ret_orig']],
-    [0x06, 'syscall_close_ta_session', ['unsigned long sess']],
-    [0x07, 'syscall_invoke_ta_command', ['unsigned long sess', 'unsigned long cancel_req_to', 'unsigned long cmd_id', 'struct utee_params *params', 'uint32_t *ret_orig']],
-    [0x08, 'syscall_check_access_rights', ['unsigned long flags', 'const void *buf', 'size_t len']],
-    [0x09, 'syscall_get_cancellation_flag', ['uint32_t *cancel', ]],
-    [0x0a, 'syscall_unmask_cancellation', ['uint32_t *old_mask']],
-    [0x0b, 'syscall_mask_cancellation', ['uint32_t *old_mask']],
-    [0x0c, 'syscall_wait', ['unsigned long timeout']],
-    [0x0d, 'syscall_get_time', ['unsigned long cat', 'TEE_Time *time']],
-    [0x0e, 'syscall_set_ta_time', ['const TEE_Time *time']],
-    [0x0f, 'syscall_cryp_state_alloc', ['unsigned long algo', 'unsigned long op_mode', 'unsigned long key1', 'unsigned long key2', 'uint32_t *state']],
-    [0x10, 'syscall_cryp_state_copy', ['unsigned long dst', 'unsigned long src']],
-    [0x11, 'syscall_cryp_state_free', ['unsigned long state']],
-    [0x12, 'syscall_hash_init', ['unsigned long state', 'const void *iv', 'size_t iv_len']],
-    [0x13, 'syscall_hash_update', ['unsigned long state', 'const void *chunk', 'size_t chunk_size']],
-    [0x14, 'syscall_hash_final', ['unsigned long state', 'const void *chunk', 'size_t chunk_size', 'void *hash', 'uint64_t *hash_len']],
-    [0x15, 'syscall_cipher_init', ['unsigned long state', 'const void *iv', 'size_t iv_len']],
-    [0x16, 'syscall_cipher_update', ['unsigned long state', 'const void *src', 'size_t src_len', 'void *dest', 'uint64_t *dest_len']],
-    [0x17, 'syscall_cipher_final', ['unsigned long state', 'const void *src', 'size_t src_len', 'void *dest', 'uint64_t *dest_len']],
-    [0x18, 'syscall_cryp_obj_get_info', ['unsigned long obj', 'TEE_ObjectInfo *info']],
-    [0x19, 'syscall_cryp_obj_restrict_usage', ['unsigned long obj', 'unsigned long usage']],
-    [0x1a, 'syscall_cryp_obj_get_attr', ['unsigned long obj', 'unsigned long attr_id', 'void *buffer', 'uint64_t *size']],
-    [0x1b, 'syscall_cryp_obj_alloc', ['unsigned long obj_type', 'unsigned long max_key_size', 'uint32_t *obj']],
-    [0x1c, 'syscall_cryp_obj_close', ['unsigned long obj']],
-    [0x1d, 'syscall_cryp_obj_reset', ['unsigned long obj']],
-    [0x1e, 'syscall_cryp_obj_populate', ['unsigned long obj', 'struct utee_attribute *attrs', 'unsigned long attr_count']],
-    [0x1f, 'syscall_cryp_obj_copy', ['unsigned long dst_obj', 'unsigned long src_obj']],
-    [0x20, 'syscall_cryp_derive_key', ['unsigned long state', 'const struct utee_attribute *params', 'unsigned long param_count', 'unsigned long derived_key']],
-    [0x21, 'syscall_cryp_random_number_generate', ['void *buf', 'size_t blen']],
-    [0x22, 'syscall_authenc_init', ['unsigned long state', 'const void *nonce', 'size_t nonce_len', 'size_t tag_len', 'size_t aad_len', 'size_t payload_len']],
-    [0x23, 'syscall_authenc_update_aad', ['unsigned long state', 'const void *aad_data', 'size_t aad_data_len']],
-    [0x24, 'syscall_authenc_update_payload', ['unsigned long state', 'const void *src_data', 'size_t src_len', 'void *dest_data', 'uint64_t *dest_len']],
-    [0x25, 'syscall_authenc_enc_final', ['unsigned long state', 'const void *src_data', 'size_t src_len', 'void *dest_data', 'uint64_t *dest_len', 'void *tag', 'uint64_t *tag_len']],
-    [0x26, 'syscall_authenc_dec_final', ['unsigned long state', 'const void *src_data', 'size_t src_len', 'void *dest_data', 'uint64_t *dest_len', 'const void *tag', 'uint64_t *tag_len']],
-    [0x27, 'syscall_asymm_operate', ['unsigned long state', 'const struct utee_attribute *usr_params', 'size_t num_params', 'const void *src_data', 'size_t src_len', 'void *dest_data', 'uint64_t *dest_len']],
-    [0x28, 'syscall_asymm_verify', ['unsigned long state', 'const struct utee_attribute *usr_params', 'size_t num_params', 'const void *data', 'size_t data_len', 'const void *sig', 'size_t sig_len']],
-    [0x29, 'syscall_storage_obj_open', ['unsigned long storage_id', 'void *object_id', 'size_t object_id_len', 'unsigned long flags', 'uint32_t *obj']],
-    [0x2a, 'syscall_storage_obj_create', ['unsigned long storage_id', 'void *object_id', 'size_t object_id_len', 'unsigned long flags', 'unsigned long attr', 'void *data', 'size_t len', 'uint32_t *obj']],
-    [0x2b, 'syscall_storage_obj_del', ['unsigned long obj']],
-    [0x2c, 'syscall_storage_obj_rename', ['unsigned long obj', 'void *object_id', 'size_t object_id_len']],
-    [0x2d, 'syscall_storage_alloc_enum', ['uint32_t *obj_enum']],
-    [0x2e, 'syscall_storage_free_enum', ['nsigned long obj_enum']],
-    [0x2f, 'syscall_storage_reset_enum', ['unsigned long obj_enum']],
-    [0x30, 'syscall_storage_start_enum', ['unsigned long obj_enum', 'unsigned long storage_id']],
-    [0x31, 'syscall_storage_next_enum', ['unsigned long obj_enum', 'TEE_ObjectInfo *info', 'void *obj_id', 'uint64_t *len']],
-    [0x32, 'syscall_storage_obj_read', ['unsigned long obj', 'void *data', 'size_t len', 'uint64_t *count']],
-    [0x33, 'syscall_storage_obj_write', ['unsigned long obj', 'void *data', 'size_t len']],
-    [0x34, 'syscall_storage_obj_trunc', ['unsigned long obj, size_t len']],
-    [0x35, 'syscall_storage_obj_seek', ['unsigned long obj', 'int32_t offset', 'unsigned long whence']],
-    [0x36, 'syscall_obj_generate_key', ['unsigned long obj', 'unsigned long key_size', 'const struct utee_attribute *params', 'unsigned long param_count']],
-    [0x37, 'syscall_not_supported', []],
-    [0x38, 'syscall_not_supported', []],
-    [0x39, 'syscall_not_supported', []],
-    [0x3a, 'syscall_not_supported', []],
-    [0x3b, 'syscall_not_supported', []],
-    [0x3c, 'syscall_not_supported', []],
-    [0x3d, 'syscall_not_supported', []],
-    [0x3e, 'syscall_not_supported', []],
-    [0x3f, 'syscall_not_supported', []],
-    [0x40, 'syscall_not_supported', []],
-    [0x41, 'syscall_not_supported', []],
-    [0x42, 'syscall_not_supported', []],
-    [0x43, 'syscall_not_supported', []],
-    [0x44, 'syscall_not_supported', []],
-    [0x45, 'syscall_not_supported', []],
-    [0x46, 'syscall_cache_operation', ['void *va, size_t len', 'unsigned long op']],
+    [0x00, "syscall_sys_return", ["unsigned long ret"]],
+    [0x01, "syscall_log", ["const void *buf", "size_t len"]],
+    [0x02, "syscall_panic", ["unsigned long code"]],
+    [0x03, "syscall_get_property", ["unsigned long prop_set", "unsigned long index", "void *name", "uint32_t *name_len", "void *buf", "uint32_t *blen", "uint32_t *prop_type"]],
+    [0x04, "syscall_get_property_name_to_index", ["unsigned long prop_set", "void *name", "unsigned long name_len", "uint32_t *index"]],
+    [0x05, "syscall_open_ta_session", ["const TEE_UUID *dest", "unsigned long cancel_req_to", "struct utee_params *params", "uint32_t *sess", "uint32_t *ret_orig"]],
+    [0x06, "syscall_close_ta_session", ["unsigned long sess"]],
+    [0x07, "syscall_invoke_ta_command", ["unsigned long sess", "unsigned long cancel_req_to", "unsigned long cmd_id", "struct utee_params *params", "uint32_t *ret_orig"]],
+    [0x08, "syscall_check_access_rights", ["unsigned long flags", "const void *buf", "size_t len"]],
+    [0x09, "syscall_get_cancellation_flag", ["uint32_t *cancel", ]],
+    [0x0a, "syscall_unmask_cancellation", ["uint32_t *old_mask"]],
+    [0x0b, "syscall_mask_cancellation", ["uint32_t *old_mask"]],
+    [0x0c, "syscall_wait", ["unsigned long timeout"]],
+    [0x0d, "syscall_get_time", ["unsigned long cat", "TEE_Time *time"]],
+    [0x0e, "syscall_set_ta_time", ["const TEE_Time *time"]],
+    [0x0f, "syscall_cryp_state_alloc", ["unsigned long algo", "unsigned long op_mode", "unsigned long key1", "unsigned long key2", "uint32_t *state"]],
+    [0x10, "syscall_cryp_state_copy", ["unsigned long dst", "unsigned long src"]],
+    [0x11, "syscall_cryp_state_free", ["unsigned long state"]],
+    [0x12, "syscall_hash_init", ["unsigned long state", "const void *iv", "size_t iv_len"]],
+    [0x13, "syscall_hash_update", ["unsigned long state", "const void *chunk", "size_t chunk_size"]],
+    [0x14, "syscall_hash_final", ["unsigned long state", "const void *chunk", "size_t chunk_size", "void *hash", "uint64_t *hash_len"]],
+    [0x15, "syscall_cipher_init", ["unsigned long state", "const void *iv", "size_t iv_len"]],
+    [0x16, "syscall_cipher_update", ["unsigned long state", "const void *src", "size_t src_len", "void *dest", "uint64_t *dest_len"]],
+    [0x17, "syscall_cipher_final", ["unsigned long state", "const void *src", "size_t src_len", "void *dest", "uint64_t *dest_len"]],
+    [0x18, "syscall_cryp_obj_get_info", ["unsigned long obj", "TEE_ObjectInfo *info"]],
+    [0x19, "syscall_cryp_obj_restrict_usage", ["unsigned long obj", "unsigned long usage"]],
+    [0x1a, "syscall_cryp_obj_get_attr", ["unsigned long obj", "unsigned long attr_id", "void *buffer", "uint64_t *size"]],
+    [0x1b, "syscall_cryp_obj_alloc", ["unsigned long obj_type", "unsigned long max_key_size", "uint32_t *obj"]],
+    [0x1c, "syscall_cryp_obj_close", ["unsigned long obj"]],
+    [0x1d, "syscall_cryp_obj_reset", ["unsigned long obj"]],
+    [0x1e, "syscall_cryp_obj_populate", ["unsigned long obj", "struct utee_attribute *attrs", "unsigned long attr_count"]],
+    [0x1f, "syscall_cryp_obj_copy", ["unsigned long dst_obj", "unsigned long src_obj"]],
+    [0x20, "syscall_cryp_derive_key", ["unsigned long state", "const struct utee_attribute *params", "unsigned long param_count", "unsigned long derived_key"]],
+    [0x21, "syscall_cryp_random_number_generate", ["void *buf", "size_t blen"]],
+    [0x22, "syscall_authenc_init", ["unsigned long state", "const void *nonce", "size_t nonce_len", "size_t tag_len", "size_t aad_len", "size_t payload_len"]],
+    [0x23, "syscall_authenc_update_aad", ["unsigned long state", "const void *aad_data", "size_t aad_data_len"]],
+    [0x24, "syscall_authenc_update_payload", ["unsigned long state", "const void *src_data", "size_t src_len", "void *dest_data", "uint64_t *dest_len"]],
+    [0x25, "syscall_authenc_enc_final", ["unsigned long state", "const void *src_data", "size_t src_len", "void *dest_data", "uint64_t *dest_len", "void *tag", "uint64_t *tag_len"]],
+    [0x26, "syscall_authenc_dec_final", ["unsigned long state", "const void *src_data", "size_t src_len", "void *dest_data", "uint64_t *dest_len", "const void *tag", "uint64_t *tag_len"]],
+    [0x27, "syscall_asymm_operate", ["unsigned long state", "const struct utee_attribute *usr_params", "size_t num_params", "const void *src_data", "size_t src_len", "void *dest_data", "uint64_t *dest_len"]],
+    [0x28, "syscall_asymm_verify", ["unsigned long state", "const struct utee_attribute *usr_params", "size_t num_params", "const void *data", "size_t data_len", "const void *sig", "size_t sig_len"]],
+    [0x29, "syscall_storage_obj_open", ["unsigned long storage_id", "void *object_id", "size_t object_id_len", "unsigned long flags", "uint32_t *obj"]],
+    [0x2a, "syscall_storage_obj_create", ["unsigned long storage_id", "void *object_id", "size_t object_id_len", "unsigned long flags", "unsigned long attr", "void *data", "size_t len", "uint32_t *obj"]],
+    [0x2b, "syscall_storage_obj_del", ["unsigned long obj"]],
+    [0x2c, "syscall_storage_obj_rename", ["unsigned long obj", "void *object_id", "size_t object_id_len"]],
+    [0x2d, "syscall_storage_alloc_enum", ["uint32_t *obj_enum"]],
+    [0x2e, "syscall_storage_free_enum", ["nsigned long obj_enum"]],
+    [0x2f, "syscall_storage_reset_enum", ["unsigned long obj_enum"]],
+    [0x30, "syscall_storage_start_enum", ["unsigned long obj_enum", "unsigned long storage_id"]],
+    [0x31, "syscall_storage_next_enum", ["unsigned long obj_enum", "TEE_ObjectInfo *info", "void *obj_id", "uint64_t *len"]],
+    [0x32, "syscall_storage_obj_read", ["unsigned long obj", "void *data", "size_t len", "uint64_t *count"]],
+    [0x33, "syscall_storage_obj_write", ["unsigned long obj", "void *data", "size_t len"]],
+    [0x34, "syscall_storage_obj_trunc", ["unsigned long obj, size_t len"]],
+    [0x35, "syscall_storage_obj_seek", ["unsigned long obj", "int32_t offset", "unsigned long whence"]],
+    [0x36, "syscall_obj_generate_key", ["unsigned long obj", "unsigned long key_size", "const struct utee_attribute *params", "unsigned long param_count"]],
+    [0x37, "syscall_not_supported", []],
+    [0x38, "syscall_not_supported", []],
+    [0x39, "syscall_not_supported", []],
+    [0x3a, "syscall_not_supported", []],
+    [0x3b, "syscall_not_supported", []],
+    [0x3c, "syscall_not_supported", []],
+    [0x3d, "syscall_not_supported", []],
+    [0x3e, "syscall_not_supported", []],
+    [0x3f, "syscall_not_supported", []],
+    [0x40, "syscall_not_supported", []],
+    [0x41, "syscall_not_supported", []],
+    [0x42, "syscall_not_supported", []],
+    [0x43, "syscall_not_supported", []],
+    [0x44, "syscall_not_supported", []],
+    [0x45, "syscall_not_supported", []],
+    [0x46, "syscall_cache_operation", ["void *va, size_t len", "unsigned long op"]],
 ]
 
 
@@ -35548,18 +35548,18 @@ arm_OPTEE_syscall_list = [
 # - core/include/tee/tee_svc.h
 # - core/include/kernel/ldelf_syscalls.h
 arm_ldelf_syscall_list = [ # noqa: F841
-    [0x00, 'syscall_sys_return', ['unsigned long ret']],
-    [0x01, 'syscall_log', ['const void *buf', 'size_t len']],
-    [0x02, 'syscall_panic', ['unsigned long code']],
-    [0x03, 'ldelf_syscall_map_zi', ['vaddr_t *va', 'size_t num_bytes', 'size_t pad_begin', 'size_t pad_end', 'unsigned long flags']],
-    [0x04, 'ldelf_syscall_unmap', ['vaddr_t va', 'size_t num_bytes']],
-    [0x05, 'ldelf_syscall_open_bin', ['const TEE_UUID *uuid', 'size_t uuid_size', 'uint32_t *handle']],
-    [0x06, 'ldelf_syscall_close_bin', ['unsigned long handle']],
-    [0x07, 'ldelf_syscall_map_bin', ['vaddr_t *va', 'size_t num_bytes', 'unsigned long handle', 'size_t offs_bytes', 'size_t pad_begin', 'size_t pad_end', 'unsigned long flags']],
-    [0x08, 'ldelf_syscall_copy_from_bin', ['void *dst', 'size_t offs', 'size_t num_bytes', 'unsigned long handle']],
-    [0x09, 'ldelf_syscall_set_prot', ['unsigned long va', 'size_t num_bytes', 'unsigned long flags']],
-    [0x0a, 'ldelf_syscall_remap', ['unsigned long old_va', 'addr_t *new_va', 'size_t num_bytes', 'size_t pad_begin', 'size_t pad_end']],
-    [0x0b, 'ldelf_syscall_gen_rnd_num', ['void *buf', 'size_t num_bytes']],
+    [0x00, "syscall_sys_return", ["unsigned long ret"]],
+    [0x01, "syscall_log", ["const void *buf", "size_t len"]],
+    [0x02, "syscall_panic", ["unsigned long code"]],
+    [0x03, "ldelf_syscall_map_zi", ["vaddr_t *va", "size_t num_bytes", "size_t pad_begin", "size_t pad_end", "unsigned long flags"]],
+    [0x04, "ldelf_syscall_unmap", ["vaddr_t va", "size_t num_bytes"]],
+    [0x05, "ldelf_syscall_open_bin", ["const TEE_UUID *uuid", "size_t uuid_size", "uint32_t *handle"]],
+    [0x06, "ldelf_syscall_close_bin", ["unsigned long handle"]],
+    [0x07, "ldelf_syscall_map_bin", ["vaddr_t *va", "size_t num_bytes", "unsigned long handle", "size_t offs_bytes", "size_t pad_begin", "size_t pad_end", "unsigned long flags"]],
+    [0x08, "ldelf_syscall_copy_from_bin", ["void *dst", "size_t offs", "size_t num_bytes", "unsigned long handle"]],
+    [0x09, "ldelf_syscall_set_prot", ["unsigned long va", "size_t num_bytes", "unsigned long flags"]],
+    [0x0a, "ldelf_syscall_remap", ["unsigned long old_va", "addr_t *new_va", "size_t num_bytes", "size_t pad_begin", "size_t pad_end"]],
+    [0x0b, "ldelf_syscall_gen_rnd_num", ["void *buf", "size_t num_bytes"]],
 ]
 
 
@@ -35635,25 +35635,25 @@ def get_syscall_table(arch=None, mode=None):
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(x64_syscall_tbl)
         arch_specific_dic = {
-            'sys_clone': [
-                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
-                'int __user *child_tidptr', 'unsigned long tls',
+            "sys_clone": [
+                "unsigned long clone_flags", "unsigned long newsp", "int __user *parent_tidptr",
+                "int __user *child_tidptr", "unsigned long tls",
             ], # kernel/fork.c
-            'sys_modify_ldt': [
-                'int func', 'void __user *ptr', 'unsigned long bytecount',
+            "sys_modify_ldt": [
+                "int func", "void __user *ptr", "unsigned long bytecount",
             ], # arch/x86/kernel/ldt.c
-            'sys_arch_prctl': [
-                'int option', 'unsigned long arg2',
+            "sys_arch_prctl": [
+                "int option", "unsigned long arg2",
             ], # arch/x86/kernel/process_64.c
-            'sys_iopl': [
-                'unsigned int level',
+            "sys_iopl": [
+                "unsigned int level",
             ], # arch/x86/kernel/ioport.c
-            'compat_sys_x32_rt_sigreturn': [], # arch/x86/kernel/signal.c
-            'sys_mmap': [
-                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
-                'unsigned long flags', 'unsigned long fd', 'unsigned long off',
+            "compat_sys_x32_rt_sigreturn": [], # arch/x86/kernel/signal.c
+            "sys_mmap": [
+                "unsigned long addr", "unsigned long len", "unsigned long prot",
+                "unsigned long flags", "unsigned long fd", "unsigned long off",
             ], # arch/x86/kernel/sys_x86_64.c
-            'sys_rt_sigreturn': [], # arch/x86/kernel/signal.c
+            "sys_rt_sigreturn": [], # arch/x86/kernel/signal.c
         }
 
         syscall_list = []
@@ -35669,7 +35669,7 @@ def get_syscall_table(arch=None, mode=None):
                     syscall_list.append([nr + 0x40000000, name, arch_specific_dic[func]])
                 continue
             # common case
-            if func == 'sys_ni_syscall':
+            if func == "sys_ni_syscall":
                 continue
             if func not in sc_def:
                 err("Not found: {:s}".format(func))
@@ -35684,73 +35684,73 @@ def get_syscall_table(arch=None, mode=None):
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(x86_syscall_tbl)
         arch_specific_dic = {
-            'compat_sys_sigreturn': [], # arch/x86/ia32/ia32_signal.c
-            'compat_sys_rt_sigreturn': [], # arch/x86/ia32/ia32_signal.c
-            'compat_sys_old_getrlimit': [
-                'unsigned int resource', 'struct compat_rlimit *rlim',
+            "compat_sys_sigreturn": [], # arch/x86/ia32/ia32_signal.c
+            "compat_sys_rt_sigreturn": [], # arch/x86/ia32/ia32_signal.c
+            "compat_sys_old_getrlimit": [
+                "unsigned int resource", "struct compat_rlimit *rlim",
             ], # kernel/sys.c
-            'compat_sys_ia32_mmap': [
-                'struct mmap_arg_struct32 __user *arg',
+            "compat_sys_ia32_mmap": [
+                "struct mmap_arg_struct32 __user *arg",
             ], # arch/x86/kernel/sys_ia32.c
-            'sys_iopl': [
-                'unsigned int level',
+            "sys_iopl": [
+                "unsigned int level",
             ], # arch/x86/kernel/ioport.c
-            'compat_sys_ia32_clone': [
-                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
-                'unsigned long tls_val', 'int __user *child_tidptr',
+            "compat_sys_ia32_clone": [
+                "unsigned long clone_flags", "unsigned long newsp", "int __user *parent_tidptr",
+                "unsigned long tls_val", "int __user *child_tidptr",
             ], # arch/x86/kernel/sys_ia32.c (CONFIG_CLONE_BACKWARDS)
-            'sys_modify_ldt': [
-                'int func', 'void __user *ptr', 'unsigned long bytecount',
+            "sys_modify_ldt": [
+                "int func", "void __user *ptr", "unsigned long bytecount",
             ], # arch/x86/kernel/ldt.c
-            'sys_ia32_pread64': [
-                'unsigned int fd', 'char __user *ubuf', 'u32 count', 'u32 poslo', 'u32 poshi',
+            "sys_ia32_pread64": [
+                "unsigned int fd", "char __user *ubuf", "u32 count", "u32 poslo", "u32 poshi",
             ], # arch/x86/kernel/sys_ia32.c
-            'sys_ia32_pwrite64': [
-                'unsigned int fd', 'const char __user *ubuf', 'u32 count', 'u32 poslo', 'u32 poshi',
+            "sys_ia32_pwrite64": [
+                "unsigned int fd", "const char __user *ubuf", "u32 count", "u32 poslo", "u32 poshi",
             ], # arch/x86/kernel/sys_ia32.c
-            'sys_ia32_truncate64': [
-                'const char __user *filename', 'unsigned long offset_low', 'unsigned long offset_high',
+            "sys_ia32_truncate64": [
+                "const char __user *filename", "unsigned long offset_low", "unsigned long offset_high",
             ], # arch/x86/kernel/sys_ia32.c
-            'sys_ia32_ftruncate64': [
-                'unsigned int fd', 'unsigned long offset_low', 'unsigned long offset_high',
+            "sys_ia32_ftruncate64": [
+                "unsigned int fd", "unsigned long offset_low", "unsigned long offset_high",
             ], # arch/x86/kernel/sys_ia32.c
-            'compat_sys_ia32_stat64': [
-                'const char __user *filename', 'struct stat64 __user *statbuf',
+            "compat_sys_ia32_stat64": [
+                "const char __user *filename", "struct stat64 __user *statbuf",
             ], # arch/x86/kernel/sys_ia32.c
-            'compat_sys_ia32_lstat64': [
-                'const char __user *filename', 'struct stat64 __user *statbuf',
+            "compat_sys_ia32_lstat64": [
+                "const char __user *filename", "struct stat64 __user *statbuf",
             ], # arch/x86/kernel/sys_ia32.c
-            'compat_sys_ia32_fstat64': [
-                'unsigned long fd', 'struct stat64 __user *statbuf',
+            "compat_sys_ia32_fstat64": [
+                "unsigned long fd", "struct stat64 __user *statbuf",
             ], # arch/x86/kernel/sys_ia32.c
-            'sys_ia32_readahead': [
-                'int fd', 'unsigned int off_lo', 'unsigned int off_high', 'size_t count',
+            "sys_ia32_readahead": [
+                "int fd", "unsigned int off_lo", "unsigned int off_high", "size_t count",
             ], # arch/x86/kernel/sys_ia32.c
-            'sys_set_thread_area': [
-                'struct user_desc __user * u_info',
+            "sys_set_thread_area": [
+                "struct user_desc __user * u_info",
             ], # arch/x86/kernel/tls.c
-            'sys_get_thread_area': [
-                'struct user_desc __user * u_info',
+            "sys_get_thread_area": [
+                "struct user_desc __user * u_info",
             ], # arch/x86/kernel/tls.c
-            'sys_ia32_fadvise64': [
-                'int fd', 'unsigned int offset_lo', 'unsigned int offset_hi', 'size_t len', 'int advice',
+            "sys_ia32_fadvise64": [
+                "int fd", "unsigned int offset_lo", "unsigned int offset_hi", "size_t len", "int advice",
             ], # arch/x86/kernel/sys_ia32.c
-            'sys_ia32_fadvise64_64': [
-                'int fd', '__u32 offset_low', '__u32 offset_high', '__u32 len_low', '__u32 len_high', 'int advice',
+            "sys_ia32_fadvise64_64": [
+                "int fd", "__u32 offset_low", "__u32 offset_high", "__u32 len_low", "__u32 len_high", "int advice",
             ], # arch/x86/kernel/sys_ia32.c
-            'compat_sys_ia32_fstatat64': [
-                'unsigned int dfd', 'const char __user *filename', 'struct stat64 __user *statbuf', 'int flag',
+            "compat_sys_ia32_fstatat64": [
+                "unsigned int dfd", "const char __user *filename", "struct stat64 __user *statbuf", "int flag",
             ], # arch/x86/kernel/sys_ia32.c
-            'sys_ia32_sync_file_range': [
-                'int fd', 'unsigned int off_low', 'unsigned int off_hi', 'unsigned int n_low',
-                'unsigned int n_hi', 'unsigned int flags',
+            "sys_ia32_sync_file_range": [
+                "int fd", "unsigned int off_low", "unsigned int off_hi", "unsigned int n_low",
+                "unsigned int n_hi", "unsigned int flags",
             ], # arch/x86/kernel/sys_ia32.c
-            'sys_ia32_fallocate': [
-                'int fd', 'int mode', 'unsigned int offset_lo', 'unsigned int offset_hi',
-                'unsigned int len_lo', 'unsigned int len_hi',
+            "sys_ia32_fallocate": [
+                "int fd", "int mode", "unsigned int offset_lo", "unsigned int offset_hi",
+                "unsigned int len_lo", "unsigned int len_hi",
             ], # arch/x86/kernel/sys_ia32.c
-            'compat_sys_arch_prctl': [
-                'int option', 'unsigned long arg2',
+            "compat_sys_arch_prctl": [
+                "int option", "unsigned long arg2",
             ], # arch/x86/kernel/process_64.c
         }
 
@@ -35767,7 +35767,7 @@ def get_syscall_table(arch=None, mode=None):
                 syscall_list.append([nr, name, arch_specific_dic[func]])
                 continue
             # common case
-            if func == 'sys_ni_syscall':
+            if func == "sys_ni_syscall":
                 continue
             if func not in sc_def:
                 err("Not found: {:s}".format(func))
@@ -35779,61 +35779,61 @@ def get_syscall_table(arch=None, mode=None):
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(x86_syscall_tbl)
         arch_specific_dic = {
-            'sys_iopl': [
-                'unsigned int level',
+            "sys_iopl": [
+                "unsigned int level",
             ], # arch/x86/kernel/ioport.c
-            'sys_vm86old': [
-                'struct vm86_struct __user *user_vm86',
+            "sys_vm86old": [
+                "struct vm86_struct __user *user_vm86",
             ], # arch/x86/kernel/vm86_32.c
-            'sys_sigreturn': [], # arch/x86/kernel/signal.c
-            'sys_rt_sigreturn': [], # arch/x86/kernel/signal.c
-            'sys_clone': [
-                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
-                'unsigned long tls', 'int *child_tidptr',
+            "sys_sigreturn": [], # arch/x86/kernel/signal.c
+            "sys_rt_sigreturn": [], # arch/x86/kernel/signal.c
+            "sys_clone": [
+                "unsigned long clone_flags", "unsigned long newsp", "int __user *parent_tidptr",
+                "unsigned long tls", "int *child_tidptr",
             ], # kernel/fork.c (CONFIG_CLONE_BACKWARDS)
-            'sys_modify_ldt': [
-                'int func', 'void __user *ptr', 'unsigned long bytecount',
+            "sys_modify_ldt": [
+                "int func", "void __user *ptr", "unsigned long bytecount",
             ], # arch/x86/kernel/ldt.c
-            'sys_vm86': [
-                'unsigned long cmd', 'unsigned long arg',
+            "sys_vm86": [
+                "unsigned long cmd", "unsigned long arg",
             ], # arch/x86/kernel/vm86_32.c
-            'sys_ia32_pread64': [
-                'unsigned int fd', 'char __user *ubuf', 'u32 count', 'u32 poslo', 'u32 poshi',
+            "sys_ia32_pread64": [
+                "unsigned int fd", "char __user *ubuf", "u32 count", "u32 poslo", "u32 poshi",
             ], # arch/x86/kernel/sys_ia32.c
-            'sys_ia32_pwrite64': [
-                'unsigned int fd', 'const char __user *ubuf', 'u32 count', 'u32 poslo', 'u32 poshi',
+            "sys_ia32_pwrite64": [
+                "unsigned int fd", "const char __user *ubuf", "u32 count", "u32 poslo", "u32 poshi",
             ], # arch/x86/kernel/sys_ia32.c
-            'sys_ia32_truncate64': [
-                'const char __user *filename', 'unsigned long offset_low', 'unsigned long offset_high',
+            "sys_ia32_truncate64": [
+                "const char __user *filename", "unsigned long offset_low", "unsigned long offset_high",
             ], # arch/x86/kernel/sys_ia32.c
-            'sys_ia32_ftruncate64': [
-                'unsigned int fd', 'unsigned long offset_low', 'unsigned long offset_high',
+            "sys_ia32_ftruncate64": [
+                "unsigned int fd", "unsigned long offset_low", "unsigned long offset_high",
             ], # arch/x86/kernel/sys_ia32.c
-            'sys_ia32_readahead': [
-                'int fd', 'unsigned int off_lo', 'unsigned int off_high', 'size_t count',
+            "sys_ia32_readahead": [
+                "int fd", "unsigned int off_lo", "unsigned int off_high", "size_t count",
             ], # arch/x86/kernel/sys_ia32.c
-            'sys_set_thread_area': [
-                'struct user_desc __user * u_info',
+            "sys_set_thread_area": [
+                "struct user_desc __user * u_info",
             ], # arch/x86/kernel/tls.c
-            'sys_get_thread_area': [
-                'struct user_desc __user * u_info',
+            "sys_get_thread_area": [
+                "struct user_desc __user * u_info",
             ], # arch/x86/kernel/tls.c
-            'sys_ia32_fadvise64': [
-                'int fd', 'unsigned int offset_lo', 'unsigned int offset_hi', 'size_t len', 'int advice',
+            "sys_ia32_fadvise64": [
+                "int fd", "unsigned int offset_lo", "unsigned int offset_hi", "size_t len", "int advice",
             ], # arch/x86/kernel/sys_ia32.c
-            'sys_ia32_fadvise64_64': [
-                'int fd', '__u32 offset_low', '__u32 offset_high', '__u32 len_low', '__u32 len_high', 'int advice',
+            "sys_ia32_fadvise64_64": [
+                "int fd", "__u32 offset_low", "__u32 offset_high", "__u32 len_low", "__u32 len_high", "int advice",
             ], # arch/x86/kernel/sys_ia32.c
-            'sys_ia32_sync_file_range': [
-                'int fd', 'unsigned int off_low', 'unsigned int off_hi', 'unsigned int n_low',
-                'unsigned int n_hi', 'unsigned int flags',
+            "sys_ia32_sync_file_range": [
+                "int fd", "unsigned int off_low", "unsigned int off_hi", "unsigned int n_low",
+                "unsigned int n_hi", "unsigned int flags",
             ], # arch/x86/kernel/sys_ia32.c
-            'sys_ia32_fallocate': [
-                'int fd', 'int mode', 'unsigned int offset_lo', 'unsigned int offset_hi',
-                'unsigned int len_lo', 'unsigned int len_hi',
+            "sys_ia32_fallocate": [
+                "int fd", "int mode", "unsigned int offset_lo", "unsigned int offset_hi",
+                "unsigned int len_lo", "unsigned int len_hi",
             ], # arch/x86/kernel/sys_ia32.c
-            'sys_arch_prctl': [
-                'int option', 'unsigned long arg2',
+            "sys_arch_prctl": [
+                "int option", "unsigned long arg2",
             ], # arch/x86/kernel/process_32.c
         }
 
@@ -35850,7 +35850,7 @@ def get_syscall_table(arch=None, mode=None):
                 syscall_list.append([nr, name, arch_specific_dic[func]])
                 continue
             # common case
-            if func == 'sys_ni_syscall':
+            if func == "sys_ni_syscall":
                 continue
             if func not in sc_def:
                 err("Not found: {:s}".format(func))
@@ -35862,14 +35862,14 @@ def get_syscall_table(arch=None, mode=None):
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(arm64_syscall_tbl)
         arch_specific_dic = {
-            'sys_clone': [
-                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
-                'unsigned long tls', 'int __user *child_tidptr',
+            "sys_clone": [
+                "unsigned long clone_flags", "unsigned long newsp", "int __user *parent_tidptr",
+                "unsigned long tls", "int __user *child_tidptr",
             ], # kernel/fork.c (CONFIG_CLONE_BACKWARDS)
-            'sys_rt_sigreturn': [], # arch/arm64/kernel/signal.c
-            'sys_mmap': [
-                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
-                'unsigned long flags', 'unsigned long fd', 'unsigned long off',
+            "sys_rt_sigreturn": [], # arch/arm64/kernel/signal.c
+            "sys_mmap": [
+                "unsigned long addr", "unsigned long len", "unsigned long prot",
+                "unsigned long flags", "unsigned long fd", "unsigned long off",
             ], # arch/arm64/kernel/sys.c
         }
 
@@ -35883,7 +35883,7 @@ def get_syscall_table(arch=None, mode=None):
                 syscall_list.append([nr, name, arch_specific_dic[func]])
                 continue
             # common case
-            if func == 'sys_ni_syscall':
+            if func == "sys_ni_syscall":
                 continue
             if func not in sc_def:
                 err("Not found: {:s}".format(func))
@@ -35895,55 +35895,55 @@ def get_syscall_table(arch=None, mode=None):
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(arm_compat_syscall_tbl)
         arch_specific_dic = {
-            'sys_clone': [
-                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
-                'unsigned long tls', 'int __user *child_tidptr',
+            "sys_clone": [
+                "unsigned long clone_flags", "unsigned long newsp", "int __user *parent_tidptr",
+                "unsigned long tls", "int __user *child_tidptr",
             ], # kernel/fork.c (CONFIG_CLONE_BACKWARDS)
-            'compat_sys_aarch32_pread64': [
-                'unsigned int fd', 'char *buf', 'size_t count', 'u32 __pad', 'arg_u32p(pos)',
+            "compat_sys_aarch32_pread64": [
+                "unsigned int fd", "char *buf", "size_t count", "u32 __pad", "arg_u32p(pos)",
             ], # arch/arm64/kernel/sys32.c
-            'compat_sys_aarch32_pwrite64': [
-                'unsigned int fd', 'const char *buf', 'size_t count', 'u32 __pad', 'arg_u32p(pos)',
+            "compat_sys_aarch32_pwrite64": [
+                "unsigned int fd", "const char *buf", "size_t count", "u32 __pad", "arg_u32p(pos)",
             ], # arch/arm64/kernel/sys32.c
-            'compat_sys_aarch32_mmap2': [
-                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
-                'unsigned long flags', 'unsigned long fd', 'unsigned long off_4k',
+            "compat_sys_aarch32_mmap2": [
+                "unsigned long addr", "unsigned long len", "unsigned long prot",
+                "unsigned long flags", "unsigned long fd", "unsigned long off_4k",
             ], # arch/arm64/kernel/sys32.c
-            'compat_sys_aarch32_truncate64': [
-                'const char *path', 'u32 __pad', 'arg_u32p(length)',
+            "compat_sys_aarch32_truncate64": [
+                "const char *path", "u32 __pad", "arg_u32p(length)",
             ], # arch/arm64/kernel/sys32.c
-            'compat_sys_aarch32_ftruncate64': [
-                'unsigned int fd', 'u32 __pad', 'arg_u32p(length)',
+            "compat_sys_aarch32_ftruncate64": [
+                "unsigned int fd", "u32 __pad", "arg_u32p(length)",
             ], # arch/arm64/kernel/sys32.c
-            'compat_sys_aarch32_readahead': [
-                'int fd', 'u32 __pad', 'arg_u32(offset)', 'size_t count',
+            "compat_sys_aarch32_readahead": [
+                "int fd", "u32 __pad", "arg_u32(offset)", "size_t count",
             ], # arch/arm64/kernel/sys32.c
-            'compat_sys_aarch32_statfs64': [
-                'const char *pathname', 'compat_size_t sz', 'struct compat_statfs64 *buf',
+            "compat_sys_aarch32_statfs64": [
+                "const char *pathname", "compat_size_t sz", "struct compat_statfs64 *buf",
             ], # arch/arm64/kernel/sys32.c
-            'compat_sys_aarch32_fstatfs64': [
-                'unsigned int fd', 'compat_size_t sz', 'struct compat_statfs64 *buf',
+            "compat_sys_aarch32_fstatfs64": [
+                "unsigned int fd", "compat_size_t sz", "struct compat_statfs64 *buf",
             ], # arch/arm64/kernel/sys32.c
-            'compat_sys_aarch32_fadvise64_64': [
-                'int fd', 'int advice', 'arg_u32p(offset)', 'arg_u32p(len)',
+            "compat_sys_aarch32_fadvise64_64": [
+                "int fd", "int advice", "arg_u32p(offset)", "arg_u32p(len)",
             ], # arch/arm64/kernel/sys32.c
-            'compat_sys_aarch32_sync_file_range2': [
-                'int fd', 'unsigned int flags', 'arg_u32p(offset)', 'arg_u32p(nbytes)',
+            "compat_sys_aarch32_sync_file_range2": [
+                "int fd", "unsigned int flags", "arg_u32p(offset)", "arg_u32p(nbytes)",
             ], # arch/arm64/kernel/sys32.c
-            'compat_sys_aarch32_fallocate': [
-                'int fd', 'int mode', 'arg_u32p(offset)', 'arg_u32p(len)',
+            "compat_sys_aarch32_fallocate": [
+                "int fd", "int mode", "arg_u32p(offset)", "arg_u32p(len)",
             ], # arch/arm64/kernel/sys32.c
-            'compat_sys_old_semctl': [
-                'int semid', 'int semnum', 'int cmd', 'int arg',
+            "compat_sys_old_semctl": [
+                "int semid", "int semnum", "int cmd", "int arg",
             ], # ipc/sem.c
-            'compat_sys_old_msgctl': [
-                'int msqid', 'int cmd', 'void *uptr',
+            "compat_sys_old_msgctl": [
+                "int msqid", "int cmd", "void *uptr",
             ], # ipc/msg.c
-            'compat_sys_old_shmctl': [
-                'int shmid', 'int cmd', 'void *uptr',
+            "compat_sys_old_shmctl": [
+                "int shmid", "int cmd", "void *uptr",
             ], # ipc/shm.c
-            'compat_sys_sigreturn': [], # arch/arm64/kernel/signal32.c
-            'compat_sys_rt_sigreturn': [], # arch/arm64/kernel/signal32.c
+            "compat_sys_sigreturn": [], # arch/arm64/kernel/signal32.c
+            "compat_sys_rt_sigreturn": [], # arch/arm64/kernel/signal32.c
         }
 
         syscall_list = []
@@ -35956,7 +35956,7 @@ def get_syscall_table(arch=None, mode=None):
                 syscall_list.append([nr, name, arch_specific_dic[func]])
                 continue
             # common case
-            if func == 'sys_ni_syscall':
+            if func == "sys_ni_syscall":
                 continue
             if func not in sc_def:
                 err("Not found: {:s}".format(func))
@@ -35964,11 +35964,11 @@ def get_syscall_table(arch=None, mode=None):
             syscall_list.append([nr, name, sc_def[func]])
 
         arch_specific_extra = [
-            [0xf0002, 'cacheflush', [
-                'unsigned long start', 'unsigned long end', 'int flags',
+            [0xf0002, "cacheflush", [
+                "unsigned long start", "unsigned long end", "int flags",
             ]], # arch/arm64/kernel/sys_compat.c
-            [0xf0005, 'set_tls', [
-                'unsigned long val',
+            [0xf0005, "set_tls", [
+                "unsigned long val",
             ]], # arch/arm64/kernel/sys_compat.c
         ]
         syscall_list += arch_specific_extra
@@ -35978,24 +35978,24 @@ def get_syscall_table(arch=None, mode=None):
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(arm_native_syscall_tbl)
         arch_specific_dic = {
-            'sys_clone': [
-                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
-                'unsigned long tls', 'int __user *child_tidptr',
+            "sys_clone": [
+                "unsigned long clone_flags", "unsigned long newsp", "int __user *parent_tidptr",
+                "unsigned long tls", "int __user *child_tidptr",
             ], # kernel/fork.c (CONFIG_CLONE_BACKWARDS)
-            'sys_mmap2': [
-                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
-                'unsigned long flags', 'unsigned long fd', 'unsigned long pgoff',
+            "sys_mmap2": [
+                "unsigned long addr", "unsigned long len", "unsigned long prot",
+                "unsigned long flags", "unsigned long fd", "unsigned long pgoff",
             ], # include/asm-generic/syscalls.h
-            'sys_sigreturn_wrapper': [], # arch/arm/kernel/entry-common.S
-            'sys_rt_sigreturn_wrapper': [], # arch/arm/kernel/entry-common.S
-            'sys_statfs64_wrapper': [
-                'const char __user *path', 'size_t sz', 'struct statfs64 __user *buf',
+            "sys_sigreturn_wrapper": [], # arch/arm/kernel/entry-common.S
+            "sys_rt_sigreturn_wrapper": [], # arch/arm/kernel/entry-common.S
+            "sys_statfs64_wrapper": [
+                "const char __user *path", "size_t sz", "struct statfs64 __user *buf",
             ], # arch/arm/kernel/entry-common.S
-            'sys_fstatfs64_wrapper': [
-                'unsigned int fd', 'size_t sz', 'struct statfs64 __user *buf',
+            "sys_fstatfs64_wrapper": [
+                "unsigned int fd", "size_t sz", "struct statfs64 __user *buf",
             ], # arch/arm/kernel/entry-common.S
-            'sys_arm_fadvise64_64': [
-                'int fd', 'int advice', 'loff_t offset', 'loff_t len',
+            "sys_arm_fadvise64_64": [
+                "int fd", "int advice", "loff_t offset", "loff_t len",
             ] # arch/arm/kernel/sys_arm.c
         }
 
@@ -36009,7 +36009,7 @@ def get_syscall_table(arch=None, mode=None):
                 syscall_list.append([nr, name, arch_specific_dic[func]])
                 continue
             # common case
-            if func == 'sys_ni_syscall':
+            if func == "sys_ni_syscall":
                 continue
             if func not in sc_def:
                 err("Not found: {:s}".format(func))
@@ -36017,16 +36017,16 @@ def get_syscall_table(arch=None, mode=None):
             syscall_list.append([nr, name, sc_def[func]])
 
         arch_specific_extra = [
-            [0xf0001, 'breakpoint', []], # arch/arm/kernel/traps.c
-            [0xf0002, 'cacheflush', [
-                'unsigned long start', 'unsigned long end', 'int flags',
+            [0xf0001, "breakpoint", []], # arch/arm/kernel/traps.c
+            [0xf0002, "cacheflush", [
+                "unsigned long start", "unsigned long end", "int flags",
             ]], # arch/arm/kernel/traps.c
-            [0xf0003, 'usr26', []], # arch/arm/kernel/traps.c
-            [0xf0004, 'usr32', []], # arch/arm/kernel/traps.c
-            [0xf0005, 'set_tls', [
-                'unsigned long val',
+            [0xf0003, "usr26", []], # arch/arm/kernel/traps.c
+            [0xf0004, "usr32", []], # arch/arm/kernel/traps.c
+            [0xf0005, "set_tls", [
+                "unsigned long val",
             ]], # arch/arm/kernel/traps.c
-            [0xf0006, 'get_tls', []], # arch/arm/kernel/traps.c
+            [0xf0006, "get_tls", []], # arch/arm/kernel/traps.c
         ]
         syscall_list += arch_specific_extra
 
@@ -36045,58 +36045,58 @@ def get_syscall_table(arch=None, mode=None):
         tbl += parse_syscall_table_defs(mips_n32_syscall_tbl)
         arch_specific_dic = {
             # o32
-            'sys_syscall': ['...', ], #
-            '__sys_fork': [], #
-            'sys_rt_sigreturn': [], # arch/mips/kernel/signal.c
-            'sysm_pipe': [], # arch/mips/kernel/syscall.c
-            'sys_mips_mmap': [
-                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
-                'unsigned long flags', 'unsigned long fd', 'off_t offset',
+            "sys_syscall": ["...", ], #
+            "__sys_fork": [], #
+            "sys_rt_sigreturn": [], # arch/mips/kernel/signal.c
+            "sysm_pipe": [], # arch/mips/kernel/syscall.c
+            "sys_mips_mmap": [
+                "unsigned long addr", "unsigned long len", "unsigned long prot",
+                "unsigned long flags", "unsigned long fd", "off_t offset",
             ], # arch/mips/kernel/syscall.c
-            'sys_sigreturn': [], #
-            '__sys_clone': [
-                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
-                'unsigned long tls', 'int __user *child_tidptr',
+            "sys_sigreturn": [], #
+            "__sys_clone": [
+                "unsigned long clone_flags", "unsigned long newsp", "int __user *parent_tidptr",
+                "unsigned long tls", "int __user *child_tidptr",
             ], # kernel/fork.c (CONFIG_CLONE_BACKWARDS)
-            'sys_cacheflush': [
-                'unsigned long addr', 'unsigned long bytes', 'unsigned int cache',
+            "sys_cacheflush": [
+                "unsigned long addr", "unsigned long bytes", "unsigned int cache",
             ], # arch/mips/mm/cache.c
-            'sys_cachectl': [
-                'char *addr', 'int nbytes', 'int op',
+            "sys_cachectl": [
+                "char *addr", "int nbytes", "int op",
             ], # arch/mips/kernel/syscall.c
-            '__sys_sysmips': [
-                'long cmd', 'long arg1', 'long arg2',
+            "__sys_sysmips": [
+                "long cmd", "long arg1", "long arg2",
             ], # arch/mips/kernel/syscall.c
-            'sys_mips_mmap2': [
-                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
-                'unsigned long flags', 'unsigned long fd', 'unsigned long pgoff',
+            "sys_mips_mmap2": [
+                "unsigned long addr", "unsigned long len", "unsigned long prot",
+                "unsigned long flags", "unsigned long fd", "unsigned long pgoff",
             ], # arch/mips/kernel/syscall.c
-            'sys_set_thread_area': [
-                'unsigned long addr',
+            "sys_set_thread_area": [
+                "unsigned long addr",
             ], # arch/mips/kernel/syscall.c
-            '__sys_clone3': [
-                'struct clone_args __user *uargs', 'size_t size',
+            "__sys_clone3": [
+                "struct clone_args __user *uargs", "size_t size",
             ], #
-            'sys_sigsuspend': [
-                'sigset_t __user *uset',
+            "sys_sigsuspend": [
+                "sigset_t __user *uset",
             ], # arch/mips/kernel/signal.c
-            'sys_sigaction': [
-                'int sig2', 'const struct sigaction __user *act', 'struct sigaction __user *oact',
+            "sys_sigaction": [
+                "int sig2", "const struct sigaction __user *act", "struct sigaction __user *oact",
             ], # arch/mips/kernel/signal.c
             # n32
-            'compat_sys_old_shmctl': [
-                'int shmid', 'int cmd', 'void *uptr',
+            "compat_sys_old_shmctl": [
+                "int shmid", "int cmd", "void *uptr",
             ], # ipc/shm.c
-            'compat_sys_old_semctl': [
-                'int semid', 'int semnum', 'int cmd', 'int arg',
+            "compat_sys_old_semctl": [
+                "int semid", "int semnum", "int cmd", "int arg",
             ], # ipc/sem.c
-            'compat_sys_old_msgctl': [
-                'int msqid', 'int cmd', 'void *uptr',
+            "compat_sys_old_msgctl": [
+                "int msqid", "int cmd", "void *uptr",
             ], # ipc/msg.c
-            'sys_32_personality': [
-                'unsigned long personality',
+            "sys_32_personality": [
+                "unsigned long personality",
             ], # arch/mips/kernel/linux32.c
-            'sysn32_rt_sigreturn': [], # arch/mips/kernel/signal_n32.c
+            "sysn32_rt_sigreturn": [], # arch/mips/kernel/signal_n32.c
         }
 
         syscall_list = []
@@ -36113,7 +36113,7 @@ def get_syscall_table(arch=None, mode=None):
                 syscall_list.append([nr, name, arch_specific_dic[func]])
                 continue
             # common case
-            if func == 'sys_ni_syscall':
+            if func == "sys_ni_syscall":
                 continue
             if func not in sc_def:
                 err("Not found: {:s}".format(func))
@@ -36125,31 +36125,31 @@ def get_syscall_table(arch=None, mode=None):
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(mips_n64_syscall_tbl)
         arch_specific_dic = {
-            'sys_mips_mmap': [
-                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
-                'unsigned long flags', 'unsigned long fd', 'off_t offset',
+            "sys_mips_mmap": [
+                "unsigned long addr", "unsigned long len", "unsigned long prot",
+                "unsigned long flags", "unsigned long fd", "off_t offset",
             ], # arch/mips/kernel/syscall.c
-            'sysm_pipe': [], # arch/mips/kernel/syscall.c
-            '__sys_clone': [
-                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
-                'unsigned long tls', 'int __user *child_tidptr',
+            "sysm_pipe": [], # arch/mips/kernel/syscall.c
+            "__sys_clone": [
+                "unsigned long clone_flags", "unsigned long newsp", "int __user *parent_tidptr",
+                "unsigned long tls", "int __user *child_tidptr",
             ], # kernel/fork.c (CONFIG_CLONE_BACKWARDS)
-            '__sys_fork': [], #
-            'sys_rt_sigreturn': [], # arch/mips/kernel/signal.c
-            'sys_cacheflush': [
-                'unsigned long addr', 'unsigned long bytes', 'unsigned int cache',
+            "__sys_fork": [], #
+            "sys_rt_sigreturn": [], # arch/mips/kernel/signal.c
+            "sys_cacheflush": [
+                "unsigned long addr", "unsigned long bytes", "unsigned int cache",
             ], # arch/mips/mm/cache.c
-            'sys_cachectl': [
-                'char *addr', 'int nbytes', 'int op',
+            "sys_cachectl": [
+                "char *addr", "int nbytes", "int op",
             ], # arch/mips/kernel/syscall.c
-            '__sys_sysmips': [
-                'long cmd', 'long arg1', 'long arg2',
+            "__sys_sysmips": [
+                "long cmd", "long arg1", "long arg2",
             ], # arch/mips/kernel/syscall.c
-            'sys_set_thread_area': [
-                'unsigned long addr',
+            "sys_set_thread_area": [
+                "unsigned long addr",
             ], # arch/mips/kernel/syscall.c
-            '__sys_clone3': [
-                'struct clone_args __user *uargs', 'size_t size',
+            "__sys_clone3": [
+                "struct clone_args __user *uargs", "size_t size",
             ], #
         }
 
@@ -36164,7 +36164,7 @@ def get_syscall_table(arch=None, mode=None):
                 syscall_list.append([nr, name, arch_specific_dic[func]])
                 continue
             # common case
-            if func == 'sys_ni_syscall':
+            if func == "sys_ni_syscall":
                 continue
             if func not in sc_def:
                 err("Not found: {:s}".format(func))
@@ -36176,38 +36176,38 @@ def get_syscall_table(arch=None, mode=None):
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(ppc_syscall_tbl)
         arch_specific_dic = {
-            'ppc_select': [
-                'int n', 'fd_set __user *inp', 'fd_set __user *outp', 'fd_set __user *exp',
-                'struct __kernel_old_timeval __user *tvp',
+            "ppc_select": [
+                "int n", "fd_set __user *inp", "fd_set __user *outp", "fd_set __user *exp",
+                "struct __kernel_old_timeval __user *tvp",
             ], # arch/poerpc/kernel/syscalls.c
-            'sys_sigreturn': [], # arch/powerpc/kernel/signal_32.c
-            'sys_rt_sigreturn': [], # arch/powerpc/kernel/signal_32.c
-            'sys_mmap': [
-                'unsigned long addr', 'size_t len', 'unsigned long prot',
-                'unsigned long flags', 'unsigned long fd', 'off_t offset',
+            "sys_sigreturn": [], # arch/powerpc/kernel/signal_32.c
+            "sys_rt_sigreturn": [], # arch/powerpc/kernel/signal_32.c
+            "sys_mmap": [
+                "unsigned long addr", "size_t len", "unsigned long prot",
+                "unsigned long flags", "unsigned long fd", "off_t offset",
             ], # arch/powerpc/kernel/syscalls.c
-            'sys_mmap2': [
-                'unsigned long addr', 'size_t len', 'unsigned long prot',
-                'unsigned long flags', 'unsigned long fd', 'unsigned long pgoff',
+            "sys_mmap2": [
+                "unsigned long addr", "size_t len", "unsigned long prot",
+                "unsigned long flags", "unsigned long fd", "unsigned long pgoff",
             ], # arch/powerpc/kernel/syscalls.c
-            'sys_clone': [
-                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
-                'unsigned long tls', 'int __user *child_tidptr',
+            "sys_clone": [
+                "unsigned long clone_flags", "unsigned long newsp", "int __user *parent_tidptr",
+                "unsigned long tls", "int __user *child_tidptr",
             ], # kernel/fork.c (CONFIG_CLONE_BACKWARDS)
-            'sys_swapcontext': [
-                'struct ucontext __user *old_ctx', 'struct ucontext __user *new_ctx', 'long ctx_size',
+            "sys_swapcontext": [
+                "struct ucontext __user *old_ctx", "struct ucontext __user *new_ctx", "long ctx_size",
             ], # arch/powerpc/kernel/signal_32.c
-            'ppc_fadvise64_64': [
-                'int fd', 'int advice', 'u32 offset_high', 'u32 offset_low', 'u32 len_high', 'u32 len_low',
+            "ppc_fadvise64_64": [
+                "int fd", "int advice", "u32 offset_high", "u32 offset_low", "u32 len_high", "u32 len_low",
             ], # arch/poerpc/kernel/syscalls.c
-            'sys_rtas': [
-                'struct rtas_args __user *uargs',
+            "sys_rtas": [
+                "struct rtas_args __user *uargs",
             ], # arch/powerpc/include/asm/syscalls.h
-            'sys_debug_setcontext': [
-                'struct ucontext __user *ctx', 'int ndbg', 'struct sig_dbg_op __user *dbg',
+            "sys_debug_setcontext": [
+                "struct ucontext __user *ctx", "int ndbg", "struct sig_dbg_op __user *dbg",
             ], # arch/powerpc/kernel/signal_32.c
-            'sys_subpage_prot': [
-                'unsigned long addr', 'unsigned long len', 'u32 __user *map',
+            "sys_subpage_prot": [
+                "unsigned long addr", "unsigned long len", "u32 __user *map",
             ], # arch/powerpc/mm/book3s64/subpage_prot.c
         }
 
@@ -36221,7 +36221,7 @@ def get_syscall_table(arch=None, mode=None):
                 syscall_list.append([nr, name, arch_specific_dic[func]])
                 continue
             # common case
-            if func == 'sys_ni_syscall':
+            if func == "sys_ni_syscall":
                 continue
             if func not in sc_def:
                 err("Not found: {:s}".format(func))
@@ -36233,32 +36233,32 @@ def get_syscall_table(arch=None, mode=None):
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(ppc_syscall_tbl)
         arch_specific_dic = {
-            'sys_clone': [
-                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
-                'unsigned long tls', 'int __user *child_tidptr',
+            "sys_clone": [
+                "unsigned long clone_flags", "unsigned long newsp", "int __user *parent_tidptr",
+                "unsigned long tls", "int __user *child_tidptr",
             ], # kernel/fork.c (CONFIG_CLONE_BACKWARDS)
-            'sys_rt_sigreturn': [], # arch/powerpc/kernel/signal_64.c
-            'sys_mmap': [
-                'unsigned long addr', 'size_t len', 'unsigned long prot',
-                'unsigned long flags', 'unsigned long fd', 'off_t offset',
+            "sys_rt_sigreturn": [], # arch/powerpc/kernel/signal_64.c
+            "sys_mmap": [
+                "unsigned long addr", "size_t len", "unsigned long prot",
+                "unsigned long flags", "unsigned long fd", "off_t offset",
             ], # arch/powerpc/kernel/syscalls.c
-            'sys_mmap2': [
-                'unsigned long addr', 'size_t len', 'unsigned long prot',
-                'unsigned long flags', 'unsigned long fd', 'unsigned long pgoff',
+            "sys_mmap2": [
+                "unsigned long addr", "size_t len", "unsigned long prot",
+                "unsigned long flags", "unsigned long fd", "unsigned long pgoff",
             ], # arch/powerpc/kernel/syscalls.c
-            'ppc64_personality': [
-                'unsigned long personality',
+            "ppc64_personality": [
+                "unsigned long personality",
             ], # arch/powerpc/kernel/syscalls.c
-            'sys_swapcontext': [
-                'struct ucontext __user *old_ctx', 'struct ucontext __user *new_ctx', 'long ctx_size',
+            "sys_swapcontext": [
+                "struct ucontext __user *old_ctx", "struct ucontext __user *new_ctx", "long ctx_size",
             ], # arch/powerpc/kernel/signal_64.c
-            'sys_rtas': [
-                'struct rtas_args __user *uargs',
+            "sys_rtas": [
+                "struct rtas_args __user *uargs",
             ], # arch/powerpc/include/asm/syscalls.h
-            'sys_subpage_prot': [
-                'unsigned long addr', 'unsigned long len', 'u32 __user *map',
+            "sys_subpage_prot": [
+                "unsigned long addr", "unsigned long len", "u32 __user *map",
             ], # arch/powerpc/mm/book3s64/subpage_prot.c
-            'sys_switch_endian': [], # arch/powerpc/kernel/syscalls.c
+            "sys_switch_endian": [], # arch/powerpc/kernel/syscalls.c
         }
 
         syscall_list = []
@@ -36271,7 +36271,7 @@ def get_syscall_table(arch=None, mode=None):
                 syscall_list.append([nr, name, arch_specific_dic[func]])
                 continue
             # common case
-            if func == 'sys_ni_syscall':
+            if func == "sys_ni_syscall":
                 continue
             if func not in sc_def:
                 err("Not found: {:s}".format(func))
@@ -36283,35 +36283,35 @@ def get_syscall_table(arch=None, mode=None):
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(sparc_syscall_tbl)
         arch_specific_dic = {
-            'sys_mmap': [
-                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
-                'unsigned long flags', 'unsigned long fd', 'unsigned long off'
+            "sys_mmap": [
+                "unsigned long addr", "unsigned long len", "unsigned long prot",
+                "unsigned long flags", "unsigned long fd", "unsigned long off"
             ], # arch/sparc/kernel/sys_sparc_32.c
-            'sys_mmap2': [
-                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
-                'unsigned long flags', 'unsigned long fd', 'unsigned long pgoff'
+            "sys_mmap2": [
+                "unsigned long addr", "unsigned long len", "unsigned long prot",
+                "unsigned long flags", "unsigned long fd", "unsigned long pgoff"
             ], # arch/sparc/kernel/sys_sparc_32.c
-            'sunos_execv': [
-                'const char __user *filename', 'const char __user *const __user *argv',
-                'const char __user *const __user *envp',
+            "sunos_execv": [
+                "const char __user *filename", "const char __user *const __user *argv",
+                "const char __user *const __user *envp",
             ], # arch/sparc/kernel/entry.S
-            'sys_sparc_pipe': [], # arch/sparc/kernel/sys_sparc_32.c
-            'sys_getpagesize': [], # arch/sparc/kernel/sys_sparc_32.c
-            'sys_getdomainname': [
-                'char __user *name', 'int len'
+            "sys_sparc_pipe": [], # arch/sparc/kernel/sys_sparc_32.c
+            "sys_getpagesize": [], # arch/sparc/kernel/sys_sparc_32.c
+            "sys_getdomainname": [
+                "char __user *name", "int len"
             ], # arch/sparc/kernel/sys_sparc_32.c
-            'sys_sparc_remap_file_pages': [
-                'unsigned long start', 'unsigned long size', 'unsigned long prot',
-                'unsigned long pgoff', 'unsigned long flags',
+            "sys_sparc_remap_file_pages": [
+                "unsigned long start", "unsigned long size", "unsigned long prot",
+                "unsigned long pgoff", "unsigned long flags",
             ], # kernel/sys_sparc_32.c
-            'sys_sparc_sigaction': [
-                'int, sig', 'struct old_sigaction __user *act', 'struct old_sigaction __user *oact',
+            "sys_sparc_sigaction": [
+                "int, sig", "struct old_sigaction __user *act", "struct old_sigaction __user *oact",
             ], # arch/sparc/kernel/sys_sparc_32.c
-            'sys_sigreturn': [], # arch/sparc/kernel/syscalls.S
-            'sys_rt_sigreturn': [], # arch/sparc/kernel/syscalls.S
-            'sys_clone': [
-                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
-                'int __user *child_tidptr', 'unsigned long tls',
+            "sys_sigreturn": [], # arch/sparc/kernel/syscalls.S
+            "sys_rt_sigreturn": [], # arch/sparc/kernel/syscalls.S
+            "sys_clone": [
+                "unsigned long clone_flags", "unsigned long newsp", "int __user *parent_tidptr",
+                "int __user *child_tidptr", "unsigned long tls",
             ], # kernel/fork.c
         }
 
@@ -36325,7 +36325,7 @@ def get_syscall_table(arch=None, mode=None):
                 syscall_list.append([nr, name, arch_specific_dic[func]])
                 continue
             # common case
-            if func in ['sys_ni_syscall', 'sys_nis_syscall']:
+            if func in ["sys_ni_syscall", "sys_nis_syscall"]:
                 continue
             if func not in sc_def:
                 err("Not found: {:s}".format(func))
@@ -36337,62 +36337,62 @@ def get_syscall_table(arch=None, mode=None):
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(sparc_syscall_tbl)
         arch_specific_dic = {
-            'sparc_exit': [
-                'int error_code',
+            "sparc_exit": [
+                "int error_code",
             ], # arch/sparc/kernel/syscalls.S
-            'sys_sparc_pipe': [], # arch/sparc/kernel/sys_sparc_64.c
-            'sys_memory_ordering': [
-                'unsigned long model',
+            "sys_sparc_pipe": [], # arch/sparc/kernel/sys_sparc_64.c
+            "sys_memory_ordering": [
+                "unsigned long model",
             ], # arch/sparc/kernel/sys_sparc_64.c
-            'sys64_execve': [
-                'const char __user *filename', 'const char __user *const __user *argv',
-                'const char __user *const __user *envp',
+            "sys64_execve": [
+                "const char __user *filename", "const char __user *const __user *argv",
+                "const char __user *const __user *envp",
             ], # arch/sparc/kernel/syscalls.S
-            'sys_getpagesize': [], # arch/sparc/kernel/sys_sparc_64.c
-            'sys_64_munmap': [
-                'unsigned long addr', 'size_t len',
+            "sys_getpagesize": [], # arch/sparc/kernel/sys_sparc_64.c
+            "sys_64_munmap": [
+                "unsigned long addr", "size_t len",
             ], # arch/sparc/kernel/sys_sparc_64.c
-            'sys_getdomainname': [
-                'char __user *name', 'int len'
+            "sys_getdomainname": [
+                "char __user *name", "int len"
             ], # arch/sparc/kernel/sys_sparc_64.c
-            'sys_utrap_install': [
-                'utrap_entry_t type', 'utrap_handler_t new_p', 'utrap_handler_t new_d',
-                'utrap_handler_t __user * old_p', 'utrap_handler_t __user *old_d',
+            "sys_utrap_install": [
+                "utrap_entry_t type", "utrap_handler_t new_p", "utrap_handler_t new_d",
+                "utrap_handler_t __user * old_p", "utrap_handler_t __user *old_d",
             ], # arch/sparc/kernel/sys_sparc_64.c
-            'sparc_exit_group': [
-                'int error_code',
+            "sparc_exit_group": [
+                "int error_code",
             ], # arch/sparc/kernel/syscalls.S
-            'sys_sparc64_personality': [
-                'unsigned long personality',
+            "sys_sparc64_personality": [
+                "unsigned long personality",
             ], # arch/sparc/kernel/sys_sparc_64.c
-            'sys_sparc_ipc': [
-                'unsigned int call', 'int first', 'unsigned long second',
-                'unsigned long third', 'void __user *ptr', 'long fifth',
+            "sys_sparc_ipc": [
+                "unsigned int call", "int first", "unsigned long second",
+                "unsigned long third", "void __user *ptr", "long fifth",
             ], # arch/sparc/kernel/sys_sparc_64.c
-            'sys_clone': [
-                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
-                'int __user *child_tidptr', 'unsigned long tls',
+            "sys_clone": [
+                "unsigned long clone_flags", "unsigned long newsp", "int __user *parent_tidptr",
+                "int __user *child_tidptr", "unsigned long tls",
             ], # kernel/fork.c
-            'sys_sparc_adjtimex': [
-                'struct __kernel_timex __user *txc_p',
+            "sys_sparc_adjtimex": [
+                "struct __kernel_timex __user *txc_p",
             ], # arch/sparc/kernel/sys_sparc_64.c
-            'sys_mmap': [
-                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
-                'unsigned long flags', 'unsigned long fd', 'unsigned long off'
+            "sys_mmap": [
+                "unsigned long addr", "unsigned long len", "unsigned long prot",
+                "unsigned long flags", "unsigned long fd", "unsigned long off"
             ], # arch/sparc/kernel/sys_sparc_64.c
-            'sys_64_mremap': [
-                'unsigned long addr', 'unsigned long old_len', 'unsigned long new_len',
-                'unsigned long flags', 'unsigned long new_addr',
+            "sys_64_mremap": [
+                "unsigned long addr", "unsigned long old_len", "unsigned long new_len",
+                "unsigned long flags", "unsigned long new_addr",
             ], # arch/sparc/kernel/sys_sparc_64.c
-            'sys_sparc_clock_adjtime': [
-                'const clockid_t which_clock', 'struct __kernel_timex __user *txc_p',
+            "sys_sparc_clock_adjtime": [
+                "const clockid_t which_clock", "struct __kernel_timex __user *txc_p",
             ], # arch/sparc/kernel/sys_sparc_64.c
-            'sys_kern_features': [], # arch/sparc/kernel/sys_sparc_64.c
-            'sys64_execveat': [
-                'int dfd', 'const char __user *filename', 'const char __user *const __user *argv',
-                'const char __user *const __user *envp', 'int flags',
+            "sys_kern_features": [], # arch/sparc/kernel/sys_sparc_64.c
+            "sys64_execveat": [
+                "int dfd", "const char __user *filename", "const char __user *const __user *argv",
+                "const char __user *const __user *envp", "int flags",
             ] ,# arch/sparc/kernel/syscalls.S
-            'sys_rt_sigreturn': [
+            "sys_rt_sigreturn": [
                 "struct pt_regs *regs",
             ], # arch/sparc/kernel/signal_64.c
         }
@@ -36407,7 +36407,7 @@ def get_syscall_table(arch=None, mode=None):
                 syscall_list.append([nr, name, arch_specific_dic[func]])
                 continue
             # common case
-            if func in ['sys_ni_syscall', 'sys_nis_syscall']:
+            if func in ["sys_ni_syscall", "sys_nis_syscall"]:
                 continue
             if func not in sc_def:
                 err("Not found: {:s}".format(func))
@@ -36419,14 +36419,14 @@ def get_syscall_table(arch=None, mode=None):
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(riscv32_syscall_tbl)
         arch_specific_dic = {
-            'sys_rt_sigreturn': [], # arch/riscv/kernel/signal.c
-            'sys_clone': [
-                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
-                'unsigned long tls', 'int *child_tidptr',
+            "sys_rt_sigreturn": [], # arch/riscv/kernel/signal.c
+            "sys_clone": [
+                "unsigned long clone_flags", "unsigned long newsp", "int __user *parent_tidptr",
+                "unsigned long tls", "int *child_tidptr",
             ], # kernel/fork.c (CONFIG_CLONE_BACKWARDS)
-            'sys_mmap2': [
-                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
-                'unsigned long flags', 'unsigned long fd', 'off_t offset',
+            "sys_mmap2": [
+                "unsigned long addr", "unsigned long len", "unsigned long prot",
+                "unsigned long flags", "unsigned long fd", "off_t offset",
             ], # arch/riscv/kernel/sys_riscv.c"
         }
 
@@ -36440,7 +36440,7 @@ def get_syscall_table(arch=None, mode=None):
                 syscall_list.append([nr, name, arch_specific_dic[func]])
                 continue
             # common case
-            if func == 'sys_ni_syscall':
+            if func == "sys_ni_syscall":
                 continue
             if func not in sc_def:
                 err("Not found: {:s}".format(func))
@@ -36448,8 +36448,8 @@ def get_syscall_table(arch=None, mode=None):
             syscall_list.append([nr, name, sc_def[func]])
 
         arch_specific_extra = [
-            [259, 'riscv_flush_icache', [
-                'uintptr_t start', 'uintptr_t end', 'uintptr_t flags',
+            [259, "riscv_flush_icache", [
+                "uintptr_t start", "uintptr_t end", "uintptr_t flags",
             ]], # arch/riscv/include/uapi/asm/unistd.h, arch/riscv/kernel/sys_riscv.c
         ]
         syscall_list += arch_specific_extra
@@ -36459,14 +36459,14 @@ def get_syscall_table(arch=None, mode=None):
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(riscv64_syscall_tbl)
         arch_specific_dic = {
-            'sys_rt_sigreturn': [], # arch/riscv/kernel/signal.c
-            'sys_clone': [
-                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
-                'unsigned long tls', 'int *child_tidptr',
+            "sys_rt_sigreturn": [], # arch/riscv/kernel/signal.c
+            "sys_clone": [
+                "unsigned long clone_flags", "unsigned long newsp", "int __user *parent_tidptr",
+                "unsigned long tls", "int *child_tidptr",
             ], # kernel/fork.c (CONFIG_CLONE_BACKWARDS)
-            'sys_mmap': [
-                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
-                'unsigned long flags', 'unsigned long fd', 'off_t offset',
+            "sys_mmap": [
+                "unsigned long addr", "unsigned long len", "unsigned long prot",
+                "unsigned long flags", "unsigned long fd", "off_t offset",
             ], # arch/riscv/kernel/sys_riscv.c"
         }
 
@@ -36480,7 +36480,7 @@ def get_syscall_table(arch=None, mode=None):
                 syscall_list.append([nr, name, arch_specific_dic[func]])
                 continue
             # common case
-            if func == 'sys_ni_syscall':
+            if func == "sys_ni_syscall":
                 continue
             if func not in sc_def:
                 err("Not found: {:s}".format(func))
@@ -36488,8 +36488,8 @@ def get_syscall_table(arch=None, mode=None):
             syscall_list.append([nr, name, sc_def[func]])
 
         arch_specific_extra = [
-            [259, 'riscv_flush_icache', [
-                'uintptr_t start', 'uintptr_t end', 'uintptr_t flags',
+            [259, "riscv_flush_icache", [
+                "uintptr_t start", "uintptr_t end", "uintptr_t flags",
             ]], # arch/riscv/include/uapi/asm/unistd.h, arch/riscv/kernel/sys_riscv.c
         ]
         syscall_list += arch_specific_extra
@@ -36499,34 +36499,34 @@ def get_syscall_table(arch=None, mode=None):
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(s390x_syscall_tbl)
         arch_specific_dic = {
-            'sys_s390_ipc': [
-                'uint, call', 'int first', 'unsigned long second',
-                'unsigned long third', 'void __user *ptr',
+            "sys_s390_ipc": [
+                "uint, call", "int first", "unsigned long second",
+                "unsigned long third", "void __user *ptr",
             ], # arch/s390/kernel/syscall.c
-            'sys_sigreturn': [], # arch/s390/kernel/signal.c
-            'sys_clone': [
-                'unsigned long clone_flags', 'unsigned long newsp', 'int stack_size',
-                'int __user *parent_tidptr', 'int __user *child_tidptr', 'unsigned long tls',
+            "sys_sigreturn": [], # arch/s390/kernel/signal.c
+            "sys_clone": [
+                "unsigned long clone_flags", "unsigned long newsp", "int stack_size",
+                "int __user *parent_tidptr", "int __user *child_tidptr", "unsigned long tls",
             ], # kernel/fork.c (CONFIG_CLONE_BACKWARDS2)
-            'sys_s390_personality': [
-                'unsigned int personality',
+            "sys_s390_personality": [
+                "unsigned int personality",
             ], # arch/s390/kernel/syscall.c
-            'sys_rt_sigreturn': [], # arch/s390/kernel/signal.c
-            'sys_s390_runtime_instr': [
-                'int, command', 'int signum',
+            "sys_rt_sigreturn": [], # arch/s390/kernel/signal.c
+            "sys_s390_runtime_instr": [
+                "int, command", "int signum",
             ], # arch/s390/kernel/runtime_instr.c
-            'sys_s390_pci_mmio_write': [
-                'unsigned long mmio_addr', 'const void __user *user_buffer', 'size_t length',
+            "sys_s390_pci_mmio_write": [
+                "unsigned long mmio_addr", "const void __user *user_buffer", "size_t length",
             ], # arch/s390/pci/pci_mmio.c
-            'sys_s390_pci_mmio_read': [
-                'unsigned long mmio_addr', 'void __user *user_buffer', 'size_t length',
+            "sys_s390_pci_mmio_read": [
+                "unsigned long mmio_addr", "void __user *user_buffer", "size_t length",
             ], # arch/s390/pci/pci_mmio.c
-            'sys_s390_guarded_storage': [
-                'int command', 'struct gs_cb __user *gs_cb',
+            "sys_s390_guarded_storage": [
+                "int command", "struct gs_cb __user *gs_cb",
             ], # arch/s390/kernel/guarded_storage.c
-            'sys_s390_sthyi': [
-                'unsigned long function_code', 'void __user *buffer', 'u64 __user *return_code',
-                'unsigned long flags',
+            "sys_s390_sthyi": [
+                "unsigned long function_code", "void __user *buffer", "u64 __user *return_code",
+                "unsigned long flags",
             ], # arch/s390/kernel/sthyi.c
         }
 
@@ -36540,7 +36540,7 @@ def get_syscall_table(arch=None, mode=None):
                 syscall_list.append([nr, name, arch_specific_dic[func]])
                 continue
             # common case
-            if func in ['sys_ni_syscall', "-"]:
+            if func in ["sys_ni_syscall", "-"]:
                 continue
             if func not in sc_def:
                 err("Not found: {:s}".format(func))
@@ -36552,32 +36552,32 @@ def get_syscall_table(arch=None, mode=None):
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(sh4_syscall_tbl)
         arch_specific_dic = {
-            'sys_sh_pipe': [], # arch/sh/kernel/sys_sh32.c
-            'old_mmap': [
-                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
-                'unsigned long flags', 'int fd', 'unsigned long off',
+            "sys_sh_pipe": [], # arch/sh/kernel/sys_sh32.c
+            "old_mmap": [
+                "unsigned long addr", "unsigned long len", "unsigned long prot",
+                "unsigned long flags", "int fd", "unsigned long off",
             ], # arch/sh/kernel/sys_sh.c
-            'sys_sigreturn': [], # arch/sh/kernel/signal_32.c
-            'sys_clone': [
-                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
-                'int __user *child_tidptr', 'unsigned long tls',
+            "sys_sigreturn": [], # arch/sh/kernel/signal_32.c
+            "sys_clone": [
+                "unsigned long clone_flags", "unsigned long newsp", "int __user *parent_tidptr",
+                "int __user *child_tidptr", "unsigned long tls",
             ], # kernel/fork.c
-            'sys_cacheflush': [
-                'unsigned long addr', 'unsigned long len', 'int op',
+            "sys_cacheflush": [
+                "unsigned long addr", "unsigned long len", "int op",
             ], # arch/sh/kernel/sys_sh.c
-            'sys_rt_sigreturn': [], # arch/sh/kernel/signal_32.c
-            'sys_pread_wrapper': [
-                'unsigned int fd', 'char __user *buf', 'size_t count', 'long dummy', 'loff_t pos',
+            "sys_rt_sigreturn": [], # arch/sh/kernel/signal_32.c
+            "sys_pread_wrapper": [
+                "unsigned int fd", "char __user *buf", "size_t count", "long dummy", "loff_t pos",
             ], # arch/sh/kernel/sys_sh32.c
-            'sys_pwrite_wrapper': [
-                'unsigned int fd', 'const char __user *buf', 'size_t count', 'long dummy', 'loff_t pos',
+            "sys_pwrite_wrapper": [
+                "unsigned int fd", "const char __user *buf", "size_t count", "long dummy", "loff_t pos",
             ], # arch/sh/kernel/sys_sh32.c
-            'sys_mmap2': [
-                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
-                'unsigned long flags', 'unsigned long fd', 'unsigned long pgoff',
+            "sys_mmap2": [
+                "unsigned long addr", "unsigned long len", "unsigned long prot",
+                "unsigned long flags", "unsigned long fd", "unsigned long pgoff",
             ], # arch/sh/kernel/sys_sh.c
-            'sys_fadvise64_64_wrapper': [
-                'int fd', 'u32 offset0', 'u32 offset1', 'u32 len0', 'u32 len1', 'int advice',
+            "sys_fadvise64_64_wrapper": [
+                "int fd", "u32 offset0", "u32 offset1", "u32 len0", "u32 len1", "int advice",
             ], # arch/sh/kernel/sys_sh32.c
         }
 
@@ -36591,7 +36591,7 @@ def get_syscall_table(arch=None, mode=None):
                 syscall_list.append([nr, name, arch_specific_dic[func]])
                 continue
             # common case
-            if func == 'sys_ni_syscall':
+            if func == "sys_ni_syscall":
                 continue
             if func not in sc_def:
                 err("Not found: {:s}".format(func))
@@ -36603,33 +36603,33 @@ def get_syscall_table(arch=None, mode=None):
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(m68k_syscall_tbl)
         arch_specific_dic = {
-            '__sys_fork': [], # kernel/fork.c
-            'sys_sigreturn': [], # arch/m68k/kernel/entry.S
-            '__sys_clone': [
-                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
-                'int __user *child_tidptr', 'unsigned long tls',
+            "__sys_fork": [], # kernel/fork.c
+            "sys_sigreturn": [], # arch/m68k/kernel/entry.S
+            "__sys_clone": [
+                "unsigned long clone_flags", "unsigned long newsp", "int __user *parent_tidptr",
+                "int __user *child_tidptr", "unsigned long tls",
             ], # kernel/fork.c
-            'sys_cacheflush': [
-                'unsigned long addr', 'int scope', 'int cache', 'unsigned long len',
+            "sys_cacheflush": [
+                "unsigned long addr", "int scope", "int cache", "unsigned long len",
             ], #
-            'sys_getpagesize': [], # arch/m68k/kernel/sys_m68k.c
-            'sys_rt_sigreturn': [], # arch/m68k/kernel/entry.S
-            '__sys_vfork': [], # kernel/fork.c
-            'sys_mmap2': [
-                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
-                'unsigned long flags', 'unsigned long fd', 'unsigned long pgoff',
+            "sys_getpagesize": [], # arch/m68k/kernel/sys_m68k.c
+            "sys_rt_sigreturn": [], # arch/m68k/kernel/entry.S
+            "__sys_vfork": [], # kernel/fork.c
+            "sys_mmap2": [
+                "unsigned long addr", "unsigned long len", "unsigned long prot",
+                "unsigned long flags", "unsigned long fd", "unsigned long pgoff",
             ], # arch/m68k/kernel/sys_m68k.c
-            'sys_get_thread_area': [], # arch/m68k/kernel/sys_m68k.c
-            'sys_set_thread_area': [
-                'unsigned long tp',
+            "sys_get_thread_area": [], # arch/m68k/kernel/sys_m68k.c
+            "sys_set_thread_area": [
+                "unsigned long tp",
             ], # arch/m68k/kernel/sys_m68k.c
-            'sys_atomic_cmpxchg_32': [
-                'unsigned long newval', 'int oldval', 'int d3', 'int d4', 'int d5',
-                'unsigned long __user *mem',
+            "sys_atomic_cmpxchg_32": [
+                "unsigned long newval", "int oldval", "int d3", "int d4", "int d5",
+                "unsigned long __user *mem",
             ], # arch/m68k/kernel/sys_m68k.c
-            'sys_atomic_barrier': [], # arch/m68k/kernel/sys_m68k.c
-            '__sys_clone3': [
-                'struct clone_args __user *uargs', 'size_t size',
+            "sys_atomic_barrier": [], # arch/m68k/kernel/sys_m68k.c
+            "__sys_clone3": [
+                "struct clone_args __user *uargs", "size_t size",
             ], #
         }
 
@@ -36643,7 +36643,7 @@ def get_syscall_table(arch=None, mode=None):
                 syscall_list.append([nr, name, arch_specific_dic[func]])
                 continue
             # common case
-            if func == 'sys_ni_syscall':
+            if func == "sys_ni_syscall":
                 continue
             if func not in sc_def:
                 err("Not found: {:s}".format(func))
@@ -36655,129 +36655,129 @@ def get_syscall_table(arch=None, mode=None):
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(alpha_syscall_tbl)
         arch_specific_dic = {
-            'alpha_syscall_zero': [], # arch/alpha/kernel/entry.S
-            'alpha_fork': [], # arch/alpha/kernel/entry.S (fork_like macro)
-            'sys_osf_wait4': [
-                'pid_t pid', 'int __user *ustatus', 'int options', 'struct rusage32 __user *ur',
+            "alpha_syscall_zero": [], # arch/alpha/kernel/entry.S
+            "alpha_fork": [], # arch/alpha/kernel/entry.S (fork_like macro)
+            "sys_osf_wait4": [
+                "pid_t pid", "int __user *ustatus", "int options", "struct rusage32 __user *ur",
             ], # arch/alpha/kernel/osf_sys.c
-            'sys_osf_brk': [
-                'unsigned long brk',
+            "sys_osf_brk": [
+                "unsigned long brk",
             ], # arch/alpha/kernel/osf_sys.c
-            'sys_getxpid': [], # arch/alpha/kernel/osf_sys.c
-            'sys_osf_mount': [
-                'unsigned long typenr', 'const char __user *path', 'int flag', 'void __user *data'
+            "sys_getxpid": [], # arch/alpha/kernel/osf_sys.c
+            "sys_osf_mount": [
+                "unsigned long typenr", "const char __user *path", "int flag", "void __user *data"
             ], # arch/alpha/kernel/osf_sys.c
-            'sys_getxuid': [], # arch/alpha/kernel/osf_sys.c
-            'sys_alpha_pipe': [], # arch/alpha/kernel/osf_sys.c
-            'sys_osf_set_program_attributes': [
-                'unsigned long text_start', 'unsigned long text_len',
-                'unsigned long bss_start', 'unsigned long bss_len',
+            "sys_getxuid": [], # arch/alpha/kernel/osf_sys.c
+            "sys_alpha_pipe": [], # arch/alpha/kernel/osf_sys.c
+            "sys_osf_set_program_attributes": [
+                "unsigned long text_start", "unsigned long text_len",
+                "unsigned long bss_start", "unsigned long bss_len",
             ], # arch/alpha/kernel/osf_sys.c
-            'sys_getxgid': [], # arch/alpha/kernel/osf_sys.c
-            'sys_osf_sigprocmask': [
-                'int how', 'unsigned long newmask',
+            "sys_getxgid": [], # arch/alpha/kernel/osf_sys.c
+            "sys_osf_sigprocmask": [
+                "int how", "unsigned long newmask",
             ], # arch/alpha/kernel/signal.c
-            'sys_getpagesize': [], # arch/alpha/kernel/osf_sys.c
-            'alpha_vfork': [], # arch/alpha/kernel/entry.S (fork_like macro)
-            'sys_osf_mmap': [
-                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
-                'unsigned long flags', 'unsigned long fd', 'unsigned long off',
+            "sys_getpagesize": [], # arch/alpha/kernel/osf_sys.c
+            "alpha_vfork": [], # arch/alpha/kernel/entry.S (fork_like macro)
+            "sys_osf_mmap": [
+                "unsigned long addr", "unsigned long len", "unsigned long prot",
+                "unsigned long flags", "unsigned long fd", "unsigned long off",
             ], # arch/alpha/kernel/osf_sys.c
-            'sys_getdtablesize': [], # arch/alpha/kernel/osf_sys.c
-            'sys_osf_select': [
-                'int, n, fd_set __user *inp', 'fd_set __user *outp',
-                'fd_set __user *exp', 'struct timeval32 __user *tvp',
+            "sys_getdtablesize": [], # arch/alpha/kernel/osf_sys.c
+            "sys_osf_select": [
+                "int, n, fd_set __user *inp", "fd_set __user *outp",
+                "fd_set __user *exp", "struct timeval32 __user *tvp",
             ], # arch/alpha/kernel/osf_sys.c
-            'sys_osf_getpriority': [
-                'int which', 'int who',
+            "sys_osf_getpriority": [
+                "int which", "int who",
             ], # arch/alpha/kernel/osf_sys.c
-            'sys_sigreturn': [], # arch/alpha/kernel/entry.S (sigreturn_like macro)
-            'sys_osf_sigstack': [
-                'struct sigstack __user *uss', 'struct sigstack __user *uoss',
+            "sys_sigreturn": [], # arch/alpha/kernel/entry.S (sigreturn_like macro)
+            "sys_osf_sigstack": [
+                "struct sigstack __user *uss", "struct sigstack __user *uoss",
             ], # arch/alpha/kernel/osf_sys.c
-            'sys_osf_gettimeofday': [
-                'struct timeval32 __user *tv', 'struct timezone __user *tz',
+            "sys_osf_gettimeofday": [
+                "struct timeval32 __user *tv", "struct timezone __user *tz",
             ], # arch/alpha/kernel/osf_sys.c
-            'sys_osf_getrusage': [
-                'int who', 'struct rusage32 __user *ru',
+            "sys_osf_getrusage": [
+                "int who", "struct rusage32 __user *ru",
             ], # arch/alpha/kernel/osf_sys.c
-            'sys_osf_readv': [
-                ' unsigned long fd', 'const struct iovec __user *vector', 'unsigned long count',
+            "sys_osf_readv": [
+                " unsigned long fd", "const struct iovec __user *vector", "unsigned long count",
             ], # arch/alpha/kernel/osf_sys.c
-            'sys_osf_writev': [
-                ' unsigned long fd', 'const struct iovec __user *vector', 'unsigned long count',
+            "sys_osf_writev": [
+                " unsigned long fd", "const struct iovec __user *vector", "unsigned long count",
             ], # arch/alpha/kernel/osf_sys.c
-            'sys_osf_settimeofday': [
-                'struct timeval32 __user *tv', 'struct timezone __user *tz',
+            "sys_osf_settimeofday": [
+                "struct timeval32 __user *tv", "struct timezone __user *tz",
             ], # arch/alpha/kernel/osf_sys.c
-            'sys_osf_utimes': [
-                'const char __user *filename', 'struct timeval32 __user *tvs',
+            "sys_osf_utimes": [
+                "const char __user *filename", "struct timeval32 __user *tvs",
             ], # arch/alpha/kernel/osf_sys.c
-            'sys_osf_sigaction': [
-                'int, sig', 'const struct osf_sigaction __user *act', 'struct osf_sigaction __user *oact',
+            "sys_osf_sigaction": [
+                "int, sig", "const struct osf_sigaction __user *act", "struct osf_sigaction __user *oact",
             ], # arch/alpha/kernel/signal.c
-            'sys_osf_getdirentries': [
-                'unsigned int fd', 'struct osf_dirent __user *dirent',
-                'unsigned int count', 'long __user *basep',
+            "sys_osf_getdirentries": [
+                "unsigned int fd", "struct osf_dirent __user *dirent",
+                "unsigned int count", "long __user *basep",
             ], # arch/alpha/kernel/osf_sys.c
-            'sys_osf_statfs': [
-                'const char __user *pathname', 'struct osf_statfs __user *buffer', 'unsigned long bufsiz',
+            "sys_osf_statfs": [
+                "const char __user *pathname", "struct osf_statfs __user *buffer", "unsigned long bufsiz",
             ], # arch/alpha/kernel/osf_sys.c
-            'sys_osf_fstatfs': [
-                'unsigned long fd', 'struct osf_statfs __user *buffer', 'unsigned long bufsiz',
+            "sys_osf_fstatfs": [
+                "unsigned long fd", "struct osf_statfs __user *buffer", "unsigned long bufsiz",
             ], # arch/alpha/kernel/osf_sys.c
-            'sys_osf_getdomainname': [
-                'char __user *name', 'int namelen',
+            "sys_osf_getdomainname": [
+                "char __user *name", "int namelen",
             ], # arch/alpha/kernel/osf_sys.c
-            'sys_osf_utsname': [
-                'char __user *name',
+            "sys_osf_utsname": [
+                "char __user *name",
             ], # arch/alpha/kernel/osf_sys.c
-            'sys_osf_stat': [
-                'char __user *name', 'struct osf_stat __user *buf',
+            "sys_osf_stat": [
+                "char __user *name", "struct osf_stat __user *buf",
             ], # arch/alpha/kernel/osf_sys.c
-            'sys_osf_lstat': [
-                'char __user *name', 'struct osf_stat __user *buf',
+            "sys_osf_lstat": [
+                "char __user *name", "struct osf_stat __user *buf",
             ], # arch/alpha/kernel/osf_sys.c
-            'sys_osf_fstat': [
-                'int fd', 'struct osf_stat __user *buf',
+            "sys_osf_fstat": [
+                "int fd", "struct osf_stat __user *buf",
             ], # arch/alpha/kernel/osf_sys.c
-            'sys_osf_statfs64': [
-                'char __user *pathname', 'struct osf_statfs64 __user *buffer', 'unsigned long bufsiz',
+            "sys_osf_statfs64": [
+                "char __user *pathname", "struct osf_statfs64 __user *buffer", "unsigned long bufsiz",
             ], # arch/alpha/kernel/osf_sys.c
-            'sys_osf_fstatfs64': [
-                'unsigned long fd', 'struct osf_statfs64 __user *buffer', 'unsigned long bufsiz',
+            "sys_osf_fstatfs64": [
+                "unsigned long fd", "struct osf_statfs64 __user *buffer", "unsigned long bufsiz",
             ], # arch/alpha/kernel/osf_sys.c
-            'sys_osf_sysinfo': [
-                'int command', 'char __user *buf', 'long count',
+            "sys_osf_sysinfo": [
+                "int command", "char __user *buf", "long count",
             ], # arch/alpha/kernel/osf_sys.c
-            'sys_osf_proplist_syscall': [
-                'enum pl_code code', 'union pl_args __user *args',
+            "sys_osf_proplist_syscall": [
+                "enum pl_code code", "union pl_args __user *args",
             ], # arch/alpha/kernel/osf_sys.c
-            'sys_osf_usleep_thread': [
-                'struct timeval32 __user *sleep', 'struct timeval32 __user *remain',
+            "sys_osf_usleep_thread": [
+                "struct timeval32 __user *sleep", "struct timeval32 __user *remain",
             ], # arch/alpha/kernel/osf_sys.c
-            'sys_osf_getsysinfo': [
-                'unsigned long op', 'void __user *buffer', 'unsigned long nbytes',
-                'int __user *start', 'void __user *arg',
+            "sys_osf_getsysinfo": [
+                "unsigned long op", "void __user *buffer", "unsigned long nbytes",
+                "int __user *start", "void __user *arg",
             ], # arch/alpha/kernel/osf_sys.c
-            'sys_osf_setsysinfo': [
-                'unsigned long op', 'void __user *buffer', 'unsigned long nbytes',
-                'int __user *start', 'void __user *arg',
+            "sys_osf_setsysinfo": [
+                "unsigned long op", "void __user *buffer", "unsigned long nbytes",
+                "int __user *start", "void __user *arg",
             ], # arch/alpha/kernel/osf_sys.c
-            'sys_sethae': [
-                'unsigned long val',
+            "sys_sethae": [
+                "unsigned long val",
             ], # arch/alpha/kernel/osf_sys.c
-            'sys_old_adjtimex': [
-                'struct timex32 __user *txc_p',
+            "sys_old_adjtimex": [
+                "struct timex32 __user *txc_p",
             ], # arch/alpha/kernel/osf_sys.c
-            'alpha_clone': [
-                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
-                'int __user *child_tidptr', 'unsigned long tls',
+            "alpha_clone": [
+                "unsigned long clone_flags", "unsigned long newsp", "int __user *parent_tidptr",
+                "int __user *child_tidptr", "unsigned long tls",
             ], # kernel/fork.c
-            'sys_rt_sigreturn': [], # arch/alpha/kernel/entry.S (sigreturn_like macro)
-            'sys_rt_sigaction': [
-                'int sig', 'const struct sigaction __user *act', 'struct sigaction __user *oact',
-                'size_t sigsetsize', 'void __user *restorer',
+            "sys_rt_sigreturn": [], # arch/alpha/kernel/entry.S (sigreturn_like macro)
+            "sys_rt_sigaction": [
+                "int sig", "const struct sigaction __user *act", "struct sigaction __user *oact",
+                "size_t sigsetsize", "void __user *restorer",
             ] # arch/alpha/kernel/signal.c
         }
 
@@ -36791,7 +36791,7 @@ def get_syscall_table(arch=None, mode=None):
                 syscall_list.append([nr, name, arch_specific_dic[func]])
                 continue
             # common case
-            if func == 'sys_ni_syscall':
+            if func == "sys_ni_syscall":
                 continue
             if func not in sc_def:
                 err("Not found: {:s}".format(func))
@@ -36803,72 +36803,72 @@ def get_syscall_table(arch=None, mode=None):
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(hppa_syscall_tbl)
         arch_specific_dic = {
-            'sys_fork_wrapper': [], # arch/parisc/kernel/entry.S (fork_like macro)
-            'sys_mmap2': [
-                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
-                'unsigned long flags', 'unsigned long fd', 'unsigned long pgoff',
+            "sys_fork_wrapper": [], # arch/parisc/kernel/entry.S (fork_like macro)
+            "sys_mmap2": [
+                "unsigned long addr", "unsigned long len", "unsigned long prot",
+                "unsigned long flags", "unsigned long fd", "unsigned long pgoff",
             ], # arch/parisc/kernel/sys_parisc.c
-            'sys_mmap': [
-                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
-                'unsigned long flags', 'unsigned long fd', 'unsigned long offset',
+            "sys_mmap": [
+                "unsigned long addr", "unsigned long len", "unsigned long prot",
+                "unsigned long flags", "unsigned long fd", "unsigned long offset",
             ], # arch/parisc/kernel/sys_parisc.c
-            'parisc_pread64': [
-                'unsigned int fd', 'char __user *buf', 'size_t count',
-                'unsigned int high', 'unsigned int low',
+            "parisc_pread64": [
+                "unsigned int fd", "char __user *buf", "size_t count",
+                "unsigned int high", "unsigned int low",
             ], # arch/parisc/kernel/sys_parisc.c
-            'parisc_pwrite64': [
-                'unsigned int fd', 'const char __user *buf', 'size_t count',
-                'unsigned int high', 'unsigned int low',
+            "parisc_pwrite64": [
+                "unsigned int fd", "const char __user *buf", "size_t count",
+                "unsigned int high", "unsigned int low",
             ], # arch/parisc/kernel/sys_parisc.c
-            'sys_vfork_wrapper': [], # arch/parisc/kernel/entry.S (fork_like macro)
-            'sys_clone_wrapper': [
-                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
-                'unsigned long tls', 'int *child_tidptr',
+            "sys_vfork_wrapper": [], # arch/parisc/kernel/entry.S (fork_like macro)
+            "sys_clone_wrapper": [
+                "unsigned long clone_flags", "unsigned long newsp", "int __user *parent_tidptr",
+                "unsigned long tls", "int *child_tidptr",
             ], # kernel/fork.c (fork_linke macro, CONFIG_CLONE_BACKWARDS)
-            'parisc_personality': [
-                'unsigned long personality',
+            "parisc_personality": [
+                "unsigned long personality",
             ], # arch/parisc/kernel/sys_parisc.c
-            'sys_rt_sigreturn_wrapper': [], # arch/parisc/kernel/entry.S
-            'parisc_truncate64': [
-                'const char __user * path', 'unsigned int high', 'unsigned int low',
+            "sys_rt_sigreturn_wrapper": [], # arch/parisc/kernel/entry.S
+            "parisc_truncate64": [
+                "const char __user * path", "unsigned int high", "unsigned int low",
             ], # arch/parisc/kernel/sys_parisc.c
-            'parisc_ftruncate64': [
-                'unsigned int fd', 'unsigned int high', 'unsigned int low',
+            "parisc_ftruncate64": [
+                "unsigned int fd", "unsigned int high", "unsigned int low",
             ], # arch/parisc/kernel/sys_parisc.c
-            'parisc_readahead': [
-                'int fd', 'unsigned int high', 'unsigned int low', 'size_t count',
+            "parisc_readahead": [
+                "int fd", "unsigned int high", "unsigned int low", "size_t count",
             ], # arch/parisc/kernel/sys_parisc.c
-            'parisc_fadvise64_64': [
-                'int fd', 'unsigned int high_off', 'unsigned int low_off',
-                'unsigned int high_len', 'unsigned int low_len', 'int advice',
+            "parisc_fadvise64_64": [
+                "int fd", "unsigned int high_off", "unsigned int low_off",
+                "unsigned int high_len", "unsigned int low_len", "int advice",
             ], # arch/parisc/kernel/sys_parisc.c
-            'parisc_sync_file_range': [
-                'int fd', 'u32 hi_off', 'u32 lo_off', 'u32 hi_nbytes', 'u32 lo_nbytes',
-                'unsigned int flags',
+            "parisc_sync_file_range": [
+                "int fd", "u32 hi_off", "u32 lo_off", "u32 hi_nbytes", "u32 lo_nbytes",
+                "unsigned int flags",
             ], # arch/parisc/kernel/sys_parisc.c
-            'parisc_fallocate': [
-                'int fd', 'int mode', 'u32 offhi', 'u32 offlo', 'u32 lenhi', 'u32 lenlo',
+            "parisc_fallocate": [
+                "int fd", "int mode", "u32 offhi", "u32 offlo", "u32 lenhi", "u32 lenlo",
             ], # arch/parisc/kernel/sys_parisc.c
-            'parisc_timerfd_create': [
-                'int clockid', 'int flags',
+            "parisc_timerfd_create": [
+                "int clockid", "int flags",
             ], # arch/parisc/kernel/sys_parisc.c
-            'parisc_signalfd4': [
-                'int ufd', 'sigset_t __user *user_mask', 'size_t sizemask', 'int flags',
+            "parisc_signalfd4": [
+                "int ufd", "sigset_t __user *user_mask", "size_t sizemask", "int flags",
             ], # arch/parisc/kernel/sys_parisc.c
-            'parisc_eventfd2': [
-                'unsigned int count', 'int flags',
+            "parisc_eventfd2": [
+                "unsigned int count", "int flags",
             ], # arch/parisc/kernel/sys_parisc.c
-            'parisc_pipe2': [
-                'int __user *fildes', 'int flags',
+            "parisc_pipe2": [
+                "int __user *fildes", "int flags",
             ], # arch/parisc/kernel/sys_parisc.c
-            'parisc_inotify_init1': [
-                'int flags',
+            "parisc_inotify_init1": [
+                "int flags",
             ], # arch/parisc/kernel/sys_parisc.c
-            'parisc_userfaultfd': [
-                'int flags',
+            "parisc_userfaultfd": [
+                "int flags",
             ], # arch/parisc/kernel/sys_parisc.c
-            'sys_clone3_wrapper': [
-                'struct clone_args __user *uargs', 'size_t size',
+            "sys_clone3_wrapper": [
+                "struct clone_args __user *uargs", "size_t size",
             ], # arch/parisc/kernel/entry.S (fork_like macro)
         }
 
@@ -36882,7 +36882,7 @@ def get_syscall_table(arch=None, mode=None):
                 syscall_list.append([nr, name, arch_specific_dic[func]])
                 continue
             # common case
-            if func == 'sys_ni_syscall':
+            if func == "sys_ni_syscall":
                 continue
             if func not in sc_def:
                 err("Not found: {:s}".format(func))
@@ -36894,41 +36894,41 @@ def get_syscall_table(arch=None, mode=None):
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(hppa_syscall_tbl)
         arch_specific_dic = {
-            'sys_fork_wrapper': [], # arch/parisc/kernel/entry.S (fork_like macro)
-            'sys_mmap2': [
-                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
-                'unsigned long flags', 'unsigned long fd', 'unsigned long pgoff',
+            "sys_fork_wrapper": [], # arch/parisc/kernel/entry.S (fork_like macro)
+            "sys_mmap2": [
+                "unsigned long addr", "unsigned long len", "unsigned long prot",
+                "unsigned long flags", "unsigned long fd", "unsigned long pgoff",
             ], # arch/parisc/kernel/sys_parisc.c
-            'sys_mmap': [
-                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
-                'unsigned long flags', 'unsigned long fd', 'unsigned long offset',
+            "sys_mmap": [
+                "unsigned long addr", "unsigned long len", "unsigned long prot",
+                "unsigned long flags", "unsigned long fd", "unsigned long offset",
             ], # arch/parisc/kernel/sys_parisc.c
-            'sys_vfork_wrapper': [], # arch/parisc/kernel/entry.S (fork_like macro)
-            'sys_clone_wrapper': [
-                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
-                'unsigned long tls', 'int *child_tidptr',
+            "sys_vfork_wrapper": [], # arch/parisc/kernel/entry.S (fork_like macro)
+            "sys_clone_wrapper": [
+                "unsigned long clone_flags", "unsigned long newsp", "int __user *parent_tidptr",
+                "unsigned long tls", "int *child_tidptr",
             ], # kernel/fork.c (fork_linke macro, CONFIG_CLONE_BACKWARDS)
-            'sys_rt_sigreturn_wrapper': [], # arch/parisc/kernel/entry.S
-            'parisc_timerfd_create': [
-                'int clockid', 'int flags',
+            "sys_rt_sigreturn_wrapper": [], # arch/parisc/kernel/entry.S
+            "parisc_timerfd_create": [
+                "int clockid", "int flags",
             ], # arch/parisc/kernel/sys_parisc.c
-            'parisc_signalfd4': [
-                'int ufd', 'sigset_t __user *user_mask', 'size_t sizemask', 'int flags',
+            "parisc_signalfd4": [
+                "int ufd", "sigset_t __user *user_mask", "size_t sizemask", "int flags",
             ], # arch/parisc/kernel/sys_parisc.c
-            'parisc_eventfd2': [
-                'unsigned int count', 'int flags',
+            "parisc_eventfd2": [
+                "unsigned int count", "int flags",
             ], # arch/parisc/kernel/sys_parisc.c
-            'parisc_pipe2': [
-                'int __user *fildes', 'int flags',
+            "parisc_pipe2": [
+                "int __user *fildes", "int flags",
             ], # arch/parisc/kernel/sys_parisc.c
-            'parisc_inotify_init1': [
-                'int flags',
+            "parisc_inotify_init1": [
+                "int flags",
             ], # arch/parisc/kernel/sys_parisc.c
-            'parisc_userfaultfd': [
-                'int flags',
+            "parisc_userfaultfd": [
+                "int flags",
             ], # arch/parisc/kernel/sys_parisc.c
-            'sys_clone3_wrapper': [
-                'struct clone_args __user *uargs', 'size_t size',
+            "sys_clone3_wrapper": [
+                "struct clone_args __user *uargs", "size_t size",
             ], # arch/parisc/kernel/entry.S (fork_like macro)
         }
         syscall_list = []
@@ -36941,7 +36941,7 @@ def get_syscall_table(arch=None, mode=None):
                 syscall_list.append([nr, name, arch_specific_dic[func]])
                 continue
             # common case
-            if func == 'sys_ni_syscall':
+            if func == "sys_ni_syscall":
                 continue
             if func not in sc_def:
                 err("Not found: {:s}".format(func))
@@ -36953,14 +36953,14 @@ def get_syscall_table(arch=None, mode=None):
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(or1k_syscall_tbl)
         arch_specific_dic = {
-            'sys_rt_sigreturn': [], # arch/openrisc/kernel/entry.S
-            'sys_clone': [
-                'unsigned long clone_flags', 'unsigned long newsp',
-                'void __user *parent_tid', 'void __user *child_tid', 'int tls',
+            "sys_rt_sigreturn": [], # arch/openrisc/kernel/entry.S
+            "sys_clone": [
+                "unsigned long clone_flags", "unsigned long newsp",
+                "void __user *parent_tid", "void __user *child_tid", "int tls",
             ], # arch/openrisc/include/syscalls.h
-            'sys_mmap': [
-                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
-                'unsigned long flags', 'unsigned long fd', 'off_t pgoff',
+            "sys_mmap": [
+                "unsigned long addr", "unsigned long len", "unsigned long prot",
+                "unsigned long flags", "unsigned long fd", "off_t pgoff",
             ], # include/asm-generic/syscalls.h
         }
 
@@ -36974,7 +36974,7 @@ def get_syscall_table(arch=None, mode=None):
                 syscall_list.append([nr, name, arch_specific_dic[func]])
                 continue
             # common case
-            if func == 'sys_ni_syscall':
+            if func == "sys_ni_syscall":
                 continue
             if func not in sc_def:
                 err("Not found: {:s}".format(func))
@@ -36986,14 +36986,14 @@ def get_syscall_table(arch=None, mode=None):
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(nios2_syscall_tbl)
         arch_specific_dic = {
-            'sys_rt_sigreturn': [], # arch/nios2/kernel/entry.S
-            'sys_clone': [
-                'unsigned long clone_flags', 'unsigned long newsp',
-                'int __user *parent_tidptr', 'int __user *child_tidptr', 'int tls_val',
+            "sys_rt_sigreturn": [], # arch/nios2/kernel/entry.S
+            "sys_clone": [
+                "unsigned long clone_flags", "unsigned long newsp",
+                "int __user *parent_tidptr", "int __user *child_tidptr", "int tls_val",
             ], # arch/nios2/kernel/entry.S
-            'sys_mmap': [
-                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
-                'unsigned long flags', 'unsigned long fd', 'off_t pgoff',
+            "sys_mmap": [
+                "unsigned long addr", "unsigned long len", "unsigned long prot",
+                "unsigned long flags", "unsigned long fd", "off_t pgoff",
             ], # include/asm-generic/syscalls.h
         }
 
@@ -37007,7 +37007,7 @@ def get_syscall_table(arch=None, mode=None):
                 syscall_list.append([nr, name, arch_specific_dic[func]])
                 continue
             # common case
-            if func == 'sys_ni_syscall':
+            if func == "sys_ni_syscall":
                 continue
             if func not in sc_def:
                 err("Not found: {:s}".format(func))
@@ -37019,18 +37019,18 @@ def get_syscall_table(arch=None, mode=None):
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(microblaze_syscall_tbl)
         arch_specific_dic = {
-            'sys_mmap': [
-                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
-                'unsigned long flags', 'unsigned long fd', 'off_t pgoff',
+            "sys_mmap": [
+                "unsigned long addr", "unsigned long len", "unsigned long prot",
+                "unsigned long flags", "unsigned long fd", "off_t pgoff",
             ], # arch/microblaze/kernel/sys_microblaze.c
-            'sys_clone': [
-                'unsigned long clone_flags', 'unsigned long newsp', 'int stack_size',
-                'int __user *parent_tidptr', 'int __user *child_tidptr', 'unsigned long tls',
+            "sys_clone": [
+                "unsigned long clone_flags", "unsigned long newsp", "int stack_size",
+                "int __user *parent_tidptr", "int __user *child_tidptr", "unsigned long tls",
             ], # kernel/fork.c (CONFIG_CLONE_BACKWARDS3)
-            'sys_rt_sigreturn_wrapper': [], # arch/microblaze/kernel/entry.S
-            'sys_mmap2': [
-                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
-                'unsigned long flags', 'unsigned long fd', 'unsigned long pgoff',
+            "sys_rt_sigreturn_wrapper": [], # arch/microblaze/kernel/entry.S
+            "sys_mmap2": [
+                "unsigned long addr", "unsigned long len", "unsigned long prot",
+                "unsigned long flags", "unsigned long fd", "unsigned long pgoff",
             ], # arch/microblaze/kernel/sys_microblaze.c
         }
 
@@ -37044,7 +37044,7 @@ def get_syscall_table(arch=None, mode=None):
                 syscall_list.append([nr, name, arch_specific_dic[func]])
                 continue
             # common case
-            if func == 'sys_ni_syscall':
+            if func == "sys_ni_syscall":
                 continue
             if func not in sc_def:
                 err("Not found: {:s}".format(func))
@@ -37056,17 +37056,17 @@ def get_syscall_table(arch=None, mode=None):
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(xtensa_syscall_tbl)
         arch_specific_dic = {
-            'xtensa_fadvise64_64': [
-                'int fd', 'int advice', 'unsigned long long offset', 'unsigned long long len',
+            "xtensa_fadvise64_64": [
+                "int fd", "int advice", "unsigned long long offset", "unsigned long long len",
             ], # arch/xtensa/kernel/syscall.c
-            'xtensa_shmat': [
-                'int shmid', 'char __user *shmaddr', 'int shmflg',
+            "xtensa_shmat": [
+                "int shmid", "char __user *shmaddr", "int shmflg",
             ], # arch/xtensa/kernel/syscall.c
-            'sys_clone': [
-                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
-                'unsigned long tls', 'int *child_tidptr',
+            "sys_clone": [
+                "unsigned long clone_flags", "unsigned long newsp", "int __user *parent_tidptr",
+                "unsigned long tls", "int *child_tidptr",
             ], # kernel/fork.c (CONFIG_CLONE_BACKWARDS)
-            'xtensa_rt_sigreturn': [], # arch/xtensa/kernel/signal.c
+            "xtensa_rt_sigreturn": [], # arch/xtensa/kernel/signal.c
         }
 
         syscall_list = []
@@ -37079,7 +37079,7 @@ def get_syscall_table(arch=None, mode=None):
                 syscall_list.append([nr, name, arch_specific_dic[func]])
                 continue
             # common case
-            if func == 'sys_ni_syscall':
+            if func == "sys_ni_syscall":
                 continue
             if func not in sc_def:
                 err("Not found: {:s}".format(func))
@@ -37091,21 +37091,21 @@ def get_syscall_table(arch=None, mode=None):
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(cris_syscall_tbl)
         arch_specific_dic = {
-            'sys_sigreturn': [], # arch/cris/arch-v10/kernel/signal.c
-            'sys_clone': [
-                'unsigned long clone_flags', 'unsigned long newsp', 'int stack_size',
-                'int __user *parent_tidptr', 'int __user *child_tidptr', 'unsigned long tls',
+            "sys_sigreturn": [], # arch/cris/arch-v10/kernel/signal.c
+            "sys_clone": [
+                "unsigned long clone_flags", "unsigned long newsp", "int stack_size",
+                "int __user *parent_tidptr", "int __user *child_tidptr", "unsigned long tls",
             ], # kernel/fork.c (CONFIG_CLONE_BACKWARDS2)
-            'sys_bdflush': [
-                'int func', 'long data',
+            "sys_bdflush": [
+                "int func", "long data",
             ], # include/linux/syscalls.h
-            'sys_sysctl': [
-                'struct __sysctl_args __user *args',
+            "sys_sysctl": [
+                "struct __sysctl_args __user *args",
             ], # include/linux/syscalls.h
-            'sys_rt_sigreturn': [], # arch/cris/arch-v10/kernel/signal.c
-            'sys_mmap2': [
-                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
-                'unsigned long flags', 'unsigned long fd', 'unsigned long pgoff',
+            "sys_rt_sigreturn": [], # arch/cris/arch-v10/kernel/signal.c
+            "sys_mmap2": [
+                "unsigned long addr", "unsigned long len", "unsigned long prot",
+                "unsigned long flags", "unsigned long fd", "unsigned long pgoff",
             ], # arch/cris/kernel/sys_cris.c
         }
 
@@ -37119,7 +37119,7 @@ def get_syscall_table(arch=None, mode=None):
                 syscall_list.append([nr, name, arch_specific_dic[func]])
                 continue
             # common case
-            if func == 'sys_ni_syscall':
+            if func == "sys_ni_syscall":
                 continue
             if func not in sc_def:
                 err("Not found: {:s}".format(func))
@@ -37131,14 +37131,14 @@ def get_syscall_table(arch=None, mode=None):
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(loongarch_syscall_tbl)
         arch_specific_dic = {
-            'sys_clone': [
-                'unsigned long clone_flags', 'unsigned long newsp', 'int __user *parent_tidptr',
-                'int __user *child_tidptr', 'unsigned long tls',
+            "sys_clone": [
+                "unsigned long clone_flags", "unsigned long newsp", "int __user *parent_tidptr",
+                "int __user *child_tidptr", "unsigned long tls",
             ], # kernel/fork.c
-            'sys_rt_sigreturn': [], # arch/loongarch/kernel/signal.c
-            'sys_mmap': [
-                'unsigned long addr', 'unsigned long len', 'unsigned long prot',
-                'unsigned long flags', 'unsigned long fd', 'off_t pgoff',
+            "sys_rt_sigreturn": [], # arch/loongarch/kernel/signal.c
+            "sys_mmap": [
+                "unsigned long addr", "unsigned long len", "unsigned long prot",
+                "unsigned long flags", "unsigned long fd", "off_t pgoff",
             ], # arch/loongarch/kernel/syscall.c
         }
 
@@ -37152,7 +37152,7 @@ def get_syscall_table(arch=None, mode=None):
                 syscall_list.append([nr, name, arch_specific_dic[func]])
                 continue
             # common case
-            if func == 'sys_ni_syscall':
+            if func == "sys_ni_syscall":
                 continue
             if func not in sc_def:
                 err("Not found: {:s}".format(func))
@@ -37162,9 +37162,9 @@ def get_syscall_table(arch=None, mode=None):
     else:
         raise
 
-    Table = collections.namedtuple('Table', 'arch mode table')
-    Entry = collections.namedtuple('Entry', 'name params')
-    Param = collections.namedtuple('Param', 'reg param')
+    Table = collections.namedtuple("Table", "arch mode table")
+    Entry = collections.namedtuple("Entry", "name params")
+    Param = collections.namedtuple("Param", "reg param")
     syscall_table = Table(arch=arch, mode=mode, table={})
 
     # example:
@@ -37196,8 +37196,8 @@ class SyscallArgsCommand(GenericCommand):
     _category_ = "01-a. Debugging Support - Context"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('syscall_num', metavar='SYSCALL_NUM', nargs='?', type=lambda x: int(x, 0),
-                        help='syscall number you want to search.')
+    parser.add_argument("syscall_num", metavar="SYSCALL_NUM", nargs="?", type=lambda x: int(x, 0),
+                        help="syscall number you want to search.")
     _syntax_ = parser.format_help()
 
     def get_nr(self):
@@ -37505,8 +37505,8 @@ class MagicCommand(GenericCommand):
     _category_ = "02-g. Process Information - Symbol"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("--fj", action='store_true', help='print _IO_xxx_jumps functions')
-    parser.add_argument('filter', metavar='FILTER', nargs='*', help='filter string')
+    parser.add_argument("--fj", action="store_true", help="print _IO_xxx_jumps functions")
+    parser.add_argument("filter", metavar="FILTER", nargs="*", help="filter string.")
     _syntax_ = parser.format_help()
 
     def should_be_print(self, sym):
@@ -37702,7 +37702,7 @@ class KernelMagicCommand(GenericCommand):
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('filter', metavar='FILTER', nargs='*', help='filter string')
+    parser.add_argument("filter", metavar="FILTER", nargs="*", help="filter string.")
     _syntax_ = parser.format_help()
 
     def should_be_print(self, sym):
@@ -37933,7 +37933,7 @@ class SysregCommand(GenericCommand):
     _category_ = "04-a. Register - View"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('filter', metavar='FILTER', nargs='*', help='filter string')
+    parser.add_argument("filter", metavar="FILTER", nargs="*", help="filter string.")
     _syntax_ = parser.format_help()
 
     def get_non_generic_regs(self):
@@ -37994,7 +37994,7 @@ class MmxSetCommand(GenericCommand):
     _category_ = "04-b. Register - Modify"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('reg_and_value', metavar='REG=VALUE', help='MMX register and value you want to set.')
+    parser.add_argument("reg_and_value", metavar="REG=VALUE", help="MMX register and value you want to set.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} $mm0=0x1122334455667788".format(_cmdline_)
@@ -38117,7 +38117,7 @@ class MmxCommand(GenericCommand):
             reghex = ""
             for j in range(8):
                 c = (regs[i] >> (8 * j)) & 0xff
-                reghex += chr(c) if 0x20 <= c < 0x7f else '.'
+                reghex += chr(c) if 0x20 <= c < 0x7f else "."
             gef_print("{:s} : {:#018x}  |  {:s}  |".format(red(regname), regs[i], reghex))
         return
 
@@ -38137,7 +38137,7 @@ class XmmSetCommand(GenericCommand):
     _category_ = "04-b. Register - Modify"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('reg_and_value', metavar='REG=VALUE', help='XMM/YMM register and value you want to set.')
+    parser.add_argument("reg_and_value", metavar="REG=VALUE", help="XMM/YMM register and value you want to set.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} $ymm0=0x11223344556677889900aabbccddeeff9876543210".format(_cmdline_)
@@ -38185,7 +38185,7 @@ class SseCommand(GenericCommand):
     _aliases_ = ["xmm"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-v', dest='verbose', action='store_true', help='also display bit information of mxcsr registers.')
+    parser.add_argument("-v", dest="verbose", action="store_true", help="also display bit information of mxcsr registers.")
     _syntax_ = parser.format_help()
 
     def print_sse(self):
@@ -38209,7 +38209,7 @@ class SseCommand(GenericCommand):
             reghex = ""
             for j in range(16):
                 c = (regs[i] >> (8 * j)) & 0xff
-                reghex += chr(c) if 0x20 <= c < 0x7f else '.'
+                reghex += chr(c) if 0x20 <= c < 0x7f else "."
             regname = "$xmm{:<2d}".format(i)
             gef_print("{:s} : {:#034x}  |  {:s}  |".format(red(regname), regs[i], reghex))
         return
@@ -38288,7 +38288,7 @@ class AvxCommand(GenericCommand):
                 reghex = ""
                 for j in range(32):
                     c = (regs[i] >> (8 * j)) & 0xff
-                    reghex += chr(c) if 0x20 <= c < 0x7f else '.'
+                    reghex += chr(c) if 0x20 <= c < 0x7f else "."
                 gef_print("{:s} : {:#066x}  |  {:s}  |".format(red(regname), regs[i], reghex))
         else:
             err("Not found avx registers")
@@ -38310,7 +38310,7 @@ class FpuCommand(GenericCommand):
     _category_ = "04-a. Register - View"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-v', dest='verbose', action='store_true', help='also display bit information of fpu control registers.')
+    parser.add_argument("-v", dest="verbose", action="store_true", help="also display bit information of fpu control registers.")
     _syntax_ = parser.format_help()
 
     def f2u(self, a):
@@ -38338,7 +38338,7 @@ class FpuCommand(GenericCommand):
         BYTES = ctypes.POINTER(ctypes.c_byte * 10)
         ptr = ctypes.cast(ctypes.addressof(value), BYTES)
         x = ["{:02x}".format(int(x) & 0xff) for x in ptr[0][::-1]]
-        return int(''.join(x), 16)
+        return int("".join(x), 16)
 
     def bits_split(self, x, bits=32):
         # 0xaaaabbbb -> 0xaaaa_bbbb
@@ -38652,9 +38652,9 @@ class ErrnoCommand(GenericCommand):
     _category_ = "02-d. Process Information - Trivial Information"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('errno', metavar='ERRNO', nargs='?', type=lambda x: int(x, 0),
-                        help='show specific errno definitions.')
-    parser.add_argument('--all', action='store_true', help='show all errno definitions.')
+    parser.add_argument("errno", metavar="ERRNO", nargs="?", type=lambda x: int(x, 0),
+                        help="show specific errno definitions.")
+    parser.add_argument("--all", action="store_true", help="show all errno definitions.")
     _syntax_ = parser.format_help()
 
     # /usr/include/asm-generic/errno.h
@@ -38844,8 +38844,8 @@ class ExtractHeapAddrCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument('value', metavar='VALUE', nargs='?', type=lambda x: int(x, 0), help='the value you want to extract.')
-    group.add_argument('--source', action='store_true', help='shows the source instead of displaying extractedd value.')
+    group.add_argument("value", metavar="VALUE", nargs="?", type=lambda x: int(x, 0), help="the value you want to extract.")
+    group.add_argument("--source", action="store_true", help="shows the source instead of displaying extractedd value.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} 0x000055500000C7F9".format(_cmdline_)
@@ -38884,9 +38884,9 @@ class FindFakeFastCommand(GenericCommand):
     _category_ = "06-a. Heap - Glibc"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--include-heap', action='store_true', help='heap is also included in the search target.')
-    parser.add_argument('--aligned', action='store_true', help='search only aligned chunks.')
-    parser.add_argument('size', metavar='SIZE', type=parse_address, help='search target size.')
+    parser.add_argument("--include-heap", action="store_true", help="heap is also included in the search target.")
+    parser.add_argument("--aligned", action="store_true", help="search only aligned chunks.")
+    parser.add_argument("size", metavar="SIZE", type=parse_address, help="search target size.")
     _syntax_ = parser.format_help()
 
     def print_result(self, m, pos, size_candidate):
@@ -38915,7 +38915,7 @@ class FindFakeFastCommand(GenericCommand):
         else:
             flag += ["PREV_INUSED"]
 
-        gef_print("    [{:s}]".format(' '.join(flag)))
+        gef_print("    [{:s}]".format(" ".join(flag)))
         for line in res.splitlines():
             gef_print("    {:s}".format(line))
         return
@@ -38968,14 +38968,14 @@ class VisualHeapCommand(GenericCommand):
     _category_ = "06-a. Heap - Glibc"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address,
-                        help='the address you want to interpret as the beginning of a contiguous chunk. (default: arena.heap_base)')
-    parser.add_argument('-a', dest='arena_addr', type=parse_address,
-                        help='the address you want to interpret as an arena. (default: main_arena)')
-    parser.add_argument('-c', dest='max_count', type=parse_address,
-                        help='Maximum count to parse. It is used when there is a very large amount of chunks.')
-    parser.add_argument('--full', action='store_true', help='display the same line without omitting.')
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address,
+                        help="the address you want to interpret as the beginning of a contiguous chunk. (default: arena.heap_base)")
+    parser.add_argument("-a", dest="arena_addr", type=parse_address,
+                        help="the address you want to interpret as an arena. (default: main_arena)")
+    parser.add_argument("-c", dest="max_count", type=parse_address,
+                        help="Maximum count to parse. It is used when there is a very large amount of chunks.")
+    parser.add_argument("--full", action="store_true", help="display the same line without omitting.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -39015,7 +39015,7 @@ class VisualHeapCommand(GenericCommand):
         for blk, blks in itertools.groupby(data):
             repeat_count = len(list(blks))
             d1, d2 = unpack(blk[:ptrsize]), unpack(blk[ptrsize:])
-            dascii = ''.join([chr(x) if 0x20 <= x < 0x7f else '.' for x in blk])
+            dascii = "".join([chr(x) if 0x20 <= x < 0x7f else "." for x in blk])
 
             fmt = "{:#x}: {:#0{:d}x} {:#0{:d}x} | {:s} | {:s}"
             if self.full or repeat_count < group_line_threshold:
@@ -39121,7 +39121,7 @@ class VisualHeapCommand(GenericCommand):
             self.generate_visual_heap(args.max_count)
         except Exception:
             pass
-        gef_print('\n'.join(self.out), less=not args.no_pager)
+        gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
@@ -39132,7 +39132,7 @@ class U2dCommand(GenericCommand):
     _category_ = "09-a. Misc - Translation"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('value', metavar='VALUE', help='the hex value or double value.')
+    parser.add_argument("value", metavar="VALUE", help="the hex value or double value.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} 0xdeadbeef\n".format(_cmdline_)
@@ -39218,9 +39218,9 @@ class TransCommand(GenericCommand):
     _category_ = "09-a. Misc - Translation"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('value', metavar='VALUE', help='the value or string you want to translate.')
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
-    parser.add_argument('-v', '--verbose', action='store_true', help='enable verbose mode.')
+    parser.add_argument("value", metavar="VALUE", help="the value or string you want to translate.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose mode.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} 0xdeadbeef\n".format(_cmdline_)
@@ -39345,7 +39345,7 @@ class TransCommand(GenericCommand):
             pass
 
         if not args.verbose:
-            gef_print('\n'.join(self.out), less=not args.no_pager)
+            gef_print("\n".join(self.out), less=not args.no_pager)
             return
 
         # verbose mode
@@ -39365,14 +39365,14 @@ class TransCommand(GenericCommand):
             for i in range(26):
                 slided = []
                 for x in value:
-                    if ord('A') <= x <= ord('Z'):
+                    if ord("A") <= x <= ord("Z"):
                         x += i
-                        if x > ord('Z'):
-                            x -= ord('Z')
-                    elif ord('a') <= x <= ord('z'):
+                        if x > ord("Z"):
+                            x -= ord("Z")
+                    elif ord("a") <= x <= ord("z"):
                         x += i
-                        if x > ord('z'):
-                            x -= ord('z')
+                        if x > ord("z"):
+                            x -= ord("z")
                     slided.append(x)
                 self.out.append("caesar-{:02d}:     {}".format(i, bytes(slided)))
         except binascii.Error:
@@ -39391,20 +39391,20 @@ class TransCommand(GenericCommand):
             for i in range(26):
                 slided = []
                 for x in value:
-                    if ord('A') <= x <= ord('Z'):
+                    if ord("A") <= x <= ord("Z"):
                         x += i
-                        if x > ord('Z'):
-                            x -= ord('Z')
-                    elif ord('a') <= x <= ord('z'):
+                        if x > ord("Z"):
+                            x -= ord("Z")
+                    elif ord("a") <= x <= ord("z"):
                         x += i
-                        if x > ord('z'):
-                            x -= ord('z')
+                        if x > ord("z"):
+                            x -= ord("z")
                     slided.append(x)
                 self.out.append("caesar-{:02d}:     {}".format(i, bytes(slided)))
         except ValueError:
             pass
 
-        gef_print('\n'.join(self.out), less=not args.no_pager)
+        gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
@@ -41884,8 +41884,8 @@ class KernelbaseCommand(GenericCommand):
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-r', '--reparse', action='store_true', help='do not use cache.')
-    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
+    parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
     @staticmethod
@@ -42075,7 +42075,7 @@ class KernelbaseCommand(GenericCommand):
         self.out.append("kernel rodata: {:#x}-{:#x} ({:#x} bytes)".format(kinfo.krobase, kinfo.krobase + kinfo.krobase_size, kinfo.krobase_size))
         self.out.append("kernel data:   {:#x}-{:#x} ({:#x} bytes)".format(kinfo.krwbase, kinfo.krwbase + kinfo.krwbase_size, kinfo.krwbase_size))
         if self.out:
-            gef_print('\n'.join(self.out))
+            gef_print("\n".join(self.out))
         return
 
 
@@ -42086,8 +42086,8 @@ class KernelVersionCommand(GenericCommand):
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-r', '--reparse', action='store_true', help='do not use cache.')
-    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
+    parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
     class KernelVersion:
@@ -42162,7 +42162,7 @@ class KernelVersionCommand(GenericCommand):
                 data = read_memory(start, end - start)
             except gdb.MemoryError:
                 continue
-            data = ''.join([chr(x) for x in data])
+            data = "".join([chr(x) for x in data])
             r = re.findall(r"(Linux version (?:\d+\.[\d.]*\d)[ -~]+)", data)
             if not r:
                 continue
@@ -42201,7 +42201,7 @@ class KernelVersionCommand(GenericCommand):
         self.out = []
         self.out.append("{:#x}: {:s}".format(kversion.address, kversion.version_string))
         if self.out:
-            gef_print('\n'.join(self.out))
+            gef_print("\n".join(self.out))
         return
 
 
@@ -42212,8 +42212,8 @@ class KernelCmdlineCommand(GenericCommand):
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-r', '--reparse', action='store_true', help='do not use cache.')
-    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
+    parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
     @staticmethod
@@ -42257,7 +42257,7 @@ class KernelCmdlineCommand(GenericCommand):
         self.out = []
         self.out.append("{:#x}: '{:s}'".format(kcmdline.address, kcmdline.cmdline))
         if self.out:
-            gef_print('\n'.join(self.out))
+            gef_print("\n".join(self.out))
         return
 
 
@@ -42268,7 +42268,7 @@ class KernelCurrentCommand(GenericCommand):
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
     def get_cpu_offset(self):
@@ -42358,12 +42358,12 @@ class KernelTaskCommand(GenericCommand):
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-f', '--filter', action='append', default=[], help='REGEXP filter.')
-    parser.add_argument('-m', '--print-maps', action='store_true', help='print memory map for each user-land process.')
-    parser.add_argument('-r', '--print-regs', action='store_true', help='print general registers saved on kstack for each user-land process.')
-    parser.add_argument('--meta', action='store_true', help='display offset information.')
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
-    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
+    parser.add_argument("-f", "--filter", action="append", default=[], help="REGEXP filter.")
+    parser.add_argument("-m", "--print-maps", action="store_true", help="print memory map for each user-land process.")
+    parser.add_argument("-r", "--print-regs", action="store_true", help="print general registers saved on kstack for each user-land process.")
+    parser.add_argument("--meta", action="store_true", help="display offset information.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
     def get_offset_task(self, init_task):
@@ -43092,7 +43092,7 @@ class KernelTaskCommand(GenericCommand):
                             out.append("{:16s}: {:s}".format(k, format_address_long_fmt(v)))
                     out.append(titlify(""))
 
-        gef_print('\n'.join(out), less=not args.no_pager)
+        gef_print("\n".join(out), less=not args.no_pager)
         return
 
 
@@ -43103,10 +43103,10 @@ class KernelModuleCommand(GenericCommand):
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
-    parser.add_argument('-s', '--resolve-symbol', action='store_true', help='try to resolve symbols.')
-    parser.add_argument('--symbol-unsort', action='store_true', help='print resolved symbols without sorting by address.')
-    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-s", "--resolve-symbol", action="store_true", help="try to resolve symbols.")
+    parser.add_argument("--symbol-unsort", action="store_true", help="print resolved symbols without sorting by address.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
     def get_modules_list(self):
@@ -43533,9 +43533,9 @@ class KernelModuleCommand(GenericCommand):
                 self.out.append(titlify(""))
 
         if len(self.out) > 20:
-            gef_print('\n'.join(self.out), less=not args.no_pager)
+            gef_print("\n".join(self.out), less=not args.no_pager)
         else:
-            gef_print('\n'.join(self.out), less=False)
+            gef_print("\n".join(self.out), less=False)
         return
 
 
@@ -43546,8 +43546,8 @@ class KernelCharacterDevicesCommand(GenericCommand):
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
-    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
     # character device is managed at chrdevs[] and cdev_map.
@@ -43782,7 +43782,7 @@ class KernelCharacterDevicesCommand(GenericCommand):
             self.out.append(fmt.format(m["chrdev"], m["name"], major, minor, m["cdev"], m["parent"], m["parent_name"], m["ops"], m["ops_sym"]))
 
         if self.out:
-            gef_print('\n'.join(self.out), less=not args.no_pager)
+            gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
@@ -43792,12 +43792,12 @@ class KernelOperationsCommand(GenericCommand):
     _cmdline_ = "kops"
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
-    types = ['file', 'tty', 'tty_ldisc', 'seq', 'inode', 'pernet', 'address_space', 'vm', 'super']
+    types = ["file", "tty", "tty_ldisc", "seq", "inode", "pernet", "address_space", "vm", "super"]
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('mode', choices=types, help='The structure type.')
-    parser.add_argument("address", metavar='ADDRESS', nargs='?', type=parse_address, help='the address interpreted as ops.')
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
-    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
+    parser.add_argument("mode", choices=types, help="The structure type.")
+    parser.add_argument("address", metavar="ADDRESS", nargs="?", type=parse_address, help="the address interpreted as ops.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -44146,7 +44146,7 @@ class KernelOperationsCommand(GenericCommand):
                 self.out.append("[{:03d}] {:10s} {:20s}".format(idx, type, name))
 
         if self.out:
-            gef_print('\n'.join(self.out), less=not args.no_pager)
+            gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
@@ -44157,11 +44157,11 @@ class KernelParamSysctlCommand(GenericCommand):
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-f', '--filter', action='append', default=[], help='REGEXP filter.')
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
-    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
-    parser.add_argument('-v', '--verbose', action='store_true', help='enable verbose mode.')
-    parser.add_argument('--exact', action='store_true', help='use exact match.')
+    parser.add_argument("-f", "--filter", action="append", default=[], help="REGEXP filter.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose mode.")
+    parser.add_argument("--exact", action="store_true", help="use exact match.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -44434,7 +44434,7 @@ class KernelParamSysctlCommand(GenericCommand):
             return
 
         if self.out:
-            gef_print('\n'.join(self.out), less=not args.no_pager)
+            gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
@@ -44445,8 +44445,8 @@ class KernelFileSystemsCommand(GenericCommand):
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
-    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
     def get_offset_next(self, file_systems):
@@ -44517,7 +44517,7 @@ class KernelFileSystemsCommand(GenericCommand):
             current = read_int_from_memory(current + offset_next)
 
         if self.out:
-            gef_print('\n'.join(self.out), less=not args.no_pager)
+            gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
@@ -44528,8 +44528,8 @@ class KernelClockSourceCommand(GenericCommand):
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
-    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
     def get_offset_list(self, clocksource):
@@ -44582,7 +44582,7 @@ class KernelClockSourceCommand(GenericCommand):
             current = read_int_from_memory(current)
 
         if self.out:
-            gef_print('\n'.join(self.out), less=not args.no_pager)
+            gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
@@ -44593,10 +44593,10 @@ class KernelSearchCodePtrCommand(GenericCommand):
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-d', '--depth', default=1, type=int, help='depth of reference. (default: %(default)s)')
-    parser.add_argument('-r', '--max-range', default=0, type=lambda x: int(x, 16),
-                        help='allowable offset range for each reference. (default: %(default)s)')
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    parser.add_argument("-d", "--depth", default=1, type=int, help="depth of reference. (default: %(default)s)")
+    parser.add_argument("-r", "--max-range", default=0, type=lambda x: int(x, 16),
+                        help="allowable offset range for each reference. (default: %(default)s)")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
     def get_permission(self, addr):
@@ -44616,7 +44616,7 @@ class KernelSearchCodePtrCommand(GenericCommand):
                 addr_sym = get_symbol_string(addr + offset, nosymbol_string=" <NO_SYMBOL>")
                 m = "{:#x}+{:#x}{:s} [{:s}]".format(addr, offset, addr_sym, self.get_permission(addr + offset))
                 msg.append(m)
-            self.out.append('\n  -> '.join(msg))
+            self.out.append("\n  -> ".join(msg))
             return True
 
         valid = False
@@ -44678,7 +44678,7 @@ class KernelSearchCodePtrCommand(GenericCommand):
         gef_print("\r")
 
         if self.out:
-            gef_print('\n'.join(self.out), less=not args.no_pager)
+            gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
@@ -44689,8 +44689,8 @@ class KernelDmesgCommand(GenericCommand):
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
-    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
     def dump_printk_ringbuffer(self, ring_buffer_name, ring_buffer_address):
@@ -44966,7 +44966,7 @@ class KernelDmesgCommand(GenericCommand):
             self.dump_printk_log_buffer(log_first_idx, log_next_idx, log_buf_start, log_buf_end)
 
         if self.out:
-            gef_print('\n'.join(self.out), less=not args.no_pager)
+            gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
@@ -44977,11 +44977,11 @@ class AsciiSearchCommand(GenericCommand):
     _category_ = "03-a. Memory - Search"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('location', metavar='LOCATION', type=parse_address,
-                        help='the location you want to search from.')
-    parser.add_argument('-f', '--filter', action='append', default=[], help='REGEXP filter.')
-    parser.add_argument('-d', '--depth', default=3, type=int, help='recursive depth. (default: %(default)s)')
-    parser.add_argument('-r', '--range', default=0x40, type=lambda x: int(x, 16), help='search range. (default: %(default)s)')
+    parser.add_argument("location", metavar="LOCATION", type=parse_address,
+                        help="the location you want to search from.")
+    parser.add_argument("-f", "--filter", action="append", default=[], help="REGEXP filter.")
+    parser.add_argument("-d", "--depth", default=3, type=int, help="recursive depth. (default: %(default)s)")
+    parser.add_argument("-r", "--range", default=0x40, type=lambda x: int(x, 16), help="search range. (default: %(default)s)")
     _syntax_ = parser.format_help()
 
     def search_ascii(self, locations, search_range, depth, max_depth):
@@ -45038,9 +45038,9 @@ class SyscallTableViewCommand(GenericCommand):
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-f', '--filter', action='append', default=[], help='REGEXP filter.')
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
-    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
+    parser.add_argument("-f", "--filter", action="append", default=[], help="REGEXP filter.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}\n".format(_cmdline_)
@@ -45102,18 +45102,18 @@ class SyscallTableViewCommand(GenericCommand):
 
                 is_valid = True
                 if is_x86_64():
-                    if len(insn.operands) == 2 and insn.operands[-1] == '0xffffffffffffffda' and \
-                       len(insn2.operands) == 0 and insn2.mnemonic == 'ret':
+                    if len(insn.operands) == 2 and insn.operands[-1] == "0xffffffffffffffda" and \
+                       len(insn2.operands) == 0 and insn2.mnemonic == "ret":
                         is_valid = False
                 elif is_x86_32():
-                    if len(insn.operands) == 2 and insn.operands[-1] == '0xffffffda' and \
-                       len(insn2.operands) == 0 and insn2.mnemonic == 'ret':
+                    if len(insn.operands) == 2 and insn.operands[-1] == "0xffffffda" and \
+                       len(insn2.operands) == 0 and insn2.mnemonic == "ret":
                         is_valid = False
                 if is_arm64():
-                    if len(insn.operands) == 2 and insn.operands[-1].split("\t")[0].strip() == '#0xffffffffffffffda':
+                    if len(insn.operands) == 2 and insn.operands[-1].split("\t")[0].strip() == "#0xffffffffffffffda":
                         is_valid = False
-                    if insn.mnemonic == 'bti' and \
-                       len(insn2.operands) == 2 and insn2.operands[-1].split("\t")[0].strip() == '#0xffffffffffffffda':
+                    if insn.mnemonic == "bti" and \
+                       len(insn2.operands) == 2 and insn2.operands[-1].split("\t")[0].strip() == "#0xffffffffffffffda":
                         is_valid = False
 
                 self.cached_table[tag].append([i, addr, syscall_function_addr, symbol, is_valid])
@@ -45204,7 +45204,7 @@ class SyscallTableViewCommand(GenericCommand):
             self.syscall_table_view("arm64_32", sys_call_table_addr, get_syscall_table("ARM", "32"))
 
         if self.out:
-            gef_print('\n'.join(self.out), less=not args.no_pager)
+            gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
@@ -45289,7 +45289,7 @@ class TlsCommand(GenericCommand):
             ppvoid = ctypes.POINTER(ctypes.c_void_p)
             value = ppvoid(ctypes.c_void_p())
             value.contents.value = 0
-            libc = ctypes.CDLL('libc.so.6')
+            libc = ctypes.CDLL("libc.so.6")
             result = libc.ptrace(PTRACE_ARCH_PRCTL, lwpid, value, ARCH_GET_FS)
             if result == 0:
                 return value.contents.value or 0
@@ -45321,7 +45321,7 @@ class TlsCommand(GenericCommand):
             ppvoid = ctypes.POINTER(ctypes.c_void_p)
             value = ppvoid(ctypes.c_void_p())
             value.contents.value = 0
-            libc = ctypes.CDLL('libc.so.6')
+            libc = ctypes.CDLL("libc.so.6")
             result = libc.ptrace(PTRACE_ARCH_PRCTL, lwpid, value, ARCH_GET_GS)
             if result == 0:
                 return value.contents.value or 0
@@ -45432,7 +45432,7 @@ class GdtInfoCommand(GenericCommand):
     _category_ = "04-a. Register - View"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-v', dest='verbose', action='store_true', help='also display bit information of gdt entries.')
+    parser.add_argument("-v", dest="verbose", action="store_true", help="also display bit information of gdt entries.")
     _syntax_ = parser.format_help()
 
     # arch/x86/include/asm/segment.h
@@ -45501,7 +45501,7 @@ class GdtInfoCommand(GenericCommand):
             return
         gef_print(titlify("Current register values"))
         red = lambda x: Color.colorify("{:4s}".format(x), "bold red")
-        for k in ['cs', 'ds', 'es', 'fs', 'gs', 'ss']:
+        for k in ["cs", "ds", "es", "fs", "gs", "ss"]:
             v = get_register(k)
             gef_print("{:s}: {:s}".format(red(k), self.seg2str(v)))
         gef_print(" * rpl: Requested Privilege Level (0:Ring0, 3:Ring3)")
@@ -45523,57 +45523,57 @@ class GdtInfoCommand(GenericCommand):
 
         # parse
         _gdt = {}
-        _gdt['value'] = val
+        _gdt["value"] = val
 
-        _gdt['limit0'] = val & 0xffff
-        _gdt['base0'] = (val >> 16) & 0xffff
-        _gdt['base1'] = (val >> 32) & 0xff
-        _gdt['access_bytes'] = (val >> 40) & 0xff
-        _gdt['limit1'] = (val >> 48) & 0x0f
-        _gdt['flag_bytes'] = (val >> 52) & 0x0f
-        _gdt['base2'] = (val >> 56) & 0xff
+        _gdt["limit0"] = val & 0xffff
+        _gdt["base0"] = (val >> 16) & 0xffff
+        _gdt["base1"] = (val >> 32) & 0xff
+        _gdt["access_bytes"] = (val >> 40) & 0xff
+        _gdt["limit1"] = (val >> 48) & 0x0f
+        _gdt["flag_bytes"] = (val >> 52) & 0x0f
+        _gdt["base2"] = (val >> 56) & 0xff
 
-        _gdt['p'] = (_gdt['access_bytes'] >> 7) & 0x01
-        _gdt['dpl'] = (_gdt['access_bytes'] >> 5) & 0x03
-        _gdt['s'] = (_gdt['access_bytes'] >> 4) & 0x01
-        _gdt['type_bytes'] = _gdt['access_bytes'] & 0x0f
-        _gdt['ex'] = (_gdt['access_bytes'] >> 3) & 0x01
-        _gdt['dc'] = (_gdt['access_bytes'] >> 2) & 0x01
-        _gdt['rw'] = (_gdt['access_bytes'] >> 1) & 0x01
-        _gdt['ac'] = (_gdt['access_bytes'] >> 0) & 0x01
+        _gdt["p"] = (_gdt["access_bytes"] >> 7) & 0x01
+        _gdt["dpl"] = (_gdt["access_bytes"] >> 5) & 0x03
+        _gdt["s"] = (_gdt["access_bytes"] >> 4) & 0x01
+        _gdt["type_bytes"] = _gdt["access_bytes"] & 0x0f
+        _gdt["ex"] = (_gdt["access_bytes"] >> 3) & 0x01
+        _gdt["dc"] = (_gdt["access_bytes"] >> 2) & 0x01
+        _gdt["rw"] = (_gdt["access_bytes"] >> 1) & 0x01
+        _gdt["ac"] = (_gdt["access_bytes"] >> 0) & 0x01
 
-        _gdt['gr'] = (_gdt['flag_bytes'] >> 3) & 0x01
-        _gdt['db'] = (_gdt['flag_bytes'] >> 2) & 0x01
-        _gdt['l'] = (_gdt['flag_bytes'] >> 1) & 0x01
-        _gdt['avl'] = (_gdt['flag_bytes'] >> 0) & 0x01
-        _gdt['FLAGS'] = (_gdt['flag_bytes'] << 12) | _gdt['access_bytes'] # for easy use
+        _gdt["gr"] = (_gdt["flag_bytes"] >> 3) & 0x01
+        _gdt["db"] = (_gdt["flag_bytes"] >> 2) & 0x01
+        _gdt["l"] = (_gdt["flag_bytes"] >> 1) & 0x01
+        _gdt["avl"] = (_gdt["flag_bytes"] >> 0) & 0x01
+        _gdt["FLAGS"] = (_gdt["flag_bytes"] << 12) | _gdt["access_bytes"] # for easy use
 
-        grsize = {0: 1, 1: 4096}[_gdt['gr']]
-        _gdt['limit'] = ((_gdt['limit1'] << 16) | _gdt['limit0']) * grsize
-        _gdt['base'] = (_gdt['base2'] << 24) | (_gdt['base1'] << 16) | _gdt['base0']
+        grsize = {0: 1, 1: 4096}[_gdt["gr"]]
+        _gdt["limit"] = ((_gdt["limit1"] << 16) | _gdt["limit0"]) * grsize
+        _gdt["base"] = (_gdt["base2"] << 24) | (_gdt["base1"] << 16) | _gdt["base0"]
 
         # create memo
-        if _gdt['ex'] == 0: # data
-            _gdt['ex_s'] = "DATA"
-            _gdt['rw_s'] = ["RO", "RW"][_gdt['rw']]
-            _gdt['dc_s'] = ["UP", "DN"][_gdt['dc']]
+        if _gdt["ex"] == 0: # data
+            _gdt["ex_s"] = "DATA"
+            _gdt["rw_s"] = ["RO", "RW"][_gdt["rw"]]
+            _gdt["dc_s"] = ["UP", "DN"][_gdt["dc"]]
         else: # code
-            _gdt['ex_s'] = "CODE"
-            _gdt['rw_s'] = ["RO", "RX"][_gdt['rw']]
-            _gdt['dc_s'] = ["NC", "CO"][_gdt['dc']]
+            _gdt["ex_s"] = "CODE"
+            _gdt["rw_s"] = ["RO", "RX"][_gdt["rw"]]
+            _gdt["dc_s"] = ["NC", "CO"][_gdt["dc"]]
 
-        _gdt['s_s'] = ["SYS", "C/D"][_gdt['s']]
-        dbl = (_gdt['db'] << 1) | _gdt['l']
-        _gdt['dbl'] = "{:d}".format(dbl)
-        _gdt['dbl_s'] = ["16bit", "64bit", "32bit", "(N/A)"][dbl]
+        _gdt["s_s"] = ["SYS", "C/D"][_gdt["s"]]
+        dbl = (_gdt["db"] << 1) | _gdt["l"]
+        _gdt["dbl"] = "{:d}".format(dbl)
+        _gdt["dbl_s"] = ["16bit", "64bit", "32bit", "(N/A)"][dbl]
 
         # for TSS/LDT
         if isinstance(vals, list):
             val = vals[1]
-            _gdt['value2'] = _gdt['value']
-            _gdt['value'] = val
-            _gdt['base3'] = val & 0xffffffff
-            _gdt['base'] = (_gdt['base3'] << 32) | _gdt['base']
+            _gdt["value2"] = _gdt["value"]
+            _gdt["value"] = val
+            _gdt["base3"] = val & 0xffffffff
+            _gdt["base"] = (_gdt["base3"] << 32) | _gdt["base"]
 
         Gdt = collections.namedtuple("Gdt", _gdt.keys())
         return Gdt(*_gdt.values())
@@ -45620,7 +45620,7 @@ class GdtInfoCommand(GenericCommand):
     def get_segreg_list():
         regs = {}
         if is_alive():
-            for k in ['cs', 'ds', 'es', 'fs', 'gs', 'ss']:
+            for k in ["cs", "ds", "es", "fs", "gs", "ss"]:
                 v = get_register(k)
                 ti = (v >> 2) & 0b1
                 index = int(v >> 3)
@@ -45667,7 +45667,7 @@ class GdtInfoCommand(GenericCommand):
         # parse entry
         for i, value in entries:
             # get segment regs value
-            reglist = ', '.join(regs.get(i, []))
+            reglist = ", ".join(regs.get(i, []))
             if reglist:
                 reglist = LEFT_ARROW + reglist
             regstr = Color.colorify(reglist, registers_color)
@@ -45810,7 +45810,7 @@ class IdtInfoCommand(GenericCommand):
     _category_ = "04-a. Register - View"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-v', dest='verbose', action='store_true', help='also display bit information of idt entries.')
+    parser.add_argument("-v", dest="verbose", action="store_true", help="also display bit information of idt entries.")
     _syntax_ = parser.format_help()
 
     # arch/x86/include/asm/trapnr.h
@@ -45844,16 +45844,16 @@ class IdtInfoCommand(GenericCommand):
     @staticmethod
     def idt_unpack(val):
         _idt = {}
-        _idt['value'] = val
+        _idt["value"] = val
 
-        _idt['offset'] = val & 0xffff
-        _idt['offset'] = _idt['offset'] | ((val >> 32) & (0xffff0000))
-        _idt['offset'] = ((val >> 32) & (0xffffffff00000000)) | _idt['offset']
-        _idt['segment'] = (val >> 16) & 0xffff
-        _idt['ist'] = (val >> 32) & 0b111
-        _idt['gate_type'] = (val >> 40) & (0b1111)
-        _idt['dpl'] = (val >> 45) & (0b11)
-        _idt['present'] = (val >> 47) & (0b1)
+        _idt["offset"] = val & 0xffff
+        _idt["offset"] = _idt["offset"] | ((val >> 32) & (0xffff0000))
+        _idt["offset"] = ((val >> 32) & (0xffffffff00000000)) | _idt["offset"]
+        _idt["segment"] = (val >> 16) & 0xffff
+        _idt["ist"] = (val >> 32) & 0b111
+        _idt["gate_type"] = (val >> 40) & (0b1111)
+        _idt["dpl"] = (val >> 45) & (0b11)
+        _idt["present"] = (val >> 47) & (0b1)
 
         Idt = collections.namedtuple("Idt", _idt.keys())
         return Idt(*_idt.values())
@@ -46006,12 +46006,12 @@ class MemoryCompareCommand(GenericCommand):
     _category_ = "03-b. Memory - View"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--phys1', action='store_true', help='treat LOCATION1 as a physical address.')
-    parser.add_argument('location1', metavar='LOCATION1', type=parse_address, help='first address for comparison.')
-    parser.add_argument('--phys2', action='store_true', help='treat LOCATION2 as a physical address.')
-    parser.add_argument('location2', metavar='LOCATION2', type=parse_address, help='second address for comparison.')
-    parser.add_argument('size', metavar='SIZE', type=parse_address, help='the size for comparison.')
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    parser.add_argument("--phys1", action="store_true", help="treat LOCATION1 as a physical address.")
+    parser.add_argument("location1", metavar="LOCATION1", type=parse_address, help="first address for comparison.")
+    parser.add_argument("--phys2", action="store_true", help="treat LOCATION2 as a physical address.")
+    parser.add_argument("location2", metavar="LOCATION2", type=parse_address, help="second address for comparison.")
+    parser.add_argument("size", metavar="SIZE", type=parse_address, help="the size for comparison.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -46066,10 +46066,10 @@ class MemoryCompareCommand(GenericCommand):
                 f2_hex.append(color_func("{:02x}".format(f2_bin[i])))
                 f1_ascii.append(color_func(chr(f1_bin[i]) if 0x20 <= f1_bin[i] < 0x7f else "."))
                 f2_ascii.append(color_func(chr(f2_bin[i]) if 0x20 <= f2_bin[i] < 0x7f else "."))
-            f1_hex_s = ' '.join(f1_hex) + " " * ((16 - len(f1_hex)) * 3)
-            f2_hex_s = ' '.join(f2_hex) + " " * ((16 - len(f2_hex)) * 3)
-            f1_ascii_s = ''.join(f1_ascii) + " " * (16 - len(f1_ascii))
-            f2_ascii_s = ''.join(f2_ascii) + " " * (16 - len(f2_ascii))
+            f1_hex_s = " ".join(f1_hex) + " " * ((16 - len(f1_hex)) * 3)
+            f2_hex_s = " ".join(f2_hex) + " " * ((16 - len(f2_hex)) * 3)
+            f1_ascii_s = "".join(f1_ascii) + " " * (16 - len(f1_ascii))
+            f2_ascii_s = "".join(f2_ascii) + " " * (16 - len(f2_ascii))
             fmt = "{:#018x}: {:s} | {:s} | {:#018x}: {:s} | {:s} |"
             self.out.append(fmt.format(addr1, f1_hex_s, f1_ascii_s, addr2, f2_hex_s, f2_ascii_s))
 
@@ -46093,7 +46093,7 @@ class MemoryCompareCommand(GenericCommand):
         self.out = []
         self.memcmp(args.phys1, args.location1, args.phys2, args.location2, args.size)
         if self.out:
-            gef_print('\n'.join(self.out), less=not args.no_pager)
+            gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
@@ -46104,11 +46104,11 @@ class MemoryCopyCommand(GenericCommand):
     _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--phys1', action='store_true', help='treat TO_ADDRESS as a physical address.')
-    parser.add_argument('to_addr', metavar='TO_ADDRESS', type=parse_address, help='destionation of memcpy.')
-    parser.add_argument('--phys2', action='store_true', help='treat FROM_ADDRESS as a physical address.')
-    parser.add_argument('from_addr', metavar='FROM_ADDRESS', type=parse_address, help='source of memcpy.')
-    parser.add_argument('size', metavar='SIZE', type=parse_address, help='the size for memcpy.')
+    parser.add_argument("--phys1", action="store_true", help="treat TO_ADDRESS as a physical address.")
+    parser.add_argument("to_addr", metavar="TO_ADDRESS", type=parse_address, help="destionation of memcpy.")
+    parser.add_argument("--phys2", action="store_true", help="treat FROM_ADDRESS as a physical address.")
+    parser.add_argument("from_addr", metavar="FROM_ADDRESS", type=parse_address, help="source of memcpy.")
+    parser.add_argument("size", metavar="SIZE", type=parse_address, help="the size for memcpy.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -46168,11 +46168,11 @@ class MemorySwapCommand(GenericCommand):
     _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--phys1', action='store_true', help='treat SWAP_ADDRESS1 as a physical address.')
-    parser.add_argument('swap_addr1', metavar='SWAP_ADDRESS1', type=parse_address, help='swap target address.')
-    parser.add_argument('--phys2', action='store_true', help='treat SWAP_ADDRESS2 as a physical address.')
-    parser.add_argument('swap_addr2', metavar='SWAP_ADDRESS2', type=parse_address, help='another swap target address.')
-    parser.add_argument('size', metavar='SIZE', type=parse_address, help='the size for memory swap.')
+    parser.add_argument("--phys1", action="store_true", help="treat SWAP_ADDRESS1 as a physical address.")
+    parser.add_argument("swap_addr1", metavar="SWAP_ADDRESS1", type=parse_address, help="swap target address.")
+    parser.add_argument("--phys2", action="store_true", help="treat SWAP_ADDRESS2 as a physical address.")
+    parser.add_argument("swap_addr2", metavar="SWAP_ADDRESS2", type=parse_address, help="another swap target address.")
+    parser.add_argument("size", metavar="SIZE", type=parse_address, help="the size for memory swap.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -46254,12 +46254,12 @@ class MemoryInsertCommand(GenericCommand):
     _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--phys1', action='store_true', help='treat TO_ADDRESS as a physical address.')
-    parser.add_argument('to_addr', metavar='TO_ADDRESS', type=parse_address, help='destionation of meminsert.')
-    parser.add_argument('--phys2', action='store_true', help='treat FROM_ADDRESS as a physical address.')
-    parser.add_argument('from_addr', metavar='FROM_ADDRESS', type=parse_address, help='source of meminsert.')
-    parser.add_argument('size1', metavar='SIZE1', type=parse_address, help='the pushed back size for meminsert.')
-    parser.add_argument('size2', metavar='SIZE2', type=parse_address, help='the inserted(slided) size for meminsert.')
+    parser.add_argument("--phys1", action="store_true", help="treat TO_ADDRESS as a physical address.")
+    parser.add_argument("to_addr", metavar="TO_ADDRESS", type=parse_address, help="destionation of meminsert.")
+    parser.add_argument("--phys2", action="store_true", help="treat FROM_ADDRESS as a physical address.")
+    parser.add_argument("from_addr", metavar="FROM_ADDRESS", type=parse_address, help="source of meminsert.")
+    parser.add_argument("size1", metavar="SIZE1", type=parse_address, help="the pushed back size for meminsert.")
+    parser.add_argument("size2", metavar="SIZE2", type=parse_address, help="the inserted(slided) size for meminsert.")
     _syntax_ = parser.format_help()
 
     _example_ = "memcpy dst src 8\n"
@@ -46350,9 +46350,9 @@ class HashMemoryCommand(GenericCommand):
     _category_ = "03-d. Memory - Calculation"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('location', metavar='LOCATION', type=parse_address, help='start address for hash calculation.')
-    parser.add_argument('size', metavar='SIZE', type=parse_address, help='the size for hash calculation.')
-    parser.add_argument('-v', dest='verbose', action='store_true', help='also print crc.')
+    parser.add_argument("location", metavar="LOCATION", type=parse_address, help="start address for hash calculation.")
+    parser.add_argument("size", metavar="SIZE", type=parse_address, help="the size for hash calculation.")
+    parser.add_argument("-v", dest="verbose", action="store_true", help="also print crc.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -46455,9 +46455,9 @@ class IsMemoryZeroCommand(GenericCommand):
     _category_ = "03-d. Memory - Calculation"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--phys', action='store_true', help='treat ADDRESS as a physical address.')
-    parser.add_argument('addr', metavar='ADDRESS', type=parse_address, help='target address for checking.')
-    parser.add_argument('size', metavar='SIZE', type=parse_address, help='the size for checking.')
+    parser.add_argument("--phys", action="store_true", help="treat ADDRESS as a physical address.")
+    parser.add_argument("addr", metavar="ADDRESS", type=parse_address, help="target address for checking.")
+    parser.add_argument("size", metavar="SIZE", type=parse_address, help="the size for checking.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -46524,7 +46524,7 @@ class MultiLineCommand(GenericCommand):
     _aliases_ = ["ml"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('cmd', metavar='GDB_CMD;', nargs='+', help='semicolon-separated gdb command.')
+    parser.add_argument("cmd", metavar="GDB_CMD;", nargs="+", help="semicolon-separated gdb command.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -46594,8 +46594,8 @@ class TimeCommand(GenericCommand):
     _category_ = "01-c. Debugging Support - Basic Command Extension"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('cmd', metavar='GDB_CMD', help='gdb command.')
-    parser.add_argument('arg', metavar='ARG', nargs='*', help='arguments of gdb command.')
+    parser.add_argument("cmd", metavar="GDB_CMD", help="gdb command.")
+    parser.add_argument("arg", metavar="ARG", nargs="*", help="arguments of gdb command.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -46644,7 +46644,7 @@ class LsCommand(GenericCommand):
     _category_ = "07-a. External Command - General"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('arg', metavar='ARG', nargs='*', help='arguments of ls command.')
+    parser.add_argument("arg", metavar="ARG", nargs="*", help="arguments of ls command.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -46681,7 +46681,7 @@ class CatCommand(GenericCommand):
     _category_ = "07-a. External Command - General"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('arg', metavar='ARG', nargs='*', help='arguments of cat command.')
+    parser.add_argument("arg", metavar="ARG", nargs="*", help="arguments of cat command.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -46721,7 +46721,7 @@ class IiCommand(GenericCommand):
     _category_ = "01-e. Debugging Support - Assemble"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('location', metavar='LOCATION', nargs='?', type=parse_address, help='the dump start adress.')
+    parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address, help="the dump start adress.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -46787,7 +46787,7 @@ class ConstGrepCommand(GenericCommand):
     _category_ = "09-b. Misc - Search"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('pattern', metavar='GREP_PATTERN', help='filter by regex.')
+    parser.add_argument("pattern", metavar="GREP_PATTERN", help="filter by regex.")
     _syntax_ = parser.format_help()
 
     _example_ = "constgrep '__NR_*'"
@@ -46834,20 +46834,20 @@ class SlubDumpCommand(GenericCommand):
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('cache_name', metavar='SLUB_CACHE_NAME', nargs='*', help='filter by specific slub cache name.')
-    parser.add_argument('--cpu', type=int, help="filter by specific cpu.")
-    parser.add_argument('--no-xor', action='store_true',
-                        help='skip xor to chunk->next. it is used when `kmem_cache.random` is falsely detected.')
-    parser.add_argument('--offset-random', type=lambda x: int(x, 16),
-                        help='specified offsetof(kmem_cache, random). it is used when `kmem_cache.random` is falsely detected.')
-    parser.add_argument('--no-byte-swap', action='store_true', default=None,
-                        help='skip byteswap to chunk->next. it is used when `kmem_cache.random` is falsely detected.')
-    parser.add_argument('--list', action='store_true', help='list up all slub cache names.')
-    parser.add_argument('--meta', action='store_true', help='display offset information.')
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
-    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
-    parser.add_argument('-v', '--verbose', '--partial', action='store_true', help='dump partial pages')
-    parser.add_argument('-vv', '--vverbose', '--node', action='store_true', help='dump partial pages and node pages.')
+    parser.add_argument("cache_name", metavar="SLUB_CACHE_NAME", nargs="*", help="filter by specific slub cache name.")
+    parser.add_argument("--cpu", type=int, help="filter by specific cpu.")
+    parser.add_argument("--no-xor", action="store_true",
+                        help="skip xor to chunk->next. it is used when `kmem_cache.random` is falsely detected.")
+    parser.add_argument("--offset-random", type=lambda x: int(x, 16),
+                        help="specified offsetof(kmem_cache, random). it is used when `kmem_cache.random` is falsely detected.")
+    parser.add_argument("--no-byte-swap", action="store_true", default=None,
+                        help="skip byteswap to chunk->next. it is used when `kmem_cache.random` is falsely detected.")
+    parser.add_argument("--list", action="store_true", help="list up all slub cache names.")
+    parser.add_argument("--meta", action="store_true", help="display offset information.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
+    parser.add_argument("-v", "--verbose", "--partial", action="store_true", help="dump partial pages")
+    parser.add_argument("-vv", "--vverbose", "--node", action="store_true", help="dump partial pages and node pages.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} kmalloc-256                                      # dump kmalloc-256 from all cpus\n".format(_cmdline_)
@@ -47359,7 +47359,7 @@ class SlubDumpCommand(GenericCommand):
             if self.maps is None:
                 self.maps = V2PCommand.get_maps(None)
             # CONFIG_SPARSEMEM_VMEMMAP
-            paddr = (page['address'] - self.vmemmap) << 6
+            paddr = (page["address"] - self.vmemmap) << 6
             for vstart, _vend, pstart, pend in self.maps:
                 if pstart <= paddr < pend:
                     offset = paddr - pstart
@@ -47375,7 +47375,7 @@ class SlubDumpCommand(GenericCommand):
         # freed chunks are scattered and can be confirmed on each of the pages
         page_heads = [x & ~0xfff for x in freelist]
         uniq_page_heads = set(page_heads)
-        if page['num_pages'] == len(uniq_page_heads):
+        if page["num_pages"] == len(uniq_page_heads):
             return min(uniq_page_heads)
 
         # heuristic detection pattern 2
@@ -47389,11 +47389,11 @@ class SlubDumpCommand(GenericCommand):
         # 0xXXXX5000   <-- chunk in freelist (max_page) v                 ||v pattern 3
         # 0xXXXX6000                                                      |v pattern 2
         # 0xXXXX7000                                                      v pattern 1
-        chunk_size = kmem_cache['size']
+        chunk_size = kmem_cache["size"]
         min_page = min(freelist) & gef_getpagesize_mask()
         max_page = max(freelist) & gef_getpagesize_mask()
         known_num_pages = ((max_page - min_page) // gef_getpagesize()) + 1
-        unknown_num_pages = page['num_pages'] - known_num_pages
+        unknown_num_pages = page["num_pages"] - known_num_pages
         most_top_page = min_page - (unknown_num_pages * gef_getpagesize())
         candidate_top_pages = range(most_top_page, min_page + gef_getpagesize(), gef_getpagesize())
         # alignment check for each candidate_top_pages
@@ -47427,10 +47427,10 @@ class SlubDumpCommand(GenericCommand):
             return s
 
         def pattern1(addr, chunk, cache):
-            return chunk ^ addr ^ cache['random']
+            return chunk ^ addr ^ cache["random"]
 
         def pattern2(addr, chunk, cache):
-            return chunk ^ byteswap(addr) ^ cache['random']
+            return chunk ^ byteswap(addr) ^ cache["random"]
 
         if is_64bit():
             shift_bits = 48
@@ -47446,7 +47446,7 @@ class SlubDumpCommand(GenericCommand):
             if pattern1(addr, chunk, cache) == 0:
                 chunk = pattern1(addr, chunk, cache)
                 self.swap = False
-            elif (chunk >> shift_bits) == (cache['random'] >> shift_bits):
+            elif (chunk >> shift_bits) == (cache["random"] >> shift_bits):
                 chunk = pattern1(addr, chunk, cache)
                 self.swap = False
             else:
@@ -47460,7 +47460,7 @@ class SlubDumpCommand(GenericCommand):
         freelist = [chunk]
         while chunk:
             try:
-                addr = chunk + kmem_cache['offset']
+                addr = chunk + kmem_cache["offset"]
                 chunk = read_int_from_memory(addr) # get next chunk
             except Exception:
                 freelist.append("{:s}".format(Color.colorify("Corrupted (Memory access denied)", corrupted_msg_color)))
@@ -47478,70 +47478,70 @@ class SlubDumpCommand(GenericCommand):
 
     def walk_caches(self, target_names, cpu):
         current_kmem_cache = self.get_next_kmem_cache(self.slab_caches, point_to_base=False)
-        parsed_caches = [{'name': 'slab_caches', 'next': current_kmem_cache}]
+        parsed_caches = [{"name": "slab_caches", "next": current_kmem_cache}]
 
         while current_kmem_cache + self.kmem_cache_offset_list != self.slab_caches:
             kmem_cache = {}
 
             # parse member
-            kmem_cache['name'] = self.get_name(current_kmem_cache)
-            if target_names != [] and kmem_cache['name'] not in target_names:
+            kmem_cache["name"] = self.get_name(current_kmem_cache)
+            if target_names != [] and kmem_cache["name"] not in target_names:
                 current_kmem_cache = self.get_next_kmem_cache(current_kmem_cache)
                 continue
-            kmem_cache['address'] = current_kmem_cache
-            kmem_cache['flags'] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_flags, 4))
-            kmem_cache['flags_str'] = self.get_flags_str(kmem_cache['flags'])
-            kmem_cache['size'] = chunk_size = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_size, 4))
-            kmem_cache['object_size'] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_object_size, 4))
-            kmem_cache['offset'] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_offset, 4))
-            kmem_cache['random'] = self.get_random(current_kmem_cache)
+            kmem_cache["address"] = current_kmem_cache
+            kmem_cache["flags"] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_flags, 4))
+            kmem_cache["flags_str"] = self.get_flags_str(kmem_cache["flags"])
+            kmem_cache["size"] = chunk_size = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_size, 4))
+            kmem_cache["object_size"] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_object_size, 4))
+            kmem_cache["offset"] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_offset, 4))
+            kmem_cache["random"] = self.get_random(current_kmem_cache)
 
             # parse kmem_cache_cpu
-            kmem_cache['kmem_cache_cpu'] = {}
-            kmem_cache['kmem_cache_cpu']['address'] = kmem_cache_cpu = self.get_kmem_cache_cpu(current_kmem_cache, cpu)
+            kmem_cache["kmem_cache_cpu"] = {}
+            kmem_cache["kmem_cache_cpu"]["address"] = kmem_cache_cpu = self.get_kmem_cache_cpu(current_kmem_cache, cpu)
             chunk = read_int_from_memory(kmem_cache_cpu + self.kmem_cache_cpu_offset_freelist)
-            kmem_cache['kmem_cache_cpu']['freelist'] = freelist = self.walk_freelist(chunk, kmem_cache)
+            kmem_cache["kmem_cache_cpu"]["freelist"] = freelist = self.walk_freelist(chunk, kmem_cache)
 
             # parse page
             active_page = {}
-            active_page['address'] = page = read_int_from_memory(kmem_cache_cpu + self.kmem_cache_cpu_offset_page)
+            active_page["address"] = page = read_int_from_memory(kmem_cache_cpu + self.kmem_cache_cpu_offset_page)
             if is_valid_addr(page):
                 x = read_int_from_memory(page + self.page_offset_inuse_objects_frozen)
-                active_page['inuse'] = x & 0xffff
-                active_page['objects'] = objects = (x >> 16) & 0x7fff
-                active_page['frozen'] = (x >> 31) & 1
-                active_page['num_pages'] = (chunk_size * objects + (gef_getpagesize() - 1)) // gef_getpagesize()
-                active_page['virt_addr'] = self.page2virt(active_page, kmem_cache, freelist)
-            kmem_cache['kmem_cache_cpu']['active_page'] = active_page
+                active_page["inuse"] = x & 0xffff
+                active_page["objects"] = objects = (x >> 16) & 0x7fff
+                active_page["frozen"] = (x >> 31) & 1
+                active_page["num_pages"] = (chunk_size * objects + (gef_getpagesize() - 1)) // gef_getpagesize()
+                active_page["virt_addr"] = self.page2virt(active_page, kmem_cache, freelist)
+            kmem_cache["kmem_cache_cpu"]["active_page"] = active_page
 
             # parse partial
             if self.verbose:
-                kmem_cache['kmem_cache_cpu']['partial_pages'] = []
-                kmem_cache_cpu_addr = kmem_cache['kmem_cache_cpu']['address']
+                kmem_cache["kmem_cache_cpu"]["partial_pages"] = []
+                kmem_cache_cpu_addr = kmem_cache["kmem_cache_cpu"]["address"]
                 current_partial_page = read_int_from_memory(kmem_cache_cpu_addr + self.kmem_cache_cpu_offset_partial)
                 while True:
                     partial_page = {}
-                    partial_page['address'] = current_partial_page
-                    if not is_valid_addr(partial_page['address']):
-                        kmem_cache['kmem_cache_cpu']['partial_pages'].append(partial_page)
+                    partial_page["address"] = current_partial_page
+                    if not is_valid_addr(partial_page["address"]):
+                        kmem_cache["kmem_cache_cpu"]["partial_pages"].append(partial_page)
                         break
                     x = read_int_from_memory(current_partial_page + self.page_offset_inuse_objects_frozen)
-                    partial_page['inuse'] = x & 0xffff
-                    partial_page['objects'] = objects = (x >> 16) & 0x7fff
-                    partial_page['frozen'] = (x >> 31) & 1
+                    partial_page["inuse"] = x & 0xffff
+                    partial_page["objects"] = objects = (x >> 16) & 0x7fff
+                    partial_page["frozen"] = (x >> 31) & 1
                     partial_chunk = read_int_from_memory(current_partial_page + self.page_offset_freelist)
-                    partial_page['freelist'] = self.walk_freelist(partial_chunk, kmem_cache)
-                    partial_page['num_pages'] = (chunk_size * objects + (gef_getpagesize() - 1)) // gef_getpagesize()
-                    partial_page['virt_addr'] = self.page2virt(partial_page, kmem_cache, partial_page['freelist'])
-                    kmem_cache['kmem_cache_cpu']['partial_pages'].append(partial_page)
+                    partial_page["freelist"] = self.walk_freelist(partial_chunk, kmem_cache)
+                    partial_page["num_pages"] = (chunk_size * objects + (gef_getpagesize() - 1)) // gef_getpagesize()
+                    partial_page["virt_addr"] = self.page2virt(partial_page, kmem_cache, partial_page["freelist"])
+                    kmem_cache["kmem_cache_cpu"]["partial_pages"].append(partial_page)
                     next_partial_page = read_int_from_memory(current_partial_page + self.page_offset_next)
-                    if next_partial_page in [x['address'] for x in kmem_cache['kmem_cache_cpu']['partial_pages']]:
+                    if next_partial_page in [x["address"] for x in kmem_cache["kmem_cache_cpu"]["partial_pages"]]:
                         break
                     current_partial_page = next_partial_page
 
             # parse node
             if self.vverbose:
-                kmem_cache['nodes'] = []
+                kmem_cache["nodes"] = []
                 kmem_cache_node_array = current_kmem_cache + self.kmem_cache_offset_node
                 current_kmem_cache_node_ptr = kmem_cache_node_array
                 while True:
@@ -47557,25 +47557,25 @@ class SlubDumpCommand(GenericCommand):
                     current_node_page = read_int_from_memory(node_page_head)
                     while current_node_page != node_page_head:
                         node_page = {}
-                        node_page['address'] = current_node_page - self.page_offset_next
-                        if not is_valid_addr(node_page['address']):
+                        node_page["address"] = current_node_page - self.page_offset_next
+                        if not is_valid_addr(node_page["address"]):
                             node_page_list.append(node_page)
                             break
-                        x = read_int_from_memory(node_page['address'] + self.page_offset_inuse_objects_frozen)
-                        node_page['inuse'] = x & 0xffff
-                        node_page['objects'] = objects = (x >> 16) & 0x7fff
-                        node_page['frozen'] = (x >> 31) & 1
-                        node_chunk = read_int_from_memory(node_page['address'] + self.page_offset_freelist)
-                        node_page['freelist'] = self.walk_freelist(node_chunk, kmem_cache)
-                        node_page['num_pages'] = (chunk_size * objects + (gef_getpagesize() - 1)) // gef_getpagesize()
-                        node_page['virt_addr'] = self.page2virt(node_page, kmem_cache, node_page['freelist'])
+                        x = read_int_from_memory(node_page["address"] + self.page_offset_inuse_objects_frozen)
+                        node_page["inuse"] = x & 0xffff
+                        node_page["objects"] = objects = (x >> 16) & 0x7fff
+                        node_page["frozen"] = (x >> 31) & 1
+                        node_chunk = read_int_from_memory(node_page["address"] + self.page_offset_freelist)
+                        node_page["freelist"] = self.walk_freelist(node_chunk, kmem_cache)
+                        node_page["num_pages"] = (chunk_size * objects + (gef_getpagesize() - 1)) // gef_getpagesize()
+                        node_page["virt_addr"] = self.page2virt(node_page, kmem_cache, node_page["freelist"])
                         node_page_list.append(node_page)
-                        current_node_page = read_int_from_memory(node_page['address'] + self.page_offset_next)
-                    kmem_cache['nodes'].append(node_page_list)
+                        current_node_page = read_int_from_memory(node_page["address"] + self.page_offset_next)
+                    kmem_cache["nodes"].append(node_page_list)
                     current_kmem_cache_node_ptr += current_arch.ptrsize
 
             # goto next
-            kmem_cache['next'] = current_kmem_cache = self.get_next_kmem_cache(current_kmem_cache)
+            kmem_cache["next"] = current_kmem_cache = self.get_next_kmem_cache(current_kmem_cache)
             parsed_caches.append(kmem_cache)
         return parsed_caches
 
@@ -47591,38 +47591,38 @@ class SlubDumpCommand(GenericCommand):
             tag_s = Color.colorify("{:s} page".format(tag), label_active_color)
         else:
             tag_s = Color.colorify("{:s} page".format(tag), label_inactive_color)
-        self.out.append('      {:s}: {:#x}'.format(tag_s, page['address']))
+        self.out.append("      {:s}: {:#x}".format(tag_s, page["address"]))
 
         # fast return if invalid
-        if not is_valid_addr(page['address']):
+        if not is_valid_addr(page["address"]):
             return
 
         # for partial or node page
         if freelist is None:
-            freelist = page['freelist']
+            freelist = page["freelist"]
 
         # print virtual address
-        if page['virt_addr'] is None:
-            self.out.append('        virutal address: ???')
+        if page["virt_addr"] is None:
+            self.out.append("        virutal address: ???")
         else:
-            colored_virt_addr = Color.colorify("{:#x}".format(page['virt_addr']), heap_page_color)
-            self.out.append('        virtual address: {:s}'.format(colored_virt_addr))
+            colored_virt_addr = Color.colorify("{:#x}".format(page["virt_addr"]), heap_page_color)
+            self.out.append("        virtual address: {:s}".format(colored_virt_addr))
 
         # print info
-        self.out.append('        num pages: {:d}'.format(page['num_pages']))
+        self.out.append("        num pages: {:d}".format(page["num_pages"]))
 
         if tag == "active":
             freelist_len = len(freelist) - 1 # ignore last 0
-            inuse = page['objects'] - freelist_len
+            inuse = page["objects"] - freelist_len
         else:
-            inuse = page['inuse']
-        self.out.append('        in-use: {:d}/{:d}'.format(inuse, page['objects']))
-        self.out.append('        frozen: {:d}'.format(page['frozen']))
+            inuse = page["inuse"]
+        self.out.append("        in-use: {:d}/{:d}".format(inuse, page["objects"]))
+        self.out.append("        frozen: {:d}".format(page["frozen"]))
 
         # print layout
-        if page['virt_addr'] is not None:
-            end_virt = page['virt_addr'] + page['num_pages'] * gef_getpagesize()
-            for idx, chunk in enumerate(range(page['virt_addr'], end_virt, kmem_cache['size'])):
+        if page["virt_addr"] is not None:
+            end_virt = page["virt_addr"] + page["num_pages"] * gef_getpagesize()
+            for idx, chunk in enumerate(range(page["virt_addr"], end_virt, kmem_cache["size"])):
                 if chunk in freelist[:-1]:
                     next_chunk = freelist[freelist.index(chunk) + 1]
                     next_msg = "next: {:#x}".format(next_chunk)
@@ -47637,28 +47637,28 @@ class SlubDumpCommand(GenericCommand):
 
         # print freelist
         if freelist == [] or freelist == [0]:
-            self.out.append('        freelist: (none)')
+            self.out.append("        freelist: (none)")
         else:
             for idx, chunk_addr in enumerate(freelist):
-                if page['virt_addr'] is not None:
+                if page["virt_addr"] is not None:
                     if chunk_addr == 0:
                         continue
                     else:
-                        chunk_idx = (chunk_addr - page['virt_addr']) // kmem_cache['size']
+                        chunk_idx = (chunk_addr - page["virt_addr"]) // kmem_cache["size"]
                         chunk_idx = "{:#05x}".format(chunk_idx)
                     if isinstance(chunk_addr, str):
                         msg = chunk_addr
                     else:
                         msg = Color.colorify("{:#x}".format(chunk_addr), freed_address_color)
                     freelist_msg = "freelist:" if idx == 0 else ""
-                    self.out.append('        {:9s} {:5s} {:s}'.format(freelist_msg, chunk_idx, msg))
+                    self.out.append("        {:9s} {:5s} {:s}".format(freelist_msg, chunk_idx, msg))
                 else:
                     if isinstance(chunk_addr, str):
                         msg = chunk_addr
                     else:
                         msg = Color.colorify("{:#x}".format(chunk_addr), freed_address_color)
                     freelist_msg = "freelist:" if idx == 0 else ""
-                    self.out.append('        {:9s}       {:s}'.format(freelist_msg, msg))
+                    self.out.append("        {:9s}       {:s}".format(freelist_msg, msg))
         return
 
     def dump_caches(self, target_names, cpu, parsed_caches):
@@ -47666,34 +47666,34 @@ class SlubDumpCommand(GenericCommand):
         chunk_size_color = get_gef_setting("theme.heap_chunk_size")
         label_inactive_color = get_gef_setting("theme.heap_label_inactive")
 
-        self.out.append('slab_caches @ {:#x}'.format(self.slab_caches))
+        self.out.append("slab_caches @ {:#x}".format(self.slab_caches))
         for kmem_cache in parsed_caches[1:]:
-            if target_names != [] and kmem_cache['name'] not in target_names:
+            if target_names != [] and kmem_cache["name"] not in target_names:
                 continue
             self.out.append("")
-            self.out.append('  kmem_cache: {:#x}'.format(kmem_cache['address']))
-            self.out.append('    name: {:s}'.format(Color.colorify(kmem_cache['name'], chunk_label_color)))
-            self.out.append('    flags: {:#x} ({:s})'.format(kmem_cache['flags'], kmem_cache['flags_str']))
-            object_size_s = Color.colorify("{:#x}".format(kmem_cache['object_size']), chunk_size_color)
-            self.out.append('    object size: {:s} (chunk size: {:#x})'.format(object_size_s, kmem_cache['size']))
-            self.out.append('    offset (next pointer in chunk): {:#x}'.format(kmem_cache['offset']))
+            self.out.append("  kmem_cache: {:#x}".format(kmem_cache["address"]))
+            self.out.append("    name: {:s}".format(Color.colorify(kmem_cache["name"], chunk_label_color)))
+            self.out.append("    flags: {:#x} ({:s})".format(kmem_cache["flags"], kmem_cache["flags_str"]))
+            object_size_s = Color.colorify("{:#x}".format(kmem_cache["object_size"]), chunk_size_color)
+            self.out.append("    object size: {:s} (chunk size: {:#x})".format(object_size_s, kmem_cache["size"]))
+            self.out.append("    offset (next pointer in chunk): {:#x}".format(kmem_cache["offset"]))
             if self.kmem_cache_offset_random is not None:
                 if self.no_xor is False:
                     if self.swap is True:
-                        fmt = '    random (xor key): {:#x} ^ byteswap(address of chunk->next)'
-                        self.out.append(fmt.format(kmem_cache['random']))
+                        fmt = "    random (xor key): {:#x} ^ byteswap(address of chunk->next)"
+                        self.out.append(fmt.format(kmem_cache["random"]))
                     else:
-                        fmt = '    random (xor key): {:#x} ^ address of chunk->next'
-                        self.out.append(fmt.format(kmem_cache['random']))
-            self.out.append('    kmem_cache_cpu (cpu{:d}): {:#x}'.format(cpu, kmem_cache['kmem_cache_cpu']['address']))
+                        fmt = "    random (xor key): {:#x} ^ address of chunk->next"
+                        self.out.append(fmt.format(kmem_cache["random"]))
+            self.out.append("    kmem_cache_cpu (cpu{:d}): {:#x}".format(cpu, kmem_cache["kmem_cache_cpu"]["address"]))
 
-            active_page = kmem_cache['kmem_cache_cpu']['active_page']
-            freelist = kmem_cache['kmem_cache_cpu']['freelist']
+            active_page = kmem_cache["kmem_cache_cpu"]["active_page"]
+            freelist = kmem_cache["kmem_cache_cpu"]["freelist"]
             self.dump_page(active_page, kmem_cache, tag="active", freelist=freelist)
 
             if self.verbose:
                 printed_count = 0
-                for partial_page in kmem_cache['kmem_cache_cpu']['partial_pages']:
+                for partial_page in kmem_cache["kmem_cache_cpu"]["partial_pages"]:
                     self.dump_page(partial_page, kmem_cache, tag="partial")
                     printed_count += 1
                 if printed_count > 1 : # included address == 0
@@ -47701,7 +47701,7 @@ class SlubDumpCommand(GenericCommand):
 
             if self.vverbose:
                 printed_count = 0
-                for node_index, node_page_list in enumerate(kmem_cache['nodes']):
+                for node_index, node_page_list in enumerate(kmem_cache["nodes"]):
                     for node_page in node_page_list:
                         self.dump_page(node_page, kmem_cache, tag="node[{:d}]".format(node_index))
                         printed_count += 1
@@ -47709,19 +47709,20 @@ class SlubDumpCommand(GenericCommand):
                     tag = Color.colorify("node pages", label_inactive_color)
                     self.out.append("      {:s}: (none)".format(tag))
 
-            self.out.append('    next: {:#x}'.format(kmem_cache['next']))
+            self.out.append("    next: {:#x}".format(kmem_cache["next"]))
         return
 
     def dump_names(self, parsed_caches):
         if not self.quiet:
-            fmt = "{:<30s}: {:<30s}: {:30s} {:20s}"
+            fmt = "{:<16s} {:<16s} {:30s} {:20s}"
             legend = ["Object Size", "Chunk Size", "Name", "kmem_cache"]
             self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
-        for kmem_cache in sorted(parsed_caches[1:], key=lambda x: x['object_size']):
-            fmt = "{:8d} byte ({:#9x} byte): {:8d} byte ({:#9x} byte): {:30s} {:#x}"
-            objsz = kmem_cache['object_size']
-            chunksz = kmem_cache['size']
-            self.out.append(fmt.format(objsz, objsz, chunksz, chunksz, kmem_cache['name'], kmem_cache['address']))
+        for kmem_cache in sorted(parsed_caches[1:], key=lambda x: x["object_size"]):
+            objsz = "{0:d} ({0:#x})".format(kmem_cache["object_size"])
+            chunksz = "{0:d} ({0:#x})".format(kmem_cache["size"])
+            chunk_name = kmem_cache["name"]
+            address = kmem_cache["address"]
+            self.out.append("{:16s} {:16s} {:30s} {:#x}".format(objsz, chunksz, chunk_name, address))
         return
 
     def slubwalk(self, target_names, cpu):
@@ -47788,7 +47789,7 @@ class SlubDumpCommand(GenericCommand):
         self.out = []
         self.slubwalk(args.cache_name, args.cpu)
         if self.out:
-            gef_print('\n'.join(self.out), less=not args.no_pager)
+            gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
@@ -47799,11 +47800,11 @@ class SlubTinyDumpCommand(GenericCommand):
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('cache_name', metavar='SLUB_CACHE_NAME', nargs='*', help='filter by specific slub cache name.')
-    parser.add_argument('--list', action='store_true', help='list up all slub cache names.')
-    parser.add_argument('--meta', action='store_true', help='display offset information.')
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
-    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
+    parser.add_argument("cache_name", metavar="SLUB_CACHE_NAME", nargs="*", help="filter by specific slub cache name.")
+    parser.add_argument("--list", action="store_true", help="list up all slub cache names.")
+    parser.add_argument("--meta", action="store_true", help="display offset information.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} kmalloc-256                                      # dump kmalloc-256 from all cpus\n".format(_cmdline_)
@@ -48127,7 +48128,7 @@ class SlubTinyDumpCommand(GenericCommand):
             if self.maps is None:
                 self.maps = V2PCommand.get_maps(None)
             # CONFIG_SPARSEMEM_VMEMMAP
-            paddr = (page['address'] - self.vmemmap) << 6
+            paddr = (page["address"] - self.vmemmap) << 6
             for vstart, _vend, pstart, pend in self.maps:
                 if pstart <= paddr < pend:
                     offset = paddr - pstart
@@ -48143,7 +48144,7 @@ class SlubTinyDumpCommand(GenericCommand):
         # freed chunks are scattered and can be confirmed on each of the pages
         page_heads = [x & ~0xfff for x in freelist]
         uniq_page_heads = set(page_heads)
-        if page['num_pages'] == len(uniq_page_heads):
+        if page["num_pages"] == len(uniq_page_heads):
             return min(uniq_page_heads)
 
         # heuristic detection pattern 2
@@ -48157,11 +48158,11 @@ class SlubTinyDumpCommand(GenericCommand):
         # 0xXXXX5000   <-- chunk in freelist (max_page) v                 ||v pattern 3
         # 0xXXXX6000                                                      |v pattern 2
         # 0xXXXX7000                                                      v pattern 1
-        chunk_size = kmem_cache['size']
+        chunk_size = kmem_cache["size"]
         min_page = min(freelist) & gef_getpagesize_mask()
         max_page = max(freelist) & gef_getpagesize_mask()
         known_num_pages = ((max_page - min_page) // gef_getpagesize()) + 1
-        unknown_num_pages = page['num_pages'] - known_num_pages
+        unknown_num_pages = page["num_pages"] - known_num_pages
         most_top_page = min_page - (unknown_num_pages * gef_getpagesize())
         candidate_top_pages = range(most_top_page, min_page + gef_getpagesize(), gef_getpagesize())
         # alignment check for each candidate_top_pages
@@ -48189,7 +48190,7 @@ class SlubTinyDumpCommand(GenericCommand):
         freelist = [chunk]
         while chunk:
             try:
-                addr = chunk + kmem_cache['offset']
+                addr = chunk + kmem_cache["offset"]
                 chunk = read_int_from_memory(addr) # get next chunk
             except Exception:
                 freelist.append("{:s}".format(Color.colorify("Corrupted (Memory access denied)", corrupted_msg_color)))
@@ -48205,25 +48206,25 @@ class SlubTinyDumpCommand(GenericCommand):
 
     def walk_caches(self, target_names):
         current_kmem_cache = self.get_next_kmem_cache(self.slab_caches, point_to_base=False)
-        parsed_caches = [{'name': 'slab_caches', 'next': current_kmem_cache}]
+        parsed_caches = [{"name": "slab_caches", "next": current_kmem_cache}]
 
         while current_kmem_cache + self.kmem_cache_offset_list != self.slab_caches:
             kmem_cache = {}
 
             # parse member
-            kmem_cache['name'] = self.get_name(current_kmem_cache)
-            if target_names != [] and kmem_cache['name'] not in target_names:
+            kmem_cache["name"] = self.get_name(current_kmem_cache)
+            if target_names != [] and kmem_cache["name"] not in target_names:
                 current_kmem_cache = self.get_next_kmem_cache(current_kmem_cache)
                 continue
-            kmem_cache['address'] = current_kmem_cache
-            kmem_cache['flags'] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_flags, 4))
-            kmem_cache['flags_str'] = self.get_flags_str(kmem_cache['flags'])
-            kmem_cache['size'] = chunk_size = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_size, 4))
-            kmem_cache['object_size'] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_object_size, 4))
-            kmem_cache['offset'] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_offset, 4))
+            kmem_cache["address"] = current_kmem_cache
+            kmem_cache["flags"] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_flags, 4))
+            kmem_cache["flags_str"] = self.get_flags_str(kmem_cache["flags"])
+            kmem_cache["size"] = chunk_size = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_size, 4))
+            kmem_cache["object_size"] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_object_size, 4))
+            kmem_cache["offset"] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_offset, 4))
 
             # parse node
-            kmem_cache['nodes'] = []
+            kmem_cache["nodes"] = []
             kmem_cache_node_array = current_kmem_cache + self.kmem_cache_offset_node
             current_kmem_cache_node_ptr = kmem_cache_node_array
             while True:
@@ -48237,25 +48238,25 @@ class SlubTinyDumpCommand(GenericCommand):
                 current_node_page = read_int_from_memory(node_page_head)
                 while current_node_page != node_page_head:
                     node_page = {}
-                    node_page['address'] = current_node_page - self.page_offset_next
-                    if not is_valid_addr(node_page['address']):
+                    node_page["address"] = current_node_page - self.page_offset_next
+                    if not is_valid_addr(node_page["address"]):
                         node_page_list.append(node_page)
                         break
-                    x = read_int_from_memory(node_page['address'] + self.page_offset_inuse_objects_frozen)
-                    node_page['inuse'] = x & 0xffff
-                    node_page['objects'] = objects = (x >> 16) & 0x7fff
-                    node_page['frozen'] = (x >> 31) & 1
-                    node_chunk = read_int_from_memory(node_page['address'] + self.page_offset_freelist)
-                    node_page['freelist'] = self.walk_freelist(node_chunk, kmem_cache)
-                    node_page['num_pages'] = (chunk_size * objects + (gef_getpagesize() - 1)) // gef_getpagesize()
-                    node_page['virt_addr'] = self.page2virt(node_page, kmem_cache, node_page['freelist'])
+                    x = read_int_from_memory(node_page["address"] + self.page_offset_inuse_objects_frozen)
+                    node_page["inuse"] = x & 0xffff
+                    node_page["objects"] = objects = (x >> 16) & 0x7fff
+                    node_page["frozen"] = (x >> 31) & 1
+                    node_chunk = read_int_from_memory(node_page["address"] + self.page_offset_freelist)
+                    node_page["freelist"] = self.walk_freelist(node_chunk, kmem_cache)
+                    node_page["num_pages"] = (chunk_size * objects + (gef_getpagesize() - 1)) // gef_getpagesize()
+                    node_page["virt_addr"] = self.page2virt(node_page, kmem_cache, node_page["freelist"])
                     node_page_list.append(node_page)
-                    current_node_page = read_int_from_memory(node_page['address'] + self.page_offset_next)
-                kmem_cache['nodes'].append(node_page_list)
+                    current_node_page = read_int_from_memory(node_page["address"] + self.page_offset_next)
+                kmem_cache["nodes"].append(node_page_list)
                 current_kmem_cache_node_ptr += current_arch.ptrsize
 
             # goto next
-            kmem_cache['next'] = current_kmem_cache = self.get_next_kmem_cache(current_kmem_cache)
+            kmem_cache["next"] = current_kmem_cache = self.get_next_kmem_cache(current_kmem_cache)
             parsed_caches.append(kmem_cache)
         return parsed_caches
 
@@ -48267,38 +48268,38 @@ class SlubTinyDumpCommand(GenericCommand):
 
         # page address
         tag_s = Color.colorify("{:s} page".format(tag), label_active_color)
-        self.out.append('      {:s}: {:#x}'.format(tag_s, page['address']))
+        self.out.append("      {:s}: {:#x}".format(tag_s, page["address"]))
 
         # fast return if invalid
-        if not is_valid_addr(page['address']):
+        if not is_valid_addr(page["address"]):
             return
 
         # for partial or node page
         if freelist is None:
-            freelist = page['freelist']
+            freelist = page["freelist"]
 
         # print virtual address
-        if page['virt_addr'] is None:
-            self.out.append('        virutal address: ???')
+        if page["virt_addr"] is None:
+            self.out.append("        virutal address: ???")
         else:
-            colored_virt_addr = Color.colorify("{:#x}".format(page['virt_addr']), heap_page_color)
-            self.out.append('        virtual address: {:s}'.format(colored_virt_addr))
+            colored_virt_addr = Color.colorify("{:#x}".format(page["virt_addr"]), heap_page_color)
+            self.out.append("        virtual address: {:s}".format(colored_virt_addr))
 
         # print info
-        self.out.append('        num pages: {:d}'.format(page['num_pages']))
+        self.out.append("        num pages: {:d}".format(page["num_pages"]))
 
         if tag == "active":
             freelist_len = len(freelist) - 1 # ignore last 0
-            inuse = page['objects'] - freelist_len
+            inuse = page["objects"] - freelist_len
         else:
-            inuse = page['inuse']
-        self.out.append('        in-use: {:d}/{:d}'.format(inuse, page['objects']))
-        self.out.append('        frozen: {:d}'.format(page['frozen']))
+            inuse = page["inuse"]
+        self.out.append("        in-use: {:d}/{:d}".format(inuse, page["objects"]))
+        self.out.append("        frozen: {:d}".format(page["frozen"]))
 
         # print layout
-        if page['virt_addr'] is not None:
-            end_virt = page['virt_addr'] + page['num_pages'] * gef_getpagesize()
-            for idx, chunk in enumerate(range(page['virt_addr'], end_virt, kmem_cache['size'])):
+        if page["virt_addr"] is not None:
+            end_virt = page["virt_addr"] + page["num_pages"] * gef_getpagesize()
+            for idx, chunk in enumerate(range(page["virt_addr"], end_virt, kmem_cache["size"])):
                 if chunk in freelist[:-1]:
                     next_chunk = freelist[freelist.index(chunk) + 1]
                     next_msg = "next: {:#x}".format(next_chunk)
@@ -48313,28 +48314,28 @@ class SlubTinyDumpCommand(GenericCommand):
 
         # print freelist
         if freelist == [] or freelist == [0]:
-            self.out.append('        freelist: (none)')
+            self.out.append("        freelist: (none)")
         else:
             for idx, chunk_addr in enumerate(freelist):
-                if page['virt_addr'] is not None:
+                if page["virt_addr"] is not None:
                     if chunk_addr == 0:
                         continue
                     else:
-                        chunk_idx = (chunk_addr - page['virt_addr']) // kmem_cache['size']
+                        chunk_idx = (chunk_addr - page["virt_addr"]) // kmem_cache["size"]
                         chunk_idx = "{:#05x}".format(chunk_idx)
                     if isinstance(chunk_addr, str):
                         msg = chunk_addr
                     else:
                         msg = Color.colorify("{:#x}".format(chunk_addr), freed_address_color)
                     freelist_msg = "freelist:" if idx == 0 else ""
-                    self.out.append('        {:9s} {:5s} {:s}'.format(freelist_msg, chunk_idx, msg))
+                    self.out.append("        {:9s} {:5s} {:s}".format(freelist_msg, chunk_idx, msg))
                 else:
                     if isinstance(chunk_addr, str):
                         msg = chunk_addr
                     else:
                         msg = Color.colorify("{:#x}".format(chunk_addr), freed_address_color)
                     freelist_msg = "freelist:" if idx == 0 else ""
-                    self.out.append('        {:9s}       {:s}'.format(freelist_msg, msg))
+                    self.out.append("        {:9s}       {:s}".format(freelist_msg, msg))
         return
 
     def dump_caches(self, target_names, parsed_caches):
@@ -48342,20 +48343,20 @@ class SlubTinyDumpCommand(GenericCommand):
         chunk_size_color = get_gef_setting("theme.heap_chunk_size")
         label_inactive_color = get_gef_setting("theme.heap_label_inactive")
 
-        self.out.append('slab_caches @ {:#x}'.format(self.slab_caches))
+        self.out.append("slab_caches @ {:#x}".format(self.slab_caches))
         for kmem_cache in parsed_caches[1:]:
-            if target_names != [] and kmem_cache['name'] not in target_names:
+            if target_names != [] and kmem_cache["name"] not in target_names:
                 continue
             self.out.append("")
-            self.out.append('  kmem_cache: {:#x}'.format(kmem_cache['address']))
-            self.out.append('    name: {:s}'.format(Color.colorify(kmem_cache['name'], chunk_label_color)))
-            self.out.append('    flags: {:#x} ({:s})'.format(kmem_cache['flags'], kmem_cache['flags_str']))
-            object_size_s = Color.colorify("{:#x}".format(kmem_cache['object_size']), chunk_size_color)
-            self.out.append('    object size: {:s} (chunk size: {:#x})'.format(object_size_s, kmem_cache['size']))
-            self.out.append('    offset (next pointer in chunk): {:#x}'.format(kmem_cache['offset']))
+            self.out.append("  kmem_cache: {:#x}".format(kmem_cache["address"]))
+            self.out.append("    name: {:s}".format(Color.colorify(kmem_cache["name"], chunk_label_color)))
+            self.out.append("    flags: {:#x} ({:s})".format(kmem_cache["flags"], kmem_cache["flags_str"]))
+            object_size_s = Color.colorify("{:#x}".format(kmem_cache["object_size"]), chunk_size_color)
+            self.out.append("    object size: {:s} (chunk size: {:#x})".format(object_size_s, kmem_cache["size"]))
+            self.out.append("    offset (next pointer in chunk): {:#x}".format(kmem_cache["offset"]))
 
             printed_count = 0
-            for node_index, node_page_list in enumerate(kmem_cache['nodes']):
+            for node_index, node_page_list in enumerate(kmem_cache["nodes"]):
                 for node_page in node_page_list:
                     self.dump_page(node_page, kmem_cache, tag="node[{:d}]".format(node_index))
                     printed_count += 1
@@ -48363,19 +48364,20 @@ class SlubTinyDumpCommand(GenericCommand):
                 tag = Color.colorify("node pages", label_inactive_color)
                 self.out.append("      {:s}: (none)".format(tag))
 
-            self.out.append('    next: {:#x}'.format(kmem_cache['next']))
+            self.out.append("    next: {:#x}".format(kmem_cache["next"]))
         return
 
     def dump_names(self, parsed_caches):
         if not self.quiet:
-            fmt = "{:<30s}: {:<30s}: {:30s} {:20s}"
+            fmt = "{:<16s} {:<16s} {:30s} {:20s}"
             legend = ["Object Size", "Chunk Size", "Name", "kmem_cache"]
             self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
-        for kmem_cache in sorted(parsed_caches[1:], key=lambda x: x['object_size']):
-            fmt = "{:8d} byte ({:#9x} byte): {:8d} byte ({:#9x} byte): {:30s} {:#x}"
-            objsz = kmem_cache['object_size']
-            chunksz = kmem_cache['size']
-            self.out.append(fmt.format(objsz, objsz, chunksz, chunksz, kmem_cache['name'], kmem_cache['address']))
+        for kmem_cache in sorted(parsed_caches[1:], key=lambda x: x["object_size"]):
+            objsz = "{0:d} ({0:#x})".format(kmem_cache["object_size"])
+            chunksz = "{0:d} ({0:#x})".format(kmem_cache["size"])
+            chunk_name = kmem_cache["name"]
+            address = kmem_cache["address"]
+            self.out.append("{:16s} {:16s} {:30s} {:#x}".format(objsz, chunksz, chunk_name, address))
         return
 
     def slub_tiny_walk(self, target_names):
@@ -48421,7 +48423,7 @@ class SlubTinyDumpCommand(GenericCommand):
         self.out = []
         self.slub_tiny_walk(args.cache_name)
         if self.out:
-            gef_print('\n'.join(self.out), less=not args.no_pager)
+            gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
@@ -48432,12 +48434,12 @@ class SlabDumpCommand(GenericCommand):
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('cache_name', metavar='SLAB_CACHE_NAME', nargs='*', help='filter by specific slab cache name.')
-    parser.add_argument('--cpu', type=int, help="filter by specific cpu.")
-    parser.add_argument('--list', action='store_true', help='list up all slab cache names.')
-    parser.add_argument('--meta', action='store_true', help='display offset information.')
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
-    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
+    parser.add_argument("cache_name", metavar="SLAB_CACHE_NAME", nargs="*", help="filter by specific slab cache name.")
+    parser.add_argument("--cpu", type=int, help="filter by specific cpu.")
+    parser.add_argument("--list", action="store_true", help="list up all slab cache names.")
+    parser.add_argument("--meta", action="store_true", help="display offset information.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} kmalloc-256          # dump kmalloc-256 from all cpus\n".format(_cmdline_)
@@ -48926,7 +48928,7 @@ class SlabDumpCommand(GenericCommand):
     def walk_array_cache(self, array_cache, kmem_cache):
         freelist = []
         entry = array_cache + self.array_cache_offset_entry
-        end = entry + kmem_cache['array_cache']['avail'] * current_arch.ptrsize
+        end = entry + kmem_cache["array_cache"]["avail"] * current_arch.ptrsize
         for current in range(entry, end, current_arch.ptrsize):
             chunk = read_int_from_memory(current)
             freelist.append(chunk)
@@ -48941,60 +48943,60 @@ class SlabDumpCommand(GenericCommand):
                 break
             seen.append(current_node_page)
             node_page = {}
-            node_page['address'] = current_node_page - self.page_offset_next
-            if not is_valid_addr(node_page['address']):
+            node_page["address"] = current_node_page - self.page_offset_next
+            if not is_valid_addr(node_page["address"]):
                 node_page_list.append(node_page)
                 break
-            s_mem = read_int_from_memory(node_page['address'] + self.page_offset_s_mem)
-            node_page['s_mem'] = s_mem & gef_getpagesize_mask()
+            s_mem = read_int_from_memory(node_page["address"] + self.page_offset_s_mem)
+            node_page["s_mem"] = s_mem & gef_getpagesize_mask()
 
-            freelist_addr = read_int_from_memory(node_page['address'] + self.page_offset_freelist)
+            freelist_addr = read_int_from_memory(node_page["address"] + self.page_offset_freelist)
             if is_valid_addr(freelist_addr):
-                active = u32(read_memory(node_page['address'] + self.page_offset_active, 4))
+                active = u32(read_memory(node_page["address"] + self.page_offset_active, 4))
                 if kversion >= "3.15":
-                    freelist_byteseq = read_memory(freelist_addr, kmem_cache['objperslab'])
-                    node_page['freelist'] = list(freelist_byteseq[active:])
+                    freelist_byteseq = read_memory(freelist_addr, kmem_cache["objperslab"])
+                    node_page["freelist"] = list(freelist_byteseq[active:])
                 else:
-                    freelist_intseq = read_memory(freelist_addr, kmem_cache['objperslab'] * 4)
-                    node_page['freelist'] = slice_unpack(freelist_intseq, current_arch.ptrsize)[active:]
+                    freelist_intseq = read_memory(freelist_addr, kmem_cache["objperslab"] * 4)
+                    node_page["freelist"] = slice_unpack(freelist_intseq, current_arch.ptrsize)[active:]
             else:
-                node_page['freelist'] = []
+                node_page["freelist"] = []
 
             node_page_list.append(node_page)
-            current_node_page = read_int_from_memory(node_page['address'] + self.page_offset_next)
+            current_node_page = read_int_from_memory(node_page["address"] + self.page_offset_next)
         return node_page_list
 
     def walk_caches(self, target_names, cpu):
         kversion = KernelVersionCommand.kernel_version()
         current_kmem_cache = self.get_next_kmem_cache(self.slab_caches, point_to_base=False)
-        parsed_caches = [{'name': 'slab_caches', 'next': current_kmem_cache}]
+        parsed_caches = [{"name": "slab_caches", "next": current_kmem_cache}]
 
         while current_kmem_cache + self.kmem_cache_offset_list != self.slab_caches:
             kmem_cache = {}
 
             # parse member
-            kmem_cache['name'] = self.get_name(current_kmem_cache)
-            if target_names != [] and kmem_cache['name'] not in target_names:
+            kmem_cache["name"] = self.get_name(current_kmem_cache)
+            if target_names != [] and kmem_cache["name"] not in target_names:
                 current_kmem_cache = self.get_next_kmem_cache(current_kmem_cache)
                 continue
-            kmem_cache['address'] = current_kmem_cache
-            kmem_cache['flags'] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_flags, 4))
-            kmem_cache['flags_str'] = self.get_flags_str(kmem_cache['flags'])
-            kmem_cache['size'] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_size, 4))
-            kmem_cache['object_size'] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_object_size, 4))
-            kmem_cache['objperslab'] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_num, 4))
+            kmem_cache["address"] = current_kmem_cache
+            kmem_cache["flags"] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_flags, 4))
+            kmem_cache["flags_str"] = self.get_flags_str(kmem_cache["flags"])
+            kmem_cache["size"] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_size, 4))
+            kmem_cache["object_size"] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_object_size, 4))
+            kmem_cache["objperslab"] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_num, 4))
             gfporder = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_gfporder, 4))
-            kmem_cache['pagesperslab'] = 1 << gfporder
+            kmem_cache["pagesperslab"] = 1 << gfporder
 
             # parse array_cache
-            kmem_cache['array_cache'] = {}
-            kmem_cache['array_cache']['address'] = array_cache = self.get_array_cache_cpu(current_kmem_cache, cpu)
-            kmem_cache['array_cache']['avail'] = u32(read_memory(array_cache + self.array_cache_offset_avail, 4))
-            kmem_cache['array_cache']['limit'] = u32(read_memory(array_cache + self.array_cache_offset_limit, 4))
-            kmem_cache['array_cache']['freelist'] = self.walk_array_cache(array_cache, kmem_cache)
+            kmem_cache["array_cache"] = {}
+            kmem_cache["array_cache"]["address"] = array_cache = self.get_array_cache_cpu(current_kmem_cache, cpu)
+            kmem_cache["array_cache"]["avail"] = u32(read_memory(array_cache + self.array_cache_offset_avail, 4))
+            kmem_cache["array_cache"]["limit"] = u32(read_memory(array_cache + self.array_cache_offset_limit, 4))
+            kmem_cache["array_cache"]["freelist"] = self.walk_array_cache(array_cache, kmem_cache)
 
             # parse node
-            kmem_cache['nodes'] = []
+            kmem_cache["nodes"] = []
             if kversion >= "3.18":
                 kmem_cache_node_array = current_kmem_cache + self.kmem_cache_offset_node
             else:
@@ -49008,21 +49010,21 @@ class SlabDumpCommand(GenericCommand):
 
                 node_page_head = current_kmem_cache_node + self.kmem_cache_node_offset_slabs_partial
                 current_node_page = read_int_from_memory(node_page_head)
-                slabs_list['slabs_partial'] = self.walk_node_list(node_page_head, current_node_page, kmem_cache)
+                slabs_list["slabs_partial"] = self.walk_node_list(node_page_head, current_node_page, kmem_cache)
 
                 node_page_head = current_kmem_cache_node + self.kmem_cache_node_offset_slabs_full
                 current_node_page = read_int_from_memory(node_page_head)
-                slabs_list['slabs_full'] = self.walk_node_list(node_page_head, current_node_page, kmem_cache)
+                slabs_list["slabs_full"] = self.walk_node_list(node_page_head, current_node_page, kmem_cache)
 
                 node_page_head = current_kmem_cache_node + self.kmem_cache_node_offset_slabs_free
                 current_node_page = read_int_from_memory(node_page_head)
-                slabs_list['slabs_free'] = self.walk_node_list(node_page_head, current_node_page, kmem_cache)
+                slabs_list["slabs_free"] = self.walk_node_list(node_page_head, current_node_page, kmem_cache)
 
-                kmem_cache['nodes'].append(slabs_list)
+                kmem_cache["nodes"].append(slabs_list)
                 current_kmem_cache_node_ptr += current_arch.ptrsize
 
             # goto next
-            kmem_cache['next'] = current_kmem_cache = self.get_next_kmem_cache(current_kmem_cache)
+            kmem_cache["next"] = current_kmem_cache = self.get_next_kmem_cache(current_kmem_cache)
             parsed_caches.append(kmem_cache)
         return parsed_caches
 
@@ -49034,23 +49036,23 @@ class SlabDumpCommand(GenericCommand):
 
         # page address
         tag_s = Color.colorify(tag, label_inactive_color)
-        self.out.append('      {:s}: {:#x}'.format(tag_s, page['address']))
+        self.out.append("      {:s}: {:#x}".format(tag_s, page["address"]))
 
         # fast return if invalid
-        if not is_valid_addr(page['address']):
+        if not is_valid_addr(page["address"]):
             return
 
         # print virtual address
-        colored_s_mem = Color.colorify("{:#x}".format(page['s_mem']), heap_page_color)
-        self.out.append('        virtual address (s_mem): {:s}'.format(colored_s_mem))
+        colored_s_mem = Color.colorify("{:#x}".format(page["s_mem"]), heap_page_color)
+        self.out.append("        virtual address (s_mem): {:s}".format(colored_s_mem))
 
         # print info
-        self.out.append('        num pages: {:d}'.format(kmem_cache['pagesperslab']))
+        self.out.append("        num pages: {:d}".format(kmem_cache["pagesperslab"]))
 
         # print layout
-        freelist = page['freelist']
-        end_virt = page['s_mem'] + kmem_cache['size'] * kmem_cache['objperslab']
-        for idx, chunk in enumerate(range(page['s_mem'], end_virt, kmem_cache['size'])):
+        freelist = page["freelist"]
+        end_virt = page["s_mem"] + kmem_cache["size"] * kmem_cache["objperslab"]
+        for idx, chunk in enumerate(range(page["s_mem"], end_virt, kmem_cache["size"])):
             if idx in freelist:
                 idxidx = freelist.index(idx)
                 if idxidx == len(freelist) - 1:
@@ -49066,32 +49068,32 @@ class SlabDumpCommand(GenericCommand):
 
         # print freelist
         if freelist == []:
-            self.out.append('        freelist: (none)')
+            self.out.append("        freelist: (none)")
         else:
             for i, idx in enumerate(freelist):
-                chunk = page['s_mem'] + kmem_cache['size'] * idx
+                chunk = page["s_mem"] + kmem_cache["size"] * idx
                 msg = Color.colorify("{:#x}".format(chunk), freed_address_color)
-                self.out.append('        {:9s} {:#04x} {:s}'.format("freelist:" if i == 0 else "", idx, msg))
+                self.out.append("        {:9s} {:#04x} {:s}".format("freelist:" if i == 0 else "", idx, msg))
         return
 
     def dump_array_cache(self, cpu, kmem_cache):
         label_active_color = get_gef_setting("theme.heap_label_active")
         freed_address_color = get_gef_setting("theme.heap_chunk_address_freed")
 
-        tag_s = Color.colorify('array_cache (cpu{:d})'.format(cpu), label_active_color)
-        self.out.append('      {:s}: {:#x}'.format(tag_s, kmem_cache['array_cache']['address']))
+        tag_s = Color.colorify("array_cache (cpu{:d})".format(cpu), label_active_color)
+        self.out.append("      {:s}: {:#x}".format(tag_s, kmem_cache["array_cache"]["address"]))
 
-        self.out.append('        avail: {:d}'.format(kmem_cache['array_cache']['avail']))
-        self.out.append('        limit: {:d}'.format(kmem_cache['array_cache']['limit']))
-        freelist = kmem_cache['array_cache']['freelist']
+        self.out.append("        avail: {:d}".format(kmem_cache["array_cache"]["avail"]))
+        self.out.append("        limit: {:d}".format(kmem_cache["array_cache"]["limit"]))
+        freelist = kmem_cache["array_cache"]["freelist"]
         if freelist == []:
-            self.out.append('        entry: (none)')
+            self.out.append("        entry: (none)")
         else:
             for idx, f in enumerate(freelist):
                 if not is_valid_addr(f):
                     break
                 msg = Color.colorify("{:#x}".format(f), freed_address_color)
-                self.out.append('        {:6s} {:s}'.format("entry:" if idx == 0 else "", msg))
+                self.out.append("        {:6s} {:s}".format("entry:" if idx == 0 else "", msg))
         return
 
     def dump_caches(self, target_names, cpu, parsed_caches):
@@ -49099,59 +49101,60 @@ class SlabDumpCommand(GenericCommand):
         chunk_size_color = get_gef_setting("theme.heap_chunk_size")
         label_inactive_color = get_gef_setting("theme.heap_label_inactive")
 
-        self.out.append('slab_caches @ {:#x}'.format(self.slab_caches))
+        self.out.append("slab_caches @ {:#x}".format(self.slab_caches))
         for kmem_cache in parsed_caches[1:]:
-            if target_names != [] and kmem_cache['name'] not in target_names:
+            if target_names != [] and kmem_cache["name"] not in target_names:
                 continue
             self.out.append("")
-            self.out.append('  kmem_cache: {:#x}'.format(kmem_cache['address']))
-            self.out.append('    name: {:s}'.format(Color.colorify(kmem_cache['name'], chunk_label_color)))
-            self.out.append('    flags: {:#x} ({:s})'.format(kmem_cache['flags'], kmem_cache['flags_str']))
-            object_size_s = Color.colorify("{:#x}".format(kmem_cache['object_size']), chunk_size_color)
-            self.out.append('    object size: {:s} (chunk size: {:#x})'.format(object_size_s, kmem_cache['size']))
-            self.out.append('    object per slab: {:#x}'.format(kmem_cache['objperslab']))
-            self.out.append('    pages per slab: {:#x}'.format(kmem_cache['pagesperslab']))
+            self.out.append("  kmem_cache: {:#x}".format(kmem_cache["address"]))
+            self.out.append("    name: {:s}".format(Color.colorify(kmem_cache["name"], chunk_label_color)))
+            self.out.append("    flags: {:#x} ({:s})".format(kmem_cache["flags"], kmem_cache["flags_str"]))
+            object_size_s = Color.colorify("{:#x}".format(kmem_cache["object_size"]), chunk_size_color)
+            self.out.append("    object size: {:s} (chunk size: {:#x})".format(object_size_s, kmem_cache["size"]))
+            self.out.append("    object per slab: {:#x}".format(kmem_cache["objperslab"]))
+            self.out.append("    pages per slab: {:#x}".format(kmem_cache["pagesperslab"]))
 
             self.dump_array_cache(cpu, kmem_cache)
 
-            if len(kmem_cache['nodes']) == 0:
+            if len(kmem_cache["nodes"]) == 0:
                 self.out.append("      {:s}: (none)".format(Color.colorify("node pages", label_inactive_color)))
             else:
-                for node_index, slabs_list in enumerate(kmem_cache['nodes']):
-                    if len(slabs_list['slabs_partial']) == 0:
+                for node_index, slabs_list in enumerate(kmem_cache["nodes"]):
+                    if len(slabs_list["slabs_partial"]) == 0:
                         tag = Color.colorify("node[{:d}].slabs_partial".format(node_index), label_inactive_color)
-                        self.out.append('      {:s}: (none)'.format(tag))
+                        self.out.append("      {:s}: (none)".format(tag))
                     else:
-                        for node_page in slabs_list['slabs_partial']:
+                        for node_page in slabs_list["slabs_partial"]:
                             self.dump_page(node_page, kmem_cache, tag="node[{:d}].slabs_partial".format(node_index))
 
-                    if len(slabs_list['slabs_full']) == 0:
+                    if len(slabs_list["slabs_full"]) == 0:
                         tag = Color.colorify("node[{:d}].slabs_fulll".format(node_index), label_inactive_color)
-                        self.out.append('      {:s}: (none)'.format(tag))
+                        self.out.append("      {:s}: (none)".format(tag))
                     else:
-                        for node_page in slabs_list['slabs_full']:
+                        for node_page in slabs_list["slabs_full"]:
                             self.dump_page(node_page, kmem_cache, tag="node[{:d}].slabs_full".format(node_index))
 
-                    if len(slabs_list['slabs_free']) == 0:
+                    if len(slabs_list["slabs_free"]) == 0:
                         tag = Color.colorify("node[{:d}].slabs_free".format(node_index), label_inactive_color)
-                        self.out.append('      {:s}: (none)'.format(tag))
+                        self.out.append("      {:s}: (none)".format(tag))
                     else:
-                        for node_page in slabs_list['slabs_free']:
+                        for node_page in slabs_list["slabs_free"]:
                             self.dump_page(node_page, kmem_cache, tag="node[{:d}].slabs_free".format(node_index))
 
-            self.out.append('    next: {:#x}'.format(kmem_cache['next']))
+            self.out.append("    next: {:#x}".format(kmem_cache["next"]))
         return
 
     def dump_names(self, parsed_caches):
         if not self.quiet:
-            fmt = "{:<30s}: {:<30s}: {:30s} {:20s}"
+            fmt = "{:<16s} {:<16s} {:30s} {:20s}"
             legend = ["Object Size", "Chunk Size", "Name", "kmem_cache"]
             self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
-        for kmem_cache in sorted(parsed_caches[1:], key=lambda x: x['object_size']):
-            fmt = "{:8d} byte ({:#9x} byte): {:8d} byte ({:#9x} byte): {:30s} {:#x}"
-            objsz = kmem_cache['object_size']
-            chunksz = kmem_cache['size']
-            self.out.append(fmt.format(objsz, objsz, chunksz, chunksz, kmem_cache['name'], kmem_cache['address']))
+        for kmem_cache in sorted(parsed_caches[1:], key=lambda x: x["object_size"]):
+            objsz = "{0:d} ({0:#x})".format(kmem_cache["object_size"])
+            chunksz = "{0:d} ({0:#x})".format(kmem_cache["size"])
+            chunk_name = kmem_cache["name"]
+            address = kmem_cache["address"]
+            self.out.append("{:16s} {:16s} {:30s} {:#x}".format(objsz, chunksz, chunk_name, address))
         return
 
     def slabwalk(self, target_names, cpu):
@@ -49209,7 +49212,7 @@ class SlabDumpCommand(GenericCommand):
         self.out = []
         self.slabwalk(args.cache_name, args.cpu)
         if self.out:
-            gef_print('\n'.join(self.out), less=not args.no_pager)
+            gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
@@ -49220,16 +49223,16 @@ class SlobDumpCommand(GenericCommand):
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('cache_name', metavar='SLOB_CACHE_NAME', nargs='*',
-                        help='filter by specific slob cache name (need -v option).')
-    parser.add_argument('--list', action='store_true', help='list up all slob cache names.')
-    parser.add_argument('--meta', action='store_true', help='display offset information.')
-    parser.add_argument('--large', action='store_true', help='display only free_slob_large.')
-    parser.add_argument('--medium', action='store_true', help='display only free_slob_medium.')
-    parser.add_argument('--small', action='store_true', help='display only free_slob_small.')
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
-    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
-    parser.add_argument('-v', '--verbose', action='store_true', help='enable verbose mode (print kmem_cache).')
+    parser.add_argument("cache_name", metavar="SLOB_CACHE_NAME", nargs="*",
+                        help="filter by specific slob cache name (need -v option).")
+    parser.add_argument("--list", action="store_true", help="list up all slob cache names.")
+    parser.add_argument("--meta", action="store_true", help="display offset information.")
+    parser.add_argument("--large", action="store_true", help="display only free_slob_large.")
+    parser.add_argument("--medium", action="store_true", help="display only free_slob_medium.")
+    parser.add_argument("--small", action="store_true", help="display only free_slob_small.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose mode (print kmem_cache).")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} kmalloc-256  # dump kmalloc-256 kmem_cache and all freelists\n".format(_cmdline_)
@@ -49484,13 +49487,13 @@ class SlobDumpCommand(GenericCommand):
         while True:
             seen.append(current)
             page = {}
-            page['address'] = current - self.page_offset_next
-            page['units'] = u32(read_memory(page['address'] + self.page_offset_units, 4))
-            freelist_head = read_int_from_memory(page['address'] + self.page_offset_freelist)
-            page['virt_addr'] = freelist_head & gef_getpagesize_mask()
-            page['num_pages'] = 1
-            page['freelist'] = self.walk_freelist(freelist_head, page)
-            page['next'] = next = read_int_from_memory(current)
+            page["address"] = current - self.page_offset_next
+            page["units"] = u32(read_memory(page["address"] + self.page_offset_units, 4))
+            freelist_head = read_int_from_memory(page["address"] + self.page_offset_freelist)
+            page["virt_addr"] = freelist_head & gef_getpagesize_mask()
+            page["num_pages"] = 1
+            page["freelist"] = self.walk_freelist(freelist_head, page)
+            page["next"] = next = read_int_from_memory(current)
             page_freelist.append(page)
             if next in seen:
                 break
@@ -49499,38 +49502,38 @@ class SlobDumpCommand(GenericCommand):
 
     def walk_caches(self, target_names):
         current_kmem_cache = self.get_next_kmem_cache(self.slab_caches, point_to_base=False)
-        parsed_caches = [{'name': 'slab_caches', 'next': current_kmem_cache}]
+        parsed_caches = [{"name": "slab_caches", "next": current_kmem_cache}]
 
         while current_kmem_cache + self.kmem_cache_offset_list != self.slab_caches:
             kmem_cache = {}
 
             # parse member
-            kmem_cache['name'] = self.get_name(current_kmem_cache)
-            if target_names != [] and kmem_cache['name'] not in target_names:
+            kmem_cache["name"] = self.get_name(current_kmem_cache)
+            if target_names != [] and kmem_cache["name"] not in target_names:
                 current_kmem_cache = self.get_next_kmem_cache(current_kmem_cache)
                 continue
-            kmem_cache['address'] = current_kmem_cache
-            kmem_cache['flags'] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_flags, 4))
-            kmem_cache['flags_str'] = self.get_flags_str(kmem_cache['flags'])
-            kmem_cache['size'] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_size, 4))
-            kmem_cache['object_size'] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_object_size, 4))
+            kmem_cache["address"] = current_kmem_cache
+            kmem_cache["flags"] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_flags, 4))
+            kmem_cache["flags_str"] = self.get_flags_str(kmem_cache["flags"])
+            kmem_cache["size"] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_size, 4))
+            kmem_cache["object_size"] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_object_size, 4))
 
             # goto next
-            kmem_cache['next'] = current_kmem_cache = self.get_next_kmem_cache(current_kmem_cache)
+            kmem_cache["next"] = current_kmem_cache = self.get_next_kmem_cache(current_kmem_cache)
             parsed_caches.append(kmem_cache)
 
         parsed_freelist = {}
         if (self.large, self.medium, self.small) == (None, None, None):
-            parsed_freelist['large'] = self.walk_page_freelist(self.free_slob_large)
-            parsed_freelist['medium'] = self.walk_page_freelist(self.free_slob_medium)
-            parsed_freelist['small'] = self.walk_page_freelist(self.free_slob_small)
+            parsed_freelist["large"] = self.walk_page_freelist(self.free_slob_large)
+            parsed_freelist["medium"] = self.walk_page_freelist(self.free_slob_medium)
+            parsed_freelist["small"] = self.walk_page_freelist(self.free_slob_small)
         else:
             if self.large:
-                parsed_freelist['large'] = self.walk_page_freelist(self.free_slob_large)
+                parsed_freelist["large"] = self.walk_page_freelist(self.free_slob_large)
             if self.medium:
-                parsed_freelist['medium'] = self.walk_page_freelist(self.free_slob_medium)
+                parsed_freelist["medium"] = self.walk_page_freelist(self.free_slob_medium)
             if self.small:
-                parsed_freelist['small'] = self.walk_page_freelist(self.free_slob_small)
+                parsed_freelist["small"] = self.walk_page_freelist(self.free_slob_small)
 
         return parsed_caches, parsed_freelist
 
@@ -49540,19 +49543,19 @@ class SlobDumpCommand(GenericCommand):
         heap_page_color = get_gef_setting("theme.heap_page_address")
         freed_address_color = get_gef_setting("theme.heap_chunk_address_freed")
 
-        self.out.append(titlify('{:s} @ {:#x}'.format(tag, getattr(self, tag))))
+        self.out.append(titlify("{:s} @ {:#x}".format(tag, getattr(self, tag))))
 
         for page in page_freelist:
-            self.out.append('  {:s}: {:#x}'.format(Color.colorify("page", label_active_color), page['address']))
-            colored_virt_addr = Color.colorify("{:#x}".format(page['virt_addr']), heap_page_color)
-            self.out.append('    virtual address: {:s}'.format(colored_virt_addr))
-            self.out.append('    num pages: {:d}'.format(page['num_pages']))
-            self.out.append('    total units: {:#x}'.format(page['units']))
-            for i, (chunk, units) in enumerate(page['freelist']):
+            self.out.append("  {:s}: {:#x}".format(Color.colorify("page", label_active_color), page["address"]))
+            colored_virt_addr = Color.colorify("{:#x}".format(page["virt_addr"]), heap_page_color)
+            self.out.append("    virtual address: {:s}".format(colored_virt_addr))
+            self.out.append("    num pages: {:d}".format(page["num_pages"]))
+            self.out.append("    total units: {:#x}".format(page["units"]))
+            for i, (chunk, units) in enumerate(page["freelist"]):
                 msg = Color.colorify("{:#x}".format(chunk), freed_address_color)
                 msg_sz = Color.colorify("{:#x}".format(units * 2), chunk_size_color)
-                self.out.append('    {:9s} {:s} (units: {:#x}, size: {:s})'.format("freelist:" if i == 0 else "", msg, units, msg_sz))
-            self.out.append('    next: {:#x}'.format(page['next']))
+                self.out.append("    {:9s} {:s} (units: {:#x}, size: {:s})".format("freelist:" if i == 0 else "", msg, units, msg_sz))
+            self.out.append("    next: {:#x}".format(page["next"]))
             self.out.append("")
         return
 
@@ -49561,42 +49564,43 @@ class SlobDumpCommand(GenericCommand):
         chunk_size_color = get_gef_setting("theme.heap_chunk_size")
 
         if self.verbose:
-            self.out.append(titlify('{:s} @ {:#x}'.format("slab_caches", self.slab_caches)))
+            self.out.append(titlify("{:s} @ {:#x}".format("slab_caches", self.slab_caches)))
             for kmem_cache in parsed_caches[1:]:
-                if target_names != [] and kmem_cache['name'] not in target_names:
+                if target_names != [] and kmem_cache["name"] not in target_names:
                     continue
-                self.out.append('  kmem_cache: {:#x}'.format(kmem_cache['address']))
-                colored_name = Color.colorify(kmem_cache['name'], chunk_label_color)
-                self.out.append('    name: {:s}'.format(colored_name))
-                self.out.append('    flags: {:#x} ({:s})'.format(kmem_cache['flags'], kmem_cache['flags_str']))
-                object_size_s = Color.colorify("{:#x}".format(kmem_cache['object_size']), chunk_size_color)
-                self.out.append('    object size: {:s} (chunk size: {:#x})'.format(object_size_s, kmem_cache['size']))
-                self.out.append('    next: {:#x}'.format(kmem_cache['next']))
+                self.out.append("  kmem_cache: {:#x}".format(kmem_cache["address"]))
+                colored_name = Color.colorify(kmem_cache["name"], chunk_label_color)
+                self.out.append("    name: {:s}".format(colored_name))
+                self.out.append("    flags: {:#x} ({:s})".format(kmem_cache["flags"], kmem_cache["flags_str"]))
+                object_size_s = Color.colorify("{:#x}".format(kmem_cache["object_size"]), chunk_size_color)
+                self.out.append("    object size: {:s} (chunk size: {:#x})".format(object_size_s, kmem_cache["size"]))
+                self.out.append("    next: {:#x}".format(kmem_cache["next"]))
                 self.out.append("")
 
         if (self.large, self.medium, self.small) == (None, None, None):
-            self.dump_freelist("free_slob_large", parsed_freelist['large'])
-            self.dump_freelist("free_slob_medium", parsed_freelist['medium'])
-            self.dump_freelist("free_slob_small", parsed_freelist['small'])
+            self.dump_freelist("free_slob_large", parsed_freelist["large"])
+            self.dump_freelist("free_slob_medium", parsed_freelist["medium"])
+            self.dump_freelist("free_slob_small", parsed_freelist["small"])
         else:
             if self.large:
-                self.dump_freelist("free_slob_large", parsed_freelist['large'])
+                self.dump_freelist("free_slob_large", parsed_freelist["large"])
             if self.medium:
-                self.dump_freelist("free_slob_medium", parsed_freelist['medium'])
+                self.dump_freelist("free_slob_medium", parsed_freelist["medium"])
             if self.small:
-                self.dump_freelist("free_slob_small", parsed_freelist['small'])
+                self.dump_freelist("free_slob_small", parsed_freelist["small"])
         return
 
     def dump_names(self, parsed_caches):
         if not self.quiet:
-            fmt = "{:30s}: {:30s}: {:30s} {:20s}"
+            fmt = "{:<16s} {:<16s} {:30s} {:20s}"
             legend = ["Object Size", "Chunk Size", "Name", "kmem_cache"]
             self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
-        for kmem_cache in sorted(parsed_caches[1:], key=lambda x: x['object_size']):
-            fmt = "{:8d} byte ({:#9x} byte): {:8d} byte ({:#9x} byte): {:30s} {:#x}"
-            objsz = kmem_cache['object_size']
-            chunksz = kmem_cache['size']
-            self.out.append(fmt.format(objsz, objsz, chunksz, chunksz, kmem_cache['name'], kmem_cache['address']))
+        for kmem_cache in sorted(parsed_caches[1:], key=lambda x: x["object_size"]):
+            objsz = "{0:d} ({0:#x})".format(kmem_cache["object_size"])
+            chunksz = "{0:d} ({0:#x})".format(kmem_cache["size"])
+            chunk_name = kmem_cache["name"]
+            address = kmem_cache["address"]
+            self.out.append("{:16s} {:16s} {:30s} {:#x}".format(objsz, chunksz, chunk_name, address))
         return
 
     def slobwalk(self, target_names):
@@ -49643,7 +49647,7 @@ class SlobDumpCommand(GenericCommand):
             info("Wait for memory scan")
 
         allocator = KernelChecksecCommand.get_slab_type()
-        if allocator != "SLAB":
+        if allocator != "SLOB":
             if not self.quiet:
                 err("Unsupported SLUB, SLAB, SLUB_TINY")
             return
@@ -49652,7 +49656,7 @@ class SlobDumpCommand(GenericCommand):
         self.out = []
         self.slobwalk(args.cache_name)
         if self.out:
-            gef_print('\n'.join(self.out), less=not args.no_pager)
+            gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
@@ -49665,12 +49669,12 @@ class KsymaddrRemoteCommand(GenericCommand):
     _aliases_ = ["ks"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('keyword', metavar='KEYWORD', nargs='*', help='filter by specific symbol name.')
-    parser.add_argument('--exact', action='store_true', help='use exact match.')
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
-    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
-    parser.add_argument('-v', '--verbose', action='store_true', help='enable verbose mode.')
-    parser.add_argument('-r', '--reparse', action='store_true', help='do not use cache.')
+    parser.add_argument("keyword", metavar="KEYWORD", nargs="*", help="filter by specific symbol name.")
+    parser.add_argument("--exact", action="store_true", help="use exact match.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose mode.")
+    parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} commit_creds prepare_kernel_cred # OR search\n".format(_cmdline_)
@@ -49709,7 +49713,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         tokens = []
         position = self.offset_kallsyms_token_table
         for _ in range(256):
-            token = ''
+            token = ""
             while self.kernel_img[position]:
                 token += chr(self.kernel_img[position])
                 position += 1
@@ -49726,7 +49730,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         symbol_names = []
         position = self.offset_kallsyms_names
         for _ in range(self.num_symbols):
-            symbol_name = ''
+            symbol_name = ""
             length = self.kernel_img[position]
             position += 1
             for _ in range(length):
@@ -50680,8 +50684,8 @@ class VmlinuxToElfApplyCommand(GenericCommand):
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-r', '--reparse', action='store_true',
-                        help='force applying vmlinux-to-elf again. (default: reuse if vmlinux-to-elf-dump-memory.elf exists)')
+    parser.add_argument("-r", "--reparse", action="store_true",
+                        help="force applying vmlinux-to-elf again. (default: reuse if vmlinux-to-elf-dump-memory.elf exists)")
     _syntax_ = parser.format_help()
 
     @staticmethod
@@ -50822,8 +50826,8 @@ class TcmallocDumpCommand(GenericCommand):
     _category_ = "06-b. Heap - Other"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('name', choices=['self', 'all', 'central'], nargs='?', default='self', help='target thread cache.')
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    parser.add_argument("name", choices=["self", "all", "central"], nargs="?", default="self", help="target thread cache.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}\n".format(_cmdline_)
@@ -51040,7 +51044,7 @@ class TcmallocDumpCommand(GenericCommand):
         ppvoid = ctypes.POINTER(ctypes.c_void_p)
         fsvalue = ppvoid(ctypes.c_void_p())
         fsvalue.contents.value = 0
-        libc = ctypes.CDLL('libc.so.6')
+        libc = ctypes.CDLL("libc.so.6")
         result = libc.ptrace(PTRACE_ARCH_PRCTL, lwpid, fsvalue, ARCH_GET_FS)
         if result == 0:
             return fsvalue.contents.value
@@ -51242,7 +51246,7 @@ class TcmallocDumpCommand(GenericCommand):
         else:
             self.FreeList_print_target_thread = args.name
             self.dump_thread_heaps()
-        gef_print('\n'.join(self.out), less=not args.no_pager)
+        gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
@@ -51254,8 +51258,8 @@ class V8Command(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument('address', metavar='ADDRESS', type=parse_address, nargs='?', help='target map address.')
-    group.add_argument('-l', '--load-v8-gdbinit', action='store_true', help='load gdbinit for v8 from internet')
+    group.add_argument("address", metavar="ADDRESS", type=parse_address, nargs="?", help="target map address.")
+    group.add_argument("-l", "--load-v8-gdbinit", action="store_true", help="load gdbinit for v8 from internet")
     _syntax_ = parser.format_help()
 
     @parse_args
@@ -51300,10 +51304,10 @@ class PartitionAllocDumpCommand(GenericCommand):
     _category_ = "06-b. Heap - Other"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('target_buffer_root', choices=['fast_malloc', 'array_buffer', 'buffer', 'fm', 'ab', 'b'],
-                        help='the target buffer_root')
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
-    parser.add_argument('-v', dest='verbose', action='store_true', help='display also empty slots.')
+    parser.add_argument("target_buffer_root", choices=["fast_malloc", "array_buffer", "buffer", "fm", "ab", "b"],
+                        help="the target buffer_root")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-v", dest="verbose", action="store_true", help="display also empty slots.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} array_buffer # walk from array_buffer_root_\n".format(_cmdline_)
@@ -52094,7 +52098,7 @@ class PartitionAllocDumpCommand(GenericCommand):
                     continue
                 self.root = root # for coloring
                 self.dump_root(root)
-        gef_print('\n'.join(self.out), less=not args.no_pager)
+        gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
@@ -52106,11 +52110,11 @@ class MuslHeapDumpCommand(GenericCommand):
     _category_ = "06-b. Heap - Other"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('command', nargs='?', default='unused', choices=['ctx', 'unused'],
-                        help='dump mode (default: %(default)s).')
-    parser.add_argument('--idx', type=int, help='the active index of dump target.')
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
-    parser.add_argument('-v', dest='verbose', action='store_true', help='also dump an empty active index.')
+    parser.add_argument("command", nargs="?", default="unused", choices=["ctx", "unused"],
+                        help="dump mode (default: %(default)s).")
+    parser.add_argument("--idx", type=int, help="the active index of dump target.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-v", dest="verbose", action="store_true", help="also dump an empty active index.")
     _syntax_ = parser.format_help()
 
     def info(self, msg):
@@ -52365,8 +52369,8 @@ class MuslHeapDumpCommand(GenericCommand):
         self.out.append("  size_t usage_by_class[48]:")
         for i in range(48):
             self.out.append("     usage_by_class[{:2d}]:                     {:#x}".format(i, ctx.usage_by_class[i]))
-        self.out.append("  uint8_t unmap_seq[32]:              {}".format(' '.join(["%02x" % x for x in ctx.unmap_seq])))
-        self.out.append("  uint8_t bounces[32]:                {}".format(' '.join(["%02x" % x for x in ctx.bounces])))
+        self.out.append("  uint8_t unmap_seq[32]:              {}".format(" ".join(["{:02x}".format(x) for x in ctx.unmap_seq])))
+        self.out.append("  uint8_t bounces[32]:                {}".format(" ".join(["{:02x}".format(x) for x in ctx.bounces])))
         self.out.append("  uint8_t seq:                        {:#x}".format(ctx.seq))
         self.out.append("  uintptr_t brk:                      {!s}".format(lookup_address(ctx.brk)))
         return
@@ -52483,7 +52487,7 @@ class MuslHeapDumpCommand(GenericCommand):
         for blk, blks in itertools.groupby(data):
             repeat_count = len(list(blks))
             d1, d2 = unpack(blk[:current_arch.ptrsize]), unpack(blk[current_arch.ptrsize:])
-            dascii = ''.join([chr(x) if 0x20 <= x < 0x7f else '.' for x in blk])
+            dascii = "".join([chr(x) if 0x20 <= x < 0x7f else "." for x in blk])
             fmt = "{:#x}: {:#0{:d}x} {:#0{:d}x} | {:s} | {:s}"
             if repeat_count < group_line_threshold:
                 for _ in range(repeat_count):
@@ -52579,7 +52583,7 @@ class MuslHeapDumpCommand(GenericCommand):
         elif args.command == "unused":
             self.dump_meta(ctx)
 
-        gef_print('\n'.join(self.out), less=not args.no_pager)
+        gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
@@ -52761,8 +52765,8 @@ class UclibcNgHeapDumpCommand(GenericCommand):
     _category_ = "06-b. Heap - Other"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
-    parser.add_argument('-v', dest='verbose', action='store_true', help='also dump an empty active index.')
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-v", dest="verbose", action="store_true", help="also dump an empty active index.")
     _syntax_ = parser.format_help()
 
     fast_size_table = [
@@ -53109,7 +53113,7 @@ class UclibcNgHeapDumpCommand(GenericCommand):
         self.verbose_print("n_mmaps_max:         {:#x}".format(malloc_state.n_mmaps_max))
         self.verbose_print("max_n_mmaps:         {:#x}".format(malloc_state.max_n_mmaps))
         self.verbose_print("pagesize:            {:#x}".format(malloc_state.pagesize))
-        mp_flags = '|'.join(malloc_state.morecore_properties_flags)
+        mp_flags = "|".join(malloc_state.morecore_properties_flags)
         self.verbose_print("morecore_properties: {:#x} ({:s})".format(malloc_state.morecore_properties, mp_flags))
         self.verbose_print("mmaped_mem:          {:#x}".format(malloc_state.mmaped_mem))
         self.verbose_print("sbrked_mem:          {:#x}".format(malloc_state.sbrked_mem))
@@ -53132,7 +53136,7 @@ class UclibcNgHeapDumpCommand(GenericCommand):
             err("malloc_state is not found")
             return
         self.dump_malloc_state(malloc_state)
-        gef_print('\n'.join(self.out), less=not args.no_pager)
+        gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
@@ -53143,8 +53147,8 @@ class XphysAddrCommand(GenericCommand):
     _category_ = "08-a. Qemu-system Cooperation - General"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('option', metavar='OPTION', nargs='*', help='the argument of xp.')
-    parser.add_argument('address', metavar='ADDRESS', type=parse_address, help='dump target address.')
+    parser.add_argument("option", metavar="OPTION", nargs="*", help="the argument of xp.")
+    parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="dump target address.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} /16xg 0x11223344".format(_cmdline_)
@@ -53153,7 +53157,7 @@ class XphysAddrCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_qemu_system
     def do_invoke(self, args):
-        result = gdb.execute("monitor xp {:s} {:#x}".format(' '.join(args.option), args.address), to_string=True)
+        result = gdb.execute("monitor xp {:s} {:#x}".format(" ".join(args.option), args.address), to_string=True)
         gef_print(result.strip())
         return
 
@@ -53166,12 +53170,12 @@ class XSecureMemAddrCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument('--phys', action='store_true', help='treat ADDRESS as physical address.')
-    group.add_argument('--off', action='store_true', help='treat ADDRESS as offset of secure memory top.')
-    group.add_argument('--virt', action='store_true', help='treat ADDRESS as virtual address.')
-    parser.add_argument("format", metavar='/FMT', help='specified output format.')
-    parser.add_argument('location', metavar='ADDRESS', type=parse_address, help='dump target address.')
-    parser.add_argument('-v', dest='verbose', action='store_true', help='verbose output.')
+    group.add_argument("--phys", action="store_true", help="treat ADDRESS as physical address.")
+    group.add_argument("--off", action="store_true", help="treat ADDRESS as offset of secure memory top.")
+    group.add_argument("--virt", action="store_true", help="treat ADDRESS as virtual address.")
+    parser.add_argument("format", metavar="/FMT", help="specified output format.")
+    parser.add_argument("location", metavar="ADDRESS", type=parse_address, help="dump target address.")
+    parser.add_argument("-v", dest="verbose", action="store_true", help="verbose output.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} /16xw --phys 0xe11e3d0  # absolute (physical/non-ASLR) address of secure memory\n".format(_cmdline_)
@@ -53287,7 +53291,7 @@ class XSecureMemAddrCommand(GenericCommand):
                 data_units_hex = ["{:#010x}".format(u32(x)) for x in data_units]
             elif self.dump_unit == 8:
                 data_units_hex = ["{:#018x}".format(u64(x)) for x in data_units]
-            gef_print("{:#018x}: {:s}".format(addr, ' '.join(data_units_hex)))
+            gef_print("{:#018x}: {:s}".format(addr, " ".join(data_units_hex)))
         return
 
     def print_secure_memory_i(self, target, data):
@@ -53415,15 +53419,15 @@ class WSecureMemAddrCommand(GenericCommand):
     _category_ = "08-c. Qemu-system Cooperation - TrustZone"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('mode', choices=['byte', 'short', 'dword', 'qword', 'string', 'hex'],
-                        help='The mode that represents the value of the argument. You have to choose one or the other.')
+    parser.add_argument("mode", choices=["byte", "short", "dword", "qword", "string", "hex"],
+                        help="The mode that represents the value of the argument. You have to choose one or the other.")
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument('--phys', action='store_true', help='treat ADDRESS as physical address.')
-    group.add_argument('--off', action='store_true', help='treat ADDRESS as offset of secure memory top.')
-    group.add_argument('--virt', action='store_true', help='treat ADDRESS as virtual address.')
-    parser.add_argument('value', metavar='VALUE', help='write value.')
-    parser.add_argument('location', metavar='ADDRESS', type=parse_address, help='write target address.')
-    parser.add_argument('-v', dest='verbose', action='store_true', help='verbose output.')
+    group.add_argument("--phys", action="store_true", help="treat ADDRESS as physical address.")
+    group.add_argument("--off", action="store_true", help="treat ADDRESS as offset of secure memory top.")
+    group.add_argument("--virt", action="store_true", help="treat ADDRESS as virtual address.")
+    parser.add_argument("value", metavar="VALUE", help="write value.")
+    parser.add_argument("location", metavar="ADDRESS", type=parse_address, help="write target address.")
+    parser.add_argument("-v", dest="verbose", action="store_true", help="verbose output.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} dword 0x41414141 --phys 0xe11e3d0            # absolute (physical/non-ASLR) address of secure memory\n".format(_cmdline_)
@@ -53490,7 +53494,7 @@ class WSecureMemAddrCommand(GenericCommand):
             elif args.mode == "hex":
                 _data = ""
                 for c in args.value.lower():
-                    if c in '0123456789abcdef':
+                    if c in "0123456789abcdef":
                         _data += c
                 data = bytes.fromhex(_data)
         except Exception:
@@ -53543,9 +53547,9 @@ class BreakSecureMemAddrCommand(GenericCommand):
     _category_ = "08-c. Qemu-system Cooperation - TrustZone"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('location', metavar='PHYS_ADDRESS', type=parse_address,
-                        help='the target physical address you want to set a breakpoint.')
-    parser.add_argument('-v', dest='verbose', action='store_true', help='verbose output.')
+    parser.add_argument("location", metavar="PHYS_ADDRESS", type=parse_address,
+                        help="the target physical address you want to set a breakpoint.")
+    parser.add_argument("-v", dest="verbose", action="store_true", help="verbose output.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} 0xe1008d8".format(_cmdline_)
@@ -53625,11 +53629,11 @@ class OpteeBreakTaAddrCommand(GenericCommand):
     _category_ = "08-c. Qemu-system Cooperation - TrustZone"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('thread_enter_user_mode', metavar='PHYS_ADDR_thread_enter_user_mode', type=parse_address,
-                        help='The physical address of `thread_enter_user_mode` in OPTEE-OS.')
-    parser.add_argument('ta_offset', metavar='TA_OFFSET', type=parse_address,
+    parser.add_argument("thread_enter_user_mode", metavar="PHYS_ADDR_thread_enter_user_mode", type=parse_address,
+                        help="The physical address of `thread_enter_user_mode` in OPTEE-OS.")
+    parser.add_argument("ta_offset", metavar="TA_OFFSET", type=parse_address,
                         help="The breakpoint target offset of OPTEE-TA.")
-    parser.add_argument('-v', dest='verbose', action='store_true', help='verbose output.')
+    parser.add_argument("-v", dest="verbose", action="store_true", help="verbose output.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} 0xe137c78 0x2784".format(_cmdline_)
@@ -53660,10 +53664,10 @@ class OpteeBgetDumpCommand(GenericCommand):
     _category_ = "08-c. Qemu-system Cooperation - TrustZone"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-m', '--malloc_ctx', metavar='OFFSET_malloc_ctx', type=parse_address,
-                        help='The offset of `malloc_ctx` at OPTEE-TA.')
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
-    parser.add_argument('-v', dest='verbose', action='store_true', help='verbose output.')
+    parser.add_argument("-m", "--malloc_ctx", metavar="OFFSET_malloc_ctx", type=parse_address,
+                        help="The offset of `malloc_ctx` at OPTEE-TA.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-v", dest="verbose", action="store_true", help="verbose output.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} 0x2a408\n".format(_cmdline_)
@@ -54007,7 +54011,7 @@ class OpteeBgetDumpCommand(GenericCommand):
         self.dump_chunk_list(malloc_ctx)
 
         if self.out:
-            gef_print('\n'.join(self.out), less=not args.no_pager)
+            gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
@@ -54902,9 +54906,9 @@ class MsrCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument('msr_target', metavar='MSR_VALUE|MSR_NAME', nargs='?', help='the msr value/name you want to know real value.')
-    group.add_argument('-l', '--list', action='store_true', help='list up frequently used MSRs.')
-    parser.add_argument('-q', '--quiet', action='store_true', help='quiet mode.')
+    group.add_argument("msr_target", metavar="MSR_VALUE|MSR_NAME", nargs="?", help="the msr value/name you want to know real value.")
+    group.add_argument("-l", "--list", action="store_true", help="list up frequently used MSRs.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="quiet mode.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} 0xc0000080              # rcx value\n".format(_cmdline_)
@@ -55071,7 +55075,7 @@ class PacKeysCommand(GenericCommand):
             try:
                 lo = get_register("{:s}KEYLO_EL1".format(keyname))
                 hi = get_register("{:s}KEYHI_EL1".format(keyname))
-                bs = ' '.join(slicer(p64(lo).hex() + p64(hi).hex(), 2))
+                bs = " ".join(slicer(p64(lo).hex() + p64(hi).hex(), 2))
                 gef_print("{:s}KEY: {:#018x} {:#018x} ({:s})".format(keyname, hi, lo, bs))
             except Exception:
                 err("Failed to get the value of PAC keys")
@@ -55145,7 +55149,7 @@ class PrintBitInfo:
                     else:
                         bit_range_str.append("{:d}-{:d}".format(tmp[0], tmp[-1]))
                 # join
-                bit_range_strs.append(','.join(bit_range_str))
+                bit_range_strs.append(",".join(bit_range_str))
             else:
                 raise
         max_width_bits = max(list(map(len, bit_range_strs)) + [2]) # 2 is default
@@ -55214,7 +55218,7 @@ class PrintBitInfo:
         self.print_description()
         self.print_bitinfo(regval)
         if self.out:
-            gef_print('\n'.join(self.out))
+            gef_print("\n".join(self.out))
         return
 
     def make_out(self, regval, split=True):
@@ -55232,8 +55236,8 @@ class QemuRegistersCommand(GenericCommand):
     _category_ = "08-a. Qemu-system Cooperation - General"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-v', dest='verbose', action='store_true', help='also display detailed bit information.')
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    parser.add_argument("-v", dest="verbose", action="store_true", help="also display detailed bit information.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
     def info(self, msg):
@@ -55428,7 +55432,7 @@ class QemuRegistersCommand(GenericCommand):
         regs = GdtInfoCommand.get_segreg_list()
         registers_color = get_gef_setting("theme.dereference_register_value")
         for i, b in enumerate(gdtinfo):
-            reglist = ', '.join(regs.get(i, []))
+            reglist = ", ".join(regs.get(i, []))
             if reglist:
                 reglist = LEFT_ARROW + reglist
             if is_x86_64() and i == (trseg >> 3): # for TSS
@@ -55500,7 +55504,7 @@ class QemuRegistersCommand(GenericCommand):
         self.qregisters()
 
         if self.out:
-            gef_print('\n'.join(self.out), less=not args.no_pager)
+            gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
@@ -55601,12 +55605,12 @@ class V2PCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     group = parser.add_mutually_exclusive_group()
-    group.add_argument('-S', dest='force_secure', action='store_true',
-                       help='ARMv7: use TTBRn_ELm_S for parsing start register. ARMv8: heuristic search the memory of qemu-system.')
-    group.add_argument('-s', dest='force_normal', action='store_true',
-                       help='ARMv7/v8: use TTBRn_ELm for parsing start register.')
-    parser.add_argument('address', metavar='ADDRESS', type=parse_address, help='the address of data you want to translate.')
-    parser.add_argument('-v', dest='verbose', action='store_true', help='verbose output.')
+    group.add_argument("-S", dest="force_secure", action="store_true",
+                       help="ARMv7: use TTBRn_ELm_S for parsing start register. ARMv8: heuristic search the memory of qemu-system.")
+    group.add_argument("-s", dest="force_normal", action="store_true",
+                       help="ARMv7/v8: use TTBRn_ELm for parsing start register.")
+    parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="the address of data you want to translate.")
+    parser.add_argument("-v", dest="verbose", action="store_true", help="verbose output.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} 0xa31dd000\n".format(_cmdline_)
@@ -55680,12 +55684,12 @@ class P2VCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     group = parser.add_mutually_exclusive_group()
-    group.add_argument('-S', dest='force_secure', action='store_true',
-                       help='ARMv7: use TTBRn_ELm_S for parsing start register. ARMv8: heuristic search the memory of qemu-system.')
-    group.add_argument('-s', dest='force_normal', action='store_true',
-                       help='ARMv7/v8: use TTBRn_ELm for parsing start register.')
-    parser.add_argument('address', metavar='ADDRESS', type=parse_address, help='the address of data you want to translate.')
-    parser.add_argument('-v', dest='verbose', action='store_true', help='verbose output.')
+    group.add_argument("-S", dest="force_secure", action="store_true",
+                       help="ARMv7: use TTBRn_ELm_S for parsing start register. ARMv8: heuristic search the memory of qemu-system.")
+    group.add_argument("-s", dest="force_normal", action="store_true",
+                       help="ARMv7/v8: use TTBRn_ELm for parsing start register.")
+    parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="the address of data you want to translate.")
+    parser.add_argument("-v", dest="verbose", action="store_true", help="verbose output.")
     _syntax_ = parser.format_help()
 
     @parse_args
@@ -55727,11 +55731,11 @@ class PagewalkCommand(GenericCommand):
     _category_ = "08-a. Qemu-system Cooperation - General"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    subparsers = parser.add_subparsers(title='command')
-    subparsers.add_parser('x64')
-    subparsers.add_parser('x86')
-    subparsers.add_parser('arm')
-    subparsers.add_parser('arm64')
+    subparsers = parser.add_subparsers(title="command")
+    subparsers.add_parser("x64")
+    subparsers.add_parser("x86")
+    subparsers.add_parser("arm")
+    subparsers.add_parser("arm64")
     _syntax_ = parser.format_help()
 
     def __init__(self, *args, **kwargs):
@@ -55944,7 +55948,7 @@ class PagewalkCommand(GenericCommand):
         va, pa, size, cnt, flags = entry
         if isinstance(va, str) and "*" in va:
             vend = "{:016x}".format(int(va.replace("*", "0"), 16) + size * cnt)
-            for pos in [x.span() for x in re.finditer(r'\*', va)]:
+            for pos in [x.span() for x in re.finditer(r"\*", va)]:
                 vend = vend[:pos[0]] + "*" + vend[pos[1]:]
             pend = pa + size * cnt
             if self.simple:
@@ -56052,13 +56056,13 @@ class PagewalkCommand(GenericCommand):
     def do_invoke(self, argv):
         self.dont_repeat()
         if is_x86_32():
-            gdb.execute("pagewalk x86 {}".format(' '.join(argv)))
+            gdb.execute("pagewalk x86 {}".format(" ".join(argv)))
         elif is_x86_64():
-            gdb.execute("pagewalk x64 {}".format(' '.join(argv)))
+            gdb.execute("pagewalk x64 {}".format(" ".join(argv)))
         elif is_arm32():
-            gdb.execute("pagewalk arm {}".format(' '.join(argv)))
+            gdb.execute("pagewalk arm {}".format(" ".join(argv)))
         elif is_arm64():
-            gdb.execute("pagewalk arm64 {}".format(' '.join(argv)))
+            gdb.execute("pagewalk arm64 {}".format(" ".join(argv)))
         return
 
 
@@ -56070,20 +56074,20 @@ class PagewalkX64Command(PagewalkCommand):
     _aliases_ = ["pagewalk x86"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-q', dest='quiet', action='store_true', help='show result only.')
-    parser.add_argument('--print-each-level', action='store_true', help='show all level pagetables.')
-    parser.add_argument('--no-merge', action='store_true', help='do not merge similar/consecutive address.')
-    parser.add_argument('--sort-by-phys', action='store_true', help='sort by physical address.')
-    parser.add_argument('--simple', action='store_true', help='merge with ignoring physical address consecutivness.')
-    parser.add_argument('--filter', metavar='REGEX', default=[], action='append', help='filter by REGEX pattern.')
-    parser.add_argument('--vrange', metavar='VADDR', default=[], action='append', type=lambda x: int(x, 16),
-                        help='filter by map included specified virtual address.')
-    parser.add_argument('--prange', metavar='PADDR', default=[], action='append', type=lambda x: int(x, 16),
-                        help='filter by map included specified physical address.')
-    parser.add_argument('--trace', metavar='VADDR', default=[], action='append', type=lambda x: int(x, 16),
-                        help='show all level pagetables only associated specified address.')
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
-    parser.add_argument('-c', '--use-cache', action='store_true', help='use before result.')
+    parser.add_argument("-q", dest="quiet", action="store_true", help="show result only.")
+    parser.add_argument("--print-each-level", action="store_true", help="show all level pagetables.")
+    parser.add_argument("--no-merge", action="store_true", help="do not merge similar/consecutive address.")
+    parser.add_argument("--sort-by-phys", action="store_true", help="sort by physical address.")
+    parser.add_argument("--simple", action="store_true", help="merge with ignoring physical address consecutivness.")
+    parser.add_argument("--filter", metavar="REGEX", default=[], action="append", help="filter by REGEX pattern.")
+    parser.add_argument("--vrange", metavar="VADDR", default=[], action="append", type=lambda x: int(x, 16),
+                        help="filter by map included specified virtual address.")
+    parser.add_argument("--prange", metavar="PADDR", default=[], action="append", type=lambda x: int(x, 16),
+                        help="filter by map included specified physical address.")
+    parser.add_argument("--trace", metavar="VADDR", default=[], action="append", type=lambda x: int(x, 16),
+                        help="show all level pagetables only associated specified address.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-c", "--use-cache", action="store_true", help="use before result.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -56119,7 +56123,7 @@ class PagewalkX64Command(PagewalkCommand):
         if "G" in flag_info:
             flags += ["GLOBAL"]
 
-        flag_string = ' '.join(flags)
+        flag_string = " ".join(flags)
         self.flags_strings_cache[flag_info_key] = flag_string
         return flag_string
 
@@ -56166,7 +56170,7 @@ class PagewalkX64Command(PagewalkCommand):
                         continue
                     addr = table_base + i * self.bits["ENTRY_SIZE"]
                     fmt = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x},type:{:s}) {:s}"
-                    line = fmt.format(addr, entry, new_va, new_va_end, entry_type, ' '.join(flags))
+                    line = fmt.format(addr, entry, new_va, new_va_end, entry_type, " ".join(flags))
                     if self.is_not_filter_target(line):
                         continue
                     self.add_out(line)
@@ -56224,7 +56228,7 @@ class PagewalkX64Command(PagewalkCommand):
                         continue
                     addr = table_base + i * self.bits["ENTRY_SIZE"]
                     fmt = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x},type:{:s}) {:s}"
-                    line = fmt.format(addr, entry, new_va, new_va_end, entry_type, ' '.join(flags))
+                    line = fmt.format(addr, entry, new_va, new_va_end, entry_type, " ".join(flags))
                     if self.is_not_filter_target(line):
                         continue
                     self.add_out(line)
@@ -56299,7 +56303,7 @@ class PagewalkX64Command(PagewalkCommand):
                         continue
                     addr = table_base + i * self.bits["ENTRY_SIZE"]
                     fmt = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x},type:{:s}) {:s}"
-                    line = fmt.format(addr, entry, new_va, new_va_end, entry_type, ' '.join(flags))
+                    line = fmt.format(addr, entry, new_va, new_va_end, entry_type, " ".join(flags))
                     if self.is_not_filter_target(line):
                         continue
                     self.add_out(line)
@@ -56381,7 +56385,7 @@ class PagewalkX64Command(PagewalkCommand):
                         continue
                     addr = table_base + i * self.bits["ENTRY_SIZE"]
                     fmt = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x},type:{:s}) {:s}"
-                    line = fmt.format(addr, entry, new_va, new_va_end, entry_type, ' '.join(flags))
+                    line = fmt.format(addr, entry, new_va, new_va_end, entry_type, " ".join(flags))
                     if self.is_not_filter_target(line):
                         continue
                     self.add_out(line)
@@ -56451,7 +56455,7 @@ class PagewalkX64Command(PagewalkCommand):
                         continue
                     addr = table_base + i * self.bits["ENTRY_SIZE"]
                     fmt = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x},type:{:s}) {:s}"
-                    line = fmt.format(addr, entry, virt_addr, virt_addr_end, entry_type, ' '.join(flags))
+                    line = fmt.format(addr, entry, virt_addr, virt_addr_end, entry_type, " ".join(flags))
                     if self.is_not_filter_target(line):
                         continue
                     self.add_out(line)
@@ -56595,7 +56599,7 @@ class PagewalkX64Command(PagewalkCommand):
         self.cache = {}
 
         if self.out:
-            gef_print('\n'.join(self.out), less=not args.no_pager)
+            gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
@@ -56606,23 +56610,23 @@ class PagewalkArmCommand(PagewalkCommand):
     _category_ = "08-a. Qemu-system Cooperation - General"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-q', dest='quiet', action='store_true', help='show result only.')
+    parser.add_argument("-q", dest="quiet", action="store_true", help="show result only.")
     group = parser.add_mutually_exclusive_group()
-    group.add_argument('-S', dest='force_secure', action='store_true', help='use TTBRn_ELm_S for parsing start register.')
-    group.add_argument('-s', dest='force_normal', action='store_true', help='use TTBRn_ELm for parsing start register.')
-    parser.add_argument('--print-each-level', action='store_true', help='show all level pagetables.')
-    parser.add_argument('--no-merge', action='store_true', help='do not merge similar/consecutive address.')
-    parser.add_argument('--sort-by-phys', action='store_true', help='sort by physical address.')
-    parser.add_argument('--simple', action='store_true', help='merge with ignoring physical address consecutivness.')
-    parser.add_argument('--filter', metavar='REGEX', default=[], action='append', help='filter by REGEX pattern.')
-    parser.add_argument('--vrange', metavar='VADDR', default=[], action='append', type=lambda x: int(x, 16),
-                        help='filter by map included specified virtual address.')
-    parser.add_argument('--prange', metavar='PADDR', default=[], action='append', type=lambda x: int(x, 16),
-                        help='filter by map included specified physical address.')
-    parser.add_argument('--trace', metavar='VADDR', default=[], action='append', type=lambda x: int(x, 16),
-                        help='show all level pagetables only associated specified address.')
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
-    parser.add_argument('-c', '--use-cache', action='store_true', help='use before result.')
+    group.add_argument("-S", dest="force_secure", action="store_true", help="use TTBRn_ELm_S for parsing start register.")
+    group.add_argument("-s", dest="force_normal", action="store_true", help="use TTBRn_ELm for parsing start register.")
+    parser.add_argument("--print-each-level", action="store_true", help="show all level pagetables.")
+    parser.add_argument("--no-merge", action="store_true", help="do not merge similar/consecutive address.")
+    parser.add_argument("--sort-by-phys", action="store_true", help="sort by physical address.")
+    parser.add_argument("--simple", action="store_true", help="merge with ignoring physical address consecutivness.")
+    parser.add_argument("--filter", metavar="REGEX", default=[], action="append", help="filter by REGEX pattern.")
+    parser.add_argument("--vrange", metavar="VADDR", default=[], action="append", type=lambda x: int(x, 16),
+                        help="filter by map included specified virtual address.")
+    parser.add_argument("--prange", metavar="PADDR", default=[], action="append", type=lambda x: int(x, 16),
+                        help="filter by map included specified physical address.")
+    parser.add_argument("--trace", metavar="VADDR", default=[], action="append", type=lambda x: int(x, 16),
+                        help="show all level pagetables only associated specified address.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-c", "--use-cache", action="store_true", help="use before result.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -56648,114 +56652,114 @@ class PagewalkArmCommand(PagewalkCommand):
         # AP[2:0] access permissions model
         if "AP=000" in flag_info:
             if XN is False and PXN is False:
-                flags += ['PL0/---', "PL1/---"] #
+                flags += ["PL0/---", "PL1/---"] #
             elif XN is False and PXN is True:
-                flags += ['PL0/---', "PL1/---"] # PXN
+                flags += ["PL0/---", "PL1/---"] # PXN
             elif XN is True and PXN is False:
-                flags += ['PL0/---', "PL1/---"] # XN
+                flags += ["PL0/---", "PL1/---"] # XN
             elif XN is True and PXN is True:
-                flags += ['PL0/---', "PL1/---"] # XN, PXN
+                flags += ["PL0/---", "PL1/---"] # XN, PXN
         elif "AP=001" in flag_info:
             if XN is False and PXN is False:
-                flags += ['PL0/---', "PL1/RWX"] #
+                flags += ["PL0/---", "PL1/RWX"] #
             elif XN is False and PXN is True:
-                flags += ['PL0/---', "PL1/RW-"] # PXN
+                flags += ["PL0/---", "PL1/RW-"] # PXN
             elif XN is True and PXN is False:
-                flags += ['PL0/---', "PL1/RW-"] # XN
+                flags += ["PL0/---", "PL1/RW-"] # XN
             elif XN is True and PXN is True:
-                flags += ['PL0/---', "PL1/RW-"] # XN, PXN
+                flags += ["PL0/---", "PL1/RW-"] # XN, PXN
         elif "AP=010" in flag_info:
             if XN is False and PXN is False:
-                flags += ['PL0/R-X', "PL1/RWX"] #
+                flags += ["PL0/R-X", "PL1/RWX"] #
             elif XN is False and PXN is True:
-                flags += ['PL0/R-X', "PL1/RW-"] # PXN
+                flags += ["PL0/R-X", "PL1/RW-"] # PXN
             elif XN is True and PXN is False:
-                flags += ['PL0/R--', "PL1/RW-"] # XN
+                flags += ["PL0/R--", "PL1/RW-"] # XN
             elif XN is True and PXN is True:
-                flags += ['PL0/R--', "PL1/RW-"] # XN, PXN
+                flags += ["PL0/R--", "PL1/RW-"] # XN, PXN
         elif "AP=011" in flag_info:
             if XN is False and PXN is False:
-                flags += ['PL0/RWX', "PL1/RWX"] #
+                flags += ["PL0/RWX", "PL1/RWX"] #
             elif XN is False and PXN is True:
-                flags += ['PL0/RWX', "PL1/RW-"] # PXN
+                flags += ["PL0/RWX", "PL1/RW-"] # PXN
             elif XN is True and PXN is False:
-                flags += ['PL0/RW-', "PL1/RW-"] # XN
+                flags += ["PL0/RW-", "PL1/RW-"] # XN
             elif XN is True and PXN is True:
-                flags += ['PL0/RW-', "PL1/RW-"] # XN, PXN
+                flags += ["PL0/RW-", "PL1/RW-"] # XN, PXN
         elif "AP=100" in flag_info:
-            flags += ['PL0/???', "PL1/???"] # undefined (reserved)
+            flags += ["PL0/???", "PL1/???"] # undefined (reserved)
         elif "AP=101" in flag_info:
             if XN is False and PXN is False:
-                flags += ['PL0/---', "PL1/R-X"] #
+                flags += ["PL0/---", "PL1/R-X"] #
             elif XN is False and PXN is True:
-                flags += ['PL0/---', "PL1/R--"] # PXN
+                flags += ["PL0/---", "PL1/R--"] # PXN
             elif XN is True and PXN is False:
-                flags += ['PL0/---', "PL1/R--"] # XN
+                flags += ["PL0/---", "PL1/R--"] # XN
             elif XN is True and PXN is True:
-                flags += ['PL0/---', "PL1/R--"] # XN, PXN
+                flags += ["PL0/---", "PL1/R--"] # XN, PXN
         elif "AP=110" in flag_info: # deprecated
             if XN is False and PXN is False:
-                flags += ['PL0/R-X', "PL1/R-X"] #
+                flags += ["PL0/R-X", "PL1/R-X"] #
             elif XN is False and PXN is True:
-                flags += ['PL0/R-X', "PL1/R--"] # PXN
+                flags += ["PL0/R-X", "PL1/R--"] # PXN
             elif XN is True and PXN is False:
-                flags += ['PL0/R--', "PL1/R--"] # XN
+                flags += ["PL0/R--", "PL1/R--"] # XN
             elif XN is True and PXN is True:
-                flags += ['PL0/R--', "PL1/R--"] # XN, PXN
+                flags += ["PL0/R--", "PL1/R--"] # XN, PXN
         elif "AP=111" in flag_info:
             if XN is False and PXN is False:
-                flags += ['PL0/R-X', "PL1/R-X"] #
+                flags += ["PL0/R-X", "PL1/R-X"] #
             elif XN is False and PXN is True:
-                flags += ['PL0/R-X', "PL1/R--"] # PXN
+                flags += ["PL0/R-X", "PL1/R--"] # PXN
             elif XN is True and PXN is False:
-                flags += ['PL0/R--', "PL1/R--"] # XN
+                flags += ["PL0/R--", "PL1/R--"] # XN
             elif XN is True and PXN is True:
-                flags += ['PL0/R--', "PL1/R--"] # XN, PXN
+                flags += ["PL0/R--", "PL1/R--"] # XN, PXN
         # AP[2:1] access permissions model
         elif "AP=00" in flag_info:
             if XN is False and PXN is False:
-                flags += ['PL0/---', "PL1/RWX"] #
+                flags += ["PL0/---", "PL1/RWX"] #
             elif XN is False and PXN is True:
-                flags += ['PL0/---', "PL1/RW-"] # PXN
+                flags += ["PL0/---", "PL1/RW-"] # PXN
             elif XN is True and PXN is False:
-                flags += ['PL0/---', "PL1/RW-"] # XN
+                flags += ["PL0/---", "PL1/RW-"] # XN
             elif XN is True and PXN is True:
-                flags += ['PL0/---', "PL1/RW-"] # XN, PXN
+                flags += ["PL0/---", "PL1/RW-"] # XN, PXN
         elif "AP=01" in flag_info:
             if XN is False and PXN is False:
-                flags += ['PL0/RWX', "PL1/RWX"] #
+                flags += ["PL0/RWX", "PL1/RWX"] #
             elif XN is False and PXN is True:
-                flags += ['PL0/RWX', "PL1/RW-"] # PXN
+                flags += ["PL0/RWX", "PL1/RW-"] # PXN
             elif XN is True and PXN is False:
-                flags += ['PL0/RW-', "PL1/RW-"] # XN
+                flags += ["PL0/RW-", "PL1/RW-"] # XN
             elif XN is True and PXN is True:
-                flags += ['PL0/RW-', "PL1/RW-"] # XN, PXN
+                flags += ["PL0/RW-", "PL1/RW-"] # XN, PXN
         elif "AP=10" in flag_info:
             if XN is False and PXN is False:
-                flags += ['PL0/---', "PL1/R-X"] #
+                flags += ["PL0/---", "PL1/R-X"] #
             elif XN is False and PXN is True:
-                flags += ['PL0/---', "PL1/R--"] # PXN
+                flags += ["PL0/---", "PL1/R--"] # PXN
             elif XN is True and PXN is False:
-                flags += ['PL0/---', "PL1/R--"] # XN
+                flags += ["PL0/---", "PL1/R--"] # XN
             elif XN is True and PXN is True:
-                flags += ['PL0/---', "PL1/R--"] # XN, PXN
+                flags += ["PL0/---", "PL1/R--"] # XN, PXN
         elif "AP=11" in flag_info:
             if XN is False and PXN is False:
-                flags += ['PL0/R-X', "PL1/R-X"] #
+                flags += ["PL0/R-X", "PL1/R-X"] #
             elif XN is False and PXN is True:
-                flags += ['PL0/R-X', "PL1/R--"] # PXN
+                flags += ["PL0/R-X", "PL1/R--"] # PXN
             elif XN is True and PXN is False:
-                flags += ['PL0/R--', "PL1/R--"] # XN
+                flags += ["PL0/R--", "PL1/R--"] # XN
             elif XN is True and PXN is True:
-                flags += ['PL0/R--', "PL1/R--"] # XN, PXN
+                flags += ["PL0/R--", "PL1/R--"] # XN, PXN
 
         if "NS" in flag_info:
-            flags += ['NS']
+            flags += ["NS"]
         # short description has no `AF` bit
         if "nG" not in flag_info:
             flags += ["GLOBAL"]
 
-        flag_string = ' '.join(flags)
+        flag_string = " ".join(flags)
         self.flags_strings_cache[flag_info_key] = flag_string
         return flag_string
 
@@ -56818,49 +56822,49 @@ class PagewalkArmCommand(PagewalkCommand):
         # AP[2:1] access permissions model
         if AP == 0b00:
             if XN is False and PXN is False:
-                flags += ['PL0/---', "PL1/RWX"] #
+                flags += ["PL0/---", "PL1/RWX"] #
             elif XN is False and PXN is True:
-                flags += ['PL0/---', "PL1/RW-"] # PXN
+                flags += ["PL0/---", "PL1/RW-"] # PXN
             elif XN is True and PXN is False:
-                flags += ['PL0/---', "PL1/RW-"] # XN
+                flags += ["PL0/---", "PL1/RW-"] # XN
             elif XN is True and PXN is True:
-                flags += ['PL0/---', "PL1/RW-"] # XN, PXN
+                flags += ["PL0/---", "PL1/RW-"] # XN, PXN
         elif AP == 0b01:
             if XN is False and PXN is False:
-                flags += ['PL0/RWX', "PL1/RWX"] #
+                flags += ["PL0/RWX", "PL1/RWX"] #
             elif XN is False and PXN is True:
-                flags += ['PL0/RWX', "PL1/RW-"] # PXN
+                flags += ["PL0/RWX", "PL1/RW-"] # PXN
             elif XN is True and PXN is False:
-                flags += ['PL0/RW-', "PL1/RW-"] # XN
+                flags += ["PL0/RW-", "PL1/RW-"] # XN
             elif XN is True and PXN is True:
-                flags += ['PL0/RW-', "PL1/RW-"] # XN, PXN
+                flags += ["PL0/RW-", "PL1/RW-"] # XN, PXN
         elif AP == 0b10:
             if XN is False and PXN is False:
-                flags += ['PL0/---', "PL1/R-X"] #
+                flags += ["PL0/---", "PL1/R-X"] #
             elif XN is False and PXN is True:
-                flags += ['PL0/---', "PL1/R--"] # PXN
+                flags += ["PL0/---", "PL1/R--"] # PXN
             elif XN is True and PXN is False:
-                flags += ['PL0/---', "PL1/R--"] # XN
+                flags += ["PL0/---", "PL1/R--"] # XN
             elif XN is True and PXN is True:
-                flags += ['PL0/---', "PL1/R--"] # XN, PXN
+                flags += ["PL0/---", "PL1/R--"] # XN, PXN
         elif AP == 0b11:
             if XN is False and PXN is False:
-                flags += ['PL0/R-X', "PL1/R-X"] #
+                flags += ["PL0/R-X", "PL1/R-X"] #
             elif XN is False and PXN is True:
-                flags += ['PL0/R-X', "PL1/R--"] # PXN
+                flags += ["PL0/R-X", "PL1/R--"] # PXN
             elif XN is True and PXN is False:
-                flags += ['PL0/R--', "PL1/R--"] # XN
+                flags += ["PL0/R--", "PL1/R--"] # XN
             elif XN is True and PXN is True:
-                flags += ['PL0/R--', "PL1/R--"] # XN, PXN
+                flags += ["PL0/R--", "PL1/R--"] # XN, PXN
 
         if NS:
-            flags += ['NS']
+            flags += ["NS"]
         if "AF" in flag_info:
-            flags += ['ACCESSED']
+            flags += ["ACCESSED"]
         if "nG" not in flag_info:
             flags += ["GLOBAL"]
 
-        flag_string = ' '.join(flags)
+        flag_string = " ".join(flags)
         self.flags_strings_cache[flag_info_key] = flag_string
         return flag_string
 
@@ -56989,7 +56993,7 @@ class PagewalkArmCommand(PagewalkCommand):
                     continue
                 addr = table_base + i * 4
                 fmt = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x},type:{:s}) {:s}"
-                line = fmt.format(addr, entry, new_va, new_va_end, entry_type, ' '.join(flags))
+                line = fmt.format(addr, entry, new_va, new_va_end, entry_type, " ".join(flags))
                 if self.is_not_filter_target(line):
                     continue
                 self.add_out(line)
@@ -57080,7 +57084,7 @@ class PagewalkArmCommand(PagewalkCommand):
                         continue
                     addr = table_base + i * 4
                     fmt = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x},type:{:s}) {:s}"
-                    line = fmt.format(addr, entry, virt_addr, virt_addr_end, entry_type, ' '.join(flags))
+                    line = fmt.format(addr, entry, virt_addr, virt_addr_end, entry_type, " ".join(flags))
                     if self.is_not_filter_target(line):
                         continue
                     self.add_out(line)
@@ -57177,7 +57181,7 @@ class PagewalkArmCommand(PagewalkCommand):
                         continue
                     addr = table_base + i * 8
                     fmt = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x},type:{:s}) {:s}"
-                    line = fmt.format(addr, entry, new_va, new_va_end, entry_type, ' '.join(flags))
+                    line = fmt.format(addr, entry, new_va, new_va_end, entry_type, " ".join(flags))
                     if self.is_not_filter_target(line):
                         continue
                     self.add_out(line)
@@ -57261,7 +57265,7 @@ class PagewalkArmCommand(PagewalkCommand):
                         continue
                     addr = table_base + i * 8
                     fmt = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x},type:{:s}) {:s}"
-                    line = fmt.format(addr, entry, new_va, new_va_end, entry_type, ' '.join(flags))
+                    line = fmt.format(addr, entry, new_va, new_va_end, entry_type, " ".join(flags))
                     if self.is_not_filter_target(line):
                         continue
                     self.add_out(line)
@@ -57322,7 +57326,7 @@ class PagewalkArmCommand(PagewalkCommand):
                         continue
                     addr = table_base + i * 8
                     fmt = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x},type:{:s}) {:s}"
-                    line = fmt.format(addr, entry, virt_addr, virt_addr_end, entry_type, ' '.join(flags))
+                    line = fmt.format(addr, entry, virt_addr, virt_addr_end, entry_type, " ".join(flags))
                     if self.is_not_filter_target(line):
                         continue
                     self.add_out(line)
@@ -57340,18 +57344,18 @@ class PagewalkArmCommand(PagewalkCommand):
     def pagewalk_short(self):
         self.add_out(titlify("$TTBR0_EL1{}".format(self.suffix)))
 
-        TTBR0_EL1 = get_register('$TTBR0_EL1{}'.format(self.suffix))
+        TTBR0_EL1 = get_register("$TTBR0_EL1{}".format(self.suffix))
         if TTBR0_EL1 is None:
-            TTBR0_EL1 = get_register('$TTBR0', use_mbed_exec=True)
+            TTBR0_EL1 = get_register("$TTBR0", use_mbed_exec=True)
         if TTBR0_EL1 is None:
-            self.err('$TTBR0_EL1{} is not found'.format(self.suffix))
+            self.err("$TTBR0_EL1{} is not found".format(self.suffix))
             return
 
-        TTBCR = get_register('$TTBCR{}'.format(self.suffix))
+        TTBCR = get_register("$TTBCR{}".format(self.suffix))
         if TTBCR is None:
-            TTBCR = get_register('$TTBCR', use_mbed_exec=True)
+            TTBCR = get_register("$TTBCR", use_mbed_exec=True)
         if TTBCR is None:
-            self.err('$TTBCR{} is not found'.format(self.suffix))
+            self.err("$TTBCR{} is not found".format(self.suffix))
             return
 
         # pagewalk TTBR0_EL1
@@ -57372,11 +57376,11 @@ class PagewalkArmCommand(PagewalkCommand):
         # pagewalk TTBR1_EL1
         self.add_out(titlify("$TTBR1_EL1{}".format(self.suffix)))
 
-        TTBR1_EL1 = get_register('$TTBR1_EL1{}'.format(self.suffix))
+        TTBR1_EL1 = get_register("$TTBR1_EL1{}".format(self.suffix))
         if TTBR1_EL1 is None:
-            TTBR1_EL1 = get_register('$TTBR1', use_mbed_exec=True)
+            TTBR1_EL1 = get_register("$TTBR1", use_mbed_exec=True)
         if TTBR1_EL1 is None:
-            self.err('$TTBR1_EL1{} is not found'.format(self.suffix))
+            self.err("$TTBR1_EL1{} is not found".format(self.suffix))
             return
 
         if self.suffix:
@@ -57407,18 +57411,18 @@ class PagewalkArmCommand(PagewalkCommand):
     def pagewalk_long(self):
         self.add_out(titlify("$TTBR0_EL1{}".format(self.suffix)))
 
-        TTBR0_EL1 = get_register('$TTBR0_EL1{}'.format(self.suffix))
+        TTBR0_EL1 = get_register("$TTBR0_EL1{}".format(self.suffix))
         if TTBR0_EL1 is None:
-            TTBR0_EL1 = get_register('$TTBR0', use_mbed_exec=True)
+            TTBR0_EL1 = get_register("$TTBR0", use_mbed_exec=True)
         if TTBR0_EL1 is None:
-            self.err('$TTBR0_EL1{} is not found'.format(self.suffix))
+            self.err("$TTBR0_EL1{} is not found".format(self.suffix))
             return
 
-        TTBCR = get_register('$TTBCR{}'.format(self.suffix))
+        TTBCR = get_register("$TTBCR{}".format(self.suffix))
         if TTBCR is None:
-            TTBCR = get_register('$TTBCR', use_mbed_exec=True)
+            TTBCR = get_register("$TTBCR", use_mbed_exec=True)
         if TTBCR is None:
-            self.err('$TTBCR{} is not found'.format(self.suffix))
+            self.err("$TTBCR{} is not found".format(self.suffix))
             return
 
         # pagewalk TTBR0_EL1
@@ -57440,11 +57444,11 @@ class PagewalkArmCommand(PagewalkCommand):
         # pagewalk TTBR1_EL1
         self.add_out(titlify("$TTBR1_EL1{}".format(self.suffix)))
 
-        TTBR1_EL1 = get_register('$TTBR1_EL1{}'.format(self.suffix))
+        TTBR1_EL1 = get_register("$TTBR1_EL1{}".format(self.suffix))
         if TTBR1_EL1 is None:
-            TTBR1_EL1 = get_register('$TTBR1', use_mbed_exec=True)
+            TTBR1_EL1 = get_register("$TTBR1", use_mbed_exec=True)
         if TTBR1_EL1 is None:
-            self.err('$TTBR1_EL1{} is not found'.format(self.suffix))
+            self.err("$TTBR1_EL1{} is not found".format(self.suffix))
             return
 
         if T0SZ != 0 or T1SZ != 0:
@@ -57472,8 +57476,8 @@ class PagewalkArmCommand(PagewalkCommand):
         # check use the register with`_S` suffix or not, and Seucre mode or not
         if self.FORCE_PREFIX_S is None:
             # auto detect
-            SCR_S = get_register('$SCR_S')
-            SCR = get_register('$SCR')
+            SCR_S = get_register("$SCR_S")
+            SCR = get_register("$SCR")
 
             if (SCR, SCR_S) == (None, None):
                 self.SECURE = False
@@ -57502,7 +57506,7 @@ class PagewalkArmCommand(PagewalkCommand):
 
         elif self.FORCE_PREFIX_S is True:
             # use "_S"
-            SCR_S = get_register('$SCR_S')
+            SCR_S = get_register("$SCR_S")
             if SCR_S is not None:
                 self.SECURE = (SCR_S & 0x1) == 0 # NS bit
             else:
@@ -57511,7 +57515,7 @@ class PagewalkArmCommand(PagewalkCommand):
 
         elif self.FORCE_PREFIX_S is False:
             # do not use "_S"
-            SCR = get_register('$SCR')
+            SCR = get_register("$SCR")
             if SCR is not None:
                 self.SECURE = (SCR & 0x1) == 0 # NS bit
             else:
@@ -57519,7 +57523,7 @@ class PagewalkArmCommand(PagewalkCommand):
             self.suffix = ""
 
         # check XP, AFE
-        SCTLR = get_register('$SCTLR{}'.format(self.suffix))
+        SCTLR = get_register("$SCTLR{}".format(self.suffix))
         if SCTLR is not None:
             self.XP = ((SCTLR >> 23) & 0x1) == 1
             self.AFE = ((SCTLR >> 29) & 0x1) == 1
@@ -57534,14 +57538,14 @@ class PagewalkArmCommand(PagewalkCommand):
             self.quiet_info("Secure world: {}".format(self.SECURE))
 
         # check enabled LPAE
-        TTBCR = get_register('$TTBCR{}'.format(self.suffix))
+        TTBCR = get_register("$TTBCR{}".format(self.suffix))
         if TTBCR is not None:
             self.LPAE = ((TTBCR >> 31) & 0x1) == 1
         else:
             self.LPAE = False
 
         # check PXN supported
-        ID_MMFR0 = get_register('$ID_MMFR0{}'.format(self.suffix))
+        ID_MMFR0 = get_register("$ID_MMFR0{}".format(self.suffix))
         if ID_MMFR0 is not None:
             self.PXN = ((ID_MMFR0 >> 2) & 0x1) == 1
         else:
@@ -57596,7 +57600,7 @@ class PagewalkArmCommand(PagewalkCommand):
         self.cache = {}
 
         if self.out:
-            gef_print('\n'.join(self.out), less=not args.no_pager)
+            gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
@@ -57607,22 +57611,22 @@ class PagewalkArm64Command(PagewalkCommand):
     _category_ = "08-a. Qemu-system Cooperation - General"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-q', dest='quiet', action='store_true', help='show result only.')
-    parser.add_argument("target_el", metavar='TARGET_EL', nargs='?', type=int, help='target EL. (default: current EL)')
-    parser.add_argument('--print-each-level', action='store_true', help='show all level pagetables.')
-    parser.add_argument('--no-merge', action='store_true', help='do not merge similar/consecutive address.')
-    parser.add_argument('--sort-by-phys', action='store_true', help='sort by physical address.')
-    parser.add_argument('--simple', action='store_true', help='merge with ignoring physical address consecutivness.')
-    parser.add_argument('--filter', metavar='REGEX', default=[], action='append', help='filter by REGEX pattern.')
-    parser.add_argument('--vrange', metavar='VADDR', default=[], action='append', type=lambda x: int(x, 16),
-                        help='filter by map included specified virtual address.')
-    parser.add_argument('--prange', metavar='PADDR', default=[], action='append', type=lambda x: int(x, 16),
-                        help='filter by map included specified physical address.')
-    parser.add_argument('--trace', metavar='VADDR', default=[], action='append', type=lambda x: int(x, 16),
-                        help='show all level pagetables only associated specified address.')
-    parser.add_argument('--optee', action='store_true', help='show the secure world memory maps if used OP-TEE.')
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
-    parser.add_argument('-c', '--use-cache', action='store_true', help='use before result.')
+    parser.add_argument("-q", dest="quiet", action="store_true", help="show result only.")
+    parser.add_argument("target_el", metavar="TARGET_EL", nargs="?", type=int, help="target EL. (default: current EL)")
+    parser.add_argument("--print-each-level", action="store_true", help="show all level pagetables.")
+    parser.add_argument("--no-merge", action="store_true", help="do not merge similar/consecutive address.")
+    parser.add_argument("--sort-by-phys", action="store_true", help="sort by physical address.")
+    parser.add_argument("--simple", action="store_true", help="merge with ignoring physical address consecutivness.")
+    parser.add_argument("--filter", metavar="REGEX", default=[], action="append", help="filter by REGEX pattern.")
+    parser.add_argument("--vrange", metavar="VADDR", default=[], action="append", type=lambda x: int(x, 16),
+                        help="filter by map included specified virtual address.")
+    parser.add_argument("--prange", metavar="PADDR", default=[], action="append", type=lambda x: int(x, 16),
+                        help="filter by map included specified physical address.")
+    parser.add_argument("--trace", metavar="VADDR", default=[], action="append", type=lambda x: int(x, 16),
+                        help="show all level pagetables only associated specified address.")
+    parser.add_argument("--optee", action="store_true", help="show the secure world memory maps if used OP-TEE.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-c", "--use-cache", action="store_true", help="use before result.")
     _syntax_ = parser.format_help()
 
     # If you want to dump the secure world memory map, you need to break in the secure world.
@@ -57688,47 +57692,47 @@ class PagewalkArm64Command(PagewalkCommand):
         XN0 = "XN0" in flag_info
         if "S2AP=00" in flag_info:
             if XN1 is False and XN0 is False:
-                flags += ['EL0/---', 'EL1/---']
+                flags += ["EL0/---", "EL1/---"]
             elif XN1 is False and XN0 is True:
-                flags += ['EL0/---', 'EL1/---']
+                flags += ["EL0/---", "EL1/---"]
             elif XN1 is True and XN0 is False:
-                flags += ['EL0/---', 'EL1/---']
+                flags += ["EL0/---", "EL1/---"]
             elif XN1 is True and XN0 is True:
-                flags += ['EL0/---', 'EL1/---']
+                flags += ["EL0/---", "EL1/---"]
         elif "S2AP=01" in flag_info:
             if XN1 is False and XN0 is False:
-                flags += ['EL0/R-X', 'EL1/R-X']
+                flags += ["EL0/R-X", "EL1/R-X"]
             elif XN1 is False and XN0 is True:
-                flags += ['EL0/R-X', 'EL1/R--']
+                flags += ["EL0/R-X", "EL1/R--"]
             elif XN1 is True and XN0 is False:
-                flags += ['EL0/R--', 'EL1/R--']
+                flags += ["EL0/R--", "EL1/R--"]
             elif XN1 is True and XN0 is True:
-                flags += ['EL0/R--', 'EL1/R-X']
+                flags += ["EL0/R--", "EL1/R-X"]
         elif "S2AP=10" in flag_info:
             if XN1 is False and XN0 is False:
-                flags += ['EL0/-W-', 'EL1/-W-']
+                flags += ["EL0/-W-", "EL1/-W-"]
             elif XN1 is False and XN0 is True:
-                flags += ['EL0/-W-', 'EL1/-W-']
+                flags += ["EL0/-W-", "EL1/-W-"]
             elif XN1 is True and XN0 is False:
-                flags += ['EL0/-W-', 'EL1/-W-']
+                flags += ["EL0/-W-", "EL1/-W-"]
             elif XN1 is True and XN0 is True:
-                flags += ['EL0/-W-', 'EL1/-W-']
+                flags += ["EL0/-W-", "EL1/-W-"]
         elif "S2AP=11" in flag_info:
             if XN1 is False and XN0 is False:
-                flags += ['EL0/RWX', 'EL1/RWX']
+                flags += ["EL0/RWX", "EL1/RWX"]
             elif XN1 is False and XN0 is True:
-                flags += ['EL0/RWX', 'EL1/RW-']
+                flags += ["EL0/RWX", "EL1/RW-"]
             elif XN1 is True and XN0 is False:
-                flags += ['EL0/RW-', 'EL1/RW-']
+                flags += ["EL0/RW-", "EL1/RW-"]
             elif XN1 is True and XN0 is True:
-                flags += ['EL0/RW-', 'EL1/RWX']
+                flags += ["EL0/RW-", "EL1/RWX"]
         if "AF" in flag_info:
-            flags += ['ACCESSED']
+            flags += ["ACCESSED"]
         if "DBM" in flag_info:
-            flags += ['DIRTY']
+            flags += ["DIRTY"]
         # stage2 has no `nG` bit
 
-        flag_string = ' '.join(flags)
+        flag_string = " ".join(flags)
         self.flags_strings_cache[flag_info_key] = flag_string
         return flag_string
 
@@ -57820,141 +57824,141 @@ class PagewalkArm64Command(PagewalkCommand):
             if UXN is False and PXN is False:
                 if disable_write_access == 0 and enable_unpriv_access == 0:
                     if not EL1_WXN:
-                        flags += ['EL0/--X', 'EL1/RWX']
+                        flags += ["EL0/--X", "EL1/RWX"]
                     else:
-                        flags += ['EL0/--X', 'EL1/RW-']
+                        flags += ["EL0/--X", "EL1/RW-"]
                 elif disable_write_access == 0 and enable_unpriv_access == 1:
                     if not EL1_WXN:
-                        flags += ['EL0/RWX', 'EL1/RW-']
+                        flags += ["EL0/RWX", "EL1/RW-"]
                     else:
-                        flags += ['EL0/RW-', 'EL1/RW-']
+                        flags += ["EL0/RW-", "EL1/RW-"]
                 elif disable_write_access == 1 and enable_unpriv_access == 0:
-                    flags += ['EL0/--X', 'EL1/R-X']
+                    flags += ["EL0/--X", "EL1/R-X"]
                 elif disable_write_access == 1 and enable_unpriv_access == 1:
-                    flags += ['EL0/R-X', 'EL1/R-X']
+                    flags += ["EL0/R-X", "EL1/R-X"]
             elif UXN is False and PXN is True:
                 if disable_write_access == 0 and enable_unpriv_access == 0:
-                    flags += ['EL0/--X', 'EL1/RW-']
+                    flags += ["EL0/--X", "EL1/RW-"]
                 elif disable_write_access == 0 and enable_unpriv_access == 1:
                     if not EL1_WXN:
-                        flags += ['EL0/RWX', 'EL1/RW-']
+                        flags += ["EL0/RWX", "EL1/RW-"]
                     else:
-                        flags += ['EL0/RW-', 'EL1/RW-']
+                        flags += ["EL0/RW-", "EL1/RW-"]
                 elif disable_write_access == 1 and enable_unpriv_access == 0:
-                    flags += ['EL0/--X', 'EL1/R--']
+                    flags += ["EL0/--X", "EL1/R--"]
                 elif disable_write_access == 1 and enable_unpriv_access == 1:
-                    flags += ['EL0/R-X', 'EL1/R--']
+                    flags += ["EL0/R-X", "EL1/R--"]
             elif UXN is True and PXN is False:
                 if disable_write_access == 0 and enable_unpriv_access == 0:
                     if not EL1_WXN:
-                        flags += ['EL0/---', 'EL1/RWX']
+                        flags += ["EL0/---", "EL1/RWX"]
                     else:
-                        flags += ['EL0/---', 'EL1/RW-']
+                        flags += ["EL0/---", "EL1/RW-"]
                 elif disable_write_access == 0 and enable_unpriv_access == 1:
-                    flags += ['EL0/RW-', 'EL1/RW-']
+                    flags += ["EL0/RW-", "EL1/RW-"]
                 elif disable_write_access == 1 and enable_unpriv_access == 0:
-                    flags += ['EL0/---', 'EL1/R-X']
+                    flags += ["EL0/---", "EL1/R-X"]
                 elif disable_write_access == 1 and enable_unpriv_access == 1:
-                    flags += ['EL0/R--', 'EL1/R-X']
+                    flags += ["EL0/R--", "EL1/R-X"]
             elif UXN is True and PXN is True:
                 if disable_write_access == 0 and enable_unpriv_access == 0:
-                    flags += ['EL0/---', 'EL1/RW-']
+                    flags += ["EL0/---", "EL1/RW-"]
                 elif disable_write_access == 0 and enable_unpriv_access == 1:
-                    flags += ['EL0/RW-', 'EL1/RW-']
+                    flags += ["EL0/RW-", "EL1/RW-"]
                 elif disable_write_access == 1 and enable_unpriv_access == 0:
-                    flags += ['EL0/---', 'EL1/R--']
+                    flags += ["EL0/---", "EL1/R--"]
                 elif disable_write_access == 1 and enable_unpriv_access == 1:
-                    flags += ['EL0/R--', 'EL1/R--']
+                    flags += ["EL0/R--", "EL1/R--"]
         elif TargetEL == 2:
             if EL2_M20:
                 # support 2VA ranges if HCR_EL2.{TGE,E2H} == {1,1}
                 if UXN is False and PXN is False:
                     if disable_write_access == 0 and enable_unpriv_access == 0:
                         if not EL2_WXN:
-                            flags += ['EL0/--X', 'EL2/RWX']
+                            flags += ["EL0/--X", "EL2/RWX"]
                         else:
-                            flags += ['EL0/--X', 'EL2/RW-']
+                            flags += ["EL0/--X", "EL2/RW-"]
                     elif disable_write_access == 0 and enable_unpriv_access == 1:
                         if not EL2_WXN:
-                            flags += ['EL0/RWX', 'EL2/RW-']
+                            flags += ["EL0/RWX", "EL2/RW-"]
                         else:
-                            flags += ['EL0/RW-', 'EL2/RW-']
+                            flags += ["EL0/RW-", "EL2/RW-"]
                     elif disable_write_access == 1 and enable_unpriv_access == 0:
-                        flags += ['EL0/--X', 'EL2/R-X']
+                        flags += ["EL0/--X", "EL2/R-X"]
                     elif disable_write_access == 1 and enable_unpriv_access == 1:
-                        flags += ['EL0/R-X', 'EL2/R-X']
+                        flags += ["EL0/R-X", "EL2/R-X"]
                 elif UXN is False and PXN is True:
                     if disable_write_access == 0 and enable_unpriv_access == 0:
-                        flags += ['EL0/--X', 'EL2/RW-']
+                        flags += ["EL0/--X", "EL2/RW-"]
                     elif disable_write_access == 0 and enable_unpriv_access == 1:
                         if not EL2_WXN:
-                            flags += ['EL0/RWX', 'EL2/RW-']
+                            flags += ["EL0/RWX", "EL2/RW-"]
                         else:
-                            flags += ['EL0/RW-', 'EL2/RW-']
+                            flags += ["EL0/RW-", "EL2/RW-"]
                     elif disable_write_access == 1 and enable_unpriv_access == 0:
-                        flags += ['EL0/--X', 'EL2/R--']
+                        flags += ["EL0/--X", "EL2/R--"]
                     elif disable_write_access == 1 and enable_unpriv_access == 1:
-                        flags += ['EL0/R-X', 'EL2/R--']
+                        flags += ["EL0/R-X", "EL2/R--"]
                 elif UXN is True and PXN is False:
                     if disable_write_access == 0 and enable_unpriv_access == 0:
                         if not EL2_WXN:
-                            flags += ['EL0/---', 'EL2/RWX']
+                            flags += ["EL0/---", "EL2/RWX"]
                         else:
-                            flags += ['EL0/---', 'EL2/RW-']
+                            flags += ["EL0/---", "EL2/RW-"]
                     elif disable_write_access == 0 and enable_unpriv_access == 1:
-                        flags += ['EL0/RW-', 'EL2/RW-']
+                        flags += ["EL0/RW-", "EL2/RW-"]
                     elif disable_write_access == 1 and enable_unpriv_access == 0:
-                        flags += ['EL0/---', 'EL2/R-X']
+                        flags += ["EL0/---", "EL2/R-X"]
                     elif disable_write_access == 1 and enable_unpriv_access == 1:
-                        flags += ['EL0/R--', 'EL2/R-X']
+                        flags += ["EL0/R--", "EL2/R-X"]
                 elif UXN is True and PXN is True:
                     if disable_write_access == 0 and enable_unpriv_access == 0:
-                        flags += ['EL0/---', 'EL2/RW-']
+                        flags += ["EL0/---", "EL2/RW-"]
                     elif disable_write_access == 0 and enable_unpriv_access == 1:
-                        flags += ['EL0/RW-', 'EL2/RW-']
+                        flags += ["EL0/RW-", "EL2/RW-"]
                     elif disable_write_access == 1 and enable_unpriv_access == 0:
-                        flags += ['EL0/---', 'EL2/R--']
+                        flags += ["EL0/---", "EL2/R--"]
                     elif disable_write_access == 1 and enable_unpriv_access == 1:
-                        flags += ['EL0/R--', 'EL2/R--']
+                        flags += ["EL0/R--", "EL2/R--"]
             else:
                 # not support 2VA ranges if HCR_EL2.{TGE,E2H} != {1,1}
                 if XN is False:
                     if disable_write_access == 0:
                         if not EL2_WXN:
-                            flags += ['EL2/RWX']
+                            flags += ["EL2/RWX"]
                         else:
-                            flags += ['EL2/RW-']
+                            flags += ["EL2/RW-"]
                     elif disable_write_access == 1:
-                        flags += ['EL2/R-X']
+                        flags += ["EL2/R-X"]
                 elif XN is True:
                     if disable_write_access == 0:
-                        flags += ['EL2/RW-']
+                        flags += ["EL2/RW-"]
                     elif disable_write_access == 1:
-                        flags += ['EL2/R--']
+                        flags += ["EL2/R--"]
         elif TargetEL == 3:
             if XN is False:
                 if disable_write_access == 0:
                     if not EL3_WXN:
-                        flags += ['EL3/RWX']
+                        flags += ["EL3/RWX"]
                     else:
-                        flags += ['EL3/RW-']
+                        flags += ["EL3/RW-"]
                 elif disable_write_access == 1:
-                    flags += ['EL3/R-X']
+                    flags += ["EL3/R-X"]
             elif XN is True:
                 if disable_write_access == 0:
-                    flags += ['EL3/RW-']
+                    flags += ["EL3/RW-"]
                 elif disable_write_access == 1:
-                    flags += ['EL3/R--']
+                    flags += ["EL3/R--"]
         if NS:
-            flags += ['NS']
+            flags += ["NS"]
         if "AF" in flag_info:
-            flags += ['ACCESSED']
+            flags += ["ACCESSED"]
         if "DBM" in flag_info:
-            flags += ['DIRTY']
+            flags += ["DIRTY"]
         if "nG" not in flag_info:
             flags += ["GLOBAL"]
 
-        flag_string = ' '.join(flags)
+        flag_string = " ".join(flags)
         self.flags_strings_cache[flag_info_key] = flag_string
         return flag_string
 
@@ -58122,7 +58126,7 @@ class PagewalkArm64Command(PagewalkCommand):
                             continue
                         addr = table_base + i * 8
                         fmt = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x},type:{:s}) {:s}"
-                        line = fmt.format(addr, entry, new_va, new_va_end, entry_type, ' '.join(flags))
+                        line = fmt.format(addr, entry, new_va, new_va_end, entry_type, " ".join(flags))
                         if self.is_not_filter_target(line):
                             continue
                         self.add_out(line)
@@ -58270,7 +58274,7 @@ class PagewalkArm64Command(PagewalkCommand):
                             continue
                         addr = table_base + i * 8
                         fmt = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x},type:{:s}) {:s}"
-                        line = fmt.format(addr, entry, new_va, new_va_end, entry_type, ' '.join(flags))
+                        line = fmt.format(addr, entry, new_va, new_va_end, entry_type, " ".join(flags))
                         if self.is_not_filter_target(line):
                             continue
                         self.add_out(line)
@@ -58432,7 +58436,7 @@ class PagewalkArm64Command(PagewalkCommand):
                             continue
                         addr = table_base + i * 8
                         fmt = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x},type:{:s}) {:s}"
-                        line = fmt.format(addr, entry, new_va, new_va_end, entry_type, ' '.join(flags))
+                        line = fmt.format(addr, entry, new_va, new_va_end, entry_type, " ".join(flags))
                         if self.is_not_filter_target(line):
                             continue
                         self.add_out(line)
@@ -58596,7 +58600,7 @@ class PagewalkArm64Command(PagewalkCommand):
                             continue
                         addr = table_base + i * 8
                         fmt = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x},type:{:s}) {:s}"
-                        line = fmt.format(addr, entry, new_va, new_va_end, entry_type, ' '.join(flags))
+                        line = fmt.format(addr, entry, new_va, new_va_end, entry_type, " ".join(flags))
                         if self.is_not_filter_target(line):
                             continue
                         self.add_out(line)
@@ -58748,7 +58752,7 @@ class PagewalkArm64Command(PagewalkCommand):
                             continue
                         addr = table_base + i * 8
                         fmt = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x},type:{:s}) {:s}"
-                        line = fmt.format(addr, entry, virt_addr, virt_addr_end, entry_type, ' '.join(flags))
+                        line = fmt.format(addr, entry, virt_addr, virt_addr_end, entry_type, " ".join(flags))
                         if self.is_not_filter_target(line):
                             continue
                         self.add_out(line)
@@ -58773,7 +58777,7 @@ class PagewalkArm64Command(PagewalkCommand):
 
     def switch_el(self):
         self.SAVED_CPSR = 0
-        CPSR = get_register('$cpsr') & 0xffffffff
+        CPSR = get_register("$cpsr") & 0xffffffff
         CurrentEL = int((CPSR >> 2) & 0b11)
         # change EL
         try:
@@ -58784,32 +58788,32 @@ class PagewalkArm64Command(PagewalkCommand):
                 self.SAVED_CPSR = CPSR
                 CPSR = CPSR & ~(0b11 << 2) # clear EL
                 CPSR |= self.TargetEL << 2 # set desired EL
-                gdb.parse_and_eval('$cpsr = 0x%08x' % CPSR)
-                self.quiet_info('Moving to EL%d' % (self.TargetEL))
+                gdb.parse_and_eval("$cpsr = {:#x}".format(CPSR))
+                self.quiet_info("Moving to EL{:d}".format(self.TargetEL))
         except ValueError:
             self.err("Invalid argument (ELx integer required)")
             return
         except gdb.error:
-            self.err("Maybe unsupported to change to EL%d" % (self.TargetEL))
+            self.err("Maybe unsupported to change to EL{:d}".format(self.TargetEL))
             return
         # reload CPSR
-        CPSR = get_register('$cpsr') & 0xffffffff
+        CPSR = get_register("$cpsr") & 0xffffffff
         CurrentEL = int((CPSR >> 2) & 0b11)
-        self.quiet_info('CPSR: EL%d' % (CurrentEL))
+        self.quiet_info("CPSR: EL{:d}".format(CurrentEL))
         return True
 
     def revert_el(self):
         if self.SAVED_CPSR:
-            gdb.parse_and_eval('$cpsr = 0x%08x' % self.SAVED_CPSR)
+            gdb.parse_and_eval("$cpsr = {:#x}".format(self.SAVED_CPSR))
             SavedEL = (self.SAVED_CPSR >> 2) & 0b11
-            self.quiet_info('Moving back to EL%d' % (SavedEL))
+            self.quiet_info("Moving back to EL{:d}".format(SavedEL))
         return
 
     def pagewalk_TTBR0_EL1(self):
         self.add_out(titlify("$TTBR0_EL1"))
 
-        TTBR0_EL1 = get_register('$TTBR0_EL1')
-        TCR_EL1 = get_register('$TCR_EL1')
+        TTBR0_EL1 = get_register("$TTBR0_EL1")
+        TCR_EL1 = get_register("$TCR_EL1")
         if TTBR0_EL1 == 0:
             self.warn("Maybe unused TTBR0_EL1")
             return
@@ -58837,11 +58841,11 @@ class PagewalkArm64Command(PagewalkCommand):
         else:
             translation_base_addr = TTBR0_EL1 & 0xfffffffffffe
 
-        self.quiet_info('$TTBR0_EL1: {:#x}'.format(TTBR0_EL1))
-        self.quiet_info('$TCR_EL1: {:#x}'.format(TCR_EL1))
-        self.quiet_info('Intermediate Physical Address Size: {:d} bits'.format(intermediate_pa_size))
-        self.quiet_info('EL1 User Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end - 1, region_bits))
-        self.quiet_info('EL1 User Page Size: {:d}KB (per page)'.format(page_size))
+        self.quiet_info("$TTBR0_EL1: {:#x}".format(TTBR0_EL1))
+        self.quiet_info("$TCR_EL1: {:#x}".format(TCR_EL1))
+        self.quiet_info("Intermediate Physical Address Size: {:d} bits".format(intermediate_pa_size))
+        self.quiet_info("EL1 User Region: {:#018x} - {:#018x} ({:d} bits)".format(region_start, region_end - 1, region_bits))
+        self.quiet_info("EL1 User Page Size: {:d}KB (per page)".format(page_size))
 
         self.parse_bit_range(granule_bits, region_bits)
         if not self.use_cache or not self.ttbr0el1_mappings:
@@ -58856,8 +58860,8 @@ class PagewalkArm64Command(PagewalkCommand):
     def pagewalk_TTBR1_EL1(self):
         self.add_out(titlify("$TTBR1_EL1"))
 
-        TTBR1_EL1 = get_register('$TTBR1_EL1')
-        TCR_EL1 = get_register('$TCR_EL1')
+        TTBR1_EL1 = get_register("$TTBR1_EL1")
+        TCR_EL1 = get_register("$TCR_EL1")
         if TTBR1_EL1 == 0:
             self.warn("Maybe unused TTBR1_EL1")
             return
@@ -58885,11 +58889,11 @@ class PagewalkArm64Command(PagewalkCommand):
         else:
             translation_base_addr = TTBR1_EL1 & 0xfffffffffffe
 
-        self.quiet_info('$TTBR1_EL1: {:#x}'.format(TTBR1_EL1))
-        self.quiet_info('$TCR_EL1: {:#x}'.format(TCR_EL1))
-        self.quiet_info('Intermediate Physical Address Size: {:d} bits'.format(intermediate_pa_size))
-        self.quiet_info('EL1 Kernel Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end - 1, region_bits))
-        self.quiet_info('EL1 Kernel Page Size: {:d}KB (per page)'.format(page_size))
+        self.quiet_info("$TTBR1_EL1: {:#x}".format(TTBR1_EL1))
+        self.quiet_info("$TCR_EL1: {:#x}".format(TCR_EL1))
+        self.quiet_info("Intermediate Physical Address Size: {:d} bits".format(intermediate_pa_size))
+        self.quiet_info("EL1 Kernel Region: {:#018x} - {:#018x} ({:d} bits)".format(region_start, region_end - 1, region_bits))
+        self.quiet_info("EL1 Kernel Page Size: {:d}KB (per page)".format(page_size))
 
         self.parse_bit_range(granule_bits, region_bits)
         if not self.use_cache or not self.ttbr1el1_mappings:
@@ -58905,8 +58909,8 @@ class PagewalkArm64Command(PagewalkCommand):
         if not self.silent:
             self.add_out(titlify("$VTTBR_EL2"))
 
-        VTTBR_EL2 = get_register('$VTTBR_EL2')
-        VTCR_EL2 = get_register('$VTCR_EL2')
+        VTTBR_EL2 = get_register("$VTTBR_EL2")
+        VTCR_EL2 = get_register("$VTCR_EL2")
         if VTTBR_EL2 == 0:
             if not self.silent:
                 self.warn("Maybe unused VTTBR_EL2")
@@ -59000,12 +59004,12 @@ class PagewalkArm64Command(PagewalkCommand):
             translation_base_addr = VTTBR_EL2 & 0xfffffffffffe
 
         if not self.silent:
-            self.quiet_info('$VTTBR_EL2: {:#x}'.format(VTTBR_EL2))
-            self.quiet_info('$VTCR_EL2: {:#x}'.format(VTCR_EL2))
-            self.quiet_info('Physical Address Size: {:d} bits'.format(pa_size))
-            self.quiet_info('EL2 Starting Level: {:d}'.format(SL0))
-            self.quiet_info('EL2 Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end - 1, region_bits))
-            self.quiet_info('EL2 Page Size: {:d}KB (per page)'.format(page_size))
+            self.quiet_info("$VTTBR_EL2: {:#x}".format(VTTBR_EL2))
+            self.quiet_info("$VTCR_EL2: {:#x}".format(VTCR_EL2))
+            self.quiet_info("Physical Address Size: {:d} bits".format(pa_size))
+            self.quiet_info("EL2 Starting Level: {:d}".format(SL0))
+            self.quiet_info("EL2 Region: {:#018x} - {:#018x} ({:d} bits)".format(region_start, region_end - 1, region_bits))
+            self.quiet_info("EL2 Page Size: {:d}KB (per page)".format(page_size))
 
         self.parse_bit_range(granule_bits, region_bits)
         if not self.use_cache or not self.vttbrel2_mappings:
@@ -59023,8 +59027,8 @@ class PagewalkArm64Command(PagewalkCommand):
     def pagewalk_TTBR0_EL2(self):
         self.add_out(titlify("$TTBR0_EL2"))
 
-        TTBR0_EL2 = get_register('$TTBR0_EL2')
-        TCR_EL2 = get_register('$TCR_EL2')
+        TTBR0_EL2 = get_register("$TTBR0_EL2")
+        TCR_EL2 = get_register("$TCR_EL2")
         if TTBR0_EL2 == 0:
             self.warn("Maybe unused TTBR0_EL2")
             return
@@ -59064,18 +59068,18 @@ class PagewalkArm64Command(PagewalkCommand):
         else:
             translation_base_addr = TTBR0_EL2 & 0xfffffffffffe
 
-        self.quiet_info('$TTBR0_EL2: {:#x}'.format(TTBR0_EL2))
-        self.quiet_info('$TCR_EL2: {:#x}'.format(TCR_EL2))
+        self.quiet_info("$TTBR0_EL2: {:#x}".format(TTBR0_EL2))
+        self.quiet_info("$TCR_EL2: {:#x}".format(TCR_EL2))
         if self.EL2_E2H:
-            self.quiet_info('Intermediate Physical Address Size: {:d} bits'.format(intermediate_pa_size))
+            self.quiet_info("Intermediate Physical Address Size: {:d} bits".format(intermediate_pa_size))
         else:
-            self.quiet_info('Physical Address Size: {:d} bits'.format(pa_size))
+            self.quiet_info("Physical Address Size: {:d} bits".format(pa_size))
         if self.EL2_M20:
-            self.quiet_info('EL2 User Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end - 1, region_bits))
-            self.quiet_info('EL2 USer Page Size: {:d}KB (per page)'.format(page_size))
+            self.quiet_info("EL2 User Region: {:#018x} - {:#018x} ({:d} bits)".format(region_start, region_end - 1, region_bits))
+            self.quiet_info("EL2 USer Page Size: {:d}KB (per page)".format(page_size))
         else:
-            self.quiet_info('EL2 Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end - 1, region_bits))
-            self.quiet_info('EL2 Page Size: {:d}KB (per page)'.format(page_size))
+            self.quiet_info("EL2 Region: {:#018x} - {:#018x} ({:d} bits)".format(region_start, region_end - 1, region_bits))
+            self.quiet_info("EL2 Page Size: {:d}KB (per page)".format(page_size))
 
         self.parse_bit_range(granule_bits, region_bits)
         if not self.use_cache or not self.ttbr0el2_mappings:
@@ -59090,8 +59094,8 @@ class PagewalkArm64Command(PagewalkCommand):
     def pagewalk_TTBR1_EL2(self):
         self.add_out(titlify("$TTBR1_EL2"))
 
-        TTBR1_EL2 = get_register('$TTBR1_EL2')
-        TCR_EL2 = get_register('$TCR_EL2')
+        TTBR1_EL2 = get_register("$TTBR1_EL2")
+        TCR_EL2 = get_register("$TCR_EL2")
         if TTBR1_EL2 == 0:
             self.warn("Maybe unused TTBR1_EL2")
             return
@@ -59119,11 +59123,11 @@ class PagewalkArm64Command(PagewalkCommand):
         else:
             translation_base_addr = TTBR1_EL2 & 0xfffffffffffe
 
-        self.quiet_info('$TTBR1_EL2: {:#x}'.format(TTBR1_EL2))
-        self.quiet_info('$TCR_EL2: {:#x}'.format(TCR_EL2))
-        self.quiet_info('Intermediate Physical Address Size: {:d} bits'.format(intermediate_pa_size))
-        self.quiet_info('EL2 Kernel Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end - 1, region_bits))
-        self.quiet_info('EL2 Kernel Page Size: {:d}KB (per page)'.format(page_size))
+        self.quiet_info("$TTBR1_EL2: {:#x}".format(TTBR1_EL2))
+        self.quiet_info("$TCR_EL2: {:#x}".format(TCR_EL2))
+        self.quiet_info("Intermediate Physical Address Size: {:d} bits".format(intermediate_pa_size))
+        self.quiet_info("EL2 Kernel Region: {:#018x} - {:#018x} ({:d} bits)".format(region_start, region_end - 1, region_bits))
+        self.quiet_info("EL2 Kernel Page Size: {:d}KB (per page)".format(page_size))
 
         self.parse_bit_range(granule_bits, region_bits)
         if not self.use_cache or not self.ttbr1el2_mappings:
@@ -59138,8 +59142,8 @@ class PagewalkArm64Command(PagewalkCommand):
     def pagewalk_TTBR0_EL3(self):
         self.add_out(titlify("$TTBR0_EL3"))
 
-        TTBR0_EL3 = get_register('$TTBR0_EL3')
-        TCR_EL3 = get_register('$TCR_EL3')
+        TTBR0_EL3 = get_register("$TTBR0_EL3")
+        TCR_EL3 = get_register("$TCR_EL3")
         if TTBR0_EL3 == 0:
             self.warn("Maybe unused TTBR0_EL3")
             return
@@ -59167,11 +59171,11 @@ class PagewalkArm64Command(PagewalkCommand):
         else:
             translation_base_addr = TTBR0_EL3 & 0xfffffffffffe
 
-        self.quiet_info('$TTBR0_EL3: {:#x}'.format(TTBR0_EL3))
-        self.quiet_info('$TCR_EL3: {:#x}'.format(TCR_EL3))
-        self.quiet_info('Physical Address Size: {:d} bits'.format(pa_size))
-        self.quiet_info('EL3 Region: {:#018x} - {:#018x} ({:d} bits)'.format(region_start, region_end - 1, region_bits))
-        self.quiet_info('EL3 Page Size: {:d}KB (per page)'.format(page_size))
+        self.quiet_info("$TTBR0_EL3: {:#x}".format(TTBR0_EL3))
+        self.quiet_info("$TCR_EL3: {:#x}".format(TCR_EL3))
+        self.quiet_info("Physical Address Size: {:d} bits".format(pa_size))
+        self.quiet_info("EL3 Region: {:#018x} - {:#018x} ({:d} bits)".format(region_start, region_end - 1, region_bits))
+        self.quiet_info("EL3 Page Size: {:d}KB (per page)".format(page_size))
 
         self.parse_bit_range(granule_bits, region_bits)
         if not self.use_cache or not self.ttbr0el3_mappings:
@@ -59189,9 +59193,9 @@ class PagewalkArm64Command(PagewalkCommand):
             self.err("Not found system registers. Check qemu version (at least: 3.x~, recommend: 5.x~).")
             return
 
-        SCTLR_EL1 = get_register('$SCTLR_EL1')
+        SCTLR_EL1 = get_register("$SCTLR_EL1")
         if SCTLR_EL1 is None:
-            SCTLR_EL1 = get_register('$SCTLR')
+            SCTLR_EL1 = get_register("$SCTLR")
         if SCTLR_EL1 is not None:
             self.EL1_M = (SCTLR_EL1 & 1) == 1
             self.EL1_WXN = ((SCTLR_EL1 >> 19) & 1) == 1
@@ -59199,7 +59203,7 @@ class PagewalkArm64Command(PagewalkCommand):
             self.EL1_M = False
             self.EL1_WXN = False
 
-        HCR_EL2 = get_register('$HCR_EL2')
+        HCR_EL2 = get_register("$HCR_EL2")
         if HCR_EL2 is not None:
             self.EL2_TGE = ((HCR_EL2 >> 27) & 1) == 1
             self.EL2_E2H = ((HCR_EL2 >> 34) & 1) == 1
@@ -59211,7 +59215,7 @@ class PagewalkArm64Command(PagewalkCommand):
             self.EL2_M20 = False
             self.EL2_VM = False
 
-        SCTLR_EL2 = get_register('$SCTLR_EL2')
+        SCTLR_EL2 = get_register("$SCTLR_EL2")
         if SCTLR_EL2 is not None:
             self.EL2_M = (SCTLR_EL2 & 1) == 1
             self.EL2_WXN = ((SCTLR_EL2 >> 19) & 1) == 1
@@ -59219,7 +59223,7 @@ class PagewalkArm64Command(PagewalkCommand):
             self.EL2_M = False
             self.EL2_WXN = False
 
-        SCTLR_EL3 = get_register('$SCTLR_EL3')
+        SCTLR_EL3 = get_register("$SCTLR_EL3")
         if SCTLR_EL3 is not None:
             self.EL3_M = (SCTLR_EL3 & 1) == 1
             self.EL3_WXN = ((SCTLR_EL3 >> 19) & 1) == 1
@@ -59227,7 +59231,7 @@ class PagewalkArm64Command(PagewalkCommand):
             self.EL3_M = False
             self.EL3_WXN = False
 
-        ID_AA64MMFR0_EL1 = get_register('$ID_AA64MMFR0_EL1')
+        ID_AA64MMFR0_EL1 = get_register("$ID_AA64MMFR0_EL1")
         if ID_AA64MMFR0_EL1 is not None:
             TGran4_2 = (ID_AA64MMFR0_EL1 >> 40) & 0b1111
             TGran16_2 = (ID_AA64MMFR0_EL1 >> 32) & 0b1111
@@ -59239,7 +59243,7 @@ class PagewalkArm64Command(PagewalkCommand):
             self.FEAT_LPA2 = False
             self.FEAT_LPA = False
 
-        ID_AA64MMFR1_EL1 = get_register('$ID_AA64MMFR1_EL1')
+        ID_AA64MMFR1_EL1 = get_register("$ID_AA64MMFR1_EL1")
         if ID_AA64MMFR1_EL1 is not None:
             self.FEAT_PAN = ((ID_AA64MMFR1_EL1 >> 20) & 0b1111) != 0b0000
         else:
@@ -59250,7 +59254,7 @@ class PagewalkArm64Command(PagewalkCommand):
         else:
             self.quiet_info("PAN is unsupported")
 
-        ID_AA64MMFR2_EL1 = get_register('$ID_AA64MMFR2_EL1')
+        ID_AA64MMFR2_EL1 = get_register("$ID_AA64MMFR2_EL1")
         if ID_AA64MMFR2_EL1 is not None:
             self.FEAT_TTST = ((ID_AA64MMFR2_EL1 >> 28) & 0b1111) == 0b0001
             self.FEAT_LVA = ((ID_AA64MMFR2_EL1 >> 16) & 0b1111) == 0b0001
@@ -59272,7 +59276,7 @@ class PagewalkArm64Command(PagewalkCommand):
 
         # do pagewalk
         if self.TargetEL < 1 or 3 < self.TargetEL:
-            self.warn('No paging in EL{:d}'.format(self.TargetEL))
+            self.warn("No paging in EL{:d}".format(self.TargetEL))
             return
         if self.TargetEL == 1 and self.EL1_M:
             if self.EL2_VM:
@@ -59319,7 +59323,7 @@ class PagewalkArm64Command(PagewalkCommand):
             return
 
         if args.target_el is None:
-            CPSR = get_register('$cpsr')
+            CPSR = get_register("$cpsr")
             self.TargetEL = (CPSR >> 2) & 0b11
         else:
             self.TargetEL = args.target_el
@@ -59345,7 +59349,7 @@ class PagewalkArm64Command(PagewalkCommand):
         self.cache = {}
 
         if self.out:
-            gef_print('\n'.join(self.out), less=not args.no_pager)
+            gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
@@ -59356,17 +59360,17 @@ class SwitchELCommand(GenericCommand):
     _category_ = "08-a. Qemu-system Cooperation - General"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("target_el", metavar='TARGET_EL', nargs='?', type=int, help='Exception Level to change to.')
+    parser.add_argument("target_el", metavar="TARGET_EL", nargs="?", type=int, help="Exception Level to change to.")
     _syntax_ = parser.format_help()
 
     def switch_el(self):
         # current EL
-        CPSR = get_register('$cpsr') & 0xffffffff
+        CPSR = get_register("$cpsr") & 0xffffffff
         CurrentEL = (CPSR >> 2) & 0b11
 
         # check argv
         if self.target_el is None:
-            info('$cpsr = 0x%x (EL%d)' % (CPSR, CurrentEL))
+            info("$cpsr = {:#x} (EL{:d})".format(CPSR, CurrentEL))
             return
 
         # check target EL
@@ -59382,15 +59386,15 @@ class SwitchELCommand(GenericCommand):
         if self.target_el != CurrentEL:
             CPSR = CPSR & ~(0b11 << 2) # clear EL
             CPSR |= self.target_el << 2 # set desired EL
-            gdb.parse_and_eval('$cpsr = 0x%08x' % CPSR)
-            info('Moving to EL%d' % (self.target_el))
+            gdb.parse_and_eval("$cpsr = {:#x}".format(CPSR))
+            info("Moving to EL{:d}".format(self.target_el))
         else:
-            info('Already at EL%d' % (self.target_el))
+            info("Already at EL{:d}".format(self.target_el))
 
         # reprint CPSR
-        CPSR = int(gdb.parse_and_eval('$cpsr')) & 0xffffffff
+        CPSR = int(gdb.parse_and_eval("$cpsr")) & 0xffffffff
         CurrentEL = (CPSR >> 2) & 0b11
-        info('$cpsr = 0x%x (EL%d)' % (CPSR, CurrentEL))
+        info("$cpsr = {:#x} (EL{:d})".format(CPSR, CurrentEL))
         return
 
     @parse_args
@@ -59411,9 +59415,9 @@ class PagewalkWithHintsCommand(GenericCommand):
     _category_ = "08-a. Qemu-system Cooperation - General"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
-    parser.add_argument('-c', '--use-cache', action='store_true', help='use cache.')
-    parser.add_argument('-q', dest='quiet', action='store_true', help='quiet execution.')
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-c", "--use-cache", action="store_true", help="use cache.")
+    parser.add_argument("-q", dest="quiet", action="store_true", help="quiet execution.")
     _syntax_ = parser.format_help()
 
     def __init__(self, *args, **kwargs):
@@ -59883,7 +59887,7 @@ class PagewalkWithHintsCommand(GenericCommand):
         self.dont_repeat()
 
         if args.use_cache and self.prev_out:
-            gef_print('\n'.join(self.prev_out), less=not args.no_pager)
+            gef_print("\n".join(self.prev_out), less=not args.no_pager)
             return
 
         self.quiet = args.quiet
@@ -59908,7 +59912,7 @@ class PagewalkWithHintsCommand(GenericCommand):
             self.out.append(fmt.format(r.addr_start, r.addr_end, r.size, r.perm, r.description))
         self.prev_out = self.out.copy()
 
-        gef_print('\n'.join(self.out), less=not args.no_pager)
+        gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
@@ -59942,20 +59946,20 @@ class ExecUntilCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     if sys.version_info.minor >= 7:
-        subparsers = parser.add_subparsers(title='command', required=True)
+        subparsers = parser.add_subparsers(title="command", required=True)
     else:
-        subparsers = parser.add_subparsers(title='command')
-    subparsers.add_parser('call')
-    subparsers.add_parser('jmp')
-    subparsers.add_parser('syscall')
-    subparsers.add_parser('ret')
-    subparsers.add_parser('all-branch')
-    subparsers.add_parser('indirect-branch')
-    subparsers.add_parser('memaccess')
-    subparsers.add_parser('keyword')
-    subparsers.add_parser('cond')
-    subparsers.add_parser('user-code')
-    subparsers.add_parser('libc-code')
+        subparsers = parser.add_subparsers(title="command")
+    subparsers.add_parser("call")
+    subparsers.add_parser("jmp")
+    subparsers.add_parser("syscall")
+    subparsers.add_parser("ret")
+    subparsers.add_parser("all-branch")
+    subparsers.add_parser("indirect-branch")
+    subparsers.add_parser("memaccess")
+    subparsers.add_parser("keyword")
+    subparsers.add_parser("cond")
+    subparsers.add_parser("user-code")
+    subparsers.add_parser("libc-code")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} call                                # execute until call instruction\n".format(_cmdline_)
@@ -60053,7 +60057,7 @@ class ExecUntilCommand(GenericCommand):
 
     def get_breakpoint_list(self):
         lines = gdb.execute("info breakpoints", to_string=True).splitlines()
-        if lines[0] == 'No breakpoints or watchpoints.':
+        if lines[0] == "No breakpoints or watchpoints.":
             return []
 
         enable_idx = lines[0].index("Enb")
@@ -60066,7 +60070,7 @@ class ExecUntilCommand(GenericCommand):
                     continue
                 enable = line[enable_idx]
                 addr = int(line[addr_idx:].split()[0], 16)
-                if enable == 'y':
+                if enable == "y":
                     bp_list.append(addr)
             except Exception:
                 pass
@@ -60168,8 +60172,8 @@ class ExecUntilCallCommand(ExecUntilCommand):
     _repeat_ = True
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--print-insn', action='store_true', help='print each instruction during execution.')
-    parser.add_argument('--skip-lib', action='store_true', help='uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.')
+    parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
+    parser.add_argument("--skip-lib", action="store_true", help="uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.")
     _syntax_ = parser.format_help()
     _example_ = None
 
@@ -60188,8 +60192,8 @@ class ExecUntilJumpCommand(ExecUntilCommand):
     _repeat_ = True
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--print-insn', action='store_true', help='print each instruction during execution.')
-    parser.add_argument('--skip-lib', action='store_true', help='uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.')
+    parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
+    parser.add_argument("--skip-lib", action="store_true", help="uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.")
     _syntax_ = parser.format_help()
     _example_ = None
 
@@ -60208,8 +60212,8 @@ class ExecUntilIndirectBranchCommand(ExecUntilCommand):
     _repeat_ = True
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--print-insn', action='store_true', help='print each instruction during execution.')
-    parser.add_argument('--skip-lib', action='store_true', help='uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.')
+    parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
+    parser.add_argument("--skip-lib", action="store_true", help="uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.")
     _syntax_ = parser.format_help()
     _example_ = None
 
@@ -60237,8 +60241,8 @@ class ExecUntilAllBranchCommand(ExecUntilCommand):
     _repeat_ = True
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--print-insn', action='store_true', help='print each instruction during execution.')
-    parser.add_argument('--skip-lib', action='store_true', help='uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.')
+    parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
+    parser.add_argument("--skip-lib", action="store_true", help="uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.")
     _syntax_ = parser.format_help()
     _example_ = None
 
@@ -60257,8 +60261,8 @@ class ExecUntilSyscallCommand(ExecUntilCommand):
     _repeat_ = True
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--print-insn', action='store_true', help='print each instruction during execution.')
-    parser.add_argument('--skip-lib', action='store_true', help='uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.')
+    parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
+    parser.add_argument("--skip-lib", action="store_true", help="uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.")
     _syntax_ = parser.format_help()
     _example_ = None
 
@@ -60277,8 +60281,8 @@ class ExecUntilRetCommand(ExecUntilCommand):
     _repeat_ = True
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--print-insn', action='store_true', help='print each instruction during execution.')
-    parser.add_argument('--skip-lib', action='store_true', help='uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.')
+    parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
+    parser.add_argument("--skip-lib", action="store_true", help="uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.")
     _syntax_ = parser.format_help()
     _example_ = None
 
@@ -60297,8 +60301,8 @@ class ExecUntilMemaccessCommand(ExecUntilCommand):
     _repeat_ = True
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--print-insn', action='store_true', help='print each instruction during execution.')
-    parser.add_argument('--skip-lib', action='store_true', help='uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.')
+    parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
+    parser.add_argument("--skip-lib", action="store_true", help="uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.")
     _syntax_ = parser.format_help()
     _example_ = None
 
@@ -60317,9 +60321,9 @@ class ExecUntilKeywordReCommand(ExecUntilCommand):
     _repeat_ = True
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--print-insn', action='store_true', help='print each instruction during execution.')
-    parser.add_argument('--skip-lib', action='store_true', help='uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.')
-    parser.add_argument('keyword', metavar='KEYWORD', nargs='+', help='filter by specified regex keyword.')
+    parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
+    parser.add_argument("--skip-lib", action="store_true", help="uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.")
+    parser.add_argument("keyword", metavar="KEYWORD", nargs="+", help="filter by specified regex keyword.")
     _syntax_ = parser.format_help()
 
     _example_ = '{:s} "call +r[ab]x"                        # execute until specified keyword\n'.format(_cmdline_)
@@ -60350,9 +60354,9 @@ class ExecUntilCondCommand(ExecUntilCommand):
     _repeat_ = True
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--print-insn', action='store_true', help='print each instruction during execution.')
-    parser.add_argument('--skip-lib', action='store_true', help='uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.')
-    parser.add_argument('condition', metavar='CONDITION', help='filter by codition.')
+    parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
+    parser.add_argument("--skip-lib", action="store_true", help="uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.")
+    parser.add_argument("condition", metavar="CONDITION", help="filter by codition.")
     _syntax_ = parser.format_help()
 
     _example_ = '{:s} "$rax==0xdead && $rbx==0xcafe"    # execute until specified condition is filled\n'.format(_cmdline_)
@@ -60405,8 +60409,8 @@ class ExecUntilUserCodeCommand(ExecUntilCommand):
     _repeat_ = True
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--print-insn', action='store_true', help='print each instruction during execution.')
-    parser.add_argument('--skip-lib', action='store_true', help='uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.')
+    parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
+    parser.add_argument("--skip-lib", action="store_true", help="uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.")
     _syntax_ = parser.format_help()
     _example_ = None
 
@@ -60448,8 +60452,8 @@ class ExecUntilLibcCodeCommand(ExecUntilCommand):
     _repeat_ = True
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('--print-insn', action='store_true', help='print each instruction during execution.')
-    parser.add_argument('--skip-lib', action='store_true', help='uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.')
+    parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
+    parser.add_argument("--skip-lib", action="store_true", help="uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.")
     _syntax_ = parser.format_help()
     _example_ = None
 
@@ -60497,7 +60501,7 @@ class CallUsermodehelperSetupBreakpoint(gdb.Breakpoint):
             argv.append("'{:s}'".format(string))
             addr2 += current_arch.ptrsize
         gef_print("{:s}: {:#x} -> '{:s}'".format(ptr1, addr1, path))
-        gef_print("{:s}: {:#x} -> [{:s}]".format(ptr2, addr2, ','.join(argv)))
+        gef_print("{:s}: {:#x} -> [{:s}]".format(ptr2, addr2, ",".join(argv)))
         return False # continue
 
 
@@ -61133,12 +61137,12 @@ class AddSymbolTemporaryCommand(GenericCommand):
     _category_ = "01-g. Debugging Support - Other"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('function_name', metavar='FUNCTION_NAME', help='new symbol name you want to add.')
-    parser.add_argument('function_start', metavar='START_ADDR', type=parse_address,
+    parser.add_argument("function_name", metavar="FUNCTION_NAME", help="new symbol name you want to add.")
+    parser.add_argument("function_start", metavar="START_ADDR", type=parse_address,
                         help="start address you want to add a symbol.")
-    parser.add_argument('function_end', metavar='END_ADDR', type=parse_address, nargs='?',
+    parser.add_argument("function_end", metavar="END_ADDR", type=parse_address, nargs="?",
                         help="end address you want to add a symbol.")
-    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
     @staticmethod
@@ -61254,7 +61258,7 @@ class KsymaddrRemoteApplyCommand(GenericCommand):
     _aliases_ = ["ks-apply"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-q', '--quiet', action='store_true', help='enable quiet mode.')
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
     @parse_args
@@ -61335,16 +61339,16 @@ class WalkLinkListCommand(GenericCommand):
     _category_ = "03-a. Memory - Search"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-o', dest='next_offset', type=parse_address, default=0,
+    parser.add_argument("-o", dest="next_offset", type=parse_address, default=0,
                         help="offset of the next(or prev) poiter in the target structure.")
-    parser.add_argument('-A', dest='dump_bytes_after', type=parse_address, default=0,
+    parser.add_argument("-A", dest="dump_bytes_after", type=parse_address, default=0,
                         help="dump bytes after link-list location.")
-    parser.add_argument('-B', dest='dump_bytes_before', type=parse_address, default=0,
+    parser.add_argument("-B", dest="dump_bytes_before", type=parse_address, default=0,
                         help="dump bytes before link-list location.")
-    parser.add_argument('--adjust-output', type=parse_address, default=0,
+    parser.add_argument("--adjust-output", type=parse_address, default=0,
                         help="displays the result of subtracting a specific value to the output.")
-    parser.add_argument('address', metavar='ADDRESS', type=parse_address, help="start address you want to walk.")
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="start address you want to walk.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} 0xffff9c60800597e0      # walk list_head.next\n".format(_cmdline_)
@@ -61416,7 +61420,7 @@ class WalkLinkListCommand(GenericCommand):
         self.info("next pointer offset: {:#x}".format(args.next_offset))
         self.walk_link_list(args.address, args.next_offset)
 
-        gef_print('\n'.join(self.out), less=not args.no_pager)
+        gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
@@ -61428,10 +61432,10 @@ class PeekPointersCommand(GenericCommand):
     _aliases_ = ["leakfind"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('address', metavar='ADDRESS', type=parse_address, nargs='?',
+    parser.add_argument("address", metavar="ADDRESS", type=parse_address, nargs="?",
                         help="search start address. (default: $sp)")
-    parser.add_argument('name', metavar='NAME', nargs='?', help="what area to search. (default: all area)")
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    parser.add_argument("name", metavar="NAME", nargs="?", help="what area to search. (default: all area)")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} 0x00007ffffffde000          # begin address of stack region\n".format(_cmdline_)
@@ -61499,9 +61503,9 @@ class PeekPointersCommand(GenericCommand):
             out.append(fmt.format(found_addr, found_offset, value, sym, sec_name, perm))
 
         if len(out) > 0x10:
-            gef_print('\n'.join(out), less=not args.no_pager)
+            gef_print("\n".join(out), less=not args.no_pager)
         else:
-            gef_print('\n'.join(out), less=False)
+            gef_print("\n".join(out), less=False)
         return
 
 
@@ -61569,10 +61573,10 @@ class XRefTelescopeCommand(SearchPatternCommand):
     _aliases_ = []
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('pattern', metavar='PATTERN', help="search pattern.")
-    parser.add_argument('depth', metavar='DEPTH', nargs='?', type=int, default=3,
+    parser.add_argument("pattern", metavar="PATTERN", help="search pattern.")
+    parser.add_argument("depth", metavar="DEPTH", nargs="?", type=int, default=3,
                         help="max recursive depth. (default: %(default)s)")
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} AAAAAAAA\n".format(_cmdline_)
@@ -61627,7 +61631,7 @@ class XRefTelescopeCommand(SearchPatternCommand):
         self.out = []
         self.out.append("Recursively searching '{:s}' in memory".format(Color.yellowify(args.pattern)))
         self.xref_telescope(args.pattern, args.depth, "")
-        gef_print('\n'.join(self.out), less=not args.no_pager)
+        gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
@@ -61638,8 +61642,8 @@ class BytearrayCommand(GenericCommand):
     _category_ = "09-c. Misc - Generation"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-b', dest='badchars', default=[], action='append', help='characters to exclude.')
-    parser.add_argument('-d', dest='dump', action='store_true', help='dump to /tmp/gef/bytearray.{txt,bin}.')
+    parser.add_argument("-b", dest="badchars", default=[], action="append", help="characters to exclude.")
+    parser.add_argument("-d", dest="dump", action="store_true", help="dump to /tmp/gef/bytearray.{txt,bin}.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} -b 414243 -b 51-53 -b 61..63".format(_cmdline_)
@@ -61666,7 +61670,7 @@ class BytearrayCommand(GenericCommand):
             xa, xb = int(x[pos - 2:pos], 16), int(x[pos + 2:pos + 4], 16)
             if xa >= xb:
                 return False
-            middle = ''.join("{:02x}".format(c) for c in range(xa, xb))
+            middle = "".join("{:02x}".format(c) for c in range(xa, xb))
             x = x[:pos - 2] + middle + x[pos + 2:]
         return x
 
@@ -61733,10 +61737,10 @@ class BincompareCommand(GenericCommand):
     _category_ = "03-d. Memory - Calculation"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('filename', metavar='FILENAME', help="specifies the binary file to be compared")
-    parser.add_argument('address', metavar='ADDRESS', type=parse_address, help="sepecifies the memory address.")
-    parser.add_argument('size', metavar='SIZE', nargs='?', type=parse_address, help="sepecifies the size.")
-    parser.add_argument('--file-offset', type=parse_address, help="sepecifies the file offset.")
+    parser.add_argument("filename", metavar="FILENAME", help="specifies the binary file to be compared")
+    parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="sepecifies the memory address.")
+    parser.add_argument("size", metavar="SIZE", nargs="?", type=parse_address, help="sepecifies the size.")
+    parser.add_argument("--file-offset", type=parse_address, help="sepecifies the file offset.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -61850,12 +61854,12 @@ class GefCommand(GenericCommand):
     _category_ = "99. GEF Maintenance Command"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    subparsers = parser.add_subparsers(title='command')
-    subparsers.add_parser('missing')
-    subparsers.add_parser('config')
-    subparsers.add_parser('save')
-    subparsers.add_parser('restore')
-    subparsers.add_parser('reload')
+    subparsers = parser.add_subparsers(title="command")
+    subparsers.add_parser("missing")
+    subparsers.add_parser("config")
+    subparsers.add_parser("save")
+    subparsers.add_parser("restore")
+    subparsers.add_parser("reload")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -61918,7 +61922,7 @@ class GefCommand(GenericCommand):
         self.loaded_commands = sorted(self.loaded_commands, key=lambda x: x[1]._cmdline_)
 
         # print message
-        gef_print("{:s} for {:s} ready, type `{:s}' to start, `{:s}' to configure".format(
+        gef_print("{:s} for {:s} ready, type '{:s}' to start, '{:s}' to configure".format(
             Color.greenify("GEF"),
             platform.system().lower(),
             Color.colorify("gef", "underline yellow"),
@@ -62020,7 +62024,7 @@ class GefHelpCommand(GenericCommand):
     _category_ = "99. GEF Maintenance Command"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-n', '--no-pager', action='store_true', help='do not use less.')
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -62073,8 +62077,8 @@ class GefConfigCommand(GenericCommand):
     _category_ = "99. GEF Maintenance Command"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('setting_name', metavar='SETTING_NAME', nargs='?', help='setting name.')
-    parser.add_argument('setting_value', metavar='SETTING_VALUE', nargs='?', help='setting value.')
+    parser.add_argument("setting_name", metavar="SETTING_NAME", nargs="?", help="setting name.")
+    parser.add_argument("setting_value", metavar="SETTING_VALUE", nargs="?", help="setting value.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -62189,7 +62193,7 @@ class GefSaveCommand(GenericCommand):
     _category_ = "99. GEF Maintenance Command"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-q', dest='quiet', action='store_true', help='quiet execution.')
+    parser.add_argument("-q", dest="quiet", action="store_true", help="quiet execution.")
     _syntax_ = parser.format_help()
 
     @parse_args
@@ -62231,7 +62235,7 @@ class GefRestoreCommand(GenericCommand):
     _category_ = "99. GEF Maintenance Command"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument('-q', dest='quiet', action='store_true', help='quiet execution.')
+    parser.add_argument("-q", dest="quiet", action="store_true", help="quiet execution.")
     _syntax_ = parser.format_help()
 
     @parse_args
@@ -62519,7 +62523,7 @@ def main():
 
     try:
         pythonbin = which("python3")
-        cmds = [pythonbin, '-c', 'import os, sys;print((sys.prefix))']
+        cmds = [pythonbin, "-c", "import os, sys;print((sys.prefix))"]
         PREFIX = gef_pystring(subprocess.check_output(cmds)).strip("\\n")
         if PREFIX != sys.base_prefix:
             cmds = [pythonbin, "-c", "import os, sys;print(os.linesep.join(sys.path).strip())"]
