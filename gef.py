@@ -9223,11 +9223,6 @@ def hook_stop_handler(_event):
                 raise
             reset_gef_caches()
 
-    if current_arch is None:
-        set_arch(get_arch())
-    gdb.execute("context")
-
-    if __gef_check_once__:
         # resolve codebase, libc
         if not is_qemu_system() and not is_kgdb():
             gdb.execute("codebase", to_string=True)
@@ -9235,6 +9230,11 @@ def hook_stop_handler(_event):
             gdb.execute("libc", to_string=True)
             gdb.execute("ld", to_string=True)
 
+    if current_arch is None:
+        set_arch(get_arch())
+    gdb.execute("context")
+
+    if __gef_check_once__:
         # Message if file not loaded.
         if not is_qemu_system() and not is_kgdb():
             response = gdb.execute("info files", to_string=True)
