@@ -1666,6 +1666,18 @@ class Shdr:
         return
 
 
+RE_SPLIT_LOCATION = re.compile(r"<(.+)\+(\d+)>")
+RE_SPLIT_LAST_OPRAND_X86_64 = re.compile(r"(.*?)\s+(#.+)$")
+RE_SPLIT_LAST_OPRAND_ARM64 = re.compile(r"//.+$")
+RE_SPLIT_LAST_OPRAND_ARM32 = re.compile(r";.+$")
+RE_SPLIT_LAST_OPRAND_MICROBLAZE = re.compile(r"//.+$")
+RE_SPLIT_LAST_OPRAND_LOONGARCH64 = re.compile(r"(# .*)$")
+RE_SPLIT_ELEM = re.compile(r"([*%\[\](): ]|(?<![#@%])(?<=.)[-+]|<.+?>)")
+RE_IS_DIGIT_COMMENT = re.compile(r"#?-?(0x[0-9a-f]+|\d+)")
+RE_SPLIT_SYMBOL = re.compile(r"(.*)<(.+?)>(.*)$")
+RE_SPLIT_SYMBOL_OFFSET = re.compile(r"(\w+)\+(\d+)$")
+
+
 class Instruction:
     """GEF representation of a CPU instruction."""
     def __init__(self, address, location, mnemo, operands, opcodes):
@@ -1719,7 +1731,7 @@ class Instruction:
         if not location:
             location = "<NO_SYMBOL>"
         else:
-            r = re.search(r"<(.+)\+(\d+)>", location)
+            r = RE_SPLIT_LOCATION.search(location) # r"<(.+)\+(\d+)>"
             if r:
                 location = "<{}+{:#x}>".format(r.group(1), int(r.group(2)))
 
@@ -1757,32 +1769,37 @@ class Instruction:
         if len(operands) > 0:
             last_operands = operands[-1]
             if is_x86_64():
-                r = re.match(r"(.*?)\s+(#.+)$", last_operands)
+                r = RE_SPLIT_LAST_OPRAND_X86_64.match(last_operands) # r"(.*?)\s+(#.+)$"
                 if r:
                     last_operands = r.group(1)
                     additional_1 = r.group(2)
                     operands = operands[:-1] + [last_operands]
-            elif is_loongarch64():
-                r = re.match(r"(# .*)$", last_operands)
-                if r:
-                    additional_1 = r.group(1)
-                    operands = operands[:-1]
-            elif is_arm64() or is_microblaze():
-                r = re.match(r"//.+$", last_operands)
+            elif is_arm64():
+                r = RE_SPLIT_LAST_OPRAND_ARM64.match(last_operands) # r"//.+$"
                 if r:
                     additional_1 = last_operands
                     operands = operands[:-1]
             elif is_arm32():
-                r = re.match(r";.+$", last_operands)
+                r = RE_SPLIT_LAST_OPRAND_ARM32.match(last_operands) # r";.+$"
                 if r:
                     additional_1 = last_operands
                     operands = operands[:-1]
+            elif is_microblaze():
+                r = RE_SPLIT_LAST_OPRAND_MICROBLAZE.match(last_operands) # r"//.+$"
+                if r:
+                    additional_1 = last_operands
+                    operands = operands[:-1]
+            elif is_loongarch64():
+                r = RE_SPLIT_LAST_OPRAND_LOONGARCH64.match(last_operands) # r"(# .*)$"
+                if r:
+                    additional_1 = r.group(1)
+                    operands = operands[:-1]
 
         def hexlify_symbol_offset(x):
-            r1 = re.match(r"(.*)<(.+?)>(.*)$", x)
+            r1 = RE_SPLIT_SYMBOL.match(x) # r"(.*)<(.+?)>(.*)$"
             if not r1:
                 return x
-            r2 = re.match(r"(\w+)\+(\d+)$", r1.group(2))
+            r2 = RE_SPLIT_SYMBOL_OFFSET.match(r1.group(2)) # r"(\w+)\+(\d+)$"
             if r2:
                 sym_x = "{}+{:#x}".format(r2.group(1), int(r2.group(2)))
             else:
@@ -1806,7 +1823,7 @@ class Instruction:
             # *, [, ], (, ), %, :, space
             # not first +, - (without #, @)
             # <...>
-            for _o2 in re.split(r"([*%\[\](): ]|(?<![#@%])(?<=.)[-+]|<.+?>)", o1):
+            for _o2 in RE_SPLIT_ELEM.split(o1): # r"([*%\[\](): ]|(?<![#@%])(?<=.)[-+]|<.+?>)"
                 o2 = _o2.strip()
                 if o2 == "":
                     continue
@@ -1826,7 +1843,7 @@ class Instruction:
                     if colored_o1 and colored_o1[-1] == " ":
                         colored_o1 = colored_o1[:-1]
                     colored_o1.append(Color.colorify(o2, color_operands_symbol))
-                elif re.match(r"#?-?(0x[0-9a-f]+|\d+)", o2):
+                elif RE_IS_DIGIT_COMMENT.match(o2): # r"#?-?(0x[0-9a-f]+|\d+)"
                     colored_o1.append(Color.colorify(o2, color_operands_const))
                     colored_o1.append(" ")
                 else:
