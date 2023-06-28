@@ -23706,10 +23706,11 @@ class PatternCreateCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        if args.size:
-            set_gef_setting("pattern.length", args.size)
+        if args.size is None:
+            size = get_gef_setting("pattern.length")
+        else:
+            size = args.size
 
-        size = get_gef_setting("pattern.length")
         info("Generating a pattern of {:d} bytes".format(size))
         pattern_str = gef_pystring(generate_cyclic_pattern(size))
         gef_print(pattern_str)
