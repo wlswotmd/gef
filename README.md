@@ -78,7 +78,7 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
     * Start qemu-system with the `-s` option and listen on `localhost:1234`.
     * Attach with `gdb-multiarch -ex 'target remote localhost:1234'`.
     * Or `gdb-multiarch -ex 'set architecture TARGET_ARCH' -ex 'target remote localhost:1234'`.
-    * Most commands should work fine if `CONFIG_RANDSTRUCT` is not enabled.
+    * Most commands should work fine unless `CONFIG_RANDSTRUCT` is enabled.
 * Supported architectures
     * x86, x64, ARM and ARM64
 
