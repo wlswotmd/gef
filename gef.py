@@ -282,6 +282,7 @@ def reset_gef_caches(all=False):
         clear_auxv_cache()
         clear_explored_regions()
         clear_gdb_get_location()
+        clear_get_info_files()
 
     __gef_default_main_arena__ = "main_arena"
     return
@@ -9118,8 +9119,18 @@ def get_process_maps(outer=False):
     return __get_explored_regions() # scan heuristic
 
 
-@functools.lru_cache(maxsize=None)
-def get_info_files():
+# `info files` called from __get_info_files is heavy processing.
+# Moreover, dereference_from causes each address to be resolved every time.
+# functools.lru_cache() is not effective as-is, as it is cleared by reset_gef_caches() each time you stepi runs.
+# Fortunately, zone information is rarely changes.
+# I decided to make it a cache clear mechanism independent of reset_gef_caches().
+def clear_get_info_files():
+    sys.modules["__main__"].__get_info_files.cache_clear()
+    return
+
+
+@functools.lru_cache(maxsize=512)
+def __get_info_files():
     """Retrieve all the files loaded by debuggee."""
     lines = gdb.execute("info files", to_string=True).splitlines()
     info_files = []
@@ -9143,6 +9154,10 @@ def get_info_files():
         info = Zone(section_name, addr_start, addr_end, filepath)
         info_files.append(info)
     return info_files
+
+
+def get_info_files():
+    return __get_info_files()
 
 
 @functools.lru_cache(maxsize=512)
@@ -16277,13 +16292,19 @@ class DetailRegistersCommand(GenericCommand):
             if reg.type.code == gdb.TYPE_CODE_VOID:
                 continue
 
-            # https://arvid.io/2016/08/21/test-if-a-variable-is-unavailable-in-gdb/
-            if str(reg) == "<unavailable>":
-                padreg = current_arch.get_aliased_registers()[regname].ljust(widest, " ")
-                line = "{}: ".format(Color.colorify(padreg, unchanged_color))
-                line += Color.colorify("no value", "yellow underline")
-                gef_print(line)
-                continue
+            # This str(reg) may be unneeded code.
+            # To begin with, the code is a check that only makes sense on Mac OS.
+            # This GEF only supports Linux, so I think it can be removed.
+            # However, I'm not sure if it's necessary when running Linux in a virtual environment on Mac OS.
+            # I remove it for speed, but I leave this code as it may be revived.
+
+            ## https://arvid.io/2016/08/21/test-if-a-variable-is-unavailable-in-gdb/
+            #if str(reg) == "<unavailable>":
+            #    padreg = current_arch.get_aliased_registers()[regname].ljust(widest, " ")
+            #    line = "{}: ".format(Color.colorify(padreg, unchanged_color))
+            #    line += Color.colorify("no value", "yellow underline")
+            #    gef_print(line)
+            #    continue
 
             # colorling
             value = align_address(int(reg))
@@ -22849,9 +22870,9 @@ def dereference_from(addr):
     max_recursion = get_gef_setting("dereference.max_recursion") or 4
     nb_max_string_length = get_gef_setting("context.nb_max_string_length")
     blacklist = get_dereference_from_blacklist()
-    addr = lookup_address(align_address(int(addr)))
+    addr = lookup_address(align_address(addr))
     msg = []
-    seen_addrs = set()
+    seen_addrs = []
     recursion = 0
 
     # parse pattern
@@ -22870,7 +22891,7 @@ def dereference_from(addr):
                 msg.append("[loop detected]")
             return msg
         else:
-            seen_addrs.add(addr.value)
+            seen_addrs.append(addr.value)
 
         #   ... -> addr (blacklist)
         for baddr in blacklist:
