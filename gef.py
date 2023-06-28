@@ -24779,8 +24779,8 @@ class GotCommand(GenericCommand):
     parser.add_argument("filter", metavar="FILTER", nargs="*", help="filter string.")
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} read print                              # filter specified keyword\n".format(_cmdline_)
-    _example_ += "{:s} -f /usr/lib/x86_64-linux-gnu/libc.so.6 # target the library's GOT\n".format(_cmdline_)
+    _example_ = "{:s} read print                             # filter specified keyword\n".format(_cmdline_)
+    _example_ += "{:s} -f /usr/lib/x86_64-linux-gnu/libc.so.6 # specified target binary\n".format(_cmdline_)
     _example_ += "{:s} -f /bin/ls -e 0x4000000000             # use specified address, it is useful under qemu".format(_cmdline_)
 
     def __init__(self, *args, **kwargs):
@@ -24834,11 +24834,13 @@ class GotCommand(GenericCommand):
                 continue
 
             # count up reloc_arg
-            if section_name in [".rel.plt", ".rela.plt"] and not is_static(self.filename):
+            if is_static(self.filename):
+                reloc_arg = None
+            elif section_name not in [".rel.plt", ".rela.plt"]:
+                reloc_arg = None
+            else:
                 reloc_arg = reloc_count * [1, 8][is_x86_32()]
                 reloc_count += 1
-            else:
-                reloc_arg = None
 
             # fix address
             if is_pie(self.filename):
@@ -24869,7 +24871,7 @@ class GotCommand(GenericCommand):
                 continue
             address, func_name = int(r[0][0], 16), r[0][1]
 
-            # fix addreess
+            # fix address
             if is_pie(self.filename):
                 address += self.base_address
 
@@ -24904,6 +24906,7 @@ class GotCommand(GenericCommand):
             return "[???]"
 
     def get_shdr_range(self):
+        # Required to identify the section name.
         elf = get_elf_headers(self.filename)
         ranges = []
         for shdr in elf.shdrs:
@@ -24972,12 +24975,16 @@ class GotCommand(GenericCommand):
         resolved_info = []
         for got_address, name, section_name, type, reloc_arg in jmpslots:
             # resolve PLT from GOT name
-            if section_name != ".rel.plt" and name == "*ABS*": # i386 special case
-                plt_address = []
-            else: # in many other case
-                plt_address = plts.get(name, [])
-            if plt_address:
-                plt_address = plt_address.pop(0)
+            if section_name != ".rel.plt" and name == "*ABS*":
+                # i386 special case.
+                plt_address = None
+            else:
+                # in many other case.
+                # This includes the common *ABS* duplication pattern on i386.
+                plt_address = plts.get(name, None)
+                if plt_address:
+                    # It is actually popped from plts[name]. plt_address is reassigned by int value.
+                    plt_address = plt_address.pop(0)
 
             # resolve offset from absolute address
             got_offset = got_address - self.base_address
