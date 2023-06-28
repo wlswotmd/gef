@@ -17482,8 +17482,8 @@ class ElfInfoCommand(GenericCommand):
         ]
         self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
         for i, p in enumerate(elf.phdrs):
-            p_type = ptype[p.p_type] if p.p_type in ptype else "UNKNOWN"
-            p_flags = pflags[p.p_flags] if p.p_flags in pflags else "???"
+            p_type = ptype.get(p.p_type, "UNKNOWN")
+            p_flags = pflags.get(p.p_flags, "???")
             fmt = "[{:2d}] {:{:d}s} {:#12x} {:#12x} {:#12x} {:#12x} {:#12x} {:5s} {:#8x}"
             args = [
                 i, p_type, name_width, p.p_offset, p.p_vaddr,
@@ -17532,7 +17532,7 @@ class ElfInfoCommand(GenericCommand):
             legend = ["#", "Name", name_width, "Type", "Address", "Offset", "Size", "EntSiz", "Flags", "Link", "Info", "Align"]
             self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
             for i, s in enumerate(elf.shdrs):
-                sh_type = stype[s.sh_type] if s.sh_type in stype else "UNKNOWN"
+                sh_type = stype.get(s.sh_type, "UNKNOWN")
                 sh_flags = ""
                 if s.sh_flags & Shdr.SHF_WRITE:
                     sh_flags += "W"
@@ -61143,6 +61143,8 @@ class AddSymbolTemporaryCommand(GenericCommand):
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
+    _example_ = "add-symbol-temporary your_func_name $rip $rip+0x20"
+
     @staticmethod
     def create_blank_elf(text_base, text_end):
         try:
@@ -61158,7 +61160,7 @@ class AddSymbolTemporaryCommand(GenericCommand):
         os.fdopen(fd, "w").write("int main() {}")
         os.system(f"{gcc} '{fname}' -no-pie -o '{blank_elf}'")
         os.unlink(f"{fname}")
-        # delete unneeded section for faster
+        # delete unneeded section for faster (`ksymaddr-remote-apply` will embed many symbols)
         os.system(f"{objcopy} --only-keep-debug '{blank_elf}'")
         os.system(f"{objcopy} --strip-all '{blank_elf}'")
         elf = get_elf_headers(blank_elf)
@@ -61173,6 +61175,8 @@ class AddSymbolTemporaryCommand(GenericCommand):
             if section_name == ".rela.dyn": # cannot remove
                 continue
             if section_name == ".dynamic": # cannot remove
+                continue
+            if section_name == ".data": # broken if remove (ex: add-symbol-temporary hoge 0x1234)
                 continue
             if section_name == ".bss": # broken if remove
                 continue
@@ -61206,22 +61210,22 @@ class AddSymbolTemporaryCommand(GenericCommand):
 
         # check address validity
         if is_32bit():
-            if args.function_start > 0xffffffff:
+            max_address = (1 << 32) - 1
+        else:
+            max_address = (1 << 64) - 1
+
+        if args.function_start > max_address:
+            if not args.quiet:
+                err("function start address must be {:#x} or less".format(max_address))
+            return
+        if args.function_end is not None:
+            if args.function_end > max_address:
                 if not args.quiet:
-                    err("function start address must be 0xffffffff or less")
+                    err("function end address must be {:#x} or less".format(max_address))
                 return
-            if args.function_end is not None and args.function_end > 0xffffffff:
+            if args.function_start > args.function_end:
                 if not args.quiet:
-                    err("function end address must be 0xffffffff or less")
-                return
-        elif is_64bit():
-            if args.function_start > 0xffffffffffffffff:
-                if not args.quiet:
-                    err("function start address must be 0xffffffffffffffff or less")
-                return
-            if args.function_end is not None and args.function_start > 0xffffffffffffffff:
-                if not args.quiet:
-                    err("function end address must be 0xffffffffffffffff or less")
+                    err("function_start must be equal or less than function_end")
                 return
 
         # make blank elf
