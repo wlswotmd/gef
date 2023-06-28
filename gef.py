@@ -3,22 +3,13 @@
 #
 #######################################################################################
 # GEF - Multi-Architecture GDB Enhanced Features for Exploiters & Reverse-Engineers
-#
-# original: by @_hugsy_
-# improvement: by @bata_24
+#   * Original: by @_hugsy_
+#   * Improvement: by @bata_24
 #
 #######################################################################################
+# This GEF solely supports GDB compiled with Python3 and running on Linux.
 #
-# GEF is a kick-ass set of commands for X86, ARM, MIPS, PowerPC and SPARC to
-# make GDB cool again for exploit dev. It is aimed to be used mostly by exploit
-# devs and reversers, to provides additional features to GDB using the Python
-# API to assist during the process of dynamic analysis.
-#
-# GEF fully relies on GDB API and other Linux-specific sources of information
-# (such as /proc/<pid>). As a consequence, some of the features might not work
-# on custom or hardened systems such as GrSec.
-#
-# Since January 2020, GEF solely support GDB compiled with Python3 and was tested on
+# Supported architecture is following (some architectures require qemu).
 #   * x86-32 & x86-64
 #   * arm v5,v6,v7
 #   * aarch64 (armv8)
@@ -37,14 +28,11 @@
 #   * xtensa
 #   * cris
 #   * loongarch64
-#
-# For GEF with Python2 (only) support was moved to the GEF-Legacy
-# (https://github.com/hugsy/gef-legacy)
+# See README.md for details.
 #
 # To start: in gdb, type `source /path/to/gef.py`
 #
 #######################################################################################
-#
 # gef is distributed under the MIT License (MIT)
 #
 # Copyright (c) 2021-2023 bata24 (@bata_24)
