@@ -185,7 +185,6 @@ __heap_allocated_list__         = []
 __heap_freed_list__             = []
 __heap_uaf_watchpoints__        = []
 __patch_history__               = []
-__gef_default_main_arena__      = "main_arena"
 __gef_prev_arch__               = None
 __gef_check_once__              = True
 __gef_context_hidden__          = False
@@ -282,9 +281,6 @@ def reset_gef_caches(all=False):
         clear_explored_regions()
         clear_gdb_get_location()
         clear_get_info_files()
-
-        global __gef_default_main_arena__
-        __gef_default_main_arena__ = "main_arena"
 
         global __cached_context_legend__
         __cached_context_legend__ = None
@@ -1920,35 +1916,108 @@ class Instruction:
         return text
 
 
-def search_for_main_arena():
-    global __gef_default_main_arena__
-    malloc_hook_addr = parse_address("(void *)&__malloc_hook")
+@functools.lru_cache(maxsize=None)
+def search_for_main_arena(force_heuristic=False):
+    if not force_heuristic:
+        # plan 1 (directly)
+        try:
+            return parse_address("&main_arena")
+        except gdb.error:
+            pass
+
+    if get_libc_version() < (2, 34):
+        # plan 2 (from __malloc_hook)
+        malloc_hook_addr = parse_address("(void *)&__malloc_hook")
+        if is_x86():
+            return align_address_to_size(malloc_hook_addr + current_arch.ptrsize, 0x20)
+        elif is_arm64():
+            return malloc_hook_addr - current_arch.ptrsize * 2 - MallocStateStruct("*0").struct_size
+        elif is_arm32():
+            return malloc_hook_addr - current_arch.ptrsize - MallocStateStruct("*0").struct_size
 
     if is_x86():
-        addr = align_address_to_size(malloc_hook_addr + current_arch.ptrsize, 0x20)
-    elif is_arm64():
-        addr = malloc_hook_addr - current_arch.ptrsize * 2 - MallocStateStruct("*0").struct_size
-    elif is_arm32():
-        addr = malloc_hook_addr - current_arch.ptrsize - MallocStateStruct("*0").struct_size
-    else:
-        raise OSError("Cannot find main_arena for {}".format(current_arch.arch))
+        # plan 3 (from TLS)
+        """
+        x64
+        0x7ffff7f986f8|+0x0038|007: 0x0000555555559010  ->  0x0000000000000000
+        0x7ffff7f98700|+0x0040|008: 0x0000000000000000
+        0x7ffff7f98708|+0x0048|009: 0x00007ffff7e19c80 <main_arena>  ->  0x0000000000000000
+        0x7ffff7f98710|+0x0050|010: 0x0000000000000000
+        0x7ffff7f98718|+0x0058|011: 0x0000000000000000
+        0x7ffff7f98720|+0x0060|012: 0x0000000000000000
+        0x7ffff7f98728|+0x0068|013: 0x0000000000000000
+        0x7ffff7f98730|+0x0070|014: 0x0000000000000000
+        0x7ffff7f98738|+0x0078|015: 0x0000000000000000
+        -- TLS --
+        0x7ffff7f98740|+0x0000|000: 0x00007ffff7f98740  ->  [loop detected]
+        0x7ffff7f98748|+0x0008|001: 0x00007ffff7f99160  ->  0x0000000000000001
+        0x7ffff7f98750|+0x0010|002: 0x00007ffff7f98740  ->  [loop detected]
 
-    __gef_default_main_arena__ = "*{:#x}".format(addr)
-    return addr
+        x86
+        0xf7fbf4d0|+0x00d0|052: 0x5655a010  ->  0x00000000
+        0xf7fbf4d4|+0x00d4|053: 0x00000000
+        0xf7fbf4d8|+0x00d8|054: 0xf7e2a7c0 <main_arena>  ->  0x00000000
+        0xf7fbf4dc|+0x00dc|055: 0x00000000
+        0xf7fbf4e0|+0x00e0|056: 0x00000000
+        0xf7fbf4e4|+0x00e4|057: 0x00000000
+        0xf7fbf4e8|+0x00e8|058: 0x00000000
+        0xf7fbf4ec|+0x00ec|059: 0x00000000
+        0xf7fbf4f0|+0x00f0|060: 0x00000000
+        0xf7fbf4f4|+0x00f4|061: 0x00000000
+        0xf7fbf4f8|+0x00f8|062: 0x00000000
+        0xf7fbf4fc|+0x00fc|063: 0x00000000
+        -- TLS --
+        0xf7fbf500|+0x0100|064: 0xf7fbf500  ->  [loop detected]
+        0xf7fbf504|+0x0104|065: 0xf7fbfa88  ->  0x00000001
+        0xf7fbf508|+0x0108|066: 0xf7fbf500  ->  [loop detected]
+        """
+
+        selected_thread = gdb.selected_thread()
+        threads = gdb.selected_inferior().threads()
+        main_thread = [th for th in threads if th.num == 1][0]
+        main_thread.switch()
+
+        tls = TlsCommand.get_tls(use_heuristic=True)
+        for i in range(1, 500):
+            addr = tls - current_arch.ptrsize * (i + 2)
+            if not is_valid_addr(addr):
+                break
+
+            candidate_arena_addr = read_int_from_memory(addr)
+            if not is_valid_addr(candidate_arena_addr):
+                continue
+
+            candidate_arena = MallocStateStruct(candidate_arena_addr)
+            system_mem = candidate_arena.system_mem
+            if system_mem < gef_getpagesize() or system_mem & 0xfff:
+                continue
+
+            top = candidate_arena.top
+            if not is_valid_addr(top):
+                continue
+
+            _next = to_unsigned_long(candidate_arena.next)
+            while True:
+                if not is_valid_addr(_next):
+                    break
+                if candidate_arena_addr == _next:
+                    selected_thread.switch()
+                    return candidate_arena_addr
+                _next = to_unsigned_long(MallocStateStruct(_next).next)
+
+        # not found
+        selected_thread.switch()
+
+    raise OSError("Cannot find main_arena for {}".format(current_arch.arch))
 
 
 class MallocStateStruct:
-    """GEF representation of malloc_state from
-    https://github.com/bminor/glibc/blob/glibc-2.28/malloc/malloc.c#L1658"""
+    """GEF representation of malloc_state"""
     def __init__(self, addr):
-        try:
-            self.__addr = parse_address("&{}".format(addr))
-        except gdb.error:
-            self.__addr = search_for_main_arena()
-
         self.num_fastbins = 10
         self.num_bins = 254
 
+        self.__addr = addr
         self.int_size = cached_lookup_type("int").sizeof
         self.size_t = cached_lookup_type("size_t")
         if not self.size_t:
@@ -2047,24 +2116,44 @@ class MallocStateStruct:
         return getattr(self, item)
 
 
+def get_arena(address):
+    try:
+        arena = GlibcArena(address)
+        str(arena) # check memory error
+        return arena
+    except Exception:
+        err("Failed to get the arena, heap commands may not work properly.")
+        return None
+
+
+def get_main_arena():
+    return get_arena(None)
+
+
 class GlibcArena:
-    """Glibc arena class
-    Ref: https://github.com/sploitfun/lsploits/blob/master/glibc/malloc/malloc.c#L1671"""
+    """Glibc arena class"""
     TCACHE_MAX_BINS = 0x40
 
-    def __init__(self, addr_string):
-        self.__name = addr_string
+    def __init__(self, arena_addr=None):
+        # get address
+        if arena_addr is None:
+            self.__addr = search_for_main_arena()
+            self.__is_main_arena = True
+        else:
+            self.__addr = arena_addr
+            self.__is_main_arena = arena_addr == search_for_main_arena()
+
+        # get type
         try:
-            arena = gdb.parse_and_eval(addr_string)
+            arena = gdb.parse_and_eval("*{:#x}".format(self.__addr))
             malloc_state_t = cached_lookup_type("struct malloc_state")
             self.__arena = arena.cast(malloc_state_t)
-            self.__addr = int(arena.address)
             self.__size = malloc_state_t.sizeof
         except Exception:
-            self.__arena = MallocStateStruct(addr_string)
-            self.__addr = self.__arena.addr
+            self.__arena = MallocStateStruct(self.__addr)
             self.__size = self.__arena.struct_size
 
+        # other setup
         try:
             self.top = int(self.top)
             self.last_remainder = int(self.last_remainder)
@@ -2084,17 +2173,9 @@ class GlibcArena:
     def __int__(self):
         return self.__addr
 
+    @property
     def is_main_arena(self):
-        # fast path
-        if self.__name == __gef_default_main_arena__:
-            return True
-        # slow path
-        try:
-            if self.__addr == get_main_arena().addr:
-                return True
-        except Exception:
-            pass
-        return False
+        return self.__is_main_arena
 
     @property
     def addr(self):
@@ -2102,7 +2183,26 @@ class GlibcArena:
 
     @property
     def name(self):
-        return self.__name
+        if self.is_main_arena:
+            return "main_arena"
+        else:
+            return "*{:#x}".format(self.__addr)
+
+    @property
+    def size(self):
+        # arena aligned_size
+        if current_arch.ptrsize == 4:
+            aligned_size = (self.__size + 7) & ~0b111
+        else:
+            aligned_size = (self.__size + 15) & ~0b1111
+        return aligned_size
+
+    @property
+    def heap_base(self):
+        if self.is_main_arena:
+            return HeapbaseCommand.heap_base()
+        else:
+            return self.addr + self.size
 
     def tcachebin_addr(self, i):
         if self.heap_base is None:
@@ -2169,22 +2269,6 @@ class GlibcArena:
             system_mem_addr = self.__addr + system_mem_type.bitpos // 8
         return system_mem_addr
 
-    # arena aligned_size
-    @property
-    def size(self):
-        if current_arch.ptrsize == 4:
-            aligned_size = (self.__size + 7) & ~0b111
-        else:
-            aligned_size = (self.__size + 15) & ~0b1111
-        return aligned_size
-
-    @property
-    def heap_base(self):
-        if self.is_main_arena():
-            return HeapbaseCommand.heap_base()
-        else:
-            return self.addr + self.size
-
     def tcachebin(self, i):
         """Return head chunk in tcache[i]."""
         if self.heap_base is None:
@@ -2218,7 +2302,7 @@ class GlibcArena:
                 return None
             if addr_next == get_main_arena().addr:
                 return None
-            next_arena = GlibcArena("*{:#x}".format(addr_next))
+            next_arena = GlibcArena(addr_next)
             str(next_arena) # check memory error
             return next_arena
         except Exception:
@@ -2567,26 +2651,6 @@ def get_libc_version():
 
     set_gef_setting("libc.assume_version", libc_version, tuple, "The value to force get_libc_version to return")
     return libc_version
-
-
-def get_main_arena():
-    try:
-        arena = GlibcArena(__gef_default_main_arena__)
-        str(arena) # check memory error
-        return arena
-    except Exception:
-        err("Failed to get the main arena, heap commands may not work properly.")
-        return None
-
-
-def get_thread_arena(address):
-    try:
-        arena = GlibcArena("*{:#x}".format(address))
-        str(arena) # check memory error
-        return arena
-    except Exception:
-        err("Failed to get the thread arena, heap commands may not work properly.")
-        return None
 
 
 def titlify(text, color=None, msg_color=None):
@@ -15346,6 +15410,7 @@ class GlibcHeapArenasCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
+        # main_arena
         arena = get_main_arena()
         if arena is None:
             err("Could not find Glibc main arena")
@@ -15354,6 +15419,7 @@ class GlibcHeapArenasCommand(GenericCommand):
         gef_print(titlify("main_arena"))
         gef_print("{}".format(arena))
 
+        # thread arena
         gef_print(titlify("thread_arena"))
         arena = arena.get_next()
         if arena is None:
@@ -15382,7 +15448,7 @@ class GlibcHeapArenaCommand(GenericCommand):
             return []
 
         if cached_lookup_type("struct malloc_state") is None:
-            return []
+            return ["Not found type information of `struct malloc_state`"]
 
         try:
             out = []
@@ -15399,10 +15465,10 @@ class GlibcHeapArenaCommand(GenericCommand):
         try:
             mp = parse_address("&mp_")
         except gdb.error:
-            return []
+            return ["Not found &mp_"]
 
         if cached_lookup_type("struct malloc_par") is None:
-            return []
+            return ["Not found type information of `struct malloc_par`"]
 
         try:
             out = []
@@ -15420,9 +15486,9 @@ class GlibcHeapArenaCommand(GenericCommand):
             return []
 
         if cached_lookup_type("struct _heap_info") is None:
-            return []
+            return ["Not found type information of `struct _heap_info`"]
 
-        if arena.is_main_arena():
+        if arena.is_main_arena:
             return []
 
         try:
@@ -15441,12 +15507,10 @@ class GlibcHeapArenaCommand(GenericCommand):
     @only_if_not_qemu_system
     def do_invoke(self, args):
         self.dont_repeat()
-        if args.arena_addr:
-            arena = get_thread_arena(args.arena_addr)
-        else:
-            arena = get_main_arena()
-
         out = []
+
+        # parse arena
+        arena = get_arena(args.arena_addr)
 
         ret = self.parse_arena(arena)
         out.extend(ret)
@@ -15462,7 +15526,10 @@ class GlibcHeapArenaCommand(GenericCommand):
             out[i] = re.sub("  ([a-zA-Z_]+) =", "  \033[36m\\1\033[0m =", out[i])
             out[i] = re.sub(" = (0x[0-9a-f]+)", " = \033[34m\\1\033[0m", out[i])
 
-        gef_print("\n".join(out).rstrip(), less=not args.no_pager)
+        if "\n".join(out).count("\n") == 2:
+            gef_print("\n".join(out).rstrip(), less=False)
+        else:
+            gef_print("\n".join(out).rstrip(), less=not args.no_pager)
         return
 
 
@@ -15528,10 +15595,7 @@ class GlibcHeapChunksCommand(GenericCommand):
         self.dont_repeat()
 
         # parse arena
-        if args.arena_addr:
-            arena = get_thread_arena(args.arena_addr)
-        else:
-            arena = get_main_arena()
+        arena = get_arena(args.arena_addr)
 
         if arena is None:
             err("No valid arena")
@@ -15544,7 +15608,7 @@ class GlibcHeapChunksCommand(GenericCommand):
         if args.location is None:
             dump_start = arena.heap_base
             # specified pattern
-            if current_arch.ptrsize == 4 and arena.is_main_arena():
+            if current_arch.ptrsize == 4 and arena.is_main_arena:
                 dump_start += 8
         else:
             dump_start = args.location
@@ -15651,10 +15715,7 @@ class GlibcHeapBinsCommand(GenericCommand):
         self.dont_repeat()
 
         # parse arena
-        if args.arena_addr:
-            arena = get_thread_arena(args.arena_addr)
-        else:
-            arena = get_main_arena()
+        arena = get_arena(args.arena_addr)
 
         if arena is None:
             err("No valid arena")
@@ -15680,7 +15741,7 @@ class GlibcHeapBinsCommand(GenericCommand):
         bin_types = ["tcache", "fast", "unsorted", "small", "large"]
         for arena in arenas:
             for bin_t in bin_types:
-                if arena.is_main_arena():
+                if arena.is_main_arena:
                     gdb.execute("heap bins {:s} {:s}".format(bin_t, verbose))
                 else:
                     gdb.execute("heap bins {:s} -a {:#x} {:s}".format(bin_t, arena.addr, verbose))
@@ -15771,10 +15832,7 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
             return
 
         # parse arena
-        if args.arena_addr:
-            arena = get_thread_arena(args.arena_addr)
-        else:
-            arena = get_main_arena()
+        arena = get_arena(args.arena_addr)
 
         if arena is None:
             err("No valid arena")
@@ -15871,10 +15929,7 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
         self.dont_repeat()
 
         # parse arena
-        if args.arena_addr:
-            arena = get_thread_arena(args.arena_addr)
-        else:
-            arena = get_main_arena()
+        arena = get_arena(args.arena_addr)
 
         if arena is None:
             err("No valid arena")
@@ -15977,10 +16032,7 @@ class GlibcHeapUnsortedBinsCommand(GenericCommand):
         self.dont_repeat()
 
         # parse arena
-        if args.arena_addr:
-            arena = get_thread_arena(args.arena_addr)
-        else:
-            arena = get_main_arena()
+        arena = get_arena(args.arena_addr)
 
         if arena is None:
             err("No valid arena")
@@ -16030,10 +16082,7 @@ class GlibcHeapSmallBinsCommand(GenericCommand):
         self.dont_repeat()
 
         # parse arena
-        if args.arena_addr:
-            arena = get_thread_arena(args.arena_addr)
-        else:
-            arena = get_main_arena()
+        arena = get_arena(args.arena_addr)
 
         if arena is None:
             err("No valid arena")
@@ -16089,10 +16138,7 @@ class GlibcHeapLargeBinsCommand(GenericCommand):
         self.dont_repeat()
 
         # parse arena
-        if args.arena_addr:
-            arena = get_thread_arena(args.arena_addr)
-        else:
-            arena = get_main_arena()
+        arena = get_arena(args.arena_addr)
 
         if arena is None:
             err("No valid arena")
@@ -37475,13 +37521,34 @@ class HeapbaseCommand(GenericCommand):
 
     @staticmethod
     def heap_base():
+        # plan 1
         try:
             base = parse_address("mp_->sbrk_base")
             if base != 0:
                 return base
         except gdb.error:
             pass
-        return get_section_base_address("[heap]")
+
+        # plan 2
+        heap_base = get_section_base_address("[heap]")
+        if heap_base:
+            return heap_base
+
+        # plan 3
+        if is_x86():
+            tls = TlsCommand.get_tls(use_heuristic=True)
+            for i in range(1, 100):
+                addr1 = tls - current_arch.ptrsize * (i + 2)
+                addr2 = tls - current_arch.ptrsize * (i + 1)
+                addr3 = tls - current_arch.ptrsize * i
+
+                val1 = read_int_from_memory(addr1)
+                val2 = read_int_from_memory(addr2)
+                val3 = read_int_from_memory(addr3)
+                if is_valid_addr(val1) and val2 == 0 and is_valid_addr(val3):
+                    return val1 & gef_getpagesize_mask()
+
+        return None
 
     @parse_args
     @only_if_gdb_running
@@ -39198,34 +39265,32 @@ class VisualHeapCommand(GenericCommand):
 
         self.full = args.full
 
-        if args.arena_addr:
-            self.arena = get_thread_arena(args.arena_addr)
-        else:
-            self.arena = get_main_arena()
+        # parse arena
+        arena = get_arena(args.arena_addr)
 
-        if self.arena is None:
+        if arena is None:
             err("No valid arena")
             return
 
-        if self.arena.heap_base is None:
+        if arena.heap_base is None:
             err("Heap is not initialized")
             return
 
         if args.location:
             self.dump_start = args.location
         else:
-            self.dump_start = self.arena.heap_base
+            self.dump_start = arena.heap_base
             # specific pattern
-            if current_arch.ptrsize == 4 and self.arena.is_main_arena():
+            if current_arch.ptrsize == 4 and arena.is_main_arena:
                 self.dump_start += 8
 
         try:
-            self.tcache_list = self.arena.tcache_list() if self.arena else []
-            self.fastbin_list = self.arena.fastbin_list() if self.arena else []
-            self.unsortedbin_list = self.arena.unsortedbin_list() if self.arena else []
-            self.smallbin_list = self.arena.smallbin_list() if self.arena else []
-            self.largebin_list = self.arena.largebin_list() if self.arena else []
-            self.top = int(self.arena.top) if self.arena else None
+            self.tcache_list = arena.tcache_list() if arena else []
+            self.fastbin_list = arena.fastbin_list() if arena else []
+            self.unsortedbin_list = arena.unsortedbin_list() if arena else []
+            self.smallbin_list = arena.smallbin_list() if arena else []
+            self.largebin_list = arena.largebin_list() if arena else []
+            self.top = int(arena.top) if arena else None
         except gdb.MemoryError as e:
             err("Memoryr read error: {}".format(e))
             return
