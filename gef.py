@@ -228,6 +228,30 @@ def perf(f):
     return wrapper
 
 
+def cperf(f):
+    """Decorator wrapper to perf."""
+
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        import cProfile
+        import pstats
+        import io
+        pr = cProfile.Profile()
+        pr.enable()
+        ret = f(*args, **kwargs)
+        pr.disable()
+        s = io.StringIO()
+        #sortby = pstats.SortKey.CUMULATIVE
+        sortby = pstats.SortKey.TIME
+        ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+        ps.print_stats(20)
+        print(s.getvalue())
+        return ret
+
+    cperf # avoid to be detected as unsued # noqa: B018
+    return wrapper
+
+
 def reset_gef_caches(all=False):
     """Free all caches. If an object is cached, it will have a callable attribute `cache_clear`
     which will be invoked to purge the function cache. Exceptionally, functions with names
@@ -20749,6 +20773,14 @@ class ContextCommand(GenericCommand):
                 continue
             try:
                 self.layout_mapping[section]()
+                ## debug code for profiling of context command
+                #from cProfile import Profile
+                #import pstats
+                #pr = Profile()
+                #pr.runcall(self.layout_mapping[section])
+                #stats = pstats.Stats(pr)
+                #stats.sort_stats("tottime")
+                #stats.print_stats(10)
             except gdb.MemoryError as e:
                 # a MemoryError will happen when $pc is corrupted (invalid address)
                 err(str(e))
