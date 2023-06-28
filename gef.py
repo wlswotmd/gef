@@ -194,6 +194,7 @@ __cached_syscall_table__        = {}
 __cached_kernel_info__          = None
 __cached_kernel_version__       = None
 __cached_kernel_cmdline__       = None
+__cached_context_legend__       = None
 current_elf                     = None
 current_arch                    = None
 
@@ -256,8 +257,6 @@ def reset_gef_caches(all=False):
     """Free all caches. If an object is cached, it will have a callable attribute `cache_clear`
     which will be invoked to purge the function cache. Exceptionally, functions with names
     starting with `__` do not call `clear_cache`."""
-    global __gef_default_main_arena__
-
     for mod in dir(sys.modules["__main__"]): # for global object
         if mod.startswith("__"): # filter
             continue
@@ -284,7 +283,11 @@ def reset_gef_caches(all=False):
         clear_gdb_get_location()
         clear_get_info_files()
 
-    __gef_default_main_arena__ = "main_arena"
+        global __gef_default_main_arena__
+        __gef_default_main_arena__ = "main_arena"
+
+        global __cached_context_legend__
+        __cached_context_legend__ = None
     return
 
 
@@ -10949,52 +10952,61 @@ class GefThemeCommand(GenericCommand):
         self.add_setting("heap_corrupted_msg", "bold red", "Color of the corrupted message used heap")
         return
 
+    def show_all_config(self):
+        gef_print(titlify("settings"))
+        for setting in sorted(self.settings):
+            value = self.get_setting(setting)
+            if value:
+                value = Color.colorify(value, value)
+                gef_print("{:40s}: {:s}".format(setting, value))
+            else:
+                gef_print("{:40s}: {:s}".format(setting, "None"))
+        return
+
+    def show_color_sample(self):
+        gef_print(titlify("defined colors"))
+        i = 0
+        for k, v in Color.colors.items():
+            if k.endswith("_off") or k == "normal":
+                continue
+            gef_print("{}{:20s}{}  ".format(v, k, Color.colors["normal"]), end="")
+
+            if k in ["blink", "cyan", "bright_white", "_black"]: # group terminators
+                gef_print("")
+                i = 0
+                continue
+
+            if i % 5 == 4:
+                gef_print("")
+            i += 1
+        return
+
     @parse_args
     def do_invoke(self, args):
         self.dont_repeat()
 
+        # show all
         if args.key is None:
-            gef_print(titlify("settings"))
-            for setting in sorted(self.settings):
-                value = self.get_setting(setting)
-                if value:
-                    value = Color.colorify(value, value)
-                    gef_print("{:40s}: {:s}".format(setting, value))
-                else:
-                    gef_print("{:40s}: {:s}".format(setting, "None"))
-
+            self.show_all_config()
             if args.color_sample:
-                gef_print(titlify("defined colors"))
-                i = 0
-                for k, v in Color.colors.items():
-                    if k.endswith("_off") or k == "normal":
-                        continue
-                    gef_print("{}{:20s}{}  ".format(v, k, Color.colors["normal"]), end="")
-
-                    if k in ["blink", "cyan", "bright_white", "_black"]: # group terminators
-                        gef_print("")
-                        i = 0
-                        continue
-
-                    if i % 5 == 4:
-                        gef_print("")
-                    i += 1
+                self.show_color_sample()
             else:
                 gef_print("* use --color-sample to see available color name")
             return
 
+        # show one
         if not self.has_setting(args.key):
             err("Invalid key")
             return
-
         if args.value == []:
             value = self.get_setting(args.key)
             value = Color.colorify(value, value)
             gef_print("{:40s}: {:s}".format(args.key, value))
             return
 
+        # set
         val = [x for x in args.value if x in Color.colors]
-        self.add_setting(args.key, " ".join(val))
+        gdb.execute("gef config theme.{:s} '{:s}'".format(args.key, " ".join(val)))
         return
 
 
@@ -20756,27 +20768,44 @@ class ContextCommand(GenericCommand):
         return
 
     def show_legend(self):
-        if not is_qemu_system():
-            if get_gef_setting("gef.disable_color") is not True:
-                str_color = get_gef_setting("theme.dereference_string")
-                code_addr_color = get_gef_setting("theme.address_code")
-                stack_addr_color = get_gef_setting("theme.address_stack")
-                heap_addr_color = get_gef_setting("theme.address_heap")
-                writable_addr_color = get_gef_setting("theme.address_writable")
-                rwx_addr_color = get_gef_setting("theme.address_rwx")
-                none_addr_color = get_gef_setting("theme.address_valid_but_none")
-                changed_register_color = get_gef_setting("theme.registers_value_changed")
+        global __cached_context_legend__
 
-                gef_print("[ Legend: {} | {} | {} | {} | {} | {} | {} | {} ]".format(
-                    Color.colorify("Modified register", changed_register_color),
-                    Color.colorify("Code", code_addr_color),
-                    Color.colorify("Heap", heap_addr_color),
-                    Color.colorify("Stack", stack_addr_color),
-                    Color.colorify("Writable", writable_addr_color),
-                    Color.colorify("NONE", none_addr_color),
-                    Color.colorify("RWX", rwx_addr_color),
-                    Color.colorify("String", str_color)
-                ))
+        # use cache
+        if __cached_context_legend__ is not None:
+            if __cached_context_legend__:
+                gef_print(__cached_context_legend__)
+            return
+
+        # slow path
+        if is_qemu_system() or is_kgdb():
+            __cached_context_legend__ = False
+            return
+
+        if get_gef_setting("gef.disable_color") is True:
+            __cached_context_legend__ = False
+            return
+
+        str_color = get_gef_setting("theme.dereference_string")
+        code_addr_color = get_gef_setting("theme.address_code")
+        stack_addr_color = get_gef_setting("theme.address_stack")
+        heap_addr_color = get_gef_setting("theme.address_heap")
+        writable_addr_color = get_gef_setting("theme.address_writable")
+        rwx_addr_color = get_gef_setting("theme.address_rwx")
+        none_addr_color = get_gef_setting("theme.address_valid_but_none")
+        changed_register_color = get_gef_setting("theme.registers_value_changed")
+
+        legend = "[ Legend: {} | {} | {} | {} | {} | {} | {} | {} ]".format(
+            Color.colorify("Modified register", changed_register_color),
+            Color.colorify("Code", code_addr_color),
+            Color.colorify("Heap", heap_addr_color),
+            Color.colorify("Stack", stack_addr_color),
+            Color.colorify("Writable", writable_addr_color),
+            Color.colorify("NONE", none_addr_color),
+            Color.colorify("RWX", rwx_addr_color),
+            Color.colorify("String", str_color)
+        )
+        gef_print(legend)
+        __cached_context_legend__ = legend
         return
 
     @parse_args
@@ -62221,9 +62250,8 @@ class GefConfigCommand(GenericCommand):
             err("{} expects type '{}'".format(name, _type.__name__))
             return
 
-        reset_gef_caches()
         __config__[name][0] = _newval
-        get_gef_setting.cache_clear()
+        reset_gef_caches(all=True)
         return
 
     def complete(self, text, word):
