@@ -18184,13 +18184,15 @@ class KernelChecksecCommand(GenericCommand):
                         gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
                     else:
                         gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
+                    # Could not build detection logic for CONFIG_MODULE_FG_KASLR.
+                    # But there is no way to disable it except at build time.
+                    # It's included in the patch that introduces FGKASLR, so I'm assuming it's always enabled.
+                    cfg = "CONFIG_MODULE_FG_KASLR (FGKASLR)"
+                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enabled (Maybe)", "bold green")))
                 else:
                     gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unsupported", "bold red")))
-                # Could not build detection logic for CONFIG_MODULE_FG_KASLR.
-                # But there is no way to disable it except at build time.
-                # It's included in the patch that introduces FGKASLR, so I'm assuming it's always enabled.
-                cfg = "CONFIG_MODULE_FG_KASLR (FGKASLR)"
-                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enabled (Maybe)", "bold green")))
+                    cfg = "CONFIG_MODULE_FG_KASLR (FGKASLR)"
+                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unsupported", "bold red")))
             else:
                 if commit_creds:
                     gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unsupported", "bold red")))
