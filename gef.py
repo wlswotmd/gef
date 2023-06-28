@@ -2865,7 +2865,6 @@ def set_gef_setting(name, value, _type=None, _desc=None):
     # set existing setting
     func = __config__[name][1]
     __config__[name][0] = func(value)
-    get_gef_setting.cache_clear()
     return
 
 
@@ -61945,13 +61944,13 @@ class GefCommand(GenericCommand):
 
     def __init__(self):
         super().__init__(prefix=True)
-        set_gef_setting("gef.follow_child", True, bool, "Automatically set GDB to follow child when forking")
-        set_gef_setting("gef.readline_compat", False, bool, "Workaround for readline SOH/ETX issue (SEGV)")
-        set_gef_setting("gef.autosave_breakpoints_file", "", str, "Automatically save and restore breakpoints")
-        set_gef_setting("gef.extra_plugins_dir", "", str, "Autoload additional GEF commands from external directory")
-        set_gef_setting("gef.disable_color", False, bool, "Disable all colors in GEF")
-        set_gef_setting("gef.tempdir", GEF_TEMP_DIR, str, "Directory to use for temporary/cache content")
-        set_gef_setting("gef.always_no_pager", False, bool, "Always disable pager in gef_print()")
+        self.add_setting("follow_child", True, "Automatically set GDB to follow child when forking")
+        self.add_setting("readline_compat", False, "Workaround for readline SOH/ETX issue (SEGV)")
+        self.add_setting("autosave_breakpoints_file", "", "Automatically save and restore breakpoints")
+        self.add_setting("extra_plugins_dir", "", "Autoload additional GEF commands from external directory")
+        self.add_setting("disable_color", False, "Disable all colors in GEF")
+        self.add_setting("tempdir", GEF_TEMP_DIR, "Directory to use for temporary/cache content")
+        self.add_setting("always_no_pager", False, "Always disable pager in gef_print()")
         self.loaded_commands = []
         self.missing_commands = {}
         return
