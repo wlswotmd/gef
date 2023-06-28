@@ -20841,7 +20841,11 @@ class ContextCommand(GenericCommand):
         if not is_x86():
             return
 
-        insn = get_insn()
+        try:
+            insn = get_insn()
+        except gdb.MemoryError:
+            return
+
         operands = ", ".join(insn.operands)
         operands = re.sub(r"<.*?>", "", operands)
         operands = re.sub(r"\[.*?\]", "", operands)
@@ -20917,11 +20921,11 @@ class ContextCommand(GenericCommand):
         return any(hex(address) in b for b in bp_locations)
 
     def context_code(self):
-        use_native_x_command = self.has_setting("use_native_x_command") and self.get_setting("use_native_x_command")
+        use_native_x_command = self.get_setting("use_native_x_command")
         nb_insn = self.get_setting("nb_lines_code")
         nb_insn_prev = self.get_setting("nb_lines_code_prev")
-        use_capstone = self.has_setting("use_capstone") and self.get_setting("use_capstone")
-        show_opcodes_size = self.has_setting("show_opcodes_size") and self.get_setting("show_opcodes_size")
+        use_capstone = self.get_setting("use_capstone")
+        show_opcodes_size = self.get_setting("show_opcodes_size")
 
         if current_arch is None and is_remote_debug():
             self.context_title("code")
@@ -20944,103 +20948,99 @@ class ContextCommand(GenericCommand):
             gdb.execute("x/16i {:#x}".format(current_arch.pc))
             return
 
-        try:
-            instruction_iterator = capstone_disassemble if use_capstone else gef_disassemble
+        instruction_iterator = capstone_disassemble if use_capstone else gef_disassemble
 
-            for insn in instruction_iterator(pc, nb_insn, nb_prev=nb_insn_prev):
-                line = ""
-                is_taken = False
-                target = None
-                delay_slot = None
-                if self.addr_has_breakpoint(insn.address, bp_locations):
-                    bp_prefix = Color.redify(BP_GLYPH)
-                else:
-                    bp_prefix = " "
+        for insn in instruction_iterator(pc, nb_insn, nb_prev=nb_insn_prev):
+            line = ""
+            is_taken = False
+            target = None
+            delay_slot = None
+            if self.addr_has_breakpoint(insn.address, bp_locations):
+                bp_prefix = Color.redify(BP_GLYPH)
+            else:
+                bp_prefix = " "
 
-                if show_opcodes_size == 0:
-                    text = str(insn)
+            if show_opcodes_size == 0:
+                text = str(insn)
+            else:
+                if insn.address == pc:
+                    insn_fmt = "{{:{}O}}".format(show_opcodes_size)
                 else:
-                    if insn.address == pc:
-                        insn_fmt = "{{:{}O}}".format(show_opcodes_size)
+                    insn_fmt = "{{:{}o}}".format(show_opcodes_size)
+                text = insn_fmt.format(insn)
+
+            # coloring by address against pc
+            if insn.address < pc:
+                line += "{}{}{}".format(bp_prefix, " " * len(RIGHT_ARROW[1:]), text)
+
+            elif insn.address == pc:
+                line += "{}{}{}".format(bp_prefix, RIGHT_ARROW[1:], text)
+
+                if current_arch.is_conditional_branch(insn):
+                    is_taken, reason = current_arch.is_branch_taken(insn)
+                    if is_taken:
+                        target = self.get_branch_addr(insn)
+                        reason = "[Reason: {:s}]".format(reason) if reason else ""
+                        line += Color.colorify("\tTAKEN {:s}".format(reason), "bold green")
+                        delay_slot = current_arch.has_delay_slot
                     else:
-                        insn_fmt = "{{:{}o}}".format(show_opcodes_size)
-                    text = insn_fmt.format(insn)
+                        reason = "[Reason: !({:s})]".format(reason) if reason else ""
+                        line += Color.colorify("\tNOT taken {:s}".format(reason), "bold red")
+                elif current_arch.is_jump(insn):
+                    target = self.get_branch_addr(insn)
+                    delay_slot = current_arch.has_delay_slot
+                elif current_arch.is_call(insn) and self.get_setting("peek_calls") is True:
+                    target = self.get_branch_addr(insn)
+                    delay_slot = current_arch.has_delay_slot
+                elif current_arch.is_ret(insn) and self.get_setting("peek_ret") is True:
+                    target = current_arch.get_ra(insn, frame)
+                    delay_slot = current_arch.has_ret_delay_slot
 
-                # coloring by address against pc
-                if insn.address < pc:
-                    line += "{}{}{}".format(bp_prefix, " " * len(RIGHT_ARROW[1:]), text)
+            else:
+                line += "{}{}{}".format(bp_prefix, " " * len(RIGHT_ARROW[1:]), text)
 
-                elif insn.address == pc:
-                    line += "{}{}{}".format(bp_prefix, RIGHT_ARROW[1:], text)
+            gef_print(line)
 
-                    if current_arch.is_conditional_branch(insn):
-                        is_taken, reason = current_arch.is_branch_taken(insn)
-                        if is_taken:
-                            target = self.get_branch_addr(insn)
-                            reason = "[Reason: {:s}]".format(reason) if reason else ""
-                            line += Color.colorify("\tTAKEN {:s}".format(reason), "bold green")
-                            delay_slot = current_arch.has_delay_slot
+            # add extra branch info
+            if target:
+                # for delay slot
+                try:
+                    if delay_slot:
+                        next_insn = list(instruction_iterator(insn.address, 2))[-1]
+                        if show_opcodes_size == 0:
+                            text = str(next_insn)
                         else:
-                            reason = "[Reason: !({:s})]".format(reason) if reason else ""
-                            line += Color.colorify("\tNOT taken {:s}".format(reason), "bold red")
-                    elif current_arch.is_jump(insn):
-                        target = self.get_branch_addr(insn)
-                        delay_slot = current_arch.has_delay_slot
-                    elif current_arch.is_call(insn) and self.get_setting("peek_calls") is True:
-                        target = self.get_branch_addr(insn)
-                        delay_slot = current_arch.has_delay_slot
-                    elif current_arch.is_ret(insn) and self.get_setting("peek_ret") is True:
-                        target = current_arch.get_ra(insn, frame)
-                        delay_slot = current_arch.has_ret_delay_slot
+                            insn_fmt = "{{:{}o}}".format(show_opcodes_size)
+                            text = insn_fmt.format(next_insn)
+                        text = "{}{}{}".format(bp_prefix, " " * len(RIGHT_ARROW[1:]), text)
+                        text += Color.colorify("\t Maybe delay-slot", "bold yellow")
+                        gef_print(text)
+                except Exception:
+                    pass
 
-                else:
-                    line += "{}{}{}".format(bp_prefix, " " * len(RIGHT_ARROW[1:]), text)
+                # branch target address
 
-                gef_print(line)
-
-                # add extra branch info
-                if target:
-                    # for delay slot
-                    try:
-                        if delay_slot:
-                            next_insn = list(instruction_iterator(insn.address, 2))[-1]
-                            if show_opcodes_size == 0:
-                                text = str(next_insn)
-                            else:
-                                insn_fmt = "{{:{}o}}".format(show_opcodes_size)
-                                text = insn_fmt.format(next_insn)
-                            text = "{}{}{}".format(bp_prefix, " " * len(RIGHT_ARROW[1:]), text)
-                            text += Color.colorify("\t Maybe delay-slot", "bold yellow")
-                            gef_print(text)
-                    except Exception:
-                        pass
-
-                    # branch target address
-
-                    once = 0
-                    try:
-                        for i, tinsn in enumerate(instruction_iterator(target, nb_insn)):
-                            if show_opcodes_size == 0:
-                                text = str(tinsn)
-                            else:
-                                insn_fmt = "{{:{}o}}".format(show_opcodes_size)
-                                text = insn_fmt.format(tinsn)
-                            text = "   {} {}".format(RIGHT_ARROW[1:-1] if i == 0 else "  ", text)
-                            if once == 0:
-                                gef_print("")
-                                once = 1
-                            gef_print(text)
-                        if once == 1:
+                once = 0
+                try:
+                    for i, tinsn in enumerate(instruction_iterator(target, nb_insn)):
+                        if show_opcodes_size == 0:
+                            text = str(tinsn)
+                        else:
+                            insn_fmt = "{{:{}o}}".format(show_opcodes_size)
+                            text = insn_fmt.format(tinsn)
+                        text = "   {} {}".format(RIGHT_ARROW[1:-1] if i == 0 else "  ", text)
+                        if once == 0:
                             gef_print("")
-                    except Exception:
-                        pass
+                            once = 1
+                        gef_print(text)
+                    if once == 1:
+                        gef_print("")
+                except Exception:
+                    pass
 
-            self.context_memory_access()
-            self.context_memory_access2() # for x86/x64 - fs/gs
-            self.context_memory_access3() # for x86/x64 - cs/ss/ds/es
-
-        except gdb.MemoryError:
-            err("Cannot disassemble from $PC")
+        self.context_memory_access()
+        self.context_memory_access2() # for x86/x64 - fs/gs
+        self.context_memory_access3() # for x86/x64 - cs/ss/ds/es
         return
 
     def context_memory_access(self):
@@ -21306,7 +21306,11 @@ class ContextCommand(GenericCommand):
             err("Missing info about architecture. Please set: `file /path/to/target_binary`")
             return
 
-        insn = get_insn()
+        try:
+            insn = get_insn()
+        except gdb.MemoryError:
+            return
+
         if current_arch.is_syscall(insn):
             self.context_title("arguments")
             gdb.execute("syscall-args")
