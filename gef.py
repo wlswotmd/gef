@@ -16437,7 +16437,7 @@ class RpCommand(GenericCommand):
     group.add_argument("--libc", action="store_true", help="apply rp++ to libc.so searched from vmmap.")
     group.add_argument("--file", help="apply rp++ to specified file.")
     group.add_argument("--kernel", action="store_true", help="dump kernel, then apply vmlinux-to-elf and rp++.")
-    parser.add_argument("-f", "--filter", action="append", default=[], help="REGEXP filter.")
+    parser.add_argument("-f", "--filter", action="append", type=re.compile, default=[], help="REGEXP filter.")
     parser.add_argument("-r", "--rop", dest="rop_N", default=3, help="the max length of rop gadget. (default: %(default)s)")
     parser.add_argument("--no-print", action="store_true", help="run rp, create a temporary file, but don't display it.")
     _syntax_ = parser.format_help()
@@ -16470,8 +16470,8 @@ class RpCommand(GenericCommand):
             line = Color.remove_color(line)
 
             match = True
-            for pat in filter_patterns:
-                if not re.search(pat, line):
+            for re_pattern in filter_patterns:
+                if not re_pattern.search(line):
                     match = False
                     break
 
@@ -42435,7 +42435,7 @@ class KernelTaskCommand(GenericCommand):
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-f", "--filter", action="append", default=[], help="REGEXP filter.")
+    parser.add_argument("-f", "--filter", action="append", type=re.compile, default=[], help="REGEXP filter.")
     parser.add_argument("-m", "--print-maps", action="store_true", help="print memory map for each user-land process.")
     parser.add_argument("-r", "--print-regs", action="store_true", help="print general registers saved on kstack for each user-land process.")
     parser.add_argument("--meta", action="store_true", help="display offset information.")
@@ -43128,7 +43128,7 @@ class KernelTaskCommand(GenericCommand):
         for task in task_addrs:
             comm_string = read_cstring_from_memory(task + offset_comm)
             if args.filter:
-                if not any(re.search(f, comm_string) for f in args.filter):
+                if not any(re_pattern.search(comm_string) for re_pattern in args.filter):
                     continue
             kstack = read_int_from_memory(task + offset_stack)
             pid = u32(read_memory(task + offset_pid, 4))
@@ -44234,7 +44234,7 @@ class KernelParamSysctlCommand(GenericCommand):
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-f", "--filter", action="append", default=[], help="REGEXP filter.")
+    parser.add_argument("-f", "--filter", action="append", type=re.compile, default=[], help="REGEXP filter.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose mode.")
@@ -44257,8 +44257,8 @@ class KernelParamSysctlCommand(GenericCommand):
             return False
 
         else:
-            for filt in self.filter:
-                if re.search(filt, procname):
+            for re_pattern in self.filter:
+                if re_pattern.search(procname):
                     return True
             return False
 
@@ -45056,7 +45056,7 @@ class AsciiSearchCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("location", metavar="LOCATION", type=parse_address,
                         help="the location you want to search from.")
-    parser.add_argument("-f", "--filter", action="append", default=[], help="REGEXP filter.")
+    parser.add_argument("-f", "--filter", action="append", type=re.compile, default=[], help="REGEXP filter.")
     parser.add_argument("-d", "--depth", default=3, type=int, help="recursive depth. (default: %(default)s)")
     parser.add_argument("-r", "--range", default=0x40, type=lambda x: int(x, 16), help="search range. (default: %(default)s)")
     _syntax_ = parser.format_help()
@@ -45080,7 +45080,7 @@ class AsciiSearchCommand(GenericCommand):
                 pass
 
             if cstr:
-                if not self.filter or any(re.search(filt, cstr) for filt in self.filter):
+                if not self.filter or any(re_pattern.search(cstr) for re_pattern in self.filter):
                     if target not in self.seen:
                         for d, loc in enumerate(locations):
                             if old_locations != locations:
@@ -45115,7 +45115,7 @@ class SyscallTableViewCommand(GenericCommand):
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-f", "--filter", action="append", default=[], help="REGEXP filter.")
+    parser.add_argument("-f", "--filter", action="append", type=re.compile, default=[], help="REGEXP filter.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
@@ -45224,8 +45224,8 @@ class SyscallTableViewCommand(GenericCommand):
             if not self.filter:
                 self.out.append(msg)
             else:
-                for filt in self.filter:
-                    if re.search(filt, msg):
+                for re_pattern in self.filter:
+                    if re_pattern.search(msg):
                         self.out.append(msg)
         return
 
@@ -56088,8 +56088,8 @@ class PagewalkCommand(GenericCommand):
         if self.filter != []:
             filtered_lines = []
             for line in lines:
-                for filt in self.filter:
-                    if re.search(filt, line):
+                for re_pattern in self.filter:
+                    if re_pattern.search(line):
                         filtered_lines.append(line)
                         break
             lines = filtered_lines
@@ -56121,8 +56121,8 @@ class PagewalkCommand(GenericCommand):
     def is_not_filter_target(self, line):
         if self.filter == []:
             return False
-        for filt in self.filter:
-            if re.search(filt, line):
+        for re_pattern in self.filter:
+            if re_pattern.search(line):
                 return False
         return True
 
@@ -56156,7 +56156,7 @@ class PagewalkX64Command(PagewalkCommand):
     parser.add_argument("--no-merge", action="store_true", help="do not merge similar/consecutive address.")
     parser.add_argument("--sort-by-phys", action="store_true", help="sort by physical address.")
     parser.add_argument("--simple", action="store_true", help="merge with ignoring physical address consecutivness.")
-    parser.add_argument("--filter", metavar="REGEX", default=[], action="append", help="filter by REGEX pattern.")
+    parser.add_argument("--filter", metavar="REGEX", type=re.compile, default=[], action="append", help="filter by REGEX pattern.")
     parser.add_argument("--vrange", metavar="VADDR", default=[], action="append", type=lambda x: int(x, 16),
                         help="filter by map included specified virtual address.")
     parser.add_argument("--prange", metavar="PADDR", default=[], action="append", type=lambda x: int(x, 16),
@@ -56695,7 +56695,7 @@ class PagewalkArmCommand(PagewalkCommand):
     parser.add_argument("--no-merge", action="store_true", help="do not merge similar/consecutive address.")
     parser.add_argument("--sort-by-phys", action="store_true", help="sort by physical address.")
     parser.add_argument("--simple", action="store_true", help="merge with ignoring physical address consecutivness.")
-    parser.add_argument("--filter", metavar="REGEX", default=[], action="append", help="filter by REGEX pattern.")
+    parser.add_argument("--filter", metavar="REGEX", type=re.compile, default=[], action="append", help="filter by REGEX pattern.")
     parser.add_argument("--vrange", metavar="VADDR", default=[], action="append", type=lambda x: int(x, 16),
                         help="filter by map included specified virtual address.")
     parser.add_argument("--prange", metavar="PADDR", default=[], action="append", type=lambda x: int(x, 16),
@@ -57694,7 +57694,7 @@ class PagewalkArm64Command(PagewalkCommand):
     parser.add_argument("--no-merge", action="store_true", help="do not merge similar/consecutive address.")
     parser.add_argument("--sort-by-phys", action="store_true", help="sort by physical address.")
     parser.add_argument("--simple", action="store_true", help="merge with ignoring physical address consecutivness.")
-    parser.add_argument("--filter", metavar="REGEX", default=[], action="append", help="filter by REGEX pattern.")
+    parser.add_argument("--filter", metavar="REGEX", type=re.compile, default=[], action="append", help="filter by REGEX pattern.")
     parser.add_argument("--vrange", metavar="VADDR", default=[], action="append", type=lambda x: int(x, 16),
                         help="filter by map included specified virtual address.")
     parser.add_argument("--prange", metavar="PADDR", default=[], action="append", type=lambda x: int(x, 16),
@@ -60104,8 +60104,8 @@ class ExecUntilCommand(GenericCommand):
         elif self.mode == "memaccess":
             return "[" in str(insn)
         elif self.mode == "keyword":
-            for k in self.keyword:
-                if re.search(k, str(insn)):
+            for re_pattern in self.keyword:
+                if re_pattern.search(str(insn)):
                     return True
             return False
         elif self.mode == "cond":
@@ -60400,7 +60400,7 @@ class ExecUntilKeywordReCommand(ExecUntilCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
     parser.add_argument("--skip-lib", action="store_true", help="uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.")
-    parser.add_argument("keyword", metavar="KEYWORD", nargs="+", help="filter by specified regex keyword.")
+    parser.add_argument("keyword", metavar="KEYWORD", type=re.compile, nargs="+", help="filter by specified regex keyword.")
     _syntax_ = parser.format_help()
 
     _example_ = '{:s} "call +r[ab]x"                        # execute until specified keyword\n'.format(_cmdline_)
