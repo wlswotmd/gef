@@ -218,8 +218,6 @@ GEF_TEMP_DIR                    = os.path.join(tempfile.gettempdir(), "gef")
 GDB_MIN_VERSION                 = (7, 7)
 GDB_VERSION                     = tuple(map(int, re.search(r"(\d+)[^\d]+(\d+)", gdb.VERSION).groups()))
 
-ANSI_SPLIT_RE                   = r"(\033\[[\d;]*m)"
-
 
 def perf(f):
     """Decorator wrapper to perf."""
@@ -293,7 +291,7 @@ def highlight_text(text):
             text = re.sub("(" + match + ")", Color.colorify("\\1", color), text)
         return text
 
-    ansiSplit = re.split(ANSI_SPLIT_RE, text)
+    ansiSplit = re.split(r"(\033\[[\d;]*m)", text)
 
     for match, color in __highlight_table__.items():
         for index, val in enumerate(ansiSplit):
@@ -302,7 +300,7 @@ def highlight_text(text):
                 ansiSplit[index] = val.replace(match, Color.colorify(match, color))
                 break
         text = "".join(ansiSplit)
-        ansiSplit = re.split(ANSI_SPLIT_RE, text)
+        ansiSplit = re.split(r"(\033\[[\d;]*m)", text)
 
     return "".join(ansiSplit)
 
