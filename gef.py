@@ -269,6 +269,7 @@ def reset_gef_caches(all=False):
     if all:
         clear_auxv_cache()
         clear_explored_regions()
+        clear_gdb_get_location()
 
     __gef_default_main_arena__ = "main_arena"
     return
@@ -2838,8 +2839,18 @@ def set_gef_setting(name, value, _type=None, _desc=None):
     return
 
 
+# `info symbol` called from __gdb_get_location is heavy processing.
+# Moreover, dereference_from causes each address to be resolved every time.
+# functools.lru_cache() is not effective as-is, as it is cleared by reset_gef_caches() each time you stepi runs.
+# Fortunately, symbol information is rarely changes.
+# I decided to make it a cache clear mechanism independent of reset_gef_caches().
+def clear_gdb_get_location():
+    sys.modules["__main__"].__gdb_get_location.cache_clear()
+    return
+
+
 @functools.lru_cache(maxsize=512)
-def gdb_get_location(address):
+def __gdb_get_location(address):
     """Retrieve the location of the `address` argument from the symbol table.
     Return a tuple with the name and offset if found, None otherwise."""
 
@@ -2868,6 +2879,10 @@ def gdb_get_location(address):
         name = " ".join(sym)
         offset = 0
     return name, offset
+
+
+def gdb_get_location(address):
+    return __gdb_get_location(address)
 
 
 @functools.lru_cache(maxsize=512)
