@@ -8504,38 +8504,6 @@ def timeout(duration):
     return wrapper
 
 
-def use_stdtype():
-    if is_32bit():
-        return "uint32_t"
-    elif is_64bit():
-        return "uint64_t"
-    return "uint16_t"
-
-
-def use_default_type():
-    if is_32bit():
-        return "unsigned int"
-    elif is_64bit():
-        return "unsigned long"
-    return "unsigned short"
-
-
-def use_golang_type():
-    if is_32bit():
-        return "uint32"
-    elif is_64bit():
-        return "uint64"
-    return "uint16"
-
-
-def use_rust_type():
-    if is_32bit():
-        return "u32"
-    elif is_64bit():
-        return "u64"
-    return "u16"
-
-
 def to_unsigned_long(v):
     """Cast a gdb.Value to unsigned long."""
     if is_32bit():
@@ -10099,6 +10067,35 @@ def safe_parse_and_eval(value):
 @functools.lru_cache(maxsize=512)
 def dereference(addr):
     """GEF wrapper for gdb dereference function."""
+
+    def use_stdtype():
+        if is_32bit():
+            return "uint32_t"
+        elif is_64bit():
+            return "uint64_t"
+        return "uint16_t"
+
+    def use_default_type():
+        if is_32bit():
+            return "unsigned int"
+        elif is_64bit():
+            return "unsigned long"
+        return "unsigned short"
+
+    def use_golang_type():
+        if is_32bit():
+            return "uint32"
+        elif is_64bit():
+            return "uint64"
+        return "uint16"
+
+    def use_rust_type():
+        if is_32bit():
+            return "u32"
+        elif is_64bit():
+            return "u64"
+        return "u16"
+
     try:
         ulong_t = cached_lookup_type(use_stdtype())
         if not ulong_t:
