@@ -7895,9 +7895,11 @@ def read_memory(addr, length):
         # Memory read of Intel Pin is very slow, so speed it up
         try:
             pid = get_pid()
-            with open("/proc/{:d}/mem".format(pid), "rb") as fd:
-                fd.seek(addr)
-                return fd.read(length)
+            fd = open("/proc/{:d}/mem".format(pid), "rb")
+            fd.seek(addr)
+            content = fd.read(length)
+            fd.close()
+            return content
         except Exception:
             pass
 
@@ -8679,37 +8681,31 @@ def get_tcp_sess(pid):
     return sessions
 
 
-def get_all_process():
-    pids = [int(x) for x in os.listdir("/proc") if x.isdigit()]
-    process = []
-    for pid in pids:
-        try:
-            filepath = os.readlink("/proc/{:d}/exe".format(pid))
-        except (FileNotFoundError, ProcessLookupError, OSError):
-            continue
-        process.append({"pid": pid, "filepath": os.path.basename(filepath)})
-    return process
-
-
+# Under pin and qemu, it is necessary to parse the TCP information
+# of the connection destination and obtain the pid.
+# This operation is expensive, but once known, it never changes.
+# I decided to make it a cache clear mechanism independent of reset_gef_caches().
 @functools.lru_cache(maxsize=None)
-def get_pid(remote=False):
+def __get_pid(remote):
     """Return the PID of the debuggee process."""
-    def get_filepath_from_info_files():
-        response = gdb.execute("info files", to_string=True)
-        for line in response.splitlines():
-            if line.startswith("Symbols from"):
-                return line.split('"')[1]
-        return None
+    def get_all_process():
+        pids = [int(x) for x in os.listdir("/proc") if x.isdigit()]
+        process = []
+        for pid in pids:
+            try:
+                filepath = os.readlink("/proc/{:d}/exe".format(pid))
+            except (FileNotFoundError, ProcessLookupError, OSError):
+                continue
+            process.append({"pid": pid, "filepath": os.path.basename(filepath)})
+        return process
 
-    def get_pid_from_tcp_session(filepath, only_match_prefix=False):
+    def get_pid_from_tcp_session(filepath=None):
         gdb_tcp_sess = [x["raddr"] for x in get_tcp_sess(os.getpid())]
         if not gdb_tcp_sess:
             err("gdb has no tcp session")
             return None
         for process in get_all_process():
-            if only_match_prefix is True and not process["filepath"].startswith(filepath):
-                continue
-            if only_match_prefix is False and process["filepath"] != os.path.basename(filepath):
+            if filepath and not process["filepath"].startswith(filepath):
                 continue
             for c in get_tcp_sess(process["pid"]):
                 if c["laddr"] in gdb_tcp_sess:
@@ -8717,19 +8713,19 @@ def get_pid(remote=False):
         return None
 
     if is_pin():
-        filepath = get_filepath_from_info_files()
-        if filepath is None:
-            err("Missing info about architecture. Please set: `file /path/to/target_binary`")
-            return None
-        return get_pid_from_tcp_session(filepath)
+        return get_pid_from_tcp_session()
 
     elif is_qemu_usermode() or is_qemu_system():
-        return get_pid_from_tcp_session("qemu", only_match_prefix=True)
+        return get_pid_from_tcp_session("qemu")
 
     elif remote is False and is_remote_debug():
         return None # gdbserver etc.
 
     return gdb.selected_inferior().pid
+
+
+def get_pid(remote=False):
+    return __get_pid(remote)
 
 
 def append_proc_root(filepath):
