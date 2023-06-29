@@ -129,8 +129,7 @@ GEF_PROMPT_OFF = "\001\033[1;31m\002{:s}\001\033[0m\002".format(GEF_PROMPT)
 
 
 def http_get(url):
-    """Basic HTTP wrapper for GET request. Return the body of the page if HTTP code is OK,
-    otherwise return None."""
+    """Basic HTTP wrapper for GET request."""
     try:
         req = urllib.request.Request(url)
         req.add_header("Cache-Control", "no-cache, no-store")
@@ -143,8 +142,7 @@ def http_get(url):
 
 
 def update_gef(argv):
-    """Try to update `gef` to the latest version pushed on GitHub master branch.
-    Return 0 on success, 1 on failure. """
+    """Try to update `gef` to the latest version."""
     gef_local = os.path.realpath(argv[0])
     hash_gef_local = hashlib.sha512(open(gef_local, "rb").read()).digest()
     gef_remote = "https://raw.githubusercontent.com/bata24/gef/dev/gef.py"
