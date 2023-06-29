@@ -10232,6 +10232,8 @@ def __gef_get_auxiliary_values():
         return res
 
     def slow_path():
+        if current_arch is None:
+            return None
         for offset in [0, current_arch.ptrsize]:
             res = get_auxiliary_walk(offset)
             if res:
