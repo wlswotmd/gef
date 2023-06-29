@@ -255,7 +255,7 @@ def reset_gef_caches(all=False):
     which will be invoked to purge the function cache. Exceptionally, functions with names
     starting with `__` do not call `clear_cache`."""
     for mod in dir(sys.modules["__main__"]): # for global object
-        if mod.startswith("__"): # filter
+        if not all and mod.startswith("__"): # filter
             continue
         obj = getattr(sys.modules["__main__"], mod) # get itself
         if isinstance(obj, type(sys)): # skip if module
@@ -275,11 +275,6 @@ def reset_gef_caches(all=False):
                 child_obj.cache_clear()
 
     if all:
-        clear_auxv_cache()
-        clear_explored_regions()
-        clear_gdb_get_location()
-        clear_get_info_files()
-
         global __cached_context_legend__
         __cached_context_legend__ = None
     return
@@ -2938,11 +2933,6 @@ def set_gef_setting(name, value, _type=None, _desc=None):
 # functools.lru_cache() is not effective as-is, as it is cleared by reset_gef_caches() each time you stepi runs.
 # Fortunately, symbol information is rarely changes.
 # I decided to make it a cache clear mechanism independent of reset_gef_caches().
-def clear_gdb_get_location():
-    sys.modules["__main__"].__gdb_get_location.cache_clear()
-    return
-
-
 @functools.lru_cache(maxsize=512)
 def __gdb_get_location(address):
     """Retrieve the location of the `address` argument from the symbol table.
@@ -8834,12 +8824,7 @@ def get_process_maps_linux(pid, remote=False):
 # Fortunately, memory maps rarely change.
 # I decided to make it a cache clear mechanism independent of reset_gef_caches() and
 # introduce a mechanism to forcibly clear it with calling vmmap command.
-def clear_explored_regions():
-    sys.modules["__main__"].__get_explored_regions.cache_clear()
-    return
-
-
-@functools.lru_cache(maxsize=None)
+@functools.lru_cache(maxsize=512)
 def __get_explored_regions():
     """Return sections from auxv exploring"""
 
@@ -9169,11 +9154,6 @@ def get_process_maps(outer=False):
 # functools.lru_cache() is not effective as-is, as it is cleared by reset_gef_caches() each time you stepi runs.
 # Fortunately, zone information is rarely changes.
 # I decided to make it a cache clear mechanism independent of reset_gef_caches().
-def clear_get_info_files():
-    sys.modules["__main__"].__get_info_files.cache_clear()
-    return
-
-
 @functools.lru_cache(maxsize=512)
 def __get_info_files():
     """Retrieve all the files loaded by debuggee."""
@@ -10203,12 +10183,7 @@ def get_auxiliary_walk(offset=0):
 # functools.lru_cache() is not effective as-is, as it is cleared by reset_gef_caches() each time you stepi runs.
 # Fortunately, auxv rarely changes.
 # I decided to make it a cache clear mechanism independent of reset_gef_caches().
-def clear_auxv_cache():
-    sys.modules["__main__"].__gef_get_auxiliary_values.cache_clear()
-    return
-
-
-@functools.lru_cache(maxsize=None)
+@functools.lru_cache(maxsize=512)
 def __gef_get_auxiliary_values():
 
     def fast_path():
@@ -16162,7 +16137,7 @@ class GlibcHeapLargeBinsCommand(GenericCommand):
         return
 
 
-@functools.lru_cache(maxsize=None)
+@functools.lru_cache(maxsize=512)
 def __get_binsize_table():
     table = {
         "tcache": {},
