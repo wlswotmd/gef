@@ -20565,6 +20565,87 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
 
 
 @register_command
+class MainBreakCommand(GenericCommand):
+    """Set a breakpoint at the beginning of main with or without symbols, then continue."""
+    _cmdline_ = "main-break"
+    _category_ = "01-b. Debugging Support - Breakpoint"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_, add_help=False)
+    _syntax_ = parser.format_help()
+
+    def get_libc_start_main(self):
+        try:
+            return parse_address("__libc_start_main")
+        except gdb.error:
+            pass
+
+        res = gdb.execute("got -q", to_string=True)
+        for line in res.splitlines():
+            sym, _, _, val = line.split(" | ")
+            if sym.strip() == "__libc_start_main":
+                val = Color.remove_color(val)
+                val = val.strip().split()[0]
+                return int(val, 16)
+        return None
+
+    def search_main(self):
+        libc_start_main = self.get_libc_start_main()
+        if libc_start_main is None:
+            return None
+
+        if libc_start_main == 0:
+            elf = get_elf_headers()
+            entry = elf.e_entry
+            if elf.e_type != Elf.ET_EXEC: # is_pie
+                codebase = get_section_base_address(get_filepath(append_proc_root_prefix=False))
+                if codebase is None:
+                    codebase = get_section_base_address(get_path_from_info_proc())
+                if codebase is None:
+                    return None
+                entry += codebase
+            EntryBreakBreakpoint("*{:#x}".format(entry))
+            hide_context()
+            gdb.execute("c")
+            unhide_context()
+            libc_start_main = self.get_libc_start_main()
+
+        if libc_start_main == 0:
+            # something is wrong
+            return None
+
+        EntryBreakBreakpoint("*{:#x}".format(libc_start_main))
+        hide_context()
+        gdb.execute("c")
+        unhide_context()
+
+        # get arg1 when break at __libc_start_main
+        arg1_reg = current_arch.function_parameters[0]
+        return get_register(arg1_reg)
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_not_qemu_system
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        try:
+            main_address = parse_address("main")
+        except gdb.error:
+            main_address = self.search_main()
+
+        if main_address is None:
+            err("Failed to set a breakpoint to main. (Make sure the file name is set)")
+            return
+
+        EntryBreakBreakpoint("*{:#x}".format(main_address))
+        hide_context()
+        gdb.execute("c")
+        unhide_context()
+        gdb.execute("ctx")
+        return
+
+
+@register_command
 class EntryPointBreakCommand(GenericCommand):
     """Try to find best entry point and set a temporary breakpoint on it."""
     _cmdline_ = "entry-break"
@@ -24789,6 +24870,7 @@ class GotCommand(GenericCommand):
     parser.add_argument("-f", dest="file", help="the filename you want to parse.")
     parser.add_argument("-e", dest="elf_address", type=parse_address, help="the elf address you want to parse.")
     parser.add_argument("-r", dest="remote", action="store_true", help="parse remote binary if download feature is available.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     parser.add_argument("-v", dest="verbose", action="store_true", help="verbose output.")
     parser.add_argument("filter", metavar="FILTER", nargs="*", help="filter string.")
     _syntax_ = parser.format_help()
@@ -24967,22 +25049,23 @@ class GotCommand(GenericCommand):
                 name_width = len(name)
 
         # print legend
-        if self.verbose:
-            fmt = "{:{:d}} {:s} {:9s} {:s} {:{:d}s} @ {:12s} {:>8s} {:>9s} {:s} {:{:d}s} @ {:12s} {:>8s} {:s} {:{:d}}"
-            legend = [
-                "Name", name_width, VERTICAL_LINE,
-                "Type", VERTICAL_LINE,
-                "PLT", width, "Section", "Offset", "reloc_arg", VERTICAL_LINE,
-                "GOT", width, "Section", "Offset", VERTICAL_LINE, "GOT value", width,
-            ]
-        else:
-            fmt = "{:{:d}s} {:s} {:{:d}s} {:s} {:{:d}s} {:s} {:{:d}}"
-            legend = [
-                "Name", name_width,  VERTICAL_LINE,
-                "PLT", width, VERTICAL_LINE,
-                "GOT", width, VERTICAL_LINE, "GOT value", width,
-            ]
-        gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+        if not self.quiet:
+            if self.verbose:
+                fmt = "{:{:d}} {:s} {:9s} {:s} {:{:d}s} @ {:12s} {:>8s} {:>9s} {:s} {:{:d}s} @ {:12s} {:>8s} {:s} {:{:d}}"
+                legend = [
+                    "Name", name_width, VERTICAL_LINE,
+                    "Type", VERTICAL_LINE,
+                    "PLT", width, "Section", "Offset", "reloc_arg", VERTICAL_LINE,
+                    "GOT", width, "Section", "Offset", VERTICAL_LINE, "GOT value", width,
+                ]
+            else:
+                fmt = "{:{:d}s} {:s} {:{:d}s} {:s} {:{:d}s} {:s} {:{:d}}"
+                legend = [
+                    "Name", name_width,  VERTICAL_LINE,
+                    "PLT", width, VERTICAL_LINE,
+                    "GOT", width, VERTICAL_LINE, "GOT value", width,
+                ]
+            gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
         # link each PLT entries and each GOT entries
         # and create lines for output
@@ -25009,7 +25092,8 @@ class GotCommand(GenericCommand):
             try:
                 got_value = read_int_from_memory(got_address)
             except gdb.error:
-                err("Memory access error")
+                if not self.quiet:
+                    err("Memory access error")
                 return
 
             # resolve got value's symbol
@@ -25086,7 +25170,8 @@ class GotCommand(GenericCommand):
         for _, section_name, line in sorted(resolved_info):
             # print section name
             if prev_section != section_name:
-                gef_print(titlify(section_name))
+                if not self.quiet:
+                    gef_print(titlify(section_name))
             prev_section = section_name
             # if we have a filter let's skip the entries that are not requested
             if self.filter:
@@ -25106,7 +25191,8 @@ class GotCommand(GenericCommand):
             self.readelf = which("readelf")
             self.objdump = which("objdump")
         except FileNotFoundError as e:
-            err("{}".format(e))
+            if not args.quiet:
+                err("{}".format(e))
             return
 
         local_filepath = None
@@ -25116,7 +25202,8 @@ class GotCommand(GenericCommand):
 
         if args.remote:
             if not is_remote_debug():
-                err("-r option is allowed only remote debug.")
+                if not args.quiet:
+                    err("-r option is allowed only remote debug.")
                 return
 
             if args.file:
@@ -25131,12 +25218,14 @@ class GotCommand(GenericCommand):
             elif get_pid(remote=True):
                 remote_filepath = "/proc/{:d}/exe".format(get_pid(remote=True))
             else:
-                err("File name could not be determined.")
+                if not args.quiet:
+                    err("File name could not be determined.")
                 return
 
             data = read_remote_file(remote_filepath, as_byte=True) # qemu-user is failed here, it is ok
             if not data:
-                err("Failed to read remote filepath")
+                if not args.quiet:
+                    err("Failed to read remote filepath")
                 return
             tmp_fd, tmp_filepath = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".elf", prefix="got-")
             os.write(tmp_fd, data)
@@ -25152,18 +25241,21 @@ class GotCommand(GenericCommand):
             vmmap_filepath = get_filepath(append_proc_root_prefix=False)
 
         if local_filepath is None:
-            err("File name could not be determined.")
+            if not args.quiet:
+                err("File name could not be determined.")
             return
 
         if not os.path.exists(local_filepath):
-            err("{:s} does not exist".format(local_filepath))
+            if not args.quiet:
+                err("{:s} does not exist".format(local_filepath))
             return
 
         if remote_filepath:
             print_filename = "{:s} (remote: {:s})".format(local_filepath, remote_filepath)
         else:
             print_filename = local_filepath
-        gef_print(titlify("PLT / GOT - {:s}".format(print_filename)))
+        if not args.quiet:
+            gef_print(titlify("PLT / GOT - {:s}".format(print_filename)))
 
         # get base address
         if args.elf_address:
@@ -25174,7 +25266,8 @@ class GotCommand(GenericCommand):
             try:
                 base_address = min([x.page_start for x in vmmap if x.path == target_filepath])
             except Exception:
-                err("Not found {:s} in memory".format(target_filepath))
+                if not args.quiet:
+                    err("Not found {:s} in memory".format(target_filepath))
                 return
 
         # get the filtering parameter
@@ -25182,6 +25275,7 @@ class GotCommand(GenericCommand):
         self.filename = local_filepath
         self.base_address = base_address
         self.verbose = args.verbose
+        self.quiet = args.quiet
 
         # doit
         self.print_plt_got()
