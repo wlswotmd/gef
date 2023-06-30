@@ -8788,29 +8788,53 @@ def read_remote_file(filepath, as_byte=True):
 
 def get_process_maps_linux(pid, remote=False):
     """Parse the Linux process `/proc/pid/maps` file."""
+
+    def get_extra_info():
+        if not is_x86():
+            return []
+        tls_list = []
+        selected_thread = gdb.selected_thread()
+        for thread in gdb.selected_inferior().threads():
+            thread.switch() # change thread
+            tls = get_register("$fs_base" if is_x86_64() else "$gs_base")
+            sp = current_arch.sp
+            tls_list.append((thread.num, tls, sp))
+        selected_thread.switch() # revert thread
+        return sorted(tls_list)
+
     proc_map_file = "/proc/{:d}/maps".format(pid)
     if remote:
         data = read_remote_file(proc_map_file, as_byte=False)
         if not data:
             return []
         lines = data.splitlines()
-        tls = None
     else:
         lines = open(proc_map_file, "r").readlines()
-        tls = TlsCommand.get_tls(use_heuristic=False)
+
+    extra_info = get_extra_info() # tls, sp of each threads
+
     maps = []
     for line in lines:
         line = line.strip()
         addr, perm, off, _, rest = line.split(" ", 4)
+        addr_start, addr_end = [int(x, 16) for x in addr.split("-")]
         rest = rest.split(" ", 1)
-        inode = rest[0]
         if len(rest) == 1:
             pathname = ""
         else:
             pathname = rest[1].lstrip()
-        addr_start, addr_end = [int(x, 16) for x in addr.split("-")]
-        if tls and addr_start <= tls < addr_end:
-            pathname = "<tls>"
+        inode = rest[0]
+
+        for th_num, tls_addr, _ in extra_info:
+            if tls_addr and addr_start <= tls_addr < addr_end:
+                pathname += "<tls-th{:d}>".format(th_num)
+                break
+
+        for th_num, _, stack_addr in extra_info:
+            if th_num > 1 and stack_addr and addr_start <= stack_addr < addr_end:
+                pathname += "<stack-th{:d}>".format(th_num)
+                break
+
         off = int(off, 16)
         perm = Permission.from_process_maps(perm)
         sect = Section(page_start=addr_start, page_end=addr_end, offset=off, permission=perm, inode=inode, path=pathname)
@@ -45570,7 +45594,7 @@ class TlsCommand(GenericCommand):
 
     @staticmethod
     def get_tls(use_heuristic=True):
-        if is_qemu_system():
+        if is_qemu_system() or is_kgdb():
             return None
         elif is_x86_64():
             return TlsCommand.getfs(use_heuristic)
