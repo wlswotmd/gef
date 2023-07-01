@@ -7588,14 +7588,14 @@ class LOONGARCH64(Architecture):
         "$orig_a0", "$pc", "$badv",
     ]
     alias_registers = {
-        "$r0": "$zero", "$r1": "$ra", "$r3": "$sp",
+        "$r0": "$zero", "$r1": "$ra", "$r2": "$tp", "$r3": "$sp",
         "$r4": "$a0/$v0", "$r5": "$a1/$v1", "$r6": "$a2", "$r7": "$a3",
         "$r8": "$a4", "$r9": "$a5", "$r10": "$a6", "$r11": "$a7",
         "$r12": "$t0", "$r13": "$t1", "$r14": "$t2", "$r15": "$t3",
         "$r16": "$t4", "$r17": "$t5", "$r18": "$t6", "$r19": "$t7", "$r20": "$t8",
         "$r21": "$u0", "$r22": "$fp",
         "$r23": "$s0", "$r24": "$s1", "$r25": "$s2", "$r26": "$s3",
-        "$r27": "$s4", "$r28": "$s5", "$r29": "$s6", "$r30": "$s7",
+        "$r27": "$s4", "$r28": "$s5", "$r29": "$s6", "$r30": "$s7", "$r31": "$s8",
     }
     flag_register = None # LOONGARCH has no flags register
     return_register = "$r4"
@@ -7702,7 +7702,55 @@ class LOONGARCH64(Architecture):
 
     @classmethod
     def mprotect_asm_raw(cls, addr, size, perm):
-        return None
+        def lu12iw(reg, si20):
+            b = "0b_0001010_{:020b}_{:05b}".format(si20, reg)
+            return p32(int(b, 2))
+
+        def ori(dstreg, srcreg, ui12):
+            b = "0b_0000001110_{:012b}_{:05b}_{:05b}".format(ui12, srcreg, dstreg)
+            return p32(int(b, 2))
+
+        def lu32id(reg, si20):
+            b = "0b_0001011_{:020b}_{:05b}".format(si20, reg)
+            return p32(int(b, 2))
+
+        def lu52id(dstreg, srcreg, ui12):
+            b = "0b_0000001100_{:012b}_{:05b}_{:05b}".format(ui12, srcreg, dstreg)
+            return p32(int(b, 2))
+
+        def move(dstreg, srcreg):
+            b = "0b_0000000000010101000000_{:05b}_{:05b}".format(srcreg, dstreg)
+            return p32(int(b, 2))
+
+        _NR_mprotect = 226
+        insns = [
+            lu12iw(12, (addr >> 12) & 0xfffff), # lu12i.w $t0, addr[12:32]
+            ori(12, 12, addr & 0xfff), # ori $a0, $t0, addr[0:12]
+            lu32id(12, (addr >> 32) & 0xfffff), # lu32i.d $t0, addr[32:52]
+            lu52id(12, 12, (addr >> 52) & 0xfff), # lu52i.d $t0, addr[52:64]
+            move(4, 12), # move $r4, $t0
+
+            lu12iw(12, (size >> 12) & 0xfffff), # lu12i.w $t0, size[12:32]
+            ori(12, 12, size & 0xfff), # ori $a0, $t0, size[0:12]
+            lu32id(12, (size >> 32) & 0xfffff), # lu32i.d $t0, size[32:52]
+            lu52id(12, 12, (size >> 52) & 0xfff), # lu52i.d $t0, size[52:64]
+            move(5, 12), # move $r5, $t0
+
+            lu12iw(12, (perm >> 12) & 0xfffff), # lu12i.w $t0, perm[12:32]
+            ori(12, 12, perm & 0xfff), # ori $a0, $t0, perm[0:12]
+            lu32id(12, (perm >> 32) & 0xfffff), # lu32i.d $t0, perm[32:52]
+            lu52id(12, 12, (perm >> 52) & 0xfff), # lu52i.d $t0, perm[52:64]
+            move(6, 12), # move $r6, $t0
+
+            lu12iw(12, (_NR_mprotect >> 12) & 0xfffff), # lu12i.w $t0, _NR_mprotect[12:32]
+            ori(12, 12, _NR_mprotect & 0xfff), # ori $a0, $t0, _NR_mprotect[0:12]
+            lu32id(12, (_NR_mprotect >> 32) & 0xfffff), # lu32i.d $t0, _NR_mprotect[32:52]
+            lu52id(12, 12, (_NR_mprotect >> 52) & 0xfff), # lu52i.d $t0, _NR_mprotect[52:64]
+            move(11, 12), # move $r11, $t0
+
+            b"\x00\x00\x2b\x00", # syscall
+        ]
+        return b"".join(insns)
 
 
 # The prototype for new architecture.
@@ -45620,7 +45668,7 @@ class TlsCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
-    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64", "LOONGARCH64"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -45656,6 +45704,14 @@ class TlsCommand(GenericCommand):
         elif is_arm64():
             gef_print("p $tls = $TPIDR_EL0")
             tls = gdb.execute("p $tls = $TPIDR_EL0", to_string=True)
+            if tls:
+                gef_print(titlify("TLS-0x80"))
+                gdb.execute("telescope $tls-0x80 16 --no-pager")
+                gef_print(titlify("TLS"))
+                gdb.execute("telescope $tls 16 --no-pager")
+        elif is_loongarch64():
+            gef_print("p $tls = $r2")
+            tls = gdb.execute("p $tls = $r2", to_string=True)
             if tls:
                 gef_print(titlify("TLS-0x80"))
                 gdb.execute("telescope $tls-0x80 16 --no-pager")
