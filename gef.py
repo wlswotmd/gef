@@ -45656,6 +45656,85 @@ class TlsCommand(GenericCommand):
         return 0
 
     @staticmethod
+    def get_arm_tls():
+
+        def get_state(code_len):
+            d = {}
+            d["pc"] = current_arch.pc
+            if current_arch.is_thumb() and d["pc"] & 1:
+                d["pc"] -= 1
+            d["code"] = read_memory(d["pc"], code_len)
+            d["reg"] = {}
+            for reg in current_arch.all_registers:
+                d["reg"][reg] = get_register(reg)
+            return d
+
+        def revert_state(d):
+            write_memory(d["pc"], d["code"])
+            for reg, v in d["reg"].items():
+                if get_register(reg) == v:
+                    continue
+                try:
+                    gdb.execute("set {:s} = {:#x}".format(reg, v), to_string=True)
+                except Exception:
+                    info("set {:s} = {:#x} is failed".format(reg, v))
+                    pass
+            return
+
+        stdout = 1
+        stdout_bak = None
+
+        def close_stdout():
+            nonlocal stdout, stdout_bak
+            stdout = 1
+            stdout_bak = os.dup(stdout)
+            f = open("/dev/null")
+            os.dup2(f.fileno(), stdout)
+            f.close()
+            return
+
+        def revert_stdout():
+            nonlocal stdout, stdout_bak
+            os.dup2(stdout_bak, stdout)
+            os.close(stdout_bak)
+            return
+
+        if is_big_endian():
+            code = current_arch.infloop_insn[::-1] # to stop another thread
+            if current_arch.is_thunb():
+                code += b"\x2f\x70\xee\x1d" # mrc 15, 0, r2, cr13, cr0, {3}
+            else:
+                code += b"\xee\x1d\x2f\x70" # mrc 15, 0, r2, cr13, cr0, {3}
+        else:
+            code = current_arch.infloop_insn # to stop another thread
+            if current_arch.is_thumb():
+                code += b"\x1d\xee\x70\x2f" # mrc 15, 0, r2, cr13, cr0, {3}
+            else:
+                code += b"\x70\x2f\x1d\xee" # mrc 15, 0, r2, cr13, cr0, {3}
+
+        # backup
+        gef_on_stop_unhook(hook_stop_handler)
+        d = get_state(len(code))
+
+        # modify code
+        write_memory(d["pc"], code)
+
+        # skip infloop
+        dst = d["pc"] + len(current_arch.infloop_insn)
+        gdb.execute("set $pc = {:#x}".format(dst), to_string=True)
+
+        # exec
+        close_stdout()
+        gdb.execute("stepi", to_string=True)
+        ret = get_register("$r2")
+
+        # revert
+        revert_stdout()
+        revert_state(d)
+        gef_on_stop_hook(hook_stop_handler)
+        return ret
+
+    @staticmethod
     def get_tls():
         if is_qemu_system() or is_kgdb():
             return None
@@ -45667,7 +45746,7 @@ class TlsCommand(GenericCommand):
         elif is_arm64():
             return get_register("$TPIDR_EL0")
         elif is_arm32():
-            return 0
+            return TlsCommand.get_arm_tls()
         elif is_riscv64() or is_riscv32():
             return get_register("$tp")
         elif is_loongarch(64):
