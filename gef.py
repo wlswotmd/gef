@@ -1970,7 +1970,7 @@ def search_for_main_arena(force_heuristic=False):
         main_thread = [th for th in threads if th.num == 1][0]
         main_thread.switch()
 
-        tls = TlsCommand.get_tls(use_heuristic=True)
+        tls = TlsCommand.get_tls()
         for i in range(1, 500):
             addr = tls - current_arch.ptrsize * (i + 2)
             if not is_valid_addr(addr):
@@ -37685,7 +37685,7 @@ class HeapbaseCommand(GenericCommand):
 
         # plan 3
         if is_x86():
-            tls = TlsCommand.get_tls(use_heuristic=True)
+            tls = TlsCommand.get_tls()
             for i in range(1, 100):
                 addr1 = tls - current_arch.ptrsize * (i + 2)
                 addr2 = tls - current_arch.ptrsize * (i + 1)
@@ -45602,26 +45602,26 @@ class TlsCommand(GenericCommand):
             # kernel
             # The values you can get with MSR_FS_BASE are apparently different.
             return 0
-        else:
-            # remote
-            if is_remote_debug():
-                if is_x86_64() and use_heuristic:
-                    return TlsCommand.get_tls_heuristic()
-                else:
-                    return 0
-            # slow path
-            PTRACE_ARCH_PRCTL = 30
-            ARCH_GET_FS = 0x1003
-            pid, lwpid, tid = gdb.selected_thread().ptid
-            ppvoid = ctypes.POINTER(ctypes.c_void_p)
-            value = ppvoid(ctypes.c_void_p())
-            value.contents.value = 0
-            libc = ctypes.CDLL("libc.so.6")
-            result = libc.ptrace(PTRACE_ARCH_PRCTL, lwpid, value, ARCH_GET_FS)
-            if result == 0:
-                return value.contents.value or 0
+
+        elif is_remote_debug():
+            # userland remote
+            if is_x86_64() and use_heuristic:
+                return TlsCommand.get_tls_heuristic()
             else:
                 return 0
+
+        # slow path
+        PTRACE_ARCH_PRCTL = 30
+        ARCH_GET_FS = 0x1003
+        pid, lwpid, tid = gdb.selected_thread().ptid
+        ppvoid = ctypes.POINTER(ctypes.c_void_p)
+        value = ppvoid(ctypes.c_void_p())
+        value.contents.value = 0
+        libc = ctypes.CDLL("libc.so.6")
+        result = libc.ptrace(PTRACE_ARCH_PRCTL, lwpid, value, ARCH_GET_FS)
+        if result == 0:
+            return value.contents.value or 0
+        return 0
 
     @staticmethod
     def getgs(use_heuristic=True):
@@ -45634,89 +45634,68 @@ class TlsCommand(GenericCommand):
             # kernel
             # The values you can get with MSR_GS_BASE are apparently different.
             return 0
-        else:
+
+        elif is_remote_debug():
             # remote
-            if is_remote_debug():
-                if is_x86_32() and use_heuristic:
-                    return TlsCommand.get_tls_heuristic()
-                else:
-                    return 0
-            # slow path
-            PTRACE_ARCH_PRCTL = 30
-            ARCH_GET_GS = 0x1004
-            pid, lwpid, tid = gdb.selected_thread().ptid
-            ppvoid = ctypes.POINTER(ctypes.c_void_p)
-            value = ppvoid(ctypes.c_void_p())
-            value.contents.value = 0
-            libc = ctypes.CDLL("libc.so.6")
-            result = libc.ptrace(PTRACE_ARCH_PRCTL, lwpid, value, ARCH_GET_GS)
-            if result == 0:
-                return value.contents.value or 0
+            if is_x86_32() and use_heuristic:
+                return TlsCommand.get_tls_heuristic()
             else:
                 return 0
 
+        # slow path
+        PTRACE_ARCH_PRCTL = 30
+        ARCH_GET_GS = 0x1004
+        pid, lwpid, tid = gdb.selected_thread().ptid
+        ppvoid = ctypes.POINTER(ctypes.c_void_p)
+        value = ppvoid(ctypes.c_void_p())
+        value.contents.value = 0
+        libc = ctypes.CDLL("libc.so.6")
+        result = libc.ptrace(PTRACE_ARCH_PRCTL, lwpid, value, ARCH_GET_GS)
+        if result == 0:
+            return value.contents.value or 0
+        return 0
+
     @staticmethod
-    def get_tls(use_heuristic=True):
+    def get_tls():
         if is_qemu_system() or is_kgdb():
             return None
-        elif is_x86_64():
-            return TlsCommand.getfs(use_heuristic)
+
+        if is_x86_64():
+            return TlsCommand.getfs(use_heuristic=True)
         elif is_x86_32():
-            return TlsCommand.getgs(use_heuristic)
+            return TlsCommand.getgs(use_heuristic=True)
+        elif is_arm64():
+            return get_register("$TPIDR_EL0")
+        elif is_arm32():
+            return 0
+        elif is_riscv64() or is_riscv32():
+            return get_register("$tp")
+        elif is_loongarch(64):
+            return get_register("$r2")
         return None
 
     @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
-    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64", "LOONGARCH64"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64", "RISCV32", "RISCV64", "LOONGARCH64"))
     def do_invoke(self, args):
         self.dont_repeat()
 
-        if is_x86_64():
-            fsvalue = self.getfs()
-            if fsvalue:
-                gef_print(titlify("TLS-0x80"))
-                gdb.execute("telescope {:#x} 16 --no-pager".format(fsvalue - 0x80))
-                gef_print(titlify("TLS"))
-                gdb.execute("telescope {:#x} 16 --no-pager".format(fsvalue))
-                gef_print("set $tls = {:#x}".format(fsvalue))
-                gdb.execute("set $tls = {:#x}".format(fsvalue))
-        elif is_x86_32():
-            gsvalue = self.getgs()
-            if gsvalue:
-                gef_print(titlify("TLS-0x40"))
-                gdb.execute("telescope {:#x} 16 --no-pager".format(gsvalue - 0x40))
-                gef_print(titlify("TLS"))
-                gdb.execute("telescope {:#x} 16 --no-pager".format(gsvalue))
-                gef_print("set $tls = {:#x}".format(gsvalue))
-                gdb.execute("set $tls = {:#x}".format(gsvalue))
-        elif is_arm32():
-            if not safe_parse_and_eval("__aeabi_read_tp"):
-                err("Not found symbol (__aeabi_read_tp)")
-                return
-            gef_print("p $tls = (unsigned int)__aeabi_read_tp()")
-            tls = gdb.execute("p $tls = (unsigned int)__aeabi_read_tp()", to_string=True)
-            if tls:
-                gef_print(titlify("TLS-0x40"))
-                gdb.execute("telescope $tls-0x40 16 --no-pager")
-                gef_print(titlify("TLS"))
-                gdb.execute("telescope $tls 16 --no-pager")
-        elif is_arm64():
-            gef_print("p $tls = $TPIDR_EL0")
-            tls = gdb.execute("p $tls = $TPIDR_EL0", to_string=True)
-            if tls:
-                gef_print(titlify("TLS-0x80"))
-                gdb.execute("telescope $tls-0x80 16 --no-pager")
-                gef_print(titlify("TLS"))
-                gdb.execute("telescope $tls 16 --no-pager")
-        elif is_loongarch64():
-            gef_print("p $tls = $r2")
-            tls = gdb.execute("p $tls = $r2", to_string=True)
-            if tls:
-                gef_print(titlify("TLS-0x80"))
-                gdb.execute("telescope $tls-0x80 16 --no-pager")
-                gef_print(titlify("TLS"))
-                gdb.execute("telescope $tls 16 --no-pager")
+        tls = TlsCommand.get_tls()
+        if tls is None:
+            err("Failed to get TLS address")
+            return
+
+        gef_print("$tls = {:#x}".format(tls))
+        gdb.execute("p $tls = {:#x}".format(tls), to_string=True)
+        if not is_valid_addr(tls):
+            err("Cannot access memory at address {:#x}".format(tls))
+            return
+
+        gef_print(titlify("TLS-{:#x}".format(current_arch.ptrsize * 16)))
+        gdb.execute("telescope $tls-{:#x} 16 --no-pager".format(current_arch.ptrsize * 16))
+        gef_print(titlify("TLS"))
+        gdb.execute("telescope $tls 16 --no-pager")
         return
 
 
