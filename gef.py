@@ -2938,8 +2938,9 @@ def __gdb_get_location(address):
     """Retrieve the location of the `address` argument from the symbol table.
     Return a tuple with the name and offset if found, None otherwise."""
 
-    # fast path available gdb 13.x
-    if GDB_VERSION >= (13, 1):
+    # fast path available gdb 13.x.
+    # Don't use cris because it gives a warning.
+    if GDB_VERSION >= (13, 1) and not is_cris():
         sym = gdb.format_address(address)
         r = re.match(r"0x[0-9a-f]+ <(.*?)(\+.*)?>", sym)
         if not r:
@@ -7561,7 +7562,16 @@ class CRIS(Architecture):
 
     @classmethod
     def mprotect_asm_raw(cls, addr, size, perm):
-        return None
+        _NR_mprotect = 125
+        insns = [
+            b"\x6f\xae" + p32(addr), # move.d addr, $r10
+            b"\x6f\xbe" + p32(size), # move.d size, $r11
+            b"\x6f\xce" + p32(perm), # move.d perm, $r12
+            b"\x6f\x9e" + p32(_NR_mprotect), # move.d _NR_mprotect, $r9
+            b"\x3d\xe9", # syscall
+            b"\x0f\x05", # nop
+        ]
+        return b"".join(insns)
 
 
 class LOONGARCH64(Architecture):
@@ -13717,9 +13727,13 @@ class MprotectCommand(GenericCommand):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         return
 
+    # On the CRIS architecture, setting a value to a register using the gdb `set` command will cause strange behavior.
+    # So even if the shellcode is correct, it should not use this `mprotect` command.
+
     @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
+    @exclude_specific_arch(["CRIS"])
     @load_keystone
     def do_invoke(self, args):
         self.dont_repeat()
@@ -13973,6 +13987,7 @@ class CallSyscallCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
+    @exclude_specific_arch(["CRIS"])
     def do_invoke(self, args):
         if current_arch is None:
             err("current_arch is not set.")
@@ -14036,6 +14051,7 @@ class MmapMemoryCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
+    @exclude_specific_arch(["CRIS"])
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -21226,7 +21242,6 @@ class ContextCommand(GenericCommand):
                     pass
 
                 # branch target address
-
                 once = 0
                 try:
                     for i, tinsn in enumerate(instruction_iterator(target, nb_insn)):
