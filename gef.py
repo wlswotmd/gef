@@ -54388,71 +54388,24 @@ class CpuidCommand(GenericCommand):
     _example_ += "\n"
     _example_ += "DISABLE `-enable-kvm` option for qemu-system; This command will be aborted if the option is set"
 
-    def get_state(self, code_len):
-        d = {}
-        d["pc"] = get_register("$pc")
-        d["code"] = read_memory(d["pc"], code_len)
-        if is_x86_64():
-            d["rax"] = get_register("$rax")
-            d["rbx"] = get_register("$rbx")
-            d["rdx"] = get_register("$rdx")
-            d["rcx"] = get_register("$rcx")
-        else:
-            d["eax"] = get_register("$eax")
-            d["ebx"] = get_register("$ebx")
-            d["edx"] = get_register("$edx")
-            d["ecx"] = get_register("$ecx")
-        return d
-
-    def revert_state(self, d):
-        write_memory(d["pc"], d["code"])
-        gdb.execute("set $pc = {:#x}".format(d["pc"]), to_string=True)
-        if is_x86_64():
-            gdb.execute("set $rax = {:#x}".format(d["rax"]), to_string=True)
-            gdb.execute("set $rbx = {:#x}".format(d["rbx"]), to_string=True)
-            gdb.execute("set $rdx = {:#x}".format(d["rdx"]), to_string=True)
-            gdb.execute("set $rcx = {:#x}".format(d["rcx"]), to_string=True)
-        else:
-            gdb.execute("set $eax = {:#x}".format(d["eax"]), to_string=True)
-            gdb.execute("set $ebx = {:#x}".format(d["ebx"]), to_string=True)
-            gdb.execute("set $edx = {:#x}".format(d["edx"]), to_string=True)
-            gdb.execute("set $ecx = {:#x}".format(d["ecx"]), to_string=True)
-        return
-
-    def close_stdout(self):
-        self.stdout = 1
-        self.stdout_bak = os.dup(self.stdout)
-        f = open("/dev/null")
-        os.dup2(f.fileno(), self.stdout)
-        f.close()
-        return
-
-    def revert_stdout(self):
-        os.dup2(self.stdout_bak, self.stdout)
-        os.close(self.stdout_bak)
-        return
-
     def execute_cpuid(self, num, subnum=0):
-        code = current_arch.infloop_insn + b"\x0f\xa2" # inf-loop (to stop another thread); cpuid
-        gef_on_stop_unhook(hook_stop_handler)
-        d = self.get_state(len(code))
-        write_memory(d["pc"], code)
+        codes = [b"\x0f\xa2"] # cpuid
         if is_x86_64():
-            gdb.execute("set $rax = {:#x}".format(num), to_string=True)
-            gdb.execute("set $rcx = {:#x}".format(subnum), to_string=True)
+            regs = {"$rax": num, "$rcx": subnum}
         else:
-            gdb.execute("set $eax = {:#x}".format(num), to_string=True)
-            gdb.execute("set $ecx = {:#x}".format(subnum), to_string=True)
-        gdb.execute("set $pc = {:#x}".format(d["pc"] + 2), to_string=True) # skip "\xeb\xfe"
-        self.close_stdout()
-        gdb.execute("stepi", to_string=True)
-        self.revert_stdout()
-        eax = get_register("$eax") & 0xffffffff
-        ebx = get_register("$ebx") & 0xffffffff
-        ecx = get_register("$ecx") & 0xffffffff
-        edx = get_register("$edx") & 0xffffffff
-        self.revert_state(d)
-        gef_on_stop_hook(hook_stop_handler)
+            regs = {"$eax": num, "$ecx": subnum}
+        ret = ExecAsm(codes, regs=regs).exec_code()
+
+        if is_x86_64():
+            eax = ret["reg"]["$rax"] & 0xffffffff
+            ebx = ret["reg"]["$rbx"] & 0xffffffff
+            ecx = ret["reg"]["$rcx"] & 0xffffffff
+            edx = ret["reg"]["$rdx"] & 0xffffffff
+        else:
+            eax = ret["reg"]["$eax"]
+            ebx = ret["reg"]["$ebx"]
+            ecx = ret["reg"]["$ecx"]
+            edx = ret["reg"]["$edx"]
         return eax, ebx, ecx, edx
 
     def show_result(self, id, subid, eax, ebx, ecx, edx):
@@ -55194,15 +55147,11 @@ class CpuidCommand(GenericCommand):
             gef_print(c(edx, 14, 0x3ffff,    "        EAX 31-14: Reserved"))
         return
 
+    @parse_args
     @only_if_gdb_running
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
-    def do_invoke(self, argv):
+    def do_invoke(self, args):
         self.dont_repeat()
-
-        if "-h" in argv:
-            argv.remove("-h")
-            self.usage()
-            return
 
         # Basic Information
         eax, _, _, _ = self.execute_cpuid(0)
