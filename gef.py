@@ -910,10 +910,10 @@ class Address:
         return r and w and x
 
     def is_in_stack_segment(self):
-        return hasattr(self.section, "path") and "[stack]" == self.section.path
+        return hasattr(self.section, "path") and self.section.path.startswith("[stack]")
 
     def is_in_heap_segment(self):
-        return hasattr(self.section, "path") and "[heap]" == self.section.path
+        return hasattr(self.section, "path") and self.section.path.startswith("[heap]")
 
     def is_in_text_segment(self):
         a = hasattr(self.info, "name") and ".text" in self.info.name
@@ -1920,18 +1920,21 @@ def search_for_main_arena(force_heuristic=False):
 
     if get_libc_version() < (2, 34):
         # plan 2 (from __malloc_hook)
-        malloc_hook_addr = parse_address("(void *)&__malloc_hook")
-        if is_x86():
-            return align_address_to_size(malloc_hook_addr + current_arch.ptrsize, 0x20)
-        elif is_arm64():
-            return malloc_hook_addr - current_arch.ptrsize * 2 - MallocStateStruct("*0").struct_size
-        elif is_arm32():
-            return malloc_hook_addr - current_arch.ptrsize - MallocStateStruct("*0").struct_size
+        try:
+            malloc_hook_addr = parse_address("(void *)&__malloc_hook")
+            if is_x86():
+                return align_address_to_size(malloc_hook_addr + current_arch.ptrsize, 0x20)
+            elif is_arm64():
+                return malloc_hook_addr - current_arch.ptrsize * 2 - MallocStateStruct("*0").struct_size
+            elif is_arm32():
+                return malloc_hook_addr - current_arch.ptrsize - MallocStateStruct("*0").struct_size
+        except gdb.error:
+            pass
 
-    if is_x86():
+    if is_x86() or is_arm32() or is_arm64():
         # plan 3 (from TLS)
         """
-        x64
+        [x64]
         0x7ffff7f986f8|+0x0038|007: 0x0000555555559010  ->  0x0000000000000000
         0x7ffff7f98700|+0x0040|008: 0x0000000000000000
         0x7ffff7f98708|+0x0048|009: 0x00007ffff7e19c80 <main_arena>  ->  0x0000000000000000
@@ -1946,7 +1949,7 @@ def search_for_main_arena(force_heuristic=False):
         0x7ffff7f98748|+0x0008|001: 0x00007ffff7f99160  ->  0x0000000000000001
         0x7ffff7f98750|+0x0010|002: 0x00007ffff7f98740  ->  [loop detected]
 
-        x86
+        [x86]
         0xf7fbf4d0|+0x00d0|052: 0x5655a010  ->  0x00000000
         0xf7fbf4d4|+0x00d4|053: 0x00000000
         0xf7fbf4d8|+0x00d8|054: 0xf7e2a7c0 <main_arena>  ->  0x00000000
@@ -1963,6 +1966,38 @@ def search_for_main_arena(force_heuristic=False):
         0xf7fbf500|+0x0100|064: 0xf7fbf500  ->  [loop detected]
         0xf7fbf504|+0x0104|065: 0xf7fbfa88  ->  0x00000001
         0xf7fbf508|+0x0108|066: 0xf7fbf500  ->  [loop detected]
+
+        [ARM]
+        -- TLS --
+        0x0007d580|+0x0000|000: 0x0007a3c8 <_dl_static_dtv+0x8>  ->  0x00000000
+        0x0007d584|+0x0004|001: 0x00000000
+        0x0007d588|+0x0008|002: 0x00079fa0 <_nl_global_locale>  ->  ...
+        0x0007d58c|+0x000c|003: 0x00079fa0 <_nl_global_locale>  ->  ...
+        0x0007d590|+0x0010|004: 0x00079fa4 <_nl_global_locale+0x4>  ->  ...
+        0x0007d594|+0x0014|005: 0x00079fb0 <_nl_global_locale+0x10>  ->  ...
+        0x0007d598|+0x0018|006: 0x00000000
+        0x0007d59c|+0x001c|007: 0x00079660 <main_arena>  ->  0x00000000
+        0x0007d5a0|+0x0020|008: 0x0007d908  ->  0x00000000
+        0x0007d5a4|+0x0024|009: 0x00000000
+        0x0007d5a8|+0x0028|010: 0x00000000
+
+        [ARM64]
+        0x0000004997c0|+0x0000|000: 0x0000000000493078 <_dl_static_dtv+0x10>  ->  0x0000000000000000
+        0x0000004997c8|+0x0008|001: 0x0000000000000000
+        0x0000004997d0|+0x0010|002: 0x0000000000492838 <_nl_global_locale>  ->  ...
+        0x0000004997d8|+0x0018|003: 0x0000000000492840 <_nl_global_locale+0x8>  ->  ...
+        0x0000004997e0|+0x0020|004: 0x0000000000492838 <_nl_global_locale>  ->  ...
+        0x0000004997e8|+0x0028|005: 0x0000000000492858 <_nl_global_locale+0x20>  ->  ...
+        0x0000004997f0|+0x0030|006: 0x0000000000000000
+        0x0000004997f8|+0x0038|007: 0x0000000000491678 <main_arena>  ->  0x0000000000000000
+        0x000000499800|+0x0040|008: 0x0000000000499b90  ->  0x0000000000000000
+        0x000000499808|+0x0048|009: 0x0000000000000000
+        0x000000499810|+0x0050|010: 0x0000000000000000
+        0x000000499818|+0x0058|011: 0x000000000045e780 <_nl_C_LC_CTYPE_class+0x100>  ->  0x0002000200020002
+        0x000000499820|+0x0060|012: 0x000000000045de80 <_nl_C_LC_CTYPE_toupper+0x200>  ->  0x0000000100000000
+        0x000000499828|+0x0068|013: 0x000000000045d880 <_nl_C_LC_CTYPE_tolower+0x200>  ->  0x0000000100000000
+        0x000000499830|+0x0070|014: 0x0000000000000000
+        0x000000499838|+0x0078|015: 0x0000000000000000
         """
 
         selected_thread = gdb.selected_thread()
@@ -1970,9 +2005,15 @@ def search_for_main_arena(force_heuristic=False):
         main_thread = [th for th in threads if th.num == 1][0]
         main_thread.switch()
 
+        if is_x86():
+            direction = -1
+        else:
+            direction = 1
+
         tls = TlsCommand.get_tls()
         for i in range(1, 500):
-            addr = tls - current_arch.ptrsize * (i + 2)
+            addr = tls + (current_arch.ptrsize * i) * direction
+
             if not is_valid_addr(addr):
                 break
 
@@ -1982,7 +2023,7 @@ def search_for_main_arena(force_heuristic=False):
 
             candidate_arena = MallocStateStruct(candidate_arena_addr)
             system_mem = candidate_arena.system_mem
-            if system_mem < gef_getpagesize() or system_mem & 0xfff:
+            if system_mem < gef_getpagesize():
                 continue
 
             top = candidate_arena.top
@@ -2007,11 +2048,15 @@ def search_for_main_arena(force_heuristic=False):
 class MallocStateStruct:
     """GEF representation of malloc_state"""
     def __init__(self, addr):
-        self.num_fastbins = 10
+        if is_x86_32():
+            self.num_fastbins = 11 # why?
+        else:
+            self.num_fastbins = 10
         self.num_bins = 254
-
+        self.num_binmap = 4
         self.__addr = addr
-        self.int_size = cached_lookup_type("int").sizeof
+
+        self.int_t = cached_lookup_type("int")
         self.size_t = cached_lookup_type("size_t")
         if not self.size_t:
             ptr_type = "unsigned long" if current_arch.ptrsize == 8 else "unsigned int"
@@ -2022,9 +2067,9 @@ class MallocStateStruct:
         # https://sourceware.org/git/?p=glibc.git;a=commit;h=e956075a5a2044d05ce48b905b10270ed4a63e87
         # Be aware you could see this change backported into GLIBC release branches.
         if get_libc_version() >= (2, 27):
-            self.fastbin_offset = align_address_to_size(self.int_size * 3, 8)
+            self.fastbin_offset = align_address_to_size(self.int_t.sizeof * 3, self.size_t.sizeof)
         else:
-            self.fastbin_offset = self.int_size * 2
+            self.fastbin_offset = self.int_t.sizeof * 2
         return
 
     # struct offsets
@@ -2033,38 +2078,80 @@ class MallocStateStruct:
         return self.__addr
 
     @property
+    def mutex_addr(self):
+        return self.__addr
+
+    @property
+    def flags_addr(self):
+        return self.mutex_addr + self.int_t.sizeof
+
+    @property
+    def have_fastchunks_addr(self):
+        if get_libc_version() >= (2, 27):
+            return self.flags_addr + self.int_t.sizeof
+        else:
+            return None
+
+    @property
     def fastbins_addr(self):
         return self.__addr + self.fastbin_offset
 
     @property
     def top_addr(self):
-        return self.fastbins_addr + self.num_fastbins * current_arch.ptrsize
+        return self.fastbins_addr + self.size_t.sizeof * self.num_fastbins
 
     @property
     def last_remainder_addr(self):
-        return self.top_addr + current_arch.ptrsize
+        return self.top_addr + self.size_t.sizeof
 
     @property
     def bins_addr(self):
-        return self.last_remainder_addr + current_arch.ptrsize
+        return self.last_remainder_addr + self.size_t.sizeof
+
+    @property
+    def binmap_addr(self):
+        return self.bins_addr + self.size_t.sizeof * self.num_bins
 
     @property
     def next_addr(self):
-        return self.bins_addr + self.num_bins * current_arch.ptrsize + self.int_size * 4
+        return self.binmap_addr + self.int_t.sizeof * self.num_binmap
 
     @property
     def next_free_addr(self):
-        return self.next_addr + current_arch.ptrsize
+        return self.next_addr + self.size_t.sizeof
+
+    @property
+    def attached_threads_addr(self):
+        return self.next_free_addr + self.size_t.sizeof
 
     @property
     def system_mem_addr(self):
-        return self.next_free_addr + current_arch.ptrsize * 2
+        return self.attached_threads_addr + self.size_t.sizeof
+
+    @property
+    def max_system_mem_addr(self):
+        return self.system_mem_addr + self.size_t.sizeof
 
     @property
     def struct_size(self):
-        return self.system_mem_addr + current_arch.ptrsize * 2 - self.__addr
+        return self.max_system_mem_addr + self.size_t.sizeof - self.__addr
 
     # struct members
+    @property
+    def mutex(self):
+        return self.get_int_t(self.mutex_addr)
+
+    @property
+    def flags(self):
+        return self.get_int_t(self.flags_addr)
+
+    @property
+    def have_fastchunks(self):
+        if get_libc_version() >= (2, 27):
+            return self.get_int_t(self.have_fastchunks_addr)
+        else:
+            return None
+
     @property
     def fastbinsY(self):
         return self.get_size_t_array(self.fastbins_addr, self.num_fastbins)
@@ -2082,6 +2169,10 @@ class MallocStateStruct:
         return self.get_size_t_array(self.bins_addr, self.num_bins)
 
     @property
+    def binmap(self):
+        return self.int_size_t_array(self.binmap_addr, self.num_binmap)
+
+    @property
     def next(self):
         return self.get_size_t_pointer(self.next_addr)
 
@@ -2090,12 +2181,23 @@ class MallocStateStruct:
         return self.get_size_t_pointer(self.next_free_addr)
 
     @property
+    def attached_threads(self):
+        return self.get_size_t(self.attached_threads_addr)
+
+    @property
     def system_mem(self):
         return self.get_size_t(self.system_mem_addr)
+
+    @property
+    def max_system_mem(self):
+        return self.get_size_t(self.max_system_mem_addr)
 
     # helper methods
     def get_size_t(self, addr):
         return dereference(addr).cast(self.size_t)
+
+    def get_int_t(self, addr):
+        return dereference(addr).cast(self.int_t)
 
     def get_size_t_pointer(self, addr):
         size_t_pointer = self.size_t.pointer()
@@ -2104,6 +2206,10 @@ class MallocStateStruct:
     def get_size_t_array(self, addr, length):
         size_t_array = self.size_t.array(length)
         return dereference(addr).cast(size_t_array)
+
+    def int_size_t_array(self, addr, length):
+        int_size_t_array = self.int_t.array(length)
+        return dereference(addr).cast(int_size_t_array)
 
     def __getitem__(self, item):
         return getattr(self, item)
@@ -15229,9 +15335,6 @@ class GlibcHeapArenaCommand(GenericCommand):
         if arena is None:
             return []
 
-        if cached_lookup_type("struct malloc_state") is None:
-            return ["Not found type information of `struct malloc_state`"]
-
         try:
             out = []
             cmd = "p ((struct malloc_state*) {:#x})[0]".format(arena.addr)
@@ -15240,17 +15343,44 @@ class GlibcHeapArenaCommand(GenericCommand):
             result = gdb.execute(cmd, to_string=True)
             out.append(result)
         except gdb.error:
-            return []
+            out = []
+            title = titlify("[arena] ----- {:#x}".format(arena.addr))
+            out.append(title)
+            out.append("$1 = {")
+            out.append("  mutex = {:#x},".format(int(arena.mutex)))
+            out.append("  flags = {:#x},".format(int(arena.flags)))
+            if get_libc_version() >= (2, 27):
+                out.append("  have_fastchunks = {:#x},".format(int(arena.have_fastchunks)))
+            out.append("  fastbinsY = {")
+            for i in range(int(arena.num_fastbins)):
+                out.append("    [{:#x}] = {:#x},".format(i, int(arena.fastbinsY[i])))
+            out.append("  },")
+            out.append("  top = {:#x},".format(int(arena.top)))
+            out.append("  last_remainder = {:#x},".format(int(arena.last_remainder)))
+            out.append("  bins = {")
+            for i in range(int(arena.num_bins)):
+                out.append("    [{:#x}] = {:#x},".format(i, int(arena.bins[i])))
+            out.append("  },")
+            out.append("  binmap = {")
+            for i in range(int(arena.num_binmap)):
+                out.append("    [{:#x}] = {:#x},".format(i, int(arena.binmap[i])))
+            out.append("  },")
+            out.append("  next = {:#x},".format(int(arena.next)))
+            out.append("  next_free = {:#x},".format(int(arena.next_free)))
+            out.append("  attached_threads = {:#x},".format(int(arena.attached_threads)))
+            out.append("  system_mem = {:#x},".format(int(arena.system_mem)))
+            out.append("  max_system_mem = {:#x},".format(int(arena.max_system_mem)))
+            out.append("}")
         return out
 
     def parse_mp(self):
         try:
             mp = parse_address("&mp_")
         except gdb.error:
-            return ["Not found &mp_"]
+            return [titlify("[mp_]"), "Not found &mp_"]
 
         if cached_lookup_type("struct malloc_par") is None:
-            return ["Not found type information of `struct malloc_par`"]
+            return [titlify("[mp_]"), "Not found type information of `struct malloc_par`"]
 
         try:
             out = []
@@ -15260,18 +15390,18 @@ class GlibcHeapArenaCommand(GenericCommand):
             result = gdb.execute(cmd, to_string=True)
             out.append(result)
         except gdb.error:
-            return []
+            return [titlify("[mp_]"), "Failed to parse"]
         return out
 
     def parse_heap_info(self, arena):
         if arena is None:
             return []
 
-        if cached_lookup_type("struct _heap_info") is None:
-            return ["Not found type information of `struct _heap_info`"]
-
         if arena.is_main_arena:
-            return []
+            return [titlify("[heap_info]"), "Not thread arena"]
+
+        if cached_lookup_type("struct _heap_info") is None:
+            return [titlify("[heap_info]"), "Not found type information of `struct _heap_info`"]
 
         try:
             out = []
@@ -15281,7 +15411,7 @@ class GlibcHeapArenaCommand(GenericCommand):
             result = gdb.execute(cmd, to_string=True)
             out.append(result)
         except gdb.error:
-            return []
+            return [titlify("[heap_info]"), "Failed to parse"]
         return out
 
     @parse_args
@@ -15308,10 +15438,7 @@ class GlibcHeapArenaCommand(GenericCommand):
             out[i] = re.sub("  ([a-zA-Z_]+) =", "  \033[36m\\1\033[0m =", out[i])
             out[i] = re.sub(" = (0x[0-9a-f]+)", " = \033[34m\\1\033[0m", out[i])
 
-        if "\n".join(out).count("\n") == 2:
-            gef_print("\n".join(out).rstrip(), less=False)
-        else:
-            gef_print("\n".join(out).rstrip(), less=not args.no_pager)
+        gef_print("\n".join(out).rstrip(), less=not args.no_pager)
         return
 
 
@@ -15383,7 +15510,7 @@ class GlibcHeapChunksCommand(GenericCommand):
             err("No valid arena")
             return
 
-        if arena.heap_base is None:
+        if arena.heap_base is None or not is_valid_addr(arena.heap_base):
             err("Heap is not initialized")
             return
 
@@ -15503,7 +15630,7 @@ class GlibcHeapBinsCommand(GenericCommand):
             err("No valid arena")
             return
 
-        if arena.heap_base is None:
+        if arena.heap_base is None or not is_valid_addr(arena.heap_base):
             err("Heap is not initialized")
             return
 
@@ -15620,7 +15747,7 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
             err("No valid arena")
             return
 
-        if arena.heap_base is None:
+        if arena.heap_base is None or not is_valid_addr(arena.heap_base):
             err("Heap is not initialized")
             return
 
@@ -15717,7 +15844,7 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
             err("No valid arena")
             return
 
-        if arena.heap_base is None:
+        if arena.heap_base is None or not is_valid_addr(arena.heap_base):
             err("Heap is not initialized")
             return
 
@@ -15820,7 +15947,7 @@ class GlibcHeapUnsortedBinsCommand(GenericCommand):
             err("No valid arena")
             return
 
-        if arena.heap_base is None:
+        if arena.heap_base is None or not is_valid_addr(arena.heap_base):
             err("Heap is not initialized")
             return
 
@@ -15870,7 +15997,7 @@ class GlibcHeapSmallBinsCommand(GenericCommand):
             err("No valid arena")
             return
 
-        if arena.heap_base is None:
+        if arena.heap_base is None or not is_valid_addr(arena.heap_base):
             err("Heap is not initialized")
             return
 
@@ -15926,7 +16053,7 @@ class GlibcHeapLargeBinsCommand(GenericCommand):
             err("No valid arena")
             return
 
-        if arena.heap_base is None:
+        if arena.heap_base is None or not is_valid_addr(arena.heap_base):
             err("Heap is not initialized")
             return
 
@@ -23292,9 +23419,9 @@ class VMMapCommand(GenericCommand):
 
     def dump_entry(self, entry, outer):
         line_color = ""
-        if entry.path == "[stack]":
+        if entry.path.startswith("[stack]"):
             line_color = get_gef_setting("theme.address_stack")
-        elif entry.path == "[heap]":
+        elif entry.path.startswith("[heap]"):
             line_color = get_gef_setting("theme.address_heap")
         elif entry.permission.value & Permission.EXECUTE:
             line_color = get_gef_setting("theme.address_code")
@@ -37399,33 +37526,91 @@ class HeapbaseCommand(GenericCommand):
 
     @staticmethod
     def heap_base():
-        # plan 1
+        # plan 1 (already defined?)
         try:
-            base = parse_address("mp_->sbrk_base")
-            if base != 0:
-                return base
+            # The value of mp_->sbrk_base will be correct in most cases.
+            # However, for architectures that have TLS in the bss area (such as ARM),
+            # the start position of the heap seems to shift by the amount of the area used as the TLS variable.
+            # In that case, the $heapbase variable should be manually modified.
+            heap_base = parse_address("$heapbase")
+            if is_valid_addr(heap_base):
+                return heap_base
         except gdb.error:
             pass
 
         # plan 2
-        heap_base = get_section_base_address("[heap]")
-        if heap_base:
-            return heap_base
+        try:
+            return parse_address("mp_->sbrk_base")
+        except gdb.error:
+            pass
 
         # plan 3
-        if is_x86():
+        if is_static():
+            try:
+                mp_ = parse_address("&mp_")
+                if is_64bit():
+                    sbrk_base = mp_ + 0x60 # TODO: make more accurate
+                else:
+                    sbrk_base = mp_ + 0x38 # TODO: make more accurate
+                return read_int_from_memory(sbrk_base)
+            except gdb.error:
+                pass
+
+        # plan 4
+        else:
+            heap_base = get_section_base_address("[heap]")
+            if heap_base:
+                return heap_base
+
+        # plan 5 (logic: see search_for_main_arena)
+        if is_x86() or is_arm32():
+            selected_thread = gdb.selected_thread()
+            threads = gdb.selected_inferior().threads()
+            main_thread = [th for th in threads if th.num == 1][0]
+            main_thread.switch()
+
+            if is_x86():
+                direction = -1
+            elif is_arm32():
+                direction = 1
+
             tls = TlsCommand.get_tls()
-            for i in range(1, 100):
-                addr1 = tls - current_arch.ptrsize * (i + 2)
-                addr2 = tls - current_arch.ptrsize * (i + 1)
-                addr3 = tls - current_arch.ptrsize * i
+            for i in range(1, 500):
+                addr = tls + (current_arch.ptrsize * i) * direction
 
-                val1 = read_int_from_memory(addr1)
-                val2 = read_int_from_memory(addr2)
-                val3 = read_int_from_memory(addr3)
-                if is_valid_addr(val1) and val2 == 0 and is_valid_addr(val3):
-                    return val1 & gef_getpagesize_mask()
+                if not is_valid_addr(addr):
+                    break
 
+                candidate_arena_addr = read_int_from_memory(addr)
+                if not is_valid_addr(candidate_arena_addr):
+                    continue
+
+                candidate_arena = MallocStateStruct(candidate_arena_addr)
+                system_mem = candidate_arena.system_mem
+                if system_mem < gef_getpagesize():
+                    continue
+
+                top = candidate_arena.top
+                if not is_valid_addr(top):
+                    continue
+
+                _next = to_unsigned_long(candidate_arena.next)
+                while True:
+                    if not is_valid_addr(_next):
+                        break
+                    if candidate_arena_addr == _next:
+                        selected_thread.switch()
+                        # found main_arena, use prev prev pointer
+                        if is_x86():
+                            first_chunk_p = addr - current_arch.ptrsize * 2
+                        elif is_arm32():
+                            first_chunk_p = addr + current_arch.ptrsize
+                        first_chunk = read_int_from_memory(first_chunk_p)
+                        return first_chunk - current_arch.ptrsize * 2
+                    _next = to_unsigned_long(MallocStateStruct(_next).next)
+
+            # not found
+            selected_thread.switch()
         return None
 
     @parse_args
@@ -38949,7 +39134,7 @@ class FindFakeFastCommand(GenericCommand):
                 continue
             if m.path in ["[vvar]", "[vsyscall]", "[vectors]", "[sigpage]"]:
                 continue
-            if not self.include_heap and m.path == "[heap]":
+            if not self.include_heap and m.path.startswith("[heap]"):
                 continue
             data = read_memory(m.page_start, m.size)
             # Scanning page-by-page
@@ -39111,7 +39296,7 @@ class VisualHeapCommand(GenericCommand):
             err("No valid arena")
             return
 
-        if arena.heap_base is None:
+        if arena.heap_base is None or not is_valid_addr(arena.heap_base):
             err("Heap is not initialized")
             return
 
@@ -39134,6 +39319,7 @@ class VisualHeapCommand(GenericCommand):
             err("Memoryr read error: {}".format(e))
             return
 
+        reset_gef_caches(all=True)
         try:
             self.generate_visual_heap(args.max_count)
         except Exception:
@@ -61628,9 +61814,9 @@ class PeekPointersCommand(GenericCommand):
         if args.name:
             section_name = args.name
             if section_name == "stack":
-                sections = [[s.path, s.page_start, s.page_end] for s in vmmap if s.path == "[stack]"]
+                sections = [[s.path, s.page_start, s.page_end] for s in vmmap if s.path.startswith("[stack]")]
             elif section_name == "heap":
-                sections = [[s.path, s.page_start, s.page_end] for s in vmmap if s.path == "[heap]"]
+                sections = [[s.path, s.page_start, s.page_end] for s in vmmap if s.path.startswith("[heap]")]
             elif section_name == "binary":
                 sections = [[s.path, s.page_start, s.page_end] for s in vmmap if s.path == get_filepath()]
             else:
