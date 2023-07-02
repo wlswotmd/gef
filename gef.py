@@ -14586,52 +14586,6 @@ class ReadSystemRegisterCommand(GenericCommand):
         ("p15", "c1", 0, "c2", 1): ("TRFCR", "Trace Filter Control Register"),
     }
 
-    def get_state(self, code_len):
-        d = {}
-
-        # pc
-        # This value is used to point to the code location. It is not used to restore registers.
-        d["pc"] = current_arch.pc
-        if current_arch.is_thumb() and d["pc"] & 1:
-            d["pc"] -= 1
-
-        # code
-        d["code"] = read_memory(d["pc"], code_len)
-
-        # reg
-        d["reg"] = {}
-        for reg in current_arch.all_registers:
-            d["reg"][reg] = get_register(reg)
-        return d
-
-    def revert_state(self, d):
-        # code
-        write_memory(d["pc"], d["code"])
-
-        # reg
-        for reg, v in d["reg"].items():
-            if get_register(reg) == v:
-                continue
-            try:
-                gdb.execute("set {:s} = {:#x}".format(reg, v), to_string=True)
-            except Exception:
-                info("set {:s} = {:#x} is failed".format(reg, v))
-                pass
-        return
-
-    def close_stdout(self):
-        self.stdout = 1
-        self.stdout_bak = os.dup(self.stdout)
-        f = open("/dev/null")
-        os.dup2(f.fileno(), self.stdout)
-        f.close()
-        return
-
-    def revert_stdout(self):
-        os.dup2(self.stdout_bak, self.stdout)
-        os.close(self.stdout_bak)
-        return
-
     def get_coproc_info(self, target_reg_name):
         for k, v in self.AARCH32_COPROC_REGISTERS.items():
             for reg_name, _desc in slicer(v, 2):
@@ -14649,43 +14603,18 @@ class ReadSystemRegisterCommand(GenericCommand):
         cp_info = self.get_coproc_info(reg_name)
         if cp_info is None:
             return None
+        codes = [self.get_mrc_code(cp_info)]
 
-        if is_big_endian():
-            code = current_arch.infloop_insn[::-1] # to stop another thread
-            code += self.get_mrc_code(cp_info)[::-1]
-        else:
-            code = current_arch.infloop_insn # to stop another thread
-            code += self.get_mrc_code(cp_info)
+        before_pc = current_arch.pc
+        ret = ExecAsm(codes).exec_code()
+        after_pc = ret["reg"]["$pc"]
 
-        # backup
-        gef_on_stop_unhook(hook_stop_handler)
-        d = self.get_state(len(code))
-
-        # modify code
-        write_memory(d["pc"], code)
-
-        # skip infloop
-        dst = d["pc"] + len(current_arch.infloop_insn)
-        gdb.execute("set $pc = {:#x}".format(dst), to_string=True)
-
-        # exec
-        self.close_stdout()
-        gdb.execute("stepi", to_string=True)
-        ret = get_register(current_arch.return_register)
-        stepped_pc = current_arch.pc
-
-        # revert
-        self.revert_stdout()
-        self.revert_state(d)
-        gef_on_stop_hook(hook_stop_handler)
-
-        # check
-        # Jumps to the Undefined exception vector if an attempt is made to a register that does not exist.
+        # It jumps to the undefined exception vector if an attempt is made to a register that does not exist.
         # Even though I just stepped through it, the PC register values are very different.
-        if abs(stepped_pc - d["pc"]) > 0x10:
+        if abs(after_pc - before_pc) > 0x10:
             err("Undefined register. It probably crashes the kernel.")
             return None
-        return ret
+        return ret["reg"][current_arch.return_register]
 
     @parse_args
     @only_if_gdb_running
