@@ -45387,9 +45387,10 @@ class SyscallTableViewCommand(GenericCommand):
 
 class ExecAsm:
     """Execute embeded asm. ex: ExecAsm(asm_op_list).exec_code()"""
-    def __init__(self, _codes, debug=False):
+    def __init__(self, _codes, regs={}, debug=False):
         self.stdout = 1
         self.debug = debug
+        self.regs = regs
 
         codes = []
 
@@ -45460,11 +45461,23 @@ class ExecAsm:
         os.close(self.stdout_bak)
         return
 
+    def modify_regs(self):
+        for reg, v in self.regs.items():
+            if get_register(reg) == v:
+                continue
+            try:
+                gdb.execute("set {:s} = {:#x}".format(reg, v), to_string=True)
+            except Exception:
+                info("set {:s} = {:#x} is failed".format(reg, v))
+                pass
+        return
+
     def exec_code(self):
         # backup
         d = self.get_state()
 
-        # modify code
+        # modify code, regs
+        self.modify_regs()
         write_memory(d["pc"], self.code)
 
         # skip infloop
@@ -55364,63 +55377,23 @@ class MsrCommand(GenericCommand):
             out = out[5:]
         return "0b" + out[1:]
 
-    def get_state(self, code_len):
-        d = {}
-        d["pc"] = get_register("$pc")
-        d["code"] = read_memory(d["pc"], code_len)
-        if is_x86_64():
-            d["rax"] = get_register("$rax")
-            d["rdx"] = get_register("$rdx")
-            d["rcx"] = get_register("$rcx")
-        else:
-            d["eax"] = get_register("$eax")
-            d["edx"] = get_register("$edx")
-            d["ecx"] = get_register("$ecx")
-        return d
-
-    def revert_state(self, d):
-        write_memory(d["pc"], d["code"])
-        gdb.execute("set $pc = {:#x}".format(d["pc"]), to_string=True)
-        if is_x86_64():
-            gdb.execute("set $rax = {:#x}".format(d["rax"]), to_string=True)
-            gdb.execute("set $rdx = {:#x}".format(d["rdx"]), to_string=True)
-            gdb.execute("set $rcx = {:#x}".format(d["rcx"]), to_string=True)
-        else:
-            gdb.execute("set $eax = {:#x}".format(d["eax"]), to_string=True)
-            gdb.execute("set $edx = {:#x}".format(d["edx"]), to_string=True)
-            gdb.execute("set $ecx = {:#x}".format(d["ecx"]), to_string=True)
-        return
-
-    def close_stdout(self):
-        self.stdout = 1
-        self.stdout_bak = os.dup(self.stdout)
-        f = open("/dev/null")
-        os.dup2(f.fileno(), self.stdout)
-        f.close()
-        return
-
-    def revert_stdout(self):
-        os.dup2(self.stdout_bak, self.stdout)
-        os.close(self.stdout_bak)
-        return
-
     def read_msr(self, num):
-        code = current_arch.infloop_insn + b"\x0f\x32" # inf-loop (to stop another thread); rdmsr
-        gef_on_stop_unhook(hook_stop_handler)
-        d = self.get_state(len(code))
-        write_memory(d["pc"], code)
+        codes = [b"\x0f\x32"] # rdmsr
         if is_x86_64():
-            gdb.execute("set $rcx = {:#x}".format(num), to_string=True)
+            regs = {"$rcx": num}
         else:
-            gdb.execute("set $ecx = {:#x}".format(num), to_string=True)
-        gdb.execute("set $pc = {:#x}".format(d["pc"] + 2), to_string=True) # skip "\xeb\xfe"
-        self.close_stdout()
-        gdb.execute("stepi", to_string=True)
-        self.revert_stdout()
-        eax = get_register("$eax")
-        edx = get_register("$edx")
-        self.revert_state(d)
-        gef_on_stop_hook(hook_stop_handler)
+            regs = {"$ecx": num}
+        ret = ExecAsm(codes, regs=regs).exec_code()
+
+        if ret is None:
+            return None
+
+        if is_x86_64():
+            edx = ret["reg"]["$rdx"] & 0xffffffff
+            eax = ret["reg"]["$rax"] & 0xffffffff
+        else:
+            edx = ret["reg"]["$edx"]
+            eax = ret["reg"]["$eax"]
         return ((edx << 32) | eax) & 0xffffffffffffffff
 
     @parse_args
@@ -55433,8 +55406,7 @@ class MsrCommand(GenericCommand):
             self.print_const_table()
             return
 
-        ring = get_register("$cs") & 0b11
-        if ring != 0:
+        if not is_in_kernel():
             err("Ring 0 is needed")
             return
 
@@ -55447,7 +55419,11 @@ class MsrCommand(GenericCommand):
                 self.usage()
                 return
 
+        # exec rdmsr
         val = self.read_msr(num)
+        if val is None:
+            return
+
         name = self.lookup_val2name(num)
         if args.quiet:
             gef_print("{:#x}".format(val))
