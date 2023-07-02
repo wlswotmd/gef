@@ -3321,113 +3321,60 @@ def gef_execute_gdb_script(commands):
     return
 
 
-class CetStatus:
-    def get_state(self, code_len):
-        d = {}
-        d["pc"] = current_arch.pc
-        d["sp"] = current_arch.sp
-        d["code"] = read_memory(d["pc"], code_len)
-        d["reg"] = {}
-        for reg in current_arch.gpr_registers:
-            d["reg"][reg] = get_register(reg)
-        d["stack"] = {}
-        for i in range(3):
-            addr = d["sp"] + current_arch.ptrsize * i
-            d["stack"][addr] = read_memory(addr, current_arch.ptrsize)
-        return d
+def get_cet_status():
+    sp = current_arch.sp
+    mem = {}
 
-    def revert_state(self, d):
-        write_memory(d["pc"], d["code"])
-        gdb.execute("set $pc = {:#x}".format(d["pc"]), to_string=True)
-        for regname, regvalue in d["reg"].items():
-            gdb.execute("set {:s} = {:#x}".format(regname, regvalue), to_string=True)
-        for addr, value in d["stack"].items():
-            write_memory(addr, value)
-        return
+    # *addr = SHSTK/IBT status
+    # *(addr + 1) = SHSTK base address
+    # *(addr + 2) = SHSTK size
+    # backup
+    for i in range(3):
+        addr = sp + current_arch.ptrsize * i
+        mem[addr] = read_memory(addr, current_arch.ptrsize)
 
-    def close_stdout(self):
-        self.stdout = 1
-        self.stdout_bak = os.dup(self.stdout)
-        f = open("/dev/null")
-        os.dup2(f.fileno(), self.stdout)
-        f.close()
-        return
+    res = gdb.execute("call-syscall arch_prctl 0x3001 {:#x}".format(sp), to_string=True) # ARCH_CET_STATUS
+    output_line = res.splitlines()[-1]
+    ret = int(output_line.split()[2], 0)
+    if ret != 0:
+        return None
+    ret = read_int_from_memory(sp)
 
-    def revert_stdout(self):
-        os.dup2(self.stdout_bak, self.stdout)
-        os.close(self.stdout_bak)
-        return
-
-    def get_result(self):
-        r = {}
-        r["ret"] = get_register("$rax" if is_x86_64() else "$eax")
-        r["data"] = []
-        for i in range(3):
-            addr = get_register("$rsi" if is_x86_64() else "$ecx") + current_arch.ptrsize * i
-            v = read_int_from_memory(addr)
-            r["data"].append(v)
-        return r
-
-    def execute_get_cet_status(self):
-        code = current_arch.infloop_insn + current_arch.syscall_insn # inf-loop (to stop another thread); syscall/int0x80
-        gef_on_stop_unhook(hook_stop_handler)
-        d = self.get_state(len(code))
-        write_memory(d["pc"], code)
-        if is_x86_64():
-            gdb.execute("set $rax = 0x9e", to_string=True) # arch_prctl
-            gdb.execute("set $rdi = 0x3001", to_string=True) # ARCH_CET_STATUS
-            gdb.execute("set $rsi = $rsp", to_string=True) # buffer
-        else:
-            gdb.execute("set $eax = 0x180", to_string=True) # arch_prctl
-            gdb.execute("set $ebx = 0x3001", to_string=True) # ARCH_CET_STATUS
-            gdb.execute("set $ecx = $esp", to_string=True) # buffer
-        gdb.execute("set $pc = {:#x}".format(d["pc"] + 2), to_string=True) # skip "\xeb\xfe"
-        self.close_stdout()
-        gdb.execute("stepi", to_string=True)
-        self.revert_stdout()
-        r = self.get_result()
-        self.revert_state(d)
-        gef_on_stop_hook(hook_stop_handler)
-        return r
-
-    def get_cet_status(self):
-        r = self.execute_get_cet_status()
-        if r["ret"] != 0:
-            return None
-        return r
+    # revert
+    for addr, data in mem.items():
+        write_memory(addr, data)
+    return ret
 
 
-class MteStatus:
-    def get_mte_status(self):
-        auxv = gef_get_auxiliary_values()
-        HWCAP2_MTE = 1 << 18
-        if auxv and "AT_HWCAP2" in auxv and (auxv["AT_HWCAP2"] & HWCAP2_MTE) == 0:
-            return None # Unsupported
-        res = gdb.execute("call-syscall prctl 0x38 0 0 0 0", to_string=True) # PR_GET_TAGGED_ADDR_CTRL
-        output_line = res.splitlines()[-1]
-        ret = int(output_line.split()[2], 0)
+def get_mte_status():
+    auxv = gef_get_auxiliary_values()
+    HWCAP2_MTE = 1 << 18
+    if auxv and "AT_HWCAP2" in auxv and (auxv["AT_HWCAP2"] & HWCAP2_MTE) == 0:
+        return None # Unsupported
+    res = gdb.execute("call-syscall prctl 0x38 0 0 0 0", to_string=True) # PR_GET_TAGGED_ADDR_CTRL
+    output_line = res.splitlines()[-1]
+    ret = int(output_line.split()[2], 0)
 
-        pQ = lambda a: struct.pack("<Q", a & 0xffffffffffffffff)
-        uq = lambda a: struct.unpack("<q", a)[0]
-        u2i = lambda a: uq(pQ(a))
-        return u2i(ret)
+    pQ = lambda a: struct.pack("<Q", a & 0xffffffffffffffff)
+    uq = lambda a: struct.unpack("<q", a)[0]
+    u2i = lambda a: uq(pQ(a))
+    return u2i(ret)
 
 
-class PacStatus:
-    def get_pac_status(self):
-        auxv = gef_get_auxiliary_values()
-        HWCAP_PACA = 1 << 30
-        HWCAP_PACG = 1 << 31
-        if auxv and "AT_HWCAP" in auxv and (auxv["AT_HWCAP"] & (HWCAP_PACA | HWCAP_PACG)) == 0:
-            return None # Unsupported
-        res = gdb.execute("call-syscall prctl 0x3d 0 0 0 0", to_string=True) # PR_PAC_GET_ENABLED_KEYS
-        output_line = res.splitlines()[-1]
-        ret = int(output_line.split()[2], 0)
+def get_pac_status():
+    auxv = gef_get_auxiliary_values()
+    HWCAP_PACA = 1 << 30
+    HWCAP_PACG = 1 << 31
+    if auxv and "AT_HWCAP" in auxv and (auxv["AT_HWCAP"] & (HWCAP_PACA | HWCAP_PACG)) == 0:
+        return None # Unsupported
+    res = gdb.execute("call-syscall prctl 0x3d 0 0 0 0", to_string=True) # PR_PAC_GET_ENABLED_KEYS
+    output_line = res.splitlines()[-1]
+    ret = int(output_line.split()[2], 0)
 
-        pQ = lambda a: struct.pack("<Q", a & 0xffffffffffffffff)
-        uq = lambda a: struct.unpack("<q", a)[0]
-        u2i = lambda a: uq(pQ(a))
-        return u2i(ret)
+    pQ = lambda a: struct.pack("<Q", a & 0xffffffffffffffff)
+    uq = lambda a: struct.unpack("<q", a)[0]
+    u2i = lambda a: uq(pQ(a))
+    return u2i(ret)
 
 
 @functools.lru_cache(maxsize=None)
@@ -17852,18 +17799,18 @@ class ChecksecCommand(GenericCommand):
 
         # CET Status
         if is_x86() and is_alive():
-            r = CetStatus().get_cet_status()
+            r = get_cet_status()
             if r is None:
                 msg = Color.colorify("Disabled", "bold red") + " (kernel does not support)"
                 gef_print("{:<40s}: {:s}".format("Intel CET IBT", msg))
                 gef_print("{:<40s}: {:s}".format("Intel CET SHSTK", msg))
             else:
-                if r["data"][0] & 0b01:
+                if r & 0b01:
                     gef_print("{:<40s}: {:s}".format("Intel CET IBT", Color.colorify("Enabled", "bold green")))
                 else:
                     msg = Color.colorify("Disabled", "bold red") + " (kernel supports but disabled)"
                     gef_print("{:<40s}: {:s}".format("Intel CET IBT", msg))
-                if r["data"][0] & 0b10:
+                if r & 0b10:
                     gef_print("{:<40s}: {:s}".format("Intel CET SHSTK", Color.colorify("Enabled", "bold green")))
                 else:
                     msg = Color.colorify("Disabled", "bold red") + " (kernel supports but disabled)"
@@ -17878,7 +17825,7 @@ class ChecksecCommand(GenericCommand):
 
         # PAC status
         if is_alive() and is_arm64():
-            r = PacStatus().get_pac_status()
+            r = get_pac_status()
             if r is None:
                 msg = Color.colorify("Disabled", "bold red") + " (kernel does not support PAC)"
                 gef_print("{:<40s}: {:s}".format("PAC", msg))
@@ -17906,7 +17853,7 @@ class ChecksecCommand(GenericCommand):
 
         # MTE status
         if is_alive() and is_arm64():
-            r = MteStatus().get_mte_status()
+            r = get_mte_status()
             if r is None:
                 msg = Color.colorify("Disabled", "bold red") + " (kernel does not support MTE)"
                 gef_print("{:<40s}: {:s}".format("MTE", msg))
