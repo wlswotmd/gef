@@ -38125,38 +38125,6 @@ class MmxSetCommand(GenericCommand):
 
     _example_ = "{:s} $mm0=0x1122334455667788".format(_cmdline_)
 
-    def get_state(self, code_len):
-        d = {}
-        d["pc"] = get_register("$pc")
-        d["code"] = read_memory(d["pc"], code_len)
-        if is_x86_64():
-            d["rax"] = get_register("$rax")
-        else:
-            d["eax"] = get_register("$eax")
-        return d
-
-    def revert_state(self, d):
-        write_memory(d["pc"], d["code"])
-        gdb.execute("set $pc = {:#x}".format(d["pc"]), to_string=True)
-        if is_x86_64():
-            gdb.execute("set $rax = {:#x}".format(d["rax"]), to_string=True)
-        else:
-            gdb.execute("set $eax = {:#x}".format(d["eax"]), to_string=True)
-        return
-
-    def close_stdout(self):
-        self.stdout = 1
-        self.stdout_bak = os.dup(self.stdout)
-        f = open("/dev/null")
-        os.dup2(f.fileno(), self.stdout)
-        f.close()
-        return
-
-    def revert_stdout(self):
-        os.dup2(self.stdout_bak, self.stdout)
-        os.close(self.stdout_bak)
-        return
-
     def execute_movq_mm(self, value, reg):
         REG_CODE = {
             "$mm0": b"\x0f\x6f\x00", # movq  mm0, qword ptr [rax]
@@ -38168,21 +38136,14 @@ class MmxSetCommand(GenericCommand):
             "$mm6": b"\x0f\x6f\x30", # movq  mm6, qword ptr [rax]
             "$mm7": b"\x0f\x6f\x38", # movq  mm7, qword ptr [rax]
         }
-        code = current_arch.infloop_insn + REG_CODE[reg] + p64(value) # inf-loop (to stop another thread); movq mm0, [rax]; db value
-        gef_on_stop_unhook(hook_stop_handler)
-        d = self.get_state(len(code))
-        write_memory(d["pc"], code)
+        codes = [REG_CODE[reg] + p64(value)] # movq mm0, [rax]; db value
+
         if is_x86_64():
-            ax = "rax"
+            regs = {"$rax": current_arch.pc + 5} # points to value
         else:
-            ax = "eax"
-        gdb.execute("set ${:s} = {:#x}".format(ax, d["pc"] + 5), to_string=True) # points to p64(value)
-        gdb.execute("set $pc = {:#x}".format(d["pc"] + 2), to_string=True) # skip "\xeb\xfe"
-        self.close_stdout()
-        gdb.execute("stepi", to_string=True)
-        self.revert_stdout()
-        self.revert_state(d)
-        gef_on_stop_hook(hook_stop_handler)
+            regs = {"$eax": current_arch.pc + 5} # points to value
+
+        ExecAsm(codes, regs=regs).exec_code()
         return
 
     @parse_args
