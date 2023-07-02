@@ -12771,6 +12771,10 @@ class HijackFdCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("old_fd", metavar="OLD_FD", type=int, help="file descriptor number you want to redirect.")
     parser.add_argument("new_output", metavar="NEW_OUTPUT", type=str, help="the location redirected data is stored.")
+    parser.add_argument("--fd-adjust-connect", type=int, default=0,
+                        help="use when the return value of the syscall and the actually opened FD do not match when under qemu-user etc.")
+    parser.add_argument("--fd-adjust-dup3", type=int, default=0,
+                        help="use when the return value of the syscall and the actually opened FD do not match when under qemu-user etc.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} 2 /tmp/stderr_output.txt\n".format(_cmdline_)
@@ -12783,13 +12787,10 @@ class HijackFdCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        self.fd_adjust_connect = 0
-        self.fd_adjust_dup3 = 0
-        # On certain architectures on qemu fd is slightly off.
-        if is_qemu_usermode():
-            if is_x86_32():
-                self.fd_adjust_connect = 80
-                self.fd_adjust_dup3 = 80
+        # In one version of qemu the fd was sometimes slightly off in case of i386 (fd returned by syscall == real opened fd + 80).
+        # I've been hard-coding it so far, but it seems to be fixed, so please specify it with a command argument.
+        self.fd_adjust_connect = args.fd_adjust_connect
+        self.fd_adjust_dup3 = args.fd_adjust_dup3
 
         self.AF_INET = 2
         self.SOCK_STREAM = 1
@@ -12823,7 +12824,7 @@ class HijackFdCommand(GenericCommand):
         return
 
     def call_syscall(self, syscall_name, args):
-        args = " ".join(["{:#x}".format(x) for x in args])
+        args = " ".join([hex(x) if x >= 0 else str(x) for x in args])
         cmd = "call-syscall {:s} {}".format(syscall_name, args)
         info(cmd)
         res = gdb.execute(cmd, to_string=True)
@@ -12875,8 +12876,8 @@ class HijackFdCommand(GenericCommand):
             err("Failed to read stack")
             return None, None
 
-        info("original contents: {}".format(original_contents))
-        info("overwrite data: {}".format(data))
+        info("Original contents: {}".format(original_contents))
+        info("Overwrite data: {}".format(data))
 
         # overwrite it
         try:
