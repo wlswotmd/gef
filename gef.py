@@ -13881,157 +13881,6 @@ class CallSyscallCommand(GenericCommand):
 
     _example_ = '{:s} write 1 "*(void**)($rsp+0x18)" 15'.format(_cmdline_)
 
-    def get_state(self, code_len):
-        d = {}
-
-        # pc
-        # This value is used to point to the code location. It is not used to restore registers.
-        d["pc"] = current_arch.pc
-        if is_arm32() and current_arch.is_thumb() and d["pc"] & 1:
-            d["pc"] -= 1
-
-        # code
-        d["code"] = read_memory(d["pc"], code_len)
-
-        # reg
-        d["reg"] = {}
-        for reg in current_arch.all_registers:
-            d["reg"][reg] = get_register(reg)
-
-        # mem
-        if is_mips32():
-            d["mem"] = {}
-            for offset in [0x10, 0x14, 0x18, 0x1c]:
-                d["mem"][offset] = read_memory(current_arch.sp + offset, 4)
-        if is_cris():
-            d["mem"] = {}
-            for offset in [0x1c]:
-                d["mem"][offset] = read_memory(current_arch.sp + offset, 4)
-        return d
-
-    def revert_state(self, d):
-        # code
-        write_memory(d["pc"], d["code"])
-
-        # reg
-        for reg, v in d["reg"].items():
-            if get_register(reg) == v:
-                continue
-            if is_sh4() and reg in ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7"]:
-                reg = reg + "b0" # since r0-r7 cannot be changed directly, use bank 0
-            try:
-                gdb.execute("set {:s} = {:#x}".format(reg, v), to_string=True)
-            except Exception:
-                info("set {:s} = {:#x} is failed".format(reg, v))
-                pass
-
-        # mem
-        if is_mips32():
-            for offset in [0x10, 0x14, 0x18, 0x1c]:
-                if read_memory(current_arch.sp + offset, 4) == d["mem"][offset]:
-                    continue
-                write_memory(current_arch.sp + offset, d["mem"][offset])
-        if is_cris():
-            for offset in [0x1c]:
-                if read_memory(current_arch.sp + offset, 4) == d["mem"][offset]:
-                    continue
-                write_memory(current_arch.sp + offset, d["mem"][offset])
-        return
-
-    def close_stdout(self):
-        self.stdout = 1
-        self.stdout_bak = os.dup(self.stdout)
-        f = open("/dev/null")
-        os.dup2(f.fileno(), self.stdout)
-        f.close()
-        return
-
-    def revert_stdout(self):
-        os.dup2(self.stdout_bak, self.stdout)
-        os.close(self.stdout_bak)
-        return
-
-    def syscall_execute(self, nr, syscall_args):
-        if is_big_endian():
-            code = current_arch.infloop_insn[::-1] # to stop another thread
-            if current_arch.has_delay_slot:
-                code += current_arch.nop_insn[::-1]
-            code += current_arch.syscall_insn[::-1]
-            if is_s390x() and nr <= 127:
-                code = code[:-1] + bytes([nr])
-            if current_arch.has_syscall_delay_slot:
-                code += current_arch.nop_insn[::-1]
-        else:
-            code = current_arch.infloop_insn # to stop another thread
-            if current_arch.has_delay_slot:
-                code += current_arch.nop_insn
-            code += current_arch.syscall_insn
-            if current_arch.has_syscall_delay_slot:
-                code += current_arch.nop_insn
-
-        # backup
-        gef_on_stop_unhook(hook_stop_handler)
-        d = self.get_state(len(code))
-
-        # modify syscall args
-        if is_mips32():
-            syscall_parameters = current_arch.syscall_parameters_o32
-        else:
-            syscall_parameters = current_arch.syscall_parameters
-        for reg, val in zip(syscall_parameters, syscall_args):
-            if is_mips32() and "+" in reg:
-                reg, off = reg.split("+")
-                write_memory(get_register(reg) + int(off, 16), p32(val))
-            else:
-                if is_sh4() and reg in ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7"]:
-                    reg = reg + "b0" # since r0-r7 cannot be changed directly, use bank 0
-                gdb.execute("set {:s} = {:#x}".format(reg, val), to_string=True)
-
-        # modify syscall register
-        if is_s390x():
-            if nr > 127: # embedded in instruction
-                reg = current_arch.syscall_register[1]
-                gdb.execute("set {:s} = {:#x}".format(reg, nr), to_string=True)
-        else:
-            reg = current_arch.syscall_register
-            if is_sh4() and reg in ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7"]:
-                reg = reg + "b0" # since r0-r7 cannot be changed directly, use bank 0
-            gdb.execute("set {:s} = {:#x}".format(reg, nr), to_string=True)
-
-        # modify code
-        write_memory(d["pc"], code)
-
-        # skip infloop
-        dst = d["pc"] + len(current_arch.infloop_insn)
-        if current_arch.has_delay_slot:
-            dst += len(current_arch.nop_insn)
-
-        if is_hppa32() or is_hppa64():
-            gdb.execute("set $pcoqh = {:#x}".format(dst), to_string=True)
-            dst2 = dst + len(current_arch.syscall_insn)
-            gdb.execute("set $pcoqt = {:#x}".format(dst2), to_string=True)
-        elif is_sparc32() or is_sparc64():
-            gdb.execute("set $pc = {:#x}".format(dst), to_string=True)
-            dst2 = dst + len(current_arch.syscall_insn)
-            gdb.execute("set $npc = {:#x}".format(dst2), to_string=True)
-        else:
-            gdb.execute("set $pc = {:#x}".format(dst), to_string=True)
-
-        # exec
-        self.close_stdout()
-        if is_hppa32() or is_hppa64():
-            step = 3 # syscall, delay slot, trampoline
-        else:
-            step = 1
-        gdb.execute("stepi {:d}".format(step), to_string=True)
-        ret = get_register(current_arch.return_register)
-
-        # revert
-        self.revert_stdout()
-        self.revert_state(d)
-        gef_on_stop_hook(hook_stop_handler)
-        return ret
-
     @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
@@ -14069,8 +13918,8 @@ class CallSyscallCommand(GenericCommand):
 
         title = "{:s}({:s})".format(syscall_name, ", ".join(["{:#x}".format(x) for x in syscall_args]))
         gef_print(titlify(title))
-        ret = self.syscall_execute(nr, syscall_args)
-        gef_print("{:s} = {:#x}".format(current_arch.return_register, ret))
+        ret = ExecSyscall(nr, syscall_args).exec_code()
+        gef_print("{:s} = {:#x}".format(current_arch.return_register, ret["reg"][current_arch.return_register]))
         return
 
 
@@ -45535,6 +45384,233 @@ class SyscallTableViewCommand(GenericCommand):
         return
 
 
+class ExecAsm:
+    """Execute embeded asm. ex: ExecAsm(asm_op_list).exec_code()"""
+    def __init__(self, _codes, debug=False):
+        self.stdout = 1
+        self.debug = debug
+
+        codes = []
+
+        # to stop another thread
+        codes += [current_arch.infloop_insn]
+        if current_arch.has_delay_slot:
+            codes += [current_arch.nop_insn]
+        codes += _codes
+
+        # list to bytes
+        if is_big_endian():
+            self.code = b"".join(code[::-1] for code in codes)
+        else:
+            self.code = b"".join(codes)
+        return
+
+    def get_state(self):
+        d = {}
+
+        # pc
+        # This value is used to point to the code location. It is not used to restore registers.
+        d["pc"] = current_arch.pc
+        if is_arm32():
+            if current_arch.is_thumb():
+                d["pc"] -= 1
+
+        # code
+        d["code"] = read_memory(d["pc"], len(self.code))
+
+        # reg
+        d["reg"] = {}
+        for reg in current_arch.all_registers:
+            d["reg"][reg] = get_register(reg)
+        return d
+
+    def revert_state(self, d):
+        # code
+        write_memory(d["pc"], d["code"])
+
+        # reg
+        for reg, v in d["reg"].items():
+            if get_register(reg) == v:
+                continue
+            if is_sh4() and reg in ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7"]:
+                reg = reg + "b0" # since r0-r7 cannot be changed directly, use bank 0
+            try:
+                gdb.execute("set {:s} = {:#x}".format(reg, v), to_string=True)
+            except Exception:
+                info("set {:s} = {:#x} is failed".format(reg, v))
+                pass
+        return
+
+    def close_stdout(self):
+        if self.debug:
+            return
+        self.stdout_bak = os.dup(self.stdout)
+        f = open("/dev/null")
+        os.dup2(f.fileno(), self.stdout)
+        f.close()
+        gef_on_stop_unhook(hook_stop_handler)
+        return
+
+    def revert_stdout(self):
+        if self.debug:
+           return
+        gef_on_stop_hook(hook_stop_handler)
+        os.dup2(self.stdout_bak, self.stdout)
+        os.close(self.stdout_bak)
+        return
+
+    def exec_code(self):
+        # backup
+        d = self.get_state()
+
+        # modify code
+        write_memory(d["pc"], self.code)
+
+        # skip infloop
+        dst = d["pc"] + len(current_arch.infloop_insn)
+        gdb.execute("set $pc = {:#x}".format(dst), to_string=True)
+
+        # exec
+        self.close_stdout()
+        gdb.execute("stepi", to_string=True)
+        self.revert_stdout()
+
+        # get result
+        ret = self.get_state()
+
+        # revert
+        self.revert_state(d)
+        return ret
+
+
+class ExecSyscall(ExecAsm):
+    """Execute embeded asm for syscall. ex: ExecSyscall(nr, args).exec_code()."""
+    def __init__(self, nr, args, debug=False):
+        self.stdout = 1
+        self.debug = debug
+        self.syscall_nr = nr
+        self.syscall_args = args
+
+        codes = []
+
+        # to stop another thread
+        codes += [current_arch.infloop_insn]
+        if current_arch.has_delay_slot:
+            codes += [current_arch.nop_insn]
+
+        # syscall opcodes
+        syscall_insn = current_arch.syscall_insn
+        if is_s390x() and nr <= 127:
+            syscall_insn = syscall_insn[:-1] + bytes([nr])
+
+        codes += [syscall_insn]
+        if current_arch.has_syscall_delay_slot:
+            codes += [current_arch.nop_insn]
+
+        # list to bytes
+        if is_big_endian():
+            self.code = b"".join(code[::-1] for code in codes)
+        else:
+            self.code = b"".join(codes)
+        return
+
+    def get_state(self):
+        d = super().get_state()
+
+        # mem
+        if is_mips32():
+            d["mem"] = {}
+            for offset in [0x10, 0x14, 0x18, 0x1c]:
+                d["mem"][offset] = read_memory(current_arch.sp + offset, 4)
+        if is_cris():
+            d["mem"] = {}
+            for offset in [0x1c]:
+                d["mem"][offset] = read_memory(current_arch.sp + offset, 4)
+        return d
+
+    def revert_state(self, d):
+        super().revert_state(d)
+
+        # mem
+        if is_mips32():
+            for offset in [0x10, 0x14, 0x18, 0x1c]:
+                if read_memory(current_arch.sp + offset, 4) == d["mem"][offset]:
+                    continue
+                write_memory(current_arch.sp + offset, d["mem"][offset])
+        if is_cris():
+            for offset in [0x1c]:
+                if read_memory(current_arch.sp + offset, 4) == d["mem"][offset]:
+                    continue
+                write_memory(current_arch.sp + offset, d["mem"][offset])
+        return
+
+    def modify_regs(self):
+        # modify syscall args
+        if is_mips32():
+            syscall_parameters = current_arch.syscall_parameters_o32
+        else:
+            syscall_parameters = current_arch.syscall_parameters
+        for reg, val in zip(syscall_parameters, self.syscall_args):
+            if is_mips32() and "+" in reg:
+                reg, off = reg.split("+")
+                write_memory(get_register(reg) + int(off, 16), p32(val))
+            else:
+                if is_sh4() and reg in ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7"]:
+                    reg = reg + "b0" # since r0-r7 cannot be changed directly, use bank 0
+                gdb.execute("set {:s} = {:#x}".format(reg, val), to_string=True)
+
+        # modify syscall register
+        if is_s390x():
+            if self.syscall_nr > 127: # embedded in instruction
+                reg = current_arch.syscall_register[1]
+                gdb.execute("set {:s} = {:#x}".format(reg, self.syscall_nr), to_string=True)
+        else:
+            reg = current_arch.syscall_register
+            if is_sh4() and reg in ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7"]:
+                reg = reg + "b0" # since r0-r7 cannot be changed directly, use bank 0
+            gdb.execute("set {:s} = {:#x}".format(reg, self.syscall_nr), to_string=True)
+        return
+
+    def exec_code(self):
+        # backup
+        d = self.get_state()
+
+        # modify code, regs
+        self.modify_regs()
+        write_memory(d["pc"], self.code)
+
+        # skip infloop
+        dst = d["pc"] + len(current_arch.infloop_insn)
+        if current_arch.has_delay_slot:
+            dst += len(current_arch.nop_insn)
+        if is_hppa32() or is_hppa64():
+            gdb.execute("set $pcoqh = {:#x}".format(dst), to_string=True)
+            dst2 = dst + len(current_arch.syscall_insn)
+            gdb.execute("set $pcoqt = {:#x}".format(dst2), to_string=True)
+        elif is_sparc32() or is_sparc64():
+            gdb.execute("set $pc = {:#x}".format(dst), to_string=True)
+            dst2 = dst + len(current_arch.syscall_insn)
+            gdb.execute("set $npc = {:#x}".format(dst2), to_string=True)
+        else:
+            gdb.execute("set $pc = {:#x}".format(dst), to_string=True)
+
+        # exec
+        self.close_stdout()
+        if is_hppa32() or is_hppa64():
+            step = 3 # syscall, delay slot, trampoline
+        else:
+            step = 1
+        gdb.execute("stepi {:d}".format(step), to_string=True)
+        self.revert_stdout()
+
+        # get result
+        ret = self.get_state()
+
+        # revert
+        self.revert_state(d)
+        return ret
+
+
 @register_command
 class TlsCommand(GenericCommand):
     """Show TLS base address."""
@@ -45657,82 +45733,12 @@ class TlsCommand(GenericCommand):
 
     @staticmethod
     def get_arm_tls():
-
-        def get_state(code_len):
-            d = {}
-            d["pc"] = current_arch.pc
-            if current_arch.is_thumb() and d["pc"] & 1:
-                d["pc"] -= 1
-            d["code"] = read_memory(d["pc"], code_len)
-            d["reg"] = {}
-            for reg in current_arch.all_registers:
-                d["reg"][reg] = get_register(reg)
-            return d
-
-        def revert_state(d):
-            write_memory(d["pc"], d["code"])
-            for reg, v in d["reg"].items():
-                if get_register(reg) == v:
-                    continue
-                try:
-                    gdb.execute("set {:s} = {:#x}".format(reg, v), to_string=True)
-                except Exception:
-                    info("set {:s} = {:#x} is failed".format(reg, v))
-                    pass
-            return
-
-        stdout = 1
-        stdout_bak = None
-
-        def close_stdout():
-            nonlocal stdout, stdout_bak
-            stdout = 1
-            stdout_bak = os.dup(stdout)
-            f = open("/dev/null")
-            os.dup2(f.fileno(), stdout)
-            f.close()
-            return
-
-        def revert_stdout():
-            nonlocal stdout, stdout_bak
-            os.dup2(stdout_bak, stdout)
-            os.close(stdout_bak)
-            return
-
-        if is_big_endian():
-            code = current_arch.infloop_insn[::-1] # to stop another thread
-            if current_arch.is_thunb():
-                code += b"\x2f\x70\xee\x1d" # mrc 15, 0, r2, cr13, cr0, {3}
-            else:
-                code += b"\xee\x1d\x2f\x70" # mrc 15, 0, r2, cr13, cr0, {3}
+        if current_arch.is_thumb():
+            codes = [b"\x1d\xee", b"\x70\x2f"] # mrc p15, #0, r2, c13, c0, #3
         else:
-            code = current_arch.infloop_insn # to stop another thread
-            if current_arch.is_thumb():
-                code += b"\x1d\xee\x70\x2f" # mrc 15, 0, r2, cr13, cr0, {3}
-            else:
-                code += b"\x70\x2f\x1d\xee" # mrc 15, 0, r2, cr13, cr0, {3}
-
-        # backup
-        gef_on_stop_unhook(hook_stop_handler)
-        d = get_state(len(code))
-
-        # modify code
-        write_memory(d["pc"], code)
-
-        # skip infloop
-        dst = d["pc"] + len(current_arch.infloop_insn)
-        gdb.execute("set $pc = {:#x}".format(dst), to_string=True)
-
-        # exec
-        close_stdout()
-        gdb.execute("stepi", to_string=True)
-        ret = get_register("$r2")
-
-        # revert
-        revert_stdout()
-        revert_state(d)
-        gef_on_stop_hook(hook_stop_handler)
-        return ret
+            codes = [b"\x70\x2f\x1d\xee"] # mrc p15, #0, r2, c13, c0, #3
+        ret = ExecAsm(codes).exec_code()
+        return ret["reg"]["$r2"]
 
     @staticmethod
     def get_tls():
