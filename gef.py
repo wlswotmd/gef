@@ -3442,14 +3442,17 @@ def get_cet_status():
     res = gdb.execute("call-syscall arch_prctl 0x3001 {:#x}".format(sp), to_string=True) # ARCH_CET_STATUS
     output_line = res.splitlines()[-1]
     ret = int(output_line.split()[2], 0)
-    if ret != 0:
-        return None
-    ret = read_int_from_memory(sp)
+
+    sp_value = read_int_from_memory(sp)
 
     # revert
     for addr, data in mem.items():
         write_memory(addr, data)
-    return ret
+
+    # check ret
+    if ret != 0:
+        return None
+    return sp_value
 
 
 def get_mte_status():
@@ -3747,6 +3750,10 @@ class Architecture:
         pass
 
     @abc.abstractproperty
+    def tls_supported(self):
+        pass
+
+    @abc.abstractproperty
     def nop_insn(self):
         pass
 
@@ -3909,6 +3916,7 @@ class RISCV(Architecture):
     has_delay_slot = False
     has_syscall_delay_slot = False
     has_ret_delay_slot = False
+    tls_supported = True
 
     keystone_support = False
     capstone_support = True
@@ -4215,6 +4223,7 @@ class ARM(Architecture):
     has_delay_slot = False
     has_syscall_delay_slot = False
     has_ret_delay_slot = False
+    tls_supported = True
 
     keystone_support = True
     capstone_support = True
@@ -4603,6 +4612,7 @@ class X86(Architecture):
     has_delay_slot = False
     has_syscall_delay_slot = False
     has_ret_delay_slot = False
+    tls_supported = True
 
     keystone_support = True
     capstone_support = True
@@ -4791,7 +4801,9 @@ class PPC(Architecture):
         "$r24", "$r25", "$r26", "$r27", "$r28", "$r29", "$r30", "$r31",
         "$pc", "$msr", "$cr", "$lr", "$ctr", "$xer", "$fpscr",
     ]
-    alias_registers = {"$r1": "$sp"}
+    alias_registers = {
+        "$r1": "$sp", "$r2": "$tp",
+    }
     flag_register = "$cr"
     flags_table = {
         3: "negative[0]",
@@ -4813,6 +4825,7 @@ class PPC(Architecture):
     has_delay_slot = False
     has_syscall_delay_slot = False
     has_ret_delay_slot = False
+    tls_supported = True
 
     keystone_support = True
     capstone_support = True
@@ -4986,6 +4999,9 @@ class PPC64(PPC):
         "$r24", "$r25", "$r26", "$r27", "$r28", "$r29", "$r30", "$r31",
         "$pc", "$msr", "$cr", "$lr", "$ctr", "$xer", "$fpscr", "$vscr", "$vrsave",
     ]
+    alias_registers = {
+        "$r1": "$sp", "$r13": "$tp",
+    }
     syscall_parameters = ["$r3", "$r4", "$r5", "$r6", "$r7", "$r8"]
 
     unicorn_support = False
@@ -5045,7 +5061,7 @@ class SPARC(Architecture):
         "$y", "$psr", "$wim", "$tbr", "$pc", "$npc", "$fsr", "$csr",
     ]
     alias_registers = {
-        "$sp": "$o6", "$fp": "$i6",
+        "$g0": "$zero", "$g7": "$tp", "$sp": "$o6", "$fp": "$i6",
     }
     flag_register = "$psr"
     flags_table = {
@@ -5065,6 +5081,7 @@ class SPARC(Architecture):
     has_delay_slot = True
     has_syscall_delay_slot = True
     has_ret_delay_slot = True
+    tls_supported = True
 
     keystone_support = True
     capstone_support = True
@@ -5177,7 +5194,7 @@ class SPARC(Architecture):
         ra = None
         try:
             if self.is_ret(insn):
-                ra = get_register("$o7")
+                ra = get_register("$o7") + self.instruction_length * 2 # call, delay-slot
             elif frame.older():
                 ra = frame.older().pc()
         except Exception:
@@ -5214,9 +5231,6 @@ class SPARC64(SPARC):
         "$pc", "$npc", "$state", "$fsr", "$fprs", "$y", "$cwp",
         "$pstate", "$asi", "$ccr",
     ]
-    alias_registers = {
-        "$sp": "$o6", "$fp": "$i6",
-    }
     flag_register = "$state" # sparcv9.pdf, 5.1.5.1 (ccr)
     flags_table = {
         35: "negative",
@@ -5306,6 +5320,7 @@ class MIPS(Architecture):
     has_delay_slot = True
     has_syscall_delay_slot = True
     has_ret_delay_slot = True
+    tls_supported = True
 
     keystone_support = True
     capstone_support = True
@@ -5541,6 +5556,7 @@ class S390X(Architecture):
     has_delay_slot = False
     has_syscall_delay_slot = True
     has_ret_delay_slot = False
+    tls_supported = True
 
     keystone_support = True
     capstone_support = True
@@ -5893,6 +5909,7 @@ class SH4(Architecture):
     has_delay_slot = True
     has_syscall_delay_slot = True
     has_ret_delay_slot = True
+    tls_supported = False # no TLS, use stack
 
     keystone_support = False
     capstone_support = False
@@ -6070,8 +6087,9 @@ class M68K(Architecture):
 
     instruction_length = None # variable length
     has_delay_slot = False
-    has_syscall_delay_slot = False
+    has_syscall_delay_slot = True
     has_ret_delay_slot = False
+    tls_supported = True
 
     keystone_support = False
     capstone_support = True
@@ -6305,6 +6323,7 @@ class ALPHA(Architecture):
     has_delay_slot = False
     has_syscall_delay_slot = False
     has_ret_delay_slot = False
+    tls_supported = True
 
     keystone_support = False
     capstone_support = False
@@ -6475,6 +6494,7 @@ class HPPA(Architecture):
     has_delay_slot = True
     has_syscall_delay_slot = True
     has_ret_delay_slot = True
+    tls_supported = True
 
     keystone_support = False
     capstone_support = False
@@ -6857,6 +6877,7 @@ class OR1K(Architecture):
     has_delay_slot = True
     has_syscall_delay_slot = True
     has_ret_delay_slot = True
+    tls_supported = True
 
     keystone_support = False
     capstone_support = False
@@ -6974,6 +6995,7 @@ class NIOS2(Architecture):
     has_delay_slot = False
     has_syscall_delay_slot = False
     has_ret_delay_slot = False
+    tls_supported = True
 
     keystone_support = False
     capstone_support = False
@@ -7104,6 +7126,7 @@ class MICROBLAZE(Architecture):
     has_delay_slot = True
     has_syscall_delay_slot = True
     has_ret_delay_slot = True
+    tls_supported = True
 
     keystone_support = False
     capstone_support = False
@@ -7235,7 +7258,8 @@ class XTENSA(Architecture):
     all_registers = [
         "$a0", "$a1", "$a2", "$a3", "$a4", "$a5", "$a6", "$a7",
         "$a8", "$a9", "$a10", "$a11", "$a12", "$a13", "$a14", "$a15",
-        "$pc", "$sar", "ps",
+        "$pc", "$lbeg", "$lend", "$lcount", "$sar", "$litbase", "$ps", "$threadptr",
+        "$scompare1", "$acclo", "$acchi", "$expstate",
     ]
     alias_registers = {
         "$a0": "$lr", "$a1": "$sp",
@@ -7250,6 +7274,7 @@ class XTENSA(Architecture):
     has_delay_slot = False
     has_syscall_delay_slot = False
     has_ret_delay_slot = False
+    tls_supported = True
 
     keystone_support = False
     capstone_support = False
@@ -7499,6 +7524,7 @@ class CRIS(Architecture):
     has_delay_slot = True
     has_syscall_delay_slot = True
     has_ret_delay_slot = True
+    tls_supported = False
 
     keystone_support = False
     capstone_support = False
@@ -7660,6 +7686,7 @@ class LOONGARCH64(Architecture):
     has_delay_slot = False
     has_syscall_delay_slot = False
     has_ret_delay_slot = False
+    tls_supported = True
 
     keystone_support = False
     capstone_support = False
@@ -7834,6 +7861,7 @@ class LOONGARCH64(Architecture):
 #    #has_delay_slot = False
 #    #has_syscall_delay_slot = False
 #    #has_ret_delay_slot = False
+#    #tls_supported = False
 #
 #    #keystone_support = False
 #    #capstone_support = False
@@ -13322,11 +13350,11 @@ class PtrDemangleCommand(GenericCommand):
     @staticmethod
     def get_cookie():
         if is_x86_64():
-            tls = TlsCommand.getfs()
+            tls = TlsCommand.get_tls()
             cookie = read_int_from_memory(tls + 0x30)
             return cookie
         elif is_x86_32():
-            tls = TlsCommand.getgs()
+            tls = TlsCommand.get_tls()
             cookie = read_int_from_memory(tls + 0x18)
             return cookie
         elif is_arm32() or is_arm64():
@@ -15040,8 +15068,8 @@ class UnicornEmulateCommand(GenericCommand):
         if is_x86():
             content += "\n"
             content += "\n"
-            content += "    set_fs(emu, {:#x})\n".format(TlsCommand.getfs() if is_x86_64() else 0)
-            content += "    set_gs(emu, {:#x})\n".format(TlsCommand.getgs() if is_x86_32() else 0)
+            content += "    set_fs(emu, {:#x})\n".format(TlsCommand.getfs())
+            content += "    set_gs(emu, {:#x})\n".format(TlsCommand.getgs())
 
         if kwargs["verbose"]:
             info("Duplicating registers")
@@ -17131,6 +17159,7 @@ class ArchInfoCommand(GenericCommand):
         gef_print("{:30s} {:s} {!s}".format("Has a call/jump delay slot", RIGHT_ARROW, current_arch.has_delay_slot))
         gef_print("{:30s} {:s} {!s}".format("Has a syscall delay slot", RIGHT_ARROW, current_arch.has_syscall_delay_slot))
         gef_print("{:30s} {:s} {!s}".format("Has a ret delay slot", RIGHT_ARROW, current_arch.has_ret_delay_slot))
+        gef_print("{:30s} {:s} {!s}".format("TLS support", RIGHT_ARROW, current_arch.tls_supported))
         gef_print("{:30s} {:s} {!s}".format("keystone support", RIGHT_ARROW, current_arch.keystone_support))
         gef_print("{:30s} {:s} {!s}".format("capstone support", RIGHT_ARROW, current_arch.capstone_support))
         gef_print("{:30s} {:s} {!s}".format("unicorn support", RIGHT_ARROW, current_arch.unicorn_support))
@@ -24744,39 +24773,15 @@ class DestructorDumpCommand(GenericCommand):
         self.dont_repeat()
 
         # init
-        if is_x86_64():
-            try:
-                self.tls = TlsCommand.getfs()
-                self.cookie = read_int_from_memory(self.tls + 0x30)
-            except gdb.MemoryError:
-                err("Not found tls")
-                return
-        elif is_x86_32():
-            try:
-                self.tls = TlsCommand.getgs()
-                self.cookie = read_int_from_memory(self.tls + 0x18)
-            except gdb.MemoryError:
-                err("Not found tls")
-                return
-        elif is_arm32() or is_arm64():
-            if is_arm32():
-                try:
-                    self.tls = parse_address("(unsigned int)__aeabi_read_tp()")
-                except Exception:
-                    err("Not found symbol (__aeabi_read_tp)")
-                    return
-            else:
-                try:
-                    self.tls = get_register("$TPIDR_EL0")
-                except Exception:
-                    err("Fail reading $TPIDR_EL0 register")
-                    return
-            try:
-                cookie_ptr = parse_address("&__pointer_chk_guard_local")
-            except Exception:
-                err("Not found symbol (__pointer_chk_guard_local)")
-                return
-            self.cookie = read_int_from_memory(cookie_ptr)
+        self.tls = TlsCommand.get_tls()
+        if not is_valid_addr(self.tls):
+            err("Not found tls")
+            return
+
+        self.cookie = PtrDemangleCommand.get_cookie()
+        if self.cookie is None:
+            err("Not found cookie")
+            return
 
         # dump
         gef_print(titlify("tls_dtor_list: registered by __cxa_thread_atexit_impl()"))
@@ -45413,7 +45418,7 @@ class SyscallTableViewCommand(GenericCommand):
 
 class ExecAsm:
     """Execute embeded asm. ex: ExecAsm(asm_op_list).exec_code()"""
-    def __init__(self, _codes, regs={}, debug=False):
+    def __init__(self, _codes, regs=None, debug=False):
         self.stdout = 1
         self.debug = debug
         self.regs = regs
@@ -45424,6 +45429,7 @@ class ExecAsm:
         codes += [current_arch.infloop_insn]
         if current_arch.has_delay_slot:
             codes += [current_arch.nop_insn]
+
         codes += _codes
 
         # list to bytes
@@ -45460,6 +45466,8 @@ class ExecAsm:
         for reg, v in d["reg"].items():
             if get_register(reg) == v:
                 continue
+            if (is_hppa32() or is_hppa64()) and reg == "$pc":
+                continue
             if is_sh4() and reg in ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7"]:
                 reg = reg + "b0" # since r0-r7 cannot be changed directly, use bank 0
             try:
@@ -45488,6 +45496,8 @@ class ExecAsm:
         return
 
     def modify_regs(self):
+        if not self.regs:
+            return
         for reg, v in self.regs.items():
             if get_register(reg) == v:
                 continue
@@ -45505,14 +45515,37 @@ class ExecAsm:
         # modify code, regs
         self.modify_regs()
         write_memory(d["pc"], self.code)
+        if self.debug:
+            gdb.execute("ctx")
 
         # skip infloop
         dst = d["pc"] + len(current_arch.infloop_insn)
-        gdb.execute("set $pc = {:#x}".format(dst), to_string=True)
+        if current_arch.has_delay_slot:
+            dst += len(current_arch.nop_insn)
+        if is_hppa32() or is_hppa64():
+            gdb.execute("set $pcoqh = {:#x}".format(dst), to_string=True)
+            dst2 = dst + len(current_arch.syscall_insn)
+            gdb.execute("set $pcoqt = {:#x}".format(dst2), to_string=True)
+        elif is_sparc32() or is_sparc64():
+            gdb.execute("set $pc = {:#x}".format(dst), to_string=True)
+            dst2 = dst + len(current_arch.syscall_insn)
+            gdb.execute("set $npc = {:#x}".format(dst2), to_string=True)
+        else:
+            gdb.execute("set $pc = {:#x}".format(dst), to_string=True)
+        if self.debug:
+            gdb.execute("ctx")
 
         # exec
         self.close_stdout()
-        gdb.execute("stepi", to_string=True)
+        if self.debug:
+            gdb.execute("ctx")
+        if is_hppa32() or is_hppa64():
+            step = 3 # syscall, delay slot, trampoline
+        else:
+            step = 1
+        gdb.execute("stepi {:d}".format(step), to_string=True)
+        if self.debug:
+            gdb.execute("ctx")
         self.revert_stdout()
 
         # get result
@@ -45611,45 +45644,6 @@ class ExecSyscall(ExecAsm):
             gdb.execute("set {:s} = {:#x}".format(reg, self.syscall_nr), to_string=True)
         return
 
-    def exec_code(self):
-        # backup
-        d = self.get_state()
-
-        # modify code, regs
-        self.modify_regs()
-        write_memory(d["pc"], self.code)
-
-        # skip infloop
-        dst = d["pc"] + len(current_arch.infloop_insn)
-        if current_arch.has_delay_slot:
-            dst += len(current_arch.nop_insn)
-        if is_hppa32() or is_hppa64():
-            gdb.execute("set $pcoqh = {:#x}".format(dst), to_string=True)
-            dst2 = dst + len(current_arch.syscall_insn)
-            gdb.execute("set $pcoqt = {:#x}".format(dst2), to_string=True)
-        elif is_sparc32() or is_sparc64():
-            gdb.execute("set $pc = {:#x}".format(dst), to_string=True)
-            dst2 = dst + len(current_arch.syscall_insn)
-            gdb.execute("set $npc = {:#x}".format(dst2), to_string=True)
-        else:
-            gdb.execute("set $pc = {:#x}".format(dst), to_string=True)
-
-        # exec
-        self.close_stdout()
-        if is_hppa32() or is_hppa64():
-            step = 3 # syscall, delay slot, trampoline
-        else:
-            step = 1
-        gdb.execute("stepi {:d}".format(step), to_string=True)
-        self.revert_stdout()
-
-        # get result
-        ret = self.get_state()
-
-        # revert
-        self.revert_state(d)
-        return ret
-
 
 @register_command
 class TlsCommand(GenericCommand):
@@ -45661,150 +45655,146 @@ class TlsCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     @staticmethod
-    def get_tls_heuristic():
-        reset_gef_caches(all=True)
-        vmmap = get_process_maps()
-        for m in vmmap[::-1]:
-            if m.path != "<explored>" and m.path.startswith(("/", "[")):
-                continue
-            data = read_memory(m.page_start, m.size)
-            data = slice_unpack(data, current_arch.ptrsize)
-            addr = list(range(m.page_start, m.page_end, current_arch.ptrsize))
-            assert len(data) == len(addr)
-            """
-            x86
-            0x3f7a4040|+0x0000|000: 0x3f7a4040  ->  [loop detected]
-            0x3f7a4044|+0x0004|001: 0x3f7a45b8  ->  0x00000001
-            0x3f7a4048|+0x0008|002: 0x3f7a4040  ->  [loop detected]
-            0x3f7a404c|+0x000c|003: 0x00000000
-            0x3f7a4050|+0x0010|004: 0x3f7e3810  ->  0x8dc380cd
-            0x3f7a4054|+0x0014|005: 0xb5653400  <-  canary
-            0x3f7a4058|+0x0018|006: 0x9dd17d94
-
-            x64
-            0x0000004001a8c0c0|+0x0000|000: 0x0000004001a8c0c0  ->  [loop detected]
-            0x0000004001a8c0c8|+0x0008|001: 0x0000004001a8cad0  ->  0x0000000000000001
-            0x0000004001a8c0d0|+0x0010|002: 0x0000004001a8c0c0  ->  [loop detected]
-            0x0000004001a8c0d8|+0x0018|003: 0x0000000000000000
-            0x0000004001a8c0e0|+0x0020|004: 0x0000000000000000
-            0x0000004001a8c0e8|+0x0028|005: 0xaef406f5ae952a00  <-  canary
-            0x0000004001a8c0f0|+0x0030|006: 0x0dc290ff2805b4c8
-            """
-            for i in range(len(data) - 2):
-                if data[i] != addr[i]:
-                    continue
-                if data[i + 2] != addr[i]:
-                    continue
-
-                canary = gef_read_canary()
-                if canary:
-                    # if canary is found, use it to check
-                    if data[i + 5] != canary[0]:
-                        continue
-                else:
-                    # if canary is not found, maybe not yet initialized
-                    return 0
-                return addr[i]
-        return 0
-
-    @staticmethod
-    def getfs(use_heuristic=True):
-        # fast path
+    @functools.lru_cache(maxsize=None)
+    def getfs():
+        # fastest path
         fs = get_register("$fs_base")
         if fs is not None:
             return fs
 
-        if (get_register("$cs") & 0b11) != 3:
-            # kernel
-            # The values you can get with MSR_FS_BASE are apparently different.
-            return 0
-
-        elif is_remote_debug():
-            # userland remote
-            if is_x86_64() and use_heuristic:
-                return TlsCommand.get_tls_heuristic()
-            else:
-                return 0
+        # fast path
+        if not is_remote_debug():
+            PTRACE_ARCH_PRCTL = 30
+            ARCH_GET_FS = 0x1003
+            pid, lwpid, tid = gdb.selected_thread().ptid
+            ppvoid = ctypes.POINTER(ctypes.c_void_p)
+            value = ppvoid(ctypes.c_void_p())
+            value.contents.value = 0
+            libc = ctypes.CDLL("libc.so.6")
+            ret = libc.ptrace(PTRACE_ARCH_PRCTL, lwpid, value, ARCH_GET_FS)
+            if ret == 0: # success
+                return value.contents.value or 0
 
         # slow path
-        PTRACE_ARCH_PRCTL = 30
-        ARCH_GET_FS = 0x1003
-        pid, lwpid, tid = gdb.selected_thread().ptid
-        ppvoid = ctypes.POINTER(ctypes.c_void_p)
-        value = ppvoid(ctypes.c_void_p())
-        value.contents.value = 0
-        libc = ctypes.CDLL("libc.so.6")
-        result = libc.ptrace(PTRACE_ARCH_PRCTL, lwpid, value, ARCH_GET_FS)
-        if result == 0:
-            return value.contents.value or 0
+        if is_x86_64():
+            codes = [b"\x64\x48\xa1\x00\x00\x00\x00\x00\x00\x00\x00"] # rax, fs:0x0
+            ret = ExecAsm(codes).exec_code()
+            return ret["reg"]["$rax"]
+        elif is_x86_32():
+            codes = [b"\x64\xa1\x00\x00\x00\x00"] # eax, fs:0x0
+            ret = ExecAsm(codes).exec_code()
+            return ret["reg"]["$eax"]
         return 0
 
     @staticmethod
-    def getgs(use_heuristic=True):
-        # fast path
+    @functools.lru_cache(maxsize=None)
+    def getgs():
+        # fastest path
         gs = get_register("$gs_base")
         if gs is not None:
             return gs
 
-        if (get_register("$cs") & 0b11) != 3:
-            # kernel
-            # The values you can get with MSR_GS_BASE are apparently different.
-            return 0
-
-        elif is_remote_debug():
-            # remote
-            if is_x86_32() and use_heuristic:
-                return TlsCommand.get_tls_heuristic()
-            else:
-                return 0
+        # fast path
+        if not is_remote_debug():
+            PTRACE_ARCH_PRCTL = 30
+            ARCH_GET_GS = 0x1004
+            pid, lwpid, tid = gdb.selected_thread().ptid
+            ppvoid = ctypes.POINTER(ctypes.c_void_p)
+            value = ppvoid(ctypes.c_void_p())
+            value.contents.value = 0
+            libc = ctypes.CDLL("libc.so.6")
+            ret = libc.ptrace(PTRACE_ARCH_PRCTL, lwpid, value, ARCH_GET_GS)
+            if ret == 0: # success
+                return value.contents.value or 0
 
         # slow path
-        PTRACE_ARCH_PRCTL = 30
-        ARCH_GET_GS = 0x1004
-        pid, lwpid, tid = gdb.selected_thread().ptid
-        ppvoid = ctypes.POINTER(ctypes.c_void_p)
-        value = ppvoid(ctypes.c_void_p())
-        value.contents.value = 0
-        libc = ctypes.CDLL("libc.so.6")
-        result = libc.ptrace(PTRACE_ARCH_PRCTL, lwpid, value, ARCH_GET_GS)
-        if result == 0:
-            return value.contents.value or 0
+        if is_x86_64():
+            codes = [b"\x65\x48\xa1\x00\x00\x00\x00\x00\x00\x00\x00"] # rax, gs:0x0
+            ret = ExecAsm(codes).exec_code()
+            return ret["reg"]["$rax"]
+        elif is_x86_32():
+            codes = [b"\x65\xa1\x00\x00\x00\x00"] # eax, gs:0x0
+            ret = ExecAsm(codes).exec_code()
+            return ret["reg"]["$eax"]
         return 0
-
-    @staticmethod
-    def get_arm_tls():
-        if current_arch.is_thumb():
-            codes = [b"\x1d\xee", b"\x70\x2f"] # mrc p15, #0, r2, c13, c0, #3
-        else:
-            codes = [b"\x70\x2f\x1d\xee"] # mrc p15, #0, r2, c13, c0, #3
-        ret = ExecAsm(codes).exec_code()
-        return ret["reg"]["$r2"]
 
     @staticmethod
     def get_tls():
         if is_qemu_system() or is_kgdb():
             return None
 
+        def adjust_offset(x):
+            TLS_TCB_OFFSET = 0x7000
+            if x == 0:
+                return x
+            return x - TLS_TCB_OFFSET
+
         if is_x86_64():
-            return TlsCommand.getfs(use_heuristic=True)
+            return TlsCommand.getfs()
         elif is_x86_32():
-            return TlsCommand.getgs(use_heuristic=True)
+            return TlsCommand.getgs()
         elif is_arm64():
             return get_register("$TPIDR_EL0")
         elif is_arm32():
-            return TlsCommand.get_arm_tls()
+            if current_arch.is_thumb():
+                codes = [b"\x1d\xee", b"\x70\x2f"] # mrc p15, #0, r2, c13, c0, #3
+            else:
+                codes = [b"\x70\x2f\x1d\xee"] # mrc p15, #0, r2, c13, c0, #3
+            ret = ExecAsm(codes).exec_code()
+            return ret["reg"]["$r2"]
+        elif is_mips32() or is_mips64():
+            codes = [b"\x3b\xe8\x03\x7c"] # rdhwr v1, $29
+            ret = ExecAsm(codes).exec_code()
+            tls = ret["reg"]["$v1"]
+            return adjust_offset(tls)
         elif is_riscv64() or is_riscv32():
             return get_register("$tp")
-        elif is_loongarch(64):
+        elif is_ppc32():
+            tls = get_register("$r2")
+            return adjust_offset(tls)
+        elif is_ppc64():
+            tls = get_register("$r13")
+            return adjust_offset(tls)
+        elif is_sparc32() or is_sparc64():
+            return get_register("$g7")
+        elif is_s390x():
+            hi = get_register("$acr0")
+            lo = get_register("$acr1")
+            return (hi << 32) | lo
+        elif is_m68k():
+            ret = ExecSyscall(0x14d, []).exec_code() # get_thread_area
+            tls = ret["reg"]["$d0"]
+            return adjust_offset(tls)
+        elif is_alpha():
+            codes = [b"\x9e\x00\x00\x00"] # rduniq
+            ret = ExecAsm(codes).exec_code()
+            return ret["reg"]["$v0"]
+        elif is_hppa32():
+            codes = [b"\xbc\x08\x60\x03"] # mfctl tr3, ret0
+            ret = ExecAsm(codes).exec_code()
+            return ret["reg"]["$ret0"]
+        elif is_or1k():
+            return get_register("$r10")
+        elif is_nios2():
+            tls = get_register("$r23")
+            return adjust_offset(tls)
+        elif is_microblaze():
+            return get_register("$r21")
+        elif is_xtensa():
+            return get_register("$threadptr")
+        elif is_loongarch64():
             return get_register("$r2")
         return None
 
     @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
-    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64", "RISCV32", "RISCV64", "LOONGARCH64"))
     def do_invoke(self, args):
         self.dont_repeat()
+
+        if not current_arch.tls_supported:
+            warn("This command cannot work under this architecture.")
+            return
 
         tls = TlsCommand.get_tls()
         if tls is None:
