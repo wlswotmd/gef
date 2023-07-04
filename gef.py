@@ -21535,7 +21535,10 @@ class ContextCommand(GenericCommand):
                 idx = Color.colorify("#{}".format(level), "bold magenta")
 
             gef_print("[{}] {!s}{:s}".format(idx, lookup_address(pc), sym))
-            current_frame = current_frame.older()
+            try:
+                current_frame = current_frame.older()
+            except gdb.error:
+                break
             level += 1
             nb_backtrace -= 1
 
