@@ -2743,30 +2743,60 @@ class GlibcChunk:
 def get_libc_version():
 
     def get_libc_version_from_path():
+        reset_gef_caches(all=True) # get_process_maps may be caching old information
+
         sections = get_process_maps()
         for section in sections:
             r = re.search(r"libc6?[-_](\d+)\.(\d+)\.so", section.path)
             if r:
                 return tuple(int(x) for x in r.groups())
-            if "libc" in section.path:
-                try:
-                    data = open(section.path, "rb").read()
-                except OSError:
+
+            if "libc" not in section.path:
+                continue
+
+            if is_container_attach():
+                real_libc_path = append_proc_root(section.path)
+                if not os.path.exists(real_libc_path):
                     continue
-                r = re.search(rb"glibc (\d+)\.(\d+)", data)
-                if r:
-                    return tuple(int(x) for x in r.groups())
+                data = open(real_libc_path, "rb").read()
+
+            elif is_remote_debug():
+                if is_qemu_usermode():
+                    data = None
+                    for maps in get_process_maps(outer=True):
+                        if os.path.basename(maps.path) != os.path.basename(section.path):
+                            continue
+                        if maps.size != section.size:
+                            continue
+                        real_libc_path = maps.path
+                        data = open(real_libc_path, "rb").read()
+                        break
+                else:
+                    data = read_remote_file(section.path)
+                if not data:
+                    continue
+            else:
+                if not os.path.exists(section.path):
+                    continue
+                data = open(section.path, "rb").read()
+
+            r = re.search(rb"glibc (\d+)\.(\d+)", data)
+            if r:
+                return tuple(int(x) for x in r.groups())
         return None
 
+    # use cache
     libc_assume_version = get_gef_setting("libc.assume_version")
     if libc_assume_version is not None:
         return libc_assume_version
 
+    # resolve
     libc_version = get_libc_version_from_path()
     if libc_version is None:
         libc_version = (2, 35) # assume Ubuntu 22.04
 
-    set_gef_setting("libc.assume_version", libc_version, tuple, "The value to force get_libc_version to return")
+    # set cache
+    set_gef_setting("libc.assume_version", libc_version, tuple, "The value returned by get_libc_version if libc is not found")
     return libc_version
 
 
