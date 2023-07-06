@@ -20562,7 +20562,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
             info("Found {} section".format(section_name))
 
             dic = {"name": section_name, "offset": s.sh_offset, "data": data}
-            Section = collections.namedtuple(section_name.lstrip("."), dic.keys())
+            Section = collections.namedtuple("Section", dic.keys())
             return Section(*dic.values())
         err("Not found {} section".format(section_name))
         return None
