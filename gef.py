@@ -193,6 +193,7 @@ __cached_kernel_version__       = None
 __cached_kernel_cmdline__       = None
 __cached_context_legend__       = None
 __cached_heap_base__            = None
+__cached_main_arena__           = None
 current_elf                     = None
 current_arch                    = None
 
@@ -1910,142 +1911,6 @@ class Instruction:
         return text
 
 
-@functools.lru_cache(maxsize=None)
-def search_for_main_arena(force_heuristic=False):
-    if not force_heuristic:
-        # plan 1 (directly)
-        try:
-            return parse_address("&main_arena")
-        except gdb.error:
-            pass
-
-    if get_libc_version() < (2, 34):
-        # plan 2 (from __malloc_hook)
-        try:
-            malloc_hook_addr = parse_address("(void *)&__malloc_hook")
-            if is_x86():
-                return align_address_to_size(malloc_hook_addr + current_arch.ptrsize, 0x20)
-            elif is_arm64():
-                return malloc_hook_addr - current_arch.ptrsize * 2 - MallocStateStruct("*0").struct_size
-            elif is_arm32():
-                return malloc_hook_addr - current_arch.ptrsize - MallocStateStruct("*0").struct_size
-        except gdb.error:
-            pass
-
-    if is_x86() or is_arm32() or is_arm64():
-        # plan 3 (from TLS)
-        """
-        [x64]
-        0x7ffff7f986f8|+0x0038|007: 0x0000555555559010  ->  0x0000000000000000
-        0x7ffff7f98700|+0x0040|008: 0x0000000000000000
-        0x7ffff7f98708|+0x0048|009: 0x00007ffff7e19c80 <main_arena>  ->  0x0000000000000000
-        0x7ffff7f98710|+0x0050|010: 0x0000000000000000
-        0x7ffff7f98718|+0x0058|011: 0x0000000000000000
-        0x7ffff7f98720|+0x0060|012: 0x0000000000000000
-        0x7ffff7f98728|+0x0068|013: 0x0000000000000000
-        0x7ffff7f98730|+0x0070|014: 0x0000000000000000
-        0x7ffff7f98738|+0x0078|015: 0x0000000000000000
-        -- TLS --
-        0x7ffff7f98740|+0x0000|000: 0x00007ffff7f98740  ->  [loop detected]
-        0x7ffff7f98748|+0x0008|001: 0x00007ffff7f99160  ->  0x0000000000000001
-        0x7ffff7f98750|+0x0010|002: 0x00007ffff7f98740  ->  [loop detected]
-
-        [x86]
-        0xf7fbf4d0|+0x00d0|052: 0x5655a010  ->  0x00000000
-        0xf7fbf4d4|+0x00d4|053: 0x00000000
-        0xf7fbf4d8|+0x00d8|054: 0xf7e2a7c0 <main_arena>  ->  0x00000000
-        0xf7fbf4dc|+0x00dc|055: 0x00000000
-        0xf7fbf4e0|+0x00e0|056: 0x00000000
-        0xf7fbf4e4|+0x00e4|057: 0x00000000
-        0xf7fbf4e8|+0x00e8|058: 0x00000000
-        0xf7fbf4ec|+0x00ec|059: 0x00000000
-        0xf7fbf4f0|+0x00f0|060: 0x00000000
-        0xf7fbf4f4|+0x00f4|061: 0x00000000
-        0xf7fbf4f8|+0x00f8|062: 0x00000000
-        0xf7fbf4fc|+0x00fc|063: 0x00000000
-        -- TLS --
-        0xf7fbf500|+0x0100|064: 0xf7fbf500  ->  [loop detected]
-        0xf7fbf504|+0x0104|065: 0xf7fbfa88  ->  0x00000001
-        0xf7fbf508|+0x0108|066: 0xf7fbf500  ->  [loop detected]
-
-        [ARM]
-        -- TLS --
-        0x0007d580|+0x0000|000: 0x0007a3c8 <_dl_static_dtv+0x8>  ->  0x00000000
-        0x0007d584|+0x0004|001: 0x00000000
-        0x0007d588|+0x0008|002: 0x00079fa0 <_nl_global_locale>  ->  ...
-        0x0007d58c|+0x000c|003: 0x00079fa0 <_nl_global_locale>  ->  ...
-        0x0007d590|+0x0010|004: 0x00079fa4 <_nl_global_locale+0x4>  ->  ...
-        0x0007d594|+0x0014|005: 0x00079fb0 <_nl_global_locale+0x10>  ->  ...
-        0x0007d598|+0x0018|006: 0x00000000
-        0x0007d59c|+0x001c|007: 0x00079660 <main_arena>  ->  0x00000000
-        0x0007d5a0|+0x0020|008: 0x0007d908  ->  0x00000000
-        0x0007d5a4|+0x0024|009: 0x00000000
-        0x0007d5a8|+0x0028|010: 0x00000000
-
-        [ARM64]
-        0x0000004997c0|+0x0000|000: 0x0000000000493078 <_dl_static_dtv+0x10>  ->  0x0000000000000000
-        0x0000004997c8|+0x0008|001: 0x0000000000000000
-        0x0000004997d0|+0x0010|002: 0x0000000000492838 <_nl_global_locale>  ->  ...
-        0x0000004997d8|+0x0018|003: 0x0000000000492840 <_nl_global_locale+0x8>  ->  ...
-        0x0000004997e0|+0x0020|004: 0x0000000000492838 <_nl_global_locale>  ->  ...
-        0x0000004997e8|+0x0028|005: 0x0000000000492858 <_nl_global_locale+0x20>  ->  ...
-        0x0000004997f0|+0x0030|006: 0x0000000000000000
-        0x0000004997f8|+0x0038|007: 0x0000000000491678 <main_arena>  ->  0x0000000000000000
-        0x000000499800|+0x0040|008: 0x0000000000499b90  ->  0x0000000000000000
-        0x000000499808|+0x0048|009: 0x0000000000000000
-        0x000000499810|+0x0050|010: 0x0000000000000000
-        0x000000499818|+0x0058|011: 0x000000000045e780 <_nl_C_LC_CTYPE_class+0x100>  ->  0x0002000200020002
-        0x000000499820|+0x0060|012: 0x000000000045de80 <_nl_C_LC_CTYPE_toupper+0x200>  ->  0x0000000100000000
-        0x000000499828|+0x0068|013: 0x000000000045d880 <_nl_C_LC_CTYPE_tolower+0x200>  ->  0x0000000100000000
-        0x000000499830|+0x0070|014: 0x0000000000000000
-        0x000000499838|+0x0078|015: 0x0000000000000000
-        """
-
-        selected_thread = gdb.selected_thread()
-        threads = gdb.selected_inferior().threads()
-        main_thread = [th for th in threads if th.num == 1][0]
-        main_thread.switch()
-
-        if is_x86():
-            direction = -1
-        else:
-            direction = 1
-
-        tls = TlsCommand.get_tls()
-        for i in range(1, 500):
-            addr = tls + (current_arch.ptrsize * i) * direction
-
-            if not is_valid_addr(addr):
-                break
-
-            candidate_arena_addr = read_int_from_memory(addr)
-            if not is_valid_addr(candidate_arena_addr):
-                continue
-
-            candidate_arena = MallocStateStruct(candidate_arena_addr)
-            system_mem = candidate_arena.system_mem
-            if system_mem < gef_getpagesize():
-                continue
-
-            top = candidate_arena.top
-            if not is_valid_addr(top):
-                continue
-
-            _next = to_unsigned_long(candidate_arena.next)
-            while True:
-                if not is_valid_addr(_next):
-                    break
-                if candidate_arena_addr == _next:
-                    selected_thread.switch()
-                    return candidate_arena_addr
-                _next = to_unsigned_long(MallocStateStruct(_next).next)
-
-        # not found
-        selected_thread.switch()
-
-    raise OSError("Cannot find main_arena for {}".format(current_arch.arch))
-
-
 class MallocStateStruct:
     """GEF representation of malloc_state"""
     def __init__(self, addr):
@@ -2216,18 +2081,119 @@ class MallocStateStruct:
         return getattr(self, item)
 
 
-def get_arena(address):
-    try:
-        arena = GlibcArena(address)
-        str(arena) # check memory error
-        return arena
-    except Exception:
-        err("Failed to get the arena, heap commands may not work properly.")
-        return None
+@functools.lru_cache(maxsize=None)
+def saerch_for_main_arena_from_tls():
+    """saerch main arena from TLS, then return &addr."""
 
+    """
+    [x64]
+    0x7ffff7f986f8|+0x0038|007: 0x0000555555559010  ->  0x0000000000000000
+    0x7ffff7f98700|+0x0040|008: 0x0000000000000000
+    0x7ffff7f98708|+0x0048|009: 0x00007ffff7e19c80 <main_arena>  ->  0x0000000000000000
+    0x7ffff7f98710|+0x0050|010: 0x0000000000000000
+    0x7ffff7f98718|+0x0058|011: 0x0000000000000000
+    0x7ffff7f98720|+0x0060|012: 0x0000000000000000
+    0x7ffff7f98728|+0x0068|013: 0x0000000000000000
+    0x7ffff7f98730|+0x0070|014: 0x0000000000000000
+    0x7ffff7f98738|+0x0078|015: 0x0000000000000000
+    -- TLS --
+    0x7ffff7f98740|+0x0000|000: 0x00007ffff7f98740  ->  [loop detected]
+    0x7ffff7f98748|+0x0008|001: 0x00007ffff7f99160  ->  0x0000000000000001
+    0x7ffff7f98750|+0x0010|002: 0x00007ffff7f98740  ->  [loop detected]
 
-def get_main_arena():
-    return get_arena(None)
+    [x86]
+    0xf7fbf4d0|+0x00d0|052: 0x5655a010  ->  0x00000000
+    0xf7fbf4d4|+0x00d4|053: 0x00000000
+    0xf7fbf4d8|+0x00d8|054: 0xf7e2a7c0 <main_arena>  ->  0x00000000
+    0xf7fbf4dc|+0x00dc|055: 0x00000000
+    0xf7fbf4e0|+0x00e0|056: 0x00000000
+    0xf7fbf4e4|+0x00e4|057: 0x00000000
+    0xf7fbf4e8|+0x00e8|058: 0x00000000
+    0xf7fbf4ec|+0x00ec|059: 0x00000000
+    0xf7fbf4f0|+0x00f0|060: 0x00000000
+    0xf7fbf4f4|+0x00f4|061: 0x00000000
+    0xf7fbf4f8|+0x00f8|062: 0x00000000
+    0xf7fbf4fc|+0x00fc|063: 0x00000000
+    -- TLS --
+    0xf7fbf500|+0x0100|064: 0xf7fbf500  ->  [loop detected]
+    0xf7fbf504|+0x0104|065: 0xf7fbfa88  ->  0x00000001
+    0xf7fbf508|+0x0108|066: 0xf7fbf500  ->  [loop detected]
+
+    [ARM]
+    -- TLS --
+    0x0007d580|+0x0000|000: 0x0007a3c8 <_dl_static_dtv+0x8>  ->  0x00000000
+    0x0007d584|+0x0004|001: 0x00000000
+    0x0007d588|+0x0008|002: 0x00079fa0 <_nl_global_locale>  ->  ...
+    0x0007d58c|+0x000c|003: 0x00079fa0 <_nl_global_locale>  ->  ...
+    0x0007d590|+0x0010|004: 0x00079fa4 <_nl_global_locale+0x4>  ->  ...
+    0x0007d594|+0x0014|005: 0x00079fb0 <_nl_global_locale+0x10>  ->  ...
+    0x0007d598|+0x0018|006: 0x00000000
+    0x0007d59c|+0x001c|007: 0x00079660 <main_arena>  ->  0x00000000
+    0x0007d5a0|+0x0020|008: 0x0007d908  ->  0x00000000
+    0x0007d5a4|+0x0024|009: 0x00000000
+    0x0007d5a8|+0x0028|010: 0x00000000
+
+    [ARM64]
+    0x0000004997c0|+0x0000|000: 0x0000000000493078 <_dl_static_dtv+0x10>  ->  0x0000000000000000
+    0x0000004997c8|+0x0008|001: 0x0000000000000000
+    0x0000004997d0|+0x0010|002: 0x0000000000492838 <_nl_global_locale>  ->  ...
+    0x0000004997d8|+0x0018|003: 0x0000000000492840 <_nl_global_locale+0x8>  ->  ...
+    0x0000004997e0|+0x0020|004: 0x0000000000492838 <_nl_global_locale>  ->  ...
+    0x0000004997e8|+0x0028|005: 0x0000000000492858 <_nl_global_locale+0x20>  ->  ...
+    0x0000004997f0|+0x0030|006: 0x0000000000000000
+    0x0000004997f8|+0x0038|007: 0x0000000000491678 <main_arena>  ->  0x0000000000000000
+    0x000000499800|+0x0040|008: 0x0000000000499b90  ->  0x0000000000000000
+    0x000000499808|+0x0048|009: 0x0000000000000000
+    0x000000499810|+0x0050|010: 0x0000000000000000
+    0x000000499818|+0x0058|011: 0x000000000045e780 <_nl_C_LC_CTYPE_class+0x100>  ->  0x0002000200020002
+    0x000000499820|+0x0060|012: 0x000000000045de80 <_nl_C_LC_CTYPE_toupper+0x200>  ->  0x0000000100000000
+    0x000000499828|+0x0068|013: 0x000000000045d880 <_nl_C_LC_CTYPE_tolower+0x200>  ->  0x0000000100000000
+    0x000000499830|+0x0070|014: 0x0000000000000000
+    0x000000499838|+0x0078|015: 0x0000000000000000
+    """
+
+    selected_thread = gdb.selected_thread()
+    threads = gdb.selected_inferior().threads()
+    main_thread = [th for th in threads if th.num == 1][0]
+    main_thread.switch()
+
+    if is_x86():
+        direction = -1
+    else:
+        direction = 1
+
+    tls = TlsCommand.get_tls()
+    for i in range(1, 500):
+        addr = tls + (current_arch.ptrsize * i) * direction
+
+        if not is_valid_addr(addr):
+            break
+
+        candidate_arena_addr = read_int_from_memory(addr)
+        if not is_valid_addr(candidate_arena_addr):
+            continue
+
+        candidate_arena = MallocStateStruct(candidate_arena_addr)
+        system_mem = candidate_arena.system_mem
+        if system_mem < gef_getpagesize():
+            continue
+
+        top = candidate_arena.top
+        if not is_valid_addr(top):
+            continue
+
+        _next = to_unsigned_long(candidate_arena.next)
+        while True:
+            if not is_valid_addr(_next):
+                break
+            if candidate_arena_addr == _next:
+                selected_thread.switch() # revert thread
+                return addr
+            _next = to_unsigned_long(MallocStateStruct(_next).next)
+
+    # not found
+    selected_thread.switch() # revert thread
+    return None
 
 
 class GlibcArena:
@@ -2237,11 +2203,11 @@ class GlibcArena:
     def __init__(self, arena_addr=None):
         # get address
         if arena_addr is None:
-            self.__addr = search_for_main_arena()
+            self.__addr = self.search_for_main_arena()
             self.__is_main_arena = True
         else:
             self.__addr = arena_addr
-            self.__is_main_arena = arena_addr == search_for_main_arena()
+            self.__is_main_arena = arena_addr == self.search_for_main_arena()
 
         # get type
         try:
@@ -2263,6 +2229,43 @@ class GlibcArena:
         except gdb.error as e:
             err("Glibc arena: {}".format(e))
         return
+
+    def search_for_main_arena(self):
+        global __cached_main_arena__
+        if __cached_main_arena__:
+            return __cached_main_arena__
+
+        # plan 1 (directly)
+        try:
+            __cached_main_arena__ = parse_address("&main_arena")
+            return __cached_main_arena__
+        except gdb.error:
+            pass
+
+        # plan 2 (from __malloc_hook)
+        if get_libc_version() < (2, 34):
+            try:
+                malloc_hook_addr = parse_address("(void *)&__malloc_hook")
+                if is_x86():
+                    __cached_main_arena__ = align_address_to_size(malloc_hook_addr + current_arch.ptrsize, 0x20)
+                elif is_arm64():
+                    __cached_main_arena__ = malloc_hook_addr - current_arch.ptrsize * 2 - MallocStateStruct("*0").struct_size
+                elif is_arm32():
+                    __cached_main_arena__ = malloc_hook_addr - current_arch.ptrsize - MallocStateStruct("*0").struct_size
+                else:
+                    raise
+                return __cached_main_arena__
+            except gdb.error:
+                pass
+
+        # plan 3 (from TLS)
+        if is_x86() or is_arm32() or is_arm64():
+            ptr = saerch_for_main_arena_from_tls()
+            if ptr:
+                __cached_main_arena__ = read_int_from_memory(ptr)
+                return __cached_main_arena__
+
+        raise OSError("Cannot find main_arena for {}".format(current_arch.arch))
 
     def __getitem__(self, item):
         return self.__arena[item]
@@ -2519,6 +2522,20 @@ class GlibcArena:
         for i in range(63, 126):
             chunks_all[i] = self.bin_list(i)
         return chunks_all
+
+
+def get_arena(address):
+    try:
+        arena = GlibcArena(address)
+        str(arena) # check memory error
+        return arena
+    except Exception:
+        err("Failed to get the arena, heap commands may not work properly.")
+        return None
+
+
+def get_main_arena():
+    return get_arena(None)
 
 
 class GlibcChunk:
@@ -37541,12 +37558,11 @@ class HeapbaseCommand(GenericCommand):
 
     @staticmethod
     def heap_base():
-        # plan 1 (already defined?)
         global __cached_heap_base__
         if __cached_heap_base__:
             return __cached_heap_base__
 
-        # plan 2
+        # fast path
         # The value of mp_->sbrk_base is correct in x86 or x64.
         # However, for architectures that have TLS in the bss area (such as ARM or ARM64),
         # the start position of the heap seems to shift by the amount of the area used as the TLS variable.
@@ -37559,57 +37575,21 @@ class HeapbaseCommand(GenericCommand):
             except gdb.error:
                 pass
 
-        # plan 3 (logic: see search_for_main_arena)
+        # slow path
         if is_x86() or is_arm32() or is_arm64():
-            selected_thread = gdb.selected_thread()
-            threads = gdb.selected_inferior().threads()
-            main_thread = [th for th in threads if th.num == 1][0]
-            main_thread.switch()
+            main_arena_ptr = saerch_for_main_arena_from_tls()
+            if main_arena_ptr:
+                if is_x86():
+                    # use prev prev pointer for x86/x64
+                    first_chunk_p = main_arena_ptr - current_arch.ptrsize * 2
+                else:
+                    # use next pointer for ARM/ARM64
+                    first_chunk_p = main_arena_ptr + current_arch.ptrsize
+                first_chunk = read_int_from_memory(first_chunk_p)
+                heap_base = first_chunk - 0x10
+                __cached_heap_base__ = heap_base
+                return __cached_heap_base__
 
-            if is_x86():
-                direction = -1
-            else:
-                direction = 1
-
-            tls = TlsCommand.get_tls()
-            for i in range(1, 500):
-                addr = tls + (current_arch.ptrsize * i) * direction
-
-                if not is_valid_addr(addr):
-                    break
-
-                candidate_arena_addr = read_int_from_memory(addr)
-                if not is_valid_addr(candidate_arena_addr):
-                    continue
-
-                candidate_arena = MallocStateStruct(candidate_arena_addr)
-                system_mem = candidate_arena.system_mem
-                if system_mem < gef_getpagesize():
-                    continue
-
-                top = candidate_arena.top
-                if not is_valid_addr(top):
-                    continue
-
-                _next = to_unsigned_long(candidate_arena.next)
-                while True:
-                    if not is_valid_addr(_next):
-                        break
-                    if candidate_arena_addr == _next:
-                        selected_thread.switch()
-                        # found main_arena, use prev prev pointer
-                        if is_x86():
-                            first_chunk_p = addr - current_arch.ptrsize * 2
-                        else:
-                            first_chunk_p = addr + current_arch.ptrsize
-                        first_chunk = read_int_from_memory(first_chunk_p)
-                        heap_base = first_chunk - 0x10
-                        __cached_heap_base__ = heap_base
-                        return __cached_heap_base__
-                    _next = to_unsigned_long(MallocStateStruct(_next).next)
-
-            # not found
-            selected_thread.switch()
         return None
 
     @parse_args
