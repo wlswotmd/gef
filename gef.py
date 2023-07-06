@@ -25056,13 +25056,13 @@ class GotCommand(GenericCommand):
 
             # different colors if the function has been resolved or not
             if got_value == 0:
-                color = self.get_setting("function_resolved") # something is wrong
+                color = self.get_setting("function_resolved") # .rela.dyn && uninitialized, etc.
             elif plt_begin <= got_value < plt_end: # Non-PIE
-                color = self.get_setting("function_not_resolved") # function hasn't already been resolved
+                color = self.get_setting("function_not_resolved")
             elif plt_begin - self.base_address <= got_value < plt_end - self.base_address: # PIE
-                color = self.get_setting("function_not_resolved") # function hasn't already been resolved
+                color = self.get_setting("function_not_resolved")
             else:
-                color = self.get_setting("function_resolved") # function has already been resolved
+                color = self.get_setting("function_resolved")
 
             # reloc_arg
             if reloc_arg is None:
@@ -25143,9 +25143,18 @@ class GotCommand(GenericCommand):
                 err("{}".format(e))
             return
 
+        # A valid path even if the mount namespace is different.
         local_filepath = None
+
+        # A path in /proc/PID/maps. Ignore namespace differences.
+        # Used to find the base address.
         vmmap_filepath = None
+
+        # A path in remote environment.
         remote_filepath = None
+
+        # A path downloaded file from remote environment.
+        # It should be removed later.
         tmp_filepath = None
 
         if args.remote:
