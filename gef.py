@@ -3781,6 +3781,10 @@ class Architecture:
         pass
 
     @abc.abstractproperty
+    def stack_grow_down(self):
+        pass
+
+    @abc.abstractproperty
     def tls_supported(self):
         pass
 
@@ -3947,6 +3951,7 @@ class RISCV(Architecture):
     has_delay_slot = False
     has_syscall_delay_slot = False
     has_ret_delay_slot = False
+    stack_grow_down = False
     tls_supported = True
 
     keystone_support = False
@@ -4254,6 +4259,7 @@ class ARM(Architecture):
     has_delay_slot = False
     has_syscall_delay_slot = False
     has_ret_delay_slot = False
+    stack_grow_down = False
     tls_supported = True
 
     keystone_support = True
@@ -4643,6 +4649,7 @@ class X86(Architecture):
     has_delay_slot = False
     has_syscall_delay_slot = False
     has_ret_delay_slot = False
+    stack_grow_down = False
     tls_supported = True
 
     keystone_support = True
@@ -4856,6 +4863,7 @@ class PPC(Architecture):
     has_delay_slot = False
     has_syscall_delay_slot = False
     has_ret_delay_slot = False
+    stack_grow_down = False
     tls_supported = True
 
     keystone_support = True
@@ -5112,6 +5120,7 @@ class SPARC(Architecture):
     has_delay_slot = True
     has_syscall_delay_slot = True
     has_ret_delay_slot = True
+    stack_grow_down = False
     tls_supported = True
 
     keystone_support = True
@@ -5351,6 +5360,7 @@ class MIPS(Architecture):
     has_delay_slot = True
     has_syscall_delay_slot = True
     has_ret_delay_slot = True
+    stack_grow_down = False
     tls_supported = True
 
     keystone_support = True
@@ -5587,6 +5597,7 @@ class S390X(Architecture):
     has_delay_slot = False
     has_syscall_delay_slot = True
     has_ret_delay_slot = False
+    stack_grow_down = False
     tls_supported = True
 
     keystone_support = True
@@ -5940,6 +5951,7 @@ class SH4(Architecture):
     has_delay_slot = True
     has_syscall_delay_slot = True
     has_ret_delay_slot = True
+    stack_grow_down = False
     tls_supported = False # no TLS, use stack
 
     keystone_support = False
@@ -6120,6 +6132,7 @@ class M68K(Architecture):
     has_delay_slot = False
     has_syscall_delay_slot = True
     has_ret_delay_slot = False
+    stack_grow_down = False
     tls_supported = True
 
     keystone_support = False
@@ -6354,6 +6367,7 @@ class ALPHA(Architecture):
     has_delay_slot = False
     has_syscall_delay_slot = False
     has_ret_delay_slot = False
+    stack_grow_down = False
     tls_supported = True
 
     keystone_support = False
@@ -6525,6 +6539,7 @@ class HPPA(Architecture):
     has_delay_slot = True
     has_syscall_delay_slot = True
     has_ret_delay_slot = True
+    stack_grow_down = True
     tls_supported = True
 
     keystone_support = False
@@ -6908,6 +6923,7 @@ class OR1K(Architecture):
     has_delay_slot = True
     has_syscall_delay_slot = True
     has_ret_delay_slot = True
+    stack_grow_down = False
     tls_supported = True
 
     keystone_support = False
@@ -7026,6 +7042,7 @@ class NIOS2(Architecture):
     has_delay_slot = False
     has_syscall_delay_slot = False
     has_ret_delay_slot = False
+    stack_grow_down = False
     tls_supported = True
 
     keystone_support = False
@@ -7157,6 +7174,7 @@ class MICROBLAZE(Architecture):
     has_delay_slot = True
     has_syscall_delay_slot = True
     has_ret_delay_slot = True
+    stack_grow_down = False
     tls_supported = True
 
     keystone_support = False
@@ -7305,6 +7323,7 @@ class XTENSA(Architecture):
     has_delay_slot = False
     has_syscall_delay_slot = False
     has_ret_delay_slot = False
+    stack_grow_down = False
     tls_supported = True
 
     keystone_support = False
@@ -7555,6 +7574,7 @@ class CRIS(Architecture):
     has_delay_slot = True
     has_syscall_delay_slot = True
     has_ret_delay_slot = True
+    stack_grow_down = False
     tls_supported = False
 
     keystone_support = False
@@ -7717,6 +7737,7 @@ class LOONGARCH64(Architecture):
     has_delay_slot = False
     has_syscall_delay_slot = False
     has_ret_delay_slot = False
+    stack_grow_down = False
     tls_supported = True
 
     keystone_support = False
@@ -7892,6 +7913,7 @@ class LOONGARCH64(Architecture):
 #    #has_delay_slot = False
 #    #has_syscall_delay_slot = False
 #    #has_ret_delay_slot = False
+#    #stack_grow_down = False
 #    #tls_supported = False
 #
 #    #keystone_support = False
@@ -23220,6 +23242,7 @@ class DereferenceCommand(GenericCommand):
                         help="the memory address you want to dump. (default: current_arch.sp)")
     parser.add_argument("nb_lines", metavar="NB_LINES", nargs="?", type=lambda x: int(x, 0), default=0x10,
                         help="the count of lines. (default: %(default)s)")
+    parser.add_argument("-r", "--reverse", action="store_true", help="display in reverse order line by line.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
@@ -23331,17 +23354,24 @@ class DereferenceCommand(GenericCommand):
         else:
             start_address = args.location
 
-        if get_gef_setting("context.grow_stack_down") is True:
-            from_address = args.nb_lines * (self.repeat_count + 1) - 1
-            to_address = self.repeat_count * args.nb_lines - 1
-            step = -1
+        if current_arch.stack_grow_down or get_gef_setting("context.grow_stack_down"):
+            from_idx = args.nb_lines * -self.repeat_count
+            to_idx = args.nb_lines * -(self.repeat_count + 1)
         else:
-            from_address = 0 + self.repeat_count * args.nb_lines
-            to_address = args.nb_lines * (self.repeat_count + 1)
+            from_idx = args.nb_lines * self.repeat_count
+            to_idx = args.nb_lines * (self.repeat_count + 1)
+
+        if args.reverse:
+            from_idx *= -1
+            to_idx *= -1
+
+        if from_idx <= to_idx:
             step = 1
+        else:
+            step = -1
 
         out = []
-        for idx in range(from_address, to_address, step):
+        for idx in range(from_idx, to_idx, step):
             try:
                 line = DereferenceCommand.pprint_dereferenced(start_address, idx)
                 out.append(line)
@@ -23350,6 +23380,9 @@ class DereferenceCommand(GenericCommand):
                 msg = "Cannot access memory at address {:#x}".format(start_address + idx * current_arch.ptrsize)
                 out.append("{} {}".format(Color.colorify("[!]", "bold red"), msg))
                 break
+
+        if args.reverse:
+            out.reverse()
 
         gef_print("\n".join(out), less=not args.no_pager)
         return
