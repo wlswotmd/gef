@@ -22068,37 +22068,7 @@ class HexdumpCommand(GenericCommand):
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
-    @parse_args
-    @only_if_gdb_running
-    def do_invoke(self, args):
-        if args.phys:
-            if not is_qemu_system():
-                err("Unsupported. Check qemu version (at least: 4.1.0-rc0~, recommend: 5.x~)")
-                return
-        self.phys_mode = args.phys
-        unit = {"byte": 1, "word": 2, "dword": 4, "qword": 8}[args.format]
-        read_from = align_address(args.location)
-        lines = self._hexdump(read_from, args.count, unit, args.full, args.symbol)
-
-        if args.reverse:
-            lines.reverse()
-
-        if lines:
-            gef_print("\n".join(lines), less=not args.no_pager)
-        return
-
-    def _hexdump(self, read_from, read_len, unit, full, with_symbol):
-        read_from += self.repeat_count * read_len
-        mem = self._read_memory(read_from, read_len)
-        if mem is None:
-            err("cannot access memory")
-            return []
-        lines_unmerged = hexdump(mem, show_symbol=with_symbol, base=read_from, unit=unit).splitlines()
-
-        if full:
-            return lines_unmerged
-
-        # merge
+    def merge_lines(self, lines_unmerged):
         lines = []
         keep_asterisk = False
         for line in lines_unmerged:
@@ -22120,7 +22090,7 @@ class HexdumpCommand(GenericCommand):
             lines.append("*")
         return lines
 
-    def _read_memory(self, read_from, read_len):
+    def read_memory(self, read_from, read_len):
         if read_len > 0x1000000: # Too large
             return None
 
@@ -22148,6 +22118,45 @@ class HexdumpCommand(GenericCommand):
                 pass
             read_end -= gef_getpagesize()
         return None
+
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
+        if args.phys:
+            if not is_qemu_system():
+                err("Unsupported. Check qemu version (at least: 4.1.0-rc0~, recommend: 5.x~)")
+                return
+        self.phys_mode = args.phys
+        self.reverse = args.reverse
+        self.full_print = args.full
+        self.with_symbol = args.symbol
+
+        from_idx = args.count * self.repeat_count
+        to_idx = args.count * (self.repeat_count + 1)
+        if args.reverse:
+            from_idx *= -1
+            from_idx += 0x10
+            to_idx *= -1
+            to_idx += 0x10
+
+        read_from = align_address(args.location) + min(from_idx, to_idx)
+        mem = self.read_memory(read_from, args.count)
+        if mem is None:
+            err("cannot access memory")
+            return
+
+        unit = {"byte": 1, "word": 2, "dword": 4, "qword": 8}[args.format]
+        lines = hexdump(mem, show_symbol=self.with_symbol, base=read_from, unit=unit).splitlines()
+
+        if not self.full_print:
+            lines = self.merge_lines(lines)
+
+        if self.reverse:
+            lines.reverse()
+
+        if lines:
+            gef_print("\n".join(lines), less=not args.no_pager)
+        return
 
 
 @register_command
