@@ -192,6 +192,7 @@ __cached_kernel_info__          = None
 __cached_kernel_version__       = None
 __cached_kernel_cmdline__       = None
 __cached_context_legend__       = None
+__cached_heap_base__            = None
 current_elf                     = None
 current_arch                    = None
 
@@ -37541,43 +37542,25 @@ class HeapbaseCommand(GenericCommand):
     @staticmethod
     def heap_base():
         # plan 1 (already defined?)
-        try:
-            # The value of mp_->sbrk_base will be correct in most cases.
-            # However, for architectures that have TLS in the bss area (such as ARM),
-            # the start position of the heap seems to shift by the amount of the area used as the TLS variable.
-            # In that case, the $heapbase variable should be manually modified.
-            heap_base = parse_address("$heapbase")
-            if is_valid_addr(heap_base):
-                return heap_base
-        except gdb.error:
-            pass
+        global __cached_heap_base__
+        if __cached_heap_base__:
+            return __cached_heap_base__
 
         # plan 2
-        try:
-            return parse_address("mp_->sbrk_base")
-        except gdb.error:
-            pass
-
-        # plan 3
-        if is_static():
+        # The value of mp_->sbrk_base is correct in x86 or x64.
+        # However, for architectures that have TLS in the bss area (such as ARM or ARM64),
+        # the start position of the heap seems to shift by the amount of the area used as the TLS variable.
+        # This method should not be used on ARM or ARM64, as there seems to be no way to predetermine the TLS size.
+        if is_x86():
             try:
-                mp_ = parse_address("&mp_")
-                if is_64bit():
-                    sbrk_base = mp_ + 0x60 # TODO: make more accurate
-                else:
-                    sbrk_base = mp_ + 0x38 # TODO: make more accurate
-                return read_int_from_memory(sbrk_base)
+                # symbol and type are defined
+                __cached_heap_base__ = parse_address("mp_->sbrk_base")
+                return __cached_heap_base__
             except gdb.error:
                 pass
 
-        # plan 4
-        else:
-            heap_base = get_section_base_address("[heap]")
-            if heap_base:
-                return heap_base
-
-        # plan 5 (logic: see search_for_main_arena)
-        if is_x86() or is_arm32():
+        # plan 3 (logic: see search_for_main_arena)
+        if is_x86() or is_arm32() or is_arm64():
             selected_thread = gdb.selected_thread()
             threads = gdb.selected_inferior().threads()
             main_thread = [th for th in threads if th.num == 1][0]
@@ -37585,7 +37568,7 @@ class HeapbaseCommand(GenericCommand):
 
             if is_x86():
                 direction = -1
-            elif is_arm32():
+            else:
                 direction = 1
 
             tls = TlsCommand.get_tls()
@@ -37617,10 +37600,12 @@ class HeapbaseCommand(GenericCommand):
                         # found main_arena, use prev prev pointer
                         if is_x86():
                             first_chunk_p = addr - current_arch.ptrsize * 2
-                        elif is_arm32():
+                        else:
                             first_chunk_p = addr + current_arch.ptrsize
                         first_chunk = read_int_from_memory(first_chunk_p)
-                        return first_chunk - current_arch.ptrsize * 2
+                        heap_base = first_chunk - 0x10
+                        __cached_heap_base__ = heap_base
+                        return __cached_heap_base__
                     _next = to_unsigned_long(MallocStateStruct(_next).next)
 
             # not found
