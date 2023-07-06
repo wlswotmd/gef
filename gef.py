@@ -2880,15 +2880,28 @@ def gef_pybytes(x):
 
 
 def str2bytes(x):
+    if isinstance(x, bytes):
+        return x
     if isinstance(x, str):
-        x = bytes([ord(xx) for xx in x])
-    return x
+        s = b""
+        for xx in x:
+            n = ord(xx)
+            if 0 <= n < 256:
+                s += bytes([n])
+                continue
+            else:
+                s += xx.encode()
+        return s
+    raise
 
 
 def bytes2str(x):
+    if isinstance(x, str):
+        return x
     if isinstance(x, bytes):
         x = "".join(chr(xx) for xx in x)
-    return x
+        return x
+    raise
 
 
 def slicer(data, n):
@@ -37666,6 +37679,7 @@ class LibcCommand(GenericCommand):
     @only_if_not_qemu_system
     def do_invoke(self, args):
         self.dont_repeat()
+        reset_gef_caches(all=True) # get_process_maps may be caching old information
 
         libc_targets = ("libc-2.", "libc.so.6", "libuClibc-")
 
@@ -37679,24 +37693,37 @@ class LibcCommand(GenericCommand):
         gef_print(f"$libc = {libc:#x}")
 
         libc = process_lookup_path(libc_targets)
-        libc_path = libc.path
+        real_libc_path = None
 
         if is_container_attach():
-            libc_path = append_proc_root(libc_path)
-            if not os.path.exists(libc_path):
+            real_libc_path = append_proc_root(libc.path)
+            if not os.path.exists(real_libc_path):
                 return
-            data = open(libc_path, "rb").read()
+            data = open(real_libc_path, "rb").read()
 
         elif is_remote_debug():
-            data = read_remote_file(libc_path)
+            if is_qemu_usermode():
+                data = None
+                for maps in get_process_maps(outer=True):
+                    if os.path.basename(maps.path) != os.path.basename(libc.path):
+                        continue
+                    if maps.size != libc.size:
+                        continue
+                    real_libc_path = maps.path
+                    data = open(real_libc_path, "rb").read()
+                    break
+            else:
+                data = read_remote_file(libc.path)
             if not data:
                 return
         else:
-            if not os.path.exists(libc_path):
+            if not os.path.exists(libc.path):
                 return
-            data = open(libc_path, "rb").read()
+            data = open(libc.path, "rb").read()
 
-        gef_print("path{:s}:\t{:s}".format(" (remote)" if is_remote_debug() else "", libc_path))
+        gef_print("path:\t{:s}{:s}".format(libc.path, " (remote)" if is_remote_debug() else ""))
+        if real_libc_path:
+            gef_print("path:\t{:s} (real)".format(real_libc_path))
         gef_print("sha512:\t{:s}".format(hashlib.sha512(data).hexdigest()))
         gef_print("sha256:\t{:s}".format(hashlib.sha256(data).hexdigest()))
         gef_print("sha1:\t{:s}".format(hashlib.sha1(data).hexdigest()))
@@ -37722,6 +37749,7 @@ class LdCommand(GenericCommand):
     @only_if_not_qemu_system
     def do_invoke(self, args):
         self.dont_repeat()
+        reset_gef_caches(all=True) # get_process_maps may be caching old information
 
         ld_targets = ("ld-2.", "ld-linux-", "ld64-uClibc-", "ld-uClibc-")
 
@@ -37734,24 +37762,37 @@ class LdCommand(GenericCommand):
         gef_print(f"$ld = {ld:#x}")
 
         ld = process_lookup_path(ld_targets)
-        ld_path = ld.path
+        real_ld_path = None
 
         if is_container_attach():
-            ld_path = append_proc_root(ld_path)
-            if not os.path.exists(ld_path):
+            real_ld_path = append_proc_root(ld.path)
+            if not os.path.exists(real_ld_path):
                 return
-            data = open(ld_path, "rb").read()
+            data = open(real_ld_path, "rb").read()
 
         elif is_remote_debug():
-            data = read_remote_file(ld_path)
+            if is_qemu_usermode():
+                data = None
+                for maps in get_process_maps(outer=True):
+                    if os.path.basename(maps.path) != os.path.basename(ld.path):
+                        continue
+                    if maps.size != ld.size:
+                        continue
+                    real_ld_path = maps.path
+                    data = open(real_ld_path, "rb").read()
+                    break
+            else:
+                data = read_remote_file(ld.path)
             if not data:
                 return
         else:
-            if not os.path.exists(ld_path):
+            if not os.path.exists(ld.path):
                 return
-            data = open(ld_path, "rb").read()
+            data = open(ld.path, "rb").read()
 
-        gef_print("path{:s}:\t{:s}".format(" (remote)" if is_remote_debug() else "", ld_path))
+        gef_print("path:\t{:s}{:s}".format(ld.path, " (remote)" if is_remote_debug() else ""))
+        if real_ld_path:
+            gef_print("path:\t{:s} (real)".format(real_ld_path))
         gef_print("sha512:\t{:s}".format(hashlib.sha512(data).hexdigest()))
         gef_print("sha256:\t{:s}".format(hashlib.sha256(data).hexdigest()))
         gef_print("sha1:\t{:s}".format(hashlib.sha1(data).hexdigest()))
