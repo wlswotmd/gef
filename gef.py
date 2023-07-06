@@ -16134,40 +16134,48 @@ def __get_binsize_table():
         "large_bins": {},
     }
 
+    if is_64bit():
+        MIN_SIZE = 0x20
+    else:
+        MIN_SIZE = 0x10
+
     # tcache
-    # "MALLOC_ALIGNMENT is changed from libc 2.26,
-    # for 32 bit arch, tcache 0x8 align is no longer used.
     for i in range(64):
-        if is_64bit():
-            min_size = 0x20
+        # MALLOC_ALIGNMENT is changed from libc 2.26.
+        # for x86_32, tcache 0x8 align is no longer used.
+        # but for ARM32, or maybe other arch, still 0x8 align is used.
+        if is_64bit() or is_x86_32():
+            size = MIN_SIZE + i * 0x10
         else:
-            min_size = 0x10
-        size = i * 0x10 + min_size
+            size = MIN_SIZE + i * 0x8
         table["tcache"][i] = {"size": size}
 
     # fastbins
     if is_64bit():
         for i in range(7):
-            size = i * 0x10 + 0x20
+            size = MIN_SIZE + i * 0x10
             table["fastbins"][i] = {"size": size}
-    elif is_32bit():
+    elif is_x86_32():
         # MALLOC_ALIGNMENT is changed from libc 2.26.
-        # for 32 bit arch, fastbin exists every 8 bytes, but only used every 16 bytes.
+        # for x86_32, fastbin exists every 8 bytes, but only used every 16 bytes.
         table["fastbins"][0] = {"size": 0x10}
         table["fastbins"][2] = {"size": 0x20}
         table["fastbins"][4] = {"size": 0x30}
         table["fastbins"][6] = {"size": 0x40}
+    else:
+        for i in range(7):
+            size = MIN_SIZE + i * 8
+            table["fastbins"][i] = {"size": size}
 
     # unsorted bins
     table["unsorted_bins"][0] = {"bins_idx": 0}
 
     # smallbins
-    if is_64bit():
-        min_size = 0x20
-    else:
-        min_size = 0x10
     for i in range(1, 63):
-        size = (i - 1) * 0x10 + min_size
+        if is_64bit() or is_x86_32():
+            size = MIN_SIZE + (i - 1) * 0x10
+        else:
+            size = MIN_SIZE + (i - 1) * 0x8
         table["small_bins"][i] = {"size": size}
 
     # largebins
@@ -16206,7 +16214,7 @@ def __get_binsize_table():
         table["large_bins"][94] = {"size_min": 0xbc0, "size_max": 0xc00}
         table["large_bins"][95] = {"size_min": 0xc00, "size_max": 0xc40}
         table["large_bins"][96] = {"size_min": 0xc40, "size_max": 0xe00}
-    elif is_32bit():
+    elif is_x86_32():
         table["large_bins"][63] = {"size_min": 0x3f0, "size_max": 0x400}
         table["large_bins"][64] = {"size_min": 0x400, "size_max": 0x440}
         table["large_bins"][65] = {"size_min": 0x440, "size_max": 0x480}
@@ -16240,6 +16248,41 @@ def __get_binsize_table():
         table["large_bins"][93] = {"size_min": 0xb40, "size_max": 0xb80}
         # table["large_bins"][94] is unused
         table["large_bins"][95] = {"size_min": 0xb80, "size_max": 0xc00}
+        table["large_bins"][96] = {"size_min": 0xc00, "size_max": 0xe00}
+    else:
+        table["large_bins"][63] = {"size_min": 0x200, "size_max": 0x240}
+        table["large_bins"][64] = {"size_min": 0x240, "size_max": 0x280}
+        table["large_bins"][65] = {"size_min": 0x280, "size_max": 0x2c0}
+        table["large_bins"][66] = {"size_min": 0x2c0, "size_max": 0x300}
+        table["large_bins"][67] = {"size_min": 0x300, "size_max": 0x340}
+        table["large_bins"][68] = {"size_min": 0x340, "size_max": 0x380}
+        table["large_bins"][69] = {"size_min": 0x380, "size_max": 0x3c0}
+        table["large_bins"][70] = {"size_min": 0x3c0, "size_max": 0x400}
+        table["large_bins"][71] = {"size_min": 0x400, "size_max": 0x440}
+        table["large_bins"][72] = {"size_min": 0x440, "size_max": 0x480}
+        table["large_bins"][73] = {"size_min": 0x480, "size_max": 0x4c0}
+        table["large_bins"][74] = {"size_min": 0x4c0, "size_max": 0x500}
+        table["large_bins"][75] = {"size_min": 0x500, "size_max": 0x540}
+        table["large_bins"][76] = {"size_min": 0x540, "size_max": 0x580}
+        table["large_bins"][77] = {"size_min": 0x580, "size_max": 0x5c0}
+        table["large_bins"][78] = {"size_min": 0x5c0, "size_max": 0x600}
+        table["large_bins"][79] = {"size_min": 0x600, "size_max": 0x640}
+        table["large_bins"][80] = {"size_min": 0x640, "size_max": 0x680}
+        table["large_bins"][81] = {"size_min": 0x680, "size_max": 0x6c0}
+        table["large_bins"][82] = {"size_min": 0x6c0, "size_max": 0x700}
+        table["large_bins"][83] = {"size_min": 0x700, "size_max": 0x740}
+        table["large_bins"][84] = {"size_min": 0x740, "size_max": 0x780}
+        table["large_bins"][85] = {"size_min": 0x780, "size_max": 0x7c0}
+        table["large_bins"][86] = {"size_min": 0x7c0, "size_max": 0x800}
+        table["large_bins"][87] = {"size_min": 0x800, "size_max": 0x840}
+        table["large_bins"][88] = {"size_min": 0x840, "size_max": 0x880}
+        table["large_bins"][89] = {"size_min": 0x880, "size_max": 0x8c0}
+        table["large_bins"][90] = {"size_min": 0x8c0, "size_max": 0x900}
+        table["large_bins"][91] = {"size_min": 0x900, "size_max": 0x940}
+        table["large_bins"][92] = {"size_min": 0x940, "size_max": 0x980}
+        table["large_bins"][93] = {"size_min": 0x980, "size_max": 0x9c0}
+        table["large_bins"][94] = {"size_min": 0x9c0, "size_max": 0xa00}
+        table["large_bins"][95] = {"size_min": 0xa00, "size_max": 0xc00}
         table["large_bins"][96] = {"size_min": 0xc00, "size_max": 0xe00}
 
     table["large_bins"][97] = {"size_min": 0xe00, "size_max": 0x1000}
