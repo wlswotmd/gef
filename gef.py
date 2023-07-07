@@ -22223,9 +22223,6 @@ class HexdumpCommand(GenericCommand):
                 err("Unsupported. Check qemu version (at least: 4.1.0-rc0~, recommend: 5.x~)")
                 return
         self.phys_mode = args.phys
-        self.reverse = args.reverse
-        self.full_print = args.full
-        self.with_symbol = args.symbol
 
         from_idx = args.count * self.repeat_count
         to_idx = args.count * (self.repeat_count + 1)
@@ -22242,12 +22239,12 @@ class HexdumpCommand(GenericCommand):
             return
 
         unit = {"byte": 1, "word": 2, "dword": 4, "qword": 8}[args.format]
-        lines = hexdump(mem, show_symbol=self.with_symbol, base=read_from, unit=unit).splitlines()
+        lines = hexdump(mem, show_symbol=args.symbol, base=read_from, unit=unit).splitlines()
 
-        if not self.full_print:
+        if not args.full:
             lines = self.merge_lines(lines)
 
-        if self.reverse:
+        if args.reverse:
             lines.reverse()
 
         if lines:
