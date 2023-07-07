@@ -3349,6 +3349,22 @@ def get_insn_next(addr=None):
     return gef_instruction_n(addr, 1)
 
 
+def get_insn_prev(addr=None):
+    """Return the prev instruction as an Instruction object."""
+    if addr is None:
+        if not is_alive():
+            return None
+        addr = current_arch.pc
+    try:
+        # Use gef_disassemble because gdb_get_nth_previous_instruction_address
+        # may return incorrect address.
+        gen = gef_disassemble(addr, 0, nb_prev=2)
+        gen.__next__()
+        return gen.__next__()
+    except gdb.error:
+        return None
+
+
 def gef_disassemble(addr, nb_insn, nb_prev=0):
     """Disassemble `nb_insn` instructions after `addr` and `nb_prev` before `addr`.
     Return an iterator of Instruction objects."""
@@ -20957,6 +20973,7 @@ class ContextCommand(GenericCommand):
     def post_load(self):
         gef_on_continue_hook(self.update_registers)
         gef_on_continue_hook(self.empty_extra_messages)
+        self.previous_extra_regs = {}
         return
 
     def show_legend(self):
@@ -21123,53 +21140,79 @@ class ContextCommand(GenericCommand):
 
         try:
             insn = get_insn()
+            insn_prev = get_insn_prev()
         except gdb.MemoryError:
+            self.previous_extra_regs = {}
             return
 
         operands = ", ".join(insn.operands)
         operands = re.sub(r"<.*?>", "", operands)
         operands = re.sub(r"\[.*?\]", "", operands)
 
+        if self.previous_extra_regs:
+            if self.previous_extra_regs["pc"] != insn_prev.address:
+                self.previous_extra_regs = {}
+
+        printed_extra_regs = {"pc": current_arch.pc}
+
         # sse register
-        r = re.findall(r"(xmm\d+)", operands)
-        if r:
-            ret = gdb.execute("xmm", to_string=True)
-            for reg in r:
-                for line in ret.splitlines():
+        to_save_regs = re.findall(r"(xmm\d+)", operands)
+        to_print_regs = to_save_regs + self.previous_extra_regs.get("xmm", [])
+        if to_print_regs:
+            to_print_regs = sorted(set(to_print_regs))
+            lines = gdb.execute("xmm", to_string=True).splitlines()
+            for reg in to_print_regs:
+                for line in lines:
                     if ("$" + reg) in line.split(":")[0]:
                         gef_print(line)
+                        if reg in to_save_regs:
+                            printed_extra_regs["xmm"] = printed_extra_regs.get("xmm", []) + [reg]
                         break
 
         # avx register
-        r = re.findall(r"(ymm\d+)", operands)
-        if r:
-            ret = gdb.execute("ymm", to_string=True)
-            for reg in r:
-                for line in ret.splitlines():
+        to_save_regs = re.findall(r"(ymm\d+)", operands)
+        to_print_regs = to_save_regs + self.previous_extra_regs.get("ymm", [])
+        if to_print_regs:
+            to_print_regs = sorted(set(to_print_regs))
+            lines = gdb.execute("ymm", to_string=True).splitlines()
+            for reg in to_print_regs:
+                for line in lines:
                     if ("$" + reg) in line.split(":")[0]:
                         gef_print(line)
+                        if reg in to_save_regs:
+                            printed_extra_regs["ymm"] = printed_extra_regs.get("ymm", []) + [reg]
                         break
 
         # mmx register
-        r = re.findall(r"([^xy]mm\d+)", operands)
-        if r:
-            ret = gdb.execute("mmx", to_string=True)
-            for reg in r:
-                for line in ret.splitlines():
+        to_save_regs = re.findall(r"([^xy]mm\d+)", operands)
+        to_print_regs = to_save_regs + self.previous_extra_regs.get("mmx", [])
+        if to_print_regs:
+            to_print_regs = sorted(set(to_print_regs))
+            lines = gdb.execute("mmx", to_string=True).splitlines()
+            for reg in to_print_regs:
+                for line in lines:
                     if ("$" + reg) in line.split(":")[0]:
                         gef_print(line)
+                        if reg in to_save_regs:
+                            printed_extra_regs["mmx"] = printed_extra_regs.get("mmx", []) + [reg]
                         break
 
         # fpu register
         if insn.mnemonic[0] == "f":
-            r = re.findall(r"(st\(\d\))", operands)
-            if r:
-                ret = gdb.execute("fpu", to_string=True)
-                for reg in r:
-                    for line in ret.splitlines():
+            to_save_regs = re.findall(r"(st\(\d\))", operands)
+            to_print_regs = to_save_regs + self.previous_extra_regs.get("fpu", [])
+            if to_print_regs:
+                to_print_regs = sorted(set(to_print_regs))
+                lines = gdb.execute("fpu", to_string=True).splitlines()
+                for reg in to_print_regs:
+                    for line in lines:
                         if ("$" + re.sub(r"[()]", reg, "")) in line.split(":")[0]:
                             gef_print(line)
+                            if reg in to_save_regs:
+                                printed_extra_regs["fpu"] = printed_extra_regs.get("fpu", []) + [reg]
                             break
+
+        self.previous_extra_regs = printed_extra_regs
         return
 
     def context_stack(self):
