@@ -21373,6 +21373,8 @@ class ContextCommand(GenericCommand):
         insn_here = inst_iter.__next__()
         if insn_here.operands == []:
             return
+        if insn_here.mnemonic == "nop":
+            return
 
         insn = ",".join(insn_here.operands)
         insn = re.sub(r"<.+>", "", insn)
