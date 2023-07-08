@@ -10221,12 +10221,6 @@ def parse_address(address):
 
 
 def get_ksymaddr(sym):
-    # use available symbol
-    try:
-        return parse_address("&" + sym)
-    except Exception:
-        pass
-    # use ksymaddr-remote
     try:
         res = gdb.execute("ksymaddr-remote --quiet --no-pager --exact {:s}".format(sym), to_string=True)
         return int(res.split()[0], 16)
