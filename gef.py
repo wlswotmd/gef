@@ -2913,15 +2913,8 @@ def str2bytes(x):
     if isinstance(x, bytes):
         return x
     if isinstance(x, str):
-        s = b""
-        for xx in x:
-            n = ord(xx)
-            if 0 <= n < 256:
-                s += bytes([n])
-                continue
-            else:
-                s += xx.encode()
-        return s
+        x = bytes(ord(xx) for xx in x)
+        return x
     raise
 
 
