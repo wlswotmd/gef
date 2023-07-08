@@ -42505,12 +42505,13 @@ class KernelVersionCommand(GenericCommand):
 
         # fast path
         linux_banner = get_ksymaddr("linux_banner")
-        if linux_banner:
+        if linux_banner and is_valid_addr(linux_banner):
             version_string = read_cstring_from_memory(linux_banner, 0x200).rstrip()
             r = re.search(r"Linux version (\d)\.(\d+)\.(\d+)", version_string)
-            major, minor, patch = int(r.group(1)), int(r.group(2)), int(r.group(3))
-            __cached_kernel_version__ = KernelVersionCommand.KernelVersion(linux_banner, version_string, major, minor, patch)
-            return __cached_kernel_version__
+            if r:
+                major, minor, patch = int(r.group(1)), int(r.group(2)), int(r.group(3))
+                __cached_kernel_version__ = KernelVersionCommand.KernelVersion(linux_banner, version_string, major, minor, patch)
+                return __cached_kernel_version__
 
         # slow path
         kinfo = KernelbaseCommand.get_kernel_base()
