@@ -18160,6 +18160,10 @@ class KernelChecksecCommand(GenericCommand):
 
     @staticmethod
     def get_slab_type():
+        # Cases where ksymaddr-remote is not working properly
+        if not gdb.execute("ksymaddr-remote --quiet commit_creds", to_string=True):
+            return "Unknown"
+
         if gdb.execute("ksymaddr-remote --quiet --no-pager slub_", to_string=True):
             kversion = KernelVersionCommand.kernel_version()
             if kversion < "6.2":
