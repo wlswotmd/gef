@@ -36094,10 +36094,10 @@ def get_syscall_table(arch=None, mode=None):
                 "int fd", "unsigned int off_lo", "unsigned int off_high", "size_t count",
             ], # arch/x86/kernel/sys_ia32.c
             "sys_set_thread_area": [
-                "struct user_desc __user * u_info",
+                "struct user_desc __user *u_info",
             ], # arch/x86/kernel/tls.c
             "sys_get_thread_area": [
-                "struct user_desc __user * u_info",
+                "struct user_desc __user *u_info",
             ], # arch/x86/kernel/tls.c
             "sys_ia32_fadvise64": [
                 "int fd", "unsigned int offset_lo", "unsigned int offset_hi", "size_t len", "int advice",
@@ -36180,10 +36180,10 @@ def get_syscall_table(arch=None, mode=None):
                 "int fd", "unsigned int off_lo", "unsigned int off_high", "size_t count",
             ], # arch/x86/kernel/sys_ia32.c
             "sys_set_thread_area": [
-                "struct user_desc __user * u_info",
+                "struct user_desc __user *u_info",
             ], # arch/x86/kernel/tls.c
             "sys_get_thread_area": [
-                "struct user_desc __user * u_info",
+                "struct user_desc __user *u_info",
             ], # arch/x86/kernel/tls.c
             "sys_ia32_fadvise64": [
                 "int fd", "unsigned int offset_lo", "unsigned int offset_hi", "size_t len", "int advice",
@@ -45758,6 +45758,7 @@ class ExecAsm:
     def close_stdout(self):
         if self.debug:
             return
+
         self.stdout_bak = os.dup(self.stdout)
         f = open("/dev/null")
         os.dup2(f.fileno(), self.stdout)
@@ -45776,6 +45777,7 @@ class ExecAsm:
     def modify_regs(self):
         if not self.regs:
             return
+
         for reg, v in self.regs.items():
             if get_register(reg) == v:
                 continue
@@ -45955,11 +45957,11 @@ class TlsCommand(GenericCommand):
 
         # slow path
         if is_x86_64():
-            codes = [b"\x64\x48\xa1\x00\x00\x00\x00\x00\x00\x00\x00"] # rax, fs:0x0
+            codes = [b"\x64\x48\xa1\x00\x00\x00\x00\x00\x00\x00\x00"] # movabs rax, qword ptr fs:[0x0]
             ret = ExecAsm(codes).exec_code()
             return ret["reg"]["$rax"]
         elif is_x86_32():
-            codes = [b"\x64\xa1\x00\x00\x00\x00"] # eax, fs:0x0
+            codes = [b"\x64\xa1\x00\x00\x00\x00"] # mov eax, dword ptr fs:[0x0]
             ret = ExecAsm(codes).exec_code()
             return ret["reg"]["$eax"]
         return 0
@@ -45987,11 +45989,11 @@ class TlsCommand(GenericCommand):
 
         # slow path
         if is_x86_64():
-            codes = [b"\x65\x48\xa1\x00\x00\x00\x00\x00\x00\x00\x00"] # rax, gs:0x0
+            codes = [b"\x65\x48\xa1\x00\x00\x00\x00\x00\x00\x00\x00"] # movabs rax, qword ptr gs:[0x0]
             ret = ExecAsm(codes).exec_code()
             return ret["reg"]["$rax"]
         elif is_x86_32():
-            codes = [b"\x65\xa1\x00\x00\x00\x00"] # eax, gs:0x0
+            codes = [b"\x65\xa1\x00\x00\x00\x00"] # mov eax, dword ptr gs:[0x0]
             ret = ExecAsm(codes).exec_code()
             return ret["reg"]["$eax"]
         return 0
