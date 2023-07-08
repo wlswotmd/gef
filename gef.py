@@ -44019,6 +44019,80 @@ class KernelModuleCommand(GenericCommand):
 
 
 @register_command
+class KernelBlockDevicesCommand(GenericCommand):
+    """Display block device list under qemu-system."""
+    _cmdline_ = "kbdev"
+    _category_ = "08-b. Qemu-system Cooperation - Linux"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
+    _syntax_ = parser.format_help()
+
+    def get_bdev_list(self):
+        allocator = KernelChecksecCommand.get_slab_type()
+        if allocator != "SLUB":
+            if not self.quiet:
+                err("Unsupported SLAB, SLOB, SLUB_TINY")
+            return None
+
+        bdevs = []
+        ret = gdb.execute("slub-dump -n -vv bdev_cache", to_string=True)
+        for line in ret.splitlines():
+            line = Color.remove_color(line)
+            r = re.search(r"(0x\S+) \(in-use\)", line)
+            if not r:
+                continue
+            bdev = int(r.group(1), 16)
+            bdevs.append(bdev)
+        return bdevs
+
+    def get_dev_num(self, bdev):
+        dev = u32(read_memory(bdev, 4))
+        major = dev >> 20
+        minor = dev & ((1 << 20) - 1)
+        return major, minor
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_qemu_system
+    @only_if_in_kernel
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        self.quiet = args.quiet
+
+        if not self.quiet:
+            info("Wait for memory scan")
+
+        bdevs = self.get_bdev_list()
+        if not bdevs:
+            err("Not found any bdev")
+            return
+
+        self.out = []
+        if not self.quiet:
+            fmt = "{:<18s} {:<18s} {:<6s} {:<6s}"
+            legend = ["bdev", "name", "major", "minor"]
+            self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+
+        bdev_with_nums = []
+        for bdev in bdevs:
+            major, minor = self.get_dev_num(bdev)
+            if major == 0:
+                continue
+            bdev_with_nums.append([major, minor, bdev])
+
+        fmt = "{:#018x} {:<18s} {:<6d} {:<6d}"
+        for major, minor, bdev in sorted(bdev_with_nums):
+            self.out.append(fmt.format(bdev, "???", major, minor))
+
+        if self.out:
+            gef_print("\n".join(self.out), less=not args.no_pager)
+        return
+
+
+@register_command
 class KernelCharacterDevicesCommand(GenericCommand):
     """Display character device list under qemu-system."""
     _cmdline_ = "kcdev"
