@@ -48330,7 +48330,10 @@ class SlubDumpCommand(GenericCommand):
                     next_msg = "next: {:#x}".format(next_chunk)
                     chunk_s = Color.colorify("{:#x}".format(chunk), freed_address_color)
                 else:
-                    next_msg = "in-use"
+                    if page["objects"] <= idx:
+                        next_msg = "never-used"
+                    else:
+                        next_msg = "in-use"
                     chunk_s = Color.colorify("{:#x}".format(chunk), used_address_color)
                 layout_msg = "layout:" if idx == 0 else ""
                 self.out.append("        {:7s}   {:#05x} {:s} ({:s})".format(layout_msg, idx, chunk_s, next_msg))
@@ -49007,7 +49010,10 @@ class SlubTinyDumpCommand(GenericCommand):
                     next_msg = "next: {:#x}".format(next_chunk)
                     chunk_s = Color.colorify("{:#x}".format(chunk), freed_address_color)
                 else:
-                    next_msg = "in-use"
+                    if page["objects"] <= idx:
+                        next_msg = "never-used"
+                    else:
+                        next_msg = "in-use"
                     chunk_s = Color.colorify("{:#x}".format(chunk), used_address_color)
                 layout_msg = "layout:" if idx == 0 else ""
                 self.out.append("        {:7s}   {:#05x} {:s} ({:s})".format(layout_msg, idx, chunk_s, next_msg))
@@ -49753,7 +49759,7 @@ class SlabDumpCommand(GenericCommand):
 
         # print layout
         freelist = page["freelist"]
-        end_virt = page["s_mem"] + kmem_cache["size"] * kmem_cache["objperslab"]
+        end_virt = page["s_mem"] + kmem_cache["pagesperslab"] * gef_getpagesize()
         for idx, chunk in enumerate(range(page["s_mem"], end_virt, kmem_cache["size"])):
             if idx in freelist:
                 idxidx = freelist.index(idx)
@@ -49764,7 +49770,10 @@ class SlabDumpCommand(GenericCommand):
                     next_msg = "next: {:#x}".format(next_idx)
                 chunk_s = Color.colorify("{:#x}".format(chunk), freed_address_color)
             else:
-                next_msg = "in-use"
+                if kmem_cache["objperslab"] <= idx:
+                    next_msg = "never-used"
+                else:
+                    next_msg = "in-use"
                 chunk_s = Color.colorify("{:#x}".format(chunk), used_address_color)
             self.out.append("        {:7s}   {:#04x} {:s} ({:s})".format("layout:" if idx == 0 else "", idx, chunk_s, next_msg))
 
