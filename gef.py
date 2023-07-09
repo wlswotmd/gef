@@ -40396,7 +40396,7 @@ class KernelAddressHeuristicFinder:
         if el0_svc_compat is None:
             el0_svc_compat = get_ksymaddr("el0_svc_compat_handler") # 4.18-rc1 <= kernel < 5.6-rc1
         if el0_svc_compat is None:
-            el0_svc_compat = get_ksymaddr("el0_svc_compat") # 3.7-rc1 <= kenrel < 4.18-rc1
+            el0_svc_compat = get_ksymaddr("el0_svc_compat") # 3.7-rc1 <= kernel < 4.18-rc1
         if el0_svc_compat:
             res = gdb.execute("x/100i {:#x}".format(el0_svc_compat), to_string=True)
             adrp = None
@@ -44704,7 +44704,7 @@ class KernelOperationsCommand(GenericCommand):
 
 @register_command
 class KernelParamSysctlCommand(GenericCommand):
-    """Dump sysctl parameters using kenrel memory scanning."""
+    """Dump sysctl parameters using kernel memory scanning."""
     _cmdline_ = "kparam-sysctl"
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
@@ -44858,7 +44858,7 @@ class KernelParamSysctlCommand(GenericCommand):
                 struct ctl_dir *parent;
                 struct ctl_node *node;
                 struct hlist_head inodes;                 // 4.12.2 <= kernel
-                struct list_head inodes;                  // 4.11-rc1 <= kenrel < 4.12.2
+                struct list_head inodes;                  // 4.11-rc1 <= kernel < 4.12.2
             } header;
             struct rb_root {
                 struct rb_node *rb_node;
@@ -44992,7 +44992,7 @@ class KernelParamSysctlCommand(GenericCommand):
 
 @register_command
 class KernelFileSystemsCommand(GenericCommand):
-    """Dump /proc/filesystems using kenrel memory scanning."""
+    """Dump /proc/filesystems using kernel memory scanning."""
     _cmdline_ = "kfilesystems"
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
@@ -45075,7 +45075,7 @@ class KernelFileSystemsCommand(GenericCommand):
 
 @register_command
 class KernelClockSourceCommand(GenericCommand):
-    """Dump clock sources using kenrel memory scanning."""
+    """Dump clock sources using kernel memory scanning."""
     _cmdline_ = "kclock-source"
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
@@ -47604,7 +47604,7 @@ class ConstGrepCommand(GenericCommand):
 
 @register_command
 class SlubDumpCommand(GenericCommand):
-    """Dump slub freelist with kenrel memory scanning."""
+    """Dump slub freelist with kernel memory scanning."""
     _cmdline_ = "slub-dump"
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
@@ -48573,7 +48573,7 @@ class SlubDumpCommand(GenericCommand):
 
 @register_command
 class SlubTinyDumpCommand(GenericCommand):
-    """Dump slub-tiny freelist with kenrel memory scanning."""
+    """Dump slub-tiny freelist with kernel memory scanning."""
     _cmdline_ = "slub-tiny-dump"
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
@@ -49210,7 +49210,7 @@ class SlubTinyDumpCommand(GenericCommand):
 
 @register_command
 class SlabDumpCommand(GenericCommand):
-    """Dump slab freelist with kenrel memory scanning."""
+    """Dump slab freelist with kernel memory scanning."""
     _cmdline_ = "slab-dump"
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
@@ -50002,7 +50002,7 @@ class SlabDumpCommand(GenericCommand):
 
 @register_command
 class SlobDumpCommand(GenericCommand):
-    """Dump slob freelist with kenrel memory scanning."""
+    """Dump slob freelist with kernel memory scanning."""
     _cmdline_ = "slob-dump"
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
@@ -50446,7 +50446,7 @@ class SlobDumpCommand(GenericCommand):
 
 @register_command
 class KsymaddrRemoteCommand(GenericCommand):
-    """Solve kernel symbols from kallsyms table using kenrel memory scanning."""
+    """Resolve kernel symbols from kallsyms table using kernel memory scanning."""
     # Thanks to https://github.com/marin-m/vmlinux-to-elf
     _cmdline_ = "ksymaddr-remote"
     _category_ = "08-b. Qemu-system Cooperation - Linux"
