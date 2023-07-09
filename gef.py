@@ -50616,6 +50616,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         """
         Memory storage order of each table (-: not found yet, +: found already)
         - kallsyms_offsets or kallsyms_addresses
+        - relative_base_address (when using kallsyms_offsets)
         - kallsyms_num_syms
         - kallsyms_names
         - kallsyms_markers
@@ -50716,6 +50717,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         """
         Memory storage order of each table (-: not found yet, +: found already)
         - kallsyms_offsets or kallsyms_addresses
+        - relative_base_address (when using kallsyms_offsets)
         - kallsyms_num_syms
         - kallsyms_names
         - kallsyms_markers
@@ -50795,6 +50797,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         """
         Memory storage order of each table (-: not found yet, +: found already)
         - kallsyms_offsets or kallsyms_addresses
+        - relative_base_address (when using kallsyms_offsets)
         - kallsyms_num_syms
         - kallsyms_names
         - kallsyms_markers
@@ -50915,6 +50918,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         """
         Memory storage order of each table (-: not found yet, +: found already)
         - kallsyms_offsets or kallsyms_addresses
+        - relative_base_address (when using kallsyms_offsets)
         - kallsyms_num_syms
         - kallsyms_names
         + kallsyms_markers
@@ -50986,6 +50990,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         """
         Memory storage order of each table (-: not found yet, +: found already)
         - kallsyms_offsets or kallsyms_addresses
+        - relative_base_address (when using kallsyms_offsets)
         - kallsyms_num_syms
         + kallsyms_names
         + kallsyms_markers
@@ -51150,6 +51155,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         """
         Memory storage order of each table (-: not found yet, +: found already)
         - kallsyms_offsets or kallsyms_addresses
+        - relative_base_address (when using kallsyms_offsets)
         + kallsyms_num_syms
         + kallsyms_names
         + kallsyms_markers
@@ -51238,7 +51244,8 @@ class KsymaddrRemoteCommand(GenericCommand):
                     + kallsyms_seqs_of_names
                     + kallsyms_token_table
                     + kallsyms_token_index
-                    - kallsyms_offsets <--- this is weird (v6.4~)
+                    - kallsyms_offsets <--- these are weird (v6.4~)
+                    - relative_base_address <---
 
                     [ex1]
                     kallsyms_token_index: 0xffffffff844fa178
@@ -51284,6 +51291,8 @@ class KsymaddrRemoteCommand(GenericCommand):
                         return None
                 else:
                     return None
+
+            self.verbose_info("relative_base_address: {:#x}".format(relative_base_address))
 
             # Try to parse addresses or offsets.
             fmt = "{:s}{:d}i".format(endianness_marker, self.num_symbols) # signed int
