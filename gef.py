@@ -17100,10 +17100,10 @@ class AsmListCommand(GenericCommand):
 
 
 @register_command
-class ProcessListingCommand(GenericCommand):
+class ProcessSearchCommand(GenericCommand):
     """List and filter processes."""
     _cmdline_ = "process-search"
-    _category_ = "09-b. Misc - Search"
+    _category_ = "07-a. External Command - General"
     _aliases_ = ["ps"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
