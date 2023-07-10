@@ -39498,6 +39498,45 @@ class VisualHeapCommand(GenericCommand):
 
 
 @register_command
+class DistanceCommand(GenericCommand):
+    """Calculate the offset from its base address."""
+    _cmdline_ = "distance"
+    _category_ = "09-a. Misc - Calculation"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("address_a", metavar="ADDRESS_A", type=parse_address,
+                        help="the address you want to calculate the offset as (A - base_addr_of(A)).")
+    parser.add_argument("address_b", metavar="ADDRESS_B", type=parse_address, nargs="?",
+                        help="the address you want to calculate the offset as abs(A - B).")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_not_qemu_system
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        if args.address_b is not None:
+            offset = abs(args.address_a - args.address_b)
+            gef_print("Offset: {:#x}".format(offset))
+            return
+
+        addr_a = lookup_address(args.address_a)
+        if addr_a.section is None:
+            err("Not found the base address")
+            return
+
+        if addr_a.section.path:
+            base_address = get_section_base_address_by_list(addr_a.section.path)
+        else:
+            base_address = addr_a.section.page_start
+
+        offset = args.address_a - base_address
+        gef_print("Offset: {:#x}".format(offset))
+        return
+
+
+@register_command
 class U2dCommand(GenericCommand):
     """Translate type (unsigned long <-> double/float)."""
     _cmdline_ = "u2d"

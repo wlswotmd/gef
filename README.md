@@ -512,6 +512,7 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/v8-load.png)
 * `main-break`: sets a breakpoint at `main` with or without symbols, then continue.
     * Useful if you just want to run to `main` when using qemu-user or pin.
+* `distance`: calculates the offset from its base address.
 
 ### Other
 * The category is introduced in `gef help`.
