@@ -44068,15 +44068,23 @@ class KernelBlockDevicesCommand(GenericCommand):
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
+    def __init__(self):
+        super().__init__(complete=gdb.COMPLETE_LOCATION)
+        self.offset_bd_dev = None
+        return
+
     def get_bdev_list(self):
         allocator = KernelChecksecCommand.get_slab_type()
-        if allocator != "SLUB":
+        if allocator == "SLUB":
+            ret = gdb.execute("slub-dump -n bdev_cache", to_string=True)
+        elif allocator == "SLUB_TINY":
+            ret = gdb.execute("slub-tiny-dump -n bdev_cache", to_string=True)
+        else:
             if not self.quiet:
-                err("Unsupported SLAB, SLOB, SLUB_TINY")
+                err("Unsupported SLAB, SLOB")
             return None
 
         bdevs = []
-        ret = gdb.execute("slub-dump -n -vv bdev_cache", to_string=True)
         for line in ret.splitlines():
             line = Color.remove_color(line)
             r = re.search(r"(0x\S+) \(in-use\)", line)
@@ -44086,11 +44094,271 @@ class KernelBlockDevicesCommand(GenericCommand):
             bdevs.append(bdev)
         return bdevs
 
+    @staticmethod
+    def get_bdev_name(major, minor):
+        # https://www.kernel.org/doc/Documentation/admin-guide/devices.txt
+        # https://github.com/lrs-lang/lib/blob/master/src/dev/lib.rs
+        dev_name_list = {
+            0: "???",
+            4: "/dev/root",
+            7: "/dev/loop{:d}",
+            9: "/dev/md{:d}",
+            11: "/dev/scd{0:d} (sr{0:d})",
+            12: "/dev/dos_cd{:d}",
+            15: "/dev/sonycd",
+            16: "/dev/gscd",
+            17: "/dev/optcd",
+            18: "/dev/sjcd",
+            20: "/dev/hitcd",
+            23: "/dev/mcd",
+            24: "/dev/cdu535",
+            29: "/dev/aztcd",
+            30: "/dev/cm205cd",
+            32: "/dev/cm206cd",
+            35: "/dev/slram",
+            37: "/dev/z2ram",
+            41: "/dev/bpcd",
+            43: "/dev/nb{:d}",
+            46: "/dev/pcd{:d}",
+            47: "/dev/pf{:d}",
+            59: "/dev/pda{:d}",
+            92: "/dev/ppdd{:d}",
+            97: "/dev/pktcdvd",
+            99: "/dev/jsfd",
+            103: "/dev/audit",
+            115: "/dev/nwfs/v{:d}",
+            147: "/dev/drbd{:d}",
+            152: "/dev/etherd/{:d}",
+            199: "/dev/vx/dsk/*/*",
+            201: "/dev/vx/dmp/*/*",
+            258: "/dev/blockrom{:d}",
+        }
+
+        if major in dev_name_list:
+            return dev_name_list[major].format(minor)
+
+        def common_pattern(kind_sep, kind_max, devstr, sym_start="a"):
+            kind = minor // kind_sep
+            num = minor % kind_sep
+            if kind < kind_max:
+                dev = "/dev/{:s}{:s}".format(devstr, chr(ord(sym_start) + kind))
+                if num:
+                    dev = "{:s}{:d}".format(dev, num)
+                return dev
+            return "???"
+
+        def common_pattern_num_p(kind_sep, kind_max, devstr, kind_offset=0):
+            kind = minor // kind_sep
+            num = minor % kind_sep
+            if kind_max is None or kind < kind_max:
+                dev = "/dev/{:s}{:d}".format(devstr, kind + kind_offset)
+                if num:
+                    dev = "{:s}p{:d}".format(dev, num)
+                return dev
+            return "???"
+
+        def iterate_pattern(kind_sep, kind_max, dev_str, sym_start):
+            def gen():
+              cs = "abcdefghijklmnopqrstuvwxyz"
+              for c in cs:
+                yield c
+              for c1 in cs:
+                for c2 in cs:
+                  yield c1 + c2
+              return
+            name_list = list(gen())
+            kind = minor // kind_sep
+            num = minor % kind_sep
+            if kind < (kind_max or len(name_list)):
+                offset = name_list.index(sym_start)
+                dev = "/dev/{:s}{:s}".format(dev_str, name_list[offset + kind])
+                if num:
+                   dev = "{:s}{:d}".format(dev, num)
+                return dev
+            return "???"
+
+        if major == 1:
+            if 0 <= minor < 250:
+                return "/dev/ram{:d}".format(minor)
+            elif minor == 250:
+                return "/dev/initrd"
+        elif major == 2:
+            if 0 <= minor < 128:
+                num = minor % 4
+            elif 128 <= minor < 256:
+                num = 4 + minor % 4
+            else:
+                return "???"
+            fd_type = (minor % 128) & ~0b11
+            type_dic = {
+                0: "",
+                4: "d360",
+                8: "h1200",
+                12: "u360",
+                16: "u720",
+                20: "h360",
+                24: "h720",
+                28: "u1440",
+                32: "u2880",
+                36: "CompaQ",
+                40: "h1440",
+                44: "u1680",
+                48: "h410",
+                52: "u820",
+                56: "h1476",
+                60: "u1722",
+                64: "h420",
+                68: "u830",
+                72: "h1494",
+                76: "u1743",
+                80: "h880",
+                84: "u1040",
+                88: "u1120",
+                92: "h1600",
+                96: "u1760",
+                100: "u1920",
+                104: "u3200",
+                108: "u3520",
+                112: "u3840",
+                116: "u1840",
+                120: "u800",
+                124: "u1600",
+            }
+            if fd_type in type_dic:
+                return "/dev/fd{:d}{:s}".format(num, type_dic[fd_type])
+        elif major == 3:
+            return common_pattern(64, 2, "hd", sym_start="a")
+        elif major == 8:
+            return iterate_pattern(16, 16, "sd", sym_start="a")
+        elif major == 13:
+            return common_pattern(64, 4, "xd")
+        elif major == 14:
+            return common_pattern(64, 4, "dos_hd")
+        elif major == 19:
+            if 0 <= minor < 8:
+                return "/dev/double{:d}".format(minor)
+            elif 128 <= minor < 136:
+                return "/dev/cdouble{:d}".format(minor - 128)
+        elif major == 21:
+            return common_pattern(64, 2, "mfm")
+        elif major == 22:
+            return common_pattern(64, 2, "hd", sym_start="c")
+        elif 25 <= major < 28:
+            if 0 <= minor < 4:
+                return "/dev/sbpcd{:d}".format(minor + (major - 25) * 4)
+        elif major == 28: # 28 are duplicates
+            if is_m68k():
+                return common_pattern(16, 16, "ad")
+            else:
+                if 0 <= minor < 4:
+                    return "/dev/sbpcd{:d}".format(minor + (major - 25) * 4)
+        elif major == 31:
+            if 0 <= minor < 8:
+                return "/dev/rom{:d}".format(minor)
+            elif 8 <= minor < 16:
+                return "/dev/rrom{:d}".format(minor - 8)
+            elif 16 <= minor < 24:
+                return "/dev/flash{:d}".format(minor - 16)
+            elif 24 <= minor < 32:
+                return "/dev/rflash{:d}".format(minor - 24)
+        elif 33 <= major < 35:
+            return common_pattern(64, 2, "hd", sym_start=["e", "g"][major - 33])
+        elif major == 36:
+            return common_pattern(64, 4, "ed")
+        elif major == 40:
+            if minor == 0:
+                return "/dev/eza"
+            elif 1 <= minor < 64:
+                return "/dev/eza{:d}".format(minor)
+        elif major == 44:
+            return common_pattern(16, 16, "ftl")
+        elif major == 45:
+            return common_pattern(16, 4, "pd")
+        elif 48 <= major < 56:
+            return common_pattern_num_p(8, 32, "rd/c{:d}d".format(major - 48))
+        elif 56 <= major < 58:
+            return common_pattern(64, 2, "hd", sym_start=["i", "k"][major - 56])
+        elif major == 64:
+            if minor == 0:
+                return "/dev/scramdisk/master"
+            elif 1 <= minor:
+                return "/dev/scramdisk/{:d}".format(minor)
+        elif 65 <= major < 72:
+            return iterate_pattern(16, 16, "sd", sym_start=["q", "ag", "aw", "bm", "cc", "cs", "di"][major - 65])
+        elif 72 <= major < 80:
+            return common_pattern_num_p(16, 16, "ida/c{:d}d".format(major - 72))
+        elif 80 <= major < 88:
+            return iterate_pattern(16, 16, "i2o/hd", sym_start=["a", "q", "ag", "aw", "bm", "cc", "cs", "di"][major - 80])
+        elif 88 <= major < 92:
+            return common_pattern(64, 2, "hd", sym_start=["m", "o", "q", "s"][major - 88])
+        elif major == 93:
+            return common_pattern(16, 16, "nftl")
+        elif major == 94:
+            return common_pattern(4, 26, "dasd")
+        elif major == 96:
+            return common_pattern(16, 16, "inftl")
+        elif major == 98:
+            return common_pattern(16, 26, "ubd")
+        elif major == 101:
+            return common_pattern_num_p(16, 16, "amiraid/ar")
+        elif major == 102:
+            return common_pattern(16, 16, "cbd/")
+        elif 104 <= major < 112:
+            return common_pattern_num_p(16, 16, "cciss/c{:d}d".format(major - 104))
+        elif major == 112:
+            return iterate_pattern(8, 64, "iseries/vd", sym_start="a")
+        elif major == 113:
+            return iterate_pattern(1, None, "iseries/vcd", sym_start="a")
+        elif major == 114:
+            return common_pattern_num_p(16, 16, "ataraid/d")
+        elif major == 116:
+            return common_pattern_num_p(16, 16, "umem/d")
+        elif major == 117:
+            if minor == 0:
+                return "/dev/evms/block_device"
+            elif 1 <= minor < 128:
+                return "/dev/evms/legacyname{:d}".format(minor)
+            elif 128 <= minor < 256:
+                return "/dev/evms/EVMSname{:d}".format(256 - minor)
+        elif 128 <= major < 136:
+            return iterate_pattern(16, 16, "sd", sym_start=["dy", "eo", "fe", "fu", "gk", "ha", "hq", "ig"][major - 128])
+        elif 136 <= major < 144:
+            return common_pattern_num_p(16, 16, "rd/c{:d}d".format(major - 136 + 8))
+        elif major == 153:
+            return common_pattern_num_p(16, 16, "emd/")
+        elif 160 <= major < 162:
+            return common_pattern_num_p(32, 8, "carmel/", kind_offset=(major - 160) * 8)
+        elif major == 179:
+            return common_pattern_num_p(8, None, "mmcblk")
+        elif major == 180:
+            return common_pattern(8, 26, "ub")
+        elif major == 202:
+            return common_pattern(16, 16, "xvd")
+        elif 240 <= major < 255: # LOCAL/EXPERIMENTAL USE, but maybe this is virtio when qemu-system
+            return common_pattern(16, 16, "vd")
+        elif major == 256:
+            return common_pattern(16, 16, "rfd")
+        elif major == 257:
+            return common_pattern(8, 8, "ssfdc")
+        return "???"
+
     def get_dev_num(self, bdev):
-        dev = u32(read_memory(bdev, 4))
+        if self.offset_bd_dev is None:
+            kversion = KernelVersionCommand.kernel_version()
+            if kversion < "5.11":
+                self.offset_bd_dev = 0
+            elif kversion < "5.16":
+                self.offset_bd_dev = current_arch.ptrsize * 3 + 4
+            elif kversion < "6.4":
+                self.offset_bd_dev = current_arch.ptrsize * 4 + 4
+            else:
+                self.offset_bd_dev = current_arch.ptrsize * 6 + 4
+
+        dev = u32(read_memory(bdev + self.offset_bd_dev, 4))
         major = dev >> 20
         minor = dev & ((1 << 20) - 1)
-        return major, minor
+        name = KernelBlockDevicesCommand.get_bdev_name(major, minor)
+        return major, minor, name
 
     @parse_args
     @only_if_gdb_running
@@ -44112,22 +44380,31 @@ class KernelBlockDevicesCommand(GenericCommand):
         self.out = []
         if not self.quiet:
             fmt = "{:<18s} {:<18s} {:<6s} {:<6s}"
-            legend = ["bdev", "name", "major", "minor"]
+            legend = ["bdev", "name (guessed)", "major", "minor"]
             self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
-        bdev_with_nums = []
-        for bdev in bdevs:
-            major, minor = self.get_dev_num(bdev)
-            if major == 0:
-                continue
-            bdev_with_nums.append([major, minor, bdev])
+        # ignore bdev if major is 0
+        bdevs = [bdev for bdev in bdevs if self.get_dev_num(bdev)[0] != 0]
+        if not bdevs:
+            err("Not found any bdev")
+            return
 
+        # parse major, minor and name
+        bdevs_with_info = []
+        for bdev in bdevs:
+            major, minor, name = self.get_dev_num(bdev)
+            bdevs_with_info.append([major, minor, name, bdev])
+
+        # print
         fmt = "{:#018x} {:<18s} {:<6d} {:<6d}"
-        for major, minor, bdev in sorted(bdev_with_nums):
-            self.out.append(fmt.format(bdev, "???", major, minor))
+        for major, minor, name, bdev in sorted(bdevs_with_info):
+            self.out.append(fmt.format(bdev, name, major, minor))
 
         if self.out:
-            gef_print("\n".join(self.out), less=not args.no_pager)
+            if len(self.out) > 20:
+                gef_print("\n".join(self.out), less=not args.no_pager)
+            else:
+                gef_print("\n".join(self.out), less=False)
         return
 
 
@@ -44144,6 +44421,869 @@ class KernelCharacterDevicesCommand(GenericCommand):
 
     # character device is managed at chrdevs[] and cdev_map.
     # we use each of them for getting structure information.
+
+    @staticmethod
+    def get_cdev_name(major, minor):
+        # https://www.kernel.org/doc/Documentation/admin-guide/devices.txt
+        # https://github.com/lrs-lang/lib/blob/master/src/dev/lib.rs
+        dev_name_list = {
+            (1, 0): "/dev/mem", # Undocumented, but it seems to be used
+            (1, 1): "/dev/mem",
+            (1, 2): "/dev/kmem",
+            (1, 3): "/dev/null",
+            (1, 4): "/dev/port",
+            (1, 5): "/dev/zero",
+            (1, 6): "/dev/core",
+            (1, 7): "/dev/full",
+            (1, 8): "/dev/random",
+            (1, 9): "/dev/urandom",
+            (1, 10): "/dev/aio",
+            (1, 11): "/dev/kmsg",
+            (1, 12): "/dev/oldmem",
+            (5, 0): "/dev/tty",
+            (5, 1): "/dev/console",
+            (5, 2): "/dev/ptmx",
+            (5, 3): "/dev/ttyprintk",
+            (10, 0): "/dev/logibm",
+            (10, 1): "/dev/psaux",
+            (10, 2): "/dev/inportbm",
+            (10, 3): "/dev/atibm",
+            (10, 4): "/dev/jbm",
+            (10, 4): "/dev/amigamouse",
+            (10, 5): "/dev/atarimouse",
+            (10, 6): "/dev/sunmouse",
+            (10, 7): "/dev/amigamouse1",
+            (10, 8): "/dev/smouse",
+            (10, 9): "/dev/pc110pad",
+            (10, 10): "/dev/adbmouse",
+            (10, 11): "/dev/vrtpanel",
+            (10, 13): "/dev/vpcmouse",
+            (10, 14): "/dev/touchscreen/ucb1x00",
+            (10, 15): "/dev/touchscreen/mk712",
+            (10, 128): "/dev/beep",
+            (10, 130): "/dev/watchdog",
+            (10, 131): "/dev/temperature",
+            (10, 132): "/dev/hwtrap",
+            (10, 133): "/dev/exttrp",
+            (10, 134): "/dev/apm_bios",
+            (10, 135): "/dev/rtc",
+            (10, 137): "/dev/vhci",
+            (10, 139): "/dev/openprom",
+            (10, 140): "/dev/relay8",
+            (10, 141): "/dev/relay16",
+            (10, 143): "/dev/pciconf",
+            (10, 144): "/dev/nvram",
+            (10, 145): "/dev/hfmodem",
+            (10, 146): "/dev/graphics",
+            (10, 147): "/dev/opengl",
+            (10, 148): "/dev/gfx",
+            (10, 149): "/dev/input/mouse",
+            (10, 150): "/dev/input/keyboard",
+            (10, 151): "/dev/led",
+            (10, 152): "/dev/kpoll",
+            (10, 153): "/dev/mergemem",
+            (10, 154): "/dev/pmu",
+            (10, 156): "/dev/lcd",
+            (10, 157): "/dev/ac",
+            (10, 158): "/dev/nwbutton",
+            (10, 159): "/dev/nwdebug",
+            (10, 160): "/dev/nwflash",
+            (10, 161): "/dev/userdma",
+            (10, 162): "/dev/smbus",
+            (10, 163): "/dev/lik",
+            (10, 164): "/dev/ipmo",
+            (10, 165): "/dev/vmmon",
+            (10, 166): "/dev/i2o/ctl",
+            (10, 167): "/dev/specialix_sxctl",
+            (10, 168): "/dev/tcldrv",
+            (10, 169): "/dev/specialix_rioctl",
+            (10, 170): "/dev/thinkpad/thinkpad",
+            (10, 171): "/dev/srripc",
+            (10, 172): "/dev/usemaclone",
+            (10, 173): "/dev/ipmikcs",
+            (10, 174): "/dev/uctrl",
+            (10, 175): "/dev/agpgart",
+            (10, 176): "/dev/gtrsc",
+            (10, 177): "/dev/cbm",
+            (10, 178): "/dev/jsflash",
+            (10, 179): "/dev/xsvc",
+            (10, 180): "/dev/vrbuttons",
+            (10, 181): "/dev/toshiba",
+            (10, 182): "/dev/perfctr",
+            (10, 183): "/dev/hwrng",
+            (10, 184): "/dev/cpu/microcode",
+            (10, 186): "/dev/atomicps",
+            (10, 187): "/dev/irnet",
+            (10, 188): "/dev/smbusbios",
+            (10, 189): "/dev/ussp_ctl",
+            (10, 190): "/dev/crash",
+            (10, 191): "/dev/pcl181",
+            (10, 192): "/dev/nas_xbus",
+            (10, 193): "/dev/d7s",
+            (10, 194): "/dev/zkshim",
+            (10, 195): "/dev/elographics/e2201",
+            (10, 196): "/dev/vfio/vfio",
+            (10, 197): "/dev/pxa3xx-gcu",
+            (10, 198): "/dev/sexec",
+            (10, 199): "/dev/scanners/cuecat",
+            (10, 200): "/dev/net/tun",
+            (10, 201): "/dev/button/gulpb",
+            (10, 202): "/dev/emd/ctl",
+            (10, 203): "/dev/cuse",
+            (10, 204): "/dev/video/em8300",
+            (10, 205): "/dev/video/em8300_mv",
+            (10, 206): "/dev/video/em8300_ma",
+            (10, 207): "/dev/video/em8300_sp",
+            (10, 208): "/dev/compaq/cpqphpc",
+            (10, 209): "/dev/compaq/cpqrid",
+            (10, 210): "/dev/impi/bt",
+            (10, 211): "/dev/impi/smic",
+            (10, 212): "/dev/watchdogs/0",
+            (10, 213): "/dev/watchdogs/1",
+            (10, 214): "/dev/watchdogs/2",
+            (10, 215): "/dev/watchdogs/3",
+            (10, 216): "/dev/fujitsu/apanel",
+            (10, 217): "/dev/ni/natmotn",
+            (10, 218): "/dev/kchuid",
+            (10, 219): "/dev/modems/mwave",
+            (10, 220): "/dev/mptctl",
+            (10, 221): "/dev/mvista/hssdsi",
+            (10, 222): "/dev/mvista/hasi",
+            (10, 223): "/dev/input/uinput",
+            (10, 224): "/dev/tpm",
+            (10, 225): "/dev/pps",
+            (10, 226): "/dev/systrace",
+            (10, 227): "/dev/mcelog",
+            (10, 228): "/dev/hpet",
+            (10, 229): "/dev/fuse",
+            (10, 230): "/dev/midishare",
+            (10, 231): "/dev/snapshot",
+            (10, 232): "/dev/kvm",
+            (10, 233): "/dev/kmview",
+            (10, 234): "/dev/btrfs-control",
+            (10, 235): "/dev/autofs",
+            (10, 236): "/dev/mapper/control",
+            (10, 237): "/dev/loop-control",
+            (10, 238): "/dev/vhost-net",
+            (10, 239): "/dev/uhid",
+            (10, 240): "/dev/userio",
+            (10, 241): "/dev/vhost-vsock",
+            (10, 242): "/dev/rfkill",
+            (12, 2): "/dev/ntpqic11",
+            (12, 3): "/dev/tpqic11",
+            (12, 4): "/dev/ntpqic24",
+            (12, 5): "/dev/tpqic24",
+            (12, 6): "/dev/ntpqic120",
+            (12, 7): "/dev/tpqic120",
+            (12, 8): "/dev/ntpqic150",
+            (12, 9): "/dev/tpqic150",
+            (14, 0): "/dev/mixer",
+            (14, 1): "/dev/sequencer",
+            (14, 2): "/dev/midi00",
+            (14, 3): "/dev/dsp",
+            (14, 4): "/dev/audio",
+            (14, 7): "/dev/audioctl",
+            (14, 8): "/dev/sequencer2",
+            (14, 16): "/dev/mixer1",
+            (14, 17): "/dev/patmgr0",
+            (14, 18): "/dev/midi01",
+            (14, 19): "/dev/dsp1",
+            (14, 20): "/dev/audio1",
+            (14, 33): "/dev/patmgr1",
+            (14, 34): "/dev/midi02",
+            (14, 50): "/dev/midi03",
+            (30, 0): "/dev/socksys",
+            (30, 1): "/dev/spx",
+            (30, 32): "/dev/inet/ip",
+            (30, 33): "/dev/inet/icmp",
+            (30, 34): "/dev/inet/ggp",
+            (30, 35): "/dev/inet/ipip",
+            (30, 36): "/dev/inet/tcp",
+            (30, 37): "/dev/inet/egp",
+            (30, 38): "/dev/inet/pup",
+            (30, 39): "/dev/inet/udp",
+            (30, 40): "/dev/inet/idp",
+            (30, 41): "/dev/inet/rawip",
+            (31, 0): "/dev/mpu401data",
+            (31, 1): "/dev/mpu401stat",
+            (36, 0): "/dev/route",
+            (36, 1): "/dev/skip",
+            (36, 3): "/dev/fwmonitor",
+            (70, 0): "/dev/apscfg",
+            (70, 1): "/dev/apsauth",
+            (70, 2): "/dev/apslog",
+            (70, 3): "/dev/apsdbg",
+            (70, 64): "/dev/apsisdn",
+            (70, 65): "/dev/apsasync",
+            (70, 128): "/dev/apsmon",
+            (73, 0): "/dev/ip2ipl0",
+            (73, 1): "/dev/ip2stat0",
+            (73, 4): "/dev/ip2ipl1",
+            (73, 5): "/dev/ip2stat1",
+            (73, 8): "/dev/ip2ipl2",
+            (73, 9): "/dev/ip2stat2",
+            (73, 12): "/dev/ip2ipl3",
+            (73, 13): "/dev/ip2stat",
+            (95, 0): "/dev/ipl",
+            (95, 1): "/dev/ipnat",
+            (95, 2): "/dev/ipstate",
+            (95, 3): "/dev/ipauth",
+            (152, 0): "/dev/etherd/ctl",
+            (152, 1): "/dev/etherd/err",
+            (152, 2): "/dev/etherd/raw",
+            (200, 0): "/dev/vx/config",
+            (200, 1): "/dev/vx/trace",
+            (200, 2): "/dev/vx/iod",
+            (200, 3): "/dev/vx/info",
+            (200, 4): "/dev/vx/task",
+            (200, 5): "/dev/vx/taskmon",
+            (207, 0): "/dev/cpqhealth/cpqw",
+            (207, 1): "/dev/cpqhealth/crom",
+            (207, 2): "/dev/cpqhealth/cdt",
+            (207, 3): "/dev/cpqhealth/cevt",
+            (207, 4): "/dev/cpqhealth/casr",
+            (207, 5): "/dev/cpqhealth/cecc",
+            (207, 6): "/dev/cpqhealth/cmca",
+            (207, 7): "/dev/cpqhealth/ccsm",
+            (207, 8): "/dev/cpqhealth/cnmi",
+            (207, 9): "/dev/cpqhealth/css",
+            (207, 10): "/dev/cpqhealth/cram",
+            (207, 11): "/dev/cpqhealth/cpci",
+        }
+        if (major, minor) in dev_name_list:
+            return dev_name_list[major, minor]
+
+        dev_name_list2 = {
+            0: "???",
+            6: "/dev/lp{:d}",
+            16: "/dev/gs4500",
+            17: "/dev/ttyH{:d}",
+            18: "/dev/cuh{:d}",
+            19: "/dev/ttyC{:d}",
+            20: "/dev/cub{:d}",
+            21: "/dev/sg{:d}",
+            22: "/dev/ttyD{:d}",
+            23: "/dev/cud{:d}",
+            24: "/dev/ttyE{:d}",
+            25: "/dev/cue{:d}",
+            26: "/dev/wvisfgrab",
+            29: "/dev/fb{:d}",
+            32: "/dev/ttyX{:d}",
+            33: "/dev/cux{:d}",
+            34: "/dev/scc{:d}",
+            38: "/dev/mlanai{:d}",
+            40: "/dev/mmetfgrab",
+            41: "/dev/yamm",
+            43: "/dev/ttyI{:d}",
+            44: "/dev/cui{:d}",
+            46: "/dev/ttyR{:d}",
+            47: "/dev/cur{:d}",
+            48: "/dev/ttyL{:d}",
+            49: "/dev/cul{:d}",
+            51: "/dev/bc{:d}",
+            52: "/dev/dcbri{:d}",
+            54: "/dev/holter{:d}",
+            55: "/dev/dsp56k",
+            56: "/dev/adb",
+            57: "/dev/ttyP{:d}",
+            58: "/dev/cup{:d}",
+            59: "/dev/firewall",
+            64: "/dev/enskip",
+            66: "/dev/yppcpci{:d}",
+            67: "/dev/cfs0",
+            69: "/dev/ma16",
+            71: "/dev/ttyF{:d}",
+            72: "/dev/cuf{:d}",
+            74: "/dev/SCI/{:d}",
+            75: "/dev/ttyW{:d}",
+            76: "/dev/cuw{:d}",
+            77: "/dev/qng",
+            78: "/dev/ttyM{:d}",
+            79: "/dev/cum{:d}",
+            80: "/dev/at200",
+            82: "/dev/winradio{:d}",
+            83: "/dev/mga_vid{:d}",
+            84: "/dev/ihcp{:d}",
+            86: "/dev/sch{:d}",
+            87: "/dev/controla{:d}",
+            88: "/dev/comx{:d}",
+            89: "/dev/i2c-{:d}",
+            91: "/dev/can{:d}",
+            94: "/dev/dcxx{:d}",
+            97: "/dev/pg{:d}",
+            98: "/dev/comedi{:d}",
+            99: "/dev/parport{:d}",
+            100: "/dev/phone{:d}",
+            102: "/dev/tlk{:d}",
+            103: "/dev/nnpfs{:d}",
+            105: "/dev/ttyV{:d}",
+            106: "/dev/cuv{:d}",
+            107: "/dev/3dfx",
+            108: "/dev/ppp",
+            110: "/dev/srnd{:d}",
+            111: "/dev/av{:d}",
+            112: "/dev/ttyM{:d}", # same 78
+            113: "/dev/cum{:d}", # same 79
+            119: "/dev/vnet{:d}",
+            136: "/dev/pts/{:d}",
+            137: "/dev/pts/{:d}",
+            138: "/dev/pts/{:d}",
+            139: "/dev/pts/{:d}",
+            140: "/dev/pts/{:d}",
+            141: "/dev/pts/{:d}",
+            142: "/dev/pts/{:d}",
+            143: "/dev/pts/{:d}",
+            144: "/dev/pppox{:d}",
+            146: "/dev/scramnet{:d}",
+            147: "/dev/aureal{:d}",
+            148: "/dev/ttyT{:d}",
+            149: "/dev/cut{:d}",
+            150: "/dev/rtf{:d}",
+            151: "/dev/dpti{:d}",
+            153: "/dev/spi{:d}",
+            154: "/dev/ttySR{:d}",
+            155: "/dev/cusr{:d}",
+            158: "/dev/gfax{:d}",
+            160: "/dev/gpib{:d}",
+            166: "/dev/ttyACM{:d}",
+            167: "/dev/cuacm{:d}",
+            168: "/dev/ecsa{:d}",
+            169: "/dev/ecsa8-{:d}",
+            170: "/dev/megarac{:d}",
+            174: "/dev/ttySI{:d}",
+            175: "/dev/cusi{:d}",
+            176: "/dev/nfastpci{:d}",
+            178: "/dev/clanvi{:d}",
+            179: "/dev/dvxirq{:d}",
+            181: "/dev/pcfclock{:d}",
+            182: "/dev/pethr{:d}",
+            183: "/dev/ss5136dn{:d}",
+            184: "/dev/pevss{:d}",
+            185: "/dev/intermezzo{:d}",
+            186: "/dev/obd{:d}",
+            187: "/dev/deskey{:d}",
+            188: "/dev/ttyUSB{:d}",
+            189: "/dev/cuusb{:d}",
+            190: "/dev/kctt{:d}",
+            196: "/dev/tor/{:d}",
+            198: "/dev/tpmp2/{:d}",
+            199: "/dev/vx/rdsk/*/*",
+            201: "/dev/vx/rdmp/*",
+            202: "/dev/cpu/{:d}/msr",
+            203: "/dev/cpu/{:d}/cpuid",
+            208: "/dev/ttyU{:d}",
+            209: "/dev/cuu{:d}",
+            211: "/dev/addinum/cpci1500/{:d}",
+            216: "/dev/rfcomm{:d}",
+            217: "/dev/curf{:d}",
+            218: "/dev/logicalco/bci/{:d}",
+            219: "/dev/logicalco/dci1300/{:d}",
+            224: "/dev/ttyY{:d}",
+            225: "/dev/cuy{:d}",
+            226: "/dev/dri/card{:d}",
+            229: "/dev/hvc{:d}",
+            256: "/dev/ttyEQ{:d}",
+            257: "/dev/ptlsec",
+            259: "/dev/icap{:d}",
+            260: "/dev/osd{:d}",
+            261: "/dev/accel/accel{:d}",
+        }
+        if major in dev_name_list2:
+            return dev_name_list2[major].format(minor)
+
+        def pty_tty_pattern(devstr):
+            cs1 = "pqrstuvwxyzabcde"
+            cs2 = "0123456789abcdef"
+            return "/dev/{:s}{:s}{:s}".format(devstr, cs1[minor // 16], cs2[minor % 16])
+
+        if major == 2:
+            return pty_tty_pattern("pty")
+        elif major == 3:
+            return pty_tty_pattern("tty")
+        elif major == 4:
+            if 0 <= minor < 64:
+                return "/dev/tty{:d}".format(minor)
+            elif 64 <= minor < 256:
+                return "/dev/ttyS{:d}".format(minor - 64)
+        elif major == 5:
+            if 64 <= minor < 256:
+                return "/dev/cua{:d}".format(minor - 64)
+        elif major == 7:
+            if minor == 0:
+                return "/dev/vcs"
+            elif 1 <= minor < 64:
+                return "/dev/vcs{:d}".format(minor)
+            elif minor == 64:
+                return "/dev/vcsu"
+            elif 65 <= minor < 128:
+                return "/dev/vcsu{:d}".format(minor - 64)
+            elif minor == 128:
+                return "/dev/vcsa"
+            elif 129 <= minor < 192:
+                return "/dev/vcsa{:d}".format(minor - 128)
+        elif major == 9:
+            if 0 <= minor < 32:
+                return "/dev/st{:d}".format(minor)
+            elif 32 <= minor < 64:
+                return "/dev/st{:d}l".format(minor - 32)
+            elif 64 <= minor < 96:
+                return "/dev/st{:d}m".format(minor - 64)
+            elif 96 <= minor < 128:
+                return "/dev/st{:d}a".format(minor - 96)
+            elif 128 <= minor < 160:
+                return "/dev/nst{:d}".format(minor - 128)
+            elif 160 <= minor < 192:
+                return "/dev/nst{:d}l".format(minor - 160)
+            elif 192 <= minor < 224:
+                return "/dev/nst{:d}m".format(minor - 192)
+            elif 224 <= minor < 256:
+                return "/dev/nst{:d}a".format(minor - 224)
+        elif major == 11: # 11 are duplicates
+            if is_sparc32() or is_sparc64():
+                return "/dev/kbd"
+            elif is_hppa32() or is_hppa64():
+                return "/dev/ttyB{:d}".format(minor)
+        elif major == 13:
+            if 0 <= minor < 32:
+                return "/dev/input/js{:d}".format(minor)
+            elif 32 <= minor < 63:
+                return "/dev/input/mouse{:d}".format(minor - 32)
+            elif minor == 63:
+                return "/dev/input/mice"
+            elif 64 <= minor < 96:
+                return "/dev/input/event{:d}".format(minor - 64)
+        elif major == 15:
+            if 0 <= minor < 128:
+                return "/dev/js{:d}".format(minor)
+            elif 128 <= minor < 256:
+                return "/dev/djs{:d}".format(minor - 128)
+        elif major == 27:
+            if 0 <= minor < 4:
+                return "/dev/qft{:d}".format(minor)
+            elif 4 <= minor < 8:
+                return "/dev/nqft{:d}".format(minor - 4)
+            elif 16 <= minor < 20:
+                return "/dev/zqft{:d}".format(minor - 16)
+            elif 20 <= minor < 24:
+                return "/dev/nzqft{:d}".format(minor - 20)
+            elif 32 <= minor < 36:
+                return "/dev/rawqft{:d}".format(minor - 32)
+            elif 36 <= minor < 40:
+                return "/dev/nrawqft{:d}".format(minor - 36)
+        elif major == 28: # 28 are duplicates
+            if is_m68k():
+                return "/dev/slm{:d}".format(minor)
+            else:
+                return "/dev/staliomem{:d}".format(minor)
+        elif major == 35:
+            if 0 <= minor < 4:
+                return "/dev/midi{:d}".format(minor)
+            elif 64 <= minor < 67:
+                return "/dev/rmidi{:d}".format(minor - 64)
+            elif 128 <= minor < 132:
+                return "/dev/smpte{:d}".format(minor - 128)
+        elif major == 36:
+            if 16 <= minor < 32:
+                return "/dev/tap{:d}".format(minor - 16)
+        elif major == 37:
+            if 0 <= minor < 128:
+                return "/dev/ht{:d}".format(minor)
+            elif 128 <= minor < 256:
+                return "/dev/nht{:d}".format(minor - 128)
+        elif major == 39:
+            if 0 <= minor % 32 < 16:
+                return "/dev/ml16p{:s}-a{:d}".format(chr(ord("a") + minor // 32), minor)
+            elif minor % 32 == 16:
+                return "/dev/ml16p{:s}-d".format(chr(ord("a") + minor // 32))
+            elif 17 <= minor % 32 < 20:
+                return "/dev/ml16p{:s}-c{:d}".format(chr(ord("a") + minor // 32), minor - 17)
+        elif major == 45:
+            if 0 <= minor < 64:
+                return "/dev/isdn{:d}".format(minor)
+            elif 64 <= minor < 128:
+                return "/dev/isdncntl{:d}".format(minor - 64)
+            elif 128 <= minor < 192:
+                return "/dev/ippp{:d}".format(minor - 128)
+            elif minor == 255:
+                return "/dev/isdninfo"
+        elif major == 53:
+            if 0 <= minor < 3:
+                return "/dev/pd_bdm{:d}".format(minor)
+            elif 4 <= minor < 7:
+                return "/dev/icd_bdm{:d}".format(minor)
+        elif major == 65:
+            if 0 <= minor < 4:
+                return "/dev/plink{:d}".format(minor)
+            elif 64 <= minor < 67:
+                return "/dev/rplink{:d}".format(minor - 64)
+            elif 128 <= minor < 132:
+                return "/dev/plink{:d}d".format(minor - 128)
+            elif 192 <= minor < 196:
+                return "/dev/rplink{:d}d".format(minor - 192)
+        elif major == 68:
+            if minor == 0:
+                return "/dev/capi20"
+            elif 1 <= minor < 20:
+                return "/dev/capi20.{:02d}".format(minor - 1)
+        elif major == 81:
+            if 0 <= minor < 64:
+                return "/dev/video{:d}".format(minor)
+            elif 64 <= minor < 128:
+                return "/dev/radio{:d}".format(minor - 64)
+            elif 128 <= minor < 192:
+                return "/dev/swradio{:d}".format(minor - 128)
+            elif 192 <= minor < 256:
+                return "/dev/vbi{:d}".format(minor - 192)
+        elif major == 85:
+            if minor == 0:
+                return "/dev/shmiq"
+            elif 1 <= minor:
+                return "/dev/qcntl{:d}".format(minor)
+        elif major == 90:
+            if 0 <= minor < 32:
+                if minor % 2 == 0:
+                    return "/dev/mtd{:d}".format(minor // 2)
+                elif minor % 2 == 1:
+                    return "/dev/mtdr{:d}".format(minor // 2)
+        elif major == 93:
+            if 0 <= minor < 128:
+                return "/dev/iscc{:d}".format(minor)
+            elif 128 <= minor < 256:
+                return "/dev/isccctl{:d}".format(minor - 128)
+        elif major == 96:
+            if 0 <= minor < 128:
+                return "/dev/pt{:d}".format(minor)
+            elif 128 <= minor < 256:
+                return "/dev/npt{:d}".format(minor - 128)
+        elif major == 101:
+            if minor == 0:
+                return "/dev/mdspstat"
+            elif 1 <= minor < 17:
+                return "/dev/mdsp{:d}".format(minor)
+        elif major == 114:
+            if 0 <= minor < 128:
+                return "/dev/ise{:d}".format(minor)
+            elif 128 <= minor < 256:
+                return "/dev/isex{:d}".format(minor - 128)
+        elif major == 115:
+            if 0 <= minor < 8:
+                return "/dev/tipar{:d}".format(minor)
+            elif 8 <= minor < 16:
+                return "/dev/tiser{:d}".format(minor - 8)
+            elif 16 <= minor < 48:
+                return "/dev/tiusb{:d}".format(minor - 16)
+        elif major == 117:
+            return "/dev/cosa{:d}c{:d}".format(minor // 16, minor % 16)
+        elif major == 118:
+            if minor == 0:
+                return "/dev/ica"
+            elif 1 <= minor:
+                return "/dev/ica{:d}".format(minor - 1)
+        elif major == 145:
+            if minor % 64 == 0:
+                return "/dev/sam{:d}_mixer".format(minor // 64)
+            elif minor % 64 == 1:
+                return "/dev/sam{:d}_sequencer".format(minor // 64)
+            elif minor % 64 == 2:
+                return "/dev/sam{:d}_midi00".format(minor // 64)
+            elif minor % 64 == 3:
+                return "/dev/sam{:d}_dsp".format(minor // 64)
+            elif minor % 64 == 4:
+                return "/dev/sam{:d}_audio".format(minor // 64)
+            elif minor % 64 == 6:
+                return "/dev/sam{:d}_sndstat".format(minor // 64)
+            elif minor % 64 == 18:
+                return "/dev/sam{:d}_midi01".format(minor // 64)
+            elif minor % 64 == 34:
+                return "/dev/sam{:d}_midi02".format(minor // 64)
+            elif minor % 64 == 50:
+                return "/dev/sam{:d}_midi03".format(minor // 64)
+        elif major == 156:
+            return "/dev/ttySR{:d}".format(minor + 256)
+        elif major == 157:
+            return "/dev/cusr{:d}".format(minor + 256)
+        elif major == 161:
+            if 0 <= minor < 16:
+                return "/dev/ircomm{:d}".format(minor)
+            elif 16 <= minor < 32:
+                return "/dev/irlpt{:d}".format(minor - 16)
+        elif major == 162:
+            if minor == 0:
+                return "/dev/rawctl",
+            elif 1 <= minor:
+                return "/dev/raw/raw{:d}".format(minor)
+        elif major == 164:
+                return "/dev/ttyCH{:d}".format(minor)
+        elif major == 165:
+            if 0 <= minor < 64:
+                return "/dev/cuch{:d}".format(minor)
+        elif major == 172:
+            if 0 <= minor < 128:
+                return "/dev/ttyMX{:d}".format(minor)
+            elif minor == 128:
+                return "/dev/moxactl"
+        elif major == 173:
+            if 0 <= minor < 128:
+                return "/dev/cumx{:d}".format(minor)
+        elif major == 177:
+            if 0 <= minor < 16:
+                return "/dev/pcilynx/aux{:d}".format(minor)
+            elif 16 <= minor < 32:
+                return "/dev/pcilynx/rom{:d}".format(minor - 16)
+            elif 32 <= minor < 48:
+                return "/dev/pcilynx/ram{:d}".format(minor - 32)
+        elif major == 180:
+            if 0 <= minor < 16:
+                return "/dev/usb/lp{:d}".format(minor)
+            elif 48 <= minor < 64:
+                return "/dev/usb/scanner{:d}".format(minor - 48)
+            elif minor == 64:
+                return "/dev/usb/rio500"
+            elif minor == 65:
+                return "/dev/usb/usblcd"
+            elif minor == 66:
+                return "/dev/usb/cpad0"
+            elif 96 <= minor < 112:
+                return "/dev/usb/hiddev{:d}".format(minor - 96)
+            elif 112 <= minor < 128:
+                return "/dev/usb/auer{:d}".format(minor - 112)
+            elif 128 <= minor < 132:
+                return "/dev/usb/brlvgr{:d}".format(minor - 128)
+            elif minor == 132:
+                return "/dev/usb/idmouse"
+            elif 133 <= minor < 141:
+                return "/dev/usb/sisusbvga{:d}".format(minor - 133 + 1)
+            elif minor == 144:
+                return "/dev/usb/lcd"
+            elif 160 <= minor < 176:
+                return "/dev/usb/legousbtower{:d}".format(minor - 160)
+            elif 176 <= minor < 192:
+                return "/dev/usb/usbtmc{:d}".format(minor - 176 + 1)
+            elif 192 <= minor < 210:
+                return "/dev/usb/yurex{:d}".format(minor - 192 + 1)
+        elif major == 192:
+            if minor == 0:
+                return "/dev/profile"
+            elif 1 <= minor:
+                return "/dev/profile{:d}".format(minor - 1)
+        elif major == 193:
+            if minor == 0:
+                return "/dev/trace"
+            elif 1 <= minor:
+                return "/dev/trace{:d}".format(minor - 1)
+        elif major == 194:
+            if minor % 16 == 0:
+                return "/dev/mvideo/status{:d}".format(minor // 16)
+            elif minor % 16 == 1:
+                return "/dev/mvideo/stream{:d}".format(minor // 16)
+            elif minor % 16 == 2:
+                return "/dev/mvideo/frame{:d}".format(minor // 16)
+            elif minor % 16 == 3:
+                return "/dev/mvideo/rawframe{:d}".format(minor // 16)
+            elif minor % 16 == 4:
+                return "/dev/mvideo/codec{:d}".format(minor // 16)
+            elif minor % 16 == 5:
+                return "/dev/mvideo/video4linux{:d}".format(minor // 16)
+        elif major == 195:
+            if 0 <= minor < 255:
+                return "/dev/nvidia{:d}".format(minor)
+            elif minor == 255:
+                return "/dev/nvidiactl"
+        elif major == 197:
+            if 0 <= minor < 128:
+                return "/dev/tnf/t{:d}".format(minor)
+            elif minor == 128:
+                return "/dev/tnf/status"
+            elif minor == 130:
+                return "/dev/tnf/trace"
+        elif major == 204:
+            if 0 <= minor < 4:
+                return "/dev/ttyLU{:d}".format(minor)
+            elif minor == 4:
+                return "/dev/ttyFB0"
+            elif 5 <= minor < 8:
+                return "/dev/ttySA{:d}".format(minor - 5)
+            elif 8 <= minor < 12:
+                return "/dev/ttySC{:d}".format(minor - 8)
+            elif 12 <= minor < 16:
+                return "/dev/ttyFW{:d}".format(minor - 12)
+            elif 16 <= minor < 32:
+                return "/dev/ttyAM{:d}".format(minor - 16)
+            elif 32 <= minor < 40:
+                return "/dev/ttyDB{:d}".format(minor - 32)
+            elif minor == 40:
+                return "/dev/ttySG0"
+            elif 41 <= minor < 44:
+                return "/dev/ttySMX{:d}".format(minor - 41)
+            elif 44 <= minor < 46:
+                return "/dev/ttyMM{:d}".format(minor - 44)
+            elif 46 <= minor < 50:
+                return "/dev/ttyCPM{:d}".format(minor - 46)
+            elif 50 <= minor < 82:
+                return "/dev/ttyIOC{:d}".format(minor - 50)
+            elif 82 <= minor < 84:
+                return "/dev/ttyVR{:d}".format(minor - 82)
+            elif 84 <= minor < 116:
+                return "/dev/ttyIOC{:d}".format(minor)
+            elif 116 <= minor < 148:
+                return "/dev/ttySIOC{:d}".format(minor - 116)
+            elif 148 <= minor < 154:
+                return "/dev/ttyPSC{:d}".format(minor - 148)
+            elif 154 <= minor < 170:
+                return "/dev/ttyAT{:d}".format(minor - 154)
+            elif 170 <= minor < 186:
+                return "/dev/ttyNX{:d}".format(minor - 170)
+            elif minor == 186:
+                return "/dev/ttyJ0"
+            elif 187 <= minor < 190:
+                return "/dev/ttyUL{:d}".format(minor - 187)
+            elif minor == 191:
+                return "/dev/xvc0"
+            elif 192 <= minor < 196:
+                return "/dev/ttyPZ{:d}".format(minor - 192)
+            elif 196 <= minor < 204:
+                return "/dev/ttyTX{:d}".format(minor - 196)
+            elif 205 <= minor < 209:
+                return "/dev/ttySC{:d}".format(minor - 205)
+            elif 209 <= minor < 213:
+                return "/dev/ttyMAX{:d}".format(minor - 209)
+        elif major == 205:
+            if 0 <= minor < 4:
+                return "/dev/culu{:d}".format(minor)
+            elif minor == 4:
+                return "/dev/cufb0"
+            elif 5 <= minor < 8:
+                return "/dev/cusa{:d}".format(minor - 5)
+            elif 8 <= minor < 12:
+                return "/dev/cusc{:d}".format(minor - 8)
+            elif 12 <= minor < 16:
+                return "/dev/cufw{:d}".format(minor - 12)
+            elif 16 <= minor < 32:
+                return "/dev/cuam{:d}".format(minor - 16)
+            elif 32 <= minor < 40:
+                return "/dev/cudb{:d}".format(minor - 32)
+            elif minor == 40:
+                return "/dev/cusg0"
+            elif 41 <= minor < 44:
+                return "/dev/ttycusmx{:d}".format(minor - 41)
+            elif 46 <= minor < 50:
+                return "/dev/cucpm{:d}".format(minor - 46)
+            elif 50 <= minor < 82:
+                return "/dev/cuioc4{:d}".format(minor - 50)
+            elif 82 <= minor < 84:
+                return "/dev/cuvr{:d}".format(minor - 82)
+        elif major == 206:
+            if 0 <= minor < 32:
+                return "/dev/osst{:d}".format(minor)
+            elif 32 <= minor < 64:
+                return "/dev/osst{:d}l".format(minor - 32)
+            elif 64 <= minor < 96:
+                return "/dev/osst{:d}m".format(minor - 64)
+            elif 96 <= minor < 128:
+                return "/dev/osst{:d}a".format(minor - 96)
+            elif 128 <= minor < 160:
+                return "/dev/nosst{:d}".format(minor - 128)
+            elif 160 <= minor < 192:
+                return "/dev/nosst{:d}l".format(minor - 160)
+            elif 192 <= minor < 224:
+                return "/dev/nosst{:d}m".format(minor - 192)
+            elif 224 <= minor < 256:
+                return "/dev/nosst{:d}a".format(minor - 224)
+        elif major == 210:
+            if minor % 10 == 0:
+                return "/dev/sbei/wxcfg{:d}".format(minor // 10)
+            elif minor % 10 == 1:
+                return "/dev/sbei/dld{:d}".format(minor // 10)
+            elif 2 <= minor % 10 < 6:
+                return "/dev/sbei/wan{:d}{:d}".format(minor // 10, minor % 10)
+            elif 6 <= minor % 10 < 10:
+                return "/dev/sbei/wanc{:d}{:d}".format(minor // 10, minor % 10)
+        elif major == 212:
+            if minor % 64 % 9 == 0:
+                return "/dev/dvb/adapter{:d}/video{:d}".format(minor // 64, minor % 64 // 9)
+            elif minor % 64 % 9 == 1:
+                return "/dev/dvb/adapter{:d}/audio{:d}".format(minor // 64, minor % 64 // 9)
+            elif minor % 64 % 9 == 2:
+                return "/dev/dvb/adapter{:d}/sec{:d}".format(minor // 64, minor % 64 // 9)
+            elif minor % 64 % 9 == 3:
+                return "/dev/dvb/adapter{:d}/frontend{:d}".format(minor // 64, minor % 64 // 9)
+            elif minor % 64 % 9 == 4:
+                return "/dev/dvb/adapter{:d}/demux{:d}".format(minor // 64, minor % 64 // 9)
+            elif minor % 64 % 9 == 5:
+                return "/dev/dvb/adapter{:d}/dvr{:d}".format(minor // 64, minor % 64 // 9)
+            elif minor % 64 % 9 == 6:
+                return "/dev/dvb/adapter{:d}/ca{:d}".format(minor // 64, minor % 64 // 9)
+            elif minor % 64 % 9 == 7:
+                return "/dev/dvb/adapter{:d}/net{:d}".format(minor // 64, minor % 64 // 9)
+            elif minor % 64 % 9 == 8:
+                return "/dev/dvb/adapter{:d}/osd{:d}".format(minor // 64, minor % 64 // 9)
+        elif major == 220:
+            if minor % 2 == 0:
+                return "/dev/myricom/gm{:d}".format(minor // 2)
+            elif minor % 2 == 1:
+                return "/dev/myricom/gmp{:d}".format(minor // 2)
+        elif major == 221:
+            if 0 <= minor < 4:
+                return "/dev/bus/vme/m{:d}".format(minor)
+            elif 4 <= minor < 8:
+                return "/dev/bus/vme/s{:d}".format(minor - 4)
+            elif minor == 8:
+                return "/dev/bus/vme/ctl"
+        elif major == 227:
+            if 1 <= minor:
+                return "/dev/3270/tty{:d}".format(minor)
+        elif major == 228:
+            if minor == 0:
+                return "/dev/3270/tub"
+            elif 1 <= minor:
+                return "/dev/3270/tub{:d}".format(minor)
+        elif major == 230:
+            if 0 <= minor < 32:
+                return "/dev/iseries/vt{:d}".format(minor)
+            elif 32 <= minor < 64:
+                return "/dev/iseries/vt{:d}l".format(minor - 32)
+            elif 64 <= minor < 96:
+                return "/dev/iseries/vt{:d}m".format(minor - 64)
+            elif 96 <= minor < 128:
+                return "/dev/iseries/vt{:d}a".format(minor - 96)
+            elif 128 <= minor < 160:
+                return "/dev/iseries/nvt{:d}".format(minor - 128)
+            elif 160 <= minor < 192:
+                return "/dev/iseries/nvt{:d}l".format(minor - 160)
+            elif 192 <= minor < 224:
+                return "/dev/iseries/nvt{:d}m".format(minor - 192)
+            elif 224 <= minor < 256:
+                return "/dev/iseries/nvt{:d}a".format(minor - 224)
+        elif major == 231:
+            if 0 <= minor < 64:
+                return "/dev/infiniband/umad{:d}".format(minor)
+            elif 64 <= minor < 128:
+                return "/dev/infiniband/issm{:d}".format(minor - 64)
+            elif 192 <= minor < 224:
+                return "/dev/infiniband/uverbs{:d}".format(minor - 192)
+        elif major == 232:
+            if minor % 10 == 0:
+                return "/dev/biometric/sensor{:d}/fingerprint".format(minor // 10)
+            elif minor % 10 == 1:
+                return "/dev/biometric/sensor{:d}/iris".format(minor // 10)
+            elif minor % 10 == 2:
+                return "/dev/biometric/sensor{:d}/retina".format(minor // 10)
+            elif minor % 10 == 3:
+                return "/dev/biometric/sensor{:d}/voiceprint".format(minor // 10)
+            elif minor % 10 == 4:
+                return "/dev/biometric/sensor{:d}/facial".format(minor // 10)
+            elif minor % 10 == 5:
+                return "/dev/biometric/sensor{:d}/hand".format(minor // 10)
+        elif major == 233:
+            if minor == 0:
+                return "/dev/ipath"
+            elif 1 <= minor < 5:
+                return "/dev/ipath{:d}".format(minor - 1)
+            elif minor == 129:
+                return "/dev/ipath_sma"
+            elif minor == 130:
+                return "/dev/ipath_diag"
+        return "???"
 
     def get_chrdev_list(self): # [chrdev, chrdev, chrdev, ...]
         """
@@ -44365,13 +45505,15 @@ class KernelCharacterDevicesCommand(GenericCommand):
         # print
         self.out = []
         if not self.quiet:
-            fmt = "{:<18s} {:<18s} {:<6s} {:<6s} {:<18s} {:<18s} {:18s} {:<s}"
-            legend = ["chrdev", "name", "major", "minor", "cdev", "cdev->kobj.parent", "parent_name", "cdev->ops"]
+            fmt = "{:<18s} {:<18s} {:<18s} {:<6s} {:<6s} {:<18s} {:<18s} {:18s} {:<s}"
+            legend = ["chrdev", "name", "name (guessed)", "major", "minor", "cdev", "cdev->kobj.parent", "parent_name", "cdev->ops"]
             self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
         for (major, minor), m in sorted(merged.items()):
-            fmt = "{:#018x} {:<18s} {:<6d} {:<6d} {:#018x} {:#018x} {:<18s} {:#018x}{:s}"
-            self.out.append(fmt.format(m["chrdev"], m["name"], major, minor, m["cdev"], m["parent"], m["parent_name"], m["ops"], m["ops_sym"]))
+            fmt = "{:#018x} {:<18s} {:<18s} {:<6d} {:<6d} {:#018x} {:#018x} {:<18s} {:#018x}{:s}"
+            guessed_name = KernelCharacterDevicesCommand.get_cdev_name(major, minor)
+            self.out.append(fmt.format(m["chrdev"], m["name"], guessed_name, major, minor,
+                                       m["cdev"], m["parent"], m["parent_name"], m["ops"], m["ops_sym"]))
 
         if self.out:
             gef_print("\n".join(self.out), less=not args.no_pager)
@@ -48355,7 +49497,7 @@ class SlubDumpCommand(GenericCommand):
                     current_partial_page = next_partial_page
 
             # parse node
-            if self.vverbose:
+            if self.vverbose and self.kmem_cache_offset_node:
                 kmem_cache["nodes"] = []
                 kmem_cache_node_array = current_kmem_cache + self.kmem_cache_offset_node
                 current_kmem_cache_node_ptr = kmem_cache_node_array
@@ -48517,7 +49659,7 @@ class SlubDumpCommand(GenericCommand):
                 if printed_count > 1 : # included address == 0
                     self.out.append("        (end of the list)")
 
-            if self.vverbose:
+            if self.vverbose and "nodes" in kmem_cache:
                 printed_count = 0
                 for node_index, node_page_list in enumerate(kmem_cache["nodes"]):
                     for node_page in node_page_list:

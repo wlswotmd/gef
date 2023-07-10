@@ -194,6 +194,8 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmod-syms.png)
 * `kcdev`: displays each character device information.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kcdev.png)
+* `kbdev`: displays each block device information.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kbdev.png)
 * `kops`: displays each operations member.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kops.png)
 * `syscall-table-view`: displays system call table.
