@@ -16236,7 +16236,7 @@ def __get_binsize_table():
             table["fastbins"][i] = {"size": size}
 
     # unsorted bins
-    table["unsorted_bins"][0] = {"bins_idx": 0}
+    table["unsorted_bins"][0] = {}
 
     # smallbins
     for i in range(1, 63):
