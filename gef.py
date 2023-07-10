@@ -20877,7 +20877,7 @@ class NamedBreakpointCommand(GenericCommand):
 
 @register_command
 class MessageBreakpointCommand(GenericCommand):
-    """Set a breakpoint whith print user defined message, when it's hit."""
+    """Set a breakpoint with print user defined message, when it's hit."""
     _cmdline_ = "message-break"
     _category_ = "01-b. Debugging Support - Breakpoint"
 
