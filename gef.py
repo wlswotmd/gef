@@ -45593,7 +45593,7 @@ class AsciiSearchCommand(GenericCommand):
             except UnicodeDecodeError:
                 pass
 
-            if cstr:
+            if cstr and len(cstr) > 4:
                 if not self.filter or any(re_pattern.search(cstr) for re_pattern in self.filter):
                     if target not in self.seen:
                         for d, loc in enumerate(locations):
