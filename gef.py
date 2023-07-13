@@ -51489,17 +51489,12 @@ class SlobDumpCommand(GenericCommand):
             parsed_caches.append(kmem_cache)
 
         parsed_freelist = {}
-        if (self.large, self.medium, self.small) == (None, None, None):
+        if self.large:
             parsed_freelist["large"] = self.walk_page_freelist(self.free_slob_large)
+        if self.medium:
             parsed_freelist["medium"] = self.walk_page_freelist(self.free_slob_medium)
+        if self.small:
             parsed_freelist["small"] = self.walk_page_freelist(self.free_slob_small)
-        else:
-            if self.large:
-                parsed_freelist["large"] = self.walk_page_freelist(self.free_slob_large)
-            if self.medium:
-                parsed_freelist["medium"] = self.walk_page_freelist(self.free_slob_medium)
-            if self.small:
-                parsed_freelist["small"] = self.walk_page_freelist(self.free_slob_small)
 
         return parsed_caches, parsed_freelist
 
@@ -51543,17 +51538,12 @@ class SlobDumpCommand(GenericCommand):
                 self.out.append("    next: {:#x}".format(kmem_cache["next"]))
                 self.out.append("")
 
-        if (self.large, self.medium, self.small) == (None, None, None):
+        if self.large:
             self.dump_freelist("free_slob_large", parsed_freelist["large"])
+        if self.medium:
             self.dump_freelist("free_slob_medium", parsed_freelist["medium"])
+        if self.small:
             self.dump_freelist("free_slob_small", parsed_freelist["small"])
-        else:
-            if self.large:
-                self.dump_freelist("free_slob_large", parsed_freelist["large"])
-            if self.medium:
-                self.dump_freelist("free_slob_medium", parsed_freelist["medium"])
-            if self.small:
-                self.dump_freelist("free_slob_small", parsed_freelist["small"])
         return
 
     def dump_names(self, parsed_caches):
