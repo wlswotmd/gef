@@ -1915,10 +1915,13 @@ class Instruction:
 class MallocStateStruct:
     """GEF representation of malloc_state"""
     def __init__(self, addr):
-        if is_x86_32():
-            self.num_fastbins = 11 # why?
+        if is_x86_32() and get_libc_version() >= (2, 26):
+            # MALLOC_ALIGNMENT is changed from libc 2.26.
+            # for x86_32, MALLOC_ALIGNMENT = 16, so NFASTBINS = 11.
+            self.num_fastbins = 11
         else:
             self.num_fastbins = 10
+
         self.num_bins = 254
         self.num_binmap = 4
         self.__addr = addr
@@ -1928,15 +1931,6 @@ class MallocStateStruct:
         if not self.size_t:
             ptr_type = "unsigned long" if current_arch.ptrsize == 8 else "unsigned int"
             self.size_t = cached_lookup_type(ptr_type)
-
-        # Account for separation of have_fastchunks flag into its own field
-        # within the malloc_state struct in GLIBC >= 2.27
-        # https://sourceware.org/git/?p=glibc.git;a=commit;h=e956075a5a2044d05ce48b905b10270ed4a63e87
-        # Be aware you could see this change backported into GLIBC release branches.
-        if get_libc_version() >= (2, 27):
-            self.fastbin_offset = align_address_to_size(self.int_t.sizeof * 3, self.size_t.sizeof)
-        else:
-            self.fastbin_offset = self.int_t.sizeof * 2
         return
 
     # struct offsets
@@ -1961,7 +1955,11 @@ class MallocStateStruct:
 
     @property
     def fastbins_addr(self):
-        return self.__addr + self.fastbin_offset
+        if get_libc_version() >= (2, 27):
+            fastbin_offset = align_address_to_size(self.int_t.sizeof * 3, self.size_t.sizeof)
+        else:
+            fastbin_offset = self.int_t.sizeof * 2
+        return self.__addr + fastbin_offset
 
     @property
     def top_addr(self):
@@ -1985,15 +1983,28 @@ class MallocStateStruct:
 
     @property
     def next_free_addr(self):
-        return self.next_addr + self.size_t.sizeof
+        if get_libc_version() >= (2, 19):
+            return self.next_addr + self.size_t.sizeof
+        else:
+            # before glibc 2.19, the existence of next_free depends on the environment.
+            # however, it seems that it is more likely that it does not exist, so I return None.
+            return None
 
     @property
     def attached_threads_addr(self):
-        return self.next_free_addr + self.size_t.sizeof
+        if get_libc_version() >= (2, 23):
+            return self.next_free_addr + self.size_t.sizeof
+        else:
+            return None
 
     @property
     def system_mem_addr(self):
-        return self.attached_threads_addr + self.size_t.sizeof
+        if get_libc_version() >= (2, 23):
+            return self.attached_threads_addr + self.size_t.sizeof
+        elif get_libc_version() >= (2, 19):
+            return self.next_free_addr + self.size_t.sizeof
+        else:
+            return self.next_addr + self.size_t.sizeof
 
     @property
     def max_system_mem_addr(self):
@@ -2045,11 +2056,17 @@ class MallocStateStruct:
 
     @property
     def next_free(self):
-        return self.get_size_t_pointer(self.next_free_addr)
+        if get_libc_version() >= (2, 19):
+            return self.get_size_t_pointer(self.next_free_addr)
+        else:
+            return None
 
     @property
     def attached_threads(self):
-        return self.get_size_t(self.attached_threads_addr)
+        if get_libc_version() >= (2, 23):
+            return self.get_size_t(self.attached_threads_addr)
+        else:
+            return None
 
     @property
     def system_mem(self):
@@ -2220,16 +2237,19 @@ class GlibcArena:
             self.__arena = MallocStateStruct(self.__addr)
             self.__size = self.__arena.struct_size
 
-        # other setup
-        try:
-            self.top = int(self.top)
-            self.last_remainder = int(self.last_remainder)
-            self.n = int(self.next)
-            self.nfree = int(self.next_free)
-            self.sysmem = int(self.system_mem)
-        except gdb.error as e:
-            err("Glibc arena: {}".format(e))
+        # cache for frequent use (see __getattr__)
+        self.top = int(self.top)
+        self.last_remainder = int(self.last_remainder)
         return
+
+    def __getitem__(self, item):
+        return self.__arena[item]
+
+    def __getattr__(self, item):
+        return self.__arena[item]
+
+    def __int__(self):
+        return self.__addr
 
     def search_for_main_arena(self):
         global __cached_main_arena__
@@ -2267,15 +2287,6 @@ class GlibcArena:
                 return __cached_main_arena__
 
         raise OSError("Cannot find main_arena for {}".format(current_arch.arch))
-
-    def __getitem__(self, item):
-        return self.__arena[item]
-
-    def __getattr__(self, item):
-        return self.__arena[item]
-
-    def __int__(self):
-        return self.__addr
 
     @property
     def is_main_arena(self):
@@ -2418,9 +2429,16 @@ class GlibcArena:
         arena_addr = str(lookup_address(self.__addr))
         top = str(lookup_address(self.top))
         last_remainder = str(lookup_address(self.last_remainder))
-        next = str(lookup_address(self.n))
-        fmt = "{:s}(addr={:s}, heap_base={:s}, top={:s}, last_remainder={:s}, next={:s}, next_free={:#x}, system_mem={:#x})"
-        return fmt.format(arena, arena_addr, heap_base, top, last_remainder, next, self.nfree, self.sysmem)
+        next = str(lookup_address(int(self.next)))
+        system_mem = int(self.system_mem)
+        try:
+            next_free = int(self.next_free)
+            fmt = "{:s}(addr={:s}, heap_base={:s}, top={:s}, last_remainder={:s}, next={:s}, next_free={:#x}, system_mem={:#x})"
+            args = (arena, arena_addr, heap_base, top, last_remainder, next, next_free, system_mem)
+        except gdb.error:
+            fmt = "{:s}(addr={:s}, heap_base={:s}, top={:s}, last_remainder={:s}, next={:s}, system_mem={:#x})"
+            args = (arena, arena_addr, heap_base, top, last_remainder, next, system_mem)
+        return fmt.format(*args)
 
     def tcache_list(self):
         if get_libc_version() < (2, 26):
@@ -16213,7 +16231,7 @@ def __get_binsize_table():
         # MALLOC_ALIGNMENT is changed from libc 2.26.
         # for x86_32, tcache 0x8 align is no longer used.
         # but for ARM32, or maybe other arch, still 0x8 align is used.
-        if is_64bit() or is_x86_32():
+        if is_64bit() or (is_x86_32() and get_libc_version() >= (2, 26)):
             size = MIN_SIZE + i * 0x10
         else:
             size = MIN_SIZE + i * 0x8
@@ -16224,7 +16242,7 @@ def __get_binsize_table():
         for i in range(7):
             size = MIN_SIZE + i * 0x10
             table["fastbins"][i] = {"size": size}
-    elif is_x86_32():
+    elif is_x86_32() and get_libc_version() >= (2, 26):
         # MALLOC_ALIGNMENT is changed from libc 2.26.
         # for x86_32, fastbin exists every 8 bytes, but only used every 16 bytes.
         table["fastbins"][0] = {"size": 0x10}
@@ -16241,7 +16259,7 @@ def __get_binsize_table():
 
     # smallbins
     for i in range(1, 63):
-        if is_64bit() or is_x86_32():
+        if is_64bit() or (is_x86_32() and get_libc_version() >= (2, 26)):
             size = MIN_SIZE + (i - 1) * 0x10
         else:
             size = MIN_SIZE + (i - 1) * 0x8
@@ -16283,7 +16301,7 @@ def __get_binsize_table():
         table["large_bins"][94] = {"size_min": 0xbc0, "size_max": 0xc00}
         table["large_bins"][95] = {"size_min": 0xc00, "size_max": 0xc40}
         table["large_bins"][96] = {"size_min": 0xc40, "size_max": 0xe00}
-    elif is_x86_32():
+    elif is_x86_32() and get_libc_version() >= (2, 26):
         table["large_bins"][63] = {"size_min": 0x3f0, "size_max": 0x400}
         table["large_bins"][64] = {"size_min": 0x400, "size_max": 0x440}
         table["large_bins"][65] = {"size_min": 0x440, "size_max": 0x480}
@@ -39475,7 +39493,7 @@ class VisualHeapCommand(GenericCommand):
         else:
             self.dump_start = arena.heap_base
             # specific pattern
-            if current_arch.ptrsize == 4 and arena.is_main_arena:
+            if is_32bit() and arena.is_main_arena and get_libc_version() >= (2, 26):
                 self.dump_start += 8
 
         try:
