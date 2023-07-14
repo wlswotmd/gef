@@ -3784,9 +3784,7 @@ def get_entry_point():
 
 
 def is_pie(fpath):
-    if current_elf:
-        return current_elf.e_type != Elf.ET_EXEC
-    elf = get_elf_headers()
+    elf = get_elf_headers(fpath)
     return elf.e_type != Elf.ET_EXEC
 
 
@@ -55021,6 +55019,61 @@ class UclibcNgHeapDumpCommand(GenericCommand):
             self.out.append(msg)
         return
 
+    def get_malloc_state(self):
+        # fast path
+        try:
+            return parse_address("&__malloc_state")
+        except gdb.error:
+            pass
+
+        # slow path
+        # Do not use parse_address("malloc").
+        # For libc without symbols, the malloc@plt of the main binary will be resolved.
+        # You can definitely get the address of malloc by finding the libc path and looking for the GOT of libc itself.
+        libc = process_lookup_path("libuClibc-")
+        if libc is None:
+            return None
+        ret = gdb.execute("got -qf '{:s}' <malloc>".format(libc.path), to_string=True)
+        if not ret:
+            return None
+        elem = Color.remove_color(ret).splitlines()[0].split()
+        if elem[-1].endswith(">"):
+            malloc = int(elem[-2], 16)
+        else:
+            malloc = int(elem[-1], 16)
+
+        # heuristic search from assembly
+        lines = gdb.execute("x/40i {:#x}".format(malloc), to_string=True)
+        if is_x86_64():
+            for line in lines.splitlines():
+                m = re.search(r"QWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
+                if m:
+                    malloc_state = int(m.group(1), 16)
+                    if is_valid_addr(malloc_state):
+                        max_fast = read_int_from_memory(malloc_state)
+                        if max_fast != 0 and (max_fast & ~0x3) <= 0xb0:
+                            return malloc_state
+        elif is_x86_32():
+            base = None
+            regname = None
+            for line in lines.splitlines():
+                info(line)
+                if base is None:
+                    m = re.search("^\s*(0x\w+).+:\s+add\s+(\S+),\s*(0x\w+)", line)
+                    if m:
+                        base = int(m.group(1), 16) + int(m.group(3), 16)
+                        regname = m.group(2)
+                        continue
+                else:
+                    m = re.search(r"DWORD PTR \[(\S+)\+(0x\S+)\]", line)
+                    if m and m.group(1) == regname:
+                        malloc_state = base + int(m.group(2), 16)
+                        if is_valid_addr(malloc_state):
+                            max_fast = read_int_from_memory(malloc_state)
+                            if max_fast != 0 and (max_fast & ~0x3) <= 0xb0:
+                                return malloc_state
+        return None
+
     def read_malloc_state(self):
         """
         struct malloc_state {
@@ -55068,7 +55121,7 @@ class UclibcNgHeapDumpCommand(GenericCommand):
         """
 
         _malloc_state = {}
-        _malloc_state["address"] = current = parse_address("&__malloc_state")
+        _malloc_state["address"] = current = self.get_malloc_state()
         if current is None:
             return None
         _malloc_state["max_fast"] = max_fast = read_int_from_memory(current)
@@ -55200,7 +55253,7 @@ class UclibcNgHeapDumpCommand(GenericCommand):
                 if i == 1:
                     fmt = "unsortedbin[idx={:d}; size={:s}, @{:s}]: fd={:s}, bk={:s}"
                 else:
-                    fmt = "smallbins  [idx={:d}; size={:s}, @{:s}]: fd={:s}, bk={:s}"
+                    fmt = "smallbins[idx={:d}; size={:s}, @{:s}]: fd={:s}, bk={:s}"
                 colored_addr = str(lookup_address(addr))
                 colored_n = str(lookup_address(n))
                 colored_p = str(lookup_address(p))
@@ -55222,7 +55275,7 @@ class UclibcNgHeapDumpCommand(GenericCommand):
                     colored_size = Color.colorify("{:#x}-{:#x}".format(*size), chunk_size_color)
                 else:
                     colored_size = Color.colorify(size, chunk_size_color)
-                fmt = "largebins  [idx={:d}; size={:s}, @{:s}]: fd={:s}, bk={:s}"
+                fmt = "largebins[idx={:d}; size={:s}, @{:s}]: fd={:s}, bk={:s}"
                 colored_addr = str(lookup_address(addr))
                 colored_n = str(lookup_address(n))
                 colored_p = str(lookup_address(p))
