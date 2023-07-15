@@ -48479,7 +48479,7 @@ class HashMemoryCommand(GenericCommand):
         gef_print("Size: {:#x}".format(args.size))
 
         # common
-        hash_dic1 = {
+        hash_dic = {
             "md5": hashlib.md5(),
             "sha1": hashlib.sha1(),
             "sha224": hashlib.sha224(),
@@ -48490,8 +48490,10 @@ class HashMemoryCommand(GenericCommand):
             "sha3-256": hashlib.sha3_256(),
             "sha3-384": hashlib.sha3_384(),
             "sha3-512": hashlib.sha3_512(),
+            "blake2s": hashlib.blake2s(),
+            "blake2b": hashlib.blake2b(),
         }
-        for hname, hfunc in hash_dic1.items():
+        for hname, hfunc in hash_dic.items():
             h = self.calc_hash(1, hfunc, args.location, args.location + args.size)
             if h is False:
                 return
