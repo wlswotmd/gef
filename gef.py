@@ -22276,17 +22276,23 @@ class HexdumpFlexibleCommand(GenericCommand):
     parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
 
+    _example_ = "{:s} \"2Q2I2H2B\" $rsp 4  # \"Show qword*2, dword*2, short*2, byte*2\" is repeated 4 times\n".format(_cmdline_)
+    _example_ += "{:s} \"4Q-2Q\" $rsp 4     # \"Show qword*4 and skip qword*2\" is repeated 4 times".format(_cmdline_)
+
     def extract_each_type(self, fmt):
         out = []
         repeat = 1
-        for r in re.split(r"(\d+|)", fmt):
+        for r in re.split(r"(-?\d+|)", fmt):
             if r == "":
                 continue
             try:
                 repeat = int(r)
                 continue
             except ValueError:
-                out.extend([r] * repeat)
+                if 0 < repeat:
+                    out.extend([r] * repeat)
+                else:
+                    out.extend(["-" + r] * repeat)
                 repeat = 1
         return out
 
@@ -22301,7 +22307,11 @@ class HexdumpFlexibleCommand(GenericCommand):
         fmt = args.format
         if not fmt.startswith(("<", ">")):
             fmt = endian_str() + fmt
-        size = struct.calcsize(fmt)
+        try:
+            size = struct.calcsize(fmt.replace("-", ""))
+        except struct.error:
+            err("format error")
+            return
 
         each_type = self.extract_each_type(args.format)
 
@@ -22317,11 +22327,15 @@ class HexdumpFlexibleCommand(GenericCommand):
                 err("Failed to read memory")
                 break
 
-            values = struct.unpack(fmt, data)
+            values = struct.unpack(fmt.replace("-", ""), data)
             line_elem = ["{:#x}:   ".format(address)]
             for t, v in zip(each_type, values):
-                if t in "cBbHhIilLQq":
+                if t.startswith("-"):
+                    continue
+                if t in "BHILQ":
                     line_elem.append("{:#0{:d}x}".format(v, 2 + struct.calcsize(t) * 2))
+                elif t in "bhilq":
+                    line_elem.append("{:+#0{:d}x}".format(v, 2 + struct.calcsize(t) * 2 + 1))
                 elif t in "fd":
                     line_elem.append("{:20e}".format(v))
                 else:
