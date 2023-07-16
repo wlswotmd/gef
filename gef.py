@@ -42864,7 +42864,7 @@ class KernelCurrentCommand(GenericCommand):
         self.cpu_offset = [read_int_from_memory(self.__per_cpu_offset)]
         i = 1
         while True:
-            off = read_int_from_memory(self.__per_cpu_offset + i * 8)
+            off = read_int_from_memory(self.__per_cpu_offset + i * current_arch.ptrsize)
             if off == self.cpu_offset[-1]:
                 self.cpu_offset = self.cpu_offset[:-1]
                 break
@@ -49263,7 +49263,7 @@ class SlubDumpCommand(GenericCommand):
             self.cpu_offset = [read_int_from_memory(__per_cpu_offset)]
             i = 1
             while True:
-                off = read_int_from_memory(__per_cpu_offset + i * 8)
+                off = read_int_from_memory(__per_cpu_offset + i * current_arch.ptrsize)
                 if off == self.cpu_offset[-1]:
                     self.cpu_offset = self.cpu_offset[:-1]
                     break
@@ -50890,7 +50890,7 @@ class SlabDumpCommand(GenericCommand):
             self.cpu_offset = [read_int_from_memory(__per_cpu_offset)]
             i = 1
             while True:
-                off = read_int_from_memory(__per_cpu_offset + i * 8)
+                off = read_int_from_memory(__per_cpu_offset + i * current_arch.ptrsize)
                 if off == self.cpu_offset[-1]:
                     self.cpu_offset = self.cpu_offset[:-1]
                     break
