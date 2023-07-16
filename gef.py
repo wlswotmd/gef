@@ -48929,6 +48929,14 @@ class SlubDumpCommand(GenericCommand):
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     parser.add_argument("-v", "--verbose", "--partial", action="store_true", help="dump partial pages")
     parser.add_argument("-vv", "--vverbose", "--node", action="store_true", help="dump partial pages and node pages.")
+    parser.add_argument("--hexdump-used", type=lambda x: int(x, 16), default=0,
+                        help="hexdump `used chunks` if layout is resolved.")
+    parser.add_argument("--hexdump-freed", type=lambda x: int(x, 16), default=0,
+                        help="hexdump `unused (freed) chunks` if layout is resolved.")
+    parser.add_argument("--telescope-used", type=lambda x: int(x, 16), default=0,
+                        help="telescope `used chunks` if layout is resolved.")
+    parser.add_argument("--telescope-freed", type=lambda x: int(x, 16), default=0,
+                        help="telescope `unused (freed) chunks` if layout is resolved.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} kmalloc-256                                      # dump kmalloc-256 from all cpus\n".format(_cmdline_)
@@ -49716,6 +49724,29 @@ class SlubDumpCommand(GenericCommand):
                     chunk_s = Color.colorify("{:#x}".format(chunk), used_address_color)
                 layout_msg = "layout:" if idx == 0 else ""
                 self.out.append("        {:7s}   {:#05x} {:s} ({:s})".format(layout_msg, idx, chunk_s, next_msg))
+
+                # dump chunks
+                if self.hexdump_used_size and next_msg == "in-use":
+                    peeked_data = read_memory(chunk, self.hexdump_used_size)
+                    h = hexdump(peeked_data, 0x10, base=chunk, unit=current_arch.ptrsize)
+                    self.out.append(h)
+
+                if self.hexdump_freed_size and next_msg.startswith("next: "):
+                    peeked_data = read_memory(chunk, self.hexdump_freed_size)
+                    h = hexdump(peeked_data, 0x10, base=chunk, unit=current_arch.ptrsize)
+                    self.out.append(h)
+
+                if self.telescope_used_size and next_msg == "in-use":
+                    n = self.telescope_used_size // current_arch.ptrsize
+                    for i in range(n):
+                        line = DereferenceCommand.pprint_dereferenced(chunk, i)
+                        self.out.append(line)
+
+                if self.telescope_freed_size and next_msg.startswith("next: "):
+                    n = self.telescope_freed_size // current_arch.ptrsize
+                    for i in range(n):
+                        line = DereferenceCommand.pprint_dereferenced(chunk, i)
+                        self.out.append(line)
         else:
             self.out.append("        layout:   Failed to the get first page")
 
@@ -49728,6 +49759,9 @@ class SlubDumpCommand(GenericCommand):
                     if chunk_addr == 0:
                         continue
                     else:
+                        if isinstance(chunk_addr, str):
+                            self.out.append("        Corrupted")
+                            break
                         chunk_idx = (chunk_addr - page["virt_addr"]) // kmem_cache["size"]
                         chunk_idx = "{:#05x}".format(chunk_idx)
                     if isinstance(chunk_addr, str):
@@ -49854,6 +49888,10 @@ class SlubDumpCommand(GenericCommand):
         self.quiet = args.quiet
         self.verbose = args.verbose or args.vverbose
         self.vverbose = args.vverbose
+        self.hexdump_used_size = args.hexdump_used
+        self.hexdump_freed_size = args.hexdump_freed
+        self.telescope_used_size = args.telescope_used
+        self.telescope_freed_size = args.telescope_freed
 
         if args.no_byte_swap is None:
             self.swap = None
