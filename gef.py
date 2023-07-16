@@ -23350,7 +23350,7 @@ class DereferenceCommand(GenericCommand):
         return
 
     @staticmethod
-    def pprint_dereferenced(addr, idx):
+    def pprint_dereferenced(addr, idx, tag=None):
         base_address_color = get_gef_setting("theme.dereference_base_address")
         registers_color = get_gef_setting("theme.dereference_register_value")
         memalign = current_arch.ptrsize
@@ -23368,7 +23368,10 @@ class DereferenceCommand(GenericCommand):
 
         # craete line of one entry
         addr_colored = Color.colorify(format_address(addrs[0].value), base_address_color)
-        line = f"{addr_colored}{VERTICAL_LINE}+{offset:#06x}{VERTICAL_LINE}{idx:03d}: {link:{memalign * 2 + 2}s}"
+        if tag:
+            line = f"{addr_colored}{VERTICAL_LINE}+{offset:#06x}{VERTICAL_LINE}{idx:03d}: {tag:s}: {link:{memalign * 2 + 2}s}"
+        else:
+            line = f"{addr_colored}{VERTICAL_LINE}+{offset:#06x}{VERTICAL_LINE}{idx:03d}: {link:{memalign * 2 + 2}s}"
 
         # add extra info
         current_address_value = read_int_from_memory(current_address)
@@ -24368,6 +24371,8 @@ class LinkMapCommand(GenericCommand):
     group = parser.add_mutually_exclusive_group()
     group.add_argument("-e", dest="elf_address", type=parse_address, help="the elf address you want to parse.")
     group.add_argument("-l", dest="link_map_address", type=parse_address, help="the link_map address you want to parse.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-v", dest="verbose", action="store_true", help="verbose output.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}                   # dump itself\n".format(_cmdline_)
@@ -24379,40 +24384,84 @@ class LinkMapCommand(GenericCommand):
         return
 
     def dump_link_map(self, link_map):
-        base_address_color = get_gef_setting("theme.dereference_base_address")
-
         if link_map is None:
             info("link_map is 0.")
             return
 
         info("link_map: {!s} [{!s}]".format(link_map, link_map.section.permission))
 
+        # elf/link.h
+        members = ["l_addr", "l_name", "l_ld", "l_next", "l_prev"]
+
+        if self.verbose:
+            DT_NUM = 35
+            if is_arm64():
+                DT_THISPROCNUM = 6
+                ARCH_SPECIFIC_TABLE = DynamicCommand.DT_TABLE["arm64"]
+            elif is_alpha():
+                DT_THISPROCNUM = 1
+                ARCH_SPECIFIC_TABLE = DynamicCommand.DT_TABLE["alpha"]
+            elif is_mips32() or is_mips64():
+                DT_THISPROCNUM = 0x37
+                ARCH_SPECIFIC_TABLE = DynamicCommand.DT_TABLE["mips"]
+            elif is_ppc32():
+                DT_THISPROCNUM = 2
+                ARCH_SPECIFIC_TABLE = DynamicCommand.DT_TABLE["ppc32"]
+            elif is_ppc64():
+                DT_THISPROCNUM = 4
+                ARCH_SPECIFIC_TABLE = DynamicCommand.DT_TABLE["ppc64"]
+            elif is_sparc32() or is_sparc64():
+                DT_THISPROCNUM = 2
+                ARCH_SPECIFIC_TABLE = DynamicCommand.DT_TABLE["sparc"]
+            else:
+                DT_THISPROCNUM = 0
+                ARCH_SPECIFIC_TABLE = {}
+            DT_VERSIONTAGNUM = 16
+            DT_EXTRANUM = 3
+            DT_VALNUM = 12
+            DT_ADDRNUM = 11
+            l_info_length = DT_NUM + DT_THISPROCNUM + DT_VERSIONTAGNUM + DT_EXTRANUM + DT_VALNUM + DT_ADDRNUM
+
+            # include/link.h
+            members += ["l_real", "l_ns", "l_libname"]
+            for i in range(l_info_length):
+                mb = "l_info[{:d}]".format(i)
+                if i < DT_NUM:
+                    tag = i
+                    mb += "(={:s})".format(DynamicCommand.DT_TABLE.get(tag, "???"))
+                elif i < DT_NUM + DT_THISPROCNUM:
+                    tag = 0x70000000 + (i - DT_NUM)
+                    mb += "(={:s})".format(ARCH_SPECIFIC_TABLE.get(tag, "???"))
+                elif i < DT_NUM + DT_THISPROCNUM + DT_VERSIONTAGNUM:
+                    tag = 0x6fffffff - (i - (DT_NUM + DT_THISPROCNUM))
+                    mb += "(={:s})".format(DynamicCommand.DT_TABLE.get(tag, "???"))
+                elif i < DT_NUM + DT_THISPROCNUM + DT_VERSIONTAGNUM + DT_EXTRANUM:
+                    tag = 0x7fffffff - (i - (DT_NUM + DT_THISPROCNUM + DT_VERSIONTAGNUM))
+                    mb += "(={:s})".format(DynamicCommand.DT_TABLE.get(tag, "???"))
+                elif i < DT_NUM + DT_THISPROCNUM + DT_VERSIONTAGNUM + DT_EXTRANUM + DT_VALNUM:
+                    tag = 0x6ffffdff - (i - (DT_NUM + DT_THISPROCNUM + DT_VERSIONTAGNUM + DT_EXTRANUM))
+                    mb += "(={:s})".format(DynamicCommand.DT_TABLE.get(tag, "???"))
+                elif i < DT_NUM + DT_THISPROCNUM + DT_VERSIONTAGNUM + DT_EXTRANUM + DT_VALNUM + DT_ADDRNUM:
+                    tag = 0x6ffffeff - (i - (DT_NUM + DT_THISPROCNUM + DT_VERSIONTAGNUM + DT_EXTRANUM + DT_VALNUM))
+                    mb += "(={:s})".format(DynamicCommand.DT_TABLE.get(tag, "???"))
+                members.append(mb)
+            members += ["l_phdr", "l_entry", "l_phnum", "l_ldnum"]
+
+        tag_maxlen = max(len(x) for x in members) + 1
+
         current = link_map.value
         while True:
-            addr = current
-            l_addr = lookup_address(read_int_from_memory(current))
-            current += current_arch.ptrsize
-            l_name = lookup_address(read_int_from_memory(current))
+            l_name = lookup_address(read_int_from_memory(current + current_arch.ptrsize * 1))
             name = read_cstring_from_memory(l_name.value)
-            current += current_arch.ptrsize
-            l_ld = lookup_address(read_int_from_memory(current))
-            current += current_arch.ptrsize
-            l_next = lookup_address(read_int_from_memory(current))
-            current += current_arch.ptrsize
-            l_prev = lookup_address(read_int_from_memory(current))
-            current += current_arch.ptrsize
+            l_next = lookup_address(read_int_from_memory(current + current_arch.ptrsize * 3))
 
             if not name:
-                name = "(binary itself)"
-            gef_print(titlify(name))
+                name = "(binary itself: {:s})".format(get_filepath())
+            self.out.append(titlify(name))
 
-            width = get_format_address_width()
-            colored_addr = Color.colorify("{:#0{:d}x}".format(addr, width), base_address_color)
-            gef_print("{:s}: {!s} {!s}  |  load_address, name".format(colored_addr, l_addr, l_name))
-            colored_addr = Color.colorify("{:#0{:d}x}".format(addr + current_arch.ptrsize * 2, width), base_address_color)
-            gef_print("{:s}: {!s} {!s}  |  dynamic, next".format(colored_addr, l_ld, l_next))
-            colored_addr = Color.colorify("{:#0{:d}x}".format(addr + current_arch.ptrsize * 4, width), base_address_color)
-            gef_print("{:s}: {!s} {:{:d}s}  |  prev".format(colored_addr, l_prev, "", width))
+            for i, tag in enumerate(members):
+                line = DereferenceCommand.pprint_dereferenced(current, i, tag.ljust(tag_maxlen))
+                self.out.append(line)
 
             if l_next.value == 0:
                 break
@@ -24452,7 +24501,9 @@ class LinkMapCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        filename = None
+        reset_gef_caches(all=True)
+
+        self.verbose = args.verbose
 
         if args.link_map_address:
             link_map = lookup_address(args.link_map_address)
@@ -24483,10 +24534,15 @@ class LinkMapCommand(GenericCommand):
                 err("Failed to get link_map.")
                 return
 
+        self.out = []
         try:
             self.dump_link_map(link_map)
         except Exception:
             err("Failed to parse link_map.")
+            return
+
+        if self.out:
+            gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
@@ -24501,7 +24557,7 @@ class DynamicCommand(GenericCommand):
     group.add_argument("-f", dest="filename", help="the filename you want to parse.")
     group.add_argument("-e", dest="elf_address", type=parse_address, help="the elf address you want to parse.")
     group.add_argument("-d", dest="dynamic_address", type=parse_address, help="the dynamic address you want to parse.")
-    group.add_argument("--size", dest="dynamic_size", type=parse_address, nargs="?",
+    parser.add_argument("--size", dest="dynamic_size", type=parse_address,
                         help="use specified size of dynamic region.")
     _syntax_ = parser.format_help()
 
@@ -24596,10 +24652,79 @@ class DynamicCommand(GenericCommand):
         0x6ffffffe: "DT_VERNEED",
         0x6fffffff: "DT_VERNEEDNUM",
         #0x70000000: "DT_LOPROC", # unspecified
-        0x70000001: "DT_SPARC_REGISTER",
-        0x7ffffffd: "DT_AUXILIARY",
-        0x7ffffffe: "DT_USED",
-        0x7fffffff: "DT_FILTER",
+        "arm64": {
+            0x70000001: "DT_AARCH64_BTI_PLT",
+            0x70000003: "DT_AARCH64_PAC_PLT",
+            0x70000005: "DT_AARCH64_VARIANT_PCS",
+        },
+        "alpha": {
+            0x70000000: "DT_ALPHA_PLTRO",
+        },
+        "mips": {
+            0x70000001: "DT_MIPS_RLD_VERSION",
+            0x70000002: "DT_MIPS_TIME_STAMP",
+            0x70000003: "DT_MIPS_ICHECKSUM",
+            0x70000004: "DT_MIPS_IVERSION",
+            0x70000005: "DT_MIPS_FLAGS",
+            0x70000006: "DT_MIPS_BASE_ADDRESS",
+            0x70000007: "DT_MIPS_MSYM",
+            0x70000008: "DT_MIPS_CONFLICT",
+            0x70000009: "DT_MIPS_LIBLIST",
+            0x7000000a: "DT_MIPS_LOCAL_GOTNO",
+            0x7000000b: "DT_MIPS_CONFLICTNO",
+            0x70000010: "DT_MIPS_LIBLISTNO",
+            0x70000011: "DT_MIPS_SYMTABNO",
+            0x70000012: "DT_MIPS_UNREFEXTNO",
+            0x70000013: "DT_MIPS_GOTSYM",
+            0x70000014: "DT_MIPS_HIPAGENO",
+            0x70000016: "DT_MIPS_RLD_MAP",
+            0x70000017: "DT_MIPS_DELTA_CLASS",
+            0x70000018: "DT_MIPS_DELTA_CLASS_NO",
+            0x70000019: "DT_MIPS_DELTA_INSTANCE",
+            0x7000001a: "DT_MIPS_DELTA_INSTANCE_NO",
+            0x7000001b: "DT_MIPS_DELTA_RELOC",
+            0x7000001c: "DT_MIPS_DELTA_RELOC_NO",
+            0x7000001d: "DT_MIPS_DELTA_SYM",
+            0x7000001e: "DT_MIPS_DELTA_SYM_NO",
+            0x70000020: "DT_MIPS_DELTA_CLASSSYM",
+            0x70000021: "DT_MIPS_DELTA_CLASSSYM_NO",
+            0x70000022: "DT_MIPS_CXX_FLAGS",
+            0x70000023: "DT_MIPS_PIXIE_INIT",
+            0x70000024: "DT_MIPS_SYMBOL_LIB",
+            0x70000025: "DT_MIPS_LOCALPAGE_GOTIDX",
+            0x70000026: "DT_MIPS_LOCAL_GOTIDX",
+            0x70000027: "DT_MIPS_HIDDEN_GOTIDX",
+            0x70000028: "DT_MIPS_PROTECTED_GOTIDX",
+            0x70000029: "DT_MIPS_OPTIONS",
+            0x7000002a: "DT_MIPS_INTERFACE",
+            0x7000002b: "DT_MIPS_DYNSTR_ALIGN",
+            0x7000002c: "DT_MIPS_INTERFACE_SIZE",
+            0x7000002d: "DT_MIPS_RLD_TEXT_RESOLVE_ADDR",
+            0x7000002e: "DT_MIPS_PERF_SUFFIX",
+            0x7000002f: "DT_MIPS_COMPACT_SIZE",
+            0x70000030: "DT_MIPS_GP_VALUE",
+            0x70000031: "DT_MIPS_AUX_DYNAMIC",
+            0x70000032: "DT_MIPS_PLTGOT",
+            0x70000034: "DT_MIPS_RWPLT",
+            0x70000035: "DT_MIPS_RLD_MAP_REL",
+            0x70000036: "DT_MIPS_XHASH",
+            0x7ffffffd: "DT_AUXILIARY",
+            0x7ffffffe: "DT_USED",
+            0x7fffffff: "DT_FILTER",
+        },
+        "ppc32": {
+            0x70000000: "DT_PPC_GOT",
+            0x70000001: "DT_PPC_OPT",
+        },
+        "ppc64": {
+            0x70000000: "DT_PPC64_GLINK",
+            0x70000001: "DT_PPC64_OPD",
+            0x70000002: "DT_PPC64_OPDSZ",
+            0x70000003: "DT_PPC64_OPT",
+        },
+        "sparc": {
+            0x70000001: "DT_SPARC_REGISTER",
+        },
         #0x7fffffff: "DT_HIPROC", # unspecified
     }
 
@@ -24673,8 +24798,6 @@ class DynamicCommand(GenericCommand):
     @only_if_not_qemu_system
     def do_invoke(self, args):
         self.dont_repeat()
-
-        filename = None
 
         if args.dynamic_address:
             dynamic = lookup_address(args.dynamic_address)
