@@ -48938,46 +48938,57 @@ class IiCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address, help="the dump start adress.")
+    parser.add_argument("-l", "--length", type=parse_address, default=50, help="the dump instruction length.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         return
 
-    def is_all_zero(self, addr, N):
-        res = read_memory(addr, N)
-        return res == b"\0" * N
-
-    def is_all_ff(self, addr, N):
-        res = read_memory(addr, N)
-        return res == b"\xff" * N
-
     def ii(self, addr, N):
-        if isinstance(addr, int):
-            if N >= 50 and self.is_all_zero(addr, N):
-                info("all targeted area is 0x00")
-                return
-            if N >= 50 and self.is_all_ff(addr, N):
-                info("all targeted area is 0xff")
-                return
-            res = gdb.execute("x/{:d}i {:#x}".format(N, addr), to_string=True)
-        else:
-            res = gdb.execute("x/{:d}i {:s}".format(N, addr), to_string=True)
+        try:
+            res = read_memory(addr, N)
+        except gdb.MemoryError:
+            err("Memory read error")
+            return
 
+        if N >= 50 and res[0:1] * N == res:
+            info("all targeted area is {:#04x}".format(res[0]))
+            return
+
+        # get instruction size
+        try:
+            res = gdb.execute("x/{:d}i {:#x}".format(N+1, addr), to_string=True)
+        except gdb.MemoryError:
+            err("Memory read error")
+            return
+        addrs = []
         for line in res.splitlines():
+            r = re.search("^(?:=>|  ) (0x[0-9a-f]+)", line)
+            if r:
+                addrs.append(int(r.group(1), 16))
+        size_info = [(x, y - x) for x, y in zip(addrs[:-1], addrs[1:])]
+        max_with = max(x[1] for x in size_info) * 2
+
+        # print
+        for i, line in enumerate(res.splitlines()[:-1]):
+            addr, size = size_info[i]
+            bytecode = read_memory(addr, size)
+            bytecode_hex = "{:{:d}s}".format(bytecode.hex(), max_with)
+
             line = line.rstrip()
-            try:
-                if is_arm32():
-                    addr = int(line.split("; ")[-1], 16)
-                elif is_x86_64():
-                    addr = int(line.split("# ")[-1], 16)
-                else:
-                    raise
-                val = read_int_from_memory(addr)
-                line += " -> [{:#x}]".format(val)
-            except Exception:
-                pass
-            gef_print(line)
+            pos = None
+            x = line[3:].find(" ")
+            if x >= 0:
+                pos = x + 3
+            y = line[3:].find(":")
+            if y >= 0 and (pos is None or pos > y):
+                pos = y + 3
+
+            if pos is None:
+                gef_print(line)
+            else:
+                gef_print(line[:pos] + ": " + bytecode_hex + " " + line[pos:])
         return
 
     @parse_args
@@ -48985,14 +48996,12 @@ class IiCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        N = 50
-        try:
-            if args.location is None:
-                self.ii("$pc", N)
-            else:
-                self.ii(args.location, N)
-        except gdb.MemoryError:
-            err("Memory read error")
+        if args.location is None:
+            location = current_arch.pc
+        else:
+            location = args.location
+
+        self.ii(location, args.length)
         return
 
 
