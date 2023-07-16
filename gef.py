@@ -881,6 +881,8 @@ class Address:
             line_color = get_gef_setting("theme.address_code")
         elif self.is_in_writable():
             line_color = get_gef_setting("theme.address_writable")
+        elif self.is_in_readonly():
+            line_color = get_gef_setting("theme.address_readonly")
         elif self.is_valid_but_none():
             line_color = get_gef_setting("theme.address_valid_but_none")
         if self.is_rwx():
@@ -900,6 +902,8 @@ class Address:
             line_color = get_gef_setting("theme.address_code")
         elif self.is_in_writable():
             line_color = get_gef_setting("theme.address_writable")
+        elif self.is_in_readonly():
+            line_color = get_gef_setting("theme.address_readonly")
         elif self.is_valid_but_none():
             line_color = get_gef_setting("theme.address_valid_but_none")
         if self.is_rwx():
@@ -907,32 +911,51 @@ class Address:
         return Color.colorify(value, line_color)
 
     def is_rwx(self):
+        if self.section is None:
+            return False
         r = hasattr(self.section, "is_readable") and self.section.is_readable()
         w = hasattr(self.section, "is_writable") and self.section.is_writable()
         x = hasattr(self.section, "is_executable") and self.section.is_executable()
         return r and w and x
 
     def is_in_stack_segment(self):
+        if self.section is None:
+            return False
         return hasattr(self.section, "path") and self.section.path.startswith("[stack]")
 
     def is_in_heap_segment(self):
+        if self.section is None:
+            return False
         return hasattr(self.section, "path") and self.section.path.startswith("[heap]")
 
     def is_in_text_segment(self):
+        if self.section is None:
+            return False
         a = hasattr(self.info, "name") and ".text" in self.info.name
-        b = hasattr(self.section, "is_executable") and self.section.is_executable()
-        return a or b
+        e = hasattr(self.section, "is_executable") and self.section.is_executable()
+        return a or e
 
     def is_in_writable(self):
-        return hasattr(self.section, "is_writable") and self.section.is_writable()
+        if self.section is None:
+            return False
+        w = hasattr(self.section, "is_writable") and self.section.is_writable()
+        return w
+
+    def is_in_readonly(self):
+        if self.section is None:
+            return False
+        r = hasattr(self.section, "is_readable") and self.section.is_readable()
+        w = hasattr(self.section, "is_writable") and self.section.is_writable()
+        x = hasattr(self.section, "is_executable") and self.section.is_executable()
+        return r and (not w) and (not x)
 
     def is_valid_but_none(self):
         if self.section is None:
             return False
-        a = hasattr(self.section, "is_executable") and self.section.is_executable()
-        b = hasattr(self.section, "is_writable") and self.section.is_writable()
-        c = hasattr(self.section, "is_readable") and self.section.is_readable()
-        return not a and not b and not c
+        r = hasattr(self.section, "is_readable") and self.section.is_readable()
+        x = hasattr(self.section, "is_executable") and self.section.is_executable()
+        w = hasattr(self.section, "is_writable") and self.section.is_writable()
+        return (not r) and (not w) and (not x)
 
     def dereference(self):
         # Even if the valid flag is not set, it still dereferences.
@@ -11228,7 +11251,8 @@ class GefThemeCommand(GenericCommand):
         self.add_setting("address_stack", "magenta", "Color to use when a stack address is found")
         self.add_setting("address_heap", "bright_blue", "Color to use when a heap address is found")
         self.add_setting("address_code", "red", "Color to use when a code address is found")
-        self.add_setting("address_writable", "green", "Color to use when a RWX address is found")
+        self.add_setting("address_writable", "green", "Color to use when a writable address is found")
+        self.add_setting("address_readonly", "white", "Color to use when a read-only address is found")
         self.add_setting("address_rwx", "underline", "Color to use when a RWX address is found")
         self.add_setting("address_valid_but_none", "bright_black", "Color to use when a --- address is found")
         self.add_setting("source_current_line", "green", "Color to use for the current code line in the source window")
@@ -21002,24 +21026,16 @@ class ContextCommand(GenericCommand):
             __cached_context_legend__ = False
             return
 
-        str_color = get_gef_setting("theme.dereference_string")
-        code_addr_color = get_gef_setting("theme.address_code")
-        stack_addr_color = get_gef_setting("theme.address_stack")
-        heap_addr_color = get_gef_setting("theme.address_heap")
-        writable_addr_color = get_gef_setting("theme.address_writable")
-        rwx_addr_color = get_gef_setting("theme.address_rwx")
-        none_addr_color = get_gef_setting("theme.address_valid_but_none")
-        changed_register_color = get_gef_setting("theme.registers_value_changed")
-
-        legend = "[ Legend: {} | {} | {} | {} | {} | {} | {} | {} ]".format(
-            Color.colorify("Modified register", changed_register_color),
-            Color.colorify("Code", code_addr_color),
-            Color.colorify("Heap", heap_addr_color),
-            Color.colorify("Stack", stack_addr_color),
-            Color.colorify("Writable", writable_addr_color),
-            Color.colorify("NONE", none_addr_color),
-            Color.colorify("RWX", rwx_addr_color),
-            Color.colorify("String", str_color)
+        legend = "[ Legend: {} | {} | {} | {} | {} | {} | {} | {} | {} ]".format(
+            Color.colorify("Modified register", get_gef_setting("theme.registers_value_changed")),
+            Color.colorify("Code", get_gef_setting("theme.address_code")),
+            Color.colorify("Heap", get_gef_setting("theme.address_heap")),
+            Color.colorify("Stack", get_gef_setting("theme.address_stack")),
+            Color.colorify("Writable", get_gef_setting("theme.address_writable")),
+            Color.colorify("ReadOnly", get_gef_setting("theme.address_readonly")),
+            Color.colorify("None", get_gef_setting("theme.address_valid_but_none")),
+            Color.colorify("RWX", get_gef_setting("theme.address_rwx")),
+            Color.colorify("String", get_gef_setting("theme.dereference_string"))
         )
         gef_print(legend)
         __cached_context_legend__ = legend
@@ -23670,6 +23686,8 @@ class VMMapCommand(GenericCommand):
             line_color = get_gef_setting("theme.address_code")
         elif entry.permission.value & Permission.WRITE:
             line_color = get_gef_setting("theme.address_writable")
+        elif entry.permission.value & Permission.READ:
+            line_color = get_gef_setting("theme.address_readonly")
         elif entry.permission.value == Permission.NONE:
             line_color = get_gef_setting("theme.address_valid_but_none")
 
@@ -23702,21 +23720,15 @@ class VMMapCommand(GenericCommand):
         return
 
     def show_legend(self):
-        code_addr_color = get_gef_setting("theme.address_code")
-        stack_addr_color = get_gef_setting("theme.address_stack")
-        heap_addr_color = get_gef_setting("theme.address_heap")
-        writable_addr_color = get_gef_setting("theme.address_writable")
-        none_addr_color = get_gef_setting("theme.address_valid_but_none")
-        rwx_addr_color = get_gef_setting("theme.address_rwx")
-
-        code = Color.colorify("Code", code_addr_color)
-        heap = Color.colorify("Heap", heap_addr_color)
-        stack = Color.colorify("Stack", stack_addr_color)
-        writable = Color.colorify("Writable", writable_addr_color)
-        none = Color.colorify("NONE", none_addr_color)
-        rwx = Color.colorify("RWX", rwx_addr_color)
-
-        self.out.append("[ Legend:  {} | {} | {} | {} | {} | {} ]".format(code, heap, stack, writable, none, rwx))
+        self.out.append("[ Legend:  {} | {} | {} | {} | {} | {} | {} ]".format(
+            Color.colorify("Code", get_gef_setting("theme.address_code")),
+            Color.colorify("Heap", get_gef_setting("theme.address_heap")),
+            Color.colorify("Stack", get_gef_setting("theme.address_stack")),
+            Color.colorify("Writable", get_gef_setting("theme.address_writable")),
+            Color.colorify("ReadOnly", get_gef_setting("theme.address_readonly")),
+            Color.colorify("None", get_gef_setting("theme.address_valid_but_none")),
+            Color.colorify("RWX", get_gef_setting("theme.address_rwx")),
+        ))
         return
 
     def is_integer(self, n):
