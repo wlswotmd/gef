@@ -74,21 +74,21 @@ I also list the tools I used in my Ubuntu 22.04 environment.
 * OpenRISC 1000 (OR1K)
     * toolchain: `openrisc--glibc--stable-2022.08-1` from https://toolchains.bootlin.com/
     * qemu: `qemu-or1k` via apt.
-    * gdb: `gdb` built from source with `./configure --enable-targets=all --with-python=/usr/bin/python3`.
+    * gdb: build from latest source with `./configure --enable-targets=all --with-python=/usr/bin/python3`.
 * NiosII
     * toolchain: `nios2--glibc--stable-2022.08-1` from https://toolchains.bootlin.com/
     * qemu: `qemu-nios2` via apt.
-    * gdb: `gdb` built from source with `./configure --enable-targets=all --with-python=/usr/bin/python3`.
+    * gdb: build from latest source with `./configure --enable-targets=all --with-python=/usr/bin/python3`.
 * MicroBlaze
     * toolchain: `microblazebe--glibc--stable-2022.08-1` from https://toolchains.bootlin.com/
     * qemu: `qemu-microblaze` via apt.
-    * gdb: `gdb` built from source with `./configure --enable-targets=all --with-python=/usr/bin/python3`.
+    * gdb: build from latest source with `./configure --enable-targets=all --with-python=/usr/bin/python3`.
 * Xtensa
     * toolchain: `xtensa-lx60--uclibc--stable-2022.08-1` from https://toolchains.bootlin.com/
         * Because the toolchain obtained with apt seems to be broken since the C header is unavailable.
     * qemu: `qemu-xtensa` via apt.
     * gdb: `xtensa-lx60--uclibc--stable-2022.08-1` from https://toolchains.bootlin.com/
-        * Because neither `gdb-multiarch` nor `gdb` built from source support this architecture.
+        * Because `gdb` built from latest source will not work with `set architecture xtensa`.
         * The toolchain also includes `xtensa-linux-gdb`, so I used it.
         * The readline seems to be broken so workaround is here: `LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libncurses.so.6 xtensa-linux-gdb`.
 * Cris
@@ -100,9 +100,8 @@ I also list the tools I used in my Ubuntu 22.04 environment.
     * qemu: `qemu-cris` via apt.
         * Need `-cpu` option like `qemu-cris -cpu crisv17 -g 1234 ./a.out`.
         * Could not use `-cpu crisv32` because gdb does not support it.
-    * gdb: `gdb` built from source with `./configure --enable-targets=all --with-python=/usr/bin/python3`.
+    * gdb: build from latest source with `./configure --enable-targets=all --with-python=/usr/bin/python3`.
 * Loongarch64
     * toolchain: https://github.com/loongson/build-tools/releases/download/2022.09.06/loongarch64-clfs-7.3-cross-tools-gcc-glibc.tar.xz
-    * qemu: build yourself.
-        * `git clone https://github.com/qemu/qemu.git && cd qemu && ./configure --target-list=loongarch64-linux-user && make`
-    * gdb: `gdb` built from source with `./configure --enable-targets=all --with-python=/usr/bin/python3`
+    * qemu: build from latest source with `./configure --target-list=loongarch64-linux-user`.
+    * gdb: build from latest source with `./configure --enable-targets=all --with-python=/usr/bin/python3`.

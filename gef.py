@@ -10127,7 +10127,7 @@ def set_arch(arch=None, default=None):
             if current_elf and current_elf.e_machine not in [Elf.EM_MIPS, Elf.EM_RISCV]:
                 current_arch = arches[current_elf.e_machine]()
             else:
-                # MIPS32/64 and RISCV32/64  are indistinguishable because e_machine of the ELF header
+                # MIPS32/64 and RISCV32/64 are indistinguishable because e_machine of the ELF header
                 # has the same value, so we use the detection result of gdb
                 current_arch = arches[get_arch().upper()]()
         except KeyError as err:
@@ -35293,6 +35293,7 @@ xtensa_syscall_tbl = """
 450     common  set_mempolicy_home_node         sys_set_mempolicy_home_node
 """
 
+
 # CRIS
 # [How to make]
 # cd /path/to/linux-4.16.18/
@@ -35660,6 +35661,7 @@ cris_syscall_tbl = """
 358  cris  bpf                     sys_bpf
 359  cris  execveat                sys_execveat
 """
+
 
 # Loongarch
 #
@@ -37348,7 +37350,7 @@ def get_syscall_table(arch=None, mode=None):
             "sys_clone_wrapper": [
                 "unsigned long clone_flags", "unsigned long newsp", "int __user *parent_tidptr",
                 "unsigned long tls", "int *child_tidptr",
-            ], # kernel/fork.c (fork_linke macro, CONFIG_CLONE_BACKWARDS)
+            ], # arch/parisc/kernel/entry.S (fork_like macro, CONFIG_CLONE_BACKWARDS)
             "parisc_personality": [
                 "unsigned long personality",
             ], # arch/parisc/kernel/sys_parisc.c
@@ -37431,7 +37433,7 @@ def get_syscall_table(arch=None, mode=None):
             "sys_clone_wrapper": [
                 "unsigned long clone_flags", "unsigned long newsp", "int __user *parent_tidptr",
                 "unsigned long tls", "int *child_tidptr",
-            ], # kernel/fork.c (fork_linke macro, CONFIG_CLONE_BACKWARDS)
+            ], # arch/parisc/kernel/entry.S (fork_like macro, CONFIG_CLONE_BACKWARDS)
             "sys_rt_sigreturn_wrapper": [], # arch/parisc/kernel/entry.S
             "parisc_timerfd_create": [
                 "int clockid", "int flags",
