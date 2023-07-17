@@ -105,3 +105,7 @@ I also list the tools I used in my Ubuntu 22.04 environment.
     * toolchain: https://github.com/loongson/build-tools/releases/download/2022.09.06/loongarch64-clfs-7.3-cross-tools-gcc-glibc.tar.xz
     * qemu: build from latest source with `./configure --target-list=loongarch64-linux-user`.
     * gdb: build from latest source with `./configure --enable-targets=all --with-python=/usr/bin/python3`.
+* arc
+    * toolchain: `arcle-hs38--glibc--stable-2022.08-1` from https://toolchains.bootlin.com/
+    * qemu: build from https://github.com/foss-for-synopsys-dwc-arc-processors/qemu with `./configure --target-list=arc-linux-user,arc64-linux-user`.
+    * gdb: build from latest source with `./configure --enable-targets=all --with-python=/usr/bin/python3`.

@@ -28,6 +28,7 @@
 #   * xtensa
 #   * cris
 #   * loongarch64
+#   * arc
 # See README.md for details.
 #
 # To start: in gdb, type `source /path/to/gef.py`
@@ -7964,6 +7965,291 @@ class LOONGARCH64(Architecture):
         return b"".join(insns)
 
 
+class ARC(Architecture):
+    arch = "ARC"
+    mode = "ARC32"
+
+    # http://me.bios.io/images/d/dd/ARCompactISA_ProgrammersReference.pdf
+    all_registers = [
+        "$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7",
+        "$r8", "$r9", "$r10", "$r11", "$r12", "$r13", "$r14", "$r15",
+        "$r16", "$r17", "$r18", "$r19", "$r20", "$r21", "$r22", "$r23",
+        "$r24", "$r25", "$gp", "$fp", "$sp", "$ilink", "$r30", "$blink",
+        "$pc", "$pcl", "$status32", "$bta", "$lp_count",
+    ]
+    alias_registers = {
+        "$r25": "$tp", "$gp": "$r26", "$fp": "$r27", "$sp": "$r28", "$ilink": "$r29", "$blink": "$r31",
+        "$lp_count": "$r60", "$pcl": "$r63",
+    }
+    flag_register = "$status32"
+    flags_table = {
+        0: "halt",
+        1: "e1",
+        2: "e2",
+        3: "a1",
+        4: "a2",
+        5: "ae",
+        6: "de",
+        7: "user",
+        8: "overflow",
+        9: "carry",
+        10: "negative",
+        11: "zero",
+        12: "loop",
+    }
+    return_register = "$r0"
+    function_parameters = ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7"]
+    syscall_register = "$r8"
+    syscall_parameters = ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5"]
+
+    instruction_length = None # variable length
+    has_delay_slot = True
+    has_syscall_delay_slot = False
+    has_ret_delay_slot = True
+    stack_grow_down = False
+    tls_supported = True
+
+    keystone_support = False
+    capstone_support = False
+    unicorn_support = False
+
+    nop_insn = b"\xe0\x78" # nop_s
+    infloop_insn = b"\x00\xf0" # b_s 0
+    infloop_insn2 = b"\x01\xf0" # b_s 2 (if $pc % 4 == 2)
+    trap_insn = None
+    ret_insn = b"\xe0\x7e" # j_s [blink]
+    syscall_insn = b"\x1e\x78" # trap_s 0
+
+    def is_syscall(self, insn):
+        if insn.mnemonic == "trap_s" and insn.operands == ["0"]:
+            return True
+        if insn.mnemonic == "trap0":
+            return True
+        return False
+
+    def is_call(self, insn):
+        if insn.mnemonic in ["bl", "bl.d", "bl_s", "jl", "jl.d", "jl_s", "jl_s.d"]:
+            return True
+
+        # BLcc<.d>
+        conditions = [
+            "al", "ra", "eq", "z", "ne", "nz", "pl", "p",
+            "mi", "n", "cs", "c", "lo", "cc", "nc", "hs",
+            "vs", "v", "vc", "nv", "gt", "ge", "lt", "le",
+            "hi", "ls", "pnz",
+        ]
+        for cc in conditions:
+            if insn.mnemonic in [f"bl{cc}", f"bl{cc}.d"]:
+                return True
+
+        # JLcc<.d>
+        conditions = [
+            "eq", "ne", "lt", "ge", "lo", "hs",
+        ]
+        for cc in conditions:
+            if insn.mnemonic in [f"jl{cc}", f"jl{cc}.d"]:
+                return True
+
+        return False
+
+    def is_jump(self, insn):
+        if self.is_conditional_branch(insn):
+            return True
+        if insn.mnemonic in ["b", "b.d", "b_s"]:
+            return True
+        if insn.mnemonic in ["j", "j.d"]:
+            if insn.operands != ["[blink]"]:
+                return True
+        return False
+
+    def is_ret(self, insn):
+        if insn.mnemonic in ["j", "j_s", "j_s.d"] and insn.operands == ["[blink]"]:
+            return True
+        return False
+
+    def is_conditional_branch(self, insn):
+        # Bcc<.d>
+        conditions = [
+            "al", "ra", "eq", "z", "ne", "nz", "pl", "p",
+            "mi", "n", "cs", "c", "lo", "cc", "nc", "hs",
+            "vs", "v", "vc", "nv", "gt", "ge", "lt", "le",
+            "hi", "ls", "pnz",
+        ]
+        for cc in conditions:
+            if insn.mnemonic in [f"b{cc}", f"b{cc}.d"]:
+                return True
+
+        # BRcc<.d>
+        conditions = [
+            "eq", "ne", "lt", "ge", "lo", "hs",
+        ]
+        for cc in conditions:
+            if insn.mnemonic in [f"br{cc}", f"br{cc}.d", f"br{cc}.nt", f"br{cc}.d.nt"]:
+                return True
+        if insn.mnemonic in ["bbit0", "bbit1", "bbit0.d", "bbit1.d"]:
+            return True
+
+        # BRcc_s
+        conditions = [
+            "eq", "ne", "gt", "ge", "lt", "le", "hi", "hs", "lo", "ls",
+        ]
+        for cc in conditions:
+            if insn.mnemonic in [f"br{cc}_s"]:
+                return True
+
+        # Jcc<.d>, Jcc.F
+        conditions = [
+            "eq", "ne", "lt", "ge", "lo", "hs",
+        ]
+        for cc in conditions:
+            if insn.mnemonic in [f"j{cc}", f"j{cc}.d", f"j{cc}.f"]:
+                return True
+
+        # Jcc_s
+        if insn.mnemonic in ["jeq_s", "jne_s"]:
+            return True
+
+        return False
+
+    def is_branch_taken(self, insn):
+        mnemo = insn.mnemonic
+        ops = []
+        for op in insn.operands:
+            if op.startswith(";"):
+                break
+            ops.append(op)
+
+        val = get_register(self.flag_register)
+        flags = {self.flags_table[k]: k for k in self.flags_table}
+
+        zero = bool(val & (1 << flags["zero"]))
+        negative = bool(val & (1 << flags["negative"]))
+        overflow = bool(val & (1 << flags["overflow"]))
+        carry = bool(val & (1 << flags["carry"]))
+
+        if len(ops) >= 2:
+            pI = lambda a: struct.pack("<I", a & 0xffffffff)
+            ui = lambda a: struct.unpack("<i", a)[0]
+            u2i = lambda a: ui(pI(a))
+            v0u = get_register(ops[0])
+            if v0u is None:
+                v0u = int(ops[0], 0)
+            v1u = get_register(ops[1])
+            if v1u is None:
+                v1u = int(ops[1], 0)
+            v0s = u2i(v0u)
+            v1s = u2i(v1u)
+
+        taken, reason = False, ""
+        if mnemo.startswith(("beq", "breq", "jeq")):
+            if len(ops) >= 2:
+                taken, reason = v0u == v1u, "{:s}=={:s}".format(ops[0], ops[1])
+            else:
+                taken, reason = zero, "Z"
+
+        elif mnemo.startswith(("bne", "brne", "jne")):
+            if len(ops) >= 2:
+                taken, reason = v0u != v1u, "{:s}!={:s}".format(ops[0], ops[1])
+            else:
+                taken, reason = not zero, "!Z"
+
+        elif mnemo.startswith(("bgt", "brgt")):
+            if len(ops) >= 2:
+                taken, reason = v0s > v1s, "{:s}>{:s}".format(ops[0], ops[1])
+            else:
+                taken = (negative and overflow and not zero) or (not negative and not overflow and not zero)
+                reason = "(N && V && !Z) || (!N && !V && !Z)"
+
+        elif mnemo.startswith(("bge", "brge", "jge")):
+            if len(ops) >= 2:
+                taken, reason = v0s >= v1s, "{:s}>={:s}".format(ops[0], ops[1])
+            else:
+                taken, reason = (negative and overflow) or (not negative and not overflow), "(N && V) || (!N && !V)"
+
+        elif mnemo.startswith(("blt", "brlt", "jlt")):
+            if len(ops) >= 2:
+                taken, reason = v0s < v1s, "{:s}<{:s}".format(ops[0], ops[1])
+            else:
+                taken, reason = (negative and not overflow) or (not negative and overflow), "(N && !V) || (!N && V)"
+
+        elif mnemo.startswith(("ble", "brle")):
+            if len(ops) >= 2:
+                taken, reason = v0s <= v1s, "{:s}<={:s}".format(ops[0], ops[1])
+            else:
+                taken, reason = zero or (negative and not overflow) or (not negative and overflow), "Z || (N && !V) || (!N && V)"
+
+        elif mnemo.startswith(("bhi", "brhi")):
+            if len(ops) >= 2:
+                taken, reason = v0u > v1u, "{:s}>{:s}".format(ops[0], ops[1])
+            else:
+                taken, reason = not carry and not zero, "!C || !Z"
+
+        elif mnemo.startswith(("bhs", "brhs", "jhs")):
+            if len(ops) >= 2:
+                taken, reason = v0u >= v1u, "{:s}>={:s}".format(ops[0], ops[1])
+            else:
+                taken, reason = not carry, "!C"
+
+        elif mnemo.startswith(("blo", "brlo", "jlo")):
+            if len(ops) >= 2:
+                taken, reason = v0u < v1u, "{:s}<{:s}".format(ops[0], ops[1])
+            else:
+                taken, reason = carry, "C"
+
+        elif mnemo.startswith(("bls", "brls")):
+            if len(ops) >= 2:
+                taken, reason = v0u <= v1u, "{:s}<={:s}".format(ops[0], ops[1])
+            else:
+                taken, reason = carry or zero, "C || Z"
+
+        return taken, reason
+
+    def flag_register_to_human(self, val=None):
+        if not val:
+            reg = self.flag_register
+            val = get_register(reg)
+        return flags_to_human(val, self.flags_table)
+
+    def get_ith_parameter(self, i, in_func=True):
+        if i < len(self.function_parameters):
+            reg = self.function_parameters[i]
+            val = get_register(reg)
+            key = reg
+            return key, val
+        else:
+            i -= len(self.function_parameters)
+            sp = current_arch.sp
+            sz = current_arch.ptrsize
+            loc = sp + (i * sz)
+            val = read_int_from_memory(loc)
+            key = "[sp + {:#x}]".format(i * sz)
+            return key, val
+
+    def get_ra(self, insn, frame):
+        ra = None
+        try:
+            if self.is_ret(insn):
+                ra = get_register("$blink")
+            elif frame.older():
+                ra = frame.older().pc()
+        except Exception:
+            pass
+        return ra
+
+    mprotect_asm = None
+
+    @classmethod
+    def mprotect_asm_raw(cls, addr, size, perm):
+        insns = [
+            b"\x0a\x20\x80\x0f" + p16(addr >> 16) + p16(addr & 0xffff), # mov r0, addr
+            b"\x0a\x21\x80\x0f" + p16(size >> 16) + p16(size & 0xffff), # mov r1, size
+            b"\x0a\x22\x80\x0f" + p16(perm >> 16) + p16(perm & 0xffff), # mov r2, perm
+            b"\x8a\x20\x83\x18" # mov r8, _NR_mprotect (=226)
+            b"\x1e\x78" # trap_s 0
+        ]
+        return b"".join(insns)
+
+
 # The prototype for new architecture.
 #
 #class XXX(Architecture):
@@ -8025,7 +8311,7 @@ class LOONGARCH64(Architecture):
 #    #def is_branch_taken(self, insn):
 #    #    mnemo = insn.mnemonic
 #    #    val = get_register(self.flag_register)
-#    #    flags = dict((self.flags_table[k], k) for k in self.flags_table)
+#    #    flags = {self.flags_table[k]: k for k in self.flags_table}
 #    #    taken, reason = False, ""
 #    #    return taken, reason
 #
@@ -8637,6 +8923,8 @@ def only_if_specific_arch(arch=()):
                     return f(*args, **kwargs)
                 elif a == "LOONGARCH64" and is_loongarch64():
                     return f(*args, **kwargs)
+                elif a == "ARC32" and is_arc32():
+                    return f(*args, **kwargs)
             else:
                 warn("This command cannot work under this architecture.")
                 return
@@ -8723,6 +9011,9 @@ def exclude_specific_arch(arch=()):
                     warn("This command cannot work under this architecture.")
                     return
                 elif a == "LOONGARCH64" and is_loongarch64():
+                    warn("This command cannot work under this architecture.")
+                    return
+                elif a == "ARC32" and is_arc32():
                     warn("This command cannot work under this architecture.")
                     return
             else:
@@ -10043,6 +10334,14 @@ def is_loongarch64():
         return False
 
 
+def is_arc32():
+    """Checks if current target is arc32."""
+    try:
+        return current_arch.arch == "ARC" and current_arch.mode == "ARC32"
+    except Exception:
+        return False
+
+
 @functools.lru_cache(maxsize=None)
 def is_static(filename=None):
     if filename is None:
@@ -10100,6 +10399,8 @@ def set_arch(arch=None, default=None):
         Elf.EM_XTENSA: XTENSA, "XTENSA": XTENSA,
         Elf.EM_CRIS: CRIS, "CRIS": CRIS,
         Elf.EM_LOONGARCH: LOONGARCH64, "LOONGARCH": LOONGARCH64,
+        Elf.EM_ARC: ARC, Elf.EM_ARC_COMPACT: ARC, Elf.EM_ARC_COMPACT2: ARC,
+        "ARC600": ARC, "ARC601": ARC, "ARC700": ARC, "ARCV2": ARC,
     }
     global current_arch, current_elf
 
@@ -21343,6 +21644,9 @@ class ContextCommand(GenericCommand):
                     target = current_arch.get_ra(insn, frame)
                     delay_slot = current_arch.has_ret_delay_slot
 
+                if is_arc32():
+                    delay_slot = insn.mnemonic.endswith(".d") or insn.mnemonic.endswith(".d.nt")
+
             else:
                 line += "{}{}{}".format(bp_prefix, " " * len(RIGHT_ARROW[1:]), text)
 
@@ -22842,7 +23146,9 @@ class PatchInfloopCommand(PatchCommand):
                 insn += current_arch.nop_insn[::-1]
         else:
             insn = current_arch.infloop_insn
-            if current_arch.has_delay_slot:
+            if is_arc32() and addr % 4 == 2:
+                insn = current_arch.infloop_insn2
+            if not is_arc32() and current_arch.has_delay_slot:
                 insn += current_arch.nop_insn
 
         self.patch(addr, insn, len(insn))
@@ -25848,7 +26154,8 @@ class SyscallSearchCommand(GenericCommand):
     _example_ += '{:s} -a MICROBLAZE -m MICROBLAZE  "^writev?" # microblaze\n'.format(_cmdline_)
     _example_ += '{:s} -a XTENSA -m XTENSA          "^writev?" # xtensa\n'.format(_cmdline_)
     _example_ += '{:s} -a CRIS -m CRIS              "^writev?" # cris\n'.format(_cmdline_)
-    _example_ += '{:s} -a LOONGARCH -m LOONGARCH64  "^writev?" # loongarch'.format(_cmdline_)
+    _example_ += '{:s} -a LOONGARCH -m LOONGARCH64  "^writev?" # loongarch64\n'.format(_cmdline_)
+    _example_ += '{:s} -a ARC -m ARC32              "^writev?" # arc32'.format(_cmdline_)
 
     def print_syscall(self, syscall_table, syscall_num, syscall_name_pattern):
         gef_print(titlify("arch={:s}, mode={:s}".format(syscall_table.arch, syscall_table.mode)))
@@ -35975,6 +36282,323 @@ loongarch_syscall_tbl = """
 """
 
 
+# arc
+#
+# [How to make]
+# cd /path/to/linux-6.*/
+# gcc -I `pwd`/include/uapi/ -E -D__SYSCALL=SYSCALL arch/arc/include/uapi/asm/unistd.h | grep ^SYSCALL \
+# | sed -e 's/SYSCALL(//;s/[,)]//g' > /tmp/a
+# grep -oP "__NR\S+\s+\d+$" include/uapi/asm-generic/unistd.h | grep -v __NR_sync_file_range2 > /tmp/b
+# join -2 2 -o 1.1,1.10,2.1,1.2 -e arc /tmp/a /tmp/b | sed -e 's/\(__NR_\|__NR3264_\)//g' | column -t
+arc_syscall_tbl = """
+0    arc  io_setup                 sys_io_setup
+1    arc  io_destroy               sys_io_destroy
+2    arc  io_submit                sys_io_submit
+3    arc  io_cancel                sys_io_cancel
+4    arc  io_getevents             sys_io_getevents
+5    arc  setxattr                 sys_setxattr
+6    arc  lsetxattr                sys_lsetxattr
+7    arc  fsetxattr                sys_fsetxattr
+8    arc  getxattr                 sys_getxattr
+9    arc  lgetxattr                sys_lgetxattr
+10   arc  fgetxattr                sys_fgetxattr
+11   arc  listxattr                sys_listxattr
+12   arc  llistxattr               sys_llistxattr
+13   arc  flistxattr               sys_flistxattr
+14   arc  removexattr              sys_removexattr
+15   arc  lremovexattr             sys_lremovexattr
+16   arc  fremovexattr             sys_fremovexattr
+17   arc  getcwd                   sys_getcwd
+18   arc  lookup_dcookie           sys_lookup_dcookie
+19   arc  eventfd2                 sys_eventfd2
+20   arc  epoll_create1            sys_epoll_create1
+21   arc  epoll_ctl                sys_epoll_ctl
+22   arc  epoll_pwait              sys_epoll_pwait
+23   arc  dup                      sys_dup
+24   arc  dup3                     sys_dup3
+25   arc  fcntl                    sys_fcntl
+26   arc  inotify_init1            sys_inotify_init1
+27   arc  inotify_add_watch        sys_inotify_add_watch
+28   arc  inotify_rm_watch         sys_inotify_rm_watch
+29   arc  ioctl                    sys_ioctl
+30   arc  ioprio_set               sys_ioprio_set
+31   arc  ioprio_get               sys_ioprio_get
+32   arc  flock                    sys_flock
+33   arc  mknodat                  sys_mknodat
+34   arc  mkdirat                  sys_mkdirat
+35   arc  unlinkat                 sys_unlinkat
+36   arc  symlinkat                sys_symlinkat
+37   arc  linkat                   sys_linkat
+38   arc  renameat                 sys_renameat
+39   arc  umount2                  sys_umount
+40   arc  mount                    sys_mount
+41   arc  pivot_root               sys_pivot_root
+42   arc  nfsservctl               sys_ni_syscall
+43   arc  statfs                   sys_statfs
+44   arc  fstatfs                  sys_fstatfs
+45   arc  truncate                 sys_truncate
+46   arc  ftruncate                sys_ftruncate
+47   arc  fallocate                sys_fallocate
+48   arc  faccessat                sys_faccessat
+49   arc  chdir                    sys_chdir
+50   arc  fchdir                   sys_fchdir
+51   arc  chroot                   sys_chroot
+52   arc  fchmod                   sys_fchmod
+53   arc  fchmodat                 sys_fchmodat
+54   arc  fchownat                 sys_fchownat
+55   arc  fchown                   sys_fchown
+56   arc  openat                   sys_openat
+57   arc  close                    sys_close
+58   arc  vhangup                  sys_vhangup
+59   arc  pipe2                    sys_pipe2
+60   arc  quotactl                 sys_quotactl
+61   arc  getdents64               sys_getdents64
+62   arc  lseek                    sys_lseek
+63   arc  read                     sys_read
+64   arc  write                    sys_write
+65   arc  readv                    sys_readv
+66   arc  writev                   sys_writev
+67   arc  pread64                  sys_pread64
+68   arc  pwrite64                 sys_pwrite64
+69   arc  preadv                   sys_preadv
+70   arc  pwritev                  sys_pwritev
+71   arc  sendfile                 sys_sendfile64
+72   arc  pselect6                 sys_pselect6
+73   arc  ppoll                    sys_ppoll
+74   arc  signalfd4                sys_signalfd4
+75   arc  vmsplice                 sys_vmsplice
+76   arc  splice                   sys_splice
+77   arc  tee                      sys_tee
+78   arc  readlinkat               sys_readlinkat
+79   arc  fstatat                  sys_newfstatat
+80   arc  fstat                    sys_newfstat
+81   arc  sync                     sys_sync
+82   arc  fsync                    sys_fsync
+83   arc  fdatasync                sys_fdatasync
+84   arc  sync_file_range          sys_sync_file_range
+85   arc  timerfd_create           sys_timerfd_create
+86   arc  timerfd_settime          sys_timerfd_settime
+87   arc  timerfd_gettime          sys_timerfd_gettime
+88   arc  utimensat                sys_utimensat
+89   arc  acct                     sys_acct
+90   arc  capget                   sys_capget
+91   arc  capset                   sys_capset
+92   arc  personality              sys_personality
+93   arc  exit                     sys_exit
+94   arc  exit_group               sys_exit_group
+95   arc  waitid                   sys_waitid
+96   arc  set_tid_address          sys_set_tid_address
+97   arc  unshare                  sys_unshare
+98   arc  futex                    sys_futex
+99   arc  set_robust_list          sys_set_robust_list
+100  arc  get_robust_list          sys_get_robust_list
+101  arc  nanosleep                sys_nanosleep
+102  arc  getitimer                sys_getitimer
+103  arc  setitimer                sys_setitimer
+104  arc  kexec_load               sys_kexec_load
+105  arc  init_module              sys_init_module
+106  arc  delete_module            sys_delete_module
+107  arc  timer_create             sys_timer_create
+108  arc  timer_gettime            sys_timer_gettime
+109  arc  timer_getoverrun         sys_timer_getoverrun
+110  arc  timer_settime            sys_timer_settime
+111  arc  timer_delete             sys_timer_delete
+112  arc  clock_settime            sys_clock_settime
+113  arc  clock_gettime            sys_clock_gettime
+114  arc  clock_getres             sys_clock_getres
+115  arc  clock_nanosleep          sys_clock_nanosleep
+116  arc  syslog                   sys_syslog
+117  arc  ptrace                   sys_ptrace
+118  arc  sched_setparam           sys_sched_setparam
+119  arc  sched_setscheduler       sys_sched_setscheduler
+120  arc  sched_getscheduler       sys_sched_getscheduler
+121  arc  sched_getparam           sys_sched_getparam
+122  arc  sched_setaffinity        sys_sched_setaffinity
+123  arc  sched_getaffinity        sys_sched_getaffinity
+124  arc  sched_yield              sys_sched_yield
+125  arc  sched_get_priority_max   sys_sched_get_priority_max
+126  arc  sched_get_priority_min   sys_sched_get_priority_min
+127  arc  sched_rr_get_interval    sys_sched_rr_get_interval
+128  arc  restart_syscall          sys_restart_syscall
+129  arc  kill                     sys_kill
+130  arc  tkill                    sys_tkill
+131  arc  tgkill                   sys_tgkill
+132  arc  sigaltstack              sys_sigaltstack
+133  arc  rt_sigsuspend            sys_rt_sigsuspend
+134  arc  rt_sigaction             sys_rt_sigaction
+135  arc  rt_sigprocmask           sys_rt_sigprocmask
+136  arc  rt_sigpending            sys_rt_sigpending
+137  arc  rt_sigtimedwait          sys_rt_sigtimedwait
+138  arc  rt_sigqueueinfo          sys_rt_sigqueueinfo
+139  arc  rt_sigreturn             sys_rt_sigreturn
+140  arc  setpriority              sys_setpriority
+141  arc  getpriority              sys_getpriority
+142  arc  reboot                   sys_reboot
+143  arc  setregid                 sys_setregid
+144  arc  setgid                   sys_setgid
+145  arc  setreuid                 sys_setreuid
+146  arc  setuid                   sys_setuid
+147  arc  setresuid                sys_setresuid
+148  arc  getresuid                sys_getresuid
+149  arc  setresgid                sys_setresgid
+150  arc  getresgid                sys_getresgid
+151  arc  setfsuid                 sys_setfsuid
+152  arc  setfsgid                 sys_setfsgid
+153  arc  times                    sys_times
+154  arc  setpgid                  sys_setpgid
+155  arc  getpgid                  sys_getpgid
+156  arc  getsid                   sys_getsid
+157  arc  setsid                   sys_setsid
+158  arc  getgroups                sys_getgroups
+159  arc  setgroups                sys_setgroups
+160  arc  uname                    sys_newuname
+161  arc  sethostname              sys_sethostname
+162  arc  setdomainname            sys_setdomainname
+163  arc  getrlimit                sys_getrlimit
+164  arc  setrlimit                sys_setrlimit
+165  arc  getrusage                sys_getrusage
+166  arc  umask                    sys_umask
+167  arc  prctl                    sys_prctl
+168  arc  getcpu                   sys_getcpu
+169  arc  gettimeofday             sys_gettimeofday
+170  arc  settimeofday             sys_settimeofday
+171  arc  adjtimex                 sys_adjtimex
+172  arc  getpid                   sys_getpid
+173  arc  getppid                  sys_getppid
+174  arc  getuid                   sys_getuid
+175  arc  geteuid                  sys_geteuid
+176  arc  getgid                   sys_getgid
+177  arc  getegid                  sys_getegid
+178  arc  gettid                   sys_gettid
+179  arc  sysinfo                  sys_sysinfo
+180  arc  mq_open                  sys_mq_open
+181  arc  mq_unlink                sys_mq_unlink
+182  arc  mq_timedsend             sys_mq_timedsend
+183  arc  mq_timedreceive          sys_mq_timedreceive
+184  arc  mq_notify                sys_mq_notify
+185  arc  mq_getsetattr            sys_mq_getsetattr
+186  arc  msgget                   sys_msgget
+187  arc  msgctl                   sys_msgctl
+188  arc  msgrcv                   sys_msgrcv
+189  arc  msgsnd                   sys_msgsnd
+190  arc  semget                   sys_semget
+191  arc  semctl                   sys_semctl
+192  arc  semtimedop               sys_semtimedop
+193  arc  semop                    sys_semop
+194  arc  shmget                   sys_shmget
+195  arc  shmctl                   sys_shmctl
+196  arc  shmat                    sys_shmat
+197  arc  shmdt                    sys_shmdt
+198  arc  socket                   sys_socket
+199  arc  socketpair               sys_socketpair
+200  arc  bind                     sys_bind
+201  arc  listen                   sys_listen
+202  arc  accept                   sys_accept
+203  arc  connect                  sys_connect
+204  arc  getsockname              sys_getsockname
+205  arc  getpeername              sys_getpeername
+206  arc  sendto                   sys_sendto
+207  arc  recvfrom                 sys_recvfrom
+208  arc  setsockopt               sys_setsockopt
+209  arc  getsockopt               sys_getsockopt
+210  arc  shutdown                 sys_shutdown
+211  arc  sendmsg                  sys_sendmsg
+212  arc  recvmsg                  sys_recvmsg
+213  arc  readahead                sys_readahead
+214  arc  brk                      sys_brk
+215  arc  munmap                   sys_munmap
+216  arc  mremap                   sys_mremap
+217  arc  add_key                  sys_add_key
+218  arc  request_key              sys_request_key
+219  arc  keyctl                   sys_keyctl
+220  arc  clone                    sys_clone
+221  arc  execve                   sys_execve
+222  arc  mmap                     sys_mmap
+223  arc  fadvise64                sys_fadvise64_64
+224  arc  swapon                   sys_swapon
+225  arc  swapoff                  sys_swapoff
+226  arc  mprotect                 sys_mprotect
+227  arc  msync                    sys_msync
+228  arc  mlock                    sys_mlock
+229  arc  munlock                  sys_munlock
+230  arc  mlockall                 sys_mlockall
+231  arc  munlockall               sys_munlockall
+232  arc  mincore                  sys_mincore
+233  arc  madvise                  sys_madvise
+234  arc  remap_file_pages         sys_remap_file_pages
+235  arc  mbind                    sys_mbind
+236  arc  get_mempolicy            sys_get_mempolicy
+237  arc  set_mempolicy            sys_set_mempolicy
+238  arc  migrate_pages            sys_migrate_pages
+239  arc  move_pages               sys_move_pages
+240  arc  rt_tgsigqueueinfo        sys_rt_tgsigqueueinfo
+241  arc  perf_event_open          sys_perf_event_open
+242  arc  accept4                  sys_accept4
+243  arc  recvmmsg                 sys_recvmmsg
+260  arc  wait4                    sys_wait4
+261  arc  prlimit64                sys_prlimit64
+262  arc  fanotify_init            sys_fanotify_init
+263  arc  fanotify_mark            sys_fanotify_mark
+264  arc  name_to_handle_at        sys_name_to_handle_at
+265  arc  open_by_handle_at        sys_open_by_handle_at
+266  arc  clock_adjtime            sys_clock_adjtime
+267  arc  syncfs                   sys_syncfs
+268  arc  setns                    sys_setns
+269  arc  sendmmsg                 sys_sendmmsg
+270  arc  process_vm_readv         sys_process_vm_readv
+271  arc  process_vm_writev        sys_process_vm_writev
+272  arc  kcmp                     sys_kcmp
+273  arc  finit_module             sys_finit_module
+274  arc  sched_setattr            sys_sched_setattr
+275  arc  sched_getattr            sys_sched_getattr
+276  arc  renameat2                sys_renameat2
+277  arc  seccomp                  sys_seccomp
+278  arc  getrandom                sys_getrandom
+279  arc  memfd_create             sys_memfd_create
+280  arc  bpf                      sys_bpf
+281  arc  execveat                 sys_execveat
+282  arc  userfaultfd              sys_userfaultfd
+283  arc  membarrier               sys_membarrier
+284  arc  mlock2                   sys_mlock2
+285  arc  copy_file_range          sys_copy_file_range
+286  arc  preadv2                  sys_preadv2
+287  arc  pwritev2                 sys_pwritev2
+288  arc  pkey_mprotect            sys_pkey_mprotect
+289  arc  pkey_alloc               sys_pkey_alloc
+290  arc  pkey_free                sys_pkey_free
+291  arc  statx                    sys_statx
+292  arc  io_pgetevents            sys_io_pgetevents
+293  arc  rseq                     sys_rseq
+294  arc  kexec_file_load          sys_kexec_file_load
+424  arc  pidfd_send_signal        sys_pidfd_send_signal
+425  arc  io_uring_setup           sys_io_uring_setup
+426  arc  io_uring_enter           sys_io_uring_enter
+427  arc  io_uring_register        sys_io_uring_register
+428  arc  open_tree                sys_open_tree
+429  arc  move_mount               sys_move_mount
+430  arc  fsopen                   sys_fsopen
+431  arc  fsconfig                 sys_fsconfig
+432  arc  fsmount                  sys_fsmount
+433  arc  fspick                   sys_fspick
+434  arc  pidfd_open               sys_pidfd_open
+435  arc  clone3                   sys_clone3
+436  arc  close_range              sys_close_range
+437  arc  openat2                  sys_openat2
+438  arc  pidfd_getfd              sys_pidfd_getfd
+439  arc  faccessat2               sys_faccessat2
+440  arc  process_madvise          sys_process_madvise
+441  arc  epoll_pwait2             sys_epoll_pwait2
+442  arc  mount_setattr            sys_mount_setattr
+443  arc  quotactl_fd              sys_quotactl_fd
+444  arc  landlock_create_ruleset  sys_landlock_create_ruleset
+445  arc  landlock_add_rule        sys_landlock_add_rule
+446  arc  landlock_restrict_self   sys_landlock_restrict_self
+448  arc  process_mrelease         sys_process_mrelease
+449  arc  futex_waitv              sys_futex_waitv
+450  arc  set_mempolicy_home_node  sys_set_mempolicy_home_node
+"""
+
+
 def parse_syscall_table_defs(table_defs):
     table = []
     for line in table_defs.splitlines():
@@ -37684,6 +38308,59 @@ def get_syscall_table(arch=None, mode=None):
                 err("Not found: {:s}".format(func))
                 raise
             syscall_list.append([nr, name, sc_def[func]])
+
+    elif arch == "ARC" and mode == "ARC32":
+        register_list = ARC().syscall_parameters
+        sc_def = parse_common_syscall_defs()
+        tbl = parse_syscall_table_defs(arc_syscall_tbl)
+        arch_specific_dic = {
+            "sys_rt_sigreturn": [], # arch/arc/kernel/signal.c
+            "sys_clone": [
+                "unsigned long clone_flags", "unsigned long newsp", "int __user *parent_tidptr",
+                "unsigned long tls", "int *child_tidptr",
+            ], # arch/arc/kernel/entry.S (sys_clone_wrapper, CONFIG_CLONE_BACKWARDS)
+            "sys_clone3": [
+                "struct clone_args __user *uargs", "size_t size",
+            ], # arch/arc/kernel/entry.S (sys_clone3_wrapper)
+            "sys_mmap": [
+                "unsigned long addr", "unsigned long len", "unsigned long prot",
+                "unsigned long flags", "unsigned long fd", "off_t pgoff",
+            ], # include/uapi/asm/unistd.h (sys_mmap_pgoff)
+        }
+
+        syscall_list = []
+        for entry in tbl:
+            nr, abi, name, func = entry
+            if abi != "arc":
+                continue
+            # special case
+            if func in arch_specific_dic:
+                syscall_list.append([nr, name, arch_specific_dic[func]])
+                continue
+            # common case
+            if func == "sys_ni_syscall":
+                continue
+            if func not in sc_def:
+                err("Not found: {:s}".format(func))
+                raise
+            syscall_list.append([nr, name, sc_def[func]])
+
+        arch_specific_extra = [
+            [244, "cacheflush", [
+                "uint32_t start", "uint32_t sz", "uint32_t flags",
+            ]], # arch/arc/mm/cache.c
+            [245, "arc_set_tls", [
+                "void* user_tls_data_ptr",
+            ]], # arch/arc/kernel/process.c
+            [246, "arc_get_tls", []], # arch/arc/kernel/process.c
+            [247, "sysfs", [
+                "int option", "unsigned long arg1", "unsigned long arg2",
+            ]],
+            [248, "arc_usr_cmpxchg", [
+                "int __user *uaddr", "int expected", "int new",
+            ]], # arch/arc/kernel/process.c
+        ]
+        syscall_list += arch_specific_extra
 
     else:
         raise
@@ -47571,6 +48248,8 @@ class TlsCommand(GenericCommand):
             return get_register("$threadptr")
         elif is_loongarch64():
             return get_register("$r2")
+        elif is_arc32():
+            return get_register("$r25")
         return None
 
     @parse_args
