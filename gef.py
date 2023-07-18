@@ -43544,6 +43544,8 @@ class KernelCurrentCommand(GenericCommand):
         i = 1
         while True:
             off = read_int_from_memory(self.__per_cpu_offset + i * current_arch.ptrsize)
+            if off == 0:
+                break
             if off == self.cpu_offset[-1]:
                 self.cpu_offset = self.cpu_offset[:-1]
                 break
@@ -49776,45 +49778,69 @@ class SlubDumpCommand(GenericCommand):
     _example_ += "                         | flags       |   |      | flags       |   | flags       |\n"
     _example_ += "                         | size        |   |      | size        |   | size        |\n"
     _example_ += "                         | object_size |   |      | object_size |   | object_size |\n"
-    _example_ += "                         | offset      |---|-+    | offset      |   | offset      |\n"
-    _example_ += "       +-slab_caches-+   | name        |   | |    | name        |   | name        |\n"
+    _example_ += "                         | offset      |   |      | offset      |   | offset      |\n"
+    _example_ += "       +-slab_caches-+   | name        |   |      | name        |   | name        |\n"
     _example_ += " ...<->| list_head   |<->| list_head   |<-------->| list_head   |<->| list_head   |<-> ...\n"
-    _example_ += "       +-------------+   | random      |   | |    | random      |   | random      |\n"
-    _example_ += "                         | node[]      |-------+  | node[]      |   | node[]      |\n"
-    _example_ += "                         +-------------+   | | |  +-------------+   +-------------+\n"
-    _example_ += "    +-__per_cpu_offset-+                   | | |\n"
-    _example_ += "    | cpu0_offset      |--+----------------+ | +-----------------+\n"
-    _example_ += "    | cpu1_offset      |  |                  |                   |\n"
-    _example_ += "    | cpu2_offset      |  |                  |                   |\n"
-    _example_ += "    | ...              |  |                  |                   |\n"
-    _example_ += "    +------------------+  | +----------------+                   |\n"
-    _example_ += "      +-------------------+ |                                    |\n"
-    _example_ += "      v                     | [active page freelist]             v\n"
-    _example_ += "    +-kmem_cache_cpu-+      |   +-chunk---+  +-chunk---+       +-kmem_cache_node-+\n"
-    _example_ += "    | freelist       |----+ |   | ^       |  | ^       |       | partial         |--+\n"
-    _example_ += "    | page           |    | +-->| |offset |  | |offset |       +-----------------+  |\n"
-    _example_ += "    | partial        |--+ |     | v       |  | v       |                            |\n"
-    _example_ += "    +----------------+  | +---->| next    |->| next    |->NULL   +------------------+\n"
-    _example_ += "                        |       +---------+  +---------+         |\n"
-    _example_ += "      +-----------------+                                        |\n"
-    _example_ += "      v                       [partial page freelist]            v                       [numa node partial page freelist]\n"
-    _example_ += "    +-page-----------+          +-chunk---+  +-chunk---+       +-page-----------+          +-chunk---+  +-chunk---+\n"
-    _example_ += "    | freelist       |----+     | ^       |  | ^       |       | freelist       |----+     | ^       |  | ^       |\n"
-    _example_ += "    | next           |--+ |     | |offset |  | |offset |       | next           |--+ |     | |offset |  | |offset |\n"
-    _example_ += "    +----------------+  | |     | v       |  | v       |       +----------------+  | |     | v       |  | v       |\n"
-    _example_ += "                        | +---->| next    |->| next    |->NULL                     | +---->| next    |->| next    |->NULL\n"
-    _example_ += "      +-----------------+       +---------+  +---------+         +-----------------+       +---------+  +---------+\n"
-    _example_ += "      |                                                          |\n"
-    _example_ += "      v                       [partial page freelist]            v                       [numa node partial page freelist]\n"
-    _example_ += "    +-page-----------+          +-chunk---+  +-chunk---+       +-page-----------+          +-chunk---+  +-chunk---+\n"
-    _example_ += "    | freelist       |----+     | ^       |  | ^       |       | freelist       |----+     | ^       |  | ^       |\n"
-    _example_ += "    | next           |--+ |     | |offset |  | |offset |       | next           |--+ |     | |offset |  | |offset |\n"
-    _example_ += "    +----------------+  | |     | v       |  | v       |       +----------------+  | |     | v       |  | v       |\n"
-    _example_ += "                        | +---->| next    |->| next    |->NULL                     | +---->| next    |->| next    |->NULL\n"
-    _example_ += "      +-----------------+       +---------+  +---------+         +-----------------+       +---------+  +---------+\n"
-    _example_ += "      |                                                          |\n"
-    _example_ += "      v                                                          v\n"
-    _example_ += "     ...                                                          ...\n"
+    _example_ += "       +-------------+   | random      |   |      | random      |   | random      |\n"
+    _example_ += "                         | node[]      |-+ |      | node[]      |   | node[]      |\n"
+    _example_ += "                         +-------------+ | |      +-------------+   +-------------+\n"
+    _example_ += "                                         | |\n"
+    _example_ += "    +------------------------------------+ |\n"
+    _example_ += "    |   +----------------------------------+\n"
+    _example_ += "    |   |\n"
+    _example_ += "    |   |          +-__per_cpu_offset-+\n"
+    _example_ += "    |   +----------| cpu0_offset      |\n"
+    _example_ += "    |   |          | cpu1_offset      |\n"
+    _example_ += "    |   |          | cpu2_offset      |\n"
+    _example_ += "    |   |          | ...              |\n"
+    _example_ += "    |   |          +------------------+\n"
+    _example_ += "    |   v\n"
+    _example_ += "    |  +-kmem_cache_cpu-+  +--------------------------------------------------------------+\n"
+    _example_ += "    |  | freelist       |--+                           [active page freelist (slow path)] | [active page freelist (fast path)]\n"
+    _example_ += "    |  | page           |---->+-page(active)---+         +-chunk---+  +-chunk---+         |   +-chunk---+  +-chunk---+\n"
+    _example_ += "    |  | partial        |--+  | freelist       |----+    | ^       |  | ^       |         |   | ^       |  | ^       |\n"
+    _example_ += "    |  +----------------+  |  |                |    |    | |offset |  | |offset |         |   | |offset |  | |offset |\n"
+    _example_ += "    |                      |  +----------------+    |    | v       |  | v       |         |   | v       |  | v       |\n"
+    _example_ += "    |                      |                        +--->| next    |->| next    |->NULL   +-->| next    |->| next    |->NULL\n"
+    _example_ += "    |                      |                             +---------+  +---------+             +---------+  +---------+\n"
+    _example_ += "    |                      |\n"
+    _example_ += "    |                      |                           [partial page freelist]\n"
+    _example_ += "    |                      +->+-page(partial)--+         +-chunk---+  +-chunk---+\n"
+    _example_ += "    |                         | freelist       |----+    | ^       |  | ^       |\n"
+    _example_ += "    |                         | next           |--+ |    | |offset |  | |offset |\n"
+    _example_ += "    |                         +----------------+  | |    | v       |  | v       |\n"
+    _example_ += "    |                                             | +--->| next    |->| next    |->NULL\n"
+    _example_ += "    |                           +-----------------+      +---------+  +---------+\n"
+    _example_ += "    |                           |\n"
+    _example_ += "    |                           v                      [partial page freelist]\n"
+    _example_ += "    |                         +-page(partial)--+         +-chunk---+  +-chunk---+\n"
+    _example_ += "    |                         | freelist       |----+    | ^       |  | ^       |\n"
+    _example_ += "    |                         | next           |--+ |    | |offset |  | |offset |\n"
+    _example_ += "    |                         +----------------+  | |    | v       |  | v       |\n"
+    _example_ += "    |                                             | +--->| next    |->| next    |->NULL\n"
+    _example_ += "    |                           +-----------------+      +---------+  +---------+\n"
+    _example_ += "    |                           |\n"
+    _example_ += "    |                           v\n"
+    _example_ += "    |                          ...\n"
+    _example_ += "    +->+-kmem_cache_node-+                            [numa node partial page freelist]\n"
+    _example_ += "       | partial         |--->+-page(numa-node)+         +-chunk---+  +-chunk---+\n"
+    _example_ += "       |                 |    | freelist       |----+    | ^       |  | ^       |\n"
+    _example_ += "       +-----------------+    | next           |--+ |    | |offset |  | |offset |\n"
+    _example_ += "                              +----------------+  | |    | v       |  | v       |\n"
+    _example_ += "                                                  | +--->| next    |->| next    |->NULL\n"
+    _example_ += "                                +-----------------+      +---------+  +---------+\n"
+    _example_ += "                                |\n"
+    _example_ += "                                v                      [numa node partial page freelist]\n"
+    _example_ += "                              +-page(numa-node)+         +-chunk---+  +-chunk---+\n"
+    _example_ += "                              | freelist       |----+    | ^       |  | ^       |\n"
+    _example_ += "                              | next           |--+ |    | |offset |  | |offset |\n"
+    _example_ += "                              +----------------+  | |    | v       |  | v       |\n"
+    _example_ += "                                                  | +--->| next    |->| next    |->NULL\n"
+    _example_ += "                                +-----------------+      +---------+  +---------+\n"
+    _example_ += "                                |\n"
+    _example_ += "                                v\n"
+    _example_ += "                               ...\n"
+    _example_ += "*If all chunks in certain page are in use, they will not be displayed since they cannot be reached from slab_caches."
 
     def __init__(self, *args, **kwargs):
         super().__init__()
@@ -49882,6 +49908,9 @@ class SlubDumpCommand(GenericCommand):
         unsigned inuse:16, objects:15, frozen:1;
         atomic_t refcount;                       // if kernel < 4.16-rc1
         struct page *next;
+        int pages;                               // if 64bit else `short pages`
+        int pobjects;                            // if 64bit else `short pobjects`
+        struct kmem_cache *slab_cache;
         ...
     }
 
@@ -49954,6 +49983,8 @@ class SlubDumpCommand(GenericCommand):
             i = 1
             while True:
                 off = read_int_from_memory(__per_cpu_offset + i * current_arch.ptrsize)
+                if off == 0:
+                    break
                 if off == self.cpu_offset[-1]:
                     self.cpu_offset = self.cpu_offset[:-1]
                     break
@@ -50148,7 +50179,9 @@ class SlubDumpCommand(GenericCommand):
 
         # offsetof(page, next)
         kversion = KernelVersionCommand.kernel_version()
-        if kversion < "4.18":
+        if kversion < "4.16" and is_32bit():
+            self.page_offset_next = current_arch.ptrsize * 5
+        elif kversion < "4.18":
             self.page_offset_next = current_arch.ptrsize * 4
         elif kversion < "5.17":
             self.page_offset_next = current_arch.ptrsize
@@ -50170,6 +50203,20 @@ class SlubDumpCommand(GenericCommand):
             self.page_offset_freelist = current_arch.ptrsize * 4
         if not self.quiet:
             info("offsetof(page, freelist): {:#x}".format(self.page_offset_freelist))
+
+        # offsetof(page, slab_cache)
+        if kversion < "4.16" and is_32bit():
+            self.page_offset_slab_cache = current_arch.ptrsize * 7
+        elif kversion < "4.18":
+            self.page_offset_slab_cache = current_arch.ptrsize * 6
+        elif kversion <= "5.17":
+            self.page_offset_slab_cache = current_arch.ptrsize * 3
+        elif kversion < "6.2":
+            self.page_offset_slab_cache = current_arch.ptrsize * 3
+        else:
+            self.page_offset_slab_cache = current_arch.ptrsize
+        if not self.quiet:
+            info("offsetof(page, slab_cache): {:#x}".format(self.page_offset_slab_cache))
 
         # offsetof(page, inuse_objects_frozen)
         self.page_offset_inuse_objects_frozen = self.page_offset_freelist + current_arch.ptrsize
@@ -50266,7 +50313,7 @@ class SlubDumpCommand(GenericCommand):
             kmem_cache_cpu = cpu_slab
         return align_address(kmem_cache_cpu)
 
-    def page2virt(self, page, kmem_cache, freelist):
+    def page2virt(self, page, kmem_cache, freelist_fastpath=()):
         # https://qiita.com/akachochin/items/121d2bf3aa1cfc9bb95a
 
         if is_x86_64() and self.vmemmap:
@@ -50280,10 +50327,11 @@ class SlubDumpCommand(GenericCommand):
                     vaddr = vstart + offset
                     return vaddr
 
-        # pre condition check for heuristic search from freelist
-        if freelist == [] or freelist == [0]:
+        # setup for heuristic search from freelist
+        freelist = freelist_fastpath + page["freelist"]
+        freelist = [x for x in freelist if x != 0] # ignore last 0
+        if not freelist:
             return None
-        freelist = freelist.copy()[:-1] # ignore last 0
 
         # heuristic detection pattern 1
         # freed chunks are scattered and can be confirmed on each of the pages
@@ -50414,7 +50462,7 @@ class SlubDumpCommand(GenericCommand):
             kmem_cache["kmem_cache_cpu"] = {}
             kmem_cache["kmem_cache_cpu"]["address"] = kmem_cache_cpu = self.get_kmem_cache_cpu(current_kmem_cache, cpu)
             chunk = read_int_from_memory(kmem_cache_cpu + self.kmem_cache_cpu_offset_freelist)
-            kmem_cache["kmem_cache_cpu"]["freelist"] = freelist = self.walk_freelist(chunk, kmem_cache)
+            kmem_cache["kmem_cache_cpu"]["freelist"] = self.walk_freelist(chunk, kmem_cache)
 
             # parse page
             active_page = {}
@@ -50424,8 +50472,10 @@ class SlubDumpCommand(GenericCommand):
                 active_page["inuse"] = x & 0xffff
                 active_page["objects"] = objects = (x >> 16) & 0x7fff
                 active_page["frozen"] = (x >> 31) & 1
+                active_chunk = read_int_from_memory(page + self.page_offset_freelist)
+                active_page["freelist"] = self.walk_freelist(active_chunk, kmem_cache)
                 active_page["num_pages"] = (chunk_size * objects + (gef_getpagesize() - 1)) // gef_getpagesize()
-                active_page["virt_addr"] = self.page2virt(active_page, kmem_cache, freelist)
+                active_page["virt_addr"] = self.page2virt(active_page, kmem_cache, kmem_cache["kmem_cache_cpu"]["freelist"])
             kmem_cache["kmem_cache_cpu"]["active_page"] = active_page
 
             # parse partial
@@ -50436,7 +50486,7 @@ class SlubDumpCommand(GenericCommand):
                 while True:
                     partial_page = {}
                     partial_page["address"] = current_partial_page
-                    if not is_valid_addr(partial_page["address"]):
+                    if not is_valid_addr(current_partial_page):
                         kmem_cache["kmem_cache_cpu"]["partial_pages"].append(partial_page)
                         break
                     x = read_int_from_memory(current_partial_page + self.page_offset_inuse_objects_frozen)
@@ -50446,7 +50496,7 @@ class SlubDumpCommand(GenericCommand):
                     partial_chunk = read_int_from_memory(current_partial_page + self.page_offset_freelist)
                     partial_page["freelist"] = self.walk_freelist(partial_chunk, kmem_cache)
                     partial_page["num_pages"] = (chunk_size * objects + (gef_getpagesize() - 1)) // gef_getpagesize()
-                    partial_page["virt_addr"] = self.page2virt(partial_page, kmem_cache, partial_page["freelist"])
+                    partial_page["virt_addr"] = self.page2virt(partial_page, kmem_cache)
                     kmem_cache["kmem_cache_cpu"]["partial_pages"].append(partial_page)
                     next_partial_page = read_int_from_memory(current_partial_page + self.page_offset_next)
                     if next_partial_page in [x["address"] for x in kmem_cache["kmem_cache_cpu"]["partial_pages"]]:
@@ -50482,7 +50532,7 @@ class SlubDumpCommand(GenericCommand):
                         node_chunk = read_int_from_memory(node_page["address"] + self.page_offset_freelist)
                         node_page["freelist"] = self.walk_freelist(node_chunk, kmem_cache)
                         node_page["num_pages"] = (chunk_size * objects + (gef_getpagesize() - 1)) // gef_getpagesize()
-                        node_page["virt_addr"] = self.page2virt(node_page, kmem_cache, node_page["freelist"])
+                        node_page["virt_addr"] = self.page2virt(node_page, kmem_cache)
                         node_page_list.append(node_page)
                         current_node_page = read_int_from_memory(node_page["address"] + self.page_offset_next)
                     kmem_cache["nodes"].append(node_page_list)
@@ -50493,7 +50543,7 @@ class SlubDumpCommand(GenericCommand):
             parsed_caches.append(kmem_cache)
         return parsed_caches
 
-    def dump_page(self, page, kmem_cache, tag, freelist=None):
+    def dump_page(self, page, kmem_cache, tag, freelist_fastpath=()):
         label_active_color = get_gef_setting("theme.heap_label_active")
         label_inactive_color = get_gef_setting("theme.heap_label_inactive")
         heap_page_color = get_gef_setting("theme.heap_page_address")
@@ -50511,10 +50561,6 @@ class SlubDumpCommand(GenericCommand):
         if not is_valid_addr(page["address"]):
             return
 
-        # for partial or node page
-        if freelist is None:
-            freelist = page["freelist"]
-
         # print virtual address
         if page["virt_addr"] is None:
             self.out.append("        virutal address: ???")
@@ -50525,8 +50571,9 @@ class SlubDumpCommand(GenericCommand):
         # print info
         self.out.append("        num pages: {:d}".format(page["num_pages"]))
 
+        freelist = page["freelist"]
         if tag == "active":
-            freelist_len = len(freelist) - 1 # ignore last 0
+            freelist_len = len(set(freelist + freelist_fastpath)) - 1 # ignore last 0
             inuse = page["objects"] - freelist_len
         else:
             inuse = page["inuse"]
@@ -50537,9 +50584,15 @@ class SlubDumpCommand(GenericCommand):
         if page["virt_addr"] is not None:
             end_virt = page["virt_addr"] + page["num_pages"] * gef_getpagesize()
             for idx, chunk in enumerate(range(page["virt_addr"], end_virt, kmem_cache["size"])):
-                if chunk in freelist[:-1]:
+                if chunk in freelist_fastpath[:-1]:
+                    next_chunk = freelist_fastpath[freelist_fastpath.index(chunk) + 1]
+                    next_msg = "next: {:#x}".format(next_chunk)
+                    chunk_s = Color.colorify("{:#x}".format(chunk), freed_address_color)
+                elif chunk in freelist[:-1]:
                     next_chunk = freelist[freelist.index(chunk) + 1]
                     next_msg = "next: {:#x}".format(next_chunk)
+                    if tag == "active":
+                        next_msg += " (slow path)"
                     chunk_s = Color.colorify("{:#x}".format(chunk), freed_address_color)
                 else:
                     if page["objects"] <= idx:
@@ -50573,13 +50626,11 @@ class SlubDumpCommand(GenericCommand):
                         line = DereferenceCommand.pprint_dereferenced(chunk, i)
                         self.out.append(line)
         else:
-            self.out.append("        layout:   Failed to the get first page")
+            self.out.append("        layout: Failed to the get first page")
 
         # print freelist
-        if freelist == [] or freelist == [0]:
-            self.out.append("        freelist: (none)")
-        else:
-            for idx, chunk_addr in enumerate(freelist):
+        def print_freelist(freelist):
+            for chunk_addr in freelist:
                 if page["virt_addr"] is not None:
                     if chunk_addr == 0:
                         continue
@@ -50593,15 +50644,32 @@ class SlubDumpCommand(GenericCommand):
                         msg = chunk_addr
                     else:
                         msg = Color.colorify("{:#x}".format(chunk_addr), freed_address_color)
-                    freelist_msg = "freelist:" if idx == 0 else ""
-                    self.out.append("        {:9s} {:5s} {:s}".format(freelist_msg, chunk_idx, msg))
+                    self.out.append("                  {:5s} {:s}".format(chunk_idx, msg))
                 else:
                     if isinstance(chunk_addr, str):
                         msg = chunk_addr
                     else:
                         msg = Color.colorify("{:#x}".format(chunk_addr), freed_address_color)
-                    freelist_msg = "freelist:" if idx == 0 else ""
-                    self.out.append("        {:9s}       {:s}".format(freelist_msg, msg))
+                    self.out.append("                        {:s}".format(msg))
+            return
+
+        if tag == "active":
+            if freelist_fastpath == [] or freelist_fastpath == [0]:
+                self.out.append("        freelist (fast path): (none)")
+            else:
+                self.out.append("        freelist (fast path):")
+                print_freelist(freelist_fastpath)
+            if freelist == [] or freelist == [0]:
+                self.out.append("        freelist (slow path): (none)")
+            else:
+                self.out.append("        freelist (slow path):")
+                print_freelist(freelist)
+        else:
+            if freelist == [] or freelist == [0]:
+                self.out.append("        freelist: (none)")
+            else:
+                self.out.append("        freelist:")
+                print_freelist(freelist)
         return
 
     def dump_caches(self, target_names, cpu, parsed_caches):
@@ -50631,13 +50699,13 @@ class SlubDumpCommand(GenericCommand):
             self.out.append("    kmem_cache_cpu (cpu{:d}): {:#x}".format(cpu, kmem_cache["kmem_cache_cpu"]["address"]))
 
             active_page = kmem_cache["kmem_cache_cpu"]["active_page"]
-            freelist = kmem_cache["kmem_cache_cpu"]["freelist"]
-            self.dump_page(active_page, kmem_cache, tag="active", freelist=freelist)
+            freelist_fastpath = kmem_cache["kmem_cache_cpu"]["freelist"]
+            self.dump_page(active_page, kmem_cache, "active", freelist_fastpath)
 
             if self.verbose:
                 printed_count = 0
                 for partial_page in kmem_cache["kmem_cache_cpu"]["partial_pages"]:
-                    self.dump_page(partial_page, kmem_cache, tag="partial")
+                    self.dump_page(partial_page, kmem_cache, "partial")
                     printed_count += 1
                 if printed_count > 1 : # included address == 0
                     self.out.append("        (end of the list)")
@@ -50646,7 +50714,7 @@ class SlubDumpCommand(GenericCommand):
                 printed_count = 0
                 for node_index, node_page_list in enumerate(kmem_cache["nodes"]):
                     for node_page in node_page_list:
-                        self.dump_page(node_page, kmem_cache, tag="node[{:d}]".format(node_index))
+                        self.dump_page(node_page, kmem_cache, "node[{:d}]".format(node_index))
                         printed_count += 1
                 if printed_count == 0:
                     tag = Color.colorify("node pages", label_inactive_color)
@@ -50755,8 +50823,6 @@ class SlubTinyDumpCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} kmalloc-256                                      # dump kmalloc-256 from all cpus\n".format(_cmdline_)
-    _example_ += "{:s} kmalloc-256 --no-xor                             # skip xor to chunk->next\n".format(_cmdline_)
-    _example_ += "{:s} kmalloc-256 --offset-random 0xb8 --no-byte-swap  # specified pattern of xor to chunk->next\n".format(_cmdline_)
     _example_ += "{:s} --list                                           # list up slub cache names\n".format(_cmdline_)
     _example_ += "\n"
     _example_ += "Simplified SLUB structure:\n"
@@ -51068,7 +51134,7 @@ class SlubTinyDumpCommand(GenericCommand):
         name_addr = read_int_from_memory(addr + self.kmem_cache_offset_name)
         return read_cstring_from_memory(name_addr)
 
-    def page2virt(self, page, kmem_cache, freelist):
+    def page2virt(self, page, kmem_cache):
         # https://qiita.com/akachochin/items/121d2bf3aa1cfc9bb95a
 
         if is_x86_64() and self.vmemmap:
@@ -51082,10 +51148,11 @@ class SlubTinyDumpCommand(GenericCommand):
                     vaddr = vstart + offset
                     return vaddr
 
-        # pre condition check for heuristic search from freelist
-        if freelist == [] or freelist == [0]:
+        # setup for heuristic search from freelist
+        freelist = page["freelist"]
+        freelist = [x for x in freelist if x != 0] # ignore last 0
+        if not freelist:
             return None
-        freelist = freelist.copy()[:-1] # ignore last 0
 
         # heuristic detection pattern 1
         # freed chunks are scattered and can be confirmed on each of the pages
@@ -51196,7 +51263,7 @@ class SlubTinyDumpCommand(GenericCommand):
                     node_chunk = read_int_from_memory(node_page["address"] + self.page_offset_freelist)
                     node_page["freelist"] = self.walk_freelist(node_chunk, kmem_cache)
                     node_page["num_pages"] = (chunk_size * objects + (gef_getpagesize() - 1)) // gef_getpagesize()
-                    node_page["virt_addr"] = self.page2virt(node_page, kmem_cache, node_page["freelist"])
+                    node_page["virt_addr"] = self.page2virt(node_page, kmem_cache)
                     node_page_list.append(node_page)
                     current_node_page = read_int_from_memory(node_page["address"] + self.page_offset_next)
                 kmem_cache["nodes"].append(node_page_list)
@@ -51260,7 +51327,7 @@ class SlubTinyDumpCommand(GenericCommand):
                 layout_msg = "layout:" if idx == 0 else ""
                 self.out.append("        {:7s}   {:#05x} {:s} ({:s})".format(layout_msg, idx, chunk_s, next_msg))
         else:
-            self.out.append("        layout:   Failed to the get first page")
+            self.out.append("        layout: Failed to the get first page")
 
         # print freelist
         if freelist == [] or freelist == [0]:
@@ -51581,6 +51648,8 @@ class SlabDumpCommand(GenericCommand):
             i = 1
             while True:
                 off = read_int_from_memory(__per_cpu_offset + i * current_arch.ptrsize)
+                if off == 0:
+                    break
                 if off == self.cpu_offset[-1]:
                     self.cpu_offset = self.cpu_offset[:-1]
                     break
