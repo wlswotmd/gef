@@ -12453,7 +12453,7 @@ class ArgvCommand(GenericCommand):
     _category_ = "02-d. Process Information - Trivial Information"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-v", dest="verbose", action="store_true", help="print all elements. (default: outputs up to 100).")
+    parser.add_argument("-v", "--verbose", action="store_true", help="print all elements. (default: outputs up to 100).")
     _syntax_ = parser.format_help()
 
     def get_address_from_symbol(self, symbol):
@@ -12528,7 +12528,7 @@ class EnvpCommand(GenericCommand):
     _category_ = "02-d. Process Information - Trivial Information"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-v", dest="verbose", action="store_true", help="print all elements. (default: outputs up to 100).")
+    parser.add_argument("-v", "--verbose", action="store_true", help="print all elements. (default: outputs up to 100).")
     _syntax_ = parser.format_help()
 
     def get_address_from_symbol(self, symbol):
@@ -13028,7 +13028,7 @@ class CapabilityCommand(GenericCommand):
     _category_ = "02-f. Process Information - Security"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-v", dest="verbose", action="store_true", help="also display detailed bit information other than cap_eff.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="also display detailed bit information other than cap_eff.")
     _syntax_ = parser.format_help()
 
     def get_thread_ids(self, pid):
@@ -13554,7 +13554,7 @@ class SearchPatternCommand(GenericCommand):
     parser.add_argument("--big", action="store_true", help="interpret PATTERN as big endian if PATTERN is 0xXXXXXXXX style.")
     parser.add_argument("-a", "--aligned", type=int, default=1, help="alignment unit. (default: %(default)s)")
     parser.add_argument("-d", "--disable-utf16", action="store_true", help="disable utf16 search if PATTERN is ascii string.")
-    parser.add_argument("-v", dest="verbose", action="store_true", help="shows the section you are currently searching.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="shows the section you are currently searching.")
     parser.add_argument("pattern", metavar="PATTERN", help='search target value. "double-espaced string" or 0xXXXXXXXX style.')
     parser.add_argument("section", metavar="SECTION_OR_START_ADDR", nargs="?", help="section name or starting address of search range.")
     parser.add_argument("size", metavar="SIZE", nargs="?", help="search range size. valid only when a start address is specified.")
@@ -13622,7 +13622,7 @@ class SearchPatternCommand(GenericCommand):
 
     @staticmethod
     def get_process_maps_qemu_system():
-        res = get_maps_by_pagewalk("pagewalk -q -n")
+        res = get_maps_by_pagewalk("pagewalk --quiet --no-pager")
         res = sorted(set(res.splitlines()))
         res = list(filter(lambda line: line.endswith("]"), res))
         res = list(filter(lambda line: "[+]" not in line, res))
@@ -13892,7 +13892,7 @@ class SearchMangledPtrCommand(GenericCommand):
     _category_ = "02-f. Process Information - Security"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-v", dest="verbose", action="store_true", help="shows the section you are currently searching.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="shows the section you are currently searching.")
     _syntax_ = parser.format_help()
 
     def print_section(self, section):
@@ -14010,7 +14010,7 @@ class EditFlagsCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("flagname", metavar="[FLAGNAME(+|-|~) ...]", nargs="*",
                         help="the flag name you want to edit..")
-    parser.add_argument("-v", dest="verbose", action="store_true",
+    parser.add_argument("-v", "--verbose", action="store_true",
                         help="show the bit informations of the flag register.")
     _syntax_ = parser.format_help()
 
@@ -15205,16 +15205,16 @@ class UnicornEmulateCommand(GenericCommand):
     _aliases_ = ["emulate"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-f", dest="from_location", type=parse_address,
+    parser.add_argument("-f", "--from-location", type=parse_address,
                         help="specifies the start address of the emulated run. (default: current_arch.pc)")
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("-g", dest="nb_gadget", type=parse_address, help="the number of gadgets to execute. (default mode, NB_GADGET: 10)")
-    group.add_argument("-t", dest="to_location", type=parse_address, help="the end address of the emulated run.")
-    group.add_argument("-n", dest="nb_insn", type=parse_address, help="the number of instructions from `FROM_LOCATION`.")
-    parser.add_argument("-o", dest="output_path", help="writes the persistent Unicorn script into this file.")
-    parser.add_argument("-s", dest="skip_emulation", action="store_true", help="do not run, just save the script.")
-    parser.add_argument("-v", dest="verbose", action="store_true", help="displays the register values for each instruction is executed.")
-    parser.add_argument("-q", dest="quiet", action="store_true", help="quiet execution.")
+    group.add_argument("-g", "--nb-gadget", type=parse_address, help="the number of gadgets to execute. (default mode, NB_GADGET: 10)")
+    group.add_argument("-t", "--to-location", type=parse_address, help="the end address of the emulated run.")
+    group.add_argument("-n", "--nb-insn", type=parse_address, help="the number of instructions from `FROM_LOCATION`.")
+    parser.add_argument("-o", "--output-path", help="writes the persistent Unicorn script into this file.")
+    parser.add_argument("-s", "--skip-emulation", action="store_true", help="do not run, just save the script.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="displays the register values for each instruction is executed.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="quiet execution.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} -g 10                        # from $pc to the point where 4 instructions are executed\n".format(_cmdline_)
@@ -15619,7 +15619,7 @@ class StubCommand(GenericCommand):
     _aliases_ = ["deactive"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-r", dest="retval", type=int, default=0, help="the return value from stub. (default: %(default)s)")
+    parser.add_argument("-r", "--retval", type=int, default=0, help="the return value from stub. (default: %(default)s)")
     parser.add_argument("location", metavar="LOCATION", type=parse_address, help="address/symbol to stub out.")
     _syntax_ = parser.format_help()
 
@@ -15649,7 +15649,7 @@ class CapstoneDisassembleCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address,
                         help="the address you want to disassemble. (default: current_arch.pc)")
-    parser.add_argument("-l", dest="length", type=parse_address,
+    parser.add_argument("-l", "--length", type=parse_address,
                         help="the length you want to disassemble. (default: context.nb_lines_code)")
     parser.add_argument("args", metavar="ARGS", nargs="*", help="arguments for capstone. see following example.")
     _syntax_ = parser.format_help()
@@ -15782,7 +15782,7 @@ class GlibcHeapArenaCommand(GenericCommand):
     _aliases_ = ["arena"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-a", dest="arena_addr", type=parse_address,
+    parser.add_argument("-a", "--arena-addr", type=parse_address,
                         help="the address you want to interpret as an arena. (default: main_arena)")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
@@ -15941,7 +15941,7 @@ class GlibcHeapChunksCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address,
                         help="the address you want to interpret as the beginning of a contiguous chunk. (default: arena.heap_base)")
-    parser.add_argument("-a", dest="arena_addr", type=parse_address,
+    parser.add_argument("-a", "--arena-addr", type=parse_address,
                         help="the address you want to interpret as an arena. (default: main_arena)")
     _syntax_ = parser.format_help()
 
@@ -16060,9 +16060,9 @@ class GlibcHeapBinsCommand(GenericCommand):
     _aliases_ = ["bins"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-a", dest="arena_addr", type=parse_address,
+    parser.add_argument("-a", "--arena-addr", type=parse_address,
                         help="the address you want to interpret as an arena. (default: main_arena)")
-    parser.add_argument("-v", dest="verbose", action="store_true", help="display empty bins.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="display empty bins.")
     parser.add_argument("--all", action="store_true", help="dump all arenas.")
     _syntax_ = parser.format_help()
 
@@ -16175,9 +16175,9 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
     _aliases_ = ["tcache"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-a", dest="arena_addr", type=parse_address,
+    parser.add_argument("-a", "--arena-addr", type=parse_address,
                         help="the address you want to interpret as an arena. (default: main_arena)")
-    parser.add_argument("-v", dest="verbose", action="store_true", help="display empty bins.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="display empty bins.")
     parser.add_argument("--all", action="store_true", help="dump all arenas.")
     _syntax_ = parser.format_help()
 
@@ -16277,9 +16277,9 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
     _aliases_ = ["fastbins"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-a", dest="arena_addr", type=parse_address,
+    parser.add_argument("-a", "--arena-addr", type=parse_address,
                         help="the address you want to interpret as an arena. (default: main_arena)")
-    parser.add_argument("-v", dest="verbose", action="store_true", help="display empty bins.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="display empty bins.")
     parser.add_argument("--all", action="store_true", help="dump all arenas.")
     _syntax_ = parser.format_help()
 
@@ -16380,9 +16380,9 @@ class GlibcHeapUnsortedBinsCommand(GenericCommand):
     _aliases_ = ["unsortedbin"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-a", dest="arena_addr", type=parse_address,
+    parser.add_argument("-a", "--arena-addr", type=parse_address,
                         help="the address you want to interpret as an arena. (default: main_arena)")
-    parser.add_argument("-v", dest="verbose", action="store_true", help="display empty bins.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="display empty bins.")
     parser.add_argument("--all", action="store_true", help="dump all arenas.")
     _syntax_ = parser.format_help()
 
@@ -16430,9 +16430,9 @@ class GlibcHeapSmallBinsCommand(GenericCommand):
     _aliases_ = ["smallbin"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-a", dest="arena_addr", type=parse_address,
+    parser.add_argument("-a", "--arena-addr", type=parse_address,
                         help="the address you want to interpret as an arena. (default: main_arena)")
-    parser.add_argument("-v", dest="verbose", action="store_true", help="display empty bins.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="display empty bins.")
     parser.add_argument("--all", action="store_true", help="dump all arenas.")
     _syntax_ = parser.format_help()
 
@@ -16486,9 +16486,9 @@ class GlibcHeapLargeBinsCommand(GenericCommand):
     _aliases_ = ["largebin"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-a", dest="arena_addr", type=parse_address,
+    parser.add_argument("-a", "--arena_addr", type=parse_address,
                         help="the address you want to interpret as an arena. (default: main_arena)")
-    parser.add_argument("-v", dest="verbose", action="store_true", help="display empty bins.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="display empty bins.")
     parser.add_argument("--all", action="store_true", help="dump all arenas.")
     _syntax_ = parser.format_help()
 
@@ -17645,12 +17645,12 @@ class ElfInfoCommand(GenericCommand):
     _category_ = "02-a. Process Information - General"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-e", dest="use_readelf", action="store_true", help="use readelf.")
-    parser.add_argument("-r", dest="remote", action="store_true",
+    parser.add_argument("-e", "--use-readelf", action="store_true", help="use readelf.")
+    parser.add_argument("-r", "--remote", action="store_true",
                         help="parse remote binary if download feature is available.")
-    parser.add_argument("-f", dest="file", help="the file path you want to parse.")
-    parser.add_argument("-a", dest="address", type=parse_address, help="the memory address you want to parse.")
-    parser.add_argument("-v", dest="verbose", action="store_true", help="dump the content of each section.")
+    parser.add_argument("-f", "--file", help="the file path you want to parse.")
+    parser.add_argument("-a", "--address", type=parse_address, help="the memory address you want to parse.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="dump the content of each section.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
@@ -18205,9 +18205,9 @@ class ChecksecCommand(GenericCommand):
     _category_ = "02-f. Process Information - Security"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-r", dest="remote", action="store_true",
+    parser.add_argument("-r", "--remote", action="store_true",
                         help="parse remote binary if download feature is available. (default: %(default)s)")
-    parser.add_argument("-f", dest="file", help="the file path you want to parse.")
+    parser.add_argument("-f", "--file", help="the file path you want to parse.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} -f /bin/ls\n".format(_cmdline_)
@@ -18689,7 +18689,7 @@ class KernelChecksecCommand(GenericCommand):
                     gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
                 else:
                     # here is kernel context
-                    lines = get_maps_by_pagewalk("pagewalk -q --simple -n").splitlines()
+                    lines = get_maps_by_pagewalk("pagewalk --quiet --no-pager --simple").splitlines()
                     for line in lines:
                         if "USER" in line and "R-X" in line:
                             gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
@@ -18865,7 +18865,7 @@ class KernelChecksecCommand(GenericCommand):
             additional = "smack_init: Not found"
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unsupported", "bold red"), additional))
         else:
-            kfilesystems_ret = gdb.execute("kfilesystem -n -q", to_string=True)
+            kfilesystems_ret = gdb.execute("kfilesystem --quiet --no-pager", to_string=True)
             if not kfilesystems_ret:
                 additional = "smack_init: Found"
                 gef_print("{:<40s}: {:s} ({:s})".format(cfg, "Supported", additional))
@@ -19025,7 +19025,7 @@ class KernelChecksecCommand(GenericCommand):
 
         # LKRG
         cfg = "Linux Kernel Runtime Guard (LKRG)"
-        kmod_ret = gdb.execute("kmod -n -q", to_string=True)
+        kmod_ret = gdb.execute("kmod --quiet --no-pager", to_string=True)
         if ": lkrg " in kmod_ret:
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), "Loaded"))
         else:
@@ -19035,7 +19035,7 @@ class KernelChecksecCommand(GenericCommand):
 
         # vm.unprivileged_userfaultfd
         cfg = "vm.unprivileged_userfaultfd"
-        stv_uff_ret = gdb.execute("syscall-table-view -f userfaultfd -n -q", to_string=True)
+        stv_uff_ret = gdb.execute("syscall-table-view -f userfaultfd --quiet --no-pager", to_string=True)
         if "userfaultfd" not in stv_uff_ret:
             additional = "userfaultfd syscall: Unimplemented"
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Syscall unsupported", "bold green"), additional))
@@ -19060,7 +19060,7 @@ class KernelChecksecCommand(GenericCommand):
 
         # kernel.unprivileged_bpf_disabled
         cfg = "kernel.unprivileged_bpf_disabled"
-        stv_bpf_ret = gdb.execute("syscall-table-view -f bpf -n -q", to_string=True)
+        stv_bpf_ret = gdb.execute("syscall-table-view -f bpf --quiet --no-pager", to_string=True)
         if "bpf" not in stv_bpf_ret:
             additional = "bpf syscall: Unimplemented"
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Syscall unsupported", "bold green"), additional))
@@ -19085,8 +19085,8 @@ class KernelChecksecCommand(GenericCommand):
 
         # kernel.kexec_load_disabled
         cfg = "kernel.kexec_load_disabled"
-        r1 = gdb.execute("syscall-table-view -f kexec_load -n -q", to_string=True)
-        r2 = gdb.execute("syscall-table-view -f kexec_file_load -n -q", to_string=True)
+        r1 = gdb.execute("syscall-table-view -f kexec_load --quiet --no-pager", to_string=True)
+        r2 = gdb.execute("syscall-table-view -f kexec_file_load --quiet --no-pager", to_string=True)
         additional = ""
         if ("kexec_load" not in r1 or "invalid kexec_load" in r1) and ("kexec_file_load" not in r2 or "invalid kexec_file_load" in r2):
             if "kexec_load" not in r1:
@@ -19131,7 +19131,7 @@ class KernelChecksecCommand(GenericCommand):
         # Each structure parsed by kparam-sysctl has no difference among kernel versions, except for `struct ctl_dir.inodes`.
         # Additionally, the first member of struct ctl_table is a *char procname, which will almost certainly readable something.
         # If this fails, it can be determined that the randstruct is used.
-        kparam_ret = gdb.execute("kparam-sysctl -n -q", to_string=True)
+        kparam_ret = gdb.execute("kparam-sysctl --quiet --no-pager", to_string=True)
         if kparam_ret == "":
             gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
         else:
@@ -19234,10 +19234,10 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
     _category_ = "02-e. Process Information - Complex Structure Information"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-f", dest="file", help="the file path you want to parse.")
-    parser.add_argument("-r", dest="remote", action="store_true",
+    parser.add_argument("-f", "--file", help="the file path you want to parse.")
+    parser.add_argument("-r", "--remote", action="store_true",
                         help="parse remote binary if download feature is available. (default: %(default)s)")
-    parser.add_argument("-x", dest="hexdump", action="store_true", help="with hexdump. (default: %(default)s)")
+    parser.add_argument("-x", "--hexdump", action="store_true", help="with hexdump. (default: %(default)s)")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
@@ -24690,7 +24690,7 @@ class LinkMapCommand(GenericCommand):
     group.add_argument("-e", dest="elf_address", type=parse_address, help="the elf address you want to parse.")
     group.add_argument("-l", dest="link_map_address", type=parse_address, help="the link_map address you want to parse.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
-    parser.add_argument("-v", dest="verbose", action="store_true", help="verbose output.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="verbose output.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}                   # dump itself\n".format(_cmdline_)
@@ -25467,11 +25467,11 @@ class GotCommand(GenericCommand):
     _aliases_ = ["plt"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-f", dest="file", help="the filename you want to parse.")
-    parser.add_argument("-e", dest="elf_address", type=parse_address, help="the elf address you want to parse.")
-    parser.add_argument("-r", dest="remote", action="store_true", help="parse remote binary if download feature is available.")
+    parser.add_argument("-f", "--file", help="the filename you want to parse.")
+    parser.add_argument("-e", "--elf-address", type=parse_address, help="the elf address you want to parse.")
+    parser.add_argument("-r", "--remote", action="store_true", help="parse remote binary if download feature is available.")
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
-    parser.add_argument("-v", dest="verbose", action="store_true", help="verbose output.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="verbose output.")
     parser.add_argument("filter", metavar="FILTER", nargs="*", help="filter string.")
     _syntax_ = parser.format_help()
 
@@ -26124,7 +26124,7 @@ class SyscallSearchCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-a", dest="arch", help="specify the architecture. (default: current_arch.arch)")
     parser.add_argument("-m", dest="mode", help="specify the mode. (default: current_arch.mode)")
-    parser.add_argument("-v", dest="verbose", action="store_true", help="display prototype of syscall.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="display prototype of syscall.")
     parser.add_argument("search_pattern", metavar="SYSCALL_NAME|SYSCALL_NUM",
                         help="syscall name or number you want to search. Regex is available.")
     _syntax_ = parser.format_help()
@@ -39403,7 +39403,7 @@ class SseCommand(GenericCommand):
     _aliases_ = ["xmm"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-v", dest="verbose", action="store_true", help="also display bit information of mxcsr registers.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="also display bit information of mxcsr registers.")
     _syntax_ = parser.format_help()
 
     def print_sse(self):
@@ -39528,7 +39528,7 @@ class FpuCommand(GenericCommand):
     _category_ = "04-a. Register - View"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-v", dest="verbose", action="store_true", help="also display bit information of fpu control registers.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="also display bit information of fpu control registers.")
     _syntax_ = parser.format_help()
 
     def f2u(self, a):
@@ -41903,7 +41903,7 @@ class KernelAddressHeuristicFinder:
             return ptmx_fops
 
         # plan 2
-        res = gdb.execute("kcdev -n -q", to_string=True)
+        res = gdb.execute("kcdev --quiet --no-pager", to_string=True)
         for line in res.splitlines():
             if "/dev/ptmx" not in line:
                 continue
@@ -43148,7 +43148,7 @@ class KernelbaseCommand(GenericCommand):
     @functools.lru_cache(maxsize=None)
     def get_maps():
         maps = []
-        res = get_maps_by_pagewalk("pagewalk -q --simple -n")
+        res = get_maps_by_pagewalk("pagewalk --quiet --no-pager --simple")
         res = sorted(set(res.splitlines()))
         res = list(filter(lambda line: line.endswith("]"), res))
         res = list(filter(lambda line: "[+]" not in line, res))
@@ -43552,7 +43552,7 @@ class KernelCurrentCommand(GenericCommand):
         return True
 
     def get_comm_str(self, task_addr):
-        ret = gdb.execute("ktask -n --meta", to_string=True)
+        ret = gdb.execute("ktask --no-pager --meta", to_string=True)
         r = re.search(r"offsetof\(task_struct, comm\): (0x\S+)", ret)
         if r is None:
             return ""
@@ -44920,9 +44920,9 @@ class KernelBlockDevicesCommand(GenericCommand):
     def get_bdev_list(self):
         allocator = KernelChecksecCommand.get_slab_type()
         if allocator == "SLUB":
-            ret = gdb.execute("slub-dump -n bdev_cache", to_string=True)
+            ret = gdb.execute("slub-dump --quiet --no-pager -vv bdev_cache", to_string=True)
         elif allocator == "SLUB_TINY":
-            ret = gdb.execute("slub-tiny-dump -n bdev_cache", to_string=True)
+            ret = gdb.execute("slub-tiny-dump --quiet --no-pager bdev_cache", to_string=True)
         else:
             if not self.quiet:
                 err("Unsupported SLAB, SLOB")
@@ -48327,7 +48327,7 @@ class GdtInfoCommand(GenericCommand):
     _category_ = "04-a. Register - View"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-v", dest="verbose", action="store_true", help="also display bit information of gdt entries.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="also display bit information of gdt entries.")
     _syntax_ = parser.format_help()
 
     # arch/x86/include/asm/segment.h
@@ -48705,7 +48705,7 @@ class IdtInfoCommand(GenericCommand):
     _category_ = "04-a. Register - View"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-v", dest="verbose", action="store_true", help="also display bit information of idt entries.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="also display bit information of idt entries.")
     _syntax_ = parser.format_help()
 
     # arch/x86/include/asm/trapnr.h
@@ -49247,7 +49247,7 @@ class HashMemoryCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("location", metavar="LOCATION", type=parse_address, help="start address for hash calculation.")
     parser.add_argument("size", metavar="SIZE", type=parse_address, help="the size for hash calculation.")
-    parser.add_argument("-v", dest="verbose", action="store_true", help="also print crc.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="also print crc.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -54316,7 +54316,7 @@ class PartitionAllocDumpCommand(GenericCommand):
     parser.add_argument("target_buffer_root", choices=["fast_malloc", "array_buffer", "buffer", "fm", "ab", "b"],
                         help="the target buffer_root")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
-    parser.add_argument("-v", dest="verbose", action="store_true", help="display also empty slots.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="display also empty slots.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} array_buffer # walk from array_buffer_root_\n".format(_cmdline_)
@@ -55123,7 +55123,7 @@ class MuslHeapDumpCommand(GenericCommand):
                         help="dump mode (default: %(default)s).")
     parser.add_argument("--idx", type=int, help="the active index of dump target.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
-    parser.add_argument("-v", dest="verbose", action="store_true", help="also dump an empty active index.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="also dump an empty active index.")
     _syntax_ = parser.format_help()
 
     def info(self, msg):
@@ -55775,7 +55775,7 @@ class UclibcNgHeapDumpCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
-    parser.add_argument("-v", dest="verbose", action="store_true", help="also dump an empty active index.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="also dump an empty active index.")
     _syntax_ = parser.format_help()
 
     fast_size_table = [
@@ -56239,7 +56239,7 @@ class XSecureMemAddrCommand(GenericCommand):
     group.add_argument("--virt", action="store_true", help="treat ADDRESS as virtual address.")
     parser.add_argument("format", metavar="/FMT", help="specified output format.")
     parser.add_argument("location", metavar="ADDRESS", type=parse_address, help="dump target address.")
-    parser.add_argument("-v", dest="verbose", action="store_true", help="verbose output.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="verbose output.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} /16xw --phys 0xe11e3d0  # absolute (physical/non-ASLR) address of secure memory\n".format(_cmdline_)
@@ -56491,7 +56491,7 @@ class WSecureMemAddrCommand(GenericCommand):
     group.add_argument("--virt", action="store_true", help="treat ADDRESS as virtual address.")
     parser.add_argument("value", metavar="VALUE", help="write value.")
     parser.add_argument("location", metavar="ADDRESS", type=parse_address, help="write target address.")
-    parser.add_argument("-v", dest="verbose", action="store_true", help="verbose output.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="verbose output.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} dword 0x41414141 --phys 0xe11e3d0            # absolute (physical/non-ASLR) address of secure memory\n".format(_cmdline_)
@@ -56613,7 +56613,7 @@ class BreakSecureMemAddrCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("location", metavar="PHYS_ADDRESS", type=parse_address,
                         help="the target physical address you want to set a breakpoint.")
-    parser.add_argument("-v", dest="verbose", action="store_true", help="verbose output.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="verbose output.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} 0xe1008d8".format(_cmdline_)
@@ -56643,11 +56643,11 @@ class OpteeThreadEnterUserModeBreakpoint(gdb.Breakpoint):
     @staticmethod
     def get_ta_loaded_address():
         if is_arm32():
-            res = get_maps_by_pagewalk("pagewalk -q -S -n")
+            res = get_maps_by_pagewalk("pagewalk -S --quiet --no-pager")
             res = sorted(set(res.splitlines()))
             res = list(filter(lambda line: "PL0/R-X" in line, res))
         elif is_arm64():
-            res = get_maps_by_pagewalk("pagewalk 1 -q -n")
+            res = get_maps_by_pagewalk("pagewalk 1 --quiet --no-pager")
             res = sorted(set(res.splitlines()))
             res = list(filter(lambda line: "EL0/R-X" in line, res))
         maps = []
@@ -56697,7 +56697,7 @@ class OpteeBreakTaAddrCommand(GenericCommand):
                         help="The physical address of `thread_enter_user_mode` in OPTEE-OS.")
     parser.add_argument("ta_offset", metavar="TA_OFFSET", type=parse_address,
                         help="The breakpoint target offset of OPTEE-TA.")
-    parser.add_argument("-v", dest="verbose", action="store_true", help="verbose output.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="verbose output.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} 0xe137c78 0x2784".format(_cmdline_)
@@ -56731,7 +56731,7 @@ class OpteeBgetDumpCommand(GenericCommand):
     parser.add_argument("-m", "--malloc_ctx", metavar="OFFSET_malloc_ctx", type=parse_address,
                         help="The offset of `malloc_ctx` at OPTEE-TA.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
-    parser.add_argument("-v", dest="verbose", action="store_true", help="verbose output.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="verbose output.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} 0x2a408\n".format(_cmdline_)
@@ -56762,11 +56762,11 @@ class OpteeBgetDumpCommand(GenericCommand):
 
     def is_readable_virt_memory(self, addr):
         if is_arm32():
-            res = get_maps_by_pagewalk("pagewalk -q -S -n")
+            res = get_maps_by_pagewalk("pagewalk -S --quiet --no-pager")
             res = sorted(set(res.splitlines()))
             res = list(filter(lambda line: "PL0/RW-" in line, res))
         elif is_arm64():
-            res = get_maps_by_pagewalk("pagewalk 1 -q -n")
+            res = get_maps_by_pagewalk("pagewalk 1 --quiet --no-pager")
             res = sorted(set(res.splitlines()))
             res = list(filter(lambda line: "EL0/RW-" in line, res))
         for line in res:
@@ -56779,10 +56779,10 @@ class OpteeBgetDumpCommand(GenericCommand):
 
     def get_ta_rw_address(self, ta_loaded_rx_end):
         if is_arm32():
-            res = get_maps_by_pagewalk("pagewalk -q -S -n")
+            res = get_maps_by_pagewalk("pagewalk -S --quiet --no-pager")
             res = sorted(set(res.splitlines()))
         elif is_arm64():
-            res = get_maps_by_pagewalk("pagewalk 1 -q -n")
+            res = get_maps_by_pagewalk("pagewalk 1 --quiet --no-pager")
             res = sorted(set(res.splitlines()))
         for line in res:
             if not re.search("[PE]L1/RW", line):
@@ -58212,7 +58212,7 @@ class QemuRegistersCommand(GenericCommand):
     _category_ = "08-a. Qemu-system Cooperation - General"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-v", dest="verbose", action="store_true", help="also display detailed bit information.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="also display detailed bit information.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
@@ -58586,7 +58586,7 @@ class V2PCommand(GenericCommand):
     group.add_argument("-s", dest="force_normal", action="store_true",
                        help="ARMv7/v8: use TTBRn_ELm for parsing start register.")
     parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="the address of data you want to translate.")
-    parser.add_argument("-v", dest="verbose", action="store_true", help="verbose output.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="verbose output.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} 0xa31dd000\n".format(_cmdline_)
@@ -58598,14 +58598,14 @@ class V2PCommand(GenericCommand):
             if FORCE_PREFIX_S is True:
                 return get_maps_arm64_optee_secure_memory(verbose) # already parsed
             else:
-                res = get_maps_by_pagewalk("pagewalk 1 -q --no-merge -n")
+                res = get_maps_by_pagewalk("pagewalk 1 --quiet --no-pager --no-merge")
         else:
             if FORCE_PREFIX_S is None:
-                res = get_maps_by_pagewalk("pagewalk -q --no-merge -n")
+                res = get_maps_by_pagewalk("pagewalk --quiet --no-pager --no-merge")
             elif FORCE_PREFIX_S is True:
-                res = get_maps_by_pagewalk("pagewalk -q --no-merge -S -n")
+                res = get_maps_by_pagewalk("pagewalk -S --quiet --no-pager --no-merge")
             elif FORCE_PREFIX_S is False:
-                res = get_maps_by_pagewalk("pagewalk -q --no-merge -s -n")
+                res = get_maps_by_pagewalk("pagewalk -s --quiet --no-pager --no-merge")
         res = sorted(set(res.splitlines()))
         res = list(filter(lambda line: line.endswith("]"), res))
         res = list(filter(lambda line: "[+]" not in line, res))
@@ -58665,7 +58665,7 @@ class P2VCommand(GenericCommand):
     group.add_argument("-s", dest="force_normal", action="store_true",
                        help="ARMv7/v8: use TTBRn_ELm for parsing start register.")
     parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="the address of data you want to translate.")
-    parser.add_argument("-v", dest="verbose", action="store_true", help="verbose output.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="verbose output.")
     _syntax_ = parser.format_help()
 
     @parse_args
@@ -59050,7 +59050,6 @@ class PagewalkX64Command(PagewalkCommand):
     _aliases_ = ["pagewalk x86"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-q", dest="quiet", action="store_true", help="show result only.")
     parser.add_argument("--print-each-level", action="store_true", help="show all level pagetables.")
     parser.add_argument("--no-merge", action="store_true", help="do not merge similar/consecutive address.")
     parser.add_argument("--sort-by-phys", action="store_true", help="sort by physical address.")
@@ -59063,6 +59062,7 @@ class PagewalkX64Command(PagewalkCommand):
     parser.add_argument("--trace", metavar="VADDR", default=[], action="append", type=lambda x: int(x, 16),
                         help="show all level pagetables only associated specified address.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
     parser.add_argument("-c", "--use-cache", action="store_true", help="use before result.")
     _syntax_ = parser.format_help()
 
@@ -59586,7 +59586,6 @@ class PagewalkArmCommand(PagewalkCommand):
     _category_ = "08-a. Qemu-system Cooperation - General"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-q", dest="quiet", action="store_true", help="show result only.")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("-S", dest="force_secure", action="store_true", help="use TTBRn_ELm_S for parsing start register.")
     group.add_argument("-s", dest="force_normal", action="store_true", help="use TTBRn_ELm for parsing start register.")
@@ -59602,6 +59601,7 @@ class PagewalkArmCommand(PagewalkCommand):
     parser.add_argument("--trace", metavar="VADDR", default=[], action="append", type=lambda x: int(x, 16),
                         help="show all level pagetables only associated specified address.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
     parser.add_argument("-c", "--use-cache", action="store_true", help="use before result.")
     _syntax_ = parser.format_help()
 
@@ -60587,7 +60587,6 @@ class PagewalkArm64Command(PagewalkCommand):
     _category_ = "08-a. Qemu-system Cooperation - General"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-q", dest="quiet", action="store_true", help="show result only.")
     parser.add_argument("target_el", metavar="TARGET_EL", nargs="?", type=int, help="target EL. (default: current EL)")
     parser.add_argument("--print-each-level", action="store_true", help="show all level pagetables.")
     parser.add_argument("--no-merge", action="store_true", help="do not merge similar/consecutive address.")
@@ -60602,6 +60601,7 @@ class PagewalkArm64Command(PagewalkCommand):
                         help="show all level pagetables only associated specified address.")
     parser.add_argument("--optee", action="store_true", help="show the secure world memory maps if used OP-TEE.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
     parser.add_argument("-c", "--use-cache", action="store_true", help="use before result.")
     _syntax_ = parser.format_help()
 
@@ -62393,7 +62393,7 @@ class PagewalkWithHintsCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-c", "--use-cache", action="store_true", help="use cache.")
-    parser.add_argument("-q", dest="quiet", action="store_true", help="quiet execution.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="quiet execution.")
     _syntax_ = parser.format_help()
 
     def __init__(self, *args, **kwargs):
@@ -62539,7 +62539,7 @@ class PagewalkWithHintsCommand(GenericCommand):
         return
 
     def get_maps(self):
-        res = get_maps_by_pagewalk("pagewalk -q -n")
+        res = get_maps_by_pagewalk("pagewalk --quiet --no-pager")
         res = sorted(set(res.splitlines()))
         res = list(filter(lambda line: line.endswith("]"), res))
         res = list(filter(lambda line: "[+]" not in line, res))
@@ -62649,7 +62649,7 @@ class PagewalkWithHintsCommand(GenericCommand):
     def resolve_kstack(self):
         if not self.quiet:
             info("resolve kstack")
-        res = gdb.execute("ktask -n -t -q", to_string=True)
+        res = gdb.execute("ktask --quiet --no-pager --print-thread", to_string=True)
 
         # calc kstack address pattern
         kstacks = set()
@@ -62681,7 +62681,7 @@ class PagewalkWithHintsCommand(GenericCommand):
     def resolve_slub(self):
         if not self.quiet:
             info("resolve slub")
-        res = gdb.execute("slub-dump -n -q -vv", to_string=True)
+        res = gdb.execute("slub-dump --quiet --no-pager -vv", to_string=True)
         name, address, size = None, None, None
         for line in res.splitlines():
             r = re.search(r"name: (.+)", line)
@@ -62706,7 +62706,7 @@ class PagewalkWithHintsCommand(GenericCommand):
     def resolve_slab(self):
         if not self.quiet:
             info("resolve slab")
-        res = gdb.execute("slab-dump -n -q", to_string=True)
+        res = gdb.execute("slab-dump --quiet --no-pager", to_string=True)
         name, address, size = None, None, None
         for line in res.splitlines():
             r = re.search(r"name: (.+)", line)
@@ -62731,7 +62731,7 @@ class PagewalkWithHintsCommand(GenericCommand):
     def resolve_slob(self):
         if not self.quiet:
             info("resolve slob")
-        res = gdb.execute("slob-dump -n -q", to_string=True)
+        res = gdb.execute("slob-dump --quiet --no-pager", to_string=True)
         address, size = None, None, None
         for line in res.splitlines():
             r = re.search(r"virtual address: (.+0x.+)", line)
@@ -62752,7 +62752,7 @@ class PagewalkWithHintsCommand(GenericCommand):
     def resolve_slub_tiny(self):
         if not self.quiet:
             info("resolve slub-tiny")
-        res = gdb.execute("slub-tiny-dump -n -q", to_string=True)
+        res = gdb.execute("slub-tiny-dump --quiet --no-pager", to_string=True)
         name, address, size = None, None, None
         for line in res.splitlines():
             r = re.search(r"name: (.+)", line)
@@ -62789,7 +62789,7 @@ class PagewalkWithHintsCommand(GenericCommand):
     def resolve_module(self):
         if not self.quiet:
             info("resolve module")
-        res = gdb.execute("kmod -n -q", to_string=True)
+        res = gdb.execute("kmod --quiet --no-pager", to_string=True)
         for line in res.splitlines():
             if not line:
                 continue
@@ -65192,7 +65192,7 @@ class GefSaveCommand(GenericCommand):
     _category_ = "99. GEF Maintenance Command"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-q", dest="quiet", action="store_true", help="quiet execution.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="quiet execution.")
     _syntax_ = parser.format_help()
 
     @parse_args
@@ -65234,7 +65234,7 @@ class GefRestoreCommand(GenericCommand):
     _category_ = "99. GEF Maintenance Command"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-q", dest="quiet", action="store_true", help="quiet execution.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="quiet execution.")
     _syntax_ = parser.format_help()
 
     @parse_args
