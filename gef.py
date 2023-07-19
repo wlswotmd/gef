@@ -43634,6 +43634,14 @@ class KernelTaskCommand(GenericCommand):
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
+    def __init__(self):
+        super().__init__()
+        self.offset_vm_flags = None
+        self.offset_vm_file = None
+        self.offset_d_iname = None
+        self.offset_d_parent = None
+        return
+
     def get_offset_task(self, init_task):
         # search init_task->tasks
         for i in range(0x200):
@@ -44126,31 +44134,191 @@ class KernelTaskCommand(GenericCommand):
             info("offsetof(cred, uid): {:#x}".format(offset_uid))
         return offset_uid
 
+    class MapleTree:
+        """Linux v6.1 introduces maple_tree. This is a simple parser."""
+        MT_FLAGS_HEIGHT_MASK = 0x7c
+        MT_FLAGS_HEIGHT_OFFSET = 0x02
+        MAPLE_NODE_TYPE_SHIFT = 0x03
+        MAPLE_NODE_TYPE_MASK = 0x0f
+        MAPLE_NODE_POINTER_MASK = 0xff
+        MAPLE_DENSE = 0
+        MAPLE_LEAF_64 = 1
+        MAPLE_RANGE_64 = 2
+        MAPLE_ARANGE_64 = 3
+
+        def __init__(self, mm):
+            self.ma_root_raw = read_int_from_memory(mm + current_arch.ptrsize)
+            self.ma_flags = read_int_from_memory(mm + current_arch.ptrsize * 2)
+            self.max_depth = (self.ma_flags & self.MT_FLAGS_HEIGHT_MASK) >> self.MT_FLAGS_HEIGHT_OFFSET
+            self.seen = set()
+
+            if is_64bit():
+                self.MAPLE_NODE_SLOTS = 31
+                self.MAPLE_RANGE64_SLOTS = 16
+                self.MAPLE_ARANGE64_SLOTS = 10
+                self.MAPLE_ALLOC_SLOTS = self.MAPLE_NODE_SLOTS - 1
+                self.maple_range_64_offset_slot = current_arch.ptrsize * self.MAPLE_RANGE64_SLOTS
+                self.maple_arange_64_offset_slot = current_arch.ptrsize * self.MAPLE_ARANGE64_SLOTS
+                self.maple_alloc_offset_slot = current_arch.ptrsize * 2
+            else:
+                self.MAPLE_NODE_SLOTS = 63
+                self.MAPLE_RANGE64_SLOTS = 32
+                self.MAPLE_ARANGE64_SLOTS = 21
+                self.MAPLE_ALLOC_SLOTS = self.MAPLE_NODE_SLOTS - 2
+                self.maple_range_64_offset_slot = current_arch.ptrsize * self.MAPLE_RANGE64_SLOTS
+                self.maple_arange_64_offset_slot = current_arch.ptrsize * self.MAPLE_ARANGE64_SLOTS
+                self.maple_alloc_offset_slot = current_arch.ptrsize * 3
+
+            self.iters = self.parse_node(self.ma_root_raw, 1)
+            return
+
+        def get_next(self, _=None):
+            # iterate all `vm_area_struct` pointers
+            for addr in self.iters:
+                return addr
+            return None
+
+        def parse_node(self, entry, depth):
+            if entry in self.seen:
+                return
+            self.seen.add(entry)
+
+            if self.max_depth < depth:
+                return
+
+            pointer = entry & ~(self.MAPLE_NODE_POINTER_MASK)
+            node_type = (entry >> self.MAPLE_NODE_TYPE_SHIFT) & self.MAPLE_NODE_TYPE_MASK
+
+            if node_type == self.MAPLE_DENSE:
+                slot_top = pointer + self.maple_alloc_offset_slot
+                for i in range(self.MAPLE_ALLOC_SLOTS):
+                    slot = read_int_from_memory(slot_top + current_arch.ptrsize * i)
+                    if (slot & ~(self.MAPLE_NODE_TYPE_MASK)) != 0:
+                        if is_valid_addr(slot):
+                            yield slot
+            elif node_type == self.MAPLE_LEAF_64:
+                slot_top = pointer + self.maple_range_64_offset_slot
+                for i in range(self.MAPLE_RANGE64_SLOTS):
+                    slot = read_int_from_memory(slot_top + current_arch.ptrsize * i)
+                    if (slot & ~(self.MAPLE_NODE_TYPE_MASK)) != 0:
+                        if is_valid_addr(slot):
+                            yield slot
+            elif node_type == self.MAPLE_RANGE_64:
+                slot_top = pointer + self.maple_range_64_offset_slot
+                for i in range(self.MAPLE_RANGE64_SLOTS):
+                    slot = read_int_from_memory(slot_top + current_arch.ptrsize * i)
+                    if (slot & ~(self.MAPLE_NODE_TYPE_MASK)) != 0:
+                        yield from self.parse_node(slot, depth + 1)
+            elif node_type == self.MAPLE_ARANGE_64:
+                slot_top = pointer + self.maple_arange_64_offset_slot
+                for i in range(self.MAPLE_ARANGE64_SLOTS):
+                    slot = read_int_from_memory(slot_top + current_arch.ptrsize * i)
+                    if (slot & ~(self.MAPLE_NODE_TYPE_MASK)) != 0:
+                        yield from self.parse_node(slot, depth + 1)
+            return
+
     def get_mm(self, task, offset_mm):
-        """
-        struct vm_area_struct {
-            unsigned long                      vm_start;          /* Our start address within vm_mm. */
-            unsigned long                      vm_end;            /* The first byte after our end address within vm_mm. */
-            struct vm_area_struct             *vm_next, *vm_prev;
-            struct rb_node                     vm_rb;
-            unsigned long                      rb_subtree_gap;
-            struct mm_struct                  *vm_mm;             /* The address space we belong to. */
-            pgprot_t                           vm_page_prot;
-            unsigned long                      vm_flags;          /* Flags, see mm.h. */
-            struct {
-                struct rb_node                 rb;
-                unsigned long                  rb_subtree_last;
-            } shared;
-            struct list_head                   anon_vma_chain;    /* Serialized by mmap_lock & page_table_lock */
-            struct anon_vma                   *anon_vma;          /* Serialized by page_table_lock */
-            const struct vm_operations_struct *vm_ops;            /* Function pointers to deal with this struct. */
-            unsigned long                     vm_pgoff;           /* Offset (within vm_file) in PAGE_SIZE units */
-            struct file                       *vm_file;           /* File we map to (can be NULL). */
-        """
         mm = read_int_from_memory(task + offset_mm)
         if mm == 0:
             return []
-        vm_area_struct = read_int_from_memory(mm)
+
+        kversion = KernelVersionCommand.kernel_version()
+        if kversion < "6.1":
+            """
+            struct mm_struct {
+                struct {
+                    struct vm_area_struct *mmap;    /* list of VMAs */
+                    ...
+                } __randomize_layout;
+            }
+            """
+            offset_mmap = 0
+            vm_area_struct = read_int_from_memory(mm + offset_mmap)
+
+            """
+            struct vm_area_struct {
+                unsigned long                      vm_start;          /* Our start address within vm_mm. */
+                unsigned long                      vm_end;            /* The first byte after our end address within vm_mm. */
+                struct vm_area_struct             *vm_next, *vm_prev;
+                struct rb_node                     vm_rb;
+                unsigned long                      rb_subtree_gap;
+                struct mm_struct                  *vm_mm;             /* The address space we belong to. */
+                pgprot_t                           vm_page_prot;
+                unsigned long                      vm_flags;          /* Flags, see mm.h. */
+                struct {
+                    struct rb_node                 rb;
+                    unsigned long                  rb_subtree_last;
+                } shared;
+                struct list_head                   anon_vma_chain;    /* Serialized by mmap_lock & page_table_lock */
+                struct anon_vma                   *anon_vma;          /* Serialized by page_table_lock */
+                const struct vm_operations_struct *vm_ops;            /* Function pointers to deal with this struct. */
+                unsigned long                      vm_pgoff;          /* Offset (within vm_file) in PAGE_SIZE units */
+                struct file                       *vm_file;           /* File we map to (can be NULL). */
+            """
+            def get_next_vma_area_struct(current):
+                return read_int_from_memory(current + current_arch.ptrsize * 2)
+
+        else: # kversion >= "6.1"
+            """
+            struct mm_struct {
+                struct {
+                        struct maple_tree {
+                            union {
+                                spinlock_t      ma_lock;
+                                lockdep_map_p   ma_external_lock;
+                            };
+                            void __rcu         *ma_root;    // this points root maple_node. (lower 8-bits are some flags)
+                            unsigned int        ma_flags;
+                        } mm_mt;
+                    ...
+                } __randomize_layout;
+            }
+
+            struct maple_node {
+                union {
+                    struct {
+                        struct maple_pnode *parent;
+                        void __rcu *slot[MAPLE_NODE_SLOTS];
+                    };
+                    struct {
+                        void *pad;
+                        struct rcu_head rcu;
+                        struct maple_enode *piv_parent;
+                        unsigned char parent_slot;
+                        enum maple_type type;
+                        unsigned char slot_len;
+                        unsigned int ma_flags;
+                    };
+                    struct maple_range_64 mr64;
+                    struct maple_arange_64 ma64;
+                    struct maple_alloc alloc;
+                };
+            };
+            """
+            get_next_vma_area_struct = self.MapleTree(mm).get_next
+            vm_area_struct = get_next_vma_area_struct()
+
+            """
+            struct vm_area_struct {
+                unsigned long                      vm_start;        /* Our start address within vm_mm. */
+                unsigned long                      vm_end;          /* The first byte after our end address within vm_mm. */
+                struct mm_struct                  *vm_mm;           /* The address space we belong to. */
+                pgprot_t                           vm_page_prot;
+                unsigned long                      vm_flags;        /* Flags, see mm.h. */
+                union {
+                    struct {
+                        struct rb_node             rb;
+                        unsigned long              rb_subtree_last;
+                    } shared;
+                    struct anon_vma_name          *anon_name;
+                };
+                struct list_head                   anon_vma_chain;  /* Serialized by mmap_lock & page_table_lock */
+                struct anon_vma                   *anon_vma;        /* Serialized by page_table_lock */
+                const struct vm_operations_struct *vm_ops;
+                unsigned long                      vm_pgoff;        /* Offset (within vm_file) in PAGE_SIZE units */
+                struct file                       *vm_file;         /* File we map to (can be NULL). */
+                ...
+            """
 
         if self.meta:
             self.offset_vm_flags = None
@@ -44211,7 +44379,7 @@ class KernelTaskCommand(GenericCommand):
             filepath = self.get_filepath(vm_file)
             perm = Permission(value=vm_flags)
             vm_areas.append(VmArea(vm_start, vm_end, str(perm), filepath))
-            current = read_int_from_memory(current + current_arch.ptrsize * 2)
+            current = get_next_vma_area_struct(current)
         return vm_areas
 
     def get_filepath(self, location):
