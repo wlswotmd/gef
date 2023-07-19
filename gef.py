@@ -3136,7 +3136,7 @@ def set_gef_setting(name, value, _type=None, _desc=None):
 # functools.lru_cache() is not effective as-is, as it is cleared by reset_gef_caches() each time you stepi runs.
 # Fortunately, symbol information is rarely changes.
 # I decided to make it a cache clear mechanism independent of reset_gef_caches().
-@functools.lru_cache(maxsize=512)
+@functools.lru_cache(maxsize=None)
 def __gdb_get_location(address):
     """Retrieve the location of the `address` argument from the symbol table.
     Return a tuple with the name and offset if found, None otherwise."""
@@ -9740,7 +9740,7 @@ def get_process_maps(outer=False):
 # functools.lru_cache() is not effective as-is, as it is cleared by reset_gef_caches() each time you stepi runs.
 # Fortunately, zone information is rarely changes.
 # I decided to make it a cache clear mechanism independent of reset_gef_caches().
-@functools.lru_cache(maxsize=512)
+@functools.lru_cache(maxsize=None)
 def __get_info_files():
     """Retrieve all the files loaded by debuggee."""
     lines = gdb.execute("info files", to_string=True).splitlines()
