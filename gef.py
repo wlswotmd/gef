@@ -53038,6 +53038,140 @@ class SlobDumpCommand(GenericCommand):
 
 
 @register_command
+class XSlubOjbectCommand(GenericCommand):
+    """Resolve which `kmem_cache` certain address (object) belongs to (only x64)."""
+    _cmdline_ = "xslubobj"
+    _category_ = "08-b. Qemu-system Cooperation - Linux"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="target address.")
+    parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose mode.")
+    _syntax_ = parser.format_help()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        self.initialized = False
+        self.allocator = None
+        return
+
+    def initialize(self):
+        if self.initialized:
+            return True
+
+        res = gdb.execute("slub-dump --meta", to_string=True)
+
+        r = re.search(r"offsetof\(page, slab_cache\): (0x\S+)", res)
+        if not r:
+            return False
+        self.page_offset_slab_cache = int(r.group(1), 16)
+        if self.verbose:
+            info("offsetof(page, slab_cache): {:#x}".format(self.page_offset_slab_cache))
+
+        r = re.search(r"offsetof\(kmem_cache, name\): (0x\S+)", res)
+        if not r:
+            return False
+        self.kmem_cache_offset_name = int(r.group(1), 16)
+        if self.verbose:
+            info("offsetof(kmem_cache, name): {:#x}".format(self.kmem_cache_offset_name))
+
+        r = re.search(r"offsetof\(kmem_cache, size\): (0x\S+)", res)
+        if not r:
+            return False
+        self.kmem_cache_offset_size = int(r.group(1), 16)
+        if self.verbose:
+            info("offsetof(kmem_cache, size): {:#x}".format(self.kmem_cache_offset_size))
+
+        r = re.search(r"vmemmap: (0x\S+)", res)
+        if not r:
+            return False
+        self.vmemmap = int(r.group(1), 16)
+        if self.verbose:
+            info("vmemmap: {:#x}".format(self.vmemmap))
+
+        self.initialized = True
+        return True
+
+    def virt2page(self, vaddr):
+        # assume CONFIG_SPARSEMEM_VMEMMAP
+        ret = gdb.execute("monitor gva2gpa {:#x}".format(vaddr), to_string=True)
+        r = re.search(r"gpa: (0x\S+)", ret)
+        if r:
+            paddr = int(r.group(1), 16)
+            return (paddr >> 6) + self.vmemmap
+        return None
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_qemu_system
+    @only_if_in_kernel
+    @only_if_specific_arch(arch=("x86_64",))
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        self.verbose = args.verbose
+        if args.reparse:
+            self.initialized = False
+
+        if self.allocator is None:
+            info("Wait for memory scan")
+            self.allocator = KernelChecksecCommand.get_slab_type()
+        if self.allocator != "SLUB":
+            err("Unsupported SLAB, SLOB, SLUB_TINY")
+            return
+
+        ret = self.initialize()
+        if not ret:
+            err("Failed to initialize")
+            return
+
+        current = args.address & gef_getpagesize_mask()
+        chunk_label_color = get_gef_setting("theme.heap_chunk_label")
+
+        kversion = KernelVersionCommand.kernel_version()
+        try:
+            while True:
+                page = self.virt2page(current)
+                if page is None:
+                    err("Invalid address")
+                    return
+                if kversion >= "5.17":
+                    gef_print("slab: {:#x}".format(page))
+                else:
+                    gef_print("page: {:#x}".format(page))
+
+                kmem_cache = read_int_from_memory(page + self.page_offset_slab_cache)
+                if kmem_cache == 0:
+                    err("This address is not managed by slub")
+                    return
+                gef_print("kmem_cache: {:#x}".format(kmem_cache))
+
+                if (kmem_cache & ~0xfff) == 0xdead000000000000:
+                    current -= gef_getpagesize()
+                    continue
+
+                if kmem_cache & 1:
+                    current -= gef_getpagesize()
+                    continue
+
+                gef_print("base: {:#x}".format(current))
+                break
+
+            slub_cache_name_ptr = read_int_from_memory(kmem_cache + self.kmem_cache_offset_name)
+            slub_cache_name = read_cstring_from_memory(slub_cache_name_ptr)
+            slub_cache_size = u32(read_memory(kmem_cache + self.kmem_cache_offset_size, 4))
+
+            msg = ("name: {:s}, size: {:#x}".format(Color.colorify(slub_cache_name, chunk_label_color), slub_cache_size))
+            if (args.address - current) % slub_cache_size != 0:
+                msg += " " + Color.redify("(unaligned?)")
+            gef_print(msg)
+
+        except gdb.MemoryError:
+            err("Memory error")
+        return
+
+
+@register_command
 class KsymaddrRemoteCommand(GenericCommand):
     """Resolve kernel symbols from kallsyms table using kernel memory scanning."""
     # Thanks to https://github.com/marin-m/vmlinux-to-elf

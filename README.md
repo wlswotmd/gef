@@ -231,6 +231,10 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kdmesg.png)
 * `pagewalk-with-hints`: prints pagetables with description.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-with-hints.png)
+* `xslubobj`: resolves which `kmem_cache` certain address (object) belongs to (only x64).
+    * If the chunk of `slub` that the address (object) belongs to is all used, it cannot be displayed with `slub-dump`.
+    * Even with such an address (object), this command may be able to resolve `kmem_cache`.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xslubobj.png)
 
 ### Qemu-system cooperation - Arch specific
 * `uefi-ovmf-info`: dumps addresses of some important structures in each boot phase of UEFI when OVMF is used (heuristic).
