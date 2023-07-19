@@ -23691,9 +23691,9 @@ class DereferenceCommand(GenericCommand):
         # craete line of one entry
         addr_colored = Color.colorify(format_address(addrs[0].value), base_address_color)
         if tag:
-            line = f"{addr_colored}{VERTICAL_LINE}+{offset:#06x}{VERTICAL_LINE}{idx:03d}: {tag:s}: {link:{memalign * 2 + 2}s}"
+            line = f"{addr_colored}{VERTICAL_LINE}{offset:+#07x}{VERTICAL_LINE}{idx:+04d}: {tag:s}: {link:{memalign * 2 + 2}s}"
         else:
-            line = f"{addr_colored}{VERTICAL_LINE}+{offset:#06x}{VERTICAL_LINE}{idx:03d}: {link:{memalign * 2 + 2}s}"
+            line = f"{addr_colored}{VERTICAL_LINE}{offset:+#07x}{VERTICAL_LINE}{idx:+04d}: {link:{memalign * 2 + 2}s}"
 
         # add extra info
         current_address_value = read_int_from_memory(current_address)
