@@ -12000,7 +12000,7 @@ class NiCommand(GenericCommand):
                 gdb.execute("context")
             elif str(exc_value).startswith("Cannot access memory at address"):
                 if is_valid_addr(current_arch.pc):
-                    gdb.execute("exec-next")
+                    gdb.execute("until-next")
                 else:
                     err(exc_value)
             else:
@@ -12081,7 +12081,7 @@ class SiCommand(GenericCommand):
                 gdb.execute("context")
             elif str(exc_value).startswith("Cannot access memory at address"):
                 if is_valid_addr(current_arch.pc):
-                    gdb.execute("exec-next")
+                    gdb.execute("until-next")
                 else:
                     err(exc_value)
             else:
@@ -62965,10 +62965,11 @@ class PagewalkWithHintsCommand(GenericCommand):
 
 
 @register_command
-class ExecNextCommand(GenericCommand):
+class UntilNextCommand(GenericCommand):
     """Execute until next address. This command is useful for rep prefix, or the case of stepi/nexti failed."""
-    _cmdline_ = "exec-next"
+    _cmdline_ = "until-next"
     _category_ = "01-d. Debugging Support - Execution"
+    _aliases_ = ["exec-next"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -63162,7 +63163,7 @@ class ExecUntilCommand(GenericCommand):
                         self.err = "Detected infinity loop prev_addr ({:#x})".format(prev_addr)
                         break
                     # maybe rep prefix
-                    gdb.execute("exec-next")
+                    gdb.execute("until-next")
                     # recheck
                     if prev_prev_addr == prev_addr == current_arch.pc:
                         self.err = "Detected infinity loop prev_addr ({:#x})".format(prev_addr)
@@ -64406,6 +64407,7 @@ class WalkLinkListCommand(GenericCommand):
     """Walk the link list."""
     _cmdline_ = "walk-link-list"
     _category_ = "03-a. Memory - Search"
+    _aliases_ = ["chain", "print-list"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-o", dest="next_offset", type=parse_address, default=0,

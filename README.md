@@ -425,7 +425,7 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
         * user-code
         * libc-code
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/exec-until.png)
-* `exec-next`: executes until next address.
+* `until-next`: executes until next address.
     * This is useful for the operation with `rep` prefix.
 * `add-symbol-temporary`: adds symbol information from command-line.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/add-symbol-temporary.png)
