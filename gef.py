@@ -45357,16 +45357,36 @@ class KernelBlockDevicesCommand(GenericCommand):
         return "???"
 
     def get_dev_num(self, bdev):
+        """
+        [~v5.11]
+        struct block_device {
+            dev_t                       bd_dev;
+            ...
+        }
+
+        [v5.11~]
+        struct block_device {
+            sector_t                    bd_start_sect;      // sector_t: u64
+            sector_t                    bd_nr_sectors;      // sector_t: u64, v5.17~
+            struct gendisk             *bd_disk;            // v6.4~
+            struct request_queue       *bd_queue;           // v6.4~
+            struct disk_stats __percpu *bd_stats;
+            unsigned long               bd_stamp;
+            bool                        bd_read_only;       // 1byte + 3byte padding
+            dev_t                       bd_dev;
+            ...
+        }
+        """
         if self.offset_bd_dev is None:
             kversion = KernelVersionCommand.kernel_version()
             if kversion < "5.11":
                 self.offset_bd_dev = 0
             elif kversion < "5.16":
-                self.offset_bd_dev = current_arch.ptrsize * 3 + 4
+                self.offset_bd_dev = 8 * 1 + current_arch.ptrsize * 2 + 4
             elif kversion < "6.4":
-                self.offset_bd_dev = current_arch.ptrsize * 4 + 4
+                self.offset_bd_dev = 8 * 2 + current_arch.ptrsize * 2 + 4
             else:
-                self.offset_bd_dev = current_arch.ptrsize * 6 + 4
+                self.offset_bd_dev = 8 * 2 + current_arch.ptrsize * 4 + 4
 
         dev = u32(read_memory(bdev + self.offset_bd_dev, 4))
         major = dev >> 20
@@ -45400,7 +45420,7 @@ class KernelBlockDevicesCommand(GenericCommand):
         # ignore bdev if major is 0
         bdevs = [bdev for bdev in bdevs if self.get_dev_num(bdev)[0] != 0]
         if not bdevs:
-            err("Not found any bdev")
+            err("Not found any bdev (after filtering major == 0)")
             return
 
         # parse major, minor and name
