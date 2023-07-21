@@ -65662,9 +65662,16 @@ class GefAlias(gdb.Command):
         if not p:
             return
 
-        if list(filter(lambda x: x._alias == alias, __aliases__)):
-            return
+        global __aliases__
 
+        # already defined, so remove old entry
+        try:
+            alias_to_remove = next(filter(lambda x: x._alias == alias, __aliases__))
+            __aliases__.remove(alias_to_remove)
+        except (ValueError, StopIteration):
+            pass
+
+        # initialize
         self._command = command
         self._alias = alias
         self._repeat = repeat
@@ -65700,15 +65707,25 @@ class GefAlias(gdb.Command):
 class AliasesCommand(GenericCommand):
     """Base command to add, remove, or list aliases."""
     _cmdline_ = "aliases"
-    _syntax_ = "{:s} (add|rm|ls)".format(_cmdline_)
     _category_ = "99. GEF Maintenance Command"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    if sys.version_info.minor >= 7:
+        subparsers = parser.add_subparsers(title="command", required=True)
+    else:
+        subparsers = parser.add_subparsers(title="command")
+    subparsers.add_parser("add")
+    subparsers.add_parser("rm")
+    subparsers.add_parser("ls")
+    _syntax_ = parser.format_help()
 
     def __init__(self, *args, **kwargs):
         prefix = kwargs.get("prefix", True)
         super().__init__(prefix=prefix)
         return
 
-    def do_invoke(self, argv):
+    @parse_args
+    def do_invoke(self, args):
         self.dont_repeat()
         self.usage()
         return
@@ -65718,20 +65735,25 @@ class AliasesCommand(GenericCommand):
 class AliasesAddCommand(AliasesCommand):
     """Command to add aliases."""
     _cmdline_ = "aliases add"
-    _syntax_ = "{:s} [ALIAS] [COMMAND]".format(_cmdline_)
-    _example_ = "{:s} scope telescope".format(_cmdline_)
     _category_ = "99. GEF Maintenance Command"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("alias", metavar="ALIAS", help="the name of new alias.")
+    parser.add_argument("command", metavar="COMMAND", nargs="+", help="the command of new alias.")
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} scope telescope".format(_cmdline_)
 
     def __init__(self):
         super().__init__(prefix=False)
         return
 
-    def do_invoke(self, argv):
+    @parse_args
+    def do_invoke(self, args):
         self.dont_repeat()
-        if (len(argv) < 2):
-            self.usage()
-            return
-        GefAlias(argv[0], " ".join(argv[1:]))
+        command = " ".join(args.command)
+        GefAlias(args.alias, command)
+        gef_print("{:s} = {:s}".format(args.alias, command))
         return
 
 
@@ -65739,26 +65761,27 @@ class AliasesAddCommand(AliasesCommand):
 class AliasesRmCommand(AliasesCommand):
     """Command to remove aliases."""
     _cmdline_ = "aliases rm"
-    _syntax_ = "{:s} [ALIAS]".format(_cmdline_)
     _category_ = "99. GEF Maintenance Command"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("alias", metavar="ALIAS", help="the name of alias to be deleted.")
+    _syntax_ = parser.format_help()
 
     def __init__(self):
         super().__init__(prefix=False)
         return
 
-    def do_invoke(self, argv):
+    @parse_args
+    def do_invoke(self, args):
         self.dont_repeat()
+
         global __aliases__
-        if len(argv) != 1:
-            self.usage()
-            return
         try:
-            alias_to_remove = next(filter(lambda x: x._alias == argv[0], __aliases__))
+            alias_to_remove = next(filter(lambda x: x._alias == args.alias, __aliases__))
             __aliases__.remove(alias_to_remove)
         except (ValueError, StopIteration):
-            err("{:s} not found in aliases.".format(argv[0]))
+            err("{:s} is not found in aliases.".format(args.alias))
             return
-        gef_print("You must reload GEF for alias removals to apply.")
         return
 
 
@@ -65766,14 +65789,17 @@ class AliasesRmCommand(AliasesCommand):
 class AliasesListCommand(AliasesCommand):
     """Command to list aliases."""
     _cmdline_ = "aliases ls"
-    _syntax_ = _cmdline_
     _category_ = "99. GEF Maintenance Command"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
 
     def __init__(self):
         super().__init__(prefix=False)
         return
 
-    def do_invoke(self, argv):
+    @parse_args
+    def do_invoke(self, args):
         self.dont_repeat()
 
         ok("Aliases defined:")
