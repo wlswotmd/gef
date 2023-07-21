@@ -40,7 +40,7 @@
 #
 # This is a fork of GEF (https://github.com/hugsy/gef).
 # This software is released under the MIT license.
-# see https://opensource.org/licenses/MIT
+# See https://opensource.org/licenses/MIT
 #
 # Copyright (c) 2013-2023 crazy rabbidz
 #
@@ -83,8 +83,8 @@
 #
 
 
-from __future__ import print_function, division, absolute_import
 print("Loading GEF...")
+
 
 import abc
 import argparse
@@ -117,6 +117,7 @@ import termios
 import time
 import traceback
 import urllib.request
+
 
 LEFT_ARROW = " <- "
 RIGHT_ARROW = " -> "
@@ -2783,6 +2784,10 @@ class GlibcChunk:
         return "\n".join(msg)
 
 
+RE_LIBC_PATH = re.compile(r"libc6?[-_](\d+)\.(\d+)\.so")
+RE_GLIBC_VERSION = re.compile(rb"glibc (\d+)\.(\d+)")
+
+
 def get_libc_version():
 
     def get_libc_version_from_path():
@@ -2790,7 +2795,7 @@ def get_libc_version():
 
         sections = get_process_maps()
         for section in sections:
-            r = re.search(r"libc6?[-_](\d+)\.(\d+)\.so", section.path)
+            r = RE_LIBC_PATH.search(section.path)
             if r:
                 return tuple(int(x) for x in r.groups())
 
@@ -2823,7 +2828,7 @@ def get_libc_version():
                     continue
                 data = open(section.path, "rb").read()
 
-            r = re.search(rb"glibc (\d+)\.(\d+)", data)
+            r = RE_GLIBC_VERSION.search(data)
             if r:
                 return tuple(int(x) for x in r.groups())
         return None
@@ -3131,6 +3136,9 @@ def set_gef_setting(name, value, _type=None, _desc=None):
     return
 
 
+RE_GET_LOCATION_GDB13 = re.compile(r"0x[0-9a-f]+ <(.*?)(\+.*)?>")
+
+
 # `info symbol` called from __gdb_get_location is heavy processing.
 # Moreover, dereference_from causes each address to be resolved every time.
 # functools.lru_cache() is not effective as-is, as it is cleared by reset_gef_caches() each time you stepi runs.
@@ -3145,7 +3153,7 @@ def __gdb_get_location(address):
     # Don't use cris because it gives a warning.
     if GDB_VERSION >= (13, 1) and not is_cris():
         sym = gdb.format_address(address)
-        r = re.match(r"0x[0-9a-f]+ <(.*?)(\+.*)?>", sym)
+        r = RE_GET_LOCATION_GDB13.match(sym)
         if not r:
             return None
         if r.group(2) is None:
@@ -3748,6 +3756,9 @@ def checksec(filename):
     return results
 
 
+RE_GET_ARCH = re.compile(r"\"(.+)\"")
+
+
 @functools.lru_cache(maxsize=None)
 def get_arch():
     """Return the binary's architecture."""
@@ -3773,7 +3784,7 @@ def get_arch():
         arch_str = arch_str.replace("The target architecture is assumed to be ", "")
     elif "The target architecture is set to " in arch_str:
         # GDB version >= 10.1
-        arch_str = re.findall(r"\"(.+)\"", arch_str)[0]
+        arch_str = RE_GET_ARCH.findall(arch_str)[0]
     else:
         # Unknown, we throw an exception to be safe
         raise RuntimeError("Unknown architecture: {}".format(arch_str))
@@ -21459,6 +21470,13 @@ class ContextCommand(GenericCommand):
         self.context_extra_regs()
         return
 
+    RE_SUB_OPERAND1 = re.compile(r"<.*?>")
+    RE_SUB_OPERAND2 = re.compile(r"\[.*?\]")
+    RE_FINDALL_SSE = re.compile(r"(xmm\d+)")
+    RE_FINDALL_AVX = re.compile(r"(ymm\d+)")
+    RE_FINDALL_MMX = re.compile(r"([^xy]mm\d+)")
+    RE_FINDALL_FPU = re.compile(r"(st\(\d\))")
+
     def context_extra_regs(self):
         if not is_x86():
             return
@@ -21471,8 +21489,8 @@ class ContextCommand(GenericCommand):
             return
 
         operands = ", ".join(insn.operands)
-        operands = re.sub(r"<.*?>", "", operands)
-        operands = re.sub(r"\[.*?\]", "", operands)
+        operands = self.RE_SUB_OPERAND1.sub("", operands)
+        operands = self.RE_SUB_OPERAND2.sub("", operands)
 
         if self.previous_extra_regs:
             if self.previous_extra_regs["pc"] != insn_prev.address:
@@ -21481,7 +21499,7 @@ class ContextCommand(GenericCommand):
         printed_extra_regs = {"pc": current_arch.pc}
 
         # sse register
-        to_save_regs = re.findall(r"(xmm\d+)", operands)
+        to_save_regs = self.RE_FINDALL_SSE.findall(operands)
         to_print_regs = to_save_regs + self.previous_extra_regs.get("xmm", [])
         if to_print_regs:
             to_print_regs = sorted(set(to_print_regs))
@@ -21495,7 +21513,7 @@ class ContextCommand(GenericCommand):
                         break
 
         # avx register
-        to_save_regs = re.findall(r"(ymm\d+)", operands)
+        to_save_regs = self.RE_FINDALL_AVX.findall(operands)
         to_print_regs = to_save_regs + self.previous_extra_regs.get("ymm", [])
         if to_print_regs:
             to_print_regs = sorted(set(to_print_regs))
@@ -21509,7 +21527,7 @@ class ContextCommand(GenericCommand):
                         break
 
         # mmx register
-        to_save_regs = re.findall(r"([^xy]mm\d+)", operands)
+        to_save_regs = self.RE_FINDALL_MMX.findall(operands)
         to_print_regs = to_save_regs + self.previous_extra_regs.get("mmx", [])
         if to_print_regs:
             to_print_regs = sorted(set(to_print_regs))
@@ -21524,7 +21542,7 @@ class ContextCommand(GenericCommand):
 
         # fpu register
         if insn.mnemonic[0] == "f":
-            to_save_regs = re.findall(r"(st\(\d\))", operands)
+            to_save_regs = self.RE_FINDALL_FPU.findall(operands)
             to_print_regs = to_save_regs + self.previous_extra_regs.get("fpu", [])
             if to_print_regs:
                 to_print_regs = sorted(set(to_print_regs))
@@ -21693,6 +21711,12 @@ class ContextCommand(GenericCommand):
         self.context_memory_access3() # for x86/x64 - cs/ss/ds/es
         return
 
+    RE_SUB_OPERAND3 = re.compile(r"<.*?>")
+    RE_FINDALL_SEG1 = re.compile(r"[^:](\[.+?\])")
+    RE_MATCH_REG1 = re.compile(r"r\d+d?")
+    RE_MATCH_REG2 = re.compile(r"r\d+")
+    RE_MATCH_REG3 = re.compile(r"[xw]\d+")
+
     def context_memory_access(self):
         if not (is_x86() or is_arm32() or is_arm64()):
             return
@@ -21705,8 +21729,8 @@ class ContextCommand(GenericCommand):
             return
 
         insn = ",".join(insn_here.operands)
-        insn = re.sub(r"<.+>", "", insn)
-        r = re.findall(r"[^:](\[.+?\])", str(insn)) # Unsupported: seg:[reg]
+        insn = self.RE_SUB_OPERAND3.sub("", insn)
+        r = self.RE_FINDALL_SEG1.findall(str(insn)) # Unsupported: seg:[reg]
         if not r:
             return
 
@@ -21723,7 +21747,7 @@ class ContextCommand(GenericCommand):
                 code = code.replace("*", " * ")
                 code = code.replace("eiz", " 0 ") # $eiz is always 0x0
                 code = code.split()
-                code = ["$" + x if x.isalpha() or re.match(r"r\d+d?", x) else x for x in code]
+                code = ["$" + x if x.isalpha() or self.RE_MATCH_REG1.match(x) else x for x in code]
                 code = "".join(code)
                 # $rip/$eip points next instruction
                 code_orig, code = code, code.replace("$rip", "$rip+{:#x}".format(codesize))
@@ -21734,7 +21758,7 @@ class ContextCommand(GenericCommand):
                 code = code.replace("#", "")
                 code = code.replace("lsl", "<<")
                 code = code.split(",")
-                code = ["$" + x if x.isalpha() or re.match(r"r\d+", x) else x for x in code]
+                code = ["$" + x if x.isalpha() or self.RE_MATCH_REG2.match(x) else x for x in code]
                 if "<<" in code[-1]:
                     code = code[:-2] + ["(" + code[-2] + code[-1] + ")"]
                 code = "+".join(code)
@@ -21750,7 +21774,7 @@ class ContextCommand(GenericCommand):
                 code = code.replace("wzr", " 0 ") # $wzr is always 0x0
                 code = code.replace("wsp", " ($sp&0xffff) ") # $wsp is a half of $sp
                 code = code.split(",")
-                code = ["$" + x if x.isalpha() or re.match(r"[xw]\d+", x) else x for x in code]
+                code = ["$" + x if x.isalpha() or self.RE_MATCH_REG3.match(x) else x for x in code]
                 if "<<" == code[-1]:
                     code[-1] += "0"
                 if "<<" in code[-1]:
@@ -21770,6 +21794,9 @@ class ContextCommand(GenericCommand):
             gdb.execute("telescope {:#x} 4 --no-pager".format(addr))
         return
 
+    RE_FINDALL_SEG2 = re.compile(r"((fs|gs):\[?([^,\]]+)\]?)")
+    RE_MATCH_REG4 = re.compile(r"r\d+d?")
+
     def context_memory_access2(self):
         if not is_x86():
             return
@@ -21785,7 +21812,7 @@ class ContextCommand(GenericCommand):
         insn_next = inst_iter.__next__()
         codesize = insn_next.address - insn_here.address
 
-        r = re.findall(r"((fs|gs):\[?([^,\]]+)\]?)", str(insn))
+        r = self.RE_FINDALL_SEG2.findall(str(insn))
         if r:
             code, fsgs, offset = r[0][0], r[0][1], r[0][2]
             tls = TlsCommand.getfs() if fsgs == "fs" else TlsCommand.getgs()
@@ -21794,7 +21821,7 @@ class ContextCommand(GenericCommand):
             offset = offset.replace("*", " * ")
             offset = offset.replace("eiz", " 0 ") # $eiz is always 0x0
             offset = offset.split()
-            offset = ["$" + x if x.isalpha() or re.match(r"r\d+d?", x) else x for x in offset]
+            offset = ["$" + x if x.isalpha() or self.RE_MATCH_REG4.match(x) else x for x in offset]
             offset = "".join(offset)
             # $rip/$eip points next instruction
             offset = offset.replace("$rip", "$rip+{:#x}".format(codesize))
@@ -21803,6 +21830,9 @@ class ContextCommand(GenericCommand):
             self.context_title("memory access: {:s} = {:#x}".format(code, addr))
             gdb.execute("telescope {:#x} 4 --no-pager".format(addr))
         return
+
+    RE_FINDALL_SEG3 = re.compile(r"((es|ds|ss|cs):\[?([^,\]]+)\]?)")
+    RE_MATCH_REG5 = re.compile(r"r\d+d?")
 
     def context_memory_access3(self):
         if not is_x86():
@@ -21816,7 +21846,7 @@ class ContextCommand(GenericCommand):
         insn = ",".join(insn_here.operands)
         insn = re.sub(r"<.+>", "", insn)
 
-        r = re.findall(r"((es|ds|ss|cs):\[?([^,\]]+)\]?)", str(insn))
+        r = self.RE_FINDALL_SEG3.findall(str(insn))
         for rr in r:
             code, addr = rr[0], rr[2]
             addr = addr.replace("+", " + ")
@@ -21824,11 +21854,19 @@ class ContextCommand(GenericCommand):
             addr = addr.replace("*", " * ")
             addr = addr.replace("eiz", " 0 ") # $eiz is always 0x0
             addr = addr.split()
-            addr = ["$" + x if x.isalpha() or re.match(r"r\d+d?", x) else x for x in addr]
+            addr = ["$" + x if x.isalpha() or self.RE_MATCH_REG5.match(x) else x for x in addr]
             addr = parse_address("".join(addr))
             self.context_title("memory access: {:s} = {:#x}".format(code, addr))
             gdb.execute("telescope {:#x} 4 --no-pager".format(addr))
         return
+
+    RE_SUB_BRANCH_ADDR1 = re.compile(r".*# (0x[a-fA-F0-9]*).*")
+    RE_SUB_BRANCH_ADDR2 = re.compile(r".*# (0x[a-fA-F0-9]*).*")
+    RE_SUB_BRANCH_ADDR3 = re.compile(r".* PTR \[(.+?)\].*")
+    RE_SUB_BRANCH_ADDR4 = re.compile(r".* PTR fs:(0x[a-fA-F0-9]*).*")
+    RE_SUB_BRANCH_ADDR5 = re.compile(r".* PTR gs:(0x[a-fA-F0-9]*).*")
+    RE_SUB_BRANCH_ADDR6 = re.compile(r"^.*\s+([-0-9]+)$")
+    RE_SUB_BRANCH_ADDR7 = re.compile(r".*(0x[a-fA-F0-9]*).*")
 
     @staticmethod
     def get_branch_addr(insn, to_str=False):
@@ -21837,7 +21875,7 @@ class ContextCommand(GenericCommand):
 
         # x86/x64: call ... [rip+0x1111] # 0xAABBCCDD
         if " # 0x" in ops and not is_loongarch64():
-            addr = re.sub(r".*# (0x[a-fA-F0-9]*).*", r"\1", ops)
+            addr = ContextCommand.RE_SUB_BRANCH_ADDR1.sub(r"\1", ops)
             ptr = to_unsigned_long(gdb.parse_and_eval(addr))
             try:
                 if to_str:
@@ -21852,7 +21890,7 @@ class ContextCommand(GenericCommand):
 
         # loongarch64: bnez $t1, -8 (0x7ffff8) # 0x120000868
         if " # 0x" in ops and is_loongarch64():
-            addr = re.sub(r".*# (0x[a-fA-F0-9]*).*", r"\1", ops)
+            addr = ContextCommand.RE_SUB_BRANCH_ADDR2.sub(r"\1", ops)
             ptr = to_unsigned_long(gdb.parse_and_eval(addr))
             if to_str:
                 return "{:#x}".format(ptr)
@@ -21862,7 +21900,7 @@ class ContextCommand(GenericCommand):
         # x86/x64: call ... PTR [rbx]
         if is_x86():
             if " PTR [" in ops:
-                addr = re.sub(r".* PTR \[(.+?)\].*", r"\1", ops)
+                addr = ContextCommand.RE_SUB_BRANCH_ADDR3.sub(r"\1", ops)
                 for gr in current_arch.gpr_registers:
                     addr = addr.replace(gr.replace("$", ""), gr)
                 ptr = to_unsigned_long(gdb.parse_and_eval(addr))
@@ -21880,7 +21918,7 @@ class ContextCommand(GenericCommand):
         # x64: call ... PTR fs:0x10
         if is_x86_64():
             if " PTR fs:" in ops:
-                ofs = re.sub(r".* PTR fs:(0x[a-fA-F0-9]*).*", r"\1", ops)
+                ofs = ContextCommand.RE_SUB_BRANCH_ADDR4.sub(r"\1", ops)
                 ofs = to_unsigned_long(gdb.parse_and_eval(ofs))
                 fs = TlsCommand.getfs()
                 try:
@@ -21897,7 +21935,7 @@ class ContextCommand(GenericCommand):
         # x86: call ... PTR gs:0x10
         if is_x86_32():
             if " PTR gs:" in ops:
-                ofs = re.sub(r".* PTR gs:(0x[a-fA-F0-9]*).*", r"\1", ops)
+                ofs = ContextCommand.RE_SUB_BRANCH_ADDR5.sub(r"\1", ops)
                 ofs = to_unsigned_long(gdb.parse_and_eval(ofs))
                 gs = TlsCommand.getgs()
                 try:
@@ -21915,7 +21953,7 @@ class ContextCommand(GenericCommand):
         # brlid  r15, -136
         # bneid  r4, -8    // 3ffe9848
         if is_microblaze():
-            addr = re.sub(r"^.*\s+([-0-9]+)$", r"\1", ops.split("//")[0].strip())
+            addr = ContextCommand.RE_SUB_BRANCH_ADDR6.sub(r"\1", ops.split("//")[0].strip())
             try:
                 addr = int(addr) + insn.address
                 if to_str:
@@ -21931,7 +21969,7 @@ class ContextCommand(GenericCommand):
         #   RISCV:   jal    ra, 0x13894
         #   RISCV:   bgeu   t1, a2, 0x10350
         if "0x" in ops:
-            addr = re.sub(r".*(0x[a-fA-F0-9]*).*", r"\1", ops)
+            addr = ContextCommand.RE_SUB_BRANCH_ADDR7.sub(r"\1", ops)
             if to_str:
                 return "{:#x}".format(to_unsigned_long(gdb.parse_and_eval(addr)))
             else:
@@ -21952,6 +21990,8 @@ class ContextCommand(GenericCommand):
                 return get_register(maybe_reg)
 
         return None
+
+    RE_SUB_ARGS_SYMBOL = re.compile(r".*<([^\(> ]*).*")
 
     def context_args(self):
         if current_arch is None and is_remote_debug():
@@ -21974,7 +22014,7 @@ class ContextCommand(GenericCommand):
         ops = " ".join(insn.operands)
         # is there a symbol?
         if "<" in ops and ">" in ops:
-            target = re.sub(r".*<([^\(> ]*).*", r"\1", ops)
+            target = self.RE_SUB_ARGS_SYMBOL.sub(r"\1", ops)
         else:
             # no, try extract target address
             addr = self.get_branch_addr(insn, to_str=True)
@@ -65754,14 +65794,8 @@ def __gef_prompt__(_current_prompt):
 
 
 def main():
-    if sys.version_info[0] == 2:
-        err("GEF has dropped Python2 support for GDB when it reached EOL on 2020/01/01.")
-        err("If you require GEF for GDB+Python2, use https://github.com/hugsy/gef-legacy.")
-        return
-
     if GDB_VERSION < GDB_MIN_VERSION:
-        err("You're using an old version of GDB. GEF will not work correctly. "
-            "Consider updating to GDB {} or higher.".format(".".join(map(str, GDB_MIN_VERSION))))
+        err("GDB is too old. Try upgrading it.")
         return
 
     try:
@@ -65781,10 +65815,10 @@ def main():
 
     try:
         pythonbin = which("python3")
-        cmds = [pythonbin, "-c", "import os, sys;print((sys.prefix))"]
+        cmds = [pythonbin, "-c", "import os,sys;print(sys.prefix)"]
         PREFIX = gef_pystring(subprocess.check_output(cmds)).strip("\\n")
         if PREFIX != sys.base_prefix:
-            cmds = [pythonbin, "-c", "import os, sys;print(os.linesep.join(sys.path).strip())"]
+            cmds = [pythonbin, "-c", "import os,sys;print(os.linesep.join(sys.path).strip())"]
             SITE_PACKAGES_DIRS = subprocess.check_output(cmds).decode("utf-8").split()
             sys.path.extend(SITE_PACKAGES_DIRS)
     except FileNotFoundError:
