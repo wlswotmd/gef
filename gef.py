@@ -10936,404 +10936,6 @@ def gef_on_regchanged_hook(func):
 def gef_on_regchanged_unhook(func):
     return gdb.events.register_changed.disconnect(func)
 
-#
-# Breakpoints
-#
-
-
-class FormatStringBreakpoint(gdb.Breakpoint):
-    """Inspect stack for format string."""
-    def __init__(self, spec, num_args):
-        super().__init__(spec, type=gdb.BP_BREAKPOINT, internal=False)
-        self.num_args = num_args
-        self.enabled = True
-        return
-
-    def stop(self):
-        reset_gef_caches()
-        msg = []
-        ptr, addr = current_arch.get_ith_parameter(self.num_args)
-        addr = lookup_address(addr)
-
-        if not addr.valid:
-            return False
-
-        if addr.section.permission.value & Permission.WRITE:
-            content = read_cstring_from_memory(addr.value)
-            content = gef_pystring(str2bytes(content))
-            name = addr.info.name if addr.info else addr.section.path
-            msg.append(Color.colorify("Format string helper", "bold yellow"))
-            m = "Possible insecure format string: {:s}('{:s}' {:s} {:#x}: '{:s}')"
-            msg.append(m.format(self.location, ptr, RIGHT_ARROW, addr.value, content))
-            m = "Reason: Call to '{:s}()' with format string argument in position "
-            m += "#{:d} is in page {:#x} ({:s}) that has write permission"
-            msg.append(m.format(self.location, self.num_args, addr.section.page_start, name))
-            push_context_message("warn", "\n".join(msg))
-            return True
-        return False
-
-
-class StubBreakpoint(gdb.Breakpoint):
-    """Create a breakpoint to permanently disable a call (fork/alarm/signal/etc.)."""
-    def __init__(self, func, retval):
-        super().__init__(func, gdb.BP_BREAKPOINT, internal=False)
-        self.func = func
-        self.retval = retval
-
-        m = "All calls to '{:s}' will be skipped".format(self.func)
-        if self.retval is not None:
-            m += " (with return value set to {:#x})".format(self.retval)
-        info(m)
-        return
-
-    def stop(self):
-        m = "Ignoring call to '{:s}' ".format(self.func)
-        m += "(setting return value to {:#x})".format(self.retval)
-        gdb.execute("return (unsigned int){:#x}".format(self.retval))
-        ok(m)
-        return False
-
-
-class ChangePermissionBreakpoint(gdb.Breakpoint):
-    """When hit, this temporary breakpoint will restore the original code, and position
-    $pc correctly."""
-    def __init__(self, loc, code, pc, regs):
-        super().__init__(loc, gdb.BP_BREAKPOINT, internal=True, temporary=True)
-        self.original_code = code
-        self.original_pc = pc
-        self.original_regs = regs
-        return
-
-    def stop(self):
-        info("Restoring original context")
-        write_memory(self.original_pc, self.original_code)
-        info("Restoring registers")
-        for k, v in self.original_regs.items():
-            try:
-                gdb.execute("set {:s} = {:#x}".format(k, v))
-            except gdb.error:
-                pass
-        return True
-
-
-class TraceMallocBreakpoint(gdb.Breakpoint):
-    """Track allocations done with malloc() or calloc()."""
-    def __init__(self, name):
-        super().__init__(name, gdb.BP_BREAKPOINT, internal=True)
-        self.silent = True
-        self.name = name
-        return
-
-    def stop(self):
-        # The first call to malloc calls malloc twice internally, like malloc-> malloc_hook_ini-> malloc.
-        # You need to prevent the breakpoint from being set twice.
-        if hasattr(self, "retbp"):
-            # The retbp is `gdb.FinishBreakpoint`, not `gdb.Breakpoint`.
-            # so it is deleted automatically if out of scope, so it must be checked by is_valid().
-            if self.retbp.is_valid() and self.retbp.enabled:
-                return False
-        reset_gef_caches()
-        _, size = current_arch.get_ith_parameter(0)
-        self.retbp = TraceMallocRetBreakpoint(size, self.name)
-        return False
-
-
-class TraceMallocRetBreakpoint(gdb.FinishBreakpoint):
-    """Internal temporary breakpoint to retrieve the return value of malloc()."""
-    def __init__(self, size, name):
-        super().__init__(gdb.newest_frame(), internal=True)
-        self.size = size
-        self.name = name
-        self.silent = True
-        return
-
-    def stop(self):
-        global __heap_uaf_watchpoints__, __heap_freed_list__, __heap_allocated_list__
-
-        if self.return_value:
-            loc = int(self.return_value)
-        else:
-            loc = parse_address(current_arch.return_register)
-
-        size = self.size
-        ok("{} - {}({})={:#x}".format(Color.colorify("Heap-Analysis", "bold yellow"), self.name, size, loc))
-        check_heap_overlap = get_gef_setting("heap-analysis-helper.check_heap_overlap")
-
-        # pop from free-ed list if it was in it
-        if __heap_freed_list__:
-            idx = 0
-            for item in __heap_freed_list__:
-                addr = item[0]
-                if addr == loc:
-                    __heap_freed_list__.remove(item)
-                    continue
-                idx += 1
-
-        # pop from uaf watchlist
-        if __heap_uaf_watchpoints__:
-            idx = 0
-            for wp in __heap_uaf_watchpoints__:
-                wp_addr = wp.address
-                if loc <= wp_addr < loc + size:
-                    __heap_uaf_watchpoints__.remove(wp)
-                    wp.enabled = False
-                    continue
-                idx += 1
-
-        item = (loc, size)
-
-        if check_heap_overlap:
-            # seek all the currently allocated chunks, read their effective size and check for overlap
-            msg = []
-            align = get_memory_alignment()
-            for chunk_addr, _ in __heap_allocated_list__:
-                current_chunk = GlibcChunk(chunk_addr)
-                current_chunk_size = current_chunk.get_chunk_size()
-
-                if not (chunk_addr <= loc < chunk_addr + current_chunk_size):
-                    continue
-                offset = loc - chunk_addr - 2 * align
-                if offset < 0:
-                    continue # false positive, discard
-
-                msg.append(Color.colorify("Heap-Analysis", "bold yellow"))
-                msg.append("Possible heap overlap detected")
-                fmt = "Reason {} new allocated chunk {:#x} (of size {:d}) overlaps in-used chunk {:#x} (of size {:#x})"
-                msg.append(fmt.format(RIGHT_ARROW, loc, size, chunk_addr, current_chunk_size))
-                msg.append("Writing {0:d} bytes from {1:#x} will reach chunk {2:#x}".format(offset, chunk_addr, loc))
-                msg.append("Payload example for chunk {1:#x} (to overwrite {0:#x} headers):".format(loc, chunk_addr))
-                msg.append("  data = 'A'*{0:d} + 'B'*{1:d} + 'C'*{1:d}".format(offset, align))
-                push_context_message("warn", "\n".join(msg))
-                return True
-
-        # add it to alloc-ed list
-        __heap_allocated_list__.append(item)
-        return False
-
-
-class TraceReallocBreakpoint(gdb.Breakpoint):
-    """Track re-allocations done with realloc()."""
-    def __init__(self):
-        super().__init__("__libc_realloc", gdb.BP_BREAKPOINT, internal=True)
-        self.silent = True
-        return
-
-    def stop(self):
-        _, ptr = current_arch.get_ith_parameter(0)
-        _, size = current_arch.get_ith_parameter(1)
-        self.retbp = TraceReallocRetBreakpoint(ptr, size)
-        return False
-
-
-class TraceReallocRetBreakpoint(gdb.FinishBreakpoint):
-    """Internal temporary breakpoint to retrieve the return value of realloc()."""
-    def __init__(self, ptr, size):
-        super().__init__(gdb.newest_frame(), internal=True)
-        self.ptr = ptr
-        self.size = size
-        self.silent = True
-        return
-
-    def stop(self):
-        global __heap_uaf_watchpoints__, __heap_freed_list__, __heap_allocated_list__
-
-        if self.return_value:
-            newloc = int(self.return_value)
-        else:
-            newloc = parse_address(current_arch.return_register)
-
-        if newloc != self.ptr:
-            msg = Color.redify("{:#x} (return another chunk)".format(newloc))
-        else:
-            msg = Color.greenify("{:#x} (return same chunk)".format(newloc))
-        args = [
-            Color.colorify("Heap-Analysis", "bold yellow"),
-            self.ptr, self.size, msg,
-        ]
-        ok("{} - realloc({:#x}, {})={}".format(*args))
-
-        item = (newloc, self.size)
-
-        try:
-            # check if item was in alloc-ed list
-            idx = [x for x, y in __heap_allocated_list__].index(self.ptr)
-            # if so pop it out
-            item = __heap_allocated_list__.pop(idx)
-        except ValueError:
-            warn("Chunk {:#x} was not in tracking list".format(self.ptr))
-        finally:
-            # add new item to alloc-ed list
-            __heap_allocated_list__.append(item)
-
-        return False
-
-
-class TraceFreeBreakpoint(gdb.Breakpoint):
-    """Track calls to free() and attempts to detect inconsistencies."""
-    def __init__(self):
-        super().__init__("__libc_free", gdb.BP_BREAKPOINT, internal=True)
-        self.silent = True
-        return
-
-    def stop(self):
-        reset_gef_caches()
-        _, addr = current_arch.get_ith_parameter(0)
-        msg = []
-        check_free_null = get_gef_setting("heap-analysis-helper.check_free_null")
-        check_double_free = get_gef_setting("heap-analysis-helper.check_double_free")
-        check_weird_free = get_gef_setting("heap-analysis-helper.check_weird_free")
-        check_uaf = get_gef_setting("heap-analysis-helper.check_uaf")
-
-        ok("{} - free({:#x})".format(Color.colorify("Heap-Analysis", "bold yellow"), addr))
-        if addr == 0:
-            if check_free_null:
-                msg.append(Color.colorify("Heap-Analysis", "bold yellow"))
-                msg.append("Attempting to free(NULL) at {:#x}".format(current_arch.pc))
-                msg.append("Reason: if NULL page is allocatable, this can lead to code execution.")
-                push_context_message("warn", "\n".join(msg))
-                return True
-            return False
-
-        if addr in [x for (x, y) in __heap_freed_list__]:
-            if check_double_free:
-                msg.append(Color.colorify("Heap-Analysis", "bold yellow"))
-                fmt = "Double-free detected {} free({:#x}) is called at {:#x} but is already in the free-ed list"
-                msg.append(fmt.format(RIGHT_ARROW, addr, current_arch.pc))
-                msg.append("Execution will likely crash...")
-                push_context_message("warn", "\n".join(msg))
-                return True
-            return False
-
-        # if here, no error
-        # 1. move alloc-ed item to free list
-        try:
-            # pop from alloc-ed list
-            idx = [x for x, y in __heap_allocated_list__].index(addr)
-            item = __heap_allocated_list__.pop(idx)
-
-        except ValueError:
-            if check_weird_free:
-                msg.append(Color.colorify("Heap-Analysis", "bold yellow"))
-                msg.append("Heap inconsistency detected:")
-                msg.append("Attempting to free an unknown value: {:#x}".format(addr))
-                push_context_message("warn", "\n".join(msg))
-                return True
-            return False
-
-        # 2. add it to free-ed list
-        __heap_freed_list__.append(item)
-
-        self.retbp = None
-        if check_uaf:
-            # 3. (opt.) add a watchpoint on pointer
-            self.retbp = TraceFreeRetBreakpoint(addr)
-        return False
-
-
-class TraceFreeRetBreakpoint(gdb.FinishBreakpoint):
-    """Internal temporary breakpoint to track free()d values."""
-    def __init__(self, addr):
-        super().__init__(gdb.newest_frame(), internal=True)
-        self.silent = True
-        self.addr = addr
-        return
-
-    def stop(self):
-        reset_gef_caches()
-        wp = UafWatchpoint(self.addr)
-        __heap_uaf_watchpoints__.append(wp)
-        return False
-
-
-class UafWatchpoint(gdb.Breakpoint):
-    """Custom watchpoints set TraceFreeBreakpoint() to monitor free()d pointers being used."""
-    def __init__(self, addr):
-        super().__init__("*{:#x}".format(addr), gdb.BP_WATCHPOINT, internal=True)
-        self.address = addr
-        self.silent = True
-        self.enabled = True
-        return
-
-    def stop(self):
-        """If this method is triggered, we likely have a UaF. Break the execution and report it."""
-        reset_gef_caches()
-        try:
-            frame = gdb.selected_frame()
-        except Exception:
-            return False
-        if frame.name() in ("_int_malloc", "malloc_consolidate", "__libc_calloc", ):
-            return False
-
-        # software watchpoints stop after the next statement (see
-        # https://sourceware.org/gdb/onlinedocs/gdb/Set-Watchpoints.html)
-        pc = gdb_get_nth_previous_instruction_address(current_arch.pc, 2)
-        insn = get_insn()
-        msg = []
-        msg.append(Color.colorify("Heap-Analysis", "bold yellow"))
-        fmt = "Possible Use-after-Free in '{:s}': pointer {:#x} was freed, but is attempted to be used at {:#x}"
-        msg.append(fmt.format(get_filepath(), self.address, pc))
-        fmt = "{:#x}   {:s} {:s}"
-        msg.append(fmt.format(insn.address, insn.mnemonic, Color.yellowify(", ".join(insn.operands))))
-        push_context_message("warn", "\n".join(msg))
-        return True
-
-
-class EntryBreakBreakpoint(gdb.Breakpoint):
-    """Breakpoint used internally to stop execution at the most convenient entry point."""
-    def __init__(self, location):
-        super().__init__(location, gdb.BP_BREAKPOINT, internal=True, temporary=True)
-        self.silent = True
-        return
-
-    def stop(self):
-        reset_gef_caches()
-        return True
-
-
-class NamedBreakpoint(gdb.Breakpoint):
-    """Breakpoint which shows a specified name, when hit."""
-    def __init__(self, location, name):
-        super().__init__(location, gdb.BP_BREAKPOINT, internal=False, temporary=False)
-        self.name = name
-        self.loc = location
-
-        return
-
-    def stop(self):
-        reset_gef_caches()
-        msg = "Hit breakpoint {} ({})".format(self.loc, Color.colorify(self.name, "bold red"))
-        push_context_message("info", msg)
-        return True
-
-
-class SecondBreakpoint(gdb.Breakpoint):
-    """Breakpoint which sets a 2nd breakpoint, when hit."""
-    def __init__(self, loc, second_loc):
-        self.second_loc = second_loc
-        super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=True, temporary=True)
-        return
-
-    def stop(self):
-        reset_gef_caches()
-        gdb.Breakpoint("*{:#x}".format(self.second_loc), gdb.BP_BREAKPOINT, internal=True, temporary=True)
-        return True
-
-
-class MessageBreakpoint(gdb.Breakpoint):
-    """Breakpoint which print user defined message."""
-    def __init__(self, loc, msg):
-        super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=False, temporary=False)
-        self.loc = loc
-        self.msg = msg
-        return
-
-    def stop(self):
-        reset_gef_caches()
-        msg = re.sub(r"{([^}]+):", '{parse_address("\\1"):', self.msg)
-        msg = eval(f'f"""{msg}"""')
-        gef_print("{:#x}: {}".format(self.loc, msg))
-        return False
-
 
 #
 # Commands
@@ -11936,6 +11538,19 @@ class HighlightRemoveCommand(GenericCommand):
         self.dont_repeat()
         __highlight_table__.pop(args.match, None)
         return
+
+
+class SecondBreakpoint(gdb.Breakpoint):
+    """Breakpoint which sets a 2nd breakpoint, when hit."""
+    def __init__(self, loc, second_loc):
+        self.second_loc = second_loc
+        super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=True, temporary=True)
+        return
+
+    def stop(self):
+        reset_gef_caches()
+        gdb.Breakpoint("*{:#x}".format(self.second_loc), gdb.BP_BREAKPOINT, internal=True, temporary=True)
+        return True
 
 
 @register_command
@@ -14276,6 +13891,27 @@ class EditFlagsCommand(GenericCommand):
         return
 
 
+class MprotectBreakpoint(gdb.Breakpoint):
+    """When hit, this temporary breakpoint will restore the original code, and position $pc correctly."""
+    def __init__(self, loc, code, pc, regs):
+        super().__init__(loc, gdb.BP_BREAKPOINT, internal=True, temporary=True)
+        self.original_code = code
+        self.original_pc = pc
+        self.original_regs = regs
+        return
+
+    def stop(self):
+        info("Restoring original context")
+        write_memory(self.original_pc, self.original_code)
+        info("Restoring registers")
+        for k, v in self.original_regs.items():
+            try:
+                gdb.execute("set {:s} = {:#x}".format(k, v))
+            except gdb.error:
+                pass
+        return True
+
+
 @register_command
 class MprotectCommand(GenericCommand):
     """Change a page permission. By default, it will change it to RWX."""
@@ -14359,7 +13995,7 @@ class MprotectCommand(GenericCommand):
 
         bp_loc = "*{:#x}".format(original_pc + len(stub))
         info("Setting a restore breakpoint at {:s}".format(bp_loc))
-        ChangePermissionBreakpoint(bp_loc, original_code, original_pc, original_regs)
+        MprotectBreakpoint(bp_loc, original_code, original_pc, original_regs)
 
         info("Overwriting current memory at {:#x} ({:d} bytes)".format(location, len(stub)))
         write_memory(original_pc, stub)
@@ -15620,6 +15256,27 @@ class UnicornEmulateCommand(GenericCommand):
         if not kwargs["to_file"]:
             os.unlink(tmp_filename)
         return
+
+
+class StubBreakpoint(gdb.Breakpoint):
+    """Create a breakpoint to permanently disable a call (fork/alarm/signal/etc.)."""
+    def __init__(self, func, retval):
+        super().__init__(func, gdb.BP_BREAKPOINT, internal=False)
+        self.func = func
+        self.retval = retval
+
+        m = "All calls to '{:s}' will be skipped".format(self.func)
+        if self.retval is not None:
+            m += " (with return value set to {:#x})".format(self.retval)
+        info(m)
+        return
+
+    def stop(self):
+        m = "Ignoring call to '{:s}' ".format(self.func)
+        m += "(setting return value to {:#x})".format(self.retval)
+        gdb.execute("return (unsigned int){:#x}".format(self.retval))
+        ok(m)
+        return False
 
 
 @register_command
@@ -21102,6 +20759,18 @@ class MainBreakCommand(GenericCommand):
         return
 
 
+class EntryBreakBreakpoint(gdb.Breakpoint):
+    """Breakpoint used internally to stop execution at the most convenient entry point."""
+    def __init__(self, location):
+        super().__init__(location, gdb.BP_BREAKPOINT, internal=True, temporary=True)
+        self.silent = True
+        return
+
+    def stop(self):
+        reset_gef_caches()
+        return True
+
+
 @register_command
 class EntryPointBreakCommand(GenericCommand):
     """Try to find best entry point and set a temporary breakpoint on it."""
@@ -21200,6 +20869,22 @@ class EntryPointBreakCommand(GenericCommand):
         return
 
 
+class NamedBreakpoint(gdb.Breakpoint):
+    """Breakpoint which shows a specified name, when hit."""
+    def __init__(self, location, name):
+        super().__init__(location, gdb.BP_BREAKPOINT, internal=False, temporary=False)
+        self.name = name
+        self.loc = location
+
+        return
+
+    def stop(self):
+        reset_gef_caches()
+        msg = "Hit breakpoint {} ({})".format(self.loc, Color.colorify(self.name, "bold red"))
+        push_context_message("info", msg)
+        return True
+
+
 @register_command
 class NamedBreakpointCommand(GenericCommand):
     """Set a breakpoint and assigns a name to it, which will be shown, when it's hit."""
@@ -21226,6 +20911,22 @@ class NamedBreakpointCommand(GenericCommand):
             location = "*{:#x}".format(current_arch.pc)
         NamedBreakpoint(location, args.name)
         return
+
+
+class MessageBreakpoint(gdb.Breakpoint):
+    """Breakpoint which print user defined message."""
+    def __init__(self, loc, msg):
+        super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=False, temporary=False)
+        self.loc = loc
+        self.msg = msg
+        return
+
+    def stop(self):
+        reset_gef_caches()
+        msg = re.sub(r"{([^}]+):", '{parse_address("\\1"):', self.msg)
+        msg = eval(f'f"""{msg}"""')
+        gef_print("{:#x}: {}".format(self.loc, msg))
+        return False
 
 
 @register_command
@@ -25934,6 +25635,38 @@ class GotCommand(GenericCommand):
         return
 
 
+class FormatStringBreakpoint(gdb.Breakpoint):
+    """Inspect stack for format string."""
+    def __init__(self, spec, num_args):
+        super().__init__(spec, type=gdb.BP_BREAKPOINT, internal=False)
+        self.num_args = num_args
+        self.enabled = True
+        return
+
+    def stop(self):
+        reset_gef_caches()
+        msg = []
+        ptr, addr = current_arch.get_ith_parameter(self.num_args)
+        addr = lookup_address(addr)
+
+        if not addr.valid:
+            return False
+
+        if addr.section.permission.value & Permission.WRITE:
+            content = read_cstring_from_memory(addr.value)
+            content = gef_pystring(str2bytes(content))
+            name = addr.info.name if addr.info else addr.section.path
+            msg.append(Color.colorify("Format string helper", "bold yellow"))
+            m = "Possible insecure format string: {:s}('{:s}' {:s} {:#x}: '{:s}')"
+            msg.append(m.format(self.location, ptr, RIGHT_ARROW, addr.value, content))
+            m = "Reason: Call to '{:s}()' with format string argument in position "
+            m += "#{:d} is in page {:#x} ({:s}) that has write permission"
+            msg.append(m.format(self.location, self.num_args, addr.section.page_start, name))
+            push_context_message("warn", "\n".join(msg))
+            return True
+        return False
+
+
 @register_command
 class FormatStringSearchCommand(GenericCommand):
     """The helper to search exploitable format-string."""
@@ -26040,6 +25773,268 @@ class FormatStringSearchCommand(GenericCommand):
 
         ok("Enabled {:d}/{:d} FormatStringBreakpoint".format(bp_count, len(dangerous_functions)))
         return
+
+
+class TraceMallocBreakpoint(gdb.Breakpoint):
+    """Track allocations done with malloc() or calloc()."""
+    def __init__(self, name):
+        super().__init__(name, gdb.BP_BREAKPOINT, internal=True)
+        self.silent = True
+        self.name = name
+        return
+
+    def stop(self):
+        # The first call to malloc calls malloc twice internally, like malloc-> malloc_hook_ini-> malloc.
+        # You need to prevent the breakpoint from being set twice.
+        if hasattr(self, "retbp"):
+            # The retbp is `gdb.FinishBreakpoint`, not `gdb.Breakpoint`.
+            # so it is deleted automatically if out of scope, so it must be checked by is_valid().
+            if self.retbp.is_valid() and self.retbp.enabled:
+                return False
+        reset_gef_caches()
+        _, size = current_arch.get_ith_parameter(0)
+        self.retbp = TraceMallocRetBreakpoint(size, self.name)
+        return False
+
+
+class TraceMallocRetBreakpoint(gdb.FinishBreakpoint):
+    """Internal temporary breakpoint to retrieve the return value of malloc()."""
+    def __init__(self, size, name):
+        super().__init__(gdb.newest_frame(), internal=True)
+        self.size = size
+        self.name = name
+        self.silent = True
+        return
+
+    def stop(self):
+        global __heap_uaf_watchpoints__, __heap_freed_list__, __heap_allocated_list__
+
+        if self.return_value:
+            loc = int(self.return_value)
+        else:
+            loc = parse_address(current_arch.return_register)
+
+        size = self.size
+        ok("{} - {}({})={:#x}".format(Color.colorify("Heap-Analysis", "bold yellow"), self.name, size, loc))
+        check_heap_overlap = get_gef_setting("heap-analysis-helper.check_heap_overlap")
+
+        # pop from free-ed list if it was in it
+        if __heap_freed_list__:
+            idx = 0
+            for item in __heap_freed_list__:
+                addr = item[0]
+                if addr == loc:
+                    __heap_freed_list__.remove(item)
+                    continue
+                idx += 1
+
+        # pop from uaf watchlist
+        if __heap_uaf_watchpoints__:
+            idx = 0
+            for wp in __heap_uaf_watchpoints__:
+                wp_addr = wp.address
+                if loc <= wp_addr < loc + size:
+                    __heap_uaf_watchpoints__.remove(wp)
+                    wp.enabled = False
+                    continue
+                idx += 1
+
+        item = (loc, size)
+
+        if check_heap_overlap:
+            # seek all the currently allocated chunks, read their effective size and check for overlap
+            msg = []
+            align = get_memory_alignment()
+            for chunk_addr, _ in __heap_allocated_list__:
+                current_chunk = GlibcChunk(chunk_addr)
+                current_chunk_size = current_chunk.get_chunk_size()
+
+                if not (chunk_addr <= loc < chunk_addr + current_chunk_size):
+                    continue
+                offset = loc - chunk_addr - 2 * align
+                if offset < 0:
+                    continue # false positive, discard
+
+                msg.append(Color.colorify("Heap-Analysis", "bold yellow"))
+                msg.append("Possible heap overlap detected")
+                fmt = "Reason {} new allocated chunk {:#x} (of size {:d}) overlaps in-used chunk {:#x} (of size {:#x})"
+                msg.append(fmt.format(RIGHT_ARROW, loc, size, chunk_addr, current_chunk_size))
+                msg.append("Writing {0:d} bytes from {1:#x} will reach chunk {2:#x}".format(offset, chunk_addr, loc))
+                msg.append("Payload example for chunk {1:#x} (to overwrite {0:#x} headers):".format(loc, chunk_addr))
+                msg.append("  data = 'A'*{0:d} + 'B'*{1:d} + 'C'*{1:d}".format(offset, align))
+                push_context_message("warn", "\n".join(msg))
+                return True
+
+        # add it to alloc-ed list
+        __heap_allocated_list__.append(item)
+        return False
+
+
+class TraceReallocBreakpoint(gdb.Breakpoint):
+    """Track re-allocations done with realloc()."""
+    def __init__(self):
+        super().__init__("__libc_realloc", gdb.BP_BREAKPOINT, internal=True)
+        self.silent = True
+        return
+
+    def stop(self):
+        _, ptr = current_arch.get_ith_parameter(0)
+        _, size = current_arch.get_ith_parameter(1)
+        self.retbp = TraceReallocRetBreakpoint(ptr, size)
+        return False
+
+
+class TraceReallocRetBreakpoint(gdb.FinishBreakpoint):
+    """Internal temporary breakpoint to retrieve the return value of realloc()."""
+    def __init__(self, ptr, size):
+        super().__init__(gdb.newest_frame(), internal=True)
+        self.ptr = ptr
+        self.size = size
+        self.silent = True
+        return
+
+    def stop(self):
+        global __heap_uaf_watchpoints__, __heap_freed_list__, __heap_allocated_list__
+
+        if self.return_value:
+            newloc = int(self.return_value)
+        else:
+            newloc = parse_address(current_arch.return_register)
+
+        if newloc != self.ptr:
+            msg = Color.redify("{:#x} (return another chunk)".format(newloc))
+        else:
+            msg = Color.greenify("{:#x} (return same chunk)".format(newloc))
+        args = [
+            Color.colorify("Heap-Analysis", "bold yellow"),
+            self.ptr, self.size, msg,
+        ]
+        ok("{} - realloc({:#x}, {})={}".format(*args))
+
+        item = (newloc, self.size)
+
+        try:
+            # check if item was in alloc-ed list
+            idx = [x for x, y in __heap_allocated_list__].index(self.ptr)
+            # if so pop it out
+            item = __heap_allocated_list__.pop(idx)
+        except ValueError:
+            warn("Chunk {:#x} was not in tracking list".format(self.ptr))
+        finally:
+            # add new item to alloc-ed list
+            __heap_allocated_list__.append(item)
+
+        return False
+
+
+class TraceFreeBreakpoint(gdb.Breakpoint):
+    """Track calls to free() and attempts to detect inconsistencies."""
+    def __init__(self):
+        super().__init__("__libc_free", gdb.BP_BREAKPOINT, internal=True)
+        self.silent = True
+        return
+
+    def stop(self):
+        reset_gef_caches()
+        _, addr = current_arch.get_ith_parameter(0)
+        msg = []
+        check_free_null = get_gef_setting("heap-analysis-helper.check_free_null")
+        check_double_free = get_gef_setting("heap-analysis-helper.check_double_free")
+        check_weird_free = get_gef_setting("heap-analysis-helper.check_weird_free")
+        check_uaf = get_gef_setting("heap-analysis-helper.check_uaf")
+
+        ok("{} - free({:#x})".format(Color.colorify("Heap-Analysis", "bold yellow"), addr))
+        if addr == 0:
+            if check_free_null:
+                msg.append(Color.colorify("Heap-Analysis", "bold yellow"))
+                msg.append("Attempting to free(NULL) at {:#x}".format(current_arch.pc))
+                msg.append("Reason: if NULL page is allocatable, this can lead to code execution.")
+                push_context_message("warn", "\n".join(msg))
+                return True
+            return False
+
+        if addr in [x for (x, y) in __heap_freed_list__]:
+            if check_double_free:
+                msg.append(Color.colorify("Heap-Analysis", "bold yellow"))
+                fmt = "Double-free detected {} free({:#x}) is called at {:#x} but is already in the free-ed list"
+                msg.append(fmt.format(RIGHT_ARROW, addr, current_arch.pc))
+                msg.append("Execution will likely crash...")
+                push_context_message("warn", "\n".join(msg))
+                return True
+            return False
+
+        # if here, no error
+        # 1. move alloc-ed item to free list
+        try:
+            # pop from alloc-ed list
+            idx = [x for x, y in __heap_allocated_list__].index(addr)
+            item = __heap_allocated_list__.pop(idx)
+
+        except ValueError:
+            if check_weird_free:
+                msg.append(Color.colorify("Heap-Analysis", "bold yellow"))
+                msg.append("Heap inconsistency detected:")
+                msg.append("Attempting to free an unknown value: {:#x}".format(addr))
+                push_context_message("warn", "\n".join(msg))
+                return True
+            return False
+
+        # 2. add it to free-ed list
+        __heap_freed_list__.append(item)
+
+        self.retbp = None
+        if check_uaf:
+            # 3. (opt.) add a watchpoint on pointer
+            self.retbp = TraceFreeRetBreakpoint(addr)
+        return False
+
+
+class TraceFreeRetBreakpoint(gdb.FinishBreakpoint):
+    """Internal temporary breakpoint to track free()d values."""
+    def __init__(self, addr):
+        super().__init__(gdb.newest_frame(), internal=True)
+        self.silent = True
+        self.addr = addr
+        return
+
+    def stop(self):
+        reset_gef_caches()
+        wp = UafWatchpoint(self.addr)
+        __heap_uaf_watchpoints__.append(wp)
+        return False
+
+
+class UafWatchpoint(gdb.Breakpoint):
+    """Custom watchpoints set TraceFreeBreakpoint() to monitor free()d pointers being used."""
+    def __init__(self, addr):
+        super().__init__("*{:#x}".format(addr), gdb.BP_WATCHPOINT, internal=True)
+        self.address = addr
+        self.silent = True
+        self.enabled = True
+        return
+
+    def stop(self):
+        """If this method is triggered, we likely have a UaF. Break the execution and report it."""
+        reset_gef_caches()
+        try:
+            frame = gdb.selected_frame()
+        except Exception:
+            return False
+        if frame.name() in ("_int_malloc", "malloc_consolidate", "__libc_calloc", ):
+            return False
+
+        # software watchpoints stop after the next statement (see
+        # https://sourceware.org/gdb/onlinedocs/gdb/Set-Watchpoints.html)
+        pc = gdb_get_nth_previous_instruction_address(current_arch.pc, 2)
+        insn = get_insn()
+        msg = []
+        msg.append(Color.colorify("Heap-Analysis", "bold yellow"))
+        fmt = "Possible Use-after-Free in '{:s}': pointer {:#x} was freed, but is attempted to be used at {:#x}"
+        msg.append(fmt.format(get_filepath(), self.address, pc))
+        fmt = "{:#x}   {:s} {:s}"
+        msg.append(fmt.format(insn.address, insn.mnemonic, Color.yellowify(", ".join(insn.operands))))
+        push_context_message("warn", "\n".join(msg))
+        return True
 
 
 @register_command
