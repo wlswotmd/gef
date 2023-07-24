@@ -21,14 +21,14 @@
 #   * sh4
 #   * m68k
 #   * alpha
-#   * hppa (parisc)
+#   * hppa32 (parisc)
 #   * or1k (openrisc)
 #   * nios2
 #   * microblaze
 #   * xtensa
 #   * cris
 #   * loongarch64
-#   * arc
+#   * arc32
 # See README.md for details.
 #
 # To start: in gdb, type `source /path/to/gef.py`
@@ -1406,7 +1406,7 @@ class Elf:
         for i in range(self.e_shnum):
             try:
                 self.shdrs.append(Shdr(self, self.e_shoff + self.e_shentsize * i))
-            except Exception:
+            except gdb.MemoryError:
                 # Perspective failure. Probably it occurs when parsing ELF loaded into memory.
                 # Even if the ELF is loaded, the section header is not loaded. Therefore, it is ignored.
                 self.shdrs = []
@@ -1687,11 +1687,11 @@ class Shdr:
 
 
 RE_SPLIT_LOCATION = re.compile(r"<(.+)\+(\d+)>")
-RE_SPLIT_LAST_OPRAND_X86_64 = re.compile(r"(.*?)\s+(#.+)$")
-RE_SPLIT_LAST_OPRAND_ARM64 = re.compile(r"//.+$")
-RE_SPLIT_LAST_OPRAND_ARM32 = re.compile(r";.+$")
-RE_SPLIT_LAST_OPRAND_MICROBLAZE = re.compile(r"//.+$")
-RE_SPLIT_LAST_OPRAND_LOONGARCH64 = re.compile(r"(# .*)$")
+RE_SPLIT_LAST_OPERAND_X86_64 = re.compile(r"(.*?)\s+(#.+)$")
+RE_SPLIT_LAST_OPERAND_ARM64 = re.compile(r"//.+$")
+RE_SPLIT_LAST_OPERAND_ARM32 = re.compile(r";.+$")
+RE_SPLIT_LAST_OPERAND_MICROBLAZE = re.compile(r"//.+$")
+RE_SPLIT_LAST_OPERAND_LOONGARCH64 = re.compile(r"(# .*)$")
 RE_SPLIT_ELEM = re.compile(r"([*%\[\](): ]|(?<![#@%])(?<=.)[-+]|<.+?>)")
 RE_IS_DIGIT_COMMENT = re.compile(r"#?-?(0x[0-9a-f]+|\d+)")
 RE_SPLIT_SYMBOL = re.compile(r"(.*)<(.+?)>(.*)$")
@@ -1789,28 +1789,28 @@ class Instruction:
         if len(operands) > 0:
             last_operands = operands[-1]
             if is_x86_64():
-                r = RE_SPLIT_LAST_OPRAND_X86_64.match(last_operands) # r"(.*?)\s+(#.+)$"
+                r = RE_SPLIT_LAST_OPERAND_X86_64.match(last_operands) # r"(.*?)\s+(#.+)$"
                 if r:
                     last_operands = r.group(1)
                     additional_1 = r.group(2)
                     operands = operands[:-1] + [last_operands]
             elif is_arm64():
-                r = RE_SPLIT_LAST_OPRAND_ARM64.match(last_operands) # r"//.+$"
+                r = RE_SPLIT_LAST_OPERAND_ARM64.match(last_operands) # r"//.+$"
                 if r:
                     additional_1 = last_operands
                     operands = operands[:-1]
             elif is_arm32():
-                r = RE_SPLIT_LAST_OPRAND_ARM32.match(last_operands) # r";.+$"
+                r = RE_SPLIT_LAST_OPERAND_ARM32.match(last_operands) # r";.+$"
                 if r:
                     additional_1 = last_operands
                     operands = operands[:-1]
             elif is_microblaze():
-                r = RE_SPLIT_LAST_OPRAND_MICROBLAZE.match(last_operands) # r"//.+$"
+                r = RE_SPLIT_LAST_OPERAND_MICROBLAZE.match(last_operands) # r"//.+$"
                 if r:
                     additional_1 = last_operands
                     operands = operands[:-1]
             elif is_loongarch64():
-                r = RE_SPLIT_LAST_OPRAND_LOONGARCH64.match(last_operands) # r"(# .*)$"
+                r = RE_SPLIT_LAST_OPERAND_LOONGARCH64.match(last_operands) # r"(# .*)$"
                 if r:
                     additional_1 = r.group(1)
                     operands = operands[:-1]
@@ -2258,7 +2258,7 @@ class GlibcArena:
             malloc_state_t = cached_lookup_type("struct malloc_state")
             self.__arena = arena.cast(malloc_state_t)
             self.__size = malloc_state_t.sizeof
-        except Exception:
+        except RuntimeError:
             self.__arena = MallocStateStruct(self.__addr)
             self.__size = self.__arena.struct_size
 
@@ -2445,7 +2445,7 @@ class GlibcArena:
             next_arena = GlibcArena(addr_next)
             str(next_arena) # check memory error
             return next_arena
-        except Exception:
+        except gdb.error:
             return None
 
     def __str__(self):
@@ -2573,7 +2573,7 @@ def get_arena(address):
         arena = GlibcArena(address)
         str(arena) # check memory error
         return arena
-    except Exception:
+    except (OSError, AttributeError, gdb.MemoryError):
         err("Failed to get the arena, heap commands may not work properly.")
         return None
 
@@ -3149,6 +3149,9 @@ def __gdb_get_location(address):
     """Retrieve the location of the `address` argument from the symbol table.
     Return a tuple with the name and offset if found, None otherwise."""
 
+    if address is None:
+        return None
+
     # fast path available gdb 13.x.
     # Don't use cris because it gives a warning.
     if GDB_VERSION >= (13, 1) and not is_cris():
@@ -3189,8 +3192,8 @@ def get_symbol_string(addr, nosymbol_string=""):
             addr = int(addr, 16)
         ret = gdb_get_location(addr)
         if ret is None:
-            raise
-    except Exception:
+            return nosymbol_string
+    except (ValueError, gdb.error):
         return nosymbol_string
 
     sym_name, sym_offset = ret[0], ret[1]
@@ -3291,7 +3294,7 @@ def gdb_disassemble(start_pc, **kwargs):
     try:
         arch = gdb.selected_frame().architecture()
         __gef_prev_arch__ = arch
-    except Exception:
+    except gdb.error:
         # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
         # At this time arch cannot be resolved, but if it was successful before, it will be used.
         if __gef_prev_arch__ is None:
@@ -3430,7 +3433,7 @@ def gef_disassemble(addr, nb_insn, nb_prev=0):
                     yield insn
                 done = True
                 break
-            except Exception:
+            except gdb.error:
                 pass
 
     for insn in gdb_disassemble(addr, count=nb_insn):
@@ -3766,7 +3769,7 @@ def get_arch():
         try:
             arch = gdb.selected_frame().architecture()
             return arch.name()
-        except Exception:
+        except gdb.error:
             # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
             # Resolve by moving to the slow path.
             pass
@@ -4157,7 +4160,7 @@ class RISCV(Architecture):
                 ra = get_register("$ra")
             elif frame.older():
                 ra = frame.older().pc()
-        except Exception:
+        except gdb.error:
             pass
         return ra
 
@@ -4282,11 +4285,11 @@ class ARM(Architecture):
 
     try:
         gdb.execute("info registers xpsr", to_string=True)
-        _mode = "cortex-m"
-    except Exception:
-        _mode = "normal"
+        _mode = "Cortex-M"
+    except gdb.error:
+        _mode = "Cortex-A"
 
-    if _mode == "normal":
+    if _mode == "Cortex-A":
         all_registers = [
             "$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7",
             "$r8", "$r9", "$r10", "$r11", "$r12", "$sp", "$lr", "$pc",
@@ -4298,7 +4301,7 @@ class ARM(Architecture):
         }
         flag_register = "$cpsr"
         thumb_bit = 5
-    elif _mode == "cortex-m":
+    elif _mode == "Cortex-M":
         all_registers = [
             "$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7",
             "$r8", "$r9", "$r10", "$r11", "$r12", "$sp", "$lr", "$pc",
@@ -4311,8 +4314,6 @@ class ARM(Architecture):
         }
         flag_register = "$xpsr"
         thumb_bit = 24
-    else:
-        raise
 
     flags_table = {
         31: "negative",
@@ -4580,7 +4581,7 @@ class ARM(Architecture):
                     return get_register("$lr")
             elif frame.older():
                 ra = frame.older().pc()
-        except Exception:
+        except gdb.error:
             pass
         return ra
 
@@ -4853,7 +4854,7 @@ class X86(Architecture):
                 ra = to_unsigned_long(dereference(current_arch.sp))
             if frame.older():
                 ra = frame.older().pc()
-        except Exception:
+        except gdb.error:
             pass
         return ra
 
@@ -5105,7 +5106,7 @@ class PPC(Architecture):
                 ra = get_register("$lr")
             elif frame.older():
                 ra = frame.older().pc()
-        except Exception:
+        except gdb.error:
             pass
         return ra
 
@@ -5339,7 +5340,7 @@ class SPARC(Architecture):
                 ra = get_register("$o7") + self.instruction_length * 2 # call, delay-slot
             elif frame.older():
                 ra = frame.older().pc()
-        except Exception:
+        except gdb.error:
             pass
         return ra
 
@@ -5588,7 +5589,7 @@ class MIPS(Architecture):
                 ra = get_register("$ra")
             elif frame.older():
                 ra = frame.older().pc()
-        except Exception:
+        except gdb.error:
             pass
         return ra
 
@@ -6004,7 +6005,7 @@ class S390X(Architecture):
                 ra = get_register("$r14")
             elif frame.older():
                 ra = frame.older().pc()
-        except Exception:
+        except gdb.error:
             pass
         return ra
 
@@ -6110,7 +6111,7 @@ class SH4(Architecture):
                 ra = get_register("$pr")
             elif frame.older():
                 ra = frame.older().pc()
-        except Exception:
+        except gdb.error:
             pass
         return ra
 
@@ -6411,7 +6412,7 @@ class M68K(Architecture):
                 ra = to_unsigned_long(dereference(current_arch.sp))
             if frame.older():
                 ra = frame.older().pc()
-        except Exception:
+        except gdb.error:
             pass
         return ra
 
@@ -6540,7 +6541,7 @@ class ALPHA(Architecture):
                 ra = get_register("$ra")
             elif frame.older():
                 ra = frame.older().pc()
-        except Exception:
+        except gdb.error:
             pass
         return ra
 
@@ -6933,7 +6934,7 @@ class HPPA(Architecture):
                 ra = get_register("$rp") & ~0b11
             elif frame.older():
                 ra = frame.older().pc()
-        except Exception:
+        except gdb.error:
             pass
         return ra
 
@@ -7086,7 +7087,7 @@ class OR1K(Architecture):
                 ra = get_register("$r9")
             elif frame.older():
                 ra = frame.older().pc()
-        except Exception:
+        except gdb.error:
             pass
         return ra
 
@@ -7220,7 +7221,7 @@ class NIOS2(Architecture):
                 ra = get_register("$ra")
             elif frame.older():
                 ra = frame.older().pc()
-        except Exception:
+        except gdb.error:
             pass
         return ra
 
@@ -7363,7 +7364,7 @@ class MICROBLAZE(Architecture):
                 ra = get_register("$r15")
             elif frame.older():
                 ra = frame.older().pc()
-        except Exception:
+        except gdb.error:
             pass
         return ra
 
@@ -7585,7 +7586,7 @@ class XTENSA(Architecture):
                     ra &= ~(0b11 << 30)
             elif frame.older():
                 ra = frame.older().pc()
-        except Exception:
+        except gdb.error:
             pass
         return ra
 
@@ -7786,7 +7787,7 @@ class CRIS(Architecture):
                 ra = get_register("$srp")
             elif frame.older():
                 ra = frame.older().pc()
-        except Exception:
+        except gdb.error:
             pass
         return ra
 
@@ -7928,7 +7929,7 @@ class LOONGARCH64(Architecture):
                 ra = get_register("$r1")
             elif frame.older():
                 ra = frame.older().pc()
-        except Exception:
+        except gdb.error:
             pass
         return ra
 
@@ -8254,7 +8255,7 @@ class ARC(Architecture):
                 ra = get_register("$blink")
             elif frame.older():
                 ra = frame.older().pc()
-        except Exception:
+        except gdb.error:
             pass
         return ra
 
@@ -8360,7 +8361,7 @@ class ARC(Architecture):
 #    #            ra = get_register("$sr")
 #    #        elif frame.older():
 #    #            ra = frame.older().pc()
-#    #    except Exception:
+#    #    except gdb.error:
 #    #        pass
 #    #    return ra
 #
@@ -8382,7 +8383,7 @@ def write_memory_qemu_user(pid, address, buffer, length):
             try:
                 fd.seek(address)
                 return fd.read(length)
-            except Exception:
+            except OSError:
                 return None
 
     def write_memory_via_proc_mem(pid, address, buffer, length):
@@ -8393,7 +8394,7 @@ def write_memory_qemu_user(pid, address, buffer, length):
                 fd.flush()
                 gdb.execute("maintenance flush dcache", to_string=True)
                 return ret
-            except Exception:
+            except (OSError, gdb.error):
                 return None
 
     def write_with_check(pid, address, buffer, length, offset=0):
@@ -8658,7 +8659,7 @@ def get_current_mmu_mode():
             return "phys"
         else:
             return False
-    except Exception:
+    except gdb.error:
         return False
 
 
@@ -8676,6 +8677,14 @@ def disable_phys():
     response = gdb.execute("maintenance packet Qqemu.PhyMemMode:0", to_string=True, from_tty=False)
     response = gdb.execute("maintenance packet qqemu.PhyMemMode", to_string=True, from_tty=False)
     return 'received: "0"' in response
+
+
+def is_kvm_enabled():
+    try:
+        res = gdb.execute("monitor info kvm", to_string=True)
+        return "enabled" in res
+    except gdb.error:
+        return False
 
 
 @functools.lru_cache(maxsize=None)
@@ -8762,7 +8771,7 @@ def is_ascii_string(address):
     """Helper function to determine if the buffer pointed by `address` is an ASCII string (in GDB)"""
     try:
         return read_ascii_string(address) is not None
-    except Exception:
+    except gdb.MemoryError:
         return False
 
 
@@ -8770,7 +8779,7 @@ def is_alive():
     """Check if GDB is running."""
     try:
         return gdb.selected_inferior().pid > 0
-    except Exception:
+    except gdb.error:
         return False
     return False
 
@@ -9111,14 +9120,17 @@ def get_register(regname, use_mbed_exec=False):
         try:
             value = gdb.selected_frame().read_register(regname[1:])
             return int(value)
-        except (ValueError, gdb.error):
+        except (gdb.error, ValueError):
             pass
 
     if use_mbed_exec:
         # Note that attempting to read a non-existent register will jump to an Undefined exception
-        r = gdb.execute("read-system-register {:s}".format(regname), to_string=True)
-        if r:
-            return int(r.split("=")[1], 16)
+        try:
+            r = gdb.execute("read-system-register {:s}".format(regname), to_string=True)
+            if r:
+                return int(r.split("=")[1], 16)
+        except gdb.error:
+            pass
     return None
 
 
@@ -9131,7 +9143,7 @@ def get_register_use_cache(regname):
 def get_path_from_info_proc():
     try:
         response = gdb.execute("info proc", to_string=True)
-    except Exception:
+    except gdb.error:
         return None
     for x in response.splitlines():
         if x.startswith("exe = "):
@@ -9625,7 +9637,7 @@ def __get_explored_regions():
         # get link_map
         try:
             link_map = read_int_from_memory(dt_debug + current_arch.ptrsize)
-        except Exception:
+        except gdb.MemoryError:
             return None
 
         return link_map
@@ -10164,29 +10176,19 @@ def ptr_width():
 
 
 def is_64bit():
-    """Checks if current target is 64bit."""
     return ptr_width() == 8
 
 
 def is_32bit():
-    """Checks if current target is 32bit."""
     return ptr_width() == 4
 
 
 def is_x86_64():
-    """Checks if current target is x86-64."""
-    try:
-        return current_arch.arch == "X86" and current_arch.mode == "64"
-    except Exception:
-        return False
+    return current_arch and current_arch.arch == "X86" and current_arch.mode == "64"
 
 
 def is_x86_32():
-    """Checks if current target is x86-32."""
-    try:
-        return current_arch.arch == "X86" and current_arch.mode == "32"
-    except Exception:
-        return False
+    return current_arch and current_arch.arch == "X86" and current_arch.mode == "32"
 
 
 def is_x86():
@@ -10194,187 +10196,95 @@ def is_x86():
 
 
 def is_arm32():
-    """Checks if current target is arm-32."""
-    try:
-        return current_arch.arch == "ARM"
-    except Exception:
-        return False
+    return current_arch and current_arch.arch == "ARM"
 
 
 def is_arm64():
-    """Checks if current target is aarch64."""
-    try:
-        return current_arch.arch == "ARM64"
-    except Exception:
-        return False
+    return current_arch and current_arch.arch == "ARM64"
 
 
 def is_mips32():
-    """Checks if current target is mips-32."""
-    try:
-        return current_arch.arch == "MIPS" and current_arch.mode == "MIPS32"
-    except Exception:
-        return False
+    return current_arch and current_arch.arch == "MIPS" and current_arch.mode == "MIPS32"
 
 
 def is_mips64():
-    """Checks if current target is mips-64."""
-    try:
-        return current_arch.arch == "MIPS" and current_arch.mode == "MIPS64"
-    except Exception:
-        return False
+    return current_arch and current_arch.arch == "MIPS" and current_arch.mode == "MIPS64"
 
 
 def is_ppc32():
-    """Checks if current target is powerpc-32."""
-    try:
-        return current_arch.arch == "PPC" and current_arch.mode == "PPC32"
-    except Exception:
-        return False
+    return current_arch and current_arch.arch == "PPC" and current_arch.mode == "PPC32"
 
 
 def is_ppc64():
-    """Checks if current target is powerpc-64."""
-    try:
-        return current_arch.arch == "PPC" and current_arch.mode == "PPC64"
-    except Exception:
-        return False
+    return current_arch and current_arch.arch == "PPC" and current_arch.mode == "PPC64"
 
 
 def is_sparc32():
-    """Checks if current target is sparc-32."""
-    try:
-        return current_arch.arch == "SPARC" and current_arch.mode == "SPARC32"
-    except Exception:
-        return False
+    return current_arch and current_arch.arch == "SPARC" and current_arch.mode == "SPARC32"
 
 
 def is_sparc64():
-    """Checks if current target is sparc-64."""
-    try:
-        return current_arch.arch == "SPARC" and current_arch.mode == "SPARC64"
-    except Exception:
-        return False
+    return current_arch and current_arch.arch == "SPARC" and current_arch.mode == "SPARC64"
 
 
 def is_riscv32():
-    """Checks if current target is riscv-32."""
-    try:
-        return current_arch.arch == "RISCV" and current_arch.mode == "RISCV32"
-    except Exception:
-        return False
+    return current_arch and current_arch.arch == "RISCV" and current_arch.mode == "RISCV32"
 
 
 def is_riscv64():
-    """Checks if current target is riscv-64."""
-    try:
-        return current_arch.arch == "RISCV" and current_arch.mode == "RISCV64"
-    except Exception:
-        return False
+    return current_arch and current_arch.arch == "RISCV" and current_arch.mode == "RISCV64"
 
 
 def is_s390x():
-    """Checks if current target is s390x."""
-    try:
-        return current_arch.arch == "S390X" and current_arch.mode == "S390X"
-    except Exception:
-        return False
+    return current_arch and current_arch.arch == "S390X" and current_arch.mode == "S390X"
 
 
 def is_sh4():
-    """Checks if current target is sh4."""
-    try:
-        return current_arch.arch == "SH4" and current_arch.mode == "SH4"
-    except Exception:
-        return False
+    return current_arch and current_arch.arch == "SH4" and current_arch.mode == "SH4"
 
 
 def is_m68k():
-    """Checks if current target is m68k."""
-    try:
-        return current_arch.arch == "M68K" and current_arch.mode == "M68K"
-    except Exception:
-        return False
+    return current_arch and current_arch.arch == "M68K" and current_arch.mode == "M68K"
 
 
 def is_alpha():
-    """Checks if current target is alpha."""
-    try:
-        return current_arch.arch == "ALPHA" and current_arch.mode == "ALPHA"
-    except Exception:
-        return False
+    return current_arch and current_arch.arch == "ALPHA" and current_arch.mode == "ALPHA"
 
 
 def is_hppa32():
-    """Checks if current target is hppa-32."""
-    try:
-        return current_arch.arch == "HPPA" and current_arch.mode == "HPPA32"
-    except Exception:
-        return False
+    return current_arch and current_arch.arch == "HPPA" and current_arch.mode == "HPPA32"
 
 
 def is_hppa64():
-    """Checks if current target is hppa-64."""
-    try:
-        return current_arch.arch == "HPPA" and current_arch.mode == "HPPA64"
-    except Exception:
-        return False
+    return current_arch and current_arch.arch == "HPPA" and current_arch.mode == "HPPA64"
 
 
 def is_or1k():
-    """Checks if current target is or1k."""
-    try:
-        return current_arch.arch == "OR1K" and current_arch.mode == "OR1K"
-    except Exception:
-        return False
+    return current_arch and current_arch.arch == "OR1K" and current_arch.mode == "OR1K"
 
 
 def is_nios2():
-    """Checks if current target is nios2."""
-    try:
-        return current_arch.arch == "NIOS2" and current_arch.mode == "NIOS2"
-    except Exception:
-        return False
+    return current_arch and current_arch.arch == "NIOS2" and current_arch.mode == "NIOS2"
 
 
 def is_microblaze():
-    """Checks if current target is microblaze."""
-    try:
-        return current_arch.arch == "MICROBLAZE" and current_arch.mode == "MICROBLAZE"
-    except Exception:
-        return False
+    return current_arch and current_arch.arch == "MICROBLAZE" and current_arch.mode == "MICROBLAZE"
 
 
 def is_xtensa():
-    """Checks if current target is xtensa."""
-    try:
-        return current_arch.arch == "XTENSA" and current_arch.mode == "XTENSA"
-    except Exception:
-        return False
+    return current_arch and current_arch.arch == "XTENSA" and current_arch.mode == "XTENSA"
 
 
 def is_cris():
-    """Checks if current target is cris."""
-    try:
-        return current_arch.arch == "CRIS" and current_arch.mode == "CRIS"
-    except Exception:
-        return False
+    return current_arch and current_arch.arch == "CRIS" and current_arch.mode == "CRIS"
 
 
 def is_loongarch64():
-    """Checks if current target is loongarch64."""
-    try:
-        return current_arch.arch == "LOONGARCH" and current_arch.mode == "LOONGARCH64"
-    except Exception:
-        return False
+    return current_arch and current_arch.arch == "LOONGARCH" and current_arch.mode == "LOONGARCH64"
 
 
 def is_arc32():
-    """Checks if current target is arc32."""
-    try:
-        return current_arch.arch == "ARC" and current_arch.mode == "ARC32"
-    except Exception:
-        return False
+    return current_arch and current_arch.arch == "ARC" and current_arch.mode == "ARC32"
 
 
 @functools.lru_cache(maxsize=None)
@@ -10503,7 +10413,7 @@ def get_memory_alignment(in_bits=False):
 
     try:
         return gdb.parse_and_eval("$pc").type.sizeof
-    except Exception:
+    except gdb.error:
         pass
     raise EnvironmentError("GEF is running under an unsupported mode")
 
@@ -10603,7 +10513,7 @@ def get_ksymaddr(sym):
     try:
         res = gdb.execute("ksymaddr-remote --quiet --no-pager --exact {:s}".format(sym), to_string=True)
         return int(res.split()[0], 16)
-    except Exception:
+    except (gdb.error, IndexError, ValueError):
         return None
 
 
@@ -10612,7 +10522,7 @@ def get_ksymaddr_symbol(addr):
         res = gdb.execute("ksymaddr-remote --quiet --no-pager {:#x}".format(addr), to_string=True)
         res = res.splitlines()[-1]
         return res.split()[2]
-    except Exception:
+    except (gdb.error, IndexError):
         return None
 
 
@@ -10620,7 +10530,7 @@ def get_kparam(sym):
     try:
         res = gdb.execute("kparam-sysctl --quiet --no-pager --exact --filter {:s}".format(sym), to_string=True)
         return int(res.split()[1], 16)
-    except Exception:
+    except (gdb.error, IndexError, ValueError):
         return None
 
 
@@ -10865,7 +10775,7 @@ def gef_read_canary():
         canary = read_int_from_memory(canary_location)
         canary &= ~0xFF
         return canary, canary_location
-    except Exception:
+    except (KeyError, gdb.MemoryError):
         return None
 
 
@@ -12347,7 +12257,7 @@ class ProcInfoCommand(GenericCommand):
     def get_state_of(self, pid):
         try:
             status = open("/proc/{}/status".format(pid), "r").read()
-        except Exception:
+        except (FileNotFoundError, OSError):
             return {}
         res = {}
         for line in status.splitlines():
@@ -12358,7 +12268,7 @@ class ProcInfoCommand(GenericCommand):
     def get_stat_of(self, pid):
         try:
             stat = open("/proc/{}/stat".format(pid), "r").read()
-        except Exception:
+        except (FileNotFoundError, OSError):
             return []
         name = re.search(r"\((.+)\)", stat)
         other = re.sub(r"\(.+\) ", "", stat).split()
@@ -12368,33 +12278,33 @@ class ProcInfoCommand(GenericCommand):
     def get_cmdline_of(self, pid):
         try:
             cmdline = open("/proc/{}/cmdline".format(pid), "r").read()
-        except Exception:
+        except (FileNotFoundError, OSError):
             return ""
         return cmdline.replace("\x00", "\x20").strip()
 
     def get_process_path_of(self, pid):
         try:
             return os.readlink("/proc/{}/exe".format(pid))
-        except Exception:
+        except (FileNotFoundError, OSError):
             return "Not Found"
 
     def get_process_cwd(self, pid):
         try:
             return os.readlink("/proc/{}/cwd".format(pid))
-        except Exception:
+        except (FileNotFoundError, OSError):
             return "Not Found"
 
     def get_process_root(self, pid):
         try:
             return os.readlink("/proc/{}/root".format(pid))
-        except Exception:
+        except (FileNotFoundError, OSError):
             return "Not Found"
 
     def get_thread_ids(self, pid):
         try:
             tids = os.listdir("/proc/{}/task".format(pid))
             return [int(x) for x in tids]
-        except Exception:
+        except (FileNotFoundError, OSError):
             return []
 
     def get_children_pids(self, pid):
@@ -12407,20 +12317,20 @@ class ProcInfoCommand(GenericCommand):
         cmd = [ps, "-o", "pid", "--ppid", "{}".format(pid), "--noheaders"]
         try:
             return [int(x) for x in gef_execute_external(cmd, as_list=True)]
-        except Exception:
+        except (subprocess.CalledProcessError, ValueError):
             return []
 
     def get_uid_map(self, pid):
         try:
             uid_map = open("/proc/{}/uid_map".format(pid), "r").read().strip()
-        except Exception:
+        except (FileNotFoundError, OSError):
             return []
         return slicer([int(x) for x in uid_map.split()], 3)
 
     def get_gid_map(self, pid):
         try:
             gid_map = open("/proc/{}/gid_map".format(pid), "r").read().strip()
-        except Exception:
+        except (FileNotFoundError, OSError):
             return []
         return slicer([int(x) for x in gid_map.split()], 3)
 
@@ -12431,14 +12341,9 @@ class ProcInfoCommand(GenericCommand):
             err("{}".format(e))
             return "Not Found"
 
-        if not os.path.exists("/dev"):
-            return "Not Found"
-        if not os.path.exists("/proc/devices"):
-            return "Not Found"
-
         try:
             devices = open("/proc/devices", "r").read()
-        except Exception:
+        except (FileNotFoundError, OSError):
             return "Not found"
         for line in devices.splitlines():
             if not line or line.endswith(":"):
@@ -12688,7 +12593,7 @@ class CapabilityCommand(GenericCommand):
         try:
             tids = os.listdir("/proc/{}/task".format(pid))
             return [int(x) for x in tids]
-        except Exception:
+        except (FileNotFoundError, OSError):
             return []
 
     def print_cap_details(self, name, cap):
@@ -12749,7 +12654,7 @@ class CapabilityCommand(GenericCommand):
             try:
                 status_path = "/proc/{:d}/task/{:d}/status".format(pid, tid)
                 status = open(status_path, "r").read()
-            except Exception:
+            except (FileNotFoundError, OSError):
                 err("Failed to get the information of capability from {:s}".format(status_path))
                 continue
 
@@ -12862,7 +12767,7 @@ class CapabilityCommand(GenericCommand):
 
 @register_command
 class SmartMemoryDumpCommand(GenericCommand):
-    """Smart dump the process memory."""
+    """Dump the memory of the entire process smartly."""
     _cmdline_ = "smart-memory-dump"
     _category_ = "03-e. Memory - Dump"
 
@@ -12945,7 +12850,7 @@ class HijackFdCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
-    @exclude_specific_arch(["CRIS"])
+    @exclude_specific_arch(arch=("CRIS",))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -13156,14 +13061,14 @@ class ScanSectionCommand(GenericCommand):
             try:
                 start, end = parse_string_range(haystack)
                 haystack_sections.append((start, end, ""))
-            except Exception:
+            except ValueError:
                 pass
 
         if "0x" in needle:
             try:
                 start, end = parse_string_range(needle)
                 needle_sections.append((start, end))
-            except Exception:
+            except ValueError:
                 pass
 
         for sect in get_process_maps():
@@ -13441,10 +13346,18 @@ class PtrDemangleCommand(GenericCommand):
         elif is_arm32() or is_arm64():
             try:
                 cookie_ptr = parse_address("&__pointer_chk_guard_local")
-            except Exception:
-                return None
-            cookie = read_int_from_memory(cookie_ptr)
-            return cookie
+                cookie = read_int_from_memory(cookie_ptr)
+                return cookie
+            except gdb.error:
+                pass
+            try:
+                auxv = gef_get_auxiliary_values()
+                if "AT_RANDOM" in auxv:
+                    cookie = read_int_from_memory(auxv["AT_RANDOM"] + current_arch.ptrsize)
+                    if cookie != 0:
+                        return cookie
+            except gdb.error:
+                pass
         # All but the 4 basic architectures (x86/x64/ARM/ARM64) do not support discovery.
         return None
 
@@ -13965,7 +13878,7 @@ class MprotectCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
-    @exclude_specific_arch(["CRIS"])
+    @exclude_specific_arch(arch=("CRIS",))
     @load_keystone
     def do_invoke(self, args):
         self.dont_repeat()
@@ -14011,14 +13924,11 @@ class MprotectCommand(GenericCommand):
             return
 
         info("Saving original registers value")
-        try:
-            original_regs = {}
-            for r in current_arch.all_registers:
-                v = get_register(r)
+        original_regs = {}
+        for r in current_arch.all_registers:
+            v = get_register(r)
+            if v is not None:
                 original_regs[r] = v
-        except Exception:
-            err("Failed to read register")
-            return
 
         bp_loc = "*{:#x}".format(original_pc + len(stub))
         info("Setting a restore breakpoint at {:s}".format(bp_loc))
@@ -14068,7 +13978,7 @@ class CallSyscallCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
-    @exclude_specific_arch(["CRIS"])
+    @exclude_specific_arch(arch=("CRIS",))
     def do_invoke(self, args):
         if current_arch is None:
             err("current_arch is not set.")
@@ -14132,7 +14042,7 @@ class MmapMemoryCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
-    @exclude_specific_arch(["CRIS"])
+    @exclude_specific_arch(arch=("CRIS",))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -16881,7 +16791,7 @@ class DisassembleCommand(GenericCommand):
         insns = insns.replace(" ", "").replace("\t", "")
         try:
             insns = binascii.unhexlify(insns)
-        except Exception:
+        except binascii.Error:
             err("Invalid format")
             return
 
@@ -17053,7 +16963,7 @@ class AsmListCommand(GenericCommand):
                 code = bytes.fromhex(hex_code)
                 try:
                     asm = cs.disasm(code, 0).__next__()
-                except Exception:
+                except StopIteration:
                     continue
                 opstr = asm.mnemonic + " " + asm.op_str
                 # add
@@ -18161,7 +18071,7 @@ class ChecksecCommand(GenericCommand):
                 elif system_aslr == 2:
                     msg = Color.colorify("Enabled", "bold green")
                     gef_print("{:<40s}: {:s} (randomize_va_space: 2)".format("System ASLR", msg))
-            except Exception:
+            except (FileNotFoundError, OSError):
                 msg = Color.grayify("Unknown")
                 gef_print("{:<40s}: {:s} (randomize_va_space: error)".format("System-ASLR", msg))
 
@@ -20914,7 +20824,6 @@ class NamedBreakpointCommand(GenericCommand):
     """Set a breakpoint and assigns a name to it, which will be shown, when it's hit."""
     _cmdline_ = "named-break"
     _category_ = "01-b. Debugging Support - Breakpoint"
-    _aliases_ = ["nb"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("name", metavar="NAME", help="the name you want to assign.")
@@ -21518,7 +21427,7 @@ class ContextCommand(GenericCommand):
             try:
                 code = code.replace("$", "(long)$")
                 addr = parse_address(code)
-            except Exception:
+            except gdb.error:
                 # some binary fails to resolve "(long)"
                 addr = parse_address(code_orig)
             self.context_title("memory access: {:s} = {:#x}".format(code_orig, addr))
@@ -21935,7 +21844,7 @@ class ContextCommand(GenericCommand):
         try:
             orig_frame = gdb.selected_frame()
             current_frame = gdb.newest_frame()
-        except Exception:
+        except gdb.error:
             # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
             err("Faild to get frame information.")
             return
@@ -22013,7 +21922,7 @@ class ContextCommand(GenericCommand):
         selected_thread = gdb.selected_thread()
         try:
             selected_frame = gdb.selected_frame()
-        except Exception:
+        except gdb.error:
             # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
             selected_frame = None
 
@@ -22040,7 +21949,7 @@ class ContextCommand(GenericCommand):
                     frame = gdb.selected_frame()
                     pc = frame.pc()
                     frame_name = Instruction.smartify_text(frame.name()) or "unknown_frame"
-                except Exception:
+                except gdb.error:
                     # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
                     # if failed, print thread information without frame (but with $pc).
                     pc = get_register("$pc")
@@ -22251,10 +22160,11 @@ class HexdumpCommand(GenericCommand):
     """Display the hexdump from the memory location specified."""
     _cmdline_ = "hexdump"
     _category_ = "03-b. Memory - View"
-    _aliases_ = ["xxd"]
+    _aliases_ = ["xxd", "hd"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("format", choices=["byte", "word", "dword", "qword"], nargs="?", default="byte", help="dump mode.")
+    parser.add_argument("format", choices=["byte", "word", "dword", "qword"], nargs="?", default="byte",
+                        help="dump mode. (default: %(default)s)")
     parser.add_argument("location", metavar="LOCATION", type=parse_address, help="the memory address you want to dump.")
     parser.add_argument("count", metavar="COUNT", nargs="?", type=lambda x: int(x, 0), default=0x100,
                         help="the count of displayed units. (default: %(default)s)")
@@ -22297,7 +22207,7 @@ class HexdumpCommand(GenericCommand):
             else:
                 mem = read_memory(read_from, read_len)
             return mem
-        except Exception:
+        except (gdb.MemoryError, ValueError, OverflowError):
             pass
 
         # If you get an error, you probably read outside a valid memory page.
@@ -22311,7 +22221,7 @@ class HexdumpCommand(GenericCommand):
                 else:
                     mem = read_memory(read_from, read_end - read_from)
                 return mem
-            except Exception:
+            except (gdb.MemoryError, ValueError, OverflowError):
                 pass
             read_end -= gef_getpagesize()
         return None
@@ -22414,7 +22324,7 @@ class HexdumpFlexibleCommand(GenericCommand):
                     data = read_physmem(address, size)
                 else:
                     data = read_memory(address, size)
-            except gdb.MemoryError:
+            except (gdb.MemoryError, ValueError, OverflowError):
                 err("Failed to read memory")
                 break
 
@@ -24997,7 +24907,7 @@ class DestructorDumpCommand(GenericCommand):
         while current:
             try:
                 func, obj, link_map, next = read_fns(current)
-            except Exception:
+            except gdb.MemoryError:
                 err("Memory access error at {:#x}".format(current))
                 break
 
@@ -25024,7 +24934,7 @@ class DestructorDumpCommand(GenericCommand):
     def dump_exit_funcs(self, name):
         try:
             head_p = parse_address("&" + name)
-        except Exception:
+        except gdb.error:
             err("Not found symbol ({:s})".format(name))
             return
 
@@ -25042,7 +24952,7 @@ class DestructorDumpCommand(GenericCommand):
         try:
             next = lookup_address(read_int_from_memory(current))
             idx = lookup_address(read_int_from_memory(current + ptrsize))
-        except Exception:
+        except gdb.MemoryError:
             err("Memory access error at {:#x}".format(current))
             return
         current += ptrsize * 2
@@ -25062,7 +24972,7 @@ class DestructorDumpCommand(GenericCommand):
             addr = align_address(current + fns_size * i)
             try:
                 flavor, fn, arg, dso_handle = read_fns(addr)
-            except Exception:
+            except gdb.MemoryError:
                 err("Memory access error at {:#x}".format(addr))
                 break
             if fn.value == 0:
@@ -25109,7 +25019,7 @@ class DestructorDumpCommand(GenericCommand):
                 elf = Elf(link_map.name)
                 try:
                     shdr = [s for s in elf.shdrs if s.sh_name == section_name][0]
-                except Exception:
+                except IndexError:
                     continue
                 if is_pie(link_map.name):
                     addr = shdr.sh_addr + link_map.load_address
@@ -25123,7 +25033,7 @@ class DestructorDumpCommand(GenericCommand):
             elf = Elf(get_filepath())
             try:
                 shdr = [s for s in elf.shdrs if s.sh_name == section_name][0]
-            except Exception:
+            except IndexError:
                 err("Not found {:s} section".format(section_name))
                 return
             addr = shdr.sh_addr
@@ -25141,7 +25051,7 @@ class DestructorDumpCommand(GenericCommand):
                 elf = Elf(link_map.name)
                 try:
                     shdr = [s for s in elf.shdrs if s.sh_name == section_name][0]
-                except Exception:
+                except IndexError:
                     continue
                 entries = []
                 for i in range(shdr.sh_size // current_arch.ptrsize):
@@ -25166,7 +25076,7 @@ class DestructorDumpCommand(GenericCommand):
             elf = Elf(get_filepath())
             try:
                 shdr = [s for s in elf.shdrs if s.sh_name == section_name][0]
-            except Exception:
+            except IndexError:
                 err("Not found {:s} section".format(section_name))
                 return
             entries = []
@@ -25194,6 +25104,8 @@ class DestructorDumpCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     def do_invoke(self, args):
         self.dont_repeat()
+
+        reset_gef_caches(all=True)
 
         # init
         self.tls = TlsCommand.get_tls()
@@ -26048,7 +25960,7 @@ class UafWatchpoint(gdb.Breakpoint):
         reset_gef_caches()
         try:
             frame = gdb.selected_frame()
-        except Exception:
+        except gdb.error:
             return False
         if frame.name() in ("_int_malloc", "malloc_consolidate", "__libc_calloc", ):
             return False
@@ -38771,7 +38683,7 @@ class LdCommand(GenericCommand):
 
         ld = get_section_base_address_by_list(ld_targets)
         if ld is None:
-            gef_print("ld not found")
+            err("ld is not found")
             return
         gef_print(titlify("ld info"))
         gdb.execute(f"set $ld = {ld}")
@@ -39320,6 +39232,8 @@ class MmxSetCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} $mm0=0x1122334455667788".format(_cmdline_)
+    _example_ += "\n"
+    _example_ += "DISABLE `-enable-kvm` option for qemu-system."
 
     def execute_movq_mm(self, value, reg):
         REG_CODE = {
@@ -39348,11 +39262,15 @@ class MmxSetCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
+        if is_kvm_enabled():
+            err("DISABLE `-enable-kvm` option for qemu-system.")
+            return
+
         # arg parse
         try:
             reg, value = args.reg_and_value.split("=")
             value = int(value, 0)
-        except Exception:
+        except ValueError:
             self.usage()
             return
 
@@ -40411,7 +40329,7 @@ class VisualHeapCommand(GenericCommand):
 class DistanceCommand(GenericCommand):
     """Calculate the offset from its base address."""
     _cmdline_ = "distance"
-    _category_ = "09-a. Misc - Calculation"
+    _category_ = "09-f. Misc - Calculation"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("address_a", metavar="ADDRESS_A", type=parse_address,
@@ -41582,7 +41500,7 @@ class KernelAddressHeuristicFinder:
                         addr = int(m.group(1), 16)
                         try:
                             return read_int_from_memory(addr)
-                        except Exception:
+                        except gdb.MemoryError:
                             pass
         return None
 
@@ -41708,7 +41626,7 @@ class KernelAddressHeuristicFinder:
                         addr = int(m.group(1), 16)
                         try:
                             return read_int_from_memory(addr)
-                        except Exception:
+                        except gdb.MemoryError:
                             pass
         return None
 
@@ -42140,7 +42058,7 @@ class KernelAddressHeuristicFinder:
                         addr = int(m.group(1), 16)
                         try:
                             return read_int_from_memory(addr)
-                        except Exception:
+                        except gdb.MemoryError:
                             pass
         return None
 
@@ -42196,7 +42114,7 @@ class KernelAddressHeuristicFinder:
                         addr = int(m.group(1), 16)
                         try:
                             return read_int_from_memory(addr)
-                        except Exception:
+                        except gdb.MemoryError:
                             pass
         return None
 
@@ -43718,7 +43636,7 @@ class KernelTaskCommand(GenericCommand):
                 # read check
                 try:
                     pos = read_int_from_memory(pos)
-                except Exception: # memory read error
+                except gdb.MemoryError: # memory read error
                     found = False
                     break
                 # list validate
@@ -46501,7 +46419,7 @@ class KernelCharacterDevicesCommand(GenericCommand):
                     try:
                         pos_next = read_int_from_memory(pos_next)
                         pos_prev = read_int_from_memory(pos_prev) + current_arch.ptrsize
-                    except Exception: # memory read error
+                    except gdb.MemoryError: # memory read error
                         valid = False
                         break
                     # list validate
@@ -48134,7 +48052,8 @@ class SyscallTableViewCommand(GenericCommand):
 
 
 class ExecAsm:
-    """Execute embeded asm. ex: ExecAsm(asm_op_list).exec_code()"""
+    """Execute embeded asm. ex: ExecAsm(asm_op_list).exec_code().
+    WARNING: DISABLE `-enable-kvm` option for qemu-system; If set, this code will crash the guest OS."""
     def __init__(self, _codes, regs=None, debug=False):
         self.stdout = 1
         self.debug = debug
@@ -48276,7 +48195,8 @@ class ExecAsm:
 
 
 class ExecSyscall(ExecAsm):
-    """Execute embeded asm for syscall. ex: ExecSyscall(nr, args).exec_code()."""
+    """Execute embeded asm for syscall. ex: ExecSyscall(nr, args).exec_code().
+    WARNING: DISABLE `-enable-kvm` option for qemu-system; If set, this code will crash the guest OS."""
     def __init__(self, nr, args, debug=False):
         self.stdout = 1
         self.debug = debug
@@ -48395,14 +48315,15 @@ class TlsCommand(GenericCommand):
                 return value.contents.value or 0
 
         # slow path
-        if is_x86_64():
-            codes = [b"\x64\x48\xa1\x00\x00\x00\x00\x00\x00\x00\x00"] # movabs rax, qword ptr fs:[0x0]
-            ret = ExecAsm(codes).exec_code()
-            return ret["reg"]["$rax"]
-        elif is_x86_32():
-            codes = [b"\x64\xa1\x00\x00\x00\x00"] # mov eax, dword ptr fs:[0x0]
-            ret = ExecAsm(codes).exec_code()
-            return ret["reg"]["$eax"]
+        if not is_kvm_enabled():
+            if is_x86_64():
+                codes = [b"\x64\x48\xa1\x00\x00\x00\x00\x00\x00\x00\x00"] # movabs rax, qword ptr fs:[0x0]
+                ret = ExecAsm(codes).exec_code()
+                return ret["reg"]["$rax"]
+            elif is_x86_32():
+                codes = [b"\x64\xa1\x00\x00\x00\x00"] # mov eax, dword ptr fs:[0x0]
+                ret = ExecAsm(codes).exec_code()
+                return ret["reg"]["$eax"]
         return 0
 
     @staticmethod
@@ -48427,14 +48348,15 @@ class TlsCommand(GenericCommand):
                 return value.contents.value or 0
 
         # slow path
-        if is_x86_64():
-            codes = [b"\x65\x48\xa1\x00\x00\x00\x00\x00\x00\x00\x00"] # movabs rax, qword ptr gs:[0x0]
-            ret = ExecAsm(codes).exec_code()
-            return ret["reg"]["$rax"]
-        elif is_x86_32():
-            codes = [b"\x65\xa1\x00\x00\x00\x00"] # mov eax, dword ptr gs:[0x0]
-            ret = ExecAsm(codes).exec_code()
-            return ret["reg"]["$eax"]
+        if not is_kvm_enabled():
+            if is_x86_64():
+                codes = [b"\x65\x48\xa1\x00\x00\x00\x00\x00\x00\x00\x00"] # movabs rax, qword ptr gs:[0x0]
+                ret = ExecAsm(codes).exec_code()
+                return ret["reg"]["$rax"]
+            elif is_x86_32():
+                codes = [b"\x65\xa1\x00\x00\x00\x00"] # mov eax, dword ptr gs:[0x0]
+                ret = ExecAsm(codes).exec_code()
+                return ret["reg"]["$eax"]
         return 0
 
     @staticmethod
@@ -49174,7 +49096,7 @@ class MemoryCompareCommand(GenericCommand):
                 from1data = read_physmem(from1, size)
             else:
                 from1data = read_memory(from1, size)
-        except Exception:
+        except (gdb.MemoryError, ValueError, OverflowError):
             err("Read error {:#x}".format(from1))
             return
 
@@ -49183,7 +49105,7 @@ class MemoryCompareCommand(GenericCommand):
                 from2data = read_physmem(from2, size)
             else:
                 from2data = read_memory(from2, size)
-        except Exception:
+        except (gdb.MemoryError, ValueError, OverflowError):
             err("Read error {:#x}".format(from2))
             return
 
@@ -49271,7 +49193,7 @@ class MemoryCopyCommand(GenericCommand):
                 data = read_physmem(from_addr, size)
             else:
                 data = read_memory(from_addr, size)
-        except Exception:
+        except (gdb.MemoryError, ValueError, OverflowError):
             err("Read error {:#x}".format(from_addr))
             return
 
@@ -49284,7 +49206,7 @@ class MemoryCopyCommand(GenericCommand):
             else:
                 before = read_memory(to_addr, len(data))
                 written = write_memory(to_addr, data)
-        except Exception:
+        except (gdb.MemoryError, ValueError, OverflowError):
             err("Write error {:#x}".format(to_addr))
             return
 
@@ -49335,7 +49257,7 @@ class MemorySwapCommand(GenericCommand):
                 data1 = read_physmem(addr1, size)
             else:
                 data1 = read_memory(addr1, size)
-        except Exception:
+        except (gdb.MemoryError, ValueError, OverflowError):
             err("Read error {:#x}".format(addr1))
             return
 
@@ -49346,7 +49268,7 @@ class MemorySwapCommand(GenericCommand):
                 data2 = read_physmem(addr2, size)
             else:
                 data2 = read_memory(addr2, size)
-        except Exception:
+        except (gdb.MemoryError, ValueError, OverflowError):
             err("Read error {:#x}".format(addr2))
             return
 
@@ -49442,7 +49364,7 @@ class MemoryInsertCommand(GenericCommand):
             else:
                 before = read_memory(addr1, size1 + size2)
                 data1 = before[:size1]
-        except Exception:
+        except (gdb.MemoryError, ValueError, OverflowError):
             err("Read error {:#x}".format(addr1))
             return
 
@@ -49453,7 +49375,7 @@ class MemoryInsertCommand(GenericCommand):
                 data2 = read_physmem(addr2, size2)
             else:
                 data2 = read_memory(addr2, size2)
-        except Exception:
+        except (gdb.MemoryError, ValueError, OverflowError):
             err("Read error {:#x}".format(addr2))
             return
 
@@ -49629,7 +49551,7 @@ class IsMemoryZeroCommand(GenericCommand):
                     data = read_physmem(current, read_size)
                 else:
                     data = read_memory(current, read_size)
-            except Exception:
+            except (gdb.MemoryError, ValueError, OverflowError):
                 err("Read error {:#x}".format(addr))
                 return
             if data == b"\0" * len(data):
@@ -49640,6 +49562,7 @@ class IsMemoryZeroCommand(GenericCommand):
                 is_zero = False
                 is_ff = False
             if is_zero is False and is_ff is False:
+                end = current + read_size
                 break
             current += 0x1000
 
@@ -49649,6 +49572,7 @@ class IsMemoryZeroCommand(GenericCommand):
             info("{:#x} - {:#x} is {:s}".format(start, end, Color.colorify("All 0xFF", "bold yellow")))
         else:
             info("{:#x} - {:#x} is {:s}".format(start, end, Color.colorify("NON-ZERO", "bold red")))
+        info("If data is non-zero, it will be fast return.")
         return
 
     @parse_args
@@ -49703,7 +49627,7 @@ class MultiLineCommand(GenericCommand):
         gef_print(titlify(cmd))
         try:
             gdb.execute(cmd)
-        except Exception as e:
+        except gdb.error as e:
             gef_print(e)
             return False # fail
         return True
@@ -49776,7 +49700,7 @@ class TimeCommand(GenericCommand):
         gef_print(titlify(cmd))
         try:
             gdb.execute(cmd)
-        except Exception:
+        except gdb.error:
             exc_type, exc_value, exc_traceback = sys.exc_info()
             gef_print(exc_value)
             return
@@ -49813,7 +49737,7 @@ class LsCommand(GenericCommand):
 
         try:
             ls = which("ls")
-        except Exception:
+        except FileNotFoundError:
             err("Missing `ls` command")
             return
 
@@ -49821,7 +49745,7 @@ class LsCommand(GenericCommand):
             result = gef_execute_external([ls, "-la", "--color=always"] + argv, as_list=True)
             for line in result:
                 gef_print(line)
-        except Exception:
+        except subprocess.CalledProcessError:
             gef_print("file/dir is not found")
         return
 
@@ -49853,7 +49777,7 @@ class CatCommand(GenericCommand):
 
         try:
             cat = which("cat")
-        except Exception:
+        except FileNotFoundError:
             err("Missing `cat` command")
             return
 
@@ -49861,14 +49785,14 @@ class CatCommand(GenericCommand):
             result = gef_execute_external([cat] + argv, as_list=True)
             for line in result:
                 gef_print(line.replace("\0", "\\x00"))
-        except Exception:
+        except subprocess.CalledProcessError:
             gef_print("file not found")
         return
 
 
 @register_command
 class IiCommand(GenericCommand):
-    """Shortcut `x/50i $pc`."""
+    """Shortcut `x/50i $pc` with opcode bytes."""
     _cmdline_ = "ii"
     _category_ = "01-e. Debugging Support - Assemble"
 
@@ -49956,16 +49880,15 @@ class ConstGrepCommand(GenericCommand):
     def read_normalize(self, path):
         try:
             content = open(path, "rb").read()
-        except Exception:
+        except (FileNotFoundError, IsADirectoryError):
             return None
-        content = content.replace(b"\\\n", b"")
+        content = content.replace(b"\\\n", b"GEF_MARKER")
         content = content.replace(b"\t", b" ")
-        content = content.replace(b"  ", b" ")
         for i in range(0x80, 0x100):
             content = content.replace(bytes([i]), b"")
         try:
             content = content.decode("UTF-8")
-        except Exception:
+        except UnicodeDecodeError:
             err("decode error: " + path)
             return None
         return content
@@ -49984,6 +49907,7 @@ class ConstGrepCommand(GenericCommand):
                     continue
                 for line in content.splitlines():
                     if pattern.search(line):
+                        line = line.replace("GEF_MARKER", "\\\n")
                         gef_print("{:s}: {:s}".format(Color.redify(path), line))
         return
 
@@ -50677,7 +50601,7 @@ class SlubDumpCommand(GenericCommand):
             try:
                 addr = chunk + kmem_cache["offset"]
                 chunk = read_int_from_memory(addr) # get next chunk
-            except Exception:
+            except gdb.MemoryError:
                 freelist.append("{:s}".format(Color.colorify("Corrupted (Memory access denied)", corrupted_msg_color)))
                 break
             if self.kmem_cache_offset_random is not None: # fix if randomized
@@ -51459,7 +51383,7 @@ class SlubTinyDumpCommand(GenericCommand):
             try:
                 addr = chunk + kmem_cache["offset"]
                 chunk = read_int_from_memory(addr) # get next chunk
-            except Exception:
+            except gdb.MemoryError:
                 freelist.append("{:s}".format(Color.colorify("Corrupted (Memory access denied)", corrupted_msg_color)))
                 break
             if chunk % 8:
@@ -54351,7 +54275,7 @@ class TcmallocDumpCommand(GenericCommand):
 
         try:
             init_static_vars = parse_address("&'tcmalloc::Static::InitStaticVars()'")
-        except Exception:
+        except gdb.error:
             return None
         res = gdb.execute("x/10i {:#x}".format(init_static_vars), to_string=True)
         sizeof_central_cache_ = 0x26000
@@ -54366,7 +54290,7 @@ class TcmallocDumpCommand(GenericCommand):
     def get_thread_heaps_(self):
         try:
             return parse_address("&'tcmalloc::ThreadCache::thread_heaps_'")
-        except Exception:
+        except gdb.error:
             return None
 
     def get_tls_addr_specific_thread(self, lwpid):
@@ -54425,7 +54349,7 @@ class TcmallocDumpCommand(GenericCommand):
                 # corrupted memory check
                 try:
                     chunk = read_int_from_memory(chunk)
-                except Exception:
+                except gdb.MemoryError:
                     if chunklist_string.endswith(" -> ..."):
                         chunklist_string += " -> " + Color.colorify("{:#x}".format(seen[-2]), freed_address_color)
                         chunklist_string += " -> " + Color.colorify("{:#x}".format(chunk), corrupted_msg_color)
@@ -54513,7 +54437,7 @@ class TcmallocDumpCommand(GenericCommand):
                 # corrupted memory check
                 try:
                     chunk = read_int_from_memory(chunk)
-                except Exception:
+                except gdb.MemoryError:
                     if chunklist_string.endswith(" -> ..."):
                         chunklist_string += " -> " + Color.colorify("{:#x}".format(seen[-2]), freed_address_color)
                         chunklist_string += " -> " + Color.colorify("{:#x}".format(chunk), corrupted_msg_color)
@@ -54614,7 +54538,7 @@ class V8Command(GenericCommand):
             try:
                 gdb.execute("source {:s}".format(gdbinit_filename))
                 info("Successfully loaded.")
-            except Exception:
+            except gdb.error:
                 err("Failed to load.")
             return
 
@@ -54623,7 +54547,7 @@ class V8Command(GenericCommand):
                 # Since this command is used so often, it can be implemented without loading from internet.
                 cmd = "call (void) _v8_internal_Print_Object((void*)({:#x}))".format(args.address)
                 gdb.execute(cmd)
-            except Exception:
+            except gdb.error:
                 pass
         return
 
@@ -54849,7 +54773,7 @@ class PartitionAllocDumpCommand(GenericCommand):
                 root_addr = parse_address("&'WTF::Partitions::{:s}'".format(root_string))
                 Root = collections.namedtuple("Root", ["name", "address"])
                 return [Root(root_string, root_addr)]
-            except Exception:
+            except gdb.error:
                 return []
 
         roots = []
@@ -54871,12 +54795,12 @@ class PartitionAllocDumpCommand(GenericCommand):
         try:
             t = parse_address("&'base::internal::SlotSpanMetadata<true>::sentinel_slot_span_'")
             sentinel.append(t)
-        except Exception:
+        except gdb.error:
             pass
         try:
             f = parse_address("&'base::internal::SlotSpanMetadata<false>::sentinel_slot_span_'")
             sentinel.append(f)
-        except Exception:
+        except gdb.error:
             pass
         return sentinel
 
@@ -55383,7 +55307,7 @@ class PartitionAllocDumpCommand(GenericCommand):
 
             try:
                 next_chunk = self.byteswap(read_int_from_memory(chunk))
-            except Exception:
+            except gdb.MemoryError:
                 text += Color.colorify("-> {:#x} (corrupted) ".format(chunk), corrupted_msg_color)
                 break
 
@@ -55579,7 +55503,7 @@ class MuslHeapDumpCommand(GenericCommand):
     def get_malloc_context(self):
         try:
             return parse_address("&__malloc_context")
-        except Exception:
+        except gdb.error:
             self.info("Symbol is not found. It will use heuristic search")
             return self.get_malloc_context_heuristic()
 
@@ -57174,7 +57098,7 @@ class OpteeBgetDumpCommand(GenericCommand):
                 blink = read_int_from_memory(current + current_arch.ptrsize * 3)
                 next_prevfree = read_int_from_memory(current + bsize)
                 next_bsize = read_int_from_memory(current + bsize + current_arch.ptrsize)
-            except Exception:
+            except gdb.MemoryError:
                 flinks.append("memory corrupted")
                 break
             if flink % 8 or blink % 8 or bsize % 8 or next_prevfree % 8 or next_bsize % 8:
@@ -57205,7 +57129,7 @@ class OpteeBgetDumpCommand(GenericCommand):
                 blink = read_int_from_memory(current + current_arch.ptrsize * 3)
                 next_prevfree = read_int_from_memory(current + bsize)
                 next_bsize = read_int_from_memory(current + bsize + current_arch.ptrsize)
-            except Exception:
+            except gdb.MemoryError:
                 blinks.append("memory corrupted")
                 break
             if flink % 8 or blink % 8 or bsize % 8 or next_prevfree % 8 or next_bsize % 8:
@@ -57328,7 +57252,7 @@ class OpteeBgetDumpCommand(GenericCommand):
                     bsize = read_int_from_memory(chunk + current_arch.ptrsize * 1)
                     flink = read_int_from_memory(chunk + current_arch.ptrsize * 2)
                     blink = read_int_from_memory(chunk + current_arch.ptrsize * 3)
-                except Exception:
+                except gdb.MemoryError:
                     self.out.append(Color.colorify("unaligned orrupted", corrupted_msg_color))
                     break
                 bsize_inv = (-bsize) & 0xffffffff
@@ -57412,7 +57336,7 @@ class CpuidCommand(GenericCommand):
 
     _example_ = "{:s}\n".format(_cmdline_)
     _example_ += "\n"
-    _example_ += "DISABLE `-enable-kvm` option for qemu-system; This command will be aborted if the option is set"
+    _example_ += "DISABLE `-enable-kvm` option for qemu-system."
 
     def execute_cpuid(self, num, subnum=0):
         codes = [b"\x0f\xa2"] # cpuid
@@ -58179,6 +58103,10 @@ class CpuidCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
+        if is_kvm_enabled():
+            err("DISABLE `-enable-kvm` option for qemu-system.")
+            return
+
         # Basic Information
         eax, _, _, _ = self.execute_cpuid(0)
         valid_max_cpuid = min(eax, 0x20)
@@ -58249,7 +58177,7 @@ class MsrCommand(GenericCommand):
     _example_ = "{:s} 0xc0000080              # rcx value\n".format(_cmdline_)
     _example_ += "{:s} MSR_EFER                # another valid format\n".format(_cmdline_)
     _example_ += "\n"
-    _example_ += "DISABLE `-enable-kvm` option for qemu-system; This command will be aborted if the option is set"
+    _example_ += "DISABLE `-enable-kvm` option for qemu-system."
 
     msr_table = [
         ["MSR_EFER",                         0xc0000080, "Extended feature register"],
@@ -58287,6 +58215,8 @@ class MsrCommand(GenericCommand):
 
     def bits_split(self, x, bits=64):
         # 0xaaaabbbb -> 0xaaaa_bbbb
+        if x == 0:
+            return "0b0"
         out = ""
         for i in range(bits):
             if x & (1 << i):
@@ -58332,12 +58262,16 @@ class MsrCommand(GenericCommand):
             err("Ring 0 is needed")
             return
 
+        if is_kvm_enabled():
+            err("DISABLE `-enable-kvm` option for qemu-system.")
+            return
+
         # search const table
         num = self.lookup_name2val(args.msr_target)
         if num is None:
             try:
                 num = int(args.msr_target, 0)
-            except Exception:
+            except ValueError:
                 self.usage()
                 return
 
@@ -62121,7 +62055,7 @@ class PagewalkArm64Command(PagewalkCommand):
         T0SZ = TCR_EL1 & 0b111111
         try:
             granule_bits = {0b00: 12, 0b01: 16, 0b10: 14}[TG0]
-        except Exception:
+        except KeyError:
             self.err("Unsupported $TCR_EL1.TG0")
             return
         region_start = 0
@@ -62169,7 +62103,7 @@ class PagewalkArm64Command(PagewalkCommand):
         T1SZ = (TCR_EL1 >> 16) & 0b111111
         try:
             granule_bits = {0b01: 14, 0b10: 12, 0b11: 16}[TG1]
-        except Exception:
+        except KeyError:
             self.err("Unsupported $TCR_EL1.TG1")
             return
         region_end = 2 ** 64
@@ -62221,7 +62155,7 @@ class PagewalkArm64Command(PagewalkCommand):
         T0SZ = VTCR_EL2 & 0b111111
         try:
             granule_bits = {0b00: 12, 0b01: 16, 0b10: 14}[TG0]
-        except Exception:
+        except KeyError:
             if not self.silent:
                 self.err("Unsupported $VTCR_EL2.TG0")
             return
@@ -62339,7 +62273,7 @@ class PagewalkArm64Command(PagewalkCommand):
         T0SZ = TCR_EL2 & 0b111111
         try:
             granule_bits = {0b00: 12, 0b01: 16, 0b10: 14}[TG0]
-        except Exception:
+        except KeyError:
             self.err("Unsupported $TCR_EL2.TG0")
             return
         region_start = 0
@@ -62403,7 +62337,7 @@ class PagewalkArm64Command(PagewalkCommand):
         T1SZ = (TCR_EL2 >> 16) & 0b111111
         try:
             granule_bits = {0b01: 14, 0b10: 12, 0b11: 16}[TG1]
-        except Exception:
+        except KeyError:
             self.err("Unsupported $TCR_EL2.TG1")
             return
         region_end = 2 ** 64
@@ -62451,7 +62385,7 @@ class PagewalkArm64Command(PagewalkCommand):
         T0SZ = TCR_EL3 & 0b111111
         try:
             granule_bits = {0b00: 12, 0b01: 16, 0b10: 14}[TG0]
-        except Exception:
+        except KeyError:
             self.err("Unsupported $TCR_EL3.TG0")
             return
         region_start = 0
@@ -63873,7 +63807,7 @@ class ThunkBreakpoint(gdb.Breakpoint):
             return_address = gdb.selected_frame().older().pc()
             caller_address = gdb_get_nth_previous_instruction_address(return_address, 1)
             target_address = get_register(self.reg)
-        except Exception:
+        except gdb.error:
             return False # continue
 
         # duplicate, check
@@ -63906,7 +63840,7 @@ class ThunkBreakpoint(gdb.Breakpoint):
                 reg_value_slided = reg_value + slide
                 try:
                     mem_value = read_int_from_memory(reg_value_slided)
-                except Exception:
+                except (gdb.MemoryError, OverflowError):
                     continue
                 if mem_value == target_address:
                     perm = self.search_perm(reg_value_slided)
@@ -64303,7 +64237,7 @@ class UefiOvmfInfoCommand(GenericCommand):
                 csig = u64(read_physmem(c - 8, 8))
                 if addr == b == d and asig == csig == u32(b"mmap"):
                     break
-            except (gdb.MemoryError, OverflowError):
+            except (gdb.MemoryError, ValueError, OverflowError):
                 pass
         else:
             return None
@@ -64851,7 +64785,7 @@ class CurrentFrameStackCommand(GenericCommand):
         ptrsize = current_arch.ptrsize
         try:
             frame = gdb.selected_frame()
-        except Exception:
+        except gdb.error:
             # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
             err("Faild to get frame information")
             return

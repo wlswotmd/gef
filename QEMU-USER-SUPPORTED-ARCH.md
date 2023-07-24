@@ -101,11 +101,12 @@ I also list the tools I used in my Ubuntu 22.04 environment.
         * Need `-cpu` option like `qemu-cris -cpu crisv17 -g 1234 ./a.out`.
         * Could not use `-cpu crisv32` because gdb does not support it.
     * gdb: build from latest source with `./configure --enable-targets=all --with-python=/usr/bin/python3`.
-* Loongarch64
+* loongarch64
     * toolchain: https://github.com/loongson/build-tools/releases/download/2022.09.06/loongarch64-clfs-7.3-cross-tools-gcc-glibc.tar.xz
     * qemu: build from latest source with `./configure --target-list=loongarch64-linux-user`.
     * gdb: build from latest source with `./configure --enable-targets=all --with-python=/usr/bin/python3`.
-* arc
+* arc32
     * toolchain: `arcle-hs38--glibc--stable-2022.08-1` from https://toolchains.bootlin.com/
     * qemu: build from https://github.com/foss-for-synopsys-dwc-arc-processors/qemu with `./configure --target-list=arc-linux-user,arc64-linux-user`.
     * gdb: build from latest source with `./configure --enable-targets=all --with-python=/usr/bin/python3`.
+    * arc64 is unsupported.

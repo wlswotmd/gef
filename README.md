@@ -111,7 +111,7 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
     * It runs very slowly and is not recommended.
     * Commands for Qemu-system are not supported in KGDB mode (Because there is no way to access physical memory).
 
-### Qiling Framework cooperation
+### Qiling framework cooperation
 * This is an experimental support.
     * Write a harness. See https://docs.qiling.io/en/latest/debugger/
     * `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:9999'`
@@ -452,7 +452,7 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
 * `meminsert`: inserts the contents of the address A to B, whether virtual or physical.
 * `is-mem-zero`: checks the contents of address range is all 0x00 or 0xff or not.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/is-mem-zero.png)
-* `ii`: is a shortcut for `x/50i $pc`.
+* `ii`: is a shortcut for `x/50i $pc` with opcode bytes.
     * It prints the value if it is memory access operation.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ii.png)
 * `version`: shows software versions that gef used.
