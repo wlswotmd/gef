@@ -3405,7 +3405,7 @@ def get_insn_prev(addr=None):
         gen = gef_disassemble(addr, 0, nb_prev=2)
         gen.__next__()
         return gen.__next__()
-    except gdb.error:
+    except (gdb.error, StopIteration):
         return None
 
 
@@ -4462,10 +4462,16 @@ class ARM(Architecture):
         val = get_register(self.flag_register)
         taken, reason = False, ""
 
-        zero = bool(val & (1 << flags["zero"]))
-        negative = bool(val & (1 << flags["negative"]))
-        overflow = bool(val & (1 << flags["overflow"]))
-        carry = bool(val & (1 << flags["carry"]))
+        if val is not None:
+            zero = bool(val & (1 << flags["zero"]))
+            negative = bool(val & (1 << flags["negative"]))
+            overflow = bool(val & (1 << flags["overflow"]))
+            carry = bool(val & (1 << flags["carry"]))
+        else:
+            zero = False
+            negative = False
+            overflow = False
+            carry = False
 
         if mnemo in ["cbnz", "cbz", "tbnz", "tbz"]:
             reg = operands[0]
@@ -4623,11 +4629,16 @@ class AARCH64(ARM):
     syscall_register = "$x8"
     syscall_parameters = ["$x0", "$x1", "$x2", "$x3", "$x4", "$x5"]
 
+    instruction_length = 4
     nop_insn = b"\x1f\x20\x03\xd5" # nop
     infloop_insn = b"\x00\x00\x00\x14" # b #0
     trap_insn = b"\x00\x00\x20\xd4" # brk #0
     ret_insn = b"\xc0\x03\x5f\xd6" # ret
     syscall_insn = b"\x01\x00\x00\xd4" # svc #0x0
+
+    @property
+    def pc(self):
+        return get_register("$pc")
 
     def is_syscall(self, insn):
         return insn.mnemonic == "svc" and insn.operands[0] == "#0x0"
@@ -9211,6 +9222,18 @@ def is_kgdb():
     return (is_x86() or is_arm32() or is_arm64()) and is_over_serial()
 
 
+@functools.lru_cache(maxsize=None)
+def is_qiling():
+    if not is_remote_debug():
+        return False
+    if get_pid(remote=True) < 42000:
+        return False
+    for m in get_process_maps():
+        if m.path == "[hook_mem]":
+            return True
+    return False
+
+
 def get_tcp_sess(pid):
     # get inode information from opened file descriptor
     inodes = []
@@ -9388,6 +9411,7 @@ def get_process_maps_linux(pid, remote=False):
 
     maps = []
     for line in lines:
+        line = line.replace("\t", " ") # for qiling framework
         line = line.strip()
         addr, perm, off, _, rest = line.split(" ", 4)
         addr_start, addr_end = [int(x, 16) for x in addr.split("-")]
@@ -10500,7 +10524,10 @@ def is_in_kernel():
     elif is_arm32():
         return (get_register(current_arch.flag_register) & 0b11111) not in [0b10000, 0b11010]
     elif is_arm64():
-        return ((get_register(current_arch.flag_register) >> 2) & 0b11) == 1
+        cpsr = get_register(current_arch.flag_register)
+        if cpsr is None: # for qiling framework
+            return False
+        return ((cpsr >> 2) & 0b11) == 1
     else:
         # assume it is userland
         return False
@@ -16442,19 +16469,15 @@ class DetailRegistersCommand(GenericCommand):
             if reg.type.code == gdb.TYPE_CODE_VOID:
                 continue
 
-            # This str(reg) may be unneeded code.
-            # To begin with, the code is a check that only makes sense on Mac OS.
-            # This GEF only supports Linux, so I think it can be removed.
-            # However, I'm not sure if it's necessary when running Linux in a virtual environment on Mac OS.
-            # I remove it for speed, but I leave this code as it may be revived.
-
-            ## https://arvid.io/2016/08/21/test-if-a-variable-is-unavailable-in-gdb/
-            #if str(reg) == "<unavailable>":
-            #    padreg = current_arch.get_aliased_registers()[regname].ljust(widest, " ")
-            #    line = "{}: ".format(Color.colorify(padreg, unchanged_color))
-            #    line += Color.colorify("no value", "yellow underline")
-            #    gef_print(line)
-            #    continue
+            # https://arvid.io/2016/08/21/test-if-a-variable-is-unavailable-in-gdb/
+            # It seems unnecessary because Mac OS is not supported,
+            # but when executing aarch64 under qiling framework, cpsr/fpsr/fpcr is unavailable.
+            if str(reg) == "<unavailable>":
+                padreg = current_arch.get_aliased_registers()[regname].ljust(widest, " ")
+                line = "{}: ".format(Color.colorify(padreg, unchanged_color))
+                line += Color.colorify("<unavailable>", "yellow underline")
+                gef_print(line)
+                continue
 
             # colorling
             value = align_address(int(reg))
@@ -17275,6 +17298,7 @@ class ArchInfoCommand(GenericCommand):
         gef_print("{:30s} {:s} {!s}".format("is_qemu_usermode()", RIGHT_ARROW, is_qemu_usermode()))
         gef_print("{:30s} {:s} {!s}".format("is_pin()", RIGHT_ARROW, is_pin()))
         gef_print("{:30s} {:s} {!s}".format("is_kgdb()", RIGHT_ARROW, is_kgdb()))
+        gef_print("{:30s} {:s} {!s}".format("is_qiling()", RIGHT_ARROW, is_qiling()))
 
         gef_print(titlify("GEF settings"))
         gef_print("{:30s} {:s} {!s}".format("current_arch.arch", RIGHT_ARROW, current_arch.arch))
@@ -21189,6 +21213,12 @@ class ContextCommand(GenericCommand):
             self.previous_extra_regs = {}
             return
 
+        if insn is None:
+            return
+
+        if insn_prev is None:
+            return
+
         operands = ", ".join(insn.operands)
         operands = self.RE_SUB_OPERAND1.sub("", operands)
         operands = self.RE_SUB_OPERAND2.sub("", operands)
@@ -23301,7 +23331,7 @@ def dereference_from(addr):
             msg.append("...")
             return msg
 
-        if deref is not None:
+        if (deref is not None) and (0x100 < addr.value):
             # it can be referenced
             #   ... -> addr -> ...
             msg.append(addr)

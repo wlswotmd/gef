@@ -11,6 +11,7 @@
     * [Qemu-user cooperation](#qemu-user-cooperation)
     * [Intel Pin/SDE cooperation](#intel-pinsde-cooperation)
     * [KGDB cooperation](#kgdb-cooperation)
+    * [Qiling framework cooperation](#qiling-framework-cooperation)
 * [Added / Improved features](#added--improved-features)
     * [Qemu-system cooperation - General](#qemu-system-cooperation---general)
     * [Qemu-system cooperation - Linux specific](#qemu-system-cooperation---linux-specific)
@@ -72,6 +73,7 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 * Connect to the gdb stub of Intel Pin (via localhost:1234)
 * Connect to the gdb stub of Intel SDE (via localhost:1234)
 * Connect to the gdb stub of KGDB (over serial. currently, only gdb 12.x~ is supported)
+* Connect to the gdb stub of qiling framework (via localhost:9999)
 
 ### Qemu-system cooperation
 * It works with any version qemu-system, but qemu-6.x or higher is recommended.
@@ -108,6 +110,12 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
     * Debugger: `gdb-multiarch -ex 'target remote /dev/ttyS0'`.
     * It runs very slowly and is not recommended.
     * Commands for Qemu-system are not supported in KGDB mode (Because there is no way to access physical memory).
+
+### Qiling Framework cooperation
+* This is an experimental support.
+    * Write a harness. See https://docs.qiling.io/en/latest/debugger/
+    * `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:9999'`
+    * On ARM64, the flag register is not available, so the branch taken/not detected is incorrect.
 
 ## Added / Improved features
 
