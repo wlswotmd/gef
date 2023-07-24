@@ -13335,30 +13335,33 @@ class PtrDemangleCommand(GenericCommand):
 
     @staticmethod
     def get_cookie():
-        if is_x86_64():
-            tls = TlsCommand.get_tls()
-            cookie = read_int_from_memory(tls + 0x30)
-            return cookie
-        elif is_x86_32():
-            tls = TlsCommand.get_tls()
-            cookie = read_int_from_memory(tls + 0x18)
-            return cookie
-        elif is_arm32() or is_arm64():
-            try:
+        try:
+            if is_x86_64():
+                tls = TlsCommand.get_tls()
+                cookie = read_int_from_memory(tls + 0x30)
+                return cookie
+            elif is_x86_32():
+                tls = TlsCommand.get_tls()
+                cookie = read_int_from_memory(tls + 0x18)
+                return cookie
+            elif is_arm32() or is_arm64():
                 cookie_ptr = parse_address("&__pointer_chk_guard_local")
                 cookie = read_int_from_memory(cookie_ptr)
                 return cookie
-            except gdb.error:
-                pass
-            try:
-                auxv = gef_get_auxiliary_values()
-                if "AT_RANDOM" in auxv:
+        except gdb.error:
+            pass
+        # generic
+        try:
+            auxv = gef_get_auxiliary_values()
+            if "AT_RANDOM" in auxv:
+                if is_s390x():
+                    cookie = read_int_from_memory(auxv["AT_RANDOM"]) & 0x00ffffffffffffff
+                else:
                     cookie = read_int_from_memory(auxv["AT_RANDOM"] + current_arch.ptrsize)
-                    if cookie != 0:
-                        return cookie
-            except gdb.error:
-                pass
-        # All but the 4 basic architectures (x86/x64/ARM/ARM64) do not support discovery.
+                if cookie != 0:
+                    return cookie
+        except gdb.error:
+            pass
         return None
 
     @staticmethod
@@ -13374,11 +13377,35 @@ class PtrDemangleCommand(GenericCommand):
             decoded = ror(value, 9, 32) ^ cookie
         elif is_arm32() or is_arm64():
             decoded = value ^ cookie
+        elif is_mips32() or is_mips64():
+            decoded = value
+        elif is_ppc32() or is_ppc64():
+            decoded = value ^ cookie
+        elif is_sparc64():
+            decoded = value ^ cookie
+        elif is_riscv32() or is_riscv64():
+            decoded = value
+        elif is_s390x():
+            decoded = value ^ cookie
+        elif is_m68k():
+            decoded = value
+        elif is_alpha():
+            decoded = value ^ cookie
+        elif is_hppa32():
+            decoded = value
+        elif is_or1k():
+            decoded = value
+        elif is_nios2():
+            decoded = value ^ cookie
+        elif is_microblaze():
+            decoded = value
+        elif is_loongarch64():
+            decoded = value ^ cookie
         return decoded
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @exclude_specific_arch(arch=("SPARC32", "SH4", "XTENSA", "CRIS", "ARC32"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -13390,7 +13417,7 @@ class PtrDemangleCommand(GenericCommand):
         cookie = self.get_cookie()
         if cookie is None:
             return
-        info("Cookie is {:#x}".format(cookie))
+        info("Cookie is {:s}".format(Color.boldify("{:#x}".format(cookie))))
 
         decoded = self.decode(args.value, cookie)
         decoded_sym = get_symbol_string(decoded)
@@ -13428,11 +13455,35 @@ class PtrMangleCommand(GenericCommand):
             encoded = rol(value ^ cookie, 9, 32)
         elif is_arm32() or is_arm64():
             encoded = value ^ cookie
+        elif is_mips32() or is_mips64():
+            encoded = value
+        elif is_ppc32() or is_ppc64():
+            encoded = value ^ cookie
+        elif is_sparc64():
+            encoded = value ^ cookie
+        elif is_riscv32() or is_riscv64():
+            encoded = value
+        elif is_s390x():
+            encoded = value ^ cookie
+        elif is_m68k():
+            encoded = value
+        elif is_alpha():
+            encoded = value ^ cookie
+        elif is_hppa32():
+            encoded = value
+        elif is_or1k():
+            encoded = value
+        elif is_nios2():
+            encoded = value ^ cookie
+        elif is_microblaze():
+            encoded = value
+        elif is_loongarch64():
+            encoded = value ^ cookie
         return encoded
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @exclude_specific_arch(arch=("SPARC32", "SH4", "XTENSA", "CRIS", "ARC32"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -13444,7 +13495,7 @@ class PtrMangleCommand(GenericCommand):
         cookie = PtrDemangleCommand.get_cookie()
         if cookie is None:
             return
-        info("Cookie is {:#x}".format(cookie))
+        info("Cookie is {:s}".format(Color.boldify("{:#x}".format(cookie))))
 
         encoded = self.encode(args.value, cookie)
         info("Encoded value is {:#x}".format(encoded))
@@ -13456,6 +13507,7 @@ class SearchMangledPtrCommand(GenericCommand):
     """Search a mangled pointer value in memory."""
     _cmdline_ = "search-mangled-ptr"
     _category_ = "02-f. Process Information - Security"
+    _aliases_ = ["cookie"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-v", "--verbose", action="store_true", help="shows the section you are currently searching.")
@@ -13527,7 +13579,7 @@ class SearchMangledPtrCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @exclude_specific_arch(arch=("SPARC32", "SH4", "XTENSA", "CRIS", "ARC32"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -13535,7 +13587,7 @@ class SearchMangledPtrCommand(GenericCommand):
         self.cookie = PtrDemangleCommand.get_cookie()
         if self.cookie is None:
             return
-        info("Cookie is {:#x}".format(self.cookie))
+        info("Cookie is {:s}".format(Color.boldify("{:#x}".format(self.cookie))))
 
         # search
         if is_qemu_system():
@@ -20917,7 +20969,6 @@ class ContextCommand(GenericCommand):
         self.add_setting("peek_ret", True, "Peek at return address")
         self.add_setting("nb_lines_stack", 8, "Number of line in the stack pane")
         self.add_setting("nb_guessed_arguments", 6, "Number to display when guessing functions arguments")
-        self.add_setting("grow_stack_down", False, "Order of stack downward starts at largest down to stack pointer")
         self.add_setting("nb_lines_backtrace", 10, "Number of line in the backtrace pane")
         self.add_setting("nb_lines_backtrace_before", 2, "Number of line in the backtrace pane before selected frame")
         self.add_setting("nb_lines_threads", -1, "Number of line in the threads pane")
@@ -21208,19 +21259,21 @@ class ContextCommand(GenericCommand):
             err("Missing info about architecture. Please set: `file /path/to/target_binary`")
             return
 
-        sp = current_arch.sp
-        if sp is not None:
+        if current_arch.sp is None:
+            err("Failed to get value of $SP")
+            return
+
+        if show_raw is True:
             try:
-                if show_raw is True:
-                    mem = read_memory(sp, 0x10 * nb_lines)
-                    gef_print(hexdump(mem, base=sp))
-                else:
-                    gdb.execute("telescope {:#x} {:d} --no-pager".format(sp, nb_lines))
+                mem = read_memory(current_arch.sp, 0x10 * nb_lines)
+                gef_print(hexdump(mem, base=current_arch.sp))
             except gdb.MemoryError:
                 err("Cannot read memory from $SP (corrupted stack pointer?)")
-
         else:
-            err("Failed to get value of $SP")
+            if not current_arch.stack_grow_down:
+                gdb.execute("telescope {:#x} {:d} --no-pager".format(current_arch.sp, nb_lines))
+            else:
+                gdb.execute("telescope {:#x} -{:d} --no-pager".format(current_arch.sp, nb_lines))
         return
 
     def addr_has_breakpoint(self, address, bp_locations):
@@ -23412,15 +23465,12 @@ class DereferenceCommand(GenericCommand):
 
         # mangle cookie
         if not is_qemu_system() and not is_in_kernel():
-            try:
-                res = PtrDemangleCommand.get_cookie()
-                if res:
-                    cookie = res
-                    if current_address_value == cookie:
-                        m = " {:s} PTR_MANGLE cookie".format(LEFT_ARROW)
-                        line += Color.colorify(m, registers_color)
-            except gdb.MemoryError:
-                pass
+            res = PtrDemangleCommand.get_cookie()
+            if res:
+                cookie = res
+                if current_address_value == cookie:
+                    m = " {:s} PTR_MANGLE cookie".format(LEFT_ARROW)
+                    line += Color.colorify(m, registers_color)
 
         # register info
         def get_register_values():
@@ -23455,12 +23505,8 @@ class DereferenceCommand(GenericCommand):
         else:
             start_address = args.location
 
-        if current_arch.stack_grow_down or get_gef_setting("context.grow_stack_down"):
-            from_idx = args.nb_lines * -self.repeat_count
-            to_idx = args.nb_lines * -(self.repeat_count + 1)
-        else:
-            from_idx = args.nb_lines * self.repeat_count
-            to_idx = args.nb_lines * (self.repeat_count + 1)
+        from_idx = args.nb_lines * self.repeat_count
+        to_idx = args.nb_lines * (self.repeat_count + 1)
 
         if args.reverse:
             from_idx *= -1
@@ -24851,20 +24897,6 @@ class DestructorDumpCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
 
-    def ror(self, val, bits, arch_bits):
-        new_val = (val >> bits) | (val << (arch_bits - bits))
-        mask = (1 << arch_bits) - 1
-        return new_val & mask
-
-    def decode_function(self, fn):
-        if is_x86_64():
-            decoded_fn = self.ror(fn, 17, 64) ^ self.cookie
-        elif is_x86_32():
-            decoded_fn = self.ror(fn, 9, 32) ^ self.cookie
-        elif is_arm32() or is_arm64():
-            decoded_fn = fn ^ self.cookie
-        return decoded_fn
-
     def C(self, addr):
         base_address_color = get_gef_setting("theme.dereference_base_address")
         a = Color.colorify("{:#0{:d}x}".format(addr, get_format_address_width()), base_address_color)
@@ -24887,6 +24919,24 @@ class DestructorDumpCommand(GenericCommand):
             head_p = self.tls + 0x20
         elif is_arm64():
             head_p = self.tls + 0x40
+        elif is_mips32() or is_ppc32() or is_m68k() or is_nios2():
+            head_p = self.tls + 0x1c
+        elif is_mips64() or is_ppc64():
+            head_p = self.tls + 0x38
+        elif is_sparc64():
+            head_p = self.tls - 0x48
+        elif is_riscv32() or is_or1k():
+            head_p = self.tls + 0x18
+        elif is_riscv64():
+            head_p = self.tls + 0x30
+        elif is_s390x():
+            head_p = self.tls - 0x50
+        elif is_alpha():
+            head_p = self.tls + 0x48
+        elif is_hppa32() or is_microblaze():
+            head_p = self.tls + 0x24
+        elif is_loongarch64():
+            head_p = self.tls + 0x28
 
         head = lookup_address(read_int_from_memory(head_p))
         current = head.value
@@ -24911,7 +24961,7 @@ class DestructorDumpCommand(GenericCommand):
                 err("Memory access error at {:#x}".format(current))
                 break
 
-            decoded_fn = self.decode_function(func.value)
+            decoded_fn = PtrDemangleCommand.decode(func.value, self.cookie)
             sym = get_symbol_string(decoded_fn)
             decoded_fn_s = Color.boldify("{:#x}".format(decoded_fn))
 
@@ -24977,7 +25027,7 @@ class DestructorDumpCommand(GenericCommand):
                 break
             if fn.value == 0:
                 continue
-            decoded_fn = self.decode_function(fn.value)
+            decoded_fn = PtrDemangleCommand.decode(fn.value, self.cookie)
             sym = get_symbol_string(decoded_fn)
             decoded_fn_s = Color.boldify("{:#x}".format(decoded_fn))
 
@@ -25101,7 +25151,7 @@ class DestructorDumpCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_not_qemu_system
-    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @exclude_specific_arch(arch=("SPARC32", "SH4", "XTENSA", "CRIS"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -64915,16 +64965,22 @@ class CurrentFrameStackCommand(GenericCommand):
         saved_ip = frame.older().pc()
         stack_hi = int(frame.older().read_register("sp"))
         stack_lo = int(frame.read_register("sp"))
-        should_stack_grow_down = get_gef_setting("context.grow_stack_down") is True
         results = []
 
-        for offset, address in enumerate(range(stack_lo, stack_hi, ptrsize)):
-            pprint_str = DereferenceCommand.pprint_dereferenced(stack_lo, offset)
+        if not current_arch.stack_grow_down:
+            addr_lo = stack_lo
+            addr_hi = stack_hi
+        else:
+            addr_lo = stack_hi + current_arch.ptrsize
+            addr_hi = stack_lo + current_arch.ptrsize
+
+        for offset, address in enumerate(range(addr_lo, addr_hi, ptrsize)):
+            pprint_str = DereferenceCommand.pprint_dereferenced(addr_lo, offset)
             if dereference(address) == saved_ip:
                 pprint_str += " ($savedip)"
             results.append(pprint_str)
 
-        if should_stack_grow_down:
+        if current_arch.stack_grow_down:
             results.reverse()
             gef_print(titlify("Stack top (higher address)"))
         else:
@@ -64933,7 +64989,7 @@ class CurrentFrameStackCommand(GenericCommand):
         for res in results:
             gef_print(res)
 
-        if should_stack_grow_down:
+        if current_arch.stack_grow_down:
             gef_print(titlify("Stack bottom (lower address)"))
         else:
             gef_print(titlify("Stack bottom (higher address)"))
