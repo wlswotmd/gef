@@ -59320,6 +59320,7 @@ class PagewalkX64Command(PagewalkCommand):
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
     parser.add_argument("-c", "--use-cache", action="store_true", help="use before result.")
+    parser.add_argument("-U", "--user-pt", action="store_true", help="print userland pagetables (for KPTI, x64 only).")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -59707,6 +59708,8 @@ class PagewalkX64Command(PagewalkCommand):
         # for printing it, we will pagewalk manually.
         res = gdb.execute("monitor info registers", to_string=True)
         cr3 = int(re.search(r"CR3=(\S+)", res).group(1), 16)
+        if is_x86_64() and self.user_pt:
+            cr3 += gef_getpagesize()
         cr4 = int(re.search(r"CR4=(\S+)", res).group(1), 16)
         self.quiet_info("cr3: {:#018x}".format(cr3))
         self.quiet_info("cr4: {:#018x}".format(cr4))
@@ -59820,6 +59823,7 @@ class PagewalkX64Command(PagewalkCommand):
         self.prange = args.prange.copy()
         self.trace = args.trace.copy()
         self.use_cache = args.use_cache
+        self.user_pt = args.user_pt # used only x64
         if self.trace:
             self.vrange.extend(self.trace) # also set --vrange
             self.print_each_level = True # overwrite
