@@ -47131,7 +47131,7 @@ class KernelParamSysctlCommand(GenericCommand):
 
         if self.exact:
             for filt in self.filter:
-                if filt == procname:
+                if filt.pattern == procname:
                     return True
             return False
 
