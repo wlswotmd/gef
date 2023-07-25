@@ -41878,42 +41878,34 @@ class KernelAddressHeuristicFinder:
 
     @staticmethod
     def get_clocksource_tsc():
+        if not is_x86():
+            return
+
         # plan 1 (directly)
         clocksource_tsc = get_ksymaddr("clocksource_tsc")
         if clocksource_tsc:
             return clocksource_tsc
 
         # plan 2 (available v4.16.8 or later)
-        if is_x86_64():
-            mark_tsc_unstable_cold = get_ksymaddr("mark_tsc_unstable.part.0") or get_ksymaddr("mark_tsc_unstable.cold")
-            if mark_tsc_unstable_cold:
-                res = gdb.execute("x/20i {:#x}".format(mark_tsc_unstable_cold), to_string=True)
-                count = 0
-                for line in res.splitlines():
+        mark_tsc_unstable_cold = get_ksymaddr("mark_tsc_unstable.part.0") or get_ksymaddr("mark_tsc_unstable.cold")
+        if mark_tsc_unstable_cold:
+            res = gdb.execute("x/20i {:#x}".format(mark_tsc_unstable_cold), to_string=True)
+            count = 0
+            for line in res.splitlines():
+                if is_x86_64():
                     m = re.search(r"mov\s+rdi\s*,\s*(0x\w+)", line)
                     if m:
                         if count == 2:
                             v = int(m.group(1), 16) & 0xffffffffffffffff
                             return v
                         count += 1
-        elif is_x86_32():
-            mark_tsc_unstable_cold = get_ksymaddr("mark_tsc_unstable.part.0") or get_ksymaddr("mark_tsc_unstable.cold")
-            if mark_tsc_unstable_cold:
-                res = gdb.execute("x/20i {:#x}".format(mark_tsc_unstable_cold), to_string=True)
-                count = 0
-                for line in res.splitlines():
+                elif is_x86_32():
                     m = re.search(r"mov\s+eax\s*,\s*(0x\w+)", line)
                     if m:
                         if count == 1:
                             v = int(m.group(1), 16) & 0xffffffff
                             return v
                         count += 1
-        elif is_arm32():
-            # TODO
-            pass
-        elif is_arm64():
-            # TODO
-            pass
         return None
 
     @staticmethod
@@ -41923,10 +41915,10 @@ class KernelAddressHeuristicFinder:
         if clocksource_list:
             return clocksource_list
 
-        # plan 2 (available v2.6.21-rc1 or later)
-        clocksource_enqueue = get_ksymaddr("clocksource_enqueue")
-        if clocksource_enqueue:
-            res = gdb.execute("x/20i {:#x}".format(clocksource_enqueue), to_string=True)
+        # plan 2 (available v2.6.21-rc1 or later / v2.6.32 or later)
+        clocksource_enqueue_resume = get_ksymaddr("clocksource_enqueue") or get_ksymaddr("clocksource_resume")
+        if clocksource_enqueue_resume:
+            res = gdb.execute("x/20i {:#x}".format(clocksource_enqueue_resume), to_string=True)
             if is_x86_64():
                 for line in res.splitlines():
                     m = re.search(r"QWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
@@ -41940,11 +41932,27 @@ class KernelAddressHeuristicFinder:
                         v = int(m.group(1), 16) & 0xffffffff
                         return v
             elif is_arm32():
-                # TODO
-                pass
+                base = None
+                for line in res.splitlines():
+                    if base is None:
+                        m = re.search(r"movw.*;\s*(0x\S+)", line)
+                        if m:
+                            base = int(m.group(1), 16)
+                    else:
+                        m = re.search(r"movt.*;\s*(0x\S+)", line)
+                        if m:
+                            return base + (int(m.group(1), 16) << 16)
             elif is_arm64():
-                # TODO
-                pass
+                base = None
+                for line in res.splitlines():
+                    if base is None:
+                        m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
+                        if m:
+                            base = int(m.group(1), 16)
+                    else:
+                        m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
+                        if m:
+                            return base + int(m.group(1), 0)
         return None
 
     @staticmethod
@@ -47482,7 +47490,7 @@ class KernelClockSourceCommand(GenericCommand):
 
     def get_offset_list(self, clocksource):
         current = read_int_from_memory(clocksource)
-        for i in range(2, 20):
+        for i in range(7, 20):
             candidate_offset = i * current_arch.ptrsize
             v = read_int_from_memory(current - candidate_offset)
             if is_valid_addr(v):
