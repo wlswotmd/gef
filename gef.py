@@ -38986,7 +38986,11 @@ class KernelMagicCommand(GenericCommand):
             return
 
         perm = get_permission(addr, maps)
-        if to_string:
+        if base is None:
+            val = read_int_from_memory(addr)
+            fmt = "{:42s} {:#0{:d}x} [{:3s}]               -> {:#0{:d}x}"
+            gef_print(fmt.format(sym, addr, width, perm, val, width))
+        elif to_string:
             val = read_ascii_string(addr)
             fmt = "{:42s} {:#0{:d}x} [{:3s}] (+{:#010x}) -> {:s}"
             gef_print(fmt.format(sym, addr, width, perm, addr - base, val))
@@ -39055,6 +39059,10 @@ class KernelMagicCommand(GenericCommand):
         self.resolve_and_print_kernel(["ioremap", "__ioremap", "ioremap_cache"], kbase, maps)
         self.resolve_and_print_kernel(["iounmap", "__iounmap"], kbase, maps)
         if is_x86_64():
+            gef_print(titlify("Memory base"))
+            self.resolve_and_print_kernel("vmemmap_base", kbase, maps, KernelAddressHeuristicFinder.get_vmemmap_base)
+            self.resolve_and_print_kernel("vmalloc_base", kbase, maps, KernelAddressHeuristicFinder.get_vmalloc_base)
+            self.resolve_and_print_kernel("page_offset_base (physmap_start)", kbase, maps, KernelAddressHeuristicFinder.get_page_offset_base)
             self.resolve_and_print_kernel("phys_base", kbase, maps, KernelAddressHeuristicFinder.get_phys_base)
         if is_x86():
             gef_print(titlify("Automatically called function pointer"))
@@ -39091,6 +39099,12 @@ class KernelMagicCommand(GenericCommand):
         self.resolve_and_print_kernel(["do_fchmodat", "sys_fchmodat"], kbase, maps)
         self.resolve_and_print_kernel("mmap_min_addr", kbase, maps, KernelAddressHeuristicFinder.get_mmap_min_addr)
         self.resolve_and_print_kernel("__per_cpu_offset", kbase, maps, KernelAddressHeuristicFinder.get_per_cpu_offset)
+        if is_x86():
+            gef_print(titlify("Descriptor Table"))
+            self.resolve_and_print_kernel("IDT base (fixed address?)", None, maps, KernelAddressHeuristicFinder.get_idt_base)
+            self.resolve_and_print_kernel("GDT base (fixed address?)", None, maps, KernelAddressHeuristicFinder.get_gdt_base)
+            self.resolve_and_print_kernel("LDT base (fixed address?)", None, maps, KernelAddressHeuristicFinder.get_ldt_base)
+            self.resolve_and_print_kernel("TSS base (fixed address?)", None, maps, KernelAddressHeuristicFinder.get_tss_base)
         return
 
     @parse_args
@@ -41113,11 +41127,11 @@ class KernelAddressHeuristicFinder:
 
     @staticmethod
     def get_sys_call_table_x64():
-        # plan 1 (directly)
-        if is_x86_64():
-            sys_call_table = get_ksymaddr("sys_call_table")
-        else:
+        if not is_x86_64():
             return None
+
+        # plan 1 (directly)
+        sys_call_table = get_ksymaddr("sys_call_table")
         if sys_call_table:
             return sys_call_table
 
@@ -41135,11 +41149,11 @@ class KernelAddressHeuristicFinder:
 
     @staticmethod
     def get_sys_call_table_x32():
-        # plan 1 (directly)
-        if is_x86_64():
-            sys_call_table = get_ksymaddr("x32_sys_call_table")
-        else:
+        if not is_x86_64():
             return None
+
+        # plan 1 (directly)
+        sys_call_table = get_ksymaddr("x32_sys_call_table")
         if sys_call_table:
             return sys_call_table
 
@@ -41161,13 +41175,14 @@ class KernelAddressHeuristicFinder:
 
     @staticmethod
     def get_sys_call_table_x86():
+        if not is_x86():
+            return None
+
         # plan 1 (directly)
         if is_x86_64():
             sys_call_table = get_ksymaddr("ia32_sys_call_table")
         elif is_x86_32():
             sys_call_table = get_ksymaddr("sys_call_table")
-        else:
-            return None
         if sys_call_table:
             return sys_call_table
 
@@ -41207,11 +41222,11 @@ class KernelAddressHeuristicFinder:
 
     @staticmethod
     def get_sys_call_table_arm64():
+        if not is_arm64():
+            return
+
         # plan 1 (directly)
-        if is_arm64():
-            sys_call_table = get_ksymaddr("sys_call_table")
-        else:
-            return None
+        sys_call_table = get_ksymaddr("sys_call_table")
         if sys_call_table:
             return sys_call_table
 
@@ -41250,11 +41265,11 @@ class KernelAddressHeuristicFinder:
 
     @staticmethod
     def get_sys_call_table_arm64_compat():
+        if not is_arm64():
+            return
+
         # plan 1 (directly)
-        if is_arm64():
-            sys_call_table = get_ksymaddr("compat_sys_call_table")
-        else:
-            return None
+        sys_call_table = get_ksymaddr("compat_sys_call_table")
         if sys_call_table:
             return sys_call_table
 
@@ -41805,6 +41820,60 @@ class KernelAddressHeuristicFinder:
                     if m:
                         v = int(m.group(1), 16) & 0xffffffffffffffff
                         return v
+        return None
+
+    @staticmethod
+    def get_page_offset_base():
+        if not is_x86_64():
+            return None
+
+        # plan 1 (directly)
+        page_offset_base = get_ksymaddr("page_offset_base")
+        if page_offset_base:
+            return page_offset_base
+
+        # plan 2 (from result of pagewalk)
+        kinfo = KernelbaseCommand.get_kernel_base()
+        page_offset_base_raw = kinfo.maps[0][0]
+        krobase_data = read_memory(kinfo.krobase, kinfo.krobase_size)
+        krobase_data = slice_unpack(krobase_data, current_arch.ptrsize)
+        try:
+            index = krobase_data.index(page_offset_base_raw)
+            return kinfo.krobase + index * current_arch.ptrsize
+        except ValueError:
+            pass
+        return None
+
+    @staticmethod
+    def get_vmalloc_base():
+        if not is_x86_64():
+            return None
+
+        # plan 1 (directly)
+        vmalloc_base = get_ksymaddr("vmalloc_base")
+        if vmalloc_base:
+            return vmalloc_base
+
+        # plan 2 (from result of pagewalk)
+        page_offset_base = KernelAddressHeuristicFinder.get_page_offset_base()
+        if page_offset_base:
+            return page_offset_base - current_arch.ptrsize
+        return None
+
+    @staticmethod
+    def get_vmemmap_base():
+        if not is_x86_64():
+            return None
+
+        # plan 1 (directly)
+        vmemmap_base = get_ksymaddr("vmemmap_base")
+        if vmemmap_base:
+            return vmemmap_base
+
+        # plan 2 (from result of pagewalk)
+        page_offset_base = KernelAddressHeuristicFinder.get_page_offset_base()
+        if page_offset_base:
+            return page_offset_base - current_arch.ptrsize * 2
         return None
 
     @staticmethod
@@ -43113,6 +43182,42 @@ class KernelAddressHeuristicFinder:
                             y = u32(read_memory(x, 4))
                             if y and (y & 0xfff) == 0:
                                 return x
+        return None
+
+    @staticmethod
+    def get_idt_base():
+        if is_x86():
+            res = gdb.execute("monitor info registers", to_string=True)
+            idtr = re.search(r"IDT\s*=\s*(\S+) (\S+)", res)
+            base, _limit = [int(idtr.group(i), 16) for i in range(1, 3)]
+            return base
+        return None
+
+    @staticmethod
+    def get_gdt_base():
+        if is_x86():
+            res = gdb.execute("monitor info registers", to_string=True)
+            gdtr = re.search(r"GDT\s*=\s*(\S+) (\S+)", res)
+            base, _limit = [int(gdtr.group(i), 16) for i in range(1, 3)]
+            return base
+        return None
+
+    @staticmethod
+    def get_tss_base():
+        if is_x86():
+            res = gdb.execute("monitor info registers", to_string=True)
+            tr = re.search(r"TR\s*=\s*(\S+) (\S+) (\S+) (\S+)", res)
+            _trseg, base, _limit, _attr = [int(tr.group(i), 16) for i in range(1, 5)]
+            return base
+        return None
+
+    @staticmethod
+    def get_ldt_base():
+        if is_x86():
+            res = gdb.execute("monitor info registers", to_string=True)
+            ldtr = re.search(r"LDT\s*=\s*(\S+) (\S+) (\S+) (\S+)", res)
+            _seg, base, _limit, _attr = [int(ldtr.group(i), 16) for i in range(1, 5)]
+            return base
         return None
 
 
@@ -50409,7 +50514,7 @@ class SlubDumpCommand(GenericCommand):
         self.vmemmap = None
         if is_x86_64():
             # CONFIG_SPARSEMEM_VMEMMAP
-            vmemmap_base = get_ksymaddr("vmemmap_base")
+            vmemmap_base = KernelAddressHeuristicFinder.get_vmemmap_base()
             if vmemmap_base:
                 self.vmemmap = read_int_from_memory(vmemmap_base)
             else:
@@ -51244,7 +51349,7 @@ class SlubTinyDumpCommand(GenericCommand):
         self.vmemmap = None
         if is_x86_64():
             # CONFIG_SPARSEMEM_VMEMMAP
-            vmemmap_base = get_ksymaddr("vmemmap_base")
+            vmemmap_base = KernelAddressHeuristicFinder.get_vmemmap_base()
             if vmemmap_base:
                 self.vmemmap = read_int_from_memory(vmemmap_base)
             else:
@@ -62862,10 +62967,10 @@ class PagewalkWithHintsCommand(GenericCommand):
     def resolve_direct_map(self):
         if not self.quiet:
             info("resolve direct map")
-        page_offset_base = get_ksymaddr("page_offset_base")
+        page_offset_base = KernelAddressHeuristicFinder.get_page_offset_base()
         if not page_offset_base:
             return
-        vmalloc_base = get_ksymaddr("vmalloc_base")
+        vmalloc_base = KernelAddressHeuristicFinder.get_vmalloc_base()
         if not vmalloc_base:
             return
 
@@ -62879,7 +62984,7 @@ class PagewalkWithHintsCommand(GenericCommand):
     def resolve_vmalloc(self):
         if not self.quiet:
             info("resolve vmalloc")
-        vmalloc_base = get_ksymaddr("vmalloc_base")
+        vmalloc_base = KernelAddressHeuristicFinder.get_vmalloc_base()
         if not vmalloc_base:
             return
         vmalloc_start_addr = read_int_from_memory(vmalloc_base)
@@ -62898,7 +63003,7 @@ class PagewalkWithHintsCommand(GenericCommand):
     def resolve_page(self):
         if not self.quiet:
             info("resolve page")
-        vmemmap_base = get_ksymaddr("vmemmap_base")
+        vmemmap_base = KernelAddressHeuristicFinder.get_vmemmap_base()
         if not vmemmap_base:
             return
 
