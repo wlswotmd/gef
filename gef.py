@@ -43362,6 +43362,8 @@ class KernelbaseCommand(GenericCommand):
         }
         Kinfo = collections.namedtuple("Kinfo", dic.keys())
 
+        REGION_MIN_SIZE = 0x100000
+
         # maps is not found, so fast return
         if dic["maps"] is None:
             dic["has_none"] = None in dic.values()
@@ -43369,7 +43371,7 @@ class KernelbaseCommand(GenericCommand):
 
         # search kbase
         for i, (vaddr, size, perm) in enumerate(dic["maps"]):
-            if perm == "R-X" and size >= 0x100000:
+            if perm == "R-X" and size >= REGION_MIN_SIZE:
                 dic["kbase"] = vaddr
                 dic["kbase_size"] = size
                 maps_after_kbase = dic["maps"][i + 1:]
@@ -43377,7 +43379,7 @@ class KernelbaseCommand(GenericCommand):
         else:
             # not found, maybe old kernel
             for i, (vaddr, size, perm) in enumerate(dic["maps"]):
-                if perm == "RWX" and size >= 0x100000:
+                if perm == "RWX" and size >= REGION_MIN_SIZE:
                     dic["kbase"] = vaddr
                     dic["kbase_size"] = size
                     maps_after_kbase = dic["maps"][i + 1:]
@@ -43391,7 +43393,7 @@ class KernelbaseCommand(GenericCommand):
         for i, (vaddr, size, perm) in enumerate(maps_after_kbase):
             if perm == "R--":
                 if dic["krobase"] is None:
-                    if size > 0x1000: # ignore ranges that are too small
+                    if size >= REGION_MIN_SIZE:
                         dic["krobase"] = vaddr
                         dic["krobase_size"] = size
                         maps_after_krobase = maps_after_kbase[i + 1:]
@@ -43407,7 +43409,7 @@ class KernelbaseCommand(GenericCommand):
             for vaddr, size, perm in maps_after_krobase:
                 if perm == "RW-":
                     if rw is None:
-                        if size > 0x1000:
+                        if size >= REGION_MIN_SIZE:
                             rw = [vaddr, size]
                     elif rw[0] + rw[1] == vaddr:
                         rw = [rw[0], rw[1] + size] # merge contiguous region
