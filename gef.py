@@ -63947,7 +63947,7 @@ class UsermodehelperHunterCommand(GenericCommand):
             err("Not found call_usermodehelper_setup")
             return
         CallUsermodehelperSetupBreakpoint(addr)
-        info("Do `continue`. If failed, try `vmlinux-to-elf-apply`")
+        info("Setup is complete. Try `continue`.")
         return
 
 
@@ -64048,7 +64048,7 @@ class ThunkHunterCommand(GenericCommand):
                 continue
             gef_print(sym + ": ", end="")
             ThunkBreakpoint(addr, sym, reg, maps)
-        info("Do `continue`. If NO_SYMBOL is in the result, try `vmlinux-to-elf-apply`")
+        info("Setup is complete. Try `continue`.")
         return
 
 
