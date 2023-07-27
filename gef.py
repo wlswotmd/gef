@@ -43676,38 +43676,59 @@ class KernelCurrentCommand(GenericCommand):
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
+    def __init__(self):
+        super().__init__()
+        self.current_task = None
+        self.__per_cpu_offset = None
+        self.cpu_offset = None
+        self.offset_comm = None
+        return
+
     def get_cpu_offset(self):
-        # resolve __per_cpu_offset
-        self.__per_cpu_offset = KernelAddressHeuristicFinder.get_per_cpu_offset()
-        if self.__per_cpu_offset is None:
-            if not self.quiet:
-                err("Failed to resolve `__per_cpu_offset`")
-            return False
-        else:
+        if self.cpu_offset:
             if not self.quiet:
                 info("__per_cpu_offset: {:#x}".format(self.__per_cpu_offset))
+            return self.cpu_offset
+
+        # resolve __per_cpu_offset
+        __per_cpu_offset = KernelAddressHeuristicFinder.get_per_cpu_offset()
+        if __per_cpu_offset is None:
+            if not self.quiet:
+                err("Failed to resolve `__per_cpu_offset`")
+            return None
+        else:
+            if not self.quiet:
+                info("__per_cpu_offset: {:#x}".format(__per_cpu_offset))
+            self.__per_cpu_offset = __per_cpu_offset
 
         # resolve each cpu_offset
-        self.cpu_offset = [read_int_from_memory(self.__per_cpu_offset)]
+        cpu_offset = [read_int_from_memory(__per_cpu_offset)]
         i = 1
         while True:
-            off = read_int_from_memory(self.__per_cpu_offset + i * current_arch.ptrsize)
+            off = read_int_from_memory(__per_cpu_offset + i * current_arch.ptrsize)
             if off == 0:
                 break
-            if off == self.cpu_offset[-1]:
-                self.cpu_offset = self.cpu_offset[:-1]
+            if off == cpu_offset[-1]:
+                cpu_offset = cpu_offset[:-1]
                 break
-            self.cpu_offset.append(off)
+            cpu_offset.append(off)
             i += 1
-        return True
+        self.cpu_offset = cpu_offset
+        return self.cpu_offset
 
     def get_comm_str(self, task_addr):
-        ret = gdb.execute("ktask --no-pager --meta", to_string=True)
-        r = re.search(r"offsetof\(task_struct, comm\): (0x\S+)", ret)
-        if r is None:
+        if self.offset_comm is None:
+            ret = gdb.execute("ktask --no-pager --meta", to_string=True)
+            r = re.search(r"offsetof\(task_struct, comm\): (0x\S+)", ret)
+            if r is not None:
+                self.offset_comm = int(r.group(1), 16)
+            else:
+                self.offset_comm = False
+
+        if self.offset_comm is False:
             return ""
-        offset_comm = int(r.group(1), 16)
-        comm = read_cstring_from_memory(task_addr + offset_comm)
+
+        comm = read_cstring_from_memory(task_addr + self.offset_comm)
         return comm
 
     @parse_args
@@ -43721,17 +43742,18 @@ class KernelCurrentCommand(GenericCommand):
 
         if not self.quiet:
             info("Wait for memory scan")
-        current_task = KernelAddressHeuristicFinder.get_current_task()
-        if current_task is None:
-            if not self.quiet:
-                err("Failed to resolve `current_task`")
-            return
+        if self.current_task is None:
+            self.current_task = KernelAddressHeuristicFinder.get_current_task()
+            if self.current_task is None:
+                if not self.quiet:
+                    err("Failed to resolve `current_task`")
+                return
         if not self.quiet:
-            info("current_task: {:#x}".format(current_task))
+            info("current_task: {:#x}".format(self.current_task))
 
         if is_arm32() or is_arm64():
-            task = read_int_from_memory(current_task)
-            gef_print("current: {:#x} {:s}".format(current_task, self.get_comm_str(task)))
+            task = read_int_from_memory(self.current_task)
+            gef_print("current: {:#x} {:s}".format(self.current_task, self.get_comm_str(task)))
             return
 
         elif is_x86():
@@ -43741,8 +43763,8 @@ class KernelCurrentCommand(GenericCommand):
                 mask = 0x80000000_00000000
 
             # pattern1: do not use __per_cpu_offset
-            if (current_task & mask) == mask:
-                task = read_int_from_memory(current_task)
+            if (self.current_task & mask) == mask:
+                task = read_int_from_memory(self.current_task)
                 if is_valid_addr(task):
                     if not self.quiet:
                         info("__per_cpu_offset is not used")
@@ -43750,10 +43772,11 @@ class KernelCurrentCommand(GenericCommand):
                     return
 
             # pattern2: use __per_cpu_offset
-            if not self.get_cpu_offset():
+            cpu_offset = self.get_cpu_offset()
+            if not cpu_offset:
                 return
-            for i, offset in enumerate(self.cpu_offset):
-                task = read_int_from_memory(current_task + offset)
+            for i, offset in enumerate(cpu_offset):
+                task = read_int_from_memory(self.current_task + offset)
                 gef_print("current (cpu{:d}): {:#x} {:s}".format(i, task, self.get_comm_str(task)))
         return
 
