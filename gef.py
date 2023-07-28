@@ -26154,6 +26154,7 @@ class SyscallSearchCommand(GenericCommand):
     parser.add_argument("-v", "--verbose", action="store_true", help="display prototype of syscall.")
     parser.add_argument("search_pattern", metavar="SYSCALL_NAME|SYSCALL_NUM",
                         help="syscall name or number you want to search. Regex is available.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
     _example_ = '{:s} -a X86 -m 64                 "^writev?" # amd64\n'.format(_cmdline_)
@@ -26184,9 +26185,9 @@ class SyscallSearchCommand(GenericCommand):
     _example_ += '{:s} -a LOONGARCH -m LOONGARCH64  "^writev?" # loongarch64\n'.format(_cmdline_)
     _example_ += '{:s} -a ARC -m ARC32              "^writev?" # arc32'.format(_cmdline_)
 
-    def print_syscall(self, syscall_table, syscall_num, syscall_name_pattern):
-        gef_print(titlify("arch={:s}, mode={:s}".format(syscall_table.arch, syscall_table.mode)))
-        gef_print(Color.colorify("{:<17}{:s}".format("Syscall-num", "Syscall-name"), get_gef_setting("theme.table_heading")))
+    def make_output(self, syscall_table, syscall_num, syscall_name_pattern):
+        self.out.append(titlify("arch={:s}, mode={:s}".format(syscall_table.arch, syscall_table.mode)))
+        self.out.append(Color.colorify("{:<17}{:s}".format("Syscall-num", "Syscall-name"), get_gef_setting("theme.table_heading")))
         for key, entry in syscall_table.table.items():
             nr = key
             if not re.search(syscall_name_pattern, entry.name):
@@ -26196,7 +26197,7 @@ class SyscallSearchCommand(GenericCommand):
             params = ""
             if self.verbose:
                 params = "(" + ", ".join([param.param for param in entry.params]) + ");"
-            gef_print("NR={:<#14x}{:s}{:s}".format(nr, Color.boldify(entry.name), params))
+            self.out.append("NR={:<#14x}{:s}{:s}".format(nr, Color.boldify(entry.name), params))
         return
 
     @parse_args
@@ -26219,7 +26220,13 @@ class SyscallSearchCommand(GenericCommand):
             self.usage()
             return
 
-        self.print_syscall(syscall_table, syscall_num, syscall_name_pattern)
+        self.out = []
+        self.make_output(syscall_table, syscall_num, syscall_name_pattern)
+
+        if len(self.out) > 20:
+            gef_print("\n".join(self.out), less=not args.no_pager)
+        else:
+            gef_print("\n".join(self.out), less=False)
         return
 
 
