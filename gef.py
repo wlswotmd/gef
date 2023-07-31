@@ -43369,12 +43369,12 @@ class KernelbaseCommand(GenericCommand):
         }
         Kinfo = collections.namedtuple("Kinfo", dic.keys())
 
-        REGION_MIN_SIZE = 0x10000
-
         # maps is not found, so fast return
         if dic["maps"] is None:
             dic["has_none"] = None in dic.values()
             return Kinfo(*dic.values())
+
+        REGION_MIN_SIZE = 0x100000
 
         # search kbase
         for i, (vaddr, size, perm) in enumerate(dic["maps"]):
@@ -43396,11 +43396,44 @@ class KernelbaseCommand(GenericCommand):
                 dic["has_none"] = None in dic.values()
                 return Kinfo(*dic.values())
 
+        # If -enable-kvm option of qemu-system is not set,
+        # it seems that multiple `r-- non-.rodata` are placed between .text and .rodata.
+        # Since the maximum size is smaller than 0x20000, avoid it heuristically.
+        """
+        0xffffffff87c00000-0xffffffff88802000 0x0000000000c02000 [r-x] kernel .text
+        0xffffffff88802000-0xffffffff88804000 0x0000000000002000 [rw-] 0x00-filled
+        0xffffffff88804000-0xffffffff8880a000 0x0000000000006000 [rw-]
+        0xffffffff8880a000-0xffffffff8880b000 0x0000000000001000 [rw-] 0x00-filled
+        0xffffffff8880b000-0xffffffff8880f000 0x0000000000004000 [rw-]
+        0xffffffff8880f000-0xffffffff88810000 0x0000000000001000 [r--]
+        0xffffffff88810000-0xffffffff88830000 0x0000000000020000 [rw-]
+        0xffffffff88830000-0xffffffff88831000 0x0000000000001000 [r--]
+        0xffffffff88831000-0xffffffff88845000 0x0000000000014000 [rw-]
+        0xffffffff88845000-0xffffffff8884b000 0x0000000000006000 [r--]
+        0xffffffff8884b000-0xffffffff88850000 0x0000000000005000 [rw-]
+        0xffffffff88850000-0xffffffff88855000 0x0000000000005000 [r--]
+        0xffffffff88855000-0xffffffff8885c000 0x0000000000007000 [rw-]
+        0xffffffff8885c000-0xffffffff88874000 0x0000000000018000 [r--] <-- here
+        0xffffffff88874000-0xffffffff8887d000 0x0000000000009000 [rw-]
+        0xffffffff8887d000-0xffffffff8887e000 0x0000000000001000 [r--]
+        0xffffffff8887e000-0xffffffff88880000 0x0000000000002000 [r--] 0x00-filled
+        ...
+        0xffffffff889e1000-0xffffffff889e2000 0x0000000000001000 [rw-]
+        0xffffffff889e2000-0xffffffff889e3000 0x0000000000001000 [r--]
+        0xffffffff889e3000-0xffffffff88a00000 0x000000000001d000 [rw-]
+        0xffffffff88a00000-0xffffffff88d76000 0x0000000000376000 [r--] kernel .rodata
+        0xffffffff88d76000-0xffffffff88d78000 0x0000000000002000 [r--] kernel .rodata, vdso_image_64
+        0xffffffff88d78000-0xffffffff88d79000 0x0000000000001000 [r--] kernel .rodata, vdso_image_x32
+        0xffffffff88d79000-0xffffffff88d7b000 0x0000000000002000 [r--] kernel .rodata, vdso_image_32
+        0xffffffff88d7b000-0xffffffff89162000 0x00000000003e7000 [r--] kernel .rodata
+        """
+        RO_REGION_MIN_SIZE = 0x20000
+
         # search kernel RO base
         for i, (vaddr, size, perm) in enumerate(maps_after_kbase):
             if perm == "R--":
                 if dic["krobase"] is None:
-                    if size >= REGION_MIN_SIZE:
+                    if size >= RO_REGION_MIN_SIZE:
                         dic["krobase"] = vaddr
                         dic["krobase_size"] = size
                         maps_after_krobase = maps_after_kbase[i + 1:]
@@ -44987,7 +45020,7 @@ class KernelModuleCommand(GenericCommand):
                             valid = False
                             break
                         # base align check
-                        cand_base = read_int_from_memory(module + offset_mem + mem_type * sizeof_module_memory )
+                        cand_base = read_int_from_memory(module + offset_mem + mem_type * sizeof_module_memory)
                         if cand_base == 0 or cand_base & 0xfff:
                             valid = False
                             break
@@ -45002,9 +45035,8 @@ class KernelModuleCommand(GenericCommand):
                         info(f"sizeof(module_memory): {sizeof_module_memory:#x}")
                     return offset_mem
         if not self.quiet:
-            err("not found module->mem")
+            err("Not found module->mem")
         return None
-
 
     def get_offset_layout(self, module_addrs):
         """
@@ -54169,7 +54201,7 @@ class KsymaddrRemoteCommand(GenericCommand):
                     relative_base_address: 0xffffffff85c00000
                     """
                     position = self.offset_kallsyms_token_index + 0x200
-                    position_relative_base = position + self.num_symbols * offset_byte_size
+                    position_relative_base = align_address_to_size(position + self.num_symbols * offset_byte_size, 8)
                     relative_base_address_data = self.kernel_img[position_relative_base:position_relative_base + address_byte_size]
                     relative_base_address = int.from_bytes(relative_base_address_data, endian_str)
                     if not is_valid_addr(relative_base_address):
