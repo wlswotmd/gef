@@ -53328,7 +53328,7 @@ class XSlubOjbectCommand(GenericCommand):
                 msg += " " + Color.redify("(unaligned?)")
             gef_print(msg)
 
-        except gdb.MemoryError:
+        except (gdb.MemoryError, ZeroDivisionError):
             err("Memory error")
         return
 
