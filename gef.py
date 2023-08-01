@@ -43374,102 +43374,62 @@ class KernelbaseCommand(GenericCommand):
             dic["has_none"] = None in dic.values()
             return Kinfo(*dic.values())
 
-        REGION_MIN_SIZE = 0x100000
+        # 1. search kbase
+        # .text is usually noticeably larger than other areas.
+        # It just determines this size heuristically and detects it, but it works well in most cases.
+        TEXT_REGION_MIN_SIZE = 0x100000
 
-        # search kbase
         for i, (vaddr, size, perm) in enumerate(dic["maps"]):
-            if perm == "R-X" and size >= REGION_MIN_SIZE:
+            if perm == "R-X" and size >= TEXT_REGION_MIN_SIZE:
                 dic["kbase"] = vaddr
                 dic["kbase_size"] = size
-                maps_after_kbase = dic["maps"][i + 1:]
+                kbase_map_index = i
                 break
         else:
             # not found, maybe old kernel
             for i, (vaddr, size, perm) in enumerate(dic["maps"]):
-                if perm == "RWX" and size >= REGION_MIN_SIZE:
+                if perm == "RWX" and size >= TEXT_REGION_MIN_SIZE:
                     dic["kbase"] = vaddr
                     dic["kbase_size"] = size
-                    maps_after_kbase = dic["maps"][i + 1:]
+                    kbase_map_index = i
                     break
             else:
                 # Not found, so fast return
                 dic["has_none"] = None in dic.values()
                 return Kinfo(*dic.values())
 
-        # If -enable-kvm option of qemu-system is not set,
-        # it seems that multiple `r-- non-.rodata` are placed between .text and .rodata.
-        # Since the maximum size is smaller than 0x20000, avoid it heuristically.
-        """
-        0xffffffff87c00000-0xffffffff88802000 0x0000000000c02000 [r-x] kernel .text
-        0xffffffff88802000-0xffffffff88804000 0x0000000000002000 [rw-] 0x00-filled
-        0xffffffff88804000-0xffffffff8880a000 0x0000000000006000 [rw-]
-        0xffffffff8880a000-0xffffffff8880b000 0x0000000000001000 [rw-] 0x00-filled
-        0xffffffff8880b000-0xffffffff8880f000 0x0000000000004000 [rw-]
-        0xffffffff8880f000-0xffffffff88810000 0x0000000000001000 [r--]
-        0xffffffff88810000-0xffffffff88830000 0x0000000000020000 [rw-]
-        0xffffffff88830000-0xffffffff88831000 0x0000000000001000 [r--]
-        0xffffffff88831000-0xffffffff88845000 0x0000000000014000 [rw-]
-        0xffffffff88845000-0xffffffff8884b000 0x0000000000006000 [r--]
-        0xffffffff8884b000-0xffffffff88850000 0x0000000000005000 [rw-]
-        0xffffffff88850000-0xffffffff88855000 0x0000000000005000 [r--]
-        0xffffffff88855000-0xffffffff8885c000 0x0000000000007000 [rw-]
-        0xffffffff8885c000-0xffffffff88874000 0x0000000000018000 [r--] <-- here
-        0xffffffff88874000-0xffffffff8887d000 0x0000000000009000 [rw-]
-        0xffffffff8887d000-0xffffffff8887e000 0x0000000000001000 [r--]
-        0xffffffff8887e000-0xffffffff88880000 0x0000000000002000 [r--] 0x00-filled
-        ...
-        0xffffffff889e1000-0xffffffff889e2000 0x0000000000001000 [rw-]
-        0xffffffff889e2000-0xffffffff889e3000 0x0000000000001000 [r--]
-        0xffffffff889e3000-0xffffffff88a00000 0x000000000001d000 [rw-]
-        0xffffffff88a00000-0xffffffff88d76000 0x0000000000376000 [r--] kernel .rodata
-        0xffffffff88d76000-0xffffffff88d78000 0x0000000000002000 [r--] kernel .rodata, vdso_image_64
-        0xffffffff88d78000-0xffffffff88d79000 0x0000000000001000 [r--] kernel .rodata, vdso_image_x32
-        0xffffffff88d79000-0xffffffff88d7b000 0x0000000000002000 [r--] kernel .rodata, vdso_image_32
-        0xffffffff88d7b000-0xffffffff89162000 0x00000000003e7000 [r--] kernel .rodata
-        """
-        RO_REGION_MIN_SIZE = 0x20000
-
-        # search kernel RO base
-        for i, (vaddr, size, perm) in enumerate(maps_after_kbase):
+        # 2. search kernel RO base
+        # If -enable-kvm option of qemu-system is not set, there may be multiple `r-- non-.rodata` between .text and .rodata.
+        # In other words, .rodata may not exist immediately after .text. I have seen this on qemu with debian11 x86_64 installed.
+        # Therefore, detecting by location will not return correct results.
+        # It is also possible to detect by size, but I could not determine the validity of the threshold.
+        # So I decided to use the characteristics of the data contained in .rodata.
+        # I detect by the existence "Linux version" near the top of the page.
+        for i, (vaddr, size, perm) in enumerate(dic["maps"][kbase_map_index + 1:]):
             if perm == "R--":
                 if dic["krobase"] is None:
-                    if size >= RO_REGION_MIN_SIZE:
+                    data = read_memory(vaddr, gef_getpagesize())
+                    if b"Linux version" in data:
                         dic["krobase"] = vaddr
                         dic["krobase_size"] = size
-                        maps_after_krobase = maps_after_kbase[i + 1:]
+                        krobase_map_index = kbase_map_index + i
                 elif dic["krobase"] + dic["krobase_size"] == vaddr:
                     dic["krobase_size"] += size # merge contiguous region
-                    maps_after_krobase = maps_after_kbase[i + 1:]
+                    krobase_map_index = kbase_map_index + i
                 else:
                     break
 
-        # search kernel RW base
-        if dic["krobase"] is not None:
-            rw = None
-            for vaddr, size, perm in maps_after_krobase:
-                if perm == "RW-":
-                    if rw is None:
-                        if size >= REGION_MIN_SIZE:
-                            rw = [vaddr, size]
-                    elif rw[0] + rw[1] == vaddr:
-                        rw = [rw[0], rw[1] + size] # merge contiguous region
-            if rw:
-                dic["krwbase"] = rw[0]
-                dic["krwbase_size"] = rw[1]
-
-        # search kernel RO/RW base for old kernel
-        else:
+        # 2b. search kernel RO base for old kernel
+        if dic["krobase"] is None:
             dic["rwx"] = True
-            # Even if it is wrong, it is about to misdetect the front to some extent.
-            # Since ksymaddr-remote knows the exact value, we don't ask for accuracy any further.
-
-            # maybe old kernel (no-NX)
-            # Detected kbase(R-X) range already includes rodata, so use heuristic search
+            # If it can not detect rodata, maybe it is an old kernel (32-bit?).
+            # Old kernel is no-NX, so .rodata is RWX.
+            # Detected kbase range includes rodata, so use heuristic search and split.
             #    [  .text  ] <- maybe .text is larger than 0x8000 (it fails in certain cases if 0x7000)
             #    [  .text  ]
             #    [  .text  ]
             #    [  .text  ] <- end of this area has [0x00, 0x00, 0x00, ...]
-            #    [  .rodata  ]
+            #    [  .rodata  ] <- near the top of this area has "Linux version"
             #    [  .rodata  ]
             #    [  .rodata  ]
             start = dic["kbase"] + gef_getpagesize() * 8
@@ -43477,17 +43437,39 @@ class KernelbaseCommand(GenericCommand):
             block_size = 0x20
             zero_data = b"\0" * block_size
             for addr in range(start, end, gef_getpagesize()):
-                data = read_memory(addr - block_size, block_size)
-                if data == zero_data:
-                    dic["krobase"] = addr
-                    dic["krobase_size"] = end - addr
-                    dic["kbase_size"] -= dic["krobase_size"]
-                    dic["krwbase"] = 0
-                    dic["krwbase_size"] = 0
-                    break
+                data_prev = read_memory(addr - block_size, block_size)
+                if data_prev == zero_data:
+                    data = read_memory(addr, gef_getpagesize())
+                    if b"Linux version" in data:
+                        dic["krobase"] = addr
+                        dic["krobase_size"] = end - addr
+                        dic["kbase_size"] -= dic["krobase_size"]
+                        # In this case, we chose not to detect krwbase.
+                        # Because ksymaddr-remote seems to give better results.
+                        dic["krwbase"] = 0
+                        dic["krwbase_size"] = 0
+                        break
             else:
+                # Not found, so fast return
                 dic["has_none"] = None in dic.values()
                 return Kinfo(*dic.values())
+
+        else:
+            # 3. search kernel RW base
+            # If krobase can be detected, detect the RW area from after krobase.
+            # TODO: We have specified the size, but there is room for improvement.
+            RW_REGION_MIN_SIZE = 0x20000
+            if dic["krobase"] is not None:
+                for vaddr, size, perm in dic["maps"][krobase_map_index + 1:]:
+                    if perm == "RW-":
+                        if dic["krwbase"] is None:
+                            if size >= RW_REGION_MIN_SIZE:
+                                dic["krwbase"] = vaddr
+                                dic["krwbase_size"] = size
+                        elif dic["krwbase"] + dic["krwbase_size"] == vaddr:
+                            dic["krwbase_size"] += size # merge contiguous region
+                        else:
+                            break
 
         dic["has_none"] = None in dic.values()
         __cached_kernel_info__ = Kinfo(*dic.values())
