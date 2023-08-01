@@ -44831,6 +44831,7 @@ class KernelModuleCommand(GenericCommand):
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-s", "--resolve-symbol", action="store_true", help="try to resolve symbols.")
     parser.add_argument("--symbol-unsort", action="store_true", help="print resolved symbols without sorting by address.")
+    parser.add_argument("-f", "--filter", action="append", type=re.compile, default=[], help="REGEXP filter.")
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
@@ -44853,7 +44854,7 @@ class KernelModuleCommand(GenericCommand):
                 return None
             if addr == modules:
                 break
-            module_addrs.append(addr)
+            module_addrs.append(addr - current_arch.ptrsize)
             current = addr
         return module_addrs
 
@@ -44891,84 +44892,51 @@ class KernelModuleCommand(GenericCommand):
 
         struct module {
             enum module_state state;
-
-            /* Member of list of modules */
             struct list_head list;
-
-            /* Unique handle for this module */
-            char name[MODULE_NAME_LEN];
-
+            char name[MODULE_NAME_LEN]; // 64 - sizeof(unsigned long) bytes
         #ifdef CONFIG_STACKTRACE_BUILD_ID
-            /* Module build ID */
-            unsigned char build_id[BUILD_ID_SIZE_MAX];
+            unsigned char build_id[BUILD_ID_SIZE_MAX]; // 20 bytes
         #endif
-
-            /* Sysfs stuff. */
             struct module_kobject mkobj;
             struct module_attribute *modinfo_attrs;
             const char *version;
             const char *srcversion;
             struct kobject *holders_dir;
-
-            /* Exported symbols */
             const struct kernel_symbol *syms;
             const s32 *crcs;
             unsigned int num_syms;
-
         #ifdef CONFIG_ARCH_USES_CFI_TRAPS
             s32 *kcfi_traps;
             s32 *kcfi_traps_end;
         #endif
-
-            /* Kernel parameters. */
         #ifdef CONFIG_SYSFS
             struct mutex param_lock;
         #endif
             struct kernel_param *kp;
             unsigned int num_kp;
-
-            /* GPL-only exported symbols. */
             unsigned int num_gpl_syms;
             const struct kernel_symbol *gpl_syms;
             const s32 *gpl_crcs;
             bool using_gplonly_symbols;
-
         #ifdef CONFIG_MODULE_SIG
-            /* Signature was verified. */
             bool sig_ok;
         #endif
-
             bool async_probe_requested;
-
-            /* Exception table */
             unsigned int num_exentries;
             struct exception_table_entry *extable;
-
-            /* Startup function. */
             int (*init)(void);
-
             struct module_memory mem[MOD_MEM_NUM_TYPES] __module_memory_align;
-            /* Arch-specific module values */
             struct mod_arch_specific arch;
-
-            unsigned long taints;    /* same bits as kernel:taint_flags */
-
+            unsigned long taints;
         #ifdef CONFIG_GENERIC_BUG
-            /* Support for BUG */
             unsigned num_bugs;
             struct list_head bug_list;
             struct bug_entry *bug_table;
         #endif
-
         #ifdef CONFIG_KALLSYMS
-            /* Protected by RCU and/or module_mutex: use rcu_dereference() */
             struct mod_kallsyms __rcu *kallsyms;
             struct mod_kallsyms core_kallsyms;
-
-            /* Section attributes */
             struct module_sect_attrs *sect_attrs;
-
-            /* Notes attributes */
             struct module_notes_attrs *notes_attrs;
         #endif
         }
@@ -44976,7 +44944,6 @@ class KernelModuleCommand(GenericCommand):
         struct module_memory {
             void *base;
             unsigned int size;
-
         #ifdef CONFIG_MODULES_TREE_LOOKUP
             struct mod_tree_node mtn; (0x38)
         #endif
@@ -45265,6 +45232,14 @@ class KernelModuleCommand(GenericCommand):
         return None
 
     def get_offset_kallsyms(self, module_addrs):
+        """
+        struct mod_kallsyms {
+            Elf_Sym *symtab;
+            unsigned int num_symtab;
+            char *strtab;
+            char *typetab; // v5.2~
+        };
+        """
         kversion = KernelVersionCommand.kernel_version()
         for i in range(300):
             offset_kallsyms = i * current_arch.ptrsize
@@ -45279,13 +45254,13 @@ class KernelModuleCommand(GenericCommand):
                 if not is_valid_addr(cand_kallsyms):
                     valid = False
                     break
-                # struct mod kallsyms member access check
+                # struct mod_kallsyms member access check
                 cand_symtab = read_int_from_memory(cand_kallsyms)
                 if not is_valid_addr(cand_symtab):
                     valid = False
                     break
                 cand_num_symtab = read_int_from_memory(cand_kallsyms + current_arch.ptrsize * 1)
-                if is_valid_addr(cand_num_symtab):
+                if is_valid_addr(cand_num_symtab) or cand_num_symtab == 0:
                     valid = False
                     break
                 cand_strtab = read_int_from_memory(cand_kallsyms + current_arch.ptrsize * 2)
@@ -45305,6 +45280,46 @@ class KernelModuleCommand(GenericCommand):
         if not self.quiet:
             err("Not found module->kallsyms")
         return None
+
+    def parse_kallsyms(self, kallsyms):
+        kversion = KernelVersionCommand.kernel_version()
+
+        symtab = read_int_from_memory(kallsyms + current_arch.ptrsize * 0)
+        sizeof_symtab_entry = 24 if is_64bit() else 16
+        num_symtab = read_int_from_memory(kallsyms + current_arch.ptrsize * 1)
+        strtab = read_int_from_memory(kallsyms + current_arch.ptrsize * 2)
+        strtab_pos = 0
+        if kversion >= "5.2":
+            typetab = read_int_from_memory(kallsyms + current_arch.ptrsize * 3)
+
+        gef_print("symtab: {:#x}".format(symtab))
+        gef_print("sizeof_symtab_entry: {:#x}".format(sizeof_symtab_entry))
+        gef_print("num_symab: {:#x}".format(num_symtab))
+        gef_print("strtab: {:#x}".format(strtab))
+        gef_print("typetab: {:#x}".format(typetab))
+
+        entries = []
+        for i in range(num_symtab):
+            sym_addr = read_int_from_memory(symtab + sizeof_symtab_entry * i + current_arch.ptrsize)
+            sym_name = read_cstring_from_memory(strtab + strtab_pos)
+            strtab_pos += len(sym_name) + 1
+
+            if kversion >= "5.2":
+                sym_type = chr(u8(read_memory(typetab + i, 1)))
+            elif kversion >= "5.0":
+                # st_size
+                if is_64bit():
+                    sym_type = chr(u8(read_memory(symtab + sizeof_symtab_entry * i + 16, 1)))
+                else:
+                    sym_type = chr(u8(read_memory(symtab + sizeof_symtab_entry * i + 8, 1)))
+            else:
+                # st_info
+                if is_64bit():
+                    sym_type = chr(u8(read_memory(symtab + sizeof_symtab_entry * i + 4, 1)))
+                else:
+                    sym_type = chr(u8(read_memory(symtab + sizeof_symtab_entry * i + 12, 1)))
+            entries.append([sym_addr, sym_type, sym_name])
+        return entries
 
     @parse_args
     @only_if_gdb_running
@@ -45331,7 +45346,6 @@ class KernelModuleCommand(GenericCommand):
             offset_mem = self.get_offset_mem(module_addrs)
             if offset_mem is None:
                 return
-
         elif kversion >= "4.5":
             offset_layout = self.get_offset_layout(module_addrs)
             if offset_layout is None:
@@ -45354,6 +45368,10 @@ class KernelModuleCommand(GenericCommand):
 
         for module in module_addrs:
             name_string = read_cstring_from_memory(module + offset_name)
+            if args.filter:
+                if not any(re_pattern.search(name_string) for re_pattern in args.filter):
+                    continue
+
             if kversion >= "6.4":
                 base = read_int_from_memory(module + offset_mem)
                 size = u32(read_memory(module + offset_mem + current_arch.ptrsize, 4))
@@ -45368,35 +45386,7 @@ class KernelModuleCommand(GenericCommand):
             if args.resolve_symbol:
                 self.out.append(titlify("module symbols"))
                 kallsyms = read_int_from_memory(module + offset_kallsyms)
-
-                symtab = read_int_from_memory(kallsyms + current_arch.ptrsize * 0)
-                sizeof_symtab_entry = 24 if is_64bit() else 16
-                num_symtab = read_int_from_memory(kallsyms + current_arch.ptrsize * 1)
-                strtab = read_int_from_memory(kallsyms + current_arch.ptrsize * 2)
-                strtab_pos = 0
-                if kversion >= "5.2":
-                    typetab = read_int_from_memory(kallsyms + current_arch.ptrsize * 3)
-
-                entries = []
-                for i in range(num_symtab):
-                    sym_addr = read_int_from_memory(symtab + sizeof_symtab_entry * i + current_arch.ptrsize)
-                    sym_name = read_cstring_from_memory(strtab + strtab_pos)
-                    strtab_pos += len(sym_name) + 1
-                    if kversion >= "5.2":
-                        sym_type = chr(u8(read_memory(typetab + i, 1)))
-                    elif kversion >= "5.0":
-                        # st_size
-                        if is_64bit():
-                            sym_type = chr(u8(read_memory(symtab + sizeof_symtab_entry * i + 16, 1)))
-                        else:
-                            sym_type = chr(u8(read_memory(symtab + sizeof_symtab_entry * i + 8, 1)))
-                    else:
-                        # st_info
-                        if is_64bit():
-                            sym_type = chr(u8(read_memory(symtab + sizeof_symtab_entry * i + 4, 1)))
-                        else:
-                            sym_type = chr(u8(read_memory(symtab + sizeof_symtab_entry * i + 12, 1)))
-                    entries.append([sym_addr, sym_type, sym_name])
+                entries = self.parse_kallsyms(kallsyms)
 
                 # symbol_unsort is used for debugging.
                 if not args.symbol_unsort:
