@@ -47981,6 +47981,7 @@ class KernelDmesgCommand(GenericCommand):
                 struct printk_info* infos;
                 atomic_long_t       head_id;
                 atomic_long_t       tail_id;
+                atomic_long_t       last_finalized_id; // v5.18~
             } desc_ring;
             struct prb_data_ring {
                 unsigned int        size_bits;
@@ -47989,25 +47990,6 @@ class KernelDmesgCommand(GenericCommand):
                 atomic_long_t       tail_lpos;
             } text_data_ring;
             atomic_long_t           fail;
-        };
-
-        struct prb_desc {
-            atomic_long_t           state_var;
-            struct prb_data_blk_lpos {
-                unsigned long       begin;
-                unsigned long       next;
-            } text_blk_lpos;
-        };
-
-        struct printk_info {
-            u64                     seq;        /* sequence number */
-            u64                     ts_nsec;    /* timestamp in nanoseconds */
-            u16                     text_len;   /* length of text message */
-            u8                      facility;   /* syslog facility */
-            u8                      flags:5;    /* internal record flags */
-            u8                      level:3;    /* syslog level */
-            u32                     caller_id;  /* thread id or processor id */
-            struct dev_printk_info  dev_info;
         };
         """
 
@@ -48027,7 +48009,7 @@ class KernelDmesgCommand(GenericCommand):
         rb["text_data_ring"] = {}
         size_bits = read_int_from_memory(current)
         if size_bits > current_arch.ptrsize * 8:
-            current += current_arch.ptrsize
+            current += current_arch.ptrsize # last_finalized_id
             size_bits = read_int_from_memory(current)
         rb["text_data_ring"]["size_bits"] = size_bits
         current += current_arch.ptrsize
@@ -48054,6 +48036,15 @@ class KernelDmesgCommand(GenericCommand):
             info("fail: {:#x}".format(rb["fail"]))
 
         def read_desc_i(descs_addr, seq):
+            """
+            struct prb_desc {
+                atomic_long_t           state_var;
+                struct prb_data_blk_lpos {
+                    unsigned long       begin;
+                    unsigned long       next;
+                } text_blk_lpos;
+            };
+            """
             sizeof_desc = current_arch.ptrsize * 3
             current = descs_addr + sizeof_desc * seq
             if not is_valid_addr(current):
@@ -48069,6 +48060,18 @@ class KernelDmesgCommand(GenericCommand):
             return desc
 
         def read_info_i(infos_addr, seq):
+            """
+            struct printk_info {
+                u64                     seq;        /* sequence number */
+                u64                     ts_nsec;    /* timestamp in nanoseconds */
+                u16                     text_len;   /* length of text message */
+                u8                      facility;   /* syslog facility */
+                u8                      flags:5;    /* internal record flags */
+                u8                      level:3;    /* syslog level */
+                u32                     caller_id;  /* thread id or processor id */
+                struct dev_printk_info  dev_info;
+            };
+            """
             sizeof_info = 8 + 8 + 2 + 1 + 1 + 4 + 16 + 48
             current = infos_addr + sizeof_info * seq
             if not is_valid_addr(current):
@@ -48100,6 +48103,8 @@ class KernelDmesgCommand(GenericCommand):
         size_bits = rb["text_data_ring"]["size_bits"]
         data_size_mask = (1 << size_bits) - 1
 
+        info("Wait for reading records...")
+
         seq = 0
         while True:
             # prb_read
@@ -48115,7 +48120,11 @@ class KernelDmesgCommand(GenericCommand):
             if get_desc_state(desc["state_var"]) == [0, 1]: # desc_reserved, desc_commited
                 break
             if info_tmp["seq"] != seq:
-                break
+                if seq == 0:
+                    # ring buffer is already looping
+                    seq = info_tmp["seq"]
+                else:
+                    break
             if get_desc_state(desc["state_var"]) == 2: # desc_reusable
                 if (desc["text_blk_lpos"]["begin"], desc["text_blk_lpos"]["next"]) == (1, 1):
                     break
@@ -48133,10 +48142,14 @@ class KernelDmesgCommand(GenericCommand):
             src += current_arch.ptrsize
             entry = bytes2str(read_memory(src, size))
 
+            # timestamp
             sec = rinfo["ts_nsec"] // 1000 // 1000 // 1000
             nsec = rinfo["ts_nsec"] % (1000 * 1000 * 1000)
             nsec_str = "{:09d}".format(nsec)[:6]
-            formatted_entry = "[{:5d}.{:s}] {:s}".format(sec, nsec_str, entry)
+            # thread id. This is displayed when CONFIG_PRINTK_CALLER=y, but always displayed because it is useful.
+            caller_id_str = "T{:d}".format(rinfo["caller_id"])
+            # output
+            formatted_entry = "[{:5d}.{:s}] [{:>6s}] {:s}".format(sec, nsec_str, caller_id_str, entry)
             self.out.append(formatted_entry)
 
             seq += 1
