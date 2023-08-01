@@ -54115,82 +54115,92 @@ class KsymaddrRemoteCommand(GenericCommand):
         address_byte_size = current_arch.ptrsize
 
         def try_resolve_has_base_relative():
-            # ignore the 0 immediately above offset_kallsyms_num_syms.
-            position = self.offset_kallsyms_num_syms
-            while True:
-                previous_word = self.kernel_img[position - address_byte_size:position]
-                if previous_word != b"\0" * address_byte_size:
-                    break
-                position -= address_byte_size
-
-            # Go backward by num_symbols.
-            position -= address_byte_size
-            relative_base_address = int.from_bytes(self.kernel_img[position:position + address_byte_size], endian_str)
-            if is_valid_addr(relative_base_address):
+            if self.kernel_version < (6, 4):
+                # ignore the 0 immediately above offset_kallsyms_num_syms.
+                position = self.offset_kallsyms_num_syms
                 while True:
-                    previous_word = self.kernel_img[position - offset_byte_size:position]
-                    if previous_word != b"\0" * offset_byte_size:
+                    previous_word = self.kernel_img[position - address_byte_size:position]
+                    if previous_word != b"\0" * address_byte_size:
                         break
-                    position -= offset_byte_size
-                position -= self.num_symbols * offset_byte_size
+                    position -= address_byte_size
 
-            else:
-                if self.kernel_version >= (6, 4):
+                # Go backward by num_symbols.
+                position -= address_byte_size
+                relative_base_address = int.from_bytes(self.kernel_img[position:position + address_byte_size], endian_str)
+
+                if relative_base_address and (relative_base_address & (gef_getpagesize() - 1)) == 0:
                     """
-                    + kallsyms_num_syms
-                    + kallsyms_names
-                    + kallsyms_markers
-                    + kallsyms_seqs_of_names
-                    + kallsyms_token_table
-                    + kallsyms_token_index
-                    - kallsyms_offsets <--- these are weird (v6.4~)
-                    - relative_base_address <---
+                    some environment has invalid address as relative_base_address.
+                    so don't use the logic of is_valid_addr(relative_base_address).
 
-                    [ex1]
-                    kallsyms_token_index: 0xffffffff844fa178
-                    gef> hexdump -n word 0xffffffff844fa178
-                    0xffffffff844fa178:    0x0000 0x0003 0x0006 0x000a 0x0010 0x0013 0x0016 0x0019    |  ................  |
-                    0xffffffff844fa188:    0x001d 0x0029 0x002d 0x0030 0x0034 0x0037 0x003b 0x003e    |  ..).-.0.4.7.;.>.  |
-                    0xffffffff844fa198:    0x0041 0x0056 0x005a 0x005e 0x0061 0x0064 0x0067 0x006a    |  A.V.Z.^.a.d.g.j.  |
-                    ...
-                    0xffffffff844fa358:    0x0386 0x0389 0x038c 0x038f 0x0392 0x0395 0x0398 0x039b    |  ................  |
-                    0xffffffff844fa368:    0x039e 0x03a1 0x03a5 0x03a8 0x03ab 0x03ae 0x03b1 0x03b4    |  ................  |
-                    kallsyms_offset: 0xffffffff844fa378
-                    gef> hexdump -n dword 0xffffffff844fa378
-                    0xffffffff844fa378:    0x00000000 0x00000000 0x00001000 0x00002000    |  ............. ..  |
-                    0xffffffff844fa388:    0x00006000 0x0000b000 0x0000c000 0x00014000    |  .`...........@..  |
-                    ...
-                    0xffffffff8461e44c:    0xf89effff 0xf89dffff 0xf89d9fff 0xf89d9fff    |  ................  |
-                    0xffffffff8461e45c:    0x00000000 0x81000000 0xffffffff 0x02fa0e02    |  ................  |
-                    relative_base_address: 0xffffffff81000000
-
-                    [ex2]
-                    kallsyms_token_index: 0xffffffff86744a38
-                    gef> hexdump -n word 0xffffffff86744a38
-                    0xffffffff86744a38:    0x0000 0x0004 0x000c 0x0010 0x0014 0x0017 0x001b 0x0020    |  .............. .  |
-                    0xffffffff86744a48:    0x002d 0x0034 0x0039 0x003d 0x0042 0x0045 0x0048 0x004b    |  -.4.9.=.B.E.H.K.  |
-                    0xffffffff86744a58:    0x004f 0x0053 0x005d 0x0060 0x0064 0x0067 0x006b 0x0072    |  O.S.].`.d.g.k.r.  |
-                    ...
-                    0xffffffff86744c18:    0x0338 0x033b 0x033e 0x0341 0x0349 0x034c 0x034f 0x0357    |  8.;.>.A.I.L.O.W.  |
-                    0xffffffff86744c28:    0x035a 0x035d 0x0360 0x0363 0x0369 0x036e 0x0372 0x0375    |  Z.].`.c.i.n.r.u.  |
-                    kallsyms_offset: 0xffffffff86744c38
-                    gef> hexdump -n dword 0xffffffff86744c38
-                    0xffffffff86744c38:    0xffffffff 0xffffffff 0xffffffff 0xffffffaf    |  ................  |
-                    0xffffffff86744c48:    0xffffffaa 0xfffffe9f 0xfffffe8f 0xfffffd8f    |  ................  |
-                    ...
-                    0xffffffff8677ed5c:    0xff09237f 0xff09218f 0xff09217f 0xff0920a9    |  .#...!...!... ..  |
-                    0xffffffff8677ed6c:    0x00000000 0x85c00000 0xffffffff 0x00f0d800    |  ................  |
-                    relative_base_address: 0xffffffff85c00000
+                    gef> hexdump -n qword 0xffffafc5c2adb260-0x10 0x20
+                    0xffffafc5c2adb250:    0xffffafc5c1750000 0x0000000000028193    |  ..u.............  |
+                    0xffffafc5c2adb260:    0x6474107414bc5404 0x6c7463be6270d277    |  .T..t.tdw.pb.ctl  |
+                    gef> x/16xg 0xffffafc5c1750000
+                    0xffffafc5c1750000:     Cannot access memory at address 0xffffafc5c1750000
                     """
-                    position = self.offset_kallsyms_token_index + 0x200
-                    position_relative_base = align_address_to_size(position + self.num_symbols * offset_byte_size, 8)
-                    relative_base_address_data = self.kernel_img[position_relative_base:position_relative_base + address_byte_size]
-                    relative_base_address = int.from_bytes(relative_base_address_data, endian_str)
-                    if not is_valid_addr(relative_base_address):
-                        return None
-                else:
+                    while True:
+                        previous_word = self.kernel_img[position - offset_byte_size:position]
+                        if previous_word != b"\0" * offset_byte_size:
+                            break
+                        position -= offset_byte_size
+                    position -= self.num_symbols * offset_byte_size
+
+            else: # kernel_version >= (6, 4):
+                """
+                + kallsyms_num_syms
+                + kallsyms_names
+                + kallsyms_markers
+                + kallsyms_seqs_of_names
+                + kallsyms_token_table
+                + kallsyms_token_index
+                - kallsyms_offsets <--- these are weird (v6.4~)
+                - relative_base_address <---
+
+                [ex1]
+                kallsyms_token_index: 0xffffffff844fa178
+                gef> hexdump -n word 0xffffffff844fa178
+                0xffffffff844fa178:    0x0000 0x0003 0x0006 0x000a 0x0010 0x0013 0x0016 0x0019    |  ................  |
+                0xffffffff844fa188:    0x001d 0x0029 0x002d 0x0030 0x0034 0x0037 0x003b 0x003e    |  ..).-.0.4.7.;.>.  |
+                0xffffffff844fa198:    0x0041 0x0056 0x005a 0x005e 0x0061 0x0064 0x0067 0x006a    |  A.V.Z.^.a.d.g.j.  |
+                ...
+                0xffffffff844fa358:    0x0386 0x0389 0x038c 0x038f 0x0392 0x0395 0x0398 0x039b    |  ................  |
+                0xffffffff844fa368:    0x039e 0x03a1 0x03a5 0x03a8 0x03ab 0x03ae 0x03b1 0x03b4    |  ................  |
+                kallsyms_offset: 0xffffffff844fa378
+                gef> hexdump -n dword 0xffffffff844fa378
+                0xffffffff844fa378:    0x00000000 0x00000000 0x00001000 0x00002000    |  ............. ..  |
+                0xffffffff844fa388:    0x00006000 0x0000b000 0x0000c000 0x00014000    |  .`...........@..  |
+                ...
+                0xffffffff8461e44c:    0xf89effff 0xf89dffff 0xf89d9fff 0xf89d9fff    |  ................  |
+                0xffffffff8461e45c:    0x00000000 0x81000000 0xffffffff 0x02fa0e02    |  ................  |
+                relative_base_address: 0xffffffff81000000
+
+                [ex2]
+                kallsyms_token_index: 0xffffffff86744a38
+                gef> hexdump -n word 0xffffffff86744a38
+                0xffffffff86744a38:    0x0000 0x0004 0x000c 0x0010 0x0014 0x0017 0x001b 0x0020    |  .............. .  |
+                0xffffffff86744a48:    0x002d 0x0034 0x0039 0x003d 0x0042 0x0045 0x0048 0x004b    |  -.4.9.=.B.E.H.K.  |
+                0xffffffff86744a58:    0x004f 0x0053 0x005d 0x0060 0x0064 0x0067 0x006b 0x0072    |  O.S.].`.d.g.k.r.  |
+                ...
+                0xffffffff86744c18:    0x0338 0x033b 0x033e 0x0341 0x0349 0x034c 0x034f 0x0357    |  8.;.>.A.I.L.O.W.  |
+                0xffffffff86744c28:    0x035a 0x035d 0x0360 0x0363 0x0369 0x036e 0x0372 0x0375    |  Z.].`.c.i.n.r.u.  |
+                kallsyms_offset: 0xffffffff86744c38
+                gef> hexdump -n dword 0xffffffff86744c38
+                0xffffffff86744c38:    0xffffffff 0xffffffff 0xffffffff 0xffffffaf    |  ................  |
+                0xffffffff86744c48:    0xffffffaa 0xfffffe9f 0xfffffe8f 0xfffffd8f    |  ................  |
+                ...
+                0xffffffff8677ed5c:    0xff09237f 0xff09218f 0xff09217f 0xff0920a9    |  .#...!...!... ..  |
+                0xffffffff8677ed6c:    0x00000000 0x85c00000 0xffffffff 0x00f0d800    |  ................  |
+                relative_base_address: 0xffffffff85c00000
+                """
+                position = self.offset_kallsyms_token_index + 0x200
+                position_relative_base = align_address_to_size(position + self.num_symbols * offset_byte_size, 8) # TODO: 0x8? 0x10? ptrsize?
+                relative_base_address_data = self.kernel_img[position_relative_base:position_relative_base + address_byte_size]
+                relative_base_address = int.from_bytes(relative_base_address_data, endian_str)
+                if not (relative_base_address and (relative_base_address & (gef_getpagesize() - 1)) == 0):
                     return None
 
+            # Getting here means that the relative_address and position have been detected correctly.
             self.verbose_info("relative_base_address: {:#x}".format(relative_base_address))
 
             # Try to parse addresses or offsets.
