@@ -43833,6 +43833,19 @@ class KernelTaskCommand(GenericCommand):
         self.offset_vm_file = None
         self.offset_d_iname = None
         self.offset_d_parent = None
+        self.offset_dentry = None
+        return
+
+    def quiet_info(self, msg):
+        if not self.quiet:
+            msg = "{} {}".format(Color.colorify("[+]", "bold blue"), msg)
+            gef_print(msg)
+        return
+
+    def quiet_err(self, msg):
+        if not self.quiet:
+            msg = "{} {}".format(Color.colorify("[+]", "bold red"), msg)
+            gef_print(msg)
         return
 
     def get_offset_task(self, init_task):
@@ -43861,12 +43874,10 @@ class KernelTaskCommand(GenericCommand):
                     break
                 value_list.append(pos)
             if found:
-                if not self.quiet:
-                    info("offsetof(task_struct, tasks): {:#x}".format(offset_tasks))
+                self.quiet_info("offsetof(task_struct, tasks): {:#x}".format(offset_tasks))
                 return offset_tasks
 
-        if not self.quiet:
-            err("Not found init_task->tasks")
+        self.quiet_err("Not found init_task->tasks")
         return None
 
     def get_task_list(self, init_task, offset_tasks):
@@ -43879,8 +43890,7 @@ class KernelTaskCommand(GenericCommand):
                 break
             task_list.append(pos)
 
-        if not self.quiet:
-            info("Number of tasks: {:d}".format(len(task_list)))
+        self.quiet_info("Number of tasks: {:d}".format(len(task_list)))
         return [x - offset_tasks for x in task_list]
 
     def get_offset_mm(self, task_addr, offset_tasks):
@@ -43909,8 +43919,7 @@ class KernelTaskCommand(GenericCommand):
             # maybe prio, so CONFIG_SMP is y
             offset_mm = offset_tasks + 10 * current_arch.ptrsize
 
-        if not self.quiet:
-            info("offsetof(task_struct, mm): {:#x}".format(offset_mm))
+        self.quiet_info("offsetof(task_struct, mm): {:#x}".format(offset_mm))
         return offset_mm
 
     def get_offset_comm(self, task_addrs):
@@ -43928,12 +43937,10 @@ class KernelTaskCommand(GenericCommand):
                     valid = False
                     break
             if valid:
-                if not self.quiet:
-                    info("offsetof(task_struct, comm): {:#x}".format(offset_comm))
+                self.quiet_info("offsetof(task_struct, comm): {:#x}".format(offset_comm))
                 return offset_comm
 
-        if not self.quiet:
-            err("Not found task->comm[TASK_CMM_LEN]")
+        self.quiet_err("Not found task->comm[TASK_CMM_LEN]")
         return None
 
     def get_offset_cred(self, task_addrs, offset_comm):
@@ -43954,12 +43961,10 @@ class KernelTaskCommand(GenericCommand):
                 val1 = read_int_from_memory(task + offset_cred)
                 val2 = read_int_from_memory(task + offset_cred - current_arch.ptrsize)
                 if val1 == val2 and val1 != 0:
-                    if not self.quiet:
-                        info("offsetof(task_struct, cred): {:#x}".format(offset_cred))
+                    self.quiet_info("offsetof(task_struct, cred): {:#x}".format(offset_cred))
                     return offset_cred
 
-        if not self.quiet:
-            err("Not found task->cred")
+        self.quiet_err("Not found task->cred")
         return None
 
     def get_offset_stack(self, task_addrs):
@@ -43985,12 +43990,10 @@ class KernelTaskCommand(GenericCommand):
                 continue
 
             offset_stack = current_arch.ptrsize * i
-            if not self.quiet:
-                info("offsetof(task_struct, stack): {:#x}".format(offset_stack))
+            self.quiet_info("offsetof(task_struct, stack): {:#x}".format(offset_stack))
             return offset_stack
 
-        if not self.quiet:
-            err("Not found task->stack")
+        self.quiet_err("Not found task->stack")
         return None
 
     def get_offset_ptregs(self, task_addrs, offset_stack):
@@ -44022,8 +44025,7 @@ class KernelTaskCommand(GenericCommand):
             else:
                 break # while
 
-        if not self.quiet:
-            info("kstack size: {:#x}".format(kstack_size))
+        self.quiet_info("kstack size: {:#x}".format(kstack_size))
 
         if is_x86_64():
             """
@@ -44107,8 +44109,7 @@ class KernelTaskCommand(GenericCommand):
             return None
 
         offset_ptregs = kstack_size - ptregs_size - bottom_offset
-        if not self.quiet:
-            info("offsetof(kstack_top, saved ptregs): {:#x}".format(offset_ptregs))
+        self.quiet_info("offsetof(kstack_top, saved ptregs): {:#x}".format(offset_ptregs))
         return offset_ptregs
 
     def get_regs(self, kstack, offset_ptregs):
@@ -44200,12 +44201,10 @@ class KernelTaskCommand(GenericCommand):
                 continue
 
             offset_pid = i * 4
-            if not self.quiet:
-                info("offsetof(task_struct, pid): {:#x}".format(offset_pid))
+            self.quiet_info("offsetof(task_struct, pid): {:#x}".format(offset_pid))
             return offset_pid
 
-        if not self.quiet:
-            err("Not found task->pid")
+        self.quiet_err("Not found task->pid")
         return None
 
     def get_offset_canary(self, task_addrs, offset_pid):
@@ -44233,12 +44232,10 @@ class KernelTaskCommand(GenericCommand):
                 break
 
         if found:
-            if not self.quiet:
-                info("offsetof(task_struct, stack_canary): {:#x}".format(offset_stack_canary))
+            self.quiet_info("offsetof(task_struct, stack_canary): {:#x}".format(offset_stack_canary))
             return offset_stack_canary
         else:
-            if not self.quiet:
-                info("offsetof(task_struct, stack_canary): None")
+            self.quiet_info("offsetof(task_struct, stack_canary): None")
             return None
 
     def get_offset_group_leader(self, offset_pid, offset_kcanary):
@@ -44259,8 +44256,7 @@ class KernelTaskCommand(GenericCommand):
         else:
             offset_real_parent = offset_kcanary + current_arch.ptrsize
         offset_group_leader = offset_real_parent + current_arch.ptrsize * (1 + 1 + 2 + 2)
-        if not self.quiet:
-            info("offsetof(task_struct, group_leader): {:#x}".format(offset_group_leader))
+        self.quiet_info("offsetof(task_struct, group_leader): {:#x}".format(offset_group_leader))
         return offset_group_leader
 
     def get_offset_thread_group(self, offset_group_leader):
@@ -44278,8 +44274,7 @@ class KernelTaskCommand(GenericCommand):
             offset_thread_group = offset_group_leader + current_arch.ptrsize * (1 + 2 + 2 + 1 + (2 * 4))
         else:
             offset_thread_group = offset_group_leader + current_arch.ptrsize * (1 + 2 + 2 + (3 * 3))
-        if not self.quiet:
-            info("offsetof(task_struct, thread_group): {:#x}".format(offset_thread_group))
+        self.quiet_info("offsetof(task_struct, thread_group): {:#x}".format(offset_thread_group))
         return offset_thread_group
 
     def get_offset_uid(self, init_task_cred_ptr):
@@ -44323,8 +44318,7 @@ class KernelTaskCommand(GenericCommand):
         else:
             offset_uid += 4 + current_arch.ptrsize + 4
 
-        if not self.quiet:
-            info("offsetof(cred, uid): {:#x}".format(offset_uid))
+        self.quiet_info("offsetof(cred, uid): {:#x}".format(offset_uid))
         return offset_uid
 
     class MapleTree:
@@ -44339,10 +44333,44 @@ class KernelTaskCommand(GenericCommand):
         MAPLE_RANGE_64 = 2
         MAPLE_ARANGE_64 = 3
 
-        def __init__(self, mm):
-            self.ma_root_raw = read_int_from_memory(mm + current_arch.ptrsize)
-            self.ma_flags = read_int_from_memory(mm + current_arch.ptrsize * 2)
+        def __init__(self, mm, quiet):
+            self.quiet = quiet
+            kversion = KernelVersionCommand.kernel_version()
+            if kversion < "6.4":
+                offset_mm_mt = 0
+            else:
+                """
+                # ____cacheline_aligned_in_smp attribute can be different size in each environment or situation,
+                # so search heuristically.
+                struct mm_struct {
+                    struct {
+                        struct {
+                            atomic_t mm_count;
+                        } ____cacheline_aligned_in_smp; // v6.4~
+                    struct maple_tree mm_mt;
+                    ...
+                """
+                for i in range(0x10):
+                    a = read_int_from_memory(mm + current_arch.ptrsize * (i + 0))
+                    b = read_int_from_memory(mm + current_arch.ptrsize * (i + 1))
+                    c = read_int_from_memory(mm + current_arch.ptrsize * (i + 2))
+                    if not is_valid_addr(a) and is_valid_addr(b) and not is_valid_addr(c):
+                        offset_mm_mt = current_arch.ptrsize * i
+                        break
+                else:
+                    raise
+
+            if not self.quiet:
+                info("offsetof(mm_struct, mm_mt): {:#x}".format(offset_mm_mt))
+            self.ma_root_raw = read_int_from_memory(mm + offset_mm_mt + current_arch.ptrsize)
+            if not self.quiet:
+                info("mm_mt.ma_root_raw: {:#x}".format(self.ma_root_raw))
+            self.ma_flags = read_int_from_memory(mm + offset_mm_mt + current_arch.ptrsize * 2)
+            if not self.quiet:
+                info("mm_mt.ma_flags: {:#x}".format(self.ma_flags))
             self.max_depth = (self.ma_flags & self.MT_FLAGS_HEIGHT_MASK) >> self.MT_FLAGS_HEIGHT_OFFSET
+            if not self.quiet:
+                info("mm_mt.max_depth: {:#x}".format(self.max_depth))
             self.seen = set()
 
             if is_64bit():
@@ -44455,14 +44483,17 @@ class KernelTaskCommand(GenericCommand):
             """
             struct mm_struct {
                 struct {
-                        struct maple_tree {
-                            union {
-                                spinlock_t      ma_lock;
-                                lockdep_map_p   ma_external_lock;
-                            };
-                            void __rcu         *ma_root;    // this points root maple_node. (lower 8-bits are some flags)
-                            unsigned int        ma_flags;
-                        } mm_mt;
+                    struct {
+                        atomic_t mm_count;
+                    } ____cacheline_aligned_in_smp; // v6.4~
+                    struct maple_tree {
+                        union {
+                            spinlock_t      ma_lock;
+                            lockdep_map_p   ma_external_lock;
+                        };
+                        void __rcu         *ma_root;    // this points root maple_node. (lower 8-bits are some flags)
+                        unsigned int        ma_flags;
+                    } mm_mt;
                     ...
                 } __randomize_layout;
             }
@@ -44488,7 +44519,7 @@ class KernelTaskCommand(GenericCommand):
                 };
             };
             """
-            get_next_vma_area_struct = self.MapleTree(mm).get_next
+            get_next_vma_area_struct = self.MapleTree(mm, self.quiet).get_next
             vm_area_struct = get_next_vma_area_struct()
 
             """
@@ -44498,13 +44529,18 @@ class KernelTaskCommand(GenericCommand):
                 struct mm_struct                  *vm_mm;           /* The address space we belong to. */
                 pgprot_t                           vm_page_prot;
                 unsigned long                      vm_flags;        /* Flags, see mm.h. */
-                union {
+            #ifdef CONFIG_PER_VMA_LOCK                              // v6.4~
+                int                                vm_lock_seq;     // v6.4~
+                struct vma_lock                   *vm_lock;         // v6.4~
+                bool                               detached;        // v6.4~
+            #endif                                                  // v6.4~
+                union {                                             // ~v6.2
                     struct {
                         struct rb_node             rb;
                         unsigned long              rb_subtree_last;
                     } shared;
-                    struct anon_vma_name          *anon_name;
-                };
+                    struct anon_vma_name          *anon_name;       // ~v6.2
+                };                                                  // ~v6.2
                 struct list_head                   anon_vma_chain;  /* Serialized by mmap_lock & page_table_lock */
                 struct anon_vma                   *anon_vma;        /* Serialized by page_table_lock */
                 const struct vm_operations_struct *vm_ops;
@@ -44525,22 +44561,11 @@ class KernelTaskCommand(GenericCommand):
                     break
                 current += current_arch.ptrsize
             offset_vm_mm = current - vm_area_struct
-            if not self.quiet:
-                info("offsetof(vm_area_struct, vm_mm): {:#x}".format(offset_vm_mm))
+            self.quiet_info("offsetof(vm_area_struct, vm_mm): {:#x}".format(offset_vm_mm))
 
             # now, `current` points vm_mm
-            while True:
-                x = read_int_from_memory(current + current_arch.ptrsize) # read one unit ahead
-                if is_32bit():
-                    mask = 0xc000_0000
-                else:
-                    mask = 0xffff_0000_0000_0000
-                if (x & mask) == mask:
-                    break
-                current += current_arch.ptrsize
-            self.offset_vm_flags = current - vm_area_struct
-            if not self.quiet:
-                info("offsetof(vm_area_struct, vm_flags): {:#x}".format(self.offset_vm_flags))
+            self.offset_vm_flags = offset_vm_mm + current_arch.ptrsize * 2
+            self.quiet_info("offsetof(vm_area_struct, vm_flags): {:#x}".format(self.offset_vm_flags))
 
             # now, `current` points vm_flags
             current += current_arch.ptrsize
@@ -44558,8 +44583,7 @@ class KernelTaskCommand(GenericCommand):
             # now, `current` points anon_vma_chain
             offset_anon_vma_chain = current - vm_area_struct
             self.offset_vm_file = offset_anon_vma_chain + current_arch.ptrsize * 5
-            if not self.quiet:
-                info("offsetof(vm_area_struct, vm_file): {:#x}".format(self.offset_vm_file))
+            self.quiet_info("offsetof(vm_area_struct, vm_file): {:#x}".format(self.offset_vm_file))
 
         vm_areas = []
         VmArea = collections.namedtuple("VmArea", "start end flags file")
@@ -44580,21 +44604,88 @@ class KernelTaskCommand(GenericCommand):
             return ""
 
         """
+        [~v6.4]
+        struct file {
+            union {                               // ~v6.0
+                struct llist_node   fu_llist;     // ~v6.0
+                struct rcu_head     fu_rcuhead;   // ~v6.0
+            } f_u;                                // ~v6.0
+            union {                               // v6.0~
+                struct llist_node   f_llist;      // v6.0~
+                struct rcu_head     f_rcuhead;    // v6.0~
+                unsigned int        f_iocb_flags; // v6.0~
+            };                                    // v6.0~
+            struct path {
+                struct vfsmount     *mnt;
+                struct dentry       *dentry;
+            } f_path;
+            ...
+
+
+        [v6.5~]
         struct file {
             union {
-                struct llist_node   fu_llist;
-                struct rcu_head     fu_rcuhead;
-            } f_u;
+                struct llist_node  f_llist;
+                struct rcu_head    f_rcuhead;
+                unsigned int       f_iocb_flags;
+            };
+            spinlock_t             f_lock;
+            fmode_t                f_mode;
+            atomic_long_t          f_count;
+            struct mutex           f_pos_lock;
+            loff_t                 f_pos;
+            unsigned int           f_flags;
+            struct fown_struct {
+                rwlock_t           lock;
+                struct pid        *pid;
+                enum pid_type      pid_type;
+                kuid_t             uid, euid;
+                int                signum;
+            } f_owner;
+            const struct cred     *f_cred;
+            struct file_ra_state {
+                pgoff_t            start;
+                unsigned int       size;
+                unsigned int       async_size;
+                unsigned int       ra_pages;
+                unsigned int       mmap_miss;
+                loff_t             prev_pos;
+            } f_ra;
             struct path {
-                struct vfsmount *mnt;
-                struct dentry   *dentry;
+                struct vfsmount   *mnt;
+                struct dentry     *dentry;
             } f_path;
+            ...
         """
-        dentry = read_int_from_memory(location + current_arch.ptrsize * 3)
+        kversion = KernelVersionCommand.kernel_version()
+
+        if self.meta:
+            self.offset_dentry = None
+
+        if self.offset_dentry is None:
+            if kversion < "6.5":
+                self.offset_dentry = current_arch.ptrsize * 3
+
+            else: # kversion >= "6.5"
+                for i in range(0x40):
+                    cand_offset_cred = current_arch.ptrsize * i
+                    f_cred = read_int_from_memory(location + cand_offset_cred)
+                    ret = gdb.execute("xslubobj {:#x}".format(f_cred), to_string=True)
+                    if "cred_jar" not in Color.remove_color(ret):
+                        continue
+                    self.quiet_info("offsetof(file, f_cred): {:#x}".format(cand_offset_cred))
+                    break
+                else:
+                    raise
+                # now, f_cred is found
+                self.offset_dentry = cand_offset_cred + current_arch.ptrsize * 2 + 4 * 4 + current_arch.ptrsize * 2
+
+            self.quiet_info("offsetof(file, f_path.dentry): {:#x}".format(self.offset_dentry))
+
+        dentry = read_int_from_memory(location + self.offset_dentry)
 
         """
         struct dentry {
-            /* RCU lookup touched fields */
             unsigned int d_flags;           /* protected by d_lock */
             seqcount_spinlock_t d_seq;      /* per dentry seqlock */
             struct hlist_bl_node d_hash;    /* lookup hash list */
@@ -44615,8 +44706,7 @@ class KernelTaskCommand(GenericCommand):
                     self.offset_d_iname = x - dentry
                     break
                 current += current_arch.ptrsize
-            if not self.quiet:
-                info("offsetof(dentry, d_iname): {:#x}".format(self.offset_d_iname))
+            self.quiet_info("offsetof(dentry, d_iname): {:#x}".format(self.offset_d_iname))
 
             current -= current_arch.ptrsize
             # now, `current` points qstr.size
@@ -44630,8 +44720,7 @@ class KernelTaskCommand(GenericCommand):
                     self.offset_d_parent = current - dentry
                     break
                 current -= current_arch.ptrsize
-            if not self.quiet:
-                info("offsetof(dentry, d_parent): {:#x}".format(self.offset_d_parent))
+            self.quiet_info("offsetof(dentry, d_parent): {:#x}".format(self.offset_d_parent))
 
         filepath = []
         current = dentry
@@ -44666,16 +44755,13 @@ class KernelTaskCommand(GenericCommand):
         self.quiet = args.quiet
         self.meta = args.meta
 
-        if not self.quiet:
-            info("Wait for memory scan")
+        self.quiet_info("Wait for memory scan")
 
         init_task = KernelAddressHeuristicFinder.get_init_task()
         if init_task is None:
-            if not self.quiet:
-                err("Not found symbol")
+            self.quiet_err("Not found symbol")
             return
-        if not self.quiet:
-            info("init_task: {:#x}".format(init_task))
+        self.quiet_info("init_task: {:#x}".format(init_task))
 
         # get various offsets
         offset_task = self.get_offset_task(init_task)
