@@ -181,6 +181,7 @@ __config__                      = {}
 __watches__                     = {}
 __gef_convenience_vars_index__  = 0
 __context_messages__            = []
+__context_extra_commands__      = []
 __highlight_table__             = {}
 __heap_allocated_list__         = []
 __heap_freed_list__             = []
@@ -22021,7 +22022,7 @@ class ContextCommand(GenericCommand):
         return
 
     def context_additional_information(self):
-        if not __context_messages__:
+        if not __context_messages__ and not __context_extra_commands__:
             return
 
         self.context_title("extra")
@@ -22034,6 +22035,10 @@ class ContextCommand(GenericCommand):
                 ok(text)
             else:
                 info(text)
+
+        for command in __context_extra_commands__:
+            gef_print(titlify(command))
+            gdb.execute(command)
         return
 
     def context_memory(self):
@@ -23623,6 +23628,96 @@ class SmartCppFunctionNameCommand(GenericCommand):
             gdb.execute("gef config context.smart_cpp_function_name true", to_string=True)
         else:
             gdb.execute("gef config context.smart_cpp_function_name false", to_string=True)
+        return
+
+
+@register_command
+class ContextExtraCommand(GenericCommand):
+    """Base command to add, remove, or list context-extra."""
+    _cmdline_ = "context-extra"
+    _category_ = "01-f. Debugging Support - Context Extension"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    if sys.version_info.minor >= 7:
+        subparsers = parser.add_subparsers(title="command", required=True)
+    else:
+        subparsers = parser.add_subparsers(title="command")
+    subparsers.add_parser("add")
+    subparsers.add_parser("rm")
+    subparsers.add_parser("ls")
+    _syntax_ = parser.format_help()
+
+    def __init__(self, *args, **kwargs):
+        prefix = kwargs.get("prefix", True)
+        super().__init__(prefix=prefix)
+        return
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+        self.usage()
+        return
+
+
+@register_command
+class ContextExtraAddCommand(ContextExtraCommand):
+    """Add user specified command to execute when each step."""
+    _cmdline_ = "context-extra add"
+    _category_ = "01-f. Debugging Support - Context Extension"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("cmd", metavar="CMD", nargs="+", help="the command to execute when each step.")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+        global __context_extra_commands__
+        __context_extra_commands__.append(" ".join(args.cmd))
+        return
+
+
+@register_command
+class ContextExtraLsCommand(ContextExtraCommand):
+    """List user specified command to execute when each step."""
+    _cmdline_ = "context-extra ls"
+    _category_ = "01-f. Debugging Support - Context Extension"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        if not __context_extra_commands__:
+            warn("Nothing to display")
+            return
+
+        for i, command in enumerate(__context_extra_commands__):
+            gef_print("[{:3d}] {:s}".format(i, command))
+        return
+
+
+@register_command
+class ContextExtraRemoveCommand(ContextExtraCommand):
+    """Remove user specified command to execute when each step."""
+    _cmdline_ = "context-extra rm"
+    _category_ = "01-f. Debugging Support - Context Extension"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("index", metavar="INDEX", type=int,
+                        help="the index of command to remove from automatically execution each step.")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+        global __context_extra_commands__
+        if args.index < len(__context_extra_commands__):
+            __context_extra_commands__.pop(args.index)
+        else:
+            err("Out of index")
         return
 
 
