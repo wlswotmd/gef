@@ -45037,11 +45037,11 @@ class KernelModuleCommand(GenericCommand):
         MOD_TEXT = 0
         MOD_DATA = 1
         MOD_RODATA = 2
-        MOD_RO_AFTER_INIT = 3
-        MOD_INIT_TEXT = 4
-        MOD_INIT_DATA = 5
-        MOD_INIT_RODATA = 6
-        MOD_MEM_NUM_TYPES = 7
+        MOD_RO_AFTER_INIT = 3 # noqa: F841
+        MOD_INIT_TEXT = 4 # noqa: F841
+        MOD_INIT_DATA = 5 # noqa: F841
+        MOD_INIT_RODATA = 6 # noqa: F841
+        MOD_MEM_NUM_TYPES = 7 # noqa: F841
         # TODO: only handles non init module type
         for i in range(300):
             offset_mem = i * current_arch.ptrsize
