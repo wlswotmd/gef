@@ -20941,6 +20941,70 @@ class MessageBreakpointCommand(GenericCommand):
         return
 
 
+class TakenOrNotBreakpoint(gdb.Breakpoint):
+    """Breakpoint which only branch is taken or not."""
+    def __init__(self, loc, taken, is_hwbp):
+        if is_hwbp:
+            bp_type = gdb.BP_HARDWARE_BREAKPOINT
+        else:
+            bp_type = gdb.BP_BREAKPOINT
+        super().__init__("*{:#x}".format(loc), bp_type, internal=False)
+        self.loc = loc
+        self.taken = taken
+        return
+
+    def stop(self):
+        reset_gef_caches()
+        insn = get_insn()
+
+        if not current_arch.is_conditional_branch(insn):
+            return False # continue
+
+        taken, _ = current_arch.is_branch_taken(insn)
+        if self.taken:
+            return taken
+        else:
+            return not taken
+
+
+@register_command
+class BreakpointOnlyIfTakenCommand(GenericCommand):
+    """Set a breakpoint which breaks only branch is taken."""
+    _cmdline_ = "break-only-if-taken"
+    _category_ = "01-b. Debugging Support - Breakpoint"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("location", metavar="LOCATION", type=parse_address,
+                        help="the address you want to set breakpoint.")
+    parser.add_argument("--hw", action="store_true", help="use hardware breakpoint.")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+        TakenOrNotBreakpoint(args.location, True, args.hw)
+        return
+
+
+@register_command
+class BreakOnlyIfNotTakenCommand(GenericCommand):
+    """Set a breakpoint which breaks only branch is not taken."""
+    _cmdline_ = "break-only-if-not-taken"
+    _category_ = "01-b. Debugging Support - Breakpoint"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("location", metavar="LOCATION", type=parse_address,
+                        help="the address you want to set breakpoint.")
+    parser.add_argument("--hw", action="store_true", help="use hardware breakpoint.")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+        TakenOrNotBreakpoint(args.location, False, args.hw)
+        return
+
+
 @register_command
 class ContextCommand(GenericCommand):
     """Display various information every time GDB hits a breakpoint."""
