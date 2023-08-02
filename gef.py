@@ -65117,8 +65117,9 @@ class KmallocAllocatedByCommand(GenericCommand):
         self.allocator = None
         return
 
-    def setup_syscall(self, nr, args):
+    def setup_syscall(self, syscall_name, args):
         gdb.execute("set $pc-={:#x}".format(len(current_arch.syscall_insn)), to_string=True)
+        nr = self.syscall_table[syscall_name]
         gdb.execute("set $rax={:#x}".format(nr), to_string=True)
         sp = current_arch.sp
         for reg, arg in zip(current_arch.syscall_parameters, args):
@@ -65132,31 +65133,45 @@ class KmallocAllocatedByCommand(GenericCommand):
                 sp = align_address_to_size(sp + len(arg), current_arch.ptrsize * 2)
             else:
                 gdb.execute("set {:s}={:#x}".format(reg, arg), to_string=True)
-        self.tested_syscall.add(nr)
+        self.tested_syscall.add(syscall_name)
         return
 
     def dump_untested_syscall(self):
-        gef_print(titlify("Untested syscall"))
-
-        valid_syscalls = []
-        for line in self.syscall_table_view.splitlines():
+        valid_syscall = []
+        for line in self.syscall_table_view_ret.splitlines():
             tag, _, valid, name, *__ = Color.remove_color(line).split()
             if tag != "x86_64":
                 continue
             if valid != "valid":
                 continue
-            valid_syscalls.append(name)
+            valid_syscall.append(name)
 
+        invalid_syscall = []
+        tested_syscall = []
         untested_syscall = []
-        for n, e in get_syscall_table(None, None).table.items():
-            if n >= 0x1000:
-                continue
-            if n in self.tested_syscall:
-                continue
-            if e.name not in valid_syscalls:
-                continue
-            untested_syscall.append(e.name)
-        gef_print(untested_syscall)
+        skipped_syscall = []
+        # sort by index and translate from set to list
+        for name, _nr in self.syscall_table.items():
+            if name not in valid_syscall:
+                invalid_syscall.append(name)
+            elif name in self.tested_syscall:
+                tested_syscall.append(name)
+            elif name in self.skipped_syscall:
+                skipped_syscall.append(name)
+            else:
+                untested_syscall.append(name)
+
+        gef_print(titlify("Tested syscall"))
+        gef_print(", ".join(tested_syscall))
+
+        gef_print(titlify("Untested syscall"))
+        gef_print(", ".join(untested_syscall))
+
+        gef_print(titlify("Skipped syscall"))
+        gef_print(", ".join(skipped_syscall))
+
+        gef_print(titlify("Invalid syscall"))
+        gef_print(", ".join(invalid_syscall))
         return
 
     def test_syscall(self, breakpoints):
@@ -65168,78 +65183,86 @@ class KmallocAllocatedByCommand(GenericCommand):
         def gen_testcase():
             nonlocal ret_history
 
-            st = {e.name: n for n, e in get_syscall_table(None, None).table.items() if n < 0x1000} # syscall table
-
             # It is implemented with a generator because it requires delayed execution in order to use the previous result.
             yield "msgget -> msgsnd -> msgrcv -> msgctl"
-            yield ('msgget(IPC_PRIVATE, IPC_CREAT|0666)', st["msgget"], [0, 0o1000|0o666])
+            yield ('msgget(IPC_PRIVATE, IPC_CREAT|0666)', "msgget", [0, 0o1000|0o666])
             msgsize = 0x100
             msg = p64(1) + b"A" * msgsize
             if u2i(ret_history[-1]) >= 0:
-                yield ('msgsnd(msqid, msgp, msgsize, 0)', st["msgsnd"], [ret_history[-1], msg, msgsize, 0])
-                yield ('msgrcv(msqid, msgp, msgsize, 0, 0)', st["msgrcv"], [ret_history[-2], msg, msgsize, 0, 0])
-                yield ('msgctl(msqid, IPC_RMID, 0)', st["msgctl"], [ret_history[-3], 0, 0])
+                yield ('msgsnd(msqid, msgp, msgsize, 0)', "msgsnd", [ret_history[-1], msg, msgsize, 0])
+                yield ('msgrcv(msqid, msgp, msgsize, 0, 0)', "msgrcv", [ret_history[-2], msg, msgsize, 0, 0])
+                yield ('msgctl(msqid, IPC_RMID, 0)', "msgctl", [ret_history[-3], 0, 0])
 
             yield "shmget -> shmat -> shmdt -> shmctl"
-            yield ('shmget(IPC_PRIVATE, 1024, IPC_CREAT|0666)', st["shmget"], [0, 0x400, 0o1000|0o666])
+            yield ('shmget(IPC_PRIVATE, 1024, IPC_CREAT|0666)', "shmget", [0, 0x400, 0o1000|0o666])
             if u2i(ret_history[-1]) >= 0:
-                yield ('shmat(shmid, NULL, 0)', st["shmat"], [ret_history[-1], 0, 0])
-                yield ('shmdt(addr)', st["shmdt"], [ret_history[-1]])
-                yield ('shmctl(shmid, IPC_RMID, 0)', st["shmctl"], [ret_history[-3], 0, 0])
+                yield ('shmat(shmid, NULL, 0)', "shmat", [ret_history[-1], 0, 0])
+                yield ('shmdt(addr)', "shmdt", [ret_history[-1]])
+                yield ('shmctl(shmid, IPC_RMID, 0)', "shmctl", [ret_history[-3], 0, 0])
 
             yield "semget -> semctl"
-            yield ('semget(IPC_PRIVATE, 1, IPC_CREAT|0666)', st["semget"], [0, 1, 0o1000|0o666])
+            yield ('semget(IPC_PRIVATE, 1, IPC_CREAT|0666)', "semget", [0, 1, 0o1000|0o666])
             if u2i(ret_history[-1]) >= 0:
-                yield ('semctl(semid, 0, IPC_RMID)', st["semctl"], [ret_history[-1], 0, 0])
+                yield ('semctl(semid, 0, IPC_RMID)', "semctl", [ret_history[-1], 0, 0])
 
-            yield "mq_open -> mq_timedsend -> mq_timedreceive -> mq_unlink -> close"
+            yield "mq_open -> mq_timedsend -> mq_timedreceive -> mq_notify -> mq_getsetattr -> mq_unlink -> close"
             MQ_NAME = "mq_test\0"
             attr = p64(0o4000)  # mq_flags: O_NONBLOCK
             attr += p64(10)     # mq_maxmsg
             attr += p64(0x100)  # mq_msgsize
             attr += p64(0)      # mq_curmsgs
             attr += p64(0) * 4  # reserved[4]
-            yield ('mq_open("mq_test", O_RDWR|O_CREAT, 0700, attr)', st["mq_open"], [MQ_NAME, 0o2|0o100, 0o700, attr])
+            yield ('mq_open("mq_test", O_RDWR|O_CREAT, 0700, attr)', "mq_open", [MQ_NAME, 0o2|0o100, 0o700, attr])
             if u2i(ret_history[-1]) >= 0:
                 fd = ret_history[-1]
                 msg = "A" * 0x40
-                yield ('mq_timedsend(fd, msg, sizeof(msg), 0, NULL)', st["mq_timedsend"], [fd, msg, len(msg), 0, 0])
+                yield ('mq_timedsend(fd, msg, sizeof(msg), 0, NULL)', "mq_timedsend", [fd, msg, len(msg), 0, 0])
                 buf = "\0" * 0x100
                 prio = p32(0)
                 timeout = p64(0) + p64(0)
-                yield ('mq_timedreceive(fd, buf, sizeof(buf), &prio, timeout)', st["mq_timedreceive"], [fd, buf, len(buf), prio, timeout])
-                yield ('mq_unlink("mq_test")', st["mq_unlink"], [MQ_NAME])
-                yield ('close(fd)', st["close"], [fd])
+                yield ('mq_timedreceive(fd, buf, sizeof(buf), &prio, timeout)', "mq_timedreceive",
+                       [fd, buf, len(buf), prio, timeout])
+                sigevent = p32(0) # sigev_notify: SIGEV_SIGNAL
+                sigevent += p32(10) # sigev_signo: SIGUSR1
+                sigevent += p64(0) # sigval
+                sigevent += p64(0) # sigev_notify_function
+                sigevent += p64(0) # sigev_notify_attributes
+                sigevent += p64(0) # sigev_notify_thread_id
+                yield ('mq_notify(fd, sigevent)', "mq_notify", [fd, sigevent])
+                attr = p64(0) * 4
+                yield ('mq_getsetattr(fd, NULL, attr)', "mq_getsetattr", [fd, 0, attr])
+                yield ('mq_unlink("mq_test")', "mq_unlink", [MQ_NAME])
+                yield ('close(fd)', "close", [fd])
 
             yield "signalfd4 -> close"
             mask = "\0" * 8
-            yield ('signalfd4(-1, mask, sizemask, 0)', st["signalfd4"], [-1, mask, len(mask), 0])
-            self.tested_syscall.add(st["signalfd"])
+            yield ('signalfd4(-1, mask, sizemask, 0)', "signalfd4", [-1, mask, len(mask), 0])
+            self.skipped_syscall.add("signalfd")
             if u2i(ret_history[-1]) >= 0:
-                yield ('close(fd)', st["close"], [ret_history[-1]])
+                yield ('close(fd)', "close", [ret_history[-1]])
 
             yield "timerfd_create -> close"
-            yield ('timerfd_create(CLOCK_MONOTONIC, 0)', st["timerfd_create"], [1, 0])
+            yield ('timerfd_create(CLOCK_MONOTONIC, 0)', "timerfd_create", [1, 0])
             if u2i(ret_history[-1]) >= 0:
-                yield ('close(fd)', st["close"], [ret_history[-1]])
+                yield ('close(fd)', "close", [ret_history[-1]])
 
             yield "epoll_create1 -> close"
-            yield ('epoll_create1(0)', st["epoll_create1"], [0])
-            self.tested_syscall.add(st["epoll_create"])
+            yield ('epoll_create1(0)', "epoll_create1", [0])
+            self.skipped_syscall.add("epoll_create")
             if u2i(ret_history[-1]) >= 0:
-                yield ('close(fd)', st["close"], [ret_history[-1]])
+                yield ('close(fd)', "close", [ret_history[-1]])
 
             yield "eventfd2 -> close"
-            yield ('eventfd2(0, 0)', st["eventfd2"], [0, 0])
-            self.tested_syscall.add(st["eventfd"])
+            yield ('eventfd2(0, 0)', "eventfd2", [0, 0])
+            self.skipped_syscall.add("eventfd")
             if u2i(ret_history[-1]) >= 0:
-                yield ('close(fd)', st["close"], [ret_history[-1]])
+                yield ('close(fd)', "close", [ret_history[-1]])
 
             yield "inotify_init1 -> close"
-            yield ('inotify_init1(0)', st["inotify_init1"], [0])
-            self.tested_syscall.add(st["inotify_init"])
+            yield ('inotify_init1(0)', "inotify_init1", [0])
+            self.skipped_syscall.add("inotify_init")
             if u2i(ret_history[-1]) >= 0:
-                yield ('close(fd)', st["close"], [ret_history[-1]])
+                yield ('close(fd)', "close", [ret_history[-1]])
 
             yield "perf_event_open -> close"
             attr = p32(1)         # type: PERF_TYPE_SOFTWARE
@@ -65248,324 +65271,335 @@ class KmallocAllocatedByCommand(GenericCommand):
             attr += p64(0)        # sample_period:
             attr += p64(1 << 10)  # sample_type: PERF_SAMPLE_RAW
             attr = attr.ljust(128, b"\0")
-            yield ('perf_event_open(attr, 0, -1, -1, 0)', st["perf_event_open"], [attr, 0, -1, -1, 0])
+            yield ('perf_event_open(attr, 0, -1, -1, 0)', "perf_event_open", [attr, 0, -1, -1, 0])
             if u2i(ret_history[-1]) >= 0:
-                yield ('close(fd)', st["close"], [ret_history[-1]])
+                yield ('close(fd)', "close", [ret_history[-1]])
 
             yield "pipe -> close*2"
             pipefd_array = p32(0) + p32(0)
-            yield ('pipe(pipefd[2])', st["pipe"], [pipefd_array])
-            self.tested_syscall.add(st["pipe2"])
+            yield ('pipe(pipefd[2])', "pipe", [pipefd_array])
+            self.skipped_syscall.add("pipe2")
             if u2i(ret_history[-1]) >= 0:
                 fd0 = u32(read_memory(current_arch.sp, 4))
                 fd1 = u32(read_memory(current_arch.sp + 4, 4))
-                yield ('close(fd[0])', st["close"], [fd0])
-                yield ('close(fd[1])', st["close"], [fd1])
+                yield ('close(fd[0])', "close", [fd0])
+                yield ('close(fd[1])', "close", [fd1])
 
             yield "mmap -> mprotect -> mremap -> msync -> madvise -> munmap"
             size = 0x1000
-            yield ('mmap(0, 0x1000, RWX, MAP_ANONYMOUS|MAP_PRIVATE, -1, 0)', st["mmap"], [0, size, 7, 0x22, -1, 0])
+            yield ('mmap(0, 0x1000, RWX, MAP_ANONYMOUS|MAP_PRIVATE, -1, 0)', "mmap", [0, size, 7, 0x22, -1, 0])
             if u2i(ret_history[-1]) >= 0:
                 addr = ret_history[-1]
-                yield ('mprotect(addr, 0x1000, R--)', st["mprotect"], [addr, size, 1])
+                yield ('mprotect(addr, 0x1000, R--)', "mprotect", [addr, size, 1])
                 size2 = size * 2
                 new_addr = 0x100000
                 yield ('mremnap(addr, 0x1000, 0x2000, MREMAP_FIXED|MREMAP_MAYMOVE, 0x100000)',
-                       st["mremap"], [addr, size, size2, 2|1, new_addr])
+                       "mremap", [addr, size, size2, 2|1, new_addr])
                 if u2i(ret_history[-1]) >= 0:
                     addr = ret_history[-1]
-                yield ('msync(addr, 0x2000, 0)', st["msync"], [addr, size2, 0])
-                yield ('madvise(addr, 0x2000, MADV_DONTNEED)', st["madvise"], [addr, size2, 4])
-                self.tested_syscall.add(st["process_madvise"])
-                yield ('munmap(addr, 0x2000)', st["munmap"], [addr, size2])
+                yield ('msync(addr, 0x2000, 0)', "msync", [addr, size2, 0])
+                yield ('madvise(addr, 0x2000, MADV_DONTNEED)', "madvise", [addr, size2, 4])
+                self.skipped_syscall.add("process_madvise")
+                yield ('munmap(addr, 0x2000)', "munmap", [addr, size2])
 
             yield "mlockall -> munlockall"
-            yield ('mlockall(MCL_CURRENT)', st["mlockall"], [1])
-            self.tested_syscall.add(st["mlock"])
-            self.tested_syscall.add(st["mlock2"])
-            yield ('munlockall()', st["munlockall"], [1])
-            self.tested_syscall.add(st["munlock"])
+            yield ('mlockall(MCL_CURRENT)', "mlockall", [1])
+            self.skipped_syscall.add("mlock")
+            self.skipped_syscall.add("mlock2")
+            yield ('munlockall()', "munlockall", [1])
+            self.skipped_syscall.add("munlock")
 
             yield "alarm"
-            yield ('alarm(1000)', st["alarm"], [1000])
+            yield ('alarm(1000)', "alarm", [1000])
 
             yield "sched_yield"
-            yield ('sched_yield()', st["sched_yield"], [])
+            yield ('sched_yield()', "sched_yield", [])
 
             yield "times"
             buf = "\0" * 0x100
-            yield ('times(buf)', st["times"], [buf])
+            yield ('times(buf)', "times", [buf])
 
             yield "gettimeofday"
             tv = tz = "\0" * 16
-            yield ('gettimeofday(tv, tz)', st["gettimeofday"], [tv, tz])
+            yield ('gettimeofday(tv, tz)', "gettimeofday", [tv, tz])
 
             yield "getrandom"
             buf = "\0" * 0x100
-            yield ('getrandom(buf, sizeof(buf), 0)', st["getrandom"], [buf, len(buf), 0])
+            yield ('getrandom(buf, sizeof(buf), 0)', "getrandom", [buf, len(buf), 0])
 
             yield "nanosleep"
             req = p64(1) # sec
             req += p64(0) # nano sec
             rem = p64(0) + p64(0)
-            yield ('nanosleep(req, rem)', st["nanosleep"], [req, rem])
+            yield ('nanosleep(req, rem)', "nanosleep", [req, rem])
 
             yield "getcwd"
             buf = "\0" * 0x100
-            yield ('getcwd(buf, sizeof(buf))', st["getcwd"], [buf, len(buf)])
+            yield ('getcwd(buf, sizeof(buf))', "getcwd", [buf, len(buf)])
 
             yield "uname"
             buf = "\0" * 0x400
-            yield ('uname(buf)', st["uname"], [buf])
+            yield ('uname(buf)', "uname", [buf])
 
             yield "getrlimit"
             rlim = "\0" * 16
-            yield ('getrlimit(RLIMIT_STACK, rlim, sizeof(rlim))', st["getrlimit"], [3, rlim, len(rlim)])
+            yield ('getrlimit(RLIMIT_STACK, rlim, sizeof(rlim))', "getrlimit", [3, rlim, len(rlim)])
 
             yield "sysinfo"
             buf = "\0" * 0x100
-            yield ('sysinfo(buf)', st["sysinfo"], [buf])
+            yield ('sysinfo(buf)', "sysinfo", [buf])
 
             yield "getrusage"
             buf = "\0" * 0x100
-            yield ('getrusage(RUSAGE_SELF, buf)', st["getrusage"], [0, buf])
+            yield ('getrusage(RUSAGE_SELF, buf)', "getrusage", [0, buf])
 
             yield "getpid -> getppid -> getsid -> setsid -> gettid -> getpgid -> setpgid -> getpgrp"
-            yield ('getpid()', st["getpid"], [])
+            yield ('getpid()', "getpid", [])
             pid = ret_history[-1]
-            yield ('getppid()', st["getppid"], [])
-            yield ('getsid(pid)', st["getsid"], [pid])
-            yield ('setsid()', st["setsid"], [])
-            yield ('gettid()', st["gettid"], [])
-            yield ('getpgid(pid)', st["getpgid"], [pid])
+            yield ('getppid()', "getppid", [])
+            yield ('getsid(pid)', "getsid", [pid])
+            yield ('setsid()', "setsid", [])
+            yield ('gettid()', "gettid", [])
+            yield ('getpgid(pid)', "getpgid", [pid])
             pgid = ret_history[-1]
-            yield ('setpgid(pid, pgid)', st["setpgid"], [pid, pgid])
-            yield ('getpgrp()', st["getpgrp"], [])
+            yield ('setpgid(pid, pgid)', "setpgid", [pid, pgid])
+            yield ('getpgrp()', "getpgrp", [])
 
             yield "pidfd_open -> pidfd_getfd -> close*2"
-            yield ('pidfd_open(pid, 0)', st["pidfd_open"], [pid, 0])
+            yield ('pidfd_open(pid, 0)', "pidfd_open", [pid, 0])
             if u2i(ret_history[-1]) >= 0:
                 pidfd = ret_history[-1]
-                yield ('pidfd_getfd(pid, STDIN_FILENO, 0)', st["pidfd_open"], [pidfd, 0, 0])
+                yield ('pidfd_getfd(pid, STDIN_FILENO, 0)', "pidfd_getfd", [pidfd, 0, 0])
                 if u2i(ret_history[-1]) >= 0:
                     fd = ret_history[-1]
-                    yield ('close(fd)', st["close"], [fd])
-                yield ('close(fd2)', st["close"], [pidfd])
+                    yield ('close(fd)', "close", [fd])
+                yield ('close(fd2)', "close", [pidfd])
 
             yield "getuid -> setuid -> setreuid -> setfsuid -> geteuid -> getresuid -> setresuid"
-            yield ('getuid()', st["getuid"], [])
+            yield ('getuid()', "getuid", [])
             uid = ret_history[-1]
-            yield ('setuid(uid)', st["setuid"], [uid])
-            yield ('setreuid(uid, uid)', st["setreuid"], [uid, uid])
-            yield ('setfsuid(uid)', st["setfsuid"], [uid])
-            yield ('geteuid()', st["geteuid"], [])
+            yield ('setuid(uid)', "setuid", [uid])
+            yield ('setreuid(uid, uid)', "setreuid", [uid, uid])
+            yield ('setfsuid(uid)', "setfsuid", [uid])
+            yield ('geteuid()', "geteuid", [])
             buf = "\0" * 8
-            yield ('getresuid()', st["getresuid"], [buf, buf, buf])
-            yield ('setresuid()', st["setresuid"], [uid, uid, uid])
+            yield ('getresuid()', "getresuid", [buf, buf, buf])
+            yield ('setresuid()', "setresuid", [uid, uid, uid])
 
             yield "getgid -> setgid -> setregid -> setfsgid -> getegid -> getresgid -> setresgid"
-            yield ('getgid()', st["getgid"], [])
+            yield ('getgid()', "getgid", [])
             gid = ret_history[-1]
-            yield ('setgid(gid)', st["setgid"], [gid])
-            yield ('setregid(gid, gid)', st["setregid"], [gid, gid])
-            yield ('setfsgid(uid)', st["setfsgid"], [gid])
-            yield ('getegid()', st["getegid"], [])
+            yield ('setgid(gid)', "setgid", [gid])
+            yield ('setregid(gid, gid)', "setregid", [gid, gid])
+            yield ('setfsgid(uid)', "setfsgid", [gid])
+            yield ('getegid()', "getegid", [])
             buf = "\0" * 8
-            yield ('getresgid()', st["getresgid"], [buf, buf, buf])
-            yield ('setresgid()', st["setresgid"], [gid, gid, gid])
+            yield ('getresgid()', "getresgid", [buf, buf, buf])
+            yield ('setresgid()', "setresgid", [gid, gid, gid])
 
             yield "capget"
             hdr = p32(0x20080522) + p32(pid)
             data = p32(0) + p32(0) + p32(0)
-            yield ('capget(hdrp, datap)', st["capget"], [hdr, data])
+            yield ('capget(hdrp, datap)', "capget", [hdr, data])
 
             yield "open -> flock -> fallocate -> write -> fdatasync -> fsync -> syncfs -> lseek -> read -> dup -> close*2"
             TMP_XXX = "/tmp/xxx\0"
-            yield ('open("/tmp/xxx", 0_RDWR|O_CREAT, 0666)', st["open"], [TMP_XXX, 0o2|0o100, 0o666])
-            self.tested_syscall.add(st["creat"])
-            self.tested_syscall.add(st["openat"])
-            self.tested_syscall.add(st["openat2"])
+            yield ('open("/tmp/xxx", 0_RDWR|O_CREAT, 0666)', "open", [TMP_XXX, 0o2|0o100, 0o666])
+            self.skipped_syscall.add("creat")
+            self.skipped_syscall.add("openat")
+            self.skipped_syscall.add("openat2")
             if u2i(ret_history[-1]) >= 0:
                 fd = ret_history[-1]
-                yield ('flock(fd, LOCK_SH|LOCK_NB)', st["flock"], [fd, 1|4])
-                yield ('fallocate(fd, 0, 0, 0x100)', st["fallocate"], [fd, 0, 0, 0x100])
+                yield ('flock(fd, LOCK_SH|LOCK_NB)', "flock", [fd, 1|4])
+                yield ('fallocate(fd, 0, 0, 0x100)', "fallocate", [fd, 0, 0, 0x100])
                 buf = "A" * 4
-                yield ('write(fd, "AAAA", 4)', st["write"], [fd, buf, len(buf)])
-                self.tested_syscall.add(st["writev"])
-                self.tested_syscall.add(st["pwrite64"])
-                self.tested_syscall.add(st["pwritev"])
-                self.tested_syscall.add(st["pwritev2"])
-                self.tested_syscall.add(st["process_vm_writev"])
-                yield ('fdatasync(fd)', st["fdatasync"], [fd])
-                yield ('fsync(fd)', st["fsync"], [fd])
-                yield ('syncfs(fd)', st["syncfs"], [fd])
-                self.tested_syscall.add(st["sync"])
-                yield ('lseek(fd, SEEK_SET, 0)', st["lseek"], [fd, 0, 0])
-                yield ('readahead(fd, 0, 0x1000)', st["readahead"], [fd, 0, 0x1000])
+                yield ('write(fd, "AAAA", 4)', "write", [fd, buf, len(buf)])
+                self.skipped_syscall.add("writev")
+                self.skipped_syscall.add("pwrite64")
+                self.skipped_syscall.add("pwritev")
+                self.skipped_syscall.add("pwritev2")
+                self.skipped_syscall.add("process_vm_writev")
+                yield ('fdatasync(fd)', "fdatasync", [fd])
+                yield ('fsync(fd)', "fsync", [fd])
+                yield ('syncfs(fd)', "syncfs", [fd])
+                self.skipped_syscall.add("sync")
+                yield ('lseek(fd, SEEK_SET, 0)', "lseek", [fd, 0, 0])
+                yield ('readahead(fd, 0, 0x1000)', "readahead", [fd, 0, 0x1000])
                 buf = "\0" * 4
-                yield ('read(fd, buf, 4)', st["read"], [fd, buf, len(buf)])
-                self.tested_syscall.add(st["readv"])
-                self.tested_syscall.add(st["pread64"])
-                self.tested_syscall.add(st["preadv"])
-                self.tested_syscall.add(st["preadv2"])
-                self.tested_syscall.add(st["process_vm_readv"])
-                yield ('dup(fd)', st["dup"], [fd])
-                self.tested_syscall.add(st["dup2"])
-                self.tested_syscall.add(st["dup3"])
+                yield ('read(fd, buf, 4)', "read", [fd, buf, len(buf)])
+                self.skipped_syscall.add("readv")
+                self.skipped_syscall.add("pread64")
+                self.skipped_syscall.add("preadv")
+                self.skipped_syscall.add("preadv2")
+                self.skipped_syscall.add("process_vm_readv")
+                yield ('dup(fd)', "dup", [fd])
+                self.skipped_syscall.add("dup2")
+                self.skipped_syscall.add("dup3")
                 fd2 = ret_history[-1]
-                yield ('close(fd)', st["close"], [fd])
-                yield ('close(fd2)', st["close"], [fd2])
+                yield ('close(fd)', "close", [fd])
+                yield ('close(fd2)', "close", [fd2])
 
             yield "access -> utime -> stat -> truncate -> setxattr -> getxattr -> listxattr -> removexattr"
-            yield ('access("/tmp/xxx", F_OK)', st["access"], [TMP_XXX, 0])
-            self.tested_syscall.add(st["faccessat"])
-            self.tested_syscall.add(st["faccessat2"])
+            yield ('access("/tmp/xxx", F_OK)', "access", [TMP_XXX, 0])
+            self.skipped_syscall.add("faccessat")
+            self.skipped_syscall.add("faccessat2")
             if u2i(ret_history[-1]) >= 0:
-                yield ('utime("/tmp/xxx", NULL)', st["utime"], [TMP_XXX, 0])
-                self.tested_syscall.add(st["utimes"])
-                self.tested_syscall.add(st["futimesat"])
-                self.tested_syscall.add(st["utimensat"])
+                yield ('utime("/tmp/xxx", NULL)', "utime", [TMP_XXX, 0])
+                self.skipped_syscall.add("utimes")
+                self.skipped_syscall.add("futimesat")
+                self.skipped_syscall.add("utimensat")
                 buf = "\0" * 0x100
-                yield ('stat("/tmp/xxx", buf)', st["stat"], [TMP_XXX, buf])
-                self.tested_syscall.add(st["fstat"])
-                self.tested_syscall.add(st["lstat"])
-                self.tested_syscall.add(st["newfstatat"])
-                yield ('truncate(/tmp/xxx", 10)', st["truncate"], [TMP_XXX, 10])
-                self.tested_syscall.add(st["ftruncate"])
+                yield ('stat("/tmp/xxx", buf)', "stat", [TMP_XXX, buf])
+                self.skipped_syscall.add("fstat")
+                self.skipped_syscall.add("lstat")
+                self.skipped_syscall.add("newfstatat")
+                yield ('truncate(/tmp/xxx", 10)', "truncate", [TMP_XXX, 10])
+                self.skipped_syscall.add("ftruncate")
                 value = "A" * 0xff + "\0"
                 yield ('setxattr("/tmp/xxx", "user.x", value, sizeof(value), 0)',
-                       st["setxattr"], [TMP_XXX, "user.x\0", value, len(value), 0])
-                self.tested_syscall.add(st["lsetxattr"])
-                self.tested_syscall.add(st["fsetxattr"])
+                       "setxattr", [TMP_XXX, "user.x\0", value, len(value), 0])
+                self.skipped_syscall.add("lsetxattr")
+                self.skipped_syscall.add("fsetxattr")
                 if u2i(ret_history[-1]) >= 0:
                     value = "\0" * 0x100
                     yield ('getxattr("/tmp/xxx", "user.x", buf, sizeof(buf))',
-                           st["getxattr"], [TMP_XXX, "user.x\0", value, len(value)])
-                    self.tested_syscall.add(st["lgetxattr"])
-                    self.tested_syscall.add(st["fgetxattr"])
+                           "getxattr", [TMP_XXX, "user.x\0", value, len(value)])
+                    self.skipped_syscall.add("lgetxattr")
+                    self.skipped_syscall.add("fgetxattr")
                     buf = "\0" * 0x100
-                    yield ('listxattr("/tmp/xxx", buf, sizeof(buf))', st["listxattr"], [TMP_XXX, buf, len(buf)])
-                    self.tested_syscall.add(st["llistxattr"])
-                    self.tested_syscall.add(st["flistxattr"])
-                    yield ('removexattr("/tmp/xxx", "user.x")', st["removexattr"], [TMP_XXX, "user.x\0"])
-                    self.tested_syscall.add(st["lremovexattr"])
-                    self.tested_syscall.add(st["fremovexattr"])
+                    yield ('listxattr("/tmp/xxx", buf, sizeof(buf))', "listxattr", [TMP_XXX, buf, len(buf)])
+                    self.skipped_syscall.add("llistxattr")
+                    self.skipped_syscall.add("flistxattr")
+                    yield ('removexattr("/tmp/xxx", "user.x")', "removexattr", [TMP_XXX, "user.x\0"])
+                    self.skipped_syscall.add("lremovexattr")
+                    self.skipped_syscall.add("fremovexattr")
 
             yield "link -> unlink"
             TMP_XXX2 = "/tmp/xxx2\0"
-            yield ('link("/tmp/xxx", "/tmp/xxx2")', st["link"], [TMP_XXX, TMP_XXX2])
-            self.tested_syscall.add(st["linkat"])
+            yield ('link("/tmp/xxx", "/tmp/xxx2")', "link", [TMP_XXX, TMP_XXX2])
+            self.skipped_syscall.add("linkat")
             if u2i(ret_history[-1]) >= 0:
-                    yield ('unlink("/tmp/xxx2")', st["unlink"], [TMP_XXX2])
-                    self.tested_syscall.add(st["unlinkat"])
+                    yield ('unlink("/tmp/xxx2")', "unlink", [TMP_XXX2])
+                    self.skipped_syscall.add("unlinkat")
 
             yield "symlink -> readlink -> rename -> unlink"
             TMP_XXX3 = "/tmp/xxx3\0"
-            yield ('symlink("/tmp/xxx", "/tmp/xxx3")', st["symlink"], [TMP_XXX, TMP_XXX3])
-            self.tested_syscall.add(st["symlinkat"])
+            yield ('symlink("/tmp/xxx", "/tmp/xxx3")', "symlink", [TMP_XXX, TMP_XXX3])
+            self.skipped_syscall.add("symlinkat")
             if u2i(ret_history[-1]) >= 0:
                 buf = "\0" * 0x100
-                yield ('readlink("/tmp/xxx3", buf, sizeof(buf))', st["readlink"], [TMP_XXX3, buf, len(buf)])
-                self.tested_syscall.add(st["readlinkat"])
+                yield ('readlink("/tmp/xxx3", buf, sizeof(buf))', "readlink", [TMP_XXX3, buf, len(buf)])
+                self.skipped_syscall.add("readlinkat")
                 TMP_XXX4 = "/tmp/xxx4\0"
-                yield ('rename("/tmp/xxx3", "/tmp/xxx4")', st["rename"], [TMP_XXX3, TMP_XXX4])
-                self.tested_syscall.add(st["renameat"])
-                self.tested_syscall.add(st["renameat2"])
+                yield ('rename("/tmp/xxx3", "/tmp/xxx4")', "rename", [TMP_XXX3, TMP_XXX4])
+                self.skipped_syscall.add("renameat")
+                self.skipped_syscall.add("renameat2")
                 if u2i(ret_history[-1]) >= 0:
-                    yield ('unlink("/tmp/xxx4")', st["unlink"], [TMP_XXX4])
-                    self.tested_syscall.add(st["unlinkat"])
+                    yield ('unlink("/tmp/xxx4")', "unlink", [TMP_XXX4])
+                    self.skipped_syscall.add("unlinkat")
 
             yield "mkdir -> chroot -> chdir -> chroot -> rmdir"
             TMP_YYY = "/tmp/yyy\0"
-            yield ('mkdir("/tmp/yyy", 0777)', st["mkdir"], [TMP_YYY, 0o777])
-            self.tested_syscall.add(st["mkdirat"])
+            yield ('mkdir("/tmp/yyy", 0777)', "mkdir", [TMP_YYY, 0o777])
+            self.tested_syscall.add("mkdirat")
             if u2i(ret_history[-1]) >= 0:
-                yield ('chroot("/tmp/yyy")', st["chroot"], [TMP_YYY])
+                yield ('chroot("/tmp/yyy")', "chroot", [TMP_YYY])
                 if u2i(ret_history[-1]) >= 0:
-                    yield ('chdir("..")', st["chdir"], ["..\0"])
-                    self.tested_syscall.add(st["fchdir"])
-                    yield ('chroot(".")', st["chroot"], [".\0"])
-                yield ('rmdir("/tmp/yyy")', st["rmdir"], [TMP_YYY])
+                    yield ('chdir("..")', "chdir", ["..\0"])
+                    self.skipped_syscall.add("fchdir")
+                    yield ('chroot(".")', "chroot", [".\0"])
+                yield ('rmdir("/tmp/yyy")', "rmdir", [TMP_YYY])
 
             yield "statfs"
             buf = "\0" * 0x100
-            yield ('statfs("/", buf)', st["statfs"], ["/\0", buf])
-            self.tested_syscall.add(st["fstatfs"])
+            yield ('statfs("/", buf)', "statfs", ["/\0", buf])
+            self.skipped_syscall.add("fstatfs")
 
             yield "open -> getdents -> fcntl -> close"
-            yield ('open("/", 0_RDONLY)', st["open"], ["/\0", 0])
+            yield ('open("/", 0_RDONLY)', "open", ["/\0", 0])
             if u2i(ret_history[-1]) >= 0:
                 fd = ret_history[-1]
                 buf = "\0" * 0x200
-                yield ('getdents("/", buf, sizeof(buf))', st["getdents"], [fd, buf, len(buf)])
-                self.tested_syscall.add(st["getdents64"])
-                yield ('fcntl(fd, F_GETFD)', st["fcntl"], [fd, 1])
-                yield ('close(fd)', st["close"], [fd])
+                yield ('getdents("/", buf, sizeof(buf))', "getdents", [fd, buf, len(buf)])
+                self.skipped_syscall.add("getdents64")
+                yield ('fcntl(fd, F_GETFD)', "fcntl", [fd, 1])
+                yield ('close(fd)', "close", [fd])
 
             yield "invalid socket -> close"
-            yield ('socket(22, SOCK_STREAM, 0)', st["socket"], [22, 1, 0])
+            yield ('socket(22, SOCK_STREAM, 0)', "socket", [22, 1, 0])
 
             yield "socket AF_INET/TCP -> bind -> listen -> setsockopt -> getsockopt -> close"
-            yield ('socket(AF_INET, SOCK_STREAM, 0)', st["socket"], [2, 1, 0])
+            yield ('socket(AF_INET, SOCK_STREAM, 0)', "socket", [2, 1, 0])
             if u2i(ret_history[-1]) >= 0:
                 fd = ret_history[-1]
                 sockaddr_in = p16(socket.AF_INET)           # sin_len, sin_family
                 sockaddr_in += p16(socket.htons(13337))     # sin_port
                 sockaddr_in += socket.inet_aton("0.0.0.0")  # sin_addr.s_addr
                 sockaddr_in += b"\0" * 8                    # sin_zero[8]
-                yield ('bind(fd, sockaddr, sizeof(sockaddr))', st["bind"], [fd, sockaddr_in, len(sockaddr_in)])
-                yield ('listen(fd, 16)', st["listen"], [fd, 16])
+                yield ('bind(fd, sockaddr, sizeof(sockaddr))', "bind", [fd, sockaddr_in, len(sockaddr_in)])
+                yield ('listen(fd, 16)', "listen", [fd, 16])
                 buf = "\0" * 4
-                yield ('setsockopt(fd, SOL_SOCKET, SO_DEBUG, buf, sizeof(buf))', st["setsockopt"], [fd, 1, 1, buf, len(buf)])
-                yield ('getsockopt(fd, SOL_SOCKET, SO_DEBUG, buf, &buflen)', st["getsockopt"], [fd, 1, 1, buf, buf])
-                yield ('close(fd)', st["close"], [fd])
+                yield ('setsockopt(fd, SOL_SOCKET, SO_DEBUG, buf, sizeof(buf))', "setsockopt", [fd, 1, 1, buf, len(buf)])
+                yield ('getsockopt(fd, SOL_SOCKET, SO_DEBUG, buf, &buflen)', "getsockopt", [fd, 1, 1, buf, buf])
+                yield ('close(fd)', "close", [fd])
 
             yield "socketpair AF_UNIX -> sendto -> recvfrom -> shutdown -> close*2"
             sv_array = p32(0) + p32(0)
-            yield ('socketpair(AF_UNIX, SOCK_STREAM, 0, sv[2])', st["socketpair"], [1, 1, 0, sv_array])
+            yield ('socketpair(AF_UNIX, SOCK_STREAM, 0, sv[2])', "socketpair", [1, 1, 0, sv_array])
             if u2i(ret_history[-1]) >= 0:
                 sv0 = u32(read_memory(current_arch.sp, 4))
                 sv1 = u32(read_memory(current_arch.sp + 4, 4))
                 buf = "A" * 4
-                yield ('sendto(sv[0], "AAAA", 4, 0, NULL, 0)', st["sendto"], [sv0, buf, len(buf), 0, 0, 0])
+                yield ('sendto(sv[0], "AAAA", 4, 0, NULL, 0)', "sendto", [sv0, buf, len(buf), 0, 0, 0])
                 buf = "\0" * 4
-                yield ('recvfrom(sv[1], buf, 4, 0, NULL, NULL)', st["recvfrom"], [sv1, buf, len(buf), 0, 0, 0])
-                yield ('shutdown(sv[0], SHUT_RDWR)', st["shutdown"], [sv0, 2])
-                yield ('close(sv[0])', st["close"], [sv0])
-                yield ('close(sv[1])', st["close"], [sv1])
+                yield ('recvfrom(sv[1], buf, 4, 0, NULL, NULL)', "recvfrom", [sv1, buf, len(buf), 0, 0, 0])
+                yield ('shutdown(sv[0], SHUT_RDWR)', "shutdown", [sv0, 2])
+                yield ('close(sv[0])', "close", [sv0])
+                yield ('close(sv[1])', "close", [sv1])
 
             yield "memfd_create -> close"
-            yield ('memfd_create("test", 0)', st["memfd_create"], ["test\0", 0])
+            yield ('memfd_create("test", 0)', "memfd_create", ["test\0", 0])
             if u2i(ret_history[-1]) >= 0:
-                yield ('close(fd)', st["close"], [ret_history[-1]])
+                yield ('close(fd)', "close", [ret_history[-1]])
 
             yield "open /dev/ptmx -> close"
-            yield ('open("/dev/ptmx", O_RDWR|O_NOCTTY)', st["open"], ["/dev/ptmx\0", 0o2|0o400])
+            yield ('open("/dev/ptmx", O_RDWR|O_NOCTTY)', "open", ["/dev/ptmx\0", 0o2|0o400])
             if u2i(ret_history[-1]) >= 0:
-                yield ('close(fd)', st["close"], [ret_history[-1]])
+                yield ('close(fd)', "close", [ret_history[-1]])
 
             yield "open /proc/self/stat -> close"
-            yield ('open("/proc/self/stat", O_RDONLY)', st["open"], ["/proc/self/stat\0", 0])
+            yield ('open("/proc/self/stat", O_RDONLY)', "open", ["/proc/self/stat\0", 0])
             if u2i(ret_history[-1]) >= 0:
-                yield ('close(fd)', st["close"], [ret_history[-1]])
+                yield ('close(fd)', "close", [ret_history[-1]])
 
-            self.tested_syscall.add(st["clone"])
-            self.tested_syscall.add(st["execve"])
-            self.tested_syscall.add(st["execveat"])
-            self.tested_syscall.add(st["fork"])
-            self.tested_syscall.add(st["vfork"])
-            self.tested_syscall.add(st["exit"])
-            self.tested_syscall.add(st["exit_group"])
-            self.tested_syscall.add(st["wait4"])
-            self.tested_syscall.add(st["waitid"])
-            self.tested_syscall.add(st["reboot"])
-            self.tested_syscall.add(st["vhangup"])
-            self.tested_syscall.add(st["modify_ldt"])
-            self.tested_syscall.add(st["kexec_load"])
-            self.tested_syscall.add(st["kexec_file_load"])
+            self.skipped_syscall.add("restart_syscall")
+            self.skipped_syscall.add("ioctl")
+            self.skipped_syscall.add("iopl")
+            self.skipped_syscall.add("ioperm")
+            self.skipped_syscall.add("seccomp")
+            self.skipped_syscall.add("pivot_root")
+            self.skipped_syscall.add("clone")
+            self.skipped_syscall.add("clone3")
+            self.skipped_syscall.add("execve")
+            self.skipped_syscall.add("execveat")
+            self.skipped_syscall.add("fork")
+            self.skipped_syscall.add("vfork")
+            self.skipped_syscall.add("exit")
+            self.skipped_syscall.add("exit_group")
+            self.skipped_syscall.add("wait4")
+            self.skipped_syscall.add("waitid")
+            self.skipped_syscall.add("reboot")
+            self.skipped_syscall.add("vhangup")
+            self.skipped_syscall.add("modify_ldt")
+            self.skipped_syscall.add("kexec_load")
+            self.skipped_syscall.add("kexec_file_load")
+            self.skipped_syscall.add("init_module")
+            self.skipped_syscall.add("finit_module")
+            self.skipped_syscall.add("delete_module")
             return None
 
         self.tested_syscall = set()
+        self.skipped_syscall = set()
 
         ret_history = []
         for testcase in gen_testcase():
@@ -65573,9 +65607,9 @@ class KmallocAllocatedByCommand(GenericCommand):
                 gef_print(titlify(testcase, msg_color="bold"))
                 continue
 
-            desc, nr, args = testcase
+            desc, syscall_name, args = testcase
             gef_print(titlify("{:s};".format(desc)))
-            self.setup_syscall(nr, args)
+            self.setup_syscall(syscall_name, args)
             for bp in breakpoints:
                 bp.enabled = True
             gdb.execute("c")
@@ -65593,7 +65627,7 @@ class KmallocAllocatedByCommand(GenericCommand):
 
         self.dump_untested_syscall()
 
-        self.setup_syscall(0x3c, [0]) # exit(0);
+        self.setup_syscall("exit", [0])
         return
 
     @parse_args
@@ -65630,7 +65664,8 @@ class KmallocAllocatedByCommand(GenericCommand):
                 info("vmemmap: {:#x}".format(self.extra_info.vmemmap))
 
         # get syscall table
-        self.syscall_table_view = gdb.execute("syscall-table-view --no-pager --quiet", to_string=True)
+        self.syscall_table = {e.name: n for n, e in get_syscall_table(None, None).table.items() if n < 0x1000}
+        self.syscall_table_view_ret = gdb.execute("syscall-table-view --no-pager --quiet", to_string=True)
 
         # get task
         res = gdb.execute("ktask --print-regs --no-pager --quiet --filter sleep", to_string=True)
