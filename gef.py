@@ -38950,7 +38950,7 @@ class LdCommand(GenericCommand):
 
 @register_command
 class MagicCommand(GenericCommand):
-    """Show Magic addresses / offsets."""
+    """Show useful addresses / offsets."""
     _cmdline_ = "magic"
     _category_ = "02-g. Process Information - Symbol"
 
@@ -39453,7 +39453,7 @@ class SysregCommand(GenericCommand):
 
 @register_command
 class MmxSetCommand(GenericCommand):
-    """Simply set the value to mm."""
+    """Simply set the value to mm register."""
     _cmdline_ = "mmxset"
     _category_ = "04-b. Register - Modify"
 
@@ -39563,7 +39563,7 @@ class MmxCommand(GenericCommand):
 
 @register_command
 class XmmSetCommand(GenericCommand):
-    """Simply set the value to xmm or ymm."""
+    """Simply set the value to xmm or ymm register."""
     _cmdline_ = "xmmset"
     _category_ = "04-b. Register - Modify"
 
@@ -40310,7 +40310,7 @@ class ExtractHeapAddrCommand(GenericCommand):
 
 @register_command
 class FindFakeFastCommand(GenericCommand):
-    """Find candidate fake fast chunks from rw memory."""
+    """Find candidate fake fast chunks from RW memory."""
     _cmdline_ = "find-fake-fast"
     _category_ = "06-a. Heap - Glibc"
 
@@ -43665,7 +43665,7 @@ class KernelbaseCommand(GenericCommand):
 
 @register_command
 class KernelVersionCommand(GenericCommand):
-    """Display kernel version string under qemu-system."""
+    """Display kernel version string."""
     _cmdline_ = "kversion"
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
@@ -43792,7 +43792,7 @@ class KernelVersionCommand(GenericCommand):
 
 @register_command
 class KernelCmdlineCommand(GenericCommand):
-    """Display kernel cmdline string under qemu-system."""
+    """Display kernel cmdline string."""
     _cmdline_ = "kcmdline"
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
@@ -43848,7 +43848,7 @@ class KernelCmdlineCommand(GenericCommand):
 
 @register_command
 class KernelCurrentCommand(GenericCommand):
-    """Display current task under qemu-system."""
+    """Display current task."""
     _cmdline_ = "kcurrent"
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
@@ -43963,7 +43963,7 @@ class KernelCurrentCommand(GenericCommand):
 
 @register_command
 class KernelTaskCommand(GenericCommand):
-    """Display process list under qemu-system."""
+    """Display process list."""
     _cmdline_ = "ktask"
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
@@ -45067,7 +45067,7 @@ class KernelTaskCommand(GenericCommand):
 
 @register_command
 class KernelModuleCommand(GenericCommand):
-    """Display module list under qemu-system."""
+    """Display module list."""
     _cmdline_ = "kmod"
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
@@ -45650,7 +45650,7 @@ class KernelModuleCommand(GenericCommand):
 
 @register_command
 class KernelBlockDevicesCommand(GenericCommand):
-    """Display block device list under qemu-system."""
+    """Display block device list."""
     _cmdline_ = "kbdev"
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
@@ -46021,7 +46021,7 @@ class KernelBlockDevicesCommand(GenericCommand):
 
 @register_command
 class KernelCharacterDevicesCommand(GenericCommand):
-    """Display character device list under qemu-system."""
+    """Display character device list."""
     _cmdline_ = "kcdev"
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
@@ -47133,7 +47133,7 @@ class KernelCharacterDevicesCommand(GenericCommand):
 
 @register_command
 class KernelOperationsCommand(GenericCommand):
-    """Display operations (like struct file_operations) under qemu-system."""
+    """Display the members of the function table (like struct file_operations) in the kernel."""
     _cmdline_ = "kops"
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
@@ -48483,7 +48483,7 @@ class AsciiSearchCommand(GenericCommand):
 
 @register_command
 class SyscallTableViewCommand(GenericCommand):
-    """Display syscall_table entries under qemu-system."""
+    """Display syscall_table entries."""
     _cmdline_ = "syscall-table-view"
     _category_ = "08-b. Qemu-system Cooperation - Linux"
 
@@ -59211,7 +59211,7 @@ class PrintBitInfo:
 
 @register_command
 class QemuRegistersCommand(GenericCommand):
-    """Get regisers via qemu-monitor."""
+    """Get regisers via qemu-monitor. (only x64/x86: It also shows the detail of system registers. ex: GDT, IDT etc.)"""
     _cmdline_ = "qreg"
     _category_ = "08-a. Qemu-system Cooperation - General"
 
@@ -66485,7 +66485,7 @@ class WalkLinkListCommand(GenericCommand):
 
 @register_command
 class PeekPointersCommand(GenericCommand):
-    """Find pointers belonging to other memory regions.."""
+    """Find pointers belonging to other memory regions."""
     _cmdline_ = "peek-pointers"
     _category_ = "03-a. Memory - Search"
     _aliases_ = ["leakfind"]
