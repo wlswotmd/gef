@@ -43402,9 +43402,8 @@ class KernelbaseCommand(GenericCommand):
         # If -enable-kvm option of qemu-system is not set, there may be multiple `r-- non-.rodata` between .text and .rodata.
         # In other words, .rodata may not exist immediately after .text. I have seen this on qemu with debian11 x86_64 installed.
         # Therefore, detecting by location will not return correct results.
-        # It is also possible to detect by size, but I could not determine the validity of the threshold.
-        # So I decided to use the characteristics of the data contained in .rodata.
-        # I detect by the existence "Linux version" near the top of the page.
+        # Detecting by size seems well, but I could not determine the good threshold.
+        # So I decided to detect by the existence "Linux version" near the top of the .rodata page.
         for i, (vaddr, size, perm) in enumerate(dic["maps"][kbase_map_index + 1:]):
             if perm == "R--":
                 if dic["krobase"] is None:
@@ -43422,16 +43421,16 @@ class KernelbaseCommand(GenericCommand):
         # 2b. search kernel RO base for old kernel
         if dic["krobase"] is None:
             dic["rwx"] = True
-            # If it can not detect rodata, maybe it is an old kernel (32-bit?).
+            # If it can not detect .rodata, maybe it is an old kernel (32-bit?).
             # Old kernel is no-NX, so .rodata is RWX.
-            # Detected kbase range includes rodata, so use heuristic search and split.
-            #    [  .text  ] <- maybe .text is larger than 0x8000 (it fails in certain cases if 0x7000)
-            #    [  .text  ]
-            #    [  .text  ]
-            #    [  .text  ] <- end of this area has [0x00, 0x00, 0x00, ...]
-            #    [  .rodata  ] <- near the top of this area has "Linux version"
-            #    [  .rodata  ]
-            #    [  .rodata  ]
+            # Detected .text range includes .rodata, so use heuristic search and split.
+            #   [  .text  ] <- maybe .text is larger than 0x8000 (it fails in certain cases if 0x7000)
+            #   [  .text  ]
+            #   [  .text  ]
+            #   [  .text  ] <- end of this area has [0x00, 0x00, 0x00, ...]
+            #   [ .rodata ] <- near the top of this area has "Linux version"
+            #   [ .rodata ]
+            #   [ .rodata ]
             start = dic["kbase"] + gef_getpagesize() * 8
             end = dic["kbase"] + dic["kbase_size"]
             block_size = 0x20
@@ -43444,7 +43443,7 @@ class KernelbaseCommand(GenericCommand):
                         dic["krobase"] = addr
                         dic["krobase_size"] = end - addr
                         dic["kbase_size"] -= dic["krobase_size"]
-                        # In this case, we chose not to detect krwbase.
+                        # In this case, I chose not to detect krwbase.
                         # Because ksymaddr-remote seems to give better results.
                         dic["krwbase"] = 0
                         dic["krwbase_size"] = 0
@@ -43457,7 +43456,7 @@ class KernelbaseCommand(GenericCommand):
         else:
             # 3. search kernel RW base
             # If krobase can be detected, detect the RW area from after krobase.
-            # TODO: We have specified the size, but there is room for improvement.
+            # TODO: I used specified the size, but there may be more good algorithms.
             RW_REGION_MIN_SIZE = 0x20000
             if dic["krobase"] is not None:
                 for vaddr, size, perm in dic["maps"][krobase_map_index + 1:]:
