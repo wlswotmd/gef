@@ -65264,10 +65264,42 @@ class KmallocAllocatedByCommand(GenericCommand):
             if u2i(ret_history[-1]) >= 0:
                 yield ('close(fd)', "close", [ret_history[-1]])
 
-            yield "timerfd_create -> close"
+            yield "setitimer -> getitimer"
+            ts = p64(0)  # it_interval.tv_sec
+            ts += p64(0) # it_interval.tv_nsec
+            ts += p64(0) # it_value.tv_sec
+            ts += p64(0) # it_value.tv_nsec
+            buf = p64(0) * 4
+            yield ('setitimer(ITIMER_REAL, &ts, &buf)', "setitimer", [0, ts, buf])
+            yield ('getitimer(ITIMER_REAL, &buf)', "setitimer", [0, buf])
+
+            yield "timerfd_create -> timerfd_settime -> timerfd_gettime -> close"
             yield ('timerfd_create(CLOCK_MONOTONIC, 0)', "timerfd_create", [1, 0])
             if u2i(ret_history[-1]) >= 0:
-                yield ('close(fd)', "close", [ret_history[-1]])
+                fd = ret_history[-1]
+                ts = p64(0)  # it_interval.tv_sec
+                ts += p64(0) # it_interval.tv_nsec
+                ts += p64(10) # it_value.tv_sec
+                ts += p64(0) # it_value.tv_nsec
+                buf = p64(0) * 4
+                yield ('timerfd_settime(fd, 0, &ts, &buf)', "timerfd_settime", [fd, 0, ts, buf])
+                yield ('timerfd_gettime(fd, &buf)', "timerfd_gettime", [fd, buf])
+                yield ('close(fd)', "close", [fd])
+
+            yield "timer_create -> timer_settime -> timier_gettime -> timer_getoverrun -> timer_delete"
+            timerid = p64(0)
+            yield ('timer_create(CLOCK_MONOTONIC, NULL, &timerid)', "timer_create", [1, 0, timerid])
+            if u2i(ret_history[-1]) == 0:
+                timerfd = read_int_from_memory(current_arch.sp)
+                ts = p64(0)  # it_interval.tv_sec
+                ts += p64(0) # it_interval.tv_nsec
+                ts += p64(10) # it_value.tv_sec
+                ts += p64(0) # it_value.tv_nsec
+                buf = p64(0) * 4
+                yield ('timer_settime(timerfd, 0, &ts, &buf)', "timer_settime", [timerfd, 0, ts, buf])
+                yield ('timer_gettime(timerfd, &buf)', "timer_gettime", [timerfd, buf])
+                yield ('timer_getoverrun(timerfd)', "timer_getoverrun", [timerfd])
+                yield ('timer_delete(timerfd)', "timer_delete", [timerfd])
 
             yield "epoll_create1 -> close"
             yield ('epoll_create1(0)', "epoll_create1", [0])
@@ -65278,12 +65310,6 @@ class KmallocAllocatedByCommand(GenericCommand):
             yield "eventfd2 -> close"
             yield ('eventfd2(0, 0)', "eventfd2", [0, 0])
             self.skipped_syscall.add("eventfd")
-            if u2i(ret_history[-1]) >= 0:
-                yield ('close(fd)', "close", [ret_history[-1]])
-
-            yield "inotify_init1 -> close"
-            yield ('inotify_init1(0)', "inotify_init1", [0])
-            self.skipped_syscall.add("inotify_init")
             if u2i(ret_history[-1]) >= 0:
                 yield ('close(fd)', "close", [ret_history[-1]])
 
@@ -65325,12 +65351,37 @@ class KmallocAllocatedByCommand(GenericCommand):
                 self.skipped_syscall.add("process_madvise")
                 yield ('munmap(addr, 0x2000)', "munmap", [addr, size2])
 
+            yield "brk"
+            yield ('brk(0)', "brk", [0])
+
             yield "mlockall -> munlockall"
             yield ('mlockall(MCL_CURRENT)', "mlockall", [1])
             self.skipped_syscall.add("mlock")
             self.skipped_syscall.add("mlock2")
             yield ('munlockall()', "munlockall", [1])
             self.skipped_syscall.add("munlock")
+
+            yield "prctl -> arch_prctl"
+            buf = "\0" * 0x100
+            yield ('prctl(PR_GET_PDEATHSIG, buf)', "prctl", [2, buf])
+            yield ('prctl(PR_GET_DUMPABLE)', "prctl", [3])
+            yield ('prctl(PR_GET_KEEPCAPS)', "prctl", [7])
+            yield ('prctl(PR_GET_TIMING)', "prctl", [13])
+            yield ('prctl(PR_GET_NAME, buf)', "prctl", [16, buf])
+            yield ('prctl(PR_GET_SECCOMP)', "prctl", [21])
+            yield ('prctl(PR_CAPBSET_READ, CAP_CHOWN)', "prctl", [23, 0])
+            yield ('prctl(PR_GET_TSC, buf)', "prctl", [25, buf])
+            yield ('prctl(PR_GET_SECUREBITS)', "prctl", [27])
+            yield ('prctl(PR_GET_TIMERSLACK)', "prctl", [30])
+            yield ('prctl(PR_TASK_PERF_EVENTS_DISABLE)', "prctl", [31])
+            yield ('prctl(PR_MCE_KILL_GET, 0, 0, 0, 0)', "prctl", [34, 0, 0, 0, 0])
+            yield ('prctl(PR_GET_CHILD_SUBREAPER, buf)', "prctl", [37, buf])
+            yield ('prctl(PR_GET_NO_NEW_PRIVS, 0, 0, 0, 0)', "prctl", [39, 0, 0, 0, 0])
+            yield ('prctl(PR_GET_TID_ADDRESS)', "prctl", [40, buf])
+            yield ('prctl(PR_GET_THP_DISABLE, 0, 0, 0, 0)', "prctl", [42, 0, 0, 0, 0])
+            yield ('arch_prctl(ARCH_GET_GS, buf)', "arch_prctl", [0x1001, buf])
+            yield ('arch_prctl(ARCH_GET_FS, buf)', "arch_prctl", [0x1003, buf])
+            yield ('arch_prctl(ARCH_GET_CPUID)', "arch_prctl", [0x1011])
 
             yield "alarm"
             yield ('alarm(1000)', "alarm", [1000])
@@ -65376,12 +65427,11 @@ class KmallocAllocatedByCommand(GenericCommand):
             buf = "\0" * 0x100
             yield ('getrusage(RUSAGE_SELF, buf)', "getrusage", [0, buf])
 
-            yield "getpid -> getppid -> getsid -> setsid -> gettid -> getpgid -> setpgid -> getpgrp"
+            yield "getpid -> getppid -> getsid -> gettid -> getpgid -> setpgid -> getpgrp"
             yield ('getpid()', "getpid", [])
             pid = ret_history[-1]
             yield ('getppid()', "getppid", [])
             yield ('getsid(pid)', "getsid", [pid])
-            yield ('setsid()', "setsid", [])
             yield ('gettid()', "gettid", [])
             yield ('getpgid(pid)', "getpgid", [pid])
             pgid = ret_history[-1]
@@ -65462,6 +65512,15 @@ class KmallocAllocatedByCommand(GenericCommand):
                 yield ('close(fd)', "close", [fd])
                 yield ('close(fd2)', "close", [fd2])
 
+            yield "chmod -> chown"
+            yield ('chmod("/tmp/xxx", 0o664)', "chmod", [TMP_XXX, 0o664])
+            self.skipped_syscall.add("fchmod")
+            self.skipped_syscall.add("fchmodat")
+            yield ('chown("/tmp/xxx", -1, -1)', "chown", [TMP_XXX, -1, -1])
+            self.skipped_syscall.add("fchown")
+            self.skipped_syscall.add("lchown")
+            self.skipped_syscall.add("fchownat")
+
             yield "access -> utime -> stat -> truncate -> setxattr -> getxattr -> listxattr -> removexattr"
             yield ('access("/tmp/xxx", F_OK)', "access", [TMP_XXX, 0])
             self.skipped_syscall.add("faccessat")
@@ -65502,8 +65561,8 @@ class KmallocAllocatedByCommand(GenericCommand):
             yield ('link("/tmp/xxx", "/tmp/xxx2")', "link", [TMP_XXX, TMP_XXX2])
             self.skipped_syscall.add("linkat")
             if u2i(ret_history[-1]) >= 0:
-                    yield ('unlink("/tmp/xxx2")', "unlink", [TMP_XXX2])
-                    self.skipped_syscall.add("unlinkat")
+                yield ('unlink("/tmp/xxx2")', "unlink", [TMP_XXX2])
+                self.skipped_syscall.add("unlinkat")
 
             yield "symlink -> readlink -> rename -> unlink"
             TMP_XXX3 = "/tmp/xxx3\0"
@@ -65521,11 +65580,25 @@ class KmallocAllocatedByCommand(GenericCommand):
                     yield ('unlink("/tmp/xxx4")', "unlink", [TMP_XXX4])
                     self.skipped_syscall.add("unlinkat")
 
-            yield "mkdir -> chroot -> chdir -> chroot -> rmdir"
+            yield "inotify_init1 -> inotify_add_watch -> inotify_rm_watch -> close"
+            yield ('inotify_init1(0)', "inotify_init1", [0])
+            self.skipped_syscall.add("inotify_init")
+            if u2i(ret_history[-1]) >= 0:
+                fd = ret_history[-1]
+                yield ('inotify_add_watch(fd, "/tmp/xxx", IN_MOVE_SELF)', "inotify_add_watch", [fd, TMP_XXX, 0x800])
+                if u2i(ret_history[-1]) >= 0:
+                    wd = ret_history[-1]
+                    yield ('inotify_rm_watch(fd, wd)', "inotify_rm_watch", [fd, wd])
+                yield ('close(fd)', "close", [fd])
+
+            yield "mkdir -> open_tree -> close -> chroot -> chdir -> chroot -> rmdir"
             TMP_YYY = "/tmp/yyy\0"
             yield ('mkdir("/tmp/yyy", 0777)', "mkdir", [TMP_YYY, 0o777])
             self.tested_syscall.add("mkdirat")
             if u2i(ret_history[-1]) >= 0:
+                yield ('open_tree(-1, "/tmp/yyy", 0)', "open_tree", [-1, TMP_YYY, 0])
+                if u2i(ret_history[-1]) >= 0:
+                    yield ('close(fd)', "close", [ret_history[-1]])
                 yield ('chroot("/tmp/yyy")', "chroot", [TMP_YYY])
                 if u2i(ret_history[-1]) >= 0:
                     yield ('chdir("..")', "chdir", ["..\0"])
@@ -65546,6 +65619,9 @@ class KmallocAllocatedByCommand(GenericCommand):
                 yield ('getdents("/", buf, sizeof(buf))', "getdents", [fd, buf, len(buf)])
                 self.skipped_syscall.add("getdents64")
                 yield ('fcntl(fd, F_GETFD)', "fcntl", [fd, 1])
+                yield ('fcntl(fd, F_GETFL)', "fcntl", [fd, 3])
+                yield ('fcntl(fd, F_GETLK, &flock)', "fcntl", [fd, 5, buf])
+                yield ('fcntl(fd, F_OFD_GETLK, &flock)', "fcntl", [fd, 36, buf])
                 yield ('close(fd)', "close", [fd])
 
             yield "invalid socket -> close"
@@ -65596,6 +65672,7 @@ class KmallocAllocatedByCommand(GenericCommand):
                 yield ('close(fd)', "close", [ret_history[-1]])
 
             self.skipped_syscall.add("restart_syscall")
+            self.skipped_syscall.add("setsid")
             self.skipped_syscall.add("ioctl")
             self.skipped_syscall.add("iopl")
             self.skipped_syscall.add("ioperm")
@@ -65619,6 +65696,8 @@ class KmallocAllocatedByCommand(GenericCommand):
             self.skipped_syscall.add("init_module")
             self.skipped_syscall.add("finit_module")
             self.skipped_syscall.add("delete_module")
+            self.skipped_syscall.add("fanotify_init")
+            self.skipped_syscall.add("fanotify_mark")
             return None
 
         self.tested_syscall = set()
@@ -65654,7 +65733,10 @@ class KmallocAllocatedByCommand(GenericCommand):
         return
 
     @parse_args
+    @only_if_gdb_running
+    @only_if_qemu_system
     @only_if_specific_arch(arch=("x86_64",))
+    @only_if_in_kernel
     def do_invoke(self, args):
         self.dont_repeat()
 
