@@ -60069,6 +60069,7 @@ class PagewalkX64Command(PagewalkCommand):
     parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
     parser.add_argument("-c", "--use-cache", action="store_true", help="use before result.")
     parser.add_argument("-U", "--user-pt", action="store_true", help="print userland pagetables (for KPTI, x64 only).")
+    parser.add_argument("--include-kasan-memory", action="store_true", help="include KASAN shadow memory.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -60310,6 +60311,11 @@ class PagewalkX64Command(PagewalkCommand):
             entries = self.read_physmem_cache(table_base, 2 ** self.bits["PDT_BITS"] * self.bits["ENTRY_SIZE"])
             entries = slice_unpack(entries, self.bits["ENTRY_SIZE"])
             COUNT += len(entries)
+
+            if not self.include_kasan_memory:
+                if len({e & ~0b111 for e in entries}) == 1:
+                    continue
+
             for i, entry in enumerate(entries):
                 # present flag
                 if (entry & 1) == 0:
@@ -60388,6 +60394,11 @@ class PagewalkX64Command(PagewalkCommand):
             entries = self.read_physmem_cache(table_base, 2 ** self.bits["PT_BITS"] * self.bits["ENTRY_SIZE"])
             entries = slice_unpack(entries, self.bits["ENTRY_SIZE"])
             COUNT += len(entries)
+
+            if not self.include_kasan_memory:
+                if len({e & ~0b111 for e in entries}) == 1:
+                    continue
+
             for i, entry in enumerate(entries):
                 # present flag
                 if (entry & 1) == 0:
@@ -60572,6 +60583,7 @@ class PagewalkX64Command(PagewalkCommand):
         self.trace = args.trace.copy()
         self.use_cache = args.use_cache
         self.user_pt = args.user_pt # used only x64
+        self.include_kasan_memory = args.include_kasan_memory
         if self.trace:
             self.vrange.extend(self.trace) # also set --vrange
             self.print_each_level = True # overwrite
