@@ -51376,11 +51376,17 @@ class SlubDumpCommand(GenericCommand):
             for idx, chunk in enumerate(range(page["virt_addr"], end_virt, kmem_cache["size"])):
                 if chunk in freelist_fastpath[:-1]:
                     next_chunk = freelist_fastpath[freelist_fastpath.index(chunk) + 1]
-                    next_msg = "next: {:#x}".format(next_chunk)
+                    if isinstance(next_chunk, str):
+                        next_msg = "next: {:s}".format(next_chunk)
+                    else:
+                        next_msg = "next: {:#x}".format(next_chunk)
                     chunk_s = Color.colorify("{:#x}".format(chunk), freed_address_color)
                 elif chunk in freelist[:-1]:
                     next_chunk = freelist[freelist.index(chunk) + 1]
-                    next_msg = "next: {:#x}".format(next_chunk)
+                    if isinstance(next_chunk, str):
+                        next_msg = "next: {:s}".format(next_chunk)
+                    else:
+                        next_msg = "next: {:#x}".format(next_chunk)
                     if tag == "active":
                         next_msg += " (slow path)"
                     chunk_s = Color.colorify("{:#x}".format(chunk), freed_address_color)
@@ -51424,15 +51430,15 @@ class SlubDumpCommand(GenericCommand):
                 if page["virt_addr"] is not None:
                     if chunk_addr == 0:
                         continue
-                    else:
-                        if isinstance(chunk_addr, str):
-                            self.out.append("        Corrupted")
-                            break
-                        chunk_idx = (chunk_addr - page["virt_addr"]) // kmem_cache["size"]
-                        chunk_idx = "{:#05x}".format(chunk_idx)
                     if isinstance(chunk_addr, str):
+                        chunk_idx = ""
                         msg = chunk_addr
                     else:
+                        chunk_idx = (chunk_addr - page["virt_addr"]) // kmem_cache["size"]
+                        if chunk_idx < 0 or page["objects"] <= chunk_idx:
+                            chunk_idx = ""
+                        else:
+                            chunk_idx = "{:#05x}".format(chunk_idx)
                         msg = Color.colorify("{:#x}".format(chunk_addr), freed_address_color)
                     self.out.append("                  {:5s} {:s}".format(chunk_idx, msg))
                 else:
@@ -52106,7 +52112,10 @@ class SlubTinyDumpCommand(GenericCommand):
             for idx, chunk in enumerate(range(page["virt_addr"], end_virt, kmem_cache["size"])):
                 if chunk in freelist[:-1]:
                     next_chunk = freelist[freelist.index(chunk) + 1]
-                    next_msg = "next: {:#x}".format(next_chunk)
+                    if isinstance(next_chunk, str):
+                        next_msg = "next: {:s}".format(next_chunk)
+                    else:
+                        next_msg = "next: {:#x}".format(next_chunk)
                     chunk_s = Color.colorify("{:#x}".format(chunk), freed_address_color)
                 else:
                     if page["objects"] <= idx:
@@ -52127,12 +52136,15 @@ class SlubTinyDumpCommand(GenericCommand):
                 if page["virt_addr"] is not None:
                     if chunk_addr == 0:
                         continue
-                    else:
-                        chunk_idx = (chunk_addr - page["virt_addr"]) // kmem_cache["size"]
-                        chunk_idx = "{:#05x}".format(chunk_idx)
                     if isinstance(chunk_addr, str):
+                        chunk_idx = ""
                         msg = chunk_addr
                     else:
+                        chunk_idx = (chunk_addr - page["virt_addr"]) // kmem_cache["size"]
+                        if chunk_idx < 0 or page["objects"] <= chunk_idx:
+                            chunk_idx = ""
+                        else:
+                            chunk_idx = "{:#05x}".format(chunk_idx)
                         msg = Color.colorify("{:#x}".format(chunk_addr), freed_address_color)
                     freelist_msg = "freelist:" if idx == 0 else ""
                     self.out.append("        {:9s} {:5s} {:s}".format(freelist_msg, chunk_idx, msg))
