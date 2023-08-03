@@ -43561,13 +43561,14 @@ class KernelbaseCommand(GenericCommand):
         # If -enable-kvm option of qemu-system is not set, there may be multiple `r-- non-.rodata` between .text and .rodata.
         # In other words, .rodata may not exist immediately after .text. I have seen this on qemu with debian11 x86_64 installed.
         # Therefore, detecting by location will not return correct results.
-        # Detecting by size seems well, but I could not determine the good threshold.
-        # So I decided to detect by the existence "Linux version" near the top of the .rodata page.
+        # Detecting by size seems well, but this algorithm sometimes failed. This is due to the difficulty of determining the threshold.
+        # So I decided to also detect by the existence "Linux version" near the top of the .rodata page.
+        RO_REGION_MIN_SIZE = 0x100000
         for i, (vaddr, size, perm) in enumerate(dic["maps"][kbase_map_index + 1:]):
             if perm == "R--":
                 if dic["krobase"] is None:
                     data = read_memory(vaddr, gef_getpagesize())
-                    if b"Linux version" in data:
+                    if size >= RO_REGION_MIN_SIZE or b"Linux version" in data:
                         dic["krobase"] = vaddr
                         dic["krobase_size"] = size
                         krobase_map_index = kbase_map_index + i
