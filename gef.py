@@ -55578,27 +55578,25 @@ class PartitionAllocDumpCommand(GenericCommand):
         """
         https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/partition_root.h
         struct base::PartitionRoot {
-            union {
-                struct Flags {
-                    QuarantineMode quarantine_mode; // uint8_t
-                    ScanMode scan_mode;             // uint8_t
-                    BucketDistribution bucket_distribution = BucketDistribution::kDefault; // uint8_t
-                    bool with_thread_cache = false;
-                    bool allow_aligned_alloc;
-                    bool allow_cookie;
-                    bool brp_enabled_;
-                    bool brp_zapping_enabled_;
-                    //bool mac11_malloc_size_hack_enabled_ = false;
-                    bool use_configurable_pool;
-                    bool memory_tagging_enabled_;
-                    ThreadIsolationOption thread_isolation; // v115~
-                    //int pkey; // ~v114
-                    //uint32_t extras_size;
-                    //uint32_t extras_offset;
-                }
-                uint8_t one_cacheline[internal::kPartitionCachelineSize]; // 64 bytes
-            }
-            ::partition_alloc::Lock lock_;  // 8 bytes
+            struct alignas(internal::kPartitionCachelineSize) Settings {
+                QuarantineMode quarantine_mode = QuarantineMode::kAlwaysDisabled; // uint8_t
+                ScanMode scan_mode = ScanMode::kDisabled; // uint8_t
+                BucketDistribution bucket_distribution = BucketDistribution::kNeutral; // uint8_t
+                bool with_thread_cache = false;
+                bool allow_aligned_alloc = false;
+                bool use_cookie = false;
+                bool brp_enabled_ = false;
+                bool brp_zapping_enabled_;
+                bool mac11_malloc_size_hack_enabled_ = false;
+                size_t mac11_malloc_size_hack_usable_size_ = 0;
+                bool use_configurable_pool = false;
+                bool memory_tagging_enabled_ = false;
+                size_t ref_count_size = 0;
+                ThreadIsolationOption thread_isolation;
+                uint32_t extras_size = 0;
+                uint32_t extras_offset = 0;
+            } settings; // 64 bytes
+            internal::Lock lock_;  // 8 bytes
             Bucket buckets[internal::kNumBuckets] = {};
             Bucket sentinel_bucket{};
             bool initialized = false;
@@ -55606,32 +55604,31 @@ class PartitionAllocDumpCommand(GenericCommand):
             std::atomic<size_t> max_size_of_committed_pages{0};
             std::atomic<size_t> total_size_of_super_pages{0};
             std::atomic<size_t> total_size_of_direct_mapped_pages{0};
-            size_t total_size_of_allocated_bytes PA_GUARDED_BY(lock_) = 0;
-            size_t max_size_of_allocated_bytes PA_GUARDED_BY(lock_) = 0;
+            size_t total_size_of_allocated_bytes PA_GUARDED_BY(internal::PartitionRootLock(this)) = 0;
+            size_t max_size_of_allocated_bytes PA_GUARDED_BY(internal::PartitionRootLock(this)) = 0;
             std::atomic<uint64_t> syscall_count{};
             std::atomic<uint64_t> syscall_total_time_ns{};
             std::atomic<size_t> total_size_of_brp_quarantined_bytes{0};
             std::atomic<size_t> total_count_of_brp_quarantined_slots{0};
             std::atomic<size_t> cumulative_size_of_brp_quarantined_bytes{0};
             std::atomic<size_t> cumulative_count_of_brp_quarantined_slots{0};
-            size_t empty_slot_spans_dirty_bytes PA_GUARDED_BY(lock_) = 0;
+            size_t empty_slot_spans_dirty_bytes PA_GUARDED_BY(internal::PartitionRootLock(this)) = 0;
             int max_empty_slot_spans_dirty_bytes_shift = 3;
             uintptr_t next_super_page = 0;
             uintptr_t next_partition_page = 0;
             uintptr_t next_partition_page_end = 0;
             SuperPageExtentEntry* current_extent = nullptr;
             SuperPageExtentEntry* first_extent = nullptr;
-            DirectMapExtent* direct_map_list PA_GUARDED_BY(lock_) = nullptr;
-            SlotSpan* global_empty_slot_span_ring[internal::kMaxFreeableSpans] PA_GUARDED_BY(lock_) = {};
-            int16_t global_empty_slot_span_ring_index PA_GUARDED_BY(lock_) = 0;
-            int16_t global_empty_slot_span_ring_size PA_GUARDED_BY(lock_) = internal::kDefaultEmptySlotSpanRingSize;
+            DirectMapExtent* direct_map_list PA_GUARDED_BY(internal::PartitionRootLock(this)) = nullptr;
+            SlotSpan* global_empty_slot_span_ring[internal::kMaxFreeableSpans] PA_GUARDED_BY(internal::PartitionRootLock(this)) = {};
+            int16_t global_empty_slot_span_ring_index PA_GUARDED_BY(internal::PartitionRootLock(this)) = 0;
+            int16_t global_empty_slot_span_ring_size PA_GUARDED_BY(internal::PartitionRootLock(this)) = internal::kDefaultEmptySlotSpanRingSize;
             uintptr_t inverted_self = 0;
             std::atomic<int> thread_caches_being_constructed_{0};
             bool quarantine_always_for_testing = false;
         }
         """
-        x = u64(read_memory(current, 8))
-        current += 64 # sizeof(union {...})
+        current += 64 # sizeof(struct Settings)
 
         _root["lock_"] = u64(read_memory(current, 8))
         current += 8
@@ -55729,9 +55726,9 @@ class PartitionAllocDumpCommand(GenericCommand):
         """
         https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/partition_bucket.h
         struct base::internal::PartitionBucket {
-            SlotSpanMetadata<thread_safe>* active_slot_spans_head;
-            SlotSpanMetadata<thread_safe>* empty_slot_spans_head;
-            SlotSpanMetadata<thread_safe>* decommitted_slot_spans_head;
+            SlotSpanMetadata* active_slot_spans_head;
+            SlotSpanMetadata* empty_slot_spans_head;
+            SlotSpanMetadata* decommitted_slot_spans_head;
             uint32_t slot_size;
             uint32_t num_system_pages_per_slot_span : 8;
             uint32_t num_full_slot_spans : 24;
@@ -55767,7 +55764,7 @@ class PartitionAllocDumpCommand(GenericCommand):
         _extent["addr"] = current = addr
         _extent["super_page_base"] = current - 0x1000
         """
-        https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/partition_page.h
+        https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/partition_superpage_extent_entry.h
         struct PartitionSuperPageExtentEntry {
           PartitionRootBase* root;
           PartitionSuperPageExtentEntry* next;
@@ -55796,9 +55793,9 @@ class PartitionAllocDumpCommand(GenericCommand):
         """
         https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/partition_direct_map_extent.h
         struct PartitionDirectMapExtent {
-          PartitionDirectMapExtent<thread_safe>* next_extent;
-          PartitionDirectMapExtent<thread_safe>* prev_extent;
-          PartitionBucket<thread_safe>* bucket;
+          PartitionDirectMapExtent* next_extent;
+          PartitionDirectMapExtent* prev_extent;
+          PartitionBucket* bucket;
           size_t reservation_size;
           size_t padding_for_alignment;
         };
@@ -55829,8 +55826,8 @@ class PartitionAllocDumpCommand(GenericCommand):
         https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/partition_page.h
         struct SlotSpanMetadata {
           PartitionFreelistEntry* freelist_head = nullptr;
-          SlotSpanMetadata<thread_safe>* next_slot_span = nullptr;
-          PartitionBucket<thread_safe>* const bucket = nullptr;
+          SlotSpanMetadata* next_slot_span = nullptr;
+          PartitionBucket* const bucket = nullptr;
           uint32_t marked_full : 1
           uint32_t num_allocated_slots : kMaxSlotsPerSlotSpanBits; // 13 bits
           uint32_t num_unprovisioned_slots : kMaxSlotsPerSlotSpanBits; // 13 bits

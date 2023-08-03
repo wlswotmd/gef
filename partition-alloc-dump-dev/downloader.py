@@ -62,7 +62,7 @@ def download_binary(channel):
     print("[*] struct base::internal::PartitionBucket:")
     print("    {:s}base/allocator/partition_allocator/partition_bucket.h;drc={:s}".format(url_base, commit))
     print("[*] struct PartitionSuperPageExtentEntry:")
-    print("    {:s}base/allocator/partition_allocator/partition_page.h;drc={:s}".format(url_base, commit))
+    print("    {:s}base/allocator/partition_allocator/partition_superpage_extent_entry.h;drc={:s}".format(url_base, commit))
     print("[*] struct PartitionDirectMapExtent:")
     print("    {:s}base/allocator/partition_allocator/partition_direct_map_extent.h;drc={:s}".format(url_base, commit))
     print("[*] struct SlotSpanMetadata:")
