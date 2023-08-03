@@ -16527,6 +16527,16 @@ class RopperCommand(GenericCommand):
                 err("Missing info about file. Please set: `file /path/to/target_binary`")
                 return
             argv.extend(["--file", filepath])
+        else:
+            try:
+                filepath = argv[argv.index("--file") + 1]
+            except IndexError:
+                self.print_help()
+                return
+
+        if not os.path.isfile(filepath):
+            err("Invalid filepath")
+            return
 
         # ropper set up own autocompleter after which gdb/gef autocomplete don't work
         # due to fork/waitpid, child will be broken but parent will not change
