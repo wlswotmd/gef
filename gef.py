@@ -2991,6 +2991,15 @@ def slice_unpack(data, n):
         raise
 
 
+def byteswap(x, byte_size=None):
+    byte_size = byte_size or current_arch.ptrsize
+    bit_size = byte_size * 8
+    s = 0
+    for i in range(0, bit_size, 8):
+        s += ((x >> i) & 0xff) << (bit_size - (i + 8))
+    return s
+
+
 @functools.lru_cache(maxsize=None)
 def which(program):
     """Locate a command on the filesystem."""
@@ -40768,12 +40777,8 @@ class TransCommand(GenericCommand):
 
         try:
             value = int(args.value, 0)
-            p = lambda a: struct.pack("<I", a & 0xffffffff)
-            ube = lambda a: struct.unpack(">I", a)[0]
-            pQ = lambda a: struct.pack("<Q", a & 0xffffffffffffffff)
-            uQbe = lambda a: struct.unpack(">Q", a)[0]
-            converted32 = ube(p(value))
-            converted64 = uQbe(pQ(value))
+            converted32 = byteswap(value, 4)
+            converted64 = byteswap(value, 8)
             self.out.append(titlify("byteswap"))
             self.out.append("byteswap-64:   {:#018x}".format(converted64))
             self.out.append("byteswap-32:   {:#010x}".format(converted32))
@@ -51173,16 +51178,6 @@ class SlubDumpCommand(GenericCommand):
         return None
 
     def pointer_xor(self, addr, chunk, cache):
-        def byteswap(x):
-            if is_64bit():
-                bits = 64
-            else:
-                bits = 32
-            s = 0
-            for i in range(0, bits, 8):
-                s += ((x >> i) & 0xff) << (bits - (i + 8))
-            return s
-
         def pattern1(addr, chunk, cache):
             return chunk ^ addr ^ cache["random"]
 
@@ -55563,17 +55558,6 @@ class PartitionAllocDumpCommand(GenericCommand):
             pass
         return sentinel
 
-    def byteswap(self, x):
-        p = lambda a: struct.pack("<I", a & 0xffffffff)
-        ube = lambda a: struct.unpack(">I", a)[0]
-        pQ = lambda a: struct.pack("<Q", a & 0xffffffffffffffff)
-        uQbe = lambda a: struct.unpack(">Q", a)[0]
-        if is_64bit():
-            converted = uQbe(pQ(x))
-        elif is_32bit():
-            converted = ube(p(x))
-        return converted
-
     def read_root(self, addr, name):
         ptrsize = current_arch.ptrsize
         _root = {}
@@ -56065,7 +56049,7 @@ class PartitionAllocDumpCommand(GenericCommand):
                 break
 
             try:
-                next_chunk = self.byteswap(read_int_from_memory(chunk))
+                next_chunk = byteswap(read_int_from_memory(chunk))
             except gdb.MemoryError:
                 text += Color.colorify("-> {:#x} (corrupted) ".format(chunk), corrupted_msg_color)
                 break
