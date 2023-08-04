@@ -8898,6 +8898,19 @@ def only_if_in_kernel(f):
     return wrapper
 
 
+def only_if_kvm_disabled(f):
+    """Decorator wrapper to check if there is not -enavle-kvm option."""
+
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        if is_kvm_enabled():
+            err("Disable `-enable-kvm` option for qemu-system.")
+            return
+        return f(*args, **kwargs)
+
+    return wrapper
+
+
 def experimental_feature(f):
     """Decorator to add a warning when a feature is experimental."""
 
@@ -39508,12 +39521,9 @@ class MmxSetCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
+    @only_if_kvm_disabled
     def do_invoke(self, args):
         self.dont_repeat()
-
-        if is_kvm_enabled():
-            err("Disable `-enable-kvm` option for qemu-system.")
-            return
 
         # arg parse
         try:
@@ -58852,12 +58862,9 @@ class CpuidCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
+    @only_if_kvm_disabled
     def do_invoke(self, args):
         self.dont_repeat()
-
-        if is_kvm_enabled():
-            err("Disable `-enable-kvm` option for qemu-system.")
-            return
 
         # Basic Information
         eax, _, _, _ = self.execute_cpuid(0)
@@ -59002,20 +59009,14 @@ class MsrCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
+    @only_if_in_kernel
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
+    @only_if_kvm_disabled
     def do_invoke(self, args):
         self.dont_repeat()
 
         if args.list:
             self.print_const_table()
-            return
-
-        if not is_in_kernel():
-            err("Ring 0 is needed")
-            return
-
-        if is_kvm_enabled():
-            err("Disable `-enable-kvm` option for qemu-system.")
             return
 
         # search const table
@@ -65049,12 +65050,9 @@ class KmallocHunterCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_qemu_system
     @only_if_in_kernel
+    @only_if_kvm_disabled
     def do_invoke(self, args):
         self.dont_repeat()
-
-        if is_kvm_enabled():
-            err("Disable `-enable-kvm` option for qemu-system.")
-            return
 
         # create option_info
         option_info = KmallocHunterCommand.create_option_info(args)
@@ -65728,14 +65726,11 @@ class KmallocAllocatedByCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_qemu_system
-    @only_if_specific_arch(arch=("x86_64",))
     @only_if_in_kernel
+    @only_if_specific_arch(arch=("x86_64",))
+    @only_if_kvm_disabled
     def do_invoke(self, args):
         self.dont_repeat()
-
-        if is_kvm_enabled():
-            err("Disable `-enable-kvm` option for qemu-system.")
-            return
 
         # create option_info
         option_info = KmallocHunterCommand.create_option_info(args)
