@@ -18852,6 +18852,23 @@ class KernelChecksecCommand(GenericCommand):
         else:
             gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
 
+        # CONFIG_SHADOW_CALL_STACK
+        if is_arm64():
+            cfg = "CONFIG_SHADOW_CALL_STACK (Clang ARM64)"
+            scs_alloc = get_ksymaddr("scs_alloc")
+            if scs_alloc:
+                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
+            else:
+                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+
+        # CONFIG_HARDENED_USERCOPY
+        cfg = "CONFIG_HARDENED_USERCOPY"
+        __check_heap_object = get_ksymaddr("__check_heap_object")
+        if __check_heap_object:
+            gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
+        else:
+            gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+
         # KADR (kallsyms)
         cfg = "KADR (kallsyms)"
         if kversion < "4.15":
@@ -18910,6 +18927,29 @@ class KernelChecksecCommand(GenericCommand):
                 gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("{:#x}".format(val), "bold green")))
             else:
                 gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("{:#x}".format(val), "bold red")))
+
+        # Supported system call
+        cfg = "Supported system call"
+        supported_syscall = []
+        if is_x86_32():
+            if KernelAddressHeuristicFinder.get_sys_call_table_x86():
+                supported_syscall.append("x86 (native)")
+        elif is_x86_64():
+            if KernelAddressHeuristicFinder.get_sys_call_table_x64():
+                supported_syscall.append("x64")
+            if KernelAddressHeuristicFinder.get_sys_call_table_x86():
+                supported_syscall.append("x86 (compat)")
+            if KernelAddressHeuristicFinder.get_sys_call_table_x32():
+                supported_syscall.append("x32")
+        elif is_arm32():
+            if KernelAddressHeuristicFinder.get_sys_call_table_arm32():
+                supported_syscall.append("arm32 (native)")
+        elif is_arm64():
+            if KernelAddressHeuristicFinder.get_sys_call_table_arm64():
+                supported_syscall.append("arm64")
+            if KernelAddressHeuristicFinder.get_sys_call_table_arm64_compat():
+                supported_syscall.append("arm32 (compat)")
+        gef_print("{:<40s}: {:s}".format(cfg, ", ".join(supported_syscall)))
 
         return
 
