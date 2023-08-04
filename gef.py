@@ -48601,7 +48601,7 @@ class SyscallTableViewCommand(GenericCommand):
                 elif "+" in symbol:
                     break
 
-                # check if valid syscall
+                # check if valid insn or not
                 insn = get_insn(syscall_function_addr)
                 insn2 = get_insn_next(syscall_function_addr)
                 if insn is None or insn2 is None:
@@ -48610,26 +48610,34 @@ class SyscallTableViewCommand(GenericCommand):
                 # detect endbr, so slide
                 if is_x86():
                     if insn.mnemonic in ["endbr64", "endbr32"]:
-                        endbr_codelen = len(insn.opcodes)
-                        insn = get_insn(syscall_function_addr + endbr_codelen)
-                        insn2 = get_insn_next(syscall_function_addr + endbr_codelen)
+                        codelen = len(insn.opcodes)
+                        insn = get_insn(syscall_function_addr + codelen)
+                        insn2 = get_insn_next(syscall_function_addr + codelen)
+                        if insn is None or insn2 is None:
+                            break
+
+                # detect bti, so slide
+                elif is_arm64():
+                    if insn.mnemonic in ["bti"]:
+                        codelen = len(insn.opcodes)
+                        insn = get_insn(syscall_function_addr + codelen)
+                        insn2 = get_insn_next(syscall_function_addr + codelen)
                         if insn is None or insn2 is None:
                             break
 
                 is_valid = True
                 if is_x86_64():
                     if len(insn.operands) == 2 and insn.operands[-1] == "0xffffffffffffffda" and \
-                       len(insn2.operands) == 0 and insn2.mnemonic == "ret":
+                       insn2.mnemonic == "ret":
                         is_valid = False
                 elif is_x86_32():
                     if len(insn.operands) == 2 and insn.operands[-1] == "0xffffffda" and \
-                       len(insn2.operands) == 0 and insn2.mnemonic == "ret":
+                       insn2.mnemonic == "ret":
                         is_valid = False
-                if is_arm64():
+                elif is_arm64():
                     if len(insn.operands) == 2 and insn.operands[-1].split("\t")[0].strip() == "#0xffffffffffffffda":
                         is_valid = False
-                    if insn.mnemonic == "bti" and \
-                       len(insn2.operands) == 2 and insn2.operands[-1].split("\t")[0].strip() == "#0xffffffffffffffda":
+                    elif len(insn.operands) == 3 and insn.operands[-1] == "// #-38":
                         is_valid = False
 
                 self.cached_table[tag].append([i, addr, syscall_function_addr, symbol, is_valid])
