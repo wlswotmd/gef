@@ -23570,8 +23570,9 @@ class DereferenceCommand(GenericCommand):
         else:
             line = f"{addr_colored}{VERTICAL_LINE}{offset:+#07x}{VERTICAL_LINE}{idx:+04d}: {link:{memalign * 2 + 2}s}"
 
-        # add extra info
+        # add extra info (retaddr, canary, cookie, register)
         current_address_value = read_int_from_memory(current_address)
+        extra = []
 
         # retaddr info
         def get_frame_pcs():
@@ -23587,22 +23588,21 @@ class DereferenceCommand(GenericCommand):
                         break
                     frames.append(pc)
                     frame = frame.older()
-            except Exception:
+            except gdb.error:
                 pass
             return frames
 
         for i, frame_pc in enumerate(get_frame_pcs()):
             if current_address_value == frame_pc:
-                m = " {:s} retaddr[{:d}]".format(LEFT_ARROW, i)
-                line += Color.colorify(m, registers_color)
+                extra.append("retaddr[{:d}]".format(i))
+                break
 
         # canary info
         res = gef_read_canary()
         if res:
             canary, location = res
             if current_address_value == canary:
-                m = " {:s} canary".format(LEFT_ARROW)
-                line += Color.colorify(m, registers_color)
+                extra.append("canary")
 
         # mangle cookie
         if not is_qemu_system() and not is_in_kernel():
@@ -23610,31 +23610,20 @@ class DereferenceCommand(GenericCommand):
             if res:
                 cookie = res
                 if current_address_value == cookie:
-                    m = " {:s} PTR_MANGLE cookie".format(LEFT_ARROW)
-                    line += Color.colorify(m, registers_color)
+                    extra.append("PTR_MANGLE cookie")
 
         # register info
-        def get_register_values():
-            regs = []
-            for regname in current_arch.all_registers:
-                try:
-                    regvalue = get_register_use_cache(regname)
-                except Exception:
-                    continue
-                regs.append([regname, regvalue])
-            return regs
-
-        m = ""
-        for regname, regvalue in get_register_values():
+        for regname in current_arch.all_registers:
+            regvalue = get_register_use_cache(regname)
+            if regvalue is None:
+                continue
             if current_address == regvalue:
-                if m:
-                    m += ", " + regname
-                else:
-                    m += regname
-        if m:
-            m = " {:s} {:s}".format(LEFT_ARROW, m)
-            line += Color.colorify(m, registers_color)
+                extra.append(regname)
 
+        # add extra to end of line
+        if extra:
+            extra_str = " {:s} {:s}".format(LEFT_ARROW, ", ".join(extra))
+            line += Color.colorify(extra_str, registers_color)
         return line
 
     @parse_args
