@@ -533,6 +533,7 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
 * `distance`: calculates the offset from its base address.
 * `context-extra`: manages user specified command to execute when each step.
 * `break-only-if-taken`/`break-only-if-not-taken`: Sets a breakpoint which breaks only branch is taken (or not taken).
+* `proc-dump`: dumps each file under `/proc/PID`.
 
 ### Other
 * The category is introduced in `gef help`.

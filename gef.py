@@ -12603,6 +12603,65 @@ class ProcInfoCommand(GenericCommand):
 
 
 @register_command
+class ProcDumpCommand(GenericCommand):
+    """Dump each file under `/proc/PID`."""
+    _cmdline_ = "proc-dump"
+    _category_ = "02-a. Process Information - General"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_gdb_target_local
+    @only_if_not_qemu_system
+    def do_invoke(self, args):
+        self.dont_repeat()
+        pid = get_pid()
+
+        out = []
+        for root, dirs, files in os.walk("/proc/{:d}/".format(pid)):
+            if "task" in dirs:
+                dirs.remove("task")
+
+            for f in files:
+                path = os.path.join(root, f)
+
+                out.append(titlify(path))
+
+                if os.path.islink(path):
+                    out.append("{:s} -> {:s}".format(path, os.readlink(path)))
+                    continue
+
+                if f == "pagemap":
+                    continue
+
+                if f == "environ":
+                    data = open(path, "rb").read()
+                    for line in data.split(b"\0"):
+                        if line:
+                            out.append(bytes2str(line))
+                    continue
+
+                if f in ["auxv", "rt_acct"]:
+                    ret = gef_execute_external(["xxd", path], as_list=True)
+                    out.extend(ret)
+                    continue
+
+                try:
+                    fd = open(path, "rb")
+                    for line in fd.readlines():
+                        out.append(bytes2str(line).strip())
+                except OSError:
+                    continue
+
+        if out:
+            gef_print("\n".join(out).rstrip(), less=not args.no_pager)
+        return
+
+
+@register_command
 class CapabilityCommand(GenericCommand):
     """Show the capabilities of the debugging process."""
     _cmdline_ = "capability"
