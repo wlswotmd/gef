@@ -151,7 +151,7 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm.png)
         * Secure memory scanning is supported, you don't have to break in the secure world (use register with `_S` suffix).
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm-secure.png)
-* `v2p`, `p2v`: displays transformation virtual address <-> physical address.
+* `v2p`/`p2v`: displays transformation virtual address <-> physical address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/v2p-p2v.png)
 * `xp`: is a shortcut for physical memory dump.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xp.png)
@@ -416,7 +416,7 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/idtinfo.png)
 * `tls`: pretty prints TLS area.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/tls.png)
-* `fsbase`,`gsbase`: pretty prints `$fs_base`, `$gs_base`.
+* `fsbase`/`gsbase`: pretty prints `$fs_base`, `$gs_base`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/fsbase_gsbase.png)
 * `libc`/`ld`/`heapbase`/`codebase`: displays each of the base address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/base.png)
@@ -529,7 +529,7 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
     * It also loads more commands from latest gdbinit for v8.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/v8-load.png)
 * `main-break`: sets a breakpoint at `main` with or without symbols, then continue.
-    * Useful if you just want to run to `main` when using qemu-user or pin.
+    * This is useful when you just want to run to `main` under using qemu-user or pin, or debugging no-symbol ELF.
 * `distance`: calculates the offset from its base address.
 * `context-extra`: manages user specified command to execute when each step.
 * `break-only-if-taken`/`break-only-if-not-taken`: Sets a breakpoint which breaks only branch is taken (or not taken).
