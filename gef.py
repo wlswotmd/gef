@@ -49847,7 +49847,7 @@ class MemoryCopyCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--phys1", action="store_true", help="treat TO_ADDRESS as a physical address.")
-    parser.add_argument("to_addr", metavar="TO_ADDRESS", type=parse_address, help="destionation of memcpy.")
+    parser.add_argument("to_addr", metavar="TO_ADDRESS", type=parse_address, help="destination of memcpy.")
     parser.add_argument("--phys2", action="store_true", help="treat FROM_ADDRESS as a physical address.")
     parser.add_argument("from_addr", metavar="FROM_ADDRESS", type=parse_address, help="source of memcpy.")
     parser.add_argument("size", metavar="SIZE", type=parse_address, help="the size for memcpy.")
@@ -49997,7 +49997,7 @@ class MemoryInsertCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--phys1", action="store_true", help="treat TO_ADDRESS as a physical address.")
-    parser.add_argument("to_addr", metavar="TO_ADDRESS", type=parse_address, help="destionation of meminsert.")
+    parser.add_argument("to_addr", metavar="TO_ADDRESS", type=parse_address, help="destination of meminsert.")
     parser.add_argument("--phys2", action="store_true", help="treat FROM_ADDRESS as a physical address.")
     parser.add_argument("from_addr", metavar="FROM_ADDRESS", type=parse_address, help="source of meminsert.")
     parser.add_argument("size1", metavar="SIZE1", type=parse_address, help="the pushed back size for meminsert.")
