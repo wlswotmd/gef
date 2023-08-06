@@ -38726,7 +38726,7 @@ class SyscallArgsCommand(GenericCommand):
 
         info("Detected syscall (arch:{:s}, mode:{:s})".format(arch, mode))
 
-        if syscall_name and parameters:
+        if syscall_name and parameters is not None:
             gef_print("    " + Color.colorify("{}({})".format(syscall_name, ", ".join(parameters)), "bold yellow"))
 
         headers = ["Parameter", "Register", "Value"]
