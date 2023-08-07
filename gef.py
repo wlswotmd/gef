@@ -65298,7 +65298,7 @@ class KmallocAllocatedByCommand(GenericCommand):
             nonlocal ret_history
 
             yield "msgget -> msgsnd -> msgrcv -> msgctl"
-            yield ("msqid = msgget(IPC_PRIVATE, IPC_CREAT|0666)", "msgget", [0, 0o1000|0o666])
+            yield ("msqid = msgget(IPC_PRIVATE, IPC_CREAT|0666)", "msgget", [0, 0o1000 | 0o666])
             msgsize = 0x100
             msg = p64(1) + b"A" * msgsize
             if u2i(ret_history[-1]) >= 0:
@@ -65308,7 +65308,7 @@ class KmallocAllocatedByCommand(GenericCommand):
                 yield ("msgctl(msqid, IPC_RMID, 0)", "msgctl", [msqid, 0, 0])
 
             yield "shmget -> shmat -> shmdt -> shmctl"
-            yield ("shmid = shmget(IPC_PRIVATE, 1024, IPC_CREAT|0666)", "shmget", [0, 0x400, 0o1000|0o666])
+            yield ("shmid = shmget(IPC_PRIVATE, 1024, IPC_CREAT|0666)", "shmget", [0, 0x400, 0o1000 | 0o666])
             if u2i(ret_history[-1]) >= 0:
                 shmid = ret_history[-1]
                 yield ("addr = shmat(shmid, NULL, 0)", "shmat", [shmid, 0, 0])
@@ -65317,7 +65317,7 @@ class KmallocAllocatedByCommand(GenericCommand):
                 yield ("shmctl(shmid, IPC_RMID, 0)", "shmctl", [shmid, 0, 0])
 
             yield "semget -> semop -> semctl"
-            yield ("semid = semget(IPC_PRIVATE, 1, IPC_CREAT|0666)", "semget", [0, 1, 0o1000|0o666])
+            yield ("semid = semget(IPC_PRIVATE, 1, IPC_CREAT|0666)", "semget", [0, 1, 0o1000 | 0o666])
             if u2i(ret_history[-1]) >= 0:
                 semid = ret_history[-1]
                 sembuf = p16(0)  # sem_num
@@ -65334,7 +65334,7 @@ class KmallocAllocatedByCommand(GenericCommand):
             attr += p64(0x100) # mq_msgsize
             attr += p64(0)     # mq_curmsgs
             attr += p64(0) * 4 # reserved[4]
-            yield ("fd = mq_open(\"mq_test\", O_RDWR|O_CREAT, 0700, &attr)", "mq_open", [MQ_NAME, 0o2|0o100, 0o700, attr])
+            yield ("fd = mq_open(\"mq_test\", O_RDWR|O_CREAT, 0700, &attr)", "mq_open", [MQ_NAME, 0o2 | 0o100, 0o700, attr])
             if u2i(ret_history[-1]) >= 0:
                 fd = ret_history[-1]
                 msg = "A" * 0x40
@@ -65434,7 +65434,7 @@ class KmallocAllocatedByCommand(GenericCommand):
 
             yield "mmap -> mprotect -> mremap -> msync -> madvise -> munmap"
             size = gef_getpagesize()
-            yield ("addr = mmap(NULL, 0x1000, RWX, MAP_ANONYMOUS|MAP_PRIVATE, -1, 0)", "mmap", [0, size, 7, 0x22, -1, 0])
+            yield ("addr = mmap(NULL, 0x1000, RWX, MAP_ANONYMOUS|MAP_PRIVATE, -1, 0)", "mmap", [0, size, 7, 0x20 | 0x2, -1, 0])
             if u2i(ret_history[-1]) >= 0:
                 addr = ret_history[-1]
                 yield ("mprotect(addr, 0x1000, R--)", "mprotect", [addr, size, 1])
@@ -65449,7 +65449,7 @@ class KmallocAllocatedByCommand(GenericCommand):
 
             yield "mmap -> mincore -> mbind -> move_pages -> migrate_pages -> munmap"
             size = gef_getpagesize()
-            yield ("addr = mmap(NULL, 0x1000, RWX, MAP_ANONYMOUS|MAP_PRIVATE, -1, 0)", "mmap", [0, size, 7, 0x22, -1, 0])
+            yield ("addr = mmap(NULL, 0x1000, RWX, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0)", "mmap", [0, size, 7, 0x20 | 0x2, -1, 0])
             if u2i(ret_history[-1]) >= 0:
                 addr = ret_history[-1]
                 buf = "\0" * 0x100
@@ -65464,16 +65464,10 @@ class KmallocAllocatedByCommand(GenericCommand):
                 yield ("migrate_pages(0, 8, old_nodes, new_nodes)", "migrate_pages", [0, maxnode, old_nodes, new_nodes])
                 yield ("munmap(addr, 0x1000)", "munmap", [addr, size])
 
-            yield "pkey_alloc -> pkey_free"
-            yield ("pkey = pkey_alloc(0, PKEY_DISABLE_WRITE)", "pkey_alloc", [0, 2])
-            if u2i(ret_history[-1]) >= 0:
-                pkey = ret_history[-1]
-                yield ("pkey_free(pkey)", "pkey_free", [pkey])
-
             yield "brk -> userfaultfd -> ioctl -> close"
             yield ("addr = brk(0)", "brk", [0])
             last_page = ret_history[-1] - gef_getpagesize()
-            yield ("fd = userfaultfd(O_CLOEXEC|O_NONBLOCK)", "userfaultfd", [0o2000000|0o4000])
+            yield ("fd = userfaultfd(O_CLOEXEC|O_NONBLOCK)", "userfaultfd", [0o2000000 | 0o4000])
             if u2i(ret_history[-1]) >= 0:
                 fd = ret_history[-1]
                 uffdio_api = p64(0xAA) # api: UFFD_API
@@ -65519,8 +65513,8 @@ class KmallocAllocatedByCommand(GenericCommand):
             fsbase = ret_history[-1]
             yield ("set_tid_address(fsbase)", "set_tid_address", [fsbase])
 
-            yield "sched_yield"
-            yield ("sched_yield()", "sched_yield", [])
+            yield "time"
+            yield ("time(NULL)", "time", [0])
 
             yield "times"
             buf = "\0" * 0x100
@@ -65547,6 +65541,10 @@ class KmallocAllocatedByCommand(GenericCommand):
             tp = p64(0) + p64(0)
             yield ("clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &tp)", "clock_gettime", [2, tp])
 
+            yield "adjtimex"
+            buf = "\0" * 0x100
+            yield ("adjtimex(&buf)", "adjtimex", [buf])
+
             yield "membarrier"
             yield ("membarrier(MEMBARRIER_CMD_QUERY, 0, 0)", "membarrier", [0, 0, 0])
 
@@ -65558,9 +65556,12 @@ class KmallocAllocatedByCommand(GenericCommand):
             buf = "\0" * 0x400
             yield ("uname(&buf)", "uname", [buf])
 
-            yield "getrlimit"
+            yield "getrlimit -> setrlimit"
             rlim = "\0" * 16
             yield ("getrlimit(RLIMIT_STACK, &rlim, sizeof(rlim))", "getrlimit", [3, rlim, len(rlim)])
+            rlim = read_memory(current_arch.sp, 16)
+            yield ("setrlimit(RLIMIT_STACK, &rlim, sizeof(rlim))", "setrlimit", [3, rlim, len(rlim)])
+            self.skipped_syscall.add("prlimit64")
 
             yield "getpriority -> setpriority"
             yield ("getpriority(PRIO_PROCESS, 0)", "getpriority", [0, 0])
@@ -65583,6 +65584,27 @@ class KmallocAllocatedByCommand(GenericCommand):
             buf = "\0" * 0x100
             yield ("sysinfo(&buf)", "sysinfo", [buf])
 
+            yield "sysfs"
+            buf = "\0" * 0x100
+            yield ("sysfs(2, 0, &buf)", "sysfs", [2, 0, buf])
+
+            yield "sigaltstack"
+            oss = "\0" * 0x100
+            yield ("sigaltstack(NULL, &oss)", "sigaltstack", [0, oss])
+
+            yield "rt_sigprocmask"
+            oldset = "\0" * 0x100
+            sigsetsize = 8
+            yield ("rt_sigprocmask(0, NULL, &oldset, sigsetsize)", "rt_sigprocmask", [0, 0, oldset, sigsetsize])
+
+            yield "sched_yield"
+            yield ("sched_yield()", "sched_yield", [])
+
+            yield "sched_getscheduler -> sched_setscheduler"
+            yield ("sched_getscheduler(0)", "sched_getscheduler", [0])
+            param = p32(0)
+            yield ("sched_setscheduler(0, SCHED_OTHER, &param)", "sched_setscheduler", [0, 0, param])
+
             yield "getrusage"
             buf = "\0" * 0x100
             yield ("getrusage(RUSAGE_SELF, &buf)", "getrusage", [0, buf])
@@ -65590,11 +65612,12 @@ class KmallocAllocatedByCommand(GenericCommand):
             yield "personality"
             yield ("personality(0xffffffff)", "personality", [0xffffffff])
 
-            yield "getpid -> getppid -> getsid -> gettid -> getpgid -> setpgid -> getpgrp -> kcmp"
+            yield "getpid -> getppid -> getsid -> setsid -> gettid -> getpgid -> setpgid -> getpgrp -> kcmp"
             yield ("pid = getpid()", "getpid", [])
             pid = ret_history[-1]
             yield ("getppid()", "getppid", [])
             yield ("getsid(pid)", "getsid", [pid])
+            yield ("setsid()", "setsid", [])
             yield ("gettid()", "gettid", [])
             tid = ret_history[-1]
             yield ("pgid = getpgid(pid)", "getpgid", [pid])
@@ -65670,7 +65693,7 @@ class KmallocAllocatedByCommand(GenericCommand):
 
             yield "open -> fallocate -> write -> fdatasync -> fsync -> syncfs -> fadvise64 -> close"
             TMP_XXX = "/tmp/xxx\0"
-            yield ("fd = open(\"/tmp/xxx\", 0_WRONLY|O_CREAT, 0666)", "open", [TMP_XXX, 0o1|0o100, 0o666])
+            yield ("fd = open(\"/tmp/xxx\", 0_WRONLY|O_CREAT, 0666)", "open", [TMP_XXX, 0o1 | 0o100, 0o666])
             self.skipped_syscall.add("creat")
             self.skipped_syscall.add("openat")
             self.skipped_syscall.add("openat2")
@@ -65695,7 +65718,7 @@ class KmallocAllocatedByCommand(GenericCommand):
             yield ("fd = open(\"/tmp/xxx\", 0_RDONLY)", "open", [TMP_XXX, 0o0])
             if u2i(ret_history[-1]) >= 0:
                 fd = ret_history[-1]
-                yield ("flock(fd, LOCK_SH|LOCK_NB)", "flock", [fd, 1|4])
+                yield ("flock(fd, LOCK_SH|LOCK_NB)", "flock", [fd, 1 | 4])
                 yield ("lseek(fd, SEEK_SET, 0)", "lseek", [fd, 0, 0])
                 yield ("readahead(fd, 0, 0x1000)", "readahead", [fd, 0, 0x1000])
                 fds = p32(fd) # fd
@@ -65721,7 +65744,7 @@ class KmallocAllocatedByCommand(GenericCommand):
             if u2i(ret_history[-1]) >= 0:
                 fd = ret_history[-1]
                 size = gef_getpagesize()
-                yield ("addr = mmap(NULL, 0x1000, R--, MAP_ANONYMOUS|MAP_SHARED, -1, 0)", "mmap", [0, size, 1, 0x21, fd, 0])
+                yield ("addr = mmap(NULL, 0x1000, R--, MAP_ANONYMOUS|MAP_SHARED, -1, 0)", "mmap", [0, size, 1, 0x20 | 0x1, fd, 0])
                 if u2i(ret_history[-1]) >= 0:
                     addr = ret_history[-1]
                     yield ("remap_file_pages(addr, 0x1000, 0, 0, 0)", "remap_file_pages", [addr, size, 0, 0, 0])
@@ -65760,7 +65783,7 @@ class KmallocAllocatedByCommand(GenericCommand):
 
             yield "mknod -> unlink"
             TMP_PIPE = "/tmp/pipe\0"
-            yield ("mknod(\"/tmp/ppp\", S_IFIFO|0644, 0)", "mknod", [TMP_PIPE, 0o10000|0o644, 0])
+            yield ("mknod(\"/tmp/ppp\", S_IFIFO|0644, 0)", "mknod", [TMP_PIPE, 0o10000 | 0o644, 0])
             self.skipped_syscall.add("mknodat")
             if u2i(ret_history[-1]) >= 0:
                 yield ("unlink(\"/tmp/ppp\")", "unlink", [TMP_PIPE])
@@ -65770,7 +65793,7 @@ class KmallocAllocatedByCommand(GenericCommand):
             yield ("fd_in = open(\"/tmp/xxx\", 0_RDONLY)", "open", [TMP_XXX, 0o0])
             if u2i(ret_history[-1]) >= 0:
                 fd_in = ret_history[-1]
-                yield ("fd_out = open(\"/tmp/xxx2\", 0_WRONLY|O_CREAT, 0666)", "open", [TMP_XXX2, 0o1|0o100, 0o666])
+                yield ("fd_out = open(\"/tmp/xxx2\", 0_WRONLY|O_CREAT, 0666)", "open", [TMP_XXX2, 0o1 | 0o100, 0o666])
                 if u2i(ret_history[-1]) >= 0:
                     fd_out = ret_history[-1]
                     yield ("sync_file_range(fd_out, 0, 4, SYNC_FILE_RANGE_WAIT_AFTER)", "sync_file_range", [fd_out, 0, 4, 4])
@@ -65886,6 +65909,9 @@ class KmallocAllocatedByCommand(GenericCommand):
                 yield ("fcntl(fd, F_OFD_GETLK, &flock)", "fcntl", [fd, 36, flock])
                 yield ("close(fd)", "close", [fd])
 
+            yield "unshare"
+            yield ("unshare(CLONE_FS|CLONE_FILES)", "unshare", [0x200 | 0x400])
+
             yield "invalid socket -> close"
             yield ("socket(22, SOCK_STREAM, 0)", "socket", [22, 1, 0])
 
@@ -65904,7 +65930,22 @@ class KmallocAllocatedByCommand(GenericCommand):
                 yield ("getsockopt(fd, SOL_SOCKET, SO_DEBUG, &buf, &buflen)", "getsockopt", [fd, 1, 1, buf, buf])
                 yield ("close(fd)", "close", [fd])
 
-            yield "socketpair AF_UNIX -> sendto -> recvfrom -> shutdown -> close"
+            yield "socket AF_INET/UDP -> connect -> getsockname -> getpeername -> close"
+            yield ("fd = socket(AF_INET, SOCK_DGRAM , 0)", "socket", [2, 2, 0])
+            if u2i(ret_history[-1]) >= 0:
+                fd = ret_history[-1]
+                sockaddr_in = p16(socket.AF_INET)          # sin_len, sin_family
+                sockaddr_in += p16(socket.htons(13337))    # sin_port
+                sockaddr_in += socket.inet_aton("0.0.0.0") # sin_addr.s_addr
+                sockaddr_in += b"\0" * 8                   # sin_zero[8]
+                yield ("connect(fd, &sockaddr, sizeof(sockaddr))", "connect", [fd, sockaddr_in, len(sockaddr_in)])
+                sockaddr_in = p64(0) * 2
+                sockaddr_len = p64(len(sockaddr_in))
+                yield ("getsockname(fd, &sockaddr, sizeof(sockaddr))", "getsockname", [fd, sockaddr_in, sockaddr_len])
+                yield ("getpeername(fd, &sockaddr, sizeof(sockaddr))", "getpeername", [fd, sockaddr_in, sockaddr_len])
+                yield ("close(fd)", "close", [fd])
+
+            yield "socketpair AF_UNIX -> sendto -> recvfrom -> sendmsg -> recvmsg -> shutdown -> close"
             sv_array = p32(0) + p32(0)
             yield ("socketpair(AF_UNIX, SOCK_STREAM, 0, sv[2])", "socketpair", [1, 1, 0, sv_array])
             if u2i(ret_history[-1]) >= 0:
@@ -65914,6 +65955,21 @@ class KmallocAllocatedByCommand(GenericCommand):
                 yield ("sendto(sv[0], \"AAAA\", 4, 0, NULL, 0)", "sendto", [sv0, buf, len(buf), 0, 0, 0])
                 buf = "\0" * 4
                 yield ("recvfrom(sv[1], buf, 4, 0, NULL, NULL)", "recvfrom", [sv1, buf, len(buf), 0, 0, 0])
+                msg = p64(0)                       # msg_name
+                msg += p64(0)                      # msg_melen
+                msg += p64(current_arch.sp + 0x40) # msg_iov
+                msg += p64(1)                      # msg_iov_len
+                msg += p64(0)                      # msg_control
+                msg += p64(0)                      # msg_controllen
+                msg += p64(0)                      # msg_flags
+                msg += p64(0)                      # padding
+                msg += p64(current_arch.sp + 0x50) # iov_base
+                msg += p64(4)                      # iov_len
+                msg += b"AAAA"                     # data
+                yield ("sendmsg(sv[0], &msg, 0)", "sendmsg", [sv0, msg, 0])
+                self.skipped_syscall.add("sendmmsg")
+                yield ("recvmsg(sv[1], &msg, 0)", "sendmsg", [sv1, msg, 0])
+                self.skipped_syscall.add("recvmmsg")
                 yield ("shutdown(sv[0], SHUT_RDWR)", "shutdown", [sv0, 2])
                 yield ("close(sv[0])", "close", [sv0])
                 yield ("close(sv[1])", "close", [sv1])
@@ -65925,7 +65981,7 @@ class KmallocAllocatedByCommand(GenericCommand):
                 yield ("close(fd)", "close", [fd])
 
             yield "open /dev/ptmx -> close"
-            yield ("fd = open(\"/dev/ptmx\", O_RDWR|O_NOCTTY)", "open", ["/dev/ptmx\0", 0o2|0o400])
+            yield ("fd = open(\"/dev/ptmx\", O_RDWR|O_NOCTTY)", "open", ["/dev/ptmx\0", 0o2 | 0o400])
             if u2i(ret_history[-1]) >= 0:
                 fd = ret_history[-1]
                 yield ("close(fd)", "close", [fd])
@@ -65936,41 +65992,52 @@ class KmallocAllocatedByCommand(GenericCommand):
                 fd = ret_history[-1]
                 yield ("close(fd)", "close", [fd])
 
-            self.skipped_syscall.add("restart_syscall")
-            self.skipped_syscall.add("rt_sigreturn")
-            self.skipped_syscall.add("pkey_mprotect")
-            self.skipped_syscall.add("ptrace")
-            self.skipped_syscall.add("acct")
-            self.skipped_syscall.add("setsid")
-            self.skipped_syscall.add("iopl")
-            self.skipped_syscall.add("ioperm")
-            self.skipped_syscall.add("seccomp")
-            self.skipped_syscall.add("pivot_root")
-            self.skipped_syscall.add("clone")
-            self.skipped_syscall.add("clone3")
-            self.skipped_syscall.add("execve")
-            self.skipped_syscall.add("execveat")
-            self.skipped_syscall.add("fork")
-            self.skipped_syscall.add("vfork")
-            self.skipped_syscall.add("exit")
-            self.skipped_syscall.add("exit_group")
-            self.skipped_syscall.add("pause")
-            self.skipped_syscall.add("wait4")
-            self.skipped_syscall.add("waitid")
-            self.skipped_syscall.add("reboot")
-            self.skipped_syscall.add("vhangup")
-            self.skipped_syscall.add("modify_ldt")
-            self.skipped_syscall.add("kexec_load")
-            self.skipped_syscall.add("kexec_file_load")
-            self.skipped_syscall.add("init_module")
-            self.skipped_syscall.add("finit_module")
-            self.skipped_syscall.add("delete_module")
-            self.skipped_syscall.add("fanotify_init")
-            self.skipped_syscall.add("fanotify_mark")
-            self.skipped_syscall.add("lookup_dcookie")
-            self.skipped_syscall.add("quotactl")
-            self.skipped_syscall.add("clock_settime")
-            self.skipped_syscall.add("settimeofday")
+            self.skipped_syscall.add("restart_syscall")   # difficult to implement generically
+            self.skipped_syscall.add("pause")             # difficult to implement generically
+            self.skipped_syscall.add("rt_sigreturn")      # difficult to implement generically
+            self.skipped_syscall.add("clone")             # difficult to implement generically
+            self.skipped_syscall.add("clone3")            # difficult to implement generically
+            self.skipped_syscall.add("execve")            # difficult to implement generically
+            self.skipped_syscall.add("execveat")          # difficult to implement generically
+            self.skipped_syscall.add("fork")              # difficult to implement generically
+            self.skipped_syscall.add("vfork")             # difficult to implement generically
+            self.skipped_syscall.add("exit")              # difficult to implement generically
+            self.skipped_syscall.add("exit_group")        # difficult to implement generically
+            self.skipped_syscall.add("wait4")             # difficult to implement generically
+            self.skipped_syscall.add("waitid")            # difficult to implement generically
+            self.skipped_syscall.add("accept")            # difficult to implement generically
+            self.skipped_syscall.add("accept4")           # difficult to implement generically
+            self.skipped_syscall.add("seccomp")           # affect subsequent system calls
+            self.skipped_syscall.add("pkey_alloc")        # maybe unsupported by qemu HW
+            self.skipped_syscall.add("pkey_mprotect")     # maybe unsupported by qemu HW
+            self.skipped_syscall.add("pkey_free")         # maybe unsupported by qemu HW
+            self.skipped_syscall.add("modify_ldt")        # supported only i386
+            self.skipped_syscall.add("lookup_dcookie")    # deprecated
+            self.skipped_syscall.add("quotactl")          # supported only ufs
+            self.skipped_syscall.add("acct")              # need CAP_SYS_PACCT
+            self.skipped_syscall.add("ptrace")            # need CAP_SYS_PTRACE
+            self.skipped_syscall.add("iopl")              # need CAP_SYS_RAWIO
+            self.skipped_syscall.add("ioperm")            # need CAP_SYS_RAWIO
+            self.skipped_syscall.add("pivot_root")        # need CAP_SYS_ADMIN
+            self.skipped_syscall.add("mount")             # need CAP_SYS_ADMIN
+            self.skipped_syscall.add("umount2")           # need CAP_SYS_ADMIN
+            self.skipped_syscall.add("swapon")            # need CAP_SYS_ADMIN
+            self.skipped_syscall.add("swapoff")           # need CAP_SYS_ADMIN
+            self.skipped_syscall.add("sethostname")       # need CAP_SYS_ADMIN
+            self.skipped_syscall.add("setdomainname")     # need CAP_SYS_ADMIN
+            self.skipped_syscall.add("setns")             # need CAP_SYS_ADMIN
+            self.skipped_syscall.add("reboot")            # need CAP_SYS_BOOT
+            self.skipped_syscall.add("vhangup")           # need CAP_SYS_TTY_CONFIG
+            self.skipped_syscall.add("kexec_load")        # need CAP_SYS_BOOT
+            self.skipped_syscall.add("kexec_file_load")   # need CAP_SYS_BOOT
+            self.skipped_syscall.add("init_module")       # need CAP_SYS_MODULE
+            self.skipped_syscall.add("finit_module")      # need CAP_SYS_MODULE
+            self.skipped_syscall.add("delete_module")     # need CAP_SYS_MODULE
+            self.skipped_syscall.add("fanotify_init")     # need CAP_SYS_ADMIN
+            self.skipped_syscall.add("fanotify_mark")     # need fd opend by fanotify_init
+            self.skipped_syscall.add("clock_settime")     # need CAP_SYS_TIME
+            self.skipped_syscall.add("settimeofday")      # need CAP_SYS_TIME
+            self.skipped_syscall.add("open_by_handle_at") # need CAP_DAC_READ_SEARCH
             return None
 
         self.scheduled_syscall = set()
