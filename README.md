@@ -236,8 +236,10 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
     * Even with such an address (object), this command may be able to resolve `kmem_cache`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xslubobj.png)
 * `kmalloc-hunter`: collects and displays information when kmalloc/kfree.
+    * Supported on any architecture WITHOUT `-enable-kvm`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmalloc-hunter.png)
 * `kmalloc-allocated-by`: calls a predefined set of system calls and prints structures allocated by kmalloc or freed by kfree.
+    * Supported on x64 WITHOUT `-enable-kvm`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmalloc-allocated-by.png)
 
 ### Qemu-system cooperation - Arch specific
@@ -310,6 +312,8 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
     * Intel SDE is supported.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmmap-sde.png)
     * It is redirected to `pagewalk` when connecting to gdb stub of qemu-system.
+    * It supports detection and coloring of `Writable`, `ReadOnly`, `None` and `RWX` regions.
+    * It shows the area each register points to.
 * Glibc heap commands are improved.
     * It changes the color.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/heap-bins.png)
@@ -401,6 +405,12 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
     * It supports hex string specification.
     * It also searches UTF-16 string if target string is ASCII.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/search-pattern.png)
+* `mprotect`: is improved.
+    * It supports more architectures.
+* `hijack-fd`: is improved.
+    * It supports more architectures.
+* `format-string-helper` is improved.
+    * It supports more printf-like functions.
 
 ### New features
 * `pid`: prints pid.
@@ -426,6 +436,7 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
 * `xmmset`: sets the value to xmm/ymm register simply.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xmmset.png)
 * `mmxset`: sets the value to mm register simply.
+    * Supported on x64/x86 WITHOUT `-enable-kvm`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/mmxset.png)
 * `exec-until`: executes until specified operation.
     * Supported following patterns of detection.
@@ -482,6 +493,7 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/multi-line.png)
 * `rp`: invokes `rp++` with commonly used options.
 * `cpuid`: shows the result of cpuid(eax=0,1,2...).
+    * Supported on x64/x86 WITHOUT `-enable-kvm`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/cpuid.png)
 * `dasm`: disassembles the code by capstone.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dasm.png)
@@ -532,7 +544,7 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
     * This is useful when you just want to run to `main` under using qemu-user or pin, or debugging no-symbol ELF.
 * `distance`: calculates the offset from its base address.
 * `context-extra`: manages user specified command to execute when each step.
-* `break-only-if-taken`/`break-only-if-not-taken`: Sets a breakpoint which breaks only branch is taken (or not taken).
+* `break-only-if-taken`/`break-only-if-not-taken`: sets a breakpoint which breaks only branch is taken (or not taken).
 * `proc-dump`: dumps each file under `/proc/PID`.
 
 ### Other

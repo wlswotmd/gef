@@ -13708,10 +13708,8 @@ class EditFlagsCommand(GenericCommand):
     _category_ = "04-b. Register - Modify"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("flagname", metavar="[FLAGNAME(+|-|~) ...]", nargs="*",
-                        help="the flag name you want to edit..")
-    parser.add_argument("-v", "--verbose", action="store_true",
-                        help="show the bit informations of the flag register.")
+    parser.add_argument("flagname", metavar="[FLAGNAME(+|-|~) ...]", nargs="*", help="the flag name you want to edit.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="show the bit informations of the flag register.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}            # show the flag register\n".format(_cmdline_)
@@ -14101,10 +14099,8 @@ class CallSyscallCommand(GenericCommand):
     _category_ = "05-a. Syscall - Invoke"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("syscall_name", metavar="SYSCALL_NAME",
-                        help="system call name you want to invoke.")
-    parser.add_argument("syscall_args", metavar="SYSCALL_ARG", nargs="*", type=parse_address,
-                        help="arguments of system call.")
+    parser.add_argument("syscall_name", metavar="SYSCALL_NAME", help="system call name you want to invoke.")
+    parser.add_argument("syscall_args", metavar="SYSCALL_ARG", nargs="*", type=parse_address, help="arguments of system call.")
     _syntax_ = parser.format_help()
 
     _example_ = '{:s} write 1 "*(void**)($rsp+0x18)" 15'.format(_cmdline_)
@@ -16000,7 +15996,7 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
             if m or verbose:
                 size = get_binsize_table()["tcache"][i]["size"]
                 colored_bin_addr = str(lookup_address(arena.tcachebin_addr(i)))
-                gef_print("Tcachebins[idx={:d}, size={:#x}, @{:s}] count={:d}".format(i, size, colored_bin_addr, count))
+                gef_print("tcachebins[idx={:d}, size={:#x}, @{:s}] count={:d}".format(i, size, colored_bin_addr, count))
                 if m:
                     gef_print("\n".join(m))
 
@@ -16103,7 +16099,7 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
                 if i in bin_table:
                     size = bin_table[i]["size"]
                     colored_bin_addr = str(lookup_address(arena.fastbin_addr(i)))
-                    gef_print("Fastbins[idx={:d}, size={:#x}, @{:s}] ".format(i, size, colored_bin_addr))
+                    gef_print("fastbins[idx={:d}, size={:#x}, @{:s}] ".format(i, size, colored_bin_addr))
                     if m:
                         gef_print("\n".join(m))
 
@@ -49455,7 +49451,7 @@ class GdtInfoCommand(GenericCommand):
         else:
             gef_print(titlify("GDT Entry (x86 sample)"))
             segm_desc = GdtInfoCommand._SEGMENT_DESCRIPTION_32_
-        info("*** This is an {:s} (GDT/LDT exist per-CPU) ***".format(Color.boldify("EXAMPLE")))
+        info("*** This is an {:s} ***".format(Color.boldify("EXAMPLE")))
         registers_color = get_gef_setting("theme.dereference_register_value")
 
         # print legend
@@ -49689,7 +49685,7 @@ class IdtInfoCommand(GenericCommand):
             gef_print(titlify("IDT Entry (x64 sample)"))
         else:
             gef_print(titlify("IDT Entry (x86 sample)"))
-        info("*** This is an {:s} (IDT exist per-CPU) ***".format(Color.boldify("EXAMPLE")))
+        info("*** This is an {:s} ***".format(Color.boldify("EXAMPLE")))
 
         # print legend
         legend = self.idtval2str_legend()
