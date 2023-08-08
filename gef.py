@@ -64811,6 +64811,8 @@ class KmallocRetBreakpoint(gdb.FinishBreakpoint):
             if ret:
                 # print more info
                 name, chunk_size = ret
+                if not name.startswith("kmalloc-"):
+                    return False
                 if self.option.filter and name not in self.option.filter:
                     return False
                 name_s = Color.colorify(name, get_gef_setting("theme.heap_chunk_label"))
@@ -64830,10 +64832,10 @@ class KmallocRetBreakpoint(gdb.FinishBreakpoint):
 
 class KfreeBreakpoint(gdb.Breakpoint):
     """Create a breakpoint to print information of kfree."""
-    def __init__(self, loc, sym, index_of_size_arg, task, option, extra):
+    def __init__(self, loc, sym, index_of_addr_arg, task, option, extra):
         super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=False)
         self.sym = sym
-        self.index_of_size_arg = index_of_size_arg
+        self.index_of_addr_arg = index_of_addr_arg
         self.task_addr = task
         self.option = option
         self.extra = extra
@@ -64843,7 +64845,7 @@ class KfreeBreakpoint(gdb.Breakpoint):
     def stop(self):
         reset_gef_caches()
 
-        _, loc = current_arch.get_ith_parameter(self.index_of_size_arg)
+        _, loc = current_arch.get_ith_parameter(self.index_of_addr_arg)
         if not self.option.print_null and loc == 0:
             return False
 
@@ -64859,6 +64861,8 @@ class KfreeBreakpoint(gdb.Breakpoint):
             if ret:
                 # print more info
                 name, chunk_size = ret
+                if not name.startswith("kmalloc-"):
+                    return False
                 if self.option.filter and name not in self.option.filter:
                     return False
                 name_s = Color.colorify(name, get_gef_setting("theme.heap_chunk_label"))
@@ -65035,7 +65039,7 @@ class KmallocHunterCommand(GenericCommand):
         return
 
     @staticmethod
-    def set_bp_to_kmalloc(option_info, extra_info, task_addr=None):
+    def set_bp_to_kmalloc_kfree(option_info, extra_info, task_addr=None):
         # Since `kmalloc` is always inlined and not exported, so the symbol cannot be determined.
         # So put a breakpoint in each non-inlined function called from kmalloc.
         """
@@ -65143,11 +65147,11 @@ class KmallocHunterCommand(GenericCommand):
                 gef_print(sym + ": ", end="")
                 bp = KmallocBreakpoint(func_addr, sym, index_of_size_arg, task_addr, option_info, extra_info)
                 breakpoints.append(bp)
-        for index_of_size_arg, sym in kfree_syms:
+        for index_of_addr_arg, sym in kfree_syms:
             func_addr = get_ksymaddr(sym)
             if func_addr:
                 gef_print(sym + ": ", end="")
-                bp = KfreeBreakpoint(func_addr, sym, index_of_size_arg, task_addr, option_info, extra_info)
+                bp = KfreeBreakpoint(func_addr, sym, index_of_addr_arg, task_addr, option_info, extra_info)
                 breakpoints.append(bp)
         return breakpoints
 
@@ -65184,7 +65188,7 @@ class KmallocHunterCommand(GenericCommand):
                 info("vmemmap: {:#x}".format(self.extra_info.vmemmap))
 
         # set kmalloc break points
-        breakpoints = KmallocHunterCommand.set_bp_to_kmalloc(option_info, self.extra_info)
+        breakpoints = KmallocHunterCommand.set_bp_to_kmalloc_kfree(option_info, self.extra_info)
         for bp in breakpoints:
             bp.enabled = True
 
@@ -65554,6 +65558,15 @@ class KmallocAllocatedByCommand(GenericCommand):
             self.skipped_syscall.add("mlock2")
             yield ("munlockall()", "munlockall", [])
             self.skipped_syscall.add("munlock")
+
+            yield "get_robust_list -> set_robust_list"
+            head_ptr = p64(0)
+            len_ptr = p64(0)
+            yield ("get_robust_list(0, &head_ptr, &len_ptr)", "get_robust_list", [0, head_ptr, len_ptr])
+            if u2i(ret_history[-1]) >= 0:
+                head = read_int_from_memory(current_arch.sp)
+                len_ = read_int_from_memory(current_arch.sp + 0x10)
+                yield ("set_robust_list(head, len)", "set_robust_list", [head, len_])
 
             yield "prctl -> arch_prctl -> set_tid_address"
             buf = p32(0)
@@ -66060,6 +66073,52 @@ class KmallocAllocatedByCommand(GenericCommand):
                     yield ("inotify_rm_watch(fd, wd)", "inotify_rm_watch", [fd, wd])
                 yield ("close(fd)", "close", [fd])
 
+            yield "open -> io_setup -> io_submit -> io_getevents -> close -> io_destroy"
+            yield ("fd = open(\"/tmp/xxx\", 0_RDONLY)", "open", [TMP_XXX, 0o0])
+            if u2i(ret_history[-1]) >= 0:
+                fd = ret_history[-1]
+                ctx_idp = p64(0)
+                yield ("io_setup(1, &ctx_idp)", "io_setup", [1, ctx_idp])
+                ctx_id = read_int_from_memory(current_arch.sp)
+                iocb = p64(0)                       # aio_data
+                iocb += p32(0)                      # aio_key
+                iocb += p32(0)                      # aio_rw_flags
+                iocb += p16(0)                      # aio_lio_opcode: IOCB_CMD_PREAD
+                iocb += p16(0)                      # aio_reqprio
+                iocb += p32(fd)                     # aio_fildes
+                iocb += p64(current_arch.sp + 0x70) # aio_buf
+                iocb += p64(0x100)                  # aio_nbytes
+                iocb += p64(0)                      # aio_offset
+                iocb += p64(0)                      # aio_reserved2
+                iocb += p32(0)                      # aio_flags
+                iocb += p32(0)                      # aio_resfd
+                iocb += b"\0" * 0x100               # data buffer <-- aio_buf
+                iocbp = p64(current_arch.sp + 0x30) # iocb
+                iocbp += p64(0) * 5                 # padding
+                iocbp += iocb
+                yield ("io_submit(ctx_id, 1, &iocbp)", "io_submit", [ctx_id, 1, iocbp])
+                events = p64(0)  # data
+                events += p64(0) # obj
+                events += p64(0) # res
+                events += p64(0) # res2
+                timeout = p64(0)  # tv_sec
+                timeout += p64(0) # tv_nsec
+                yield ("io_getevents(ctx_id, 1, 1, &events, &timeout)", "io_getevents", [ctx_id, 1, 1, events, timeout])
+                self.tested_syscall.add("io_pgetevents")
+                yield ("clode(fd)", "close", [fd])
+                yield ("io_destroy(ctx_id)", "io_destroy", [ctx_id])
+
+            yield "unshare"
+            yield ("unshare(CLONE_FS|CLONE_FILES)", "unshare", [0x200 | 0x400])
+
+            yield "name_to_handle_at -> unlink"
+            handle = p32(0x80)     # handle_bytes: MAX_HANDLE_SZ
+            handle += p32(0)       # handle_type
+            handle += b"\0" * 0x80 # f_handle
+            mntid = p32(0)
+            yield ("name_to_handle_at(0, \"/tmp/xxx\", &handle, &mntid, 0)", "name_to_handle_at", [0, TMP_XXX, handle, mntid, 0])
+            yield ("unlink(\"/tmp/xxx\")", "unlink", [TMP_XXX])
+
             yield "mkdir -> open_tree -> close -> chdir -> rmdir"
             TMP_YYY = "/tmp/yyy\0"
             yield ("mkdir(\"/tmp/yyy\", 0777)", "mkdir", [TMP_YYY, 0o777])
@@ -66103,17 +66162,6 @@ class KmallocAllocatedByCommand(GenericCommand):
                 yield ("fcntl(fd, F_GETLK, &flock)", "fcntl", [fd, 5, flock])
                 yield ("fcntl(fd, F_OFD_GETLK, &flock)", "fcntl", [fd, 36, flock])
                 yield ("close(fd)", "close", [fd])
-
-            yield "unshare"
-            yield ("unshare(CLONE_FS|CLONE_FILES)", "unshare", [0x200 | 0x400])
-
-            yield "name_to_handle_at -> unlink"
-            handle = p32(0x80)     # handle_bytes: MAX_HANDLE_SZ
-            handle += p32(0)       # handle_type
-            handle += b"\0" * 0x80 # f_handle
-            mntid = p32(0)
-            yield ("name_to_handle_at(0, \"/tmp/xxx\", &handle, &mntid, 0)", "name_to_handle_at", [0, TMP_XXX, handle, mntid, 0])
-            yield ("unlink(\"/tmp/xxx\")", "unlink", [TMP_XXX])
 
             yield "invalid socket -> close"
             yield ("socket(22, SOCK_STREAM, 0)", "socket", [22, 1, 0])
@@ -66233,6 +66281,7 @@ class KmallocAllocatedByCommand(GenericCommand):
             self.skipped_syscall.add("accept")            # difficult to implement generically
             self.skipped_syscall.add("accept4")           # difficult to implement generically
             self.skipped_syscall.add("setsid")            # difficult to implement generically
+            self.skipped_syscall.add("io_cancel")         # difficult to implement generically
             self.skipped_syscall.add("seccomp")           # affect subsequent system calls
             self.skipped_syscall.add("pkey_alloc")        # maybe unsupported by qemu HW
             self.skipped_syscall.add("pkey_mprotect")     # maybe unsupported by qemu HW
@@ -66367,7 +66416,7 @@ class KmallocAllocatedByCommand(GenericCommand):
         hwbp = KmallocAllocatedBy_UserlandHardwareBreakpoint(rip_of_sleep)
 
         # set kmalloc breakpoints (but disabled)
-        breakpoints = KmallocHunterCommand.set_bp_to_kmalloc(option_info, self.extra_info, target_task)
+        breakpoints = KmallocHunterCommand.set_bp_to_kmalloc_kfree(option_info, self.extra_info, target_task)
 
         # wait to stop at userland `sleep` process
         gdb.execute("ctx off")
@@ -66378,6 +66427,8 @@ class KmallocAllocatedByCommand(GenericCommand):
         if current_arch.sp != rsp_of_sleep:
             err("Stack pointer is different from expected. Unable to continue.")
             return
+        # rsp align
+        gdb.execute("set $rsp = {:#x}".format(rsp_of_sleep & ~0xf))
 
         # do test
         self.test_syscall(breakpoints)
