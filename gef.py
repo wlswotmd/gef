@@ -67745,6 +67745,7 @@ class GefCommand(GenericCommand):
     subparsers.add_parser("save")
     subparsers.add_parser("restore")
     subparsers.add_parser("reload")
+    subparsers.add_parser("arch-list")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -68236,6 +68237,68 @@ class GefReloadCommand(GenericCommand):
 
         if not (is_qemu_usermode() or is_pin()):
             gdb.execute("define c\ncontinue\nend")
+        return
+
+
+@register_command
+class GefArchListCommand(GenericCommand):
+    """Show defined architecture information."""
+    _cmdline_ = "gef arch-list"
+    _category_ = "99. GEF Maintenance Command"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    _syntax_ = parser.format_help()
+
+    def print_arch_info(self, arch):
+        if arch.arch == "ARM":
+            arch_name = "ARM (ARM/THUMB)"
+        elif arch.arch == arch.mode:
+            arch_name = arch.arch
+        else:
+            arch_name = "{:s} {:s}".format(arch.arch, arch.mode)
+        self.out.append(titlify(arch_name))
+
+        if arch.instruction_length is None:
+            inst_len = "variable length"
+        else:
+            inst_len = str(arch.instruction_length)
+        self.out.append("{:30s} {:s} {!s}".format("instruction length", RIGHT_ARROW, inst_len))
+        fparams = ", ".join(arch.function_parameters)
+        if len(arch.function_parameters) == 1:
+            fparams += "(passing via stack)"
+        self.out.append("{:30s} {:s} {!s}".format("return register", RIGHT_ARROW, arch.return_register))
+        self.out.append("{:30s} {:s} {!s}".format("function parameters", RIGHT_ARROW, fparams))
+        self.out.append("{:30s} {:s} {!s}".format("syscall register", RIGHT_ARROW, arch.syscall_register))
+        if arch.arch == "MIPS" and arch.mode == "32":
+            sparams = ", ".join(arch.syscall_parameters_n32)
+            self.out.append("{:30s} {:s} {!s}".format("syscall parameters (n32)", RIGHT_ARROW, sparams))
+            sparams = ", ".join(arch.syscall_parameters_o32)
+            self.out.append("{:30s} {:s} {!s}".format("syscall parameters (o32)", RIGHT_ARROW, sparams))
+        else:
+            sparams = ", ".join(arch.syscall_parameters)
+            self.out.append("{:30s} {:s} {!s}".format("syscall parameters", RIGHT_ARROW, sparams))
+        self.out.append("{:30s} {:s} {!s}".format("Has a call/jump delay slot", RIGHT_ARROW, arch.has_delay_slot))
+        self.out.append("{:30s} {:s} {!s}".format("Has a syscall delay slot", RIGHT_ARROW, arch.has_syscall_delay_slot))
+        self.out.append("{:30s} {:s} {!s}".format("Has a ret delay slot", RIGHT_ARROW, arch.has_ret_delay_slot))
+        self.out.append("{:30s} {:s} {!s}".format("Stack grow down", RIGHT_ARROW, arch.stack_grow_down))
+        self.out.append("{:30s} {:s} {!s}".format("Thread Local Storage support", RIGHT_ARROW, arch.tls_supported))
+        self.out.append("{:30s} {:s} {!s}".format("keystone support", RIGHT_ARROW, arch.keystone_support))
+        self.out.append("{:30s} {:s} {!s}".format("capstone support", RIGHT_ARROW, arch.capstone_support))
+        self.out.append("{:30s} {:s} {!s}".format("unicorn support", RIGHT_ARROW, arch.unicorn_support))
+        return
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        self.out = []
+        for cls in Architecture.__subclasses__():
+            self.print_arch_info(cls())
+            for subcls in cls.__subclasses__():
+                self.print_arch_info(subcls())
+        if self.out:
+            gef_print("\n".join(self.out).rstrip(), less=not args.no_pager)
         return
 
 
