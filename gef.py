@@ -4025,7 +4025,7 @@ class Architecture:
 
 class RISCV(Architecture):
     arch = "RISCV"
-    mode = "RISCV32"
+    mode = "32"
 
     # https://msyksphinz-self.github.io/riscv-isadoc/html/index.html
     all_registers = [
@@ -4223,7 +4223,7 @@ class RISCV(Architecture):
 
 class RISCV64(RISCV):
     arch = "RISCV"
-    mode = "RISCV64"
+    mode = "64"
 
     @classmethod
     def mprotect_asm_raw(cls, addr, size, perm):
@@ -4943,7 +4943,7 @@ class X86_64(X86):
 
 class PPC(Architecture):
     arch = "PPC"
-    mode = "PPC32"
+    mode = "32"
 
     all_registers = [
         "$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7",
@@ -5142,7 +5142,7 @@ class PPC(Architecture):
 
 class PPC64(PPC):
     arch = "PPC"
-    mode = "PPC64"
+    mode = "64"
 
     all_registers = [
         "$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7",
@@ -5202,7 +5202,7 @@ class PPC64(PPC):
 
 class SPARC(Architecture):
     arch = "SPARC"
-    mode = "SPARC32"
+    mode = "32"
 
     # http://www.cse.scu.edu/~atkinson/teaching/sp05/259/sparc.pdf
     all_registers = [
@@ -5372,7 +5372,7 @@ class SPARC(Architecture):
 
 class SPARC64(SPARC):
     arch = "SPARC"
-    mode = "SPARC64"
+    mode = "64"
 
     # http://math-atlas.sourceforge.net/devel/assembly/abi_sysV_sparc.pdf
     # https://cr.yp.to/2005-590/sparcv9.pdf
@@ -5442,7 +5442,7 @@ class SPARC64(SPARC):
 
 class MIPS(Architecture):
     arch = "MIPS"
-    mode = "MIPS32"
+    mode = "32"
 
     # http://vhouten.home.xs4all.nl/mipsel/r3000-isa.html
     all_registers = [
@@ -5618,7 +5618,7 @@ class MIPS(Architecture):
 
 class MIPS64(MIPS):
     arch = "MIPS"
-    mode = "MIPS64"
+    mode = "64"
 
     all_registers = [
         "$zero", "$at", "$v0", "$v1", "$a0", "$a1", "$a2", "$a3",
@@ -6628,7 +6628,7 @@ class ALPHA(Architecture):
 
 class HPPA(Architecture):
     arch = "HPPA"
-    mode = "HPPA32"
+    mode = "32"
 
     # https://parisc.wiki.kernel.org/images-parisc/6/68/Pa11_acd.pdf
     all_registers = [
@@ -7000,7 +7000,7 @@ class HPPA(Architecture):
 
 class HPPA64(HPPA):
     arch = "HPPA"
-    mode = "HPPA64"
+    mode = "64"
 
     # qemu does not support hppa64, so I could not test
 
@@ -7819,7 +7819,7 @@ class CRIS(Architecture):
 
 class LOONGARCH64(Architecture):
     arch = "LOONGARCH"
-    mode = "LOONGARCH64"
+    mode = "64"
 
     # https://docs.kernel.org/loongarch/introduction.html
     # https://loongson.github.io/LoongArch-Documentation/LoongArch-Vol1-EN.html
@@ -8000,7 +8000,7 @@ class LOONGARCH64(Architecture):
 
 class ARC(Architecture):
     arch = "ARC"
-    mode = "ARC32"
+    mode = "32"
 
     # http://me.bios.io/images/d/dd/ARCompactISA_ProgrammersReference.pdf
     all_registers = [
@@ -10065,9 +10065,25 @@ def get_unicorn_arch(arch=None, mode=None, endian=None, to_string=False):
         arch = current_arch.arch
         mode = current_arch.mode
         endian = is_big_endian()
-    if arch == "S390X":
+    if arch == "RISCV" and mode == "32":
+        mode = "RISCV32"
+    elif arch == "RISCV" and mode == "64":
+        mode = "RISCV64"
+    elif arch == "PPC" and mode == "32":
+        mode = "PPC32"
+    elif arch == "PPC" and mode == "64":
+        mode = "PPC64"
+    elif arch == "SPARC" and mode == "32":
+        mode = "SPARC32"
+    elif arch == "SPARC" and mode == "64":
+        mode = "SPARC64"
+    elif arch == "MIPS" and mode == "32":
+        mode = "MIPS32"
+    elif arch == "MIPS" and mode == "64":
+        mode = "MIPS64"
+    elif arch == "S390X":
         mode = 0
-    if arch == "M68K":
+    elif arch == "M68K":
         mode = 0
     return get_generic_arch(unicorn, "UC", arch, mode, endian, to_string)
 
@@ -10081,20 +10097,24 @@ def get_capstone_arch(arch=None, mode=None, endian=None, to_string=False):
         mode = current_arch.mode
         endian = is_big_endian()
     # hacky patch for applying to capstone's mode
-    if arch == "PPC" and mode == "PPC32":
-        mode = "32"
-    if arch == "PPC" and mode == "PPC64":
-        mode = "64"
-    if arch == "SPARC" and mode == "SPARC32":
+    if arch == "RISCV" and mode == "32":
+        mode = "RISCV32"
+        extra = ("RISCVC",)
+    elif arch == "RISCV" and mode == "64":
+        mode = "RISCV64"
+        extra = ("RISCVC",)
+    elif arch == "SPARC" and mode == "32":
         mode = ""
-    if arch == "SPARC" and mode == "SPARC64":
+    elif arch == "SPARC" and mode == "64":
         mode = "V9"
-    if arch == "RISCV":
-        extra = ("RISCVC")
-    if arch == "S390X":
+    elif arch == "MIPS" and mode == "32":
+        mode = "MIPS32"
+    elif arch == "MIPS" and mode == "64":
+        mode = "MIPS64"
+    elif arch == "S390X":
         arch = "SYSZ"
         mode = 0
-    if arch == "M68K":
+    elif arch == "M68K":
         mode = "M68K_060"
     return get_generic_arch(capstone, "CS", arch, mode, endian, to_string, extra=extra)
 
@@ -10109,7 +10129,19 @@ def get_keystone_arch(arch=None, mode=None, endian=None, to_string=False):
     # hacky patch for applying to capstone's mode
     if arch == "ARM64":
         mode = 0
-    if arch == "S390X":
+    elif arch == "PPC" and mode == "32":
+        mode = "PPC32"
+    elif arch == "PPC" and mode == "64":
+        mode = "PPC64"
+    elif arch == "SPARC" and mode == "32":
+        mode = "SPARC32"
+    elif arch == "SPARC" and mode == "64":
+        mode = "SPARC64"
+    elif arch == "MIPS" and mode == "32":
+        mode = "MIPS32"
+    elif arch == "MIPS" and mode == "64":
+        mode = "MIPS64"
+    elif arch == "S390X":
         arch = "SYSTEMZ"
         mode = 0
     return get_generic_arch(keystone, "KS", arch, mode, endian, to_string)
@@ -10227,87 +10259,87 @@ def is_arm64():
 
 
 def is_mips32():
-    return current_arch and current_arch.arch == "MIPS" and current_arch.mode == "MIPS32"
+    return current_arch and current_arch.arch == "MIPS" and current_arch.mode == "32"
 
 
 def is_mips64():
-    return current_arch and current_arch.arch == "MIPS" and current_arch.mode == "MIPS64"
+    return current_arch and current_arch.arch == "MIPS" and current_arch.mode == "64"
 
 
 def is_ppc32():
-    return current_arch and current_arch.arch == "PPC" and current_arch.mode == "PPC32"
+    return current_arch and current_arch.arch == "PPC" and current_arch.mode == "32"
 
 
 def is_ppc64():
-    return current_arch and current_arch.arch == "PPC" and current_arch.mode == "PPC64"
+    return current_arch and current_arch.arch == "PPC" and current_arch.mode == "64"
 
 
 def is_sparc32():
-    return current_arch and current_arch.arch == "SPARC" and current_arch.mode == "SPARC32"
+    return current_arch and current_arch.arch == "SPARC" and current_arch.mode == "32"
 
 
 def is_sparc64():
-    return current_arch and current_arch.arch == "SPARC" and current_arch.mode == "SPARC64"
+    return current_arch and current_arch.arch == "SPARC" and current_arch.mode == "64"
 
 
 def is_riscv32():
-    return current_arch and current_arch.arch == "RISCV" and current_arch.mode == "RISCV32"
+    return current_arch and current_arch.arch == "RISCV" and current_arch.mode == "32"
 
 
 def is_riscv64():
-    return current_arch and current_arch.arch == "RISCV" and current_arch.mode == "RISCV64"
+    return current_arch and current_arch.arch == "RISCV" and current_arch.mode == "64"
 
 
 def is_s390x():
-    return current_arch and current_arch.arch == "S390X" and current_arch.mode == "S390X"
+    return current_arch and current_arch.arch == "S390X"
 
 
 def is_sh4():
-    return current_arch and current_arch.arch == "SH4" and current_arch.mode == "SH4"
+    return current_arch and current_arch.arch == "SH4"
 
 
 def is_m68k():
-    return current_arch and current_arch.arch == "M68K" and current_arch.mode == "M68K"
+    return current_arch and current_arch.arch == "M68K"
 
 
 def is_alpha():
-    return current_arch and current_arch.arch == "ALPHA" and current_arch.mode == "ALPHA"
+    return current_arch and current_arch.arch == "ALPHA"
 
 
 def is_hppa32():
-    return current_arch and current_arch.arch == "HPPA" and current_arch.mode == "HPPA32"
+    return current_arch and current_arch.arch == "HPPA" and current_arch.mode == "32"
 
 
 def is_hppa64():
-    return current_arch and current_arch.arch == "HPPA" and current_arch.mode == "HPPA64"
+    return current_arch and current_arch.arch == "HPPA" and current_arch.mode == "64"
 
 
 def is_or1k():
-    return current_arch and current_arch.arch == "OR1K" and current_arch.mode == "OR1K"
+    return current_arch and current_arch.arch == "OR1K"
 
 
 def is_nios2():
-    return current_arch and current_arch.arch == "NIOS2" and current_arch.mode == "NIOS2"
+    return current_arch and current_arch.arch == "NIOS2"
 
 
 def is_microblaze():
-    return current_arch and current_arch.arch == "MICROBLAZE" and current_arch.mode == "MICROBLAZE"
+    return current_arch and current_arch.arch == "MICROBLAZE"
 
 
 def is_xtensa():
-    return current_arch and current_arch.arch == "XTENSA" and current_arch.mode == "XTENSA"
+    return current_arch and current_arch.arch == "XTENSA"
 
 
 def is_cris():
-    return current_arch and current_arch.arch == "CRIS" and current_arch.mode == "CRIS"
+    return current_arch and current_arch.arch == "CRIS"
 
 
 def is_loongarch64():
-    return current_arch and current_arch.arch == "LOONGARCH" and current_arch.mode == "LOONGARCH64"
+    return current_arch and current_arch.arch == "LOONGARCH" and current_arch.mode == "64"
 
 
 def is_arc32():
-    return current_arch and current_arch.arch == "ARC" and current_arch.mode == "ARC32"
+    return current_arch and current_arch.arch == "ARC" and current_arch.mode == "32"
 
 
 @functools.lru_cache(maxsize=None)
@@ -14115,7 +14147,7 @@ class CallSyscallCommand(GenericCommand):
             return
 
         try:
-            syscall_table = get_syscall_table(None, None)
+            syscall_table = get_syscall_table()
         except Exception:
             err("syscall table does not exist")
             return
@@ -15392,9 +15424,9 @@ class CapstoneDisassembleCommand(GenericCommand):
     valid_arch_modes = {
         "ARM" : ["ARM", "THUMB"],
         "ARM64" : ["ARM"],
-        "MIPS" : ["MIPS32", "MIPS64"],
-        "PPC" : ["PPC32", "PPC64"],
-        "SPARC" : ["SPARC32", "SPARC64"],
+        "MIPS" : ["32", "64"],
+        "PPC" : ["32", "64"],
+        "SPARC" : ["32", "64"],
         "X86" : ["16", "32", "64"],
     }
 
@@ -16778,15 +16810,15 @@ class AssembleCommand(GenericCommand):
     _example_ += '{:s} -a ARM -m THUMB    "movs r4, #0xf0"\n'.format(_cmdline_)
     _example_ += '{:s} -a ARM -m THUMB -e "movs r4, #0xf0"\n'.format(_cmdline_)
     _example_ += '{:s} -a ARM64 -m ARM    "ldr w1, [sp, #0x8]"\n'.format(_cmdline_)
-    _example_ += '{:s} -a MIPS -m MIPS32    "and $9, $6, $7"\n'.format(_cmdline_)
-    _example_ += '{:s} -a MIPS -m MIPS32 -e "and $9, $6, $7"\n'.format(_cmdline_)
-    _example_ += '{:s} -a MIPS -m MIPS64    "and $9, $6, $7"\n'.format(_cmdline_)
-    _example_ += '{:s} -a MIPS -m MIPS64 -e "and $9, $6, $7"\n'.format(_cmdline_)
-    _example_ += '{:s} -a PPC -m PPC32 -e "add 1, 2, 3"\n'.format(_cmdline_)
-    _example_ += '{:s} -a PPC -m PPC64    "add 1, 2, 3"\n'.format(_cmdline_)
-    _example_ += '{:s} -a PPC -m PPC64 -e "add 1, 2, 3"\n'.format(_cmdline_)
-    _example_ += '{:s} -a SPARC -m SPARC32 -e "add %g1, %g2, %g3"\n'.format(_cmdline_)
-    _example_ += '{:s} -a SPARC -m SPARC64 -e "add %g1, %g2, %g3"\n'.format(_cmdline_)
+    _example_ += '{:s} -a MIPS -m 32    "and $9, $6, $7"\n'.format(_cmdline_)
+    _example_ += '{:s} -a MIPS -m 32 -e "and $9, $6, $7"\n'.format(_cmdline_)
+    _example_ += '{:s} -a MIPS -m 64    "and $9, $6, $7"\n'.format(_cmdline_)
+    _example_ += '{:s} -a MIPS -m 64 -e "and $9, $6, $7"\n'.format(_cmdline_)
+    _example_ += '{:s} -a PPC -m 32 -e "add 1, 2, 3"\n'.format(_cmdline_)
+    _example_ += '{:s} -a PPC -m 64    "add 1, 2, 3"\n'.format(_cmdline_)
+    _example_ += '{:s} -a PPC -m 64 -e "add 1, 2, 3"\n'.format(_cmdline_)
+    _example_ += '{:s} -a SPARC -m 32 -e "add %g1, %g2, %g3"\n'.format(_cmdline_)
+    _example_ += '{:s} -a SPARC -m 64 -e "add %g1, %g2, %g3"\n'.format(_cmdline_)
     _example_ += '{:s} -a S390X -m S390X -e "a %r0, 4095(%r15,%r1)"'.format(_cmdline_)
 
     @parse_args
@@ -16879,17 +16911,17 @@ class DisassembleCommand(GenericCommand):
     _example_ += '{:s} -a ARM -m THUMB    "f024"\n'.format(_cmdline_)
     _example_ += '{:s} -a ARM -m THUMB -e "24f0"\n'.format(_cmdline_)
     _example_ += '{:s} -a ARM64 -m ARM    "e10b40b9"\n'.format(_cmdline_)
-    _example_ += '{:s} -a MIPS -m MIPS32    "2448c700"\n'.format(_cmdline_)
-    _example_ += '{:s} -a MIPS -m MIPS32 -e "00c74824"\n'.format(_cmdline_)
-    _example_ += '{:s} -a MIPS -m MIPS64    "2448c700"\n'.format(_cmdline_)
-    _example_ += '{:s} -a MIPS -m MIPS64 -e "00c74824"\n'.format(_cmdline_)
+    _example_ += '{:s} -a MIPS -m 32    "2448c700"\n'.format(_cmdline_)
+    _example_ += '{:s} -a MIPS -m 32 -e "00c74824"\n'.format(_cmdline_)
+    _example_ += '{:s} -a MIPS -m 64    "2448c700"\n'.format(_cmdline_)
+    _example_ += '{:s} -a MIPS -m 64 -e "00c74824"\n'.format(_cmdline_)
     _example_ += '{:s} -a PPC -m 32 -e "7c221a14"\n'.format(_cmdline_)
     _example_ += '{:s} -a PPC -m 64    "141a227c"\n'.format(_cmdline_)
     _example_ += '{:s} -a PPC -m 64 -e "7c221a14"\n'.format(_cmdline_)
-    _example_ += '{:s} -a SPARC -m SPARC32 -e "86004002"\n'.format(_cmdline_)
-    _example_ += '{:s} -a SPARC -m SPARC64 -e "86004002"\n'.format(_cmdline_)
-    _example_ += '{:s} -a RISCV -m RISCV32 "97c10600"\n'.format(_cmdline_)
-    _example_ += '{:s} -a RISCV -m RISCV64 "97c10600"\n'.format(_cmdline_)
+    _example_ += '{:s} -a SPARC -m 32 -e "86004002"\n'.format(_cmdline_)
+    _example_ += '{:s} -a SPARC -m 64 -e "86004002"\n'.format(_cmdline_)
+    _example_ += '{:s} -a RISCV -m 32 "97c10600"\n'.format(_cmdline_)
+    _example_ += '{:s} -a RISCV -m 64 "97c10600"\n'.format(_cmdline_)
     _example_ += '{:s} -a S390X -m S390X -e "5a0f1fff"\n'.format(_cmdline_)
     _example_ += '{:s} -a M68K -m M68K -e "9dce"'.format(_cmdline_)
 
@@ -16914,7 +16946,7 @@ class DisassembleCommand(GenericCommand):
         elif not args.mode:
             err("A mode (-m) must be provided")
             return
-        elif args.arch in ["SPARC", "S390X"] and args.big_endian is False:
+        elif args.arch in ["SPARC", "S390X", "M68K"] and args.big_endian is False:
             # capstone gives no error so check here
             err("A big endian flag (-e) must be provided")
             return
@@ -17132,7 +17164,7 @@ class AsmListCommand(GenericCommand):
         elif not args.mode:
             err("A mode (-m) must be provided")
             return
-        elif args.arch in ["SPARC", "S390X"] and args.big_endian is False:
+        elif args.arch in ["SPARC", "S390X", "M68K"] and args.big_endian is False:
             # capstone gives no error so check here
             err("A big endian flag (-e) must be provided")
             return
@@ -17365,8 +17397,14 @@ class ArchInfoCommand(GenericCommand):
         gef_print("{:30s} {:s} {!s}".format("return register", RIGHT_ARROW, current_arch.return_register))
         gef_print("{:30s} {:s} {!s}".format("function parameters", RIGHT_ARROW, fparams))
         gef_print("{:30s} {:s} {!s}".format("syscall register", RIGHT_ARROW, current_arch.syscall_register))
-        sparams = ", ".join(current_arch.syscall_parameters)
-        gef_print("{:30s} {:s} {!s}".format("syscall parameters", RIGHT_ARROW, sparams))
+        if is_mips32():
+            sparams = ", ".join(arch.syscall_parameters_n32)
+            gef_print("{:30s} {:s} {!s}".format("syscall parameters (n32)", RIGHT_ARROW, sparams))
+            sparams = ", ".join(arch.syscall_parameters_o32)
+            gef_print("{:30s} {:s} {!s}".format("syscall parameters (o32)", RIGHT_ARROW, sparams))
+        else:
+            sparams = ", ".join(arch.syscall_parameters)
+            gef_print("{:30s} {:s} {!s}".format("syscall parameters", RIGHT_ARROW, sparams))
         if is_x86() or is_arm32() or is_arm64():
             gef_print("{:30s} {:s} {!s}".format("32bit-emulated (compat mode)", RIGHT_ARROW, self.is_emulated32()))
         gef_print("{:30s} {:s} {!s}".format("Has a call/jump delay slot", RIGHT_ARROW, current_arch.has_delay_slot))
@@ -26432,33 +26470,33 @@ class SyscallSearchCommand(GenericCommand):
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
-    _example_ = '{:s} -a X86 -m 64                 "^writev?" # amd64\n'.format(_cmdline_)
-    _example_ += '{:s} -a X86 -m 32                 "^writev?" # i386 on amd64\n'.format(_cmdline_)
-    _example_ += '{:s} -a X86 -m N32                "^writev?" # i386 native\n'.format(_cmdline_)
-    _example_ += '{:s} -a ARM64 -m ARM              "^writev?" # arm64\n'.format(_cmdline_)
-    _example_ += '{:s} -a ARM -m 32                 "^writev?" # arm32 on arm64\n'.format(_cmdline_)
-    _example_ += '{:s} -a ARM -m N32                "^writev?" # arm32 native\n'.format(_cmdline_)
-    _example_ += '{:s} -a MIPS -m MIPS32            "^writev?" # mips32\n'.format(_cmdline_)
-    _example_ += '{:s} -a MIPS -m MIPS64            "^writev?" # mips64\n'.format(_cmdline_)
-    _example_ += '{:s} -a PPC -m PPC32              "^writev?" # ppc32\n'.format(_cmdline_)
-    _example_ += '{:s} -a PPC -m PPC64              "^writev?" # ppc64\n'.format(_cmdline_)
-    _example_ += '{:s} -a SPARC -m SPARC32          "^writev?" # sparc32\n'.format(_cmdline_)
-    _example_ += '{:s} -a SPARC -m SPARC64          "^writev?" # sparc64\n'.format(_cmdline_)
-    _example_ += '{:s} -a RISCV -m RISCV32          "^writev?" # riscv32\n'.format(_cmdline_)
-    _example_ += '{:s} -a RISCV -m RISCV64          "^writev?" # riscv64\n'.format(_cmdline_)
-    _example_ += '{:s} -a S390X -m S390X            "^writev?" # s390x\n'.format(_cmdline_)
-    _example_ += '{:s} -a SH4 -m SH4                "^writev?" # sh4\n'.format(_cmdline_)
-    _example_ += '{:s} -a M68K -m M68K              "^writev?" # m68k\n'.format(_cmdline_)
-    _example_ += '{:s} -a ALPHA -m ALPHA            "^writev?" # alpha\n'.format(_cmdline_)
-    _example_ += '{:s} -a HPPA -m HPPA32            "^writev?" # hppa32\n'.format(_cmdline_)
-    _example_ += '{:s} -a HPPA -m HPPA64            "^writev?" # hppa64\n'.format(_cmdline_)
-    _example_ += '{:s} -a OR1K -m OR1K              "^writev?" # or1k\n'.format(_cmdline_)
-    _example_ += '{:s} -a NIOS2 -m NIOS2            "^writev?" # nios2\n'.format(_cmdline_)
-    _example_ += '{:s} -a MICROBLAZE -m MICROBLAZE  "^writev?" # microblaze\n'.format(_cmdline_)
-    _example_ += '{:s} -a XTENSA -m XTENSA          "^writev?" # xtensa\n'.format(_cmdline_)
-    _example_ += '{:s} -a CRIS -m CRIS              "^writev?" # cris\n'.format(_cmdline_)
-    _example_ += '{:s} -a LOONGARCH -m LOONGARCH64  "^writev?" # loongarch64\n'.format(_cmdline_)
-    _example_ += '{:s} -a ARC -m ARC32              "^writev?" # arc32'.format(_cmdline_)
+    _example_ = '{:s} -a X86 -m 64        "^writev?" # amd64\n'.format(_cmdline_)
+    _example_ += '{:s} -a X86 -m 32        "^writev?" # i386 on amd64\n'.format(_cmdline_)
+    _example_ += '{:s} -a X86 -m N32       "^writev?" # i386 native\n'.format(_cmdline_)
+    _example_ += '{:s} -a ARM64 -m ARM     "^writev?" # arm64\n'.format(_cmdline_)
+    _example_ += '{:s} -a ARM -m 32        "^writev?" # arm32 on arm64\n'.format(_cmdline_)
+    _example_ += '{:s} -a ARM -m N32       "^writev?" # arm32 native\n'.format(_cmdline_)
+    _example_ += '{:s} -a MIPS -m 32       "^writev?" # mips32\n'.format(_cmdline_)
+    _example_ += '{:s} -a MIPS -m 64       "^writev?" # mips64\n'.format(_cmdline_)
+    _example_ += '{:s} -a PPC -m 32        "^writev?" # ppc32\n'.format(_cmdline_)
+    _example_ += '{:s} -a PPC -m 64        "^writev?" # ppc64\n'.format(_cmdline_)
+    _example_ += '{:s} -a SPARC -m 32      "^writev?" # sparc32\n'.format(_cmdline_)
+    _example_ += '{:s} -a SPARC -m 64      "^writev?" # sparc64\n'.format(_cmdline_)
+    _example_ += '{:s} -a RISCV -m 32      "^writev?" # riscv32\n'.format(_cmdline_)
+    _example_ += '{:s} -a RISCV -m 64      "^writev?" # riscv64\n'.format(_cmdline_)
+    _example_ += '{:s} -a S390X            "^writev?" # s390x\n'.format(_cmdline_)
+    _example_ += '{:s} -a SH4              "^writev?" # sh4\n'.format(_cmdline_)
+    _example_ += '{:s} -a M68K             "^writev?" # m68k\n'.format(_cmdline_)
+    _example_ += '{:s} -a ALPHA            "^writev?" # alpha\n'.format(_cmdline_)
+    _example_ += '{:s} -a HPPA -m 32       "^writev?" # hppa32\n'.format(_cmdline_)
+    _example_ += '{:s} -a HPPA -m 64       "^writev?" # hppa64\n'.format(_cmdline_)
+    _example_ += '{:s} -a OR1K             "^writev?" # or1k\n'.format(_cmdline_)
+    _example_ += '{:s} -a NIOS2            "^writev?" # nios2\n'.format(_cmdline_)
+    _example_ += '{:s} -a MICROBLAZE       "^writev?" # microblaze\n'.format(_cmdline_)
+    _example_ += '{:s} -a XTENSA           "^writev?" # xtensa\n'.format(_cmdline_)
+    _example_ += '{:s} -a CRIS             "^writev?" # cris\n'.format(_cmdline_)
+    _example_ += '{:s} -a LOONGARCH -m 64  "^writev?" # loongarch64\n'.format(_cmdline_)
+    _example_ += '{:s} -a ARC -m 32        "^writev?" # arc32'.format(_cmdline_)
 
     def make_output(self, syscall_table, syscall_num, syscall_name_pattern):
         self.out.append(titlify("arch={:s}, mode={:s}".format(syscall_table.arch, syscall_table.mode)))
@@ -26484,13 +26522,20 @@ class SyscallSearchCommand(GenericCommand):
         syscall_num = None
         syscall_name_pattern = ".*"
 
+        target_arch = args.arch
+        target_mode = args.mode
+        # force fixing
+        if target_mode is None:
+            if target_arch in ["S390X", "SH4", "M68K", "ALPHA", "OR1K", "NIOS2", "MICROBLAZE", "XTENSA", "CRIS"]:
+                target_mode = target_arch
+
         try:
             syscall_num = int(args.search_pattern, 0)
         except ValueError:
             syscall_name_pattern = args.search_pattern
 
         try:
-            syscall_table = get_syscall_table(args.arch, args.mode)
+            syscall_table = get_syscall_table(target_arch, target_mode)
         except Exception:
             self.usage()
             return
@@ -37496,7 +37541,7 @@ def get_syscall_table(arch=None, mode=None):
             register_list = ARM().syscall_parameters
         syscall_list = arm_OPTEE_syscall_list.copy()
 
-    elif arch == "MIPS" and mode == "MIPS32":
+    elif arch == "MIPS" and mode == "32":
         o32_register_list = MIPS().syscall_parameters_o32
         n32_register_list = MIPS().syscall_parameters_n32
         sc_def = parse_common_syscall_defs()
@@ -37579,7 +37624,7 @@ def get_syscall_table(arch=None, mode=None):
                 raise
             syscall_list.append([nr, name, sc_def[func]])
 
-    elif arch == "MIPS" and mode == "MIPS64":
+    elif arch == "MIPS" and mode == "64":
         register_list = MIPS64().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(mips_n64_syscall_tbl)
@@ -37630,7 +37675,7 @@ def get_syscall_table(arch=None, mode=None):
                 raise
             syscall_list.append([nr, name, sc_def[func]])
 
-    elif arch == "PPC" and mode == "PPC32":
+    elif arch == "PPC" and mode == "32":
         register_list = PPC().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(ppc_syscall_tbl)
@@ -37687,7 +37732,7 @@ def get_syscall_table(arch=None, mode=None):
                 raise
             syscall_list.append([nr, name, sc_def[func]])
 
-    elif arch == "PPC" and mode == "PPC64":
+    elif arch == "PPC" and mode == "64":
         register_list = PPC64().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(ppc_syscall_tbl)
@@ -37737,7 +37782,7 @@ def get_syscall_table(arch=None, mode=None):
                 raise
             syscall_list.append([nr, name, sc_def[func]])
 
-    elif arch == "SPARC" and mode == "SPARC32":
+    elif arch == "SPARC" and mode == "32":
         register_list = SPARC().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(sparc_syscall_tbl)
@@ -37791,7 +37836,7 @@ def get_syscall_table(arch=None, mode=None):
                 raise
             syscall_list.append([nr, name, sc_def[func]])
 
-    elif arch == "SPARC" and mode == "SPARC64":
+    elif arch == "SPARC" and mode == "64":
         register_list = SPARC64().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(sparc_syscall_tbl)
@@ -37873,7 +37918,7 @@ def get_syscall_table(arch=None, mode=None):
                 raise
             syscall_list.append([nr, name, sc_def[func]])
 
-    elif arch == "RISCV" and mode == "RISCV32":
+    elif arch == "RISCV" and mode == "32":
         register_list = RISCV().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(riscv32_syscall_tbl)
@@ -37913,7 +37958,7 @@ def get_syscall_table(arch=None, mode=None):
         ]
         syscall_list += arch_specific_extra
 
-    elif arch == "RISCV" and mode == "RISCV64":
+    elif arch == "RISCV" and mode == "64":
         register_list = RISCV64().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(riscv64_syscall_tbl)
@@ -38257,7 +38302,7 @@ def get_syscall_table(arch=None, mode=None):
                 raise
             syscall_list.append([nr, name, sc_def[func]])
 
-    elif arch == "HPPA" and mode == "HPPA32":
+    elif arch == "HPPA" and mode == "32":
         register_list = HPPA().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(hppa_syscall_tbl)
@@ -38348,7 +38393,7 @@ def get_syscall_table(arch=None, mode=None):
                 raise
             syscall_list.append([nr, name, sc_def[func]])
 
-    elif arch == "HPPA" and mode == "HPPA64":
+    elif arch == "HPPA" and mode == "64":
         register_list = HPPA64().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(hppa_syscall_tbl)
@@ -38585,7 +38630,7 @@ def get_syscall_table(arch=None, mode=None):
                 raise
             syscall_list.append([nr, name, sc_def[func]])
 
-    elif arch == "LOONGARCH" and mode == "LOONGARCH64":
+    elif arch == "LOONGARCH" and mode == "64":
         register_list = LOONGARCH64().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(loongarch_syscall_tbl)
@@ -38618,7 +38663,7 @@ def get_syscall_table(arch=None, mode=None):
                 raise
             syscall_list.append([nr, name, sc_def[func]])
 
-    elif arch == "ARC" and mode == "ARC32":
+    elif arch == "ARC" and mode == "32":
         register_list = ARC().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(arc_syscall_tbl)
@@ -38688,7 +38733,7 @@ def get_syscall_table(arch=None, mode=None):
 
     syscall_list = sorted(syscall_list, key=lambda x: x[0])
     for nr, name, args in syscall_list:
-        if arch == "MIPS" and mode == "MIPS32":
+        if arch == "MIPS" and mode == "32":
             if nr >= 6000:
                 args = list(zip(n32_register_list[:len(args)], args))
             else:
@@ -66402,7 +66447,7 @@ class KmallocAllocatedByCommand(GenericCommand):
                 info("vmemmap: {:#x}".format(self.extra_info.vmemmap))
 
         # get syscall table
-        self.syscall_table = {e.name: n for n, e in get_syscall_table(None, None).table.items() if n < 0x1000}
+        self.syscall_table = {e.name: n for n, e in get_syscall_table().table.items() if n < 0x1000}
         self.syscall_table_view_ret = gdb.execute("syscall-table-view --no-pager --quiet", to_string=True)
 
         # get task
