@@ -65893,10 +65893,12 @@ class KmallocAllocatedByCommand(GenericCommand):
             oss += p64(0) # ss_size
             yield ("sigaltstack(NULL, &oss)", "sigaltstack", [0, oss])
 
-            yield "rt_sigprocmask"
+            yield "rt_sigprocmask -> rt_sigpending"
             oldset = "\0" * 0x100
             sigsetsize = 8
             yield ("rt_sigprocmask(0, NULL, &oldset, sigsetsize)", "rt_sigprocmask", [0, 0, oldset, sigsetsize])
+            set_ = "\0" * 0x100
+            yield ("rt_sigpending(&set)", "rt_sigpending", [set_])
 
             yield "getpid -> getppid -> getsid -> gettid -> getpgid -> setpgid -> getpgrp -> kcmp"
             yield ("pid = getpid()", "getpid", [])
@@ -65934,7 +65936,7 @@ class KmallocAllocatedByCommand(GenericCommand):
             yield ("setresgid(gid, gid, gid)", "setresgid", [gid, gid, gid])
             yield ("getgroups(0, NULL)", "getgroups", [0, 0])
 
-            yield "rt_sigaction -> alarm -> kill -> tkill"
+            yield "rt_sigaction -> alarm -> kill -> tkill -> rt_sigtimedwait"
             act = p64(1)    # sa_handler: SIG_IGN
             act += p64(0)   # sa_flags
             act += p64(0)   # sa_restorer
@@ -65949,6 +65951,23 @@ class KmallocAllocatedByCommand(GenericCommand):
             yield ("kill(pid, SIGALRM)", "kill", [pid, 14])
             yield ("tkill(tid, SIGALRM)", "kill", [tid, 14])
             self.skipped_syscall.add("tgkill")
+            self.skipped_syscall.add("rt_sigqueueinfo")
+            self.skipped_syscall.add("rt_tgsigqueueinfo")
+            set_ = "\0" * 0x100
+            info = p32(0)  # si_signo
+            info += p32(0) # si_code
+            info += p64(0) # si_value
+            info += p32(0) # si_errno
+            info += p32(0) # si_pid
+            info += p32(0) # si_uid
+            info += p32(0) # padding
+            info += p64(0) # si_addr
+            info += p32(0) # si_status
+            info += p32(0) # si_band
+            timeout = p64(0)  # tv_sec
+            timeout += p64(0) # tv_nsec
+            sigsetsize = 8
+            yield ("rt_sigtimedwait(&set, &info, &timeout, sigsetsize)", "rt_sigtimedwait", [set_, info, timeout, sigsetsize])
 
             yield "pidfd_open -> pidfd_getfd -> pidfd_send_signal -> close"
             yield ("pfdfd = pidfd_open(pid, 0)", "pidfd_open", [pid, 0])
@@ -66069,6 +66088,17 @@ class KmallocAllocatedByCommand(GenericCommand):
                     yield ("vmsplice(pipefd[0], &iov, 1, 0)", "vmsplice", [pipefd0, iov, 1, 0])
                     yield ("close_range(pipefd[0], pipefd[1], 0)", "close_range", [pipefd0, pipefd1, 0])
                 yield ("close(fd)", "close", [fd])
+
+            yield "pipe -> pipe -> tee -> close_range"
+            pipefd_array = p32(0) * 2 # pipefd[2]
+            yield ("pipe(pipefd[2])", "pipe", [pipefd_array])
+            pipefd0 = u32(read_memory(current_arch.sp, 4))
+            pipefd1 = u32(read_memory(current_arch.sp + 4, 4))
+            yield ("pipe(pipefd[2])", "pipe", [pipefd_array])
+            pipefd2 = u32(read_memory(current_arch.sp, 4))
+            pipefd3 = u32(read_memory(current_arch.sp + 4, 4))
+            yield ("tee(pipefd[0], pipefd[3], 0", "tee", [pipefd0, pipefd3])
+            yield ("close_range(pipefd[0], pipefd[3], 0)", "close_range", [pipefd0, pipefd3, 0])
 
             yield "mknod -> unlink"
             TMP_PIPE = "/tmp/pipe\0"
@@ -66215,6 +66245,48 @@ class KmallocAllocatedByCommand(GenericCommand):
                 self.tested_syscall.add("io_pgetevents")
                 yield ("clode(fd)", "close", [fd])
                 yield ("io_destroy(ctx_id)", "io_destroy", [ctx_id])
+
+            yield "io_uring_setup -> mmap -> io_uring_enter -> io_uring_register -> munmap"
+            params = p32(0)      # sq_entries
+            params += p32(0)     # cq_entries
+            params += p32(0)     # flags
+            params += p32(0)     # sq_thread_cpu
+            params += p32(0)     # sq_thread_idle
+            params += p32(0)     # features
+            params += p32(0)     # wq_fd
+            params += p32(0) * 3 # resv[3]
+            params += p32(0)     # sq_off.head
+            params += p32(0)     # sq_off.tail
+            params += p32(0)     # sq_off.ring_mask
+            params += p32(0)     # sq_off.ring_entries
+            params += p32(0)     # sq_off.flags
+            params += p32(0)     # sq_off.dropped
+            params += p32(0)     # sq_off.array
+            params += p32(0) * 3 # sq_off.resv[3]
+            params += p32(0)     # cq_off.head
+            params += p32(0)     # cq_off.tail
+            params += p32(0)     # cq_off.ring_mask
+            params += p32(0)     # cq_off.ring_entries
+            params += p32(0)     # cq_off.overflow
+            params += p32(0)     # cq_off.cqes
+            params += p32(0)     # cq_off.flags
+            params += p32(0) * 3 # cq_off.resv[3]
+            yield ("ring_fd = io_uring_setup(1, &params)", "io_uring_setup", [1, params])
+            params = slice_unpack(read_memory(current_arch.sp, len(params)), 4)
+            if u2i(ret_history[-1]) >= 0 and params[5] & 1: # IORING_FEAT_SINGLE_MMAP (available linux v5.4~)
+                ring_fd = ret_history[-1]
+                sring_sz = params[16] + params[0] * 4    # sq_off.array + sq_entries * sizeof(uint)
+                cring_sz = params[25] + params[1] * 0x10 # cq_off.cqes + cq_entries * sizeof(struct io_uring_cqe)
+                sring_sz = max(sring_sz, cring_sz)
+                yield ("mmap(0, sring_sz, RW-, MAP_SHARED|MAP_POPULATE, ring_fd, IORING_OFF_SQ_RING)", "mmap", [0, sring_sz, 3, 0x1 | 0x8000, ring_fd, 0])
+                if u2i(ret_history[-1]) >= 0:
+                    sq_ptr = ret_history[-1]
+                    yield ("io_uring_enter(ring_fd, 0, 0, 0, NULL, 8)", "io_uring_enter", [ring_fd, 0, 0, 0, 0, 8])
+                    arg = p32(0)
+                    yield ("io_uring_register(ring_fd, IORING_REGISTER_FILES, &arg, 1)", "io_uring_register", [ring_fd, 2, arg, 1])
+                    yield ("io_uring_register(ring_fd, IORING_UNREGISTER_FILES, NULL, 0)", "io_uring_register", [ring_fd, 3, 0, 0])
+                    yield ("munmap(sq_ptr, sring_sz)", "munmap", [sq_ptr, sring_sz])
+                yield ("close(ring_fd)", "close", [ring_fd])
 
             yield "unshare"
             yield ("unshare(CLONE_FS|CLONE_FILES)", "unshare", [0x200 | 0x400])
@@ -66376,6 +66448,7 @@ class KmallocAllocatedByCommand(GenericCommand):
             self.skipped_syscall.add("restart_syscall")   # difficult to implement generically
             self.skipped_syscall.add("pause")             # difficult to implement generically
             self.skipped_syscall.add("rt_sigreturn")      # difficult to implement generically
+            self.skipped_syscall.add("rt_sigsuspend")     # difficult to implement generically
             self.skipped_syscall.add("clone")             # difficult to implement generically
             self.skipped_syscall.add("clone3")            # difficult to implement generically
             self.skipped_syscall.add("execve")            # difficult to implement generically
