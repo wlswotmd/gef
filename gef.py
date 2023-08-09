@@ -10148,7 +10148,7 @@ def get_keystone_arch(arch=None, mode=None, endian=None, to_string=False):
 
 
 @load_unicorn
-def get_unicorn_registers(to_string=False):
+def get_unicorn_registers(to_string=False, add_sse=False):
     "Return a dict matching the Unicorn identifier for a specific register."
     unicorn = sys.modules["unicorn"]
     regs = {}
@@ -10159,7 +10159,13 @@ def get_unicorn_registers(to_string=False):
         raise OSError("Oops")
 
     const = getattr(unicorn, "{}_const".format(arch))
-    for reg in current_arch.all_registers:
+
+    extra_regs = []
+    if add_sse:
+        if is_x86():
+            extra_regs = ["$xmm{:d}".format(i) for i in range(16)]
+
+    for reg in current_arch.all_registers + extra_regs:
         if arch == "ppc" and reg.startswith("$r"):
             regname = "UC_{:s}_REG_{:s}".format(arch.upper(), reg.lstrip("$r").upper())
         else:
@@ -14960,6 +14966,7 @@ class UnicornEmulateCommand(GenericCommand):
     parser.add_argument("-o", "--output-path", help="writes the persistent Unicorn script into this file.")
     parser.add_argument("-s", "--skip-emulation", action="store_true", help="do not run, just save the script.")
     parser.add_argument("-v", "--verbose", action="store_true", help="displays the register values for each instruction is executed.")
+    parser.add_argument("--add-sse", action="store_true", help="initialization and display XMM registers (only x64/x86).")
     parser.add_argument("-q", "--quiet", action="store_true", help="quiet execution.")
     _syntax_ = parser.format_help()
 
@@ -14997,6 +15004,10 @@ class UnicornEmulateCommand(GenericCommand):
         if is_arm32():
             thumb_mode = start_insn & 1
 
+        add_sse = False
+        if is_x86():
+            add_sse = args.add_sse
+
         if (args.to_location, args.nb_insn, args.nb_gadget) == (None, None, None):
             nb_gadget = 10
         else:
@@ -15013,6 +15024,7 @@ class UnicornEmulateCommand(GenericCommand):
             "nb_gadget": nb_gadget,
             "quiet": args.quiet,
             "thumb_mode": thumb_mode,
+            "add_sse": add_sse,
         }
 
         if end_insn is not None:
@@ -15030,7 +15042,7 @@ class UnicornEmulateCommand(GenericCommand):
 
     def run_unicorn(self, start_insn_addr, end_insn_addr, *args, **kwargs):
         arch, mode = get_unicorn_arch(to_string=True)
-        unicorn_registers = get_unicorn_registers(to_string=True)
+        unicorn_registers = get_unicorn_registers(to_string=True, add_sse=kwargs["add_sse"])
         cs_arch, cs_mode = get_capstone_arch(to_string=True)
 
         pythonbin = which("python3")
@@ -15157,10 +15169,16 @@ class UnicornEmulateCommand(GenericCommand):
         content += "\n"
         content += "def print_regs(emu, regs):\n"
         content += "    for i, r in enumerate(regs):\n"
-        content += "        fmt = '{{:7s}} = {{:#0{:d}x}}  '\n".format(current_arch.ptrsize * 2 + 2)
-        content += "        print(fmt.format(r, emu.reg_read(regs[r])), end='')\n"
-        content += "        if (i % 4 == 3) or (i == len(regs) - 1):\n"
-        content += "            print('')\n"
+        content += "        if r.startswith('$xmm'):\n"
+        content += "          fmt = '{{:7s}} = {{:#0{:d}x}}  '\n".format(32 + 2)
+        content += "          print(fmt.format(r, emu.reg_read(regs[r])), end='')\n"
+        content += "          if (i % 2 == 1) or (i == len(regs) - 1):\n"
+        content += "              print('')\n"
+        content += "        else:\n"
+        content += "          fmt = '{{:7s}} = {{:#0{:d}x}}  '\n".format(current_arch.ptrsize * 2 + 2)
+        content += "          print(fmt.format(r, emu.reg_read(regs[r])), end='')\n"
+        content += "          if (i % 4 == 3) or (i == len(regs) - 1):\n"
+        content += "              print('')\n"
         content += "    return\n"
         content += "\n"
         content += "\n"
@@ -15252,17 +15270,23 @@ class UnicornEmulateCommand(GenericCommand):
             # need first. because other register values may be broken when $cpsr is set
             gregval = get_register("$cpsr")
             content += "    emu.reg_write({:s}, {:#x})\n".format(unicorn_registers["$cpsr"], gregval)
-        for r in current_arch.all_registers:
-            if is_x86_64() and r == "$fs":
+        for reg in current_arch.all_registers:
+            if is_x86_64() and reg == "$fs":
                 continue
-            if is_x86_32() and r == "$gs":
+            if is_x86_32() and reg == "$gs":
                 continue
-            if (is_arm32() or is_arm64()) and r == "$cpsr":
+            if (is_arm32() or is_arm64()) and reg == "$cpsr":
                 continue
-            if r not in unicorn_registers:
-                continue
-            gregval = get_register(r)
-            content += "    emu.reg_write({:s}, {:#x})\n".format(unicorn_registers[r], gregval)
+            gregval = get_register(reg)
+            content += "    emu.reg_write({:s}, {:#x})\n".format(unicorn_registers[reg], gregval)
+
+        if kwargs["add_sse"]:
+            lines = Color.remove_color(gdb.execute("xmm", to_string=True))
+            for reg in ["$xmm{:d}".format(i) for i in range(16)]:
+                r = re.findall("\\" + reg + r" +: (0x\S+)", lines)
+                if r:
+                    gregval = int(r[0], 16)
+                    content += "    emu.reg_write({:s}, {:#x})\n".format(unicorn_registers[reg], gregval)
         content += "\n"
 
         reset_gef_caches(all=True)
