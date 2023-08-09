@@ -48216,41 +48216,61 @@ class KernelSearchCodePtrCommand(GenericCommand):
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
+    def read_int_from_memory_cache(self, addr):
+        if addr in self.cache:
+            return self.cache[addr]
+        out = read_int_from_memory(addr)
+        self.cache[addr] = out
+        return out
+
     def get_permission(self, addr):
         for vaddr, size, perm in self.kinfo.maps:
             if vaddr <= addr and addr < vaddr + size:
                 return perm
         return "???"
 
-    def search(self, upper_addrs, addr, max_range, depth):
+    def search(self, backtrack_info, addr, max_range, depth):
         if depth == 0:
             if not (self.ktext_start <= addr < self.ktext_end):
                 return False
 
-            new_upper_addrs = upper_addrs + [(addr, 0)]
+            # backtrack
+            new_backtrack_info = backtrack_info + [(addr, 0)]
             msg = []
-            for addr, offset in new_upper_addrs:
+            for addr, offset in new_backtrack_info:
                 addr_sym = get_symbol_string(addr + offset, nosymbol_string=" <NO_SYMBOL>")
                 m = "{:#x}+{:#x}{:s} [{:s}]".format(addr, offset, addr_sym, self.get_permission(addr + offset))
                 msg.append(m)
-            self.out.append("\n  -> ".join(msg))
+
+            # create message
+            self.out.append("\n  -> ".join(msg) + "\n")
             return True
 
         valid = False
         if depth not in self.invalid_addrs:
             self.invalid_addrs[depth] = []
+
         for offset in range(0, max_range + current_arch.ptrsize, current_arch.ptrsize):
+            # align to 32bit / 64bit
             cur = align_address(addr + offset)
+            # is aligned?
+            if cur & 0x7 != 0:
+                continue
+            # is kernel address?
             # TODO: more suitable check for kernel address
             if (cur >> (current_arch.ptrsize * 8 - 1)) == 0:
                 continue
+            # is accessible?
             if not is_valid_addr(cur):
                 continue
-            v = read_int_from_memory(cur)
+            # check result of previous recursive
+            v = self.read_int_from_memory_cache(cur)
             if v in self.invalid_addrs[depth]:
                 continue
-            new_upper_addrs = upper_addrs + [(addr, offset)]
-            ret = self.search(new_upper_addrs, v, max_range, depth - 1)
+            # add to backtrack
+            new_backtrack_info = backtrack_info + [(addr, offset)]
+            # recursive
+            ret = self.search(new_backtrack_info, v, max_range, depth - 1)
             if ret is False:
                 self.invalid_addrs[depth].append(v)
             valid |= ret
@@ -48282,6 +48302,7 @@ class KernelSearchCodePtrCommand(GenericCommand):
 
         self.invalid_addrs = {}
         self.out = []
+        self.cache = {}
         rw_data = read_memory(self.kinfo.krwbase, self.kinfo.krwbase_size)
         rw_data = slice_unpack(rw_data, current_arch.ptrsize)
         for i, rw_d in enumerate(rw_data):
@@ -48290,7 +48311,8 @@ class KernelSearchCodePtrCommand(GenericCommand):
                 gef_print("\r{:7.3f}%".format(progress), end="")
 
             rw_addr = self.kinfo.krwbase + i * current_arch.ptrsize
-            self.search([(rw_addr, 0)], rw_d, args.max_range, args.depth - 1)
+            backtrack_info = [(rw_addr, 0)]
+            self.search(backtrack_info, rw_d, args.max_range, args.depth - 1)
 
         gef_print("\r")
 
