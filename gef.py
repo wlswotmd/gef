@@ -66121,7 +66121,7 @@ class KmallocAllocatedByCommand(GenericCommand):
                     yield ("unlink(\"/tmp/xxx2\")", "unlink", [TMP_XXX2])
                 yield ("close(fd_in)", "close", [fd_in])
 
-            yield "access -> utime -> stat -> truncate"
+            yield "access -> utime -> stat -> statx -> truncate"
             yield ("access(\"/tmp/xxx\", F_OK)", "access", [TMP_XXX, 0])
             self.skipped_syscall.add("faccessat")
             self.skipped_syscall.add("faccessat2")
@@ -66152,6 +66152,38 @@ class KmallocAllocatedByCommand(GenericCommand):
                 self.skipped_syscall.add("fstat")
                 self.skipped_syscall.add("lstat")
                 self.skipped_syscall.add("newfstatat")
+                statxbuf = p32(0)  # stx_mask
+                statxbuf += p32(0) # stx_blksize
+                statxbuf += p64(0) # stx_attributes
+                statxbuf += p32(0) # stx_nlink
+                statxbuf += p32(0) # stx_uid
+                statxbuf += p32(0) # stx_gid
+                statxbuf += p16(0) # stx_mode
+                statxbuf += p16(0) # padding
+                statxbuf += p64(0) # stx_ino
+                statxbuf += p64(0) # stx_size
+                statxbuf += p64(0) # stx_blocks
+                statxbuf += p64(0) # stx_attributes_mask
+                statxbuf += p64(0) # stx_atime.tv_sec
+                statxbuf += p32(0) # stx_atime.tv_nsec
+                statxbuf += p32(0) # stx_atime.padding
+                statxbuf += p64(0) # stx_btime.tv_sec
+                statxbuf += p32(0) # stx_btime.tv_nsec
+                statxbuf += p32(0) # stx_btime.padding
+                statxbuf += p64(0) # stx_ctime.tv_sec
+                statxbuf += p32(0) # stx_ctime.tv_nsec
+                statxbuf += p32(0) # stx_ctime.padding
+                statxbuf += p64(0) # stx_mtime.tv_sec
+                statxbuf += p32(0) # stx_mtime.tv_nsec
+                statxbuf += p32(0) # stx_mtime.padding
+                statxbuf += p32(0) # stx_rdev_major
+                statxbuf += p32(0) # stx_rdev_minor
+                statxbuf += p32(0) # stx_dev_major
+                statxbuf += p32(0) # stx_dev_minor
+                statxbuf += p64(0) # stx_mnt_id
+                statxbuf += p32(0) # stx_dio_mem_align
+                statxbuf += p32(0) # stx_dio_offset_align
+                yield ("statx(0, \"/tmp/xxx\", 0, 0, &statxbuf)", "statx", [0, TMP_XXX, 0, 0, statxbuf])
                 yield ("truncate(\"/tmp/xxx\", 10)", "truncate", [TMP_XXX, 10])
                 self.skipped_syscall.add("ftruncate")
 
@@ -66328,6 +66360,7 @@ class KmallocAllocatedByCommand(GenericCommand):
             buf += p64(0) * 4 # f_spare[4]
             yield ("statfs(\"/\", &buf)", "statfs", ["/\0", buf])
             self.skipped_syscall.add("fstatfs")
+            self.skipped_syscall.add("ustat")
 
             yield "open -> getdents -> fcntl -> close"
             yield ("fd = open(\"/\", 0_RDONLY)", "open", ["/\0", 0])
@@ -66483,6 +66516,7 @@ class KmallocAllocatedByCommand(GenericCommand):
             self.skipped_syscall.add("init_module")       # need CAP_SYS_MODULE
             self.skipped_syscall.add("finit_module")      # need CAP_SYS_MODULE
             self.skipped_syscall.add("delete_module")     # need CAP_SYS_MODULE
+            self.skipped_syscall.add("syslog")            # need CAP_SYS_ADMIN
             self.skipped_syscall.add("pivot_root")        # need CAP_SYS_ADMIN
             self.skipped_syscall.add("mount")             # need CAP_SYS_ADMIN
             self.skipped_syscall.add("umount2")           # need CAP_SYS_ADMIN
