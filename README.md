@@ -444,7 +444,7 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
         * jmp
         * syscall
         * ret
-        * indirect-branch (only x86/x64)
+        * indirect-branch (only x64/x86)
         * all-branch (call || jmp || ret)
         * memory-access (detect just `[...]`)
         * specified-keyword-regex
@@ -497,7 +497,7 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/cpuid.png)
 * `dasm`: disassembles the code by capstone.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dasm.png)
-* `asm-list`: lists up instructions. (only x86/x64)
+* `asm-list`: lists up instructions. (only x64/x86)
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/asm-list.png)
     * This command uses x86data.js from https://github.com/asmjit/asmdb
 * `syscall-search`: searches system call by regex.

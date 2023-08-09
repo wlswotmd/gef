@@ -60211,7 +60211,7 @@ class PagewalkX64Command(PagewalkCommand):
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
     parser.add_argument("-c", "--use-cache", action="store_true", help="use before result.")
-    parser.add_argument("-U", "--user-pt", action="store_true", help="print userland pagetables (for KPTI, x64 only).")
+    parser.add_argument("-U", "--user-pt", action="store_true", help="print userland pagetables (for KPTI, only x64).")
     parser.add_argument("--include-kasan-memory", action="store_true", help="include KASAN shadow memory.")
     _syntax_ = parser.format_help()
 
@@ -64110,7 +64110,7 @@ class ExecUntilCommand(GenericCommand):
     _example_ += "{:s} syscall                             # execute until syscall instruction\n".format(_cmdline_)
     _example_ += "{:s} ret                                 # execute until ret instruction\n".format(_cmdline_)
     _example_ += "{:s} all-branch                          # execute until call/jmp/ret instruction\n".format(_cmdline_)
-    _example_ += "{:s} indirect-branch                     # execute until indirect branch instruction (only x86/x64)\n".format(_cmdline_)
+    _example_ += "{:s} indirect-branch                     # execute until indirect branch instruction (only x64/x86)\n".format(_cmdline_)
     _example_ += "{:s} memaccess                           # execute until '[' is included by the instruction\n".format(_cmdline_)
     _example_ += '{:s} keyword "call +r[ab]x"              # execute until specified keyword (regex)\n'.format(_cmdline_)
     _example_ += '{:s} cond "$rax==0xdead && $rbx==0xcafe" # execute until specified condition is filled\n'.format(_cmdline_)
