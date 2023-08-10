@@ -1,11 +1,12 @@
 ## Table of Contents
 * [What is this?](#what-is-this)
 * [Setup](#setup)
-    * [Install](#install)
-    * [Install (Ubuntu 23.04)](#install-ubuntu-2304)
+    * [Install (Ubuntu 22.04 or before)](#install-ubuntu-2204-or-before)
+    * [Install (Ubuntu 23.04 or after)](#install-ubuntu-2304-or-after)
     * [Upgrade (replace itself)](#upgrade-replace-itself)
     * [Uninstall](#uninstall)
     * [Dependency](#dependency)
+* [Supported environment](#supported-environment)
 * [Supported mode](#supported-mode)
     * [Qemu-system cooperation](#qemu-system-cooperation)
     * [Qemu-user cooperation](#qemu-user-cooperation)
@@ -29,7 +30,7 @@ However, it is specialized for x86 / x64 / ARM / ARM64, and various features are
 
 ## Setup
 
-### Install
+### Install (Ubuntu 22.04 or before)
 
 ```bash
 # Run with root user (sudo is NOT recommended)
@@ -39,7 +40,7 @@ wget -q https://raw.githubusercontent.com/bata24/gef/dev/install.sh -O- | sh
 GEF is installed under `/root` to simplify the installation script.
 If you want to change the location, please modify accordingly.
 
-### Install (Ubuntu 23.04)
+### Install (Ubuntu 23.04 or after)
 
 ```bash
 # Ubuntu 23.04 restricts global installation with pip3, so you need --break-system-packages option.
@@ -62,6 +63,12 @@ sed -i -e '/source \/root\/.gdbinit-gef.py/d' /root/.gdbinit
 See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 [install-minimal.sh](https://github.com/bata24/gef/blob/dev/install-minimal.sh).
 
+
+## Supported environment
+
+- Tested on Ubuntu 22.04.
+- It may work under Ubuntu 20.04 and 23.04.
+
 ## Supported mode
 
 * Normal debugging (start under gdb)
@@ -76,51 +83,52 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 * Connect to the gdb stub of qiling framework (via localhost:9999)
 
 ### Qemu-system cooperation
-* It works with any version qemu-system, but qemu-6.x or higher is recommended.
+* Usage:
     * Start qemu-system with the `-s` option and listen on `localhost:1234`.
     * Attach with `gdb-multiarch -ex 'target remote localhost:1234'`.
-    * Or `gdb-multiarch -ex 'set architecture TARGET_ARCH' -ex 'target remote localhost:1234'`.
+    * Or `gdb-multiarch -ex 'set architecture TARGET_ARCH' -ex 'target remote localhost:1234'` (for old qemu).
     * Most commands should work fine unless `CONFIG_RANDSTRUCT` is enabled.
-* Supported architectures
+    * It works with any version qemu-system, but qemu-6.x or higher is recommended.
+* Supported architectures:
     * x86, x64, ARM and ARM64
 
 ### Qemu-user cooperation
-* It works with any version qemu-user, but qemu-6.x or higher is recommended.
+* Usage:
     * Start qemu-user with the `-g 1234` option and listen on `localhost:1234`.
     * Attach with `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:1234'`.
-    * Or `gdb-multiarch -ex 'set architecture TARGET_ARCH' -ex 'target remote localhost:1234'`.
-* Supported architectures
+    * Or `gdb-multiarch -ex 'set architecture TARGET_ARCH' -ex 'target remote localhost:1234'` (for old qemu).
+    * It works with any version qemu-user, but qemu-6.x or higher is recommended.
+* Supported architectures:
     * See [QEMU-USER-SUPPORTED-ARCH.md](https://github.com/bata24/gef/blob/dev/QEMU-USER-SUPPORTED-ARCH.md)
 
 ### Intel Pin/SDE cooperation
-* Intel Pin:
+* Usage of Intel Pin:
     * Listen with `pin -appdebug -appdebug_server_port 1234 -t obj-intel64/inscount0.so -- /bin/ls`.
     * Attach with `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:1234'`.
     * It runs very slowly and is not recommended.
-* Intel SDE:
+* Usage of Intel SDE:
     * Listen with `sde64 -debug -debug-port 1234 -- /bin/ls`.
     * Attach with `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:1234'`.
     * It runs very slowly and is not recommended.
 
 ### KGDB cooperation
-* It works only gdb 12.x~.
-    * Build your kernel as `CONFIG_KGDB=y`. Ubuntu has supported it by default.
+* Usage:
+    * Build the kernel as `CONFIG_KGDB=y`. Ubuntu has supported it by default.
     * Configure the serial port as a named pipe in your two (debugger/debuggee) virtual machine settings, such as VMware or VirtualBox.
     * Debuggee: Edit `/etc/default/grub` and append `kgdboc=ttyS0,115200 kgdbwait` to the end of `GRUB_CMDLINE_LINUX_DEFAULT`, then `update-grub && reboot`.
     * Debugger: `gdb-multiarch -ex 'target remote /dev/ttyS0'`.
     * It runs very slowly and is not recommended.
-    * Commands for Qemu-system are not supported in KGDB mode (Because there is no way to access physical memory).
+    * Commands for qemu-system are not supported in KGDB mode. Because there is no way to access physical memory.
+    * It works only gdb 12.x~.
 
 ### Qiling framework cooperation
-* This is an experimental support.
+* Usage:
     * Write a harness. See https://docs.qiling.io/en/latest/debugger/
     * `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:9999'`
     * On ARM64, the flag register is not available, so the branch taken/not detected is incorrect.
+    * This is an experimental support.
 
-## Added / Improved features
-
-All of these features are experimental.
-Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
+## Added / improved features
 
 ### Qemu-system cooperation - General
 * `qreg`: displays the register values from qemu-monitor (allows to get like `$cs` even under qemu 2.x).
@@ -236,10 +244,8 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
     * Even with such an address (object), this command may be able to resolve `kmem_cache`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xslubobj.png)
 * `kmalloc-hunter`: collects and displays information when kmalloc/kfree.
-    * Supported on any architecture WITHOUT `-enable-kvm`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmalloc-hunter.png)
 * `kmalloc-allocated-by`: calls a predefined set of system calls and prints structures allocated by kmalloc or freed by kfree.
-    * Supported on x64 WITHOUT `-enable-kvm`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmalloc-allocated-by.png)
 
 ### Qemu-system cooperation - Arch specific
@@ -247,7 +253,6 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
     * Supported on only x64.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/uefi-ovmf-info.png)
 * `msr`: displays MSR (Model Specific Registers) values by embedding/executing dynamic assembly.
-    * Supported on x64/x86 WITHOUT `-enable-kvm`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/msr.png)
 * `xsm`: dumps secure memory when gdb is in normal world.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xsm.png)
@@ -436,7 +441,6 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
 * `xmmset`: sets the value to xmm/ymm register simply.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xmmset.png)
 * `mmxset`: sets the value to mm register simply.
-    * Supported on x64/x86 WITHOUT `-enable-kvm`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/mmxset.png)
 * `exec-until`: executes until specified operation.
     * Supported following patterns of detection.
@@ -493,7 +497,6 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/multi-line.png)
 * `rp`: invokes `rp++` with commonly used options.
 * `cpuid`: shows the result of cpuid(eax=0,1,2...).
-    * Supported on x64/x86 WITHOUT `-enable-kvm`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/cpuid.png)
 * `dasm`: disassembles the code by capstone.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dasm.png)
@@ -554,7 +557,7 @@ Tested on Ubuntu 22.04. It may work under Ubuntu 20.04 and 23.04.
     * `peek-pointers`, `current-stack-frame`, `xref-telescope`, `bytearray`, and `bincompare`.
     * This is because a single file is more attractive than ease of maintenance.
 * The system-call table used by `syscall-args` is moved from gef-extras.
-    * It was updated up to linux kernel 6.3.9 for each architecture.
+    * It was updated up to linux kernel 6.4.9 for each architecture.
 * Removed some features I don't use.
     * `$`, `ida-interact`, `gef-remote`, `pie`, `pcustom`, `ksymaddr`, `trace-run`, `bufferize`, `output redirect` and `shellcode`.
 * Many bugs fix / formatting / made it easy for me to use.
