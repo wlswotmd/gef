@@ -20993,7 +20993,12 @@ class MainBreakCommand(GenericCommand):
 
         EntryBreakBreakpoint("*{:#x}".format(main_address))
         hide_context()
-        gdb.execute("c")
+        try:
+            gdb.execute("c")
+        except gdb.error as e:
+            err(str(e))
+            unhide_context()
+            return
         unhide_context()
         gdb.execute("ctx")
         return
