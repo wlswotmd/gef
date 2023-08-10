@@ -23389,6 +23389,7 @@ class PatchHistoryCommand(PatchCommand):
     """Show patch history."""
     _cmdline_ = "patch history"
     _category_ = "03-c. Memory - Patch"
+    _aliases_ = ["patch list"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -23427,8 +23428,10 @@ class PatchRevertCommand(PatchCommand):
     _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("revert_target", metavar="REVERT_TARGET_HISTORY", type=int,
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("revert_target", metavar="REVERT_TARGET_HISTORY", nargs="?", type=int,
                         help="the history index number you want to revert.")
+    group.add_argument("--all", action="store_true", help="revert all patches")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} 0 # revert to patch history stack[0]\n".format(_cmdline_)
@@ -23445,13 +23448,20 @@ class PatchRevertCommand(PatchCommand):
 
         global __patch_history__
 
-        if not (0 <= args.revert_target < len(__patch_history__)):
-            err("Invalid target index")
-            gef_print(titlify("Patch history"))
-            gdb.execute("patch history")
+        if len(__patch_history__) == 0:
+            info("Patch history is empty.")
             return
 
-        revert_count = args.revert_target + 1
+        if args.all:
+            revert_count = len(__patch_history__)
+        else:
+            if not (0 <= args.revert_target < len(__patch_history__)):
+                err("Invalid target index")
+                gef_print(titlify("Patch history"))
+                gdb.execute("patch history")
+                return
+            revert_count = args.revert_target + 1
+
         while __patch_history__ and revert_count > 0:
             hist = __patch_history__.pop(0)
             b = " ".join(["{:02x}".format(x) for x in hist["before_data"][:0x10]])
