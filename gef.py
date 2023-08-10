@@ -11426,7 +11426,7 @@ class VersionCommand(GenericCommand):
 
 @register_command
 class HighlightCommand(GenericCommand):
-    """Base command to highlight user defined text matches which modifies GEF output universally."""
+    """The base command to highlight user defined text matches which modifies GEF output universally."""
     _cmdline_ = "highlight"
     _category_ = "01-f. Debugging Support - Context Extension"
 
@@ -12951,7 +12951,7 @@ class SmartMemoryDumpCommand(GenericCommand):
 
 @register_command
 class HijackFdCommand(GenericCommand):
-    """Redirect file descriptor during runtime."""
+    """Redirect the file descriptor during runtime."""
     _cmdline_ = "hijack-fd"
     _category_ = "01-g. Debugging Support - Other"
 
@@ -13133,7 +13133,7 @@ class HijackFdCommand(GenericCommand):
 
 @register_command
 class ScanSectionCommand(GenericCommand):
-    """Search for addresses that are located in a memory mapping (haystack) that belonging to another (needle)."""
+    """Search for addresses located in a memory mapping (haystack) that belonging to another (needle)."""
     _cmdline_ = "scan-section"
     _category_ = "03-a. Memory - Search"
 
@@ -15501,7 +15501,7 @@ class CapstoneDisassembleCommand(GenericCommand):
 
 @register_command
 class GlibcHeapCommand(GenericCommand):
-    """Base command to get information about the Glibc heap structure."""
+    """The base command to get information about the Glibc heap structure."""
     _cmdline_ = "heap"
     _category_ = "06-a. Heap - Glibc"
 
@@ -22325,7 +22325,7 @@ class ContextCommand(GenericCommand):
 
 @register_command
 class MemoryCommand(GenericCommand):
-    """Base command to watch the memory."""
+    """The base command to watch the memory."""
     _cmdline_ = "memory"
     _category_ = "01-f. Debugging Support - Context Extension"
 
@@ -22388,7 +22388,7 @@ class MemoryWatchCommand(GenericCommand):
 
 @register_command
 class MemoryUnwatchCommand(GenericCommand):
-    """Removes address ranges to the memory view."""
+    """Remove address ranges to the memory view."""
     _cmdline_ = "memory unwatch"
     _category_ = "01-f. Debugging Support - Context Extension"
 
@@ -22421,7 +22421,7 @@ class MemoryUnwatchCommand(GenericCommand):
 
 @register_command
 class MemoryWatchResetCommand(GenericCommand):
-    """Removes all watchpoints."""
+    """Remove all watchpoints."""
     _cmdline_ = "memory reset"
     _category_ = "01-f. Debugging Support - Context Extension"
 
@@ -22442,7 +22442,7 @@ class MemoryWatchResetCommand(GenericCommand):
 
 @register_command
 class MemoryWatchListCommand(GenericCommand):
-    """Lists all watchpoints to display in context layout."""
+    """List all watchpoints to display in context layout."""
     _cmdline_ = "memory list"
     _category_ = "01-f. Debugging Support - Context Extension"
 
@@ -22662,7 +22662,7 @@ class HexdumpFlexibleCommand(GenericCommand):
 
 @register_command
 class PatchCommand(GenericCommand):
-    """Base command to write specified values to the specified address."""
+    """The base command to write specified values to the specified address."""
     _cmdline_ = "patch"
     _category_ = "03-c. Memory - Patch"
 
@@ -22967,7 +22967,7 @@ class PatchHexStringCommand(PatchCommand):
 
 @register_command
 class PatchPatternCommand(PatchCommand):
-    """Write pattern string to the specified memory location pointed by LOCATION."""
+    """Write a pattern string to the specified memory location pointed by LOCATION."""
     _cmdline_ = "patch pattern"
     _category_ = "03-c. Memory - Patch"
 
@@ -23784,7 +23784,7 @@ class DereferenceCommand(GenericCommand):
 
 @register_command
 class ASLRCommand(GenericCommand):
-    """View/modify the ASLR setting of GDB."""
+    """View / modify the ASLR setting of GDB."""
     _cmdline_ = "aslr"
     _category_ = "02-f. Process Information - Security"
 
@@ -23821,7 +23821,7 @@ class ASLRCommand(GenericCommand):
 
 @register_command
 class FollowCommand(GenericCommand):
-    """View/modify the follow-fork-mode setting of GDB."""
+    """View / modify the follow-fork-mode setting of GDB."""
     _cmdline_ = "follow"
     _category_ = "01-g. Debugging Support - Other"
 
@@ -23875,7 +23875,7 @@ class SmartCppFunctionNameCommand(GenericCommand):
 
 @register_command
 class ContextExtraCommand(GenericCommand):
-    """Base command to add, remove, or list context-extra."""
+    """The base command to add, remove, or list context-extra."""
     _cmdline_ = "context-extra"
     _category_ = "01-f. Debugging Support - Context Extension"
 
@@ -24221,7 +24221,7 @@ class XInfoCommand(GenericCommand):
 
 @register_command
 class XorMemoryCommand(GenericCommand):
-    """Base command to XOR a block of memory."""
+    """The base command to XOR a block of memory."""
     _cmdline_ = "xor-memory"
     _category_ = "03-d. Memory - Calculation"
 
@@ -24330,7 +24330,7 @@ class XorMemoryPatchCommand(GenericCommand):
 
 @register_command
 class PatternCommand(GenericCommand):
-    """Base command to Create or search a De Bruijn cyclic pattern (used pwntools)."""
+    """The base command to create or search a De Bruijn cyclic pattern (used pwntools)."""
     _cmdline_ = "pattern"
     _category_ = "09-c. Misc - Generation"
 
@@ -52519,7 +52519,7 @@ class SlabDumpCommand(GenericCommand):
         unsigned int freelist_size;
         void (*ctor)(void *obj);
         const char *name;
-        struct list_head list;  <-----> struct list_head <-----> struct list_head <-----> ..
+        struct list_head list;  <-----> struct list_head <-----> struct list_head <-----> ...
         int refcount;
         int object_size;
         int align;
@@ -59895,7 +59895,7 @@ class P2VCommand(GenericCommand):
 
 @register_command
 class PagewalkCommand(GenericCommand):
-    """Base command to get physical memory info via qemu-monitor."""
+    """The base command to get physical memory info via qemu-monitor."""
     _cmdline_ = "pagewalk"
     _category_ = "08-a. Qemu-system Cooperation - General"
 
@@ -64129,7 +64129,7 @@ class UntilNextCommand(GenericCommand):
 
 @register_command
 class ExecUntilCommand(GenericCommand):
-    """Base command to execute until specific condition."""
+    """The base command to execute until specific condition."""
     _cmdline_ = "exec-until"
     _category_ = "01-d. Debugging Support - Execution"
 
@@ -64621,6 +64621,7 @@ class ExecUntilCondCommand(ExecUntilCommand):
         self.condition = condition
         self.exec_next()
         return
+
 
 @register_command
 class ExecUntilUserCodeCommand(ExecUntilCommand):
@@ -67887,7 +67888,7 @@ class BincompareCommand(GenericCommand):
 
 @register_command
 class GefCommand(GenericCommand):
-    """Base command of GEF maintenance."""
+    """The base command of GEF maintenance."""
     _cmdline_ = "gef"
     _category_ = "99. GEF Maintenance Command"
 
@@ -68507,7 +68508,7 @@ class GefAlias(gdb.Command):
 
 @register_command
 class AliasesCommand(GenericCommand):
-    """Base command to add, remove, or list aliases."""
+    """The base command to add, remove, or list aliases."""
     _cmdline_ = "aliases"
     _category_ = "99. GEF Maintenance Command"
 
