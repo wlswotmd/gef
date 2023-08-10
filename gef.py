@@ -53752,6 +53752,7 @@ class XSlubOjbectCommand(GenericCommand):
     """Resolve which `kmem_cache` certain address (object) belongs to. (only x64)"""
     _cmdline_ = "xslubobj"
     _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
+    _aliases_ = ["slub-contains"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="target address.")
