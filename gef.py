@@ -65578,6 +65578,16 @@ class KmallocAllocatedByCommand(GenericCommand):
                 fd = ret_history[-1]
                 yield ("close(fd)", "close", [fd])
 
+            yield "rseq"
+            rseq = p32(0) # cpu_id_start
+            rseq += p32(0) # cpu_id
+            rseq += p64(0) # rseq_cs
+            rseq += p32(0) # flags
+            rseq += p32(0) # node_id
+            rseq += p32(0) # mm_cid
+            rseq += p32(0) # padding
+            yield ("rseq(&rseq, sizeof(rseq), 0, sig)", "rseq", [rseq, len(rseq), 0, 0x53053053])
+
             yield "perf_event_open (need kernel.perf_event_paranoid <= 2) -> close"
             attr = p32(1)      # type: PERF_TYPE_SOFTWARE
             attr += p32(0x80)  # size: sizeof(attr)
@@ -65715,6 +65725,10 @@ class KmallocAllocatedByCommand(GenericCommand):
             yield ("arch_prctl(ARCH_GET_FS, &buf)", "arch_prctl", [0x1003, buf])
             fsbase = ret_history[-1]
             yield ("set_tid_address(fsbase)", "set_tid_address", [fsbase])
+
+            yield "futex"
+            uaddr = p64(0)
+            yield ("futex(&uaddr, FUTEX_WAKE, 1, &timeout, 0, 0)", "futex", [uaddr, 1, 1, 0, 0, 0])
 
             yield "time"
             yield ("time(NULL)", "time", [0])
@@ -66078,7 +66092,7 @@ class KmallocAllocatedByCommand(GenericCommand):
             if u2i(ret_history[-1]) >= 0:
                 fd = ret_history[-1]
                 pipefd_array = p32(0) * 2 # pipefd[2]
-                yield ("pipe(pipefd[2])", "pipe", [pipefd_array])
+                yield ("pipe(&pipefd[])", "pipe", [pipefd_array])
                 self.skipped_syscall.add("pipe2")
                 if u2i(ret_history[-1]) >= 0:
                     pipefd0 = u32(read_memory(current_arch.sp, 4))
@@ -66102,11 +66116,11 @@ class KmallocAllocatedByCommand(GenericCommand):
 
             yield "pipe -> pipe -> tee -> close_range"
             pipefd_array = p32(0) * 2 # pipefd[2]
-            yield ("pipe(pipefd[2])", "pipe", [pipefd_array])
+            yield ("pipe(&pipefd[])", "pipe", [pipefd_array])
             pipefd0 = u32(read_memory(current_arch.sp, 4))
-            pipefd1 = u32(read_memory(current_arch.sp + 4, 4))
-            yield ("pipe(pipefd[2])", "pipe", [pipefd_array])
-            pipefd2 = u32(read_memory(current_arch.sp, 4))
+            _pipefd1 = u32(read_memory(current_arch.sp + 4, 4))
+            yield ("pipe(&pipefd[])", "pipe", [pipefd_array])
+            _pipefd2 = u32(read_memory(current_arch.sp, 4))
             pipefd3 = u32(read_memory(current_arch.sp + 4, 4))
             yield ("tee(pipefd[0], pipefd[3], 0", "tee", [pipefd0, pipefd3])
             yield ("close_range(pipefd[0], pipefd[3], 0)", "close_range", [pipefd0, pipefd3, 0])
@@ -66426,7 +66440,7 @@ class KmallocAllocatedByCommand(GenericCommand):
 
             yield "socketpair AF_UNIX -> sendto -> recvfrom -> sendmsg -> recvmsg -> shutdown -> close"
             sv_array = p32(0) * 2 # sv[2]
-            yield ("socketpair(AF_UNIX, SOCK_STREAM, 0, sv[2])", "socketpair", [1, 1, 0, sv_array])
+            yield ("socketpair(AF_UNIX, SOCK_STREAM, 0, &sv[])", "socketpair", [1, 1, 0, sv_array])
             if u2i(ret_history[-1]) >= 0:
                 sv0 = u32(read_memory(current_arch.sp, 4))
                 sv1 = u32(read_memory(current_arch.sp + 4, 4))
@@ -66536,8 +66550,13 @@ class KmallocAllocatedByCommand(GenericCommand):
             self.skipped_syscall.add("sethostname")       # need CAP_SYS_ADMIN
             self.skipped_syscall.add("setdomainname")     # need CAP_SYS_ADMIN
             self.skipped_syscall.add("setns")             # need CAP_SYS_ADMIN
+            self.skipped_syscall.add("move_mount")        # need CAP_SYS_ADMIN
+            self.skipped_syscall.add("fsopen")            # need CAP_SYS_ADMIN
+            self.skipped_syscall.add("fspick")            # need CAP_SYS_ADMIN
+            self.skipped_syscall.add("fsconfig")          # need CAP_SYS_ADMIN
+            self.skipped_syscall.add("fsmount")           # need CAP_SYS_ADMIN
             self.skipped_syscall.add("fanotify_init")     # need CAP_SYS_ADMIN
-            self.skipped_syscall.add("fanotify_mark")     # need fd opened by fanotify_init
+            self.skipped_syscall.add("fanotify_mark")     # need CAP_SYS_ADMIN
             self.skipped_syscall.add("clock_settime")     # need CAP_SYS_TIME
             self.skipped_syscall.add("settimeofday")      # need CAP_SYS_TIME
             self.skipped_syscall.add("open_by_handle_at") # need CAP_DAC_READ_SEARCH
