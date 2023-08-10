@@ -3869,6 +3869,14 @@ class Architecture:
         pass
 
     @abc.abstractproperty
+    def bit_length(self):
+        pass
+
+    @abc.abstractproperty
+    def endianness(self):
+        pass
+
+    @abc.abstractproperty
     def instruction_length(self):
         pass
 
@@ -4051,6 +4059,8 @@ class RISCV(Architecture):
     syscall_register = "$a7"
     syscall_parameters = ["$a0", "$a1", "$a2", "$a3", "$a4", "$a5"]
 
+    bit_length = 32
+    endianness = "little"
     instruction_length = None # variable length
     has_delay_slot = False
     has_syscall_delay_slot = False
@@ -4225,6 +4235,8 @@ class RISCV64(RISCV):
     arch = "RISCV"
     mode = "64"
 
+    bit_length = 64
+
     @classmethod
     def mprotect_asm_raw(cls, addr, size, perm):
 
@@ -4341,6 +4353,8 @@ class ARM(Architecture):
 
     def is_thumb(self):
         """Determine if the machine is currently in THUMB mode."""
+        if current_arch.arch != "ARM":
+            return False
         return is_alive() and get_register(self.flag_register) & (1 << self.thumb_bit)
 
     @property
@@ -4349,6 +4363,9 @@ class ARM(Architecture):
             return "THUMB"
         else:
             return "ARM"
+
+    bit_length = 32
+    endianness = "little / big"
 
     @property
     def instruction_length(self):
@@ -4640,7 +4657,10 @@ class AARCH64(ARM):
     syscall_register = "$x8"
     syscall_parameters = ["$x0", "$x1", "$x2", "$x3", "$x4", "$x5"]
 
+    bit_length = 64
+    endianness = "little"
     instruction_length = 4
+
     nop_insn = b"\x1f\x20\x03\xd5" # nop
     infloop_insn = b"\x00\x00\x00\x14" # b #0
     trap_insn = b"\x00\x00\x20\xd4" # brk #0
@@ -4758,6 +4778,8 @@ class X86(Architecture):
     syscall_register = "$eax"
     syscall_parameters = ["$ebx", "$ecx", "$edx", "$esi", "$edi", "$ebp"]
 
+    bit_length = 32
+    endianness = "little"
     instruction_length = None # variable length
     has_delay_slot = False
     has_syscall_delay_slot = False
@@ -4901,10 +4923,13 @@ class X86_64(X86):
     ]
     all_registers = gpr_registers + [X86.flag_register] + X86.special_registers
     alias_registers = {}
+
     return_register = "$rax"
     function_parameters = ["$rdi", "$rsi", "$rdx", "$rcx", "$r8", "$r9"]
     syscall_register = "$rax"
     syscall_parameters = ["$rdi", "$rsi", "$rdx", "$r10", "$r8", "$r9"]
+
+    bit_length = 64
 
     syscall_insn = b"\x0f\x05" # syscall
 
@@ -4972,6 +4997,8 @@ class PPC(Architecture):
     syscall_register = "$r0"
     syscall_parameters = ["$r3", "$r4", "$r5", "$r6", "$r7", "$r8", "$r9"]
 
+    bit_length = 32
+    endianness = "little / big"
     instruction_length = 4
     has_delay_slot = False
     has_syscall_delay_slot = False
@@ -5156,6 +5183,8 @@ class PPC64(PPC):
     }
     syscall_parameters = ["$r3", "$r4", "$r5", "$r6", "$r7", "$r8"]
 
+    bit_length = 64
+
     unicorn_support = False
 
     def get_ith_parameter(self, i, in_func=True):
@@ -5229,6 +5258,8 @@ class SPARC(Architecture):
     syscall_register = "$g1"
     syscall_parameters = ["$o0", "$o1", "$o2", "$o3", "$o4", "$o5"]
 
+    bit_length = 32
+    endianness = "big"
     instruction_length = 4
     has_delay_slot = True
     has_syscall_delay_slot = True
@@ -5392,6 +5423,9 @@ class SPARC64(SPARC):
         32: "carry",
     }
 
+    bit_length = 64
+    endianness = "big"
+
     nop_insn = b"\x00\x00\x00\x01" # nop
     infloop_insn = b"\x00\x00\x80\x10" # b self
     trap_insn = None
@@ -5469,6 +5503,8 @@ class MIPS(Architecture):
     syscall_parameters_o32 = ["$a0", "$a1", "$a2", "$a3", "$sp+0x10", "$sp+0x14", "$sp+0x18", "$sp+0x1c"]
     syscall_parameters_n32 = ["$a0", "$a1", "$a2", "$a3", "$a4", "$a5"]
 
+    bit_length = 32
+    endianness = "little / big"
     instruction_length = 4
     has_delay_slot = True
     has_syscall_delay_slot = True
@@ -5640,6 +5676,8 @@ class MIPS64(MIPS):
     function_parameters = ["$a0", "$a1", "$a2", "$a3", "$a4", "$a5", "$a6", "$a7"]
     syscall_parameters = ["$a0", "$a1", "$a2", "$a3", "$a4", "$a5"]
 
+    bit_length = 64
+
     unicorn_support = False
 
     def get_ith_parameter(self, i, in_func=True):
@@ -5684,7 +5722,7 @@ class MIPS64(MIPS):
 
 class S390X(Architecture):
     arch = "S390X"
-    mode = "S390X"
+    mode = "64"
 
     # https://www.ibm.com/docs/en/SSQ2R2_15.0.0/com.ibm.tpf.toolkit.hlasm.doc/dz9zr006.pdf
     all_registers = [
@@ -5706,6 +5744,8 @@ class S390X(Architecture):
     syscall_register = [r"svc\s+(\d+)", "$r1"] # $r1 is used when NR > 127
     syscall_parameters = ["$r2", "$r3", "$r4", "$r5", "$r6", "$r7"]
 
+    bit_length = 64
+    endianness = "big"
     instruction_length = None # variable length
     has_delay_slot = False
     has_syscall_delay_slot = True
@@ -6060,6 +6100,8 @@ class SH4(Architecture):
     syscall_register = "$r3"
     syscall_parameters = ["$r4", "$r5", "$r6", "$r7", "$r0", "$r1", "$r2"]
 
+    bit_length = 32
+    endianness = "little"
     instruction_length = 2
     has_delay_slot = True
     has_syscall_delay_slot = True
@@ -6217,7 +6259,7 @@ class SH4(Architecture):
 
 class M68K(Architecture):
     arch = "M68K"
-    mode = "M68K"
+    mode = "32"
 
     # https://www.nxp.com/files-static/archives/doc/ref_manual/M68000PRM.pdf
     all_registers = [
@@ -6241,6 +6283,8 @@ class M68K(Architecture):
     syscall_register = "$d0"
     syscall_parameters = ["$d1", "$d2", "$d3", "$d4", "$d5", "$a0"]
 
+    bit_length = 32
+    endianness = "big"
     instruction_length = None # variable length
     has_delay_slot = False
     has_syscall_delay_slot = True
@@ -6476,6 +6520,8 @@ class ALPHA(Architecture):
     syscall_register = "$v0"
     syscall_parameters = ["$a0", "$a1", "$a2", "$a3", "$a4", "$a5"]
 
+    bit_length = 64
+    endianness = "little"
     instruction_length = 4
     has_delay_slot = False
     has_syscall_delay_slot = False
@@ -6648,6 +6694,8 @@ class HPPA(Architecture):
     syscall_register = "$r20"
     syscall_parameters = ["$r26", "$r25", "$r24", "$r23", "$r22", "$r21"]
 
+    bit_length = 32
+    endianness = "big"
     instruction_length = 4
     has_delay_slot = True
     has_syscall_delay_slot = True
@@ -7002,6 +7050,8 @@ class HPPA64(HPPA):
     arch = "HPPA"
     mode = "64"
 
+    bit_length = 64
+
     # qemu does not support hppa64, so I could not test
 
 
@@ -7032,6 +7082,8 @@ class OR1K(Architecture):
     syscall_register = "$r11"
     syscall_parameters = ["$r3", "$r4", "$r5", "$r6", "$r7", "$r8"]
 
+    bit_length = 32
+    endianness = "big"
     instruction_length = 4
     has_delay_slot = True
     has_syscall_delay_slot = True
@@ -7151,6 +7203,8 @@ class NIOS2(Architecture):
     syscall_register = "$r2"
     syscall_parameters = ["$r4", "$r5", "$r6", "$r7", "$r8", "$r9"]
 
+    bit_length = 32
+    endianness = "little"
     instruction_length = 4
     has_delay_slot = False
     has_syscall_delay_slot = False
@@ -7283,6 +7337,8 @@ class MICROBLAZE(Architecture):
     syscall_register = "$r12"
     syscall_parameters = ["$r5", "$r6", "$r7", "$r8", "$r9", "$r10"]
 
+    bit_length = 32
+    endianness = "little / big"
     instruction_length = 4
     has_delay_slot = True
     has_syscall_delay_slot = True
@@ -7432,6 +7488,8 @@ class XTENSA(Architecture):
     syscall_register = "$a2"
     syscall_parameters = ["$a6", "$a3", "$a4", "$a5", "$a8", "$a9"]
 
+    bit_length = 32
+    endianness = "little / big"
     instruction_length = None # variable length
     has_delay_slot = False
     has_syscall_delay_slot = False
@@ -7683,6 +7741,8 @@ class CRIS(Architecture):
     syscall_register = "$r9"
     syscall_parameters = ["$r10", "$r11", "$r12", "$r13", "$dcr1/mof", "$sp+0x4"]
 
+    bit_length = 32
+    endianness = "little"
     instruction_length = None # variable length
     has_delay_slot = True
     has_syscall_delay_slot = True
@@ -7846,6 +7906,8 @@ class LOONGARCH64(Architecture):
     syscall_register = "$r11"
     syscall_parameters = ["$r4", "$r5", "$r6", "$r7", "$r8", "$r9"]
 
+    bit_length = 64
+    endianness = "little"
     instruction_length = 4
     has_delay_slot = False
     has_syscall_delay_slot = False
@@ -8035,6 +8097,8 @@ class ARC(Architecture):
     syscall_register = "$r8"
     syscall_parameters = ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5"]
 
+    bit_length = 32
+    endianness = "little"
     instruction_length = None # variable length
     has_delay_slot = True
     has_syscall_delay_slot = False
@@ -16843,7 +16907,7 @@ class AssembleCommand(GenericCommand):
     _example_ += '{:s} -a PPC -m 64 -e "add 1, 2, 3"\n'.format(_cmdline_)
     _example_ += '{:s} -a SPARC -m 32 -e "add %g1, %g2, %g3"\n'.format(_cmdline_)
     _example_ += '{:s} -a SPARC -m 64 -e "add %g1, %g2, %g3"\n'.format(_cmdline_)
-    _example_ += '{:s} -a S390X -m S390X -e "a %r0, 4095(%r15,%r1)"'.format(_cmdline_)
+    _example_ += '{:s} -a S390X -m 64 -e "a %r0, 4095(%r15,%r1)"'.format(_cmdline_)
 
     @parse_args
     @load_keystone
@@ -16946,8 +17010,8 @@ class DisassembleCommand(GenericCommand):
     _example_ += '{:s} -a SPARC -m 64 -e "86004002"\n'.format(_cmdline_)
     _example_ += '{:s} -a RISCV -m 32 "97c10600"\n'.format(_cmdline_)
     _example_ += '{:s} -a RISCV -m 64 "97c10600"\n'.format(_cmdline_)
-    _example_ += '{:s} -a S390X -m S390X -e "5a0f1fff"\n'.format(_cmdline_)
-    _example_ += '{:s} -a M68K -m M68K -e "9dce"'.format(_cmdline_)
+    _example_ += '{:s} -a S390X -m 64 -e "5a0f1fff"\n'.format(_cmdline_)
+    _example_ += '{:s} -a M68K -m 32 -e "9dce"'.format(_cmdline_)
 
     @parse_args
     @load_capstone
@@ -17417,17 +17481,17 @@ class ArchInfoCommand(GenericCommand):
         gef_print("{:30s} {:s} {!s}".format("instruction length", RIGHT_ARROW, inst_len))
         fparams = ", ".join(current_arch.function_parameters)
         if len(current_arch.function_parameters) == 1:
-            fparams += "(passing via stack)"
+            fparams += " (passing via stack)"
         gef_print("{:30s} {:s} {!s}".format("return register", RIGHT_ARROW, current_arch.return_register))
         gef_print("{:30s} {:s} {!s}".format("function parameters", RIGHT_ARROW, fparams))
         gef_print("{:30s} {:s} {!s}".format("syscall register", RIGHT_ARROW, current_arch.syscall_register))
         if is_mips32():
-            sparams = ", ".join(arch.syscall_parameters_n32)
+            sparams = ", ".join(current_arch.syscall_parameters_n32)
             gef_print("{:30s} {:s} {!s}".format("syscall parameters (n32)", RIGHT_ARROW, sparams))
-            sparams = ", ".join(arch.syscall_parameters_o32)
+            sparams = ", ".join(current_arch.syscall_parameters_o32)
             gef_print("{:30s} {:s} {!s}".format("syscall parameters (o32)", RIGHT_ARROW, sparams))
         else:
-            sparams = ", ".join(arch.syscall_parameters)
+            sparams = ", ".join(current_arch.syscall_parameters)
             gef_print("{:30s} {:s} {!s}".format("syscall parameters", RIGHT_ARROW, sparams))
         if is_x86() or is_arm32() or is_arm64():
             gef_print("{:30s} {:s} {!s}".format("32bit-emulated (compat mode)", RIGHT_ARROW, self.is_emulated32()))
@@ -26518,9 +26582,9 @@ class SyscallSearchCommand(GenericCommand):
     _example_ += '{:s} -a SPARC -m 64      "^writev?" # sparc64\n'.format(_cmdline_)
     _example_ += '{:s} -a RISCV -m 32      "^writev?" # riscv32\n'.format(_cmdline_)
     _example_ += '{:s} -a RISCV -m 64      "^writev?" # riscv64\n'.format(_cmdline_)
-    _example_ += '{:s} -a S390X            "^writev?" # s390x\n'.format(_cmdline_)
+    _example_ += '{:s} -a S390X -m 64      "^writev?" # s390x\n'.format(_cmdline_)
     _example_ += '{:s} -a SH4              "^writev?" # sh4\n'.format(_cmdline_)
-    _example_ += '{:s} -a M68K             "^writev?" # m68k\n'.format(_cmdline_)
+    _example_ += '{:s} -a M68K -m 32       "^writev?" # m68k\n'.format(_cmdline_)
     _example_ += '{:s} -a ALPHA            "^writev?" # alpha\n'.format(_cmdline_)
     _example_ += '{:s} -a HPPA -m 32       "^writev?" # hppa32\n'.format(_cmdline_)
     _example_ += '{:s} -a HPPA -m 64       "^writev?" # hppa64\n'.format(_cmdline_)
@@ -26560,7 +26624,7 @@ class SyscallSearchCommand(GenericCommand):
         target_mode = args.mode
         # force fixing
         if target_mode is None:
-            if target_arch in ["S390X", "SH4", "M68K", "ALPHA", "OR1K", "NIOS2", "MICROBLAZE", "XTENSA", "CRIS"]:
+            if target_arch in ["SH4", "ALPHA", "OR1K", "NIOS2", "MICROBLAZE", "XTENSA", "CRIS"]:
                 target_mode = target_arch
 
         try:
@@ -38032,7 +38096,7 @@ def get_syscall_table(arch=None, mode=None):
         ]
         syscall_list += arch_specific_extra
 
-    elif arch == "S390X" and mode == "S390X":
+    elif arch == "S390X" and mode == "64":
         register_list = S390X().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(s390x_syscall_tbl)
@@ -38136,7 +38200,7 @@ def get_syscall_table(arch=None, mode=None):
                 raise
             syscall_list.append([nr, name, sc_def[func]])
 
-    elif arch == "M68K" and mode == "M68K":
+    elif arch == "M68K" and mode == "32":
         register_list = M68K().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(m68k_syscall_tbl)
@@ -68434,6 +68498,12 @@ class GefArchListCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     def print_arch_info(self, arch):
+        # unsupported currently.
+        # I made a definition for displaying syscalls, so it's just provisional.
+        if arch.arch == "HPPA" and arch.mode == "64":
+            return
+
+        # title
         if arch.arch == "ARM":
             arch_name = "ARM (ARM/THUMB)"
         elif arch.arch == arch.mode:
@@ -68442,6 +68512,9 @@ class GefArchListCommand(GenericCommand):
             arch_name = "{:s} {:s}".format(arch.arch, arch.mode)
         self.out.append(titlify(arch_name))
 
+        # settings
+        self.out.append("{:30s} {:s} {!s}".format("bit length", RIGHT_ARROW, arch.bit_length))
+        self.out.append("{:30s} {:s} {!s}".format("endianness", RIGHT_ARROW, arch.endianness))
         if arch.instruction_length is None:
             inst_len = "variable length"
         else:
@@ -68449,7 +68522,7 @@ class GefArchListCommand(GenericCommand):
         self.out.append("{:30s} {:s} {!s}".format("instruction length", RIGHT_ARROW, inst_len))
         fparams = ", ".join(arch.function_parameters)
         if len(arch.function_parameters) == 1:
-            fparams += "(passing via stack)"
+            fparams += " (passing via stack)"
         self.out.append("{:30s} {:s} {!s}".format("return register", RIGHT_ARROW, arch.return_register))
         self.out.append("{:30s} {:s} {!s}".format("function parameters", RIGHT_ARROW, fparams))
         self.out.append("{:30s} {:s} {!s}".format("syscall register", RIGHT_ARROW, arch.syscall_register))
