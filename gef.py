@@ -6450,7 +6450,7 @@ class M68K(Architecture):
             regname = insn.operands[0].replace("%", "$")
             val = get_register(regname)
             taken, reason = val != 0, "{:s}==0".format(regname)
-        # TODO fbXXw, fbXXl
+        # TODO: fbXXw, fbXXl
         return taken, reason
 
     def flag_register_to_human(self, val=None):
@@ -63537,7 +63537,7 @@ class PagewalkArm64Command(PagewalkCommand):
         self.mappings = None
         self.el2_mappings = None
 
-        # TODO implementation for VSTTBR_EL2, VSTCR_EL2 pattern
+        # TODO: implementation for VSTTBR_EL2, VSTCR_EL2 pattern
 
         # do pagewalk
         if self.TargetEL < 1 or 3 < self.TargetEL:
