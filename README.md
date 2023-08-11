@@ -247,6 +247,8 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmalloc-tracer.png)
 * `kmalloc-allocated-by`: calls a predefined set of system calls and prints structures allocated by kmalloc or freed by kfree.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmalloc-allocated-by.png)
+* `buddy-dump`: dumps zone of page allocator (buddy allocator) freelist with kernel memory scanning.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/buddy-dump.png)
 
 ### Qemu-system cooperation - Arch specific
 * `uefi-ovmf-info`: dumps addresses of some important structures in each boot phase of UEFI when OVMF is used (heuristic).

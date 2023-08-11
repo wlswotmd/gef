@@ -43787,6 +43787,47 @@ class KernelAddressHeuristicFinder:
             return base
         return None
 
+    @staticmethod
+    def get_node_data():
+        # plan 1 (directly)
+        node_data = get_ksymaddr("node_data")
+        if node_data:
+            return node_data
+
+        # plan 2 (available v2.6.17 or later)
+        first_online_pgdat = get_ksymaddr("first_online_pgdat")
+        if first_online_pgdat:
+            res = gdb.execute("x/10i {:#x}".format(first_online_pgdat), to_string=True)
+            if is_x86_64():
+                for line in res.splitlines():
+                    m = re.search(r"mov.*QWORD PTR \[.*([-+]0x\S+)\]", line)
+                    if m:
+                        v = int(m.group(1), 16) & 0xffffffffffffffff
+                        if is_valid_addr(v):
+                            return v
+        return None
+
+    @staticmethod
+    def get_node_data0():
+        # plan 1 (available v2.6.17 or later)
+        first_online_pgdat = get_ksymaddr("first_online_pgdat")
+        if first_online_pgdat:
+            res = gdb.execute("x/10i {:#x}".format(first_online_pgdat), to_string=True)
+            if is_x86_64():
+                v = None
+                for line in res.splitlines():
+                    m = re.search(r"mov\s+rax\s*,\s*(0x\S+)", line)
+                    if m:
+                        v_ = int(m.group(1), 16) & 0xffffffffffffffff
+                        if is_valid_addr(v_):
+                            v = v_
+                        continue
+                    m = re.search(r"ret", line)
+                    if m:
+                        if v:
+                            return v
+        return None
+
 
 @register_command
 class KernelbaseCommand(GenericCommand):
@@ -53968,6 +54009,456 @@ class SlubContainsCommand(GenericCommand):
 
 
 @register_command
+class BuddyDumpCommand(GenericCommand):
+    """Dump zone of page allocator (buddy allocator) freelist with kernel memory scanning."""
+    _cmdline_ = "buddy-dump"
+    _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
+    _aliases_ = ["zone-dump"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-z", "--zone", action="append", choices=["DMA", "DMA32", "Normal", "HighMem", "Movable", "Device"],
+                        help="filter by specified zone name.")
+    parser.add_argument("-o", "--order", action="append", type=int, help="filter by specified order.")
+    parser.add_argument("-m", "--mtype", action="append", type=int, help="filter by specified mtype.")
+    parser.add_argument("--sort", action="store_true",
+                        help="sort by page address instead of link list order of each size. filter options are ignored.")
+    parser.add_argument("--sort-verbose", action="store_true", help="enable --sort and add informations of used area.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
+    parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} -z DMA32\n".format(_cmdline_)
+    _example_ += "{:s} -o 1 -o 2 -n\n".format(_cmdline_)
+    _example_ += "\n"
+    _example_ += "Simplified Buddy Allocator structure:\n"
+    _example_ += "  +-node_data[MAX_NUMNODES]-+\n"
+    _example_ += "  | *pglist_data (node 0)   |--+\n"
+    _example_ += "  | *pglist_data (node 1)   |  |\n"
+    _example_ += "  | *pglist_data (node 2)   |  |\n"
+    _example_ += "  | ...                     |  |\n"
+    _example_ += "  +-------------------------+  |\n"
+    _example_ += "                               |\n"
+    _example_ += "    +--------------------------+\n"
+    _example_ += "    |\n"
+    _example_ += "    v\n"
+    _example_ += "  +-pglist_data---------------------------+\n"
+    _example_ += "  | node_zones[MAX_NR_ZONES]              |\n"
+    _example_ += "  |   +-node_zones[0]--------------------+|\n"
+    _example_ += "  |   |  ...                             ||        +-page-----+    +-page-----+    +-page-----+\n"
+    _example_ += "  |   |  name                            ||        | flags    |    | flags    |    | flags    |\n"
+    _example_ += "  |   |  ...                             ||   +--->| lru.next |--->| lru.next |--->| lru.next |->...\n"
+    _example_ += "  |   |  free_area[MAX_ORDER]            ||   |    | lru.prev |    | lru.prev |    | lru.prev |\n"
+    _example_ += "  |   |    +-free_area[0]---------------+||   |    | ...      |    | ...      |    | ...      |\n"
+    _example_ += "  |   |    | free_list[MIGRATE_TYPES]   |||   |    +----------+    +----------+    +----------+\n"
+    _example_ += "  |   |    |   +-free_list[0]----------+|||   |\n"
+    _example_ += "  |   |    |   | next                  ||||---+\n"
+    _example_ += "  |   |    |   | prev                  ||||\n"
+    _example_ += "  |   |    |   +-free_list[1]----------+|||\n"
+    _example_ += "  |   |    |   | ...                   ||||\n"
+    _example_ += "  |   |    |   +-----------------------+|||\n"
+    _example_ += "  |   |    | nr_free                    |||\n"
+    _example_ += "  |   |    +-free_area[1]---------------+||\n"
+    _example_ += "  |   |    | ...                        |||\n"
+    _example_ += "  |   |    +----------------------------+||\n"
+    _example_ += "  |   +-node_zones[1]--------------------+|\n"
+    _example_ += "  |   |  ...                             ||\n"
+    _example_ += "  |   +----------------------------------+|\n"
+    _example_ += "  | ...                                   |\n"
+    _example_ += "  +---------------------------------------+\n"
+    _example_ += "\n"
+    _example_ += "You can combine this result with information of in-use space. Try using `pagewalk-with-hints` command."
+
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        self.initialized = False
+        return
+
+    def quiet_info(self, msg):
+        if not self.quiet:
+            msg = "{} {}".format(Color.colorify("[+]", "bold blue"), msg)
+            gef_print(msg)
+        return
+
+    def quiet_err(self, msg):
+        if not self.quiet:
+            msg = "{} {}".format(Color.colorify("[+]", "bold red"), msg)
+            gef_print(msg)
+        return
+
+    def add_msg(self, msg):
+        if not self.sort:
+            self.out.append(msg)
+        return
+
+    def initialize(self):
+        if self.initialized:
+            return True
+
+        # search node_data
+        node_data = KernelAddressHeuristicFinder.get_node_data()
+        if node_data:
+            self.quiet_info("node_data: {:#x}".format(node_data))
+            # parse each node (*pglist_data)
+            self.nodes = []
+            current = node_data
+            while True:
+                node = read_int_from_memory(current)
+                if not is_valid_addr(node):
+                    break
+                self.nodes.append(node)
+                current += current_arch.ptrsize
+
+        else:
+            first_node = KernelAddressHeuristicFinder.get_node_data0()
+            if first_node:
+                self.quiet_info("first_node: {:#x}".format(first_node))
+                self.nodes = [first_node]
+            else:
+                self.quiet_err("Failed to resolve node_data or first_node")
+                return False
+
+        self.quiet_info("num of nodes: {:d}".format(len(self.nodes)))
+        assert len(self.nodes) > 0
+
+        """
+        typedef struct pglist_data {
+            struct zone node_zones[MAX_NR_ZONES];
+            ...
+        }
+
+        struct zone {
+            ...
+            const char                        *name;
+        #ifdef CONFIG_MEMORY_ISOLATION
+            unsigned long                      nr_isolate_pageblock;
+        #endif
+        #ifdef CONFIG_MEMORY_HOTPLUG
+            seqlock_t                          span_seqlock;
+        #endif
+            int                                initialized;
+            ZONE_PADDING(_pad1_)
+            struct free_area                   free_area[MAX_ORDER];
+            ...
+        }
+
+        static char * const zone_names[MAX_NR_ZONES] = {
+        #ifdef CONFIG_ZONE_DMA
+             "DMA",
+        #endif
+        #ifdef CONFIG_ZONE_DMA32
+             "DMA32",
+        #endif
+             "Normal",
+        #ifdef CONFIG_HIGHMEM
+             "HighMem",
+        #endif
+             "Movable",
+        #ifdef CONFIG_ZONE_DEVICE
+             "Device",
+        #endif
+        };
+
+        struct free_area {
+            struct list_head     free_list[MIGRATE_TYPES];
+            unsigned long        nr_free;
+        };
+        """
+
+        # zone->name
+        current = self.nodes[0]
+        name_offsets = []
+        while len(name_offsets) < 2:
+            val = read_int_from_memory(current)
+            name = read_cstring_from_memory(val)
+            if name in ["DMA", "DMA32", "Normal", "HighMem", "Movable", "Device"]:
+                offset = current - self.nodes[0]
+                name_offsets.append(offset)
+                self.quiet_info("offset:{:#x}".format(offset))
+            current += current_arch.ptrsize
+        self.offset_name = name_offsets[0]
+        self.quiet_info("offsetof(zone, name): {:#x}".format(self.offset_name))
+
+        # sizeof(zone)
+        self.sizeof_zone = name_offsets[1] - name_offsets[0]
+        self.quiet_info("sizeof(zone): {:#x}".format(self.sizeof_zone))
+
+        # MAX_NR_ZONES
+        self.MAX_NR_ZONES = 0
+        for i in range(6):
+            zone = self.nodes[0] + self.sizeof_zone * i
+            name_ptr = read_int_from_memory(zone + self.offset_name)
+            name = read_cstring_from_memory(name_ptr)
+            if not name:
+                break
+            self.MAX_NR_ZONES += 1
+        self.quiet_info("MAX_NR_ZONES: {:d}".format(self.MAX_NR_ZONES))
+
+        # zone->free_area
+        current = self.nodes[0] + self.offset_name + current_arch.ptrsize
+        while True:
+            val = read_int_from_memory(current)
+            if is_valid_addr(val):
+                break
+            current += current_arch.ptrsize
+        self.offset_free_area = current - self.nodes[0]
+        self.quiet_info("offsetof(zone, free_area): {:#x}".format(self.offset_free_area))
+
+        # MIGRATE_TYPES
+        current = free_area = self.nodes[0] + self.offset_free_area
+        while True:
+            val = read_int_from_memory(current)
+            if not is_valid_addr(val):
+                break
+            current += current_arch.ptrsize
+        offset_nr_free = current - free_area
+        sizeof_list_head = current_arch.ptrsize * 2
+        self.MIGRATE_TYPES = offset_nr_free // sizeof_list_head
+        self.quiet_info("MIGRATE_TYPES: {:d}".format(self.MIGRATE_TYPES))
+
+        if self.MIGRATE_TYPES == 4:
+            self.migrate_types = [
+                "Unmovable",
+                "Movable",
+                "Reclaimable",
+                "HighAtomic",
+            ]
+        elif self.MIGRATE_TYPES == 5:
+            self.migrate_types = [
+                "Unmovable",
+                "Movable",
+                "Reclaimable",
+                "HighAtomic",
+                "Isolate",
+            ]
+        elif self.MIGRATE_TYPES == 6:
+            self.migrate_types = [
+                "Unmovable",
+                "Movable",
+                "Reclaimable",
+                "HighAtomic",
+                "Contiguous", # CONFIG_CMA needs CONFIG_MEMORY_ISOLATION, so there is only this pattern
+                "Isolate",
+            ]
+        else:
+            raise
+
+        # sizeof(free_area)
+        self.sizeof_free_area = offset_nr_free + current_arch.ptrsize
+        self.quiet_info("sizeof(free_area): {:#x}".format(self.sizeof_free_area))
+
+        # MAX_ORDER
+        current = free_area
+        while True:
+            val = read_int_from_memory(current)
+            if not is_valid_addr(val):
+                break
+            current += self.sizeof_free_area
+        self.MAX_ORDER = (current - free_area) // self.sizeof_free_area
+        self.quiet_info("MAX_ORDER: {:d}".format(self.MAX_ORDER))
+
+        # vmemmap
+        if is_x86_64():
+            # CONFIG_SPARSEMEM_VMEMMAP
+            vmemmap_base = KernelAddressHeuristicFinder.get_vmemmap_base()
+            if vmemmap_base:
+                self.vmemmap = read_int_from_memory(vmemmap_base)
+            else:
+                kinfo = KernelbaseCommand.get_kernel_base()
+                if not kinfo.has_none:
+                    found_kbase = False
+                    for vaddr, size, _perm in kinfo.maps[::-1]:
+                        if found_kbase and size >= 0x200000:
+                            self.vmemmap = vaddr
+                            break
+                        if vaddr == kinfo.kbase:
+                            found_kbase = True
+                            continue
+            self.quiet_info("vmemmap: {:#x}".format(self.vmemmap))
+
+        """
+        struct page {
+            unsigned long flags;
+            union {
+                struct {
+                    struct list_head lru;
+                    ...
+        """
+        # page->lru
+        self.offset_lru = current_arch.ptrsize
+
+        self.initialized = True
+        return True
+
+    def page2virt_and_phys(self, page):
+        if is_x86_64():
+            # CONFIG_SPARSEMEM_VMEMMAP
+            paddr = (page - self.vmemmap) << 6
+            for vstart, _vend, pstart, pend in self.maps:
+                if pstart <= paddr < pend:
+                    offset = paddr - pstart
+                    vaddr = vstart + offset
+                    return vaddr, paddr
+            return None, paddr
+        return None, None
+
+    def dump_free_list(self, free_list, mtype, size):
+        heap_page_color = get_gef_setting("theme.heap_page_address")
+        chunk_size_color = get_gef_setting("theme.heap_chunk_size")
+        freed_address_color = get_gef_setting("theme.heap_chunk_address_freed")
+        align = get_format_address_width()
+
+        self.add_msg("  mtype: {:d} (={:s})".format(mtype, self.migrate_types[mtype]))
+        seen = [free_list]
+        current = read_int_from_memory(free_list)
+        if not is_valid_addr(current):
+            return
+
+        # size info
+        size_str = Color.colorify("{:#08x}".format(size), chunk_size_color)
+
+        while current not in seen:
+            # page info
+            page = current - self.offset_lru
+            page_str = Color.colorify("{:#0{:d}x}".format(page, align), freed_address_color)
+
+            # address info
+            virt, phys = self.page2virt_and_phys(page)
+            virt_str = "???"
+            phys_str = "???"
+            if virt:
+                virt_str = "{:#0{:d}x}-{:#0{:d}x}".format(virt, align, virt + size, align)
+                virt_str = Color.colorify(virt_str, heap_page_color)
+            if phys:
+                phys_str = "{:#0{:d}x}-{:#0{:d}x}".format(phys, align, phys + size, align)
+
+            # create msg
+            msg = "    page:{:s}  size:{:s}  virt:{:s}  phys:{:s}".format(page_str, size_str, virt_str, phys_str)
+
+            # add msg
+            if self.sort:
+                self.out.append([page, size, msg])
+            else:
+                self.out.append(msg)
+
+            # get next
+            current = read_int_from_memory(current)
+        return
+
+    def dump_free_area(self, free_area, order):
+        chunk_size_color = get_gef_setting("theme.heap_chunk_size")
+
+        size = 0x1000 * (2 ** order)
+        size_str = Color.colorify("{:#x}".format(size), chunk_size_color)
+        self.add_msg("order: {:d} ({:s} bytes)".format(order, size_str))
+
+        sizeof_list_head = current_arch.ptrsize * 2
+        for mtype in range(self.MIGRATE_TYPES):
+            if self.mtype_filter and mtype not in self.mtype_filter:
+                continue
+            free_list = free_area + sizeof_list_head * mtype
+            self.dump_free_list(free_list, mtype, size)
+        return
+
+    def dump_zone(self, zone):
+        free_area_array = zone + self.offset_free_area
+        for order in range(self.MAX_ORDER):
+            if self.order_filter and order not in self.order_filter:
+                continue
+            free_area_i = free_area_array + self.sizeof_free_area * order
+            self.dump_free_area(free_area_i, order)
+        return
+
+    def dump_node(self, node):
+        for i in range(self.MAX_NR_ZONES):
+            zone = node + self.sizeof_zone * i
+            name_ptr = read_int_from_memory(zone + self.offset_name)
+            name = read_cstring_from_memory(name_ptr)
+            if self.zone_filter and name not in self.zone_filter:
+                continue
+            self.add_msg(titlify("zone[{:d}] @ {:#x} ({:s})".format(i, zone, name)))
+            self.dump_zone(zone)
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_qemu_system
+    @only_if_in_kernel
+    @only_if_specific_arch(arch=("x86_64",))
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        # parse args
+        if args.reparse:
+            self.initialized = False
+
+        self.quiet = args.quiet
+        self.sort_verbose = args.sort_verbose
+        self.sort = args.sort_verbose or args.sort
+
+        if self.sort:
+            self.zone_filter = False
+            self.order_filter = False
+            self.mtype_filter = False
+        else:
+            self.zone_filter = args.zone
+            self.order_filter = args.order
+            self.mtype_filter = args.mtype
+
+        # initialized
+        self.quiet_info("Wait for memory scan")
+        if not self.initialize():
+            return
+
+        self.maps = V2PCommand.get_maps(None)
+        if self.maps is None:
+            self.quiet_err("Failed to resolve maps")
+            return
+
+        # dump
+        self.out = []
+        for i, node in enumerate(self.nodes):
+            self.add_msg(titlify("node[{:d}] @ {:#x}".format(i, node)))
+            self.dump_node(node)
+
+        # sort
+        if self.sort:
+            prev_page = None
+            prev_size = None
+            align = get_format_address_width()
+
+            out = []
+            for page, size, msg in sorted(self.out, key=lambda x: x[0]):
+                if not self.sort_verbose:
+                    out.append(msg)
+                    continue
+
+                # sort_verbose
+                if prev_page is None:
+                    _, phys = self.page2virt_and_phys(page)
+                    if phys:
+                        out.append("    used:{:{:d}s}  size:{:#08x}".format("", align, phys))
+                    out.append(msg)
+                    prev_page = page
+                    prev_size = size
+                    continue
+                curr = page << 6
+                prev = prev_page << 6
+                if prev + prev_size != curr:
+                    diff = curr - (prev + prev_size)
+                    out.append("    used:{:{:d}s}  size:{:#08x}".format("", align, diff))
+                out.append(msg)
+                prev_page = page
+                prev_size = size
+            self.out = out
+
+        # print
+        if self.out:
+            gef_print("\n".join(self.out), less=not args.no_pager)
+        return
+
+
+@register_command
 class KsymaddrRemoteCommand(GenericCommand):
     """Resolve kernel symbols from kallsyms table using kernel memory scanning."""
     # Thanks to https://github.com/marin-m/vmlinux-to-elf
@@ -63785,11 +64276,12 @@ class PagewalkWithHintsCommand(GenericCommand):
             return
 
         def add_description(self, description):
-            if self.description:
-                new_description = self.description + ", " + description
-            else:
-                new_description = description
-            self.description = new_description
+            if not self.description:
+                self.description = description
+                return
+            if description in self.description:
+                return
+            self.description = "{:s}, {:s}".format(self.description, description)
             return
 
     def page_start_align(self, x):
@@ -63862,7 +64354,10 @@ class PagewalkWithHintsCommand(GenericCommand):
                 addr_start_2nd = max(target_address_start, r.addr_start)
                 addr_end_2nd = addr_start_2nd + size_2nd
                 if r.description:
-                    new_description = r.description + ", " + description
+                    if description in r.description:
+                        new_description = r.description
+                    else:
+                        new_description = r.description + ", " + description
                 else:
                     new_description = description
                 self.regions[addr_start_2nd] = self.Region(addr_start_2nd, addr_end_2nd, r.perm, new_description)
@@ -64018,6 +64513,19 @@ class PagewalkWithHintsCommand(GenericCommand):
 
         pages_start_addr = read_int_from_memory(vmemmap_base)
         self.regions[pages_start_addr].add_description("struct page area")
+        return
+
+    def resolve_buddy(self):
+        if not self.quiet:
+            info("resolve buddy")
+        res = gdb.execute("buddy-dump --quiet --no-pager --sort", to_string=True)
+        for line in res.splitlines():
+            line = Color.remove_color(line)
+            _page_str, size_str, virt_str, _phys_str = line.split()
+            size = int(size_str[5:], 16)
+            virt = int(virt_str[5:].split("-")[0], 16)
+            description = "free page in buddy allocator"
+            self.insert_region(virt, size, description)
         return
 
     def resolve_kstack(self):
@@ -64253,6 +64761,7 @@ class PagewalkWithHintsCommand(GenericCommand):
             self.resolve_direct_map()
             self.resolve_vmalloc()
             self.resolve_page()
+            self.resolve_buddy()
         self.resolve_kstack()
         self.resolve_each_slab()
         self.resolve_module()
