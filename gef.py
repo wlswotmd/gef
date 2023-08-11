@@ -18223,7 +18223,7 @@ class ChecksecCommand(GenericCommand):
                 gef_print("{:<40s}: {:s}".format("Intel CET endbr64/endbr32", Color.colorify("Not Found", "bold red")))
 
         # CET Status
-        if is_x86() and is_alive():
+        if is_x86_64() and is_alive():
             r = get_cet_status()
             if r is None:
                 msg = Color.colorify("Disabled", "bold red") + " (kernel does not support)"
