@@ -22313,6 +22313,8 @@ class ContextCommand(GenericCommand):
 
             if thread.is_running():
                 line += Color.colorify("running", "bold green")
+            elif thread.is_exited():
+                line += Color.colorify("exited", "bold yellow")
             elif thread.is_stopped():
                 line += Color.colorify("stopped", "bold red")
                 try:
@@ -22324,18 +22326,13 @@ class ContextCommand(GenericCommand):
                 try:
                     frame = gdb.selected_frame()
                     pc = frame.pc()
-                    frame_name = Instruction.smartify_text(frame.name()) or "unknown_frame"
                 except gdb.error:
                     # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
                     # if failed, print thread information without frame (but with $pc).
                     pc = get_register("$pc")
-                    frame_name = "unknown_frame"
                 sym = get_symbol_string(pc, nosymbol_string=" <NO_SYMBOL>")
-                line += " {:s}{:s} in".format(Color.colorify("{:#x}".format(pc), "blue"), sym)
-                line += " {:s}".format(Color.colorify(frame_name, "bold yellow"))
+                line += " at {!s}{:s}".format(lookup_address(pc), sym)
                 line += ", reason: {}".format(Color.colorify(reason(), "bold magenta"))
-            elif thread.is_exited():
-                line += Color.colorify("exited", "bold yellow")
             gef_print(line)
 
         selected_thread.switch()
