@@ -75,17 +75,25 @@ def download_binary(channel):
 if __name__ == '__main__':
   if len(sys.argv) == 1:
     channels = ["stable", "beta", "dev"]
+  elif sys.argv[1] in ["-h", "--help"]:
+    print("[*] usage")
+    print("  python3 {:s}             # download all channels (stable, beta, dev)".format(sys.argv[0]))
+    print("  python3 {:s} stable beta # download specific channel(s)".format(sys.argv[0]))
+    print()
+    channels = []
   else:
     channels = sys.argv[1:]
 
-  for chan in channels:
+  if channels:
+    for chan in channels:
       if chan in ["stable", "beta", "dev"]:
         download_binary(chan)
       else:
         print("channel is stable, beta, or dev")
         exit()
+    else:
+      print("[*] done\n\n")
 
-  print("[*] done\n\n")
   print("[*] memo")
   print("  [term1]")
   print("    cd www && python3 -m http.server 8080")
