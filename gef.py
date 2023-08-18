@@ -1696,7 +1696,7 @@ RE_SPLIT_LAST_OPERAND_LOONGARCH64 = re.compile(r"(# .*)$")
 RE_SPLIT_ELEM = re.compile(r"([*%\[\](): ]|(?<![#@%])(?<=.)[-+]|<.+?>)")
 RE_IS_DIGIT_COMMENT = re.compile(r"#?-?(0x[0-9a-f]+|\d+)")
 RE_SPLIT_SYMBOL = re.compile(r"(.*)<(.+?)>(.*)$")
-RE_SPLIT_SYMBOL_OFFSET = re.compile(r"(\w+)\+(\d+)$")
+RE_SPLIT_SYMBOL_OFFSET = re.compile(r"(.+)\+(\d+)$")
 
 
 class Instruction:
@@ -1820,11 +1820,11 @@ class Instruction:
             r1 = RE_SPLIT_SYMBOL.match(x) # r"(.*)<(.+?)>(.*)$"
             if not r1:
                 return x
-            r2 = RE_SPLIT_SYMBOL_OFFSET.match(r1.group(2)) # r"(\w+)\+(\d+)$"
+            r2 = RE_SPLIT_SYMBOL_OFFSET.match(r1.group(2)) # r"(.+)\+(\d+)$"
             if r2:
-                sym_x = "{}+{:#x}".format(r2.group(1), int(r2.group(2)))
+                sym_x = "{}+{:#x}".format(self.smartify_text(r2.group(1)), int(r2.group(2)))
             else:
-                sym_x = r1.group(2)
+                sym_x = self.smartify_text(r1.group(2))
             return "{:s}<{:s}>{:s}".format(r1.group(1), sym_x, r1.group(3))
 
         additional_1 = hexlify_symbol_offset(additional_1)
@@ -1839,13 +1839,14 @@ class Instruction:
             color_operands_const = get_gef_setting("theme.disassemble_operands_const")
             color_operands_symbol = get_gef_setting("theme.disassemble_operands_symbol")
         colored_operands = []
+        # extract -> coloring -> join
         for o1 in operands:
             colored_o1 = []
             # *, [, ], (, ), %, :, space
             # not first +, - (without #, @)
             # <...>
-            for _o2 in RE_SPLIT_ELEM.split(o1): # r"([*%\[\](): ]|(?<![#@%])(?<=.)[-+]|<.+?>)"
-                o2 = _o2.strip()
+            for o2 in RE_SPLIT_ELEM.split(o1): # r"([*%\[\](): ]|(?<![#@%])(?<=.)[-+]|<.+?>)"
+                o2 = o2.strip()
                 if o2 == "":
                     continue
                 if o2[0] == "<":
