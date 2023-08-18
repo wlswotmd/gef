@@ -12730,17 +12730,26 @@ class ProcDumpCommand(GenericCommand):
 
             for f in files:
                 path = os.path.join(root, f)
-
                 out.append(titlify(path))
 
                 if os.path.islink(path):
-                    out.append("{:s} -> {:s}".format(path, os.readlink(path)))
+                    out.append(Color.colorify("{:s} -> {:s}".format(path, os.readlink(path)), "blue"))
                     continue
 
                 if f == "pagemap":
+                    # too large
                     continue
 
                 if f == "environ":
+                    data = open(path, "rb").read()
+                    for line in sorted(data.split(b"\0")):
+                        if line:
+                            line = bytes2str(line)
+                            key, val = line.split("=", 1)
+                            out.append("{:s}={:s}".format(Color.boldify(key), val))
+                    continue
+
+                if f in ["cmdline", "context"]:
                     data = open(path, "rb").read()
                     for line in data.split(b"\0"):
                         if line:
@@ -12748,8 +12757,43 @@ class ProcDumpCommand(GenericCommand):
                     continue
 
                 if f in ["auxv", "rt_acct"]:
-                    ret = gef_execute_external(["xxd", path], as_list=True)
+                    ret = gef_execute_external(["hexdump", "-C", path], as_list=True)
                     out.extend(ret)
+                    continue
+
+                if f == "status":
+                    ret = gef_execute_external(["column", "-s:", "-t", path], as_list=True)
+                    for line in ret:
+                        k, v = line.split(maxsplit=1)
+                        k = k.strip() + ":"
+                        v = v.replace("\\t", "").strip()
+                        out.append("{:30s} {:s}".format(k, v))
+                    continue
+
+                if f in ["mounts", "mountinfo", "mountstats", "raw", "tcp", "udp", "icmp", "raw6", "tcp6", "udp6", "unix"]:
+                    ret = gef_execute_external(["column", "-t", path], as_list=True)
+                    out.extend(ret)
+                    continue
+
+                if f in ["igmp", "fib_trie", "wireless"]:
+                    fd = open(path, "rb")
+                    for line in fd.readlines():
+                        out.append(bytes2str(line.rstrip())) # no-lstrip
+                    continue
+
+                if f in ["netstat", "snmp"]:
+                    try:
+                        fd = open(path, "rb")
+                        lines = bytes2str(fd.read()).splitlines()
+                        table = [line.split() for line in lines]
+                        for idx in range(0, len(table), 2):
+                            for i, (k, v) in enumerate(zip(*table[idx:idx + 2])):
+                                if i == 0:
+                                    out.append("{:s}".format(k))
+                                else:
+                                    out.append("  {:30s} {:s}".format(k + ":", v))
+                    except Exception:
+                        pass
                     continue
 
                 try:
