@@ -13290,7 +13290,7 @@ class SearchPatternCommand(GenericCommand):
     """Search a pattern in memory."""
     _cmdline_ = "search-pattern"
     _category_ = "03-a. Memory - Search"
-    _aliases_ = ["find"]
+    _aliases_ = ["find"] # note: overwrite original "find" command.
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--hex", action="store_true", help="interpret PATTERN as hex. invalid character is ignored.")
@@ -16589,7 +16589,7 @@ def get_binsize_table():
 
 
 @register_command
-class DetailRegistersCommand(GenericCommand):
+class RegistersCommand(GenericCommand):
     """Display full details on one, many or all registers value from current architecture."""
     _cmdline_ = "registers"
     _category_ = "01-a. Debugging Support - Context"
@@ -21132,7 +21132,7 @@ class NamedBreakpoint(gdb.Breakpoint):
 
 
 @register_command
-class NamedBreakpointCommand(GenericCommand):
+class NamedBreakCommand(GenericCommand):
     """Set a breakpoint and assigns a name to it, which will be shown, when it's hit."""
     _cmdline_ = "named-break"
     _category_ = "01-b. Debugging Support - Breakpoint"
@@ -21175,7 +21175,7 @@ class MessageBreakpoint(gdb.Breakpoint):
 
 
 @register_command
-class MessageBreakpointCommand(GenericCommand):
+class MessageBreakCommand(GenericCommand):
     """Set a breakpoint with print user defined message, when it's hit."""
     _cmdline_ = "message-break"
     _category_ = "01-b. Debugging Support - Breakpoint"
@@ -21227,7 +21227,7 @@ class TakenOrNotBreakpoint(gdb.Breakpoint):
 
 
 @register_command
-class BreakpointOnlyIfTakenCommand(GenericCommand):
+class BreakOnlyIfTakenCommand(GenericCommand):
     """Set a breakpoint which breaks only branch is taken."""
     _cmdline_ = "break-only-if-taken"
     _category_ = "01-b. Debugging Support - Breakpoint"
@@ -53789,11 +53789,11 @@ class SlobDumpCommand(GenericCommand):
 
 
 @register_command
-class XSlubOjbectCommand(GenericCommand):
+class SlubContainsCommand(GenericCommand):
     """Resolve which `kmem_cache` certain address (object) belongs to. (only x64)"""
-    _cmdline_ = "xslubobj"
+    _cmdline_ = "slub-contains"
     _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
-    _aliases_ = ["slub-contains"]
+    _aliases_ = ["xslub"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="target address.")
@@ -64854,9 +64854,9 @@ class CallUsermodehelperSetupBreakpoint(gdb.Breakpoint):
 
 
 @register_command
-class UsermodehelperHunterCommand(GenericCommand):
+class UsermodehelperTracerCommand(GenericCommand):
     """Collect and displays information that is executed by call_usermodehelper_setup."""
-    _cmdline_ = "usermodehelper-hunter"
+    _cmdline_ = "usermodehelper-tracer"
     _category_ = "08-f. Qemu-system Cooperation - Linux Dynamic Inspection"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -64948,9 +64948,9 @@ class ThunkBreakpoint(gdb.Breakpoint):
 
 
 @register_command
-class ThunkHunterCommand(GenericCommand):
+class ThunkTracerCommand(GenericCommand):
     """Collect and displays the thunk addresses that are called automatically. (only x64/x86)"""
-    _cmdline_ = "thunk-hunter"
+    _cmdline_ = "thunk-tracer"
     _category_ = "08-f. Qemu-system Cooperation - Linux Dynamic Inspection"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -64995,7 +64995,7 @@ class KmallocBreakpoint(gdb.Breakpoint):
     def stop(self):
         reset_gef_caches()
 
-        task_addr, _ = KmallocHunterCommand.get_task()
+        task_addr, _ = KmallocTracerCommand.get_task()
         if self.task_addr and task_addr != self.task_addr:
             return False
 
@@ -65027,7 +65027,7 @@ class KmallocRetBreakpoint(gdb.FinishBreakpoint):
     def stop(self):
         reset_gef_caches()
 
-        task_addr, task_name = KmallocHunterCommand.get_task()
+        task_addr, task_name = KmallocTracerCommand.get_task()
         task_prefix = Color.boldify("[task:{:#018x} {:16s}]".format(task_addr, task_name))
 
         if self.return_value:
@@ -65037,7 +65037,7 @@ class KmallocRetBreakpoint(gdb.FinishBreakpoint):
         loc_s = Color.colorify("{:#x}".format(loc), get_gef_setting("theme.heap_chunk_address_used"))
 
         if self.extra:
-            ret = KmallocHunterCommand.virt2name_and_size(self.extra, loc)
+            ret = KmallocTracerCommand.virt2name_and_size(self.extra, loc)
             if ret:
                 # print more info
                 name, chunk_size = ret
@@ -65048,15 +65048,15 @@ class KmallocRetBreakpoint(gdb.FinishBreakpoint):
                 name_s = Color.colorify(name, get_gef_setting("theme.heap_chunk_label"))
                 chunk_size_s = Color.colorify("{:<#6x}".format(chunk_size), get_gef_setting("theme.heap_chunk_size"))
                 gef_print("{:s} {:30s}: {:s} (size: {:s} name: {:s})".format(task_prefix, self.sym, loc_s, chunk_size_s, name_s))
-                KmallocHunterCommand.print_backtrace(self.option.backtrace)
-                KmallocHunterCommand.dump_chunk(self.option.dump_chunk, loc)
+                KmallocTracerCommand.print_backtrace(self.option.backtrace)
+                KmallocTracerCommand.dump_chunk(self.option.dump_chunk, loc)
                 return False
             # fall through
 
         # print less info
         gef_print("{:s} {:30s}: {:s} (size: {:<#6x})".format(task_prefix, self.sym, loc_s, self.size))
-        KmallocHunterCommand.print_backtrace(self.option.backtrace)
-        KmallocHunterCommand.dump_chunk(self.option.dump_chunk, loc)
+        KmallocTracerCommand.print_backtrace(self.option.backtrace)
+        KmallocTracerCommand.dump_chunk(self.option.dump_chunk, loc)
         return False
 
 
@@ -65079,7 +65079,7 @@ class KfreeBreakpoint(gdb.Breakpoint):
         if not self.option.print_null and loc == 0:
             return False
 
-        task_addr, task_name = KmallocHunterCommand.get_task()
+        task_addr, task_name = KmallocTracerCommand.get_task()
         if self.task_addr and task_addr != self.task_addr:
             return False
         task_prefix = Color.boldify("[task:{:#018x} {:16s}]".format(task_addr, task_name))
@@ -65087,7 +65087,7 @@ class KfreeBreakpoint(gdb.Breakpoint):
         loc_s = Color.colorify("{:#x}".format(loc), get_gef_setting("theme.heap_chunk_address_freed"))
 
         if self.extra:
-            ret = KmallocHunterCommand.virt2name_and_size(self.extra, loc)
+            ret = KmallocTracerCommand.virt2name_and_size(self.extra, loc)
             if ret:
                 # print more info
                 name, chunk_size = ret
@@ -65098,22 +65098,22 @@ class KfreeBreakpoint(gdb.Breakpoint):
                 name_s = Color.colorify(name, get_gef_setting("theme.heap_chunk_label"))
                 chunk_size_s = Color.colorify("{:<#6x}".format(chunk_size), get_gef_setting("theme.heap_chunk_size"))
                 gef_print("{:s} {:30s}: {:s} (size: {:s} name: {:s})".format(task_prefix, self.sym, loc_s, chunk_size_s, name_s))
-                KmallocHunterCommand.print_backtrace(self.option.backtrace)
-                KmallocHunterCommand.dump_chunk(self.option.dump_chunk, loc)
+                KmallocTracerCommand.print_backtrace(self.option.backtrace)
+                KmallocTracerCommand.dump_chunk(self.option.dump_chunk, loc)
                 return False
             # fall through
 
         # print less info
         gef_print("{:s} {:30s}: {:s}".format(task_prefix, self.sym, loc_s))
-        KmallocHunterCommand.print_backtrace(self.option.backtrace)
-        KmallocHunterCommand.dump_chunk(self.option.dump_chunk, loc)
+        KmallocTracerCommand.print_backtrace(self.option.backtrace)
+        KmallocTracerCommand.dump_chunk(self.option.dump_chunk, loc)
         return False
 
 
 @register_command
-class KmallocHunterCommand(GenericCommand):
+class KmallocTracerCommand(GenericCommand):
     """Collect and displays information when kmalloc/kfree."""
-    _cmdline_ = "kmalloc-hunter"
+    _cmdline_ = "kmalloc-tracer"
     _category_ = "08-f. Qemu-system Cooperation - Linux Dynamic Inspection"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -65394,7 +65394,7 @@ class KmallocHunterCommand(GenericCommand):
         self.dont_repeat()
 
         # create option_info
-        option_info = KmallocHunterCommand.create_option_info(args)
+        option_info = KmallocTracerCommand.create_option_info(args)
 
         # initialize
         info("Wait for memory scan")
@@ -65404,7 +65404,7 @@ class KmallocHunterCommand(GenericCommand):
             # fall through
 
         if not self.initialized:
-            ret = KmallocHunterCommand.initialize(allocator, args.verbose)
+            ret = KmallocTracerCommand.initialize(allocator, args.verbose)
             if ret is False:
                 err("Failed to initialize")
                 return
@@ -65418,7 +65418,7 @@ class KmallocHunterCommand(GenericCommand):
                 info("vmemmap: {:#x}".format(self.extra_info.vmemmap))
 
         # set kmalloc break points
-        breakpoints = KmallocHunterCommand.set_bp_to_kmalloc_kfree(option_info, self.extra_info)
+        breakpoints = KmallocTracerCommand.set_bp_to_kmalloc_kfree(option_info, self.extra_info)
         for bp in breakpoints:
             bp.enabled = True
 
@@ -65427,7 +65427,7 @@ class KmallocHunterCommand(GenericCommand):
         gdb.execute("c")
 
         # clean up
-        info("kmalloc-hunter is complete, cleaning up...")
+        info("kmalloc-tracer is complete, cleaning up...")
         for bp in breakpoints:
             bp.delete()
         return
@@ -66717,7 +66717,7 @@ class KmallocAllocatedByCommand(GenericCommand):
         self.dont_repeat()
 
         # create option_info
-        option_info = KmallocHunterCommand.create_option_info(args)
+        option_info = KmallocTracerCommand.create_option_info(args)
 
         # initialize
         info("Wait for memory scan")
@@ -66727,7 +66727,7 @@ class KmallocAllocatedByCommand(GenericCommand):
             # fall through
 
         if not self.initialized:
-            ret = KmallocHunterCommand.initialize(allocator, args.verbose)
+            ret = KmallocTracerCommand.initialize(allocator, args.verbose)
             if ret is False:
                 err("Failed to initialize")
                 return
@@ -66772,7 +66772,7 @@ class KmallocAllocatedByCommand(GenericCommand):
         hwbp = KmallocAllocatedBy_UserlandHardwareBreakpoint(rip_of_sleep)
 
         # set kmalloc breakpoints (but disabled)
-        breakpoints = KmallocHunterCommand.set_bp_to_kmalloc_kfree(option_info, self.extra_info, target_task)
+        breakpoints = KmallocTracerCommand.set_bp_to_kmalloc_kfree(option_info, self.extra_info, target_task)
 
         # wait to stop at userland `sleep` process
         gdb.execute("ctx off")

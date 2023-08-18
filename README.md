@@ -218,11 +218,11 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/syscall-table-view.png)
     * It also dumps ia32/x32 syscall table under x64.
     * It also dumps compat syscall table under ARM64.
-* `thunk-hunter`: collects and displays the thunk function addresses that are called automatically (only x64/x86).
+* `thunk-tracer`: collects and displays the thunk function addresses that are called automatically (only x64/x86).
     * If this address comes from RW area, this is useful for getting RIP.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/thunk-hunter.png)
-* `usermodehelper-hunter`: collects and displays the information that is executed by `call_usermodehelper_setup`.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/usermodehelper-hunter.png)
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/thunk-tracer.png)
+* `usermodehelper-tracer`: collects and displays the information that is executed by `call_usermodehelper_setup`.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/usermodehelper-tracer.png)
 * `kmagic`: displays useful addresses in kernel.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmagic.png)
 * `kchecksec`: checks kernel security.
@@ -239,12 +239,12 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kdmesg.png)
 * `pagewalk-with-hints`: prints pagetables with description.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-with-hints.png)
-* `xslubobj`: resolves which `kmem_cache` certain address (object) belongs to (only x64).
+* `slub-contains`: resolves which `kmem_cache` certain address (object) belongs to (only x64).
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slub-contains.png)
     * If the chunk of `slub` that the address (object) belongs to is all used, it cannot be displayed with `slub-dump`.
     * Even with such an address (object), this command may be able to resolve `kmem_cache`.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xslubobj.png)
-* `kmalloc-hunter`: collects and displays information when kmalloc/kfree.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmalloc-hunter.png)
+* `kmalloc-tracer`: collects and displays information when kmalloc/kfree.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmalloc-tracer.png)
 * `kmalloc-allocated-by`: calls a predefined set of system calls and prints structures allocated by kmalloc or freed by kfree.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmalloc-allocated-by.png)
 
