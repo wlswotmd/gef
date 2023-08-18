@@ -24947,7 +24947,7 @@ class LinkMapCommand(GenericCommand):
                     tag = 0x6ffffeff - (i - (DT_NUM + DT_THISPROCNUM + DT_VERSIONTAGNUM + DT_EXTRANUM + DT_VALNUM))
                     mb += "(={:s})".format(DynamicCommand.DT_TABLE.get(tag, "???"))
                 members.append(mb)
-            members += ["l_phdr", "l_entry", "l_phnum", "l_ldnum"]
+            members += ["l_phdr", "l_entry", "l_ldnum || l_phnum"]
 
         tag_maxlen = max(len(x) for x in members) + 1
 
