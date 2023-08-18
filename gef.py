@@ -22239,15 +22239,58 @@ class ContextCommand(GenericCommand):
             current_frame.select()
             if not current_frame.is_valid():
                 break
+
+            # address and symbol
             pc = current_frame.pc()
             sym = get_symbol_string(pc, nosymbol_string=" <NO_SYMBOL>")
 
+            # frame name
+            """
+            Frame names (= current_frmae.name()) and symbols (= get_symbol_string(current_frame.pc()))
+            usually match, but sometimes they don't. This is an example.
+
+            gef> bt
+            #0  __futex_abstimed_wait_common64
+            #1  __futex_abstimed_wait_common
+            #2  __GI___futex_abstimed_wait_cancelable64
+            #3  0x00007f0635e93f1b in __pthread_cond_wait_common
+            #4  ___pthread_cond_timedwait64
+
+            gef> context trace
+            [#0] 0x7f0635e9119d <__futex_abstimed_wait_cancelable64+0xed>
+            [#1] 0x7f0635e9119d <__futex_abstimed_wait_cancelable64+0xed>
+            [#2] 0x7f0635e9119d <__futex_abstimed_wait_cancelable64+0xed>
+            [#3] 0x7f0635e93f1b <pthread_cond_timedwait+0x23b>
+            [#4] 0x7f0635e93f1b <pthread_cond_timedwait+0x23b>
+
+            This probably happens in cases where each symbol exists, but is inlined by optimization into a single function.
+            Therefore, I will display the frame name too if different.
+            """
+            try:
+                ret = gdb_get_location(pc)
+                if ret is None:
+                    frame_name = None
+                elif ret[0] == current_frame.name():
+                    frame_name = None
+                else:
+                    frame_name = Instruction.smartify_text(current_frame.name())
+            except (ValueError, gdb.error):
+                frame_name = None
+
+            # current index coloring
             if current_frame == orig_frame:
                 idx = Color.colorify("#{}".format(level), "bold green")
             else:
                 idx = Color.colorify("#{}".format(level), "bold magenta")
 
-            gef_print("[{}] {!s}{:s}".format(idx, lookup_address(pc), sym))
+            # print
+            if frame_name:
+                frame_name = Color.colorify(frame_name, "bold yellow")
+                gef_print("[{}] {!s}{:s} (frame name: {:s})".format(idx, lookup_address(pc), sym, frame_name))
+            else:
+                gef_print("[{}] {!s}{:s}".format(idx, lookup_address(pc), sym))
+
+            # go next frame
             try:
                 current_frame = current_frame.older()
             except gdb.error:
