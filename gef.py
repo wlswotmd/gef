@@ -53919,6 +53919,13 @@ class SlubContainsCommand(GenericCommand):
         if self.verbose:
             info("offsetof(kmem_cache, size): {:#x}".format(self.kmem_cache_offset_size))
 
+        r = re.search(r"offsetof\(page, inuse_objects_frozen\): (0x\S+)", res)
+        if not r:
+            return False
+        self.page_offset_inuse_objects_frozen = int(r.group(1), 16)
+        if self.verbose:
+            info("offsetof(page, inuse_objects_frozen): {:#x}".format(self.page_offset_inuse_objects_frozen))
+
         r = re.search(r"vmemmap: (0x\S+)", res)
         if not r:
             return False
@@ -53996,9 +54003,17 @@ class SlubContainsCommand(GenericCommand):
 
             slub_cache_name_ptr = read_int_from_memory(kmem_cache + self.kmem_cache_offset_name)
             slub_cache_name = read_cstring_from_memory(slub_cache_name_ptr)
+            if slub_cache_name is None:
+                err("This address is not managed by slub")
+                return
+            slub_cache_name_c = Color.colorify(slub_cache_name, chunk_label_color)
             slub_cache_size = u32(read_memory(kmem_cache + self.kmem_cache_offset_size, 4))
 
-            msg = ("name: {:s}, size: {:#x}".format(Color.colorify(slub_cache_name, chunk_label_color), slub_cache_size))
+            x = read_int_from_memory(page + self.page_offset_inuse_objects_frozen)
+            objects = (x >> 16) & 0x7fff
+            num_pages = (slub_cache_size * objects + (gef_getpagesize() - 1)) // gef_getpagesize()
+
+            msg = ("name: {:s}  size: {:#x}  num_pages: {:#x}".format(slub_cache_name_c, slub_cache_size, num_pages))
             if (args.address - current) % slub_cache_size != 0:
                 msg += " " + Color.redify("(unaligned?)")
             gef_print(msg)
@@ -64259,6 +64274,8 @@ class PagewalkWithHintsCommand(GenericCommand):
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-c", "--use-cache", action="store_true", help="use cache.")
     parser.add_argument("-q", "--quiet", action="store_true", help="quiet execution.")
+    parser.add_argument("--skip-full-slab-cache", action="store_true",
+                        help="skip search full slab cache. use this option if take a long time to parse.")
     _syntax_ = parser.format_help()
 
     def __init__(self, *args, **kwargs):
@@ -64560,6 +64577,36 @@ class PagewalkWithHintsCommand(GenericCommand):
             self.insert_region(kstack, kstack_size, description)
         return
 
+    def resolve_more_slub(self):
+        if not self.quiet:
+            info("resolve slub (search full slub cache; skip if target region size >= 0x200000)")
+        old_regions = list(self.regions.items())[::]
+        for _region_addr, region in old_regions:
+            if region.description != "physmem direct map":
+                continue
+            if region.perm != "rw-":
+                continue
+            if region.size >= 0x200000: # heuristic threashold
+                continue
+            current = region.addr_start
+            while current < region.addr_end:
+                res = gdb.execute("slub-contains {:#x}".format(current), to_string=True)
+                res = Color.remove_color(res)
+                r = re.search(r"name: (\S+)  size: \S+  num_pages: (\S+)", res)
+                if not r:
+                    current += gef_getpagesize()
+                    continue
+
+                name = r.group(1)
+                num_pages = int(r.group(2), 16)
+
+                description = "slab cache ({:s}; full)".format(name)
+                total_page_size = gef_getpagesize() * num_pages
+
+                self.insert_region(current, total_page_size, description)
+                current += total_page_size
+        return
+
     def resolve_slub(self):
         if not self.quiet:
             info("resolve slub")
@@ -64583,6 +64630,11 @@ class PagewalkWithHintsCommand(GenericCommand):
                     self.insert_region(address, size, description)
                 address, size = None, None # for detect logic error. name will be reused
                 continue
+
+        if self.skip_full_slab_cache:
+            return
+
+        self.resolve_more_slub()
         return
 
     def resolve_slab(self):
@@ -64752,6 +64804,7 @@ class PagewalkWithHintsCommand(GenericCommand):
             return
 
         self.quiet = args.quiet
+        self.skip_full_slab_cache = args.skip_full_slab_cache
         self.out = []
 
         self.add_legend()
