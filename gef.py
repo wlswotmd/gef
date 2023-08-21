@@ -9846,6 +9846,7 @@ def get_process_maps(outer=False):
             pid = get_pid()
             if pid:
                 return get_process_maps_linux(pid)
+            return []
         else: # scan heuristic
             return __get_explored_regions()
 
@@ -12296,6 +12297,7 @@ class PidCommand(GenericCommand):
     """Show the local PID or remote PID."""
     _cmdline_ = "pid"
     _category_ = "02-d. Process Information - Trivial Information"
+    _aliases_ = ["getpid"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -12328,6 +12330,7 @@ class FilenameCommand(GenericCommand):
     """Show current debugged filename."""
     _cmdline_ = "filename"
     _category_ = "02-d. Process Information - Trivial Information"
+    _aliases_ = ["getfile"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -16637,6 +16640,7 @@ class RegistersCommand(GenericCommand):
     """Display full details on one, many or all registers value from current architecture."""
     _cmdline_ = "registers"
     _category_ = "01-a. Debugging Support - Context"
+    _aliases_ = ["regs"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("registers", metavar="REGISTERS", nargs="*",
@@ -18268,7 +18272,7 @@ class ChecksecCommand(GenericCommand):
                 gef_print("{:<40s}: {:s}".format("Intel CET endbr64/endbr32", Color.colorify("Not Found", "bold red")))
 
         # CET Status
-        if is_x86_64() and is_alive():
+        if is_x86() and is_alive():
             r = get_cet_status()
             if r is None:
                 msg = Color.colorify("Disabled", "bold red") + " (kernel does not support)"
@@ -24184,7 +24188,8 @@ class VMMapCommand(GenericCommand):
             self.show_legend()
 
         headers = ["Start", "End", "Size", "Offset", "Perm", "Path"]
-        legend = "{:{w}s}{:{w}s}{:{w}s}{:{w}s}{:4s} {:s}".format(*headers, w=get_memory_alignment() * 2 + 3)
+        memalign_size = 8 if args.outer else get_memory_alignment()
+        legend = "{:{w}s} {:{w}s} {:{w}s} {:{w}s} {:4s} {:s}".format(*headers, w=memalign_size * 2 + 2)
         self.out.append(Color.colorify(legend, get_gef_setting("theme.table_heading")))
 
         for entry in vmmap:
@@ -24359,7 +24364,7 @@ class XInfoCommand(GenericCommand):
             page_start = lookup_address(sect.page_start)
             page_end = lookup_address(sect.page_end)
             page_size = sect.page_end - sect.page_start
-            gef_print("Page: {!s} {:s} {!s} (size={:#x})".format(page_start, RIGHT_ARROW, page_end, page_size))
+            gef_print("Page: {!s}-{!s} (size={:#x})".format(page_start, page_end, page_size))
             gef_print("Permissions: {}".format(sect.permission))
             gef_print("Pathname: {:s}".format(sect.path))
             gef_print("Offset (from page): {:#x}".format(addr.value - sect.page_start))
@@ -64836,7 +64841,7 @@ class UntilNextCommand(GenericCommand):
     """Execute until next address. This command is useful for rep prefix, or the case of stepi/nexti failed."""
     _cmdline_ = "until-next"
     _category_ = "01-d. Debugging Support - Execution"
-    _aliases_ = ["exec-next"]
+    _aliases_ = ["exec-next", "stepover"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -68114,7 +68119,7 @@ class KsymaddrRemoteApplyCommand(GenericCommand):
 class WalkLinkListCommand(GenericCommand):
     """Walk the link list."""
     _cmdline_ = "walk-link-list"
-    _category_ = "03-a. Memory - Search"
+    _category_ = "03-b. Memory - View"
     _aliases_ = ["chain", "print-list"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -68289,11 +68294,10 @@ class PeekPointersCommand(GenericCommand):
 
 
 @register_command
-class CurrentFrameStackCommand(GenericCommand):
+class StackFrameCommand(GenericCommand):
     """Show the entire stack of the current frame."""
-    _cmdline_ = "current-stack-frame"
+    _cmdline_ = "stack-frame"
     _category_ = "02-d. Process Information - Trivial Information"
-    _aliases_ = ["stack", "full-stack"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
