@@ -11,9 +11,10 @@
     * [Qemu-system cooperation](#qemu-system-cooperation)
     * [Qemu-user cooperation](#qemu-user-cooperation)
     * [Intel Pin/SDE cooperation](#intel-pinsde-cooperation)
-    * [KGDB cooperation](#kgdb-cooperation)
     * [Qiling framework cooperation](#qiling-framework-cooperation)
-* [Added / Improved features](#added--improved-features)
+    * [KGDB cooperation](#kgdb-cooperation)
+    * [VMware cooperation](#vmware-cooperation)
+* [Added / improved features](#added--improved-features)
     * [Qemu-system cooperation - General](#qemu-system-cooperation---general)
     * [Qemu-system cooperation - Linux specific](#qemu-system-cooperation---linux-specific)
     * [Qemu-system cooperation - Arch specific](#qemu-system-cooperation---arch-specific)
@@ -31,7 +32,6 @@ However, it is specialized for x86 / x64 / ARM / ARM64, and various features are
 ## Setup
 
 ### Install (Ubuntu 22.04 or before)
-
 ```bash
 # Run with root user (sudo is NOT recommended)
 wget -q https://raw.githubusercontent.com/bata24/gef/dev/install.sh -O- | sh
@@ -41,7 +41,6 @@ GEF is installed under `/root` to simplify the installation script.
 If you want to change the location, please modify accordingly.
 
 ### Install (Ubuntu 23.04 or after)
-
 ```bash
 # Ubuntu 23.04 restricts global installation with pip3, so you need --break-system-packages option.
 wget -q https://raw.githubusercontent.com/bata24/gef/dev/install.sh -O- | sed -e 's/\(pip3 install\)/\1 --break-system-packages/g' | sh
@@ -53,7 +52,6 @@ python3 /root/.gdbinit-gef.py --upgrade
 ```
 
 ### Uninstall
-
 ```bash
 rm -f /root/.gdbinit-gef.py /root/.gef.rc
 sed -i -e '/source \/root\/.gdbinit-gef.py/d' /root/.gdbinit
@@ -63,14 +61,11 @@ sed -i -e '/source \/root\/.gdbinit-gef.py/d' /root/.gdbinit
 See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 [install-minimal.sh](https://github.com/bata24/gef/blob/dev/install-minimal.sh).
 
-
 ## Supported environment
-
 - Tested on Ubuntu 22.04.
 - It may work under Ubuntu 20.04 and 23.04.
 
 ## Supported mode
-
 * Normal debugging (start under gdb)
 * Attach to the process
 * Attach to the process in another pid namespace
@@ -79,11 +74,12 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 * Connect to the gdb stub of qemu-user (via localhost:1234)
 * Connect to the gdb stub of Intel Pin (via localhost:1234)
 * Connect to the gdb stub of Intel SDE (via localhost:1234)
-* Connect to the gdb stub of KGDB (over serial. currently, only gdb 12.x~ is supported)
 * Connect to the gdb stub of qiling framework (via localhost:9999)
+* Connect to the gdb stub of KGDB (over serial. currently, only gdb 12.x~ is supported)
+* Connect to the gdb stub of VMWare (via ipaddr:port)
 
 ### Qemu-system cooperation
-* Usage:
+* Usage
     * Start qemu-system with the `-s` option and listen on `localhost:1234`.
     * Attach with `gdb-multiarch -ex 'target remote localhost:1234'`.
     * Or `gdb-multiarch -ex 'set architecture TARGET_ARCH' -ex 'target remote localhost:1234'` (for old qemu).
@@ -93,7 +89,7 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
     * x86, x64, ARM and ARM64
 
 ### Qemu-user cooperation
-* Usage:
+* Usage
     * Start qemu-user with the `-g 1234` option and listen on `localhost:1234`.
     * Attach with `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:1234'`.
     * Or `gdb-multiarch -ex 'set architecture TARGET_ARCH' -ex 'target remote localhost:1234'` (for old qemu).
@@ -102,17 +98,24 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
     * See [QEMU-USER-SUPPORTED-ARCH.md](https://github.com/bata24/gef/blob/dev/QEMU-USER-SUPPORTED-ARCH.md)
 
 ### Intel Pin/SDE cooperation
-* Usage of Intel Pin:
+* Usage for Intel Pin
     * Listen with `pin -appdebug -appdebug_server_port 1234 -t obj-intel64/inscount0.so -- /bin/ls`.
     * Attach with `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:1234'`.
     * It runs very slowly and is not recommended.
-* Usage of Intel SDE:
+* Usage for Intel SDE
     * Listen with `sde64 -debug -debug-port 1234 -- /bin/ls`.
     * Attach with `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:1234'`.
     * It runs very slowly and is not recommended.
 
+### Qiling framework cooperation
+* Usage
+    * Write a harness. See https://docs.qiling.io/en/latest/debugger/
+    * `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:9999'`
+    * On ARM64, the flag register is not available, so the branch taken/not detected is incorrect.
+    * This is an experimental support.
+
 ### KGDB cooperation
-* Usage:
+* Usage
     * Build the kernel as `CONFIG_KGDB=y`. Ubuntu has supported it by default.
     * Configure the serial port as a named pipe in your two (debugger/debuggee) virtual machine settings, such as VMware or VirtualBox.
     * Debuggee: Edit `/etc/default/grub` and append `kgdboc=ttyS0,115200 kgdbwait` to the end of `GRUB_CMDLINE_LINUX_DEFAULT`, then `update-grub && reboot`.
@@ -121,12 +124,15 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
     * Commands for qemu-system are not supported in KGDB mode. Because there is no way to access physical memory.
     * It works only gdb 12.x~.
 
-### Qiling framework cooperation
-* Usage:
-    * Write a harness. See https://docs.qiling.io/en/latest/debugger/
-    * `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:9999'`
-    * On ARM64, the flag register is not available, so the branch taken/not detected is incorrect.
-    * This is an experimental support.
+### VMware cooperation
+* Usage
+    * Add following configurations to vmx file.
+        * `debugStub.listen.guest64 = "TRUE"`
+        * `debugStub.listen.guest64.remote = "TRUE"`
+        * `debugStub.hideBreakpoints = "TRUE"`
+        * `debugStub.port.guest64 = "1234"`
+    * Attach with `gdb-multiarch -ex 'target remote <ipaddr>:1234'`.
+    * Commands for qemu-system are not supported in VMware mode. Because there is no way to access physical memory.
 
 ## Added / improved features
 
@@ -419,7 +425,7 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 * `format-string-helper` is improved.
     * It supports more printf-like functions.
 
-### New features
+### Added features
 * `pid`: prints pid.
 * `filename`: prints filename.
 * `auxv`: pretty prints ELF auxiliary vector.
@@ -438,6 +444,14 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 * `libc`/`ld`/`heapbase`/`codebase`: displays each of the base address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/base.png)
 * `brva`: sets a breakpoint at relative offset from codebase.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/brva.png)
+* `message-break`: sets a breakpoint with simple user defined message as f-string format.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/message-break.png)
+* `main-break`: sets a breakpoint at `main` with or without symbols, then continue.
+    * This is useful when you just want to run to `main` under using qemu-user or pin, or debugging no-symbol ELF.
+* `break-only-if-taken`/`break-only-if-not-taken`: sets a breakpoint which breaks only branch is taken (or not taken).
+* `distance`: calculates the offset from its base address.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/distance.png)
 * `fpu`/`mmx`/`sse`/`avx`: pretty prints FPU/MMX/SSE/AVX registers.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/fpu-mmx-sse-avx.png)
 * `xmmset`: sets the value to xmm/ymm register simply.
@@ -468,6 +482,10 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/u2d.png)
 * `trans`: shows various transformation.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/trans.png)
+* `walk-link-list`: walks the link list.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/walk-link-list.png)
+* `hexdump-flexible`: displays the hexdump with user defined format.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hexdump-flexible.png)
 * `hash-memory`: calculates various hashes/CRCs.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hash-memory.png)
 * `memcmp`: compares the contents of the address A and B, whether virtual or physical.
@@ -482,24 +500,29 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ii.png)
 * `version`: shows software versions that gef used.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/version.png)
-* `follow`: changes `follow-fork-mode` setting.
-* `smart-cpp-function-name`: toggles `context.smart_cpp_function_name` setting.
+* `arch-info`: shows architecture information used in gef.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/arch-info.png)
+* `context-extra`: manages user specified command to execute when each step.
 * `seccomp`: invokes `seccomp-tools`.
 * `onegadget`: invokes `one_gadget`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/onegadget.png)
+* `rp`: invokes `rp++` with commonly used options.
 * `ls`/`cat`: invokes `ls`/`cat` directly.
-* `smart-memory-dump`: dumps all regions of the memory to each file.
 * `mmap`: allocates a new memory if `mmap` symbol exists.
     * This is syntax sugar of `call mmap(...)`.
+* `call-syscall`: calls system call with specified values.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/call-syscall.png)
 * `constgrep`: invokes `grep` under `/usr/include`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/constgrep.png)
+* `proc-dump`: dumps each file under `/proc/PID/`.
 * `time`: measures the time of the GDB command.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/time.png)
 * `multi-line`: executes multiple GDB commands in sequence.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/multi-line.png)
-* `rp`: invokes `rp++` with commonly used options.
 * `cpuid`: shows the result of cpuid(eax=0,1,2...).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/cpuid.png)
+* `capability`: shows the capabilities of the debugging process.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/capability.png)
 * `dasm`: disassembles the code by capstone.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dasm.png)
 * `asm-list`: lists up instructions. (only x64/x86)
@@ -515,42 +538,27 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dynamic.png)
 * `link-map`: dumps useful members of `link_map` with iterating.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/link-map.png)
-* `ret2dl-hint`: shows the structure used by Return-to-dl-resolve as hint.
-* `srop-hint`: shows the code for SigReturn-Oriented-Programming as hint.
 * `dtor-dump`: dumps some destructor functions list.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dtor-dump.png)
-* `walk-link-list`: walks the link list.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/walk-link-list.png)
 * `ptr-mangle`: shows the mangled value will be mangled by `PTR_MANGLE`.
 * `ptr-demangle`: shows the demangled value of the value mangled by `PTR_MANGLE`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ptr-mangle-demangle.png)
 * `search-mangled-ptr`: searches the mangled value from RW memory.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/search-mangled-ptr.png)
-* `capability`: shows the capabilities of the debugging process.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/capability.png)
-* `arch-info`: shows architecture information used in gef.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/arch-info.png)
-* `call-syscall`: calls system call with specified values.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/call-syscall.png)
 * `ascii-search`: searches ASCII string recursively from specific location.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ascii-search.png)
 * `read-system-register`: reads system register for old qemu.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/read-system-register.png)
-* `pac-keys`: pretty prints ARM64 PAC keys.
-* `message-break`: sets a breakpoint with simple user defined message as f-string format.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/message-break.png)
-* `hexdump-flexible`: displays the hexdump with user defined format.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hexdump-flexible.png)
 * `v8`: displays v8 tagged object.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/v8.png)
     * It also loads more commands from latest gdbinit for v8.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/v8-load.png)
-* `main-break`: sets a breakpoint at `main` with or without symbols, then continue.
-    * This is useful when you just want to run to `main` under using qemu-user or pin, or debugging no-symbol ELF.
-* `distance`: calculates the offset from its base address.
-* `context-extra`: manages user specified command to execute when each step.
-* `break-only-if-taken`/`break-only-if-not-taken`: sets a breakpoint which breaks only branch is taken (or not taken).
-* `proc-dump`: dumps each file under `/proc/PID`.
+* `follow`: changes `follow-fork-mode` setting.
+* `smart-cpp-function-name`: toggles `context.smart_cpp_function_name` setting.
+* `ret2dl-hint`: shows the structure used by Return-to-dl-resolve as hint.
+* `srop-hint`: shows the code for SigReturn-Oriented-Programming as hint.
+* `smart-memory-dump`: dumps all regions of the memory to each file.
+* `pac-keys`: pretty prints ARM64 PAC keys.
 
 ### Other
 * The category is introduced in `gef help`.
