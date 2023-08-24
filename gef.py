@@ -65027,7 +65027,7 @@ class ExecUntilCommand(GenericCommand):
 
                 # execute 1 instruction
                 insn = get_insn()
-                if self.skip_lib and "@plt>" in str(insn):
+                if self.use_ni or (self.skip_lib and "@plt>" in str(insn)):
                     gdb.execute("ni") # use ni wrapper
                 else:
                     gdb.execute("si") # use si wrapper
@@ -65088,6 +65088,7 @@ class ExecUntilCommand(GenericCommand):
             self.usage()
             return
         self.print_insn = args.print_insn
+        self.use_ni = args.use_ni
         self.skip_lib = args.skip_lib
         self.exclude = args.exclude
         self.exec_next()
@@ -65104,7 +65105,8 @@ class ExecUntilCallCommand(ExecUntilCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
-    parser.add_argument("--skip-lib", action="store_true", help="uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.")
+    parser.add_argument("-n", "--use-ni", action="store_true", help="use `ni` instead of `si`")
+    parser.add_argument("--skip-lib", action="store_true", help="use `ni` instead of `si` if instruction is `call xxx@plt`.")
     parser.add_argument("-e", "--exclude", action="append", type=parse_address, default=[], help="the address to exclude from breakpoints.")
     _syntax_ = parser.format_help()
     _example_ = None
@@ -65125,7 +65127,8 @@ class ExecUntilJumpCommand(ExecUntilCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
-    parser.add_argument("--skip-lib", action="store_true", help="uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.")
+    parser.add_argument("-n", "--use-ni", action="store_true", help="use `ni` instead of `si`")
+    parser.add_argument("--skip-lib", action="store_true", help="use `ni` instead of `si` if instruction is `call xxx@plt`.")
     parser.add_argument("-e", "--exclude", action="append", type=parse_address, default=[], help="the address to exclude from breakpoints.")
     _syntax_ = parser.format_help()
     _example_ = None
@@ -65146,7 +65149,8 @@ class ExecUntilIndirectBranchCommand(ExecUntilCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
-    parser.add_argument("--skip-lib", action="store_true", help="uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.")
+    parser.add_argument("-n", "--use-ni", action="store_true", help="use `ni` instead of `si`")
+    parser.add_argument("--skip-lib", action="store_true", help="use `ni` instead of `si` if instruction is `call xxx@plt`.")
     parser.add_argument("-e", "--exclude", action="append", type=parse_address, default=[], help="the address to exclude from breakpoints.")
     _syntax_ = parser.format_help()
     _example_ = None
@@ -65161,6 +65165,7 @@ class ExecUntilIndirectBranchCommand(ExecUntilCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
         self.print_insn = args.print_insn
+        self.use_ni = args.use_ni
         self.skip_lib = args.skip_lib
         self.exclude = args.exclude
         self.exec_next()
@@ -65177,7 +65182,8 @@ class ExecUntilAllBranchCommand(ExecUntilCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
-    parser.add_argument("--skip-lib", action="store_true", help="uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.")
+    parser.add_argument("-n", "--use-ni", action="store_true", help="use `ni` instead of `si`")
+    parser.add_argument("--skip-lib", action="store_true", help="use `ni` instead of `si` if instruction is `call xxx@plt`.")
     parser.add_argument("-e", "--exclude", action="append", type=parse_address, default=[], help="the address to exclude from breakpoints.")
     _syntax_ = parser.format_help()
     _example_ = None
@@ -65198,7 +65204,8 @@ class ExecUntilSyscallCommand(ExecUntilCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
-    parser.add_argument("--skip-lib", action="store_true", help="uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.")
+    parser.add_argument("-n", "--use-ni", action="store_true", help="use `ni` instead of `si`")
+    parser.add_argument("--skip-lib", action="store_true", help="use `ni` instead of `si` if instruction is `call xxx@plt`.")
     parser.add_argument("-f", "--filter", action="append", default=[], help="filter by specified syscall.")
     parser.add_argument("-e", "--exclude", action="append", type=parse_address, default=[], help="the address to exclude from breakpoints.")
     _syntax_ = parser.format_help()
@@ -65213,6 +65220,7 @@ class ExecUntilSyscallCommand(ExecUntilCommand):
     @only_if_gdb_running
     def do_invoke(self, args):
         self.print_insn = args.print_insn
+        self.use_ni = args.use_ni
         self.skip_lib = args.skip_lib
         self.filter = args.filter
         self.exclude = args.exclude
@@ -65230,7 +65238,8 @@ class ExecUntilRetCommand(ExecUntilCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
-    parser.add_argument("--skip-lib", action="store_true", help="uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.")
+    parser.add_argument("-n", "--use-ni", action="store_true", help="use `ni` instead of `si`")
+    parser.add_argument("--skip-lib", action="store_true", help="use `ni` instead of `si` if instruction is `call xxx@plt`.")
     parser.add_argument("-e", "--exclude", action="append", type=parse_address, default=[], help="the address to exclude from breakpoints.")
     _syntax_ = parser.format_help()
     _example_ = None
@@ -65251,7 +65260,8 @@ class ExecUntilMemaccessCommand(ExecUntilCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
-    parser.add_argument("--skip-lib", action="store_true", help="uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.")
+    parser.add_argument("-n", "--use-ni", action="store_true", help="use `ni` instead of `si`")
+    parser.add_argument("--skip-lib", action="store_true", help="use `ni` instead of `si` if instruction is `call xxx@plt`.")
     parser.add_argument("-e", "--exclude", action="append", type=parse_address, default=[], help="the address to exclude from breakpoints.")
     _syntax_ = parser.format_help()
     _example_ = None
@@ -65272,7 +65282,8 @@ class ExecUntilKeywordReCommand(ExecUntilCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
-    parser.add_argument("--skip-lib", action="store_true", help="uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.")
+    parser.add_argument("-n", "--use-ni", action="store_true", help="use `ni` instead of `si`")
+    parser.add_argument("--skip-lib", action="store_true", help="use `ni` instead of `si` if instruction is `call xxx@plt`.")
     parser.add_argument("-e", "--exclude", action="append", type=parse_address, default=[], help="the address to exclude from breakpoints.")
     parser.add_argument("keyword", metavar="KEYWORD", type=re.compile, nargs="+", help="filter by specified regex keyword.")
     _syntax_ = parser.format_help()
@@ -65290,6 +65301,7 @@ class ExecUntilKeywordReCommand(ExecUntilCommand):
     @only_if_gdb_running
     def do_invoke(self, args):
         self.print_insn = args.print_insn
+        self.use_ni = args.use_ni
         self.skip_lib = args.skip_lib
         self.keyword = args.keyword
         self.exclude = args.exclude
@@ -65307,7 +65319,8 @@ class ExecUntilCondCommand(ExecUntilCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
-    parser.add_argument("--skip-lib", action="store_true", help="uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.")
+    parser.add_argument("-n", "--use-ni", action="store_true", help="use `ni` instead of `si`")
+    parser.add_argument("--skip-lib", action="store_true", help="use `ni` instead of `si` if instruction is `call xxx@plt`.")
     parser.add_argument("-e", "--exclude", action="append", type=parse_address, default=[], help="the address to exclude from breakpoints.")
     parser.add_argument("condition", metavar="CONDITION", help="filter by codition.")
     _syntax_ = parser.format_help()
@@ -65325,6 +65338,7 @@ class ExecUntilCondCommand(ExecUntilCommand):
     @only_if_gdb_running
     def do_invoke(self, args):
         self.print_insn = args.print_insn
+        self.use_ni = args.use_ni
         self.skip_lib = args.skip_lib
         self.exclude = args.exclude
 
@@ -65365,7 +65379,8 @@ class ExecUntilUserCodeCommand(ExecUntilCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
-    parser.add_argument("--skip-lib", action="store_true", help="uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.")
+    parser.add_argument("-n", "--use-ni", action="store_true", help="use `ni` instead of `si`")
+    parser.add_argument("--skip-lib", action="store_true", help="use `ni` instead of `si` if instruction is `call xxx@plt`.")
     parser.add_argument("-e", "--exclude", action="append", type=parse_address, default=[], help="the address to exclude from breakpoints.")
     _syntax_ = parser.format_help()
     _example_ = None
@@ -65383,6 +65398,7 @@ class ExecUntilUserCodeCommand(ExecUntilCommand):
             self.usage()
             return
         self.print_insn = args.print_insn
+        self.use_ni = args.use_ni
         self.skip_lib = args.skip_lib
         self.exclude = args.exclude
 
@@ -65410,7 +65426,8 @@ class ExecUntilLibcCodeCommand(ExecUntilCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
-    parser.add_argument("--skip-lib", action="store_true", help="uses `nexti` instead of `stepi` if instruction is `call xxx@plt`.")
+    parser.add_argument("-n", "--use-ni", action="store_true", help="use `ni` instead of `si`")
+    parser.add_argument("--skip-lib", action="store_true", help="use `ni` instead of `si` if instruction is `call xxx@plt`.")
     parser.add_argument("-e", "--exclude", action="append", type=parse_address, default=[], help="the address to exclude from breakpoints.")
     _syntax_ = parser.format_help()
     _example_ = None
@@ -65428,6 +65445,7 @@ class ExecUntilLibcCodeCommand(ExecUntilCommand):
             self.usage()
             return
         self.print_insn = args.print_insn
+        self.use_ni = args.use_ni
         self.skip_lib = args.skip_lib
         self.exclude = args.exclude
 
