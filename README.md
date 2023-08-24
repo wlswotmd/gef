@@ -472,6 +472,8 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
         * user-code
         * libc-code
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/exec-until.png)
+* `xuntil`: executes until specified address.
+    * It is slightly easier to use than the original until command.
 * `until-next`: executes until next address.
     * This is useful for the operation with `rep` prefix.
 * `add-symbol-temporary`: adds symbol information from command-line.

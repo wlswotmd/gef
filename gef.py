@@ -64860,6 +64860,25 @@ class UntilNextCommand(GenericCommand):
 
 
 @register_command
+class XUntilCommand(GenericCommand):
+    """Execute until specified address. It is slightly easier to use than the original until command."""
+    _cmdline_ = "xuntil"
+    _category_ = "01-d. Debugging Support - Execution"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="the address you want to stop.")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
+        # `until` command has a bug(?) because sometimes fail. we use `tbreak` and `continue` instead of `until`.
+        gdb.Breakpoint("*{:#x}".format(args.address), gdb.BP_BREAKPOINT, internal=True, temporary=True)
+        gdb.execute("c") # use c wrapper
+        return
+
+
+@register_command
 class ExecUntilCommand(GenericCommand):
     """The base command to execute until specific condition."""
     _cmdline_ = "exec-until"
