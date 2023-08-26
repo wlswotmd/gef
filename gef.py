@@ -8726,16 +8726,23 @@ def write_physmem(paddr, buffer):
 
 
 def get_current_mmu_mode():
-    try:
-        response = gdb.execute("maintenance packet qqemu.PhyMemMode", to_string=True, from_tty=False)
-        if 'received: "0"' in response:
-            return "virt"
-        elif 'received: "1"' in response:
-            return "phys"
-        else:
+    if is_qemu_system():
+        try:
+            response = gdb.execute("maintenance packet qqemu.PhyMemMode", to_string=True, from_tty=False)
+            if 'received: "0"' in response:
+                return "virt"
+            elif 'received: "1"' in response:
+                return "phys"
+            else:
+                return False
+        except gdb.error:
             return False
-    except gdb.error:
-        return False
+    elif is_vmware():
+        try:
+            read_memory(0, 1)
+            return "phys"
+        except gdb.MemoryError:
+            return "virt"
 
 
 def is_supported_physmode():
@@ -8743,15 +8750,23 @@ def is_supported_physmode():
 
 
 def enable_phys():
-    response = gdb.execute("maintenance packet Qqemu.PhyMemMode:1", to_string=True, from_tty=False)
-    response = gdb.execute("maintenance packet qqemu.PhyMemMode", to_string=True, from_tty=False)
-    return 'received: "1"' in response
+    if is_qemu_system():
+        response = gdb.execute("maintenance packet Qqemu.PhyMemMode:1", to_string=True, from_tty=False)
+        response = gdb.execute("maintenance packet qqemu.PhyMemMode", to_string=True, from_tty=False)
+        return 'received: "1"' in response
+    elif is_vmware():
+        gdb.execute("monitor phys", to_string=True)
+        return True
 
 
 def disable_phys():
-    response = gdb.execute("maintenance packet Qqemu.PhyMemMode:0", to_string=True, from_tty=False)
-    response = gdb.execute("maintenance packet qqemu.PhyMemMode", to_string=True, from_tty=False)
-    return 'received: "0"' in response
+    if is_qemu_system():
+        response = gdb.execute("maintenance packet Qqemu.PhyMemMode:0", to_string=True, from_tty=False)
+        response = gdb.execute("maintenance packet qqemu.PhyMemMode", to_string=True, from_tty=False)
+        return 'received: "0"' in response
+    elif is_vmware():
+        gdb.execute("monitor virt", to_string=True)
+        return True
 
 
 def is_kvm_enabled():
@@ -8933,6 +8948,20 @@ def only_if_not_qemu_system(f):
             return f(*args, **kwargs)
         else:
             warn("This command cannot work under qemu-system.")
+            return
+
+    return wrapper
+
+
+def only_if_qemu_system_or_vmware(f):
+    """Decorator wrapper to check if GDB is connected to qemu-system or vmware."""
+
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        if is_qemu_system() or is_vmware():
+            return f(*args, **kwargs)
+        else:
+            warn("This command can work only under qemu-system or vmware-debug-stub.")
             return
 
     return wrapper
@@ -9188,8 +9217,9 @@ def to_unsigned_long(v):
 
 # Don't use lru_cache.
 # This is because there is a command that performs step execution internally.
-def get_register(regname, use_mbed_exec=False):
+def get_register(regname, use_mbed_exec=False, use_monitor=False):
     """Return a register's value."""
+
     if regname[0] in ["%", "@"]:
         regname = "$" + regname[1:]
 
@@ -9211,7 +9241,7 @@ def get_register(regname, use_mbed_exec=False):
         except (gdb.error, ValueError):
             pass
 
-    if use_mbed_exec:
+    if use_mbed_exec and is_qemu_system() and is_arm32():
         # Note that attempting to read a non-existent register will jump to an Undefined exception
         try:
             r = gdb.execute("read-system-register {:s}".format(regname), to_string=True)
@@ -9219,6 +9249,21 @@ def get_register(regname, use_mbed_exec=False):
                 return int(r.split("=")[1], 16)
         except gdb.error:
             pass
+
+    if use_monitor and is_qemu_system() and is_x86():
+        regname = regname.lstrip("$").upper()
+        res = gdb.execute("monitor info registers", to_string=True)
+        r = re.search(r"{:s}=(\S+)".format(regname), res)
+        if r:
+            return int(r.group(1), 16)
+
+    if use_monitor and is_vmware() and is_x86_64():
+        regname = regname.lstrip("$")
+        res = gdb.execute("monitor r {:s}".format(regname), to_string=True)
+        r = re.search(r"{:s}=(\S+)".format(regname), res)
+        if r:
+            return int(r.group(1), 16)
+
     return None
 
 
@@ -9320,6 +9365,18 @@ def is_over_serial():
 @functools.lru_cache(maxsize=None)
 def is_kgdb():
     return (is_x86() or is_arm32() or is_arm64()) and is_over_serial()
+
+
+@functools.lru_cache(maxsize=None)
+def is_vmware():
+    if not is_remote_debug():
+        return False
+    # https://xuanxuanblingbling.github.io/ctf/tools/2021/10/22/vmware/
+    try:
+        res = gdb.execute("monitor help r", to_string=True)
+        return "Dump hidden register" in res
+    except gdb.error:
+        return False
 
 
 @functools.lru_cache(maxsize=None)
@@ -17518,6 +17575,8 @@ class ArchInfoCommand(GenericCommand):
         gef_print("{:30s} {:s} {!s}".format("is_pin()", RIGHT_ARROW, is_pin()))
         gef_print("{:30s} {:s} {!s}".format("is_kgdb()", RIGHT_ARROW, is_kgdb()))
         gef_print("{:30s} {:s} {!s}".format("is_qiling()", RIGHT_ARROW, is_qiling()))
+        gef_print("{:30s} {:s} {!s}".format("is_vmware()", RIGHT_ARROW, is_vmware()))
+        gef_print("{:30s} {:s} {!s}".format("is_in_kernel()", RIGHT_ARROW, is_in_kernel()))
 
         gef_print(titlify("GEF settings"))
         gef_print("{:30s} {:s} {!s}".format("current_arch.arch", RIGHT_ARROW, current_arch.arch))
@@ -18479,9 +18538,8 @@ class KernelChecksecCommand(GenericCommand):
 
         # Arch Specific
         if is_x86():
-            res = gdb.execute("monitor info registers", to_string=True)
-            cr0 = int(re.search(r"CR0=(\S+)", res).group(1), 16)
-            cr4 = int(re.search(r"CR4=(\S+)", res).group(1), 16)
+            cr0 = get_register("cr0", use_monitor=True)
+            cr4 = get_register("cr4", use_monitor=True)
 
             # WP
             if (cr0 >> 16) & 1:
@@ -22429,7 +22487,11 @@ class ContextCommand(GenericCommand):
 
         selected_thread.switch()
         if selected_frame is not None:
-            selected_frame.select()
+            try:
+                selected_frame.select()
+                # A gdb.error will occur if the user patches a range that includes the ret instruction.
+            except gdb.error:
+                pass
         return
 
     def context_additional_information(self):
@@ -43922,29 +43984,56 @@ class KernelbaseCommand(GenericCommand):
             dic["has_none"] = None in dic.values()
             return Kinfo(*dic.values())
 
-        # 1. search kbase
-        # .text is usually noticeably larger than other areas.
-        # It just determines this size heuristically and detects it, but it works well in most cases.
-        TEXT_REGION_MIN_SIZE = 0x100000
+        # 1. search kernel base exact way for x86
+        if is_x86():
+            div0_handler = None
 
-        for i, (vaddr, size, perm) in enumerate(dic["maps"]):
-            if perm == "R-X" and size >= TEXT_REGION_MIN_SIZE:
-                dic["kbase"] = vaddr
-                dic["kbase_size"] = size
-                kbase_map_index = i
-                break
-        else:
-            # not found, maybe old kernel
+            if is_qemu_system():
+                # [000] #DE: Divide-by-zero 0x00000000ffffffffbd008e0000100870 0xe 0x0 0x0 0x1 0x0010:0xffffffffbd000870 <NO_SYMBOL>
+                res = gdb.execute("qreg --no-pager --verbose", to_string=True)
+                r = re.search(r"Divide-by-zero.+\S+:(\S+)\s+<", res)
+                div0_handler = int(r.group(1), 16)
+            elif is_vmware():
+                res = gdb.execute("monitor r idtr", to_string=True)
+                r = re.search(r"idtr base=(\S+) limit=(\S+)", res)
+                base = int(r.group(1), 16)
+                limit = int(r.group(2), 16)
+                idtinfo = slice_unpack(read_memory(base, limit + 1), current_arch.ptrsize * 2)
+                idt0 = IdtInfoCommand.idt_unpack(idtinfo[0])
+                div0_handler = idt0.offset
+
+            if div0_handler and is_valid_addr(div0_handler):
+                for i, (vaddr, size, perm) in enumerate(dic["maps"]):
+                    if vaddr <= div0_handler < vaddr + size:
+                        dic["kbase"] = vaddr
+                        dic["kbase_size"] = size
+                        kbase_map_index = i
+                        break
+
+        # 1b. search kernel base heuristic way
+        if dic["kbase"] is None:
+            # .text is usually noticeably larger than other areas.
+            # It just determines this size heuristically and detects it, but it works well in most cases.
+            TEXT_REGION_MIN_SIZE = 0x100000
+
             for i, (vaddr, size, perm) in enumerate(dic["maps"]):
-                if perm == "RWX" and size >= TEXT_REGION_MIN_SIZE:
+                if perm == "R-X" and size >= TEXT_REGION_MIN_SIZE:
                     dic["kbase"] = vaddr
                     dic["kbase_size"] = size
                     kbase_map_index = i
                     break
             else:
-                # Not found, so fast return
-                dic["has_none"] = None in dic.values()
-                return Kinfo(*dic.values())
+                # not found, maybe old kernel
+                for i, (vaddr, size, perm) in enumerate(dic["maps"]):
+                    if perm == "RWX" and size >= TEXT_REGION_MIN_SIZE:
+                        dic["kbase"] = vaddr
+                        dic["kbase_size"] = size
+                        kbase_map_index = i
+                        break
+                else:
+                    # Not found, so fast return
+                    dic["has_none"] = None in dic.values()
+                    return Kinfo(*dic.values())
 
         # 2. search kernel RO base
         # If -enable-kvm option of qemu-system is not set, there may be multiple `r-- non-.rodata` between .text and .rodata.
@@ -43961,11 +44050,7 @@ class KernelbaseCommand(GenericCommand):
                         dic["krobase"] = vaddr
                         dic["krobase_size"] = size
                         krobase_map_index = kbase_map_index + i
-                elif dic["krobase"] + dic["krobase_size"] == vaddr:
-                    dic["krobase_size"] += size # merge contiguous region
-                    krobase_map_index = kbase_map_index + i
-                else:
-                    break
+                        break
 
         # 2b. search kernel RO base for old kernel
         if dic["krobase"] is None:
@@ -44014,10 +44099,7 @@ class KernelbaseCommand(GenericCommand):
                             if size >= RW_REGION_MIN_SIZE:
                                 dic["krwbase"] = vaddr
                                 dic["krwbase_size"] = size
-                        elif dic["krwbase"] + dic["krwbase_size"] == vaddr:
-                            dic["krwbase_size"] += size # merge contiguous region
-                        else:
-                            break
+                                break
 
         dic["has_none"] = None in dic.values()
         __cached_kernel_info__ = Kinfo(*dic.values())
@@ -44025,7 +44107,7 @@ class KernelbaseCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_qemu_system
+    @only_if_qemu_system_or_vmware
     @only_if_in_kernel
     def do_invoke(self, args):
         self.dont_repeat()
@@ -55544,7 +55626,7 @@ class KsymaddrRemoteCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_qemu_system
+    @only_if_qemu_system_or_vmware
     @only_if_in_kernel
     def do_invoke(self, args):
         self.dont_repeat()
@@ -60089,7 +60171,6 @@ class QemuRegistersCommand(GenericCommand):
         return
 
     def qregisters_x86_x64(self):
-        res = gdb.execute("monitor info registers", to_string=True)
         red = lambda x: Color.colorify(x, "bold red")
         yellow = lambda x: Color.colorify(x, "bold yellow")
 
@@ -60109,7 +60190,7 @@ class QemuRegistersCommand(GenericCommand):
             [1, "MP", "Monitor co-processor", "If 1, WAIT/FWAIT instructions generate #NM exception when CR0.TS"],
             [0, "PE", "Protected mode enable", "If 1, system is in protected mode, else system is in real mode"],
         ]
-        cr0 = int(re.search(r"CR0=(\S+)", res).group(1), 16)
+        cr0 = get_register("cr0", use_monitor=True)
         self.out.extend(PrintBitInfo("CR0", 32, desc, bit_info).make_out(cr0))
 
         # CR1
@@ -60119,7 +60200,7 @@ class QemuRegistersCommand(GenericCommand):
         # CR2
         self.out.append(titlify("CR2 (Control Register 2)"))
         desc = "When page fault, the address attempted to access is stored (PFLA: Page Fault Linear Address)"
-        cr2 = int(re.search(r"CR2=(\S+)", res).group(1), 16)
+        cr2 = get_register("cr2", use_monitor=True)
         self.out.extend(PrintBitInfo("CR2", ptr_width() * 8, desc, bit_info=[]).make_out(cr2, split=False))
 
         # CR3
@@ -60131,7 +60212,7 @@ class QemuRegistersCommand(GenericCommand):
             [4, "PCD", "Page-level Cache Disable", "If 1, disable Page-Directory itself caching when CR4.PCIDE=0"],
             [3, "PWT", "Page-level Write-Through", "If 1, enable write through Page-Directory itself caching when CR4.PCIDE=0"],
         ]
-        cr3 = int(re.search(r"CR3=(\S+)", res).group(1), 16)
+        cr3 = get_register("cr3", use_monitor=True)
         self.out.extend(PrintBitInfo("CR3", ptr_width() * 8, desc, bit_info).make_out(cr3))
 
         # CR4
@@ -60162,16 +60243,16 @@ class QemuRegistersCommand(GenericCommand):
             [1, "PVI", "Protected-mode Virtual Interrupts", "If 1, enables support for the virtual interrupt flag (VIF) in protected mode"],
             [0, "VME", "Virtual 8086 Mode Extensions", "If 1, enables support for the virtual interrupt flag (VIF) in virtual-8086 mode"],
         ]
-        cr4 = int(re.search(r"CR4=(\S+)", res).group(1), 16)
+        cr4 = get_register("cr4", use_monitor=True)
         self.out.extend(PrintBitInfo("CR4", ptr_width() * 8, desc, bit_info).make_out(cr4))
 
         # DR0-DR3
         self.out.append(titlify("DR0-DR3 (Debug Address Register 0-3)"))
         desc = "Contain linear addresses of up to 4 hardware breakpoints. If paging is enabled, they are translated to physical addresses"
-        dr0 = int(re.search(r"DR0=(\S+)", res).group(1), 16)
-        dr1 = int(re.search(r"DR1=(\S+)", res).group(1), 16)
-        dr2 = int(re.search(r"DR2=(\S+)", res).group(1), 16)
-        dr3 = int(re.search(r"DR3=(\S+)", res).group(1), 16)
+        dr0 = get_register("dr0", use_monitor=True)
+        dr1 = get_register("dr1", use_monitor=True)
+        dr2 = get_register("dr2", use_monitor=True)
+        dr3 = get_register("dr3", use_monitor=True)
         self.out.extend(PrintBitInfo("DR0", ptr_width() * 8, None, bit_info=[]).make_out(dr0, split=False))
         self.out.extend(PrintBitInfo("DR1", ptr_width() * 8, None, bit_info=[]).make_out(dr1, split=False))
         self.out.extend(PrintBitInfo("DR2", ptr_width() * 8, None, bit_info=[]).make_out(dr2, split=False))
@@ -60194,7 +60275,7 @@ class QemuRegistersCommand(GenericCommand):
             [1, "B1", "breakpoint condition detected", "If 1, breakpoint condition was met when a debug exception for DR1"],
             [0, "B0", "breakpoint condition detected", "If 1, breakpoint condition was met when a debug exception for DR0"],
         ]
-        dr6 = int(re.search(r"DR6=(\S+)", res).group(1), 16)
+        dr6 = get_register("dr6", use_monitor=True)
         self.out.extend(PrintBitInfo("DR6", 32, desc, bit_info).make_out(dr6))
 
         # DR7
@@ -60222,12 +60303,12 @@ class QemuRegistersCommand(GenericCommand):
             [1, "G0", "Global DR0 breakpoint", ""],
             [0, "L0", "Local DR0 breakpoint", ""],
         ]
-        dr7 = int(re.search(r"DR7=(\S+)", res).group(1), 16)
+        dr7 = get_register("dr7", use_monitor=True)
         self.out.extend(PrintBitInfo("DR7", ptr_width() * 8, desc, bit_info).make_out(dr7))
 
         # EFER
         self.out.append(titlify("EFER (Extended Feature Enable Register; MSR_EFER:0xc0000080)"))
-        efer = int(re.search(r"EFER=(\S+)", res).group(1), 16)
+        efer = get_register("efer", use_monitor=True)
         bit_info = [
             [15, "TCE", "Translation Cache Extension", ""],
             [14, "FFXSR", "Fast FXSAVE/FXRSTOR", ""],
@@ -60245,6 +60326,7 @@ class QemuRegistersCommand(GenericCommand):
         self.out.extend(PrintBitInfo("EFER", ptr_width() * 8, None, bit_info).make_out(efer))
 
         # TR
+        res = gdb.execute("monitor info registers", to_string=True)
         self.out.append(titlify("TR (Task Register)"))
         tr = re.search(r"TR\s*=\s*(\S+) (\S+) (\S+) (\S+)", res)
         trseg, base, limit, attr = [int(tr.group(i), 16) for i in range(1, 5)]
@@ -60894,7 +60976,7 @@ class PagewalkCommand(GenericCommand):
 
     # Need not @parse_args because argparse can't stop interpreting options for pagewalk sub-command.
     @only_if_gdb_running
-    @only_if_qemu_system
+    @only_if_qemu_system_or_vmware
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     def do_invoke(self, argv):
         self.dont_repeat()
@@ -61328,11 +61410,10 @@ class PagewalkX64Command(PagewalkCommand):
     def pagewalk(self):
         # `info tlb` on qemu-monitor returns pagetable without intermediate pagetable information.
         # for printing it, we will pagewalk manually.
-        res = gdb.execute("monitor info registers", to_string=True)
-        cr3 = int(re.search(r"CR3=(\S+)", res).group(1), 16)
+        cr3 = get_register("cr3", use_monitor=True)
+        cr4 = get_register("cr4", use_monitor=True)
         if is_x86_64() and self.user_pt:
             cr3 += gef_getpagesize()
-        cr4 = int(re.search(r"CR4=(\S+)", res).group(1), 16)
         self.quiet_info("cr3: {:#018x}".format(cr3))
         self.quiet_info("cr4: {:#018x}".format(cr4))
 
@@ -61430,7 +61511,7 @@ class PagewalkX64Command(PagewalkCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_qemu_system
+    @only_if_qemu_system_or_vmware
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
         self.dont_repeat()
@@ -64513,8 +64594,7 @@ class PagewalkWithHintsCommand(GenericCommand):
             return
         vmalloc_start_addr = read_int_from_memory(vmalloc_base)
 
-        res = gdb.execute("monitor info registers", to_string=True)
-        cr4 = int(re.search(r"CR4=(\S+)", res).group(1), 16)
+        cr4 = get_register("cr4", use_monitor=True)
         if (cr4 >> 12) & 1: # PML5T check
             VMALLOC_SIZE_TB = 12800
         else:
@@ -69176,6 +69256,8 @@ class GefReloadCommand(GenericCommand):
 
         if not (is_qemu_usermode() or is_pin()):
             gdb.execute("define c\ncontinue\nend")
+
+        reset_gef_caches(all=True)
         return
 
 

@@ -130,7 +130,7 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 * Supported architectures
     * x64 only. It needs gdb 12.x or after.
     * It runs very slowly and is not recommended. Ctrl+C interrupt does not work.
-    * Many commands are unsupported in KGDB mode since there is no way to access physical memory and control registers.
+    * Many commands are UNSUPPORTED in KGDB mode, because there is no way to access physical memory and control registers.
 
 ### VMware cooperation
 * Usage
@@ -145,8 +145,8 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
         * Attach with `gdb-multiarch -ex 'target remote <ipaddr>:1234'`.
 * Supported architectures
     * x64 only.
-    * It runs slowly but faster than KGDB mode. Ctrl+C interrupt works.
-    * Many commands are unsupported in VMware mode yet. (ToDo).
+    * It runs faster than KGDB mode and Ctrl+C interrupt works, but it is still slow.
+    * Many commands are UNSUPPORTED in VMware mode, because too slow to debug, so I decided it was useless.
 
 ## Added / improved features
 
