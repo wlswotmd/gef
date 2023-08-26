@@ -49329,7 +49329,7 @@ class TlsCommand(GenericCommand):
             return fs
 
         # fast path
-        if not is_remote_debug():
+        if not is_remote_debug() and not is_in_kernel():
             PTRACE_ARCH_PRCTL = 30
             ARCH_GET_FS = 0x1003
             pid, lwpid, tid = gdb.selected_thread().ptid
@@ -49362,7 +49362,7 @@ class TlsCommand(GenericCommand):
             return gs
 
         # fast path
-        if not is_remote_debug():
+        if not is_remote_debug() and not is_in_kernel():
             PTRACE_ARCH_PRCTL = 30
             ARCH_GET_GS = 0x1004
             pid, lwpid, tid = gdb.selected_thread().ptid
@@ -49495,7 +49495,6 @@ class FsbaseCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_not_qemu_system
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
         self.dont_repeat()
@@ -49515,7 +49514,6 @@ class GsbaseCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_not_qemu_system
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
         self.dont_repeat()
