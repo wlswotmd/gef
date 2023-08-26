@@ -85,7 +85,7 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
     * Or `gdb-multiarch -ex 'set architecture TARGET_ARCH' -ex 'target remote localhost:1234'` (for old qemu).
     * Most commands should work fine unless `CONFIG_RANDSTRUCT` is enabled.
     * It works with any version qemu-system, but qemu-6.x or higher is recommended.
-* Supported architectures:
+* Supported architectures
     * x86, x64, ARM and ARM64
 
 ### Qemu-user cooperation
@@ -94,45 +94,59 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
     * Attach with `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:1234'`.
     * Or `gdb-multiarch -ex 'set architecture TARGET_ARCH' -ex 'target remote localhost:1234'` (for old qemu).
     * It works with any version qemu-user, but qemu-6.x or higher is recommended.
-* Supported architectures:
+* Supported architectures
     * See [QEMU-USER-SUPPORTED-ARCH.md](https://github.com/bata24/gef/blob/dev/QEMU-USER-SUPPORTED-ARCH.md)
 
 ### Intel Pin/SDE cooperation
 * Usage for Intel Pin
     * Listen with `pin -appdebug -appdebug_server_port 1234 -t obj-intel64/inscount0.so -- /bin/ls`.
     * Attach with `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:1234'`.
-    * It runs very slowly and is not recommended.
 * Usage for Intel SDE
     * Listen with `sde64 -debug -debug-port 1234 -- /bin/ls`.
     * Attach with `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:1234'`.
+* Supported architectures
+    * x64 only.
     * It runs very slowly and is not recommended.
 
 ### Qiling framework cooperation
 * Usage
-    * Write a harness. See https://docs.qiling.io/en/latest/debugger/
-    * `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:9999'`
+    * Write a harness. See [here](https://docs.qiling.io/en/latest/debugger/).
+    * Attach with `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:9999'`.
+* Supported architectures
+    * x86, x64, ARM and ARM64.
     * On ARM64, the flag register is not available, so the branch taken/not detected is incorrect.
     * This is an experimental support.
 
 ### KGDB cooperation
 * Usage
-    * Build the kernel as `CONFIG_KGDB=y`. Ubuntu has supported it by default.
-    * Configure the serial port as a named pipe in your two (debugger/debuggee) virtual machine settings, such as VMware or VirtualBox.
-    * Debuggee: Edit `/etc/default/grub` and append `kgdboc=ttyS0,115200 kgdbwait` to the end of `GRUB_CMDLINE_LINUX_DEFAULT`, then `update-grub && reboot`.
-    * Debugger: `gdb-multiarch -ex 'target remote /dev/ttyS0'`.
-    * It runs very slowly and is not recommended.
-    * Commands for qemu-system are not supported in KGDB mode. Because there is no way to access physical memory.
-    * It works only gdb 12.x~.
+    * Host OS
+        * Configure the serial port as a named pipe in your two (debugger/debuggee) virtual machine settings, such as VMware or VirtualBox.
+    * Debuggee
+        * Build the kernel as `CONFIG_KGDB=y`. Ubuntu has supported it by default.
+        * Edit `/etc/default/grub` and append `kgdboc=ttyS0,115200 kgdbwait` to the end of `GRUB_CMDLINE_LINUX_DEFAULT`.
+        * Then `update-grub && reboot`.
+    * Debugger
+        * Attach with `gdb-multiarch -ex 'target remote /dev/ttyS0'`.
+* Supported architectures
+    * x64 only. It needs gdb 12.x or after.
+    * It runs very slowly and is not recommended. Ctrl+C interrupt does not work.
+    * Many commands are unsupported in KGDB mode since there is no way to access physical memory and control registers.
 
 ### VMware cooperation
 * Usage
-    * Add following configurations to vmx file.
-        * `debugStub.listen.guest64 = "TRUE"`
-        * `debugStub.listen.guest64.remote = "TRUE"`
-        * `debugStub.hideBreakpoints = "TRUE"`
-        * `debugStub.port.guest64 = "1234"`
-    * Attach with `gdb-multiarch -ex 'target remote <ipaddr>:1234'`.
-    * Commands for qemu-system are not supported in VMware mode. Because there is no way to access physical memory.
+    * Host OS
+        * Add following configurations to vmx file. See [here](https://communities.vmware.com/t5/VMware-Fusion-Discussions/Using-debugStub-to-debug-a-guest-linux-kernel/td-p/394906).
+            * `debugStub.listen.guest64 = "TRUE"`
+            * `debugStub.listen.guest64.remote = "TRUE"`
+            * `debugStub.hideBreakpoints = "TRUE"`
+            * `debugStub.port.guest64 = "1234"`
+        * Start the guest OS normally.
+    * Debugger
+        * Attach with `gdb-multiarch -ex 'target remote <ipaddr>:1234'`.
+* Supported architectures
+    * x64 only.
+    * It runs slowly but faster than KGDB mode. Ctrl+C interrupt works.
+    * Many commands are unsupported in VMware mode yet. (ToDo).
 
 ## Added / improved features
 
