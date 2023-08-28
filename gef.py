@@ -54628,9 +54628,20 @@ class KsymaddrRemoteCommand(GenericCommand):
         symbol_names = []
         position = self.offset_kallsyms_names
         for _ in range(self.num_symbols):
-            symbol_name = ""
+            # read token length
             length = self.kernel_img[position]
             position += 1
+
+            # check if big symbol (v6.1~)
+            if self.may_use_big_symbol:
+                if length & 0x80:
+                    low = length & 0x7f
+                    high = self.kernel_img[position]
+                    position += 1
+                    length = (high << 7) | low
+
+            # make symbol_name
+            symbol_name = ""
             for _ in range(length):
                 symbol_token_index = self.kernel_img[position]
                 symbol_token = tokens[symbol_token_index]
@@ -54679,6 +54690,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         major = int(version_number.split(".")[0])
         minor = int(version_number.split(".")[1])
         self.kernel_version = (major, minor)
+        self.may_use_big_symbol = (major, minor) >= (6, 1)
         return True
 
     def get_cfg_name(self):
@@ -54965,7 +54977,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         self.save_config("kallsyms_markers_table_element_size")
         self.verbose_info("kallsyms_markers_table_element_size: {:#x}".format(self.kallsyms_markers_table_element_size))
 
-        # kallsyms_markes[0] is 0.
+        # kallsyms_markers[0] is 0.
         seq_to_find = b"\0" * self.kallsyms_markers_table_element_size
 
         # ignore the 0 immediately above kallsyms_token_table.
@@ -55129,9 +55141,9 @@ class KsymaddrRemoteCommand(GenericCommand):
         token_table = self.get_token_table()
         possible_symbol_types = "-?ABCDGINPRSTUVWabcdginprstuvw"
         dp = []
-        while True:
-            position = self.offset_kallsyms_names
+        position = self.offset_kallsyms_names
 
+        while True:
             if position < 0:
                self.quiet_err("Could not find kallsyms_names")
                return False
@@ -55141,7 +55153,7 @@ class KsymaddrRemoteCommand(GenericCommand):
             token_index = self.kernel_img[position + 1]
             symbol_type = token_table[token_index][0]
             if symbol_type not in possible_symbol_types:
-                self.offset_kallsyms_names -= 4
+                position -= 4
                 continue
 
             # 2: check the table (kallsyms_names) entirely.
@@ -55152,7 +55164,7 @@ class KsymaddrRemoteCommand(GenericCommand):
             # gef> x/24xb 0xffffffffb46b4b48-0x10
             # 0xffffffffb46b4b38: 0xf5   0x0c*  0x44   0xff   0xf5   0x8d   0x73   0x63 (*: start of last valid elements)
             # 0xffffffffb46b4b40: 0x72   0xe8   0xbf   0x5f   0xee   0x64*  0x00** 0x00 (*: end of last valid elements, **: end marker)
-            # 0xffffffffb46b4b48: 0x00*  0x00   0x00   0x00   0xb0   0x0a   0x00   0x00 (*: start of kallsyms_marker)
+            # 0xffffffffb46b4b48: 0x00*  0x00   0x00   0x00   0xb0   0x0a   0x00   0x00 (*: start of kallsyms_markers)
             #
             # 0x0c: number of tokens
             # gef> pi __LCO__["ksymaddr-remote"].get_token_table()[0x44]
@@ -55187,8 +55199,8 @@ class KsymaddrRemoteCommand(GenericCommand):
             # However, this 0x00 may not exist.
             # gef> x/16xb 0xffffffffadefc1d8-0x8
             # 0xffffffffadefc1d0: 0x12   0x65   0x05*  0xbf   0x65   0xaf   0x74   0xa5** (*/**: start/end of last valid elements)
-            # 0xffffffffadefc1d8: 0x00*  0x00   0x00   0x00   0xb2   0x0b   0x00   0x00   (*: start of kallsyms_marker)
-            # Even in this case, the first byte of kallsyms_marker is always 0, so we use it.
+            # 0xffffffffadefc1d8: 0x00*  0x00   0x00   0x00   0xb2   0x0b   0x00   0x00   (*: start of kallsyms_markers)
+            # Even in this case, the first byte of kallsyms_markers is always 0, so we use it.
             #
             # Check that this structure is correct or not, using bottom-up DP.
             # dp[i] contains num_syms as interpreted from `kallsyms_makers - i` as the start of kallsyms_names.
@@ -55198,11 +55210,20 @@ class KsymaddrRemoteCommand(GenericCommand):
             range_end -= len(dp) # shortcut the already checked results.
             for pos in range(range_end, range_start - 1, -1):
                 symbol_size = self.kernel_img[pos]
+                is_big_symbol = False # default
+
+                # check if big symbol (v6.1~)
+                if self.may_use_big_symbol:
+                    if symbol_size & 0x80:
+                        low = symbol_size & 0x7f
+                        high = self.kernel_img[pos + 1]
+                        symbol_size = (high << 7) | low
+                        is_big_symbol = True
 
                 # 0xffffffffb46b4b38: 0xf5     0x0c     0x44     0xff     0xf5     0x8d     0x73     0x63
                 # 0xffffffffb46b4b40: 0x72     0xe8     0xbf     0x5f     0xee     0x64     0x00*    0x00*
                 #                                                                           dp[2]=0  dp[1]=0
-                # 0xffffffffb46b4b48: 0x00*    0x00     0x00     0x00     0xb0     0x0a     0x00    0x00
+                # 0xffffffffb46b4b48: 0x00*    0x00     0x00     0x00     0xb0     0x0a     0x00     0x00
                 #                     dp[0]=0
                 if symbol_size == 0:
                     dp.append(0) # maybe it is a last entry
@@ -55211,9 +55232,12 @@ class KsymaddrRemoteCommand(GenericCommand):
                 # 0xffffffffb46b4b38: 0xf5     0x0c     0x44     0xff     0xf5     0x8d     0x73     0x63
                 # 0xffffffffb46b4b40: 0x72     0xe8     0xbf     0x5f     0xee     0x64*    0x00     0x00
                 #                                                                  dp[3]=-1 dp[2]=0  dp[1]=0
-                # 0xffffffffb46b4b48: 0x00*    0x00     0x00     0x00     0xb0     0x0a     0x00    0x00
+                # 0xffffffffb46b4b48: 0x00*    0x00     0x00     0x00     0xb0     0x0a     0x00     0x00
                 #                     dp[0]=0
-                if symbol_size >= len(dp):
+                dp_len = len(dp)
+                if is_big_symbol:
+                    dp_len = len(dp) - 1
+                if symbol_size >= dp_len:
                     dp.append(-1) # exceed the kallsyms_markers
                     continue
 
@@ -55221,21 +55245,24 @@ class KsymaddrRemoteCommand(GenericCommand):
                 #                              dp[f]=1  dp[e]=-1 dp[d]=-1 dp[c]=-1 dp[b]=-1 dp[a]=-1 dp[9]=-1
                 # 0xffffffffb46b4b40: 0x72     0xe8     0xbf     0x5f     0xee     0x64     0x00**   0x00
                 #                     dp[8]=-1 dp[7]=-1 dp[6]=-1 dp[5]=-1 dp[4]=-1 dp[3]=-1 dp[2]=0  dp[1]=0
-                # 0xffffffffb46b4b48: 0x00*    0x00     0x00     0x00     0xb0     0x0a     0x00    0x00
+                # 0xffffffffb46b4b48: 0x00*    0x00     0x00     0x00     0xb0     0x0a     0x00     0x00
                 #                     dp[0]=0
                 # when we see 0x0c(*), next element is 0x00(**).
                 # In this case, here, len(dp) == 15 (dp[15] does not exist, but dp[14] exists).
                 # dp[-(0xc + 1)] is dp[2]. d[2] is 0, not -1, so dp[15] is valid. If dp[2] is -1, dp[15] is invalid.
-                if dp[-(symbol_size + 1)] == -1:
+                offset_of_next_element = -symbol_size - 1
+                if is_big_symbol:
+                    offset_of_next_element -= 1
+                if dp[offset_of_next_element] == -1:
                     dp.append(-1)
                     continue
                 # seems to be okay, append valid dp
-                dp.append(dp[-(symbol_size + 1)] + 1)
+                dp.append(dp[offset_of_next_element] + 1)
 
             num_symbols = dp[-1]
             if num_symbols < 256:
                 # It is judged as NG because there are too few symbols.
-                self.offset_kallsyms_names -= 4
+                position -= 4
                 continue
 
             # 3: Find num_symbols from memory.
@@ -55246,13 +55273,14 @@ class KsymaddrRemoteCommand(GenericCommand):
             # Depending on the environment, there are many zero padding after seq_to_find (=kallsyms_num_syms).
             # This is probably because each variable is aligned in units of 256 bytes.
             MAX_ALIGNMENT = 256
-            start = max(0, self.offset_kallsyms_names - MAX_ALIGNMENT)
-            needle = self.kernel_img.rfind(seq_to_find, start, self.offset_kallsyms_names)
+            start = max(0, position - MAX_ALIGNMENT)
+            needle = self.kernel_img.rfind(seq_to_find, start, position)
             if needle == -1:
-                self.offset_kallsyms_names -= 4
+                position -= 4
                 continue
 
             # it seems ok.
+            self.offset_kallsyms_names = position
             self.offset_kallsyms_num_syms = needle
             break
 
