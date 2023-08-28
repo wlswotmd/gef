@@ -18499,7 +18499,7 @@ class KernelChecksecCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_qemu_system
+    @only_if_qemu_system_or_vmware
     @only_if_in_kernel
     def do_invoke(self, args):
         self.dont_repeat()
@@ -19221,22 +19221,22 @@ class KernelChecksecCommand(GenericCommand):
         supported_syscall = []
         if is_x86_32():
             if KernelAddressHeuristicFinder.get_sys_call_table_x86():
-                supported_syscall.append("x86 (native)")
+                supported_syscall.append("x86(native)")
         elif is_x86_64():
             if KernelAddressHeuristicFinder.get_sys_call_table_x64():
                 supported_syscall.append("x64")
             if KernelAddressHeuristicFinder.get_sys_call_table_x86():
-                supported_syscall.append("x86 (compat)")
+                supported_syscall.append("x86(compat)")
             if KernelAddressHeuristicFinder.get_sys_call_table_x32():
                 supported_syscall.append("x32")
         elif is_arm32():
             if KernelAddressHeuristicFinder.get_sys_call_table_arm32():
-                supported_syscall.append("arm32 (native)")
+                supported_syscall.append("arm32(native)")
         elif is_arm64():
             if KernelAddressHeuristicFinder.get_sys_call_table_arm64():
                 supported_syscall.append("arm64")
             if KernelAddressHeuristicFinder.get_sys_call_table_arm64_compat():
-                supported_syscall.append("arm32 (compat)")
+                supported_syscall.append("arm32(compat)")
         gef_print("{:<40s}: {:s}".format(cfg, ", ".join(supported_syscall)))
 
         return
