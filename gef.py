@@ -48564,6 +48564,12 @@ class KernelDmesgCommand(GenericCommand):
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
+    _example_ = "{:s} -q\n".format(_cmdline_)
+    _example_ += "\n"
+    _example_ += "The information such as [T1] is the thread ID.\n"
+    _example_ += "Originally, this information is displayed when CONFIG_PRINTK_CALLER=y.\n"
+    _example_ += "However it is always displayed because it is useful."
+
     def dump_printk_ringbuffer(self, ring_buffer_name, ring_buffer_address):
         """
         # linux 5.10.x ~
