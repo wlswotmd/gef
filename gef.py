@@ -207,7 +207,7 @@ DEFAULT_PAGE_SIZE_MASK          = ~ (DEFAULT_PAGE_SIZE - 1)
 GEF_RC                          = os.getenv("GEF_RC") or os.path.join(os.getenv("HOME") or "~", ".gef.rc")
 GEF_TEMP_DIR                    = os.path.join(tempfile.gettempdir(), "gef")
 
-GDB_MIN_VERSION                 = (7, 7)
+GDB_MIN_VERSION                 = (9, 2) # ubuntu 20.04
 GDB_VERSION                     = tuple(map(int, re.search(r"(\d+)[^\d]+(\d+)", gdb.VERSION).groups()))
 
 
@@ -1389,10 +1389,8 @@ class Elf:
         self.e_type, self.e_machine, self.e_version = struct.unpack("{}HHI".format(endian), self.read(8))
         # off 0x18
         if self.e_class == Elf.ELF_64_BITS:
-            # if arch 64bits
             self.e_entry, self.e_phoff, self.e_shoff = struct.unpack("{}QQQ".format(endian), self.read(24))
         else:
-            # else arch 32bits
             self.e_entry, self.e_phoff, self.e_shoff = struct.unpack("{}III".format(endian), self.read(12))
         self.e_flags, self.e_ehsize, self.e_phentsize, self.e_phnum = struct.unpack("{}IHHH".format(endian), self.read(10))
         self.e_shentsize, self.e_shnum, self.e_shstrndx = struct.unpack("{}HHH".format(endian), self.read(6))
@@ -2207,7 +2205,7 @@ def saerch_for_main_arena_from_tls():
     else:
         direction = 1
 
-    tls = TlsCommand.get_tls()
+    tls = current_arch.get_tls()
     for i in range(1, 500):
         addr = tls + (current_arch.ptrsize * i) * direction
 
@@ -3870,6 +3868,10 @@ class Architecture:
         pass
 
     @abc.abstractproperty
+    def special_registers(self):
+        pass
+
+    @abc.abstractproperty
     def bit_length(self):
         pass
 
@@ -3966,6 +3968,14 @@ class Architecture:
         pass
 
     @abc.abstractmethod
+    def get_tls(self):
+        pass
+
+    @abc.abstractmethod
+    def mprotect_asm(self, addr, size, perm):
+        pass
+
+    @abc.abstractmethod
     def keystone_support(self):
         pass
 
@@ -3976,8 +3986,6 @@ class Architecture:
     @abc.abstractmethod
     def unicorn_support(self):
         pass
-
-    special_registers = []
 
     @property
     def pc(self):
@@ -4185,8 +4193,10 @@ class RISCV(Architecture):
             pass
         return ra
 
-    @classmethod
-    def mprotect_asm_raw(cls, addr, size, perm):
+    def get_tls(self):
+        return get_register("$tp")
+
+    def mprotect_asm(self, addr, size, perm):
 
         def p(x):
             return p32(int(x, 2))
@@ -4238,8 +4248,7 @@ class RISCV64(RISCV):
 
     bit_length = 64
 
-    @classmethod
-    def mprotect_asm_raw(cls, addr, size, perm):
+    def mprotect_asm(self, addr, size, perm):
 
         def p(x):
             return p32(int(x, 2))
@@ -4354,8 +4363,6 @@ class ARM(Architecture):
 
     def is_thumb(self):
         """Determine if the machine is currently in THUMB mode."""
-        if current_arch.arch != "ARM":
-            return False
         return is_alive() and get_register(self.flag_register) & (1 << self.thumb_bit)
 
     @property
@@ -4613,8 +4620,17 @@ class ARM(Architecture):
             pass
         return ra
 
-    @classmethod
-    def mprotect_asm(cls, addr, size, perm):
+    def get_tls(self):
+        if is_in_kernel():
+            return None
+        if self.is_thumb():
+            codes = [b"\x1d\xee", b"\x70\x2f"] # mrc p15, #0, r2, c13, c0, #3
+        else:
+            codes = [b"\x70\x2f\x1d\xee"] # mrc p15, #0, r2, c13, c0, #3
+        ret = ExecAsm(codes).exec_code()
+        return ret["reg"]["$r2"]
+
+    def mprotect_asm(self, addr, size, perm):
         _NR_mprotect = 125
         insns = [
             "mov r7, {:d}".format(_NR_mprotect),
@@ -4627,7 +4643,9 @@ class ARM(Architecture):
             "mov r2, {:d}".format(perm),
             "svc 0",
         ]
-        return "; ".join(insns)
+        code = "; ".join(insns)
+        arch, mode = get_keystone_arch()
+        return keystone_assemble(code, arch, mode, raw=True)
 
 
 class AARCH64(ARM):
@@ -4723,8 +4741,12 @@ class AARCH64(ARM):
 
         return flags_to_human(val, self.flags_table) + mode
 
-    @classmethod
-    def mprotect_asm(cls, addr, size, perm):
+    def get_tls(self):
+        if is_in_kernel():
+            return None
+        return get_register("$TPIDR_EL0")
+
+    def mprotect_asm(self, addr, size, perm):
         _NR_mprotect = 226
         insns = [
             "mov x8, {:d}".format(_NR_mprotect),
@@ -4739,7 +4761,9 @@ class AARCH64(ARM):
             "mov x2, {:d}".format(perm),
             "svc 0",
         ]
-        return "; ".join(insns)
+        code = "; ".join(insns)
+        arch, mode = get_keystone_arch()
+        return keystone_assemble(code, arch, mode, raw=True)
 
 
 class X86(Architecture):
@@ -4891,8 +4915,60 @@ class X86(Architecture):
             pass
         return ra
 
-    @classmethod
-    def mprotect_asm(cls, addr, size, perm):
+    def get_tls(self):
+        if is_in_kernel():
+            return None
+        return self.get_gs()
+
+    def get_fs(self):
+        # fastest path
+        fs = get_register("$fs_base")
+        if fs is not None:
+            return fs
+        # fast path
+        if not is_remote_debug() and not is_in_kernel():
+            PTRACE_ARCH_PRCTL = 30
+            ARCH_GET_FS = 0x1003
+            pid, lwpid, tid = gdb.selected_thread().ptid
+            ppvoid = ctypes.POINTER(ctypes.c_void_p)
+            value = ppvoid(ctypes.c_void_p())
+            value.contents.value = 0
+            libc = ctypes.CDLL("libc.so.6")
+            ret = libc.ptrace(PTRACE_ARCH_PRCTL, lwpid, value, ARCH_GET_FS)
+            if ret == 0: # success
+                return value.contents.value or 0
+        # slow path
+        if not is_kvm_enabled():
+            codes = [b"\x64\xa1\x00\x00\x00\x00"] # mov eax, dword ptr fs:[0x0]
+            ret = ExecAsm(codes).exec_code()
+            return ret["reg"]["$eax"]
+        return None
+
+    def get_gs(self):
+        # fastest path
+        gs = get_register("$gs_base")
+        if gs is not None:
+            return gs
+        # fast path
+        if not is_remote_debug() and not is_in_kernel():
+            PTRACE_ARCH_PRCTL = 30
+            ARCH_GET_GS = 0x1004
+            pid, lwpid, tid = gdb.selected_thread().ptid
+            ppvoid = ctypes.POINTER(ctypes.c_void_p)
+            value = ppvoid(ctypes.c_void_p())
+            value.contents.value = 0
+            libc = ctypes.CDLL("libc.so.6")
+            ret = libc.ptrace(PTRACE_ARCH_PRCTL, lwpid, value, ARCH_GET_GS)
+            if ret == 0: # success
+                return value.contents.value or 0
+        # slow path
+        if not is_kvm_enabled():
+            codes = [b"\x65\xa1\x00\x00\x00\x00"] # mov eax, dword ptr gs:[0x0]
+            ret = ExecAsm(codes).exec_code()
+            return ret["reg"]["$eax"]
+        return None
+
+    def mprotect_asm(self, addr, size, perm):
         _NR_mprotect = 125
         insns = [
             "mov eax, {:d}".format(_NR_mprotect),
@@ -4901,7 +4977,9 @@ class X86(Architecture):
             "mov edx, {:d}".format(perm),
             "int 0x80",
         ]
-        return "; ".join(insns)
+        code = "; ".join(insns)
+        arch, mode = get_keystone_arch()
+        return keystone_assemble(code, arch, mode, raw=True)
 
     def get_ith_parameter(self, i, in_func=True):
         if in_func:
@@ -4937,6 +5015,59 @@ class X86_64(X86):
     def is_syscall(self, insn):
         return insn.mnemonic in ["sysenter", "syscall"]
 
+    def get_tls(self):
+        if is_in_kernel():
+            return None
+        return self.get_fs()
+
+    def get_fs(self):
+        # fastest path
+        fs = get_register("$fs_base")
+        if fs is not None:
+            return fs
+        # fast path
+        if not is_remote_debug() and not is_in_kernel():
+            PTRACE_ARCH_PRCTL = 30
+            ARCH_GET_FS = 0x1003
+            pid, lwpid, tid = gdb.selected_thread().ptid
+            ppvoid = ctypes.POINTER(ctypes.c_void_p)
+            value = ppvoid(ctypes.c_void_p())
+            value.contents.value = 0
+            libc = ctypes.CDLL("libc.so.6")
+            ret = libc.ptrace(PTRACE_ARCH_PRCTL, lwpid, value, ARCH_GET_FS)
+            if ret == 0: # success
+                return value.contents.value or 0
+        # slow path
+        if not is_kvm_enabled():
+            codes = [b"\x64\x48\xa1\x00\x00\x00\x00\x00\x00\x00\x00"] # movabs rax, qword ptr fs:[0x0]
+            ret = ExecAsm(codes).exec_code()
+            return ret["reg"]["$rax"]
+        return None
+
+    def get_gs(self):
+        # fastest path
+        gs = get_register("$gs_base")
+        if gs is not None:
+            return gs
+        # fast path
+        if not is_remote_debug() and not is_in_kernel():
+            PTRACE_ARCH_PRCTL = 30
+            ARCH_GET_GS = 0x1004
+            pid, lwpid, tid = gdb.selected_thread().ptid
+            ppvoid = ctypes.POINTER(ctypes.c_void_p)
+            value = ppvoid(ctypes.c_void_p())
+            value.contents.value = 0
+            libc = ctypes.CDLL("libc.so.6")
+            ret = libc.ptrace(PTRACE_ARCH_PRCTL, lwpid, value, ARCH_GET_GS)
+            if ret == 0: # success
+                return value.contents.value or 0
+        # slow path
+        if not is_kvm_enabled():
+            codes = [b"\x65\x48\xa1\x00\x00\x00\x00\x00\x00\x00\x00"] # movabs rax, qword ptr gs:[0x0]
+            ret = ExecAsm(codes).exec_code()
+            return ret["reg"]["$rax"]
+        return None
+
     def get_ith_parameter(self, i, in_func=True):
         if i < len(self.function_parameters):
             reg = self.function_parameters[i]
@@ -4954,8 +5085,7 @@ class X86_64(X86):
             key = "[sp + {:#x}]".format(i * sz)
             return key, val
 
-    @classmethod
-    def mprotect_asm(cls, addr, size, perm):
+    def mprotect_asm(self, addr, size, perm):
         _NR_mprotect = 10
         insns = [
             "mov rax, {:d}".format(_NR_mprotect),
@@ -4964,7 +5094,9 @@ class X86_64(X86):
             "mov rdx, {:d}".format(perm),
             "syscall",
         ]
-        return "; ".join(insns)
+        code = "; ".join(insns)
+        arch, mode = get_keystone_arch()
+        return keystone_assemble(code, arch, mode, raw=True)
 
 
 class PPC(Architecture):
@@ -5148,8 +5280,17 @@ class PPC(Architecture):
             pass
         return ra
 
-    @classmethod
-    def mprotect_asm(cls, addr, size, perm):
+    def get_tls(self):
+        def adjust_offset(x):
+            TLS_TCB_OFFSET = 0x7000
+            if x == 0:
+                return x
+            return x - TLS_TCB_OFFSET
+
+        tls = get_register("$r2")
+        return adjust_offset(tls)
+
+    def mprotect_asm(self, addr, size, perm):
         # Ref: http://www.ibm.com/developerworks/library/l-ppc/index.html
         _NR_mprotect = 125
         insns = [
@@ -5165,7 +5306,9 @@ class PPC(Architecture):
             "li 0, {:d}".format(_NR_mprotect),
             "sc",
         ]
-        return ";".join(insns)
+        code = "; ".join(insns)
+        arch, mode = get_keystone_arch()
+        return keystone_assemble(code, arch, mode, raw=True)
 
 
 class PPC64(PPC):
@@ -5203,8 +5346,17 @@ class PPC64(PPC):
             key = "[sp + {:#x}]".format(i * sz)
             return key, val
 
-    @classmethod
-    def mprotect_asm(cls, addr, size, perm):
+    def get_tls(self):
+        def adjust_offset(x):
+            TLS_TCB_OFFSET = 0x7000
+            if x == 0:
+                return x
+            return x - TLS_TCB_OFFSET
+
+        tls = get_register("$r13")
+        return adjust_offset(tls)
+
+    def mprotect_asm(self, addr, size, perm):
         _NR_mprotect = 125
         insns = [
             "li 3, 0",
@@ -5227,7 +5379,9 @@ class PPC64(PPC):
             "li 0, {:d}".format(_NR_mprotect),
             "sc",
         ]
-        return ";".join(insns)
+        code = "; ".join(insns)
+        arch, mode = get_keystone_arch()
+        return keystone_assemble(code, arch, mode, raw=True)
 
 
 class SPARC(Architecture):
@@ -5386,8 +5540,10 @@ class SPARC(Architecture):
             pass
         return ra
 
-    @classmethod
-    def mprotect_asm(cls, addr, size, perm):
+    def get_tls(self):
+        return get_register("$g7")
+
+    def mprotect_asm(self, addr, size, perm):
         _NR_mprotect = 74
         insns = [
             "sethi %hi({}), %o0".format(addr & 0xfffffc00),
@@ -5399,7 +5555,9 @@ class SPARC(Architecture):
             "ta 0x10",
             "nop", # keystone does not give nop for delay slot, needs this nop
         ]
-        return "; ".join(insns)
+        code = "; ".join(insns)
+        arch, mode = get_keystone_arch()
+        return keystone_assemble(code, arch, mode, raw=True)
 
 
 class SPARC64(SPARC):
@@ -5451,8 +5609,7 @@ class SPARC64(SPARC):
             key = "[sp + {:#x}]".format(i * sz - 1)
             return key, val
 
-    @classmethod
-    def mprotect_asm(cls, addr, size, perm):
+    def mprotect_asm(self, addr, size, perm):
         _NR_mprotect = 74
         insns = [
             "sethi %hi({}), %o0".format(addr & 0xfffffc00),
@@ -5472,7 +5629,9 @@ class SPARC64(SPARC):
             "ta 0x6d",
             "nop", # keystone does not give nop for delay slot, needs this nop
         ]
-        return "; ".join(insns)
+        code = "; ".join(insns)
+        arch, mode = get_keystone_arch()
+        return keystone_assemble(code, arch, mode, raw=True)
 
 
 class MIPS(Architecture):
@@ -5640,8 +5799,19 @@ class MIPS(Architecture):
             pass
         return ra
 
-    @classmethod
-    def mprotect_asm(cls, addr, size, perm):
+    def get_tls(self):
+        def adjust_offset(x):
+            TLS_TCB_OFFSET = 0x7000
+            if x == 0:
+                return x
+            return x - TLS_TCB_OFFSET
+
+        codes = [b"\x3b\xe8\x03\x7c"] # rdhwr v1, $29
+        ret = ExecAsm(codes).exec_code()
+        tls = ret["reg"]["$v1"]
+        return adjust_offset(tls)
+
+    def mprotect_asm(self, addr, size, perm):
         _NR_mprotect = 4125
         insns = [
             "li $v0, {:d}".format(_NR_mprotect),
@@ -5650,7 +5820,9 @@ class MIPS(Architecture):
             "li $a2, {:d}".format(perm),
             "syscall", # keystone gives nop for delay slot, need not nop
         ]
-        return "; ".join(insns)
+        code = "; ".join(insns)
+        arch, mode = get_keystone_arch()
+        return keystone_assemble(code, arch, mode, raw=True)
 
 
 class MIPS64(MIPS):
@@ -5696,8 +5868,7 @@ class MIPS64(MIPS):
             key = "[sp + {:#x}]".format(i * sz)
             return key, val
 
-    @classmethod
-    def mprotect_asm(cls, addr, size, perm):
+    def mprotect_asm(self, addr, size, perm):
         _NR_mprotect = 5010
         insns = [
             "ori $a0, $zero, {:#x}".format((addr >> 48) & 0xffff),
@@ -5718,7 +5889,9 @@ class MIPS64(MIPS):
             "li $v0, {:d}".format(_NR_mprotect),
             "syscall", # keystone gives nop for delay slot, need not nop
         ]
-        return "; ".join(insns)
+        code = "; ".join(insns)
+        arch, mode = get_keystone_arch()
+        return keystone_assemble(code, arch, mode, raw=True)
 
 
 class S390X(Architecture):
@@ -6060,8 +6233,12 @@ class S390X(Architecture):
             pass
         return ra
 
-    @classmethod
-    def mprotect_asm(cls, addr, size, perm):
+    def get_tls(self):
+        hi = get_register("$acr0")
+        lo = get_register("$acr1")
+        return (hi << 32) | lo
+
+    def mprotect_asm(self, addr, size, perm):
         _NR_mprotect = 125
         insns = [
             "llilf %r2, {:#x}".format(addr >> 32),
@@ -6076,7 +6253,9 @@ class S390X(Architecture):
             ".byte 0x0a, {:#x}".format(_NR_mprotect), # svc 0x7d
             "bcr 0, %r7", # nop
         ]
-        return "; ".join(insns)
+        code = "; ".join(insns)
+        arch, mode = get_keystone_arch()
+        return keystone_assemble(code, arch, mode, raw=True)
 
 
 class SH4(Architecture):
@@ -6168,10 +6347,7 @@ class SH4(Architecture):
             pass
         return ra
 
-    mprotect_asm = None
-
-    @classmethod
-    def mprotect_asm_raw(cls, addr, size, perm):
+    def mprotect_asm(self, addr, size, perm):
         _NR_mprotect = 125
         insns = [
             # In sh4, r0-r7 cannot be set from gdb.
@@ -6481,8 +6657,18 @@ class M68K(Architecture):
         key = "[sp + {:#x}]".format(i * sz)
         return key, val
 
-    @classmethod
-    def mprotect_asm_raw(cls, addr, size, perm):
+    def get_tls(self):
+        def adjust_offset(x):
+            TLS_TCB_OFFSET = 0x7000
+            if x == 0:
+                return x
+            return x - TLS_TCB_OFFSET
+
+        ret = ExecSyscall(0x14d, []).exec_code() # get_thread_area
+        tls = ret["reg"]["$d0"]
+        return adjust_offset(tls)
+
+    def mprotect_asm(self, addr, size, perm):
         _NR_mprotect = 125
         insns = [
             b"\x26\x3c" + p32(perm), # movel perm, %d3
@@ -6602,10 +6788,12 @@ class ALPHA(Architecture):
             pass
         return ra
 
-    mprotect_asm = None
+    def get_tls(self):
+        codes = [b"\x9e\x00\x00\x00"] # rduniq
+        ret = ExecAsm(codes).exec_code()
+        return ret["reg"]["$v0"]
 
-    @classmethod
-    def mprotect_asm_raw(cls, addr, size, perm):
+    def mprotect_asm(self, addr, size, perm):
         _NR_mprotect = 74
 
         def lda_v0(x):
@@ -6997,10 +7185,12 @@ class HPPA(Architecture):
             pass
         return ra
 
-    mprotect_asm = None
+    def get_tls(self):
+        codes = [b"\xbc\x08\x60\x03"] # mfctl tr3, ret0
+        ret = ExecAsm(codes).exec_code()
+        return ret["reg"]["$ret0"]
 
-    @classmethod
-    def mprotect_asm_raw(cls, addr, size, perm):
+    def mprotect_asm(self, addr, size, perm):
 
         def asm21(x):
             temp = (x & 0x100000) >> 20
@@ -7154,10 +7344,10 @@ class OR1K(Architecture):
             pass
         return ra
 
-    mprotect_asm = None
+    def get_tls(self):
+        return get_register("$r10")
 
-    @classmethod
-    def mprotect_asm_raw(cls, addr, size, perm):
+    def mprotect_asm(self, addr, size, perm):
         _NR_mprotect = 226
         insns = [
             p32(0xa8600000 | (addr >> 16)), # l.ori r3, r0, addr[31:16]
@@ -7290,10 +7480,17 @@ class NIOS2(Architecture):
             pass
         return ra
 
-    mprotect_asm = None
+    def get_tls(self):
+        def adjust_offset(x):
+            TLS_TCB_OFFSET = 0x7000
+            if x == 0:
+                return x
+            return x - TLS_TCB_OFFSET
 
-    @classmethod
-    def mprotect_asm_raw(cls, addr, size, perm):
+        tls = get_register("$r23")
+        return adjust_offset(tls)
+
+    def mprotect_asm(self, addr, size, perm):
         _NR_mprotect = 226
 
         def op_i(op, reg1, reg2, imm):
@@ -7435,10 +7632,10 @@ class MICROBLAZE(Architecture):
             pass
         return ra
 
-    mprotect_asm = None
+    def get_tls(self):
+        return get_register("$r21")
 
-    @classmethod
-    def mprotect_asm_raw(cls, addr, size, perm):
+    def mprotect_asm(self, addr, size, perm):
         _NR_mprotect = 125
 
         def op_i(op, reg1, reg2, imm):
@@ -7659,10 +7856,10 @@ class XTENSA(Architecture):
             pass
         return ra
 
-    mprotect_asm = None
+    def get_tls(self):
+        return get_register("$threadptr")
 
-    @classmethod
-    def mprotect_asm_raw(cls, addr, size, perm):
+    def mprotect_asm(self, addr, size, perm):
         _NR_mprotect = 82
 
         def movi(reg, imm):
@@ -7862,10 +8059,7 @@ class CRIS(Architecture):
             pass
         return ra
 
-    mprotect_asm = None
-
-    @classmethod
-    def mprotect_asm_raw(cls, addr, size, perm):
+    def mprotect_asm(self, addr, size, perm):
         _NR_mprotect = 125
         insns = [
             b"\x6f\xae" + p32(addr), # move.d addr, $r10
@@ -8006,10 +8200,10 @@ class LOONGARCH64(Architecture):
             pass
         return ra
 
-    mprotect_asm = None
+    def get_tls(self):
+        return get_register("$r2")
 
-    @classmethod
-    def mprotect_asm_raw(cls, addr, size, perm):
+    def mprotect_asm(self, addr, size, perm):
         def lu12iw(reg, si20):
             b = "0b_0001010_{:020b}_{:05b}".format(si20, reg)
             return p32(int(b, 2))
@@ -8334,10 +8528,10 @@ class ARC(Architecture):
             pass
         return ra
 
-    mprotect_asm = None
+    def get_tls(self):
+        return get_register("$r25")
 
-    @classmethod
-    def mprotect_asm_raw(cls, addr, size, perm):
+    def mprotect_asm(self, addr, size, perm):
         insns = [
             b"\x0a\x20\x80\x0f" + p16(addr >> 16) + p16(addr & 0xffff), # mov r0, addr
             b"\x0a\x21\x80\x0f" + p16(size >> 16) + p16(size & 0xffff), # mov r1, size
@@ -8440,10 +8634,10 @@ class ARC(Architecture):
 #    #        pass
 #    #    return ra
 #
-#    #mprotect_asm = None
+#    #def get_tls(self):
+#    #    return None
 #
-#    #@classmethod
-#    #def mprotect_asm_raw(cls, addr, size, perm):
+#    #def mprotect_asm(self, addr, size, perm):
 #    #    insns = [
 #    #        b"\x00\x00", # nop
 #    #    ]
@@ -9289,9 +9483,8 @@ def is_over_serial():
         return False
 
 
-@functools.lru_cache(maxsize=None)
 def is_kgdb():
-    return (is_x86() or is_arm32() or is_arm64()) and is_over_serial()
+    return is_x86_64() and is_over_serial()
 
 
 @functools.lru_cache(maxsize=None)
@@ -9469,19 +9662,7 @@ def read_remote_file(filepath, as_byte=True):
 def get_process_maps_linux(pid, remote=False):
     """Parse the Linux process `/proc/pid/maps` file."""
 
-    def get_extra_info():
-        if not is_x86():
-            return []
-        tls_list = []
-        selected_thread = gdb.selected_thread()
-        for thread in gdb.selected_inferior().threads():
-            thread.switch() # change thread
-            tls = get_register("$fs_base" if is_x86_64() else "$gs_base")
-            sp = current_arch.sp
-            tls_list.append((thread.num, tls, sp))
-        selected_thread.switch() # revert thread
-        return sorted(tls_list)
-
+    # open & read maps
     proc_map_file = "/proc/{:d}/maps".format(pid)
     if remote:
         data = read_remote_file(proc_map_file, as_byte=False)
@@ -9491,8 +9672,20 @@ def get_process_maps_linux(pid, remote=False):
     else:
         lines = open(proc_map_file, "r").readlines()
 
-    extra_info = get_extra_info() # tls, sp of each threads
+    # tls and $sp of each threads
+    extra_info = []
+    if is_x86():
+        tls_list = []
+        orig_thread = gdb.selected_thread()
+        for thread in gdb.selected_inferior().threads():
+            thread.switch() # change thread
+            # note: for speed up, do not use current_arch.get_tls()
+            tls = get_register("$fs_base" if is_x86_64() else "$gs_base") # get tls address
+            tls_list.append((thread.num, tls, current_arch.sp))
+        orig_thread.switch() # revert thread
+        extra_info = sorted(tls_list)
 
+    # parse
     maps = []
     for line in lines:
         line = line.replace("\t", " ") # for qiling framework
@@ -13581,11 +13774,11 @@ class PtrDemangleCommand(GenericCommand):
     def get_cookie():
         try:
             if is_x86_64():
-                tls = TlsCommand.get_tls()
+                tls = current_arch.get_tls()
                 cookie = read_int_from_memory(tls + 0x30)
                 return cookie
             elif is_x86_32():
-                tls = TlsCommand.get_tls()
+                tls = current_arch.get_tls()
                 cookie = read_int_from_memory(tls + 0x18)
                 return cookie
             elif is_arm32() or is_arm64():
@@ -14205,7 +14398,7 @@ class MprotectCommand(GenericCommand):
 
         fmt = "Generating sys_mprotect({:#x}, {:#x}, '{!s}') stub for arch {:s}"
         info(fmt.format(sect.page_start, size, Permission(value=perm), get_arch()))
-        stub = self.get_stub_by_arch(sect.page_start, size, perm)
+        stub = current_arch.mprotect_asm(sect.page_start, size, perm)
         if stub is None:
             err("Failed to generate mprotect opcodes")
             return
@@ -14241,17 +14434,6 @@ class MprotectCommand(GenericCommand):
         info("Resuming execution")
         gdb.execute("continue")
         return
-
-    def get_stub_by_arch(self, addr, size, perm):
-        if hasattr(current_arch, "mprotect_asm_raw"):
-            raw_insns = current_arch.mprotect_asm_raw(addr, size, perm)
-        else:
-            code = current_arch.mprotect_asm(addr, size, perm)
-            if code is None:
-                return None
-            arch, mode = get_keystone_arch()
-            raw_insns = keystone_assemble(code, arch, mode, raw=True)
-        return raw_insns
 
 
 @register_command
@@ -15124,14 +15306,6 @@ class UnicornEmulateCommand(GenericCommand):
         if start_insn is None:
             start_insn = current_arch.pc
 
-        thumb_mode = False
-        if is_arm32():
-            thumb_mode = start_insn & 1
-
-        add_sse = False
-        if is_x86():
-            add_sse = args.add_sse
-
         if (args.to_location, args.nb_insn, args.nb_gadget) == (None, None, None):
             nb_gadget = 10
         else:
@@ -15147,8 +15321,8 @@ class UnicornEmulateCommand(GenericCommand):
             "verbose": args.verbose,
             "nb_gadget": nb_gadget,
             "quiet": args.quiet,
-            "thumb_mode": thumb_mode,
-            "add_sse": add_sse,
+            "thumb_mode": is_arm32() and (start_insn & 1),
+            "add_sse": is_x86() and args.add_sse,
         }
 
         if end_insn is not None:
@@ -15353,8 +15527,10 @@ class UnicornEmulateCommand(GenericCommand):
             content += "\n"
             content += "# from https://github.com/unicorn-engine/unicorn/blob/master/tests/regress/x86_64_msr.py\n"
             content += "SCRATCH_ADDR = 0xf000\n"
-            content += "FSMSR = 0xC0000100\n"
-            content += "GSMSR = 0xC0000101\n"
+            if is_x86_64():
+                content += "FS_GS_MSR = 0xC0000100\n"
+            else:
+                content += "FS_GS_MSR = 0xC0000101\n"
             content += "\n"
             content += "\n"
             content += "def set_msr(uc, msr, value, scratch=SCRATCH_ADDR):\n"
@@ -15369,12 +15545,8 @@ class UnicornEmulateCommand(GenericCommand):
             content += "    return\n"
             content += "\n"
             content += "\n"
-            content += "def set_gs(uc, addr):\n"
-            content += "    return set_msr(uc, GSMSR, addr)\n"
-            content += "\n"
-            content += "\n"
-            content += "def set_fs(uc, addr):\n"
-            content += "    return set_msr(uc, FSMSR, addr)\n"
+            content += "def set_tls(uc, addr):\n"
+            content += "    return set_msr(uc, FS_GS_MSR, addr)\n"
 
         content += "\n"
         content += "\n"
@@ -15384,8 +15556,7 @@ class UnicornEmulateCommand(GenericCommand):
         if is_x86():
             content += "\n"
             content += "\n"
-            content += "    set_fs(emu, {:#x})\n".format(TlsCommand.getfs())
-            content += "    set_gs(emu, {:#x})\n".format(TlsCommand.getgs())
+            content += "    set_tls(emu, {:#x})\n".format(current_arch.get_tls())
 
         if kwargs["verbose"]:
             info("Duplicating registers")
@@ -16709,10 +16880,11 @@ class RegistersCommand(GenericCommand):
                 color = changed_color
 
             # Special (e.g. segment) registers go on their own line
-            if regname in current_arch.special_registers:
-                special_line += "{}: ".format(Color.colorify(regname, color))
-                special_line += "{:#04x} ".format(get_register(regname))
-                continue
+            if current_arch.special_registers:
+                if regname in current_arch.special_registers:
+                    special_line += "{}: ".format(Color.colorify(regname, color))
+                    special_line += "{:#04x} ".format(get_register(regname))
+                    continue
 
             # reg name
             padreg = current_arch.get_aliased_registers()[regname].ljust(widest, " ")
@@ -21866,7 +22038,12 @@ class ContextCommand(GenericCommand):
         r = self.RE_FINDALL_SEG2.findall(str(insn))
         if r:
             code, fsgs, offset = r[0][0], r[0][1], r[0][2]
-            tls = TlsCommand.getfs() if fsgs == "fs" else TlsCommand.getgs()
+            if fsgs == "fs":
+                fsgs_val = current_arch.get_fs()
+            else:
+                fsgs_val = current_arch.get_gs()
+            if fsgs_val is None:
+                return
             offset = offset.replace("+", " + ")
             offset = offset.replace("-", " - ")
             offset = offset.replace("*", " * ")
@@ -21877,7 +22054,7 @@ class ContextCommand(GenericCommand):
             # $rip/$eip points next instruction
             offset = offset.replace("$rip", "$rip+{:#x}".format(codesize))
             offset = parse_address(offset)
-            addr = align_address(tls + offset)
+            addr = align_address(fsgs_val + offset)
             self.context_title("memory access: {:s} = {:#x}".format(code, addr))
             gdb.execute("telescope {:#x} 4 --no-pager".format(addr))
         return
@@ -25654,7 +25831,7 @@ class DestructorDumpCommand(GenericCommand):
         reset_gef_caches(all=True)
 
         # init
-        self.tls = TlsCommand.get_tls()
+        self.tls = current_arch.get_tls()
         if not is_valid_addr(self.tls):
             err("Not found tls")
             return
@@ -49326,142 +49503,6 @@ class TlsCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
 
-    @staticmethod
-    @functools.lru_cache(maxsize=None)
-    def getfs():
-        # fastest path
-        fs = get_register("$fs_base")
-        if fs is not None:
-            return fs
-
-        # fast path
-        if not is_remote_debug() and not is_in_kernel():
-            PTRACE_ARCH_PRCTL = 30
-            ARCH_GET_FS = 0x1003
-            pid, lwpid, tid = gdb.selected_thread().ptid
-            ppvoid = ctypes.POINTER(ctypes.c_void_p)
-            value = ppvoid(ctypes.c_void_p())
-            value.contents.value = 0
-            libc = ctypes.CDLL("libc.so.6")
-            ret = libc.ptrace(PTRACE_ARCH_PRCTL, lwpid, value, ARCH_GET_FS)
-            if ret == 0: # success
-                return value.contents.value or 0
-
-        # slow path
-        if not is_kvm_enabled():
-            if is_x86_64():
-                codes = [b"\x64\x48\xa1\x00\x00\x00\x00\x00\x00\x00\x00"] # movabs rax, qword ptr fs:[0x0]
-                ret = ExecAsm(codes).exec_code()
-                return ret["reg"]["$rax"]
-            elif is_x86_32():
-                codes = [b"\x64\xa1\x00\x00\x00\x00"] # mov eax, dword ptr fs:[0x0]
-                ret = ExecAsm(codes).exec_code()
-                return ret["reg"]["$eax"]
-        return 0
-
-    @staticmethod
-    @functools.lru_cache(maxsize=None)
-    def getgs():
-        # fastest path
-        gs = get_register("$gs_base")
-        if gs is not None:
-            return gs
-
-        # fast path
-        if not is_remote_debug() and not is_in_kernel():
-            PTRACE_ARCH_PRCTL = 30
-            ARCH_GET_GS = 0x1004
-            pid, lwpid, tid = gdb.selected_thread().ptid
-            ppvoid = ctypes.POINTER(ctypes.c_void_p)
-            value = ppvoid(ctypes.c_void_p())
-            value.contents.value = 0
-            libc = ctypes.CDLL("libc.so.6")
-            ret = libc.ptrace(PTRACE_ARCH_PRCTL, lwpid, value, ARCH_GET_GS)
-            if ret == 0: # success
-                return value.contents.value or 0
-
-        # slow path
-        if not is_kvm_enabled():
-            if is_x86_64():
-                codes = [b"\x65\x48\xa1\x00\x00\x00\x00\x00\x00\x00\x00"] # movabs rax, qword ptr gs:[0x0]
-                ret = ExecAsm(codes).exec_code()
-                return ret["reg"]["$rax"]
-            elif is_x86_32():
-                codes = [b"\x65\xa1\x00\x00\x00\x00"] # mov eax, dword ptr gs:[0x0]
-                ret = ExecAsm(codes).exec_code()
-                return ret["reg"]["$eax"]
-        return 0
-
-    @staticmethod
-    def get_tls():
-        if is_qemu_system() or is_kgdb():
-            return None
-
-        def adjust_offset(x):
-            TLS_TCB_OFFSET = 0x7000
-            if x == 0:
-                return x
-            return x - TLS_TCB_OFFSET
-
-        if is_x86_64():
-            return TlsCommand.getfs()
-        elif is_x86_32():
-            return TlsCommand.getgs()
-        elif is_arm64():
-            return get_register("$TPIDR_EL0")
-        elif is_arm32():
-            if current_arch.is_thumb():
-                codes = [b"\x1d\xee", b"\x70\x2f"] # mrc p15, #0, r2, c13, c0, #3
-            else:
-                codes = [b"\x70\x2f\x1d\xee"] # mrc p15, #0, r2, c13, c0, #3
-            ret = ExecAsm(codes).exec_code()
-            return ret["reg"]["$r2"]
-        elif is_mips32() or is_mips64():
-            codes = [b"\x3b\xe8\x03\x7c"] # rdhwr v1, $29
-            ret = ExecAsm(codes).exec_code()
-            tls = ret["reg"]["$v1"]
-            return adjust_offset(tls)
-        elif is_riscv64() or is_riscv32():
-            return get_register("$tp")
-        elif is_ppc32():
-            tls = get_register("$r2")
-            return adjust_offset(tls)
-        elif is_ppc64():
-            tls = get_register("$r13")
-            return adjust_offset(tls)
-        elif is_sparc32() or is_sparc64():
-            return get_register("$g7")
-        elif is_s390x():
-            hi = get_register("$acr0")
-            lo = get_register("$acr1")
-            return (hi << 32) | lo
-        elif is_m68k():
-            ret = ExecSyscall(0x14d, []).exec_code() # get_thread_area
-            tls = ret["reg"]["$d0"]
-            return adjust_offset(tls)
-        elif is_alpha():
-            codes = [b"\x9e\x00\x00\x00"] # rduniq
-            ret = ExecAsm(codes).exec_code()
-            return ret["reg"]["$v0"]
-        elif is_hppa32():
-            codes = [b"\xbc\x08\x60\x03"] # mfctl tr3, ret0
-            ret = ExecAsm(codes).exec_code()
-            return ret["reg"]["$ret0"]
-        elif is_or1k():
-            return get_register("$r10")
-        elif is_nios2():
-            tls = get_register("$r23")
-            return adjust_offset(tls)
-        elif is_microblaze():
-            return get_register("$r21")
-        elif is_xtensa():
-            return get_register("$threadptr")
-        elif is_loongarch64():
-            return get_register("$r2")
-        elif is_arc32():
-            return get_register("$r25")
-        return None
-
     @parse_args
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
@@ -49472,7 +49513,7 @@ class TlsCommand(GenericCommand):
             warn("This command cannot work under this architecture.")
             return
 
-        tls = TlsCommand.get_tls()
+        tls = current_arch.get_tls()
         if tls is None:
             err("Failed to get TLS address")
             return
@@ -49504,8 +49545,7 @@ class FsbaseCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
         self.dont_repeat()
-        fs_base = TlsCommand.getfs()
-        gef_print("$fs_base = {:#x}".format(fs_base))
+        gef_print("$fs_base: {:#x}".format(current_arch.get_fs()))
         return
 
 
@@ -49523,8 +49563,7 @@ class GsbaseCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
         self.dont_repeat()
-        gs_base = TlsCommand.getgs()
-        gef_print("$gs_base = {:#x}".format(gs_base))
+        gef_print("$gs_base: {:#x}".format(current_arch.get_gs()))
         return
 
 
@@ -69296,7 +69335,9 @@ class GefArchListCommand(GenericCommand):
         # settings
         self.out.append("{:30s} {:s} {!s}".format("bit length", RIGHT_ARROW, arch.bit_length))
         self.out.append("{:30s} {:s} {!s}".format("endianness", RIGHT_ARROW, arch.endianness))
-        if arch.instruction_length is None:
+        if arch.arch == "ARM":
+            inst_len = "ARM:4 / THUMB:2or4"
+        elif arch.instruction_length is None:
             inst_len = "variable length"
         else:
             inst_len = str(arch.instruction_length)
