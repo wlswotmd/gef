@@ -10294,6 +10294,34 @@ def is_32bit():
     return ptr_width() == 4
 
 
+def is_emulated32():
+    if is_64bit():
+        return False
+
+    if is_qemu_user():
+        # This case cannot be determined
+        return False
+
+    if is_qemu_system():
+        # corner case (ex: using qemu-system-x86_64, but process is executed as 32bit mode)
+        # is not able to be detected
+        return True
+
+    for m in get_process_maps():
+        # native x86:
+        # 0xbffdf000 0xc0000000 0x021000 0x000000 rw- [stack]
+        # emulated x86 on x86_64
+        # 0xfffdd000 0xffffe000 0x021000 0x000000 rw- [stack]
+        # native arm:
+        # 0xbefdf000 0xbf000000 0x021000 0x000000 rw- [stack]
+        # emulated arm on aarch64
+        # 0xfffcf000 0xffff0000 0x021000 0x000000 rw- [stack]
+        if m.path == "[stack]":
+            return (m.page_start >> 28) == 0xf
+    else:
+        return False # by default it considers on native
+
+
 def is_x86_64():
     return current_arch and current_arch.arch == "X86" and current_arch.mode == "64"
 
@@ -17444,33 +17472,6 @@ class ArchInfoCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
 
-    def is_emulated32(self):
-        if is_64bit():
-            return False
-
-        if is_qemu_user():
-            # This case cannot be determined
-            return False
-
-        if is_qemu_system():
-            # corner case (ex: using qemu-system-x86_64, but process is executed as 32bit mode)
-            # is not able to be detected
-            return True
-
-        for m in get_process_maps():
-            # native x86:
-            # 0xbffdf000 0xc0000000 0x021000 0x000000 rw- [stack]
-            # emulated x86 on x86_64
-            # 0xfffdd000 0xffffe000 0x021000 0x000000 rw- [stack]
-            # native arm:
-            # 0xbefdf000 0xbf000000 0x021000 0x000000 rw- [stack]
-            # emulated arm on aarch64
-            # 0xfffcf000 0xffff0000 0x021000 0x000000 rw- [stack]
-            if m.path == "[stack]":
-                return (m.page_start >> 28) == 0xf
-        else:
-            return False # by default it considers on native
-
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -17529,7 +17530,7 @@ class ArchInfoCommand(GenericCommand):
             sparams = ", ".join(current_arch.syscall_parameters)
             gef_print("{:30s} {:s} {!s}".format("syscall parameters", RIGHT_ARROW, sparams))
         if is_x86() or is_arm32() or is_arm64():
-            gef_print("{:30s} {:s} {!s}".format("32bit-emulated (compat mode)", RIGHT_ARROW, self.is_emulated32()))
+            gef_print("{:30s} {:s} {!s}".format("32bit-emulated (compat mode)", RIGHT_ARROW, is_emulated32()))
         gef_print("{:30s} {:s} {!s}".format("Has a call/jump delay slot", RIGHT_ARROW, current_arch.has_delay_slot))
         gef_print("{:30s} {:s} {!s}".format("Has a syscall delay slot", RIGHT_ARROW, current_arch.has_syscall_delay_slot))
         gef_print("{:30s} {:s} {!s}".format("Has a ret delay slot", RIGHT_ARROW, current_arch.has_ret_delay_slot))
@@ -37250,30 +37251,6 @@ arm_ldelf_syscall_list = [ # noqa: F841
 
 def get_syscall_table(arch=None, mode=None):
 
-    def is_emulated32():
-        if is_qemu_user():
-            # This case cannot be determined
-            return False
-
-        if is_qemu_system():
-            # corner case (ex: using qemu-system-x86_64, but process is executed as 32bit mode)
-            # is not able to be detected
-            return True
-
-        for m in get_process_maps():
-            # native x86:
-            # 0xbffdf000 0xc0000000 0x021000 0x000000 rw- [stack]
-            # emulated x86 on x86_64
-            # 0xfffdd000 0xffffe000 0x021000 0x000000 rw- [stack]
-            # native arm:
-            # 0xbefdf000 0xbf000000 0x021000 0x000000 rw- [stack]
-            # emulated arm on aarch64
-            # 0xfffcf000 0xffff0000 0x021000 0x000000 rw- [stack]
-            if m.path == "[stack]":
-                return (m.page_start >> 28) == 0xf
-        else:
-            return False # by default it considers on native
-
     def is_secure():
         scr = get_register("$SCR" if is_arm32() else "$SCR_EL3")
         if scr is None:
@@ -49553,7 +49530,7 @@ class GsbaseCommand(GenericCommand):
 
 @register_command
 class GdtInfoCommand(GenericCommand):
-    """Print GDT entries sample."""
+    """Print GDT entries. If user-land, show sample entries."""
     _cmdline_ = "gdtinfo"
     _category_ = "04-a. Register - View"
 
@@ -49562,7 +49539,7 @@ class GdtInfoCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     # arch/x86/include/asm/segment.h
-    _SEGMENT_DESCRIPTION_64_ = {
+    SEGMENT_DESCRIPTION_64 = {
         0: "NULL",
         1: "KERNEL32_CS",
         2: "KERNEL_CS",
@@ -49580,7 +49557,7 @@ class GdtInfoCommand(GenericCommand):
         14: "TLS_#3",
         15: "CPUNODE",
     }
-    _SEGMENT_DESCRIPTION_32_ = {
+    SEGMENT_DESCRIPTION_32 = {
         0: "NULL",
         1: "RESERVED",
         2: "RESERVED",
@@ -49615,21 +49592,17 @@ class GdtInfoCommand(GenericCommand):
         31: "DOUBLEFAULT_TSS",
     }
 
-    @staticmethod
-    def seg2str(v):
-        rpl = v & 0b11
-        ti = (v >> 2) & 0b1
-        index = (v >> 3)
-        return "{:#4x} (=rpl:{:d}, ti:{:d}, index:{:d})".format(v, rpl, ti, index)
-
     def print_seg_info(self):
         if not is_alive():
             return
         gef_print(titlify("Current register values"))
-        red = lambda x: Color.colorify("{:4s}".format(x), "bold red")
         for k in ["cs", "ds", "es", "fs", "gs", "ss"]:
             v = get_register(k)
-            gef_print("{:s}: {:s}".format(red(k), self.seg2str(v)))
+            rpl = v & 0b11
+            ti = (v >> 2) & 0b1
+            index = (v >> 3)
+            red_k = Color.colorify("{:4s}".format(k), "bold red")
+            gef_print("{:s}: {:#4x} (=rpl:{:d}, ti:{:d}, index:{:d})".format(red_k, v, rpl, ti, index))
         gef_print(" * rpl: Requested Privilege Level (0:Ring0, 3:Ring3)")
         gef_print(" * ti: Table Indicator (0:GDT, 1:LDT)")
         gef_print(" * index: Index of GDT/LDT")
@@ -49754,111 +49727,22 @@ class GdtInfoCommand(GenericCommand):
                     regs[index] = regs.get(index, []) + [k]
         return regs
 
-    @staticmethod
-    @functools.lru_cache(maxsize=None)
-    def is_emulated32():
-        if is_qemu_user():
-            return False
-
-        if is_qemu_system():
-            return False
-
-        for m in get_process_maps():
-            # native x86:
-            # 0xbffdf000 0xc0000000 0x021000 0x000000 rw- [stack]
-            # emulated x86 on x86_64
-            # 0xfffdd000 0xffffe000 0x021000 0x000000 rw- [stack]
-            if m.path == "[stack]":
-                return (m.page_start >> 28) == 0xf
-        else:
-            return False # by default it considers on native
-
-    def print_gdt_entry(self, entries):
-        if is_x86_64() or self.is_emulated32():
+    def print_gdt_example(self):
+        # print title
+        if is_x86_64() or is_emulated32():
             gef_print(titlify("GDT Entry (x64 sample)"))
-            segm_desc = GdtInfoCommand._SEGMENT_DESCRIPTION_64_
+            segm_desc = self.SEGMENT_DESCRIPTION_64
         else:
             gef_print(titlify("GDT Entry (x86 sample)"))
-            segm_desc = GdtInfoCommand._SEGMENT_DESCRIPTION_32_
-        info("*** This is an {:s} ***".format(Color.boldify("EXAMPLE")))
-        registers_color = get_gef_setting("theme.dereference_register_value")
+            segm_desc = self.SEGMENT_DESCRIPTION_32
 
         # print legend
-        legend = self.gdtval2str_legend()
-        gef_print(Color.colorify(legend, get_gef_setting("theme.table_heading")))
+        info("*** This is an {:s} ***".format(Color.boldify("EXAMPLE")))
+        gef_print(Color.colorify(self.gdtval2str_legend(), get_gef_setting("theme.table_heading")))
 
-        # regs check
-        regs = self.get_segreg_list()
-
-        # parse entry
-        for i, value in entries:
-            # get segment regs value
-            reglist = ", ".join(regs.get(i, []))
-            if reglist:
-                reglist = LEFT_ARROW + reglist
-            regstr = Color.colorify(reglist, registers_color)
-
-            # decode
-            segname = segm_desc.get(i, "Undefined")
-            is_part1 = segname == "TSS-part1" or segname == "LDT-part1"
-            valstr = self.gdtval2str(value, value_only=is_part1)
-
-            gef_print("[{:02d}] {:20s} {:s} {:s}".format(i, segname, valstr, regstr))
-        return
-
-    @staticmethod
-    def print_gdt_entry_legend():
-        gef_print(titlify("legend (Normal GDT entry)"))
-        gef_print("              <flag_bytes->        <----access_bytes ---->")
-        gef_print("                                             <type_bytes->")
-        gef_print("31            23          19       15                    7             0bit")
-        gef_print("------------------------------------------------------------------------")
-        gef_print("|             |G |D |  |A |        |  |   |  |E |D |W |A |             |")
-        gef_print("| BASE2 31:24 |  |/ |L |V | LIMIT1 |P |DPL|S |  |  |  |  | BASE1 23:16 | 4byte")
-        gef_print("|             |R |B |  |L | 19:16  |  |   |  |X |C |R |C |             |")
-        gef_print("------------------------------------------------------------------------")
-        gef_print("|            BASE0 15:0            |           LIMIT0 15:0             | 0byte")
-        gef_print("------------------------------------------------------------------------")
-        gef_print(" * base               : Start address")
-        gef_print(" * limit              : Segment size (4KB unit if gr==1)")
-        gef_print(" * flag_bytes")
-        gef_print("   * gr               : Granularity Flag (0:SegLimitAsByte, 1:SegLimitAs4KB)")
-        gef_print("   * db               : Default Operation size (0:16bitSeg, 1:32bitSeg)")
-        gef_print("   * l (Code Seg)     : 64-bits Code Segment Flag (0:32bit, 1:64bit)")
-        gef_print("   * l (Data Seg)     : Reserved (0)")
-        gef_print("   * avl              : Available bit (0)")
-        gef_print(" * access_bytes")
-        gef_print("   * p                : Segment Present Flag (0:SegmentNotInMemory, 1:SegmentInMemory)")
-        gef_print("   * dpl              : Descriptor Privilege Level (0:Ring0, 3:Ring3)")
-        gef_print("   * s                : Descriptor Type Flag (0:System Segment, 1:Code/Data Segment)")
-        gef_print("   * type_bytes")
-        gef_print("     * ex             : Segment type (0:Data, 1:Code)")
-        gef_print("     * dc (Code Seg)  : Conforming bit (0:NoConform, 1:Conform)")
-        gef_print("     * dc (Data Seg)  : Direction bit (0:Up, 1:Down)")
-        gef_print("     * rw (Code Seg)  : Read/Exec bit (0:ReadOnly, 1:Read/Exec)")
-        gef_print("     * rw (Data Seg)  : Read/Write bit (0:ReadOnly, 1:Read/Write)")
-        gef_print("     * ac             : Access bit (0:NotAccessed, 1:Accessed)")
-        gef_print(titlify("legend (GDT entry for TSS/LDT)"))
-        gef_print("31            23          19       15                    7             0bit")
-        gef_print("------------------------------------------------------------------------")
-        gef_print("|                           ZERO1 (only x64)                           | 12byte")
-        gef_print("------------------------------------------------------------------------")
-        gef_print("|                        BASE3 47:32 (only x64)                        | 8byte")
-        gef_print("------------------------------------------------------------------------")
-        gef_print("|             |G |        |        |  |   |  |E |D |W |A |             |")
-        gef_print("| BASE2 31:24 |  | ZERO0  | LIMIT1 |P |DPL|S |  |  |  |  | BASE1 23:16 | 4byte")
-        gef_print("|             |R |        | 19:16  |  |   |  |X |C |R |C |             |")
-        gef_print("------------------------------------------------------------------------")
-        gef_print("|            BASE0 15:0            |           LIMIT0 15:0             | 0byte")
-        gef_print("------------------------------------------------------------------------")
-        gef_print(" * limit (tss)        : __KERNEL_TSS_LIMIT(=0x206f(x64) / 0x206b(x86))")
-        gef_print(" * limit (ldt)        : (LDT entries * 8) - 1")
-        return
-
-    def print_gdt(self):
-        self.print_seg_info()
-        if is_x86_64() or self.is_emulated32():
-            self.print_gdt_entry([
+        # print entry
+        if is_x86_64() or is_emulated32():
+            entries = [
                 # idx, value
                 (0,    0x0000000000000000),
                 (1,    0x00cf9b000000ffff),
@@ -49876,9 +49760,9 @@ class GdtInfoCommand(GenericCommand):
                 (13,   0x0000000000000000),
                 (14,   0x0000000000000000),
                 (15,   0x0040f50000000000),
-            ])
+            ]
         else:
-            self.print_gdt_entry([
+            entries = [
                 # idx, value
                 (0,    0x0000000000000000),
                 (1,    0x0000000000000000),
@@ -49912,26 +49796,146 @@ class GdtInfoCommand(GenericCommand):
                 (29,   0x0000000000000000),
                 (30,   0x0000000000000000),
                 (31,   0xc40089706000206b),
-            ])
-        if self.verbose:
-            self.print_gdt_entry_legend()
+            ]
+
+        regs = self.get_segreg_list()
+        for i, value in entries:
+            # get segment regs value
+            reglist = ", ".join(regs.get(i, []))
+            if reglist:
+                reglist = LEFT_ARROW + reglist
+            regstr = Color.colorify(reglist, get_gef_setting("theme.dereference_register_value"))
+
+            # decode
+            segname = segm_desc.get(i, "Undefined")
+            is_part1 = segname in ["TSS-part1", "LDT-part1"]
+            valstr = self.gdtval2str(value, value_only=is_part1)
+
+            gef_print("[{:02d}] {:20s} {:s} {:s}".format(i, segname, valstr, regstr))
+        return
+
+    def print_gdt_qemu(self):
+        # parse real value
+        res = gdb.execute("monitor info registers", to_string=True)
+
+        gdtr = re.search(r"GDT\s*=\s*(\S+) (\S+)", res)
+        base, limit = [int(gdtr.group(i), 16) for i in range(1, 3)]
+        gdtinfo = slice_unpack(read_memory(base, limit + 1), 8)
+
+        tr = re.search(r"TR\s*=\s*(\S+) (\S+) (\S+) (\S+)", res)
+        trseg, *_ = [int(tr.group(i), 16) for i in range(1, 5)]
+        tr_idx = trseg >> 3
+
+        if is_x86_64():
+            segm_desc = self.SEGMENT_DESCRIPTION_64
         else:
-            info("for flags description, use `-v`")
+            segm_desc = self.SEGMENT_DESCRIPTION_32
+
+        # print title
+        gef_print(titlify("GDT Entry"))
+
+        # print legend
+        gef_print(Color.colorify(self.gdtval2str_legend(), get_gef_setting("theme.table_heading")))
+
+        # print entry
+        regs = self.get_segreg_list()
+        for i, b in enumerate(gdtinfo):
+            # get segment regs value
+            reglist = regs.get(i, [])
+
+            # decode
+            if is_x86_64() and i == tr_idx: # for TSS x64
+                valstr = self.gdtval2str(b, value_only=True)
+                prev = b
+                reglist.append("TR")
+            elif is_x86_64() and i == tr_idx + 1: # for TSS x64
+                valstr = self.gdtval2str([prev, b])
+            elif is_x86_32() and i == tr_idx: # for TSS x86
+                valstr = self.gdtval2str(b)
+                reglist.append("TR")
+            else:
+                valstr = self.gdtval2str(b)
+
+            if reglist:
+                reglist = "{:s}{:s}".format(LEFT_ARROW, " ,".join(reglist))
+                regstr = Color.colorify(reglist, get_gef_setting("theme.dereference_register_value"))
+            else:
+                regstr = ""
+
+            segname = segm_desc.get(i, "Undefined")
+            gef_print("[{:02d}] {:20s} {:s} {:s}".format(i, segname, valstr, regstr))
+        return
+
+    def print_gdt_entry_legend(self):
+        gef_print(titlify("legend (Normal GDT entry)"))
+        gef_print("              <flag_bytes->        <----access_bytes ---->")
+        gef_print("                                             <type_bytes->")
+        gef_print("31            23          19       15                    7             0bit")
+        gef_print("------------------------------------------------------------------------")
+        gef_print("|             |G |D |  |A |        |  |   |  |E |D |W |A |             |")
+        gef_print("| BASE2 31:24 |  |/ |L |V | LIMIT1 |P |DPL|S |  |  |  |  | BASE1 23:16 | 4byte")
+        gef_print("|             |R |B |  |L | 19:16  |  |   |  |X |C |R |C |             |")
+        gef_print("------------------------------------------------------------------------")
+        gef_print("|            BASE0 15:0            |           LIMIT0 15:0             | 0byte")
+        gef_print("------------------------------------------------------------------------")
+        gef_print(" * base               : Start address")
+        gef_print(" * limit              : Segment size (4KB unit if gr==1)")
+        gef_print(" * flag_bytes")
+        gef_print("   * gr               : Granularity flag (0:SegLimitAsByte, 1:SegLimitAs4KB)")
+        gef_print("   * db               : Default operation size (0:16bitSeg, 1:32bitSeg)")
+        gef_print("   * l (Code seg)     : 64-bits code segment flag (0:32bit, 1:64bit)")
+        gef_print("   * l (Data seg)     : Reserved (0)")
+        gef_print("   * avl              : Available bit (0)")
+        gef_print(" * access_bytes")
+        gef_print("   * p                : Segment present flag (0:SegmentNotInMemory, 1:SegmentInMemory)")
+        gef_print("   * dpl              : Descriptor privilege level (0:Ring0, 3:Ring3)")
+        gef_print("   * s                : Descriptor type flag (0:System Segment, 1:Code/Data Segment)")
+        gef_print("   * type_bytes")
+        gef_print("     * ex             : Segment type (0:Data, 1:Code)")
+        gef_print("     * dc (Code seg)  : Conforming bit (0:NoConform, 1:Conform)")
+        gef_print("     * dc (Data seg)  : Direction bit (0:Up, 1:Down)")
+        gef_print("     * rw (Code seg)  : Read/Exec bit (0:ReadOnly, 1:Read/Exec)")
+        gef_print("     * rw (Data seg)  : Read/Write bit (0:ReadOnly, 1:Read/Write)")
+        gef_print("     * ac             : Access bit (0:NotAccessed, 1:Accessed)")
+        gef_print(titlify("legend (GDT entry for TSS/LDT)"))
+        gef_print("31            23          19       15                    7             0bit")
+        gef_print("------------------------------------------------------------------------")
+        gef_print("|                           ZERO1 (only x64)                           | 12byte")
+        gef_print("------------------------------------------------------------------------")
+        gef_print("|                        BASE3 47:32 (only x64)                        | 8byte")
+        gef_print("------------------------------------------------------------------------")
+        gef_print("|             |G |        |        |  |   |  |E |D |W |A |             |")
+        gef_print("| BASE2 31:24 |  | ZERO0  | LIMIT1 |P |DPL|S |  |  |  |  | BASE1 23:16 | 4byte")
+        gef_print("|             |R |        | 19:16  |  |   |  |X |C |R |C |             |")
+        gef_print("------------------------------------------------------------------------")
+        gef_print("|            BASE0 15:0            |           LIMIT0 15:0             | 0byte")
+        gef_print("------------------------------------------------------------------------")
+        gef_print(" * limit (tss)        : __KERNEL_TSS_LIMIT(=0x206f(x64) / 0x206b(x86))")
+        gef_print(" * limit (ldt)        : (LDT entries * 8) - 1")
         return
 
     @parse_args
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
         self.dont_repeat()
-        self.verbose = args.verbose
-        self.print_gdt()
-        info("if qemu-system, use `qreg -v` to confirm real GDT value")
+
+        self.print_seg_info()
+
+        if is_qemu_system() and is_in_kernel():
+            self.print_gdt_qemu()
+        else:
+            self.print_gdt_example()
+
+        if args.verbose:
+            self.print_gdt_entry_legend()
+        else:
+            info("for flags description, use `-v`")
         return
 
 
 @register_command
 class IdtInfoCommand(GenericCommand):
-    """Print IDT entries sample."""
+    """Print IDT entries. If user-land, show sample entries."""
     _cmdline_ = "idtinfo"
     _category_ = "04-a. Register - View"
 
@@ -49940,7 +49944,7 @@ class IdtInfoCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     # arch/x86/include/asm/trapnr.h
-    _INTERRUPT_DESCRIPTION_ = {
+    INTERRUPT_DESCRIPTION = {
         0: "#DE: Divide-by-zero",
         1: "#DB: Debug",
         2: "#NMI: Non-maskable Interrupt",
@@ -49992,15 +49996,15 @@ class IdtInfoCommand(GenericCommand):
         idt = IdtInfoCommand.idt_unpack(value)
         if idt.present == 0:
             return "(none)"
-        else:
-            out = ""
-            out += "{:#0{:d}x} ".format(idt.value, val_width)
-            out += "{:#03x} ".format(idt.gate_type)
-            out += "{:#03x} ".format(idt.ist)
-            out += "{:#03x} ".format(idt.dpl)
-            out += "{:#03x} ".format(idt.present)
-            out += "{:#06x}:{:#0{:d}x}".format(idt.segment, idt.offset, ofs_width)
-            return out
+
+        out = ""
+        out += "{:#0{:d}x} ".format(idt.value, val_width)
+        out += "{:#03x} ".format(idt.gate_type)
+        out += "{:#03x} ".format(idt.ist)
+        out += "{:#03x} ".format(idt.dpl)
+        out += "{:#03x} ".format(idt.present)
+        out += "{:#06x}:{:#0{:d}x}".format(idt.segment, idt.offset, ofs_width)
+        return out
 
     @staticmethod
     def idtval2str_legend():
@@ -50009,52 +50013,20 @@ class IdtInfoCommand(GenericCommand):
         fmt = "[  #] {:36s} {:{:d}s} {:3s} {:3s} {:3s} {:3s} {:6s}:{:{:d}s}"
         return fmt.format("name", "value", val_width, "typ", "ist", "dpl", "p", "segm", "offset", ofs_width)
 
-    def print_idt_entry(self, entries):
-        if is_x86_64() or GdtInfoCommand.is_emulated32():
+    def print_idt_example(self):
+        # print title
+        if is_x86_64() or is_emulated32():
             gef_print(titlify("IDT Entry (x64 sample)"))
         else:
             gef_print(titlify("IDT Entry (x86 sample)"))
-        info("*** This is an {:s} ***".format(Color.boldify("EXAMPLE")))
 
         # print legend
-        legend = self.idtval2str_legend()
-        gef_print(Color.colorify(legend, get_gef_setting("theme.table_heading")))
+        info("*** This is an {:s} ***".format(Color.boldify("EXAMPLE")))
+        gef_print(Color.colorify(self.idtval2str_legend(), get_gef_setting("theme.table_heading")))
 
-        # parse entry
-        for i, value in entries:
-            if value != 0:
-                int_name = IdtInfoCommand._INTERRUPT_DESCRIPTION_.get(i, "User defined Interrupt {:#x}".format(i))
-                gef_print("[{:03d}] {:36s} {:s}".format(i, int_name, self.idtval2str(value)))
-        return
-
-    @staticmethod
-    def print_idt_entry_legend():
-        gef_print(titlify("legend (Normal IDT entry)"))
-        gef_print("31                                 15  14    13  12     8       3      0bit")
-        gef_print("------------------------------------------------------------------------")
-        gef_print("|                              RESERVED                                | 12byte")
-        gef_print("------------------------------------------------------------------------")
-        gef_print("|                            OFFSET2 63:32                             | 8byte")
-        gef_print("------------------------------------------------------------------------")
-        gef_print("|         OFFSET1 31:16            | P | DPL | 0 | Type | 00000 | IST  | 4byte")
-        gef_print("------------------------------------------------------------------------")
-        gef_print("|         Segment Selector         |           OFFSET0 15:0            | 0byte")
-        gef_print("------------------------------------------------------------------------")
-        gef_print(" * segment selector : Segment Selector for destination code segment")
-        gef_print(" * offset           : Offset to handler procedure entry point")
-        gef_print(" * ist              : Interrupt Stack Table")
-        gef_print(" * type             : one of following")
-        gef_print("                        0x5: Task Gate")
-        gef_print("                        0xC: Call Gate")
-        gef_print("                        0xE: 32/64-bit Interrupt Gate")
-        gef_print("                        0xF: 32/64-bit Trap Gate")
-        gef_print(" * dpl              : Descriptor Privilege Level")
-        gef_print(" * p                : Segment Present Flag")
-        return
-
-    def print_idt(self):
-        if is_x86_64() or GdtInfoCommand.is_emulated32():
-            self.print_idt_entry([
+        # print entry
+        if is_x86_64() or is_emulated32():
+            entries = [
                 # idx, value
                 [0,    0x0000000000ffffffff81608e0000100c30],
                 [1,    0x0000000000ffffffff81608e0300100f00],
@@ -50080,9 +50052,9 @@ class IdtInfoCommand(GenericCommand):
                 [21,   0x0000000000ffffffff81c98e000010f0bd],
                 [29,   0x0000000000ffffffff81c98e000010f105],
                 [32,   0x0000000000ffffffff81608e0000100b90],
-            ])
+            ]
         else:
-            self.print_idt_entry([
+            entries = [
                 # idx, value
                 [0,    0x00c3788e0000605974],
                 [1,    0x00c3788e0000605c4c],
@@ -50108,20 +50080,72 @@ class IdtInfoCommand(GenericCommand):
                 [21,   0x00c3958e00006030c5],
                 [29,   0x00c3958e000060310d],
                 [32,   0x00c3788e0000604b90],
-            ])
-        if self.verbose:
-            self.print_idt_entry_legend()
-        else:
-            info("for flags description, use `-v`")
+            ]
+
+        for i, value in entries:
+            if value != 0:
+                int_name = self.INTERRUPT_DESCRIPTION.get(i, "User defined Interrupt {:#x}".format(i))
+                gef_print("[{:03d}] {:36s} {:s}".format(i, int_name, self.idtval2str(value)))
+        return
+
+    def print_idt_qemu(self):
+        # parse real value
+        res = gdb.execute("monitor info registers", to_string=True)
+        idtr = re.search(r"IDT\s*=\s*(\S+) (\S+)", res)
+        base, limit = [int(idtr.group(i), 16) for i in range(1, 3)]
+        idtinfo = slice_unpack(read_memory(base, limit + 1), current_arch.ptrsize * 2)
+
+        # print title
+        gef_print(titlify("IDT Entry"))
+
+        # print legend
+        gef_print(Color.colorify(self.idtval2str_legend(), get_gef_setting("theme.table_heading")))
+
+        # print entry
+        for i, b in enumerate(idtinfo):
+            int_name = self.INTERRUPT_DESCRIPTION.get(i, "User defined Interrupt {:#x}".format(i))
+            valstr = self.idtval2str(b)
+            sym = get_symbol_string(self.idt_unpack(b).offset, nosymbol_string=" <NO_SYMBOL>")
+            gef_print("[{:03d}] {:36s} {:s}{:s}".format(i, int_name, valstr, sym))
+
+    def print_idt_entry_legend(self):
+        gef_print(titlify("legend (Normal IDT entry)"))
+        gef_print("31                                 15  14    13  12     8       3      0bit")
+        gef_print("------------------------------------------------------------------------")
+        gef_print("|                              RESERVED                                | 12byte")
+        gef_print("------------------------------------------------------------------------")
+        gef_print("|                            OFFSET2 63:32                             | 8byte")
+        gef_print("------------------------------------------------------------------------")
+        gef_print("|         OFFSET1 31:16            | P | DPL | 0 | Type | 00000 | IST  | 4byte")
+        gef_print("------------------------------------------------------------------------")
+        gef_print("|         Segment Selector         |           OFFSET0 15:0            | 0byte")
+        gef_print("------------------------------------------------------------------------")
+        gef_print(" * segment selector : Segment selector for destination code segment")
+        gef_print(" * offset           : Offset to handler procedure entry point")
+        gef_print(" * ist              : Interrupt stack table")
+        gef_print(" * type             : One of following")
+        gef_print("                        0x5: Task gate")
+        gef_print("                        0xC: Call gate")
+        gef_print("                        0xE: 32/64-bit interrupt gate")
+        gef_print("                        0xF: 32/64-bit trap gate")
+        gef_print(" * dpl              : Descriptor privilege level")
+        gef_print(" * p                : Segment present flag")
         return
 
     @parse_args
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
         self.dont_repeat()
-        self.verbose = args.verbose
-        self.print_idt()
-        info("if qemu-system, use `qreg -v` to confirm real IDT value")
+
+        if is_qemu_system() and is_in_kernel():
+            self.print_idt_qemu()
+        else:
+            self.print_idt_example()
+
+        if args.verbose:
+            self.print_idt_entry_legend()
+        else:
+            info("for flags description, use `-v`")
         return
 
 
@@ -60323,32 +60347,35 @@ class QemuRegistersCommand(GenericCommand):
         self.out.append("base : {:s}: starting address of GDT (Global Descriptor Table)".format(Color.boldify("{:#x}".format(base))))
         self.out.append("limit: {:s}: (size of GDT) - 1".format(Color.boldify("{:#x}".format(limit))))
 
-        legend = GdtInfoCommand.gdtval2str_legend()
-        self.out.append(Color.colorify(legend, get_gef_setting("theme.table_heading")))
+        self.out.append(Color.colorify(GdtInfoCommand.gdtval2str_legend(), get_gef_setting("theme.table_heading")))
 
         if is_x86_64():
-            segm_desc = GdtInfoCommand._SEGMENT_DESCRIPTION_64_
+            segm_desc = GdtInfoCommand.SEGMENT_DESCRIPTION_64
         else:
-            segm_desc = GdtInfoCommand._SEGMENT_DESCRIPTION_32_
+            segm_desc = GdtInfoCommand.SEGMENT_DESCRIPTION_32
         gdtinfo = slice_unpack(read_memory(base, limit + 1), 8)
         regs = GdtInfoCommand.get_segreg_list()
-        registers_color = get_gef_setting("theme.dereference_register_value")
+        tr_idx = trseg >> 3
         for i, b in enumerate(gdtinfo):
-            reglist = ", ".join(regs.get(i, []))
-            if reglist:
-                reglist = LEFT_ARROW + reglist
-            if is_x86_64() and i == (trseg >> 3): # for TSS
-                s = GdtInfoCommand.gdtval2str(b, value_only=True)
+            reglist = regs.get(i, [])
+            if is_x86_64() and i == tr_idx: # for TSS x64
+                valstr = GdtInfoCommand.gdtval2str(b, value_only=True)
                 prev = b
-                reglist = reglist + ", tr" if reglist else LEFT_ARROW + "TR"
-            elif is_x86_64() and i == (trseg >> 3) + 1: # for TSS
-                s = GdtInfoCommand.gdtval2str([prev, b])
-            elif is_x86_32() and i == (trseg >> 3): # for TSS
-                s = GdtInfoCommand.gdtval2str(b)
-                reglist = reglist + ", tr" if reglist else LEFT_ARROW + "TR"
+                reglist.append("TR")
+            elif is_x86_64() and i == tr_idx + 1: # for TSS x64
+                valstr = GdtInfoCommand.gdtval2str([prev, b])
+            elif is_x86_32() and i == tr_idx: # for TSS x86
+                valstr = GdtInfoCommand.gdtval2str(b)
+                reglist.append("TR")
             else:
-                s = GdtInfoCommand.gdtval2str(b)
-            self.out.append("[{:02d}] {:20s} {:s} {:s}".format(i, segm_desc.get(i), s, Color.colorify(reglist, registers_color)))
+                valstr = GdtInfoCommand.gdtval2str(b)
+
+            if reglist:
+                reglist = "{:s}{:s}".format(LEFT_ARROW, " ,".join(reglist))
+                regstr = Color.colorify(reglist, get_gef_setting("theme.dereference_register_value"))
+            else:
+                regstr = ""
+            self.out.append("[{:02d}] {:20s} {:s} {:s}".format(i, segm_desc.get(i), valstr, regstr))
 
         # IDTR
         self.out.append(titlify("IDTR (Interrupt Descriptor Table Register)"))
@@ -60358,15 +60385,14 @@ class QemuRegistersCommand(GenericCommand):
         self.out.append("base : {:s}: starting address of IDT (Interrupt Descriptor Table)".format(Color.boldify("{:#x}".format(base))))
         self.out.append("limit: {:s}: (size of IDT) - 1".format(Color.boldify("{:#x}".format(limit))))
 
-        legend = IdtInfoCommand.idtval2str_legend()
-        self.out.append(Color.colorify(legend, get_gef_setting("theme.table_heading")))
+        self.out.append(Color.colorify(IdtInfoCommand.idtval2str_legend(), get_gef_setting("theme.table_heading")))
 
         idtinfo = slice_unpack(read_memory(base, limit + 1), current_arch.ptrsize * 2)
         for i, b in enumerate(idtinfo):
-            int_name = IdtInfoCommand._INTERRUPT_DESCRIPTION_.get(i, "User defined Interrupt {:#x}".format(i))
-            s = IdtInfoCommand.idtval2str(b)
+            int_name = IdtInfoCommand.INTERRUPT_DESCRIPTION.get(i, "User defined Interrupt {:#x}".format(i))
+            valstr = IdtInfoCommand.idtval2str(b)
             sym = get_symbol_string(IdtInfoCommand.idt_unpack(b).offset, nosymbol_string=" <NO_SYMBOL>")
-            self.out.append("[{:03d}] {:36s} {:s}{:s}".format(i, int_name, s, sym))
+            self.out.append("[{:03d}] {:36s} {:s}{:s}".format(i, int_name, valstr, sym))
 
         # LDTR
         self.out.append(titlify("LDTR (Local Descriptor Table Register)"))
