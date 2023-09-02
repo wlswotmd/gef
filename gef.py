@@ -39822,7 +39822,7 @@ class KernelMagicCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system",))
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel
     def do_invoke(self, args):
@@ -43909,37 +43909,54 @@ class KernelAddressHeuristicFinder:
     @staticmethod
     def get_idt_base():
         if is_x86():
-            res = gdb.execute("monitor info registers", to_string=True)
-            idtr = re.search(r"IDT\s*=\s*(\S+) (\S+)", res)
-            base, _limit = [int(idtr.group(i), 16) for i in range(1, 3)]
-            return base
+            if is_qemu_system():
+                res = gdb.execute("monitor info registers", to_string=True)
+                idtr = re.search(r"IDT\s*=\s*(\S+) (\S+)", res)
+                base, _limit = [int(idtr.group(i), 16) for i in range(1, 3)]
+                return base
+            elif is_vmware():
+                res = gdb.execute("monitor r idtr", to_string=True)
+                r = re.search(r"idtr base=(\S+) limit=(\S+)", res)
+                base = int(r.group(1), 16)
+                return base
         return None
 
     @staticmethod
     def get_gdt_base():
         if is_x86():
-            res = gdb.execute("monitor info registers", to_string=True)
-            gdtr = re.search(r"GDT\s*=\s*(\S+) (\S+)", res)
-            base, _limit = [int(gdtr.group(i), 16) for i in range(1, 3)]
-            return base
+            if is_qemu_system():
+                res = gdb.execute("monitor info registers", to_string=True)
+                gdtr = re.search(r"GDT\s*=\s*(\S+) (\S+)", res)
+                base, _limit = [int(gdtr.group(i), 16) for i in range(1, 3)]
+                return base
+            elif is_vmware():
+                res = gdb.execute("monitor r gdtr", to_string=True)
+                r = re.search(r"gdtr base=(\S+) limit=(\S+)", res)
+                base = int(r.group(1), 16)
+                return base
         return None
 
     @staticmethod
     def get_tss_base():
         if is_x86():
-            res = gdb.execute("monitor info registers", to_string=True)
-            tr = re.search(r"TR\s*=\s*(\S+) (\S+) (\S+) (\S+)", res)
-            _trseg, base, _limit, _attr = [int(tr.group(i), 16) for i in range(1, 5)]
-            return base
+            if is_qemu_system():
+                res = gdb.execute("monitor info registers", to_string=True)
+                tr = re.search(r"TR\s*=\s*(\S+) (\S+) (\S+) (\S+)", res)
+                _trseg, base, _limit, _attr = [int(tr.group(i), 16) for i in range(1, 5)]
+                return base
         return None
 
     @staticmethod
     def get_ldt_base():
         if is_x86():
-            res = gdb.execute("monitor info registers", to_string=True)
-            ldtr = re.search(r"LDT\s*=\s*(\S+) (\S+) (\S+) (\S+)", res)
-            _seg, base, _limit, _attr = [int(ldtr.group(i), 16) for i in range(1, 5)]
-            return base
+            if is_qemu_system():
+                res = gdb.execute("monitor info registers", to_string=True)
+                ldtr = re.search(r"LDT\s*=\s*(\S+) (\S+) (\S+) (\S+)", res)
+                _seg, base, _limit, _attr = [int(ldtr.group(i), 16) for i in range(1, 5)]
+                return base
+            elif is_vmware():
+                # `monitor r ldtr` is buggy
+                return None
         return None
 
     @staticmethod
@@ -44341,7 +44358,7 @@ class KernelVersionCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system",))
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel
     def do_invoke(self, args):
@@ -44398,7 +44415,7 @@ class KernelCmdlineCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system",))
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel
     def do_invoke(self, args):
@@ -44491,7 +44508,7 @@ class KernelCurrentCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system",))
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel
     def do_invoke(self, args):
@@ -45484,7 +45501,7 @@ class KernelTaskCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system",))
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel
     def do_invoke(self, args):
@@ -46147,7 +46164,7 @@ class KernelModuleCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system",))
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel
     def do_invoke(self, args):
@@ -46554,7 +46571,7 @@ class KernelBlockDevicesCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system",))
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel
     def do_invoke(self, args):
@@ -47625,7 +47642,7 @@ class KernelCharacterDevicesCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system",))
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel
     def do_invoke(self, args):
@@ -48126,7 +48143,7 @@ class KernelOperationsCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system",))
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel
     def do_invoke(self, args):
@@ -48410,7 +48427,7 @@ class KernelParamSysctlCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system",))
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel
     def do_invoke(self, args):
@@ -48504,7 +48521,7 @@ class KernelFileSystemsCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system",))
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel
     def do_invoke(self, args):
@@ -48566,7 +48583,7 @@ class KernelClockSourceCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system",))
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel
     def do_invoke(self, args):
@@ -48685,7 +48702,7 @@ class KernelSearchCodePtrCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system",))
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel
     def do_invoke(self, args):
@@ -48982,7 +48999,7 @@ class KernelDmesgCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system",))
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel
     def do_invoke(self, args):
@@ -49229,7 +49246,7 @@ class SyscallTableViewCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system",))
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel
     def do_invoke(self, args):
@@ -52080,7 +52097,7 @@ class SlubDumpCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system",))
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel
     def do_invoke(self, args):
@@ -52735,7 +52752,7 @@ class SlubTinyDumpCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system",))
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel
     def do_invoke(self, args):
@@ -53529,7 +53546,7 @@ class SlabDumpCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system",))
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel
     def do_invoke(self, args):
@@ -53953,7 +53970,7 @@ class SlobDumpCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system",))
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel
     def do_invoke(self, args):
@@ -54057,6 +54074,11 @@ class SlubContainsCommand(GenericCommand):
         # assume CONFIG_SPARSEMEM_VMEMMAP
         ret = gdb.execute("monitor gva2gpa {:#x}".format(vaddr), to_string=True)
         r = re.search(r"gpa: (0x\S+)", ret)
+
+        if not r:
+            ret = gdb.execute("v2p {:#x}".format(vaddr), to_string=True)
+            r = re.search(r"Virt: 0x\S+ -> Phys: (0x\S+)", ret)
+
         if r:
             paddr = int(r.group(1), 16)
             return (paddr >> 6) + self.vmemmap
@@ -54064,7 +54086,7 @@ class SlubContainsCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system",))
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_64",))
     @only_if_in_kernel
     def do_invoke(self, args):
@@ -54514,7 +54536,7 @@ class BuddyDumpCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system",))
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_64",))
     @only_if_in_kernel
     def do_invoke(self, args):
@@ -55833,7 +55855,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system",))
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel
     def do_invoke(self, args):
@@ -58238,11 +58260,23 @@ class XphysAddrCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system",))
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     def do_invoke(self, args):
-        result = gdb.execute("monitor xp {:s} {:#x}".format(" ".join(args.option), args.address), to_string=True)
-        gef_print(result.strip())
+        if is_qemu_system():
+            result = gdb.execute("monitor xp {:s} {:#x}".format(" ".join(args.option), args.address), to_string=True)
+            gef_print(result.strip())
+        elif is_vmware():
+            orig_mode = get_current_mmu_mode()
+            if orig_mode == "virt":
+                enable_phys()
+            try:
+                result = gdb.execute("x {:s} {:#x}".format(" ".join(args.option), args.address), to_string=True)
+                gef_print(result.strip())
+            except gdb.MemoryError:
+                pass
+            if orig_mode == "virt":
+                disable_phys()
         return
 
 
@@ -60653,7 +60687,7 @@ class V2PCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system",))
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     def do_invoke(self, args):
         self.dont_repeat()
@@ -60694,7 +60728,7 @@ class P2VCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system",))
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     def do_invoke(self, args):
         self.dont_repeat()
@@ -64952,7 +64986,7 @@ class PagewalkWithHintsCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system",))
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_64", "ARM64"))
     def do_invoke(self, args):
         self.dont_repeat()
@@ -65665,7 +65699,7 @@ class UsermodehelperTracerCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system",))
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel
     def do_invoke(self, args):
@@ -68238,7 +68272,7 @@ class KsymaddrRemoteApplyCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system",))
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel
     def do_invoke(self, args):

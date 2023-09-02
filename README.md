@@ -146,7 +146,6 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 * Supported architectures
     * x64 only.
     * It runs faster than KGDB mode and Ctrl+C interrupt works, but it is still slow.
-    * Many commands are UNSUPPORTED in VMware mode, because too slow to debug, so I decided it was useless.
 
 ## Added / improved features
 
