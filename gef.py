@@ -39896,6 +39896,7 @@ class SysregCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("filter", metavar="FILTER", nargs="*", help="filter string.")
+    parser.add_argument("--exact", action="store_true", help="use exact match.")
     _syntax_ = parser.format_help()
 
     def get_non_generic_regs(self):
@@ -39907,8 +39908,13 @@ class SysregCommand(GenericCommand):
             if not m:
                 continue
             regname, regvalue = m.group(1), m.group(2)
-            if self.filter and not any(f.lower() in regname.lower() for f in self.filter):
-                continue
+            if self.filter:
+                if self.exact:
+                    if not any(f.lower() == regname.lower() for f in self.filter):
+                        continue
+                else:
+                    if not any(f.lower() in regname.lower() for f in self.filter):
+                        continue
             regs[regname] = int(regvalue, 16)
         regs = list(filter(lambda x: "$" + x[0] not in current_arch.all_registers, sorted(regs.items())))
         return regs # [[regname, regvalue], ...]
@@ -39945,6 +39951,7 @@ class SysregCommand(GenericCommand):
         self.dont_repeat()
 
         self.filter = args.filter
+        self.exact = args.exact
         self.print_sysreg_compact()
         return
 
@@ -44065,7 +44072,7 @@ class KernelbaseCommand(GenericCommand):
             dic["has_none"] = None in dic.values()
             return Kinfo(*dic.values())
 
-        # 1. search kernel base exact way for x86
+        # 1. search kernel base exact way for x86, arm64
         if is_x86():
             div0_handler = None
 
@@ -44086,6 +44093,21 @@ class KernelbaseCommand(GenericCommand):
             if div0_handler and is_valid_addr(div0_handler):
                 for i, (vaddr, size, _perm) in enumerate(dic["maps"]):
                     if vaddr <= div0_handler < vaddr + size:
+                        dic["kbase"] = vaddr
+                        dic["kbase_size"] = size
+                        kbase_map_index = i
+                        break
+
+        elif is_arm64():
+            res = gdb.execute("sysreg --exact VBAR", to_string=True)
+            res = Color.remove_color(res)
+            r = re.search(r"VBAR\s+=\s+(0x\S+)", res)
+            vbar = int(r.group(1), 16)
+            vbar &= gef_getpagesize_mask()
+
+            if vbar and is_valid_addr(vbar):
+                for i, (vaddr, size, _perm) in enumerate(dic["maps"]):
+                    if vaddr <= vbar < vaddr + size:
                         dic["kbase"] = vaddr
                         dic["kbase_size"] = size
                         kbase_map_index = i
