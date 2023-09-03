@@ -28,7 +28,7 @@
 #   * xtensa
 #   * cris
 #   * loongarch64
-#   * arc32
+#   * arc32 (v2, v3) & arc64
 # See README.md for details.
 #
 # To start: in gdb, type `source /path/to/gef.py`
@@ -1293,8 +1293,24 @@ class Elf:
     #                          225-242 # Reserved
     EM_RISCV                 = 243 # RISC-V
     EM_LANAI                 = 244 # Lanai 32-bit processor
-    EM_BPF                   = 247 # Linux BPF -- in-kernel virtual machine
+    EM_CEVA                  = 245 # CEVA Processor Architecture Family
+    EM_CEVA_X2               = 246 # CEVA X2 Processor Family
+    EM_BPF                   = 247 # Linux BPF - in-kernel virtual machine
+    EM_GRAPHCORE_IPU         = 248 # Graphcore Intelligent Processing Unit
+    EM_IMG1                  = 249 # Imagination Technologies
+    EM_NFP                   = 250 # Netronome Flow Processor
+    EM_VE                    = 251 # NEC Vector Engine
+    EM_CSKY                  = 252 # C-SKY processor family
+    EM_ARC_COMPACT3_64       = 253 # Synopsys ARCv2.3 64-bit
+    EM_MCS6502               = 254 # MOS Technology MCS 6502 processor
+    EM_ARC_COMPACT3          = 255 # Synopsys ARCv2.3 32-bit
+    EM_KVX                   = 256 # Kalray VLIW core of the MPPA processor family
+    EM_65816                 = 257 # WDC 65816/65C816
     EM_LOONGARCH             = 258 # LoongArch
+    EM_KF32                  = 259 # ChipON KungFu32
+    EM_U16_U8CORE            = 260 # LAPIS nX-U16/U8
+    EM_TACHYUM               = 261 # Tachyum
+    EM_56800EF               = 262 # NXP 56800EF Digital Signal Controller (DSC)
 
     EM_AVR_UNOFFICIAL        = 0x1057 # AVR (unofficial)
     EM_MSP430_UNOFFICIAL     = 0x1059 # MSP430 (unofficial)
@@ -1303,7 +1319,9 @@ class Elf:
     EM_MT_UNOFFICIAL         = 0x2530 # Morpho MT (unofficial)
     EM_FR30_UNOFFICIAL       = 0x3330 # FR30 (unofficial)
     EM_OPENRISC_OLD          = 0x3426 # OpenRISC (obsolete)
+    EM_WEBASSEMBLY           = 0x4157 # Web Assembly binaries (unofficial)
     EM_C166_UNOFFICIAL       = 0x4688 # Infineon C166 (unofficial)
+    EM_S12Z                  = 0x4DEF # Freescale S12Z
     EM_FRV_UNOFFICIAL        = 0x5441 # Cygnus FR-V (unofficial)
     EM_DLX_UNOFFICIAL        = 0x5aa5 # DLX (unofficial)
     EM_D10V_UNOFFICIAL       = 0x7650 # Cygnus D10V (unofficial)
@@ -4315,37 +4333,17 @@ class RISCV64(RISCV):
 class ARM(Architecture):
     arch = "ARM"
 
-    try:
-        gdb.execute("info registers xpsr", to_string=True)
-        _mode = "Cortex-M"
-    except gdb.error:
-        _mode = "Cortex-A"
-
-    if _mode == "Cortex-A":
-        all_registers = [
-            "$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7",
-            "$r8", "$r9", "$r10", "$r11", "$r12", "$sp", "$lr", "$pc",
-            "$cpsr",
-        ]
-        alias_registers = {
-            "$r11": "$fp", "$r12": "$ip",
-            "$sp": "$r13", "$lr": "$r14", "$pc": "$r15",
-        }
-        flag_register = "$cpsr"
-        thumb_bit = 5
-    elif _mode == "Cortex-M":
-        all_registers = [
-            "$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7",
-            "$r8", "$r9", "$r10", "$r11", "$r12", "$sp", "$lr", "$pc",
-            "$xpsr",
-            "$msp", "$psp", "$primask", "$basepri", "$faultmask", "$control",
-        ]
-        alias_registers = {
-            "$r11": "$fp", "$r12": "$ip",
-            "$sp": "$r13", "$lr": "$r14", "$pc": "$r15",
-        }
-        flag_register = "$xpsr"
-        thumb_bit = 24
+    all_registers = [
+        "$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7",
+        "$r8", "$r9", "$r10", "$r11", "$r12", "$sp", "$lr", "$pc",
+        "$cpsr",
+    ]
+    alias_registers = {
+        "$r11": "$fp", "$r12": "$ip",
+        "$sp": "$r13", "$lr": "$r14", "$pc": "$r15",
+    }
+    flag_register = "$cpsr"
+    thumb_bit = 5
 
     flags_table = {
         31: "negative",
@@ -8257,7 +8255,7 @@ class LOONGARCH64(Architecture):
 
 class ARC(Architecture):
     arch = "ARC"
-    mode = "32"
+    mode = "32v2"
 
     # http://me.bios.io/images/d/dd/ARCompactISA_ProgrammersReference.pdf
     all_registers = [
@@ -8265,12 +8263,13 @@ class ARC(Architecture):
         "$r8", "$r9", "$r10", "$r11", "$r12", "$r13", "$r14", "$r15",
         "$r16", "$r17", "$r18", "$r19", "$r20", "$r21", "$r22", "$r23",
         "$r24", "$r25", "$gp", "$fp", "$sp", "$ilink", "$r30", "$blink",
-        "$pc", "$pcl", "$status32", "$bta", "$lp_count",
+        "$pc", "$status32", "$bta", "$lp_count",
     ]
     alias_registers = {
         "$r25": "$tp", "$gp": "$r26", "$fp": "$r27", "$sp": "$r28", "$ilink": "$r29", "$blink": "$r31",
-        "$lp_count": "$r60", "$pcl": "$r63",
+        "$lp_count": "$r60", "$pc": "$pcl/$r63",
     }
+
     flag_register = "$status32"
     flags_table = {
         0: "halt",
@@ -8295,9 +8294,9 @@ class ARC(Architecture):
     bit_length = 32
     endianness = "little"
     instruction_length = None # variable length
-    has_delay_slot = True
+    has_delay_slot = True # if op includes `.d`
     has_syscall_delay_slot = False
-    has_ret_delay_slot = True
+    has_ret_delay_slot = True # if op includes `.d`
     stack_grow_down = False
     tls_supported = True
 
@@ -8540,6 +8539,46 @@ class ARC(Architecture):
             b"\x1e\x78" # trap_s 0
         ]
         return b"".join(insns)
+
+class ARCv3(ARC):
+    arch = "ARC"
+    mode = "32v3"
+
+    all_registers = [
+        "$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7",
+        "$r8", "$r9", "$r10", "$r11", "$r12", "$r13", "$r14", "$r15",
+        "$r16", "$r17", "$r18", "$r19", "$r20", "$r21", "$r22", "$r23",
+        "$r24", "$r25", "$r26", "$fp", "$sp", "$ilink", "$gp", "$blink",
+        "$pc", "$status32", "$bta", "$eret",
+    ]
+    alias_registers = {
+        "$fp": "$r27", "$sp": "$r28", "$ilink": "$r29", "$gp": "$r30", "$blink": "$r31",
+        "$pc": "$pcl/$r63",
+    }
+
+    def get_tls(self):
+        return get_register("$gp")
+
+
+class ARC64(ARCv3):
+    arch = "ARC"
+    mode = "64v3"
+
+    bit_length = 64
+
+    def mprotect_asm(self, addr, size, perm):
+        insns = [
+            b"\x08\x70" + p16((addr >> 48) & 0xffff) + p16((addr >> 32) & 0xffff), # movhl_s r0, addr[63:32]
+            b"\x00\x58\x80\x0f" + p16((addr >> 16) & 0xffff) + p16(addr & 0xffff), # addl r0, r0, addr[31:0]
+            b"\x28\x70" + p16((size >> 48) & 0xffff) + p16((size >> 32) & 0xffff), # movhl_s r1, size[63:32]
+            b"\x00\x59\x81\x0f" + p16((size >> 16) & 0xffff) + p16(size & 0xffff), # addl r1, r1, size[31:0]
+            b"\x48\x70" + p16((perm >> 48) >> 16) + p16((perm >> 32) & 0xffff), # movhl_s r2, perm[63:32]
+            b"\x00\x5a\x82\x0f" + p16((perm >> 16) & 0xffff) + p16(perm & 0xffff), # addl r2, r2, perm[31:0]
+            b"\x8a\x20\x83\x18" # mov r8, _NR_mprotect (=226)
+            b"\x1e\x78" # trap_s 0
+        ]
+        return b"".join(insns)
+        return None
 
 
 # The prototype for new architecture.
@@ -9237,6 +9276,7 @@ def only_if_specific_arch(arch=()):
                 "CRIS": is_cris,
                 "LOONGARCH64": is_loongarch64,
                 "ARC32": is_arc32,
+                "ARC64": is_arc64,
             }
             for a in arch:
                 if dic.get(a, lambda: False)():
@@ -9281,6 +9321,7 @@ def exclude_specific_arch(arch=()):
                 "CRIS": is_cris,
                 "LOONGARCH64": is_loongarch64,
                 "ARC32": is_arc32,
+                "ARC64": is_arc64,
             }
             for a in arch:
                 if dic.get(a, lambda: False)():
@@ -10616,7 +10657,11 @@ def is_loongarch64():
 
 
 def is_arc32():
-    return current_arch and current_arch.arch == "ARC" and current_arch.mode == "32"
+    return current_arch and current_arch.arch == "ARC" and current_arch.mode in ["32v2", "32v3"]
+
+
+def is_arc64():
+    return current_arch and current_arch.arch == "ARC" and current_arch.mode == "64v3"
 
 
 @functools.lru_cache(maxsize=None)
@@ -10678,6 +10723,10 @@ def set_arch(arch=None, default=None):
         Elf.EM_LOONGARCH: LOONGARCH64, "LOONGARCH": LOONGARCH64,
         Elf.EM_ARC: ARC, Elf.EM_ARC_COMPACT: ARC, Elf.EM_ARC_COMPACT2: ARC,
         "ARC600": ARC, "ARC601": ARC, "ARC700": ARC, "ARCV2": ARC,
+        Elf.EM_ARC_COMPACT3: ARCv3,
+        "ARC64:32": ARCv3,
+        Elf.EM_ARC_COMPACT3_64: ARC64,
+        "ARC64:64": ARC64,
     }
     global current_arch, current_elf
 
@@ -13854,6 +13903,8 @@ class PtrDemangleCommand(GenericCommand):
             decoded = value
         elif is_loongarch64():
             decoded = value ^ cookie
+        elif is_arc64():
+            decoded = value
         return decoded
 
     @parse_args
@@ -13932,6 +13983,8 @@ class PtrMangleCommand(GenericCommand):
             encoded = value
         elif is_loongarch64():
             encoded = value ^ cookie
+        elif is_arc64():
+            encoded = value
         return encoded
 
     @parse_args
@@ -17990,8 +18043,24 @@ class ElfInfoCommand(GenericCommand):
             Elf.EM_AMDGPU                : "AMD GPU architecture",
             Elf.EM_RISCV                 : "RISC-V",
             Elf.EM_LANAI                 : "Lanai 32-bit processor",
-            Elf.EM_BPF                   : "Linux BPF -- in-kernel virtual machine",
+            Elf.EM_CEVA                  : "CEVA Processor Architecture Family",
+            Elf.EM_CEVA_X2               : "CEVA X2 Processor Family",
+            Elf.EM_BPF                   : "Linux BPF - in-kernel virtual machine",
+            Elf.EM_GRAPHCORE_IPU         : "Graphcore Intelligent Processing Unit",
+            Elf.EM_IMG1                  : "Imagination Technologies",
+            Elf.EM_NFP                   : "Netronome Flow Processor",
+            Elf.EM_VE                    : "NEC Vector Engine",
+            Elf.EM_CSKY                  : "C-SKY processor family",
+            Elf.EM_ARC_COMPACT3_64       : "Synopsys ARCv2.3 64-bit",
+            Elf.EM_MCS6502               : "MOS Technology MCS 6502 processor",
+            Elf.EM_ARC_COMPACT3          : "Synopsys ARCv2.3 32-bit",
+            Elf.EM_KVX                   : "Kalray VLIW core of the MPPA processor family",
+            Elf.EM_65816                 : "WDC 65816/65C816",
             Elf.EM_LOONGARCH             : "LoongArch",
+            Elf.EM_KF32                  : "ChipON KungFu32",
+            Elf.EM_U16_U8CORE            : "LAPIS nX-U16/U8",
+            Elf.EM_TACHYUM               : "Tachyum",
+            Elf.EM_56800EF               : "NXP 56800EF Digital Signal Controller (DSC)",
 
             Elf.EM_AVR_UNOFFICIAL        : "AVR (unofficial)",
             Elf.EM_MSP430_UNOFFICIAL     : "MSP430 (unofficial)",
@@ -18000,7 +18069,9 @@ class ElfInfoCommand(GenericCommand):
             Elf.EM_MT_UNOFFICIAL         : "Morpho MT (unofficial)",
             Elf.EM_FR30_UNOFFICIAL       : "FR30 (unofficial)",
             Elf.EM_OPENRISC_OLD          : "OpenRISC (obsolete)",
+            Elf.EM_WEBASSEMBLY           : "Web Assembly binaries (unofficial)",
             Elf.EM_C166_UNOFFICIAL       : "Infineon C166 (unofficial)",
+            Elf.EM_S12Z                  : "Freescale S12Z",
             Elf.EM_FRV_UNOFFICIAL        : "Cygnus FR-V (unofficial)",
             Elf.EM_DLX_UNOFFICIAL        : "DLX (unofficial)",
             Elf.EM_D10V_UNOFFICIAL       : "Cygnus D10V (unofficial)",
@@ -21901,7 +21972,7 @@ class ContextCommand(GenericCommand):
                     target = current_arch.get_ra(insn, frame)
                     delay_slot = current_arch.has_ret_delay_slot
 
-                if is_arc32():
+                if is_arc32() or is_arc64():
                     delay_slot = insn.mnemonic.endswith(".d") or insn.mnemonic.endswith(".d.nt")
 
             else:
@@ -23479,10 +23550,12 @@ class PatchInfloopCommand(PatchCommand):
                 insn += current_arch.nop_insn[::-1]
         else:
             insn = current_arch.infloop_insn
-            if is_arc32() and addr % 4 == 2:
-                insn = current_arch.infloop_insn2
-            if not is_arc32() and current_arch.has_delay_slot:
-                insn += current_arch.nop_insn
+            if is_arc32() or is_arc64():
+                if addr % 4 == 2:
+                    insn = current_arch.infloop_insn2
+            else:
+                if current_arch.has_delay_slot:
+                    insn += current_arch.nop_insn
 
         self.patch(addr, insn, len(insn))
         return
@@ -25626,6 +25699,8 @@ class DestructorDumpCommand(GenericCommand):
             head_p = self.tls + 0x24
         elif is_loongarch64():
             head_p = self.tls + 0x28
+        elif is_arc64():
+            head_p = self.tls + 0x40
 
         head = lookup_address(read_int_from_memory(head_p))
         current = head.value
@@ -25840,7 +25915,7 @@ class DestructorDumpCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
-    @exclude_specific_arch(arch=("SPARC32", "SH4", "XTENSA", "CRIS"))
+    @exclude_specific_arch(arch=("SPARC32", "SH4", "XTENSA", "CRIS", "ARC32"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -39014,7 +39089,7 @@ def get_syscall_table(arch=None, mode=None):
                 raise
             syscall_list.append([nr, name, sc_def[func]])
 
-    elif arch == "ARC" and mode == "32":
+    elif arch == "ARC" and mode in ["32v2", "32v3", "64v3"]:
         register_list = ARC().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(arc_syscall_tbl)

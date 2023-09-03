@@ -9,7 +9,7 @@ I also list the tools I used in my Ubuntu 22.04 environment.
     * toolchain: `gcc` via apt.
     * qemu: `qemu-x86_64` via apt.
     * gdb: `gdb-multiarch` via apt.
-* ARM
+* ARM (Cortex-A)
     * toolchain: `gcc-arm-linux-gnueabihf` via apt.
     * qemu: `qemu-arm` via apt.
     * gdb: `gdb-multiarch` via apt.
@@ -74,15 +74,15 @@ I also list the tools I used in my Ubuntu 22.04 environment.
 * OpenRISC 1000 (OR1K)
     * toolchain: `openrisc--glibc--stable-2022.08-1` from https://toolchains.bootlin.com/
     * qemu: `qemu-or1k` via apt.
-    * gdb: build from latest source with `./configure --enable-targets=all --with-python=/usr/bin/python3`.
+    * gdb: build from latest source of official gdb with `./configure --enable-targets=all --with-python=/usr/bin/python3`.
 * NiosII
     * toolchain: `nios2--glibc--stable-2022.08-1` from https://toolchains.bootlin.com/
     * qemu: `qemu-nios2` via apt.
-    * gdb: build from latest source with `./configure --enable-targets=all --with-python=/usr/bin/python3`.
+    * gdb: build from latest source of official gdb with `./configure --enable-targets=all --with-python=/usr/bin/python3`.
 * MicroBlaze
     * toolchain: `microblazebe--glibc--stable-2022.08-1` from https://toolchains.bootlin.com/
     * qemu: `qemu-microblaze` via apt.
-    * gdb: build from latest source with `./configure --enable-targets=all --with-python=/usr/bin/python3`.
+    * gdb: build from latest source of official gdb with `./configure --enable-targets=all --with-python=/usr/bin/python3`.
 * Xtensa
     * toolchain: `xtensa-lx60--uclibc--stable-2022.08-1` from https://toolchains.bootlin.com/
         * Because the toolchain obtained with apt seems to be broken since the C header is unavailable.
@@ -92,21 +92,31 @@ I also list the tools I used in my Ubuntu 22.04 environment.
         * The toolchain also includes `xtensa-linux-gdb`, so I used it.
         * The readline seems to be broken so workaround is here: `LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libncurses.so.6 xtensa-linux-gdb`.
 * Cris
-    * lib: `cris-dist_1.64-1_i386.deb` from https://www.axis.com/ftp/pub/axis/tools/cris/compiler-kit/
+    * lib: [cris-dist_1.64-1_i386.deb](https://www.axis.com/ftp/pub/axis/tools/cris/compiler-kit/cris-dist_1.64-1_i386.deb)
         * `mkdir dist && dpkg-deb -x cris-dist_1.64-1_i386.deb dist`
-    * toolchain: `x86_64-gcc-7.3.0-nolibc_cris-linux.tar.xz` from http://ftp.iij.ad.jp/pub/linux/kernel/tools/crosstool/
+    * toolchain: [x86_64-gcc-7.3.0-nolibc_cris-linux.tar.xz](https://ftp.iij.ad.jp/pub/linux/kernel/tools/crosstool/files/bin/x86_64/7.3.0/x86_64-gcc-7.3.0-nolibc_cris-linux.tar.xz) from http://ftp.iij.ad.jp/pub/linux/kernel/tools/crosstool/
         * `cd /lib/x86_64-linux-gnu && ln -s libisl.so.{23,15} && ln -s libmpfr.so.{6,4}`
         * `cris-linux-gcc -B/PATH/TO/dist/usr/local/cris/cris-axis-linux-gnu/lib -I/PATH/TO/dist/usr/local/cris/cris-axis-linux-gnu/sys-include -static ./test.c`
     * qemu: `qemu-cris` via apt.
-        * Need `-cpu` option like `qemu-cris -cpu crisv17 -g 1234 ./a.out`.
+        * It needs `-cpu` option like `qemu-cris -cpu crisv17 -g 1234 ./a.out`.
         * Could not use `-cpu crisv32` because gdb does not support it.
-    * gdb: build from latest source with `./configure --enable-targets=all --with-python=/usr/bin/python3`.
+    * gdb: build from latest source of official gdb with `./configure --enable-targets=all --with-python=/usr/bin/python3`.
 * loongarch64
-    * toolchain: https://github.com/loongson/build-tools/releases/download/2022.09.06/loongarch64-clfs-7.3-cross-tools-gcc-glibc.tar.xz
-    * qemu: build from latest source with `./configure --target-list=loongarch64-linux-user`.
-    * gdb: build from latest source with `./configure --enable-targets=all --with-python=/usr/bin/python3`.
-* arc32
+    * toolchain: [loongarch64-clfs-7.3-cross-tools-gcc-glibc.tar.xz](https://github.com/loongson/build-tools/releases/download/2022.09.06/loongarch64-clfs-7.3-cross-tools-gcc-glibc.tar.xz)
+    * qemu: build from latest source of official qemu with `./configure --target-list=loongarch64-linux-user`.
+    * gdb: build from latest source of official gdb with `./configure --enable-targets=all --with-python=/usr/bin/python3`.
+* arc32 (HS38; ARCv2)
     * toolchain: `arcle-hs38--glibc--stable-2022.08-1` from https://toolchains.bootlin.com/
-    * qemu: build from https://github.com/foss-for-synopsys-dwc-arc-processors/qemu with `./configure --target-list=arc-linux-user,arc64-linux-user`.
-    * gdb: build from latest source with `./configure --enable-targets=all --with-python=/usr/bin/python3`.
-    * arc64 is unsupported.
+    * qemu: build from https://github.com/foss-for-synopsys-dwc-arc-processors/qemu with `./configure --target-list=arc-linux-user`.
+    * gdb: build from latest source of official gdb with `./configure --enable-targets=all --with-python=/usr/bin/python3`.
+* arc32 (HS58; ARCv3)
+    * toolchain: [arc_gnu_2023.03_prebuilt_arc32_uclibc_linux_install.tar.gz](https://github.com/foss-for-synopsys-dwc-arc-processors/toolchain/releases/download/arc-2023.03-release/arc_gnu_2023.03_prebuilt_arc32_uclibc_linux_install.tar.gz)
+    * qemu: build from https://github.com/foss-for-synopsys-dwc-arc-processors/qemu with `./configure --target-list=arc-linux-user`.
+        * It needs `-cpu` option like `qemu-arc -cpu hs5x -g 1234 ./a.out`.
+    * gdb: build from [arc-2023.03-rc1.tar.gz](https://github.com/foss-for-synopsys-dwc-arc-processors/binutils-gdb/archive/refs/tags/arc-2023.03-rc1.tar.gz) with `./configure --target=arc64-snps-linux-gnu --with-python=/usr/bin/python3`.
+        * This `--target` is right. It enables `arc64:64` and `arc64:32`.
+* arc64 (HS68; ARCv3)
+    * toolchain: [arc_gnu_2023.03_prebuilt_arc64_glibc_linux_install.tar.gz](https://github.com/foss-for-synopsys-dwc-arc-processors/toolchain/releases/download/arc-2023.03-release/arc_gnu_2023.03_prebuilt_arc64_glibc_linux_install.tar.gz)
+    * qemu: build from https://github.com/foss-for-synopsys-dwc-arc-processors/qemu with `./configure --target-list=arc64-linux-user`.
+        * It needs `-cpu` option like `qemu-arc64 -cpu hs6x -g 1234 ./a.out`.
+    * gdb: build from [arc-2023.03-rc1.tar.gz](https://github.com/foss-for-synopsys-dwc-arc-processors/binutils-gdb/archive/refs/tags/arc-2023.03-rc1.tar.gz) with `./configure --target=arc64-snps-linux-gnu --with-python=/usr/bin/python3`.
