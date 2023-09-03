@@ -427,8 +427,7 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
     * `nop` command has been integrated into `patch` command.
 * `search-pattern`: is improved.
     * It supports when under qemu-system (in short, it works without `/proc/self/maps`)
-    * It supports aligned search.
-    * It supports hex string specification.
+    * It supports hex string specification, aligned search, search interval and search limit.
     * It also searches UTF-16 string if target string is ASCII.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/search-pattern.png)
 * `mprotect`: is improved.

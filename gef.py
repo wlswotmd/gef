@@ -13548,6 +13548,9 @@ class SearchPatternCommand(GenericCommand):
     parser.add_argument("--hex", action="store_true", help="interpret PATTERN as hex. invalid character is ignored.")
     parser.add_argument("--big", action="store_true", help="interpret PATTERN as big endian if PATTERN is 0xXXXXXXXX style.")
     parser.add_argument("-a", "--aligned", type=int, default=1, help="alignment unit. (default: %(default)s)")
+    parser.add_argument("-i", "--interval", type=lambda x: int(x, 0),
+                        help="the interval to skip searching from the last found position within the same section.")
+    parser.add_argument("-l", "--limit", type=lambda x: int(x, 0), help="the limit of the search result.")
     parser.add_argument("-d", "--disable-utf16", action="store_true", help="disable utf16 search if PATTERN is ascii string.")
     parser.add_argument("-v", "--verbose", action="store_true", help="shows the section you are currently searching.")
     parser.add_argument("pattern", metavar="PATTERN", help='search target value. "double-espaced string" or 0xXXXXXXXX style.')
@@ -13611,7 +13614,14 @@ class SearchPatternCommand(GenericCommand):
                 start = chunk_addr + match.start()
                 ustr = gef_pystring(pattern)
                 end = start + len(pattern.decode("unicode-escape"))
+                if self.interval:
+                    if len(locations) > 0:
+                        if start < locations[-1][0] + self.interval:
+                            continue
                 locations.append((start, end, ustr))
+                self.found_count += 1
+                if self.limit and self.limit <= self.found_count:
+                    break
             del mem
         return locations
 
@@ -13673,6 +13683,9 @@ class SearchPatternCommand(GenericCommand):
             if not is_alive():
                 err("The process is dead")
                 break
+
+            if self.limit and self.limit <= self.found_count:
+                break
         return
 
     def isascii(self, string):
@@ -13686,6 +13699,9 @@ class SearchPatternCommand(GenericCommand):
 
         self.verbose = args.verbose
         self.aligned = args.aligned
+        self.interval = args.interval
+        self.limit = args.limit
+        self.found_count = 0
 
         # pattern replace
         if args.hex: # "41414141" -> "\x41\x41\x41\x41"
