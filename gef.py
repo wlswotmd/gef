@@ -39991,7 +39991,7 @@ class SysregCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     def get_non_generic_regs(self):
-        res = gdb.execute("info register", to_string=True)
+        res = gdb.execute("info registers", to_string=True)
         res = res.strip()
         regs = {}
         for line in res.splitlines():
@@ -40182,7 +40182,7 @@ class XmmSetCommand(GenericCommand):
 
         # check register is valid or not
         try:
-            gdb.execute(f"info register {reg}", to_string=True)
+            gdb.execute(f"info registers {reg}", to_string=True)
         except Exception:
             err("Invalid register name")
             return
@@ -40477,8 +40477,11 @@ class FpuCommand(GenericCommand):
             [1, "DZC", "Divide by Zero Cumulative floating-point exception bit", ""],
             [0, "IOC", "Invalid Operation Cumulative floating-point exception bit", ""],
         ]
-        reg = int(gdb.execute("info registers $fpscr", to_string=True).split()[1], 16)
-        PrintBitInfo("$fpscr", 32, None, bit_info).print(reg)
+        reg = get_register("$fpscr")
+        if reg is not None:
+            PrintBitInfo("$fpscr", 32, None, bit_info).print(reg)
+        else:
+            warn("Failed to get the value")
 
         # fpsid
         gef_print(titlify("FPSID (Floating-Point System ID Register)"))
@@ -40506,11 +40509,14 @@ class FpuCommand(GenericCommand):
             0x56: "Marvell International Ltd.",
             0x69: "Intel Corporation",
         }
-        reg = int(gdb.execute("info registers $fpsid", to_string=True).split()[1], 16)
-        PrintBitInfo("$fpsid", 32, None, bit_info).print(reg)
-        gef_print("Implementer code")
-        for k, v in impl.items():
-            gef_print("  {:#02x}: {:s}".format(k, v))
+        reg = get_register("$fpsid")
+        if reg is not None:
+            PrintBitInfo("$fpsid", 32, None, bit_info).print(reg)
+            gef_print("Implementer code")
+            for k, v in impl.items():
+                gef_print("  {:#02x}: {:s}".format(k, v))
+        else:
+            warn("Failed to get the value")
 
         # fpexc
         gef_print(titlify("FPEXC (Floating-Point Exception Control Register)"))
@@ -40529,8 +40535,11 @@ class FpuCommand(GenericCommand):
             [1, "DZF", "Divide by Zero trapped exception bit", ""],
             [0, "IOF", "Invalid Operation trapped exception bit", ""],
         ]
-        reg = int(gdb.execute("info registers $fpexc", to_string=True).split()[1], 16)
-        PrintBitInfo("$fpexc", 32, None, bit_info).print(reg)
+        reg = get_register("$fpexc")
+        if reg is not None:
+            PrintBitInfo("$fpexc", 32, None, bit_info).print(reg)
+        else:
+            warn("Failed to get the value")
         return
 
     def print_fpu_arm64_other(self):
@@ -40551,8 +40560,9 @@ class FpuCommand(GenericCommand):
             [9, "DZE", "Divide by Zero floating-point Exception trap enable", ""],
             [8, "IOE", "Invalid Operation floating-point Exception trap enable", ""],
         ]
-        reg = int(gdb.execute("info registers $fpcr", to_string=True).split()[1], 16)
-        PrintBitInfo("$fpcr", 32, None, bit_info).print(reg)
+        reg = get_register("$fpcr")
+        if reg is not None:
+            PrintBitInfo("$fpcr", 32, None, bit_info).print(reg)
 
         # fpsr
         gef_print(titlify("FPCR (Floating-Point Status Register)"))
@@ -40569,8 +40579,9 @@ class FpuCommand(GenericCommand):
             [1, "DZC", "Divide by Zero Cumulative floating-point exception bit", ""],
             [0, "IOC", "Invalid Operation Cumulative floating-point exception bit", ""],
         ]
-        reg = int(gdb.execute("info registers $fpsr", to_string=True).split()[1], 16)
-        PrintBitInfo("$fpsr", 32, None, bit_info).print(reg)
+        reg = get_register("$fpsr")
+        if reg is not None:
+            PrintBitInfo("$fpsr", 32, None, bit_info).print(reg)
         return
 
     def print_fpu_x86_other(self):
@@ -40587,7 +40598,7 @@ class FpuCommand(GenericCommand):
             [1, "DM", "Denormalized Opernd Exception Mask", ""],
             [0, "IM", "Invalid Operation Exception Mask", ""],
         ]
-        reg = int(gdb.execute("info registers $fctrl", to_string=True).split()[1], 16)
+        reg = get_register("$fctrl")
         PrintBitInfo("$fctrl", 16, None, bit_info).print(reg)
 
         # fstat
@@ -40608,7 +40619,7 @@ class FpuCommand(GenericCommand):
             [1, "DE", "Denormalized Operand Exception", ""],
             [0, "IE", "Invalid Operation Exception", ""],
         ]
-        reg = int(gdb.execute("info registers $fstat", to_string=True).split()[1], 16)
+        reg = get_register("$fstat")
         PrintBitInfo("$fstat", 16, None, bit_info).print(reg)
 
         # ftag
@@ -40623,26 +40634,26 @@ class FpuCommand(GenericCommand):
             [[2, 3], "TAG(1)", "Reg1 Tag", "00: Valid, 01: Zero, 10: Invalid/Nan/Inf/Denormal, 11: Blank"],
             [[0, 1], "TAG(0)", "Reg0 Tag", "00: Valid, 01: Zero, 10: Invalid/Nan/Inf/Denormal, 11: Blank"],
         ]
-        reg = int(gdb.execute("info registers $ftag", to_string=True).split()[1], 16)
+        reg = get_register("$ftag")
         PrintBitInfo("$ftag", 16, None, bit_info).print(reg)
 
         # $fiseg, $fioff
         gef_print(titlify("FCS:FIP (x87 FPU Last Instruction Pointer)"))
-        reg = int(gdb.execute("info registers $fiseg", to_string=True).split()[1], 16)
-        reg = int(gdb.execute("info registers $fioff", to_string=True).split()[1], 16)
+        reg = get_register("$fiseg")
         PrintBitInfo("$fiseg(FCS)", 16, None, bit_info=[]).print(reg, split=False)
+        reg = get_register("$fioff")
         PrintBitInfo("$fioff(FIP)", 32, None, bit_info=[]).print(reg, split=False)
 
         # $foseg, $fooff
         gef_print(titlify("FDS:FDP (x87 FPU Last Data(Operand) Pointer)"))
-        reg = int(gdb.execute("info registers $foseg", to_string=True).split()[1], 16)
-        reg = int(gdb.execute("info registers $fooff", to_string=True).split()[1], 16)
+        reg = get_register("$foseg")
         PrintBitInfo("$foseg(FDS)", 16, None, bit_info=[]).print(reg, split=False)
+        reg = get_register("$fooff")
         PrintBitInfo("$fooff(FDP)", 32, None, bit_info=[]).print(reg, split=False)
 
         # $fop
         gef_print(titlify("FOP (x87 FPU Last Instruction Opcode)"))
-        reg = int(gdb.execute("info registers $fop", to_string=True).split()[1], 16)
+        reg = get_register("$fop")
         PrintBitInfo("$fop", 11, None, bit_info=[]).print(reg, split=False)
         return
 
@@ -60604,7 +60615,7 @@ class QemuRegistersCommand(GenericCommand):
 
     def qregisters(self):
         res = gdb.execute("monitor info registers", to_string=True)
-        self.out.append(titlify("info register"))
+        self.out.append(titlify("info registers"))
         for line in res.splitlines():
             self.out.append(line)
 
