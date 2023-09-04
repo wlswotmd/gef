@@ -3163,7 +3163,7 @@ def set_gef_setting(name, value, _type=None, _desc=None):
     return
 
 
-RE_GET_LOCATION_GDB13 = re.compile(r"0x[0-9a-f]+ <(.*?)(\+.*)?>")
+RE_GET_LOCATION_GDB13 = re.compile(r"0x[0-9a-f]+ <(.*?)(\+[0-9]+)?>")
 
 
 # `info symbol` called from __gdb_get_location is heavy processing.
