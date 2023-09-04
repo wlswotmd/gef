@@ -457,8 +457,9 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/base.png)
 * `brva`: sets a breakpoint at relative offset from codebase.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/brva.png)
-* `message-break`: sets a breakpoint with simple user defined message as f-string format.
+* `message-break`: sets a breakpoint which prints user defined f-string format message if hit.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/message-break.png)
+* `command-break`: sets a breakpoint which executes user defined command if hit.
 * `main-break`: sets a breakpoint at `main` with or without symbols, then continue.
     * This is useful when you just want to run to `main` under using qemu-user or pin, or debugging no-symbol ELF.
 * `break-only-if-taken`/`break-only-if-not-taken`: sets a breakpoint which breaks only branch is taken (or not taken).

@@ -21410,7 +21410,7 @@ class EntryPointBreakCommand(GenericCommand):
 
 
 class NamedBreakpoint(gdb.Breakpoint):
-    """Breakpoint which shows a specified name, when hit."""
+    """Breakpoint which shows a specified name."""
     def __init__(self, location, name):
         super().__init__(location, gdb.BP_BREAKPOINT, internal=False, temporary=False)
         self.name = name
@@ -21427,7 +21427,7 @@ class NamedBreakpoint(gdb.Breakpoint):
 
 @register_command
 class NamedBreakCommand(GenericCommand):
-    """Set a breakpoint and assigns a name to it, which will be shown, when it's hit."""
+    """Set a breakpoint and assigns a name to it, which will be shown if hit."""
     _cmdline_ = "named-break"
     _category_ = "01-b. Debugging Support - Breakpoint"
 
@@ -21452,7 +21452,7 @@ class NamedBreakCommand(GenericCommand):
 
 
 class MessageBreakpoint(gdb.Breakpoint):
-    """Breakpoint which print user defined message."""
+    """Breakpoint which prints user defined f-string format message."""
     def __init__(self, loc, msg):
         super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=False, temporary=False)
         self.loc = loc
@@ -21469,14 +21469,14 @@ class MessageBreakpoint(gdb.Breakpoint):
 
 @register_command
 class MessageBreakCommand(GenericCommand):
-    """Set a breakpoint with print user defined message, when it's hit."""
+    """Set a breakpoint which prints user defined f-string format message if hit."""
     _cmdline_ = "message-break"
     _category_ = "01-b. Debugging Support - Breakpoint"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address,
                         help="the address you want to set breakpoint. (default: current_arch.pc)")
-    parser.add_argument("message", metavar="MESSAGE", type=str, help="the message printed if breakpoint is hit.")
+    parser.add_argument("message", metavar="MESSAGE", type=str, help="f-string format message printed if breakpoint is hit.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} 0x55555555aab9 \"RAX: {{$rax:#x}}\"\n".format(_cmdline_)
@@ -21490,6 +21490,46 @@ class MessageBreakCommand(GenericCommand):
         if location is None:
             location = current_arch.pc
         MessageBreakpoint(location, args.message)
+        return
+
+
+class CommandBreakpoint(gdb.Breakpoint):
+    """Breakpoint which executes user defined command."""
+    def __init__(self, loc, cmd):
+        super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=False, temporary=False)
+        self.loc = loc
+        self.cmd = cmd
+        return
+
+    def stop(self):
+        reset_gef_caches()
+        gdb.execute(self.cmd)
+        return False
+
+
+@register_command
+class CommandBreakCommand(GenericCommand):
+    """Set a breakpoint which executes user defined command if hit."""
+
+    _cmdline_ = "command-break"
+    _category_ = "01-b. Debugging Support - Breakpoint"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address,
+                        help="the address you want to set breakpoint. (default: current_arch.pc)")
+    parser.add_argument("command", metavar="COMMAND", type=str, help="the command executed if breakpoint is hit.")
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} 0x55555555aab9 \"hexdump -n $sp+0x120\"".format(_cmdline_)
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        location = args.location
+        if location is None:
+            location = current_arch.pc
+        CommandBreakpoint(location, args.command)
         return
 
 
