@@ -3878,6 +3878,18 @@ class Architecture:
     __metaclass__ = abc.ABCMeta
 
     @abc.abstractproperty
+    def arch(self):
+        pass
+
+    @abc.abstractproperty
+    def mode(self):
+        pass
+
+    @abc.abstractproperty
+    def load_condition(self):
+        pass
+
+    @abc.abstractproperty
     def all_registers(self):
         pass
 
@@ -4061,6 +4073,13 @@ class Architecture:
 class RISCV(Architecture):
     arch = "RISCV"
     mode = "32"
+
+    load_condition = [
+        # Elf.EM_RISCV cannot determine whether it is 32-bit or 64-bit, so it should not be used.
+        "RISCV",
+        "RISCV32",
+        "RISCV:RV32",
+    ]
 
     # https://msyksphinz-self.github.io/riscv-isadoc/html/index.html
     all_registers = [
@@ -4264,6 +4283,12 @@ class RISCV64(RISCV):
     arch = "RISCV"
     mode = "64"
 
+    load_condition = [
+        # Elf.EM_RISCV cannot determine whether it is 32-bit or 64-bit, so it should not be used.
+        "RISCV64",
+        "RISCV:RV64",
+    ]
+
     bit_length = 64
 
     def mprotect_asm(self, addr, size, perm):
@@ -4332,6 +4357,26 @@ class RISCV64(RISCV):
 
 class ARM(Architecture):
     arch = "ARM"
+
+    load_condition = [
+        Elf.EM_ARM,
+        "ARM",
+        "ARM_ANY",
+        "ARMV2",
+        "ARMV2A",
+        "ARMV3",
+        "ARMV4",
+        "ARMV4T",
+        "ARMV5",
+        "ARMV5T",
+        "ARMV5TE",
+        "ARMV5TEJ",
+        "ARMV6",
+        "ARMV6K",
+        "ARMV6KZ",
+        "ARMV6T2",
+        "ARMV7",
+    ]
 
     all_registers = [
         "$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7",
@@ -4650,6 +4695,16 @@ class AARCH64(ARM):
     arch = "ARM64"
     mode = "ARM"
 
+    load_condition = [
+        Elf.EM_AARCH64,
+        "AARCH64",
+        "ARM64",
+        "ARMV8",
+        "ARMV8-A",
+        "ARMV9",
+        "ARMV9-A",
+    ]
+
     all_registers = [
         "$x0", "$x1", "$x2", "$x3", "$x4", "$x5", "$x6", "$x7",
         "$x8", "$x9", "$x10", "$x11", "$x12", "$x13", "$x14", "$x15",
@@ -4767,6 +4822,14 @@ class AARCH64(ARM):
 class X86(Architecture):
     arch = "X86"
     mode = "32"
+
+    load_condition = [
+        Elf.EM_386,
+        "X86",
+        "I386",
+        "I386:INTEL",
+        "I8086",
+    ]
 
     gpr_registers = ["$eax", "$ebx", "$ecx", "$edx", "$esp", "$ebp", "$esi", "$edi", "$eip"]
     special_registers = ["$cs", "$ss", "$ds", "$es", "$fs", "$gs"]
@@ -4994,6 +5057,16 @@ class X86_64(X86):
     arch = "X86"
     mode = "64"
 
+    load_condition = [
+        Elf.EM_X86_64,
+        "X64",
+        "AMD64",
+        "X86_64",
+        "X86-64",
+        "I386:X86-64",
+        "I386:X86-64:INTEL",
+    ]
+
     gpr_registers = [
         "$rax", "$rbx", "$rcx", "$rdx", "$rsp", "$rbp", "$rsi", "$rdi", "$rip",
         "$r8", "$r9", "$r10", "$r11", "$r12", "$r13", "$r14", "$r15",
@@ -5100,6 +5173,14 @@ class X86_64(X86):
 class PPC(Architecture):
     arch = "PPC"
     mode = "32"
+
+    load_condition = [
+        Elf.EM_PPC,
+        "POWERPC",
+        "PPC",
+        "PPC32",
+        "POWERPC:COMMON",
+    ]
 
     all_registers = [
         "$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7",
@@ -5313,6 +5394,13 @@ class PPC64(PPC):
     arch = "PPC"
     mode = "64"
 
+    load_condition = [
+        Elf.EM_PPC64,
+        "POWERPC64",
+        "PPC64",
+        "POWERPC:COMMON64",
+    ]
+
     all_registers = [
         "$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7",
         "$r8", "$r9", "$r10", "$r11", "$r12", "$r13", "$r14", "$r15",
@@ -5385,6 +5473,16 @@ class PPC64(PPC):
 class SPARC(Architecture):
     arch = "SPARC"
     mode = "32"
+
+    load_condition = [
+        Elf.EM_SPARC,
+        "SPARC",
+        "SPARC32",
+        "SPARC:V8",
+        Elf.EM_SPARC32PLUS,
+        "SPARC:V8PLUS",
+        "SPARC:V8PLUSA",
+    ]
 
     # http://www.cse.scu.edu/~atkinson/teaching/sp05/259/sparc.pdf
     all_registers = [
@@ -5562,6 +5660,12 @@ class SPARC64(SPARC):
     arch = "SPARC"
     mode = "64"
 
+    load_condition = [
+        Elf.EM_SPARCV9,
+        "SPARC64",
+        "SPARC:V9",
+    ]
+
     # http://math-atlas.sourceforge.net/devel/assembly/abi_sysV_sparc.pdf
     # https://cr.yp.to/2005-590/sparcv9.pdf
     all_registers = [
@@ -5635,6 +5739,16 @@ class SPARC64(SPARC):
 class MIPS(Architecture):
     arch = "MIPS"
     mode = "32"
+
+    load_condition = [
+        # Elf.EM_MIPS cannot determine whether it is 32-bit or 64-bit, so it should not be used.
+        "MIPS",
+        "MIPS:ISA32",
+        "MIPS:ISA32R2",
+        "MIPS:ISA32R3",
+        "MIPS:ISA32R5",
+        "MIPS:ISA32R6",
+    ]
 
     # http://vhouten.home.xs4all.nl/mipsel/r3000-isa.html
     all_registers = [
@@ -5827,6 +5941,16 @@ class MIPS64(MIPS):
     arch = "MIPS"
     mode = "64"
 
+    load_condition = [
+        # Elf.EM_MIPS cannot determine whether it is 32-bit or 64-bit, so it should not be used.
+        "MIPS64",
+        "MIPS:ISA64",
+        "MIPS:ISA64R2",
+        "MIPS:ISA64R3",
+        "MIPS:ISA64R5",
+        "MIPS:ISA64R6",
+    ]
+
     all_registers = [
         "$zero", "$at", "$v0", "$v1", "$a0", "$a1", "$a2", "$a3",
         "$a4", "$a5", "$a6", "$a7", "$t0", "$t1", "$t2", "$t3",
@@ -5895,6 +6019,14 @@ class MIPS64(MIPS):
 class S390X(Architecture):
     arch = "S390X"
     mode = "64"
+
+    load_condition = [
+        # Elf.EM_S390 cannot determine whether it is 32 bit or 64 bit,
+        # but since GEF only supports 64 bit (s390x), so we will use it.
+        Elf.EM_S390,
+        "S390X",
+        "S390:64-BIT",
+    ]
 
     # https://www.ibm.com/docs/en/SSQ2R2_15.0.0/com.ibm.tpf.toolkit.hlasm.doc/dz9zr006.pdf
     all_registers = [
@@ -6260,6 +6392,14 @@ class SH4(Architecture):
     arch = "SH4"
     mode = "SH4"
 
+    load_condition = [
+        Elf.EM_SH,
+        "SH4",
+        "SH4-NOFPU",
+        "SH4A",
+        "SH4A-NOFPU",
+    ]
+
     # https://www.renesas.com/us/en/document/man/705261
     all_registers = [
         "$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7",
@@ -6435,6 +6575,18 @@ class SH4(Architecture):
 class M68K(Architecture):
     arch = "M68K"
     mode = "32"
+
+    load_condition = [
+        Elf.EM_68K,
+        "M68K",
+        "M68K:68000",
+        "M68K:68008",
+        "M68K:68010",
+        "M68K:68020",
+        "M68K:68030",
+        "M68K:68040",
+        "M68K:68060",
+    ]
 
     # https://www.nxp.com/files-static/archives/doc/ref_manual/M68000PRM.pdf
     all_registers = [
@@ -6682,6 +6834,15 @@ class ALPHA(Architecture):
     arch = "ALPHA"
     mode = "ALPHA"
 
+    load_condition = [
+        Elf.EM_ALPHA,
+        Elf.EM_ALPHA_UNOFFICIAL,
+        "ALPHA",
+        "ALPHA:EV4",
+        "ALPHA:EV5",
+        "ALPHA:EV6",
+    ]
+
     # https://download.majix.org/dec/alpha_arch_ref.pdf
     all_registers = [
         "$v0", "$t0", "$t1", "$t2", "$t3", "$t4", "$t5", "$t6",
@@ -6862,6 +7023,12 @@ class ALPHA(Architecture):
 class HPPA(Architecture):
     arch = "HPPA"
     mode = "32"
+
+    load_condition = [
+        # Elf.EM_PARISC cannot determine whether it is 32-bit or 64-bit, so it should not be used
+        "HPPA1.0",
+        "HPPA1.1",
+    ]
 
     # https://parisc.wiki.kernel.org/images-parisc/6/68/Pa11_acd.pdf
     all_registers = [
@@ -7239,14 +7406,21 @@ class HPPA64(HPPA):
     arch = "HPPA"
     mode = "64"
 
-    bit_length = 64
-
     # qemu does not support hppa64, so I could not test
+    load_condition = [
+    ]
+
+    bit_length = 64
 
 
 class OR1K(Architecture):
     arch = "OR1K"
     mode = "OR1K"
+
+    load_condition = [
+        Elf.EM_OPENRISC,
+        "OR1K",
+    ]
 
     # https://openrisc.io/or1k.html
     # https://sourceware.org/cgen/gen-doc/openrisc-insn.html
@@ -7371,6 +7545,13 @@ class OR1K(Architecture):
 class NIOS2(Architecture):
     arch = "NIOS2"
     mode = "NIOS2"
+
+    load_condition = [
+        Elf.EM_ALTERA_NIOS2,
+        "NIOS2",
+        "NIOS2:R1",
+        "NIOS2:R2",
+    ]
 
     # https://www.intel.com/content/www/us/en/docs/programmable/683836/current/introduction.html
     # https://www.intel.co.jp/content/dam/altera-www/global/ja_JP/pdfs/literature/hb/nios2/n2cpu-nii5v1gen2-j.pdf
@@ -7515,6 +7696,11 @@ class NIOS2(Architecture):
 class MICROBLAZE(Architecture):
     arch = "MICROBLAZE"
     mode = "MICROBLAZE"
+
+    load_condition = [
+        Elf.EM_MICROBLAZE,
+        "MICROBLAZE",
+    ]
 
     # https://www.xilinx.com/content/dam/xilinx/support/documents/sw_manuals/xilinx2021_2/ug984-vivado-microblaze-ref.pdf
     all_registers = [
@@ -7665,6 +7851,11 @@ class MICROBLAZE(Architecture):
 class XTENSA(Architecture):
     arch = "XTENSA"
     mode = "XTENSA"
+
+    load_condition = [
+        Elf.EM_XTENSA,
+        "XTENSA",
+    ]
 
     # https://www.cadence.com/content/dam/cadence-www/global/en_US/documents/tools/ip/tensilica-ip/isa-summary.pdf
     # https://dl.espressif.com/github_assets/espressif/xtensa-isa-doc/releases/download/latest/Xtensa.pdf
@@ -7914,6 +8105,11 @@ class CRIS(Architecture):
     arch = "CRIS"
     mode = "CRIS"
 
+    load_condition = [
+        Elf.EM_CRIS,
+        "CRIS",
+    ]
+
     # https://www.axis.com/dam/public/25/67/ab/etrax-100lx-programmer%E2%80%99s-manual-en-US-33419.pdf
     all_registers = [
         "$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7",
@@ -8073,6 +8269,13 @@ class CRIS(Architecture):
 class LOONGARCH64(Architecture):
     arch = "LOONGARCH"
     mode = "64"
+
+    load_condition = [
+        # Elf.EM_LOONGARCH cannot determine whether it is 32 bit or 64 bit,
+        # but since GEF only supports 64 bit (LA64), so we will use it.
+        Elf.EM_LOONGARCH,
+        "LOONGARCH",
+    ]
 
     # https://docs.kernel.org/loongarch/introduction.html
     # https://loongson.github.io/LoongArch-Documentation/LoongArch-Vol1-EN.html
@@ -8256,6 +8459,16 @@ class LOONGARCH64(Architecture):
 class ARC(Architecture):
     arch = "ARC"
     mode = "32v2"
+
+    load_condition = [
+        Elf.EM_ARC,
+        Elf.EM_ARC_COMPACT,
+        Elf.EM_ARC_COMPACT2,
+        "ARC600",
+        "ARC601",
+        "ARC700",
+        "ARCV2",
+    ]
 
     # http://me.bios.io/images/d/dd/ARCompactISA_ProgrammersReference.pdf
     all_registers = [
@@ -8540,9 +8753,15 @@ class ARC(Architecture):
         ]
         return b"".join(insns)
 
+
 class ARCv3(ARC):
     arch = "ARC"
     mode = "32v3"
+
+    load_condition = [
+        Elf.EM_ARC_COMPACT3,
+        "ARC64:32",
+    ]
 
     all_registers = [
         "$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7",
@@ -8564,6 +8783,11 @@ class ARC64(ARCv3):
     arch = "ARC"
     mode = "64v3"
 
+    load_condition = [
+        Elf.EM_ARC_COMPACT3_64,
+        "ARC64:64",
+    ]
+
     bit_length = 64
 
     def mprotect_asm(self, addr, size, perm):
@@ -8578,7 +8802,6 @@ class ARC64(ARCv3):
             b"\x1e\x78" # trap_s 0
         ]
         return b"".join(insns)
-        return None
 
 
 # The prototype for new architecture.
@@ -8586,6 +8809,11 @@ class ARC64(ARCv3):
 #class XXX(Architecture):
 #    arch = "XXX"
 #    mode = "XXX"
+#
+#    load_condition = [
+#        Elf.EM_XXX,
+#        "XXX",
+#    ]
 #
 #    all_registers = [
 #        "$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7",
@@ -10684,88 +10912,49 @@ def is_stripped(filename=None):
     return "not stripped" not in out
 
 
-def set_arch(arch=None, default=None):
+def set_arch(arch_str=None):
     """Sets the current architecture.
     If an arch is explicitly specified, use that one, otherwise try to parse it out of the current target.
     If that fails, and default is specified, select and set that arch.
     Return the selected arch, or raise an OSError."""
-    arches = {
-        Elf.EM_ARM: ARM, "ARM": ARM, "ARM_ANY": ARM, "ARMV2": ARM, "ARMV2A": ARM, "ARMV3": ARM,
-        "ARMV4": ARM, "ARMV4T": ARM, "ARMV5": ARM, "ARMV5T": ARM, "ARMV5TE": ARM, "ARMV5TEJ": ARM,
-        "ARMV6": ARM, "ARMV6K": ARM, "ARMV6KZ": ARM, "ARMV6T2": ARM, "ARMV7": ARM,
-        Elf.EM_AARCH64: AARCH64, "AARCH64": AARCH64, "ARM64": AARCH64, "ARMV8": AARCH64, "ARMV8-A": AARCH64,
-        "ARMV9": AARCH64, "ARMV9-A": AARCH64,
-        Elf.EM_386: X86, "X86": X86, "I386": X86, "I386:INTEL": X86, "I8086": X86,
-        Elf.EM_X86_64: X86_64, "X64": X86_64, "AMD64": X86_64, "X86_64": X86_64, "X86-64": X86_64,
-        "I386:X86-64": X86_64, "I386:X86-64:INTEL": X86_64,
-        Elf.EM_PPC: PPC, "POWERPC": PPC, "PPC": PPC, "PPC32": PPC, "POWERPC:COMMON": PPC,
-        Elf.EM_PPC64: PPC64, "POWERPC64": PPC64, "PPC64": PPC64, "POWERPC:COMMON64": PPC64,
-        "RISCV": RISCV, "RISCV32": RISCV, "RISCV:RV32": RISCV, "RISCV64": RISCV64, "RISCV:RV64": RISCV64,
-        Elf.EM_SPARC: SPARC, "SPARC": SPARC, "SPARC32": SPARC, "SPARC:V8": SPARC,
-        Elf.EM_SPARCV9: SPARC64, "SPARC64": SPARC64, "SPARC:V9": SPARC64,
-        Elf.EM_SPARC32PLUS: SPARC64, "SPARC:V8PLUS": SPARC64, "SPARC:V8PLUSA": SPARC64,
-        "MIPS": MIPS, "MIPS:ISA32": MIPS, "MIPS:ISA32R2": MIPS, "MIPS:ISA32R3": MIPS,
-        "MIPS:ISA32R5": MIPS, "MIPS:ISA32R6": MIPS,
-        "MIPS64": MIPS64, "MIPS:ISA64": MIPS64, "MIPS:ISA64R2": MIPS64, "MIPS:ISA64R3": MIPS64,
-        "MIPS:ISA64R5": MIPS64, "MIPS:ISA64R6": MIPS64,
-        Elf.EM_S390: S390X, "S390X": S390X, "S390:64-BIT": S390X,
-        Elf.EM_SH: SH4, "SH4": SH4, "SH4-NOFPU": SH4, "SH4A": SH4, "SH4A-NOFPU": SH4,
-        Elf.EM_68K: M68K, "M68K": M68K, "M68K:68000": M68K, "M68K:68008": M68K, "M68K:68010": M68K,
-        "M68K:68020": M68K, "M68K:68030": M68K, "M68K:68040": M68K, "M68K:68060": M68K,
-        Elf.EM_ALPHA: ALPHA, Elf.EM_ALPHA_UNOFFICIAL: ALPHA, "ALPHA": ALPHA, "ALPHA:EV4": ALPHA,
-        "ALPHA:EV5": ALPHA, "ALPHA;EV6": ALPHA,
-        Elf.EM_PARISC: HPPA, "HPPA1.0": HPPA, "HPPA1.1": HPPA,
-        Elf.EM_OPENRISC: OR1K, "OR1K": OR1K,
-        Elf.EM_ALTERA_NIOS2: NIOS2, "NIOS2": NIOS2, "NIOS2:R1": NIOS2, "NIOS2:R2": NIOS2,
-        Elf.EM_MICROBLAZE: MICROBLAZE, "MICROBLAZE": MICROBLAZE,
-        Elf.EM_XTENSA: XTENSA, "XTENSA": XTENSA,
-        Elf.EM_CRIS: CRIS, "CRIS": CRIS,
-        Elf.EM_LOONGARCH: LOONGARCH64, "LOONGARCH": LOONGARCH64,
-        Elf.EM_ARC: ARC, Elf.EM_ARC_COMPACT: ARC, Elf.EM_ARC_COMPACT2: ARC,
-        "ARC600": ARC, "ARC601": ARC, "ARC700": ARC, "ARCV2": ARC,
-        Elf.EM_ARC_COMPACT3: ARCv3,
-        "ARC64:32": ARCv3,
-        Elf.EM_ARC_COMPACT3_64: ARC64,
-        "ARC64:64": ARC64,
-    }
     global current_arch, current_elf
 
-    if arch:
-        try:
-            if isinstance(arch, str):
-                current_arch = arches[arch.upper()]()
-            else:
-                current_arch = arches[arch]()
-            return
-        except KeyError as err:
-            if isinstance(arch, str):
-                raise OSError("Specified arch {:s} is not supported".format(arch.upper())) from err
-            else:
-                raise OSError("Specified arch {:d} is not supported".format(arch)) from err
-    else:
-        if not current_elf:
-            elf = get_elf_headers()
-            if elf and elf.is_valid():
-                current_elf = elf
-            else:
-                current_elf = None
+    # get defined arch
+    arches = {}
+    queue = Architecture.__subclasses__()
+    while queue:
+        cls = queue.pop(0)
+        for lc in cls.load_condition:
+            arches[lc] = cls
+        queue.extend(cls.__subclasses__())
 
-        try:
-            if current_elf and current_elf.e_machine not in [Elf.EM_MIPS, Elf.EM_RISCV]:
-                current_arch = arches[current_elf.e_machine]()
+    try:
+        # Determined from the specified arch string
+        if arch_str:
+            key = arch_str.upper()
+
+        else:
+            # Determined from loaded ELF
+            if not current_elf:
+                elf = get_elf_headers()
+                if elf and elf.is_valid():
+                    current_elf = elf
+                else:
+                    raise OSError("Could not determine architecture.")
+
+            if current_elf.e_machine not in [Elf.EM_MIPS, Elf.EM_RISCV, Elf.EM_PARISC]:
+                key = current_elf.e_machine
+
             else:
-                # MIPS32/64 and RISCV32/64 are indistinguishable because e_machine of the ELF header
-                # has the same value, so we use the detection result of gdb
-                current_arch = arches[get_arch().upper()]()
-        except KeyError as err:
-            if default:
-                try:
-                    current_arch = arches[default.upper()]()
-                except KeyError as err2:
-                    raise OSError("CPU not supported, neither is default {:s}".format(default.upper())) from err2
-            else:
-                raise OSError("CPU type is currently not supported: {:s}".format(get_arch().upper())) from err
-        return
+                # On some architectures, it is not possible to determine whether it is 32-bit or 64-bit
+                # from the ELF header e_machine. so we use the detection result of gdb.
+                key = get_arch().upper()
+
+        current_arch = arches[key]()
+    except KeyError as err:
+        raise OSError("Specified arch {!s} is not supported".format(key)) from err
+
+    return
 
 
 @functools.lru_cache(maxsize=None)
