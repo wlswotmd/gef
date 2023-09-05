@@ -5479,9 +5479,6 @@ class SPARC(Architecture):
         "SPARC",
         "SPARC32",
         "SPARC:V8",
-        Elf.EM_SPARC32PLUS,
-        "SPARC:V8PLUS",
-        "SPARC:V8PLUSA",
     ]
 
     # http://www.cse.scu.edu/~atkinson/teaching/sp05/259/sparc.pdf
@@ -5664,6 +5661,7 @@ class SPARC64(SPARC):
         Elf.EM_SPARCV9,
         "SPARC64",
         "SPARC:V9",
+        "SPARC:V9A",
     ]
 
     # http://math-atlas.sourceforge.net/devel/assembly/abi_sysV_sparc.pdf
@@ -5685,12 +5683,7 @@ class SPARC64(SPARC):
     }
 
     bit_length = 64
-    endianness = "big"
 
-    nop_insn = b"\x00\x00\x00\x01" # nop
-    infloop_insn = b"\x00\x00\x80\x10" # b self
-    trap_insn = None
-    ret_insn = b"\x08\xe0\xc7\x81" # ret
     syscall_insn = b"\x6d\x20\xd0\x91" # trap 0x6d
 
     def is_syscall(self, insn):
@@ -5743,6 +5736,7 @@ class MIPS(Architecture):
     load_condition = [
         # Elf.EM_MIPS cannot determine whether it is 32-bit or 64-bit, so it should not be used.
         "MIPS",
+        "MIPS32",
         "MIPS:ISA32",
         "MIPS:ISA32R2",
         "MIPS:ISA32R3",
@@ -6579,6 +6573,7 @@ class M68K(Architecture):
     load_condition = [
         Elf.EM_68K,
         "M68K",
+        "M68000",
         "M68K:68000",
         "M68K:68008",
         "M68K:68010",
@@ -7026,6 +7021,12 @@ class HPPA(Architecture):
 
     load_condition = [
         # Elf.EM_PARISC cannot determine whether it is 32-bit or 64-bit, so it should not be used
+        "PARISC",
+        "PARISC32",
+        "PA-RISC",
+        "PA-RISC32",
+        "HPPA",
+        "HPPA32",
         "HPPA1.0",
         "HPPA1.1",
     ]
@@ -7406,11 +7407,12 @@ class HPPA64(HPPA):
     arch = "HPPA"
     mode = "64"
 
-    # qemu does not support hppa64, so I could not test
     load_condition = [
     ]
 
     bit_length = 64
+
+    # qemu does not support hppa64, so I could not test
 
 
 class OR1K(Architecture):
@@ -7419,6 +7421,8 @@ class OR1K(Architecture):
 
     load_condition = [
         Elf.EM_OPENRISC,
+        "OPENRISC",
+        "OPENRISC1000",
         "OR1K",
     ]
 
@@ -8275,6 +8279,7 @@ class LOONGARCH64(Architecture):
         # but since GEF only supports 64 bit (LA64), so we will use it.
         Elf.EM_LOONGARCH,
         "LOONGARCH",
+        "LOONGARCH64",
     ]
 
     # https://docs.kernel.org/loongarch/introduction.html
@@ -10540,123 +10545,121 @@ def get_terminal_size():
         return 600, 100
 
 
-def get_generic_arch(module, prefix, arch, mode, big_endian, to_string=False, extra=()):
+def get_generic_arch(module, prefix, arch, mode, big_endian, to_string):
     """Retrieves architecture and mode from the arguments for use for the holy
-    {cap,key}stone/unicorn trinity."""
-    if to_string:
-        arch = "{:s}.{:s}_ARCH_{:s}".format(module.__name__, prefix, arch)
-        if mode:
-            mode = "{:s}.{:s}_MODE_{!s}".format(module.__name__, prefix, mode)
-        else:
-            mode = "0"
-        if big_endian:
-            mode += " + {:s}.{:s}_MODE_BIG_ENDIAN".format(module.__name__, prefix)
-        else:
-            mode += " + {:s}.{:s}_MODE_LITTLE_ENDIAN".format(module.__name__, prefix)
-        for e in extra:
-            mode += " + {:s}.{:s}_MODE_{:s}".format(module.__name__, prefix, e)
+    capstone/keystone/unicorn trinity."""
+    if isinstance(mode, tuple):
+        modes = list(mode)
     else:
+        modes = [mode, ]
+
+    if big_endian:
+        modes.append("BIG_ENDIAN")
+    else:
+        modes.append("LITTLE_ENDIAN")
+
+    if to_string:
+        # arch
+        arch = "{:s}.{:s}_ARCH_{:s}".format(module.__name__, prefix, arch)
+        # mode
+        tmp = []
+        for m in modes:
+            if not m:
+                tmp.append("0")
+            else:
+                tmp.append("{:s}.{:s}_MODE_{:s}".format(module.__name__, prefix, m))
+        mode = " + ".join(tmp)
+    else:
+        # arch
         arch = getattr(module, "{:s}_ARCH_{:s}".format(prefix, arch))
-        if mode:
-            mode = getattr(module, "{:s}_MODE_{:s}".format(prefix, mode))
-        else:
-            mode = 0
-        if big_endian:
-            mode |= getattr(module, "{:s}_MODE_BIG_ENDIAN".format(prefix))
-        else:
-            mode |= getattr(module, "{:s}_MODE_LITTLE_ENDIAN".format(prefix))
-        for e in extra:
-            mode |= getattr(module, "{:s}_MODE_{:s}".format(prefix, e))
+        # mode
+        mode = 0
+        for m in modes:
+            if m:
+                mode |= getattr(module, "{:s}_MODE_{:s}".format(prefix, m))
     return arch, mode
 
 
 @load_unicorn
 def get_unicorn_arch(arch=None, mode=None, endian=None, to_string=False):
-    unicorn = sys.modules["unicorn"]
     if (arch, mode, endian) == (None, None, None):
         arch = current_arch.arch
         mode = current_arch.mode
         endian = is_big_endian()
-    if arch == "RISCV" and mode == "32":
+    if (arch, mode) == ("RISCV", "32"):
         mode = "RISCV32"
-    elif arch == "RISCV" and mode == "64":
+    elif (arch, mode) == ("RISCV", "64"):
         mode = "RISCV64"
-    elif arch == "PPC" and mode == "32":
+    elif (arch, mode) == ("PPC", "32"):
         mode = "PPC32"
-    elif arch == "PPC" and mode == "64":
+    elif (arch, mode) == ("PPC", "64"):
         mode = "PPC64"
-    elif arch == "SPARC" and mode == "32":
+    elif (arch, mode) == ("SPARC", "32"):
         mode = "SPARC32"
-    elif arch == "SPARC" and mode == "64":
+    elif (arch, mode) == ("SPARC", "64"):
         mode = "SPARC64"
-    elif arch == "MIPS" and mode == "32":
+    elif (arch, mode) == ("MIPS", "32"):
         mode = "MIPS32"
-    elif arch == "MIPS" and mode == "64":
+    elif (arch, mode) == ("MIPS", "64"):
         mode = "MIPS64"
     elif arch == "S390X":
-        mode = 0
+        mode = None
     elif arch == "M68K":
-        mode = 0
-    return get_generic_arch(unicorn, "UC", arch, mode, endian, to_string)
+        mode = None
+    return get_generic_arch(sys.modules["unicorn"], "UC", arch, mode, endian, to_string)
 
 
 @load_capstone
 def get_capstone_arch(arch=None, mode=None, endian=None, to_string=False):
-    capstone = sys.modules["capstone"]
     extra = []
     if (arch, mode, endian) == (None, None, None):
         arch = current_arch.arch
         mode = current_arch.mode
         endian = is_big_endian()
     # hacky patch for applying to capstone's mode
-    if arch == "RISCV" and mode == "32":
-        mode = "RISCV32"
-        extra = ("RISCVC",)
-    elif arch == "RISCV" and mode == "64":
-        mode = "RISCV64"
-        extra = ("RISCVC",)
-    elif arch == "SPARC" and mode == "32":
+    if (arch, mode) == ("RISCV", "32"):
+        mode = ("RISCV32", "RISCVC")
+    elif (arch, mode) == ("RISCV", "64"):
+        mode = ("RISCV64", "RISCVC")
+    elif (arch, mode) == ("SPARC", "32"):
         mode = ""
-    elif arch == "SPARC" and mode == "64":
+    elif (arch, mode) == ("SPARC", "64"):
         mode = "V9"
-    elif arch == "MIPS" and mode == "32":
+    elif (arch, mode) == ("MIPS", "32"):
         mode = "MIPS32"
-    elif arch == "MIPS" and mode == "64":
+    elif (arch, mode) == ("MIPS", "64"):
         mode = "MIPS64"
     elif arch == "S390X":
-        arch = "SYSZ"
-        mode = 0
+        arch, mode = "SYSZ", None
     elif arch == "M68K":
         mode = "M68K_060"
-    return get_generic_arch(capstone, "CS", arch, mode, endian, to_string, extra=extra)
+    return get_generic_arch(sys.modules["capstone"], "CS", arch, mode, endian, to_string)
 
 
 @load_keystone
 def get_keystone_arch(arch=None, mode=None, endian=None, to_string=False):
-    keystone = sys.modules["keystone"]
     if (arch, mode, endian) == (None, None, None):
         arch = current_arch.arch
         mode = current_arch.mode
         endian = is_big_endian()
     # hacky patch for applying to capstone's mode
     if arch == "ARM64":
-        mode = 0
-    elif arch == "PPC" and mode == "32":
+        mode = None
+    elif (arch, mode) == ("PPC", "32"):
         mode = "PPC32"
-    elif arch == "PPC" and mode == "64":
+    elif (arch, mode) == ("PPC", "64"):
         mode = "PPC64"
-    elif arch == "SPARC" and mode == "32":
+    elif (arch, mode) == ("SPARC", "32"):
         mode = "SPARC32"
-    elif arch == "SPARC" and mode == "64":
+    elif (arch, mode) == ("SPARC", "64"):
         mode = "SPARC64"
-    elif arch == "MIPS" and mode == "32":
+    elif (arch, mode) == ("MIPS", "32"):
         mode = "MIPS32"
-    elif arch == "MIPS" and mode == "64":
+    elif (arch, mode) == ("MIPS", "64"):
         mode = "MIPS64"
     elif arch == "S390X":
-        arch = "SYSTEMZ"
-        mode = 0
-    return get_generic_arch(keystone, "KS", arch, mode, endian, to_string)
+        arch, mode = "SYSTEMZ", None
+    return get_generic_arch(sys.modules["keystone"], "KS", arch, mode, endian, to_string)
 
 
 @load_unicorn
