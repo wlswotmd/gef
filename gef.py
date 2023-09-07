@@ -45352,9 +45352,9 @@ class KernelTaskCommand(GenericCommand):
             struct task_struct       *group_leader;
             struct list_head          ptraced;
             struct list_head          ptrace_entry;
-            struct pid               *thread_pid;        // v4.19 ~
-            struct hlist_node         pid_links[4];      // v4.19 ~
-            struct pid_link           pids[3];           // ~ v4.19
+            struct pid               *thread_pid;        // v4.19~
+            struct hlist_node         pid_links[4];      // v4.19~
+            struct pid_link           pids[3];           // ~v4.19
             struct list_head          thread_group;
         """
         kversion = KernelVersionCommand.kernel_version()
@@ -46299,7 +46299,7 @@ class KernelModuleCommand(GenericCommand):
 
     def get_offset_module_core(self, module_addrs):
         """
-        struct module { // ~ kernel 4.5-rc1
+        struct module { // ~v4.5-rc1
             enum module_state state;
             struct list_head list;
             char name[MODULE_NAME_LEN];
@@ -55508,7 +55508,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         - kallsyms_num_syms
         + kallsyms_names
         + kallsyms_markers
-        + kallsyms_seqs_of_names (v6.2 ~)
+        + kallsyms_seqs_of_names (v6.2~)
         + kallsyms_token_table
         + kallsyms_token_index
 
@@ -55721,7 +55721,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         0xc6c59390:    0x00000360 0x000003a8 0x000003e8 0x000004a8    |  `...............  |
         0xc6c593a0:    0x000005a8 0x0000066c 0x0000073c 0x000007ac    |  ....l...<.......  |
 
-        [6.4~]
+        [v6.4~]
         kallsyms_token_index: 0xffffffff844fa178
         gef> hexdump -n word 0xffffffff844fa178
         0xffffffff844fa178:    0x0000 0x0003 0x0006 0x000a 0x0010 0x0013 0x0016 0x0019    |  ................  |
