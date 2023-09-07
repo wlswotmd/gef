@@ -12328,7 +12328,6 @@ class PrintFormatCommand(GenericCommand):
     parser.add_argument("-b", dest="bitlen", type=int, default=8, choices=[8, 16, 32, 64],
                         help="the size of bit. (default: %(default)s)")
     parser.add_argument("-l", dest="length", type=parse_address, default=256, help="the length of array. (default: %(default)s)")
-    parser.add_argument("-c", dest="copy_to_clipboard", action="store_true", help="the result of data will copied to clipboard.")
     parser.add_argument("location", metavar="LOCATION", type=parse_address, help="the address of data you want to dump.")
     _syntax_ = parser.format_help()
 
@@ -12337,30 +12336,6 @@ class PrintFormatCommand(GenericCommand):
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         return
-
-    def clip(self, data):
-        if sys.platform == "linux":
-            try:
-                xclip = which("xclip")
-            except FileNotFoundError as e:
-                err("{}".format(e))
-                return False
-            prog = [xclip, "-selection", "clipboard", "-i"] # For linux
-
-        else:
-            warn("Can't copy to clipboard, platform not supported")
-            return False
-
-        try:
-            p = subprocess.Popen(prog, stdin=subprocess.PIPE)
-        except Exception:
-            warn("Can't copy to clipboard, Something went wrong while copying")
-            return False
-
-        p.stdin.write(data)
-        p.stdin.close()
-        p.wait()
-        return True
 
     @parse_args
     @only_if_gdb_running
@@ -12419,12 +12394,6 @@ class PrintFormatCommand(GenericCommand):
             out = "buf {:s}\n{:s}".format(asm_type[args.bitlen], sdata)
         elif args.format == "hex":
             out = sdata
-
-        if args.copy_to_clipboard:
-            if self.clip(bytes(out, "utf-8")):
-                info("Copied to clipboard")
-            else:
-                warn("There's a problem while copying")
 
         gef_print(out)
         return
