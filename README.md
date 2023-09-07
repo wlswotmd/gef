@@ -230,6 +230,8 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 * `kcdev`: displays each character device information.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kcdev.png)
 * `kbdev`: displays each block device information.
+    * If there are too many block devices, detection will not be successful.
+    * This is because block devices are not managed in one place, so I use the list of `bdev_cache` obtained from the slub-dump results.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kbdev.png)
 * `kops`: displays each operations member.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kops.png)
@@ -432,8 +434,10 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/search-pattern.png)
 * `mprotect`: is improved.
     * It supports more architectures.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/mprotect.png)
 * `hijack-fd`: is improved.
     * It supports more architectures.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hijack-fd.png)
 * `format-string-helper` is improved.
     * It supports more printf-like functions.
 
@@ -508,6 +512,7 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 * `memcpy`: copies the contents from the address A to B, whether virtual or physical.
 * `memswap`: swaps the contents of the address A and B, whether virtual or physical.
 * `meminsert`: inserts the contents of the address A to B, whether virtual or physical.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/meminsert.png)
 * `is-mem-zero`: checks the contents of address range is all 0x00 or 0xff or not.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/is-mem-zero.png)
 * `ii`: is a shortcut for `x/50i $pc` with opcode bytes.
@@ -530,6 +535,7 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 * `constgrep`: invokes `grep` under `/usr/include`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/constgrep.png)
 * `proc-dump`: dumps each file under `/proc/PID/`.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/proc-dump.png)
 * `time`: measures the time of the GDB command.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/time.png)
 * `multi-line`: executes multiple GDB commands in sequence.
@@ -569,11 +575,16 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
     * It also loads more commands from latest gdbinit for v8.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/v8-load.png)
 * `follow`: changes `follow-fork-mode` setting.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/follow.png)
 * `smart-cpp-function-name`: toggles `context.smart_cpp_function_name` setting.
 * `ret2dl-hint`: shows the structure used by Return-to-dl-resolve as hint.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ret2dl-hint.png)
 * `srop-hint`: shows the code for SigReturn-Oriented-Programming as hint.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/srop-hint.png)
 * `smart-memory-dump`: dumps all regions of the memory to each file.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/smart-memory-dump.png)
 * `pac-keys`: pretty prints ARM64 PAC keys.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pac-keys.png)
 
 ### Other
 * The category is introduced in `gef help`.
