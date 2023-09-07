@@ -120,3 +120,38 @@ I also list the tools I used in my Ubuntu 22.04 environment.
     * qemu: build from https://github.com/foss-for-synopsys-dwc-arc-processors/qemu with `./configure --target-list=arc64-linux-user`.
         * It needs `-cpu` option like `qemu-arc64 -cpu hs6x -g 1234 ./a.out`.
     * gdb: build from [arc-2023.03-rc1.tar.gz](https://github.com/foss-for-synopsys-dwc-arc-processors/binutils-gdb/archive/refs/tags/arc-2023.03-rc1.tar.gz) with `./configure --target=arc64-snps-linux-gnu --with-python=/usr/bin/python3`.
+
+
+# Qemu-user UNSUPPORTED architectures
+These will be added if I find a combination that works.
+If you find it, please let me know in the issue page.
+
+* bfin:
+    * [x] toolchain: `bfin--uclibc--bleeding-edge-2018.02-1` from https://toolchains.bootlin.com/
+    * [ ] qemu: https://github.com/vapier/qemu
+        * gdb stub is broken.
+    * [x] gdb: build from latest.
+* hexagon:
+    * [x] toolchain: https://github.com/quic/toolchain_for_hexagon
+    * [x] qemu: `qemu-hexagon` via apt.
+    * [ ] gdb: not found.
+* tilegx:
+    * [x] toolchain: https://ftp.riken.jp/Linux/kernel.org/tools/crosstool/files/bin/x86_64/7.3.0/
+    * [x] lib: http://www.voidrouter.net/archives/211
+    * [ ] qemu: https://gist.github.com/bata24/3cad590158911de318c1baf898f49626
+        * the breakpoint is broken.
+    * [x] gdb: build from latest.
+* hppa64
+    * [x] toolchain: `gcc-hppa64-linux` via apt. (Ubuntu 23.04)
+    * [ ] lib: not found.
+    * [ ] qemu: not found.
+    * [ ] gdb: not found.
+* sparc32plus
+    * [ ] toolchain: not found.
+    * [x] qemu: `qemu-sparc32plus` via apt.
+    * [x] gdb: build from latest.
+* loongarch32
+    * [ ] toolchain: not found.
+    * [ ] qemu: not found.
+    * [ ] gdb: not found.
+
