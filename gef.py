@@ -49989,9 +49989,9 @@ class GdtInfoCommand(GenericCommand):
         gef_print(" * index: Index of GDT/LDT")
         gef_print(" * segment register value = (index << 3) | (ti << 2) | rpl")
         gef_print(" * commonly used cs values:")
-        gef_print("   - x64 code: 0x33")
-        gef_print("   - x86 code (on x64): 0x23")
-        gef_print("   - x86 code (native): 0x73")
+        gef_print("   * x64 code: 0x33")
+        gef_print("   * x86 code (on x64): 0x23")
+        gef_print("   * x86 code (native): 0x73")
         return
 
     @staticmethod
