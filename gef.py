@@ -13455,13 +13455,13 @@ class SmartMemoryDumpCommand(GenericCommand):
             if entry.path in ["[vvar]", "[vsyscall]", "[vectors]", "[sigpage]"]:
                 continue
 
-            if not entry.path.startswith("["):
+            if not entry.path.startswith(("[", "<")):
                 path = os.path.basename(entry.path)
             else:
                 path = entry.path
                 path = path.replace("[", "").replace("]", "") # consider [heap], [stack], [vdso]
-                path = path.replace("<", "").replace(">", "") # consider under qemu-user. ex: <explored>
-                path = path.replace(" ", "_") # consider deleted case. ex: /path/to/file (deleted)
+                path = path.replace("<", "").replace(">", "") # consider <tls-th1>, <explored>
+            path = path.replace(" ", "_") # consider deleted case. ex: /path/to/file (deleted)
 
             try:
                 data = read_memory(start, end - start)
