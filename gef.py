@@ -104,7 +104,6 @@ import json
 import math
 import multiprocessing
 import os
-import platform
 import re
 import site
 import socket
@@ -2943,19 +2942,7 @@ def show_last_exception():
     gef_print(" Last 10 GDB commands ".center(80, HORIZONTAL_LINE))
     gdb.execute("show commands")
     gef_print(" Runtime environment ".center(80, HORIZONTAL_LINE))
-    gef_print("* GDB: {}".format(gdb.VERSION))
-    v = sys.version_info
-    gef_print("* Python: {:d}.{:d}.{:d} - {:s}".format(v.major, v.minor, v.micro, v.releaselevel))
-    gef_print("* OS: {:s} - {:s} ({:s})".format(platform.system(), platform.release(), platform.machine()))
-
-    gef_print(" lsb_release -a ".center(80, HORIZONTAL_LINE))
-    try:
-        command = which("lsb_release")
-        res = gef_execute_external([command, "-a"], as_list=True)
-        gef_print("\n".join([line.replace("\\t", "\t") for line in res]))
-    except FileNotFoundError as e:
-        gef_print("Cannot collect additional debug information: {}".format(e))
-
+    gdb.execute("version --compact")
     gef_print(HORIZONTAL_LINE * 80)
     gef_print("")
     return
@@ -11763,6 +11750,7 @@ class VersionCommand(GenericCommand):
     _category_ = "99. GEF Maintenance Command"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("--compact", action="store_true", help="show compact style.")
     _syntax_ = parser.format_help()
 
     def os_version(self):
@@ -11795,7 +11783,7 @@ class VersionCommand(GenericCommand):
 
         return "Not found"
 
-    def kernel_version(self):
+    def kernel_version_from_uname(self):
         try:
             command = which("uname")
             res = gef_execute_external([command, "-a"], as_list=True)
@@ -11908,13 +11896,19 @@ class VersionCommand(GenericCommand):
         except IOError:
             return "Not found"
 
-    @parse_args
-    def do_invoke(self, args):
-        self.dont_repeat()
+    def show_compact_info(self):
+        gef_print("gdb:     {:s}".format(self.gdb_version()))
+        gef_print("python:  {:s}".format(self.python_version()))
+        gef_print("OS:      {:s}".format(self.os_version()))
+        gef_print("kernel:  {:s}".format(self.kernel_version_from_uname()))
+        if is_qemu_system():
+            gef_print("qemu:    {:s}".format(self.qemu_version()))
+        return
 
+    def show_full_info(self):
         gef_print(titlify("versions"))
         gef_print("OS:                     {:s}".format(self.os_version()))
-        gef_print("kernel (uname -a):      {:s}".format(self.kernel_version()))
+        gef_print("kernel (uname -a):      {:s}".format(self.kernel_version_from_uname()))
         gef_print("kernel (/proc/version): {:s}".format(self.kernel_version_from_proc()))
         if is_qemu_system():
             gef_print("qemu:                   {:s}".format(self.qemu_version()))
@@ -11933,6 +11927,16 @@ class VersionCommand(GenericCommand):
 
         gef_print(titlify("gdb build config"))
         gdb.execute("show configuration")
+        return
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        if args.compact:
+            self.show_compact_info()
+        else:
+            self.show_full_info()
         return
 
 
@@ -69180,6 +69184,7 @@ class GefCommand(GenericCommand):
     subparsers.add_parser("restore")
     subparsers.add_parser("reload")
     subparsers.add_parser("arch-list")
+    subparsers.add_parser("raise-exception")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -69242,9 +69247,8 @@ class GefCommand(GenericCommand):
         self.loaded_commands = sorted(self.loaded_commands, key=lambda x: x[1]._cmdline_)
 
         # print message
-        gef_print("{:s} for {:s} ready, type '{:s}' to start, '{:s}' to configure".format(
+        gef_print("{:s} is ready, type '{:s}' to start, '{:s}' to configure".format(
             Color.greenify("GEF"),
-            platform.system().lower(),
             Color.colorify("gef", "underline yellow"),
             Color.colorify("gef config", "underline magenta")
         ))
@@ -69746,6 +69750,21 @@ class GefArchListCommand(GenericCommand):
                 self.print_arch_info(subcls())
         if self.out:
             gef_print("\n".join(self.out).rstrip(), less=not args.no_pager)
+        return
+
+
+@register_command
+class GefRaiseExceptionCommand(GenericCommand):
+    """Show defined architecture information."""
+    _cmdline_ = "gef raise-exception"
+    _category_ = "99. GEF Maintenance Command"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+        raise
         return
 
 
