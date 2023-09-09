@@ -10598,7 +10598,6 @@ def get_unicorn_arch(arch=None, mode=None, endian=None, to_string=False):
 
 @load_capstone
 def get_capstone_arch(arch=None, mode=None, endian=None, to_string=False):
-    extra = []
     if (arch, mode, endian) == (None, None, None):
         arch = current_arch.arch
         mode = current_arch.mode
@@ -12834,19 +12833,19 @@ class ProcInfoCommand(GenericCommand):
         try:
             return os.readlink("/proc/{}/exe".format(pid))
         except (FileNotFoundError, OSError):
-            return "Not Found"
+            return "Not found"
 
     def get_process_cwd(self, pid):
         try:
             return os.readlink("/proc/{}/cwd".format(pid))
         except (FileNotFoundError, OSError):
-            return "Not Found"
+            return "Not found"
 
     def get_process_root(self, pid):
         try:
             return os.readlink("/proc/{}/root".format(pid))
         except (FileNotFoundError, OSError):
-            return "Not Found"
+            return "Not found"
 
     def get_thread_ids(self, pid):
         try:
@@ -12887,7 +12886,7 @@ class ProcInfoCommand(GenericCommand):
             file = which("file")
         except FileNotFoundError as e:
             err("{}".format(e))
-            return "Not Found"
+            return "Not found"
 
         try:
             devices = open("/proc/devices", "r").read()
@@ -12902,17 +12901,17 @@ class ProcInfoCommand(GenericCommand):
                     name = os.path.join("/dev", name)
                 break
         else:
-            return "Not Found"
+            return "Not found"
 
         if os.path.islink(name):
-            return "Not Found"
+            return "Not found"
         elif os.path.isfile(name):
             res = gef_execute_external([file, name], as_iist=True)
             m = re.search(r"\((\d+)/(\d+)\)", res)
             if m and int(m.group(1)) == major and int(m.group(2)) == minor:
                 return name
             else:
-                return "Not Found"
+                return "Not found"
         elif os.path.isdir(name):
             for root, _dirs, files in os.walk(name, followlinks=False):
                 for f in files:
@@ -12923,7 +12922,7 @@ class ProcInfoCommand(GenericCommand):
                     m = re.search(r"\((\d+)/(\d+)\)", res)
                     if m and int(m.group(1)) == major and int(m.group(2)) == minor:
                         return path
-            return "Not Found"
+            return "Not found"
 
     def show_info_proc(self):
         gef_print(titlify("Process Information"))
@@ -18657,7 +18656,7 @@ class ChecksecCommand(GenericCommand):
         if sec["Fortify"]:
             gef_print("{:<40s}: {:s}".format("Fortify", Color.colorify("Found", "bold green")))
         else:
-            gef_print("{:<40s}: {:s}".format("Fortify", Color.colorify("Not Found", "bold red")))
+            gef_print("{:<40s}: {:s}".format("Fortify", Color.colorify("Not found", "bold red")))
 
         gef_print(titlify("Additional information"))
 
@@ -18680,7 +18679,7 @@ class ChecksecCommand(GenericCommand):
             if sec["Intel CET"]:
                 gef_print("{:<40s}: {:s}".format("Intel CET endbr64/endbr32", Color.colorify("Found", "bold green")))
             else:
-                gef_print("{:<40s}: {:s}".format("Intel CET endbr64/endbr32", Color.colorify("Not Found", "bold red")))
+                gef_print("{:<40s}: {:s}".format("Intel CET endbr64/endbr32", Color.colorify("Not found", "bold red")))
 
         # CET Status
         if is_x86() and is_alive():
@@ -18706,7 +18705,7 @@ class ChecksecCommand(GenericCommand):
             if sec["PAC"]:
                 gef_print("{:<40s}: {:s}".format("PAC opcode", Color.colorify("Found", "bold green")))
             else:
-                gef_print("{:<40s}: {:s}".format("PAC opcode", Color.colorify("Not Found", "bold red")))
+                gef_print("{:<40s}: {:s}".format("PAC opcode", Color.colorify("Not found", "bold red")))
 
         # PAC status
         if is_alive() and is_arm64():
@@ -18763,13 +18762,13 @@ class ChecksecCommand(GenericCommand):
 
         # RPATH
         if not sec["RPATH"]:
-            gef_print("{:<40s}: {:s}".format("RPATH", Color.colorify("Not Found", "bold green")))
+            gef_print("{:<40s}: {:s}".format("RPATH", Color.colorify("Not found", "bold green")))
         else:
             gef_print("{:<40s}: {:s}".format("RPATH", Color.colorify("Found", "bold red")))
 
         # RUNPATH
         if not sec["RUNPATH"]:
-            gef_print("{:<40s}: {:s}".format("RUNPATH", Color.colorify("Not Found", "bold green")))
+            gef_print("{:<40s}: {:s}".format("RUNPATH", Color.colorify("Not found", "bold green")))
         else:
             gef_print("{:<40s}: {:s}".format("RUNPATH", Color.colorify("Found", "bold red")))
 
@@ -19061,7 +19060,7 @@ class KernelChecksecCommand(GenericCommand):
             if "virt.secure-ram" in mtree_ret:
                 gef_print("{:<40s}: {:s}".format("Secure world", "Found"))
             else:
-                gef_print("{:<40s}: {:s}".format("Secure world", "Not Found"))
+                gef_print("{:<40s}: {:s}".format("Secure world", "Not found"))
 
         gef_print(titlify("Allocator"))
 
