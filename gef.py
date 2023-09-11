@@ -44476,7 +44476,13 @@ class KernelbaseCommand(GenericCommand):
                         dic["krobase"] = vaddr
                         dic["krobase_size"] = size
                         krobase_map_index = kbase_map_index + i
-                        break
+                elif dic["krobase"] + dic["krobase_size"] == vaddr:
+                    # merge contiguous region.
+                    # This is important because .rodata may be split into areas for GLOBAL and non-GLOBAL attributes
+                    dic["krobase_size"] += size
+                    krobase_map_index = kbase_map_index + i
+                else:
+                    break
 
         # 2b. search kernel RO base for old kernel
         if dic["krobase"] is None:
