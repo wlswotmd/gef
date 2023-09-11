@@ -61435,6 +61435,8 @@ class PagewalkX64Command(PagewalkCommand):
     parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
     parser.add_argument("-c", "--use-cache", action="store_true", help="use before result.")
     parser.add_argument("-U", "--user-pt", action="store_true", help="print userland pagetables (for KPTI, only x64).")
+    parser.add_argument("--cr3", type=parse_address, help="use specified value as cr3.")
+    parser.add_argument("--cr4", type=parse_address, help="use specified value as cr4.")
     parser.add_argument("--include-kasan-memory", action="store_true", help="include KASAN shadow memory.")
     _syntax_ = parser.format_help()
 
@@ -61831,8 +61833,14 @@ class PagewalkX64Command(PagewalkCommand):
     def pagewalk(self):
         # `info tlb` on qemu-monitor returns pagetable without intermediate pagetable information.
         # for printing it, we will pagewalk manually.
-        cr3 = get_register("cr3", use_monitor=True)
-        cr4 = get_register("cr4", use_monitor=True)
+        if self.user_specified_cr3 is not None:
+            cr3 = self.user_specified_cr3
+        else:
+            cr3 = get_register("cr3", use_monitor=True)
+        if self.user_specified_cr4 is not None:
+            cr4 = self.user_specified_cr4
+        else:
+            cr4 = get_register("cr4", use_monitor=True)
         if is_x86_64() and self.user_pt:
             cr3 += gef_getpagesize()
         self.quiet_info("cr3: {:#018x}".format(cr3))
@@ -61842,12 +61850,15 @@ class PagewalkX64Command(PagewalkCommand):
         va_base = 0
 
         # pagewalk base is from CR3 register
-        if is_x86_64(): # 64bit
-            pagewalk_base = (cr3 >> 12) << 12
-        elif ((cr4 >> 5) & 1) == 1: # 32bit PAE
-            pagewalk_base = (cr3 >> 5) << 5
-        else: # 32bit non-PAE
-            pagewalk_base = (cr3 >> 12) << 12
+        if self.user_specified_cr3 is not None:
+            pagewalk_base = cr3 # without mask
+        else:
+            if is_x86_64(): # 64bit
+                pagewalk_base = (cr3 >> 12) << 12
+            elif ((cr4 >> 5) & 1) == 1: # 32bit PAE
+                pagewalk_base = (cr3 >> 5) << 5
+            else: # 32bit non-PAE
+                pagewalk_base = (cr3 >> 12) << 12
 
         # we ignore PWT and PCD flags.
         flags = []
@@ -61948,6 +61959,8 @@ class PagewalkX64Command(PagewalkCommand):
         self.trace = args.trace.copy()
         self.use_cache = args.use_cache
         self.user_pt = args.user_pt # used only x64
+        self.user_specified_cr3 = args.cr3
+        self.user_specified_cr4 = args.cr4
         self.include_kasan_memory = args.include_kasan_memory
         if self.trace:
             self.vrange.extend(self.trace) # also set --vrange
