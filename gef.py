@@ -18957,16 +18957,19 @@ class KernelChecksecCommand(GenericCommand):
         # KASLR
         cfg = "CONFIG_RANDOMIZE_BASE (KASLR)"
         ksym_ret = gdb.execute("ksymaddr-remote --quiet --no-pager kaslr_", to_string=True)
-        if ksym_ret:
-            if kcmdline and "nokaslr" in kcmdline.cmdline:
-                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
-            else:
-                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
+        if ksym_ret is None:
+            additional = "`kaslr_*`: Not found"
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unsupported", "bold red"), additional))
         else:
-            gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unsupported", "bold red")))
+            if kcmdline and "nokaslr" in kcmdline.cmdline:
+                additional = "nokaslr is in cmdline"
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
+            else:
+                additional = "`kaslr_*`: Found, nokaslr is not in cmdline"
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
 
+        # FGKASLR (https://github.com/alobakin/linux/pull/3)
         if is_x86_64():
-            # FGKASLR (https://github.com/alobakin/linux/pull/3)
             cfg = "CONFIG_FG_KASLR (FGKASLR)"
             swapgs_restore_regs_and_return_to_usermode = get_ksymaddr("swapgs_restore_regs_and_return_to_usermode")
             commit_creds = get_ksymaddr("commit_creds")
@@ -18975,25 +18978,31 @@ class KernelChecksecCommand(GenericCommand):
                 # commit_creds are placed dynamically.
                 if swapgs_restore_regs_and_return_to_usermode < commit_creds: # For some reason this works fine
                     if kcmdline and "nokaslr" in kcmdline.cmdline:
-                        gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+                        additional = "nokaslr is in cmdline"
+                        gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
                     elif kcmdline and "nofgkaslr" in kcmdline.cmdline:
-                        gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+                        additional = "nofgkaslr is in cmdline"
+                        gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
                     elif kcmdline and "fgkaslr=off" in kcmdline.cmdline:
-                        gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+                        additional = "fgkaslr=off is in cmdline"
+                        gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
                     else:
-                        gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
+                        additional = "swapgs_restore_regs_and_return_to_usermode < commit_creds"
+                        gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
                     # Could not build detection logic for CONFIG_MODULE_FG_KASLR.
                     # But there is no way to disable it except at build time.
                     # It's included in the patch that introduces FGKASLR, so I'm assuming it's always enabled.
                     cfg = "CONFIG_MODULE_FG_KASLR (FGKASLR)"
-                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enabled (Maybe)", "bold green")))
+                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enabled (maybe)", "bold green")))
                 else:
-                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unsupported", "bold red")))
+                    additional = "swapgs_restore_regs_and_return_to_usermode > commit_creds"
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unsupported", "bold red"), additional))
                     cfg = "CONFIG_MODULE_FG_KASLR (FGKASLR)"
                     gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unsupported", "bold red")))
             else:
                 if commit_creds:
-                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unsupported", "bold red")))
+                    additional = "swapgs_restore_regs_and_return_to_usermode: Not found"
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unsupported", "bold red"), additional))
                     cfg = "CONFIG_MODULE_FG_KASLR (FGKASLR)"
                     gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unsupported", "bold red")))
                 else:
@@ -19005,45 +19014,57 @@ class KernelChecksecCommand(GenericCommand):
         cfg = "CONFIG_PAGE_TABLE_ISOLATION (KPTI)"
         if is_x86():
             pti_init = get_ksymaddr("pti_init")
-            if pti_init:
+            if pti_init is None:
+                additional = "pti_init: Not found"
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unsupported", "bold red"), additional))
+            else:
                 if kcmdline and "nopti" in kcmdline.cmdline:
-                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+                    additional = "nopti is in cmdline"
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
                 elif kcmdline and "pti=off" in kcmdline.cmdline:
-                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+                    additional = "pti=off is in cmdline"
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
                 elif kcmdline and "mitigations=off" in kcmdline.cmdline:
-                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+                    additional = "mitigations=off is in cmdline"
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
                 elif kcmdline and "pti=on" in kcmdline.cmdline:
-                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
+                    additional = "pti=on is in cmdline"
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
                 else:
                     # here is kernel context
                     lines = get_maps_by_pagewalk("pagewalk --quiet --no-pager --simple").splitlines()
                     for line in lines:
                         if "USER" in line and "R-X" in line:
-                            gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+                            additional = "USER memory has R-X permission in kernel context"
+                            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
                             break
                     else:
-                        gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
-            else:
-                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unsupported", "bold red")))
+                        additional = "USER memory has no R-X permission in kernel context"
+                        gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
 
         elif is_arm32():
             gef_print("{:<40s}: {:s} (ARMv7 is unsupported)".format(cfg, Color.colorify("Unsupported", "bold red")))
 
         elif is_arm64():
             pti_init = get_ksymaddr("pti_init")
-            if pti_init:
+            if pti_init is None:
+                additional = "pti_init: Not found"
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unsupported", "bold red"), additional))
+            else:
                 if kcmdline and "kpti=0" in kcmdline.cmdline:
-                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+                    additional = "kpti=0 is in cmdline"
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
                 elif kcmdline and "mitigations=off" in kcmdline.cmdline and "nokaslr" in kcmdline.cmdline:
-                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+                    additional = "mitigations=off and nokaslr are in cmdline"
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
                 elif kcmdline and "mitigations=off" in kcmdline.cmdline and "nokaslr" not in kcmdline.cmdline:
-                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
+                    additional = "mitigations=off is in cmdline, nokaslr is not in cmdline"
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
                 elif kcmdline and "kpti=1" in kcmdline.cmdline:
-                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
+                    additional = "kpti=1 is in cmdline"
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
                 else:
                     gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enabled (maybe)", "bold green")))
-            else:
-                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Unsupported", "bold red")))
 
         # RWX kernel page
         cfg = "RWX kernel page"
@@ -19353,7 +19374,10 @@ class KernelChecksecCommand(GenericCommand):
         # LKRG
         cfg = "Linux Kernel Runtime Guard (LKRG)"
         kmod_ret = gdb.execute("kmod --quiet --no-pager", to_string=True)
-        if ": lkrg " in kmod_ret:
+        if "Not found" in kmod_ret:
+            additional = "kmod is failed"
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
+        elif ": lkrg " in kmod_ret:
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), "Loaded"))
         else:
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), "Not loaded"))
@@ -19466,21 +19490,67 @@ class KernelChecksecCommand(GenericCommand):
 
         # CONFIG_STATIC_USERMODEHELPER
         cfg = "CONFIG_STATIC_USERMODEHELPER"
-        mp = KernelAddressHeuristicFinder.get_modprobe_path()
-        if mp is None:
-            additional = "modprobe_path: Not found"
+        call_usermodehelper_setup = get_ksymaddr("call_usermodehelper_setup")
+        if call_usermodehelper_setup is None:
+            additional = "call_usermodehelper_setup: Not found"
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
         else:
-            for vaddr, size, perm in kinfo.maps:
-                if vaddr <= mp < vaddr + size:
-                    additional = "modprobe_path: {:s}".format(perm)
-                    if "W" not in perm:
-                        gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
-                    else:
-                        gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
-                    break
+            res = gdb.execute("x/50i {:#x}".format(call_usermodehelper_setup), to_string=True)
+            use_static = False
+            if is_x86():
+                for line in res.splitlines():
+                    if re.search("ret$", line):
+                        break
+                    r = re.search("mov\s.*,\s*(0x[0-9a-f]+)", line)
+                    if not r:
+                        continue
+                    addr = int(r.group(1), 16)
+                    if is_valid_addr(addr) and read_memory(addr, 5) == b"/sbin":
+                        use_static = True
+            elif is_arm64():
+                bases = {}
+                for line in res.splitlines():
+                    m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
+                    if m:
+                        reg = m.group(1)
+                        base = int(m.group(2), 16)
+                        bases[reg] = base
+                        continue
+                    m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
+                    if m:
+                        srcreg = m.group(2)
+                        v = int(m.group(3), 16)
+                        if srcreg in bases:
+                            addr = bases[srcreg] + v
+                            if is_valid_addr(addr) and read_memory(addr, 5) == b"/sbin":
+                                use_static = True
+                                break
+            elif is_arm32():
+                for line in res.splitlines():
+                    bases = {}
+                    for line in res.splitlines():
+                        m = re.search(r"movw\s+(\S+),.+;\s*(0x\S+)", line)
+                        if m:
+                            reg = m.group(1)
+                            base = int(m.group(2), 16)
+                            bases[reg] = base
+                            continue
+                        m = re.search(r"movt\s+(\S+),.+;\s*(0x\S+)", line)
+                        if m:
+                            reg = m.group(1)
+                            v = int(m.group(2), 16) << 16
+                            if reg in bases:
+                                addr = bases[reg] + v
+                                if is_valid_addr(addr) and read_memory(addr, 5) == b"/sbin":
+                                    use_static = True
+                                    break
+
+            if use_static:
+                additional = "call_usermodehelper_setup uses static path"
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
             else:
-                gef_print("{:<40s}: {:s}".format(cfg, Color.grayify("Not found maps")))
+                additional = "call_usermodehelper_setup uses dynamic path"
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
 
         # CONFIG_STACKPROTECTOR
         cfg = "CONFIG_STACKPROTECTOR"
@@ -19490,7 +19560,11 @@ class KernelChecksecCommand(GenericCommand):
             additional = "offsetof(task_struct, stack_canary): {:s}".format(r.group(1))
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
         else:
-            gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+            if "stack_canary" in ktask_ret:
+                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+            else:
+                additional = "ktask is failed"
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
 
         # CONFIG_SHADOW_CALL_STACK
         if is_arm64():
@@ -44810,6 +44884,7 @@ class KernelCurrentCommand(GenericCommand):
             if r is not None:
                 self.offset_comm = int(r.group(1), 16)
             else:
+                warn("ktask is failed")
                 self.offset_comm = False
 
         if self.offset_comm is False:
