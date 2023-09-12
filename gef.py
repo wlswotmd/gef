@@ -11969,7 +11969,7 @@ class HighlightCommand(GenericCommand):
 
 @register_command
 class HighlightListCommand(GenericCommand):
-    """Show the current highlight table with matches to colors."""
+    """Display the current highlight table with matches to colors."""
     _cmdline_ = "highlight list"
     _category_ = "01-f. Debugging Support - Context Extension"
     _aliases_ = ["highlight ls"]
@@ -12404,7 +12404,7 @@ class PrintFormatCommand(GenericCommand):
 
 @register_command
 class CanaryCommand(GenericCommand):
-    """Show the canary value of the current process from auxv information."""
+    """Display the canary value of the current process from auxv information."""
     _cmdline_ = "canary"
     _category_ = "02-f. Process Information - Security"
 
@@ -12465,7 +12465,7 @@ class CanaryCommand(GenericCommand):
 
 @register_command
 class AuxvCommand(GenericCommand):
-    """Show ELF auxiliary vectors."""
+    """Display ELF auxiliary vectors."""
     _cmdline_ = "auxv"
     _category_ = "02-d. Process Information - Trivial Information"
 
@@ -12556,7 +12556,7 @@ class AuxvCommand(GenericCommand):
 
 @register_command
 class ArgvCommand(GenericCommand):
-    """Show argv."""
+    """Display argv."""
     _cmdline_ = "argv"
     _category_ = "02-d. Process Information - Trivial Information"
 
@@ -12631,7 +12631,7 @@ class ArgvCommand(GenericCommand):
 
 @register_command
 class EnvpCommand(GenericCommand):
-    """Show initial envp from __environ@ld, or modified envp from last_environ@libc."""
+    """Display initial envp from __environ@ld, or modified envp from last_environ@libc."""
     _cmdline_ = "envp"
     _category_ = "02-d. Process Information - Trivial Information"
 
@@ -12712,7 +12712,7 @@ class EnvpCommand(GenericCommand):
 
 @register_command
 class PidCommand(GenericCommand):
-    """Show the local PID or remote PID."""
+    """Display the local PID or remote PID."""
     _cmdline_ = "pid"
     _category_ = "02-d. Process Information - Trivial Information"
     _aliases_ = ["getpid"]
@@ -12745,7 +12745,7 @@ class PidCommand(GenericCommand):
 
 @register_command
 class FilenameCommand(GenericCommand):
-    """Show current debugged filename."""
+    """Display current debugged filename."""
     _cmdline_ = "filename"
     _category_ = "02-d. Process Information - Trivial Information"
     _aliases_ = ["getfile"]
@@ -13231,7 +13231,7 @@ class ProcDumpCommand(GenericCommand):
 
 @register_command
 class CapabilityCommand(GenericCommand):
-    """Show the capabilities of the debugging process."""
+    """Display the capabilities of the debugging process."""
     _cmdline_ = "capability"
     _category_ = "02-f. Process Information - Security"
 
@@ -17870,7 +17870,7 @@ class ProcessSearchCommand(GenericCommand):
 
 @register_command
 class ArchInfoCommand(GenericCommand):
-    """Show current architecture information."""
+    """Display current architecture information."""
     _cmdline_ = "arch-info"
     _category_ = "02-a. Process Information - General"
 
@@ -23294,7 +23294,7 @@ class HexdumpFlexibleCommand(GenericCommand):
                 if 0 < repeat:
                     out.extend([r] * repeat)
                 else:
-                    out.extend(["-" + r] * repeat)
+                    out.extend(["-" + r] * -repeat)
                 repeat = 1
         return out
 
@@ -24078,7 +24078,7 @@ class PatchSyscallCommand(PatchCommand):
 
 @register_command
 class PatchHistoryCommand(PatchCommand):
-    """Show patch history."""
+    """Display the patch history."""
     _cmdline_ = "patch history"
     _category_ = "03-c. Memory - Patch"
     _aliases_ = ["patch list"]
@@ -24814,7 +24814,7 @@ class VMMapCommand(GenericCommand):
 
 @register_command
 class XFilesCommand(GenericCommand):
-    """Show all libraries (and sections) loaded by binary."""
+    """Display all libraries (and sections) loaded by binary."""
     _cmdline_ = "xfiles"
     _category_ = "02-c. Process Information - Memory/Section"
 
@@ -39582,7 +39582,7 @@ def get_section_base_address_by_list(names):
 
 @register_command
 class CodebaseCommand(GenericCommand):
-    """Show code base address."""
+    """Display code base address."""
     _cmdline_ = "codebase"
     _category_ = "02-b. Process Information - Base Address"
 
@@ -39615,7 +39615,7 @@ class CodebaseCommand(GenericCommand):
 
 @register_command
 class HeapbaseCommand(GenericCommand):
-    """Show heap base address."""
+    """Display heap base address."""
     _cmdline_ = "heapbase"
     _category_ = "02-b. Process Information - Base Address"
 
@@ -39677,7 +39677,7 @@ class HeapbaseCommand(GenericCommand):
 
 @register_command
 class LibcCommand(GenericCommand):
-    """Show `libc.so` base address."""
+    """Display libc base address."""
     _cmdline_ = "libc"
     _category_ = "02-b. Process Information - Base Address"
 
@@ -39747,7 +39747,7 @@ class LibcCommand(GenericCommand):
 
 @register_command
 class LdCommand(GenericCommand):
-    """Show `ld.so` base address."""
+    """Display ld base address."""
     _cmdline_ = "ld"
     _category_ = "02-b. Process Information - Base Address"
 
@@ -39816,7 +39816,7 @@ class LdCommand(GenericCommand):
 
 @register_command
 class MagicCommand(GenericCommand):
-    """Show useful addresses / offsets."""
+    """Display useful userland addresses / offsets."""
     _cmdline_ = "magic"
     _category_ = "02-g. Process Information - Symbol"
 
@@ -40013,7 +40013,7 @@ class MagicCommand(GenericCommand):
 
 @register_command
 class KernelMagicCommand(GenericCommand):
-    """Show Magic addresses / offsets."""
+    """Display useful kernel addresses / offsets."""
     _cmdline_ = "kmagic"
     _category_ = "08-b. Qemu-system Cooperation - Linux Basic"
 
@@ -40387,7 +40387,7 @@ class MmxSetCommand(GenericCommand):
 
 @register_command
 class MmxCommand(GenericCommand):
-    """Show MMX registers."""
+    """Display MMX registers."""
     _cmdline_ = "mmx"
     _category_ = "04-a. Register - View"
 
@@ -40481,7 +40481,7 @@ class XmmSetCommand(GenericCommand):
 
 @register_command
 class SseCommand(GenericCommand):
-    """Show SSE registers."""
+    """Display SSE registers."""
     _cmdline_ = "sse"
     _category_ = "04-a. Register - View"
     _aliases_ = ["xmm"]
@@ -40559,7 +40559,7 @@ class SseCommand(GenericCommand):
 
 @register_command
 class AvxCommand(GenericCommand):
-    """Show AVX registers."""
+    """Display AVX registers."""
     _cmdline_ = "avx"
     _category_ = "04-a. Register - View"
     _aliases_ = ["ymm"]
@@ -40607,7 +40607,7 @@ class AvxCommand(GenericCommand):
 
 @register_command
 class FpuCommand(GenericCommand):
-    """Show fpu registers (x86/x64:x87-fpu, ARM/ARM64:vfp-d16)."""
+    """Display fpu registers (x86/x64:x87-fpu, ARM/ARM64:vfp-d16)."""
     _cmdline_ = "fpu"
     _category_ = "04-a. Register - View"
 
@@ -44383,7 +44383,7 @@ class KernelAddressHeuristicFinder:
 
 @register_command
 class KernelbaseCommand(GenericCommand):
-    """Show kernel base address."""
+    """Display kernel base address."""
     _cmdline_ = "kbase"
     _category_ = "08-b. Qemu-system Cooperation - Linux Basic"
 
@@ -44946,7 +44946,7 @@ class KernelCurrentCommand(GenericCommand):
 
 @register_command
 class KernelTaskCommand(GenericCommand):
-    """Display process list."""
+    """Display process list using kernel memory scanning."""
     _cmdline_ = "ktask"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -44967,6 +44967,10 @@ class KernelTaskCommand(GenericCommand):
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
+
+    _example_ = "{:s} -q\n".format(_cmdline_)
+    _example_ += "\n"
+    _example_ += "NOTE: This command needs CONFIG_RANDSTRUCT=n."
 
     def __init__(self):
         super().__init__()
@@ -46051,7 +46055,7 @@ class KernelTaskCommand(GenericCommand):
 
 @register_command
 class KernelModuleCommand(GenericCommand):
-    """Display module list."""
+    """Display module list using kernel memory scanning."""
     _cmdline_ = "kmod"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -46062,6 +46066,10 @@ class KernelModuleCommand(GenericCommand):
     parser.add_argument("-f", "--filter", action="append", type=re.compile, default=[], help="REGEXP filter.")
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
+
+    _example_ = "{:s} -q\n".format(_cmdline_)
+    _example_ += "\n"
+    _example_ += "NOTE: This command needs CONFIG_RANDSTRUCT=n."
 
     def get_modules_list(self):
         modules = KernelAddressHeuristicFinder.get_modules()
@@ -46217,7 +46225,7 @@ class KernelModuleCommand(GenericCommand):
 
     def get_offset_layout(self, module_addrs):
         """
-        struct module { // kernel v4.5-rc1 ~
+        struct module { // kernel v4.5-rc1~
             enum module_state state;
             struct list_head list;
             char name[MODULE_NAME_LEN]; // 64 - sizeof(unsigned long) bytes
@@ -46395,7 +46403,7 @@ class KernelModuleCommand(GenericCommand):
             void *module_core;
             /* Here are the sizes of the init and core sections */
             unsigned int init_size, core_size;
-            /* The size of the executable code in each section.  */
+            /* The size of the executable code in each section. */
             unsigned int init_text_size, core_text_size;
         #ifdef CONFIG_MODULES_TREE_LOOKUP
             struct mod_tree_node mtn_core;
@@ -46643,6 +46651,13 @@ class KernelBlockDevicesCommand(GenericCommand):
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
+
+    _example_ = "{:s} -q\n".format(_cmdline_)
+    _example_ += "\n"
+    _example_ += "NOTE: This command needs CONFIG_RANDSTRUCT=n.\n"
+    _example_ += "NOTE: If there are too many block devices, detection will not be successful.\n"
+    _example_ += "This is because block devices are not managed in one place, \n"
+    _example_ += "so I use the list of bdev_cache obtained from the slub-dump results."
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
@@ -47015,6 +47030,10 @@ class KernelCharacterDevicesCommand(GenericCommand):
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
+
+    _example_ = "{:s} -q\n".format(_cmdline_)
+    _example_ += "\n"
+    _example_ += "NOTE: This command needs CONFIG_RANDSTRUCT=n."
 
     # character device is managed at chrdevs[] and cdev_map.
     # we use each of them for getting structure information.
@@ -48147,6 +48166,10 @@ class KernelOperationsCommand(GenericCommand):
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
+    _example_ = "{:s} -q\n".format(_cmdline_)
+    _example_ += "\n"
+    _example_ += "NOTE: This command needs CONFIG_RANDSTRUCT=n."
+
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         self.initialized = False
@@ -48588,6 +48611,10 @@ class KernelParamSysctlCommand(GenericCommand):
     parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose mode.")
     parser.add_argument("--exact", action="store_true", help="use exact match.")
     _syntax_ = parser.format_help()
+
+    _example_ = "{:s} -q\n".format(_cmdline_)
+    _example_ += "\n"
+    _example_ += "NOTE: This command needs CONFIG_RANDSTRUCT=n."
 
     def __init__(self):
         super().__init__()
@@ -49922,7 +49949,7 @@ class ExecSyscall(ExecAsm):
 
 @register_command
 class TlsCommand(GenericCommand):
-    """Show TLS base address."""
+    """Display TLS base address."""
     _cmdline_ = "tls"
     _category_ = "02-b. Process Information - Base Address"
 
@@ -49959,7 +49986,7 @@ class TlsCommand(GenericCommand):
 
 @register_command
 class FsbaseCommand(GenericCommand):
-    """Show fsbase address."""
+    """Display fsbase address."""
     _cmdline_ = "fsbase"
     _category_ = "02-b. Process Information - Base Address"
 
@@ -49977,7 +50004,7 @@ class FsbaseCommand(GenericCommand):
 
 @register_command
 class GsbaseCommand(GenericCommand):
-    """Show gsbase address."""
+    """Display gsbase address."""
     _cmdline_ = "gsbase"
     _category_ = "02-b. Process Information - Base Address"
 
@@ -66364,7 +66391,8 @@ class KmallocTracerCommand(GenericCommand):
     _example_ += "{:s} -dtv    # useful output\n".format(_cmdline_)
     _example_ += "\n"
     _example_ += "NOTE: Disable `-enable-kvm` option for qemu-system. (#PF may occur)\n"
-    _example_ += "NOTE: Append `tsc=unstable` option for kernel cmdline."
+    _example_ += "NOTE: Append `tsc=unstable` option for kernel cmdline.\n"
+    _example_ += "NOTE: This command needs CONFIG_RANDSTRUCT=n."
 
     def __init__(self, *args, **kwargs):
         super().__init__()
@@ -66699,7 +66727,8 @@ class KmallocAllocatedByCommand(GenericCommand):
     _example_ += "{:s} -dtv    # useful output\n".format(_cmdline_)
     _example_ += "\n"
     _example_ += "NOTE: Disable `-enable-kvm` option for qemu-system. (#PF may occur)\n"
-    _example_ += "NOTE: Append `tsc=unstable` option for kernel cmdline."
+    _example_ += "NOTE: Append `tsc=unstable` option for kernel cmdline.\n"
+    _example_ += "NOTE: This command needs CONFIG_RANDSTRUCT=n."
 
     def __init__(self, *args, **kwargs):
         super().__init__()
@@ -68922,7 +68951,7 @@ class PeekPointersCommand(GenericCommand):
 
 @register_command
 class StackFrameCommand(GenericCommand):
-    """Show the entire stack of the current frame."""
+    """Display the entire stack of the current frame."""
     _cmdline_ = "stack-frame"
     _category_ = "02-d. Process Information - Trivial Information"
 
@@ -69436,7 +69465,7 @@ class GefCommand(GenericCommand):
 
 @register_command
 class GefHelpCommand(GenericCommand):
-    """Show GEF command list."""
+    """Display GEF command list."""
     _cmdline_ = "gef help"
     _category_ = "99. GEF Maintenance Command"
 
@@ -69489,7 +69518,7 @@ class GefHelpCommand(GenericCommand):
 
 @register_command
 class GefConfigCommand(GenericCommand):
-    """Show or change GEF configuration."""
+    """Display or change GEF configuration."""
     _cmdline_ = "gef config"
     _category_ = "99. GEF Maintenance Command"
 
@@ -69775,7 +69804,7 @@ class GefReloadCommand(GenericCommand):
 
 @register_command
 class GefArchListCommand(GenericCommand):
-    """Show defined architecture information."""
+    """Display defined architecture information."""
     _cmdline_ = "gef arch-list"
     _category_ = "99. GEF Maintenance Command"
 
@@ -69848,7 +69877,7 @@ class GefArchListCommand(GenericCommand):
 
 @register_command
 class GefRaiseExceptionCommand(GenericCommand):
-    """Show defined architecture information."""
+    """Raise an exception for development."""
     _cmdline_ = "gef raise-exception"
     _category_ = "99. GEF Maintenance Command"
 
