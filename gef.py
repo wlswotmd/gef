@@ -10462,7 +10462,8 @@ def hook_stop_handler(_event):
 def new_objfile_handler(_event):
     """GDB event handler for new object file cases."""
     reset_gef_caches(all=True)
-    set_arch()
+    if current_arch is None:
+        set_arch(get_arch())
     load_libc_args()
     return
 
