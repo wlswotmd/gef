@@ -27225,7 +27225,8 @@ class SyscallSearchCommand(GenericCommand):
     _example_ += '{:s} -a XTENSA           "^writev?" # xtensa\n'.format(_cmdline_)
     _example_ += '{:s} -a CRIS             "^writev?" # cris\n'.format(_cmdline_)
     _example_ += '{:s} -a LOONGARCH -m 64  "^writev?" # loongarch64\n'.format(_cmdline_)
-    _example_ += '{:s} -a ARC -m 32        "^writev?" # arc32'.format(_cmdline_)
+    _example_ += '{:s} -a ARC -m 32        "^writev?" # arc32\n'.format(_cmdline_)
+    _example_ += '{:s} -a ARC -m 64        "^writev?" # arc64'.format(_cmdline_)
 
     def make_output(self, syscall_table, syscall_num, syscall_name_pattern):
         self.out.append(titlify("arch={:s}, mode={:s}".format(syscall_table.arch, syscall_table.mode)))
@@ -27279,10 +27280,10 @@ class SyscallSearchCommand(GenericCommand):
         return
 
 
-# System call table (linux-6.0.10)
+# System call table (linux-6.5.3)
 
 # [How to make]
-# clang-format-14 --style='{BasedOnStyle: Google, ColumnLimit: 1000}' FILENAME | grep ^asmlinkage
+# clang-format-15 --style='{BasedOnStyle: Google, ColumnLimit: 1000}' FILENAME | grep ^asmlinkage
 #   `!` at the beginning of the line: manually fixed the argument information
 #   `#` at the beginning of the line: excluded for reasons such as duplication
 
@@ -27627,6 +27628,7 @@ asmlinkage long sys_landlock_add_rule(int ruleset_fd, enum landlock_rule_type ru
 asmlinkage long sys_landlock_restrict_self(int ruleset_fd, __u32 flags);
 asmlinkage long sys_memfd_secret(unsigned int flags);
 asmlinkage long sys_set_mempolicy_home_node(unsigned long start, unsigned long len, unsigned long home_node, unsigned long flags);
+asmlinkage long sys_cachestat(unsigned int fd, struct cachestat_range __user *cstat_range, struct cachestat __user *cstat, unsigned int flags);
 asmlinkage long sys_ioperm(unsigned long from, unsigned long num, int on);
 asmlinkage long sys_pciconfig_read(unsigned long bus, unsigned long dfn, unsigned long off, unsigned long len, void __user *buf);
 asmlinkage long sys_pciconfig_write(unsigned long bus, unsigned long dfn, unsigned long off, unsigned long len, void __user *buf);
@@ -27728,6 +27730,7 @@ asmlinkage long sys_ipc(unsigned int call, int first, unsigned long second, unsi
 asmlinkage long sys_mmap_pgoff(unsigned long addr, unsigned long len, unsigned long prot, unsigned long flags, unsigned long fd, unsigned long pgoff);
 asmlinkage long sys_old_mmap(struct mmap_arg_struct __user *arg);
 #asmlinkage long sys_ni_syscall(void);
+asmlinkage long sys_ni_posix_timers(void);
 """
 
 # include/linux/compat.h
@@ -28244,6 +28247,7 @@ x64_syscall_tbl = """
 448     common  process_mrelease        sys_process_mrelease
 449     common  futex_waitv             sys_futex_waitv
 450     common  set_mempolicy_home_node sys_set_mempolicy_home_node
+451     common  cachestat               sys_cachestat
 
 #
 # Due to a historical design error, certain syscalls are numbered differently
@@ -28752,6 +28756,7 @@ x86_syscall_tbl = """
 448     i386    process_mrelease        sys_process_mrelease
 449     i386    futex_waitv             sys_futex_waitv
 450     i386    set_mempolicy_home_node         sys_set_mempolicy_home_node
+451     i386    cachestat               sys_cachestat
 """
 
 
@@ -29071,6 +29076,7 @@ arm64_syscall_tbl = """
 448  arm64  process_mrelease         sys_process_mrelease
 449  arm64  futex_waitv              sys_futex_waitv
 450  arm64  set_mempolicy_home_node  sys_set_mempolicy_home_node
+451  arm64  cachestat                sys_cachestat
 """
 
 
@@ -29486,6 +29492,7 @@ arm_compat_syscall_tbl = """
 448  arm  process_mrelease              sys_process_mrelease
 449  arm  futex_waitv                   sys_futex_waitv
 450  arm  set_mempolicy_home_node       sys_set_mempolicy_home_node
+451  arm  cachestat                     sys_cachestat
 """
 
 # ARM (native)
@@ -29957,6 +29964,7 @@ arm_native_syscall_tbl = """
 448     common  process_mrelease                sys_process_mrelease
 449     common  futex_waitv                     sys_futex_waitv
 450     common  set_mempolicy_home_node         sys_set_mempolicy_home_node
+451     common  cachestat                       sys_cachestat
 """
 
 
@@ -30401,6 +30409,7 @@ mips_o32_syscall_tbl = """
 448     o32     process_mrelease                sys_process_mrelease
 449     o32     futex_waitv                     sys_futex_waitv
 450     o32     set_mempolicy_home_node         sys_set_mempolicy_home_node
+451     o32     cachestat                       sys_cachestat
 """
 
 
@@ -30796,6 +30805,7 @@ mips_n32_syscall_tbl = """
 448     n32     process_mrelease                sys_process_mrelease
 449     n32     futex_waitv                     sys_futex_waitv
 450     n32     set_mempolicy_home_node         sys_set_mempolicy_home_node
+451     n32     cachestat                       sys_cachestat
 """
 
 
@@ -31167,6 +31177,7 @@ mips_n64_syscall_tbl = """
 448     n64     process_mrelease                sys_process_mrelease
 449     n64     futex_waitv                     sys_futex_waitv
 450     common  set_mempolicy_home_node         sys_set_mempolicy_home_node
+451     n64     cachestat                       sys_cachestat
 """
 
 
@@ -31283,7 +31294,7 @@ ppc_syscall_tbl = """
 79      common  settimeofday                    sys_settimeofday                compat_sys_settimeofday
 80      common  getgroups                       sys_getgroups
 81      common  setgroups                       sys_setgroups
-82      32      select                          ppc_select                      sys_ni_syscall
+82      32      select                          sys_old_select                  compat_sys_old_select
 82      64      select                          sys_ni_syscall
 82      spu     select                          sys_ni_syscall
 83      common  symlink                         sys_symlink
@@ -31351,9 +31362,9 @@ ppc_syscall_tbl = """
 133     common  fchdir                          sys_fchdir
 134     common  bdflush                         sys_ni_syscall
 135     common  sysfs                           sys_sysfs
-136     32      personality                     sys_personality                 ppc64_personality
-136     64      personality                     ppc64_personality
-136     spu     personality                     ppc64_personality
+136     32      personality                     sys_personality                 compat_sys_ppc64_personality
+136     64      personality                     sys_ppc64_personality
+136     spu     personality                     sys_ppc64_personality
 137     common  afs_syscall                     sys_ni_syscall
 138     common  setfsuid                        sys_setfsuid
 139     common  setfsgid                        sys_setfsgid
@@ -31401,8 +31412,10 @@ ppc_syscall_tbl = """
 176     64      rt_sigtimedwait                 sys_rt_sigtimedwait
 177     nospu   rt_sigqueueinfo                 sys_rt_sigqueueinfo             compat_sys_rt_sigqueueinfo
 178     nospu   rt_sigsuspend                   sys_rt_sigsuspend               compat_sys_rt_sigsuspend
-179     common  pread64                         sys_pread64                     compat_sys_pread64
-180     common  pwrite64                        sys_pwrite64                    compat_sys_pwrite64
+179     32      pread64                         sys_ppc_pread64                 compat_sys_ppc_pread64
+179     64      pread64                         sys_pread64
+180     32      pwrite64                        sys_ppc_pwrite64                compat_sys_ppc_pwrite64
+180     64      pwrite64                        sys_pwrite64
 181     common  chown                           sys_chown
 182     common  getcwd                          sys_getcwd
 183     common  capget                          sys_capget
@@ -31415,10 +31428,11 @@ ppc_syscall_tbl = """
 188     common  putpmsg                         sys_ni_syscall
 189     nospu   vfork                           sys_vfork
 190     common  ugetrlimit                      sys_getrlimit                   compat_sys_getrlimit
-191     common  readahead                       sys_readahead                   compat_sys_readahead
+191     32      readahead                       sys_ppc_readahead               compat_sys_ppc_readahead
+191     64      readahead                       sys_readahead
 192     32      mmap2                           sys_mmap2                       compat_sys_mmap2
-193     32      truncate64                      sys_truncate64                  compat_sys_truncate64
-194     32      ftruncate64                     sys_ftruncate64                 compat_sys_ftruncate64
+193     32      truncate64                      sys_ppc_truncate64              compat_sys_ppc_truncate64
+194     32      ftruncate64                     sys_ppc_ftruncate64             compat_sys_ppc_ftruncate64
 195     32      stat64                          sys_stat64
 196     32      lstat64                         sys_lstat64
 197     32      fstat64                         sys_fstat64
@@ -31461,7 +31475,8 @@ ppc_syscall_tbl = """
 230     common  io_submit                       sys_io_submit                   compat_sys_io_submit
 231     common  io_cancel                       sys_io_cancel
 232     nospu   set_tid_address                 sys_set_tid_address
-233     common  fadvise64                       sys_fadvise64                   ppc32_fadvise64
+233     32      fadvise64                       sys_ppc32_fadvise64             compat_sys_ppc32_fadvise64
+233     64      fadvise64                       sys_fadvise64
 234     nospu   exit_group                      sys_exit_group
 235     nospu   lookup_dcookie                  sys_lookup_dcookie              compat_sys_lookup_dcookie
 236     common  epoll_create                    sys_epoll_create
@@ -31496,7 +31511,7 @@ ppc_syscall_tbl = """
 251     spu     utimes                          sys_utimes
 252     common  statfs64                        sys_statfs64                    compat_sys_statfs64
 253     common  fstatfs64                       sys_fstatfs64                   compat_sys_fstatfs64
-254     32      fadvise64_64                    ppc_fadvise64_64
+254     32      fadvise64_64                    sys_ppc_fadvise64_64
 254     spu     fadvise64_64                    sys_ni_syscall
 255     common  rtas                            sys_rtas
 256     32      sys_debug_setcontext            sys_debug_setcontext            sys_ni_syscall
@@ -31563,8 +31578,11 @@ ppc_syscall_tbl = """
 305     common  signalfd                        sys_signalfd                    compat_sys_signalfd
 306     common  timerfd_create                  sys_timerfd_create
 307     common  eventfd                         sys_eventfd
-308     common  sync_file_range2                sys_sync_file_range2            compat_sys_sync_file_range2
-309     nospu   fallocate                       sys_fallocate                   compat_sys_fallocate
+308     32      sync_file_range2                sys_ppc_sync_file_range2        compat_sys_ppc_sync_file_range2
+308     64      sync_file_range2                sys_sync_file_range2
+308     spu     sync_file_range2                sys_sync_file_range2
+309     32      fallocate                       sys_ppc_fallocate               compat_sys_fallocate
+309     64      fallocate                       sys_fallocate
 310     nospu   subpage_prot                    sys_subpage_prot
 311     32      timerfd_settime                 sys_timerfd_settime32
 311     64      timerfd_settime                 sys_timerfd_settime
@@ -31703,6 +31721,7 @@ ppc_syscall_tbl = """
 448     common  process_mrelease                sys_process_mrelease
 449     common  futex_waitv                     sys_futex_waitv
 450     nospu   set_mempolicy_home_node         sys_set_mempolicy_home_node
+451     common  cachestat                       sys_cachestat
 """
 
 
@@ -32205,6 +32224,7 @@ sparc_syscall_tbl = """
 448     common  process_mrelease                sys_process_mrelease
 449     common  futex_waitv                     sys_futex_waitv
 450     common  set_mempolicy_home_node         sys_set_mempolicy_home_node
+451     common  cachestat                       sys_cachestat
 """
 
 
@@ -32522,6 +32542,7 @@ riscv64_syscall_tbl = """
 448  riscv64  process_mrelease         sys_process_mrelease
 449  riscv64  futex_waitv              sys_futex_waitv
 450  riscv64  set_mempolicy_home_node  sys_set_mempolicy_home_node
+451  riscv64  cachestat                sys_cachestat
 """
 
 
@@ -32833,6 +32854,7 @@ riscv32_syscall_tbl = """
 448  riscv32  process_mrelease              sys_process_mrelease
 449  riscv32  futex_waitv                   sys_futex_waitv
 450  riscv32  set_mempolicy_home_node       sys_set_mempolicy_home_node
+451  riscv32  cachestat                     sys_cachestat
 """
 
 
@@ -33288,10 +33310,11 @@ s390x_syscall_tbl = """
 444  common     landlock_create_ruleset sys_landlock_create_ruleset     sys_landlock_create_ruleset
 445  common     landlock_add_rule       sys_landlock_add_rule           sys_landlock_add_rule
 446  common     landlock_restrict_self  sys_landlock_restrict_self      sys_landlock_restrict_self
-# 447 reserved for memfd_secret
+447  common     memfd_secret            sys_memfd_secret                sys_memfd_secret
 448  common     process_mrelease        sys_process_mrelease            sys_process_mrelease
 449  common     futex_waitv             sys_futex_waitv                 sys_futex_waitv
 450  common     set_mempolicy_home_node sys_set_mempolicy_home_node     sys_set_mempolicy_home_node
+451  common     cachestat               sys_cachestat                   sys_cachestat
 """
 
 
@@ -33751,11 +33774,12 @@ sh4_syscall_tbl = """
 448     common  process_mrelease                sys_process_mrelease
 449     common  futex_waitv                     sys_futex_waitv
 450     common  set_mempolicy_home_node         sys_set_mempolicy_home_node
+451     common  cachestat                       sys_cachestat
 """
 
 
 # m68k
-# - arch/m68k/kernel/syscall/syscall.tbl
+# - arch/m68k/kernel/syscalls/syscall.tbl
 m68k_syscall_tbl = """
 # system call numbers and entry vectors for m68k
 #
@@ -34207,6 +34231,7 @@ m68k_syscall_tbl = """
 448     common  process_mrelease                sys_process_mrelease
 449     common  futex_waitv                     sys_futex_waitv
 450     common  set_mempolicy_home_node         sys_set_mempolicy_home_node
+451     common  cachestat                       sys_cachestat
 """
 
 
@@ -34338,8 +34363,8 @@ alpha_syscall_tbl = """
 116     common  osf_gettimeofday                sys_osf_gettimeofday
 117     common  osf_getrusage                   sys_osf_getrusage
 118     common  getsockopt                      sys_getsockopt
-120     common  readv                           sys_osf_readv
-121     common  writev                          sys_osf_writev
+120     common  readv                           sys_readv
+121     common  writev                          sys_writev
 122     common  osf_settimeofday                sys_osf_settimeofday
 123     common  fchown                          sys_fchown
 124     common  fchmod                          sys_fchmod
@@ -34703,6 +34728,7 @@ alpha_syscall_tbl = """
 558     common  process_mrelease                sys_process_mrelease
 559     common  futex_waitv                     sys_futex_waitv
 560     common  set_mempolicy_home_node         sys_ni_syscall
+561     common  cachestat                       sys_cachestat
 """
 
 
@@ -34840,7 +34866,7 @@ hppa_syscall_tbl = """
 116     common  sysinfo                 sys_sysinfo                     compat_sys_sysinfo
 117     common  shutdown                sys_shutdown
 118     common  fsync                   sys_fsync
-119     common  madvise                 sys_madvise
+119     common  madvise                 parisc_madvise
 120     common  clone                   sys_clone_wrapper
 121     common  setdomainname           sys_setdomainname
 122     common  sendfile                sys_sendfile                    compat_sys_sendfile
@@ -35109,6 +35135,7 @@ hppa_syscall_tbl = """
 353     common  pkey_free               sys_pkey_free
 354     common  rseq                    sys_rseq
 355     common  kexec_file_load         sys_kexec_file_load             sys_kexec_file_load
+356     common  cacheflush              sys_cacheflush
 # up to 402 is unassigned and reserved for arch specific syscalls
 403     32      clock_gettime64                 sys_clock_gettime               sys_clock_gettime
 404     32      clock_settime64                 sys_clock_settime               sys_clock_settime
@@ -35157,6 +35184,7 @@ hppa_syscall_tbl = """
 448     common  process_mrelease                sys_process_mrelease
 449     common  futex_waitv                     sys_futex_waitv
 450     common  set_mempolicy_home_node         sys_set_mempolicy_home_node
+451     common  cachestat                       sys_cachestat
 """
 
 
@@ -35475,6 +35503,7 @@ or1k_syscall_tbl = """
 448  or1k  process_mrelease         sys_process_mrelease
 449  or1k  futex_waitv              sys_futex_waitv
 450  or1k  set_mempolicy_home_node  sys_set_mempolicy_home_node
+451  or1k  cachestat                sys_cachestat
 """
 
 
@@ -35792,6 +35821,7 @@ nios2_syscall_tbl = """
 448  nios2  process_mrelease         sys_process_mrelease
 449  nios2  futex_waitv              sys_futex_waitv
 450  nios2  set_mempolicy_home_node  sys_set_mempolicy_home_node
+451  nios2  cachestat                sys_cachestat
 """
 
 
@@ -36254,6 +36284,7 @@ microblaze_syscall_tbl = """
 448     common  process_mrelease                sys_process_mrelease
 449     common  futex_waitv                     sys_futex_waitv
 450     common  set_mempolicy_home_node         sys_set_mempolicy_home_node
+451     common  cachestat                       sys_cachestat
 """
 
 
@@ -36681,6 +36712,7 @@ xtensa_syscall_tbl = """
 448     common  process_mrelease                sys_process_mrelease
 449     common  futex_waitv                     sys_futex_waitv
 450     common  set_mempolicy_home_node         sys_set_mempolicy_home_node
+451     common  cachestat                       sys_cachestat
 """
 
 
@@ -37362,6 +37394,7 @@ loongarch_syscall_tbl = """
 448  loongarch  process_mrelease         sys_process_mrelease
 449  loongarch  futex_waitv              sys_futex_waitv
 450  loongarch  set_mempolicy_home_node  sys_set_mempolicy_home_node
+451  loongarch  cachestat                sys_cachestat
 """
 
 
@@ -37679,6 +37712,7 @@ arc_syscall_tbl = """
 448  arc  process_mrelease         sys_process_mrelease
 449  arc  futex_waitv              sys_futex_waitv
 450  arc  set_mempolicy_home_node  sys_set_mempolicy_home_node
+451  arc  cachestat                sys_cachestat
 """
 
 
@@ -38385,10 +38419,6 @@ def get_syscall_table(arch=None, mode=None):
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(ppc_syscall_tbl)
         arch_specific_dic = {
-            "ppc_select": [
-                "int n", "fd_set __user *inp", "fd_set __user *outp", "fd_set __user *exp",
-                "struct __kernel_old_timeval __user *tvp",
-            ], # arch/poerpc/kernel/syscalls.c
             "sys_sigreturn": [], # arch/powerpc/kernel/signal_32.c
             "sys_rt_sigreturn": [], # arch/powerpc/kernel/signal_32.c
             "sys_mmap": [
@@ -38418,6 +38448,33 @@ def get_syscall_table(arch=None, mode=None):
             "sys_subpage_prot": [
                 "unsigned long addr", "unsigned long len", "u32 __user *map",
             ], # arch/powerpc/mm/book3s64/subpage_prot.c
+            "sys_ppc_pread64": [
+                "unsigned int fd", "char __user *ubuf", "compat_size_t count", "u32 reg6", "u32 pos1", "u32 pos2",
+            ], # arch/powerpc/kernel/sys_ppc32.c
+            "sys_ppc_pwrite64": [
+                "unsigned int fd", "const char __user *ubuf", "compat_size_t count", "u32 reg6", "u32 pos1", "u32 pos2",
+            ], # arch/powerpc/kernel/sys_ppc32.c
+            "sys_ppc_readahead": [
+                "int fd", "u32 r4", "u32 offset1", "u32 offset2", "u32 count",
+            ], # arch/powerpc/kernel/sys_ppc32.c
+            "sys_ppc_truncate64": [
+                "const char __user *path", "u32 reg4", "unsigned long len1", "unsigned long len2",
+            ], # arch/powerpc/kernel/sys_ppc32.c
+            "sys_ppc_ftruncate64": [
+                "unsigned int fd", "u32 reg4", "unsigned long len1", "unsigned long len2",
+            ], # arch/powerpc/kernel/sys_ppc32.c
+            "sys_ppc32_fadvise64": [
+                "int fd", "u32 unused", "u32 offset1", "u32 offset2", "size_t len", "int advice",
+            ], # arch/powerpc/kernel/sys_ppc32.c
+            "sys_ppc_fadvise64_64": [
+                "int fd", "int advice", "u32 offset_high", "u32 offset_low", "u32 len_high", "u32 len_low",
+            ], # arch/powerpc/kernel/syscalls.c
+            "sys_ppc_sync_file_range2": [
+                "int fd", "unsigned int flags", "unsigned int offset1", "unsigned int offset2", "unsigned int nbytes1", "unsigned int nbytes2",
+            ], # arch/powerpc/kernel/sys_ppc32.c
+            "sys_ppc_fallocate": [
+                "int fd", "int mode", "u32 offset1", "u32 offset2", "u32 len1", "u32 len2",
+            ], # arch/powerpc/kernel/sys_ppc32.c
         }
 
         syscall_list = []
@@ -38455,7 +38512,7 @@ def get_syscall_table(arch=None, mode=None):
                 "unsigned long addr", "size_t len", "unsigned long prot",
                 "unsigned long flags", "unsigned long fd", "unsigned long pgoff",
             ], # arch/powerpc/kernel/syscalls.c
-            "ppc64_personality": [
+            "sys_ppc64_personality": [
                 "unsigned long personality",
             ], # arch/powerpc/kernel/syscalls.c
             "sys_swapcontext": [
@@ -38910,12 +38967,6 @@ def get_syscall_table(arch=None, mode=None):
             "sys_osf_getrusage": [
                 "int who", "struct rusage32 __user *ru",
             ], # arch/alpha/kernel/osf_sys.c
-            "sys_osf_readv": [
-                " unsigned long fd", "const struct iovec __user *vector", "unsigned long count",
-            ], # arch/alpha/kernel/osf_sys.c
-            "sys_osf_writev": [
-                " unsigned long fd", "const struct iovec __user *vector", "unsigned long count",
-            ], # arch/alpha/kernel/osf_sys.c
             "sys_osf_settimeofday": [
                 "struct timeval32 __user *tv", "struct timezone __user *tz",
             ], # arch/alpha/kernel/osf_sys.c
@@ -39079,6 +39130,12 @@ def get_syscall_table(arch=None, mode=None):
             "sys_clone3_wrapper": [
                 "struct clone_args __user *uargs", "size_t size",
             ], # arch/parisc/kernel/entry.S (fork_like macro)
+            "parisc_madvise": [
+                "unsigned long start", "size_t len_in", "int behavior",
+            ], # arch/parisc/kernel/sys_parisc.c
+            "sys_cacheflush": [
+                "unsigned long addr", "unsigned long bytes", "unsigned int cache",
+            ], # arch/parisc/kernel/cache.c
         }
 
         syscall_list = []
@@ -39139,6 +39196,12 @@ def get_syscall_table(arch=None, mode=None):
             "sys_clone3_wrapper": [
                 "struct clone_args __user *uargs", "size_t size",
             ], # arch/parisc/kernel/entry.S (fork_like macro)
+            "parisc_madvise": [
+                "unsigned long start", "size_t len_in", "int behavior",
+            ], # arch/parisc/kernel/sys_parisc.c
+            "sys_cacheflush": [
+                "unsigned long addr", "unsigned long bytes", "unsigned int cache",
+            ], # arch/parisc/kernel/cache.c
         }
         syscall_list = []
         for entry in tbl:
@@ -39368,7 +39431,7 @@ def get_syscall_table(arch=None, mode=None):
                 raise
             syscall_list.append([nr, name, sc_def[func]])
 
-    elif arch == "ARC" and mode in ["32v2", "32v3", "64v3"]:
+    elif arch == "ARC" and mode in ["32v2", "32v3", "64v3", "32", "64"]:
         register_list = ARC().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(arc_syscall_tbl)
