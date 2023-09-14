@@ -27,7 +27,12 @@
 
 ## What is this?
 This is a fork of [GEF](https://github.com/hugsy/gef).
-However, it is specialized for x86 / x64 / ARM / ARM64, and various features are added.
+However, there are two major improvements.
+
+1. Added many commands for kernel debugging.
+2. Added support for many userland architectures (for qemu-user).
+
+Many other commands have been added and improved. Enjoy!
 
 ## Setup
 
@@ -593,7 +598,7 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
     * `peek-pointers`, `current-stack-frame`, `xref-telescope`, `bytearray`, and `bincompare`.
     * This is because a single file is more attractive than ease of maintenance.
 * The system-call table used by `syscall-args` is moved from gef-extras.
-    * It was updated up to linux kernel 6.4.9 for each architecture.
+    * It was updated up to linux kernel 6.5.3 for each architecture.
 * Removed some features I don't use.
     * `$`, `ida-interact`, `gef-remote`, `pie`, `pcustom`, `ksymaddr`, `trace-run`, `bufferize`, `output redirect` and `shellcode`.
 * Many bugs fix / formatting / made it easy for me to use.
