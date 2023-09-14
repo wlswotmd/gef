@@ -136,6 +136,15 @@ I also list the tools I used in my Ubuntu 22.04 environment.
         * It needs `-cpu` option like `qemu-arc64 -cpu hs6x -g 1234 ./a.out`.
     * gdb: [arc-2023.03-rc1.tar.gz](https://github.com/foss-for-synopsys-dwc-arc-processors/binutils-gdb/archive/refs/tags/arc-2023.03-rc1.tar.gz)
         * `./configure --target=arc64-snps-linux-gnu --with-python=/usr/bin/python3`
+* csky
+    * toolchain: https://github.com/c-sky/toolchain-build
+        * `git submodule update --init`
+        * `./build-csky-gcc.py csky-gcc --src ./ --triple csky-unknown-linux-gnu --disable-gdb`
+        * It fails if you build along with gdb, so add `--disable-gdb`.
+    * qemu: https://github.com/T-head-Semi/qemu
+        * `./configure --target-list=cskyv1-linux-user,cskyv1eb-linux-user,cskyv2-linux-user,cskyv2eb-linux-user`
+    * gdb: build from latest.
+        * `./configure --enable-targets=all --with-python=/usr/bin/python3`
 
 
 # Qemu-user UNSUPPORTED architectures
@@ -182,10 +191,3 @@ If you find it, please let me know in the issue page.
     * [x] toolchain: https://github.com/VincentZWC/prebuilt-nds32-v3f-toolchain
     * [ ] qemu: not found.
     * [ ] gdb: not found.
-* csky
-    * [x] toolchain: https://github.com/c-sky/toolchain-build
-        * `./build-csky-gcc.py csky-gcc --src ./ --triple csky-unknown-linux-gnu --disable-gdb`
-    * [x] qemu: https://github.com/T-head-Semi/qemu
-        * `./configure --target-list=cskyv1-linux-user,cskyv1eb-linux-user,cskyv2-linux-user,cskyv2eb-linux-user`
-    * [ ] gdb: included in toolchain.
-        * It failed to build and it does not support python3.

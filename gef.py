@@ -29,6 +29,7 @@
 #   * cris
 #   * loongarch64
 #   * arc32 (v2, v3) & arc64
+#   * csky
 # See README.md for details.
 #
 # To start: in gdb, type `source /path/to/gef.py`
@@ -8916,6 +8917,192 @@ class ARC64(ARCv3):
         return b"".join(insns)
 
 
+class CSKY(Architecture):
+    arch = "CSKY"
+    mode = "CSKY"
+
+    load_condition = [
+        Elf.EM_CSKY,
+        "CSKY",
+        "CSKY:CK510",
+        "CSKY:CK610",
+        "CSKY:CK801",
+        "CSKY:CK802",
+        "CSKY:CK803",
+        "CSKY:CK807",
+        "CSKY:CK810",
+        "CSKY:CK860",
+        "CSKY:ANY",
+    ]
+
+    # https://github.com/c-sky/csky-doc/blob/master/CSKY%20Architecture%20user_guide.pdf
+    all_registers = [
+        "$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7",
+        "$r8", "$r9", "$r10", "$r11", "$r12", "$r13", "$r14", "$r15",
+        "$r16", "$r17", "$r18", "$r19", "$r20", "$r21", "$r22", "$r23",
+        "$r24", "$r25", "$r26", "$r27", "$r28", "$r29", "$r30", "$r31",
+        "$pc", "$psr", "$hi", "$lo",
+    ]
+    alias_registers = {
+        "$r14": "$sp", "$r15": "$lr", "$r28": "$ds", "$r30": "$vec",
+        "$r31": "$tp",
+    }
+    flag_register = "$psr"
+    flags_table = {
+        0: "carry",
+    }
+    return_register = "$r0"
+    function_parameters = ["$r0", "$r1", "$r2", "$r3"]
+    syscall_register = "$r7"
+    syscall_parameters = ["$r0", "$r1", "$r2", "$r3", "$r4", "$r5"]
+
+    bit_length = 32
+    endianness = "little"
+    instruction_length = None # variable length
+    has_delay_slot = False
+    has_syscall_delay_slot = False
+    has_ret_delay_slot = False
+    stack_grow_down = False
+    tls_supported = True
+
+    keystone_support = False
+    capstone_support = False
+    unicorn_support = False
+
+    nop_insn = b"\x03\x6c" # mov r0, r0
+    infloop_insn = b"\x00\x04" # br self
+    trap_insn = b"\x00\x00" # bkpt
+    ret_insn = b"\x3c\x78" # rts
+    syscall_insn = b"\x00\xc0\x20\x20" # trap 0
+
+    def is_syscall(self, insn):
+        return insn.mnemonic == "trap" and insn.operands[0] == "0"
+
+    def is_call(self, insn):
+        return insn.mnemonic in ["bsr", "jsri", "jsr"]
+
+    def is_jump(self, insn):
+        if self.is_conditional_branch(insn):
+            return True
+        return insn.mnemonic in ["br", "jmpi", "jmp", "jmpix"]
+
+    def is_ret(self, insn):
+        return insn.mnemonic in ["rts"]
+
+    def is_conditional_branch(self, insn):
+        return insn.mnemonic in ["bt", "bf", "bez", "bnez", "bhz", "blsz", "blz", "bhsz"]
+
+    def is_branch_taken(self, insn):
+        mnemo, ops = insn.mnemonic, insn.operands
+        val = get_register(self.flag_register)
+        flags = {self.flags_table[k]: k for k in self.flags_table}
+        taken, reason = False, ""
+
+        carry = bool(val & (1 << flags["carry"]))
+
+        pI = lambda a: struct.pack("<I", a & 0xffffffff)
+        ui = lambda a: struct.unpack("<i", a)[0]
+        u2i = lambda a: ui(pI(a))
+
+        if mnemo == "bt":
+            taken, reason = carry, "C"
+        elif mnemo == "bf":
+            taken, reason = not carry, "!C"
+        elif mnemo == "bez":
+            v0 = get_register(ops[0])
+            taken, reason = v0 == 0, "{:s}==0".format(ops[0])
+        elif mnemo == "bnez":
+            v0 = get_register(ops[0])
+            taken, reason = v0 != 0, "{:s}==0".format(ops[0])
+        elif mnemo == "bhz":
+            v0s = u2i(get_register(ops[0]))
+            taken, reason = v0s > 0, "{:s}>0".format(ops[0])
+        elif mnemo == "blsz":
+            v0s = u2i(get_register(ops[0]))
+            taken, reason = v0s <= 0, "{:s}<=0".format(ops[0])
+        elif mnemo == "blz":
+            v0s = u2i(get_register(ops[0]))
+            taken, reason = v0s < 0, "{:s}<0".format(ops[0])
+        elif mnemo == "bhsz":
+            v0s = u2i(get_register(ops[0]))
+            taken, reason = v0s >= 0, "{:s}>=0".format(ops[0])
+        return taken, reason
+
+    def flag_register_to_human(self, val=None):
+        if not val:
+            reg = self.flag_register
+            val = get_register(reg)
+        return flags_to_human(val, self.flags_table)
+
+    def get_ith_parameter(self, i, in_func=True):
+        if i < len(self.function_parameters):
+            reg = self.function_parameters[i]
+            val = get_register(reg)
+            key = reg
+            return key, val
+        else:
+            i -= len(self.function_parameters)
+            sp = current_arch.sp
+            sz = current_arch.ptrsize
+            loc = sp + (i * sz)
+            val = read_int_from_memory(loc)
+            key = "[sp + {:#x}]".format(i * sz)
+            return key, val
+
+    def get_ra(self, insn, frame):
+        ra = None
+        try:
+            if self.is_ret(insn):
+                ra = get_register("$r15")
+            elif frame.older():
+                ra = frame.older().pc()
+        except gdb.error:
+            pass
+        return ra
+
+    def get_tls(self):
+        return get_register("$r31")
+
+    def decode_cookie(self, value, cookie):
+        return value ^ cookie
+
+    def encode_cookie(self, value, cookie):
+        return value ^ cookie
+
+    def mprotect_asm(self, addr, size, perm):
+        def movi(dstreg, imm):
+            x = "1_11010_10000_{:05b}_{:016b}".format(dstreg, imm)
+            x = int(x, 2)
+            return p16((x >> 16) & 0xffff) + p16(x & 0xffff)
+
+        def lsli(dstreg, srcreg, bit):
+            x = "0_1000_{:03b}_{:03b}_{:05b}".format(dstreg, srcreg, bit)
+            return p16(int(x, 2))
+
+        def ori(dstreg, srcreg, imm):
+            x = "1_11011_{:05b}_{:05b}_{:016b}".format(dstreg, srcreg, imm)
+            x = int(x, 2)
+            return p16((x >> 16) & 0xffff) + p16(x & 0xffff)
+
+        insns = [
+            movi(0, (addr >> 16) & 0xffff), # mov r0, addr[31:16]
+            lsli(0, 0, 16), # lsli r0, r0, 16
+            ori(0, 0, (addr & 0xffff)), # ori r0, r0, addr[15:0]
+
+            movi(1, (size >> 16) & 0xffff), # mov r1, size[31:16]
+            lsli(1, 1, 16), # lsli r1, r1, 16
+            ori(1, 1, (size & 0xffff)), # ori r1, r1, size[15:0]
+
+            movi(2, (perm >> 16) & 0xffff), # mov r2, perm[31:16]
+            lsli(2, 2, 16), # lsli r2, r2, 16
+            ori(2, 2, (perm & 0xffff)), # ori r2, r2, perm[15:0]
+
+            movi(7, 226), # movi, r7, _NR_mprotect (=226)
+            b"\x00\xc0\x20\x20", # trap 0
+        ]
+        return b"".join(insns)
+
+
 # The prototype for new architecture.
 #
 #class XXX(Architecture):
@@ -8945,6 +9132,8 @@ class ARC64(ARCv3):
 #    #syscall_register = "$r0"
 #    #syscall_parameters = ["$r1", "$r2", "$r3", "$r4", "$r5", "$r6"]
 #
+#    bit_length = 32
+#    endianness = "little"
 #    #instruction_length = 4
 #    #has_delay_slot = False
 #    #has_syscall_delay_slot = False
@@ -9623,6 +9812,7 @@ def only_if_specific_arch(arch=()):
                 "LOONGARCH64": is_loongarch64,
                 "ARC32": is_arc32,
                 "ARC64": is_arc64,
+                "CSKY": is_csky,
             }
             for a in arch:
                 if dic.get(a, lambda: False)():
@@ -9668,6 +9858,7 @@ def exclude_specific_arch(arch=()):
                 "LOONGARCH64": is_loongarch64,
                 "ARC32": is_arc32,
                 "ARC64": is_arc64,
+                "CSKY": is_csky,
             }
             for a in arch:
                 if dic.get(a, lambda: False)():
@@ -11006,6 +11197,10 @@ def is_arc32():
 
 def is_arc64():
     return current_arch and current_arch.arch == "ARC" and current_arch.mode == "64v3"
+
+
+def is_csky():
+    return current_arch and current_arch.arch == "CSKY"
 
 
 @functools.lru_cache(maxsize=None)
@@ -26032,6 +26227,8 @@ class DestructorDumpCommand(GenericCommand):
             head_p = self.tls + 0x20
         elif is_arc64():
             head_p = self.tls + 0x40
+        elif is_csky():
+            head_p = self.tls + 0x1c
 
         head = lookup_address(read_int_from_memory(head_p))
         current = head.value
@@ -27278,7 +27475,8 @@ class SyscallSearchCommand(GenericCommand):
     _example_ += '{:s} -a CRIS             "^writev?" # cris\n'.format(_cmdline_)
     _example_ += '{:s} -a LOONGARCH -m 64  "^writev?" # loongarch64\n'.format(_cmdline_)
     _example_ += '{:s} -a ARC -m 32        "^writev?" # arc32\n'.format(_cmdline_)
-    _example_ += '{:s} -a ARC -m 64        "^writev?" # arc64'.format(_cmdline_)
+    _example_ += '{:s} -a ARC -m 64        "^writev?" # arc64\n'.format(_cmdline_)
+    _example_ += '{:s} -a CSKY             "^writev?" # csky'.format(_cmdline_)
 
     def make_output(self, syscall_table, syscall_num, syscall_name_pattern):
         self.out.append(titlify("arch={:s}, mode={:s}".format(syscall_table.arch, syscall_table.mode)))
@@ -27308,7 +27506,7 @@ class SyscallSearchCommand(GenericCommand):
         target_mode = args.mode
         # force fixing
         if target_mode is None:
-            if target_arch in ["SH4", "ALPHA", "OR1K", "NIOS2", "MICROBLAZE", "XTENSA", "CRIS"]:
+            if target_arch in ["SH4", "ALPHA", "OR1K", "NIOS2", "MICROBLAZE", "XTENSA", "CRIS", "CSKY"]:
                 target_mode = target_arch
 
         try:
@@ -37768,6 +37966,323 @@ arc_syscall_tbl = """
 """
 
 
+# csky
+#
+# [How to make]
+# cd /path/to/linux-6.*/
+# gcc -I `pwd`/include/uapi/ -E -D__SYSCALL=SYSCALL arch/csky/include/uapi/asm/unistd.h | grep ^SYSCALL \
+# | sed -e 's/SYSCALL(//;s/[,)]//g' > /tmp/a
+# grep -oP "__NR\S+\s+\d+$" include/uapi/asm-generic/unistd.h | grep -v __NR_sync_file_range2 > /tmp/b
+# join -2 2 -o 1.1,1.10,2.1,1.2 -e csky /tmp/a /tmp/b | sed -e 's/\(__NR_\|__NR3264_\)//g' | column -t
+csky_syscall_tbl = """
+0    csky  io_setup                 sys_io_setup
+1    csky  io_destroy               sys_io_destroy
+2    csky  io_submit                sys_io_submit
+3    csky  io_cancel                sys_io_cancel
+4    csky  io_getevents             sys_io_getevents
+5    csky  setxattr                 sys_setxattr
+6    csky  lsetxattr                sys_lsetxattr
+7    csky  fsetxattr                sys_fsetxattr
+8    csky  getxattr                 sys_getxattr
+9    csky  lgetxattr                sys_lgetxattr
+10   csky  fgetxattr                sys_fgetxattr
+11   csky  listxattr                sys_listxattr
+12   csky  llistxattr               sys_llistxattr
+13   csky  flistxattr               sys_flistxattr
+14   csky  removexattr              sys_removexattr
+15   csky  lremovexattr             sys_lremovexattr
+16   csky  fremovexattr             sys_fremovexattr
+17   csky  getcwd                   sys_getcwd
+18   csky  lookup_dcookie           sys_lookup_dcookie
+19   csky  eventfd2                 sys_eventfd2
+20   csky  epoll_create1            sys_epoll_create1
+21   csky  epoll_ctl                sys_epoll_ctl
+22   csky  epoll_pwait              sys_epoll_pwait
+23   csky  dup                      sys_dup
+24   csky  dup3                     sys_dup3
+25   csky  fcntl                    sys_fcntl
+26   csky  inotify_init1            sys_inotify_init1
+27   csky  inotify_add_watch        sys_inotify_add_watch
+28   csky  inotify_rm_watch         sys_inotify_rm_watch
+29   csky  ioctl                    sys_ioctl
+30   csky  ioprio_set               sys_ioprio_set
+31   csky  ioprio_get               sys_ioprio_get
+32   csky  flock                    sys_flock
+33   csky  mknodat                  sys_mknodat
+34   csky  mkdirat                  sys_mkdirat
+35   csky  unlinkat                 sys_unlinkat
+36   csky  symlinkat                sys_symlinkat
+37   csky  linkat                   sys_linkat
+39   csky  umount2                  sys_umount
+40   csky  mount                    sys_mount
+41   csky  pivot_root               sys_pivot_root
+42   csky  nfsservctl               sys_ni_syscall
+43   csky  statfs                   sys_statfs
+44   csky  fstatfs                  sys_fstatfs
+45   csky  truncate                 sys_truncate
+46   csky  ftruncate                sys_ftruncate
+47   csky  fallocate                sys_fallocate
+48   csky  faccessat                sys_faccessat
+49   csky  chdir                    sys_chdir
+50   csky  fchdir                   sys_fchdir
+51   csky  chroot                   sys_chroot
+52   csky  fchmod                   sys_fchmod
+53   csky  fchmodat                 sys_fchmodat
+54   csky  fchownat                 sys_fchownat
+55   csky  fchown                   sys_fchown
+56   csky  openat                   sys_openat
+57   csky  close                    sys_close
+58   csky  vhangup                  sys_vhangup
+59   csky  pipe2                    sys_pipe2
+60   csky  quotactl                 sys_quotactl
+61   csky  getdents64               sys_getdents64
+62   csky  lseek                    sys_lseek
+63   csky  read                     sys_read
+64   csky  write                    sys_write
+65   csky  readv                    sys_readv
+66   csky  writev                   sys_writev
+67   csky  pread64                  sys_pread64
+68   csky  pwrite64                 sys_pwrite64
+69   csky  preadv                   sys_preadv
+70   csky  pwritev                  sys_pwritev
+71   csky  sendfile                 sys_sendfile64
+72   csky  pselect6                 sys_pselect6
+73   csky  ppoll                    sys_ppoll
+74   csky  signalfd4                sys_signalfd4
+75   csky  vmsplice                 sys_vmsplice
+76   csky  splice                   sys_splice
+77   csky  tee                      sys_tee
+78   csky  readlinkat               sys_readlinkat
+79   csky  fstatat                  sys_newfstatat
+80   csky  fstat                    sys_newfstat
+81   csky  sync                     sys_sync
+82   csky  fsync                    sys_fsync
+83   csky  fdatasync                sys_fdatasync
+84   csky  sync_file_range          sys_sync_file_range
+85   csky  timerfd_create           sys_timerfd_create
+86   csky  timerfd_settime          sys_timerfd_settime
+87   csky  timerfd_gettime          sys_timerfd_gettime
+88   csky  utimensat                sys_utimensat
+89   csky  acct                     sys_acct
+90   csky  capget                   sys_capget
+91   csky  capset                   sys_capset
+92   csky  personality              sys_personality
+93   csky  exit                     sys_exit
+94   csky  exit_group               sys_exit_group
+95   csky  waitid                   sys_waitid
+96   csky  set_tid_address          sys_set_tid_address
+97   csky  unshare                  sys_unshare
+98   csky  futex                    sys_futex
+99   csky  set_robust_list          sys_set_robust_list
+100  csky  get_robust_list          sys_get_robust_list
+101  csky  nanosleep                sys_nanosleep
+102  csky  getitimer                sys_getitimer
+103  csky  setitimer                sys_setitimer
+104  csky  kexec_load               sys_kexec_load
+105  csky  init_module              sys_init_module
+106  csky  delete_module            sys_delete_module
+107  csky  timer_create             sys_timer_create
+108  csky  timer_gettime            sys_timer_gettime
+109  csky  timer_getoverrun         sys_timer_getoverrun
+110  csky  timer_settime            sys_timer_settime
+111  csky  timer_delete             sys_timer_delete
+112  csky  clock_settime            sys_clock_settime
+113  csky  clock_gettime            sys_clock_gettime
+114  csky  clock_getres             sys_clock_getres
+115  csky  clock_nanosleep          sys_clock_nanosleep
+116  csky  syslog                   sys_syslog
+117  csky  ptrace                   sys_ptrace
+118  csky  sched_setparam           sys_sched_setparam
+119  csky  sched_setscheduler       sys_sched_setscheduler
+120  csky  sched_getscheduler       sys_sched_getscheduler
+121  csky  sched_getparam           sys_sched_getparam
+122  csky  sched_setaffinity        sys_sched_setaffinity
+123  csky  sched_getaffinity        sys_sched_getaffinity
+124  csky  sched_yield              sys_sched_yield
+125  csky  sched_get_priority_max   sys_sched_get_priority_max
+126  csky  sched_get_priority_min   sys_sched_get_priority_min
+127  csky  sched_rr_get_interval    sys_sched_rr_get_interval
+128  csky  restart_syscall          sys_restart_syscall
+129  csky  kill                     sys_kill
+130  csky  tkill                    sys_tkill
+131  csky  tgkill                   sys_tgkill
+132  csky  sigaltstack              sys_sigaltstack
+133  csky  rt_sigsuspend            sys_rt_sigsuspend
+134  csky  rt_sigaction             sys_rt_sigaction
+135  csky  rt_sigprocmask           sys_rt_sigprocmask
+136  csky  rt_sigpending            sys_rt_sigpending
+137  csky  rt_sigtimedwait          sys_rt_sigtimedwait
+138  csky  rt_sigqueueinfo          sys_rt_sigqueueinfo
+139  csky  rt_sigreturn             sys_rt_sigreturn
+140  csky  setpriority              sys_setpriority
+141  csky  getpriority              sys_getpriority
+142  csky  reboot                   sys_reboot
+143  csky  setregid                 sys_setregid
+144  csky  setgid                   sys_setgid
+145  csky  setreuid                 sys_setreuid
+146  csky  setuid                   sys_setuid
+147  csky  setresuid                sys_setresuid
+148  csky  getresuid                sys_getresuid
+149  csky  setresgid                sys_setresgid
+150  csky  getresgid                sys_getresgid
+151  csky  setfsuid                 sys_setfsuid
+152  csky  setfsgid                 sys_setfsgid
+153  csky  times                    sys_times
+154  csky  setpgid                  sys_setpgid
+155  csky  getpgid                  sys_getpgid
+156  csky  getsid                   sys_getsid
+157  csky  setsid                   sys_setsid
+158  csky  getgroups                sys_getgroups
+159  csky  setgroups                sys_setgroups
+160  csky  uname                    sys_newuname
+161  csky  sethostname              sys_sethostname
+162  csky  setdomainname            sys_setdomainname
+163  csky  getrlimit                sys_getrlimit
+164  csky  setrlimit                sys_setrlimit
+165  csky  getrusage                sys_getrusage
+166  csky  umask                    sys_umask
+167  csky  prctl                    sys_prctl
+168  csky  getcpu                   sys_getcpu
+169  csky  gettimeofday             sys_gettimeofday
+170  csky  settimeofday             sys_settimeofday
+171  csky  adjtimex                 sys_adjtimex
+172  csky  getpid                   sys_getpid
+173  csky  getppid                  sys_getppid
+174  csky  getuid                   sys_getuid
+175  csky  geteuid                  sys_geteuid
+176  csky  getgid                   sys_getgid
+177  csky  getegid                  sys_getegid
+178  csky  gettid                   sys_gettid
+179  csky  sysinfo                  sys_sysinfo
+180  csky  mq_open                  sys_mq_open
+181  csky  mq_unlink                sys_mq_unlink
+182  csky  mq_timedsend             sys_mq_timedsend
+183  csky  mq_timedreceive          sys_mq_timedreceive
+184  csky  mq_notify                sys_mq_notify
+185  csky  mq_getsetattr            sys_mq_getsetattr
+186  csky  msgget                   sys_msgget
+187  csky  msgctl                   sys_msgctl
+188  csky  msgrcv                   sys_msgrcv
+189  csky  msgsnd                   sys_msgsnd
+190  csky  semget                   sys_semget
+191  csky  semctl                   sys_semctl
+192  csky  semtimedop               sys_semtimedop
+193  csky  semop                    sys_semop
+194  csky  shmget                   sys_shmget
+195  csky  shmctl                   sys_shmctl
+196  csky  shmat                    sys_shmat
+197  csky  shmdt                    sys_shmdt
+198  csky  socket                   sys_socket
+199  csky  socketpair               sys_socketpair
+200  csky  bind                     sys_bind
+201  csky  listen                   sys_listen
+202  csky  accept                   sys_accept
+203  csky  connect                  sys_connect
+204  csky  getsockname              sys_getsockname
+205  csky  getpeername              sys_getpeername
+206  csky  sendto                   sys_sendto
+207  csky  recvfrom                 sys_recvfrom
+208  csky  setsockopt               sys_setsockopt
+209  csky  getsockopt               sys_getsockopt
+210  csky  shutdown                 sys_shutdown
+211  csky  sendmsg                  sys_sendmsg
+212  csky  recvmsg                  sys_recvmsg
+213  csky  readahead                sys_readahead
+214  csky  brk                      sys_brk
+215  csky  munmap                   sys_munmap
+216  csky  mremap                   sys_mremap
+217  csky  add_key                  sys_add_key
+218  csky  request_key              sys_request_key
+219  csky  keyctl                   sys_keyctl
+220  csky  clone                    sys_clone
+221  csky  execve                   sys_execve
+222  csky  mmap                     sys_mmap
+223  csky  fadvise64                sys_fadvise64_64
+224  csky  swapon                   sys_swapon
+225  csky  swapoff                  sys_swapoff
+226  csky  mprotect                 sys_mprotect
+227  csky  msync                    sys_msync
+228  csky  mlock                    sys_mlock
+229  csky  munlock                  sys_munlock
+230  csky  mlockall                 sys_mlockall
+231  csky  munlockall               sys_munlockall
+232  csky  mincore                  sys_mincore
+233  csky  madvise                  sys_madvise
+234  csky  remap_file_pages         sys_remap_file_pages
+235  csky  mbind                    sys_mbind
+236  csky  get_mempolicy            sys_get_mempolicy
+237  csky  set_mempolicy            sys_set_mempolicy
+238  csky  migrate_pages            sys_migrate_pages
+239  csky  move_pages               sys_move_pages
+240  csky  rt_tgsigqueueinfo        sys_rt_tgsigqueueinfo
+241  csky  perf_event_open          sys_perf_event_open
+242  csky  accept4                  sys_accept4
+243  csky  recvmmsg                 sys_recvmmsg
+260  csky  wait4                    sys_wait4
+261  csky  prlimit64                sys_prlimit64
+262  csky  fanotify_init            sys_fanotify_init
+263  csky  fanotify_mark            sys_fanotify_mark
+264  csky  name_to_handle_at        sys_name_to_handle_at
+265  csky  open_by_handle_at        sys_open_by_handle_at
+266  csky  clock_adjtime            sys_clock_adjtime
+267  csky  syncfs                   sys_syncfs
+268  csky  setns                    sys_setns
+269  csky  sendmmsg                 sys_sendmmsg
+270  csky  process_vm_readv         sys_process_vm_readv
+271  csky  process_vm_writev        sys_process_vm_writev
+272  csky  kcmp                     sys_kcmp
+273  csky  finit_module             sys_finit_module
+274  csky  sched_setattr            sys_sched_setattr
+275  csky  sched_getattr            sys_sched_getattr
+276  csky  renameat2                sys_renameat2
+277  csky  seccomp                  sys_seccomp
+278  csky  getrandom                sys_getrandom
+279  csky  memfd_create             sys_memfd_create
+280  csky  bpf                      sys_bpf
+281  csky  execveat                 sys_execveat
+282  csky  userfaultfd              sys_userfaultfd
+283  csky  membarrier               sys_membarrier
+284  csky  mlock2                   sys_mlock2
+285  csky  copy_file_range          sys_copy_file_range
+286  csky  preadv2                  sys_preadv2
+287  csky  pwritev2                 sys_pwritev2
+288  csky  pkey_mprotect            sys_pkey_mprotect
+289  csky  pkey_alloc               sys_pkey_alloc
+290  csky  pkey_free                sys_pkey_free
+291  csky  statx                    sys_statx
+292  csky  io_pgetevents            sys_io_pgetevents
+293  csky  rseq                     sys_rseq
+294  csky  kexec_file_load          sys_kexec_file_load
+424  csky  pidfd_send_signal        sys_pidfd_send_signal
+425  csky  io_uring_setup           sys_io_uring_setup
+426  csky  io_uring_enter           sys_io_uring_enter
+427  csky  io_uring_register        sys_io_uring_register
+428  csky  open_tree                sys_open_tree
+429  csky  move_mount               sys_move_mount
+430  csky  fsopen                   sys_fsopen
+431  csky  fsconfig                 sys_fsconfig
+432  csky  fsmount                  sys_fsmount
+433  csky  fspick                   sys_fspick
+434  csky  pidfd_open               sys_pidfd_open
+435  csky  clone3                   sys_clone3
+436  csky  close_range              sys_close_range
+437  csky  openat2                  sys_openat2
+438  csky  pidfd_getfd              sys_pidfd_getfd
+439  csky  faccessat2               sys_faccessat2
+440  csky  process_madvise          sys_process_madvise
+441  csky  epoll_pwait2             sys_epoll_pwait2
+442  csky  mount_setattr            sys_mount_setattr
+443  csky  quotactl_fd              sys_quotactl_fd
+444  csky  landlock_create_ruleset  sys_landlock_create_ruleset
+445  csky  landlock_add_rule        sys_landlock_add_rule
+446  csky  landlock_restrict_self   sys_landlock_restrict_self
+448  csky  process_mrelease         sys_process_mrelease
+449  csky  futex_waitv              sys_futex_waitv
+450  csky  set_mempolicy_home_node  sys_set_mempolicy_home_node
+451  csky  cachestat                sys_cachestat
+"""
+
+
 def parse_syscall_table_defs(table_defs):
     table = []
     for line in table_defs.splitlines():
@@ -39533,6 +40048,52 @@ def get_syscall_table(arch=None, mode=None):
             [248, "arc_usr_cmpxchg", [
                 "int __user *uaddr", "int expected", "int new",
             ]], # arch/arc/kernel/process.c
+        ]
+        syscall_list += arch_specific_extra
+
+    elif arch == "CSKY" and mode == "CSKY":
+        register_list = CSKY().syscall_parameters
+        sc_def = parse_common_syscall_defs()
+        tbl = parse_syscall_table_defs(csky_syscall_tbl)
+        arch_specific_dic = {
+            "sys_clone": [
+                "unsigned long clone_flags", "unsigned long newsp", "int __user *parent_tidptr",
+                "int __user *child_tidptr", "unsigned long tls",
+            ], # kernel/fork.c
+            "sys_rt_sigreturn": [], # arch/csky/kernel/signal.c
+            "sys_mmap": [
+                "unsigned long addr", "unsigned long len", "unsigned long prot",
+                "unsigned long flags", "unsigned long fd", "off_t offset",
+            ], # arch/csky/kernel/syscall.c
+            "sys_fadvise64_64": [
+                "int fd", "int advice", "loff_t offset", "loff_t len",
+            ], # arch/csky/include/asm/syscalls.h
+        }
+
+        syscall_list = []
+        for entry in tbl:
+            nr, abi, name, func = entry
+            if abi != "csky":
+                continue
+            # special case
+            if func in arch_specific_dic:
+                syscall_list.append([nr, name, arch_specific_dic[func]])
+                continue
+            # common case
+            if func == "sys_ni_syscall":
+                continue
+            if func not in sc_def:
+                err("Not found: {:s}".format(func))
+                raise
+            syscall_list.append([nr, name, sc_def[func]])
+
+        arch_specific_extra = [
+            [244, "set_thread_area", [
+                "unsigned long addr",
+            ]], # arch/csky/kernel/signal.c
+            [245, "cacheflush", [
+                "void __user *addr", "unsigned long len", "int op",
+            ]], # arch/csky/include/asm/syscalls.h
         ]
         syscall_list += arch_specific_extra
 
