@@ -14068,13 +14068,13 @@ class PtrDemangleCommand(GenericCommand):
             decoded = value
         elif is_loongarch64():
             decoded = value ^ cookie
-        elif is_arc64():
+        elif is_arc32() or is_arc64():
             decoded = value
         return decoded
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_arch(arch=("SPARC32", "SH4", "XTENSA", "CRIS", "ARC32"))
+    @exclude_specific_arch(arch=("SPARC32", "SH4", "XTENSA", "CRIS"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -14148,13 +14148,13 @@ class PtrMangleCommand(GenericCommand):
             encoded = value
         elif is_loongarch64():
             encoded = value ^ cookie
-        elif is_arc64():
+        elif is_arc32() or is_arc64():
             encoded = value
         return encoded
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_arch(arch=("SPARC32", "SH4", "XTENSA", "CRIS", "ARC32"))
+    @exclude_specific_arch(arch=("SPARC32", "SH4", "XTENSA", "CRIS"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -14250,7 +14250,7 @@ class SearchMangledPtrCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_arch(arch=("SPARC32", "SH4", "XTENSA", "CRIS", "ARC32"))
+    @exclude_specific_arch(arch=("SPARC32", "SH4", "XTENSA", "CRIS"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -25948,6 +25948,7 @@ class DestructorDumpCommand(GenericCommand):
             return a + "[???]"
 
     def dump_tls_dtors(self):
+        info("Probably only exists in glibc.")
         if not self.tls:
             err("TLS is not found")
             return
@@ -25978,6 +25979,8 @@ class DestructorDumpCommand(GenericCommand):
             head_p = self.tls + 0x24
         elif is_loongarch64():
             head_p = self.tls + 0x28
+        elif is_arc32():
+            head_p = self.tls + 0x20
         elif is_arc64():
             head_p = self.tls + 0x40
 
@@ -26194,7 +26197,7 @@ class DestructorDumpCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
-    @exclude_specific_arch(arch=("SPARC32", "SH4", "XTENSA", "CRIS", "ARC32"))
+    @exclude_specific_arch(arch=("SPARC32", "SH4", "XTENSA", "CRIS"))
     def do_invoke(self, args):
         self.dont_repeat()
 
