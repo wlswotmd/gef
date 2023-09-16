@@ -8327,21 +8327,6 @@ class CRIS(Architecture):
             val = get_register(reg)
         return flags_to_human(val, self.flags_table)
 
-    def get_ith_parameter(self, i, in_func=True):
-        if i < len(self.function_parameters):
-            reg = self.function_parameters[i]
-            val = get_register(reg)
-            key = reg
-            return key, val
-        else:
-            i -= len(self.function_parameters)
-            sp = current_arch.sp
-            sz = current_arch.ptrsize
-            loc = sp + (i * sz)
-            val = read_int_from_memory(loc)
-            key = "[sp + {:#x}]".format(i * sz)
-            return key, val
-
     def get_ra(self, insn, frame):
         ra = None
         try:
@@ -8475,21 +8460,6 @@ class LOONGARCH64(Architecture):
         elif mnemo == "bnez":
             taken, reason = v0 != 0, "{:s}!=0".format(ops[0])
         return taken, reason
-
-    def get_ith_parameter(self, i, in_func=True):
-        if i < len(self.function_parameters):
-            reg = self.function_parameters[i]
-            val = get_register(reg)
-            key = reg
-            return key, val
-        else:
-            i -= len(self.function_parameters)
-            sp = current_arch.sp
-            sz = current_arch.ptrsize
-            loc = sp + (i * sz)
-            val = read_int_from_memory(loc)
-            key = "[sp + {:#x}]".format(i * sz)
-            return key, val
 
     def get_ra(self, insn, frame):
         ra = None
@@ -8821,21 +8791,6 @@ class ARC(Architecture):
             val = get_register(reg)
         return flags_to_human(val, self.flags_table)
 
-    def get_ith_parameter(self, i, in_func=True):
-        if i < len(self.function_parameters):
-            reg = self.function_parameters[i]
-            val = get_register(reg)
-            key = reg
-            return key, val
-        else:
-            i -= len(self.function_parameters)
-            sp = current_arch.sp
-            sz = current_arch.ptrsize
-            loc = sp + (i * sz)
-            val = read_int_from_memory(loc)
-            key = "[sp + {:#x}]".format(i * sz)
-            return key, val
-
     def get_ra(self, insn, frame):
         ra = None
         try:
@@ -9033,21 +8988,6 @@ class CSKY(Architecture):
             reg = self.flag_register
             val = get_register(reg)
         return flags_to_human(val, self.flags_table)
-
-    def get_ith_parameter(self, i, in_func=True):
-        if i < len(self.function_parameters):
-            reg = self.function_parameters[i]
-            val = get_register(reg)
-            key = reg
-            return key, val
-        else:
-            i -= len(self.function_parameters)
-            sp = current_arch.sp
-            sz = current_arch.ptrsize
-            loc = sp + (i * sz)
-            val = read_int_from_memory(loc)
-            key = "[sp + {:#x}]".format(i * sz)
-            return key, val
 
     def get_ra(self, insn, frame):
         ra = None
