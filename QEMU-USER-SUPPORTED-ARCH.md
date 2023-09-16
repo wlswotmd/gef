@@ -183,9 +183,11 @@ If you find it, please let me know in the issue page.
     * [x] gdb: build from latest.
         * `./configure --enable-targets=all --with-python=/usr/bin/python3`
 * e2k
-    * [ ] toolchain: not found.
+    * [x] toolchain: [lcc-e2k-cross_1.1_i386.deb](https://drive.google.com/file/d/1rdlSKGkOXC9ejXaWC2mUKZd6GYxdtHLt/view?usp=sharing) from https://ctf.harrisongreen.me/2021/midnightsunfinals/elbrus/
+        * `mkdir /tmp/e2k && dpkg -x lcc-e2k-cross_1.1_i386.deb /tmp/e2k && mv /tmp/e2k/opt/mcst /opt`
+        * `export PATH=$PATH:/opt/mcst/bin.toolchain`
     * [x] qemu: https://github.com/OpenE2K/qemu-e2k
-        * I haven't confirmed whether it works yet.
+        * `./configure --target-list=e2k-linux-user`
     * [ ] gdb: not found.
 * nds32
     * [x] toolchain: https://github.com/VincentZWC/prebuilt-nds32-v3f-toolchain
