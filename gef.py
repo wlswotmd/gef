@@ -3989,6 +3989,14 @@ class Architecture:
         pass
 
     @abc.abstractmethod
+    def decode_cookie(self, value, cookie):
+        pass
+
+    @abc.abstractmethod
+    def encode_cookie(self, value, cookie):
+        pass
+
+    @abc.abstractmethod
     def mprotect_asm(self, addr, size, perm):
         pass
 
@@ -4219,6 +4227,12 @@ class RISCV(Architecture):
 
     def get_tls(self):
         return get_register("$tp")
+
+    def decode_cookie(self, value, cookie):
+        return value
+
+    def encode_cookie(self, value, cookie):
+        return value
 
     def mprotect_asm(self, addr, size, perm):
 
@@ -4660,6 +4674,12 @@ class ARM(Architecture):
         ret = ExecAsm(codes).exec_code()
         return ret["reg"]["$r2"]
 
+    def decode_cookie(self, value, cookie):
+        return value ^ cookie
+
+    def encode_cookie(self, value, cookie):
+        return value ^ cookie
+
     def mprotect_asm(self, addr, size, perm):
         _NR_mprotect = 125
         insns = [
@@ -4968,6 +4988,20 @@ class X86(Architecture):
             return None
         return self.get_gs()
 
+    def decode_cookie(self, value, cookie):
+        def ror(val, bits, arch_bits):
+            new_val = (val >> bits) | (val << (arch_bits - bits))
+            mask = (1 << arch_bits) - 1
+            return new_val & mask
+        return ror(value, 9, 32) ^ cookie
+
+    def encode_cookie(self, value, cookie):
+        def rol(val, bits, arch_bits):
+            new_val = (val << bits) | (val >> (arch_bits - bits))
+            mask = (1 << arch_bits) - 1
+            return new_val & mask
+        return rol(value ^ cookie, 9, 32)
+
     def get_fs(self):
         # fastest path
         fs = get_register("$fs_base")
@@ -5077,6 +5111,20 @@ class X86_64(X86):
         if is_in_kernel():
             return None
         return self.get_fs()
+
+    def decode_cookie(self, value, cookie):
+        def ror(val, bits, arch_bits):
+            new_val = (val >> bits) | (val << (arch_bits - bits))
+            mask = (1 << arch_bits) - 1
+            return new_val & mask
+        return ror(value, 17, 64) ^ cookie
+
+    def encode_cookie(self, value, cookie):
+        def rol(val, bits, arch_bits):
+            new_val = (val << bits) | (val >> (arch_bits - bits))
+            mask = (1 << arch_bits) - 1
+            return new_val & mask
+        return rol(value ^ cookie, 17, 64)
 
     def get_fs(self):
         # fastest path
@@ -5356,6 +5404,12 @@ class PPC(Architecture):
         tls = get_register("$r2")
         return adjust_offset(tls)
 
+    def decode_cookie(self, value, cookie):
+        return value ^ cookie
+
+    def encode_cookie(self, value, cookie):
+        return value ^ cookie
+
     def mprotect_asm(self, addr, size, perm):
         # Ref: http://www.ibm.com/developerworks/library/l-ppc/index.html
         _NR_mprotect = 125
@@ -5622,6 +5676,12 @@ class SPARC(Architecture):
 
     def get_tls(self):
         return get_register("$g7")
+
+    def decode_cookie(self, value, cookie):
+        return value ^ cookie
+
+    def encode_cookie(self, value, cookie):
+        return value ^ cookie
 
     def mprotect_asm(self, addr, size, perm):
         _NR_mprotect = 74
@@ -5903,6 +5963,12 @@ class MIPS(Architecture):
         ret = ExecAsm(codes).exec_code()
         tls = ret["reg"]["$v1"]
         return adjust_offset(tls)
+
+    def decode_cookie(self, value, cookie):
+        return value
+
+    def encode_cookie(self, value, cookie):
+        return value
 
     def mprotect_asm(self, addr, size, perm):
         _NR_mprotect = 4125
@@ -6348,6 +6414,12 @@ class S390X(Architecture):
         hi = get_register("$acr0")
         lo = get_register("$acr1")
         return (hi << 32) | lo
+
+    def decode_cookie(self, value, cookie):
+        return value ^ cookie
+
+    def encode_cookie(self, value, cookie):
+        return value ^ cookie
 
     def mprotect_asm(self, addr, size, perm):
         _NR_mprotect = 125
@@ -6800,6 +6872,12 @@ class M68K(Architecture):
         tls = ret["reg"]["$d0"]
         return adjust_offset(tls)
 
+    def decode_cookie(self, value, cookie):
+        return value
+
+    def encode_cookie(self, value, cookie):
+        return value
+
     def mprotect_asm(self, addr, size, perm):
         _NR_mprotect = 125
         insns = [
@@ -6933,6 +7011,12 @@ class ALPHA(Architecture):
         codes = [b"\x9e\x00\x00\x00"] # rduniq
         ret = ExecAsm(codes).exec_code()
         return ret["reg"]["$v0"]
+
+    def decode_cookie(self, value, cookie):
+        return value ^ cookie
+
+    def encode_cookie(self, value, cookie):
+        return value ^ cookie
 
     def mprotect_asm(self, addr, size, perm):
         _NR_mprotect = 74
@@ -7343,6 +7427,12 @@ class HPPA(Architecture):
         ret = ExecAsm(codes).exec_code()
         return ret["reg"]["$ret0"]
 
+    def decode_cookie(self, value, cookie):
+        return value
+
+    def encode_cookie(self, value, cookie):
+        return value
+
     def mprotect_asm(self, addr, size, perm):
 
         def asm21(x):
@@ -7510,6 +7600,12 @@ class OR1K(Architecture):
     def get_tls(self):
         return get_register("$r10")
 
+    def decode_cookie(self, value, cookie):
+        return value
+
+    def encode_cookie(self, value, cookie):
+        return value
+
     def mprotect_asm(self, addr, size, perm):
         _NR_mprotect = 226
         insns = [
@@ -7660,6 +7756,12 @@ class NIOS2(Architecture):
         tls = get_register("$r23")
         return adjust_offset(tls)
 
+    def decode_cookie(self, value, cookie):
+        return value ^ cookie
+
+    def encode_cookie(self, value, cookie):
+        return value ^ cookie
+
     def mprotect_asm(self, addr, size, perm):
         _NR_mprotect = 226
 
@@ -7809,6 +7911,12 @@ class MICROBLAZE(Architecture):
 
     def get_tls(self):
         return get_register("$r21")
+
+    def decode_cookie(self, value, cookie):
+        return value
+
+    def encode_cookie(self, value, cookie):
+        return value
 
     def mprotect_asm(self, addr, size, perm):
         _NR_mprotect = 125
@@ -8396,6 +8504,12 @@ class LOONGARCH64(Architecture):
     def get_tls(self):
         return get_register("$r2")
 
+    def decode_cookie(self, value, cookie):
+        return value ^ cookie
+
+    def encode_cookie(self, value, cookie):
+        return value ^ cookie
+
     def mprotect_asm(self, addr, size, perm):
         def lu12iw(reg, si20):
             b = "0b_0001010_{:020b}_{:05b}".format(si20, reg)
@@ -8735,6 +8849,12 @@ class ARC(Architecture):
     def get_tls(self):
         return get_register("$r25")
 
+    def decode_cookie(self, value, cookie):
+        return value
+
+    def encode_cookie(self, value, cookie):
+        return value
+
     def mprotect_asm(self, addr, size, perm):
         insns = [
             b"\x0a\x20\x80\x0f" + p16(addr >> 16) + p16(addr & 0xffff), # mov r0, addr
@@ -8895,6 +9015,12 @@ class ARC64(ARCv3):
 #
 #    #def get_tls(self):
 #    #    return None
+#
+#    #def decode_cookie(self, value, cookie):
+#    #    return value ^ cookie
+#
+#    #def encode_cookie(self, value, cookie):
+#    #    return value ^ cookie
 #
 #    #def mprotect_asm(self, addr, size, perm):
 #    #    insns = [
@@ -14031,47 +14157,6 @@ class PtrDemangleCommand(GenericCommand):
             pass
         return None
 
-    @staticmethod
-    def decode(value, cookie):
-        def ror(val, bits, arch_bits):
-            new_val = (val >> bits) | (val << (arch_bits - bits))
-            mask = (1 << arch_bits) - 1
-            return new_val & mask
-
-        if is_x86_64():
-            decoded = ror(value, 17, 64) ^ cookie
-        elif is_x86_32():
-            decoded = ror(value, 9, 32) ^ cookie
-        elif is_arm32() or is_arm64():
-            decoded = value ^ cookie
-        elif is_mips32() or is_mips64():
-            decoded = value
-        elif is_ppc32() or is_ppc64():
-            decoded = value ^ cookie
-        elif is_sparc64():
-            decoded = value ^ cookie
-        elif is_riscv32() or is_riscv64():
-            decoded = value
-        elif is_s390x():
-            decoded = value ^ cookie
-        elif is_m68k():
-            decoded = value
-        elif is_alpha():
-            decoded = value ^ cookie
-        elif is_hppa32():
-            decoded = value
-        elif is_or1k():
-            decoded = value
-        elif is_nios2():
-            decoded = value ^ cookie
-        elif is_microblaze():
-            decoded = value
-        elif is_loongarch64():
-            decoded = value ^ cookie
-        elif is_arc32() or is_arc64():
-            decoded = value
-        return decoded
-
     @parse_args
     @only_if_gdb_running
     @exclude_specific_arch(arch=("SPARC32", "SH4", "XTENSA", "CRIS"))
@@ -14079,7 +14164,7 @@ class PtrDemangleCommand(GenericCommand):
         self.dont_repeat()
 
         if args.source:
-            s = inspect.getsource(PtrDemangleCommand.decode).rstrip()
+            s = inspect.getsource(current_arch.decode_cookie).rstrip()
             gef_print(s)
             return
 
@@ -14088,7 +14173,7 @@ class PtrDemangleCommand(GenericCommand):
             return
         info("Cookie is {:s}".format(Color.boldify("{:#x}".format(cookie))))
 
-        decoded = self.decode(args.value, cookie)
+        decoded = current_arch.decode_cookie(args.value, cookie)
         decoded_sym = get_symbol_string(decoded)
         if is_valid_addr(decoded):
             valid_msg = Color.colorify("valid", "bold green")
@@ -14111,47 +14196,6 @@ class PtrMangleCommand(GenericCommand):
     group.add_argument("--source", action="store_true", help="shows the source instead of displaying mangled value.")
     _syntax_ = parser.format_help()
 
-    @staticmethod
-    def encode(value, cookie):
-        def rol(val, bits, arch_bits):
-            new_val = (val << bits) | (val >> (arch_bits - bits))
-            mask = (1 << arch_bits) - 1
-            return new_val & mask
-
-        if is_x86_64():
-            encoded = rol(value ^ cookie, 17, 64)
-        elif is_x86_32():
-            encoded = rol(value ^ cookie, 9, 32)
-        elif is_arm32() or is_arm64():
-            encoded = value ^ cookie
-        elif is_mips32() or is_mips64():
-            encoded = value
-        elif is_ppc32() or is_ppc64():
-            encoded = value ^ cookie
-        elif is_sparc64():
-            encoded = value ^ cookie
-        elif is_riscv32() or is_riscv64():
-            encoded = value
-        elif is_s390x():
-            encoded = value ^ cookie
-        elif is_m68k():
-            encoded = value
-        elif is_alpha():
-            encoded = value ^ cookie
-        elif is_hppa32():
-            encoded = value
-        elif is_or1k():
-            encoded = value
-        elif is_nios2():
-            encoded = value ^ cookie
-        elif is_microblaze():
-            encoded = value
-        elif is_loongarch64():
-            encoded = value ^ cookie
-        elif is_arc32() or is_arc64():
-            encoded = value
-        return encoded
-
     @parse_args
     @only_if_gdb_running
     @exclude_specific_arch(arch=("SPARC32", "SH4", "XTENSA", "CRIS"))
@@ -14159,7 +14203,7 @@ class PtrMangleCommand(GenericCommand):
         self.dont_repeat()
 
         if args.source:
-            s = inspect.getsource(PtrMangleCommand.encode).rstrip()
+            s = inspect.getsource(current_arch.encode_cookie).rstrip()
             gef_print(s)
             return
 
@@ -14168,7 +14212,7 @@ class PtrMangleCommand(GenericCommand):
             return
         info("Cookie is {:s}".format(Color.boldify("{:#x}".format(cookie))))
 
-        encoded = self.encode(args.value, cookie)
+        encoded = current_arch.encode_cookie(args.value, cookie)
         info("Encoded value is {:#x}".format(encoded))
         return
 
@@ -14238,7 +14282,7 @@ class SearchMangledPtrCommand(GenericCommand):
                 break
 
             for i, value in enumerate(slice_unpack(mem, current_arch.ptrsize)):
-                decoded = PtrDemangleCommand.decode(value, self.cookie)
+                decoded = current_arch.decode_cookie(value, self.cookie)
                 try:
                     read_memory(decoded, 1)
                 except gdb.MemoryError:
@@ -14259,6 +14303,11 @@ class SearchMangledPtrCommand(GenericCommand):
         if self.cookie is None:
             return
         info("Cookie is {:s}".format(Color.boldify("{:#x}".format(self.cookie))))
+
+        # check
+        if current_arch.decode_cookie(0, 1) == 0:
+            err("In this architecture, the value is not encrypted with cookies.")
+            return
 
         # search
         if is_qemu_system():
@@ -26007,7 +26056,7 @@ class DestructorDumpCommand(GenericCommand):
                 err("Memory access error at {:#x}".format(current))
                 break
 
-            decoded_fn = PtrDemangleCommand.decode(func.value, self.cookie)
+            decoded_fn = current_arch.decode_cookie(func.value, self.cookie)
             sym = get_symbol_string(decoded_fn)
             decoded_fn_s = Color.boldify("{:#x}".format(decoded_fn))
 
@@ -26073,7 +26122,7 @@ class DestructorDumpCommand(GenericCommand):
                 break
             if fn.value == 0:
                 continue
-            decoded_fn = PtrDemangleCommand.decode(fn.value, self.cookie)
+            decoded_fn = current_arch.decode_cookie(fn.value, self.cookie)
             sym = get_symbol_string(decoded_fn)
             decoded_fn_s = Color.boldify("{:#x}".format(decoded_fn))
 
