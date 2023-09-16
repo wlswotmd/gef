@@ -12366,7 +12366,6 @@ class SecondBreakpoint(gdb.Breakpoint):
 @register_command
 class NiCommand(GenericCommand):
     """`ni` wrapper for specific arch.
-    s390x: it sometimes returns `PC not saved` when nexti command is executed, so ignore.
     or1k: branch operations don't work well, so use breakpoints to simulate.
     cris: si/ni commands don't work well. so use breakpoints to simulate."""
     _cmdline_ = "ni"
@@ -12432,9 +12431,7 @@ class NiCommand(GenericCommand):
             gdb.execute(cmd.rstrip())
         except gdb.error:
             exc_type, exc_value, exc_traceback = sys.exc_info()
-            if str(exc_value) == "PC not saved":
-                gdb.execute("context")
-            elif str(exc_value).startswith("Cannot access memory at address"):
+            if str(exc_value).startswith("Cannot access memory at address"):
                 if is_valid_addr(current_arch.pc):
                     gdb.execute("until-next")
                 else:
@@ -12447,7 +12444,6 @@ class NiCommand(GenericCommand):
 @register_command
 class SiCommand(GenericCommand):
     """`si` wrapper for specific arch.
-    s390x: it sometimes returns `PC not saved` when stepi command is executed, so ignore.
     or1k: branch operations don't work well, so use breakpoints to simulate.
     cris: si/ni commands don't work well. so use breakpoints to simulate."""
     _cmdline_ = "si"
@@ -12513,9 +12509,7 @@ class SiCommand(GenericCommand):
             gdb.execute(cmd.rstrip())
         except gdb.error:
             exc_type, exc_value, exc_traceback = sys.exc_info()
-            if str(exc_value) == "PC not saved":
-                gdb.execute("context")
-            elif str(exc_value).startswith("Cannot access memory at address"):
+            if str(exc_value).startswith("Cannot access memory at address"):
                 if is_valid_addr(current_arch.pc):
                     gdb.execute("until-next")
                 else:

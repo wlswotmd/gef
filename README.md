@@ -293,8 +293,6 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 
 ### Qemu-user cooperation - General
 * `si`/`ni`: are the wrapper for native `si`/`ni`.
-    * On s390x architecture, a `PC not saved` error may be output when executing `stepi`/`nexti`.
-    * But the execution itself is fine, so this command ignores this error and executes `context` normally.
     * On OpenRISC architecture, branch operations don't work well, so use breakpoints to simulate.
     * On Cris architecture, `stepi`/`nexti` commands don't work well, so use breakpoints to simulate.
     * If you want to use native `si`/`ni`, use the full form `stepi`/`nexti`.
