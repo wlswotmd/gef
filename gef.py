@@ -21842,50 +21842,8 @@ class NamedBreakCommand(GenericCommand):
         return
 
 
-class MessageBreakpoint(gdb.Breakpoint):
-    """Breakpoint which prints user defined f-string format message."""
-    def __init__(self, loc, msg):
-        super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=False, temporary=False)
-        self.loc = loc
-        self.msg = msg
-        return
-
-    def stop(self):
-        reset_gef_caches()
-        msg = re.sub(r"{([^}]+):", '{parse_address("\\1"):', self.msg)
-        msg = eval(f'f"""{msg}"""')
-        gef_print("{:#x}: {}".format(self.loc, msg))
-        return False
-
-
-@register_command
-class MessageBreakCommand(GenericCommand):
-    """Set a breakpoint which prints user defined f-string format message if hit."""
-    _cmdline_ = "message-break"
-    _category_ = "01-b. Debugging Support - Breakpoint"
-
-    parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address,
-                        help="the address you want to set breakpoint. (default: current_arch.pc)")
-    parser.add_argument("message", metavar="MESSAGE", type=str, help="f-string format message printed if breakpoint is hit.")
-    _syntax_ = parser.format_help()
-
-    _example_ = "{:s} 0x55555555aab9 \"RAX: {{$rax:#x}}\"\n".format(_cmdline_)
-    _example_ += "{:s} 0x55555555aaba \"RSP[0x20]: {{*(void**)($rsp + 0x20):#x}}\"".format(_cmdline_)
-
-    @parse_args
-    def do_invoke(self, args):
-        self.dont_repeat()
-
-        location = args.location
-        if location is None:
-            location = current_arch.pc
-        MessageBreakpoint(location, args.message)
-        return
-
-
 class CommandBreakpoint(gdb.Breakpoint):
-    """Breakpoint which executes user defined command."""
+    """Breakpoint which executes user defined command silently and continue."""
     def __init__(self, loc, cmd):
         super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=False, temporary=False)
         self.loc = loc
@@ -21900,7 +21858,7 @@ class CommandBreakpoint(gdb.Breakpoint):
 
 @register_command
 class CommandBreakCommand(GenericCommand):
-    """Set a breakpoint which executes user defined command if hit."""
+    """Set a breakpoint which executes user defined command silently and continue, if hit."""
 
     _cmdline_ = "command-break"
     _category_ = "01-b. Debugging Support - Breakpoint"
