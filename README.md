@@ -3,7 +3,7 @@
 * [Setup](#setup)
     * [Install (Ubuntu 22.04 or before)](#install-ubuntu-2204-or-before)
     * [Install (Ubuntu 23.04 or after)](#install-ubuntu-2304-or-after)
-    * [Upgrade (replace itself)](#upgrade-replace-itself)
+    * [Upgrade](#upgrade)
     * [Uninstall](#uninstall)
     * [Dependency](#dependency)
 * [Supported environment](#supported-environment)
@@ -23,13 +23,13 @@
     * [Improved features](#improved-features)
     * [New features](#new-features)
     * [Other](#other)
-* [Memo (Japanese)](#memo-japanese)
+* [FAQ](#faq)
 
 ## What is this?
 This is a fork of [GEF](https://github.com/hugsy/gef).
 However, there are two major improvements.
 
-1. Added many commands for kernel debugging.
+1. Added many heuristic commands for kernel debugging __WITHOUT symboled vmlinux__.
 2. Added support for many userland architectures (for qemu-user).
 
 Many other commands have been added and improved. Enjoy!
@@ -38,7 +38,7 @@ Many other commands have been added and improved. Enjoy!
 
 ### Install (Ubuntu 22.04 or before)
 ```bash
-# Run with root user (sudo is NOT recommended)
+# Run with root user (sudo is NOT recommended, since considering debian)
 wget -q https://raw.githubusercontent.com/bata24/gef/dev/install.sh -O- | sh
 ```
 
@@ -51,7 +51,7 @@ If you want to change the location, please modify accordingly.
 wget -q https://raw.githubusercontent.com/bata24/gef/dev/install.sh -O- | sed -e 's/\(pip3 install\)/\1 --break-system-packages/g' | sh
 ```
 
-### Upgrade (replace itself)
+### Upgrade
 ```bash
 python3 /root/.gdbinit-gef.py --upgrade
 ```
@@ -68,7 +68,7 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 
 ## Supported environment
 - Tested on Ubuntu 22.04.
-- It may work under Ubuntu 20.04 and 23.04.
+- It may work under Ubuntu 20.04 and 23.04, debian 10.x or after.
 
 ## Supported mode
 * Normal debugging (start under gdb)
@@ -88,19 +88,21 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
     * Start qemu-system with the `-s` option and listen on `localhost:1234`.
     * Attach with `gdb-multiarch -ex 'target remote localhost:1234'`.
     * Or `gdb-multiarch -ex 'set architecture TARGET_ARCH' -ex 'target remote localhost:1234'` (for old qemu).
-    * Most commands should work fine unless `CONFIG_RANDSTRUCT` is enabled.
-    * It works with any version qemu-system, but qemu-6.x or higher is recommended.
 * Supported architectures
     * x86, x64, ARM and ARM64
+* Note
+    * Most commands should work fine unless `CONFIG_RANDSTRUCT` is enabled.
+    * It works with any version qemu-system, but qemu-6.x or higher is recommended.
 
 ### Qemu-user cooperation
 * Usage
     * Start qemu-user with the `-g 1234` option and listen on `localhost:1234`.
     * Attach with `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:1234'`.
     * Or `gdb-multiarch -ex 'set architecture TARGET_ARCH' -ex 'target remote localhost:1234'` (for old qemu).
-    * It works with any version qemu-user, but qemu-6.x or higher is recommended.
 * Supported architectures
     * See [QEMU-USER-SUPPORTED-ARCH.md](https://github.com/bata24/gef/blob/dev/QEMU-USER-SUPPORTED-ARCH.md)
+* Note
+    * It works with any version qemu-user, but qemu-6.x or higher is recommended.
 
 ### Intel Pin/SDE cooperation
 * Usage for Intel Pin
@@ -111,6 +113,7 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
     * Attach with `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:1234'`.
 * Supported architectures
     * x64 only.
+* Note
     * It runs very slowly and is not recommended.
 
 ### Qiling framework cooperation
@@ -119,6 +122,7 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
     * Attach with `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:9999'`.
 * Supported architectures
     * x86, x64, ARM and ARM64.
+* Note
     * On ARM64, the flag register is not available, so the branch taken/not detected is incorrect.
     * This is an experimental support.
 
@@ -133,7 +137,9 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
     * Debugger
         * Attach with `gdb-multiarch -ex 'target remote /dev/ttyS0'`.
 * Supported architectures
-    * x64 only. It needs gdb 12.x or after.
+    * x64 only.
+* Note
+    * It needs gdb 12.x or after.
     * It runs very slowly and is not recommended. Ctrl+C interrupt does not work.
     * Many commands are UNSUPPORTED in KGDB mode, because there is no way to access physical memory and control registers.
 
@@ -150,7 +156,9 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
         * Attach with `gdb-multiarch -ex 'target remote <ipaddr>:1234'`.
 * Supported architectures
     * x64 only.
+* Note
     * It runs faster than KGDB mode and Ctrl+C interrupt works, but it is still slow.
+    * Access to physical memory and control registers is possible thanks to the `monitor` command.
 
 ## Added / improved features
 
@@ -189,7 +197,7 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xp.png)
 
 ### Qemu-system cooperation - Linux specific
-* `ksymaddr-remote`: displays kallsyms information from scanning kernel memory (heuristic).
+* `ksymaddr-remote`: displays kallsyms information from scanning kernel memory.
     * Supported kernel versions are not only before v6.1, but also after v6.2 (slightly changed structure in memory).
     * Supported kernel after v6.4 (changed structure in memory again).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksymaddr-remote.png)
@@ -202,19 +210,19 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
     * TIPS: `vmlinux-to-elf-apply` and `ksymaddr-remote-apply` provide almost the same functionality.
         * For normal use, I think `vmlinux-to-elf-apply` is preferable because reusing image makes it faster.
         * For FGKASLR, I think `ksymaddr-remote-apply` is preferable because faster without reusing image.
-* `slub-dump`: dumps slub free-list (heuristic).
+* `slub-dump`: dumps slub free-list.
     * Supported on x64/x86/ARM64/ARM + SLUB + no-symbol + kASLR.
     * Supported on both `CONFIG_SLAB_FREELIST_HARDENED` is `y` or `n`.
     * It supports to dump partial pages (`-v`) and NUMA node pages (`-vv`).
     * Since `page_to_virt` is difficult to implement, it will heuristically determine the virtual address from the freelist.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slub-dump.png)
-* `slab-dump`: dumps slab free-list (heuristic).
+* `slab-dump`: dumps slab free-list.
     * Supported on x64 + SLAB + no-symbol + kASLR.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slab-dump.png)
-* `slob-dump`: dumps slob free-list (heuristic).
+* `slob-dump`: dumps slob free-list.
     * Supported on x64 + SLOB + no-symbol + kASLR.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slob-dump.png)
-* `slub-tiny-dump`: dumps slub-tiny free-list (heuristic).
+* `slub-tiny-dump`: dumps slub-tiny free-list.
     * Supported on x64/x86 + SLUB_TINY + no-symbol + kASLR.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slub-tiny-dump.png)
 * `kbase`: displays the kernel base address.
@@ -253,7 +261,7 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmagic.png)
 * `kchecksec`: checks kernel security.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kchecksec.png)
-* `kparam-sysctl`: dumps sysctl parameters (heuristic).
+* `kparam-sysctl`: dumps sysctl parameters.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kparam-sysctl.png)
 * `kfilesystems`: dumps supported file systems.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kfilesystems.png)
@@ -277,7 +285,7 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/buddy-dump.png)
 
 ### Qemu-system cooperation - Arch specific
-* `uefi-ovmf-info`: dumps addresses of some important structures in each boot phase of UEFI when OVMF is used (heuristic).
+* `uefi-ovmf-info`: dumps addresses of some important structures in each boot phase of UEFI when OVMF is used.
     * Supported on only x64.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/uefi-ovmf-info.png)
 * `msr`: displays MSR (Model Specific Registers) values by embedding/executing dynamic assembly.
@@ -304,7 +312,7 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
     * If you want to use native `c`, use the full form `continue`.
 
 ### Heap dump features
-* `partition-alloc-dump`: dumps partition-alloc free-list (heuristic).
+* `partition-alloc-dump`: dumps partition-alloc free-list.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/partition-alloc-dump.png)
     * This command is reserved for the implementation of latest version of chromium.
         * Currently tested: v117.x / 1176938 / f1dd439f69f177c9081dbe4f6b7e9d396388da8f
@@ -313,30 +321,30 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
     * It will try heuristic search if binary has no symbol.
     * How to test:
         * See [partition-alloc-dump-dev/downloader.py](https://github.com/bata24/gef/blob/dev/partition-alloc-dump-dev/downloader.py).
-* `tcmalloc-dump`: dumps tcmalloc free-list (heuristic).
+* `tcmalloc-dump`: dumps tcmalloc free-list.
     * Supported on only x64, based on gperftools-2.9.1 (named `libgoogle-perftools{4,-dev}`)
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/tcmalloc-dump.png)
     * How to test:
         * Execute as `LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libtcmalloc.so ./a.out`.
-* `musl-heap-dump`: dumps musl-libc heap chunks (heuristic).
+* `musl-heap-dump`: dumps musl-libc heap chunks.
     * Supported on x64/x86, based on musl-libc v1.2.4.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/musl-heap-dump.png)
     * How to test:
         * Get and extract latest source, then `./configure && make install`.
         * Build as `/usr/local/musl/bin/musl-gcc test.c`.
-* `uclibc-ng-heap-dump`: dumps uClibc-ng heap chunks (heuristic).
+* `uclibc-ng-heap-dump`: dumps uClibc-ng heap chunks.
     * Supported on x64/x86, based on uClibc-ng v1.0.42 malloc-standard.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/uclibc-ng-heap-dump.png)
     * How to test (x64):
         * Download and extract `x86-64--uclibc--stable-2022.08-1.tar.bz2` from https://toolchains.bootlin.com/
-        * Add `/path/to/toolchain/bin` to `$PATH`, then `x86_64-linux-gcc test.c`.
+        * Add `/PATH/TO/x86_64-buildroot-linux-uclibc/bin` to `$PATH`, then `x86_64-linux-gcc test.c`.
         * Fix interpreter by `patchelf --set-interpreter /PATH/TO/x86_64-buildroot-linux-uclibc/sysroot/lib/ld64-uClibc.so.0 a.out`.
 * `optee-bget-dump`: dumps bget allocator of OPTEE-Trusted-App.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/optee-bget-dump.png)
 
 ### Improved features
 * `vmmap`: is improved.
-    * It displays the meomry map information even when connecting to gdb stub like qemu-user (heuristic).
+    * It displays the meomry map information even when connecting to gdb stub like qemu-user.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmmap-qemu-user.png)
     * Intel Pin is supported.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmmap-pin.png)
@@ -448,7 +456,7 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 * `pid`: prints pid.
 * `filename`: prints filename.
 * `auxv`: pretty prints ELF auxiliary vector.
-    * Supported also under qemu-user (heuristic).
+    * Supported also under qemu-user.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/auxv.png)
 * `argv`/`envp`: pretty prints argv and envp.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/argv-envp.png)
@@ -531,7 +539,7 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 * `rp`: invokes `rp++` with commonly used options.
 * `ls`/`cat`: invokes `ls`/`cat` directly.
 * `mmap`: allocates a new memory if `mmap` symbol exists.
-    * This is syntax sugar of `call mmap(...)`.
+    * This is the syntax sugar of `call mmap(...)`.
 * `call-syscall`: calls system call with specified values.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/call-syscall.png)
 * `constgrep`: invokes `grep` under `/usr/include`.
@@ -579,9 +587,9 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 * `follow`: changes `follow-fork-mode` setting.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/follow.png)
 * `smart-cpp-function-name`: toggles `context.smart_cpp_function_name` setting.
-* `ret2dl-hint`: shows the structure used by Return-to-dl-resolve as hint.
+* `ret2dl-hint`: shows the structure used by return-to-dl-resolve as hint.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ret2dl-hint.png)
-* `srop-hint`: shows the code for SigReturn-Oriented-Programming as hint.
+* `srop-hint`: shows the code for sigreturn-oriented-programming as hint.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/srop-hint.png)
 * `smart-memory-dump`: dumps all regions of the memory to each file.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/smart-memory-dump.png)
@@ -600,8 +608,5 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
     * `$`, `ida-interact`, `gef-remote`, `pie`, `pcustom`, `ksymaddr`, `trace-run`, `bufferize`, `output redirect` and `shellcode`.
 * Many bugs fix / formatting / made it easy for me to use.
 
-## Memo (Japanese)
-* Why I decided to make this
-    * [gefを改造した話](https://hackmd.io/@bata24/rJVtBJsrP)
-* The story behind each command, etc.
-    * [bata24/gefの機能紹介とか](https://hackmd.io/@bata24/SycIO4qPi)
+## FAQ
+* See [FAQ.md](https://github.com/bata24/gef/blob/dev/FAQ.md).
