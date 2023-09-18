@@ -333,8 +333,13 @@ def gef_print(x="", less=False, *args, **kwargs):
             return
         _, tmp_path = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".txt", prefix="gef_print_")
         open(tmp_path, "wb").write(str2bytes(x))
-        os.system(f"{less} -R {tmp_path}")
-        os.unlink(tmp_path)
+        os.system("{:s} -R {:s}".format(less, tmp_path))
+
+        keep_pager_result = get_gef_setting("gef.keep_pager_result")
+        if keep_pager_result:
+            print("result saved at {:s}".format(tmp_path))
+        else:
+            os.unlink(tmp_path)
     else:
         print(x, *args, **kwargs)
     return
@@ -69850,6 +69855,7 @@ class GefCommand(GenericCommand):
         self.add_setting("disable_color", False, "Disable all colors in GEF")
         self.add_setting("tempdir", GEF_TEMP_DIR, "Directory to use for temporary/cache content")
         self.add_setting("always_no_pager", False, "Always disable pager in gef_print()")
+        self.add_setting("keep_pager_result", False, "Leaves temporary files in gef_print()")
         self.loaded_commands = []
         self.missing_commands = {}
         return
