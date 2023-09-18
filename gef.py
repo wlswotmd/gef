@@ -9330,25 +9330,6 @@ def read_ascii_string(address):
     return None
 
 
-def strings(data, length=8):
-    string_printable = string.printable.replace("\n", "").encode()
-    strings_data = []
-    current_str = ""
-    i = 0
-    while i < len(data):
-        if data[i] in string_printable:
-            current_str += chr(data[i])
-        else:
-            if len(current_str) >= length:
-                strings_data.append(current_str)
-            current_str = ""
-        i += 1
-    if len(current_str) >= length:
-        strings_data.append(current_str)
-    strings # avoid to be detected as unused # noqa: B018
-    return strings_data
-
-
 def read_physmem_secure(paddr, size):
     sm_base, sm_size = XSecureMemAddrCommand.get_secure_memory_base_and_size()
     if sm_base is None or sm_size is None:
@@ -50008,43 +49989,75 @@ class AsciiSearchCommand(GenericCommand):
     parser.add_argument("-f", "--filter", action="append", type=re.compile, default=[], help="REGEXP filter.")
     parser.add_argument("-d", "--depth", default=3, type=int, help="recursive depth. (default: %(default)s)")
     parser.add_argument("-r", "--range", default=0x40, type=lambda x: int(x, 16), help="search range. (default: %(default)s)")
+    parser.add_argument("-m", "--minlen", default=8, type=int, help="minimum string length (default: %(default)s)")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
-    def search_ascii(self, locations, search_range, depth, max_depth):
-        if depth == 0:
-            return
+    def strings(self, data, len_threshold):
+        string_printable = bytes(range(0x20, 0x7f))
+        strings_result = []
+        current_str = ""
+        i = 0
+        while i < len(data):
+            if data[i] in string_printable:
+                current_str += chr(data[i])
+            else:
+                if len(current_str) >= len_threshold:
+                    strings_result.append((i, current_str))
+                current_str = ""
+            i += 1
+        if len(current_str) >= len_threshold:
+            strings_result.append((i, current_str))
+        return strings_result
 
-        old_locations = []
-        offset = 0
-        while offset < search_range:
-            target = locations[-1] + offset
-            if not is_valid_addr(target):
-                offset += current_arch.ptrsize
-                continue
+    def search_ascii(self, queue):
+        string_printable = list(range(0x20, 0x7f))
 
-            cstr = None
+        seen_addr = []
+        seen_cstr = []
+
+        while queue:
+            location, depth = queue.pop(0)
+
+            # get data
+            data = b""
             try:
-                cstr = read_ascii_string(target)
-            except UnicodeDecodeError:
+                # read range
+                data += read_memory(location, self.search_range)
+                # read extra
+                while data and data[-1] in string_printable:
+                    data += read_memory(location + len(data), 1)
+            except gdb.MemoryError:
                 pass
 
-            if cstr and len(cstr) > 4:
-                if not self.filter or any(re_pattern.search(cstr) for re_pattern in self.filter):
-                    if target not in self.seen:
-                        for d, loc in enumerate(locations):
-                            if old_locations != locations:
-                                gef_print("{:s}{:#x}".format("  " * d, loc))
-                        old_locations = locations.copy()
-                        gef_print("{:s}{:#x}: {:s}".format("  " * (d + 1), target, repr(cstr)))
-                        self.seen.add(target)
-                offset += len(cstr) + 1
+            # search string
+            for offset, cstr in self.strings(data, self.minlen):
+                address = location + offset
+
+                seen = False
+                for seen_addr_start, seen_addr_end in seen_cstr:
+                    if seen_addr_start <= address < seen_addr_end:
+                        seen = True
+                        break
+                if seen:
+                    continue
+
+                if not self.filter or any(filt.search(cstr) for filt in self.filter):
+                    self.out.append("{:s}: {:s}".format(str(lookup_address(address)), cstr))
+                seen_cstr.append((address, address + len(cstr) + 1))
+
+            # search pointer for recursive search
+            if depth == 0:
                 continue
-
-            v = read_int_from_memory(target)
-            if is_valid_addr(v):
-                self.search_ascii(locations + [v], search_range, depth - 1, max_depth)
-
-            offset += current_arch.ptrsize
+            aligned_data = data[current_arch.ptrsize - location % current_arch.ptrsize:]
+            if len(aligned_data) % 8:
+                aligned_data = aligned_data[:-(len(aligned_data) % current_arch.ptrsize)]
+            for addr in slice_unpack(aligned_data, current_arch.ptrsize):
+                if addr in seen_addr:
+                    continue
+                if is_valid_addr(addr):
+                    queue.append((addr, depth - 1))
+                    seen_addr.append(addr)
         return
 
     @parse_args
@@ -50052,8 +50065,14 @@ class AsciiSearchCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
         self.filter = args.filter
-        self.seen = set()
-        self.search_ascii([args.location], args.range, args.depth, args.depth)
+        self.minlen = args.minlen
+        self.search_range = args.range
+        self.out = []
+        queue = [(args.location, args.depth)]
+        self.search_ascii(queue)
+
+        if self.out:
+            gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
