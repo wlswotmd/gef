@@ -47,6 +47,13 @@ There is another option is disable colors. Try `gef config gef.disable_color Tru
 ## I don't want to add `-n` to every command to disable pager.
 Try `gef config gef.always_no_pager True` then `gef save`.
 
+## Is it possible to re-display the results of a command (for using less-pager)?
+Basically you can't.
+Please save as appropriate with `|$cat > /tmp/foo.txt` while the less-pager is running.
+Or try `gef config gef.keep_pager_result True` then `gef save`. From next time onwards, temporary files will no longer be deleted.
+
+Note: The `pagewalk` command and `pagewalk-with-hints` command can be redisplayed by `-c`.
+
 ## `ktask` (or other kernel related commands) does not work.
 The kernel you are debugging may have been built with `CONFIG_RANDSTRUCT=y`.
 In this case, except for a few commands, they will not work correctly.
@@ -54,6 +61,12 @@ In this case, except for a few commands, they will not work correctly.
 ## `vmmap` command does not recognize option.
 When connected to qemu-system or vmware's gdb stub, the `vmmap` command is just redirected to the `pagewalk` command.
 All options are ignored at this time. If you want to use some options, please use the `pagewalk` command instead of `vmmap` command.
+
+## Is it possible to pass the result of a command to a shell command?
+Yes, you can use built-in `pipe` command. For example, `pipe elf-info -n |grep .data` or `|pdisas |grep call`.
+
+## Can I access each GEF command with python?
+Yes, you can access by `__LCO__` that means loaded command object. For example, `pi __LCO__["vmmap"]`.
 
 
 # About development schedule
@@ -78,7 +91,7 @@ This is because three things are required:
 No. I develop this forked GEF freely.
 
 
-# About reporting
+# About reporting, etc.
 
 ## I found a bug.
 Please feel free to report it on the issue page. I will respond as soon as possible.
@@ -86,6 +99,10 @@ Please feel free to report it on the issue page. I will respond as soon as possi
 ## Can you please add this feature? / I don't like the XXX, so please fix it.
 I will consider it, so please report it on the issue page.
 But this is a personal development, so I have the final say. I appreciate your understanding.
+
+## Is there any information that should be provided when reporting?
+You will need a screenshot or a copy of the terminal string when the problem occurred.
+In addition, I am glad if there are the results of the `version` command and `arch-info` command.
 
 ## Is it okay to fork and modify?
 Yes. However, please follow the license.
