@@ -22605,7 +22605,7 @@ class ContextCommand(GenericCommand):
             if " PTR fs:" in ops:
                 ofs = ContextCommand.RE_SUB_BRANCH_ADDR4.sub(r"\1", ops)
                 ofs = to_unsigned_long(gdb.parse_and_eval(ofs))
-                fs = TlsCommand.getfs()
+                fs = current_arch.get_fs()
                 try:
                     if to_str:
                         return "{:#x}".format(read_int_from_memory(fs + ofs))
@@ -22622,7 +22622,7 @@ class ContextCommand(GenericCommand):
             if " PTR gs:" in ops:
                 ofs = ContextCommand.RE_SUB_BRANCH_ADDR5.sub(r"\1", ops)
                 ofs = to_unsigned_long(gdb.parse_and_eval(ofs))
-                gs = TlsCommand.getgs()
+                gs = current_arch.get_gs()
                 try:
                     if to_str:
                         return "{:#x}".format(read_int_from_memory(gs + ofs))
