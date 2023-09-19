@@ -91,7 +91,7 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 * Supported architectures
     * x86, x64, ARM and ARM64
 * Note
-    * Most commands should work fine unless `CONFIG_RANDSTRUCT` is enabled.
+    * Most commands should work fine unless `CONFIG_RANDSTRUCT=y`.
     * It works with any version qemu-system, but qemu-6.x or higher is recommended.
 
 ### Qemu-user cooperation
