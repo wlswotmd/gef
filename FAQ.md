@@ -8,7 +8,7 @@ It's probably fine for regular Linux. I've used it on debian and WSL2.
 Some users are running it on Arch Linux.
 However, I have not confirmed that all commands work correctly.
 
-## What kernel versions does it support?
+## What kernel versions does GEF support?
 3.x ~ 6.5.x are supported.
 However, I have not verified every kernel version, so there may be environments where GEF does not work.
 If you have any trouble, please report it on the issue page.
@@ -23,7 +23,7 @@ No. Whether vmlinux includes debug information has no effect on GEF behavior.
 GEF always uses its own resolved address with `kallsyms-remote`.
 It also performs its own heuristic structure member detection in each command.
 
-## Does it support i386 16-bit mode (real mode)?
+## Does GEF support i386 16-bit mode (real mode)?
 No. GEF does not support real mode.
 Please consider using other scripts, such as [here](https://astralvx.com/debugging-16-bit-in-qemu-with-gdb-on-windows/).
 
@@ -47,7 +47,7 @@ There is another option is disable colors. Try `gef config gef.disable_color Tru
 ## I don't want to add `-n` to every command to disable pager.
 Try `gef config gef.always_no_pager True` then `gef save`.
 
-## Is it possible to re-display the results of a command (for using less-pager)?
+## Is GEF possible to re-display the results of a command (for using less-pager)?
 Basically you can't.
 Please save as appropriate with `|$cat > /tmp/foo.txt` while the less-pager is running.
 Or try `gef config gef.keep_pager_result True` then `gef save`. From next time onwards, temporary files will no longer be deleted.
@@ -62,11 +62,39 @@ In this case, except for a few commands, they will not work correctly.
 When connected to qemu-system or vmware's gdb stub, the `vmmap` command is just redirected to the `pagewalk` command.
 All options are ignored at this time. If you want to use some options, please use the `pagewalk` command instead of `vmmap` command.
 
-## Is it possible to pass the result of a command to a shell command?
+## Is GEF possible to pass the result of a command to a shell command?
 Yes, you can use built-in `pipe` command. For example, `pipe elf-info -n |grep .data` or `|pdisas |grep call`.
+
+
+# About python
 
 ## Can I access each GEF command with python?
 Yes, you can access by `__LCO__` that means loaded command object. For example, `pi __LCO__["vmmap"]`.
+
+## How can I get the instruction object?
+You can get instruction object by `pi get_insn(addr=None)`.
+
+There are also similar functions. Here are the list.
+- `get_insn(addr=None)`
+- `get_insn_next(addr=None)`
+- `get_insn_prev(addr=None)`
+- `gef_instruction_n(addr, n)`
+
+## Are there any other globally accessible functions that are useful?
+- Memory Access
+    - `write_memory(address, data)`, `read_memory(addr, length)`
+    - `is_valid_addr(addr)`
+    - `read_int_from_memory(addr)`
+    - `read_cstring_from_memory(address, max_length=None, ascii_only=True)`
+    - `read_physmem(paddr, size)`, `write_physmem(paddr, data)`
+    - `read_physmem_secure(paddr, size)`, `write_physmem_secure(paddr, data)`
+- Register Access
+    - `get_register(regname, use_mbed_exec=False, use_monitor=False)`
+- Other
+    - `str2bytes(x)`, `bytes2str(x)`
+    - `slicer(data, n)`, `slice_unpack(data, n)`
+    - `p8`, `p16`, `p32`, `p64`
+    - `u8`, `u16`, `u32`, `u64`, `u128`
 
 
 # About development schedule
