@@ -50858,17 +50858,29 @@ class GdtInfoCommand(GenericCommand):
             gef_print("[{:02d}] {:20s} {:s} {:s}".format(i, segname, valstr, regstr))
         return
 
-    def print_gdt_qemu(self):
+    def print_gdt_real(self):
         # parse real value
-        res = gdb.execute("monitor info registers", to_string=True)
-
-        gdtr = re.search(r"GDT\s*=\s*(\S+) (\S+)", res)
-        base, limit = [int(gdtr.group(i), 16) for i in range(1, 3)]
+        if is_qemu_system():
+            res = gdb.execute("monitor info registers", to_string=True)
+            gdtr = re.search(r"GDT\s*=\s*(\S+) (\S+)", res)
+            base, limit = [int(gdtr.group(i), 16) for i in range(1, 3)]
+        elif is_vmware():
+            res = gdb.execute("monitor r gdtr", to_string=True)
+            r = re.search(r"gdtr base=(\S+) limit=(\S+)", res)
+            base, limit = int(r.group(1), 16), int(r.group(2), 16)
         gdtinfo = slice_unpack(read_memory(base, limit + 1), 8)
 
-        tr = re.search(r"TR\s*=\s*(\S+) (\S+) (\S+) (\S+)", res)
-        trseg, *_ = [int(tr.group(i), 16) for i in range(1, 5)]
-        tr_idx = trseg >> 3
+
+        if is_qemu_system():
+            tr = re.search(r"TR\s*=\s*(\S+) (\S+) (\S+) (\S+)", res)
+            trseg, *_ = [int(tr.group(i), 16) for i in range(1, 5)]
+            tr_idx = trseg >> 3
+        elif is_vmware():
+            # TODO: how to get
+            if is_x86_64():
+                tr_idx = 8
+            else:
+                tr_idx = 16
 
         if is_x86_64():
             segm_desc = self.SEGMENT_DESCRIPTION_64
@@ -50965,8 +50977,8 @@ class GdtInfoCommand(GenericCommand):
 
         self.print_seg_info()
 
-        if is_qemu_system() and is_in_kernel():
-            self.print_gdt_qemu()
+        if is_qemu_system() or is_vmware():
+            self.print_gdt_real()
         else:
             self.print_gdt_example()
 
@@ -51132,11 +51144,16 @@ class IdtInfoCommand(GenericCommand):
                 gef_print("[{:03d}] {:36s} {:s}".format(i, int_name, self.idtval2str(value)))
         return
 
-    def print_idt_qemu(self):
+    def print_idt_real(self):
         # parse real value
-        res = gdb.execute("monitor info registers", to_string=True)
-        idtr = re.search(r"IDT\s*=\s*(\S+) (\S+)", res)
-        base, limit = [int(idtr.group(i), 16) for i in range(1, 3)]
+        if is_qemu_system():
+            res = gdb.execute("monitor info registers", to_string=True)
+            idtr = re.search(r"IDT\s*=\s*(\S+) (\S+)", res)
+            base, limit = [int(idtr.group(i), 16) for i in range(1, 3)]
+        elif is_vmware():
+            res = gdb.execute("monitor r idtr", to_string=True)
+            r = re.search(r"idtr base=(\S+) limit=(\S+)", res)
+            base, limit = int(r.group(1), 16), int(r.group(2), 16)
         idtinfo = slice_unpack(read_memory(base, limit + 1), current_arch.ptrsize * 2)
 
         # print title
@@ -51181,8 +51198,8 @@ class IdtInfoCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        if is_qemu_system() and is_in_kernel():
-            self.print_idt_qemu()
+        if is_qemu_system() or is_vmware():
+            self.print_idt_real()
         else:
             self.print_idt_example()
 
