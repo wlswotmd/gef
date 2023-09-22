@@ -15265,21 +15265,23 @@ class ReadSystemRegisterCommand(GenericCommand):
         ("p15", "c10", 4, "c3", 1): ("HAMAIR1", "Hyp Auxiliary Memory Attribute Indirection Register 1"),
 
         # DMA registers (ARM11)
-        ("p15", "c11", 0, "c0", 0): ("N/A", "DMA Identification and Status (Present)"),
-        ("p15", "c11", 0, "c0", 1): ("N/A", "DMA Identification and Status (Queued)"),
-        ("p15", "c11", 0, "c0", 2): ("N/A", "DMA Identification and Status (Running)"),
-        ("p15", "c11", 0, "c0", 3): ("N/A", "DMA Identification and Status (Interrupting)"),
-        ("p15", "c11", 0, "c1", 0): ("N/A", "DMA User Accessibility"),
-        ("p15", "c11", 0, "c2", 0): ("N/A", "DMA Channel Number"),
-        ("p15", "c11", 0, "c3", 0): ("N/A", "DMA Enable (Stop)"),
-        ("p15", "c11", 0, "c3", 1): ("N/A", "DMA Enable (Start)"),
-        ("p15", "c11", 0, "c3", 2): ("N/A", "DMA Enable (Clear)"),
-        ("p15", "c11", 0, "c4", 0): ("N/A", "DMA Control"),
-        ("p15", "c11", 0, "c5", 0): ("N/A", "DMA Internal Start Address"),
-        ("p15", "c11", 0, "c6", 0): ("N/A", "DMA External Start Address"),
-        ("p15", "c11", 0, "c7", 0): ("N/A", "DMA Internal End Address"),
-        ("p15", "c11", 0, "c8", 0): ("N/A", "DMA Channel Status"),
-        ("p15", "c11", 0, "c15", 0): ("N/A", "DMA Context ID"),
+        # This definition conflicts with other coprocessor definitions.
+        # ARM v6 architecture (ARM11 core) is old and will be abandoned.
+        #("p15", "c11", 0, "c0", 0): ("N/A", "DMA Identification and Status (Present)"),
+        #("p15", "c11", 0, "c0", 1): ("N/A", "DMA Identification and Status (Queued)"),
+        #("p15", "c11", 0, "c0", 2): ("N/A", "DMA Identification and Status (Running)"),
+        #("p15", "c11", 0, "c0", 3): ("N/A", "DMA Identification and Status (Interrupting)"),
+        #("p15", "c11", 0, "c1", 0): ("N/A", "DMA User Accessibility"),
+        #("p15", "c11", 0, "c2", 0): ("N/A", "DMA Channel Number"),
+        #("p15", "c11", 0, "c3", 0): ("N/A", "DMA Enable (Stop)"),
+        #("p15", "c11", 0, "c3", 1): ("N/A", "DMA Enable (Start)"),
+        #("p15", "c11", 0, "c3", 2): ("N/A", "DMA Enable (Clear)"),
+        #("p15", "c11", 0, "c4", 0): ("N/A", "DMA Control"),
+        #("p15", "c11", 0, "c5", 0): ("N/A", "DMA Internal Start Address"),
+        #("p15", "c11", 0, "c6", 0): ("N/A", "DMA External Start Address"),
+        #("p15", "c11", 0, "c7", 0): ("N/A", "DMA Internal End Address"),
+        #("p15", "c11", 0, "c8", 0): ("N/A", "DMA Channel Status"),
+        #("p15", "c11", 0, "c15", 0): ("N/A", "DMA Context ID"),
 
         # Reset management registers.
         ("p15", "c12", 0, "c0", 0): ("VBAR", "Vector Base Address Register"),
@@ -47584,7 +47586,7 @@ class KernelCharacterDevicesCommand(GenericCommand):
             (10, 1): "/dev/psaux",
             (10, 2): "/dev/inportbm",
             (10, 3): "/dev/atibm",
-            (10, 4): "/dev/jbm",
+            #(10, 4): "/dev/jbm", # duplicates
             (10, 4): "/dev/amigamouse",
             (10, 5): "/dev/atarimouse",
             (10, 6): "/dev/sunmouse",
