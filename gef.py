@@ -9555,6 +9555,25 @@ def parse_args(f):
     return wrapper
 
 
+def switch_to_intel_syntax(f):
+    """Decorator to temporarily switch to Intel syntax."""
+
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        if not is_x86():
+            return f(*args, **kwargs)
+
+        att = '"att"' in gdb.execute("show disassembly-flavor", to_string=True)
+        if att:
+            gdb.execute("set disassembly-flavor intel", to_string=True)
+        ret = f(*args, **kwargs)
+        if att:
+            gdb.execute("set disassembly-flavor att", to_string=True)
+        return ret
+
+    return wrapper
+
+
 def only_if_gdb_running(f):
     """Decorator wrapper to check if GDB is running."""
 
@@ -42286,6 +42305,7 @@ class KernelAddressHeuristicFinder:
     """A class that heuristically finds a specific symbol in the kernel."""
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_saved_command_line():
         # plan 1 (available v2.6.28-rc1 or later)
         cmdline_proc_show = get_ksymaddr("cmdline_proc_show")
@@ -42330,6 +42350,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_current_task():
         if is_x86():
             # plan 1 (directly)
@@ -42370,6 +42391,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_init_task():
         # plan 1 (directly)
         init_task = get_ksymaddr("init_task")
@@ -42467,6 +42489,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_init_cred():
         # plan 1 (directly)
         init_cred = get_ksymaddr("init_cred")
@@ -42546,6 +42569,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_modules():
         # plan 1 (directly)
         modules = get_ksymaddr("modules")
@@ -42620,6 +42644,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_chrdevs():
         # plan 1 (directly)
         chrdevs = get_ksymaddr("chrdevs")
@@ -42686,6 +42711,7 @@ class KernelAddressHeuristicFinder:
             return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_cdev_map():
         # plan 1 (directly)
         cdev_map = get_ksymaddr("cdev_map")
@@ -42747,6 +42773,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_sys_call_table_x64():
         if not is_x86_64():
             return None
@@ -42769,6 +42796,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_sys_call_table_x32():
         if not is_x86_64():
             return None
@@ -42795,6 +42823,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_sys_call_table_x86():
         if not is_x86():
             return None
@@ -42928,6 +42957,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_per_cpu_offset():
         # plan 1 (directly)
         __per_cpu_offset = get_ksymaddr("__per_cpu_offset")
@@ -43007,6 +43037,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_slab_caches():
         # plan 1 (directly)
         slab_caches = get_ksymaddr("slab_caches")
@@ -43141,6 +43172,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_modprobe_path():
         # plan 1 (directly)
         modprobe_path = get_ksymaddr("modprobe_path")
@@ -43199,6 +43231,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_poweroff_cmd():
         # plan 1 (directly)
         poweroff_cmd = get_ksymaddr("poweroff_cmd")
@@ -43267,6 +43300,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_reboot_cmd():
         # plan 1 (directly)
         reboot_cmd = get_ksymaddr("reboot_cmd")
@@ -43322,6 +43356,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_core_pattern():
         # plan 1 (directly)
         core_pattern = get_ksymaddr("core_pattern")
@@ -43425,6 +43460,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_phys_base():
         # plan 1 (directly)
         phys_base = get_ksymaddr("phys_base")
@@ -43444,6 +43480,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_page_offset_base():
         if not is_x86_64():
             return None
@@ -43466,6 +43503,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_vmalloc_base():
         if not is_x86_64():
             return None
@@ -43482,6 +43520,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_vmemmap_base():
         if not is_x86_64():
             return None
@@ -43498,6 +43537,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_clocksource_tsc():
         if not is_x86():
             return
@@ -43530,6 +43570,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_clocksource_list():
         # plan 1 (directly)
         clocksource_list = get_ksymaddr("clocksource_list")
@@ -43577,6 +43618,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_ptmx_fops():
         # plan 1 (directly)
         ptmx_fops = get_ksymaddr("ptmx_fops")
@@ -43595,6 +43637,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_n_tty_ops():
         # plan 1 (directly)
         n_tty_ops = get_ksymaddr("n_tty_ops")
@@ -43650,6 +43693,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_tty_ldiscs():
         # plan 1 (directly)
         tty_ldiscs = get_ksymaddr("tty_ldiscs")
@@ -43699,6 +43743,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_sysctl_table_root():
         # plan 1 (directly)
         sysctl_table_root = get_ksymaddr("sysctl_table_root")
@@ -43761,6 +43806,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_selinux_state():
         # plan 1 (directly)
         selinux_state = get_ksymaddr("selinux_state")
@@ -43817,6 +43863,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_apparmor_enabled():
         # plan 1 (directly)
         apparmor_enabled = get_ksymaddr("apparmor_enabled")
@@ -43880,6 +43927,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_apparmor_initialized():
         # plan 1 (directly)
         apparmor_initialized = get_ksymaddr("apparmor_initialized")
@@ -43947,6 +43995,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_tomoyo_enabled():
         # plan 1 (directly)
         tomoyo_enabled = get_ksymaddr("tomoyo_enabled")
@@ -43957,6 +44006,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_mmap_min_addr():
         # plan 1 (directly)
         mmap_min_addr = get_ksymaddr("mmap_min_addr")
@@ -44011,6 +44061,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_sysctl_unprivileged_userfaultfd():
         # plan 1 (directly)
         sysctl_unprivileged_userfaultfd = get_ksymaddr("sysctl_unprivileged_userfaultfd")
@@ -44024,6 +44075,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_sysctl_unprivileged_bpf_disabled():
         # plan 1 (directly)
         sysctl_unprivileged_bpf_disabled = get_ksymaddr("sysctl_unprivileged_bpf_disabled")
@@ -44086,6 +44138,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_kptr_restrict():
         # plan 1 (directly)
         kptr_restrict = get_ksymaddr("kptr_restrict")
@@ -44148,6 +44201,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_sysctl_perf_event_paranoid():
         # plan 1 (directly)
         sysctl_perf_event_paranoid = get_ksymaddr("sysctl_perf_event_paranoid")
@@ -44222,6 +44276,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_dmesg_restrict():
         # plan 1 (directly)
         get_dmesg_restrict = get_ksymaddr("dmesg_restrict")
@@ -44292,6 +44347,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_kexec_load_disabled():
         # plan 1 (directly)
         kexec_load_disabled = get_ksymaddr("kexec_load_disabled")
@@ -44305,6 +44361,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_loadpin_enabled():
         # plan 1
         loadpin_enabled = get_kparam("kernel.loadpin.enabled")
@@ -44313,6 +44370,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_ptrace_scope():
         # plan 1 (directly)
         ptrace_scope = get_ksymaddr("ptrace_scope")
@@ -44326,6 +44384,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_vdso_image_64():
         # plan 1 (directly)
         vdso_image_64 = get_ksymaddr("vdso_image_64")
@@ -44349,6 +44408,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_vdso_image_x32():
         # plan 1 (directly)
         vdso_image_x32 = get_ksymaddr("vdso_image_x32")
@@ -44373,6 +44433,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_vdso_image_32():
         # plan 1 (directly)
         vdso_image_32 = get_ksymaddr("vdso_image_32")
@@ -44471,6 +44532,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_file_systems():
         # plan 1 (directly)
         file_systems = get_ksymaddr("file_systems")
@@ -44527,6 +44589,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_printk_rb_static():
         # plan 1 (directly)
         printk_rb_static = get_ksymaddr("printk_rb_static")
@@ -44604,6 +44667,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_log_first_idx():
         # plan 1 (directly)
         log_first_idx = get_ksymaddr("log_first_idx")
@@ -44617,6 +44681,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_log_next_idx():
         # plan 1 (directly)
         log_next_idx = get_ksymaddr("log_next_idx")
@@ -44701,6 +44766,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get___log_buf():
         # plan 1 (directly)
         __log_buf = get_ksymaddr("__log_buf")
@@ -44722,6 +44788,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_log_buf_len():
         # plan 1 (directly)
         log_buf_len = get_ksymaddr("log_buf_len")
@@ -44814,6 +44881,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_idt_base():
         if is_x86():
             if is_qemu_system():
@@ -44829,6 +44897,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_gdt_base():
         if is_x86():
             if is_qemu_system():
@@ -44844,6 +44913,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_tss_base():
         if is_x86():
             if is_qemu_system():
@@ -44854,6 +44924,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_ldt_base():
         if is_x86():
             if is_qemu_system():
@@ -44867,6 +44938,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_node_data():
         # plan 1 (directly)
         node_data = get_ksymaddr("node_data")
@@ -44887,6 +44959,7 @@ class KernelAddressHeuristicFinder:
         return None
 
     @staticmethod
+    @switch_to_intel_syntax
     def get_node_data0():
         # plan 1 (available v2.6.17 or later)
         first_online_pgdat = get_ksymaddr("first_online_pgdat")
@@ -50100,6 +50173,7 @@ class SyscallTableViewCommand(GenericCommand):
         self.cached_table = {}
         return
 
+    @switch_to_intel_syntax
     def syscall_table_view(self, _tag, sys_call_table_addr, syscall_list, nr_base=0):
         if sys_call_table_addr is None:
             if not self.quiet:

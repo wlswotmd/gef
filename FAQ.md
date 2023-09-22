@@ -38,7 +38,8 @@ Other commands are less important, so check them with `gef help` if necessary.
 ## I prefer the AT&T style.
 Please specify each time using the `set disassembly-flavor att` command.
 Or, since the `set disassembly-flavor intel` command is executed in the GEF's main function, it may be a good idea to comment it out.
-However, since GEF does not take AT&T notation parsing into consideration, so the information such as branch destination will not be displayed.
+However, since GEF does not take AT&T syntax parsing into consideration, so some commands may do not work fine.
+If you find a case where it doesn't work, please report it on the issue page.
 
 ## I don't like the color scheme.
 Customize it using the `theme` command, then `gef save`. The config is saved to `~/.gef.rc` by default.
