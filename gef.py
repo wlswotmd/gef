@@ -3779,41 +3779,6 @@ def checksec(filename):
     return results
 
 
-RE_GET_ARCH = re.compile(r"\"(.+)\"")
-
-
-@functools.lru_cache(maxsize=None)
-def get_arch():
-    """Return the binary's architecture."""
-    if is_alive():
-        try:
-            arch = gdb.selected_frame().architecture()
-            return arch.name()
-        except gdb.error:
-            # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
-            # Resolve by moving to the slow path.
-            pass
-
-    # slow path
-    arch_str = gdb.execute("show architecture", to_string=True).strip()
-    if "The target architecture is set automatically (currently " in arch_str:
-        arch_str = arch_str.split("(currently ", 1)[1]
-        arch_str = arch_str.split(")", 1)[0]
-    elif "The target architecture is set to \"auto\" (currently \"" in arch_str:
-        # GDB version >= 12.x
-        arch_str = arch_str.split("(currently \"", 1)[1]
-        arch_str = arch_str.split("\")", 1)[0]
-    elif "The target architecture is assumed to be " in arch_str:
-        arch_str = arch_str.replace("The target architecture is assumed to be ", "")
-    elif "The target architecture is set to " in arch_str:
-        # GDB version >= 10.1
-        arch_str = RE_GET_ARCH.findall(arch_str)[0]
-    else:
-        # Unknown, we throw an exception to be safe
-        raise RuntimeError("Unknown architecture: {}".format(arch_str))
-    return arch_str
-
-
 @functools.lru_cache(maxsize=None)
 def get_endian():
     """Return the binary endianness."""
@@ -11121,6 +11086,41 @@ def is_stripped(filename=None):
     cmd = [file_bin, filename]
     out = gef_execute_external(cmd)
     return "not stripped" not in out
+
+
+RE_GET_ARCH = re.compile(r"\"(.+)\"")
+
+
+@functools.lru_cache(maxsize=None)
+def get_arch():
+    """Return the binary's architecture."""
+    if is_alive():
+        try:
+            arch = gdb.selected_frame().architecture()
+            return arch.name()
+        except gdb.error:
+            # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
+            # Resolve by moving to the slow path.
+            pass
+
+    # slow path
+    arch_str = gdb.execute("show architecture", to_string=True).strip()
+    if "The target architecture is set automatically (currently " in arch_str:
+        arch_str = arch_str.split("(currently ", 1)[1]
+        arch_str = arch_str.split(")", 1)[0]
+    elif "The target architecture is set to \"auto\" (currently \"" in arch_str:
+        # GDB version >= 12.x
+        arch_str = arch_str.split("(currently \"", 1)[1]
+        arch_str = arch_str.split("\")", 1)[0]
+    elif "The target architecture is assumed to be " in arch_str:
+        arch_str = arch_str.replace("The target architecture is assumed to be ", "")
+    elif "The target architecture is set to " in arch_str:
+        # GDB version >= 10.1
+        arch_str = RE_GET_ARCH.findall(arch_str)[0]
+    else:
+        # Unknown, we throw an exception to be safe
+        raise RuntimeError("Unknown architecture: {}".format(arch_str))
+    return arch_str
 
 
 def set_arch(arch_str=None):
