@@ -61282,6 +61282,7 @@ class QemuRegistersCommand(GenericCommand):
         self.out.append(titlify("CR4 (Control Register 4)"))
         desc = "It contains flags that enable some architectural extensions, and indicate OS or executive support for specific processor capabilities"
         bit_info = [
+            [25, "UINTR", "Enable user-mode inter-processor interrupts", "If 1, enables User-Interrupt Delivery."],
             [24, "PKS", "Enable protection keys for supervisor-mode pages", "If 1, enables PKS"],
             [23, "CET", "Control-flow Enforcement Technology", "If 1, enables CET"],
             [22, "PKE", "Protection Key Enable", "If 1, enables PKE"],
@@ -61308,6 +61309,45 @@ class QemuRegistersCommand(GenericCommand):
         ]
         cr4 = get_register("cr4", use_monitor=True)
         self.out.extend(PrintBitInfo("CR4", ptr_width() * 8, desc, bit_info).make_out(cr4))
+
+        # CR8
+        self.out.append(titlify("CR8 (Control Register 8)"))
+        desc = "Contain task priority level"
+        bit_info = [
+            [[0, 1, 2, 3], "TPL", "Task Priority Level", ""],
+        ]
+        cr8 = get_register("cr8", use_monitor=True)
+        if cr8 is not None: # only access x86 64-bit mode
+            self.out.extend(PrintBitInfo("CR8", ptr_width() * 8, desc, bit_info).make_out(cr8))
+
+        # XCR0
+        self.out.append(titlify("XCR0 (Extended Control Register 0)"))
+        desc = "Contain taks priority level"
+        bit_info = [
+            [19, "APX", "Extended GPRs (R16 through R31)", ""],
+            [18, "AMX_TILEDATA", "", ""],
+            [17, "AMX_TILECFG", "", ""],
+            [16, "HWP", "Hardware P-states", ""],
+            [15, "LBR", "Last branch record", ""],
+            [14, "UINTR", "User interrupts", ""],
+            [13, "HDC", "Hardware duty cycling", ""],
+            [12, "CET_S", "Control-flow Enforcement Technology (CET) Supervisor State", ""],
+            [11, "CET_U", "Control-flow Enforcement Technology (CET) User State", ""],
+            [10, "PASID", "Processor Address Space ID (PASID) state", ""],
+            [9, "PKRU", "XSAVE feature set can be used for PKRU register, which is part of the protection keys mechanism", ""],
+            [8, "PT", "Processor Trace", ""],
+            [7, "Hi16_ZMM", "AVX-512 enable, and XSAVE feature set can be used for the upper ZMM regs", ""],
+            [6, "ZMM_Hi256", "AVX-512 enable, and XSAVE feature set can be used for upper-halves of the lower ZMM regs", ""],
+            [5, "opmask", "AVX-512 enable, and XSAVE feature set can be used for AVX opmask, a.k.a. k0-k7 regs", ""],
+            [4, "BNDCSR", "MPX enable, and XSAVE feature set can be used for BNDCFGU and BNDSTATUS regs", ""],
+            [3, "BNDREG", "MPX enable, and XSAVE feature set can be used for BND0-3 regs", ""],
+            [2, "AVX", "AVX enable, and XSAVE feature set can be used to manage YMM regs", ""],
+            [1, "SSE", "XSAVE feature set enable for MXCSR and XMM regs", ""],
+            [0, "X87", "x87 FPU/MMX State", "always 1"],
+        ]
+        xcr0 = get_register("xcr0", use_monitor=True)
+        if xcr0 is not None:
+            self.out.extend(PrintBitInfo("XCR0", ptr_width() * 8, desc, bit_info).make_out(xcr0))
 
         # DR0-DR3
         self.out.append(titlify("DR0-DR3 (Debug Address Register 0-3)"))
@@ -61373,6 +61413,10 @@ class QemuRegistersCommand(GenericCommand):
         self.out.append(titlify("EFER (Extended Feature Enable Register; MSR_EFER:0xc0000080)"))
         efer = get_register("efer", use_monitor=True)
         bit_info = [
+            [21, "AIBRSE", "Automatic IBRS Enable", ""],
+            [20, "UAIE", "Upper Address Ignore Enable", ""],
+            [18, "INTWB", "Interruptible WBINVD/WBNOINVD Enable", ""],
+            [17, "MCOMMIT", "MCOMMIT instruction Enable", ""],
             [15, "TCE", "Translation Cache Extension", ""],
             [14, "FFXSR", "Fast FXSAVE/FXRSTOR", ""],
             [13, "LMSLE", "Long Mode Segment Limit Enable", ""],
