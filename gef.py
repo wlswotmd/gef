@@ -9163,8 +9163,8 @@ class CSKY(Architecture):
 #    #    return b"".join(insns)
 
 
-def write_memory_qemu_user(pid, address, buffer, length):
-    """Write `buffer` at address `address` for qemu-user or Intel Pin."""
+def write_memory_qemu_user(pid, address, data, length):
+    """Write `data` at address `address` for qemu-user or Intel Pin."""
 
     def read_memory_via_proc_mem(pid, address, length):
         with open("/proc/{:d}/mem".format(pid), "rb") as fd:
@@ -9174,27 +9174,27 @@ def write_memory_qemu_user(pid, address, buffer, length):
             except OSError:
                 return None
 
-    def write_memory_via_proc_mem(pid, address, buffer, length):
+    def write_memory_via_proc_mem(pid, address, data, length):
         with open("/proc/{:d}/mem".format(pid), "wb") as fd:
             try:
                 fd.seek(address)
-                ret = fd.write(buffer[:length])
+                ret = fd.write(data[:length])
                 fd.flush()
                 gdb.execute("maintenance flush dcache", to_string=True)
                 return ret
             except (OSError, gdb.error):
                 return None
 
-    def write_with_check(pid, address, buffer, length, offset=0):
+    def write_with_check(pid, address, data, length, offset=0):
         before = read_memory_via_proc_mem(pid, address + offset, length)
         if before is None:
             return None
 
-        ret = write_memory_via_proc_mem(pid, address + offset, buffer, length)
+        ret = write_memory_via_proc_mem(pid, address + offset, data, length)
         after = read_memory(address, length)
 
         if ret:
-            if after == buffer[:length]:
+            if after == data[:length]:
                 return ret
             else:
                 # fail, revert
@@ -9204,12 +9204,12 @@ def write_memory_qemu_user(pid, address, buffer, length):
 
     # qemu-user (32bit) maps the memory at +0x10000 (fast path)
     if is_qemu_user() and is_32bit():
-        ret = write_with_check(pid, address, buffer, length, offset=0x10000)
+        ret = write_with_check(pid, address, data, length, offset=0x10000)
         if ret:
             return ret
 
     # we assume address is same
-    ret = write_with_check(pid, address, buffer, length)
+    ret = write_with_check(pid, address, data, length)
     if ret:
         return ret
 
@@ -9223,18 +9223,18 @@ def write_memory_qemu_user(pid, address, buffer, length):
             if m.path != target_path:
                 continue
             offset = m.page_start - inner_section.page_start
-            ret = write_with_check(pid, address, buffer, length, offset=offset)
+            ret = write_with_check(pid, address, data, length, offset=offset)
             if ret:
                 return ret
 
     raise Exception("Write memory error for qemu-user or Intel Pin")
 
 
-def write_memory(address, buffer):
-    """Write `buffer` at address `address`."""
-    length = len(buffer)
+def write_memory(address, data):
+    """Write `data` at address `address`."""
+    length = len(data)
     try:
-        gdb.selected_inferior().write_memory(address, buffer, length)
+        gdb.selected_inferior().write_memory(address, data, length)
         return length
     except gdb.MemoryError:
         pass
@@ -9242,7 +9242,7 @@ def write_memory(address, buffer):
     # Under qemu-user/pin, you may not be able to patch code areas, so we patch via /proc/pid/mem
     pid = get_pid()
     if pid and (is_qemu_user() or is_pin()):
-        return write_memory_qemu_user(pid, address, buffer, length)
+        return write_memory_qemu_user(pid, address, data, length)
 
     raise Exception("Write memory error")
 
@@ -9384,7 +9384,7 @@ def read_physmem(paddr, size):
     return out
 
 
-def write_physmem_secure(paddr, buffer):
+def write_physmem_secure(paddr, data):
     sm_base, sm_size = XSecureMemAddrCommand.get_secure_memory_base_and_size()
     if sm_base is None or sm_size is None:
         return None
@@ -9393,13 +9393,13 @@ def write_physmem_secure(paddr, buffer):
     sm = XSecureMemAddrCommand.get_secure_memory_qemu_map(sm_base, sm_size)
     if sm is None:
         return None
-    out = WSecureMemAddrCommand.write_secure_memory(sm, paddr - sm_base, buffer)
+    out = WSecureMemAddrCommand.write_secure_memory(sm, paddr - sm_base, data)
     return out
 
 
-def write_physmem(paddr, buffer):
+def write_physmem(paddr, data):
     if is_arm32() or is_arm64():
-        ret = write_physmem_secure(paddr, buffer)
+        ret = write_physmem_secure(paddr, data)
         if ret:
             return ret
 
@@ -9410,7 +9410,7 @@ def write_physmem(paddr, buffer):
         orig_mode = get_current_mmu_mode()
         if orig_mode == "virt":
             enable_phys()
-        ret = write_memory(paddr, buffer)
+        ret = write_memory(paddr, data)
         if orig_mode == "virt":
             disable_phys()
     except Exception:
