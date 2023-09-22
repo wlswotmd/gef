@@ -9128,21 +9128,21 @@ class CSKY(Architecture):
 #    #    return b"".join(insns)
 
 
-def write_memory_qemu_user(pid, address, data, length):
-    """Write `data` at address `address` for qemu-user or Intel Pin."""
+def write_memory_qemu_user(pid, addr, data, length):
+    """Write `data` at address `addr` for qemu-user or Intel Pin."""
 
-    def read_memory_via_proc_mem(pid, address, length):
+    def read_memory_via_proc_mem(pid, addr, length):
         with open("/proc/{:d}/mem".format(pid), "rb") as fd:
             try:
-                fd.seek(address)
+                fd.seek(addr)
                 return fd.read(length)
             except OSError:
                 return None
 
-    def write_memory_via_proc_mem(pid, address, data, length):
+    def write_memory_via_proc_mem(pid, addr, data, length):
         with open("/proc/{:d}/mem".format(pid), "wb") as fd:
             try:
-                fd.seek(address)
+                fd.seek(addr)
                 ret = fd.write(data[:length])
                 fd.flush()
                 gdb.execute("maintenance flush dcache", to_string=True)
@@ -9150,37 +9150,37 @@ def write_memory_qemu_user(pid, address, data, length):
             except (OSError, gdb.error):
                 return None
 
-    def write_with_check(pid, address, data, length, offset=0):
-        before = read_memory_via_proc_mem(pid, address + offset, length)
+    def write_with_check(pid, addr, data, length, offset=0):
+        before = read_memory_via_proc_mem(pid, addr + offset, length)
         if before is None:
             return None
 
-        ret = write_memory_via_proc_mem(pid, address + offset, data, length)
-        after = read_memory(address, length)
+        ret = write_memory_via_proc_mem(pid, addr + offset, data, length)
+        after = read_memory(addr, length)
 
         if ret:
             if after == data[:length]:
                 return ret
             else:
                 # fail, revert
-                write_memory_via_proc_mem(pid, address + offset, before, length)
+                write_memory_via_proc_mem(pid, addr + offset, before, length)
                 return None
         return None
 
     # qemu-user (32bit) maps the memory at +0x10000 (fast path)
     if is_qemu_user() and is_32bit():
-        ret = write_with_check(pid, address, data, length, offset=0x10000)
+        ret = write_with_check(pid, addr, data, length, offset=0x10000)
         if ret:
             return ret
 
-    # we assume address is same
-    ret = write_with_check(pid, address, data, length)
+    # we assume addr is same
+    ret = write_with_check(pid, addr, data, length)
     if ret:
         return ret
 
-    # heuristic address search and try use it
+    # heuristic addr search and try use it
     if is_qemu_user():
-        inner_section = lookup_address(address).section
+        inner_section = lookup_address(addr).section
         target_path = inner_section.path
 
         outer_maps = get_process_maps(outer=True)
@@ -9188,18 +9188,18 @@ def write_memory_qemu_user(pid, address, data, length):
             if m.path != target_path:
                 continue
             offset = m.page_start - inner_section.page_start
-            ret = write_with_check(pid, address, data, length, offset=offset)
+            ret = write_with_check(pid, addr, data, length, offset=offset)
             if ret:
                 return ret
 
     raise Exception("Write memory error for qemu-user or Intel Pin")
 
 
-def write_memory(address, data):
-    """Write `data` at address `address`."""
+def write_memory(addr, data):
+    """Write `data` at address `addr`."""
     length = len(data)
     try:
-        gdb.selected_inferior().write_memory(address, data, length)
+        gdb.selected_inferior().write_memory(addr, data, length)
         return length
     except gdb.MemoryError:
         pass
@@ -9207,7 +9207,7 @@ def write_memory(address, data):
     # Under qemu-user/pin, you may not be able to patch code areas, so we patch via /proc/pid/mem
     pid = get_pid()
     if pid and (is_qemu_user() or is_pin()):
-        return write_memory_qemu_user(pid, address, data, length)
+        return write_memory_qemu_user(pid, addr, data, length)
 
     raise Exception("Write memory error")
 
@@ -9249,7 +9249,7 @@ def read_int_from_memory(addr):
     return unpack(mem)
 
 
-def read_cstring_from_memory(address, max_length=None, ascii_only=False):
+def read_cstring_from_memory(addr, max_length=None, ascii_only=False):
     """Return a C-string read from memory."""
     # original GEF uses gdb.Value().cast("char"), but this is too slow if string is too large.
     # for example 0xcccccccccccccccc....(too long), this is in kernel or firmware commonly.
@@ -9265,9 +9265,9 @@ def read_cstring_from_memory(address, max_length=None, ascii_only=False):
         block_size = gef_getpagesize()
 
     # first, read to page boundary
-    length = block_size - (address % block_size)
+    length = block_size - (addr % block_size)
     try:
-        res = read_memory(address, length)
+        res = read_memory(addr, length)
     except gdb.MemoryError:
         return None
 
@@ -9277,7 +9277,7 @@ def read_cstring_from_memory(address, max_length=None, ascii_only=False):
             break
         try:
             read_length = min(max_length - len(res), block_size)
-            res += read_memory(address + len(res), read_length)
+            res += read_memory(addr + len(res), read_length)
         except gdb.MemoryError:
             break
 
@@ -9515,10 +9515,10 @@ def u128(x):
     return (upper << 64) | lower
 
 
-def is_ascii_string(address):
-    """Helper function to determine if the buffer pointed by `address` is an ASCII string (in GDB)"""
+def is_ascii_string(addr):
+    """Helper function to determine if the buffer pointed by `addr` is an ASCII string (in GDB)"""
     try:
-        return read_cstring_from_memory(address, ascii_only=True) is not None
+        return read_cstring_from_memory(addr, ascii_only=True) is not None
     except gdb.MemoryError:
         return False
 
@@ -10528,14 +10528,13 @@ def get_info_files():
 
 
 @functools.lru_cache(maxsize=512)
-def process_lookup_address(address):
-    """Look up for an address in memory.
-    Return an Address object if found, None otherwise."""
+def process_lookup_address(addr):
+    """Look up for an address in memory. Return an Address object if found, None otherwise."""
     if not is_alive():
         err("Process is not running")
         return None
     for sect in get_process_maps():
-        if sect.page_start <= address < sect.page_end:
+        if sect.page_start <= addr < sect.page_end:
             return sect
     return None
 
@@ -10559,28 +10558,27 @@ def process_lookup_path(names, perm_mask=Permission.ALL):
 
 
 @functools.lru_cache(maxsize=512)
-def file_lookup_address(address):
-    """Look up for a file by its address.
-    Return a Zone object if found, None otherwise."""
+def file_lookup_address(addr):
+    """Look up for a file by its address. Return a Zone object if found, None otherwise."""
     if is_qemu_system():
         # If FGKASLR is enabled, there are too many sections and it will take a long time, so skip them.
         return None
     for info in get_info_files():
-        if info.zone_start <= address < info.zone_end:
+        if info.zone_start <= addr < info.zone_end:
             return info
     return None
 
 
 @functools.lru_cache(maxsize=512)
-def lookup_address(address):
+def lookup_address(addr):
     """Try to find the address in the process address space.
     Return an Address object, with validity flag set based on success."""
-    sect = process_lookup_address(address)
-    info = file_lookup_address(address)
+    sect = process_lookup_address(addr)
+    info = file_lookup_address(addr)
     if sect is None and info is None:
         # i.e. there is no info on this address
-        return Address(value=address, valid=False)
-    return Address(value=address, section=sect, info=info)
+        return Address(value=addr, valid=False)
+    return Address(value=addr, section=sect, info=info)
 
 
 def is_hex(pattern):
@@ -11269,25 +11267,25 @@ def format_address_long_fmt(addr, memalign_size=None):
     return "{:#018x}".format(addr)
 
 
-def align_address(address, memalign_size=None):
+def align_address(addr, memalign_size=None):
     """Align the provided address to the process's native length."""
     # if qemu-xxx(32bit arch) runs on x86-64 machine, memalign_size does not match
     # get_memory_alignment(), so use the value forcibly if memalign_size is not None
     if memalign_size is None and get_memory_alignment() == 4:
-        return address & 0xFFFFFFFF
-    return address & 0xFFFFFFFFFFFFFFFF
+        return addr & 0xFFFFFFFF
+    return addr & 0xFFFFFFFFFFFFFFFF
 
 
-def align_address_to_size(address, align):
+def align_address_to_size(addr, align):
     """Align the address to the given size."""
-    return address + ((align - (address % align)) % align)
+    return addr + ((align - (addr % align)) % align)
 
 
-def parse_address(address):
+def parse_address(addr):
     """Parse an address and return it as an Integer."""
-    if is_hex(address):
-        return int(address, 16)
-    return to_unsigned_long(gdb.parse_and_eval(address))
+    if is_hex(addr):
+        return int(addr, 16)
+    return to_unsigned_long(gdb.parse_and_eval(addr))
 
 
 def get_ksymaddr(sym):

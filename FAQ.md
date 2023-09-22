@@ -69,7 +69,7 @@ Yes, you can use built-in `pipe` command. For example, `pipe elf-info -n |grep .
 # About python
 
 ## Can I access each GEF command with python?
-Yes, you can access by `__LCO__` that means loaded command object. For example, `pi __LCO__["vmmap"]`.
+Yes, you can access by `__LCO__` that means loaded command objects. For example, `pi __LCO__["vmmap"]`.
 
 ## How can I get the instruction object?
 You can get instruction object by `pi get_insn(addr=None)`.
@@ -81,14 +81,14 @@ There are also similar functions. Here are the list.
 - `gef_instruction_n(addr, n)`
 
 ## Are there any other globally accessible functions that are useful?
-- Memory Access
-    - `write_memory(address, data)`, `read_memory(addr, length)`
+- Memory access
+    - `write_memory(addr, data)`, `read_memory(addr, length)`
     - `is_valid_addr(addr)`
     - `read_int_from_memory(addr)`
-    - `read_cstring_from_memory(address, max_length=None, ascii_only=True)`
+    - `read_cstring_from_memory(addr, max_length=None, ascii_only=True)`
     - `read_physmem(paddr, size)`, `write_physmem(paddr, data)`
     - `read_physmem_secure(paddr, size)`, `write_physmem_secure(paddr, data)`
-- Register Access
+- Register access
     - `get_register(regname, use_mbed_exec=False, use_monitor=False)`
 - Other
     - `str2bytes(x)`, `bytes2str(x)`
@@ -152,6 +152,7 @@ If the expression in English is strange, please feel free to correct it on the i
 
 ## I would like to contact you about a GEF?
 Find `bata___` on Discord of official GEF's server or Pwndbg's server.
+Or send DM to [`@bata_24` on X](https://twitter.com/bata_24).
 
 
 # Other memo (Japanese)
