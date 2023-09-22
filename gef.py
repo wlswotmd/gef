@@ -66163,13 +66163,33 @@ class ExecUntilCommand(GenericCommand):
         open("/proc/self/fd/0", "wb").write(msg)
         return
 
+    def check_jump_taken(self, insn):
+        if not current_arch.is_jump(insn):
+            return False
+
+        if (self.only_taken, self.only_not_taken) == (False, False):
+            return True
+        elif (self.only_taken, self.only_not_taken) == (True, False):
+            if current_arch.is_conditional_branch(insn):
+                taken, _reason = current_arch.is_branch_taken(insn)
+                return taken
+            else:
+                return True # non-conditional, so always jump
+        elif (self.only_taken, self.only_not_taken) == (False, True):
+            if current_arch.is_conditional_branch(insn):
+                taken, _reason = current_arch.is_branch_taken(insn)
+                return not taken
+            else:
+                return False # non-conditional, so always jump
+        raise
+
     def is_target_insn(self, insn):
         if self.mode == "call":
             return current_arch.is_call(insn)
         elif self.mode == "jmp":
-            return current_arch.is_jump(insn)
+            return self.check_jump_taken(insn)
         elif self.mode == "indirect-branch":
-            if current_arch.is_call(insn) or current_arch.is_jump(insn):
+            if current_arch.is_call(insn) or self.check_jump_taken(insn):
                 if "[" in str(insn):
                     return True
                 for reg in current_arch.gpr_registers:
@@ -66190,7 +66210,7 @@ class ExecUntilCommand(GenericCommand):
         elif self.mode == "ret":
             return current_arch.is_ret(insn)
         if self.mode == "all-branch":
-            return current_arch.is_call(insn) or current_arch.is_jump(insn) or current_arch.is_ret(insn)
+            return current_arch.is_call(insn) or self.check_jump_taken(insn) or current_arch.is_ret(insn)
         elif self.mode == "memaccess":
             return "[" in str(insn)
         elif self.mode == "keyword":
@@ -66367,12 +66387,27 @@ class ExecUntilJumpCommand(ExecUntilCommand):
     parser.add_argument("-n", "--use-ni", action="store_true", help="use `ni` instead of `si`")
     parser.add_argument("--skip-lib", action="store_true", help="use `ni` instead of `si` if instruction is `call xxx@plt`.")
     parser.add_argument("-e", "--exclude", action="append", type=parse_address, default=[], help="the address to exclude from breakpoints.")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("-t", "--only-taken", action="store_true", help="break only if jump will be taken.")
+    group.add_argument("-T", "--only-not-taken", action="store_true", help="break only if jump will be not taken.")
     _syntax_ = parser.format_help()
     _example_ = None
 
     def __init__(self):
         super().__init__(prefix=False)
         self.mode = "jmp"
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
+        self.print_insn = args.print_insn
+        self.use_ni = args.use_ni
+        self.skip_lib = args.skip_lib
+        self.exclude = args.exclude
+        self.only_taken = args.only_taken
+        self.only_not_taken = args.only_not_taken
+        self.exec_next()
         return
 
 
@@ -66389,6 +66424,9 @@ class ExecUntilIndirectBranchCommand(ExecUntilCommand):
     parser.add_argument("-n", "--use-ni", action="store_true", help="use `ni` instead of `si`")
     parser.add_argument("--skip-lib", action="store_true", help="use `ni` instead of `si` if instruction is `call xxx@plt`.")
     parser.add_argument("-e", "--exclude", action="append", type=parse_address, default=[], help="the address to exclude from breakpoints.")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("-t", "--only-taken", action="store_true", help="break only if jump will be taken.")
+    group.add_argument("-T", "--only-not-taken", action="store_true", help="break only if jump will be not taken.")
     _syntax_ = parser.format_help()
     _example_ = None
 
@@ -66405,6 +66443,8 @@ class ExecUntilIndirectBranchCommand(ExecUntilCommand):
         self.use_ni = args.use_ni
         self.skip_lib = args.skip_lib
         self.exclude = args.exclude
+        self.only_taken = args.only_taken
+        self.only_not_taken = args.only_not_taken
         self.exec_next()
         return
 
@@ -66422,12 +66462,27 @@ class ExecUntilAllBranchCommand(ExecUntilCommand):
     parser.add_argument("-n", "--use-ni", action="store_true", help="use `ni` instead of `si`")
     parser.add_argument("--skip-lib", action="store_true", help="use `ni` instead of `si` if instruction is `call xxx@plt`.")
     parser.add_argument("-e", "--exclude", action="append", type=parse_address, default=[], help="the address to exclude from breakpoints.")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("-t", "--only-taken", action="store_true", help="break only if jump will be taken.")
+    group.add_argument("-T", "--only-not-taken", action="store_true", help="break only if jump will be not taken.")
     _syntax_ = parser.format_help()
     _example_ = None
 
     def __init__(self):
         super().__init__(prefix=False)
         self.mode = "all-branch"
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
+        self.print_insn = args.print_insn
+        self.use_ni = args.use_ni
+        self.skip_lib = args.skip_lib
+        self.exclude = args.exclude
+        self.only_taken = args.only_taken
+        self.only_not_taken = args.only_not_taken
+        self.exec_next()
         return
 
 
