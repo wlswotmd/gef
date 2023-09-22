@@ -9284,7 +9284,7 @@ def read_int_from_memory(addr):
     return unpack(mem)
 
 
-def read_cstring_from_memory(address, max_length=None):
+def read_cstring_from_memory(address, max_length=None, ascii_only=False):
     """Return a C-string read from memory."""
     # original GEF uses gdb.Value().cast("char"), but this is too slow if string is too large.
     # for example 0xcccccccccccccccc....(too long), this is in kernel or firmware commonly.
@@ -9324,15 +9324,14 @@ def read_cstring_from_memory(address, max_length=None):
         return None
     if len(ustr) > max_length:
         ustr = "{}[...]".format(ustr[:max_length])
+
+    if ascii_only:
+        if ustr and all(x in string.printable for x in ustr):
+            return ustr
+        else:
+            return None
+
     return ustr
-
-
-def read_ascii_string(address):
-    """Read an ASCII string from memory"""
-    cstr = read_cstring_from_memory(address)
-    if cstr and all(x in string.printable for x in cstr):
-        return cstr
-    return None
 
 
 def read_physmem_secure(paddr, size):
@@ -9554,7 +9553,7 @@ def u128(x):
 def is_ascii_string(address):
     """Helper function to determine if the buffer pointed by `address` is an ASCII string (in GDB)"""
     try:
-        return read_ascii_string(address) is not None
+        return read_cstring_from_memory(address, ascii_only=True) is not None
     except gdb.MemoryError:
         return False
 
@@ -40373,7 +40372,7 @@ class MagicCommand(GenericCommand):
             addr = lookup_address(addr)
             perm = addr.section.permission
             if is_ascii_string(addr.value):
-                val = read_ascii_string(addr.value)
+                val = read_cstring_from_memory(addr.value, ascii_only=True)
                 fmt = "{:42s} {!s} [{!s}] (+{:#010x}) -> {:s}"
                 gef_print(fmt.format(sym, addr, perm, addr.value - base, val))
             else:
@@ -40602,7 +40601,7 @@ class KernelMagicCommand(GenericCommand):
             fmt = "{:42s} {:#0{:d}x} [{:3s}]               -> {:#0{:d}x}"
             gef_print(fmt.format(sym, addr, width, perm, val, width))
         elif to_string:
-            val = read_ascii_string(addr)
+            val = read_cstring_from_memory(addr, ascii_only=True)
             fmt = "{:42s} {:#0{:d}x} [{:3s}] (+{:#010x}) -> {:s}"
             gef_print(fmt.format(sym, addr, width, perm, addr - base, val))
         else:
