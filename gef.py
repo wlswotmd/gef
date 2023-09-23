@@ -9602,6 +9602,44 @@ def only_if_gdb_target_local(f):
     return wrapper
 
 
+def only_if_in_kernel(f):
+    """Decorator wrapper to check if context is in kernel."""
+
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        if is_in_kernel():
+            return f(*args, **kwargs)
+        else:
+            warn("Run in kernel context.")
+            return
+
+    return wrapper
+
+
+def only_if_in_kernel_or_kpti_disabled(f):
+    """Decorator wrapper to check if context is in kernel or kpti disabled."""
+
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        def is_kpti_enabled():
+            s = KernelAddressHeuristicFinder.get_saved_command_line()
+            if s and is_valid_addr(s):
+                # You can access the kernel's .data area while in userland.
+                # This means KPTI is disabled.
+                return False
+            return True
+
+        if is_in_kernel():
+            return f(*args, **kwargs)
+        elif not is_kpti_enabled():
+            return f(*args, **kwargs)
+        else:
+            warn("Run in kernel context, or disable KPTI.")
+            return
+
+    return wrapper
+
+
 def only_if_kvm_disabled(f):
     """Decorator wrapper to check if there is not -enavle-kvm option."""
 
@@ -19010,6 +19048,7 @@ class KernelChecksecCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
         self.dont_repeat()
         self.print_security_properties_qemu_system()
@@ -19188,16 +19227,18 @@ class KernelChecksecCommand(GenericCommand):
                     additional = "pti=on is in cmdline"
                     gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
                 else:
-                    # here is kernel context
-                    lines = get_maps_by_pagewalk("pagewalk --quiet --no-pager --simple").splitlines()
-                    for line in lines:
-                        if "USER" in line and "R-X" in line:
-                            additional = "USER memory has R-X permission in kernel context"
-                            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
-                            break
+                    if is_in_kernel():
+                        lines = get_maps_by_pagewalk("pagewalk --quiet --no-pager --simple").splitlines()
+                        for line in lines:
+                            if "USER" in line and "R-X" in line:
+                                additional = "USER memory has R-X permission in kernel context"
+                                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
+                                break
+                        else:
+                            additional = "USER memory has no R-X permission in kernel context"
+                            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled (maybe)", "bold green"), additional))
                     else:
-                        additional = "USER memory has no R-X permission in kernel context"
-                        gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
+                        gef_print("{:<40s}: {:s}".format(cfg, Color.grayify("Unknown")))
 
         elif is_arm32():
             gef_print("{:<40s}: {:s} (ARMv7 is unsupported)".format(cfg, Color.colorify("Unsupported", "bold red")))
@@ -40740,6 +40781,7 @@ class KernelMagicCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
         self.dont_repeat()
         self.filter = args.filter
@@ -45215,6 +45257,7 @@ class KernelbaseCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -45227,15 +45270,20 @@ class KernelbaseCommand(GenericCommand):
         if not args.quiet:
             info("Wait for memory scan")
         kinfo = self.get_kernel_base()
-        if kinfo.has_none:
-            if not args.quiet:
-                err("Failed to resolve")
-            return
 
         self.out = []
-        self.out.append("kernel text:   {:#x}-{:#x} ({:#x} bytes)".format(kinfo.kbase, kinfo.kbase + kinfo.kbase_size, kinfo.kbase_size))
-        self.out.append("kernel rodata: {:#x}-{:#x} ({:#x} bytes)".format(kinfo.krobase, kinfo.krobase + kinfo.krobase_size, kinfo.krobase_size))
-        self.out.append("kernel data:   {:#x}-{:#x} ({:#x} bytes)".format(kinfo.krwbase, kinfo.krwbase + kinfo.krwbase_size, kinfo.krwbase_size))
+        if kinfo.kbase:
+            self.out.append("kernel text:   {:#x}-{:#x} ({:#x} bytes)".format(kinfo.kbase, kinfo.kbase + kinfo.kbase_size, kinfo.kbase_size))
+        else:
+            err("Failed to resolve kernel text")
+        if kinfo.krobase:
+            self.out.append("kernel rodata: {:#x}-{:#x} ({:#x} bytes)".format(kinfo.krobase, kinfo.krobase + kinfo.krobase_size, kinfo.krobase_size))
+        else:
+            err("Failed to resolve kerel rodata")
+        if kinfo.krwbase:
+            self.out.append("kernel data:   {:#x}-{:#x} ({:#x} bytes)".format(kinfo.krwbase, kinfo.krwbase + kinfo.krwbase_size, kinfo.krwbase_size))
+        else:
+            err("Failed to resolve kernel data")
         if self.out:
             gef_print("\n".join(self.out))
         return
@@ -45345,6 +45393,7 @@ class KernelVersionCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -45401,6 +45450,7 @@ class KernelCmdlineCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -45494,6 +45544,7 @@ class KernelCurrentCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -46490,6 +46541,7 @@ class KernelTaskCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -47156,6 +47208,7 @@ class KernelModuleCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -47569,6 +47622,7 @@ class KernelBlockDevicesCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -48643,6 +48697,7 @@ class KernelCharacterDevicesCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -49147,6 +49202,7 @@ class KernelOperationsCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -49434,6 +49490,7 @@ class KernelParamSysctlCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -49527,6 +49584,7 @@ class KernelFileSystemsCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -49588,6 +49646,7 @@ class KernelClockSourceCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -49706,6 +49765,7 @@ class KernelSearchCodePtrCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -50002,6 +50062,7 @@ class KernelDmesgCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -50287,6 +50348,7 @@ class SyscallTableViewCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -53154,6 +53216,7 @@ class SlubDumpCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -53808,6 +53871,7 @@ class SlubTinyDumpCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -54601,6 +54665,7 @@ class SlabDumpCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -55024,6 +55089,7 @@ class SlobDumpCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -55139,6 +55205,7 @@ class SlubContainsCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_64",))
+    @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -55588,6 +55655,7 @@ class BuddyDumpCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_64",))
+    @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -56905,6 +56973,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -61103,6 +61172,7 @@ class MsrCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
+    @only_if_in_kernel
     @only_if_kvm_disabled
     def do_invoke(self, args):
         self.dont_repeat()
@@ -62212,7 +62282,7 @@ class PagewalkX64Command(PagewalkCommand):
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
     parser.add_argument("-c", "--use-cache", action="store_true", help="use before result.")
-    parser.add_argument("-U", "--user-pt", action="store_true", help="print userland pagetables (for KPTI, only x64).")
+    parser.add_argument("-U", "--user-pt", action="store_true", help="print userland pagetables (for KPTI, only x64, in kernel context).")
     parser.add_argument("--cr3", type=parse_address, help="use specified value as cr3.")
     parser.add_argument("--cr4", type=parse_address, help="use specified value as cr4.")
     parser.add_argument("--include-kasan-memory", action="store_true", help="include KASAN shadow memory.")
@@ -62736,7 +62806,12 @@ class PagewalkX64Command(PagewalkCommand):
         self.prange = args.prange.copy()
         self.trace = args.trace.copy()
         self.use_cache = args.use_cache
-        self.user_pt = args.user_pt # used only x64
+
+        if is_x86_64() and is_in_kernel():
+            self.user_pt = args.user_pt # support only x64
+        else:
+            self.user_pt = False
+
         self.user_specified_cr3 = args.cr3
         self.user_specified_cr4 = args.cr4
         self.include_kasan_memory = args.include_kasan_memory
@@ -66859,6 +66934,7 @@ class UsermodehelperTracerCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -66953,6 +67029,7 @@ class ThunkTracerCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system",))
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
+    @only_if_in_kernel
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -67382,6 +67459,7 @@ class KmallocTracerCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system",))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel
     @only_if_kvm_disabled
     def do_invoke(self, args):
         self.dont_repeat()
@@ -68705,6 +68783,7 @@ class KmallocAllocatedByCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system",))
     @only_if_specific_arch(arch=("x86_64",))
+    @only_if_in_kernel
     @only_if_kvm_disabled
     def do_invoke(self, args):
         self.dont_repeat()
@@ -69430,6 +69509,7 @@ class KsymaddrRemoteApplyCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel
     def do_invoke(self, args):
         self.dont_repeat()
 

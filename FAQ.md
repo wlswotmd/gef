@@ -9,8 +9,10 @@ Some users are running it on Arch Linux.
 However, I have not confirmed that all commands work correctly.
 
 ## What kernel versions does GEF support?
-3.x ~ 6.5.x are supported.
-However, I have not verified every kernel version, so there may be environments where GEF does not work.
+I have confirmed that most commands work on versions 3.x ~ 6.5.x.
+However, I have not verified every kernel version.
+Also, the structure may differ depending on the build config and the compiler that built the kernel.
+So there may be environments where GEF does not work.
 If you have any trouble, please report it on the issue page.
 
 ## GDB will not load GEF.
@@ -19,13 +21,18 @@ This is probably because gdb does not support cooperation with python3.
 Consider building gdb from source with `./configure --enable-targets=all --with-python=/usr/bin/python3 && make && make install`.
 
 ## Will each GEF command be more accurate if I have vmlinux with debug symbols?
-No. Whether vmlinux includes debug information has no effect on GEF behavior.
+No, whether vmlinux includes debug information has no effect on GEF behavior.
 GEF always uses its own resolved address with `kallsyms-remote`.
 It also performs its own heuristic structure member detection in each command.
 
 ## Does GEF support i386 16-bit mode (real mode)?
-No. GEF does not support real mode.
+No, GEF does not support real mode.
 Please consider using other scripts, such as [here](https://astralvx.com/debugging-16-bit-in-qemu-with-gdb-on-windows/).
+
+## Is it possible to debug userland with GEF when using qemu-system?
+Partially yes. I think it can be used when you want to track before and after a system call.
+However, if KPTI is enabled, many kernel-related commands cannot be used.
+The reason is that most memory access to kernel space is unavailable if KPTI is enabled.
 
 
 # About commands
@@ -106,7 +113,7 @@ If implemented in the future, the architecture must at least disclose the `pagew
 This is because a memory map is required to obtain the symbols, and a `pagewalk` implementation is required to obtain the memory map.
 
 ## Are there any plans to support more architectures with Qemu-user?
-Yes. However, it is becoming difficult to find new support targets.
+Yes, however, it is becoming difficult to find new support targets.
 This is because three things are required:
 
 1. toolchain
@@ -117,7 +124,7 @@ This is because three things are required:
     * It needs python3-support.
 
 ## Are future development plans listed somewhere?
-No. I develop this forked GEF freely.
+No, I develop this forked GEF freely.
 
 
 # About reporting, etc.
@@ -134,7 +141,7 @@ You will need a screenshot or a copy of the terminal string when the problem occ
 In addition, I am glad if there are the results of the `version` command and `arch-info` command.
 
 ## Is it okay to fork and modify?
-Yes. However, please follow the license.
+Yes, however, please follow the license.
 
 
 # About me
@@ -148,7 +155,7 @@ I also use images of kernel exploit task from variuos CTFs.
 I'm a git beginner, so one dev branch is the best I can do.
 
 ## Are you bad at English?
-Yes. I mostly use Google Translate. This is the reason for the inconsistent writing style.
+Yes, I mostly use Google Translate. This is the reason for the inconsistent writing style.
 If the expression in English is strange, please feel free to correct it on the issue page.
 
 ## I would like to contact you about a GEF?
