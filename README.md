@@ -499,8 +499,8 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ptr-mangle-demangle.png)
 * `search-mangled-ptr`: searches the mangled value from RW memory.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/search-mangled-ptr.png)
-* `ascii-search`: searches ASCII string recursively from specific location.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ascii-search.png)
+* `strings`: searches ASCII string from specific location.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/strings.png)
 * `read-system-register`: reads system register for old qemu.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/read-system-register.png)
 * `v8`: displays v8 tagged object.

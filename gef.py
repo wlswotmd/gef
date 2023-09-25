@@ -50275,20 +50275,28 @@ class KernelDmesgCommand(GenericCommand):
 
 
 @register_command
-class AsciiSearchCommand(GenericCommand):
-    """Search ASCII string recursively from specific location."""
-    _cmdline_ = "ascii-search"
+class StringsCommand(GenericCommand):
+    """Search ASCII string (recursively) from specific location."""
+    _cmdline_ = "strings"
     _category_ = "03-a. Memory - Search"
+    _aliases_ = ["ascii-search"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("location", metavar="LOCATION", type=parse_address,
                         help="the location you want to search from.")
-    parser.add_argument("-f", "--filter", action="append", type=re.compile, default=[], help="REGEXP filter.")
+    parser.add_argument("end_location", metavar="END_LOCATION", type=parse_address, nargs="?",
+                        help="the end location you want to search from. (default: 64)")
+    parser.add_argument("-f", "--filter", action="append", type=re.compile, default=[], help="REGEXP include filter.")
+    parser.add_argument("-e", "--exclude", action="append", type=re.compile, default=[], help="REGEXP exclude filter.")
     parser.add_argument("-d", "--depth", default=3, type=int, help="recursive depth. (default: %(default)s)")
-    parser.add_argument("-r", "--range", default=0x40, type=lambda x: int(x, 16), help="search range. (default: %(default)s)")
+    parser.add_argument("-r", "--range", default=0x40, type=lambda x: int(x, 16), help="search range for recursively. (default: %(default)s)")
     parser.add_argument("-m", "--minlen", default=8, type=int, help="minimum string length (default: %(default)s)")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
+
+    _example_ = "{:s} 0x00007ffffffde000 0x00007ffffffff000              # detect all\n".format(_cmdline_)
+    _example_ += "{:s} --minlen 10 0x00007ffffffde000 0x00007ffffffff000  # filter by length\n".format(_cmdline_)
+    _example_ += "{:s} -e \"\\\\^A\" 0x00007ffffffde000 0x00007ffffffff000    # filter by keywords (-f, -e). need double-escape".format(_cmdline_)
 
     def strings(self, data, len_threshold):
         string_printable = bytes(range(0x20, 0x7f))
@@ -50300,29 +50308,27 @@ class AsciiSearchCommand(GenericCommand):
                 current_str += chr(data[i])
             else:
                 if len(current_str) >= len_threshold:
-                    strings_result.append((i, current_str))
+                    strings_result.append((i - len(current_str), current_str))
                 current_str = ""
             i += 1
         if len(current_str) >= len_threshold:
-            strings_result.append((i, current_str))
+            strings_result.append((i - len(current_str), current_str))
         return strings_result
 
     def search_ascii(self, queue):
-        string_printable = list(range(0x20, 0x7f))
-
         seen_addr = []
         seen_cstr = []
 
         while queue:
-            location, depth = queue.pop(0)
+            location, search_range, depth = queue.pop(0)
 
             # get data
             data = b""
             try:
                 # read range
-                data += read_memory(location, self.search_range)
+                data += read_memory(location, search_range)
                 # read extra
-                while data and data[-1] in string_printable:
+                while data and data[-1] in range(0x20, 0x7f):
                     data += read_memory(location + len(data), 1)
             except gdb.MemoryError:
                 pass
@@ -50340,7 +50346,8 @@ class AsciiSearchCommand(GenericCommand):
                     continue
 
                 if not self.filter or any(filt.search(cstr) for filt in self.filter):
-                    self.out.append("{:s}: {:s}".format(str(lookup_address(address)), cstr))
+                    if not self.exclude or not any(ex.search(cstr) for ex in self.exclude):
+                        self.out.append("{:s}: {:s}".format(str(lookup_address(address)), cstr))
                 seen_cstr.append((address, address + len(cstr) + 1))
 
             # search pointer for recursive search
@@ -50353,7 +50360,7 @@ class AsciiSearchCommand(GenericCommand):
                 if addr in seen_addr:
                     continue
                 if is_valid_addr(addr):
-                    queue.append((addr, depth - 1))
+                    queue.append((addr, self.search_range, depth - 1))
                     seen_addr.append(addr)
         return
 
@@ -50362,10 +50369,15 @@ class AsciiSearchCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
         self.filter = args.filter
+        self.exclude = args.exclude
         self.minlen = args.minlen
         self.search_range = args.range
+        if args.end_location:
+            first_range = args.end_location - args.location
+        else:
+            first_range = args.range
         self.out = []
-        queue = [(args.location, args.depth)]
+        queue = [(args.location, first_range, args.depth)]
         self.search_ascii(queue)
 
         if self.out:
