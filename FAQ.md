@@ -35,6 +35,14 @@ Partially yes. I think it can be used when you want to track before and after a 
 However, if KPTI is enabled, many kernel-related commands cannot be used.
 The reason is that most memory access to kernel space is unavailable if KPTI is enabled.
 
+## How do I break in userland when using qemu-system?
+Use a hardware breakpoint.
+When you are stopped inside the kernel, is it in the intended process context? If so, just use `break *ADDRESS` as usual.
+But if you're stuck in the kernel context of a different user process than you expected, or in a kernel thread like `swapper/0`,
+the virtual address of the process you wanted isn't mapped.
+For this reason, software breakpoints that embed `0xcc` in virtual memory cannot be used in some situations.
+However, hardware breakpoints can be used without any problems.
+
 
 # About commands
 
