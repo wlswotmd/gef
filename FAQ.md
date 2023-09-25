@@ -11,6 +11,7 @@ However, I have not confirmed that all commands work correctly.
 ## What kernel versions does GEF support?
 I have confirmed that most commands work on versions 3.x ~ 6.5.x.
 However, I have not verified every kernel version.
+For example, certain symbols in some versions may not be supported by heuristic symbol detection.
 Also, the structure may differ depending on the build config and the compiler that built the kernel.
 So there may be environments where GEF does not work.
 If you have any trouble, please report it on the issue page.
