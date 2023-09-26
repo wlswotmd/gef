@@ -4979,7 +4979,7 @@ class X86(Architecture):
         if fs is not None:
             return fs
         # fast path
-        if not is_remote_debug() and not is_in_kernel():
+        if not is_remote_debug() and not is_in_kernel() and not is_qiling():
             PTRACE_ARCH_PRCTL = 30
             ARCH_GET_FS = 0x1003
             pid, lwpid, tid = gdb.selected_thread().ptid
@@ -4991,7 +4991,7 @@ class X86(Architecture):
             if ret == 0: # success
                 return value.contents.value or 0
         # slow path
-        if not is_kvm_enabled():
+        if not is_kvm_enabled() and not is_qiling():
             codes = [b"\x64\xa1\x00\x00\x00\x00"] # mov eax, dword ptr fs:[0x0]
             ret = ExecAsm(codes).exec_code()
             return ret["reg"]["$eax"]
@@ -5003,7 +5003,7 @@ class X86(Architecture):
         if gs is not None:
             return gs
         # fast path
-        if not is_remote_debug() and not is_in_kernel():
+        if not is_remote_debug() and not is_in_kernel() and not is_qiling():
             PTRACE_ARCH_PRCTL = 30
             ARCH_GET_GS = 0x1004
             pid, lwpid, tid = gdb.selected_thread().ptid
@@ -5015,7 +5015,7 @@ class X86(Architecture):
             if ret == 0: # success
                 return value.contents.value or 0
         # slow path
-        if not is_kvm_enabled():
+        if not is_kvm_enabled() and not is_qiling():
             codes = [b"\x65\xa1\x00\x00\x00\x00"] # mov eax, dword ptr gs:[0x0]
             ret = ExecAsm(codes).exec_code()
             return ret["reg"]["$eax"]
@@ -5103,7 +5103,7 @@ class X86_64(X86):
         if fs is not None:
             return fs
         # fast path
-        if not is_remote_debug() and not is_in_kernel():
+        if not is_remote_debug() and not is_in_kernel() and not is_qiling():
             PTRACE_ARCH_PRCTL = 30
             ARCH_GET_FS = 0x1003
             pid, lwpid, tid = gdb.selected_thread().ptid
@@ -5115,7 +5115,7 @@ class X86_64(X86):
             if ret == 0: # success
                 return value.contents.value or 0
         # slow path
-        if not is_kvm_enabled():
+        if not is_kvm_enabled() and not is_qiling():
             codes = [b"\x64\x48\xa1\x00\x00\x00\x00\x00\x00\x00\x00"] # movabs rax, qword ptr fs:[0x0]
             ret = ExecAsm(codes).exec_code()
             return ret["reg"]["$rax"]
@@ -5127,7 +5127,7 @@ class X86_64(X86):
         if gs is not None:
             return gs
         # fast path
-        if not is_remote_debug() and not is_in_kernel():
+        if not is_remote_debug() and not is_in_kernel() and not is_qiling():
             PTRACE_ARCH_PRCTL = 30
             ARCH_GET_GS = 0x1004
             pid, lwpid, tid = gdb.selected_thread().ptid
@@ -5139,7 +5139,7 @@ class X86_64(X86):
             if ret == 0: # success
                 return value.contents.value or 0
         # slow path
-        if not is_kvm_enabled():
+        if not is_kvm_enabled() and not is_qiling():
             codes = [b"\x65\x48\xa1\x00\x00\x00\x00\x00\x00\x00\x00"] # movabs rax, qword ptr gs:[0x0]
             ret = ExecAsm(codes).exec_code()
             return ret["reg"]["$rax"]
@@ -9689,6 +9689,7 @@ def exclude_specific_gdb_mode(mode=()):
                 "qemu-user": is_qemu_user,
                 "vmware": is_vmware,
                 "kgdb": is_kgdb,
+                "qiling": is_qiling,
             }
             for m in mode:
                 if dic.get(m, lambda: False)():
@@ -14272,6 +14273,9 @@ class PtrDemangleCommand(GenericCommand):
 
     @staticmethod
     def get_cookie():
+        if is_qiling():
+            return None
+
         try:
             if is_x86_64():
                 tls = current_arch.get_tls()
@@ -14287,6 +14291,7 @@ class PtrDemangleCommand(GenericCommand):
                 return cookie
         except gdb.error:
             pass
+
         # generic
         try:
             auxv = gef_get_auxiliary_values()
@@ -50853,9 +50858,12 @@ class FsbaseCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
+    @exclude_specific_gdb_mode(mode=("qiling",))
     def do_invoke(self, args):
         self.dont_repeat()
-        gef_print("$fs_base: {:#x}".format(current_arch.get_fs()))
+        fsbase = current_arch.get_fs()
+        if fsbase is not None:
+            gef_print("$fs_base: {:#x}".format(fsbase))
         return
 
 
@@ -50871,9 +50879,12 @@ class GsbaseCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
+    @exclude_specific_gdb_mode(mode=("qiling",))
     def do_invoke(self, args):
         self.dont_repeat()
-        gef_print("$gs_base: {:#x}".format(current_arch.get_gs()))
+        gsbase = current_arch.get_gs()
+        if gsbase is not None:
+            gef_print("$gs_base: {:#x}".format(gsbase))
         return
 
 

@@ -73,7 +73,7 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 * Connect to the gdb stub of qemu-user (via localhost:1234)
 * Connect to the gdb stub of Intel Pin (via localhost:1234)
 * Connect to the gdb stub of Intel SDE (via localhost:1234)
-* Connect to the gdb stub of qiling framework (via localhost:9999)
+* Connect to the gdb stub of qiling framework (via localhost:1234)
 * Connect to the gdb stub of KGDB (over serial. currently, only gdb 12.x~ is supported)
 * Connect to the gdb stub of VMWare (via ipaddr:port)
 

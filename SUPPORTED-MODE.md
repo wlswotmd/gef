@@ -35,8 +35,9 @@
 
 ## Qiling framework cooperation
 * Usage
-    * Write a harness. See [here](https://docs.qiling.io/en/latest/debugger/).
-    * Attach with `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:9999'`.
+    * `qltool run -f /PATH/TO/BINARY --rootfs / --gdb :1234`.
+    * Or write a harness. See [here](https://docs.qiling.io/en/latest/debugger/).
+    * Attach with `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:1234'`.
 * Supported architectures
     * x86, x64, ARM and ARM64.
 * Note
