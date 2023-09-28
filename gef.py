@@ -59113,6 +59113,7 @@ class UclibcNgHeapDumpCommand(GenericCommand):
     _category_ = "06-b. Heap - Other"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("--malloc_state", type=parse_address, help="use specific address for malloc_context.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-v", "--verbose", action="store_true", help="also dump an empty active index.")
     _syntax_ = parser.format_help()
@@ -59251,7 +59252,7 @@ class UclibcNgHeapDumpCommand(GenericCommand):
         libc = process_lookup_path("libuClibc-")
         if libc is None:
             return None
-        ret = gdb.execute("got -qf '{:s}' <malloc>".format(libc.path), to_string=True)
+        ret = gdb.execute("got --quiet --file '{:s}' <malloc>".format(libc.path), to_string=True)
         if not ret:
             return None
         elem = Color.remove_color(ret).splitlines()[0].split()
@@ -59264,7 +59265,7 @@ class UclibcNgHeapDumpCommand(GenericCommand):
         lines = gdb.execute("x/40i {:#x}".format(malloc), to_string=True)
         if is_x86_64():
             for line in lines.splitlines():
-                m = re.search(r"QWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
+                m = re.search(r"\[rip\+0x\w+\].*#\s*(0x\w+)", line)
                 if m:
                     malloc_state = int(m.group(1), 16)
                     if is_valid_addr(malloc_state):
@@ -59275,7 +59276,6 @@ class UclibcNgHeapDumpCommand(GenericCommand):
             base = None
             regname = None
             for line in lines.splitlines():
-                info(line)
                 if base is None:
                     m = re.search("^\s*(0x\w+).+:\s+add\s+(\S+),\s*(0x\w+)", line)
                     if m:
@@ -59290,6 +59290,10 @@ class UclibcNgHeapDumpCommand(GenericCommand):
                             max_fast = read_int_from_memory(malloc_state)
                             if max_fast != 0 and (max_fast & ~0x3) <= 0xb0:
                                 return malloc_state
+
+        # TODO
+        # - Other architecture
+        # - static build + stripped
         return None
 
     def read_malloc_state(self):
@@ -59339,9 +59343,13 @@ class UclibcNgHeapDumpCommand(GenericCommand):
         """
 
         _malloc_state = {}
-        _malloc_state["address"] = current = self.get_malloc_state()
-        if current is None:
-            return None
+        if self.malloc_state is None:
+            _malloc_state["address"] = current = self.get_malloc_state()
+            if current is None:
+                return None
+        else:
+            _malloc_state["address"] = current = self.malloc_state
+
         _malloc_state["max_fast"] = max_fast = read_int_from_memory(current)
         current += current_arch.ptrsize
 
@@ -59469,9 +59477,9 @@ class UclibcNgHeapDumpCommand(GenericCommand):
                 else:
                     colored_size = Color.colorify(size, chunk_size_color)
                 if i == 1:
-                    fmt = "unsortedbin[idx={:d}; size={:s}, @{:s}]: fd={:s}, bk={:s}"
+                    fmt = "unsortedbin[idx={:d}, size={:s}, @{:s}]: fd={:s}, bk={:s}"
                 else:
-                    fmt = "smallbins[idx={:d}; size={:s}, @{:s}]: fd={:s}, bk={:s}"
+                    fmt = "smallbins[idx={:d}, size={:s}, @{:s}]: fd={:s}, bk={:s}"
                 colored_addr = str(lookup_address(addr))
                 colored_n = str(lookup_address(n))
                 colored_p = str(lookup_address(p))
@@ -59493,7 +59501,7 @@ class UclibcNgHeapDumpCommand(GenericCommand):
                     colored_size = Color.colorify("{:#x}-{:#x}".format(*size), chunk_size_color)
                 else:
                     colored_size = Color.colorify(size, chunk_size_color)
-                fmt = "largebins[idx={:d}; size={:s}, @{:s}]: fd={:s}, bk={:s}"
+                fmt = "largebins[idx={:d}, size={:s}, @{:s}]: fd={:s}, bk={:s}"
                 colored_addr = str(lookup_address(addr))
                 colored_n = str(lookup_address(n))
                 colored_p = str(lookup_address(p))
@@ -59531,6 +59539,7 @@ class UclibcNgHeapDumpCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
+        self.malloc_state = args.malloc_state
         self.verbose = args.verbose
         self.out = []
 
