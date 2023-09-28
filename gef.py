@@ -21669,14 +21669,15 @@ class MainBreakCommand(GenericCommand):
         except gdb.error:
             pass
 
-        res = gdb.execute("got -q", to_string=True)
-        for line in res.splitlines():
-            sym, _, _, val = line.split(" | ")
-            if sym.strip() == "__libc_start_main":
-                val = Color.remove_color(val)
-                val = val.strip().split()[0]
-                return int(val, 16)
-        return None
+        ret = gdb.execute("got --quiet __libc_start_main", to_string=True)
+        if not ret:
+            err("Failed to resolve __libc_start_main")
+            return None
+        elem = Color.remove_color(ret).splitlines()[0].split()
+        if elem[-1].endswith(">"):
+            return int(elem[-2], 16)
+        else:
+            return int(elem[-1], 16)
 
     def search_main(self):
         libc_start_main = self.get_libc_start_main()
@@ -21724,7 +21725,7 @@ class MainBreakCommand(GenericCommand):
             main_address = self.search_main()
 
         if main_address is None:
-            err("Failed to set a breakpoint to main. (Make sure the file name is set)")
+            err("Failed to set a breakpoint to main.")
             return
 
         EntryBreakBreakpoint("*{:#x}".format(main_address))
