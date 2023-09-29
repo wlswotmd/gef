@@ -45212,7 +45212,7 @@ class KernelbaseCommand(GenericCommand):
         if is_x86():
             for line in res:
                 line = line.split()
-                if line[6] != "KERN":
+                if line[6] != "KERN]":
                     continue
                 vaddr = int(line[0].split("-")[0], 16)
                 size = int(line[2], 16)
@@ -62506,12 +62506,14 @@ class PagewalkX64Command(PagewalkCommand):
             flags += ["KERN"]
         else:
             flags += ["USER"]
-        if "A" in flag_info:
-            flags += ["ACCESSED"]
-        if "D" in flag_info:
-            flags += ["DIRTY"]
-        if "G" in flag_info:
-            flags += ["GLOBAL"]
+
+        if not self.simple:
+            if "A" in flag_info:
+                flags += ["ACCESSED"]
+            if "D" in flag_info:
+                flags += ["DIRTY"]
+            if "G" in flag_info:
+                flags += ["GLOBAL"]
 
         flag_string = " ".join(flags)
         self.flags_strings_cache[flag_info_key] = flag_string
@@ -63174,9 +63176,12 @@ class PagewalkArmCommand(PagewalkCommand):
 
         if "NS" in flag_info:
             flags += ["NS"]
-        # short description has no `AF` bit
-        if "nG" not in flag_info:
-            flags += ["GLOBAL"]
+
+        if not self.simple:
+            # short description has no `AF` bit
+
+            if "nG" not in flag_info:
+                flags += ["GLOBAL"]
 
         flag_string = " ".join(flags)
         self.flags_strings_cache[flag_info_key] = flag_string
@@ -63278,10 +63283,12 @@ class PagewalkArmCommand(PagewalkCommand):
 
         if NS:
             flags += ["NS"]
-        if "AF" in flag_info:
-            flags += ["ACCESSED"]
-        if "nG" not in flag_info:
-            flags += ["GLOBAL"]
+
+        if not self.simple:
+            if "AF" in flag_info:
+                flags += ["ACCESSED"]
+            if "nG" not in flag_info:
+                flags += ["GLOBAL"]
 
         flag_string = " ".join(flags)
         self.flags_strings_cache[flag_info_key] = flag_string
@@ -64145,11 +64152,13 @@ class PagewalkArm64Command(PagewalkCommand):
                 flags += ["EL0/RW-", "EL1/RW-"]
             elif XN1 is True and XN0 is True:
                 flags += ["EL0/RW-", "EL1/RWX"]
-        if "AF" in flag_info:
-            flags += ["ACCESSED"]
-        if "DBM" in flag_info:
-            flags += ["DIRTY"]
-        # stage2 has no `nG` bit
+
+        if not self.simple:
+            if "AF" in flag_info:
+                flags += ["ACCESSED"]
+            if "DBM" in flag_info:
+                flags += ["DIRTY"]
+            # stage2 has no `nG` bit
 
         flag_string = " ".join(flags)
         self.flags_strings_cache[flag_info_key] = flag_string
@@ -64370,12 +64379,14 @@ class PagewalkArm64Command(PagewalkCommand):
                     flags += ["EL3/R--"]
         if NS:
             flags += ["NS"]
-        if "AF" in flag_info:
-            flags += ["ACCESSED"]
-        if "DBM" in flag_info:
-            flags += ["DIRTY"]
-        if "nG" not in flag_info:
-            flags += ["GLOBAL"]
+
+        if not self.simple:
+            if "AF" in flag_info:
+                flags += ["ACCESSED"]
+            if "DBM" in flag_info:
+                flags += ["DIRTY"]
+            if "nG" not in flag_info:
+                flags += ["GLOBAL"]
 
         flag_string = " ".join(flags)
         self.flags_strings_cache[flag_info_key] = flag_string
