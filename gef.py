@@ -12983,6 +12983,131 @@ class EnvpCommand(GenericCommand):
 
 
 @register_command
+class VdsoCommand(GenericCommand):
+    """Disassemble the text area of vdso smartly."""
+    _cmdline_ = "vdso"
+    _category_ = "02-d. Process Information - Trivial Information"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        # get map entry
+        maps = get_process_maps()
+        if maps is None:
+            err("Failed to get maps")
+            return
+
+        for entry in maps:
+            if entry.path == "[vdso]":
+                break
+        else:
+            err("vdso is not found")
+            return
+
+        # get dump area
+        elf = get_elf_headers(entry.page_start)
+        if not elf or not elf.is_valid:
+            err("parse failed")
+            return
+        shdr = [s for s in elf.shdrs if s.sh_name == ".text"][0]
+
+        text_start = entry.page_start + shdr.sh_addr
+        text_size = shdr.sh_size
+        text_end = text_start + text_size
+
+        # pdisas
+        ret = gdb.execute("pdisas {:#x} -l {:#x}".format(text_start, text_size), to_string=True)
+        text_lines = []
+        for line in ret.splitlines():
+            if int(Color.remove_color(line.split()[0]), 16) < text_end:
+                text_lines.append(line)
+            else:
+                break
+
+        if text_lines:
+            gef_print("\n".join(text_lines), less=not args.no_pager)
+        return
+
+
+@register_command
+class VvarCommand(GenericCommand):
+    """Dump the area of vvar (only x64)."""
+    _cmdline_ = "vvar"
+    _category_ = "02-d. Process Information - Trivial Information"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_arch(arch=("x86_64",))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        # get map entry
+        maps = get_process_maps()
+        if maps is None:
+            err("Failed to get maps")
+            return
+
+        for entry in maps:
+            if entry.path == "[vvar]":
+                break
+        else:
+            err("vvar is not found")
+            return
+
+        # dump
+        codes = [
+            b"\x48\x8b\x00", # mov rax, qword ptr [rax]
+            b"\x48\x8b\x09", # mov rcx, qword ptr [rcx]
+            b"\x48\x8b\x12", # mov rdx, qword ptr [rdx]
+            b"\x48\x8b\x1b", # mov rbx, qword ptr [rbx]
+            b"\x48\x8b\x24\x24", # mov rsp, qword ptr [rsp]
+            b"\x48\x8b\x6d\x00", # mov rbp, qword ptr [rbp]
+            b"\x48\x8b\x36", # mov rsi, qword ptr [rsi]
+            b"\x48\x8b\x3f", # mov rdi, qword ptr [rdi]
+            b"\x4d\x8b\x00", # mov r8, qword ptr [r8]
+            b"\x4d\x8b\x09", # mov r9, qword ptr [r9]
+            b"\x4d\x8b\x12", # mov r10, qword ptr [r10]
+            b"\x4d\x8b\x1b", # mov r11, qword ptr [r11]
+            b"\x4d\x8b\x24\x24", # mov r12, qword ptr [r12]
+            b"\x4d\x8b\x6d\x00", # mov r13, qword ptr [r13]
+            b"\x4d\x8b\x36", # mov r14, qword ptr [r14]
+            b"\x4d\x8b\x3f", # mov r15, qword ptr [r15]
+        ]
+
+        regs = [
+            "$rax", "$rcx", "$rdx", "$rbx", "$rsp", "$rbp", "$rsi", "$rdi",
+            "$r8", "$r9", "$r10", "$r11", "$r12", "$r13", "$r14", "$r15",
+        ]
+
+        # arch/x86/include/asm/vvar.h
+        # DECLARE_VVAR(128, struct vdso_data, _vdso_data)
+        start = entry.page_start + 128
+        end = start + 0x180 # >= sizeof(struct vdso_data)
+        step = current_arch.ptrsize * len(regs)
+        for addr in range(start, end, step):
+            regs = {reg: addr + i * current_arch.ptrsize for i, reg in enumerate(regs)}
+            ret = ExecAsm(codes, regs=regs, step=len(codes)).exec_code()
+            values = [ret["reg"][reg] for reg in regs]
+
+            # print
+            for i in range(len(regs)):
+                gef_print("{:#x}: {:#x}".format(addr + i * current_arch.ptrsize, values[i]))
+            print()
+        return
+
+
+@register_command
 class PidCommand(GenericCommand):
     """Display the local PID or remote PID."""
     _cmdline_ = "pid"
@@ -50580,10 +50705,11 @@ class SyscallTableViewCommand(GenericCommand):
 class ExecAsm:
     """Execute embeded asm. ex: ExecAsm(asm_op_list).exec_code().
     WARNING: Disable `-enable-kvm` option for qemu-system; If set, this code will crash the guest OS."""
-    def __init__(self, _codes, regs=None, debug=False):
+    def __init__(self, _codes, regs=None, step=None, debug=False):
         self.stdout = 1
         self.debug = debug
         self.regs = regs
+        self.step = step or 1
 
         codes = []
 
@@ -50703,11 +50829,7 @@ class ExecAsm:
         self.close_stdout()
         if self.debug:
             gdb.execute("ctx")
-        if is_hppa32() or is_hppa64():
-            step = 3 # syscall, delay slot, trampoline
-        else:
-            step = 1
-        gdb.execute("stepi {:d}".format(step), to_string=True)
+        gdb.execute("stepi {:d}".format(self.step), to_string=True)
         if self.debug:
             gdb.execute("ctx")
         self.revert_stdout()
@@ -50728,6 +50850,11 @@ class ExecSyscall(ExecAsm):
         self.debug = debug
         self.syscall_nr = nr
         self.syscall_args = args
+
+        if is_hppa32() or is_hppa64():
+            self.step = 3 # syscall, delay slot, trampoline
+        else:
+            self.step = 1
 
         codes = []
 
