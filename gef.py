@@ -53320,10 +53320,10 @@ class SlubDumpCommand(GenericCommand):
             if self.kmem_cache_offset_random is not None:
                 if self.no_xor is False:
                     if self.swap is True:
-                        fmt = "    random (xor key): {:#x} ^ byteswap(address of chunk->next)"
+                        fmt = "    random (xor key): {:#x} ^ byteswap(&chunk->next)"
                         self.out.append(fmt.format(kmem_cache["random"]))
                     else:
-                        fmt = "    random (xor key): {:#x} ^ address of chunk->next"
+                        fmt = "    random (xor key): {:#x} ^ &chunk->next"
                         self.out.append(fmt.format(kmem_cache["random"]))
             self.out.append("    kmem_cache_cpu (cpu{:d}): {:#x}".format(cpu, kmem_cache["kmem_cache_cpu"]["address"]))
 
