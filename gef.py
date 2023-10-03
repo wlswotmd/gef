@@ -14614,6 +14614,102 @@ class SearchMangledPtrCommand(GenericCommand):
 
 
 @register_command
+class SearchCfiGadgetsCommand(GenericCommand):
+    """Search CFI-valid and controllable generally gadgets from executable area."""
+    _cmdline_ = "search-cfi-gadgets"
+    _category_ = "03-a. Memory - Search"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    _syntax_ = parser.format_help()
+
+    def find_endbr(self, start, end):
+        if is_x86_32():
+            endbr = b"\xf3\x0f\x1e\xfb" # endbr32
+        else:
+            endbr = b"\xf3\x0f\x1e\xfa" # endbr64
+
+        data = read_memory(start, end - start)
+
+        pos = -1
+        addrs = []
+        while True:
+            pos = data.find(endbr, pos + 1)
+            if pos == -1:
+                break
+            addrs.append(start + pos)
+        return addrs
+
+    def filter_gadgets(self, endbr_addrs):
+        filtered_addrs = []
+
+        for addr in endbr_addrs:
+            start = addr
+            inscount = 0
+            valid = True
+
+            while True:
+                insn = get_insn(addr)
+                inscount += 1
+                length = len(insn.opcodes)
+                addr += length
+
+                if current_arch.is_ret(insn):
+                    break
+                elif current_arch.is_call(insn):
+                    if insn.operands[0].startswith("0x"):
+                        valid = False
+                    break
+                elif current_arch.is_jump(insn):
+                    if insn.operands[0].startswith("0x"):
+                        valid = False
+                    break
+                elif "XMMWORD" in "".join(insn.operands):
+                    valid = False
+                    break
+
+            if valid:
+                filtered_addrs.append([start, inscount])
+        return filtered_addrs
+
+    def disasm_addrs(self, candidates):
+        for start, inscount in candidates:
+            res = gdb.execute("pdisas --length {:d} {:#x}".format(inscount, start), to_string=True)
+            self.out.append(res)
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_arch(arch=("x86_32", "x86_64"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        # get map entry
+        maps = get_process_maps()
+        if maps is None:
+            err("Failed to get maps")
+            return
+
+        self.out = []
+        for entry in maps:
+            if not entry.is_executable():
+                continue
+            if entry.path in ["[vsyscall]"]:
+                continue
+
+            info("search from {:s}".format(entry.path))
+            self.out.append(titlify(entry.path))
+            addrs = self.find_endbr(entry.page_start, entry.page_end)
+            filtered_addrs = self.filter_gadgets(addrs)
+            self.disasm_addrs(filtered_addrs)
+
+        if self.out:
+            gef_print("\n".join(self.out).rstrip(), less=not args.no_pager)
+        return
+
+
+@register_command
 class EditFlagsCommand(GenericCommand):
     """Edit flags in a human friendly way."""
     _cmdline_ = "edit-flags"

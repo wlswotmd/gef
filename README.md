@@ -520,6 +520,8 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/smart-memory-dump.png)
 * `pac-keys`: pretty prints ARM64 PAC keys.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pac-keys.png)
+* `search-cfi-gadgets`: searches CFI-valid and controllable generally gadgets from executable area.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/search-cfi-gadgets.png)
 
 ### Other
 * The category is introduced in `gef help`.
