@@ -1708,18 +1708,6 @@ class Shdr:
         return
 
 
-RE_SPLIT_LOCATION = re.compile(r"<(.+)\+(\d+)>")
-RE_SPLIT_LAST_OPERAND_X86_64 = re.compile(r"(.*?)\s+(#.+)$")
-RE_SPLIT_LAST_OPERAND_ARM64 = re.compile(r"//.+$")
-RE_SPLIT_LAST_OPERAND_ARM32 = re.compile(r";.+$")
-RE_SPLIT_LAST_OPERAND_MICROBLAZE = re.compile(r"//.+$")
-RE_SPLIT_LAST_OPERAND_LOONGARCH64 = re.compile(r"(# .*)$")
-RE_SPLIT_ELEM = re.compile(r"([*%\[\](): ]|(?<![#@%])(?<=.)[-+]|<.+?>)")
-RE_IS_DIGIT_COMMENT = re.compile(r"#?-?(0x[0-9a-f]+|\d+)")
-RE_SPLIT_SYMBOL = re.compile(r"(.*)<(.+?)>(.*)$")
-RE_SPLIT_SYMBOL_OFFSET = re.compile(r"(.+)\+(\d+)$")
-
-
 class Instruction:
     """GEF representation of a CPU instruction."""
     def __init__(self, address, location, mnemo, operands, opcodes):
@@ -1735,6 +1723,17 @@ class Instruction:
         self.operands = operands
         self.opcodes = opcodes
         return
+
+    RE_SPLIT_LOCATION = re.compile(r"<(.+)\+(\d+)>")
+    RE_SPLIT_LAST_OPERAND_X86_64 = re.compile(r"(.*?)\s+(#.+)$")
+    RE_SPLIT_LAST_OPERAND_ARM64 = re.compile(r"//.+$")
+    RE_SPLIT_LAST_OPERAND_ARM32 = re.compile(r";.+$")
+    RE_SPLIT_LAST_OPERAND_MICROBLAZE = re.compile(r"//.+$")
+    RE_SPLIT_LAST_OPERAND_LOONGARCH64 = re.compile(r"(# .*)$")
+    RE_SPLIT_ELEM = re.compile(r"([*%\[\](): ]|(?<![#@%])(?<=.)[-+]|<.+?>)")
+    RE_IS_DIGIT_COMMENT = re.compile(r"#?-?(0x[0-9a-f]+|\d+)")
+    RE_SPLIT_SYMBOL = re.compile(r"(.*)<(.+?)>(.*)$")
+    RE_SPLIT_SYMBOL_OFFSET = re.compile(r"(.+)\+(\d+)$")
 
     # Allow formatting an instruction with {:o} to show opcodes.
     # The number of bytes to display can be configured, e.g. {:4o} to only show 4 bytes of the opcodes
@@ -1773,7 +1772,7 @@ class Instruction:
         if not location:
             location = "<NO_SYMBOL>"
         else:
-            r = RE_SPLIT_LOCATION.search(location) # r"<(.+)\+(\d+)>"
+            r = self.RE_SPLIT_LOCATION.search(location) # r"<(.+)\+(\d+)>"
             if r:
                 location = "<{}+{:#x}>".format(r.group(1), int(r.group(2)))
 
@@ -1811,37 +1810,37 @@ class Instruction:
         if len(operands) > 0:
             last_operands = operands[-1]
             if is_x86_64():
-                r = RE_SPLIT_LAST_OPERAND_X86_64.match(last_operands) # r"(.*?)\s+(#.+)$"
+                r = self.RE_SPLIT_LAST_OPERAND_X86_64.match(last_operands) # r"(.*?)\s+(#.+)$"
                 if r:
                     last_operands = r.group(1)
                     additional_1 = r.group(2)
                     operands = operands[:-1] + [last_operands]
             elif is_arm64():
-                r = RE_SPLIT_LAST_OPERAND_ARM64.match(last_operands) # r"//.+$"
+                r = self.RE_SPLIT_LAST_OPERAND_ARM64.match(last_operands) # r"//.+$"
                 if r:
                     additional_1 = last_operands
                     operands = operands[:-1]
             elif is_arm32():
-                r = RE_SPLIT_LAST_OPERAND_ARM32.match(last_operands) # r";.+$"
+                r = self.RE_SPLIT_LAST_OPERAND_ARM32.match(last_operands) # r";.+$"
                 if r:
                     additional_1 = last_operands
                     operands = operands[:-1]
             elif is_microblaze():
-                r = RE_SPLIT_LAST_OPERAND_MICROBLAZE.match(last_operands) # r"//.+$"
+                r = self.RE_SPLIT_LAST_OPERAND_MICROBLAZE.match(last_operands) # r"//.+$"
                 if r:
                     additional_1 = last_operands
                     operands = operands[:-1]
             elif is_loongarch64():
-                r = RE_SPLIT_LAST_OPERAND_LOONGARCH64.match(last_operands) # r"(# .*)$"
+                r = self.RE_SPLIT_LAST_OPERAND_LOONGARCH64.match(last_operands) # r"(# .*)$"
                 if r:
                     additional_1 = r.group(1)
                     operands = operands[:-1]
 
         def hexlify_symbol_offset(x):
-            r1 = RE_SPLIT_SYMBOL.match(x) # r"(.*)<(.+?)>(.*)$"
+            r1 = self.RE_SPLIT_SYMBOL.match(x) # r"(.*)<(.+?)>(.*)$"
             if not r1:
                 return x
-            r2 = RE_SPLIT_SYMBOL_OFFSET.match(r1.group(2)) # r"(.+)\+(\d+)$"
+            r2 = self.RE_SPLIT_SYMBOL_OFFSET.match(r1.group(2)) # r"(.+)\+(\d+)$"
             if r2:
                 sym_x = "{}+{:#x}".format(self.smartify_text(r2.group(1)), int(r2.group(2)))
             else:
@@ -1866,7 +1865,7 @@ class Instruction:
             # *, [, ], (, ), %, :, space
             # not first +, - (without #, @)
             # <...>
-            for o2 in RE_SPLIT_ELEM.split(o1): # r"([*%\[\](): ]|(?<![#@%])(?<=.)[-+]|<.+?>)"
+            for o2 in self.RE_SPLIT_ELEM.split(o1): # r"([*%\[\](): ]|(?<![#@%])(?<=.)[-+]|<.+?>)"
                 o2 = o2.strip()
                 if o2 == "":
                     continue
@@ -1886,7 +1885,7 @@ class Instruction:
                     if colored_o1 and colored_o1[-1] == " ":
                         colored_o1 = colored_o1[:-1]
                     colored_o1.append(Color.colorify(o2, color_operands_symbol))
-                elif RE_IS_DIGIT_COMMENT.match(o2): # r"#?-?(0x[0-9a-f]+|\d+)"
+                elif self.RE_IS_DIGIT_COMMENT.match(o2): # r"#?-?(0x[0-9a-f]+|\d+)"
                     colored_o1.append(Color.colorify(o2, color_operands_const))
                     colored_o1.append(" ")
                 else:
@@ -11144,9 +11143,6 @@ def is_stripped(filename=None):
     return "not stripped" not in out
 
 
-RE_GET_ARCH = re.compile(r"\"(.+)\"")
-
-
 @functools.lru_cache(maxsize=None)
 def get_arch():
     """Return the binary's architecture."""
@@ -11161,18 +11157,22 @@ def get_arch():
 
     # slow path
     arch_str = gdb.execute("show architecture", to_string=True).strip()
+
+    # The target architecture is set automatically (currently i386)
+    # The target architecture is set to "auto" (currently "i386").
+    # The target architecture is assumed to be mips
+    # The target architecture is set to "mips".
+
     if "The target architecture is set automatically (currently " in arch_str:
         arch_str = arch_str.split("(currently ", 1)[1]
         arch_str = arch_str.split(")", 1)[0]
     elif "The target architecture is set to \"auto\" (currently \"" in arch_str:
-        # GDB version >= 12.x
         arch_str = arch_str.split("(currently \"", 1)[1]
         arch_str = arch_str.split("\")", 1)[0]
     elif "The target architecture is assumed to be " in arch_str:
         arch_str = arch_str.replace("The target architecture is assumed to be ", "")
     elif "The target architecture is set to " in arch_str:
-        # GDB version >= 10.1
-        arch_str = RE_GET_ARCH.findall(arch_str)[0]
+        arch_str = arch_str.split("\"")[1]
     else:
         # Unknown, we throw an exception to be safe
         raise RuntimeError("Unknown architecture: {}".format(arch_str))
@@ -13382,7 +13382,7 @@ class ProcInfoCommand(GenericCommand):
         return
 
     def show_childs(self):
-        gef_print(titlify("Children Process Information"))
+        gef_print(titlify("Child Process Information"))
 
         children = self.get_children_pids(get_pid())
         if not children:
