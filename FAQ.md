@@ -74,6 +74,15 @@ Note: The `pagewalk` command and `pagewalk-with-hints` command can be redisplaye
 ## `ktask` (or other kernel related commands) does not work.
 The kernel you are debugging may have been built with `CONFIG_RANDSTRUCT=y`.
 In this case, except for a few commands, they will not work correctly.
+Currently, at least following commands do not work.
+- `ktask`
+- `kmod`
+- `kbdev`
+- `kcdev`
+- `kops`
+- `kparam-sysctl`
+- `kmalloc-tracer`
+- `kmalloc-allocated-by`
 
 ## `vmmap` command does not recognize option.
 When connected to qemu-system or vmware's gdb stub, the `vmmap` command is just redirected to the `pagewalk` command.
@@ -121,7 +130,7 @@ There are no plans.
 If implemented in the future, the architecture must at least disclose the `pagewalk` process in detail.
 This is because a memory map is required to obtain the symbols, and a `pagewalk` implementation is required to obtain the memory map.
 
-## Are there any plans to support more architectures with Qemu-user?
+## Are there any plans to support more architectures with qemu-user?
 Yes, however, it is becoming difficult to find new support targets.
 This is because three things are required:
 
@@ -129,6 +138,7 @@ This is because three things are required:
     * linux-headers, binutils, gcc, glibc (or uclibc) are needed.
     * Prebuilt tarball is prefer.
 2. qemu-user
+    * It needs implementation of gdb-stub.
 3. gdb
     * It needs python3-support.
 
@@ -141,7 +151,7 @@ No, I develop this forked GEF freely.
 ## I found a bug.
 Please feel free to report it on the issue page. I will respond as soon as possible.
 
-## Can you please add this feature? / I don't like the XXX, so please fix it.
+## Can you please add this feature? / I don't like a certain feature, so please fix it.
 I will consider it, so please report it on the issue page.
 But this is a personal development, so I have the final say. I appreciate your understanding.
 
