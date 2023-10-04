@@ -13574,7 +13574,16 @@ class ProcDumpCommand(GenericCommand):
                             out.append(bytes2str(line))
                     continue
 
-                if f in ["auxv", "rt_acct"]:
+                if f == "auxv":
+                    data = open(path, "rb").read()
+                    data = slice_unpack(data, current_arch.ptrsize)
+                    for i in range(0, len(data), 2):
+                        typ = data[i]
+                        val = data[i+1]
+                        out.append("{:#8x}: {:#x}".format(typ, val))
+                    continue
+
+                if f == "rt_acct":
                     ret = gef_execute_external(["hexdump", "-C", path], as_list=True)
                     out.extend(ret)
                     continue
