@@ -66661,6 +66661,81 @@ class PagewalkWithHintsCommand(GenericCommand):
 
 
 @register_command
+class QemuDeviceInfoCommand(GenericCommand):
+    """Dump device inforamtion for qemu-escape."""
+    _cmdline_ = "qemu-device-info"
+    _category_ = "08-a. Qemu-system Cooperation - General"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-d", "--device", help="device name.")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-system", ))
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        # get device name
+        if args.device:
+            device_name = args.device
+        else:
+            cmdline = bytes2str(open("/proc/{:d}/cmdline".format(get_pid()), "rb").read()).split("\0")
+            if cmdline.count("-device") == 0:
+                err("Not found `-device` option in qemu-system cmdline")
+                return
+            if cmdline.count("-device") >= 2:
+                devices = []
+                for i in range(len(cmdline)):
+                    if cmdline[i] == "-device":
+                        devices.append(cmdline[i + 1])
+                devices_str = Color.colorify(", ".join(devices), "bold")
+                err("Multiple `-device` options are found in qemu-system cmdline: {:s}".format(devices_str))
+                return
+            device_name = cmdline[cmdline.index("-device") + 1]
+        info("device name: {:s}".format(Color.colorify(device_name, "bold")))
+
+        # get qdm
+        res = gdb.execute("monitor info qdm", to_string=True)
+        for line in res.splitlines():
+            if device_name in line:
+                info("qdev device model: {:s}".format(line))
+
+        # get physmem map / IO map
+        res = gdb.execute("monitor info mtree", to_string=True)
+        info("Related memory address:")
+        maps = [line.strip() for line in res.splitlines() if device_name in line and line.strip().startswith("0")]
+        maps = sorted(set(maps)) # uniq
+        for m in maps:
+            info("  " + m)
+
+        # get qemu-system path
+        qemu_path = os.readlink("/proc/{:d}/exe".format(get_pid()))
+        info("qemu path: {:s}".format(qemu_path))
+
+        # get symbol related device
+        try:
+            nm = which("nm")
+        except FileNotFoundError:
+            err("Missing `nm` command")
+            return
+        try:
+            result = gef_execute_external([nm, qemu_path], as_list=True)
+        except subprocess.CalledProcessError:
+            err("Executing `nm` error")
+            return
+        for line in result:
+            if device_name not in line:
+                continue
+            if line.endswith(("read", "write")):
+                index = line.rfind(" ")
+                info("{:s} {:s}".format(line[:index], Color.boldify(line[index + 1:])))
+            else:
+                info(line)
+        return
+
+
+@register_command
 class UntilNextCommand(GenericCommand):
     """Execute until next address. This command is useful for rep prefix, or the case of stepi/nexti failed."""
     _cmdline_ = "until-next"
