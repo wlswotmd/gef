@@ -13654,47 +13654,47 @@ class CapabilityCommand(GenericCommand):
 
     def print_cap_details(self, name, cap):
         bit_info = [
-            [40, "CAP_CHECKPOINT_RESTORE", "Update /proc/sys/kernel/ns_last_pid; read /proc/[another_pid]/map_files; etc.", ""],
-            [39, "CAP_BPF", "Allow privileged BPF operations", ""],
-            [38, "CAP_PERFMON", "Allow various performance-monitoring mechanisms; allow perf_event_open(2); allow some BPF operations", ""],
-            [37, "CAP_AUDIT_READ", "Allow reading the audit log via a multicast netlink socket", ""],
-            [36, "CAP_BLOCK_SUSPEND", "Allow features that can block system suspend", ""],
-            [35, "CAP_WAKE_ALARM", "Trigger something that will wake up the system", ""],
-            [34, "CAP_SYSLOG", "Allow privileged syslog(2) operations; View kernel addresses exposed via /proc even if kptr_restrict=1", ""],
-            [33, "CAP_MAC_ADMIN", "Allow MAC configuration or state changes", ""],
-            [32, "CAP_MAC_OVERRIDE", "Override MAC", ""],
-            [31, "CAP_SETFCAP", "Set arbitrary capabilities on a file", ""],
-            [30, "CAP_AUDIT_CONTROL", "Enable/disable kernel audit; change audit filter rules; retrieve audit status and filter rules", ""],
-            [29, "CAP_AUDIT_WRITE", "Write records to kernel audit log", ""],
-            [28, "CAP_LEASE", "Establish leases", ""],
-            [27, "CAP_MKNOD", "Create special files using mknod(2)", ""],
-            [26, "CAP_SYS_TTY_CONFIG", "Allow vhangup(2); allow various privileged ioctl(2) operations on virtual terminals", ""],
-            [25, "CAP_SYS_TIME", "Set system cloc; set real-time (hardware) clock", ""],
-            [24, "CAP_SYS_RESOURCE", "Override disk quota limits; override RLIMIT_NPROC resource limit; etc.", ""],
-            [23, "CAP_SYS_NICE", "Lower the process nice value and change the nice value for arbitrary processes; etc.", ""],
-            [22, "CAP_SYS_BOOT", "Allow reboot(2) and kexec_load(2)", ""],
-            [21, "CAP_SYS_ADMIN", "Allow various privileges operations", ""],
-            [20, "CAP_SYS_PACCT", "Allow acct(2)", ""],
-            [19, "CAP_SYS_PTRACE", "Trace arbitrary processes using ptrace(2); etc.", ""],
-            [18, "CAP_SYS_CHROOT", "Allow chroot(2); change mount namespaces using setns(2)", ""],
-            [17, "CAP_SYS_RAWIO", "Perform I/O port operations; etc.", ""],
-            [16, "CAP_SYS_MODULE", "Load and unload kernel modules", ""],
-            [15, "CAP_IPC_OWNER", "Bypass permission checks for operations on SystemV IPC objects", ""],
-            [14, "CAP_IPC_LOCK", "Lock memory; allocate memory using huge pages", ""],
-            [13, "CAP_NET_RAW", "Use RAW and PACKET sockets; bind to any address for transparent proxying", ""],
-            [12, "CAP_NET_ADMIN", "Perform various network-related operations", ""],
-            [11, "CAP_NET_BROADCASTE", "(Unused) Make socket broadcasts, and listen to multicast", ""],
-            [10, "CAP_NET_BIND_SERVICE", "Bind a socket to Internet domain privileged ports (less than 1024)", ""],
-            [9, "CAP_LINUX_IMMUTABLE", "Set the FS_APPEND_FL and FS_IMMUTABLE_FL inode flags", ""],
-            [8, "CAP_SETPCAP", "Add any capability from the calling thread's bounding set to its inheritable set; etc.", ""],
-            [7, "CAP_SETUID", "Make arbitrary manipulations of process UIDs; etc.", ""],
-            [6, "CAP_SETGID", "Make arbitrary manipulations of process GIDs and supplementary GID list; etc.", ""],
-            [5, "CAP_KILL", "Bypass permission checks for sending signals", ""],
-            [4, "CAP_FSETID", "Don't clear SUID and SGID bits when a file is modified; etc.", ""],
-            [3, "CAP_FOWNER", "Bypass permission checks whether FSUID == file UID; set ACLs; etc.", ""],
-            [2, "CAP_DAC_READ_SEARCH", "Bypass permission checks of file read, dir read/exec; etc.", ""],
-            [1, "CAP_DAC_OVERRIDE", "Bypass permission checks of file read/write/exec", ""],
-            [0, "CAP_CHOWN", "Make arbitrary changes to file UIDs and GIDs", ""],
+            [40, "CAP_CHECKPOINT_RESTORE", "Update /proc/sys/kernel/ns_last_pid; read /proc/[another_pid]/map_files; etc."],
+            [39, "CAP_BPF", "Allow privileged BPF operations"],
+            [38, "CAP_PERFMON", "Allow various performance-monitoring mechanisms; allow perf_event_open(2); allow some BPF operations"],
+            [37, "CAP_AUDIT_READ", "Allow reading the audit log via a multicast netlink socket"],
+            [36, "CAP_BLOCK_SUSPEND", "Allow features that can block system suspend"],
+            [35, "CAP_WAKE_ALARM", "Trigger something that will wake up the system"],
+            [34, "CAP_SYSLOG", "Allow privileged syslog(2) operations; View kernel addresses exposed via /proc even if kptr_restrict=1"],
+            [33, "CAP_MAC_ADMIN", "Allow MAC configuration or state changes"],
+            [32, "CAP_MAC_OVERRIDE", "Override MAC"],
+            [31, "CAP_SETFCAP", "Set arbitrary capabilities on a file"],
+            [30, "CAP_AUDIT_CONTROL", "Enable/disable kernel audit; change audit filter rules; retrieve audit status and filter rules"],
+            [29, "CAP_AUDIT_WRITE", "Write records to kernel audit log"],
+            [28, "CAP_LEASE", "Establish leases"],
+            [27, "CAP_MKNOD", "Create special files using mknod(2)"],
+            [26, "CAP_SYS_TTY_CONFIG", "Allow vhangup(2); allow various privileged ioctl(2) operations on virtual terminals"],
+            [25, "CAP_SYS_TIME", "Set system cloc; set real-time (hardware) clock"],
+            [24, "CAP_SYS_RESOURCE", "Override disk quota limits; override RLIMIT_NPROC resource limit; etc."],
+            [23, "CAP_SYS_NICE", "Lower the process nice value and change the nice value for arbitrary processes; etc."],
+            [22, "CAP_SYS_BOOT", "Allow reboot(2) and kexec_load(2)"],
+            [21, "CAP_SYS_ADMIN", "Allow various privileges operations"],
+            [20, "CAP_SYS_PACCT", "Allow acct(2)"],
+            [19, "CAP_SYS_PTRACE", "Trace arbitrary processes using ptrace(2); etc."],
+            [18, "CAP_SYS_CHROOT", "Allow chroot(2); change mount namespaces using setns(2)"],
+            [17, "CAP_SYS_RAWIO", "Perform I/O port operations; etc."],
+            [16, "CAP_SYS_MODULE", "Load and unload kernel modules"],
+            [15, "CAP_IPC_OWNER", "Bypass permission checks for operations on SystemV IPC objects"],
+            [14, "CAP_IPC_LOCK", "Lock memory; allocate memory using huge pages"],
+            [13, "CAP_NET_RAW", "Use RAW and PACKET sockets; bind to any address for transparent proxying"],
+            [12, "CAP_NET_ADMIN", "Perform various network-related operations"],
+            [11, "CAP_NET_BROADCASTE", "(Unused) Make socket broadcasts, and listen to multicast"],
+            [10, "CAP_NET_BIND_SERVICE", "Bind a socket to Internet domain privileged ports (less than 1024)"],
+            [9, "CAP_LINUX_IMMUTABLE", "Set the FS_APPEND_FL and FS_IMMUTABLE_FL inode flags"],
+            [8, "CAP_SETPCAP", "Add any capability from the calling thread's bounding set to its inheritable set; etc."],
+            [7, "CAP_SETUID", "Make arbitrary manipulations of process UIDs; etc."],
+            [6, "CAP_SETGID", "Make arbitrary manipulations of process GIDs and supplementary GID list; etc."],
+            [5, "CAP_KILL", "Bypass permission checks for sending signals"],
+            [4, "CAP_FSETID", "Don't clear SUID and SGID bits when a file is modified; etc."],
+            [3, "CAP_FOWNER", "Bypass permission checks whether FSUID == file UID; set ACLs; etc."],
+            [2, "CAP_DAC_READ_SEARCH", "Bypass permission checks of file read, dir read/exec; etc."],
+            [1, "CAP_DAC_OVERRIDE", "Bypass permission checks of file read/write/exec"],
+            [0, "CAP_CHOWN", "Make arbitrary changes to file UIDs and GIDs"],
         ]
         PrintBitInfo(name, 64, None, bit_info).print(cap)
         return
@@ -41371,21 +41371,21 @@ class SseCommand(GenericCommand):
         # mxcsr
         gef_print(titlify("MXCSR (MXCSR Control and Status Register)"))
         bit_info = [
-            [15, "FZ", "Flush To Zero", ""],
+            [15, "FZ", "Flush To Zero"],
             [[13, 14], "RC", "Rounding Control", "00: Round To Nearest, 01: Round Negative, 10: Round Positive, 11: Round To Zero"],
-            [12, "PM", "Precision Exception Mask", ""],
-            [11, "UM", "Underflow Exception Mask", ""],
-            [10, "OM", "Overflow Exception Mask", ""],
-            [9, "ZM", "Zero Divide Exception Mask", ""],
-            [8, "DM", "Denormalized Opernad Exception Mask", ""],
-            [7, "IM", "Invalid Operation Exception Mask", ""],
-            [6, "DAZ", "Use as 0.0 if input data is denormalized", ""],
-            [5, "PE", "Precision Exception", ""],
-            [4, "UE", "Underflow Exception", ""],
-            [3, "OE", "Overflow Exception", ""],
-            [2, "ZE", "Zero Divide Exception", ""],
-            [1, "DE", "Denormalized Operand Exception", ""],
-            [0, "IE", "Invalid Operation Exception", ""],
+            [12, "PM", "Precision Exception Mask"],
+            [11, "UM", "Underflow Exception Mask"],
+            [10, "OM", "Overflow Exception Mask"],
+            [9, "ZM", "Zero Divide Exception Mask"],
+            [8, "DM", "Denormalized Opernad Exception Mask"],
+            [7, "IM", "Invalid Operation Exception Mask"],
+            [6, "DAZ", "Use as 0.0 if input data is denormalized"],
+            [5, "PE", "Precision Exception"],
+            [4, "UE", "Underflow Exception"],
+            [3, "OE", "Overflow Exception"],
+            [2, "ZE", "Zero Divide Exception"],
+            [1, "DE", "Denormalized Operand Exception"],
+            [0, "IE", "Invalid Operation Exception"],
         ]
         reg = int(gdb.execute("info registers $mxcsr", to_string=True).split()[1], 16)
         PrintBitInfo("$mxcsr", 32, None, bit_info).print(reg)
@@ -41581,30 +41581,30 @@ class FpuCommand(GenericCommand):
         # fpscr
         gef_print(titlify("FPSCR (Floating-Point Status and Control Register)"))
         bit_info = [
-            [31, "N", "Negative condition flag", ""],
-            [30, "Z", "Zero condition flag", ""],
-            [29, "C", "Carry condition flag", ""],
-            [28, "V", "Overflow condition flag", ""],
-            [27, "QC", "Cumulative saturation bit", ""],
-            [26, "AHP", "Alternative Half-Precision Control", ""],
-            [25, "DN", "Default NaN mode Control", ""],
-            [24, "FZ", "Flush-to-zero mode Control", ""],
+            [31, "N", "Negative condition flag"],
+            [30, "Z", "Zero condition flag"],
+            [29, "C", "Carry condition flag"],
+            [28, "V", "Overflow condition flag"],
+            [27, "QC", "Cumulative saturation bit"],
+            [26, "AHP", "Alternative Half-Precision Control"],
+            [25, "DN", "Default NaN mode Control"],
+            [24, "FZ", "Flush-to-zero mode Control"],
             [[22, 23], "RMode", "Rounding Control", "00: Round To Nearest, 01: Round Positive, 10: Round Negative, 11: Round To Zero"],
             [[20, 21], "Stride", "", "IMPLEMENTATION DEFINED"],
             [19, "FZ16", "Flush-to-zero mode Control", "When FEAT_FP16 is implemented"],
             [[16, 17, 18], "Len", "", "IMPLEMENTATION DEFINED"],
-            [15, "IDE", "Input Denormal floating-point Exception trap enable", ""],
-            [12, "IXE", "Inexact floating-point Exception trap enable", ""],
-            [11, "UFE", "Underflow floating-point Exception trap enable", ""],
-            [10, "OFE", "Overflow floating-point Exception trap enable", ""],
-            [9, "DZE", "Divide by Zero floating-point Exception trap enable", ""],
-            [8, "IOE", "Invalid Operation floating-point Exception trap enable", ""],
-            [7, "IDC", "Input Denormal Cumulative floating-point exception bit", ""],
-            [4, "IXC", "Inexact Cumulative floating-point exception bit", ""],
-            [3, "UFC", "Underflow Cumulative floating-point exception bit", ""],
-            [2, "OFC", "Overflow Cumulative floating-point exception bit", ""],
-            [1, "DZC", "Divide by Zero Cumulative floating-point exception bit", ""],
-            [0, "IOC", "Invalid Operation Cumulative floating-point exception bit", ""],
+            [15, "IDE", "Input Denormal floating-point Exception trap enable"],
+            [12, "IXE", "Inexact floating-point Exception trap enable"],
+            [11, "UFE", "Underflow floating-point Exception trap enable"],
+            [10, "OFE", "Overflow floating-point Exception trap enable"],
+            [9, "DZE", "Divide by Zero floating-point Exception trap enable"],
+            [8, "IOE", "Invalid Operation floating-point Exception trap enable"],
+            [7, "IDC", "Input Denormal Cumulative floating-point exception bit"],
+            [4, "IXC", "Inexact Cumulative floating-point exception bit"],
+            [3, "UFC", "Underflow Cumulative floating-point exception bit"],
+            [2, "OFC", "Overflow Cumulative floating-point exception bit"],
+            [1, "DZC", "Divide by Zero Cumulative floating-point exception bit"],
+            [0, "IOC", "Invalid Operation Cumulative floating-point exception bit"],
         ]
         reg = get_register("$fpscr")
         if reg is not None:
@@ -41615,10 +41615,10 @@ class FpuCommand(GenericCommand):
         # fpsid
         gef_print(titlify("FPSID (Floating-Point System ID Register)"))
         bit_info = [
-            [list(range(24, 32)), "Implementer", "Implementer code", ""],
+            [range(24, 32), "Implementer", "Implementer code"],
             [23, "SW", "Software bit", "Implementation of floating point instructions, 0:HW, 1:SW"],
-            [list(range(16, 23)), "Subarchitecture", "Subarchitecture version number", ""],
-            [list(range(8, 16)), "PartNum", "Part number", "IMPLEMENTATION DEFINED"],
+            [range(16, 23), "Subarchitecture", "Subarchitecture version number"],
+            [range(8, 16), "PartNum", "Part number", "IMPLEMENTATION DEFINED"],
             [[4, 5, 6, 7], "Variant", "Variant number", "IMPLEMENTATION DEFINED"],
             [[0, 1, 2, 3], "Revision", "Revisino number", "IMPLEMENTATION DEFINED"],
         ]
@@ -41650,19 +41650,19 @@ class FpuCommand(GenericCommand):
         # fpexc
         gef_print(titlify("FPEXC (Floating-Point Exception Control Register)"))
         bit_info = [
-            [31, "EX", "Exception bit", ""],
-            [30, "EN", "Enables access to the Advanced SIMD and floating-point functionality from all Exception levels", ""],
-            [29, "DEX", "Defined synchronous exception on floating-point execution", ""],
-            [28, "FP2V", "FPINST2 instruction valid bit", ""],
-            [27, "VV", "VECITR valid bit", ""],
-            [26, "TFV", "Trapped Fault Valid bit", ""],
-            [[8, 9, 10], "VECITR", "Vector iteration count", ""],
-            [7, "IDF", "Input Denormal trapped exception bit", ""],
-            [4, "IXF", "Inexact trapped exception bit", ""],
-            [3, "UFF", "Underflow trapped exception bit", ""],
-            [2, "OFF", "Overflow trapped exception bit", ""],
-            [1, "DZF", "Divide by Zero trapped exception bit", ""],
-            [0, "IOF", "Invalid Operation trapped exception bit", ""],
+            [31, "EX", "Exception bit"],
+            [30, "EN", "Enables access to the Advanced SIMD and floating-point functionality from all Exception levels"],
+            [29, "DEX", "Defined synchronous exception on floating-point execution"],
+            [28, "FP2V", "FPINST2 instruction valid bit"],
+            [27, "VV", "VECITR valid bit"],
+            [26, "TFV", "Trapped Fault Valid bit"],
+            [[8, 9, 10], "VECITR", "Vector iteration count"],
+            [7, "IDF", "Input Denormal trapped exception bit"],
+            [4, "IXF", "Inexact trapped exception bit"],
+            [3, "UFF", "Underflow trapped exception bit"],
+            [2, "OFF", "Overflow trapped exception bit"],
+            [1, "DZF", "Divide by Zero trapped exception bit"],
+            [0, "IOF", "Invalid Operation trapped exception bit"],
         ]
         reg = get_register("$fpexc")
         if reg is not None:
@@ -41675,19 +41675,19 @@ class FpuCommand(GenericCommand):
         # fpcr
         gef_print(titlify("FPCR (Floating-Point Control Register)"))
         bit_info = [
-            [26, "AHP", "Alternative Half-Precision Control", ""],
-            [25, "DN", "Default NaN mode Control", ""],
-            [24, "FZ", "Flush-to-zero mode Control", ""],
+            [26, "AHP", "Alternative Half-Precision Control"],
+            [25, "DN", "Default NaN mode Control"],
+            [24, "FZ", "Flush-to-zero mode Control"],
             [[22, 23], "RMode", "Rounding Control", "00: Round To Nearest, 01: Round Positive, 10: Round Negative, 11: Round To Zero"],
             [[20, 21], "Stride", "", "Unused"],
             [19, "FZ16", "Flush-to-zero mode Control", "When FEAT_FP16 is implemented"],
             [[16, 17, 18], "Len", "", "Unused"],
-            [15, "IDE", "Input Denormal floating-point Exception trap enable", ""],
-            [12, "IXE", "Inexact floating-point Exception trap enable", ""],
-            [11, "UFE", "Underflow floating-point Exception trap enable", ""],
-            [10, "OFE", "Overflow floating-point Exception trap enable", ""],
-            [9, "DZE", "Divide by Zero floating-point Exception trap enable", ""],
-            [8, "IOE", "Invalid Operation floating-point Exception trap enable", ""],
+            [15, "IDE", "Input Denormal floating-point Exception trap enable"],
+            [12, "IXE", "Inexact floating-point Exception trap enable"],
+            [11, "UFE", "Underflow floating-point Exception trap enable"],
+            [10, "OFE", "Overflow floating-point Exception trap enable"],
+            [9, "DZE", "Divide by Zero floating-point Exception trap enable"],
+            [8, "IOE", "Invalid Operation floating-point Exception trap enable"],
         ]
         reg = get_register("$fpcr")
         if reg is not None:
@@ -41700,13 +41700,13 @@ class FpuCommand(GenericCommand):
             [30, "Z", "", "Unused, see $cpsr"],
             [29, "C", "", "Unused, see $cpsr"],
             [28, "V", "", "Unused, see $cpsr"],
-            [27, "QC", "Cumulative saturation bit", ""],
-            [7, "IDC", "Input Denormal Cumulative floating-point exception bit", ""],
-            [4, "IXC", "Inexact Cumulative floating-point exception bit", ""],
-            [3, "UFC", "Underflow Cumulative floating-point exception bit", ""],
-            [2, "OFC", "Overflow Cumulative floating-point exception bit", ""],
-            [1, "DZC", "Divide by Zero Cumulative floating-point exception bit", ""],
-            [0, "IOC", "Invalid Operation Cumulative floating-point exception bit", ""],
+            [27, "QC", "Cumulative saturation bit"],
+            [7, "IDC", "Input Denormal Cumulative floating-point exception bit"],
+            [4, "IXC", "Inexact Cumulative floating-point exception bit"],
+            [3, "UFC", "Underflow Cumulative floating-point exception bit"],
+            [2, "OFC", "Overflow Cumulative floating-point exception bit"],
+            [1, "DZC", "Divide by Zero Cumulative floating-point exception bit"],
+            [0, "IOC", "Invalid Operation Cumulative floating-point exception bit"],
         ]
         reg = get_register("$fpsr")
         if reg is not None:
@@ -41717,15 +41717,15 @@ class FpuCommand(GenericCommand):
         # fctrl
         gef_print(titlify("FCTRL (x87 FPU Control Word)"))
         bit_info = [
-            [12, "X", "Infinity Control", ""],
+            [12, "X", "Infinity Control"],
             [[10, 11], "RC", "Rounding Control", "00: Round To Nearest, 01: Round Negative, 10: Round Positive, 11: Round To Zero"],
             [[8, 9], "PC", "Precision Control", "00: Signle Precison, 01: Reserved, 10: Double Precision, 11: Double-Extended Precision"],
-            [5, "PM", "Precision Exception Mask", ""],
-            [4, "UM", "Underflow Exception Mask", ""],
-            [3, "OM", "Overflow Exception Mask", ""],
-            [2, "ZM", "Zero Divide Exception Mask", ""],
-            [1, "DM", "Denormalized Opernd Exception Mask", ""],
-            [0, "IM", "Invalid Operation Exception Mask", ""],
+            [5, "PM", "Precision Exception Mask"],
+            [4, "UM", "Underflow Exception Mask"],
+            [3, "OM", "Overflow Exception Mask"],
+            [2, "ZM", "Zero Divide Exception Mask"],
+            [1, "DM", "Denormalized Opernd Exception Mask"],
+            [0, "IM", "Invalid Operation Exception Mask"],
         ]
         reg = get_register("$fctrl")
         PrintBitInfo("$fctrl", 16, None, bit_info).print(reg)
@@ -41733,20 +41733,20 @@ class FpuCommand(GenericCommand):
         # fstat
         gef_print(titlify("FSTAT (x87 FPU Status Word)"))
         bit_info = [
-            [15, "B", "FPU Busy", ""],
-            [14, "C3", "Condition Code", ""],
-            [[11, 12, 13], "TOP", "Top of Stack Pointer", ""],
-            [10, "C2", "Condition Code", ""],
-            [9, "C1", "Condition Code", ""],
-            [8, "C0", "Condition Code", ""],
-            [7, "ES", "Exception Summary Status", ""],
-            [6, "SF", "Stack Fault", ""],
-            [5, "PE", "Precision Exception", ""],
-            [4, "UE", "Underflow Exception", ""],
-            [3, "OE", "Overflow Exception", ""],
-            [2, "ZE", "Zero Divide Exception", ""],
-            [1, "DE", "Denormalized Operand Exception", ""],
-            [0, "IE", "Invalid Operation Exception", ""],
+            [15, "B", "FPU Busy"],
+            [14, "C3", "Condition Code"],
+            [[11, 12, 13], "TOP", "Top of Stack Pointer"],
+            [10, "C2", "Condition Code"],
+            [9, "C1", "Condition Code"],
+            [8, "C0", "Condition Code"],
+            [7, "ES", "Exception Summary Status"],
+            [6, "SF", "Stack Fault"],
+            [5, "PE", "Precision Exception"],
+            [4, "UE", "Underflow Exception"],
+            [3, "OE", "Overflow Exception"],
+            [2, "ZE", "Zero Divide Exception"],
+            [1, "DE", "Denormalized Operand Exception"],
+            [0, "IE", "Invalid Operation Exception"],
         ]
         reg = get_register("$fstat")
         PrintBitInfo("$fstat", 16, None, bit_info).print(reg)
@@ -41769,21 +41769,21 @@ class FpuCommand(GenericCommand):
         # $fiseg, $fioff
         gef_print(titlify("FCS:FIP (x87 FPU Last Instruction Pointer)"))
         reg = get_register("$fiseg")
-        PrintBitInfo("$fiseg(FCS)", 16, None, bit_info=[]).print(reg, split=False)
+        PrintBitInfo("$fiseg(FCS)", 16, None, bit_info=[]).print(reg)
         reg = get_register("$fioff")
-        PrintBitInfo("$fioff(FIP)", 32, None, bit_info=[]).print(reg, split=False)
+        PrintBitInfo("$fioff(FIP)", 32, None, bit_info=[]).print(reg)
 
         # $foseg, $fooff
         gef_print(titlify("FDS:FDP (x87 FPU Last Data(Operand) Pointer)"))
         reg = get_register("$foseg")
-        PrintBitInfo("$foseg(FDS)", 16, None, bit_info=[]).print(reg, split=False)
+        PrintBitInfo("$foseg(FDS)", 16, None, bit_info=[]).print(reg)
         reg = get_register("$fooff")
-        PrintBitInfo("$fooff(FDP)", 32, None, bit_info=[]).print(reg, split=False)
+        PrintBitInfo("$fooff(FDP)", 32, None, bit_info=[]).print(reg)
 
         # $fop
         gef_print(titlify("FOP (x87 FPU Last Instruction Opcode)"))
         reg = get_register("$fop")
-        PrintBitInfo("$fop", 11, None, bit_info=[]).print(reg, split=False)
+        PrintBitInfo("$fop", 11, None, bit_info=[]).print(reg)
         return
 
     @parse_args
@@ -61698,6 +61698,8 @@ class PrintBitInfo:
         self.name = name
         self.register_bit = register_bit
         self.description = description
+
+        # bit_info: [[bits, short_name, short_description, long_description], ...]
         self.bit_info = bit_info
         return
 
@@ -61713,128 +61715,113 @@ class PrintBitInfo:
                 out = "_" + out
         return "0b" + out[1:]
 
-    def print_value(self, regval, split=True):
+    def print_value(self, regval, split=False):
         regname = Color.colorify(self.name, "bold red")
+        value_str = Color.colorify("{:#x}".format(regval), "bold yellow")
         if split:
-            value_str = Color.colorify("{:#x} (={:s})".format(regval, self.bits_split(regval)), "bold yellow")
-            self.out.append("{:s} = {:s}".format(regname, value_str))
-        else:
-            value_str = Color.colorify("{:#x}".format(regval), "bold yellow")
-            self.out.append("{:s} = {:s}".format(regname, value_str))
+            value_str += Color.colorify(" (={:s})".format(self.bits_split(regval)), "bold yellow")
+        self.out.append("{:s} = {:s}".format(regname, value_str))
         return
 
     def print_description(self):
         if self.description:
-            self.out.append(self.description)
+            self.out.append(Color.colorify(self.description, "bold"))
         return
 
     def print_bitinfo(self, regval):
-        # search max width for bit range string
-        bit_range_strs = []
-        for info in self.bit_info:
-            bits, sym, sdesc, ldesc = info
-            if isinstance(bits, int):
-                bit_range_strs.append("") # length = 0
-            elif isinstance(bits, list):
-                bit_range_str = []
-                tmp = []
-                for b in sorted(bits, reverse=True):
-                    if tmp == [] or tmp[-1] - 1 == b:
-                        tmp.append(b) # bits are contiguous
-                        continue
-                    else:
-                        # bits are not contiguous (scattered), create format string
-                        if len(tmp) == 1:
-                            bit_range_str.append("{:d}".format(tmp[0]))
-                        else:
-                            bit_range_str.append("{:d}-{:d}".format(tmp[0], tmp[-1]))
-                        # then restart
-                        tmp = [b]
-                # add remain
-                if tmp:
-                    if len(tmp) == 1:
-                        bit_range_str.append("{:d}".format(tmp[0]))
-                    else:
-                        bit_range_str.append("{:d}-{:d}".format(tmp[0], tmp[-1]))
-                # join
-                bit_range_strs.append(",".join(bit_range_str))
-            else:
-                raise
-        max_width_bits = max(list(map(len, bit_range_strs)) + [2]) # 2 is default
-
-        # search max width for sym
+        # preprocess
+        max_width_bits = 2 # default
         max_width_sym = 0
-        for info in self.bit_info:
-            bits, sym, sdesc, ldesc = info
+        max_width_val = 0
+        bit_range_strs = []
+        bit_values = []
+        for bits, sym, *_ in self.bit_info:
+            if isinstance(bits, range):
+                bits = list(bits)
+
+            # search max width for bit_ragne_string
+            if isinstance(bits, int):
+                b = "{:d}".format(bits)
+                bit_range_strs.append(b)
+            else:
+                # ex: [11, 12, 0, 1, 2, 10] -> [0, 1, 2, 10, 11, 12]
+                bits = sorted(bits)
+                # ex: [0, 1, 2, 10, 11, 12] -> [[0, 1, 2], [10, 11, 12]]
+                gr_bits = [list(g) for _, g in itertools.groupby(bits, key=lambda n, c=itertools.count(): n - next(c))] # noqa: B008
+
+                tmp = []
+                for gb in gr_bits:
+                    if len(gb) == 1:
+                        tmp.append("{:d}".format(gb[0]))
+                    else:
+                        tmp.append("{:d}-{:d}".format(gb[-1], gb[0]))
+                bit_str = ",".join(tmp[::-1])
+                bit_range_strs.append(bit_str)
+                max_width_bits = max(max_width_bits, len(bit_str))
+
+            # search max width for sym
             if sym:
                 max_width_sym = max(max_width_sym, len(sym))
 
-        # search max width for val
-        max_width_val = 0
-        for info in self.bit_info:
-            bits, sym, sdesc, ldesc = info
+            # search max width for val
             if isinstance(bits, int):
                 val = (regval & (1 << bits)) >> bits
-            elif isinstance(bits, list):
-                val = 0
-                for j, x in enumerate(bits):
-                    val |= (regval & (1 << x)) >> (x - j)
+                bit_values.append(val)
             else:
-                raise
+                val = 0
+                for i, x in enumerate(bits):
+                    val |= (regval & (1 << x)) >> (x - i)
+                bit_values.append(val)
             max_width_val = max(max_width_val, len("{:#x}".format(val)))
 
-        # search max width for sdesc
-        max_width_sdesc = 0
-        for info in self.bit_info:
-            bits, sym, sdesc, ldesc = info
-            if sdesc:
-                max_width_sdesc = max(max_width_sdesc, len(sdesc))
+        # here, preprocess is finieshed.
+        # - max_width_bits
+        # - max_width_sym
+        # - max_width_val
+        # - bit_range_strs # ex: ["0", "4-1", "8-7,5"]
+        # - bit_values     # ex: [0b1, 0b1111, 0b1101]
 
-        # print using each width
-        for i, info in enumerate(self.bit_info):
-            bits, sym, sdesc, ldesc = info
-            if isinstance(bits, int):
-                b = "{:d}".format(bits)
-                val = (regval & (1 << bits)) >> bits
-            elif isinstance(bits, list):
-                b = bit_range_strs[i]
-                val = 0
-                for j, x in enumerate(bits):
-                    val |= (regval & (1 << x)) >> (x - j)
-            else:
-                raise
+        # actual perform
+        for i, (_, sym, *desc) in enumerate(self.bit_info):
+            b = bit_range_strs[i]
+            val = bit_values[i]
+
+            msg = "bit{:>{:d}s}: ".format(b, max_width_bits)
 
             if val:
-                colored_val = Color.colorify("{:>#{:d}x}".format(val, max_width_val), "bold")
+                msg += Color.colorify("{:>#{:d}x} ".format(val, max_width_val), "bold")
             else:
-                colored_val = "{:>#{:d}x}".format(val, max_width_val)
-            if sym is not None and sdesc is not None:
-                if ldesc:
-                    fmt = "bit{:>{:d}s}: {:s} [{:{:d}s}: {:{:d}s}]: {:s}"
-                    self.out.append(fmt.format(b, max_width_bits, colored_val, sym, max_width_sym, sdesc, max_width_sdesc, ldesc))
-                else:
-                    fmt = "bit{:>{:d}s}: {:s} [{:{:d}s}: {:{:d}s}]"
-                    self.out.append(fmt.format(b, max_width_bits, colored_val, sym, max_width_sym, sdesc, max_width_sdesc))
-            else:
-                fmt = "bit{:>{:d}s}: {:s} {:s}"
-                self.out.append(fmt.format(b, max_width_bits, colored_val, ldesc))
+                msg += "{:>#{:d}x} ".format(val, max_width_val)
+
+            if sym is not None:
+                msg += "{:{:d}s}  ".format(sym, max_width_sym)
+
+            if len(desc) == 1:
+                # short description only
+                if desc[0]:
+                    msg += desc[0]
+
+            elif len(desc) >= 2:
+                # short description and long description
+                if desc[0]:
+                    msg += desc[0] + "; "
+                msg += "; ".join(desc[1:])
+
+            self.out.append(msg)
         return
 
-    def print(self, regval, split=True):
-        self.out = []
-        self.print_value(regval, split)
-        self.print_description()
-        self.print_bitinfo(regval)
-        if self.out:
-            gef_print("\n".join(self.out))
-        return
-
-    def make_out(self, regval, split=True):
+    def make_out(self, regval, split=False):
         self.out = []
         self.print_value(regval, split)
         self.print_description()
         self.print_bitinfo(regval)
         return self.out
+
+    def print(self, regval, split=False):
+        self.make_out(regval, split)
+        if self.out:
+            gef_print("\n".join(self.out))
+        return
 
 
 @register_command
@@ -61884,14 +61871,14 @@ class QemuRegistersCommand(GenericCommand):
         self.out.append(titlify("CR2 (Control Register 2)"))
         desc = "When page fault, the address attempted to access is stored (PFLA: Page Fault Linear Address)"
         cr2 = get_register("cr2", use_monitor=True)
-        self.out.extend(PrintBitInfo("CR2", ptr_width() * 8, desc, bit_info=[]).make_out(cr2, split=False))
+        self.out.extend(PrintBitInfo("CR2", ptr_width() * 8, desc, bit_info=[]).make_out(cr2))
 
         # CR3
         self.out.append(titlify("CR3 (Control Register 3)"))
         desc = "It contains the physical address of the base of the paging-structure hierarchy and two flags"
         bit_info = [
-            [list(range(12, 32)), None, None, "Base of page directory base, typically it points to PML4T if 4-level paging"],
-            [list(range(0, 12)), None, None, "Process context identifier when CR4.PCIDE=1"],
+            [range(12, 32), None, None, "Base of page directory base, typically it points to PML4T if 4-level paging"],
+            [range(0, 12), None, None, "Process context identifier when CR4.PCIDE=1"],
             [4, "PCD", "Page-level Cache Disable", "If 1, disable Page-Directory itself caching when CR4.PCIDE=0"],
             [3, "PWT", "Page-level Write-Through", "If 1, enable write through Page-Directory itself caching when CR4.PCIDE=0"],
         ]
@@ -61934,7 +61921,7 @@ class QemuRegistersCommand(GenericCommand):
         self.out.append(titlify("CR8 (Control Register 8)"))
         desc = "Contain task priority level"
         bit_info = [
-            [[0, 1, 2, 3], "TPL", "Task Priority Level", ""],
+            [range(0, 4), "TPL", "Task Priority Level"],
         ]
         cr8 = get_register("cr8", use_monitor=True)
         if cr8 is not None: # only access x86 64-bit mode
@@ -61944,25 +61931,25 @@ class QemuRegistersCommand(GenericCommand):
         self.out.append(titlify("XCR0 (Extended Control Register 0)"))
         desc = "Contain taks priority level"
         bit_info = [
-            [19, "APX", "Extended GPRs (R16 through R31)", ""],
-            [18, "AMX_TILEDATA", "", ""],
-            [17, "AMX_TILECFG", "", ""],
-            [16, "HWP", "Hardware P-states", ""],
-            [15, "LBR", "Last branch record", ""],
-            [14, "UINTR", "User interrupts", ""],
-            [13, "HDC", "Hardware duty cycling", ""],
-            [12, "CET_S", "Control-flow Enforcement Technology (CET) Supervisor State", ""],
-            [11, "CET_U", "Control-flow Enforcement Technology (CET) User State", ""],
-            [10, "PASID", "Processor Address Space ID (PASID) state", ""],
-            [9, "PKRU", "XSAVE feature set can be used for PKRU register, which is part of the protection keys mechanism", ""],
-            [8, "PT", "Processor Trace", ""],
-            [7, "Hi16_ZMM", "AVX-512 enable, and XSAVE feature set can be used for the upper ZMM regs", ""],
-            [6, "ZMM_Hi256", "AVX-512 enable, and XSAVE feature set can be used for upper-halves of the lower ZMM regs", ""],
-            [5, "opmask", "AVX-512 enable, and XSAVE feature set can be used for AVX opmask, a.k.a. k0-k7 regs", ""],
-            [4, "BNDCSR", "MPX enable, and XSAVE feature set can be used for BNDCFGU and BNDSTATUS regs", ""],
-            [3, "BNDREG", "MPX enable, and XSAVE feature set can be used for BND0-3 regs", ""],
-            [2, "AVX", "AVX enable, and XSAVE feature set can be used to manage YMM regs", ""],
-            [1, "SSE", "XSAVE feature set enable for MXCSR and XMM regs", ""],
+            [19, "APX", "Extended GPRs (R16 through R31)"],
+            [18, "AMX_TILEDATA", "Advanced Matrix Extensions Tile Data"],
+            [17, "AMX_TILECFG", "Advanced Matrix Extensions Tile Config"],
+            [16, "HWP", "Hardware P-states"],
+            [15, "LBR", "Last branch record"],
+            [14, "UINTR", "User interrupts"],
+            [13, "HDC", "Hardware duty cycling"],
+            [12, "CET_S", "Control-flow Enforcement Technology (CET) Supervisor State"],
+            [11, "CET_U", "Control-flow Enforcement Technology (CET) User State"],
+            [10, "PASID", "Processor Address Space ID (PASID) state"],
+            [9, "PKRU", "XSAVE feature set can be used for PKRU register, which is part of the protection keys mechanism"],
+            [8, "PT", "Processor Trace"],
+            [7, "Hi16_ZMM", "AVX-512 enable, and XSAVE feature set can be used for the upper ZMM regs"],
+            [6, "ZMM_Hi256", "AVX-512 enable, and XSAVE feature set can be used for upper-halves of the lower ZMM regs"],
+            [5, "opmask", "AVX-512 enable, and XSAVE feature set can be used for AVX opmask, a.k.a. k0-k7 regs"],
+            [4, "BNDCSR", "MPX enable, and XSAVE feature set can be used for BNDCFGU and BNDSTATUS regs"],
+            [3, "BNDREG", "MPX enable, and XSAVE feature set can be used for BND0-3 regs"],
+            [2, "AVX", "AVX enable, and XSAVE feature set can be used to manage YMM regs"],
+            [1, "SSE", "XSAVE feature set enable for MXCSR and XMM regs"],
             [0, "X87", "x87 FPU/MMX State", "always 1"],
         ]
         xcr0 = get_register("xcr0", use_monitor=True)
@@ -61976,10 +61963,10 @@ class QemuRegistersCommand(GenericCommand):
         dr1 = get_register("dr1", use_monitor=True)
         dr2 = get_register("dr2", use_monitor=True)
         dr3 = get_register("dr3", use_monitor=True)
-        self.out.extend(PrintBitInfo("DR0", ptr_width() * 8, None, bit_info=[]).make_out(dr0, split=False))
-        self.out.extend(PrintBitInfo("DR1", ptr_width() * 8, None, bit_info=[]).make_out(dr1, split=False))
-        self.out.extend(PrintBitInfo("DR2", ptr_width() * 8, None, bit_info=[]).make_out(dr2, split=False))
-        self.out.extend(PrintBitInfo("DR3", ptr_width() * 8, desc, bit_info=[]).make_out(dr3, split=False))
+        self.out.extend(PrintBitInfo("DR0", ptr_width() * 8, None, bit_info=[]).make_out(dr0))
+        self.out.extend(PrintBitInfo("DR1", ptr_width() * 8, None, bit_info=[]).make_out(dr1))
+        self.out.extend(PrintBitInfo("DR2", ptr_width() * 8, None, bit_info=[]).make_out(dr2))
+        self.out.extend(PrintBitInfo("DR3", ptr_width() * 8, desc, bit_info=[]).make_out(dr3))
 
         # DR4-DR5
         self.out.append(titlify("DR4-DR5 (Debug Register 4-5)"))
@@ -62005,26 +61992,26 @@ class QemuRegistersCommand(GenericCommand):
         self.out.append(titlify("DR7 (Debug Control Register 7)"))
         desc = "A local breakpoint bit deactivates on hardware task switches, while a global does not"
         bit_info = [
-            [[30, 31], "LEN3", "Size of DR3 breakpoint", ""],
-            [[28, 29], "R/W3", "Breakpoint conditions for DR3", ""],
-            [[26, 27], "LEN2", "Size of DR2 breakpoint", ""],
-            [[24, 25], "R/W2", "Breakpoint conditions for DR2", ""],
-            [[22, 23], "LEN1", "Size of DR1 breakpoint", ""],
-            [[20, 21], "R/W1", "Breakpoint conditions for DR1", ""],
-            [[18, 19], "LEN0", "Size of DR0 breakpoint", ""],
-            [[16, 17], "R/W0", "Breakpoint conditions for DR0", ""],
-            [13, "GD", "General Detect enable", ""],
-            [11, "RTM", "Restricted Transactional Memory", ""],
-            [9, "GE", "Global Exact breakpoint", ""],
-            [8, "LE", "Local Exact breakpoint", ""],
-            [7, "G3", "Global DR3 breakpoint", ""],
-            [6, "L3", "Local DR3 breakpoint", ""],
-            [5, "G2", "Global DR2 breakpoint", ""],
-            [4, "L2", "Local DR2 breakpoint", ""],
-            [3, "G1", "Global DR1 breakpoint", ""],
-            [2, "L1", "Local DR1 breakpoint", ""],
-            [1, "G0", "Global DR0 breakpoint", ""],
-            [0, "L0", "Local DR0 breakpoint", ""],
+            [[30, 31], "LEN3", "Size of DR3 breakpoint"],
+            [[28, 29], "R/W3", "Breakpoint conditions for DR3"],
+            [[26, 27], "LEN2", "Size of DR2 breakpoint"],
+            [[24, 25], "R/W2", "Breakpoint conditions for DR2"],
+            [[22, 23], "LEN1", "Size of DR1 breakpoint"],
+            [[20, 21], "R/W1", "Breakpoint conditions for DR1"],
+            [[18, 19], "LEN0", "Size of DR0 breakpoint"],
+            [[16, 17], "R/W0", "Breakpoint conditions for DR0"],
+            [13, "GD", "General Detect enable"],
+            [11, "RTM", "Restricted Transactional Memory"],
+            [9, "GE", "Global Exact breakpoint"],
+            [8, "LE", "Local Exact breakpoint"],
+            [7, "G3", "Global DR3 breakpoint"],
+            [6, "L3", "Local DR3 breakpoint"],
+            [5, "G2", "Global DR2 breakpoint"],
+            [4, "L2", "Local DR2 breakpoint"],
+            [3, "G1", "Global DR1 breakpoint"],
+            [2, "L1", "Local DR1 breakpoint"],
+            [1, "G0", "Global DR0 breakpoint"],
+            [0, "L0", "Local DR0 breakpoint"],
         ]
         dr7 = get_register("dr7", use_monitor=True)
         self.out.extend(PrintBitInfo("DR7", ptr_width() * 8, desc, bit_info).make_out(dr7))
@@ -62033,22 +62020,22 @@ class QemuRegistersCommand(GenericCommand):
         self.out.append(titlify("EFER (Extended Feature Enable Register; MSR_EFER:0xc0000080)"))
         efer = get_register("efer", use_monitor=True)
         bit_info = [
-            [21, "AIBRSE", "Automatic IBRS Enable", ""],
-            [20, "UAIE", "Upper Address Ignore Enable", ""],
-            [18, "INTWB", "Interruptible WBINVD/WBNOINVD Enable", ""],
-            [17, "MCOMMIT", "MCOMMIT instruction Enable", ""],
-            [15, "TCE", "Translation Cache Extension", ""],
-            [14, "FFXSR", "Fast FXSAVE/FXRSTOR", ""],
-            [13, "LMSLE", "Long Mode Segment Limit Enable", ""],
-            [12, "SVME", "Secure Virtual Machine Enable", ""],
-            [11, "NXE", "No-Execute Enable", ""],
-            [10, "LMA", "Long Mode Active", ""],
-            [8, "LME", "Long Mode Enable", ""],
+            [21, "AIBRSE", "Automatic IBRS Enable"],
+            [20, "UAIE", "Upper Address Ignore Enable"],
+            [18, "INTWB", "Interruptible WBINVD/WBNOINVD Enable"],
+            [17, "MCOMMIT", "MCOMMIT instruction Enable"],
+            [15, "TCE", "Translation Cache Extension"],
+            [14, "FFXSR", "Fast FXSAVE/FXRSTOR"],
+            [13, "LMSLE", "Long Mode Segment Limit Enable"],
+            [12, "SVME", "Secure Virtual Machine Enable"],
+            [11, "NXE", "No-Execute Enable"],
+            [10, "LMA", "Long Mode Active"],
+            [8, "LME", "Long Mode Enable"],
             [4, "L2D", "L2 Cache Disable", "only AMD K6"],
             [3, "GEWBED", "Global EWBE# Disable", "only AMD K6"],
             [2, "SEWBED", "Speculative EWBE# Disable", "only AMD K6"],
             [1, "DPE", "Data Prefetch Enable", "only AMD K6"],
-            [0, "SCE", "System Call Extensions", ""],
+            [0, "SCE", "System Call Extensions"],
         ]
         self.out.extend(PrintBitInfo("EFER", ptr_width() * 8, None, bit_info).make_out(efer))
 
@@ -62133,7 +62120,7 @@ class QemuRegistersCommand(GenericCommand):
         return
 
     def qregisters(self):
-        res = gdb.execute("monitor info registers", to_string=True)
+        res = gdb.execute("monitor info registers", to_string=True).strip()
         self.out.append(titlify("info registers"))
         for line in res.splitlines():
             self.out.append(line)
