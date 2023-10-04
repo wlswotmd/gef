@@ -13819,7 +13819,11 @@ class SmartMemoryDumpCommand(GenericCommand):
     _category_ = "03-e. Memory - Dump"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("--prefix", help="use this name for the dump destination file prefix. (default: PID)")
+    parser.add_argument("-p", "--prefix", help="use this name for the dump destination file prefix. (default: PID)")
+    parser.add_argument("-s", "--suffix", help="use this name for the dump destination file suffix. (default: None)")
+    parser.add_argument("-f", "--filter", action="append", type=re.compile, default=[], help="REGEXP include filter.")
+    parser.add_argument("-e", "--exclude", action="append", type=re.compile, default=[], help="REGEXP exclude filter.")
+    parser.add_argument("-c", "--commit", action="store_true", help="actually perform the dump.")
     _syntax_ = parser.format_help()
 
     @parse_args
@@ -13828,19 +13832,33 @@ class SmartMemoryDumpCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
+        self.filter = args.filter
+        self.exclude = args.exclude
+        self.commit = args.commit
+
         if args.prefix is None:
             pid = get_pid(remote=True)
             if pid is None:
-                prefix = "{:05d}".format(0)
+                self.prefix = "{:05d}_".format(0)
             else:
-                prefix = "{:05d}".format(pid)
+                self.prefix = "{:05d}_".format(pid)
+        elif args.prefix == "":
+            self.prefix = args.prefix
         else:
-            prefix = args.prefix
+            self.prefix = "{:s}_".format(args.prefix)
 
-        self.smart_memory_dump(prefix)
+        if args.suffix is None:
+            self.suffix = ""
+        else:
+            self.suffix = "_{:s}".format(args.suffix)
+
+        self.smart_memory_dump()
+
+        if not self.commit:
+            warn("This is dry run mode. No dump has been performed yet. To dump, please add \"--commit\".")
         return
 
-    def smart_memory_dump(self, prefix):
+    def smart_memory_dump(self):
         maps = get_process_maps()
         if maps is None:
             err("Failed to get maps")
@@ -13855,6 +13873,12 @@ class SmartMemoryDumpCommand(GenericCommand):
             if entry.path in ["[vvar]", "[vsyscall]", "[vectors]", "[sigpage]"]:
                 continue
 
+            if self.filter and not any(filt.search(entry.path) for filt in self.filter):
+                continue
+
+            if self.exclude and any(ex.search(entry.path) for ex in self.exclude):
+                continue
+
             if not entry.path.startswith(("[", "<")):
                 path = os.path.basename(entry.path)
             else:
@@ -13863,16 +13887,19 @@ class SmartMemoryDumpCommand(GenericCommand):
                 path = path.replace("<", "").replace(">", "") # consider <tls-th1>, <explored>
             path = path.replace(" ", "_") # consider deleted case. ex: /path/to/file (deleted)
 
-            try:
-                data = read_memory(start, end - start)
-            except gdb.MemoryError:
-                continue
-
-            fmt = "{:s}-{:0{}x}-{:0{}x}_{:s}_{:s}.raw"
-            dumpfile_name = fmt.format(prefix, start, addr_len, end, addr_len, perm, path)
+            fmt = "{:s}{:0{}x}-{:0{}x}_{:s}_{:s}{:s}.raw"
+            dumpfile_name = fmt.format(self.prefix, start, addr_len, end, addr_len, perm, path, self.suffix)
             filepath = os.path.join(GEF_TEMP_DIR, dumpfile_name)
-            open(filepath, "wb").write(data)
-            info("Saved to {:s}".format(filepath))
+
+            if self.commit:
+                try:
+                    data = read_memory(start, end - start)
+                except gdb.MemoryError:
+                    continue
+                open(filepath, "wb").write(data)
+                info("Saved to {:s}".format(filepath))
+            else:
+                info("It will be saved to {:s}".format(filepath))
         return
 
 
