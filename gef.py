@@ -42864,6 +42864,16 @@ class KernelAddressHeuristicFinder:
                                 continue
                             if read_int_from_memory(candidate) == 4:
                                 return candidate
+
+        res = gdb.execute("ktask --filter swapper/0 --no-pager", to_string=True)
+        m = re.search("offsetof\(task_struct, cred\): (0x\S+)", res)
+        if m:
+            cred_offset = int(m.group(1), 16)
+            line = res.strip().splitlines()[-1]
+            addr, _, _, name, *_ = line.split()
+            if name == "swapper/0":
+                task = int(addr, 16)
+                return read_int_from_memory(task + cred_offset)
         return None
 
     @staticmethod
