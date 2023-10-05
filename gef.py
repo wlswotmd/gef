@@ -2704,7 +2704,14 @@ class GlibcChunk:
         if self.has_m_bit():
             return True
         next_chunk = self.get_next_chunk()
-        return True if next_chunk.has_p_bit() else False
+        try:
+            return True if next_chunk.has_p_bit() else False
+        except gdb.MemoryError as e:
+            # top?
+            if (next_chunk.chunk_base_address & 0xfff) == 0:
+                if is_valid_addr(next_chunk.chunk_base_address - 1):
+                    return False
+            raise gdb.MemoryError from e
 
     def str_chunk_size_flag(self):
         msg = []
@@ -16501,6 +16508,7 @@ class GlibcHeapCommand(GenericCommand):
     subparsers.add_parser("bins")
     subparsers.add_parser("chunk")
     subparsers.add_parser("chunks")
+    subparsers.add_parser("top")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -16512,6 +16520,41 @@ class GlibcHeapCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     def do_invoke(self, args):
         self.dont_repeat()
+        return
+
+
+@register_command
+class GlibcHeapTopCommand(GenericCommand):
+    """Display heap top chunk."""
+    _cmdline_ = "heap top"
+    _category_ = "06-a. Heap - Glibc"
+    _aliases_ = ["top-chunk"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-a", "--arena-addr", type=parse_address,
+                        help="the address you want to interpret as an arena. (default: main_arena)")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        if args.arena_addr:
+            res = gdb.execute("heap arena --no-pager --arena-addr {:#x}".format(args.arena_addr), to_string=True)
+        else:
+            res = gdb.execute("heap arena --no-pager", to_string=True)
+
+        m = re.search(r"top = (0x\S+),", Color.remove_color(res))
+        if not m:
+            err("Not found top address")
+            return
+
+        top = int(m.group(1), 16)
+        info("arena.top: {:#x}".format(top))
+        top += current_arch.ptrsize * 2
+        gef_print(GlibcChunk(top).psprint())
         return
 
 
