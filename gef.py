@@ -2736,17 +2736,17 @@ class GlibcChunk:
         try:
             msg.append("  Chunk size: {0:d} ({0:#x})".format(self.get_chunk_size()))
             msg.append("  Usable size: {0:d} ({0:#x})".format(self.get_usable_size()))
-            failed = True
         except gdb.MemoryError:
             msg.append("  Chunk size: Cannot read at {:#x} (corrupted?)".format(self.size_addr))
+            failed = True
 
         try:
             msg.append("  Previous chunk size: {0:d} ({0:#x})".format(self.get_prev_chunk_size()))
-            failed = True
         except gdb.MemoryError:
             msg.append("  Previous chunk size: Cannot read at {:#x} (corrupted?)".format(self.chunk_base_address))
+            failed = True
 
-        if failed:
+        if not failed:
             msg.append(self.str_chunk_size_flag())
 
         return "\n".join(msg)
@@ -16727,6 +16727,10 @@ class GlibcHeapChunkCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("location", metavar="LOCATION", type=parse_address,
                         help="the address you want to interpret as a chunk.")
+    parser.add_argument("-a", "--arena-addr", type=parse_address,
+                        help="the address you want to interpret as an arena. (default: main_arena)")
+    parser.add_argument("-b", "--as-base", action="store_true",
+                        help="use LOCATION as chunk base address (chunk_base_address = chunk_address - ptrsize * 2).")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -16739,15 +16743,62 @@ class GlibcHeapChunkCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        if get_main_arena() is None:
+        # parse arena
+        arena = get_arena(args.arena_addr)
+
+        if arena is None:
+            err("No valid arena")
+            return
+
+        if arena.heap_base is None or not is_valid_addr(arena.heap_base):
             err("Heap is not initialized")
             return
 
-        chunk = GlibcChunk(args.location)
+        # freelist info
+        tcache_list = arena.tcache_list()
+        fastbin_list = arena.fastbin_list()
+        unsortedbin_list = arena.unsortedbin_list()
+        smallbin_list = arena.smallbin_list()
+        largebin_list = arena.largebin_list()
+
+        # get chunk
+        if args.as_base:
+            chunk = GlibcChunk(args.location, from_base=True)
+        else:
+            chunk = GlibcChunk(args.location)
+
+        # dump
         try:
             gef_print(chunk.psprint())
         except gdb.MemoryError:
             err("Invalid address")
+            return
+
+        # extra information
+        freelist_hint_color = get_gef_setting("theme.heap_freelist_hint")
+        extra = []
+        if chunk.chunk_base_address == arena.top:
+            extra.append("top")
+        for k, v in tcache_list.items():
+            if chunk.address in v:
+                extra.append("tcache[{}]".format(k))
+        for k, v in fastbin_list.items():
+            if chunk.address in v:
+                extra.append("fastbin[{}]".format(k))
+        for _k, v in unsortedbin_list.items():
+            if chunk.address in v:
+                extra.append("unsortedbin")
+        for k, v in smallbin_list.items():
+            if chunk.address in v:
+                extra.append("smallbin[{}]".format(k))
+        for k, v in largebin_list.items():
+            if chunk.address in v:
+                extra.append("largebin[{}]".format(k))
+
+        if extra:
+            gef_print("  Found freelist/top: {:s}".format(Color.colorify(", ".join(extra), freelist_hint_color)))
+        else:
+            gef_print("  Found freelist/top: None")
         return
 
 
@@ -59350,17 +59401,17 @@ class uClibcChunk:
         try:
             msg.append("  Chunk size: {0:d} ({0:#x})".format(self.get_chunk_size()))
             msg.append("  Usable size: {0:d} ({0:#x})".format(self.get_usable_size()))
-            failed = True
         except gdb.MemoryError:
             msg.append("  Chunk size: Cannot read at {:#x} (corrupted?)".format(self.size_addr))
+            failed = True
 
         try:
             msg.append("  Previous chunk size: {0:d} ({0:#x})".format(self.get_prev_chunk_size()))
-            failed = True
         except gdb.MemoryError:
             msg.append("  Previous chunk size: Cannot read at {:#x} (corrupted?)".format(self.chunk_base_address))
+            failed = True
 
-        if failed:
+        if not failed:
             msg.append(self.str_chunk_size_flag())
 
         return "\n".join(msg)
