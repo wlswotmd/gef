@@ -2565,7 +2565,7 @@ class GlibcArena:
             if chunk.address in chunks:
                 err("bins[{:d}] is corrupted (the loop exit condition of parsing is troubled)".format(index))
                 break
-            chunks.add(chunk.address)
+            chunks.add(chunk.chunk_base_address)
             fw = chunk.fwd
             if fw is None:
                 err("bins[{:d}] is corrupted (failed to get fwd)".format(index))
@@ -42232,9 +42232,23 @@ class VisualHeapCommand(GenericCommand):
                         help="the address you want to interpret as an arena. (default: main_arena)")
     parser.add_argument("-c", dest="max_count", type=parse_address,
                         help="Maximum count to parse. It is used when there is a very large amount of chunks.")
-    parser.add_argument("--full", action="store_true", help="display the same line without omitting.")
+    parser.add_argument("-f", "--full", action="store_true", help="display the same line without omitting.")
+    parser.add_argument("-d", "--dark-color", action="store_true", help="use the dark color if chunk is allocated.")
+    parser.add_argument("-s", "--safe-linking-decode", action="store_true",
+                        help="decode safe-linking encoded pointer if tcache or fastbins.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
+
+    color = [
+        Color.redify,
+        Color.greenify,
+        Color.blueify,
+        Color.yellowify
+    ]
+    dark_color = [
+        lambda x: Color.colorify(x, "bright_black"),
+        lambda x: Color.colorify(x, "graphite"),
+    ]
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
@@ -42261,15 +42275,20 @@ class VisualHeapCommand(GenericCommand):
             s += "{} {}".format(LEFT_ARROW, "top")
         return s
 
-    def generate_visual_chunk(self, chunk, color_func):
+    def generate_visual_chunk(self, chunk, idx):
         ptrsize = current_arch.ptrsize
+
         unpack = u32 if ptrsize == 4 else u64
         data = slicer(chunk.data, ptrsize * 2)
         group_line_threshold = 8
 
         addr = chunk.chunk_base_address
         width = ptrsize * 2 + 2
-        done = False
+        exceed_top = False
+        has_subinfo = False
+
+        out_tmp = []
+        # Group rows to display rows with the same value together.
         for blk, blks in itertools.groupby(data):
             repeat_count = len(list(blks))
             d1, d2 = unpack(blk[:ptrsize]), unpack(blk[ptrsize:])
@@ -42277,34 +42296,48 @@ class VisualHeapCommand(GenericCommand):
 
             fmt = "{:#x}: {:#0{:d}x} {:#0{:d}x} | {:s} | {:s}"
             if self.full or repeat_count < group_line_threshold:
+                # non-collapsed line
                 for _ in range(repeat_count):
                     sub_info = self.subinfo(addr)
-                    dump = fmt.format(addr, d1, width, d2, width, dascii, sub_info)
-                    self.out.append(color_func(dump))
+                    has_subinfo |= bool(sub_info)
+
+                    if self.safe_linking_decode:
+                        if chunk.address == addr and ("tcache" in sub_info or "fastbin" in sub_info):
+                            d1 = chunk.get_fwd_ptr(True)
+
+                    out_tmp.append(fmt.format(addr, d1, width, d2, width, dascii, sub_info))
                     addr += ptrsize * 2
+
                     if addr > self.top + ptrsize * 4:
-                        dump = Color.boldify("...")
-                        self.out.append(dump)
-                        done = True
+                        exceed_top = True
                         break
             else:
+                # collapsed line
                 sub_info = self.subinfo(addr)
-                dump = fmt.format(addr, d1, width, d2, width, dascii, sub_info)
-                self.out.append(color_func(dump))
-                dump = "* {:#d} lines, {:#x} bytes".format(repeat_count - 1, (repeat_count - 1) * ptrsize * 2)
-                self.out.append(color_func(dump))
+                has_subinfo |= bool(sub_info)
+                out_tmp.append(fmt.format(addr, d1, width, d2, width, dascii, sub_info))
                 addr += ptrsize * 2 * repeat_count
+                out_tmp.append("* {:#d} lines, {:#x} bytes".format(repeat_count - 1, (repeat_count - 1) * ptrsize * 2))
 
-            if done:
+            if exceed_top:
                 break
 
+        # coloring
+        if self.use_dark_color and not has_subinfo:
+            color_func = self.dark_color[idx % len(self.dark_color)]
+        else:
+            color_func = self.color[idx % len(self.color)]
+        self.out.append("\n".join(map(color_func, out_tmp)))
+
+        # corrupted case
+        if exceed_top:
+            self.out.append(Color.boldify("..."))
         return
 
     def generate_visual_heap(self, max_count):
         sect = process_lookup_address(self.dump_start)
         addr = self.dump_start
         i = 0
-        color = [Color.redify, Color.greenify, Color.blueify, Color.yellowify]
         self.out = []
         while addr < sect.page_end:
             chunk = GlibcChunk(addr + current_arch.ptrsize * 2)
@@ -42326,8 +42359,7 @@ class VisualHeapCommand(GenericCommand):
                 chunk.data = read_memory(addr, chunk.size)
             except gdb.MemoryError:
                 break
-            color_func = color[i % len(color)]
-            self.generate_visual_chunk(chunk, color_func)
+            self.generate_visual_chunk(chunk, i)
             addr += chunk.size
             i += 1
 
@@ -42342,6 +42374,8 @@ class VisualHeapCommand(GenericCommand):
         self.dont_repeat()
 
         self.full = args.full
+        self.use_dark_color = args.dark_color
+        self.safe_linking_decode = args.safe_linking_decode
 
         # parse arena
         arena = get_arena(args.arena_addr)
