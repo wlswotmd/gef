@@ -14251,7 +14251,14 @@ class SearchPatternCommand(GenericCommand):
             step = 0x400 * gef_getpagesize()
         locations = []
 
-        for chunk_addr in range(start_address, end_address, step):
+        tqdm = lambda x, leave: x
+        if self.verbose:
+            try:
+                from tqdm import tqdm
+            except ImportError:
+                pass
+
+        for chunk_addr in tqdm(range(start_address, end_address, step), leave=False):
             if chunk_addr + step > end_address:
                 chunk_size = end_address - chunk_addr
             else:
