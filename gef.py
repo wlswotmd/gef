@@ -2813,13 +2813,12 @@ class GlibcChunk:
         return "\n".join(msg)
 
 
-RE_LIBC_PATH = re.compile(r"libc6?[-_](\d+)\.(\d+)\.so")
-RE_GLIBC_VERSION = re.compile(rb"glibc (\d+)\.(\d+)")
-
-
 def get_libc_version():
 
     def get_libc_version_from_path():
+        RE_LIBC_PATH = re.compile(r"libc6?[-_](\d+)\.(\d+)\.so")
+        RE_GLIBC_VERSION = re.compile(rb"glibc (\d+)\.(\d+)")
+
         reset_gef_caches(all=True) # get_process_maps may be caching old information
 
         sections = get_process_maps()
