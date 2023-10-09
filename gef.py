@@ -70767,6 +70767,26 @@ class BincompareCommand(GenericCommand):
 
 
 @register_command
+class SymbolsCommand(GenericCommand):
+    """List up all symbols (short cut for `maintenance print msymbols`)."""
+    _cmdline_ = "symbols"
+    _category_ = "02-g. Process Information - Symbol"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        ret = gdb.execute("maintenance print msymbols", to_string=True)
+        gef_print(ret.strip(), less=not args.no_pager)
+        return
+
+
+@register_command
 class GefCommand(GenericCommand):
     """The base command of GEF maintenance."""
     _cmdline_ = "gef"
