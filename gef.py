@@ -50358,16 +50358,16 @@ class KernelSearchCodePtrCommand(GenericCommand):
         self.cache = {}
         rw_data = read_memory(self.kinfo.krwbase, self.kinfo.krwbase_size)
         rw_data = slice_unpack(rw_data, current_arch.ptrsize)
-        for i, rw_d in enumerate(rw_data):
-            if i % 100 == 0 or i == len(rw_data) - 1:
-                progress = i / len(rw_data) * 100
-                gef_print("\r{:7.3f}%".format(progress), end="")
 
+        try:
+            from tqdm import tqdm
+        except ImportError:
+            tqdm = lambda x, leave, total: x
+
+        for i, rw_d in tqdm(enumerate(rw_data), leave=False, total=len(rw_data)):
             rw_addr = self.kinfo.krwbase + i * current_arch.ptrsize
             backtrack_info = [(rw_addr, 0)]
             self.search(backtrack_info, rw_d, args.max_range, args.depth - 1)
-
-        gef_print("\r")
 
         if self.out:
             gef_print("\n".join(self.out), less=not args.no_pager)
