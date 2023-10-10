@@ -383,6 +383,8 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/auxv.png)
 * `argv`/`envp`: pretty prints argv and envp.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/argv-envp.png)
+* `dumpargs`: dumps arguments of current function.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dumpargs.png)
 * `vdso`: disassembles the text area of vdso smartly.
 * `vvar`: dumps the area of vvar.
 * `gdtinfo`: pretty prints GDT entries. If user-land, show sample entries.

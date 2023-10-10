@@ -12989,6 +12989,45 @@ class EnvpCommand(GenericCommand):
 
 
 @register_command
+class DumpArgsCommand(GenericCommand):
+    """Dump arguments of current function."""
+    _cmdline_ = "dumpargs"
+    _category_ = "02-d. Process Information - Trivial Information"
+    _aliases_ = ["args"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-c", "--count", type=lambda x: int(x, 0), help="number of arguments to guess.")
+    parser.add_argument("-o", "--out-of-function", action="store_true", help="assume here is out of the function.")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        gef_print(titlify("info args (snapshot)"))
+        gdb.execute("info args")
+
+        gef_print(titlify("guessed arguments (current value)"))
+        ret = gdb.execute("info args", to_string=True).strip()
+        if args.count is not None:
+            count = args.count
+        elif "No symbol table info available" in ret:
+            count = len(current_arch.function_parameters)
+        else:
+            count = len(ret.splitlines())
+
+        for i in range(count):
+            key, val = current_arch.get_ith_parameter(i, in_func=not args.out_of_function)
+
+            width = len(key)
+            while width % 4:
+                width += 1
+            gef_print("{:>{:d}s} = {:s}".format(key, width, to_string_dereference_from(val)))
+        return
+
+
+@register_command
 class VdsoCommand(GenericCommand):
     """Disassemble the text area of vdso smartly."""
     _cmdline_ = "vdso"
