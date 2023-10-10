@@ -1756,7 +1756,7 @@ class Instruction:
         else:
             opcodes_len = int(format_spec[:-1])
 
-        opcodes_text = "".join("{:02x}".format(b) for b in self.opcodes) # ex: "488d0de51e0100"
+        opcodes_text = "".join("{:02x}".format(b) for b in self.opcodes) # e.g.: "488d0de51e0100"
         # ex1: spec:"4o", opcodes:01020304   -> 01020304
         # ex2: spec:"4o", opcodes:0102030405 -> 010203..
         if opcodes_len < len(self.opcodes):
@@ -10998,7 +10998,7 @@ def is_emulated32():
         return False
 
     if is_qemu_system():
-        # corner case (ex: using qemu-system-x86_64, but process is executed as 32bit mode)
+        # corner case (e.g.: using qemu-system-x86_64, but process is executed as 32bit mode)
         # is not able to be detected
         return True
 
@@ -13900,7 +13900,7 @@ class SmartMemoryDumpCommand(GenericCommand):
                 path = entry.path
                 path = path.replace("[", "").replace("]", "") # consider [heap], [stack], [vdso]
                 path = path.replace("<", "").replace(">", "") # consider <tls-th1>, <explored>
-            path = path.replace(" ", "_") # consider deleted case. ex: /path/to/file (deleted)
+            path = path.replace(" ", "_") # consider deleted case. e.g.: /path/to/file (deleted)
 
             fmt = "{:s}{:0{}x}-{:0{}x}_{:s}_{:s}{:s}.raw"
             dumpfile_name = fmt.format(self.prefix, start, addr_len, end, addr_len, perm, path, self.suffix)
@@ -15986,7 +15986,7 @@ class UnicornEmulateCommand(GenericCommand):
     _example_ += "\n"
     _example_ += "NOTE:\n"
     _example_ += "* unicorn does not support emulating syscall.\n"
-    _example_ += "* unicorn does not support some instructions. (ex: xsavec, xrstor, vpbroadcastb, etc.)\n"
+    _example_ += "* unicorn does not support some instructions. (e.g.: xsavec, xrstor, vpbroadcastb, etc.)\n"
     _example_ += "* unicorn does not emulate ARM kernel-provided-user-helpers like $pc=0xffff0fe0, 0xffff0fc0, etc.\n"
     _example_ += "  see: https://www.kernel.org/doc/Documentation/arm/kernel_user_helpers.txt"
 
@@ -16403,7 +16403,7 @@ class StubBreakpoint(gdb.Breakpoint):
 
 @register_command
 class StubCommand(GenericCommand):
-    """Stub out the specified function to skip it. (ex: fork)."""
+    """Stub out the specified function to skip it. (e.g.: fork)."""
     _cmdline_ = "stub"
     _category_ = "03-c. Memory - Patch"
     _aliases_ = ["deactive"]
@@ -18235,7 +18235,7 @@ class AsmListCommand(GenericCommand):
             if "XOP" in opcodes.split()[0].split("."):
                 continue
 
-            # ex: "FF /2" -> ["FF10", "FF5011", ...]
+            # e.g.: "FF /2" -> ["FF10", "FF5011", ...]
             bytecodes = get_typical_bytecodes(opcodes)
 
             # check it is valid or not
@@ -22172,7 +22172,7 @@ class EntryPointBreakCommand(GenericCommand):
 
         # PIE
         warn("PIC binary detected, retrieving text base address")
-        # Some ELF does not use ld. (ex: ELF built by zig)
+        # Some ELF does not use ld. (e.g.: ELF built by zig)
         # So use gef_on_new_hook (use gdb.events.new_objfile internally),
         # instead of `set stop-on-solib-events 1` because shared object are never loaded.
         # At least gdb 10.1 (Ubuntu 18.04) supports gdb.events.new_objfile.
@@ -24991,7 +24991,7 @@ class DereferenceCommand(GenericCommand):
                 line = DereferenceCommand.pprint_dereferenced(start_address, idx)
                 out.append(line)
             except RuntimeError:
-                # ex: nop DWORD PTR [rax+rax*1+0x0]
+                # e.g.: nop DWORD PTR [rax+rax*1+0x0]
                 msg = "Cannot access memory at address {:#x}".format(start_address + idx * current_arch.ptrsize)
                 out.append("{} {}".format(Color.colorify("[!]", "bold red"), msg))
                 break
@@ -50979,7 +50979,7 @@ class SyscallTableViewCommand(GenericCommand):
 
 
 class ExecAsm:
-    """Execute embeded asm. ex: ExecAsm(asm_op_list).exec_code().
+    """Execute embeded asm. e.g.: ExecAsm(asm_op_list).exec_code().
     WARNING: Disable `-enable-kvm` option for qemu-system; If set, this code will crash the guest OS."""
     def __init__(self, _codes, regs=None, step=None, debug=False):
         self.stdout = 1
@@ -51119,7 +51119,7 @@ class ExecAsm:
 
 
 class ExecSyscall(ExecAsm):
-    """Execute embeded asm for syscall. ex: ExecSyscall(nr, args).exec_code().
+    """Execute embeded asm for syscall. e.g.: ExecSyscall(nr, args).exec_code().
     WARNING: Disable `-enable-kvm` option for qemu-system; If set, this code will crash the guest OS."""
     def __init__(self, nr, args, debug=False):
         self.stdout = 1
@@ -53378,7 +53378,7 @@ class SlubDumpCommand(GenericCommand):
 
         # heuristic detection pattern 2
         # if there is only one pattern with good alignment, use it
-        # ex: num_pages = 5
+        # e.g.: num_pages = 5
         # 0xXXXX0000
         # 0xXXXX1000   <----------------------------------- most_top_page   ^
         # 0xXXXX2000                                                       ^|
@@ -54195,7 +54195,7 @@ class SlubTinyDumpCommand(GenericCommand):
 
         # heuristic detection pattern 2
         # if there is only one pattern with good alignment, use it
-        # ex: num_pages = 5
+        # e.g.: num_pages = 5
         # 0xXXXX0000
         # 0xXXXX1000   <----------------------------------- most_top_page   ^
         # 0xXXXX2000                                                       ^|
@@ -61838,7 +61838,7 @@ class PrintBitInfo:
         return
 
     def bits_split(self, x):
-        # split by 4bits. ex: 0bXXYYYY -> 0b00XX_YYYY
+        # split by 4bits. e.g.: 0bXXYYYY -> 0b00XX_YYYY
         out = ""
         for i in range(self.register_bit):
             if x & (1 << i):
@@ -61878,9 +61878,9 @@ class PrintBitInfo:
                 b = "{:d}".format(bits)
                 bit_range_strs.append(b)
             else:
-                # ex: [11, 12, 0, 1, 2, 10] -> [0, 1, 2, 10, 11, 12]
+                # e.g.: [11, 12, 0, 1, 2, 10] -> [0, 1, 2, 10, 11, 12]
                 bits = sorted(bits)
-                # ex: [0, 1, 2, 10, 11, 12] -> [[0, 1, 2], [10, 11, 12]]
+                # e.g.: [0, 1, 2, 10, 11, 12] -> [[0, 1, 2], [10, 11, 12]]
                 gr_bits = [list(g) for _, g in itertools.groupby(bits, key=lambda n, c=itertools.count(): n - next(c))] # noqa: B008
 
                 tmp = []
@@ -61912,8 +61912,8 @@ class PrintBitInfo:
         # - max_width_bits
         # - max_width_sym
         # - max_width_val
-        # - bit_range_strs # ex: ["0", "4-1", "8-7,5"]
-        # - bit_values     # ex: [0b1, 0b1111, 0b1101]
+        # - bit_range_strs # e.g.: ["0", "4-1", "8-7,5"]
+        # - bit_values     # e.g.: [0b1, 0b1111, 0b1101]
 
         # actual perform
         for i, (_, sym, *desc) in enumerate(self.bit_info):
@@ -61960,7 +61960,7 @@ class PrintBitInfo:
 
 @register_command
 class QemuRegistersCommand(GenericCommand):
-    """Get regisers via qemu-monitor. (only x64/x86: It also shows the detail of system registers. ex: GDT, IDT etc.)"""
+    """Get regisers via qemu-monitor. (only x64/x86: It also shows the detail of system registers. e.g.: GDT, IDT etc.)"""
     _cmdline_ = "qreg"
     _category_ = "08-a. Qemu-system Cooperation - General"
 
@@ -67434,7 +67434,7 @@ class ExecUntilCondCommand(ExecUntilCommand):
 
     _example_ = '{:s} "$rax==0xdead && $rbx==0xcafe"    # execute until specified condition is filled\n'.format(_cmdline_)
     _example_ += '{:s} "$rax==0x12 && *(int*)$rbx==0x34" # multiple condition and memory access is supported\n'.format(_cmdline_)
-    _example_ += '{:s} "$ALL_REG==0x1234"                # compare with all regs. ex: `($rax==0x1234 || $rbx==0x1234 || ...)`\n'.format(_cmdline_)
+    _example_ += '{:s} "$ALL_REG==0x1234"                # compare with all regs. e.g.: `($rax==0x1234 || $rbx==0x1234 || ...)`\n'.format(_cmdline_)
 
     def __init__(self):
         super().__init__(prefix=False)
@@ -67854,7 +67854,7 @@ class KmallocTracerCommand(GenericCommand):
     _category_ = "08-f. Qemu-system Cooperation - Linux Dynamic Inspection"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-f", "--filter", default=[], help="filter specified name (ex: kmalloc-XX)")
+    parser.add_argument("-f", "--filter", default=[], help="filter specified name (e.g.: kmalloc-XX)")
     parser.add_argument("--print-null", action="store_true", help="display free(NULL).")
     parser.add_argument("-t", "--backtrace", action="store_true", help="display backtrace.")
     parser.add_argument("-d", "--dump-chunk", action="store_true", help="dump the first 0x40 bytes of each chunk.")
@@ -68190,7 +68190,7 @@ class KmallocAllocatedByCommand(GenericCommand):
     _category_ = "08-f. Qemu-system Cooperation - Linux Dynamic Inspection"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-f", "--filter", default=[], help="filter specified name (ex: kmalloc-XX)")
+    parser.add_argument("-f", "--filter", default=[], help="filter specified name (e.g.: kmalloc-XX)")
     parser.add_argument("--print-null", action="store_true", help="display free(NULL).")
     parser.add_argument("-t", "--backtrace", action="store_true", help="display backtrace.")
     parser.add_argument("-d", "--dump-chunk", action="store_true", help="dump the first 0x40 bytes of each chunk.")
@@ -70086,7 +70086,7 @@ class AddSymbolTemporaryCommand(GenericCommand):
                 continue
             if section_name == ".dynamic": # cannot remove
                 continue
-            if section_name == ".data": # broken if remove (ex: add-symbol-temporary hoge 0x1234)
+            if section_name == ".data": # broken if remove (e.g.: add-symbol-temporary hoge 0x1234)
                 continue
             if section_name == ".bss": # broken if remove
                 continue
