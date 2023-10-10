@@ -62943,13 +62943,13 @@ class PagewalkX64Command(PagewalkCommand):
                         help="filter by map included specified physical address.")
     parser.add_argument("--trace", metavar="VADDR", default=[], action="append", type=lambda x: int(x, 16),
                         help="show all level pagetables only associated specified address.")
-    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
-    parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
-    parser.add_argument("-c", "--use-cache", action="store_true", help="use before result.")
+    parser.add_argument("--include-kasan", action="store_true", help="include KASAN shadow memory (sometimes heavy memory use).")
     parser.add_argument("-U", "--user-pt", action="store_true", help="print userland pagetables (for KPTI, only x64, in kernel context).")
     parser.add_argument("--cr3", type=parse_address, help="use specified value as cr3.")
     parser.add_argument("--cr4", type=parse_address, help="use specified value as cr4.")
-    parser.add_argument("--include-kasan-memory", action="store_true", help="include KASAN shadow memory.")
+    parser.add_argument("-c", "--use-cache", action="store_true", help="use before result.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -63194,7 +63194,7 @@ class PagewalkX64Command(PagewalkCommand):
             entries = slice_unpack(entries, self.bits["ENTRY_SIZE"])
             COUNT += len(entries)
 
-            if not self.include_kasan_memory:
+            if not self.include_kasan:
                 if len({e & ~0b111 for e in entries}) == 1:
                     continue
 
@@ -63277,7 +63277,7 @@ class PagewalkX64Command(PagewalkCommand):
             entries = slice_unpack(entries, self.bits["ENTRY_SIZE"])
             COUNT += len(entries)
 
-            if not self.include_kasan_memory:
+            if not self.include_kasan:
                 if len({e & ~0b111 for e in entries}) == 1:
                     continue
 
@@ -63471,6 +63471,7 @@ class PagewalkX64Command(PagewalkCommand):
         self.vrange = args.vrange.copy()
         self.prange = args.prange.copy()
         self.trace = args.trace.copy()
+        self.include_kasan = args.include_kasan
         self.use_cache = args.use_cache
 
         if is_x86_64() and is_in_kernel():
@@ -63480,7 +63481,6 @@ class PagewalkX64Command(PagewalkCommand):
 
         self.user_specified_cr3 = args.cr3
         self.user_specified_cr4 = args.cr4
-        self.include_kasan_memory = args.include_kasan_memory
         if self.trace:
             self.vrange.extend(self.trace) # also set --vrange
             self.print_each_level = True # overwrite
@@ -63517,9 +63517,9 @@ class PagewalkArmCommand(PagewalkCommand):
                         help="filter by map included specified physical address.")
     parser.add_argument("--trace", metavar="VADDR", default=[], action="append", type=lambda x: int(x, 16),
                         help="show all level pagetables only associated specified address.")
+    parser.add_argument("-c", "--use-cache", action="store_true", help="use before result.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
-    parser.add_argument("-c", "--use-cache", action="store_true", help="use before result.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -64522,9 +64522,9 @@ class PagewalkArm64Command(PagewalkCommand):
     parser.add_argument("--trace", metavar="VADDR", default=[], action="append", type=lambda x: int(x, 16),
                         help="show all level pagetables only associated specified address.")
     parser.add_argument("--optee", action="store_true", help="show the secure world memory maps if used OP-TEE.")
+    parser.add_argument("-c", "--use-cache", action="store_true", help="use before result.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
-    parser.add_argument("-c", "--use-cache", action="store_true", help="use before result.")
     _syntax_ = parser.format_help()
 
     # If you want to dump the secure world memory map, you need to break in the secure world.
