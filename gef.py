@@ -23103,7 +23103,7 @@ class ContextCommand(GenericCommand):
 
         return None
 
-    RE_SUB_ARGS_SYMBOL = re.compile(r".*<([^\(> ]*).*")
+    RE_SUB_ARGS_SYMBOL = re.compile(r".*<([^\(\)\ \>]*?)>.*")
 
     def context_args(self):
         if current_arch is None and is_remote_debug():
@@ -23123,35 +23123,78 @@ class ContextCommand(GenericCommand):
         if not current_arch.is_call(insn):
             return
 
-        ops = " ".join(insn.operands)
-        # is there a symbol?
-        if "<" in ops and ">" in ops:
-            target = self.RE_SUB_ARGS_SYMBOL.sub(r"\1", ops)
-        else:
-            # no, try extract target address
-            addr = self.get_branch_addr(insn, to_str=True)
-            if addr is not None:
-                target = addr
+        def get_sym_obj(insn):
+            # insn -> addr
+            addr = self.get_branch_addr(insn)
+            if addr is None:
+                return None
+
+            # addr -> sym_str
+            ret = gdb_get_location(addr)
+            if not ret:
+                return None
+            sym_str, _ = ret
+
+            # If it's a PLT call, it should resolve the symbol for the actual function.
+            # e.g.: puts@plt -> puts
+            if sym_str.endswith("@plt"):
+                sym_str = sym_str[:-4]
+
+            # weak symbol -> real symbol
+            # e.g.: puts -> __GI__IO_puts
+            try:
+                ret = gdb.execute("p '{:s}'".format(sym_str), to_string=True).strip()
+                real_sym_str = self.RE_SUB_ARGS_SYMBOL.sub(r"\1", ret)
+            except gdb.error:
+                # Some functions do not have PLT names.
+                # e.g.: *ABS*+0xXXXX
+                return None
+
+            # If it resolves the real symbol, it may not be the beginning of the function. This is not the symbol I want.
+            # To determine whether it is the beginning of a function, use whether a "+" symbol is included.
+            # Another option is to check whether parse_address(real_symbol) returns the original address.
+            # However, this cannot be used in cases where addresses exceeding the PLT are handled, so this should not be used.
+            if "+" not in real_sym_str:
+                sym_str = real_sym_str
             else:
-                # failed, use raw operands
-                target = " ".join(insn.operands)
+                # e.g.: ptmalloc_init -> __GI___libc_malloc+528
+                pass
 
-        # print
-        sym = gdb.lookup_global_symbol(target)
-        if sym is None:
-            self.print_guessed_arguments(target)
+            # sym_str -> sym_obj
+            sym_obj = gdb.lookup_symbol(sym_str)[0]
+            if sym_obj is None:
+                # There are cases where the symbol string is found but the symbol object is not.
+                # e.g.: __do_global_dtors_aux
+                return None
+            if sym_obj.type.code != gdb.TYPE_CODE_FUNC:
+                return None
+
+            # found
+            return sym_obj, sym_str
+
+        ret = get_sym_obj(insn)
+        if ret:
+            # okay, it has a symbol
+            self.print_arguments_from_symbol(*ret)
             return
 
-        if sym.type.code != gdb.TYPE_CODE_FUNC:
-            err("Symbol '{}' is not a function: type={}".format(target, sym.type.code))
-            return
-
-        self.print_arguments_from_symbol(target, sym)
+        # no, try extract target address
+        function_name = self.get_branch_addr(insn, to_str=True)
+        if function_name is None:
+            # failed, use raw operands
+            function_name = " ".join(insn.operands)
+        self.print_guessed_arguments(function_name)
         return
 
-    def print_arguments_from_symbol(self, function_name, symbol):
+    def print_arguments_from_symbol(self, sym_obj, function_name):
         """If symbols were found, parse them and print the argument adequately."""
         args = []
+
+        # In gdb, there is no way to get the argument names of a function before call the function.
+        # You can get the argument names with `info args`, but only after the function is called.
+        # Also, the arguments obtained with info args may differ from the source code due to
+        # optimization reasons. (e.g.: _int_malloc)
+        # Since only the type of the argument can be obtained, only the type information is used.
 
         size2type = {
             1: "BYTE",
@@ -23160,7 +23203,7 @@ class ContextCommand(GenericCommand):
             8: "QWORD",
         }
 
-        for i, f in enumerate(symbol.type.fields()):
+        for i, f in enumerate(sym_obj.type.fields()):
             _value = current_arch.get_ith_parameter(i, in_func=False)[1]
             if _value is None:
                 break
@@ -23207,7 +23250,7 @@ class ContextCommand(GenericCommand):
                 args.append("{} = {}".format(Color.colorify(_key, arg_key_color), _value))
 
         self.context_title("arguments (guessed)")
-        gef_print("{:s}{:s} (".format(function_name, get_symbol_string(function_name)))
+        gef_print("{:s}{:s} (".format(function_name, get_symbol_string(function_name, nosymbol_string=" <NO_SYMBOL>")))
         if args:
             gef_print("   " + ",\n   ".join(args))
         gef_print(")")
