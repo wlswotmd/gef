@@ -20128,13 +20128,13 @@ class KernelChecksecCommand(GenericCommand):
                 for line in res.splitlines():
                     bases = {}
                     for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+;\s*(0x\S+)", line)
+                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
                         if m:
                             reg = m.group(1)
                             base = int(m.group(2), 16)
                             bases[reg] = base
                             continue
-                        m = re.search(r"movt\s+(\S+),.+;\s*(0x\S+)", line)
+                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
                         if m:
                             reg = m.group(1)
                             v = int(m.group(2), 16) << 16
@@ -42864,11 +42864,11 @@ class KernelAddressHeuristicFinder:
                     base = None
                     for line in res.splitlines():
                         if base is None:
-                            m = re.search(r"movw.*;\s*(0x\S+)", line)
+                            m = re.search(r"movw.*[;@]\s*(0x\S+)", line)
                             if m:
                                 base = int(m.group(1), 16)
                         else:
-                            m = re.search(r"movt.*;\s*(0x\S+)", line)
+                            m = re.search(r"movt.*[;@]\s*(0x\S+)", line)
                             if m:
                                 return base + (int(m.group(1), 16) << 16)
         return None
@@ -42985,11 +42985,11 @@ class KernelAddressHeuristicFinder:
                     movw = None
                     movt = None
                     for i, line in enumerate(res.splitlines()):
-                        m = re.search(r"movw.*;\s*(0x\S+)", line)
+                        m = re.search(r"movw.*[;@]\s*(0x\S+)", line)
                         if m:
                             movw = int(m.group(1), 16)
                             movw_idx = i
-                        m = re.search(r"movt.*;\s*(0x\S+)", line)
+                        m = re.search(r"movt.*[;@]\s*(0x\S+)", line)
                         if m:
                             movt = int(m.group(1), 16)
                             movt_idx = i
@@ -43094,11 +43094,11 @@ class KernelAddressHeuristicFinder:
                     movw = None
                     movt = None
                     for i, line in enumerate(res.splitlines()):
-                        m = re.search(r"movw.*;\s*(0x\S+)", line)
+                        m = re.search(r"movw.*[;@]\s*(0x\S+)", line)
                         if m:
                             movw = int(m.group(1), 16)
                             movw_idx = i
-                        m = re.search(r"movt.*;\s*(0x\S+)", line)
+                        m = re.search(r"movt.*[;@]\s*(0x\S+)", line)
                         if m:
                             movt = int(m.group(1), 16)
                             movt_idx = i
@@ -43185,13 +43185,13 @@ class KernelAddressHeuristicFinder:
                     bases = {}
                     add1time = {}
                     for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+;\s*(0x\S+)", line)
+                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
                         if m:
                             reg = m.group(1)
                             base = int(m.group(2), 16)
                             bases[reg] = base
                             continue
-                        m = re.search(r"movt\s+(\S+),.+;\s*(0x\S+)", line)
+                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
                         if m:
                             reg = m.group(1)
                             v = int(m.group(2), 16) << 16
@@ -43256,13 +43256,13 @@ class KernelAddressHeuristicFinder:
                     bases = {}
                     add1time = {}
                     for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+;\s*(0x\S+)", line)
+                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
                         if m:
                             reg = m.group(1)
                             base = int(m.group(2), 16)
                             bases[reg] = base
                             continue
-                        m = re.search(r"movt\s+(\S+),.+;\s*(0x\S+)", line)
+                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
                         if m:
                             reg = m.group(1)
                             v = int(m.group(2), 16) << 16
@@ -43320,13 +43320,13 @@ class KernelAddressHeuristicFinder:
                     bases = {}
                     add1time = {}
                     for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+;\s*(0x\S+)", line)
+                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
                         if m:
                             reg = m.group(1)
                             base = int(m.group(2), 16)
                             bases[reg] = base
                             continue
-                        m = re.search(r"movt\s+(\S+),.+;\s*(0x\S+)", line)
+                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
                         if m:
                             reg = m.group(1)
                             v = int(m.group(2), 16) << 16
@@ -43616,11 +43616,11 @@ class KernelAddressHeuristicFinder:
                     base = None
                     for line in res.splitlines():
                         if base is None:
-                            m = re.search(r"movw.*;\s*(0x\S+)", line)
+                            m = re.search(r"movw.*[;@]\s*(0x\S+)", line)
                             if m:
                                 base = int(m.group(1), 16)
                         else:
-                            m = re.search(r"movt.*;\s*(0x\S+)", line)
+                            m = re.search(r"movt.*[;@]\s*(0x\S+)", line)
                             if m:
                                 v = base + (int(m.group(1), 16) << 16)
                                 if is_valid_addr(v):
@@ -43674,11 +43674,11 @@ class KernelAddressHeuristicFinder:
                     base = None
                     for line in res.splitlines():
                         if base is None:
-                            m = re.search(r"movw.*;\s*(0x\S+)", line)
+                            m = re.search(r"movw.*[;@]\s*(0x\S+)", line)
                             if m:
                                 base = int(m.group(1), 16)
                         else:
-                            m = re.search(r"movt.*;\s*(0x\S+)", line)
+                            m = re.search(r"movt.*[;@]\s*(0x\S+)", line)
                             if m:
                                 return base + (int(m.group(1), 16) << 16)
 
@@ -43710,11 +43710,11 @@ class KernelAddressHeuristicFinder:
                     base = None
                     for line in res.splitlines():
                         if base is None:
-                            m = re.search(r"movw.*;\s*(0x\S+)", line)
+                            m = re.search(r"movw.*[;@]\s*(0x\S+)", line)
                             if m:
                                 base = int(m.group(1), 16)
                         else:
-                            m = re.search(r"movt.*;\s*(0x\S+)", line)
+                            m = re.search(r"movt.*[;@]\s*(0x\S+)", line)
                             if m:
                                 return base + (int(m.group(1), 16) << 16)
 
@@ -43757,7 +43757,7 @@ class KernelAddressHeuristicFinder:
             elif is_arm32():
                 count = 0
                 for line in res.splitlines():
-                    m = re.search(r"ldr\s+r\d+,.*;\s*(0x\S+)", line)
+                    m = re.search(r"ldr\s+r\d+,.*[;@]\s*(0x\S+)", line)
                     if m:
                         if count == 0:
                             count += 1
@@ -43817,12 +43817,12 @@ class KernelAddressHeuristicFinder:
                 elif is_arm32():
                     addr = 0
                     for line in res.splitlines():
-                        m = re.search(r"movw.*;\s*(0x\S+)", line)
+                        m = re.search(r"movw.*[;@]\s*(0x\S+)", line)
                         if m:
                             addr_high = addr & 0xffff0000
                             addr = addr_high | int(m.group(1), 16)
                             continue
-                        m = re.search(r"movt.*;\s*(0x\S+)", line)
+                        m = re.search(r"movt.*[;@]\s*(0x\S+)", line)
                         if m:
                             addr_low = addr & 0xffff
                             addr = (int(m.group(1), 16) << 16) | addr_low
@@ -43894,7 +43894,7 @@ class KernelAddressHeuristicFinder:
                 elif is_arm32():
                     addr = 0
                     for line in res.splitlines():
-                        m = re.search(r"ldr.*;\s*(0x\S+)", line)
+                        m = re.search(r"ldr.*[;@]\s*(0x\S+)", line)
                         if m:
                             addr = int(m.group(1), 16)
                             try:
@@ -43953,11 +43953,11 @@ class KernelAddressHeuristicFinder:
                     base = None
                     for line in res.splitlines():
                         if base is None:
-                            m = re.search(r"movw.*;\s*(0x\S+)", line)
+                            m = re.search(r"movw.*[;@]\s*(0x\S+)", line)
                             if m:
                                 base = int(m.group(1), 16)
                         else:
-                            m = re.search(r"movt.*;\s*(0x\S+)", line)
+                            m = re.search(r"movt.*[;@]\s*(0x\S+)", line)
                             if m:
                                 return base + (int(m.group(1), 16) << 16)
         return None
@@ -44010,12 +44010,12 @@ class KernelAddressHeuristicFinder:
                 elif is_arm32():
                     addr = 0
                     for line in res.splitlines():
-                        m = re.search(r"movw.*;\s*(0x\S+)", line)
+                        m = re.search(r"movw.*[;@]\s*(0x\S+)", line)
                         if m:
                             addr_high = addr & 0xffff0000
                             addr = addr_high | int(m.group(1), 16)
                             continue
-                        m = re.search(r"movt.*;\s*(0x\S+)", line)
+                        m = re.search(r"movt.*[;@]\s*(0x\S+)", line)
                         if m:
                             addr_low = addr & 0xffff
                             addr = (int(m.group(1), 16) << 16) | addr_low
@@ -44056,12 +44056,12 @@ class KernelAddressHeuristicFinder:
                 elif is_arm32():
                     addr = 0
                     for line in res.splitlines():
-                        m = re.search(r"movw.*;\s*(0x\S+)", line)
+                        m = re.search(r"movw.*[;@]\s*(0x\S+)", line)
                         if m:
                             addr_high = addr & 0xffff0000
                             addr = addr_high | int(m.group(1), 16)
                             continue
-                        m = re.search(r"movt.*;\s*(0x\S+)", line)
+                        m = re.search(r"movt.*[;@]\s*(0x\S+)", line)
                         if m:
                             addr_low = addr & 0xffff
                             addr = (int(m.group(1), 16) << 16) | addr_low
@@ -44213,17 +44213,6 @@ class KernelAddressHeuristicFinder:
                         if m:
                             v = int(m.group(1), 16) & 0xffffffff
                             return v
-                elif is_arm32():
-                    base = None
-                    for line in res.splitlines():
-                        if base is None:
-                            m = re.search(r"movw.*;\s*(0x\S+)", line)
-                            if m:
-                                base = int(m.group(1), 16)
-                        else:
-                            m = re.search(r"movt.*;\s*(0x\S+)", line)
-                            if m:
-                                return base + (int(m.group(1), 16) << 16)
                 elif is_arm64():
                     base = None
                     for line in res.splitlines():
@@ -44235,6 +44224,17 @@ class KernelAddressHeuristicFinder:
                             m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
                             if m:
                                 return base + int(m.group(1), 0)
+                elif is_arm32():
+                    base = None
+                    for line in res.splitlines():
+                        if base is None:
+                            m = re.search(r"movw.*[;@]\s*(0x\S+)", line)
+                            if m:
+                                base = int(m.group(1), 16)
+                        else:
+                            m = re.search(r"movt.*[;@]\s*(0x\S+)", line)
+                            if m:
+                                return base + (int(m.group(1), 16) << 16)
         return None
 
     @staticmethod
@@ -44306,11 +44306,11 @@ class KernelAddressHeuristicFinder:
                     base = None
                     for line in res.splitlines():
                         if base is None:
-                            m = re.search(r"movw.*;\s*(0x\S+)", line)
+                            m = re.search(r"movw.*[;@]\s*(0x\S+)", line)
                             if m:
                                 base = int(m.group(1), 16)
                         else:
-                            m = re.search(r"movt.*;\s*(0x\S+)", line)
+                            m = re.search(r"movt.*[;@]\s*(0x\S+)", line)
                             if m:
                                 return base + (int(m.group(1), 16) << 16)
         return None
@@ -44359,11 +44359,11 @@ class KernelAddressHeuristicFinder:
                     base = None
                     for line in res.splitlines():
                         if base is None:
-                            m = re.search(r"movw.*;\s*(0x\S+)", line)
+                            m = re.search(r"movw.*[;@]\s*(0x\S+)", line)
                             if m:
                                 base = int(m.group(1), 16)
                         else:
-                            m = re.search(r"movt.*;\s*(0x\S+)", line)
+                            m = re.search(r"movt.*[;@]\s*(0x\S+)", line)
                             if m:
                                 return base + (int(m.group(1), 16) << 16) + 4
         return None
@@ -44417,15 +44417,15 @@ class KernelAddressHeuristicFinder:
                     base = None
                     for line in res.splitlines():
                         if base is None:
-                            m = re.search(r"movw.*;\s*(0x\S+)", line)
+                            m = re.search(r"movw.*[;@]\s*(0x\S+)", line)
                             if m:
                                 base = int(m.group(1), 16)
                         else:
-                            m = re.search(r"movt.*;\s*(0x\S+)", line)
+                            m = re.search(r"movt.*[;@]\s*(0x\S+)", line)
                             if m:
                                 return base + (int(m.group(1), 16) << 16)
                     for line in res.splitlines():
-                        m = re.search(r"ldr\s+r0,.*;\s*(0x\S+)", line)
+                        m = re.search(r"ldr\s+r0,.*[;@]\s*(0x\S+)", line)
                         if m:
                             addr = int(m.group(1), 16)
                             try:
@@ -44485,7 +44485,7 @@ class KernelAddressHeuristicFinder:
                             continue
                 elif is_arm32():
                     for line in res.splitlines():
-                        m = re.search(r"ldr\s+r0,.*;\s*(0x\S+)", line)
+                        m = re.search(r"ldr\s+r0,.*[;@]\s*(0x\S+)", line)
                         if m:
                             addr = int(m.group(1), 16)
                             try:
@@ -44540,13 +44540,13 @@ class KernelAddressHeuristicFinder:
                     bases = {}
                     add1time = {}
                     for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+;\s*(0x\S+)", line)
+                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
                         if m:
                             reg = m.group(1)
                             base = int(m.group(2), 16)
                             bases[reg] = base
                             continue
-                        m = re.search(r"movt\s+(\S+),.+;\s*(0x\S+)", line)
+                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
                         if m:
                             reg = m.group(1)
                             v = int(m.group(2), 16) << 16
@@ -44616,13 +44616,13 @@ class KernelAddressHeuristicFinder:
                     bases = {}
                     count = 0
                     for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+;\s*(0x\S+)", line)
+                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
                         if m:
                             reg = m.group(1)
                             base = int(m.group(2), 16)
                             bases[reg] = base
                             continue
-                        m = re.search(r"movt\s+(\S+),.+;\s*(0x\S+)", line)
+                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
                         if m:
                             reg = m.group(1)
                             v = int(m.group(2), 16) << 16
@@ -44692,11 +44692,11 @@ class KernelAddressHeuristicFinder:
                     base = None
                     for line in res.splitlines():
                         if base is None:
-                            m = re.search(r"movw.*;\s*(0x\S+)", line)
+                            m = re.search(r"movw.*[;@]\s*(0x\S+)", line)
                             if m:
                                 base = int(m.group(1), 16)
                         else:
-                            m = re.search(r"movt.*;\s*(0x\S+)", line)
+                            m = re.search(r"movt.*[;@]\s*(0x\S+)", line)
                             if m:
                                 return base + (int(m.group(1), 16) << 16)
         return None
@@ -44767,13 +44767,13 @@ class KernelAddressHeuristicFinder:
                 elif is_arm32():
                     bases = {}
                     for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+;\s*(0x\S+)", line)
+                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
                         if m:
                             reg = m.group(1)
                             base = int(m.group(2), 16)
                             bases[reg] = base
                             continue
-                        m = re.search(r"movt\s+(\S+),.+;\s*(0x\S+)", line)
+                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
                         if m:
                             reg = m.group(1)
                             v = int(m.group(2), 16) << 16
@@ -44833,13 +44833,13 @@ class KernelAddressHeuristicFinder:
                 elif is_arm32():
                     bases = {}
                     for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+;\s*(0x\S+)", line)
+                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
                         if m:
                             reg = m.group(1)
                             base = int(m.group(2), 16)
                             bases[reg] = base
                             continue
-                        m = re.search(r"movt\s+(\S+),.+;\s*(0x\S+)", line)
+                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
                         if m:
                             reg = m.group(1)
                             v = int(m.group(2), 16) << 16
@@ -44909,13 +44909,13 @@ class KernelAddressHeuristicFinder:
                     count = 0
                     bases = {}
                     for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+;\s*(0x\S+)", line)
+                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
                         if m:
                             reg = m.group(1)
                             base = int(m.group(2), 16)
                             bases[reg] = base
                             continue
-                        m = re.search(r"movt\s+(\S+),.+;\s*(0x\S+)", line)
+                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
                         if m:
                             reg = m.group(1)
                             v = int(m.group(2), 16) << 16
@@ -44978,13 +44978,13 @@ class KernelAddressHeuristicFinder:
                     bases = {}
                     add1time = {}
                     for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+;\s*(0x\S+)", line)
+                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
                         if m:
                             reg = m.group(1)
                             base = int(m.group(2), 16)
                             bases[reg] = base
                             continue
-                        m = re.search(r"movt\s+(\S+),.+;\s*(0x\S+)", line)
+                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
                         if m:
                             reg = m.group(1)
                             v = int(m.group(2), 16) << 16
@@ -45242,13 +45242,13 @@ class KernelAddressHeuristicFinder:
                 elif is_arm32():
                     bases = {}
                     for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+;\s*(0x\S+)", line)
+                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
                         if m:
                             reg = m.group(1)
                             base = int(m.group(2), 16)
                             bases[reg] = base
                             continue
-                        m = re.search(r"movt\s+(\S+),.+;\s*(0x\S+)", line)
+                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
                         if m:
                             reg = m.group(1)
                             v = int(m.group(2), 16) << 16
@@ -45312,13 +45312,13 @@ class KernelAddressHeuristicFinder:
                     bases = {}
                     add1time = {}
                     for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+;\s*(0x\S+)", line)
+                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
                         if m:
                             reg = m.group(1)
                             base = int(m.group(2), 16)
                             bases[reg] = base
                             continue
-                        m = re.search(r"movt\s+(\S+),.+;\s*(0x\S+)", line)
+                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
                         if m:
                             reg = m.group(1)
                             v = int(m.group(2), 16) << 16
@@ -45417,13 +45417,13 @@ class KernelAddressHeuristicFinder:
                     bases = {}
                     add1time = {}
                     for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+;\s*(0x\S+)", line)
+                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
                         if m:
                             reg = m.group(1)
                             base = int(m.group(2), 16)
                             bases[reg] = base
                             continue
-                        m = re.search(r"movt\s+(\S+),.+;\s*(0x\S+)", line)
+                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
                         if m:
                             reg = m.group(1)
                             v = int(m.group(2), 16) << 16
@@ -45522,13 +45522,13 @@ class KernelAddressHeuristicFinder:
                 elif is_arm32():
                     bases = {}
                     for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+;\s*(0x\S+)", line)
+                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
                         if m:
                             reg = m.group(1)
                             base = int(m.group(2), 16)
                             bases[reg] = base
                             continue
-                        m = re.search(r"movt\s+(\S+),.+;\s*(0x\S+)", line)
+                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
                         if m:
                             reg = m.group(1)
                             v = int(m.group(2), 16) << 16
@@ -47131,7 +47131,7 @@ class KernelTaskCommand(GenericCommand):
 
     def get_offset_dentry(self, file):
         if not is_valid_addr(file):
-            return ""
+            return None
 
         """
         [~v6.4]
@@ -47438,7 +47438,7 @@ class KernelTaskCommand(GenericCommand):
                 self.offset_dentry = self.get_offset_dentry(vm_file)
             if self.offset_dentry is None:
                 self.quiet_err("Not found file->f_path.dentry")
-                return
+                return False
             self.quiet_info("offsetof(file, f_path.dentry): {:#x}".format(self.offset_dentry))
 
             if self.offset_d_iname is None:
