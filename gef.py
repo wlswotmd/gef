@@ -46271,11 +46271,32 @@ class KernelTaskCommand(GenericCommand):
 
     def __init__(self):
         super().__init__()
+        # task_struct
+        self.offset_tasks = None
+        self.offset_mm = None
+        self.offset_stack = None
+        self.offset_pid = None
+        self.offset_kcanary = None
+        self.offset_group_leader = None
+        self.offset_thread_group = None
+        self.offset_comm = None
+        self.offset_cred = None
+        self.offset_files = None
+        self.offset_fdt = None
+        # kstack
+        self.offset_kstack_size = None
+        self.offset_ptregs = None
+        # cred
+        self.offset_uid = None
+        # vm_area_struct
+        self.offset_vm_mm = None
         self.offset_vm_flags = None
         self.offset_vm_file = None
+        # file
+        self.offset_dentry = None
+        # dentry
         self.offset_d_iname = None
         self.offset_d_parent = None
-        self.offset_dentry = None
         return
 
     def quiet_info(self, msg):
@@ -46290,7 +46311,7 @@ class KernelTaskCommand(GenericCommand):
             gef_print(msg)
         return
 
-    def get_offset_task(self, init_task):
+    def get_offset_tasks(self, init_task):
         # search init_task->tasks
         for i in range(0x200):
             offset_tasks = i * current_arch.ptrsize
@@ -46316,10 +46337,7 @@ class KernelTaskCommand(GenericCommand):
                     break
                 value_list.append(pos)
             if found:
-                self.quiet_info("offsetof(task_struct, tasks): {:#x}".format(offset_tasks))
                 return offset_tasks
-
-        self.quiet_err("Not found init_task->tasks")
         return None
 
     def get_task_list(self, init_task, offset_tasks):
@@ -46331,8 +46349,6 @@ class KernelTaskCommand(GenericCommand):
             if pos in task_list:
                 break
             task_list.append(pos)
-
-        self.quiet_info("Number of tasks: {:d}".format(len(task_list)))
         return [x - offset_tasks for x in task_list]
 
     def get_offset_mm(self, task_addr, offset_tasks):
@@ -46360,8 +46376,6 @@ class KernelTaskCommand(GenericCommand):
         if 0 < r <= 0xffffffff:
             # maybe prio, so CONFIG_SMP is y
             offset_mm = offset_tasks + 10 * current_arch.ptrsize
-
-        self.quiet_info("offsetof(task_struct, mm): {:#x}".format(offset_mm))
         return offset_mm
 
     def get_offset_comm(self, task_addrs):
@@ -46379,10 +46393,7 @@ class KernelTaskCommand(GenericCommand):
                     valid = False
                     break
             if valid:
-                self.quiet_info("offsetof(task_struct, comm): {:#x}".format(offset_comm))
                 return offset_comm
-
-        self.quiet_err("Not found task->comm[TASK_CMM_LEN]")
         return None
 
     def get_offset_cred(self, task_addrs, offset_comm):
@@ -46397,16 +46408,13 @@ class KernelTaskCommand(GenericCommand):
             char                           comm[TASK_COMM_LEN];
         """
         # backward search from `comm`
-        for i in range(0x100):
+        for i in range(0x2):
             offset_cred = offset_comm - ((i + 1) * current_arch.ptrsize)
             for task in task_addrs:
                 val1 = read_int_from_memory(task + offset_cred)
                 val2 = read_int_from_memory(task + offset_cred - current_arch.ptrsize)
                 if val1 == val2 and val1 != 0:
-                    self.quiet_info("offsetof(task_struct, cred): {:#x}".format(offset_cred))
                     return offset_cred
-
-        self.quiet_err("Not found task->cred")
         return None
 
     def get_offset_stack(self, task_addrs):
@@ -46432,10 +46440,7 @@ class KernelTaskCommand(GenericCommand):
                 continue
 
             offset_stack = current_arch.ptrsize * i
-            self.quiet_info("offsetof(task_struct, stack): {:#x}".format(offset_stack))
             return offset_stack
-
-        self.quiet_err("Not found task->stack")
         return None
 
     def get_offset_ptregs(self, task_addrs, offset_stack):
@@ -46466,8 +46471,6 @@ class KernelTaskCommand(GenericCommand):
                     break # for, then retry while
             else:
                 break # while
-
-        self.quiet_info("kstack size: {:#x}".format(kstack_size))
 
         if is_x86_64():
             """
@@ -46551,8 +46554,7 @@ class KernelTaskCommand(GenericCommand):
             return None
 
         offset_ptregs = kstack_size - ptregs_size - bottom_offset
-        self.quiet_info("offsetof(kstack_top, saved ptregs): {:#x}".format(offset_ptregs))
-        return offset_ptregs
+        return kstack_size, offset_ptregs
 
     def get_regs(self, kstack, offset_ptregs):
         if is_x86_64():
@@ -46643,10 +46645,7 @@ class KernelTaskCommand(GenericCommand):
                 continue
 
             offset_pid = i * 4
-            self.quiet_info("offsetof(task_struct, pid): {:#x}".format(offset_pid))
             return offset_pid
-
-        self.quiet_err("Not found task->pid")
         return None
 
     def get_offset_canary(self, task_addrs, offset_pid):
@@ -46674,10 +46673,8 @@ class KernelTaskCommand(GenericCommand):
                 break
 
         if found:
-            self.quiet_info("offsetof(task_struct, stack_canary): {:#x}".format(offset_stack_canary))
             return offset_stack_canary
         else:
-            self.quiet_info("offsetof(task_struct, stack_canary): None")
             return None
 
     def get_offset_group_leader(self, offset_pid, offset_kcanary):
@@ -46698,7 +46695,6 @@ class KernelTaskCommand(GenericCommand):
         else:
             offset_real_parent = offset_kcanary + current_arch.ptrsize
         offset_group_leader = offset_real_parent + current_arch.ptrsize * (1 + 1 + 2 + 2)
-        self.quiet_info("offsetof(task_struct, group_leader): {:#x}".format(offset_group_leader))
         return offset_group_leader
 
     def get_offset_thread_group(self, offset_group_leader):
@@ -46716,7 +46712,6 @@ class KernelTaskCommand(GenericCommand):
             offset_thread_group = offset_group_leader + current_arch.ptrsize * (1 + 2 + 2 + 1 + (2 * 4))
         else:
             offset_thread_group = offset_group_leader + current_arch.ptrsize * (1 + 2 + 2 + (3 * 3))
-        self.quiet_info("offsetof(task_struct, thread_group): {:#x}".format(offset_thread_group))
         return offset_thread_group
 
     def get_offset_files(self, task_addrs, offset_comm):
@@ -46755,7 +46750,6 @@ class KernelTaskCommand(GenericCommand):
                 continue
             # found
             offset_files = base + current_arch.ptrsize * (i + 1)
-            self.quiet_info("offsetof(task_struct, files): {:#x}".format(offset_files))
             return offset_files
         return None
 
@@ -46774,13 +46768,16 @@ class KernelTaskCommand(GenericCommand):
             struct rcu_head rcu;
         }                           fdtab;
         """
+        if is_x86_32():
+            MAX_FDS_DEFAULT = 0x20
+        else:
+            MAX_FDS_DEFAULT = 0x40
         files = read_int_from_memory(task_addrs[0] + offset_files)
         for i in range(0x100):
             v = read_int_from_memory(files + current_arch.ptrsize * i)
-            if v != 0x40: # fdtab.maxfds default value
+            if v != MAX_FDS_DEFAULT:
                 continue
             offset_fdt = current_arch.ptrsize * (i - 1)
-            self.quiet_info("offsetof(files_struct, fdt): {:#x}".format(offset_fdt))
             return offset_fdt
         return None
 
@@ -46824,8 +46821,6 @@ class KernelTaskCommand(GenericCommand):
             pass
         else:
             offset_uid += 4 + current_arch.ptrsize + 4
-
-        self.quiet_info("offsetof(cred, uid): {:#x}".format(offset_uid))
         return offset_uid
 
     class MapleTree:
@@ -46867,17 +46862,9 @@ class KernelTaskCommand(GenericCommand):
                 else:
                     raise
 
-            if not self.quiet:
-                info("offsetof(mm_struct, mm_mt): {:#x}".format(offset_mm_mt))
             self.ma_root_raw = read_int_from_memory(mm + offset_mm_mt + current_arch.ptrsize)
-            if not self.quiet:
-                info("mm_mt.ma_root_raw: {:#x}".format(self.ma_root_raw))
             self.ma_flags = read_int_from_memory(mm + offset_mm_mt + current_arch.ptrsize * 2)
-            if not self.quiet:
-                info("mm_mt.ma_flags: {:#x}".format(self.ma_flags))
             self.max_depth = (self.ma_flags & self.MT_FLAGS_HEIGHT_MASK) >> self.MT_FLAGS_HEIGHT_OFFSET
-            if not self.quiet:
-                info("mm_mt.max_depth: {:#x}".format(self.max_depth))
             self.seen = set()
 
             if is_64bit():
@@ -46945,11 +46932,7 @@ class KernelTaskCommand(GenericCommand):
                         yield from self.parse_node(slot, depth + 1)
             return
 
-    def get_mm(self, task, offset_mm):
-        mm = read_int_from_memory(task + offset_mm)
-        if mm == 0:
-            return []
-
+    def get_vm_area_struct(self, mm):
         kversion = KernelVersionCommand.kernel_version()
         if kversion < "6.1":
             """
@@ -47055,12 +47038,15 @@ class KernelTaskCommand(GenericCommand):
                 struct file                       *vm_file;         /* File we map to (can be NULL). */
                 ...
             """
+        return vm_area_struct, get_next_vma_area_struct
 
-        if self.meta:
-            self.offset_vm_flags = None
-            self.offset_vm_file = None
+    def get_offset_vm_mm(self, task_addrs, offset_mm):
+        for task in task_addrs:
+            mm = read_int_from_memory(task + offset_mm)
+            if mm == 0:
+                continue
 
-        if self.offset_vm_flags is None:
+            vm_area_struct, _ = self.get_vm_area_struct(mm)
             current = vm_area_struct
             while True:
                 x = read_int_from_memory(current)
@@ -47068,46 +47054,83 @@ class KernelTaskCommand(GenericCommand):
                     break
                 current += current_arch.ptrsize
             offset_vm_mm = current - vm_area_struct
-            self.quiet_info("offsetof(vm_area_struct, vm_mm): {:#x}".format(offset_vm_mm))
+            return offset_vm_mm
+        return None
 
-            # now, `current` points vm_mm
-            self.offset_vm_flags = offset_vm_mm + current_arch.ptrsize * 2
-            self.quiet_info("offsetof(vm_area_struct, vm_flags): {:#x}".format(self.offset_vm_flags))
+    def get_offset_vm_flags(self, offset_vm_mm):
+        if is_64bit():
+            offset_vm_flags = offset_vm_mm + 8 * 2
+        elif is_x86_32():
+            cr4 = get_register("cr4", use_monitor=True)
+            if (cr4 >> 5) & 1: # PAE check
+                offset_vm_flags = offset_vm_mm + 8 * 2
+            else:
+                offset_vm_flags = offset_vm_mm + 4 * 2
+        elif is_arm32():
+            ret = gdb.execute("pagewalk -n", to_string=True)
+            if "using long description" in ret:
+                offset_vm_flags = offset_vm_mm + 8 * 2
+            else:
+                offset_vm_flags = offset_vm_mm + 4 * 2
+        return offset_vm_flags
+
+    def get_offset_vm_file(self, task_addrs, offset_mm, offset_vm_flags):
+        for task in task_addrs:
+            mm = read_int_from_memory(task + offset_mm)
+            if mm == 0:
+                continue
+
+            vm_area_struct, _ = self.get_vm_area_struct(mm)
+            current = vm_area_struct + offset_vm_flags
 
             # now, `current` points vm_flags
             current += current_arch.ptrsize
+            if is_32bit():
+                mask = KernelbaseCommand.get_kernel_base().kbase & 0xf0000000
+            else:
+                mask = 0xffff_0000_0000_0000
             while True:
                 x = read_int_from_memory(current)
+                if not is_valid_addr(x):
+                    current += current_arch.ptrsize
+                    continue
+
                 y = read_int_from_memory(current + current_arch.ptrsize) # read one unit ahead
-                if is_32bit():
-                    mask = 0xc000_0000
-                else:
-                    mask = 0xffff_0000_0000_0000
-                if (x & mask) == (y & mask) == mask and x == y:
+                if not is_valid_addr(y):
+                    current += current_arch.ptrsize
+                    continue
+
+                if (x & mask) == (y & mask) == mask and x == y: # search anon_vma_chain
                     break
                 current += current_arch.ptrsize
 
             # now, `current` points anon_vma_chain
             offset_anon_vma_chain = current - vm_area_struct
-            self.offset_vm_file = offset_anon_vma_chain + current_arch.ptrsize * 5
-            self.quiet_info("offsetof(vm_area_struct, vm_file): {:#x}".format(self.offset_vm_file))
+            offset_vm_file = offset_anon_vma_chain + current_arch.ptrsize * 5
+            return offset_vm_file
+        return None
+
+    def get_mm(self, task, offset_mm):
+        mm = read_int_from_memory(task + offset_mm)
+        if mm == 0:
+            return []
 
         vm_areas = []
         VmArea = collections.namedtuple("VmArea", "start end flags file")
-        current = vm_area_struct
+        current, get_next_vma_area_struct = self.get_vm_area_struct(mm)
         while current:
             vm_start = read_int_from_memory(current)
             vm_end = read_int_from_memory(current + current_arch.ptrsize)
             vm_flags = read_int_from_memory(current + self.offset_vm_flags)
             vm_file = read_int_from_memory(current + self.offset_vm_file)
-            filepath = self.get_filepath(vm_file)
+            filepath = self.get_filepath(vm_file, self.offset_dentry, self.offset_d_iname, self.offset_d_parent)
             perm = Permission(value=vm_flags)
             vm_areas.append(VmArea(vm_start, vm_end, str(perm), filepath))
             current = get_next_vma_area_struct(current)
         return vm_areas
 
-    def get_filepath(self, location):
-        if not is_valid_addr(location):
+    def get_offset_dentry(self, file):
+        if not is_valid_addr(file):
             return ""
 
         """
@@ -47166,74 +47189,85 @@ class KernelTaskCommand(GenericCommand):
         """
         kversion = KernelVersionCommand.kernel_version()
 
-        if self.meta:
-            self.offset_dentry = None
+        if kversion < "6.5":
+            offset_dentry = current_arch.ptrsize * 3
 
-        if self.offset_dentry is None:
-            if kversion < "6.5":
-                self.offset_dentry = current_arch.ptrsize * 3
+        else: # kversion >= "6.5"
+            for i in range(0x40):
+                cand_offset_cred = current_arch.ptrsize * i
+                f_cred = read_int_from_memory(file + cand_offset_cred)
+                ret = gdb.execute("xslubobj {:#x}".format(f_cred), to_string=True)
+                if "cred_jar" not in Color.remove_color(ret):
+                    continue
+                break
+            else:
+                raise
+            # now, f_cred is found
+            offset_dentry = cand_offset_cred + current_arch.ptrsize * 2 + 4 * 4 + current_arch.ptrsize * 2
+        return offset_dentry
 
-            else: # kversion >= "6.5"
-                for i in range(0x40):
-                    cand_offset_cred = current_arch.ptrsize * i
-                    f_cred = read_int_from_memory(location + cand_offset_cred)
-                    ret = gdb.execute("xslubobj {:#x}".format(f_cred), to_string=True)
-                    if "cred_jar" not in Color.remove_color(ret):
-                        continue
-                    self.quiet_info("offsetof(file, f_cred): {:#x}".format(cand_offset_cred))
-                    break
-                else:
-                    raise
-                # now, f_cred is found
-                self.offset_dentry = cand_offset_cred + current_arch.ptrsize * 2 + 4 * 4 + current_arch.ptrsize * 2
-
-            self.quiet_info("offsetof(file, f_path.dentry): {:#x}".format(self.offset_dentry))
-
-        dentry = read_int_from_memory(location + self.offset_dentry)
-
+    def get_offset_d_iname(self, dentry):
         """
         struct dentry {
             unsigned int d_flags;           /* protected by d_lock */
             seqcount_spinlock_t d_seq;      /* per dentry seqlock */
             struct hlist_bl_node d_hash;    /* lookup hash list */
             struct dentry *d_parent;        /* parent directory */
-            struct qstr d_name;
+            struct qstr {
+                union {
+                    struct {
+                        HASH_LEN_DECLARE;
+                    };
+                    u64 hash_len;
+                }
+                const unsigned char *name;   // this points d_iname
+            } d_name;
             struct inode *d_inode;          /* Where the name belongs to - NULL is negative */
             unsigned char d_iname[DNAME_INLINE_LEN];    /* small names */
         """
-        if self.meta:
-            self.offset_d_iname = None
-            self.offset_d_parent = None
+        current = dentry
+        while True:
+            name = read_int_from_memory(current)
+            if 0 < name - current <= 0x20:
+                offset_d_iname = name - dentry
+                break
+            current += current_arch.ptrsize
+        return offset_d_iname
 
-        if self.offset_d_iname is None:
-            current = dentry
-            while True:
-                x = read_int_from_memory(current)
-                if 0 < x - current <= 0x20:
-                    self.offset_d_iname = x - dentry
-                    break
-                current += current_arch.ptrsize
-            self.quiet_info("offsetof(dentry, d_iname): {:#x}".format(self.offset_d_iname))
+    def get_offset_d_parent(self, dentry, offset_d_iname):
+        current = dentry + offset_d_iname - current_arch.ptrsize * 3
+        # now, `current` points qstr.size
 
-            current -= current_arch.ptrsize
-            # now, `current` points qstr.size
-            while True:
-                x = read_int_from_memory(current)
-                if is_32bit():
-                    mask = 0xc000_0000
-                else:
-                    mask = 0xffff_0000_0000_0000
-                if (x & mask) == mask:
-                    self.offset_d_parent = current - dentry
-                    break
+        if is_32bit():
+            mask = KernelbaseCommand.get_kernel_base().kbase & 0xf0000000
+        else:
+            mask = 0xffff_0000_0000_0000
+        while True:
+            x = read_int_from_memory(current)
+            if x == dentry + offset_d_iname:
                 current -= current_arch.ptrsize
-            self.quiet_info("offsetof(dentry, d_parent): {:#x}".format(self.offset_d_parent))
+                continue
 
+            if not is_valid_addr(x):
+                current -= current_arch.ptrsize
+                continue
+
+            if (x & mask) == mask:
+                offset_d_parent = current - dentry
+                break
+            current -= current_arch.ptrsize
+        return offset_d_parent
+
+    def get_filepath(self, file, offset_dentry, offset_d_iname, offset_d_parent):
+        if not is_valid_addr(file):
+            return ""
+
+        dentry = read_int_from_memory(file + offset_dentry)
         filepath = []
         current = dentry
         while True:
-            name = read_cstring_from_memory(current + self.offset_d_iname)
-            d_parent = read_int_from_memory(current + self.offset_d_parent)
+            name = read_cstring_from_memory(current + offset_d_iname)
+            d_parent = read_int_from_memory(current + offset_d_parent)
             filepath.append(name)
             if d_parent == current:
                 break
@@ -47247,21 +47281,24 @@ class KernelTaskCommand(GenericCommand):
             struct vfsmount mnt; <-- container_of(mnt, struct mount, mnt)
         """
         if filepath[-1] == "/":
-            mnt = read_int_from_memory(location + self.offset_dentry - current_arch.ptrsize)
+            mnt = read_int_from_memory(file + offset_dentry - current_arch.ptrsize)
             if mnt:
                 dentry = read_int_from_memory(mnt - current_arch.ptrsize)
                 if dentry:
                     filepath = filepath[:-1] # remove last "/"
                     current = dentry
                     while True:
-                        name = read_cstring_from_memory(current + self.offset_d_iname)
-                        d_parent = read_int_from_memory(current + self.offset_d_parent)
+                        name = read_cstring_from_memory(current + offset_d_iname)
+                        d_parent = read_int_from_memory(current + offset_d_parent)
                         filepath.append(name)
                         if d_parent == current:
                             break
                         current = d_parent
 
-        return os.path.join(*filepath[::-1])
+        filepath = os.path.join(*filepath[::-1])
+        if filepath == "":
+            filepath = "PIPE (?)"
+        return filepath
 
     def add_lwp_task(self, task_addrs, offset_thread_group):
         lwp_task_addrs = []
@@ -47275,82 +47312,168 @@ class KernelTaskCommand(GenericCommand):
             lwp_task_addrs.extend(seen)
         return lwp_task_addrs
 
-    @parse_args
-    @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
-    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
-    @only_if_in_kernel_or_kpti_disabled
-    def do_invoke(self, args):
-        self.dont_repeat()
-
-        self.quiet = args.quiet
-        self.meta = args.meta
-
-        self.quiet_info("Wait for memory scan")
-
+    def initialize(self, args):
+        # init_task
         init_task = KernelAddressHeuristicFinder.get_init_task()
         if init_task is None:
             self.quiet_err("Not found symbol")
-            return
+            return False
         self.quiet_info("init_task: {:#x}".format(init_task))
 
-        # get various offsets
-        offset_task = self.get_offset_task(init_task)
-        if offset_task is None:
-            return
+        # task_struct->tasks
+        if self.offset_tasks is None:
+            self.offset_tasks = self.get_offset_tasks(init_task)
+        if self.offset_tasks is None:
+            self.quiet_err("Not found init_task->tasks")
+            return False
+        self.quiet_info("offsetof(task_struct, tasks): {:#x}".format(self.offset_tasks))
 
-        task_addrs = self.get_task_list(init_task, offset_task)
-        if task_addrs is None:
-            return
+        # task addresses
+        task_addrs = self.get_task_list(init_task, self.offset_tasks)
+        self.quiet_info("Number of tasks: {:d}".format(len(task_addrs)))
 
-        offset_mm = self.get_offset_mm(task_addrs[0], offset_task)
-        if offset_mm is None:
-            return
+        # task_struct->mm
+        if self.offset_mm is None:
+            self.offset_mm = self.get_offset_mm(task_addrs[0], self.offset_tasks)
+        self.quiet_info("offsetof(task_struct, mm): {:#x}".format(self.offset_mm))
 
-        offset_stack = self.get_offset_stack(task_addrs)
-        if offset_stack is None:
-            return
+        # task_struct->stack
+        if self.offset_stack is None:
+            self.offset_stack = self.get_offset_stack(task_addrs)
+        if self.offset_stack is None:
+            self.quiet_err("Not found task->stack")
+            return False
+        self.quiet_info("offsetof(task_struct, stack): {:#x}".format(self.offset_stack))
 
+        # task_struct->pid
+        if self.offset_pid is None:
+            self.offset_pid = self.get_offset_pid(task_addrs)
+        if self.offset_pid is None:
+            self.quiet_err("Not found task->pid")
+            return False
+        self.quiet_info("offsetof(task_struct, pid): {:#x}".format(self.offset_pid))
+
+        # task_struct->stack_canary
+        if self.offset_kcanary is None:
+            self.offset_kcanary = self.get_offset_canary(task_addrs, self.offset_pid)
+        if self.offset_kcanary is None:
+            self.quiet_info("offsetof(task_struct, stack_canary): None")
+        else:
+            self.quiet_info("offsetof(task_struct, stack_canary): {:#x}".format(self.offset_kcanary))
+
+        # task_struct->comm
+        if self.offset_comm is None:
+            self.offset_comm = self.get_offset_comm(task_addrs)
+        if self.offset_comm is None:
+            self.quiet_err("Not found task->comm[TASK_CMM_LEN]")
+            return False
+        self.quiet_info("offsetof(task_struct, comm): {:#x}".format(self.offset_comm))
+
+        # task_struct->cred
+        if self.offset_cred is None:
+            self.offset_cred = self.get_offset_cred(task_addrs, self.offset_comm)
+        if self.offset_cred is None:
+            self.quiet_err("Not found task->cred")
+            return False
+        self.quiet_info("offsetof(task_struct, cred): {:#x}".format(self.offset_cred))
+
+        # cred.uid
+        if self.offset_uid is None:
+            self.offset_uid = self.get_offset_uid(task_addrs[0] + self.offset_cred)
+        self.quiet_info("offsetof(cred, uid): {:#x}".format(self.offset_uid))
+
+        # task_struct->group_leader
+        # task_struct->thread_group
+        if args.print_thread:
+            if self.offset_group_leader is None:
+                self.offset_group_leader = self.get_offset_group_leader(self.offset_pid, self.offset_kcanary)
+            self.quiet_info("offsetof(task_struct, group_leader): {:#x}".format(self.offset_group_leader))
+
+            if self.offset_thread_group is None:
+                self.offset_thread_group = self.get_offset_thread_group(self.offset_group_leader)
+            self.quiet_info("offsetof(task_struct, thread_group): {:#x}".format(self.offset_thread_group))
+
+        # kstack_top->saved_ptregs
         if args.print_regs:
-            offset_ptregs = self.get_offset_ptregs(task_addrs, offset_stack)
+            if self.offset_ptregs is None:
+                self.kstack_size, self.offset_ptregs = self.get_offset_ptregs(task_addrs, self.offset_stack)
+            if self.offset_ptregs is None:
+                self.quiet_err("Not found saved ptregs")
+                return False
+            self.quiet_info("kstack size: {:#x}".format(self.kstack_size))
+            self.quiet_info("offsetof(kstack_top, saved ptregs): {:#x}".format(self.offset_ptregs))
 
-        offset_pid = self.get_offset_pid(task_addrs)
-        if offset_pid is None:
-            return
+        # vm_area_struct->vm_mm
+        # vm_area_struct->vm_flags
+        # vm_area_struct->vm_file
+        # file->f_path.dentry
+        # dentry->d_iname
+        # dentry->d_parent
+        if args.print_maps or args.print_fd:
+            if self.offset_vm_mm is None:
+                self.offset_vm_mm = self.get_offset_vm_mm(task_addrs, self.offset_mm)
+            if self.offset_vm_mm is None:
+                self.quiet_err("Not found vm_area_struct->vm_mm")
+                return False
+            self.quiet_info("offsetof(vm_area_struct, vm_mm): {:#x}".format(self.offset_vm_mm))
 
-        offset_kcanary = self.get_offset_canary(task_addrs, offset_pid)
-        offset_group_leader = self.get_offset_group_leader(offset_pid, offset_kcanary)
-        offset_thread_group = self.get_offset_thread_group(offset_group_leader)
+            if self.offset_vm_flags is None:
+                self.offset_vm_flags = self.get_offset_vm_flags(self.offset_vm_mm)
+            if self.offset_vm_flags is None:
+                self.quiet_err("Not found vm_area_struct->vm_flags")
+                return False
+            self.quiet_info("offsetof(vm_area_struct, vm_flags): {:#x}".format(self.offset_vm_flags))
 
-        offset_comm = self.get_offset_comm(task_addrs)
-        if offset_comm is None:
-            return
+            if self.offset_vm_file is None:
+                self.offset_vm_file = self.get_offset_vm_file(task_addrs, self.offset_mm, self.offset_vm_flags)
+            if self.offset_vm_file is None:
+                self.quiet_err("Not found vm_area_struct->vm_file")
+                return False
+            self.quiet_info("offsetof(vm_area_struct, vm_file): {:#x}".format(self.offset_vm_file))
 
-        offset_cred = self.get_offset_cred(task_addrs, offset_comm)
-        if offset_cred is None:
-            return
-
-        if args.print_fd:
-            offset_files =self.get_offset_files(task_addrs, offset_comm)
-            if offset_files is None:
+            if self.offset_dentry is None:
+                mm = read_int_from_memory(task_addrs[1] + self.offset_mm)
+                current, _ = self.get_vm_area_struct(mm)
+                vm_file = read_int_from_memory(current + self.offset_vm_file)
+                self.offset_dentry = self.get_offset_dentry(vm_file)
+            if self.offset_dentry is None:
+                self.quiet_err("Not found file->f_path.dentry")
                 return
+            self.quiet_info("offsetof(file, f_path.dentry): {:#x}".format(self.offset_dentry))
 
-        offset_uid = self.get_offset_uid(task_addrs[0] + offset_cred)
-        if offset_uid is None:
-            return
+            if self.offset_d_iname is None:
+                dentry = read_int_from_memory(vm_file + self.offset_dentry)
+                self.offset_d_iname = self.get_offset_d_iname(dentry)
+            self.quiet_info("offsetof(dentry, d_iname): {:#x}".format(self.offset_d_iname))
 
+            if self.offset_d_parent is None:
+                dentry = read_int_from_memory(vm_file + self.offset_dentry)
+                self.offset_d_parent = self.get_offset_d_parent(dentry, self.offset_d_iname)
+            self.quiet_info("offsetof(dentry, d_parent): {:#x}".format(self.offset_d_parent))
+
+        # task_struct->files
+        # files_struct->fdt
         if args.print_fd:
-            offset_fdt = self.get_offset_fdt(task_addrs, offset_files)
-            if offset_fdt is None:
-                return
+            if self.offset_files is None:
+                self.offset_files =self.get_offset_files(task_addrs, self.offset_comm)
+            if self.offset_files is None:
+                self.quiet_err("Not found task->files")
+                return False
+            self.quiet_info("offsetof(task_struct, files): {:#x}".format(self.offset_files))
 
-        # skip real parse if specified --meta option
-        if args.meta:
-            return
+            if self.offset_fdt is None:
+                self.offset_fdt = self.get_offset_fdt(task_addrs, self.offset_files)
+            if self.offset_fdt is None:
+                self.quiet_err("Not found files_struct->fdt")
+                return False
+            self.quiet_info("offsetof(files_struct, fdt): {:#x}".format(self.offset_fdt))
 
+        return init_task, task_addrs
+
+    def dump(self, args, init_task, task_addrs):
         # LWP
         if args.print_thread:
-            task_addrs = self.add_lwp_task(task_addrs, offset_thread_group)
+            task_addrs = self.add_lwp_task(task_addrs, self.offset_thread_group)
 
         # print legend
         out = []
@@ -47368,18 +47491,18 @@ class KernelTaskCommand(GenericCommand):
 
         # task parse
         for task in task_addrs:
-            comm_string = read_cstring_from_memory(task + offset_comm)
+            comm_string = read_cstring_from_memory(task + self.offset_comm)
             if args.filter:
                 if not any(re_pattern.search(comm_string) for re_pattern in args.filter):
                     continue
 
-            kstack = read_int_from_memory(task + offset_stack)
-            pid = u32(read_memory(task + offset_pid, 4))
-            cred = read_int_from_memory(task + offset_cred)
-            securebits = u32(read_memory(cred + offset_uid + 32, 4))
+            kstack = read_int_from_memory(task + self.offset_stack)
+            pid = u32(read_memory(task + self.offset_pid, 4))
+            cred = read_int_from_memory(task + self.offset_cred)
+            securebits = u32(read_memory(cred + self.offset_uid + 32, 4))
 
             # get process type (kernel or user-land)
-            mm = read_int_from_memory(task + offset_mm)
+            mm = read_int_from_memory(task + self.offset_mm)
             if mm == 0 or pid == 0:
                 proctype = "K"
             else:
@@ -47391,22 +47514,22 @@ class KernelTaskCommand(GenericCommand):
 
             # get process type (main process or not)
             if args.print_thread:
-                leader = read_int_from_memory(task + offset_group_leader)
+                leader = read_int_from_memory(task + self.offset_group_leader)
                 if leader != task:
                     proctype += "T"
 
             # uid
             if args.print_all_id:
-                uids = [u32(read_memory(cred + offset_uid + j * 4, 4)) for j in range(8)]
+                uids = [u32(read_memory(cred + self.offset_uid + j * 4, 4)) for j in range(8)]
                 uids_fmt = "{:>5d},{:>5d},{:>5d},{:>5d},{:>5d},{:>5d},{:>5d},{:>5d}"
             else:
-                uids = [u32(read_memory(cred + offset_uid + j * 4, 4)) for j in range(2)]
+                uids = [u32(read_memory(cred + self.offset_uid + j * 4, 4)) for j in range(2)]
                 uids_fmt = "{:>5d},{:>5d}"
             uids_str = uids_fmt.format(*uids)
 
             # kcanary
-            if offset_kcanary:
-                kcanary = read_int_from_memory(task + offset_kcanary)
+            if self.offset_kcanary:
+                kcanary = read_int_from_memory(task + self.offset_kcanary)
                 kcanary = "{:#018x}".format(kcanary)
             else:
                 kcanary = "None"
@@ -47421,7 +47544,7 @@ class KernelTaskCommand(GenericCommand):
 
             # additional information 1
             if args.print_maps:
-                mms = self.get_mm(task, offset_mm)
+                mms = self.get_mm(task, self.offset_mm)
                 if mms:
                     out.append(titlify("memory map of `{:s}`".format(comm_string)))
                     for mm in mms:
@@ -47431,7 +47554,7 @@ class KernelTaskCommand(GenericCommand):
 
             # additional information 2
             if args.print_regs:
-                regs = self.get_regs(kstack, offset_ptregs)
+                regs = self.get_regs(kstack, self.offset_ptregs)
                 syscall_table = get_syscall_table().table
                 syscall_nr_regs = ["orig_rax", "orig_eax", "r7", "x8"]
                 if regs:
@@ -47442,13 +47565,14 @@ class KernelTaskCommand(GenericCommand):
                             out.append("{:16s}: {:s} ({:s})".format(k, format_address_long_fmt(v), syscall_name))
                         else:
                             out.append("{:16s}: {:s}".format(k, format_address_long_fmt(v)))
-                    out.append(titlify(""))
+                    if not args.print_fd:
+                        out.append(titlify(""))
 
             # additional information 3
             if args.print_fd:
-                out.append(titlify("file descriptors of `{:s}`".format(comm_string)))
-                files = read_int_from_memory(task + offset_files)
-                fdt = read_int_from_memory(files + offset_fdt)
+                out.append(titlify("file descriptors of `{:s}` (address is `struct file*`)".format(comm_string)))
+                files = read_int_from_memory(task + self.offset_files)
+                fdt = read_int_from_memory(files + self.offset_fdt)
                 if is_valid_addr(fdt):
                     max_fds = read_int_from_memory(fdt)
                     array = read_int_from_memory(fdt + current_arch.ptrsize)
@@ -47456,9 +47580,33 @@ class KernelTaskCommand(GenericCommand):
                         file = read_int_from_memory(array + current_arch.ptrsize * i)
                         if file == 0:
                             continue
-                        out.append("{:3d}: {:#018x}: {:s}".format(i, file, self.get_filepath(file)))
+                        filepath = self.get_filepath(file, self.offset_dentry, self.offset_d_iname, self.offset_d_parent)
+                        out.append("{:3d}: {:#018x}: {:s}".format(i, file, filepath))
                 out.append(titlify(""))
+        return out
 
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        self.quiet = args.quiet
+        self.quiet_info("Wait for memory scan")
+
+        # initialize
+        ret = self.initialize(args)
+        if ret is False:
+            return
+        init_task, task_addrs = ret
+
+        # skip real parse if specified --meta option
+        if args.meta:
+            return
+
+        out = self.dump(args, init_task, task_addrs)
         gef_print("\n".join(out), less=not args.no_pager)
         return
 
