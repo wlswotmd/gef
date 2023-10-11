@@ -46256,6 +46256,8 @@ class KernelTaskCommand(GenericCommand):
                         help="print suid, sgid, euid, egid, fsuid and fsgid.")
     parser.add_argument("-t", "--print-thread", action="store_true",
                         help="display by thread (LWP), not by process.")
+    parser.add_argument("-F", "--print-fd", action="store_true",
+                        help="print file descriptors for each process.")
     parser.add_argument("-u", "--user-process-only", action="store_true",
                         help="display user-land process (+ thread) only.")
     parser.add_argument("--meta", action="store_true", help="display offset information.")
@@ -46717,6 +46719,71 @@ class KernelTaskCommand(GenericCommand):
         self.quiet_info("offsetof(task_struct, thread_group): {:#x}".format(offset_thread_group))
         return offset_thread_group
 
+    def get_offset_files(self, task_addrs, offset_comm):
+        """
+            char                 comm[TASK_COMM_LEN];
+            struct nameidata    *nameidata;
+        #ifdef CONFIG_SYSVIPC
+            struct sysv_sem {
+                struct sem_undo_list *undo_list;
+            }                    sysvsem;
+            struct sysv_shm {
+                struct list_head shm_clist;
+            }                    sysvshm;
+        #endif
+        #ifdef CONFIG_DETECT_HUNG_TASK
+            unsigned long        last_switch_count;
+            unsigned long        last_switch_time;
+        #endif
+            struct fs_struct    *fs;
+            struct files_struct *files;
+        """
+        base = offset_comm + 16 # comm
+        base += current_arch.ptrsize # nameidata
+        for i in range(6):
+            # check fs
+            v1 = read_int_from_memory(task_addrs[0] + base + current_arch.ptrsize * i)
+            if not is_valid_addr(v1):
+                continue
+            if is_valid_addr(read_int_from_memory(v1)):
+                continue
+            # check files
+            v2 = read_int_from_memory(task_addrs[0] + base + current_arch.ptrsize * (i + 1))
+            if not is_valid_addr(v2):
+                continue
+            if is_valid_addr(read_int_from_memory(v2)):
+                continue
+            # found
+            offset_files = base + current_arch.ptrsize * (i + 1)
+            self.quiet_info("offsetof(task_struct, files): {:#x}".format(offset_files))
+            return offset_files
+        return None
+
+    def get_offset_fdt(self, task_addrs, offset_files):
+        """
+        atomic_t                    count;
+        bool                        resize_in_progress;
+        wait_queue_head_t           resize_wait;
+        struct fdtable __rcu       *fdt; <------- here
+        struct fdtable {
+            unsigned int max_fds;
+            struct file __rcu **fd;      /* current fd array */
+            unsigned long *close_on_exec;
+            unsigned long *open_fds;
+            unsigned long *full_fds_bits;
+            struct rcu_head rcu;
+        }                           fdtab;
+        """
+        files = read_int_from_memory(task_addrs[0] + offset_files)
+        for i in range(0x100):
+            v = read_int_from_memory(files + current_arch.ptrsize * i)
+            if v != 0x40: # fdtab.maxfds default value
+                continue
+            offset_fdt = current_arch.ptrsize * (i - 1)
+            self.quiet_info("offsetof(files_struct, fdt): {:#x}".format(offset_fdt))
+            return offset_fdt
+        return None
+
     def get_offset_uid(self, init_task_cred_ptr):
         """
         struct cred {
@@ -47171,6 +47238,29 @@ class KernelTaskCommand(GenericCommand):
             if d_parent == current:
                 break
             current = d_parent
+
+        """
+        struct mount {
+            struct hlist_node mnt_hash;
+            struct mount *mnt_parent;
+            struct dentry *mnt_mountpoint;
+            struct vfsmount mnt; <-- container_of(mnt, struct mount, mnt)
+        """
+        if filepath[-1] == "/":
+            mnt = read_int_from_memory(location + self.offset_dentry - current_arch.ptrsize)
+            if mnt:
+                dentry = read_int_from_memory(mnt - current_arch.ptrsize)
+                if dentry:
+                    filepath = filepath[:-1] # remove last "/"
+                    current = dentry
+                    while True:
+                        name = read_cstring_from_memory(current + self.offset_d_iname)
+                        d_parent = read_int_from_memory(current + self.offset_d_parent)
+                        filepath.append(name)
+                        if d_parent == current:
+                            break
+                        current = d_parent
+
         return os.path.join(*filepath[::-1])
 
     def add_lwp_task(self, task_addrs, offset_thread_group):
@@ -47240,9 +47330,19 @@ class KernelTaskCommand(GenericCommand):
         if offset_cred is None:
             return
 
+        if args.print_fd:
+            offset_files =self.get_offset_files(task_addrs, offset_comm)
+            if offset_files is None:
+                return
+
         offset_uid = self.get_offset_uid(task_addrs[0] + offset_cred)
         if offset_uid is None:
             return
+
+        if args.print_fd:
+            offset_fdt = self.get_offset_fdt(task_addrs, offset_files)
+            if offset_fdt is None:
+                return
 
         # skip real parse if specified --meta option
         if args.meta:
@@ -47343,6 +47443,21 @@ class KernelTaskCommand(GenericCommand):
                         else:
                             out.append("{:16s}: {:s}".format(k, format_address_long_fmt(v)))
                     out.append(titlify(""))
+
+            # additional information 3
+            if args.print_fd:
+                out.append(titlify("file descriptors of `{:s}`".format(comm_string)))
+                files = read_int_from_memory(task + offset_files)
+                fdt = read_int_from_memory(files + offset_fdt)
+                if is_valid_addr(fdt):
+                    max_fds = read_int_from_memory(fdt)
+                    array = read_int_from_memory(fdt + current_arch.ptrsize)
+                    for i in range(max_fds):
+                        file = read_int_from_memory(array + current_arch.ptrsize * i)
+                        if file == 0:
+                            continue
+                        out.append("{:3d}: {:#018x}: {:s}".format(i, file, self.get_filepath(file)))
+                out.append(titlify(""))
 
         gef_print("\n".join(out), less=not args.no_pager)
         return
