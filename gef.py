@@ -57410,10 +57410,11 @@ class KsymaddrRemoteCommand(GenericCommand):
         - kallsyms_offsets (v6.4~)
         - relative_base_address (v6.4~)
 
-        CONFIG_KALLSYMS_BASE_RELATIVE=y && CONFIG_KALLSYMS_ABSOLUTE_PERCPU=n (4.6~): use positive offset
-        CONFIG_KALLSYMS_BASE_RELATIVE=y && CONFIG_KALLSYMS_ABSOLUTE_PERCPU=y (4.6~): use negative offset
-        CONFIG_KALLSYMS_BASE_RELATIVE=n: use absolute address
+        [pattern]
+        CONFIG_KALLSYMS_BASE_RELATIVE=y && CONFIG_KALLSYMS_ABSOLUTE_PERCPU=n (v4.6~): use positive offset
+        CONFIG_KALLSYMS_BASE_RELATIVE=y && CONFIG_KALLSYMS_ABSOLUTE_PERCPU=y (v4.6~): use negative offset
 
+        [~v6.4]
         kallsyms_offsets: 0xffffffff8b108550 (CONFIG_KALLSYMS_BASE_RELATIVE=y, CONFIG_KALLSYMS_ABSOLUTE_PERCPU=n, 64bit)
         gef> hexdump -n dword 0xffffffff8b108550
         0xffffffff8b108550:    0x00000000 0x00000000 0x00001000 0x00002000    |  ............. ..  |
@@ -57572,10 +57573,10 @@ class KsymaddrRemoteCommand(GenericCommand):
         - kallsyms_offsets (v6.4~)
         - relative_base_address (v6.4~)
 
-        CONFIG_KALLSYMS_BASE_RELATIVE=y && CONFIG_KALLSYMS_ABSOLUTE_PERCPU=n (4.6~): use positive offset
-        CONFIG_KALLSYMS_BASE_RELATIVE=y && CONFIG_KALLSYMS_ABSOLUTE_PERCPU=y (4.6~): use negative offset
+        [pattern]
         CONFIG_KALLSYMS_BASE_RELATIVE=n: use absolute address
 
+        [~v6.4]
         kallsyms_addresses: 0xffffffff81ae3cb8 (CONFIG_KALLSYMS_BASE_RELATIVE=n, 64bit)
         gef> hexdump -n qword 0xffffffff81ae3cb8
         0xffffffff81ae3cb8:    0x0000000000000000 0x0000000000000000    |  ................  |
