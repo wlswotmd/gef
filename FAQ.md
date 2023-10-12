@@ -94,7 +94,7 @@ Yes, you can use built-in `pipe` command. For example, `pipe elf-info -n |grep .
 
 # About python
 
-## Can I access each GEF command with python?
+## Can I access each GEF command object from `python-interactive`?
 Yes, you can access by `__LCO__` that means loaded command objects. For example, `pi __LCO__["vmmap"]`.
 
 ## How can I get the instruction object?
@@ -127,8 +127,6 @@ There are also similar functions. Here are the list.
 
 ## Are there any plans to support kernels for other architectures?
 There are no plans.
-If implemented in the future, the architecture must at least disclose the `pagewalk` process in detail.
-This is because a memory map is required to obtain the symbols, and a `pagewalk` implementation is required to obtain the memory map.
 
 ## Are there any plans to support more architectures with qemu-user?
 Yes, however, it is becoming difficult to find new support targets.
@@ -141,9 +139,6 @@ This is because three things are required:
     * It needs implementation of gdb-stub.
 3. gdb
     * It needs python3-support.
-
-## Are future development plans listed somewhere?
-No, I develop this forked GEF freely.
 
 
 # About reporting, etc.
