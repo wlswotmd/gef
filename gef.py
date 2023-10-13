@@ -56883,6 +56883,369 @@ class BuddyDumpCommand(GenericCommand):
 
 
 @register_command
+class KernelPipeCommand(GenericCommand):
+    """Dump pipe information with kernel memory scanning."""
+    _cmdline_ = "kpipe"
+    _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-i", "--inode-filter", type=parse_address, default=[], action="append", help="filter by specific struct inode.")
+    parser.add_argument("-f", "--file-filter", type=parse_address, default=[], action="append", help="filter by specific struct file.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
+    _syntax_ = parser.format_help()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        self.offset_inode = None
+        return
+
+    def initialize(self):
+        # kbase
+        self.kinfo = KernelbaseCommand.get_kernel_base()
+        if self.kinfo.has_none:
+            if not self.quiet:
+                err("The kernel .text area could not be determined correctly.")
+            return False
+
+        # file->inode
+        if self.offset_inode is None:
+            ret = gdb.execute("ktask --no-pager --print-fd --meta", to_string=True)
+            m = re.search(r"offsetof\(file, f_inode\): (0x\S+)", ret)
+            if not m:
+                if not self.quiet:
+                    err("ktask failed")
+                return False
+            self.offset_inode = int(m.group(1), 16)
+        if not self.quiet:
+            info("offsetof(file, inode): {:#x}".format(self.offset_inode))
+
+        # struct file of pipe
+        ret = gdb.execute("ktask --quiet --no-pager --user-process-only --print-fd", to_string=True)
+        pipe_files = []
+        for line in ret.splitlines():
+            m = re.search(r"\s*\d+: (0x\S+): pipe:\[\d+\]", line)
+            if not m:
+                continue
+            addr = int(m.group(1), 16)
+            pipe_files.append(addr)
+        if pipe_files == []:
+            if not self.quiet:
+                warn("Nothing to dump")
+            return False
+
+        # inode->i_pipe
+        """
+        struct inode {
+            ...
+        #if defined(CONFIG_IMA) || defined(CONFIG_FILE_LOCKING)
+            atomic_t i_readcount;
+        #endif
+            union {
+                const struct file_operations *i_fop;
+                void (*free_inode)(struct inode *);
+            };
+            struct file_lock_context *i_flctx;
+            struct address_space i_data;
+            struct list_head i_devices;
+            union {
+                struct pipe_inode_info *i_pipe;  <--- here
+                struct block_device *i_bdev;
+                struct cdev *i_cdev;
+                char *i_link;
+                unsigned i_dir_seq;
+            };
+            ...
+        };
+        """
+        inode = read_int_from_memory(pipe_files[0] + self.offset_inode)
+        for i in range(0x80):
+            v = read_int_from_memory(inode + current_arch.ptrsize * i)
+            # i_pipe is valid addr
+            if v < 0x10000 or not is_valid_addr(v):
+                continue
+            # i_pipe is not in kbase, krwbase, krobase
+            if self.kinfo.kbase <= v < self.kinfo.kbase + self.kinfo.kbase_size:
+                continue
+            if self.kinfo.krwbase <= v < self.kinfo.krwbase + self.kinfo.krwbase_size:
+                continue
+            if self.kinfo.krobase <= v < self.kinfo.krobase + self.kinfo.krobase_size:
+                continue
+            # skip invalid chunk
+            ret = gdb.execute("slub-contains {:#x}".format(v), to_string=True)
+            if "unaligned?" in ret:
+                continue
+            # pipe_inode_info is allocated from kmalloc-192 (x64)
+            if "kmalloc-192" in ret:
+                self.offset_i_pipe = current_arch.ptrsize * i
+                if not self.quiet:
+                    info("offsetof(inode, i_pipe): {:#x}".format(self.offset_i_pipe))
+                break
+        else:
+            if not self.quiet:
+                err("Not found inode->i_pipe")
+            return False
+
+        # pipe_inode_info->bufs
+        """
+        struct pipe_inode_info {
+            struct mutex mutex;
+            wait_queue_head_t rd_wait, wr_wait;
+            unsigned int head;
+            unsigned int tail;
+            unsigned int max_usage;
+            unsigned int ring_size;
+        #ifdef CONFIG_WATCH_QUEUE
+            bool note_loss;
+        #endif
+            unsigned int nr_accounted;
+            unsigned int readers;
+            unsigned int writers;
+            unsigned int files;
+            unsigned int r_counter;
+            unsigned int w_counter;
+            bool poll_usage;
+            struct page *tmp_page;
+            struct fasync_struct *fasync_readers;
+            struct fasync_struct *fasync_writers;
+            struct pipe_buffer *bufs;  <--- here
+            struct user_struct *user;
+        #ifdef CONFIG_WATCH_QUEUE
+            struct watch_queue *watch_queue;
+        #endif
+        };
+        """
+        pipe_inode_info = read_int_from_memory(inode + self.offset_i_pipe)
+        for i in range(0x80):
+            v = read_int_from_memory(pipe_inode_info + current_arch.ptrsize * i)
+            # bufs is valid addr
+            if v < 0x10000 or not is_valid_addr(v):
+                continue
+            # bufs is not in kbase, krwbase, krobase
+            if self.kinfo.kbase <= v < self.kinfo.kbase + self.kinfo.kbase_size:
+                continue
+            if self.kinfo.krwbase <= v < self.kinfo.krwbase + self.kinfo.krwbase_size:
+                continue
+            if self.kinfo.krobase <= v < self.kinfo.krobase + self.kinfo.krobase_size:
+                continue
+            # skip invalid chunk
+            ret = gdb.execute("slub-contains {:#x}".format(v), to_string=True)
+            if "unaligned?" in ret:
+                continue
+            # pipe_inode_info is allocated from kmalloc-1k (x64)
+            if "kmalloc-1k" in ret:
+                self.offset_bufs = current_arch.ptrsize * i
+                if not self.quiet:
+                    info("offsetof(pipe_inode_info, bufs): {:#x}".format(self.offset_bufs))
+                break
+        else:
+            if not self.quiet:
+                err("Not found pipe_inode_info->bufs")
+            return False
+
+        # pipe_inode_info->{head,tail,max_usage,ring_size}
+        for i in range(3, 0x40):
+            # head is not address
+            v1 = read_int_from_memory(pipe_inode_info + current_arch.ptrsize * i)
+            if is_valid_addr(v1):
+                continue
+            # head is too large
+            v1_4 = u32(read_memory(pipe_inode_info + current_arch.ptrsize * i, 4))
+            if v1_4 > 0x100:
+                continue
+            # max_usage is not address
+            v2 = read_int_from_memory(pipe_inode_info + current_arch.ptrsize * (i + 1))
+            if is_valid_addr(v2):
+                continue
+            # max_usage is too large
+            v2_4 = u32(read_memory(pipe_inode_info + current_arch.ptrsize * (i + 1), 4))
+            if v2_4 > 0x100:
+                continue
+            self.offset_head = current_arch.ptrsize * i
+            if not self.quiet:
+                info("offsetof(pipe_inode_info, head): {:#x}".format(self.offset_head))
+            self.offset_tail = self.offset_head + 4
+            if not self.quiet:
+                info("offsetof(pipe_inode_info, tail): {:#x}".format(self.offset_tail))
+            self.offset_max_usage = self.offset_tail + 4
+            if not self.quiet:
+                info("offsetof(pipe_inode_info, max_usage): {:#x}".format(self.offset_max_usage))
+            self.offset_ring_size = self.offset_max_usage + 4
+            if not self.quiet:
+                info("offsetof(pipe_inode_info, ring_size): {:#x}".format(self.offset_ring_size))
+            break
+        else:
+            if not self.quiet:
+                err("Not found pipe_inode_info->head")
+            return False
+
+        # pipe_buffer->{page, offset, len, flags}
+        self.offset_page = 0
+        if not self.quiet:
+            info("offsetof(pipe_buffer, page): {:#x}".format(self.offset_page))
+        self.offset_offset = current_arch.ptrsize
+        if not self.quiet:
+            info("offsetof(pipe_buffer, offset): {:#x}".format(self.offset_offset))
+        self.offset_len = self.offset_offset + 4
+        if not self.quiet:
+            info("offsetof(pipe_buffer, len): {:#x}".format(self.offset_len))
+        self.offset_flags = self.offset_len + 4 + current_arch.ptrsize
+        if not self.quiet:
+            info("offsetof(pipe_buffer, flags): {:#x}".format(self.offset_flags))
+        self.sizeof_pipe_buffer = align_address_to_size(self.offset_flags + 4, current_arch.ptrsize) + current_arch.ptrsize
+        if not self.quiet:
+            info("sizeof(pipe_buffer): {:#x}".format(self.sizeof_pipe_buffer))
+
+        # vmemmap
+        if is_x86_64():
+            # CONFIG_SPARSEMEM_VMEMMAP
+            vmemmap_base = KernelAddressHeuristicFinder.get_vmemmap_base()
+            if vmemmap_base:
+                self.vmemmap = read_int_from_memory(vmemmap_base)
+            else:
+                kinfo = KernelbaseCommand.get_kernel_base()
+                if not kinfo.has_none:
+                    found_kbase = False
+                    for vaddr, size, _perm in kinfo.maps[::-1]:
+                        if found_kbase and size >= 0x200000:
+                            self.vmemmap = vaddr
+                            break
+                        if vaddr == kinfo.kbase:
+                            found_kbase = True
+                            continue
+            if not self.quiet:
+                info("vmemmap: {:#x}".format(self.vmemmap))
+
+        self.maps = V2PCommand.get_maps(None)
+
+        return pipe_files
+
+    def page2virt(self, page):
+        if is_x86_64():
+            # CONFIG_SPARSEMEM_VMEMMAP
+            paddr = (page - self.vmemmap) << 6
+            for vstart, _vend, pstart, pend in self.maps:
+                if pstart <= paddr < pend:
+                    offset = paddr - pstart
+                    vaddr = vstart + offset
+                    return vaddr
+        return None
+
+    def get_flags_str(self, flags_value):
+        _flags = {
+            "PIPE_BUF_FLAG_LRU":       0x01,
+            "PIPE_BUF_FLAG_ATOMIC":    0x02,
+            "PIPE_BUF_FLAG_GIFT":      0x04,
+            "PIPE_BUF_FLAG_PACKET":    0x08,
+            "PIPE_BUF_FLAG_CAN_MERGE": 0x10,
+            "PIPE_BUF_FLAG_WHOLE":     0x20,
+            "PIPE_BUF_FLAG_LOSS":      0x40,
+        }
+        flags = []
+        for k, v in _flags.items():
+            if flags_value & v:
+                flags.append(k)
+
+        flags_str = " | ".join(flags)
+        if flags_str == "":
+            flags_str = "none"
+        return flags_str
+
+    def dump_pipe(self, pipe_files):
+        heap_page_color = get_gef_setting("theme.heap_page_address")
+        freed_address_color = get_gef_setting("theme.heap_chunk_address_freed")
+        used_address_color = get_gef_setting("theme.heap_chunk_address_used")
+
+        inodes = {}
+        for pipe in pipe_files:
+            inode = read_int_from_memory(pipe + self.offset_inode)
+            inodes[inode] = inodes.get(inode, []) + [pipe]
+
+        for inode, files in inodes.items():
+            if self.inode_filter and inode not in self.inode_filter:
+                continue
+
+            if self.file_filter and not (set(self.file_filter) & set(files)):
+                continue
+
+            related_files = ", ".join(["{:#x}".format(x) for x in files])
+            self.out.append("inode: {:#x} (related struct file: {:s})".format(inode, related_files))
+
+            pipe_inode_info = read_int_from_memory(inode + self.offset_i_pipe)
+            self.out.append("  pipe_inode_info: {:#x}".format(pipe_inode_info))
+
+            pipe_buffer = read_int_from_memory(pipe_inode_info + self.offset_bufs)
+            self.out.append("    pipe_buffer: {:#x}".format(pipe_buffer))
+
+            head = u32(read_memory(pipe_inode_info + self.offset_head, 4))
+            tail = u32(read_memory(pipe_inode_info + self.offset_tail, 4))
+            max_usage = u32(read_memory(pipe_inode_info + self.offset_max_usage, 4))
+            ring_size = u32(read_memory(pipe_inode_info + self.offset_ring_size, 4))
+            self.out.append("    head: {:d}, tail: {:d}, max: {:d}, ring_size: {:d}".format(head, tail, max_usage, ring_size))
+
+            used_range = [x % max_usage for x in range(tail, head)]
+            for idx in range(max_usage):
+                base = pipe_buffer + self.sizeof_pipe_buffer * idx
+                page = read_int_from_memory(base + self.offset_page)
+                offset = u32(read_memory(base + self.offset_offset, 4))
+                len_ = u32(read_memory(base + self.offset_len, 4))
+                flags = u32(read_memory(base + self.offset_flags, 4))
+                virt = self.page2virt(page)
+
+                if idx in used_range:
+                    status = Color.colorify("used", used_address_color)
+                else:
+                    status = Color.colorify("free", freed_address_color)
+
+                if head % max_usage == idx:
+                    head_marker = "head"
+                else:
+                    head_marker = "    "
+
+                if tail % max_usage == idx:
+                    tail_marker = "tail"
+                else:
+                    tail_marker = "    "
+
+                out = "    {:s} {:s} {:s} [{:02d}] page: {:#x}, ".format(head_marker, tail_marker, status, idx, page)
+                if virt:
+                    colored_virt = Color.colorify("{:#x}".format(virt), heap_page_color)
+                    out += "(virt: {:s}), ".format(colored_virt)
+                out += "offset: {:#x}, len: {:#x}, flags: {:#x} ({:s})".format(offset, len_, flags, self.get_flags_str(flags))
+                self.out.append(out)
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
+    @only_if_specific_arch(arch=("x86_64",))
+    @only_if_in_kernel_or_kpti_disabled
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        self.quiet = args.quiet
+        if not args.quiet:
+            info("Wait for memory scan")
+
+        self.inode_filter = args.inode_filter
+        self.file_filter = args.file_filter
+
+        # init
+        ret = self.initialize()
+        if ret is False:
+            return
+        pipe_files = ret
+
+        # dump
+        self.out = []
+        self.dump_pipe(pipe_files)
+
+        # print
+        gef_print("\n".join(self.out), less=not args.no_pager)
+        return
+
+
+@register_command
 class KsymaddrRemoteCommand(GenericCommand):
     """Resolve kernel symbols from kallsyms table using kernel memory scanning."""
     # Thanks to https://github.com/marin-m/vmlinux-to-elf

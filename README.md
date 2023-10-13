@@ -204,6 +204,8 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmalloc-allocated-by.png)
 * `buddy-dump`: dumps zone of page allocator (buddy allocator) freelist with kernel memory scanning.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/buddy-dump.png)
+* `kpipe`: displays each pipe information.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kpipe.png)
 
 ### Qemu-system cooperation - Arch specific
 * `uefi-ovmf-info`: dumps addresses of some important structures in each boot phase of UEFI when OVMF is used.
