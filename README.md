@@ -155,6 +155,8 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ktask-maps.png)
     * It also displays the register values saved on kstack of the user-land process.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ktask-regs.png)
+    * It also displays the file descriptors of the user-land process.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ktask-fd.png)
 * `kmod`: displays each module address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmod.png)
     * It also displays each module symbols.

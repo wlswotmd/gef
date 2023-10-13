@@ -46257,7 +46257,7 @@ class KernelTaskCommand(GenericCommand):
     parser.add_argument("-t", "--print-thread", action="store_true",
                         help="display by thread (LWP), not by process.")
     parser.add_argument("-F", "--print-fd", action="store_true",
-                        help="print file descriptors for each process.")
+                        help="print file descriptors for each user process.")
     parser.add_argument("-u", "--user-process-only", action="store_true",
                         help="display user-land process (+ thread) only.")
     parser.add_argument("--meta", action="store_true", help="display offset information.")
@@ -46293,10 +46293,14 @@ class KernelTaskCommand(GenericCommand):
         self.offset_vm_flags = None
         self.offset_vm_file = None
         # file
+        self.offset_mnt = None
         self.offset_dentry = None
+        self.offset_f_inode = None
         # dentry
         self.offset_d_iname = None
         self.offset_d_parent = None
+        # inode
+        self.offset_i_ino = None
         return
 
     def quiet_info(self, msg):
@@ -46353,23 +46357,25 @@ class KernelTaskCommand(GenericCommand):
 
     def get_offset_mm(self, task_addr, offset_tasks):
         """
-            struct list_head        tasks;
+        struct task_struct {
+            ...
+            struct list_head tasks;
         #ifdef CONFIG_SMP
             struct plist_node {
-                int              prio;
+                int prio;
                 struct list_head prio_list;
                 struct list_head node_list;
-            }                       pushable_tasks;
-
+            } pushable_tasks;
             struct rb_node {
-                unsigned long  __rb_parent_color;
+                unsigned long __rb_parent_color;
                 struct rb_node *rb_right;
                 struct rb_node *rb_left;
-            }                       pushable_dl_tasks;
+            } pushable_dl_tasks;
         #endif
-
-            struct mm_struct        *mm;
-            struct mm_struct        *active_mm;
+            struct mm_struct *mm;
+            struct mm_struct *active_mm;
+            ...
+        };
         """
         offset_mm = offset_tasks + 2 * current_arch.ptrsize
         r = read_int_from_memory(task_addr + offset_mm)
@@ -46399,13 +46405,15 @@ class KernelTaskCommand(GenericCommand):
     def get_offset_cred(self, task_addrs, offset_comm):
         """
         struct task_struct {
-        ...
-            const struct cred __rcu        *real_cred;    // These may point to the same address
-            const struct cred __rcu        *cred;         // These may point to the same address
+            ...
+            const struct cred __rcu *real_cred; // These may point to the same address
+            const struct cred __rcu *cred;      // These may point to the same address
         #ifdef CONFIG_KEYS
-            struct key                     *cached_requested_key;
+            struct key *cached_requested_key;
         #endif
-            char                           comm[TASK_COMM_LEN];
+            char comm[TASK_COMM_LEN];
+            ...
+        };
         """
         # backward search from `comm`
         for i in range(0x2):
@@ -46419,11 +46427,15 @@ class KernelTaskCommand(GenericCommand):
 
     def get_offset_stack(self, task_addrs):
         """
+        struct task_struct {
+            ...
         #ifdef CONFIG_THREAD_INFO_IN_TASK
-            struct thread_info  thread_info;
+            struct thread_info thread_info;
         #endif
-            volatile long       state;
-            void                *stack;
+            volatile long state;
+            void *stack;
+            ...
+        };
         """
         for i in range(0x100):
             found = False
@@ -46510,16 +46522,16 @@ class KernelTaskCommand(GenericCommand):
                 long edi;
                 long ebp;
                 long eax;
-                int  xds;
-                int  xes;
-                int  xfs;
-                int  xgs;
+                int xds;
+                int xes;
+                int xfs;
+                int xgs;
                 long orig_eax;
                 long eip;
-                int  xcs;
+                int xcs;
                 long eflags;
                 long esp;
-                int  xss;
+                int xss;
             };
             """
             ptregs_size = current_arch.ptrsize * 17
@@ -46609,8 +46621,12 @@ class KernelTaskCommand(GenericCommand):
 
     def get_offset_pid(self, task_addrs):
         """
-            pid_t               pid;
-            pid_t               tgid;
+        struct task_struct {
+            ...
+            pid_t pid;
+            pid_t tgid;
+            ...
+        };
 
         0xc6d1e888:     0xc6d1f048      0xc6d1c1c8      0x0000008c      0xc6d1e894
         0xc6d1e898:     0xc6d1e894      0xc6d1e89c      0xc6d1e89c      0xc6d1e8a4
@@ -46650,13 +46666,17 @@ class KernelTaskCommand(GenericCommand):
 
     def get_offset_canary(self, task_addrs, offset_pid):
         """
-            pid_t                     pid;
-            pid_t                     tgid;
+        struct task_struct {
+            ...
+            pid_t pid;
+            pid_t tgid;
         #ifdef CONFIG_STACKPROTECTOR
-            unsigned long             stack_canary;
+            unsigned long stack_canary;
         #endif
             struct task_struct __rcu *real_parent;
             struct task_struct __rcu *parent;
+            ...
+        };
         """
         offset_stack_canary = offset_pid + 4 + 4
         found = True
@@ -46679,16 +46699,20 @@ class KernelTaskCommand(GenericCommand):
 
     def get_offset_group_leader(self, offset_pid, offset_kcanary):
         """
-            pid_t                     pid;
-            pid_t                     tgid;
+        struct task_struct {
+            ...
+            pid_t pid;
+            pid_t tgid;
         #ifdef CONFIG_STACKPROTECTOR
-            unsigned long             stack_canary;
+            unsigned long stack_canary;
         #endif
             struct task_struct __rcu *real_parent;
             struct task_struct __rcu *parent;
-            struct list_head          children;
-            struct list_head          sibling;
-            struct task_struct       *group_leader;
+            struct list_head children;
+            struct list_head sibling;
+            struct task_struct *group_leader;
+            ...
+        };
         """
         if offset_kcanary is None:
             offset_real_parent = offset_pid + 8
@@ -46699,13 +46723,17 @@ class KernelTaskCommand(GenericCommand):
 
     def get_offset_thread_group(self, offset_group_leader):
         """
-            struct task_struct       *group_leader;
-            struct list_head          ptraced;
-            struct list_head          ptrace_entry;
-            struct pid               *thread_pid;        // v4.19~
-            struct hlist_node         pid_links[4];      // v4.19~
-            struct pid_link           pids[3];           // ~v4.19
-            struct list_head          thread_group;
+        struct task_struct {
+            ...
+            struct task_struct *group_leader;
+            struct list_head ptraced;
+            struct list_head ptrace_entry;
+            struct pid *thread_pid;           // v4.19~
+            struct hlist_node pid_links[4];   // v4.19~
+            struct pid_link pids[3];          // ~v4.19
+            struct list_head thread_group;
+            ...
+        };
         """
         kversion = KernelVersionCommand.kernel_version()
         if kversion >= "4.19":
@@ -46716,22 +46744,26 @@ class KernelTaskCommand(GenericCommand):
 
     def get_offset_files(self, task_addrs, offset_comm):
         """
-            char                 comm[TASK_COMM_LEN];
-            struct nameidata    *nameidata;
+        struct task_struct {
+            ...
+            char comm[TASK_COMM_LEN];
+            struct nameidata *nameidata;
         #ifdef CONFIG_SYSVIPC
             struct sysv_sem {
                 struct sem_undo_list *undo_list;
-            }                    sysvsem;
+            } sysvsem;
             struct sysv_shm {
                 struct list_head shm_clist;
-            }                    sysvshm;
+            } sysvshm;
         #endif
         #ifdef CONFIG_DETECT_HUNG_TASK
-            unsigned long        last_switch_count;
-            unsigned long        last_switch_time;
+            unsigned long last_switch_count;
+            unsigned long last_switch_time;
         #endif
-            struct fs_struct    *fs;
+            struct fs_struct *fs;
             struct files_struct *files;
+            ...
+        };
         """
         base = offset_comm + 16 # comm
         base += current_arch.ptrsize # nameidata
@@ -46755,20 +46787,23 @@ class KernelTaskCommand(GenericCommand):
 
     def get_offset_fdt(self, task_addrs, offset_files):
         """
-        atomic_t                    count;
-        bool                        resize_in_progress;
-        wait_queue_head_t           resize_wait;
-        struct fdtable __rcu       *fdt; <------- here
-        struct fdtable {
-            unsigned int max_fds;
-            struct file __rcu **fd;      /* current fd array */
-            unsigned long *close_on_exec;
-            unsigned long *open_fds;
-            unsigned long *full_fds_bits;
-            struct rcu_head rcu;
-        }                           fdtab;
+        struct files_struct {
+            atomic_t count;
+            bool resize_in_progress;
+            wait_queue_head_t resize_wait;
+            struct fdtable __rcu *fdt; <------- here
+            struct fdtable {
+                unsigned int max_fds;
+                struct file __rcu **fd;
+                unsigned long *close_on_exec;
+                unsigned long *open_fds;
+                unsigned long *full_fds_bits;
+                struct rcu_head rcu;
+            } fdtab;
+            ...
+        };
         """
-        if is_x86_32():
+        if is_32bit():
             MAX_FDS_DEFAULT = 0x20
         else:
             MAX_FDS_DEFAULT = 0x40
@@ -46784,26 +46819,28 @@ class KernelTaskCommand(GenericCommand):
     def get_offset_uid(self, init_task_cred_ptr):
         """
         struct cred {
-            atomic_t       usage;
+            atomic_t usage;
         #ifdef CONFIG_DEBUG_CREDENTIALS
-            atomic_t       subscribers;     /* number of processes subscribed */
-            void           *put_addr;
-            unsigned       magic;
+            atomic_t subscribers;
+            void *put_addr;
+            unsigned magic;
         #endif
-            kuid_t         uid;             /* real UID of the task */
-            kgid_t         gid;             /* real GID of the task */
-            kuid_t         suid;            /* saved UID of the task */
-            kgid_t         sgid;            /* saved GID of the task */
-            kuid_t         euid;            /* effective UID of the task */
-            kgid_t         egid;            /* effective GID of the task */
-            kuid_t         fsuid;           /* UID for VFS ops */
-            kgid_t         fsgid;           /* GID for VFS ops */
-            unsigned       securebits;      /* SUID-less security management */
-            kernel_cap_t   cap_inheritable; /* caps our children can inherit */
-            kernel_cap_t   cap_permitted;   /* caps we're permitted */
-            kernel_cap_t   cap_effective;   /* caps we can actually use */
-            kernel_cap_t   cap_bset;        /* capability bounding set */
-            kernel_cap_t   cap_ambient;     /* Ambient capability set */
+            kuid_t uid;
+            kgid_t gid;
+            kuid_t suid;
+            kgid_t sgid;
+            kuid_t euid;
+            kgid_t egid;
+            kuid_t fsuid;
+            kgid_t fsgid;
+            unsigned securebits;
+            kernel_cap_t cap_inheritable;
+            kernel_cap_t cap_permitted;
+            kernel_cap_t cap_effective;
+            kernel_cap_t cap_bset;
+            kernel_cap_t cap_ambient;
+            ...
+        };
 
         [Example x64]
             0xffffffff820460c0:     0x0000000000000004      0x0000000000000000
@@ -46851,6 +46888,7 @@ class KernelTaskCommand(GenericCommand):
                         } ____cacheline_aligned_in_smp; // v6.4~
                     struct maple_tree mm_mt;
                     ...
+                };
                 """
                 for i in range(0x10):
                     a = read_int_from_memory(mm + current_arch.ptrsize * (i + 0))
@@ -46938,33 +46976,35 @@ class KernelTaskCommand(GenericCommand):
             """
             struct mm_struct {
                 struct {
-                    struct vm_area_struct *mmap;    /* list of VMAs */
+                    struct vm_area_struct *mmap;
                     ...
                 } __randomize_layout;
-            }
+            };
             """
             offset_mmap = 0
             vm_area_struct = read_int_from_memory(mm + offset_mmap)
 
             """
             struct vm_area_struct {
-                unsigned long                      vm_start;          /* Our start address within vm_mm. */
-                unsigned long                      vm_end;            /* The first byte after our end address within vm_mm. */
-                struct vm_area_struct             *vm_next, *vm_prev;
-                struct rb_node                     vm_rb;
-                unsigned long                      rb_subtree_gap;
-                struct mm_struct                  *vm_mm;             /* The address space we belong to. */
-                pgprot_t                           vm_page_prot;
-                unsigned long                      vm_flags;          /* Flags, see mm.h. */
+                unsigned long vm_start;
+                unsigned long vm_end;
+                struct vm_area_struct *vm_next, *vm_prev;
+                struct rb_node vm_rb;
+                unsigned long rb_subtree_gap;
+                struct mm_struct *vm_mm;
+                pgprot_t vm_page_prot;
+                unsigned long vm_flags;
                 struct {
-                    struct rb_node                 rb;
-                    unsigned long                  rb_subtree_last;
+                    struct rb_node rb;
+                    unsigned long rb_subtree_last;
                 } shared;
-                struct list_head                   anon_vma_chain;    /* Serialized by mmap_lock & page_table_lock */
-                struct anon_vma                   *anon_vma;          /* Serialized by page_table_lock */
-                const struct vm_operations_struct *vm_ops;            /* Function pointers to deal with this struct. */
-                unsigned long                      vm_pgoff;          /* Offset (within vm_file) in PAGE_SIZE units */
-                struct file                       *vm_file;           /* File we map to (can be NULL). */
+                struct list_head anon_vma_chain;
+                struct anon_vma *anon_vma;
+                const struct vm_operations_struct *vm_ops;
+                unsigned long vm_pgoff;
+                struct file *vm_file;
+                ...
+            };
             """
             def get_next_vma_area_struct(current):
                 return read_int_from_memory(current + current_arch.ptrsize * 2)
@@ -46978,15 +47018,15 @@ class KernelTaskCommand(GenericCommand):
                     } ____cacheline_aligned_in_smp; // v6.4~
                     struct maple_tree {
                         union {
-                            spinlock_t      ma_lock;
-                            lockdep_map_p   ma_external_lock;
+                            spinlock_t ma_lock;
+                            lockdep_map_p ma_external_lock;
                         };
-                        void __rcu         *ma_root;    // this points root maple_node. (lower 8-bits are some flags)
-                        unsigned int        ma_flags;
+                        void __rcu *ma_root; // this points root maple_node. (lower 8-bits are some flags)
+                        unsigned int ma_flags;
                     } mm_mt;
                     ...
                 } __randomize_layout;
-            }
+            };
 
             struct maple_node {
                 union {
@@ -47014,29 +47054,30 @@ class KernelTaskCommand(GenericCommand):
 
             """
             struct vm_area_struct {
-                unsigned long                      vm_start;        /* Our start address within vm_mm. */
-                unsigned long                      vm_end;          /* The first byte after our end address within vm_mm. */
-                struct mm_struct                  *vm_mm;           /* The address space we belong to. */
-                pgprot_t                           vm_page_prot;
-                unsigned long                      vm_flags;        /* Flags, see mm.h. */
-            #ifdef CONFIG_PER_VMA_LOCK                              // v6.4~
-                int                                vm_lock_seq;     // v6.4~
-                struct vma_lock                   *vm_lock;         // v6.4~
-                bool                               detached;        // v6.4~
-            #endif                                                  // v6.4~
-                union {                                             // ~v6.2
+                unsigned long vm_start;
+                unsigned long vm_end;
+                struct mm_struct *vm_mm;
+                pgprot_t vm_page_prot;
+                unsigned long vm_flags;
+            #ifdef CONFIG_PER_VMA_LOCK                 // v6.4~
+                int vm_lock_seq;                       // v6.4~
+                struct vma_lock *vm_lock;              // v6.4~
+                bool detached;                         // v6.4~
+            #endif                                     // v6.4~
+                union {                                // ~v6.2
                     struct {
-                        struct rb_node             rb;
-                        unsigned long              rb_subtree_last;
+                        struct rb_node rb;
+                        unsigned long rb_subtree_last;
                     } shared;
-                    struct anon_vma_name          *anon_name;       // ~v6.2
-                };                                                  // ~v6.2
-                struct list_head                   anon_vma_chain;  /* Serialized by mmap_lock & page_table_lock */
-                struct anon_vma                   *anon_vma;        /* Serialized by page_table_lock */
+                    struct anon_vma_name *anon_name;   // ~v6.2
+                };                                     // ~v6.2
+                struct list_head anon_vma_chain;
+                struct anon_vma *anon_vma;
                 const struct vm_operations_struct *vm_ops;
-                unsigned long                      vm_pgoff;        /* Offset (within vm_file) in PAGE_SIZE units */
-                struct file                       *vm_file;         /* File we map to (can be NULL). */
+                unsigned long vm_pgoff;
+                struct file *vm_file;
                 ...
+            };
             """
         return vm_area_struct, get_next_vma_area_struct
 
@@ -47123,96 +47164,147 @@ class KernelTaskCommand(GenericCommand):
             vm_end = read_int_from_memory(current + current_arch.ptrsize)
             vm_flags = read_int_from_memory(current + self.offset_vm_flags)
             vm_file = read_int_from_memory(current + self.offset_vm_file)
-            filepath = self.get_filepath(vm_file, self.offset_dentry, self.offset_d_iname, self.offset_d_parent)
+            filepath = self.get_filepath(vm_file)
             perm = Permission(value=vm_flags)
             vm_areas.append(VmArea(vm_start, vm_end, str(perm), filepath))
             current = get_next_vma_area_struct(current)
         return vm_areas
 
-    def get_offset_dentry(self, file):
+    def get_offset_mnt(self, file):
         if not is_valid_addr(file):
             return None
 
         """
         [~v6.4]
         struct file {
-            union {                               // ~v6.0
-                struct llist_node   fu_llist;     // ~v6.0
-                struct rcu_head     fu_rcuhead;   // ~v6.0
-            } f_u;                                // ~v6.0
-            union {                               // v6.0~
-                struct llist_node   f_llist;      // v6.0~
-                struct rcu_head     f_rcuhead;    // v6.0~
-                unsigned int        f_iocb_flags; // v6.0~
-            };                                    // v6.0~
+            union {                           // ~v6.0
+                struct llist_node fu_llist;   // ~v6.0
+                struct rcu_head fu_rcuhead;   // ~v6.0
+            } f_u;                            // ~v6.0
+            union {                           // v6.0~
+                struct llist_node f_llist;    // v6.0~
+                struct rcu_head f_rcuhead;    // v6.0~
+                unsigned int f_iocb_flags;    // v6.0~
+            };                                // v6.0~
             struct path {
-                struct vfsmount     *mnt;
-                struct dentry       *dentry;
+                struct vfsmount *mnt;
+                struct dentry *dentry;
             } f_path;
+            struct inode *f_inode;
             ...
+        };
 
 
         [v6.5~]
         struct file {
             union {
-                struct llist_node  f_llist;
-                struct rcu_head    f_rcuhead;
-                unsigned int       f_iocb_flags;
+                struct llist_node f_llist;
+                struct rcu_head f_rcuhead;
+                unsigned int f_iocb_flags;
             };
-            spinlock_t             f_lock;
-            fmode_t                f_mode;
-            atomic_long_t          f_count;
-            struct mutex           f_pos_lock;
-            loff_t                 f_pos;
-            unsigned int           f_flags;
+            spinlock_t f_lock;
+            fmode_t f_mode;
+            atomic_long_t f_count;
+            struct mutex f_pos_lock;
+            loff_t f_pos;
+            unsigned int f_flags;
             struct fown_struct {
-                rwlock_t           lock;
-                struct pid        *pid;
-                enum pid_type      pid_type;
-                kuid_t             uid, euid;
-                int                signum;
+                rwlock_t lock;
+                struct pid *pid;
+                enum pid_type pid_type;
+                kuid_t uid, euid;
+                int signum;
             } f_owner;
-            const struct cred     *f_cred;
+            const struct cred *f_cred;
             struct file_ra_state {
-                pgoff_t            start;
-                unsigned int       size;
-                unsigned int       async_size;
-                unsigned int       ra_pages;
-                unsigned int       mmap_miss;
-                loff_t             prev_pos;
+                pgoff_t start;
+                unsigned int size;
+                unsigned int async_size;
+                unsigned int ra_pages;
+                unsigned int mmap_miss;
+                loff_t prev_pos;
             } f_ra;
             struct path {
-                struct vfsmount   *mnt;
-                struct dentry     *dentry;
+                struct vfsmount *mnt;
+                struct dentry *dentry;
             } f_path;
+            struct inode *f_inode;
             ...
+        };
         """
         kversion = KernelVersionCommand.kernel_version()
 
         if kversion < "6.5":
-            offset_dentry = current_arch.ptrsize * 3
+            offset_mnt = current_arch.ptrsize * 2
 
         else: # kversion >= "6.5"
             for i in range(0x40):
                 cand_offset_cred = current_arch.ptrsize * i
                 f_cred = read_int_from_memory(file + cand_offset_cred)
-                ret = gdb.execute("xslubobj {:#x}".format(f_cred), to_string=True)
+                ret = gdb.execute("slub-contains {:#x}".format(f_cred), to_string=True)
                 if "cred_jar" not in Color.remove_color(ret):
                     continue
                 break
             else:
                 raise
             # now, f_cred is found
-            offset_dentry = cand_offset_cred + current_arch.ptrsize * 2 + 4 * 4 + current_arch.ptrsize * 2
-        return offset_dentry
+            offset_mnt = cand_offset_cred + current_arch.ptrsize * 2 + 4 * 4 + current_arch.ptrsize
+        return offset_mnt
+
+    def get_offset_dentry(self, offset_mnt):
+        return offset_mnt + current_arch.ptrsize
+
+    def get_offset_f_inode(self, offset_dentry):
+        return offset_dentry + current_arch.ptrsize
+
+    def get_offset_i_ino(self, inode):
+        """
+        struct inode {
+            umode_t i_mode;
+            unsigned short i_opflags;
+            kuid_t i_uid;
+            kgid_t i_gid;
+            unsigned int i_flags;
+        #ifdef CONFIG_FS_POSIX_ACL
+            struct posix_acl *i_acl;
+            struct posix_acl *i_default_acl;
+        #endif
+            const struct inode_operations *i_op;
+            struct super_block *i_sb;
+            struct address_space *i_mapping;
+        #ifdef CONFIG_SECURITY
+            void *i_security;
+        #endif
+            unsigned long i_ino;
+        """
+        current = inode + 2 + 2 + 4 + 4 + 4
+
+        # now, `current` points i_acl or i_op
+        while True:
+            v = read_int_from_memory(current)
+            if v == 0:
+                current += current_arch.ptrsize
+                continue
+            if is_64bit() and v == 0xffffffffffffffff:
+                current += current_arch.ptrsize
+                continue
+            elif is_32bit() and v == 0xffffffff:
+                current += current_arch.ptrsize
+                continue
+            elif is_valid_addr(v):
+                current += current_arch.ptrsize
+                continue
+            offset_i_ino = current - inode
+            break
+        return offset_i_ino
 
     def get_offset_d_iname(self, dentry):
         """
         struct dentry {
-            unsigned int d_flags;           /* protected by d_lock */
-            seqcount_spinlock_t d_seq;      /* per dentry seqlock */
-            struct hlist_bl_node d_hash;    /* lookup hash list */
-            struct dentry *d_parent;        /* parent directory */
+            unsigned int d_flags;
+            seqcount_spinlock_t d_seq;
+            struct hlist_bl_node d_hash;
+            struct dentry *d_parent;
             struct qstr {
                 union {
                     struct {
@@ -47220,10 +47312,12 @@ class KernelTaskCommand(GenericCommand):
                     };
                     u64 hash_len;
                 }
-                const unsigned char *name;   // this points d_iname
+                const unsigned char *name; // this points d_iname
             } d_name;
-            struct inode *d_inode;          /* Where the name belongs to - NULL is negative */
-            unsigned char d_iname[DNAME_INLINE_LEN];    /* small names */
+            struct inode *d_inode;
+            unsigned char d_iname[DNAME_INLINE_LEN];
+            ...
+        };
         """
         current = dentry
         while True:
@@ -47258,46 +47352,82 @@ class KernelTaskCommand(GenericCommand):
             current -= current_arch.ptrsize
         return offset_d_parent
 
-    def get_filepath(self, file, offset_dentry, offset_d_iname, offset_d_parent):
+    def get_ino(self, file):
+        inode = read_int_from_memory(file + self.offset_f_inode)
+        i_ino = read_int_from_memory(inode + self.offset_i_ino)
+        return i_ino
+
+    def get_filepath(self, file):
         if not is_valid_addr(file):
             return ""
 
-        dentry = read_int_from_memory(file + offset_dentry)
-        filepath = []
-        current = dentry
-        while True:
-            name = read_cstring_from_memory(current + offset_d_iname)
-            d_parent = read_int_from_memory(current + offset_d_parent)
-            filepath.append(name)
-            if d_parent == current:
-                break
-            current = d_parent
+        if file in self.filepath_cache:
+            return self.filepath_cache[file]
 
         """
+        struct path {
+            struct vfsmount *mnt;
+            struct dentry *dentry;
+        } f_path;
+
         struct mount {
             struct hlist_node mnt_hash;
             struct mount *mnt_parent;
             struct dentry *mnt_mountpoint;
-            struct vfsmount mnt; <-- container_of(mnt, struct mount, mnt)
+            struct vfsmount {
+                struct dentry *mnt_root;
+                struct super_block *mnt_sb;
+                int mnt_flags;
+            } mnt; <--- f_path.mnt points here
+            ...
+        };
         """
-        if filepath[-1] == "/":
-            mnt = read_int_from_memory(file + offset_dentry - current_arch.ptrsize)
-            if mnt:
-                dentry = read_int_from_memory(mnt - current_arch.ptrsize)
-                if dentry:
-                    filepath = filepath[:-1] # remove last "/"
-                    current = dentry
-                    while True:
-                        name = read_cstring_from_memory(current + offset_d_iname)
-                        d_parent = read_int_from_memory(current + offset_d_parent)
-                        filepath.append(name)
-                        if d_parent == current:
-                            break
-                        current = d_parent
+
+        def IS_ROOT(dentry):
+            return dentry == read_int_from_memory(dentry + self.offset_d_parent)
+
+        offset_vfsmount_mnt_root = 0
+        offset_mount_mnt_parent = current_arch.ptrsize * 2
+        offset_mount_mnt_mountpoint = current_arch.ptrsize * 3
+        offset_mount_mnt = current_arch.ptrsize * 4
+
+        filepath = []
+
+        dentry = read_int_from_memory(file + self.offset_dentry)
+        vfsmnt = read_int_from_memory(file + self.offset_mnt)
+        mnt = vfsmnt - offset_mount_mnt
+
+        while True:
+            mnt_root = read_int_from_memory(vfsmnt + offset_vfsmount_mnt_root)
+            if dentry == mnt_root or IS_ROOT(dentry):
+                parent = read_int_from_memory(mnt + offset_mount_mnt_parent)
+
+                # Global root?
+                if mnt != parent:
+                    dentry = read_int_from_memory(mnt + offset_mount_mnt_mountpoint)
+                    mnt = parent
+                    vfsmnt = mnt + offset_mount_mnt
+                    continue
+
+                name = read_cstring_from_memory(dentry + self.offset_d_iname)
+                filepath.append(name)
+                break
+
+            name = read_cstring_from_memory(dentry + self.offset_d_iname)
+            filepath.append(name)
+
+            parent = read_int_from_memory(dentry + self.offset_d_parent)
+            dentry = parent
 
         filepath = os.path.join(*filepath[::-1])
-        if filepath == "":
-            filepath = "PIPE (?)"
+        if filepath in ["UNIX", "NETLINK", "TCP", "TCPv6", "UDP", "UDPv6", "PACKET"]:
+            filepath = "socket:[{:d}]".format(self.get_ino(file))
+        elif filepath and not filepath.startswith("/"):
+            filepath = "anon_inode:{:s}".format(filepath)
+        elif filepath == "":
+            filepath = "pipe:[{:d}]".format(self.get_ino(file))
+
+        self.filepath_cache[file] = filepath
         return filepath
 
     def add_lwp_task(self, task_addrs, offset_thread_group):
@@ -47406,9 +47536,12 @@ class KernelTaskCommand(GenericCommand):
         # vm_area_struct->vm_mm
         # vm_area_struct->vm_flags
         # vm_area_struct->vm_file
+        # file->f_path.mnt
         # file->f_path.dentry
+        # file->f_inode
         # dentry->d_iname
         # dentry->d_parent
+        # inode->i_ino
         if args.print_maps or args.print_fd:
             if self.offset_vm_mm is None:
                 self.offset_vm_mm = self.get_offset_vm_mm(task_addrs, self.offset_mm)
@@ -47431,15 +47564,23 @@ class KernelTaskCommand(GenericCommand):
                 return False
             self.quiet_info("offsetof(vm_area_struct, vm_file): {:#x}".format(self.offset_vm_file))
 
-            if self.offset_dentry is None:
+            if self.offset_mnt is None:
                 mm = read_int_from_memory(task_addrs[1] + self.offset_mm)
                 current, _ = self.get_vm_area_struct(mm)
                 vm_file = read_int_from_memory(current + self.offset_vm_file)
-                self.offset_dentry = self.get_offset_dentry(vm_file)
-            if self.offset_dentry is None:
-                self.quiet_err("Not found file->f_path.dentry")
+                self.offset_mnt = self.get_offset_mnt(vm_file)
+            if self.offset_mnt is None:
+                self.quiet_err("Not found file->f_path.mnt")
                 return False
+            self.quiet_info("offsetof(file, f_path.mnt): {:#x}".format(self.offset_mnt))
+
+            if self.offset_dentry is None:
+                self.offset_dentry = self.get_offset_dentry(self.offset_mnt)
             self.quiet_info("offsetof(file, f_path.dentry): {:#x}".format(self.offset_dentry))
+
+            if self.offset_f_inode is None:
+                self.offset_f_inode = self.get_offset_f_inode(self.offset_dentry)
+            self.quiet_info("offsetof(file, f_inode): {:#x}".format(self.offset_f_inode))
 
             if self.offset_d_iname is None:
                 dentry = read_int_from_memory(vm_file + self.offset_dentry)
@@ -47450,6 +47591,11 @@ class KernelTaskCommand(GenericCommand):
                 dentry = read_int_from_memory(vm_file + self.offset_dentry)
                 self.offset_d_parent = self.get_offset_d_parent(dentry, self.offset_d_iname)
             self.quiet_info("offsetof(dentry, d_parent): {:#x}".format(self.offset_d_parent))
+
+            if self.offset_i_ino is None:
+                inode = read_int_from_memory(vm_file + self.offset_f_inode)
+                self.offset_i_ino = self.get_offset_i_ino(inode)
+            self.quiet_info("offsetof(inode, i_ino): {:#x}".format(self.offset_i_ino))
 
         # task_struct->files
         # files_struct->fdt
@@ -47489,8 +47635,16 @@ class KernelTaskCommand(GenericCommand):
             legend = ["task", "K/U", "lwpid", "task->comm", "task->cred", uids_str, "securebits", "kstack", "kcanary"]
             out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
+        if args.quiet:
+            tqdm = lambda x, leave: x
+        else:
+            try:
+                from tqdm import tqdm
+            except ImportError:
+                tqdm = lambda x, leave: x
+
         # task parse
-        for task in task_addrs:
+        for task in tqdm(task_addrs, leave=False):
             comm_string = read_cstring_from_memory(task + self.offset_comm)
             if args.filter:
                 if not any(re_pattern.search(comm_string) for re_pattern in args.filter):
@@ -47569,18 +47723,18 @@ class KernelTaskCommand(GenericCommand):
                         out.append(titlify(""))
 
             # additional information 3
-            if args.print_fd:
+            if proctype == "U" and args.print_fd:
                 out.append(titlify("file descriptors of `{:s}` (address is `struct file*`)".format(comm_string)))
                 files = read_int_from_memory(task + self.offset_files)
                 fdt = read_int_from_memory(files + self.offset_fdt)
                 if is_valid_addr(fdt):
-                    max_fds = read_int_from_memory(fdt)
+                    max_fds = u32(read_memory(fdt, 4))
                     array = read_int_from_memory(fdt + current_arch.ptrsize)
                     for i in range(max_fds):
                         file = read_int_from_memory(array + current_arch.ptrsize * i)
                         if file == 0:
                             continue
-                        filepath = self.get_filepath(file, self.offset_dentry, self.offset_d_iname, self.offset_d_parent)
+                        filepath = self.get_filepath(file)
                         out.append("{:3d}: {:#018x}: {:s}".format(i, file, filepath))
                 out.append(titlify(""))
         return out
@@ -47595,6 +47749,7 @@ class KernelTaskCommand(GenericCommand):
 
         self.quiet = args.quiet
         self.quiet_info("Wait for memory scan")
+        self.filepath_cache = {}
 
         # initialize
         ret = self.initialize(args)
