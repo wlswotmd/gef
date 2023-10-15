@@ -24956,6 +24956,7 @@ class DereferenceCommand(GenericCommand):
                         help="the memory address you want to dump. (default: current_arch.sp)")
     parser.add_argument("nb_lines", metavar="NB_LINES", nargs="?", type=lambda x: int(x, 0), default=0x10,
                         help="the count of lines. (default: %(default)s)")
+    parser.add_argument("--slub-contains", action="store_true", help="display slub_cache name if available (x64 kernel only).")
     parser.add_argument("-r", "--reverse", action="store_true", help="display in reverse order line by line.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
@@ -25048,14 +25049,34 @@ class DereferenceCommand(GenericCommand):
             line += Color.colorify(extra_str, registers_color)
         return line
 
+    def get_slub_contains(self, addr):
+        if addr in self.slub_contains_cache:
+            return self.slub_contains_cache[addr]
+
+        val = read_int_from_memory(addr)
+        if is_valid_addr(val):
+            ret = gdb.execute("slub-contains --quiet {:#x}".format(val), to_string=True).strip()
+            if not ret or "unaligned?" in ret:
+                ret = None
+            else:
+                ret = "  {:#x}: {:s}".format(val, ret)
+        else:
+            ret = None
+        self.slub_contains_cache[addr] = ret
+        return ret
+
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-
         if args.location is None:
             start_address = current_arch.sp
         else:
             start_address = args.location
+
+        if args.slub_contains:
+            if not (is_qemu_system() or is_kgdb() or is_vmware()):
+                err("Unsupported")
+                return
 
         from_idx = args.nb_lines * self.repeat_count
         to_idx = args.nb_lines * (self.repeat_count + 1)
@@ -25070,6 +25091,7 @@ class DereferenceCommand(GenericCommand):
             step = -1
 
         out = []
+        self.slub_contains_cache = {}
         for idx in range(from_idx, to_idx, step):
             try:
                 line = DereferenceCommand.pprint_dereferenced(start_address, idx)
@@ -25079,6 +25101,11 @@ class DereferenceCommand(GenericCommand):
                 msg = "Cannot access memory at address {:#x}".format(start_address + idx * current_arch.ptrsize)
                 out.append("{} {}".format(Color.colorify("[!]", "bold red"), msg))
                 break
+
+            if args.slub_contains:
+                line = self.get_slub_contains(start_address + idx * current_arch.ptrsize)
+                if line:
+                    out.append(line)
 
         if args.reverse:
             out.reverse()
