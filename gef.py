@@ -20083,9 +20083,11 @@ class KernelChecksecCommand(GenericCommand):
         # If this fails, it can be determined that the randstruct is used.
         kparam_ret = gdb.execute("kparam-sysctl --quiet --no-pager", to_string=True)
         if kparam_ret == "":
-            gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
+            additional = "kparam-sysctl was failed"
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
         else:
-            gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+            additional = "kparam-sysctl was successful"
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
 
         # CONFIG_STATIC_USERMODEHELPER
         cfg = "CONFIG_STATIC_USERMODEHELPER"
@@ -20162,7 +20164,7 @@ class KernelChecksecCommand(GenericCommand):
             if "stack_canary" in ktask_ret:
                 gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
             else:
-                additional = "ktask is failed"
+                additional = "ktask was failed"
                 gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
 
         # CONFIG_SHADOW_CALL_STACK
