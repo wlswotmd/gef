@@ -56247,6 +56247,7 @@ class SlubContainsCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="target address.")
     parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
     parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose mode.")
     _syntax_ = parser.format_help()
 
@@ -56327,15 +56328,18 @@ class SlubContainsCommand(GenericCommand):
             self.initialized = False
 
         if self.allocator is None:
-            info("Wait for memory scan")
+            if not args.quiet:
+                info("Wait for memory scan")
             self.allocator = KernelChecksecCommand.get_slab_type()
         if self.allocator != "SLUB":
-            err("Unsupported SLAB, SLOB, SLUB_TINY")
+            if not args.quiet:
+                err("Unsupported SLAB, SLOB, SLUB_TINY")
             return
 
         ret = self.initialize()
         if not ret:
-            err("Failed to initialize")
+            if not args.quiet:
+                err("Failed to initialize")
             return
 
         current = args.address & gef_getpagesize_mask()
@@ -56346,18 +56350,24 @@ class SlubContainsCommand(GenericCommand):
             while True:
                 page = self.virt2page(current)
                 if page is None:
-                    err("Invalid address")
+                    if not args.quiet:
+                        err("Invalid address")
                     return
-                if kversion >= "5.17":
-                    gef_print("slab: {:#x}".format(page))
-                else:
-                    gef_print("page: {:#x}".format(page))
+
+                if not args.quiet:
+                    if kversion >= "5.17":
+                        gef_print("slab: {:#x}".format(page))
+                    else:
+                        gef_print("page: {:#x}".format(page))
 
                 kmem_cache = read_int_from_memory(page + self.page_offset_slab_cache)
                 if kmem_cache == 0:
-                    err("This address is not managed by slub")
+                    if not args.quiet:
+                        err("This address is not managed by slub")
                     return
-                gef_print("kmem_cache: {:#x}".format(kmem_cache))
+
+                if not args.quiet:
+                    gef_print("kmem_cache: {:#x}".format(kmem_cache))
 
                 if (kmem_cache & ~0xfff) == 0xdead000000000000:
                     current -= gef_getpagesize()
@@ -56367,13 +56377,15 @@ class SlubContainsCommand(GenericCommand):
                     current -= gef_getpagesize()
                     continue
 
-                gef_print("base: {:#x}".format(current))
+                if not args.quiet:
+                    gef_print("base: {:#x}".format(current))
                 break
 
             slub_cache_name_ptr = read_int_from_memory(kmem_cache + self.kmem_cache_offset_name)
             slub_cache_name = read_cstring_from_memory(slub_cache_name_ptr)
             if slub_cache_name is None:
-                err("This address is not managed by slub")
+                if not args.quiet:
+                    err("This address is not managed by slub")
                 return
             slub_cache_name_c = Color.colorify(slub_cache_name, chunk_label_color)
             slub_cache_size = u32(read_memory(kmem_cache + self.kmem_cache_offset_size, 4))
@@ -56388,7 +56400,8 @@ class SlubContainsCommand(GenericCommand):
             gef_print(msg)
 
         except (gdb.MemoryError, ZeroDivisionError):
-            err("Memory error")
+            if not args.quiet:
+                err("Memory error")
         return
 
 
