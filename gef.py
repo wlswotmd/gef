@@ -10679,7 +10679,7 @@ def hook_stop_handler(_event):
             reset_gef_caches()
 
         # resolve codebase, libc
-        if not is_qemu_system() and not is_kgdb():
+        if not (is_qemu_system() or is_kgdb() or is_vmware()):
             gdb.execute("codebase", to_string=True)
             gdb.execute("heapbase", to_string=True)
             gdb.execute("libc", to_string=True)
@@ -10691,7 +10691,7 @@ def hook_stop_handler(_event):
 
     if __gef_check_once__:
         # Message if file not loaded.
-        if not is_qemu_system() and not is_kgdb():
+        if not (is_qemu_system() or is_kgdb() or is_vmware()):
             response = gdb.execute("info files", to_string=True)
             if "Symbols from" not in response:
                 err("Missing info about architecture. Please set: `file /path/to/target_binary`")
@@ -11600,7 +11600,7 @@ def gef_get_auxiliary_values():
     Returns None if not running, or a dict() of values."""
     if not is_alive():
         return None
-    if is_qemu_system() or is_kgdb():
+    if is_qemu_system() or is_kgdb() or is_vmware():
         return None
     return __gef_get_auxiliary_values()
 
@@ -22470,7 +22470,7 @@ class ContextCommand(GenericCommand):
             return
 
         # slow path
-        if is_qemu_system() or is_kgdb():
+        if is_qemu_system() or is_kgdb() or is_vmware():
             __cached_context_legend__ = False
             return
 
@@ -27689,7 +27689,7 @@ class UafWatchpoint(gdb.Breakpoint):
             frame = gdb.selected_frame()
         except gdb.error:
             return False
-        if frame.name() in ("_int_malloc", "malloc_consolidate", "__libc_calloc", ):
+        if frame.name() in ("_int_malloc", "malloc_consolidate", "__libc_calloc",):
             return False
 
         # software watchpoints stop after the next statement (see
@@ -67374,7 +67374,7 @@ class QemuDeviceInfoCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system", ))
+    @only_if_specific_gdb_mode(mode=("qemu-system",))
     def do_invoke(self, args):
         self.dont_repeat()
 
