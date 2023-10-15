@@ -51353,23 +51353,42 @@ class SyscallTableViewCommand(GenericCommand):
                 if insn is None or insn2 is None:
                     break
 
-                # detect endbr, so slide
                 if is_x86():
+                    # detect endbr, so slide
                     if insn.mnemonic in ["endbr64", "endbr32"]:
                         codelen = len(insn.opcodes)
-                        insn = get_insn(syscall_function_addr + codelen)
-                        insn2 = get_insn_next(syscall_function_addr + codelen)
-                        if insn is None or insn2 is None:
-                            break
+                        insn2 = get_insn_next(insn.address + codelen)
+                        insn = get_insn(insn.address + codelen)
 
-                # detect bti, so slide
+                    # detect `call non-essential-function` e.g.: perf, trace, debug, ...
+                    while insn and insn2 and insn.mnemonic == "call":
+                        codelen = len(insn.opcodes)
+                        insn2 = get_insn_next(insn.address + codelen)
+                        insn = get_insn(insn.address + codelen)
+
                 elif is_arm64():
+                    # detect bti, so slide
                     if insn.mnemonic in ["bti"]:
                         codelen = len(insn.opcodes)
-                        insn = get_insn(syscall_function_addr + codelen)
-                        insn2 = get_insn_next(syscall_function_addr + codelen)
-                        if insn is None or insn2 is None:
-                            break
+                        insn2 = get_insn_next(insn.address + codelen)
+                        insn = get_insn(insn.address + codelen)
+
+                    # detect `bl non-essential-function` e.g.: perf, trace, debug, ...
+                    while insn and insn2 and insn.mnemonic == "bl":
+                        codelen = len(insn.opcodes)
+                        insn2 = get_insn_next(insn.address + codelen)
+                        insn = get_insn(insn.address + codelen)
+
+                elif is_arm32():
+                    # detect `bl non-essential-function` e.g.: perf, trace, debug, ...
+                    while insn and insn2 and insn.mnemonic in ["bl", "blx"]:
+                        codelen = len(insn.opcodes)
+                        insn2 = get_insn_next(insn.address + codelen)
+                        insn = get_insn(insn.address + codelen)
+
+                # check again
+                if insn is None or insn2 is None:
+                    break
 
                 is_valid = True
                 if is_x86_64():
