@@ -24957,6 +24957,10 @@ class DereferenceCommand(GenericCommand):
     parser.add_argument("nb_lines", metavar="NB_LINES", nargs="?", type=lambda x: int(x, 0), default=0x10,
                         help="the count of lines. (default: %(default)s)")
     parser.add_argument("--slub-contains", action="store_true", help="display slub_cache name if available (x64 kernel only).")
+    parser.add_argument("--uniq", action="store_true", help="display with uniq.")
+    parser.add_argument("--is-addr", action="store_true", help="display only valid address.")
+    parser.add_argument("--is-not-addr", action="store_true", help="display only invalid address.")
+    parser.add_argument("-d", "--depth", default=1, type=int, help="depth of reference. (default: %(default)s)")
     parser.add_argument("-r", "--reverse", action="store_true", help="display in reverse order line by line.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
@@ -25092,20 +25096,49 @@ class DereferenceCommand(GenericCommand):
 
         out = []
         self.slub_contains_cache = {}
+        seen = set()
         for idx in range(from_idx, to_idx, step):
             try:
+                # uniq filtering
+                if args.uniq:
+                    v = read_int_from_memory(start_address + idx * current_arch.ptrsize)
+                    if v in seen:
+                        if out == [] or out[-1] != "*":
+                            out.append("*")
+                        continue
+                    seen.add(v)
+                # valid address filtering
+                if args.is_addr:
+                    v = read_int_from_memory(start_address + idx * current_arch.ptrsize)
+                    if not is_valid_addr(v):
+                        continue
+                # invalid address filtering
+                if args.is_not_addr:
+                    v = read_int_from_memory(start_address + idx * current_arch.ptrsize)
+                    if is_valid_addr(v):
+                        continue
+                # dereference
                 line = DereferenceCommand.pprint_dereferenced(start_address, idx)
                 out.append(line)
-            except RuntimeError:
+            except (RuntimeError, gdb.MemoryError):
                 # e.g.: nop DWORD PTR [rax+rax*1+0x0]
                 msg = "Cannot access memory at address {:#x}".format(start_address + idx * current_arch.ptrsize)
                 out.append("{} {}".format(Color.colorify("[!]", "bold red"), msg))
                 break
 
+            # dump slub-cache
             if args.slub_contains:
                 line = self.get_slub_contains(start_address + idx * current_arch.ptrsize)
                 if line:
                     out.append(line)
+
+            # multiple level dump
+            if args.depth - 1 > 0:
+                v = read_int_from_memory(start_address + idx * current_arch.ptrsize)
+                if v % current_arch.ptrsize == 0 and is_valid_addr(v):
+                    ret = gdb.execute("dereference --depth {:d} --no-pager {:#x}".format(args.depth - 1, v), to_string=True).strip()
+                    for line in ret.splitlines():
+                        out.append("    " + line)
 
         if args.reverse:
             out.reverse()
