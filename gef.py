@@ -53883,8 +53883,8 @@ class SlubDumpCommand(GenericCommand):
                     return vaddr
 
         # setup for heuristic search from freelist
-        freelist = freelist_fastpath + page["freelist"]
-        freelist = [x for x in freelist if x != 0] # ignore last 0
+        freelist = list(freelist_fastpath) + page["freelist"]
+        freelist = [x for x in freelist if isinstance(x, int) and x != 0] # ignore str and last 0
         if not freelist:
             return None
 
@@ -54006,8 +54006,8 @@ class SlubDumpCommand(GenericCommand):
             # parse kmem_cache_cpu
             kmem_cache["kmem_cache_cpu"] = {}
             kmem_cache["kmem_cache_cpu"]["address"] = kmem_cache_cpu = self.get_kmem_cache_cpu(current_kmem_cache, cpu)
-            chunk = read_int_from_memory(kmem_cache_cpu + self.kmem_cache_cpu_offset_freelist)
-            kmem_cache["kmem_cache_cpu"]["freelist"] = self.walk_freelist(chunk, kmem_cache)
+            active_chunk_fast = read_int_from_memory(kmem_cache_cpu + self.kmem_cache_cpu_offset_freelist)
+            kmem_cache["kmem_cache_cpu"]["freelist"] = self.walk_freelist(active_chunk_fast, kmem_cache)
 
             # parse page
             active_page = {}
@@ -54026,8 +54026,7 @@ class SlubDumpCommand(GenericCommand):
             # parse partial
             if self.verbose:
                 kmem_cache["kmem_cache_cpu"]["partial_pages"] = []
-                kmem_cache_cpu_addr = kmem_cache["kmem_cache_cpu"]["address"]
-                current_partial_page = read_int_from_memory(kmem_cache_cpu_addr + self.kmem_cache_cpu_offset_partial)
+                current_partial_page = read_int_from_memory(kmem_cache_cpu + self.kmem_cache_cpu_offset_partial)
                 while True:
                     partial_page = {}
                     partial_page["address"] = current_partial_page
@@ -54035,8 +54034,10 @@ class SlubDumpCommand(GenericCommand):
                         kmem_cache["kmem_cache_cpu"]["partial_pages"].append(partial_page)
                         break
                     x = read_int_from_memory(current_partial_page + self.page_offset_inuse_objects_frozen)
-                    partial_page["inuse"] = x & 0xffff
+                    partial_page["inuse"] = inuse = x & 0xffff
                     partial_page["objects"] = objects = (x >> 16) & 0x7fff
+                    if objects == 0 or inuse > objects: # something is wrong
+                        break
                     partial_page["frozen"] = (x >> 31) & 1
                     partial_chunk = read_int_from_memory(current_partial_page + self.page_offset_freelist)
                     partial_page["freelist"] = self.walk_freelist(partial_chunk, kmem_cache)
@@ -54071,8 +54072,10 @@ class SlubDumpCommand(GenericCommand):
                             node_page_list.append(node_page)
                             break
                         x = read_int_from_memory(node_page["address"] + self.page_offset_inuse_objects_frozen)
-                        node_page["inuse"] = x & 0xffff
+                        node_page["inuse"] = inuse = x & 0xffff
                         node_page["objects"] = objects = (x >> 16) & 0x7fff
+                        if objects == 0 or inuse > objects: # something is wrong
+                            break
                         node_page["frozen"] = (x >> 31) & 1
                         node_chunk = read_int_from_memory(node_page["address"] + self.page_offset_freelist)
                         node_page["freelist"] = self.walk_freelist(node_chunk, kmem_cache)
@@ -54094,6 +54097,7 @@ class SlubDumpCommand(GenericCommand):
         heap_page_color = get_gef_setting("theme.heap_page_address")
         used_address_color = get_gef_setting("theme.heap_chunk_address_used")
         freed_address_color = get_gef_setting("theme.heap_chunk_address_freed")
+        freelist_fastpath = list(freelist_fastpath)
 
         # page address
         if tag == "active":
@@ -54701,7 +54705,7 @@ class SlubTinyDumpCommand(GenericCommand):
 
         # setup for heuristic search from freelist
         freelist = page["freelist"]
-        freelist = [x for x in freelist if x != 0] # ignore last 0
+        freelist = [x for x in freelist if isinstance(x, int) and x != 0] # ignore str and last 0
         if not freelist:
             return None
 
@@ -54808,8 +54812,10 @@ class SlubTinyDumpCommand(GenericCommand):
                         node_page_list.append(node_page)
                         break
                     x = read_int_from_memory(node_page["address"] + self.page_offset_inuse_objects_frozen)
-                    node_page["inuse"] = x & 0xffff
+                    node_page["inuse"] = inuse = x & 0xffff
                     node_page["objects"] = objects = (x >> 16) & 0x7fff
+                    if objects == 0 or inuse > objects: # something is wrong
+                        break
                     node_page["frozen"] = (x >> 31) & 1
                     node_chunk = read_int_from_memory(node_page["address"] + self.page_offset_freelist)
                     node_page["freelist"] = self.walk_freelist(node_chunk, kmem_cache)
