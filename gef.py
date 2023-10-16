@@ -50399,6 +50399,36 @@ class KernelParamSysctlCommand(GenericCommand):
 
     _example_ = "{:s} -q\n".format(_cmdline_)
     _example_ += "\n"
+    _example_ += "Simplified sysctl_table structure:\n"
+    _example_ += "   sysctl_table_root                     ctl_dir\n"
+    _example_ += "   +-----------------+            +----->+--------------+\n"
+    _example_ += "   | default_set     |            |      | header       |\n"
+    _example_ += "   |   ...           |            |      |   ctl_table  |---+\n"
+    _example_ += "   |   dir           |            |      |   ...        |   |\n"
+    _example_ += "   |     header      |            |      |   parent     |---|--> parent ctl_node\n"
+    _example_ += "   |       ctl_table |            |      |   ...        |   |\n"
+    _example_ += "   |       ...       |            |      | root         |   |\n"
+    _example_ += "   |       parent    |            |      |   rb_node    |---|--> ctl_node\n"
+    _example_ += "   |       ...       |            |      +--------------+   |\n"
+    _example_ += "   |     root        |            |                         |\n"
+    _example_ += "   |       rb_node   |----+       |   +---------------------+\n"
+    _example_ += "   |   ...           |    |       |   |\n"
+    _example_ += "   +-----------------+    |       |   |  ctl_table (array)\n"
+    _example_ += "                          |       |   +->+--------------+\n"
+    _example_ += "+-------------------------+       |      | procname     |--> name[]\n"
+    _example_ += "|                                 |      | data         |--> data[max_len]\n"
+    _example_ += "|  ctl_node                       |      | maxlen       |\n"
+    _example_ += "+->+--------------+               |      | mode         |\n"
+    _example_ += "   | rb_node      |               |      | proc_handler |\n"
+    _example_ += "   |   color      |               |      +--------------+\n"
+    _example_ += "   |   right      |---> ctl_node  |      | procname     |--> name[]\n"
+    _example_ += "   |   left       |---> ctl_node  |      | data         |--> data[max_len]\n"
+    _example_ += "   | header       |---------------+      | maxlen       |\n"
+    _example_ += "   +--------------+                      | mode         |\n"
+    _example_ += "                                         | proc_handler |\n"
+    _example_ += "                                         +--------------+\n"
+    _example_ += "                                         | ...          |\n"
+    _example_ += "                                         +--------------+\n"
     _example_ += "NOTE: This command needs CONFIG_RANDSTRUCT=n."
 
     def __init__(self):
@@ -50550,10 +50580,13 @@ class KernelParamSysctlCommand(GenericCommand):
             } root;
         };
 
-        struct rb_node {
-            unsigned long  __rb_parent_color;
-            struct rb_node *rb_right;
-            struct rb_node *rb_left;
+        struct ctl_node {
+            struct rb_node {
+                unsigned long  __rb_parent_color;
+                struct rb_node *rb_right;
+                struct rb_node *rb_left;
+            } node;
+            struct ctl_table_header *header;
         };
 
         struct ctl_table {
