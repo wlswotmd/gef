@@ -1937,14 +1937,10 @@ class Instruction:
             old_text = text[::]
         text = re.sub("__MARKER_GEF__", "(...)", text)
 
-        if text[0] == "<":
-            text_0, text = text[0], text[1:]
+        if text[0] == "<" and text[-1] == ">":
+            text_0, text, text_end = text[0], text[1:-1], text[-1]
         else:
-            text_0 = ""
-        if text[-1] == ">":
-            text_end, text = text[-1], text[:-1]
-        else:
-            text_end = ""
+            text_0, text, text_end = "", text, ""
 
         while True:
             text = re.sub(r"\<[^<]+?\>", "__MARKER_GEF__", text)
@@ -3161,7 +3157,7 @@ def set_gef_setting(name, value, _type=None, _desc=None):
     return
 
 
-RE_GET_LOCATION_GDB13 = re.compile(r"0x[0-9a-f]+ <(.*?)(\+[0-9]+)?>")
+RE_GET_LOCATION_GDB13 = re.compile(r"^0x[0-9a-f]+ <(.*?)(\+[0-9]+)?>$")
 
 
 # `info symbol` called from __gdb_get_location is heavy processing.
