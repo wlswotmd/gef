@@ -26954,7 +26954,7 @@ class GotCommand(GenericCommand):
         reloc_count = 0
         for line in lines:
             # get section
-            r = re.findall("Relocation section '(.+?)' ", line)
+            r = re.findall("'(.+?)' at offset", line) # considered LANG environment
             if r:
                 section_name = r[0]
                 continue
