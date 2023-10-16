@@ -13083,7 +13083,7 @@ class VdsoCommand(GenericCommand):
 
 @register_command
 class VvarCommand(GenericCommand):
-    """Dump the area of vvar (only x64)."""
+    """Dump the area of vvar."""
     _cmdline_ = "vvar"
     _category_ = "02-d. Process Information - Trivial Information"
 
@@ -13092,7 +13092,6 @@ class VvarCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_arch(arch=("x86_64",))
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     def do_invoke(self, args):
         self.dont_repeat()
@@ -13111,29 +13110,44 @@ class VvarCommand(GenericCommand):
             return
 
         # dump
-        codes = [
-            b"\x48\x8b\x00", # mov rax, qword ptr [rax]
-            b"\x48\x8b\x09", # mov rcx, qword ptr [rcx]
-            b"\x48\x8b\x12", # mov rdx, qword ptr [rdx]
-            b"\x48\x8b\x1b", # mov rbx, qword ptr [rbx]
-            b"\x48\x8b\x24\x24", # mov rsp, qword ptr [rsp]
-            b"\x48\x8b\x6d\x00", # mov rbp, qword ptr [rbp]
-            b"\x48\x8b\x36", # mov rsi, qword ptr [rsi]
-            b"\x48\x8b\x3f", # mov rdi, qword ptr [rdi]
-            b"\x4d\x8b\x00", # mov r8, qword ptr [r8]
-            b"\x4d\x8b\x09", # mov r9, qword ptr [r9]
-            b"\x4d\x8b\x12", # mov r10, qword ptr [r10]
-            b"\x4d\x8b\x1b", # mov r11, qword ptr [r11]
-            b"\x4d\x8b\x24\x24", # mov r12, qword ptr [r12]
-            b"\x4d\x8b\x6d\x00", # mov r13, qword ptr [r13]
-            b"\x4d\x8b\x36", # mov r14, qword ptr [r14]
-            b"\x4d\x8b\x3f", # mov r15, qword ptr [r15]
-        ]
-
-        regs = [
-            "$rax", "$rcx", "$rdx", "$rbx", "$rsp", "$rbp", "$rsi", "$rdi",
-            "$r8", "$r9", "$r10", "$r11", "$r12", "$r13", "$r14", "$r15",
-        ]
+        if is_x86_64():
+            codes = [
+                b"\x48\x8b\x00", # mov rax, qword ptr [rax]
+                b"\x48\x8b\x09", # mov rcx, qword ptr [rcx]
+                b"\x48\x8b\x12", # mov rdx, qword ptr [rdx]
+                b"\x48\x8b\x1b", # mov rbx, qword ptr [rbx]
+                b"\x48\x8b\x24\x24", # mov rsp, qword ptr [rsp]
+                b"\x48\x8b\x6d\x00", # mov rbp, qword ptr [rbp]
+                b"\x48\x8b\x36", # mov rsi, qword ptr [rsi]
+                b"\x48\x8b\x3f", # mov rdi, qword ptr [rdi]
+                b"\x4d\x8b\x00", # mov r8, qword ptr [r8]
+                b"\x4d\x8b\x09", # mov r9, qword ptr [r9]
+                b"\x4d\x8b\x12", # mov r10, qword ptr [r10]
+                b"\x4d\x8b\x1b", # mov r11, qword ptr [r11]
+                b"\x4d\x8b\x24\x24", # mov r12, qword ptr [r12]
+                b"\x4d\x8b\x6d\x00", # mov r13, qword ptr [r13]
+                b"\x4d\x8b\x36", # mov r14, qword ptr [r14]
+                b"\x4d\x8b\x3f", # mov r15, qword ptr [r15]
+            ]
+            regs = [
+                "$rax", "$rcx", "$rdx", "$rbx", "$rsp", "$rbp", "$rsi", "$rdi",
+                "$r8", "$r9", "$r10", "$r11", "$r12", "$r13", "$r14", "$r15",
+            ]
+        else:
+            codes = [
+                b"\x8b\x00", # mov eax, dword ptr [eax]
+                b"\x8b\x09", # mov ecx, dword ptr [ecx]
+                b"\x8b\x12", # mov edx, dword ptr [edx]
+                b"\x8b\x1b", # mov ebx, dword ptr [ebx]
+                b"\x8b\x24\x24", # mov esp, dword ptr [esp]
+                # If I rewrite ebp, an error message will be displayed and it will be annoying, so I will skip it.
+                #b"\x8b\x6d\x00", # mov ebp, dword ptr [ebp]
+                b"\x8b\x36", # mov esi, dword ptr [esi]
+                b"\x8b\x3f", # mov edi, dword ptr [edi]
+            ]
+            regs = [
+                "$eax", "$ebx", "$ecx", "$edx", "$esp", "$esi", "$edi",
+            ]
 
         # arch/x86/include/asm/vvar.h
         # DECLARE_VVAR(128, struct vdso_data, _vdso_data)
@@ -51617,9 +51631,11 @@ class ExecAsm:
                 reg = reg + "b0" # since r0-r7 cannot be changed directly, use bank 0
             try:
                 gdb.execute("set {:s} = {:#x}".format(reg, v), to_string=True)
-            except Exception:
-                info("set {:s} = {:#x} is failed".format(reg, v))
-                pass
+            except Exception as e:
+                if str(e).startswith("Cannot access memory at address"):
+                    pass
+                else:
+                    info("set {:s} = {:#x} is failed".format(reg, v))
         return
 
     def close_stdout(self):
@@ -51650,9 +51666,11 @@ class ExecAsm:
                 continue
             try:
                 gdb.execute("set {:s} = {:#x}".format(reg, v), to_string=True)
-            except Exception:
-                info("set {:s} = {:#x} is failed".format(reg, v))
-                pass
+            except Exception as e:
+                if str(e).startswith("Cannot access memory at address"):
+                    pass
+                else:
+                    info("set {:s} = {:#x} is failed".format(reg, v))
         return
 
     def exec_code(self):
