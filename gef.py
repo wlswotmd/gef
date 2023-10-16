@@ -71754,7 +71754,7 @@ class BincompareCommand(GenericCommand):
 
 @register_command
 class SymbolsCommand(GenericCommand):
-    """List up all symbols (short cut for `maintenance print msymbols`)."""
+    """List up all symbols (short cut for `maintenance print msymbols`) with coloring."""
     _cmdline_ = "symbols"
     _category_ = "02-g. Process Information - Symbol"
 
@@ -71767,8 +71767,24 @@ class SymbolsCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        ret = gdb.execute("maintenance print msymbols", to_string=True)
-        gef_print(ret.strip(), less=not args.no_pager)
+        ret = gdb.execute("maintenance print msymbols", to_string=True).strip()
+        out = []
+        for line in ret.splitlines():
+            line_out = []
+            for elem in line.split(" "):
+                try:
+                    addr = int(elem, 16)
+                except ValueError:
+                    line_out.append(elem)
+                    continue
+                if not is_valid_addr(addr):
+                    line_out.append(elem)
+                    continue
+                line_out.append(str(lookup_address(addr)))
+
+            out.append(" ".join(line_out))
+
+        gef_print("\n".join(out), less=not args.no_pager)
         return
 
 

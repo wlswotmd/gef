@@ -529,6 +529,8 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pac-keys.png)
 * `search-cfi-gadgets`: searches CFI-valid and controllable generally gadgets from executable area.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/search-cfi-gadgets.png)
+* `symbols`: lists up all symbols with coloring.
+    * It is shortcut for `maintenance print msymbols`.
 
 ### Other
 * The category is introduced in `gef help`.
