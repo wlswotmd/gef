@@ -80,6 +80,7 @@ Currently, at least following commands do not work.
 - `kbdev`
 - `kcdev`
 - `kops`
+- `kpipe`
 - `kparam-sysctl`
 - `kmalloc-tracer`
 - `kmalloc-allocated-by`
@@ -90,6 +91,18 @@ All options are ignored at this time. If you want to use some options, please us
 
 ## Is GEF possible to pass the result of a command to a shell command?
 Yes, you can use built-in `pipe` command. For example, `pipe elf-info -n |grep .data` or `|pdisas |grep call`.
+
+## `vmlinux-to-elf-apply` command causes an error of creating ELF.
+This command simply does the following:
+1. Memory dump of kernel .text+.rodata
+2. Run the `vmlinux-to-elf` command
+3. Load symbols with `add-symbol-file` command
+
+If you are getting an error in 2, it may be a `vmlinux-to-elf` issue, except in case 1 gave an inaccurate dump.
+Updating `vmlinux-to-elf` to the latest version may improve the issue.
+
+If the problem does not improve, try using the `ks-apply` command.
+The logic is different a little, so it might work.
 
 
 # About python

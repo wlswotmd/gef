@@ -56946,6 +56946,10 @@ class KernelPipeCommand(GenericCommand):
     parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
     _syntax_ = parser.format_help()
 
+    _example_ = "{:s} -q\n".format(_cmdline_)
+    _example_ += "\n"
+    _example_ += "NOTE: This command needs CONFIG_RANDSTRUCT=n."
+
     def __init__(self, *args, **kwargs):
         super().__init__()
         self.offset_inode = None
