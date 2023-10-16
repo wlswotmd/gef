@@ -473,7 +473,6 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
 * `onegadget`: invokes `one_gadget`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/onegadget.png)
 * `rp`: invokes `rp++` with commonly used options.
-* `ls`/`cat`: invokes `ls`/`cat` directly.
 * `mmap`: allocates a new memory if `mmap` symbol exists.
     * This is the syntax sugar of `call mmap(...)`.
 * `call-syscall`: calls system call with specified values.
