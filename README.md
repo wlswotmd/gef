@@ -114,6 +114,7 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/v2p-p2v.png)
 * `xp`: is a shortcut for physical memory dump.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xp.png)
+* `qemu-device-info`: dumps device information for qemu-escape.
 
 ### Qemu-system cooperation - Linux specific
 * `ksymaddr-remote`: displays kallsyms information from scanning kernel memory.
@@ -221,6 +222,8 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/bsm.png)
 * `optee-break-ta`: sets the breakpoint to the offset of OPTEE-Trusted-App when gdb is in normal world.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/optee-break-ta.png)
+* `pac-keys`: pretty prints ARM64 PAC keys.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pac-keys.png)
 
 ### Qemu-user cooperation - General
 * `si`/`ni`: are the wrapper for native `si`/`ni`.
@@ -283,6 +286,7 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/heap-if-in-freelist.png)
     * Thread arena is supported for all `heap` commands.
         * Use `-a` option.
+    * It supports new modes `heap arenas` and `heap top`.
     * `find-fake-fast`: searches for a memory with a size-like value that can be linked to the fastbin free-list.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/find-fake-fast.png)
     * `visual-heap`: is colorized heap viewer.
@@ -525,8 +529,6 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/srop-hint.png)
 * `smart-memory-dump`: dumps all regions of the memory to each file.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/smart-memory-dump.png)
-* `pac-keys`: pretty prints ARM64 PAC keys.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pac-keys.png)
 * `search-cfi-gadgets`: searches CFI-valid and controllable generally gadgets from executable area.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/search-cfi-gadgets.png)
 * `symbols`: lists up all symbols with coloring.
