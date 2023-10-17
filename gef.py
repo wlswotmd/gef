@@ -43117,7 +43117,7 @@ class KernelAddressHeuristicFinder:
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 2 (available ~ v6.1.55)
+        # plan 2 (available v6.1.55 or before)
         if kversion and kversion < "6.2":
             prepare_kernel_cred = get_ksymaddr("prepare_kernel_cred")
             if prepare_kernel_cred:
@@ -43198,6 +43198,112 @@ class KernelAddressHeuristicFinder:
             if name == "swapper/0":
                 task = int(addr, 16)
                 return read_int_from_memory(task + cred_offset)
+        return None
+
+    @staticmethod
+    @switch_to_intel_syntax
+    def get_init_net():
+        # plan 1 (directly)
+        init_net = get_ksymaddr("init_net")
+        if init_net:
+            return init_net
+
+        kversion = KernelVersionCommand.kernel_version()
+
+        # plan 2 (available v2.6.35 or later)
+        if kversion and kversion >= "2.6.35":
+            net_initial_ns = get_ksymaddr("net_initial_ns")
+            if net_initial_ns:
+                res = gdb.execute("x/20i {:#x}".format(net_initial_ns), to_string=True)
+                if is_x86_64():
+                    for line in res.splitlines():
+                        m = re.search(r"mov\s+rax\s*,\s*(0x\w+)", line)
+                        if m:
+                            v = int(m.group(1), 16) & 0xffffffffffffffff
+                            if v != 0:
+                                return v
+                elif is_x86_32():
+                    for line in res.splitlines():
+                        m = re.search(r"mov\s+eax\s*,\s*(0x\w+)", line)
+                        if m:
+                            v = int(m.group(1), 16) & 0xffffffff
+                            if v != 0:
+                                return v
+                elif is_arm64():
+                    base = None
+                    for line in res.splitlines():
+                        if base is None:
+                            m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
+                            if m:
+                                base = int(m.group(1), 16)
+                        else:
+                            m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
+                            if m:
+                                return base + int(m.group(1), 16)
+                elif is_arm32():
+                    base = None
+                    for line in res.splitlines():
+                        if base is None:
+                            m = re.search(r"movw.*[;@]\s*(0x\S+)", line)
+                            if m:
+                                base = int(m.group(1), 16)
+                        else:
+                            m = re.search(r"movt.*[;@]\s*(0x\S+)", line)
+                            if m:
+                                return base + (int(m.group(1), 16) << 16)
+        return None
+
+    @staticmethod
+    @switch_to_intel_syntax
+    def get_init_user_ns():
+        # plan 1 (directly)
+        init_user_ns = get_ksymaddr("init_user_ns")
+        if init_user_ns:
+            return init_user_ns
+
+        kversion = KernelVersionCommand.kernel_version()
+
+        # plan 2 (available v2.6.39 or later)
+        if kversion and kversion >= "2.6.39":
+            has_capability = get_ksymaddr("has_capability")
+            if has_capability:
+                res = gdb.execute("x/20i {:#x}".format(has_capability), to_string=True)
+                if is_x86_64():
+                    for line in res.splitlines():
+                        m = re.search(r"mov\s+rsi\s*,\s*(0x\w+)", line)
+                        if m:
+                            v = int(m.group(1), 16) & 0xffffffffffffffff
+                            if v != 0:
+                                return v
+                elif is_x86_32():
+                    for line in res.splitlines():
+                        m = re.search(r"mov\s+e\w\w\s*,\s*(0x\w+)", line)
+                        if m:
+                            v = int(m.group(1), 16) & 0xffffffff
+                            if v != 0:
+                                return v
+                elif is_arm64():
+                    base = None
+                    for line in res.splitlines():
+                        if base is None:
+                            m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
+                            if m:
+                                base = int(m.group(1), 16)
+                        else:
+                            m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
+                            if m:
+                                return base + int(m.group(1), 16)
+                elif is_arm32():
+                    base = None
+                    for line in res.splitlines():
+                        if base is None:
+                            m = re.search(r"movw.*[;@]\s*(0x\S+)", line)
+                            if m:
+                                base = int(m.group(1), 16)
+                        else:
+                            m = re.search(r"movt.*[;@]\s*(0x\S+)", line)
+                            if m:
+                                return base + (int(m.group(1), 16) << 16)
         return None
 
     @staticmethod
@@ -50481,7 +50587,25 @@ class KernelParamSysctlCommand(GenericCommand):
                     # mode
                     mode = u32(read_memory(ctl_table + self.OFFSET_mode, 4))
 
-                    if (mode & 0o0040000) == 0: # not directory
+                    # `net.*` and `user.*` have a symlink attribute and they are redirected to another location.
+                    # These must be traced from another root.
+                    if (mode & 0o0120000) == 0o0120000: # symlink
+                        root = read_int_from_memory(ctl_table + current_arch.ptrsize)
+                        lookup = read_int_from_memory(root + self.OFFSET_lookup)
+                        if lookup == get_ksymaddr("net_ctl_header_lookup"): # net.*
+                            ctset = self.net_ctset
+                        elif lookup == get_ksymaddr("set_lookup"): # user.*
+                            ctset = self.user_ctset
+                        else:
+                            ctset = None
+                        if ctset:
+                            symlink_rb_node = read_int_from_memory(ctset + current_arch.ptrsize + self.OFFSET_rb_node)
+                            if ctset not in self.seen_ctset:
+                                self.seen_ctset.append(ctset)
+                                self.sysctl_dump(symlink_rb_node)
+
+                    # If it's not a directory, it should hold data, so dump it.
+                    elif (mode & 0o0040000) == 0: # not directory
                         maxlen = u32(read_memory(ctl_table + self.OFFSET_maxlen, 4))
                         # data
                         data_addr = read_int_from_memory(ctl_table + current_arch.ptrsize)
@@ -50491,40 +50615,40 @@ class KernelParamSysctlCommand(GenericCommand):
                             # data length
                             if handler in self.str_types:
                                 data_val = read_cstring_from_memory(data_addr)
-                                fmt = "{:<55s} {:#018x} {:#06x} {:#010o} {:s}"
-                                self.out.append(fmt.format(param_path, data_addr, maxlen, mode, data_val))
+                                fmt = "{:<56s} {:#018x} {:#07x} {:#010o} {:s}"
+                                self.out.append(fmt.format(param_path, data_addr, maxlen, mode, str(data_val))) # allow None
                             elif maxlen == 4:
                                 data_val = u32(read_memory(data_addr, 4))
-                                fmt = "{:<55s} {:#018x} {:#06x} {:#010o} {:#018x}"
+                                fmt = "{:<56s} {:#018x} {:#07x} {:#010o} {:#018x}"
                                 self.out.append(fmt.format(param_path, data_addr, maxlen, mode, data_val))
                             elif maxlen == 8:
                                 data_val = u64(read_memory(data_addr, 8))
-                                fmt = "{:<55s} {:#018x} {:#06x} {:#010o} {:#018x}"
+                                fmt = "{:<56s} {:#018x} {:#07x} {:#010o} {:#018x}"
                                 self.out.append(fmt.format(param_path, data_addr, maxlen, mode, data_val))
                             elif maxlen == 1:
                                 data_val = u8(read_memory(data_addr, 1))
-                                fmt = "{:<55s} {:#018x} {:#06x} {:#010o} {:#018x}"
+                                fmt = "{:<56s} {:#018x} {:#07x} {:#010o} {:#018x}"
                                 self.out.append(fmt.format(param_path, data_addr, maxlen, mode, data_val))
                             elif maxlen == 0:
                                 if self.verbose:
-                                    fmt = "{:<55s} {:#018x} {:#06x} {:#010o}"
+                                    fmt = "{:<56s} {:#018x} {:#07x} {:#010o}"
                                     self.out.append(fmt.format(param_path, data_addr, maxlen, mode))
                             else:
                                 # type from heuristic
                                 data_val = read_cstring_from_memory(data_addr)
                                 if data_val and data_val.isprintable() and len(data_val) >= 2:
-                                    fmt = "{:<55s} {:#018x} {:#06x} {:#010o} {:s}"
+                                    fmt = "{:<56s} {:#018x} {:#07x} {:#010o} {:s}"
                                     self.out.append(fmt.format(param_path, data_addr, maxlen, mode, data_val))
                                 else:
                                     data_val = read_int_from_memory(data_addr)
-                                    fmt = "{:<55s} {:#018x} {:#06x} {:#010o} {:#018x}"
+                                    fmt = "{:<56s} {:#018x} {:#07x} {:#010o} {:#018x}"
                                     self.out.append(fmt.format(param_path, data_addr, maxlen, mode, data_val))
                         else:
                             if self.verbose:
-                                fmt = "{:<55s} {:#018x} {:#06x} {:#010o}"
+                                fmt = "{:<56s} {:#018x} {:#07x} {:#010o}"
                                 self.out.append(fmt.format(param_path, data_addr, maxlen, mode))
 
-                # goto next
+                # next array element
                 ctl_table += self.SIZEOF_ctl_table
 
             rb_node = read_int_from_memory(ctl_dir + self.OFFSET_rb_node) & ~1 # remove RB_BLACK
@@ -50633,13 +50757,42 @@ class KernelParamSysctlCommand(GenericCommand):
             self.OFFSET_handler = 0x14
             self.SIZEOF_ctl_table = 0x24
 
+        # struct ctl_table_root
+        self.OFFSET_lookup = current_arch.ptrsize + self.OFFSET_rb_node + current_arch.ptrsize
+
+        # the root for `net.*`; init_nsproxy.net_ns.sysctls
+        self.net_ctset = None
+        init_net = KernelAddressHeuristicFinder.get_init_net()
+        if init_net:
+            current = init_net
+            is_seen = get_ksymaddr("is_seen")
+            while True:
+                v = read_int_from_memory(current)
+                if v == is_seen:
+                    self.net_ctset = current
+                    break
+                current += current_arch.ptrsize
+
+        # the root for `user.*`; init_user_ns.set
+        self.user_ctset = None
+        init_user_ns = KernelAddressHeuristicFinder.get_init_user_ns()
+        if init_user_ns:
+            current = init_user_ns
+            set_is_seen = get_ksymaddr("set_is_seen")
+            while True:
+                v = read_int_from_memory(current)
+                if v == set_is_seen:
+                    self.user_ctset = current
+                    break
+                current += current_arch.ptrsize
+
+        # handle functions
         known_str_types_handlers = [
             "addrconf_sysctl_stable_secret",
             "cdrom_sysctl_info",
             "devkmsg_sysctl_set_loglvl",
             "numa_zonelist_order_handler",
             "proc_allowed_congestion_control",
-            "proc_do_large_bitmap",
             "proc_do_uts_string",
             "proc_dostring",
             "proc_dostring_coredump",
@@ -50682,7 +50835,7 @@ class KernelParamSysctlCommand(GenericCommand):
 
         self.out = []
         if not args.quiet:
-            fmt = "{:<55s} {:<18s} {:<6s} {:<10s} {:<18s}"
+            fmt = "{:<56s} {:<18s} {:<7s} {:<10s} {:<18s}"
             legend = ["ParamName", "ParamAddress", "MaxLen", "Mode", "ParamValue"]
             self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
@@ -50696,6 +50849,7 @@ class KernelParamSysctlCommand(GenericCommand):
             info("root_rb_node: {:#x}".format(root_rb_node))
 
         self.seen_ctl_dir = []
+        self.seen_ctset = []
         self.parent_paths = {root_ctl_dir: ""}
         try:
             self.sysctl_dump(root_rb_node)
