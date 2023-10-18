@@ -13079,7 +13079,7 @@ class VdsoCommand(GenericCommand):
 
 @register_command
 class VvarCommand(GenericCommand):
-    """Dump the area of vvar."""
+    """Dump the area of vvar (only x64/x86)."""
     _cmdline_ = "vvar"
     _category_ = "02-d. Process Information - Trivial Information"
 
@@ -13089,6 +13089,7 @@ class VvarCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -14531,6 +14532,7 @@ class PtrDemangleCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     @exclude_specific_arch(arch=("SPARC32", "SH4", "XTENSA", "CRIS"))
     def do_invoke(self, args):
         self.dont_repeat()
@@ -14570,6 +14572,7 @@ class PtrMangleCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     @exclude_specific_arch(arch=("SPARC32", "SH4", "XTENSA", "CRIS"))
     def do_invoke(self, args):
         self.dont_repeat()
@@ -14666,6 +14669,7 @@ class SearchMangledPtrCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     @exclude_specific_arch(arch=("SPARC32", "SH4", "XTENSA", "CRIS"))
     def do_invoke(self, args):
         self.dont_repeat()
@@ -14778,8 +14782,8 @@ class SearchCfiGadgetsCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_arch(arch=("x86_32", "x86_64"))
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
         self.dont_repeat()
 
