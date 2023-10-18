@@ -20078,6 +20078,29 @@ class KernelChecksecCommand(GenericCommand):
                 else:
                     gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
 
+        gef_print(titlify("namespaces"))
+        cfgs = [
+            "user.max_user_namespaces",
+            "user.max_pid_namespaces",
+            "user.max_uts_namespaces",
+            "user.max_ipc_namespaces",
+            "user.max_net_namespaces",
+            "user.max_mnt_namespaces",
+            "user.max_cgroup_namespaces",
+            "user.max_time_namespaces",
+        ]
+        for cfg in cfgs:
+            addr = get_kparam(cfg)
+            if addr is None:
+                additional = "{:s}: not found".format(cfg)
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
+            else:
+                val = u32(read_memory(addr, 4))
+                if val:
+                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("{:d}".format(val), "bold red")))
+                else:
+                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("{:d}".format(val), "bold green")))
+
         gef_print(titlify("Other"))
 
         # CONFIG_KALLSYMS_ALL
