@@ -46446,7 +46446,7 @@ class KernelCurrentCommand(GenericCommand):
 
 @register_command
 class KernelTaskCommand(GenericCommand):
-    """Display process list using kernel memory scanning."""
+    """Display process list."""
     _cmdline_ = "ktask"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -47972,8 +47972,60 @@ class KernelTaskCommand(GenericCommand):
 
 
 @register_command
+class KernelFilesCommand(GenericCommand):
+    """Display open files list of each process (short cut of `ktask -quF`)."""
+    _cmdline_ = "kfiles"
+    _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
+    def do_invoke(self, args):
+        self.dont_repeat()
+        info("Redirect to `ktask -quF`")
+
+        no_pager = ""
+        if args.no_pager:
+            no_pager = "--no-pager"
+        gdb.execute("ktask --user-process-only --print-fd --quiet {:s}".format(no_pager))
+        return
+
+
+@register_command
+class KernelSavedRegsCommand(GenericCommand):
+    """Display saved registers of each process (short cut of `ktask -qur`)."""
+    _cmdline_ = "kregs"
+    _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
+    def do_invoke(self, args):
+        self.dont_repeat()
+        info("Redirect to `ktask -qur`")
+
+        no_pager = ""
+        if args.no_pager:
+            no_pager = "--no-pager"
+        gdb.execute("ktask --user-process-only --print-regs --quiet {:s}".format(no_pager))
+        return
+
+
+@register_command
 class KernelModuleCommand(GenericCommand):
-    """Display module list using kernel memory scanning."""
+    """Display kernel module list."""
     _cmdline_ = "kmod"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -50518,7 +50570,7 @@ class KernelOperationsCommand(GenericCommand):
 
 @register_command
 class KernelParamSysctlCommand(GenericCommand):
-    """Dump sysctl parameters using kernel memory scanning."""
+    """Dump sysctl parameters."""
     _cmdline_ = "kparam-sysctl"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -50892,7 +50944,7 @@ class KernelParamSysctlCommand(GenericCommand):
 
 @register_command
 class KernelFileSystemsCommand(GenericCommand):
-    """Dump /proc/filesystems using kernel memory scanning."""
+    """Dump /proc/filesystems."""
     _cmdline_ = "kfilesystems"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -50976,7 +51028,7 @@ class KernelFileSystemsCommand(GenericCommand):
 
 @register_command
 class KernelClockSourceCommand(GenericCommand):
-    """Dump clock sources using kernel memory scanning."""
+    """Dump clock sources."""
     _cmdline_ = "kclock-source"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -53505,7 +53557,7 @@ class ConstGrepCommand(GenericCommand):
 
 @register_command
 class SlubDumpCommand(GenericCommand):
-    """Dump slub freelist with kernel memory scanning."""
+    """Dump slub freelist."""
     _cmdline_ = "slub-dump"
     _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
 
@@ -54578,7 +54630,7 @@ class SlubDumpCommand(GenericCommand):
 
 @register_command
 class SlubTinyDumpCommand(GenericCommand):
-    """Dump slub-tiny freelist with kernel memory scanning."""
+    """Dump slub-tiny freelist."""
     _cmdline_ = "slub-tiny-dump"
     _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
 
@@ -55222,7 +55274,7 @@ class SlubTinyDumpCommand(GenericCommand):
 
 @register_command
 class SlabDumpCommand(GenericCommand):
-    """Dump slab freelist with kernel memory scanning."""
+    """Dump slab freelist."""
     _cmdline_ = "slab-dump"
     _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
 
@@ -56016,7 +56068,7 @@ class SlabDumpCommand(GenericCommand):
 
 @register_command
 class SlobDumpCommand(GenericCommand):
-    """Dump slob freelist with kernel memory scanning."""
+    """Dump slob freelist."""
     _cmdline_ = "slob-dump"
     _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
 
@@ -56618,7 +56670,7 @@ class SlubContainsCommand(GenericCommand):
 
 @register_command
 class BuddyDumpCommand(GenericCommand):
-    """Dump zone of page allocator (buddy allocator) freelist with kernel memory scanning."""
+    """Dump zone of page allocator (buddy allocator) freelist."""
     _cmdline_ = "buddy-dump"
     _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
     _aliases_ = ["zone-dump"]
@@ -57068,7 +57120,7 @@ class BuddyDumpCommand(GenericCommand):
 
 @register_command
 class KernelPipeCommand(GenericCommand):
-    """Dump pipe information with kernel memory scanning."""
+    """Dump pipe information."""
     _cmdline_ = "kpipe"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -57435,7 +57487,7 @@ class KernelPipeCommand(GenericCommand):
 
 @register_command
 class KsymaddrRemoteCommand(GenericCommand):
-    """Resolve kernel symbols from kallsyms table using kernel memory scanning."""
+    """Resolve kernel symbols from kallsyms table."""
     # Thanks to https://github.com/marin-m/vmlinux-to-elf
     _cmdline_ = "ksymaddr-remote"
     _category_ = "08-c. Qemu-system Cooperation - Linux Symbol"

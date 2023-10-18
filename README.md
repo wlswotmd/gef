@@ -203,7 +203,7 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmalloc-tracer.png)
 * `kmalloc-allocated-by`: calls a predefined set of system calls and prints structures allocated by kmalloc or freed by kfree.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmalloc-allocated-by.png)
-* `buddy-dump`: dumps zone of page allocator (buddy allocator) freelist with kernel memory scanning.
+* `buddy-dump`: dumps zone of page allocator (buddy allocator) freelist.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/buddy-dump.png)
 * `kpipe`: displays each pipe information.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kpipe.png)
