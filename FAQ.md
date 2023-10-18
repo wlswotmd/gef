@@ -104,6 +104,16 @@ Updating `vmlinux-to-elf` to the latest version may improve the issue.
 If the problem does not improve, try using the `ks-apply` command.
 The logic is different a little, so it might work.
 
+## `got` command does not display PLT address well.
+This problem is probably caused by an outdated version of `binutils`.
+The `got` command uses `objdump` internally to obtain the PLT address.
+However, with certain combinations of `binutils` and `glibc` versions, `objdump` does not display the PLT address.
+
+The currently known combinations are as follows.
+- `binutils 2.38` + `glibc 2.37 or later` (`binutils 2.38` is default of Ubuntu 22.04)
+
+This problem occurs when you try to use newer glibc in an Ubuntu 22.04 environment using `patchelf` etc.
+The workaround is to build and install new `binutils` from source code.
 
 # About python
 
@@ -161,7 +171,7 @@ Please feel free to report it on the issue page. I will respond as soon as possi
 
 ## Can you please add this feature? / I don't like a certain feature, so please fix it.
 I will consider it, so please report it on the issue page.
-But this is a personal development, so I have the final say. I appreciate your understanding.
+But this is a personal development, so I have the final decision. I appreciate your understanding.
 
 ## Is there any information that should be provided when reporting?
 You will need a screenshot or a copy of the terminal string when the problem occurred.
