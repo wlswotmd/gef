@@ -98,6 +98,7 @@ import ctypes
 import datetime
 import fcntl
 import functools
+import gzip
 import hashlib
 import inspect
 import itertools
@@ -51091,6 +51092,73 @@ class KernelClockSourceCommand(GenericCommand):
 
         if self.out:
             gef_print("\n".join(self.out), less=not args.no_pager)
+        return
+
+
+@register_command
+class KernelConfigCommand(GenericCommand):
+    """Dump kernel config if available."""
+    _cmdline_ = "kconfig"
+    _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-f", "--filter", action="append", type=re.compile, default=[], help="REGEXP include filter.")
+    parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
+    _syntax_ = parser.format_help()
+
+    def __init__(self):
+        super().__init__()
+        self.configs = None
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        if args.reparse:
+            self.configs = None
+
+        if self.configs is None:
+            if not args.quiet:
+                info("Wait for memory scan")
+
+            kinfo = KernelbaseCommand.get_kernel_base()
+            krodata = read_memory(kinfo.krobase, kinfo.krobase_size)
+
+            start_pos = krodata.find(b"IKCFG_ST")
+            if start_pos == -1:
+                err("Not found IKCFG_ST. This kernel is built as CONFIG_IKCONFIG_PROC=n.")
+                return
+            end_pos = krodata.find(b"IKCFG_ED")
+
+            info("IKCFG_ST: {:#x}".format(kinfo.krobase + start_pos))
+            info("IKCFG_ED: {:#x}".format(kinfo.krobase + end_pos))
+            configz = krodata[start_pos + len("IKCFG_ST"):end_pos]
+
+            try:
+                self.configs = bytes2str(gzip.decompress(configz))
+            except gzip.BadGzipFile:
+                err("Gzip decompress error")
+                return
+
+        if args.filter:
+            out = []
+            for line in self.configs.splitlines():
+                for filt in args.filter:
+                    if filt.search(line):
+                        out.append(line)
+                        break
+            out = "\n".join(out)
+        else:
+            out = self.configs
+
+        gef_print(out, less=not args.no_pager)
         return
 
 
