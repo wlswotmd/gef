@@ -49000,6 +49000,7 @@ class KernelCharacterDevicesCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose mode.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} -q\n".format(_cmdline_)
@@ -50100,6 +50101,9 @@ class KernelCharacterDevicesCommand(GenericCommand):
         for (major, minor), m in sorted(merged.items()):
             fmt = "{:#018x} {:<18s} {:<18s} {:<6d} {:<6d} {:#018x} {:#018x} {:<18s} {:#018x}{:s}"
             guessed_name = KernelCharacterDevicesCommand.get_cdev_name(major, minor)
+            if not args.verbose:
+                if m["chrdev"] == 0:
+                    continue
             self.out.append(fmt.format(m["chrdev"], m["name"], guessed_name, major, minor,
                                        m["cdev"], m["parent"], m["parent_name"], m["ops"], m["ops_sym"]))
 
