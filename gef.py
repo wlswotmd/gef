@@ -18571,8 +18571,8 @@ class ElfInfoCommand(GenericCommand):
                         help="parse remote binary if download feature is available.")
     parser.add_argument("-f", "--file", help="the file path you want to parse.")
     parser.add_argument("-a", "--address", type=parse_address, help="the memory address you want to parse.")
-    parser.add_argument("-v", "--verbose", action="store_true", help="dump the content of each section.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="dump the content of each section.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}                   # parse binary itself\n".format(_cmdline_)
@@ -27898,10 +27898,10 @@ class SyscallSearchCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-a", dest="arch", help="specify the architecture. (default: current_arch.arch)")
     parser.add_argument("-m", dest="mode", help="specify the mode. (default: current_arch.mode)")
-    parser.add_argument("-v", "--verbose", action="store_true", help="display prototype of syscall.")
     parser.add_argument("search_pattern", metavar="SYSCALL_NAME|SYSCALL_NUM",
                         help="syscall name or number you want to search. Regex is available.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="display prototype of syscall.")
     _syntax_ = parser.format_help()
 
     _example_ = '{:s} -a X86 -m 64        "^writev?" # amd64\n'.format(_cmdline_)
@@ -49005,8 +49005,8 @@ class KernelCharacterDevicesCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
-    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose mode.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} -q\n".format(_cmdline_)
@@ -50588,8 +50588,8 @@ class KernelParamSysctlCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-f", "--filter", action="append", type=re.compile, default=[], help="REGEXP filter.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
-    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose mode.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     parser.add_argument("--exact", action="store_true", help="use exact match.")
     _syntax_ = parser.format_help()
 
@@ -53652,10 +53652,6 @@ class SlubDumpCommand(GenericCommand):
                         help="skip byteswap to chunk->next. it is used when `kmem_cache.random` is falsely detected.")
     parser.add_argument("--list", action="store_true", help="list up all slub cache names.")
     parser.add_argument("--meta", action="store_true", help="display offset information.")
-    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
-    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
-    parser.add_argument("-v", "--verbose", "--partial", action="store_true", help="dump partial pages")
-    parser.add_argument("-vv", "--vverbose", "--node", action="store_true", help="dump partial pages and node pages.")
     parser.add_argument("--hexdump-used", type=lambda x: int(x, 16), default=0,
                         help="hexdump `used chunks` if layout is resolved.")
     parser.add_argument("--hexdump-freed", type=lambda x: int(x, 16), default=0,
@@ -53664,6 +53660,10 @@ class SlubDumpCommand(GenericCommand):
                         help="telescope `used chunks` if layout is resolved.")
     parser.add_argument("--telescope-freed", type=lambda x: int(x, 16), default=0,
                         help="telescope `unused (freed) chunks` if layout is resolved.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-v", "--verbose", "--partial", action="store_true", help="dump partial pages")
+    parser.add_argument("-vv", "--vverbose", "--node", action="store_true", help="dump partial pages and node pages.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} kmalloc-256                                      # dump kmalloc-256 from all cpus\n".format(_cmdline_)
@@ -56161,8 +56161,8 @@ class SlobDumpCommand(GenericCommand):
     parser.add_argument("--medium", action="store_true", help="display only free_slob_medium.")
     parser.add_argument("--small", action="store_true", help="display only free_slob_small.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
-    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose mode (print kmem_cache).")
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} kmalloc-256  # dump kmalloc-256 kmem_cache and all freelists\n".format(_cmdline_)
@@ -56590,8 +56590,8 @@ class SlubContainsCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="target address.")
     parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
-    parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
     parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose mode.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
     _syntax_ = parser.format_help()
 
     def __init__(self, *args, **kwargs):
@@ -56763,9 +56763,9 @@ class BuddyDumpCommand(GenericCommand):
     parser.add_argument("--sort", action="store_true",
                         help="sort by page address instead of link list order of each size. filter options are ignored.")
     parser.add_argument("--sort-verbose", action="store_true", help="enable --sort and add informations of used area.")
+    parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
-    parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} -z DMA32\n".format(_cmdline_)
@@ -57559,10 +57559,10 @@ class KsymaddrRemoteCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("keyword", metavar="KEYWORD", nargs="*", help="filter by specific symbol name.")
     parser.add_argument("--exact", action="store_true", help="use exact match.")
-    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
-    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
-    parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose mode.")
     parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose mode.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} commit_creds prepare_kernel_cred # OR search\n".format(_cmdline_)
@@ -67469,11 +67469,11 @@ class PagewalkWithHintsCommand(GenericCommand):
     _category_ = "08-a. Qemu-system Cooperation - General"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("--skip-full-slab-cache", action="store_true",
+                        help="skip search full slab cache. use this option if take a long time to parse.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-c", "--use-cache", action="store_true", help="use cache.")
     parser.add_argument("-q", "--quiet", action="store_true", help="quiet execution.")
-    parser.add_argument("--skip-full-slab-cache", action="store_true",
-                        help="skip search full slab cache. use this option if take a long time to parse.")
     _syntax_ = parser.format_help()
 
     def __init__(self, *args, **kwargs):
