@@ -50845,12 +50845,13 @@ class KernelParamSysctlCommand(GenericCommand):
         if init_net:
             current = init_net
             is_seen = get_ksymaddr("is_seen")
-            while True:
-                v = read_int_from_memory(current)
-                if v == is_seen:
-                    self.net_ctset = current
-                    break
-                current += current_arch.ptrsize
+            if is_seen:
+                while True:
+                    v = read_int_from_memory(current)
+                    if v == is_seen:
+                        self.net_ctset = current
+                        break
+                    current += current_arch.ptrsize
 
         # the root for `user.*`; init_user_ns.set
         self.user_ctset = None
@@ -50858,12 +50859,13 @@ class KernelParamSysctlCommand(GenericCommand):
         if init_user_ns:
             current = init_user_ns
             set_is_seen = get_ksymaddr("set_is_seen")
-            while True:
-                v = read_int_from_memory(current)
-                if v == set_is_seen:
-                    self.user_ctset = current
-                    break
-                current += current_arch.ptrsize
+            if set_is_seen:
+                while True:
+                    v = read_int_from_memory(current)
+                    if v == set_is_seen:
+                        self.user_ctset = current
+                        break
+                    current += current_arch.ptrsize
 
         # handle functions
         known_str_types_handlers = [
