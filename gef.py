@@ -47930,7 +47930,11 @@ class KernelTaskCommand(GenericCommand):
 
             # additional information 3
             if proctype == "U" and args.print_fd:
-                out.append(titlify("file descriptors of `{:s}` (address is `struct file*`)".format(comm_string)))
+                out.append(titlify("file descriptors of `{:s}`".format(comm_string)))
+                fmt = "{:>3s} {:18s} {:18s} {:18s} {:s}"
+                legend = ["fd", "struct file*", "struct dentry*", "struct inode*", "path"]
+                out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+
                 files = read_int_from_memory(task + self.offset_files)
                 fdt = read_int_from_memory(files + self.offset_fdt)
                 if is_valid_addr(fdt):
@@ -47940,8 +47944,10 @@ class KernelTaskCommand(GenericCommand):
                         file = read_int_from_memory(array + current_arch.ptrsize * i)
                         if file == 0:
                             continue
+                        dentry = read_int_from_memory(file + self.offset_dentry)
+                        inode = read_int_from_memory(file + self.offset_f_inode)
                         filepath = self.get_filepath(file)
-                        out.append("{:3d}: {:#018x}: {:s}".format(i, file, filepath))
+                        out.append("{:3d} {:#018x} {:#018x} {:#018x} {:s}".format(i, file, dentry, inode, filepath))
                 out.append(titlify(""))
         return out
 
@@ -57209,11 +57215,6 @@ class KernelPipeCommand(GenericCommand):
     _example_ += "\n"
     _example_ += "NOTE: This command needs CONFIG_RANDSTRUCT=n."
 
-    def __init__(self, *args, **kwargs):
-        super().__init__()
-        self.offset_inode = None
-        return
-
     def initialize(self):
         # kbase
         self.kinfo = KernelbaseCommand.get_kernel_base()
@@ -57222,27 +57223,16 @@ class KernelPipeCommand(GenericCommand):
                 err("The kernel .text area could not be determined correctly.")
             return False
 
-        # file->inode
-        if self.offset_inode is None:
-            ret = gdb.execute("ktask --no-pager --print-fd --meta", to_string=True)
-            m = re.search(r"offsetof\(file, f_inode\): (0x\S+)", ret)
-            if not m:
-                if not self.quiet:
-                    err("ktask failed")
-                return False
-            self.offset_inode = int(m.group(1), 16)
-        if not self.quiet:
-            info("offsetof(file, inode): {:#x}".format(self.offset_inode))
-
         # struct file of pipe
         ret = gdb.execute("ktask --quiet --no-pager --user-process-only --print-fd", to_string=True)
         pipe_files = []
         for line in ret.splitlines():
-            m = re.search(r"\s*\d+: (0x\S+): pipe:\[\d+\]", line)
+            m = re.search(r"\s*\d+ (0x\S+) 0x\S+ (0x\S+) pipe:\[\d+\]", line)
             if not m:
                 continue
-            addr = int(m.group(1), 16)
-            pipe_files.append(addr)
+            file = int(m.group(1), 16)
+            inode = int(m.group(2), 16)
+            pipe_files.append((file, inode))
         if pipe_files == []:
             if not self.quiet:
                 warn("Nothing to dump")
@@ -57272,7 +57262,7 @@ class KernelPipeCommand(GenericCommand):
             ...
         };
         """
-        inode = read_int_from_memory(pipe_files[0] + self.offset_inode)
+        inode = pipe_files[0][1]
         for i in range(0x80):
             v = read_int_from_memory(inode + current_arch.ptrsize * i)
             # i_pipe is valid addr
@@ -57471,9 +57461,8 @@ class KernelPipeCommand(GenericCommand):
         used_address_color = get_gef_setting("theme.heap_chunk_address_used")
 
         inodes = {}
-        for pipe in pipe_files:
-            inode = read_int_from_memory(pipe + self.offset_inode)
-            inodes[inode] = inodes.get(inode, []) + [pipe]
+        for file, inode in pipe_files:
+            inodes[inode] = inodes.get(inode, []) + [file]
 
         for inode, files in inodes.items():
             if self.inode_filter and inode not in self.inode_filter:
