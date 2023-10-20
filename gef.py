@@ -20112,6 +20112,14 @@ class KernelChecksecCommand(GenericCommand):
         else:
             gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold green")))
 
+        # CONFIG_IKCONFIG
+        cfg = "CONFIG_IKCONFIG"
+        ikconfig_init = get_ksymaddr("ikconfig_init")
+        if ikconfig_init:
+            gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enabled", "bold red")))
+        else:
+            gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold green")))
+
         # CONFIG_RANDSTRUCT
         cfg = "CONFIG_RANDSTRUCT"
         # In cases where kallsyms could be resolved, but kparam-sysctl could not be resolved correctly,
@@ -51139,6 +51147,9 @@ class KernelConfigCommand(GenericCommand):
                 info("Wait for memory scan")
 
             kinfo = KernelbaseCommand.get_kernel_base()
+            if kinfo.krobase is None:
+                err("Not recognized .rodata")
+                return
             krodata = read_memory(kinfo.krobase, kinfo.krobase_size)
 
             start_pos = krodata.find(b"IKCFG_ST")
