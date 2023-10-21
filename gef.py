@@ -12077,8 +12077,16 @@ class VersionCommand(GenericCommand):
         except Exception:
             return "Not found"
 
-    def qemu_version(self):
+    def qemu_system_version(self):
         return gdb.execute("monitor info version", to_string=True).strip()
+
+    def qemu_user_version(self):
+        pid = get_pid()
+        try:
+            res = gef_execute_external(["/proc/{:d}/exe".format(pid), "--version"], as_list=True)
+            return res[0].strip()
+        except (IndexError, FileNotFoundError):
+            return "Not recognized"
 
     def gef_version(self):
         gef_fpath = os.path.abspath(os.path.realpath(os.path.expanduser(inspect.stack()[0][1])))
@@ -12182,7 +12190,7 @@ class VersionCommand(GenericCommand):
         gef_print("OS:      {:s}".format(self.os_version()))
         gef_print("kernel:  {:s}".format(self.kernel_version_from_uname()))
         if is_qemu_system():
-            gef_print("qemu:    {:s}".format(self.qemu_version()))
+            gef_print("qemu:    {:s}".format(self.qemu_system_version()))
         return
 
     def show_full_info(self):
@@ -12191,7 +12199,9 @@ class VersionCommand(GenericCommand):
         gef_print("kernel (uname -a):      {:s}".format(self.kernel_version_from_uname()))
         gef_print("kernel (/proc/version): {:s}".format(self.kernel_version_from_proc()))
         if is_qemu_system():
-            gef_print("qemu:                   {:s}".format(self.qemu_version()))
+            gef_print("qemu:                   {:s}".format(self.qemu_system_version()))
+        if is_qemu_user():
+            gef_print("qemu:                   {:s}".format(self.qemu_user_version()))
         gef_print("GEF:                    {:s}".format(self.gef_version()))
         gef_print("gdb:                    {:s}".format(self.gdb_version()))
         gef_print("python:                 {:s}".format(self.python_version()))
@@ -48100,7 +48110,7 @@ class KernelModuleCommand(GenericCommand):
             err("Not found module->name[MODULE_NAME_LEN]")
         return None
 
-    def get_offset_mem(self, module_addrs):
+    def get_offset_mem(self, module_addrs): # v6.4~
         """
         ac3b43283923440900b4f36ca5f9f0b1ca43b70e changed the module layout information structure
         MOD_TEXT = 0,
@@ -48208,7 +48218,7 @@ class KernelModuleCommand(GenericCommand):
             err("Not found module->mem")
         return None
 
-    def get_offset_layout(self, module_addrs):
+    def get_offset_layout(self, module_addrs): # v4.5 ~ v6.4
         """
         struct module { // kernel v4.5-rc1~
             enum module_state state;
@@ -48343,7 +48353,7 @@ class KernelModuleCommand(GenericCommand):
             err("Not found module->init_layout")
         return None
 
-    def get_offset_module_core(self, module_addrs):
+    def get_offset_module_core(self, module_addrs): # ~ v4.5
         """
         struct module { // ~v4.5-rc1
             enum module_state state;
@@ -48572,7 +48582,7 @@ class KernelModuleCommand(GenericCommand):
             offset_layout = self.get_offset_layout(module_addrs)
             if offset_layout is None:
                 return
-        else:
+        else: # ~ v4.5
             offset_module_core = self.get_offset_module_core(module_addrs)
             if offset_module_core is None:
                 return
@@ -48600,7 +48610,7 @@ class KernelModuleCommand(GenericCommand):
             elif kversion >= "4.5":
                 base = read_int_from_memory(module + offset_layout)
                 size = u32(read_memory(module + offset_layout + current_arch.ptrsize, 4))
-            else:
+            else: # ~ 4.5
                 base = read_int_from_memory(module + offset_module_core)
                 size = u32(read_memory(module + offset_module_core + current_arch.ptrsize + 4, 4))
             self.out.append("{:#018x} {:<18s} {:#018x} {:#018x}".format(module, name_string, base, size))
