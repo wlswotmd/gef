@@ -46626,7 +46626,6 @@ class KernelTaskCommand(GenericCommand):
         self.offset_files = None
         self.offset_fdt = None
         # kstack
-        self.offset_kstack_size = None
         self.offset_ptregs = None
         # cred
         self.offset_uid = None
@@ -48067,8 +48066,8 @@ class KernelTaskCommand(GenericCommand):
             # additional information 3
             if proctype == "U" and args.print_fd:
                 out.append(titlify("file descriptors of `{:s}`".format(comm_string)))
-                fmt = "{:>3s} {:18s} {:18s} {:18s} {:s}"
-                legend = ["fd", "struct file*", "struct dentry*", "struct inode*", "path"]
+                fmt = "{:3s} {:18s} {:18s} {:18s} {:s}"
+                legend = ["fd", "struct file", "struct dentry", "struct inode", "path"]
                 out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
                 files = read_int_from_memory(task + self.offset_files)
@@ -48083,7 +48082,7 @@ class KernelTaskCommand(GenericCommand):
                         dentry = read_int_from_memory(file + self.offset_dentry)
                         inode = read_int_from_memory(file + self.offset_f_inode)
                         filepath = self.get_filepath(file)
-                        out.append("{:3d} {:#018x} {:#018x} {:#018x} {:s}".format(i, file, dentry, inode, filepath))
+                        out.append("{:<3d} {:#018x} {:#018x} {:#018x} {:s}".format(i, file, dentry, inode, filepath))
                 out.append(titlify(""))
         return out
 
@@ -57366,7 +57365,7 @@ class KernelPipeCommand(GenericCommand):
         ret = gdb.execute("ktask --quiet --no-pager --user-process-only --print-fd", to_string=True)
         pipe_files = []
         for line in ret.splitlines():
-            m = re.search(r"\s*\d+ (0x\S+) 0x\S+ (0x\S+) pipe:\[\d+\]", line)
+            m = re.search(r"\d+\s+(0x\S+) 0x\S+ (0x\S+) pipe:\[\d+\]", line)
             if not m:
                 continue
             file = int(m.group(1), 16)
@@ -73020,10 +73019,12 @@ class GefArchListCommand(GenericCommand):
         self.dont_repeat()
 
         self.out = []
-        for cls in Architecture.__subclasses__():
+        queue = Architecture.__subclasses__()
+        while queue:
+            cls = queue.pop(0)
             self.print_arch_info(cls())
-            for subcls in cls.__subclasses__():
-                self.print_arch_info(subcls())
+            queue = cls.__subclasses__() + queue
+
         if self.out:
             gef_print("\n".join(self.out).rstrip(), less=not args.no_pager)
         return
