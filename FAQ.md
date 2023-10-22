@@ -81,7 +81,7 @@ Currently, at least following commands do not work.
 - `kcdev`
 - `kops`
 - `kpipe`
-- `kparam-sysctl`
+- `ksysctl`
 - `kmalloc-tracer`
 - `kmalloc-allocated-by`
 

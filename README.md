@@ -183,8 +183,8 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmagic.png)
 * `kchecksec`: checks kernel security.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kchecksec.png)
-* `kparam-sysctl`: dumps sysctl parameters.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kparam-sysctl.png)
+* `ksysctl`: dumps sysctl parameters.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksysctl.png)
 * `kfilesystems`: dumps supported file systems.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kfilesystems.png)
 * `kclock-source`: dumps clocksource list.

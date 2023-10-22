@@ -11366,9 +11366,9 @@ def get_ksymaddr_symbol(addr):
         return None
 
 
-def get_kparam(sym):
+def get_ksysctl(sym):
     try:
-        res = gdb.execute("kparam-sysctl --quiet --no-pager --exact --filter {:s}".format(sym), to_string=True)
+        res = gdb.execute("ksysctl --quiet --no-pager --exact --filter {:s}".format(sym), to_string=True)
         return int(res.split()[1], 16)
     except (gdb.error, IndexError, ValueError):
         return None
@@ -20101,7 +20101,7 @@ class KernelChecksecCommand(GenericCommand):
             "user.max_time_namespaces",
         ]
         for cfg in cfgs:
-            addr = get_kparam(cfg)
+            addr = get_ksysctl(cfg)
             if addr is None:
                 additional = "{:s}: not found".format(cfg)
                 gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
@@ -20132,17 +20132,17 @@ class KernelChecksecCommand(GenericCommand):
 
         # CONFIG_RANDSTRUCT
         cfg = "CONFIG_RANDSTRUCT"
-        # In cases where kallsyms could be resolved, but kparam-sysctl could not be resolved correctly,
+        # In cases where kallsyms could be resolved, but ksysctl could not be resolved correctly,
         # it is assumed that the structure is strange.
-        # Each structure parsed by kparam-sysctl has no difference among kernel versions, except for `struct ctl_dir.inodes`.
+        # Each structure parsed by ksysctl has no difference among kernel versions, except for `struct ctl_dir.inodes`.
         # Additionally, the first member of struct ctl_table is a *char procname, which will almost certainly readable something.
         # If this fails, it can be determined that the randstruct is used.
-        kparam_ret = gdb.execute("kparam-sysctl --quiet --no-pager", to_string=True)
-        if kparam_ret == "":
-            additional = "kparam-sysctl was failed"
+        ksysctl_ret = gdb.execute("ksysctl --quiet --no-pager", to_string=True)
+        if ksysctl_ret == "":
+            additional = "ksysctl was failed"
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
         else:
-            additional = "kparam-sysctl was successful"
+            additional = "ksysctl was successful"
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
 
         # CONFIG_STATIC_USERMODEHELPER
@@ -44002,7 +44002,7 @@ class KernelAddressHeuristicFinder:
             return modprobe_path
 
         # plan 2
-        modprobe = get_kparam("kernel.modprobe")
+        modprobe = get_ksysctl("kernel.modprobe")
         if modprobe:
             return modprobe
 
@@ -44064,7 +44064,7 @@ class KernelAddressHeuristicFinder:
             return poweroff_cmd
 
         # plan 2
-        poweroff_cmd = get_kparam("kernel.poweroff_cmd")
+        poweroff_cmd = get_ksysctl("kernel.poweroff_cmd")
         if poweroff_cmd:
             return poweroff_cmd
 
@@ -44195,7 +44195,7 @@ class KernelAddressHeuristicFinder:
             return core_pattern
 
         # plan 2
-        core_pattern = get_kparam("kernel.core_pattern")
+        core_pattern = get_ksysctl("kernel.core_pattern")
         if core_pattern:
             return core_pattern
 
@@ -44876,7 +44876,7 @@ class KernelAddressHeuristicFinder:
             return mmap_min_addr
 
         # plan 2
-        mmap_min_addr = get_kparam("vm.mmap_min_addr")
+        mmap_min_addr = get_ksysctl("vm.mmap_min_addr")
         if mmap_min_addr:
             return mmap_min_addr
 
@@ -44934,7 +44934,7 @@ class KernelAddressHeuristicFinder:
             return sysctl_unprivileged_userfaultfd
 
         # plan 2
-        unprivileged_userfaultfd = get_kparam("vm.unprivileged_userfaultfd")
+        unprivileged_userfaultfd = get_ksysctl("vm.unprivileged_userfaultfd")
         if unprivileged_userfaultfd:
             return unprivileged_userfaultfd
         return None
@@ -44948,7 +44948,7 @@ class KernelAddressHeuristicFinder:
             return sysctl_unprivileged_bpf_disabled
 
         # plan 2
-        unprivileged_bpf_disabled = get_kparam("kernel.unprivileged_bpf_disabled")
+        unprivileged_bpf_disabled = get_ksysctl("kernel.unprivileged_bpf_disabled")
         if unprivileged_bpf_disabled:
             return unprivileged_bpf_disabled
 
@@ -45014,7 +45014,7 @@ class KernelAddressHeuristicFinder:
             return kptr_restrict
 
         # plan 2
-        kptr_restrict = get_kparam("kernel.kptr_restrict")
+        kptr_restrict = get_ksysctl("kernel.kptr_restrict")
         if kptr_restrict:
             return kptr_restrict
 
@@ -45080,7 +45080,7 @@ class KernelAddressHeuristicFinder:
             return sysctl_perf_event_paranoid
 
         # plan 2
-        perf_event_paranoid = get_kparam("kernel.perf_event_paranoid")
+        perf_event_paranoid = get_ksysctl("kernel.perf_event_paranoid")
         if perf_event_paranoid:
             return perf_event_paranoid
 
@@ -45158,7 +45158,7 @@ class KernelAddressHeuristicFinder:
             return get_dmesg_restrict
 
         # plan 2
-        dmesg_restrict = get_kparam("kernel.dmesg_restrict")
+        dmesg_restrict = get_ksysctl("kernel.dmesg_restrict")
         if dmesg_restrict:
             return dmesg_restrict
 
@@ -45232,7 +45232,7 @@ class KernelAddressHeuristicFinder:
             return kexec_load_disabled
 
         # plan 2
-        kexec_load_disabled = get_kparam("kernel.kexec_load_disabled")
+        kexec_load_disabled = get_ksysctl("kernel.kexec_load_disabled")
         if kexec_load_disabled:
             return kexec_load_disabled
         return None
@@ -45241,7 +45241,7 @@ class KernelAddressHeuristicFinder:
     @switch_to_intel_syntax
     def get_loadpin_enabled():
         # plan 1
-        loadpin_enabled = get_kparam("kernel.loadpin.enabled")
+        loadpin_enabled = get_ksysctl("kernel.loadpin.enabled")
         if loadpin_enabled:
             return loadpin_enabled
         return None
@@ -45255,7 +45255,7 @@ class KernelAddressHeuristicFinder:
             return ptrace_scope
 
         # plan 2
-        ptrace_scope = get_kparam("kernel.yama.ptrace_scope")
+        ptrace_scope = get_ksysctl("kernel.yama.ptrace_scope")
         if ptrace_scope:
             return ptrace_scope
         return None
@@ -50716,9 +50716,9 @@ class KernelOperationsCommand(GenericCommand):
 
 
 @register_command
-class KernelParamSysctlCommand(GenericCommand):
+class KernelSysctlCommand(GenericCommand):
     """Dump sysctl parameters."""
-    _cmdline_ = "kparam-sysctl"
+    _cmdline_ = "ksysctl"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
