@@ -45894,6 +45894,124 @@ class KernelAddressHeuristicFinder:
                                 return v
         return None
 
+    @staticmethod
+    @switch_to_intel_syntax
+    def get_prog_idr():
+        prog_idr = get_ksymaddr("prog_idr")
+        if prog_idr:
+            return prog_idr
+
+        kversion = KernelVersionCommand.kernel_version()
+
+        # plan 1 (available v4.13 or later)
+        if kversion and kversion >= "4.13":
+            bpf_prog_free_id = get_ksymaddr("bpf_prog_free_id.part.0") or get_ksymaddr("bpf_prog_free_id")
+            if bpf_prog_free_id:
+                res = gdb.execute("x/20i {:#x}".format(bpf_prog_free_id), to_string=True)
+                if is_x86_64():
+                    for line in res.splitlines():
+                        m = re.search(r"mov\s+rdi\s*,\s*(0x\S+)", line)
+                        if m:
+                            v = int(m.group(1), 16) & 0xffffffffffffffff
+                            if is_valid_addr(v):
+                                return v
+                elif is_x86_32():
+                    for line in res.splitlines():
+                        m = re.search(r"mov\s+eax\s*,\s*(0x\S+)", line)
+                        if m:
+                            v = int(m.group(1), 16) & 0xffffffff
+                            if is_valid_addr(v):
+                                return v
+                elif is_arm64():
+                    bases = {}
+                    add1time = {}
+                    for line in res.splitlines():
+                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
+                        if m:
+                            reg = m.group(1)
+                            base = int(m.group(2), 16)
+                            bases[reg] = base
+                            continue
+                        m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
+                        if m:
+                            dstreg = m.group(1)
+                            srcreg = m.group(2)
+                            v = int(m.group(3), 16)
+                            if srcreg in add1time:
+                                x = add1time[srcreg] + v
+                                if is_valid_addr(x):
+                                    return x
+                            if srcreg in bases:
+                                add1time[dstreg] = bases[srcreg] + v
+                                continue
+                elif is_arm32():
+                    for line in res.splitlines():
+                        m = re.search(r"ldr\s+\S+,\s*\[pc,\s*#(\d+)\]", line)
+                        if m:
+                            ofs = int(m.group(1), 0)
+                            pos = int(line.split()[0], 16)
+                            return read_int_from_memory(pos + 4 * 2 + ofs)
+        return None
+
+    @staticmethod
+    @switch_to_intel_syntax
+    def get_map_idr():
+        map_idr = get_ksymaddr("map_idr")
+        if map_idr:
+            return map_idr
+
+        kversion = KernelVersionCommand.kernel_version()
+
+        # plan 1 (available v4.13 or later)
+        if kversion and kversion >= "4.13":
+            bpf_map_free_id = get_ksymaddr("bpf_map_free_id")
+            if bpf_map_free_id:
+                res = gdb.execute("x/20i {:#x}".format(bpf_map_free_id), to_string=True)
+                if is_x86_64():
+                    for line in res.splitlines():
+                        m = re.search(r"mov\s+rdi\s*,\s*(0x\S+)", line)
+                        if m:
+                            v = int(m.group(1), 16) & 0xffffffffffffffff
+                            if is_valid_addr(v):
+                                return v
+                elif is_x86_32():
+                    for line in res.splitlines():
+                        m = re.search(r"mov\s+eax\s*,\s*(0x\S+)", line)
+                        if m:
+                            v = int(m.group(1), 16) & 0xffffffff
+                            if is_valid_addr(v):
+                                return v
+                elif is_arm64():
+                    bases = {}
+                    add1time = {}
+                    for line in res.splitlines():
+                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
+                        if m:
+                            reg = m.group(1)
+                            base = int(m.group(2), 16)
+                            bases[reg] = base
+                            continue
+                        m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
+                        if m:
+                            dstreg = m.group(1)
+                            srcreg = m.group(2)
+                            v = int(m.group(3), 16)
+                            if srcreg in add1time:
+                                x = add1time[srcreg] + v
+                                if is_valid_addr(x):
+                                    return x
+                            if srcreg in bases:
+                                add1time[dstreg] = bases[srcreg] + v
+                                continue
+                elif is_arm32():
+                    for line in res.splitlines():
+                        m = re.search(r"ldr\s+\S+,\s*\[pc,\s*#(\d+)\]", line)
+                        if m:
+                            ofs = int(m.group(1), 0)
+                            pos = int(line.split()[0], 16)
+                            return read_int_from_memory(pos + 4 * 2 + ofs)
+        return None
+
 
 @register_command
 class KernelbaseCommand(GenericCommand):
@@ -57563,6 +57681,276 @@ class KernelPipeCommand(GenericCommand):
         # dump
         self.out = []
         self.dump_pipe(pipe_files)
+
+        # print
+        gef_print("\n".join(self.out), less=not args.no_pager)
+        return
+
+
+@register_command
+class KernelBpfCommand(GenericCommand):
+    """Dump bpf information."""
+    _cmdline_ = "kbpf"
+    _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} -q\n".format(_cmdline_)
+    _example_ += "\n"
+    _example_ += "NOTE: This command needs CONFIG_RANDSTRUCT=n."
+
+    def parse_xarray(self, ptr, root=False):
+        if ptr == 0:
+            return []
+
+        ptr &= ~3 # untagged
+
+        if root:
+            node = read_int_from_memory(ptr + self.offset_head)
+            return self.parse_xarray(node)
+
+        shift = u8(read_memory(ptr + self.offset_shift, 1))
+        count = u8(read_memory(ptr + self.offset_count, 1))
+        slots = ptr + self.offset_slots
+        elems = []
+        for i in range(64): # 16 or 64
+            x = read_int_from_memory(slots + current_arch.ptrsize * i)
+            if x == 0:
+                continue
+            if shift:
+                elems += self.parse_xarray(x)
+            else:
+                elems.append(x)
+            count -= 1
+            if count == 0:
+                break
+
+        return elems
+
+    def initialize(self):
+        # get global address
+        prog_idr = KernelAddressHeuristicFinder.get_prog_idr()
+        if not prog_idr:
+            return False
+        if not self.quiet:
+            info("prog_idr: {:#x}".format(prog_idr))
+
+        map_idr = KernelAddressHeuristicFinder.get_map_idr()
+        if not map_idr:
+            return False
+        if not self.quiet:
+            info("map_idr: {:#x}".format(map_idr))
+
+        kversion = KernelVersionCommand.kernel_version()
+
+        # idr->idr_rt->xa_head
+        self.offset_head = 4 * 2
+        # xa_node->{shift,count,slots}
+        self.offset_shift = 0
+        self.offset_count = 2
+        self.offset_slots = current_arch.ptrsize * 5
+
+        # parse progs, maps
+        progs = self.parse_xarray(prog_idr, root=True)
+        maps = self.parse_xarray(map_idr, root=True)
+
+        # bpf_prog->{type,expected_attach_type,len,jited_len,tag,aux}
+        self.offset_prog_type = 4
+        self.offset_expected_attach_type = self.offset_prog_type + 4
+        self.offset_len = self.offset_expected_attach_type + 4
+        self.offset_jited_len = self.offset_len + 4
+        self.offset_tag = self.offset_jited_len + 4
+        if kversion >= "5.12":
+            self.offset_aux = align_address_to_size(self.offset_tag + 8, current_arch.ptrsize) + current_arch.ptrisize * 3
+            self.offset_func = self.offset_aux - current_arch.ptrsize
+        else:
+            self.offset_aux = align_address_to_size(self.offset_tag + 8, current_arch.ptrsize)
+            self.offset_func = self.offset_aux + current_arch.ptrsize * 2
+
+        # bpf_map->{type}
+        if maps:
+            cand = read_int_from_memory(maps[0] + current_arch.ptrsize * 2)
+            if cand == 0 or is_valid_addr(cand):
+                self.offset_map_type = current_arch.ptrsize * 3
+            else:
+                self.offset_map_type = current_arch.ptrsize * 2
+            self.offset_key_size = self.offset_map_type + 4
+            self.offset_value_size = self.offset_key_size + 4
+            self.offset_max_entries = self.offset_value_size + 4
+
+        return progs, maps
+
+    def dump_bpf(self, progs, maps):
+        defined_prog_types = [
+            "UNSPEC",
+            "SOCKET_FILTER",
+            "KPROBE",
+            "SCHED_CLS",
+            "SCHED_ACT",
+            "TRACEPOINT",
+            "XDP",
+            "PERF_EVENT",
+            "CGROUP_SKB",
+            "CGROUP_SOCK",
+            "LWT_IN",
+            "LWT_OUT",
+            "LWT_XMIT",
+            "SOCK_OPS",
+            "SK_SKB",
+            "CGROUP_DEVICE",
+            "SK_MSG",
+            "RAW_TRACEPOINT",
+            "CGROUP_SOCK_ADDR",
+            "LWT_SEG6LOCAL",
+            "LIRC_MODE2",
+            "SK_REUSEPORT",
+            "FLOW_DISSECTOR",
+            "CGROUP_SYSCTL",
+            "RAW_TRACEPOINT_WRITABLE",
+            "CGROUP_SOCKOPT",
+            "TRACING",
+            "STRUCT_OPS",
+            "EXT",
+            "LSM",
+            "SK_LOOKUP",
+        ]
+        defined_attach_types = [
+            "CGROUP_INET_INGRESS",
+            "CGROUP_INET_EGRESS",
+            "CGROUP_INET_SOCK_CREATE",
+            "CGROUP_SOCK_OPS",
+            "SK_SKB_STREAM_PARSER",
+            "SK_SKB_STREAM_VERDICT",
+            "CGROUP_DEVICE",
+            "SK_MSG_VERDICT",
+            "CGROUP_INET4_BIND",
+            "CGROUP_INET6_BIND",
+            "CGROUP_INET4_CONNECT",
+            "CGROUP_INET6_CONNECT",
+            "CGROUP_INET4_POST_BIND",
+            "CGROUP_INET6_POST_BIND",
+            "CGROUP_UDP4_SENDMSG",
+            "CGROUP_UDP6_SENDMSG",
+            "LIRC_MODE2",
+            "FLOW_DISSECTOR",
+            "CGROUP_SYSCTL",
+            "CGROUP_UDP4_RECVMSG",
+            "CGROUP_UDP6_RECVMSG",
+            "CGROUP_GETSOCKOPT",
+            "CGROUP_SETSOCKOPT",
+            "TRACE_RAW_TP",
+            "TRACE_FENTRY",
+            "TRACE_FEXIT",
+            "MODIFY_RETURN",
+            "LSM_MAC",
+            "TRACE_ITER",
+            "CGROUP_INET4_GETPEERNAME",
+            "CGROUP_INET6_GETPEERNAME",
+            "CGROUP_INET4_GETSOCKNAME",
+            "CGROUP_INET6_GETSOCKNAME",
+            "XDP_DEVMAP",
+            "CGROUP_INET_SOCK_RELEASE",
+            "XDP_CPUMAP",
+            "SK_LOOKUP",
+            "XDP",
+        ]
+
+        self.out.append(titlify("prog_idr"))
+        fmt = "{:3s} {:18s} {:23s} {:24s} {:18s} {:18s} {:18s}"
+        legend = ["#", "bpf_prog", "bpf_prog_type", "bpf_attach_type", "tag", "bpf_prog_aux", "bpf_func"]
+        self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+
+        for i, prog in enumerate(progs):
+            bpf_type = u32(read_memory(prog + self.offset_prog_type, 4))
+            bpf_attach_type = u32(read_memory(prog + self.offset_expected_attach_type, 4))
+            t1 = defined_prog_types[bpf_type]
+            t2 = defined_attach_types[bpf_attach_type]
+            tag = u64(read_memory(prog + self.offset_tag, 8))
+            aux = read_int_from_memory(prog + self.offset_aux)
+            func = read_int_from_memory(prog + self.offset_func)
+            self.out.append("{:<3d} {:#018x} {:23s} {:24s} {:#018x} {:#018x} {:#018x}".format(i, prog, t1, t2, tag, aux, func))
+
+        defined_map_types = [
+            "UNSPEC",
+            "HASH",
+            "ARRAY",
+            "PROG_ARRAY",
+            "PERF_EVENT_ARRAY",
+            "PERCPU_HASH",
+            "PERCPU_ARRAY",
+            "STACK_TRACE",
+            "CGROUP_ARRAY",
+            "LRU_HASH",
+            "LRU_PERCPU_HASH",
+            "LPM_TRIE",
+            "ARRAY_OF_MAPS",
+            "HASH_OF_MAPS",
+            "DEVMAP",
+            "SOCKMAP",
+            "CPUMAP",
+            "XSKMAP",
+            "SOCKHASH",
+            "CGROUP_STORAGE",
+            "REUSEPORT_SOCKARRAY",
+            "PERCPU_CGROUP_STORAGE",
+            "QUEUE",
+            "STACK",
+            "SK_STORAGE",
+            "DEVMAP_HASH",
+            "STRUCT_OPS",
+            "RINGBUF",
+            "INODE_STORAGE",
+        ]
+        self.out.append(titlify("map_idr"))
+        fmt = "{:3s} {:18s} {:21s} {:10s} {:10s} {:10s}"
+        legend = ["#", "bpf_map", "bpf_map_type", "key_size", "value_size", "max_ents"]
+        self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+        for i, m in enumerate(maps):
+            map_type = u32(read_memory(m + self.offset_map_type, 4))
+            t1 = defined_map_types[map_type]
+            key_size = u32(read_memory(m + self.offset_key_size, 4))
+            val_size = u32(read_memory(m + self.offset_value_size, 4))
+            max_ents = u32(read_memory(m + self.offset_max_entries, 4))
+            self.out.append("{:<3d} {:#018x} {:21s} {:#010x} {:#010x} {:#010x}".format(i, m, t1, key_size, val_size, max_ents))
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        self.quiet = args.quiet
+        if not args.quiet:
+            info("Wait for memory scan")
+
+        kversion = KernelVersionCommand.kernel_version()
+        if kversion < "4.20":
+            err("Unsupported v4.19 or before")
+            return
+
+        stv_bpf_ret = gdb.execute("syscall-table-view -f bpf --quiet --no-pager", to_string=True)
+        if "bpf" not in stv_bpf_ret:
+            err("bpf syscall is unimplemented")
+            return
+        elif "invalid bpf" in stv_bpf_ret:
+            err("bpf syscall is disabled")
+            return
+
+        # init
+        ret = self.initialize()
+        if ret is False:
+            return
+        progs, maps = ret
+
+        # dump
+        self.out = []
+        self.dump_bpf(progs, maps)
 
         # print
         gef_print("\n".join(self.out), less=not args.no_pager)

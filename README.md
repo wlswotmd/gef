@@ -209,6 +209,8 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kpipe.png)
 * `kconfig`: dumps kernel config if available.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kconfig.png)
+* `kbpf`: dumps bpf information.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kbpf.png)
 
 ### Qemu-system cooperation - Arch specific
 * `uefi-ovmf-info`: dumps addresses of some important structures in each boot phase of UEFI when OVMF is used.
