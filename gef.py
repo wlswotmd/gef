@@ -42643,7 +42643,7 @@ class DistanceCommand(GenericCommand):
 
         if args.address_b is not None:
             offset = abs(args.address_a - args.address_b)
-            gef_print("Offset: {:#x}".format(offset))
+            gef_print("Offset:  {:#x}".format(offset))
             return
 
         addr_a = lookup_address(args.address_a)
@@ -42652,12 +42652,14 @@ class DistanceCommand(GenericCommand):
             return
 
         if addr_a.section.path:
-            base_address = get_section_base_address_by_list(addr_a.section.path)
+            base_address = get_section_base_address(addr_a.section.path)
         else:
             base_address = addr_a.section.page_start
 
         offset = args.address_a - base_address
-        gef_print("Offset: {:#x}".format(offset))
+        gef_print("Address: {:#x}".format(args.address_a))
+        gef_print("Base:    {:#x}".format(base_address))
+        gef_print("Offset:  {:#x}".format(offset))
         return
 
 
