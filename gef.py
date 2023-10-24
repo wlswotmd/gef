@@ -24850,153 +24850,121 @@ def get_dereference_from_blacklist():
 
 @functools.lru_cache(maxsize=512)
 def dereference_from(addr):
-    """Create array like [Address(rax), Address(deref_of_rax), Address(deref_of_deref_of_rax), ..., str(msg)]"""
+    """Create dereference array."""
 
     if not is_alive():
-        return [format_address(addr)]
+        return [addr], None
 
-    string_color = get_gef_setting("theme.dereference_string")
-    max_recursion = get_gef_setting("dereference.max_recursion") or 4
-    nb_max_string_length = get_gef_setting("context.nb_max_string_length")
+    recursion = get_gef_setting("dereference.max_recursion") or 4
     blacklist = get_dereference_from_blacklist()
-    addr = lookup_address(align_address(addr))
-    msg = []
-    seen_addrs = []
-    recursion = 0
+    addr_list = []
+    error = None
 
-    # parse pattern
-    #   ... -> addr -> seen_address (loop)
-    #   ... -> addr (blacklist)
-    #   ... -> addr -> ...
-    #   ... -> string
-    #   ... -> value
-    while recursion < max_recursion + 1: # +1 is to determine adding "..." or not
+    while recursion > 0:
         # check loop
-        #   ... -> addr -> seen_address (loop)
-        if addr.value in seen_addrs:
-            # If the address 0x0 is mapped, the loop is detected at the address 0x0.
-            # but it is generally unnecessary information, so it is omitted.
-            if addr.value != 0:
-                msg.append("[loop detected]")
-            return msg
-        else:
-            seen_addrs.append(addr.value)
+        if addr in addr_list:
+            if addr == 0 and len(addr_list) == 1:
+                # the case that address 0x0 is valid and first element is 0x0 (i.e. telescope 0x0).
+                # but no error because it is generally unnecessary information.
+                addr_list.append(addr) # use [0, 0] instead of [0]
+            else:
+                error = "[loop detected]"
+            break
 
-        #   ... -> addr (blacklist)
-        for baddr in blacklist:
-            if baddr[0] <= addr.value < baddr[1]:
-                msg.append(addr)
-                msg.append("[blacklist detected]")
-                return msg
+        # not loop
+        addr_list.append(addr)
 
-        try:
-            # Is this value a pointer or a value?
-            # -- If it's a pointer, dereference
-            # -- If it's a value, deref is None
-            deref = addr.dereference()
-        except Exception:
-            # if addr is mapped to the HW device, an exception occurs. (not return None)
-            # So we add the address to blacklilst -> exit
-            start = addr.value & gef_getpagesize_mask()
-            end = start + gef_getpagesize()
-            err("Receive ignoring packets during access at {:#x}.".format(addr.value))
-            err("Add {:#x}-{:#x} to blacklist addresses".format(start, end))
-            new_blacklist = blacklist + [[start, end]]
-            set_gef_setting("dereference.blacklist", new_blacklist, str, "dereference blacklist to avoid timeout")
-            gdb.execute("gef save")
-            info("blacklist saved to .gef.rc, edit manually to clear")
-            info("try to exit. do restart")
-            os._exit(0)
+        # check blacklist
+        if any(bstart <= addr < bend for bstart, bend in blacklist):
+            error = "[blacklist detected]"
+            break
 
-        # reach to max_recursion. add "..." instead of addr object
-        if recursion == max_recursion:
-            msg.append("...")
-            return msg
+        # check non-address
+        if len(addr_list) > 1 and addr < 0x100:
+            break
 
-        if (deref is not None) and (0x100 < addr.value):
-            # it can be referenced
-            #   ... -> addr -> ...
-            msg.append(addr)
-            addr = lookup_address(deref)
-            recursion += 1
-            continue # goto next loop
+        # check non-address
+        if not is_valid_addr(addr):
+            break
 
-        else:
-            # if here, dereferencing addr has triggered a MemoryError, no need to go further
-            # but we should check if it is string or value
+        # goto next
+        addr = read_int_from_memory(addr)
+        recursion -= 1
 
-            # try to parse the string from prev
-            #   ... -> string
-            if len(msg) > 0: # need address of string
-                prev = msg[-1]
-                if is_ascii_string(prev.value):
-                    s = read_cstring_from_memory(prev.value)
-                    if len(s) < get_memory_alignment():
-                        txt = "{:s} ({:s}?)".format(format_address_long_fmt(addr.value), Color.colorify(repr(s), string_color))
-                    elif len(s) > nb_max_string_length:
-                        txt = Color.colorify("{:s}[...]".format(repr(s[:nb_max_string_length])), string_color)
-                    else:
-                        txt = Color.colorify("{:s}".format(repr(s)), string_color)
-                    msg.append(txt)
-                    return msg
-
-            # if not able to parse cleanly, simply use itself
-            #   ... -> value
-            msg.append(addr)
-            return msg
-
-    # something is wrong
-    raise
+    return addr_list, error
 
 
 @functools.lru_cache(maxsize=512)
-def to_string_dereference_from(value, join_start_idx=0):
-    """Create link list string like
-    0xXXXXXXXX(value) -> 0xYYYYYYYY(deref) -> 0xZZZZZZZZ(deref_deref) -> '...'"""
-    # dereference
-    addrs = dereference_from(value)
+def to_string_dereference_from(value, skip_idx=0):
+    """Create string from dereference array"""
+    string_color = get_gef_setting("theme.dereference_string")
+    nb_max_string_length = get_gef_setting("context.nb_max_string_length")
 
+    # dereference
+    addrs, error = dereference_from(value)
+
+    # if addrs has one element and it is address with error (e.g.: address_A -> [loop detected]),
+    # don't skip the element even if skip_idx=1
+    if skip_idx == 1:
+        if len(addrs) == 1:
+            if error == "[loop detected]":
+                skip_idx = 0
+
+    # add "..."
+    if error is None:
+        if addrs[-1] > 0x100 and is_valid_addr(addrs[-1]):
+            error = "..."
+
+    # replace to string if valid
     def to_ascii(v):
         ascii = string.ascii_letters + string.digits + string.punctuation + " "
         s = ""
-        while v & 0xff:
+        while v & 0xff: # \0
             if chr(v & 0xff) in ascii:
                 s += chr(v & 0xff)
             else:
-                s = ""
-                break
+                return ""
             v >>= 8
         return s
 
-    # value is not valid address
-    if join_start_idx == 0 and len(addrs) == 1:
-        s = to_ascii(value)
-        if s:
-            s = Color.colorify(repr(s), get_gef_setting("theme.dereference_string"))
-            return "{:s} ({:s}?)".format(format_address_long_fmt(value), s)
-        else:
-            return format_address_long_fmt(value)
-
-    # for example, 1st element is address and 2nd element is "[...]".
-    # In this case we don't omit the 1st element even if join_start_idx==1
-    if join_start_idx >= 1:
-        try:
-            if addrs[join_start_idx].startswith("["):
-                join_start_idx -= 1
-        except Exception:
+    last_elem = None
+    if error is None:
+        s = to_ascii(addrs[-1])
+        if len(s) < 2:
             pass
+        elif 2 <= len(s) < current_arch.ptrsize:
+            last_elem = "{:s} ({:s}?)".format(format_address_long_fmt(addrs[-1]), Color.colorify(repr(s), string_color))
+            addrs = addrs[:-1]
+        else: # len(s) == current_arch.ptrsize
+            if len(addrs) >= 2 and is_valid_addr(addrs[-2]):
+                # read more string
+                s = read_cstring_from_memory(addrs[-2])
+                if s:
+                    if len(s) > nb_max_string_length:
+                        last_elem = Color.colorify("{:s}[...]".format(repr(s[:nb_max_string_length])), string_color)
+                    else:
+                        last_elem = Color.colorify("{:s}".format(repr(s)), string_color)
+                    addrs = addrs[:-1]
+                else:
+                    # Ignore when the string that do not end with a null character
+                    pass
+            else:
+                # fallback
+                last_elem = "{:s} ({:s}?)".format(format_address_long_fmt(addrs[-1]), Color.colorify(repr(s), string_color))
+                addrs = addrs[:-1]
 
-    # create link list
-    link = ""
-    for addr in addrs[join_start_idx:]:
-        if link:
-            link += " {:s} ".format(RIGHT_ARROW)
-        if isinstance(addr, Address):
-            link += addr.long_fmt()
-            link += get_symbol_string(addr.value)
-        else:
-            link += addr # actually this is msg
-    return link
+    # others
+    msg = []
+    for addr in addrs[skip_idx:]:
+        address = lookup_address(addr)
+        msg.append(address.long_fmt() + get_symbol_string(addr))
+
+    if error:
+        msg.append(error)
+    elif last_elem:
+        msg.append(last_elem)
+
+    return " {:s} ".format(RIGHT_ARROW).join(msg)
 
 
 @register_command
@@ -25021,12 +24989,16 @@ class DereferenceCommand(GenericCommand):
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} $sp 20".format(_cmdline_)
+    _example_ = "{:s} $sp 20\n".format(_cmdline_)
+    _example_ += "\n"
+    _example_ += "NOTE: Use blacklist feature if reading the address causes process crash.\n"
+    _example_ += "e.g.: `gef config dereference.blacklist \"[ [0xffffffffc9000000, 0xffffffffc9001000], ]\"`\n"
+    _example_ += "then `gef save`"
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         self.add_setting("max_recursion", 4, "Maximum level of pointer recursion")
-        self.add_setting("blacklist", "[]", "Dereference black address")
+        self.add_setting("blacklist", "[]", "Dereference black list address ranges (e.g.: \"[ [start1, end1], [start2, end2], ]\")")
         return
 
     @staticmethod
@@ -25038,16 +25010,15 @@ class DereferenceCommand(GenericCommand):
         offset = idx * memalign
         current_address = align_address(addr + offset)
 
-        # addrs: [Address(rax), Address(deref_of_rax), Address(deref_of_deref_of_rax), ..., str(msg)]
-        addrs = dereference_from(current_address)
-        if len(addrs) == 1: # cannot access this area
+        addrs, error = dereference_from(current_address)
+        if len(addrs) == 1 and not error: # cannot access this area
             raise
 
         # create address link list
-        link = to_string_dereference_from(current_address, join_start_idx=1)
+        link = to_string_dereference_from(current_address, skip_idx=1)
 
         # craete line of one entry
-        addr_colored = Color.colorify(format_address(addrs[0].value), base_address_color)
+        addr_colored = Color.colorify(format_address(addrs[0]), base_address_color)
         if tag:
             line = f"{addr_colored}{VERTICAL_LINE}{offset:+#07x}{VERTICAL_LINE}{idx:+04d}: {tag:s}: {link:{memalign * 2 + 2}s}"
         else:
