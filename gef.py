@@ -45899,6 +45899,9 @@ class KernelAddressHeuristicFinder:
                                 x = bases[srcreg] + v
                                 if is_valid_addr(x) and is_valid_addr(read_int_from_memory(x)):
                                     return x
+                        m = re.search(r"ret", line)
+                        if m:
+                            return None # maybe CONFIG_NUMA=n
         return None
 
     @staticmethod
@@ -68409,7 +68412,6 @@ class Page2VirtCommand(GenericCommand):
     def initialize(self):
         if is_x86_64():
             if self.vmemmap is None:
-                # assume CONFIG_SPARSEMEM_VMEMMAP
                 vmemmap_base = KernelAddressHeuristicFinder.get_vmemmap_base()
                 if vmemmap_base:
                     self.vmemmap = read_int_from_memory(vmemmap_base)
@@ -68422,23 +68424,42 @@ class Page2VirtCommand(GenericCommand):
         elif is_x86_32():
             pass
         elif is_arm64():
-            # assume CONFIG_SPARSEMEM_VMEMMAP
+            T1SZ = (get_register("$TCR_EL1") >> 16) & 0b111111
+            region_end = 2 ** 64
+            region_start = region_end - (2 ** (64 - T1SZ))
+            region_bits = int(math.log2(region_end - region_start))
+
             FEAT_LVA = ((get_register("$ID_AA64MMFR2_EL1") >> 16) & 0b1111) == 0b0001
             if FEAT_LVA:
-                CONFIG_ARM64_VA_BITS = 52
+                CONFIG_ARM64_VA_BITS = min(52, region_bits)
             else:
-                CONFIG_ARM64_VA_BITS = 48
+                CONFIG_ARM64_VA_BITS = region_bits
 
             VA_BITS = CONFIG_ARM64_VA_BITS
+            if VA_BITS > 48:
+                VA_BITS_MIN = 48
+            else:
+                VA_BITS_MIN = VA_BITS
+
             PAGE_SHIFT = 12
             self.PAGE_SIZE = 1 << PAGE_SHIFT
             STRUCT_PAGE_MAX_SHIFT = 6
             self.sizeof_struct_page = 2 ** STRUCT_PAGE_MAX_SHIFT
-            self.PAGE_OFFSET = -(1 << (VA_BITS))
 
-            _PAGE_END = lambda va: -(1 << ((va) - 1))
-            VMEMMAP_SIZE = ((_PAGE_END(VA_BITS) - self.PAGE_OFFSET) >> (PAGE_SHIFT - STRUCT_PAGE_MAX_SHIFT))
-            self.VMEMMAP_START = (-VMEMMAP_SIZE - 0x00200000) & 0xffffffffffffffff
+            kversion = KernelVersionCommand.kernel_version()
+            if kversion < "5.4":
+                self.PAGE_OFFSET = 0xffffffffffffffff - (1 << (VA_BITS - 1)) + 1
+                VMEMMAP_SIZE = 1 << (VA_BITS - PAGE_SHIFT - 1 + STRUCT_PAGE_MAX_SHIFT)
+                self.VMEMMAP_START = self.PAGE_OFFSET - VMEMMAP_SIZE
+            elif kversion < "5.12":
+                self.PAGE_OFFSET = -(1 << (VA_BITS))
+                _PAGE_END = lambda va: -(1 << ((va) - 1))
+                VMEMMAP_SIZE = ((_PAGE_END(VA_BITS_MIN) - self.PAGE_OFFSET) >> (PAGE_SHIFT - STRUCT_PAGE_MAX_SHIFT))
+                self.VMEMMAP_START = (-VMEMMAP_SIZE - 0x00200000) & 0xffffffffffffffff
+            else: # v5.12~
+                self.PAGE_OFFSET = -(1 << (VA_BITS))
+                VMEMMAP_SHIFT = PAGE_SHIFT - STRUCT_PAGE_MAX_SHIFT
+                self.VMEMMAP_START = -(1 << (VA_BITS - VMEMMAP_SHIFT)) & 0xffffffffffffffff
             return True
         elif is_arm32():
             pass
@@ -68447,7 +68468,6 @@ class Page2VirtCommand(GenericCommand):
     def page2virt(self, page):
         # https://qiita.com/akachochin/items/121d2bf3aa1cfc9bb95a
         if is_x86_64():
-            # assume CONFIG_SPARSEMEM_VMEMMAP
             paddr = (page - self.vmemmap) << 6
             for vstart, _vend, pstart, pend in self.maps:
                 if pstart <= paddr < pend:
@@ -68457,8 +68477,13 @@ class Page2VirtCommand(GenericCommand):
         elif is_x86_32():
             pass
         elif is_arm64():
-            idx = ((page - self.VMEMMAP_START) & 0xffffffffffffffff) // self.sizeof_struct_page
-            addr = self.PAGE_OFFSET + idx * self.PAGE_SIZE
+            kversion = KernelVersionCommand.kernel_version()
+            if kversion < "5.4":
+                off = ((page & ~self.VMEMMAP_START) & 0xffffffffffffffff) * self.PAGE_SIZE // self.sizeof_struct_page
+                addr = self.PAGE_OFFSET + off
+            else: # v5.4~
+                idx = ((page - self.VMEMMAP_START) & 0xffffffffffffffff) // self.sizeof_struct_page
+                addr = self.PAGE_OFFSET + idx * self.PAGE_SIZE
             virt = addr & 0xffffffffffffffff
             if is_valid_addr(virt):
                 return virt
@@ -68469,82 +68494,8 @@ class Page2VirtCommand(GenericCommand):
             pass
         return None
 
-    @parse_args
-    @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
-    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
-    @only_if_in_kernel
-    def do_invoke(self, args):
-        self.dont_repeat()
-
-        ret = self.initialize()
-        if ret is False:
-            err("Failed to initialize")
-            return
-
-        vaddr = self.page2virt(args.page)
-        if vaddr is None:
-            err("Failed to resolve")
-            return
-
-        gef_print("Page: {:#x} -> Virt: {:#x}".format(args.page, vaddr))
-        return
-
-
-@register_command
-class Virt2PageCommand(GenericCommand):
-    """Transfer from virtual address to page."""
-    _cmdline_ = "virt2page"
-    _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
-
-    parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("virt", metavar="ADDRESS", type=parse_address, help="the virtual address you want to translate.")
-    _syntax_ = parser.format_help()
-
-    def __init__(self, *args, **kwargs):
-        super().__init__()
-        self.vmemmap = None
-        return
-
-    def initialize(self):
-        if is_x86_64():
-            if self.vmemmap is None:
-                # assume CONFIG_SPARSEMEM_VMEMMAP
-                vmemmap_base = KernelAddressHeuristicFinder.get_vmemmap_base()
-                if vmemmap_base:
-                    self.vmemmap = read_int_from_memory(vmemmap_base)
-            if self.vmemmap:
-                info("vmemmap: {:#x}".format(self.vmemmap))
-            if self.vmemmap:
-                return True
-        elif is_x86_32():
-            pass
-        elif is_arm64():
-            # assume CONFIG_SPARSEMEM_VMEMMAP
-            FEAT_LVA = ((get_register("$ID_AA64MMFR2_EL1") >> 16) & 0b1111) == 0b0001
-            if FEAT_LVA:
-                CONFIG_ARM64_VA_BITS = 52
-            else:
-                CONFIG_ARM64_VA_BITS = 48
-
-            VA_BITS = CONFIG_ARM64_VA_BITS
-            PAGE_SHIFT = 12
-            self.PAGE_SIZE = 1 << PAGE_SHIFT
-            STRUCT_PAGE_MAX_SHIFT = 6
-            self.sizeof_struct_page = 2 ** STRUCT_PAGE_MAX_SHIFT
-            self.PAGE_OFFSET = -(1 << (VA_BITS))
-
-            _PAGE_END = lambda va: -(1 << ((va) - 1))
-            VMEMMAP_SIZE = ((_PAGE_END(VA_BITS) - self.PAGE_OFFSET) >> (PAGE_SHIFT - STRUCT_PAGE_MAX_SHIFT))
-            self.VMEMMAP_START = (-VMEMMAP_SIZE - 0x00200000) & 0xffffffffffffffff
-            return True
-        elif is_arm32():
-            pass
-        return False
-
     def virt2page(self, vaddr):
         if is_x86_64():
-            # assume CONFIG_SPARSEMEM_VMEMMAP
             ret = gdb.execute("monitor gva2gpa {:#x}".format(vaddr), to_string=True)
             r = re.search(r"gpa: (0x\S+)", ret)
 
@@ -68558,9 +68509,13 @@ class Virt2PageCommand(GenericCommand):
         elif is_x86_32():
             pass
         elif is_arm64():
-            # assume CONFIG_SPARSEMEM_VMEMMAP
-            idx = ((vaddr - self.PAGE_OFFSET) & 0xffffffffffffffff) // self.PAGE_SIZE
-            addr = self.VMEMMAP_START + idx * self.sizeof_struct_page
+            kversion = KernelVersionCommand.kernel_version()
+            if kversion < "5.4":
+                off = ((vaddr & ~self.PAGE_OFFSET) & 0xffffffffffffffff) // self.PAGE_SIZE * self.sizeof_struct_page
+                addr = self.VMEMMAP_START + off
+            else:
+                idx = ((vaddr - self.PAGE_OFFSET) & 0xffffffffffffffff) // self.PAGE_SIZE
+                addr = self.VMEMMAP_START + idx * self.sizeof_struct_page
             page = addr & 0xffffffffffffffff
             if is_valid_addr(page):
                 return page
@@ -68578,6 +68533,48 @@ class Virt2PageCommand(GenericCommand):
     @only_if_in_kernel
     def do_invoke(self, args):
         self.dont_repeat()
+
+        kversion = KernelVersionCommand.kernel_version()
+        if is_arm64() and kversion < "4.7":
+            err("Unsupported (kernel is too old)")
+            return
+
+        ret = self.initialize()
+        if ret is False:
+            err("Failed to initialize")
+            return
+
+        vaddr = self.page2virt(args.page)
+        if vaddr is None:
+            err("Failed to resolve")
+            return
+
+        gef_print("Page: {:#x} -> Virt: {:#x}".format(args.page, vaddr))
+        return
+
+
+@register_command
+class Virt2PageCommand(Page2VirtCommand):
+    """Transfer from virtual address to page."""
+    _cmdline_ = "virt2page"
+    _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("virt", metavar="ADDRESS", type=parse_address, help="the virtual address you want to translate.")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        kversion = KernelVersionCommand.kernel_version()
+        if is_arm64() and kversion < "4.7":
+            err("Unsupported (kernel is too old)")
+            return
 
         virt = args.virt
         if args.virt & 0xfff:
