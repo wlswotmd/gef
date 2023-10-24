@@ -57462,40 +57462,13 @@ class KernelPipeCommand(GenericCommand):
         self.sizeof_pipe_buffer = align_address_to_size(self.offset_flags + 4, current_arch.ptrsize) + current_arch.ptrsize
         if not self.quiet:
             info("sizeof(pipe_buffer): {:#x}".format(self.sizeof_pipe_buffer))
-
-        # vmemmap
-        if is_x86_64():
-            # CONFIG_SPARSEMEM_VMEMMAP
-            vmemmap_base = KernelAddressHeuristicFinder.get_vmemmap_base()
-            if vmemmap_base:
-                self.vmemmap = read_int_from_memory(vmemmap_base)
-            else:
-                kinfo = KernelbaseCommand.get_kernel_base()
-                if not kinfo.has_none:
-                    found_kbase = False
-                    for vaddr, size, _perm in kinfo.maps[::-1]:
-                        if found_kbase and size >= 0x200000:
-                            self.vmemmap = vaddr
-                            break
-                        if vaddr == kinfo.kbase:
-                            found_kbase = True
-                            continue
-            if not self.quiet:
-                info("vmemmap: {:#x}".format(self.vmemmap))
-
-        self.maps = V2PCommand.get_maps(None)
-
         return pipe_files
 
     def page2virt(self, page):
-        if is_x86_64():
-            # CONFIG_SPARSEMEM_VMEMMAP
-            paddr = (page - self.vmemmap) << 6
-            for vstart, _vend, pstart, pend in self.maps:
-                if pstart <= paddr < pend:
-                    offset = paddr - pstart
-                    vaddr = vstart + offset
-                    return vaddr
+        ret = gdb.execute("page2virt {:#x}".format(page), to_string=True)
+        r = re.search(r"Virt: (\S+)", ret)
+        if r:
+            return int(r.group(1), 16)
         return None
 
     def get_flags_str(self, flags_value):
