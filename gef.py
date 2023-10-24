@@ -57161,7 +57161,7 @@ class BuddyDumpCommand(GenericCommand):
 
             # address info
             virt = self.page2virt(page)
-            phys = V2PCommand.v2p(virt, self.maps)
+            phys = Virt2PhysCommand.v2p(virt, self.maps)
             virt_str = "???"
             phys_str = "???"
             if virt:
@@ -57249,7 +57249,7 @@ class BuddyDumpCommand(GenericCommand):
             return
 
         # do not use cache
-        self.maps = V2PCommand.get_maps(None)
+        self.maps = Virt2PhysCommand.get_maps(None)
         if self.maps is None:
             self.quiet_err("Failed to resolve maps")
             return
@@ -61635,7 +61635,7 @@ class XSecureMemAddrCommand(GenericCommand):
 
     @staticmethod
     def virt2phys(vaddr, verbose=False): # vaddr -> addr1 or None
-        maps = V2PCommand.get_maps(FORCE_PREFIX_S=True, verbose=verbose)
+        maps = Virt2PhysCommand.get_maps(FORCE_PREFIX_S=True, verbose=verbose)
         if maps is None:
             return None
         for vstart, vend, pstart, _pend in maps:
@@ -61649,7 +61649,7 @@ class XSecureMemAddrCommand(GenericCommand):
 
     @staticmethod
     def phys2virt(paddr, verbose=False): # paddr -> [addr1, addr2, ...] or []
-        maps = V2PCommand.get_maps(FORCE_PREFIX_S=True, verbose=verbose)
+        maps = Virt2PhysCommand.get_maps(FORCE_PREFIX_S=True, verbose=verbose)
         if maps is None:
             return []
         result = []
@@ -63952,7 +63952,7 @@ def get_maps_by_pagewalk(command):
 
 
 @register_command
-class V2PCommand(GenericCommand):
+class Virt2PhysCommand(GenericCommand):
     """Transfer from virtual address to physical address."""
     _cmdline_ = "v2p"
     _category_ = "08-a. Qemu-system Cooperation - General"
@@ -64014,46 +64014,6 @@ class V2PCommand(GenericCommand):
                 return paddr
         return None
 
-    @parse_args
-    @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
-    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
-    def do_invoke(self, args):
-        self.dont_repeat()
-
-        FORCE_PREFIX_S = None
-        if is_arm32() or is_arm64():
-            if args.force_normal:
-                FORCE_PREFIX_S = False
-            elif args.force_secure:
-                FORCE_PREFIX_S = True
-
-        # do not use cache
-        maps = self.get_maps(FORCE_PREFIX_S, args.verbose)
-        if maps is None:
-            return
-        paddr = self.v2p(args.address, maps)
-        if paddr:
-            gef_print("Virt: {:#x} -> Phys: {:#x}".format(args.address, paddr))
-        return
-
-
-@register_command
-class P2VCommand(GenericCommand):
-    """Transfer from physical address to virtual address."""
-    _cmdline_ = "p2v"
-    _category_ = "08-a. Qemu-system Cooperation - General"
-
-    parser = argparse.ArgumentParser(prog=_cmdline_)
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument("-S", dest="force_secure", action="store_true",
-                       help="ARMv7: use TTBRn_ELm_S for parsing start register. ARMv8: heuristic search the memory of qemu-system.")
-    group.add_argument("-s", dest="force_normal", action="store_true",
-                       help="ARMv7/v8: use TTBRn_ELm for parsing start register.")
-    parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="the address of data you want to translate.")
-    parser.add_argument("-v", "--verbose", action="store_true", help="verbose output (for arm64 secure memory).")
-    _syntax_ = parser.format_help()
-
     @staticmethod
     def p2v(address, maps):
         vaddrs = []
@@ -64079,7 +64039,47 @@ class P2VCommand(GenericCommand):
                 FORCE_PREFIX_S = True
 
         # do not use cache
-        maps = V2PCommand.get_maps(FORCE_PREFIX_S, args.verbose)
+        maps = self.get_maps(FORCE_PREFIX_S, args.verbose)
+        if maps is None:
+            return
+        paddr = self.v2p(args.address, maps)
+        if paddr:
+            gef_print("Virt: {:#x} -> Phys: {:#x}".format(args.address, paddr))
+        return
+
+
+@register_command
+class Phys2VirtCommand(Virt2PhysCommand):
+    """Transfer from physical address to virtual address."""
+    _cmdline_ = "p2v"
+    _category_ = "08-a. Qemu-system Cooperation - General"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("-S", dest="force_secure", action="store_true",
+                       help="ARMv7: use TTBRn_ELm_S for parsing start register. ARMv8: heuristic search the memory of qemu-system.")
+    group.add_argument("-s", dest="force_normal", action="store_true",
+                       help="ARMv7/v8: use TTBRn_ELm for parsing start register.")
+    parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="the address of data you want to translate.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="verbose output (for arm64 secure memory).")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        FORCE_PREFIX_S = None
+        if is_arm32() or is_arm64():
+            if args.force_normal:
+                FORCE_PREFIX_S = False
+            elif args.force_secure:
+                FORCE_PREFIX_S = True
+
+        # do not use cache
+        maps = self.get_maps(FORCE_PREFIX_S, args.verbose)
         if maps is None:
             return
 
@@ -68418,7 +68418,7 @@ class Page2VirtCommand(GenericCommand):
             if self.vmemmap:
                 info("vmemmap: {:#x}".format(self.vmemmap))
             if self.maps is None:
-                self.maps = V2PCommand.get_maps(None)
+                self.maps = Virt2PhysCommand.get_maps(None)
             if self.vmemmap and self.maps:
                 return True
         elif is_x86_32():
