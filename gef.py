@@ -45861,6 +45861,8 @@ class KernelAddressHeuristicFinder:
     @staticmethod
     @switch_to_intel_syntax
     def get_node_data():
+        # when CONFIG_NUMA=y
+
         # plan 1 (directly)
         node_data = get_ksymaddr("node_data")
         if node_data:
@@ -45872,19 +45874,38 @@ class KernelAddressHeuristicFinder:
         if kversion and kversion >= "2.6.17":
             first_online_pgdat = get_ksymaddr("first_online_pgdat")
             if first_online_pgdat:
-                res = gdb.execute("x/10i {:#x}".format(first_online_pgdat), to_string=True)
+                res = gdb.execute("x/20i {:#x}".format(first_online_pgdat), to_string=True)
                 if is_x86_64():
                     for line in res.splitlines():
                         m = re.search(r"mov.*QWORD PTR \[.*([-+]0x\S+)\]", line)
                         if m:
                             v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if is_valid_addr(v):
+                            if is_valid_addr(v) and is_valid_addr(read_int_from_memory(v)):
                                 return v
+                elif is_arm64():
+                    bases = {}
+                    for line in res.splitlines():
+                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
+                        if m:
+                            reg = m.group(1)
+                            base = int(m.group(2), 16)
+                            bases[reg] = base
+                            continue
+                        m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
+                        if m:
+                            srcreg = m.group(2)
+                            v = int(m.group(3), 16)
+                            if srcreg in bases:
+                                x = bases[srcreg] + v
+                                if is_valid_addr(x) and is_valid_addr(read_int_from_memory(x)):
+                                    return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_node_data0():
+        # when CONFIG_NUMA=n
+
         kversion = KernelVersionCommand.kernel_version()
 
         # plan 1 (available v2.6.17 or later)
@@ -45905,6 +45926,26 @@ class KernelAddressHeuristicFinder:
                         if m:
                             if v:
                                 return v
+                elif is_arm64():
+                    bases = {}
+                    x = None
+                    for line in res.splitlines():
+                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
+                        if m:
+                            reg = m.group(1)
+                            base = int(m.group(2), 16)
+                            bases[reg] = base
+                            continue
+                        m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
+                        if m:
+                            srcreg = m.group(2)
+                            v = int(m.group(3), 16)
+                            if srcreg in bases:
+                                x = bases[srcreg] + v
+                        m = re.search(r"ret", line)
+                        if m:
+                            if x:
+                                return x
         return None
 
     @staticmethod
@@ -57177,7 +57218,7 @@ class BuddyDumpCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
-    @only_if_specific_arch(arch=("x86_64",))
+    @only_if_specific_arch(arch=("x86_64", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
         self.dont_repeat()
@@ -57199,7 +57240,7 @@ class BuddyDumpCommand(GenericCommand):
             self.order_filter = args.order
             self.mtype_filter = args.mtype
 
-        # initialized
+        # initialize
         self.quiet_info("Wait for memory scan")
         if not self.initialize():
             return
@@ -68332,7 +68373,7 @@ class PagewalkWithHintsCommand(GenericCommand):
             self.resolve_direct_map()
             self.resolve_vmalloc()
             self.resolve_page()
-            self.resolve_buddy()
+        self.resolve_buddy()
         self.resolve_kstack()
         self.resolve_each_slab()
         self.resolve_module()
