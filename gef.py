@@ -44374,6 +44374,17 @@ class KernelAddressHeuristicFinder:
         page_offset_base = KernelAddressHeuristicFinder.get_page_offset_base()
         if page_offset_base:
             return page_offset_base - current_arch.ptrsize * 2
+
+        # plan 3
+        kinfo = KernelbaseCommand.get_kernel_base()
+        if not kinfo.has_none:
+            found_kbase = False
+            for vaddr, size, _perm in kinfo.maps[::-1]:
+                if found_kbase and size >= 0x200000:
+                    return vaddr
+                if vaddr == kinfo.kbase:
+                    found_kbase = True
+                    continue
         return None
 
     @staticmethod
@@ -54268,28 +54279,6 @@ class SlubDumpCommand(GenericCommand):
         if not self.quiet:
             info("offsetof(kmem_cache_node, partial): {:#x}".format(self.kmem_cache_node_offset_partial))
 
-        # vmemmap
-        self.vmemmap = None
-        if is_x86_64():
-            # CONFIG_SPARSEMEM_VMEMMAP
-            vmemmap_base = KernelAddressHeuristicFinder.get_vmemmap_base()
-            if vmemmap_base:
-                self.vmemmap = read_int_from_memory(vmemmap_base)
-            else:
-                kinfo = KernelbaseCommand.get_kernel_base()
-                if not kinfo.has_none:
-                    found_kbase = False
-                    for vaddr, size, _perm in kinfo.maps[::-1]:
-                        if found_kbase and size >= 0x200000:
-                            self.vmemmap = vaddr
-                            break
-                        if vaddr == kinfo.kbase:
-                            found_kbase = True
-                            continue
-        if not self.quiet:
-            if self.vmemmap:
-                info("vmemmap: {:#x}".format(self.vmemmap))
-
         self.initialized = True
         return True
 
@@ -54354,18 +54343,10 @@ class SlubDumpCommand(GenericCommand):
         return align_address(kmem_cache_cpu)
 
     def page2virt(self, page, kmem_cache, freelist_fastpath=()):
-        # https://qiita.com/akachochin/items/121d2bf3aa1cfc9bb95a
-
-        if is_x86_64() and self.vmemmap:
-            if self.maps is None:
-                self.maps = V2PCommand.get_maps(None)
-            # CONFIG_SPARSEMEM_VMEMMAP
-            paddr = (page["address"] - self.vmemmap) << 6
-            for vstart, _vend, pstart, pend in self.maps:
-                if pstart <= paddr < pend:
-                    offset = paddr - pstart
-                    vaddr = vstart + offset
-                    return vaddr
+        ret = gdb.execute("page2virt {:#x}".format(page["address"]), to_string=True)
+        r = re.search(r"Virt: (\S+)", ret)
+        if r:
+            return int(r.group(1), 16)
 
         # setup for heuristic search from freelist
         freelist = list(freelist_fastpath) + page["freelist"]
@@ -55103,28 +55084,6 @@ class SlubTinyDumpCommand(GenericCommand):
         if not self.quiet:
             info("offsetof(kmem_cache_node, partial): {:#x}".format(self.kmem_cache_node_offset_partial))
 
-        # vmemmap
-        self.vmemmap = None
-        if is_x86_64():
-            # CONFIG_SPARSEMEM_VMEMMAP
-            vmemmap_base = KernelAddressHeuristicFinder.get_vmemmap_base()
-            if vmemmap_base:
-                self.vmemmap = read_int_from_memory(vmemmap_base)
-            else:
-                kinfo = KernelbaseCommand.get_kernel_base()
-                if not kinfo.has_none:
-                    found_kbase = False
-                    for vaddr, size, _perm in kinfo.maps[::-1]:
-                        if found_kbase and size >= 0x200000:
-                            self.vmemmap = vaddr
-                            break
-                        if vaddr == kinfo.kbase:
-                            found_kbase = True
-                            continue
-        if not self.quiet:
-            if self.vmemmap:
-                info("vmemmap: {:#x}".format(self.vmemmap))
-
         self.initialized = True
         return True
 
@@ -55175,18 +55134,10 @@ class SlubTinyDumpCommand(GenericCommand):
         return read_cstring_from_memory(name_addr)
 
     def page2virt(self, page, kmem_cache):
-        # https://qiita.com/akachochin/items/121d2bf3aa1cfc9bb95a
-
-        if is_x86_64() and self.vmemmap:
-            if self.maps is None:
-                self.maps = V2PCommand.get_maps(None)
-            # CONFIG_SPARSEMEM_VMEMMAP
-            paddr = (page["address"] - self.vmemmap) << 6
-            for vstart, _vend, pstart, pend in self.maps:
-                if pstart <= paddr < pend:
-                    offset = paddr - pstart
-                    vaddr = vstart + offset
-                    return vaddr
+        ret = gdb.execute("page2virt {:#x}".format(page["address"]), to_string=True)
+        r = re.search(r"Virt: (\S+)", ret)
+        if r:
+            return int(r.group(1), 16)
 
         # setup for heuristic search from freelist
         freelist = page["freelist"]
