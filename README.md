@@ -195,7 +195,7 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kdmesg.png)
 * `pagewalk-with-hints`: prints pagetables with description.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-with-hints.png)
-* `slub-contains`: resolves which `kmem_cache` certain address (object) belongs to (only x64).
+* `slub-contains`: resolves which `kmem_cache` certain address (object) belongs to.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slub-contains.png)
     * If the chunk of `slub` that the address (object) belongs to is all used, it cannot be displayed with `slub-dump`.
     * Even with such an address (object), this command may be able to resolve `kmem_cache`.

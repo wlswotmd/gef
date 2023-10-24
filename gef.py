@@ -47595,7 +47595,7 @@ class KernelTaskCommand(GenericCommand):
             for i in range(0x40):
                 cand_offset_cred = current_arch.ptrsize * i
                 f_cred = read_int_from_memory(file + cand_offset_cred)
-                ret = gdb.execute("slub-contains {:#x}".format(f_cred), to_string=True)
+                ret = gdb.execute("slub-contains --quiet {:#x}".format(f_cred), to_string=True)
                 if "cred_jar" not in Color.remove_color(ret):
                     continue
                 break
@@ -56725,34 +56725,20 @@ class SlubContainsCommand(GenericCommand):
         if self.verbose:
             info("offsetof(page, inuse_objects_frozen): {:#x}".format(self.page_offset_inuse_objects_frozen))
 
-        r = re.search(r"vmemmap: (0x\S+)", res)
-        if not r:
-            return False
-        self.vmemmap = int(r.group(1), 16)
-        if self.verbose:
-            info("vmemmap: {:#x}".format(self.vmemmap))
-
         self.initialized = True
         return True
 
     def virt2page(self, vaddr):
-        # assume CONFIG_SPARSEMEM_VMEMMAP
-        ret = gdb.execute("monitor gva2gpa {:#x}".format(vaddr), to_string=True)
-        r = re.search(r"gpa: (0x\S+)", ret)
-
-        if not r:
-            ret = gdb.execute("v2p {:#x}".format(vaddr), to_string=True)
-            r = re.search(r"Virt: 0x\S+ -> Phys: (0x\S+)", ret)
-
+        ret = gdb.execute("virt2page {:#x}".format(vaddr), to_string=True)
+        r = re.search(r"Page: (\S+)", ret)
         if r:
-            paddr = int(r.group(1), 16)
-            return (paddr >> 6) + self.vmemmap
+            return int(r.group(1), 16)
         return None
 
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
-    @only_if_specific_arch(arch=("x86_64",))
+    @only_if_specific_arch(arch=("x86_64", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
         self.dont_repeat()
@@ -57367,7 +57353,7 @@ class KernelPipeCommand(GenericCommand):
             if self.kinfo.krobase <= v < self.kinfo.krobase + self.kinfo.krobase_size:
                 continue
             # skip invalid chunk
-            ret = gdb.execute("slub-contains {:#x}".format(v), to_string=True)
+            ret = gdb.execute("slub-contains --quiet {:#x}".format(v), to_string=True)
             if "unaligned?" in ret:
                 continue
             # pipe_inode_info is allocated from kmalloc-192 (x64)
@@ -68148,7 +68134,7 @@ class PagewalkWithHintsCommand(GenericCommand):
                 continue
             current = region.addr_start
             while current < region.addr_end:
-                res = gdb.execute("slub-contains {:#x}".format(current), to_string=True)
+                res = gdb.execute("slub-contains --quiet {:#x}".format(current), to_string=True)
                 res = Color.remove_color(res)
                 r = re.search(r"name: (\S+)  size: \S+  num_pages: (\S+)", res)
                 if not r:
