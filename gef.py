@@ -57074,25 +57074,6 @@ class BuddyDumpCommand(GenericCommand):
         self.MAX_ORDER = (current - free_area) // self.sizeof_free_area
         self.quiet_info("MAX_ORDER: {:d}".format(self.MAX_ORDER))
 
-        # vmemmap
-        if is_x86_64():
-            # CONFIG_SPARSEMEM_VMEMMAP
-            vmemmap_base = KernelAddressHeuristicFinder.get_vmemmap_base()
-            if vmemmap_base:
-                self.vmemmap = read_int_from_memory(vmemmap_base)
-            else:
-                kinfo = KernelbaseCommand.get_kernel_base()
-                if not kinfo.has_none:
-                    found_kbase = False
-                    for vaddr, size, _perm in kinfo.maps[::-1]:
-                        if found_kbase and size >= 0x200000:
-                            self.vmemmap = vaddr
-                            break
-                        if vaddr == kinfo.kbase:
-                            found_kbase = True
-                            continue
-            self.quiet_info("vmemmap: {:#x}".format(self.vmemmap))
-
         """
         struct page {
             unsigned long flags;
@@ -57107,17 +57088,19 @@ class BuddyDumpCommand(GenericCommand):
         self.initialized = True
         return True
 
-    def page2virt_and_phys(self, page):
-        if is_x86_64():
-            # CONFIG_SPARSEMEM_VMEMMAP
-            paddr = (page - self.vmemmap) << 6
-            for vstart, _vend, pstart, pend in self.maps:
-                if pstart <= paddr < pend:
-                    offset = paddr - pstart
-                    vaddr = vstart + offset
-                    return vaddr, paddr
-            return None, paddr
-        return None, None
+    def page2virt(self, page):
+        ret = gdb.execute("page2virt {:#x}".format(page), to_string=True)
+        r = re.search(r"Virt: (\S+)", ret)
+        if r:
+            return int(r.group(1), 16)
+        return None
+
+    def virt2phys(self, virt):
+        ret = gdb.execute("v2p {:#x}".format(virt), to_string=True)
+        r = re.search(r"Phys: (\S+)", ret)
+        if r:
+            return int(r.group(1), 16)
+        return None
 
     def dump_free_list(self, free_list, mtype, size):
         heap_page_color = get_gef_setting("theme.heap_page_address")
@@ -57140,7 +57123,8 @@ class BuddyDumpCommand(GenericCommand):
             page_str = Color.colorify("{:#0{:d}x}".format(page, align), freed_address_color)
 
             # address info
-            virt, phys = self.page2virt_and_phys(page)
+            virt = self.page2virt(page)
+            phys = self.virt2phys(virt)
             virt_str = "???"
             phys_str = "???"
             if virt:
@@ -57252,9 +57236,11 @@ class BuddyDumpCommand(GenericCommand):
 
                 # sort_verbose
                 if prev_page is None:
-                    _, phys = self.page2virt_and_phys(page)
-                    if phys:
-                        out.append("    used:{:{:d}s}  size:{:#08x}".format("", align, phys))
+                    virt = self.page2virt(page)
+                    if virt:
+                        phys = self.virt2phys(virt)
+                        if phys:
+                            out.append("    used:{:{:d}s}  size:{:#08x}".format("", align, phys))
                     out.append(msg)
                     prev_page = page
                     prev_size = size
