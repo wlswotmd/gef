@@ -57630,6 +57630,7 @@ class KernelBpfCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose mode.")
     parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
     _syntax_ = parser.format_help()
 
@@ -57807,6 +57808,10 @@ class KernelBpfCommand(GenericCommand):
             aux = read_int_from_memory(prog + self.offset_aux)
             func = read_int_from_memory(prog + self.offset_func)
             self.out.append("{:<3d} {:#018x} {:23s} {:24s} {:#018x} {:#018x} {:#018x}".format(i, prog, t1, t2, tag, aux, func))
+            if self.verbose:
+                ret = gdb.execute("pdisas {:#x}".format(func), to_string=True).rstrip()
+                self.out.append(ret)
+                self.out.append("      ...")
 
         defined_map_types = [
             "UNSPEC",
@@ -57863,6 +57868,7 @@ class KernelBpfCommand(GenericCommand):
         self.quiet = args.quiet
         if not args.quiet:
             info("Wait for memory scan")
+        self.verbose = args.verbose
 
         kversion = KernelVersionCommand.kernel_version()
         if kversion < "4.20":
