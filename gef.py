@@ -57095,13 +57095,6 @@ class BuddyDumpCommand(GenericCommand):
             return int(r.group(1), 16)
         return None
 
-    def virt2phys(self, virt):
-        ret = gdb.execute("v2p {:#x}".format(virt), to_string=True)
-        r = re.search(r"Phys: (\S+)", ret)
-        if r:
-            return int(r.group(1), 16)
-        return None
-
     def dump_free_list(self, free_list, mtype, size):
         heap_page_color = get_gef_setting("theme.heap_page_address")
         chunk_size_color = get_gef_setting("theme.heap_chunk_size")
@@ -57124,7 +57117,7 @@ class BuddyDumpCommand(GenericCommand):
 
             # address info
             virt = self.page2virt(page)
-            phys = self.virt2phys(virt)
+            phys = V2PCommand.v2p(virt, self.maps)
             virt_str = "???"
             phys_str = "???"
             if virt:
@@ -57211,6 +57204,7 @@ class BuddyDumpCommand(GenericCommand):
         if not self.initialize():
             return
 
+        # do not use cache
         self.maps = V2PCommand.get_maps(None)
         if self.maps is None:
             self.quiet_err("Failed to resolve maps")
@@ -63926,7 +63920,7 @@ class V2PCommand(GenericCommand):
     group.add_argument("-s", dest="force_normal", action="store_true",
                        help="ARMv7/v8: use TTBRn_ELm for parsing start register.")
     parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="the address of data you want to translate.")
-    parser.add_argument("-v", "--verbose", action="store_true", help="verbose output.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="verbose output (for arm64 secure memory).")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} 0xa31dd000\n".format(_cmdline_)
@@ -63967,6 +63961,15 @@ class V2PCommand(GenericCommand):
             return None
         return maps
 
+    @staticmethod
+    def v2p(address, maps):
+        for vstart, vend, pstart, _pend in maps:
+            if vstart <= address < vend:
+                offset = address - vstart
+                paddr = pstart + offset
+                return paddr
+        return None
+
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
@@ -63981,14 +63984,13 @@ class V2PCommand(GenericCommand):
             elif args.force_secure:
                 FORCE_PREFIX_S = True
 
+        # do not use cache
         maps = self.get_maps(FORCE_PREFIX_S, args.verbose)
         if maps is None:
             return
-        for vstart, vend, pstart, _pend in maps:
-            if vstart <= args.address < vend:
-                offset = args.address - vstart
-                paddr = pstart + offset
-                gef_print("Virt: {:#x} -> Phys: {:#x}".format(args.address, paddr))
+        paddr = self.v2p(args.address, maps)
+        if paddr:
+            gef_print("Virt: {:#x} -> Phys: {:#x}".format(args.address, paddr))
         return
 
 
@@ -64005,8 +64007,18 @@ class P2VCommand(GenericCommand):
     group.add_argument("-s", dest="force_normal", action="store_true",
                        help="ARMv7/v8: use TTBRn_ELm for parsing start register.")
     parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="the address of data you want to translate.")
-    parser.add_argument("-v", "--verbose", action="store_true", help="verbose output.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="verbose output (for arm64 secure memory).")
     _syntax_ = parser.format_help()
+
+    @staticmethod
+    def p2v(address, maps):
+        vaddrs = []
+        for vstart, _vend, pstart, pend in maps:
+            if pstart <= address < pend:
+                offset = address - pstart
+                vaddr = vstart + offset
+                vaddrs.append(vaddr)
+        return vaddrs
 
     @parse_args
     @only_if_gdb_running
@@ -64022,21 +64034,24 @@ class P2VCommand(GenericCommand):
             elif args.force_secure:
                 FORCE_PREFIX_S = True
 
+        # do not use cache
         maps = V2PCommand.get_maps(FORCE_PREFIX_S, args.verbose)
         if maps is None:
             return
-        count = 0
-        for vstart, _vend, pstart, pend in maps:
-            if pstart <= args.address < pend:
-                offset = args.address - pstart
-                vaddr = vstart + offset
-                if count < 10:
-                    gef_print("Phys: {:#x} -> Virt: {:#x}".format(args.address, vaddr))
-                count += 1
-        if count:
-            gef_print("Total {:d} results are found".format(count))
+
+        vaddrs = self.p2v(args.address, maps)
+
+        if args.verbose:
+            loop_max = len(vaddrs)
         else:
+            loop_max = min(len(vaddrs), 10)
+
+        if loop_max == 0:
             gef_print("Not mapped as virt")
+        else:
+            for i in range(loop_max):
+                gef_print("Phys: {:#x} -> Virt: {:#x}".format(args.address, vaddrs[i]))
+            gef_print("Total {:d} results are found".format(len(vaddrs)))
         return
 
 
