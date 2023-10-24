@@ -68123,10 +68123,10 @@ class PagewalkWithHintsCommand(GenericCommand):
 
     def resolve_more_slub(self):
         if not self.quiet:
-            info("resolve slub (search full slub cache; skip if target region size >= 0x200000)")
+            info("resolve slub (search full slab cache; skip if target region size >= 0x200000)")
         old_regions = list(self.regions.items())[::]
         for _region_addr, region in old_regions:
-            if region.description != "physmem direct map":
+            if "slab cache" in region.description:
                 continue
             if region.perm != "rw-":
                 continue
