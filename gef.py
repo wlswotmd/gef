@@ -68670,9 +68670,12 @@ class QemuDeviceInfoCommand(GenericCommand):
                 continue
             if line.endswith(("read", "write")):
                 index = line.rfind(" ")
-                info("{:s} {:s}".format(line[:index], Color.boldify(line[index + 1:])))
+                info("  {:s} {:s}".format(line[:index], Color.boldify(line[index + 1:])))
             else:
-                info(line)
+                info("  {:s}".format(line))
+
+        if not args.device:
+            info("use `-d` if less information.")
         return
 
 
