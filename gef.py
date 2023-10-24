@@ -57377,8 +57377,8 @@ class KernelPipeCommand(GenericCommand):
             ret = gdb.execute("slub-contains --quiet {:#x}".format(v), to_string=True)
             if "unaligned?" in ret:
                 continue
-            # pipe_inode_info is allocated from kmalloc-192 (x64)
-            if "kmalloc-192" in ret:
+            # pipe_inode_info is allocated from kmalloc-192 (x64) or kmalloc-256 (arm64)
+            if "kmalloc-192" in ret or "kmalloc-256" in ret:
                 self.offset_i_pipe = current_arch.ptrsize * i
                 if not self.quiet:
                     info("offsetof(inode, i_pipe): {:#x}".format(self.offset_i_pipe))
@@ -57592,7 +57592,7 @@ class KernelPipeCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
-    @only_if_specific_arch(arch=("x86_64",))
+    @only_if_specific_arch(arch=("x86_64", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
         self.dont_repeat()
