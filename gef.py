@@ -69704,19 +69704,11 @@ class KmallocTracerCommand(GenericCommand):
         if verbose:
             info("offsetof(kmem_cache, size): {:#x}".format(kmem_cache_offset_size))
 
-        r = re.search(r"vmemmap: (0x\S+)", res)
-        if not r:
-            return False
-        vmemmap = int(r.group(1), 16)
-        if verbose:
-            info("vmemmap: {:#x}".format(vmemmap))
-
         # create extra_info
         dic = {
             "kmem_cache_offset_name": kmem_cache_offset_name,
             "kmem_cache_offset_size": kmem_cache_offset_size,
             "page_offset_slab_cache": page_offset_slab_cache,
-            "vmemmap": vmemmap,
         }
         ExtraInfo = collections.namedtuple("ExtraInfo", dic.keys())
         extra_info = ExtraInfo(*dic.values())
@@ -69735,37 +69727,14 @@ class KmallocTracerCommand(GenericCommand):
 
     @staticmethod
     def virt2name_and_size(extra, vaddr):
-        def virt2page(vmemmap, vaddr):
-            # assume CONFIG_SPARSEMEM_VMEMMAP
-            ret = gdb.execute("monitor gva2gpa {:#x}".format(vaddr), to_string=True)
-            r = re.search(r"gpa: (0x\S+)", ret)
-            if r:
-                paddr = int(r.group(1), 16)
-                return (paddr >> 6) + vmemmap
+        ret = gdb.execute("slub-contains --quiet {:#x}".format(vaddr), to_string=True)
+        ret = Color.remove_color(ret)
+        r = re.search(r"name: (\S+)  size: (\S+)", ret)
+        if not r:
             return None
 
-        current = vaddr & gef_getpagesize_mask()
-        while True:
-            page = virt2page(extra.vmemmap, current)
-            if page is None:
-                return None
-
-            kmem_cache = read_int_from_memory(page + extra.page_offset_slab_cache)
-            if kmem_cache == 0:
-                return None
-
-            if (kmem_cache & ~0xfff) == 0xdead000000000000:
-                current -= gef_getpagesize()
-                continue
-
-            if kmem_cache & 1:
-                current -= gef_getpagesize()
-                continue
-            break
-
-        slub_cache_name_ptr = read_int_from_memory(kmem_cache + extra.kmem_cache_offset_name)
-        slub_cache_name = read_cstring_from_memory(slub_cache_name_ptr)
-        slub_cache_size = u32(read_memory(kmem_cache + extra.kmem_cache_offset_size, 4))
+        slub_cache_name = r.group(1)
+        slub_cache_size = int(r.group(2), 16)
         return slub_cache_name, slub_cache_size
 
     @staticmethod
@@ -69943,7 +69912,6 @@ class KmallocTracerCommand(GenericCommand):
                 info("offsetof(page, slab_cache): {:#x}".format(self.extra_info.page_offset_slab_cache))
                 info("offsetof(kmem_cache, name): {:#x}".format(self.extra_info.kmem_cache_offset_name))
                 info("offsetof(kmem_cache, size): {:#x}".format(self.extra_info.kmem_cache_offset_size))
-                info("vmemmap: {:#x}".format(self.extra_info.vmemmap))
 
         # set kmalloc break points
         breakpoints = KmallocTracerCommand.set_bp_to_kmalloc_kfree(option_info, self.extra_info)
@@ -71267,7 +71235,6 @@ class KmallocAllocatedByCommand(GenericCommand):
                 info("offsetof(page, slab_cache): {:#x}".format(self.extra_info.page_offset_slab_cache))
                 info("offsetof(kmem_cache, name): {:#x}".format(self.extra_info.kmem_cache_offset_name))
                 info("offsetof(kmem_cache, size): {:#x}".format(self.extra_info.kmem_cache_offset_size))
-                info("vmemmap: {:#x}".format(self.extra_info.vmemmap))
 
         # get syscall table
         self.syscall_table = {e.name: n for n, e in get_syscall_table().table.items() if n < 0x1000}
