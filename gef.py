@@ -3311,6 +3311,8 @@ def gdb_disassemble(start_pc, **kwargs):
     - `count` (Integer) list at most this many disassembled instructions
     If `end_pc` and `count` are not provided, the function will behave as if `count=1`.
     Return an iterator of Instruction objects"""
+    if start_pc is None:
+        return None
 
     global __gef_prev_arch__
     try:
@@ -3345,10 +3347,14 @@ def gdb_disassemble(start_pc, **kwargs):
             opcodes = read_memory(insn["addr"], insn["length"])
 
         yield Instruction(address, location, mnemo, operands, opcodes)
+    return None
 
 
 def gdb_get_nth_previous_instruction_address(addr, n):
     """Return the address (Integer) of the `n`-th instruction before `addr`."""
+    if addr is None:
+        return None
+
     # fixed-length ABI
     if current_arch.instruction_length:
         return max(0, addr - n * current_arch.instruction_length)
@@ -3380,12 +3386,14 @@ def gdb_get_nth_previous_instruction_address(addr, n):
         # 3. check all instructions are valid
         if all(insn.is_valid() for insn in insns):
             return insns[0].address
-
     return None
 
 
 def gdb_get_nth_next_instruction_address(addr, n):
     """Return the address (Integer) of the `n`-th instruction after `addr`."""
+    if addr is None:
+        return None
+
     # fixed-length ABI
     if current_arch.instruction_length:
         return addr + n * current_arch.instruction_length
@@ -3460,6 +3468,7 @@ def gef_disassemble(addr, nb_insn, nb_prev=0):
 
     for insn in gdb_disassemble(addr, count=nb_insn):
         yield insn
+    return None
 
 
 @load_capstone
@@ -9933,8 +9942,11 @@ def is_normal_run():
 
 @functools.lru_cache(maxsize=None)
 def is_attach():
-    ret = gdb.execute("info files", to_string=True)
-    return "Using the running image of attached" in ret
+    try:
+        return gdb.selected_inferior().was_attached
+    except AttributeError:
+        ret = gdb.execute("info files", to_string=True)
+        return "Using the running image of attached" in ret
 
 
 @functools.lru_cache(maxsize=None)
@@ -9946,7 +9958,11 @@ def is_container_attach():
 def is_pin():
     if not is_remote_debug():
         return False
-    response = gdb.execute("maintenance packet qSupported", to_string=True, from_tty=False)
+    try:
+        response = gdb.execute("maintenance packet qSupported", to_string=True, from_tty=False)
+    except gdb.error as e:
+        err("{}".format(e))
+        os._exit(0)
     return "intel.name=" in response
 
 
@@ -9954,7 +9970,11 @@ def is_pin():
 def is_qemu():
     if not is_remote_debug():
         return False
-    response = gdb.execute("maintenance packet Qqemu.sstepbits", to_string=True, from_tty=False)
+    try:
+        response = gdb.execute("maintenance packet Qqemu.sstepbits", to_string=True, from_tty=False)
+    except gdb.error as e:
+        err("{}".format(e))
+        os._exit(0)
     return "ENABLE=" in response
 
 
@@ -9962,7 +9982,11 @@ def is_qemu():
 def is_qemu_user():
     if is_qemu() is False:
         return False
-    response = gdb.execute("maintenance packet qOffsets", to_string=True, from_tty=False)
+    try:
+        response = gdb.execute("maintenance packet qOffsets", to_string=True, from_tty=False)
+    except gdb.error as e:
+        err("{}".format(e))
+        os._exit(0)
     return "Text=" in response
 
 
@@ -9970,7 +9994,11 @@ def is_qemu_user():
 def is_qemu_system():
     if is_qemu() is False:
         return False
-    response = gdb.execute("maintenance packet qOffsets", to_string=True, from_tty=False)
+    try:
+        response = gdb.execute("maintenance packet qOffsets", to_string=True, from_tty=False)
+    except gdb.error as e:
+        err("{}".format(e))
+        os._exit(0)
     return 'received: ""' in response
 
 
@@ -10006,7 +10034,8 @@ def is_vmware():
 def is_qiling():
     if not is_remote_debug():
         return False
-    if get_pid(remote=True) < 42000:
+    pid = get_pid(remote=True)
+    if pid is None or pid < 42000:
         return False
     for m in get_process_maps():
         if m.path == "[hook_mem]":
@@ -10047,6 +10076,32 @@ def get_tcp_sess(pid):
     return sessions
 
 
+def get_all_process():
+    pids = [int(x) for x in os.listdir("/proc") if x.isdigit()]
+    process = []
+    for pid in pids:
+        try:
+            filepath = os.readlink("/proc/{:d}/exe".format(pid))
+        except (FileNotFoundError, ProcessLookupError, OSError):
+            continue
+        process.append({"pid": pid, "filepath": os.path.basename(filepath)})
+    return process
+
+
+def get_pid_from_tcp_session(filepath=None):
+    gdb_tcp_sess = [x["raddr"] for x in get_tcp_sess(os.getpid())]
+    if not gdb_tcp_sess:
+        err("gdb has no tcp session")
+        return None
+    for process in get_all_process():
+        if filepath and not process["filepath"].startswith(filepath):
+            continue
+        for c in get_tcp_sess(process["pid"]):
+            if c["laddr"] in gdb_tcp_sess:
+                return process["pid"]
+    return None
+
+
 # Under pin and qemu, it is necessary to parse the TCP information
 # of the connection destination and obtain the pid.
 # This operation is expensive, but once known, it never changes.
@@ -10054,29 +10109,6 @@ def get_tcp_sess(pid):
 @functools.lru_cache(maxsize=None)
 def __get_pid(remote):
     """Return the PID of the debuggee process."""
-    def get_all_process():
-        pids = [int(x) for x in os.listdir("/proc") if x.isdigit()]
-        process = []
-        for pid in pids:
-            try:
-                filepath = os.readlink("/proc/{:d}/exe".format(pid))
-            except (FileNotFoundError, ProcessLookupError, OSError):
-                continue
-            process.append({"pid": pid, "filepath": os.path.basename(filepath)})
-        return process
-
-    def get_pid_from_tcp_session(filepath=None):
-        gdb_tcp_sess = [x["raddr"] for x in get_tcp_sess(os.getpid())]
-        if not gdb_tcp_sess:
-            err("gdb has no tcp session")
-            return None
-        for process in get_all_process():
-            if filepath and not process["filepath"].startswith(filepath):
-                continue
-            for c in get_tcp_sess(process["pid"]):
-                if c["laddr"] in gdb_tcp_sess:
-                    return process["pid"]
-        return None
 
     if is_pin():
         return get_pid_from_tcp_session()
@@ -22578,6 +22610,8 @@ class ContextCommand(GenericCommand):
             clear_screen()
 
         for section in current_layout:
+            if not is_alive():
+                break
             if section[0] == "-":
                 continue
             try:
@@ -41457,7 +41491,7 @@ class MmxSetCommand(GenericCommand):
     parser.add_argument("reg_and_value", metavar="REG=VALUE", help="MMX register and value you want to set.")
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} $mm0=0x1122334455667788".format(_cmdline_)
+    _example_ = "{:s} $mm0=0x1122334455667788\n".format(_cmdline_)
     _example_ += "\n"
     _example_ += "NOTE: Disable `-enable-kvm` option for qemu-system."
 
@@ -50788,6 +50822,7 @@ class KernelSysctlCommand(GenericCommand):
     _example_ += "                                         +--------------+\n"
     _example_ += "                                         | ...          |\n"
     _example_ += "                                         +--------------+\n"
+    _example_ += "\n"
     _example_ += "NOTE: This command needs CONFIG_RANDSTRUCT=n."
 
     def __init__(self):
