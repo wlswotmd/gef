@@ -900,7 +900,7 @@ class Address:
         return Color.colorify(value, line_color)
 
     def long_fmt(self):
-        value = format_address_long_fmt(self.value)
+        value = format_address(self.value, long_fmt=True)
         if not self.valid:
             return value
         line_color = ""
@@ -11289,32 +11289,31 @@ def set_arch(arch_str=None):
             arches[lc] = cls
         queue.extend(cls.__subclasses__())
 
-    try:
-        # Determined from the specified arch string
-        if arch_str:
-            key = arch_str.upper()
+    # Determined from the specified arch string
+    if arch_str:
+        key = arch_str.upper()
+
+    else:
+        # Determined from loaded ELF
+        if not current_elf:
+            elf = get_elf_headers()
+            if elf and elf.is_valid():
+                current_elf = elf
+            else:
+                raise OSError("Could not determine architecture.")
+
+        if current_elf.e_machine not in [Elf.EM_MIPS, Elf.EM_RISCV, Elf.EM_PARISC]:
+            key = current_elf.e_machine
 
         else:
-            # Determined from loaded ELF
-            if not current_elf:
-                elf = get_elf_headers()
-                if elf and elf.is_valid():
-                    current_elf = elf
-                else:
-                    raise OSError("Could not determine architecture.")
+            # On some architectures, it is not possible to determine whether it is 32-bit or 64-bit
+            # from the ELF header e_machine. so we use the detection result of gdb.
+            key = get_arch().upper()
 
-            if current_elf.e_machine not in [Elf.EM_MIPS, Elf.EM_RISCV, Elf.EM_PARISC]:
-                key = current_elf.e_machine
-
-            else:
-                # On some architectures, it is not possible to determine whether it is 32-bit or 64-bit
-                # from the ELF header e_machine. so we use the detection result of gdb.
-                key = get_arch().upper()
-
+    try:
         current_arch = arches[key]()
     except KeyError as err:
         raise OSError("Specified arch {!s} is not supported".format(key)) from err
-
     return
 
 
@@ -11385,7 +11384,7 @@ def get_format_address_width(memalign_size=None):
         return 18
 
 
-def format_address(addr, memalign_size=None):
+def format_address(addr, memalign_size=None, long_fmt=False):
     """Format the address according to its size."""
     # if qemu-xxx(32bit arch) runs on x86-64 machine, memalign_size does not match get_memory_alignment()
     # so use the value forcibly if memalign_size is not None
@@ -11398,25 +11397,11 @@ def format_address(addr, memalign_size=None):
     addr = align_address(addr, memalign_size)
     if memalign_size == 4:
         return "{:#010x}".format(addr)
+    if long_fmt:
+        return "{:#018x}".format(addr)
     if is_in_kernel():
         return "{:#018x}".format(addr)
     return "{:#014x}".format(addr)
-
-
-def format_address_long_fmt(addr, memalign_size=None):
-    """Format the address according to its size."""
-    # if qemu-xxx(32bit arch) runs on x86-64 machine, memalign_size does not match get_memory_alignment()
-    # so use the value forcibly if memalign_size is not None
-    if memalign_size is None:
-        memalign_size = get_memory_alignment()
-
-    if isinstance(addr, str):
-        addr = int(addr, 16)
-
-    addr = align_address(addr, memalign_size)
-    if memalign_size == 4:
-        return "{:#010x}".format(addr)
-    return "{:#018x}".format(addr)
 
 
 def align_address(addr, memalign_size=None):
@@ -25030,7 +25015,7 @@ def to_string_dereference_from(value, skip_idx=0, phys=False):
         if len(s) < 2:
             pass
         elif 2 <= len(s) < current_arch.ptrsize:
-            last_elem = "{:s} ({:s}?)".format(format_address_long_fmt(addrs[-1]), Color.colorify(repr(s), string_color))
+            last_elem = "{:s} ({:s}?)".format(format_address(addrs[-1], long_fmt=True), Color.colorify(repr(s), string_color))
             addrs = addrs[:-1]
         else: # len(s) == current_arch.ptrsize
             if len(addrs) >= 2 and is_valid_addr(addrs[-2]):
@@ -25047,7 +25032,7 @@ def to_string_dereference_from(value, skip_idx=0, phys=False):
                     pass
             else:
                 # fallback
-                last_elem = "{:s} ({:s}?)".format(format_address_long_fmt(addrs[-1]), Color.colorify(repr(s), string_color))
+                last_elem = "{:s} ({:s}?)".format(format_address(addrs[-1], long_fmt=True), Color.colorify(repr(s), string_color))
                 addrs = addrs[:-1]
 
     # others
@@ -25571,10 +25556,10 @@ class VMMapCommand(GenericCommand):
         lines = []
         # if qemu-xxx(32bit arch) runs on x86-64 machine, memalign_size does not match get_memory_alignment()
         memalign_size = 8 if outer else None
-        lines.append(Color.colorify(format_address_long_fmt(entry.page_start, memalign_size), line_color))
-        lines.append(Color.colorify(format_address_long_fmt(entry.page_end, memalign_size), line_color))
-        lines.append(Color.colorify(format_address_long_fmt(entry.size, memalign_size), line_color))
-        lines.append(Color.colorify(format_address_long_fmt(entry.offset, memalign_size), line_color))
+        lines.append(Color.colorify(format_address(entry.page_start, memalign_size, long_fmt=True), line_color))
+        lines.append(Color.colorify(format_address(entry.page_end, memalign_size, long_fmt=True), line_color))
+        lines.append(Color.colorify(format_address(entry.size, memalign_size, long_fmt=True), line_color))
+        lines.append(Color.colorify(format_address(entry.offset, memalign_size, long_fmt=True), line_color))
         lines.append(Color.colorify(str(entry.permission), line_color))
         lines.append(Color.colorify(entry.path, line_color))
         line = " ".join(lines)
@@ -48196,9 +48181,9 @@ class KernelTaskCommand(GenericCommand):
                     for k, v in regs.items():
                         if k in syscall_nr_regs and v in syscall_table:
                             syscall_name = syscall_table[v].name
-                            out.append("{:16s}: {:s} ({:s})".format(k, format_address_long_fmt(v), syscall_name))
+                            out.append("{:16s}: {:s} ({:s})".format(k, format_address(v, long_fmt=True), syscall_name))
                         else:
-                            out.append("{:16s}: {:s}".format(k, format_address_long_fmt(v)))
+                            out.append("{:16s}: {:s}".format(k, format_address(v, long_fmt=True)))
                     if not args.print_fd:
                         out.append(titlify(""))
 
