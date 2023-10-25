@@ -199,6 +199,7 @@ __cached_kernel_cmdline__       = None
 __cached_context_legend__       = None
 __cached_heap_base__            = None
 __cached_main_arena__           = None
+__use_info_proc_mappings__      = None
 current_elf                     = None
 current_arch                    = None
 
@@ -10550,6 +10551,64 @@ def __get_explored_regions():
     return regions
 
 
+def get_process_maps_qemu_user81():
+    res = gdb.execute("info proc mappings", to_string=True)
+
+    """
+    process 2897541
+    Mapped address spaces:
+
+              Start Addr           End Addr       Size     Offset  Perms  objfile
+                0x400000           0x478000    0x78000        0x0  r-xp   /tmp/a.out
+                0x478000           0x48c000    0x14000        0x0  ---p
+                0x48c000           0x492000     0x6000    0x7c000  rw-p   /tmp/a.out
+                0x492000           0x498000     0x6000        0x0  rw-p
+          0x400000000000     0x400000001000     0x1000        0x0  ---p
+          0x400000001000     0x400000801000   0x800000        0x0  rw-p   [stack]
+          0x400000801000     0x400000802000     0x1000        0x0  r-xp
+    """
+    maps = []
+    for line in res.splitlines()[4:]:
+        line = line.strip()
+        addr_start, addr_end, size, offset, perm, *path = line.split()
+        addr_start = int(addr_start, 16)
+        addr_end = int(addr_end, 16)
+        size = int(size, 16)
+        offset = int(offset, 16)
+        perm = Permission.from_process_maps(perm)
+        if len(path) == 1:
+            path = path[0]
+        else:
+            path = ""
+        sect = Section(page_start=addr_start, page_end=addr_end, offset=offset, permission=perm, inode=None, path=path)
+        maps.append(sect)
+    return maps
+
+
+def get_explored_regions():
+    global __use_info_proc_mappings__
+    if __use_info_proc_mappings__ is None:
+        try:
+            res = gdb.execute("info proc mappings", to_string=True)
+            if "warning" in res:
+                __use_info_proc_mappings__ = False
+            else:
+                __use_info_proc_mappings__ = True
+        except gdb.error:
+            __use_info_proc_mappings__ = False
+
+    # fast path
+    if __use_info_proc_mappings__ is True:
+        res = get_process_maps_qemu_user81() # don't use cache
+        if res:
+            return res
+        # something is wrong
+        __use_info_proc_mappings__ = False
+
+    # slow path
+    return __get_explored_regions() # use cache
+
+
 @functools.lru_cache(maxsize=None)
 def get_process_maps(outer=False):
     """Return the mapped memory sections"""
@@ -10560,7 +10619,7 @@ def get_process_maps(outer=False):
                 return get_process_maps_linux(pid)
             return []
         else: # scan heuristic
-            return __get_explored_regions()
+            return get_explored_regions()
 
     elif is_pin():
         pid = get_pid()
@@ -10580,7 +10639,7 @@ def get_process_maps(outer=False):
         if pid:
             return get_process_maps_linux(pid)
 
-    return __get_explored_regions() # scan heuristic
+    return get_explored_regions() # scan heuristic
 
 
 # `info files` called from __get_info_files is heavy processing.
@@ -25481,8 +25540,9 @@ class VMMapCommand(GenericCommand):
                     self.dump_entry(entry, args.outer)
 
         if is_qemu_user() and not args.outer:
-            self.info("Searched from auxv, registers and stack values. There may be areas that cannot be detected.")
-            self.info("Permission is based on ELF header or default value `rw-`. Dynamic permission changes cannot be detected.")
+            if __use_info_proc_mappings__ is False:
+                self.info("Searched from auxv, registers and stack values. There may be areas that cannot be detected.")
+                self.info("Permission is based on ELF header or default value `rw-`. Dynamic permission changes cannot be detected.")
 
         if len(self.out) > 60:
             gef_print("\n".join(self.out), less=not args.no_pager)
