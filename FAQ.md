@@ -58,7 +58,7 @@ However, since GEF does not take AT&T syntax parsing into consideration, so some
 If you find a case where it doesn't work, please report it on the issue page.
 
 ## I don't like the color scheme.
-Customize it using the `theme` command, then `gef save`. The config is saved to `~/.gef.rc` by default.
+Customize it using the `theme` command, then `gef save`. The config is saved to `~/.gef.rc`.
 There is another option is disable colors. Try `gef config gef.disable_color True`.
 
 ## I don't want to add `-n` to every command to disable pager.
@@ -186,7 +186,7 @@ Yes, however, please follow the license.
 ## What kind of environment are you developing in?
 I don't use anything special.
 I am using a test environment built with buildroot while viewing the Linux kernel source with Bootlin.
-I also use images of kernel exploit task from variuos CTFs.
+I also use images of kernel exploit task from various CTFs.
 
 ## Why is there no master branch?
 I'm a git beginner, so one dev branch is the best I can do.

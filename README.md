@@ -61,8 +61,8 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 [install-minimal.sh](https://github.com/bata24/gef/blob/dev/install-minimal.sh).
 
 ## Supported environment
-- Tested on Ubuntu 22.04.
-- It may work under Ubuntu 20.04 and 23.04, debian 10.x or after.
+- Tested on ubuntu 23.10.
+- It may work under ubuntu 20.04, 22.04, 23.04, debian 10.x or after.
 
 ## Supported mode
 * Normal debugging (start under gdb)
